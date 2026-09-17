@@ -81,15 +81,24 @@ type Candidate struct {
 	UpdatedAt         time.Time
 }
 
-// Materialization is intentionally separate from Candidate. It records the
-// local/Drive/content-addressed result without mutating the provider URL row.
+// Materialization is intentionally separate from Candidate. It records which
+// provider suggestion has been turned into a canonical asset, without mutating
+// the provider URL row.
+//
+// It holds NO local path. A path is runtime/cache state — it stops being true
+// when a tmpfs is swept, a container restarts, or a different host serves the
+// request — so it can never be evidence that an asset is durable. Keeping it
+// here is what made a media row able to disagree with itself (the reported
+// failure: a sha256 that named one file while local_path named another). Paths
+// now exist only for the seconds a process needs them, and the two owners are
+// the canonical materializer (internal/platform/assets/materializer) for bytes
+// and the asset-location registry for locations.
 type Materialization struct {
 	CandidateID    int64
 	AssetID        string
 	LegacyFileMD5  string
 	DriveFileID    string
 	DriveLink      string
-	LocalPath      string
 	Status         string
 	MaterializedAt time.Time
 	LastVerifiedAt time.Time

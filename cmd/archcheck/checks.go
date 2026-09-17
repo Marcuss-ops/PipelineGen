@@ -65,6 +65,18 @@ func DefaultChecks(productionOnly bool) []CheckSpec {
 		// The finalizer-package SQL fence is owned by
 		// percheck_media_assets_writer_canonical (scoped asset_locations /
 		// outbox_events rules) — the two scanners encoded the same fact.
+		// MEDIA-SSOT identity gate (added 2026-09-17): a struct that carries a
+		// CONTENT ADDRESS must not also carry a LOCATION or a producer-local
+		// field. That coexistence is what produced the reported production
+		// failure — a media record whose sha256 said one thing while its
+		// local_path/drive_link said another — and every individual consumer
+		// looked correct, so the disagreement only surfaced later in another
+		// process. This is the forward-prevention half; the runtime half is the
+		// content verification in internal/platform/renderinggen and
+		// RenderingGen/objectstore. Grandfathered offenders live in
+		// docs/migrations/media-identity-location-fields-allowlist.txt with an
+		// owner and a deadline.
+		{"percheck_media_identity_no_location_fields", governance.ScanMediaIdentityNoLocationFields},
 		{"percheck_media_assets_writer_canonical", boundaries.ScanMediaAssetsWriterCanonical},
 		// MEDIA-SSOT (September 2026): the write gate bans direct SQL; this
 		// companion bans the TRANSACTION-BOUND seam on the write boundary —

@@ -167,7 +167,7 @@ func TestSQLiteEntityImageCatalogRoundTripAndIdentitySeparation(t *testing.T) {
 	if err := repo.UpsertMaterialization(ctx, capentity.Materialization{
 		CandidateID: firstID, AssetID: "asset-mj-1", LegacyFileMD5: "sha-mj-1",
 		DriveFileID: "drive-mj-1", DriveLink: "https://drive.google.com/file/d/drive-mj-1/view",
-		LocalPath: "/tmp/mj-1.jpg", Status: capentity.MaterializationStatusMaterialized,
+		Status:         capentity.MaterializationStatusMaterialized,
 		MaterializedAt: materializedAt, LastVerifiedAt: verifiedAt,
 	}); err != nil {
 		t.Fatalf("upsert materialization: %v", err)

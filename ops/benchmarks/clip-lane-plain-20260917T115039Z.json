@@ -1,0 +1,48 @@
+{
+  "mode": "plain",
+  "clip_asset_id": "yt_iHaK0M-207o_60_70_v1",
+  "language": "en",
+  "background_asset_id": "classic1",
+  "status": "CACHED",
+  "submit_wall_ms": 25,
+  "response": {
+    "artifact": {
+      "artifact_url": "http://localhost:9000/objects/7f0176e1abed3814d2e90a5368172a617f6c0e01f4d1598cf7ab3edbefdbfe66",
+      "sha256": "7f0176e1abed3814d2e90a5368172a617f6c0e01f4d1598cf7ab3edbefdbfe66",
+      "size_bytes": 3354266,
+      "storage_key": "7f0176e1abed3814d2e90a5368172a617f6c0e01f4d1598cf7ab3edbefdbfe66"
+    },
+    "asset_id": "cliprender_7f0176e1abed3814d2e90a53",
+    "fingerprint": "d222ffc953ca16c78876a2390ec1be12956637ff789244283460948b965d2596",
+    "status": "CACHED"
+  },
+  "payload": {
+    "source_asset_id": "yt_iHaK0M-207o_60_70_v1",
+    "background": {
+      "mode": "none"
+    },
+    "subtitles": {
+      "enabled": false
+    },
+    "watermark": {
+      "enabled": false
+    },
+    "output": {
+      "contract": "VELOX_ASSEMBLY_READY_V1",
+      "width": 1920,
+      "height": 1080,
+      "fps_num": 24,
+      "fps_den": 1
+    },
+    "audio": {
+      "mode": "copy_if_compatible"
+    },
+    "execution": {
+      "require_gpu": true
+    },
+    "destination": {
+      "drive_folder_id": "1ST6FxPuRaxwBOIz39MAN8Jj4gDv509-K",
+      "subfolder_name": "clip-lane-certification"
+    }
+  }
+}

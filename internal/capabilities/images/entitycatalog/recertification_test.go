@@ -57,11 +57,10 @@ func (r *recertificationTestRepository) RecordCandidateValidation(_ context.Cont
 	return nil
 }
 
-func TestRecertificationRunOnceRefreshesStaleAndPreservesDriveMaterialization(t *testing.T) {
+func TestRecertificationRunOnceRefreshesStaleCandidate(t *testing.T) {
 	now := time.Date(2026, 8, 20, 12, 0, 0, 0, time.UTC)
 	repo := &recertificationTestRepository{candidates: []RecertificationCandidate{{
-		Candidate:       Candidate{ID: 7, CanonicalEntityID: "person:michael-jordan", Provider: "duckduckgo", Rank: 1, SourceURL: "https://images.example/mj.png", Status: CandidateStatusStale, SemanticStatus: CandidateSemanticAccepted},
-		Materialization: &Materialization{CandidateID: 7, AssetID: "asset-mj", DriveFileID: "drive-mj", DriveLink: "https://drive.google.com/file/d/drive-mj/view", Status: MaterializationStatusMaterialized},
+		Candidate: Candidate{ID: 7, CanonicalEntityID: "person:michael-jordan", Provider: "duckduckgo", Rank: 1, SourceURL: "https://images.example/mj.png", Status: CandidateStatusStale, SemanticStatus: CandidateSemanticAccepted},
 	}}}
 	validator := imageCandidateValidatorFunc(func(context.Context, string) error { return nil })
 	service := NewRecertificationService(repo, validator, RecertificationConfig{BatchSize: 10})
@@ -76,10 +75,6 @@ func TestRecertificationRunOnceRefreshesStaleAndPreservesDriveMaterialization(t 
 	}
 	if len(repo.validations) != 1 || !repo.validations[0].Success || repo.validations[0].FailureCount != 0 {
 		t.Fatalf("validation = %+v", repo.validations)
-	}
-	materialization := repo.candidates[0].Materialization
-	if materialization == nil || materialization.AssetID != "asset-mj" || materialization.DriveFileID != "drive-mj" || materialization.Status != MaterializationStatusMaterialized {
-		t.Fatalf("Drive materialization changed: %+v", materialization)
 	}
 }
 

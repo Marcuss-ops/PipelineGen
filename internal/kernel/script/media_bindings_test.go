@@ -81,3 +81,87 @@ func TestVoiceoverTimingBinding_EmptyStatusSurvives(t *testing.T) {
 		t.Fatalf("timing status = %q, want failed (explicit absence must survive)", got)
 	}
 }
+
+// ─── Phase 2: the canonical media identity (kernel/asset.Ref) ────────────
+//
+// EntityImageBinding is the annotation layer's media binding. It carries BOTH
+// halves of the media fact — which asset (AssetID) and which bytes (SHA256) on
+// one side, where those bytes happen to live (DriveFileID/DriveLink/PreviewURL/
+// LocalPath) on the other — and Ref() is the projection onto the identity half.
+// These tests pin the property that makes the projection worth having: the
+// identity of the bytes does not depend on where they currently are.
+
+// TestEntityImageBindingRefIsLocationFree pins that the identity a binding
+// projects cannot describe a location, so it is safe to use as a join key and as
+// a persisted/compared value.
+func TestEntityImageBindingRefIsLocationFree(t *testing.T) {
+	binding := EntityImageBinding{
+		Status:      "bound",
+		AssetID:     "asset-michael-jordan",
+		SHA256:      "c4813c9d7d4f0f6b1a2c3d4e5f60718293a4b5c6d7e8f9012345678901abcdef",
+		MediaType:   "image/jpeg",
+		DriveFileID: "drive-file-id",
+		DriveLink:   "https://drive.google.com/file/d/drive-file-id/view",
+		PreviewURL:  "https://cdn.example/jordan.jpg",
+		LocalPath:   "/tmp/producer-only/jordan.jpg",
+	}
+
+	identity := binding.Ref()
+	raw, err := json.Marshal(identity)
+	if err != nil {
+		t.Fatalf("marshal identity: %v", err)
+	}
+	for _, forbidden := range []string{"local_path", "drive_file_id", "drive_link", "preview_url", "url", "status", "source", "license"} {
+		if strings.Contains(string(raw), `"`+forbidden+`"`) {
+			t.Errorf("canonical identity carries non-identity key %q: %s", forbidden, raw)
+		}
+	}
+	if identity.AssetID != binding.AssetID || identity.MediaType != binding.MediaType {
+		t.Errorf("identity dropped part of the binding's identity: %+v", identity)
+	}
+}
+
+// TestEntityImageBindingRefIsIndependentOfLocation is the regression guard for
+// the production failure this programme exists to remove: the SAME bytes
+// described through a Drive location and through a CDN URL must be ONE asset,
+// not two. It is also the digest-spelling guard — the two bindings below differ
+// only in digest case and location, and both must collapse to one identity.
+func TestEntityImageBindingRefIsIndependentOfLocation(t *testing.T) {
+	const digest = "c4813c9d7d4f0f6b1a2c3d4e5f60718293a4b5c6d7e8f9012345678901abcdef"
+	viaDrive := EntityImageBinding{
+		AssetID:     "asset-michael-jordan",
+		SHA256:      digest,
+		MediaType:   "image/jpeg",
+		DriveFileID: "drive-file-id",
+		DriveLink:   "https://drive.google.com/file/d/drive-file-id/view",
+	}
+	viaCdn := EntityImageBinding{
+		AssetID:    "asset-michael-jordan",
+		SHA256:     strings.ToUpper(digest),
+		MediaType:  "image/jpeg",
+		PreviewURL: "https://cdn.example/jordan.jpg",
+	}
+
+	if viaDrive.Ref() != viaCdn.Ref() {
+		t.Fatalf("one asset through two locations projected onto two identities:\n  %+v\n  %+v", viaDrive.Ref(), viaCdn.Ref())
+	}
+	// The canonicalised projection is also the thing that makes the digest
+	// CHECKABLE: the mixed-case input becomes a valid 64-hex content address.
+	if !viaCdn.Ref().IsCanonicalDigest() {
+		t.Errorf("canonicalised digest is not recognised as a content address: %+v", viaCdn.Ref())
+	}
+}
+
+// TestEntityImageBindingRefRejectsHalfIdentities pins that the projection does
+// not invent a usable identity out of nothing: a binding without bytes, or
+// without a logical asset, is not "some asset with an unknown location".
+func TestEntityImageBindingRefRejectsHalfIdentities(t *testing.T) {
+	noBytes := EntityImageBinding{AssetID: "asset-x", DriveLink: "https://drive/x"}
+	if err := noBytes.Ref().Validate(); err == nil {
+		t.Errorf("a binding without a content address must not project onto a usable identity: %+v", noBytes.Ref())
+	}
+	noAsset := EntityImageBinding{SHA256: "c4813c9d7d4f0f6b1a2c3d4e5f60718293a4b5c6d7e8f9012345678901abcdef"}
+	if err := noAsset.Ref().Validate(); err == nil {
+		t.Errorf("a binding without a logical asset must not project onto a usable identity: %+v", noAsset.Ref())
+	}
+}

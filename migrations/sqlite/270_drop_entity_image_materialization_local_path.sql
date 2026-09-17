@@ -1,0 +1,49 @@
+-- database: primary
+-- 270_drop_entity_image_materialization_local_path.sql
+--
+-- CONTRACT phase of the media-identity unification (godlike/06 SSOT).
+--
+-- `entity_image_catalog_materializations.local_path` was the durable record of
+-- "where the bytes of this entity image live on THIS host". It is the exact
+-- field that let a media row disagree with itself: the reported production
+-- failure had a row whose `legacy_file_md5` named one file while `local_path`
+-- named a different one, and the overlay/render path consumed the path without
+-- ever proving it hashed to the recorded address.
+--
+-- WHY IT IS RETIRED
+--
+--   * A filesystem path is runtime/cache state, not metadata. It stops being
+--     true when a tmpfs is swept, a container restarts, or another host serves
+--     the request. Persisting it made a disposable fact look durable.
+--   * The durable inputs are the CONTENT ADDRESS (legacy_file_md5) and the
+--     canonical asset identity (asset_id), which are resolved to bytes at use
+--     time by internal/platform/assets/materializer — the single owner of
+--     "are these bytes the bytes this address names?".
+--   * Two writers of one fact is how the two diverged. After this migration
+--     there is exactly one way to obtain bytes: resolve the address.
+--
+-- CODE CUTOVER (already applied, verified by `go build ./...`):
+--   * entitycatalog.Materialization no longer declares LocalPath.
+--   * SQLiteEntityImageCatalogAdapter no longer SELECTs, INSERTs or UPDATEs
+--     the column (upsert, GetMaterialization, ListCandidatesForRecertification).
+--   * The SQLite → SegmentAssetCandidate hydration no longer injects a path
+--     into the render DTO; the VidRush persist path no longer writes one.
+--
+-- IDEMPOTENCY: NOT idempotent. SQLite's `ALTER TABLE … DROP COLUMN` has no
+-- `IF EXISTS`, so re-running against a column-less table fails with
+-- `error: no such column: local_path`. This mirrors the established precedent
+-- in 102_drop_legacy_status_column.sql, 230_drop_lifecycle_status_shadow.sql
+-- and 232_voiceover_drop_location_hash_duplication.sql: apply ONCE, after the
+-- code that referenced the column has shipped (which is the commit that
+-- carries this file). A runner that records partial errors will treat the
+-- re-run attempt as already-satisfied.
+--
+-- NO BACKFILL IS REQUIRED: the column carried no information that is not
+-- already owned elsewhere. Losing a stale path loses nothing — the address
+-- remains the identity, and the bytes are re-materialized from the canonical
+-- store or the fetchable origin on demand.
+--
+-- INDEXES: none reference local_path, so no index has to be dropped first
+-- (SQLite refuses to drop a column referenced by an index).
+
+ALTER TABLE entity_image_catalog_materializations DROP COLUMN local_path;

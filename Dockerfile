@@ -21,6 +21,12 @@ ARG TARGETOS=linux
 ARG TARGETPLATFORM
 ARG VERSION=dev
 ARG COMMIT=unknown
+# BUILD_TIME must be DECLARED, not merely referenced: an undeclared variable
+# expands to the empty string, so the -X ...BuildTime= stamp below would have
+# silently shipped an image whose build time was blank. Pass it explicitly
+# (--build-arg BUILD_TIME=$(date -u +%Y-%m-%dT%H:%M:%SZ)) for a reproducible
+# stamp; the default keeps the image self-describing when omitted.
+ARG BUILD_TIME=unknown
 
 # CGO is required (mattn/go-sqlite3).
 RUN apt-get update \
@@ -38,17 +44,23 @@ RUN go mod download
 
 COPY . .
 
+# Build identity symbols (platform/buildinfo). The packages these -X flags
+# target must EXIST: the previous `main.buildVersion` / `main.commitHash` named
+# variables no Go file declared, so the linker dropped them and the image
+# shipped with no embedded identity.
+ENV BUILDINFO_PKG=github.com/Marcuss-ops/PipelineGen/internal/platform/buildinfo
+
 # Compile the three canonical binaries.
 ENV CGO_ENABLED=1
 RUN mkdir -p /out \
  && go build -trimpath \
-      -ldflags "-s -w -X main.buildVersion=${VERSION} -X main.commitHash=${COMMIT}" \
+      -ldflags "-s -w -X ${BUILDINFO_PKG}.Version=${VERSION} -X ${BUILDINFO_PKG}.GitCommit=${COMMIT} -X ${BUILDINFO_PKG}.BuildTime=${BUILD_TIME}" \
       -o /out/pipelinegen ./cmd/server \
  && go build -trimpath \
-      -ldflags "-s -w -X main.buildVersion=${VERSION} -X main.commitHash=${COMMIT}" \
+      -ldflags "-s -w -X ${BUILDINFO_PKG}.Version=${VERSION} -X ${BUILDINFO_PKG}.GitCommit=${COMMIT} -X ${BUILDINFO_PKG}.BuildTime=${BUILD_TIME}" \
       -o /out/worker ./cmd/worker \
  && go build -trimpath \
-      -ldflags "-s -w -X main.buildVersion=${VERSION} -X main.commitHash=${COMMIT}" \
+      -ldflags "-s -w -X ${BUILDINFO_PKG}.Version=${VERSION} -X ${BUILDINFO_PKG}.GitCommit=${COMMIT} -X ${BUILDINFO_PKG}.BuildTime=${BUILD_TIME}" \
       -o /out/admin ./cmd/admin
 
 # ─── server-runtime ───────────────────────────────────────────────

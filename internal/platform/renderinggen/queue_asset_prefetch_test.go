@@ -48,7 +48,7 @@ func TestHTTPAssetPrefetcherStagesVerifiedLocalAsset(t *testing.T) {
 
 	prefetcher := NewHTTPAssetPrefetcher(srv.URL)
 	err := prefetcher.Prefetch(context.Background(), []scriptgen.RenderQueueAsset{{
-		Hash: hash, LocalPath: localPath,
+		SHA256: hash, LocalPath: localPath,
 	}})
 	if err != nil {
 		t.Fatal(err)
@@ -94,7 +94,7 @@ func TestHTTPAssetPrefetcherStagesCanonicalPresetFont(t *testing.T) {
 
 	prefetcher := NewHTTPAssetPrefetcher(srv.URL)
 	err = prefetcher.Prefetch(context.Background(), []scriptgen.RenderQueueAsset{{
-		Hash: font.Hash, URL: capoverlay.CanonicalPresetFontPath,
+		SHA256: font.Hash, URL: capoverlay.CanonicalPresetFontPath,
 	}})
 	if err != nil {
 		t.Fatal(err)

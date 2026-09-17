@@ -15,7 +15,15 @@
 # Use: make build VERSION=1.2.0
 VERSION ?= $(shell git describe --tags --always 2>/dev/null || echo "dev")
 COMMIT  ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
-LDFLAGS  = -X main.buildVersion=$(VERSION) -X main.commitHash=$(COMMIT)
+# Build identity (platform/buildinfo): the stamps must point at symbols that
+# EXIST. The previous `-X main.buildVersion=... -X main.commitHash=...` named
+# variables no Go file declared, so the linker dropped them silently and every
+# binary shipped with no embedded identity at all — which is why answering
+# "is this the binary I just built?" required auditing systemd units, `ps`,
+# port owners and binary mtimes by hand.
+BUILDINFO_PKG := github.com/Marcuss-ops/PipelineGen/internal/platform/buildinfo
+BUILD_TIME   := $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
+LDFLAGS  = -X $(BUILDINFO_PKG).Version=$(VERSION) -X $(BUILDINFO_PKG).GitCommit=$(COMMIT) -X $(BUILDINFO_PKG).BuildTime=$(BUILD_TIME)
 
 # Go binary (overridable from the environment).
 # Use: make build GO=/opt/go-1.25/bin/go

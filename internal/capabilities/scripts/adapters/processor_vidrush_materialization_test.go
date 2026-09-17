@@ -837,7 +837,6 @@ func TestVidRushMaterializationReusesCatalogedDriveImageWithoutAcquireOrFinalize
 		AssetID:        "drive-asset-michael-jordan",
 		LegacyFileMD5:  "sha256-michael-jordan",
 		DriveLink:      "https://drive.google.com/file/d/drive-asset-michael-jordan/view",
-		LocalPath:      "/nonexistent/local-copy-is-not-needed.jpg",
 		Status:         entitycatalog.MaterializationStatusMaterialized,
 		MaterializedAt: time.Now().UTC(), LastVerifiedAt: time.Now().UTC(),
 	}); err != nil {

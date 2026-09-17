@@ -5,6 +5,8 @@ import (
 	"sort"
 	"strings"
 	"unicode"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
 // PlannerConfig contains the conservative editorial limits for one scene.
@@ -228,7 +230,7 @@ func BuildPlan(input PlanInput, config PlannerConfig) (OverlayPlan, error) {
 				ID: id, SceneID: scene.ID, PresetID: selectImagePreset(input.PlanID, scene.ID, id),
 				Kind: "image", TemplateID: "IMAGE_OVERLAY",
 				StartMs: image.StartMs, EndMs: image.EndMs, StartUS: image.StartUS, DurationUS: image.DurationUS,
-				AssetRefs: []OverlayAssetRef{{AssetID: image.AssetID, URL: image.URL, LocalPath: image.LocalPath, SHA256: image.SHA256, MediaType: image.MediaType}},
+				AssetRefs: []OverlayAssetRef{NewOverlayAssetRef(asset.New(image.AssetID, image.SHA256, image.MediaType, 0), image.URL, image.LocalPath)},
 				Params: map[string]any{"position": "right", "style": "popup", "priority": image.Score,
 					"animation": map[string]any{"preset": SelectImageAnimation(input.PlanID, scene.ID, id)}},
 			})
@@ -245,7 +247,7 @@ func BuildPlan(input PlanInput, config PlannerConfig) (OverlayPlan, error) {
 				ID: id, SceneID: scene.ID,
 				Kind: "product", TemplateID: "PRODUCT",
 				StartMs: product.StartMs, EndMs: product.EndMs, StartUS: product.StartUS, DurationUS: product.DurationUS,
-				AssetRefs: []OverlayAssetRef{{AssetID: product.AssetID, URL: product.URL, LocalPath: product.LocalPath, SHA256: product.SHA256, MediaType: product.MediaType}},
+				AssetRefs: []OverlayAssetRef{NewOverlayAssetRef(asset.New(product.AssetID, product.SHA256, product.MediaType, 0), product.URL, product.LocalPath)},
 				Params: map[string]any{"position": "right", "style": "popup", "priority": product.Score,
 					"animation": map[string]any{"preset": SelectImageAnimation(input.PlanID, scene.ID, id)}},
 			})
@@ -262,7 +264,7 @@ func BuildPlan(input PlanInput, config PlannerConfig) (OverlayPlan, error) {
 				ID: id, SceneID: scene.ID,
 				Kind: "logo", TemplateID: "LOGO",
 				StartMs: logo.StartMs, EndMs: logo.EndMs, StartUS: logo.StartUS, DurationUS: logo.DurationUS,
-				AssetRefs: []OverlayAssetRef{{AssetID: logo.AssetID, URL: logo.URL, LocalPath: logo.LocalPath, SHA256: logo.SHA256, MediaType: logo.MediaType}},
+				AssetRefs: []OverlayAssetRef{NewOverlayAssetRef(asset.New(logo.AssetID, logo.SHA256, logo.MediaType, 0), logo.URL, logo.LocalPath)},
 				Params: map[string]any{"position": "corner", "style": "logo", "priority": logo.Score,
 					"animation": map[string]any{"preset": SelectImageAnimation(input.PlanID, scene.ID, id)}},
 			})

@@ -5,12 +5,14 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
+	"strings"
 
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/artifacts"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/assetop"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/delivery"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/drive"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assetindex"
@@ -68,6 +70,38 @@ func NewService(deps ServiceDeps, cfg Config) *Service {
 	return &Service{store: deps.Store, dedupe: dedupe, reconcile: reconcile, publisher: deps.Publisher, driveReader: deps.DriveReader, finalizer: deps.Finalizer, uploadPolicy: cfg.UploadPolicy, persistPolicy: cfg.PersistPolicy, registry: deps.Registry, assetIndex: deps.AssetIndex, log: deps.Log}
 }
 
+// contentAddress returns the canonical byte identity (SHA-256) of the artifact
+// about to be recorded, or the empty string when it cannot be established.
+//
+// It is deliberately NOT the caller's fileHash. That value is the legacy MD5
+// the ingest and YouTube callers compute (checksum.LegacyMD5File) and it is
+// carried for compatibility only: an MD5 can never be the durable content
+// address of the media SSOT, because every reader of that column treats it as a
+// SHA-256 (kernel/asset.Ref.SHA256, digest.IsCanonicalSHA256, the Drive
+// uploader's ExpectedSHA256). Recording one there is a lie that only surfaces
+// later, in a different process, as "the hash does not match the bytes" — the
+// exact failure the media-identity programme exists to remove.
+//
+// The bytes are the only source of truth, so the address is computed from them
+// whenever the artifact is readable. When it is not (a caller that records a
+// reference without local bytes), the address is left EMPTY unless the caller
+// already handed over a canonical SHA-256: an unknown identity is honest, a
+// wrong one is not.
+//
+// LegacyFileMD5 keeps the caller's value untouched: it is a read-only
+// compatibility bucket and no decision may read it.
+func contentAddress(localPath, fileHash string) string {
+	if strings.TrimSpace(localPath) != "" {
+		if sum, _, err := digest.SHA256File(localPath); err == nil {
+			return sum
+		}
+	}
+	if digest.IsCanonicalSHA256(fileHash) {
+		return strings.ToLower(strings.TrimSpace(fileHash))
+	}
+	return ""
+}
+
 // ProcessAsset makes the canonical SQLite-owned record before any Drive side
 // effect. The first commit records PUBLISH_PENDING; the second records either
 // PUBLISHED or PUBLISH_FAILED so failed delivery remains recoverable.
@@ -104,7 +138,7 @@ func (s *Service) ProcessAsset(ctx context.Context, input *FinalizeInput, fileHa
 
 	driveLink, driveFileID, downloadLink := input.DriveLink, input.DriveFileID, input.DownloadLink
 	publishStatus := asset.AssetPublishLocalOnly
-	rec := &artifacts.MediaRecord{ID: input.ID, Name: input.Name, Filename: input.Filename, Source: input.Source, MediaType: string(input.Kind), FolderID: input.FolderID, FolderPath: input.FolderPath, Group: input.Group, LocalPath: input.LocalPath, DriveLink: driveLink, DriveFileID: driveFileID, DownloadLink: downloadLink, LegacyFileMD5: fileHash, ContentHash: fileHash, Metadata: input.Metadata, Status: "delivery_pending", PublishStatus: asset.AssetPublishPending, Duration: input.Duration, SourceID: input.SourceID, Subfolder: input.Subfolder}
+	rec := &artifacts.MediaRecord{ID: input.ID, Name: input.Name, Filename: input.Filename, Source: input.Source, MediaType: string(input.Kind), FolderID: input.FolderID, FolderPath: input.FolderPath, Group: input.Group, LocalPath: input.LocalPath, DriveLink: driveLink, DriveFileID: driveFileID, DownloadLink: downloadLink, LegacyFileMD5: fileHash, ContentHash: contentAddress(input.LocalPath, fileHash), Metadata: input.Metadata, Status: "delivery_pending", PublishStatus: asset.AssetPublishPending, Duration: input.Duration, SourceID: input.SourceID, Subfolder: input.Subfolder}
 
 	if needsDelivery {
 		if _, err := s.commitRecord(ctx, rec, false); err != nil {

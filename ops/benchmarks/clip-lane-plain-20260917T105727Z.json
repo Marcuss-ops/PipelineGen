@@ -1,0 +1,248 @@
+{
+  "mode": "plain",
+  "clip_asset_id": "yt_iHaK0M-207o_60_70_v1",
+  "language": "en",
+  "background_asset_id": "classic1",
+  "submit_job_id": "job_1789642647718480808_e986afd7",
+  "settle_child_job_id": "job_1789642647835801022_3b8bd195",
+  "status": "FAILED",
+  "submit_wall_ms": 63,
+  "total_wall_ms": 7673,
+  "payload": {
+    "source_asset_id": "yt_iHaK0M-207o_60_70_v1",
+    "background": {
+      "mode": "none"
+    },
+    "subtitles": {
+      "enabled": false
+    },
+    "watermark": {
+      "enabled": false
+    },
+    "output": {
+      "contract": "VELOX_ASSEMBLY_READY_V1",
+      "width": 1920,
+      "height": 1080,
+      "fps_num": 24,
+      "fps_den": 1
+    },
+    "audio": {
+      "mode": "copy_if_compatible"
+    },
+    "execution": {
+      "require_gpu": true
+    },
+    "destination": {
+      "drive_folder_id": "1ST6FxPuRaxwBOIz39MAN8Jj4gDv509-K",
+      "subfolder_name": "clip-lane-certification"
+    }
+  },
+  "job": {
+    "correlation_id": "20260917-105727-5bf52f0bca880fd5:settle:job_1789642647718480808_e986afd7:1",
+    "created_at": "2026-09-17T10:57:27Z",
+    "current_stage": "job_failed",
+    "current_step": "FAILED",
+    "error": "clip.render: render plan: renderinggen clip executor: wait: render job job_1789642647718480808_e986afd7 failed: processor: gpu-vulkan-native gate: missing Chronon media receipt: chronon media receipt: open /tmp/renderinggen/jobs/job_1789642647718480808_e986afd7/output/result.mp4.receipt.json: no such file or directory",
+    "events": [
+      {
+        "id": "evt_1789642647842123194_35f16e",
+        "job_id": "job_1789642647835801022_3b8bd195",
+        "type": "job_running",
+        "message": "job.Job started",
+        "created_at": "2026-09-17T10:57:27Z"
+      },
+      {
+        "id": "evt_1789642647884323622_4e5f45",
+        "job_id": "job_1789642647835801022_3b8bd195",
+        "type": "leased",
+        "message": "job claimed by worker YOutube_639708_4",
+        "data": {
+          "lease_id": "lease_1789642647840608344_21e1aa42",
+          "revision": 2,
+          "worker_id": "YOutube_639708_4"
+        },
+        "created_at": "2026-09-17T10:57:27Z"
+      },
+      {
+        "id": "evt_1789642647884946045_f65f26",
+        "job_id": "job_1789642647835801022_3b8bd195",
+        "type": "progress",
+        "message": "clip.render started",
+        "data": {
+          "progress": 0
+        },
+        "created_at": "2026-09-17T10:57:27Z"
+      },
+      {
+        "id": "evt_1789642647887012952_20054d",
+        "job_id": "job_1789642647835801022_3b8bd195",
+        "type": "progress",
+        "message": "remote render submitted; settling certified artifact",
+        "data": {
+          "progress": 90
+        },
+        "created_at": "2026-09-17T10:57:27Z"
+      },
+      {
+        "id": "evt_1789642647888177443_6bd680",
+        "job_id": "job_1789642647835801022_3b8bd195",
+        "type": "clip.render.plan.sealed",
+        "message": "ClipRenderPlanV1 sealed — fully resolved before Chronon",
+        "data": {
+          "background": "none",
+          "output_path": "/home/pierone/src/go-master/projects/Pyt/VeloxEditing/refactored/data/tmp/cliprender/runs/job_1789642647718480808_e986afd7/rendered-clip.mp4",
+          "plan_sha256": "8d8918aac5919c908d0996e477138d9f0d8774b14823d9abc66a664dcc3961c8",
+          "plan_version": "clip-render-plan.v1",
+          "source": "data/media/clips/general/yt_iHaK0M-207o/yt_iHaK0M-207o_60_70_v1_verify-local-only.mp4",
+          "subtitles": false,
+          "watermark": false
+        },
+        "created_at": "2026-09-17T10:57:27Z"
+      },
+      {
+        "id": "evt_1789642647890367893_be3e72",
+        "job_id": "job_1789642647835801022_3b8bd195",
+        "type": "progress",
+        "message": "plan sealed; rendering with Chronon",
+        "data": {
+          "progress": 90
+        },
+        "created_at": "2026-09-17T10:57:27Z"
+      },
+      {
+        "id": "evt_1789642654724431760_816b52",
+        "job_id": "job_1789642647835801022_3b8bd195",
+        "type": "job_failed",
+        "message": "clip.render: render plan: renderinggen clip executor: wait: render job job_1789642647718480808_e986afd7 failed: processor: gpu-vulkan-native gate: missing Chronon media receipt: chronon media receipt: open /tmp/renderinggen/jobs/job_1789642647718480808_e986afd7/output/result.mp4.receipt.json: no such file or directory",
+        "data": {
+          "error": "clip.render: render plan: renderinggen clip executor: wait: render job job_1789642647718480808_e986afd7 failed: processor: gpu-vulkan-native gate: missing Chronon media receipt: chronon media receipt: open /tmp/renderinggen/jobs/job_1789642647718480808_e986afd7/output/result.mp4.receipt.json: no such file or directory"
+        },
+        "created_at": "2026-09-17T10:57:34Z"
+      }
+    ],
+    "id": "job_1789642647835801022_3b8bd195",
+    "job": {
+      "id": "job_1789642647835801022_3b8bd195",
+      "type": "clip.render",
+      "status": "FAILED",
+      "priority": 0,
+      "active_key": "clip.render.settle:job_1789642647718480808_e986afd7:1",
+      "payload": {
+        "continuation": {
+          "resume": {
+            "sha256": "0a9516abf895f0a2349eba206bb9d8f51e0301f7307bae89da8962bb311bd4cf",
+            "size_bytes": 3408
+          },
+          "submission": {
+            "attempt": 1,
+            "correlation_id": "20260917-105727-5bf52f0bca880fd5",
+            "plan_sha256": "8d8918aac5919c908d0996e477138d9f0d8774b14823d9abc66a664dcc3961c8",
+            "remote_state": "SUBMITTED",
+            "render_job_id": "job_1789642647718480808_e986afd7"
+          }
+        },
+        "parent_job_id": "job_1789642647718480808_e986afd7",
+        "parent_run_id": "job_1789642647718480808_e986afd7",
+        "render_phase": "settle"
+      },
+      "result": {},
+      "error": "clip.render: render plan: renderinggen clip executor: wait: render job job_1789642647718480808_e986afd7 failed: processor: gpu-vulkan-native gate: missing Chronon media receipt: chronon media receipt: open /tmp/renderinggen/jobs/job_1789642647718480808_e986afd7/output/result.mp4.receipt.json: no such file or directory",
+      "progress": 90,
+      "retry_count": 0,
+      "max_retries": 2,
+      "worker_id": "YOutube_639708_4",
+      "revision": 3,
+      "correlation_id": "20260917-105727-5bf52f0bca880fd5:settle:job_1789642647718480808_e986afd7:1",
+      "created_at": "2026-09-17T10:57:27Z",
+      "updated_at": "2026-09-17T10:57:34.736655717Z",
+      "started_at": "2026-09-17T10:57:27.878107386Z",
+      "completed_at": "2026-09-17T10:57:34.736655717Z",
+      "parent_job_id": "job_1789642647718480808_e986afd7"
+    },
+    "progress": 90,
+    "result": {},
+    "retryable": true,
+    "started_at": "2026-09-17T10:57:27.878107386Z",
+    "status": "FAILED",
+    "timeline": [
+      {
+        "id": "evt_1789642647842123194_35f16e",
+        "job_id": "job_1789642647835801022_3b8bd195",
+        "type": "job_running",
+        "message": "job.Job started",
+        "created_at": "2026-09-17T10:57:27Z"
+      },
+      {
+        "id": "evt_1789642647884323622_4e5f45",
+        "job_id": "job_1789642647835801022_3b8bd195",
+        "type": "leased",
+        "message": "job claimed by worker YOutube_639708_4",
+        "data": {
+          "lease_id": "lease_1789642647840608344_21e1aa42",
+          "revision": 2,
+          "worker_id": "YOutube_639708_4"
+        },
+        "created_at": "2026-09-17T10:57:27Z"
+      },
+      {
+        "id": "evt_1789642647884946045_f65f26",
+        "job_id": "job_1789642647835801022_3b8bd195",
+        "type": "progress",
+        "message": "clip.render started",
+        "data": {
+          "progress": 0
+        },
+        "created_at": "2026-09-17T10:57:27Z"
+      },
+      {
+        "id": "evt_1789642647887012952_20054d",
+        "job_id": "job_1789642647835801022_3b8bd195",
+        "type": "progress",
+        "message": "remote render submitted; settling certified artifact",
+        "data": {
+          "progress": 90
+        },
+        "created_at": "2026-09-17T10:57:27Z"
+      },
+      {
+        "id": "evt_1789642647888177443_6bd680",
+        "job_id": "job_1789642647835801022_3b8bd195",
+        "type": "clip.render.plan.sealed",
+        "message": "ClipRenderPlanV1 sealed — fully resolved before Chronon",
+        "data": {
+          "background": "none",
+          "output_path": "/home/pierone/src/go-master/projects/Pyt/VeloxEditing/refactored/data/tmp/cliprender/runs/job_1789642647718480808_e986afd7/rendered-clip.mp4",
+          "plan_sha256": "8d8918aac5919c908d0996e477138d9f0d8774b14823d9abc66a664dcc3961c8",
+          "plan_version": "clip-render-plan.v1",
+          "source": "data/media/clips/general/yt_iHaK0M-207o/yt_iHaK0M-207o_60_70_v1_verify-local-only.mp4",
+          "subtitles": false,
+          "watermark": false
+        },
+        "created_at": "2026-09-17T10:57:27Z"
+      },
+      {
+        "id": "evt_1789642647890367893_be3e72",
+        "job_id": "job_1789642647835801022_3b8bd195",
+        "type": "progress",
+        "message": "plan sealed; rendering with Chronon",
+        "data": {
+          "progress": 90
+        },
+        "created_at": "2026-09-17T10:57:27Z"
+      },
+      {
+        "id": "evt_1789642654724431760_816b52",
+        "job_id": "job_1789642647835801022_3b8bd195",
+        "type": "job_failed",
+        "message": "clip.render: render plan: renderinggen clip executor: wait: render job job_1789642647718480808_e986afd7 failed: processor: gpu-vulkan-native gate: missing Chronon media receipt: chronon media receipt: open /tmp/renderinggen/jobs/job_1789642647718480808_e986afd7/output/result.mp4.receipt.json: no such file or directory",
+        "data": {
+          "error": "clip.render: render plan: renderinggen clip executor: wait: render job job_1789642647718480808_e986afd7 failed: processor: gpu-vulkan-native gate: missing Chronon media receipt: chronon media receipt: open /tmp/renderinggen/jobs/job_1789642647718480808_e986afd7/output/result.mp4.receipt.json: no such file or directory"
+        },
+        "created_at": "2026-09-17T10:57:34Z"
+      }
+    ],
+    "type": "clip.render",
+    "updated_at": "2026-09-17T10:57:34.736655717Z",
+    "warnings": []
+  }
+}

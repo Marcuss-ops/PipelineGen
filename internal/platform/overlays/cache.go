@@ -1,15 +1,14 @@
 package overlays
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"io"
-	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/assets/materializer"
 )
 
 // AssetRef is the minimal content-addressed asset identity needed by the
@@ -22,7 +21,26 @@ type AssetRef struct {
 
 // Cache is disposable, content-addressed renderer state. It is never the
 // authority for job state or artifact identity.
-type Cache struct{ Root string }
+type Cache struct {
+	Root string
+	// assets is the canonical materializer (internal/platform/assets). The
+	// cache no longer implements "download and verify" itself: that invariant
+	// has ONE owner. A nil field falls back to the package default, so the
+	// zero value and struct literals keep working.
+	assets *materializer.Materializer
+}
+
+// defaultMaterializer backs caches constructed as struct literals.
+var defaultMaterializer = materializer.New(materializer.Options{})
+
+// materializerFor returns the cache's materializer, falling back to the
+// canonical default so a zero-value Cache never silently skips verification.
+func (c *Cache) materializerFor() *materializer.Materializer {
+	if c != nil && c.assets != nil {
+		return c.assets
+	}
+	return defaultMaterializer
+}
 
 func NewCache(root string) (*Cache, error) {
 	if root == "" {
@@ -77,47 +95,69 @@ func (c *Cache) PutFile(namespace, key, filename, source string) (string, error)
 	return c.Put(namespace, key, filename, f)
 }
 
+// assetNamespace is the content-addressed namespace whose key IS a digest.
+const assetNamespace = "assets"
+
+// Has reports whether a cache entry exists. In the content-addressed `assets`
+// namespace it additionally re-verifies the bytes against the key, because for
+// that namespace "the file is there" and "the asset is there" are different
+// questions: a truncated or replaced file must read as ABSENT so no caller can
+// skip materialization and render the wrong pixels. Other namespaces are plain
+// presence probes — their keys are not content addresses, so there is nothing
+// to verify them against.
 func (c *Cache) Has(namespace, key, filename string) bool {
 	p := c.Path(namespace, key, filename)
 	if p == "" {
 		return false
 	}
-	_, err := os.Stat(p)
-	return err == nil
+	info, err := os.Stat(p)
+	if err != nil || info.IsDir() {
+		return false
+	}
+	if namespace != assetNamespace {
+		return true
+	}
+	// A zero-byte file can never be a valid media asset, and it is the exact
+	// shape a crashed install leaves behind.
+	if info.Size() == 0 {
+		return false
+	}
+	return c.materializerFor().Matches(p, key)
 }
 
-// EnsureAsset downloads and verifies one plan asset when it is not already
-// cached. Missing URL on a cache miss is a hard error: prepare is an
-// optimization, but render must never silently render with the wrong asset.
+// EnsureAsset materializes one plan asset under its content address, using the
+// canonical materializer. Missing URL on a cache miss is a hard error: prepare
+// is an optimization, but render must never silently render with the wrong
+// asset.
+//
+// Three behaviours changed when this delegated, all of them fixes rather than
+// refactors:
+//
+//  1. a cache HIT is re-verified. The previous implementation returned the path
+//     whenever the file existed, so a truncated or replaced cache file was
+//     rendered silently — the single most dangerous thing a content-addressed
+//     cache can do.
+//  2. the download streams through the materializer and is hashed while it is
+//     written, instead of buffering the whole asset in memory.
+//  3. the HTTP client is bounded. http.DefaultClient has no timeout, so a
+//     hanging origin pinned the caller and the lease it held.
+//
+// The on-disk layout is unchanged (`assets/<addr[:2]>/<addr>/asset.bin`), so
+// existing caches keep working.
 func (c *Cache) EnsureAsset(ctx context.Context, refURL, sha256Hex string) (string, error) {
-	if len(sha256Hex) < 2 {
+	if c == nil {
+		return "", fmt.Errorf("overlay cache is not configured")
+	}
+	address := strings.ToLower(strings.TrimSpace(sha256Hex))
+	if len(address) < 2 {
 		return "", fmt.Errorf("overlay asset: sha256 is required")
 	}
-	if c.Has("assets", sha256Hex, "asset.bin") {
-		return c.Path("assets", sha256Hex, "asset.bin"), nil
-	}
-	if refURL == "" {
-		return "", fmt.Errorf("overlay asset %s: URL is required on cache miss", sha256Hex)
-	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, refURL, nil)
+	materialized, err := c.materializerFor().Ensure(ctx,
+		materializer.Ref{SHA256: address},
+		materializer.Source{URL: refURL},
+		c.Path("assets", address, "asset.bin"))
 	if err != nil {
 		return "", err
 	}
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return "", err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return "", fmt.Errorf("overlay asset download: HTTP %d", resp.StatusCode)
-	}
-	b, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return "", err
-	}
-	got := digest.SHA256Bytes(b)
-	if got != sha256Hex {
-		return "", fmt.Errorf("overlay asset SHA-256 mismatch: got %s want %s", got, sha256Hex)
-	}
-	return c.Put("assets", sha256Hex, "asset.bin", bytes.NewReader(b))
+	return materialized.Path, nil
 }

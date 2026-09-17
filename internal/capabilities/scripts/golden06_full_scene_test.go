@@ -150,7 +150,7 @@ func TestGolden06FullScriptScene(t *testing.T) {
 	assets := make([]RenderQueueAsset, 0)
 	for _, item := range plan.Items {
 		for _, ref := range item.AssetRefs {
-			assets = append(assets, RenderQueueAsset{Hash: ref.SHA256, URL: ref.URL})
+			assets = append(assets, RenderQueueAsset{SHA256: ref.SHA256, URL: ref.URL})
 		}
 	}
 	client := newFakeRenderQueueClient()

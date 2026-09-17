@@ -275,7 +275,7 @@ func TestClientWaitTerminalMapsTerminalJob(t *testing.T) {
 
 func TestQueueAssetMappingPreservesSourceURL(t *testing.T) {
 	input := []scriptgen.RenderQueueAsset{{
-		Hash:      "abc",
+		SHA256:    "abc",
 		URL:       "assets/semantic/person_matt.jpg",
 		SourceURL: "https://cdn.example/matt.jpg",
 	}}

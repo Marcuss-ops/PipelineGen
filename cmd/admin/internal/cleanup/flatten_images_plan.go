@@ -495,31 +495,36 @@ func loadImageTreeInto(ctx context.Context, reader imageTreeLister, folder *imag
 // writeFlattenReport prints the human-readable snapshot summary and the exact
 // operation list, so a dry run can be reviewed before anything is written.
 func writeFlattenReport(out io.Writer, root *imageFolder, plan flattenPlan, apply bool) {
+	// A report is written to a terminal or a file; a write error there cannot be
+	// acted on by the caller and must not abort a migration whose plan is already
+	// decided, so the results are deliberately discarded (errcheck: explicit).
+	printf := func(format string, args ...any) { _, _ = fmt.Fprintf(out, format, args...) }
+
 	mode := "DRY RUN (no write)"
 	if apply {
 		mode = "APPLY"
 	}
-	fmt.Fprintf(out, "=== flatten images drive: %s ===\n", mode)
-	fmt.Fprintf(out, "images root: %s (%s)\n", root.Name, root.ID)
-	fmt.Fprintf(out, "scanned: %d folders, %d files\n", plan.FoldersScanned, plan.FilesScanned)
-	fmt.Fprintf(out, "planned: %d operations (%d folders trashed)\n\n", len(plan.Ops), plan.TrashCount())
+	printf("=== flatten images drive: %s ===\n", mode)
+	printf("images root: %s (%s)\n", root.Name, root.ID)
+	printf("scanned: %d folders, %d files\n", plan.FoldersScanned, plan.FilesScanned)
+	printf("planned: %d operations (%d folders trashed)\n\n", len(plan.Ops), plan.TrashCount())
 	for _, op := range plan.Ops {
-		fmt.Fprintf(out, "  %s\n", op.describe())
+		printf("  %s\n", op.describe())
 	}
 	if len(plan.RehomedLooseFiles) > 0 {
 		// These are the operations that CREATE a folder, so they are called out
 		// separately: an operator reviewing a dry run must see exactly which files
 		// are being given a new per-image folder, and why (they sat loose inside a
 		// grouping level, which is the one shape that cannot stay).
-		fmt.Fprintf(out, "\nREHOMED (file had no per-image folder of its own):\n")
+		printf("\nREHOMED (file had no per-image folder of its own):\n")
 		for _, rehomed := range plan.RehomedLooseFiles {
-			fmt.Fprintf(out, "  %s\n", rehomed)
+			printf("  %s\n", rehomed)
 		}
 	}
 	if len(plan.SkippedTooDeep) > 0 {
-		fmt.Fprintf(out, "\nSKIPPED (deeper than the snapshot depth limit):\n")
+		printf("\nSKIPPED (deeper than the snapshot depth limit):\n")
 		for _, skipped := range plan.SkippedTooDeep {
-			fmt.Fprintf(out, "  %s\n", skipped)
+			printf("  %s\n", skipped)
 		}
 	}
 }

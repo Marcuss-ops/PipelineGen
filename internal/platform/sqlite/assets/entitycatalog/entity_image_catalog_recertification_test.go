@@ -45,10 +45,11 @@ func TestSQLiteEntityImageCatalogRecertificationPreservesDriveAsset(t *testing.T
 	if err != nil || len(items) != 1 {
 		t.Fatalf("items=%d err=%v", len(items), err)
 	}
-	if items[0].Materialization == nil || items[0].Materialization.DriveFileID != "drive-mj" {
-		t.Fatalf("materialization=%+v", items[0].Materialization)
-	}
-
+	// The work set must carry the DISCOVERY row only: a recertification batch
+	// is not a reader of the durable media identity, so it must not rehydrate
+	// asset_id / drive / digest metadata into the candidate. The durable
+	// identity is asserted below (after the remote failure) against its own
+	// owner instead.
 	checkedAt := time.Now().UTC()
 	if err := recertRepo.RecordCandidateValidation(ctx, candidateID, capentity.ValidationResult{CheckedAt: checkedAt, Success: false, FailureCount: 1, Error: "HTTP 503", NextRetryAt: checkedAt.Add(time.Hour)}); err != nil {
 		t.Fatal(err)

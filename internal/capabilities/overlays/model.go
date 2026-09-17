@@ -3,9 +3,11 @@ package overlays
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	"sort"
 	"strings"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 )
 
 const (
@@ -153,12 +155,57 @@ type OverlayEntityRef struct {
 	CanonicalEntityID string `json:"canonical_entity_id,omitempty"`
 }
 
+// OverlayAssetRef is the semantic layer's PROJECTION of the canonical
+// kernel/asset.Ref identity: which asset a plan item is about (AssetID), which
+// bytes stand for it (SHA256) and what they are (MediaType). Ref() and
+// NewOverlayAssetRef() are the only sanctioned bridges to that type, so a
+// change in how identity is spelled has one place to land.
+//
+// It also still carries two LOCATION-adjacent fields, which is a known, tracked
+// debt rather than a design choice:
+//
+//   - URL is a fetchable reference, not a second identity — a reference that
+//     cannot be fetched is useless, which is why the media identity gate
+//     deliberately does not ban it.
+//   - LocalPath (`json:"-"`) is a producer-process runtime cache value. It
+//     cannot be removed from here yet: the planner populates it and the
+//     prefetch bridge consumes it to stage ALREADY VERIFIED bytes instead of
+//     re-downloading them, and that behaviour is pinned by
+//     TestAttachEntityCardAssetCarriesVerifiedLocalPathWithoutSerializingIt.
+//     Its owner is the canonical AssetMaterializer, which is the next step of
+//     the media-identity programme; removing the field before that lands would
+//     be deleting a tested feature, not removing a duplicate.
+//
+// See cmd/archcheck/scan/governance/percheck_media_identity_no_location_fields.go:
+// this struct is counted there, and it is counted on purpose.
 type OverlayAssetRef struct {
 	AssetID   string `json:"asset_id"`
 	URL       string `json:"url,omitempty"`
 	LocalPath string `json:"-"`
 	SHA256    string `json:"sha256"`
 	MediaType string `json:"media_type,omitempty"`
+}
+
+// Ref projects the semantic projection onto the canonical identity. The logical
+// asset id is this layer's own AssetID (which may be a stable canonical id such
+// as "person:michael-jordan" rather than a path), and the content address is
+// the digest of the bytes the ref points at.
+func (r OverlayAssetRef) Ref() asset.Ref {
+	return asset.Ref{AssetID: r.AssetID, SHA256: r.SHA256, MediaType: r.MediaType}.Canonical()
+}
+
+// NewOverlayAssetRef builds the projection from the canonical identity. The
+// location-adjacent fields are set explicitly by the caller because they are
+// exactly the fields the canonical type refuses to carry.
+func NewOverlayAssetRef(ref asset.Ref, url, localPath string) OverlayAssetRef {
+	canonical := ref.Canonical()
+	return OverlayAssetRef{
+		AssetID:   canonical.AssetID,
+		SHA256:    canonical.SHA256,
+		MediaType: canonical.MediaType,
+		URL:       url,
+		LocalPath: localPath,
+	}
 }
 
 type RenderRequest struct {

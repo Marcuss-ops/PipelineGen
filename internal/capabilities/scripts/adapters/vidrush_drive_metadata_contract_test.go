@@ -28,11 +28,10 @@ func TestVidRushDriveMetadataHashResolverIndexAndDeduplicationContract(t *testin
 	const fileHash = "sha256:7f83b1657ff1fc53b92dc18148a1d65dfa135e2f"
 	const driveFileID = "drive-file-michael-jordan-contract"
 	const driveLink = "https://drive.google.com/file/d/drive-file-michael-jordan-contract/view"
-	const localPath = "/var/lib/vidrush/assets/asset-michael-jordan-contract.jpg"
 	if err := repo.UpsertMaterialization(context.Background(), entitycatalog.Materialization{
 		CandidateID: rows[0].ID, AssetID: assetID,
 		LegacyFileMD5: fileHash, DriveFileID: driveFileID, DriveLink: driveLink,
-		LocalPath: localPath, Status: entitycatalog.MaterializationStatusMaterialized,
+		Status:         entitycatalog.MaterializationStatusMaterialized,
 		MaterializedAt: time.Now().UTC(), LastVerifiedAt: time.Now().UTC(),
 	}); err != nil {
 		t.Fatal(err)
@@ -66,8 +65,16 @@ func TestVidRushDriveMetadataHashResolverIndexAndDeduplicationContract(t *testin
 		t.Fatalf("images=%d want 1", len(images))
 	}
 	asset := images[0]
-	if asset.AssetID != assetID || asset.DriveLink != driveLink || asset.LocalPath != localPath {
+	if asset.AssetID != assetID || asset.DriveLink != driveLink {
 		t.Fatalf("Drive metadata not hydrated canonically: %+v", asset)
+	}
+	// Identity and location metadata hydrate; a filesystem path does NOT. The
+	// catalog is a durable metadata store, and a path recorded in a database is
+	// stale by construction after a restart or a tmpfs sweep. Bytes are located
+	// from the content address by the canonical materializer at the moment they
+	// are needed, so no path may arrive from this row.
+	if asset.LocalPath != "" {
+		t.Fatalf("catalog hydration must not inject a local path: got %q", asset.LocalPath)
 	}
 	if asset.LegacyFileMD5 != fileHash {
 		t.Fatalf("hash=%q want %q", asset.LegacyFileMD5, fileHash)

@@ -19,6 +19,7 @@ import (
 
 	cliprender "github.com/Marcuss-ops/PipelineGen/internal/capabilities/cliprender"
 	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
+	kernelasset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	queueclient "github.com/Marcuss-ops/RenderingGen/queue/client"
 	"golang.org/x/sync/errgroup"
@@ -142,7 +143,11 @@ func toQueueAssets(in []scriptgen.RenderQueueAsset) []queueclient.AssetRef {
 	}
 	out := make([]queueclient.AssetRef, len(in))
 	for i, a := range in {
-		out[i] = queueclient.AssetRef{Hash: a.Hash, LogicalPath: a.URL, SourceURL: a.SourceURL}
+		// The canonical identity supplies the digest, so the wire never sees a
+		// second spelling of one content address. Ref() already returns
+		// canonicalised values; re-canonicalising here would be a second
+		// (silently different) owner of the spelling rule.
+		out[i] = queueclient.AssetRef{Hash: a.Ref().SHA256, LogicalPath: a.URL, SourceURL: a.SourceURL}
 	}
 	return out
 }
@@ -153,7 +158,8 @@ func fromQueueAssets(in []queueclient.AssetRef) []scriptgen.RenderQueueAsset {
 	}
 	out := make([]scriptgen.RenderQueueAsset, len(in))
 	for i, a := range in {
-		out[i] = scriptgen.RenderQueueAsset{Hash: a.Hash, URL: a.LogicalPath, SourceURL: a.SourceURL}
+		out[i] = scriptgen.NewRenderQueueAsset(
+			kernelasset.Ref{AssetID: a.LogicalPath, SHA256: a.Hash}, a.LogicalPath, a.SourceURL)
 	}
 	return out
 }
@@ -545,7 +551,8 @@ func boolPtr(b bool) *bool { return &b }
 func scriptAssets(in []queueclient.AssetRef) []scriptgen.RenderQueueAsset {
 	out := make([]scriptgen.RenderQueueAsset, len(in))
 	for i, a := range in {
-		out[i] = scriptgen.RenderQueueAsset{Hash: a.Hash, URL: a.LogicalPath, SourceURL: a.SourceURL}
+		out[i] = scriptgen.NewRenderQueueAsset(
+			kernelasset.Ref{AssetID: a.LogicalPath, SHA256: a.Hash}, a.LogicalPath, a.SourceURL)
 	}
 	return out
 }

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	capoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
+	kernelasset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 )
 
@@ -396,9 +397,9 @@ func TestQueueRenderEnqueuerChrononPlan(t *testing.T) {
 		JobType:     capoverlay.JobTypeRender,
 		OverlaySpec: spec,
 		Assets: []RenderQueueAsset{
-			{Hash: capoverlay.GoldenBackgroundHash, URL: "assets/background.jpg"},
-			{Hash: capoverlay.GoldenAppleHash, URL: "assets/apple.png"},
-			{Hash: capoverlay.GoldenPresetFontHash, URL: capoverlay.CanonicalPresetFontPath},
+			{SHA256: capoverlay.GoldenBackgroundHash, URL: "assets/background.jpg"},
+			{SHA256: capoverlay.GoldenAppleHash, URL: "assets/apple.png"},
+			{SHA256: capoverlay.GoldenPresetFontHash, URL: capoverlay.CanonicalPresetFontPath},
 		},
 		State: "completed",
 		Artifact: &RenderArtifact{
@@ -450,10 +451,10 @@ func TestQueueRenderEnqueuerChrononPlan(t *testing.T) {
 	if len(submitted.Assets) != 3 {
 		t.Fatalf("submitted assets = %d, want 3", len(submitted.Assets))
 	}
-	if submitted.Assets[0].Hash != capoverlay.GoldenBackgroundHash || submitted.Assets[0].URL != "assets/background.jpg" {
+	if submitted.Assets[0].SHA256 != capoverlay.GoldenBackgroundHash || submitted.Assets[0].URL != "assets/background.jpg" {
 		t.Fatalf("asset 0 not projected: %+v", submitted.Assets[0])
 	}
-	if submitted.Assets[1].Hash != capoverlay.GoldenAppleHash || submitted.Assets[1].URL != "assets/apple.png" {
+	if submitted.Assets[1].SHA256 != capoverlay.GoldenAppleHash || submitted.Assets[1].URL != "assets/apple.png" {
 		t.Fatalf("asset 1 not projected: %+v", submitted.Assets[1])
 	}
 }
@@ -653,7 +654,7 @@ func TestQueuePrepareEnqueuer_SubmitsPrepareJob(t *testing.T) {
 		t.Fatalf("intents not projected: %+v", got.Intents)
 	}
 	// Assets are deduplicated by content hash (case-insensitive).
-	if len(job.Assets) != 1 || job.Assets[0].Hash != "abc123" || job.Assets[0].URL != "https://cdn.example.com/apple.png" {
+	if len(job.Assets) != 1 || job.Assets[0].SHA256 != "abc123" || job.Assets[0].URL != "https://cdn.example.com/apple.png" {
 		t.Fatalf("prepare assets = %+v", job.Assets)
 	}
 }
@@ -772,5 +773,125 @@ func TestRecordRenderingGenPhasesSkipsUnreportedPhases(t *testing.T) {
 
 	if report := run.Finish(); len(report.Operations) != 0 {
 		t.Fatalf("unreported phases must not be recorded: %+v", report.Operations)
+	}
+}
+
+// ─── Phase 2: the canonical media identity (kernel/asset.Ref) ────────────
+//
+// RenderQueueAsset is the WIRE PROJECTION of kernel/asset.Ref. These tests pin
+// the two properties that make that projection worth having: the deployed wire
+// key did not change when the Go field was renamed to the canonical vocabulary,
+// and the identity a producer builds and the identity the queue reads back are
+// the SAME identity even when the digest arrives in a different case.
+
+// TestRenderQueueAssetWireContractStaysHashKeyed is a cross-repo contract test.
+// The Go field is SHA256 (the canonical content-address vocabulary) but the JSON
+// key must remain `hash`, because it is the deployed RenderingGen queue contract
+// (queueclient.AssetRef). Renaming the field is a local cleanup; renaming the key
+// is a coordinated cutover, and this test refuses to let one masquerade as the
+// other.
+func TestRenderQueueAssetWireContractStaysHashKeyed(t *testing.T) {
+	raw, err := json.Marshal(RenderQueueAsset{
+		SHA256:    "abc123",
+		URL:       "assets/semantic/person_matt.jpg",
+		SourceURL: "https://cdn.example/matt.jpg",
+		LocalPath: "/tmp/producer-only/matt.jpg",
+	})
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+
+	var decoded map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &decoded); err != nil {
+		t.Fatalf("unmarshal %s: %v", raw, err)
+	}
+	if _, ok := decoded["hash"]; !ok {
+		t.Errorf("wire asset lost its `hash` key: %s", raw)
+	}
+	if _, ok := decoded["sha256"]; ok {
+		t.Errorf("the Go field rename leaked onto the wire as `sha256`: %s", raw)
+	}
+	if len(decoded) != 3 {
+		t.Errorf("wire asset keys = %v, want exactly hash/url/source_url: %s", decoded, raw)
+	}
+	// LocalPath is a producer-process runtime value and must never be published.
+	if strings.Contains(string(raw), "local_path") || strings.Contains(string(raw), "/tmp/producer-only") {
+		t.Errorf("producer-local path leaked onto the queue wire: %s", raw)
+	}
+}
+
+// TestRenderQueueAssetRefCanonicalisesDigestSpelling pins the reason identity
+// moved onto kernel/asset.Ref: the digest is a COMPARISON KEY. The enqueue path
+// deduplicates assets by it, so "ABC123" and "abc123" must be one asset — not
+// two payloads published under two addresses for the same bytes.
+func TestRenderQueueAssetRefCanonicalisesDigestSpelling(t *testing.T) {
+	upper := RenderQueueAsset{SHA256: "ABC123", URL: "assets/a.jpg"}
+	lower := RenderQueueAsset{SHA256: "abc123", URL: "assets/a.jpg"}
+
+	if !upper.Ref().Equal(lower.Ref()) {
+		t.Errorf("one digest in two cases produced two identities: %v vs %v", upper.Ref(), lower.Ref())
+	}
+	if upper.Ref().DedupKey() != lower.Ref().DedupKey() {
+		t.Errorf("dedup keys disagree for one digest: %q vs %q", upper.Ref().DedupKey(), lower.Ref().DedupKey())
+	}
+	if upper.Ref().SHA256 != "abc123" {
+		t.Errorf("Ref().SHA256 = %q, want the canonical lower-case address", upper.Ref().SHA256)
+	}
+}
+
+// TestRenderQueueAssetRefCarriesNoLocation asserts the projection's whole point:
+// a location-bearing wire asset projects onto a location-FREE identity. The
+// queue DTO may hold a producer path for staging, but the identity it hands to
+// the canonical type must be unable to describe where bytes live.
+func TestRenderQueueAssetRefCarriesNoLocation(t *testing.T) {
+	identity := RenderQueueAsset{
+		SHA256:    "abc123",
+		URL:       "assets/a.jpg",
+		SourceURL: "https://cdn.example/a.jpg",
+		LocalPath: "/tmp/a.jpg",
+	}.Ref()
+
+	raw, err := json.Marshal(identity)
+	if err != nil {
+		t.Fatalf("marshal identity: %v", err)
+	}
+	for _, forbidden := range []string{"local_path", "url", "source_url", "drive_link", "drive_file_id", "download_link", "legacy_file_md5"} {
+		if strings.Contains(string(raw), `"`+forbidden+`"`) {
+			t.Errorf("canonical identity carries location key %q: %s", forbidden, raw)
+		}
+	}
+	if err := identity.Validate(); err != nil {
+		t.Errorf("a digest-bearing wire asset must project onto a valid identity: %v", err)
+	}
+}
+
+// TestNewRenderQueueAssetRoundTripsThroughTheIdentity proves the builder and the
+// projection agree, so a producer that builds from the canonical identity cannot
+// have it silently changed on the way to the queue.
+//
+// The projection is deliberately NARROWER than the identity: the deployed
+// RenderingGen wire asset carries only hash/logical_path/source_url, so
+// MediaType and SizeBytes have no field to travel in and are dropped. That is a
+// documented narrowing of the queue contract, not a lossy conversion — the test
+// asserts the half that the contract claims to carry, and names the half it does
+// not, so a future widening is a deliberate change rather than a surprise.
+func TestNewRenderQueueAssetRoundTripsThroughTheIdentity(t *testing.T) {
+	identity := kernelasset.New("assets/a.jpg", "ABCDEF12", "image/jpeg", 4096)
+	asset := NewRenderQueueAsset(identity, "assets/a.jpg", "https://cdn.example/a.jpg")
+
+	if asset.SHA256 != "abcdef12" {
+		t.Errorf("builder did not canonicalise the digest: %q", asset.SHA256)
+	}
+	if asset.LocalPath != "" {
+		t.Errorf("builder leaked a location into the projection: %q", asset.LocalPath)
+	}
+
+	back := asset.Ref()
+	want := kernelasset.Ref{AssetID: "assets/a.jpg", SHA256: "abcdef12"}
+	if back != want {
+		t.Errorf("build→project is lossy: got %+v, want %+v", back, want)
+	}
+	if back.MediaType != "" || back.SizeBytes != 0 {
+		t.Errorf("the wire projection must not invent fields the queue does not carry: %+v", back)
 	}
 }

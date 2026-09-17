@@ -170,6 +170,52 @@ func TestSpecialNamePresetsFollowEntityType(t *testing.T) {
 	}
 }
 
+// TestResolveEntityOverlayPlan_CollapsesSpellingVariantsOfOneEntity is the
+// regression for the live `overlay plan: duplicate item id
+// "overlay-scene-0-cus-d-amato"` failure (2026-09-17). One person reached the
+// pipeline twice inside one scene: once with the ASCII apostrophe and once
+// with the typographic one. The two spellings are DIFFERENT entity hashes (the
+// canonical key keeps the raw rune) but the SAME overlay id, because
+// SafeEntityID slugs punctuation away. Deduplicating on the entity hash alone
+// therefore emitted two items carrying one id and the plan failed its own
+// validation before any render was attempted.
+func TestResolveEntityOverlayPlan_CollapsesSpellingVariantsOfOneEntity(t *testing.T) {
+	ascii := "Cus D'Amato"       // U+0027 apostrophe
+	typographic := "Cus D’Amato" // U+2019 right single quotation mark
+
+	// The premise: same person, two entity identities, ONE overlay id.
+	require.NotEqual(t, StableEntityID("PERSON", ascii), StableEntityID("PERSON", typographic),
+		"the two spellings must still be distinct entity hashes, otherwise this test proves nothing")
+	require.Equal(t, SafeEntityID(ascii), SafeEntityID(typographic),
+		"both spellings must collapse onto the same human-readable overlay id")
+
+	occurrence := func(name string, textStart, wordStart int, startUS int64) EntityOccurrence {
+		return EntityOccurrence{
+			EntityID: StableEntityID("PERSON", name), Name: name, Type: "PERSON", SceneID: "scene-0", SceneIndex: 0,
+			TextStart: textStart, TextEnd: textStart + len(name), WordStart: wordStart, WordEnd: wordStart + 1,
+			LocalStartUS: startUS, LocalEndUS: startUS + 500_000, AudioStartUS: startUS, AudioEndUS: startUS + 500_000,
+			Confidence: 0.9,
+		}
+	}
+	timeline := EntityTimeline{
+		Version: EntityTimelineVersion, DurationUS: 4_000_000,
+		Scenes: []SceneEntityTimeline{{
+			SceneID: "scene-0", SceneIndex: 0, TimelineStartUS: 0,
+			Entities: []EntityOccurrence{
+				occurrence(ascii, 0, 0, 100_000),
+				occurrence(typographic, 40, 8, 1_500_000),
+			},
+		}},
+	}
+
+	plan, err := ResolveEntityOverlayPlan(timeline, "plan-spelling", "video-spelling", "", 1920, 1080, 30, 1)
+	require.NoError(t, err, "two spellings of one person must not fail the plan with a duplicate item id")
+	require.NoError(t, plan.Validate())
+	require.Len(t, plan.Items, 1, "one person is one overlay identity, whatever the apostrophe")
+	card := findItem(t, plan, "overlay-scene-0-cus-d-amato")
+	require.Equal(t, int64(100), card.StartMs, "the surviving card keeps a certified mention window")
+}
+
 // TestResolveEntityOverlayPlan_TypeKindMapping pins the NLP-type → overlay-kind
 // translation: PERSON→entity_card, ORG→organization, GPE/LOCATION→location,
 // NUMBER→number, QUOTE→quote, PRODUCT→product, LOGO→logo, everything

@@ -6,6 +6,7 @@ import (
 	systemhealth "github.com/Marcuss-ops/PipelineGen/internal/capabilities/system/health"
 	"go.uber.org/zap"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/buildinfo"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/httpserver/transport"
 )
 
@@ -38,6 +39,12 @@ func (r *Router) registerHealthRoutes(engine *gin.Engine, log *zap.Logger) *tran
 		log.Warn("health service not wired, health endpoints will return 503")
 		healthHandler = transport.NewHealthHandler(nil, nil /* nil-by-design; integration stub only */)
 	}
+	// Runtime build identity (platform/buildinfo): published as the "build"
+	// object on /health and /ready so answering "am I running the code I just
+	// built?" never requires inspecting systemd units, `ps`, binary mtimes or
+	// port owners. Wired unconditionally — identity is process-local state,
+	// not an optional capability.
+	healthHandler.SetBuildInfo(buildinfo.Current)
 	engine.GET("/health", healthHandler.Health)
 	engine.GET("/ready", healthHandler.Ready)
 
