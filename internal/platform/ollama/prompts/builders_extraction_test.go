@@ -69,9 +69,12 @@ func TestEntityExtractionPromptsPrioritizeUsefulVerbatimOverlayPhrases(t *testin
 	for name, prompt := range map[string]string{"single": single, "batch": batch} {
 		for _, rule := range []string{
 			"strongest and most screen-worthy first",
-			"self-contained wording",
+			"self-contained mini-clause",
+			"clear subject and action or result",
 			"generic transitions",
 			"exact contiguous span",
+			"significantly shaped",
+			"heavyweight title",
 			"Never invent a slogan",
 		} {
 			if !strings.Contains(prompt, rule) {

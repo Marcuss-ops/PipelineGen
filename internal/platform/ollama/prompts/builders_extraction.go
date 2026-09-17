@@ -71,8 +71,10 @@ func ImportantPhraseQualityContract() string {
 
 IMPORTANT PHRASE QUALITY CONTRACT:
 - Return up to three candidates, strongest and most screen-worthy first.
-- Prefer concise, concrete, self-contained wording that captures a specific action, result, turning point, claim, or distinctive idea.
-- Reject generic transitions, filler, topic labels, names alone, pronouns without an antecedent, and sentence scraps that do not make sense on screen.
+- Prefer a short, self-contained mini-clause (usually 4–9 words) with a clear subject and action or result. It must make sense by itself on screen and identify a concrete, distinctive beat from this segment.
+- Prefer a named subject, concrete noun, or explicit number plus an active verb. Keep the key outcome when it is stated in the source.
+- Reject incomplete noun phrases, dangling gerunds, adjective/adverb fragments, generic abstractions, filler, and weak wording such as "significantly shaped", "superstardom was significantly shaped", "role in shaping", "heavyweight title", or "securing a world heavyweight".
+- Reject generic transitions, topic labels, names alone, pronouns without an antecedent, and sentence scraps that do not make sense on screen.
 - Copy every candidate as an exact contiguous span from the source. Never invent a slogan, paraphrase, or add words.
 `
 }
