@@ -31,6 +31,12 @@ func (g *sequentialSegmentGenerator) GenerateScript(_ context.Context, req scrip
 	return result, nil
 }
 
+func (g *sequentialSegmentGenerator) promptSnapshot() []string {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	return append([]string(nil), g.prompts...)
+}
+
 func proseResult(text string) *scriptports.GenerationResult {
 	return &scriptports.GenerationResult{Script: text, WordCount: len(strings.Fields(text)), Model: "test-model"}
 }
@@ -171,15 +177,16 @@ func TestEngineGenerate_SelectiveSegmentRegenerationFreezesValidText(t *testing.
 	if result.Output.Text != want {
 		t.Fatalf("frozen/merged text = %q, want %q", result.Output.Text, want)
 	}
-	if len(gen.prompts) != 2 {
-		t.Fatalf("provider calls = %d, want 2", len(gen.prompts))
+	prompts := gen.promptSnapshot()
+	if len(prompts) != 2 {
+		t.Fatalf("provider calls = %d, want 2", len(prompts))
 	}
 	// Segment generation fans out across workers, so prompt ARRIVAL order is
 	// nondeterministic. What is pinned is ownership: each segment request must
 	// carry exactly its own topic (see the sibling evidence-routing test, which
 	// matches on topic rather than index for the same reason).
 	seen := map[string]bool{}
-	for _, prompt := range gen.prompts {
+	for _, prompt := range prompts {
 		switch {
 		case strings.Contains(prompt, "Topic: one"):
 			seen["one"] = true
@@ -190,7 +197,7 @@ func TestEngineGenerate_SelectiveSegmentRegenerationFreezesValidText(t *testing.
 		}
 	}
 	if !seen["one"] || !seen["two"] {
-		t.Fatalf("segment prompts lost canonical topic ownership: %q", gen.prompts)
+		t.Fatalf("segment prompts lost canonical topic ownership: %q", prompts)
 	}
 }
 
@@ -226,10 +233,11 @@ func TestEngineGenerate_PerSegmentRequestsCarryOnlyOwnedEditorialEvidence(t *tes
 	if _, err := engine.Generate(context.Background(), plan); err != nil {
 		t.Fatalf("Generate returned error: %v", err)
 	}
-	if len(gen.prompts) != 2 {
-		t.Fatalf("provider calls = %d, want one per segment", len(gen.prompts))
+	prompts := gen.promptSnapshot()
+	if len(prompts) != 2 {
+		t.Fatalf("provider calls = %d, want one per segment", len(prompts))
 	}
-	for i, prompt := range gen.prompts {
+	for i, prompt := range prompts {
 		var own, other, ownClip, otherClip string
 		switch {
 		case strings.Contains(prompt, "Topic: Paul Giamatti"):
@@ -267,8 +275,9 @@ func TestEngineGenerate_SegmentRegenerationStopsAtRetryLimit(t *testing.T) {
 	// 2 initial requests plus at most 2 repairs. The fourth scripted result
 	// keeps the second repair deterministic (validation failure instead of
 	// "no scripted result") regardless of worker scheduling.
-	if len(gen.prompts) < 2 || len(gen.prompts) > 4 {
-		t.Fatalf("provider calls = %d, want bounded initial calls plus bounded repairs", len(gen.prompts))
+	prompts := gen.promptSnapshot()
+	if len(prompts) < 2 || len(prompts) > 4 {
+		t.Fatalf("provider calls = %d, want bounded initial calls plus bounded repairs", len(prompts))
 	}
 }
 

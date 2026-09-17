@@ -2,6 +2,7 @@ package jobs
 
 import (
 	"context"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -9,10 +10,42 @@ import (
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 )
 
-type coordinatorNotifier struct{ ch chan struct{} }
+type coordinatorNotifier struct {
+	mu         sync.Mutex
+	ch         chan struct{}
+	subscribed chan struct{}
+}
 
-func (n *coordinatorNotifier) Subscribe() <-chan struct{} { return n.ch }
-func (n *coordinatorNotifier) Broadcast()                 { close(n.ch); n.ch = make(chan struct{}) }
+func newCoordinatorNotifier() *coordinatorNotifier {
+	return &coordinatorNotifier{ch: make(chan struct{}), subscribed: make(chan struct{}, 1)}
+}
+
+func (n *coordinatorNotifier) Subscribe() <-chan struct{} {
+	n.mu.Lock()
+	ch := n.ch
+	n.mu.Unlock()
+	select {
+	case n.subscribed <- struct{}{}:
+	default:
+	}
+	return ch
+}
+
+func (n *coordinatorNotifier) Broadcast() {
+	n.mu.Lock()
+	close(n.ch)
+	n.ch = make(chan struct{})
+	n.mu.Unlock()
+}
+
+func (n *coordinatorNotifier) waitForSubscriber(t *testing.T) {
+	t.Helper()
+	select {
+	case <-n.subscribed:
+	case <-time.After(time.Second):
+		t.Fatal("coordinator did not subscribe to notifier")
+	}
+}
 
 type coordinatorReader struct {
 	jobs  []job.Job
@@ -49,7 +82,7 @@ func (f *fakeClaimSnapshotter) SnapshotPreparationClaim(_ context.Context, _ job
 // stale/guessed readiness state). The coordinator must never invoke the
 // snapshotter during inspection.
 func TestPreparationCoordinator_DoesNotCaptureClaimSnapshots(t *testing.T) {
-	notifier := &coordinatorNotifier{ch: make(chan struct{})}
+	notifier := newCoordinatorNotifier()
 	reader := &coordinatorReader{jobs: []job.Job{{ID: "job-snap", Type: job.TypeScriptGenerate}}}
 	registry, err := ComposeJobPreparationRegistry()
 	if err != nil {
@@ -83,7 +116,7 @@ func TestPreparationCoordinator_DoesNotCaptureClaimSnapshots(t *testing.T) {
 }
 
 func TestPreparationCoordinator_UsesNotifierInsteadOfPolling(t *testing.T) {
-	notifier := &coordinatorNotifier{ch: make(chan struct{})}
+	notifier := newCoordinatorNotifier()
 	reader := &coordinatorReader{jobs: []job.Job{{ID: "job-1", Type: job.TypeScriptGenerate}}}
 	registry, err := ComposeJobPreparationRegistry()
 	if err != nil {
@@ -111,6 +144,7 @@ func TestPreparationCoordinator_UsesNotifierInsteadOfPolling(t *testing.T) {
 	if reader.calls.Load() != 1 {
 		t.Fatalf("initial peek calls=%d, want 1", reader.calls.Load())
 	}
+	notifier.waitForSubscriber(t)
 	notifier.Broadcast()
 	deadline = time.After(time.Second)
 	for reader.calls.Load() < 2 {
