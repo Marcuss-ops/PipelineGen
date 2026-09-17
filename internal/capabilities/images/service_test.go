@@ -264,6 +264,11 @@ func TestIsAIImageSource(t *testing.T) {
 }
 
 func TestAIImageDriveRootForSource(t *testing.T) {
+	// Per-image Drive layout (1kr8c1KZmUus10mkIdqJlYqAzXDyoNZeY): all images
+	// — retrieved or generated — live under the single dedicated root as
+	// <root>/<SafeFolderName(subject)>/<file>. The former 17-entry per-style
+	// map is retired; aiImageDriveRootForSource must return "" for every
+	// source so the registry's DestinationImage policy (ImagesFolder()) wins.
 	svc := &ImageStorageService{
 		cfg: &config.Config{
 			Drive: config.DriveConfig{
@@ -272,10 +277,13 @@ func TestAIImageDriveRootForSource(t *testing.T) {
 		},
 	}
 
-	if got := svc.aiImageDriveRootForSource("google-flow", ""); got != "ai-root" {
-		t.Fatalf("aiImageDriveRootForSource = %q, want %q", got, "ai-root")
+	if got := svc.aiImageDriveRootForSource("google-flow", ""); got != "" {
+		t.Fatalf("aiImageDriveRootForSource = %q, want empty (per-image layout retired hard-coded roots)", got)
 	}
 	if got := svc.aiImageDriveRootForSource("duckduckgo", ""); got != "" {
 		t.Fatalf("aiImageDriveRootForSource for web source = %q, want empty", got)
+	}
+	if got := svc.aiImageDriveRootForSource("flux-2-klein", "cinematic"); got != "" {
+		t.Fatalf("aiImageDriveRootForSource for AI source with style = %q, want empty (unified root)", got)
 	}
 }

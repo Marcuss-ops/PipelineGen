@@ -202,12 +202,11 @@ func BuildPublishRequest(input AssetPublishInput) (PublishRequest, error) {
 	// ── 5. Per-destination Location mapping ──────────────────────────
 	switch input.Destination {
 	case DestinationImage:
-		if loc.Style == "" {
-			return PublishRequest{}, fmt.Errorf(
-				"%w %q: missing %q", ErrAssetPublishLocationIncompleteForDestination,
-				input.Destination, "style",
-			)
-		}
+		// Per-image SubFolder layout: DestinationImage requires a single
+		// subject segment (the folder name). Style is optional metadata
+		// retained for back-compat but does NOT gate publishing; the
+		// publish contract must accept images without a style tag
+		// (retrieved images have no generative style).
 		subject := loc.SubjectOrName()
 		if subject == "" {
 			return PublishRequest{}, fmt.Errorf(
@@ -215,8 +214,8 @@ func BuildPublishRequest(input AssetPublishInput) (PublishRequest, error) {
 				input.Destination, ErrAssetPublishNameCannotReplaceSubject,
 			)
 		}
-		req.Style = loc.Style
 		req.Subject = subject
+		req.Style = loc.Style // optional — ImagePath treats empty style as absent
 
 	case DestinationStock:
 		if loc.Category == "" {

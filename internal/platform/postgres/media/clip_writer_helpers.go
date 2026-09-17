@@ -98,6 +98,13 @@ func buildYouTubeCommitRequest(clipID string, clipAsset youtubetypes.ClipAsset) 
 		SourceURL:      clipAsset.Metadata.SourceURL,
 		SourceProvider: clipAsset.Metadata.SourceProvider,
 		SourceVideoID:  clipAsset.Metadata.VideoID,
+		// The policy version is a COMPONENT OF THE IDENTITY (the id suffix), so
+		// it is persisted on the row and not only inside the id string: the
+		// clip-identity index compares the column, and a v2 re-cut that left the
+		// column at the default would collide with the v1 asset of the same
+		// window. policyVersion here is already resolved (id suffix, else the
+		// policy embedded in the id).
+		PolicyVersion:  policyVersion,
 		StartMs:        int64(clipAsset.Metadata.ClipStartSec * 1000),
 		EndMs:          int64(clipAsset.Metadata.ClipEndSec * 1000),
 		Title:          clipAsset.Metadata.Title,

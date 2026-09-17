@@ -226,16 +226,20 @@ func TestBuildPublishRequest_FilenameEmpty_ReturnsFilenameMissing(t *testing.T) 
 	}
 }
 
-func TestBuildPublishRequest_ImageNoStyle_ReturnsLocationIncomplete(t *testing.T) {
+func TestBuildPublishRequest_ImageNoStyle_SucceedsWithSubjectOnly(t *testing.T) {
+	// Per-image layout: style is optional metadata; only subject (folder name)
+	// is required. An image without a style tag must publish under
+	// <root>/<SafeFolderName(subject)>/<file>.
 	in := imgInput(DestinationImage, func(a *AssetPublishInput) {
+		a.Location.Style = ""
 		a.Location.Subject = "Mike-Tyson"
 	})
-	_, err := BuildPublishRequest(in)
-	if !errors.Is(err, ErrAssetPublishLocationIncompleteForDestination) {
-		t.Fatalf("err = %v, want wrap of ErrAssetPublish...Incomplete", err)
+	req, err := BuildPublishRequest(in)
+	if err != nil {
+		t.Fatalf("style must be optional for per-image layout: err = %v", err)
 	}
-	if !strings.Contains(err.Error(), "style") {
-		t.Errorf("err message %q must mention missing field 'style'", err.Error())
+	if req.Subject != "Mike-Tyson" {
+		t.Errorf("Subject = %q, want %q", req.Subject, "Mike-Tyson")
 	}
 }
 

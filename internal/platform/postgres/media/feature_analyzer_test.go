@@ -31,7 +31,18 @@ import (
 // openMediaDB opens the live test database and applies the canonical
 // migrations (used by tests that need a bespoke handle instead of the
 // truncating newMediaTestDB fixture).
-func openMediaDB(dsn string) (*sql.DB, error) {
+//
+// It is GUARDED, exactly like newMediaTestDB, because "bespoke handle" here
+// still means WRITING fixture assets (CommitAndIndex on yt_feature_analyzer_001,
+// yt_feature_no_face_dim_001, yt_visual_pipeline_001, …) through the real
+// committer. Before this guard existed, three tests opened TEST_POSTGRES_DSN
+// directly and committed those fixtures wherever the variable happened to
+// point — which is how three `yt_*_001` fixture rows ended up in the
+// OPERATIONAL pipelinegen_media catalog with no error anywhere. A fixture that
+// writes must refuse to run against anything but a *_test database.
+func openMediaDB(t *testing.T, dsn string) (*sql.DB, error) {
+	t.Helper()
+	requireDestructiveTestDatabase(t)
 	db, err := sql.Open("pgx", dsn)
 	if err != nil {
 		return nil, err
@@ -193,7 +204,7 @@ func TestFeatureAnalyzer_ComputesAndStoresFeatures(t *testing.T) {
 	if !ok {
 		return
 	}
-	db, err := openMediaDB(dsn)
+	db, err := openMediaDB(t, dsn)
 	if err != nil {
 		t.Fatalf("open media db: %v", err)
 	}
@@ -267,7 +278,7 @@ func TestFeatureAnalyzer_RunsWithoutAnyFaceDimension(t *testing.T) {
 	if !ok {
 		return
 	}
-	db, err := openMediaDB(dsn)
+	db, err := openMediaDB(t, dsn)
 	if err != nil {
 		t.Fatalf("open media db: %v", err)
 	}

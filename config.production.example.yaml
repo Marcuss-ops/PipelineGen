@@ -111,7 +111,9 @@ drive:
   clips_root_folder: ""
   voiceover_root_folder: ""
   artlist_root_folder: "1Dj3-BlM9LcJr3dh3I4VxEDuMBbaBwwSE"
-  images_root_folder: "1b5iP5aHekJUL1FB9ZC-WGkWxoDULyU9X"
+  # Images: per-image SubFolder layout (1kr8c1KZmUus10mkIdqJlYqAzXDyoNZeY /
+  # <SafeFolderName(subject)>/<file>). Single-download, Drive-served.
+  images_root_folder: "1kr8c1KZmUus10mkIdqJlYqAzXDyoNZeY"
   scripts_root_folder: ""
   overlay_render_root_folder: ""
   video_ai_root_folder: ""

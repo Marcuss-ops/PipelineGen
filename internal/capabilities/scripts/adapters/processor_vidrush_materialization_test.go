@@ -15,34 +15,71 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/pkg/cacheutil"
 )
 
-func TestRouteEntityImageToGenerationOutput(t *testing.T) {
-	plan := &scriptpkg.ResolvedGenerationPlan{
-		Title:         "Michael Jordan: A Story",
-		Language:      "en",
-		DriveFolderID: "drive-root",
+// TestRouteEntityImageToCanonicalLibrary pins the entity-image half of the
+// dispatch: an entity image must NOT be projected into the run bundle
+// (<Title>/<Language>/images), because the same image would then land once per
+// run instead of once in the canonical image library. A run-scoped destination
+// a caller may have set is actively CLEARED, so the run-bundle path cannot come
+// back through a legacy field.
+func TestRouteEntityImageToCanonicalLibrary(t *testing.T) {
+	stale := scriptports.VerifiedArtifact{
+		Candidate: scriptpkg.SegmentAssetCandidate{
+			AssetID: "entity-image-michael-jordan", Provider: scriptpkg.VidRushProviderInternetImages,
+			Entity: "Michael Jordan",
+		},
+		OutputDriveFolderID: "drive-root",
+		OutputDriveSubpath:  []string{"Michael Jordan_ A Story", "en", "images"},
 	}
-	artifact := scriptports.VerifiedArtifact{Candidate: scriptpkg.SegmentAssetCandidate{
-		AssetID: "entity-image-michael-jordan", Provider: scriptpkg.VidRushProviderInternetImages,
-		Entity: "Michael Jordan",
-	}}
-	got := routeEntityImageToGenerationOutput(plan, artifact)
-	if got.OutputDriveFolderID != "drive-root" {
-		t.Fatalf("output drive folder = %q, want drive-root", got.OutputDriveFolderID)
+	got := routeEntityImageToCanonicalLibrary(stale)
+	if got.OutputDriveFolderID != "" {
+		t.Fatalf("entity image kept a run-scoped Drive root %q: the library destination is resolved by the finalizer, never by the run", got.OutputDriveFolderID)
 	}
-	wantPath := []string{"Michael Jordan_ A Story", "en", "images"}
-	if !reflect.DeepEqual(got.OutputDriveSubpath, wantPath) {
-		t.Fatalf("output drive subpath = %#v, want %#v", got.OutputDriveSubpath, wantPath)
+	if len(got.OutputDriveSubpath) != 0 {
+		t.Fatalf("entity image kept a run-scoped Drive subpath %#v: <Title>/<Language>/images is retired", got.OutputDriveSubpath)
 	}
 }
 
-func TestRouteEntityImageToGenerationOutputIgnoresNonEntityMedia(t *testing.T) {
-	plan := &scriptpkg.ResolvedGenerationPlan{Title: "Run", Language: "en", DriveFolderID: "drive-root"}
+func TestRouteEntityImageToCanonicalLibraryIgnoresNonEntityMedia(t *testing.T) {
 	artifact := scriptports.VerifiedArtifact{Candidate: scriptpkg.SegmentAssetCandidate{
 		AssetID: "scene-image", Provider: scriptpkg.VidRushProviderInternetImages,
 	}}
-	got := routeEntityImageToGenerationOutput(plan, artifact)
+	got := routeEntityImageToCanonicalLibrary(artifact)
 	if got.OutputDriveFolderID != "" || len(got.OutputDriveSubpath) != 0 {
 		t.Fatalf("non-entity image was routed to output: folder=%q path=%#v", got.OutputDriveFolderID, got.OutputDriveSubpath)
+	}
+}
+
+// TestEntityImageDriveLeafIsTheCanonicalIdentity is the single-owner pin for
+// the per-image folder: the leaf comes from the canonical entity identity, so
+// casing/whitespace variants of the same person converge on ONE Drive folder and
+// no caller can mint a per-run one.
+func TestEntityImageDriveLeafIsTheCanonicalIdentity(t *testing.T) {
+	for _, variant := range []string{"Michael Jordan", "MICHAEL JORDAN", "  Michael   Jordan  ", "Michael Jordan's"} {
+		candidate := scriptpkg.SegmentAssetCandidate{
+			AssetID: "entity-image-1", Provider: scriptpkg.VidRushProviderInternetImages, Entity: variant,
+		}
+		if got := EntityImageDriveLeaf(candidate); got != "michael-jordan" {
+			t.Fatalf("EntityImageDriveLeaf(%q) = %q, want michael-jordan", variant, got)
+		}
+	}
+	// Distinct people must not collide onto one folder.
+	if got := EntityImageDriveLeaf(scriptpkg.SegmentAssetCandidate{
+		AssetID: "entity-image-2", Provider: scriptpkg.VidRushProviderInternetImages, Entity: "Michael B. Jordan",
+	}); got == "michael-jordan" {
+		t.Fatalf("distinct people collided on folder %q", got)
+	}
+	// A non-entity image, an entity-less candidate and a nameless candidate all
+	// decline to name a library folder (the caller falls back to the generic
+	// per-image destination).
+	for _, candidate := range []scriptpkg.SegmentAssetCandidate{
+		{AssetID: "scene-image", Provider: scriptpkg.VidRushProviderInternetImages},
+		{AssetID: "entity-image-3", Provider: scriptpkg.VidRushProviderInternetImages},
+		{AssetID: "yt_clip", Provider: scriptpkg.VidRushProviderYouTube, Entity: "Michael Jordan"},
+		{AssetID: "entity-image-4", Provider: scriptpkg.VidRushProviderImageGeneration, Entity: "   "},
+	} {
+		if got := EntityImageDriveLeaf(candidate); got != "" {
+			t.Fatalf("EntityImageDriveLeaf(%#v) = %q, want empty", candidate, got)
+		}
 	}
 }
 
@@ -101,9 +138,12 @@ func TestRouteGenerationOutputToPlanBundleDispatchesByFamily(t *testing.T) {
 		wantPath  []string
 	}{
 		{
-			name:      "entity image",
+			name:      "entity image (library, not the run bundle)",
 			candidate: scriptpkg.SegmentAssetCandidate{AssetID: "entity-image-mike", Provider: scriptpkg.VidRushProviderInternetImages, Entity: "Mike Tyson"},
-			wantPath:  []string{"Run", "it", "images"},
+		},
+		{
+			name:      "generated entity image (library, not the run bundle)",
+			candidate: scriptpkg.SegmentAssetCandidate{AssetID: "gen-abc", Provider: scriptpkg.VidRushProviderImageGeneration, Entity: "Mike Tyson"},
 		},
 		{
 			name:      "youtube clip",
@@ -119,6 +159,14 @@ func TestRouteGenerationOutputToPlanBundleDispatchesByFamily(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			got := routeGenerationOutputToPlanBundle(plan, scriptports.VerifiedArtifact{Candidate: tc.candidate})
+			// A family with no wantPath is a library family: it must leave the run
+			// bundle empty so the finalizer can place it under the images root.
+			if len(tc.wantPath) == 0 {
+				if got.OutputDriveFolderID != "" || len(got.OutputDriveSubpath) != 0 {
+					t.Fatalf("library family was routed into the run bundle: folder=%q path=%#v", got.OutputDriveFolderID, got.OutputDriveSubpath)
+				}
+				return
+			}
 			if got.OutputDriveFolderID != "clip-dir-root" {
 				t.Fatalf("output drive folder = %q, want clip-dir-root", got.OutputDriveFolderID)
 			}
@@ -131,17 +179,6 @@ func TestRouteGenerationOutputToPlanBundleDispatchesByFamily(t *testing.T) {
 	unrelated := scriptports.VerifiedArtifact{Candidate: scriptpkg.SegmentAssetCandidate{AssetID: "plain", Provider: "stock"}}
 	if got := routeGenerationOutputToPlanBundle(plan, unrelated); got.OutputDriveFolderID != "" || len(got.OutputDriveSubpath) != 0 {
 		t.Fatalf("unrelated candidate was routed: folder=%q path=%#v", got.OutputDriveFolderID, got.OutputDriveSubpath)
-	}
-}
-
-func TestEntityImageOutputRequestedForWarmCatalogHit(t *testing.T) {
-	plan := &scriptpkg.ResolvedGenerationPlan{DriveFolderID: "drive-root"}
-	candidate := scriptpkg.SegmentAssetCandidate{
-		Provider: scriptpkg.VidRushProviderInternetImages, Entity: "Michael Jordan",
-		SourceURL: "https://images.example/michael-jordan.jpg",
-	}
-	if !entityImageOutputRequested(plan, candidate) {
-		t.Fatal("entity image with a source URL and output root must be republished into the run bundle")
 	}
 }
 

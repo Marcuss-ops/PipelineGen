@@ -8,34 +8,44 @@
 # Resolution order (DestinationResolver):
 #   1. case-insensitive lookup of the key in this YAML
 #   2. if absent OR mapped to empty string -> constructor fallback
-#      (currently cfg.Drive.ImagesFolder())
+#      (currently cfg.Drive.ImagesFolder() →
+#       DefaultImagesRootFolderID = 1kr8c1KZmUus10mkIdqJlYqAzXDyoNZeY)
 #
-# Operators: do NOT delete the 17 entries below — they mirror the
-# historical hardcoded map in
-# internal/application/images/storage_drive.go::aiImageDriveRootForSource.
-# The CONTRACT commit will retire that map only after this YAML has been
-# verified as the source of truth (BACKFILL -> CUTOVER).
+# Per-image Drive layout (AC-compliant): every image — retrieved or
+# generated — lives under the single dedicated root as
+# <1kr8c1KZmUus10mkIdqJlYqAzXDyoNZeY>/<SafeFolderName(subject)>/<file>
+# with ImagePath = [subject] and ConflictSkip. The 17 per-style entries
+# below are RETIRED: they previously mirrored
+# internal/capabilities/images/storage_drive.go::aiImageDriveRootForSource;
+# the style-specific roots are now unified. Keeping them with the SAME
+# canonical root documents the migration; the resolver fallback covers
+# any unlisted style.
+# Spec: download-once — an image is downloaded once at runtime then
+# reused permanently from Drive without re-download.
 # =============================================================================
 
 destinations:
-  # ── AI-generated territory (17 styles) ────────────────────────────
-  ai-images/realistic:        "1b5iP5aHekJUL1FB9ZC-WGkWxoDULyU9X"
-  ai-images/cartoon:          "1ab_YSfuKpj4CCh9twk3st5zv9fvMwS8B"
-  ai-images/medieval:         "1yfCnjvpZ3ZuFs7W0pRFNGzapRLGIykPi"
-  ai-images/cyberpunk:        "1x8xcUFtIj7hkGF6CsPJCM822ooJL9kMu"
-  ai-images/watercolor:       "1tzvn5PkOwZk3DPjjr8sIXKr9LKeM--rB"
-  ai-images/3d-render:        "1MWZy1rDXQKoAr0HRVMc7BdGAvqCaSe1y"
-  ai-images/sketch:           "1QrC74aZ8It43pQa5l5G6BNWcc18ksIo2"
-  ai-images/cinematic:        "1t6bhe8kquPqk7ypYzbobHqUq-HGjVdZw"
-  ai-images/whiteboard:       "1Znu_g8pUOXkXHG-1XkLMOcYN69umrlae"
-  ai-images/kawaii:           "1K5IcI3sC5qLID0M1ulSoUC355S_3lUNh"
-  ai-images/anime:            "1e1pW8ZaQYTwDV0po6tIxx_vUql_6CD_v"
-  ai-images/retro-print:      "1141lRohkIiXp8NjGQlGj4bLLaQw6nCDb"
-  ai-images/heritage:         "1l_cdMqhKrstV94V7Ym7wemJTUZjjWLq_"
-  ai-images/papercraft:       "1yWlji7wololy_q3l8GAcmmF8goxJmOih"
-  ai-images/professional-doc: "1g2Ef3yQCDWZ78YqnOnwhKmIghGJvPOPa"
-  ai-images/gothic:           "1CNNcNWY4YXyat9eqUsmsUEGeMmTXJY3t"
-  ai-images/oil-painting:     "1mI07oRaeabhGSmjdyKOICl5vSK6uSO7i"
+  # ── Retired per-style roots → unified per-image root (single SubFolder per image)
+  # Every style now points to the canonical per-image root so a new style
+  # never silently re-creates a style-scoped tree. The file is retained as an
+  # explicit allowlist with post-migration documentation.
+  ai-images/realistic:        "1kr8c1KZmUus10mkIdqJlYqAzXDyoNZeY"
+  ai-images/cartoon:          "1kr8c1KZmUus10mkIdqJlYqAzXDyoNZeY"
+  ai-images/medieval:         "1kr8c1KZmUus10mkIdqJlYqAzXDyoNZeY"
+  ai-images/cyberpunk:        "1kr8c1KZmUus10mkIdqJlYqAzXDyoNZeY"
+  ai-images/watercolor:       "1kr8c1KZmUus10mkIdqJlYqAzXDyoNZeY"
+  ai-images/3d-render:        "1kr8c1KZmUus10mkIdqJlYqAzXDyoNZeY"
+  ai-images/sketch:           "1kr8c1KZmUus10mkIdqJlYqAzXDyoNZeY"
+  ai-images/cinematic:        "1kr8c1KZmUus10mkIdqJlYqAzXDyoNZeY"
+  ai-images/whiteboard:       "1kr8c1KZmUus10mkIdqJlYqAzXDyoNZeY"
+  ai-images/kawaii:           "1kr8c1KZmUus10mkIdqJlYqAzXDyoNZeY"
+  ai-images/anime:            "1kr8c1KZmUus10mkIdqJlYqAzXDyoNZeY"
+  ai-images/retro-print:      "1kr8c1KZmUus10mkIdqJlYqAzXDyoNZeY"
+  ai-images/heritage:         "1kr8c1KZmUus10mkIdqJlYqAzXDyoNZeY"
+  ai-images/papercraft:       "1kr8c1KZmUus10mkIdqJlYqAzXDyoNZeY"
+  ai-images/professional-doc: "1kr8c1KZmUus10mkIdqJlYqAzXDyoNZeY"
+  ai-images/gothic:           "1kr8c1KZmUus10mkIdqJlYqAzXDyoNZeY"
+  ai-images/oil-painting:     "1kr8c1KZmUus10mkIdqJlYqAzXDyoNZeY"
 
-  # ── Default fallback key (always resolves to constructor fallback) ─
-  ai-images/default: ""
+  # ── Default fallback key — resolves to the same per-image root via fallback
+  ai-images/default: "1kr8c1KZmUus10mkIdqJlYqAzXDyoNZeY"

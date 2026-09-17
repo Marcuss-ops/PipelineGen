@@ -250,6 +250,40 @@ func TestBuildPlanAssignsDistinctPhraseMotions(t *testing.T) {
 	}
 }
 
+func TestBuildPlanAssignsDistinctCertifiedMotionsAcrossRunAfterBudget(t *testing.T) {
+	scenes := []SceneInput{
+		{ID: "scene-0", Phrases: []TimedAnnotation{{Text: "Discipline gave speed a direction", StartMs: 0, EndMs: 900, Score: 0.8}}},
+		{ID: "scene-1", Phrases: []TimedAnnotation{{Text: "Twenty years old and champion", StartMs: 1000, EndMs: 1900, Score: 0.9}}},
+		{ID: "scene-2", Phrases: []TimedAnnotation{{Text: "Tokyo ended the unbeaten run", StartMs: 2000, EndMs: 2900, Score: 0.7}}},
+		{ID: "scene-3", Phrases: []TimedAnnotation{{Text: "A title fight to the eleventh", StartMs: 3000, EndMs: 3900, Score: 0.6}}},
+		{ID: "scene-4", Phrases: []TimedAnnotation{{Text: "The rematch ended in disqualification", StartMs: 4000, EndMs: 4900, Score: 0.5}}},
+	}
+	plan, err := BuildPlan(PlanInput{
+		PlanID: "phrases-across-scenes", VideoID: "v1", Width: 1920, Height: 1080, FPSNum: 24, FPSDen: 1,
+		Scenes: scenes,
+	}, AllCandidatesPlannerConfig(scenes))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(plan.Items) != MaxPhraseOverlaysPerRun {
+		t.Fatalf("phrase overlays = %d, want %d", len(plan.Items), MaxPhraseOverlaysPerRun)
+	}
+	allowed := map[string]bool{
+		"kinetic_split_word": true, "masked_upward_reveal": true, "staggered_char_float": true,
+		"soft_edge_spotlight_dissolve": true, "velocity_inertia_snap": true,
+	}
+	seen := make(map[string]bool, len(plan.Items))
+	for _, item := range plan.Items {
+		if item.Kind != "text_phrase" {
+			t.Fatalf("unexpected non-phrase overlay survived: %+v", item)
+		}
+		if !allowed[item.MotionID] || seen[item.MotionID] {
+			t.Fatalf("phrase motion is not distinct and certified: %+v", plan.Items)
+		}
+		seen[item.MotionID] = true
+	}
+}
+
 // TestBuildPlanExtendedEntities pins the NUMBER / QUOTE / PRODUCT / LOGO
 // planner path: certified timing only, ranked by score, capped per scene, and
 // each item terminating in its canonical template id (the kind→template

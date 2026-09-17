@@ -68,7 +68,11 @@ func TestDownloadAndHashClip_HappyPath(t *testing.T) {
 	if result.LegacyFileMD5 != "a1b2c3d4e5f6a7b8" {
 		t.Errorf("expected LegacyFileMD5 a1b2c3d4e5f6a7b8, got %q", result.LegacyFileMD5)
 	}
-	wantClipID := "yt_dQw4w9WgXcQ_a1b2c3d4"
+	// The identity is the REQUEST WINDOW (10s..30s) + policy, NOT the file
+	// hash: the same clip re-cut with different bytes keeps this asset id and is
+	// handled by the index-event supersede gate instead of minting a new row.
+	// Format owner: kernel/asset/detail.YouTubeClipAssetID.
+	wantClipID := "yt_dQw4w9WgXcQ_10_30_v1"
 	if result.ClipID != wantClipID {
 		t.Errorf("expected ClipID %q, got %q", wantClipID, result.ClipID)
 	}
@@ -196,8 +200,15 @@ func TestDownloadAndHashClip_FetcherError_WrapsError(t *testing.T) {
 	}
 }
 
-// ── Test 4: nil hasher → empty hash, clipID still derived (best-effort) ──
+// ── Test 4: nil hasher → empty hash, identity still well-defined ──
 
+// TestDownloadAndHashClip_NilHasher_EmptyHashButClipIDDerived pins the
+// 2026-09-17 identity unification: an unusable content hash must NOT degrade
+// the clip IDENTITY. The pre-fix derivation produced `yt_<videoID>_`, which is
+// identical for EVERY window of the same video — two different segments would
+// have collided on one media_assets primary key (one silently overwriting the
+// other). The window-derived identity is well-defined even when the bytes
+// cannot be hashed.
 func TestDownloadAndHashClip_NilHasher_EmptyHashButClipIDDerived(t *testing.T) {
 	fetcher := &stubFetcher{
 		result: &FetchedAsset{
@@ -206,7 +217,11 @@ func TestDownloadAndHashClip_NilHasher_EmptyHashButClipIDDerived(t *testing.T) {
 		},
 	}
 
-	cmd := DownloadAndHashCommand{VideoID: "test123"}
+	cmd := DownloadAndHashCommand{
+		VideoID:      "test123",
+		SegmentStart: 60 * time.Second,
+		SegmentEnd:   70 * time.Second,
+	}
 
 	result, err := DownloadAndHashClip(context.Background(), fetcher, nil, cmd)
 	if err != nil {
@@ -215,8 +230,46 @@ func TestDownloadAndHashClip_NilHasher_EmptyHashButClipIDDerived(t *testing.T) {
 	if result.LegacyFileMD5 != "" {
 		t.Errorf("expected empty LegacyFileMD5 when hasher is nil, got %q", result.LegacyFileMD5)
 	}
-	// clipID still derived with empty suffix: yt_videoID_
-	if result.ClipID != "yt_test123_" {
-		t.Errorf("expected ClipID yt_test123_, got %q", result.ClipID)
+	if want := "yt_test123_60_70_v1"; result.ClipID != want {
+		t.Errorf("expected ClipID %q, got %q", want, result.ClipID)
+	}
+}
+
+// TestDownloadAndHashClip_IdentityIsWindowScopedWithoutHash locks the
+// collision the pre-fix derivation allowed: two windows of the same video with
+// no usable hash must produce two DISTINCT identities (two rows, not one
+// overwritten row).
+func TestDownloadAndHashClip_IdentityIsWindowScopedWithoutHash(t *testing.T) {
+	fetcher := &stubFetcher{result: &FetchedAsset{LocalPath: "/tmp/clip.mp4"}}
+
+	first, err := DownloadAndHashClip(context.Background(), fetcher, nil, DownloadAndHashCommand{
+		VideoID: "test123", SegmentStart: 0, SegmentEnd: 25 * time.Second,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	second, err := DownloadAndHashClip(context.Background(), fetcher, nil, DownloadAndHashCommand{
+		VideoID: "test123", SegmentStart: 39 * time.Second, SegmentEnd: 90 * time.Second,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if first.ClipID == second.ClipID {
+		t.Errorf("two windows of the same video share identity %q without a content hash; one clip would overwrite the other", first.ClipID)
+	}
+}
+
+// TestDownloadAndHashClip_EmptyVideoID_FailsClosed pins the fail-closed
+// contract: the identity can no longer be built with an empty video id (the
+// pre-fix derivation silently produced `yt__0_0_v1`).
+func TestDownloadAndHashClip_EmptyVideoID_FailsClosed(t *testing.T) {
+	fetcher := &stubFetcher{result: &FetchedAsset{LocalPath: "/tmp/clip.mp4"}}
+
+	_, err := DownloadAndHashClip(context.Background(), fetcher, nil, DownloadAndHashCommand{VideoID: ""})
+	if err == nil {
+		t.Fatal("expected an error for an empty video id, got nil")
+	}
+	if !strings.Contains(err.Error(), "derive clip id") {
+		t.Errorf("expected the wrapped derive-clip-id error, got %v", err)
 	}
 }

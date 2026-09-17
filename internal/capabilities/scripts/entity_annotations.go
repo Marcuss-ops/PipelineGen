@@ -31,11 +31,14 @@ func projectEntityAnnotations(text, language string, seg scriptpkg.VidRushSegmen
 	// phrase/word that never occurs verbatim is skipped, never faked. They are
 	// hints for the overlay planner, NOT spoken-entity facts: the entity timeline
 	// WORD gate never reads them.
-	for _, phrase := range seg.Insights.ImportantPhrases {
+	for rank, phrase := range seg.Insights.ImportantPhrases {
 		if span, ok := findEntitySpan(text, phrase); ok {
 			ann.ImportantPhrases = append(ann.ImportantPhrases, scriptpkg.AnnotationSpan{
 				Text: span.Text, StartRune: span.StartRune, EndRune: span.EndRune,
-				Score: 0.80, Kind: "key_statement",
+				// NLP returns candidates strongest-first. Preserve that ranking
+				// through the run-level 5-phrase budget so a scene's second or
+				// third suggestion cannot displace another scene's best line.
+				Score: max(0.95-float64(rank)*0.05, 0.01), Kind: "key_statement",
 			})
 		}
 	}
@@ -173,6 +176,7 @@ func entityImageBindingFor(name string, seg scriptpkg.VidRushSegmentResult) *scr
 	if best != nil {
 		return &scriptpkg.EntityImageBinding{
 			Status: "resolved", AssetID: best.AssetID, DriveLink: best.DriveLink,
+			LocalPath: best.LocalPath,
 			MediaType: best.MIMEType,
 			Source:    best.Provider, License: best.RightsBasis,
 			PreviewURL: entityImagePreviewURL(*best), SHA256: best.LegacyFileMD5,

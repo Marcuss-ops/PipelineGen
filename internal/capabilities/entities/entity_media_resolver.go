@@ -144,6 +144,7 @@ func (r *EntityMediaResolver) ResolveBest(canonicalEntityID string) (ResolvedAss
 		AssetID:   best.AssetID,
 		SHA256:    best.SHA256,
 		URL:       best.StorageURL,
+		LocalPath: best.LocalPath,
 		MediaType: mediaTypeFor(best.AssetType),
 	}, nil
 }
@@ -161,6 +162,7 @@ func (r *EntityMediaResolver) ResolveTop(canonicalEntityID string, n int) []Reso
 			AssetID:   asset.AssetID,
 			SHA256:    asset.SHA256,
 			URL:       asset.StorageURL,
+			LocalPath: asset.LocalPath,
 			MediaType: mediaTypeFor(asset.AssetType),
 		})
 	}

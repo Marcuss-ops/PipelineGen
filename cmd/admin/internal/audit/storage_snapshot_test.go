@@ -31,7 +31,11 @@ func TestCollectDriveRoots_DedupeAndSort(t *testing.T) {
 
 	roots := collectDriveRoots(dc)
 
-	want := []string{"clips-src", "root-1", "sfx-1", "stock-1"}
+	// The images root is ALWAYS collected: Drive.ImagesFolder() resolves to the
+	// canonical DefaultImagesRootFolderID when no images_root_folder is set (the
+	// per-image layout requires a single dedicated root), so a snapshot audit must
+	// always cover it.
+	want := []string{config.DefaultImagesRootFolderID, "clips-src", "root-1", "sfx-1", "stock-1"}
 	if len(roots) != len(want) {
 		t.Fatalf("collectDriveRoots: got %d roots %v, want %d", len(roots), roots, len(want))
 	}
@@ -45,8 +49,12 @@ func TestCollectDriveRoots_DedupeAndSort(t *testing.T) {
 func TestCollectDriveRoots_AllEmpty(t *testing.T) {
 	var dc config.DriveConfig
 	roots := collectDriveRoots(dc)
-	if len(roots) != 0 {
-		t.Fatalf("expected no roots for empty config, got %v", roots)
+	// An unconfigured DriveConfig is no longer "no roots": the images root is a
+	// code-level default (config.DefaultImagesRootFolderID), so it is the one root
+	// that survives an empty config and must never be silently dropped from a
+	// snapshot.
+	if len(roots) != 1 || roots[0] != config.DefaultImagesRootFolderID {
+		t.Fatalf("expected exactly [%s] for empty config, got %v", config.DefaultImagesRootFolderID, roots)
 	}
 }
 

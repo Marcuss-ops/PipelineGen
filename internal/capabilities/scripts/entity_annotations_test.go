@@ -57,7 +57,8 @@ func TestProjectEntityAnnotations_BindsImageFromEntityIdentityWhenQueryIsGeneric
 			AssetID: "ada-portrait", Provider: scriptpkg.VidRushProviderInternetImages,
 			Entity: "Ada Lovelace", Query: "historical portrait",
 			DriveLink: "https://drive.google.com/file/d/ada/view", LegacyFileMD5: "ada-md5",
-			MIMEType: "image/jpeg", AcquisitionStatus: scriptpkg.VidRushStatusAcquired,
+			LocalPath: "/tmp/ada-portrait.jpg",
+			MIMEType:  "image/jpeg", AcquisitionStatus: scriptpkg.VidRushStatusAcquired,
 			VerificationStatus: scriptpkg.VidRushStatusVerified, PersistenceStatus: scriptpkg.VidRushStatusPersisted,
 			RightsBasis: "public-domain",
 		}}},
@@ -68,6 +69,7 @@ func TestProjectEntityAnnotations_BindsImageFromEntityIdentityWhenQueryIsGeneric
 	require.Len(t, ann.PrimaryEntities, 1)
 	require.NotNil(t, ann.PrimaryEntities[0].Image, "the durable entity identity must bind the image")
 	assert.Equal(t, "ada-portrait", ann.PrimaryEntities[0].Image.AssetID)
+	assert.Equal(t, "/tmp/ada-portrait.jpg", ann.PrimaryEntities[0].Image.LocalPath)
 }
 
 func TestProjectEntityAnnotations_PromotesGroundedConceptToImportantPhrase(t *testing.T) {
@@ -88,6 +90,18 @@ func TestProjectEntityAnnotations_PromotesGroundedConceptToImportantPhrase(t *te
 	assert.Equal(t, "former professional wrestler", ann.ImportantPhrases[0].Text)
 	assert.Equal(t, "IMPORTANT_PHRASE", ann.ImportantPhrases[0].Kind)
 	assert.Empty(t, ann.SecondaryEntities, "editorial concept must not become a second NER entity")
+}
+
+func TestProjectEntityAnnotationsPreservesStrongestFirstPhraseRank(t *testing.T) {
+	text := "Tokyo ended the unbeaten run. The loss changed the title picture."
+	seg := scriptpkg.VidRushSegmentResult{Insights: scriptpkg.SegmentInsights{
+		ImportantPhrases: []string{"Tokyo ended the unbeaten run", "changed the title picture"},
+	}}
+	ann := projectEntityAnnotations(text, "en", seg)
+	require.NotNil(t, ann)
+	require.Len(t, ann.ImportantPhrases, 2)
+	assert.Greater(t, ann.ImportantPhrases[0].Score, ann.ImportantPhrases[1].Score)
+	assert.Equal(t, "Tokyo ended the unbeaten run", ann.ImportantPhrases[0].Text)
 }
 
 func TestProjectEntityAnnotations_NilWhenNoGroundedEntity(t *testing.T) {
@@ -150,8 +164,9 @@ func TestProjectEntityAnnotations_ProjectsImportantPhrasesAndWords(t *testing.T)
 	require.NotNil(t, ann)
 	require.Len(t, ann.ImportantPhrases, 2, "all grounded important phrases must survive")
 	assert.Equal(t, "changed the market", ann.ImportantPhrases[0].Text)
-	assert.Equal(t, 0.80, ann.ImportantPhrases[0].Score)
+	assert.Equal(t, 0.95, ann.ImportantPhrases[0].Score)
 	assert.Equal(t, "Cupertino", ann.ImportantPhrases[1].Text)
+	assert.Greater(t, ann.ImportantPhrases[0].Score, ann.ImportantPhrases[1].Score)
 
 	require.Len(t, ann.ImportantWords, 2)
 	assert.Equal(t, "market", ann.ImportantWords[0].Text)

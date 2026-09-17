@@ -37,6 +37,7 @@ Important phrases are editorial fragments from the source, not entity names:
 do not return a person, place, organization, or partial name as a phrase; use
 the meaningful action, claim, event, or description around it instead.
 `, entityCount)
+	b.WriteString(ImportantPhraseQualityContract())
 	for i, segment := range segments {
 		fmt.Fprintf(&b, "\nSEGMENT_INPUT_%d:\n%s\n", i, segment)
 	}
@@ -55,10 +56,25 @@ func BuildEntityExtractionPromptForLanguage(text string, entityCount int, langua
 	if cfg := Get(); cfg != nil {
 		rendered, err := cfg.RenderEntityExtraction(text, entityCount)
 		if err == nil {
-			return rendered + GroundedNounChunkContract(language)
+			return rendered + ImportantPhraseQualityContract() + GroundedNounChunkContract(language)
 		}
 	}
-	return buildEntityExtractionFallback(text, entityCount) + GroundedNounChunkContract(language)
+	return buildEntityExtractionFallback(text, entityCount) + ImportantPhraseQualityContract() + GroundedNounChunkContract(language)
+}
+
+// ImportantPhraseQualityContract keeps phrase extraction useful for editorial
+// overlays across both the built-in and configured extraction prompts. Phrase
+// candidates remain verbatim and grounded; the model ranks their editorial
+// usefulness but never invents or rewrites them.
+func ImportantPhraseQualityContract() string {
+	return `
+
+IMPORTANT PHRASE QUALITY CONTRACT:
+- Return up to three candidates, strongest and most screen-worthy first.
+- Prefer concise, concrete, self-contained wording that captures a specific action, result, turning point, claim, or distinctive idea.
+- Reject generic transitions, filler, topic labels, names alone, pronouns without an antecedent, and sentence scraps that do not make sense on screen.
+- Copy every candidate as an exact contiguous span from the source. Never invent a slogan, paraphrase, or add words.
+`
 }
 
 // GroundedNounChunkContract is the single source of truth for the

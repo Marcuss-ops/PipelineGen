@@ -150,6 +150,7 @@ func TestFailureCode_StableStringLiterals(t *testing.T) {
 		FailureCodeVideoProcessingFailed: "video_processing_failed",
 		FailureCodeDriveUploadFailed:     "drive_upload_failed",
 		FailureCodeWriterFailed:          "writer_failed",
+		FailureCodeClipIdentityInvalid:   "clip_identity_invalid",
 	}
 	for code, want := range codes {
 		if string(code) != want {

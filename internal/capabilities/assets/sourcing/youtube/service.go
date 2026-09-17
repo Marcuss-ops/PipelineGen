@@ -58,6 +58,13 @@ type Service struct {
 	log           sourcing.Logger
 	textTrackRepo detail.TextTrackRepository
 
+	// atomicWriter, when wired, is the canonical atomic terminal write
+	// (asset + text tracks + cue segments + index event in ONE
+	// transaction). When nil, Register falls back to the legacy split
+	// path (saveClipToDB then textTrackRepo.UpsertBatch) so existing
+	// fixture/test composition sites keep working unchanged.
+	atomicWriter AtomicClipWriterPort
+
 	// requireDrive, when true, causes Register to return an error if the
 	// Drive Publisher fails (P0.2, July 2026). Set at construction via
 	// NewService (not post-construction mutation per godlike/06 SSOT).
@@ -103,6 +110,23 @@ func NewService(deps ServiceDeps) *Service {
 // WithTranscriptStore, and WithFolderEnsurer for config-driven behavior.
 func (s *Service) WithRequireDrive(v bool) *Service {
 	s.requireDrive = v
+	return s
+}
+
+// WithAtomicClipWriter wires the canonical atomic terminal write
+// (2026-09-17 identity/atomicity unification). When set, Register commits
+// media_assets + asset_text_tracks + cue segments + the asset.index.requested
+// outbox event in ONE transaction instead of writing the index event first and
+// the transcript afterwards — the ordering that let an index worker embed a
+// clip with no transcript and never revisit it.
+//
+// Wiring is done through this fluent setter rather than a ServiceDeps field
+// because the port is OPTIONAL (nil keeps the historical split path for
+// composition sites without a media PostgreSQL handle) and because ServiceDeps
+// is already at the canonical 8-port budget (architecture/policy.yaml
+// ::max_struct_deps). Same convention as WithRequireDrive above.
+func (s *Service) WithAtomicClipWriter(w AtomicClipWriterPort) *Service {
+	s.atomicWriter = w
 	return s
 }
 
@@ -222,15 +246,10 @@ func (s *Service) Register(ctx context.Context, cmd sourcing.RegisterClipCommand
 	// ── 7. Upload cumulative metadata.json ──────────────────────────
 	s.uploadCumulativeMetadata(ctx, cmd, clipID, md, fetched, uploadResult, targetFolderID, group, driveFilename, fileHash, transcript, detectedLang)
 
-	// ── 8. Save to DB via IndexDispatcherPort ───────────────────────
-	if err := s.saveClipToDB(ctx, cmd, clipID, md, driveFilename, fileHash, fetched.LocalPath, uploadResult); err != nil {
-		return nil, err
-	}
-
-	// ── 8.5 Save transcript to DB (mandatory per user request) ──────
-	if s.textTrackRepo == nil {
-		return nil, fmt.Errorf("youtube transcription: textTrackRepo is not wired")
-	}
+	// ── 8. Build the transcript track (BOTH write paths need it) ────
+	// The track is assembled once, here: the canonical atomic path
+	// commits it together with the asset + index event, the legacy
+	// fallback upserts it as a separate statement after saveClipToDB.
 	lang, _ := asset.Normalize(detectedLang)
 	if lang == "" {
 		lang = "und"
@@ -252,8 +271,30 @@ func (s *Service) Register(ctx context.Context, cmd sourcing.RegisterClipCommand
 		IsCurrent:          true,
 		Status:             detail.TextTrackReady,
 	}
-	if err := s.textTrackRepo.UpsertBatch(ctx, []detail.TextTrack{track}); err != nil {
-		return nil, fmt.Errorf("failed to save transcript to DB: %w", err)
+
+	// ── 8.5 Persist the clip + transcript ───────────────────────────
+	// Canonical path (atomicWriter wired): asset + text tracks + cue
+	// segments + outbox index event in ONE transaction, so the index
+	// worker can never observe the asset without its transcript.
+	//
+	// Legacy fallback (atomicWriter nil, fixture/minimal composition
+	// sites): asset + index event first, transcript second. The window
+	// that ordering opens is exactly why the atomic path exists; it is
+	// retained only so un-wired callers keep their historical behaviour.
+	if s.atomicWriter != nil {
+		if err := s.commitClipAtomically(ctx, cmd, clipID, md, driveFilename, fileHash, fetched.LocalPath, targetFolderID, uploadResult, track); err != nil {
+			return nil, err
+		}
+	} else {
+		if err := s.saveClipToDB(ctx, cmd, clipID, md, driveFilename, fileHash, fetched.LocalPath, uploadResult); err != nil {
+			return nil, err
+		}
+		if s.textTrackRepo == nil {
+			return nil, fmt.Errorf("youtube transcription: textTrackRepo is not wired")
+		}
+		if err := s.textTrackRepo.UpsertBatch(ctx, []detail.TextTrack{track}); err != nil {
+			return nil, fmt.Errorf("failed to save transcript to DB: %w", err)
+		}
 	}
 
 	// ── 9. Enrichment + related clips ───────────────────────────────

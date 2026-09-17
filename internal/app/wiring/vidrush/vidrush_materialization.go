@@ -86,7 +86,15 @@ func BuildVidRushMaterialization(cfg *config.Config, deps VidRushMaterialization
 	}
 	assetTx := assetfinalizer.NewAssetTxFinalizer(log, committer)
 	preparation := assetfinalizer.NewArtifactPreparation(drive.NewArtifactPublisherAdapter(deps.Delivery.Publisher, log), log)
-	finalizer := &vidRushArtifactFinalizer{mediaDB: deps.MediaPG, preparation: preparation, assetTx: assetTx}
+	// The canonical image library root. cfg is resolved through the config
+	// owner (Drive.ImagesFolder), which falls back to
+	// config.DefaultImagesRootFolderID, so an entity image is published to the
+	// SAME root regardless of what the local config says.
+	imagesRootFolderID := ""
+	if cfg != nil {
+		imagesRootFolderID = cfg.Drive.ImagesFolder()
+	}
+	finalizer := &vidRushArtifactFinalizer{mediaDB: deps.MediaPG, preparation: preparation, assetTx: assetTx, imagesRootFolderID: imagesRootFolderID}
 
 	registry := adapters.NewVidRushAssetProviderRegistry()
 	if deps.Delivery.Downloader != nil {
@@ -118,6 +126,11 @@ type vidRushArtifactFinalizer struct {
 	mediaDB     *sql.DB
 	preparation finalization.ArtifactPreparationService
 	assetTx     finalization.AssetFinalizerTx
+	// imagesRootFolderID is the canonical image library root
+	// (config.Drive.ImagesFolder()). Entity images are published there under a
+	// single canonical-entity SubFolder instead of into the run bundle, so the
+	// library is shared by every run and an image is stored once.
+	imagesRootFolderID string
 }
 
 func (f *vidRushArtifactFinalizer) Finalize(ctx context.Context, artifact scriptports.VerifiedArtifact) (scriptpkg.SegmentAssetCandidate, error) {
@@ -156,6 +169,12 @@ func (f *vidRushArtifactFinalizer) Finalize(ctx context.Context, artifact script
 		verified.RootFolderResolved = true
 		verified.RootFolderName = firstNonEmpty(artifact.OutputDriveSubpath...)
 		verified.DriveSubpath = append([]string(nil), artifact.OutputDriveSubpath...)
+	}
+	if folderID, subpath, ok := entityImageLibraryDestination(candidate, f.imagesRootFolderID); ok {
+		verified.ResolvedFolderID = folderID
+		verified.RootFolderResolved = true
+		verified.RootFolderName = subpath[0]
+		verified.DriveSubpath = subpath
 	}
 	published, err := f.preparation.Prepare(ctx, verified)
 	if err != nil {
@@ -209,6 +228,32 @@ func (f *vidRushArtifactFinalizer) Finalize(ctx context.Context, artifact script
 		candidate.IndexStatus = scriptpkg.VidRushStatusIndexed
 	}
 	return candidate, nil
+}
+
+// entityImageLibraryDestination resolves the canonical image library location of
+// an entity image: <imagesRoot>/<canonical-entity-slug>. It returns ok=false
+// when the artifact is not an entity image, when its name yields no canonical
+// identity, or when the images root is not configured — and the caller then
+// keeps the generic per-image destination, which is still a single folder level
+// under the images root.
+//
+// The subpath is the CANONICAL ENTITY IDENTITY ("person:michael-jordan" →
+// "michael-jordan"), never the run title/language/job id, so the same person's
+// image is one folder that every future video reuses, and the
+// <slug>/<slug>/<file> nesting produced by the retired run-bundle routing cannot
+// come back. The root is pinned EXPLICITLY (RootFolderResolved + ResolvedFolderID)
+// rather than left to the destination registry, so the library layout holds even
+// when a local config maps the image destination elsewhere.
+func entityImageLibraryDestination(candidate scriptpkg.SegmentAssetCandidate, imagesRoot string) (string, []string, bool) {
+	root := strings.TrimSpace(imagesRoot)
+	if root == "" {
+		return "", nil, false
+	}
+	leaf := adapters.EntityImageDriveLeaf(candidate)
+	if leaf == "" {
+		return "", nil, false
+	}
+	return root, []string{leaf}, true
 }
 
 func readVidRushIndexState(ctx context.Context, db *sql.DB, assetID string) (string, error) {
@@ -434,10 +479,24 @@ func newCanonicalAssetCommitterBridge(db *sql.DB, log *zap.Logger) (persistence.
 func hashFile(path string) (string, int64, error) {
 	return digest.SHA256File(path)
 }
+
+// safeArtifactFilename derives the Drive file name of a VidRush artifact from
+// its asset id, guarding two shapes that produced unusable names in the
+// library:
+//
+//   - an id whose base is empty or "." (e.g. a trailing-slash URL) would name
+//     the file just ".jpg"; it falls back to a stable placeholder.
+//   - an id that ALREADY carries the artifact's extension (web-image candidates
+//     are commonly stored as their source filename or URL) must not get a
+//     second one: `File_Scottie Pippen 5-2-22.jpg` + ".jpg" published
+//     `…jpg.jpg` into Drive, and the per-image folder inherited the doubled name.
 func safeArtifactFilename(assetID, ext string) string {
 	name := filepath.Base(strings.TrimSpace(assetID))
 	if name == "." || name == "" {
 		name = "vidrush-asset"
+	}
+	if ext != "" && strings.EqualFold(filepath.Ext(name), ext) {
+		return name
 	}
 	return name + ext
 }

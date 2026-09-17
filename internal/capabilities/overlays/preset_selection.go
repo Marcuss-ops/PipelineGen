@@ -31,13 +31,14 @@ var (
 	imageAnimationCandidates = []string{
 		"fade_in", "reveal_from_bottom", "scale_drop", "fade_shift_vertical",
 	}
-	// These are text-native phrase motions. They animate selector/text
-	// properties only (no layer scale/rotation and no glyph scale/blur), which
-	// keeps REQUIRE_GPU_NATIVE on Chronon's zero-readback path. The planner
-	// assigns them by deterministic phrase order so the first three phrases in
-	// a scene cannot collapse to the same animation.
+	// These phrase motions are implemented by RenderingGen's certified
+	// apple_v2 phrase catalog. The previous text-only selector sweep included
+	// placeholder definitions that compiled to constant keyframes and looked
+	// static. These five catalog motions have visible entrance keyframes; the
+	// renderer adds the shared phrase exit fade at the layer boundary.
 	phraseMotionCandidates = []string{
-		"word_reveal", "character_cascade", "char_wave", "opacity_wave", "center_expansion",
+		"kinetic_split_word", "masked_upward_reveal", "staggered_char_float",
+		"soft_edge_spotlight_dissolve", "velocity_inertia_snap",
 	}
 )
 
@@ -74,15 +75,15 @@ func selectPhraseMotion(jobID, sceneID string, ordinal int) string {
 	if len(phraseMotionCandidates) == 0 {
 		return ""
 	}
-	// The ordinal is part of the stable semantic identity for this bounded
-	// phrase surface. Hash selection still varies the starting point per
-	// render, while the rotation guarantees distinct motions within a scene.
+	// The caller supplies one run-wide ordinal after editorial ranking and
+	// dedupe. Hash selection varies the first effect by job; rotating the
+	// certified catalog then guarantees distinct motions across the admitted
+	// phrase set.
 	seeded := DefaultDeterministicPresetSampler.Sample(PresetSampleInput{
 		JobFingerprint: jobID,
 		SceneID:        sceneID,
-		// Use the scene as the stable rotation seed. Including itemID here would
-		// choose a different starting point per phrase and could reintroduce a
-		// collision after the ordinal is applied.
+		// The caller passes the stable run sentinel here. Per-scene seeds would
+		// choose different starting points and could reintroduce collisions.
 		SemanticID:   sceneID,
 		PresetFamily: "important_phrase_motion",
 		Presets:      phraseMotionCandidates,

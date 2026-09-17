@@ -104,13 +104,17 @@ func buildDestinationPolicies(cfg *config.Config) map[DestinationKey]Destination
 			RequireSubpath: true,
 			ConflictPolicy: ConflictOverwrite, // latest PDF/DOCX wins
 		},
-		// DestinationImage: immutable image assets use the canonical
-		// ConflictSkip policy until a real content-hash comparison
-		// capability exists.
+		// DestinationImage: per-image SubFolder layout under the dedicated
+		// images root 1kr8c1KZmUus10mkIdqJlYqAzXDyoNZeY. Each image maps to
+		// <root>/<SafeFolderName(subject)>/<file> (ImagePath = single
+		// segment) with ConflictSkip + DeriveIdempotencyKey so the image
+		// is downloaded once at runtime then reused permanently from Drive.
+		// Namespace is empty — the root itself IS the images namespace
+		// (no extra "images/" prefix).
 		DestinationImage: {
 			RootFolderID:   cfg.Drive.ImagesFolder(),
-			Namespace:      "images",
-			PathBuilder:    maybeWrapNamespace(cfg, "images", cfg.Drive.ImagesRootFolder, ImagePath),
+			Namespace:      "",
+			PathBuilder:    ImagePath,
 			RequireSubpath: true,
 			ConflictPolicy: ConflictSkip,
 		},

@@ -130,34 +130,14 @@ func (s *ImageStorageService) syncFolderRecursive(ctx context.Context, folderID,
 
 // ── Helpers ────────────────────────────────────────────────────────────
 
-func (s *ImageStorageService) aiImageDriveRootForSource(source, style string) string {
-	if s == nil || s.cfg == nil {
-		return ""
-	}
-	if !detail.IsAIImageSource(source) {
-		return ""
-	}
-	styleFolders := map[string]string{
-		"medieval":         "1yfCnjvpZ3ZuFs7W0pRFNGzapRLGIykPi",
-		"whiteboard":       "1Znu_g8pUOXkXHG-1XkLMOcYN69umrlae",
-		"anime":            "1e1pW8ZaQYTwDV0po6tIxx_vUql_6CD_v",
-		"cinematic":        "1t6bhe8kquPqk7ypYzbobHqUq-HGjVdZw",
-		"sketch":           "1QrC74aZ8It43pQa5l5G6BNWcc18ksIo2",
-		"watercolor":       "1tzvn5PkOwZk3DPjjr8sIXKr9LKeM--rB",
-		"cyberpunk":        "1x8xcUFtIj7hkGF6CsPJCM822ooJL9kMu",
-		"realistic":        "1b5iP5aHekJUL1FB9ZC-WGkWxoDULyU9X",
-		"heritage":         "1l_cdMqhKrstV94V7Ym7wemJTUZjjWLq_",
-		"kawaii":           "1K5IcI3sC5qLID0M1ulSoUC355S_3lUNh",
-		"professional-doc": "1g2Ef3yQCDWZ78YqnOnwhKmIghGJvPOPa",
-		"cartoon":          "1ab_YSfuKpj4CCh9twk3st5zv9fvMwS8B",
-		"retro-print":      "1141lRohkIiXp8NjGQlGj4bLLaQw6nCDb",
-		"papercraft":       "1yWlji7wololy_q3l8GAcmmF8goxJmOih",
-		"gothic":           "1CNNcNWY4YXyat9eqUsmsUEGeMmTXJY3t",
-		"oil-painting":     "1mI07oRaeabhGSmjdyKOICl5vSK6uSO7i",
-		"3d-render":        "1MWZy1rDXQKoAr0HRVMc7BdGAvqCaSe1y",
-	}
-	if folderID, ok := styleFolders[strings.ToLower(style)]; ok {
-		return folderID
-	}
-	return s.cfg.Drive.ImagesFolder()
+// aiImageDriveRootForSource previously mapped AI styles to 17 hard-coded
+// Drive folder IDs (per-style roots). Per-image layout requires EVERY
+// image — retrieved or generated — to live under the single dedicated
+// images root 1kr8c1KZmUus10mkIdqJlYqAzXDyoNZeY as
+// <root>/<SafeFolderName(subject)>/<file> with ImagePath = [subject].
+// Returning "" opts into the registry's DestinationImage policy (which
+// resolves to ImagesFolder() → DefaultImagesRootFolderID) so the style
+// map is retired without changing callers.
+func (s *ImageStorageService) aiImageDriveRootForSource(string, string) string {
+	return ""
 }

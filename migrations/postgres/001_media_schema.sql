@@ -153,6 +153,49 @@ CREATE INDEX IF NOT EXISTS idx_media_assets_legacy_file_md5
 CREATE INDEX IF NOT EXISTS idx_media_assets_content_sha256
     ON media_assets (content_sha256);
 
+-- ── YouTube clip identity (2026-09-17) ─────────────────────────────────
+-- The DATABASE-level defense for the YouTube clip identity.
+--
+-- The canonical asset id is already a deterministic function of the source
+-- window — `yt_<videoID>_<startSec>_<endSec>_<policyVersion>` — and the
+-- ingest paths now share ONE owner for that format
+-- (kernel/asset/detail.YouTubeClipAssetID), so two concurrent registers of the
+-- same window converge on the SAME primary key and the writer's UPSERT keeps
+-- one row.
+--
+-- That convergence was previously only an application-level convention: a
+-- duplicate could still be created by any writer that derived the id
+-- DIFFERENTLY (the retired `yt_<videoID>_<md5-prefix>` sourcing format did
+-- exactly that), because media_assets had no constraint tying the row back to
+-- the video window it came from. This index closes that hole at the only layer
+-- that cannot be bypassed.
+--
+-- Why the columns are these five and not just (video, start, end):
+--   * policy_version is PART of the identity by construction. A deliberate
+--     re-cut that changes the policy mints a genuinely different asset id, so
+--     omitting the column would make a legitimate re-cut look like a duplicate
+--     and break the cutover/rollback path. Including it keeps the constraint
+--     exactly as strict as the id format, no stricter.
+--   * start_ms/end_ms are the window the identity encodes. Two rows for the
+--     same video and window under the SAME policy can only be the duplicate
+--     this index exists to prevent.
+--
+-- Why the predicate is mandatory (this is the trap in the obvious version):
+-- without `source_provider = 'youtube' AND source_video_id <> ''` the index
+-- would apply to every non-YouTube row as well, and every stock/planner/local
+-- asset carries an empty source_video_id with a 0/0 window — they would all
+-- collide into a single permitted row. A partial index scopes the constraint to
+-- exactly the population whose identity is (video, window, policy).
+--
+-- Operator note: CREATE UNIQUE INDEX validates existing rows and fails naming
+-- this index if a duplicate already exists. That is the intended outcome — the
+-- duplicates it finds are precisely the rows that would otherwise be silently
+-- double-indexed — and it is safe to inspect or re-run afterwards
+-- (IF NOT EXISTS).
+CREATE UNIQUE INDEX IF NOT EXISTS ux_media_assets_youtube_clip_identity
+    ON media_assets (source_provider, source_video_id, start_ms, end_ms, policy_version)
+    WHERE source_provider = 'youtube' AND source_video_id <> '';
+
 -- ── asset_locations ─────────────────────────────────────────────────────
 -- Mirrors the canonical SQLite asset_locations (migration 055 + 061) with
 -- the PRIMARY KEY (asset_id, location_kind) conflict target used by the

@@ -90,6 +90,12 @@ func TestRootForDestination_SpecificRootWins(t *testing.T) {
 // TestRootForDestination_FallsBackToMediaRoot pins: when the destination-
 // specific root is empty but MediaRootFolder is set, the adapter returns
 // MediaRootFolder + the destination namespace (DoD #5 priority 2).
+//
+// IMAGES ARE THE DOCUMENTED EXCEPTION: destination=image never inherits
+// MediaRootFolder. The per-image layout requires every image to live under the
+// single dedicated images root (config.DefaultImagesRootFolderID) as
+// <root>/<SafeFolderName(subject)>/<file>, so a MediaRootFolder configured for
+// other destinations can never scatter images into the media tree.
 func TestRootForDestination_FallsBackToMediaRoot(t *testing.T) {
 	a, err := NewAdapter(config.DriveConfig{
 		MediaRootFolder: "media-root",
@@ -103,7 +109,7 @@ func TestRootForDestination_FallsBackToMediaRoot(t *testing.T) {
 		wantRoot string
 	}{
 		{delivery.DestinationStock, "media-root"},
-		{delivery.DestinationImage, "media-root"},
+		{delivery.DestinationImage, config.DefaultImagesRootFolderID},
 		{delivery.DestinationYouTubeClip, "media-root"},
 		{delivery.DestinationVoiceover, "media-root"},
 		{delivery.DestinationScript, "media-root"},
@@ -204,7 +210,10 @@ func TestRootForDestination_PerDestinationSpecificRoot(t *testing.T) {
 
 // TestRootForDestination_WhitespaceMediaRoot_Trimmed pins: MediaRootFolder
 // with leading/trailing whitespace is trimmed before use (per
-// config.ResolveFolder contract).
+// config.ResolveFolder contract). The probe is a destination that still
+// participates in the MediaRootFolder fallback — images deliberately do not
+// (they resolve to config.DefaultImagesRootFolderID), so asserting the trim
+// through destination=image would test the wrong rule.
 func TestRootForDestination_WhitespaceMediaRoot_Trimmed(t *testing.T) {
 	a, err := NewAdapter(config.DriveConfig{
 		MediaRootFolder: "  padded-media-root  ",
@@ -213,12 +222,21 @@ func TestRootForDestination_WhitespaceMediaRoot_Trimmed(t *testing.T) {
 		t.Fatalf("NewAdapter: %v", err)
 	}
 
-	root, err := a.rootForDestination(delivery.DestinationImage)
+	root, err := a.rootForDestination(delivery.DestinationStock)
 	if err != nil {
-		t.Fatalf("rootForDestination(image): %v", err)
+		t.Fatalf("rootForDestination(stock): %v", err)
 	}
 	if root != "padded-media-root" {
 		t.Fatalf("expected 'padded-media-root', got %q", root)
+	}
+	// The images root is NEVER the media root, however MediaRootFolder is
+	// spelled: the dedicated per-image root wins unconditionally.
+	imageRoot, err := a.rootForDestination(delivery.DestinationImage)
+	if err != nil {
+		t.Fatalf("rootForDestination(image): %v", err)
+	}
+	if imageRoot != config.DefaultImagesRootFolderID {
+		t.Fatalf("expected images root %q, got %q", config.DefaultImagesRootFolderID, imageRoot)
 	}
 }
 

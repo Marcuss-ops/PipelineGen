@@ -92,7 +92,7 @@ func TestEnrichmentEngine_BackfillCoverageConverges(t *testing.T) {
 	if !ok {
 		return
 	}
-	db, err := openMediaDB(dsn)
+	db, err := openMediaDB(t, dsn)
 	if err != nil {
 		t.Fatalf("open media db: %v", err)
 	}
@@ -165,7 +165,7 @@ func TestEnrichmentEngine_RecordsFailuresWithoutFabricating(t *testing.T) {
 	if !ok {
 		return
 	}
-	db, err := openMediaDB(dsn)
+	db, err := openMediaDB(t, dsn)
 	if err != nil {
 		t.Fatalf("open media db: %v", err)
 	}

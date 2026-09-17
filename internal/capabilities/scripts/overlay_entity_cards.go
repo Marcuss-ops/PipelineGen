@@ -7,6 +7,7 @@
 package scriptgeneration
 
 import (
+	"os"
 	"strings"
 
 	"go.uber.org/zap"
@@ -58,6 +59,15 @@ func entityCardMediaIndex(result *GenerateResult) (*capabilityentities.EntityMed
 	index := capabilityentities.NewEntityMediaIndex()
 	media := capabilityentities.NewEntityMediaResolver()
 	canonicalByStable := map[string]string{}
+	localPathByAsset := map[string]string{}
+	for _, segment := range result.Segments {
+		candidates := append(append([]scriptpkg.SegmentAssetCandidate(nil), segment.Assets.Candidates...), segment.Assets.SecondaryImages...)
+		for _, candidate := range candidates {
+			if assetID := strings.TrimSpace(candidate.AssetID); assetID != "" && usableLocalAssetPath(candidate.LocalPath) {
+				localPathByAsset[assetID] = candidate.LocalPath
+			}
+		}
+	}
 	for i := range result.Scenes {
 		ann := result.Scenes[i].Annotations
 		if ann == nil {
@@ -84,6 +94,10 @@ func entityCardMediaIndex(result *GenerateResult) (*capabilityentities.EntityMed
 			if url == "" || strings.TrimSpace(binding.SHA256) == "" {
 				continue
 			}
+			localPath := binding.LocalPath
+			if !usableLocalAssetPath(localPath) {
+				localPath = localPathByAsset[binding.AssetID]
+			}
 			score := entity.Confidence
 			if score <= 0 {
 				score = 0.9
@@ -95,6 +109,7 @@ func entityCardMediaIndex(result *GenerateResult) (*capabilityentities.EntityMed
 			if err := index.IndexForCanonicalID(canonical, capabilityentities.EntityAsset{
 				AssetID: binding.AssetID, AssetType: entityImageAssetType(binding),
 				SHA256: binding.SHA256, StorageURL: url,
+				LocalPath:    localPath,
 				QualityScore: score, Source: binding.Source,
 			}); err != nil {
 				logger.Warn("overlay plan: entity card asset not indexed (card stays text-only)",
@@ -107,6 +122,15 @@ func entityCardMediaIndex(result *GenerateResult) (*capabilityentities.EntityMed
 	}
 	media.SetIndex(index)
 	return media, canonicalByStable
+}
+
+func usableLocalAssetPath(path string) bool {
+	path = strings.TrimSpace(path)
+	if path == "" {
+		return false
+	}
+	info, err := os.Stat(path)
+	return err == nil && info.Mode().IsRegular()
 }
 
 // entityImageAssetType keeps the semantic path extension aligned with the
@@ -159,7 +183,7 @@ func attachEntityCardAsset(item capabilityoverlay.OverlayItem, media *capability
 		return item
 	}
 	item.AssetRefs = []capabilityoverlay.OverlayAssetRef{{
-		AssetID: ref.SHA256, URL: ref.URL, SHA256: ref.SHA256, MediaType: ref.MediaType,
+		AssetID: ref.SHA256, URL: ref.URL, LocalPath: ref.LocalPath, SHA256: ref.SHA256, MediaType: ref.MediaType,
 	}}
 	// A resolved portrait is a distinct visual capability: use the official
 	// image preset/motion path and do not compile the text-card layer as well.
@@ -240,6 +264,7 @@ func imageCandidate(binding *scriptpkg.EntityImageBinding, occ *capabilityentiti
 	return capabilityoverlay.ImageCandidate{
 		AssetID:    binding.SHA256,
 		URL:        entityImageURL(binding),
+		LocalPath:  binding.LocalPath,
 		SHA256:     binding.SHA256,
 		MediaType:  "image",
 		StartMs:    startUS / 1000,

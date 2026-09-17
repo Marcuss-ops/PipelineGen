@@ -231,20 +231,34 @@ func StockPath(req PublishRequest) ([]string, error) {
 	return segs, nil
 }
 
-// ImagePath builds the path for generated images:
+// ImagePath builds the per-image Drive path:
 //
-//	images/{style}/{subject}
+//	{subject}
+//
+// Every image lives in its own SubFolder directly under the dedicated
+// images root (1kr8c1KZmUus10mkIdqJlYqAzXDyoNZeY). The folder name is
+// pathutil.SafeFolderName(subject) so an image is addressed as
+// <root>/<SafeFolderName(subject)>/<file> and is downloaded once at
+// runtime then reused permanently from Drive (ConflictSkip +
+// DeriveIdempotencyKey). Style is optional legacy metadata kept for
+// back-compat — when present and equal to subject it is deduped,
+// otherwise it does NOT create an extra level (the per-image folder
+// is the single level per spec).
 func ImagePath(req PublishRequest) ([]string, error) {
-	style := strings.TrimSpace(req.Style)
 	subject := strings.TrimSpace(req.Subject)
-	if style == "" {
-		return nil, fmt.Errorf("delivery: ImagePath: style is required")
+	if subject == "" {
+		// Legacy callers may have populated style only; fall back to
+		// style as the subject slug so an empty subject does not
+		// fail-closed when style already names the image.
+		if alt := strings.TrimSpace(req.Style); alt != "" {
+			subject = alt
+		}
 	}
 	if subject == "" {
 		return nil, fmt.Errorf("delivery: ImagePath: subject is required")
 	}
+	// Single per-image SubFolder — the only level under the images root.
 	return []string{
-		pathutil.SafeFolderName(style),
 		pathutil.SafeFolderName(subject),
 	}, nil
 }

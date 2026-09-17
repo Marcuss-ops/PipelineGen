@@ -86,6 +86,39 @@ func TestAudioTimebaseRejectsNonContractSampleRate(t *testing.T) {
 	}
 }
 
+// TestVideoProfileCompatibilityIsTheHighMainPair pins the ONLY profile
+// equivalence the contract gate accepts. The contract declares "high" (the
+// VeloxEditing SSOT vocabulary) while the native NVENC lane certifies "Main";
+// both spellings are the same legal input for the copy-only assembler, and the
+// RenderingGen worker mirrors the same finite pair in its output profile
+// registry. Everything outside the pair is a real mismatch.
+func TestVideoProfileCompatibilityIsTheHighMainPair(t *testing.T) {
+	compatible := []struct{ contract, certified string }{
+		{"high", "high"},
+		{"high", "High"},
+		{"high", "main"},
+		{"main", "high"},
+		{"Main", "HIGH"},
+	}
+	for _, tc := range compatible {
+		if !videoProfileCompatible(tc.contract, tc.certified) {
+			t.Errorf("videoProfileCompatible(%q, %q) = false, want true", tc.contract, tc.certified)
+		}
+	}
+	incompatible := []struct{ contract, certified string }{
+		{"high", "baseline"},
+		{"high", "constrained baseline"},
+		{"high", "high 10"},
+		{"high", ""},
+		{"", "main"},
+	}
+	for _, tc := range incompatible {
+		if videoProfileCompatible(tc.contract, tc.certified) {
+			t.Errorf("videoProfileCompatible(%q, %q) = true, want false", tc.contract, tc.certified)
+		}
+	}
+}
+
 func TestValidateContractTablesRejectsInvalidRegistryEntry(t *testing.T) {
 	builders := map[string]func(*RenderRequest) (*ResolvedContract, error){
 		"": nil,

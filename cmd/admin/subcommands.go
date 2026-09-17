@@ -86,6 +86,7 @@ var commandRegistry = map[string]commandHandler{
 	"keep-drive-folder-files":        drive.RunKeepDriveFolderFiles,
 	"list-drive-folder":              drive.RunListDriveFolder,
 	"normalize-sound-effects-drive":  soundeffects.RunNormalizeSoundEffectsDrive,
+	"flatten-images-drive":           cleanup.RunFlattenImagesDrive,
 	"organize-drive-folder":          cleanup.RunOrganizeDriveFolder,
 	"organize-foley-drive":           soundeffects.RunOrganizeFoleyDrive,
 	"organize-sound-effects-drive":   soundeffects.RunOrganizeSoundEffectsDrive,

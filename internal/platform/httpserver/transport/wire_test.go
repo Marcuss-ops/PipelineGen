@@ -57,7 +57,12 @@ func TestWireRegistry_AllCapabilitiesMounted(t *testing.T) {
 		{Method: "POST", Path: "/api/media/voiceover/generate"},
 		{Method: "POST", Path: "/api/script/generate"},
 		{Method: "POST", Path: "/api/youtube/clip-extract"},
-		{Method: "POST", Path: "/api/register/from-youtube"},
+		// The REAL register route (assets module mounts the register capability
+		// beneath `/media`). Pre-2026-09-17 this fixture used the fictional
+		// "/api/register/from-youtube", which matched the equally fictional
+		// "/api/register" prefix and hid the false negative: the live /ready wire
+		// reported register=NOT_MOUNTED with the routes answering 401.
+		{Method: "POST", Path: "/api/media/register-from-youtube"},
 		{Method: "POST", Path: "/api/storage/sync"},
 		{Method: "POST", Path: "/api/drive/admin"},
 		{Method: "POST", Path: "/api/media/clips/upload"},
@@ -69,6 +74,38 @@ func TestWireRegistry_AllCapabilitiesMounted(t *testing.T) {
 	for _, cap := range knownCapabilities {
 		assert.Equal(t, WireMounted, all[cap.name], "capability %q should be MOUNTED", cap.name)
 	}
+}
+
+// TestWireRegistry_RegisterRoutesMatchTheRealMountPath pins the regression
+// found on 2026-09-17: /ready reported `wire: register: NOT_MOUNTED` while
+// POST /api/media/register-from-youtube and POST /api/media/register-batch were
+// both mounted and live (they answered 401, not 404). The capability prefix had
+// been /api/register, which matches no route the assets module registers.
+func TestWireRegistry_RegisterRoutesMatchTheRealMountPath(t *testing.T) {
+	cases := []struct {
+		name string
+		path string
+	}{
+		{name: "register-from-youtube", path: "/api/media/register-from-youtube"},
+		{name: "register-batch", path: "/api/media/register-batch"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			reg := NewWireRegistry([]RouteInfo{{Method: "POST", Path: tc.path}})
+			assert.Equal(t, WireMounted, reg.All()["register"],
+				"%s must report the register capability as MOUNTED", tc.path)
+		})
+	}
+}
+
+// TestWireRegistry_LegacyRegisterPrefixIsNotACapability pins that the
+// pre-2026-09-17 prefix no longer classifies anything: nothing is mounted at
+// /api/register/*, so a route there must NOT be reported as the register
+// capability (it would re-introduce a mount signal for a non-existent surface).
+func TestWireRegistry_LegacyRegisterPrefixIsNotACapability(t *testing.T) {
+	reg := NewWireRegistry([]RouteInfo{{Method: "POST", Path: "/api/register/from-youtube"}})
+	assert.False(t, reg.IsMounted("register"),
+		"the legacy /api/register/* prefix must not classify as the register capability")
 }
 
 // TestWireRegistry_PrefixMatching verifies the HasPrefix semantics:

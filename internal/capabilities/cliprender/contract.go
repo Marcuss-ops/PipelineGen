@@ -59,6 +59,32 @@ type contractCheck struct {
 	apply func(c *ResolvedContract, p *OutputProbe) (mismatch bool, detail string)
 }
 
+// videoProfileCompatible decides whether a certified video profile satisfies the
+// contract's canonical profile.
+//
+// The contract declares the assembly profile as "high" (VeloxEditing vocabulary,
+// kernel/media/assembly_contract.go — the SSOT), while the native NVENC lane
+// certifies "Main". H.264 Main and High are both valid inputs for the copy-only
+// assembler: it copies packets and only depends on the stream's structural
+// identity (codec, GOP, timebase, pixel format), not on the profile level's
+// coding tools. Both spellings of the SAME profile are compared after
+// normalization (normalizeVideoProfile lowercases ffprobe casing), and the pair
+// high/main is the ONLY equivalence: every other profile (Baseline, Constrained
+// Baseline, High 10, …) is a real mismatch and fails the gate.
+//
+// RenderingGen mirrors this finite equivalence in its output profile registry
+// (media.OutputProfile.AcceptedCodecProfiles), so the worker's finalize gate and
+// this consumer gate can never disagree about which artifacts are legal.
+func videoProfileCompatible(contractProfile, certifiedProfile string) bool {
+	canonical := normalizeVideoProfile(contractProfile)
+	certified := normalizeVideoProfile(certifiedProfile)
+	if canonical == certified {
+		return true
+	}
+	return (canonical == "high" && certified == "main") ||
+		(canonical == "main" && certified == "high")
+}
+
 var contractChecks = []contractCheck{
 	{
 		dim: "container",
@@ -90,10 +116,7 @@ var contractChecks = []contractCheck{
 	{
 		dim: "video-profile",
 		apply: func(c *ResolvedContract, p *OutputProbe) (bool, string) {
-			if p.VideoProfile != "" && p.VideoProfile != c.VideoProfile {
-				if (c.VideoProfile == "high" && p.VideoProfile == "main") || (c.VideoProfile == "main" && p.VideoProfile == "high") {
-					return false, ""
-				}
+			if p.VideoProfile != "" && !videoProfileCompatible(c.VideoProfile, p.VideoProfile) {
 				return true, "video profile " + quote(p.VideoProfile) + " != " + quote(c.VideoProfile)
 			}
 			return false, ""

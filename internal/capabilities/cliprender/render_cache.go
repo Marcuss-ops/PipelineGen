@@ -28,6 +28,20 @@
 // Lookup key: fingerprint hex (64 chars, lower hex). Value is the
 // certified locator and the committed asset id, so the worker can
 // fabricate a valid completion without touching the GPU.
+//
+// SEGMENT IDENTITY — a recorded precondition, deliberately NOT implemented
+// here. A segmented render (N jobs rendering disjoint frame ranges of the same
+// sealed plan) needs a per-SEGMENT cache entry: the key becomes
+// (fingerprint, frame_range) because one plan legitimately produces many
+// artifacts, one per window. The plan itself carries no range by contract
+// (bench_seek_test.go pins that the source block exposes exactly
+// asset_id/path/sha256 and no hidden offset), so the range can only come from a
+// producer that does not exist yet (RenderingGen's queue accepts
+// parent_job_id/chunk_index/frame_range, and jobFrameRange renders the window,
+// but nothing on the clip lane submits chunks). Adding a range key now would be
+// a dead field that silently never matches; the key must be extended in the
+// same change that introduces the producer, and this comment is the record of
+// why the cache was left whole-clip.
 
 package cliprender
 

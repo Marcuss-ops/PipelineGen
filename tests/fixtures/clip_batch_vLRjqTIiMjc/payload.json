@@ -1,0 +1,144 @@
+{
+  "_comment": "Canonical YouTube CLIPS fixture (not stock) for vLRjqTIiMjc — Dolly Parton, 'Dolly Parton Got Kicked Out Of A Hotel During Her First Trip To NYC | Late Night with Conan O'Brien' (PT5M57S = 357s), 5 curated moments. Wire shape mirrors POST /api/clips/process ExtractRequest (internal/capabilities/youtube/dto/types.go::ExtractRequest + ::Segment). Drift source of truth: dto/types.go. Destination fields MUST stay nested under `destination`; the legacy top-level shape (group/folder_id/folder_path/subfolder_name/create_subfolder) is rejected with 400 by ExtractRequest.UnmarshalJSON and is pinned by tests/e2e/dolly_parton_clips_test.go. Drive routing: parent = config.yaml drive.normal_clips_source_folder (1ll2RlTaAbhnaLkAjEDBg41lAXUyo-zJ2), subfolder_name = 'Dolly Parton' (pre-created child folder 1C-q2swarUlf4JEUYHVe0Ol88MDSU8FUq, get-or-created again by the extraction worker), so every clip lands in <parent>/Dolly Parton/ and never in the parent root. Duration gate: the canonical SegmentPolicy default is [4s, 60s], but 2 of these 5 moments are longer (84s and 85s), so the extraction must run with VELOX_YOUTUBE_MAX_SEGMENT_DURATION_SECONDS >= 85 (jobs.youtube_max_segment_duration_seconds; the deployed service runs 240). Below that floor those segments fail with FailureCodeDurationOutOfRange. Clip identity: deterministic yt_<videoID>_<startSec>_<endSec>_<policyVersion> (policyVersion 'v1'), so re-submitting this exact payload re-uses the same 5 media_assets rows (UPSERT) instead of creating duplicates — idempotent replay is safe.",
+  "url": "https://www.youtube.com/watch?v=vLRjqTIiMjc",
+  "strategy": "verify",
+  "concurrency": 3,
+  "force_keyframes": true,
+  "normalize": true,
+  "keep_audio": true,
+  "write_summary": true,
+  "destination": {
+    "folder_id": "1ll2RlTaAbhnaLkAjEDBg41lAXUyo-zJ2",
+    "subfolder_name": "Dolly Parton",
+    "create_subfolder": true
+  },
+  "segments": [
+    {
+      "start": "00:00:00",
+      "end": "00:00:25",
+      "name": "L'outfit hippie e l'omaggio all'Irlanda di Conan",
+      "category": "celebrity_interview",
+      "source_title": "Dolly Parton Got Kicked Out Of A Hotel During Her First Trip To NYC | Late Night with Conan O'Brien",
+      "source_channel": "Conan O'Brien",
+      "summary": "Dolly scherza sul suo vestito tie-dye indossato per rappresentare le sue canzoni hippie e fa notare a Conan di aver scelto il verde appositamente per le sue origini irlandesi.",
+      "tags": [
+        "Dolly Parton",
+        "Conan O'Brien",
+        "Late Night",
+        "Outfit",
+        "Tie-Dye",
+        "Irlanda"
+      ],
+      "topics": [
+        "Late Night with Conan O'Brien",
+        "intervista TV",
+        "moda"
+      ],
+      "mentioned_people": [
+        "Dolly Parton",
+        "Conan O'Brien"
+      ]
+    },
+    {
+      "start": "00:00:39",
+      "end": "00:01:30",
+      "name": "Scambiate per prostitute e cacciate dall'hotel",
+      "category": "celebrity_interview",
+      "source_title": "Dolly Parton Got Kicked Out Of A Hotel During Her First Trip To NYC | Late Night with Conan O'Brien",
+      "source_channel": "Conan O'Brien",
+      "summary": "Dolly racconta il suo primo viaggio a New York tra fine anni '60 e primi anni '70 insieme all'amica Judy. Con pochi soldi in tasca prenotano una sola stanza, ma a causa del loro look la direzione dell'hotel le scambia per prostitute, sbatte tutti i bagagli nel corridoio e le chiude fuori.",
+      "tags": [
+        "Dolly Parton",
+        "New York",
+        "Hotel",
+        "Anni 70",
+        "Judy"
+      ],
+      "topics": [
+        "primo viaggio a New York",
+        "aneddoto",
+        "intervista TV"
+      ],
+      "mentioned_people": [
+        "Dolly Parton",
+        "Conan O'Brien"
+      ]
+    },
+    {
+      "start": "00:01:40",
+      "end": "00:03:04",
+      "name": "La pistola nella borsetta e il molestatore sulla 42esima strada",
+      "category": "celebrity_interview",
+      "source_title": "Dolly Parton Got Kicked Out Of A Hotel During Her First Trip To NYC | Late Night with Conan O'Brien",
+      "source_channel": "Conan O'Brien",
+      "summary": "Mentre vagavano per ingannare il tempo sulla 42esima strada, un uomo comincia a importunarla pesantemente credendo che fosse una prostituta. Dolly estrae con disinvoltura una pistola dalla borsetta minacciando di sparargli, ma l'amica scoppia a ridere e l'uomo pensa sia tutto uno scherzo. Dolly rivela che da quell'aneddoto è nata la celebre battuta del film 9 to 5 («Ti trasformo da gallo in gallina con un solo colpo»).",
+      "tags": [
+        "Dolly Parton",
+        "42nd Street",
+        "Pistola",
+        "9 to 5",
+        "New York",
+        "Aneddoto"
+      ],
+      "topics": [
+        "42esima strada",
+        "9 to 5",
+        "aneddoto"
+      ],
+      "mentioned_people": [
+        "Dolly Parton",
+        "Conan O'Brien"
+      ]
+    },
+    {
+      "start": "00:03:31",
+      "end": "00:04:16",
+      "name": "La statua di bronzo e la battuta del padre sui piccioni",
+      "category": "celebrity_interview",
+      "source_title": "Dolly Parton Got Kicked Out Of A Hotel During Her First Trip To NYC | Late Night with Conan O'Brien",
+      "source_channel": "Conan O'Brien",
+      "summary": "Conan le chiede come faccia a rimanere così umile nonostante il successo planetario. Dolly racconta che quando nel suo paese natale le dedicarono una statua di bronzo nel cortile del tribunale, suo padre la riportò subito con i piedi per terra dicendole: «Per i tuoi fan sarai anche un idolo, ma per i piccioni sei solo un altro gabinetto all'aperto».",
+      "tags": [
+        "Dolly Parton",
+        "Statua",
+        "Umiltà",
+        "Famiglia",
+        "Aneddoto"
+      ],
+      "topics": [
+        "statua di bronzo",
+        "umiltà",
+        "aneddoto"
+      ],
+      "mentioned_people": [
+        "Dolly Parton",
+        "Conan O'Brien"
+      ]
+    },
+    {
+      "start": "00:04:30",
+      "end": "00:05:55",
+      "name": "I tabloid e le battute sul seno pesante",
+      "category": "celebrity_interview",
+      "source_title": "Dolly Parton Got Kicked Out Of A Hotel During Her First Trip To NYC | Late Night with Conan O'Brien",
+      "source_channel": "Conan O'Brien",
+      "summary": "Dolly affronta con ironia tagliente le continue speculazioni dei tabloid sul suo seno, ridicolizzando gli articoli secondo cui non riuscirebbe ad alzarsi dal letto per il troppo peso. Conan commenta che in effetti sembrano pesanti e lei replica a tono con una serie di battute esilaranti («Per questo suono così tante canzoni dei Led Zeppelin!») mimando l'uso di supporti improvvisati.",
+      "tags": [
+        "Dolly Parton",
+        "Tabloid",
+        "Ironia",
+        "Led Zeppelin",
+        "Battute"
+      ],
+      "topics": [
+        "tabloid",
+        "ironia",
+        "intervista TV"
+      ],
+      "mentioned_people": [
+        "Dolly Parton",
+        "Conan O'Brien"
+      ]
+    }
+  ]
+}

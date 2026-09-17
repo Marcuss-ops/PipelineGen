@@ -30,6 +30,9 @@ type EntityAsset struct {
 	// StorageURL is the fetchable source URL (object store / CDN / Drive
 	// direct link). RenderingGen materializes the asset from here.
 	StorageURL string `json:"storage_url"`
+	// LocalPath is an in-process staging hint for bytes already materialized by
+	// the producer. It is ephemeral and never crosses a serialized asset record.
+	LocalPath string `json:"-"`
 	// DriveFileID is the Google Drive file id, when the asset is published
 	// to Drive (for artifact publication).
 	DriveFileID string `json:"drive_file_id,omitempty"`
@@ -147,6 +150,7 @@ type ResolvedAssetRef struct {
 	AssetID   string `json:"asset_id"`
 	SHA256    string `json:"sha256"`
 	URL       string `json:"url"`
+	LocalPath string `json:"-"`
 	MediaType string `json:"media_type,omitempty"`
 }
 
@@ -200,6 +204,7 @@ func (r *AssetResolver) ResolveBest(entityID string) (ResolvedAssetRef, bool) {
 		AssetID:   best.AssetID,
 		SHA256:    best.SHA256,
 		URL:       best.StorageURL,
+		LocalPath: best.LocalPath,
 		MediaType: mediaTypeFor(best.AssetType),
 	}, true
 }
@@ -217,6 +222,7 @@ func (r *AssetResolver) ResolveTop(entityID string, n int) []ResolvedAssetRef {
 			AssetID:   asset.AssetID,
 			SHA256:    asset.SHA256,
 			URL:       asset.StorageURL,
+			LocalPath: asset.LocalPath,
 			MediaType: mediaTypeFor(asset.AssetType),
 		})
 	}

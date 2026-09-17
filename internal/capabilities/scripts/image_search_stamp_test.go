@@ -145,6 +145,7 @@ func TestImageCandidateCarriesSHA256(t *testing.T) {
 	binding := &scriptpkg.EntityImageBinding{
 		Status: "resolved", AssetID: "vision-pro-img",
 		PreviewURL: "https://cdn.example.com/vision-pro.png",
+		LocalPath:  "/tmp/verified-vision-pro.png",
 		SHA256:     "cc33dd44ee55ff66778899aabbccddeeff00112233445566778899aabbccdd",
 		Source:     "internet_images",
 	}
@@ -155,6 +156,7 @@ func TestImageCandidateCarriesSHA256(t *testing.T) {
 	candidate := imageCandidate(binding, occ, 0.95)
 	assert.Equal(t, binding.SHA256, candidate.AssetID, "render candidates are content-addressed")
 	assert.Equal(t, binding.PreviewURL, candidate.URL)
+	assert.Equal(t, binding.LocalPath, candidate.LocalPath, "verified producer bytes should be staged directly")
 	assert.Equal(t, binding.SHA256, candidate.SHA256, "the verified content address must cross the bridge")
 	assert.Equal(t, "image", candidate.MediaType)
 	assert.Equal(t, int64(1300), candidate.StartMs)
