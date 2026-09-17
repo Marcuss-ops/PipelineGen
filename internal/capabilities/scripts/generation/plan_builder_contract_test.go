@@ -52,6 +52,19 @@ func TestBuildPlan_PropagatesProject(t *testing.T) {
 	}
 }
 
+func TestBuildPlan_PropagatesSourceTextVerbatim(t *testing.T) {
+	plan := BuildPlan(scriptpkg.GenerationItemV2{
+		Source: scriptpkg.SourceSpec{Type: scriptpkg.SourceText, Topic: "topic"},
+		ScriptParams: scriptpkg.ScriptSpec{
+			SourceTextVerbatim: true,
+			Segments:           []scriptpkg.ScriptSegment{{ID: "scene-one", Topic: "first", SourceText: "Exact text."}},
+		},
+	})
+	if !plan.SourceTextVerbatim {
+		t.Fatal("plan must preserve source_text_verbatim")
+	}
+}
+
 func TestBuildPlan_AutoUsesSmallModelForShortScripts(t *testing.T) {
 	plan := BuildPlan(scriptpkg.GenerationItemV2{
 		Model:     "auto",

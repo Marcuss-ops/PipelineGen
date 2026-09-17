@@ -137,30 +137,10 @@ func overlayScene1Annotations() *scriptpkg.SceneAnnotations {
 	}
 }
 
-// TestRunner_OverlayPlanAllNineSemanticEntities certifies the durable runner
-// wiring: after a complete COMBINED_TIMELINE run with real word timing, the
-// result carries the semantic OverlayPlan with the full nine-template
-// vocabulary, each item timestamped from the certified word timing and each
-// template compiling to a canonical primitive (Text / Image / Video / Shape).
-//
-// Scene-0 offset 0s (16 words × 100ms = 1.6s), scene-1 offset 1.6s
-// (5 words × 100ms = 0.5s):
-//
-//	scene-0 "Tim Cook said that Apple changed everything in Cupertino and sold ten million Vision Pro units."
-//	    IMPORTANT_PHRASE "changed everything"  f(0.5–0.7s) → Text(title_centered)
-//	    IMPORTANT_WORD   "Apple"               f(0.4–0.5s) → Text(kinetic_word)
-//	    IMPORTANT_WORD   "Cupertino"           f(0.8–0.9s) → Text(kinetic_word)
-//	    PERSON + image   "Tim Cook"            f(0.0–0.2s) → Text(entity_card) with tim-cook-photo asset
-//	    LOCATION         "Cupertino"           f(0.8–0.9s) → Text(entity_card)
-//	    NUMBER           "ten million"         f(1.1–1.3s) → Text(number)
-//	    QUOTE            "changed everything"  f(0.5–0.7s) → Text(quote)
-//	    PRODUCT          "Vision Pro" + image  f(1.3–1.5s) → Image(contain)
-//	    LOGO             "Apple" + image       f(0.4–0.5s) → Image(contain)
-//
-//	scene-1 "Growth matters more than ever."
-//	    IMPORTANT_PHRASE "Growth matters"      f(1.6–1.8s) → Text(title_centered)
-//	    IMPORTANT_WORD   "Growth"              f(1.6–1.7s) → Text(kinetic_word)
-func TestRunner_OverlayPlanAllSemanticEntities(t *testing.T) {
+// TestRunner_OverlayPlanAppliesRunLevelEditorialBudget certifies that a real
+// timed run keeps only grounded phrase overlays and image overlays, with a
+// five-item global ceiling for each and no invented phrase backfill.
+func TestRunner_OverlayPlanAppliesRunLevelEditorialBudget(t *testing.T) {
 	repo := newInMemRunRepository()
 	textGen := newStubTextGenerator([]Scene{
 		{
@@ -203,139 +183,44 @@ func TestRunner_OverlayPlanAllSemanticEntities(t *testing.T) {
 		"overlay plan duration must follow the certified final audio")
 	require.NoError(t, res.OverlayPlan.Validate())
 
-	// The verbose report is intentionally emitted from the certified plan so
-	// operators can audit the exact preset and render key selected for every
-	// item, rather than only the allowed preset families.
-	for _, item := range res.OverlayPlan.Items {
-		assets := make([]string, 0, len(item.AssetRefs))
-		for _, asset := range item.AssetRefs {
-			assets = append(assets, asset.AssetID)
-		}
-		t.Logf("OVERLAY_PLAN_TABLE id=%s entity_id=%s kind=%s timing=%d+%dus template=%s preset=%s asset=%v render_key=%s text=%q", item.ID, item.EntityID, item.Kind, item.StartUS, item.DurationUS, item.TemplateID, item.PresetID, assets, item.RenderKey, item.Text)
-	}
-
-	// ── The full semantic vocabulary ────────────────────────────────
 	byID := map[string]capabilityoverlay.OverlayItem{}
-	templates := map[string]bool{}
+	images, phrases := 0, 0
 	for _, item := range res.OverlayPlan.Items {
 		byID[item.ID] = item
-		templates[item.TemplateID] = true
+		switch item.Kind {
+		case "entity_image", "image":
+			images++
+		case "text_phrase":
+			phrases++
+		default:
+			t.Fatalf("non-editorial overlay survived 5+5 budget: %+v", item)
+		}
 	}
-	for _, want := range []string{
-		"IMPORTANT_PHRASE", "IMPORTANT_WORD",
-		"image_popup", "gpe_default", "NUMBER", "QUOTE", "PRODUCT", "LOGO",
-	} {
-		require.True(t, templates[want], "plan must carry template %q (got %v)", want, templates)
-	}
+	require.Equal(t, 1, images)
+	require.Equal(t, 2, phrases)
+	require.Len(t, res.OverlayPlan.Items, 3)
+	require.Equal(t, capabilityoverlay.PhraseOverlayBudget{Requested: 5, Materialized: 2, Shortfall: 3}, *res.PhraseOverlayBudget)
 
-	// ── Certified timing (real word boundaries, ms floor/ceil) ──────
 	phrase := byID["scene-0-phrase-changed-everything"]
 	require.Equal(t, "IMPORTANT_PHRASE", phrase.TemplateID)
-	require.Equal(t, int64(500), phrase.StartMs, "phrase starts at word 5")
-	require.Equal(t, int64(700), phrase.EndMs, "phrase ends at word 7")
+	require.Equal(t, int64(500), phrase.StartMs)
+	require.Equal(t, int64(700), phrase.EndMs)
+	require.NotEmpty(t, phrase.PresetID)
+	require.NotEmpty(t, phrase.MotionID)
 
-	keyword := byID["scene-0-keyword-apple"]
-	require.Equal(t, "IMPORTANT_WORD", keyword.TemplateID)
-	require.Equal(t, int64(400), keyword.StartMs, "Apple is word 4")
+	scene1Phrase := byID["scene-1-phrase-growth-matters"]
+	require.Equal(t, int64(1600), scene1Phrase.StartMs)
+	require.Equal(t, int64(1800), scene1Phrase.EndMs)
 
-	// The chosen entity IS the image overlay: Tim Cook's photo is resolved via
-	// the canonical id → EntityMediaResolver path and rendered without a
-	// duplicate name layer.
 	person := byID["overlay-scene-0-tim-cook"]
 	require.Equal(t, "entity_image", person.Kind)
 	require.Equal(t, "image_popup", person.TemplateID)
 	require.Empty(t, person.Text)
 	require.NotEmpty(t, person.PresetID)
-	require.Empty(t, person.ImagePresetID)
-	require.Equal(t, int64(0), person.StartMs)
-	// MinEntityOverlayDurationUS: the spoken anchor stays at 0ms, the card
-	// holds the minimum five-second preset duration.
-	require.Equal(t, int64(5_000), person.EndMs)
 	require.Len(t, person.AssetRefs, 1)
-	require.Equal(t, "aa11bb22cc33dd44ee55ff66778899aabbccddeeff00112233445566778899aabb", person.AssetRefs[0].AssetID)
-	require.Equal(t, "https://cdn.example.com/tim-cook.jpg", person.AssetRefs[0].URL)
 	require.Equal(t, "person:tim-cook", person.EntityRef.CanonicalEntityID)
-	require.NotContains(t, templates, "IMAGE_OVERLAY", "entity images must not render twice")
+	require.Contains(t, capabilityoverlay.ImagePresetCandidates(), person.PresetID)
 
-	location := byID["overlay-scene-0-cupertino"]
-	require.Equal(t, "gpe_default", location.TemplateID)
-	require.Equal(t, int64(800), location.StartMs)
-	require.Equal(t, int64(5_800), location.EndMs)
-
-	number := byID["scene-0-number-ten-million"]
-	require.Equal(t, "NUMBER", number.TemplateID)
-	require.Equal(t, "ten million", number.Text)
-	require.Equal(t, int64(1100), number.StartMs)
-	require.Equal(t, int64(1300), number.EndMs)
-
-	quote := byID["scene-0-quote-changed-everything"]
-	require.Equal(t, "QUOTE", quote.TemplateID)
-	require.Equal(t, "changed everything", quote.Text)
-	require.Equal(t, int64(500), quote.StartMs)
-	require.Equal(t, int64(700), quote.EndMs)
-
-	product := byID["scene-0-product-ee55ff66778899aabbccddeeff00112233445566778899aabbccddeeff001122"]
-	require.Equal(t, "PRODUCT", product.TemplateID)
-	require.Equal(t, int64(1300), product.StartMs)
-	require.Equal(t, int64(6300), product.EndMs)
-	require.Equal(t, int64(5_000_000), product.DurationUS)
-	require.Len(t, product.AssetRefs, 1)
-	require.Equal(t, "ee55ff66778899aabbccddeeff00112233445566778899aabbccddeeff001122", product.AssetRefs[0].AssetID)
-
-	logo := byID["scene-0-logo-dd44ee55ff66778899aabbccddeeff00112233445566778899aabbccddeeff00"]
-	require.Equal(t, "LOGO", logo.TemplateID)
-	require.Equal(t, int64(400), logo.StartMs)
-	require.Equal(t, int64(5400), logo.EndMs)
-	require.Equal(t, int64(5_000_000), logo.DurationUS)
-	require.Len(t, logo.AssetRefs, 1)
-	require.Equal(t, "dd44ee55ff66778899aabbccddeeff00112233445566778899aabbccddeeff00", logo.AssetRefs[0].AssetID)
-
-	// Multi-scene: scene-1 (offset 1.6s) contributes its own phrase/word.
-	scene1Phrase := byID["scene-1-phrase-growth-matters"]
-	require.Equal(t, int64(1600), scene1Phrase.StartMs, "scene-1 phrase starts at the scene offset")
-	require.Equal(t, int64(1800), scene1Phrase.EndMs)
-
-	// No entity is rendered twice: "changed everything", "ten million",
-	// "Vision Pro" and "Apple" must NOT also appear as concept cards.
-	require.NotContains(t, templates, "concept_default", "planner-owned entities must not be duplicated as concept cards")
-
-	// ── Semantic primitives ─────────────────────────────────────────
-	// PipelineGen owns the semantic plan: every item pins an explicit preset
-	// when preset-driven. The visual lowering (layer type, font, geometry) is
-	// RenderingGen's compiler and is asserted by its own tests.
-	itemByID := map[string]capabilityoverlay.OverlayItem{}
-	for _, item := range res.OverlayPlan.Items {
-		itemByID[item.ID] = item
-	}
-	// The expected ids come from the single owner of the semantic→preset
-	// mapping (overlays.semantic_resolver.go) rather than a copy of it. The
-	// runtime catalog publishes exactly one text-family style, so the retired
-	// line-level ids this test used to list — fast_fade_through,
-	// clean_slide_up, slide_lateral, phrase_word_reveal, snap_scale,
-	// undertext_pop, name_glow_* — no longer resolve downstream and a generated
-	// plan that carries one cannot render. Motion stays a separate concern and
-	// travels as motion_id, not as a second preset.
-	phrasePresets := []string{string(capabilityoverlay.PresetModernPhrase)}
-	wordPresets := []string{string(capabilityoverlay.PresetModernWord)}
-	// Image presets keep their own catalog: the runtime image family was not
-	// collapsed with the text family, so the generated plan may name any of its
-	// registered members. The member list is READ from its single owner
-	// (overlays.imagePresetCandidates) instead of being copied here: a hardcoded
-	// copy silently drifted the moment the owner's render-safe set changed, and
-	// a test that pins a stale set rejects a plan the planner is entitled to
-	// produce (or, worse, accepts one it must never produce).
-	imagePresets := capabilityoverlay.ImagePresetCandidates()
-
-	require.Contains(t, phrasePresets, itemByID["scene-0-phrase-changed-everything"].PresetID)
-	require.Contains(t, wordPresets, itemByID["scene-0-keyword-apple"].PresetID)
-	require.Contains(t, imagePresets, itemByID["overlay-scene-0-tim-cook"].PresetID)
-	require.Contains(t, wordPresets, itemByID["scene-0-number-ten-million"].PresetID)
-	require.Contains(t, phrasePresets, itemByID["scene-0-quote-changed-everything"].PresetID)
-	require.NotEmpty(t, itemByID["overlay-scene-0-cupertino"].PresetID)
-	require.Equal(t, "PRODUCT", itemByID["scene-0-product-ee55ff66778899aabbccddeeff00112233445566778899aabbccddeeff001122"].TemplateID)
-	require.Equal(t, "LOGO", itemByID["scene-0-logo-dd44ee55ff66778899aabbccddeeff00112233445566778899aabbccddeeff00"].TemplateID)
-	require.NotEmpty(t, itemByID["scene-0-product-ee55ff66778899aabbccddeeff00112233445566778899aabbccddeeff001122"].AssetRefs)
-	require.NotEmpty(t, itemByID["scene-0-logo-dd44ee55ff66778899aabbccddeeff00112233445566778899aabbccddeeff00"].AssetRefs)
 }
 
 // TestRunner_OverlayIntents_PersistedBeforePlanEnqueue certifies the
@@ -559,10 +444,22 @@ func TestCompileOverlayPlan_NilOrSurfacelessIsNoOp(t *testing.T) {
 	require.Nil(t, plan)
 }
 
-// TestCompileOverlayPlan_UnspokenPhraseSkipped certifies that a phrase which
-// the voiceover did NOT speak verbatim is skipped (never timestamped), while
-// the words that ARE spoken still project. Timing here is the real word
-// boundary artifact of "Tim Cook speaks." (3 words × 100ms).
+func TestCompileResultOverlayPlanPersistsPhraseBudgetEvenWhenNoPhraseIsGrounded(t *testing.T) {
+	result := &GenerateResult{Scenes: []Scene{
+		{ID: "scene-0", Index: 0, Text: map[Language]string{"en": "A scene without certified timing."}},
+	}}
+	require.NoError(t, compileResultOverlayPlan(result, "en", "plan-1", "project-1", "", GoldenOverlayCanvas))
+	require.Nil(t, result.OverlayPlan)
+	require.NotNil(t, result.PhraseOverlayBudget)
+	require.Equal(t, capabilityoverlay.PhraseOverlayBudget{
+		Requested: capabilityoverlay.MaxPhraseOverlaysPerRun,
+		Shortfall: capabilityoverlay.MaxPhraseOverlaysPerRun,
+	}, *result.PhraseOverlayBudget)
+}
+
+// TestCompileOverlayPlan_UnspokenPhraseSkipped certifies that an unspoken
+// phrase is never timestamped and a word annotation does not bypass the
+// production phrase/image-only editorial overlay contract.
 func TestCompileOverlayPlan_UnspokenPhraseSkipped(t *testing.T) {
 	words := []capabilityaudio.SpeechWordTiming{
 		{Index: 0, Text: "Tim", StartUS: 0, EndUS: 100_000},
@@ -592,12 +489,7 @@ func TestCompileOverlayPlan_UnspokenPhraseSkipped(t *testing.T) {
 	}
 	plan, err := CompileOverlayPlan(result, "en", GoldenOverlayCanvas, "plan-1", "video-1", "")
 	require.NoError(t, err)
-	require.NotNil(t, plan, "the spoken keyword must still produce a plan")
-	require.Len(t, plan.Items, 1, "unspoken phrase skipped, spoken keyword kept")
-	require.Equal(t, "IMPORTANT_WORD", plan.Items[0].TemplateID)
-	require.Equal(t, "Cook", plan.Items[0].Text)
-	require.Equal(t, int64(100), plan.Items[0].StartMs)
-	require.Equal(t, int64(200), plan.Items[0].EndMs)
+	require.Nil(t, plan, "unspoken phrase and non-contract word overlay produce no plan")
 }
 
 // TestCompileOverlayPlan_ChosenEntityImageCarriesResolvedAsset certifies the

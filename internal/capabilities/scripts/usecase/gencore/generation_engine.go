@@ -85,7 +85,7 @@ func (r *GenerationEngineRunner) Generate(
 			Inner:  fmt.Errorf("ollama generation failed: %w", engineErr),
 		}
 	}
-	if item.ScriptParams.SingleScene {
+	if item.ScriptParams.SingleScene && !item.ScriptParams.SourceTextVerbatim {
 		collapseToSingleScene(engineResult)
 	}
 	if err := alignExplicitSegmentOutput(engineResult, item, plan); err != nil {
@@ -120,25 +120,31 @@ func (r *GenerationEngineRunner) Generate(
 // postprocessors gives every scene the same text hash and contaminates
 // provider queries. Explicit segment source text/topic is authoritative here.
 func alignExplicitSegmentOutput(result *EngineResult, item scriptpkg.GenerationItemV2, plan scriptpkg.ResolvedGenerationPlan) error {
-	if result == nil || len(plan.Segments) == 0 || plan.SingleScene {
+	if result == nil || len(plan.Segments) == 0 || (plan.SingleScene && !plan.SourceTextVerbatim) {
 		return nil
 	}
 	paragraphs := nonEmptyParagraphs(item.Source.SourceText)
 	scenes := make([]scriptpkg.SpecScene, 0, len(plan.Segments))
 	for i, segment := range plan.Segments {
-		text := strings.TrimSpace(segment.SourceText)
-		if text == "" && i < len(paragraphs) {
+		text := segment.SourceText
+		if !plan.SourceTextVerbatim {
+			text = strings.TrimSpace(text)
+		}
+		if text == "" && !plan.SourceTextVerbatim && i < len(paragraphs) {
 			text = paragraphs[i]
 		}
-		if text == "" {
+		if text == "" && !plan.SourceTextVerbatim {
 			text = strings.TrimSpace(segment.Topic)
 		}
-		if text == "" {
+		if strings.TrimSpace(text) == "" {
 			return fmt.Errorf("segment %d has no authoritative text", i)
 		}
 		id := strings.TrimSpace(segment.ID)
-		if id == "" {
+		if id == "" && !plan.SourceTextVerbatim {
 			id = fmt.Sprintf("scene-%d", i)
+		}
+		if id == "" {
+			return fmt.Errorf("segment %d has no ID in source_text_verbatim mode", i)
 		}
 		scenes = append(scenes, scriptpkg.SpecScene{ID: id, SegmentID: id, Index: i, Kind: scriptpkg.SceneNarration, Text: text})
 	}

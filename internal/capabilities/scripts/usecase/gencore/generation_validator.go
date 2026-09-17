@@ -38,6 +38,9 @@ func ValidateItem(item scriptpkg.GenerationItemV2) error {
 	details = append(details, validateSource(item.Source, ref)...)
 	details = append(details, validateOutput(item.Output, ref)...)
 	details = append(details, validateScript(item.ScriptParams, ref)...)
+	if item.ScriptParams.SourceTextVerbatim && item.Source.Type != scriptpkg.SourceText {
+		details = append(details, ref+": script_params.source_text_verbatim requires source.type=text")
+	}
 	details = append(details, validateSegmentIDs(item, ref)...)
 	details = append(details, validateMediaPlan(item.MediaPlan, item.ScriptParams.Segments, ref)...)
 	details = append(details, validateDocs(item.Docs, ref)...)
@@ -182,6 +185,9 @@ func validateOutput(out scriptpkg.OutputSpec, ref string) []string {
 // payload_validator.go or elsewhere.
 func validateScriptSegmentShape(sp scriptpkg.ScriptSpec, ref string) []string {
 	var d []string
+	if sp.SourceTextVerbatim && len(sp.Segments) == 0 {
+		d = append(d, ref+": script_params.source_text_verbatim requires script_params.segments")
+	}
 	if len(sp.SegmentTopics) > 0 && len(sp.Segments) > 0 {
 		d = append(d, ref+": script_params.segment_topics and script_params.segments cannot both be set")
 	}
@@ -198,6 +204,14 @@ func validateScriptSegmentShape(sp scriptpkg.ScriptSpec, ref string) []string {
 	for i, s := range sp.Segments {
 		if strings.TrimSpace(s.Topic) == "" {
 			d = append(d, fmt.Sprintf("%s: script_params.segments[%d].topic is required", ref, i))
+		}
+		if sp.SourceTextVerbatim {
+			if strings.TrimSpace(s.ID) == "" {
+				d = append(d, fmt.Sprintf("%s: script_params.segments[%d].id is required when source_text_verbatim is enabled", ref, i))
+			}
+			if strings.TrimSpace(s.SourceText) == "" {
+				d = append(d, fmt.Sprintf("%s: script_params.segments[%d].source_text is required when source_text_verbatim is enabled", ref, i))
+			}
 		}
 		if s.TargetWords < 0 || s.MinWords < 0 || s.MaxWords < 0 {
 			d = append(d, fmt.Sprintf("%s: script_params.segments[%d] target_words/min_words/max_words cannot be negative", ref, i))

@@ -3,8 +3,8 @@
 //
 // It proves, over the 24-script / 12-category ground-truth corpus, that the
 // system keeps recognising entities on different topics, different arguments
-// and different linguistic structures, and that those entities reach the
-// overlays correctly:
+// and different linguistic structures. Final overlays follow the production
+// contract: up to five grounded phrases and five materialized images per run.
 //
 //	LEVEL 1 — SEMANTIC
 //	  generate endpoint accepts every topic
@@ -14,11 +14,10 @@
 //	  the same entity is not duplicated under a slightly different name
 //	  secondary entities never contaminate the primaries
 //
-//	LEVEL 2 — VISUAL (overlay mapping)
-//	  every certified entity occurrence becomes exactly one overlay
-//	  the overlay is bound to the correct entity (id + name + type + scene)
-//	  the overlay starts exactly when the entity is spoken
-//	  no overlay is emitted for an entity that was rejected or never mentioned
+//	LEVEL 2 — VISUAL (editorial budget)
+//	  only grounded phrases and materialized images survive
+//	  each category is capped at five overlays across the run
+//	  entity extraction and timing remain available as semantic data
 package scriptgeneration
 
 import (
@@ -68,8 +67,8 @@ func TestEntityBattery_GenerateEndpointAcceptsEveryTopic(t *testing.T) {
 }
 
 // TestCertification_EntityBattery_EndToEnd is the goal's definition of done: it
-// runs every script through the REAL chain and certifies both levels for each
-// one, then certifies the global precision/recall/F1.
+// runs every script through the REAL extraction chain and certifies semantic
+// grounding, then certifies the global precision/recall/F1.
 func TestCertification_EntityBattery_EndToEnd(t *testing.T) {
 	corpus := entityBatteryCorpus()
 	outcomes := make([]batteryScriptOutcome, 0, len(corpus))
@@ -95,7 +94,6 @@ func TestCertification_EntityBattery_EndToEnd(t *testing.T) {
 func certifyBatteryScript(t *testing.T, s batteryScript, result *GenerateResult, outcome batteryScriptOutcome) {
 	t.Helper()
 	require.NotNil(t, result.EntityTimeline, "%s must project an EntityTimeline", s.ID)
-	require.NotNil(t, result.OverlayPlan, "%s must derive a semantic OverlayPlan", s.ID)
 	require.NoError(t, result.EntityTimeline.Validate(), "%s entity timeline must be valid", s.ID)
 
 	// ── per-script metrics ────────────────────────────────────────────
@@ -139,33 +137,29 @@ func certifyBatteryScript(t *testing.T, s batteryScript, result *GenerateResult,
 			"%s: rejected value %q must not become an entity", s.ID, rejected)
 	}
 
-	// ── LEVEL 2 — overlay mapping ─────────────────────────────────────
-	byEntity := map[string][]capabilityoverlay.OverlayItem{}
-	entityOverlays := 0
+	// ── LEVEL 2 — final editorial overlay contract ────────────────────
+	// Entity cards and other semantic categories are outside final render
+	// plans. Runs without grounded phrases or materialized images can have no
+	// visual plan at all.
+	if result.OverlayPlan == nil {
+		return
+	}
+	phrases, images := 0, 0
 	for _, item := range result.OverlayPlan.Items {
-		if item.EntityRef == nil {
-			continue
-		}
-		entityOverlays++
-		byEntity[item.SceneID+"\x00"+item.EntityRef.EntityID] = append(byEntity[item.SceneID+"\x00"+item.EntityRef.EntityID], item)
-		for _, rejected := range s.Rejected {
-			require.NotEqual(t, strings.ToLower(rejected), strings.ToLower(item.EntityRef.Name),
-				"%s: no overlay may be emitted for rejected %q", s.ID, rejected)
+		switch item.Kind {
+		case "text_phrase":
+			phrases++
+			require.NotEmpty(t, strings.TrimSpace(item.Text), "%s: phrase overlay must contain grounded text", s.ID)
+		case "image", "entity_image":
+			images++
+			require.NotEmpty(t, item.AssetRefs, "%s: image overlay must be materialized", s.ID)
+		default:
+			t.Fatalf("%s: overlay kind %q is outside the 5+5 editorial contract", s.ID, item.Kind)
 		}
 	}
-	require.Equal(t, len(outcome.Detected), entityOverlays,
-		"%s: every certified occurrence must produce exactly one entity overlay", s.ID)
-
-	for _, d := range outcome.Detected {
-		items := byEntity[d.Scene+"\x00"+d.EntityID]
-		require.Len(t, items, 1, "%s: %q@%s must have exactly one overlay", s.ID, d.Name, d.Scene)
-		item := items[0]
-		require.Equal(t, d.Name, item.EntityRef.Name, "%s: overlay name must match the detection", s.ID)
-		require.Equal(t, d.Type, item.EntityRef.Type, "%s: overlay type must match the detection", s.ID)
-		require.Equal(t, d.StartUS/1000, item.StartMs,
-			"%s: overlay for %q must start exactly when the entity is spoken", s.ID, d.Name)
-		require.NotEmpty(t, item.TemplateID, "%s: overlay for %q must pin a template", s.ID, d.Name)
-	}
+	require.LessOrEqual(t, phrases, capabilityoverlay.MaxPhraseOverlaysPerRun, "%s: phrase budget exceeded", s.ID)
+	require.LessOrEqual(t, images, capabilityoverlay.MaxImageOverlaysPerRun, "%s: image budget exceeded", s.ID)
+	require.LessOrEqual(t, len(result.OverlayPlan.Items), 10, "%s: total editorial overlay budget exceeded", s.ID)
 }
 
 // batterySceneIndex builds the per-scene lookups the gates need: narration

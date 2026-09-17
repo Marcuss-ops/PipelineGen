@@ -76,7 +76,8 @@ func TestSceneReadyCoordinator_SourceTTSDoesNotWaitForTargetTranslation(t *testi
 	runner.translator = translator
 	runner.voiceoverGen = voiceover
 
-	req := defaultTestRequest() // source "en", requested {"en", "es"} → scene 0 translates only "es"
+	req := defaultTestRequest()               // source "en", requested {"en", "es"} → scene 0 translates only "es"
+	req.VoiceoverLanguages = []Language{"en"} // keep translation fan-out, synthesize source only
 	runID := "run-language-independence-001"
 	require.NoError(t, repo.Create(context.Background(), &GenerationRun{
 		ID: runID, Request: req, Status: RunStatusPending, CurrentStage: StageNormalizing,
@@ -106,8 +107,8 @@ func TestSceneReadyCoordinator_SourceTTSDoesNotWaitForTargetTranslation(t *testi
 		t.Fatal("source-language TTS waited for the scene's target translation")
 	}
 
-	// Release the target translation: the target language must still be
-	// synthesized — independence must not mean the target is dropped.
+	// Release the target translation: the translated scene remains present,
+	// but the explicit source-only voiceover policy must not synthesize it.
 	close(translator.release)
 	close(streamer.release)
 
@@ -121,7 +122,8 @@ func TestSceneReadyCoordinator_SourceTTSDoesNotWaitForTargetTranslation(t *testi
 
 	recorded := voiceover.recorded()
 	require.Contains(t, recorded, Language("en"), "source language voiceover must be produced")
-	require.Contains(t, recorded, Language("es"), "target language voiceover must still be produced")
+	require.NotContains(t, recorded, Language("es"), "target translation must not trigger TTS")
+	require.Equal(t, "translated First scene text", final.Result.Scenes[0].Text["es"], "target translation must still be checkpointed")
 }
 
 // TestBuildSceneLanguageWork_SourceHasNoTranslationDependency pins the work

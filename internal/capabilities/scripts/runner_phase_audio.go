@@ -343,7 +343,7 @@ func (r *Runner) runAudioCompilePhase(ctx context.Context, runID string, req Gen
 				r.failRunWithRetry(ctx, runID, StageCompilingAudio, cause)
 				return false
 			}
-			if err := ValidateChunkedVoiceovers(*result); err != nil {
+			if err := ValidateChunkedVoiceoversForLanguages(*result, req.VoiceoverLanguages); err != nil {
 				r.failExecutionStep(ctx, exec, payloadStep, err)
 				r.failRunWithRetry(ctx, runID, StageCompilingAudio, err)
 				return false

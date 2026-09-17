@@ -7,15 +7,16 @@
 //	  → CanonicalTimeline frozen → overlay.render (frozen plan)
 //	  → Rust final_audio.m4a → EditingTimelineV1
 //
-// It certifies the full gate matrix in one deterministic run:
+// It certifies the semantic extraction, phrase-only final overlay, audio, and
+// editing-timeline paths together in one deterministic run:
 //
 //	AUTO ENTITIES        3/3   (each scene carries a grounded per-scene EntityResult)
-//	OVERLAY INTENTS      3/3   (one PENDING intent per scene, single registry)
-//	PREPARE BEFORE TTS   3/3   (prepare enqueued with 3 pre-timing intents)
-//	OVERLAY RENDER       3/3   (frozen plan carries 3 microsecond-timed items)
+//	OVERLAY INTENTS      3/3   (entity intent on every scene, single registry)
+//	PREPARE BEFORE TTS   3/3   (prepare enqueued with 6 pre-timing intents)
+//	OVERLAY RENDER       3/3   (frozen plan carries 3 grounded phrase items)
 //	FINAL AUDIO          1     (one certified final_audio.m4a)
 //	EDITING TIMELINE     1     (one EditingTimelineV1 projection)
-//	TIMING MISMATCH      0     (overlay spans == canonical entity timeline)
+//	TIMING MISMATCH      0     (phrase spans == canonical word timing)
 package scriptgeneration
 
 import (
@@ -109,19 +110,20 @@ func (e *cert3SceneRenderEnqueuer) lastPlan() capabilityoverlay.OverlayPlan {
 	return e.plans[len(e.plans)-1]
 }
 
-// cert3SceneBarrier returns the fenced per-scene entity extraction result for
-// the three narration scenes (one spoken PERSON per scene, each grounded
-// verbatim in its scene text).
+// cert3SceneBarrier returns the fenced per-scene extraction result for the
+// three narration scenes. Each scene carries one spoken PERSON and its full
+// narration as a grounded phrase, which is admitted by the production 5+5
+// editorial overlay budget.
 func cert3SceneBarrier() VidRushBarrier {
 	return barrierFunc(func(_ context.Context, _ string) ([]scriptpkg.VidRushSegmentResult, error) {
 		return []scriptpkg.VidRushSegmentResult{
-			{SceneID: "scene-0", Position: 0, Insights: scriptpkg.SegmentInsights{Entities: []scriptpkg.ExtractedEntity{
+			{SceneID: "scene-0", Position: 0, Insights: scriptpkg.SegmentInsights{ImportantPhrases: []string{"Tim Cook leads."}, Entities: []scriptpkg.ExtractedEntity{
 				{Value: "Tim Cook", Type: "PERSON", Confidence: 0.98},
 			}}},
-			{SceneID: "scene-1", Position: 1, Insights: scriptpkg.SegmentInsights{Entities: []scriptpkg.ExtractedEntity{
+			{SceneID: "scene-1", Position: 1, Insights: scriptpkg.SegmentInsights{ImportantPhrases: []string{"Margot Robbie acts."}, Entities: []scriptpkg.ExtractedEntity{
 				{Value: "Margot Robbie", Type: "PERSON", Confidence: 0.97},
 			}}},
-			{SceneID: "scene-2", Position: 2, Insights: scriptpkg.SegmentInsights{Entities: []scriptpkg.ExtractedEntity{
+			{SceneID: "scene-2", Position: 2, Insights: scriptpkg.SegmentInsights{ImportantPhrases: []string{"Tom Hanks narrates."}, Entities: []scriptpkg.ExtractedEntity{
 				{Value: "Tom Hanks", Type: "PERSON", Confidence: 0.96},
 			}}},
 		}, nil
@@ -151,8 +153,8 @@ func cert3SceneTexts() []Scene {
 	}
 }
 
-// TestCertification_ThreeSceneVerticalSlice runs the full entity → overlay →
-// audio → editing-timeline vertical slice over exactly 3 real scenes and
+// TestCertification_ThreeSceneVerticalSlice runs the semantic extraction →
+// grounded phrase overlay → audio → editing-timeline slice over 3 scenes and
 // certifies every gate. The only stubs are the VidRush barrier (entity
 // extraction), the voiceover generator (Edge word timing), the combined audio
 // renderer (Rust final mix), the prepare enqueuer, and the render enqueuer —
@@ -210,13 +212,14 @@ func TestCertification_ThreeSceneVerticalSlice(t *testing.T) {
 	}
 
 	// ── GATE 2: OVERLAY INTENTS 3/3 ────────────────────────────────
-	// One PENDING intent per scene, template resolved through the single
-	// registry (PERSON → person_default).
-	require.Len(t, res.OverlayIntents, 3, "one intent per scene")
+	// One entity and one phrase intent per scene, resolved through the single
+	// registry (PERSON → person_default; phrase → IMPORTANT_PHRASE).
+	require.Len(t, res.OverlayIntents, 6, "entity and phrase intents per scene")
 	scenesWithIntents := map[string]bool{}
 	for _, intent := range res.OverlayIntents {
 		require.Equal(t, capabilityoverlay.TimingStatePending, intent.TimingState, "intent %q must be pre-timing (PENDING)", intent.IntentID)
-		require.Equal(t, "person_default", intent.TemplateID, "PERSON must resolve to person_default via the single registry")
+		require.Contains(t, []string{"person_default", "IMPORTANT_PHRASE"}, intent.TemplateID,
+			"semantic intents must resolve through the single registry")
 		scenesWithIntents[intent.SceneID] = true
 	}
 	for _, id := range []string{"scene-0", "scene-1", "scene-2"} {
@@ -224,21 +227,22 @@ func TestCertification_ThreeSceneVerticalSlice(t *testing.T) {
 	}
 
 	// ── GATE 3: PREPARE BEFORE TTS 3/3 ─────────────────────────────
-	// overlay.prepare was enqueued exactly once with the 3 PENDING intents —
+	// overlay.prepare was enqueued exactly once with the 6 PENDING intents —
 	// it ran from entity extraction alone, never waiting for timing/audio.
 	require.Len(t, prepEnq.reqs, 1, "overlay.prepare must be enqueued once")
 	prep := prepEnq.reqs[0]
 	require.Equal(t, runID, prep.PlanID)
 	require.NoError(t, prep.Validate())
-	require.Len(t, prep.Intents, 3, "prepare must carry one intent per scene")
+	require.Len(t, prep.Intents, 6, "prepare must carry entity and phrase intents per scene")
 	for _, intent := range prep.Intents {
 		require.Equal(t, capabilityoverlay.TimingStatePending, intent.TimingState, "prepare intents must be pre-timing")
 	}
 
 	// ── GATE 4: OVERLAY RENDER 3/3 (frozen plan) ──────────────────
 	// The render enqueuer received the frozen OverlayPlan with 3
-	// microsecond-timed items — one per entity — after CanonicalTimeline was
-	// frozen. Every item carries certified integer microsecond timing.
+	// microsecond-timed phrase items after CanonicalTimeline was frozen. Entity
+	// cards remain available to semantic extraction but are outside the final
+	// editorial overlay vocabulary.
 	frozenPlan := renderEnq.lastPlan()
 	require.NotEmpty(t, frozenPlan.PlanID, "overlay.render must be enqueued with the frozen plan")
 	require.NoError(t, frozenPlan.Validate())
@@ -246,7 +250,8 @@ func TestCertification_ThreeSceneVerticalSlice(t *testing.T) {
 	require.Equal(t, capabilityoverlay.DefaultOverlayContractV1.ID, frozenPlan.MediaContract, "plan must resolve the overlay media contract")
 	for _, item := range frozenPlan.Items {
 		require.Greater(t, item.DurationUS, int64(0), "item %q must carry certified microsecond timing", item.ID)
-		require.Equal(t, "person_default", item.TemplateID, "item %q must use the resolved template", item.ID)
+		require.Equal(t, "IMPORTANT_PHRASE", item.TemplateID, "item %q must use the phrase template", item.ID)
+		require.Equal(t, string("text_phrase"), item.Kind)
 	}
 
 	// The render reference is persisted with the certified artifact identity
@@ -272,11 +277,11 @@ func TestCertification_ThreeSceneVerticalSlice(t *testing.T) {
 	require.Equal(t, EditingTimelineVersion, et.Version)
 	require.Equal(t, EditingTimebase, et.Timebase)
 	require.Len(t, et.Scenes, 3, "editing timeline must project all 3 scenes")
-	require.Len(t, et.Overlays, 3, "editing timeline must project all 3 overlay spans")
+	require.Len(t, et.Overlays, 3, "editing timeline must project all 3 phrase overlay spans")
 	require.Equal(t, res.FinalAudio.FinalAudioSHA256, et.Audio.SHA256, "editing timeline audio SHA must equal the certified final audio")
 
 	// ── GATE 7: TIMING MISMATCH 0 ──────────────────────────────────
-	// Every overlay span is projected from the canonical entity timeline
+	// Every overlay span is projected from certified entity or phrase timing
 	// (microsecond word boundaries), never a second independent calculation.
 	require.NotNil(t, res.EntityTimeline, "entity timeline must be projected for timing grounding")
 	type occKey struct{ scene, name string }
@@ -286,6 +291,11 @@ func TestCertification_ThreeSceneVerticalSlice(t *testing.T) {
 			canonicalOcc[occKey{scene.SceneID, occ.Name}] = struct{ startUS, endUS int64 }{occ.AudioStartUS, occ.AudioEndUS}
 		}
 	}
+	canonicalPhrase := map[occKey]struct{ startUS, endUS int64 }{}
+	for _, phrase := range res.PhraseTimings {
+		sceneID := res.Scenes[phrase.SceneIndex].ID
+		canonicalPhrase[occKey{sceneID, phrase.Text}] = struct{ startUS, endUS int64 }{phrase.GlobalStartUS, phrase.GlobalEndUS}
+	}
 	for _, ov := range et.Overlays {
 		require.Greater(t, ov.EndUS, ov.StartUS, "overlay %q must have a valid time range", ov.ArtifactID)
 		require.LessOrEqual(t, ov.EndUS, et.DurationUS, "overlay %q must not exceed the canonical duration", ov.ArtifactID)
@@ -293,10 +303,13 @@ func TestCertification_ThreeSceneVerticalSlice(t *testing.T) {
 		require.Equal(t, "overlay-sha256-certified", ov.SHA256, "overlay span must carry the certified artifact SHA")
 		require.Equal(t, "https://drive.google.com/file/d/drive-overlay-001/view", ov.DriveLink, "overlay span must carry the Drive link")
 		require.Equal(t, capabilityoverlay.DefaultOverlayContractV1.ID, ov.MediaContract, "overlay span must carry the media contract")
-		// Zero timing mismatch: the overlay span's start/end must equal the
-		// canonical entity occurrence timing from the EntityTimeline SSOT.
+		// Zero timing mismatch: the overlay span must equal its certified
+		// entity or phrase window.
 		occ, ok := canonicalOcc[occKey{ov.SceneID, ov.Entity}]
-		require.True(t, ok, "overlay %q entity %q must map to a canonical occurrence", ov.ArtifactID, ov.Entity)
+		if !ok {
+			occ, ok = canonicalPhrase[occKey{ov.SceneID, ov.Entity}]
+		}
+		require.True(t, ok, "overlay %q entity/phrase %q must map to certified timing", ov.ArtifactID, ov.Entity)
 		require.Equal(t, occ.startUS, ov.StartUS, "overlay %q start must match canonical entity timing", ov.ArtifactID)
 		require.Equal(t, occ.endUS, ov.EndUS, "overlay %q end must match canonical entity timing", ov.ArtifactID)
 	}

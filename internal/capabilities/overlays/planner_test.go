@@ -1,6 +1,10 @@
 package overlays
 
-import "testing"
+import (
+	"fmt"
+	"strings"
+	"testing"
+)
 
 func TestBuildPlanAppliesConservativeLimitsAndRanks(t *testing.T) {
 	plan, err := BuildPlan(PlanInput{
@@ -51,7 +55,7 @@ func TestBuildPlanNeverInventsTiming(t *testing.T) {
 	}
 }
 
-func TestAllCandidatesPlannerConfigKeepsEveryValidCandidate(t *testing.T) {
+func TestAllCandidatesPlannerConfigKeepsOnlyEditorialImagesAndPhrases(t *testing.T) {
 	plan, err := BuildPlan(PlanInput{
 		PlanID: "all-candidates", VideoID: "video-all-candidates", Width: 1280, Height: 720, FPSNum: 30, FPSDen: 1,
 		Scenes: []SceneInput{{
@@ -75,8 +79,124 @@ func TestAllCandidatesPlannerConfigKeepsEveryValidCandidate(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(plan.Items) != 4 {
-		t.Fatalf("items = %d, want all 4 valid candidates: %+v", len(plan.Items), plan.Items)
+	if len(plan.Items) != 3 {
+		t.Fatalf("items = %d, want 2 phrases + 1 image; non-editorial keyword must be excluded: %+v", len(plan.Items), plan.Items)
+	}
+}
+
+func TestBuildPlanAppliesRunLevelPhraseBudgetAcrossScenes(t *testing.T) {
+	scenes := []SceneInput{
+		{ID: "scene-1", Phrases: []TimedAnnotation{
+			{Text: "Alpha phrase", StartMs: 100, EndMs: 300, Score: 0.6},
+			{Text: "Shared phrase", StartMs: 400, EndMs: 600, Score: 0.2},
+			{Text: "Bravo phrase", StartMs: 700, EndMs: 900, Score: 0.5},
+		}},
+		{ID: "scene-2", Phrases: []TimedAnnotation{
+			{Text: "SHARED   PHRASE", StartMs: 100, EndMs: 300, Score: 0.95},
+			{Text: "Charlie phrase", StartMs: 400, EndMs: 600, Score: 0.4},
+			{Text: "Delta phrase", StartMs: 700, EndMs: 900, Score: 0.3},
+			{Text: "Echo phrase", StartMs: 1000, EndMs: 1200, Score: 0.1},
+		}},
+	}
+	plan, err := BuildPlan(PlanInput{
+		PlanID: "global-phrase-budget", VideoID: "video-global-phrase-budget",
+		Width: 1280, Height: 720, FPSNum: 30, FPSDen: 1, Scenes: scenes,
+	}, AllCandidatesPlannerConfig(scenes))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	phrases := make([]OverlayItem, 0, MaxPhraseOverlaysPerRun)
+	for _, item := range plan.Items {
+		if item.Kind == "text_phrase" {
+			phrases = append(phrases, item)
+		}
+	}
+	if len(phrases) != MaxPhraseOverlaysPerRun {
+		t.Fatalf("phrase overlays = %d, want global cap %d: %+v", len(phrases), MaxPhraseOverlaysPerRun, phrases)
+	}
+	seen := map[string]bool{}
+	for _, item := range phrases {
+		key := strings.ToLower(strings.Join(strings.Fields(item.Text), " "))
+		if seen[key] {
+			t.Fatalf("duplicate phrase survived global dedupe: %q", item.Text)
+		}
+		seen[key] = true
+	}
+	if !seen["shared phrase"] || !seen["alpha phrase"] || !seen["bravo phrase"] || !seen["charlie phrase"] || !seen["delta phrase"] || seen["echo phrase"] {
+		t.Fatalf("run-level rank/dedupe chose wrong phrases: %+v", phrases)
+	}
+}
+
+func TestApplyPhraseOverlayBudgetReportsShortfallWithoutInventingItems(t *testing.T) {
+	items := []OverlayItem{
+		{ID: "phrase-1", Kind: "text_phrase", Text: "Grounded phrase", Params: map[string]any{"priority": 0.9}},
+		{ID: "phrase-2", Kind: "text_phrase", Text: "  GROUNDED   PHRASE ", Params: map[string]any{"priority": 0.2}},
+		{ID: "keyword-1", Kind: "keyword", Text: "keyword"},
+	}
+	got, budget := ApplyPhraseOverlayBudget(items)
+	if len(got) != 2 || got[0].ID != "phrase-1" || got[1].ID != "keyword-1" {
+		t.Fatalf("budgeted items = %+v, want one grounded phrase and the non-phrase item", got)
+	}
+	if budget.Requested != 5 || budget.Materialized != 1 || budget.Shortfall != 4 {
+		t.Fatalf("phrase budget = %+v, want requested=5 materialized=1 shortfall=4", budget)
+	}
+}
+
+func TestApplyEditorialOverlayBudgetEnforcesRunLevelFivePlusFive(t *testing.T) {
+	items := make([]OverlayItem, 0, 15)
+	for i := 0; i < 7; i++ {
+		items = append(items, OverlayItem{
+			ID:        fmt.Sprintf("image-%d", i),
+			Kind:      "entity_image",
+			AssetRefs: []OverlayAssetRef{{AssetID: fmt.Sprintf("asset-%d", i), SHA256: fmt.Sprintf("hash-%d", i)}},
+			Params:    map[string]any{"priority": float64(i)},
+		})
+	}
+	for i := 0; i < 7; i++ {
+		items = append(items, OverlayItem{
+			ID:     fmt.Sprintf("phrase-%d", i),
+			Kind:   "text_phrase",
+			Text:   fmt.Sprintf("Grounded phrase %d", i),
+			Params: map[string]any{"priority": float64(i)},
+		})
+	}
+	items = append(items, OverlayItem{ID: "location-1", Kind: "location", Text: "Brooklyn"})
+
+	got, budget := ApplyEditorialOverlayBudget(items)
+	images, phrases := 0, 0
+	for _, item := range got {
+		switch item.Kind {
+		case "entity_image", "image":
+			images++
+		case "text_phrase":
+			phrases++
+		default:
+			t.Fatalf("non-editorial overlay survived: %+v", item)
+		}
+	}
+	if images != MaxImageOverlaysPerRun || phrases != MaxPhraseOverlaysPerRun || len(got) != 10 {
+		t.Fatalf("image/phrase/total counts = %d/%d/%d, want 5/5/10", images, phrases, len(got))
+	}
+	if budget != (PhraseOverlayBudget{Requested: 5, Materialized: 5, Shortfall: 0}) {
+		t.Fatalf("phrase budget = %+v, want 5 requested and materialized", budget)
+	}
+	if got[0].ID != "image-2" || got[4].ID != "image-6" || got[5].ID != "phrase-2" || got[9].ID != "phrase-6" {
+		t.Fatalf("run-level ranking chose wrong survivors: %+v", got)
+	}
+}
+
+func TestApplyEditorialOverlayBudgetDoesNotInventPhraseShortfall(t *testing.T) {
+	got, budget := ApplyEditorialOverlayBudget([]OverlayItem{
+		{ID: "phrase-1", Kind: "text_phrase", Text: "Grounded phrase"},
+		{ID: "image-1", Kind: "entity_image", AssetRefs: []OverlayAssetRef{{SHA256: "image-hash"}}},
+		{ID: "location-1", Kind: "location", Text: "Brooklyn"},
+	})
+	if len(got) != 2 || got[0].ID != "phrase-1" || got[1].ID != "image-1" {
+		t.Fatalf("budgeted items = %+v, want only the provided phrase and image", got)
+	}
+	if budget != (PhraseOverlayBudget{Requested: 5, Materialized: 1, Shortfall: 4}) {
+		t.Fatalf("phrase budget = %+v, want requested=5 materialized=1 shortfall=4", budget)
 	}
 }
 

@@ -27,11 +27,68 @@
 package gencore
 
 import (
+	"context"
 	"testing"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
+
+func TestEngineGenerate_SourceTextVerbatimSkipsOllamaAndPreservesText(t *testing.T) {
+	plan := &scriptpkg.ResolvedGenerationPlan{
+		SourceKind:         string(scriptpkg.SourceText),
+		SourceTextVerbatim: true,
+		Model:              "unused-model",
+		Segments: []scriptpkg.ScriptSegment{
+			{ID: "scene-one", Topic: "first", SourceText: "  Exact first scene."},
+			{ID: "scene-two", Topic: "second", SourceText: "Exact second scene."},
+		},
+	}
+	result, err := (&Engine{}).Generate(context.Background(), plan)
+	if err != nil {
+		t.Fatalf("verbatim Generate returned error: %v", err)
+	}
+	if result.Output.Text != "  Exact first scene.\n\nExact second scene." {
+		t.Fatalf("output text changed: %q", result.Output.Text)
+	}
+	if result.CacheStatus != "source_text_verbatim" {
+		t.Fatalf("cache status = %q", result.CacheStatus)
+	}
+	if len(result.Output.SpecScene.Scenes) != 2 {
+		t.Fatalf("scene count = %d, want 2", len(result.Output.SpecScene.Scenes))
+	}
+	if got := result.Output.SpecScene.Scenes[0]; got.ID != "scene-one" || got.Text != "  Exact first scene." {
+		t.Fatalf("first scene changed: %+v", got)
+	}
+}
+
+func TestGenerationEngineRunner_SourceTextVerbatimKeepsSegmentTopology(t *testing.T) {
+	item := scriptpkg.GenerationItemV2{
+		ID:     "verbatim",
+		Source: scriptpkg.SourceSpec{Type: scriptpkg.SourceText, Topic: "existing script"},
+		ScriptParams: scriptpkg.ScriptSpec{
+			SingleScene:        true,
+			SourceTextVerbatim: true,
+			Segments: []scriptpkg.ScriptSegment{
+				{ID: "scene-one", Topic: "first", SourceText: "Exact first scene."},
+				{ID: "scene-two", Topic: "second", SourceText: "Exact second scene."},
+			},
+		},
+	}
+	plan := scriptpkg.ResolvedGenerationPlan{
+		SourceKind:         string(scriptpkg.SourceText),
+		SourceTextVerbatim: true,
+		SingleScene:        true,
+		Segments:           item.ScriptParams.Segments,
+	}
+	draft, err := NewGenerationEngineRunner(&Engine{}).Generate(context.Background(), item, plan, NewProgressTracker(nil, item.ID))
+	if err != nil {
+		t.Fatalf("verbatim generation runner returned error: %v", err)
+	}
+	if got := draft.EngineResult.Output.SpecScene.Scenes; len(got) != 2 || got[0].ID != "scene-one" || got[1].ID != "scene-two" {
+		t.Fatalf("verbatim scene topology changed: %+v", got)
+	}
+}
 
 // TestBuildGenerationResult_PrefersTranslatedOutput is Phase 1 / Bug B3 regression guard.
 //

@@ -56,6 +56,9 @@ type GenerateRequest struct {
 	OverlayBackground *scriptpkg.OverlayBackgroundSpec `json:"overlay_background,omitempty"`
 	OverlayStyle      *scriptpkg.OverlayStyleSpec      `json:"overlay_style,omitempty"`
 	Audio             capabilityaudio.AudioMode        `json:"audio_mode,omitempty"`
+	// VoiceoverLanguages optionally narrows TTS synthesis without narrowing
+	// scene translation or localized NLP. Nil preserves legacy source+targets.
+	VoiceoverLanguages []Language `json:"voiceover_languages,omitempty"`
 	// Timing is the canonical voiceover timing policy nested inside the
 	// audio config (wire key "timing"). nil means the pipeline applies the
 	// canonical defaults (best_effort / word / [json]) — timing capture is

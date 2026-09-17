@@ -11,7 +11,6 @@ import (
 
 	capabilityaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
 	capabilityentities "github.com/Marcuss-ops/PipelineGen/internal/capabilities/entities"
-	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
@@ -184,19 +183,8 @@ func TestRunner_EntityTimelineDerivedFromRealWordTiming(t *testing.T) {
 	content := docPub.records[0].Content
 	require.NotContains(t, content, "<h2>Remote Job Payload JSON</h2>", "document must not expose the remote payload")
 	require.Contains(t, content, "<h2>SpecScene JSON</h2>", "document must expose the semantic SpecScene audit JSON")
-	require.Contains(t, content, "<h2>Semantic Overlay JSON</h2>", "document must expose the exact overlay plan")
-
-	// The persisted SSOT feeds the overlay resolver: every occurrence gets
-	// an entity_card starting exactly when the entity is spoken.
-	plan, err := capabilityentities.ResolveEntityOverlayPlan(*res.EntityTimeline, "plan-run-001", "video-run-001", "", 1280, 720, 30, 1)
-	require.NoError(t, err)
-	require.Len(t, plan.Items, 4, "four entity occurrences → four entity cards")
-	item := overlayItemByID(t, plan, "overlay-scene-1-tom-hanks")
-	require.Equal(t, string(capabilityoverlay.KindEntityCard), item.Kind)
-	require.Equal(t, "person_default", item.TemplateID)
-	require.Equal(t, int64(700), item.StartMs, "scene-1 Tom Hanks card starts at 0.700s")
-	require.NotEmpty(t, item.PresetID, "every entity card must pin a preset")
-	require.NotEmpty(t, item.Text, "every entity card must carry display text")
+	require.NotContains(t, content, "<h2>Semantic Overlay JSON</h2>", "entity-only plans have no final editorial overlays")
+	require.Nil(t, res.OverlayPlan, "entity cards are semantic data, not part of the final 5+5 editorial plan")
 }
 
 func occurrenceByID(t *testing.T, scene capabilityentities.SceneEntityTimeline, entityID string) capabilityentities.EntityOccurrence {
@@ -208,15 +196,4 @@ func occurrenceByID(t *testing.T, scene capabilityentities.SceneEntityTimeline, 
 	}
 	t.Fatalf("occurrence %q not found in scene %s", entityID, scene.SceneID)
 	return capabilityentities.EntityOccurrence{}
-}
-
-func overlayItemByID(t *testing.T, plan capabilityoverlay.OverlayPlan, id string) capabilityoverlay.OverlayItem {
-	t.Helper()
-	for _, item := range plan.Items {
-		if item.ID == id {
-			return item
-		}
-	}
-	t.Fatalf("overlay item %q not found", id)
-	return capabilityoverlay.OverlayItem{}
 }

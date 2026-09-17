@@ -24,14 +24,19 @@ type PlannerConfig struct {
 	// moment; beyond it the planner drops the lowest-priority overlapping
 	// items (see DegradeOverlaps). Default: DefaultOverlapBudget (3).
 	MaxOverlap int
+	// RunLevelEditorialBudget applies the production 5-image + 5-grounded-
+	// phrase contract and drops other content overlay kinds. Structural
+	// background layers are not represented as OverlayItems and are unaffected.
+	RunLevelEditorialBudget bool
 }
 
 // AllCandidatesPlannerConfig is the production generation policy: every
-// valid, uniquely identified candidate received from the certified semantic
-// surfaces is kept in the plan. Timing validation, duplicate removal and the
-// hard image-duration ceiling remain active; only editorial count/overlap
-// caps are disabled. This is intentionally explicit instead of changing the
-// conservative defaults used by the standalone planner/certification tests.
+// valid, uniquely identified image or phrase candidate received from the
+// certified semantic surfaces is kept in the plan, subject to the run-level
+// 5+5 budget. Other content overlay kinds are excluded. Timing validation,
+// duplicate removal and the hard image-duration ceiling remain active. This is
+// intentionally explicit instead of changing the conservative defaults used
+// by the standalone planner/certification tests.
 func AllCandidatesPlannerConfig(scenes []SceneInput) PlannerConfig {
 	maxPerScene := func(count func(SceneInput) int) int {
 		max := 0
@@ -63,15 +68,16 @@ func AllCandidatesPlannerConfig(scenes []SceneInput) PlannerConfig {
 		maxPhraseWords = 1
 	}
 	return PlannerConfig{
-		MaxPhrases:     maxPerScene(func(s SceneInput) int { return len(s.Phrases) }),
-		MaxKeywords:    maxPerScene(func(s SceneInput) int { return len(s.Keywords) }),
-		MaxImages:      maxPerScene(func(s SceneInput) int { return len(s.Images) }),
-		MaxPhraseWords: maxPhraseWords,
-		MaxNumbers:     maxPerScene(func(s SceneInput) int { return len(s.Numbers) }),
-		MaxQuotes:      maxPerScene(func(s SceneInput) int { return len(s.Quotes) }),
-		MaxProducts:    maxPerScene(func(s SceneInput) int { return len(s.Products) }),
-		MaxLogos:       maxPerScene(func(s SceneInput) int { return len(s.Logos) }),
-		MaxOverlap:     totalCandidates + 1,
+		MaxPhrases:              maxPerScene(func(s SceneInput) int { return len(s.Phrases) }),
+		MaxKeywords:             maxPerScene(func(s SceneInput) int { return len(s.Keywords) }),
+		MaxImages:               maxPerScene(func(s SceneInput) int { return len(s.Images) }),
+		MaxPhraseWords:          maxPhraseWords,
+		MaxNumbers:              maxPerScene(func(s SceneInput) int { return len(s.Numbers) }),
+		MaxQuotes:               maxPerScene(func(s SceneInput) int { return len(s.Quotes) }),
+		MaxProducts:             maxPerScene(func(s SceneInput) int { return len(s.Products) }),
+		MaxLogos:                maxPerScene(func(s SceneInput) int { return len(s.Logos) }),
+		MaxOverlap:              totalCandidates + 1,
+		RunLevelEditorialBudget: true,
 	}
 }
 
@@ -322,10 +328,112 @@ func BuildPlan(input PlanInput, config PlannerConfig) (OverlayPlan, error) {
 	// items may pile up at any moment (lowest editorial priority drops first;
 	// structural layers are never counted nor dropped).
 	plan.Items = DegradeOverlaps(plan.Items, config.MaxOverlap)
+	if config.RunLevelEditorialBudget {
+		plan.Items, _ = ApplyEditorialOverlayBudget(plan.Items)
+	} else {
+		plan.Items, _ = ApplyPhraseOverlayBudget(plan.Items)
+	}
 	if err := plan.Validate(); err != nil {
 		return OverlayPlan{}, err
 	}
 	return plan, nil
+}
+
+// PhraseOverlayBudget reports the requested editorial phrase ceiling and how
+// many unique grounded phrase overlays were actually materialized.
+type PhraseOverlayBudget struct {
+	Requested    int `json:"requested_phrase_overlays"`
+	Materialized int `json:"materialized_phrase_overlays"`
+	Shortfall    int `json:"phrase_overlay_shortfall"`
+}
+
+// ApplyPhraseOverlayBudget deduplicates phrase items across the entire run,
+// chooses the highest-priority unique phrases up to the hard cap, and retains
+// the input ordering among admitted items. Ties preserve the original order.
+// Non-phrase items are copied through unchanged.
+func ApplyPhraseOverlayBudget(items []OverlayItem) ([]OverlayItem, PhraseOverlayBudget) {
+	phraseIndices := make([]int, 0, MaxPhraseOverlaysPerRun)
+	bestByText := make(map[string]int)
+	for i, item := range items {
+		if item.Kind != "text_phrase" {
+			continue
+		}
+		key := strings.ToLower(strings.Join(strings.Fields(item.Text), " "))
+		if key == "" {
+			continue
+		}
+		if existing, ok := bestByText[key]; ok {
+			if overlayItemPriority(item) > overlayItemPriority(items[existing]) {
+				bestByText[key] = i
+			}
+			continue
+		}
+		bestByText[key] = i
+	}
+	for _, index := range bestByText {
+		phraseIndices = append(phraseIndices, index)
+	}
+	sort.SliceStable(phraseIndices, func(i, j int) bool {
+		left, right := phraseIndices[i], phraseIndices[j]
+		if lp, rp := overlayItemPriority(items[left]), overlayItemPriority(items[right]); lp != rp {
+			return lp > rp
+		}
+		return left < right
+	})
+	if len(phraseIndices) > MaxPhraseOverlaysPerRun {
+		phraseIndices = phraseIndices[:MaxPhraseOverlaysPerRun]
+	}
+	keep := make(map[int]struct{}, len(phraseIndices))
+	for _, index := range phraseIndices {
+		keep[index] = struct{}{}
+	}
+	out := make([]OverlayItem, 0, len(items))
+	seenPhraseText := make(map[string]struct{}, len(bestByText))
+	for i, item := range items {
+		if item.Kind != "text_phrase" {
+			out = append(out, item)
+			continue
+		}
+		key := strings.ToLower(strings.Join(strings.Fields(item.Text), " "))
+		if _, admitted := keep[i]; !admitted {
+			continue
+		}
+		if _, duplicate := seenPhraseText[key]; duplicate {
+			continue
+		}
+		seenPhraseText[key] = struct{}{}
+		out = append(out, item)
+	}
+	return out, MeasurePhraseOverlayBudget(out)
+}
+
+// MeasurePhraseOverlayBudget reports how many unique grounded phrase items
+// are present in an already compiled plan. It does not change the plan.
+func MeasurePhraseOverlayBudget(items []OverlayItem) PhraseOverlayBudget {
+	budget := PhraseOverlayBudget{Requested: MaxPhraseOverlaysPerRun}
+	seen := make(map[string]struct{})
+	for _, item := range items {
+		if item.Kind != "text_phrase" {
+			continue
+		}
+		key := strings.ToLower(strings.Join(strings.Fields(item.Text), " "))
+		if key != "" {
+			seen[key] = struct{}{}
+		}
+	}
+	budget.Materialized = len(seen)
+	if budget.Materialized > budget.Requested {
+		budget.Materialized = budget.Requested
+	}
+	budget.Shortfall = budget.Requested - budget.Materialized
+	return budget
+}
+
+func overlayItemPriority(item OverlayItem) float64 {
+	if value, ok := item.Params["priority"].(float64); ok {
+		return value
+	}
+	return 0
 }
 
 func rankedValid(in []TimedAnnotation, maxWords int) []TimedAnnotation {

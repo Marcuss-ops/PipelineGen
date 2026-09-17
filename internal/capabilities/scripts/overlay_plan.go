@@ -2,18 +2,17 @@
 // semantic OverlayPlan from a COMPLETED REAL result. It is the production
 // counterpart of the fixture-driven planner/resolver tests: it feeds the
 // certified timing surfaces (phrase timings, entity timeline, word timing)
-// of an actual run into the overlay planner and resolver, so every overlay
-// carries real timestamps — never estimates.
+// of an actual run into the overlay planner and resolver, so every candidate
+// carries real timestamps — never estimates. The final production budget
+// keeps only five grounded phrases and five materialized images per run.
 //
 // Ownership split (single owner per surface):
 //
-//	IMPORTANT_PHRASE / IMPORTANT_WORD / IMAGE_OVERLAY / NUMBER / QUOTE /
-//	PRODUCT / LOGO  → overlays.BuildPlan (the planner), from scene
-//	                   annotations + the certified word timing / entity
-//	                   timeline occurrences.
-//	PERSON / ORGANIZATION / LOCATION / CONCEPT (entity cards)
-//	                → entities.ResolveEntityOverlayPlan (the resolver),
-//	                   from the certified EntityTimeline.
+//	Phrase and image candidates → overlays.BuildPlan, from grounded scene
+//	annotations and certified word timing.
+//	Entity-bound image candidates → entities.ResolveEntityOverlayPlan, from
+//	the certified EntityTimeline.
+//	Other candidate types are discarded by the final editorial 5+5 budget.
 //
 // Every template terminates in one of the four canonical primitives
 // (Text / Image / Video / Shape). The returned plan is the SEMANTIC
@@ -67,8 +66,7 @@ func overlayBackgroundFromPayload(src *scriptpkg.OverlayBackgroundSpec) *capabil
 		return nil
 	}
 	bg := &capabilityoverlay.OverlayBackground{
-		Kind: src.Kind, Color: append([]float64(nil), src.Color...), Fit: src.Fit,
-		Opacity: src.Opacity, Loop: src.Loop,
+		Kind: src.Kind, Color: append([]float64(nil), src.Color...), Fit: src.Fit, Opacity: src.Opacity, Loop: src.Loop,
 	}
 	if params := overlayStyleParams(src.Style); params != nil {
 		if style, ok := params["style"].(map[string]any); ok {
@@ -167,13 +165,12 @@ func mergeStyleParam(existing any, add map[string]any) map[string]any {
 //
 // Timestamps come exclusively from certified surfaces:
 //
-//   - IMPORTANT_PHRASE / IMPORTANT_WORD: the candidate is located verbatim
-//     in the scene's real word timing (LocatePhraseTimings). A phrase/word
-//     the voiceover did not speak is skipped — never timestamped.
-//   - IMAGE_OVERLAY / PRODUCT / LOGO: the entity's certified occurrence
-//     window from the EntityTimeline (first spoken word start → last spoken
-//     word end). An entity image without a certified occurrence is skipped.
-//   - NUMBER / QUOTE: the entity's certified occurrence window.
+//   - Phrase and keyword candidates are located against the scene's real word
+//     timing (LocatePhraseTimings). A phrase the voiceover did not speak is
+//     skipped — never timestamped. The run-level editorial contract admits
+//     phrase overlays and images only.
+//   - Image candidates use their certified occurrence windows and require a
+//     materialized asset before they can enter the final plan.
 //
 // The returned plan is sealed (render keys + fingerprint) and ready to
 // enqueue through QueueRenderEnqueuer.EnqueueChrononPlan.
@@ -247,8 +244,8 @@ func CompileOverlayPlan(result *GenerateResult, language Language, canvas Overla
 	// A semantic catalog reference is only a database identity until its bytes
 	// have been staged into the RenderingGen object store. Never enqueue that
 	// placeholder as a render asset: Chronon would resolve it to a nonexistent
-	// local path. The entity remains available as a text card and can be
-	// promoted on the next run once materialization supplies a fetchable URL.
+	// local path. It cannot enter the image budget until materialization supplies
+	// a fetchable URL; text-only entity cards are outside the 5+5 contract.
 	filteredItems := items[:0]
 	for _, item := range items {
 		unmaterialized := false
@@ -290,8 +287,8 @@ func CompileOverlayPlan(result *GenerateResult, language Language, canvas Overla
 	// resolver picks the best content-addressed asset of its
 	// canonical_entity_id through the EntityMediaResolver (the run's own
 	// entity-image bindings, indexed by the resolver's CanonicalEntityID) and
-	// carries it as AssetRefs + EntityRef.CanonicalEntityID. Entities without
-	// an indexed asset stay text-only — they are never dropped for lack of media.
+	// carries it as AssetRefs + EntityRef.CanonicalEntityID. The final editorial
+	// budget admits image cards only when they have materialized media.
 	if result.EntityTimeline != nil && len(result.EntityTimeline.Scenes) > 0 {
 		owned := plannerOwnedEntityIDs(result)
 		media, canonicalByStable := entityCardMediaIndex(result)
@@ -321,6 +318,7 @@ func CompileOverlayPlan(result *GenerateResult, language Language, canvas Overla
 	// prevents a long script with many scenes from producing one image render
 	// for every extracted person.
 	items = capEntityImageOverlays(items, capabilityoverlay.MaxEntityImageOverlaysPerRun)
+	items, _ = capabilityoverlay.ApplyEditorialOverlayBudget(items)
 	if len(items) == 0 {
 		return nil, nil
 	}
@@ -390,6 +388,12 @@ func compileResultOverlayPlan(result *GenerateResult, language Language, planID,
 		return err
 	}
 	result.OverlayPlan = plan
+	var phraseItems []capabilityoverlay.OverlayItem
+	if plan != nil {
+		phraseItems = plan.Items
+	}
+	phraseBudget := capabilityoverlay.MeasurePhraseOverlayBudget(phraseItems)
+	result.PhraseOverlayBudget = &phraseBudget
 	if plan == nil {
 		return nil
 	}

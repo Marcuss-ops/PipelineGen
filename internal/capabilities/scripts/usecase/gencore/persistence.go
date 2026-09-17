@@ -313,6 +313,8 @@ func scriptCacheStatus(status string) string {
 		return "HIT_EXACT"
 	case "generated", "":
 		return "MISS"
+	case "source_text_verbatim":
+		return "SOURCE_TEXT_VERBATIM"
 	default:
 		return strings.ToUpper(strings.TrimSpace(status))
 	}

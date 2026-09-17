@@ -100,6 +100,33 @@ func TestValidateSegmentShape_ExplicitBounds(t *testing.T) {
 	}
 }
 
+func TestValidateScriptSegmentShape_VerbatimRequiresStableCompleteSegments(t *testing.T) {
+	base := scriptpkg.ScriptSpec{
+		SourceTextVerbatim: true,
+		Segments: []scriptpkg.ScriptSegment{{
+			ID: "scene-one", Topic: "first", SourceText: "Exact source text.",
+		}},
+	}
+	if details := validateScriptSegmentShape(base, "verbatim"); len(details) != 0 {
+		t.Fatalf("valid verbatim segments rejected: %v", details)
+	}
+
+	base.Segments[0].ID = ""
+	base.Segments[0].SourceText = " "
+	details := validateScriptSegmentShape(base, "verbatim")
+	joined := strings.Join(details, " ")
+	if !strings.Contains(joined, "id is required when source_text_verbatim is enabled") ||
+		!strings.Contains(joined, "source_text is required when source_text_verbatim is enabled") {
+		t.Fatalf("missing verbatim segment requirements: %v", details)
+	}
+
+	base.Segments = nil
+	details = validateScriptSegmentShape(base, "verbatim")
+	if !strings.Contains(strings.Join(details, " "), "requires script_params.segments") {
+		t.Fatalf("missing segment-list requirement: %v", details)
+	}
+}
+
 func TestValidateSegmentTexts_BoundsAndTotal(t *testing.T) {
 	plan := &scriptpkg.ResolvedGenerationPlan{
 		TargetWords: 20,
@@ -227,6 +254,7 @@ func TestEngineGenerate_SegmentRegenerationStopsAtRetryLimit(t *testing.T) {
 		proseResult("short\n\nshort"),
 		proseResult("still-short\n\nstill-short"),
 		proseResult(textOfNWords(20)),
+		proseResult(textOfNWords(1)),
 	}}
 	engine := &Engine{ollamaGen: gen, log: zap.NewNop()}
 	engine.ConfigureSegmentValidation(15, 10, 1)
@@ -235,11 +263,12 @@ func TestEngineGenerate_SegmentRegenerationStopsAtRetryLimit(t *testing.T) {
 	if err == nil || !errors.Is(err, scriptpkg.ErrSegmentValidationFailed) {
 		t.Fatalf("expected bounded segment failure, got %v", err)
 	}
-	// The workers may return the failing segment first, so the other initial
-	// request can be cancelled before it starts. The retry budget remains
-	// bounded: at least the initial request(s), at most one repair.
-	if len(gen.prompts) < 2 || len(gen.prompts) > 3 {
-		t.Fatalf("provider calls = %d, want bounded initial calls plus one retry", len(gen.prompts))
+	// Two segments fan out across workers with one bounded repair each:
+	// 2 initial requests plus at most 2 repairs. The fourth scripted result
+	// keeps the second repair deterministic (validation failure instead of
+	// "no scripted result") regardless of worker scheduling.
+	if len(gen.prompts) < 2 || len(gen.prompts) > 4 {
+		t.Fatalf("provider calls = %d, want bounded initial calls plus bounded repairs", len(gen.prompts))
 	}
 }
 

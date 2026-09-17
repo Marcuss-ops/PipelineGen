@@ -99,6 +99,11 @@ type OutputSpec struct {
 
 type AudioOutputConfig struct {
 	Mode string `json:"mode,omitempty"`
+	// VoiceoverLanguages limits speech synthesis independently from the
+	// translated output languages. Nil preserves legacy synthesis for the
+	// source and every requested translation; a non-nil list selects the
+	// exact languages to synthesize.
+	VoiceoverLanguages []string `json:"voiceover_languages,omitempty"`
 	// Timing is the canonical voiceover timing policy nested inside the
 	// existing audio config (wire key "timing"). nil means the pipeline
 	// applies the canonical defaults (best_effort / word / [json]) —
