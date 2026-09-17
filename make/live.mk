@@ -60,6 +60,33 @@ verify-pipeline-e2e-live: auth-check
 	@bash tests/operational/pipeline_live_e2e.sh
 	@echo "✅ verify-pipeline-e2e-live passed"
 
+# ─── Overlay lane certification (September 2026) ──────────────────────
+#
+# certify-overlay-lane — the ONE command that replaces the manual audit that
+# certifying an overlay change used to require: detect both repo roots, run the
+# overlay packages, build BOTH binaries, install + restart the right units,
+# prove via /health and /ready that the running process IS the built binary,
+# submit a canary, verify the overlays/motions/content addresses/timing in the
+# real result, and leave a portable bundle for another machine.
+#
+# Refuses to guess: a missing payload, an unreachable service or a digest
+# mismatch is a FAIL, not a warning. Its driver is
+# scripts/certify_overlay_lane.sh (tracked, executable).
+#
+#   make certify-overlay-lane                              # full run
+#   make certify-overlay-lane-dry                           # preflight only
+#   make certify-overlay-lane SKIP_DEPLOY=1                 # certify what runs
+#   make certify-overlay-lane CERT_INSTALL_RENDERINGGEN=1
+.PHONY: certify-overlay-lane certify-overlay-lane-dry
+certify-overlay-lane:
+	@echo "→ Overlay lane certification (build → deploy → identity → canary → verify)"
+	@bash scripts/certify_overlay_lane.sh $(if $(SKIP_DEPLOY),--skip-deploy,)
+
+certify-overlay-lane-dry:
+	@echo "→ Overlay lane certification preflight (no build, no deploy)"
+	@bash scripts/certify_overlay_lane.sh --dry-run
+	@echo "✅ certify-overlay-lane-dry passed"
+
 # ─── CORE_READY tail gate (September 2026) ─────────────────────────────
 #
 # gate-core-ready-tail — validates the CORE_READY tail invariants against

@@ -162,6 +162,28 @@ var providedSoundEffects = canonicalProvidedSoundEffects([]providedSoundEffect{
 	{"1oCpcAA8Qha_Mgx4pz27LZyAGq2agJBPo", "sfx_music_naruto_sad_music_01.mp3", "Naruto Sad Music", "music", "anime_theme", "sad", "low", []string{"background", "mood", "failure"}, []string{"naruto", "sad", "anime", "music", "theme"}},
 })
 
+// soundEffectProvider maps one provided sound effect to the canonical taxonomy
+// provider string (`bgm` | `sound_effect`) that the media writer turns into an
+// asset_kind via mediaregistry.ResolveTaxonomy.
+//
+// Both groups are audio assets, but BGM and one-shot effects have different
+// canonical kinds, and the distinction has to survive indexing so the resolver
+// can never classify a background track as a one-shot effect by accident.
+//
+// The discriminator is the SUBTYPE, not the family: every track in this
+// catalog carries `family: "music"` (an editorial group, shared with the
+// `sfx_music_*` meme themes) and only the BGM entries carry
+// `subtype: "background_music"`. The previous `spec.family ==
+// "background_music"` test could therefore never be true, so every BGM was
+// indexed with the `sound_effect` provider and defaultAssetKind resolved it to
+// AssetSFX.
+func soundEffectProvider(spec providedSoundEffect) string {
+	if spec.subtype == "background_music" {
+		return "bgm"
+	}
+	return "sound_effect"
+}
+
 func RunIndexProvidedSoundEffects(args []string) error {
 	// Operators may narrow this repair/index pass to aliases or filenames;
 	// the default remains the complete canonical catalog.
@@ -246,13 +268,7 @@ func RunIndexProvidedSoundEffects(args []string) error {
 			return fmt.Errorf("hash %s: %w", spec.name, err)
 		}
 		now := time.Now().UTC()
-		// Both groups are audio assets, but BGM and one-shot effects have
-		// different canonical kinds. Preserve that distinction at indexing so
-		// the resolver cannot classify a BGM as an SFX by accident.
-		sourceType := "sound_effect"
-		if spec.family == "background_music" {
-			sourceType = "bgm"
-		}
+		sourceType := soundEffectProvider(spec)
 		clip := &asset.Asset{ID: spec.driveID, Name: spec.name, Filename: spec.filename, Source: asset.Source(sourceType), MediaType: asset.MediaType("audio"), Category: "file", Group: spec.family, Duration: duration, LifecycleState: asset.StateActive, CreatedAt: now, UpdatedAt: now, Tags: spec.tags}
 		clip.SearchText = strings.Join(append([]string{spec.name, spec.family, spec.subtype, spec.mood, spec.energy}, append(spec.bestFor, spec.tags...)...), " ")
 		clip.SetDriveFileID(spec.driveID)

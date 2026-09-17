@@ -1,6 +1,7 @@
 // Package scriptgeneration — model_render.go: the render and audio projection
-// types of the pure domain model (ZERO I/O; standard library only), plus the
-// CONTRACT of the central RenderingGen queue those types travel to and from.
+// types of the pure domain model (ZERO I/O: the standard library plus the
+// kernel's pure contract types, never an adapter), plus the CONTRACT of the
+// central RenderingGen queue those types travel to and from.
 //
 // RenderReference, RenderArtifact, FinalAudioReference, AudioPipelineMetrics,
 // TTSSSceneMetric and DocumentsConfig — the shapes the durable runner hands to
@@ -22,6 +23,8 @@ import (
 	"encoding/json"
 	"errors"
 	"time"
+
+	kernelasset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
 // RenderReference identifies a completed RenderingGen queue job (the future
@@ -147,14 +150,52 @@ var ErrJobExists = errors.New("render job already exists")
 const defaultQueuePollInterval = 250 * time.Millisecond
 
 // RenderQueueAsset points at an input asset the central queue worker must
-// fetch. Hash is the object-store lookup key (the SHA-256 of the file).
+// fetch. SHA256 is the object-store lookup key (the content address of the
+// file).
+//
+// It is the WIRE PROJECTION of kernel/asset.Ref: Ref() projects it onto the
+// canonical identity and NewRenderQueueAsset builds it from one, so the
+// canonical type is the single place where "which asset / which bytes" is
+// spelled. The identity fields live here (rather than as an embedded
+// kernel/asset.Ref) only because the queue's field name for the digest is
+// `hash` and this projection must stay byte-compatible with the deployed
+// RenderingGen queue; embedding would rename the wire field to `sha256` in the
+// same change that removed the location field, which is exactly the kind of
+// two-in-one wire break the repo's expand/cutover rule forbids.
 type RenderQueueAsset struct {
-	Hash      string `json:"hash"`
+	// SHA256 is the content address. The JSON name stays `hash`: it is the
+	// deployed RenderingGen queue contract (queueclient.AssetRef), and renaming
+	// it is a coordinated cross-repo cutover, not a local cleanup.
+	SHA256    string `json:"hash"`
 	URL       string `json:"url,omitempty"`
 	SourceURL string `json:"source_url,omitempty"`
 	// LocalPath is producer-side only. The adapter stages it into the object
 	// store and omits it from the RenderingGen wire asset reference.
+	//
+	// It is the LAST location field on this DTO and it is deliberately still
+	// here: the behaviour it carries (staging producer-verified bytes into the
+	// object store without re-downloading them) is pinned by tests and its
+	// owner is the canonical AssetMaterializer, which is the next step of the
+	// media-identity programme. Deleting it here would delete a pinned feature
+	// and silently turn every staged asset into a download, so it is left in
+	// place, documented, and scheduled — never smuggled and never forgotten.
 	LocalPath string `json:"-"`
+}
+
+// Ref projects the asset onto the canonical, location-free identity. AssetID is
+// the logical path the worker resolves the asset under, because that is the
+// only logical identity this wire projection carries.
+func (a RenderQueueAsset) Ref() kernelasset.Ref {
+	return kernelasset.Ref{AssetID: a.URL, SHA256: a.SHA256}.Canonical()
+}
+
+// NewRenderQueueAsset builds the wire projection from the canonical identity.
+// Producers build from kernel/asset.Ref so the identity has exactly one
+// spelling; logicalPath is the path the worker resolves the asset under, and
+// sourceURL is the fetchable origin used for worker self-healing.
+func NewRenderQueueAsset(ref kernelasset.Ref, logicalPath, sourceURL string) RenderQueueAsset {
+	canonical := ref.Canonical()
+	return RenderQueueAsset{SHA256: canonical.SHA256, URL: logicalPath, SourceURL: sourceURL}
 }
 
 // RenderQueueJob is the queue-side view of a submitted render job. It is the

@@ -142,12 +142,12 @@ func TestPrepareRenderCertification(t *testing.T) {
 			t.Errorf("prepare assets empty: expected SHA256+URL for the image intent")
 		} else {
 			for _, a := range prepPayload.Assets {
-				if a.Hash == "" {
+				if a.SHA256 == "" {
 					t.Errorf("prepare asset missing hash: %+v", a)
 				}
 				// Broker calls it logical_path; render_plan.intents[].payload.asset_refs[].url
 				// is the contract URL (already validated via the nested render_plan above).
-				t.Logf("prepare asset: hash=%s logical_path=%s", a.Hash, a.URL)
+				t.Logf("prepare asset: hash=%s logical_path=%s", a.SHA256, a.URL)
 			}
 		}
 		// The asset URL contract lives inside render_plan.intents[].payload.asset_refs[].url

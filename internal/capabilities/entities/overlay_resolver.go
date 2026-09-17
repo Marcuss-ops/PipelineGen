@@ -68,21 +68,30 @@ func ResolveRankedEntityOverlayPlan(timeline EntityTimeline, planID, videoID, pr
 		rankConfig := cfg
 		rankConfig.MaxEntityOverlaysPerScene = 0
 		ranked := RankScene(scene.Entities, ctx, rankConfig)
-		seenEntityIDs := make(map[string]struct{}, len(ranked))
+		// seenOverlayIdentities is keyed by the overlay ID, not by the entity
+		// hash. An entity can be grounded at several word spans in one scene,
+		// AND the same entity can reach the pipeline under more than one
+		// Unicode spelling — the typographic apostrophe of "Cus D’Amato"
+		// versus the ASCII one of "Cus D'Amato". Those spellings hash to
+		// DIFFERENT entity ids (the canonical key keeps the raw rune) but
+		// collapse to ONE human-readable overlay id, because SafeEntityID
+		// slugs every non-alphanumeric rune away. Deduplicating on the entity
+		// hash alone therefore emitted two items carrying the same id and the
+		// plan failed validation with `duplicate item id`. The overlay
+		// identity is the id, so one entity yields exactly one card.
+		seenOverlayIdentities := make(map[string]struct{}, len(ranked))
 		for _, rankedOccurrence := range ranked {
 			occurrence := rankedOccurrence.Occurrence
-			// An entity can be grounded at several word spans in one scene.
-			// The run's image budget and stable overlay identity are semantic,
-			// not mention-count based. Keep the highest-ranked mention (ties
-			// retain RankScene's stable source order) so duplicate mentions do
-			// not produce duplicate IDs or repeated cards in the same scene.
-			if _, duplicate := seenEntityIDs[occurrence.EntityID]; duplicate {
+			// Keep the highest-ranked mention (ties retain RankScene's stable
+			// source order) so duplicates do not produce repeated cards.
+			identity := overlayItemID(occurrence)
+			if _, duplicate := seenOverlayIdentities[identity]; duplicate {
 				continue
 			}
-			if cfg.MaxEntityOverlaysPerScene > 0 && len(seenEntityIDs) >= cfg.MaxEntityOverlaysPerScene {
+			if cfg.MaxEntityOverlaysPerScene > 0 && len(seenOverlayIdentities) >= cfg.MaxEntityOverlaysPerScene {
 				break
 			}
-			seenEntityIDs[occurrence.EntityID] = struct{}{}
+			seenOverlayIdentities[identity] = struct{}{}
 			durationUS := occurrence.AudioEndUS - occurrence.AudioStartUS
 			if durationUS < MinEntityOverlayDurationUS {
 				durationUS = MinEntityOverlayDurationUS
@@ -101,7 +110,7 @@ func ResolveRankedEntityOverlayPlan(timeline EntityTimeline, planID, videoID, pr
 				return capabilityoverlay.OverlayPlan{}, fmt.Errorf("entity overlay resolver: %w", err)
 			}
 			items = append(items, capabilityoverlay.OverlayItem{
-				ID:       overlayItemID(occurrence),
+				ID:       identity,
 				SceneID:  occurrence.SceneID,
 				EntityID: occurrence.EntityID,
 				Kind:     string(kind),
@@ -114,8 +123,8 @@ func ResolveRankedEntityOverlayPlan(timeline EntityTimeline, planID, videoID, pr
 				StartUS:       startUS,
 				DurationUS:    durationUS,
 				TemplateID:    entry.Template,
-				PresetID:      capabilityoverlay.SelectEntityNamePreset(planID, occurrence.SceneID, overlayItemID(occurrence), occurrence.Type),
-				ImagePresetID: capabilityoverlay.SelectEntityImagePreset(planID, occurrence.SceneID, overlayItemID(occurrence)),
+				PresetID:      capabilityoverlay.SelectEntityNamePreset(planID, occurrence.SceneID, identity, occurrence.Type),
+				ImagePresetID: capabilityoverlay.SelectEntityImagePreset(planID, occurrence.SceneID, identity),
 				Text:          occurrence.Name,
 				// The plan's entity_ref: RenderingGen receives WHO the overlay is
 				// about (stable content-addressed id + type + canonical name +

@@ -2,7 +2,11 @@ package lifecycle
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -413,5 +417,85 @@ func TestReconcile_ReconcilerMissingFailsClosed(t *testing.T) {
 	}
 	if !errors.Is(err, ErrReconcilerUnavailable) {
 		t.Fatalf("err = %v, want errors.Is(ErrReconcilerUnavailable)", err)
+	}
+}
+
+// ─── the content address is the byte identity, and it is NOT the legacy MD5 ───
+//
+// ProcessAsset used to write the caller-supplied fileHash into BOTH
+// LegacyFileMD5 and ContentHash. The callers compute an MD5
+// (ingest/service.go: checksum.LegacyMD5File), so the durable content address of
+// the media SSOT — the column every reader treats as a SHA-256 — was being
+// filled with an MD5. These tests pin the separation: the record keeps the MD5
+// where compatibility expects it, and the content address is the SHA-256 OF THE
+// BYTES.
+
+// processAssetWithLocalFile runs ProcessAsset over exactly one local artifact and
+// returns the record the canonical committer received.
+func processAssetWithLocalFile(t *testing.T, localPath, fileHash string) *artifacts.MediaRecord {
+	t.Helper()
+	finalizer := &lifecycleFinalizerStub{}
+	svc := NewService(ServiceDeps{Finalizer: finalizer}, Config{
+		PersistPolicy: assetop.PersistPolicy{SaveToAssetRegistry: true},
+	})
+	if _, err := svc.ProcessAsset(context.Background(), &FinalizeInput{
+		ID: "asset-content-address", LocalPath: localPath,
+	}, fileHash); err != nil {
+		t.Fatalf("ProcessAsset: %v", err)
+	}
+	if len(finalizer.records) == 0 {
+		t.Fatal("no record was committed; the assertion below would be vacuous")
+	}
+	return finalizer.records[len(finalizer.records)-1]
+}
+
+func TestProcessAssetRecordsTheSha256OfTheBytesAsTheContentAddress(t *testing.T) {
+	payload := []byte("canonical bytes whose identity must not be their MD5")
+	path := filepath.Join(t.TempDir(), "clip.mp4")
+	if err := os.WriteFile(path, payload, 0o600); err != nil {
+		t.Fatalf("write artifact: %v", err)
+	}
+	// Computed here with the standard library so the expectation does not come
+	// from the helper under test.
+	sum := sha256.Sum256(payload)
+	wantContentHash := hex.EncodeToString(sum[:])
+
+	const legacyMD5 = "7f83b1657ff1fc53b92dc18148a1d65dfa135e2f"
+	rec := processAssetWithLocalFile(t, path, legacyMD5)
+
+	if rec.ContentHash != wantContentHash {
+		t.Errorf("record content address = %q, want the SHA-256 of the bytes %q (an MD5 here is not a content address)",
+			rec.ContentHash, wantContentHash)
+	}
+	if rec.LegacyFileMD5 != legacyMD5 {
+		t.Errorf("legacy digest = %q, want the caller's MD5 preserved verbatim in its compatibility field", rec.LegacyFileMD5)
+	}
+	if rec.ContentHash == rec.LegacyFileMD5 {
+		t.Error("the content address and the legacy digest must be independent facts, not one value in two fields")
+	}
+}
+
+func TestProcessAssetNeverStoresALegacyMD5AsTheContentAddress(t *testing.T) {
+	for name, fileHash := range map[string]struct {
+		digest string
+		want   string
+	}{
+		"legacy-md5":              {"7f83b1657ff1fc53b92dc18148a1d65dfa135e2f", ""},
+		"empty":                   {"", ""},
+		"canonical-sha256":        {"c4813c9d7d4f0f6b1a2c3d4e5f60718293a4b5c6d7e8f9012345678901abcdef", "c4813c9d7d4f0f6b1a2c3d4e5f60718293a4b5c6d7e8f9012345678901abcdef"},
+		"non-canonical-uppercase": {"C4813C9D7D4F0F6B1A2C3D4E5F60718293A4B5C6D7E8F9012345678901ABCDEF", ""},
+	} {
+		t.Run(name, func(t *testing.T) {
+			// No local bytes: the identity cannot be derived, so it must be left
+			// UNKNOWN rather than filled with whatever the caller happened to
+			// carry.
+			rec := processAssetWithLocalFile(t, "", fileHash.digest)
+			if rec.ContentHash != fileHash.want {
+				t.Errorf("content address = %q, want %q", rec.ContentHash, fileHash.want)
+			}
+			if fileHash.digest != "" && rec.LegacyFileMD5 != fileHash.digest {
+				t.Errorf("legacy digest = %q, want the caller's value preserved", rec.LegacyFileMD5)
+			}
+		})
 	}
 }

@@ -55,6 +55,16 @@ var (
 		".git": true, ".tmp": true, ".agents": true, ".codex": true,
 		"node_modules": true, "vendor": true, "build": true, "target": true,
 		"dist": true, ".cache": true, "__pycache__": true,
+		// benchmarks is RUN OUTPUT, not a projection: every file in it is
+		// evidence of one execution (mode, ids, wall-clock timing, the payload
+		// that was submitted) written by a live run and named after its
+		// timestamp. It matches this gate's shape because a run log legitimately
+		// ECHOES the Drive identity of the asset it processed — echoing an
+		// identity is not owning a catalog. Scanning it made the gate fire on
+		// every clip-lane run (a fresh false positive per run, on files whose
+		// content the gate cannot change), which is the failure mode that turns
+		// a real invariant into noise and gets it ignored.
+		"benchmarks": true,
 	}
 )
 

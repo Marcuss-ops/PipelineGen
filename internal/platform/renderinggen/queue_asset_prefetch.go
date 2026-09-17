@@ -9,6 +9,7 @@ package renderinggen
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -18,8 +19,26 @@ import (
 	"time"
 
 	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
+	assetmaterializer "github.com/Marcuss-ops/PipelineGen/internal/platform/assets/materializer"
 	"golang.org/x/sync/errgroup"
 )
+
+// ErrAssetSourceUnavailable is returned when an asset reaches the prefetch
+// bridge with neither a content-verified local file nor a fetchable URL. It is
+// the typed signal that the failure is a BROKEN PRODUCER CONTRACT (a hint that
+// does not match its own content address) rather than a transient cache miss:
+// the previous behaviour degraded this into a silent skip, which surfaced later
+// as an unexplained "cache miss" on the worker.
+var ErrAssetSourceUnavailable = errors.New("renderinggen asset prefetch: no content-verified source available")
+
+// prefetchAssets is the process-lifetime asset materializer
+// (platform/assets/materializer), the repository's single owner of the
+// question "do these bytes hash to this address?". It is the SAME authority
+// the overlay cache and the Drive materializer use, so the prefetch bridge
+// cannot disagree with them about a file's identity — and a file that is
+// staged N times is read once (the underlying kernel/digest verifier is
+// memoized).
+var prefetchAssets = assetmaterializer.New(assetmaterializer.Options{})
 
 // objectStoreHTTPClient bounds every object-store HTTP call (asset
 // prefetch uploads and certified-artifact downloads). Without a timeout
@@ -74,12 +93,15 @@ func NewHTTPAssetPrefetcher(storeURL string) *AssetPrefetcher {
 				}
 				localPath = font.LocalPath
 			}
-			if strings.TrimSpace(asset.Hash) == "" ||
+			// The canonical identity is the only digest spelling; the local `Hash`
+			// lower-casing that used to live here is the projection's job now.
+			identity := asset.Ref()
+			if !identity.HasContentAddress() ||
 				(localPath == "" && strings.TrimSpace(downloadURL) == "") ||
 				(localPath == "" && !strings.HasPrefix(downloadURL, "http")) {
 				continue
 			}
-			hash := strings.ToLower(strings.TrimSpace(asset.Hash))
+			hash := identity.SHA256
 			if _, ok := seen[hash]; ok {
 				continue
 			}
@@ -92,11 +114,23 @@ func NewHTTPAssetPrefetcher(storeURL string) *AssetPrefetcher {
 				if present {
 					return nil
 				}
-				if localPath != "" {
+				// The content address is the ONLY source of truth. A producer-supplied
+				// LocalPath is an optimization, so it is used only after the bytes have
+				// been proven to hash to `hash`. This is the boundary that used to be
+				// missing: a stale hint (file deleted, or a different file at the same
+				// path) was published into the content-addressed store under someone
+				// else's address, and the mismatch only showed up much later as a
+				// corrupt or wrong asset. A rejected hint now falls through to the
+				// verified download source instead.
+				if verifiedLocalPath(localPath, hash) != "" {
 					if err := streamPutFile(ctx, storeURL, hash, localPath); err != nil {
 						return fmt.Errorf("asset %s local stage: %w", hash, err)
 					}
 					return nil
+				}
+				if !strings.HasPrefix(strings.TrimSpace(downloadURL), "http") {
+					return fmt.Errorf("%w: asset %s (local hint %q rejected, url %q)",
+						ErrAssetSourceUnavailable, hash, localPath, downloadURL)
 				}
 				req, err := http.NewRequestWithContext(ctx, http.MethodGet, downloadURL, nil)
 				if err != nil {
@@ -121,6 +155,24 @@ func NewHTTPAssetPrefetcher(storeURL string) *AssetPrefetcher {
 		}
 		return group.Wait()
 	})
+}
+
+// verifiedLocalPath returns path only when the file exists AND its bytes hash
+// to the expected content address. Every other outcome — empty hint, missing
+// file, unreadable file, digest mismatch — returns the empty string, so a
+// caller can never publish unverified bytes under a content address. The
+// verification itself is delegated to the canonical materializer: this bridge
+// must not own a second opinion on what "these bytes hash to this address"
+// means.
+func verifiedLocalPath(path, expectedHash string) string {
+	path = strings.TrimSpace(path)
+	if path == "" || strings.TrimSpace(expectedHash) == "" {
+		return ""
+	}
+	if !prefetchAssets.Matches(path, expectedHash) {
+		return ""
+	}
+	return path
 }
 
 func canonicalPresetFontPath(path string) bool {

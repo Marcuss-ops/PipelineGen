@@ -5,6 +5,12 @@ Only current, executable information belongs in the working tree. Historical pla
 | Concern | Canonical source |
 |---|---|
 | Engineering and Git rules | `AGENTS.md` |
+| Runtime build identity (which binary/commit/config a process runs) | `internal/platform/buildinfo` — published as the `build` object on `/health` and `/ready` |
+| Worker runtime build identity (same JSON contract) | `RenderingGen/renderinggen/internal/buildinfo` — published as `build` on the worker `/health` |
+| Content-address verification of a file before it is trusted or published | `internal/kernel/digest` (`Verifier`, `SHA256File`) — one memoized authority, used by the render asset prefetch boundary too |
+| Asset staging into RenderingGen's content-addressed store | `internal/platform/renderinggen` (`NewHTTPAssetPrefetcher`) — a producer `LocalPath` is an optimization that must hash to the address, never a source of truth |
+| Overlay lane certification (build → deploy → identity → canary → verify → bundle) | `scripts/certify_overlay_lane.sh` via `make certify-overlay-lane` |
+| Portable overlay+t timing job bundle for another machine | `scripts/certify/overlay_lane_canary.json` + the run bundle under `ops/benchmarks/overlay-lane-*` |
 | Current system architecture and target root decision | `ARCHITECTURE.md` |
 | Build and startup | `README.md` |
 | Live HTTP routes | `docs/api/ACTIVE_API_GENERATED.md` |

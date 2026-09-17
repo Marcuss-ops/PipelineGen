@@ -19,15 +19,19 @@ const (
 
 var ErrRecertificationRepositoryUnavailable = errors.New("entity image catalog: recertification repository unavailable")
 
-// RecertificationCandidate is a candidate plus durable retry metadata. The
-// Materialization field is informational: recertification never updates it.
+// RecertificationCandidate is a candidate plus durable retry metadata.
+//
+// It carries NO materialization metadata. Recertification validates a remote
+// URL; it is not a reader of the durable media identity, so reloading
+// asset_id / drive / digest here would make this maintenance loop a second
+// source of truth for a fact owned by PostgreSQL (godlike/06). A candidate is
+// "the provider suggested this URL", nothing more.
 type RecertificationCandidate struct {
 	Candidate
 	FailureCount        int
 	LastValidationAt    time.Time
 	NextRetryAt         time.Time
 	LastValidationError string
-	Materialization     *Materialization
 }
 
 // RecertificationRepository is optional so existing catalog consumers and

@@ -90,7 +90,17 @@ func BuildSemanticRenderBundleFromResult(result *GenerateResult, language Langua
 			// An annotation may legally remain text-only while an asset is
 			// pending. Never emit a half-bound BoundAsset: only a committed,
 			// content-addressed binding crosses the semantic contract.
-			if entity.Image == nil || entity.Image.AssetID == "" || !validContentHash(entity.Image.SHA256) {
+			//
+			// The identity comes from the canonical kernel type, so the digest is
+			// validated AND spelled by its one owner instead of by this call site
+			// (the local validator this replaced accepted a differently-cased
+			// digest but copied it through uncanonicalised, which is how one set of
+			// bytes ends up with two join keys).
+			if entity.Image == nil {
+				continue
+			}
+			identity := entity.Image.Ref()
+			if identity.AssetID == "" || !identity.IsCanonicalDigest() {
 				continue
 			}
 			url := entity.Image.PreviewURL
@@ -118,7 +128,7 @@ func BuildSemanticRenderBundleFromResult(result *GenerateResult, language Langua
 			}
 			bundle.Assets = append(bundle.Assets, capabilityoverlay.BoundAsset{
 				EntityID: entityID,
-				AssetID:  entity.Image.AssetID, ContentHash: entity.Image.SHA256,
+				AssetID:  identity.AssetID, ContentHash: identity.SHA256,
 				DriveFileID: entity.Image.DriveFileID, SourceURL: url,
 				Verified: url != "" || entity.Image.DriveFileID != "",
 			})
@@ -132,18 +142,6 @@ func BuildSemanticRenderBundleFromResult(result *GenerateResult, language Langua
 	}
 	_ = videoID // retained in the caller's OverlayPlan identity.
 	return bundle, nil
-}
-
-func validContentHash(hash string) bool {
-	if len(hash) != 64 {
-		return false
-	}
-	for _, r := range strings.ToLower(hash) {
-		if !((r >= '0' && r <= '9') || (r >= 'a' && r <= 'f')) {
-			return false
-		}
-	}
-	return true
 }
 
 // runeSpanBytes converts the entity contract's Unicode-rune span into the

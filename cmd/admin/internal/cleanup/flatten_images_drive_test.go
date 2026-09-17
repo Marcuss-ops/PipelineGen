@@ -525,19 +525,6 @@ func TestPlanFlattenNeverLosesAFile(t *testing.T) {
 	}
 }
 
-func containsAll(haystack []string, needles ...string) bool {
-	set := map[string]bool{}
-	for _, item := range haystack {
-		set[item] = true
-	}
-	for _, needle := range needles {
-		if !set[needle] {
-			return false
-		}
-	}
-	return true
-}
-
 // ── snapshot tests ──────────────────────────────────────────────────────
 
 type stubTreeLister struct {

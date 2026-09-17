@@ -290,15 +290,14 @@ func (a *SQLiteEntityImageCatalogAdapter) UpsertMaterialization(ctx context.Cont
 	_, err := a.db.ExecContext(ctx, `
 		INSERT INTO entity_image_catalog_materializations (
 			candidate_id, asset_id, legacy_file_md5, drive_file_id, drive_link,
-			local_path, status, materialized_at, last_verified_at, last_error,
+			status, materialized_at, last_verified_at, last_error,
 			created_at, updated_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 		ON CONFLICT(candidate_id) DO UPDATE SET
 			asset_id = excluded.asset_id,
 			legacy_file_md5 = excluded.legacy_file_md5,
 			drive_file_id = excluded.drive_file_id,
 			drive_link = excluded.drive_link,
-			local_path = excluded.local_path,
 			status = excluded.status,
 			materialized_at = excluded.materialized_at,
 			last_verified_at = excluded.last_verified_at,
@@ -306,7 +305,7 @@ func (a *SQLiteEntityImageCatalogAdapter) UpsertMaterialization(ctx context.Cont
 			updated_at = CURRENT_TIMESTAMP
 	`, materialization.CandidateID, strings.TrimSpace(materialization.AssetID),
 		strings.TrimSpace(materialization.LegacyFileMD5), strings.TrimSpace(materialization.DriveFileID),
-		strings.TrimSpace(materialization.DriveLink), strings.TrimSpace(materialization.LocalPath),
+		strings.TrimSpace(materialization.DriveLink),
 		status, materializedAt, verifiedAt, materialization.LastError)
 	if err != nil {
 		return fmt.Errorf("entity image catalog: upsert materialization: %w", err)
@@ -316,8 +315,17 @@ func (a *SQLiteEntityImageCatalogAdapter) UpsertMaterialization(ctx context.Cont
 
 // ListCandidatesForRecertification returns a bounded, deterministic work set:
 // stale/fresh-but-aged candidates and broken candidates whose persisted retry
-// window is due. Materialization metadata is read for observability only and
-// is never changed by this adapter method.
+// window is due.
+//
+// It deliberately reads ONLY the discovery row. It used to LEFT JOIN
+// entity_image_catalog_materializations and reload asset_id / drive / digest
+// metadata into each candidate, which made a remote-URL recertification job a
+// second reader of the durable media identity (godlike/06: one owner per
+// fact). A candidate is "the provider suggested this URL"; the durable asset
+// identity lives in PostgreSQL (media_assets + asset_locations) and is never
+// rehydrated from the discovery cache. The join also made every recertification
+// batch scan the media-metadata table it must never mutate, which is the shape
+// the media-identity gate exists to prevent.
 func (a *SQLiteEntityImageCatalogAdapter) ListCandidatesForRecertification(ctx context.Context, now time.Time, limit, maxAttempts int) ([]capentity.RecertificationCandidate, error) {
 	if a == nil || a.db == nil {
 		return nil, fmt.Errorf("entity image catalog: database unavailable")
@@ -339,12 +347,8 @@ func (a *SQLiteEntityImageCatalogAdapter) ListCandidatesForRecertification(ctx c
 		       c.semantic_status, c.semantic_score, c.technical_score,
 		       c.quality_reason, c.first_seen_at, c.last_seen_at, c.updated_at,
 		       c.validation_attempts, c.last_validation_at, c.next_retry_at,
-		       c.last_validation_error,
-		       m.asset_id, m.legacy_file_md5, m.drive_file_id, m.drive_link,
-		       m.local_path, m.status, m.materialized_at, m.last_verified_at,
-		       m.last_error, m.created_at, m.updated_at
+		       c.last_validation_error
 		FROM entity_image_catalog_candidates c
-		LEFT JOIN entity_image_catalog_materializations m ON m.candidate_id = c.candidate_id
 		WHERE c.semantic_status = ?
 		  AND (
 			(c.status IN (?, ?, ?) AND c.last_seen_at < datetime(?))
@@ -366,9 +370,6 @@ func (a *SQLiteEntityImageCatalogAdapter) ListCandidatesForRecertification(ctx c
 		var item capentity.RecertificationCandidate
 		var firstSeen, lastSeen, updatedAt sql.NullString
 		var lastValidationAt, nextRetryAt sql.NullString
-		var materialization capentity.Materialization
-		var materializedAt, verifiedAt, materializationCreatedAt, materializationUpdatedAt sql.NullString
-		var assetID, fileHash, driveFileID, driveLink, localPath, materializationStatus, materializationError sql.NullString
 		var validationAttempts int
 		if err := rows.Scan(
 			&item.ID, &item.CanonicalEntityID, &item.Provider, &item.Rank,
@@ -376,25 +377,12 @@ func (a *SQLiteEntityImageCatalogAdapter) ListCandidatesForRecertification(ctx c
 			&item.SemanticStatus, &item.SemanticScore, &item.TechnicalScore,
 			&item.QualityReason, &firstSeen, &lastSeen, &updatedAt,
 			&validationAttempts, &lastValidationAt, &nextRetryAt, &item.LastValidationError,
-			&assetID, &fileHash, &driveFileID, &driveLink, &localPath,
-			&materializationStatus, &materializedAt, &verifiedAt, &materializationError,
-			&materializationCreatedAt, &materializationUpdatedAt,
 		); err != nil {
 			return nil, fmt.Errorf("entity image catalog: scan recertification candidate: %w", err)
 		}
 		item.FirstSeenAt, item.LastSeenAt, item.UpdatedAt = parseCatalogTime(firstSeen.String), parseCatalogTime(lastSeen.String), parseCatalogTime(updatedAt.String)
 		item.FailureCount = validationAttempts
 		item.LastValidationAt, item.NextRetryAt = parseCatalogTime(lastValidationAt.String), parseCatalogTime(nextRetryAt.String)
-		if assetID.Valid || fileHash.Valid || driveFileID.Valid || driveLink.Valid || localPath.Valid || materializationStatus.Valid {
-			materialization.CandidateID = item.ID
-			materialization.AssetID, materialization.LegacyFileMD5 = assetID.String, fileHash.String
-			materialization.DriveFileID, materialization.DriveLink = driveFileID.String, driveLink.String
-			materialization.LocalPath, materialization.Status = localPath.String, materializationStatus.String
-			materialization.MaterializedAt, materialization.LastVerifiedAt = parseCatalogTime(materializedAt.String), parseCatalogTime(verifiedAt.String)
-			materialization.LastError = materializationError.String
-			materialization.CreatedAt, materialization.UpdatedAt = parseCatalogTime(materializationCreatedAt.String), parseCatalogTime(materializationUpdatedAt.String)
-			item.Materialization = &materialization
-		}
 		out = append(out, item)
 	}
 	if err := rows.Err(); err != nil {
@@ -462,7 +450,7 @@ func (a *SQLiteEntityImageCatalogAdapter) GetMaterialization(ctx context.Context
 	}
 	row := a.db.QueryRowContext(ctx, `
 		SELECT candidate_id, asset_id, legacy_file_md5, drive_file_id, drive_link,
-		       local_path, status, materialized_at, last_verified_at, last_error,
+		       status, materialized_at, last_verified_at, last_error,
 		       created_at, updated_at
 		FROM entity_image_catalog_materializations
 		WHERE candidate_id = ?
@@ -471,7 +459,7 @@ func (a *SQLiteEntityImageCatalogAdapter) GetMaterialization(ctx context.Context
 	var materializedAt, verifiedAt, createdAt, updatedAt string
 	if err := row.Scan(
 		&out.CandidateID, &out.AssetID, &out.LegacyFileMD5, &out.DriveFileID,
-		&out.DriveLink, &out.LocalPath, &out.Status, &materializedAt,
+		&out.DriveLink, &out.Status, &materializedAt,
 		&verifiedAt, &out.LastError, &createdAt, &updatedAt,
 	); err != nil {
 		if err == sql.ErrNoRows {

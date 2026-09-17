@@ -104,12 +104,19 @@ func prepareAssets(intents []capoverlay.OverlayIntent) []RenderQueueAsset {
 	seen := make(map[string]bool)
 	for _, intent := range intents {
 		for _, ref := range intent.Payload.AssetRefs {
-			hash := strings.ToLower(strings.TrimSpace(ref.SHA256))
-			if hash == "" || seen[hash] {
+			// Identity comes from the canonical kernel type (one canonicalisation
+			// owner), not from a local strings.ToLower at the call site.
+			identity := ref.Ref()
+			if !identity.HasContentAddress() {
 				continue
 			}
-			seen[hash] = true
-			asset := RenderQueueAsset{Hash: hash, URL: ref.URL, LocalPath: ref.LocalPath}
+			key := identity.DedupKey()
+			if seen[key] {
+				continue
+			}
+			seen[key] = true
+			asset := NewRenderQueueAsset(identity, ref.URL, "")
+			asset.LocalPath = ref.LocalPath
 			if strings.HasPrefix(ref.URL, "http") {
 				asset.SourceURL = ref.URL
 			}

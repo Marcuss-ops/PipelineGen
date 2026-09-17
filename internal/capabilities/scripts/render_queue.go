@@ -13,6 +13,7 @@ import (
 	"time"
 
 	capoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
+	kernelasset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 )
 
@@ -140,14 +141,18 @@ func (e *QueueRenderEnqueuer) enqueueChrononPlan(ctx context.Context, plan capov
 	assets := make([]RenderQueueAsset, 0, len(plan.Items)+1)
 	seen := make(map[string]struct{})
 	addAsset := func(ref capoverlay.OverlayAssetRef) {
-		if ref.SHA256 == "" {
+		// Identity comes from the canonical kernel type: the digest is
+		// canonicalised exactly once, by its owner, instead of by every caller
+		// that happens to compare hashes.
+		identity := ref.Ref()
+		if !identity.HasContentAddress() {
 			return
 		}
-		hash := strings.ToLower(ref.SHA256)
-		if _, ok := seen[hash]; ok {
+		key := identity.DedupKey()
+		if _, ok := seen[key]; ok {
 			return
 		}
-		seen[hash] = struct{}{}
+		seen[key] = struct{}{}
 		sourceURL := strings.TrimSpace(ref.URL)
 		logicalPath := semanticAssetLogicalPath(ref)
 		// RenderingGen's compiled Chronon plan addresses assets by its
@@ -155,7 +160,7 @@ func (e *QueueRenderEnqueuer) enqueueChrononPlan(ctx context.Context, plan capov
 		// and preserve the provider URL separately for worker self-healing.
 		// Without this identity match, a fresh Drive image can be downloaded
 		// successfully but still be looked up under a different workspace path.
-		asset := RenderQueueAsset{Hash: hash, URL: logicalPath}
+		asset := NewRenderQueueAsset(identity, logicalPath, "")
 		asset.LocalPath = ref.LocalPath
 		if strings.HasPrefix(sourceURL, "http") {
 			asset.SourceURL = sourceURL
@@ -180,7 +185,9 @@ func (e *QueueRenderEnqueuer) enqueueChrononPlan(ctx context.Context, plan capov
 	for _, item := range semanticPlan.Items {
 		if item.Text != "" || item.TemplateID == "IMPORTANT_WORD" || item.TemplateID == "IMPORTANT_PHRASE" || item.TemplateID == "lower_third" {
 			if _, ok := seen[capoverlay.GoldenPresetFontHash]; !ok {
-				assets = append(assets, RenderQueueAsset{Hash: capoverlay.GoldenPresetFontHash, URL: capoverlay.CanonicalPresetFontPath})
+				assets = append(assets, NewRenderQueueAsset(
+					kernelasset.Ref{AssetID: capoverlay.CanonicalPresetFontPath, SHA256: capoverlay.GoldenPresetFontHash},
+					capoverlay.CanonicalPresetFontPath, ""))
 			}
 			break
 		}

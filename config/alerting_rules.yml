@@ -531,3 +531,82 @@ groups:
             - tts: edge-tts / Python bridge may be overloaded
             - publish: Drive API may be slow or throttled
             - finalize: SQLite may be under contention
+
+  # ── Overlay render lane (Chronon GPU) ────────────────────────────────
+  # Families owned by internal/platform/observability/metrics_render.go and
+  # incremented at the ONE place that performs the blocking Chronon hand-off:
+  # internal/capabilities/scripts/runner_phase_overlay_render.go.
+  - name: velox_overlay_render
+    interval: 30s
+    rules:
+      # CRITICAL: the overlay lane failed to render at all.
+      # A single failure already blocks the artifact: the run fails closed at
+      # the audio/overlay boundary and no overlay is delivered. This is the
+      # alert that was MISSING on 2026-09-17, when the lane failed and the only
+      # signal was a job error string.
+      - alert: OverlayRenderFailures
+        expr: increase(overlay_render_total{outcome="failure"}[15m]) > 0
+        for: 2m
+        labels:
+          severity: critical
+          team: backend
+          service: velox-go
+          pipeline: overlay
+        annotations:
+          summary: "🚨 Overlay render failed in the last 15m"
+          description: |
+            overlay_render_total{outcome="failure"} increased by
+            {{ $value }} — the blocking Chronon overlay render did not
+            certify an artifact, so no overlay was delivered for the
+            affected run(s). Check, in order: (1) the failing job's error
+            in /api/jobs/:id/full, (2) the RenderingGen / Chronon daemon
+            status, (3) audio-asset resolution when the failure is
+            `compile canonical audio plan failed`.
+
+      # WARNING: the blocking boundary (submit + remote GPU wait) is slow.
+      # This is NOT the GPU render time (chronon_render_seconds); the delta
+      # between the two is queue/transport, so a high p95 here with a normal
+      # chronon_render_seconds points at the queue, not at the GPU.
+      - alert: OverlayRenderBoundarySlow
+        expr: |
+          histogram_quantile(0.95,
+            sum(rate(overlay_render_duration_seconds_bucket[10m])) by (le)
+          ) > 120
+        for: 10m
+        labels:
+          severity: warning
+          team: backend
+          service: velox-go
+          pipeline: overlay
+        annotations:
+          summary: "⚠️ Overlay render boundary p95 > 120s"
+          description: |
+            overlay_render_duration_seconds p95 is {{ $value }}s. This is
+            the wait PipelineGen spends inside the blocking hand-off.
+            Compare with chronon_render_seconds p95 (the GPU's own render
+            phase): if the GPU time is normal, the queue/transport is the
+            bottleneck; if the GPU time also rose, profile the render lane.
+
+      # WARNING: the GPU render phase itself regressed.
+      # chronon_render_seconds is relayed from the certified artifact's
+      # render_ms, so a change here is a real change in the Vulkan lane.
+      - alert: ChrononGpuRenderSlow
+        expr: |
+          histogram_quantile(0.95,
+            sum(rate(chronon_render_seconds_bucket[10m])) by (le, backend)
+          ) > 20
+        for: 10m
+        labels:
+          severity: warning
+          team: backend
+          service: velox-go
+          pipeline: overlay
+        annotations:
+          summary: "⚠️ Chronon GPU render p95 > 20s (backend {{ $labels.backend }})"
+          description: |
+            chronon_render_seconds p95 is {{ $value }}s on backend
+            {{ $labels.backend }}. This is the worker-measured render
+            phase of a certified overlay artifact. Cross-check
+            chronon_encode_seconds (NVENC) and
+            chronon_frames_rendered_total to separate a render regression
+            from an encode/backpressure one.

@@ -198,7 +198,10 @@ func applyEntityImageCatalogMaterialization(candidate scriptpkg.SegmentAssetCand
 	candidate.AssetID = materialization.AssetID
 	candidate.DriveLink = materialization.DriveLink
 	candidate.LegacyFileMD5 = materialization.LegacyFileMD5
-	candidate.LocalPath = materialization.LocalPath
+	// The catalog row deliberately carries no local path: a path is runtime
+	// state, and injecting a stale one here is what let a media row disagree
+	// with its own content address. Bytes are located by the canonical
+	// materializer from the content address, not remembered in a database.
 	candidate.RightsStatus = "unknown_allowed"
 	candidate.AcquisitionStatus = scriptpkg.VidRushStatusAcquired
 	candidate.VerificationStatus = scriptpkg.VidRushStatusVerified

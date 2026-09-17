@@ -1,0 +1,163 @@
+{
+  "version": 2,
+  "correlation_id": "certify-overlay-lane",
+  "preset": "custom",
+  "items": [
+    {
+      "id": "certify-overlay-lane-en",
+      "project": "certify-overlay-lane",
+      "title": "Overlay lane canary: five scenes, phrases, entity images, timing",
+      "language": "en",
+      "tone": "measured sports documentary",
+      "style": "American English sports-documentary narration. Write vivid, natural voiceover in complete sentences, using direct active verbs and concrete facts. Avoid cliches, generic commentary, repeated names, and inflated language.",
+      "model": "gemma4:e4b",
+      "output": {
+        "render": {
+          "enabled": true,
+          "background": {
+            "mode": "none"
+          },
+          "subtitles": {},
+          "render_concurrency": 1,
+          "foreground_scale_percent": 85,
+          "drive_subfolder_name": "certify-overlay-lane",
+          "require_gpu": true
+        },
+        "audio": {},
+        "extract_entities": "enabled",
+        "generate_metadata": "disabled",
+        "save_to_db": true,
+        "generate_timeline": true,
+        "voiceover_enabled": "enabled",
+        "drive_subfolder_name": "certify-overlay-lane"
+      },
+      "audio": {
+        "mode": "CHUNKED_VOICEOVER",
+        "timing": {
+          "mode": "required",
+          "boundary": "word",
+          "formats": [
+            "json",
+            "srt",
+            "vtt"
+          ]
+        }
+      },
+      "docs": {
+        "enabled": false,
+        "languages": [
+          "en"
+        ]
+      },
+      "media_plan": {
+        "mode": "hybrid",
+        "provider_policy": {
+          "internet_images": "enabled"
+        },
+        "cache": {},
+        "extraction": {
+          "enabled": true,
+          "include": [
+            "entities",
+            "important_phrases",
+            "important_words",
+            "special_names"
+          ],
+          "max_entities_per_segment": 4,
+          "max_important_phrases_per_segment": 1,
+          "max_important_words_per_segment": 3,
+          "max_image_queries_per_segment": 2,
+          "entity_images": {
+            "enabled": true,
+            "entity_types": [
+              "PERSON",
+              "ORG",
+              "GPE",
+              "PRODUCT",
+              "LOGO"
+            ],
+            "max_per_entity": 1,
+            "upload_to_drive": true
+          }
+        },
+        "planner": {},
+        "materialization": {
+          "mode": "selected",
+          "upload_to_drive": true,
+          "wait_for_ready": true
+        }
+      },
+      "overlay_background": {
+        "kind": "color",
+        "color": [
+          0.9333333333333333,
+          0.9450980392156862,
+          0.9058823529411765,
+          1
+        ],
+        "fit": "cover",
+        "opacity": 1
+      },
+      "script_params": {
+        "segments": [
+          {
+            "id": "scene-0",
+            "kind": "narration",
+            "topic": "Mike Tyson's early rise under Cus D'Amato",
+            "source_text": "Mike Tyson's career was launched with help from trainer Cus D'Amato. Before working with Tyson, D'Amato had guided Floyd Patterson to a world heavyweight title.",
+            "target_words": 25,
+            "min_words": 20,
+            "max_words": 32
+          },
+          {
+            "id": "scene-1",
+            "kind": "narration",
+            "topic": "Trevor Berbick's fight with Mike Tyson in 1986",
+            "source_text": "On November 22, 1986, twenty-year-old Mike Tyson defeated Trevor Berbick by second-round technical knockout. Tyson won the WBC heavyweight title and became the youngest world heavyweight champion.",
+            "target_words": 25,
+            "min_words": 20,
+            "max_words": 32
+          },
+          {
+            "id": "scene-2",
+            "kind": "narration",
+            "topic": "James \"Buster\" Douglas ends Tyson's unbeaten run in Tokyo",
+            "source_text": "On February 11, 1990, James \"Buster\" Douglas knocked Mike Tyson out in the tenth round in Tokyo. The result ended Tyson's unbeaten professional run.",
+            "target_words": 25,
+            "min_words": 20,
+            "max_words": 32
+          },
+          {
+            "id": "scene-3",
+            "kind": "narration",
+            "topic": "Evander Holyfield defeats Mike Tyson in their 1996 title fight",
+            "source_text": "In their November 1996 heavyweight title fight, Evander Holyfield defeated Mike Tyson by eleventh-round technical knockout.",
+            "target_words": 25,
+            "min_words": 20,
+            "max_words": 32
+          },
+          {
+            "id": "scene-4",
+            "kind": "narration",
+            "topic": "Mike Tyson's 1997 rematch with Evander Holyfield",
+            "source_text": "In their June 28, 1997 rematch, Mike Tyson was disqualified in the third round after biting Evander Holyfield.",
+            "target_words": 25,
+            "min_words": 20,
+            "max_words": 32
+          }
+        ],
+        "segment_words": 25,
+        "target_words": 125,
+        "min_words": 100,
+        "guidelines": "Write exactly five chronological standalone narration scenes, each 20-30 words in two complete sentences. The first sentence must name that scene's assigned lead subject. Use only that scene's source text; do not borrow or repeat events from another scene. Preserve supplied dates and outcomes. End both sentences cleanly. Make the event and its concrete action/result clear. Include one vivid exact phrase, ideally 4-9 words, that captures the central action or result and can stand alone on screen. Do not pad with generic commentary or unsupported details."
+      },
+      "source": {
+        "type": "text",
+        "topic": "Mike Tyson: a chronological account of five defining moments",
+        "cache": {},
+        "guidelines": "Write exactly five chronological standalone narration scenes, each 20-30 words in two complete sentences. The first sentence must name that scene's assigned lead subject. Use only that scene's source text; do not borrow or repeat events from another scene. Preserve supplied dates and outcomes. End both sentences cleanly. Make the event and its concrete action/result clear. Include one vivid exact phrase, ideally 4-9 words, that captures the central action or result and can stand alone on screen. Do not pad with generic commentary or unsupported details.",
+        "research": "{}"
+      }
+    }
+  ]
+}

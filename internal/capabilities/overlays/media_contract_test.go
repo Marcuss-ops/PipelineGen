@@ -1,7 +1,11 @@
 package overlays
 
 import (
+	"encoding/json"
+	"strings"
 	"testing"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
 func TestOverlayRender_ValidatesMediaContract(t *testing.T) {
@@ -316,5 +320,110 @@ func TestOverlayMediaContract_RejectsZeroFPS(t *testing.T) {
 	}
 	if err := contract.Validate(probed); err == nil {
 		t.Error("a 0/0 fps probe must fail closed (not trivially cross-multiply to zero)")
+	}
+}
+
+// ─── Phase 2: the canonical media identity (kernel/asset.Ref) ────────────
+//
+// OverlayAssetRef is the semantic layer's PROJECTION of kernel/asset.Ref. These
+// tests pin the property that motivated the convergence: the identity of an
+// asset is independent of where its bytes currently are, so two plan items that
+// describe the same image through different locations are the SAME asset — and
+// the queue must therefore stage one payload, not two.
+
+// TestOverlayAssetRefProjectsOntoCanonicalIdentity pins the projection's two
+// obligations: it carries the identity half (asset_id + content address) and it
+// is unable to carry the location half.
+func TestOverlayAssetRefProjectsOntoCanonicalIdentity(t *testing.T) {
+	ref := OverlayAssetRef{
+		AssetID:   "person:michael-jordan",
+		URL:       "https://cdn.example/jordan.jpg",
+		LocalPath: "/tmp/producer-only/jordan.jpg",
+		SHA256:    "C4813C9D7D4F0F6B1A2C3D4E5F60718293A4B5C6D7E8F9012345678901ABCDEF",
+		MediaType: "image/jpeg",
+	}
+
+	identity := ref.Ref()
+	if identity.AssetID != ref.AssetID {
+		t.Errorf("projected asset id = %q, want %q", identity.AssetID, ref.AssetID)
+	}
+	if want := strings.ToLower(ref.SHA256); identity.SHA256 != want {
+		t.Errorf("projected content address = %q, want canonical %q", identity.SHA256, want)
+	}
+	if identity.MediaType != ref.MediaType {
+		t.Errorf("projected media type = %q, want %q", identity.MediaType, ref.MediaType)
+	}
+	if err := identity.Validate(); err != nil {
+		t.Errorf("a fully-populated overlay ref must project onto a valid identity: %v", err)
+	}
+
+	// The identity must be unable to describe a location: the tagged projection
+	// (what a consumer reads) must not contain the fields the ref holds.
+	raw, err := json.Marshal(identity)
+	if err != nil {
+		t.Fatalf("marshal identity: %v", err)
+	}
+	for _, forbidden := range []string{"local_path", "url", "drive_link", "drive_file_id", "download_link", "legacy_file_md5"} {
+		if strings.Contains(string(raw), `"`+forbidden+`"`) {
+			t.Errorf("canonical identity carries location key %q: %s", forbidden, raw)
+		}
+	}
+}
+
+// TestOverlayAssetRefIdentityIsIndependentOfLocation is the regression guard for
+// the production failure this whole programme exists to remove: two records that
+// describe one asset through different locations must not become two assets. If
+// Ref() ever starts folding a location into the identity, this fails.
+func TestOverlayAssetRefIdentityIsIndependentOfLocation(t *testing.T) {
+	digest := "c4813c9d7d4f0f6b1a2c3d4e5f60718293a4b5c6d7e8f9012345678901abcdef"
+	viaDrive := OverlayAssetRef{
+		AssetID:   "person:michael-jordan",
+		SHA256:    digest,
+		MediaType: "image/jpeg",
+		URL:       "https://drive.google.com/file/d/drive-file-id/view",
+		LocalPath: "/mnt/drive/jordan.jpg",
+	}
+	viaCdn := OverlayAssetRef{
+		AssetID:   "person:michael-jordan",
+		SHA256:    digest,
+		MediaType: "image/jpeg",
+		URL:       "https://cdn.example/jordan.jpg",
+	}
+
+	if !viaDrive.Ref().Equal(viaCdn.Ref()) {
+		t.Fatalf("one asset with two locations projected onto two identities:\n  %v\n  %v", viaDrive.Ref(), viaCdn.Ref())
+	}
+	if viaDrive.Ref().DedupKey() != viaCdn.Ref().DedupKey() {
+		t.Errorf("dedup keys disagree for one asset: %q vs %q", viaDrive.Ref().DedupKey(), viaCdn.Ref().DedupKey())
+	}
+	// And the digest case must not create a third asset either.
+	shouted := viaCdn
+	shouted.SHA256 = strings.ToUpper(digest)
+	if !shouted.Ref().Equal(viaCdn.Ref()) {
+		t.Errorf("one digest in two cases projected onto two identities: %v vs %v", shouted.Ref(), viaCdn.Ref())
+	}
+}
+
+// TestNewOverlayAssetRefTakesLocationsAsExplicitArguments pins the builder's
+// shape: the canonical type cannot carry a location, so every location a caller
+// wants on the projection has to be passed explicitly and visibly here. A future
+// caller cannot smuggle one in through the identity.
+func TestNewOverlayAssetRefTakesLocationsAsExplicitArguments(t *testing.T) {
+	identity := asset.New("person:michael-jordan", "C4813C9D7D4F0F6B1A2C3D4E5F60718293A4B5C6D7E8F9012345678901ABCDEF", "image/jpeg", 0)
+	built := NewOverlayAssetRef(identity, "https://cdn.example/jordan.jpg", "/tmp/jordan.jpg")
+
+	if built.SHA256 != "c4813c9d7d4f0f6b1a2c3d4e5f60718293a4b5c6d7e8f9012345678901abcdef" {
+		t.Errorf("builder did not canonicalise the digest: %q", built.SHA256)
+	}
+	if built.AssetID != identity.AssetID || built.MediaType != identity.MediaType {
+		t.Errorf("builder dropped part of the identity: %+v", built)
+	}
+	if built.URL != "https://cdn.example/jordan.jpg" || built.LocalPath != "/tmp/jordan.jpg" {
+		t.Errorf("builder dropped an explicitly-passed location: %+v", built)
+	}
+	// build→project must return what went in, so a builder used at N call sites
+	// cannot become a second, silently-different spelling of identity.
+	if back := built.Ref(); back != identity.Canonical() {
+		t.Errorf("build→project is lossy: got %+v, want %+v", back, identity.Canonical())
 	}
 }

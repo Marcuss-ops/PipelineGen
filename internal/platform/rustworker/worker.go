@@ -75,6 +75,12 @@ type PersistentRunner struct {
 	stdin  io.WriteCloser
 	stdout *bufio.Reader
 	stderr *BoundedBuffer
+	// stderrPump tracks the goroutine that drains the worker's stderr into
+	// stderr. reset() waits on it, so teardown is a BARRIER rather than a
+	// request: once Reset returns, no pump is still running against a buffer
+	// the runner has already discarded, and no pump can observe a half-reset
+	// runner. See TestPersistentRunner_ResetAfterEnsureIsRaceFree.
+	stderrPump sync.WaitGroup
 }
 
 func NewPersistentRunner() Runner { return &PersistentRunner{} }
@@ -159,15 +165,24 @@ func (r *PersistentRunner) ensure(binary string, outputLimit int64) error {
 		_ = stdin.Close()
 		return fmt.Errorf("start persistent Rust: %w", err)
 	}
-	r.cmd, r.stdin, r.stdout, r.stderr = cmd, stdin, bufio.NewReader(stdout), &BoundedBuffer{Limit: outputLimit}
+	tail := &BoundedBuffer{Limit: outputLimit}
+	r.cmd, r.stdin, r.stdout, r.stderr = cmd, stdin, bufio.NewReader(stdout), tail
+	// The pump reads its sink from this LOCAL, never from the r.stderr field.
+	// reset() nils that field, so a field read here raced with teardown — and a
+	// read that landed after the nil handed io.Copy a nil *BoundedBuffer, which
+	// panics on the first Write instead of failing. Binding the value at start
+	// makes the pump independent of the runner's lifecycle: it can only ever
+	// touch the buffer it was created with.
+	r.stderrPump.Add(1)
 	go func() {
-		if _, copyErr := io.Copy(r.stderr, stderr); copyErr != nil {
+		defer r.stderrPump.Done()
+		if _, copyErr := io.Copy(tail, stderr); copyErr != nil {
 			// The stderr pump must not be a silent black hole: a copy failure
 			// means worker diagnostics are being lost exactly when the worker
 			// is likely misbehaving. Surface it into the bounded stderr tail
 			// itself so the next Run error report carries the fact.
 			const marker = "[rustworker stderr copy failed]"
-			_, _ = r.stderr.Write([]byte(marker))
+			_, _ = tail.Write([]byte(marker))
 		}
 	}()
 	return nil
@@ -185,6 +200,12 @@ func (r *PersistentRunner) reset() {
 	}
 	_ = r.cmd.Wait()
 	r.cmd, r.stdin, r.stdout, r.stderr = nil, nil, nil, nil
+	// The process is reaped, so its stderr pipe is closed and the pump must
+	// return. Waiting here is what makes Reset a barrier: without it a caller
+	// could start the next worker while the previous pump was still appending
+	// to the discarded tail. The pump never takes r.mu, so this cannot
+	// deadlock against the lock the callers of reset() hold.
+	r.stderrPump.Wait()
 }
 
 // Reset terminates the current worker, if any. It is intended for adapter

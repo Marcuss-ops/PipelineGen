@@ -286,7 +286,6 @@ func TestEntityImageCatalogDriveReuseWithPersistentSQLite(t *testing.T) {
 		AssetID:        "drive-michael-jordan",
 		LegacyFileMD5:  "sha256-michael-jordan",
 		DriveLink:      "https://drive.google.com/file/d/drive-michael-jordan/view",
-		LocalPath:      "/missing/local-copy-is-not-required.jpg",
 		Status:         entitycatalog.MaterializationStatusMaterialized,
 		MaterializedAt: time.Now().UTC(),
 		LastVerifiedAt: time.Now().UTC(),

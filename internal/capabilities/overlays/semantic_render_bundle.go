@@ -7,6 +7,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 )
 
@@ -261,7 +262,8 @@ func BuildOverlayPlan(b SemanticRenderBundleV1, videoID, projectID string, width
 			item.EndMs = item.StartMs + MaxImageOverlayDurationMS
 			item.Text = ""
 			item.Params = map[string]any{"animation": map[string]any{"preset": SelectEntityImageAnimation(b.RunID, b.Scene.SegmentID, e.EntityID)}}
-			item.AssetRefs = []OverlayAssetRef{{AssetID: a.AssetID, URL: a.SourceURL, SHA256: a.ContentHash, MediaType: "image/jpeg"}}
+			item.AssetRefs = []OverlayAssetRef{NewOverlayAssetRef(
+				asset.New(a.AssetID, a.ContentHash, "image/jpeg", 0), a.SourceURL, "")}
 		}
 		items = append(items, item)
 	}

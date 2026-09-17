@@ -271,8 +271,10 @@ func (p *VidRushMaterializationProcessor) persistEntityCatalogMaterialization(ct
 	now := time.Now().UTC()
 	if err := p.catalog.UpsertMaterialization(ctx, entitycatalog.Materialization{
 		CandidateID: candidateID, AssetID: persisted.AssetID, LegacyFileMD5: persisted.LegacyFileMD5,
-		DriveLink: persisted.DriveLink, LocalPath: persisted.LocalPath,
-		Status:         entitycatalog.MaterializationStatusMaterialized,
+		DriveLink: persisted.DriveLink,
+		Status:    entitycatalog.MaterializationStatusMaterialized,
+		// No local path is recorded: the row is durable media metadata, and a
+		// filesystem path is not durable media metadata.
 		MaterializedAt: now, LastVerifiedAt: now,
 	}); err != nil {
 		return err

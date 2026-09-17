@@ -4,17 +4,17 @@ This document defines canonical ownership for data, configuration, and state in 
 
 ## Durable authority
 
-PostgreSQL + pgvector is the durable authority for the media domain. SQLite remains the durable authority for non-media domains during staged migration. Any derived media projection must be rebuildable from PostgreSQL; Qdrant is not a media fallback.
+PostgreSQL + pgvector is the durable authority for the media domain (`media_assets`, `asset_locations`, `media_asset_features`, `media_embeddings`). SQLite is the durable authority for the non-media domains (jobs, scripts, voiceovers, outbox, cache, idempotency, artifacts/staging, observability); its media tables are quarantined legacy data (migration 268) and are not a runtime authority. Any derived media projection must be rebuildable from PostgreSQL; Qdrant is not a media fallback.
 
 ## Data store inventory
 
-Concrete owner-per-fact map. Canonical business state is SQLite; every other store is either a rebuildable projection, a side-effect surface, or append-only telemetry. Pointers cite the canonical code owner, not a line number.
+Concrete owner-per-fact map. Canonical MEDIA business state is PostgreSQL (`media_assets` / `asset_locations`); canonical NON-MEDIA business state is SQLite. Every other store is either a rebuildable projection, a side-effect surface, or append-only telemetry. Pointers cite the canonical code owner, not a line number. This file describes the runtime AS IT IS TODAY — superseded transitional wording belongs to git history, not here.
 
 ### Stores and their role
 
 | Store | Path (canonical resolver) | Role | Rebuildable from |
 |---|---|---|---|
-| Primary SQLite | `cfg.Storage.PrimaryDBFullPath()` → `media/media.db.sqlite` | **SSOT for non-media domains during staged migration** (jobs, scripts, voiceovers, outbox) | — |
+| Primary SQLite | `cfg.Storage.PrimaryDBFullPath()` → `media/media.db.sqlite` | **SSOT for the non-media domains** (jobs, scripts, voiceovers, outbox, cache, idempotency). Any media table still present here is quarantined legacy (migration 268), not an authority. | — |
 | Media PostgreSQL | canonical composition-root PostgreSQL DSN | **SSOT** — `media_assets`, `asset_locations`, `media_asset_features`, `media_embeddings` | — |
 | acquisition.SourceStager | `internal/capabilities/acquisition/port.go` | **SSOT** — canonical source staging port (Prepare/Release lifecycle). All consumers (YouTube, Artlist, Stock, Images, Jobs/assets) use this port. The legacy `assets.SourceStager` has been removed (CONTRACT completed 2026-08-22). | — |
 | Observability SQLite | `cfg.Storage.ObservabilityDBFullPath()` → `observability/api_requests.db.sqlite` | **SSOT for the observability axis** (run/attempt/stage/operation timing + API audit) | distinct concern; derived from job execution, not from business tables |
@@ -58,13 +58,13 @@ The media database owns four surfaces: `media_assets`, `asset_locations`, `media
 
 During migration, PostgreSQL is first deployed and backfilled, then reads and writes are cut over behind the existing typed ports. No direct dual-write is permitted, and missing PostgreSQL configuration must fail closed rather than fall back to SQLite or Qdrant.
 
-### Qdrant projections (retained only for non-cutover compatibility)
+### Qdrant projections (NON-media only — the media projection is retired)
 
-The three projections are closed over by `internal/platform/qdrant/schema/projection_contract.go` and must never share a point ID, alias, or retention scope (`ValidateProjectionSeparation`).
+The projection schemas are still closed over by `internal/platform/qdrant/schema/projection_contract.go` and must never share a point ID, alias, or retention scope (`ValidateProjectionSeparation`). Only the NON-media projections have runtime consumers; media retrieval is owned by pgvector inside the PostgreSQL SSOT.
 
-| Projection | Schema | Point ID | Canonical SQLite source | Rebuild path |
+| Projection | Schema | Point ID | Canonical source | Rebuild path |
 |---|---|---|---|---|
-| `media_assets` | `DefaultV3Schema()` | bare asset ID (UUID v8) | `media_assets` | `ProjectionManager.RebuildV4` (blue-green, signed, golden-query certified) |
+| ~~`media_assets`~~ **RETIRED for media** | `DefaultV3Schema()` (schema contract only) | — | — | n/a: no runtime Qdrant media reader or writer remains; the media read path is PostgreSQL pgvector |
 | `media_frames` | `FrameIndexSchema()` | `frame-` + UUID | keyframes `(video_id, ts_ms)` | `ProjectionManager.RebuildProjection` |
 | `media_concepts` | `ConceptIndexSchema()` | `concept-` + ID | `media_concepts` / `media_bindings` | `ProjectionManager.RebuildProjection` |
 
@@ -85,11 +85,11 @@ Derived caches are projections keyed by their canonical SQLite record and are sa
 
 | Fact | SSOT | Projection / derived copy | Reconstruction |
 |---|---|---|---|
-| "this asset exists, its metadata, its state" | `media_assets` (primary) | Qdrant `media_assets` point | reindex from `media_assets` |
+| "this asset exists, its metadata, its state" | PostgreSQL `media_assets` | pgvector row in `media_embeddings` (same SSOT) | reindex from `media_assets` |
 | "this keyframe exists at (video_id, ts_ms)" | keyframe source (primary/asset) | Qdrant `media_frames` point | reindex keyframes |
 | "this phrase binds to this entity" | `media_concepts`/`media_bindings` (primary) | Qdrant `media_concepts` point | reindex bindings |
 | "this job is RUNNING/SUCCEEDED/FAILED" | `jobs` (primary) | `run_observability`/`job_attempts` (observability) | replay from job lifecycle |
-| "this file is on Drive at X" | `media_assets.drive_file_id` etc. (primary) | Drive folder structure | Drive reconcile (`/api/drive/reconcile`) |
+| "this file is on Drive at X" | PostgreSQL `asset_locations` (`location_kind='drive'`) | Drive folder structure | Drive reconcile (`/api/drive/reconcile`) |
 | "this source is staged for processing" | `acquisition.SourceStager.Prepare` (canonical port) | Local staged file + CleanupToken | Re-Prepare same SourceRef within TTL |
 
 ## One owner per fact
@@ -185,7 +185,7 @@ non-media Qdrant retirement, NOT the media cutover):
 
 ## Drive and filesystem
 
-Google Drive and local filesystem are side-effect surfaces. Writes must be durable in SQLite before being emitted through the transactional outbox.
+Google Drive and the local filesystem are side-effect surfaces. The media domain records Drive bytes in PostgreSQL `asset_locations`, and a media write must be durable there before its side effect is emitted through the transactional outbox. Non-media side effects keep the SQLite durable-before-emit rule.
 
 ## Configuration
 

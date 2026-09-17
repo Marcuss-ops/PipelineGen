@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	kernelasset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 )
 
@@ -293,6 +294,25 @@ type EntityImageBinding struct {
 	SHA256  string `json:"sha256,omitempty"`
 	Source  string `json:"source,omitempty"`
 	License string `json:"license,omitempty"`
+}
+
+// Ref projects the binding onto the canonical, location-free media identity:
+// which asset this is (AssetID), which bytes stand for it (SHA256) and what
+// those bytes are (MediaType).
+//
+// The projection deliberately drops DriveFileID/DriveLink/PreviewURL. They are
+// LOCATIONS, and the canonical identity may not carry one: a record holding both
+// an address and a location has two sources of truth for one fact, and the
+// disagreement only surfaces much later, in another process, as "the hash does
+// not match the bytes". See
+// cmd/archcheck/scan/governance/percheck_media_identity_no_location_fields.go.
+//
+// It also canonicalises the digest spelling, which is what makes it useful as a
+// JOIN KEY: two bindings that describe one asset through different locations (a
+// Drive view link and a CDN URL) must compare equal, or the media index promotes
+// the same bytes twice under two identities.
+func (b EntityImageBinding) Ref() kernelasset.Ref {
+	return kernelasset.Ref{AssetID: b.AssetID, SHA256: b.SHA256, MediaType: b.MediaType}.Canonical()
 }
 
 // InjectFixedSections was removed (July 2026). Fixed intro/outro sections

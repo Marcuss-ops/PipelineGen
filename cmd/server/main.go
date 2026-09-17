@@ -32,6 +32,8 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
+	"github.com/Marcuss-ops/PipelineGen/internal/app/workerruntime"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/buildinfo"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	logging "github.com/Marcuss-ops/PipelineGen/internal/platform/logging"
 )
@@ -83,11 +85,30 @@ func main() {
 	log := logging.Get().Named("server")
 	defer func() { _ = logging.Sync() }()
 
+	// Publish the process identity BEFORE the composition root builds the
+	// server: buildinfo.Current is served on /health and /ready as the
+	// "build" object, and it is the answer to "which binary, which commit,
+	// which config is this process actually running?" — the question that
+	// used to cost an operator (or an agent) a manual audit of the unit
+	// file, the port owner and the binary mtime.
+	buildinfo.SetRuntime(buildinfo.RuntimeInfo{
+		ConfigPath: *cfgPth,
+		Mode:       *mode,
+		WorkerID:   workerruntime.Env("VELOX_WORKER_ID", workerruntime.Hostname("unknown")),
+	})
+
+	// The identity goes into the startup log too: the log line and /health then
+	// agree by construction, so a stale binary is visible in either place.
+	identity := buildinfo.Current()
 	log.Info("server starting",
 		zap.String("mode", *mode),
 		zap.String("config", *cfgPth),
 		zap.Int("port", cfg.Server.Port),
 		zap.String("host", cfg.Server.Host),
+		zap.String("version", identity.Version),
+		zap.String("git_commit", identity.GitCommit),
+		zap.String("binary_sha256", identity.BinarySHA256),
+		zap.String("identity_hash", identity.IdentityHash),
 	)
 
 	runtime, err := wiring.BuildServer(cfg, *mode, log)

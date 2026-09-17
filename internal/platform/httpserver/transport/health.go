@@ -23,6 +23,7 @@ import (
 	"time"
 
 	systemhealth "github.com/Marcuss-ops/PipelineGen/internal/capabilities/system/health"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/buildinfo"
 	"github.com/gin-gonic/gin"
 )
 
@@ -38,6 +39,16 @@ type HealthHandler struct {
 	// Set via SetWireRegistry at composition root after the gin
 	// engine has all routes registered.
 	wire *WireRegistry
+	// build, when set, supplies the runtime build identity published as the
+	// "build" object on BOTH /health and /ready. It exists so the question
+	// "is this process running the binary and config I just built?" is one
+	// curl away instead of a manual comparison of systemd units, `ps`
+	// output, binary mtimes and port owners (see platform/buildinfo).
+	//
+	// A function rather than a value: the executable digest is computed
+	// once and memoized, and a live accessor keeps the handler free of
+	// construction-order coupling.
+	build func() buildinfo.Identity
 }
 
 // NewHealthHandler constructs the handler. Both deps are required;
@@ -55,6 +66,22 @@ func (h *HealthHandler) SetWireRegistry(r *WireRegistry) {
 	h.wire = r
 }
 
+// SetBuildInfo installs the runtime build-identity accessor. The composition
+// root wires buildinfo.Current; tests may pass a fixed tuple.
+func (h *HealthHandler) SetBuildInfo(fn func() buildinfo.Identity) {
+	h.build = fn
+}
+
+// buildInfo returns the current build identity, or nil when unwired so the
+// response omits the field instead of publishing an all-empty document.
+func (h *HealthHandler) buildInfo() *buildinfo.Identity {
+	if h.build == nil {
+		return nil
+	}
+	identity := h.build()
+	return &identity
+}
+
 // fastHealthNames is the default deep-check set used when ?deep=true.
 var fastHealthNames = []string{"db", "drive", "qdrant", "jobs"}
 
@@ -67,7 +94,11 @@ var fastHealthNames = []string{"db", "drive", "qdrant", "jobs"}
 //   - Unknown check name → HTTP 400 (typed ErrUnknownCheck).
 func (h *HealthHandler) Health(c *gin.Context) {
 	if h.svc == nil {
-		c.JSON(http.StatusServiceUnavailable, gin.H{"ok": false, "status": "unhealthy", "error": "health service not initialized"})
+		unwired := gin.H{"ok": false, "status": "unhealthy", "error": "health service not initialized"}
+		if identity := h.buildInfo(); identity != nil {
+			unwired["build"] = identity
+		}
+		c.JSON(http.StatusServiceUnavailable, unwired)
 		return
 	}
 
@@ -81,7 +112,7 @@ func (h *HealthHandler) Health(c *gin.Context) {
 		if len(names) == 0 {
 			// All check values were empty/whitespace after normalisation:
 			// fall through to fast liveness.
-			c.JSON(http.StatusOK, systemhealth.HealthResponse{OK: true, Status: "healthy"})
+			c.JSON(http.StatusOK, h.healthPayload(systemhealth.HealthResponse{OK: true, Status: "healthy"}))
 			return
 		}
 		if err := systemhealth.ValidateCheckNames(names); err != nil {
@@ -105,7 +136,23 @@ func (h *HealthHandler) Health(c *gin.Context) {
 	if !resp.OK {
 		status = http.StatusServiceUnavailable
 	}
-	c.JSON(status, resp)
+	c.JSON(status, h.healthPayload(resp))
+}
+
+// healthPayload serialises a health response with the runtime build identity
+// attached. The identity is emitted on every /health shape (fast, deep and
+// granular) so a script never has to guess which probe carries it; when the
+// accessor is unwired the document is returned unchanged, keeping the shape
+// stable for the integration fixtures that construct the handler directly.
+func (h *HealthHandler) healthPayload(resp systemhealth.HealthResponse) gin.H {
+	payload := gin.H{"ok": resp.OK, "status": resp.Status}
+	if resp.Checks != nil {
+		payload["checks"] = resp.Checks
+	}
+	if identity := h.buildInfo(); identity != nil {
+		payload["build"] = identity
+	}
+	return payload
 }
 
 // Ready is the readiness probe. Policy is owned by ReadyChecker;
@@ -120,12 +167,16 @@ func (h *HealthHandler) Health(c *gin.Context) {
 // it in 5 seconds.
 func (h *HealthHandler) Ready(c *gin.Context) {
 	if h.ready == nil {
-		c.JSON(http.StatusServiceUnavailable, gin.H{
+		unwired := gin.H{
 			"status": "not ready",
 			"ok":     false,
 			"error":  "ready checker not initialized",
 			"wire":   h.wireMap(),
-		})
+		}
+		if identity := h.buildInfo(); identity != nil {
+			unwired["build"] = identity
+		}
+		c.JSON(http.StatusServiceUnavailable, unwired)
 		return
 	}
 	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
@@ -135,12 +186,19 @@ func (h *HealthHandler) Ready(c *gin.Context) {
 	if !resp.OK {
 		status = http.StatusServiceUnavailable
 	}
-	c.JSON(status, gin.H{
+	payload := gin.H{
 		"status": statusString(resp.OK),
 		"ok":     resp.OK,
 		"checks": resp.Checks,
 		"wire":   h.wireMap(),
-	})
+	}
+	if identity := h.buildInfo(); identity != nil {
+		// /ready is the endpoint a canary waits on, so the build identity
+		// must travel with the readiness verdict: one poll answers both
+		// "is it up?" and "is it the code I deployed?".
+		payload["build"] = identity
+	}
+	c.JSON(status, payload)
 }
 
 // wireMap returns the wire surface, nil-safe. Always returns a

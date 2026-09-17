@@ -44,7 +44,9 @@ scripts/
 ├── dev/                          #  e2e-up.sh
 ├── operations/                   #  migrate-media-text-tracks-once.go
 ├── seed_fixture/                 #  Fixture seeding tool (Go)
+├── certify/                      #  overlay_lane_canary.json (tracked lane payload)
 ├── os.sh, preflight-e2e.sh, regen_hotspots.py, regenerate_token.sh
+├── certify_overlay_lane.sh       #  THE overlay-lane certifier (see below)
 ├── verify-whisper.sh, yt-dlp-pipeline, with-velox-auth
 ├── requirements-argos.txt, requirements-whisper.txt
 ├── batch_index_drive_clips.md
@@ -60,6 +62,44 @@ python dust"; do not cite them as present): `ci-architectural-checks.sh`,
 `operations/certify_media_registry_qdrant.sh`, `overlay-cert/`, `core/`, and
 the former `bridges/*` + `tools/*` families beyond the two listed above.
 Admin credential rotation is manual (see `AGENTS.md`, § Authentication SSOT).
+
+## Certifying the overlay lane
+
+One command answers "is this machine running the code I just built, and did the
+render actually produce the overlays and timing I asked for?":
+
+```bash
+make certify-overlay-lane            # tests → build → deploy → identity → canary → verify → bundle
+make certify-overlay-lane-dry        # preflight only (no build, no deploy)
+make certify-overlay-lane SKIP_DEPLOY=1   # certify the build that is already running
+```
+
+The driver is `scripts/certify_overlay_lane.sh`. It stages the run as
+`preflight → test → build → deploy → identity → canary → verify → bundle`; use
+`--stage=X` to stop early and `--dry-run` to only check inputs.
+
+It replaces a manual audit that used to span two Go modules and five services
+(detect roots, run packages, build both binaries, install, restart the right
+units, work out which binary owns the port, work out which worker will claim
+the job, wait for readiness, submit a canary, poll an opaque `RUNNING/0`, hunt
+the plan inside a nested envelope, check the images by hand). Every one of
+those steps could previously lie — most importantly, a binary could ship with
+no embedded identity at all.
+
+The `identity` stage is what makes the rest trustworthy: it reads the `build`
+object served on PipelineGen's `/health` and `/ready` and on the worker's
+`/health` (see `internal/platform/buildinfo`), and requires the running binary's
+`binary_sha256` to equal the digest of the binary just built.
+
+Each run writes a portable bundle under `ops/benchmarks/overlay-lane-<UTC>/`:
+the canary payload, the observed identities, the overlay plan, the timing
+envelope, `verdict.json` and a `MANIFEST.md` naming exactly what was proven.
+Copy that directory to another machine and replay it with
+`scripts/certify_overlay_lane.sh --skip-deploy CERT_CANARY_PAYLOAD=<bundle>/canary-payload.json`.
+
+The tracked lane payload lives at `scripts/certify/overlay_lane_canary.json`:
+five scenes, phrase overlays, entity images, word-level voiceover timing and a
+pale-olive overlay background.
 
 ## Architecture Note
 
