@@ -89,6 +89,21 @@ func (m *mockRegistry) FindByPHash(ctx context.Context, phash string) (string, e
 	return "", sql.ErrNoRows
 }
 
+func (m *mockRegistry) FindByContentHash(ctx context.Context, sha256 string) (*MediaRecord, error) {
+	if m.shouldErr {
+		return nil, sql.ErrConnDone
+	}
+	if sha256 == "" {
+		return nil, nil
+	}
+	for _, rec := range m.savedRecords {
+		if rec.ContentHash == sha256 {
+			return rec, nil
+		}
+	}
+	return nil, nil
+}
+
 func TestMediaFinalizerVerifiesDriveFile(t *testing.T) {
 	ctx := context.Background()
 	logger, _ := zap.NewDevelopment()

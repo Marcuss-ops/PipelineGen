@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"go.uber.org/zap"
 
@@ -160,10 +161,19 @@ func (r *ClipsRegistry) UpsertMedia(ctx context.Context, rec *MediaRecord) error
 	// media_assets UPSERT through the canonical persistence.AssetCommitter
 	// so the QDRANT-002 atomicity invariant (media_assets UPSERT + outbox_events
 	// INSERT in one tx) applies uniformly to artifacts-driven write paths.
+	//
+	// MEDIA-IDENTITY (Sept 2026): the committer's ContentHash is the BYTE
+	// identity of the artifact, so it receives rec.ContentHash (the SHA-256 of
+	// the bytes, computed by the lifecycle's contentAddress). It previously
+	// received rec.LegacyFileMD5 — the caller's compatibility-only digest —
+	// which meant a path could compute the canonical SHA-256 and the very next
+	// boundary silently overwrite it with an MD5. LegacyFileMD5 still rides on
+	// the asset_locations rows below (read-only compatibility bucket); no
+	// decision reads it, and it must never be the durable content address.
 	if _, err := r.committer.CommitAndIndex(ctx, persistence.CommitRequest{
 		AssetID: rec.ID, Source: rec.Source, Name: rec.Name, Filename: rec.Filename,
 		MediaType: rec.MediaType, GroupName: rec.Group,
-		ContentHash: rec.LegacyFileMD5, LifecycleState: string(lifecycleState),
+		ContentHash: rec.ContentHash, LifecycleState: string(lifecycleState),
 		IndexState: mediaIndexState(rec.Metadata), Locations: locations, EmitIndexEvent: true,
 	}); err != nil {
 		return fmt.Errorf("committer enqueue: %w", err)
@@ -338,6 +348,74 @@ func (r *ClipsRegistry) FindByPHash(ctx context.Context, phash string) (string, 
 	return id, nil
 }
 
+// FindByContentHash resolves the live logical asset that owns a physical
+// content identity.
+//
+// The argument is the SHA-256 hex digest of the BYTES (kernel/digest), and the
+// lookup matches only the canonical content columns (binary_sha256,
+// content_sha256). It deliberately does NOT fall back to legacy_file_md5: that
+// column is a compatibility bucket that may hold an MD5, and matching it here
+// would make two assets look content-identical when they are not — the exact
+// conflation the media-identity programme removes (asset_id decides WHAT an
+// asset is, SHA-256 decides WHICH BYTES it is, MD5 decides nothing).
+//
+// A match means "these bytes are already stored", NOT "this logical asset
+// already exists": callers that want the latter must read the row and compare
+// its content identity against the asset ID they are about to write. Reusing
+// the storage is fine; collapsing the logical asset is not.
+//
+// Both engines are supported so the degraded (SQLite-only) deployment keeps
+// working: the PostgreSQL media SSOT is the primary path when a canonical PG
+// committer is wired, and the operational store answers otherwise.
+func (r *ClipsRegistry) FindByContentHash(ctx context.Context, sha256 string) (*MediaRecord, error) {
+	digestValue := strings.ToLower(strings.TrimSpace(sha256))
+	if digestValue == "" {
+		return nil, nil
+	}
+	if r == nil {
+		return nil, fmt.Errorf("clips registry: content lookup unavailable on nil registry")
+	}
+	if pgDB := r.pgDB(); pgDB != nil {
+		return r.findByContentHashPG(ctx, pgDB, digestValue)
+	}
+	if r.db == nil {
+		return nil, fmt.Errorf("clips registry: no content lookup database wired (media SSOT closed)")
+	}
+	var id string
+	err := r.db.QueryRowContext(ctx, `
+		SELECT id FROM media_assets
+		WHERE (binary_sha256 = ? OR content_sha256 = ?) AND UPPER(lifecycle_state) != 'DELETED'
+		ORDER BY id ASC LIMIT 1
+	`, digestValue, digestValue).Scan(&id)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return r.GetMedia(ctx, id)
+}
+
+// findByContentHashPG is the PostgreSQL media SSOT form of FindByContentHash.
+// It resolves the id under the canonical content columns and then hydrates the
+// row through the single shared projection, so a content match and an id match
+// return byte-identical records.
+func (r *ClipsRegistry) findByContentHashPG(ctx context.Context, pgDB *sql.DB, sha256 string) (*MediaRecord, error) {
+	var id string
+	err := pgDB.QueryRowContext(ctx, `
+		SELECT id FROM media_assets
+		WHERE (binary_sha256 = $1 OR content_sha256 = $1) AND UPPER(lifecycle_state) != 'DELETED'
+		ORDER BY id ASC LIMIT 1
+	`, sha256).Scan(&id)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return r.getMediaPG(ctx, pgDB, id)
+}
+
 // pgDB returns the PG media DB when the committer is the PG media
 // committer; nil otherwise (SQLite-only / degraded mode).
 func (r *ClipsRegistry) pgDB() *sql.DB {
@@ -354,6 +432,15 @@ func (r *ClipsRegistry) pgDB() *sql.DB {
 // mediaRecordPGSelect is the SINGLE canonical MediaRecord projection for the
 // PG media path. Both the single-row read and the list read use it so the
 // column list and the scan order cannot drift apart.
+//
+// MEDIA-IDENTITY (Sept 2026): the projection resolves the CONTENT ADDRESS
+// (SHA-256 byte identity) from `binary_sha256 → content_sha256` and only then
+// the compatibility digest from `legacy_file_md5`. The two are deliberately
+// separate columns of the MediaRecord: the content identity must NEVER fall
+// back to the legacy tier (a row whose content_sha256 is unknown is honestly
+// unknown, not an MD5 by another name), because the dedupe decision compares
+// content identities and an MD5 masquerading as one would collapse two
+// distinct logical assets.
 const mediaRecordPGSelect = `
 		SELECT id, COALESCE(source,''), COALESCE(name,''), COALESCE(filename,''),
 		       COALESCE(media_type,''), COALESCE(category,''), COALESCE(group_name,''),
@@ -361,6 +448,7 @@ const mediaRecordPGSelect = `
 		       COALESCE(metadata_json,'{}'), COALESCE(search_text,''),
 		       COALESCE(drive_file_id,''), COALESCE(drive_link,''),
 		       COALESCE(download_link,''), COALESCE(local_path,''),
+		       COALESCE(NULLIF(binary_sha256,''), NULLIF(content_sha256,'')),
 		       COALESCE(legacy_file_md5,''), COALESCE(phash,'')
 		FROM media_assets`
 
@@ -375,18 +463,18 @@ func scanMediaRecordPG(scanner mediaRecordScanner) (*MediaRecord, error) {
 		aID, source, name, filename, mediaType, category, groupName string
 		lifecycleState, indexState, metadataJSON                    string
 		searchText, driveFileID, driveLink, downloadLink, localPath string
-		legacyMD5, phash                                            string
+		contentHash, legacyMD5, phash                               string
 	)
 	if err := scanner.Scan(
 		&aID, &source, &name, &filename, &mediaType, &category, &groupName,
 		&lifecycleState, &indexState, &metadataJSON, &searchText,
-		&driveFileID, &driveLink, &downloadLink, &localPath, &legacyMD5, &phash); err != nil {
+		&driveFileID, &driveLink, &downloadLink, &localPath, &contentHash, &legacyMD5, &phash); err != nil {
 		return nil, err
 	}
 	rec := &MediaRecord{
 		ID: aID, Source: source, Name: name, Filename: filename,
 		MediaType: mediaType, Category: category, Group: groupName,
-		Metadata: metadataJSON, LegacyFileMD5: legacyMD5, PHash: phash,
+		Metadata: metadataJSON, ContentHash: contentHash, LegacyFileMD5: legacyMD5, PHash: phash,
 		DriveFileID: driveFileID, DriveLink: driveLink, DownloadLink: downloadLink,
 		LocalPath: localPath, Status: "ACTIVE",
 	}
@@ -452,6 +540,11 @@ func detailsToMediaRecord(details *asset.Details) *MediaRecord {
 		VisualEmbeddingJSON: details.Asset.VisualEmbeddingJSON(),
 	}
 	rec.Metadata = details.Asset.MetadataJSON()
+	// The content address is the SHA-256 byte identity (see the Asset accessor
+	// contract); BinarySHA256 prefers the dedicated projection and falls back
+	// to ContentHash. It is a different fact from the legacy digest gathered
+	// from the locations below.
+	rec.ContentHash = details.Asset.BinarySHA256()
 
 	for _, loc := range details.Locations {
 		if loc.LocationKind == asset.LocationKindLocal {

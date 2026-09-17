@@ -2,6 +2,7 @@ package lifecycle
 
 import (
 	"context"
+	"strings"
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/artifacts"
@@ -12,15 +13,34 @@ type RegistryStoreAdapter struct {
 	registry artifacts.Registry
 }
 
+// compile-time guard: the adapter IS the production AssetRecordStore.
+var _ AssetRecordStore = (*RegistryStoreAdapter)(nil)
+
 // NewRegistryStoreAdapter creates a new RegistryStoreAdapter.
 func NewRegistryStoreAdapter(registry artifacts.Registry) AssetRecordStore {
 	return &RegistryStoreAdapter{registry: registry}
 }
 
 // FindExisting finds an existing asset record by query.
+//
+// The ID tier and the content tier are resolved by DIFFERENT registry methods
+// on purpose. GetMedia answers "which asset is this" (logical identity), while
+// FindByContentHash answers "which bytes are these" (content identity) — and
+// the registry is the single owner of the content predicate, so this adapter
+// must not re-implement a SHA-256 query of its own.
 func (a *RegistryStoreAdapter) FindExisting(ctx context.Context, query ExistingAssetQuery) (*AssetRecord, error) {
 	if query.ID != "" {
 		rec, err := a.registry.GetMedia(ctx, query.ID)
+		if err != nil {
+			return nil, err
+		}
+		if rec != nil {
+			return mediaRecordToAssetRecord(rec), nil
+		}
+	}
+
+	if sha := strings.ToLower(strings.TrimSpace(query.ContentSHA256)); sha != "" {
+		rec, err := a.registry.FindByContentHash(ctx, sha)
 		if err != nil {
 			return nil, err
 		}
@@ -103,6 +123,7 @@ func mediaRecordToAssetRecord(rec *artifacts.MediaRecord) *AssetRecord {
 		DriveFileID:   rec.DriveFileID,
 		DriveLink:     rec.DriveLink,
 		DownloadLink:  rec.DownloadLink,
+		ContentHash:   rec.ContentHash,
 		LegacyFileMD5: rec.LegacyFileMD5,
 		LocalPath:     rec.LocalPath,
 		Status:        rec.Status,
