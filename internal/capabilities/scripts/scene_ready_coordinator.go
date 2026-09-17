@@ -319,7 +319,7 @@ func (c *sceneReadyCoordinator) process(scene Scene) (Scene, error) {
 			res.text = translated
 			res.translated = true
 		}
-		if needsTTS {
+		if needsTTS && voiceoverLanguageRequested(c.req, item.lang) {
 			audioRef, err := c.synthesizeLanguage(ctx, itemIdx, out.ID, item.lang, res.text)
 			if err != nil {
 				return sceneLanguageOutcome{}, fmt.Errorf("TTS ready scene %s: %w", out.ID, err)
@@ -367,7 +367,12 @@ func (c *sceneReadyCoordinator) process(scene Scene) (Scene, error) {
 	if out.Voiceover == nil {
 		out.Voiceover = make(map[Language]AudioReference)
 	}
+	voiceoverCalls := 0
 	for _, res := range outcomes {
+		if res.audioRef.ID == "" {
+			continue
+		}
+		voiceoverCalls++
 		out.Voiceover[res.lang] = res.audioRef
 		audioRef := res.audioRef
 		lang := res.lang
@@ -460,7 +465,7 @@ func (c *sceneReadyCoordinator) process(scene Scene) (Scene, error) {
 		out.DurationUS = int64(outcomes[0].audioRef.Duration*1_000_000 + 0.5)
 	}
 	c.mu.Lock()
-	c.ttsCalls += len(langs)
+	c.ttsCalls += voiceoverCalls
 	c.mu.Unlock()
 	return out, nil
 }

@@ -1,0 +1,110 @@
+{
+  "version": 2,
+  "preset": "custom",
+  "correlation_id": "clip-lane-certification-1clip-nosubs-20260916",
+  "force_refresh": true,
+  "items": [
+    {
+      "id": "clip-lane-certification-1clip-nosubs",
+      "project": "clip-lane-certification-1clip-nosubs",
+      "title": "clip-lane-certification-1clip-nosubs",
+      "language": "en",
+      "tone": "cinematic, essential",
+      "style": "Short English narration grounded only in the supplied clip; rewrite the clip context, never copy it.",
+      "model": "gemma4:e2b",
+      "source": {
+        "type": "clips",
+        "topic": "One clip segment taken from one source video",
+        "source_text": "One clip segment used as the script source.",
+        "clip_ids": [
+          "yt_iHaK0M-207o_60_70_v1"
+        ],
+        "num_clips": 1,
+        "ordering_strategy": "input_order",
+        "grounding_policy": "clips_primary",
+        "fallback_policy": "strict",
+        "force_refresh": true
+      },
+      "script_params": {
+        "target_words": 40,
+        "min_words": 25,
+        "segment_words": 40,
+        "concurrency": 1,
+        "force_refresh": true,
+        "segments": [
+          {
+            "id": "clip-0",
+            "kind": "clip",
+            "topic": "Opening clip segment",
+            "source_text": "The speaker describes competing as a fighter and performing in front of a large crowd.",
+            "clip_ids": ["yt_iHaK0M-207o_60_70_v1"],
+            "target_words": 40,
+            "min_words": 25,
+            "max_words": 60
+          }
+        ]
+      },
+      "docs": {
+        "enabled": false
+      },
+      "audio": {
+        "mode": "CHUNKED_VOICEOVER",
+        "mix_policy": "VOICEOVER_ONLY",
+        "timing": {
+          "mode": "required",
+          "boundary": "word",
+          "formats": ["json", "srt", "vtt"]
+        }
+      },
+      "output": {
+        "save_to_db": true,
+        "extract_entities": "disabled",
+        "generate_metadata": false,
+        "generate_timeline": true,
+        "voiceover_enabled": true,
+        "languages": ["en"],
+        "render": {
+          "enabled": true,
+          "drive_folder_id": "1ST6FxPuRaxwBOIz39MAN8Jj4gDv509-K",
+          "drive_subfolder_name": "clip-lane-certification-1clip-nosubs",
+          "render_concurrency": 1,
+          "foreground_scale_percent": 85,
+          "require_gpu": true,
+          "background": {
+            "mode": "none"
+          },
+          "subtitles": {
+            "enabled": false
+          }
+        },
+        "drive_folder_id": "1ST6FxPuRaxwBOIz39MAN8Jj4gDv509-K"
+      },
+      "overlay_background": {
+        "kind": "color",
+        "color": [0.9333333333333333, 0.9450980392156862, 0.9058823529411765, 1],
+        "fit": "cover",
+        "opacity": 1,
+        "loop": false
+      },
+      "media_plan": {
+        "mode": "clip_only",
+        "cache": {
+          "read": false,
+          "write": true
+        },
+        "provider_policy": {
+          "internet_images": "disabled",
+          "artlist": "disabled",
+          "image_generation": "disabled",
+          "youtube": "disabled"
+        },
+        "materialization": {
+          "mode": "selected",
+          "upload_to_drive": true,
+          "wait_for_ready": true
+        },
+        "include_trace": true
+      }
+    }
+  ]
+}

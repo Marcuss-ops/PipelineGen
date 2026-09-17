@@ -72,11 +72,17 @@ func isClipSourcePlan(plan *scriptpkg.ResolvedGenerationPlan) bool {
 // Do NOT call Generate from HTTP handlers, source resolvers, or
 // postprocessors.
 func (e *Engine) Generate(ctx context.Context, plan *scriptpkg.ResolvedGenerationPlan) (*EngineResult, error) {
-	if e == nil || e.ollamaGen == nil {
-		return nil, fmt.Errorf("engine: ollama generator not configured")
-	}
 	if plan == nil {
 		return nil, fmt.Errorf("engine: plan is nil")
+	}
+	if e == nil {
+		return nil, fmt.Errorf("engine: not configured (receiver is nil)")
+	}
+	if plan.SourceTextVerbatim {
+		return sourceTextVerbatimResult(plan)
+	}
+	if e.ollamaGen == nil {
+		return nil, fmt.Errorf("engine: ollama generator not configured")
 	}
 
 	// AZIONE 4 (July 2026): ollamaGen is typed (scriptOllamaGenerator);
@@ -348,6 +354,58 @@ func (e *Engine) Generate(ctx context.Context, plan *scriptpkg.ResolvedGeneratio
 		Model:         genResult.Model,
 		CacheStatus:   "generated",
 		EstDuration:   genResult.EstDuration,
+		ClipEvidence:  plan.ClipEvidence,
+		SearchResults: plan.SearchResults,
+	}, nil
+}
+
+func sourceTextVerbatimResult(plan *scriptpkg.ResolvedGenerationPlan) (*EngineResult, error) {
+	if plan.SourceKind != "" && plan.SourceKind != string(scriptpkg.SourceText) {
+		return nil, fmt.Errorf("engine: source_text_verbatim requires source.type=text")
+	}
+	if len(plan.Segments) == 0 {
+		return nil, fmt.Errorf("engine: source_text_verbatim requires explicit script segments")
+	}
+
+	scenes := make([]scriptpkg.SpecScene, 0, len(plan.Segments))
+	parts := make([]string, 0, len(plan.Segments))
+	seen := make(map[string]struct{}, len(plan.Segments))
+	for i, segment := range plan.Segments {
+		id := strings.TrimSpace(segment.ID)
+		if id == "" {
+			return nil, fmt.Errorf("engine: source_text_verbatim segment %d has no ID", i)
+		}
+		if _, exists := seen[id]; exists {
+			return nil, fmt.Errorf("engine: source_text_verbatim has duplicate segment ID %q", id)
+		}
+		seen[id] = struct{}{}
+		if strings.TrimSpace(segment.SourceText) == "" {
+			return nil, fmt.Errorf("engine: source_text_verbatim segment %q has no source_text", id)
+		}
+		scenes = append(scenes, scriptpkg.SpecScene{
+			ID: id, SegmentID: id, Index: i, Kind: scriptpkg.SceneNarration,
+			Text: segment.SourceText,
+		})
+		parts = append(parts, segment.SourceText)
+	}
+	text := strings.Join(parts, "\n\n")
+	wordCount := len(strings.Fields(text))
+	wordsPerMinute := defaults.DefaultScriptConfig().WordsPerMinute
+	if wordsPerMinute <= 0 {
+		wordsPerMinute = 150
+	}
+	output := scriptpkg.ModelScriptOutputV1{
+		SchemaVersion: 1,
+		Text:          text,
+		SpecScene:     scriptpkg.SpecSceneOutput{Version: 1, Scenes: scenes},
+		WordCount:     wordCount,
+		ModelUsed:     plan.Model,
+		CacheStatus:   "source_text_verbatim",
+	}
+	return &EngineResult{
+		Output: output, WordCount: wordCount, Model: plan.Model,
+		CacheStatus:   "source_text_verbatim",
+		EstDuration:   (wordCount * 60) / wordsPerMinute,
 		ClipEvidence:  plan.ClipEvidence,
 		SearchResults: plan.SearchResults,
 	}, nil

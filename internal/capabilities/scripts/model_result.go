@@ -95,6 +95,10 @@ type GenerateResult struct {
 	// RenderingGen queue; lowercasing to chronon.render-plan.v2 is owned by
 	// RenderingGen. Nil when the run carried no derivable overlay surface.
 	OverlayPlan *capabilityoverlay.OverlayPlan `json:"overlay_plan,omitempty"`
+	// PhraseOverlayBudget records the global editorial ceiling and the number
+	// of unique grounded phrases materialized into OverlayPlan. It is result
+	// telemetry and is deliberately excluded from the renderer wire contract.
+	PhraseOverlayBudget *capabilityoverlay.PhraseOverlayBudget `json:"phrase_overlay_budget,omitempty"`
 
 	// SemanticRenderBundle is the cross-stage audit contract assembled from
 	// the same certified surfaces as OverlayPlan. It is a projection, never a

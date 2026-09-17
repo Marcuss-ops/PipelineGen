@@ -90,6 +90,9 @@ type GenerationFingerprintInput struct {
 	// NOT a canonical no-op).
 	Segments []ScriptSegment `json:"segments"`
 
+	// SourceTextVerbatim changes whether the model rewrites segment text.
+	SourceTextVerbatim bool `json:"source_text_verbatim,omitempty"`
+
 	// PRE-EXISTING-7/8 (FASE 13, July 2026): Topic joined the
 	// canonical fingerprint input.
 	Topic string `json:"topic"`
@@ -202,6 +205,7 @@ func FingerprintInputFromPlan(plan *ResolvedGenerationPlan) GenerationFingerprin
 	if len(plan.Segments) > 0 {
 		input.Segments = append([]ScriptSegment(nil), plan.Segments...)
 	}
+	input.SourceTextVerbatim = plan.SourceTextVerbatim
 
 	// PRE-EXISTING-7/8 (FASE 13): map Topic into the canonical
 	// fingerprint. Mutations on Topic MUST change the cache key
@@ -238,6 +242,7 @@ func FingerprintInputFromItem(item GenerationItemV2) GenerationFingerprintInput 
 		QAPromptVersion:     item.ScriptParams.QAPromptVersion,
 		PlannerVersion:      item.ScriptParams.PlannerVersion,
 		GroundingPolicy:     item.Source.GroundingPolicy,
+		SourceTextVerbatim:  item.ScriptParams.SourceTextVerbatim,
 	}
 
 	if len(item.Source.ClipIDs) > 0 {

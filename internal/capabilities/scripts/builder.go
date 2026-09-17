@@ -191,6 +191,35 @@ func BuildGenerateRequest(env *scriptpkg.GenerationEnvelopeV2, idempotencyKey st
 	if soundEffects == nil {
 		soundEffects = item.Output.Audio.SoundEffects
 	}
+	voiceoverLanguages := item.Audio.VoiceoverLanguages
+	if voiceoverLanguages == nil {
+		voiceoverLanguages = item.Output.Audio.VoiceoverLanguages
+	}
+	if needsVoiceover && voiceoverLanguages != nil {
+		if len(voiceoverLanguages) == 0 {
+			return GenerateRequest{}, fmt.Errorf("scriptgeneration: audio.voiceover_languages must not be empty when audio is enabled")
+		}
+		allowed := make(map[string]struct{}, len(languages)+1)
+		allowed[string(sourceLang)] = struct{}{}
+		for _, lang := range languages {
+			allowed[string(lang)] = struct{}{}
+		}
+		for _, lang := range voiceoverLanguages {
+			if _, ok := allowed[lang]; !ok {
+				return GenerateRequest{}, fmt.Errorf("scriptgeneration: audio.voiceover_languages entry %q must be the source language or included in output.languages", lang)
+			}
+		}
+		includesSource := false
+		for _, lang := range voiceoverLanguages {
+			if lang == string(sourceLang) {
+				includesSource = true
+				break
+			}
+		}
+		if !includesSource {
+			return GenerateRequest{}, fmt.Errorf("scriptgeneration: audio.voiceover_languages must include the source language %q", sourceLang)
+		}
+	}
 
 	req := GenerateRequest{
 		Model:               item.Model,
@@ -210,6 +239,7 @@ func BuildGenerateRequest(env *scriptpkg.GenerationEnvelopeV2, idempotencyKey st
 		Languages:           languages,
 		GenerateTimeline:    generateTimeline,
 		Timing:              timing,
+		VoiceoverLanguages:  toLanguages(voiceoverLanguages),
 		Docs: DocumentsConfig{
 			Enabled:   docsEnabled,
 			Languages: toLanguages(docsLanguages),

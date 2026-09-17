@@ -21,10 +21,111 @@ import (
 	"strings"
 )
 
-// MaxEntityImageOverlaysPerRun is the hard run-level ceiling for identity
-// image overlays. Per-scene budgets are useful for local density, but they
-// must not allow a long script to expand into dozens of image renders.
-const MaxEntityImageOverlaysPerRun = 5
+// MaxImageOverlaysPerRun is the hard run-level ceiling for image overlays.
+// Per-scene budgets are useful for local density, but they must not allow a
+// long script to expand into dozens of image renders.
+const MaxImageOverlaysPerRun = 5
+
+// MaxEntityImageOverlaysPerRun is retained as the entity-image-specific name
+// used by existing callers; its value is the common image overlay ceiling.
+const MaxEntityImageOverlaysPerRun = MaxImageOverlaysPerRun
+
+// MaxPhraseOverlaysPerRun is the hard run-level ceiling for grounded phrase
+// overlays. Phrase candidates are deduplicated across scenes, ranked by their
+// certified semantic score, and only then admitted to the render plan.
+const MaxPhraseOverlaysPerRun = 5
+
+// ApplyEditorialOverlayBudget enforces the production run-level visual
+// contract: up to five unique images plus five unique grounded phrases. Other
+// content overlay kinds are excluded; structural background layers are not
+// represented as OverlayItems and remain intact. When there are fewer valid
+// candidates, it returns fewer items rather than inventing content.
+func ApplyEditorialOverlayBudget(items []OverlayItem) ([]OverlayItem, PhraseOverlayBudget) {
+	imageIndices := rankedUniqueOverlayIndices(items, true)
+	phraseIndices := rankedUniqueOverlayIndices(items, false)
+	keep := make(map[int]struct{}, len(imageIndices)+len(phraseIndices))
+	for _, index := range imageIndices {
+		keep[index] = struct{}{}
+	}
+	for _, index := range phraseIndices {
+		keep[index] = struct{}{}
+	}
+
+	out := make([]OverlayItem, 0, len(keep))
+	for i, item := range items {
+		if _, ok := keep[i]; ok {
+			out = append(out, item)
+		}
+	}
+	return out, MeasurePhraseOverlayBudget(out)
+}
+
+func rankedUniqueOverlayIndices(items []OverlayItem, images bool) []int {
+	indices := make([]int, 0)
+	seen := make(map[string]int)
+	for i, item := range items {
+		key := ""
+		if images {
+			if item.Kind != "entity_image" && item.Kind != "image" {
+				continue
+			}
+			key = imageOverlayIdentity(item)
+		} else {
+			if item.Kind != "text_phrase" {
+				continue
+			}
+			key = strings.ToLower(strings.Join(strings.Fields(item.Text), " "))
+		}
+		if key == "" {
+			continue
+		}
+		if current, ok := seen[key]; ok {
+			if overlayItemPriority(item) > overlayItemPriority(items[current]) {
+				seen[key] = i
+			}
+			continue
+		}
+		seen[key] = i
+	}
+	for _, index := range seen {
+		indices = append(indices, index)
+	}
+	sort.SliceStable(indices, func(i, j int) bool {
+		left, right := indices[i], indices[j]
+		if lp, rp := overlayItemPriority(items[left]), overlayItemPriority(items[right]); lp != rp {
+			return lp > rp
+		}
+		return left < right
+	})
+	limit := MaxPhraseOverlaysPerRun
+	if images {
+		limit = MaxImageOverlaysPerRun
+	}
+	if len(indices) > limit {
+		indices = indices[:limit]
+	}
+	return indices
+}
+
+func imageOverlayIdentity(item OverlayItem) string {
+	if item.EntityRef != nil {
+		if id := strings.TrimSpace(item.EntityRef.CanonicalEntityID); id != "" {
+			return "entity:" + id
+		}
+		if id := strings.TrimSpace(item.EntityRef.EntityID); id != "" {
+			return "entity:" + id
+		}
+	}
+	for _, ref := range item.AssetRefs {
+		if hash := strings.TrimSpace(ref.SHA256); hash != "" {
+			return "sha256:" + strings.ToLower(hash)
+		}
+		if id := strings.TrimSpace(ref.AssetID); id != "" {
+			return "asset:" + id
+		}
+	}
+	return strings.TrimSpace(item.ID)
+}
 
 // VisualBudget caps how many visual overlays a scene may carry. A cap of 0
 // means "unlimited" (no cap for that dimension); a positive cap is enforced.

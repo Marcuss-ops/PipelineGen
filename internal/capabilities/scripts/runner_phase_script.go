@@ -252,10 +252,14 @@ func (r *Runner) runSceneTextPhase(ctx context.Context, runID string, req Genera
 		if req.Intro != nil || req.Outro != nil {
 			segmentTopologyNeedsMaterialization = true
 		}
-		if _, ok := r.textGen.(SceneTextStreamer); ok && !segmentTopologyNeedsMaterialization && (req.Source.Type != SourceClips || streamable) {
-			ready = newSceneReadyCoordinator(ctx, r, runID, req, routing, exec)
+		if !req.ScriptParams.SourceTextVerbatim {
+			if _, ok := r.textGen.(SceneTextStreamer); ok && !segmentTopologyNeedsMaterialization && (req.Source.Type != SourceClips || streamable) {
+				ready = newSceneReadyCoordinator(ctx, r, runID, req, routing, exec)
+			}
 		}
-		if streamer, ok := r.textGen.(SceneTextTraceStreamer); ok && !segmentTopologyNeedsMaterialization && (req.Source.Type != SourceClips || streamable) {
+		if req.ScriptParams.SourceTextVerbatim {
+			scenes, genErr = materializeVerbatimSourceTextScenes(req)
+		} else if streamer, ok := r.textGen.(SceneTextTraceStreamer); ok && !segmentTopologyNeedsMaterialization && (req.Source.Type != SourceClips || streamable) {
 			streamed = true
 			scenes, generatedTrace, genErr = r.generateSceneTextStreamingWithTrace(ctx, runID, req, exec, streamer, ready)
 		} else if streamer, ok := r.textGen.(SceneTextStreamer); ok && !segmentTopologyNeedsMaterialization && (req.Source.Type != SourceClips || streamable) {

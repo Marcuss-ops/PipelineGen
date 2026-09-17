@@ -45,14 +45,17 @@ type ScriptSpec struct {
 	// SingleScene requests one consolidated SpecScene in the generated
 	// output. It is useful for short single-segment documents where the
 	// narrative must remain one continuous scene.
-	SingleScene       bool            `json:"single_scene,omitempty"`
-	Duration          int             `json:"duration,omitempty"`
-	MinWords          int             `json:"min_words,omitempty"`
-	SegmentWords      int             `json:"segment_words,omitempty"`
-	Segments          []ScriptSegment `json:"segments,omitempty"`
-	SegmentTopics     []string        `json:"segment_topics,omitempty"`
-	SentencesPerImage int             `json:"sentences_per_image,omitempty"`
-	ImagesPerScene    int             `json:"images_per_scene,omitempty"`
+	SingleScene  bool            `json:"single_scene,omitempty"`
+	Duration     int             `json:"duration,omitempty"`
+	MinWords     int             `json:"min_words,omitempty"`
+	SegmentWords int             `json:"segment_words,omitempty"`
+	Segments     []ScriptSegment `json:"segments,omitempty"`
+	// SourceTextVerbatim makes per-segment SourceText the exact narration
+	// input for translate-only runs; the script text generator is bypassed.
+	SourceTextVerbatim bool     `json:"source_text_verbatim,omitempty"`
+	SegmentTopics      []string `json:"segment_topics,omitempty"`
+	SentencesPerImage  int      `json:"sentences_per_image,omitempty"`
+	ImagesPerScene     int      `json:"images_per_scene,omitempty"`
 	// MediaDensity is a readable preset for visual cadence. Explicit
 	// sentences_per_image/images_per_scene values always take precedence.
 	MediaDensity        string `json:"media_density,omitempty"`

@@ -129,3 +129,14 @@ func TestBuildVoiceoverWork_DispatchesSourceBeforeTargets(t *testing.T) {
 	require.Equal(t, Language("es"), work[0].lang)
 	require.Equal(t, Language("en"), work[1].lang)
 }
+
+func TestBuildVoiceoverWork_ExplicitLanguagesDoNotLimitTranslationInputs(t *testing.T) {
+	scenes := []Scene{{
+		ID: "s0", Index: 0,
+		Text: map[Language]string{"en": "hello", "it": "ciao", "de": "hallo"},
+	}}
+	work := buildVoiceoverWorkForLanguages(scenes, "en", []Language{"it", "de"}, []Language{"en"})
+	require.Len(t, work, 1)
+	require.Equal(t, Language("en"), work[0].lang)
+	require.Equal(t, "hello", work[0].text)
+}

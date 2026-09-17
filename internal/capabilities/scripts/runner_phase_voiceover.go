@@ -38,13 +38,17 @@ type voiceoverResult struct {
 // language_priority): source language first, then targets in caller order — so
 // the fan-out order and the output-asset lineage ordinals are deterministic.
 func buildVoiceoverWork(scenes []Scene, sourceLanguage Language, targetLanguages []Language) []voiceoverWork {
+	return buildVoiceoverWorkForLanguages(scenes, sourceLanguage, targetLanguages, nil)
+}
+
+func buildVoiceoverWorkForLanguages(scenes []Scene, sourceLanguage Language, targetLanguages, voiceoverLanguages []Language) []voiceoverWork {
 	work := make([]voiceoverWork, 0)
 	for i := range scenes {
 		scene := &scenes[i]
 		if !scene.ExecutionMode.AllowsTTS() || !scene.ExecutionMode.AllowsGeneratedAudio() {
 			continue
 		}
-		for _, lang := range orderedSceneLanguages(scene.Text, sourceLanguage, targetLanguages) {
+		for _, lang := range requestedVoiceoverLanguages(scene.Text, sourceLanguage, targetLanguages, voiceoverLanguages) {
 			text := scene.Text[lang]
 			if text == "" {
 				continue
@@ -56,6 +60,39 @@ func buildVoiceoverWork(scenes []Scene, sourceLanguage Language, targetLanguages
 		}
 	}
 	return work
+}
+
+// requestedVoiceoverLanguages preserves source+all-target synthesis when the
+// request omits voiceover_languages. An explicit list filters the scene's
+// available text to exactly those languages.
+func requestedVoiceoverLanguages(text map[Language]string, sourceLanguage Language, targetLanguages, voiceoverLanguages []Language) []Language {
+	ordered := orderedSceneLanguages(text, sourceLanguage, targetLanguages)
+	if voiceoverLanguages == nil {
+		return ordered
+	}
+	allowed := make(map[Language]struct{}, len(voiceoverLanguages))
+	for _, lang := range voiceoverLanguages {
+		allowed[lang] = struct{}{}
+	}
+	out := make([]Language, 0, len(ordered))
+	for _, lang := range ordered {
+		if _, ok := allowed[lang]; ok {
+			out = append(out, lang)
+		}
+	}
+	return out
+}
+
+func voiceoverLanguageRequested(req GenerateRequest, language Language) bool {
+	if req.VoiceoverLanguages == nil {
+		return true
+	}
+	for _, requested := range req.VoiceoverLanguages {
+		if requested == language {
+			return true
+		}
+	}
+	return false
 }
 
 func (r *Runner) runVoiceoverPhase(ctx context.Context, runID string, req GenerateRequest, routing kernelscript.ArtifactRoutingContext, exec ExecutionContext, resumeIdx int, result *GenerateResult) bool {
@@ -116,7 +153,7 @@ func (r *Runner) runVoiceoverPhase(ctx context.Context, runID string, req Genera
 		// final scene text — never on entities/phrases/words — so it runs in
 		// parallel with SceneAnalysis from the SceneTextReady boundary. Each
 		// item is independent; results are applied in canonical order below.
-		work := buildVoiceoverWork(result.Scenes, req.SourceLanguage, req.Languages)
+		work := buildVoiceoverWorkForLanguages(result.Scenes, req.SourceLanguage, req.Languages, req.VoiceoverLanguages)
 		// A request containing only protected fixed media has no TTS work.
 		// Do not require the voiceover publication project in that case:
 		// fixed_media is intentionally excluded from this phase.
@@ -135,7 +172,7 @@ func (r *Runner) runVoiceoverPhase(ctx context.Context, runID string, req Genera
 			if !scene.ExecutionMode.AllowsTTS() || !scene.ExecutionMode.AllowsGeneratedAudio() {
 				continue
 			}
-			for _, lang := range orderedSceneLanguages(scene.Text, req.SourceLanguage, req.Languages) {
+			for _, lang := range requestedVoiceoverLanguages(scene.Text, req.SourceLanguage, req.Languages, req.VoiceoverLanguages) {
 				if strings.TrimSpace(scene.Text[lang]) == "" {
 					continue
 				}

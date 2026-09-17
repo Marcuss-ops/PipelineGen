@@ -185,8 +185,23 @@ func ValidateVoiceoverSourceDurations(result GenerateResult, language Language, 
 // required by CHUNKED_VOICEOVER. It is intentionally independent of the
 // renderer so an invalid payload cannot reach the remote Velox compute.
 func ValidateChunkedVoiceovers(result GenerateResult) error {
+	return ValidateChunkedVoiceoversForLanguages(result, nil)
+}
+
+// ValidateChunkedVoiceoversForLanguages enforces a one-to-one scene/language
+// mapping for the requested TTS languages. A nil language list preserves the
+// legacy contract and requires audio for every populated scene text track.
+// An explicit list lets a multilingual script retain translated text and NLP
+// without requiring an audio asset for every translation.
+func ValidateChunkedVoiceoversForLanguages(result GenerateResult, languages []Language) error {
 	if len(result.Scenes) == 0 {
 		return fmt.Errorf("chunked voiceover requires scenes")
+	}
+	requested := make(map[Language]struct{}, len(languages))
+	for _, language := range languages {
+		if strings.TrimSpace(string(language)) != "" {
+			requested[language] = struct{}{}
+		}
 	}
 	seenScenes := make(map[string]struct{}, len(result.Scenes))
 	seenAssets := make(map[string]string)
@@ -209,6 +224,11 @@ func ValidateChunkedVoiceovers(result GenerateResult) error {
 			continue
 		}
 		for lang, text := range scene.Text {
+			if languages != nil {
+				if _, ok := requested[lang]; !ok {
+					continue
+				}
+			}
 			if strings.TrimSpace(text) == "" {
 				continue
 			}

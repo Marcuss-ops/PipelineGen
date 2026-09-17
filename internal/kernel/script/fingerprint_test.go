@@ -195,3 +195,24 @@ func TestFingerprintInputFromPlan_WiresPromptVersions(t *testing.T) {
 	assert.Equal(t, "qv1", input.QAPromptVersion)
 	assert.Equal(t, 2, input.ContractVersion)
 }
+
+func TestSourceTextVerbatimIsFingerprintInput(t *testing.T) {
+	item := script.GenerationItemV2{
+		Source: script.SourceSpec{Type: script.SourceText, Topic: "existing script"},
+		ScriptParams: script.ScriptSpec{
+			Segments: []script.ScriptSegment{{ID: "scene-one", Topic: "first", SourceText: "Exact text."}},
+		},
+	}
+	generated := script.FingerprintInputFromItem(item)
+	item.ScriptParams.SourceTextVerbatim = true
+	verbatim := script.FingerprintInputFromItem(item)
+	assert.False(t, generated.SourceTextVerbatim)
+	assert.True(t, verbatim.SourceTextVerbatim)
+	assert.NotEqual(t, script.BuildFingerprint(generated), script.BuildFingerprint(verbatim))
+
+	plan := script.ResolvedGenerationPlan{Segments: item.ScriptParams.Segments}
+	planGenerated := script.FingerprintInputFromPlan(&plan)
+	plan.SourceTextVerbatim = true
+	planVerbatim := script.FingerprintInputFromPlan(&plan)
+	assert.NotEqual(t, script.BuildFingerprint(planGenerated), script.BuildFingerprint(planVerbatim))
+}

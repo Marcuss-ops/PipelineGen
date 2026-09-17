@@ -90,6 +90,44 @@ func materializeGeneratedScenes(req GenerateRequest, scenes []Scene) []Scene {
 	return out
 }
 
+// materializeVerbatimSourceTextScenes builds the source-language scene list
+// directly from caller-provided segment text. This path is used when a caller
+// is translating or processing an already-authored script and must preserve
+// every scene's narration without a model rewrite.
+func materializeVerbatimSourceTextScenes(req GenerateRequest) ([]Scene, error) {
+	if req.Source.Type != SourceText {
+		return nil, fmt.Errorf("source_text_verbatim requires a text source")
+	}
+	if len(req.ScriptParams.Segments) == 0 {
+		return nil, fmt.Errorf("source_text_verbatim requires explicit script segments")
+	}
+	if req.SourceLanguage == "" {
+		return nil, fmt.Errorf("source_text_verbatim requires a source language")
+	}
+
+	scenes := make([]Scene, 0, len(req.ScriptParams.Segments))
+	seen := make(map[string]struct{}, len(req.ScriptParams.Segments))
+	for i, segment := range req.ScriptParams.Segments {
+		id := strings.TrimSpace(segment.ID)
+		if id == "" {
+			return nil, fmt.Errorf("source_text_verbatim segment %d has no ID", i)
+		}
+		if _, exists := seen[id]; exists {
+			return nil, fmt.Errorf("source_text_verbatim has duplicate segment ID %q", id)
+		}
+		seen[id] = struct{}{}
+		if strings.TrimSpace(segment.SourceText) == "" {
+			return nil, fmt.Errorf("source_text_verbatim segment %q has no source_text", id)
+		}
+		scenes = append(scenes, Scene{
+			ID:    id,
+			Index: i,
+			Text:  map[Language]string{req.SourceLanguage: segment.SourceText},
+		})
+	}
+	return scenes, nil
+}
+
 func nonEmptyParagraphs(source string) []string {
 	paragraphs := strings.Split(strings.TrimSpace(source), "\n\n")
 	out := make([]string, 0, len(paragraphs))

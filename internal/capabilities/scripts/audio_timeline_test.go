@@ -502,6 +502,23 @@ func TestValidateChunkedVoiceoversRequiresOneToOneMapping(t *testing.T) {
 	}
 }
 
+func TestValidateChunkedVoiceoversAllowsExplicitSourceOnlyTrack(t *testing.T) {
+	result := GenerateResult{Scenes: []Scene{
+		{ID: "scene-1", Index: 0,
+			Text:      map[Language]string{"en": "hello", "de": "hallo"},
+			Voiceover: map[Language]AudioReference{"en": {ID: "vo-1", FilePath: "/vo-1.mp3"}}},
+	}}
+	if err := ValidateChunkedVoiceoversForLanguages(result, []Language{"en"}); err != nil {
+		t.Fatalf("explicit English-only voiceover should accept translated text: %v", err)
+	}
+	if err := ValidateChunkedVoiceovers(result); err == nil {
+		t.Fatal("legacy validation must still require the translated voiceover")
+	}
+	if err := ValidateChunkedVoiceoversForLanguages(result, []Language{"de"}); err == nil {
+		t.Fatal("an explicitly requested missing translation voiceover must fail")
+	}
+}
+
 // TestValidateChunkedVoiceoversExemptsFixedMediaAndForbidsVoiceover certifies
 // the fixed-media firewall: a protected fixed scene whose display text lives
 // in the Text map must NOT require a voiceover (its text is never

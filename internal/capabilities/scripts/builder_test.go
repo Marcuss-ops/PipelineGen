@@ -46,6 +46,20 @@ func TestBuildGenerateRequest_ForceRefreshReachesGenerationAndVidRush(t *testing
 	}
 }
 
+func TestBuildGenerateRequest_PropagatesVerbatimSourceText(t *testing.T) {
+	var env scriptpkg.GenerationEnvelopeV2
+	if err := json.Unmarshal([]byte(`{"version":2,"items":[{"source":{"type":"text","topic":"existing script"},"script_params":{"source_text_verbatim":true,"segments":[{"id":"scene-one","topic":"first","source_text":"Exact scene text."}]}}]}`), &env); err != nil {
+		t.Fatal(err)
+	}
+	got, err := BuildGenerateRequest(&env, "verbatim-key")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !got.ScriptParams.SourceTextVerbatim || len(got.ScriptParams.Segments) != 1 || got.ScriptParams.Segments[0].SourceText != "Exact scene text." {
+		t.Fatalf("verbatim source text contract was not propagated: %+v", got.ScriptParams)
+	}
+}
+
 func TestBuildGenerateRequest_PropagatesSaveToDB(t *testing.T) {
 	var env scriptpkg.GenerationEnvelopeV2
 	if err := json.Unmarshal([]byte(`{"version":2,"items":[{"title":"persisted","language":"it","source":{"type":"text","topic":"topic"},"output":{"save_to_db":true}}]}`), &env); err != nil {
@@ -439,6 +453,23 @@ func TestBuildGenerateRequest_PropagatesVoiceoverTiming(t *testing.T) {
 	}
 	if len(got.Timing.Formats) != 3 {
 		t.Fatalf("formats = %v, want [json srt vtt]", got.Timing.Formats)
+	}
+}
+
+func TestBuildGenerateRequest_PropagatesVoiceoverLanguageSelection(t *testing.T) {
+	var env scriptpkg.GenerationEnvelopeV2
+	if err := json.Unmarshal([]byte(`{"version":2,"items":[{"title":"source-only-voice","project":"test-project","language":"en","source":{"type":"text","topic":"topic"},"output":{"voiceover_enabled":true,"languages":["it","de"]},"audio":{"mode":"CHUNKED_VOICEOVER","voiceover_languages":["en"]}}]}`), &env); err != nil {
+		t.Fatal(err)
+	}
+	got, err := BuildGenerateRequest(&env, "voiceover-language-key")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.VoiceoverLanguages == nil || len(got.VoiceoverLanguages) != 1 || got.VoiceoverLanguages[0] != "en" {
+		t.Fatalf("voiceover languages = %v, want explicit source-only selection", got.VoiceoverLanguages)
+	}
+	if len(got.Languages) != 2 || got.Languages[0] != "it" || got.Languages[1] != "de" {
+		t.Fatalf("translation languages = %v, voiceover selection must not narrow translations", got.Languages)
 	}
 }
 
