@@ -16,4 +16,16 @@ type Registry interface {
 	// FindByPHash looks for an existing asset with the same perceptual hash.
 	// It returns the existing asset ID if found, or an empty string otherwise.
 	FindByPHash(ctx context.Context, phash string) (string, error)
+	// FindByContentHash resolves the live asset that owns a physical content
+	// identity (the SHA-256 hex digest of the bytes).
+	//
+	// It is the SINGLE authority for content-identity lookup: adapters MUST NOT
+	// re-implement their own SHA-256 queries, because a second copy of this
+	// predicate is how "the same bytes" silently becomes "the same asset".
+	//
+	// A nil record with a nil error means "these bytes are not stored yet".
+	// Returning a record means the bytes ARE stored — the caller still has to
+	// decide whether its own asset ID already owns them (logical identity) or
+	// whether it is a new logical asset that merely reuses the storage.
+	FindByContentHash(ctx context.Context, sha256 string) (*MediaRecord, error)
 }

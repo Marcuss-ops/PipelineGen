@@ -76,6 +76,12 @@ type FinalizeResult struct {
 	DownloadLink   string
 	LocalPath      string
 	Error          string
+	// ReusedAssetID names the OTHER logical asset that already owned this
+	// content identity (SHA-256) when this call created a new asset whose bytes
+	// were already stored. Non-empty means "same physical content, distinct
+	// asset" — evidence that the storage is shared, never a reason to skip the
+	// asset (that is what Status "skipped_duplicate" is for).
+	ReusedAssetID string
 }
 
 // UploadOnlyResult is the post-Drive-upload surface. Used by the

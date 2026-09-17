@@ -1,13 +1,34 @@
 package artifacts
 
-import "context"
+import (
+	"context"
+	"errors"
+)
 
 // ── Shared Registry helpers ─────────────────────────────────────────────
+
+// ErrContentHashLookupNotWired is the fail-closed sentinel returned by a
+// Registry whose content-identity lookup was never wired. Reporting "these
+// bytes are new" for an unreadable content index would be a successful no-op
+// that silently duplicates storage, so the lookup refuses instead.
+var ErrContentHashLookupNotWired = errors.New("artifacts: FindByContentHash is not wired for this registry")
 
 // NoopFindByPHash returns ("", nil) — use when pHash lookup is not
 // applicable to a media type (e.g. voiceovers are audio, pHash is visual).
 func NoopFindByPHash(_ context.Context, _ string) (string, error) {
 	return "", nil
+}
+
+// NoopFindByContentHash returns (nil, nil) — use only for a registry whose
+// records have no byte identity at all (pure metadata registries).
+//
+// It is deliberately NOT the default for SimpleRegistry: "no content index"
+// and "the bytes are not stored" are different facts, and conflating them is
+// what makes content dedup quietly stop working. A registry that cannot answer
+// must leave ContentHashFn nil and fail closed with
+// ErrContentHashLookupNotWired instead.
+func NoopFindByContentHash(_ context.Context, _ string) (*MediaRecord, error) {
+	return nil, nil
 }
 
 // GetAllWithDriveFileID is a generic helper for the common registry pattern:
@@ -49,6 +70,10 @@ type SimpleRegistry struct {
 	DeleteFn func(context.Context, string) error
 	ListFn   func(context.Context) ([]*MediaRecord, error)
 	PHashFn  func(context.Context, string) (string, error)
+	// ContentHashFn resolves the record owning a content identity (SHA-256 of
+	// the bytes). Nil is a fail-closed signal, NOT a no-op: see
+	// NoopFindByContentHash for why the two must stay distinguishable.
+	ContentHashFn func(context.Context, string) (*MediaRecord, error)
 }
 
 func (r *SimpleRegistry) UpsertMedia(ctx context.Context, rec *MediaRecord) error {
@@ -68,7 +93,17 @@ func (r *SimpleRegistry) GetAllWithDriveFileID(ctx context.Context) ([]*MediaRec
 }
 
 func (r *SimpleRegistry) FindByPHash(ctx context.Context, phash string) (string, error) {
+	if r.PHashFn == nil {
+		return "", nil
+	}
 	return r.PHashFn(ctx, phash)
+}
+
+func (r *SimpleRegistry) FindByContentHash(ctx context.Context, sha256 string) (*MediaRecord, error) {
+	if r.ContentHashFn == nil {
+		return nil, ErrContentHashLookupNotWired
+	}
+	return r.ContentHashFn(ctx, sha256)
 }
 
 // compile-time guard: SimpleRegistry satisfies Registry

@@ -55,8 +55,25 @@ type lifecycleStoreStub struct {
 	records   map[string]*artifacts.MediaRecord
 }
 
-func (s *lifecycleStoreStub) FindExisting(context.Context, assetop.ExistingAssetQuery) (*assetop.AssetRecord, error) {
-	return s.existing, s.findErr
+func (s *lifecycleStoreStub) FindExisting(_ context.Context, query assetop.ExistingAssetQuery) (*assetop.AssetRecord, error) {
+	if s.findErr != nil {
+		return nil, s.findErr
+	}
+	if s.existing == nil {
+		return nil, nil
+	}
+	switch {
+	case query.ID != "" && s.existing.ID == query.ID:
+		return s.existing, nil
+	case query.ContentSHA256 != "" && s.existing.ContentHash == query.ContentSHA256:
+		return s.existing, nil
+	case query.DriveFileID != "" && s.existing.DriveFileID == query.DriveFileID:
+		return s.existing, nil
+	case query.Filename != "" && s.existing.Filename == query.Filename && (query.Source == "" || s.existing.Source == query.Source):
+		return s.existing, nil
+	default:
+		return nil, nil
+	}
 }
 
 func (s *lifecycleStoreStub) ListWithDriveFileID(context.Context, string) ([]*assetop.AssetRecord, error) {
@@ -93,6 +110,14 @@ func (s *lifecycleStoreStub) GetAllWithDriveFileID(context.Context) ([]*artifact
 	return nil, nil
 }
 func (s *lifecycleStoreStub) FindByPHash(context.Context, string) (string, error) { return "", nil }
+func (s *lifecycleStoreStub) FindByContentHash(_ context.Context, sha256 string) (*artifacts.MediaRecord, error) {
+	for _, rec := range s.records {
+		if rec.ContentHash == sha256 && sha256 != "" {
+			return rec, nil
+		}
+	}
+	return nil, nil
+}
 func (s *lifecycleStoreStub) GetMedia(ctx context.Context, id string) (*artifacts.MediaRecord, error) {
 	return s.Get(ctx, id)
 }
@@ -103,6 +128,22 @@ func lifecycleNoPersistenceConfig() Config {
 		UploadPolicy:    assetop.UploadPolicy{},
 		PersistPolicy:   assetop.PersistPolicy{},
 	}
+}
+
+const lifecycleTestAssetBytes = "canonical test artifact bytes"
+
+func lifecycleTestAsset(t *testing.T) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "asset.mp4")
+	if err := os.WriteFile(path, []byte(lifecycleTestAssetBytes), 0o600); err != nil {
+		t.Fatalf("write lifecycle test artifact: %v", err)
+	}
+	return path
+}
+
+func lifecycleTestAssetHash() string {
+	sum := sha256.Sum256([]byte(lifecycleTestAssetBytes))
+	return hex.EncodeToString(sum[:])
 }
 
 func (p *lifecyclePublisherStub) Publish(context.Context, delivery.PublishRequest) (*delivery.PublishResult, error) {
@@ -148,7 +189,7 @@ func TestProcessAsset_RequiredPublisherFailureReturnsError(t *testing.T) {
 
 	result, err := svc.ProcessAsset(context.Background(), &FinalizeInput{
 		ID:           "asset-1",
-		LocalPath:    "/tmp/asset.mp4",
+		LocalPath:    lifecycleTestAsset(t),
 		RequireDrive: true,
 		Destination:  delivery.DestinationYouTubeClip,
 	}, "hash")
@@ -174,7 +215,7 @@ func TestProcessAsset_RequiredPublisherNilResultReturnsError(t *testing.T) {
 
 	result, err := svc.ProcessAsset(context.Background(), &FinalizeInput{
 		ID:           "asset-1",
-		LocalPath:    "/tmp/asset.mp4",
+		LocalPath:    lifecycleTestAsset(t),
 		RequireDrive: true,
 	}, "hash")
 	if result == nil {
@@ -187,7 +228,7 @@ func TestProcessAsset_RequiredPublisherNilResultReturnsError(t *testing.T) {
 
 func TestProcessAsset_DedupeStoreMissingReturnsError(t *testing.T) {
 	svc := NewService(ServiceDeps{}, Config{
-		DuplicatePolicy: assetop.DuplicatePolicy{Enabled: true, CheckByHash: true},
+		DuplicatePolicy: assetop.DuplicatePolicy{Enabled: true, CheckByContentHash: true},
 	})
 
 	result, err := svc.ProcessAsset(context.Background(), &FinalizeInput{ID: "asset-store-missing"}, "hash")
@@ -207,7 +248,7 @@ func TestProcessAsset_RequiredPublisherMissingReturnsError(t *testing.T) {
 
 	result, err := svc.ProcessAsset(context.Background(), &FinalizeInput{
 		ID:           "asset-1",
-		LocalPath:    "/tmp/asset.mp4",
+		LocalPath:    lifecycleTestAsset(t),
 		RequireDrive: true,
 	}, "hash")
 	if result == nil {
@@ -231,18 +272,20 @@ func TestProcessAsset_ProcessedDomainStatusReturnsNilError(t *testing.T) {
 }
 
 func TestProcessAsset_SkippedDuplicateDomainStatusReturnsNilError(t *testing.T) {
+	contentHash := lifecycleTestAssetHash()
 	store := &lifecycleStoreStub{existing: &assetop.AssetRecord{
 		ID:            "existing-asset",
 		DriveLink:     "https://drive.test/existing",
 		DriveFileID:   "drive-existing",
 		DownloadLink:  "https://drive.test/download",
 		LegacyFileMD5: "hash",
+		ContentHash:   contentHash,
 	}}
 	svc := NewService(ServiceDeps{Store: store}, Config{
-		DuplicatePolicy: assetop.DuplicatePolicy{Enabled: true, CheckByHash: true, SkipIfExists: true},
+		DuplicatePolicy: assetop.DuplicatePolicy{Enabled: true, CheckByContentHash: true, SkipIfExists: true},
 	})
 
-	result, err := svc.ProcessAsset(context.Background(), &FinalizeInput{ID: "asset-duplicate"}, "hash")
+	result, err := svc.ProcessAsset(context.Background(), &FinalizeInput{ID: "existing-asset", LocalPath: lifecycleTestAsset(t)}, "hash")
 	if err != nil {
 		t.Fatalf("err = %v, want nil for duplicate domain result", err)
 	}
@@ -257,7 +300,7 @@ func TestProcessAsset_SkippedDuplicateDomainStatusReturnsNilError(t *testing.T) 
 func TestProcessAsset_DedupeFailureReturnsOperationalError(t *testing.T) {
 	cause := errors.New("asset store unavailable")
 	svc := NewService(ServiceDeps{Store: &lifecycleStoreStub{findErr: cause}}, Config{
-		DuplicatePolicy: assetop.DuplicatePolicy{Enabled: true, CheckByHash: true},
+		DuplicatePolicy: assetop.DuplicatePolicy{Enabled: true, CheckByContentHash: true},
 	})
 
 	result, err := svc.ProcessAsset(context.Background(), &FinalizeInput{ID: "asset-dedupe-error"}, "hash")
@@ -280,7 +323,7 @@ func TestProcessAsset_CommitFailurePreventsDrivePublish(t *testing.T) {
 	})
 
 	result, err := svc.ProcessAsset(context.Background(), &FinalizeInput{
-		ID: "asset-commit-failure", LocalPath: "/tmp/asset.mp4", RequireDrive: true,
+		ID: "asset-commit-failure", LocalPath: lifecycleTestAsset(t), RequireDrive: true,
 	}, "hash")
 	if result == nil {
 		t.Fatal("result = nil, want operational result")
@@ -304,7 +347,7 @@ func TestProcessAsset_PublisherIdentityMissingPersistsRecoveryState(t *testing.T
 		PersistPolicy: assetop.PersistPolicy{SaveToAssetRegistry: true},
 	})
 
-	result, err := svc.ProcessAsset(context.Background(), &FinalizeInput{ID: "asset-no-identity", LocalPath: "/tmp/asset.mp4", RequireDrive: true}, "hash")
+	result, err := svc.ProcessAsset(context.Background(), &FinalizeInput{ID: "asset-no-identity", LocalPath: lifecycleTestAsset(t), RequireDrive: true}, "hash")
 	if result == nil || !errors.Is(err, ErrDriveUploadFailed) {
 		t.Fatalf("result=%#v err=%v, want required delivery error", result, err)
 	}
@@ -339,7 +382,7 @@ func TestProcessAsset_PublishFailurePersistsRecoveryStateAndOrder(t *testing.T) 
 	})
 
 	result, err := svc.ProcessAsset(context.Background(), &FinalizeInput{
-		ID: "asset-recovery", LocalPath: "/tmp/asset.mp4", RequireDrive: true,
+		ID: "asset-recovery", LocalPath: lifecycleTestAsset(t), RequireDrive: true,
 	}, "hash")
 	if result == nil {
 		t.Fatal("result = nil, want operational result")
@@ -369,7 +412,7 @@ func TestProcessAsset_TerminalCommitFailurePreservesDriveIdentityForRecovery(t *
 	})
 
 	result, err := svc.ProcessAsset(context.Background(), &FinalizeInput{
-		ID: "asset-terminal-recovery", LocalPath: "/tmp/asset.mp4", RequireDrive: true,
+		ID: "asset-terminal-recovery", LocalPath: lifecycleTestAsset(t), RequireDrive: true,
 	}, "hash")
 	if result == nil || !errors.Is(err, ErrFinalizationFailed) || !errors.Is(err, commitErr) {
 		t.Fatalf("result=%#v err=%v, want terminal commit failure", result, err)
