@@ -297,7 +297,11 @@ func (h *Handler) handleReindex(c *gin.Context) {
 	}
 
 	a := details.Asset
-	contentHash := a.LegacyFileMD5()
+	// MEDIA-IDENTITY (Sept 2026): the reindex commit carries the BYTE identity,
+	// resolved from the canonical content surfaces. LegacyFileMD5() is the
+	// compatibility accessor and may hold an MD5, which must never become the
+	// committed content address.
+	contentHash := a.ContentAddress()
 	if contentHash == "" {
 		contentHash = a.ID
 	}

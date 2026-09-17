@@ -366,6 +366,27 @@ func TestRunTranslatedNLPGroundsSourceNamesInTheTranslatedSurface(t *testing.T) 
 	}
 }
 
+func TestGroundLocalizedSourceEntitiesProjectsPolishInflection(t *testing.T) {
+	text := "W Brooklynie historia Mike’a Tysona zmieniła boks."
+	source := &scriptpkg.SceneAnnotations{Language: "en", PrimaryEntities: []scriptpkg.AnnotatedEntity{{
+		Text: "Mike Tyson", CanonicalName: "Mike Tyson", Type: "PERSON", Confidence: 0.98,
+	}}}
+
+	got := groundLocalizedSourceEntities(text, "pl", source)
+	if len(got) != 1 || got[0].Type != scriptpkg.EntityTypePerson || got[0].Text != "Mike’a Tysona" {
+		t.Fatalf("localized source entities = %+v, want the grounded Polish surface Mike’a Tysona", got)
+	}
+	span, ok := findEntitySpan(text, got[0].Text)
+	if !ok || string([]rune(text)[span.StartRune:span.EndRune]) != got[0].Text {
+		t.Fatalf("projected entity %q does not retain a grounded translated span", got[0].Text)
+	}
+
+	// A prefix resemblance alone is not enough to project a source identity.
+	if falsePositive := groundLocalizedSourceEntities("Mikea Tysonic opowieść.", "pl", source); len(falsePositive) != 0 {
+		t.Fatalf("unrelated Polish tokens were projected as Mike Tyson: %+v", falsePositive)
+	}
+}
+
 // TestRunTranslatedNLPFallsBackToPerSceneWhenBatchFails pins the fail-open
 // contract: batching is an optimization, so a batched failure must degrade to
 // the per-scene call instead of failing the run or dropping annotations.

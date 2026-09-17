@@ -151,6 +151,7 @@ func (c *Client) extractEntityBatchIndividually(ctx context.Context, segments []
 			for index := range jobs {
 				result, err := c.ExtractEntitiesFromSegmentWithModel(ctx, detail.EntityExtractionRequest{
 					SegmentText: segments[index], SegmentIndex: index, EntityCount: entityCount,
+					Language: language,
 				}, model)
 				if err != nil {
 					if c.entityExtractionFallbackMode != EntityExtractionFallbackDisabled {
@@ -549,7 +550,7 @@ func decodeSpecialNames(raw json.RawMessage) []string {
 	}
 	var list []string
 	if err := json.Unmarshal(raw, &list); err == nil {
-		return list
+		return normalizeSpecialNameList(list)
 	}
 	var grouped map[string]json.RawMessage
 	if err := json.Unmarshal(raw, &grouped); err != nil {
@@ -565,7 +566,7 @@ func decodeSpecialNames(raw json.RawMessage) []string {
 			}
 		}
 		for _, name := range names {
-			name = strings.TrimSpace(name)
+			name = normalizeSpecialName(name)
 			kind = strings.TrimSpace(kind)
 			if name == "" || kind == "" {
 				continue

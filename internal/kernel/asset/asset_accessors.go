@@ -2,6 +2,9 @@ package asset
 
 import (
 	"encoding/json"
+	"strings"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 )
 
 // ── Typed accessors (domain-level properties stored in Metadata) ────
@@ -55,6 +58,74 @@ func (m *Asset) BinarySHA256() string {
 // identity or deduplication. Empty when the asset was not uploaded via
 // Google Drive or when the receipt was not recorded.
 func (m *Asset) DriveMD5() string { return m.GetMetadataString("google_drive_md5") }
+
+// ── Content address resolution (media-identity SSOT) ─────────────────────
+
+// ResolveContentAddress returns the first candidate that IS a canonical
+// content address (a 64-hex SHA-256), lower-cased, or "" when none is.
+//
+// This is the string-level half of [Asset.ContentAddress], and it exists so a
+// caller holding loose fields (a DTO, a projection row, a legacy record)
+// resolves them by the SAME rule instead of hand-rolling an
+// `if hash != "" { ... }` seam — six hand-rolled copies of one comparison is
+// how "the content address" drifts into "whatever digest was in scope".
+//
+// Candidates must be passed in canonical precedence order; a legacy digest
+// belongs LAST so it stays a migration-window fallback rather than a source of
+// truth. A candidate that is not 64-hex (an MD5, an asset id, a URL) is
+// skipped — never promoted, never truncated, never re-hashed.
+//
+// Case handling: the persisted content columns are compared
+// case-insensitively by the media registry's own validator
+// (mediaregistry.IsSHA256Hex / ValidateContentSHA256, which use hex decoding),
+// so an upper-case digest read back from storage is the same address and is
+// normalised to lower case here — the same normalisation asset.Ref.Canonical
+// applies, for the same reason (one digest must not travel as two addresses).
+// This is deliberately NOT the same question as digest.IsCanonicalSHA256, which
+// answers the stricter boundary question "is this caller-supplied string in the
+// exact wire form this tree writes?" and REJECTS rather than normalises.
+func ResolveContentAddress(candidates ...string) string {
+	for _, candidate := range candidates {
+		trimmed := strings.TrimSpace(candidate)
+		if digest.IsSHA256(trimmed) {
+			return strings.ToLower(trimmed)
+		}
+	}
+	return ""
+}
+
+// ContentAddress returns the canonical content address (the 64-hex SHA-256 of
+// the bytes) of this asset, or "" when it is UNKNOWN.
+//
+// Precedence follows the canonical meaning of each hash surface, owned by
+// capabilities/mediaregistry/hashes.go and applied here to the asset's own
+// fields:
+//
+//	content_sha256  — byte identity (the durable column)
+//	binary_sha256   — its compatibility projection (same value by invariant)
+//	content_hash    — the metadata spelling used by older writers
+//	legacy_file_md5 — compatibility bucket, consulted LAST and ONLY when the
+//	                  value is already a canonical SHA-256 (the documented
+//	                  migration window in which that column carried the
+//	                  SHA-256; mediaregistry/content_link_backfill.go performs
+//	                  server-side the same promotion)
+//
+// An MD5-shaped value is NEVER promoted. An MD5 is not a content address, so
+// admitting one makes two different payloads look identical — the exact
+// conflation that asset_id-is-what / sha256-is-which-bytes / md5-decides-nothing
+// exists to remove. No location field is consulted either: an address must never
+// be derived from a Drive file id, a URL, or a path.
+func (m *Asset) ContentAddress() string {
+	if m == nil {
+		return ""
+	}
+	return ResolveContentAddress(
+		m.GetMetadataString("content_sha256"),
+		m.GetMetadataString("binary_sha256"),
+		m.GetMetadataString("content_hash"),
+		m.GetMetadataString("legacy_file_md5"),
+	)
+}
 
 // LegacyFileMD5 returns the legacy MD5 hash (key "legacy_file_md5") from
 // pre-SHA-256 code paths (e.g. old YouTube extractions). This exists for

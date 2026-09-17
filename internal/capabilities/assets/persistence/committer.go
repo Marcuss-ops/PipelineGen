@@ -26,6 +26,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaregistry"
@@ -369,7 +370,88 @@ var (
 	ErrAssetCommitLifecycleRequired     = errors.New("asset commit: LifecycleState is required")
 	ErrAssetCommitIndexTaxonomyRequired = errors.New("asset commit: indexable assets require complete valid taxonomy")
 	ErrAssetCommitOutboxTerminal        = errors.New("asset commit: outbox event suppressed by existing terminal row")
+
+	// ErrAssetCommitContentAddressInvalid is returned when the ContentHash
+	// content-address slot carries a value that is not a canonical SHA-256.
+	ErrAssetCommitContentAddressInvalid = errors.New("asset commit: ContentHash is not a canonical SHA-256 content address")
 )
+
+// ValidateContentAddressSlot fails closed on a non-content-address value in a
+// content-address slot (godlike/06 one owner per fact; media-identity
+// programme, September 2026).
+//
+// The content address IS the byte identity: it is `media_assets.content_sha256`
+// and it is the key the supersede gate, the dedup decision and the index
+// outbox event all compare. Exactly three value shapes are accepted:
+//
+//	""  or "UNKNOWN"   → the byte identity is NOT KNOWN (the only honest way
+//	                     to say "these bytes have not been hashed")
+//	64-hex SHA-256      → the byte identity
+//	any NON-digest token → an operator-curated label. Tolerated at this seam:
+//	                     the value does not CLAIM to be a digest, so it is not
+//	                     a fabricated identity (see the scope note below)
+//
+// and one shape is REJECTED: a hex string of digest length that is not a
+// 64-hex SHA-256 — an MD5 (32), a SHA-1 (40), a SHA-512 (128). That is a
+// digest PRETENDING to be the content address, which is exactly the reported
+// production failure: a digest from the legacy compatibility field travelled
+// into a content-address slot, so the row claimed a byte identity it could not
+// prove while every consumer looked locally correct — the disagreement only
+// surfaced much later, in another process, as "the hash does not match the
+// bytes". An MD5 is classified explicitly in the error (rather than lumped in
+// with "some other digest") so an operator reads the real cause.
+//
+// WHY SHAPE-SCOPED RATHER THAN STRICTLY `IsSHA256Hex`: the strict form is the
+// right end state, and it is measurable work — the tree carries dozens of
+// fixture/curated labels (`"sha256:content"`, `"hash"`, provider tokens) in
+// existing callers, and rejecting all of them here would fail closed on values
+// that never claimed to be a digest. Enforcing the strict rule is a
+// test-fixture migration owned by that follow-up; this seam closes the defect
+// class that actually shipped (a real digest in the wrong slot) without
+// turning a curated label into a boot-time failure.
+//
+// This does NOT ban MD5. `asset_locations.legacy_file_md5` is the
+// compatibility bucket and keeps accepting an MD5 forever (see
+// mediaregistry's hash contract). What is banned is an MD5 in a slot that
+// claims BYTE IDENTITY.
+func ValidateContentAddressSlot(value string) error {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" || trimmed == mediaregistry.ContentSHA256Unknown {
+		return nil
+	}
+	if mediaregistry.IsSHA256Hex(trimmed) {
+		return nil
+	}
+	if mediaregistry.IsMD5Hex(trimmed) {
+		return fmt.Errorf("%w: %q is a legacy MD5 digest — MD5 is a compatibility-only bucket (asset_locations.legacy_file_md5) and never a content identity; resolve the value with asset.ResolveContentAddress(...) / (*asset.Asset).ContentAddress() so an unknown identity stays empty (or UNKNOWN) instead of becoming an MD5", ErrAssetCommitContentAddressInvalid, trimmed)
+	}
+	if isHexDigestShape(trimmed) {
+		return fmt.Errorf("%w: the %d-char hex digest %q is not a 64-hex SHA-256 (a SHA-1, SHA-512 or other digest-sized token): a digest in the content-address slot must BE the byte identity, never another algorithm's digest and never a truncated one", ErrAssetCommitContentAddressInvalid, len(trimmed), trimmed)
+	}
+	return nil
+}
+
+// isHexDigestShape reports whether s is an unbroken all-hex token at least as
+// long as the shortest digest the tree has ever written, i.e. long enough that
+// it can only be read as a digest rather than as a name or an id. The 64-hex
+// SHA-256 case is already accepted by ValidateContentAddressSlot before this is
+// consulted, so this identifies the NON-SHA-256 digest shapes (MD5 32, SHA-1
+// 40, SHA-512 128 — the MD5 case scoring its own, more specific error first).
+func isHexDigestShape(s string) bool {
+	if len(s) < 32 {
+		return false
+	}
+	for _, r := range s {
+		switch {
+		case r >= '0' && r <= '9':
+		case r >= 'a' && r <= 'f':
+		case r >= 'A' && r <= 'F':
+		default:
+			return false
+		}
+	}
+	return true
+}
 
 // Validate performs the pre-flight validation shared by all adapters.
 func (r CommitRequest) Validate() error {
@@ -387,6 +469,14 @@ func (r CommitRequest) Validate() error {
 	}
 	if r.EmitIndexEvent && r.ContentHash == "" {
 		return ErrAssetCommitContentHashRequired
+	}
+	// MEDIA-IDENTITY (Sept 2026): the content address is fail-closed. This is
+	// the ONE choke point every adapter shares (PostgreSQL and SQLite both call
+	// Validate() before writing), so an MD5 — or any other fabricated digest —
+	// cannot reach media_assets.content_sha256 through ANY producer, including a
+	// future one that forgets to resolve.
+	if err := ValidateContentAddressSlot(r.ContentHash); err != nil {
+		return err
 	}
 	if r.EmitIndexEvent {
 		taxonomy := r.Taxonomy

@@ -273,10 +273,16 @@ func (f *Finalizer) writeMetadataJSON(rec *MediaRecord) {
 	// Supersede-gate fix: content_hash MUST be in metadata_json so
 	// SourceVersionFor() reads Tier 1 (highest priority) instead of
 	// falling back to stale Tier 2 (file_hash from a previous ingest).
-	contentHash := rec.ContentHash
-	if contentHash == "" {
-		contentHash = rec.LegacyFileMD5
-	}
+	//
+	// MEDIA-IDENTITY (Sept 2026): the fallback is RESOLVED through the canonical
+	// rule instead of copied. rec.LegacyFileMD5 is the compatibility bucket and
+	// may hold an MD5 (32 hex); the previous `if contentHash == "" { contentHash
+	// = rec.LegacyFileMD5 }` promoted that MD5 into metadata_json's content_hash
+	// — the Tier-1 key the supersede gate reads — so an asset could be recognised
+	// as "unchanged" by comparing a digest that is not the byte identity. A
+	// digest that is not a 64-hex SHA-256 now yields "" (unknown), which is the
+	// honest value: the byte identity simply is not known for this record.
+	contentHash := asset.ResolveContentAddress(rec.ContentHash, rec.LegacyFileMD5)
 
 	metadata := f.metadata.BuildAssetMetadata(MetadataInput{
 		AssetID:             rec.ID,

@@ -31,7 +31,7 @@ func sanitizeEntityExtractionResult(segment string, result *detail.EntityExtract
 	}
 
 	result.FrasiImportanti = filterExactPhrases(segment, result.FrasiImportanti, profile)
-	result.NomiSpeciali = filterExactNames(segment, result.NomiSpeciali, profile)
+	result.NomiSpeciali = filterExactNamesForLanguage(segment, result.NomiSpeciali, profile, language)
 	result.ParoleImportanti = filterExactWords(segment, result.ParoleImportanti, profile)
 	result.NomiSpeciali = filterProperNouns(segment, result.NomiSpeciali, profile)
 	result.ArtlistPhrases = filterArtlistKeywords(segment, result.ArtlistPhrases, profile)
@@ -107,6 +107,10 @@ func filterExactPhrases(segment string, items []string, profile *linguistics.Lex
 }
 
 func filterExactNames(segment string, items []string, profile *linguistics.LexiconProfile) []string {
+	return filterExactNamesForLanguage(segment, items, profile, "")
+}
+
+func filterExactNamesForLanguage(segment string, items []string, profile *linguistics.LexiconProfile, language string) []string {
 	if len(items) == 0 {
 		return nil
 	}
@@ -117,8 +121,21 @@ func filterExactNames(segment string, items []string, profile *linguistics.Lexic
 			continue
 		}
 		if entityType, value, ok := splitTypedSpecialName(item); ok {
-			if len(strings.Fields(value)) > 4 || !textutil.ContainsCI(segment, value) {
+			if len(strings.Fields(value)) > 4 {
 				continue
+			}
+			if !textutil.ContainsCI(segment, value) {
+				switch strings.ToLower(language) {
+				case "ru":
+					value = russianInflectedEntitySurface(segment, value)
+				case "pl":
+					value = polishInflectedEntitySurface(segment, value)
+				default:
+					continue
+				}
+				if value == "" {
+					continue
+				}
 			}
 			out = append(out, entityType+": "+value)
 			continue

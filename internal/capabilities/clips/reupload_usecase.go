@@ -310,7 +310,10 @@ func (uc *ReuploadUseCase) Execute(ctx context.Context, req ReuploadRequest) (*R
 			zap.String("clip_id", req.ClipID))
 		return nil, ErrReuploadDispatcherUnavailable
 	}
-	contentHash := clip.LegacyFileMD5()
+	// MEDIA-IDENTITY (Sept 2026): the outbox/index content hash is the BYTE
+	// identity, resolved from the canonical content surfaces (an MD5 can no
+	// longer be published as a content address).
+	contentHash := clip.ContentAddress()
 	if contentHash == "" {
 		contentHash = req.ClipID
 	}

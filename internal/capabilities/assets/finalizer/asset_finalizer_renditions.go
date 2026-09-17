@@ -43,6 +43,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/finalization"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
 // upsertRenditionLocation persists a single rendition as an
@@ -77,12 +78,18 @@ func (s *AssetTxFinalizer) upsertRenditionLocation(
 		DownloadURL: r.DownloadLink,
 		MimeType:    r.MimeType,
 		SizeBytes:   r.SizeBytes,
-		SHA256:      r.LegacyFileMD5,
-		Width:       r.Width,
-		Height:      r.Height,
-		FPS:         r.FPS,
-		Bitrate:     r.Bitrate,
-		Container:   r.Container,
-		Codec:       r.Codec,
+		// MEDIA-IDENTITY (Sept 2026): the rendition commit's SHA256 is a
+		// content-address slot. The DTO field is named LegacyFileMD5 for
+		// historical reasons, so the value is RESOLVED through the canonical rule
+		// instead of forwarded verbatim: a 64-hex SHA-256 becomes the rendition's
+		// byte identity, anything else (a legacy MD5) becomes "" (unknown) rather
+		// than posing as one.
+		SHA256:    asset.ResolveContentAddress(r.LegacyFileMD5),
+		Width:     r.Width,
+		Height:    r.Height,
+		FPS:       r.FPS,
+		Bitrate:   r.Bitrate,
+		Container: r.Container,
+		Codec:     r.Codec,
 	}, nowStr)
 }

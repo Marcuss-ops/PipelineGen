@@ -17,6 +17,7 @@ import (
 	"golang.org/x/text/unicode/norm"
 
 	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	mediadomain "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
@@ -94,7 +95,14 @@ func projectEntityImageBindings(spec scriptpkg.SpecSceneOutput, segments []scrip
 					// promoted into the content-addressed EntityMediaIndex for
 					// the entity card asset (bindings without it stay plain
 					// references).
-					SHA256: candidate.LegacyFileMD5,
+					//
+					// MEDIA-IDENTITY (Sept 2026): the candidate field is named
+					// LegacyFileMD5 for historical reasons, so it is RESOLVED through
+					// the canonical rule rather than forwarded verbatim — only a 64-hex
+					// SHA-256 is a content address, and a legacy MD5 becomes "" so the
+					// binding stays a plain reference instead of claiming an identity
+					// it cannot prove.
+					SHA256: asset.ResolveContentAddress(candidate.LegacyFileMD5),
 				}
 			}
 		}

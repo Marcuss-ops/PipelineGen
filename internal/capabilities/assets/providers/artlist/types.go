@@ -149,17 +149,18 @@ func RunDedupKey(term, rootFolderID, strategy string, dryRun bool, limit int) (s
 // from run-record EvaluateRunState (per-status verdict rule). Adding a
 // new value MUST land in BOTH places in the SAME PR to avoid drift.
 type RunTagItem struct {
-	ClipID        string `json:"clip_id"`
-	Name          string `json:"name"`
-	Filename      string `json:"filename"`
-	Status        string `json:"status"`
-	DownloadURL   string `json:"download_url,omitempty"`
-	DriveLink     string `json:"drive_link,omitempty"`
-	DriveFileID   string `json:"drive_file_id"`
-	DownloadLink  string `json:"download_link,omitempty"`
-	LocalPath     string `json:"local_path,omitempty"`
-	LegacyFileMD5 string `json:"legacy_file_md5,omitempty"`
-	Error         string `json:"error,omitempty"`
+	ClipID          string `json:"clip_id"`
+	Name            string `json:"name"`
+	Filename        string `json:"filename"`
+	Status          string `json:"status"`
+	DownloadURL     string `json:"download_url,omitempty"`
+	DriveLink       string `json:"drive_link,omitempty"`
+	DriveFileID     string `json:"drive_file_id"`
+	DownloadLink    string `json:"download_link,omitempty"`
+	LocalPath       string `json:"local_path,omitempty"`
+	LegacyFileMD5   string `json:"legacy_file_md5,omitempty"`
+	contentIdentity runTagContentIdentity
+	Error           string `json:"error,omitempty"`
 	// Metadata carries provider provenance through processing into the
 	// canonical finalizer payload.
 	Metadata map[string]any `json:"metadata,omitempty"`
@@ -168,6 +169,13 @@ type RunTagItem struct {
 	// to persist asset_locations + asset_renditions via the canonical
 	// AssetFinalizerTx.
 	Renditions []detail.RenditionOutput `json:"-"`
+}
+
+// runTagContentIdentity keeps the byte identity separate from RunTagItem's
+// provider locations. The enclosing run item is an API projection; this
+// process-local identity capsule is only carried between pipeline stages.
+type runTagContentIdentity struct {
+	sha256 string
 }
 
 // RunTagResponse represents the result of the full tag pipeline.

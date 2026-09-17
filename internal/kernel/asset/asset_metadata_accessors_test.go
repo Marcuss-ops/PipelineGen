@@ -1,6 +1,7 @@
 package asset_test
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
@@ -225,5 +226,80 @@ func TestSourceURLConvergenceAccessors(t *testing.T) {
 	}
 	if got := b.EndSec(); got != 0 {
 		t.Fatalf("nil-safe EndSec=%v", got)
+	}
+}
+
+// ── content address resolution ──────────────────────────────────────────────
+
+const (
+	// canonSHA is a real 64-hex SHA-256 shape; legacyMD5 is a real 32-hex MD5.
+	canonSHA  = "c4813c9d7d4f0f6b1a2c3d4e5f60718293a4b5c6d7e8f9012345678901abcdef"
+	legacyMD5 = "7f83b1657ff1fc53b92dc18148a1d65dfa135e2f"
+)
+
+// TestResolveContentAddressNeverPromotesALegacyMD5 pins the rule the whole
+// media-identity programme rests on: an MD5 is not a content address, so it can
+// never be the resolution result — only an explicit 64-hex SHA-256 can.
+func TestResolveContentAddressNeverPromotesALegacyMD5(t *testing.T) {
+	for _, tc := range []struct{ name, value string }{
+		{"md5", legacyMD5},
+		{"empty", ""},
+		{"whitespace", "   "},
+		{"asset-id", "youtube_xyz_10_20"},
+		{"drive-url", "https://drive.google.com/file/d/" + canonSHA + "/view"},
+		{"truncated", canonSHA[:63]},
+		{"non-hex", strings.Repeat("z", 64)},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := asset.ResolveContentAddress(tc.value); got != "" {
+				t.Errorf("ResolveContentAddress(%q) = %q, want \"\"", tc.value, got)
+			}
+		})
+	}
+	if got := asset.ResolveContentAddress(legacyMD5, canonSHA); got != canonSHA {
+		t.Errorf("legacy first must not shadow the real address: got %q", got)
+	}
+}
+
+// TestAssetContentAddressPrecedence pins the surface order (content_sha256 →
+// binary_sha256 → content_hash → legacy_file_md5-if-canonical) and the
+// migration-window fallback.
+func TestAssetContentAddressPrecedence(t *testing.T) {
+	a := &asset.Asset{Metadata: asset.Metadata{}}
+	if got := a.ContentAddress(); got != "" {
+		t.Fatalf("zero-value ContentAddress = %q, want \"\"", got)
+	}
+
+	// The legacy column is a fallback ONLY while it already holds a SHA-256.
+	a.SetLegacyFileMD5(canonSHA)
+	if got := a.ContentAddress(); got != canonSHA {
+		t.Errorf("legacy SHA-256 fallback = %q, want %q", got, canonSHA)
+	}
+	a.SetLegacyFileMD5(legacyMD5)
+	if got := a.ContentAddress(); got != "" {
+		t.Errorf("legacy MD5 = %q, want \"\" (an MD5 is not a content address)", got)
+	}
+
+	// A dedicated content surface always wins, including over a legacy digest
+	// that happens to look like a SHA-256.
+	a.SetLegacyFileMD5(canonSHA)
+	a.SetContentHash(canonSHA)
+	other := strings.Repeat("a", 64)
+	a.SetMetadataString("binary_sha256", other)
+	if got := a.ContentAddress(); got != other {
+		t.Errorf("binary_sha256 must outrank content_hash and legacy: got %q, want %q", got, other)
+	}
+
+	// Uppercase is the same address, normalised (the persisted content columns
+	// are compared case-insensitively) — not a second identity.
+	b := &asset.Asset{}
+	b.SetMetadataString("content_sha256", strings.ToUpper(canonSHA))
+	if got := b.ContentAddress(); got != canonSHA {
+		t.Errorf("uppercase address = %q, want the lower-cased canonical form %q", got, canonSHA)
+	}
+
+	var nilAsset *asset.Asset
+	if got := nilAsset.ContentAddress(); got != "" {
+		t.Errorf("nil receiver = %q, want \"\"", got)
 	}
 }

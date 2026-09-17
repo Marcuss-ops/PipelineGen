@@ -239,7 +239,7 @@ func (r *Runner) runTranslatedNLP(ctx context.Context, req GenerateRequest, resu
 		// Treat already-extracted source names as identity hints only. A hint is
 		// copied into the localized annotations only when its name can be found
 		// in this translated scene, so it cannot invent a mention or a phrase.
-		sourceHints := groundLocalizedSourceEntities(item.text, result.Scenes[item.sceneIndex].Annotations)
+		sourceHints := groundLocalizedSourceEntities(item.text, string(item.lang), result.Scenes[item.sceneIndex].Annotations)
 		outcomes[index].entities = mergeTranslatedNamedEntities(outcomes[index].entities, sourceHints)
 		outcomes[index].entities = limitTranslatedVisualEntities(outcomes[index].entities, entityLimit)
 		groundedPhrases := groundImportantPhrases(item.text, outcomes[index].entities, outcomes[index].phrases, phraseLimit)
@@ -337,7 +337,7 @@ func isNamedVisualEntity(kind scriptpkg.EntityType) bool {
 	}
 }
 
-func groundLocalizedSourceEntities(text string, source *scriptpkg.SceneAnnotations) []VisualEntity {
+func groundLocalizedSourceEntities(text, language string, source *scriptpkg.SceneAnnotations) []VisualEntity {
 	if source == nil {
 		return nil
 	}
@@ -363,11 +363,24 @@ func groundLocalizedSourceEntities(text string, source *scriptpkg.SceneAnnotatio
 			}
 		}
 		for _, alias := range aliases {
-			span, ok := findEntitySpan(text, alias)
+			span, ok := findExactNameTokenSpan(text, alias)
+			if !ok && kind == scriptpkg.EntityTypePerson {
+				switch strings.ToLower(language) {
+				case "pl", "de":
+					span, ok = findInflectedPersonSpan(text, alias, language)
+				}
+			}
 			if !ok || strings.TrimSpace(span.Text) == "" {
 				continue
 			}
-			out = append(out, VisualEntity{Text: span.Text, Type: kind, Score: float32(entity.Confidence)})
+			surface := span.Text
+			if strings.EqualFold(language, "de") && !strings.EqualFold(surface, alias) {
+				// German possessive -s belongs to the surrounding grammar, not to
+				// the person's display name. projectEntityAnnotations still
+				// grounds this canonical substring inside the translated token.
+				surface = alias
+			}
+			out = append(out, VisualEntity{Text: surface, Type: kind, Score: float32(entity.Confidence)})
 			break
 		}
 	}

@@ -73,6 +73,18 @@ func TestTypedSpecialNamesGroundTheNameAfterTypePrefix(t *testing.T) {
 	require.Equal(t, []string{"PERSON: Mike Tyson", "PLACE: Las Vegas"}, got)
 }
 
+func TestFilterExactNamesGroundsRussianInflectedSurfaceForms(t *testing.T) {
+	segment := "В Бруклине история Майка Тайсона началась далеко от ринга."
+	got := filterExactNamesForLanguage(segment, []string{"PERSON: Майк Тайсон"}, nil, "ru")
+	require.Equal(t, []string{"PERSON: Майка Тайсона"}, got)
+}
+
+func TestFilterExactNamesGroundsPolishInflectedSurfaceForms(t *testing.T) {
+	segment := "W Brooklynie historia Mike’a Tysona zaczęła się daleko od świateł mistrzostwa."
+	got := filterExactNamesForLanguage(segment, []string{"PERSON: Mike Tyson"}, nil, "pl")
+	require.Equal(t, []string{"PERSON: Mike’a Tysona"}, got)
+}
+
 // TestSanitizeEntityExtractionResult_FiltersByLanguage installs the repository
 // lexicon (a process-global) and therefore must run after the lexicon-agnostic
 // tests above; it is also ordered after the client_* test files by filename.

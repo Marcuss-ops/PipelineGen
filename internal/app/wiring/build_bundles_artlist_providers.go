@@ -26,7 +26,6 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/artlist/downloader"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/artlist/fallback"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
-	mediaproc "github.com/Marcuss-ops/PipelineGen/internal/platform/media/processor"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/media/rustexec"
 	"go.uber.org/zap"
 )
@@ -227,50 +226,4 @@ func constructArtlistProviders(
 		PexelsSearcher:    pexelsSearcher,
 		PixabaySearcher:   pixabaySearcher,
 	}
-}
-
-// wireArtlistProcessorDownloader injects the canonical Resolver bridge
-// into the media processor's narrow ArtlistDownloader port so downloadStep
-// routes Artlist clips through the canonical Resolver instead of the
-// legacy downloadViaScraper method.
-//
-// PR-ARTLIST-DOWNLOAD-SURFACE-UNIFY-CUTOVER (July 2026): the adapter is
-// the SINGLE translation site per godlike/06 SSOT. godlike/07 fail-closed:
-// nil bundle.MediaProcessor is silently allowed (the hook is optional)
-// but the log.Info confirms the wiring landed.
-func wireArtlistProcessorDownloader(
-	log *zap.Logger,
-	bundle *ArtlistBundle,
-	artlistDownloader *downloader.Resolver,
-) {
-	if bundle == nil || bundle.MediaProcessor == nil {
-		return
-	}
-	if mp, ok := bundle.MediaProcessor.(*mediaproc.Processor); ok {
-		mp.SetArtlistDownloader(&artlistProcessorDownloadAdapter{resolver: artlistDownloader})
-		log.Info("WireArtlist: ArtlistDownloader wired into media processor (Resolver bridge)")
-	}
-}
-
-// artlistProcessorDownloadAdapter bridges the processor's narrow
-// ArtlistDownloader interface to the canonical downloader.Resolver.
-// SINGLE translation site per godlike/06 SSOT.
-type artlistProcessorDownloadAdapter struct {
-	resolver *downloader.Resolver
-}
-
-func (a *artlistProcessorDownloadAdapter) DownloadArtlistClip(
-	ctx context.Context, sourceURL, clipPageURL, clipID, destDir, filename string,
-) (string, error) {
-	result, err := a.resolver.Download(ctx, artlist.DownloadRequest{
-		SourceRef:     sourceURL,
-		ClipPageURL:   clipPageURL,
-		ClipID:        clipID,
-		DestinationID: destDir,
-		Filename:      filename,
-	})
-	if err != nil {
-		return "", err
-	}
-	return result.LocalPath, nil
 }

@@ -8,6 +8,7 @@ import (
 
 	assetfinalizer "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/finalizer"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/finalization"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 
 	"go.uber.org/zap"
@@ -206,12 +207,14 @@ func (o *RunOrchestratorService) buildPublishedArtifact(item *RunTagItem) finali
 		}
 	}
 	artifact := finalization.PublishedArtifact{
-		ArtifactID:  item.ClipID,
-		Kind:        finalization.KindVideo,
-		Filename:    item.Filename,
-		MIMEType:    "video/mp4",
-		SizeBytes:   fileSizeFromPath(item.LocalPath),
-		SHA256:      item.LegacyFileMD5,
+		ArtifactID: item.ClipID,
+		Kind:       finalization.KindVideo,
+		Filename:   item.Filename,
+		MIMEType:   "video/mp4",
+		SizeBytes:  fileSizeFromPath(item.LocalPath),
+		// The content address travels on its own field. LegacyFileMD5 remains
+		// compatibility metadata and must never be promoted into byte identity.
+		SHA256:      asset.ResolveContentAddress(item.contentIdentity.sha256),
 		Source:      "artlist",
 		Description: item.Name,
 		Location: finalization.AssetLocation{

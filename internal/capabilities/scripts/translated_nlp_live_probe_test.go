@@ -44,7 +44,51 @@ import (
 // the canonical ten) exactly as it does for the tests/e2e certificates, and
 // VELOX_E2E_NLP_REUSE_TRANSLATIONS=1 reuses the translation cache so an
 // NLP-only iteration does not pay for translation a second time.
+// VELOX_E2E_NLP_REPORT_PATH selects the report path; the default includes a
+// UTC timestamp so repeated runs never overwrite an earlier certificate.
 const mikeTysonProbeLiveEnv = "VELOX_E2E_LIVE"
+
+func mikeTysonProbeReportPath(repoRoot string, started time.Time, configured string) (string, error) {
+	repoRoot, err := filepath.Abs(repoRoot)
+	if err != nil {
+		return "", fmt.Errorf("resolve report repository root: %w", err)
+	}
+	if configured != "" {
+		if filepath.IsAbs(configured) {
+			return filepath.Clean(configured), nil
+		}
+		return filepath.Join(repoRoot, configured), nil
+	}
+	name := fmt.Sprintf("mike-tyson-500w-%s.json", started.UTC().Format("2006-01-02T15-04-05.000000000Z"))
+	return filepath.Join(repoRoot, "tests", "operational", "results", "multilingual-nlp", name), nil
+}
+
+func TestMikeTysonProbeReportPathDoesNotReuseFixedOutput(t *testing.T) {
+	root := t.TempDir()
+	started := time.Date(2026, 9, 17, 18, 30, 0, 123, time.UTC)
+	first, err := mikeTysonProbeReportPath(root, started, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := mikeTysonProbeReportPath(root, started.Add(time.Second), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first == second || filepath.Base(first) == "mike-tyson-500w-2026-09-16.json" {
+		t.Fatalf("default report paths can overwrite a fixed report: first=%q second=%q", first, second)
+	}
+	if !strings.HasPrefix(first, root+string(filepath.Separator)) {
+		t.Fatalf("default report escaped repo root: %q", first)
+	}
+
+	custom, err := mikeTysonProbeReportPath(root, started, "tests/operational/results/custom.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if custom != filepath.Join(root, "tests", "operational", "results", "custom.json") {
+		t.Fatalf("relative report override = %q", custom)
+	}
+}
 
 func mikeTysonProbeEnabled() bool {
 	return strings.TrimSpace(os.Getenv(mikeTysonProbeLiveEnv)) != ""
@@ -232,39 +276,42 @@ type mikeTysonProbeDocument struct {
 
 type mikeTysonProbeLanguageTiming struct {
 	TranslationCalls          int   `json:"translation_calls"`
+	TranslationCacheEntries   int   `json:"translation_cache_entries"`
 	TranslationSumSceneWallMS int64 `json:"translation_sum_scene_wall_ms"`
 }
 
 type mikeTysonProbeReport struct {
-	StartedAtUTC                 string                                  `json:"started_at_utc"`
-	CompletedAtUTC               string                                  `json:"completed_at_utc"`
-	SourceLanguage               string                                  `json:"source_language"`
-	SourceWordCount              int                                     `json:"source_word_count"`
-	SourceModel                  string                                  `json:"source_model"`
-	TranslationModel             string                                  `json:"translation_model"`
-	NLPModel                     string                                  `json:"nlp_model"`
-	SceneCount                   int                                     `json:"scene_count"`
-	TranslationCalls             int                                     `json:"translation_calls"`
-	TranslationsReusedFromCache  bool                                    `json:"translations_reused_from_cache"`
-	TranslationWallMS            int64                                   `json:"translation_wall_ms"`
-	SourceNLPWallMS              int64                                   `json:"source_nlp_wall_ms"`
-	TranslatedNLPWallMS          int64                                   `json:"translated_nlp_wall_ms"`
-	TotalStageWallMS             int64                                   `json:"total_stage_wall_ms"`
-	TranslatedNERSceneCalls      int                                     `json:"translated_ner_scene_calls"`
-	PhraseBatches                int                                     `json:"phrase_batches"`
-	Languages                    []string                                `json:"languages"`
-	VisualNERInvocations         int                                     `json:"visual_ner_invocations"`
-	ExpectedVisualNERInvocations int                                     `json:"expected_visual_ner_invocations"`
-	NLPModelInvocations          int                                     `json:"nlp_model_invocations"`
-	OverlayRendering             bool                                    `json:"overlay_rendering"`
-	ClipRendering                bool                                    `json:"clip_rendering"`
-	VideoRendering               bool                                    `json:"video_rendering"`
-	PerLanguageTiming            map[string]mikeTysonProbeLanguageTiming `json:"per_language_timing"`
-	SemanticChecks               map[string][]string                     `json:"semantic_checks"`
-	AllImportantPhrasesGrounded  bool                                    `json:"all_important_phrases_grounded"`
-	AllImportantWordsGrounded    bool                                    `json:"all_important_words_grounded"`
-	AllSpecialNamesGrounded      bool                                    `json:"all_special_names_grounded"`
-	Documents                    []mikeTysonProbeDocument                `json:"documents"`
+	StartedAtUTC                  string                                  `json:"started_at_utc"`
+	CompletedAtUTC                string                                  `json:"completed_at_utc"`
+	SourceLanguage                string                                  `json:"source_language"`
+	SourceWordCount               int                                     `json:"source_word_count"`
+	SourceModel                   string                                  `json:"source_model"`
+	TranslationModel              string                                  `json:"translation_model"`
+	NLPModel                      string                                  `json:"nlp_model"`
+	SceneCount                    int                                     `json:"scene_count"`
+	TranslationCalls              int                                     `json:"translation_calls"`
+	TranslationCacheEntries       int                                     `json:"translation_cache_entries"`
+	TranslationsReusedFromCache   bool                                    `json:"translations_reused_from_cache"`
+	CachedCorpusTranslationWallMS int64                                   `json:"cached_corpus_translation_wall_ms"`
+	TranslationWallMS             int64                                   `json:"translation_wall_ms"`
+	SourceNLPWallMS               int64                                   `json:"source_nlp_wall_ms"`
+	TranslatedNLPWallMS           int64                                   `json:"translated_nlp_wall_ms"`
+	TotalStageWallMS              int64                                   `json:"total_stage_wall_ms"`
+	TranslatedNERSceneCalls       int                                     `json:"translated_ner_scene_calls"`
+	PhraseBatches                 int                                     `json:"phrase_batches"`
+	Languages                     []string                                `json:"languages"`
+	VisualNERInvocations          int                                     `json:"visual_ner_invocations"`
+	ExpectedVisualNERInvocations  int                                     `json:"expected_visual_ner_invocations"`
+	NLPModelInvocations           int                                     `json:"nlp_model_invocations"`
+	OverlayRendering              bool                                    `json:"overlay_rendering"`
+	ClipRendering                 bool                                    `json:"clip_rendering"`
+	VideoRendering                bool                                    `json:"video_rendering"`
+	PerLanguageTiming             map[string]mikeTysonProbeLanguageTiming `json:"per_language_timing"`
+	SemanticChecks                map[string][]string                     `json:"semantic_checks"`
+	AllImportantPhrasesGrounded   bool                                    `json:"all_important_phrases_grounded"`
+	AllImportantWordsGrounded     bool                                    `json:"all_important_words_grounded"`
+	AllSpecialNamesGrounded       bool                                    `json:"all_special_names_grounded"`
+	Documents                     []mikeTysonProbeDocument                `json:"documents"`
 }
 
 type mikeTysonProbeTranslationCache struct {
@@ -337,6 +384,7 @@ func TestLiveMikeTyson500WordMultilingualNLPNoRendering(t *testing.T) {
 	cachePath := filepath.Join(os.TempDir(), "mike-tyson-500w-translations.json")
 	var translated []mikeTysonProbeTranslation
 	var translationWall int64
+	var cachedCorpusTranslationWall int64
 	translationsReused := os.Getenv("VELOX_E2E_NLP_REUSE_TRANSLATIONS") == "1"
 	if translationsReused {
 		cacheBytes, readErr := os.ReadFile(cachePath)
@@ -347,7 +395,16 @@ func TestLiveMikeTyson500WordMultilingualNLPNoRendering(t *testing.T) {
 		if err := json.Unmarshal(cacheBytes, &cache); err != nil {
 			t.Fatalf("decode cached translations: %v", err)
 		}
-		translated, translationWall = cache.Translations, cache.WallMS
+		cachedCorpusTranslationWall = cache.WallMS
+		activeLanguages := make(map[Language]struct{}, len(languages))
+		for _, lang := range languages {
+			activeLanguages[lang] = struct{}{}
+		}
+		for _, translation := range cache.Translations {
+			if _, active := activeLanguages[translation.Lang]; active {
+				translated = append(translated, translation)
+			}
+		}
 	} else {
 		translationStart := time.Now()
 		translated, err = concurrent.Map(context.Background(), tasks, 4, func(ctx context.Context, _ int, task translationTask) (mikeTysonProbeTranslation, error) {
@@ -376,7 +433,11 @@ func TestLiveMikeTyson500WordMultilingualNLPNoRendering(t *testing.T) {
 	provenanceBySceneLanguage := make(map[string]mikeTysonProbeProvenance, len(translated)+len(sceneTexts))
 	perLanguageTiming := make(map[string]mikeTysonProbeLanguageTiming, len(languages))
 	for _, lang := range languages {
-		perLanguageTiming[string(lang)] = mikeTysonProbeLanguageTiming{TranslationCalls: len(sceneTexts)}
+		calls := len(sceneTexts)
+		if translationsReused {
+			calls = 0
+		}
+		perLanguageTiming[string(lang)] = mikeTysonProbeLanguageTiming{TranslationCalls: calls}
 	}
 	for _, translation := range translated {
 		text := strings.TrimSpace(translation.Text)
@@ -389,6 +450,9 @@ func TestLiveMikeTyson500WordMultilingualNLPNoRendering(t *testing.T) {
 		}
 		timing := perLanguageTiming[string(translation.Lang)]
 		timing.TranslationSumSceneWallMS += translation.Wall
+		if translationsReused {
+			timing.TranslationCacheEntries++
+		}
 		perLanguageTiming[string(translation.Lang)] = timing
 	}
 
@@ -457,12 +521,18 @@ func TestLiveMikeTyson500WordMultilingualNLPNoRendering(t *testing.T) {
 		languageCodes = append(languageCodes, string(lang))
 	}
 
+	translationCalls := len(translated)
+	translationCacheEntries := 0
+	if translationsReused {
+		translationCalls = 0
+		translationCacheEntries = len(translated)
+	}
 	report := mikeTysonProbeReport{
 		StartedAtUTC: started.Format(time.RFC3339), CompletedAtUTC: time.Now().UTC().Format(time.RFC3339),
 		SourceLanguage: "en", SourceWordCount: wordCount, SourceModel: "caller-authored script",
-		TranslationModel: model, NLPModel: model, SceneCount: len(result.Scenes), TranslationCalls: len(translated), TranslationWallMS: translationWall,
-		TranslationsReusedFromCache: translationsReused,
-		SourceNLPWallMS:             sourceNLPWall, TranslatedNLPWallMS: translatedNLPWall,
+		TranslationModel: model, NLPModel: model, SceneCount: len(result.Scenes), TranslationCalls: translationCalls, TranslationCacheEntries: translationCacheEntries, TranslationWallMS: translationWall,
+		TranslationsReusedFromCache: translationsReused, CachedCorpusTranslationWallMS: cachedCorpusTranslationWall,
+		SourceNLPWallMS: sourceNLPWall, TranslatedNLPWallMS: translatedNLPWall,
 		TotalStageWallMS: translationWall + sourceNLPWall + translatedNLPWall, TranslatedNERSceneCalls: len(result.Scenes) * len(languages),
 		PhraseBatches: len(languages) + 1, Languages: languageCodes,
 		VisualNERInvocations: int(nerCalls.Load()), ExpectedVisualNERInvocations: int(wantNERCalls), NLPModelInvocations: int(nlpCalls.Load()),
@@ -516,7 +586,9 @@ func TestLiveMikeTyson500WordMultilingualNLPNoRendering(t *testing.T) {
 		}
 		for _, expected := range expectedProbeEntities(lang) {
 			if !documentHasExpectedEntity(document, expected) {
-				report.SemanticChecks[string(lang)] = append(report.SemanticChecks[string(lang)], fmt.Sprintf("missing %s entity in scene %d: %s", expected.Type, expected.Scene, expected.Name))
+				message := fmt.Sprintf("missing %s entity in scene %d: %s", expected.Type, expected.Scene, expected.Name)
+				report.SemanticChecks[string(lang)] = append(report.SemanticChecks[string(lang)], message)
+				t.Errorf("localized %s: %s", lang, message)
 			}
 		}
 		report.Documents = append(report.Documents, document)
@@ -526,7 +598,11 @@ func TestLiveMikeTyson500WordMultilingualNLPNoRendering(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	outputPath, err := filepath.Abs("../../../tests/operational/results/multilingual-nlp/mike-tyson-500w-2026-09-16.json")
+	repoRoot, err := filepath.Abs("../../../")
+	if err != nil {
+		t.Fatal(err)
+	}
+	outputPath, err := mikeTysonProbeReportPath(repoRoot, started, os.Getenv("VELOX_E2E_NLP_REPORT_PATH"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -597,7 +673,7 @@ func documentHasExpectedEntity(document mikeTysonProbeDocument, expected mikeTys
 		return false
 	}
 	for _, entity := range document.Scenes[expected.Scene-1].Entities {
-		if !strings.EqualFold(entity.Type, expected.Type) {
+		if !probeEntityTypeMatches(strings.ToUpper(entity.Type), strings.ToUpper(expected.Type)) {
 			continue
 		}
 		name := normalizeProbeEntityName(entity.CanonicalName)
@@ -608,6 +684,23 @@ func documentHasExpectedEntity(document mikeTysonProbeDocument, expected mikeTys
 		}
 	}
 	return false
+}
+
+func probeEntityTypeMatches(actual, expected string) bool {
+	if expected == "GPE" || expected == "LOCATION" || expected == "PLACE" {
+		return actual == "GPE" || actual == "LOCATION" || actual == "PLACE"
+	}
+	return actual == expected
+}
+
+func TestDocumentHasExpectedEntityTreatsLocalizedPlaceTypesAsGPE(t *testing.T) {
+	document := mikeTysonProbeDocument{Scenes: []mikeTysonProbeScene{{Entities: []scriptpkg.AnnotatedEntity{{
+		CanonicalName: "Лас-Вегасе", Type: "LOCATION",
+	}}}}}
+	expected := mikeTysonExpectedEntity{Scene: 1, Name: "Las Vegas", Aliases: []string{"лас-вегасе"}, Type: "GPE"}
+	if !documentHasExpectedEntity(document, expected) {
+		t.Fatal("localized LOCATION entity should satisfy the expected GPE entity")
+	}
 }
 
 func normalizeProbeEntityName(value string) string {

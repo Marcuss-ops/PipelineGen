@@ -18,6 +18,8 @@ package artlist
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"sync"
 	"testing"
@@ -53,7 +55,7 @@ func (f *successMediaProcessor) Process(_ context.Context, input *detail.Process
 		Filename:      input.ID + "_processed.mp4",
 		LocalPath:     input.OutputDir + "/" + input.ID + "_processed.mp4",
 		LegacyFileMD5: "gate01-hash-" + input.ID,
-		ContentHash:   "gate01-contenthash-" + input.ID,
+		ContentHash:   artlistContentHashForTest(input.ID),
 		DriveLink:     "https://drive.google.com/file/d/" + input.ID + "-drive/view",
 		DriveFileID:   input.ID + "-drive-id",
 		DownloadLink:  input.SourceURL,
@@ -61,6 +63,11 @@ func (f *successMediaProcessor) Process(_ context.Context, input *detail.Process
 		PublishAction: "created",
 		Status:        "processed",
 	}, nil
+}
+
+func artlistContentHashForTest(id string) string {
+	sum := sha256.Sum256([]byte("artlist-test-content:" + id))
+	return hex.EncodeToString(sum[:])
 }
 
 // TestGate01_ArtlistFullRun_HappyPath exercises the full 5-stage pipeline

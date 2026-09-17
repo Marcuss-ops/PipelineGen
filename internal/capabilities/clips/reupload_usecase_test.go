@@ -240,9 +240,16 @@ func TestReuploadExecute_HappyPath_Populates5CanonicalFieldsOnDispatchedAsset(t 
 	} else if got != string(delivery.PublishActionUpdated) {
 		t.Errorf("Asset.Metadata[publish_action] = %q, want %q", got, delivery.PublishActionUpdated)
 	}
-	// Bonus: dispatcher's contentHash = propagated LegacyFileMD5 (MD5)
-	if disp.calledWithHash != "md5-f29-fake" {
-		t.Errorf("dispatcher calledWithHash = %q, want %q (clip.LegacyFileMD5)", disp.calledWithHash, "md5-f29-fake")
+	// Bonus (MEDIA-IDENTITY, Sept 2026): the dispatcher's contentHash is the
+	// BYTE identity, never the legacy MD5. This fixture carries only an MD5, so
+	// the canonical address is UNKNOWN and the documented fallback (req.ClipID)
+	// applies. Forwarding "md5-f29-fake" — which is what this line used to
+	// assert — published an MD5 as the content address of the re-indexed asset.
+	if disp.calledWithHash == "md5-f29-fake" {
+		t.Errorf("dispatcher calledWithHash = %q: a legacy MD5 must never be published as a content address", disp.calledWithHash)
+	}
+	if disp.calledWithHash != "clip-f29-happy" {
+		t.Errorf("dispatcher calledWithHash = %q, want the unknown-content fallback %q", disp.calledWithHash, "clip-f29-happy")
 	}
 	// Sanity: Publisher received the canonical PublishRequest shape
 	if pub.lastPublishRequest.AssetID != "clip-f29-happy" {
@@ -524,5 +531,49 @@ func TestReuploadExecute_PublisherFails_ReturnsErrorAndDoesNotCallDispatcher(t *
 	}
 	if disp.calledCount != 0 {
 		t.Fatalf("dispatcher.EnqueueAndIndex called %d times on publish failure; want 0 (no partial DB row)", disp.calledCount)
+	}
+}
+
+// TestReuploadExecute_PublishesTheContentAddressNotTheLegacyMD5 is the
+// media-identity pin for this call site: the re-index is keyed on the SHA-256
+// BYTE identity, and the legacy MD5 (which the Publisher also hands back as its
+// Drive checksum) can never become that key.
+func TestReuploadExecute_PublishesTheContentAddressNotTheLegacyMD5(t *testing.T) {
+	t.Parallel()
+
+	const contentAddress = "c4813c9d7d4f0f6b1a2c3d4e5f60718293a4b5c6d7e8f9012345678901abcdef"
+	const driveMD5 = "md5-checksum-from-drive"
+
+	stubAsset, tmpDir := makeTempAsset(t, "clip-content-address", "clips", "F29 Group")
+	stubAsset.SetContentHash(contentAddress)
+
+	disp := &fakeReuploadDispatcher{}
+	repo := &fakeReuploadAssetRepo{stub: stubAsset}
+	pub := &fakeReuploadPublisher{publishResult: &delivery.PublishResult{
+		FileID:      "drive-file-id-fake",
+		WebViewLink: "https://drive.google.com/file/d/drive-file-id-fake/view",
+		MD5Checksum: driveMD5,
+		Action:      delivery.PublishActionUpdated,
+	}}
+
+	uc := NewReuploadUseCase(
+		repo, pub, disp,
+		map[string]ReuploadFolderRoot{
+			"clips": {RootID: "root-folder-id-fake", PathMarker: tmpDir},
+		},
+		zap.NewNop(),
+	)
+
+	if _, err := uc.Execute(context.Background(), ReuploadRequest{Source: "clips", ClipID: "clip-content-address"}); err != nil {
+		t.Fatalf("Execute returned error: %v", err)
+	}
+	if disp.calledCount != 1 {
+		t.Fatalf("dispatcher calls = %d, want 1", disp.calledCount)
+	}
+	if disp.calledWithHash != contentAddress {
+		t.Errorf("dispatcher calledWithHash = %q, want the content address %q", disp.calledWithHash, contentAddress)
+	}
+	if disp.calledWithHash == driveMD5 {
+		t.Errorf("dispatcher calledWithHash = %q: the Drive MD5 receipt is not a content address", driveMD5)
 	}
 }

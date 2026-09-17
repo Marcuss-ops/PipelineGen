@@ -174,7 +174,11 @@ func (uc *EnrichUseCase) EnrichAndIndex(ctx context.Context, clipID string) erro
 	// LegacyFileMD5 is a typed error (card 10 closed the warn-and-skip
 	// silent path that lost enrichment metadata in partial
 	// deployments).
-	contentHash := clip.LegacyFileMD5()
+	// MEDIA-IDENTITY (Sept 2026): re-indexing keys on the BYTE identity. A
+	// legacy MD5 is not a content address, so an asset whose only digest is an
+	// MD5 now fails closed here instead of re-indexing under an identity the
+	// media SSOT does not recognise.
+	contentHash := clip.ContentAddress()
 	if contentHash == "" {
 		return fmt.Errorf("EnrichUseCase.EnrichAndIndex: enriched clip_id=%s has no content hash (cannot re-index)", clip.ID)
 	}

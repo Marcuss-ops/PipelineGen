@@ -12,6 +12,7 @@ import (
 	"unicode"
 	"unicode/utf8"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
@@ -179,7 +180,8 @@ func entityImageBindingFor(name string, seg scriptpkg.VidRushSegmentResult) *scr
 			LocalPath: best.LocalPath,
 			MediaType: best.MIMEType,
 			Source:    best.Provider, License: best.RightsBasis,
-			PreviewURL: entityImagePreviewURL(*best), SHA256: best.LegacyFileMD5,
+			// Resolve the verified SHA-256; legacy MD5 remains unknown here.
+			PreviewURL: entityImagePreviewURL(*best), SHA256: asset.ResolveContentAddress(best.LegacyFileMD5),
 		}
 	}
 	return nil

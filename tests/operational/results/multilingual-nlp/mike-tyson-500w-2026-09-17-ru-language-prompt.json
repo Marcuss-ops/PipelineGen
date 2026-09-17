@@ -1,0 +1,1338 @@
+{
+  "started_at_utc": "2026-09-17T17:11:35Z",
+  "completed_at_utc": "2026-09-17T17:14:41Z",
+  "source_language": "en",
+  "source_word_count": 500,
+  "source_model": "caller-authored script",
+  "translation_model": "gemma4:e4b",
+  "nlp_model": "gemma4:e4b",
+  "scene_count": 5,
+  "translation_calls": 45,
+  "translations_reused_from_cache": true,
+  "translation_wall_ms": 110894,
+  "source_nlp_wall_ms": 77032,
+  "translated_nlp_wall_ms": 109358,
+  "total_stage_wall_ms": 297284,
+  "translated_ner_scene_calls": 5,
+  "phrase_batches": 2,
+  "languages": [
+    "ru"
+  ],
+  "visual_ner_invocations": 10,
+  "expected_visual_ner_invocations": 10,
+  "nlp_model_invocations": 7,
+  "overlay_rendering": false,
+  "clip_rendering": false,
+  "video_rendering": false,
+  "per_language_timing": {
+    "de": {
+      "translation_calls": 0,
+      "translation_sum_scene_wall_ms": 57866
+    },
+    "es": {
+      "translation_calls": 0,
+      "translation_sum_scene_wall_ms": 45977
+    },
+    "fr": {
+      "translation_calls": 0,
+      "translation_sum_scene_wall_ms": 43102
+    },
+    "id": {
+      "translation_calls": 0,
+      "translation_sum_scene_wall_ms": 36142
+    },
+    "it": {
+      "translation_calls": 0,
+      "translation_sum_scene_wall_ms": 51416
+    },
+    "pl": {
+      "translation_calls": 0,
+      "translation_sum_scene_wall_ms": 58823
+    },
+    "pt-BR": {
+      "translation_calls": 0,
+      "translation_sum_scene_wall_ms": 35988
+    },
+    "ru": {
+      "translation_calls": 5,
+      "translation_sum_scene_wall_ms": 48644
+    },
+    "tr": {
+      "translation_calls": 0,
+      "translation_sum_scene_wall_ms": 51175
+    }
+  },
+  "semantic_checks": {
+    "ru": [
+      "missing GPE entity in scene 2: Las Vegas"
+    ]
+  },
+  "all_important_phrases_grounded": true,
+  "all_important_words_grounded": true,
+  "all_special_names_grounded": true,
+  "documents": [
+    {
+      "language": "en",
+      "scenes": [
+        {
+          "id": "scene-01",
+          "index": 0,
+          "text": "In Brooklyn, Mike Tyson’s story began far from championship lights. As a teenager, he found structure in boxing, where practice gave his energy direction. Trainer Cus D’Amato taught him to study distance, defend carefully, and attack with purpose. Tyson’s crouched stance made it easier to slip punches and explode forward with short hooks. The style looked simple from the seats, but it depended on balance, timing, and repetition. His amateur bouts brought attention, yet the lesson was discipline: confidence had to be earned. He learned how pressure could become a tool.",
+          "translation_provenance": {
+            "provider": "source_script",
+            "source_language": "en",
+            "target_language": "en",
+            "source_text_sha256": "135cbe72a98e4931d7dd95d14ef8abbaa0e125fbdcbca5aac7e1d93846895f42",
+            "translated_text_sha256": "135cbe72a98e4931d7dd95d14ef8abbaa0e125fbdcbca5aac7e1d93846895f42",
+            "translation_wall_ms": 0
+          },
+          "entities": [
+            {
+              "id": "entity-mike-tyson-s",
+              "text": "Mike Tyson’s",
+              "canonical_name": "Mike Tyson’s",
+              "type": "PERSON",
+              "confidence": 1,
+              "mentions": [
+                {
+                  "text": "Mike Tyson’s",
+                  "start_rune": 13,
+                  "end_rune": 25
+                }
+              ]
+            },
+            {
+              "id": "entity-trainer-cus-d-amato",
+              "text": "Trainer Cus D’Amato",
+              "canonical_name": "Trainer Cus D’Amato",
+              "type": "PERSON",
+              "confidence": 1,
+              "mentions": [
+                {
+                  "text": "Trainer Cus D’Amato",
+                  "start_rune": 155,
+                  "end_rune": 174
+                }
+              ]
+            }
+          ],
+          "important_phrases": [
+            {
+              "text": "structure in boxing",
+              "start_rune": 92,
+              "end_rune": 111,
+              "score": 0.95,
+              "kind": "key_statement"
+            }
+          ],
+          "important_words": null,
+          "special_names": [
+            {
+              "text": "Brooklyn",
+              "start_rune": 3,
+              "end_rune": 11,
+              "score": 0.9,
+              "kind": "SPECIAL_NAME"
+            },
+            {
+              "text": "Mike",
+              "start_rune": 13,
+              "end_rune": 17,
+              "score": 0.9,
+              "kind": "SPECIAL_NAME"
+            },
+            {
+              "text": "Tyson’s",
+              "start_rune": 18,
+              "end_rune": 25,
+              "score": 0.9,
+              "kind": "SPECIAL_NAME"
+            }
+          ],
+          "localized_annotations": {
+            "version": 1,
+            "language": "en",
+            "important_phrases": [
+              {
+                "text": "structure in boxing",
+                "start_rune": 92,
+                "end_rune": 111,
+                "score": 0.95,
+                "kind": "key_statement"
+              }
+            ],
+            "special_names": [
+              {
+                "text": "Brooklyn",
+                "start_rune": 3,
+                "end_rune": 11,
+                "score": 0.9,
+                "kind": "SPECIAL_NAME"
+              },
+              {
+                "text": "Mike",
+                "start_rune": 13,
+                "end_rune": 17,
+                "score": 0.9,
+                "kind": "SPECIAL_NAME"
+              },
+              {
+                "text": "Tyson’s",
+                "start_rune": 18,
+                "end_rune": 25,
+                "score": 0.9,
+                "kind": "SPECIAL_NAME"
+              }
+            ],
+            "primary_entities": [
+              {
+                "id": "entity-mike-tyson-s",
+                "text": "Mike Tyson’s",
+                "canonical_name": "Mike Tyson’s",
+                "type": "PERSON",
+                "confidence": 1,
+                "mentions": [
+                  {
+                    "text": "Mike Tyson’s",
+                    "start_rune": 13,
+                    "end_rune": 25
+                  }
+                ]
+              },
+              {
+                "id": "entity-trainer-cus-d-amato",
+                "text": "Trainer Cus D’Amato",
+                "canonical_name": "Trainer Cus D’Amato",
+                "type": "PERSON",
+                "confidence": 1,
+                "mentions": [
+                  {
+                    "text": "Trainer Cus D’Amato",
+                    "start_rune": 155,
+                    "end_rune": 174
+                  }
+                ]
+              }
+            ],
+            "status": "completed"
+          }
+        },
+        {
+          "id": "scene-02",
+          "index": 1,
+          "text": "Tyson turned professional in 1985 and built a reputation for speed and power. Many opponents were stopped early, so each victory added to the sense that an unstoppable force was approaching. On November 22, 1986, in Las Vegas, he faced Trevor Berbick for the WBC heavyweight title. Tyson won by second-round technical knockout and, at twenty years old, became the youngest heavyweight world champion. The record drew headlines, but the ring offered no guarantee that success would feel easy. A belt could prove achievement; it could not decide how a person handled fame, money, expectation, or the next difficult round.",
+          "translation_provenance": {
+            "provider": "source_script",
+            "source_language": "en",
+            "target_language": "en",
+            "source_text_sha256": "985d1312301f898fdaaca1efdc6f4892210fb7c8a6ba66b50d5b3a19a7303d45",
+            "translated_text_sha256": "985d1312301f898fdaaca1efdc6f4892210fb7c8a6ba66b50d5b3a19a7303d45",
+            "translation_wall_ms": 0
+          },
+          "entities": [
+            {
+              "id": "entity-trevor-berbick",
+              "text": "Trevor Berbick",
+              "canonical_name": "Trevor Berbick",
+              "type": "PERSON",
+              "confidence": 1,
+              "mentions": [
+                {
+                  "text": "Trevor Berbick",
+                  "start_rune": 236,
+                  "end_rune": 250
+                }
+              ]
+            },
+            {
+              "id": "entity-las-vegas",
+              "text": "Las Vegas",
+              "canonical_name": "Las Vegas",
+              "type": "GPE",
+              "confidence": 0.5,
+              "mentions": [
+                {
+                  "text": "Las Vegas",
+                  "start_rune": 216,
+                  "end_rune": 225
+                }
+              ]
+            }
+          ],
+          "important_phrases": [
+            {
+              "text": "Tyson turned professional",
+              "start_rune": 0,
+              "end_rune": 25,
+              "score": 0.95,
+              "kind": "key_statement"
+            },
+            {
+              "text": "built a reputation",
+              "start_rune": 38,
+              "end_rune": 56,
+              "score": 0.8999999999999999,
+              "kind": "key_statement"
+            },
+            {
+              "text": "speed and power",
+              "start_rune": 61,
+              "end_rune": 76,
+              "score": 0.85,
+              "kind": "key_statement"
+            }
+          ],
+          "important_words": null,
+          "special_names": [
+            {
+              "text": "November",
+              "start_rune": 194,
+              "end_rune": 202,
+              "score": 0.9,
+              "kind": "SPECIAL_NAME"
+            },
+            {
+              "text": "Las",
+              "start_rune": 216,
+              "end_rune": 219,
+              "score": 0.9,
+              "kind": "SPECIAL_NAME"
+            },
+            {
+              "text": "Vegas",
+              "start_rune": 220,
+              "end_rune": 225,
+              "score": 0.9,
+              "kind": "SPECIAL_NAME"
+            }
+          ],
+          "localized_annotations": {
+            "version": 1,
+            "language": "en",
+            "important_phrases": [
+              {
+                "text": "Tyson turned professional",
+                "start_rune": 0,
+                "end_rune": 25,
+                "score": 0.95,
+                "kind": "key_statement"
+              },
+              {
+                "text": "built a reputation",
+                "start_rune": 38,
+                "end_rune": 56,
+                "score": 0.8999999999999999,
+                "kind": "key_statement"
+              },
+              {
+                "text": "speed and power",
+                "start_rune": 61,
+                "end_rune": 76,
+                "score": 0.85,
+                "kind": "key_statement"
+              }
+            ],
+            "special_names": [
+              {
+                "text": "November",
+                "start_rune": 194,
+                "end_rune": 202,
+                "score": 0.9,
+                "kind": "SPECIAL_NAME"
+              },
+              {
+                "text": "Las",
+                "start_rune": 216,
+                "end_rune": 219,
+                "score": 0.9,
+                "kind": "SPECIAL_NAME"
+              },
+              {
+                "text": "Vegas",
+                "start_rune": 220,
+                "end_rune": 225,
+                "score": 0.9,
+                "kind": "SPECIAL_NAME"
+              }
+            ],
+            "primary_entities": [
+              {
+                "id": "entity-trevor-berbick",
+                "text": "Trevor Berbick",
+                "canonical_name": "Trevor Berbick",
+                "type": "PERSON",
+                "confidence": 1,
+                "mentions": [
+                  {
+                    "text": "Trevor Berbick",
+                    "start_rune": 236,
+                    "end_rune": 250
+                  }
+                ]
+              },
+              {
+                "id": "entity-las-vegas",
+                "text": "Las Vegas",
+                "canonical_name": "Las Vegas",
+                "type": "GPE",
+                "confidence": 0.5,
+                "mentions": [
+                  {
+                    "text": "Las Vegas",
+                    "start_rune": 216,
+                    "end_rune": 225
+                  }
+                ]
+              }
+            ],
+            "status": "completed"
+          }
+        },
+        {
+          "id": "scene-03",
+          "index": 2,
+          "text": "During the next years, Tyson united heavyweight titles and became one of boxing’s most recognizable figures. His fights combined forward movement, compact punches, and an ability to make opponents react before they could settle into a plan. In June 1988, he met Michael Spinks in Atlantic City. The bout ended in ninety-one seconds, a striking image of Tyson at his peak. Yet a highlight is only one frame of a career. Behind the quick finish were roadwork, sparring, preparation, and a demanding approach to competition. Inside the ropes, success still depended on choices made one exchange at a time.",
+          "translation_provenance": {
+            "provider": "source_script",
+            "source_language": "en",
+            "target_language": "en",
+            "source_text_sha256": "733c312f60c1a9409e64df89ae7e7a9adbbd84204fa28617238d6705e7414ab5",
+            "translated_text_sha256": "733c312f60c1a9409e64df89ae7e7a9adbbd84204fa28617238d6705e7414ab5",
+            "translation_wall_ms": 0
+          },
+          "entities": [
+            {
+              "id": "entity-michael-spinks",
+              "text": "Michael Spinks",
+              "canonical_name": "Michael Spinks",
+              "type": "PERSON",
+              "confidence": 1,
+              "mentions": [
+                {
+                  "text": "Michael Spinks",
+                  "start_rune": 262,
+                  "end_rune": 276
+                }
+              ]
+            },
+            {
+              "id": "entity-atlantic-city",
+              "text": "Atlantic City",
+              "canonical_name": "Atlantic City",
+              "type": "GPE",
+              "confidence": 0.5,
+              "mentions": [
+                {
+                  "text": "Atlantic City",
+                  "start_rune": 280,
+                  "end_rune": 293
+                }
+              ]
+            }
+          ],
+          "important_phrases": [
+            {
+              "text": "Tyson united heavyweight titles",
+              "start_rune": 23,
+              "end_rune": 54,
+              "score": 0.95,
+              "kind": "key_statement"
+            }
+          ],
+          "important_words": null,
+          "special_names": [
+            {
+              "text": "Tyson",
+              "start_rune": 23,
+              "end_rune": 28,
+              "score": 0.9,
+              "kind": "SPECIAL_NAME"
+            },
+            {
+              "text": "June",
+              "start_rune": 244,
+              "end_rune": 248,
+              "score": 0.9,
+              "kind": "SPECIAL_NAME"
+            },
+            {
+              "text": "Michael",
+              "start_rune": 262,
+              "end_rune": 269,
+              "score": 0.9,
+              "kind": "SPECIAL_NAME"
+            }
+          ],
+          "localized_annotations": {
+            "version": 1,
+            "language": "en",
+            "important_phrases": [
+              {
+                "text": "Tyson united heavyweight titles",
+                "start_rune": 23,
+                "end_rune": 54,
+                "score": 0.95,
+                "kind": "key_statement"
+              }
+            ],
+            "special_names": [
+              {
+                "text": "Tyson",
+                "start_rune": 23,
+                "end_rune": 28,
+                "score": 0.9,
+                "kind": "SPECIAL_NAME"
+              },
+              {
+                "text": "June",
+                "start_rune": 244,
+                "end_rune": 248,
+                "score": 0.9,
+                "kind": "SPECIAL_NAME"
+              },
+              {
+                "text": "Michael",
+                "start_rune": 262,
+                "end_rune": 269,
+                "score": 0.9,
+                "kind": "SPECIAL_NAME"
+              }
+            ],
+            "primary_entities": [
+              {
+                "id": "entity-michael-spinks",
+                "text": "Michael Spinks",
+                "canonical_name": "Michael Spinks",
+                "type": "PERSON",
+                "confidence": 1,
+                "mentions": [
+                  {
+                    "text": "Michael Spinks",
+                    "start_rune": 262,
+                    "end_rune": 276
+                  }
+                ]
+              },
+              {
+                "id": "entity-atlantic-city",
+                "text": "Atlantic City",
+                "canonical_name": "Atlantic City",
+                "type": "GPE",
+                "confidence": 0.5,
+                "mentions": [
+                  {
+                    "text": "Atlantic City",
+                    "start_rune": 280,
+                    "end_rune": 293
+                  }
+                ]
+              }
+            ],
+            "status": "completed"
+          }
+        },
+        {
+          "id": "scene-04",
+          "index": 3,
+          "text": "The defining reversal arrived in Tokyo on February 11, 1990. Tyson entered the contest against James “Buster” Douglas as the reigning, unbeaten champion, while Douglas was underestimated. The fight lasted longer than expected. Douglas used his reach, jab, and combinations to keep Tyson from controlling the distance. In the tenth round, he knocked Tyson down and won by knockout. The result became one of boxing’s best-known upsets, and it changed the story people told about invincibility. Tyson’s defeat showed that reputation could not block a punch. It also gave Douglas a place in the sport’s history, earned through resolve.",
+          "translation_provenance": {
+            "provider": "source_script",
+            "source_language": "en",
+            "target_language": "en",
+            "source_text_sha256": "3792160b9d6b24cfd29793c2939499fc50d2d805cbb94bd8ff80d60ca7ee7008",
+            "translated_text_sha256": "3792160b9d6b24cfd29793c2939499fc50d2d805cbb94bd8ff80d60ca7ee7008",
+            "translation_wall_ms": 0
+          },
+          "entities": [
+            {
+              "id": "entity-contest-against-james--buster--douglas",
+              "text": "contest against James “Buster” Douglas",
+              "canonical_name": "contest against James “Buster” Douglas",
+              "type": "PERSON",
+              "confidence": 1,
+              "mentions": [
+                {
+                  "text": "contest against James “Buster” Douglas",
+                  "start_rune": 79,
+                  "end_rune": 117
+                }
+              ]
+            }
+          ],
+          "important_phrases": [
+            {
+              "text": "fight lasted longer than expected",
+              "start_rune": 192,
+              "end_rune": 225,
+              "score": 0.86,
+              "kind": "IMPORTANT_PHRASE"
+            }
+          ],
+          "important_words": null,
+          "special_names": [
+            {
+              "text": "Tokyo",
+              "start_rune": 33,
+              "end_rune": 38,
+              "score": 0.9,
+              "kind": "SPECIAL_NAME"
+            },
+            {
+              "text": "February",
+              "start_rune": 42,
+              "end_rune": 50,
+              "score": 0.9,
+              "kind": "SPECIAL_NAME"
+            },
+            {
+              "text": "Tyson",
+              "start_rune": 61,
+              "end_rune": 66,
+              "score": 0.9,
+              "kind": "SPECIAL_NAME"
+            }
+          ],
+          "localized_annotations": {
+            "version": 1,
+            "language": "en",
+            "important_phrases": [
+              {
+                "text": "fight lasted longer than expected",
+                "start_rune": 192,
+                "end_rune": 225,
+                "score": 0.86,
+                "kind": "IMPORTANT_PHRASE"
+              }
+            ],
+            "special_names": [
+              {
+                "text": "Tokyo",
+                "start_rune": 33,
+                "end_rune": 38,
+                "score": 0.9,
+                "kind": "SPECIAL_NAME"
+              },
+              {
+                "text": "February",
+                "start_rune": 42,
+                "end_rune": 50,
+                "score": 0.9,
+                "kind": "SPECIAL_NAME"
+              },
+              {
+                "text": "Tyson",
+                "start_rune": 61,
+                "end_rune": 66,
+                "score": 0.9,
+                "kind": "SPECIAL_NAME"
+              }
+            ],
+            "primary_entities": [
+              {
+                "id": "entity-contest-against-james--buster--douglas",
+                "text": "contest against James “Buster” Douglas",
+                "canonical_name": "contest against James “Buster” Douglas",
+                "type": "PERSON",
+                "confidence": 1,
+                "mentions": [
+                  {
+                    "text": "contest against James “Buster” Douglas",
+                    "start_rune": 79,
+                    "end_rune": 117
+                  }
+                ]
+              }
+            ],
+            "status": "completed"
+          }
+        },
+        {
+          "id": "scene-05",
+          "index": 4,
+          "text": "Tyson’s later career included returns to the ring, championships, setbacks, and years spent rebuilding his life. Like Muhammad Ali, he became a figure whose fame reached beyond boxing, though their careers were distinct. His record cannot be reduced to one knockout or one defeat. It holds physical talent alongside public controversy and personal struggle, and those parts should be described without turning hardship into spectacle. The lesson is not that discipline makes anyone invulnerable. Skill grows through repeated work, while fame can magnify good decisions and mistakes. Tyson remains a heavyweight figure because his rise, fall, and return invite conversation about ambition, pressure, accountability, and what a second chapter can mean.",
+          "translation_provenance": {
+            "provider": "source_script",
+            "source_language": "en",
+            "target_language": "en",
+            "source_text_sha256": "818c2cb18b9e35641eba2366278a051e07c7af91a26d00ac9777c35394eeb7b7",
+            "translated_text_sha256": "818c2cb18b9e35641eba2366278a051e07c7af91a26d00ac9777c35394eeb7b7",
+            "translation_wall_ms": 0
+          },
+          "entities": [
+            {
+              "id": "entity-like-muhammad-ali",
+              "text": "Like Muhammad Ali",
+              "canonical_name": "Like Muhammad Ali",
+              "type": "PERSON",
+              "confidence": 1,
+              "mentions": [
+                {
+                  "text": "Like Muhammad Ali",
+                  "start_rune": 113,
+                  "end_rune": 130
+                }
+              ]
+            }
+          ],
+          "important_phrases": [
+            {
+              "text": "spent rebuilding his life",
+              "start_rune": 86,
+              "end_rune": 111,
+              "score": 0.95,
+              "kind": "key_statement"
+            }
+          ],
+          "important_words": null,
+          "special_names": [
+            {
+              "text": "Muhammad",
+              "start_rune": 118,
+              "end_rune": 126,
+              "score": 0.9,
+              "kind": "SPECIAL_NAME"
+            },
+            {
+              "text": "Ali",
+              "start_rune": 127,
+              "end_rune": 130,
+              "score": 0.9,
+              "kind": "SPECIAL_NAME"
+            }
+          ],
+          "localized_annotations": {
+            "version": 1,
+            "language": "en",
+            "important_phrases": [
+              {
+                "text": "spent rebuilding his life",
+                "start_rune": 86,
+                "end_rune": 111,
+                "score": 0.95,
+                "kind": "key_statement"
+              }
+            ],
+            "special_names": [
+              {
+                "text": "Muhammad",
+                "start_rune": 118,
+                "end_rune": 126,
+                "score": 0.9,
+                "kind": "SPECIAL_NAME"
+              },
+              {
+                "text": "Ali",
+                "start_rune": 127,
+                "end_rune": 130,
+                "score": 0.9,
+                "kind": "SPECIAL_NAME"
+              }
+            ],
+            "primary_entities": [
+              {
+                "id": "entity-like-muhammad-ali",
+                "text": "Like Muhammad Ali",
+                "canonical_name": "Like Muhammad Ali",
+                "type": "PERSON",
+                "confidence": 1,
+                "mentions": [
+                  {
+                    "text": "Like Muhammad Ali",
+                    "start_rune": 113,
+                    "end_rune": 130
+                  }
+                ]
+              }
+            ],
+            "status": "completed"
+          }
+        }
+      ]
+    },
+    {
+      "language": "ru",
+      "scenes": [
+        {
+          "id": "scene-01",
+          "index": 0,
+          "text": "В Бруклине история Майка Тайсона началась далеко от огней чемпионатов. В подростковом возрасте он нашел структуру в боксе, где тренировки придавали направление его энергии. Тренер Кас Д'Амато научил его изучать дистанцию, осторожно защищаться и атаковать целенаправленно. Присевшая стойка Тайсона облегчала уклонение от ударов и взрывное движение вперед короткими хуками. Стиль выглядел простым с трибун, но он зависел от баланса, тайминга и повторения. Его любительские поединки привлекли внимание, однако урок заключался в дисциплине: уверенность нужно было заслужить. Он научился тому, как давление может стать инструментом.",
+          "translation_provenance": {
+            "provider": "ollama",
+            "model": "gemma4:e4b",
+            "source_language": "en",
+            "target_language": "ru",
+            "source_text_sha256": "135cbe72a98e4931d7dd95d14ef8abbaa0e125fbdcbca5aac7e1d93846895f42",
+            "translated_text_sha256": "9136fd25de3b393bf1d9c5d237142d3d7e02ed8ee9cb2f9e6abc70166ce364c8",
+            "translation_wall_ms": 17910
+          },
+          "entities": [
+            {
+              "id": "entity-",
+              "text": "В Бруклине",
+              "canonical_name": "В Бруклине",
+              "type": "PERSON",
+              "confidence": 1,
+              "mentions": [
+                {
+                  "text": "В Бруклине",
+                  "start_rune": 0,
+                  "end_rune": 10
+                }
+              ]
+            },
+            {
+              "id": "entity-",
+              "text": "Майка Тайсона",
+              "canonical_name": "Майка Тайсона",
+              "type": "PERSON",
+              "confidence": 1,
+              "mentions": [
+                {
+                  "text": "Майка Тайсона",
+                  "start_rune": 19,
+                  "end_rune": 32
+                }
+              ]
+            },
+            {
+              "id": "entity-",
+              "text": "Тренер Кас Д'Амато",
+              "canonical_name": "Тренер Кас Д'Амато",
+              "type": "PERSON",
+              "confidence": 1,
+              "mentions": [
+                {
+                  "text": "Тренер Кас Д'Амато",
+                  "start_rune": 173,
+                  "end_rune": 191
+                }
+              ]
+            }
+          ],
+          "important_phrases": [
+            {
+              "text": "началась далеко от огней",
+              "start_rune": 33,
+              "end_rune": 57,
+              "score": 0.95,
+              "kind": "key_statement"
+            }
+          ],
+          "important_words": null,
+          "special_names": [
+            {
+              "text": "В Бруклине",
+              "start_rune": 0,
+              "end_rune": 10,
+              "score": 0.9,
+              "kind": "SPECIAL_NAME"
+            },
+            {
+              "text": "Майка Тайсона",
+              "start_rune": 19,
+              "end_rune": 32,
+              "score": 0.9,
+              "kind": "SPECIAL_NAME"
+            },
+            {
+              "text": "Тренер Кас Д'Амато",
+              "start_rune": 173,
+              "end_rune": 191,
+              "score": 0.9,
+              "kind": "SPECIAL_NAME"
+            }
+          ],
+          "localized_annotations": {
+            "version": 1,
+            "language": "ru",
+            "important_phrases": [
+              {
+                "text": "началась далеко от огней",
+                "start_rune": 33,
+                "end_rune": 57,
+                "score": 0.95,
+                "kind": "key_statement"
+              }
+            ],
+            "special_names": [
+              {
+                "text": "В Бруклине",
+                "start_rune": 0,
+                "end_rune": 10,
+                "score": 0.9,
+                "kind": "SPECIAL_NAME"
+              },
+              {
+                "text": "Майка Тайсона",
+                "start_rune": 19,
+                "end_rune": 32,
+                "score": 0.9,
+                "kind": "SPECIAL_NAME"
+              },
+              {
+                "text": "Тренер Кас Д'Амато",
+                "start_rune": 173,
+                "end_rune": 191,
+                "score": 0.9,
+                "kind": "SPECIAL_NAME"
+              }
+            ],
+            "primary_entities": [
+              {
+                "id": "entity-",
+                "text": "В Бруклине",
+                "canonical_name": "В Бруклине",
+                "type": "PERSON",
+                "confidence": 1,
+                "mentions": [
+                  {
+                    "text": "В Бруклине",
+                    "start_rune": 0,
+                    "end_rune": 10
+                  }
+                ]
+              },
+              {
+                "id": "entity-",
+                "text": "Майка Тайсона",
+                "canonical_name": "Майка Тайсона",
+                "type": "PERSON",
+                "confidence": 1,
+                "mentions": [
+                  {
+                    "text": "Майка Тайсона",
+                    "start_rune": 19,
+                    "end_rune": 32
+                  }
+                ]
+              },
+              {
+                "id": "entity-",
+                "text": "Тренер Кас Д'Амато",
+                "canonical_name": "Тренер Кас Д'Амато",
+                "type": "PERSON",
+                "confidence": 1,
+                "mentions": [
+                  {
+                    "text": "Тренер Кас Д'Амато",
+                    "start_rune": 173,
+                    "end_rune": 191
+                  }
+                ]
+              }
+            ],
+            "status": "completed"
+          }
+        },
+        {
+          "id": "scene-02",
+          "index": 1,
+          "text": "Тайсон стал профессионалом в 1985 году и завоевал репутацию скорости и мощи. Многие оппоненты были остановлены рано, поэтому каждая победа добавляла ощущение приближающейся неудержимой силы. 22 ноября 1986 года в Лас-Вегасе он вышел на бой с Тревером Бербиком за титул чемпиона WBC среди тяжеловесов. Тайсон победил техническим нокаутом во втором раунде и в возрасте двадцати лет стал самым молодым чемпионом мира среди тяжеловесов. Этот рекорд привлек заголовки газет, но ринг не давал гарантии того, что успех будет ощущаться легко. Пояс мог доказать достижение; он не мог решить, как человек справится со славой, деньгами, ожиданиями или следующим трудным раундом.",
+          "translation_provenance": {
+            "provider": "ollama",
+            "model": "gemma4:e4b",
+            "source_language": "en",
+            "target_language": "ru",
+            "source_text_sha256": "985d1312301f898fdaaca1efdc6f4892210fb7c8a6ba66b50d5b3a19a7303d45",
+            "translated_text_sha256": "a280dbe5a17a55e5e31237bb458a3be80740eecfa41ecf18ee6f5cd3cdf03b07",
+            "translation_wall_ms": 7599
+          },
+          "entities": [
+            {
+              "id": "entity-",
+              "text": "Тревером Бербиком",
+              "canonical_name": "Тревером Бербиком",
+              "type": "PERSON",
+              "confidence": 1,
+              "mentions": [
+                {
+                  "text": "Тревером Бербиком",
+                  "start_rune": 242,
+                  "end_rune": 259
+                }
+              ]
+            }
+          ],
+          "important_phrases": [
+            {
+              "text": "Тайсон стал профессионалом в",
+              "start_rune": 0,
+              "end_rune": 28,
+              "score": 0.95,
+              "kind": "key_statement"
+            },
+            {
+              "text": "Многие оппоненты были остановлены",
+              "start_rune": 77,
+              "end_rune": 110,
+              "score": 0.8999999999999999,
+              "kind": "key_statement"
+            }
+          ],
+          "important_words": null,
+          "special_names": [
+            {
+              "text": "Тревером Бербиком",
+              "start_rune": 242,
+              "end_rune": 259,
+              "score": 0.9,
+              "kind": "SPECIAL_NAME"
+            }
+          ],
+          "localized_annotations": {
+            "version": 1,
+            "language": "ru",
+            "important_phrases": [
+              {
+                "text": "Тайсон стал профессионалом в",
+                "start_rune": 0,
+                "end_rune": 28,
+                "score": 0.95,
+                "kind": "key_statement"
+              },
+              {
+                "text": "Многие оппоненты были остановлены",
+                "start_rune": 77,
+                "end_rune": 110,
+                "score": 0.8999999999999999,
+                "kind": "key_statement"
+              }
+            ],
+            "special_names": [
+              {
+                "text": "Тревером Бербиком",
+                "start_rune": 242,
+                "end_rune": 259,
+                "score": 0.9,
+                "kind": "SPECIAL_NAME"
+              }
+            ],
+            "primary_entities": [
+              {
+                "id": "entity-",
+                "text": "Тревером Бербиком",
+                "canonical_name": "Тревером Бербиком",
+                "type": "PERSON",
+                "confidence": 1,
+                "mentions": [
+                  {
+                    "text": "Тревером Бербиком",
+                    "start_rune": 242,
+                    "end_rune": 259
+                  }
+                ]
+              }
+            ],
+            "status": "completed"
+          }
+        },
+        {
+          "id": "scene-03",
+          "index": 2,
+          "text": "В последующие годы Тайсон объединил титулы тяжеловесов и стал одной из самых узнаваемых фигур в боксе. Его поединки сочетали движение вперед, компактные удары и способность заставить соперников реагировать до того, как они успевали разработать план. В июне 1988 года он встретился с Майклом Спинксом в Атлантик-Сити. Бой закончился через девяносто один секунду — яркий образ Тайсона на пике формы. Однако блистательный момент — это лишь одна кадра карьеры. За быстрой победой стояли тренировки, спарринги, подготовка и требовательный подход к соревнованиям. Внутри ринга успех все еще зависел от выборов, сделанных за обмен ударами.",
+          "translation_provenance": {
+            "provider": "ollama",
+            "model": "gemma4:e4b",
+            "source_language": "en",
+            "target_language": "ru",
+            "source_text_sha256": "733c312f60c1a9409e64df89ae7e7a9adbbd84204fa28617238d6705e7414ab5",
+            "translated_text_sha256": "c90c078c61a96c15e91096036b255dfb567226010e7351ba961cc8ba57fff494",
+            "translation_wall_ms": 6782
+          },
+          "entities": [
+            {
+              "id": "entity-",
+              "text": "Майклом Спинксом",
+              "canonical_name": "Майклом Спинксом",
+              "type": "PERSON",
+              "confidence": 1,
+              "mentions": [
+                {
+                  "text": "Майклом Спинксом",
+                  "start_rune": 283,
+                  "end_rune": 299
+                }
+              ]
+            }
+          ],
+          "important_phrases": [
+            {
+              "text": "Его поединки сочетали движение",
+              "start_rune": 103,
+              "end_rune": 133,
+              "score": 0.95,
+              "kind": "key_statement"
+            }
+          ],
+          "important_words": null,
+          "special_names": [
+            {
+              "text": "Майклом Спинксом",
+              "start_rune": 283,
+              "end_rune": 299,
+              "score": 0.9,
+              "kind": "SPECIAL_NAME"
+            }
+          ],
+          "localized_annotations": {
+            "version": 1,
+            "language": "ru",
+            "important_phrases": [
+              {
+                "text": "Его поединки сочетали движение",
+                "start_rune": 103,
+                "end_rune": 133,
+                "score": 0.95,
+                "kind": "key_statement"
+              }
+            ],
+            "special_names": [
+              {
+                "text": "Майклом Спинксом",
+                "start_rune": 283,
+                "end_rune": 299,
+                "score": 0.9,
+                "kind": "SPECIAL_NAME"
+              }
+            ],
+            "primary_entities": [
+              {
+                "id": "entity-",
+                "text": "Майклом Спинксом",
+                "canonical_name": "Майклом Спинксом",
+                "type": "PERSON",
+                "confidence": 1,
+                "mentions": [
+                  {
+                    "text": "Майклом Спинксом",
+                    "start_rune": 283,
+                    "end_rune": 299
+                  }
+                ]
+              }
+            ],
+            "status": "completed"
+          }
+        },
+        {
+          "id": "scene-04",
+          "index": 3,
+          "text": "Определяющий разворот произошел в Токио 11 февраля 1990 года. Тайсон вышел на поединок с Джеймсом «Бастером» Дугласом как действующий, ни разу не проигравший чемпион, в то время как Дуглас недооценивался. Бой продлился дольше, чем ожидалось. Дуглас использовал свой достанг, джеб и комбинации, чтобы не дать Тайсону контролировать дистанцию. В десятом раунде он свалил Тайсона и победил нокаутом. Результат стал одним из самых известных сенсационных поражений в боксе и изменил историю, которую рассказывали о непобедимости. Поражение Тайсона показало, что репутация не может заблокировать удар. Это также дало Дугласу место в истории спорта, завоеванное упорством.",
+          "translation_provenance": {
+            "provider": "ollama",
+            "model": "gemma4:e4b",
+            "source_language": "en",
+            "target_language": "ru",
+            "source_text_sha256": "3792160b9d6b24cfd29793c2939499fc50d2d805cbb94bd8ff80d60ca7ee7008",
+            "translated_text_sha256": "519f673bb4936b6c482d74aeb1c32f65ffde9b4889ed1befb38c9825e2c9a3f3",
+            "translation_wall_ms": 7961
+          },
+          "entities": [
+            {
+              "id": "entity-",
+              "text": "вышел на поединок с Джеймсом «Бастером» Дугласом как действующий",
+              "canonical_name": "вышел на поединок с Джеймсом «Бастером» Дугласом как действующий",
+              "type": "PERSON",
+              "confidence": 1,
+              "mentions": [
+                {
+                  "text": "вышел на поединок с Джеймсом «Бастером» Дугласом как действующий",
+                  "start_rune": 69,
+                  "end_rune": 133
+                }
+              ]
+            },
+            {
+              "id": "entity-",
+              "text": "Поражение Тайсона",
+              "canonical_name": "Поражение Тайсона",
+              "type": "PERSON",
+              "confidence": 1,
+              "mentions": [
+                {
+                  "text": "Поражение Тайсона",
+                  "start_rune": 525,
+                  "end_rune": 542
+                }
+              ]
+            }
+          ],
+          "important_phrases": [
+            {
+              "text": "разворот произошел в Токио",
+              "start_rune": 13,
+              "end_rune": 39,
+              "score": 0.95,
+              "kind": "key_statement"
+            }
+          ],
+          "important_words": null,
+          "special_names": [
+            {
+              "text": "вышел на поединок с Джеймсом «Бастером» Дугласом как действующий",
+              "start_rune": 69,
+              "end_rune": 133,
+              "score": 0.9,
+              "kind": "SPECIAL_NAME"
+            },
+            {
+              "text": "Поражение Тайсона",
+              "start_rune": 525,
+              "end_rune": 542,
+              "score": 0.9,
+              "kind": "SPECIAL_NAME"
+            }
+          ],
+          "localized_annotations": {
+            "version": 1,
+            "language": "ru",
+            "important_phrases": [
+              {
+                "text": "разворот произошел в Токио",
+                "start_rune": 13,
+                "end_rune": 39,
+                "score": 0.95,
+                "kind": "key_statement"
+              }
+            ],
+            "special_names": [
+              {
+                "text": "вышел на поединок с Джеймсом «Бастером» Дугласом как действующий",
+                "start_rune": 69,
+                "end_rune": 133,
+                "score": 0.9,
+                "kind": "SPECIAL_NAME"
+              },
+              {
+                "text": "Поражение Тайсона",
+                "start_rune": 525,
+                "end_rune": 542,
+                "score": 0.9,
+                "kind": "SPECIAL_NAME"
+              }
+            ],
+            "primary_entities": [
+              {
+                "id": "entity-",
+                "text": "вышел на поединок с Джеймсом «Бастером» Дугласом как действующий",
+                "canonical_name": "вышел на поединок с Джеймсом «Бастером» Дугласом как действующий",
+                "type": "PERSON",
+                "confidence": 1,
+                "mentions": [
+                  {
+                    "text": "вышел на поединок с Джеймсом «Бастером» Дугласом как действующий",
+                    "start_rune": 69,
+                    "end_rune": 133
+                  }
+                ]
+              },
+              {
+                "id": "entity-",
+                "text": "Поражение Тайсона",
+                "canonical_name": "Поражение Тайсона",
+                "type": "PERSON",
+                "confidence": 1,
+                "mentions": [
+                  {
+                    "text": "Поражение Тайсона",
+                    "start_rune": 525,
+                    "end_rune": 542
+                  }
+                ]
+              }
+            ],
+            "status": "completed"
+          }
+        },
+        {
+          "id": "scene-05",
+          "index": 4,
+          "text": "Поздняя карьера Тайсона включала возвращения в ринг, чемпионские титулы, неудачи и годы восстановления своей жизни. Подобно Мухаммеду Али, он стал фигурой, чья слава вышла за пределы бокса, хотя их карьеры были разными. Его послужной список нельзя свести к одному нокауту или одной потере. Он содержит физический талант наряду с общественной полемикой и личной борьбой, и эти части следует описывать, не превращая трудности в зрелище. Урок заключается не в том, что дисциплина делает кого-либо неуязвимым. Мастерство растет через повторную работу, в то время как слава может преувеличивать хорошие решения и ошибки. Тайсон остается фигурой тяжеловеса, потому что его взлет, падение и возвращение вызывают обсуждение амбиций, давления, ответственности и того, что может значить вторая глава.",
+          "translation_provenance": {
+            "provider": "ollama",
+            "model": "gemma4:e4b",
+            "source_language": "en",
+            "target_language": "ru",
+            "source_text_sha256": "818c2cb18b9e35641eba2366278a051e07c7af91a26d00ac9777c35394eeb7b7",
+            "translated_text_sha256": "31ff13989f863ca3f64a7dd07e7150c096153ab128346b2d0a78334ef3aa9784",
+            "translation_wall_ms": 8392
+          },
+          "entities": [
+            {
+              "id": "entity-",
+              "text": "Подобно Мухаммеду Али",
+              "canonical_name": "Подобно Мухаммеду Али",
+              "type": "PERSON",
+              "confidence": 1,
+              "mentions": [
+                {
+                  "text": "Подобно Мухаммеду Али",
+                  "start_rune": 116,
+                  "end_rune": 137
+                }
+              ]
+            }
+          ],
+          "important_phrases": [
+            {
+              "text": "чемпионские титулы",
+              "start_rune": 53,
+              "end_rune": 71,
+              "score": 0.95,
+              "kind": "key_statement"
+            }
+          ],
+          "important_words": null,
+          "special_names": [
+            {
+              "text": "Подобно Мухаммеду Али",
+              "start_rune": 116,
+              "end_rune": 137,
+              "score": 0.9,
+              "kind": "SPECIAL_NAME"
+            }
+          ],
+          "localized_annotations": {
+            "version": 1,
+            "language": "ru",
+            "important_phrases": [
+              {
+                "text": "чемпионские титулы",
+                "start_rune": 53,
+                "end_rune": 71,
+                "score": 0.95,
+                "kind": "key_statement"
+              }
+            ],
+            "special_names": [
+              {
+                "text": "Подобно Мухаммеду Али",
+                "start_rune": 116,
+                "end_rune": 137,
+                "score": 0.9,
+                "kind": "SPECIAL_NAME"
+              }
+            ],
+            "primary_entities": [
+              {
+                "id": "entity-",
+                "text": "Подобно Мухаммеду Али",
+                "canonical_name": "Подобно Мухаммеду Али",
+                "type": "PERSON",
+                "confidence": 1,
+                "mentions": [
+                  {
+                    "text": "Подобно Мухаммеду Али",
+                    "start_rune": 116,
+                    "end_rune": 137
+                  }
+                ]
+              }
+            ],
+            "status": "completed"
+          }
+        }
+      ]
+    }
+  ]
+}
