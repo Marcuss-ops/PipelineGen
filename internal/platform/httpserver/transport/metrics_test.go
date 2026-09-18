@@ -48,6 +48,7 @@ func TestSyncWireCapabilityMounted_AllCapabilitiesMounted(t *testing.T) {
 		{Method: "POST", Path: "/api/media/voiceover/generate"},
 		{Method: "POST", Path: "/api/script/generate"},
 		{Method: "POST", Path: "/api/clips/process"},
+		{Method: "POST", Path: "/api/clips/render"},
 		// Real register mount path (assets module wraps the capability under
 		// `/media`); the pre-2026-09-17 fixture used the fictional
 		// "/api/register/from-youtube".

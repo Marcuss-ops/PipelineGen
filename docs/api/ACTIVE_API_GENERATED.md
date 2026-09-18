@@ -81,6 +81,7 @@
 | GET | `/api/clips/search` | Search and rank YouTube videos by topic |
 | POST | `/api/clips/process` | Download and process clips |
 | POST | `/api/clips/render` | Render a canonical clip into a VeloxEditing-compatible derived clip (background/watermark/subtitles, async clip.render job) |
+| POST | `/api/clips/render/batch` | Render up to 50 canonical clips with fingerprint deduplication and async clip.render jobs |
 | POST | `/api/clips/stock` | ⚠️ MISSING DESCRIPTION |
 
 ## /api/drive
