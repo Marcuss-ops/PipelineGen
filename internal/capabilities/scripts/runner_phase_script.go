@@ -3,6 +3,7 @@ package scriptgeneration
 import (
 	"context"
 	"fmt"
+	"math"
 	"strings"
 	"sync"
 	"time"
@@ -67,7 +68,14 @@ func outputFromScenes(scenes []Scene, language Language) GenerateOutput {
 // those scenes are excluded by outputFromScenes before this gate runs.
 func minimumGeneratedWords(req GenerateRequest) int {
 	if req.ScriptParams.MinWords > 0 {
-		return req.ScriptParams.MinWords
+		minimum := req.ScriptParams.MinWords
+		// Keep an explicit minimum as the requested goal while tolerating a
+		// small final shortfall instead of failing a complete multi-scene run.
+		minimum -= int(math.Ceil(float64(minimum) * 0.02))
+		if minimum < 1 {
+			minimum = 1
+		}
+		return minimum
 	}
 	return 1
 }

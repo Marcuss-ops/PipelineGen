@@ -90,6 +90,13 @@ func (c *Client) GenerateDetailed(ctx context.Context, model, prompt string, opt
 		return GenerateResult{}, fmt.Errorf("failed to marshal request: %w", err)
 	}
 
+	// Legacy /api/generate callers (entity extraction, important phrases,
+	// batch extraction) share the same endpoint budget as the chat pools.
+	if err := c.acquireOllamaSlot(ctx); err != nil {
+		return GenerateResult{}, err
+	}
+	defer c.releaseOllamaSlot()
+
 	httpReq, err := http.NewRequestWithContext(ctx, "POST", c.baseURL+"/api/generate", bytes.NewReader(body))
 	if err != nil {
 		return GenerateResult{}, err
@@ -220,6 +227,14 @@ func (c *Client) GenerateStreamWithOptions(ctx context.Context, model, prompt st
 	concurrent.SafeGo("ollama-generate-stream", func() {
 		defer close(textChan)
 		defer close(errChan)
+
+		// A stream holds its runner slot until the last token, so the budget
+		// must be held for the whole stream, not just the handshake.
+		if err := c.acquireOllamaSlot(ctx); err != nil {
+			errChan <- err
+			return
+		}
+		defer c.releaseOllamaSlot()
 
 		httpReq, err := http.NewRequestWithContext(ctx, "POST", c.baseURL+"/api/generate", bytes.NewReader(body))
 		if err != nil {

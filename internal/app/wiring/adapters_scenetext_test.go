@@ -585,3 +585,19 @@ func TestSceneTextGeneratorStreamFallsBackToBatchForProse(t *testing.T) {
 	require.Equal(t, "scene-0", emitted[0].ID)
 	require.Equal(t, "scene-1", emitted[1].ID)
 }
+
+func TestConvertClipProseScenesUsesGeneratedNarrationOverSegmentBrief(t *testing.T) {
+	const generated = "Mike Tyson entered the ring with a focused expression. The crowd watched closely as the opening bell sounded."
+	brief := "Mike Tyson in Brooklyn; phrase overlay: iron returns."
+	generator := &SceneTextGenerator{}
+	plan := &scriptpkg.ResolvedGenerationPlan{
+		Segments: []scriptpkg.ScriptSegment{{ID: "brooklyn", Topic: "Brooklyn", SourceText: brief, TargetWords: 20}},
+	}
+	req := scriptgen.GenerateRequest{SourceLanguage: "en"}
+
+	scenes, err := generator.convertClipProseScenes(context.Background(), plan, generated, req)
+	require.NoError(t, err)
+	require.Len(t, scenes, 1)
+	require.Equal(t, generated, scenes[0].Text["en"])
+	require.NotEqual(t, brief, scenes[0].Text["en"])
+}

@@ -34,6 +34,7 @@ func isSegmentValidationExhausted(err error) bool {
 const (
 	defaultSegmentWordsTolerancePercent = 15.0
 	defaultTotalWordsTolerancePercent   = 10.0
+	explicitMinimumGracePercent         = 25.0
 	// Small local Ollama models have noticeably variable completion lengths.
 	// Keep the word gate strict, but allow enough bounded regeneration attempts
 	// to obtain a compliant paragraph instead of dead-lettering a valid request
@@ -77,9 +78,10 @@ func (e *Engine) ConfigureSegmentValidation(segmentTolerancePercent, totalTolera
 }
 
 type segmentBudget struct {
-	Target int
-	Min    int
-	Max    int
+	Target       int
+	Min          int
+	RequestedMin int
+	Max          int
 }
 
 func segmentBudgetFor(plan *scriptpkg.ResolvedGenerationPlan, index int, tolerancePercent float64) segmentBudget {
@@ -97,15 +99,26 @@ func segmentBudgetFor(plan *scriptpkg.ResolvedGenerationPlan, index int, toleran
 	if target <= 0 {
 		target = 80
 	}
-	minWords := segment.MinWords
-	if minWords <= 0 {
-		minWords = int(math.Floor(float64(target) * (1 - tolerancePercent/100)))
+	requestedMinWords := segment.MinWords
+	if requestedMinWords <= 0 {
+		requestedMinWords = int(math.Floor(float64(target) * (1 - tolerancePercent/100)))
 	}
+	minWords := requestedMinWords
+	if segment.MinWords > 0 {
+		// A small model can miss an explicitly requested minimum even after a
+		// targeted retry. Keep the requested number in the prompt, while
+		// allowing a wider local QA grace so a near-complete scene does not
+		// fail the whole script. The aggregate minimum still applies.
+		grace := int(math.Ceil(float64(requestedMinWords) * explicitMinimumGracePercent / 100))
+		minWords -= grace
+		if minWords < 1 {
+			minWords = 1
+		}
+	}
+	// A target is a writing aim, not a hidden word ceiling. Only an
+	// explicitly supplied max_words field may cap the generated segment.
 	maxWords := segment.MaxWords
-	if maxWords <= 0 {
-		maxWords = int(math.Ceil(float64(target) * (1 + tolerancePercent/100)))
-	}
-	return segmentBudget{Target: target, Min: minWords, Max: maxWords}
+	return segmentBudget{Target: target, Min: minWords, RequestedMin: requestedMinWords, Max: maxWords}
 }
 
 type segmentValidationReport struct {
@@ -169,10 +182,13 @@ func validateSegmentTexts(plan *scriptpkg.ResolvedGenerationPlan, texts []string
 	for i, text := range texts {
 		budget := segmentBudgetFor(plan, i, settings.segmentTolerancePercent)
 		actual := textutil.CountWords(text)
-		if actual < budget.Min || actual > budget.Max {
+		if actual < budget.Min || (budget.Max > 0 && actual > budget.Max) {
 			invalid[i] = struct{}{}
-			report.Reasons = append(report.Reasons,
-				fmt.Sprintf("segment[%d] words=%d outside [%d,%d] target=%d", i, actual, budget.Min, budget.Max, budget.Target))
+			reason := fmt.Sprintf("segment[%d] words=%d below minimum=%d target=%d", i, actual, budget.Min, budget.Target)
+			if budget.Max > 0 && actual > budget.Max {
+				reason = fmt.Sprintf("segment[%d] words=%d exceeds explicit maximum=%d target=%d", i, actual, budget.Max, budget.Target)
+			}
+			report.Reasons = append(report.Reasons, reason)
 		}
 	}
 
@@ -183,14 +199,28 @@ func validateSegmentTexts(plan *scriptpkg.ResolvedGenerationPlan, texts []string
 		}
 	}
 	totalMin := int(math.Floor(float64(totalTarget) * (1 - settings.totalTolerancePercent/100)))
-	totalMax := int(math.Ceil(float64(totalTarget) * (1 + settings.totalTolerancePercent/100)))
-	// Streaming generation validates one scene at a time. For that one-scene
-	// plan, the explicit segment bounds already define the complete text
-	// budget; applying the aggregate percentage again can reject a paragraph
-	// that passed its declared min_words/max_words by only one or two words.
+	totalMax := 0 // no implicit aggregate ceiling; segment max_words are explicit only
+	// Streaming generation validates one scene at a time. Use that segment's
+	// explicit bounds as the complete budget; targets alone never cap output.
 	if len(plan.Segments) == 1 {
 		budget := segmentBudgetFor(plan, 0, settings.segmentTolerancePercent)
 		totalTarget, totalMin, totalMax = budget.Target, budget.Min, budget.Max
+	} else {
+		// When every segment has an explicit maximum, their sum is an explicit
+		// aggregate ceiling too. A single omitted max keeps the script uncapped.
+		explicitMaximum := true
+		explicitTotalMax := 0
+		for i := range plan.Segments {
+			budget := segmentBudgetFor(plan, i, settings.segmentTolerancePercent)
+			if budget.Max <= 0 {
+				explicitMaximum = false
+				break
+			}
+			explicitTotalMax += budget.Max
+		}
+		if explicitMaximum {
+			totalMax = explicitTotalMax
+		}
 	}
 	actualTotal := 0
 	for _, text := range texts {
@@ -200,10 +230,13 @@ func validateSegmentTexts(plan *scriptpkg.ResolvedGenerationPlan, texts []string
 	report.TotalTarget = totalTarget
 	report.TotalMin = totalMin
 	report.TotalMax = totalMax
-	if actualTotal < totalMin || actualTotal > totalMax {
+	if actualTotal < totalMin || (totalMax > 0 && actualTotal > totalMax) {
 		report.Valid = false
-		report.Reasons = append(report.Reasons,
-			fmt.Sprintf("total words=%d outside [%d,%d] target=%d", actualTotal, totalMin, totalMax, totalTarget))
+		reason := fmt.Sprintf("total words=%d below minimum=%d target=%d", actualTotal, totalMin, totalTarget)
+		if totalMax > 0 && actualTotal > totalMax {
+			reason = fmt.Sprintf("total words=%d exceeds explicit maximum=%d target=%d", actualTotal, totalMax, totalTarget)
+		}
+		report.Reasons = append(report.Reasons, reason)
 		// A total-only failure has no single objectively invalid segment.
 		// Keep already-valid text frozen and make only currently mutable
 		// segments eligible for the next regeneration. If every segment

@@ -137,8 +137,8 @@ func TestValidateSegmentTexts_BoundsAndTotal(t *testing.T) {
 	plan := &scriptpkg.ResolvedGenerationPlan{
 		TargetWords: 20,
 		Segments: []scriptpkg.ScriptSegment{
-			{Topic: "one", TargetWords: 10, MinWords: 8, MaxWords: 12},
-			{Topic: "two", TargetWords: 10, MinWords: 8, MaxWords: 12},
+			{Topic: "one", TargetWords: 10, MinWords: 8},
+			{Topic: "two", TargetWords: 10, MinWords: 8},
 		},
 	}
 	settings := segmentValidationSettings{segmentTolerancePercent: 15, totalTolerancePercent: 10}
@@ -147,16 +147,54 @@ func TestValidateSegmentTexts_BoundsAndTotal(t *testing.T) {
 	if !valid.Valid || len(valid.InvalidIndexes) != 0 {
 		t.Fatalf("valid segments rejected: %+v", valid)
 	}
-	invalid := validateSegmentTexts(plan, []string{textOfNWords(7), textOfNWords(10)}, settings)
+	nearMiss := validateSegmentTexts(plan, []string{textOfNWords(7), textOfNWords(11)}, settings)
+	if !nearMiss.Valid {
+		t.Fatalf("a one-word shortfall below the explicit minimum should fit the small tolerance: %+v", nearMiss)
+	}
+	invalid := validateSegmentTexts(plan, []string{textOfNWords(5), textOfNWords(13)}, settings)
 	if invalid.Valid || len(invalid.InvalidIndexes) != 1 || invalid.InvalidIndexes[0] != 0 {
 		t.Fatalf("expected only segment 0 to fail: %+v", invalid)
 	}
-	total := validateSegmentTexts(plan, []string{textOfNWords(12), textOfNWords(12)}, settings)
+	total := validateSegmentTexts(plan, []string{textOfNWords(8), textOfNWords(8)}, settings)
 	if total.Valid || len(total.InvalidIndexes) != 1 {
 		t.Fatalf("expected total failure to select one mutable segment: %+v", total)
 	}
-	if total.ActualTotal != 24 || total.TotalMin != 18 || total.TotalMax != 22 {
+	if total.ActualTotal != 16 || total.TotalMin != 18 || total.TotalMax != 0 {
 		t.Fatalf("unexpected total report: %+v", total)
+	}
+}
+
+func TestValidateSegmentTexts_ExplicitMinimumAllowsSmallShortfall(t *testing.T) {
+	plan := &scriptpkg.ResolvedGenerationPlan{
+		TargetWords: 280,
+		Segments:    []scriptpkg.ScriptSegment{{Topic: "one", TargetWords: 280, MinWords: 190}},
+	}
+	settings := segmentValidationSettings{segmentTolerancePercent: 15, totalTolerancePercent: 10}
+	nearMiss := validateSegmentTexts(plan, []string{textOfNWords(164)}, settings)
+	if !nearMiss.Valid {
+		t.Fatalf("164 words should satisfy the small grace below requested minimum 190: %+v", nearMiss)
+	}
+	short := validateSegmentTexts(plan, []string{textOfNWords(120)}, settings)
+	if short.Valid {
+		t.Fatalf("120 words is outside the grace below requested minimum 190: %+v", short)
+	}
+}
+
+func TestValidateSegmentTexts_DoesNotInventMaximum(t *testing.T) {
+	plan := &scriptpkg.ResolvedGenerationPlan{
+		TargetWords: 10,
+		Segments:    []scriptpkg.ScriptSegment{{Topic: "one", TargetWords: 10, MinWords: 8}},
+	}
+	settings := segmentValidationSettings{segmentTolerancePercent: 15, totalTolerancePercent: 10}
+	got := validateSegmentTexts(plan, []string{textOfNWords(300)}, settings)
+	if !got.Valid {
+		t.Fatalf("target_words without max_words must not cap narration: %+v", got)
+	}
+
+	plan.Segments[0].MaxWords = 250
+	got = validateSegmentTexts(plan, []string{textOfNWords(300)}, settings)
+	if got.Valid || !strings.Contains(strings.Join(got.Reasons, " "), "explicit maximum=250") {
+		t.Fatalf("explicit max_words must still be enforced: %+v", got)
 	}
 }
 

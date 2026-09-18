@@ -7,11 +7,14 @@ package localization
 import (
 	"context"
 	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
 	cliprender "github.com/Marcuss-ops/PipelineGen/internal/capabilities/cliprender"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/render"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
@@ -38,9 +41,11 @@ type fakeRenderPlanExecutor struct {
 	err     error
 	gotPlan render.RenderPlan
 	gotSub  *SubtitleAsset
+	calls   int
 }
 
 func (f *fakeRenderPlanExecutor) Execute(_ context.Context, p render.RenderPlan, s *SubtitleAsset) (RenderFacts, error) {
+	f.calls++
 	f.gotPlan = p
 	f.gotSub = s
 	if f.err != nil {
@@ -58,6 +63,26 @@ func validRenderFacts() RenderFacts {
 		VideoCodec: "h264",
 		AudioCodec: "aac",
 	}
+}
+
+type memoryRenderReuseCache struct {
+	artifact *ReusedRenderArtifact
+	stores   int
+}
+
+func (c *memoryRenderReuseCache) Lookup(_ context.Context, fingerprint string) (*ReusedRenderArtifact, bool, error) {
+	if c.artifact == nil || c.artifact.Fingerprint != fingerprint {
+		return nil, false, nil
+	}
+	copy := *c.artifact
+	return &copy, true, nil
+}
+
+func (c *memoryRenderReuseCache) Store(_ context.Context, artifact ReusedRenderArtifact) error {
+	copy := artifact
+	c.artifact = &copy
+	c.stores++
+	return nil
 }
 
 func newTestRenderer(t *testing.T, compiler Compiler, wire *SubtitleWire, executor RenderPlanExecutor) *LocalizedClipRenderer {
@@ -98,6 +123,45 @@ func TestLocalizedClipRenderer_RendersCertifiedArtifact(t *testing.T) {
 	}
 	if executor.gotSub == nil || executor.gotSub.SHA256 != validSubtitleAsset().SHA256 || executor.gotSub.LocalPath != validSubtitleAsset().LocalPath {
 		t.Errorf("executor subtitle: %+v", executor.gotSub)
+	}
+}
+
+// TestLocalizedClipRenderer_ReplayUsesCertifiedCacheHit verifies the two-run
+// idempotency contract locally: the first run stores one certified artifact and
+// the identical replay returns it without invoking the render executor again.
+func TestLocalizedClipRenderer_ReplayUsesCertifiedCacheHit(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "clip-1.es.mp4")
+	bytes := []byte("certified-render")
+	if err := os.WriteFile(path, bytes, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	sha := digest.SHA256String(string(bytes))
+	facts := validRenderFacts()
+	facts.LocalPath = path
+	facts.SHA256 = sha
+	facts.SizeBytes = int64(len(bytes))
+	cache := &memoryRenderReuseCache{}
+	executor := &fakeRenderPlanExecutor{facts: facts}
+	r := newTestRenderer(t, &fakeRendererCompiler{plan: render.RenderPlan{OutputPath: path}}, newTestWire(t, &fakeSubtitleResolver{track: matchingTrack()}, &fakeSubtitleCompiler{asset: validSubtitleAsset()}), executor).WithRenderReuseCache(cache)
+	plan := validPlan()
+
+	first, err := r.Render(context.Background(), plan)
+	if err != nil {
+		t.Fatalf("first render: %v", err)
+	}
+	second, err := r.Render(context.Background(), plan)
+	if err != nil {
+		t.Fatalf("replay render: %v", err)
+	}
+	if executor.calls != 1 {
+		t.Fatalf("executor calls = %d, want exactly 1 across first run + replay", executor.calls)
+	}
+	if cache.stores != 1 {
+		t.Fatalf("cache stores = %d, want exactly 1", cache.stores)
+	}
+	if second.Status != LocalizedClipRendered || second.PlanFingerprint != first.PlanFingerprint || second.SHA256 != first.SHA256 || second.LocalPath != first.LocalPath {
+		t.Fatalf("replay artifact differs from first artifact: first=%+v second=%+v", first, second)
 	}
 }
 

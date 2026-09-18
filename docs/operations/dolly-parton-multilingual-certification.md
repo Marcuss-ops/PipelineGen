@@ -55,8 +55,8 @@ Drive or GPU delivery.
 | Normal SourceClips audio-NONE multilingual fan-out | `TestRunner_SourceClipsAudioNone_LocalizedRenderFanout` |
 | Streaming starts downstream work before global generation completes | `TestRunner_LocalizedRenderFanout_RenderStartsBeforeNextSceneReady` |
 | Complete render matrix cannot report success partially | `Runner.completeRun` expected/successful/failed gate |
-| Canonical localized render contract and content-addressed reuse | localization plan/fingerprint/reuse tests |
-| GPU/Chronon facts, Drive links and media SSOT | live Dolly runtime test; requires external services |
+| Canonical localized render contract and content-addressed reuse | localization plan/fingerprint/reuse tests, including replay cache-hit certification |
+| Certified output facts, Chronon backend, Drive links and media SSOT | `internal/capabilities/cliprender/certify_test.go` for the local facts gate; live Dolly runtime test for real GPU/Drive/PostgreSQL evidence |
 
 ## Live evidence required for final PASS
 
@@ -74,6 +74,23 @@ The live result must show, for every requested target language and clip:
 The source-language EN artifacts are the existing five canonical clip assets. A
 full 25-artifact release therefore consists of those five source assets plus the
 20 localized target renders; EN is not repeated as a translation target.
+
+## Local verification evidence
+
+The complete repository-side gate is:
+
+```bash
+scripts/certify_dolly_multilingual.sh
+go test ./internal/capabilities/localization/... \\
+  ./internal/capabilities/cliprender/... \\
+  ./internal/capabilities/scripts/... \\
+  ./internal/app/wiring ./tests/e2e -count=1
+```
+
+Both commands must pass before any live run is attempted. The local suite
+covers the exact render contract, certified output facts, subtitle timing,
+multilingual fan-out, fail-closed matrix completion, and deterministic replay
+cache hits.
 
 A second identical invocation must reuse the same content-addressed render
 fingerprints and must not create duplicate GPU renders or Drive objects. The

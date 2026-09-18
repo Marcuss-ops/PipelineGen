@@ -20,6 +20,13 @@ func TestResolveOutputBudgetDoesNotReserveThinkingOverhead(t *testing.T) {
 	}
 }
 
+func TestResolveOutputBudgetAllowsLongNaturalCompletionForGemma(t *testing.T) {
+	got := ResolveOutputBudget(types.TextGenerationRequest{Model: "gemma4:e4b", MinWords: 200})
+	if got < 432 {
+		t.Fatalf("200-word narration output budget = %d tokens, want at least 432 so prose is not truncated", got)
+	}
+}
+
 func TestResolveContextBudgetUsesSmallestSafeBucket(t *testing.T) {
 	messages := []types.Message{{Role: "user", Content: "short prompt"}}
 	if got := ResolveContextBudget(messages, 96); got != types.ProductionRunnerContext {

@@ -144,7 +144,13 @@ func buildSegmentInstructions(plan *scriptpkg.ResolvedGenerationPlan) string {
 			fmt.Fprintf(&b, "Kind: %s\n", kind)
 		}
 		b.WriteString("Scope: write exclusively about this topic; do not mention another declared segment or introduce the next segment.\n")
-		fmt.Fprintf(&b, "Target words: %d", target)
+		fmt.Fprintf(&b, "Target words: about %d", target)
+		if s.MinWords > 0 {
+			fmt.Fprintf(&b, "\nMinimum words: %d", s.MinWords)
+		}
+		if s.MaxWords > 0 {
+			fmt.Fprintf(&b, "\nMaximum words: %d (explicitly requested)", s.MaxWords)
+		}
 		if strings.EqualFold(strings.TrimSpace(s.Kind), "intro") {
 			b.WriteString("\nINTRO FORMAT: write one or two short, punchy narrator sentences. Keep it playful and under 30 words; do not explain the clip or summarize its structure.")
 		}
@@ -192,25 +198,16 @@ func buildSegmentInstructions(plan *scriptpkg.ResolvedGenerationPlan) string {
 	b.WriteString("Emit exactly one prose paragraph for each segment, in the declared order, with one blank line between paragraphs. Never merge two segments into one paragraph and never move content across paragraph boundaries.\n")
 	b.WriteString("Each segment must treat exclusively the subject named in its Topic. Do not anticipate the next subject, move paragraphs between segments, or insert a general conclusion before the final segment.\n")
 	if len(plan.Segments) == 1 {
-		// Do not impose the historical 180–260-word single-scene range when
-		// the caller supplied a smaller explicit segment budget. That range
-		// contradicted ScriptSegment.TargetWords (for example target_words=70),
-		// causing the model to generate a valid-looking paragraph that the
-		// downstream 15% validator necessarily rejected.
 		target := segmentBudgetFor(plan, 0, defaultSegmentWordsTolerancePercent).Target
-		if target > 0 && target < 180 {
-			fmt.Fprintf(&b, "Because this request declares one single-scene segment, write about %d words for that segment and stay within its declared word budget. This range is mandatory.\n", target)
-		} else {
-			b.WriteString("Because this request declares one single-scene segment, write between 180 and 260 words for that segment. This range is mandatory.\n")
-		}
+		fmt.Fprintf(&b, "This request has one scene. Aim for about %d words and meet its minimum word requirement. Do not stop early to fit a word-count range. There is no upper word limit unless max_words is explicitly supplied.\n", target)
 	} else {
-		b.WriteString("Respect each segment's declared target_words and any explicit min_words/max_words; do not pad short segments with generic filler. The first segment is an introduction when its topic says introduction, and must remain concise (one sentence whenever possible).\n")
+		b.WriteString("Aim for each segment's target_words and meet any explicit min_words. Apply a maximum only when max_words is explicitly supplied; otherwise there is no upper word limit. Do not pad short segments with generic filler. The first segment is an introduction when its topic says introduction, and must remain concise (one sentence whenever possible).\n")
 	}
 	b.WriteString("Write for a modern video voiceover: conversational, youthful, fluid, energetic, and easy to listen to. Use short natural transitions and concrete details instead of explaining the structure of the story.\n")
 	b.WriteString("Paraphrase the supplied source naturally, preserving every name, date, score, result, and supported statement. Do not imitate the speaker or turn the narration into first-person dialogue.\n")
 	b.WriteString("Do not invent names, dates, scores, results, or events.\n")
 	b.WriteString("If a topic has no source_text, write the segment using only the topic and the global source. Do not repeat facts from previous segments.\n")
-	b.WriteString("Target words and explicit min_words/max_words are a hard editorial contract. If the segment is 500 words, stay within its declared range; never compensate with filler or extra paragraphs.\n")
+	b.WriteString("Treat target_words as an aim. Meet explicit min_words; the quality check allows a small shortfall tolerance. Enforce max_words only when explicitly supplied; an omitted max_words means there is no maximum. Never add filler or extra paragraphs just to meet a target.\n")
 	b.WriteString("Do not print segment titles (SEGMENT 1, Topic:, Source text:) in the output.\n")
 	b.WriteString("Do not include markers like clip_id, accepted_clip_ids, JSON, Markdown code fences, schema_version, or specscene. Output only the script text.\n")
 	return b.String()

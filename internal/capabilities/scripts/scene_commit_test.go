@@ -81,6 +81,10 @@ func TestSceneCommitted_TextHashIsDeterministicAndContentSensitive(t *testing.T)
 	assert.NotEqual(t, first, SceneTextHash("First scene text changed"))
 }
 
+func TestSceneTextHashUsesCanonicalUnicodeNormalization(t *testing.T) {
+	assert.Equal(t, SceneTextHash("café"), SceneTextHash("cafe\u0301"))
+}
+
 func TestSceneCommitted_ObserverErrorFailsRunClosed(t *testing.T) {
 	runner, repo, _, _, _, _, _ := newTestRunner()
 	runner.SetSceneCommitObserver(&recordingSceneCommitObserver{err: errors.New("scene commit observer failure")})

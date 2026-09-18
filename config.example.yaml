@@ -51,6 +51,12 @@ external:
   ollama_url: "http://localhost:11434"
   ollama_model: "gemma4:e4b"
   ollama_timeout_seconds: 120
+  # Ollama concurrency budget: the client keeps at most OLLAMA_NUM_PARALLEL
+  # generation requests in flight (3 in production), shared by every pool on
+  # this endpoint (script, NLP, translation, cues, embeddings). Requests above
+  # the ceiling queue inside the server and the pools starve each other.
+  # Override only when the server-side OLLAMA_NUM_PARALLEL changed:
+  #   VELOX_OLLAMA_MAX_INFLIGHT=4   (1-64; unset reads OLLAMA_NUM_PARALLEL)
   # Local dev uses the existing SearXNG sidecar on 127.0.0.1:8080.
   # The runtime still treats this as optional and falls back cleanly
   # if the service is absent.

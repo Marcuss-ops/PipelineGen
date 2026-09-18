@@ -68,7 +68,7 @@ func TestEnginePrompt_BuildSegmentInstructions_SingleSegment_NoSourceText_OmitsS
 	mustContain(t, got, []string{
 		"SEGMENT 1",
 		"Topic: Introduzione",
-		"Target words: 80",
+		"Target words: about 80",
 		"Write one continuous narrative",
 	})
 	// Footer legitimately bans the literal "Source text:" token
@@ -94,7 +94,7 @@ func TestEnginePrompt_BuildSegmentInstructions_SingleSegment_WithSourceText_Emit
 	mustContain(t, got, []string{
 		"SEGMENT 1",
 		"Topic: Introduzione",
-		"Target words: 80",
+		"Target words: about 80",
 		"Source text:",
 		srcText,
 	})
@@ -124,10 +124,10 @@ func TestEnginePrompt_BuildSegmentInstructions_TwoSegments_PreservesOrderAndBlan
 	}
 	// DoD #1: "Tra un segmento e l'altro una riga vuota" — verify
 	// blank line separator between segments.
-	if !strings.Contains(got, "Target words: 80\n\nSEGMENT 2") {
+	if !strings.Contains(got, "Target words: about 80\n\nSEGMENT 2") {
 		t.Errorf("blank-line separator MUST appear between segments, got %q", got)
 	}
-	if !strings.Contains(got, "Target words: 100") {
+	if !strings.Contains(got, "Target words: about 100") {
 		t.Errorf("expected Target words: 100 for second segment, got %q", got)
 	}
 }
@@ -178,7 +178,7 @@ func TestEnginePrompt_BuildSegmentInstructions_TargetWordsFallbackChain(t *testi
 				},
 			}
 			got := buildSegmentInstructions(plan)
-			want := "Target words: " + itoaSimple(tc.wantTarget)
+			want := "Target words: about " + itoaSimple(tc.wantTarget)
 			if !strings.Contains(got, want) {
 				t.Errorf("expected %q in prompt, got:\n%s", want, got)
 			}
@@ -201,7 +201,7 @@ func TestEnginePrompt_BuildSegmentInstructions_FooterContainsDoDRules(t *testing
 		"Follow the segment order strictly",
 		"Do not skip, merge, or reorder topics",
 		"Each segment must treat exclusively the subject named in its Topic",
-		"Because this request declares one single-scene segment, write about 80 words",
+		"This request has one scene. Aim for about 80 words",
 		"Do not invent names, dates, scores, results, or events",
 		"Do not print segment titles",
 		"Do not include markers like clip_id, accepted_clip_ids, JSON, Markdown code fences, schema_version, or specscene",
@@ -218,7 +218,7 @@ func TestEnginePrompt_SingleSegmentHonorsSmallExplicitBudget(t *testing.T) {
 		Segments: []scriptpkg.ScriptSegment{{Topic: "X", TargetWords: 70}},
 	}
 	got := buildSegmentInstructions(plan)
-	if !strings.Contains(got, "write about 70 words") {
+	if !strings.Contains(got, "Aim for about 70 words") {
 		t.Fatalf("small explicit segment budget missing from prompt: %s", got)
 	}
 	if strings.Contains(got, "between 180 and 260 words") {

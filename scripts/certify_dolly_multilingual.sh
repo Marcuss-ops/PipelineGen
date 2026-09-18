@@ -31,8 +31,12 @@ echo "[1/3] Dolly hermetic contracts"
 go test ./tests/e2e -run 'TestDollyParton(MultilingualRequestContract|ClipBatch)' -count=1
 
 echo "[2/3] localized render and subtitle contracts"
-go test ./internal/app/wiring ./internal/capabilities/scripts \
-  -run 'Test(LocalizedRenderEnqueuer|Runner_(SourceClipsAudioNone|LocalizedRender))' \
+go test ./internal/app/wiring \
+  ./internal/capabilities/localization \
+  ./internal/capabilities/localization/adapters \
+  ./internal/capabilities/cliprender \
+  ./internal/capabilities/scripts \
+  -run 'Test(LocalizedRenderEnqueuer|LocalizedClipRenderer|OutputProbeFromCertified|CertifiedFacts|Runner_(SourceClipsAudioNone|LocalizedRender))' \
   -count=1
 
 if [[ "${PIPELINEGEN_DOLLY_PARTON_LIVE:-0}" != "1" ]]; then

@@ -22,6 +22,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -428,6 +429,26 @@ func (m *Materializer) materializeOne(
 			TargetLang:    targetLang,
 			TextKind:      report.Kind,
 			Cause:         err,
+			AttemptedText: source.TextContent,
+		}
+	}
+
+	// godlike/07 silent-fake-success: an empty text with a nil error is the
+	// failure shape that survives every later check. Persisting it would create a
+	// READY track with no content under a REAL translation_key, and because that
+	// key is what the lookup-before-translate gate matches on, every subsequent
+	// run would reuse the empty text as if it were a certified translation. Fail
+	// closed instead, with the same typed error contract a transport failure uses.
+	if strings.TrimSpace(translated.TranslatedText) == "" {
+		return &ErrTranslationFailed{
+			AssetID:    report.AssetID,
+			TargetLang: targetLang,
+			TextKind:   report.Kind,
+			Cause: &ErrEmptyTranslation{
+				Provider:   translated.UsedProvider,
+				Model:      translated.UsedModel,
+				TargetLang: targetLang,
+			},
 			AttemptedText: source.TextContent,
 		}
 	}

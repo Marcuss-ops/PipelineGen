@@ -31,15 +31,10 @@ func ResolveOutputBudget(req types.TextGenerationRequest) int {
 	if words <= 0 {
 		words = 32
 	}
+	// num_predict is a provider safety limit, not a word-count target. Reserve
+	// enough tokens for natural tokenization and longer-than-requested answers;
+	// a tight model-specific multiplier can truncate otherwise valid prose.
 	budget := words*2 + 32
-	// Gemma 4 uses substantially fewer output tokens per English word than
-	// the generic two-token allowance. At 2x, its completions routinely hit
-	// num_predict and overshoot the scene validator. A 1.1x cap tracks the
-	// measured English completion ratio while leaving a small punctuation and
-	// tokenization margin; other models retain the generic allowance.
-	if strings.HasPrefix(strings.ToLower(strings.TrimSpace(req.Model)), "gemma4:") {
-		budget = (words*11+9)/10 + 32
-	}
 	if budget < 96 {
 		budget = 96
 	}

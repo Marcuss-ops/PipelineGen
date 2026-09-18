@@ -46,6 +46,50 @@ func (e *ErrTranslationFailed) Is(target error) bool {
 	return errors.As(target, &t)
 }
 
+// ErrEmptyTranslation is the canonical sentinel for a translation that
+// came back with no text and no error.
+//
+// godlike/07 silent-fake-success: a provider returning "" with a nil error is
+// the most dangerous failure shape in this package, because an empty string
+// LOOKS like a successful value all the way down. Left unchecked it persists a
+// READY TextTrack with empty content under a real translation_key (so every
+// later run reuses the empty text as if it were a certified translation) and it
+// renders subtitle cues with no words. The voiceover processor already treats
+// "" as a failure; this sentinel gives the cue and materializer paths the same
+// contract, with errors.Is support.
+type ErrEmptyTranslation struct {
+	// Provider is the provider that produced the empty answer, when known.
+	Provider string
+	// Model is the concrete model, when known.
+	Model string
+	// TargetLang is the language the empty text was requested for.
+	TargetLang string
+	// CueNumber is the 1-based cue the empty text belongs to
+	// (0 when the failure is not cue-scoped, e.g. the materializer's
+	// whole-track translation).
+	CueNumber int
+}
+
+func (e *ErrEmptyTranslation) Error() string {
+	scope := "whole track"
+	if e.CueNumber > 0 {
+		scope = fmt.Sprintf("cue %d", e.CueNumber)
+	}
+	provider := e.Provider
+	if provider == "" {
+		provider = "unknown provider"
+	}
+	return fmt.Sprintf(
+		"texttracks: translation returned empty text (%s, target=%s, %s)",
+		scope, e.TargetLang, provider,
+	)
+}
+
+func (e *ErrEmptyTranslation) Is(target error) bool {
+	var t *ErrEmptyTranslation
+	return errors.As(target, &t)
+}
+
 // ErrUnsupportedLanguage is the terminal sentinel for a target
 // language that is NOT in MultilingualConfig.MaterializeLanguages.
 type ErrUnsupportedLanguage struct {

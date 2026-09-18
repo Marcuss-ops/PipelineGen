@@ -108,6 +108,11 @@ type Client struct {
 	entityExtractionFallbackMode EntityExtractionFallbackMode
 
 	warmModelGroup singleflight.Group
+
+	// admission is this client's share of the process-wide, per-endpoint
+	// in-flight budget for Ollama requests (see admission.go). It is nil for
+	// zero-value clients built in tests, and all its methods are nil-safe.
+	admission *ollamaAdmission
 }
 
 // BaseURL returns the configured Ollama base URL.

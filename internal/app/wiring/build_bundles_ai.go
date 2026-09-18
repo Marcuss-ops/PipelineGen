@@ -4,8 +4,15 @@
 // build_bundles_domain.go per AGENTS.md Pattern 5.
 //
 // godlike/06 SSOT: BuildAIBundle is the single canonical owner of the
-// Ollama + script-gen + translation stack construction, and of the
-// policy → provider/model resolution that stack is built from.
+// Ollama + script-gen + translation stack construction, of the
+// policy → provider/model resolution that stack is built from, and of the
+// composition-root bridge that projects the stack's admission budget onto the
+// canonical Prometheus collectors. That bridge lives here (not in its own
+// file) because it has exactly one caller — BuildAIBundle — exactly like the
+// Artlist downloader metrics adapter lives in its provider file; the metric
+// DEFINITIONS stay owned by internal/platform/observability
+// (policy.yaml::prometheus_boundary), and the ollama client package defines
+// the consumer-side port and never imports the telemetry package.
 package wiring
 
 import (
@@ -16,6 +23,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/models"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/observability"
 
 	"os"
 	"strings"
@@ -37,6 +45,34 @@ import (
 	ytplatform "github.com/Marcuss-ops/PipelineGen/internal/platform/youtube"
 )
 
+// ollamaAdmissionObserver projects the in-flight admission budget of an Ollama
+// endpoint onto Prometheus.
+type ollamaAdmissionObserver struct{}
+
+// AdmissionChanged publishes the ceiling and the current in-flight count.
+func (ollamaAdmissionObserver) AdmissionChanged(endpoint string, limit int, inFlight int64) {
+	observability.OllamaAdmissionLimit.WithLabelValues(endpoint).Set(float64(limit))
+	observability.OllamaAdmissionInFlight.WithLabelValues(endpoint).Set(float64(inFlight))
+}
+
+// AdmissionDeferred counts one request that had to wait for a slot.
+func (ollamaAdmissionObserver) AdmissionDeferred(endpoint string) {
+	observability.OllamaAdmissionDeferredTotal.WithLabelValues(endpoint).Inc()
+}
+
+// observeOllamaAdmission wires the telemetry sink for a client's endpoint.
+//
+// The limiter is shared by every client pointing at the same Ollama URL, so
+// wiring the client the AI bundle builds also covers the pools created by the
+// other bundles (embed, stock enrichment, creator) for that endpoint. A nil
+// client is a no-op: telemetry is optional, the budget is not.
+func observeOllamaAdmission(c *client.Client) {
+	if c == nil {
+		return
+	}
+	c.SetAdmissionObserver(ollamaAdmissionObserver{})
+}
+
 func whisperBridgeVersion(scriptPath string) string {
 	body, err := os.ReadFile(scriptPath)
 	if err != nil {
@@ -56,6 +92,10 @@ func BuildAIBundle(ctx context.Context, cfg *config.Config, dbs *Databases, log 
 	_ = drive
 	ollamaClient := client.NewClient(cfg.External.OllamaURL, cfg.External.OllamaModel, cfg.External.OllamaTimeoutSeconds)
 	ollamaClient.SetNvidiaConfig(cfg.External.UseNvidiaForLLM, cfg.External.NvidiaAPIKey, cfg.External.NvidiaLLMModel)
+	// Publish the endpoint's shared admission budget (limit vs in-flight vs
+	// deferred) so a saturated model server is observable instead of being
+	// diagnosed by feel. One call covers every pool on this endpoint.
+	observeOllamaAdmission(ollamaClient)
 
 	// Dedicated embedding client: uses a separate model (the canonical
 	// the canonical E5 registry entry by default, configurable via
