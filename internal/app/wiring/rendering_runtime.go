@@ -19,23 +19,27 @@ import (
 	"go.uber.org/zap"
 )
 
-// DefaultGPUGateSlots is the conservative overlay GPU concurrency: one
-// exclusive flock, i.e. the historical host-wide serialization.
+// DefaultGPUGateSlots is the measured overlay GPU concurrency: two
+// concurrent holders, i.e. the ceiling validated on the reference host.
 //
-// Raising it is only defensible together with the GPU peers:
+// 2 is the defensible value together with the GPU peers:
 //
-//   - RenderingGen's worker `gpu_lanes` is the measured ceiling (2 on the
-//     reference host — see RenderingGen/renderinggen/config.yaml and
+//   - RenderingGen's worker `gpu_lanes: 2` is the measured ceiling (see
+//     RenderingGen/renderinggen/config.yaml and
 //     RenderingGen/infra/native/renderinggen-native.yaml, which records that
 //     extra lanes add queue wait, VRAM pressure and text-path lock contention
 //     without increasing the render-loop rate);
 //   - a Chronon video job is itself mutex-serialized by the daemon
 //     execution-domain contract
-//     (Chronon3d/apps/chronon3d_cli/daemon/daemon_render_concurrency.hpp).
+//     (Chronon3d/apps/chronon3d_cli/daemon/daemon_render_concurrency.hpp),
+//     so the gain is admission concurrency (less queue wait), not overlapping
+//     Chronon execution.
 //
 // Every process sharing the GPU must therefore be given the SAME
-// RENDERINGGEN_GPU_SLOTS value (see overlays.GPUGate).
-const DefaultGPUGateSlots = 1
+// RENDERINGGEN_GPU_SLOTS value (see overlays.GPUGate). The shipped
+// systemd drop-in `scripts/systemd/pipelinegen.service.d/gpu-slots.conf`
+// pins RENDERINGGEN_GPU_SLOTS=2 to keep the contract byte-identical.
+const DefaultGPUGateSlots = 2
 
 // resolveGPUGateSlots parses RENDERINGGEN_GPU_SLOTS. `explicit` reports whether
 // an operator actually configured a value, so the caller can distinguish "the
@@ -101,10 +105,11 @@ func BuildRenderingRuntime(cfg *config.Config, log *zap.Logger) (*RenderingRunti
 		log.Info("overlay GPU gate slots resolved",
 			zap.Int("slots", slots), zap.String("gpu_lock", lockPath))
 	} else {
-		// Not a failure: the default is the historical serialization. It must be
-		// visible, though, because a peer process given a different value does not
-		// share this GPU admission contract.
-		log.Warn("RENDERINGGEN_GPU_SLOTS is unset: overlay renders serialize on one GPU slot; set it to RenderingGen's worker.gpu_lanes so every process sharing the GPU uses the same admission contract",
+		// Not a failure: the built-in default (DefaultGPUGateSlots) is the
+		// measured overlay concurrency. It must be visible, though, because a
+		// peer process given a different value does not share this GPU admission
+		// contract.
+		log.Warn("RENDERINGGEN_GPU_SLOTS is unset: using the built-in default admission; set it explicitly to RenderingGen's worker.gpu_lanes so every process sharing the GPU declares the same contract",
 			zap.Int("slots", slots), zap.String("gpu_lock", lockPath))
 	}
 	// The media prober certifies every rendered overlay via the canonical
