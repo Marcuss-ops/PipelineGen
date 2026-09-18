@@ -115,3 +115,69 @@ costruzione, non osservabile in clips/min.
   lavoro quando la traccia esiste già.
 - **Massima velocità assoluta: non ancora dichiarabile.** Restano i quattro
   colli nominati sopra, tutti fuori da un checkout.
+
+---
+
+## 5. Refresh 2026-09-18 — dopo la parità di concorrenza
+
+Trigger: il pass di parità GPU/concorrenza ha allineato `DefaultGPUGateSlots`
+1→2, `defaultGlobalRenderConcurrency` 2→4, il tetto `debt_budget` 9→0 e
+svuotato la `max-lines-strict-allowlist`. La matrice è stata ri-eseguita
+sull'albero corrente con lo stesso harness e gli stessi input: **14/14 PASS, 1
+SKIP** (il solo `TestScenario7_ChrononSegmentSeekLive`, DSN/GPU-gated) in **2.5 s**.
+
+### Riproduzione (identica)
+
+```bash
+cd refactored
+VELOX_BENCH_WRITE_REPORT=1 go test ./internal/capabilities/cliprender/ -run TestScenario -count=1
+# → tests/operational/results/cliprender-bench/*.json (sovrascritti)
+```
+
+### Matrice aggiornata (2026-09-18)
+
+| scenario | mode | w | lanes | clips | wall (ms) | clips/min | p50 | p95 | gpu% | Δ vs 09-16 |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|
+| scenario-01-worker-scaling-lanes8-w1 | blocking | 1 | 8 | 24 | 274 | 5 243.8 | 10 | 11 | 11.2 | ≈ |
+| scenario-01-worker-scaling-lanes8-w8 | blocking | 8 | 8 | 24 | **35** | **40 622.1** | 10 | 12 | 89.2 | **+27 %** |
+| scenario-01-worker-scaling-lanes2-w8 | blocking | 8 | 2 | 24 | 128 | 11 191.3 | 42 | 42 | 98.5 | ≈ |
+| scenario-02-submit-settle-render-fast | async | 2 | 8 | 8 | 40 | 11 758.5 | 39 | 40 | 31.4 | — |
+| scenario-02-submit-settle-render-slow | async | 2 | 8 | 8 | 69 | 6 946.6 | 66 | 68 | 92.9 | ≈ |
+| scenario-02-blocking-baseline | blocking | 8 | 8 | 8 | 64 | 7 391.4 | 63 | 64 | 95.3 | ≈ |
+| scenario-09-producers-1 | async | 4 | 2 | 24 | 254 | 5 665.2 | 138 | 243 | 48.6 | ≈ |
+| scenario-09-producers-2 | async | 4 | 2 | 24 | 128 | 11 230.1 | 75 | 127 | 97.8 | +15 % |
+| scenario-09-producers-4 | async | 4 | 2 | 24 | 128 | 11 209.8 | 75 | 128 | 98.0 | +10 % |
+| scenario-09-producers-8 | async | 4 | 2 | 24 | 130 | 11 068.0 | 77 | 129 | 97.9 | ≈ |
+| scenario-10-e2e-1-clips | async | 4 | 8 | 1 | 9 | 6 292.0 | 9 | 9 | 11.8 | ≈ |
+| scenario-10-e2e-50-clips | async | 4 | 8 | 50 | **46** | **64 473.6** | 28 | 41 | 86.3 | **+42 %** |
+
+Il contratto di saturazione della §1 non cambia: con 2 lane la saturazione
+arriva a `producers=2` (97.8 %) e oltre non sale; le lane RenderingGen restano
+il divisore.
+
+### Cache-hit: ms contro secondi
+
+Il costo marginale di un re-render è già a costo zero per costruzione
+(`clip_render_cache`, fingerprint → locator):
+
+| scenario | clips | wall | source_full_hashes | source_downloads | submits | settles |
+|---|---:|---:|---:|---:|---:|---:|
+| scenario-04-sha-cache-hit | 20 | **1 ms** | 1 | 1 | **0** | **0** |
+| scenario-08-cold-vs-warm | 10 | **0 ms** | 1 | 0 | 0 | 0 |
+| scenario-06-transcript-reuse | 10 | **0 ms** | — | 0 | 0 | 0 |
+
+`submits=0` e `settles=0` provano che il path cache-hit **non tocca la lane
+GPU**: il costo è la lettura dell'indice, non il render. A fronte, il render
+completo certificato di una clip misura `render_wall ≈ 3253 ms`
+(`clip-lane-v2-20260917T130907Z`, 240 frame): il rapporto misurato
+cache-hit/render è quindi **~3 ordini di grandezza** (≈1 ms contro ≈3.25 s), non
+un guadagno incrementale.
+
+### Verdetto del refresh
+
+- **Ancora repo-reachable: certificato e migliorato.** +27 % su `lanes8-w8` e
+  +42 % su `e2e-50-clips` rispetto al 2026-09-16, attribuibili alla parità di
+  ammissione GPU e alla concorrenza di render allineate.
+- **I quattro colli della §3 restano invariati** (burn sottotitoli, sonda GOP,
+  `render_job_slots=1` del daemon, matrice live): nessuno è chiudibile da un
+  checkout.

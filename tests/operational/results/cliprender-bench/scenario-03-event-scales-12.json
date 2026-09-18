@@ -1,0 +1,270 @@
+{
+  "scenario": "scenario-03-event-scales-12",
+  "mode": "async",
+  "workers": 2,
+  "waiter_pool": 16,
+  "gpu_lanes": 8,
+  "aggregate_interval_ms": 0,
+  "event_driven": true,
+  "clips": 12,
+  "wall_ms": 10,
+  "clips_per_min": 65989.82491891271,
+  "p50_ms": 7,
+  "p95_ms": 10,
+  "mean_ms": 7,
+  "submit_occupancy_p50_ms": 1,
+  "submit_occupancy_p95_ms": 1,
+  "settle_occupancy_p50_ms": 4,
+  "settle_occupancy_p95_ms": 5,
+  "remote_render_p50_ms": 3,
+  "remote_queue_p95_ms": 1,
+  "parent_finalize_p50_ms": 0,
+  "parent_finalize_p95_ms": 1,
+  "parents_finalized": 12,
+  "gpu_lane_busy_ms": 40,
+  "gpu_lane_utilization_pct": 58.75640448665212,
+  "gpu_lane_idle_pct": 41.24359551334788,
+  "gpu_lane_max_concurrent": 8,
+  "aggregated_fps": 79187.78990269525,
+  "disk_read_bytes": 12288,
+  "disk_write_bytes": 49152,
+  "network_tx_bytes": 49152,
+  "network_rx_bytes": 0,
+  "source_full_hashes": 12,
+  "source_downloads": 12,
+  "submits": 12,
+  "settles": 12,
+  "failures": 0,
+  "started_at": "2026-09-18T07:26:05.494687871Z",
+  "finished_at": "2026-09-18T07:26:05.505626861Z",
+  "clip_runs": [
+    {
+      "index": 0,
+      "run_id": "scenario-03-event-scales-12-clip-0",
+      "phases": {
+        "prepare_ms": 0,
+        "subtitles_ms": 0,
+        "submit_ms": 1,
+        "settle_ms": 4,
+        "render_ms": 3,
+        "artifact_download_ms": 0,
+        "probe_ms": 0,
+        "publish_ms": 0,
+        "queue_wait_ms": 0,
+        "parent_finalize_ms": 1,
+        "worker_slot_occupied_ms": 5
+      },
+      "e2e_ms": 6,
+      "failed": false
+    },
+    {
+      "index": 1,
+      "run_id": "scenario-03-event-scales-12-clip-1",
+      "phases": {
+        "prepare_ms": 0,
+        "subtitles_ms": 0,
+        "submit_ms": 1,
+        "settle_ms": 4,
+        "render_ms": 3,
+        "artifact_download_ms": 0,
+        "probe_ms": 0,
+        "publish_ms": 0,
+        "queue_wait_ms": 0,
+        "parent_finalize_ms": 1,
+        "worker_slot_occupied_ms": 5
+      },
+      "e2e_ms": 7,
+      "failed": false
+    },
+    {
+      "index": 2,
+      "run_id": "scenario-03-event-scales-12-clip-2",
+      "phases": {
+        "prepare_ms": 0,
+        "subtitles_ms": 0,
+        "submit_ms": 0,
+        "settle_ms": 3,
+        "render_ms": 3,
+        "artifact_download_ms": 0,
+        "probe_ms": 0,
+        "publish_ms": 0,
+        "queue_wait_ms": 0,
+        "parent_finalize_ms": 0,
+        "worker_slot_occupied_ms": 3
+      },
+      "e2e_ms": 6,
+      "failed": false
+    },
+    {
+      "index": 3,
+      "run_id": "scenario-03-event-scales-12-clip-3",
+      "phases": {
+        "prepare_ms": 0,
+        "subtitles_ms": 0,
+        "submit_ms": 0,
+        "settle_ms": 3,
+        "render_ms": 3,
+        "artifact_download_ms": 0,
+        "probe_ms": 0,
+        "publish_ms": 0,
+        "queue_wait_ms": 0,
+        "parent_finalize_ms": 1,
+        "worker_slot_occupied_ms": 3
+      },
+      "e2e_ms": 6,
+      "failed": false
+    },
+    {
+      "index": 4,
+      "run_id": "scenario-03-event-scales-12-clip-4",
+      "phases": {
+        "prepare_ms": 0,
+        "subtitles_ms": 0,
+        "submit_ms": 0,
+        "settle_ms": 3,
+        "render_ms": 3,
+        "artifact_download_ms": 0,
+        "probe_ms": 0,
+        "publish_ms": 0,
+        "queue_wait_ms": 0,
+        "parent_finalize_ms": 0,
+        "worker_slot_occupied_ms": 3
+      },
+      "e2e_ms": 6,
+      "failed": false
+    },
+    {
+      "index": 5,
+      "run_id": "scenario-03-event-scales-12-clip-5",
+      "phases": {
+        "prepare_ms": 0,
+        "subtitles_ms": 0,
+        "submit_ms": 0,
+        "settle_ms": 3,
+        "render_ms": 3,
+        "artifact_download_ms": 0,
+        "probe_ms": 0,
+        "publish_ms": 0,
+        "queue_wait_ms": 0,
+        "parent_finalize_ms": 0,
+        "worker_slot_occupied_ms": 3
+      },
+      "e2e_ms": 6,
+      "failed": false
+    },
+    {
+      "index": 6,
+      "run_id": "scenario-03-event-scales-12-clip-6",
+      "phases": {
+        "prepare_ms": 0,
+        "subtitles_ms": 0,
+        "submit_ms": 0,
+        "settle_ms": 4,
+        "render_ms": 4,
+        "artifact_download_ms": 0,
+        "probe_ms": 0,
+        "publish_ms": 0,
+        "queue_wait_ms": 1,
+        "parent_finalize_ms": 0,
+        "worker_slot_occupied_ms": 4
+      },
+      "e2e_ms": 8,
+      "failed": false
+    },
+    {
+      "index": 7,
+      "run_id": "scenario-03-event-scales-12-clip-7",
+      "phases": {
+        "prepare_ms": 0,
+        "subtitles_ms": 0,
+        "submit_ms": 0,
+        "settle_ms": 3,
+        "render_ms": 3,
+        "artifact_download_ms": 0,
+        "probe_ms": 0,
+        "publish_ms": 0,
+        "queue_wait_ms": 0,
+        "parent_finalize_ms": 0,
+        "worker_slot_occupied_ms": 3
+      },
+      "e2e_ms": 7,
+      "failed": false
+    },
+    {
+      "index": 8,
+      "run_id": "scenario-03-event-scales-12-clip-8",
+      "phases": {
+        "prepare_ms": 0,
+        "subtitles_ms": 0,
+        "submit_ms": 0,
+        "settle_ms": 3,
+        "render_ms": 3,
+        "artifact_download_ms": 0,
+        "probe_ms": 0,
+        "publish_ms": 0,
+        "queue_wait_ms": 0,
+        "parent_finalize_ms": 0,
+        "worker_slot_occupied_ms": 3
+      },
+      "e2e_ms": 7,
+      "failed": false
+    },
+    {
+      "index": 9,
+      "run_id": "scenario-03-event-scales-12-clip-9",
+      "phases": {
+        "prepare_ms": 0,
+        "subtitles_ms": 0,
+        "submit_ms": 0,
+        "settle_ms": 5,
+        "render_ms": 5,
+        "artifact_download_ms": 0,
+        "probe_ms": 0,
+        "publish_ms": 0,
+        "queue_wait_ms": 1,
+        "parent_finalize_ms": 0,
+        "worker_slot_occupied_ms": 5
+      },
+      "e2e_ms": 10,
+      "failed": false
+    },
+    {
+      "index": 10,
+      "run_id": "scenario-03-event-scales-12-clip-10",
+      "phases": {
+        "prepare_ms": 0,
+        "subtitles_ms": 0,
+        "submit_ms": 0,
+        "settle_ms": 5,
+        "render_ms": 5,
+        "artifact_download_ms": 0,
+        "probe_ms": 0,
+        "publish_ms": 0,
+        "queue_wait_ms": 1,
+        "parent_finalize_ms": 0,
+        "worker_slot_occupied_ms": 5
+      },
+      "e2e_ms": 10,
+      "failed": false
+    },
+    {
+      "index": 11,
+      "run_id": "scenario-03-event-scales-12-clip-11",
+      "phases": {
+        "prepare_ms": 0,
+        "subtitles_ms": 0,
+        "submit_ms": 0,
+        "settle_ms": 4,
+        "render_ms": 4,
+        "artifact_download_ms": 0,
+        "probe_ms": 0,
+        "publish_ms": 0,
+        "queue_wait_ms": 1,
+        "parent_finalize_ms": 0,
+        "worker_slot_occupied_ms": 4
+      },
+      "e2e_ms": 9,
+      "failed": false
+    }
+  ]
+}

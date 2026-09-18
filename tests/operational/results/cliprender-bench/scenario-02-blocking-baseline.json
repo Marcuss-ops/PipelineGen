@@ -8,10 +8,10 @@
   "event_driven": false,
   "clips": 8,
   "wall_ms": 64,
-  "clips_per_min": 7410.203615722402,
+  "clips_per_min": 7391.440754722769,
   "p50_ms": 63,
   "p95_ms": 64,
-  "mean_ms": 63,
+  "mean_ms": 62,
   "submit_occupancy_p50_ms": 63,
   "submit_occupancy_p95_ms": 64,
   "settle_occupancy_p50_ms": 0,
@@ -21,11 +21,11 @@
   "parent_finalize_p50_ms": 0,
   "parent_finalize_p95_ms": 0,
   "parents_finalized": 0,
-  "gpu_lane_busy_ms": 486,
-  "gpu_lane_utilization_pct": 98.32102333614978,
-  "gpu_lane_idle_pct": 1.678976663850218,
+  "gpu_lane_busy_ms": 484,
+  "gpu_lane_utilization_pct": 95.27342210942557,
+  "gpu_lane_idle_pct": 4.7265778905744344,
   "gpu_lane_max_concurrent": 8,
-  "aggregated_fps": 8892.244338866882,
+  "aggregated_fps": 8869.728905667323,
   "disk_read_bytes": 8192,
   "disk_write_bytes": 32768,
   "network_tx_bytes": 32768,
@@ -35,8 +35,8 @@
   "submits": 8,
   "settles": 8,
   "failures": 0,
-  "started_at": "2026-09-16T16:45:49.871795412Z",
-  "finished_at": "2026-09-16T16:45:49.936596211Z",
+  "started_at": "2026-09-18T07:26:05.093443696Z",
+  "finished_at": "2026-09-18T07:26:05.15840357Z",
   "clip_runs": [
     {
       "index": 0,
@@ -44,17 +44,17 @@
       "phases": {
         "prepare_ms": 0,
         "subtitles_ms": 0,
-        "submit_ms": 63,
+        "submit_ms": 62,
         "settle_ms": 0,
-        "render_ms": 60,
+        "render_ms": 61,
         "artifact_download_ms": 0,
         "probe_ms": 0,
         "publish_ms": 0,
         "queue_wait_ms": 0,
         "parent_finalize_ms": 0,
-        "worker_slot_occupied_ms": 63
+        "worker_slot_occupied_ms": 62
       },
-      "e2e_ms": 63,
+      "e2e_ms": 62,
       "failed": false
     },
     {
@@ -63,17 +63,17 @@
       "phases": {
         "prepare_ms": 0,
         "subtitles_ms": 0,
-        "submit_ms": 64,
+        "submit_ms": 61,
         "settle_ms": 0,
-        "render_ms": 61,
+        "render_ms": 60,
         "artifact_download_ms": 0,
         "probe_ms": 0,
         "publish_ms": 0,
         "queue_wait_ms": 0,
         "parent_finalize_ms": 0,
-        "worker_slot_occupied_ms": 64
+        "worker_slot_occupied_ms": 61
       },
-      "e2e_ms": 64,
+      "e2e_ms": 61,
       "failed": false
     },
     {
@@ -84,7 +84,7 @@
         "subtitles_ms": 0,
         "submit_ms": 63,
         "settle_ms": 0,
-        "render_ms": 61,
+        "render_ms": 60,
         "artifact_download_ms": 0,
         "probe_ms": 0,
         "publish_ms": 0,
@@ -120,6 +120,25 @@
       "phases": {
         "prepare_ms": 0,
         "subtitles_ms": 0,
+        "submit_ms": 63,
+        "settle_ms": 0,
+        "render_ms": 60,
+        "artifact_download_ms": 0,
+        "probe_ms": 0,
+        "publish_ms": 0,
+        "queue_wait_ms": 0,
+        "parent_finalize_ms": 0,
+        "worker_slot_occupied_ms": 63
+      },
+      "e2e_ms": 63,
+      "failed": false
+    },
+    {
+      "index": 5,
+      "run_id": "scenario-02-blocking-baseline-clip-5",
+      "phases": {
+        "prepare_ms": 0,
+        "subtitles_ms": 0,
         "submit_ms": 62,
         "settle_ms": 0,
         "render_ms": 60,
@@ -134,31 +153,12 @@
       "failed": false
     },
     {
-      "index": 5,
-      "run_id": "scenario-02-blocking-baseline-clip-5",
-      "phases": {
-        "prepare_ms": 0,
-        "subtitles_ms": 0,
-        "submit_ms": 63,
-        "settle_ms": 0,
-        "render_ms": 60,
-        "artifact_download_ms": 0,
-        "probe_ms": 0,
-        "publish_ms": 0,
-        "queue_wait_ms": 0,
-        "parent_finalize_ms": 0,
-        "worker_slot_occupied_ms": 63
-      },
-      "e2e_ms": 63,
-      "failed": false
-    },
-    {
       "index": 6,
       "run_id": "scenario-02-blocking-baseline-clip-6",
       "phases": {
-        "prepare_ms": 1,
+        "prepare_ms": 0,
         "subtitles_ms": 0,
-        "submit_ms": 63,
+        "submit_ms": 62,
         "settle_ms": 0,
         "render_ms": 60,
         "artifact_download_ms": 0,
@@ -166,9 +166,9 @@
         "publish_ms": 0,
         "queue_wait_ms": 0,
         "parent_finalize_ms": 0,
-        "worker_slot_occupied_ms": 63
+        "worker_slot_occupied_ms": 62
       },
-      "e2e_ms": 63,
+      "e2e_ms": 62,
       "failed": false
     },
     {

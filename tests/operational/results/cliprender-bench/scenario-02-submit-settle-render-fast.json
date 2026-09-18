@@ -7,25 +7,25 @@
   "aggregate_interval_ms": 0,
   "event_driven": false,
   "clips": 8,
-  "wall_ms": 16,
-  "clips_per_min": 28512.89228245109,
-  "p50_ms": 15,
-  "p95_ms": 16,
-  "mean_ms": 14,
-  "submit_occupancy_p50_ms": 1,
-  "submit_occupancy_p95_ms": 2,
-  "settle_occupancy_p50_ms": 10,
-  "settle_occupancy_p95_ms": 10,
+  "wall_ms": 40,
+  "clips_per_min": 11758.514793754915,
+  "p50_ms": 39,
+  "p95_ms": 40,
+  "mean_ms": 36,
+  "submit_occupancy_p50_ms": 2,
+  "submit_occupancy_p95_ms": 24,
+  "settle_occupancy_p50_ms": 11,
+  "settle_occupancy_p95_ms": 22,
   "remote_render_p50_ms": 10,
   "remote_queue_p95_ms": 0,
   "parent_finalize_p50_ms": 0,
   "parent_finalize_p95_ms": 0,
   "parents_finalized": 0,
-  "gpu_lane_busy_ms": 82,
-  "gpu_lane_utilization_pct": 69.34976646572089,
-  "gpu_lane_idle_pct": 30.650233534279103,
-  "gpu_lane_max_concurrent": 8,
-  "aggregated_fps": 34215.4707389413,
+  "gpu_lane_busy_ms": 94,
+  "gpu_lane_utilization_pct": 31.36489017863891,
+  "gpu_lane_idle_pct": 68.6351098213611,
+  "gpu_lane_max_concurrent": 7,
+  "aggregated_fps": 14110.2177525059,
   "disk_read_bytes": 8192,
   "disk_write_bytes": 32768,
   "network_tx_bytes": 32768,
@@ -35,8 +35,8 @@
   "submits": 8,
   "settles": 8,
   "failures": 0,
-  "started_at": "2026-09-16T16:45:49.786327275Z",
-  "finished_at": "2026-09-16T16:45:49.803180827Z",
+  "started_at": "2026-09-18T07:26:04.980647637Z",
+  "finished_at": "2026-09-18T07:26:05.021495773Z",
   "clip_runs": [
     {
       "index": 0,
@@ -45,25 +45,25 @@
         "prepare_ms": 0,
         "subtitles_ms": 0,
         "submit_ms": 1,
-        "settle_ms": 10,
-        "render_ms": 10,
+        "settle_ms": 22,
+        "render_ms": 21,
         "artifact_download_ms": 0,
         "probe_ms": 0,
         "publish_ms": 0,
         "queue_wait_ms": 0,
         "parent_finalize_ms": 0,
-        "worker_slot_occupied_ms": 11
+        "worker_slot_occupied_ms": 23
       },
-      "e2e_ms": 12,
+      "e2e_ms": 24,
       "failed": false
     },
     {
       "index": 1,
       "run_id": "scenario-02-submit-settle-render-fast-clip-1",
       "phases": {
-        "prepare_ms": 0,
+        "prepare_ms": 1,
         "subtitles_ms": 0,
-        "submit_ms": 1,
+        "submit_ms": 24,
         "settle_ms": 10,
         "render_ms": 10,
         "artifact_download_ms": 0,
@@ -71,18 +71,18 @@
         "publish_ms": 0,
         "queue_wait_ms": 0,
         "parent_finalize_ms": 0,
-        "worker_slot_occupied_ms": 11
+        "worker_slot_occupied_ms": 34
       },
-      "e2e_ms": 12,
+      "e2e_ms": 36,
       "failed": false
     },
     {
       "index": 2,
       "run_id": "scenario-02-submit-settle-render-fast-clip-2",
       "phases": {
-        "prepare_ms": 0,
+        "prepare_ms": 22,
         "subtitles_ms": 0,
-        "submit_ms": 0,
+        "submit_ms": 22,
         "settle_ms": 10,
         "render_ms": 10,
         "artifact_download_ms": 0,
@@ -90,9 +90,9 @@
         "publish_ms": 0,
         "queue_wait_ms": 0,
         "parent_finalize_ms": 0,
-        "worker_slot_occupied_ms": 10
+        "worker_slot_occupied_ms": 32
       },
-      "e2e_ms": 12,
+      "e2e_ms": 36,
       "failed": false
     },
     {
@@ -101,17 +101,17 @@
       "phases": {
         "prepare_ms": 0,
         "subtitles_ms": 0,
-        "submit_ms": 0,
-        "settle_ms": 10,
-        "render_ms": 10,
+        "submit_ms": 2,
+        "settle_ms": 11,
+        "render_ms": 11,
         "artifact_download_ms": 0,
         "probe_ms": 0,
         "publish_ms": 0,
         "queue_wait_ms": 0,
         "parent_finalize_ms": 0,
-        "worker_slot_occupied_ms": 10
+        "worker_slot_occupied_ms": 13
       },
-      "e2e_ms": 13,
+      "e2e_ms": 39,
       "failed": false
     },
     {
@@ -120,17 +120,17 @@
       "phases": {
         "prepare_ms": 0,
         "subtitles_ms": 0,
-        "submit_ms": 1,
-        "settle_ms": 10,
-        "render_ms": 10,
+        "submit_ms": 2,
+        "settle_ms": 11,
+        "render_ms": 11,
         "artifact_download_ms": 0,
         "probe_ms": 0,
         "publish_ms": 0,
         "queue_wait_ms": 0,
         "parent_finalize_ms": 0,
-        "worker_slot_occupied_ms": 11
+        "worker_slot_occupied_ms": 13
       },
-      "e2e_ms": 15,
+      "e2e_ms": 39,
       "failed": false
     },
     {
@@ -139,17 +139,17 @@
       "phases": {
         "prepare_ms": 0,
         "subtitles_ms": 0,
-        "submit_ms": 2,
-        "settle_ms": 10,
+        "submit_ms": 0,
+        "settle_ms": 11,
         "render_ms": 10,
         "artifact_download_ms": 0,
         "probe_ms": 0,
         "publish_ms": 0,
         "queue_wait_ms": 0,
         "parent_finalize_ms": 0,
-        "worker_slot_occupied_ms": 12
+        "worker_slot_occupied_ms": 11
       },
-      "e2e_ms": 16,
+      "e2e_ms": 40,
       "failed": false
     },
     {
@@ -168,7 +168,7 @@
         "parent_finalize_ms": 0,
         "worker_slot_occupied_ms": 10
       },
-      "e2e_ms": 16,
+      "e2e_ms": 39,
       "failed": false
     },
     {
@@ -187,7 +187,7 @@
         "parent_finalize_ms": 0,
         "worker_slot_occupied_ms": 10
       },
-      "e2e_ms": 16,
+      "e2e_ms": 39,
       "failed": false
     }
   ]

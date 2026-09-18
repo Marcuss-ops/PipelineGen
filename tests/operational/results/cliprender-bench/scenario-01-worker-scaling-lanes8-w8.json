@@ -7,13 +7,13 @@
   "aggregate_interval_ms": 0,
   "event_driven": false,
   "clips": 24,
-  "wall_ms": 45,
-  "clips_per_min": 31972.561148022764,
-  "p50_ms": 11,
-  "p95_ms": 17,
-  "mean_ms": 12,
-  "submit_occupancy_p50_ms": 11,
-  "submit_occupancy_p95_ms": 17,
+  "wall_ms": 35,
+  "clips_per_min": 40622.12215890218,
+  "p50_ms": 10,
+  "p95_ms": 12,
+  "mean_ms": 10,
+  "submit_occupancy_p50_ms": 10,
+  "submit_occupancy_p95_ms": 12,
   "settle_occupancy_p50_ms": 0,
   "settle_occupancy_p95_ms": 0,
   "remote_render_p50_ms": 10,
@@ -21,11 +21,11 @@
   "parent_finalize_p50_ms": 0,
   "parent_finalize_p95_ms": 0,
   "parents_finalized": 0,
-  "gpu_lane_busy_ms": 252,
-  "gpu_lane_utilization_pct": 71.69788069362585,
-  "gpu_lane_idle_pct": 28.302119306374152,
+  "gpu_lane_busy_ms": 247,
+  "gpu_lane_utilization_pct": 89.16706815707977,
+  "gpu_lane_idle_pct": 10.832931842920235,
   "gpu_lane_max_concurrent": 8,
-  "aggregated_fps": 38367.07337762732,
+  "aggregated_fps": 48746.546590682614,
   "disk_read_bytes": 24576,
   "disk_write_bytes": 98304,
   "network_tx_bytes": 98304,
@@ -35,8 +35,8 @@
   "submits": 24,
   "settles": 24,
   "failures": 0,
-  "started_at": "2026-09-16T16:45:50.437574937Z",
-  "finished_at": "2026-09-16T16:45:50.482642294Z",
+  "started_at": "2026-09-18T07:26:05.994703193Z",
+  "finished_at": "2026-09-18T07:26:06.030174016Z",
   "clip_runs": [
     {
       "index": 0,
@@ -61,9 +61,9 @@
       "index": 1,
       "run_id": "scenario-01-worker-scaling-lanes8-w8-clip-1",
       "phases": {
-        "prepare_ms": 6,
+        "prepare_ms": 0,
         "subtitles_ms": 0,
-        "submit_ms": 17,
+        "submit_ms": 12,
         "settle_ms": 0,
         "render_ms": 10,
         "artifact_download_ms": 0,
@@ -71,18 +71,18 @@
         "publish_ms": 0,
         "queue_wait_ms": 0,
         "parent_finalize_ms": 0,
-        "worker_slot_occupied_ms": 17
+        "worker_slot_occupied_ms": 12
       },
-      "e2e_ms": 17,
+      "e2e_ms": 12,
       "failed": false
     },
     {
       "index": 2,
       "run_id": "scenario-01-worker-scaling-lanes8-w8-clip-2",
       "phases": {
-        "prepare_ms": 4,
+        "prepare_ms": 0,
         "subtitles_ms": 0,
-        "submit_ms": 17,
+        "submit_ms": 10,
         "settle_ms": 0,
         "render_ms": 10,
         "artifact_download_ms": 0,
@@ -90,9 +90,9 @@
         "publish_ms": 0,
         "queue_wait_ms": 0,
         "parent_finalize_ms": 0,
-        "worker_slot_occupied_ms": 17
+        "worker_slot_occupied_ms": 10
       },
-      "e2e_ms": 17,
+      "e2e_ms": 10,
       "failed": false
     },
     {
@@ -101,7 +101,7 @@
       "phases": {
         "prepare_ms": 0,
         "subtitles_ms": 0,
-        "submit_ms": 17,
+        "submit_ms": 12,
         "settle_ms": 0,
         "render_ms": 10,
         "artifact_download_ms": 0,
@@ -109,9 +109,9 @@
         "publish_ms": 0,
         "queue_wait_ms": 0,
         "parent_finalize_ms": 0,
-        "worker_slot_occupied_ms": 17
+        "worker_slot_occupied_ms": 12
       },
-      "e2e_ms": 17,
+      "e2e_ms": 12,
       "failed": false
     },
     {
@@ -120,7 +120,7 @@
       "phases": {
         "prepare_ms": 0,
         "subtitles_ms": 0,
-        "submit_ms": 16,
+        "submit_ms": 12,
         "settle_ms": 0,
         "render_ms": 10,
         "artifact_download_ms": 0,
@@ -128,9 +128,9 @@
         "publish_ms": 0,
         "queue_wait_ms": 0,
         "parent_finalize_ms": 0,
-        "worker_slot_occupied_ms": 16
+        "worker_slot_occupied_ms": 12
       },
-      "e2e_ms": 16,
+      "e2e_ms": 12,
       "failed": false
     },
     {
@@ -139,7 +139,7 @@
       "phases": {
         "prepare_ms": 0,
         "subtitles_ms": 0,
-        "submit_ms": 17,
+        "submit_ms": 10,
         "settle_ms": 0,
         "render_ms": 10,
         "artifact_download_ms": 0,
@@ -147,9 +147,9 @@
         "publish_ms": 0,
         "queue_wait_ms": 0,
         "parent_finalize_ms": 0,
-        "worker_slot_occupied_ms": 17
+        "worker_slot_occupied_ms": 10
       },
-      "e2e_ms": 17,
+      "e2e_ms": 10,
       "failed": false
     },
     {
@@ -158,26 +158,7 @@
       "phases": {
         "prepare_ms": 0,
         "subtitles_ms": 0,
-        "submit_ms": 16,
-        "settle_ms": 0,
-        "render_ms": 11,
-        "artifact_download_ms": 0,
-        "probe_ms": 0,
-        "publish_ms": 0,
-        "queue_wait_ms": 0,
-        "parent_finalize_ms": 0,
-        "worker_slot_occupied_ms": 16
-      },
-      "e2e_ms": 16,
-      "failed": false
-    },
-    {
-      "index": 7,
-      "run_id": "scenario-01-worker-scaling-lanes8-w8-clip-7",
-      "phases": {
-        "prepare_ms": 6,
-        "subtitles_ms": 0,
-        "submit_ms": 18,
+        "submit_ms": 12,
         "settle_ms": 0,
         "render_ms": 10,
         "artifact_download_ms": 0,
@@ -185,9 +166,28 @@
         "publish_ms": 0,
         "queue_wait_ms": 0,
         "parent_finalize_ms": 0,
-        "worker_slot_occupied_ms": 18
+        "worker_slot_occupied_ms": 12
       },
-      "e2e_ms": 18,
+      "e2e_ms": 12,
+      "failed": false
+    },
+    {
+      "index": 7,
+      "run_id": "scenario-01-worker-scaling-lanes8-w8-clip-7",
+      "phases": {
+        "prepare_ms": 0,
+        "subtitles_ms": 0,
+        "submit_ms": 10,
+        "settle_ms": 0,
+        "render_ms": 10,
+        "artifact_download_ms": 0,
+        "probe_ms": 0,
+        "publish_ms": 0,
+        "queue_wait_ms": 0,
+        "parent_finalize_ms": 0,
+        "worker_slot_occupied_ms": 10
+      },
+      "e2e_ms": 10,
       "failed": false
     },
     {
@@ -215,7 +215,7 @@
       "phases": {
         "prepare_ms": 0,
         "subtitles_ms": 0,
-        "submit_ms": 11,
+        "submit_ms": 10,
         "settle_ms": 0,
         "render_ms": 10,
         "artifact_download_ms": 0,
@@ -223,9 +223,9 @@
         "publish_ms": 0,
         "queue_wait_ms": 0,
         "parent_finalize_ms": 0,
-        "worker_slot_occupied_ms": 11
+        "worker_slot_occupied_ms": 10
       },
-      "e2e_ms": 11,
+      "e2e_ms": 10,
       "failed": false
     },
     {
@@ -234,25 +234,6 @@
       "phases": {
         "prepare_ms": 0,
         "subtitles_ms": 0,
-        "submit_ms": 12,
-        "settle_ms": 0,
-        "render_ms": 11,
-        "artifact_download_ms": 0,
-        "probe_ms": 0,
-        "publish_ms": 0,
-        "queue_wait_ms": 0,
-        "parent_finalize_ms": 0,
-        "worker_slot_occupied_ms": 12
-      },
-      "e2e_ms": 12,
-      "failed": false
-    },
-    {
-      "index": 11,
-      "run_id": "scenario-01-worker-scaling-lanes8-w8-clip-11",
-      "phases": {
-        "prepare_ms": 0,
-        "subtitles_ms": 0,
         "submit_ms": 11,
         "settle_ms": 0,
         "render_ms": 10,
@@ -267,22 +248,41 @@
       "failed": false
     },
     {
-      "index": 12,
-      "run_id": "scenario-01-worker-scaling-lanes8-w8-clip-12",
+      "index": 11,
+      "run_id": "scenario-01-worker-scaling-lanes8-w8-clip-11",
       "phases": {
         "prepare_ms": 0,
         "subtitles_ms": 0,
-        "submit_ms": 12,
+        "submit_ms": 10,
         "settle_ms": 0,
-        "render_ms": 11,
+        "render_ms": 10,
         "artifact_download_ms": 0,
         "probe_ms": 0,
         "publish_ms": 0,
         "queue_wait_ms": 0,
         "parent_finalize_ms": 0,
-        "worker_slot_occupied_ms": 12
+        "worker_slot_occupied_ms": 10
       },
-      "e2e_ms": 12,
+      "e2e_ms": 10,
+      "failed": false
+    },
+    {
+      "index": 12,
+      "run_id": "scenario-01-worker-scaling-lanes8-w8-clip-12",
+      "phases": {
+        "prepare_ms": 0,
+        "subtitles_ms": 0,
+        "submit_ms": 11,
+        "settle_ms": 0,
+        "render_ms": 10,
+        "artifact_download_ms": 0,
+        "probe_ms": 0,
+        "publish_ms": 0,
+        "queue_wait_ms": 0,
+        "parent_finalize_ms": 0,
+        "worker_slot_occupied_ms": 11
+      },
+      "e2e_ms": 11,
       "failed": false
     },
     {
@@ -310,7 +310,7 @@
       "phases": {
         "prepare_ms": 0,
         "subtitles_ms": 0,
-        "submit_ms": 10,
+        "submit_ms": 11,
         "settle_ms": 0,
         "render_ms": 10,
         "artifact_download_ms": 0,
@@ -318,9 +318,9 @@
         "publish_ms": 0,
         "queue_wait_ms": 0,
         "parent_finalize_ms": 0,
-        "worker_slot_occupied_ms": 10
+        "worker_slot_occupied_ms": 11
       },
-      "e2e_ms": 10,
+      "e2e_ms": 11,
       "failed": false
     },
     {
@@ -331,7 +331,7 @@
         "subtitles_ms": 0,
         "submit_ms": 11,
         "settle_ms": 0,
-        "render_ms": 11,
+        "render_ms": 10,
         "artifact_download_ms": 0,
         "probe_ms": 0,
         "publish_ms": 0,
@@ -348,7 +348,7 @@
       "phases": {
         "prepare_ms": 0,
         "subtitles_ms": 0,
-        "submit_ms": 12,
+        "submit_ms": 10,
         "settle_ms": 0,
         "render_ms": 10,
         "artifact_download_ms": 0,
@@ -356,9 +356,9 @@
         "publish_ms": 0,
         "queue_wait_ms": 0,
         "parent_finalize_ms": 0,
-        "worker_slot_occupied_ms": 12
+        "worker_slot_occupied_ms": 10
       },
-      "e2e_ms": 12,
+      "e2e_ms": 10,
       "failed": false
     },
     {
@@ -386,7 +386,7 @@
       "phases": {
         "prepare_ms": 0,
         "subtitles_ms": 0,
-        "submit_ms": 11,
+        "submit_ms": 10,
         "settle_ms": 0,
         "render_ms": 10,
         "artifact_download_ms": 0,
@@ -394,9 +394,9 @@
         "publish_ms": 0,
         "queue_wait_ms": 0,
         "parent_finalize_ms": 0,
-        "worker_slot_occupied_ms": 11
+        "worker_slot_occupied_ms": 10
       },
-      "e2e_ms": 11,
+      "e2e_ms": 10,
       "failed": false
     },
     {
@@ -443,7 +443,7 @@
       "phases": {
         "prepare_ms": 0,
         "subtitles_ms": 0,
-        "submit_ms": 11,
+        "submit_ms": 10,
         "settle_ms": 0,
         "render_ms": 10,
         "artifact_download_ms": 0,
@@ -451,9 +451,9 @@
         "publish_ms": 0,
         "queue_wait_ms": 0,
         "parent_finalize_ms": 0,
-        "worker_slot_occupied_ms": 11
+        "worker_slot_occupied_ms": 10
       },
-      "e2e_ms": 11,
+      "e2e_ms": 10,
       "failed": false
     },
     {

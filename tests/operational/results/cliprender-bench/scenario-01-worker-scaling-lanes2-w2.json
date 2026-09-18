@@ -7,13 +7,13 @@
   "aggregate_interval_ms": 0,
   "event_driven": false,
   "clips": 24,
-  "wall_ms": 137,
-  "clips_per_min": 10461.05874152548,
+  "wall_ms": 135,
+  "clips_per_min": 10634.713998863976,
   "p50_ms": 11,
-  "p95_ms": 12,
+  "p95_ms": 11,
   "mean_ms": 10,
   "submit_occupancy_p50_ms": 11,
-  "submit_occupancy_p95_ms": 12,
+  "submit_occupancy_p95_ms": 11,
   "settle_occupancy_p50_ms": 0,
   "settle_occupancy_p95_ms": 0,
   "remote_render_p50_ms": 10,
@@ -22,10 +22,10 @@
   "parent_finalize_p95_ms": 0,
   "parents_finalized": 0,
   "gpu_lane_busy_ms": 247,
-  "gpu_lane_utilization_pct": 90.76062540553151,
-  "gpu_lane_idle_pct": 9.239374594468487,
+  "gpu_lane_utilization_pct": 91.8510483873529,
+  "gpu_lane_idle_pct": 8.148951612647092,
   "gpu_lane_max_concurrent": 2,
-  "aggregated_fps": 12553.270489830576,
+  "aggregated_fps": 12761.65679863677,
   "disk_read_bytes": 24576,
   "disk_write_bytes": 98304,
   "network_tx_bytes": 98304,
@@ -35,8 +35,8 @@
   "submits": 24,
   "settles": 24,
   "failures": 0,
-  "started_at": "2026-09-16T16:45:50.767046831Z",
-  "finished_at": "2026-09-16T16:45:50.904731547Z",
+  "started_at": "2026-09-18T07:26:06.29595654Z",
+  "finished_at": "2026-09-18T07:26:06.431390078Z",
   "clip_runs": [
     {
       "index": 0,
@@ -44,7 +44,7 @@
       "phases": {
         "prepare_ms": 0,
         "subtitles_ms": 0,
-        "submit_ms": 11,
+        "submit_ms": 10,
         "settle_ms": 0,
         "render_ms": 10,
         "artifact_download_ms": 0,
@@ -52,9 +52,9 @@
         "publish_ms": 0,
         "queue_wait_ms": 0,
         "parent_finalize_ms": 0,
-        "worker_slot_occupied_ms": 11
+        "worker_slot_occupied_ms": 10
       },
-      "e2e_ms": 11,
+      "e2e_ms": 10,
       "failed": false
     },
     {
@@ -63,7 +63,7 @@
       "phases": {
         "prepare_ms": 0,
         "subtitles_ms": 0,
-        "submit_ms": 12,
+        "submit_ms": 10,
         "settle_ms": 0,
         "render_ms": 10,
         "artifact_download_ms": 0,
@@ -71,9 +71,9 @@
         "publish_ms": 0,
         "queue_wait_ms": 0,
         "parent_finalize_ms": 0,
-        "worker_slot_occupied_ms": 12
+        "worker_slot_occupied_ms": 10
       },
-      "e2e_ms": 12,
+      "e2e_ms": 10,
       "failed": false
     },
     {
@@ -101,7 +101,7 @@
       "phases": {
         "prepare_ms": 0,
         "subtitles_ms": 0,
-        "submit_ms": 10,
+        "submit_ms": 11,
         "settle_ms": 0,
         "render_ms": 10,
         "artifact_download_ms": 0,
@@ -109,9 +109,9 @@
         "publish_ms": 0,
         "queue_wait_ms": 0,
         "parent_finalize_ms": 0,
-        "worker_slot_occupied_ms": 10
+        "worker_slot_occupied_ms": 11
       },
-      "e2e_ms": 10,
+      "e2e_ms": 11,
       "failed": false
     },
     {
@@ -177,7 +177,7 @@
       "phases": {
         "prepare_ms": 0,
         "subtitles_ms": 0,
-        "submit_ms": 10,
+        "submit_ms": 11,
         "settle_ms": 0,
         "render_ms": 10,
         "artifact_download_ms": 0,
@@ -185,9 +185,9 @@
         "publish_ms": 0,
         "queue_wait_ms": 0,
         "parent_finalize_ms": 0,
-        "worker_slot_occupied_ms": 10
+        "worker_slot_occupied_ms": 11
       },
-      "e2e_ms": 10,
+      "e2e_ms": 11,
       "failed": false
     },
     {
@@ -234,7 +234,7 @@
       "phases": {
         "prepare_ms": 0,
         "subtitles_ms": 0,
-        "submit_ms": 11,
+        "submit_ms": 10,
         "settle_ms": 0,
         "render_ms": 10,
         "artifact_download_ms": 0,
@@ -242,9 +242,9 @@
         "publish_ms": 0,
         "queue_wait_ms": 0,
         "parent_finalize_ms": 0,
-        "worker_slot_occupied_ms": 11
+        "worker_slot_occupied_ms": 10
       },
-      "e2e_ms": 11,
+      "e2e_ms": 10,
       "failed": false
     },
     {
@@ -253,7 +253,7 @@
       "phases": {
         "prepare_ms": 0,
         "subtitles_ms": 0,
-        "submit_ms": 11,
+        "submit_ms": 10,
         "settle_ms": 0,
         "render_ms": 10,
         "artifact_download_ms": 0,
@@ -261,9 +261,9 @@
         "publish_ms": 0,
         "queue_wait_ms": 0,
         "parent_finalize_ms": 0,
-        "worker_slot_occupied_ms": 11
+        "worker_slot_occupied_ms": 10
       },
-      "e2e_ms": 11,
+      "e2e_ms": 10,
       "failed": false
     },
     {
@@ -310,7 +310,7 @@
       "phases": {
         "prepare_ms": 0,
         "subtitles_ms": 0,
-        "submit_ms": 11,
+        "submit_ms": 10,
         "settle_ms": 0,
         "render_ms": 10,
         "artifact_download_ms": 0,
@@ -318,9 +318,9 @@
         "publish_ms": 0,
         "queue_wait_ms": 0,
         "parent_finalize_ms": 0,
-        "worker_slot_occupied_ms": 11
+        "worker_slot_occupied_ms": 10
       },
-      "e2e_ms": 11,
+      "e2e_ms": 10,
       "failed": false
     },
     {
@@ -329,7 +329,7 @@
       "phases": {
         "prepare_ms": 0,
         "subtitles_ms": 0,
-        "submit_ms": 12,
+        "submit_ms": 10,
         "settle_ms": 0,
         "render_ms": 10,
         "artifact_download_ms": 0,
@@ -337,9 +337,9 @@
         "publish_ms": 0,
         "queue_wait_ms": 0,
         "parent_finalize_ms": 0,
-        "worker_slot_occupied_ms": 12
+        "worker_slot_occupied_ms": 10
       },
-      "e2e_ms": 12,
+      "e2e_ms": 10,
       "failed": false
     },
     {
@@ -367,7 +367,7 @@
       "phases": {
         "prepare_ms": 0,
         "subtitles_ms": 0,
-        "submit_ms": 11,
+        "submit_ms": 10,
         "settle_ms": 0,
         "render_ms": 10,
         "artifact_download_ms": 0,
@@ -375,9 +375,9 @@
         "publish_ms": 0,
         "queue_wait_ms": 0,
         "parent_finalize_ms": 0,
-        "worker_slot_occupied_ms": 11
+        "worker_slot_occupied_ms": 10
       },
-      "e2e_ms": 11,
+      "e2e_ms": 10,
       "failed": false
     },
     {
@@ -443,7 +443,7 @@
       "phases": {
         "prepare_ms": 0,
         "subtitles_ms": 0,
-        "submit_ms": 11,
+        "submit_ms": 10,
         "settle_ms": 0,
         "render_ms": 10,
         "artifact_download_ms": 0,
@@ -451,9 +451,9 @@
         "publish_ms": 0,
         "queue_wait_ms": 0,
         "parent_finalize_ms": 0,
-        "worker_slot_occupied_ms": 11
+        "worker_slot_occupied_ms": 10
       },
-      "e2e_ms": 11,
+      "e2e_ms": 10,
       "failed": false
     },
     {
@@ -462,7 +462,7 @@
       "phases": {
         "prepare_ms": 0,
         "subtitles_ms": 0,
-        "submit_ms": 11,
+        "submit_ms": 10,
         "settle_ms": 0,
         "render_ms": 10,
         "artifact_download_ms": 0,
@@ -470,9 +470,9 @@
         "publish_ms": 0,
         "queue_wait_ms": 0,
         "parent_finalize_ms": 0,
-        "worker_slot_occupied_ms": 11
+        "worker_slot_occupied_ms": 10
       },
-      "e2e_ms": 11,
+      "e2e_ms": 10,
       "failed": false
     },
     {

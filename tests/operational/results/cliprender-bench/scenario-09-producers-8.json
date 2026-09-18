@@ -7,25 +7,25 @@
   "aggregate_interval_ms": 0,
   "event_driven": false,
   "clips": 24,
-  "wall_ms": 132,
-  "clips_per_min": 10884.648770600843,
-  "p50_ms": 78,
-  "p95_ms": 131,
-  "mean_ms": 72,
-  "submit_occupancy_p50_ms": 1,
+  "wall_ms": 130,
+  "clips_per_min": 11067.968749651725,
+  "p50_ms": 77,
+  "p95_ms": 129,
+  "mean_ms": 71,
+  "submit_occupancy_p50_ms": 2,
   "submit_occupancy_p95_ms": 3,
-  "settle_occupancy_p50_ms": 42,
-  "settle_occupancy_p95_ms": 43,
+  "settle_occupancy_p50_ms": 41,
+  "settle_occupancy_p95_ms": 42,
   "remote_render_p50_ms": 10,
-  "remote_queue_p95_ms": 32,
+  "remote_queue_p95_ms": 31,
   "parent_finalize_p50_ms": 0,
   "parent_finalize_p95_ms": 0,
   "parents_finalized": 0,
-  "gpu_lane_busy_ms": 252,
-  "gpu_lane_utilization_pct": 97.21342939610284,
-  "gpu_lane_idle_pct": 2.786570603897154,
+  "gpu_lane_busy_ms": 249,
+  "gpu_lane_utilization_pct": 97.89839944634267,
+  "gpu_lane_idle_pct": 2.1016005536573346,
   "gpu_lane_max_concurrent": 2,
-  "aggregated_fps": 13061.57852472101,
+  "aggregated_fps": 13281.562499582069,
   "disk_read_bytes": 24576,
   "disk_write_bytes": 98304,
   "network_tx_bytes": 98304,
@@ -35,8 +35,8 @@
   "submits": 24,
   "settles": 24,
   "failures": 0,
-  "started_at": "2026-09-16T16:45:51.756011279Z",
-  "finished_at": "2026-09-16T16:45:51.888342691Z",
+  "started_at": "2026-09-18T07:26:07.211386383Z",
+  "finished_at": "2026-09-18T07:26:07.341546087Z",
   "clip_runs": [
     {
       "index": 0,
@@ -44,15 +44,15 @@
       "phases": {
         "prepare_ms": 2,
         "subtitles_ms": 0,
-        "submit_ms": 3,
+        "submit_ms": 2,
         "settle_ms": 21,
         "render_ms": 21,
         "artifact_download_ms": 0,
         "probe_ms": 0,
         "publish_ms": 0,
-        "queue_wait_ms": 10,
+        "queue_wait_ms": 11,
         "parent_finalize_ms": 0,
-        "worker_slot_occupied_ms": 24
+        "worker_slot_occupied_ms": 23
       },
       "e2e_ms": 24,
       "failed": false
@@ -64,6 +64,25 @@
         "prepare_ms": 2,
         "subtitles_ms": 0,
         "submit_ms": 2,
+        "settle_ms": 21,
+        "render_ms": 21,
+        "artifact_download_ms": 0,
+        "probe_ms": 0,
+        "publish_ms": 0,
+        "queue_wait_ms": 10,
+        "parent_finalize_ms": 0,
+        "worker_slot_occupied_ms": 23
+      },
+      "e2e_ms": 24,
+      "failed": false
+    },
+    {
+      "index": 2,
+      "run_id": "scenario-09-producers-8-clip-2",
+      "phases": {
+        "prepare_ms": 1,
+        "subtitles_ms": 0,
+        "submit_ms": 2,
         "settle_ms": 10,
         "render_ms": 10,
         "artifact_download_ms": 0,
@@ -73,12 +92,12 @@
         "parent_finalize_ms": 0,
         "worker_slot_occupied_ms": 12
       },
-      "e2e_ms": 14,
+      "e2e_ms": 13,
       "failed": false
     },
     {
-      "index": 2,
-      "run_id": "scenario-09-producers-8-clip-2",
+      "index": 3,
+      "run_id": "scenario-09-producers-8-clip-3",
       "phases": {
         "prepare_ms": 1,
         "subtitles_ms": 0,
@@ -96,39 +115,20 @@
       "failed": false
     },
     {
-      "index": 3,
-      "run_id": "scenario-09-producers-8-clip-3",
-      "phases": {
-        "prepare_ms": 2,
-        "subtitles_ms": 0,
-        "submit_ms": 2,
-        "settle_ms": 21,
-        "render_ms": 20,
-        "artifact_download_ms": 0,
-        "probe_ms": 0,
-        "publish_ms": 0,
-        "queue_wait_ms": 10,
-        "parent_finalize_ms": 0,
-        "worker_slot_occupied_ms": 23
-      },
-      "e2e_ms": 24,
-      "failed": false
-    },
-    {
       "index": 4,
       "run_id": "scenario-09-producers-8-clip-4",
       "phases": {
         "prepare_ms": 1,
         "subtitles_ms": 0,
         "submit_ms": 1,
-        "settle_ms": 30,
-        "render_ms": 30,
+        "settle_ms": 29,
+        "render_ms": 28,
         "artifact_download_ms": 0,
         "probe_ms": 0,
         "publish_ms": 0,
-        "queue_wait_ms": 20,
+        "queue_wait_ms": 18,
         "parent_finalize_ms": 0,
-        "worker_slot_occupied_ms": 31
+        "worker_slot_occupied_ms": 30
       },
       "e2e_ms": 35,
       "failed": false
@@ -140,14 +140,14 @@
         "prepare_ms": 1,
         "subtitles_ms": 0,
         "submit_ms": 1,
-        "settle_ms": 40,
-        "render_ms": 40,
+        "settle_ms": 39,
+        "render_ms": 39,
         "artifact_download_ms": 0,
         "probe_ms": 0,
         "publish_ms": 0,
-        "queue_wait_ms": 30,
+        "queue_wait_ms": 28,
         "parent_finalize_ms": 0,
-        "worker_slot_occupied_ms": 41
+        "worker_slot_occupied_ms": 40
       },
       "e2e_ms": 45,
       "failed": false
@@ -159,40 +159,78 @@
         "prepare_ms": 1,
         "subtitles_ms": 0,
         "submit_ms": 1,
-        "settle_ms": 40,
-        "render_ms": 40,
+        "settle_ms": 29,
+        "render_ms": 28,
         "artifact_download_ms": 0,
         "probe_ms": 0,
         "publish_ms": 0,
-        "queue_wait_ms": 30,
+        "queue_wait_ms": 18,
         "parent_finalize_ms": 0,
-        "worker_slot_occupied_ms": 41
+        "worker_slot_occupied_ms": 30
       },
-      "e2e_ms": 45,
+      "e2e_ms": 35,
       "failed": false
     },
     {
       "index": 7,
       "run_id": "scenario-09-producers-8-clip-7",
       "phases": {
-        "prepare_ms": 1,
+        "prepare_ms": 2,
         "subtitles_ms": 0,
-        "submit_ms": 1,
-        "settle_ms": 30,
-        "render_ms": 30,
+        "submit_ms": 3,
+        "settle_ms": 42,
+        "render_ms": 42,
         "artifact_download_ms": 0,
         "probe_ms": 0,
         "publish_ms": 0,
-        "queue_wait_ms": 19,
+        "queue_wait_ms": 31,
         "parent_finalize_ms": 0,
-        "worker_slot_occupied_ms": 31
+        "worker_slot_occupied_ms": 45
       },
-      "e2e_ms": 35,
+      "e2e_ms": 56,
       "failed": false
     },
     {
       "index": 8,
       "run_id": "scenario-09-producers-8-clip-8",
+      "phases": {
+        "prepare_ms": 1,
+        "subtitles_ms": 0,
+        "submit_ms": 1,
+        "settle_ms": 39,
+        "render_ms": 39,
+        "artifact_download_ms": 0,
+        "probe_ms": 0,
+        "publish_ms": 0,
+        "queue_wait_ms": 28,
+        "parent_finalize_ms": 0,
+        "worker_slot_occupied_ms": 40
+      },
+      "e2e_ms": 45,
+      "failed": false
+    },
+    {
+      "index": 9,
+      "run_id": "scenario-09-producers-8-clip-9",
+      "phases": {
+        "prepare_ms": 3,
+        "subtitles_ms": 0,
+        "submit_ms": 3,
+        "settle_ms": 41,
+        "render_ms": 40,
+        "artifact_download_ms": 0,
+        "probe_ms": 0,
+        "publish_ms": 0,
+        "queue_wait_ms": 30,
+        "parent_finalize_ms": 0,
+        "worker_slot_occupied_ms": 44
+      },
+      "e2e_ms": 56,
+      "failed": false
+    },
+    {
+      "index": 10,
+      "run_id": "scenario-09-producers-8-clip-10",
       "phases": {
         "prepare_ms": 1,
         "subtitles_ms": 0,
@@ -206,12 +244,12 @@
         "parent_finalize_ms": 0,
         "worker_slot_occupied_ms": 44
       },
-      "e2e_ms": 57,
+      "e2e_ms": 66,
       "failed": false
     },
     {
-      "index": 9,
-      "run_id": "scenario-09-producers-8-clip-9",
+      "index": 11,
+      "run_id": "scenario-09-producers-8-clip-11",
       "phases": {
         "prepare_ms": 1,
         "subtitles_ms": 0,
@@ -225,45 +263,7 @@
         "parent_finalize_ms": 0,
         "worker_slot_occupied_ms": 43
       },
-      "e2e_ms": 57,
-      "failed": false
-    },
-    {
-      "index": 10,
-      "run_id": "scenario-09-producers-8-clip-10",
-      "phases": {
-        "prepare_ms": 1,
-        "subtitles_ms": 0,
-        "submit_ms": 1,
-        "settle_ms": 43,
-        "render_ms": 43,
-        "artifact_download_ms": 0,
-        "probe_ms": 0,
-        "publish_ms": 0,
-        "queue_wait_ms": 32,
-        "parent_finalize_ms": 0,
-        "worker_slot_occupied_ms": 44
-      },
-      "e2e_ms": 67,
-      "failed": false
-    },
-    {
-      "index": 11,
-      "run_id": "scenario-09-producers-8-clip-11",
-      "phases": {
-        "prepare_ms": 1,
-        "subtitles_ms": 0,
-        "submit_ms": 3,
-        "settle_ms": 42,
-        "render_ms": 42,
-        "artifact_download_ms": 0,
-        "probe_ms": 0,
-        "publish_ms": 0,
-        "queue_wait_ms": 32,
-        "parent_finalize_ms": 0,
-        "worker_slot_occupied_ms": 45
-      },
-      "e2e_ms": 67,
+      "e2e_ms": 66,
       "failed": false
     },
     {
@@ -278,11 +278,11 @@
         "artifact_download_ms": 0,
         "probe_ms": 0,
         "publish_ms": 0,
-        "queue_wait_ms": 32,
+        "queue_wait_ms": 31,
         "parent_finalize_ms": 0,
         "worker_slot_occupied_ms": 43
       },
-      "e2e_ms": 78,
+      "e2e_ms": 77,
       "failed": false
     },
     {
@@ -291,17 +291,17 @@
       "phases": {
         "prepare_ms": 1,
         "subtitles_ms": 0,
-        "submit_ms": 1,
-        "settle_ms": 43,
+        "submit_ms": 2,
+        "settle_ms": 42,
         "render_ms": 42,
         "artifact_download_ms": 0,
         "probe_ms": 0,
         "publish_ms": 0,
-        "queue_wait_ms": 32,
+        "queue_wait_ms": 31,
         "parent_finalize_ms": 0,
         "worker_slot_occupied_ms": 44
       },
-      "e2e_ms": 78,
+      "e2e_ms": 87,
       "failed": false
     },
     {
@@ -311,59 +311,21 @@
         "prepare_ms": 1,
         "subtitles_ms": 0,
         "submit_ms": 1,
-        "settle_ms": 43,
-        "render_ms": 43,
-        "artifact_download_ms": 0,
-        "probe_ms": 0,
-        "publish_ms": 0,
-        "queue_wait_ms": 32,
-        "parent_finalize_ms": 0,
-        "worker_slot_occupied_ms": 44
-      },
-      "e2e_ms": 89,
-      "failed": false
-    },
-    {
-      "index": 15,
-      "run_id": "scenario-09-producers-8-clip-15",
-      "phases": {
-        "prepare_ms": 1,
-        "subtitles_ms": 0,
-        "submit_ms": 2,
-        "settle_ms": 43,
-        "render_ms": 42,
-        "artifact_download_ms": 0,
-        "probe_ms": 0,
-        "publish_ms": 0,
-        "queue_wait_ms": 32,
-        "parent_finalize_ms": 0,
-        "worker_slot_occupied_ms": 45
-      },
-      "e2e_ms": 89,
-      "failed": false
-    },
-    {
-      "index": 16,
-      "run_id": "scenario-09-producers-8-clip-16",
-      "phases": {
-        "prepare_ms": 1,
-        "subtitles_ms": 0,
-        "submit_ms": 2,
         "settle_ms": 42,
         "render_ms": 42,
         "artifact_download_ms": 0,
         "probe_ms": 0,
         "publish_ms": 0,
-        "queue_wait_ms": 32,
+        "queue_wait_ms": 31,
         "parent_finalize_ms": 0,
-        "worker_slot_occupied_ms": 44
+        "worker_slot_occupied_ms": 43
       },
-      "e2e_ms": 99,
+      "e2e_ms": 77,
       "failed": false
     },
     {
-      "index": 17,
-      "run_id": "scenario-09-producers-8-clip-17",
+      "index": 15,
+      "run_id": "scenario-09-producers-8-clip-15",
       "phases": {
         "prepare_ms": 2,
         "subtitles_ms": 0,
@@ -373,54 +335,35 @@
         "artifact_download_ms": 0,
         "probe_ms": 0,
         "publish_ms": 0,
-        "queue_wait_ms": 32,
+        "queue_wait_ms": 31,
         "parent_finalize_ms": 0,
         "worker_slot_occupied_ms": 44
       },
-      "e2e_ms": 110,
+      "e2e_ms": 98,
       "failed": false
     },
     {
-      "index": 18,
-      "run_id": "scenario-09-producers-8-clip-18",
+      "index": 16,
+      "run_id": "scenario-09-producers-8-clip-16",
       "phases": {
         "prepare_ms": 1,
         "subtitles_ms": 0,
         "submit_ms": 1,
-        "settle_ms": 43,
+        "settle_ms": 42,
         "render_ms": 42,
         "artifact_download_ms": 0,
         "probe_ms": 0,
         "publish_ms": 0,
-        "queue_wait_ms": 32,
+        "queue_wait_ms": 31,
         "parent_finalize_ms": 0,
-        "worker_slot_occupied_ms": 44
+        "worker_slot_occupied_ms": 43
       },
-      "e2e_ms": 100,
+      "e2e_ms": 87,
       "failed": false
     },
     {
-      "index": 19,
-      "run_id": "scenario-09-producers-8-clip-19",
-      "phases": {
-        "prepare_ms": 1,
-        "subtitles_ms": 0,
-        "submit_ms": 1,
-        "settle_ms": 43,
-        "render_ms": 43,
-        "artifact_download_ms": 0,
-        "probe_ms": 0,
-        "publish_ms": 0,
-        "queue_wait_ms": 32,
-        "parent_finalize_ms": 0,
-        "worker_slot_occupied_ms": 44
-      },
-      "e2e_ms": 110,
-      "failed": false
-    },
-    {
-      "index": 20,
-      "run_id": "scenario-09-producers-8-clip-20",
+      "index": 17,
+      "run_id": "scenario-09-producers-8-clip-17",
       "phases": {
         "prepare_ms": 1,
         "subtitles_ms": 0,
@@ -430,11 +373,68 @@
         "artifact_download_ms": 0,
         "probe_ms": 0,
         "publish_ms": 0,
-        "queue_wait_ms": 32,
+        "queue_wait_ms": 31,
         "parent_finalize_ms": 0,
         "worker_slot_occupied_ms": 44
       },
-      "e2e_ms": 131,
+      "e2e_ms": 98,
+      "failed": false
+    },
+    {
+      "index": 18,
+      "run_id": "scenario-09-producers-8-clip-18",
+      "phases": {
+        "prepare_ms": 2,
+        "subtitles_ms": 0,
+        "submit_ms": 3,
+        "settle_ms": 41,
+        "render_ms": 41,
+        "artifact_download_ms": 0,
+        "probe_ms": 0,
+        "publish_ms": 0,
+        "queue_wait_ms": 31,
+        "parent_finalize_ms": 0,
+        "worker_slot_occupied_ms": 44
+      },
+      "e2e_ms": 119,
+      "failed": false
+    },
+    {
+      "index": 19,
+      "run_id": "scenario-09-producers-8-clip-19",
+      "phases": {
+        "prepare_ms": 1,
+        "subtitles_ms": 0,
+        "submit_ms": 2,
+        "settle_ms": 42,
+        "render_ms": 41,
+        "artifact_download_ms": 0,
+        "probe_ms": 0,
+        "publish_ms": 0,
+        "queue_wait_ms": 31,
+        "parent_finalize_ms": 0,
+        "worker_slot_occupied_ms": 44
+      },
+      "e2e_ms": 108,
+      "failed": false
+    },
+    {
+      "index": 20,
+      "run_id": "scenario-09-producers-8-clip-20",
+      "phases": {
+        "prepare_ms": 1,
+        "subtitles_ms": 0,
+        "submit_ms": 2,
+        "settle_ms": 41,
+        "render_ms": 41,
+        "artifact_download_ms": 0,
+        "probe_ms": 0,
+        "publish_ms": 0,
+        "queue_wait_ms": 31,
+        "parent_finalize_ms": 0,
+        "worker_slot_occupied_ms": 43
+      },
+      "e2e_ms": 119,
       "failed": false
     },
     {
@@ -443,17 +443,17 @@
       "phases": {
         "prepare_ms": 1,
         "subtitles_ms": 0,
-        "submit_ms": 1,
-        "settle_ms": 43,
-        "render_ms": 42,
+        "submit_ms": 2,
+        "settle_ms": 41,
+        "render_ms": 41,
         "artifact_download_ms": 0,
         "probe_ms": 0,
         "publish_ms": 0,
-        "queue_wait_ms": 32,
+        "queue_wait_ms": 31,
         "parent_finalize_ms": 0,
-        "worker_slot_occupied_ms": 44
+        "worker_slot_occupied_ms": 43
       },
-      "e2e_ms": 121,
+      "e2e_ms": 108,
       "failed": false
     },
     {
@@ -463,16 +463,16 @@
         "prepare_ms": 1,
         "subtitles_ms": 0,
         "submit_ms": 1,
-        "settle_ms": 42,
-        "render_ms": 42,
+        "settle_ms": 41,
+        "render_ms": 41,
         "artifact_download_ms": 0,
         "probe_ms": 0,
         "publish_ms": 0,
-        "queue_wait_ms": 32,
+        "queue_wait_ms": 31,
         "parent_finalize_ms": 0,
-        "worker_slot_occupied_ms": 43
+        "worker_slot_occupied_ms": 42
       },
-      "e2e_ms": 121,
+      "e2e_ms": 129,
       "failed": false
     },
     {
@@ -481,17 +481,17 @@
       "phases": {
         "prepare_ms": 1,
         "subtitles_ms": 0,
-        "submit_ms": 1,
-        "settle_ms": 42,
-        "render_ms": 42,
+        "submit_ms": 2,
+        "settle_ms": 41,
+        "render_ms": 41,
         "artifact_download_ms": 0,
         "probe_ms": 0,
         "publish_ms": 0,
-        "queue_wait_ms": 32,
+        "queue_wait_ms": 31,
         "parent_finalize_ms": 0,
         "worker_slot_occupied_ms": 43
       },
-      "e2e_ms": 132,
+      "e2e_ms": 129,
       "failed": false
     }
   ]
