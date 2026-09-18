@@ -582,32 +582,6 @@ func (f *VidRushProviderFanout) ResolveProviders(ctx context.Context, plan *scri
 	return updated, nil
 }
 
-func youtubeSourcesForSegment(plan *scriptpkg.ResolvedGenerationPlan, segmentID string) []scriptports.VidRushSourceHint {
-	if plan == nil {
-		return nil
-	}
-	out := make([]scriptports.VidRushSourceHint, 0)
-	for _, source := range plan.MediaPlan.Sources {
-		if source.SegmentID != segmentID || !strings.EqualFold(source.Provider, scriptpkg.VidRushProviderYouTube) {
-			continue
-		}
-		out = append(out, scriptports.VidRushSourceHint{URL: source.SourceURL, Priority: source.Priority, Required: string(source.Mode) == "required"})
-	}
-	return out
-}
-
-func youtubeSourceRequired(plan *scriptpkg.ResolvedGenerationPlan, segmentID string) bool {
-	for _, source := range plan.MediaPlan.Sources {
-		if source.SegmentID == segmentID && strings.EqualFold(source.Provider, scriptpkg.VidRushProviderYouTube) && source.Mode == "required" {
-			return true
-		}
-	}
-	return false
-}
-
-func youtubeQuery(segment scriptpkg.VidRushSegmentResult) string {
-	if len(segment.Insights.YouTubeQueries) > 0 {
-		return strings.Join(segment.Insights.YouTubeQueries, " ")
-	}
-	return segment.Text
-}
+// The YouTube source-hint helpers live in
+// vidrush_registry_searchers_youtube.go: this file crossed the 600-line strict
+// cap (godlike/08), and that group is the cohesive unit to move.
