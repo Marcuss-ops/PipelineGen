@@ -47,7 +47,7 @@
           "subtitles": {
             "enabled": true,
             "mode": "burn",
-            "preset": "subs-young"
+            "preset": "subs-young-clean"
           },
           "background": {
             "mode": "asset",
