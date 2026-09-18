@@ -414,53 +414,6 @@ func compileResultOverlayPlan(result *GenerateResult, language Language, planID,
 	return nil
 }
 
-// freezeOverlayIntents promotes the pre-timing authoring bindings to the
-// same certified timing/preset/asset facts emitted by OverlayPlan. The plan
-// remains the renderer input; this projection keeps the persisted intent
-// surface honest at the render boundary (no PENDING intents after lowering).
-func freezeOverlayIntents(intents []capabilityoverlay.OverlayIntent, items []capabilityoverlay.OverlayItem) {
-	for i := range intents {
-		intent := &intents[i]
-		for _, item := range items {
-			matches := intent.SceneID == item.SceneID
-			if intent.Source == capabilityoverlay.IntentSourceEntity {
-				entityName := item.Text
-				if item.EntityRef != nil && strings.TrimSpace(item.EntityRef.Name) != "" {
-					entityName = item.EntityRef.Name
-				}
-				matches = matches && intent.Entity.CanonicalName == entityName
-			} else {
-				matches = matches && intent.SourceText == item.Text
-			}
-			if !matches {
-				continue
-			}
-			// The pre-timing intent is authored as an entity card because media
-			// resolution may still be in flight. Once the final plan has a
-			// verified image, the resolved intent must describe the exact layer
-			// that RenderingGen receives: image_popup/entity_image, with no
-			// display text. Keeping person_default/name here made the persisted
-			// intent disagree with the image-only render plan and allowed a
-			// downstream projection to recreate the old name-under-portrait card.
-			intent.Kind = item.Kind
-			intent.TemplateID = item.TemplateID
-			intent.PresetID = item.PresetID
-			intent.AssetRefs = append([]capabilityoverlay.OverlayAssetRef(nil), item.AssetRefs...)
-			intent.Payload.AssetRefs = append([]capabilityoverlay.OverlayAssetRef(nil), item.AssetRefs...)
-			if item.Kind == string(capabilityoverlay.KindEntityImage) {
-				intent.Payload.Name = ""
-				intent.Payload.Text = ""
-			} else if strings.TrimSpace(item.Text) != "" {
-				intent.Payload.Name = item.Text
-			}
-			intent.StartMs = item.StartMs
-			intent.EndMs = item.EndMs
-			intent.TimingState = capabilityoverlay.TimingStateFrozen
-			break
-		}
-	}
-}
-
 // overlaySceneInput projects ONE real scene onto the planner's neutral
 // SceneInput. Every candidate is anchored to the certified word timing or
 // the certified entity occurrence; anything not spoken verbatim is skipped

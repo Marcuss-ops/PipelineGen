@@ -17,6 +17,7 @@ import (
 	"fmt"
 	"strings"
 
+	capabilityentities "github.com/Marcuss-ops/PipelineGen/internal/capabilities/entities"
 	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
@@ -305,7 +306,7 @@ func overlaysFromPlan(result *GenerateResult) []EditingOverlaySpan {
 			}
 		}
 		intentID, intentFingerprint := "", ""
-		if intent, ok := intentByKey[overlayIntentKey(item.SceneID, itemName)]; ok {
+		if intent, ok := lookupOverlayIntent(intentByKey, item.SceneID, item.EntityID, itemName); ok {
 			intentID = intent.IntentID
 			intentFingerprint = intent.Fingerprint()
 		}
@@ -338,11 +339,19 @@ func overlayIntentKey(sceneID, name string) string {
 	return strings.ToLower(strings.TrimSpace(sceneID)) + "\x00" + strings.ToLower(strings.TrimSpace(name))
 }
 
-// overlayIntentIndex builds a lookup from the run's pre-timing OverlayIntents
-// keyed by (scene id + canonical entity name), so an overlay plan item can be
-// traced back to the exact intent it materialized from. The key uses the
-// intent's canonical name (falling back to its source text for annotation
-// intents) in the same normalized spelling the plan items carry.
+// overlayIntentIDKey is the stable-identity correlation key. The "id:" prefix
+// namespaces it so it can never collide with a display-name key.
+func overlayIntentIDKey(sceneID, stableEntityID string) string {
+	return overlayIntentKey(sceneID, "id:"+strings.TrimSpace(stableEntityID))
+}
+
+// overlayIntentIndex builds a lookup from the run's pre-timing OverlayIntents,
+// so an overlay plan item can be traced back to the exact intent it
+// materialized from. An entity intent is indexed under its content-addressed
+// stable entity id — the identity the plan item carries — so the join never
+// depends on the two surfaces spelling a name identically. The normalized
+// (scene id + canonical name) key is still indexed for annotation-sourced
+// (phrase/word) intents and for legacy plans whose items carry no entity id.
 func overlayIntentIndex(intents []capabilityoverlay.OverlayIntent) map[string]capabilityoverlay.OverlayIntent {
 	index := make(map[string]capabilityoverlay.OverlayIntent, len(intents))
 	for _, intent := range intents {
@@ -354,8 +363,27 @@ func overlayIntentIndex(intents []capabilityoverlay.OverlayIntent) map[string]ca
 			continue
 		}
 		index[overlayIntentKey(intent.SceneID, name)] = intent
+		if intent.Source == capabilityoverlay.IntentSourceEntity {
+			if stable := capabilityentities.StableEntityID(intent.Entity.Type, intent.Entity.CanonicalName); stable != "" {
+				index[overlayIntentIDKey(intent.SceneID, stable)] = intent
+			}
+		}
 	}
 	return index
+}
+
+// lookupOverlayIntent resolves the pre-timing OverlayIntent a plan item
+// materialized from. The stable entity id is tried first (exact, spelling
+// independent); the normalized (scene, canonical name) pair is the documented
+// fallback for legacy items without an entity id and for annotation intents.
+func lookupOverlayIntent(index map[string]capabilityoverlay.OverlayIntent, sceneID, stableEntityID, name string) (capabilityoverlay.OverlayIntent, bool) {
+	if strings.TrimSpace(stableEntityID) != "" {
+		if intent, ok := index[overlayIntentIDKey(sceneID, stableEntityID)]; ok {
+			return intent, true
+		}
+	}
+	intent, ok := index[overlayIntentKey(sceneID, name)]
+	return intent, ok
 }
 
 // OverlayArtifactRef is the reference to a rendered overlay artifact
@@ -411,27 +439,26 @@ func sceneEntityInput(sceneID string, sceneIndex int, ann *scriptpkg.SceneAnnota
 		return capabilityoverlay.SceneEntityInput{}, false
 	}
 	var entities []capabilityoverlay.EntityOverlayInput
-	for _, entity := range ann.PrimaryEntities {
+	appendEntity := func(entity scriptpkg.AnnotatedEntity) {
 		name := strings.TrimSpace(entity.CanonicalName)
 		if name == "" {
-			continue
+			return
 		}
 		entities = append(entities, capabilityoverlay.EntityOverlayInput{
 			Name:       name,
 			Type:       strings.TrimSpace(entity.Type),
 			Confidence: entity.Confidence,
+			// The canonical identity travels WITH the annotation: the intent
+			// carries it verbatim so nothing downstream has to re-derive (or
+			// re-guess) which entity an overlay is about.
+			CanonicalID: annotationCanonicalEntityID(entity),
 		})
 	}
+	for _, entity := range ann.PrimaryEntities {
+		appendEntity(entity)
+	}
 	for _, entity := range ann.SecondaryEntities {
-		name := strings.TrimSpace(entity.CanonicalName)
-		if name == "" {
-			continue
-		}
-		entities = append(entities, capabilityoverlay.EntityOverlayInput{
-			Name:       name,
-			Type:       strings.TrimSpace(entity.Type),
-			Confidence: entity.Confidence,
-		})
+		appendEntity(entity)
 	}
 	var phrases []capabilityoverlay.OverlayAnnotationInput
 	for _, phrase := range ann.ImportantPhrases {

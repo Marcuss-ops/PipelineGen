@@ -23,6 +23,14 @@ import (
 
 const bundleTestDigest = "c4813c9d7d4f0f6b1a2c3d4e5f60718293a4b5c6d7e8f9012345678901abcdef"
 
+// bundleTestEntityID is the content-addressed identity the canonical entity
+// timeline stamps for the fixture's PERSON annotation. It is DERIVED through the
+// single identity owner rather than hard-coded: the asset↔entity join is the
+// stable identity both surfaces derive from (type, canonical name), never a
+// comparison of the two display strings — a fixture with an invented label would
+// only pass against the string join this test suite exists to rule out.
+var bundleTestEntityID = capabilityentities.StableEntityID("person", "Michael Jordan")
+
 // bundleBuilderResult builds the smallest result the builder accepts: one scene
 // whose text grounds one entity occurrence, plus that entity's image binding.
 // The binding is passed in so a test can vary only the media identity.
@@ -46,7 +54,7 @@ func bundleBuilderResult(image *scriptpkg.EntityImageBinding) *GenerateResult {
 			Scenes: []capabilityentities.SceneEntityTimeline{{
 				SceneID: "scene-1",
 				Entities: []capabilityentities.EntityOccurrence{{
-					EntityID: "ent_michael_jordan", Name: "Michael Jordan", Type: "person",
+					EntityID: bundleTestEntityID, Name: "Michael Jordan", Type: "person",
 					SceneID: "scene-1", TextStart: 0, TextEnd: len("Michael Jordan"),
 					AudioStartUS: 1_000_000, AudioEndUS: 2_000_000,
 				}},
@@ -93,8 +101,8 @@ func TestBuildSemanticRenderBundleProjectsCanonicalAssetIdentity(t *testing.T) {
 	if !asset.Verified {
 		t.Errorf("a binding with a fetchable location must be promoted as verified: %+v", asset)
 	}
-	if asset.EntityID != "ent_michael_jordan" {
-		t.Errorf("bundle asset joins entity %q, want the timeline occurrence id", asset.EntityID)
+	if asset.EntityID != bundleTestEntityID {
+		t.Errorf("bundle asset joins entity %q, want the timeline occurrence id %q", asset.EntityID, bundleTestEntityID)
 	}
 
 	// The bundle is the cross-stage contract, so it must have been accepted by

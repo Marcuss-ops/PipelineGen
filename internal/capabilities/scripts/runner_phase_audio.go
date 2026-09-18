@@ -432,3 +432,13 @@ func (r *Runner) runAudioCompilePhase(ctx context.Context, runID string, req Gen
 	}
 	return true
 }
+
+// failAudioCompileStep records both the execution-step failure and the
+// run-level retryable failure. All audio validation/rendering branches use the
+// same fail-closed boundary, so it lives with the phase that owns the audio
+// compile step instead of in a file of its own.
+func (r *Runner) failAudioCompileStep(ctx context.Context, runID string, exec ExecutionContext, step ExecutionStep, cause error) bool {
+	r.failExecutionStep(ctx, exec, step, cause)
+	r.failRunWithRetry(ctx, runID, StageCompilingAudio, cause)
+	return false
+}

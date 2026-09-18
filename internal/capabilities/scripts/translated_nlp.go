@@ -239,8 +239,11 @@ func (r *Runner) runTranslatedNLP(ctx context.Context, req GenerateRequest, resu
 		// Treat already-extracted source names as identity hints only. A hint is
 		// copied into the localized annotations only when its name can be found
 		// in this translated scene, so it cannot invent a mention or a phrase.
-		sourceHints := groundLocalizedSourceEntities(item.text, string(item.lang), result.Scenes[item.sceneIndex].Annotations)
-		outcomes[index].entities = mergeTranslatedNamedEntities(outcomes[index].entities, sourceHints)
+		// The SAME matches also carry the source identity, which the localized
+		// annotation inherits below instead of re-minting one from the
+		// translated surface.
+		sourceMatches := matchLocalizedSourceEntities(item.text, string(item.lang), result.Scenes[item.sceneIndex].Annotations)
+		outcomes[index].entities = mergeTranslatedNamedEntities(outcomes[index].entities, localizedSourceVisualEntities(sourceMatches))
 		outcomes[index].entities = limitTranslatedVisualEntities(outcomes[index].entities, entityLimit)
 		groundedPhrases := groundImportantPhrases(item.text, outcomes[index].entities, outcomes[index].phrases, phraseLimit)
 		insights := scriptpkg.SegmentInsights{
@@ -270,6 +273,7 @@ func (r *Runner) runTranslatedNLP(ctx context.Context, req GenerateRequest, resu
 		if annotation == nil {
 			continue
 		}
+		stampLocalizedSourceIdentity(annotation, sourceMatches)
 		if result.Scenes[item.sceneIndex].LocalizedAnnotations == nil {
 			result.Scenes[item.sceneIndex].LocalizedAnnotations = make(map[Language]*scriptpkg.SceneAnnotations)
 		}
@@ -335,56 +339,6 @@ func isNamedVisualEntity(kind scriptpkg.EntityType) bool {
 	default:
 		return false
 	}
-}
-
-func groundLocalizedSourceEntities(text, language string, source *scriptpkg.SceneAnnotations) []VisualEntity {
-	if source == nil {
-		return nil
-	}
-	all := append(append([]scriptpkg.AnnotatedEntity(nil), source.PrimaryEntities...), source.SecondaryEntities...)
-	var out []VisualEntity
-	for _, entity := range all {
-		kind := localizedSourceEntityType(entity.Type)
-		if kind == "" {
-			continue
-		}
-		identity := firstNonEmpty(entity.CanonicalName, entity.Text)
-		aliases := []string{identity}
-		if kind == scriptpkg.EntityTypePerson {
-			identity = normalizeVisualPersonName(identity)
-			aliases = []string{identity}
-			// Source mention surfaces can include a role or an editorial lead-in
-			// ("Trainer Cus D’Amato", "Like Muhammad Ali"). Try complete
-			// proper-name suffixes, longest first, against the translated text.
-			for _, run := range personNameRuns(identity) {
-				for start := 1; start < len(run); start++ {
-					aliases = append(aliases, strings.Join(run[start:], " "))
-				}
-			}
-		}
-		for _, alias := range aliases {
-			span, ok := findExactNameTokenSpan(text, alias)
-			if !ok && kind == scriptpkg.EntityTypePerson {
-				switch strings.ToLower(language) {
-				case "pl", "de":
-					span, ok = findInflectedPersonSpan(text, alias, language)
-				}
-			}
-			if !ok || strings.TrimSpace(span.Text) == "" {
-				continue
-			}
-			surface := span.Text
-			if strings.EqualFold(language, "de") && !strings.EqualFold(surface, alias) {
-				// German possessive -s belongs to the surrounding grammar, not to
-				// the person's display name. projectEntityAnnotations still
-				// grounds this canonical substring inside the translated token.
-				surface = alias
-			}
-			out = append(out, VisualEntity{Text: surface, Type: kind, Score: float32(entity.Confidence)})
-			break
-		}
-	}
-	return out
 }
 
 func localizedSourceEntityType(raw string) scriptpkg.EntityType {

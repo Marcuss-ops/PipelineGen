@@ -34,6 +34,21 @@ func (n translatedNLPNameNER) Extract(_ context.Context, text string, _ int) ([]
 	return entities, nil
 }
 
+// translatedNLPLocalizedSurfaceNER reports the entity surface exactly as it
+// appears in the TRANSLATED text — the shape a language-aware NER produces in
+// production, where the model never sees the English canonical name.
+type translatedNLPLocalizedSurfaceNER struct{ surfaces []VisualEntity }
+
+func (n translatedNLPLocalizedSurfaceNER) Extract(_ context.Context, text string, _ int) ([]VisualEntity, error) {
+	out := make([]VisualEntity, 0, len(n.surfaces))
+	for _, entity := range n.surfaces {
+		if strings.Contains(text, entity.Text) {
+			out = append(out, entity)
+		}
+	}
+	return out, nil
+}
+
 type translatedNLPDetailed struct{}
 
 func (p translatedNLPDetailed) ExtractImportantPhrases(ctx context.Context, text string, limit int, language, model string) ([]string, error) {
@@ -372,18 +387,75 @@ func TestGroundLocalizedSourceEntitiesProjectsPolishInflection(t *testing.T) {
 		Text: "Mike Tyson", CanonicalName: "Mike Tyson", Type: "PERSON", Confidence: 0.98,
 	}}}
 
-	got := groundLocalizedSourceEntities(text, "pl", source)
-	if len(got) != 1 || got[0].Type != scriptpkg.EntityTypePerson || got[0].Text != "Mike’a Tysona" {
-		t.Fatalf("localized source entities = %+v, want the grounded Polish surface Mike’a Tysona", got)
+	got := matchLocalizedSourceEntities(text, "pl", source)
+	if len(got) != 1 || got[0].Kind != scriptpkg.EntityTypePerson || got[0].Surface != "Mike’a Tysona" {
+		t.Fatalf("localized source matches = %+v, want the grounded Polish surface Mike’a Tysona", got)
 	}
-	span, ok := findEntitySpan(text, got[0].Text)
-	if !ok || string([]rune(text)[span.StartRune:span.EndRune]) != got[0].Text {
-		t.Fatalf("projected entity %q does not retain a grounded translated span", got[0].Text)
+	span, ok := findEntitySpan(text, got[0].Surface)
+	if !ok || string([]rune(text)[span.StartRune:span.EndRune]) != got[0].Surface {
+		t.Fatalf("projected entity %q does not retain a grounded translated span", got[0].Surface)
+	}
+	if got[0].Span.StartRune != span.StartRune || got[0].Span.EndRune != span.EndRune {
+		t.Fatalf("match span = [%d,%d), want the grounded span [%d,%d)", got[0].Span.StartRune, got[0].Span.EndRune, span.StartRune, span.EndRune)
 	}
 
 	// A prefix resemblance alone is not enough to project a source identity.
-	if falsePositive := groundLocalizedSourceEntities("Mikea Tysonic opowieść.", "pl", source); len(falsePositive) != 0 {
+	if falsePositive := matchLocalizedSourceEntities("Mikea Tysonic opowieść.", "pl", source); len(falsePositive) != 0 {
 		t.Fatalf("unrelated Polish tokens were projected as Mike Tyson: %+v", falsePositive)
+	}
+}
+
+// TestRunTranslatedNLPLocalizedAnnotationsInheritSourceIdentity pins the
+// identity contract of the translated surface: a localized annotation inherits
+// the SOURCE entity's canonical_entity_id and its identity-scoped image
+// binding. Before this contract, a Polish document re-minted an identity from
+// the inflected surface ("person:Mike'a-Tysona") and had to re-resolve the
+// person's image downstream — the reconstruction the canonical entity identity
+// exists to remove.
+func TestRunTranslatedNLPLocalizedAnnotationsInheritSourceIdentity(t *testing.T) {
+	runner := &Runner{vidRushPipeline: &VidRushPipeline{NERPort: translatedNLPLocalizedSurfaceNER{surfaces: []VisualEntity{
+		{Text: "Mike’a Tysona", Type: scriptpkg.EntityTypePerson, Score: 0.98},
+	}}}}
+	req := GenerateRequest{SourceLanguage: "en", Languages: []Language{"pl"}, Model: "test-model", MediaPlan: translatedNLPMediaPlan()}
+	image := &scriptpkg.EntityImageBinding{
+		Status: "resolved", AssetID: "asset-mike-tyson", SHA256: strings.Repeat("a", 64),
+		PreviewURL: "https://drive.google.com/uc?export=download&id=entity-image-person-mike-tyson",
+		DriveLink:  "https://drive.google.com/file/d/entity-image-person-mike-tyson/view",
+	}
+	result := &GenerateResult{Scenes: []Scene{{
+		ID: "scene-1", Index: 0,
+		Text: map[Language]string{"en": "Mike Tyson changed boxing forever.", "pl": "W Brooklynie historia Mike’a Tysona zmieniła boks."},
+		Annotations: &scriptpkg.SceneAnnotations{Language: "en", PrimaryEntities: []scriptpkg.AnnotatedEntity{{
+			Text: "Mike Tyson", CanonicalName: "Mike Tyson", Type: "PERSON", Confidence: 0.98,
+			CanonicalEntityID: "person:mike-tyson", Image: image,
+		}}},
+	}}}
+
+	if err := runner.runTranslatedNLP(context.Background(), req, result); err != nil {
+		t.Fatal(err)
+	}
+	annotations := result.Scenes[0].LocalizedAnnotations["pl"]
+	if annotations == nil {
+		t.Fatal("missing Polish annotations")
+	}
+	found := false
+	for _, entity := range annotations.PrimaryEntities {
+		if !strings.EqualFold(entity.CanonicalName, "Mike’a Tysona") {
+			continue
+		}
+		found = true
+		if entity.CanonicalEntityID != "person:mike-tyson" {
+			t.Errorf("localized canonical_entity_id = %q, want the source identity person:mike-tyson", entity.CanonicalEntityID)
+		}
+		if entity.Image == nil {
+			t.Fatal("the localized entity lost the identity-scoped image binding")
+		}
+		if entity.Image.AssetID != image.AssetID || entity.Image.SHA256 != image.SHA256 {
+			t.Errorf("localized image binding = %+v, want the source identity-scoped image", entity.Image)
+		}
+	}
+	if !found {
+		t.Fatalf("localized annotations = %+v, want the grounded Polish surface Mike’a Tysona", annotations.PrimaryEntities)
 	}
 }
 
