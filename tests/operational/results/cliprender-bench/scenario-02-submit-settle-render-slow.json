@@ -7,25 +7,25 @@
   "aggregate_interval_ms": 0,
   "event_driven": false,
   "clips": 8,
-  "wall_ms": 63,
-  "clips_per_min": 7535.633301765833,
-  "p50_ms": 62,
-  "p95_ms": 63,
-  "mean_ms": 61,
-  "submit_occupancy_p50_ms": 0,
-  "submit_occupancy_p95_ms": 0,
+  "wall_ms": 69,
+  "clips_per_min": 6946.618880875386,
+  "p50_ms": 66,
+  "p95_ms": 68,
+  "mean_ms": 65,
+  "submit_occupancy_p50_ms": 2,
+  "submit_occupancy_p95_ms": 4,
   "settle_occupancy_p50_ms": 60,
-  "settle_occupancy_p95_ms": 61,
+  "settle_occupancy_p95_ms": 62,
   "remote_render_p50_ms": 60,
   "remote_queue_p95_ms": 0,
   "parent_finalize_p50_ms": 0,
   "parent_finalize_p95_ms": 0,
   "parents_finalized": 0,
-  "gpu_lane_busy_ms": 485,
-  "gpu_lane_utilization_pct": 96.81121829866787,
-  "gpu_lane_idle_pct": 3.188781701332133,
+  "gpu_lane_busy_ms": 483,
+  "gpu_lane_utilization_pct": 92.88088423452562,
+  "gpu_lane_idle_pct": 7.1191157654743815,
   "gpu_lane_max_concurrent": 8,
-  "aggregated_fps": 9042.759962118998,
+  "aggregated_fps": 8335.942657050462,
   "disk_read_bytes": 8192,
   "disk_write_bytes": 32768,
   "network_tx_bytes": 32768,
@@ -35,8 +35,8 @@
   "submits": 8,
   "settles": 8,
   "failures": 0,
-  "started_at": "2026-09-16T16:45:49.806466779Z",
-  "finished_at": "2026-09-16T16:45:49.870185188Z",
+  "started_at": "2026-09-18T07:26:05.022641474Z",
+  "finished_at": "2026-09-18T07:26:05.091762571Z",
   "clip_runs": [
     {
       "index": 0,
@@ -44,7 +44,7 @@
       "phases": {
         "prepare_ms": 0,
         "subtitles_ms": 0,
-        "submit_ms": 0,
+        "submit_ms": 2,
         "settle_ms": 60,
         "render_ms": 60,
         "artifact_download_ms": 0,
@@ -52,18 +52,18 @@
         "publish_ms": 0,
         "queue_wait_ms": 0,
         "parent_finalize_ms": 0,
-        "worker_slot_occupied_ms": 60
+        "worker_slot_occupied_ms": 62
       },
-      "e2e_ms": 61,
+      "e2e_ms": 64,
       "failed": false
     },
     {
       "index": 1,
       "run_id": "scenario-02-submit-settle-render-slow-clip-1",
       "phases": {
-        "prepare_ms": 0,
+        "prepare_ms": 4,
         "subtitles_ms": 0,
-        "submit_ms": 0,
+        "submit_ms": 4,
         "settle_ms": 60,
         "render_ms": 60,
         "artifact_download_ms": 0,
@@ -71,9 +71,9 @@
         "publish_ms": 0,
         "queue_wait_ms": 0,
         "parent_finalize_ms": 0,
-        "worker_slot_occupied_ms": 60
+        "worker_slot_occupied_ms": 64
       },
-      "e2e_ms": 61,
+      "e2e_ms": 66,
       "failed": false
     },
     {
@@ -92,7 +92,7 @@
         "parent_finalize_ms": 0,
         "worker_slot_occupied_ms": 60
       },
-      "e2e_ms": 61,
+      "e2e_ms": 64,
       "failed": false
     },
     {
@@ -101,7 +101,7 @@
       "phases": {
         "prepare_ms": 0,
         "subtitles_ms": 0,
-        "submit_ms": 0,
+        "submit_ms": 1,
         "settle_ms": 60,
         "render_ms": 60,
         "artifact_download_ms": 0,
@@ -109,9 +109,9 @@
         "publish_ms": 0,
         "queue_wait_ms": 0,
         "parent_finalize_ms": 0,
-        "worker_slot_occupied_ms": 60
+        "worker_slot_occupied_ms": 61
       },
-      "e2e_ms": 61,
+      "e2e_ms": 66,
       "failed": false
     },
     {
@@ -121,59 +121,21 @@
         "prepare_ms": 0,
         "subtitles_ms": 0,
         "submit_ms": 0,
-        "settle_ms": 61,
-        "render_ms": 61,
-        "artifact_download_ms": 0,
-        "probe_ms": 0,
-        "publish_ms": 0,
-        "queue_wait_ms": 0,
-        "parent_finalize_ms": 0,
-        "worker_slot_occupied_ms": 61
-      },
-      "e2e_ms": 63,
-      "failed": false
-    },
-    {
-      "index": 5,
-      "run_id": "scenario-02-submit-settle-render-slow-clip-5",
-      "phases": {
-        "prepare_ms": 0,
-        "subtitles_ms": 0,
-        "submit_ms": 0,
-        "settle_ms": 61,
+        "settle_ms": 60,
         "render_ms": 60,
         "artifact_download_ms": 0,
         "probe_ms": 0,
         "publish_ms": 0,
         "queue_wait_ms": 0,
         "parent_finalize_ms": 0,
-        "worker_slot_occupied_ms": 61
+        "worker_slot_occupied_ms": 60
       },
-      "e2e_ms": 62,
+      "e2e_ms": 66,
       "failed": false
     },
     {
-      "index": 6,
-      "run_id": "scenario-02-submit-settle-render-slow-clip-6",
-      "phases": {
-        "prepare_ms": 0,
-        "subtitles_ms": 0,
-        "submit_ms": 0,
-        "settle_ms": 61,
-        "render_ms": 61,
-        "artifact_download_ms": 0,
-        "probe_ms": 0,
-        "publish_ms": 0,
-        "queue_wait_ms": 0,
-        "parent_finalize_ms": 0,
-        "worker_slot_occupied_ms": 61
-      },
-      "e2e_ms": 63,
-      "failed": false
-    },
-    {
-      "index": 7,
-      "run_id": "scenario-02-submit-settle-render-slow-clip-7",
+      "index": 5,
+      "run_id": "scenario-02-submit-settle-render-slow-clip-5",
       "phases": {
         "prepare_ms": 0,
         "subtitles_ms": 0,
@@ -187,7 +149,45 @@
         "parent_finalize_ms": 0,
         "worker_slot_occupied_ms": 60
       },
-      "e2e_ms": 62,
+      "e2e_ms": 66,
+      "failed": false
+    },
+    {
+      "index": 6,
+      "run_id": "scenario-02-submit-settle-render-slow-clip-6",
+      "phases": {
+        "prepare_ms": 0,
+        "subtitles_ms": 0,
+        "submit_ms": 0,
+        "settle_ms": 60,
+        "render_ms": 60,
+        "artifact_download_ms": 0,
+        "probe_ms": 0,
+        "publish_ms": 0,
+        "queue_wait_ms": 0,
+        "parent_finalize_ms": 0,
+        "worker_slot_occupied_ms": 60
+      },
+      "e2e_ms": 67,
+      "failed": false
+    },
+    {
+      "index": 7,
+      "run_id": "scenario-02-submit-settle-render-slow-clip-7",
+      "phases": {
+        "prepare_ms": 0,
+        "subtitles_ms": 0,
+        "submit_ms": 0,
+        "settle_ms": 62,
+        "render_ms": 61,
+        "artifact_download_ms": 0,
+        "probe_ms": 0,
+        "publish_ms": 0,
+        "queue_wait_ms": 0,
+        "parent_finalize_ms": 0,
+        "worker_slot_occupied_ms": 62
+      },
+      "e2e_ms": 68,
       "failed": false
     }
   ]
