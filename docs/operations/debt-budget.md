@@ -12,7 +12,7 @@ Every `architecture/issues.yaml` entry whose `id` starts with `PRE-EXISTING-` co
 - `status: in_progress` contributes **0.5**.
 - `resolved` and `wontfix` contribute zero and should be removed from the active catalog after closure according to the repository lifecycle rule.
 
-The configured integer cap is interpreted as the maximum weighted score. For example, a cap of 9 allows nine open entries, or eight open plus two valid in-progress entries.
+The configured integer cap is interpreted as the maximum weighted score. The cap is currently **0**: `architecture/issues.yaml` carries zero `PRE-EXISTING-*` entries, so any new entry fails the gate immediately. The historical cap of 9 was tightened to 0 on 2026-09-18 once the catalog measured empty — the ratchet only ever moves down (`docs/MUDA-CODEBASE-AUDIT-2026-09-12.md` §"Unbounded carry-forward debt").
 
 ## `in_progress` is evidence-gated
 
@@ -38,7 +38,7 @@ Recommended explicit form:
 The gate reports the weighted score and lists entries with their contribution:
 
 ```text
-debt budget: weighted PRE-EXISTING score 9.5 exceeds cap 9.0
+debt budget: weighted PRE-EXISTING score 1.0 exceeds cap 0.0
 PRE-EXISTING-1-...(open=1.0)
 PRE-EXISTING-2-...(in_progress=0.5)
 ```
