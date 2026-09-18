@@ -51,7 +51,7 @@ func (a *localizedRenderEnqueuerAdapter) buildLocalizedRenderRequest(ctx context
 	if err != nil {
 		return localizedRenderRequest{}, err
 	}
-	destination, subtitle, err := a.resolveRenderFolders(ctx, in, identity.clipID)
+	destination, subtitle, err := a.resolveRenderFolders(ctx, in, identity.clipID, string(identity.targetLang))
 	if err != nil {
 		return localizedRenderRequest{}, err
 	}
@@ -164,7 +164,23 @@ func (a *localizedRenderEnqueuerAdapter) resolveBackground(ctx context.Context, 
 	return materialized, mode, kind, nil
 }
 
-func (a *localizedRenderEnqueuerAdapter) resolveRenderFolders(ctx context.Context, in scriptgeneration.LocalizedRenderInput, clipID string) (string, string, error) {
+// resolveRenderFolders resolves the Drive destination of ONE localized render
+// and the folder of its subtitle artifact:
+//
+//	<clips root | payload drive_folder_id>[/<run subfolder>]/<language>
+//	subtitles: <subtitle root>/<clip id>
+//
+// The language is a folder level, not only a filename component. A run renders
+// the SAME clip once per language, so a flat destination left every language's
+// MP4 in one folder with the languages distinguishable only by filename; the
+// per-language level makes the layout state the language it holds. The level is
+// created through the same FolderAdmin cache as the other levels, so concurrent
+// fan-out workers AND the post-crash recovery path (UploadRendered) converge on
+// one folder per (destination, language) instead of racing to create duplicates.
+//
+// An empty language adds no level: there is no correct name to give it, and a
+// nameless folder would be worse than the flat layout it replaces.
+func (a *localizedRenderEnqueuerAdapter) resolveRenderFolders(ctx context.Context, in scriptgeneration.LocalizedRenderInput, clipID, language string) (string, string, error) {
 	destination := strings.TrimSpace(a.cfg.FolderID)
 	if value := strings.TrimSpace(in.Render.DriveFolderID); value != "" {
 		destination = value
@@ -186,6 +202,14 @@ func (a *localizedRenderEnqueuerAdapter) resolveRenderFolders(ctx context.Contex
 		destination, err = a.resolveFolder(ctx, destination+"\x00"+subfolder, subfolder, destination)
 		if err != nil {
 			return "", "", fmt.Errorf("localized render: ensure Drive subfolder %q: %w", subfolder, err)
+		}
+	}
+	// Per-language level. The key reuses the RESOLVED parent id, so two runs
+	// that share a subfolder name still get one language folder each per parent.
+	if lang := strings.TrimSpace(language); lang != "" {
+		destination, err = a.resolveFolder(ctx, destination+"\x00"+lang, lang, destination)
+		if err != nil {
+			return "", "", fmt.Errorf("localized render: ensure Drive language folder %q: %w", lang, err)
 		}
 	}
 	return destination, subtitle, nil

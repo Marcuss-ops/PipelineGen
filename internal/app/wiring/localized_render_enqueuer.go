@@ -296,7 +296,10 @@ func (a *localizedRenderEnqueuerAdapter) UploadRendered(ctx context.Context, in 
 	if clipID == "" {
 		clipID = strings.TrimSpace(in.ClipID)
 	}
-	destination, _, err := a.resolveRenderFolders(ctx, in, clipID)
+	// The recovery path must resolve the SAME destination the render used,
+	// per-language level included, or a crash-retry would re-upload the
+	// staged artifact into a different folder than its certified sibling.
+	destination, _, err := a.resolveRenderFolders(ctx, in, clipID, string(staged.Language))
 	if err != nil {
 		return fmt.Errorf("localized render recovery: resolve destination: %w", err)
 	}

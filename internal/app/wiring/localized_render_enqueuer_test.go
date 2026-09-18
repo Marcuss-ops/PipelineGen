@@ -3,6 +3,8 @@ package wiring
 import (
 	"context"
 	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -16,17 +18,20 @@ import (
 	scriptgeneration "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
+	infradrive "github.com/Marcuss-ops/PipelineGen/internal/platform/drive"
 )
 
 // ── fakes ───────────────────────────────────────────────────────────
 
 // recordingLocalizer records every LocalizeInput and returns a canned result.
 type recordingLocalizer struct {
-	mu     sync.Mutex
-	got    []LocalizeInput
-	err    error
-	result *localization.LocalizeResult
+	mu              sync.Mutex
+	got             []LocalizeInput
+	err             error
+	result          *localization.LocalizeResult
+	uploadedFolders []string
 }
 
 func (l *recordingLocalizer) Localize(_ context.Context, in LocalizeInput) (*localization.LocalizeResult, error) {
@@ -46,6 +51,28 @@ func (l *recordingLocalizer) snapshot() []LocalizeInput {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	return append([]LocalizeInput(nil), l.got...)
+}
+
+// UploadRendered makes the fake satisfy the recovery-only uploader the adapter
+// type-asserts for, and records the destination folder so the crash-retry path
+// can be proven to target the same folder the render used.
+func (l *recordingLocalizer) UploadRendered(_ context.Context, artifact localization.LocalizedClipArtifact, folderID string) (localization.LocalizedClipArtifact, error) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if l.err != nil {
+		return localization.LocalizedClipArtifact{}, l.err
+	}
+	l.uploadedFolders = append(l.uploadedFolders, folderID)
+	artifact.DriveFolderID = folderID
+	artifact.DriveFileID = "drive-" + artifact.ClipID
+	artifact.DriveLink = "https://drive.google.com/file/d/drive-" + artifact.ClipID + "/view"
+	return artifact, nil
+}
+
+func (l *recordingLocalizer) uploadedFolderSnapshot() []string {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return append([]string(nil), l.uploadedFolders...)
 }
 
 // recordingTrackRepo records UpsertBatch calls and satisfies the full
@@ -155,6 +182,13 @@ func newTestEnqueuerAdapter(l *recordingLocalizer, t *recordingTrackRepo, c *rec
 // exercised instead of skipped. A nil committer reproduces a hermetic
 // composition without the media plane.
 func newTestEnqueuerAdapterWithCommitter(l *recordingLocalizer, t *recordingTrackRepo, c *recordingCueWriter, committer persistence.AssetCommitter) *localizedRenderEnqueuerAdapter {
+	return newTestEnqueuerAdapterWithAdmin(l, t, c, committer, &localizedRenderFolderAdmin{})
+}
+
+// newTestEnqueuerAdapterWithAdmin is the harness for the destination-layout
+// tests: it hands the caller the FolderAdmin so the resolved folder LEVELS (and
+// how often each was created) can be asserted, not just that some id returned.
+func newTestEnqueuerAdapterWithAdmin(l *recordingLocalizer, t *recordingTrackRepo, c *recordingCueWriter, committer persistence.AssetCommitter, admin *localizedRenderFolderAdmin) *localizedRenderEnqueuerAdapter {
 	t.ready = map[string][]detail.TimedCue{
 		"en": {{StartMs: 0, EndMs: 1200, Text: "DB English subtitle"}},
 		"es": {{StartMs: 0, EndMs: 1200, Text: "DB Spanish subtitle"}},
@@ -163,9 +197,64 @@ func newTestEnqueuerAdapterWithCommitter(l *recordingLocalizer, t *recordingTrac
 	return newLocalizedRenderEnqueuerAdapter(l, t, c, LocalizedRenderEnqueuerConfig{
 		SourceLanguage: "en",
 		FolderID:       "folder-1",
+		FolderAdmin:    admin,
 		DocFolderID:    "docs-1",
 	}, zap.NewNop(), nil, nil, nil, nil, committer)
 }
+
+// localizedRenderFolderAdmin is the hermetic Drive FolderAdmin of this adapter's
+// tests. It mints a deterministic, readable id from (parent, name) so a test can
+// assert the folder LEVELS a destination is built from, and it counts
+// GetOrCreateFolder so the per-(parent, name) cache is provable rather than
+// assumed.
+type localizedRenderFolderAdmin struct {
+	mu      sync.Mutex
+	calls   []localizedFolderCall
+	callErr error
+}
+
+type localizedFolderCall struct{ name, parentID string }
+
+func (f *localizedRenderFolderAdmin) GetOrCreateFolder(_ context.Context, name, parentID string) (string, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.callErr != nil {
+		return "", f.callErr
+	}
+	f.calls = append(f.calls, localizedFolderCall{name: name, parentID: parentID})
+	return parentID + "/" + name, nil
+}
+
+func (f *localizedRenderFolderAdmin) snapshot() []localizedFolderCall {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return append([]localizedFolderCall(nil), f.calls...)
+}
+
+func (f *localizedRenderFolderAdmin) names() []string {
+	out := make([]string, 0, len(f.calls))
+	for _, call := range f.snapshot() {
+		out = append(out, call.name)
+	}
+	return out
+}
+
+func (f *localizedRenderFolderAdmin) GetFolderName(context.Context, string) (string, error) {
+	return "", nil
+}
+func (f *localizedRenderFolderAdmin) TrashFolder(context.Context, string) error  { return nil }
+func (f *localizedRenderFolderAdmin) DeleteFolder(context.Context, string) error { return nil }
+func (f *localizedRenderFolderAdmin) TrashFile(context.Context, string) error    { return nil }
+func (f *localizedRenderFolderAdmin) DeleteFile(context.Context, string) error   { return nil }
+func (f *localizedRenderFolderAdmin) RenameFile(context.Context, string, string) error {
+	return nil
+}
+func (f *localizedRenderFolderAdmin) MoveFile(context.Context, string, string, string) error {
+	return nil
+}
+func (f *localizedRenderFolderAdmin) Ping(context.Context) error { return nil }
+
+var _ infradrive.Admin = (*localizedRenderFolderAdmin)(nil)
 
 // recordingAssetCommitter captures the canonical media-SSOT commits a
 // localized render performs and can fail on demand, so the fail-closed
@@ -228,7 +317,8 @@ func TestLocalizedRenderEnqueuer_MapsToSingleLanguageLocalize(t *testing.T) {
 	if len(in.Request.Languages) != 1 || in.Request.Languages[0].Language != "es" {
 		t.Fatalf("languages = %+v, want single es", in.Request.Languages)
 	}
-	if in.FolderID != "folder-1" || in.DocFolderID != "docs-1" {
+	// The render destination carries the language as its own folder level.
+	if in.FolderID != "folder-1/es" || in.DocFolderID != "docs-1" {
 		t.Fatalf("folders = %q/%q", in.FolderID, in.DocFolderID)
 	}
 	if !strings.Contains(in.DocIdempotencyKey, "scene-1") || !strings.Contains(in.DocIdempotencyKey, "es") {
@@ -725,4 +815,134 @@ func TestLocalizedRenderEnqueuer_BlurSourceBackgroundCarriesNoAsset(t *testing.T
 	if call.BackgroundMode != cliprender.BackgroundModeBlurSource || call.Background != nil {
 		t.Fatalf("blur_source must carry no asset: mode=%q asset=%+v", call.BackgroundMode, call.Background)
 	}
+}
+
+// ── per-language destination layout ────────────────────────────────
+//
+// A run renders the SAME clip once per language. The language is therefore a
+// FOLDER LEVEL of the destination, not only a filename component, so a human
+// (and an operator audit) can read the language of a folder's contents off the
+// layout instead of decoding every filename.
+
+// TestLocalizedRenderEnqueuer_LanguageIsAFolderLevelUnderTheRunFolder pins the
+// resolution ORDER of the levels: the language nests INSIDE the run subfolder,
+// so one run's languages stay grouped in one place.
+func TestLocalizedRenderEnqueuer_LanguageIsAFolderLevelUnderTheRunFolder(t *testing.T) {
+	l := &recordingLocalizer{}
+	admin := &localizedRenderFolderAdmin{}
+	a := newTestEnqueuerAdapterWithAdmin(l, &recordingTrackRepo{}, &recordingCueWriter{}, nil, admin)
+
+	in := testEnqueuerInput() // Language es
+	in.Render = scriptpkg.VideoRenderSpec{Enabled: true, DriveSubfolderName: "Dolly Parton"}
+	if err := a.EnqueueLocalizedRender(context.Background(), in); err != nil {
+		t.Fatalf("EnqueueLocalizedRender: %v", err)
+	}
+
+	got := l.snapshot()
+	if len(got) != 1 || got[0].FolderID != "folder-1/Dolly Parton/es" {
+		t.Fatalf("destination = %v, want the language nested under the run subfolder", folderIDs(got))
+	}
+	calls := admin.snapshot()
+	if len(calls) != 2 || calls[0].name != "Dolly Parton" || calls[0].parentID != "folder-1" ||
+		calls[1].name != "es" || calls[1].parentID != "folder-1/Dolly Parton" {
+		t.Fatalf("folder levels = %+v, want [Dolly Parton under folder-1, es under the run folder]", calls)
+	}
+}
+
+// TestLocalizedRenderEnqueuer_EachLanguageGetsItsOwnFolder pins that two
+// languages of the same clip do not share a destination, and that each level is
+// created exactly once even though the fan-out enqueues concurrently.
+func TestLocalizedRenderEnqueuer_EachLanguageGetsItsOwnFolder(t *testing.T) {
+	l := &recordingLocalizer{}
+	admin := &localizedRenderFolderAdmin{}
+	a := newTestEnqueuerAdapterWithAdmin(l, &recordingTrackRepo{}, &recordingCueWriter{}, nil, admin)
+
+	for _, lang := range []scriptgeneration.Language{"es", "it", "es"} {
+		in := testEnqueuerInput()
+		in.Language = lang
+		if err := a.EnqueueLocalizedRender(context.Background(), in); err != nil {
+			t.Fatalf("EnqueueLocalizedRender(%s): %v", lang, err)
+		}
+	}
+
+	got := folderIDs(l.snapshot())
+	if len(got) != 3 || got[0] != "folder-1/es" || got[1] != "folder-1/it" || got[2] != "folder-1/es" {
+		t.Fatalf("destinations = %v, want each language in its own folder", got)
+	}
+	// The repeated `es` must be served from the per-(parent, name) cache: one
+	// create call per distinct level, never a duplicate Drive folder.
+	if names := admin.names(); len(names) != 2 || names[0] != "es" || names[1] != "it" {
+		t.Fatalf("folder create calls = %v, want exactly one per language", names)
+	}
+}
+
+// TestLocalizedRenderEnqueuer_LanguageFolderFailureFailsClosed pins that an
+// unusable language folder aborts the enqueue instead of silently publishing
+// the render one level up, where an operator would not find it.
+func TestLocalizedRenderEnqueuer_LanguageFolderFailureFailsClosed(t *testing.T) {
+	l := &recordingLocalizer{}
+	admin := &localizedRenderFolderAdmin{callErr: errors.New("drive unavailable")}
+	a := newTestEnqueuerAdapterWithAdmin(l, &recordingTrackRepo{}, &recordingCueWriter{}, nil, admin)
+
+	if err := a.EnqueueLocalizedRender(context.Background(), testEnqueuerInput()); err == nil {
+		t.Fatal("an unresolvable language folder must fail closed")
+	} else if !strings.Contains(err.Error(), "language folder") {
+		t.Fatalf("error must name the language folder, got %v", err)
+	}
+	if len(l.snapshot()) != 0 {
+		t.Fatal("no render may run when its destination cannot be resolved")
+	}
+}
+
+// TestLocalizedRenderEnqueuer_RecoveryUploadsIntoTheLanguageFolder pins that the
+// post-crash recovery path resolves the SAME destination a normal render used,
+// language level included: a retry that re-uploaded into a different folder
+// would orphan the staged artifact from its certified siblings.
+func TestLocalizedRenderEnqueuer_RecoveryUploadsIntoTheLanguageFolder(t *testing.T) {
+	content := []byte("staged-rendered-mp4")
+	path := filepath.Join(t.TempDir(), "clip-1.es.mp4")
+	if err := os.WriteFile(path, content, 0o644); err != nil {
+		t.Fatalf("write staged artifact: %v", err)
+	}
+
+	l := &recordingLocalizer{}
+	admin := &localizedRenderFolderAdmin{}
+	a := newTestEnqueuerAdapterWithAdmin(l, &recordingTrackRepo{}, &recordingCueWriter{}, nil, admin)
+
+	in := testEnqueuerInput() // Language es
+	var projected scriptgeneration.LocalizedRenderResult
+	in.OnRendered = func(rendered scriptgeneration.LocalizedRenderResult) error {
+		projected = rendered
+		return nil
+	}
+	if err := a.EnqueueLocalizedRender(context.Background(), in); err != nil {
+		t.Fatalf("EnqueueLocalizedRender: %v", err)
+	}
+	renderFolders := folderIDs(l.snapshot())
+
+	if err := a.UploadRendered(context.Background(), in, scriptgeneration.LocalizedRenderResult{
+		SceneID: "scene-1", SceneIndex: 0, Language: "es", ClipID: "clip-1",
+		LocalPath: path, SHA256: digest.SHA256Bytes(content), DurationMS: 6500,
+	}); err != nil {
+		t.Fatalf("UploadRendered: %v", err)
+	}
+
+	recoveryFolders := l.uploadedFolderSnapshot()
+	if len(recoveryFolders) != 1 || len(renderFolders) != 1 || recoveryFolders[0] != renderFolders[0] {
+		t.Fatalf("recovery folder %v must equal the render folder %v", recoveryFolders, renderFolders)
+	}
+	if recoveryFolders[0] != "folder-1/es" {
+		t.Fatalf("recovery destination = %q, want the per-language folder", recoveryFolders[0])
+	}
+	if projected.DriveFileID == "" {
+		t.Fatal("recovery must project the published artifact back to the runner")
+	}
+}
+
+func folderIDs(inputs []LocalizeInput) []string {
+	out := make([]string, 0, len(inputs))
+	for _, in := range inputs {
+		out = append(out, in.FolderID)
+	}
+	return out
 }
