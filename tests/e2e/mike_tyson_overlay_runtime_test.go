@@ -30,7 +30,7 @@ func TestLiveMikeTysonOverlayRuntime(t *testing.T) {
 	if os.Getenv("PIPELINEGEN_MIKE_TYSON_LIVE") != "1" {
 		t.Skip("set PIPELINEGEN_MIKE_TYSON_LIVE=1 to run the live Mike Tyson runtime test")
 	}
-	token := mikeTysonAdminToken()
+	token := liveAdminToken()
 	if token == "" {
 		t.Skip("VELOX_ADMIN_TOKEN or TOKEN_FILE is required for the live Mike Tyson runtime test")
 	}
@@ -102,7 +102,34 @@ func TestLiveMikeTysonOverlayRuntime(t *testing.T) {
 	}
 }
 
-func mikeTysonAdminToken() string {
+// TestLiveMikeTysonTenLanguageRuntime is the release-sized goal check: a
+// persisted 1,000-word/five-scene script must produce source plus nine
+// translated overlays and documents from the same run.
+func TestLiveMikeTysonTenLanguageRuntime(t *testing.T) {
+	if os.Getenv("PIPELINEGEN_MIKE_TYSON_LIVE") != "1" {
+		t.Skip("set PIPELINEGEN_MIKE_TYSON_LIVE=1 to run the live 10-language Mike Tyson runtime test")
+	}
+	token := liveAdminToken()
+	if token == "" {
+		t.Skip("VELOX_ADMIN_TOKEN or TOKEN_FILE is required for the live Mike Tyson runtime test")
+	}
+	baseURL := strings.TrimRight(getenv("VELOX_API_BASE_URL", "http://127.0.0.1:8000"), "/")
+	client := &http.Client{}
+	body := readMikeTysonFixture(t, "ops/jobs/mike_tyson_1000w_5scene_10lang.generate.json")
+	jobID := submitMikeTysonRuntime(t, client, baseURL, token, body)
+	full := waitForMikeTysonRuntime(t, client, baseURL, token, jobID)
+	result := generationResult(full)
+	if result == nil {
+		t.Fatalf("job %s completed without job.result.result", jobID)
+	}
+	verifyMikeTysonTenLanguageRuntimeResult(t, result)
+	t.Logf("runtime PASS: job=%s script_id=%d languages=10 scenes=5", jobID, integerAt(result, "script_id"))
+}
+
+// liveAdminToken resolves the admin bearer token shared by every live gate in
+// this package: VELOX_ADMIN_TOKEN wins, otherwise TOKEN_FILE is read as a
+// shell-style env file carrying `VELOX_ADMIN_TOKEN=...`.
+func liveAdminToken() string {
 	if token := strings.TrimSpace(os.Getenv("VELOX_ADMIN_TOKEN")); token != "" {
 		return token
 	}
@@ -130,7 +157,12 @@ func readMikeTysonFixture(t *testing.T, name string) []byte {
 	if !ok {
 		t.Fatal("runtime.Caller failed while resolving Mike Tyson fixture")
 	}
-	path := filepath.Join(filepath.Dir(file), "..", "..", "..", "RenderingGen", "mike_tyson_overlay_test", name)
+	var path string
+	if filepath.ToSlash(name) == "ops/jobs/mike_tyson_1000w_5scene_10lang.generate.json" {
+		path = filepath.Join(filepath.Dir(file), "..", "..", "ops", "jobs", filepath.Base(name))
+	} else {
+		path = filepath.Join(filepath.Dir(file), "..", "..", "..", "RenderingGen", "mike_tyson_overlay_test", name)
+	}
 	body, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatalf("read fixture %s: %v", path, err)
@@ -139,6 +171,105 @@ func readMikeTysonFixture(t *testing.T, name string) []byte {
 		t.Fatalf("fixture %s is not valid JSON", path)
 	}
 	return body
+}
+
+func verifyMikeTysonTenLanguageRuntimeResult(t *testing.T, result map[string]any) {
+	t.Helper()
+	wantCities := []string{"Brooklyn", "Catskill", "Atlantic City", "Tokyo", "Las Vegas"}
+	wantPhrases := []string{
+		"Origins Shape the Fighter.",
+		"Discipline Builds the Foundation.",
+		"Precision Changes the Outcome.",
+		"A Loss Can Rewrite a Record.",
+		"A Comeback Starts With One Round.",
+	}
+	wantLanguages := []string{"it", "en", "pl", "ru", "de", "es", "pt-BR", "fr", "tr", "id"}
+	if integerAt(result, "script_id") <= 0 {
+		t.Fatalf("script was not persisted to the script database: %s", compactJSON(result))
+	}
+	if count := integerAt(mapAt(result, "output"), "word_count"); count < 950 {
+		t.Fatalf("word_count=%d, want at least 950 toward the 1,000-word target", count)
+	}
+	if scenes := mapsAt(result, "scenes"); len(scenes) != 5 {
+		t.Fatalf("scenes=%d, want five", len(scenes))
+	}
+	places := stringValues(valueAt(mapAt(result, "entities"), "places"), "value")
+	for _, city := range wantCities {
+		if !containsString(places, city) {
+			t.Fatalf("extracted places=%v, missing %q", places, city)
+		}
+	}
+	assertExactStrings(t, "important_phrases", stringValues(valueAt(mapAt(result, "entities"), "important_phrases"), ""), wantPhrases)
+
+	sourcePlan := mapAt(result, "overlay_plan")
+	verifyMikeTysonLanguageOverlayPlan(t, "en", sourcePlan, wantCities, wantPhrases)
+	localizedPlans := mapAt(result, "localized_overlay_plans")
+	localizedRenders := mapAt(result, "localized_overlay_renders")
+	if len(localizedPlans) != 9 || len(localizedRenders) != 9 {
+		t.Fatalf("localized plans/renders=%d/%d, want nine each", len(localizedPlans), len(localizedRenders))
+	}
+	for _, language := range wantLanguages {
+		if language == "en" {
+			continue
+		}
+		verifyMikeTysonLanguageOverlayPlan(t, language, mapAt(localizedPlans, language), wantCities, nil)
+		verifyCertifiedOverlayReference(t, language, mapAt(localizedRenders, language))
+	}
+	verifyCertifiedOverlayReference(t, "en", mapAt(result, "overlay_render"))
+
+	documents := mapAt(result, "documents")
+	if len(documents) != 10 {
+		t.Fatalf("localized documents=%d, want ten", len(documents))
+	}
+	for _, language := range wantLanguages {
+		if stringAt(mapAt(documents, language), "link") == "" {
+			t.Fatalf("%s document link is missing", language)
+		}
+	}
+}
+
+func verifyMikeTysonLanguageOverlayPlan(t *testing.T, language string, plan map[string]any, cities, phrases []string) {
+	t.Helper()
+	if plan == nil {
+		t.Fatalf("%s localized overlay plan is missing", language)
+	}
+	if got := stringAt(plan, "language"); got != language {
+		t.Fatalf("overlay plan language=%q, want %q", got, language)
+	}
+	items := mapsAt(plan, "items")
+	phraseTexts := make([]string, 0, 5)
+	itemTexts := make([]string, 0, len(items))
+	for _, item := range items {
+		if text := stringAt(item, "text"); text != "" {
+			itemTexts = append(itemTexts, text)
+		}
+		if stringAt(item, "kind") == "text_phrase" {
+			phraseTexts = append(phraseTexts, stringAt(item, "text"))
+		}
+	}
+	if len(phraseTexts) != 5 {
+		t.Fatalf("%s phrase overlays=%d, want five; plan=%s", language, len(phraseTexts), compactJSON(plan))
+	}
+	for _, city := range cities {
+		if !containsString(itemTexts, city) {
+			t.Fatalf("%s overlay plan does not contain city card %q", language, city)
+		}
+	}
+	for _, phrase := range phrases {
+		if !containsString(phraseTexts, phrase) {
+			t.Fatalf("%s phrase overlays=%v, missing %q", language, phraseTexts, phrase)
+		}
+	}
+}
+
+func verifyCertifiedOverlayReference(t *testing.T, language string, render map[string]any) {
+	t.Helper()
+	artifact := mapAt(render, "artifact")
+	if !isSuccessStatus(firstNonEmpty(stringAt(render, "status"), stringAt(artifact, "status"))) ||
+		integerAt(artifact, "frame_count") <= 0 ||
+		firstNonEmpty(stringAt(artifact, "drive_link"), stringAt(artifact, "url")) == "" {
+		t.Fatalf("%s overlay artifact is not certified/published: %s", language, compactJSON(render))
+	}
 }
 
 func submitMikeTysonRuntime(t *testing.T, client *http.Client, baseURL, token string, body []byte) string {
@@ -189,7 +320,7 @@ func waitForMikeTysonRuntime(t *testing.T, client *http.Client, baseURL, token, 
 	defer ticker.Stop()
 
 	for {
-		full, status, err := getMikeTysonJob(t, ctx, client, baseURL, token, jobID)
+		full, status, err := getLiveJob(t, ctx, client, baseURL, token, jobID)
 		if err != nil {
 			t.Fatalf("GET /api/jobs/%s/full: %v", jobID, err)
 		}
@@ -207,7 +338,9 @@ func waitForMikeTysonRuntime(t *testing.T, client *http.Client, baseURL, token, 
 	}
 }
 
-func getMikeTysonJob(t *testing.T, ctx context.Context, client *http.Client, baseURL, token, jobID string) (map[string]any, string, error) {
+// getLiveJob reads the full job view and derives its current status. It is
+// shared by the live runtime gates in this package.
+func getLiveJob(t *testing.T, ctx context.Context, client *http.Client, baseURL, token, jobID string) (map[string]any, string, error) {
 	t.Helper()
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, baseURL+"/api/jobs/"+jobID+"/full", nil)
 	if err != nil {
@@ -411,6 +544,15 @@ func assertExactStrings(t *testing.T, label string, got, want []string) {
 			t.Fatalf("%s=%v, want exactly %v", label, got, want)
 		}
 	}
+}
+
+func containsString(values []string, want string) bool {
+	for _, value := range values {
+		if value == want {
+			return true
+		}
+	}
+	return false
 }
 
 func stringAt(object map[string]any, key string) string {

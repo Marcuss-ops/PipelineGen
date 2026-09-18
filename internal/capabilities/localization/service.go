@@ -216,6 +216,9 @@ func (s *Service) Localize(ctx context.Context, in LocalizeInput) (*LocalizeResu
 				}
 			}
 			published, publishErr := s.UploadRendered(ctx, rendered, in.FolderID)
+			if publishErr == nil {
+				published.DriveFolderID = in.FolderID
+			}
 			recordFailure(published, publishErr)
 		}()
 	}

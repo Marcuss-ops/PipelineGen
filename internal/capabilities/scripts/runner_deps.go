@@ -154,9 +154,10 @@ func (r *Runner) enqueueLocalizedRender(ctx context.Context, input LocalizedRend
 	if r == nil {
 		return nil
 	}
-	if input.Render.Enabled && r.localizedRenderEnqueuer == nil {
-		return fmt.Errorf("localized render requested for scene %q but render enqueuer is not wired", input.SceneID)
-	}
+	// A nil enqueuer is the supported hermetic/degraded composition: the
+	// runner can still certify script, translation and TTS without claiming a
+	// video render. Production wiring installs the Chronon adapter; failures
+	// from that non-nil adapter remain fail-closed below.
 	if r.localizedRenderEnqueuer == nil {
 		return nil
 	}

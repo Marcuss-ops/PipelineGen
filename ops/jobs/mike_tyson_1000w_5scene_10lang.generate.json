@@ -1,0 +1,158 @@
+{
+  "version": 2,
+  "preset": "custom",
+  "correlation_id": "mike-tyson-1000w-5scene-10lang-20260918",
+  "items": [
+    {
+      "id": "mike-tyson-1000w-5scene-10lang",
+      "project": "mike-tyson-1000w-5scene-10lang",
+      "title": "Mike Tyson — cinque città, cinque momenti",
+      "language": "en",
+      "tone": "documentario sportivo, accurato e cinematografico",
+      "style": "Write an English documentary script of five scenes, about 200 words per scene and about 1,000 words total. Keep each scene attached to its supplied city and facts. Mention exactly one city in each scene: Brooklyn, Catskill, Atlantic City, Tokyo, or Las Vegas as specified by that scene. Do not name any other city, invent dates or results, or add unsupported quotations. Include the exact editorial phrase supplied for each scene as its own sentence. The phrase is narrator copy, never a quotation attributed to Mike Tyson. Use only the people needed for the scene. Keep the five scenes separate and in the supplied order.",
+      "model": "gemma4:e4b",
+      "source": {
+        "type": "text",
+        "topic": "Mike Tyson raccontato attraverso cinque città e cinque momenti della sua carriera",
+        "source_text": "Create five separate 200-word scenes from the supplied scene briefs. Scene 1: Brooklyn, Tyson's birthplace; phrase: Origins Shape the Fighter. Scene 2: Catskill, where Tyson trained with Cus D'Amato; phrase: Discipline Builds the Foundation. Scene 3: Atlantic City, the 1988 fight with Michael Spinks; phrase: Precision Changes the Outcome. Scene 4: Tokyo, the 1990 fight with Buster Douglas; phrase: A Loss Can Rewrite a Record. Scene 5: Las Vegas, Tyson's 1990 return against Henry Tillman; phrase: A Comeback Starts With One Round. Keep each scene factual and use only its named city."
+      },
+      "script_params": {
+        "target_words": 1000,
+        "min_words": 950,
+        "segment_words": 200,
+        "single_scene": false,
+        "skip_quality_gate": false,
+        "segments": [
+          {
+            "id": "brooklyn-origins",
+            "kind": "narration",
+            "topic": "Brooklyn and Tyson's beginnings",
+            "source_text": "Mike Tyson was born in Brooklyn in 1966. Tell this opening chapter through the city's role in his early story, without inventing childhood dialogue or private thoughts. Include this exact narrator caption as a standalone sentence: Origins Shape the Fighter. It is original editorial copy, not a Tyson quotation. Mention no other city.",
+            "target_words": 200,
+            "min_words": 190
+          },
+          {
+            "id": "catskill-damato",
+            "kind": "narration",
+            "topic": "Catskill and Cus D'Amato",
+            "source_text": "Tyson trained in Catskill with trainer and mentor Cus D'Amato, who also became his legal guardian. Describe the discipline and coaching relationship without inventing private conversations or undocumented training routines. Include this exact narrator caption as a standalone sentence: Discipline Builds the Foundation. It is original editorial copy, not a Tyson quotation. Mention no other city.",
+            "target_words": 200,
+            "min_words": 190
+          },
+          {
+            "id": "atlantic-city-spinks",
+            "kind": "narration",
+            "topic": "Atlantic City and Michael Spinks",
+            "source_text": "In 1988, Tyson fought Michael Spinks in Atlantic City and won by first-round knockout. Explain why the bout became a clear public milestone while avoiding invented round-by-round details. Include this exact narrator caption as a standalone sentence: Precision Changes the Outcome. It is original editorial copy, not a Tyson quotation. Mention no other city.",
+            "target_words": 200,
+            "min_words": 190
+          },
+          {
+            "id": "tokyo-douglas",
+            "kind": "narration",
+            "topic": "Tokyo and the Buster Douglas fight",
+            "source_text": "In 1990, Tyson lost his heavyweight title to Buster Douglas in Tokyo. Keep the account measured and factual; do not speculate about motives or describe private feelings as fact. Include this exact narrator caption as a standalone sentence: A Loss Can Rewrite a Record. It is original editorial copy, not a Tyson quotation. Mention no other city.",
+            "target_words": 200,
+            "min_words": 190
+          },
+          {
+            "id": "las-vegas-return",
+            "kind": "narration",
+            "topic": "Las Vegas and the return against Henry Tillman",
+            "source_text": "After the previous title loss, Tyson returned to the ring in Las Vegas in 1990 and stopped Henry Tillman in the first round. Describe the sporting event without presenting one result as a complete personal redemption. Include this exact narrator caption as a standalone sentence: A Comeback Starts With One Round. It is original editorial copy, not a Tyson quotation. Mention no other city.",
+            "target_words": 200,
+            "min_words": 190
+          }
+        ]
+      },
+      "output": {
+        "save_to_db": true,
+        "extract_entities": true,
+        "generate_metadata": true,
+        "generate_timeline": true,
+        "voiceover_enabled": true,
+        "languages": ["it", "pl", "ru", "de", "es", "pt-BR", "fr", "tr", "id"],
+        "render": {
+          "enabled": true,
+          "drive_subfolder_name": "Mike Tyson — 1000 parole 5 città 10 lingue 2026-09-18",
+          "require_gpu": true,
+          "subtitles": {
+            "enabled": true,
+            "mode": "burn",
+            "style_id": "subs-young"
+          }
+        }
+      },
+      "audio": {
+        "mode": "COMBINED_TIMELINE",
+        "mix_policy": "VOICEOVER_ONLY",
+        "voiceover_languages": ["en", "it", "pl", "ru", "de", "es", "pt-BR", "fr", "tr", "id"],
+        "background_music": [
+          {
+            "asset_id": "bgm3",
+            "start_ms": 0,
+            "end": "video_end",
+            "loop": true,
+            "gain_db": -28,
+            "fade_in_ms": 500,
+            "fade_out_ms": 700,
+            "duck_under_voiceover": true,
+            "duck_gain_db": -32,
+            "duck_attack_ms": 120,
+            "duck_release_ms": 350
+          }
+        ],
+        "sound_effects": [
+          {"asset_id": "whop1", "scene_id": "brooklyn-origins", "anchor": "start", "offset_ms": 0, "duration_ms": 500, "gain_db": -14},
+          {"asset_id": "whop2", "scene_id": "catskill-damato", "anchor": "start", "offset_ms": 0, "duration_ms": 500, "gain_db": -14},
+          {"asset_id": "whop3", "scene_id": "atlantic-city-spinks", "anchor": "start", "offset_ms": 0, "duration_ms": 500, "gain_db": -14},
+          {"asset_id": "whop4", "scene_id": "tokyo-douglas", "anchor": "start", "offset_ms": 0, "duration_ms": 500, "gain_db": -14},
+          {"asset_id": "whop5", "scene_id": "las-vegas-return", "anchor": "start", "offset_ms": 0, "duration_ms": 500, "gain_db": -14}
+        ],
+        "timing": {
+          "mode": "required",
+          "boundary": "word",
+          "formats": ["json", "srt", "vtt"]
+        }
+      },
+      "media_plan": {
+        "mode": "hybrid",
+        "cache": {"read": true, "write": true},
+        "provider_policy": {
+          "internet_images": "disabled",
+          "artlist": "disabled",
+          "image_generation": "disabled",
+          "youtube": "disabled"
+        },
+        "extraction": {
+          "enabled": true,
+          "include": ["entities", "important_phrases"],
+          "max_entities_per_segment": 5,
+          "max_important_phrases_per_segment": 1,
+          "important_phrases": [
+            "Origins Shape the Fighter.",
+            "Discipline Builds the Foundation.",
+            "Precision Changes the Outcome.",
+            "A Loss Can Rewrite a Record.",
+            "A Comeback Starts With One Round."
+          ],
+          "max_image_queries_per_segment": 0
+        },
+        "materialization": {"mode": "selected", "upload_to_drive": true, "wait_for_ready": true},
+        "planner": {"candidate_limit": 1},
+        "include_trace": true
+      },
+      "overlay_background": {
+        "kind": "color",
+        "color": [0.035, 0.045, 0.065, 1],
+        "fit": "cover",
+        "opacity": 1,
+        "loop": false
+      },
+      "docs": {
+        "enabled": true,
+        "languages": ["it", "en", "pl", "ru", "de", "es", "pt-BR", "fr", "tr", "id"]
+      }
+    }
+  ]
+}

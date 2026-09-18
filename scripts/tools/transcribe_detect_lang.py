@@ -239,16 +239,61 @@ def _clamp_cues(segments, duration_seconds: float) -> tuple[list, int, int]:
     return cues, dropped, trimmed
 
 
-def _segments_to_result(segments, info, elapsed: float) -> dict:
+# A forced decode cannot prove what language the audio is in: faster-whisper
+# ECHOES the language it was told to use, so `info.language` is the request, not
+# a detection. The two facts are emitted separately ("language" = the language
+# actually used to decode, "detected_language" = what the model hears with NO
+# language forced) because the Go side records the second one as provenance and
+# may not substitute the first one for it.
+_DETECTION_MAX_SECONDS = 30
+
+
+def _detect_language_unforced(model, audio, max_seconds: float = _DETECTION_MAX_SECONDS):
+    """Return (language, probability) detected with NO language forced.
+
+    Runs a separate beam_size=1 detection over the head of the media — the same
+    bounded window Whisper's own language detection uses — so the cost stays a
+    fraction of the full transcript it accompanies. Any failure degrades to
+    ("und", 0.0): a missing detection must never fail a transcription that
+    otherwise succeeded, and "und" is the honest value for "we cannot tell".
+    """
+    try:
+        probe = audio
+        if not isinstance(audio, str):
+            probe = audio[: int(max_seconds * 16000)]
+        _segments, info = model.transcribe(probe, beam_size=1, language=None, vad_filter=False)
+        probability = getattr(info, "language_probability", 0.0) or 0.0
+        return (info.language or "und"), float(probability)
+    except Exception:
+        return "und", 0.0
+
+
+def _segments_to_result(
+    segments,
+    info,
+    elapsed: float,
+    detected_language: Optional[str] = None,
+    detected_probability: Optional[float] = None,
+    language_forced: bool = False,
+) -> dict:
     """Project materialized whisper segments + info into the canonical JSON
-    result shape shared by transcribe() and transcribe_pcm_stream()."""
+    result shape shared by transcribe() and transcribe_pcm_stream().
+
+    detected_language/detected_probability carry the UNFORCED detection when the
+    caller forced a language (see _detect_language_unforced); when nothing was
+    forced they default to the decode language, which IS the detection.
+    """
     cues, dropped, trimmed = _clamp_cues(segments, getattr(info, "duration", 0.0))
     # The transcript is the text of the cues that were emitted, so the text and
     # the timing always describe the same content (a transcript holding text the
     # cue list dropped would be text no artifact can ever render).
     transcript = " ".join(cue["text"] for cue in cues)
+    probability = info.language_probability if detected_probability is None else detected_probability
     return {
         "language": info.language,
+        "language_forced": bool(language_forced),
+        "detected_language": detected_language or info.language,
+        "language_probability": round(probability, 4),
         "probability": round(info.language_probability, 4),
         "duration_seconds": round(info.duration, 1),
         "transcription_time_seconds": round(elapsed, 1),
@@ -275,13 +320,19 @@ def transcribe(audio_path: str, model_size: str = WHISPER_MODEL_NAME, language: 
         return {"error": f"File not found: {audio_path}"}
 
     model = _get_model(model_size)
+    language_forced = bool(language)
+    detected_language, detected_probability = (None, None)
+    if language_forced:
+        detected_language, detected_probability = _detect_language_unforced(model, audio_path)
     start = time.time()
     segments, info = model.transcribe(
         audio_path, beam_size=5, language=language, vad_filter=_vad_enabled()
     )
     segments = list(segments)  # materialize generator
     elapsed = time.time() - start
-    return _segments_to_result(segments, info, elapsed)
+    return _segments_to_result(
+        segments, info, elapsed, detected_language, detected_probability, language_forced
+    )
 
 
 def transcribe_pcm_stream(pcm_bytes: bytes, model_size: str = WHISPER_MODEL_NAME, language: Optional[str] = None) -> dict:
@@ -303,13 +354,19 @@ def transcribe_pcm_stream(pcm_bytes: bytes, model_size: str = WHISPER_MODEL_NAME
         return {"error": "empty PCM stream after conversion"}
 
     model = _get_model(model_size)
+    language_forced = bool(language)
+    detected_language, detected_probability = (None, None)
+    if language_forced:
+        detected_language, detected_probability = _detect_language_unforced(model, audio)
     start = time.time()
     segments, info = model.transcribe(
         audio, beam_size=5, language=language, vad_filter=_vad_enabled()
     )
     segments = list(segments)  # materialize generator
     elapsed = time.time() - start
-    return _segments_to_result(segments, info, elapsed)
+    return _segments_to_result(
+        segments, info, elapsed, detected_language, detected_probability, language_forced
+    )
 
 
 def _log(msg: str, json_only: bool = False):

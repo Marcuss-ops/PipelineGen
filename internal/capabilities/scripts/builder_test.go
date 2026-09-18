@@ -1,7 +1,9 @@
 package scriptgeneration
 
 import (
+	"bytes"
 	"encoding/json"
+	"os"
 	"strings"
 	"testing"
 
@@ -9,6 +11,70 @@ import (
 	mediadomain "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
+
+func TestMikeTyson1000WordManifestBuildsFiveSceneTenLanguageRuntimeRequest(t *testing.T) {
+	body, err := os.ReadFile("../../../ops/jobs/mike_tyson_1000w_5scene_10lang.generate.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var env scriptpkg.GenerationEnvelopeV2
+	decoder := json.NewDecoder(bytes.NewReader(body))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&env); err != nil {
+		t.Fatalf("decode Mike Tyson runtime manifest: %v", err)
+	}
+	if len(env.Items) != 1 {
+		t.Fatalf("manifest items=%d, want one", len(env.Items))
+	}
+	item := env.Items[0]
+	if len(item.ScriptParams.Segments) != 5 || item.ScriptParams.TargetWords != 1000 || item.ScriptParams.MinWords != 950 {
+		t.Fatalf("script target=%d minimum=%d scenes=%d, want 1000/950/5", item.ScriptParams.TargetWords, item.ScriptParams.MinWords, len(item.ScriptParams.Segments))
+	}
+	cities := []string{"Brooklyn", "Catskill", "Atlantic City", "Tokyo", "Las Vegas"}
+	phrases := []string{
+		"Origins Shape the Fighter.",
+		"Discipline Builds the Foundation.",
+		"Precision Changes the Outcome.",
+		"A Loss Can Rewrite a Record.",
+		"A Comeback Starts With One Round.",
+	}
+	for i, segment := range item.ScriptParams.Segments {
+		if segment.TargetWords != 200 || segment.MinWords != 190 || segment.MaxWords != 0 {
+			t.Errorf("scene %d word bounds=%d/%d/%d, want target/minimum 200/190 and a validator-derived maximum", i, segment.TargetWords, segment.MinWords, segment.MaxWords)
+		}
+		if strings.TrimSpace(segment.SourceText) == "" {
+			t.Errorf("scene %d has no grounded brief", i)
+		}
+		if i < len(cities) && (!strings.Contains(segment.SourceText, cities[i]) || !strings.Contains(segment.SourceText, phrases[i])) {
+			t.Errorf("scene %d brief must anchor city %q and phrase %q", i, cities[i], phrases[i])
+		}
+		for cityIndex, city := range cities {
+			if cityIndex != i && strings.Contains(segment.SourceText, city) {
+				t.Errorf("scene %d also names another scene's city %q", i, city)
+			}
+		}
+	}
+
+	request, err := BuildGenerateRequest(&env, "mike-tyson-contract-test")
+	if err != nil {
+		t.Fatalf("build runtime request: %v", err)
+	}
+	if request.Model != "gemma4:e4b" || request.SourceLanguage != "en" || len(request.Languages) != 9 || len(request.VoiceoverLanguages) != 10 {
+		t.Fatalf("generation model/language fanout model=%q source=%q translations=%v voiceovers=%v", request.Model, request.SourceLanguage, request.Languages, request.VoiceoverLanguages)
+	}
+	if request.ForceRefresh || request.Source.ForceRefresh || request.ScriptParams.ForceRefresh {
+		t.Fatal("manifest must reuse persisted generation/cache data instead of forcing regeneration")
+	}
+	if !request.SaveToDB || !request.Render.Enabled || !request.Render.RequireGPU || request.Render.Subtitles == nil || !request.Render.Subtitles.Enabled {
+		t.Fatalf("persistence/render/subtitle contract not enabled: save=%t render=%+v", request.SaveToDB, request.Render)
+	}
+	if !request.Docs.Enabled || len(request.Docs.Languages) != 10 {
+		t.Fatalf("docs language fanout enabled=%t languages=%v, want all ten", request.Docs.Enabled, request.Docs.Languages)
+	}
+	if request.Audio != capabilityaudio.AudioModeCombinedTimeline || len(request.SoundEffects) != 5 || len(request.BackgroundMusic) != 1 {
+		t.Fatalf("audio contract mode=%q SFX=%d BGM=%d, want combined/5/1", request.Audio, len(request.SoundEffects), len(request.BackgroundMusic))
+	}
+}
 
 func TestBuildGenerateRequest_PropagatesLLMIdentity(t *testing.T) {
 	var env scriptpkg.GenerationEnvelopeV2

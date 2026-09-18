@@ -113,13 +113,11 @@ func localizedRenderCaptionText(req GenerateRequest, scene Scene) string {
 	return text
 }
 
-// fixedRenderLanguages returns the ordered language list for a fixed-media
-// scene's localized render fan-out (Intro V2): source first, then caller
-// target order, deduplicated. A language without translated display text
-// still renders — subtitles degrade to the source track downstream — so the
-// list is never filtered by text presence, keeping the expected-render count
-// deterministic before translations complete.
-func fixedRenderLanguages(req GenerateRequest, scene Scene) []Language {
+// renderLanguages returns the canonical ordered language list for every
+// localized clip render: source first, then caller target order, deduplicated.
+// Both fixed-media and normal SourceClips scenes use this authority, so the
+// expected count and the actual fan-out cannot drift.
+func renderLanguages(req GenerateRequest, scene Scene) []Language {
 	_ = scene
 	langs := make([]Language, 0, len(req.Languages)+1)
 	seen := make(map[Language]bool, len(req.Languages)+1)
@@ -140,6 +138,12 @@ func fixedRenderLanguages(req GenerateRequest, scene Scene) []Language {
 	return langs
 }
 
+// fixedRenderLanguages is retained as a named compatibility helper for fixed
+// sections and delegates to the same render-language authority.
+func fixedRenderLanguages(req GenerateRequest, scene Scene) []Language {
+	return renderLanguages(req, scene)
+}
+
 // fixedCaptionText resolves the caption for one fixed render unit in the
 // render language, falling back to the source display text. It NEVER falls
 // back to BODY source text (fixed-media firewall).
@@ -150,15 +154,16 @@ func fixedCaptionText(scene Scene, source, lang Language) string {
 	return strings.TrimSpace(scene.Text[source])
 }
 
-// expectedRenderUnits counts localized renders including the Intro V2 fixed
-// multilingual fan-out (fixed units × render languages). Generated scenes
-// stay source-only in the explicit-clip path.
+// expectedRenderUnits counts the localized render matrix. Fixed-media
+// sections always fan out across languages; normal generated scenes fan out
+// across languages for the subtitle-only (audio NONE) lane, while the legacy
+// voiceover lane renders generated scenes from the source audio once.
 func expectedRenderUnits(req GenerateRequest, scenes []Scene) int {
 	total := 0
 	for _, scene := range scenes {
 		units := len(RenderUnitsForScene(scene))
-		if scene.ExecutionMode.IsFixedMedia() {
-			total += units * len(fixedRenderLanguages(req, scene))
+		if scene.ExecutionMode.IsFixedMedia() || req.Audio == "NONE" {
+			total += units * len(renderLanguages(req, scene))
 		} else {
 			total += units
 		}

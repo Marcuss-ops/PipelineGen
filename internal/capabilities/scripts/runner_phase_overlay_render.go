@@ -3,11 +3,13 @@ package scriptgeneration
 import (
 	"context"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
 	"go.uber.org/zap"
 
+	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/observability"
 )
 
@@ -47,48 +49,111 @@ const (
 // audio stage (the render used to be part of that stage's work, so a resumed run
 // must not re-wait on it).
 func (r *Runner) runOverlayRenderPhase(ctx context.Context, runID string, req GenerateRequest, exec ExecutionContext, resumeIdx int, state audioCompileState, result *GenerateResult) bool {
-	if result == nil || result.OverlayPlan == nil {
+	if result == nil {
 		return true
 	}
 	if !req.Render.Enabled || r.overlayRenderEnqueuer == nil {
 		return true
 	}
-	if result.OverlayRender != nil {
-		return true
-	}
 	if stageSkipped(resumeIdx, StageCompilingAudio) {
 		return true
 	}
-
-	// The plan size and the boundary wall time are measured HERE, at the only
-	// place that performs the blocking hand-off, so no consumer has to re-time
-	// a wait it does not own.
-	observability.OverlayRenderItems.Observe(float64(len(result.OverlayPlan.Items)))
-	startedAt := time.Now()
-	ref, renderErr := r.overlayRenderEnqueuer.EnqueueChrononPlan(ctx, *result.OverlayPlan)
-	boundarySeconds := time.Since(startedAt).Seconds()
-	observability.OverlayRenderDurationSeconds.Observe(boundarySeconds)
-	if renderErr != nil {
-		observability.OverlayRenderTotal.WithLabelValues(renderOutcomeFailure).Inc()
-		cause := fmt.Errorf("overlay render failed: %w", renderErr)
-		// The AUDIO_COMPILE step stays open across the render precisely so a
-		// render failure is still reported against the work that produced the
-		// plan (its pre-split behaviour).
-		r.failExecutionStep(ctx, exec, state.Step, cause)
-		r.failRunWithRetry(ctx, runID, StageCompilingAudio, cause)
-		return false
+	for _, item := range overlayPlansToRender(result, req) {
+		if item.language == result.overlayPlanLanguage() && result.OverlayRender != nil {
+			continue
+		}
+		if item.language != result.overlayPlanLanguage() {
+			if _, done := result.LocalizedOverlayRenders[item.language]; done {
+				continue
+			}
+		}
+		// The plan size and boundary wall time are measured HERE, at the only
+		// place that performs the blocking hand-off, so no consumer has to re-time
+		// a wait it does not own.
+		observability.OverlayRenderItems.Observe(float64(len(item.plan.Items)))
+		startedAt := time.Now()
+		ref, renderErr := r.overlayRenderEnqueuer.EnqueueChrononPlan(ctx, *item.plan)
+		boundarySeconds := time.Since(startedAt).Seconds()
+		observability.OverlayRenderDurationSeconds.Observe(boundarySeconds)
+		if renderErr != nil {
+			observability.OverlayRenderTotal.WithLabelValues(renderOutcomeFailure).Inc()
+			cause := fmt.Errorf("overlay render for %s failed: %w", item.language, renderErr)
+			// The AUDIO_COMPILE step stays open across the render precisely so a
+			// render failure is still reported against the work that produced the
+			// plan (its pre-split behaviour).
+			r.failExecutionStep(ctx, exec, state.Step, cause)
+			r.failRunWithRetry(ctx, runID, StageCompilingAudio, cause)
+			return false
+		}
+		observability.OverlayRenderTotal.WithLabelValues(renderOutcomeSuccess).Inc()
+		recordChrononArtifactMetrics(ref)
+		if item.language == result.overlayPlanLanguage() {
+			result.OverlayRender = &ref
+		} else {
+			if result.LocalizedOverlayRenders == nil {
+				result.LocalizedOverlayRenders = make(map[Language]RenderReference)
+			}
+			result.LocalizedOverlayRenders[item.language] = ref
+		}
+		r.log.Info("overlay render complete",
+			zap.String("run_id", runID),
+			zap.String("language", string(item.language)),
+			zap.String("render_job_id", ref.JobID),
+			zap.String("status", ref.Status),
+			zap.Duration("boundary_wall", time.Since(startedAt)),
+			zap.Int("plan_items", len(item.plan.Items)),
+		)
 	}
-	observability.OverlayRenderTotal.WithLabelValues(renderOutcomeSuccess).Inc()
-	recordChrononArtifactMetrics(ref)
-	result.OverlayRender = &ref
-	r.log.Info("overlay render complete",
-		zap.String("run_id", runID),
-		zap.String("render_job_id", ref.JobID),
-		zap.String("status", ref.Status),
-		zap.Duration("boundary_wall", time.Since(startedAt)),
-		zap.Int("plan_items", len(result.OverlayPlan.Items)),
-	)
 	return true
+}
+
+type languageOverlayPlan struct {
+	language Language
+	plan     *capabilityoverlay.OverlayPlan
+}
+
+func (r *GenerateResult) overlayPlanLanguage() Language {
+	if r == nil || r.OverlayPlan == nil {
+		return ""
+	}
+	return Language(strings.TrimSpace(r.OverlayPlan.Language))
+}
+
+// overlayPlansToRender makes dispatch order deterministic: source language
+// first, then requested targets in caller order, followed by any persisted
+// target plan missing from a resumed request.
+func overlayPlansToRender(result *GenerateResult, req GenerateRequest) []languageOverlayPlan {
+	if result == nil {
+		return nil
+	}
+	var plans []languageOverlayPlan
+	seen := map[Language]struct{}{}
+	if result.OverlayPlan != nil {
+		language := result.overlayPlanLanguage()
+		plans = append(plans, languageOverlayPlan{language: language, plan: result.OverlayPlan})
+		seen[language] = struct{}{}
+	}
+	for _, language := range req.Languages {
+		if language == "" || language == result.overlayPlanLanguage() {
+			continue
+		}
+		if plan := result.LocalizedOverlayPlans[language]; plan != nil {
+			plans = append(plans, languageOverlayPlan{language: language, plan: plan})
+			seen[language] = struct{}{}
+		}
+	}
+	remaining := make([]string, 0, len(result.LocalizedOverlayPlans))
+	for language := range result.LocalizedOverlayPlans {
+		if _, ok := seen[language]; !ok && result.LocalizedOverlayPlans[language] != nil {
+			remaining = append(remaining, string(language))
+		}
+	}
+	sort.Strings(remaining)
+	for _, raw := range remaining {
+		language := Language(raw)
+		plans = append(plans, languageOverlayPlan{language: language, plan: result.LocalizedOverlayPlans[language]})
+	}
+	return plans
 }
 
 // recordChrononArtifactMetrics projects the CERTIFIED artifact's owner-measured

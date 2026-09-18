@@ -72,6 +72,16 @@ type TranscriptResult struct {
 	SourceAudioSHA256 string
 	DurationMS        int64
 	Confidence        *float64
+	// DetectedLanguage is the language the ASR model heard with NO language
+	// forced — the genuine detection. It is NOT Language when the caller forced a
+	// decode: faster-whisper echoes the forced tag back, so an echo may never be
+	// recorded as evidence of the audio's language. Empty when unknown.
+	DetectedLanguage string
+	// LanguageForced reports whether Language came from the caller's request
+	// rather than from detection. A forced decode in a language the audio is not
+	// in produces text that is NOT the clip's own transcript, and persistence
+	// uses this flag to record honest provenance instead of claiming otherwise.
+	LanguageForced bool
 	// StreamSourceType records the concrete generation source (whisper chain,
 	// streaming PCM bridge, ...) so persistence can tag the canonical track.
 	StreamSourceType string

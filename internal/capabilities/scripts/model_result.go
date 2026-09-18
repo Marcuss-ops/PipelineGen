@@ -95,6 +95,12 @@ type GenerateResult struct {
 	// RenderingGen queue; lowercasing to chronon.render-plan.v2 is owned by
 	// RenderingGen. Nil when the run carried no derivable overlay surface.
 	OverlayPlan *capabilityoverlay.OverlayPlan `json:"overlay_plan,omitempty"`
+	// LocalizedOverlayPlans carries the equivalent plans for translated
+	// voiceover languages. The source-language plan remains in OverlayPlan for
+	// compatibility; these plans are keyed by their target language and contain
+	// phrases and timing derived from that language's translated annotations and
+	// certified speech timing.
+	LocalizedOverlayPlans map[Language]*capabilityoverlay.OverlayPlan `json:"localized_overlay_plans,omitempty"`
 	// PhraseOverlayBudget records the global editorial ceiling and the number
 	// of unique grounded phrases materialized into OverlayPlan. It is result
 	// telemetry and is deliberately excluded from the renderer wire contract.
@@ -108,6 +114,10 @@ type GenerateResult struct {
 	// OverlayRender is populated after the timing-frozen Chronon render has
 	// completed and its media contract has been certified.
 	OverlayRender *RenderReference `json:"overlay_render,omitempty"`
+	// LocalizedOverlayRenders contains certified Chronon outputs for the
+	// translated plans above. OverlayRender remains the source-language
+	// compatibility projection.
+	LocalizedOverlayRenders map[Language]RenderReference `json:"localized_overlay_renders,omitempty"`
 
 	// OverlayIntents are the pre-timing entity→template bindings, created
 	// immediately after entity extraction. Each intent binds one entity
@@ -134,6 +144,9 @@ type GenerateResult struct {
 
 	// Title is the output title (mirrors GenerateRequest.Title).
 	Title string `json:"title,omitempty"`
+	// SourceLanguage identifies which overlay/render projections use the
+	// compatibility source-language fields.
+	SourceLanguage Language `json:"source_language,omitempty"`
 
 	// OutputName is the caller-specified output name.
 	OutputName string `json:"output_name,omitempty"`

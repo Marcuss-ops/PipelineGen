@@ -504,6 +504,31 @@ func resolvedScenesFor(result GenerateResult, language Language, clipBound bool)
 	return ResolveScenes(result.Scenes, language, result.AudioMode, clipBound)
 }
 
+// overlayResolvedScenesFor resolves a translated overlay on that language's
+// own voiceover durations. The durable ResolvedScenes projection belongs to
+// the source master and cannot be reused for longer or shorter translations.
+func overlayResolvedScenesFor(result GenerateResult, language Language) ([]ResolvedScene, error) {
+	if result.SourceLanguage == "" || language == result.SourceLanguage {
+		return resolvedScenesFor(result, language, false)
+	}
+	scenes := append([]Scene(nil), result.Scenes...)
+	clipBound := false
+	for i := range scenes {
+		scene := &scenes[i]
+		if len(scene.Clips) > 0 || scene.Clip != nil {
+			clipBound = true
+		}
+		if _, hasVoiceover := scene.Voiceover[language]; hasVoiceover && !scene.ExecutionMode.IsFixedMedia() {
+			// Voiceover duration is the translated scene's certified extent.
+			// Clearing the source-projected duration lets the canonical resolver
+			// use that audio while retaining max(video,audio) for clip scenes.
+			scene.DurationMS = 0
+			scene.DurationUS = 0
+		}
+	}
+	return ResolveScenes(scenes, language, result.AudioMode, clipBound)
+}
+
 func compileResolvedSceneTimeline(scenes []ResolvedScene) (audio.CanonicalTimeline, error) {
 	timeline := audio.CanonicalTimeline{Version: audio.TimelineVersion}
 	var startUS int64

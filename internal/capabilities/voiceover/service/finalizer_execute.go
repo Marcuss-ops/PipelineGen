@@ -15,6 +15,18 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/voiceover/service/persistence"
 )
 
+// voiceoverTextPreview limits stored preview text by Unicode characters so a
+// Cyrillic, accented, or other multibyte rune is never split in the middle of
+// its UTF-8 encoding before it reaches PostgreSQL.
+func voiceoverTextPreview(text string) string {
+	const maxRunes = 100
+	runes := []rune(text)
+	if len(runes) > maxRunes {
+		return string(runes[:maxRunes])
+	}
+	return text
+}
+
 // Finalize runs the canonical 6-step atomic commit sequence inside the
 // caller-owned transaction. The caller opens the tx, calls Finalize,
 // then commits.
@@ -142,10 +154,7 @@ func (f *voiceoverFinalizer) Finalize(ctx context.Context, tx *sql.Tx, cmd *Fina
 	// ── Step 3: INSERT new row ──
 	// Mandatory; no execution-state variants.
 	now := time.Now().UTC().Format(time.RFC3339)
-	textPreview := cmd.Text
-	if len(textPreview) > 100 {
-		textPreview = textPreview[:100]
-	}
+	textPreview := voiceoverTextPreview(cmd.Text)
 
 	rec := &persistence.VoiceoverRecord{
 		ID:              cmd.ID,

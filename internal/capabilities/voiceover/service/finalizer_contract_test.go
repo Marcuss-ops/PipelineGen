@@ -8,13 +8,24 @@ package voiceover
 
 import (
 	"context"
+	"strings"
 	"testing"
+	"unicode/utf8"
 
 	_ "github.com/mattn/go-sqlite3"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 )
+
+func TestVoiceoverTextPreviewPreservesUTF8Boundary(t *testing.T) {
+	input := strings.Repeat("a", 99) + "Ж" + "trailing text"
+	got := voiceoverTextPreview(input)
+
+	assert.True(t, utf8.ValidString(got), "preview must remain valid UTF-8")
+	assert.Equal(t, 100, len([]rune(got)), "preview limit is 100 Unicode characters")
+	assert.True(t, strings.HasSuffix(got, "Ж"), "the 100th character must not be truncated mid-byte")
+}
 
 // ─────────────────────────────────────────────────────────────────────
 // FASE 2 Test 1: Dedupe Gate — reuse, ambiguous, continue

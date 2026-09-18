@@ -60,6 +60,23 @@ func (a *scriptGenerationTranslator) Translate(ctx context.Context, input script
 	return result.TranslatedText, nil
 }
 
+// scriptGenerationTranslationPort uses the provider chain selected by the
+// canonical text-track bundle (Argos with Ollama fallback by default). The
+// direct Ollama port remains the fallback for compositions that predate or
+// intentionally omit that bundle.
+func scriptGenerationTranslationPort(root *ComposeRoot) translation.TranslationPort {
+	if root == nil {
+		return nil
+	}
+	if root.TextTracks != nil && root.TextTracks.Translator != nil {
+		return root.TextTracks.Translator
+	}
+	if root.AI != nil {
+		return root.AI.OllamaTranslator
+	}
+	return nil
+}
+
 // scriptGenerationDocumentPublisher adapts Drive's idempotent document
 // contract to the durable generation capability. Drive remains the concrete
 // provider; the capability sees only its typed port.
@@ -163,7 +180,7 @@ func BuildScriptGenerationRuntime(cfg *config.Config, root *ComposeRoot, runRepo
 	runner := scriptgen.NewRunner(
 		runRepo,
 		root.AI.SceneTextGenerator,
-		&scriptGenerationTranslator{port: root.AI.OllamaTranslator},
+		&scriptGenerationTranslator{port: scriptGenerationTranslationPort(root)},
 		root.AI.ScriptVoiceoverGenerator,
 		docPublisher,
 		scriptGenerationDocumentRenderer{},
@@ -228,6 +245,11 @@ func BuildScriptGenerationRuntime(cfg *config.Config, root *ComposeRoot, runRepo
 		// published repeatedly.
 		renderEnqueuer.SetFreshRender(false)
 		renderEnqueuer.SetSeparateItemRenders(true)
+		// Pipelining depth for the per-item overlay renders. This is not a GPU
+		// bound: the worker's worker.gpu_lanes remains the only authority on
+		// concurrent GPU work, so this overlaps the per-item pre/post chain
+		// without oversubscribing the device.
+		renderEnqueuer.SetItemRenderPool(cfg.Scripts.SeparateItemRenderWorkers)
 		// Overlay videos belong beside the generated language document:
 		// <scripts-generate>/<project>/<language>/overlay. The configured
 		// overlay root remains a compatibility fallback for old deployments.

@@ -22,16 +22,34 @@ Startup: binds with an OS-assigned port and prints "PORT=<n>" on stdout
 
 import argparse
 import json
+import os
 import sys
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 from .core import translate_text
 
-# Serialise translation calls: Argos' model cache is process-global and the
-# per-language calls are short, so a single lock is safer than relying on
-# the library's internal caching being thread-safe.
-_translate_lock = threading.Lock()
+# Bound (not serialise) concurrent translations. The server is
+# thread-per-request and translation is CPU-bound, while CTranslate2's
+# Translator is thread-safe for inference, so a single global lock made the
+# sidecar strictly sequential (one cue at a time) and threw away every core
+# of the host: the Go client's bounded fan-out had nothing to overlap.
+# ARGOS_SERVER_CONCURRENCY tunes the bound (default 4, the canonical
+# client-side DefaultArgosServerConcurrency).
+def _resolve_concurrency():
+    raw = os.environ.get("ARGOS_SERVER_CONCURRENCY", "").strip()
+    if raw:
+        try:
+            value = int(raw)
+            if value >= 1:
+                return value
+        except ValueError:
+            pass
+    return 4
+
+
+_TRANSLATE_CONCURRENCY = _resolve_concurrency()
+_translate_slots = threading.BoundedSemaphore(_TRANSLATE_CONCURRENCY)
 
 
 class _Handler(BaseHTTPRequestHandler):
@@ -47,7 +65,13 @@ class _Handler(BaseHTTPRequestHandler):
 
     def do_GET(self):  # noqa: N802 — stdlib handler method name
         if self.path == "/health":
-            self._json(200, {"status": "ok"})
+            # concurrency is reported so an operator can confirm the sidecar
+            # is not the floor of the translation fan-out.
+            self._json(200, {
+                "status": "ok",
+                "concurrency": _TRANSLATE_CONCURRENCY,
+                "threaded": True,
+            })
         else:
             self._json(404, {"error": "not found"})
 
@@ -83,7 +107,7 @@ class _Handler(BaseHTTPRequestHandler):
             self._json(400, {"error": "missing \"target\" field"})
             return
 
-        with _translate_lock:
+        with _translate_slots:
             result = translate_text(text, source, target)
 
         if result.get("error"):

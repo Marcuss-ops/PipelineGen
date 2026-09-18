@@ -19,6 +19,28 @@ import (
 	"go.uber.org/zap"
 )
 
+// defaultMaxIdleConnsPerHost is the idle-connection ceiling kept warm for the
+// Ollama endpoint.
+//
+// The Go default is 2, which is SMALLER than every production fan-out width
+// (translation 3, cue translation 4, NLP 4, materializer 4). With the default,
+// the third concurrent translation had to open a fresh TCP connection on every
+// call and the extras were closed again as soon as they went idle — pure
+// overhead on a hot per-cue path. 16 covers the widest pool with headroom and
+// costs nothing against a local server.
+const defaultMaxIdleConnsPerHost = 16
+
+// newOllamaHTTPClient builds the canonical Ollama HTTP client: the same bounded
+// per-request timeout as before, on a transport that can keep a concurrent
+// fan-out's connections alive instead of churning them.
+func newOllamaHTTPClient(timeout time.Duration) *http.Client {
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	transport.MaxIdleConns = 64
+	transport.MaxIdleConnsPerHost = defaultMaxIdleConnsPerHost
+	transport.IdleConnTimeout = 90 * time.Second
+	return &http.Client{Timeout: timeout, Transport: transport}
+}
+
 // NewClient creates a new Ollama client
 func NewClient(baseURL, model string, timeoutSeconds int) *Client {
 	if timeoutSeconds <= 0 {
@@ -28,7 +50,7 @@ func NewClient(baseURL, model string, timeoutSeconds int) *Client {
 	return &Client{
 		baseURL:    baseURL,
 		model:      model,
-		httpClient: &http.Client{Timeout: time.Duration(timeoutSeconds) * time.Second},
+		httpClient: newOllamaHTTPClient(time.Duration(timeoutSeconds) * time.Second),
 		breakers:   make(map[string]*CircuitBreaker),
 	}
 }

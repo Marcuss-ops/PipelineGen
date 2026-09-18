@@ -212,6 +212,10 @@ func BuildTextTrackBundle(
 			translation.ArgosServerConfig{
 				ScriptsDir: cfg.Paths.PythonScriptsDir,
 				PythonBin:  cfg.Paths.ArgosPythonBin,
+				// Single owner of the .argosmodel location: the SAME value the
+				// installer uses (ARGOS_PACKAGE_DIR), so "models installed" and
+				// "models visible to the sidecar" cannot drift.
+				PackageDir: cfg.Paths.ArgosPackageDir,
 			},
 			log,
 		)
@@ -359,7 +363,7 @@ func BuildTextTrackBundle(
 				// every other consumer uses (Argos primary + Ollama fallback),
 				// and a per-language failure degrades to CuesWithText instead
 				// of leaving the language without an artifact.
-				CueTranslator: texttracks.NewCueTranslator(clipTranslator, mlCfg.SourceLanguage, ollamaModel, texttracks.DefaultCueTranslationConcurrency, log),
+				CueTranslator: texttracks.NewCueTranslator(clipTranslator, mlCfg.SourceLanguage, ollamaModel, resolveCueTranslationConcurrency(cfg), log),
 			},
 			Log: log,
 		})
@@ -530,53 +534,22 @@ func ActiveMultilingualConfig(cfg *config.Config) config.MultilingualConfig {
 	return cfg.Multilingual
 }
 
-// resolveTranslationPromptVersion returns the active translation
-// prompt version. Hardcoded to "v1" for Fase 3; a future PR
-// adds cfg.AI.TranslationPromptVersion.
-func resolveTranslationPromptVersion(_ *config.Config) string {
-	return "v1"
-}
-
-// resolveTranslationProvider maps media.multilingual.translation_provider
-// to the canonical provider strategy token. "ollama" → Ollama-only;
-// anything else ("argos", "auto", empty) → Argos primary + Ollama fallback
-// (the default).
-func resolveTranslationProvider(provider string) string {
-	if strings.EqualFold(strings.TrimSpace(provider), "ollama") {
-		return "ollama"
+// resolveCueTranslationConcurrency maps scripts.translation_concurrency onto
+// the per-cue subtitle fan-out width.
+//
+// godlike/06 (one owner per fact): the SAME operator knob that bounds the
+// scene×language translation phase also bounds the per-cue subtitle fan-out, so
+// the two paths cannot out-schedule the translator between themselves. Both
+// hammer the same single upstream (one Ollama instance with
+// OLLAMA_NUM_PARALLEL=3, or one local Argos sidecar whose own worker bound is
+// ARGOS_SERVER_CONCURRENCY); a second, independent width is exactly how the
+// pipeline ended up with 3+4+4 in flight against a 3-slot server.
+// A missing/zero knob keeps the certified default.
+func resolveCueTranslationConcurrency(cfg *config.Config) int {
+	if cfg != nil && cfg.Scripts.TranslationConcurrency > 0 {
+		return cfg.Scripts.TranslationConcurrency
 	}
-	return "argos"
-}
-
-// resolveTranslationModel maps MultilingualConfig.TranslationPolicy
-// to the concrete Ollama model name passed to TranslationPort.
-//
-// godlike/06 SSOT: this helper is the SOLE canonical owner of
-// the policy → model mapping.
-//
-//   - "auto"    → "" (server default; provider picks)
-//   - "fast"    → "gemma3:4b" (canonical fast model)
-//   - "quality" → "llama3:70b" (canonical quality model)
-//
-// A future PR adds cfg.AI.TranslationModel so operators can
-// override the concrete model without editing the Go struct.
-func resolveTranslationModel(policy string) string {
-	switch policy {
-	case "fast":
-		return "gemma3:4b"
-	case "quality":
-		return "llama3:70b"
-	default:
-		return ""
-	}
-}
-
-// ResolveTranslationModel exposes the canonical policy → model mapping to the
-// operator CLIs, so the CueTranslator they build routes the Ollama fallback to
-// the same model the runtime bundle uses (godlike/06: one owner of the
-// policy → model decision, never two).
-func ResolveTranslationModel(cfg *config.Config) string {
-	return resolveTranslationModel(ActiveMultilingualConfig(cfg).TranslationPolicy)
+	return texttracks.DefaultCueTranslationConcurrency
 }
 
 // buildBcp47CSV normalizes language codes into the canonical CSV form the

@@ -236,3 +236,43 @@ func TestOverlayRenderPhaseSkipRecordsNothing(t *testing.T) {
 	require.Equal(t, itemsSamplesBefore, histogramSampleTotal(t, observability.OverlayRenderItems),
 		"an unwired enqueuer renders nothing, so nothing may be measured")
 }
+
+type languageCapturingRenderEnqueuer struct {
+	languages []string
+}
+
+func (e *languageCapturingRenderEnqueuer) EnqueueChrononPlan(_ context.Context, plan capabilityoverlay.OverlayPlan) (RenderReference, error) {
+	e.languages = append(e.languages, plan.Language)
+	return RenderReference{JobID: plan.PlanID, Status: "COMPLETED"}, nil
+}
+
+func TestOverlayRenderPhaseRendersEveryLocalizedPlanInRequestOrder(t *testing.T) {
+	enqueuer := &languageCapturingRenderEnqueuer{}
+	runner := &Runner{overlayRenderEnqueuer: enqueuer, log: zap.NewNop()}
+	result := &GenerateResult{
+		OverlayPlan: &capabilityoverlay.OverlayPlan{
+			SchemaVersion: capabilityoverlay.SchemaVersionPlan, PlanID: "run-en", VideoID: "video-en", Language: "en",
+			Items: []capabilityoverlay.OverlayItem{{ID: "phrase-en"}},
+		},
+		LocalizedOverlayPlans: map[Language]*capabilityoverlay.OverlayPlan{
+			"it": {SchemaVersion: capabilityoverlay.SchemaVersionPlan, PlanID: "run-it", VideoID: "video-it", Language: "it", Items: []capabilityoverlay.OverlayItem{{ID: "phrase-it"}}},
+			"fr": {SchemaVersion: capabilityoverlay.SchemaVersionPlan, PlanID: "run-fr", VideoID: "video-fr", Language: "fr", Items: []capabilityoverlay.OverlayItem{{ID: "phrase-fr"}}},
+		},
+	}
+	req := defaultTestRequest()
+	req.SourceLanguage = "en"
+	req.Languages = []Language{"it", "en", "fr"}
+	req.Render.Enabled = true
+
+	require.True(t, runner.runOverlayRenderPhase(context.Background(), "run-multilingual", req, ExecutionContext{}, 0, audioCompileState{}, result))
+	require.Equal(t, []string{"en", "it", "fr"}, enqueuer.languages,
+		"the source plan renders first, then localized plans follow caller language order")
+	require.Equal(t, "run-en", result.OverlayRender.JobID)
+	require.Equal(t, "run-it", result.LocalizedOverlayRenders["it"].JobID)
+	require.Equal(t, "run-fr", result.LocalizedOverlayRenders["fr"].JobID)
+
+	// A recovered run with the completed references already in its result must
+	// reuse them rather than submit duplicate GPU work.
+	require.True(t, runner.runOverlayRenderPhase(context.Background(), "run-multilingual", req, ExecutionContext{}, 0, audioCompileState{}, result))
+	require.Len(t, enqueuer.languages, 3)
+}

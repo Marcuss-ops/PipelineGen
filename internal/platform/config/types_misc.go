@@ -91,6 +91,15 @@ type PathsConfig struct {
 	// separate from python_scripts_dir because Argos lives in its own venv
 	// (.venv-argos) distinct from the Whisper runtime (.venv-whisper).
 	ArgosPythonBin string `yaml:"argos_python_bin" env:"VELOX_ARGOS_PYTHON" default:""`
+	// ArgosPackageDir is the directory holding the installed .argosmodel
+	// packages, handed to the sidecar as ARGOS_PACKAGE_DIR. It is the single
+	// owner of "where the Argos models live": the installer
+	// (scripts/tools/argos_install_models.py) and the sidecar must agree, or
+	// the sidecar answers "no model for en->it" while the models sit on disk
+	// and the runtime silently degrades to the slow Ollama-only path. The
+	// default is repo-relative, exactly like DataDir (./data), so a service
+	// started from the repo root needs no environment override.
+	ArgosPackageDir string `yaml:"argos_package_dir" env:"VELOX_ARGOS_PACKAGE_DIR" default:"data/argos-packages"`
 	// WhisperPythonBin is the interpreter that hosts the local Whisper ASR
 	// bridge (scripts/bridges/whisper_transcriber.py). It MUST be the
 	// .venv-whisper interpreter: faster-whisper + ctranslate2 are installed

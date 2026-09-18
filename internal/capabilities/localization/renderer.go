@@ -11,7 +11,7 @@ package localization
 //	LocalizedClipPlan
 //	  ├─ Compiler         → render.RenderPlan (sealed + validated)
 //	  ├─ SubtitleWire     → SubtitleAsset (.ass, hash-verified)
-//	  └─ RenderPlanExecutor → RenderFacts (Rust render boundary)
+//	  └─ RenderPlanExecutor → RenderFacts (RenderingGen → Chronon3D boundary)
 //	  → LocalizedClipArtifact{Status: RENDERED}
 //
 // godlike/06 SSOT (one canonical owner per fact): the renderer makes ZERO
@@ -49,8 +49,8 @@ type RenderFacts struct {
 
 // RenderPlanExecutor executes a sealed render.RenderPlan together with the
 // burned subtitle ASS into certified local bytes. The concrete adapter drives
-// the Rust render boundary (the only operation that burns ASS subtitles); the
-// capability never invokes FFmpeg/ffprobe itself.
+// the RenderingGen → Chronon3D boundary (the only operation that burns ASS
+// subtitles); the capability never invokes FFmpeg/ffprobe itself.
 type RenderPlanExecutor interface {
 	Execute(ctx context.Context, plan render.RenderPlan, subtitle *SubtitleAsset) (RenderFacts, error)
 }
@@ -100,6 +100,9 @@ type LocalizedClipRenderer struct {
 	compiler Compiler
 	wire     *SubtitleWire
 	executor RenderPlanExecutor
+	// reuseCache is the optional content-addressed reuse seam (render_reuse.go).
+	// Nil means "always render", which is the pre-existing behaviour.
+	reuseCache RenderReuseCache
 }
 
 // NewLocalizedClipRenderer builds the renderer. Fail-closed: all three
@@ -119,7 +122,7 @@ func NewLocalizedClipRenderer(compiler Compiler, wire *SubtitleWire, executor Re
 }
 
 // Render compiles the plan, wires the subtitle ASS, executes the render via
-// the Rust boundary, and returns the certified RENDERED artifact. Fail-closed:
+// the RenderingGen → Chronon3D boundary, and returns the certified RENDERED artifact. Fail-closed:
 // an invalid plan, a compile/wire/execute failure, or incomplete render facts
 // all abort before any artifact is produced.
 //
@@ -145,7 +148,16 @@ func (r *LocalizedClipRenderer) Render(ctx context.Context, plan LocalizedClipPl
 		return LocalizedClipArtifact{Status: LocalizedClipFailed}, fmt.Errorf("localization: render: subtitle wire: %w", err)
 	}
 
-	// 3. Chronon render boundary.
+	// 3. Content-addressed reuse (render_reuse.go). Checked AFTER the subtitle
+	// wire on purpose: a reuse hit must still resolve and verify THIS language's
+	// translated track, so cached bytes can never carry a stale or wrong-language
+	// subtitle artifact. Only the GPU half (compile/submit/settle/probe) is
+	// skipped, and only against bytes that hash to the certified digest.
+	if reused, ok := r.reusedArtifact(ctx, plan, ass); ok {
+		return reused, nil
+	}
+
+	// 4. Chronon render boundary.
 	var facts RenderFacts
 	opts := RenderOptions{
 		Watermark:              plan.Watermark,
@@ -180,11 +192,16 @@ func (r *LocalizedClipRenderer) Render(ctx context.Context, plan LocalizedClipPl
 		return LocalizedClipArtifact{Status: LocalizedClipFailed}, fmt.Errorf("localization: render: execute: %w", err)
 	}
 
-	// 4. Fail-closed: the certified facts must be complete (godlike/07 — an
+	// 5. Fail-closed: the certified facts must be complete (godlike/07 — an
 	// artifact is never RENDERED without verified bytes + media facts).
 	if facts.LocalPath == "" || !isSHA256Hex(facts.SHA256) || facts.SizeBytes <= 0 || facts.DurationMS <= 0 {
 		return LocalizedClipArtifact{Status: LocalizedClipFailed}, fmt.Errorf("localization: render: executor returned incomplete render facts")
 	}
+
+	// Record the certified bytes so the next identical plan skips this render
+	// (fail-soft: a cache write failure never fails the artifact, see
+	// render_reuse.go).
+	r.storeRendered(ctx, plan, facts)
 
 	return LocalizedClipArtifact{
 		Version:         LocalizedClipArtifactVersion,

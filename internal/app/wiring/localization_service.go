@@ -75,6 +75,9 @@ type LocalizationDeps struct {
 	Executor         localization.RenderPlanExecutor
 	Uploader         localization.DriveUploader
 	DocPublisher     localization.DocPublisher
+	// RenderReuse is the optional content-addressed reuse cache. Nil means
+	// "always render" (the pre-existing behaviour); it is never required.
+	RenderReuse localization.RenderReuseCache
 }
 
 func NewLocalizationService(deps LocalizationDeps, cfg LocalizationConfig) (*LocalizationService, error) {
@@ -92,6 +95,9 @@ func NewLocalizationService(deps LocalizationDeps, cfg LocalizationConfig) (*Loc
 	renderer, err := localization.NewLocalizedClipRenderer(compiler, wire, deps.Executor)
 	if err != nil {
 		return nil, fmt.Errorf("localization service: renderer: %w", err)
+	}
+	if deps.RenderReuse != nil {
+		renderer = renderer.WithRenderReuseCache(deps.RenderReuse)
 	}
 	drivePublisher, err := localization.NewDrivePublisher(deps.Uploader)
 	if err != nil {
@@ -289,6 +295,20 @@ func BuildLocalizationService(cfg *config.Config, root *ComposeRoot, log *zap.Lo
 
 	svcCfg := LocalizationConfigFromConfig(cfg)
 
+	// Content-addressed reuse of localized renders: the same plan fingerprint
+	// must not pay the GPU twice. Boot-ensured next to the canonical render
+	// cache; an ensure failure degrades to "always render" with a warning
+	// instead of failing the whole service, because the cache is an
+	// optimization and the render path is the authority.
+	var renderReuse localization.RenderReuseCache
+	if ensureErr := localizationadapters.EnsureLocalizedRenderReuseTable(context.Background(), root.MediaPostgres); ensureErr != nil {
+		log.Warn("localization service: render reuse cache unavailable; every plan will render",
+			zap.String("subsystem", "localization_service"),
+			zap.Error(ensureErr))
+	} else {
+		renderReuse = localizationadapters.NewLocalizedRenderReuse(root.MediaPostgres, log)
+	}
+
 	return NewLocalizationService(LocalizationDeps{
 		Sources:          sources,
 		TrackResolver:    localizationadapters.NewTrackResolver(trackStore),
@@ -297,6 +317,7 @@ func BuildLocalizationService(cfg *config.Config, root *ComposeRoot, log *zap.Lo
 		Executor:         executor,
 		Uploader:         uploader,
 		DocPublisher:     docPublisher,
+		RenderReuse:      renderReuse,
 	}, svcCfg)
 }
 

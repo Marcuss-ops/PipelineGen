@@ -124,6 +124,7 @@ func runEntityBatteryScript(t *testing.T, s batteryScript) *GenerateResult {
 	runner.SetCombinedAudioRenderer(&stubCombinedAudioRenderer{})
 	runner.SetOverlayRegistry(capabilityoverlay.DefaultChrononOverlayRegistry)
 	runner.SetOverlayRenderEnqueuer(&batteryRenderEnqueuer{})
+	runner.SetLocalizedRenderEnqueuer(&recordingLocalizedRenderEnqueuer{})
 	runner.SetVidRushBarrier(batteryBarrier{segments: segments})
 
 	req := defaultTestRequest()

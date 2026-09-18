@@ -34,7 +34,7 @@ const (
 	// LocalizedClipQueued means the plan is enqueued, waiting for a render
 	// worker slot.
 	LocalizedClipQueued LocalizedClipStatus = "QUEUED"
-	// LocalizedClipRendering means the render boundary (Rust) is executing
+	// LocalizedClipRendering means the RenderingGen → Chronon3D boundary is executing
 	// the plan.
 	LocalizedClipRendering LocalizedClipStatus = "RENDERING"
 	// LocalizedClipRendered means the local bytes are produced and validated
@@ -105,6 +105,9 @@ type LocalizedClipArtifact struct {
 	MetricsJSON string `json:"metrics,omitempty"`
 
 	// ── Drive location ───────────────────────────────────────────
+	// DriveFolderID is the resolved Drive leaf folder used for publication.
+	// It is populated only after the canonical destination resolver runs.
+	DriveFolderID string `json:"drive_folder_id,omitempty"`
 	// DriveFileID is the uploaded Drive file id. Omitted until upload.
 	DriveFileID string `json:"drive_file_id,omitempty"`
 	// DriveLink is the uploaded Drive web-view link. Omitted until upload.
