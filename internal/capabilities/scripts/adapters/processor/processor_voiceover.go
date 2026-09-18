@@ -28,17 +28,30 @@ package processor
 import (
 	"context"
 	"fmt"
+	"sort"
 	"strings"
+	"sync"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
 	voiceover "github.com/Marcuss-ops/PipelineGen/internal/capabilities/voiceover/service"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
+	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
 	"github.com/Marcuss-ops/PipelineGen/pkg/corid"
 
 	"go.uber.org/zap"
 )
+
+// voiceoverTranslationConcurrency bounds the per-language scene-translation
+// fan-out of the inline voiceover processor.
+//
+// Translation used to run as a nested serial loop (language -> scene), so a
+// 10-language deliverable paid the SUM of every scene translation instead of
+// the slowest one. The bound matches the pool widths the rest of the script
+// runtime uses, so this processor cannot out-schedule the translator's own
+// ceiling.
+const voiceoverTranslationConcurrency = 4
 
 // VoiceoverProcessor generates scene voiceovers via the canonical
 // voiceover.VoiceoverItemExecutor port. Uses
@@ -207,34 +220,29 @@ func (p *VoiceoverProcessor) Process(ctx context.Context, plan *scriptpkg.Resolv
 	var warnings []string
 	for _, language := range languages {
 		targetScenes := scenes
+		// translationFailures marks the scene indexes whose target-language
+		// translation failed. ONLY those scenes lose their voiceover: the rest
+		// of the language is still synthesised. A single failed scene must not
+		// discard the whole language (the file-level contract: partial failures
+		// are collected, the processor does not abort on the first error), and a
+		// failed translation must never be silently replaced by the source text.
+		var translationFailures map[int]error
 		if !strings.EqualFold(language, primaryLanguage) {
 			if p.translator == nil {
 				warnings = append(warnings, fmt.Sprintf("voiceover skipped for language %s: translator not configured", language))
 				continue
 			}
-			targetScenes = cloneVoiceoverScenes(baseScenes)
-			for i := range targetScenes {
-				if !targetScenes[i].AllowsTranslation() {
-					continue
-				}
-				translated, err := p.translator.Translate(ctx, targetScenes[i].Text, language)
-				if err != nil || strings.TrimSpace(translated) == "" {
-					if err == nil {
-						err = fmt.Errorf("translator returned empty text")
-					}
-					warnings = append(warnings, fmt.Sprintf("voiceover skipped for language %s: scene %d translation failed: %v", language, i, err))
-					targetScenes = nil
-					break
-				}
-				targetScenes[i].Text = translated
-			}
-			if targetScenes == nil {
-				continue
+			targetScenes, translationFailures = p.translateScenesForLanguage(ctx, baseScenes, language)
+			for _, index := range sortedFailureIndexes(translationFailures) {
+				warnings = append(warnings, fmt.Sprintf("voiceover skipped for language %s: scene %d translation failed: %v", language, index, translationFailures[index]))
 			}
 		}
 
 		items := make([]VoiceoverSceneInput, 0, len(targetScenes))
 		for i, scene := range targetScenes {
+			if _, failed := translationFailures[i]; failed {
+				continue
+			}
 			if !scene.AllowsTTS() || !scene.AllowsGeneratedAudio() {
 				continue
 			}
@@ -389,6 +397,64 @@ func voiceoverTimingToDomain(in *voiceover.VoiceoverTimingResult) *scriptpkg.Voi
 		TextSHA256:   in.TextSHA256,
 		AudioSHA256:  in.AudioSHA256,
 	}
+}
+
+// translateScenesForLanguage translates every translatable scene into
+// `language` with a bounded fan-out and returns the translated scenes plus the
+// per-scene failures.
+//
+// The source slice is never mutated (the clone is what gets translated), so a
+// failure cannot leak partially-translated text into another language's pass.
+// An empty translation is a failure, not a pass-through: TTS must never speak
+// the source language under a target-language filename.
+func (p *VoiceoverProcessor) translateScenesForLanguage(ctx context.Context, scenes []scriptpkg.SpecScene, language string) ([]scriptpkg.SpecScene, map[int]error) {
+	out := cloneVoiceoverScenes(scenes)
+	failures := make(map[int]error)
+	if len(out) == 0 {
+		return out, failures
+	}
+
+	indexes := make([]int, 0, len(out))
+	for i := range out {
+		if out[i].AllowsTranslation() {
+			indexes = append(indexes, i)
+		}
+	}
+	if len(indexes) == 0 {
+		return out, failures
+	}
+
+	var mu sync.Mutex
+	_, _ = concurrent.Map(ctx, indexes, voiceoverTranslationConcurrency, func(opCtx context.Context, _ int, index int) (struct{}, error) {
+		translated, err := p.translator.Translate(opCtx, scenes[index].Text, language)
+		if err == nil && strings.TrimSpace(translated) == "" {
+			err = fmt.Errorf("translator returned empty text")
+		}
+		mu.Lock()
+		defer mu.Unlock()
+		if err != nil {
+			failures[index] = err
+			return struct{}{}, nil
+		}
+		out[index].Text = translated
+		return struct{}{}, nil
+	})
+	return out, failures
+}
+
+// sortedFailureIndexes returns the failed scene indexes in ascending order so
+// the emitted warnings (and the API envelope that carries them) are stable
+// across runs instead of following map iteration order.
+func sortedFailureIndexes(failures map[int]error) []int {
+	if len(failures) == 0 {
+		return nil
+	}
+	indexes := make([]int, 0, len(failures))
+	for index := range failures {
+		indexes = append(indexes, index)
+	}
+	sort.Ints(indexes)
+	return indexes
 }
 
 func cloneVoiceoverScenes(src []scriptpkg.SpecScene) []scriptpkg.SpecScene {

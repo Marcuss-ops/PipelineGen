@@ -41,6 +41,15 @@ type QueueRenderEnqueuer struct {
 	// render per semantic item. Tests keep the legacy default unless they
 	// explicitly opt into the item contract.
 	separateItemRenders bool
+	// itemRenderPool bounds how many per-item overlay renders may be in
+	// flight at once. It exists because the per-item path used to submit a
+	// child plan and block on its terminal state before submitting the next
+	// one, so exactly one render was ever in flight and the GPU lane could
+	// not overlap the per-item pre/post chain (materialize, upload, probe,
+	// publish). Zero selects defaultSeparateItemRenderWorkers. The worker
+	// remains the sole authority on how many of those renders touch the GPU
+	// at once (worker.gpu_lanes), so this raises pipelining, not GPU load.
+	itemRenderPool int
 	// freshSeq is the per-instance monotonic counter that disambiguates the
 	// fresh queue identity. It replaces the former package-level global so
 	// concurrent enqueuers (and tests) cannot interfere with one another.
@@ -105,6 +114,26 @@ func (e *QueueRenderEnqueuer) SetSeparateItemRenders(on bool) {
 	if e != nil {
 		e.separateItemRenders = on
 	}
+}
+
+// SetItemRenderPool tunes how many per-item overlay renders may be in flight
+// at once. It is a PIPELINING bound, not a GPU bound: the RenderingGen worker
+// owns `worker.gpu_lanes` and is the only authority on concurrent GPU work.
+// A non-positive value restores the default.
+func (e *QueueRenderEnqueuer) SetItemRenderPool(workers int) {
+	if e != nil {
+		e.itemRenderPool = workers
+	}
+}
+
+// itemRenderWorkers resolves the per-item render pool size. It never returns
+// less than 1, so every item is rendered exactly once even when the caller
+// never opted in.
+func (e *QueueRenderEnqueuer) itemRenderWorkers() int {
+	if e != nil && e.itemRenderPool > 0 {
+		return e.itemRenderPool
+	}
+	return defaultSeparateItemRenderWorkers
 }
 
 // EnqueueChrononPlan submits the semantic OverlayPlan to RenderingGen. The

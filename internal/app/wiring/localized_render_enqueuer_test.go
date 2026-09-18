@@ -9,6 +9,7 @@ import (
 
 	"go.uber.org/zap"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/texttracks"
 	cliprender "github.com/Marcuss-ops/PipelineGen/internal/capabilities/cliprender"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/localization"
@@ -146,6 +147,14 @@ func testEnqueuerInput() scriptgeneration.LocalizedRenderInput {
 }
 
 func newTestEnqueuerAdapter(l *recordingLocalizer, t *recordingTrackRepo, c *recordingCueWriter) *localizedRenderEnqueuerAdapter {
+	return newTestEnqueuerAdapterWithCommitter(l, t, c, nil)
+}
+
+// newTestEnqueuerAdapterWithCommitter wires the canonical media committer as
+// the extra the production composition passes, so the SSOT commit path is
+// exercised instead of skipped. A nil committer reproduces a hermetic
+// composition without the media plane.
+func newTestEnqueuerAdapterWithCommitter(l *recordingLocalizer, t *recordingTrackRepo, c *recordingCueWriter, committer persistence.AssetCommitter) *localizedRenderEnqueuerAdapter {
 	t.ready = map[string][]detail.TimedCue{
 		"en": {{StartMs: 0, EndMs: 1200, Text: "DB English subtitle"}},
 		"es": {{StartMs: 0, EndMs: 1200, Text: "DB Spanish subtitle"}},
@@ -155,8 +164,43 @@ func newTestEnqueuerAdapter(l *recordingLocalizer, t *recordingTrackRepo, c *rec
 		SourceLanguage: "en",
 		FolderID:       "folder-1",
 		DocFolderID:    "docs-1",
-	}, zap.NewNop())
+	}, zap.NewNop(), nil, nil, nil, nil, committer)
 }
+
+// recordingAssetCommitter captures the canonical media-SSOT commits a
+// localized render performs and can fail on demand, so the fail-closed
+// contract is proven rather than assumed.
+type recordingAssetCommitter struct {
+	mu   sync.Mutex
+	reqs []persistence.AssetCommitRequest
+	err  error
+}
+
+func (c *recordingAssetCommitter) CommitTx(context.Context, persistence.Transaction, persistence.CommitRequest) (persistence.CommitResult, error) {
+	return persistence.CommitResult{}, c.err
+}
+
+func (c *recordingAssetCommitter) CommitAndIndex(context.Context, persistence.CommitRequest) (persistence.CommitResult, error) {
+	return persistence.CommitResult{}, c.err
+}
+
+func (c *recordingAssetCommitter) CommitAsset(_ context.Context, req persistence.AssetCommitRequest) (persistence.CommittedAsset, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.err != nil {
+		return persistence.CommittedAsset{}, c.err
+	}
+	c.reqs = append(c.reqs, req)
+	return persistence.CommittedAsset{}, nil
+}
+
+func (c *recordingAssetCommitter) snapshot() []persistence.AssetCommitRequest {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return append([]persistence.AssetCommitRequest(nil), c.reqs...)
+}
+
+var _ persistence.AssetCommitter = (*recordingAssetCommitter)(nil)
 
 // ── tests ───────────────────────────────────────────────────────────
 
@@ -189,6 +233,26 @@ func TestLocalizedRenderEnqueuer_MapsToSingleLanguageLocalize(t *testing.T) {
 	}
 	if !strings.Contains(in.DocIdempotencyKey, "scene-1") || !strings.Contains(in.DocIdempotencyKey, "es") {
 		t.Fatalf("DocIdempotencyKey = %q", in.DocIdempotencyKey)
+	}
+}
+
+func TestLocalizedRenderEnqueuer_RejectsMissingRequestedSubtitleLanguage(t *testing.T) {
+	l := &recordingLocalizer{}
+	tr := &recordingTrackRepo{ready: map[string][]detail.TimedCue{
+		"en": {{StartMs: 0, EndMs: 1200, Text: "DB English subtitle"}},
+	}}
+	cw := &recordingCueWriter{}
+	a := newLocalizedRenderEnqueuerAdapter(l, tr, cw, LocalizedRenderEnqueuerConfig{SourceLanguage: "en"}, zap.NewNop())
+
+	in := testEnqueuerInput()
+	in.Language = "es"
+	if err := a.EnqueueLocalizedRender(context.Background(), in); err == nil {
+		t.Fatal("missing requested subtitles must fail closed instead of rendering the source-language track")
+	} else if !strings.Contains(err.Error(), "refusing source-language fallback") {
+		t.Fatalf("error must identify the forbidden fallback, got %v", err)
+	}
+	if len(l.snapshot()) != 0 {
+		t.Fatal("Localize must not run when the requested subtitle language is unavailable")
 	}
 }
 
@@ -411,6 +475,122 @@ func TestLocalizedRenderEnqueuer_ReportSinkErrorFailsClosed(t *testing.T) {
 	}
 	if err := a.EnqueueLocalizedRender(context.Background(), in); err == nil {
 		t.Fatal("must fail closed when the video recording sink errors")
+	}
+}
+
+// TestLocalizedRenderEnqueuer_CommitsRenderedClipToTheCanonicalSSOT certifies
+// that a produced localized clip is PERSISTED in the media SSOT instead of
+// living only as a Drive upload, and that the run records the canonical
+// content-addressed identity the committed row owns — so a later lookup by
+// asset id finds the render instead of re-deriving it at runtime.
+func TestLocalizedRenderEnqueuer_CommitsRenderedClipToTheCanonicalSSOT(t *testing.T) {
+	const sha = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+	wantAssetID := "cliprender_" + sha[:24]
+
+	l := &recordingLocalizer{result: &localization.LocalizeResult{
+		Artifacts: []localization.LocalizedClipArtifact{{
+			SceneID: "scene-1", Language: "es", ClipID: "clip-1", AssetID: "vid-123",
+			SHA256: sha, SizeBytes: 4096, DurationMS: 6500,
+			DriveFileID:   "drive-abc",
+			DriveLink:     "https://drive.google.com/file/d/drive-abc/view",
+			DriveFolderID: "folder-xyz",
+			Status:        localization.LocalizedClipUploaded,
+		}},
+	}}
+	committer := &recordingAssetCommitter{}
+	a := newTestEnqueuerAdapterWithCommitter(l, &recordingTrackRepo{}, &recordingCueWriter{}, committer)
+
+	var got scriptgeneration.LocalizedRenderResult
+	in := testEnqueuerInput()
+	in.OnRendered = func(rendered scriptgeneration.LocalizedRenderResult) error {
+		got = rendered
+		return nil
+	}
+	if err := a.EnqueueLocalizedRender(context.Background(), in); err != nil {
+		t.Fatalf("EnqueueLocalizedRender: %v", err)
+	}
+
+	reqs := committer.snapshot()
+	if len(reqs) != 1 {
+		t.Fatalf("canonical commits = %d, want 1 (the rendered clip must land in the media SSOT, not only on Drive)", len(reqs))
+	}
+	req := reqs[0]
+	if req.AssetID != wantAssetID {
+		t.Fatalf("committed asset id = %q, want the content-addressed %q", req.AssetID, wantAssetID)
+	}
+	if req.ContentHash != sha || req.MediaType != "video" || req.LifecycleState != "ACTIVE" {
+		t.Fatalf("committed row must carry the certified content hash and an active lifecycle: %+v", req)
+	}
+	if req.FolderID != "folder-xyz" {
+		t.Fatalf("committed folder = %q, want the resolved Drive leaf folder", req.FolderID)
+	}
+	if len(req.Locations) != 1 || req.Locations[0].ExternalID != "drive-abc" || !req.Locations[0].IsPrimary {
+		t.Fatalf("committed Drive location = %+v", req.Locations)
+	}
+	if req.Metadata.Extra["source_asset_id"] != "clip-1" || req.Metadata.Extra["language"] != "es" {
+		t.Fatalf("committed metadata must keep the source asset id and language: %+v", req.Metadata.Extra)
+	}
+	if got.AssetID != wantAssetID {
+		t.Fatalf("run recorded asset id = %q, want the committed canonical %q", got.AssetID, wantAssetID)
+	}
+}
+
+// TestLocalizedRenderEnqueuer_CommitFailsClosedOnUnusableDigest pins that a
+// digest too short to mint the canonical asset id fails the enqueue: it must
+// neither panic on the slice nor commit a partial row while claiming a
+// produced video.
+func TestLocalizedRenderEnqueuer_CommitFailsClosedOnUnusableDigest(t *testing.T) {
+	l := &recordingLocalizer{result: &localization.LocalizeResult{
+		Artifacts: []localization.LocalizedClipArtifact{{
+			SceneID: "scene-1", Language: "es", ClipID: "clip-1", AssetID: "vid-123",
+			SHA256: "deadbeef", Status: localization.LocalizedClipUploaded,
+		}},
+	}}
+	committer := &recordingAssetCommitter{}
+	a := newTestEnqueuerAdapterWithCommitter(l, &recordingTrackRepo{}, &recordingCueWriter{}, committer)
+
+	in := testEnqueuerInput()
+	in.OnRendered = func(rendered scriptgeneration.LocalizedRenderResult) error {
+		t.Fatal("a render that was never committed must not be recorded as produced")
+		return nil
+	}
+	err := a.EnqueueLocalizedRender(context.Background(), in)
+	if err == nil {
+		t.Fatal("an unusable digest must fail the enqueue instead of panicking or committing a partial row")
+	}
+	if !strings.Contains(err.Error(), "unusable SHA-256") {
+		t.Fatalf("error must name the unusable digest, got %v", err)
+	}
+	if len(committer.snapshot()) != 0 {
+		t.Fatal("nothing may be committed when the digest cannot mint the canonical asset id")
+	}
+}
+
+// TestLocalizedRenderEnqueuer_CommitErrorFailsClosed certifies that a media
+// SSOT failure aborts the enqueue: the run must never report a produced video
+// whose row was not persisted.
+func TestLocalizedRenderEnqueuer_CommitErrorFailsClosed(t *testing.T) {
+	const sha = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+	l := &recordingLocalizer{result: &localization.LocalizeResult{
+		Artifacts: []localization.LocalizedClipArtifact{{
+			SceneID: "scene-1", Language: "es", ClipID: "clip-1", SHA256: sha,
+			Status: localization.LocalizedClipUploaded,
+		}},
+	}}
+	committer := &recordingAssetCommitter{err: errors.New("postgres unavailable")}
+	a := newTestEnqueuerAdapterWithCommitter(l, &recordingTrackRepo{}, &recordingCueWriter{}, committer)
+
+	in := testEnqueuerInput()
+	in.OnRendered = func(rendered scriptgeneration.LocalizedRenderResult) error {
+		t.Fatal("a failed SSOT commit must not be reported as a produced video")
+		return nil
+	}
+	err := a.EnqueueLocalizedRender(context.Background(), in)
+	if err == nil {
+		t.Fatal("a commit failure must fail the enqueue (fail-closed)")
+	}
+	if !strings.Contains(err.Error(), "postgres unavailable") {
+		t.Fatalf("error must keep the commit cause, got %v", err)
 	}
 }
 

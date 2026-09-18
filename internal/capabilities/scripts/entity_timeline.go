@@ -27,7 +27,7 @@ import (
 )
 
 // compileResultEntityTimeline derives the deterministic entity→timestamp
-// projection for the result's source language. It mirrors
+// projection for one language. It mirrors
 // compileResultPhraseTimings: per-scene inputs come from the scene's
 // annotations (NLP output), the scene's voiceover word timing (the actual
 // synthesis stream) and the scene's canonical timeline offset.
@@ -39,10 +39,23 @@ func compileResultEntityTimeline(result *GenerateResult, language Language) erro
 	if result == nil || result.CanonicalTimeline == nil {
 		return nil
 	}
+	resolved, err := overlayResolvedScenesFor(*result, language)
+	if err != nil {
+		return err
+	}
+	resolvedByID := make(map[string]ResolvedScene, len(resolved))
+	var durationUS int64
+	for _, scene := range resolved {
+		resolvedByID[scene.ID] = scene
+		if end := scene.TimelineStartUS + scene.DurationUS; end > durationUS {
+			durationUS = end
+		}
+	}
 	var scenes []capabilityentities.SceneInput
 	for i := range result.Scenes {
 		scene := &result.Scenes[i]
-		if scene.Annotations == nil {
+		annotations := annotationsForLanguage(*scene, language)
+		if annotations == nil {
 			continue
 		}
 		ref, ok := scene.Voiceover[language]
@@ -53,11 +66,14 @@ func compileResultEntityTimeline(result *GenerateResult, language Language) erro
 		if text == "" {
 			continue
 		}
-		sources := entitySourcesFromAnnotations(scene.Annotations, text)
+		sources := entitySourcesFromAnnotations(annotations, text)
 		if len(sources) == 0 {
 			continue
 		}
-		segment := result.CanonicalTimeline.Segments[i]
+		segment, ok := resolvedByID[scene.ID]
+		if !ok {
+			continue
+		}
 		scenes = append(scenes, capabilityentities.SceneInput{
 			SceneID:          scene.ID,
 			SceneIndex:       i,
@@ -73,13 +89,27 @@ func compileResultEntityTimeline(result *GenerateResult, language Language) erro
 	}
 	timeline, err := capabilityentities.BuildEntityTimeline(capabilityentities.BuildInput{
 		Language:   string(language),
-		DurationUS: result.CanonicalTimeline.DurationUS,
+		DurationUS: durationUS,
 		Scenes:     scenes,
 	})
 	if err != nil {
 		return err
 	}
 	result.EntityTimeline = &timeline
+	return nil
+}
+
+// annotationsForLanguage returns only semantic annotations grounded in the
+// requested language. The source annotation remains the compatibility surface
+// for its own language; a translated render never reuses source-language spans
+// when translated NLP is missing.
+func annotationsForLanguage(scene Scene, language Language) *scriptpkg.SceneAnnotations {
+	if localized := scene.LocalizedAnnotations[language]; localized != nil {
+		return localized
+	}
+	if scene.Annotations != nil && (language == "" || strings.TrimSpace(scene.Annotations.Language) == "" || strings.EqualFold(scene.Annotations.Language, string(language))) {
+		return scene.Annotations
+	}
 	return nil
 }
 

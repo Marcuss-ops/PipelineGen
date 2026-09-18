@@ -19,6 +19,7 @@ import (
 	"strings"
 
 	cliprender "github.com/Marcuss-ops/PipelineGen/internal/capabilities/cliprender"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
@@ -151,7 +152,7 @@ func (b *LocalizationPlanBuilder) Build(ctx context.Context, source SourceInput,
 		// The source language burns its own transcript; every target burns its
 		// translated transcript track.
 		subtitle := transcript
-		if lang != source.SourceLanguage {
+		if !sameLanguage(lang, source.SourceLanguage) {
 			subtitle, err = b.tracks.ResolveTrack(ctx, source.AssetID, lang, detail.TextTrackTranscript)
 			if err != nil {
 				return nil, fmt.Errorf("localization: plan builder: resolve subtitle track (%s/%s): %w", source.AssetID, lang, err)
@@ -198,6 +199,24 @@ func (b *LocalizationPlanBuilder) Build(ctx context.Context, source SourceInput,
 		plans = append(plans, plan)
 	}
 	return plans, nil
+}
+
+// sameLanguage reports whether two BCP-47 tags name the same language. The
+// comparison runs through the canonical normalizer so a format variant of the
+// source language ("EN", "en-GB" vs "en") is not mistaken for a DIFFERENT
+// language: that mistake would resolve a translated track for the source
+// language instead of burning the transcript the source already has — and, when
+// no such translated track exists, abort the whole fan-out on a language the
+// request never asked to translate. A tag the normalizer cannot read falls back
+// to the case-insensitive comparison only; it is never assumed to match.
+func sameLanguage(a, b string) bool {
+	a, b = strings.TrimSpace(a), strings.TrimSpace(b)
+	if strings.EqualFold(a, b) {
+		return true
+	}
+	na, aErr := asset.Normalize(a)
+	nb, bErr := asset.Normalize(b)
+	return aErr == nil && bErr == nil && na == nb
 }
 
 // validate fails closed on an incomplete source: every fact the plans must

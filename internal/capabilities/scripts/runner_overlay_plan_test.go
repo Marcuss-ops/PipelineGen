@@ -552,6 +552,79 @@ func TestCompileOverlayPlan_UnspokenPhraseSkipped(t *testing.T) {
 	require.Nil(t, plan, "unspoken phrase and non-contract word overlay produce no plan")
 }
 
+func TestCompileOverlayPlanUsesTranslatedPhraseAndVoiceoverTiming(t *testing.T) {
+	englishTiming := speechTimingForWords([]string{"Discipline", "creates", "power."})
+	spanishTiming := speechTimingForWords([]string{"La", "velocidad", "abre", "la", "distancia", "con", "control."})
+	spanishTiming.Language = "es"
+	result := &GenerateResult{
+		SourceLanguage: "en",
+		AudioMode:      capabilityaudio.AudioModeCombinedTimeline,
+		CanonicalTimeline: &capabilityaudio.CanonicalTimeline{
+			Version: capabilityaudio.TimelineVersion, DurationUS: englishTiming.DurationUS,
+		},
+		FinalAudio: &FinalAudioReference{DurationMS: 300},
+		Scenes: []Scene{{
+			ID: "scene-0", Index: 0,
+			Text: map[Language]string{
+				"en": "Discipline creates power.",
+				"es": "La velocidad abre la distancia con control.",
+			},
+			Voiceover: map[Language]AudioReference{
+				"en": {ID: "vo-en", Duration: 0.3, Timing: &englishTiming},
+				"es": {ID: "vo-es", Duration: 0.7, Timing: &spanishTiming},
+			},
+			Annotations: &scriptpkg.SceneAnnotations{
+				Version: 1, Language: "en", Status: "completed",
+				ImportantPhrases: []scriptpkg.AnnotationSpan{{Text: "Discipline creates power", Score: 0.9}},
+			},
+			LocalizedAnnotations: map[Language]*scriptpkg.SceneAnnotations{
+				"es": {
+					Version: 1, Language: "es", Status: "completed",
+					ImportantPhrases: []scriptpkg.AnnotationSpan{{Text: "velocidad abre la distancia", Score: 0.9}},
+				},
+			},
+		}},
+	}
+
+	plan, err := CompileOverlayPlan(result, "es", GoldenOverlayCanvas, "run-es", "video-es", "project")
+	require.NoError(t, err)
+	require.NotNil(t, plan)
+	require.Equal(t, "es", plan.Language)
+	require.Equal(t, int64(700), plan.DurationMS,
+		"localized duration must come from the translated voiceover, not the shorter source master")
+	require.Len(t, plan.Items, 1)
+	require.Equal(t, "velocidad abre la distancia", plan.Items[0].Text,
+		"the phrase overlay must use localized NLP rather than the English source annotation")
+	require.Equal(t, int64(100), plan.Items[0].StartMs)
+	require.Equal(t, int64(500), plan.Items[0].EndMs)
+}
+
+func TestCompileOverlayPlanDoesNotReuseSourceAnnotationsForMissingTranslation(t *testing.T) {
+	timing := speechTimingForWords([]string{"Discipline", "creates", "power."})
+	result := &GenerateResult{
+		SourceLanguage: "en",
+		AudioMode:      capabilityaudio.AudioModeCombinedTimeline,
+		CanonicalTimeline: &capabilityaudio.CanonicalTimeline{
+			Version: capabilityaudio.TimelineVersion, DurationUS: timing.DurationUS,
+		},
+		Scenes: []Scene{{
+			ID: "scene-0", Index: 0,
+			Text: map[Language]string{"en": "Discipline creates power.", "es": "La disciplina crea poder."},
+			Voiceover: map[Language]AudioReference{
+				"es": {ID: "vo-es", Duration: 0.3, Timing: &timing},
+			},
+			Annotations: &scriptpkg.SceneAnnotations{
+				Version: 1, Language: "en", Status: "completed",
+				ImportantPhrases: []scriptpkg.AnnotationSpan{{Text: "Discipline creates power", Score: 0.9}},
+			},
+		}},
+	}
+
+	plan, err := CompileOverlayPlan(result, "es", GoldenOverlayCanvas, "run-es", "video-es", "project")
+	require.NoError(t, err)
+	require.Nil(t, plan, "an absent translated annotation must not leak a source-language overlay")
+}
+
 // TestCompileOverlayPlan_ChosenEntityImageCarriesResolvedAsset certifies the
 // canonical-id connection end-to-end: the chosen entity (the scene-relevant
 // one with a certified occurrence) BECOMES the image-only entity overlay that carries its

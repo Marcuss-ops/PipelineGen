@@ -58,9 +58,10 @@ func CompileOverlayPlanFromGenerationResultWithStyle(
 	}
 
 	capResult := &GenerateResult{
-		Title:      result.Title,
-		OutputName: result.Title,
-		AudioMode:  capabilityaudio.AudioMode(strings.ToUpper(strings.TrimSpace(result.AudioMode))),
+		SourceLanguage: language,
+		Title:          result.Title,
+		OutputName:     result.Title,
+		AudioMode:      capabilityaudio.AudioMode(strings.ToUpper(strings.TrimSpace(result.AudioMode))),
 	}
 	if capResult.AudioMode == "" {
 		capResult.AudioMode = capabilityaudio.AudioModeCombinedTimeline

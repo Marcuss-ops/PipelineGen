@@ -683,6 +683,10 @@ func TestLiveYouTube_WhisperSourceArgosTranslationDeliversSubtitleArtifacts(t *t
 	argos, err := translation.NewArgosServerTranslator(translation.ArgosServerConfig{
 		PythonBin:  liveEnv("VELOX_E2E_ARGOS_PYTHON", filepath.Join("..", "..", ".venv-argos", "bin", "python3")),
 		ScriptsDir: liveEnv("VELOX_E2E_ARGOS_SCRIPTS_DIR", filepath.Join("..", "..", "scripts")),
+		// Same .argosmodel directory the installer writes to, so the live test
+		// exercises the reference path end to end instead of the user-scoped
+		// argostranslate default.
+		PackageDir: liveEnv("VELOX_E2E_ARGOS_PACKAGE_DIR", filepath.Join("..", "..", "data", "argos-packages")),
 	}, log)
 	require.NoError(t, err, "the local Argos sidecar must be available for this test")
 	t.Cleanup(func() { argos.Stop() })

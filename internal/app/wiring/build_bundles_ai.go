@@ -4,7 +4,8 @@
 // build_bundles_domain.go per AGENTS.md Pattern 5.
 //
 // godlike/06 SSOT: BuildAIBundle is the single canonical owner of the
-// Ollama + script-gen + translation stack construction.
+// Ollama + script-gen + translation stack construction, and of the
+// policy → provider/model resolution that stack is built from.
 package wiring
 
 import (
@@ -236,4 +237,53 @@ func BuildAIBundle(ctx context.Context, cfg *config.Config, dbs *Databases, log 
 		WhisperTranscriber: whisperAdapter,
 		SceneTextGenerator: sceneTextGen,
 	}, nil
+}
+
+// resolveTranslationPromptVersion returns the active translation
+// prompt version. Hardcoded to "v1" for Fase 3; a future PR
+// adds cfg.AI.TranslationPromptVersion.
+func resolveTranslationPromptVersion(_ *config.Config) string {
+	return "v1"
+}
+
+// resolveTranslationProvider maps media.multilingual.translation_provider
+// to the canonical provider strategy token. "ollama" → Ollama-only;
+// anything else ("argos", "auto", empty) → Argos primary + Ollama fallback
+// (the default).
+func resolveTranslationProvider(provider string) string {
+	if strings.EqualFold(strings.TrimSpace(provider), "ollama") {
+		return "ollama"
+	}
+	return "argos"
+}
+
+// resolveTranslationModel maps MultilingualConfig.TranslationPolicy
+// to the concrete Ollama model name passed to TranslationPort.
+//
+// godlike/06 SSOT: this helper is the SOLE canonical owner of
+// the policy → model mapping.
+//
+//   - "auto"    → "" (server default; provider picks)
+//   - "fast"    → "gemma3:4b" (canonical fast model)
+//   - "quality" → "llama3:70b" (canonical quality model)
+//
+// A future PR adds cfg.AI.TranslationModel so operators can
+// override the concrete model without editing the Go struct.
+func resolveTranslationModel(policy string) string {
+	switch policy {
+	case "fast":
+		return "gemma3:4b"
+	case "quality":
+		return "llama3:70b"
+	default:
+		return ""
+	}
+}
+
+// ResolveTranslationModel exposes the canonical policy → model mapping to the
+// operator CLIs, so the CueTranslator they build routes the Ollama fallback to
+// the same model the runtime bundle uses (godlike/06: one owner of the
+// policy → model decision, never two).
+func ResolveTranslationModel(cfg *config.Config) string {
+	return resolveTranslationModel(ActiveMultilingualConfig(cfg).TranslationPolicy)
 }

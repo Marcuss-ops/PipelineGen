@@ -149,8 +149,13 @@ func (s *ClipRenderStreamingTranscriber) TranscribeStream(ctx context.Context, s
 	}
 
 	var res struct {
-		Text             string  `json:"text"`
+		Text string `json:"text"`
+		// Language is the language the text was decoded as; DetectedLanguage is
+		// what the model heard with NO language forced. The bridge emits both, so
+		// a forced decode's echo can never be read as a detection.
+		Language         string  `json:"language"`
 		DetectedLanguage string  `json:"detected_language"`
+		LanguageForced   bool    `json:"language_forced"`
 		Confidence       float64 `json:"confidence"`
 		DurationMs       int64   `json:"duration_ms"`
 		Cues             []struct {
@@ -170,9 +175,24 @@ func (s *ClipRenderStreamingTranscriber) TranscribeStream(ctx context.Context, s
 		return nil, fmt.Errorf("%w: empty transcript for %q", cliprender.ErrTranscriptGenerationUnavailable, source.AssetID)
 	}
 
-	lang, nErr := asset.Normalize(res.DetectedLanguage)
+	// The language of the TEXT: what the decode used (the forced request, or the
+	// detection when nothing was forced). An older bridge emits only
+	// detected_language, so that field is the documented fallback.
+	used := strings.TrimSpace(res.Language)
+	if used == "" {
+		used = res.DetectedLanguage
+	}
+	lang, nErr := asset.Normalize(used)
 	if nErr != nil || lang == "und" {
 		lang = "und"
+	}
+	// The language of the AUDIO, kept strictly separate from the decode
+	// language. When the two disagree the text is a forced decode of audio in
+	// another language, and persistence must not present it as the clip's own
+	// transcript in that language.
+	detected, dErr := asset.Normalize(res.DetectedLanguage)
+	if dErr != nil || detected == "und" {
+		detected = ""
 	}
 	var confPtr *float64
 	if res.Confidence > 0 {
@@ -185,6 +205,8 @@ func (s *ClipRenderStreamingTranscriber) TranscribeStream(ctx context.Context, s
 	}
 	return &cliprender.TranscriptResult{
 		Language:         lang,
+		DetectedLanguage: detected,
+		LanguageForced:   res.LanguageForced,
 		Text:             res.Text,
 		Cues:             cues,
 		Confidence:       confPtr,
@@ -293,6 +315,23 @@ func (r *ClipRenderTranscriptResolver) Generate(ctx context.Context, in cliprend
 	return r.finalizeGenerated(ctx, in, source, result)
 }
 
+// sameLanguage reports whether two BCP-47 tags name the same language. The
+// comparison goes through the canonical normalizer so a format variant ("EN"
+// vs "en") is not read as two different languages; a tag the normalizer cannot
+// read is only compared case-insensitively, never assumed equal.
+func sameLanguage(a, b string) bool {
+	a, b = strings.TrimSpace(a), strings.TrimSpace(b)
+	if a == "" || b == "" {
+		return a == b
+	}
+	if strings.EqualFold(a, b) {
+		return true
+	}
+	na, aErr := asset.Normalize(a)
+	nb, bErr := asset.Normalize(b)
+	return aErr == nil && bErr == nil && na == nb
+}
+
 func validateRequestedTranscriptLanguage(requested, actual string) error {
 	requested = strings.TrimSpace(requested)
 	actual = strings.TrimSpace(actual)
@@ -353,6 +392,27 @@ func (r *ClipRenderTranscriptResolver) persistResult(
 	if lang == "" {
 		lang = "und"
 	}
+	// Honest provenance (godlike/07): LanguageCode is the language of the TEXT;
+	// source_language_code is the language the AUDIO is actually in; is_original
+	// is true ONLY when those two are the same. A forced decode of audio in
+	// another language yields text that is not the clip's own transcript, and
+	// recording it as the original would make every later reader (translation
+	// source selection, search indexing, subtitle QA) treat fabricated text as
+	// the clip's ground truth.
+	sourceLang := result.DetectedLanguage
+	if sourceLang == "" {
+		sourceLang = lang
+	}
+	isOriginal := sameLanguage(sourceLang, lang)
+	if !isOriginal {
+		r.log.Warn("clip.render.transcript.forced_language_mismatch",
+			zap.String("asset_id", assetID),
+			zap.String("decoded_language", lang),
+			zap.String("detected_language", sourceLang),
+			zap.Bool("language_forced", result.LanguageForced),
+			zap.String("effect", "persisted as a non-original variant, not the clip's transcript"),
+		)
+	}
 	srcType := detail.TextSourceWhisper
 	if result.StreamSourceType != "" {
 		srcType = detail.TextTrackSource(result.StreamSourceType)
@@ -366,8 +426,8 @@ func (r *ClipRenderTranscriptResolver) persistResult(
 		TextKind:           detail.TextTrackTranscript,
 		TextContent:        result.Text,
 		SourceType:         srcType,
-		SourceLanguageCode: lang,
-		IsOriginal:         true,
+		SourceLanguageCode: sourceLang,
+		IsOriginal:         isOriginal,
 		Provider:           clipRenderProviderFor(srcType),
 		TextHash:           result.TextSHA256,
 		Confidence:         result.Confidence,

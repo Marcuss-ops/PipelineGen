@@ -66,6 +66,16 @@ type ScriptsConfig struct {
 	// GPU rendering. Uploads must not retain a render slot while waiting on I/O.
 	LocalizedRenderUploadConcurrency int `yaml:"localized_render_upload_concurrency" env:"VELOX_SCRIPTS_LOCALIZED_RENDER_UPLOAD_CONCURRENCY" default:"4"`
 
+	// SeparateItemRenderWorkers bounds how many PER-ITEM overlay renders may be
+	// in flight at once when production renders one video per semantic overlay
+	// item. It is a PIPELINING bound, not a GPU bound: the RenderingGen worker
+	// owns worker.gpu_lanes and stays the only authority on concurrent GPU
+	// work, so raising this overlaps the per-item pre/post chain (materialize,
+	// upload, ffprobe contract, Drive publish) without touching GPU load.
+	// Default 4, matching scriptgeneration.defaultSeparateItemRenderWorkers;
+	// 0 falls back to that same const at the capability boundary.
+	SeparateItemRenderWorkers int `yaml:"separate_item_render_workers" env:"VELOX_SCRIPTS_SEPARATE_ITEM_RENDER_WORKERS" default:"4"`
+
 	// MaxInsightEntities caps the number of important words, important phrases,
 	// special names, and artlist phrases extracted per script. Default 12.
 	MaxInsightEntities int `yaml:"max_insight_entities" env:"VELOX_SCRIPTS_MAX_INSIGHT_ENTITIES" default:"12"`
@@ -234,6 +244,12 @@ func (s ScriptsConfig) WithDefaults() ScriptsConfig {
 	}
 	if s.TranslationConcurrency <= 0 {
 		s.TranslationConcurrency = 4
+	}
+	// The per-item render pool must never resolve to 0: a zero-slot pool would
+	// render nothing, so an unset/invalid value is clamped to the certified
+	// default rather than silently disabling per-item overlay output.
+	if s.SeparateItemRenderWorkers <= 0 {
+		s.SeparateItemRenderWorkers = 4
 	}
 	// TTSConcurrency is intentionally not defaulted here: 0 means "defer to
 	// the voiceover provider bound", resolved at the capability wiring

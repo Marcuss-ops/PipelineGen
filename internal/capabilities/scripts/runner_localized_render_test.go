@@ -120,6 +120,49 @@ func TestRunner_LocalizedRenderFanout_EnqueuesPerSceneLanguage(t *testing.T) {
 // streaming overlap: scene 0's localized renders are enqueued while the LLM is
 // still blocked before emitting scene 1 — Rust can start on scene 0 without
 // waiting for scene 1 (or the whole run).
+func TestRunner_SourceClipsAudioNone_LocalizedRenderFanout(t *testing.T) {
+	runner, repo, _, _, _, _, _ := newTestRunner()
+	enq := &recordingLocalizedRenderEnqueuer{producedVideo: &LocalizedRenderResult{
+		AssetID: "rendered-asset", SHA256: "0123456789abcdef0123456789abcdef", DriveFileID: "drive-1", DriveLink: "https://drive.test/rendered", DurationMS: 1000, Status: "UPLOADED",
+	}}
+	runner.SetLocalizedRenderEnqueuer(enq)
+	req := defaultTestRequest()
+	req.Source.Type = SourceClips
+	req.Source.ClipIDs = []string{"clip-0", "clip-1", "clip-2"}
+	req.Source.SourceText = "source clips"
+	req.Render.Enabled = true
+	req.Audio = "NONE"
+	req.VoiceoverLanguages = nil
+	clipNarration := []string{
+		"Dolly Parton tells Conan about her first New York hotel experience and the surprising misunderstanding that followed.",
+		"Dolly Parton describes walking through Manhattan with Judy and explains how their unusual appearance attracted attention.",
+		"Dolly Parton jokes with Conan about fame, family, confidence, and the stories that made her career unforgettable.",
+	}
+	for i, scene := range runner.textGen.(*stubTextGenerator).scenes {
+		scene.Text["en"] = clipNarration[i]
+		scene.Clip = &ClipReference{ID: req.Source.ClipIDs[i], SHA256: "sha-" + string(rune('a'+i)), DurationUS: 1_000_000}
+		runner.textGen.(*stubTextGenerator).scenes[i] = scene
+	}
+
+	runID := "run-localized-render-no-audio"
+	require.NoError(t, repo.Create(context.Background(), &GenerationRun{
+		ID: runID, Request: req, Status: RunStatusPending, CurrentStage: StageNormalizing,
+	}))
+	runner.Execute(context.Background(), runID, req)
+	final := awaitCompletion(t, repo, runID, 5*time.Second)
+	require.Equal(t, RunStatusCompleted, final.Status, final.ErrorMessage)
+
+	inputs := enq.snapshot()
+	require.Len(t, inputs, 6, "normal SourceClips audio NONE must render 3 scenes × source+target languages")
+	want := []string{"scene-0:en", "scene-0:es", "scene-1:en", "scene-1:es", "scene-2:en", "scene-2:es"}
+	got := make([]string, 0, len(inputs))
+	for _, in := range inputs {
+		got = append(got, in.SceneID+":"+string(in.Language))
+		require.Empty(t, in.Voiceover.ID, "audio NONE must not synthesize TTS")
+	}
+	require.ElementsMatch(t, want, got)
+}
+
 func TestRunner_LocalizedRenderFanout_RenderStartsBeforeNextSceneReady(t *testing.T) {
 	runner, repo, _, _, _, _, _ := newTestRunner()
 	streamer := newGatedStreamingTextGenerator(defaultTestScenes())

@@ -193,7 +193,9 @@ func (r *Runner) runVoiceoverPhase(ctx context.Context, runID string, req Genera
 		)
 		var dbCacheHits int
 		var renderWg sync.WaitGroup
+		renderErrors := make(chan error, len(work))
 		if len(work) > 0 {
+
 			// applyMu serializes per-unit result mutation + checkpoint so a
 			// crash mid-phase (kill -9) preserves already-completed scenes.
 			var applyMu sync.Mutex
@@ -332,12 +334,9 @@ func (r *Runner) runVoiceoverPhase(ctx context.Context, runID string, req Genera
 							return nil
 						},
 					}); err != nil {
-						r.log.Warn("async localized render enqueue failed",
-							zap.String("scene_id", item.sceneID),
-							zap.String("language", string(item.lang)),
-							zap.String("clip_id", clipID),
-							zap.Error(err))
+						renderErrors <- fmt.Errorf("localized render scene %s language %s failed: %w", item.sceneID, item.lang, err)
 					}
+
 				}(item, audioRef)
 				return voiceoverResult{audioRef: audioRef, metric: metric}, nil
 			})
@@ -427,10 +426,16 @@ func (r *Runner) runVoiceoverPhase(ctx context.Context, runID string, req Genera
 		renderDone := make(chan struct{})
 		go func() {
 			renderWg.Wait()
+			close(renderErrors)
 			close(renderDone)
 		}()
 		select {
 		case <-renderDone:
+			for renderErr := range renderErrors {
+				r.failExecutionStep(ctx, exec, voiceoverStep, renderErr)
+				r.failRunWithRetry(ctx, runID, StageGeneratingVoiceovers, renderErr)
+				return false
+			}
 			// Render callbacks run concurrently with TTS workers. Projecting
 			// Drive links into mutable scene clip references is deferred until
 			// both fan-outs have joined, so the scene graph has one writer.

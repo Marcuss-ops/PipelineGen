@@ -182,9 +182,28 @@ func CompileOverlayPlan(result *GenerateResult, language Language, canvas Overla
 	if strings.TrimSpace(planID) == "" || strings.TrimSpace(videoID) == "" {
 		return nil, fmt.Errorf("overlay plan: plan_id and video_id are required")
 	}
+	entityTimeline := result.EntityTimeline
+	timelineLanguage := Language(strings.TrimSpace(entityTimelineLanguage(entityTimeline)))
+	timelineMatches := entityTimeline != nil && (strings.EqualFold(string(timelineLanguage), string(language)) ||
+		(timelineLanguage == "" && (result.SourceLanguage == "" || result.SourceLanguage == language)))
+	if !timelineMatches {
+		// Translated overlays need entity occurrences anchored against the
+		// translated scene text and that language's own certified word timing.
+		// Build into a shallow result copy so a localized plan does not replace
+		// the source-language EntityTimeline stored on GenerateResult.
+		localized := &GenerateResult{
+			Scenes: result.Scenes, CanonicalTimeline: result.CanonicalTimeline,
+			SourceLanguage: result.SourceLanguage, AudioMode: result.AudioMode,
+			ResolvedScenes: result.ResolvedScenes,
+		}
+		if err := compileResultEntityTimeline(localized, language); err != nil {
+			return nil, fmt.Errorf("overlay plan: resolve %s entity timeline: %w", language, err)
+		}
+		entityTimeline = localized.EntityTimeline
+	}
 	occByScene := map[string][]capabilityentities.EntityOccurrence{}
-	if result.EntityTimeline != nil {
-		for _, scene := range result.EntityTimeline.Scenes {
+	if entityTimeline != nil {
+		for _, scene := range entityTimeline.Scenes {
 			occByScene[scene.SceneID] = scene.Entities
 		}
 	}
@@ -208,7 +227,7 @@ func CompileOverlayPlan(result *GenerateResult, language Language, canvas Overla
 	if len(timedScenes) == 0 {
 		return nil, nil
 	}
-	resolved, err := resolvedScenesFor(*result, language, false)
+	resolved, err := overlayResolvedScenesFor(*result, language)
 	if err != nil {
 		return nil, fmt.Errorf("overlay plan: resolve scenes: %w", err)
 	}
@@ -222,7 +241,7 @@ func CompileOverlayPlan(result *GenerateResult, language Language, canvas Overla
 		if !ok {
 			return nil, fmt.Errorf("overlay plan: scene %q missing canonical timeline offset", scene.ID)
 		}
-		sceneInput, err := overlaySceneInput(scene, *ref.Timing, startUS, occByScene[scene.ID])
+		sceneInput, err := overlaySceneInput(scene, language, *ref.Timing, startUS, occByScene[scene.ID])
 		if err != nil {
 			return nil, err
 		}
@@ -289,10 +308,10 @@ func CompileOverlayPlan(result *GenerateResult, language Language, canvas Overla
 	// entity-image bindings, indexed by the resolver's CanonicalEntityID) and
 	// carries it as AssetRefs + EntityRef.CanonicalEntityID. The final editorial
 	// budget admits image cards only when they have materialized media.
-	if result.EntityTimeline != nil && len(result.EntityTimeline.Scenes) > 0 {
-		owned := plannerOwnedEntityIDs(result)
+	if entityTimeline != nil && len(entityTimeline.Scenes) > 0 {
+		owned := plannerOwnedEntityIDs(result, language)
 		media, canonicalByStable := entityCardMediaIndex(result)
-		entityPlan, err := capabilityentities.ResolveEntityOverlayPlan(*result.EntityTimeline, planID, videoID, projectID, canvas.Width, canvas.Height, canvas.FPSNum, canvas.FPSDen)
+		entityPlan, err := capabilityentities.ResolveEntityOverlayPlan(*entityTimeline, planID, videoID, projectID, canvas.Width, canvas.Height, canvas.FPSNum, canvas.FPSDen)
 		if err != nil {
 			return nil, fmt.Errorf("overlay plan: resolve entity overlays: %w", err)
 		}
@@ -330,7 +349,8 @@ func CompileOverlayPlan(result *GenerateResult, language Language, canvas Overla
 	// Preserve the scene extent as a defensive lower bound when a malformed or
 	// legacy result has no final-audio reference.
 	var durationUS int64
-	if result.FinalAudio != nil && result.FinalAudio.DurationMS > 0 {
+	if result.FinalAudio != nil && result.FinalAudio.DurationMS > 0 &&
+		(result.SourceLanguage == "" || result.SourceLanguage == language) {
 		durationUS = result.FinalAudio.DurationMS * 1000
 	}
 	for _, scene := range resolved {
@@ -383,7 +403,7 @@ func compileResultOverlayPlan(result *GenerateResult, language Language, planID,
 	if result == nil {
 		return nil
 	}
-	plan, err := CompileOverlayPlan(result, language, canvas, planID, planID, projectID)
+	plan, err := compileOverlayPlanForLanguage(result, language, planID, projectID, driveFolderID, canvas)
 	if err != nil {
 		return err
 	}
@@ -394,10 +414,12 @@ func compileResultOverlayPlan(result *GenerateResult, language Language, planID,
 	}
 	phraseBudget := capabilityoverlay.MeasurePhraseOverlayBudget(phraseItems)
 	result.PhraseOverlayBudget = &phraseBudget
+	if err := buildLocalizedOverlayPlans(result, language, planID, projectID, driveFolderID, canvas); err != nil {
+		return err
+	}
 	if plan == nil {
 		return nil
 	}
-	plan.DriveFolderID = strings.TrimSpace(driveFolderID)
 	if bundle, bundleErr := BuildSemanticRenderBundleFromResult(result, language, planID, plan.VideoID); bundleErr != nil {
 		// Once a render plan exists, the semantic bundle is part of the
 		// canonical contract, not optional telemetry. Never enqueue a render
@@ -419,8 +441,8 @@ func compileResultOverlayPlan(result *GenerateResult, language Language, planID,
 // the certified entity occurrence; anything not spoken verbatim is skipped
 // (a hint is never timestamped). Returns nil when the scene contributes
 // nothing.
-func overlaySceneInput(scene Scene, timing capabilityaudio.SpeechTimingArtifact, timelineStartUS int64, occurrences []capabilityentities.EntityOccurrence) (*capabilityoverlay.SceneInput, error) {
-	ann := scene.Annotations
+func overlaySceneInput(scene Scene, language Language, timing capabilityaudio.SpeechTimingArtifact, timelineStartUS int64, occurrences []capabilityentities.EntityOccurrence) (*capabilityoverlay.SceneInput, error) {
+	ann := annotationsForLanguage(scene, language)
 	if ann == nil {
 		return nil, nil
 	}
@@ -518,10 +540,10 @@ func overlaySceneInput(scene Scene, timing capabilityaudio.SpeechTimingArtifact,
 // EntityTypeToKind owns), so the resolver never emits a second overlay for
 // the same entity. Everything else is either an entity card (resolver) or an
 // IMAGE_OVERLAY when it carries an image.
-func plannerOwnedEntityIDs(result *GenerateResult) map[string]bool {
+func plannerOwnedEntityIDs(result *GenerateResult, language Language) map[string]bool {
 	owned := map[string]bool{}
 	for i := range result.Scenes {
-		ann := result.Scenes[i].Annotations
+		ann := annotationsForLanguage(result.Scenes[i], language)
 		if ann == nil {
 			continue
 		}

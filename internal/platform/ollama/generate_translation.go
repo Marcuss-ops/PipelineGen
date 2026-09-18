@@ -46,6 +46,41 @@ func translateLanguageName(code string) string {
 	return code
 }
 
+// Translation output-budget bounds.
+//
+// minTranslationPredictTokens is the floor for a cue-sized text: a 30-char
+// subtitle cue needs ~10 output tokens, so 96 is already ~10x headroom. The old
+// floor was 512 and it was NOT headroom, it was cost — measured on a 5-word
+// cue, gemma4:e2b generated 294-497 tokens (it used the whole budget every
+// time), which on a 10-language subtitle track is the dominant per-cue cost.
+const (
+	minTranslationPredictTokens = 96
+	maxTranslationPredictTokens = 4096
+)
+
+// translationOutputBudget converts a source text length into the num_predict
+// budget of ONE translation call.
+//
+// 1 char ≈ 0.25 tokens and a faithful translation runs at roughly 1.3x the
+// source token count in verbose target languages (German), so 2x the source
+// tokens + 64 tokens of punctuation/template slack is a safe ceiling for every
+// language the registry ships. It is a pure function so the budget contract is
+// pinnable without a client.
+func translationOutputBudget(sourceLen int) int {
+	if sourceLen < 0 {
+		sourceLen = 0
+	}
+	sourceTokens := (sourceLen + 3) / 4
+	budget := sourceTokens*2 + 64
+	if budget < minTranslationPredictTokens {
+		budget = minTranslationPredictTokens
+	}
+	if budget > maxTranslationPredictTokens {
+		budget = maxTranslationPredictTokens
+	}
+	return budget
+}
+
 // TranslateText translates text using the Generator's model (or metadataModel if set).
 // The model override is passed via options["model"] which Client.Chat supports.
 func (g *Generator) TranslateText(ctx context.Context, text, targetLanguage string) (string, error) {
@@ -69,19 +104,10 @@ func (g *Generator) TranslateTextWithModel(ctx context.Context, text, targetLang
 		}
 	}
 
-	// Calculate a generous num_predict based on source text length so the
-	// model cannot ramble indefinitely and produce philosophical essays
-	// instead of faithful translations. 1 char ≈ 0.25 tokens on average;
-	// we allow 4x the char length as token budget to handle verbose languages
-	// like German, capped at 4096 to avoid runaway generation.
+	// Output budget of this call: bounded by the source length so the model
+	// cannot ramble into an essay instead of a faithful translation.
 	sourceLen := len([]rune(text))
-	predictLimit := sourceLen * 4
-	if predictLimit < 512 {
-		predictLimit = 512 // minimum for very short texts
-	}
-	if predictLimit > 4096 {
-		predictLimit = 4096 // hard cap — no essay-writing
-	}
+	predictLimit := translationOutputBudget(sourceLen)
 
 	// Use full language name in the prompt to avoid LLM ambiguity with short codes.
 	// e.g. "it" is confused with the English pronoun "it" → LLM defaults to Spanish.

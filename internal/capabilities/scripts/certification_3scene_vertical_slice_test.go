@@ -174,6 +174,7 @@ func TestCertification_ThreeSceneVerticalSlice(t *testing.T) {
 	runner.SetOverlayRegistry(capabilityoverlay.DefaultChrononOverlayRegistry)
 	runner.SetOverlayPrepareEnqueuer(prepEnq)
 	runner.SetOverlayRenderEnqueuer(renderEnq)
+	runner.SetLocalizedRenderEnqueuer(&recordingLocalizedRenderEnqueuer{})
 	runner.SetVidRushBarrier(cert3SceneBarrier())
 
 	req := defaultTestRequest()

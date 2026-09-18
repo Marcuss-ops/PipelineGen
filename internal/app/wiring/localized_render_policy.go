@@ -51,7 +51,7 @@ func (a *localizedRenderEnqueuerAdapter) resolveRenderIdentity(ctx context.Conte
 			return localizedRenderIdentity{}, fmt.Errorf("localized render: find translated subtitles for %q/%q: %w", assetID, targetLang, findErr)
 		}
 		if track == nil || len(cues) == 0 {
-			targetLang = sourceLang
+			return localizedRenderIdentity{}, fmt.Errorf("localized render: no timed subtitles for requested language %q on %q; refusing source-language fallback", targetLang, assetID)
 		}
 	}
 	return localizedRenderIdentity{assetID: assetID, clipID: clipID, clipIDChild: clipID, sourceLang: sourceLang, targetLang: targetLang}, nil

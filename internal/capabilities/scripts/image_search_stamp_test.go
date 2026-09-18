@@ -205,7 +205,7 @@ func TestOverlaySceneInput_ProductWithSHA256ProducesContentAddressedItem(t *test
 		TimelineStartUS: 0, AudioStartUS: 250_000, AudioEndUS: 300_000,
 		Confidence: 0.95,
 	}
-	input, err := overlaySceneInput(scene, timing, 0, []capabilityentities.EntityOccurrence{occ})
+	input, err := overlaySceneInput(scene, "en", timing, 0, []capabilityentities.EntityOccurrence{occ})
 	require.NoError(t, err)
 	require.NotNil(t, input)
 	require.Len(t, input.Products, 1, "the spoken PRODUCT entity must produce a product candidate")

@@ -29,6 +29,7 @@ import (
 
 	"go.uber.org/zap"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/texttracks"
 	cliprender "github.com/Marcuss-ops/PipelineGen/internal/capabilities/cliprender"
 	clipadapters "github.com/Marcuss-ops/PipelineGen/internal/capabilities/cliprender/adapters"
@@ -100,8 +101,10 @@ type localizedRenderEnqueuerAdapter struct {
 	material          cliprender.AssetMaterializer
 	transcript        cliprender.TranscriptResolver
 	subtitleArtifacts detail.SubtitleArtifactRepository
-	folderMu          sync.Mutex
-	folderCache       map[string]string
+	committer         persistence.AssetCommitter
+
+	folderMu    sync.Mutex
+	folderCache map[string]string
 }
 
 func newLocalizedRenderEnqueuerAdapter(svc localizedLocalizer, tracks detail.TextTrackRepository, cues texttracks.TimedCueWriter, cfg LocalizedRenderEnqueuerConfig, log *zap.Logger, extras ...interface{}) *localizedRenderEnqueuerAdapter {
@@ -127,6 +130,10 @@ func newLocalizedRenderEnqueuerAdapter(svc localizedLocalizer, tracks detail.Tex
 	if len(extras) > 3 {
 		subtitleArtifacts, _ = extras[3].(detail.SubtitleArtifactRepository)
 	}
+	var committer persistence.AssetCommitter
+	if len(extras) > 4 {
+		committer, _ = extras[4].(persistence.AssetCommitter)
+	}
 	return &localizedRenderEnqueuerAdapter{
 		svc:               svc,
 		tracks:            tracks,
@@ -138,6 +145,7 @@ func newLocalizedRenderEnqueuerAdapter(svc localizedLocalizer, tracks detail.Tex
 		material:          material,
 		transcript:        transcript,
 		subtitleArtifacts: subtitleArtifacts,
+		committer:         committer,
 		folderCache:       make(map[string]string),
 	}
 }
@@ -229,7 +237,7 @@ func (a *localizedRenderEnqueuerAdapter) EnqueueLocalizedRender(ctx context.Cont
 	if in.OnRendered != nil {
 		for _, artifact := range res.Artifacts {
 			renderFinishedAt := time.Now().UTC()
-			if err := in.OnRendered(scriptgeneration.LocalizedRenderResult{
+			produced := scriptgeneration.LocalizedRenderResult{
 				SceneID:     artifact.SceneID,
 				SceneIndex:  in.SceneIndex,
 				Language:    scriptgeneration.Language(artifact.Language),
@@ -246,7 +254,19 @@ func (a *localizedRenderEnqueuerAdapter) EnqueueLocalizedRender(ctx context.Cont
 				StartedAt:   renderStartedAt,
 				FinishedAt:  renderFinishedAt,
 				WallMS:      renderFinishedAt.Sub(renderStartedAt).Milliseconds(),
-			}); err != nil {
+			}
+			canonicalAssetID, err := a.commitLocalizedRenderAsset(ctx, in, artifact)
+			if err != nil {
+				return fmt.Errorf("localized render: canonical asset commit for scene %q lang %q: %w", in.SceneID, built.identity.targetLang, err)
+			}
+			if canonicalAssetID != "" {
+				// The run records the CANONICAL content-addressed identity the media
+				// SSOT owns, not the render-local one, so a later lookup by asset id
+				// finds the committed row. Without a committer the artifact keeps its
+				// own identity (hermetic and Drive-projection-only compositions).
+				produced.AssetID = canonicalAssetID
+			}
+			if err := in.OnRendered(produced); err != nil {
 				return fmt.Errorf("localized render: record produced video for scene %q lang %q: %w", in.SceneID, built.identity.targetLang, err)
 			}
 		}
@@ -443,7 +463,7 @@ func wireLocalizedRenderEnqueuer(cfg *config.Config, root *ComposeRoot, log *zap
 	if runner == nil {
 		return
 	}
-	if cfg == nil || root == nil || root.Repos == nil || root.Repos.TextTrackRepo == nil || (root.Domains == nil || root.Domains.CueWriter == nil) {
+	if cfg == nil || root == nil || root.Repos == nil || root.Repos.TextTrackRepo == nil || (root.Domains == nil || root.Domains.CueWriter == nil) || root.CanonicalAssetWriter == nil {
 		log.Warn("wireScriptFlow: localized render fan-out not wired (text-track store or cue writer missing)")
 		return
 	}
@@ -487,7 +507,7 @@ func wireLocalizedRenderEnqueuer(cfg *config.Config, root *ComposeRoot, log *zap
 		SubtitleFolderID:  "1noSFMK_UeF_Xo-RRZWvH10U7tiL1jPP1",
 		Concurrency:       cfg.Scripts.LocalizedRenderConcurrency,
 		GlobalConcurrency: cfg.Scripts.LocalizedRenderGlobalConcurrency,
-	}, log, resolver, materializer, transcriptResolver, root.Repos.SubtitleArtifactRepo)
+	}, log, resolver, materializer, transcriptResolver, root.Repos.SubtitleArtifactRepo, root.CanonicalAssetWriter)
 	runner.SetLocalizedRenderEnqueuer(adapter)
 	log.Info("wireScriptFlow: localized render fan-out wired to LocalizationService (RenderingGen/Chronon)",
 		zap.String("source_language", LocalizationConfigFromConfig(cfg).SourceLanguage),

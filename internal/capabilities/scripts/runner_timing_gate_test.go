@@ -186,6 +186,7 @@ func TestOverlayRender_WaitsForFrozenTimingNotPrepare(t *testing.T) {
 	runner.SetScriptDocsFolderID("test-docs-folder")
 	runner.SetCombinedAudioRenderer(&stubCombinedAudioRenderer{})
 	runner.SetOverlayRegistry(capabilityoverlay.DefaultChrononOverlayRegistry)
+	runner.SetLocalizedRenderEnqueuer(&recordingLocalizedRenderEnqueuer{})
 	// Deliberately NO overlay.prepare enqueuer: render must not wait for it.
 	runner.SetOverlayRenderEnqueuer(renderEnq)
 

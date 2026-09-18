@@ -1,15 +1,25 @@
-// Package scriptgeneration — overlay_plan_freeze.go owns the render-boundary
-// promotion of the pre-timing OverlayIntents: the exact join that binds each
-// authoring intent to the plan item it materialized from, and the copy of that
-// item's certified facts onto the intent.
+// Package scriptgeneration — overlay_plan_freeze.go owns the seams around the
+// sealed OverlayPlan.
 //
-// It lives beside overlay_plan.go (not inside it) because the join is the
-// identity-sensitive half of the lowering: the intent is authored before media
-// resolution, so it is matched to the final item by IDENTITY, never by the
-// display text two independent surfaces happen to carry.
+// First seam, the render-boundary promotion of the pre-timing OverlayIntents:
+// the exact join that binds each authoring intent to the plan item it
+// materialized from, and the copy of that item's certified facts onto the
+// intent.
+//
+// Second seam, the per-language plan boundary: ONE plan per language that has
+// its own translated voiceover timing, compiled by the same SSOT compiler and
+// never substituting the source plan for a missing translation.
+//
+// Both live beside overlay_plan.go (not inside it): the file is at the strict
+// LOC cap, and each seam is a boundary rather than a compilation step. The
+// intent join is the identity-sensitive half of the lowering — the intent is
+// authored before media resolution, so it is matched to the final item by
+// IDENTITY, never by the display text two independent surfaces happen to carry
+// — while the per-language boundary is the publication-sensitive half.
 package scriptgeneration
 
 import (
+	"fmt"
 	"strings"
 
 	capabilityentities "github.com/Marcuss-ops/PipelineGen/internal/capabilities/entities"
@@ -76,4 +86,66 @@ func freezeOverlayIntents(intents []capabilityoverlay.OverlayIntent, items []cap
 			break
 		}
 	}
+}
+
+// entityTimelineLanguage returns the language an EntityTimeline was certified
+// for, or "" when there is no timeline.
+func entityTimelineLanguage(timeline *capabilityentities.EntityTimeline) string {
+	if timeline == nil {
+		return ""
+	}
+	return timeline.Language
+}
+
+// compileOverlayPlanForLanguage is the side-effect-free per-language plan
+// boundary shared by the source-language compatibility plan and translated
+// plans. Drive routing stays in the application-only plan field and never
+// crosses the RenderingGen queue contract.
+func compileOverlayPlanForLanguage(result *GenerateResult, language Language, planID, projectID, driveFolderID string, canvas OverlayCanvasSpec) (*capabilityoverlay.OverlayPlan, error) {
+	plan, err := CompileOverlayPlan(result, language, canvas, planID, planID, projectID)
+	if err != nil {
+		return nil, err
+	}
+	if plan != nil {
+		plan.DriveFolderID = strings.TrimSpace(driveFolderID)
+	}
+	return plan, nil
+}
+
+// buildLocalizedOverlayPlans compiles plans only for target languages that
+// have translated voiceover timing. It never substitutes the source plan for
+// a missing translation: a language without its own annotations/timing has no
+// localized overlay artifact to publish.
+func buildLocalizedOverlayPlans(result *GenerateResult, sourceLanguage Language, planID, projectID, driveFolderID string, canvas OverlayCanvasSpec) error {
+	if result == nil {
+		return nil
+	}
+	result.LocalizedOverlayPlans = nil
+	seen := map[Language]struct{}{sourceLanguage: {}}
+	for i := range result.Scenes {
+		for language := range result.Scenes[i].Voiceover {
+			if language == "" || language == sourceLanguage {
+				continue
+			}
+			seen[language] = struct{}{}
+		}
+	}
+	if len(seen) <= 1 {
+		return nil
+	}
+	result.LocalizedOverlayPlans = make(map[Language]*capabilityoverlay.OverlayPlan, len(seen)-1)
+	for language := range seen {
+		if language == sourceLanguage {
+			continue
+		}
+		localizedPlanID := planID + "-" + strings.ToLower(string(language))
+		plan, err := compileOverlayPlanForLanguage(result, language, localizedPlanID, projectID, driveFolderID, canvas)
+		if err != nil {
+			return fmt.Errorf("compile %s overlay plan: %w", language, err)
+		}
+		if plan != nil {
+			result.LocalizedOverlayPlans[language] = plan
+		}
+	}
+	return nil
 }

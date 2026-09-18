@@ -75,4 +75,25 @@ var (
 		Name: "chronon_frames_rendered_total",
 		Help: "Total frames produced by the GPU render lane, by backend.",
 	}, []string{"backend"})
+
+	// OverlayItemRenderPoolSize is the resolved bound on how many per-item
+	// overlay renders may be in flight at once (the pipelining pool). It is a
+	// PIPELINING bound, not a GPU bound: the RenderingGen worker still owns
+	// `worker.gpu_lanes` and remains the only authority on concurrent GPU work.
+	// Exposed so an operator can read the bound next to the measured boundary
+	// wall time instead of inferring it from a source constant.
+	OverlayItemRenderPoolSize = promauto.NewGauge(prometheus.GaugeOpts{
+		Name: "overlay_item_render_pool_size",
+		Help: "Resolved bound on concurrent per-item overlay renders (pipelining, not GPU concurrency).",
+	})
+
+	// OverlayItemRenderInFlight is the number of per-item overlay renders
+	// submitted and still awaiting their terminal state. Its peak across a run
+	// is the measured pipelining depth; a flat 1 means the enqueue is still
+	// serialising the per-item pre/post chain (materialize, upload, probe,
+	// publish) behind one render at a time.
+	OverlayItemRenderInFlight = promauto.NewGauge(prometheus.GaugeOpts{
+		Name: "overlay_item_render_in_flight",
+		Help: "Per-item overlay renders currently submitted and awaiting their terminal state.",
+	})
 )

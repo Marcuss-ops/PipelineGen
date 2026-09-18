@@ -12,6 +12,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaregistry"
+	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
@@ -283,8 +284,8 @@ func (r *Runner) runDocumentPhase(ctx context.Context, runID string, req Generat
 					SceneSpeechTimings: result.SceneSpeechTimings,
 					ClipMetadata:       clipAssetMetadataForDocument(result),
 					AudioSummary:       documentAudioSummaryFor(result),
-					Overlay:            documentOverlayRef(result),
-					OverlayPlan:        result.OverlayPlan,
+					Overlay:            documentOverlayRef(result, lang),
+					OverlayPlan:        documentOverlayPlan(result, lang),
 				}
 				var content string
 				var renderErr error
@@ -510,22 +511,41 @@ func documentAudioRef(result *GenerateResult, language Language) *DocumentAudioR
 // documentOverlayRef projects the certified Chronon artifact into the
 // document-facing contract. The renderer receives only public artifact
 // identity; local paths and storage keys stay inside the render pipeline.
-func documentOverlayRef(result *GenerateResult) *DocumentOverlayRef {
-	if result == nil || result.OverlayRender == nil || result.OverlayRender.Artifact == nil {
+func documentOverlayRef(result *GenerateResult, language Language) *DocumentOverlayRef {
+	if result == nil {
 		return nil
 	}
-	artifact := result.OverlayRender.Artifact
+	var render *RenderReference
+	if language == result.overlayPlanLanguage() {
+		render = result.OverlayRender
+	} else if localized, ok := result.LocalizedOverlayRenders[language]; ok {
+		render = &localized
+	}
+	if render == nil || render.Artifact == nil {
+		return nil
+	}
+	artifact := render.Artifact
 	link := strings.TrimSpace(artifact.DriveLink)
 	if link == "" {
 		link = strings.TrimSpace(artifact.URL)
 	}
 	return &DocumentOverlayRef{
 		ArtifactID:   artifact.ID,
-		JobID:        result.OverlayRender.JobID,
+		JobID:        render.JobID,
 		URL:          link,
 		SHA256:       artifact.SHA256,
 		DurationUS:   artifact.DurationUS,
 		ProfileID:    artifact.ProfileID,
 		CopyEligible: artifact.CopyEligible,
 	}
+}
+
+func documentOverlayPlan(result *GenerateResult, language Language) *capabilityoverlay.OverlayPlan {
+	if result == nil {
+		return nil
+	}
+	if language == result.overlayPlanLanguage() {
+		return result.OverlayPlan
+	}
+	return result.LocalizedOverlayPlans[language]
 }

@@ -23,11 +23,42 @@ func (pipelineCompiler) Compile(_ context.Context, plan LocalizedClipPlan) (rend
 	return render.RenderPlan{OutputPath: "/tmp/renders/" + plan.TargetLanguage + ".mp4"}, nil
 }
 
+// pipelineTrackLanguages is the fixture's text-track store: each persisted
+// track ID maps to the ONE language that track carries. A persisted track holds
+// a single language, so a plan rendering Italian must reference the Italian
+// track — the subtitle wire refuses to burn a track whose language contradicts
+// the plan it is rendering (godlike/07).
+var pipelineTrackLanguages = map[int64]string{
+	202: "es",
+	203: "en",
+	204: "it",
+}
+
+// pipelineTrackIDForLanguage returns the persisted track ID carrying lang, so
+// the fixture never claims a single track serves several target languages.
+func pipelineTrackIDForLanguage(t *testing.T, lang string) int64 {
+	t.Helper()
+	for id, language := range pipelineTrackLanguages {
+		if language == lang {
+			return id
+		}
+	}
+	t.Fatalf("fixture has no text track for language %q", lang)
+	return 0
+}
+
+// pipelineSubtitleResolver resolves through the fixture store above, so an
+// unknown track ID fails like a real lookup miss instead of yielding an
+// untyped track that would mask a mistyped fixture.
 type pipelineSubtitleResolver struct{}
 
 func (pipelineSubtitleResolver) ResolveSubtitleTrack(_ context.Context, trackID int64, expectedSHA256 string) (*ResolvedSubtitleTrack, error) {
+	language, ok := pipelineTrackLanguages[trackID]
+	if !ok {
+		return nil, fmt.Errorf("text track %d not found", trackID)
+	}
 	return &ResolvedSubtitleTrack{
-		TrackID: trackID, LanguageCode: "es",
+		TrackID: trackID, LanguageCode: language,
 		Cues:     []detail.TimedCue{{StartMs: 0, EndMs: 1000, Text: "cue"}},
 		TextHash: expectedSHA256,
 	}, nil
@@ -122,6 +153,7 @@ func TestService_RenderContinuesWhileDriveUploadIsBlocked(t *testing.T) {
 	for i, lang := range []string{"en", "es", "it"} {
 		plans[i] = validPlan()
 		plans[i].TargetLanguage = lang
+		plans[i].SubtitleTrackID = pipelineTrackIDForLanguage(t, lang)
 		plans[i].Priority = i
 		plans[i].Fingerprint = Fingerprint(plans[i])
 	}
