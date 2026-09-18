@@ -66,11 +66,10 @@ func assembleFrozenSegments(texts []string) string {
 	return strings.Join(parts, "\n\n")
 }
 
-// sourceTextFallbackParagraph is the last-resort editorial fallback for an
-// explicitly supplied segment source. It is used only after generation has
-// returned text but exhausted the bounded paragraph-validation retries. The
-// source remains authoritative, and bounded repetition keeps the segment
-// contract valid so entity/media processing can certify authored input.
+// sourceTextFallbackParagraph is the last-resort fallback for plan-level
+// source text when a segment has no individual brief. It is used only after
+// generation has exhausted bounded paragraph-validation retries. Per-segment
+// source_text is context for rewriting and must never be repeated as narration.
 func sourceTextFallbackParagraph(source string, budget segmentBudget) string {
 	words := strings.Fields(strings.TrimSpace(source))
 	if len(words) == 0 {
@@ -168,8 +167,10 @@ func (e *Engine) generateSegments(
 			segmentReq.SourceText = cleanSegmentSourceText(req.SourceText)
 		}
 		segmentReq.ClipIDs = append([]string(nil), segment.ClipIDs...)
-		segmentReq.MinWords = segmentBudgetFor(plan, index, settings.segmentTolerancePercent).Target
 		budget := segmentBudgetFor(plan, index, settings.segmentTolerancePercent)
+		// MinWords is the provider's writing target and output-token budget;
+		// the independent QA gate below still uses budget.Min.
+		segmentReq.MinWords = budget.Target
 		metaCtx := kernobs.WithOperationMeta(ctx, kernobs.OperationMeta{
 			WorkerID: workerID,
 			QueuedAt: queuedAt,
@@ -256,24 +257,24 @@ func (e *Engine) generateSegments(
 				}
 			}
 			if attempt == attemptLimit {
-				lastErr = fmt.Errorf("%w: segment[%d] did not produce one valid paragraph (target=%d words, allowed=%d-%d)", scriptpkg.ErrSegmentValidationFailed, index, budget.Target, budget.Min, budget.Max)
+				lastErr = fmt.Errorf("%w: segment[%d] did not produce one valid paragraph (target=%d words, minimum=%d, requested_minimum=%d, maximum=%d)", scriptpkg.ErrSegmentValidationFailed, index, budget.Target, budget.Min, budget.RequestedMin, budget.Max)
 				validationExhausted = true
 				break
 			}
-			segmentReq.Prompt += fmt.Sprintf("\n\nRegenerate only this segment. Return exactly one paragraph between %d and %d words (target %d). Do not exceed %d words and do not add headings or a second paragraph.", budget.Min, budget.Max, budget.Target, budget.Max)
+			if budget.Max > 0 {
+				segmentReq.Prompt += fmt.Sprintf("\n\nRegenerate only this segment. Return one paragraph of at least %d words (target %d) and no more than the explicitly requested %d words. Do not add headings or a second paragraph.", budget.RequestedMin, budget.Target, budget.Max)
+			} else {
+				segmentReq.Prompt += fmt.Sprintf("\n\nRegenerate only this segment. Return one paragraph of at least %d words (target about %d). There is no maximum word count. Do not add headings or a second paragraph.", budget.RequestedMin, budget.Target)
+			}
 		}
 		if lastErr != nil {
 			validationFailure := validationExhausted || isSegmentValidationExhausted(lastErr)
-			fallbackSource := cleanSegmentSourceText(segment.SourceText)
-			// NON-CLIP plans (text / research) keep the plan-level authoritative
-			// source as a last-resort fallback: segmentReq.SourceText resolves to
-			// "this segment's source, else the plan source" a few lines above, and
-			// for a text plan the plan source IS the authored brief this segment
-			// is generated from. The ClipEvidence guard below excludes clip plans,
-			// whose aggregated evidence blob must never be narrated as if it were
-			// the clip's own description (see the segmentReq.SourceText contract).
-			// Pinned by TestEngineGenerate_UsesGlobalSourceTextFallback.
-			if fallbackSource == "" {
+			// Per-segment source_text is editorial context, not finished
+			// narration; repeating it to hit the target would publish the brief
+			// instead of the script. Only use plan-level source text when this
+			// segment has no own brief.
+			fallbackSource := ""
+			if strings.TrimSpace(segment.SourceText) == "" {
 				fallbackSource = strings.TrimSpace(segmentReq.SourceText)
 			}
 			if plan.ClipEvidence == nil && (validationFailure || lastErr != nil) && fallbackSource != "" {
@@ -346,14 +347,11 @@ func (e *Engine) generateSegments(
 	}()
 	for output := range results {
 		if output.err != nil {
-			if output.index >= 0 && output.index < len(plan.Segments) &&
+			if plan.ClipEvidence != nil && output.index >= 0 && output.index < len(plan.Segments) &&
 				isSegmentValidationExhausted(output.err) {
 				budget := segmentBudgetFor(plan, output.index, settings.segmentTolerancePercent)
-				// Only the segment's OWN source is eligible on this path: it is
-				// reached for EVERY plan shape, including clip plans, so reading
-				// req.SourceText here would narrate the aggregated clip-evidence
-				// blob. A segment without an authored source must stay fail-closed
-				// instead of emitting an unsupported narrative.
+				// Clip paths may use only their own segment brief as recovery;
+				// never substitute a non-clip editorial brief for generated prose.
 				fallbackSource := plan.Segments[output.index].SourceText
 				fallback := sourceTextFallbackParagraph(fallbackSource, budget)
 				fallbackPlan := *plan

@@ -27,6 +27,10 @@ func TestValidateMinimumGeneratedOutput(t *testing.T) {
 	if err := validateMinimumGeneratedOutput(req, valid); err != nil {
 		t.Fatalf("valid output rejected: %v", err)
 	}
+	nearMiss := GenerateOutput{Text: "uno due tre quattro", WordCount: 4}
+	if err := validateMinimumGeneratedOutput(req, nearMiss); err != nil {
+		t.Fatalf("small shortfall below explicit minimum rejected: %v", err)
+	}
 
 	short := GenerateOutput{Text: "uno due", WordCount: 2}
 	err := validateMinimumGeneratedOutput(req, short)

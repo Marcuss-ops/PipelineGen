@@ -78,30 +78,17 @@ func (g *SceneTextGenerator) convertClipProseScenes(
 		if count == 0 {
 			count = 1
 		}
-		// Explicit per-segment source_text remains authoritative when supplied.
-		// Segments without source_text must keep the LLM-authored prose; using
-		// their topic as a fallback silently discarded the generated script.
+		// source_text is editorial context for generation, not the finished
+		// narration. The engine has already produced (or explicitly recovered)
+		// prose for this segment, so always materialize scenes from that prose.
 		if len(plan.Segments) > 0 {
-			var generated []scriptpkg.SpecScene
-			needsGeneratedText := false
-			for _, segment := range plan.Segments {
-				if strings.TrimSpace(segment.SourceText) == "" {
-					needsGeneratedText = true
-					break
-				}
-			}
-			if needsGeneratedText {
-				generated = scenepkg.NewSceneSynthesizer().FromProse(prose, count)
-				if len(generated) != count {
-					return nil, fmt.Errorf("planned %d text scenes, synthesized %d from generated prose", count, len(generated))
-				}
+			generated := scenepkg.NewSceneSynthesizer().FromProse(prose, count)
+			if len(generated) != count {
+				return nil, fmt.Errorf("planned %d text scenes, synthesized %d from generated prose", count, len(generated))
 			}
 			scenes := make([]scriptgen.Scene, 0, count)
 			for i, seg := range plan.Segments {
-				text := strings.TrimSpace(seg.SourceText)
-				if text == "" {
-					text = strings.TrimSpace(generated[i].Text)
-				}
+				text := strings.TrimSpace(generated[i].Text)
 				if text == "" {
 					return nil, fmt.Errorf("text scene %d has empty source_text/topic", i)
 				}

@@ -30,7 +30,7 @@ senza modelli.
 | 2 | Stesso serializzatore dentro il sidecar | `argos_bridge/server.py`: `_translate_lock` globale attorno a ogni traduzione |
 | 3 | Una chiamata LLM **per cue** | `assets/texttracks/cue_translate.go`: `Translate` per cue, con ~130 token di system prompt per 10-20 token utili |
 | 4 | Traduzione voiceover seriale | `processor_voiceover.go`: doppio loop lingua→scena senza concorrenza; un solo fallimento scartava l'intera lingua |
-| 5 | Nessun budget unico vs `OLLAMA_NUM_PARALLEL=3` | pool a 3/4 (`npm`/cue/materializer/NLP) tutti sullo stesso runner |
+| 5 | Nessun budget unico vs `OLLAMA_NUM_PARALLEL=3` | pool a 3/4 (NLP/cue/materializer/script) tutti sullo stesso runner — **chiuso al terzo giro**, vedi fix 10 |
 | 6 | Transport HTTP di default (`MaxIdleConnsPerHost=2`) | `platform/ollama/client/client_core.go`, `argos_server_translator.go` |
 | 7 | `SetTranslationConcurrency` non esposto | già chiuso in precedenza (`config.yaml` → `scripts.translation_concurrency: 3`) |
 
@@ -72,6 +72,70 @@ senza modelli.
    (`wiring.resolveCueTranslationConcurrency`): il fan-out per-cue usa
    `scripts.translation_concurrency`, lo stesso valore che limita la fase
    scene×lingua, invece di avere una seconda larghezza indipendente.
+10. **Budget di ammissione unico verso il server Ollama**
+    (`platform/ollama/client/admission.go`, terzo giro): i pool non possono
+    vedersi (sono costruiti da wiring bundle diversi), ma **tutti** passano dal
+    client Ollama; quindi il tetto vive lì. Un limiter per **endpoint**
+    (normalizzato: `http://host:porta`), condiviso da ogni `*Client` che punta
+    a quell'endpoint — l'LLM client, l'embed client, lo stock enrichment e il
+    creator client condividono un'unica quota.
+    - coperti: `/api/chat`, `/api/generate` (incluso lo **streaming**, che tiene
+      lo slot fino all'ultimo token), `/api/embeddings`;
+    - **non** coperti di proposito: le probe di liveness/inventario
+      (`/api/tags`, `/api/ps`, `/api/show`) — non occupano uno slot del runner e
+      un budget saturo non deve far sembrare morto il server;
+    - valore: `VELOX_OLLAMA_MAX_INFLIGHT` → altrimenti `OLLAMA_NUM_PARALLEL`
+      (lo stesso drop-in di `ollama.service`) → altrimenti 3; clamp 1–64, i
+      valori assurdi (`0`, negativi, non numerici) **non** significano
+      "illimitato" né "serializza tutto";
+    - observability senza nuovo I/O pubblico: `Client.AdmissionStats()` espone
+      `Limit/InFlight/Peak/Deferred/Granted` per endpoint, e la saturazione
+      viene loggata a livello debug una volta per richiesta accodata.
+12. **Traduzione vuota = fallimento, non successo silenzioso** (quarto giro).
+    Inventario dei percorsi, verificato nel codice:
+
+    | Percorso | Prima | Ora |
+    |---|---|---|
+    | Cue per-cue (`texttracks/cue_translate.go`) | accettava `""` con `nil` | **1 retry** poi `ErrEmptyTranslation` (con numero di cue) |
+    | Chunk batched (`applyBatchTranslations`) | già rifiutava il vuoto | invariato |
+    | Materializer (`materializer.go`) | scriveva una track READY **vuota** | `ErrTranslationFailed` che avvolge `ErrEmptyTranslation` |
+    | Voiceover (`processor_voiceover.go`) | già falliva | invariato |
+    | Usecase/postprocessor | già falliva (`ErrTranslationEmpty`) | invariato |
+    | Adapter di wiring (`scriptGenerationTranslator`) | già falliva | ora **pinnato da test** (non era coperto) |
+
+    Perché conta: nel materializer l'empty finiva in una TextTrack `READY` con
+    `TextHash` reale, **sotto la stessa `translation_key`** che il gate
+    lookup-before-translate usa per il riuso — cioè ogni run successivo avrebbe
+    riusato il vuoto come traduzione certificata. Nei cue per-cue produceva
+    sottotitoli senza parole con il run verde.
+
+    Retry: **uno**, non un loop. Un vuoto di Ollama è tipicamente una
+    generazione degenere (budget speso nel canale di reasoning) e il secondo
+    campione lo risolve; un provider deterministico continua a rispondere vuoto
+    e il fan-out per-cue non deve trasformarlo in una tempesta di retry sullo
+    stesso slot.
+
+13. **Metriche del budget di ammissione** (`observability/metrics_ollama.go` +
+    adapter di composition in `app/wiring`): `ollama_admission_limit`,
+    `ollama_admission_in_flight`, `ollama_admission_deferred_total` per
+    endpoint. Definizioni nel package canonico (regola
+    `prometheus_boundary`: le var metriche stanno in
+    `internal/platform/observability`), mentre il client espone un port
+    consumer-side (`AdmissionObserver`) e **non** importa la telemetria. La
+    label è solo `endpoint` (uno o due valori per deployment): niente job id,
+    niente model tag. Lettura operativa: `in_flight == limit` con
+    `deferred_total` in crescita significa che i pool si stanno sovrapponendo
+    ed è il server a fare da collo di bottiglia.
+
+11. **Guard statico anti-bypass** (`client/ollama_endpoint_guard_test.go`): un
+    test di architettura cammina i sorgenti Go di `internal/` e `cmd/`, li
+    parsa **senza commenti** e fallisce se un package fuori da
+    `internal/platform/ollama` nomina in un literal uno degli endpoint di
+    generazione. Senza questo, un singolo package che si aprisse un
+    `http.Client` proprio tornerebbe a saturare il server mentre i pool
+    sembrano limitati. Il guard ha un secondo test che prova che **sa**
+    fallire (fixture in una temp dir) e ignora gli stessi token dentro i
+    commenti.
 
 ## 4. Misure (host: RTX A4000, gemma4:e2b)
 
@@ -85,6 +149,35 @@ senza modelli.
 
 Guadagno: **6–8×** dal solo batching (e 12× meno richieste, quindi 12× meno
 pressione sui 3 slot), **~30–60×** dal ripristino di Argos come primario.
+
+Budget di ammissione (fix 10), misurato contro un server di prova che traccia
+la concorrenza reale lato server:
+
+| Scenario | Limite | Picco osservato al server | Accodate |
+|---|---|---|---|
+| 9 `Chat` concorrenti, un client | 3 | **3** (non 9) | 6 |
+| 6 `Chat` su **due** client dello stesso endpoint | 2 | **2** | 4 |
+| 6 `GenerateWithOptions` (path legacy) | 2 | **2** | 4 |
+| 1 embedding + 1 chat su client diversi, stesso endpoint | 1 | **1** | 1 |
+| **pool cue reale** (`CueTranslator`, larghezza 4) su 12 cue, budget 2 | 2 | **2** | >0 |
+
+Sempre verificato: dopo ogni errore 5xx e dopo un waiter cancellato, gli slot
+tornano a 0 (nessuna capacità persa) e la chiamata successiva procede.
+
+L'ultima riga è un test di integrazione che usa il fan-out cue **vero**
+(`TestCueTranslationFanoutIsBoundedByOllamaAdmissionBudget`): una larghezza
+volutamente più larga del budget dimostra che il tetto è del client e non del
+pool.
+
+**Chi è la fonte di verità sulla concorrenza.** Nello stesso test
+`observability.ConcurrencyStats.MaxObserved` riporta **4** (la larghezza del
+pool) mentre il server vede **2**. Non è un bug del tracker: conteggia il lavoro
+sovrapposto, e un task bloccato sul budget è, per il pool, ancora in corsa — il
+pool non vede dentro il client e non deve. Conseguenza operativa: `AvgObserved`
+non dice quanto sta lavorando la GPU, mentre `Client.AdmissionStats()`
+(`Peak`/`Deferred`) sì. Se in un run live `Peak == Limit` con `Deferred` in
+crescita, i pool si stanno sovrapponendo ed è il server a fare da collo di
+bottiglia — è esattamente il caso misurato qui.
 Il contratto JSON ha anche un effetto sul budget di output: ~62 token/cue
 contro 294–497 del percorso per-cue.
 
@@ -111,22 +204,101 @@ go test ./internal/capabilities/translation/... ./internal/platform/ollama/... \
   ./internal/capabilities/assets/texttracks/... \
   ./internal/capabilities/scripts/adapters/... ./internal/app/wiring/... -count=1
 
+# budget di ammissione + guard anti-bypass
+go test ./internal/platform/ollama/client/ -run 'TestAdmission|TestOnlyOllamaClientPackageTargets|TestOllamaEndpointGuard' -v -count=1
+
+# integrazione: il fan-out cue reale rispetta il budget condiviso
+go test ./internal/capabilities/assets/texttracks/ -run TestCueTranslationFanoutIsBoundedByOllamaAdmissionBudget -v -count=1
+
+# traduzione vuota = fallimento (cue, materializer) + adapter di wiring pinnato
+go test ./internal/capabilities/assets/texttracks/ -run 'TranslationEmpty|TestCueTranslationRetries|TestCueTranslationFailsClosed|TestCueTranslationBatchedEmpty' -v -count=1
+go test ./internal/app/wiring/ -run 'TestScriptGenerationTranslator' -v -count=1
+
+# metriche del budget di ammissione
+go test ./internal/platform/ollama/client/ -run TestAdmissionObserver -v -count=1
+go test ./internal/app/wiring/ -run 'TestOllamaAdmissionObserver|TestObserveOllamaAdmission' -v -count=1
+
 # gate di repo (verde: script/ollama/translation/research/stock rilanciati)
 make verify-agent
 ```
 
-Attivazione in produzione: il binario è stato ricompilato in `bin/pipelinegen`;
-serve solo un `systemctl restart pipelinegen.service` (sudo). Al boot il log deve
-riportare `ArgosTranslator wired as primary translation provider (Ollama
-fallback)` e **non** più `ArgosTranslator unavailable`.
+### Attivazione live (verificata il 18 settembre, 11:31)
+
+Il processo live è stato **riavviato con il binario ricompilato**
+(`bin/pipelinegen` 11:31:06, PID 574112 avviato 11:31:12) e sta eseguendo i fix
+di tutti e tre i giri. Evidenza raccolta dal servizio in esecuzione:
+
+```
+11:31:14  wiring/build_bundles_texttracks.go:230
+          "ArgosTranslator wired as primary translation provider (Ollama fallback)"
+11:31:48  translation/argos_server_translator.go:160  "argos: launching persistent server"
+11:31:49  translation/argos_server_translator.go:231  "argos: server started" pid=580770
+11:31:14  script_generation_runtime.go:412  nlp_concurrency=4 translation_concurrency=3
+                                             tts_concurrency=4 serial_mode=false
+```
+
+- **zero** occorrenze di `ArgosTranslator unavailable` dopo il restart (prima
+era la riga di ogni avvio);
+- il sidecar in esecuzione risponde su `127.0.0.1:37873` con
+  `{"status":"ok","concurrency":4,"threaded":true}` — cioè la concorrenza
+  bounded è attiva anche nel processo reale;
+- traduzione reale eseguita sul sidecar del servizio:
+  `"Discipline builds the foundation."` → `"La disciplina costruisce la
+  fondazione."` (`model: argos-en-it`, `via: direct`, nessun LLM coinvolto);
+- il binario in esecuzione contiene il budget di ammissione (la stringa di log
+  `ollama admission budget saturated` è presente in `bin/pipelinegen`), quindi
+  i pool del job live condividono già il tetto unico.
+
+Nessun `systemctl restart` manuale è stato necessario in questo giro: il
+servizio era già stato riavviato dal supervisor con il binario aggiornato. Se in
+futuro serve: `sudo systemctl restart pipelinegen.service`, e al boot il log deve
+mostrare le righe qui sopra.
 
 ## 6. Follow-up residui (non bloccanti)
 
-- `OLLAMA_NUM_PARALLEL=3` e `OLLAMA_MAX_LOADED_MODELS=1` restano il tetto reale.
-  La larghezza dei due percorsi di traduzione ora è unica
-  (`scripts.translation_concurrency`), ma un semaforo condiviso fra i pool
-  script/NLP/cue/materializer non esiste ancora — e il caso `e2b`/`e4b`
-  osservato mostra che due consumer con modelli diversi si sfrattano.
+- `OLLAMA_NUM_PARALLEL=3` resta il tetto reale ed è ora **applicato lato
+  client** (fix 10) per tutti i pool insieme. Se l'operatore cambia il drop-in
+  di `ollama.service`, il client lo segue via `OLLAMA_NUM_PARALLEL` o
+  `VELOX_OLLAMA_MAX_INFLIGHT`.
+- **Model thrash: diagnosi definitiva (chiusa come diagnosi + leve).**
+  Il problema è distinto dal conteggio delle richieste: il budget limita quanti
+  request sono in volo, non quale modello è residente. Verificato nel codice:
+
+  | Consumer | Modello effettivo in produzione | Fonte |
+  |---|---|---|
+  | Script generation (`model: auto`) | `gemma4:e2b` se il target è ≤ **300** parole, altrimenti `gemma4:e4b` | `generation/plan_builder.go::resolveModelPolicy` (hardcoded) |
+  | Script generation (`model` pinnato) | il modello del payload | stesso funzione, ramo `!item.ModelAuto` |
+  | Semantic analyzer | `cfg.External.OllamaModel` (e4b) | `lifecycle_scheduler.go` passa `Model:` esplicitamente |
+  | Youtube metadata | `OllamaMetadataModel` → `OllamaModel` (e4b) | `youtube/adapters/metadata_service_helpers.go` |
+  | Classifier | il modello passato dal chiamante | `classifier.Options.Model` |
+
+  Cioè: dei cinque default `gemma4:e2b` presenti nel repo, **uno solo è vivo in
+  produzione** (`plan_builder` sul ramo `auto` con script corti); gli altri sono
+  fallback che il composition root non raggiunge mai, perché passa sempre
+  `cfg.External.OllamaModel`. Non servono modifiche di codice lì.
+
+  Conseguenza operativa con `OLLAMA_MAX_LOADED_MODELS=1` (drop-in
+  `scripts/systemd/ollama.service.d/gpu.conf`): un payload `model: auto` con
+  script corti costringe uno swap completo di modello; un payload che **pinna**
+  il modello (come fa `ops/jobs/mike_tyson_1000w_5scene_10lang.generate.json`,
+  `"model": "gemma4:e4b"`) ha thrash zero — ed è coerente con `ollama ps` che
+  durante quel run mostrava un solo modello residente.
+
+  Leve disponibili, in ordine di rischio:
+  1. **pinnare `model` nel payload** (`"model": "gemma4:e4b"`, contratto già
+     esistente, zero codice) — è la leva che elimina il thrash oggi;
+  2. `external.ollama_metadata_model` per il solo percorso metadata;
+  3. alzare `OLLAMA_MAX_LOADED_MODELS` nel drop-in: **non fatto qui** perché il
+     file motiva esplicitamente il valore 1 (la GPU è condivisa col renderer
+     media, `e2b` ≈1.9 GiB VRAM con 3 slot da 8192 token);
+  4. rimuovere la policy small/large: è una decisione costo/qualità già
+     pinnata da `plan_builder_contract_test.go`, quindi va decisa dall'operatore
+     o dal prodotto, non cambiata in silenzio. Il modello risolto è comunque
+     visibile nei log (`engine_generate.go`: `model=`), quindi il thrash si
+     diagnostica da un run reale senza strumentazione nuova.
+- Misurare il budget in un run live: `Client.AdmissionStats()` dà
+  `Peak`/`Deferred` per endpoint (`Peak == Limit` con `Deferred > 0` significa
+  che il tetto sta mordendo e che i pool si stavano sovrapponendo).
 - La cache L1/L2 vive dentro `ollama.Generator`: con Argos primario non c'è
   cache testuale dei risultati Argos. Non è un collo di bottiglia (0.10–0.25
   s/cue misurati) ed è già coperto a livello persistente dal gate
@@ -142,3 +314,9 @@ Durante questo lavoro un ALTRO workstream stava editando lo stesso workspace
 in corso e sono tornati verdi quando quel workstream ha finito (verificato con
 un worktree su HEAD: a HEAD erano verdi, quindi la regressione non era di
 questo lavoro). Nessun file di quel workstream è stato toccato qui.
+
+Terzo giro (budget di ammissione): a fine sessione il servizio è stato riavviato
+con il binario aggiornato — è la stessa modifica a essere ora live, non una
+sessione separata. Il job `mike-tyson-1000w-5scene-10lang` in corso alle 11:36 ha
+quindi eseguito la fase di traduzione con Argos primario e con i pool sottoposti
+al tetto unico.

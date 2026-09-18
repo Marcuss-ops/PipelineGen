@@ -152,6 +152,7 @@ func (g *SceneTextGenerator) GenerateSceneTextStreamWithTrace(
 		}
 		if segmentTarget > 0 {
 			segmentReq.ScriptParams.TargetWords = segmentTarget
+			segment.TargetWords = segmentTarget
 		}
 
 		segmentPlan := *plan

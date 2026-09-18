@@ -10,7 +10,13 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/ollama/types"
 )
 
-// CheckHealth checks if Ollama is reachable
+// CheckHealth checks if Ollama is reachable.
+//
+// Liveness and inventory probes (/api/tags, /api/ps, /api/show) are
+// deliberately NOT gated by the admission budget: they do not occupy a model
+// runner slot, and gating them would make the health endpoint of the service
+// depend on generation load — a saturated budget would look like a dead
+// server.
 func (c *Client) CheckHealth(ctx context.Context) bool {
 	req, err := http.NewRequestWithContext(ctx, "GET", c.baseURL+"/api/tags", nil)
 	if err != nil {

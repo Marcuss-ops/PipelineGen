@@ -20,9 +20,10 @@ type ScriptSegment struct {
 	SourceText  string   `json:"source_text,omitempty"`
 	ClipIDs     []string `json:"clip_ids,omitempty"`
 	TargetWords int      `json:"target_words,omitempty"`
-	// MinWords and MaxWords are optional explicit QA bounds. When omitted,
-	// the segment validator derives them from TargetWords and its configured
-	// tolerance.
+	// MinWords and MaxWords are optional QA bounds. Explicit MinWords keeps the
+	// configured undershoot tolerance during generated-prose validation. When
+	// MinWords is omitted, the validator derives a minimum from TargetWords and
+	// its configured tolerance. MaxWords is never inferred from TargetWords.
 	MinWords int `json:"min_words,omitempty"`
 	MaxWords int `json:"max_words,omitempty"`
 }

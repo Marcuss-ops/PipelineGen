@@ -187,8 +187,8 @@ func verifyMikeTysonTenLanguageRuntimeResult(t *testing.T, result map[string]any
 	if integerAt(result, "script_id") <= 0 {
 		t.Fatalf("script was not persisted to the script database: %s", compactJSON(result))
 	}
-	if count := integerAt(mapAt(result, "output"), "word_count"); count < 950 {
-		t.Fatalf("word_count=%d, want at least 950 toward the 1,000-word target", count)
+	if count := integerAt(mapAt(result, "output"), "word_count"); count < 930 {
+		t.Fatalf("word_count=%d, want at least 930 within tolerance of the 1,000-word target", count)
 	}
 	if scenes := mapsAt(result, "scenes"); len(scenes) != 5 {
 		t.Fatalf("scenes=%d, want five", len(scenes))

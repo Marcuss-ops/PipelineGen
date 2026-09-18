@@ -179,6 +179,27 @@ func TestSceneIRSegmentEnricherPrefersCanonicalSegmentID(t *testing.T) {
 	require.Equal(t, "scene-1", result.SceneID)
 }
 
+func TestSceneIRSegmentEnricherFencesNarrationWhileKeepingSourceEvidence(t *testing.T) {
+	const narration = "Mike Tyson's generated narration expands on the documented Brooklyn history."
+	const brief = "Mike Tyson was born in Brooklyn in 1966."
+	enricher, err := NewSceneIRSegmentEnricher(stubVisualNER{})
+	require.NoError(t, err)
+
+	plan := &scriptpkg.ResolvedGenerationPlan{Segments: []scriptpkg.ScriptSegment{{
+		ID: "brooklyn-origins", SourceText: brief,
+	}}}
+	scene := scriptpkg.SpecScene{ID: "brooklyn-origins", Index: 0, Text: narration}
+	result, err := enricher.Enrich(context.Background(), plan, scene)
+	require.NoError(t, err)
+
+	// The incremental commit fences the generated narration. The source brief
+	// remains separately bound into SceneIR for grounded extraction.
+	require.Equal(t, narration, result.Text)
+	require.Equal(t, SceneTextHash(narration), result.TextHash)
+	require.Equal(t, SceneTextHash(narration), result.Insights.TextHash)
+	require.NotEqual(t, scriptpkg.ComputeCanonicalSegmentTextHash(brief), result.TextHash)
+}
+
 func TestSceneIRSegmentEnricherUsesAllPersonsForImageSearch(t *testing.T) {
 	entities := []VisualEntity{
 		{Text: "the documentary", Type: scriptpkg.EntityTypeVisualConcept, Score: 0.99, Start: 0, End: 14, Evidence: "The documentary"},

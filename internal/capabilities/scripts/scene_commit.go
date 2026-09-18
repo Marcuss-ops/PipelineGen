@@ -9,10 +9,8 @@ package scriptgeneration
 
 import (
 	"context"
-	"strings"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
@@ -75,7 +73,5 @@ func NewSceneCommitted(runID string, scene Scene, language Language, revision in
 // per-segment VidRush text hash. Any real content change yields a different
 // hash and therefore fences out stale enrichment results.
 func SceneTextHash(text string) string {
-	normalized := strings.Join(strings.Fields(strings.ToLower(strings.TrimSpace(text))), " ")
-	sum := digest.SHA256Bytes([]byte(normalized))
-	return sum
+	return scriptpkg.ComputeCanonicalSegmentTextHash(text)
 }

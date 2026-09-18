@@ -71,7 +71,7 @@ func (e *SceneIRSegmentEnricher) Enrich(ctx context.Context, plan *scriptpkg.Res
 	segment := scriptpkg.CanonicalSegment{
 		ID:         segmentID,
 		Position:   scene.Index,
-		Text:       sourceText,
+		Text:       narrationText,
 		SourceText: sourceText,
 	}
 	if scene.ExecutionMode != "" {
@@ -222,13 +222,13 @@ func (e *SceneIRSegmentEnricher) Enrich(ctx context.Context, plan *scriptpkg.Res
 		SegmentID:       ir.SegmentID,
 		SceneID:         scene.ID,
 		Position:        ir.Position,
-		Text:            ir.SourceText,
-		TextHash:        ir.SourceTextHash,
+		Text:            narrationText,
+		TextHash:        ir.Profile.TextHash,
 		ExecutionMode:   scene.ExecutionMode,
 		SemanticProfile: &ir.Profile,
 		Insights: scriptpkg.SegmentInsights{
 			SegmentID:     ir.SegmentID,
-			TextHash:      ir.SourceTextHash,
+			TextHash:      ir.Profile.TextHash,
 			VisualProfile: visualProfile,
 			Entities:      extractedEntities,
 			ImportantPhrases: func() []string {

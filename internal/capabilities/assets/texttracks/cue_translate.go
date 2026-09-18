@@ -20,8 +20,10 @@ package texttracks
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/translation"
@@ -35,6 +37,18 @@ import (
 // fan-out. Single owner of the bound so the runtime bundle and the operator
 // CLIs cannot disagree about how hard the translator is hammered.
 const DefaultCueTranslationConcurrency = 4
+
+// translationEmptyAttempts is the total number of attempts for ONE cue when
+// the provider answers with an empty text and no error.
+//
+// One retry, not a retry loop: an empty Ollama answer is usually a degenerate
+// generation (the model spent its budget on the reasoning channel or emitted
+// only a stop token) and a second sample fixes it, while a deterministic
+// provider such as Argos either keeps answering empty or fails outright — and a
+// per-cue fan-out must not turn "empty" into an unbounded retry storm against
+// the same runner slot. After the last attempt the cue fails closed with
+// ErrEmptyTranslation, exactly like the voiceover path.
+const translationEmptyAttempts = 2
 
 // DefaultCueTranslationChunkSize is the number of cues one batched provider
 // request carries when the translator supports batching. 12 keeps the prompt
@@ -148,7 +162,7 @@ func (t *CueTranslator) Translate(ctx context.Context, cues []detail.TimedCue, t
 					CompletedAt: time.Now(),
 				})
 				if err != nil {
-					return fmt.Errorf("cue %d (%q): %w", i+1, cue.Text, err)
+					return fmt.Errorf("cue %d (%q): %w", i+1, cue.Text, annotateCueError(err, i+1))
 				}
 				out[i] = detail.TimedCue{StartMs: cue.StartMs, EndMs: cue.EndMs, Text: translated}
 				return nil
@@ -204,7 +218,7 @@ func (t *CueTranslator) translateChunk(ctx context.Context, batcher translation.
 	for _, index := range indexes {
 		translated, err := t.translateOne(ctx, cues[index].Text, targetLang)
 		if err != nil {
-			return fmt.Errorf("cue %d (%q): %w", index+1, cues[index].Text, err)
+			return fmt.Errorf("cue %d (%q): %w", index+1, cues[index].Text, annotateCueError(err, index+1))
 		}
 		out[index] = detail.TimedCue{StartMs: cues[index].StartMs, EndMs: cues[index].EndMs, Text: translated}
 	}
@@ -264,7 +278,56 @@ func chunkIndexes(count, size int) [][]int {
 	return chunks
 }
 
+// annotateCueError attaches the 1-based cue number to a cue-scoped typed error
+// so the operator-facing message names the offending cue. The error keeps its
+// type (errors.Is/As still match) — only the copy carries the number.
+func annotateCueError(err error, cueNumber int) error {
+	var empty *ErrEmptyTranslation
+	if errors.As(err, &empty) && empty.CueNumber == 0 {
+		annotated := *empty
+		annotated.CueNumber = cueNumber
+		return &annotated
+	}
+	return err
+}
+
+// translateOne translates ONE cue, failing closed on an empty answer.
+//
+// The batched path has always rejected empty segment text (see
+// applyBatchTranslations); this is the same contract for the per-cue path,
+// which is also what a failed chunk degrades to. Without it a provider that
+// answers "" with a nil error would produce subtitles with no words while the
+// run reported success — and a 12-cue chunk that failed its contract would
+// degrade into twelve empty cues instead of a loud failure.
 func (t *CueTranslator) translateOne(ctx context.Context, text, targetLang string) (string, error) {
+	var lastEmpty error
+	for attempt := 1; attempt <= translationEmptyAttempts; attempt++ {
+		res, err := t.translateOnce(ctx, text, targetLang)
+		if err != nil {
+			return "", err
+		}
+		if strings.TrimSpace(res.TranslatedText) != "" {
+			return res.TranslatedText, nil
+		}
+		lastEmpty = &ErrEmptyTranslation{
+			Provider:   res.UsedProvider,
+			Model:      res.UsedModel,
+			TargetLang: targetLang,
+		}
+		if attempt < translationEmptyAttempts && t.log != nil {
+			t.log.Warn("translation provider returned empty text; retrying once",
+				zap.String("lang", targetLang),
+				zap.String("provider", res.UsedProvider),
+				zap.Int("attempt", attempt),
+			)
+		}
+	}
+	return "", lastEmpty
+}
+
+// translateOnce is a single provider round-trip for one cue, with no
+// emptiness policy (the caller owns that).
+func (t *CueTranslator) translateOnce(ctx context.Context, text, targetLang string) (translation.TranslationResult, error) {
 	cmd := translation.TranslationCommand{
 		SourceLang: t.sourceLang,
 		TargetLang: targetLang,
@@ -279,7 +342,7 @@ func (t *CueTranslator) translateOne(ctx context.Context, text, targetLang strin
 	}
 	res, err := t.translator.Translate(ctx, cmd)
 	if err != nil {
-		return "", err
+		return translation.TranslationResult{}, err
 	}
-	return res.TranslatedText, nil
+	return res, nil
 }

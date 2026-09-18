@@ -207,6 +207,10 @@ func dollyPartonMultilingualEnvelope(t *testing.T, languages []string) []byte {
 							"mode":    "burn",
 							"preset":  dollyMultilingualSubtitlePreset,
 						},
+						"background": map[string]any{
+							"mode":     "asset",
+							"asset_id": "drive-background-01",
+						},
 					},
 					"drive_folder_id": dollyPartonDriveParentFolderID,
 				},

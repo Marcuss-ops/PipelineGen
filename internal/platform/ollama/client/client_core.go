@@ -52,6 +52,7 @@ func NewClient(baseURL, model string, timeoutSeconds int) *Client {
 		model:      model,
 		httpClient: newOllamaHTTPClient(time.Duration(timeoutSeconds) * time.Second),
 		breakers:   make(map[string]*CircuitBreaker),
+		admission:  admissionFor(baseURL),
 	}
 }
 
@@ -266,6 +267,14 @@ func (c *Client) doChatRequest(ctx context.Context, model string, messages []typ
 	if err != nil {
 		return ChatResult{}, err
 	}
+
+	// Take the endpoint's shared in-flight budget for the whole round trip,
+	// decode included: a request that is still reading tokens is still holding
+	// a runner slot on the server.
+	if err := c.acquireOllamaSlot(ctx); err != nil {
+		return ChatResult{}, err
+	}
+	defer c.releaseOllamaSlot()
 
 	httpReq, err := http.NewRequestWithContext(ctx, "POST", c.baseURL+"/api/chat", bytes.NewReader(body))
 	if err != nil {
