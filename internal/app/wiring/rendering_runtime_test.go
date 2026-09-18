@@ -165,9 +165,9 @@ func TestBuildRenderingRuntime_RegistersOnlyOverlayHandlers(t *testing.T) {
 // ── 2b. overlay GPU slot contract ─────────────────────────────
 
 // TestResolveGPUGateSlots_DefaultAndEnv pins the overlay GPU admission
-// contract: an unset/invalid RENDERINGGEN_GPU_SLOTS resolves to the single-slot
-// default (the historical host-wide serialization) and is reported as NOT
-// explicit, while a configured value is honored and reported as explicit.
+// contract: an unset/invalid RENDERINGGEN_GPU_SLOTS resolves to
+// DefaultGPUGateSlots and is reported as NOT explicit, while a configured
+// value is honored and reported as explicit.
 func TestResolveGPUGateSlots_DefaultAndEnv(t *testing.T) {
 	cases := []struct {
 		raw      string

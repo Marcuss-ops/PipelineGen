@@ -103,7 +103,7 @@ func NewLocalizationService(deps LocalizationDeps, cfg LocalizationConfig) (*Loc
 	}
 	renderConcurrency := cfg.GlobalRenderConcurrency
 	if renderConcurrency < 1 {
-		renderConcurrency = 2
+		renderConcurrency = 4
 	}
 	uploadConcurrency := cfg.UploadConcurrency
 	if uploadConcurrency < 1 {

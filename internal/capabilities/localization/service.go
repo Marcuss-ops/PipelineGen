@@ -99,8 +99,15 @@ func (s *Service) UploadRendered(ctx context.Context, artifact LocalizedClipArti
 	return out, err
 }
 
+// defaultGlobalRenderConcurrency is the measured fan-out ceiling for the
+// localization render lane: 4 concurrent renders amortize the per-language
+// prepare/startup (see RenderingGen gpu_lanes=2 + DefaultRenderConcurrency=4
+// + daemon_reused/graph_reused_frames — the win is admission + reuse, not
+// overlapping Chronon execution, which stays serialized per daemon domain).
+// Upload stays 4 so a slow Drive operation never blocks the next render
+// (Localize releases the render gates at RENDERED, before Drive).
 const (
-	defaultGlobalRenderConcurrency = 2
+	defaultGlobalRenderConcurrency = 4
 	defaultUploadConcurrency       = 4
 )
 
