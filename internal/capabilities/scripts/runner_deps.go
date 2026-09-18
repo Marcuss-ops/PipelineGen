@@ -305,10 +305,29 @@ func accumulateLocalizedRenderMetrics(result *GenerateResult, rendered Localized
 	}
 }
 
-// applyLocalizedRenderLinkLocked replaces the source Drive link in the
-// document-facing clip reference with the certified rendered artifact link.
+// applyLocalizedRenderLinkLocked projects one certified render onto the shared
+// scene clip reference, but ONLY when that render is the run's
+// SOURCE-language variant of the clip.
+//
+// The scene clip reference IS the source clip: one video, one language. A run
+// renders one variant per (clip, language), so the previous "the newest render
+// wins" rule made this language-less field carry whichever language finished
+// last — and every language's document that fell back to this field showed one
+// arbitrary, usually foreign, video. The per-language links are carried by
+// GenerateResult.LocalizedRenders and read per language by the document
+// projection (localizedRenderLinksFor); only the source-language render
+// legitimately replaces the source clip's own link.
+//
+// A run whose source language is unknown (restored legacy checkpoints) keeps
+// the accept-any-render behaviour so those results are not silently dropped.
 func applyLocalizedRenderLinkLocked(result *GenerateResult, rendered LocalizedRenderResult) {
 	if result == nil || strings.TrimSpace(rendered.DriveLink) == "" {
+		return
+	}
+	if source := strings.TrimSpace(string(result.SourceLanguage)); source != "" &&
+		strings.TrimSpace(string(rendered.Language)) != source {
+		// A translated variant of this clip is a different deliverable and
+		// must never overwrite the source clip's identity in the scene graph.
 		return
 	}
 	for _, scene := range result.Scenes {

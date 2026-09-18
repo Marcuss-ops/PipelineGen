@@ -438,7 +438,11 @@ func (r *Runner) runVoiceoverPhase(ctx context.Context, runID string, req Genera
 			}
 			// Render callbacks run concurrently with TTS workers. Projecting
 			// Drive links into mutable scene clip references is deferred until
-			// both fan-outs have joined, so the scene graph has one writer.
+			// both fan-outs have joined, so the scene graph has one writer. The
+			// projection is restricted to each clip's SOURCE-language variant:
+			// the scene reference is language-less, and a translated variant is
+			// a separate deliverable that the per-language document projection
+			// resolves from result.LocalizedRenders.
 			r.localizedRenderMu.Lock()
 			for _, rendered := range result.LocalizedRenders {
 				applyLocalizedRenderLinkLocked(result, rendered)
