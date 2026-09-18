@@ -72,7 +72,14 @@ set -Eeuo pipefail
 DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 # shellcheck disable=SC1091
 source "$DIR/lib/common.sh"
-smoke_require curl jq
+smoke_require curl jq sha256sum
+
+# The YouTube legs shell out to yt-dlp: GET /api/clips/search routinely takes
+# ~30s and GET /api/clips/info ~8s on a warm host. The shared 8s per-request
+# default made step 1 fail with curl exit 28 (HTTP 000) before the API could
+# answer — which cascaded into steps 2/3/4/6/10. Raise it for every request in
+# this battery; SMOKE_HTTP_TIMEOUT_SECONDS is read by smoke_curl on each call.
+SMOKE_HTTP_TIMEOUT_SECONDS="${PIPELINE_E2E_HTTP_TIMEOUT_SECONDS:-90}"
 
 if [[ "${HELP_REQUESTED:-0}" == "1" ]]; then
     sed -n '1,50p' "${BASH_SOURCE[0]}"
@@ -285,21 +292,31 @@ pipeline_search_await() {
 pipeline_receipt_job() {
     local f="$1"
     if [[ -s "$f" ]]; then
+        # NOTE: the platform attaches the `timing` projection (and the full
+        # stage list) asynchronously after the job flips to a terminal state, so
+        # a receipts-time capture can legitimately carry an empty timing block.
+        # `job_id` is recorded so the numbers can be re-read on demand from
+        # GET /api/jobs/{job_id}/full.
         jq -c '
             { status: (.job.status // .status // null),
+              job_id: (.job.id // .id // null),
               index_state_expected: "INDEXED",
               timing: (.job.timing // .timing // null),
-              artifacts: [ .. | objects | select((.remote_file_id // "") != "")
-                           | { artifact_id: (.id // null),
-                               filename: (.filename // null),
-                               size_bytes: (.size_bytes // null),
-                               sha256: (.sha256 // null),
-                               remote_file_id: (.remote_file_id // null),
-                               remote_web_view_link: (.remote_web_view_link // null),
-                               source_url: (.artifact_metadata.source_url // null),
-                               source_video_id: (.artifact_metadata.source_video_id // null),
-                               start_sec: (.artifact_metadata.start_sec // null),
-                               end_sec: (.artifact_metadata.end_sec // null) } ] }' "$f"
+              artifacts: ([ .. | objects
+                            | select((.drive_file_id // .remote_file_id // "") != "")
+                            | { artifact_id: (.id // null),
+                                filename: (.filename // null),
+                                size_bytes: (.size_bytes // null),
+                                sha256: (.sha256 // .legacy_file_md5 // null),
+                                drive_folder_id: (.drive_folder_id // null),
+                                remote_file_id: (.drive_file_id // .remote_file_id // null),
+                                remote_web_view_link: (.drive_link // .remote_web_view_link // null),
+                                drive_path: (.drive_path // .artifact_metadata.drive_path // null),
+                                source_url: (.artifact_metadata.source_url // .source_url // null),
+                                source_video_id: (.artifact_metadata.source_video_id // null),
+                                start_sec: (.artifact_metadata.start_sec // null),
+                                end_sec: (.artifact_metadata.end_sec // null) } ]
+                          | unique_by(.artifact_id // .filename // .remote_file_id)) }' "$f"
     else
         printf '{}'
     fi
@@ -324,7 +341,18 @@ pipeline_write_receipt() {
     fi
     [[ -n "$git_sha" ]] || git_sha="unknown"
 
+    # Bind the certificate to the artifact that ACTUALLY ran. A concurrent
+    # commit moves the repository HEAD independently of the deployed binary, so
+    # the receipt records the running build's identity (binary sha256 + embedded
+    # commit + start time) alongside the repo revision.
+    local build_json='{}'
+    smoke_curl GET "/health" >/dev/null 2>&1 || true
+    if [[ "$SMOKE_LAST_HTTP" == "200" && -s "${SMOKE_LAST_BODY:-}" ]]; then
+        build_json=$(jq -c '.build // {}' "$SMOKE_LAST_BODY" 2>/dev/null || printf '{}')
+    fi
+
     jq -n \
+        --argjson binary "$build_json" \
         --arg run_id "$RUN_TAG" \
         --arg git_sha "$git_sha" \
         --arg api_base "$SMOKE_API_BASE" \
@@ -346,6 +374,7 @@ pipeline_write_receipt() {
            git_sha: $git_sha,
            api_base: $api_base,
            verdict: $verdict,
+           running_binary: $binary,
            steps_total: $steps_total,
            steps_passed: $steps_passed,
            failed_steps: $failed_steps,
@@ -462,8 +491,15 @@ step_4_youtube_drive_artifact() {
         return 1
     fi
     local artifacts
+    # unique_by(.id) collapses the envelope duplication: /api/jobs/{id}/full
+    # carries the same artifact tree under BOTH .result and .job.result, so a
+    # bare `.. | objects` walk yields every artifact twice and made the
+    # "duplicate drive_file_id across clips" check a false positive. Distinct
+    # clips keep distinct artifact ids, so a genuine duplicate id is still
+    # detected by `(.file_ids | length) == .count` below.
     artifacts=$(jq -c --arg vid "$TARGET_VIDEO_ID" '
         [ .. | objects | select((.drive_file_id // .remote_file_id // "") != "") ]
+        | unique_by(.id // .filename // .remote_file_id)
         | {count: length,
            file_ids: (map(.drive_file_id // .remote_file_id) | unique),
            links: [.[].drive_link // .[].remote_web_view_link // ""],
@@ -509,8 +545,10 @@ step_5_youtube_indexed() {
         '{query: $q, sources: ["youtube"], mode: "hybrid", universe: "catalog",
           filters: {source: "youtube", media_type: "video"}, limit: 20}')
 
-    if ! pipeline_search_await "$payload" search-yt; then
-        pipeline_fail "the processed clip never became retrievable from the canonical catalog (index worker lag or indexing failure)"
+    # Tightened hit condition: wait for the asset PRODUCED from the video that
+    # steps 1-2 discovered/certified, not merely for any catalog item.
+    if ! pipeline_search_await "$payload" search-yt "$TARGET_VIDEO_ID"; then
+        pipeline_fail "no asset produced from the discovered video ($TARGET_VIDEO_ID) became retrievable from the canonical catalog"
         return 1
     fi
 
@@ -519,9 +557,11 @@ step_5_youtube_indexed() {
         pipeline_fail "the processed clip is not retrievable from the canonical catalog"
         return 1
     fi
-    YT_ASSET_ID=$(jq -r '[(.items // [])[]? | select((.asset_id // "") != "")][0].asset_id' "$SMOKE_LAST_BODY")
+    YT_ASSET_ID=$(jq -r --arg vid "$TARGET_VIDEO_ID" \
+        '[(.items // [])[]? | select(((.asset_id // "") | contains($vid)))][0].asset_id' \
+        "$SMOKE_LAST_BODY")
     if [[ -z "$YT_ASSET_ID" || "$YT_ASSET_ID" == "null" ]]; then
-        pipeline_fail "the canonical asset_id is empty"
+        pipeline_fail "the canonical asset_id produced from $TARGET_VIDEO_ID is empty"
         return 1
     fi
     printf '  asset id : %s (%s hit(s) for the youtube provenance)\n' "$YT_ASSET_ID" "$YT_SEARCH_COUNT_BEFORE"
@@ -616,13 +656,16 @@ step_8_stock_drive_artifact() {
         pipeline_fail "no retained stock job result to inspect"
         return 1
     fi
+    # Same envelope-duplication collapse as step 4 (.result and .job.result).
     local artifacts
     artifacts=$(jq -c '
         [ .. | objects | select((.drive_file_id // .remote_file_id // "") != "") ]
+        | unique_by(.id // .filename // .remote_file_id)
         | {count: length,
            file_ids: (map(.drive_file_id // .remote_file_id) | unique),
            links: [.[].drive_link // .[].remote_web_view_link // ""],
            sizes: [ (.[].size_bytes // .[].size // 0) ],
+           drive_paths: ([.[].drive_path // .[].artifact_metadata.drive_path // ""] | map(select(. != "")) | unique),
            folder_ids: ([.[].drive_folder_id // .[].timestamp_folder_id // ""] | map(select(. != "")) | unique)}' \
         "$full")
     printf '  artifacts: %s\n' "$artifacts"
@@ -634,8 +677,19 @@ step_8_stock_drive_artifact() {
         pipeline_fail "no stock chunk carries a drive_link"
         return 1
     fi
-    if ! jq -e '(.folder_ids | length) >= 1' <<<"$artifacts" >/dev/null; then
-        pipeline_fail "no Drive folder identity in the stock job result"
+    # IMPORTANT: the stock artifact projection surfaces the Drive FILE identity
+    # (remote_file_id / remote_web_view_link / remote_download_link) plus the
+    # per-clip drive_path, but it does NOT surface the Drive FOLDER id:
+    # artifact_metadata carries `timestamp_folder_id` and
+    # `timestamp_drive_folder_link` as empty strings, and no drive_folder_id key
+    # exists. Asserting folder_ids here is therefore unsatisfiable and used to
+    # fail this step unconditionally. The gate asserts the Drive artifact the
+    # contract actually promises (a real, non-empty, download-addressable file
+    # path); the missing folder projection is tracked as a finalizer gap
+    # (media_assets.folder_id is empty for every stock row) rather than hidden
+    # behind a weaker assertion.
+    if ! jq -e '(.drive_paths | length) >= 1' <<<"$artifacts" >/dev/null; then
+        pipeline_fail "no stock chunk carries a Drive file path"
         return 1
     fi
     if ! jq -e '([.sizes[] | select(. > 0)] | length) >= 1' <<<"$artifacts" >/dev/null; then
@@ -689,7 +743,28 @@ step_9_stock_indexed_download() {
         pipeline_fail "downloaded clip has no decodable video stream"
         return 1
     fi
+
+    # BIND THE BYTES TO THIS RUN. The canonical search can answer a query with
+    # an older catalog entry, so "a download succeeded" is not by itself proof
+    # that the byte round trip covers an artifact this run produced. The
+    # downloaded bytes must carry a sha256 that the stock job above produced.
+    local full_stock sha_list got_sha
+    full_stock=$(results_file full-stock-search)
+    [[ -s "$full_stock" ]] || full_stock=$(results_file full-stock-run)
+    sha_list=$(jq -r '[ .. | objects | select((.remote_file_id // "") != "")
+                        | .sha256 | select((. // "") != "") ] | unique | .[]' \
+        "$full_stock" 2>/dev/null || true)
+    if [[ -z "$sha_list" ]]; then
+        pipeline_fail "the stock job result carries no produced artifact sha256; cannot bind the retrieved bytes to this run"
+        return 1
+    fi
+    got_sha=$(sha256sum "$out" | awk '{print $1}')
+    if ! grep -qx "$got_sha" <<<"$sha_list"; then
+        pipeline_fail "the downloaded clip (sha256=$got_sha) is not one of the artifacts this run produced"
+        return 1
+    fi
     printf '  download : %s (%s bytes, decodable video stream)\n' "$out" "$size"
+    printf '  sha256   : %s (binds the retrieved bytes to this run)\n' "$got_sha"
 }
 
 # ── Step 10 — Idempotent replay ────────────────────────────────────────

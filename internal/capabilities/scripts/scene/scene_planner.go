@@ -287,7 +287,19 @@ func (p *ScenePlanner) Plan(
 	// the request declares a per-segment word budget, it is only a
 	// provisional envelope and must be materialized into ordered
 	// narrative segments before downstream processors run.
-	if len(draft.Scenes) == 1 && plan.SegmentWords > 0 {
+	//
+	// A CLIP-PRIMARY plan is exempt from that materialization. Its scene
+	// cardinality comes from the clips, not from a word budget, and the prose
+	// path marks the plan Synthesized — which is what disables the clip binder
+	// downstream (`if !synthesized && !explicitSegments`). A clip-sourced run
+	// whose model happens to answer with exactly one scene (the 1 clip / 1
+	// scene case) was re-shaped here into a prose plan, then never bound: the
+	// scene had no clip reference, so with audio.mode=NONE — no voiceover to
+	// fall back on — the canonical timeline had no editorial duration and the
+	// run died before any render ("scene scene-0 has no resolved editorial
+	// duration"). The model's scene list is preserved instead, and the binder
+	// attaches the accepted clips to it.
+	if len(draft.Scenes) == 1 && plan.SegmentWords > 0 && !requiresClipNativePlan(plan) {
 		text := strings.TrimSpace(draft.Scenes[0].Text)
 		if text == "" {
 			text = cleanedText

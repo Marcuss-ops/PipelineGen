@@ -9,6 +9,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/finalization"
+	capregistry "github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaregistry"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	"go.uber.org/zap"
@@ -223,13 +224,35 @@ func (s *AssetTxFinalizer) buildCommitRequest(artifact finalization.PublishedArt
 	// the bytes and asset identity are unchanged. The suffix is deterministic
 	// for the search text, so retries remain idempotent.
 	searchRevision := digest.SHA256String(searchText)
+	// Producer-declared taxonomy. A stock clip declares
+	// asset_kind="stock_video" / semantic_role="stock" while its `source` is
+	// the acquisition provider; without honouring the declaration the
+	// canonical resolver derives semantic_role from the provider default
+	// ("discovery") and, because the media upsert writes taxonomy
+	// insert-wins, silently restamps the row that the stock pipeline's own
+	// post-publication commit persisted. ResolveDeclaredTaxonomy returns the
+	// zero taxonomy when the producer declares nothing, which keeps every
+	// legacy finalizer caller byte-identical.
+	//
+	// The declared kind is ALSO the correct high-priority trigger: what
+	// unblocks script generation is the stock acquisition, not one particular
+	// acquisition provider. Keying priority off the provider list (the former
+	// `source == "youtube" || source == "stock"`) stopped matching as soon as
+	// the provider became explicit provenance.
+	taxonomy, _, _ := capregistry.ResolveDeclaredTaxonomy(capregistry.TaxonomyInput{
+		AssetID:      artifact.ArtifactID,
+		Provider:     source,
+		MediaType:    capregistry.MediaType(mediaType),
+		AssetKind:    capregistry.AssetKind(artifactMetadataString(artifact.ArtifactMetadata, "asset_kind")),
+		SemanticRole: artifactMetadataString(artifact.ArtifactMetadata, "semantic_role"),
+	})
 	// Script-required acquisition: the stock pipeline finalizer emits
 	// asset.index.requested events whose assets unblock script
 	// generation. Stamp the outbox event with the high priority so
 	// ClaimNext claims it before a bulk-folder-sync backlog (migration
 	// 186 / outboxevents.PriorityHigh).
 	indexPriority := 0
-	if source == "youtube" || source == "stock" {
+	if source == "youtube" || source == "stock" || taxonomy.AssetKind == capregistry.AssetStockVideo {
 		indexPriority = persistence.IndexPriorityHigh
 	}
 	return persistence.CommitRequest{
@@ -256,6 +279,7 @@ func (s *AssetTxFinalizer) buildCommitRequest(artifact finalization.PublishedArt
 		EndMs:               int64(metadata.EndSec * 1000),
 		Metadata:            metadata,
 		Locations:           locations,
+		Taxonomy:            taxonomy,
 		EmitIndexEvent:      searchIndexable,
 		RequestedAt:         time.Now(),
 		IndexPriority:       indexPriority,

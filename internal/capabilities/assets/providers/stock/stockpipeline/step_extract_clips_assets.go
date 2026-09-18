@@ -9,6 +9,22 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
+// StockAssetKind and StockSemanticRole are the canonical taxonomy dimensions
+// of the STOCK asset family (media_assets.asset_kind / semantic_role).
+//
+// They are the family discriminator: the physical acquisition provider stays
+// in `source` / `source_type` / `source_provider` (a YouTube-acquired stock
+// clip is source="youtube"), while the stock USAGE intent is what the unified
+// taxonomy filters read. Both producers that commit a stock clip — this
+// package's post-publication commit and the stock job finalizer's spine write
+// — MUST declare these same values, otherwise the second commit resolves
+// semantic_role from the provider default ("discovery") and, because the
+// taxonomy upsert is insert-wins, silently restamps the row.
+const (
+	StockAssetKind    = "stock_video"
+	StockSemanticRole = "stock"
+)
+
 // buildRichStockAsset constructs a canonical asset.Asset from a ClipPlan
 // and the cut results. Used by publishCuts for outbox writes.
 //
@@ -86,14 +102,15 @@ func buildRichStockAsset(plan ClipPlan, sourceIdx, clipIdx int, outputPath, hash
 		LifecycleState: lifecycleState,
 		CreatedAt:      time.Now().UTC(),
 	}
-	// The YouTube-stock workflow is a stock usage intent even though the
-	// physical provenance remains YouTube. Keep source_type=youtube while
-	// making the searchable taxonomy distinguish stock acquisition from
-	// ordinary YouTube discovery clips.
-	if provider == SourceProviderYouTube {
-		a.Metadata["asset_kind"] = "stock_video"
-		a.Metadata["semantic_role"] = "stock"
-	}
+	// Every clip produced by the stock pipeline is a stock USAGE intent, even
+	// when the physical provenance is YouTube. `source` / `source_type` keep
+	// the acquisition provider (see above), while the searchable taxonomy
+	// discriminates stock acquisition from ordinary discovery clips. Declared
+	// for every provider, not only YouTube: the stock job finalizer declares
+	// the same family on its spine write, and the two commits must agree so
+	// that whichever lands second cannot restamp the row.
+	a.Metadata["asset_kind"] = StockAssetKind
+	a.Metadata["semantic_role"] = StockSemanticRole
 
 	// Populate rich Metadata.
 	if plan.Title != "" {

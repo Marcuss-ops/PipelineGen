@@ -551,3 +551,36 @@ func (c *sceneReadyCoordinator) renderFailures() []LocalizedRenderFailure {
 	defer c.mu.Unlock()
 	return append([]LocalizedRenderFailure(nil), c.failures...)
 }
+
+// sceneTextPathReason names WHY a run took the streaming or the batch
+// scene-text path. The runner owns the decision but used to leave no trace of
+// it: `streamed` is a local, and the durable Scene.TextReadyAt family only
+// says in aggregate whether the path was taken. Without a reason, "do
+// production runs actually stream per scene?" can only be inferred from
+// archived results — and every archived run so far came back batch. Naming the
+// blocking gate makes the question answerable from a single log line.
+func sceneTextPathReason(req GenerateRequest, streamed, topologyNeedsMaterialization bool, gen TextGenerator) string {
+	switch {
+	case streamed:
+		return "streamed"
+	case req.ScriptParams.SourceTextVerbatim:
+		return "batch_source_text_verbatim"
+	case len(req.MediaPlan.Extraction.ImportantPhrases) > 0:
+		// Phrase hints are part of the final overlay contract and must be
+		// applied before any SceneTextReady consumer observes a scene.
+		return "batch_important_phrase_hints"
+	case req.Intro != nil || req.Outro != nil:
+		// Literal intro/outro are injected post-LLM and never rewritten.
+		return "batch_intro_outro"
+	case topologyNeedsMaterialization:
+		// A declared segment budget with no explicit segments requires the
+		// whole prose to be materialized before SceneCommitted.
+		return "batch_segment_topology"
+	case req.Source.Type == SourceClips && !SceneStreamingEligibility(req):
+		return "batch_source_clips_ineligible"
+	}
+	if _, ok := gen.(SceneTextStreamer); !ok {
+		return "batch_generator_not_streamable"
+	}
+	return "batch_reason_unclassified"
+}

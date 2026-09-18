@@ -83,18 +83,40 @@ func matchLocalizedSourceEntities(text, language string, source *scriptpkg.Scene
 			if !ok || strings.TrimSpace(span.Text) == "" {
 				continue
 			}
-			surface := span.Text
-			if strings.EqualFold(language, "de") && !strings.EqualFold(surface, alias) {
-				// German possessive -s belongs to the surrounding grammar, not to
-				// the person's display name. projectEntityAnnotations still
-				// grounds this canonical substring inside the translated token.
-				surface = alias
-			}
-			out = append(out, localizedSourceMatch{Source: entity, Kind: kind, Span: span, Surface: surface})
+			// The matched span is the authority for the translated surface. The
+			// canonical alias remains identity input only; changing the surface
+			// back to it would lose grammar carried by the narration (for example
+			// German "Mike Tysons") before the timing layer sees it.
+			out = append(out, localizedSourceMatch{Source: entity, Kind: kind, Span: span, Surface: span.Text})
 			break
 		}
 	}
 	return out
+}
+
+// sourceMatchesCoverEntityLimit reports whether the source-grounded matches
+// already fill the caller's per-scene entity limit for THIS translation, which
+// makes the translated NER call redundant.
+//
+// The precondition is deliberately narrow. mergeTranslatedNamedEntities drops
+// VisualNER's typed named entities (PERSON/ORG/EVENT/WORK/PRODUCT) as soon as
+// source matches exist, but it KEEPS VisualNER's remaining entities (locations,
+// visual concepts) and appends them BEFORE the matches;
+// limitTranslatedVisualEntities then orders PERSON first. So the model
+// contribution is guaranteed to fall outside the window ONLY when every match is
+// a PERSON — for any other kind, a model location could still take a slot. A
+// non-PERSON match therefore refuses the skip rather than silently changing the
+// emitted entities.
+func sourceMatchesCoverEntityLimit(matches []localizedSourceMatch, limit int) bool {
+	if limit <= 0 || len(matches) < limit {
+		return false
+	}
+	for _, match := range matches {
+		if match.Kind != scriptpkg.EntityTypePerson {
+			return false
+		}
+	}
+	return true
 }
 
 // localizedSourceVisualEntities projects the matches onto the localized
@@ -133,12 +155,28 @@ func stampLocalizedSourceIdentity(ann *scriptpkg.SceneAnnotations, matches []loc
 			if strings.TrimSpace(entity.CanonicalEntityID) == "" {
 				entity.CanonicalEntityID = annotationCanonicalEntityID(match.Source)
 			}
+			entity.Mentions = prependLocalizedMention(match.Span, entity.Mentions)
 			if entity.Image == nil && match.Source.Image != nil {
 				binding := *match.Source.Image
 				entity.Image = &binding
 			}
 		}
 	}
+}
+
+// prependLocalizedMention makes the source-grounded translated span the
+// authority for downstream spoken timing while retaining any additional
+// mentions VisualNER found in the same localized text.
+func prependLocalizedMention(match scriptpkg.AnnotationSpan, mentions []scriptpkg.AnnotationSpan) []scriptpkg.AnnotationSpan {
+	out := make([]scriptpkg.AnnotationSpan, 0, len(mentions)+1)
+	out = append(out, match)
+	for _, mention := range mentions {
+		if mention.StartRune == match.StartRune && mention.EndRune == match.EndRune {
+			continue
+		}
+		out = append(out, mention)
+	}
+	return out
 }
 
 // localizedMatchForEntity finds the source match a localized annotation entity

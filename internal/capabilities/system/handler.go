@@ -40,6 +40,17 @@ type DoctorConfig struct {
 	PythonScriptsDir          string
 	GoogleAccountingEnabled   bool
 	GoogleAccountingServerURL string
+
+	// YtdlpPath / FfmpegPath are the OPERATOR-CONFIGURED executables (the
+	// YTDLP_PATH env var / ytdlp_path yaml key, ffmpeg_path). The readiness
+	// and download paths resolve yt-dlp through configuration because the
+	// pip user install deliberately lives outside the restricted service
+	// PATH, so probing the bare tool name reports "not_installed" on a
+	// healthy deployment. Doctor must resolve the same executable as the
+	// runtime or the two surfaces disagree about the same tool.
+	// Empty falls back to the platform PATH lookup for the bare name.
+	YtdlpPath  string
+	FfmpegPath string
 }
 
 // SystemHandler handles system diagnostic endpoints.
@@ -168,6 +179,33 @@ func (h *SystemHandler) checkStorageDeep(ctx context.Context, resp *DoctorRespon
 	}
 }
 
+// toolStatus resolves a CLI tool through the operator-configured executable
+// when one is set, falling back to the platform PATH lookup for the bare name
+// otherwise. A configured path WINS over the bare name (it does not merely
+// take precedence when it happens to exist): the runtime resolves the tool
+// through configuration, so a configured-but-broken path is a real fault that
+// must not be masked by an unrelated executable of the same name on the PATH.
+func (h *SystemHandler) toolStatus(configured, bare string) string {
+	probe := bare
+	if resolved := strings.TrimSpace(configured); resolved != "" {
+		probe = resolved
+	}
+	if h.toolChecker.CommandExists(probe) {
+		return "ok"
+	}
+	return "not_installed"
+}
+
+// firstNonEmptyString returns the first non-empty value.
+func firstNonEmptyString(values ...string) string {
+	for _, v := range values {
+		if v != "" {
+			return v
+		}
+	}
+	return ""
+}
+
 func (h *SystemHandler) checkExternalTools(ctx context.Context, resp *DoctorResponse) {
 	// Ollama
 	if !h.toolChecker.CommandExists("ollama") {
@@ -176,19 +214,26 @@ func (h *SystemHandler) checkExternalTools(ctx context.Context, resp *DoctorResp
 		resp.Checks["ollama"] = "ok"
 	}
 
-	// yt-dlp
-	if !h.toolChecker.CommandExists("yt-dlp") {
-		resp.Checks["yt_dlp"] = "not_installed"
-	} else {
-		resp.Checks["yt_dlp"] = "ok"
+	// yt-dlp — the CONFIGURED executable, not the bare tool name.
+	// YTDLP_PATH canonically points at scripts/yt-dlp-pipeline while the pip
+	// user install lives outside the restricted service PATH, so probing
+	// "yt-dlp" reported not_installed on a healthy deployment and sent
+	// operators chasing an infrastructure fault that did not exist. This
+	// mirrors process.NewToolsCheckerWithPaths (the /ready probe): doctor and
+	// /ready must never disagree about whether the same tool is installed.
+	resp.Checks["yt_dlp"] = h.toolStatus(h.cfg.YtdlpPath, "yt-dlp")
+	if resolved := strings.TrimSpace(h.cfg.YtdlpPath); resolved != "" && resp.Checks["yt_dlp"] == "ok" {
+		// Surface WHAT was probed: the configured wrapper and the bare name
+		// are different executables, and the distinction is what made the
+		// former false negative so confusing.
+		resp.Checks["yt_dlp_path"] = resolved
+	}
+	if resp.Checks["yt_dlp"] != "ok" {
+		resp.Fixes = append(resp.Fixes, fmt.Sprintf("install yt-dlp or point YTDLP_PATH at a working executable (probed %q)", firstNonEmptyString(strings.TrimSpace(h.cfg.YtdlpPath), "yt-dlp")))
 	}
 
-	// ffmpeg
-	if !h.toolChecker.CommandExists("ffmpeg") {
-		resp.Checks["ffmpeg"] = "not_installed"
-	} else {
-		resp.Checks["ffmpeg"] = "ok"
-	}
+	// ffmpeg / ffprobe — same resolution rule.
+	resp.Checks["ffmpeg"] = h.toolStatus(h.cfg.FfmpegPath, "ffmpeg")
 
 	// python3
 	if !h.toolChecker.CommandExists("python3") {

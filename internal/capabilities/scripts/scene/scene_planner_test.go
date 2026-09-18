@@ -429,6 +429,69 @@ func TestScenePlanner_PlanFromClipEvidence_NilOrEmpty(t *testing.T) {
 // (e.g. "table" for table-driven input) MUST export the const and
 // update this test — the baseline pinning prevents silent
 // alphabet drift.
+// ── clip-primary plans are never re-shaped into prose ────────────
+
+// TestScenePlanner_Plan_OneClipModelSceneStaysBindable reproduces the live
+// 1 clip / 1 scene / 10 languages failure at the planner boundary. A
+// clip-sourced run resolved ONE clip (`yt_vLRjqTIiMjc_0_25_v1`, 25 s) and the
+// model answered with exactly ONE prose scene. The single-scene materialization
+// branch re-shaped that into a PROSE plan (Synthesized=true), and that flag is
+// what disables the clip binder downstream — so the scene was never bound, had
+// no clip reference, and with audio.mode=NONE (no voiceover) the canonical
+// timeline had no editorial duration to compile. The run died before any
+// render:
+//
+//	compile canonical timeline failed: scene scene-0 has no resolved editorial duration
+//
+// The contract pinned here: a clip-primary plan is never Synthesized, because
+// its cardinality comes from the clips and the binder must stay enabled to
+// attach them. The model's own scene text survives.
+func TestScenePlanner_Plan_OneClipModelSceneStaysBindable(t *testing.T) {
+	t.Parallel()
+	p := scene.NewScenePlanner(zap.NewNop())
+
+	const clipID = "yt_vLRjqTIiMjc_0_25_v1"
+	plan := &scriptpkg.ResolvedGenerationPlan{
+		SourceKind: string(scriptpkg.SourceClips),
+		ClipEvidence: &scriptpkg.ClipEvidence{
+			AcceptedClipIDs: []string{clipID},
+			ClipDetails: map[string]scriptpkg.ClipDetail{
+				clipID: {Name: "Dolly Parton", StartMs: 0, EndMs: 25000, Transcript: "Dolly tells the anecdote."},
+			},
+		},
+		SegmentWords: 60,
+	}
+	prose := "Dolly Parton racconta l'aneddoto dell'albergo al suo primo viaggio a New York, " +
+		"con il registro colloquiale dell'intervista e senza aggiungere fatti che la clip non contiene."
+
+	got := p.Plan(scene.NarrativeDraft{
+		Text:       prose,
+		SourceKind: string(scriptpkg.SourceClips),
+		Scenes:     []scriptpkg.SpecScene{{ID: "scene-0", Index: 0, Text: prose}},
+	}, plan)
+
+	assert.False(t, got.Synthesized,
+		"a clip-primary plan must never be Synthesized: that flag disables the clip binder, and an unbound scene has no editorial duration")
+	assert.NotEqual(t, scene.ScenePlanSourceProseFallback, got.Source)
+	require.Len(t, got.Scenes, 1)
+	assert.Equal(t, prose, got.Scenes[0].Text, "the model's scene text survives the clip-native exemption")
+}
+
+// TestScenePlanner_Plan_TextPlanStillMaterializesSingleScene is the other half:
+// the exemption is scoped to clip-primary plans, so a TEXT plan with a word
+// budget still materializes its single draft scene into ordered segments.
+func TestScenePlanner_Plan_TextPlanStillMaterializesSingleScene(t *testing.T) {
+	t.Parallel()
+	p := scene.NewScenePlanner(zap.NewNop())
+	text := "One two three four five six seven eight nine ten. Eleven twelve thirteen fourteen fifteen sixteen seventeen eighteen nineteen twenty."
+	got := p.Plan(scene.NarrativeDraft{
+		Text:   text,
+		Scenes: []scriptpkg.SpecScene{{ID: "scene-0", Index: 0, Text: text}},
+	}, &scriptpkg.ResolvedGenerationPlan{SegmentWords: 10})
+	assert.True(t, got.Synthesized, "a text plan keeps the word-budget materialization")
+	assert.GreaterOrEqual(t, len(got.Scenes), 2)
+}
+
 func TestScenePlanner_Plan_CanonicalSourceValues(t *testing.T) {
 	t.Parallel()
 	assert.Equal(t, "noop", scene.ScenePlanSourceNoop)

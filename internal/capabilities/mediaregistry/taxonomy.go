@@ -95,6 +95,36 @@ func ResolveTaxonomy(in TaxonomyInput) (AssetTaxonomy, error) {
 	return t, nil
 }
 
+// ResolveDeclaredTaxonomy resolves the canonical taxonomy ONLY when the
+// producer declares an explicit asset_kind or semantic_role, and reports
+// false when it declares neither.
+//
+// This is the convergence seam between the two producers that may commit the
+// SAME stock clip: the stock pipeline's own post-publication commit
+// (outbox.Dispatcher.EnqueueAndIndex, which carries the Drive identity) and the
+// stock job finalizer's single-TX spine write
+// (AssetTxFinalizer.buildCommitRequest). Both must resolve the SAME taxonomy
+// for the asset, otherwise the second write's dimensions — which ride the
+// upsert's insert-wins / COALESCE-keep semantics — decide the row by accident
+// of arrival order (the September 2026 stock certification observed exactly
+// that: a YouTube-acquired stock clip persisted semantic_role="discovery"
+// derived from the provider instead of the declared "stock").
+//
+// The `ok=false` branch matters for godlike/07 minimum blast radius: a
+// producer that declares nothing keeps Taxonomy zero, so the committer's
+// COALESCE-keep upsert preserves whatever dimensions are already stored and
+// no legacy producer's behaviour changes.
+func ResolveDeclaredTaxonomy(in TaxonomyInput) (AssetTaxonomy, bool, error) {
+	if in.AssetKind == "" && in.SemanticRole == "" {
+		return AssetTaxonomy{}, false, nil
+	}
+	taxonomy, err := ResolveTaxonomy(in)
+	if err != nil {
+		return AssetTaxonomy{}, false, err
+	}
+	return taxonomy, true, nil
+}
+
 // defaultNamespace is the canonical namespace derivation. Until an SSOT
 // namespace policy is defined, the provider name is the namespace, with the
 // image provider converging on the historical "images" namespace.

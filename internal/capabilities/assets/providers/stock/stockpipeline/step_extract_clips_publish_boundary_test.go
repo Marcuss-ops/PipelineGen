@@ -10,6 +10,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/finalization"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/idempotency"
 )
 
 // ── P0 stock-acquisition certification (September 2026) ──────────────────
@@ -152,4 +153,77 @@ func TestPublishCutsCommitsAfterDrivePublicationWithDriveIdentity(t *testing.T) 
 	require.Equal(t, "logical-boundary-1-file", chunks[0].RemoteFileID)
 	require.Equal(t, "https://www.youtube.com/watch?v=boundary", chunks[0].SourceURL)
 	require.Equal(t, "boundary", chunks[0].SourceVideoID)
+	require.Equal(t, "folder-123", chunks[0].TimestampFolderID,
+		"the published parent Drive folder must ride on the chunk so the finalizer's spine write cannot blank media_assets.folder_id")
+}
+
+// TestPublishCutsAndFinalizerConvergeOnOneAssetIdentityAndOneIndexEvent is the
+// regression pin for the September 2026 stock certification defect: the same
+// stock clip is committed by TWO producers — the post-publication commit made
+// here by publishCuts and the stock job finalizer's single-TX spine write
+// (AssetTxFinalizer, which consumes BuildFinalizationRequest). When the two
+// disagreed, one clip produced TWO asset.index.requested outbox events (the key
+// is provider-scoped), the later write clobbered media_assets.source (dropping
+// the YouTube provenance), and it restamped semantic_role from the provider
+// default because the earlier write's declared taxonomy was discarded.
+//
+// Convergence is asserted WIRE-level, on the two facts that decide the outbox
+// key and the persisted taxonomy: the artifact Source must equal the clip's
+// Source, and the declared asset_kind / semantic_role must be identical. When
+// both hold, the canonical event key computed by the two producers is byte
+// equal and the second outbox insert is a no-op.
+func TestPublishCutsAndFinalizerConvergeOnOneAssetIdentityAndOneIndexEvent(t *testing.T) {
+	writer := &boundaryRecordingWriter{}
+	runner := newPublishBoundaryRunner(writer, &recordingArtifactPreparation{})
+
+	// BuildFinalizationRequest validates the chunk digest strictly.
+	const boundarySHA = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+	cutResult := boundaryCutResult()
+	cutResult.Items[0].SHA256Hex = boundarySHA
+
+	_, chunks, err := publishCuts(
+		context.Background(), runner, "source", 0, boundaryPlans(), cutResult,
+		map[string]int{}, map[string]*timestampGroupBuffer{},
+		"root", "folder-root", "group", nil, "batch-1",
+	)
+	require.NoError(t, err)
+	require.Len(t, writer.clips, 1)
+	committed := writer.clips[0]
+
+	// The other producer's request for the very same bytes.
+	finalReq, err := BuildFinalizationRequest(
+		"batch-1", validLease("batch-1"), []byte(`{}`), chunks,
+		MetadataState{
+			LocalPath: "/tmp/boundary-meta.json", SHA256: fakeSHA(99), SizeBytes: 512,
+			RemoteFileID: "meta-file", RemoteWebViewLink: "https://drive/meta",
+		},
+		"fp-convergence",
+	)
+	require.NoError(t, err)
+	require.Len(t, finalReq.Artifacts, 2, "1 metadata artifact + 1 chunk artifact")
+	chunkArt := finalReq.Artifacts[1]
+
+	// ── Identity: the spine write must not re-label the acquisition ──
+	require.Equal(t, string(committed.Source), chunkArt.Source,
+		"the finalizer must commit the clip under its acquisition provider, not the stock family label")
+	require.Equal(t, committed.ID, chunkArt.ArtifactID)
+	require.Equal(t, boundarySHA, chunkArt.SHA256)
+
+	// ── Taxonomy: the declared stock family must survive either commit order ──
+	require.Equal(t, committed.Metadata["asset_kind"], chunkArt.ArtifactMetadata["asset_kind"])
+	require.Equal(t, StockAssetKind, chunkArt.ArtifactMetadata["asset_kind"])
+	require.Equal(t, committed.Metadata["semantic_role"], chunkArt.ArtifactMetadata["semantic_role"])
+	require.Equal(t, StockSemanticRole, chunkArt.ArtifactMetadata["semantic_role"])
+
+	// ── The Drive folder must not be blanked by the second write ──
+	require.Equal(t, committed.FolderID(), chunkArt.Location.FolderID)
+	require.Equal(t, "folder-123", chunkArt.Location.FolderID)
+
+	// ── The outbox identity derived by both producers must collide ──
+	postPublishKey, err := idempotency.OutboxKey("asset.index.requested", string(committed.Source), committed.ID, boundarySHA)
+	require.NoError(t, err)
+	finalizerKey, err := idempotency.OutboxKey("asset.index.requested", chunkArt.Source, chunkArt.ArtifactID, chunkArt.SHA256)
+	require.NoError(t, err)
+	require.Equal(t, postPublishKey, finalizerKey,
+		"one asset must resolve to ONE canonical index event key — otherwise every stock clip emits a duplicate asset.index.requested")
 }
