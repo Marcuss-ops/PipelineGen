@@ -9,12 +9,12 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
 	capoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
 	kernelasset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
-	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 )
 
 // QueueRenderEnqueuer adapts the central RenderingGen queue for the Chronon
@@ -57,7 +57,18 @@ type QueueRenderEnqueuer struct {
 	// recorder optionally persists one analytics row per completed attempt.
 	// Nil means analytics are not recorded (no-op, not a failure).
 	recorder RenderAttemptRecorder
+	// asyncPublication moves Drive publication and its dependent analytics out
+	// of the render caller. RenderingGen has already certified immutable bytes
+	// at this point; keeping this work on a bounded pool releases the render
+	// worker while preserving a join before the run is marked complete.
+	asyncPublication bool
+	publicationSem   chan struct{}
+	publicationWG    sync.WaitGroup
+	publicationMu    sync.Mutex
+	publicationErr   error
 }
+
+const defaultOverlayPublicationWorkers = 2
 
 // NewQueueRenderEnqueuer creates a queue-backed Chronon render enqueuer.
 func NewQueueRenderEnqueuer(client RenderQueueClient) (*QueueRenderEnqueuer, error) {
@@ -93,6 +104,36 @@ func (e *QueueRenderEnqueuer) SetArtifactPublisher(p OverlayArtifactPublisher) {
 	if e != nil {
 		e.publisher = p
 	}
+}
+
+// SetAsyncPublication enables the production publication pool. It is opt-in so
+// small unit-test compositions retain the historical synchronous fail-closed
+// behaviour unless they explicitly install the pool.
+func (e *QueueRenderEnqueuer) SetAsyncPublication(on bool) {
+	if e == nil {
+		return
+	}
+	e.asyncPublication = on
+	if on && e.publicationSem == nil {
+		e.publicationSem = make(chan struct{}, defaultOverlayPublicationWorkers)
+	}
+}
+
+// Wait joins all queued publication/analytics work. It is the completion
+// boundary for the render publication pool: callers must invoke it before
+// reporting a run as COMPLETE.
+func (e *QueueRenderEnqueuer) Wait() error {
+	if e == nil || !e.asyncPublication {
+		return nil
+	}
+	e.publicationWG.Wait()
+	e.publicationMu.Lock()
+	defer e.publicationMu.Unlock()
+	err := e.publicationErr
+	// Errors belong to the publication batch that was just joined. Do not
+	// poison a later run that reuses the process-wide enqueuer.
+	e.publicationErr = nil
+	return err
 }
 
 // SetFreshRender controls whether EnqueueChrononPlan creates a new queue job
@@ -256,43 +297,63 @@ func (e *QueueRenderEnqueuer) enqueueChrononPlan(ctx context.Context, plan capov
 	if err != nil {
 		return RenderReference{}, err
 	}
-	if e.publisher != nil {
-		if done.Artifact == nil || done.Artifact.SHA256 == "" || done.Artifact.SizeBytes <= 0 || done.Artifact.URL == "" {
-			return RenderReference{}, fmt.Errorf("render job %s completed without certified artifact", jobID)
+	postRender := func() error {
+		if e.publisher != nil {
+			if done.Artifact == nil || done.Artifact.SHA256 == "" || done.Artifact.SizeBytes <= 0 || done.Artifact.URL == "" {
+				return fmt.Errorf("render job %s completed without certified artifact", jobID)
+			}
+			publication := OverlayPublicationSpec{
+				ScriptName:      plan.ScriptName,
+				Language:        plan.Language,
+				ProjectID:       plan.ProjectID,
+				PlanID:          plan.PlanID,
+				DriveFolderID:   plan.DriveFolderID,
+				CompletionWait:  wait.CompletionWait,
+				PollingSleep:    wait.PollingSleep,
+				PollingInterval: wait.PollInterval,
+				PollCount:       wait.PollCount,
+			}
+			if metadata != nil {
+				publication.OverlayItemID = metadata.ItemID
+				publication.OverlayItemKind = metadata.ItemKind
+				publication.OverlayEntityID = metadata.EntityID
+				publication.OverlayText = metadata.Text
+				publication.SourceStartUS = metadata.SourceStartUS
+				publication.SourceEndUS = metadata.SourceEndUS
+				publication.TargetDurationUS = metadata.TargetDurationUS
+			}
+			if err := e.publisher.PublishOverlay(ctx, publication, done.Artifact); err != nil {
+				return fmt.Errorf("publish overlay artifact to Drive: %w", err)
+			}
 		}
-		publication := OverlayPublicationSpec{
-			ScriptName:      plan.ScriptName,
-			Language:        plan.Language,
-			ProjectID:       plan.ProjectID,
-			PlanID:          plan.PlanID,
-			DriveFolderID:   plan.DriveFolderID,
-			CompletionWait:  wait.CompletionWait,
-			PollingSleep:    wait.PollingSleep,
-			PollingInterval: wait.PollInterval,
-			PollCount:       wait.PollCount,
+		if e.recorder != nil {
+			// attempt_id is the analytics idempotency key: it must be the real
+			// queue job id. In fresh mode that is the unique per-attempt identity,
+			// so two renders of the same plan record two rows instead of upsert-
+			// colliding on the plan id.
+			attempt := BuildRenderAttemptAnalyticsWithWait(jobID, plan, done.Artifact, wait)
+			if err := e.recorder.RecordAttempt(ctx, attempt); err != nil {
+				return fmt.Errorf("record render attempt analytics: %w", err)
+			}
 		}
-		if metadata != nil {
-			publication.OverlayItemID = metadata.ItemID
-			publication.OverlayItemKind = metadata.ItemKind
-			publication.OverlayEntityID = metadata.EntityID
-			publication.OverlayText = metadata.Text
-			publication.SourceStartUS = metadata.SourceStartUS
-			publication.SourceEndUS = metadata.SourceEndUS
-			publication.TargetDurationUS = metadata.TargetDurationUS
-		}
-		if err := e.publisher.PublishOverlay(ctx, publication, done.Artifact); err != nil {
-			return RenderReference{}, fmt.Errorf("publish overlay artifact to Drive: %w", err)
-		}
+		return nil
 	}
-	if e.recorder != nil {
-		// attempt_id is the analytics idempotency key: it must be the real
-		// queue job id. In fresh mode that is the unique per-attempt identity,
-		// so two renders of the same plan record two rows instead of upsert-
-		// colliding on the plan id.
-		attempt := BuildRenderAttemptAnalyticsWithWait(jobID, plan, done.Artifact, wait)
-		if err := e.recorder.RecordAttempt(ctx, attempt); err != nil {
-			return RenderReference{}, fmt.Errorf("record render attempt analytics: %w", err)
-		}
+	if e.asyncPublication && (e.publisher != nil || e.recorder != nil) {
+		e.publicationWG.Add(1)
+		go func() {
+			defer e.publicationWG.Done()
+			e.publicationSem <- struct{}{}
+			defer func() { <-e.publicationSem }()
+			if err := postRender(); err != nil {
+				e.publicationMu.Lock()
+				if e.publicationErr == nil {
+					e.publicationErr = err
+				}
+				e.publicationMu.Unlock()
+			}
+		}()
+	} else if err := postRender(); err != nil {
+		return RenderReference{}, err
 	}
 	// Map the RenderingGen worker's own phase timings into the canonical
 	// run model instead of a new timing family: each reported phase becomes
@@ -434,136 +495,4 @@ func semanticAssetLogicalPath(ref capoverlay.OverlayAssetRef) string {
 		}
 	}
 	return "assets/semantic/" + id + ext
-}
-
-// recordRenderingGenPhases projects the worker-reported RenderingGen phase
-// durations (materialize/plan/render/probe/hash/objectstore_upload/
-// drive_publish) into canonical run operations bound to ctx. Phases the
-// worker did not report (zero) are skipped — a missing measurement is never
-// recorded as zero. The queue wait is already a canonical WaitCompletion
-// observation (waitForCompletion) and the job wall time is the run's own
-// WallTimeMs, so neither is duplicated here.
-//
-// The operations are bound to StageOverlayRender, the stage the render phase
-// is measured under. Binding them to StageProcess instead left the render's
-// work attached to a stage that no phase produced: the operations could never
-// be joined to a stage wall time, so the breakdown reported the render's cost
-// under the enclosing audio stage and gave that stage a dominant operation
-// from another subsystem.
-func recordRenderingGenPhases(ctx context.Context, artifact *RenderArtifact) {
-	if artifact == nil {
-		return
-	}
-	phases := []struct {
-		operation  kernobs.OperationName
-		durationMS int64
-	}{
-		{kernobs.OperationMaterialize, artifact.MaterializeMS},
-		{kernobs.OperationPlan, artifact.PlanMS},
-		{kernobs.OperationRender, artifact.RenderMS},
-		{kernobs.OperationProbe, artifact.ProbeMS},
-		{kernobs.OperationHash, artifact.HashMS},
-		{kernobs.OperationObjectStoreUpload, artifact.UploadMS},
-		{kernobs.OperationDrivePublish, artifact.DrivePublishMS},
-	}
-	for _, phase := range phases {
-		if phase.durationMS <= 0 {
-			continue
-		}
-		kernobs.RecordOperation(ctx, kernobs.OperationInfo{
-			Stage:     StageOverlayRender,
-			Component: kernobs.ComponentRenderingGen,
-			Operation: phase.operation,
-		}, phase.durationMS)
-	}
-}
-
-// waitForCompletion parks until the queue reports the job terminal, and records
-// the whole blocked interval as a completion wait on the bound run
-// (RunReport.Waits), never as a stage: it is time spent waiting on the render
-// queue, not pipeline CPU work.
-//
-// The wait itself is owned by WaitRenderQueueTerminal, so this path and the
-// clip.render settle continuation cannot drift apart.
-func (e *QueueRenderEnqueuer) waitForCompletion(ctx context.Context, id string) (RenderQueueJob, RenderCompletionMetrics, error) {
-	waitStarted := time.Now()
-	defer func() {
-		kernobs.RecordWait(ctx, kernobs.WaitInfo{
-			Kind:       kernobs.WaitCompletion,
-			Component:  kernobs.ComponentRenderQueue,
-			StartedAt:  waitStarted,
-			FinishedAt: time.Now(),
-		})
-	}()
-	return WaitRenderQueueTerminal(ctx, e.client, id, e.pollInterval)
-}
-
-// WaitRenderQueueTerminal blocks until the queue reports a TERMINAL state for id
-// and returns the terminal job together with the wait it cost.
-//
-// It is the ONE implementation of "wait for a RenderingGen job to finish": the
-// overlay enqueue path (QueueRenderEnqueuer.waitForCompletion) and the
-// clip.render settle continuation (renderinggen.ClipRenderExecutor.Settle) both
-// call it, so the two can neither disagree about what terminal means nor about
-// which states count as success — terminalRenderResult is the single classifier.
-// Before this function existed, the platform layer carried its own copy of the
-// loop with its own jitter and its own clamps, so the same question had two
-// answers that could drift independently.
-//
-// A client exposing RenderQueueWaiter parks server-side on the state transition
-// (the queue's GET /jobs/{id}/wait) and spends no client-side polling sleep; a
-// client without it (older deployment, test double) falls back to the bounded
-// poll loop, whose sleeps and poll count are measured rather than guessed.
-// interval <= 0 selects defaultQueuePollInterval, and only the fallback loop
-// uses it.
-func WaitRenderQueueTerminal(ctx context.Context, client RenderQueueClient, id string, interval time.Duration) (RenderQueueJob, RenderCompletionMetrics, error) {
-	if client == nil {
-		return RenderQueueJob{}, RenderCompletionMetrics{}, fmt.Errorf("render queue wait: client is not configured")
-	}
-	if interval <= 0 {
-		interval = defaultQueuePollInterval
-	}
-	waitStarted := time.Now()
-	metrics := RenderCompletionMetrics{PollInterval: interval}
-
-	// Event-driven completion: the wait parks server-side on the terminal
-	// state transition, so the observed completion latency is the transition
-	// itself rather than up to one poll interval. No client-side polling sleep
-	// is recorded because none is spent.
-	if waiter, ok := client.(RenderQueueWaiter); ok {
-		job, err := waiter.WaitTerminal(ctx, id)
-		metrics.CompletionWait = time.Since(waitStarted)
-		if err != nil {
-			return RenderQueueJob{}, metrics, err
-		}
-		return terminalRenderResult(job, id, metrics)
-	}
-
-	// Polling fallback for queue clients without the wait capability.
-	for {
-		job, err := client.Get(ctx, id)
-		metrics.PollCount++
-		if err != nil {
-			return RenderQueueJob{}, metrics, err
-		}
-		switch {
-		case terminalRenderState(job.State):
-			metrics.CompletionWait = time.Since(waitStarted)
-			return terminalRenderResult(job, id, metrics)
-		}
-
-		sleepStarted := time.Now()
-		timer := time.NewTimer(interval)
-		select {
-		case <-ctx.Done():
-			if !timer.Stop() {
-				<-timer.C
-			}
-			metrics.PollingSleep += time.Since(sleepStarted)
-			metrics.CompletionWait = time.Since(waitStarted)
-			return RenderQueueJob{}, metrics, ctx.Err()
-		case <-timer.C:
-			metrics.PollingSleep += time.Since(sleepStarted)
-		}
-	}
 }
