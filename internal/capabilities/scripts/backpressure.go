@@ -40,7 +40,7 @@ const DefaultTTSConcurrency = 4
 
 // MaxTranslationConcurrency caps concurrent scene×language translation
 // calls. Results are applied and checkpointed in canonical order.
-const MaxTranslationConcurrency = 3
+const MaxTranslationConcurrency = 4
 
 // DefaultTranslationConcurrency is the translation pool width when no
 // explicit value is configured. It intentionally equals the hard cap.

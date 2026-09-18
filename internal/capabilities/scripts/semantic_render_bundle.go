@@ -82,6 +82,18 @@ func BuildSemanticRenderBundleFromResult(result *GenerateResult, language Langua
 	}
 	// Assets are read from the existing annotation bindings. A binding is
 	// marked verified only when it carries the full content-addressed tuple.
+	//
+	// The asset↔entity join is by CONTENT-ADDRESSED IDENTITY, never by display
+	// text: bundle.Entities are keyed by the stable entity id the canonical
+	// entity timeline stamped (StableEntityID(type, canonical name)), and the
+	// annotation is projected through the same single owner. Comparing the two
+	// canonical names byte-for-byte used to be the join, which silently dropped
+	// an asset whenever the surfaces differed (a possessive, a normalized
+	// spelling, a localized name) and downgraded the card to text-only.
+	bundleEntityIDs := make(map[string]struct{}, len(bundle.Entities))
+	for _, resolved := range bundle.Entities {
+		bundleEntityIDs[resolved.EntityID] = struct{}{}
+	}
 	for _, s := range result.Scenes {
 		if s.Annotations == nil {
 			continue
@@ -108,19 +120,14 @@ func BuildSemanticRenderBundleFromResult(result *GenerateResult, language Langua
 				url = entity.Image.DriveLink
 			}
 			// The asset's join key is the entity's StableEntityID as projected
-			// into bundle.Entities (the EntityTimeline occurrence id). The
-			// stamped CanonicalEntityID ("person:slug") is provenance, NOT the
-			// bundle join key: bundle.Entities live in the StableEntityID space
-			// ("ent_<hex>"), so joining by the canonical id would silently
-			// break the asset↔entity link (Validate fails closed on it).
-			entityID := ""
-			for _, resolved := range bundle.Entities {
-				if strings.EqualFold(strings.TrimSpace(resolved.CanonicalText), strings.TrimSpace(entity.CanonicalName)) {
-					entityID = resolved.EntityID
-					break
-				}
-			}
-			if entityID == "" {
+			// into bundle.Entities (the EntityTimeline occurrence id), derived
+			// here through the ONE identity owner (annotationStableEntityID) so
+			// the two surfaces can never disagree. The stamped CanonicalEntityID
+			// ("person:slug") stays provenance: bundle.Entities live in the
+			// StableEntityID space ("ent_<hex>"), and Validate fails closed on a
+			// dangling asset join.
+			entityID := annotationStableEntityID(entity)
+			if _, ok := bundleEntityIDs[entityID]; !ok {
 				// The entity has no certified timeline occurrence (not
 				// grounded or not spoken verbatim), so no bundle entity can
 				// claim this asset — it cannot be part of the render contract.

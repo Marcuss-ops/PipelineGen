@@ -48,7 +48,9 @@ func entityCardKind(kind capabilityoverlay.OverlayKind) bool {
 // card. The join key is the resolver's CanonicalEntityID when the annotation
 // was stamped with one (capabilities/imagesearch), else the deterministic
 // derivation from (type, canonical name) — the two agree whenever the
-// surface IS the canonical name. Bindings without a content address are
+// surface IS the canonical name. Both come from the ONE identity helper
+// (annotationCanonicalEntityID), so this index and the overlay-intent/bundle
+// joins can never disagree on the spelling. Bindings without a content address are
 // deliberately NOT indexed: a card asset must be verifiable, never a bare
 // reference.
 //
@@ -81,14 +83,11 @@ func entityCardMediaIndex(result *GenerateResult) (*capabilityentities.EntityMed
 			if binding == nil || strings.TrimSpace(binding.AssetID) == "" {
 				continue
 			}
-			canonical := strings.TrimSpace(entity.CanonicalEntityID)
-			if canonical == "" {
-				canonical = capabilityentities.CanonicalEntityID(entity.Type, entity.CanonicalName)
-			}
+			canonical := annotationCanonicalEntityID(entity)
 			if canonical == "" {
 				continue
 			}
-			stable := capabilityentities.StableEntityID(entity.Type, entity.CanonicalName)
+			stable := annotationStableEntityID(entity)
 			canonicalByStable[stable] = canonical
 			url := entityImageURL(binding)
 			if url == "" || strings.TrimSpace(binding.SHA256) == "" {

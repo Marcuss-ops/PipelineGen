@@ -37,7 +37,7 @@ func TestFreezeOverlayIntentsPromotesVerifiedEntityImageToImageOnly(t *testing.T
 		Payload: capabilityoverlay.IntentPayload{Name: "Michael Jordan"}, TimingState: capabilityoverlay.TimingStatePending,
 	}}
 	items := []capabilityoverlay.OverlayItem{{
-		ID: "overlay-scene-0-michael-jordan", SceneID: "scene-0", EntityID: "ent-jordan",
+		ID: "overlay-scene-0-michael-jordan", SceneID: "scene-0", EntityID: frozenTestEntityID,
 		Kind: string(capabilityoverlay.KindEntityImage), TemplateID: "image_popup",
 		StartMs: 100, EndMs: 5100, StartUS: 100000, DurationUS: 5000000,
 		PresetID: "image_fast_fade", AssetRefs: []capabilityoverlay.OverlayAssetRef{asset},
@@ -54,6 +54,66 @@ func TestFreezeOverlayIntentsPromotesVerifiedEntityImageToImageOnly(t *testing.T
 	}
 	if got.TimingState != capabilityoverlay.TimingStateFrozen || len(got.AssetRefs) != 1 {
 		t.Fatalf("resolved image intent lost timing/assets: %#v", got)
+	}
+}
+
+// frozenTestEntityID is the content-addressed identity the canonical entity
+// timeline stamps for the fixture's PERSON annotation ("Michael Jordan"). Plan
+// items carry it, so the fixture models the real contract instead of a readable
+// label the join would have to compare as text.
+var frozenTestEntityID = capabilityentities.StableEntityID("PERSON", "Michael Jordan")
+
+// TestFreezeOverlayIntentsJoinsByEntityIdentity certifies the freeze join no
+// longer depends on the two surfaces spelling a name identically: the plan item
+// carries only the content-addressed entity id (its EntityRef names a different
+// surface), and the intent is still frozen onto it. Under the previous
+// canonical-name comparison this join silently failed and the persisted intent
+// kept PENDING timing next to a rendered image layer.
+func TestFreezeOverlayIntentsJoinsByEntityIdentity(t *testing.T) {
+	intents := []capabilityoverlay.OverlayIntent{{
+		Version:  capabilityoverlay.OverlayIntentVersion,
+		IntentID: "intent-scene-0-michael-jordan", SceneID: "scene-0",
+		Entity: capabilityoverlay.EntityBinding{Type: "PERSON", CanonicalName: "Michael Jordan", CanonicalEntityID: "person:michael-jordan"},
+		Source: capabilityoverlay.IntentSourceEntity, Kind: "entity_card", TemplateID: "person_default",
+		Payload: capabilityoverlay.IntentPayload{Name: "Michael Jordan"}, TimingState: capabilityoverlay.TimingStatePending,
+	}}
+	items := []capabilityoverlay.OverlayItem{{
+		ID: "overlay-scene-0-michael-jordan", SceneID: "scene-0", EntityID: frozenTestEntityID,
+		Kind: string(capabilityoverlay.KindEntityCard), TemplateID: "person_default",
+		StartMs: 0, EndMs: 2500, StartUS: 0, DurationUS: 2500000,
+		Text: "MJ", EntityRef: &capabilityoverlay.OverlayEntityRef{Name: "MJ"},
+	}}
+
+	freezeOverlayIntents(intents, items)
+	if intents[0].TimingState != capabilityoverlay.TimingStateFrozen {
+		t.Fatalf("timing state = %q, want FROZEN: the join must use the entity identity, not the display name", intents[0].TimingState)
+	}
+	if intents[0].EndMs != 2500 {
+		t.Fatalf("frozen intent end_ms = %d, want the plan item's timing", intents[0].EndMs)
+	}
+}
+
+// TestFreezeOverlayIntentsKeepsNameFallbackForLegacyItems pins the compatibility
+// path: a legacy plan item with no entity id still joins by canonical name, so
+// old persisted plans keep resolving instead of losing their timing.
+func TestFreezeOverlayIntentsKeepsNameFallbackForLegacyItems(t *testing.T) {
+	intents := []capabilityoverlay.OverlayIntent{{
+		Version:  capabilityoverlay.OverlayIntentVersion,
+		IntentID: "intent-scene-0-michael-jordan", SceneID: "scene-0",
+		Entity: capabilityoverlay.EntityBinding{Type: "PERSON", CanonicalName: "Michael Jordan"},
+		Source: capabilityoverlay.IntentSourceEntity, Kind: "entity_card", TemplateID: "person_default",
+		Payload: capabilityoverlay.IntentPayload{Name: "Michael Jordan"}, TimingState: capabilityoverlay.TimingStatePending,
+	}}
+	items := []capabilityoverlay.OverlayItem{{
+		ID: "overlay-scene-0-michael-jordan", SceneID: "scene-0",
+		Kind: string(capabilityoverlay.KindEntityCard), TemplateID: "person_default",
+		StartMs: 0, EndMs: 2500, StartUS: 0, DurationUS: 2500000,
+		Text: "Michael Jordan",
+	}}
+
+	freezeOverlayIntents(intents, items)
+	if intents[0].TimingState != capabilityoverlay.TimingStateFrozen {
+		t.Fatalf("timing state = %q, want FROZEN via the canonical-name fallback", intents[0].TimingState)
 	}
 }
 

@@ -55,6 +55,49 @@ func TestEntityOverlayPlanner_UsesCanonicalSceneEntity(t *testing.T) {
 	}
 }
 
+// TestEntityOverlayPlanner_CarriesCanonicalEntityID pins that the canonical
+// entity identity the caller supplies travels VERBATIM into the intent. This
+// package stays neutral towards the entity domain (dependency direction is
+// entities → overlays), so it derives nothing and invents nothing: an input
+// without an identity yields a binding without one.
+func TestEntityOverlayPlanner_CarriesCanonicalEntityID(t *testing.T) {
+	registry := NewChrononOverlayRegistry()
+	scenes := []SceneEntityInput{
+		{
+			SceneID:    "scene-01",
+			SceneIndex: 0,
+			Entities: []EntityOverlayInput{
+				{Name: "Michael Jordan", Type: "PERSON", Confidence: 0.98, CanonicalID: "person:michael-jordan"},
+				{Name: "Chicago", Type: "GPE", Confidence: 0.90},
+			},
+		},
+	}
+	intents := PlanOverlayIntents(scenes, registry)
+	if len(intents) != 2 {
+		t.Fatalf("expected 2 intents, got %d", len(intents))
+	}
+	if intents[0].Entity.CanonicalEntityID != "person:michael-jordan" {
+		t.Errorf("intent[0] canonical_entity_id = %q, want the caller's identity", intents[0].Entity.CanonicalEntityID)
+	}
+	if intents[1].Entity.CanonicalEntityID != "" {
+		t.Errorf("intent[1] canonical_entity_id = %q, want empty (an identity is never invented here)", intents[1].Entity.CanonicalEntityID)
+	}
+
+	// Identity is content: an intent that carries a canonical_entity_id must not
+	// fingerprint like the same intent without one, or two different entities
+	// would share one persisted intent_fingerprint. (The empty case is pinned
+	// byte-for-byte by TestGoldenHash_OverlayIntentFingerprint, which keeps every
+	// pre-existing persisted fingerprint valid.)
+	base := OverlayIntent{Version: OverlayIntentVersion, IntentID: "intent-x", SceneID: "scene-01",
+		Entity: EntityBinding{Type: "PERSON", CanonicalName: "Michael Jordan"}, TemplateID: "person_default",
+		Payload: IntentPayload{Name: "Michael Jordan"}}
+	identified := base
+	identified.Entity.CanonicalEntityID = "person:michael-jordan"
+	if base.Fingerprint() == identified.Fingerprint() {
+		t.Error("the canonical entity identity must participate in the intent fingerprint")
+	}
+}
+
 func TestEntityOverlayPlanner_DeterministicTemplateResolution(t *testing.T) {
 	registry := NewChrononOverlayRegistry()
 	scenes := []SceneEntityInput{
