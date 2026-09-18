@@ -383,6 +383,10 @@ type VidRushSegmentResult struct {
 	Position  int    `json:"position"`
 	Text      string `json:"text"`
 	TextHash  string `json:"text_hash"`
+	// SourceText and SourceTextHash preserve the immutable scene brief used
+	// for semantic extraction. Text is the generated narration and can differ.
+	SourceText     string `json:"source_text,omitempty"`
+	SourceTextHash string `json:"source_text_hash,omitempty"`
 	// ExecutionMode is copied from SpecScene and remains available to
 	// incremental processors that do not carry the full scene envelope.
 	ExecutionMode SceneExecutionMode `json:"execution_mode,omitempty"`

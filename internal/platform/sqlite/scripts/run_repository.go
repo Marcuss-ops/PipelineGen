@@ -9,6 +9,7 @@ import (
 	"time"
 
 	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/observability"
 	"go.uber.org/zap"
 )
 
@@ -144,6 +145,10 @@ func (r *SQLiteRunRepository) SavePartialResult(ctx context.Context, runID strin
 	if err != nil {
 		return err
 	}
+	// Write-amplification instrumentation: record the payload SQLite is about
+	// to receive, so a per-unit checkpoint granularity is measurable in bytes
+	// and not only in call count.
+	observability.ScriptCheckpointBytesTotal.Add(float64(len(body)))
 	_, err = r.db.ExecContext(ctx, `UPDATE run_observability SET workflow_payload_json=?,updated_at=? WHERE run_id=?`, string(body), formatTime(run.UpdatedAt), runID)
 	return err
 }

@@ -3,7 +3,6 @@ package scriptgeneration
 import (
 	"context"
 	"fmt"
-	"math"
 	"strings"
 	"sync"
 	"time"
@@ -61,23 +60,6 @@ func outputFromScenes(scenes []Scene, language Language) GenerateOutput {
 		WordCount:                  len(strings.Fields(text)),
 		SourceLanguageFallbackUsed: fallbackUsed,
 	}
-}
-
-// minimumGeneratedWords returns the minimum number of generated BODY words.
-// It never includes DisplayText or narration attached to fixed-media scenes;
-// those scenes are excluded by outputFromScenes before this gate runs.
-func minimumGeneratedWords(req GenerateRequest) int {
-	if req.ScriptParams.MinWords > 0 {
-		minimum := req.ScriptParams.MinWords
-		// Keep an explicit minimum as the requested goal while tolerating a
-		// small final shortfall instead of failing a complete multi-scene run.
-		minimum -= int(math.Ceil(float64(minimum) * 0.02))
-		if minimum < 1 {
-			minimum = 1
-		}
-		return minimum
-	}
-	return 1
 }
 
 // bindExplicitClipSceneText preserves the caller's one-clip/one-scene
@@ -172,14 +154,12 @@ func SceneStreamingEligibility(req GenerateRequest) bool {
 	return true
 }
 
-// validateMinimumGeneratedOutput enforces the minimum generated BODY word
-// count. GenerateOutput.Text is the BODY-only projection; fixed-media
-// DisplayText and legacy fixed narration are never part of `actual`.
+// validateMinimumGeneratedOutput only rejects empty narration. Target_words
+// and min_words remain generation guidance and never block a completed script.
 func validateMinimumGeneratedOutput(req GenerateRequest, output GenerateOutput) error {
 	actual := len(strings.Fields(strings.TrimSpace(output.Text)))
-	minimum := minimumGeneratedWords(req)
-	if actual == 0 || actual < minimum {
-		return fmt.Errorf("%w: actual_words=%d minimum_words=%d", ErrMinimumTextGate, actual, minimum)
+	if actual == 0 {
+		return fmt.Errorf("%w: generated narration is empty", ErrEmptyGeneratedText)
 	}
 	return nil
 }
@@ -411,6 +391,7 @@ func (r *Runner) runSceneTextPhase(ctx context.Context, runID string, req Genera
 								renderStarted := time.Now()
 								if err := r.enqueueLocalizedRender(ctx, LocalizedRenderInput{
 									RunID: runID, ParentJobID: exec.JobID, SceneID: scene.ID, SceneIndex: scene.Index,
+									DocsFolderID: routing.DocsFolderID, JobID: exec.JobID,
 									Language: lang, Text: text,
 									SourceLanguage: req.SourceLanguage, SourceText: sourceText,
 									ClipID: clipID, ClipAssetID: clipAssetID, ClipSHA256: clipSHA256,
@@ -476,6 +457,7 @@ func (r *Runner) runSceneTextPhase(ctx context.Context, runID string, req Genera
 							renderStarted := time.Now()
 							if err := r.enqueueLocalizedRender(ctx, LocalizedRenderInput{
 								RunID: runID, ParentJobID: exec.JobID, SceneID: scene.ID, SceneIndex: scene.Index,
+								DocsFolderID: routing.DocsFolderID, JobID: exec.JobID,
 								Language: lang, Text: text,
 								SourceLanguage: req.SourceLanguage, SourceText: text,
 								ClipID: clipID, ClipAssetID: clipAssetID, ClipSHA256: clipSHA256,

@@ -18,11 +18,15 @@ import (
 // VidRush enrichment. It is emitted exactly once per scene version after the
 // scene text is complete and immutable. It never carries partial tokens.
 type SceneCommitted struct {
-	RunID      string    `json:"run_id"`
-	SceneID    string    `json:"scene_id"`
-	SceneIndex int       `json:"scene_index"`
-	Text       string    `json:"text"`
-	TextHash   string    `json:"text_hash"`
+	RunID      string `json:"run_id"`
+	SceneID    string `json:"scene_id"`
+	SceneIndex int    `json:"scene_index"`
+	Text       string `json:"text"`
+	TextHash   string `json:"text_hash"`
+	// SourceText is the immutable per-segment editorial evidence. It is
+	// carried separately from narration so the incremental enricher never
+	// has to infer evidence from a generated scene or from a global brief.
+	SourceText string    `json:"source_text,omitempty"`
 	Revision   int64     `json:"revision"`
 	Language   string    `json:"language"`
 	ReadyAt    time.Time `json:"ready_at"`

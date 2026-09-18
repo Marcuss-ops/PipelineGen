@@ -162,8 +162,21 @@ func (g *SceneTextGenerator) GenerateSceneTextStreamWithTrace(
 			segmentReq.ScriptParams.TargetWords = segmentTarget
 			segment.TargetWords = segmentTarget
 		}
+		// Text-backed segments own their own editorial brief. Passing the
+		// whole-script source_text into every model call repeats other scenes'
+		// cities and phrases, dilutes the per-scene prompt, and can shorten the
+		// generated narration. Keep global style/guidelines, but isolate source.
+		if plan.ClipEvidence == nil && req.Source.Type == scriptgen.SourceText && strings.TrimSpace(segment.SourceText) != "" {
+			segmentReq.Source.Topic = firstNonEmpty(segment.Topic, segmentReq.Source.Topic)
+			segmentReq.Source.SourceText = segment.SourceText
+			segmentReq.Source.Query = ""
+		}
 
 		segmentPlan := *plan
+		if plan.ClipEvidence == nil && req.Source.Type == scriptgen.SourceText && strings.TrimSpace(segmentReq.Source.SourceText) != "" {
+			segmentPlan.SourceText = segmentReq.Source.SourceText
+			segmentPlan.SourceFingerprint = scriptpkg.BuildFingerprint(scriptpkg.FingerprintInputFromSource(genSourceToSourceSpec(segmentReq.Source), nil))
+		}
 		// Isolate the model context to this segment. The resolver keeps the
 		// complete evidence pack for provenance, but a per-clip generation call
 		// must not expose other segments' transcripts or narrative text; small

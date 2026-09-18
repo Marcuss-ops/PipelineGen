@@ -1,0 +1,83 @@
+{
+  "version": 2,
+  "preset": "custom",
+  "correlation_id": "verify-1clip-1scene-10lang-20260918",
+  "items": [
+    {
+      "id": "verify-1clip-1scene-10lang",
+      "project": "verify-1clip-1scene-10lang",
+      "title": "Verify 1 clip 1 scena 10 lingue",
+      "language": "en",
+      "tone": "documentario ironico",
+      "style": "Scrivi la narrazione usando esclusivamente l'evidenza della clip fornita. Non inventare aneddoti, date, citazioni o persone non presenti nella fonte. Mantieni il registro colloquiale dell'intervista.",
+      "source": {
+        "type": "clips",
+        "clip_ids": [
+          "yt_vLRjqTIiMjc_0_25_v1"
+        ],
+        "num_clips": 1
+      },
+      "script_params": {
+        "target_words": 60,
+        "min_words": 30,
+        "segment_words": 60,
+        "segments": [
+          {
+            "id": "clip-0",
+            "kind": "clip",
+            "topic": "The supplied clip segment",
+            "source_text": "Narrate the supplied clip segment; use only what the clip evidence states.",
+            "clip_ids": ["yt_vLRjqTIiMjc_0_25_v1"],
+            "target_words": 60,
+            "min_words": 30,
+            "max_words": 120
+          }
+        ]
+      },
+      "output": {
+        "save_to_db": true,
+        "extract_entities": false,
+        "generate_timeline": true,
+        "voiceover_enabled": false,
+        "languages": ["it", "pl", "ru", "de", "es", "pt-BR", "fr", "tr", "id"],
+        "render": {
+          "enabled": true,
+          "require_gpu": true,
+          "drive_folder_id": "1ll2RlTaAbhnaLkAjEDBg41lAXUyo-zJ2",
+          "subtitles": {
+            "enabled": true,
+            "mode": "burn",
+            "preset": "subs-young"
+          },
+          "background": {
+            "mode": "asset",
+            "asset_id": "drive-background-01"
+          }
+        },
+        "drive_folder_id": "1ll2RlTaAbhnaLkAjEDBg41lAXUyo-zJ2"
+      },
+      "audio": {
+        "mode": "NONE"
+      },
+      "media_plan": {
+        "mode": "hybrid",
+        "cache": {"read": true, "write": true},
+        "provider_policy": {
+          "internet_images": "disabled",
+          "artlist": "disabled",
+          "image_generation": "disabled",
+          "youtube": "disabled"
+        },
+        "extraction": {
+          "enabled": false,
+          "include": [],
+          "entity_images": {"enabled": false}
+        }
+      },
+      "docs": {
+        "enabled": true,
+        "languages": ["en", "it", "pl", "ru", "de", "es", "pt-BR", "fr", "tr", "id"]
+      }
+    }
+  ]
+}

@@ -26,10 +26,16 @@
 package scriptgeneration
 
 import (
+	"context"
 	"testing"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"go.uber.org/zap"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/observability"
 )
 
 func TestIsRunCompletable(t *testing.T) {
@@ -279,4 +285,71 @@ func TestResolveDocsConfig(t *testing.T) {
 		assert.True(t, enabled)
 		assert.Empty(t, langs, "langs should be empty when no languages configured")
 	})
+}
+
+// ── Checkpoint write-amplification instrumentation ───────────────────
+//
+// Why it exists: the voiceover phase checkpoints the whole GenerateResult once
+// per completed (scene, language) unit, so a 5-scene × 9-language run performs
+// 45 serializations of the same growing document. Before that granularity can
+// be reduced (scene-complete / language-complete / phase boundary), the
+// amplification must be MEASURABLE: attempts vs. writes, bytes shipped, the
+// save wall time, and the hidden per-unit apply-lock wait that no stage timer
+// covered.
+//
+// Every assertion is a DELTA: the collectors are process-global, so a test that
+// pinned absolute values would break the moment another test in the package
+// checkpointed the same repository.
+
+// TestCheckpointRecordsAttemptWriteAndDuration pins the single-owner contract of
+// Runner.checkpoint: one attempt and one successful write per call, with the
+// save wall time observed.
+func TestCheckpointRecordsAttemptWriteAndDuration(t *testing.T) {
+	repo := newInMemRunRepository()
+	req := defaultTestRequest()
+	runID := "run-checkpoint-metrics"
+	require.NoError(t, repo.Create(context.Background(), &GenerationRun{
+		ID: runID, Request: req, Status: RunStatusPending, CurrentStage: StageNormalizing,
+	}))
+	runner := &Runner{repo: repo, log: zap.NewNop()}
+
+	attemptsBefore := testutil.ToFloat64(observability.ScriptCheckpointAttemptTotal)
+	writesBefore := testutil.ToFloat64(observability.ScriptCheckpointWriteTotal)
+	secondsBefore := histogramSampleTotal(t, observability.ScriptCheckpointSeconds)
+
+	runner.checkpoint(context.Background(), runID, &GenerateResult{Scenes: []Scene{{ID: "s1", Index: 0}}})
+
+	require.Equal(t, attemptsBefore+1, testutil.ToFloat64(observability.ScriptCheckpointAttemptTotal),
+		"every checkpoint call is an attempt, persisted or not")
+	require.Equal(t, writesBefore+1, testutil.ToFloat64(observability.ScriptCheckpointWriteTotal),
+		"a successful save is a write")
+	require.Equal(t, secondsBefore+1, histogramSampleTotal(t, observability.ScriptCheckpointSeconds),
+		"the save wall time must be observed once per checkpoint")
+}
+
+// TestCheckpointAttemptAndWriteDivergeOnFailure pins the reason attempts and
+// writes are separate counters: a save that cannot be persisted is still an
+// attempt, and the divergence is exactly what surfaces dropped checkpoints
+// instead of hiding them behind a single "writes" counter.
+func TestCheckpointAttemptAndWriteDivergeOnFailure(t *testing.T) {
+	// The repository has no row for this run id, so SavePartialResult fails.
+	runner := &Runner{repo: newInMemRunRepository(), log: zap.NewNop()}
+
+	attemptsBefore := testutil.ToFloat64(observability.ScriptCheckpointAttemptTotal)
+	writesBefore := testutil.ToFloat64(observability.ScriptCheckpointWriteTotal)
+
+	runner.checkpoint(context.Background(), "run-missing", &GenerateResult{})
+
+	require.Equal(t, attemptsBefore+1, testutil.ToFloat64(observability.ScriptCheckpointAttemptTotal))
+	require.Equal(t, writesBefore, testutil.ToFloat64(observability.ScriptCheckpointWriteTotal),
+		"a failed save must never count as a write")
+}
+
+// TestObserveCheckpointWaitRecordsTheLockBarrier pins the metric that closes the
+// blind spot called out by the orchestration audit: the per-unit apply-lock wait
+// was never measured by the stage timer, so worker contention was invisible.
+func TestObserveCheckpointWaitRecordsTheLockBarrier(t *testing.T) {
+	before := histogramSampleTotal(t, observability.ScriptCheckpointWaitSeconds)
+	observeCheckpointWait(time.Now())
+	require.Equal(t, before+1, histogramSampleTotal(t, observability.ScriptCheckpointWaitSeconds))
 }

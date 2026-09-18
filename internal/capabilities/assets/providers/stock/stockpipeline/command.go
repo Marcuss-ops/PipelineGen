@@ -68,8 +68,8 @@ func ValidateDurationContract(total, perSource, clips, clipDuration int, mode st
 	if mode != "sections_only" {
 		return fmt.Errorf("download_mode must be sections_only")
 	}
-	if clipDuration < 3 || clipDuration > 30 {
-		return fmt.Errorf("clip_duration_seconds must be between 3 and 30 seconds")
+	if clipDuration < 3 || clipDuration > 40 {
+		return fmt.Errorf("clip_duration_seconds must be between 3 and 40 seconds")
 	}
 	return nil
 }

@@ -21,26 +21,17 @@ func TestOutputFromScenesPreservesOrderedTextAndWordCount(t *testing.T) {
 	}
 }
 
-func TestValidateMinimumGeneratedOutput(t *testing.T) {
+func TestValidateMinimumGeneratedOutputDoesNotBlockWordShortfall(t *testing.T) {
 	req := GenerateRequest{ScriptParams: scriptpkg.ScriptSpec{MinWords: 5}}
-	valid := GenerateOutput{Text: "uno due tre quattro cinque", WordCount: 5}
-	if err := validateMinimumGeneratedOutput(req, valid); err != nil {
-		t.Fatalf("valid output rejected: %v", err)
-	}
-	nearMiss := GenerateOutput{Text: "uno due tre quattro", WordCount: 4}
-	if err := validateMinimumGeneratedOutput(req, nearMiss); err != nil {
-		t.Fatalf("small shortfall below explicit minimum rejected: %v", err)
-	}
-
-	short := GenerateOutput{Text: "uno due", WordCount: 2}
-	err := validateMinimumGeneratedOutput(req, short)
-	if !errors.Is(err, ErrMinimumTextGate) {
-		t.Fatalf("short output error = %v, want ErrMinimumTextGate", err)
+	for _, text := range []string{"uno due tre quattro cinque", "uno due tre quattro", "uno due"} {
+		if err := validateMinimumGeneratedOutput(req, GenerateOutput{Text: text}); err != nil {
+			t.Fatalf("non-empty output %q was blocked by its word count: %v", text, err)
+		}
 	}
 }
 
-func TestValidateMinimumGeneratedOutputRequiresOneWordWithoutExplicitMinimum(t *testing.T) {
-	if err := validateMinimumGeneratedOutput(GenerateRequest{}, GenerateOutput{}); !errors.Is(err, ErrMinimumTextGate) {
-		t.Fatalf("empty output error = %v, want ErrMinimumTextGate", err)
+func TestValidateMinimumGeneratedOutputOnlyRequiresNonEmptyText(t *testing.T) {
+	if err := validateMinimumGeneratedOutput(GenerateRequest{}, GenerateOutput{}); !errors.Is(err, ErrEmptyGeneratedText) {
+		t.Fatalf("empty output error = %v, want ErrEmptyGeneratedText", err)
 	}
 }

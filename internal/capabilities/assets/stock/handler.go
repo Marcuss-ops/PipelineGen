@@ -279,11 +279,11 @@ func (h *StockHandler) Run(c *gin.Context) {
 		return
 	}
 
-	// (6) clip_duration range (3 ≤ d ≤ 30).
-	if req.ClipDuration != 0 && (req.ClipDuration < 3 || req.ClipDuration > 30) {
+	// (6) clip_duration range (3 ≤ d ≤ 40).
+	if req.ClipDuration != 0 && (req.ClipDuration < 3 || req.ClipDuration > 40) {
 		c.JSON(http.StatusBadRequest, runResponse{
 			Status:    StatusError,
-			Error:     "clip_duration must be between 3 and 30 seconds",
+			Error:     "clip_duration must be between 3 and 40 seconds",
 			ErrorCode: ErrCodeInvalidPayload,
 		})
 		return

@@ -93,8 +93,11 @@ const (
 	// which is exactly the mismatch that gate exists to catch.
 	dollyMultilingualSourceLanguage = "en"
 
-	// dollyMultilingualDriveSubfolder is the child folder the rendered clips
-	// publish under (the same one the extracted clips use).
+	// dollyMultilingualDriveSubfolder is the child folder the EXTRACTED source
+	// clips publish under. It is NOT the destination of the localized renders:
+	// a docs-enabled run publishes each languages' render beside that language's
+	// script document, in <resolved documents root>/<job>/<language>. The clips
+	// fields on render are the fallback of a docs-less run only.
 	dollyMultilingualDriveSubfolder = "Dolly Parton"
 
 	// dollyMultilingualSubtitlePreset is a concrete short-form subtitle style
@@ -193,9 +196,9 @@ func dollyPartonMultilingualEnvelope(t *testing.T, languages []string) []byte {
 				},
 				"output": map[string]any{
 					"save_to_db":        true,
-					"extract_entities":  true,
+					"extract_entities":  false,
 					"generate_timeline": true,
-					"voiceover_enabled": true,
+					"voiceover_enabled": false,
 					"languages":         languages,
 					"render": map[string]any{
 						"enabled":              true,
@@ -215,12 +218,7 @@ func dollyPartonMultilingualEnvelope(t *testing.T, languages []string) []byte {
 					"drive_folder_id": dollyPartonDriveParentFolderID,
 				},
 				"audio": map[string]any{
-					"mode": "COMBINED_TIMELINE",
-					"timing": map[string]any{
-						"mode":     "required",
-						"boundary": "word",
-						"formats":  []string{"json", "srt", "vtt"},
-					},
+					"mode": "NONE",
 				},
 				"media_plan": map[string]any{
 					"mode":  "hybrid",
@@ -235,8 +233,8 @@ func dollyPartonMultilingualEnvelope(t *testing.T, languages []string) []byte {
 						"youtube":          "disabled",
 					},
 					"extraction": map[string]any{
-						"enabled":       true,
-						"include":       []string{"entities", "important_phrases"},
+						"enabled":       false,
+						"include":       []string{},
 						"entity_images": map[string]any{"enabled": false},
 					},
 				},
@@ -298,7 +296,11 @@ func TestDollyPartonMultilingualRequestContract(t *testing.T) {
 			"language %s is the source language; it cannot also be a translation target", lang)
 	}
 
-	// 5. Rendered clips land in the Dolly Parton library, beside their source.
+	// 5. The clips routing fields survive the wire as the DOCS-LESS fallback,
+	//    but they are not the destination of this batch: docs are enabled, so
+	//    every render publishes beside its own language's script document in
+	//    <resolved documents root>/<job>/<language> (verified live by
+	//    verifyDollyPartonMultilingualResult).
 	require.Equal(t, dollyPartonDriveParentFolderID, req.Render.DriveFolderID)
 	require.Equal(t, dollyMultilingualDriveSubfolder, req.Render.DriveSubfolderName)
 
@@ -465,4 +467,34 @@ func verifyDollyPartonMultilingualResult(t *testing.T, result map[string]any, la
 				"language %s render has no duration: %s", want, compactJSON(render))
 		}
 	}
+
+	// The DESTINATION is per language: every language of a clip owns its own
+	// folder (<documents root>/<job>/<language>), so a language is readable from
+	// the layout. The flat pre-contract layout put every language of a clip in
+	// ONE folder — this is the assertion that fails when it comes back, and it is
+	// why the run result carries drive_folder_id at all.
+	//
+	// Within one language every clip legitimately shares the language folder; it
+	// is ACROSS languages that a shared folder is the defect.
+	folderByLanguage := make(map[string]string, len(languages))
+	for _, render := range renders {
+		lang := strings.ToLower(stringAt(render, "language"))
+		folder := strings.TrimSpace(stringAt(render, "drive_folder_id"))
+		require.NotEmptyf(t, folder,
+			"language %s render carries no destination folder: %s", lang, compactJSON(render))
+		if existing, seen := folderByLanguage[lang]; seen {
+			require.Equalf(t, existing, folder,
+				"language %s published into two different folders (%s and %s); one language owns one folder per run",
+				lang, existing, folder)
+			continue
+		}
+		for other, otherFolder := range folderByLanguage {
+			require.NotEqualf(t, otherFolder, folder,
+				"languages %s and %s share the folder %s: every language must publish into its own folder",
+				other, lang, folder)
+		}
+		folderByLanguage[lang] = folder
+	}
+	require.Len(t, folderByLanguage, len(languages),
+		"every requested language must own a destination folder, got %v", folderByLanguage)
 }

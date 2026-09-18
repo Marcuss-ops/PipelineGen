@@ -54,7 +54,7 @@ func compileResultEntityTimeline(result *GenerateResult, language Language) erro
 	var scenes []capabilityentities.SceneInput
 	for i := range result.Scenes {
 		scene := &result.Scenes[i]
-		annotations := annotationsForLanguage(*scene, language)
+		annotations := annotationsForLanguage(*scene, language, result.SourceLanguage)
 		if annotations == nil {
 			continue
 		}
@@ -103,11 +103,21 @@ func compileResultEntityTimeline(result *GenerateResult, language Language) erro
 // requested language. The source annotation remains the compatibility surface
 // for its own language; a translated render never reuses source-language spans
 // when translated NLP is missing.
-func annotationsForLanguage(scene Scene, language Language) *scriptpkg.SceneAnnotations {
+func annotationsForLanguage(scene Scene, language Language, sourceLanguage ...Language) *scriptpkg.SceneAnnotations {
 	if localized := scene.LocalizedAnnotations[language]; localized != nil {
 		return localized
 	}
-	if scene.Annotations != nil && (language == "" || strings.TrimSpace(scene.Annotations.Language) == "" || strings.EqualFold(scene.Annotations.Language, string(language))) {
+	if scene.Annotations == nil {
+		return nil
+	}
+	annotationLanguage := strings.TrimSpace(scene.Annotations.Language)
+	if language == "" || strings.EqualFold(annotationLanguage, string(language)) {
+		return scene.Annotations
+	}
+	// An unlabelled annotation is legacy source-language data. It may be used
+	// for the source voiceover only; never project it onto a translated timing
+	// stream, where the source entity surface can be absent or translated.
+	if annotationLanguage == "" && len(sourceLanguage) > 0 && strings.EqualFold(string(sourceLanguage[0]), string(language)) {
 		return scene.Annotations
 	}
 	return nil

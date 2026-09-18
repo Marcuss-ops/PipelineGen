@@ -3,7 +3,7 @@
 The stock pipeline generates video clips from one or more sources, cuts them according to a plan or explicit time ranges, composes the result, and publishes the output to Google Drive.
 
 - Endpoints: `POST /api/stock-pipeline/run` and `POST /api/stock-pipeline/search-and-run`
-- `clip_duration` must be between 3 and 30 seconds (default from `video.clip_duration`)
+- `clip_duration` must be between 3 and 40 seconds (default from `video.clip_duration`)
 - Output: MP4 files uploaded under the configured Google Drive root
 
 ## Supported source types
@@ -150,7 +150,7 @@ curl -s http://127.0.0.1:8000/api/jobs/$JOB_ID/full \
 | `search_queries` | `[]string` | No | Search terms for the stock provider search. |
 | `clips` | `[]ClipSpec` | No | Explicit clip specifications. |
 | `folder_name` | `string` | Yes* | Destination subfolder name under the configured Drive stock root. The handler does not validate emptiness; a missing value will fail later during the publish step. |
-| `clip_duration` | `int` | No | Length of each generated clip in seconds (default from `video.clip_duration`; range 3–30). |
+| `clip_duration` | `int` | No | Length of each generated clip in seconds (default from `video.clip_duration`; range 3–40). |
 | `async` | `bool` | No | Controls dispatch mode. `true` queues `media.stock` and returns HTTP 202; `false` runs synchronously and returns HTTP 200; omitted is decoded as `false` and therefore also runs synchronously. |
 | `persist` | `bool` | No | When `true` and `async=false`, writes to `media_assets` in sync mode. |
 | `drive_folder_id` | `string` | No | Legacy destination folder ID override. |

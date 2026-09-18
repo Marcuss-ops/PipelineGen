@@ -146,7 +146,6 @@ type Runner struct {
 	sceneCommitObserver     SceneCommitObserver
 	vidRushBarrier          VidRushBarrier
 	vidRushTiming           VidRushTimingRecorder
-	generationGate          *GenerationGate
 	nlpGenerationGate       *GenerationGate
 	vidRushPipeline         *VidRushPipeline
 
@@ -157,6 +156,15 @@ type Runner struct {
 	ttsConcurrency int
 	// translationConcurrency bounds concurrent scene×language translation calls.
 	translationConcurrency int
+	// overlayRenderConcurrency bounds the multilingual overlay render fan-out:
+	// how many per-language OverlayPlans the overlay_render phase may have in
+	// flight against RenderingGen at once. It defaults to
+	// DefaultOverlayRenderConcurrency (2); SetOverlayRenderConcurrency overrides
+	// it. It is the bounded admission bound for the stage that used to be a
+	// serial per-language render loop, so N languages no longer wait
+	// sequentially on Chronon. Raising it must be certified for
+	// byte-determinism before the operator moves beyond 2.
+	overlayRenderConcurrency int
 
 	// serialMode reproduces the pre-parallel "before" chain for controlled
 	// benchmarking: the VidRush/NLP join + overlay.prepare runs blocking
@@ -275,17 +283,18 @@ func NewRunner(
 		documentRenderer = documentRenderers[0]
 	}
 	return &Runner{
-		repo:                   repo,
-		textGen:                textGen,
-		translator:             translator,
-		voiceoverGen:           voiceoverGen,
-		docPublisher:           docPublisher,
-		documentRenderer:       documentRenderer,
-		recorder:               noopExecutionRecorder{},
-		vidRushRuns:            make(map[string]vidRushWiring),
-		ttsConcurrency:         DefaultTTSConcurrency,
-		translationConcurrency: DefaultTranslationConcurrency,
-		log:                    zap.NewNop(),
+		repo:                     repo,
+		textGen:                  textGen,
+		translator:               translator,
+		voiceoverGen:             voiceoverGen,
+		docPublisher:             docPublisher,
+		documentRenderer:         documentRenderer,
+		recorder:                 noopExecutionRecorder{},
+		vidRushRuns:              make(map[string]vidRushWiring),
+		ttsConcurrency:           DefaultTTSConcurrency,
+		translationConcurrency:   DefaultTranslationConcurrency,
+		overlayRenderConcurrency: DefaultOverlayRenderConcurrency,
+		log:                      zap.NewNop(),
 	}
 }
 
@@ -316,7 +325,6 @@ func (r *Runner) beginVidRush(ctx context.Context, runID string, req GenerateReq
 		if err != nil {
 			return nil, fmt.Errorf("vidrush pipeline: %w", err)
 		}
-		newEnricher.SetImportantPhraseExtractor(p.PhraseExtractor)
 		enricher = newEnricher
 	}
 	if enricher == nil {
@@ -386,14 +394,13 @@ func (r *Runner) beginVidRush(ctx context.Context, runID string, req GenerateReq
 	// canonical_entity_id decisions are stamped into every segment so the
 	// annotation/media projection joins on the identity it chose.
 	coordinator.SetImageSearchResolver(r.imageSearchResolver)
-	nlpGate := r.nlpGenerationGate
-	// Compatibility fallback for focused tests and older composition roots
-	// that only wired the historical shared gate. Production wiring always
-	// provides both independent gates.
-	if nlpGate == nil {
-		nlpGate = r.generationGate
-	}
-	coordinator.SetGenerationGate(nlpGate)
+	coordinator.SetGenerationGate(r.nlpGenerationGate)
+	// Entity extraction uses its OWN gate. There is deliberately NO fallback
+	// to the scene-text generation gate: that compatibility branch was a legacy
+	// seam that survived its migration (Zero Legacy Policy). A nil gate means
+	// "ungated", which is the honest state for a root that wired none — the
+	// scene-text gate itself stays owned by the generator engine, which applies
+	// the per-call limit.
 
 	// Fase 2 barrier wrap: when the MediaCertifierPort is wired, wrap the
 	// coordinator's barrier so a CERTIFIED=false run fails the job even

@@ -46,6 +46,22 @@ const MaxTranslationConcurrency = 4
 // explicit value is configured. It intentionally equals the hard cap.
 const DefaultTranslationConcurrency = MaxTranslationConcurrency
 
+// DefaultOverlayRenderConcurrency bounds the multilingual overlay render
+// fan-out: how many per-language OverlayPlans the overlay_render phase may
+// have in flight against RenderingGen at once.
+//
+// The phase used to be a serial per-language loop (`for plan { enqueue; wait }`),
+// so N languages cost N sequential Chronon round-trips and the wall time grew as
+// Ttotal ≈ T1 + T2 + ... + TN. Flipping that to a bounded fan-out is the single
+// largest wall-clock lever in a multilingual run.
+//
+// 2 is the deliberate FIRST step, not the ceiling: it overlaps the submit/wait
+// of two languages while staying inside the worker's gpu_lanes=2 domain, and it
+// must be certified for byte-determinism before an operator raises it. This is a
+// PIPELINING bound, not a GPU bound — the RenderingGen worker remains the only
+// authority on how many renders touch the device.
+const DefaultOverlayRenderConcurrency = 2
+
 // VidRushBackpressure holds the independent concurrency limits for the three
 // VidRush stages. Keeping them separate means a slow stage (e.g. a provider
 // download) can never consume the whole budget of a faster stage (e.g. entity

@@ -2,10 +2,8 @@ package scriptgeneration
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"strings"
-	"sync"
 	"testing"
 
 	mediadomain "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
@@ -24,12 +22,13 @@ type translatedNLPNameNER struct {
 
 func (n translatedNLPNameNER) Extract(_ context.Context, text string, _ int) ([]VisualEntity, error) {
 	entities := append([]VisualEntity(nil), n.always...)
-	for _, name := range []string{"Mike Tyson", "Muhammad Ali", "Las Vegas"} {
+	for _, name := range []string{"Mike Tyson", "Muhammad Ali"} {
 		if strings.Contains(text, name) {
-			// Simulate the title-case heuristic's known place/person error;
-			// the translated model extraction must supply the authoritative type.
 			entities = append(entities, VisualEntity{Text: name, Type: scriptpkg.EntityTypePerson, Score: 0.99})
 		}
+	}
+	if strings.Contains(text, "Las Vegas") {
+		entities = append(entities, VisualEntity{Text: "Las Vegas", Type: scriptpkg.EntityTypeLocation, Score: 0.98})
 	}
 	return entities, nil
 }
@@ -47,126 +46,6 @@ func (n translatedNLPLocalizedSurfaceNER) Extract(_ context.Context, text string
 		}
 	}
 	return out, nil
-}
-
-type translatedNLPDetailed struct{}
-
-func (p translatedNLPDetailed) ExtractImportantPhrases(ctx context.Context, text string, limit int, language, model string) ([]string, error) {
-	result, err := p.ExtractSceneNLP(ctx, text, limit, language, model)
-	return result.ImportantPhrases, err
-}
-
-func (translatedNLPDetailed) ExtractSceneNLP(_ context.Context, text string, _ int, _, _ string) (SceneNLPExtraction, error) {
-	phrase, word := "Boxen und Disziplin", "Disziplin"
-	if strings.Contains(text, "pugilato") {
-		phrase, word = "pugilato e disciplina", "disciplina"
-	}
-	return SceneNLPExtraction{
-		ImportantPhrases: []string{phrase, "invention not in the source"},
-		ImportantWords:   []string{word, "unmentioned"},
-		SpecialNames:     []string{"Mike Tyson", "Muhammad Ali", "Joe Frazier"},
-		Entities: []VisualEntity{
-			{Text: "Mike Tyson", Type: scriptpkg.EntityTypePerson, Score: 0.98},
-			{Text: "Las Vegas", Type: scriptpkg.EntityTypeLocation, Score: 0.97},
-			{Text: "Muhammad Ali", Type: scriptpkg.EntityTypePerson, Score: 0.96},
-		},
-	}, nil
-}
-
-func (p translatedNLPDetailed) ExtractSceneNLPBatch(ctx context.Context, texts []string, limit int, language, model string) ([]SceneNLPExtraction, error) {
-	out := make([]SceneNLPExtraction, len(texts))
-	for i, text := range texts {
-		value, err := p.ExtractSceneNLP(ctx, text, limit, language, model)
-		if err != nil {
-			return nil, err
-		}
-		out[i] = value
-	}
-	return out, nil
-}
-
-type translatedNLPTestPhrases struct{}
-
-func (translatedNLPTestPhrases) ExtractImportantPhrases(_ context.Context, _ string, _ int, _, _ string) ([]string, error) {
-	return []string{"creative work", "literacy and education", "not present"}, nil
-}
-
-// translatedNLPStubPhrase derives a scene-specific, verbatim-present phrase
-// from the fixture text. Because every scene carries its own marker phrase, a
-// positional mapping error between scenes is detectable in the assertions
-// instead of being hidden behind one shared placeholder.
-func translatedNLPStubPhrase(sourceText string) string {
-	marker := "scena"
-	if strings.Contains(sourceText, "szene") {
-		marker = "szene"
-	}
-	digits := ""
-	for _, r := range sourceText {
-		if r >= '0' && r <= '9' {
-			digits += string(r)
-		}
-	}
-	if digits == "" {
-		return ""
-	}
-	return marker + " " + digits
-}
-
-// translatedNLPBatchPhrases records how the runner asked for phrases: one
-// batched request per language when the batched interface is available, or one
-// request per (scene, language) when it is not.
-type translatedNLPBatchPhrases struct {
-	mu          sync.Mutex
-	batchCalls  []int // segment count per batched request
-	singleCalls int
-	batchErr    error
-}
-
-func (p *translatedNLPBatchPhrases) ExtractImportantPhrases(_ context.Context, sourceText string, _ int, _, _ string) ([]string, error) {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	p.singleCalls++
-	return []string{translatedNLPStubPhrase(sourceText)}, nil
-}
-
-func (p *translatedNLPBatchPhrases) ExtractImportantPhrasesBatch(_ context.Context, sourceTexts []string, _ int, _, _ string) ([][]string, error) {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	if p.batchErr != nil {
-		return nil, p.batchErr
-	}
-	p.batchCalls = append(p.batchCalls, len(sourceTexts))
-	out := make([][]string, len(sourceTexts))
-	for i, text := range sourceTexts {
-		out[i] = []string{translatedNLPStubPhrase(text)}
-	}
-	return out, nil
-}
-
-func (p *translatedNLPBatchPhrases) counts() (batches []int, singles int) {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	return append([]int(nil), p.batchCalls...), p.singleCalls
-}
-
-// translatedNLPSingleOnlyPhrases implements ONLY the single-scene contract, so
-// the runner must keep using one call per (scene, language).
-type translatedNLPSingleOnlyPhrases struct {
-	mu    sync.Mutex
-	calls int
-}
-
-func (p *translatedNLPSingleOnlyPhrases) ExtractImportantPhrases(_ context.Context, sourceText string, _ int, _, _ string) ([]string, error) {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	p.calls++
-	return []string{translatedNLPStubPhrase(sourceText)}, nil
-}
-
-func (p *translatedNLPSingleOnlyPhrases) count() int {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	return p.calls
 }
 
 // translatedNLPMultiSceneResult builds N scenes, each with its own text per
@@ -209,12 +88,29 @@ func assertScenePhrase(t *testing.T, result *GenerateResult, sceneIndex int, lan
 	t.Fatalf("scene %d/%s phrases = %+v, want %q (per-scene mapping)", sceneIndex, lang, annotations.ImportantPhrases, want)
 }
 
-// TestRunTranslatedNLPBatchesPhrasesPerLanguage pins the cost shape: the
-// phrase hints of every scene of one language travel in a single request, while
-// the per-scene entity extraction (VisualNER) is untouched.
-func TestRunTranslatedNLPBatchesPhrasesPerLanguage(t *testing.T) {
-	phrases := &translatedNLPBatchPhrases{}
-	runner := &Runner{vidRushPipeline: &VidRushPipeline{NERPort: translatedNLPTestNER{}, PhraseExtractor: phrases}}
+func assertGroundedScenePhrases(t *testing.T, result *GenerateResult, sceneIndex int, lang Language) {
+	t.Helper()
+	annotations := result.Scenes[sceneIndex].LocalizedAnnotations[lang]
+	if annotations == nil || len(annotations.ImportantPhrases) == 0 {
+		t.Fatalf("scene %d/%s has no deterministic phrases: %+v", sceneIndex, lang, annotations)
+	}
+	text := strings.ToLower(result.Scenes[sceneIndex].Text[lang])
+	for _, phrase := range annotations.ImportantPhrases {
+		if !strings.Contains(text, strings.ToLower(phrase.Text)) {
+			t.Errorf("scene %d/%s phrase %q is not grounded in its translated text", sceneIndex, lang, phrase.Text)
+		}
+		if len(strings.Fields(phrase.Text)) > 4 {
+			t.Errorf("scene %d/%s phrase %q exceeds the short-overlay word bound", sceneIndex, lang, phrase.Text)
+		}
+	}
+}
+
+// TestRunTranslatedNLPUsesDeterministicPhrasesAndKeepsNER pins the cutover:
+// phrase selection is deterministic over the translated text (there is no
+// model-owned phrase surface left to call), while VisualNER still extracts
+// translated names for every scene.
+func TestRunTranslatedNLPUsesDeterministicPhrasesAndKeepsNER(t *testing.T) {
+	runner := &Runner{vidRushPipeline: &VidRushPipeline{NERPort: translatedNLPTestNER{}}}
 	req := GenerateRequest{SourceLanguage: "en", Languages: []Language{"it", "de"}, Model: "test-model", MediaPlan: translatedNLPMediaPlan()}
 	result := translatedNLPMultiSceneResult([]Language{"it", "de"}, 6)
 
@@ -222,21 +118,9 @@ func TestRunTranslatedNLPBatchesPhrasesPerLanguage(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	batches, singles := phrases.counts()
-	if singles != 0 {
-		t.Fatalf("per-scene phrase calls = %d, want 0 (batched path must own the fan-out)", singles)
-	}
-	if len(batches) != 2 {
-		t.Fatalf("batched phrase calls = %v, want one request per language (2)", batches)
-	}
-	for _, size := range batches {
-		if size != 6 {
-			t.Fatalf("batched phrase request covered %d scenes, want all 6 of the language", size)
-		}
-	}
 	for i := range result.Scenes {
-		assertScenePhrase(t, result, i, "it", fmt.Sprintf("scena %d", i))
-		assertScenePhrase(t, result, i, "de", fmt.Sprintf("szene %d", i))
+		assertGroundedScenePhrases(t, result, i, "it")
+		assertGroundedScenePhrases(t, result, i, "de")
 		if len(result.Scenes[i].LocalizedAnnotations["it"].PrimaryEntities) == 0 {
 			t.Fatalf("scene %d/it lost its per-scene entities", i)
 		}
@@ -244,7 +128,7 @@ func TestRunTranslatedNLPBatchesPhrasesPerLanguage(t *testing.T) {
 }
 
 func TestRunTranslatedNLPProjectsGroundedWordsAndSpecialNamesPerLanguage(t *testing.T) {
-	runner := &Runner{vidRushPipeline: &VidRushPipeline{NERPort: translatedNLPNameNER{}, PhraseExtractor: translatedNLPDetailed{}}}
+	runner := &Runner{vidRushPipeline: &VidRushPipeline{NERPort: translatedNLPNameNER{}}}
 	req := GenerateRequest{
 		SourceLanguage: "en",
 		Languages:      []Language{"it", "de"},
@@ -271,20 +155,22 @@ func TestRunTranslatedNLPProjectsGroundedWordsAndSpecialNamesPerLanguage(t *test
 	if err := runner.runTranslatedNLP(context.Background(), req, result); err != nil {
 		t.Fatal(err)
 	}
-	for lang, wantPhrase := range map[Language]string{"it": "pugilato e disciplina", "de": "Boxen und Disziplin"} {
+	for _, lang := range []Language{"it", "de"} {
 		annotations := result.Scenes[0].LocalizedAnnotations[lang]
 		if annotations == nil {
 			t.Fatalf("missing %s localized annotations", lang)
 		}
-		if len(annotations.ImportantPhrases) != 1 || annotations.ImportantPhrases[0].Text != wantPhrase {
-			t.Errorf("%s important phrases = %+v, want only grounded %q", lang, annotations.ImportantPhrases, wantPhrase)
+		if len(annotations.ImportantPhrases) == 0 {
+			t.Errorf("%s deterministic important phrases are empty", lang)
 		}
-		wantWord := "disciplina"
-		if lang == "de" {
-			wantWord = "Disziplin"
+		text := strings.ToLower(result.Scenes[0].Text[lang])
+		for _, phrase := range annotations.ImportantPhrases {
+			if !strings.Contains(text, strings.ToLower(phrase.Text)) {
+				t.Errorf("%s phrase %q is not verbatim in localized text", lang, phrase.Text)
+			}
 		}
-		if len(annotations.ImportantWords) != 1 || annotations.ImportantWords[0].Text != wantWord {
-			t.Errorf("%s important words = %+v, want only grounded %q", lang, annotations.ImportantWords, wantWord)
+		if len(annotations.ImportantWords) == 0 {
+			t.Errorf("%s deterministic important words are empty", lang)
 		}
 		if len(annotations.SpecialNames) != 3 {
 			t.Errorf("%s special names = %+v, want grounded Tyson, Las Vegas and Ali", lang, annotations.SpecialNames)
@@ -338,7 +224,7 @@ func TestRunTranslatedNLPGroundsSourceNamesInTheTranslatedSurface(t *testing.T) 
 		{Text: "Viele Gegner", Type: scriptpkg.EntityTypePerson, Score: 0.99},
 		{Text: "Las Vegas", Type: scriptpkg.EntityTypeLocation, Score: 0.95},
 	}
-	runner := &Runner{vidRushPipeline: &VidRushPipeline{NERPort: ner, PhraseExtractor: &translatedNLPBatchPhrases{}}}
+	runner := &Runner{vidRushPipeline: &VidRushPipeline{NERPort: ner}}
 	req := GenerateRequest{
 		SourceLanguage: "en",
 		Languages:      []Language{"de"},
@@ -459,58 +345,26 @@ func TestRunTranslatedNLPLocalizedAnnotationsInheritSourceIdentity(t *testing.T)
 	}
 }
 
-// TestRunTranslatedNLPFallsBackToPerSceneWhenBatchFails pins the fail-open
-// contract: batching is an optimization, so a batched failure must degrade to
-// the per-scene call instead of failing the run or dropping annotations.
-func TestRunTranslatedNLPFallsBackToPerSceneWhenBatchFails(t *testing.T) {
-	phrases := &translatedNLPBatchPhrases{batchErr: errors.New("batch unavailable")}
-	runner := &Runner{vidRushPipeline: &VidRushPipeline{NERPort: translatedNLPTestNER{}, PhraseExtractor: phrases}}
-	req := GenerateRequest{SourceLanguage: "en", Languages: []Language{"it"}, Model: "test-model", MediaPlan: translatedNLPMediaPlan()}
-	result := translatedNLPMultiSceneResult([]Language{"it"}, 3)
-
-	if err := runner.runTranslatedNLP(context.Background(), req, result); err != nil {
-		t.Fatalf("batched failure must not fail the phase: %v", err)
-	}
-	batches, singles := phrases.counts()
-	if len(batches) != 0 {
-		t.Fatalf("failed batch recorded as success: %v", batches)
-	}
-	if singles != 3 {
-		t.Fatalf("per-scene fallback calls = %d, want 3", singles)
-	}
-	for i := range result.Scenes {
-		assertScenePhrase(t, result, i, "it", fmt.Sprintf("scena %d", i))
-	}
-}
-
-// TestRunTranslatedNLPUsesPerSceneCallsWithoutBatchCapability pins that an
-// extractor which only implements the single-scene contract keeps working with
-// exactly one call per (scene, language).
-func TestRunTranslatedNLPUsesPerSceneCallsWithoutBatchCapability(t *testing.T) {
-	phrases := &translatedNLPSingleOnlyPhrases{}
-	var singleOnly ImportantPhraseExtractor = phrases
-	if _, isBatch := singleOnly.(BatchImportantPhraseExtractor); isBatch {
-		t.Fatal("test double unexpectedly implements the batched contract")
-	}
-	runner := &Runner{vidRushPipeline: &VidRushPipeline{NERPort: translatedNLPTestNER{}, PhraseExtractor: singleOnly}}
+// TestRunTranslatedNLPSelectsPhrasesWithoutAnyModelSurface keeps the phrase
+// contract honest after the demolition: with NO phrase port wired at all, every
+// scene still gets grounded, short, verbatim phrases per language.
+func TestRunTranslatedNLPSelectsPhrasesWithoutAnyModelSurface(t *testing.T) {
+	runner := &Runner{vidRushPipeline: &VidRushPipeline{NERPort: translatedNLPTestNER{}}}
 	req := GenerateRequest{SourceLanguage: "en", Languages: []Language{"it", "de"}, Model: "test-model", MediaPlan: translatedNLPMediaPlan()}
 	result := translatedNLPMultiSceneResult([]Language{"it", "de"}, 3)
 
 	if err := runner.runTranslatedNLP(context.Background(), req, result); err != nil {
-		t.Fatal(err)
-	}
-	if got := phrases.count(); got != 6 {
-		t.Fatalf("per-scene phrase calls = %d, want 6 (3 scenes x 2 languages)", got)
+		t.Fatalf("deterministic phrase selection must not fail the phase: %v", err)
 	}
 	for i := range result.Scenes {
-		assertScenePhrase(t, result, i, "it", fmt.Sprintf("scena %d", i))
-		assertScenePhrase(t, result, i, "de", fmt.Sprintf("szene %d", i))
+		assertGroundedScenePhrases(t, result, i, "it")
+		assertGroundedScenePhrases(t, result, i, "de")
 	}
 }
 
 func TestRunTranslatedNLPStoresGroundedPerLanguageAnnotations(t *testing.T) {
 	runner := &Runner{vidRushPipeline: &VidRushPipeline{
-		NERPort: translatedNLPTestNER{}, PhraseExtractor: translatedNLPTestPhrases{},
+		NERPort: translatedNLPTestNER{},
 	}}
 	req := GenerateRequest{
 		SourceLanguage: "en",

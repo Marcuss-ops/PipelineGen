@@ -252,9 +252,15 @@ func (c *VidRushIncrementalCoordinator) OnSceneCommitted(ctx context.Context, ev
 		Text:          event.Text,
 		ExecutionMode: event.ExecutionMode,
 	}
+	if event.SourceText != "" || event.SemanticProfile != nil {
+		scene.Metadata = &scriptpkg.SceneMetadata{SourceText: event.SourceText}
+	}
 	if event.SemanticProfile != nil {
 		profile := event.SemanticProfile.Clone()
-		scene.Metadata = &scriptpkg.SceneMetadata{SemanticProfile: &profile}
+		if scene.Metadata == nil {
+			scene.Metadata = &scriptpkg.SceneMetadata{}
+		}
+		scene.Metadata.SemanticProfile = &profile
 	}
 	go func() {
 		defer c.wg.Done()

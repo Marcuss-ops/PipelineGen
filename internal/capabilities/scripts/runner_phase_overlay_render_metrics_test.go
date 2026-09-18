@@ -18,7 +18,9 @@ package scriptgeneration
 import (
 	"context"
 	"errors"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/testutil"
@@ -237,13 +239,50 @@ func TestOverlayRenderPhaseSkipRecordsNothing(t *testing.T) {
 		"an unwired enqueuer renders nothing, so nothing may be measured")
 }
 
+// languageCapturingRenderEnqueuer records every submitted plan language and
+// plan id. It is MUTEX-PROTECTED because the render fan-out submits from
+// multiple worker goroutines: an unsynchronised append here would be a data race
+// that `go test -race` must fail on.
 type languageCapturingRenderEnqueuer struct {
+	mu        sync.Mutex
 	languages []string
+	planIDs   []string
+	delay     time.Duration
+	inFlight  int
+	maxInFlgt int
 }
 
 func (e *languageCapturingRenderEnqueuer) EnqueueChrononPlan(_ context.Context, plan capabilityoverlay.OverlayPlan) (RenderReference, error) {
+	e.mu.Lock()
 	e.languages = append(e.languages, plan.Language)
+	e.planIDs = append(e.planIDs, plan.PlanID)
+	e.inFlight++
+	if e.inFlight > e.maxInFlgt {
+		e.maxInFlgt = e.inFlight
+	}
+	delay := e.delay
+	e.mu.Unlock()
+
+	if delay > 0 {
+		time.Sleep(delay)
+	}
+
+	e.mu.Lock()
+	e.inFlight--
+	e.mu.Unlock()
 	return RenderReference{JobID: plan.PlanID, Status: "COMPLETED"}, nil
+}
+
+func (e *languageCapturingRenderEnqueuer) snapshot() ([]string, []string) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	return append([]string(nil), e.languages...), append([]string(nil), e.planIDs...)
+}
+
+func (e *languageCapturingRenderEnqueuer) peakInFlight() int {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	return e.maxInFlgt
 }
 
 func TestOverlayRenderPhaseRendersEveryLocalizedPlanInRequestOrder(t *testing.T) {
@@ -265,8 +304,14 @@ func TestOverlayRenderPhaseRendersEveryLocalizedPlanInRequestOrder(t *testing.T)
 	req.Render.Enabled = true
 
 	require.True(t, runner.runOverlayRenderPhase(context.Background(), "run-multilingual", req, ExecutionContext{}, 0, audioCompileState{}, result))
-	require.Equal(t, []string{"en", "it", "fr"}, enqueuer.languages,
-		"the source plan renders first, then localized plans follow caller language order")
+
+	// The fan-out makes submission ORDER non-deterministic by design; the SET of
+	// rendered languages is what the contract pins. The durable result stays
+	// deterministic because it is keyed by language.
+	languages, planIDs := enqueuer.snapshot()
+	require.ElementsMatch(t, []string{"en", "it", "fr"}, languages,
+		"every requested language renders exactly once, source plan included")
+	require.ElementsMatch(t, []string{"run-en", "run-it", "run-fr"}, planIDs)
 	require.Equal(t, "run-en", result.OverlayRender.JobID)
 	require.Equal(t, "run-it", result.LocalizedOverlayRenders["it"].JobID)
 	require.Equal(t, "run-fr", result.LocalizedOverlayRenders["fr"].JobID)
@@ -274,5 +319,78 @@ func TestOverlayRenderPhaseRendersEveryLocalizedPlanInRequestOrder(t *testing.T)
 	// A recovered run with the completed references already in its result must
 	// reuse them rather than submit duplicate GPU work.
 	require.True(t, runner.runOverlayRenderPhase(context.Background(), "run-multilingual", req, ExecutionContext{}, 0, audioCompileState{}, result))
-	require.Len(t, enqueuer.languages, 3)
+	languages, _ = enqueuer.snapshot()
+	require.Len(t, languages, 3, "a second pass must not re-submit already-certified renders")
+}
+
+// TestOverlayRenderPhaseFansOutLanguagesInParallel pins the wall-clock win that
+// motivated the change: with the default width (2) and several languages whose
+// renders each block, more than one render must be in flight at once. A serial
+// implementation would report peak in-flight 1 and fail here.
+func TestOverlayRenderPhaseFansOutLanguagesInParallel(t *testing.T) {
+	enqueuer := &languageCapturingRenderEnqueuer{delay: 40 * time.Millisecond}
+	runner := &Runner{overlayRenderEnqueuer: enqueuer, log: zap.NewNop()}
+	require.Equal(t, DefaultOverlayRenderConcurrency, runner.overlayRenderWorkers())
+
+	result := &GenerateResult{
+		OverlayPlan: &capabilityoverlay.OverlayPlan{
+			SchemaVersion: capabilityoverlay.SchemaVersionPlan, PlanID: "run-en", VideoID: "video-en", Language: "en",
+			Items: []capabilityoverlay.OverlayItem{{ID: "phrase-en"}},
+		},
+		LocalizedOverlayPlans: map[Language]*capabilityoverlay.OverlayPlan{
+			"it": {SchemaVersion: capabilityoverlay.SchemaVersionPlan, PlanID: "run-it", Language: "it", Items: []capabilityoverlay.OverlayItem{{ID: "p-it"}}},
+			"de": {SchemaVersion: capabilityoverlay.SchemaVersionPlan, PlanID: "run-de", Language: "de", Items: []capabilityoverlay.OverlayItem{{ID: "p-de"}}},
+			"fr": {SchemaVersion: capabilityoverlay.SchemaVersionPlan, PlanID: "run-fr", Language: "fr", Items: []capabilityoverlay.OverlayItem{{ID: "p-fr"}}},
+		},
+	}
+	req := defaultTestRequest()
+	req.SourceLanguage = "en"
+	req.Languages = []Language{"it", "de", "fr"}
+	req.Render.Enabled = true
+
+	started := time.Now()
+	require.True(t, runner.runOverlayRenderPhase(context.Background(), "run-parallel", req, ExecutionContext{}, 0, audioCompileState{}, result))
+	elapsed := time.Since(started)
+
+	require.Greater(t, enqueuer.peakInFlight(), 1,
+		"at least two language renders must overlap; in-flight stayed at 1 (serial loop)")
+	require.LessOrEqual(t, enqueuer.peakInFlight(), DefaultOverlayRenderConcurrency,
+		"the fan-out must never exceed the configured width")
+	// 4 plans × 40ms serial would be ≥160ms; two slots bring it under that.
+	require.Less(t, elapsed, 160*time.Millisecond,
+		"4 blocking renders must not be paid sequentially")
+
+	// Determinism: every language still lands on its own key regardless of
+	// completion order.
+	require.Equal(t, "run-en", result.OverlayRender.JobID)
+	require.Equal(t, "run-it", result.LocalizedOverlayRenders["it"].JobID)
+	require.Equal(t, "run-de", result.LocalizedOverlayRenders["de"].JobID)
+	require.Equal(t, "run-fr", result.LocalizedOverlayRenders["fr"].JobID)
+}
+
+// TestSetOverlayRenderConcurrency pins the operator surface: <= 0 restores the
+// certified default, and an explicit value — including the single-slot serial
+// baseline — is honored.
+func TestSetOverlayRenderConcurrency(t *testing.T) {
+	runner := &Runner{}
+	runner.SetOverlayRenderConcurrency(0)
+	require.Equal(t, DefaultOverlayRenderConcurrency, runner.overlayRenderWorkers())
+	runner.SetOverlayRenderConcurrency(-4)
+	require.Equal(t, DefaultOverlayRenderConcurrency, runner.overlayRenderWorkers())
+	runner.SetOverlayRenderConcurrency(1)
+	require.Equal(t, 1, runner.overlayRenderWorkers())
+	runner.SetOverlayRenderConcurrency(3)
+	require.Equal(t, 3, runner.overlayRenderWorkers())
+}
+
+// TestSetSerialModeSerializesOverlayRender keeps the benchmark baseline honest:
+// serial mode must reproduce the pre-parallel chain in EVERY stage, not just TTS
+// and translation.
+func TestSetSerialModeSerializesOverlayRender(t *testing.T) {
+	runner := NewRunner(newInMemRunRepository(), nil, nil, nil, nil)
+	require.Equal(t, DefaultOverlayRenderConcurrency, runner.overlayRenderWorkers())
+	runner.SetSerialMode(true)
+	require.Equal(t, 1, runner.overlayRenderWorkers())
+	runner.SetSerialMode(false)
+	require.Equal(t, DefaultOverlayRenderConcurrency, runner.overlayRenderWorkers())
 }

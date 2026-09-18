@@ -419,6 +419,8 @@ func (c *sceneReadyCoordinator) process(scene Scene) (Scene, error) {
 			if err := c.runner.enqueueLocalizedRender(c.ctx, LocalizedRenderInput{
 				RunID:          c.runID,
 				ParentJobID:    c.exec.JobID,
+				DocsFolderID:   c.routing.DocsFolderID,
+				JobID:          c.exec.JobID,
 				SceneID:        out.ID,
 				SceneIndex:     out.Index,
 				Language:       lang,

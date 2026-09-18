@@ -61,9 +61,9 @@ type SubmitResult struct {
 // that previously lived inline in the api handler:
 //
 //   - ClipDuration: 0 means "no clip-duration override"; otherwise
-//     must be in [3, 30] seconds. The pipeline rejects values outside
+//     must be in [3, 40] seconds. The pipeline rejects values outside
 //     this range as unrunnable (clips < 3s are too short for
-//     transitions / effects; clips > 30s blow the chunk envelope).
+//     transitions / effects; clips > 40s exceed the stock contract).
 //   - TotalMinutes: 0 (or negative) means "use default 5 minutes".
 //
 // Validation is co-located with the domain constructor so the api
@@ -73,8 +73,8 @@ func FromAPIRequest(req *StockSearchAndRunRequest) (*StockCommand, error) {
 	if req == nil {
 		return nil, errors.New("stock: FromAPIRequest: nil *StockSearchAndRunRequest")
 	}
-	if req.ClipDuration != 0 && (req.ClipDuration < 3 || req.ClipDuration > 30) {
-		return nil, fmt.Errorf("stock: clip_duration must be between 3 and 30 seconds (got %d)", req.ClipDuration)
+	if req.ClipDuration != 0 && (req.ClipDuration < 3 || req.ClipDuration > 40) {
+		return nil, fmt.Errorf("stock: clip_duration must be between 3 and 40 seconds (got %d)", req.ClipDuration)
 	}
 	if err := stockpipeline.ValidateDurationContract(req.TargetTotalDurationSeconds, req.TargetDurationPerSourceSeconds, req.ClipsPerSource, req.ClipDurationSeconds, req.DownloadMode); err != nil {
 		return nil, err

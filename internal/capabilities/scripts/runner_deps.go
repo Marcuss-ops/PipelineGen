@@ -55,9 +55,15 @@ func (r *Runner) SetSerialMode(on bool) {
 	if on {
 		r.ttsConcurrency = 1
 		r.translationConcurrency = 1
+		// The overlay render fan-out is part of the "after" DAG too: forcing
+		// it back to one in-flight render keeps the serial baseline a faithful
+		// reproduction of the pre-parallel chain instead of a mix of before
+		// and after behaviour.
+		r.overlayRenderConcurrency = 1
 	} else {
 		r.ttsConcurrency = DefaultTTSConcurrency
 		r.translationConcurrency = DefaultTranslationConcurrency
+		r.overlayRenderConcurrency = DefaultOverlayRenderConcurrency
 	}
 }
 
@@ -458,16 +464,10 @@ func (r *Runner) SetVidRushBarrier(barrier VidRushBarrier) {
 	}
 }
 
-// SetGenerationGate wires the capacity-bounded gate for scene-text
-// generation. Entity extraction uses its own gate via SetNLPGenerationGate.
-func (r *Runner) SetGenerationGate(gate *GenerationGate) {
-	if r != nil {
-		r.generationGate = gate
-	}
-}
-
 // SetNLPGenerationGate wires the independent gate used only by VidRush
-// entity extraction. It must not be reused as the script-writing gate.
+// entity extraction. It must not be reused as the script-writing gate: the
+// scene-text generation gate belongs to the generator engine
+// (Engine.SetGenerationGate), which owns the per-call limit.
 func (r *Runner) SetNLPGenerationGate(gate *GenerationGate) {
 	if r != nil {
 		r.nlpGenerationGate = gate
@@ -484,6 +484,42 @@ func (r *Runner) SetTTSConcurrency(concurrency int) {
 		concurrency = DefaultTTSConcurrency
 	}
 	r.ttsConcurrency = concurrency
+}
+
+// SetOverlayRenderConcurrency sets the multilingual overlay render fan-out
+// width: how many per-language OverlayPlans the overlay_render phase may have
+// in flight against RenderingGen at once. Values <= 0 fall back to the
+// certified default (DefaultOverlayRenderConcurrency). The effective width is
+// additionally clamped to the number of plans that still need rendering, so a
+// single-language run never pays for an idle slot.
+//
+// It is a PIPELINING bound, not a GPU bound: RenderingGen's worker owns
+// worker.gpu_lanes and stays the only authority on concurrent GPU work.
+func (r *Runner) SetOverlayRenderConcurrency(concurrency int) {
+	if r == nil {
+		return
+	}
+	if concurrency <= 0 {
+		concurrency = DefaultOverlayRenderConcurrency
+	}
+	r.overlayRenderConcurrency = concurrency
+}
+
+// overlayRenderWorkers resolves the effective overlay render fan-out width,
+// never returning less than 1 so at least one plan is always submitted.
+func (r *Runner) overlayRenderWorkers() int {
+	if r == nil || r.overlayRenderConcurrency <= 0 {
+		return DefaultOverlayRenderConcurrency
+	}
+	return r.overlayRenderConcurrency
+}
+
+// OverlayRenderConcurrency reports the effective overlay render fan-out width
+// (the certified default when unset). It is read-only wiring: the runner remains
+// the owner of the field, and this exists so the composition root can log the
+// width it actually wired instead of re-deriving it.
+func (r *Runner) OverlayRenderConcurrency() int {
+	return r.overlayRenderWorkers()
 }
 
 // SetTranslationConcurrency sets the bounded translation worker-pool size.

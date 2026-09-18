@@ -389,10 +389,29 @@ func (r *Runner) emitSceneCommit(ctx context.Context, runID string, req Generate
 		return nil
 	}
 	event := NewSceneCommitted(runID, scene, req.SourceLanguage, int64(exec.Attempt))
+	event.SourceText = committedSegmentSourceText(req, scene)
 	if err := observer.OnSceneCommitted(ctx, event); err != nil {
 		return fmt.Errorf("scene %q commit: %w", scene.ID, err)
 	}
 	return nil
+}
+
+// committedSegmentSourceText resolves the immutable evidence belonging to a
+// committed scene. It intentionally never falls back to the generated
+// narration: a missing segment brief remains visible to the enricher as
+// missing evidence instead of silently broadening to the global source.
+func committedSegmentSourceText(req GenerateRequest, scene Scene) string {
+	for _, segment := range req.ScriptParams.Segments {
+		if strings.TrimSpace(segment.ID) == strings.TrimSpace(scene.ID) && strings.TrimSpace(segment.SourceText) != "" {
+			return strings.TrimSpace(segment.SourceText)
+		}
+	}
+	if scene.Index >= 0 && scene.Index < len(req.ScriptParams.Segments) {
+		if source := strings.TrimSpace(req.ScriptParams.Segments[scene.Index].SourceText); source != "" {
+			return source
+		}
+	}
+	return ""
 }
 
 // generateSceneTextStreaming drives the streaming SceneTextStreamer, firing

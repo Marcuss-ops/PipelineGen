@@ -94,9 +94,9 @@ const (
 // (godlike/07 NO-FAKE-AVAILABILITY — no silent "scene" namespace fallback).
 var ErrProjectRequired = errors.New("scriptgeneration: Project is required for voiceover-enabled generation (resolve it once via BuildGenerateRequest before the voiceover phase)")
 
-// ErrMinimumTextGate identifies a durable generation that produced no usable
-// narration or fewer words than the caller's explicit script_params.min_words.
-var ErrMinimumTextGate = errors.New("scriptgeneration: generated text failed the minimum word gate")
+// ErrEmptyGeneratedText identifies a durable generation that produced no
+// narration at all. Word targets and minimums do not gate completion.
+var ErrEmptyGeneratedText = errors.New("scriptgeneration: generated narration is empty")
 
 // ── Document config helper ──────────────────────────────────────────
 

@@ -15,11 +15,17 @@
 //
 // The grounding / entity fan-out helpers below were moved here from
 // vidrush_semantic_chain.go on 2026-09-16 for the same reason. They are pure
-// functions over VisualEntity and the source text — no receiver, no I/O — so
-// they belong with the value contract they operate on rather than in the
-// enricher that calls them. Their contract is deliberately narrow: the model
-// proposes, they only VALIDATE and ground. Nothing here invents an entity, a
-// phrase or a query.
+// functions over VisualEntity and source text — no receiver, no I/O — so they
+// belong with the value contract they operate on. Important phrase candidates
+// are selected in important_phrase_selection.go, then grounded here; entity
+// fan-out helpers validate and project identities without NLP calls.
+//
+// There is deliberately NO model-owned phrase/NLP extraction port: phrase
+// selection is deterministic over the scene text (writer-owned weights +
+// lexicon), and named entities come from VisualNER. The former
+// ImportantPhraseExtractor/BatchImportantPhraseExtractor/SceneNLPExtractor
+// family had zero production readers and was deleted rather than left as a
+// dead alternative to the deterministic path.
 package scriptgeneration
 
 import (
@@ -49,57 +55,6 @@ type VisualEntity struct {
 // production implementation; the rule it enforces is NO EVIDENCE → NO ENTITY.
 type VisualNERPort interface {
 	Extract(ctx context.Context, sourceText string, entityCount int) ([]VisualEntity, error)
-}
-
-// ImportantPhraseExtractor is the NLP semantic phrase surface. It is kept
-// separate from VisualNER: the latter owns named entities, while this port
-// asks the language model to identify meaningful source-grounded fragments.
-type ImportantPhraseExtractor interface {
-	ExtractImportantPhrases(ctx context.Context, sourceText string, limit int, language, model string) ([]string, error)
-}
-
-// BatchImportantPhraseExtractor is the optional batched variant of
-// ImportantPhraseExtractor, satisfied by the language-model adapter.
-//
-// The per-scene shape costs one model call per (scene, language): a 10-scene
-// three-language run paid 30 calls for hints ("key_statement" annotations and
-// Artlist phrases) that never gate the run. The batched shape collapses that to
-// one call per chunk of scenes per language, which is the same structured NLP
-// response the single-scene path already asks for — it is a request-batching
-// change, not a semantic one.
-//
-// Contract: the returned slice has exactly len(sourceTexts) entries, aligned by
-// input position; a segment with no extractable phrase yields an empty (nil is
-// accepted) entry. Callers MUST fall back to ExtractImportantPhrases when this
-// interface is not implemented, and MUST treat an error as "use the per-scene
-// path", never as "no phrases".
-type BatchImportantPhraseExtractor interface {
-	ImportantPhraseExtractor
-	ExtractImportantPhrasesBatch(ctx context.Context, sourceTexts []string, limit int, language, model string) ([][]string, error)
-}
-
-// SceneNLPExtraction is the language-local NLP surface returned by the model.
-// Every value is a candidate copied from that scene's translated text; the
-// runner still applies its own source-span grounding before creating an
-// annotation.
-type SceneNLPExtraction struct {
-	ImportantPhrases []string
-	ImportantWords   []string
-	SpecialNames     []string
-	Entities         []VisualEntity
-}
-
-// SceneNLPExtractor exposes the complete structured extraction for one scene.
-// It is optional so older phrase-only adapters retain their existing contract.
-type SceneNLPExtractor interface {
-	ExtractSceneNLP(ctx context.Context, sourceText string, limit int, language, model string) (SceneNLPExtraction, error)
-}
-
-// BatchSceneNLPExtractor batches the full structured output by language while
-// retaining positional scene alignment.
-type BatchSceneNLPExtractor interface {
-	SceneNLPExtractor
-	ExtractSceneNLPBatch(ctx context.Context, sourceTexts []string, limit int, language, model string) ([]SceneNLPExtraction, error)
 }
 
 // LocalStockResolverPort is the LOCAL FIRST PROVIDER SECOND resolver. The
@@ -144,13 +99,6 @@ func generationPlanLanguage(plan *scriptpkg.ResolvedGenerationPlan) string {
 	return plan.Language
 }
 
-func generationPlanModel(plan *scriptpkg.ResolvedGenerationPlan) string {
-	if plan == nil {
-		return ""
-	}
-	return plan.Model
-}
-
 func groundImportantPhrases(source string, entities []VisualEntity, phrases []string, limit int) []string {
 	if limit <= 0 {
 		limit = len(phrases)
@@ -175,8 +123,8 @@ func groundImportantPhrases(source string, entities []VisualEntity, phrases []st
 			continue
 		}
 		// Keep the phrase surface free of proper-name runs even when the
-		// entity extractor missed a name. This is a validation gate for the
-		// model output, not a phrase generator or a replacement value.
+		// entity extractor missed a name. This validates source-selected or
+		// caller-supplied candidates without rewriting them.
 		if containsProperNamePair(phrase) {
 			continue
 		}
@@ -185,7 +133,7 @@ func groundImportantPhrases(source string, entities []VisualEntity, phrases []st
 			continue
 		}
 		// A phrase is editorial text, not an entity-bearing label. Reject
-		// model spans that overlap any extracted named entity, including
+		// spans that overlap any extracted named entity, including
 		// partial forms such as "LeBron James and Johann" or "Sebastian
 		// Bach". Those belong to the entity surface only.
 		phraseOverlapsEntity := false
