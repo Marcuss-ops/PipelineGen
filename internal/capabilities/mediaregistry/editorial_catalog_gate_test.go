@@ -72,6 +72,34 @@ var (
 // "declares an editorial asset identity / policy".
 var editorialIdentityMarkers = []string{"drive_file_id", "source_drive_file_id", "editing_assets"}
 
+// canonicalRepoRoots derives the repository roots this gate is expected to read
+// from the allowlist itself: the first path segment of every registered
+// projection.
+//
+// Everything else that turns out to be a git checkout is a VIEW of some tree —
+// a baseline worktree kept for comparison, a scratch clone — and scanning it
+// re-finds canonical files under paths the allowlist can never describe, so the
+// gate goes red for a copy it cannot fix. That is not a hypothetical: a
+// `git worktree add` under the project root is enough to block every push, and
+// the operator's only recourse would be to delete someone else's checkout. The
+// gate is about AUTHORED files, so nested checkouts are skipped rather than
+// reported.
+func canonicalRepoRoots() map[string]bool {
+	roots := make(map[string]bool, len(gatedEditorialCatalogProjections))
+	for rel := range gatedEditorialCatalogProjections {
+		segment, _, _ := strings.Cut(rel, "/")
+		roots[segment] = true
+	}
+	return roots
+}
+
+// isNestedCheckout reports whether dir is the root of a git checkout: a `.git`
+// directory for a clone, a `.git` FILE for a linked worktree or a submodule.
+func isNestedCheckout(dir string) bool {
+	_, err := os.Lstat(filepath.Join(dir, ".git"))
+	return err == nil
+}
+
 // editorialAliasPattern matches any canonical editorial alias as a whole word,
 // built from the registry so a newly bound alias is covered automatically.
 func editorialAliasPattern() *regexp.Regexp {
@@ -103,9 +131,28 @@ func TestNoUngatedEditorialCatalogProjection(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(root, "refactored", "go.mod")); err != nil {
 		t.Skipf("repository root not reachable from this test: %v", err)
 	}
-	pattern := editorialAliasPattern()
 
+	offenders, walkErr := scanUngatedEditorialCatalogs(root, editorialAliasPattern())
+	if walkErr != nil {
+		t.Fatalf("walk %s: %v", root, walkErr)
+	}
+	if len(offenders) > 0 {
+		sort.Strings(offenders)
+		t.Errorf("these files declare editorial asset identities but no drift gate covers them:\n  %s\n\n"+
+			"An editorial asset has ONE owner: internal/capabilities/mediaregistry. Either add a drift gate "+
+			"that derives the file from the registry and register it in gatedEditorialCatalogProjections, "+
+			"or stop describing editorial assets there.",
+			strings.Join(offenders, "\n  "))
+	}
+}
+
+// scanUngatedEditorialCatalogs walks the project root and returns every file
+// that looks like an editorial catalog without a registered drift gate.
+// Nested git checkouts are skipped: see canonicalRepoRoots.
+func scanUngatedEditorialCatalogs(root string, pattern *regexp.Regexp) ([]string, error) {
+	canonical := canonicalRepoRoots()
 	var offenders []string
+
 	walkErr := filepath.WalkDir(root, func(path string, entry fs.DirEntry, err error) error {
 		if err != nil {
 			// Unreadable subtrees are not this gate's business.
@@ -117,6 +164,12 @@ func TestNoUngatedEditorialCatalogProjection(t *testing.T) {
 			}
 			if catalogScanSkipDirs[entry.Name()] || strings.HasPrefix(entry.Name(), ".") {
 				return fs.SkipDir
+			}
+			if rel, relErr := filepath.Rel(root, path); relErr == nil {
+				slashRel := filepath.ToSlash(rel)
+				if !canonical[slashRel] && isNestedCheckout(path) {
+					return fs.SkipDir
+				}
 			}
 			return nil
 		}
@@ -142,15 +195,50 @@ func TestNoUngatedEditorialCatalogProjection(t *testing.T) {
 		return nil
 	})
 	if walkErr != nil {
-		t.Fatalf("walk %s: %v", root, walkErr)
+		return nil, walkErr
 	}
-	if len(offenders) > 0 {
-		sort.Strings(offenders)
-		t.Errorf("these files declare editorial asset identities but no drift gate covers them:\n  %s\n\n"+
-			"An editorial asset has ONE owner: internal/capabilities/mediaregistry. Either add a drift gate "+
-			"that derives the file from the registry and register it in gatedEditorialCatalogProjections, "+
-			"or stop describing editorial assets there.",
-			strings.Join(offenders, "\n  "))
+	sort.Strings(offenders)
+	return offenders, nil
+}
+
+// TestScanSkipsNestedCheckoutsButStillReadsCanonicalRoots is the self-test of
+// the scan's skip rule: a scratch worktree placed under the project root must
+// not be reported (its files are copies, and the allowlist cannot name them),
+// while the project's own repository roots must still be scanned. Without the
+// second half this test would pass for a scan that reads nothing at all.
+func TestScanSkipsNestedCheckoutsButStillReadsCanonicalRoots(t *testing.T) {
+	root := t.TempDir()
+	catalog := `{"bgm3":{"asset_id":"bgm3","drive_file_id":"abc"}}`
+
+	// A linked worktree (`.git` is a FILE) with a catalog copy inside.
+	scratch := filepath.Join(root, "verify-baseline-wt", "ops", "jobs")
+	if err := os.MkdirAll(scratch, 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "verify-baseline-wt", ".git"), []byte("gitdir: /tmp/elsewhere\n"), 0o600); err != nil {
+		t.Fatalf("write .git file: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(scratch, "bgm_catalog.json"), []byte(catalog), 0o600); err != nil {
+		t.Fatalf("write scratch catalog: %v", err)
+	}
+
+	// The project's own root (no `.git` here in the fixture) with an UNGATED
+	// catalog: it must still be found, or the skip rule would be a mute button.
+	canonicalDir := filepath.Join(root, "refactored", "ops", "jobs")
+	if err := os.MkdirAll(canonicalDir, 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(canonicalDir, "ungated_catalog.json"), []byte(catalog), 0o600); err != nil {
+		t.Fatalf("write ungated catalog: %v", err)
+	}
+
+	offenders, err := scanUngatedEditorialCatalogs(root, editorialAliasPattern())
+	if err != nil {
+		t.Fatalf("scan: %v", err)
+	}
+	if len(offenders) != 1 || offenders[0] != "refactored/ops/jobs/ungated_catalog.json" {
+		t.Fatalf("offenders = %v, want exactly the canonical ungated catalog "+
+			"(the nested checkout must be skipped, and the canonical root must not)", offenders)
 	}
 }
 

@@ -216,27 +216,40 @@ func (f *VidRushProviderFanout) ResolveProviders(ctx context.Context, plan *scri
 	// no goroutine reads the shared `updated` result while the collector below
 	// mutates its Assets fields. This makes the fanout merge race-free and
 	// deterministic regardless of provider completion order.
+	//
+	// The whole-struct helpers the providers call (youtubeQuery,
+	// segmentSceneDurationMs, estimatedSegmentDurationMs,
+	// personCatalogIdentityForSegmentQuery, artlistMatchesToCandidates) take
+	// scriptpkg.VidRushSegmentResult BY VALUE, so every call copies the ENTIRE
+	// struct — the Assets slice headers and the Cache strings included, i.e.
+	// exactly the words the collector rewrites. Handing them `updated` raced
+	// the collector (race detector: write in mergeVidRushProviderOutcome vs
+	// read in ResolveProviders.func1). The goroutines therefore get their own
+	// deep copy: a private value no other goroutine writes, so both the copy
+	// and every helper reading it stay race-free while the collector keeps its
+	// streaming merge.
 	perQueryLimit := fanoutPlan.perQueryLimit
 	segmentID := fanoutPlan.segmentID
 	textHash := fanoutPlan.textHash
 	artlistQueries := fanoutPlan.artlistQueries
 	imageQueries := fanoutPlan.imageQueries
 	youtubeSources := fanoutPlan.youtubeSources
+	workerInput := CloneVidRushSegmentResult(updated)
 	// Keep the complete canonical identity when converting Artlist matches.
 	// Using only SegmentID would silently reset Position/TextHash and make a
 	// valid candidate indistinguishable from a foreign-segment binding.
-	artlistIdentity := updated
+	artlistIdentity := workerInput
 
 	if youtubeEnabled && len(youtubeSources) > 0 {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
 			candidates, err := f.youtube.Search(ctx, scriptports.VidRushSearchRequest{
-				SegmentID: segmentID, Position: updated.Position, SceneID: plan.Title, TextHash: textHash, Text: updated.Text,
-				Query: youtubeQuery(updated), Limit: 3,
+				SegmentID: segmentID, Position: workerInput.Position, SceneID: plan.Title, TextHash: textHash, Text: workerInput.Text,
+				Query: youtubeQuery(workerInput), Limit: 3,
 				TargetDurationMs:    segmentDurationMs,
-				SceneDurationMs:     segmentSceneDurationMs(updated),
-				EstimatedDurationMs: estimatedSegmentDurationMs(updated, plan),
+				SceneDurationMs:     segmentSceneDurationMs(workerInput),
+				EstimatedDurationMs: estimatedSegmentDurationMs(workerInput, plan),
 				SemanticProfile:     semanticProfile,
 				Sources:             youtubeSources,
 			})
@@ -364,7 +377,7 @@ func (f *VidRushProviderFanout) ResolveProviders(ctx context.Context, plan *scri
 				// the research path where the generated scene text (and thus
 				// TextHash) is non-deterministic across runs.
 				entityCacheKey := versionedSegmentCacheKey("discovery", scriptports.DiscoveryCacheVersion, strings.ToLower(strings.TrimSpace(plan.Topic)), strings.ToLower(strings.TrimSpace(query)), plan.Language)
-				catalogIdentity, catalogEligible, catalogErr := personCatalogIdentityForSegmentQuery(updated, query)
+				catalogIdentity, catalogEligible, catalogErr := personCatalogIdentityForSegmentQuery(workerInput, query)
 				if catalogErr != nil {
 					outcomes <- vidRushProviderOutcome{provider: "internet_images", err: catalogErr}
 					return
@@ -460,7 +473,7 @@ func (f *VidRushProviderFanout) ResolveProviders(ctx context.Context, plan *scri
 					searched, err := f.images.SearchImages(ctx, InternetImageSearchRequest{
 						// The query is the identity surface for entity-image
 						// searches; preserve it through provider normalization.
-						SegmentID: segmentID, Position: updated.Position, Query: query, Entity: query,
+						SegmentID: segmentID, Position: workerInput.Position, Query: query, Entity: query,
 						TextHash: textHash, Language: plan.Language, Limit: perQueryLimit,
 						Provider: "internet_images",
 					})

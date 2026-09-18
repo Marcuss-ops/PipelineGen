@@ -347,8 +347,19 @@ func getLiveJob(t *testing.T, ctx context.Context, client *http.Client, baseURL,
 		return nil, "", err
 	}
 	req.Header.Set("Authorization", "Bearer "+token)
-	resp, err := client.Do(req)
-	if err != nil {
+	var resp *http.Response
+	for attempt := 0; attempt < 10; attempt++ {
+		resp, err = client.Do(req)
+		if err == nil {
+			break
+		}
+		if attempt < 9 && ctx.Err() == nil {
+			time.Sleep(1 * time.Second)
+			// Recreate request body if any, though GET has no body
+			req, _ = http.NewRequestWithContext(ctx, http.MethodGet, baseURL+"/api/jobs/"+jobID+"/full", nil)
+			req.Header.Set("Authorization", "Bearer "+token)
+			continue
+		}
 		return nil, "", err
 	}
 	defer resp.Body.Close()
