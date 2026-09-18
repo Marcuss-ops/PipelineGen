@@ -166,11 +166,12 @@ var routeDescriptions = map[string]string{
 	"POST /api/jobs/:id/retry":  "Retry a failed job",
 
 	// ── Clips ─────────────────────────────────────────────────
-	"POST /api/clips/process":    "Download and process clips",
-	"POST /api/clips/render":     "Render a canonical clip into a VeloxEditing-compatible derived clip (background/watermark/subtitles, async clip.render job)",
-	"GET /api/clips/info":        "Get YouTube video metadata",
-	"GET /api/clips/search":      "Search and rank YouTube videos by topic",
-	"GET /api/clips/diagnostics": "Clips diagnostics",
+	"POST /api/clips/process":      "Download and process clips",
+	"POST /api/clips/render":       "Render a canonical clip into a VeloxEditing-compatible derived clip (background/watermark/subtitles, async clip.render job)",
+	"POST /api/clips/render/batch": "Render up to 50 canonical clips with fingerprint deduplication and async clip.render jobs",
+	"GET /api/clips/info":          "Get YouTube video metadata",
+	"GET /api/clips/search":        "Search and rank YouTube videos by topic",
+	"GET /api/clips/diagnostics":   "Clips diagnostics",
 
 	// ── Media / Clips ─────────────────────────────────────────
 	"POST /api/media/clips/ingest/ai-stock": "Ingest an AI-generated stock clip from visual analysis + Drive video",
