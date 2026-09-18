@@ -60,10 +60,12 @@ func (r *RenderRequest) Fingerprint() (string, error) {
 		return "", fmt.Errorf("clip.render fingerprint: normalized request invalid: %w", err)
 	}
 	// Canonical JSON projection: only the fields that affect the rendered
-	// bytes. Destination drive folder and idempotency headers are
-	// intentionally excluded — the same render published to two folders
-	// is still one render (the Drive outbox handles fan-out). Queue
-	// correlation IDs are also excluded.
+	// bytes or the requested editorial delivery lineage. The root Drive
+	// folder remains excluded because it is an infrastructure routing detail,
+	// but subfolder_name is included: it identifies the user-visible clip
+	// collection, and a request for a new collection must not be served from
+	// the previous collection's cache entry. Queue correlation IDs and
+	// idempotency headers are excluded.
 	type fp struct {
 		SourceAssetID string           `json:"source_asset_id"`
 		Background    *BackgroundSpec  `json:"background"`
@@ -74,6 +76,7 @@ func (r *RenderRequest) Fingerprint() (string, error) {
 		Audio         *AudioSpec       `json:"audio"`
 		Overlays      []OverlayRefSpec `json:"overlays,omitempty"`
 		Execution     *ExecutionSpec   `json:"execution,omitempty"`
+		SubfolderName string           `json:"subfolder_name,omitempty"`
 	}
 	canonical := fp{
 		SourceAssetID: cp.SourceAssetID,
@@ -85,6 +88,7 @@ func (r *RenderRequest) Fingerprint() (string, error) {
 		Audio:         cp.Audio,
 		Overlays:      cp.Overlays,
 		Execution:     cp.Execution,
+		SubfolderName: cp.Destination.SubfolderName,
 	}
 	b, err := json.Marshal(canonical)
 	if err != nil {
