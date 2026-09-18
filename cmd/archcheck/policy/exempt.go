@@ -84,6 +84,14 @@ var TestOnlySupportFiles = map[string]bool{
 	"internal/platform/sqlite/assets/imagesregistry/testsupport/clip_writer_helpers.go":               true,
 	"internal/platform/sqlite/assets/imagesregistry/testsupport/index_request_committer.go":           true,
 	"internal/platform/sqlite/assets/imagesregistry/testsupport/sqlite_asset_committer_testdouble.go": true,
+	// sqlite_asset_committer_surface.go was split OUT of
+	// sqlite_asset_committer_testdouble.go on 2026-09-18 to bring that file
+	// back under the 600-LOC strict cap: the commit-normalisation helpers and
+	// the media-asset mutation surface moved verbatim. Same package, same
+	// test-only import discipline (verified: only _test.go files import this
+	// package). It is a reviewable addition to the closed set, NOT a directory
+	// exemption — a re-created production SQLite writer still trips the gate.
+	"internal/platform/sqlite/assets/imagesregistry/testsupport/sqlite_asset_committer_surface.go": true,
 }
 
 // IsTestOnlySupportFile reports whether a repo-relative path is exactly one of
