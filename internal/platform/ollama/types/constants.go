@@ -17,9 +17,17 @@ const (
 	DefaultTemperature     = 0.35
 	DefaultNumPredict      = 16384
 	// ProductionRunnerContext is the single resident Ollama runner used by
-	// script generation. 8192 covers the long entity canary as well as short
-	// scenes, preventing a 4096↔8192 runner rebuild in the first real request.
-	ProductionRunnerContext = 8192
+	// script generation, and it must be the WIDEST bucket any production caller
+	// asks for. Ollama tears down and reloads a resident model whenever a
+	// request changes num_ctx, so a narrower value here re-opens the thrash it
+	// was introduced to prevent: research prompts and long scenes resolved to
+	// 16384 while the warm probe and short scenes pinned 8192, so ONE round trip
+	// paid TWO full reloads. Measured on the RTX A4000 (gemma4:e4b): 8192 ->
+	// 1.48 s, 8192 again (warm) -> 2.08 s, switch to 16384 -> 37.13 s, switch
+	// back to 8192 -> 97.73 s. Pinning the resident bucket at 16384 — the widest
+	// context any production prompt needs, matching DefaultNumCtx below — keeps
+	// ONE runner resident and removes the reload from the critical path.
+	ProductionRunnerContext = 16384
 	// DefaultNumCtx is the Ollama context window sent for script generation.
 	// Research-sourced prompts embed the full resolved source text twice
 	// (editorial "Source text:" block + the template's "REFERENCE INPUT"
