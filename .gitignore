@@ -159,8 +159,9 @@ __pycache__/
 **/*.db.sqlite.bak
 google-accounting/profiles/
 
-# Local state and data
-storage/
+# Local state and data (anchored so only root-level /storage is ignored —
+# unanchored storage/ previously ate internal/platform/storage/)
+/storage/
 !internal/storage/
 !internal/capabilities/assets/storage/
 .qdrant-initialized
