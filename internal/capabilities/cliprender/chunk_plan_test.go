@@ -51,6 +51,25 @@ func resealed(t *testing.T, plan ClipRenderPlanV1, mutate func(*ClipRenderPlanV1
 	return plan
 }
 
+// resealChunkIDs rewrites every window's JobID from its CURRENT boundaries.
+//
+// It exists so a validator case can isolate ONE guard. Validate() ends with an
+// identity check (`c.JobID != chunkJobID(...)`), so any case that edits a
+// boundary is ALSO refused by that check — and the guard the case names is then
+// never exercised alone, i.e. the case passes for the wrong reason. Resealing the
+// ids removes the identity rejection and leaves the named guard as the only one
+// that can refuse the family.
+//
+// This is not a stylistic preference: the mutation probes in
+// chunk_mutation_probe_test.go disable each guard in turn and require this test
+// to fail. Removing the reseal here makes those probes fail, which is how the
+// isolation is enforced rather than merely intended.
+func resealChunkIDs(s *ChunkSet) {
+	for i := range s.Chunks {
+		s.Chunks[i].JobID = chunkJobID(s.PlanSHA256, s.Chunks[i].StartFrame, s.Chunks[i].EndFrame)
+	}
+}
+
 // TestBuildChunkSetIsAnExactPartition is the core acceptance criterion: whatever
 // the request, the windows must cover the timeline exactly once.
 func TestBuildChunkSetIsAnExactPartition(t *testing.T) {
@@ -249,16 +268,24 @@ func TestChunkSetValidateIsTheAssemblyGate(t *testing.T) {
 		t.Fatalf("a built set must validate: %v", err)
 	}
 
+	// Boundary-editing cases reseal the window ids (resealChunkIDs) so the guard
+	// they NAME is the only one that can refuse them.
 	broken := []struct {
 		name   string
 		mutate func(*ChunkSet)
 	}{
-		{"gap", func(s *ChunkSet) { s.Chunks[1].StartFrame += 48 }},
-		{"overlap", func(s *ChunkSet) { s.Chunks[1].StartFrame -= 48 }},
-		{"unaligned start", func(s *ChunkSet) { s.Chunks[1].StartFrame += 1; s.Chunks[1].EndFrame += 1 }},
+		{"gap", func(s *ChunkSet) { s.Chunks[1].StartFrame += 48; resealChunkIDs(s) }},
+		{"overlap", func(s *ChunkSet) { s.Chunks[1].StartFrame -= 48; resealChunkIDs(s) }},
+		{"unaligned start", func(s *ChunkSet) {
+			// A contiguous, exact cover whose middle window starts off the
+			// keyframe grid: only the alignment guard can refuse it.
+			s.Chunks[0].EndFrame = 49
+			s.Chunks[1].StartFrame = 49
+			resealChunkIDs(s)
+		}},
 		{"missing tail", func(s *ChunkSet) { s.Chunks = s.Chunks[:len(s.Chunks)-1] }},
-		{"short last window", func(s *ChunkSet) { s.Chunks[len(s.Chunks)-1].EndFrame -= 1 }},
-		{"empty window", func(s *ChunkSet) { s.Chunks[0].EndFrame = s.Chunks[0].StartFrame }},
+		{"short last window", func(s *ChunkSet) { s.Chunks[len(s.Chunks)-1].EndFrame -= 1; resealChunkIDs(s) }},
+		{"empty window", func(s *ChunkSet) { s.Chunks[0].EndFrame = s.Chunks[0].StartFrame; resealChunkIDs(s) }},
 		{"reordered", func(s *ChunkSet) { s.Chunks[0], s.Chunks[1] = s.Chunks[1], s.Chunks[0] }},
 		{"forged id", func(s *ChunkSet) { s.Chunks[0].JobID = "chunk-forged" }},
 		{"no digest", func(s *ChunkSet) { s.PlanSHA256 = "" }},
