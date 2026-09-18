@@ -61,6 +61,24 @@ func TestFingerprint_ExcludesDestination(t *testing.T) {
 	}
 }
 
+func TestFingerprint_IncludesDestinationSubfolder(t *testing.T) {
+	a := &RenderRequest{SourceAssetID: "yt_0ElQTzSx3ec_72_91_v1", Destination: &DestinationSpec{SubfolderName: "Dolly Parton Run A"}}
+	b := &RenderRequest{SourceAssetID: "yt_0ElQTzSx3ec_72_91_v1", Destination: &DestinationSpec{SubfolderName: "Dolly Parton Run B"}}
+	a.Normalize()
+	b.Normalize()
+	fpA, err := a.Fingerprint()
+	if err != nil {
+		t.Fatalf("Fingerprint A: %v", err)
+	}
+	fpB, err := b.Fingerprint()
+	if err != nil {
+		t.Fatalf("Fingerprint B: %v", err)
+	}
+	if fpA == fpB {
+		t.Fatalf("destination subfolder must distinguish delivery lineages: %q", fpA)
+	}
+}
+
 // classicPaleOliveRequest builds the canonical day-1 benchmark request: the
 // Pale Olive Classic (`classic1`) video plate behind a burned subtitle track
 // and a top-right text watermark, rendered under a full-GPU execution demand.
