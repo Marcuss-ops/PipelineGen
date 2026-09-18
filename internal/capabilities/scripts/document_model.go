@@ -38,7 +38,7 @@ func modelScriptOutputForDocument(result *GenerateResult, language Language) *sc
 		Render:  result.Render,
 	}
 	var allText []string
-	renderedLinks := latestLocalizedRenderLinks(result)
+	renderedLinks := localizedRenderLinksFor(result, language)
 	for _, scene := range result.Scenes {
 		text := strings.TrimSpace(scene.Text[language])
 		if !scene.ExecutionMode.IsFixedMedia() && text != "" {
@@ -172,20 +172,55 @@ func documentUsesSourceAnnotations(result *GenerateResult, language Language) bo
 	return true
 }
 
-// latestLocalizedRenderLinks is the document projection of the render
-// certificate. The source clip IDs remain unchanged in the request/result;
-// only the link exposed to the document is replaced by the newest successful
-// render for that clip. This also makes resumed runs safe when the source
-// ClipReference was restored from an older checkpoint.
-func latestLocalizedRenderLinks(result *GenerateResult) map[string]string {
+// localizedRenderLinksFor is the document projection of the render
+// certificate for ONE document language. The source clip IDs remain unchanged
+// in the request/result; only the link exposed to the document is replaced by
+// the newest successful render of that clip FOR THIS LANGUAGE. This also makes
+// resumed runs safe when the source ClipReference was restored from an older
+// checkpoint.
+//
+// The language is part of the key, not decoration. One clip is rendered once
+// per language (clip X has a French and a Spanish MP4), and the document of
+// language L is rendered from the ONE run result — so a projection keyed on
+// the clip alone resolved to whichever language finished last and every
+// language's document showed the same, usually foreign, video.
+//
+// Resolution rules for a clip:
+//  1. the newest render whose language IS the requested one;
+//  2. a legacy render with no language (rows written before the per-language
+//     contract existed) fills the gap only when (1) is absent;
+//  3. otherwise nothing is substituted and the source clip link is kept — the
+//     same surface a run with no render fan-out produces.
+//
+// A render of a DIFFERENT language is deliberately never a candidate: a
+// document built for language X must not link language Y's video merely
+// because that video exists.
+func localizedRenderLinksFor(result *GenerateResult, language Language) map[string]string {
 	links := make(map[string]string)
 	if result == nil {
 		return links
 	}
+	legacy := make(map[string]string)
 	for _, rendered := range result.LocalizedRenders {
 		clipID := strings.TrimSpace(rendered.ClipID)
 		link := strings.TrimSpace(rendered.DriveLink)
-		if clipID != "" && link != "" {
+		if clipID == "" || link == "" {
+			continue
+		}
+		renderLanguage := strings.TrimSpace(string(rendered.Language))
+		switch {
+		case renderLanguage == "":
+			// Pre-contract checkpoint row: usable, but never in preference to
+			// a render that states its own language.
+			legacy[clipID] = link
+		case language == "" || rendered.Language == language:
+			// An empty requested language means "not requested": every render
+			// is a candidate and the newest one wins (legacy behaviour).
+			links[clipID] = link
+		}
+	}
+	for clipID, link := range legacy {
+		if _, ok := links[clipID]; !ok {
 			links[clipID] = link
 		}
 	}
