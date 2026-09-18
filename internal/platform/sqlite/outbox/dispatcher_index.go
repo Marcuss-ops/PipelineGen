@@ -10,6 +10,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
+	capregistry "github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaregistry"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/idempotency"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/imagesregistry"
@@ -91,6 +92,32 @@ func buildPortableCommitRequest(clip *asset.Asset, contentHash string, emitIndex
 			LegacyFileMD5: contentHash, IsPrimary: len(locations) == 0,
 		})
 	}
+	// Producer-declared taxonomy overrides are honoured so that a clip whose
+	// producer declared its taxonomy — notably a stock clip declaring
+	// asset_kind="stock_video" / semantic_role="stock" — commits the SAME
+	// dimensions the stock job finalizer's spine write resolves for the same
+	// asset. Two producers committing one asset must not disagree on taxonomy,
+	// or the persisted row is decided by arrival order: the media upsert
+	// writes taxonomy insert-wins / COALESCE-keep, so whichever writer runs
+	// second can silently restamp semantic_role (the September 2026 stock
+	// certification observed semantic_role="discovery" persisted for a
+	// YouTube-acquired stock clip for exactly this reason).
+	//
+	// When the producer declares nothing, Taxonomy stays zero and the
+	// committer keeps its previous behaviour (COALESCE-keep of the stored
+	// dimensions), so no legacy producer's projection changes.
+	//
+	// A resolve error is not surfaced here because it can only mean the
+	// producer declared an empty-but-present dimension; the committer's own
+	// contract validation (ErrAssetCommitIndexTaxonomyRequired /
+	// CommitRequest.Validate) is the owner of that diagnosis.
+	taxonomy, _, _ := capregistry.ResolveDeclaredTaxonomy(capregistry.TaxonomyInput{
+		AssetID:      clip.ID,
+		Provider:     string(clip.Source),
+		MediaType:    capregistry.MediaType(mediaType),
+		AssetKind:    capregistry.AssetKind(clip.GetMetadataString("asset_kind")),
+		SemanticRole: clip.GetMetadataString("semantic_role"),
+	})
 	return persistence.CommitRequest{
 		AssetID: clip.ID, Source: string(clip.Source), Name: name, Filename: filename,
 		MediaType: mediaType, Category: clip.Category, DurationMs: clip.Duration.Milliseconds(),
@@ -99,6 +126,7 @@ func buildPortableCommitRequest(clip *asset.Asset, contentHash string, emitIndex
 		LocalPath: clip.LocalPath(), FolderID: clip.FolderID(), FolderPath: clip.FolderPath(),
 		ThumbnailURL: clip.ThumbnailURL, SourceURL: clip.SourceURL, Title: name,
 		Metadata: persistence.TypedMetadata{Extra: clip.Metadata}, Locations: locations,
+		Taxonomy:       taxonomy,
 		EmitIndexEvent: emitIndexEvent,
 	}
 }

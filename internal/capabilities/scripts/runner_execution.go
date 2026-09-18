@@ -248,6 +248,12 @@ func (e *executionRun) translate() bool {
 // in parallel with TTS (the production DAG). It owns the prepare-branch
 // concurrency lifecycle (cancellation, join, projection) and the checkpoint
 // after the fan-out. Returns false on a terminal error.
+//
+// Translated NLP is part of the fan-out, not a post-join step: it depends on
+// the translations and the SOURCE annotations only, never on TTS, so the
+// parallel path runs it on the semantic branch while TTS is still in flight
+// (see parallelFanOut). The serial path keeps the historical ordering so the
+// "before" baseline stays a faithful reproduction.
 func (e *executionRun) sceneTextReady() bool {
 	e.snapshot = snapshotSceneText(e.result.Scenes, e.req.SourceLanguage)
 
@@ -258,9 +264,6 @@ func (e *executionRun) sceneTextReady() bool {
 		ok = e.parallelFanOut()
 	}
 	if ok {
-		if err := e.r.runTranslatedNLP(e.ctx, e.req, e.result); err != nil {
-			return e.fail(StageTranslatingScenes, err)
-		}
 		e.result.SourceTrace = sourceTraceFromResult(e.result)
 	}
 	return ok
@@ -281,6 +284,11 @@ func (e *executionRun) serialFanOut() bool {
 	if !ok {
 		return false
 	}
+	// The serial baseline reproduces the pre-parallel chain literally:
+	// entities → voiceover → translated NLP, one after the other.
+	if err := e.r.runTranslatedNLP(e.ctx, e.req, e.result); err != nil {
+		return e.fail(StageTranslatingScenes, err)
+	}
 	e.checkpoint()
 	return true
 }
@@ -298,7 +306,22 @@ func (e *executionRun) parallelFanOut() bool {
 	semanticDone := make(chan vidRushPrepareOutcome, 1)
 	go func() {
 		res, err := e.r.runVidRushJoinAndPrepare(prepareCtx, e.runID, e.req, e.snapshot)
-		semanticDone <- vidRushPrepareOutcome{result: res, err: err}
+		if err != nil {
+			semanticDone <- vidRushPrepareOutcome{err: err}
+			return
+		}
+		// Translated NLP rides the SAME branch as the prepare it depends on.
+		// It needs the translations (final since the translate phase) and the
+		// source annotations just computed — never TTS. Computing it here
+		// overlaps it with the TTS branch still in flight instead of queueing it
+		// behind the global join, where it used to be pure serial tail latency.
+		//
+		// It computes VALUES only: the application runs on this phase goroutine
+		// after the join, because the TTS writer snapshots whole Scene structs
+		// (localizedRenderClipFields) and marshals the result per unit, so any
+		// concurrent write onto result.Scenes would be a data race.
+		localized, nlpErr := e.r.computeLocalizedAnnotations(prepareCtx, e.req, e.result, res.annotations)
+		semanticDone <- vidRushPrepareOutcome{result: res, localizedAnnotations: localized, nlpErr: nlpErr}
 	}()
 
 	// DocsPrepare and audio prefetch are independent of semantic enrichment;
@@ -368,6 +391,12 @@ func (e *executionRun) parallelFanOut() bool {
 		return e.fail(StageGeneratingSceneText, semanticOutcome.err)
 	}
 	applyVidRushPrepareProjections(e.result, semanticOutcome.result)
+	if semanticOutcome.nlpErr != nil {
+		return e.fail(StageTranslatingScenes, semanticOutcome.nlpErr)
+	}
+	// Apply the translated annotations on THIS goroutine: the semantic branch
+	// only computed them, so the durable result has exactly one writer.
+	applyLocalizedAnnotations(e.result, semanticOutcome.localizedAnnotations)
 	e.skeletons = assetsOutcome.skeletons
 	// Store the prefetched audio assets so the audio-compile phase consumes
 	// them without blocking on I/O.

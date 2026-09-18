@@ -168,10 +168,11 @@ func entitySourcesFromAnnotations(ann *scriptpkg.SceneAnnotations, sceneText str
 	return out
 }
 
-// annotationSpokenSurface preserves a small grammatical suffix that is part
-// of the spoken phrase but not part of the canonical identity. This keeps the
-// entity timeline anchored to the real TTS words while the overlay identity
-// remains stable (e.g. "Dolly Parton" vs "Dolly Parton's").
+// annotationSpokenSurface returns the exact text at the grounded mention span
+// for the TTS lookup. The annotation's canonical identity is deliberately not
+// used to reconstruct a localized surface (for example "Mike Tyson" must not
+// replace the German spoken "Mike Tysons"). For legacy source annotations
+// whose span ends before an English possessive suffix, retain that suffix.
 func annotationSpokenSurface(text, canonical string, mentions []scriptpkg.AnnotationSpan) string {
 	if len(mentions) == 0 {
 		return canonical
@@ -181,16 +182,14 @@ func annotationSpokenSurface(text, canonical string, mentions []scriptpkg.Annota
 	if mention.StartRune < 0 || mention.EndRune <= mention.StartRune || mention.EndRune > len(runes) {
 		return canonical
 	}
-	if !strings.EqualFold(string(runes[mention.StartRune:mention.EndRune]), canonical) {
-		return canonical
-	}
+	surface := string(runes[mention.StartRune:mention.EndRune])
 	end := mention.EndRune
-	if end < len(runes) && (runes[end] == '\'' || runes[end] == '’') {
+	if strings.EqualFold(surface, canonical) && end < len(runes) && (runes[end] == '\'' || runes[end] == '’') {
 		end++
 		if end < len(runes) && (runes[end] == 's' || runes[end] == 'S') {
 			end++
 		}
-		return string(runes[mention.StartRune:end])
+		surface = string(runes[mention.StartRune:end])
 	}
-	return canonical
+	return surface
 }

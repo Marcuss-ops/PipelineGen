@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"sync"
 	"testing"
 
 	mediadomain "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
@@ -251,7 +252,7 @@ func TestRunTranslatedNLPGroundsSourceNamesInTheTranslatedSurface(t *testing.T) 
 	}
 	hasTyson, hasLasVegas, hasFalsePerson := false, false, false
 	for _, entity := range annotations.PrimaryEntities {
-		hasTyson = hasTyson || entity.CanonicalName == "Mike Tyson" && entity.Type == "PERSON"
+		hasTyson = hasTyson || entity.CanonicalName == "Mike Tysons" && entity.Type == "PERSON"
 		hasLasVegas = hasLasVegas || entity.CanonicalName == "Las Vegas" && entity.Type == "GPE"
 		hasFalsePerson = hasFalsePerson || entity.CanonicalName == "Viele Gegner"
 	}
@@ -262,8 +263,8 @@ func TestRunTranslatedNLPGroundsSourceNamesInTheTranslatedSurface(t *testing.T) 
 	for _, name := range annotations.SpecialNames {
 		names[name.Text] = true
 	}
-	if len(names) != 2 || !names["Mike Tyson"] || !names["Las Vegas"] {
-		t.Fatalf("localized special names = %+v, want complete grounded names only", annotations.SpecialNames)
+	if len(names) != 2 || !names["Mike Tysons"] || !names["Las Vegas"] {
+		t.Fatalf("localized special names = %+v, want complete spoken names only", annotations.SpecialNames)
 	}
 }
 
@@ -288,6 +289,48 @@ func TestGroundLocalizedSourceEntitiesProjectsPolishInflection(t *testing.T) {
 	// A prefix resemblance alone is not enough to project a source identity.
 	if falsePositive := matchLocalizedSourceEntities("Mikea Tysonic opowieść.", "pl", source); len(falsePositive) != 0 {
 		t.Fatalf("unrelated Polish tokens were projected as Mike Tyson: %+v", falsePositive)
+	}
+}
+
+func TestRunTranslatedNLPKeepsGermanMentionSurfaceForTiming(t *testing.T) {
+	runner := &Runner{vidRushPipeline: &VidRushPipeline{}}
+	req := GenerateRequest{
+		SourceLanguage: "en", Languages: []Language{"de"}, Model: "test-model",
+		MediaPlan: translatedNLPMediaPlan(),
+	}
+	result := &GenerateResult{Scenes: []Scene{{
+		ID: "scene-1", Index: 0,
+		Text: map[Language]string{
+			"en": "Mike Tyson changed boxing forever.",
+			"de": "Mike Tysons Karriere veränderte den Boxsport.",
+		},
+		Annotations: &scriptpkg.SceneAnnotations{Language: "en", PrimaryEntities: []scriptpkg.AnnotatedEntity{{
+			Text: "Mike Tyson", CanonicalName: "Mike Tyson", Type: "PERSON",
+			CanonicalEntityID: "person:mike-tyson",
+		}}},
+	}}}
+
+	if err := runner.runTranslatedNLP(context.Background(), req, result); err != nil {
+		t.Fatal(err)
+	}
+	annotations := result.Scenes[0].LocalizedAnnotations["de"]
+	if annotations == nil || len(annotations.PrimaryEntities) != 1 {
+		t.Fatalf("German annotations = %+v, want one grounded entity", annotations)
+	}
+	entity := annotations.PrimaryEntities[0]
+	if entity.CanonicalEntityID != "person:mike-tyson" {
+		t.Fatalf("canonical identity = %q, want source identity person:mike-tyson", entity.CanonicalEntityID)
+	}
+	if entity.CanonicalName != "Mike Tysons" {
+		t.Fatalf("localized canonical name = %q, want spoken surface Mike Tysons", entity.CanonicalName)
+	}
+	if len(entity.Mentions) == 0 || entity.Mentions[0].Text != "Mike Tysons" {
+		t.Fatalf("localized mentions = %+v, want the exact German span Mike Tysons first", entity.Mentions)
+	}
+
+	sources := entitySourcesFromAnnotations(annotations, result.Scenes[0].Text["de"])
+	if len(sources) != 1 || sources[0].SpokenName != "Mike Tysons" {
+		t.Fatalf("entity timing source = %+v, want spoken surface Mike Tysons", sources)
 	}
 }
 
@@ -418,5 +461,131 @@ func TestAnnotationForLanguageDoesNotLeakSourceAnnotations(t *testing.T) {
 	}
 	if got := annotationForLanguage(scene, "fr"); got != nil {
 		t.Fatalf("source annotation leaked into fr document: %+v", got)
+	}
+}
+
+// ── Redundant translated-NER gate (audit P5/C3) ──────────────────────
+//
+// The gate exists to stop calling VisualNER on a translation whose source
+// annotations already ground every entity slot. These tests pin BOTH halves:
+// the skip when the precondition holds, and the refusal to skip when it does
+// not (so the optimisation can never silently change the emitted entities).
+
+// countingTranslatedNER counts Extract calls and returns a model entity that
+// would only ever occupy a slot if the source matches did NOT fill the window.
+type countingTranslatedNER struct {
+	mu    sync.Mutex
+	calls int
+}
+
+func (n *countingTranslatedNER) Extract(_ context.Context, _ string, _ int) ([]VisualEntity, error) {
+	n.mu.Lock()
+	n.calls++
+	n.mu.Unlock()
+	return []VisualEntity{{Text: "Model Only Name", Type: scriptpkg.EntityTypePerson, Score: 0.9}}, nil
+}
+
+func (n *countingTranslatedNER) callCount() int {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	return n.calls
+}
+
+const translatedNERCoverageITText = "Mike Tyson, Muhammad Ali e Joe Frazier hanno definito la boxe."
+
+func translatedNERCoverageResult(source []scriptpkg.AnnotatedEntity) *GenerateResult {
+	return &GenerateResult{Scenes: []Scene{{
+		ID: "scene-0", Index: 0,
+		Text: map[Language]string{
+			"en": "Mike Tyson, Muhammad Ali and Joe Frazier defined boxing.",
+			"it": translatedNERCoverageITText,
+		},
+		Annotations: &scriptpkg.SceneAnnotations{Language: "en", PrimaryEntities: source},
+	}}}
+}
+
+func translatedNERCoverageRequest() GenerateRequest {
+	return GenerateRequest{
+		SourceLanguage: "en", Languages: []Language{"it"}, Model: "test-model",
+		MediaPlan: mediadomain.MediaPlanSpec{Extraction: mediadomain.MediaExtractionPolicy{
+			Include:               []string{mediadomain.ExtractionIncludeEntities},
+			MaxEntitiesPerSegment: 3,
+		}},
+	}
+}
+
+func personEntity(text string) scriptpkg.AnnotatedEntity {
+	return scriptpkg.AnnotatedEntity{Text: text, CanonicalName: text, Type: "PERSON", Confidence: 0.98}
+}
+
+// TestTranslatedNLPSkipsRedundantNERWhenSourceCoversTheLimit pins the win: with
+// three source-grounded PERSONs already present verbatim in the translation, a
+// translated NER call can only produce candidates the entity window discards, so
+// it must not be made at all — while the localized annotation still carries the
+// three grounded identities.
+func TestTranslatedNLPSkipsRedundantNERWhenSourceCoversTheLimit(t *testing.T) {
+	ner := &countingTranslatedNER{}
+	runner := &Runner{vidRushPipeline: &VidRushPipeline{NERPort: ner}}
+	result := translatedNERCoverageResult([]scriptpkg.AnnotatedEntity{
+		personEntity("Mike Tyson"), personEntity("Muhammad Ali"), personEntity("Joe Frazier"),
+	})
+
+	if err := runner.runTranslatedNLP(context.Background(), translatedNERCoverageRequest(), result); err != nil {
+		t.Fatal(err)
+	}
+	if got := ner.callCount(); got != 0 {
+		t.Fatalf("translated NER calls = %d, want 0: the source annotations already ground every entity slot", got)
+	}
+	annotations := result.Scenes[0].LocalizedAnnotations["it"]
+	if annotations == nil {
+		t.Fatal("missing Italian annotations")
+	}
+	if len(annotations.PrimaryEntities) != 3 {
+		t.Fatalf("localized primary entities = %+v, want the 3 source-grounded persons", annotations.PrimaryEntities)
+	}
+}
+
+// TestTranslatedNLPCallsNERWhenSourceDoesNotCoverTheLimit is the negative
+// control: two grounded persons leave a slot the model may legitimately fill.
+func TestTranslatedNLPCallsNERWhenSourceDoesNotCoverTheLimit(t *testing.T) {
+	ner := &countingTranslatedNER{}
+	runner := &Runner{vidRushPipeline: &VidRushPipeline{NERPort: ner}}
+	result := translatedNERCoverageResult([]scriptpkg.AnnotatedEntity{
+		personEntity("Mike Tyson"), personEntity("Muhammad Ali"),
+	})
+
+	if err := runner.runTranslatedNLP(context.Background(), translatedNERCoverageRequest(), result); err != nil {
+		t.Fatal(err)
+	}
+	if got := ner.callCount(); got != 1 {
+		t.Fatalf("translated NER calls = %d, want 1: the source matches leave an entity slot open", got)
+	}
+}
+
+// TestTranslatedNLPCallsNERWhenAMatchIsNotAPerson pins the narrowness of the
+// precondition. A non-PERSON match (here a location) can still be displaced by a
+// model entity of the same priority class, so the gate must refuse to skip even
+// when the match count already equals the limit.
+func TestTranslatedNLPCallsNERWhenAMatchIsNotAPerson(t *testing.T) {
+	ner := &countingTranslatedNER{}
+	runner := &Runner{vidRushPipeline: &VidRushPipeline{NERPort: ner}}
+	result := &GenerateResult{Scenes: []Scene{{
+		ID: "scene-0", Index: 0,
+		Text: map[Language]string{
+			"en": "Mike Tyson trained in Las Vegas with Joe Frazier.",
+			"it": "Mike Tyson si allenava a Las Vegas con Joe Frazier.",
+		},
+		Annotations: &scriptpkg.SceneAnnotations{Language: "en", PrimaryEntities: []scriptpkg.AnnotatedEntity{
+			personEntity("Mike Tyson"),
+			{Text: "Las Vegas", CanonicalName: "Las Vegas", Type: "GPE", Confidence: 0.95},
+			personEntity("Joe Frazier"),
+		}},
+	}}}
+
+	if err := runner.runTranslatedNLP(context.Background(), translatedNERCoverageRequest(), result); err != nil {
+		t.Fatal(err)
+	}
+	if got := ner.callCount(); got != 1 {
+		t.Fatalf("translated NER calls = %d, want 1: a non-PERSON match can still be displaced inside the limit window", got)
 	}
 }

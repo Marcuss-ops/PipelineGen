@@ -62,11 +62,23 @@ type vidRushPrepareResult struct {
 // skeletons rendered at SceneTextReady (the early DocsPrepare pass) for the
 // late-bound injection in the document phase; it is nil when the renderer
 // does not implement the early/late split.
+//
+// err and nlpErr are kept SEPARATE because they are different facts reported
+// against different stages: err is the VidRush prepare/join failure
+// (StageGeneratingSceneText), while nlpErr is the translated-NLP failure
+// (StageTranslatingScenes) of the work the semantic branch now also carries.
+// Folding them into one field would mislabel the failed stage.
 type vidRushPrepareOutcome struct {
 	result     vidRushPrepareResult
 	skeletons  map[Language]string
 	prefetched *AudioPrefetchResult
 	err        error
+	// localizedAnnotations is the translated-NLP output COMPUTED on the
+	// semantic branch, to be applied to the durable result by the phase
+	// goroutine after the join. It rides the outcome as a value precisely so no
+	// worker writes onto result.Scenes while TTS is running.
+	localizedAnnotations map[int]map[Language]*scriptpkg.SceneAnnotations
+	nlpErr               error
 }
 
 // applyVidRushPrepareProjections projects the prepare branch's outputs onto

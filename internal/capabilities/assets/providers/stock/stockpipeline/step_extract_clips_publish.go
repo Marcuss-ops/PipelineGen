@@ -242,6 +242,14 @@ func publishCuts(ctx context.Context, runner StepRunner, sourceID string, source
 						RemoteWebViewLink:  clipPublished.Location.WebViewLink,
 						DrivePath:          clipPublished.Location.WebViewLink,
 						RemoteDownloadLink: clipPublished.Location.DownloadLink,
+						// The parent Drive folder of the published chunk. Carried on
+						// the chunk so the stock job finalizer's spine write can
+						// persist the same media_assets.folder_id this commit does:
+						// the media upsert writes folder_id unconditionally, so a
+						// spine write without the folder would blank it. Before this
+						// the field was never populated, so every stock row kept
+						// folder_id="".
+						TimestampFolderID: clipPublished.Location.FolderID,
 					}
 
 					uploadResults[taskIdx] = clipUploadResult{

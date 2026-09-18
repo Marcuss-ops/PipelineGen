@@ -20,7 +20,19 @@
       "script_params": {
         "target_words": 60,
         "min_words": 30,
-        "segment_words": 60
+        "segment_words": 60,
+        "segments": [
+          {
+            "id": "clip-0",
+            "kind": "clip",
+            "topic": "The supplied clip segment",
+            "source_text": "Narrate the supplied clip segment; use only what the clip evidence states.",
+            "clip_ids": ["yt_vLRjqTIiMjc_0_25_v1"],
+            "target_words": 60,
+            "min_words": 30,
+            "max_words": 120
+          }
+        ]
       },
       "output": {
         "save_to_db": true,

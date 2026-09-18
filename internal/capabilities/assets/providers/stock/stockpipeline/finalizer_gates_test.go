@@ -358,8 +358,10 @@ func TestBuildFinalizationRequest_Idempotent(t *testing.T) {
 
 // TestBuildFinalizationRequest_ArtifactMetadata_All22FieldsRoundTrip
 // asserts that BuildFinalizationRequest populates ALL 22 metadata keys
-// on each chunk's PublishedArtifact.ArtifactMetadata map AND sets
-// Source="stock" on both metadata and chunk artifacts. This is the
+// on each chunk's PublishedArtifact.ArtifactMetadata map, sets the chunk
+// artifact's Source to the ACQUISITION PROVIDER (the run-level metadata
+// artifact keeps the stock family label), and declares the stock taxonomy
+// (asset_kind="stock_video" / semantic_role="stock"). This is the
 // canonical regression guard for the semantic-enrichment bridge:
 // without it, ChunkState's Title/Round/Tags/Category/SourceProvider/
 // DrivePath/etc. are silently lost at the PublishedArtifact boundary
@@ -418,12 +420,34 @@ func TestBuildFinalizationRequest_ArtifactMetadata_All22FieldsRoundTrip(t *testi
 		t.Fatalf("artifacts count=%d, want 2 (1 metadata + 1 chunk)", len(req.Artifacts))
 	}
 
-	// Stock is the asset family; acquisition provenance is carried by the
-	// source_provider metadata field.
-	for i, a := range req.Artifacts {
-		if a.Source != "stock" {
-			t.Errorf("artifact[%d] (%s) Source=%q, want %q", i, a.ArtifactID, a.Source, "stock")
-		}
+	// The CHUNK artifact's Source is the ACQUISITION PROVIDER, not the
+	// "stock" family label. The provider is what scopes the canonical
+	// asset.index.requested event_key
+	// (idempotency.OutboxKey(event, source, assetID, sourceVersion)), and the
+	// stock clip is committed twice — once by the stock pipeline's own
+	// post-publication commit (which knows the acquisition provider) and once
+	// by this finalizer's single-TX spine write. Labelling the two writes with
+	// different sources produced TWO index events for one asset and let the
+	// later write clobber the persisted `source`, dropping the YouTube
+	// provenance. The stock FAMILY rides on the taxonomy instead
+	// (asset_kind="stock_video" / semantic_role="stock"), which is what the
+	// unified filters read.
+	if got := req.Artifacts[1].Source; got != chunk.SourceProvider {
+		t.Errorf("chunk artifact Source=%q, want acquisition provider %q", got, chunk.SourceProvider)
+	}
+	// A chunk with no acquisition provider falls back to the stock family
+	// label rather than emitting an empty source.
+	if got := req.Artifacts[0].Source; got != "stock" {
+		t.Errorf("metadata artifact Source=%q, want %q", got, "stock")
+	}
+
+	// The stock family is declared as taxonomy so that both producers resolve
+	// the same dimensions regardless of commit order.
+	if got := req.Artifacts[1].ArtifactMetadata["asset_kind"]; got != StockAssetKind {
+		t.Errorf("chunk artifact asset_kind=%v, want %q", got, StockAssetKind)
+	}
+	if got := req.Artifacts[1].ArtifactMetadata["semantic_role"]; got != StockSemanticRole {
+		t.Errorf("chunk artifact semantic_role=%v, want %q", got, StockSemanticRole)
 	}
 
 	// ── Assert chunk artifact has all 22+ metadata keys ────────────

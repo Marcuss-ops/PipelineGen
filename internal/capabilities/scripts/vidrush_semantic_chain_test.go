@@ -9,6 +9,7 @@ import (
 	scriptports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/stockintelligence"
 	mediadomain "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/sceneir"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 	"github.com/stretchr/testify/require"
 )
@@ -27,6 +28,76 @@ func (s stubVisualNER) Extract(_ context.Context, _ string, _ int) ([]VisualEnti
 		return nil, s.err
 	}
 	return s.entities, nil
+}
+
+// recordingVisualNER is a VisualNERPort stub that records the exact source
+// text and limit the enricher handed to the extractor, so a test can pin the
+// extraction input without a compile-counting seam.
+type recordingVisualNER struct {
+	entities []VisualEntity
+	calls    int
+	source   string
+	limit    int
+}
+
+func (s *recordingVisualNER) Extract(_ context.Context, source string, limit int) ([]VisualEntity, error) {
+	s.calls++
+	s.source = source
+	s.limit = limit
+	return s.entities, nil
+}
+
+// TestSceneIRSegmentEnricherExtractsFromTheCanonicalCompiledSource pins the
+// single-pass equivalence the enricher relies on: the canonical segment is
+// normalized once and VisualNER extracts from exactly the source_text the
+// compiled SceneIR exposes. sceneir.Compile derives ir.SourceText from
+// script.NormalizeCanonicalSegment and never from EntityResult, so collapsing
+// the throwaway first compile into a plain normalization must not move the
+// extraction input by a single byte.
+func TestSceneIRSegmentEnricherExtractsFromTheCanonicalCompiledSource(t *testing.T) {
+	const source = "Greek salad contains tomatoes, feta cheese and olives."
+	ner := &recordingVisualNER{entities: greekSaladEntities()}
+	enricher, err := NewSceneIRSegmentEnricher(ner)
+	require.NoError(t, err)
+
+	result, err := enricher.Enrich(context.Background(), nil, scriptpkg.SpecScene{
+		ID:    "mediterranean-01-greek-salad",
+		Index: 0,
+		// Narration is fenced from the editorial source (which arrives
+		// padded here) — the enricher must extract from the trimmed
+		// canonical source, not from narration and not from raw metadata.
+		Text:     "Narration rewritten by the model.",
+		Metadata: &scriptpkg.SceneMetadata{SourceText: "  " + source + "  "},
+	})
+	require.NoError(t, err)
+
+	require.Equal(t, 1, ner.calls, "VisualNER must be called exactly once per scene")
+	require.Equal(t, source, ner.source, "VisualNER must extract from the canonical source_text")
+	require.Equal(t, result.SourceText, ner.source,
+		"the extraction text and the compiled source_text must be the same string")
+	require.Equal(t, scriptpkg.ComputeCanonicalSegmentTextHash(source), result.SourceTextHash)
+	require.Equal(t, "Narration rewritten by the model.", result.Text,
+		"the narration must stay fenced from the canonical source")
+}
+
+// TestSceneIRSegmentEnricherFailsClosedBeforeVisualNER pins the fail-fast
+// ordering the single-pass refactor preserves: an invalid canonical segment is
+// rejected with the same sceneir.ErrCompileInputInvalid surface Compile used to
+// produce, and VisualNER is never invoked, so no extraction work is spent on a
+// segment whose identity was already refused.
+func TestSceneIRSegmentEnricherFailsClosedBeforeVisualNER(t *testing.T) {
+	ner := &recordingVisualNER{entities: greekSaladEntities()}
+	enricher, err := NewSceneIRSegmentEnricher(ner)
+	require.NoError(t, err)
+
+	_, err = enricher.Enrich(context.Background(), nil, scriptpkg.SpecScene{
+		ID:    "mediterranean-01-greek-salad",
+		Index: 0,
+		Text:  "   ",
+	})
+	require.Error(t, err)
+	require.ErrorIs(t, err, sceneir.ErrCompileInputInvalid)
+	require.Zero(t, ner.calls, "an invalid canonical segment must never reach VisualNER")
 }
 
 func TestNormalizeVisualPersonNameRemovesSentenceContext(t *testing.T) {

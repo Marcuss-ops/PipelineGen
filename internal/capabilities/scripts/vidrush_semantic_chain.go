@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"strings"
 
+	phrasepkg "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/phrases"
 	scriptports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/stockintelligence"
 	mediadomain "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
@@ -68,10 +69,19 @@ func (e *SceneIRSegmentEnricher) Enrich(ctx context.Context, plan *scriptpkg.Res
 	if scene.ExecutionMode != "" {
 		segment.ExecutionMode = scene.ExecutionMode
 	}
-	ir, err := sceneir.Compile(sceneir.CompileInput{Segment: segment, NarrationOverride: narrationText})
-	if err != nil {
-		return scriptpkg.VidRushSegmentResult{}, fmt.Errorf("sceneir enrich: %w", err)
+	// Single-pass source identity: the normalization sceneir.Compile applies
+	// internally (script.NormalizeCanonicalSegment + Validate) is the only
+	// thing the extraction surfaces need from a first compile — Compile
+	// projects the normalized segment.SourceText onto ir.SourceText verbatim
+	// and neither SourceText nor SourceTextHash is affected by EntityResult.
+	// Normalizing here instead of compiling twice keeps the profile build
+	// (the one genuinely expensive step) exactly once per scene while
+	// preserving the identical fail-closed error surface.
+	normalized := scriptpkg.NormalizeCanonicalSegment(segment)
+	if err := normalized.Validate(); err != nil {
+		return scriptpkg.VidRushSegmentResult{}, fmt.Errorf("sceneir enrich: %w: %s", sceneir.ErrCompileInputInvalid, err.Error())
 	}
+	sourceForExtraction := normalized.SourceText
 
 	// The payload can explicitly narrow semantic extraction to the surfaces
 	// needed by the current production pass. Keep the historical default of
@@ -89,8 +99,9 @@ func (e *SceneIRSegmentEnricher) Enrich(ctx context.Context, plan *scriptpkg.Res
 		entityCount = 3
 	}
 	var entities []VisualEntity
+	var err error
 	if includeEntities {
-		entities, err = e.nerPort.Extract(ctx, ir.SourceText, entityCount)
+		entities, err = e.nerPort.Extract(ctx, sourceForExtraction, entityCount)
 		if err != nil {
 			return scriptpkg.VidRushSegmentResult{}, fmt.Errorf("visualner extract: %w", err)
 		}
@@ -110,7 +121,7 @@ func (e *SceneIRSegmentEnricher) Enrich(ctx context.Context, plan *scriptpkg.Res
 	if wordLimit <= 0 {
 		wordLimit = 3
 	}
-	if err := validateVisualEntities(ir, entities); err != nil {
+	if err := validateVisualEntities(sourceForExtraction, entities); err != nil {
 		return scriptpkg.VidRushSegmentResult{}, fmt.Errorf("visualner contract: %w", err)
 	}
 	entities = deduplicateVisualEntities(entities)
@@ -142,7 +153,7 @@ func (e *SceneIRSegmentEnricher) Enrich(ctx context.Context, plan *scriptpkg.Res
 	}
 	imageEntities := imageSearchEntities(entities)
 	imageQueries := make([]string, 0, len(imageEntities))
-	imageAnchor := visualImageAnchor(ir.SourceText)
+	imageAnchor := visualImageAnchor(sourceForExtraction)
 	for _, ve := range imageEntities {
 		query := strings.TrimSpace(ve.Text)
 		if !extraction.EntityImageSurfaceEnabled() && imageAnchor != "" && query != "" && !strings.Contains(strings.ToLower(query), strings.ToLower(imageAnchor)) {
@@ -152,25 +163,26 @@ func (e *SceneIRSegmentEnricher) Enrich(ctx context.Context, plan *scriptpkg.Res
 	}
 	var phraseCandidates []string
 	if includeImportantPhrases || includeImportantWords {
-		phraseCandidates = deterministicImportantPhrases(ir.SourceText, entities, phraseLimit, generationPlanLanguage(plan))
+		phraseCandidates = phrasepkg.ImportantPhrases(sourceForExtraction, entityRuneSpans(sourceForExtraction, entities), phraseLimit, generationPlanLanguage(plan))
 	}
 	var importantPhrases []string
 	if includeImportantPhrases {
 		candidates := append([]string(nil), extraction.ImportantPhrases...)
 		candidates = append(candidates, phraseCandidates...)
-		importantPhrases = groundImportantPhrases(ir.SourceText, entities, candidates, phraseLimit)
+		importantPhrases = groundImportantPhrases(sourceForExtraction, entities, candidates, phraseLimit)
 	}
 	var importantWords []string
 	if includeImportantWords {
-		importantWords = deterministicImportantWords(phraseCandidates, wordLimit, generationPlanLanguage(plan))
+		importantWords = phrasepkg.ImportantWords(phraseCandidates, wordLimit, generationPlanLanguage(plan))
 	}
 	var specialNames []string
 	if includeSpecialNames {
-		specialNames = translatedSpecialNames(ir.SourceText, nil, entities, entityLimit)
+		specialNames = translatedSpecialNames(sourceForExtraction, nil, entities, entityLimit)
 	}
 
-	// Recompile the same SceneIR with the VisualNER and deterministic editorial
-	// surfaces. This keeps the canonical profile as the only semantic owner.
+	// The single canonical compile: the VisualNER and deterministic editorial
+	// surfaces are folded in and the profile is built exactly once. This keeps
+	// the canonical profile as the only semantic owner.
 	entityResult := scriptpkg.EntityResult{
 		NounChunks:       entitiesToStrings(entities),
 		Concepts:         extractedToConcepts(extractedEntities),
@@ -178,7 +190,7 @@ func (e *SceneIRSegmentEnricher) Enrich(ctx context.Context, plan *scriptpkg.Res
 		ImportantWords:   importantWords,
 		SpecialNames:     specialNames,
 	}
-	ir, err = sceneir.Compile(sceneir.CompileInput{Segment: segment, NarrationOverride: narrationText, EntityResult: &entityResult})
+	ir, err := sceneir.Compile(sceneir.CompileInput{Segment: segment, NarrationOverride: narrationText, EntityResult: &entityResult})
 	if err != nil {
 		return scriptpkg.VidRushSegmentResult{}, fmt.Errorf("sceneir enrich profile: %w", err)
 	}
@@ -303,14 +315,19 @@ func canonicalSourceText(plan *scriptpkg.ResolvedGenerationPlan, scene scriptpkg
 	return strings.TrimSpace(scene.Text)
 }
 
-func validateVisualEntities(ir sceneir.SceneIR, entities []VisualEntity) error {
+// validateVisualEntities enforces the VisualNER grounding contract against the
+// canonical source text the entities were extracted from. It takes the source
+// string rather than a compiled SceneIR because the contract is about the
+// immutable source identity, not about the compiled profile: binding it to a
+// throwaway compile would make the check depend on work it never reads.
+func validateVisualEntities(sourceText string, entities []VisualEntity) error {
 	for i, entity := range entities {
 		text := strings.TrimSpace(entity.Text)
-		if text == "" || entity.Start < 0 || entity.End <= entity.Start || entity.End > len(ir.SourceText) {
+		if text == "" || entity.Start < 0 || entity.End <= entity.Start || entity.End > len(sourceText) {
 			return fmt.Errorf("entity[%d] has invalid source span", i)
 		}
-		if ir.SourceText[entity.Start:entity.End] != entity.Evidence ||
-			!strings.EqualFold(ir.SourceText[entity.Start:entity.End], text) {
+		if sourceText[entity.Start:entity.End] != entity.Evidence ||
+			!strings.EqualFold(sourceText[entity.Start:entity.End], text) {
 			return fmt.Errorf("entity[%d] %q is not grounded in source_text", i, text)
 		}
 	}

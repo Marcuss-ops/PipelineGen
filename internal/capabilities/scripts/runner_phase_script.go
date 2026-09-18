@@ -267,6 +267,15 @@ func (r *Runner) runSceneTextPhase(ctx context.Context, runID string, req Genera
 			r.failRunWithRetry(ctx, runID, StageGeneratingSceneText, cause)
 			return result, false
 		}
+		// Make the scene-text path decision auditable: the streaming overlap is
+		// a wall-clock claim, and a claim nobody can read from a run is not a
+		// measurement. The reason names the FIRST gate that forced the batch
+		// path, so "why did this run not stream?" needs no re-derivation.
+		r.log.Info("scene_text_path",
+			zap.String("run_id", runID),
+			zap.Bool("streamed", streamed),
+			zap.String("reason", sceneTextPathReason(req, streamed, segmentTopologyNeedsMaterialization, r.textGen)),
+			zap.Int("scenes", len(scenes)))
 		// Small/local models commonly return one opaque prose scene even when
 		// the request declares a per-segment budget. The batch postprocessor
 		// already materializes that shape, but the incremental VidRush path

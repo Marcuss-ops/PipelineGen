@@ -8,6 +8,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
+	capregistry "github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaregistry"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
@@ -178,4 +179,57 @@ func (txBoundOnlyDiscoveryCommitter) CommitTx(context.Context, persistence.Trans
 
 func (txBoundOnlyDiscoveryCommitter) CommitDiscoveredAsset(context.Context, *sql.Tx, *asset.Asset, asset.LifecycleState, asset.IndexState) error {
 	return nil
+}
+
+// ── P0 stock-acquisition certification (September 2026) ──────────────────
+
+// TestBuildPortableCommitRequest_HonoursDeclaredTaxonomy pins the
+// post-publication half of the stock-clip convergence contract.
+//
+// A stock clip is committed twice — once here through EnqueueAndIndex (which
+// carries the Drive identity) and once by the stock job finalizer's single-TX
+// spine write. When this side declared no taxonomy, the media upsert's
+// insert-wins taxonomy semantics let the spine write restamp semantic_role
+// from the provider default, and the producer-declared stock family was lost.
+// A producer that declares asset_kind / semantic_role must have them resolved
+// into the commit request; a producer that declares nothing must be unchanged.
+func TestBuildPortableCommitRequest_HonoursDeclaredTaxonomy(t *testing.T) {
+	declaring := &asset.Asset{
+		ID:        "planner:6638386361363531:0",
+		Source:    asset.Source("youtube"),
+		Name:      "clip_001.mp4",
+		MediaType: asset.MediaType("video"),
+		Metadata: map[string]any{
+			"asset_kind":    "stock_video",
+			"semantic_role": "stock",
+		},
+	}
+
+	req := buildPortableCommitRequest(declaring, "sha256-abc", true)
+
+	if req.Source != "youtube" {
+		t.Errorf("Source = %q, want the acquisition provider %q", req.Source, "youtube")
+	}
+	if req.Taxonomy.IsZero() {
+		t.Fatal("declared taxonomy was discarded")
+	}
+	if req.Taxonomy.AssetKind != capregistry.AssetStockVideo {
+		t.Errorf("Taxonomy.AssetKind = %q, want %q", req.Taxonomy.AssetKind, capregistry.AssetStockVideo)
+	}
+	if req.Taxonomy.SemanticRole != "stock" {
+		t.Errorf("Taxonomy.SemanticRole = %q, want %q (not the provider default)", req.Taxonomy.SemanticRole, "stock")
+	}
+	if req.Taxonomy.SourceType != "youtube" {
+		t.Errorf("Taxonomy.SourceType = %q, want %q", req.Taxonomy.SourceType, "youtube")
+	}
+
+	silent := &asset.Asset{
+		ID:        "artlist_abc",
+		Source:    asset.Source("artlist"),
+		Name:      "discovered.mp4",
+		MediaType: asset.MediaType("video"),
+	}
+	if silentReq := buildPortableCommitRequest(silent, "sha256-def", true); !silentReq.Taxonomy.IsZero() {
+		t.Errorf("an undeclared taxonomy must stay zero (COALESCE-keep preserves the stored dimensions); got %+v", silentReq.Taxonomy)
+	}
 }

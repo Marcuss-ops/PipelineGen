@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/linguistics"
+	phrasepkg "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/phrases"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	mediadomain "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
@@ -378,10 +379,10 @@ func TestLiveMikeTyson500WordMultilingualNLPNoRendering(t *testing.T) {
 			t.Fatalf("source VisualNER scene %d: %v", i, extractErr)
 		}
 		scene := result.Scenes[i]
-		phraseCandidates := deterministicImportantPhrases(text, entities, 3, "en")
+		phraseCandidates := phrasepkg.ImportantPhrases(text, entityRuneSpans(text, entities), 3, "en")
 		insights := scriptpkg.SegmentInsights{SegmentID: scene.ID, TextHash: SceneTextHash(text),
 			ImportantPhrases: groundImportantPhrases(text, entities, phraseCandidates, 3),
-			ImportantWords:   deterministicImportantWords(phraseCandidates, 3, "en"),
+			ImportantWords:   phrasepkg.ImportantWords(phraseCandidates, 3, "en"),
 			SpecialNames:     translatedSpecialNames(text, nil, entities, 5)}
 		for _, entity := range entities {
 			insights.Entities = append(insights.Entities, scriptpkg.ExtractedEntity{Value: entity.Text, Type: string(entity.Type), Confidence: float64(entity.Score)})

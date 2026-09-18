@@ -126,7 +126,30 @@ func BuildFinalizationRequest(
 		if chunkDuration < 0 {
 			chunkDuration = 0
 		}
+		// The chunk artifact's Source is the ACQUISITION PROVIDER, not the
+		// "stock" family label. Two independent producers commit the same
+		// clip into media_assets — the stock pipeline's own post-publication
+		// commit and this single-TX spine write — and the canonical outbox
+		// event_key is provider-scoped
+		// (idempotency.OutboxKey(event, source, assetID, sourceVersion)).
+		// Labelling the spine write "stock" while the post-publication commit
+		// labels the same bytes "youtube" produced TWO asset.index.requested
+		// rows for one asset, and the later write also clobbered the persisted
+		// `source` (losing the YouTube provenance), because the media upsert
+		// writes source insert-wins / unconditional. Using the acquisition
+		// provider makes the keys collide and the second write a genuine no-op
+		// on the outbox, while `source_provider`/`source_video_id` keep the
+		// provider provenance explicit. The stock FAMILY is carried by
+		// asset_kind="stock_video" / semantic_role="stock" below, which is
+		// what the unified taxonomy filters read.
+		chunkSource := c.SourceProvider
+		if chunkSource == "" {
+			chunkSource = "stock"
+		}
 		chunkMeta := map[string]any{
+			"asset_kind":                  StockAssetKind,
+			"semantic_role":               StockSemanticRole,
+			"folder_id":                   c.TimestampFolderID,
 			"title":                       c.Title,
 			"description":                 c.Description,
 			"start_sec":                   c.StartSec,
@@ -177,15 +200,22 @@ func BuildFinalizationRequest(
 			IdempotencyKey:   chunkIdemKey,
 			Description:      c.Description,
 			ArtifactMetadata: chunkMeta,
-			Source:           "stock",
+			Source:           chunkSource,
 			Location: finalization.AssetLocation{
 				Provider:     "drive",
 				FileID:       c.RemoteFileID,
 				WebViewLink:  c.RemoteWebViewLink,
 				DownloadLink: c.RemoteDownloadLink,
-				FolderID:     "",
-				FolderPath:   "",
-				Action:       finalization.PublishCreated,
+				// The parent Drive folder of the published chunk. This was
+				// hardcoded "" while the chunk's real folder was already known
+				// (ChunkState.TimestampFolderID), and because the media upsert
+				// writes folder_id unconditionally the empty value BLANKED the
+				// folder id the post-publication commit had just persisted —
+				// every stock row ended up with folder_id="" and no operator
+				// could navigate to the Drive folder from a search hit.
+				FolderID:   c.TimestampFolderID,
+				FolderPath: "",
+				Action:     finalization.PublishCreated,
 			},
 		})
 	}

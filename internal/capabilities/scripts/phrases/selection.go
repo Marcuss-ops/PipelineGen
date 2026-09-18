@@ -1,9 +1,23 @@
-package scriptgeneration
+// Package phrases owns the deterministic important-phrase / important-word
+// selection used by every scene-text consumer (source enrichment, translated
+// NLP): short, source-grounded editorial fragments ranked by configured
+// lexicon strength, with no model, network or wall-clock input.
+//
+// It is a LEAF package: it depends only on the linguistics lexicon and takes a
+// neutral text + blocked-rune-span input. Entity grounding stays with the
+// caller that owns the entity model, so this package never imports the scripts
+// capability root and the selection stays a pure function of its inputs.
+//
+// Extracted from internal/capabilities/scripts to keep that registered hotspot
+// from growing: the phrase-ownership cutover added the selector there and
+// pushed the package one file over its ratcheted baseline.
+package phrases
 
 import (
 	"regexp"
 	"sort"
 	"strings"
+	"unicode"
 	"unicode/utf8"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/linguistics"
@@ -28,15 +42,22 @@ type importantPhraseCandidate struct {
 	score      int
 }
 
-// deterministicImportantPhrases returns short, source-grounded fragments in
+// ImportantPhrases returns short, source-grounded fragments in
 // editorial-strength order. It uses only configured stop/function words and
 // visual verbs; it makes no model or network calls and never rewrites text.
-func deterministicImportantPhrases(text string, entities []VisualEntity, limit int, language string) []string {
+//
+// blockedSpans are the RUNE ranges the selection must not overlap — the caller
+// passes the entity surfaces it already grounded so a phrase can never cover a
+// name the entity overlays own.
+func ImportantPhrases(text string, blockedSpans [][2]int, limit int, language string) []string {
 	profile := importantPhraseLexicon(language)
-	return selectImportantPhrases(text, entities, limit, profile)
+	return Select(text, blockedSpans, limit, profile)
 }
 
-func selectImportantPhrases(text string, entities []VisualEntity, limit int, profile *linguistics.LexiconProfile) []string {
+// Select is ImportantPhrases against an explicit lexicon profile. A nil profile
+// falls back to the canonical phrase-extraction policy with no stop-word or
+// visual-verb configuration.
+func Select(text string, blockedSpans [][2]int, limit int, profile *linguistics.LexiconProfile) []string {
 	text = strings.TrimSpace(text)
 	if text == "" {
 		return nil
@@ -64,14 +85,6 @@ func selectImportantPhrases(text string, entities []VisualEntity, limit int, pro
 	}
 	if policy.MaxResults > 0 && limit > policy.MaxResults {
 		limit = policy.MaxResults
-	}
-
-	entitySpans := make([][2]int, 0, len(entities))
-	for _, entity := range entities {
-		span, ok := findEntitySpan(text, entity.Text)
-		if ok {
-			entitySpans = append(entitySpans, [2]int{span.StartRune, span.EndRune})
-		}
 	}
 
 	tokens := tokenizeImportantPhrases(text)
@@ -109,12 +122,12 @@ func selectImportantPhrases(text string, entities []VisualEntity, limit int, pro
 
 			byteStart, byteEnd := tokens[start].start, tokens[end].end
 			candidateText := text[byteStart:byteEnd]
-			if containsProperNamePair(candidateText) {
+			if ContainsProperNamePair(candidateText) {
 				continue
 			}
 			runeStart := utf8.RuneCountInString(text[:byteStart])
 			runeEnd := runeStart + utf8.RuneCountInString(candidateText)
-			if overlapsAnyRuneSpan(runeStart, runeEnd, entitySpans) {
+			if overlapsAnyRuneSpan(runeStart, runeEnd, blockedSpans) {
 				continue
 			}
 
@@ -165,18 +178,23 @@ func selectImportantPhrases(text string, entities []VisualEntity, limit int, pro
 		}
 	}
 
-	phrases := make([]string, len(selected))
+	out := make([]string, len(selected))
 	for i, candidate := range selected {
-		phrases[i] = candidate.text
+		out[i] = candidate.text
 	}
-	return phrases
+	return out
 }
 
-func deterministicImportantWords(phrases []string, limit int, language string) []string {
-	return deterministicImportantWordsWithProfile(phrases, limit, importantPhraseLexicon(language))
+// ImportantWords returns the strongest words inside the SELECTED phrases, in
+// phrase order. Words come from the phrases' exact surfaces, so a word overlay
+// can never show a token the phrase overlay did not cover.
+func ImportantWords(phrases []string, limit int, language string) []string {
+	return ImportantWordsWithProfile(phrases, limit, importantPhraseLexicon(language))
 }
 
-func deterministicImportantWordsWithProfile(phrases []string, limit int, profile *linguistics.LexiconProfile) []string {
+// ImportantWordsWithProfile is ImportantWords against an explicit lexicon
+// profile.
+func ImportantWordsWithProfile(phrases []string, limit int, profile *linguistics.LexiconProfile) []string {
 	if limit <= 0 {
 		return nil
 	}
@@ -249,6 +267,29 @@ func isConfiguredVisualVerb(word string, profile *linguistics.LexiconProfile) bo
 	}
 	_, ok := profile.VisualVerbs[word]
 	return ok
+}
+
+// ContainsProperNamePair reports whether value carries two consecutive
+// capitalised words. Both the selector and the entity-grounding pass use it to
+// keep a phrase surface free of proper-name runs even when the entity extractor
+// missed a name; it validates candidates without rewriting them.
+func ContainsProperNamePair(value string) bool {
+	previousTitle := false
+	// FieldsSeq iterates without materialising the []string that
+	// strings.Fields would allocate for every candidate phrase.
+	for raw := range strings.FieldsSeq(value) {
+		word := strings.Trim(raw, ".,;:!?\"'’()[]{}")
+		currentTitle := false
+		for _, r := range word {
+			currentTitle = unicode.IsUpper(r)
+			break
+		}
+		if currentTitle && previousTitle {
+			return true
+		}
+		previousTitle = currentTitle
+	}
+	return false
 }
 
 func overlapsAnyRuneSpan(start, end int, spans [][2]int) bool {

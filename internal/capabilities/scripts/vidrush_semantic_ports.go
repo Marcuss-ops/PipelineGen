@@ -17,7 +17,7 @@
 // vidrush_semantic_chain.go on 2026-09-16 for the same reason. They are pure
 // functions over VisualEntity and source text — no receiver, no I/O — so they
 // belong with the value contract they operate on. Important phrase candidates
-// are selected in important_phrase_selection.go, then grounded here; entity
+// are selected in the leaf package scripts/phrases, then grounded here; entity
 // fan-out helpers validate and project identities without NLP calls.
 //
 // There is deliberately NO model-owned phrase/NLP extraction port: phrase
@@ -31,9 +31,9 @@ package scriptgeneration
 import (
 	"context"
 	"strings"
-	"unicode"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediacert"
+	phrasepkg "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/phrases"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/stockintelligence"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
@@ -125,7 +125,7 @@ func groundImportantPhrases(source string, entities []VisualEntity, phrases []st
 		// Keep the phrase surface free of proper-name runs even when the
 		// entity extractor missed a name. This validates source-selected or
 		// caller-supplied candidates without rewriting them.
-		if containsProperNamePair(phrase) {
+		if phrasepkg.ContainsProperNamePair(phrase) {
 			continue
 		}
 		span, ok := findEntitySpan(source, phrase)
@@ -159,23 +159,19 @@ func groundImportantPhrases(source string, entities []VisualEntity, phrases []st
 	return out
 }
 
-func containsProperNamePair(value string) bool {
-	previousTitle := false
-	// FieldsSeq iterates without materialising the []string that
-	// strings.Fields would allocate for every candidate phrase.
-	for raw := range strings.FieldsSeq(value) {
-		word := strings.Trim(raw, ".,;:!?\"'’()[]{}")
-		currentTitle := false
-		for _, r := range word {
-			currentTitle = unicode.IsUpper(r)
-			break
+// entityRuneSpans resolves the RUNE spans of the grounded entity surfaces in
+// source. The phrase selector consumes these as its blocked ranges, so no
+// phrase can cover a name the entity overlays own. Grounding stays here, with
+// findEntitySpan and the VisualEntity contract, which keeps scripts/phrases a
+// leaf package with a neutral input instead of a second entity model.
+func entityRuneSpans(source string, entities []VisualEntity) [][2]int {
+	spans := make([][2]int, 0, len(entities))
+	for _, entity := range entities {
+		if span, ok := findEntitySpan(source, entity.Text); ok {
+			spans = append(spans, [2]int{span.StartRune, span.EndRune})
 		}
-		if currentTitle && previousTitle {
-			return true
-		}
-		previousTitle = currentTitle
 	}
-	return false
+	return spans
 }
 
 // imageSearchEntities derives the identity surface from the normal NLP

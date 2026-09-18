@@ -34,6 +34,11 @@ func doctorConfigFrom(cfg *config.Config) systemapi.DoctorConfig {
 		PythonScriptsDir:          cfg.Paths.PythonScriptsDir,
 		GoogleAccountingEnabled:   cfg.GoogleAccounting.Enabled,
 		GoogleAccountingServerURL: cfg.GoogleAccounting.ServerURL,
+		// The doctor must probe the SAME executables the runtime resolves
+		// (see DoctorConfig.YtdlpPath). Resolved here so the handler keeps
+		// holding plain strings and stays a thin transport.
+		YtdlpPath:  cfg.External.ResolvedYtdlpPath(),
+		FfmpegPath: cfg.External.FfmpegPath,
 	}
 }
 
