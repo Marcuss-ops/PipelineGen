@@ -22,6 +22,7 @@ import (
 	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"os"
 	"os/exec"
+	"strings"
 	"time"
 
 	"go.uber.org/zap"
@@ -214,23 +215,19 @@ func (r *ClipRenderTranscriptResolver) Lookup(ctx context.Context, in cliprender
 		return nil, false, err
 	}
 	if track == nil {
-		langs, listErr := r.repo.ListReadyLanguages(ctx, in.AssetID, detail.TextTrackTranscript)
-		if listErr != nil {
-			return nil, false, fmt.Errorf("clip.render: list ready languages: %w", listErr)
-		}
-		if len(langs) > 0 {
-			track, cues, err = r.repo.FindReady(ctx, in.AssetID, langs[0], detail.TextTrackTranscript)
-			if err != nil {
-				return nil, false, fmt.Errorf("clip.render: fallback find ready: %w", err)
-			}
-		}
-	}
-	if track == nil {
+		// A requested language is an exact render contract. Falling back to the
+		// first available track silently burned English subtitles for Italian and
+		// German requests, while the job still reported SUCCEEDED. The caller
+		// must either materialize the requested READY translation first or choose
+		// an explicit language; never substitute a different track here.
 		return nil, false, nil
 	}
 	hash := track.TextHash
 	if hash == "" {
 		hash = detail.TextHash(track.TextContent, track.LanguageCode, detail.TextTrackTranscript)
+	}
+	if err := validateRequestedTranscriptLanguage(in.Language, track.LanguageCode); err != nil {
+		return nil, false, err
 	}
 	return &cliprender.TranscriptResult{
 		AssetID:           in.AssetID,
@@ -258,6 +255,9 @@ func (r *ClipRenderTranscriptResolver) Generate(ctx context.Context, in cliprend
 				zap.String("fallback", "acquire_chain"),
 				zap.Error(err))
 		} else {
+			if err := validateRequestedTranscriptLanguage(in.Language, result.Language); err != nil {
+				return nil, err
+			}
 			return r.finalizeGenerated(ctx, in, source, result)
 		}
 	}
@@ -287,7 +287,19 @@ func (r *ClipRenderTranscriptResolver) Generate(ctx context.Context, in cliprend
 	if result.Language == "" {
 		result.Language = in.Language
 	}
+	if err := validateRequestedTranscriptLanguage(in.Language, result.Language); err != nil {
+		return nil, err
+	}
 	return r.finalizeGenerated(ctx, in, source, result)
+}
+
+func validateRequestedTranscriptLanguage(requested, actual string) error {
+	requested = strings.TrimSpace(requested)
+	actual = strings.TrimSpace(actual)
+	if requested != "" && actual != "" && !strings.EqualFold(requested, actual) {
+		return fmt.Errorf("clip.render: transcript language mismatch: requested %q, resolved %q", requested, actual)
+	}
+	return nil
 }
 
 // finalizeGenerated computes the canonical text hash, persists the READY
