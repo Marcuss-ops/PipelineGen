@@ -27,7 +27,6 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/embeddings"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/media/rustexec"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/observability"
-	ollamaadapters "github.com/Marcuss-ops/PipelineGen/internal/platform/ollama/adapters"
 	pgmedia "github.com/Marcuss-ops/PipelineGen/internal/platform/postgres/media"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/renderinggen"
 	scriptjobs "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/jobregistry"
@@ -276,7 +275,14 @@ func BuildScriptGenerationRuntime(cfg *config.Config, root *ComposeRoot, runRepo
 		}
 		renderEnqueuer.SetRecorder(wireRenderAttemptRecorder(analyticsDB, log))
 		runner.SetOverlayRenderEnqueuer(renderEnqueuer)
-		log.Info("overlay.prepare enqueuer wired to RenderingGen queue", zap.String("url", queueURL))
+		// Bounded multilingual render fan-out. It replaces the serial
+		// per-language render loop, so N languages no longer wait on Chronon
+		// one after another. The RenderingGen worker still owns gpu_lanes, so
+		// this bounds pipelining, not device load.
+		runner.SetOverlayRenderConcurrency(cfg.Scripts.OverlayRenderConcurrency)
+		log.Info("overlay.prepare enqueuer wired to RenderingGen queue",
+			zap.String("url", queueURL),
+			zap.Int("overlay_render_concurrency", runner.OverlayRenderConcurrency()))
 	} else {
 		log.Warn("overlay.prepare enqueue disabled: RENDERINGGEN_QUEUE_URL is not configured")
 	}
@@ -332,10 +338,9 @@ func BuildScriptGenerationRuntime(cfg *config.Config, root *ComposeRoot, runRepo
 			plan, err := root.AI.SceneTextGenerator.ResolveVidRushPlan(ctx, req)
 			return plan, err
 		}),
-		Backpressure:    scriptgen.DefaultVidRushBackpressure(),
-		NERPort:         visualNER,
-		PhraseExtractor: ollamaadapters.NewOllamaImportantPhraseExtractor(root.AI.OllamaClient),
-		SamplerPort:     mediaSampler,
+		Backpressure: scriptgen.DefaultVidRushBackpressure(),
+		NERPort:      visualNER,
+		SamplerPort:  mediaSampler,
 		CertifierPort: scriptgen.MediaCertifierFunc(func(_ context.Context, spec mediacert.Spec, result mediacert.MediaResult) (mediacert.Report, error) {
 			return mediacert.Certify(spec, result), nil
 		}),
@@ -377,7 +382,10 @@ func BuildScriptGenerationRuntime(cfg *config.Config, root *ComposeRoot, runRepo
 	}
 	ollamaScriptGate := scriptgen.NewGenerationGateWithCapacity(scriptGenerationConcurrency)
 	ollamaNLPGate := scriptgen.NewGenerationGateWithCapacity(nlpConcurrency)
-	runner.SetGenerationGate(ollamaScriptGate)
+	// The scene-text gate is owned by the generator engine (below); the runner
+	// owns ONLY the independent entity-extraction gate. Wiring the script gate
+	// onto the runner as well existed solely for the retired compatibility
+	// fallback in beginVidRush.
 	runner.SetNLPGenerationGate(ollamaNLPGate)
 	if root.AI != nil && root.AI.SceneTextGenerator != nil {
 		root.AI.SceneTextGenerator.SetSegmentConcurrency(scriptGenerationConcurrency)

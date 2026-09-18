@@ -11,6 +11,7 @@ import (
 
 	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/observability"
+	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
 )
 
 // Bounded outcome vocabulary of the overlay render boundary. These are the
@@ -37,11 +38,42 @@ const (
 // stage, so attributing the render correctly requires it to be a SIBLING of the
 // audio stage — which is what this file provides.
 //
-// The render itself is unchanged: same gates, same enqueuer, same fail-closed
-// outcome, same execution step on failure. Only the measurement boundary moved.
+// The render boundary is unchanged: same gates, same enqueuer, same fail-closed
+// outcome, same execution step on failure. Two things moved: the measurement
+// boundary (out of audio_compile), and the per-language submission loop, which
+// is now a bounded fan-out instead of one sequential Chronon round-trip per
+// language (see runOverlayRenderPhase).
+
+// overlayRenderOutcome is the result of ONE per-language render submission. It
+// carries the language (plus the boundary wall and plan size it was measured
+// with) so the caller can apply the certified reference and log it in
+// deterministic PLAN ORDER after the fan-out joins. A worker goroutine never
+// touches the durable result: only the caller writes result.OverlayRender and
+// result.LocalizedOverlayRenders, so the run record can never be raced or
+// reordered by render completion order.
+type overlayRenderOutcome struct {
+	language     Language
+	ref          RenderReference
+	boundaryWall time.Duration
+	planItems    int
+}
 
 // runOverlayRenderPhase renders the frozen semantic OverlayPlan and records the
 // certified reference on the run.
+//
+// The per-language submissions run through a BOUNDED fan-out
+// (SetOverlayRenderConcurrency, default 2) instead of the former serial
+// `for plan { enqueue; wait }` loop: N languages used to cost N sequential
+// Chronon round-trips, so the stage wall time grew as T1 + T2 + ... + TN. The
+// fan-out is a pipelining bound, not a GPU bound — RenderingGen's worker still
+// owns `worker.gpu_lanes` and remains the only authority on concurrent GPU work.
+//
+// Determinism over concurrency: the awarded references are keyed by language,
+// the worker only computes the reference, and the caller applies every outcome
+// in plan order, so the durable result is byte-identical to the serial ordering
+// regardless of which render finished first. A failure is fail-closed exactly as
+// before (first error cancels the rest, the run fails against AUDIO_COMPILE, the
+// failed stage keeps its pre-split attribution).
 //
 // It returns true without rendering when the request did not ask for a render,
 // no render enqueuer is wired, the overlay plan was never projected, the result
@@ -58,53 +90,85 @@ func (r *Runner) runOverlayRenderPhase(ctx context.Context, runID string, req Ge
 	if stageSkipped(resumeIdx, StageCompilingAudio) {
 		return true
 	}
-	for _, item := range overlayPlansToRender(result, req) {
-		if item.language == result.overlayPlanLanguage() && result.OverlayRender != nil {
-			continue
-		}
-		if item.language != result.overlayPlanLanguage() {
-			if _, done := result.LocalizedOverlayRenders[item.language]; done {
-				continue
+	pending := pendingOverlayPlans(result, req)
+	if len(pending) == 0 {
+		return true
+	}
+
+	outcomes, fanOutErr := concurrent.Map(ctx, pending, r.overlayRenderWorkers(),
+		func(renderCtx context.Context, _ int, item languageOverlayPlan) (overlayRenderOutcome, error) {
+			// The plan size and boundary wall time are measured HERE, at the only
+			// place that performs the blocking hand-off, so no consumer has to
+			// re-time a wait it does not own.
+			observability.OverlayRenderItems.Observe(float64(len(item.plan.Items)))
+			startedAt := time.Now()
+			ref, renderErr := r.overlayRenderEnqueuer.EnqueueChrononPlan(renderCtx, *item.plan)
+			boundaryWall := time.Since(startedAt)
+			observability.OverlayRenderDurationSeconds.Observe(boundaryWall.Seconds())
+			if renderErr != nil {
+				observability.OverlayRenderTotal.WithLabelValues(renderOutcomeFailure).Inc()
+				return overlayRenderOutcome{language: item.language}, fmt.Errorf("overlay render for %s failed: %w", item.language, renderErr)
 			}
-		}
-		// The plan size and boundary wall time are measured HERE, at the only
-		// place that performs the blocking hand-off, so no consumer has to re-time
-		// a wait it does not own.
-		observability.OverlayRenderItems.Observe(float64(len(item.plan.Items)))
-		startedAt := time.Now()
-		ref, renderErr := r.overlayRenderEnqueuer.EnqueueChrononPlan(ctx, *item.plan)
-		boundarySeconds := time.Since(startedAt).Seconds()
-		observability.OverlayRenderDurationSeconds.Observe(boundarySeconds)
-		if renderErr != nil {
-			observability.OverlayRenderTotal.WithLabelValues(renderOutcomeFailure).Inc()
-			cause := fmt.Errorf("overlay render for %s failed: %w", item.language, renderErr)
-			// The AUDIO_COMPILE step stays open across the render precisely so a
-			// render failure is still reported against the work that produced the
-			// plan (its pre-split behaviour).
-			r.failExecutionStep(ctx, exec, state.Step, cause)
-			r.failRunWithRetry(ctx, runID, StageCompilingAudio, cause)
-			return false
-		}
-		observability.OverlayRenderTotal.WithLabelValues(renderOutcomeSuccess).Inc()
-		recordChrononArtifactMetrics(ref)
-		if item.language == result.overlayPlanLanguage() {
+			observability.OverlayRenderTotal.WithLabelValues(renderOutcomeSuccess).Inc()
+			recordChrononArtifactMetrics(ref)
+			return overlayRenderOutcome{language: item.language, ref: ref, boundaryWall: boundaryWall, planItems: len(item.plan.Items)}, nil
+		})
+	if fanOutErr != nil {
+		// The AUDIO_COMPILE step stays open across the render precisely so a
+		// render failure is still reported against the work that produced the
+		// plan (its pre-split behaviour).
+		r.failExecutionStep(ctx, exec, state.Step, fanOutErr)
+		r.failRunWithRetry(ctx, runID, StageCompilingAudio, fanOutErr)
+		return false
+	}
+
+	// Apply in PLAN ORDER on the caller goroutine. The result is keyed by
+	// language, so this is deterministic by construction rather than by
+	// accident of which render returned first.
+	sourceLanguage := result.overlayPlanLanguage()
+	for _, outcome := range outcomes {
+		if outcome.language == sourceLanguage {
+			ref := outcome.ref
 			result.OverlayRender = &ref
 		} else {
 			if result.LocalizedOverlayRenders == nil {
 				result.LocalizedOverlayRenders = make(map[Language]RenderReference)
 			}
-			result.LocalizedOverlayRenders[item.language] = ref
+			result.LocalizedOverlayRenders[outcome.language] = outcome.ref
 		}
 		r.log.Info("overlay render complete",
 			zap.String("run_id", runID),
-			zap.String("language", string(item.language)),
-			zap.String("render_job_id", ref.JobID),
-			zap.String("status", ref.Status),
-			zap.Duration("boundary_wall", time.Since(startedAt)),
-			zap.Int("plan_items", len(item.plan.Items)),
+			zap.String("language", string(outcome.language)),
+			zap.String("render_job_id", outcome.ref.JobID),
+			zap.String("status", outcome.ref.Status),
+			zap.Duration("boundary_wall", outcome.boundaryWall),
+			zap.Int("plan_items", outcome.planItems),
 		)
 	}
 	return true
+}
+
+// pendingOverlayPlans filters the deterministic dispatch list down to the plans
+// whose language has no persisted render yet, preserving the order from
+// overlayPlansToRender. It is the ONCE-ONLY resume/idempotency gate of the
+// render phase: a completed reference already on the result is reused instead
+// of re-submitting duplicate GPU work.
+func pendingOverlayPlans(result *GenerateResult, req GenerateRequest) []languageOverlayPlan {
+	plans := overlayPlansToRender(result, req)
+	pending := make([]languageOverlayPlan, 0, len(plans))
+	sourceLanguage := result.overlayPlanLanguage()
+	for _, item := range plans {
+		if item.language == sourceLanguage && result.OverlayRender != nil {
+			continue
+		}
+		if item.language != sourceLanguage {
+			if _, done := result.LocalizedOverlayRenders[item.language]; done {
+				continue
+			}
+		}
+		pending = append(pending, item)
+	}
+	return pending
 }
 
 type languageOverlayPlan struct {

@@ -108,7 +108,7 @@ func segmentBudgetFor(plan *scriptpkg.ResolvedGenerationPlan, index int, toleran
 		// A small model can miss an explicitly requested minimum even after a
 		// targeted retry. Keep the requested number in the prompt, while
 		// allowing a wider local QA grace so a near-complete scene does not
-		// fail the whole script. The aggregate minimum still applies.
+		// fail the whole script. The aggregate minimum is informational only.
 		grace := int(math.Ceil(float64(requestedMinWords) * explicitMinimumGracePercent / 100))
 		minWords -= grace
 		if minWords < 1 {

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/observability"
 	"go.uber.org/zap"
 )
 
@@ -21,20 +22,40 @@ func (r *Runner) updateStage(ctx context.Context, runID string, status RunStatus
 
 // checkpoint saves the partial result to the repository.
 // Errors are logged but not propagated (best-effort checkpoint).
+//
+// It is the SINGLE owner of the script checkpoint write-amplification
+// instrumentation: every call counts as an attempt, a successful save counts as
+// a write and contributes its serialized bytes, and the save wall time is
+// observed. The byte counter is recorded where the payload is actually produced
+// (the repository marshal), so it measures what SQLite received rather than an
+// estimate.
 func (r *Runner) checkpoint(ctx context.Context, runID string, result *GenerateResult) {
+	observability.ScriptCheckpointAttemptTotal.Inc()
 	started := time.Now()
-	if err := r.repo.SavePartialResult(ctx, runID, result); err != nil {
+	saveErr := r.repo.SavePartialResult(ctx, runID, result)
+	if saveErr != nil {
 		r.log.Warn("checkpoint save failed",
 			zap.String("run_id", runID),
-			zap.Error(err),
+			zap.Error(saveErr),
 		)
+	} else {
+		observability.ScriptCheckpointWriteTotal.Inc()
 	}
 	if result != nil && result.SemanticRenderBundle != nil {
 		if err := persistSemanticBundleSidecar(runID, result.SemanticRenderBundle); err != nil {
 			r.log.Warn("semantic bundle sidecar save failed", zap.String("run_id", runID), zap.Error(err))
 		}
 	}
+	observability.ScriptCheckpointSeconds.Observe(time.Since(started).Seconds())
 	kernobs.RecordStage(ctx, kernobs.StageInfo{Stage: "checkpoint"}, started, time.Now(), nil)
+}
+
+// observeCheckpointWait records how long a worker waited for the per-unit apply
+// lock before checkpointing. The stage timer never covered this wait, so
+// contention between the scene×language workers was invisible in every report;
+// it is measured at the call site that owns the lock.
+func observeCheckpointWait(started time.Time) {
+	observability.ScriptCheckpointWaitSeconds.Observe(time.Since(started).Seconds())
 }
 
 // persistSemanticBundleSidecar keeps the audit bundle beside the job's other

@@ -52,11 +52,30 @@ type OverlayRenderEnqueuer interface {
 type LocalizedRenderInput struct {
 	RunID       string
 	ParentJobID string `json:"parent_job_id,omitempty"`
-	SceneID     string
-	SceneIndex  int
-	Language    Language
-	Text        string
-	Voiceover   AudioReference
+
+	// DocsFolderID and JobID are the destination facts of a produced
+	// localized clip: it publishes into <DocsFolderID>/<JobID>/<language>,
+	// which is the folder that language's script document is written into.
+	//
+	// DocsFolderID is this run's RESOLVED documents root
+	// (ArtifactRoutingContext.DocsFolderID), and JobID is the job whose
+	// documents folder the script phase published. They are resolved ONCE
+	// at generation start and propagated verbatim (godlike/06 SSOT), so the
+	// clip folder is derived from the same two facts the documents phase
+	// used instead of a second, independently-drifting copy of that routing.
+	//
+	// A produced clip and the script it belongs to are two halves of ONE
+	// per-language deliverable: publishing the clip anywhere else splits that
+	// deliverable across two Drive trees and leaves the clip findable only by
+	// knowing its filename.
+	DocsFolderID string `json:"docs_folder_id,omitempty"`
+	JobID        string `json:"job_id,omitempty"`
+
+	SceneID    string
+	SceneIndex int
+	Language   Language
+	Text       string
+	Voiceover  AudioReference
 
 	// SourceLanguage / SourceText carry the source-language scene text (the
 	// transcript the localized render's source plan references). They are
@@ -141,19 +160,26 @@ type LocalizedOverlayLineage struct {
 // from the localization service's certified artifact — the run records the
 // produced MP4 instead of discarding it.
 type LocalizedRenderResult struct {
-	SceneID     string             `json:"scene_id"`
-	SceneIndex  int                `json:"scene_index,omitempty"`
-	Language    Language           `json:"language"`
-	ClipID      string             `json:"clip_id"`
-	AssetID     string             `json:"asset_id"`
-	SHA256      string             `json:"sha256"`
-	DriveFileID string             `json:"drive_file_id,omitempty"`
-	DriveLink   string             `json:"drive_link,omitempty"`
-	DurationMS  int64              `json:"duration_ms,omitempty"`
-	LocalPath   string             `json:"local_path,omitempty"`
-	Status      string             `json:"status"`
-	Backend     string             `json:"backend,omitempty"`
-	Metrics     map[string]float64 `json:"metrics,omitempty"`
+	SceneID     string   `json:"scene_id"`
+	SceneIndex  int      `json:"scene_index,omitempty"`
+	Language    Language `json:"language"`
+	ClipID      string   `json:"clip_id"`
+	AssetID     string   `json:"asset_id"`
+	SHA256      string   `json:"sha256"`
+	DriveFileID string   `json:"drive_file_id,omitempty"`
+	DriveLink   string   `json:"drive_link,omitempty"`
+	// DriveFolderID is the RESOLVED destination folder the artifact was
+	// published into (<DocsFolderID>/<JobID>/<language>). It is projected so
+	// the destination of a render is readable on the run result instead of
+	// only being inferable from the log — and so a gate can prove that two
+	// languages of the same clip did NOT land in one shared folder. Empty on
+	// the pre-upload (RENDERED) stage, which has no destination yet.
+	DriveFolderID string             `json:"drive_folder_id,omitempty"`
+	DurationMS    int64              `json:"duration_ms,omitempty"`
+	LocalPath     string             `json:"local_path,omitempty"`
+	Status        string             `json:"status"`
+	Backend       string             `json:"backend,omitempty"`
+	Metrics       map[string]float64 `json:"metrics,omitempty"`
 	// Boundary timestamps let the parent distinguish summed child work from
 	// actual fan-out wall time when localized renders overlap.
 	StartedAt  time.Time `json:"started_at,omitempty"`

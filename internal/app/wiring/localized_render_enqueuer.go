@@ -238,22 +238,23 @@ func (a *localizedRenderEnqueuerAdapter) EnqueueLocalizedRender(ctx context.Cont
 		for _, artifact := range res.Artifacts {
 			renderFinishedAt := time.Now().UTC()
 			produced := scriptgeneration.LocalizedRenderResult{
-				SceneID:     artifact.SceneID,
-				SceneIndex:  in.SceneIndex,
-				Language:    scriptgeneration.Language(artifact.Language),
-				ClipID:      artifact.ClipID,
-				AssetID:     artifact.AssetID,
-				SHA256:      artifact.SHA256,
-				DriveFileID: artifact.DriveFileID,
-				DriveLink:   artifact.DriveLink,
-				DurationMS:  artifact.DurationMS,
-				LocalPath:   artifact.LocalPath,
-				Status:      string(artifact.Status),
-				Backend:     artifact.Backend,
-				Metrics:     metricsMapFromJSON(artifact.MetricsJSON),
-				StartedAt:   renderStartedAt,
-				FinishedAt:  renderFinishedAt,
-				WallMS:      renderFinishedAt.Sub(renderStartedAt).Milliseconds(),
+				SceneID:       artifact.SceneID,
+				SceneIndex:    in.SceneIndex,
+				Language:      scriptgeneration.Language(artifact.Language),
+				ClipID:        artifact.ClipID,
+				AssetID:       artifact.AssetID,
+				SHA256:        artifact.SHA256,
+				DriveFileID:   artifact.DriveFileID,
+				DriveLink:     artifact.DriveLink,
+				DriveFolderID: artifact.DriveFolderID,
+				DurationMS:    artifact.DurationMS,
+				LocalPath:     artifact.LocalPath,
+				Status:        string(artifact.Status),
+				Backend:       artifact.Backend,
+				Metrics:       metricsMapFromJSON(artifact.MetricsJSON),
+				StartedAt:     renderStartedAt,
+				FinishedAt:    renderFinishedAt,
+				WallMS:        renderFinishedAt.Sub(renderStartedAt).Milliseconds(),
 			}
 			canonicalAssetID, err := a.commitLocalizedRenderAsset(ctx, in, artifact)
 			if err != nil {
@@ -321,8 +322,9 @@ func (a *localizedRenderEnqueuerAdapter) UploadRendered(ctx context.Context, in 
 		return in.OnRendered(scriptgeneration.LocalizedRenderResult{
 			SceneID: published.SceneID, SceneIndex: in.SceneIndex, Language: scriptgeneration.Language(published.Language),
 			ClipID: published.ClipID, AssetID: published.AssetID, SHA256: published.SHA256,
-			DriveFileID: published.DriveFileID, DriveLink: published.DriveLink, DurationMS: published.DurationMS,
-			LocalPath: published.LocalPath, Status: string(published.Status), Backend: published.Backend, Metrics: metricsMapFromJSON(published.MetricsJSON), StartedAt: staged.StartedAt,
+			DriveFileID: published.DriveFileID, DriveLink: published.DriveLink, DriveFolderID: published.DriveFolderID,
+			DurationMS: published.DurationMS,
+			LocalPath:  published.LocalPath, Status: string(published.Status), Backend: published.Backend, Metrics: metricsMapFromJSON(published.MetricsJSON), StartedAt: staged.StartedAt,
 			FinishedAt: time.Now().UTC(),
 		})
 	}

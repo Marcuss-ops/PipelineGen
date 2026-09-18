@@ -3,16 +3,17 @@
 // SegmentProviderResolver that replace the legacy extractor/chooser with the
 // SceneIR → VisualNER → MediaSampler → Local Stock → MediaCert chain.
 //
-// The implementations are a big-bang replacement of the legacy ports
-// (per the cutover decision): VidRushPipeline now wires
-// SceneIRSegmentEnricher + SemanticProviderResolver instead of the legacy
-// enricher/resolver, and the coordinator's barrier wraps in MediaCertBarrier
+// The implementations are a big-bang replacement of the legacy entity
+// extraction/selection chain: SceneIRSegmentEnricher (built from NERPort)
+// replaces the legacy Enricher, and SemanticProviderResolver replaces the
+// legacy provider chooser — composed with the still-wired provider fan-out by
+// SemanticAndFanoutResolver. The coordinator's barrier wraps in MediaCertBarrier
 // so a SUCCEEDED run with CERTIFIED=false fails the job.
 //
-// The port/value contracts live in vidrush_semantic_ports.go, the barrier in
-// vidrush_mediacert_barrier.go (split 2026-09-12) and the pure grounding /
-// entity fan-out helpers in vidrush_semantic_chain_grounding.go (split
-// 2026-09-16) — both splits exist to keep every file under
+// The port/value contracts live in vidrush_semantic_ports.go, which is also
+// where the pure grounding / entity fan-out helpers were moved (split
+// 2026-09-16), alongside the barrier in vidrush_mediacert_barrier.go (split
+// 2026-09-12). Both splits exist to keep every file under
 // max_lines_per_file_strict=600 (godlike/08).
 package scriptgeneration
 
@@ -35,8 +36,7 @@ import (
 // + the VisualNER entities, so downstream provider search consumes
 // SourceText + Profile (never NarrationText).
 type SceneIRSegmentEnricher struct {
-	nerPort         VisualNERPort
-	phraseExtractor ImportantPhraseExtractor
+	nerPort VisualNERPort
 }
 
 // NewSceneIRSegmentEnricher wires the new enricher. nerPort must be non-nil.
@@ -45,15 +45,6 @@ func NewSceneIRSegmentEnricher(nerPort VisualNERPort) (*SceneIRSegmentEnricher, 
 		return nil, fmt.Errorf("scriptgeneration: VisualNERPort is required for SceneIRSegmentEnricher")
 	}
 	return &SceneIRSegmentEnricher{nerPort: nerPort}, nil
-}
-
-// SetImportantPhraseExtractor injects the NLP phrase extractor. The
-// enrichment path never invents phrases when this port is absent; this keeps
-// deterministic entity NER and model-driven phrase extraction distinct.
-func (e *SceneIRSegmentEnricher) SetImportantPhraseExtractor(extractor ImportantPhraseExtractor) {
-	if e != nil {
-		e.phraseExtractor = extractor
-	}
 }
 
 // Enrich compiles a SceneIR from the committed scene and extracts entities.
@@ -119,30 +110,12 @@ func (e *SceneIRSegmentEnricher) Enrich(ctx context.Context, plan *scriptpkg.Res
 	if wordLimit <= 0 {
 		wordLimit = 3
 	}
-	var sourceNLP SceneNLPExtraction
-	includeModelNLP := includeImportantPhrases || includeImportantWords || includeSpecialNames
-	if includeModelNLP && e.phraseExtractor != nil {
-		if detailed, ok := e.phraseExtractor.(SceneNLPExtractor); ok {
-			sourceNLP, err = detailed.ExtractSceneNLP(ctx, ir.SourceText, max(entityLimit, phraseLimit, wordLimit), generationPlanLanguage(plan), generationPlanModel(plan))
-		} else if includeImportantPhrases {
-			sourceNLP.ImportantPhrases, err = e.phraseExtractor.ExtractImportantPhrases(
-				ctx, ir.SourceText, phraseLimit, generationPlanLanguage(plan), generationPlanModel(plan),
-			)
-		}
-		if err != nil {
-			return scriptpkg.VidRushSegmentResult{}, fmt.Errorf("scene NLP extract: %w", err)
-		}
-	}
-	if includeEntities && len(sourceNLP.Entities) > 0 {
-		entities = mergeTranslatedNamedEntities(entities, groundNamedVisualEntities(ir.SourceText, sourceNLP.Entities))
-	}
 	if err := validateVisualEntities(ir, entities); err != nil {
 		return scriptpkg.VidRushSegmentResult{}, fmt.Errorf("visualner contract: %w", err)
 	}
 	entities = deduplicateVisualEntities(entities)
-	// VisualNER and the structured name extractor can each contribute valid
-	// identities. Enforce the caller's per-scene limit after merging so the
-	// emitted image-query fanout and certification see the same bounded list.
+	// Enforce the caller's per-scene limit before image-query fanout and
+	// certification consume the VisualNER identities.
 	entities = limitTranslatedVisualEntities(entities, entityLimit)
 
 	extractedEntities := make([]scriptpkg.ExtractedEntity, 0, len(entities))
@@ -177,32 +150,33 @@ func (e *SceneIRSegmentEnricher) Enrich(ctx context.Context, plan *scriptpkg.Res
 		}
 		imageQueries = append(imageQueries, query)
 	}
-	// Recompile the same SceneIR with the extractor result. This keeps the
-	// canonical profile as the only semantic owner while making the newly
-	// grounded visual entities available to the canonical query builders.
-	entityResult := scriptpkg.EntityResult{
-		NounChunks: entitiesToStrings(entities),
-		Concepts:   extractedToConcepts(extractedEntities),
-		ImportantWords: func() []string {
-			if !includeImportantWords {
-				return nil
-			}
-			return limitTranslatedNLPStrings(sourceNLP.ImportantWords, wordLimit)
-		}(),
+	var phraseCandidates []string
+	if includeImportantPhrases || includeImportantWords {
+		phraseCandidates = deterministicImportantPhrases(ir.SourceText, entities, phraseLimit, generationPlanLanguage(plan))
 	}
-	if includeSpecialNames {
-		entityResult.SpecialNames = limitTranslatedNLPStrings(sourceNLP.SpecialNames, entityLimit)
-	}
-	// Important phrases come from the injected NLP/model extractor. This
-	// runner only validates and grounds its output; it never derives phrases
-	// from the entity list.
+	var importantPhrases []string
 	if includeImportantPhrases {
-		// Explicit editorial hints are still passed through the same grounding
-		// gate as model output. This makes a requested phrase deterministic for
-		// a render while preserving the no-invention contract.
-		phraseCandidates := append([]string(nil), extraction.ImportantPhrases...)
-		phraseCandidates = append(phraseCandidates, sourceNLP.ImportantPhrases...)
-		entityResult.ImportantPhrases = groundImportantPhrases(ir.SourceText, entities, phraseCandidates, extraction.MaxImportantPhrasesPerSegment)
+		candidates := append([]string(nil), extraction.ImportantPhrases...)
+		candidates = append(candidates, phraseCandidates...)
+		importantPhrases = groundImportantPhrases(ir.SourceText, entities, candidates, phraseLimit)
+	}
+	var importantWords []string
+	if includeImportantWords {
+		importantWords = deterministicImportantWords(phraseCandidates, wordLimit, generationPlanLanguage(plan))
+	}
+	var specialNames []string
+	if includeSpecialNames {
+		specialNames = translatedSpecialNames(ir.SourceText, nil, entities, entityLimit)
+	}
+
+	// Recompile the same SceneIR with the VisualNER and deterministic editorial
+	// surfaces. This keeps the canonical profile as the only semantic owner.
+	entityResult := scriptpkg.EntityResult{
+		NounChunks:       entitiesToStrings(entities),
+		Concepts:         extractedToConcepts(extractedEntities),
+		ImportantPhrases: importantPhrases,
+		ImportantWords:   importantWords,
+		SpecialNames:     specialNames,
 	}
 	ir, err = sceneir.Compile(sceneir.CompileInput{Segment: segment, NarrationOverride: narrationText, EntityResult: &entityResult})
 	if err != nil {
@@ -224,6 +198,8 @@ func (e *SceneIRSegmentEnricher) Enrich(ctx context.Context, plan *scriptpkg.Res
 		Position:        ir.Position,
 		Text:            narrationText,
 		TextHash:        ir.Profile.TextHash,
+		SourceText:      ir.SourceText,
+		SourceTextHash:  ir.SourceTextHash,
 		ExecutionMode:   scene.ExecutionMode,
 		SemanticProfile: &ir.Profile,
 		Insights: scriptpkg.SegmentInsights{
@@ -241,13 +217,13 @@ func (e *SceneIRSegmentEnricher) Enrich(ctx context.Context, plan *scriptpkg.Res
 				if !includeImportantWords {
 					return nil
 				}
-				return limitTranslatedNLPStrings(sourceNLP.ImportantWords, wordLimit)
+				return append([]string(nil), importantWords...)
 			}(),
 			SpecialNames: func() []string {
 				if !includeSpecialNames {
 					return nil
 				}
-				return translatedSpecialNames(ir.SourceText, sourceNLP.SpecialNames, entities, entityLimit)
+				return append([]string(nil), specialNames...)
 			}(),
 			ArtlistQueries: artlistQueries,
 			ImageQueries:   imageQueries,
@@ -306,6 +282,12 @@ func visualImageAnchor(source string) string {
 // canonicalSourceText selects the source wording committed by the plan.
 // Generated scene copy is narration only and must never replace it.
 func canonicalSourceText(plan *scriptpkg.ResolvedGenerationPlan, scene scriptpkg.SpecScene, segmentID string) string {
+	// The commit boundary may carry the exact per-segment evidence. Prefer it
+	// over plan lookup so concurrent/generated scene IDs can never fall back to
+	// the global source brief or narration text.
+	if scene.Metadata != nil && strings.TrimSpace(scene.Metadata.SourceText) != "" {
+		return strings.TrimSpace(scene.Metadata.SourceText)
+	}
 	if plan != nil {
 		for _, candidate := range plan.Segments {
 			if strings.EqualFold(strings.TrimSpace(candidate.ID), segmentID) && strings.TrimSpace(candidate.SourceText) != "" {

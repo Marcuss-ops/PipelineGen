@@ -146,8 +146,9 @@ func toMediaResultSegments(segments []scriptpkg.VidRushSegmentResult) []mediacer
 		out = append(out, mediacert.ResultSegment{
 			SegmentID:       seg.SegmentID,
 			Position:        seg.Position,
-			SourceText:      seg.Text,
-			SourceTextHash:  seg.TextHash,
+			SourceText:      seg.SourceText,
+			SourceTextHash:  seg.SourceTextHash,
+			NarrationText:   seg.Text,
 			SemanticProfile: &profile,
 			Insights:        insights,
 			Assets:          seg.Assets,

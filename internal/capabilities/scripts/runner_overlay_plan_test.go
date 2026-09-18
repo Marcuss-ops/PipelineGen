@@ -625,6 +625,33 @@ func TestCompileOverlayPlanDoesNotReuseSourceAnnotationsForMissingTranslation(t 
 	require.Nil(t, plan, "an absent translated annotation must not leak a source-language overlay")
 }
 
+func TestCompileOverlayPlanDoesNotReuseUnlabelledSourceEntitiesForTranslation(t *testing.T) {
+	timing := speechTimingForWords([]string{"Kanioni", "betonowe", "otworzyły", "historię."})
+	result := &GenerateResult{
+		SourceLanguage: "en",
+		AudioMode:      capabilityaudio.AudioModeCombinedTimeline,
+		CanonicalTimeline: &capabilityaudio.CanonicalTimeline{
+			Version: capabilityaudio.TimelineVersion, DurationUS: timing.DurationUS,
+		},
+		Scenes: []Scene{{
+			ID: "brooklyn-origins", Index: 0,
+			Text: map[Language]string{"en": "Brooklyn shaped the fighter's beginnings.", "pl": "Betonowe kaniony otworzyły historię."},
+			Voiceover: map[Language]AudioReference{
+				"pl": {ID: "vo-pl", Duration: 0.4, Timing: &timing},
+			},
+			// Empty Language is a legacy source annotation. It must not be
+			// projected onto the Polish timing stream.
+			Annotations: &scriptpkg.SceneAnnotations{
+				Version: 1, Status: "completed",
+				PrimaryEntities: []scriptpkg.AnnotatedEntity{{Text: "Brooklyn", CanonicalName: "Brooklyn", Type: "LOCATION", Confidence: 1}},
+			},
+		}},
+	}
+	plan, err := CompileOverlayPlan(result, "pl", GoldenOverlayCanvas, "run-pl", "video-pl", "project")
+	require.NoError(t, err)
+	require.Nil(t, plan, "unlabelled source entities must not be matched against translated timing")
+}
+
 // TestCompileOverlayPlan_ChosenEntityImageCarriesResolvedAsset certifies the
 // canonical-id connection end-to-end: the chosen entity (the scene-relevant
 // one with a certified occurrence) BECOMES the image-only entity overlay that carries its

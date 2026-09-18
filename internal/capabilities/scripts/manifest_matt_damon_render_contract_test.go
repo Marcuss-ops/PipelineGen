@@ -1,6 +1,7 @@
 package scriptgeneration
 
 import (
+	"bytes"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -98,5 +99,139 @@ func TestMattDamonFiveClipsRenderContract(t *testing.T) {
 	}
 	if render.Watermark.Position != "top_right" {
 		t.Errorf("Normalize changed watermark.position to %q, want top_right preserved", render.Watermark.Position)
+	}
+}
+
+// ── 1 clip / 1 scene / 10 languages ──────────────────────────────────
+//
+// The smallest complete multilingual render: ONE source clip, ONE scene and
+// ten languages. `renderLanguages` derives the render set from the source
+// language plus the requested targets, so this manifest is exactly TEN renders
+// of the same clip — one per language, each with its own burned subtitles, each
+// published into its own Drive folder.
+
+const (
+	// verifyOneClipTenLanguagesManifestPath is the acceptance job of the
+	// scenario, resolved from this package directory.
+	verifyOneClipTenLanguagesManifestPath = "../../../ops/jobs/verify_1clip_10lang.generate.json"
+	// verifyOneClipTenLanguagesClipID is the source clip the scenario renders.
+	// Pinned so a payload edit that silently swapped the asset — and therefore
+	// the scene count and the expected render matrix — fails here.
+	verifyOneClipTenLanguagesClipID = "yt_vLRjqTIiMjc_0_25_v1"
+	// verifyOneClipTenLanguagesSubtitlePreset exists in the canonical preset
+	// registry AND in the ASS typography table, so the burned subtitle and the
+	// Chronon overlay agree on fonts.
+	verifyOneClipTenLanguagesSubtitlePreset = "subs-young"
+)
+
+// verifyOneClipTenLanguagesTargets is the requested translation fan-out; with the
+// source language it forms the canonical ten-language set.
+var verifyOneClipTenLanguagesTargets = []string{"it", "pl", "ru", "de", "es", "pt-BR", "fr", "tr", "id"}
+
+// TestVerifyOneClipOneSceneTenLanguagesManifestPinsTheRuntimeContract pins the
+// runtime contract of the 1-clip/1-scene/10-language acceptance job against the
+// REAL production contracts (no server, no Drive, no GPU). Three facts make the
+// scenario possible and each one is checked here:
+//
+//  1. ONE CLIP IS THE SOURCE — source.type=clips with exactly one canonical
+//     `yt_<videoID>_<start>_<end>_<policy>` id.
+//
+//  2. THE SUBTITLE-ONLY LANE — `audio.mode=NONE` is what fans one clip out over
+//     every language (`expectedRenderUnits`) instead of rendering the source
+//     audio once. Subtitles are BURNED: the shipped artifact is the MP4, and a
+//     sidecar track is not it.
+//
+//  3. THE CLIPS FIELDS CANNOT DIVERT THE RENDER — the destination is
+//     `<resolved documents root>/<job>/<language>`; the payload's
+//     drive_folder_id/drive_subfolder_name are the fallback of a run with no
+//     documents root at all. With docs enabled the documents root resolves
+//     (here the configured default, since the payload pins no docs.folder_id) and
+//     it is deliberately NOT the clips folder — which is what keeps every
+//     language's clip beside the script it was rendered from.
+func TestVerifyOneClipOneSceneTenLanguagesManifestPinsTheRuntimeContract(t *testing.T) {
+	body, err := os.ReadFile(filepath.Join("..", "..", "..", "ops", "jobs", "verify_1clip_10lang.generate.json"))
+	if err != nil {
+		t.Fatalf("read manifest: %v", err)
+	}
+	var envelope scriptpkg.GenerationEnvelopeV2
+	decoder := json.NewDecoder(bytes.NewReader(body))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&envelope); err != nil {
+		t.Fatalf("the manifest must decode as the production GenerationEnvelopeV2 wire contract: %v", err)
+	}
+	if len(envelope.Items) != 1 {
+		t.Fatalf("manifest items = %d, want the single acceptance item", len(envelope.Items))
+	}
+
+	req, err := BuildGenerateRequest(&envelope, "verify-1clip-10lang-contract")
+	if err != nil {
+		t.Fatalf("the manifest must build through the production builder: %v", err)
+	}
+
+	// 1. ONE clip is the source of the run.
+	if req.Source.Type != SourceClips {
+		t.Fatalf("source type = %q, want %q (the script must be generated from the clip evidence)", req.Source.Type, SourceClips)
+	}
+	if len(req.Source.ClipIDs) != 1 || req.Source.ClipIDs[0] != verifyOneClipTenLanguagesClipID {
+		t.Fatalf("source clips = %v, want exactly [%s]", req.Source.ClipIDs, verifyOneClipTenLanguagesClipID)
+	}
+
+	// 2. The subtitle-only lane and its burned subtitles.
+	if req.Audio != "NONE" {
+		t.Fatalf("audio mode = %q, want NONE (the only lane that fans one clip over every language)", req.Audio)
+	}
+	if !req.Render.Enabled {
+		t.Fatal("the render fan-out must be enabled")
+	}
+	if !req.Render.RequireGPU {
+		t.Fatal("the certified lane is the GPU lane; a silent software fallback must fail the run")
+	}
+	if req.Render.Subtitles == nil || !req.Render.Subtitles.Enabled || req.Render.Subtitles.Mode != "burn" {
+		t.Fatalf("subtitles = %+v, want them enabled and BURNED (a sidecar is not the shipped artifact)", req.Render.Subtitles)
+	}
+	if req.Render.Subtitles.Preset != verifyOneClipTenLanguagesSubtitlePreset {
+		t.Fatalf("subtitle preset = %q, want %q", req.Render.Subtitles.Preset, verifyOneClipTenLanguagesSubtitlePreset)
+	}
+
+	// 3. Ten renders of the same clip: the source language plus nine targets.
+	if req.SourceLanguage != "en" {
+		t.Fatalf("source language = %q, want the interview language en", req.SourceLanguage)
+	}
+	if len(req.Languages) != len(verifyOneClipTenLanguagesTargets) {
+		t.Fatalf("target languages = %v, want %v", req.Languages, verifyOneClipTenLanguagesTargets)
+	}
+	for i, want := range verifyOneClipTenLanguagesTargets {
+		if string(req.Languages[i]) != want {
+			t.Fatalf("target language[%d] = %q, want %q", i, req.Languages[i], want)
+		}
+		if want == string(req.SourceLanguage) {
+			t.Fatalf("language %q is the source language; it cannot also be a translation target", want)
+		}
+	}
+
+	// 4. One document — and therefore one folder — per language, source included.
+	if !req.Docs.Enabled {
+		t.Fatal("docs publishing must be explicit for this batch")
+	}
+	if len(req.Docs.Languages) != len(verifyOneClipTenLanguagesTargets)+1 {
+		t.Fatalf("docs languages = %v, want the source plus the nine targets", req.Docs.Languages)
+	}
+
+	// 5. The clips fields are a FALLBACK, never the destination.
+	docsRoot, err := scriptpkg.ResolveScriptDocsFolderID(req.Docs.Enabled, req.Docs.FolderID, "canonical-docs-root")
+	if err != nil {
+		t.Fatalf("resolve documents root: %v", err)
+	}
+	if docsRoot != "canonical-docs-root" {
+		t.Fatalf("documents root = %q, want the configured default (the payload pins no docs.folder_id)", docsRoot)
+	}
+	if docsRoot == req.Render.DriveFolderID {
+		t.Fatalf("documents root and the clips folder are both %q; the clip would not sit beside its script", docsRoot)
+	}
+
+	// The path constant is asserted too, so a rename of the acceptance job is a
+	// deliberate edit here rather than a silently dead gate.
+	if _, err := os.Stat(filepath.FromSlash(verifyOneClipTenLanguagesManifestPath)); err != nil {
+		t.Fatalf("acceptance manifest %s is not where this gate reads it: %v", verifyOneClipTenLanguagesManifestPath, err)
 	}
 }

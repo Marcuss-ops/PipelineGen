@@ -30,7 +30,7 @@ media:
         enabled: true
         translate_clips: true
         generate_tts: true
-        edge_tts_voice: ru-RU-DmitryNeural
+        edge_tts_voice: ru-RU-SvetlanaNeural
       - code: de
         enabled: true
         translate_clips: true

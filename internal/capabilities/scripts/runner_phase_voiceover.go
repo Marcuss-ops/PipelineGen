@@ -254,8 +254,12 @@ func (r *Runner) runVoiceoverPhase(ctx context.Context, runID string, req Genera
 				}
 				// Apply + checkpoint per unit (guarded): the completed voiceover
 				// is durable before the worker returns, so a crash mid-phase
-				// preserves it and the restart REUSEs it.
+				// preserves it and the restart REUSEs it. The wait for the lock is
+				// measured because it is a real barrier between the scene×language
+				// workers that no stage timer covered.
+				waitStarted := time.Now()
 				applyMu.Lock()
+				observeCheckpointWait(waitStarted)
 				if item.scene.Voiceover == nil {
 					item.scene.Voiceover = make(map[Language]AudioReference)
 				}
@@ -308,6 +312,8 @@ func (r *Runner) runVoiceoverPhase(ctx context.Context, runID string, req Genera
 					if err := r.enqueueLocalizedRender(ctx, LocalizedRenderInput{
 						RunID:          runID,
 						ParentJobID:    exec.JobID,
+						DocsFolderID:   routing.DocsFolderID,
+						JobID:          exec.JobID,
 						SceneID:        item.sceneID,
 						SceneIndex:     item.scene.Index,
 						Language:       item.lang,

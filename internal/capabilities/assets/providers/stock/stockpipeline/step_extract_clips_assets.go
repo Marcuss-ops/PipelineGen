@@ -52,10 +52,12 @@ func buildRichStockAsset(plan ClipPlan, sourceIdx, clipIdx int, outputPath, hash
 	// trg_media_assets_state_valid_insert aborts on the zero value "").
 	// The state mirrors the canonical finalizer convention
 	// (asset_finalizer_committer.go::buildCommitRequest): youtube-sourced
-	// clips start ACTIVE, everything else PUBLISHED. The Drive upload for
-	// this clip happens in publishCuts AFTER this write; the state is the
-	// optimistic canonical value that the finalizer/committer reconciles.
-	// index_state is left to the column default (DISCOVERED).
+	// clips start ACTIVE, everything else PUBLISHED. publishCuts commits
+	// this asset only AFTER the clip's Drive publication has succeeded, so
+	// the state is committed alongside a real Drive location rather than as
+	// an optimistic placeholder (see step_extract_clips_publish.go for the
+	// ordering contract). index_state is left to the column default
+	// (DISCOVERED).
 	lifecycleState := asset.StatePublished
 	if provider == SourceProviderYouTube {
 		lifecycleState = asset.StateActive

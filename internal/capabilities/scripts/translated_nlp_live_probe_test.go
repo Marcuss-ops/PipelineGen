@@ -13,7 +13,6 @@ import (
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/linguistics"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	mediadomain "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
@@ -130,10 +129,7 @@ func mikeTysonProbeLanguages() []Language {
 
 type mikeTysonProbeNER struct {
 	binary string
-	// calls counts every invocation of the release visualner binary. Together
-	// with the phrase extractor's counter it covers the ONLY two outbound
-	// boundaries this certificate owns (the Rust binary and Ollama), which is
-	// what turns "no rendering happened" from a comment into a measurement.
+	// calls counts every invocation of the release visualner binary.
 	calls *atomic.Int64
 }
 
@@ -158,86 +154,6 @@ func (n mikeTysonProbeNER) Extract(ctx context.Context, text string, limit int) 
 		return nil, err
 	}
 	return response.Entities, nil
-}
-
-type mikeTysonProbePhraseExtractor struct {
-	client *ollamaclient.Client
-	// calls counts every model-backed NLP extraction this certificate issues.
-	// It is paired with mikeTysonProbeNER.calls so the two outbound
-	// boundaries of the Goal-2 certificate are measured, not assumed.
-	calls *atomic.Int64
-}
-
-func (p mikeTysonProbePhraseExtractor) ExtractImportantPhrases(ctx context.Context, text string, limit int, language, model string) ([]string, error) {
-	result, err := p.ExtractSceneNLP(ctx, text, limit, language, model)
-	return result.ImportantPhrases, err
-}
-
-func (p mikeTysonProbePhraseExtractor) ExtractSceneNLP(ctx context.Context, text string, limit int, language, model string) (SceneNLPExtraction, error) {
-	if p.calls != nil {
-		p.calls.Add(1)
-	}
-	result, err := p.client.ExtractEntitiesFromSegmentWithModel(ctx, detail.EntityExtractionRequest{SegmentText: text, EntityCount: limit, Language: language}, model)
-	if err != nil || result == nil {
-		return SceneNLPExtraction{}, err
-	}
-	return mikeTysonProbeExtraction(result), nil
-}
-
-func mikeTysonProbeExtraction(result *detail.EntityExtractionResult) SceneNLPExtraction {
-	out := SceneNLPExtraction{ImportantPhrases: result.FrasiImportanti, ImportantWords: result.ParoleImportanti}
-	for _, candidate := range result.NomiSpeciali {
-		label, value, found := strings.Cut(candidate, ":")
-		if !found {
-			out.SpecialNames = append(out.SpecialNames, candidate)
-			continue
-		}
-		value = strings.TrimSpace(value)
-		var kind scriptpkg.EntityType
-		switch strings.ToUpper(strings.TrimSpace(label)) {
-		case "PERSON":
-			kind = scriptpkg.EntityTypePerson
-		case "PLACE", "LOCATION":
-			kind = scriptpkg.EntityTypeLocation
-		case "ORGANIZATION", "ORG":
-			kind = scriptpkg.EntityTypeOrganization
-		case "EVENT":
-			kind = scriptpkg.EntityTypeEvent
-		case "WORK":
-			kind = scriptpkg.EntityTypeWork
-		case "PRODUCT":
-			kind = scriptpkg.EntityTypeProduct
-		default:
-			out.SpecialNames = append(out.SpecialNames, candidate)
-			continue
-		}
-		out.SpecialNames = append(out.SpecialNames, value)
-		out.Entities = append(out.Entities, VisualEntity{Text: value, Type: kind, Score: 0.95})
-	}
-	return out
-}
-
-func (p mikeTysonProbePhraseExtractor) ExtractSceneNLPBatch(ctx context.Context, texts []string, limit int, language, model string) ([]SceneNLPExtraction, error) {
-	if p.calls != nil {
-		p.calls.Add(1)
-	}
-	out := make([]SceneNLPExtraction, len(texts))
-	for start := 0; start < len(texts); start += ollamaclient.EntityExtractionBatchLimit {
-		end := min(start+ollamaclient.EntityExtractionBatchLimit, len(texts))
-		batch, err := p.client.ExtractEntitiesFromBatchWithModel(ctx, texts[start:end], limit, model, language)
-		if err != nil {
-			return nil, err
-		}
-		if len(batch) != end-start {
-			return nil, fmt.Errorf("batch returned %d results for %d scenes", len(batch), end-start)
-		}
-		for i, result := range batch {
-			if result != nil {
-				out[start+i] = mikeTysonProbeExtraction(result)
-			}
-		}
-	}
-	return out, nil
 }
 
 type mikeTysonProbeTranslation struct {
@@ -287,22 +203,21 @@ type mikeTysonProbeReport struct {
 	SourceWordCount               int                                     `json:"source_word_count"`
 	SourceModel                   string                                  `json:"source_model"`
 	TranslationModel              string                                  `json:"translation_model"`
-	NLPModel                      string                                  `json:"nlp_model"`
+	PhraseSelectionSource         string                                  `json:"phrase_selection_source"`
 	SceneCount                    int                                     `json:"scene_count"`
 	TranslationCalls              int                                     `json:"translation_calls"`
 	TranslationCacheEntries       int                                     `json:"translation_cache_entries"`
 	TranslationsReusedFromCache   bool                                    `json:"translations_reused_from_cache"`
 	CachedCorpusTranslationWallMS int64                                   `json:"cached_corpus_translation_wall_ms"`
 	TranslationWallMS             int64                                   `json:"translation_wall_ms"`
-	SourceNLPWallMS               int64                                   `json:"source_nlp_wall_ms"`
-	TranslatedNLPWallMS           int64                                   `json:"translated_nlp_wall_ms"`
+	SourceAnalysisWallMS          int64                                   `json:"source_analysis_wall_ms"`
+	TranslatedAnalysisWallMS      int64                                   `json:"translated_analysis_wall_ms"`
 	TotalStageWallMS              int64                                   `json:"total_stage_wall_ms"`
 	TranslatedNERSceneCalls       int                                     `json:"translated_ner_scene_calls"`
-	PhraseBatches                 int                                     `json:"phrase_batches"`
+	ImportantPhraseAnnotations    int                                     `json:"important_phrase_annotations"`
 	Languages                     []string                                `json:"languages"`
 	VisualNERInvocations          int                                     `json:"visual_ner_invocations"`
 	ExpectedVisualNERInvocations  int                                     `json:"expected_visual_ner_invocations"`
-	NLPModelInvocations           int                                     `json:"nlp_model_invocations"`
 	OverlayRendering              bool                                    `json:"overlay_rendering"`
 	ClipRendering                 bool                                    `json:"clip_rendering"`
 	VideoRendering                bool                                    `json:"video_rendering"`
@@ -361,10 +276,8 @@ func TestLiveMikeTyson500WordMultilingualNLPNoRendering(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var nerCalls, nlpCalls atomic.Int64
+	var nerCalls atomic.Int64
 	ner := mikeTysonProbeNER{binary: nerPath, calls: &nerCalls}
-	phrases := mikeTysonProbePhraseExtractor{client: ollamaClient, calls: &nlpCalls}
-	detailed := BatchSceneNLPExtractor(phrases)
 
 	result := &GenerateResult{Scenes: make([]Scene, len(sceneTexts))}
 	for i, text := range sceneTexts {
@@ -456,37 +369,27 @@ func TestLiveMikeTyson500WordMultilingualNLPNoRendering(t *testing.T) {
 		perLanguageTiming[string(translation.Lang)] = timing
 	}
 
-	// Source-language NLP is the existing source surface, using the same
-	// production adapters and source-span projection as translated NLP.
-	sourceNLPStart := time.Now()
-	sourceEntities := make([][]VisualEntity, len(result.Scenes))
-	sourcePhraseInputs := append([]string(nil), sceneTexts...)
+	// The source and translated paths share VisualNER for names and use the
+	// deterministic selector for phrases and words.
+	sourceAnalysisStart := time.Now()
 	for i, text := range sceneTexts {
-		sourceEntities[i], err = ner.Extract(context.Background(), text, 5)
-		if err != nil {
-			t.Fatalf("source VisualNER scene %d: %v", i, err)
+		entities, extractErr := ner.Extract(context.Background(), text, 5)
+		if extractErr != nil {
+			t.Fatalf("source VisualNER scene %d: %v", i, extractErr)
 		}
-	}
-	sourceExtractions, err := detailed.ExtractSceneNLPBatch(context.Background(), sourcePhraseInputs, 3, "en", model)
-	if err != nil {
-		t.Fatalf("source phrase batch: %v", err)
-	}
-	if len(sourceExtractions) != len(result.Scenes) {
-		t.Fatalf("source NLP returned %d scene results, want %d", len(sourceExtractions), len(result.Scenes))
-	}
-	for i, scene := range result.Scenes {
-		entities := mergeTranslatedNamedEntities(sourceEntities[i], groundNamedVisualEntities(scene.Text["en"], sourceExtractions[i].Entities))
-		insights := scriptpkg.SegmentInsights{SegmentID: scene.ID, TextHash: SceneTextHash(scene.Text["en"]),
-			ImportantPhrases: groundImportantPhrases(scene.Text["en"], entities, sourceExtractions[i].ImportantPhrases, 3),
-			ImportantWords:   limitTranslatedNLPStrings(sourceExtractions[i].ImportantWords, 3),
-			SpecialNames:     limitTranslatedNLPStrings(sourceExtractions[i].SpecialNames, 5)}
+		scene := result.Scenes[i]
+		phraseCandidates := deterministicImportantPhrases(text, entities, 3, "en")
+		insights := scriptpkg.SegmentInsights{SegmentID: scene.ID, TextHash: SceneTextHash(text),
+			ImportantPhrases: groundImportantPhrases(text, entities, phraseCandidates, 3),
+			ImportantWords:   deterministicImportantWords(phraseCandidates, 3, "en"),
+			SpecialNames:     translatedSpecialNames(text, nil, entities, 5)}
 		for _, entity := range entities {
 			insights.Entities = append(insights.Entities, scriptpkg.ExtractedEntity{Value: entity.Text, Type: string(entity.Type), Confidence: float64(entity.Score)})
 		}
-		scene.Annotations = projectEntityAnnotations(scene.Text["en"], "en", scriptpkg.VidRushSegmentResult{SegmentID: scene.ID, SceneID: scene.ID, Position: scene.Index, Text: scene.Text["en"], TextHash: SceneTextHash(scene.Text["en"]), Insights: insights})
+		scene.Annotations = projectEntityAnnotations(text, "en", scriptpkg.VidRushSegmentResult{SegmentID: scene.ID, SceneID: scene.ID, Position: scene.Index, Text: text, TextHash: SceneTextHash(text), Insights: insights})
 		result.Scenes[i] = scene
 	}
-	sourceNLPWall := time.Since(sourceNLPStart).Milliseconds()
+	sourceAnalysisWall := time.Since(sourceAnalysisStart).Milliseconds()
 
 	translatedNLPStart := time.Now()
 	req := GenerateRequest{SourceLanguage: "en", Languages: languages, Model: model,
@@ -494,13 +397,13 @@ func TestLiveMikeTyson500WordMultilingualNLPNoRendering(t *testing.T) {
 			Include:               []string{mediadomain.ExtractionIncludeEntities, mediadomain.ExtractionIncludeSpecialNames, mediadomain.ExtractionIncludeImportantPhrases, mediadomain.ExtractionIncludeImportantWords},
 			MaxEntitiesPerSegment: 5, MaxImportantPhrasesPerSegment: 3, MaxImportantWordsPerSegment: 3,
 		}}}
-	pipeline := &VidRushPipeline{NERPort: ner, PhraseExtractor: phrases}
+	pipeline := &VidRushPipeline{NERPort: ner}
 	assertNoRenderOrAcquisitionWiring(t, pipeline)
 	runner := &Runner{vidRushPipeline: pipeline}
 	if err := runner.runTranslatedNLP(context.Background(), req, result); err != nil {
 		t.Fatalf("runTranslatedNLP: %v", err)
 	}
-	translatedNLPWall := time.Since(translatedNLPStart).Milliseconds()
+	translatedAnalysisWall := time.Since(translatedNLPStart).Milliseconds()
 
 	// ── No-render / no-acquisition proof (Goal 2's actual definition) ──
 	// The pipeline carries ONLY the NLP ports (asserted above), and the two
@@ -512,9 +415,6 @@ func TestLiveMikeTyson500WordMultilingualNLPNoRendering(t *testing.T) {
 	wantNERCalls := int64(len(result.Scenes) * (1 + len(languages)))
 	if got := nerCalls.Load(); got != wantNERCalls {
 		t.Errorf("release visualner invocations = %d, want %d (one per scene for the source surface plus one per scene per translated language): the certificate reached a surface other than translated NLP", got, wantNERCalls)
-	}
-	if got := nlpCalls.Load(); got < int64(1+len(languages)) {
-		t.Errorf("model NLP invocations = %d, want at least %d (one source batch plus one per translated language): a language was not NLP-extracted", got, 1+len(languages))
 	}
 	languageCodes := make([]string, 0, len(languages))
 	for _, lang := range languages {
@@ -530,12 +430,12 @@ func TestLiveMikeTyson500WordMultilingualNLPNoRendering(t *testing.T) {
 	report := mikeTysonProbeReport{
 		StartedAtUTC: started.Format(time.RFC3339), CompletedAtUTC: time.Now().UTC().Format(time.RFC3339),
 		SourceLanguage: "en", SourceWordCount: wordCount, SourceModel: "caller-authored script",
-		TranslationModel: model, NLPModel: model, SceneCount: len(result.Scenes), TranslationCalls: translationCalls, TranslationCacheEntries: translationCacheEntries, TranslationWallMS: translationWall,
+		TranslationModel: model, PhraseSelectionSource: "deterministic_lexicon", SceneCount: len(result.Scenes), TranslationCalls: translationCalls, TranslationCacheEntries: translationCacheEntries, TranslationWallMS: translationWall,
 		TranslationsReusedFromCache: translationsReused, CachedCorpusTranslationWallMS: cachedCorpusTranslationWall,
-		SourceNLPWallMS: sourceNLPWall, TranslatedNLPWallMS: translatedNLPWall,
-		TotalStageWallMS: translationWall + sourceNLPWall + translatedNLPWall, TranslatedNERSceneCalls: len(result.Scenes) * len(languages),
-		PhraseBatches: len(languages) + 1, Languages: languageCodes,
-		VisualNERInvocations: int(nerCalls.Load()), ExpectedVisualNERInvocations: int(wantNERCalls), NLPModelInvocations: int(nlpCalls.Load()),
+		SourceAnalysisWallMS: sourceAnalysisWall, TranslatedAnalysisWallMS: translatedAnalysisWall,
+		TotalStageWallMS: translationWall + sourceAnalysisWall + translatedAnalysisWall, TranslatedNERSceneCalls: len(result.Scenes) * len(languages),
+		Languages:            languageCodes,
+		VisualNERInvocations: int(nerCalls.Load()), ExpectedVisualNERInvocations: int(wantNERCalls),
 		// These three stay false BY CONSTRUCTION, and
 		// assertNoRenderOrAcquisitionWiring plus the call counters above are
 		// what make the claim checkable: the Goal-2 certificate stops at
@@ -564,6 +464,7 @@ func TestLiveMikeTyson500WordMultilingualNLPNoRendering(t *testing.T) {
 				output.Entities = append(output.Entities, annotations.PrimaryEntities...)
 				output.Entities = append(output.Entities, annotations.SecondaryEntities...)
 				output.ImportantPhrases = append([]scriptpkg.AnnotationSpan(nil), annotations.ImportantPhrases...)
+				report.ImportantPhraseAnnotations += len(output.ImportantPhrases)
 				output.ImportantWords = append([]scriptpkg.AnnotationSpan(nil), annotations.ImportantWords...)
 				output.SpecialNames = append([]scriptpkg.AnnotationSpan(nil), annotations.SpecialNames...)
 				for _, phrase := range output.ImportantPhrases {
@@ -593,6 +494,9 @@ func TestLiveMikeTyson500WordMultilingualNLPNoRendering(t *testing.T) {
 		}
 		report.Documents = append(report.Documents, document)
 	}
+	if report.ImportantPhraseAnnotations == 0 {
+		t.Error("deterministic phrase selection produced no grounded phrase annotations")
+	}
 
 	payload, err := json.MarshalIndent(report, "", "  ")
 	if err != nil {
@@ -612,7 +516,7 @@ func TestLiveMikeTyson500WordMultilingualNLPNoRendering(t *testing.T) {
 	if err := os.WriteFile(outputPath, append(payload, '\n'), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	t.Logf("500-word multilingual NLP probe wrote %s; translation=%dms source NLP=%dms translated NLP=%dms", outputPath, translationWall, sourceNLPWall, translatedNLPWall)
+	t.Logf("500-word multilingual phrase probe wrote %s; translation=%dms source analysis=%dms translated analysis=%dms", outputPath, translationWall, sourceAnalysisWall, translatedAnalysisWall)
 	t.Logf("grounding phrases=%t words=%t names=%t semantic checks=%v", report.AllImportantPhrasesGrounded, report.AllImportantWordsGrounded, report.AllSpecialNamesGrounded, report.SemanticChecks)
 }
 

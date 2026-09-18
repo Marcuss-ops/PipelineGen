@@ -241,7 +241,7 @@ func CompileOverlayPlan(result *GenerateResult, language Language, canvas Overla
 		if !ok {
 			return nil, fmt.Errorf("overlay plan: scene %q missing canonical timeline offset", scene.ID)
 		}
-		sceneInput, err := overlaySceneInput(scene, language, *ref.Timing, startUS, occByScene[scene.ID])
+		sceneInput, err := overlaySceneInput(scene, language, result.SourceLanguage, *ref.Timing, startUS, occByScene[scene.ID])
 		if err != nil {
 			return nil, err
 		}
@@ -441,8 +441,8 @@ func compileResultOverlayPlan(result *GenerateResult, language Language, planID,
 // the certified entity occurrence; anything not spoken verbatim is skipped
 // (a hint is never timestamped). Returns nil when the scene contributes
 // nothing.
-func overlaySceneInput(scene Scene, language Language, timing capabilityaudio.SpeechTimingArtifact, timelineStartUS int64, occurrences []capabilityentities.EntityOccurrence) (*capabilityoverlay.SceneInput, error) {
-	ann := annotationsForLanguage(scene, language)
+func overlaySceneInput(scene Scene, language, sourceLanguage Language, timing capabilityaudio.SpeechTimingArtifact, timelineStartUS int64, occurrences []capabilityentities.EntityOccurrence) (*capabilityoverlay.SceneInput, error) {
+	ann := annotationsForLanguage(scene, language, sourceLanguage)
 	if ann == nil {
 		return nil, nil
 	}
@@ -543,7 +543,7 @@ func overlaySceneInput(scene Scene, language Language, timing capabilityaudio.Sp
 func plannerOwnedEntityIDs(result *GenerateResult, language Language) map[string]bool {
 	owned := map[string]bool{}
 	for i := range result.Scenes {
-		ann := annotationsForLanguage(result.Scenes[i], language)
+		ann := annotationsForLanguage(result.Scenes[i], language, result.SourceLanguage)
 		if ann == nil {
 			continue
 		}

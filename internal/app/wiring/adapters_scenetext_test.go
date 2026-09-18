@@ -468,17 +468,19 @@ type recordingStreamScriptGenerator struct {
 	mu     sync.Mutex
 	calls  int
 	events []string
+	inputs []scriptports.TextGenerationRequest
 }
 
 func v1Envelope(text string) string {
 	return `{"schema_version":1,"text":"` + text + `","specscene":{"version":1,"scenes":[{"id":"model-scene","index":0,"text":"` + text + `","kind":"narration","bindings":{}}]}}`
 }
 
-func (g *recordingStreamScriptGenerator) GenerateScript(_ context.Context, _ scriptports.TextGenerationRequest) (*scriptports.GenerationResult, error) {
+func (g *recordingStreamScriptGenerator) GenerateScript(_ context.Context, req scriptports.TextGenerationRequest) (*scriptports.GenerationResult, error) {
 	g.mu.Lock()
 	index := g.calls
 	g.calls++
 	g.events = append(g.events, fmt.Sprintf("call:%d", index))
+	g.inputs = append(g.inputs, req)
 	g.mu.Unlock()
 	text := fmt.Sprintf("narration for segment %d", index)
 	return &scriptports.GenerationResult{Script: v1Envelope(text), WordCount: 3, Model: "fake-model"}, nil
@@ -496,6 +498,12 @@ func (g *recordingStreamScriptGenerator) snapshotEvents() []string {
 	return append([]string(nil), g.events...)
 }
 
+func (g *recordingStreamScriptGenerator) snapshotInputs() []scriptports.TextGenerationRequest {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	return append([]scriptports.TextGenerationRequest(nil), g.inputs...)
+}
+
 // TestSceneTextGeneratorStreamsSegments proves segmented calls overlap while
 // each scene is emitted as soon as its own model result is final.
 func TestSceneTextGeneratorStreamsSegmentsOneAtATime(t *testing.T) {
@@ -505,9 +513,13 @@ func TestSceneTextGeneratorStreamsSegmentsOneAtATime(t *testing.T) {
 
 	req := scriptgen.GenerateRequest{
 		SourceLanguage: "en",
-		Source:         scriptgen.Source{Type: scriptgen.SourceText, Topic: "Segmented topic"},
+		Source:         scriptgen.Source{Type: scriptgen.SourceText, Topic: "Segmented topic", SourceText: "global source containing all scene briefs"},
 		Title:          "Segmented",
-		ScriptParams:   scriptpkg.ScriptSpec{Segments: []scriptpkg.ScriptSegment{{Topic: "Intro"}, {Topic: "Body"}, {Topic: "Outro"}}},
+		ScriptParams: scriptpkg.ScriptSpec{Segments: []scriptpkg.ScriptSegment{
+			{Topic: "Intro", SourceText: "only intro brief"},
+			{Topic: "Body", SourceText: "only body brief"},
+			{Topic: "Outro", SourceText: "only outro brief"},
+		}},
 	}
 
 	var emitted []scriptgen.Scene
@@ -539,6 +551,13 @@ func TestSceneTextGeneratorStreamsSegmentsOneAtATime(t *testing.T) {
 	require.Equal(t, 3, callCount)
 	require.Equal(t, 3, emitCount)
 	require.Contains(t, events[:3], "call:1", "a second segment must start before the first emission")
+	inputs := gen.snapshotInputs()
+	require.Len(t, inputs, 3)
+	wantBriefs := map[string]bool{"only intro brief": true, "only body brief": true, "only outro brief": true}
+	for _, input := range inputs {
+		require.True(t, wantBriefs[input.SourceText], "segment call got non-isolated source text %q", input.SourceText)
+		require.NotContains(t, input.SourceText, "global source")
+	}
 }
 
 // proseBatchScriptGenerator returns a two-scene V1 envelope from a single

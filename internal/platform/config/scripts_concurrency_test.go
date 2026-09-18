@@ -79,6 +79,31 @@ func TestScriptsSeparateItemRenderWorkersResolution(t *testing.T) {
 	}
 }
 
+// TestScriptsOverlayRenderConcurrencyResolution pins the multilingual overlay
+// render fan-out as an operator surface: it defaults to the certified 2, it is
+// overridable from the environment, and it can never resolve to 0 — a zero-slot
+// pool would render no language at all instead of failing.
+func TestScriptsOverlayRenderConcurrencyResolution(t *testing.T) {
+	cfg := &Config{}
+	applyDefaults(cfg)
+	if got := cfg.Scripts.OverlayRenderConcurrency; got != 2 {
+		t.Fatalf("OverlayRenderConcurrency default = %d, want 2 (certified first step)", got)
+	}
+
+	t.Setenv("VELOX_SCRIPTS_OVERLAY_RENDER_CONCURRENCY", "3")
+	applyEnvVars(cfg)
+	if got := cfg.Scripts.OverlayRenderConcurrency; got != 3 {
+		t.Fatalf("OverlayRenderConcurrency after env = %d, want 3", got)
+	}
+
+	if got := (ScriptsConfig{}).WithDefaults().OverlayRenderConcurrency; got != 2 {
+		t.Fatalf("WithDefaults OverlayRenderConcurrency = %d, want 2", got)
+	}
+	if got := (ScriptsConfig{OverlayRenderConcurrency: 1}).WithDefaults().OverlayRenderConcurrency; got != 1 {
+		t.Fatalf("WithDefaults must preserve the serial baseline 1, got %d", got)
+	}
+}
+
 // TestScriptsConfigWithDefaults_DoesNotFakeTTSDefault locks the defer semantics:
 // WithDefaults clamps NLP to 4 but must NOT invent a TTS default, because 0
 // means "follow the voiceover provider bound" at the wiring boundary.

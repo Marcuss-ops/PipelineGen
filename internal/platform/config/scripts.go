@@ -209,6 +209,18 @@ type ScriptsConfig struct {
 	// (scriptgeneration.DefaultTranslationConcurrency).
 	TranslationConcurrency int `yaml:"translation_concurrency" env:"VELOX_SCRIPTS_TRANSLATION_CONCURRENCY" default:"4"`
 
+	// OverlayRenderConcurrency bounds the multilingual overlay render
+	// fan-out: how many per-language OverlayPlans the overlay_render phase
+	// may have in flight against RenderingGen at once. It replaces the
+	// former serial per-language render loop, where N languages cost N
+	// sequential Chronon round-trips. It is a PIPELINING bound, not a GPU
+	// bound — the RenderingGen worker owns worker.gpu_lanes and remains the
+	// only authority on concurrent GPU work. Default 2, matching
+	// scriptgeneration.DefaultOverlayRenderConcurrency: the certified FIRST
+	// step that must be validated for byte-determinism before an operator
+	// raises it.
+	OverlayRenderConcurrency int `yaml:"overlay_render_concurrency" env:"VELOX_SCRIPTS_OVERLAY_RENDER_CONCURRENCY" default:"2"`
+
 	// SerialMode reproduces the pre-parallel "before" chain for controlled
 	// benchmarking: the VidRush/NLP branch completes blocking BEFORE TTS
 	// (entities → voiceover, never overlapping), and the NLP extraction + TTS
@@ -244,6 +256,12 @@ func (s ScriptsConfig) WithDefaults() ScriptsConfig {
 	}
 	if s.TranslationConcurrency <= 0 {
 		s.TranslationConcurrency = 4
+	}
+	// The overlay render fan-out must never resolve to 0: a zero-slot pool
+	// would render nothing at all instead of falling back to the certified
+	// width, so an unset/invalid value is clamped to 2.
+	if s.OverlayRenderConcurrency <= 0 {
+		s.OverlayRenderConcurrency = 2
 	}
 	// The per-item render pool must never resolve to 0: a zero-slot pool would
 	// render nothing, so an unset/invalid value is clamped to the certified

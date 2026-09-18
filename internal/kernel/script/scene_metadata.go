@@ -11,6 +11,9 @@ import (
 // SceneMetadata carries technical scene data that should not be
 // read as narration. It is separate from Text by contract.
 type SceneMetadata struct {
+	// SourceText is immutable editorial evidence for semantic extraction. It
+	// is deliberately separate from SpecScene.Text, which is narration.
+	SourceText      string                  `json:"source_text,omitempty"`
 	SourceURL       string                  `json:"source_url,omitempty"`
 	Tags            []string                `json:"tags,omitempty"`
 	Keywords        []string                `json:"keywords,omitempty"`
