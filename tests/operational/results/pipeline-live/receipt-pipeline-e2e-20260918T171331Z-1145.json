@@ -1,0 +1,215 @@
+{
+  "schema": "pipelinegen.stock_pipeline_certification.v1",
+  "run_id": "pipeline-e2e-20260918T171331Z-1145",
+  "git_sha": "853ffa4495aa4e01e6e6c19344321639974c538b",
+  "api_base": "127.0.0.1:8000",
+  "verdict": "FAIL",
+  "running_binary": {
+    "version": "backup-pre-revert-2649-ga57158b52",
+    "git_commit": "a57158b52",
+    "git_commit_full": "a57158b52",
+    "git_dirty": true,
+    "build_time": "2026-09-18T16:56:02Z",
+    "binary_sha256": "d6acbc9d12724cd7f4b07c2e198079dc5ba189aa526d3fe67a4e17379e4cae5f",
+    "binary_path": "/home/pierone/src/go-master/projects/Pyt/VeloxEditing/refactored/bin/pipelinegen",
+    "config_path": "config.yaml",
+    "mode": "all",
+    "worker_id": "YOutube",
+    "pid": 310211,
+    "started_at": "2026-09-18T16:56:18Z",
+    "identity_hash": "312eaed0e6343ca4"
+  },
+  "steps_total": 10,
+  "steps_passed": 3,
+  "failed_steps": [
+    "1  YouTube keyword discovery 2  YouTube metadata 3  YouTube clip processing 4  YouTube Drive hierarchy 6  Stock direct-URL run 8  Stock Drive artifact 10 Idempotent replay"
+  ],
+  "youtube": {
+    "query": "Muhammad Ali boxing",
+    "url": "",
+    "video_id": "",
+    "asset_id": "yt_55AasOJZzDE_5_12_v1",
+    "indexed_retrievable": true,
+    "outbox_event": "asset.index.requested",
+    "index_state_expected": "INDEXED",
+    "job": {}
+  },
+  "stock": {
+    "query": "city skyline technology b-roll",
+    "direct_url": "",
+    "asset_id": "planner:6130613332303465:0",
+    "indexed_retrievable": true,
+    "outbox_event": "asset.index.requested",
+    "index_state_expected": "INDEXED",
+    "job": {
+      "status": "SUCCEEDED",
+      "job_id": "job_1789751620454696529_c6454317",
+      "index_state_expected": "INDEXED",
+      "timing": {
+        "wall_ms": 18573,
+        "execution_wall_ms": 18573,
+        "attributed_ms": 11915,
+        "unattributed_ms": 1489,
+        "unattributed_percent": 8.017013944973888,
+        "overlapped_ms": 2957,
+        "bottleneck_stage": "stock.compose",
+        "bottleneck_percent": 28.28837559898778,
+        "critical_path": [
+          {
+            "name": "stock.search",
+            "duration_ms": 3323,
+            "percent": 17.891563021590482
+          },
+          {
+            "name": "stock.stage_sources",
+            "duration_ms": 231,
+            "percent": 1.2437409142303344
+          },
+          {
+            "name": "stock.extract",
+            "duration_ms": 3011,
+            "percent": 16.211705163409253
+          },
+          {
+            "name": "stock.extract",
+            "duration_ms": 3005,
+            "percent": 16.17940020459807
+          },
+          {
+            "name": "stock.database_save",
+            "duration_ms": 27,
+            "percent": 0.14537231465029882
+          },
+          {
+            "name": "stock.index",
+            "duration_ms": 0,
+            "percent": 0
+          },
+          {
+            "name": "stock.database_save",
+            "duration_ms": 21,
+            "percent": 0.11306735583912131
+          },
+          {
+            "name": "stock.index",
+            "duration_ms": 0,
+            "percent": 0
+          },
+          {
+            "name": "stock.compose",
+            "duration_ms": 5254,
+            "percent": 28.28837559898778
+          },
+          {
+            "name": "post_writer_finalize",
+            "duration_ms": 0,
+            "percent": 0
+          }
+        ],
+        "stages": [
+          {
+            "name": "post_writer_finalize",
+            "duration_ms": 0
+          },
+          {
+            "name": "stock.compose",
+            "duration_ms": 5254
+          },
+          {
+            "name": "stock.database_save",
+            "duration_ms": 48
+          },
+          {
+            "name": "stock.extract",
+            "duration_ms": 6016
+          },
+          {
+            "name": "stock.index",
+            "duration_ms": 0
+          },
+          {
+            "name": "stock.search",
+            "duration_ms": 3323
+          },
+          {
+            "name": "stock.stage_sources",
+            "duration_ms": 231
+          },
+          {
+            "name": "stock.youtube_download",
+            "duration_ms": 0
+          }
+        ],
+        "operations": [
+          {
+            "stage": "publish",
+            "component": "drive",
+            "operation": "upload",
+            "calls": 2,
+            "work_ms": 5167
+          },
+          {
+            "stage": "publish",
+            "component": "finalize",
+            "operation": "artifact_hash",
+            "calls": 2,
+            "work_ms": 93
+          },
+          {
+            "stage": "publish",
+            "component": "finalize",
+            "operation": "artifact_prepare",
+            "calls": 2,
+            "work_ms": 97
+          },
+          {
+            "stage": "publish",
+            "component": "finalize",
+            "operation": "drive_publish",
+            "calls": 2,
+            "work_ms": 5058
+          }
+        ],
+        "fanout": [
+          {
+            "stage": "publish",
+            "wall_ms": 0,
+            "calls": 8,
+            "work_ms": 10415,
+            "max_ms": 2884
+          }
+        ]
+      },
+      "artifacts": [
+        {
+          "artifact_id": "planner:3138316364346231:0",
+          "filename": "clip_002.mp4",
+          "size_bytes": 3470937,
+          "sha256": "73db0fd799eb85508feb57064e2b33fc0a95d9e14d88aa43bd5ca6c8a26c9e8e",
+          "drive_folder_id": null,
+          "remote_file_id": "1LY0QmK0kuNJAPc7bOfV3YYNagM9GCkvV",
+          "remote_web_view_link": "https://drive.google.com/file/d/1LY0QmK0kuNJAPc7bOfV3YYNagM9GCkvV/view?usp=drivesdk",
+          "drive_path": "https://drive.google.com/file/d/1LY0QmK0kuNJAPc7bOfV3YYNagM9GCkvV/view?usp=drivesdk",
+          "source_url": "https://www.youtube.com/watch?v=oem5-_YaY1E",
+          "source_video_id": "oem5-_YaY1E",
+          "start_sec": 0,
+          "end_sec": 5
+        },
+        {
+          "artifact_id": "planner:6130613332303465:0",
+          "filename": "clip_001.mp4",
+          "size_bytes": 4907605,
+          "sha256": "5b279d21777f7a20c37b4470841eecdbe55586d3baff77dd84ec817cab008a3c",
+          "drive_folder_id": null,
+          "remote_file_id": "1eVUq2O5fIdtbsQ924RiQp3jUkD7wZwUo",
+          "remote_web_view_link": "https://drive.google.com/file/d/1eVUq2O5fIdtbsQ924RiQp3jUkD7wZwUo/view?usp=drivesdk",
+          "drive_path": "https://drive.google.com/file/d/1eVUq2O5fIdtbsQ924RiQp3jUkD7wZwUo/view?usp=drivesdk",
+          "source_url": "https://www.youtube.com/watch?v=-0xZuzl5-yI",
+          "source_video_id": "-0xZuzl5-yI",
+          "start_sec": 0,
+          "end_sec": 5
+        }
+      ]
+    }
+  }
+}

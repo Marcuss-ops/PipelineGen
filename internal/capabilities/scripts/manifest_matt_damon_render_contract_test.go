@@ -121,7 +121,7 @@ const (
 	// verifyOneClipTenLanguagesSubtitlePreset exists in the canonical preset
 	// registry AND in the ASS typography table, so the burned subtitle and the
 	// Chronon overlay agree on fonts.
-	verifyOneClipTenLanguagesSubtitlePreset = "subs-young"
+	verifyOneClipTenLanguagesSubtitlePreset = "subs-young-clean"
 )
 
 // verifyOneClipTenLanguagesTargets is the requested translation fan-out; with the

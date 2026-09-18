@@ -46,19 +46,25 @@ func TestDeterministicPhraseWordsAreGroundedInSelectedPhrases(t *testing.T) {
 }
 
 // TestSelectImportantPhrasesHonoursBlockedSpans pins the neutral-input
-// contract: a phrase whose runes overlap a blocked span is never selected, so
-// a caller that grounds its own entities keeps a name out of the phrase
-// surface without this package knowing what an entity is. "built props"
-// occupies runes [13,24) of the fixture, immediately after the name.
+// contract. Selection alone has no idea what an entity is — with no blocked
+// span it happily ranks the longer "Lovelace built props" — so the caller's
+// grounded ranges are the ONLY thing keeping a name out of the phrase surface.
+// "Ada Lovelace" occupies runes [0,12) and "built props" [13,24).
 func TestSelectImportantPhrasesHonoursBlockedSpans(t *testing.T) {
 	profile := &linguistics.LexiconProfile{
 		PhrasePolicy: linguistics.DefaultPhraseExtractionPolicy(),
 	}
 	const text = "Ada Lovelace built props."
 
-	if got := Select(text, nil, 5, profile); len(got) == 0 {
-		t.Fatalf("without a blocked span the action phrase must survive, got %#v", got)
+	if got := Select(text, nil, 5, profile); !reflect.DeepEqual(got, []string{"Lovelace built props"}) {
+		t.Fatalf("ungrounded selection = %#v, want the longer surface", got)
 	}
+	// Blocking the name span drops the name-prefixed candidate and leaves the
+	// clean one — exactly what entity grounding supplies in production.
+	if got := Select(text, adaSpan, 5, profile); !reflect.DeepEqual(got, []string{"built props"}) {
+		t.Fatalf("name-blocked selection = %#v, want the phrase without the name", got)
+	}
+	// A span over the action phrase itself drops it entirely.
 	if got := Select(text, [][2]int{{13, 24}}, 5, profile); len(got) != 0 {
 		t.Fatalf("a phrase overlapping the blocked span must be dropped, got %#v", got)
 	}
