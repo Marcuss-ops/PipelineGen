@@ -233,7 +233,7 @@ known_grandfathered: []
 # Caps the cumulative open/in-progress carry-forward surface.
 # History and procedure live in architecture/policy.history.yaml.
 debt_budget:
-  max_pre_existing_open: 9
+  max_pre_existing_open: 0
   catalog_file: architecture/issues.yaml
   counter_id_prefix: "PRE-EXISTING-"
   counter_status_includes: ["open", "in_progress"]
