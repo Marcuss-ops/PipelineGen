@@ -9,12 +9,12 @@
       "title": "Mike Tyson — cinque città, cinque momenti",
       "language": "en",
       "tone": "documentario sportivo, accurato e cinematografico",
-      "style": "Write an English documentary script of five scenes, about 200 words per scene and about 1,000 words total. Keep each scene attached to its supplied city and facts. Mention exactly one city in each scene: Brooklyn, Catskill, Atlantic City, Tokyo, or Las Vegas as specified by that scene. Do not name any other city, invent dates or results, or add unsupported quotations. Include the exact editorial phrase supplied for each scene as its own sentence. The phrase is narrator copy, never a quotation attributed to Mike Tyson. Use only the people needed for the scene. Keep the five scenes separate and in the supplied order.",
+      "style": "Write an English documentary script with five balanced scenes and about 1,000 words total. Keep each scene attached to its supplied city and facts. Mention exactly one city in each scene: Brooklyn, Catskill, Atlantic City, Tokyo, or Las Vegas as specified by that scene. Do not name any other city, invent dates or results, or add unsupported quotations. Include the exact editorial phrase supplied for each scene as its own sentence. The phrase is narrator copy, never a quotation attributed to Mike Tyson. Use only the people needed for the scene. Keep the five scenes separate and in the supplied order.",
       "model": "gemma4:e4b",
       "source": {
         "type": "text",
         "topic": "Mike Tyson raccontato attraverso cinque città e cinque momenti della sua carriera",
-        "source_text": "Create five separate 200-word scenes from the supplied scene briefs. Scene 1: Brooklyn, Tyson's birthplace; phrase: Origins Shape the Fighter. Scene 2: Catskill, where Tyson trained with Cus D'Amato; phrase: Discipline Builds the Foundation. Scene 3: Atlantic City, the 1988 fight with Michael Spinks; phrase: Precision Changes the Outcome. Scene 4: Tokyo, the 1990 fight with Buster Douglas; phrase: A Loss Can Rewrite a Record. Scene 5: Las Vegas, Tyson's 1990 return against Henry Tillman; phrase: A Comeback Starts With One Round. Keep each scene factual and use only its named city."
+        "source_text": "Create five separate, balanced scenes from the supplied scene briefs. Scene 1: Brooklyn, Tyson's birthplace; phrase: Origins Shape the Fighter. Scene 2: Catskill, where Tyson trained with Cus D'Amato; phrase: Discipline Builds the Foundation. Scene 3: Atlantic City, the 1988 fight with Michael Spinks; phrase: Precision Changes the Outcome. Scene 4: Tokyo, the 1990 fight with Buster Douglas; phrase: A Loss Can Rewrite a Record. Scene 5: Las Vegas, Tyson's 1990 return against Henry Tillman; phrase: A Comeback Starts With One Round. Keep each scene factual and use only its named city."
       },
       "script_params": {
         "target_words": 1000,

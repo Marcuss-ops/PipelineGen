@@ -150,6 +150,14 @@ func (g *SceneTextGenerator) GenerateSceneTextStreamWithTrace(
 		if segmentTarget <= 0 && req.ScriptParams.TargetWords > 0 && len(segments) > 0 {
 			segmentTarget = req.ScriptParams.TargetWords / len(segments)
 		}
+		// The live Mike Tyson run measured 14% under the requested whole-script
+		// target with this local model. For generated text with a near-target
+		// minimum and no explicit maximum, use a modestly larger writing aim to
+		// compensate. The requested target remains unchanged and this adds no cap.
+		if plan.ClipEvidence == nil && segment.MaxWords <= 0 && segment.MinWords > 0 &&
+			segmentTarget >= 100 && segment.MinWords*100 >= segmentTarget*90 {
+			segmentTarget = (segmentTarget*115 + 99) / 100
+		}
 		if segmentTarget > 0 {
 			segmentReq.ScriptParams.TargetWords = segmentTarget
 			segment.TargetWords = segmentTarget
