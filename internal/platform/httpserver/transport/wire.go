@@ -61,9 +61,19 @@ var knownCapabilities = []struct {
 	// prefix string is owned by this list; the assets aggregate
 	// prefix `/media` is owned by wire_assets.go; both lock together.
 	{name: "voiceover", prefixes: []string{"/api/media/voiceover"}},
-	// youtube (legacy YouTube clip handler) mounts under /api/clips/*
-	// (see internal/capabilities/assets/youtube/youtube_handlers.go).
-	{name: "youtube", prefixes: []string{"/api/clips"}},
+	// youtube owns the legacy ingest/extraction routes under /api/clips.
+	// Keep render out of this set so readiness can distinguish the canonical
+	// clip-render capability from YouTube acquisition.
+	{name: "youtube", prefixes: []string{
+		"/api/clips/search",
+		"/api/clips/info",
+		"/api/clips/process",
+		"/api/clips/stock",
+		"/api/clips/diagnostics",
+	}},
+	// clip-render owns the post-processing/render routes under /api/clips.
+	// The batch route is covered by the same stable prefix.
+	{name: "clip-render", prefixes: []string{"/api/clips/render"}},
 	// register (assets/register module: RegisterFromYouTube +
 	// BatchRegisterFromYouTube) mounts beneath the assets module's `/media`
 	// group, so the PUBLIC urls are POST /api/media/register-from-youtube and

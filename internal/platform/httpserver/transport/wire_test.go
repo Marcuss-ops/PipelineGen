@@ -67,6 +67,7 @@ func TestWireRegistry_AllCapabilitiesMounted(t *testing.T) {
 		{Method: "POST", Path: "/api/drive/admin"},
 		{Method: "POST", Path: "/api/media/clips/upload"},
 		{Method: "POST", Path: "/api/clips/process"},
+		{Method: "POST", Path: "/api/clips/render"},
 		{Method: "POST", Path: "/internal/v1/media/search"},
 		{Method: "GET", Path: "/qdrant/live"},
 	})
