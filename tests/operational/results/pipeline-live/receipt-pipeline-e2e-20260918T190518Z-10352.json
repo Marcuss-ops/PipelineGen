@@ -1,0 +1,253 @@
+{
+  "schema": "pipelinegen.stock_pipeline_certification.v1",
+  "run_id": "pipeline-e2e-20260918T190518Z-10352",
+  "git_sha": "20795dd1fca3efd522019326f178f2c220bc0a28",
+  "api_base": "127.0.0.1:8000",
+  "verdict": "FAIL",
+  "running_binary": {
+    "version": "backup-pre-revert-2654-g20795dd1f",
+    "git_commit": "20795dd1f",
+    "git_commit_full": "20795dd1f",
+    "git_dirty": true,
+    "build_time": "2026-09-18T19:02:51Z",
+    "binary_sha256": "e6e32c63c8188ab4e443a820774f3c8c604b92147a6c46a7ef617498f98d6398",
+    "binary_path": "/home/pierone/src/go-master/projects/Pyt/VeloxEditing/refactored/bin/pipelinegen",
+    "config_path": "config.yaml",
+    "mode": "all",
+    "worker_id": "YOutube",
+    "pid": 1032841,
+    "started_at": "2026-09-18T19:03:09Z",
+    "identity_hash": "75adaf50c55d00d8"
+  },
+  "steps_total": 10,
+  "steps_passed": 7,
+  "failed_steps": [
+    "6  Stock direct-URL run 8  Stock Drive artifact 9  Stock indexed + downloadable"
+  ],
+  "youtube": {
+    "query": "solar panels field aerial",
+    "url": "https://www.youtube.com/watch?v=w2f318UzLss",
+    "video_id": "w2f318UzLss",
+    "asset_id": "yt_w2f318UzLss_5_12_v1",
+    "indexed_retrievable": true,
+    "outbox_event": "asset.index.requested",
+    "index_state_expected": "INDEXED",
+    "job": {
+      "status": "SUCCEEDED",
+      "job_id": "job_1789758358313681071_3e6b4e0a",
+      "index_state_expected": "INDEXED",
+      "timing": {
+        "wall_ms": 50118,
+        "execution_wall_ms": 50118,
+        "attributed_ms": 6,
+        "unattributed_ms": 50112,
+        "unattributed_percent": 99.98802825332216,
+        "overlapped_ms": 0,
+        "bottleneck_stage": "post_writer_finalize",
+        "bottleneck_percent": 0.009976455564866914,
+        "critical_path": [
+          {
+            "name": "post_writer_finalize",
+            "duration_ms": 5,
+            "percent": 0.009976455564866914
+          }
+        ],
+        "stages": [
+          {
+            "name": "post_writer_finalize",
+            "duration_ms": 5
+          }
+        ]
+      },
+      "artifacts": [
+        {
+          "artifact_id": "yt_w2f318UzLss_5_12_v1",
+          "filename": "yt_w2f318UzLss_5_12_v1_pipeline-e2e-20260918t190518z-10352-yout.mp4",
+          "size_bytes": 10499399,
+          "sha256": "64bacc4d16dc6433cec9f4a6213f6e5236ca3715ca173be22f62ef54eb8624df",
+          "drive_folder_id": "1m2VZokk79pxvBl2Uy8ENtQLttu_3n8Ny",
+          "remote_file_id": "1mSEJJ8IMtDYfqkq1iXufdmP_BVHduZRH",
+          "remote_web_view_link": "https://drive.google.com/file/d/1mSEJJ8IMtDYfqkq1iXufdmP_BVHduZRH/view?usp=drivesdk",
+          "drive_path": null,
+          "source_url": null,
+          "source_video_id": null,
+          "start_sec": null,
+          "end_sec": null
+        }
+      ]
+    }
+  },
+  "stock": {
+    "query": "solar farm aerial panels",
+    "direct_url": "https://www.youtube.com/watch?v=w2f318UzLss",
+    "asset_id": "planner:3736313861396534:0",
+    "indexed_retrievable": true,
+    "outbox_event": "asset.index.requested",
+    "index_state_expected": "INDEXED",
+    "job": {
+      "status": "SUCCEEDED",
+      "job_id": "job_1789758439670764906_26c94109",
+      "index_state_expected": "INDEXED",
+      "timing": {
+        "wall_ms": 73672,
+        "execution_wall_ms": 73672,
+        "attributed_ms": 65877,
+        "unattributed_ms": 1409,
+        "unattributed_percent": 1.9125312194592248,
+        "overlapped_ms": 0,
+        "bottleneck_stage": "stock.stage_sources",
+        "bottleneck_percent": 69.61124986426323,
+        "critical_path": [
+          {
+            "name": "stock.search",
+            "duration_ms": 3352,
+            "percent": 4.549896840047779
+          },
+          {
+            "name": "stock.stage_sources",
+            "duration_ms": 51284,
+            "percent": 69.61124986426323
+          },
+          {
+            "name": "stock.extract",
+            "duration_ms": 4006,
+            "percent": 5.437615376262352
+          },
+          {
+            "name": "stock.database_save",
+            "duration_ms": 32,
+            "percent": 0.04343576935606472
+          },
+          {
+            "name": "stock.index",
+            "duration_ms": 0,
+            "percent": 0
+          },
+          {
+            "name": "stock.database_save",
+            "duration_ms": 12,
+            "percent": 0.01628841350852427
+          },
+          {
+            "name": "stock.index",
+            "duration_ms": 0,
+            "percent": 0
+          },
+          {
+            "name": "stock.compose",
+            "duration_ms": 7189,
+            "percent": 9.758117059398415
+          },
+          {
+            "name": "post_writer_finalize",
+            "duration_ms": 0,
+            "percent": 0
+          }
+        ],
+        "stages": [
+          {
+            "name": "post_writer_finalize",
+            "duration_ms": 0
+          },
+          {
+            "name": "stock.compose",
+            "duration_ms": 7189
+          },
+          {
+            "name": "stock.database_save",
+            "duration_ms": 44
+          },
+          {
+            "name": "stock.extract",
+            "duration_ms": 7859
+          },
+          {
+            "name": "stock.index",
+            "duration_ms": 0
+          },
+          {
+            "name": "stock.search",
+            "duration_ms": 3352
+          },
+          {
+            "name": "stock.stage_sources",
+            "duration_ms": 51284
+          },
+          {
+            "name": "stock.youtube_download",
+            "duration_ms": 50922
+          }
+        ],
+        "operations": [
+          {
+            "stage": "publish",
+            "component": "drive",
+            "operation": "upload",
+            "calls": 2,
+            "work_ms": 6385
+          },
+          {
+            "stage": "publish",
+            "component": "finalize",
+            "operation": "artifact_hash",
+            "calls": 2,
+            "work_ms": 174
+          },
+          {
+            "stage": "publish",
+            "component": "finalize",
+            "operation": "artifact_prepare",
+            "calls": 2,
+            "work_ms": 176
+          },
+          {
+            "stage": "publish",
+            "component": "finalize",
+            "operation": "drive_publish",
+            "calls": 2,
+            "work_ms": 6207
+          }
+        ],
+        "fanout": [
+          {
+            "stage": "publish",
+            "wall_ms": 0,
+            "calls": 8,
+            "work_ms": 12942,
+            "max_ms": 3791
+          }
+        ]
+      },
+      "artifacts": [
+        {
+          "artifact_id": "planner:3535666436366533:0",
+          "filename": "clip_001.mp4",
+          "size_bytes": 8711920,
+          "sha256": "c09e0f2ea0dcef75ac34f5c4d13f869982440ab0b07cdd031557c51170fb4c08",
+          "drive_folder_id": null,
+          "remote_file_id": "1yK7tPnJYDVwaJ9VlRbI3YyzeK-yl1nwW",
+          "remote_web_view_link": "https://drive.google.com/file/d/1yK7tPnJYDVwaJ9VlRbI3YyzeK-yl1nwW/view?usp=drivesdk",
+          "drive_path": "https://drive.google.com/file/d/1yK7tPnJYDVwaJ9VlRbI3YyzeK-yl1nwW/view?usp=drivesdk",
+          "source_url": "https://www.youtube.com/watch?v=1nB0Se783OY",
+          "source_video_id": "1nB0Se783OY",
+          "start_sec": 0,
+          "end_sec": 5
+        },
+        {
+          "artifact_id": "planner:3637386237383938:0",
+          "filename": "clip_002.mp4",
+          "size_bytes": 4656752,
+          "sha256": "8b1a8f5f0cd4340834d04bd2d59ec68737d70fbf5f1896338b19976dba06977d",
+          "drive_folder_id": null,
+          "remote_file_id": "1plLtLQJYxVLWpoUNJKZwZR3xEF8Uvc21",
+          "remote_web_view_link": "https://drive.google.com/file/d/1plLtLQJYxVLWpoUNJKZwZR3xEF8Uvc21/view?usp=drivesdk",
+          "drive_path": "https://drive.google.com/file/d/1plLtLQJYxVLWpoUNJKZwZR3xEF8Uvc21/view?usp=drivesdk",
+          "source_url": "https://www.youtube.com/watch?v=yia6fDIJnLE",
+          "source_video_id": "yia6fDIJnLE",
+          "start_sec": 0,
+          "end_sec": 5
+        }
+      ]
+    }
+  }
+}

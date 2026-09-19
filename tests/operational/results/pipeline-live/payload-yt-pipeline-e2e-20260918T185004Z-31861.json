@@ -1,0 +1,17 @@
+{
+  "url": "https://www.youtube.com/watch?v=wKFgAQLw0zM",
+  "segments": [
+    {
+      "start": "00:00:05",
+      "end": "00:00:12",
+      "name": "pipeline-e2e-20260918T185004Z-31861-youtube",
+      "category": "e2e"
+    }
+  ],
+  "strategy": "verify",
+  "destination": {
+    "folder_id": "17iOPYr1OPuT3UQZtzvgJpk9OnhFCUfgn",
+    "group": "e2e",
+    "create_subfolder": true
+  }
+}

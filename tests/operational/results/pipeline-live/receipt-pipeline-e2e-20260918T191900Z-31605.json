@@ -1,0 +1,253 @@
+{
+  "schema": "pipelinegen.stock_pipeline_certification.v1",
+  "run_id": "pipeline-e2e-20260918T191900Z-31605",
+  "git_sha": "20795dd1fca3efd522019326f178f2c220bc0a28",
+  "api_base": "127.0.0.1:8000",
+  "verdict": "FAIL",
+  "running_binary": {
+    "version": "backup-pre-revert-2654-g20795dd1f",
+    "git_commit": "20795dd1f",
+    "git_commit_full": "20795dd1f",
+    "git_dirty": true,
+    "build_time": "2026-09-18T19:02:51Z",
+    "binary_sha256": "e6e32c63c8188ab4e443a820774f3c8c604b92147a6c46a7ef617498f98d6398",
+    "binary_path": "/home/pierone/src/go-master/projects/Pyt/VeloxEditing/refactored/bin/pipelinegen",
+    "config_path": "config.yaml",
+    "mode": "all",
+    "worker_id": "YOutube",
+    "pid": 1032841,
+    "started_at": "2026-09-18T19:03:09Z",
+    "identity_hash": "75adaf50c55d00d8"
+  },
+  "steps_total": 10,
+  "steps_passed": 9,
+  "failed_steps": [
+    "8  Stock Drive artifact"
+  ],
+  "youtube": {
+    "query": "Muhammad Ali boxing",
+    "url": "https://www.youtube.com/watch?v=55AasOJZzDE",
+    "video_id": "55AasOJZzDE",
+    "asset_id": "yt_55AasOJZzDE_5_12_v1",
+    "indexed_retrievable": true,
+    "outbox_event": "asset.index.requested",
+    "index_state_expected": "INDEXED",
+    "job": {
+      "status": "SUCCEEDED",
+      "job_id": "job_1789759181956529336_abf27484",
+      "index_state_expected": "INDEXED",
+      "timing": {
+        "wall_ms": 45299,
+        "execution_wall_ms": 45299,
+        "attributed_ms": 3,
+        "unattributed_ms": 45296,
+        "unattributed_percent": 99.99337733724806,
+        "overlapped_ms": 0,
+        "bottleneck_stage": "post_writer_finalize",
+        "bottleneck_percent": 0.006622662751937129,
+        "critical_path": [
+          {
+            "name": "post_writer_finalize",
+            "duration_ms": 3,
+            "percent": 0.006622662751937129
+          }
+        ],
+        "stages": [
+          {
+            "name": "post_writer_finalize",
+            "duration_ms": 3
+          }
+        ]
+      },
+      "artifacts": [
+        {
+          "artifact_id": "yt_55AasOJZzDE_5_12_v1",
+          "filename": "yt_55AasOJZzDE_5_12_v1_pipeline-e2e-20260918t191900z-31605-yout.mp4",
+          "size_bytes": 7014668,
+          "sha256": "5261a8b9b02167ad5f8a2c9540902665771b070550637587b0dc57c95d84308e",
+          "drive_folder_id": "17wg1g9w3666qUQeaLCaTvtNa4KgzogFe",
+          "remote_file_id": "1awFmDZ_4oQed9UEa9V4VaYN_PcJljikA",
+          "remote_web_view_link": "https://drive.google.com/file/d/1awFmDZ_4oQed9UEa9V4VaYN_PcJljikA/view?usp=drivesdk",
+          "drive_path": null,
+          "source_url": null,
+          "source_video_id": null,
+          "start_sec": null,
+          "end_sec": null
+        }
+      ]
+    }
+  },
+  "stock": {
+    "query": "city skyline technology b-roll",
+    "direct_url": "https://www.youtube.com/watch?v=55AasOJZzDE",
+    "asset_id": "planner:3666376231373830:0",
+    "indexed_retrievable": true,
+    "outbox_event": "asset.index.requested",
+    "index_state_expected": "INDEXED",
+    "job": {
+      "status": "SUCCEEDED",
+      "job_id": "job_1789759249313798403_088f3105",
+      "index_state_expected": "INDEXED",
+      "timing": {
+        "wall_ms": 34766,
+        "execution_wall_ms": 34766,
+        "attributed_ms": 27596,
+        "unattributed_ms": 1302,
+        "unattributed_percent": 3.745038255767129,
+        "overlapped_ms": 0,
+        "bottleneck_stage": "stock.stage_sources",
+        "bottleneck_percent": 42.41500316401082,
+        "critical_path": [
+          {
+            "name": "stock.search",
+            "duration_ms": 3790,
+            "percent": 10.901455444974975
+          },
+          {
+            "name": "stock.stage_sources",
+            "duration_ms": 14746,
+            "percent": 42.41500316401082
+          },
+          {
+            "name": "stock.extract",
+            "duration_ms": 3159,
+            "percent": 9.086463786458033
+          },
+          {
+            "name": "stock.database_save",
+            "duration_ms": 26,
+            "percent": 0.07478571017660933
+          },
+          {
+            "name": "stock.index",
+            "duration_ms": 0,
+            "percent": 0
+          },
+          {
+            "name": "stock.database_save",
+            "duration_ms": 17,
+            "percent": 0.04889834896162917
+          },
+          {
+            "name": "stock.index",
+            "duration_ms": 0,
+            "percent": 0
+          },
+          {
+            "name": "stock.compose",
+            "duration_ms": 5855,
+            "percent": 16.841166657078755
+          },
+          {
+            "name": "post_writer_finalize",
+            "duration_ms": 0,
+            "percent": 0
+          }
+        ],
+        "stages": [
+          {
+            "name": "post_writer_finalize",
+            "duration_ms": 0
+          },
+          {
+            "name": "stock.compose",
+            "duration_ms": 5855
+          },
+          {
+            "name": "stock.database_save",
+            "duration_ms": 43
+          },
+          {
+            "name": "stock.extract",
+            "duration_ms": 5902
+          },
+          {
+            "name": "stock.index",
+            "duration_ms": 0
+          },
+          {
+            "name": "stock.search",
+            "duration_ms": 3790
+          },
+          {
+            "name": "stock.stage_sources",
+            "duration_ms": 14746
+          },
+          {
+            "name": "stock.youtube_download",
+            "duration_ms": 14648
+          }
+        ],
+        "operations": [
+          {
+            "stage": "publish",
+            "component": "drive",
+            "operation": "upload",
+            "calls": 2,
+            "work_ms": 5867
+          },
+          {
+            "stage": "publish",
+            "component": "finalize",
+            "operation": "artifact_hash",
+            "calls": 2,
+            "work_ms": 128
+          },
+          {
+            "stage": "publish",
+            "component": "finalize",
+            "operation": "artifact_prepare",
+            "calls": 2,
+            "work_ms": 135
+          },
+          {
+            "stage": "publish",
+            "component": "finalize",
+            "operation": "drive_publish",
+            "calls": 2,
+            "work_ms": 5719
+          }
+        ],
+        "fanout": [
+          {
+            "stage": "publish",
+            "wall_ms": 0,
+            "calls": 8,
+            "work_ms": 11849,
+            "max_ms": 3233
+          }
+        ]
+      },
+      "artifacts": [
+        {
+          "artifact_id": "planner:3666376231373830:0",
+          "filename": "clip_001.mp4",
+          "size_bytes": 5397104,
+          "sha256": "651ca12e28a084191550f4f5f3eccf6d2e489487d75f98a1414786571dae3baf",
+          "drive_folder_id": null,
+          "remote_file_id": "1EVcHhSJPwArbMaxyzN38KfDXWJJa2cBF",
+          "remote_web_view_link": "https://drive.google.com/file/d/1EVcHhSJPwArbMaxyzN38KfDXWJJa2cBF/view?usp=drivesdk",
+          "drive_path": "https://drive.google.com/file/d/1EVcHhSJPwArbMaxyzN38KfDXWJJa2cBF/view?usp=drivesdk",
+          "source_url": "https://www.youtube.com/watch?v=gHbSA0HGRFU",
+          "source_video_id": "gHbSA0HGRFU",
+          "start_sec": 0,
+          "end_sec": 5
+        },
+        {
+          "artifact_id": "planner:6130613332303465:0",
+          "filename": "clip_002.mp4",
+          "size_bytes": 4907605,
+          "sha256": "5b279d21777f7a20c37b4470841eecdbe55586d3baff77dd84ec817cab008a3c",
+          "drive_folder_id": null,
+          "remote_file_id": "1MNvHUAxhjF0R2yPB0aOwS_eIgvTNU4JV",
+          "remote_web_view_link": "https://drive.google.com/file/d/1MNvHUAxhjF0R2yPB0aOwS_eIgvTNU4JV/view?usp=drivesdk",
+          "drive_path": "https://drive.google.com/file/d/1MNvHUAxhjF0R2yPB0aOwS_eIgvTNU4JV/view?usp=drivesdk",
+          "source_url": "https://www.youtube.com/watch?v=-0xZuzl5-yI",
+          "source_video_id": "-0xZuzl5-yI",
+          "start_sec": 0,
+          "end_sec": 5
+        }
+      ]
+    }
+  }
+}

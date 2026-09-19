@@ -1,0 +1,17 @@
+{
+  "url": "https://www.youtube.com/watch?v=vE8vJlN4cWs",
+  "segments": [
+    {
+      "start": "00:00:05",
+      "end": "00:00:12",
+      "name": "stock-cert-20260919-youtube-chain-youtube",
+      "category": "e2e"
+    }
+  ],
+  "strategy": "verify",
+  "destination": {
+    "folder_id": "1EqeAE3H_h1Q12-DYBTZQfIGHoWGftK3I",
+    "group": "e2e",
+    "create_subfolder": true
+  }
+}

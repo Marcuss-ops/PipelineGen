@@ -1,0 +1,251 @@
+{
+  "schema": "pipelinegen.stock_pipeline_certification.v1",
+  "run_id": "pipeline-e2e-20260918T200115Z-9607",
+  "git_sha": "20795dd1fca3efd522019326f178f2c220bc0a28",
+  "api_base": "127.0.0.1:8000",
+  "verdict": "PASS",
+  "running_binary": {
+    "version": "dev",
+    "git_commit": "20795dd1fca3",
+    "git_commit_full": "20795dd1fca3efd522019326f178f2c220bc0a28",
+    "git_dirty": true,
+    "build_time": "2026-09-18T19:02:28Z",
+    "binary_sha256": "402662f68a2f2320407a2bccad6a3fdd121c4ce4d0f4bd173360c5c17093db35",
+    "binary_path": "/home/pierone/src/go-master/projects/Pyt/VeloxEditing/refactored/bin/pipelinegen",
+    "config_path": "config.yaml",
+    "mode": "all",
+    "worker_id": "YOutube",
+    "pid": 1244028,
+    "started_at": "2026-09-18T19:32:46Z",
+    "identity_hash": "bc90cf27af7d8388"
+  },
+  "steps_total": 10,
+  "steps_passed": 10,
+  "failed_steps": [],
+  "youtube": {
+    "query": "Muhammad Ali boxing",
+    "url": "https://www.youtube.com/watch?v=55AasOJZzDE",
+    "video_id": "55AasOJZzDE",
+    "asset_id": "yt_55AasOJZzDE_5_12_v1",
+    "indexed_retrievable": true,
+    "outbox_event": "asset.index.requested",
+    "index_state_expected": "INDEXED",
+    "job": {
+      "status": "SUCCEEDED",
+      "job_id": "job_1789761725177533665_658b5bd8",
+      "index_state_expected": "INDEXED",
+      "timing": {
+        "wall_ms": 121628,
+        "execution_wall_ms": 121628,
+        "attributed_ms": 4,
+        "unattributed_ms": 121624,
+        "unattributed_percent": 99.99671128358601,
+        "overlapped_ms": 0,
+        "bottleneck_stage": "post_writer_finalize",
+        "bottleneck_percent": 0.0024665373104877167,
+        "critical_path": [
+          {
+            "name": "post_writer_finalize",
+            "duration_ms": 3,
+            "percent": 0.0024665373104877167
+          }
+        ],
+        "stages": [
+          {
+            "name": "post_writer_finalize",
+            "duration_ms": 3
+          }
+        ]
+      },
+      "artifacts": [
+        {
+          "artifact_id": "yt_55AasOJZzDE_5_12_v1",
+          "filename": "yt_55AasOJZzDE_5_12_v1_pipeline-e2e-20260918t200115z-9607-youtu.mp4",
+          "size_bytes": 7014668,
+          "sha256": "5261a8b9b02167ad5f8a2c9540902665771b070550637587b0dc57c95d84308e",
+          "drive_folder_id": "17wg1g9w3666qUQeaLCaTvtNa4KgzogFe",
+          "remote_file_id": "1BkDi99FJOrU69J_CqAwr0SuzxqLfsf2Q",
+          "remote_web_view_link": "https://drive.google.com/file/d/1BkDi99FJOrU69J_CqAwr0SuzxqLfsf2Q/view?usp=drivesdk",
+          "drive_path": null,
+          "source_url": null,
+          "source_video_id": null,
+          "start_sec": null,
+          "end_sec": null
+        }
+      ]
+    }
+  },
+  "stock": {
+    "query": "city skyline technology b-roll",
+    "direct_url": "https://www.youtube.com/watch?v=55AasOJZzDE",
+    "asset_id": "planner:3138316364346231:0",
+    "indexed_retrievable": true,
+    "outbox_event": "asset.index.requested",
+    "index_state_expected": "INDEXED",
+    "job": {
+      "status": "SUCCEEDED",
+      "job_id": "job_1789761887070296587_1ad77f0c",
+      "index_state_expected": "INDEXED",
+      "timing": {
+        "wall_ms": 22204,
+        "execution_wall_ms": 22204,
+        "attributed_ms": 11825,
+        "unattributed_ms": 1501,
+        "unattributed_percent": 6.760043235453071,
+        "overlapped_ms": 0,
+        "bottleneck_stage": "stock.compose",
+        "bottleneck_percent": 22.99585660241398,
+        "critical_path": [
+          {
+            "name": "stock.search",
+            "duration_ms": 3337,
+            "percent": 15.028823635381011
+          },
+          {
+            "name": "stock.stage_sources",
+            "duration_ms": 268,
+            "percent": 1.2069897315798956
+          },
+          {
+            "name": "stock.extract",
+            "duration_ms": 3032,
+            "percent": 13.65519726175464
+          },
+          {
+            "name": "stock.database_save",
+            "duration_ms": 64,
+            "percent": 0.2882363538101243
+          },
+          {
+            "name": "stock.index",
+            "duration_ms": 0,
+            "percent": 0
+          },
+          {
+            "name": "stock.database_save",
+            "duration_ms": 12,
+            "percent": 0.05404431633939831
+          },
+          {
+            "name": "stock.index",
+            "duration_ms": 0,
+            "percent": 0
+          },
+          {
+            "name": "stock.compose",
+            "duration_ms": 5106,
+            "percent": 22.99585660241398
+          },
+          {
+            "name": "post_writer_finalize",
+            "duration_ms": 0,
+            "percent": 0
+          }
+        ],
+        "stages": [
+          {
+            "name": "post_writer_finalize",
+            "duration_ms": 0
+          },
+          {
+            "name": "stock.compose",
+            "duration_ms": 5106
+          },
+          {
+            "name": "stock.database_save",
+            "duration_ms": 76
+          },
+          {
+            "name": "stock.extract",
+            "duration_ms": 5764
+          },
+          {
+            "name": "stock.index",
+            "duration_ms": 0
+          },
+          {
+            "name": "stock.search",
+            "duration_ms": 3337
+          },
+          {
+            "name": "stock.stage_sources",
+            "duration_ms": 268
+          },
+          {
+            "name": "stock.youtube_download",
+            "duration_ms": 0
+          }
+        ],
+        "operations": [
+          {
+            "stage": "publish",
+            "component": "drive",
+            "operation": "upload",
+            "calls": 2,
+            "work_ms": 8877
+          },
+          {
+            "stage": "publish",
+            "component": "finalize",
+            "operation": "artifact_hash",
+            "calls": 2,
+            "work_ms": 107
+          },
+          {
+            "stage": "publish",
+            "component": "finalize",
+            "operation": "artifact_prepare",
+            "calls": 2,
+            "work_ms": 111
+          },
+          {
+            "stage": "publish",
+            "component": "finalize",
+            "operation": "drive_publish",
+            "calls": 2,
+            "work_ms": 8762
+          }
+        ],
+        "fanout": [
+          {
+            "stage": "publish",
+            "wall_ms": 0,
+            "calls": 8,
+            "work_ms": 17857,
+            "max_ms": 4771
+          }
+        ]
+      },
+      "artifacts": [
+        {
+          "artifact_id": "planner:3138316364346231:0",
+          "filename": "clip_001.mp4",
+          "size_bytes": 3470937,
+          "sha256": "73db0fd799eb85508feb57064e2b33fc0a95d9e14d88aa43bd5ca6c8a26c9e8e",
+          "drive_folder_id": null,
+          "remote_file_id": "12eSQSMRZkZXSMS1snWo9ZfIcnY0vLinw",
+          "remote_web_view_link": "https://drive.google.com/file/d/12eSQSMRZkZXSMS1snWo9ZfIcnY0vLinw/view?usp=drivesdk",
+          "drive_path": "https://drive.google.com/file/d/12eSQSMRZkZXSMS1snWo9ZfIcnY0vLinw/view?usp=drivesdk",
+          "source_url": "https://www.youtube.com/watch?v=oem5-_YaY1E",
+          "source_video_id": "oem5-_YaY1E",
+          "start_sec": 0,
+          "end_sec": 5
+        },
+        {
+          "artifact_id": "planner:6130613332303465:0",
+          "filename": "clip_002.mp4",
+          "size_bytes": 4907605,
+          "sha256": "5b279d21777f7a20c37b4470841eecdbe55586d3baff77dd84ec817cab008a3c",
+          "drive_folder_id": null,
+          "remote_file_id": "1oZuMWWu04MhulGXcGajyGEHN7r2Ds62n",
+          "remote_web_view_link": "https://drive.google.com/file/d/1oZuMWWu04MhulGXcGajyGEHN7r2Ds62n/view?usp=drivesdk",
+          "drive_path": "https://drive.google.com/file/d/1oZuMWWu04MhulGXcGajyGEHN7r2Ds62n/view?usp=drivesdk",
+          "source_url": "https://www.youtube.com/watch?v=-0xZuzl5-yI",
+          "source_video_id": "-0xZuzl5-yI",
+          "start_sec": 0,
+          "end_sec": 5
+        }
+      ]
+    }
+  }
+}
