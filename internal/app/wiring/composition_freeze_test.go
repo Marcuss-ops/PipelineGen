@@ -431,8 +431,8 @@ func TestComposition_AssetIDToQdrantPointID_SingleDeclaration(t *testing.T) {
 // must skip route registration, return nil and leave the wiring slot empty.
 func TestRegisterYouTubeClip_EnabledButMediaServiceUnavailable_SkipsRoute(t *testing.T) {
 	cases := map[string]*ComposeRoot{
-		"nil root":                  nil,
-		"nil domains":               {},
+		"nil root":                   nil,
+		"nil domains":                {},
 		"domains without yt service": {Domains: &DomainBundle{}},
 	}
 	for name, root := range cases {

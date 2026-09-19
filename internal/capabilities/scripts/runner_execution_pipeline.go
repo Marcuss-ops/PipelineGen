@@ -1,6 +1,12 @@
 package scriptgeneration
 
-import "context"
+import (
+	"context"
+
+	scriptports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
+	"go.uber.org/zap"
+)
 
 // runExecutionPhases owns the ordered business pipeline. Keeping the phase
 // sequence separate from Runner wiring makes the resume/stop contract visible
@@ -55,4 +61,40 @@ func (r *Runner) runExecutionPhases(ctx context.Context, runID string, req Gener
 		return
 	}
 	e.complete()
+}
+
+// SetStockPrefetcher wires the best-effort acquisition hook for the stock
+// bindings already present in the payload.
+func (r *Runner) SetStockPrefetcher(prefetcher scriptports.StockPrefetcher) {
+	if r != nil {
+		r.stockPrefetcher = prefetcher
+	}
+}
+
+func (r *Runner) startStockPrefetch(ctx context.Context, bindings []scriptpkg.StockBindingInput) chan scriptports.StockPrefetchReport {
+	if r == nil || r.stockPrefetcher == nil || len(bindings) == 0 {
+		return nil
+	}
+	copyBindings := append([]scriptpkg.StockBindingInput(nil), bindings...)
+	done := make(chan scriptports.StockPrefetchReport, 1)
+	go func() {
+		done <- r.stockPrefetcher.Prefetch(ctx, copyBindings)
+	}()
+	return done
+}
+
+func (r *Runner) waitStockPrefetch(done chan scriptports.StockPrefetchReport) {
+	if done == nil {
+		return
+	}
+	report := <-done
+	if r == nil || r.log == nil {
+		return
+	}
+	r.log.Info("script.generate: stock prefetch completed",
+		zap.Int("requested", report.Requested),
+		zap.Int("warmed", report.Warmed),
+		zap.Int("cached", report.Cached),
+		zap.Int("failed", report.Failed),
+		zap.Int("skipped", report.Skipped))
 }
