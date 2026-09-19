@@ -249,13 +249,10 @@ func BuildScriptGenerationRuntime(cfg *config.Config, root *ComposeRoot, runRepo
 		// concurrent GPU work, so this overlaps the per-item pre/post chain
 		// without oversubscribing the device.
 		renderEnqueuer.SetItemRenderPool(cfg.Scripts.SeparateItemRenderWorkers)
-		// Overlay videos belong beside the generated language document:
-		// <scripts-generate>/<project>/<language>/overlay. The configured
-		// overlay root remains a compatibility fallback for old deployments.
-		overlayParentFolderID := cfg.Drive.ScriptsGenerateFolder
-		if strings.TrimSpace(overlayParentFolderID) == "" {
-			overlayParentFolderID = cfg.Drive.OverlayRenderFolder()
-		}
+		// Generated semantic overlays have their own canonical root. Docs and
+		// clip renders use separate routing contracts and must not influence
+		// this destination: <Overlay Chronon>/<JobID>/<language>/overlay.
+		overlayParentFolderID := cfg.Drive.OverlayRenderFolder()
 		if strings.TrimSpace(overlayParentFolderID) == "" {
 			return nil, fmt.Errorf("build overlay render runtime: overlay_render_root_folder is required")
 		}
@@ -263,7 +260,10 @@ func BuildScriptGenerationRuntime(cfg *config.Config, root *ComposeRoot, runRepo
 			drivePublisher := drive.NewArtifactPublisherAdapter(root.Drive.Publisher, log)
 			overlayPublisher := renderinggen.NewDriveOverlayArtifactPublisher(drivePublisher)
 			overlayPublisher.SetRootFolderID(overlayParentFolderID)
-			overlayPublisher.SetScriptLanguageRouting(strings.TrimSpace(cfg.Drive.ScriptsGenerateFolder) != "")
+			// Every generated semantic overlay is routed by JobID/PlanID and
+			// language. The configured folder is only the root; an empty
+			// ScriptsGenerateFolder must not silently flatten the overlay tree.
+			overlayPublisher.SetScriptLanguageRouting(true)
 			renderEnqueuer.SetArtifactPublisher(overlayPublisher)
 			// RenderingGen has already certified immutable bytes when the
 			// enqueuer returns. Drive publication and analytics therefore run on
