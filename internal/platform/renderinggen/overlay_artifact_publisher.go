@@ -47,8 +47,8 @@ func (p *DriveOverlayArtifactPublisher) SetRootFolderID(folderID string) {
 	}
 }
 
-// SetScriptLanguageRouting places overlays below the same project/language
-// tree used by generated Docs: <root>/<script>/<language>/overlay.
+// SetScriptLanguageRouting places generated overlays below the producing
+// job/language tree: <root>/<JobID>/<language>/overlay.
 func (p *DriveOverlayArtifactPublisher) SetScriptLanguageRouting(on bool) {
 	if p != nil {
 		p.scriptLanguageRouting = on
@@ -113,11 +113,9 @@ func (p *DriveOverlayArtifactPublisher) PublishOverlay(ctx context.Context, spec
 		pathutil.SafeFolderName(scriptName),
 		pathutil.SafeFolderName(language),
 		strings.ToLower(artifact.SHA256[:min(len(artifact.SHA256), 12)]))
-	// Drive identity is content-based for overlays. A PlanID is run-scoped;
-	// using it here made a retry/new job upload the same MP4 again under a new
-	// idempotency key. Keep script and language in the logical identity so the
-	// same bytes are reused for the same destination while distinct scripts do
-	// not collide when they share the overlay root.
+	// Drive identity is content-based for overlays. Keep script and language in
+	// the logical identity so the same bytes are reused for the same semantic
+	// artifact while distinct scripts do not collide when they share the root.
 	artifactID := strings.Join([]string{
 		scriptName, language, strings.ToLower(artifact.SHA256),
 	}, ":")
@@ -139,15 +137,24 @@ func (p *DriveOverlayArtifactPublisher) PublishOverlay(ctx context.Context, spec
 		Language:         language,
 		ArtifactMetadata: map[string]any{"script_name": scriptName, "language": language, "source": "chronon", "plan_id": spec.PlanID},
 	}
-	// The configured root is the parent selected by the operator. The
-	// canonical delivery publisher creates/reuses the deterministic `overlay`
-	// child below it. Drive stores the rendered video only; timing telemetry
-	// remains in the job/render metrics and is not uploaded as a sidecar file.
+	// The configured root is the parent selected by the operator. Generated
+	// overlays are always scoped by the producing JobID/PlanID and language;
+	// this prevents two runs or two languages from sharing one Drive folder.
+	// Clip renders do not pass through this publisher and keep their own
+	// localized-clip destination contract.
 	verified.ResolvedFolderID = rootFolderID
 	verified.RootFolderResolved = true
 	verified.DriveSubpath = []string{finalization.OverlayChildFolder}
 	if p.scriptLanguageRouting {
-		verified.DriveSubpath = []string{scriptName, language, finalization.OverlayChildFolder}
+		// PlanID is mandatory even when the caller also carries the parent
+		// JobID. The plan id is the render contract's stable identity; JobID is
+		// used only when separate-item rendering supplies the parent run id so
+		// all five artifacts stay below one <JobID>/<language>/overlay tree.
+		if strings.TrimSpace(spec.PlanID) == "" {
+			return fmt.Errorf("overlay publication requires plan id for language routing")
+		}
+		jobID := firstNonEmpty(spec.JobID, spec.PlanID)
+		verified.DriveSubpath = []string{pathutil.SafeFolderName(jobID), pathutil.SafeFolderName(language), finalization.OverlayChildFolder}
 	}
 	verified.ArtifactMetadata["overlay_item_id"] = spec.OverlayItemID
 	verified.ArtifactMetadata["overlay_item_kind"] = spec.OverlayItemKind

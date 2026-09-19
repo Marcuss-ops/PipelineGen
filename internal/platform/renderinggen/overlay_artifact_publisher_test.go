@@ -234,3 +234,92 @@ func TestDriveOverlayArtifactPublisherUsesJobSelectedRootBeforeConfiguredRoot(t 
 		t.Fatalf("publication path = %#v, want overlay child", published.DriveSubpath)
 	}
 }
+
+func TestDriveOverlayArtifactPublisherRequiresPlanIDWhenLanguageRoutingIsEnabled(t *testing.T) {
+	payload := []byte("missing plan id overlay bytes")
+	sum := sha256.Sum256(payload)
+	hash := hex.EncodeToString(sum[:])
+	store := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/objects/"+hash {
+			http.NotFound(w, r)
+			return
+		}
+		_, _ = w.Write(payload)
+	}))
+	defer store.Close()
+
+	publisher := &DriveOverlayArtifactPublisher{publisher: &captureOverlayPublisher{}, client: store.Client()}
+	publisher.SetRootFolderID("overlay-root")
+	publisher.SetScriptLanguageRouting(true)
+	artifact := &scriptgen.RenderArtifact{
+		ID: "render-missing-plan", URL: store.URL + "/objects/" + hash,
+		SHA256: hash, SizeBytes: int64(len(payload)), MimeType: "video/mp4",
+	}
+	if err := publisher.PublishOverlay(context.Background(), scriptgen.OverlayPublicationSpec{
+		ScriptName: "Elon Musk", Language: "en", JobID: "job-123",
+	}, artifact); err == nil || !strings.Contains(err.Error(), "plan id") {
+		t.Fatalf("missing PlanID error = %v, want fail-closed plan id error", err)
+	}
+}
+
+func TestDriveOverlayArtifactPublisherUsesPlanIDWhenJobIDIsAbsent(t *testing.T) {
+	payload := []byte("plan-scoped overlay bytes")
+	sum := sha256.Sum256(payload)
+	hash := hex.EncodeToString(sum[:])
+	store := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/objects/"+hash {
+			http.NotFound(w, r)
+			return
+		}
+		_, _ = w.Write(payload)
+	}))
+	defer store.Close()
+
+	capture := &captureOverlayPublisher{}
+	publisher := &DriveOverlayArtifactPublisher{publisher: capture, client: store.Client()}
+	publisher.SetRootFolderID("overlay-root")
+	publisher.SetScriptLanguageRouting(true)
+	artifact := &scriptgen.RenderArtifact{
+		ID: "render-plan-scoped", URL: store.URL + "/objects/" + hash,
+		SHA256: hash, SizeBytes: int64(len(payload)), MimeType: "video/mp4",
+	}
+	if err := publisher.PublishOverlay(context.Background(), scriptgen.OverlayPublicationSpec{
+		ScriptName: "Elon Musk", Language: "pt-BR", PlanID: "job-123",
+	}, artifact); err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.Join(capture.artifacts[0].DriveSubpath, "/"); got != "job-123/pt-BR/overlay" {
+		t.Fatalf("generated overlay path = %q, want PlanID/language/overlay", got)
+	}
+}
+
+func TestDriveOverlayArtifactPublisherRoutesGeneratedOverlayByJobAndLanguage(t *testing.T) {
+	payload := []byte("job-scoped overlay bytes")
+	sum := sha256.Sum256(payload)
+	hash := hex.EncodeToString(sum[:])
+	store := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/objects/"+hash {
+			http.NotFound(w, r)
+			return
+		}
+		_, _ = w.Write(payload)
+	}))
+	defer store.Close()
+
+	capture := &captureOverlayPublisher{}
+	publisher := &DriveOverlayArtifactPublisher{publisher: capture, client: store.Client()}
+	publisher.SetRootFolderID("overlay-root")
+	publisher.SetScriptLanguageRouting(true)
+	artifact := &scriptgen.RenderArtifact{
+		ID: "render-job-scoped", URL: store.URL + "/objects/" + hash,
+		SHA256: hash, SizeBytes: int64(len(payload)), MimeType: "video/mp4",
+	}
+	if err := publisher.PublishOverlay(context.Background(), scriptgen.OverlayPublicationSpec{
+		ScriptName: "Elon Musk", Language: "pt-BR", JobID: "job-123", PlanID: "job-123:item:003:phrase",
+	}, artifact); err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.Join(capture.artifacts[0].DriveSubpath, "/"); got != "job-123/pt-BR/overlay" {
+		t.Fatalf("generated overlay path = %q, want JobID/language/overlay", got)
+	}
+}

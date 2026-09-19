@@ -6,7 +6,7 @@ import "strings"
 // generated Chronon overlays when an environment does not override it.
 // Keeping this default in tracked code makes the all-generations rule hold
 // even when the local deployment config is intentionally ignored by Git.
-const DefaultOverlayRenderRootFolderID = "1eRYRBDBWxGdqC4u7fHwp5hX_kRoTkZ8E"
+const DefaultOverlayRenderRootFolderID = "1J_xUGo_bchzXDIGqSX04CU44c_Dm3SxS"
 
 // DefaultImagesRootFolderID is the canonical Drive root for all image/
 // overlay assets (retrieved + generated). Every image is stored as
