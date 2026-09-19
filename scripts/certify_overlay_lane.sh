@@ -378,7 +378,7 @@ if should_run verify && [ "$DRY_RUN" = "0" ] && [ -n "$JOB_ID" ] && [ -f "$BUNDL
   jq '.result.result.voiceover_timing // .result.result.timing // {}' "$FULL_JSON" > "$BUNDLE_DIR/timing.json"
 
   scenes="$(jq -r '(.result.result.scenes // []) | length' "$FULL_JSON")"
-  phrase_overlays="$(jq -r '[.result.result.overlay_plan.items[]? | select(.kind == "phrase")] | length' "$FULL_JSON")"
+  phrase_overlays="$(jq -r '[.result.result.overlay_plan.items[]? | select(.kind == "text_phrase" or .kind == "phrase")] | length' "$FULL_JSON")"
   entity_overlays="$(jq -r '[.result.result.overlay_plan.items[]? | select(.kind == "entity_image")] | length' "$FULL_JSON")"
   items_total="$(jq -r '(.result.result.overlay_plan.items // []) | length' "$FULL_JSON")"
 
