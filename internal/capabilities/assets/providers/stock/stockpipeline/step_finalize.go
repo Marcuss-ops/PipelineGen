@@ -65,7 +65,13 @@ type StockFinalizeStep struct{}
 
 func (StockFinalizeStep) Name() string { return StepKeyStockFinalize }
 
-func (StockFinalizeStep) Run(ctx context.Context, runner StepRunner) error {
+func (StockFinalizeStep) Run(ctx context.Context, runner StepRunner) (err error) {
+	// Canonical stage: stock.finalize owns manifest build + Projection (Qdrant)
+	// + the single-TX spine write. Without it that wall time fell outside every
+	// top-level stage and surfaced as unattributed in the timing breakdown.
+	finalizeMetric := startStockPhase(ctx, runner, StepKeyStockFinalize)
+	defer func() { finishStockPhase(runner, finalizeMetric, StepKeyStockFinalize, err) }()
+
 	if runner.Log() != nil {
 		finalizerWired := "no"
 		if runner.JobFinalizer() != nil {

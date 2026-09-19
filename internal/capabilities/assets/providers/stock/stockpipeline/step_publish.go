@@ -105,7 +105,14 @@ func buildPublishPlan(groupPlans []ClipPlan, result CutBatchResult, batchID, sou
 // Imports trimmed to just `context` + `go.uber.org/zap` — the 3
 // sister files own all other deps (finalization/asset/strings/
 // strconv/os/pathutil/slug/domaindelivery/time/net/url).
-func (StockPublishStep) Run(ctx context.Context, runner StepRunner) error {
+func (StockPublishStep) Run(ctx context.Context, runner StepRunner) (err error) {
+	// Canonical stage: stock.publish owns the Drive publication ladder
+	// (per-chunk AssetPreparation + metadata.json + destination reconcile).
+	// Without it that wall time fell outside every top-level stage and
+	// surfaced as unattributed in the timing breakdown.
+	publishMetric := startStockPhase(ctx, runner, StepKeyStockPublish)
+	defer func() { finishStockPhase(runner, publishMetric, StepKeyStockPublish, err) }()
+
 	if runner.ArtifactPreparation() == nil {
 		// Test-fixture path: no AssetPreparation wired → no chunks
 		// prepared. StockFinalizeStep's BuildFinalizationRequest gate

@@ -53,8 +53,10 @@ type OrchestratorConfig struct {
 	// to the planner for budget-vs-clipDuration validation).
 	ClipDurationSec int
 	// MaxConcurrentJobs bounds the per-source parallelism the
-	// orchestrator fans out to. 0 means "use the default 3" so
-	// operators can rely on the legacy run.go semaphore.
+	// orchestrator fans out to: both the stock.stage_sources source
+	// download fan-out and the stock.extract_clips cut fan-out.
+	// 0 means "use the default 3" so operators can rely on the
+	// legacy run.go semaphore.
 	MaxConcurrentJobs int
 	// StrictDurationValidation is enabled only by the production
 	// constructor. It prevents unknown source durations from bypassing
