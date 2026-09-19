@@ -171,6 +171,18 @@ func (s *Service) resolveInputQueries(ctx context.Context, input *RunInput) erro
 			}
 		}
 	}
+	// MaxVideos is the run-level cap for search-acquired sources. Apply it
+	// after deterministic query-order aggregation and URL de-duplication so
+	// multi-query runs can request a bounded, mixed set of sources without
+	// violating the duration contract at planning time.
+	if input.MaxVideos > 0 && len(input.DirectURLs) > input.MaxVideos {
+		input.DirectURLs = input.DirectURLs[:input.MaxVideos]
+		if s.log != nil {
+			s.log.Info("stock: capped resolved search sources",
+				zap.Int("max_videos", input.MaxVideos),
+				zap.Int("urls", len(input.DirectURLs)))
+		}
+	}
 
 	// Clear resolved queries so the orchestrator doesn't try to use
 	// raw text as a URL (firstSource checks SearchQueries after

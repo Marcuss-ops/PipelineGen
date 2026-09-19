@@ -231,6 +231,8 @@ func (b *semanticSearchBackend) Search(ctx context.Context, q search.Query) ([]s
 			Category:         filter.Category,
 			MediaType:        filter.MediaType,
 			Language:         filter.Language,
+			AssetKind:        filter.AssetKind,
+			SemanticRole:     filter.SemanticRole,
 			LifecycleState:   filter.LifecycleState,
 			WorkspaceID:      scope.WorkspaceID,
 			IsSystem:         scope.IsSystem,
@@ -245,6 +247,8 @@ func (b *semanticSearchBackend) Search(ctx context.Context, q search.Query) ([]s
 			Category:       filter.Category,
 			MediaType:      filter.MediaType,
 			Language:       filter.Language,
+			AssetKind:      filter.AssetKind,
+			SemanticRole:   filter.SemanticRole,
 			LifecycleState: filter.LifecycleState,
 			WorkspaceID:    scope.WorkspaceID,
 			IsSystem:       scope.IsSystem,
@@ -411,6 +415,12 @@ func compileSemanticFilters(q search.Query) (assetsearch.SearchScope, assetsearc
 			Category:  category,
 			MediaType: strings.TrimSpace(q.Filters.MediaType),
 			Language:  strings.TrimSpace(q.Filters.Language),
+			// Canonical taxonomy dimensions. Source is provenance; the asset
+			// FAMILY (e.g. stock_video) and its usage intent (stock) are these.
+			// Without them the only way to ask for "stock clips" is by
+			// provenance, which excludes every YouTube-acquired stock clip.
+			AssetKind:    strings.TrimSpace(q.Filters.AssetKind),
+			SemanticRole: strings.TrimSpace(q.Filters.SemanticRole),
 			// LifecycleState: include both ACTIVE and PUBLISHED
 			// because the stock pipeline indexes assets with
 			// lifecycle_state=PUBLISHED (not ACTIVE). The Qdrant

@@ -26,7 +26,7 @@
 // Publisher.Step0 in publisher.go for the registry-default path).
 //
 // Retries on transient Drive errors (429, 503, timeouts, network blips)
-// via pkg/retry — three bounded attempts with 5s → 15s → 30s backoff,
+// via pkg/retry — five bounded attempts with 5s → 15s → 45s → 60s backoff,
 // while honoring a larger Retry-After value supplied by Google.
 //
 // Lookup step (FindFileByName) follows TWO fail-closed rules applied
@@ -181,9 +181,9 @@ func (u *Uploader) PutFile(ctx context.Context, req PutFileRequest) (*PutFileRes
 		}
 		return u.doPutFile(ctx, req, existing)
 	}, retry.Options{
-		MaxAttempts:    3,
+		MaxAttempts:    5,
 		InitialBackoff: 5 * time.Second,
-		MaxBackoff:     30 * time.Second,
+		MaxBackoff:     60 * time.Second,
 		BackoffFactor:  3.0,
 		// P1.5 (July 2026): jitter audit found uploader_put.go was
 		// the only Drive-side retry site without JitterFraction.
@@ -201,7 +201,7 @@ func (u *Uploader) PutFile(ctx context.Context, req PutFileRequest) (*PutFileRes
 		},
 	})
 	if err != nil {
-		return nil, fmt.Errorf("drive put failed after 3 attempts: %w", err)
+		return nil, fmt.Errorf("drive put failed after 5 attempts: %w", err)
 	}
 	// FASE 10 / Commit 1 (July 2026): post-upload verification
 	// runs for actual uploads (Created / Updated / Renamed).

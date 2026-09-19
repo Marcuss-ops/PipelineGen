@@ -23,9 +23,6 @@ import (
 // runner fails the run BEFORE any Google Docs write.
 func (req GenerateRequest) resolveArtifactRoutingContext(defaultDocsFolderID string) (kernelscript.ArtifactRoutingContext, error) {
 	callerFolderID := req.Docs.FolderID
-	if callerFolderID == "" {
-		callerFolderID = req.DriveFolderID
-	}
 	enabled, _, _ := req.ResolveDocsConfig()
 	docsFolderID, err := kernelscript.ResolveScriptDocsFolderID(enabled, callerFolderID, defaultDocsFolderID)
 	if err != nil {

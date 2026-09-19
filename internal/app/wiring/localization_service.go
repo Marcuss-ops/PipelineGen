@@ -58,7 +58,12 @@ type LocalizationConfig struct {
 }
 
 const LocalizationRendererVersion = "chronon-render/localization-v1"
-const LocalizationSubtitleStyleHash = "vidrush-default"
+
+// LocalizationSubtitleStyleHash is the canonical ASS style + generator hash
+// prefix. The rule that turns a style into the full id lives in kernel/script
+// (SubtitleStyleHash) so the wiring and the per-language plan builder cannot
+// derive two different ids for one render.
+const LocalizationSubtitleStyleHash = scriptpkg.LocalizationSubtitleStyleHash
 
 type LocalizationService struct {
 	sources localization.SourceResolver
@@ -216,14 +221,16 @@ func (s *LocalizationService) Localize(ctx context.Context, in LocalizeInput) (*
 }
 
 func (s *LocalizationService) resolveSubtitleStyleHash(style *scriptpkg.VideoVisualStyleSpec) string {
-	if s == nil || style == nil || strings.TrimSpace(style.Font) == "" {
+	// A deployment-scoped override still wins for a style with no font (there is
+	// no font slug to encode); every other case goes through the canonical rule
+	// in kernel/script, which is also what the plan builder uses when it has to
+	// substitute the font for a language's script.
+	if style == nil || strings.TrimSpace(style.Font) == "" {
 		if s != nil && s.cfg.SubtitleStyleHash != "" {
 			return s.cfg.SubtitleStyleHash
 		}
-		return LocalizationSubtitleStyleHash
 	}
-	font := strings.ToLower(strings.TrimSpace(style.Font))
-	return fmt.Sprintf("%s-%s", LocalizationSubtitleStyleHash, font)
+	return scriptpkg.SubtitleStyleHash(style)
 }
 
 func (s *LocalizationService) UploadRendered(ctx context.Context, artifact localization.LocalizedClipArtifact, folderID string) (localization.LocalizedClipArtifact, error) {

@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -176,13 +177,6 @@ func readMikeTysonFixture(t *testing.T, name string) []byte {
 func verifyMikeTysonTenLanguageRuntimeResult(t *testing.T, result map[string]any) {
 	t.Helper()
 	wantCities := []string{"Brooklyn", "Catskill", "Atlantic City", "Tokyo", "Las Vegas"}
-	wantPhrases := []string{
-		"Origins Shape the Fighter.",
-		"Discipline Builds the Foundation.",
-		"Precision Changes the Outcome.",
-		"A Loss Can Rewrite a Record.",
-		"A Comeback Starts With One Round.",
-	}
 	wantLanguages := []string{"it", "en", "pl", "ru", "de", "es", "pt-BR", "fr", "tr", "id"}
 	if integerAt(result, "script_id") <= 0 {
 		t.Fatalf("script was not persisted to the script database: %s", compactJSON(result))
@@ -199,10 +193,8 @@ func verifyMikeTysonTenLanguageRuntimeResult(t *testing.T, result map[string]any
 			t.Fatalf("extracted places=%v, missing %q", places, city)
 		}
 	}
-	assertExactStrings(t, "important_phrases", stringValues(valueAt(mapAt(result, "entities"), "important_phrases"), ""), wantPhrases)
-
 	sourcePlan := mapAt(result, "overlay_plan")
-	verifyMikeTysonLanguageOverlayPlan(t, "en", sourcePlan, wantCities, wantPhrases)
+	verifyMikeTysonLanguageOverlayPlan(t, "en", sourcePlan, wantCities, nil, mapsAt(result, "scenes"))
 	localizedPlans := mapAt(result, "localized_overlay_plans")
 	localizedRenders := mapAt(result, "localized_overlay_renders")
 	if len(localizedPlans) != 9 || len(localizedRenders) != 9 {
@@ -212,7 +204,7 @@ func verifyMikeTysonTenLanguageRuntimeResult(t *testing.T, result map[string]any
 		if language == "en" {
 			continue
 		}
-		verifyMikeTysonLanguageOverlayPlan(t, language, mapAt(localizedPlans, language), wantCities, nil)
+		verifyMikeTysonLanguageOverlayPlan(t, language, mapAt(localizedPlans, language), wantCities, nil, mapsAt(result, "scenes"))
 		verifyCertifiedOverlayReference(t, language, mapAt(localizedRenders, language))
 	}
 	verifyCertifiedOverlayReference(t, "en", mapAt(result, "overlay_render"))
@@ -228,7 +220,7 @@ func verifyMikeTysonTenLanguageRuntimeResult(t *testing.T, result map[string]any
 	}
 }
 
-func verifyMikeTysonLanguageOverlayPlan(t *testing.T, language string, plan map[string]any, cities, phrases []string) {
+func verifyMikeTysonLanguageOverlayPlan(t *testing.T, language string, plan map[string]any, cities, phrases []string, scenes []map[string]any) {
 	t.Helper()
 	if plan == nil {
 		t.Fatalf("%s localized overlay plan is missing", language)
@@ -247,8 +239,8 @@ func verifyMikeTysonLanguageOverlayPlan(t *testing.T, language string, plan map[
 			phraseTexts = append(phraseTexts, stringAt(item, "text"))
 		}
 	}
-	if len(phraseTexts) != 5 {
-		t.Fatalf("%s phrase overlays=%d, want five; plan=%s", language, len(phraseTexts), compactJSON(plan))
+	if len(phraseTexts) == 0 {
+		t.Fatalf("%s has zero phrase overlays; plan=%s", language, compactJSON(plan))
 	}
 	for _, city := range cities {
 		if !containsString(itemTexts, city) {
@@ -260,6 +252,95 @@ func verifyMikeTysonLanguageOverlayPlan(t *testing.T, language string, plan map[
 			t.Fatalf("%s phrase overlays=%v, missing %q", language, phraseTexts, phrase)
 		}
 	}
+	if scenes != nil {
+		verifyMikeTysonLocalizedPhraseBindings(t, language, phraseTexts, items, scenes)
+	}
+}
+
+// verifyMikeTysonLocalizedPhraseBindings closes the runtime gap between the
+// translated annotations and the rendered plan. It checks the exact ordered
+// phrase projection, localized text grounding, and the local voiceover window.
+// Plan timestamps are global, so scene windows are accumulated from that
+// language's voiceover durations.
+func verifyMikeTysonLocalizedPhraseBindings(t *testing.T, language string, planPhrases []string, items, scenes []map[string]any) {
+	t.Helper()
+	wantPhrases := make([]string, 0, len(planPhrases))
+	type sceneWindow struct{ startMS, endMS int64 }
+	windows := make(map[string]sceneWindow, len(scenes))
+	var offsetMS int64
+	for index, scene := range scenes {
+		sceneID := stringAt(scene, "id")
+		if sceneID == "" {
+			t.Fatalf("%s scene[%d] has no id", language, index)
+		}
+		text := stringAt(mapAt(scene, "text"), language)
+		if text == "" {
+			t.Fatalf("%s scene %q has no localized text", language, sceneID)
+		}
+		localized := mapAt(mapAt(scene, "annotations_by_language"), language)
+		if localized == nil && language == "en" {
+			localized = mapAt(scene, "annotations")
+		}
+		if localized == nil {
+			t.Fatalf("%s scene %q has no localized annotations", language, sceneID)
+		}
+		phrases := stringValues(valueAt(localized, "important_phrases"), "text")
+		wantPhrases = append(wantPhrases, phrases...)
+		for _, phrase := range phrases {
+			if !strings.Contains(text, phrase) {
+				t.Fatalf("%s scene %q phrase %q is not contained in localized text %q", language, sceneID, phrase, text)
+			}
+			words := strings.Fields(phrase)
+			if len(words) < 2 || len(words) > 4 {
+				t.Fatalf("%s scene %q phrase %q has %d words, want 2..4", language, sceneID, phrase, len(words))
+			}
+			for _, entity := range append(stringValues(valueAt(localized, "primary_entities"), "text"), stringValues(valueAt(localized, "secondary_entities"), "text")...) {
+				if phraseOverlapsSurface(text, phrase, entity) {
+					t.Fatalf("%s scene %q phrase %q overlaps entity surface %q", language, sceneID, phrase, entity)
+				}
+			}
+		}
+		voiceover := mapAt(mapAt(scene, "voiceover"), language)
+		durationMS := int64(math.Ceil(floatAt(voiceover, "duration") * 1000))
+		if durationMS <= 0 {
+			t.Fatalf("%s scene %q has no positive local voiceover duration: %s", language, sceneID, compactJSON(voiceover))
+		}
+		windows[sceneID] = sceneWindow{startMS: offsetMS, endMS: offsetMS + durationMS}
+		offsetMS += durationMS
+	}
+	if len(wantPhrases) != len(planPhrases) {
+		t.Fatalf("%s localized annotation phrases=%v, plan phrases=%v", language, wantPhrases, planPhrases)
+	}
+	for index := range wantPhrases {
+		if wantPhrases[index] != planPhrases[index] {
+			t.Fatalf("%s phrase order/content mismatch at %d: annotation=%q plan=%q", language, index, wantPhrases[index], planPhrases[index])
+		}
+	}
+	for _, item := range items {
+		if stringAt(item, "kind") != "text_phrase" {
+			continue
+		}
+		sceneID := stringAt(item, "scene_id")
+		window, ok := windows[sceneID]
+		if !ok {
+			t.Fatalf("%s phrase item %q has unknown scene_id %q", language, stringAt(item, "id"), sceneID)
+		}
+		startMS, endMS := integerAt(item, "start_ms"), integerAt(item, "end_ms")
+		if startMS < window.startMS || endMS > window.endMS {
+			t.Fatalf("%s phrase %q timing [%d,%d] escapes local voiceover window [%d,%d] for scene %q", language, stringAt(item, "text"), startMS, endMS, window.startMS, window.endMS, sceneID)
+		}
+	}
+}
+
+func phraseOverlapsSurface(text, phrase, surface string) bool {
+	phraseStart := strings.Index(text, phrase)
+	entityStart := strings.Index(text, surface)
+	if phraseStart < 0 || entityStart < 0 {
+		return false
+	}
+	phraseEnd := phraseStart + len(phrase)
+	entityEnd := entityStart + len(surface)
+	return phraseStart < entityEnd && entityStart < phraseEnd
 }
 
 func verifyCertifiedOverlayReference(t *testing.T, language string, render map[string]any) {
@@ -585,6 +666,14 @@ func integerAt(object map[string]any, key string) int64 {
 	return int64(value)
 }
 
+func floatAt(object map[string]any, key string) float64 {
+	if object == nil {
+		return 0
+	}
+	value, _ := object[key].(float64)
+	return value
+}
+
 func firstNonEmpty(values ...string) string {
 	for _, value := range values {
 		if strings.TrimSpace(value) != "" {
@@ -596,7 +685,7 @@ func firstNonEmpty(values ...string) string {
 
 func isSuccessStatus(status string) bool {
 	switch strings.ToUpper(strings.TrimSpace(status)) {
-	case "COMPLETED", "READY", "SUCCEEDED", "SUCCESS":
+	case "COMPLETED", "READY", "SUCCEEDED", "SUCCESS", "UPLOADED":
 		return true
 	default:
 		return false

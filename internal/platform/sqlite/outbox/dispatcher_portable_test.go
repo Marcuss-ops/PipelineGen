@@ -222,6 +222,9 @@ func TestBuildPortableCommitRequest_HonoursDeclaredTaxonomy(t *testing.T) {
 	if req.Taxonomy.SourceType != "youtube" {
 		t.Errorf("Taxonomy.SourceType = %q, want %q", req.Taxonomy.SourceType, "youtube")
 	}
+	if req.IndexPriority != persistence.IndexPriorityHigh {
+		t.Errorf("stock IndexPriority = %d, want %d", req.IndexPriority, persistence.IndexPriorityHigh)
+	}
 
 	silent := &asset.Asset{
 		ID:        "artlist_abc",
@@ -231,5 +234,8 @@ func TestBuildPortableCommitRequest_HonoursDeclaredTaxonomy(t *testing.T) {
 	}
 	if silentReq := buildPortableCommitRequest(silent, "sha256-def", true); !silentReq.Taxonomy.IsZero() {
 		t.Errorf("an undeclared taxonomy must stay zero (COALESCE-keep preserves the stored dimensions); got %+v", silentReq.Taxonomy)
+	}
+	if silentReq := buildPortableCommitRequest(silent, "sha256-def", true); silentReq.IndexPriority != 0 {
+		t.Errorf("an undeclared taxonomy must keep normal index priority; got %d", silentReq.IndexPriority)
 	}
 }

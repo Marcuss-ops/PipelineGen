@@ -17,6 +17,8 @@ package scriptgeneration
 
 import (
 	"context"
+	"errors"
+	"sync"
 	"testing"
 	"time"
 
@@ -26,6 +28,35 @@ import (
 
 	capabilityaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
 )
+
+// recordingDocumentFolderResolver is the hermetic document folder authority of
+// these tests: it records every (root, job, language) it is asked about and
+// returns the canonical <root>/<job>/<language> id, so a test can assert BOTH
+// the facts the phase resolved the folder from and the folder it published
+// into.
+type recordingDocumentFolderResolver struct {
+	mu    sync.Mutex
+	calls []documentFolderCall
+	err   error
+}
+
+type documentFolderCall struct{ root, job, language string }
+
+func (r *recordingDocumentFolderResolver) ResolveDocumentFolder(_ context.Context, root, job, language string) (string, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.calls = append(r.calls, documentFolderCall{root: root, job: job, language: language})
+	if r.err != nil {
+		return "", r.err
+	}
+	return root + "/" + job + "/" + language, nil
+}
+
+func (r *recordingDocumentFolderResolver) snapshot() []documentFolderCall {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return append([]documentFolderCall(nil), r.calls...)
+}
 
 // TestRunner_VoiceoverGeneratorNil_StageSkipped: when voiceoverGen
 // is nil, the runner MUST NOT panic and MUST skip the
@@ -129,4 +160,78 @@ func TestRunner_DocsEnabled_PublishesDocuments(t *testing.T) {
 
 	// Docs published (explicitly enabled).
 	assert.Equal(t, 1, len(docPub.records), "one doc should be created")
+}
+
+// TestRunner_DocsEnabled_PublishesEachLanguageIntoItsRunFolder pins the document
+// DESTINATION: with the folder authority wired (the same one the clip
+// destination uses), every language's document publishes into
+// <documents root>/<job>/<language> — the folder that language's clips publish
+// into — instead of the flat documents root where no clip of that language
+// lives. The two languages must not share a folder.
+func TestRunner_DocsEnabled_PublishesEachLanguageIntoItsRunFolder(t *testing.T) {
+	runner, repo, _, _, _, docPub, _ := newTestRunner()
+	resolver := &recordingDocumentFolderResolver{}
+	runner.SetDocumentFolderResolver(resolver)
+
+	req := defaultTestRequest()
+	req.Docs = DocumentsConfig{Enabled: true, Languages: []Language{"en", "it"}}
+
+	runID := "run-docs-per-language-001"
+	require.NoError(t, repo.Create(context.Background(), &GenerationRun{
+		ID:           runID,
+		Request:      req,
+		Status:       RunStatusPending,
+		CurrentStage: StageNormalizing,
+	}))
+
+	runner.Execute(context.Background(), runID, req)
+	final := awaitCompletion(t, repo, runID, 5*time.Second)
+	require.NotNil(t, final)
+	require.Equal(t, RunStatusCompleted, final.Status)
+	require.Len(t, docPub.records, 2, "one document per language")
+
+	// Every publication used the folder the authority resolved for THAT
+	// language, and the resolution was asked with the language and the job —
+	// never with an empty level.
+	byLanguage := map[Language]string{}
+	for _, call := range resolver.snapshot() {
+		assert.NotEmpty(t, call.root, "documents root must be resolved before the language level")
+		assert.NotEmpty(t, call.job, "the job level must be resolved before the language level")
+		byLanguage[Language(call.language)] = call.root + "/" + call.job + "/" + call.language
+	}
+	require.Len(t, byLanguage, 2)
+	for _, rec := range docPub.records {
+		want, ok := byLanguage[rec.Language]
+		require.Truef(t, ok, "document for %s published without a folder resolution", rec.Language)
+		assert.Equalf(t, want, rec.FolderID,
+			"document for %s published into %q, want the per-language run folder %q", rec.Language, rec.FolderID, want)
+	}
+	assert.NotEqual(t, docPub.records[0].FolderID, docPub.records[1].FolderID,
+		"two languages published their documents into one folder")
+}
+
+// TestRunner_DocsEnabled_FailsClosedWhenTheFolderCannotBeResolved: a folder
+// authority that cannot resolve the per-language run folder fails the
+// publication instead of silently writing the document one level up (into the
+// folder holding every run).
+func TestRunner_DocsEnabled_FailsClosedWhenTheFolderCannotBeResolved(t *testing.T) {
+	runner, repo, _, _, _, docPub, _ := newTestRunner()
+	runner.SetDocumentFolderResolver(&recordingDocumentFolderResolver{err: errors.New("drive unavailable")})
+
+	req := defaultTestRequest()
+	req.Docs = DocumentsConfig{Enabled: true, Languages: []Language{"en"}}
+
+	runID := "run-docs-folder-fail-001"
+	require.NoError(t, repo.Create(context.Background(), &GenerationRun{
+		ID:           runID,
+		Request:      req,
+		Status:       RunStatusPending,
+		CurrentStage: StageNormalizing,
+	}))
+
+	runner.Execute(context.Background(), runID, req)
+	final := awaitCompletion(t, repo, runID, 5*time.Second)
+	require.NotNil(t, final)
+	assert.Equal(t, RunStatusFailed, final.Status)
+	assert.Empty(t, docPub.records, "no document may publish when its run folder is unresolvable")
 }

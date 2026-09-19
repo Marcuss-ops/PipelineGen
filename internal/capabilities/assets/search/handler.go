@@ -109,12 +109,20 @@ type searchRequest struct {
 }
 
 type searchRequestFilter struct {
-	Source        string   `json:"source,omitempty"`
-	MediaType     string   `json:"media_type,omitempty"`
-	Category      string   `json:"category,omitempty"`
-	Language      string   `json:"language,omitempty"`
-	Tags          []string `json:"tags,omitempty"`
-	DurationMsMin int      `json:"duration_ms_min,omitempty"`
+	Source    string   `json:"source,omitempty"`
+	MediaType string   `json:"media_type,omitempty"`
+	Category  string   `json:"category,omitempty"`
+	Language  string   `json:"language,omitempty"`
+	Tags      []string `json:"tags,omitempty"`
+	// AssetKind / SemanticRole are the canonical taxonomy dimensions,
+	// distinct from Source (physical provenance). They must be declared here:
+	// the JSON binder drops unknown keys silently, so before they existed
+	// `filters: {"asset_kind": "stock_video"}` was accepted with HTTP 200 and
+	// returned the FULL unfiltered result set — a filter that appears honoured
+	// and is not, which is worse than an explicit 400.
+	AssetKind     string `json:"asset_kind,omitempty"`
+	SemanticRole  string `json:"semantic_role,omitempty"`
+	DurationMsMin int    `json:"duration_ms_min,omitempty"`
 }
 
 // Search is the HTTP handler for POST /api/media/search.
@@ -176,6 +184,8 @@ func (h *Handler) Search(c *gin.Context) {
 			Category:      strings.TrimSpace(req.Filters.Category),
 			Language:      strings.TrimSpace(req.Filters.Language),
 			Tags:          req.Filters.Tags,
+			AssetKind:     strings.TrimSpace(req.Filters.AssetKind),
+			SemanticRole:  strings.TrimSpace(req.Filters.SemanticRole),
 			DurationMsMin: req.Filters.DurationMsMin,
 		},
 	})

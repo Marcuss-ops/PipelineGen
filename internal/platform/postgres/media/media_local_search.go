@@ -22,10 +22,17 @@ type LocalMediaSearchRequest struct {
 	// media_assets.search_terms column, so no secondary term table is needed.
 	// A term only needs to appear (substring) in name, search_text or
 	// search_terms; Text and AllTerms compose (both must hold).
-	AllTerms            []string
-	Source              string // empty or "all" means every source
-	Category            string
-	MediaType           string
+	AllTerms  []string
+	Source    string // empty or "all" means every source
+	Category  string
+	MediaType string
+	// AssetKind / SemanticRole are the canonical TAXONOMY equality filters
+	// (media_assets.asset_kind / semantic_role). They are distinct from
+	// Source, which is physical PROVENANCE: a stock clip acquired from
+	// YouTube is source="youtube" with asset_kind="stock_video" /
+	// semantic_role="stock". Empty means "no constraint".
+	AssetKind           string
+	SemanticRole        string
 	Limit               int
 	ExcludeUnclassified bool
 }
@@ -57,8 +64,11 @@ func (s *MediaSearcher) SearchLocal(ctx context.Context, req LocalMediaSearchReq
 		WHERE ($1 = '' OR LOWER(name) LIKE $2 OR LOWER(search_text) LIKE $2 OR LOWER(search_terms) LIKE $2)
 		  AND ($3 = '' OR source = $3)
 		  AND ($4 = '' OR category = $4)
-		  AND ($5 = '' OR media_type = $5)`
-	args := []any{text, pattern, source, strings.TrimSpace(req.Category), strings.TrimSpace(req.MediaType)}
+		  AND ($5 = '' OR media_type = $5)
+		  AND ($6 = '' OR asset_kind = $6)
+		  AND ($7 = '' OR semantic_role = $7)`
+	args := []any{text, pattern, source, strings.TrimSpace(req.Category), strings.TrimSpace(req.MediaType),
+		strings.TrimSpace(req.AssetKind), strings.TrimSpace(req.SemanticRole)}
 	// One AND clause per term: the caller asked for every keyword to match.
 	for _, term := range req.AllTerms {
 		trimmed := strings.ToLower(strings.TrimSpace(term))

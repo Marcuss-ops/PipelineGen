@@ -829,6 +829,48 @@ func TestCompileSemanticFilters_IsAdminMapping(t *testing.T) {
 	}
 }
 
+// TestCompileSemanticFilters_ForwardsTaxonomyDimensions pins that the semantic
+// leg forwards asset_kind / semantic_role into the vector filter envelope.
+//
+// These two dimensions are NOT interchangeable with Source: a stock clip
+// acquired from YouTube is source="youtube" with asset_kind="stock_video" and
+// semantic_role="stock". Dropping them here made `filters.asset_kind` a no-op
+// that still answered HTTP 200 with the full unfiltered result set.
+func TestCompileSemanticFilters_ForwardsTaxonomyDimensions(t *testing.T) {
+	_, filter := compileSemanticFilters(search.Query{
+		Text: "city skyline",
+		Filters: search.Filters{
+			Source:       "youtube",
+			AssetKind:    "  stock_video  ",
+			SemanticRole: " stock ",
+		},
+	})
+
+	if filter.Source != "youtube" {
+		t.Errorf("Source = %q, want youtube", filter.Source)
+	}
+	if filter.AssetKind != "stock_video" {
+		t.Errorf("AssetKind = %q, want stock_video (trimmed)", filter.AssetKind)
+	}
+	if filter.SemanticRole != "stock" {
+		t.Errorf("SemanticRole = %q, want stock (trimmed)", filter.SemanticRole)
+	}
+	// Provenance and family must remain independently addressable.
+	if filter.AssetKind == filter.Source {
+		t.Error("AssetKind must not collapse onto Source")
+	}
+}
+
+// TestCompileSemanticFilters_EmptyTaxonomyStaysEmpty pins the no-zero-value
+// invariant: an absent filter must not materialise an equality clause, so
+// every pre-existing caller's vector query is byte-identical.
+func TestCompileSemanticFilters_EmptyTaxonomyStaysEmpty(t *testing.T) {
+	_, filter := compileSemanticFilters(search.Query{Text: "anything"})
+	if filter.AssetKind != "" || filter.SemanticRole != "" {
+		t.Errorf("absent taxonomy filters must stay empty, got kind=%q role=%q", filter.AssetKind, filter.SemanticRole)
+	}
+}
+
 func TestCompileSemanticFilters_InfersYouTubeCategoryFromQuery(t *testing.T) {
 	for _, tt := range []struct{ query, want string }{
 		{"Mike Tyson interview", "interview"},

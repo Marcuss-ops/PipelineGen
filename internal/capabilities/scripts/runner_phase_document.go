@@ -373,6 +373,18 @@ func (r *Runner) runDocumentPhase(ctx context.Context, runID string, req Generat
 					sem <- struct{}{}
 					defer func() { <-sem }()
 
+					// A language's document publishes BESIDE that language's clips,
+					// in <documents root>/<job>/<language>: a document is the
+					// editorial description of the video next to it, so the two
+					// must not live in unrelated Drive trees (the clip fan-out
+					// resolves the SAME folder through the SAME folder authority).
+					// Without the resolver the historical flat documents root is
+					// kept, which is what the hermetic harnesses assert.
+					folderID, folderErr := r.documentFolderFor(groupCtx, docsFolderID, exec.JobID, job.lang)
+					if folderErr != nil {
+						return fmt.Errorf("resolve document folder for language %s: %w", job.lang, folderErr)
+					}
+
 					var docRef DocumentReference
 					if measureErr := kernobs.MeasureOperation(groupCtx, kernobs.OperationInfo{
 						Stage:     StageDocumentPublish,
@@ -386,7 +398,7 @@ func (r *Runner) runDocumentPhase(ctx context.Context, runID string, req Generat
 							Language: job.lang,
 							Title:    job.title + "_" + string(job.lang),
 							Content:  job.rd.content,
-							FolderID: docsFolderID,
+							FolderID: folderID,
 						})
 						// Drive may have created/updated the document successfully
 						// while failing only the non-critical idempotency annotation.
@@ -548,4 +560,17 @@ func documentOverlayPlan(result *GenerateResult, language Language) *capabilityo
 		return result.OverlayPlan
 	}
 	return result.LocalizedOverlayPlans[language]
+}
+
+// documentFolderFor resolves the folder ONE language's script document
+// publishes into: <documents root>/<job>/<language> through the wired folder
+// authority (the same one the clip destination uses), or the historical flat
+// documents root when no authority is wired. A resolver error is returned, not
+// swallowed: publishing a document into a tree its clips are not in is worse
+// than failing the publication.
+func (r *Runner) documentFolderFor(ctx context.Context, documentsRoot, job string, language Language) (string, error) {
+	if r == nil || r.documentFolderResolver == nil {
+		return documentsRoot, nil
+	}
+	return r.documentFolderResolver.ResolveDocumentFolder(ctx, documentsRoot, job, string(language))
 }

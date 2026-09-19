@@ -246,3 +246,13 @@ func (r *Runner) completeRun(ctx context.Context, runID string, result *Generate
 	}
 	kernobs.RecordStage(ctx, kernobs.StageInfo{Stage: "complete_finalize"}, completeStarted, time.Now(), nil)
 }
+
+// stageSkipped reports whether a stage is already behind the resume point.
+//
+// It lives with the other resume/lifecycle semantics (ResumeFrom, StageIndex,
+// StageIsTerminal) rather than in a file of its own: it is the single predicate
+// every phase consults before re-running work on a retry-from-checkpoint, so
+// the resume rule has one home.
+func stageSkipped(resumeIdx int, stage Stage) bool {
+	return resumeIdx >= 0 && StageIndex(stage) < resumeIdx
+}

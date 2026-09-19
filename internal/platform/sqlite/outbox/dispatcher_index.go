@@ -118,6 +118,14 @@ func buildPortableCommitRequest(clip *asset.Asset, contentHash string, emitIndex
 		AssetKind:    capregistry.AssetKind(clip.GetMetadataString("asset_kind")),
 		SemanticRole: clip.GetMetadataString("semantic_role"),
 	})
+	indexPriority := 0
+	if taxonomy.AssetKind == capregistry.AssetStockVideo {
+		// Stock acquisition is on the script-generation critical path. The
+		// stock extract step commits only after Drive publication, but it is
+		// the first writer to emit the idempotent index event; waiting for the
+		// later job finalizer would leave the event at normal priority.
+		indexPriority = persistence.IndexPriorityHigh
+	}
 	return persistence.CommitRequest{
 		AssetID: clip.ID, Source: string(clip.Source), Name: name, Filename: filename,
 		MediaType: mediaType, Category: clip.Category, DurationMs: clip.Duration.Milliseconds(),
@@ -126,7 +134,7 @@ func buildPortableCommitRequest(clip *asset.Asset, contentHash string, emitIndex
 		LocalPath: clip.LocalPath(), FolderID: clip.FolderID(), FolderPath: clip.FolderPath(),
 		ThumbnailURL: clip.ThumbnailURL, SourceURL: clip.SourceURL, Title: name,
 		Metadata: persistence.TypedMetadata{Extra: clip.Metadata}, Locations: locations,
-		Taxonomy:       taxonomy,
+		Taxonomy: taxonomy, IndexPriority: indexPriority,
 		EmitIndexEvent: emitIndexEvent,
 	}
 }

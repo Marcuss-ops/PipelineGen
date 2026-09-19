@@ -91,7 +91,7 @@ func TestMediaStock_KeepsProducesArtifactsTrue_ForSpineFlow(t *testing.T) {
 	if got, want := reg.Timeout(appjobs.TypeMediaStock), 60*time.Minute; got != want {
 		t.Fatalf("registry.Timeout(%q) = %s; want %s", appjobs.TypeMediaStock, got, want)
 	}
-	if got, want := reg.DefaultMaxRetries(appjobs.TypeMediaStock), 1; got != want {
+	if got, want := reg.DefaultMaxRetries(appjobs.TypeMediaStock), 3; got != want {
 		t.Fatalf("registry.DefaultMaxRetries(%q) = %d; want %d", appjobs.TypeMediaStock, got, want)
 	}
 

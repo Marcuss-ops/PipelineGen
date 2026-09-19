@@ -40,6 +40,20 @@ type DocumentInput struct {
 	ForceRefresh bool
 }
 
+// DocumentFolderResolver resolves the folder a language's script document
+// publishes into: the per-language run folder its clips already publish into
+// (<documents root>/<job>/<language>), so the reader of a document finds the
+// video it describes beside it instead of in another tree. It is optional: a
+// composition that does not wire it keeps the historical flat documents root,
+// which is what the hermetic harnesses assert.
+//
+// The resolver is the SAME folder authority the clip destination uses, so the
+// clip and its document converge on one folder per (documents root, job,
+// language) rather than racing to create two.
+type DocumentFolderResolver interface {
+	ResolveDocumentFolder(ctx context.Context, documentsRoot, job, language string) (string, error)
+}
+
 // DocumentPublisher is the SOLE canonical owner of the Google Docs
 // publication surface. Every code path that publishes a script document
 // (durable runner, post-processor) MUST route through this port.

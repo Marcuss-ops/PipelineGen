@@ -123,6 +123,39 @@ func TestDriveOverlayArtifactPublisherPublishesVerifiedArtifactToConfiguredRoot(
 	}
 }
 
+func TestDriveOverlayArtifactPublisherSurvivesCallerCancellation(t *testing.T) {
+	payload := []byte("certified overlay bytes")
+	sum := sha256.Sum256(payload)
+	hash := hex.EncodeToString(sum[:])
+	store := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/objects/"+hash {
+			http.NotFound(w, r)
+			return
+		}
+		_, _ = w.Write(payload)
+	}))
+	defer store.Close()
+
+	capture := &captureOverlayPublisher{}
+	publisher := &DriveOverlayArtifactPublisher{publisher: capture, client: store.Client()}
+	publisher.SetRootFolderID("overlay-root")
+	artifact := &scriptgen.RenderArtifact{
+		ID: "render-cancelled-parent", URL: store.URL + "/objects/" + hash,
+		SHA256: hash, SizeBytes: int64(len(payload)), MimeType: "video/mp4",
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	if err := publisher.PublishOverlay(ctx, scriptgen.OverlayPublicationSpec{
+		ScriptName: "cancelled-parent", Language: "ru", PlanID: "plan-cancelled-parent",
+	}, artifact); err != nil {
+		t.Fatalf("publication must survive caller cancellation: %v", err)
+	}
+	if artifact.DriveFileID != "drive-file" {
+		t.Fatalf("publication did not complete after caller cancellation: %#v", artifact)
+	}
+}
+
 func TestDriveOverlayArtifactPublisherRequiresConfiguredRoot(t *testing.T) {
 	publisher := &DriveOverlayArtifactPublisher{publisher: &captureOverlayPublisher{}}
 	artifact := &scriptgen.RenderArtifact{URL: "https://store.invalid/overlay.mp4", SHA256: strings.Repeat("a", 64), SizeBytes: 1}

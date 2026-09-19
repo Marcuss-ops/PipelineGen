@@ -221,13 +221,6 @@ type ScriptsConfig struct {
 	// raises it.
 	OverlayRenderConcurrency int `yaml:"overlay_render_concurrency" env:"VELOX_SCRIPTS_OVERLAY_RENDER_CONCURRENCY" default:"2"`
 
-	// SerialMode reproduces the pre-parallel "before" chain for controlled
-	// benchmarking: the VidRush/NLP branch completes blocking BEFORE TTS
-	// (entities → voiceover, never overlapping), and the NLP extraction + TTS
-	// pools are forced to concurrency 1. Default false (the parallel
-	// SceneTextReady DAG).
-	SerialMode bool `yaml:"serial_mode" env:"PIPELINEGEN_SCRIPT_SERIAL_MODE" default:"false"`
-
 	// Capability gates ScriptFlow wiring.
 	Capability ScriptCapabilityConfig `yaml:"capability"`
 }

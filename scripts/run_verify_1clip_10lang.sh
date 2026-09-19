@@ -19,7 +19,7 @@ load_dotenv_missing "$ROOT/.env"
 
 LOCAL_BASE_URL="${PIPELINEGEN_URL:-http://127.0.0.1:8000}"
 LOCAL_TOKEN="${VELOX_ADMIN_TOKEN:-${VELOX_PIPELINEGEN_TOKEN:-}}"
-PAYLOAD="$ROOT/ops/jobs/verify_1clip_10lang.generate.json"
+PAYLOAD="${VERIFY_1CLIP_10LANG_PAYLOAD:-$ROOT/ops/jobs/verify_1clip_10lang.generate.json}"
 POLL_SECONDS=5
 # Ten GPU renders of one clip: the default budget is generous enough for the
 # queue plus the fan-out without waiting on a stalled lane forever.

@@ -70,6 +70,21 @@
 set -Eeuo pipefail
 
 DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+
+# Per-script wall clock. MUST be exported BEFORE lib/common.sh is sourced: the
+# library computes SMOKE_DEADLINE at source time from this value, so setting it
+# afterwards cannot move the deadline.
+#
+# The shared default (180s) is SHORTER than the pipeline this battery
+# certifies. Step 6 acquires a real source video with yt-dlp — a single 4K/8K
+# source can exceed 600 MB — and only then cuts, uploads to Drive and indexes.
+# With a 180s budget a perfectly healthy run is aborted mid-acquisition and
+# reported as a failure (observed: steps 1-5 green, step 6 started, then
+# "overall SMOKE_TIMEOUT_SECONDS exceeded" while the server-side job was still
+# running and later SUCCEEDED).
+SMOKE_TIMEOUT_SECONDS="${PIPELINE_E2E_WALLCLOCK_SECONDS:-2400}"
+export SMOKE_TIMEOUT_SECONDS
+
 # shellcheck disable=SC1091
 source "$DIR/lib/common.sh"
 smoke_require curl jq sha256sum
@@ -98,6 +113,11 @@ PIPELINE_E2E_POLL_TIMEOUT_SECONDS="${PIPELINE_E2E_POLL_TIMEOUT_SECONDS:-600}"
 # Bounded wait for the asynchronous index leg (outbox → PostgresIndexWorker →
 # pgvector → index_state=INDEXED) to make a produced asset retrievable.
 PIPELINE_E2E_INDEX_TIMEOUT_SECONDS="${PIPELINE_E2E_INDEX_TIMEOUT_SECONDS:-180}"
+# Bounded wait for the API to come back after a redeploy replaced the running
+# binary mid-run (see pipeline_await_service). A deployment is a normal
+# operational event on a shared host and must not be reported as a pipeline
+# fault. Bounded so a service that stays down still fails the battery.
+PIPELINE_E2E_REDEPLOY_TIMEOUT_SECONDS="${PIPELINE_E2E_REDEPLOY_TIMEOUT_SECONDS:-420}"
 PIPELINE_E2E_JOB_ID="${PIPELINE_E2E_JOB_ID:-}"
 SMOKE_POLL_TIMEOUT_SECONDS="$PIPELINE_E2E_POLL_TIMEOUT_SECONDS"
 
@@ -240,7 +260,39 @@ pipeline_youtube_jobs() {
         ]' "$SMOKE_LAST_BODY"
 }
 
+# pipeline_await_service LABEL — wait for the API to answer /health again after
+# the service went away mid-run. Bounded by
+# PIPELINE_E2E_REDEPLOY_TIMEOUT_SECONDS; honours the overall wall clock.
+# Returns 0 when the API answers 200 again, 1 on timeout.
+#
+pipeline_await_service() {
+    local label="$1"
+    local deadline=$(( $(date +%s) + PIPELINE_E2E_REDEPLOY_TIMEOUT_SECONDS ))
+    printf '%snote%s   %s: API unreachable (HTTP 000) — waiting for it to come back\n' \
+        "$YELLOW" "$RESET" "$label"
+    while (( $(date +%s) < deadline )); do
+        smoke_wallclock_check
+        local code
+        code=$(curl -s -m 5 -o /dev/null -w '%{http_code}' "http://${SMOKE_API_BASE}/health" 2>/dev/null || true)
+        if [[ "$code" == "200" ]]; then
+            printf '%snote%s   %s: API answered 200 again, retrying\n' "$YELLOW" "$RESET" "$label"
+            return 0
+        fi
+        sleep 5
+    done
+    printf '%snote%s   %s: API did not come back within %ss\n' \
+        "$YELLOW" "$RESET" "$label" "$PIPELINE_E2E_REDEPLOY_TIMEOUT_SECONDS"
+    return 1
+}
+
 # pipeline_run_step NAME FN — run one step, never aborting the battery.
+#
+# HTTP 000 is a TRANSPORT failure, not a pipeline verdict: the service is not
+# listening (typically it was just redeployed underneath the run). Reporting
+# that as a pipeline failure is a false negative — it says "the stock pipeline
+# is broken" when the truth is "the binary was replaced". Such a step waits for
+# the API to come back and is retried ONCE; any real HTTP status (2xx/4xx/5xx)
+# remains a hard assertion failure and is never retried.
 pipeline_run_step() {
     local name="$1"; shift
     TOTAL=$((TOTAL + 1))
@@ -248,24 +300,41 @@ pipeline_run_step() {
     if "$@"; then
         PASSED=$((PASSED + 1))
         printf '%sPASS%s  %s\n' "$GREEN" "$RESET" "$name"
-    else
-        FAILED_STEPS+=("$name")
-        printf '%sFAIL%s  %s\n' "$RED" "$RESET" "$name"
+        return 0
     fi
+
+    if [[ "${SMOKE_LAST_HTTP:-}" == "000" ]] && pipeline_await_service "$name"; then
+        if "$@"; then
+            PASSED=$((PASSED + 1))
+            printf '%sPASS%s  %s (retried after redeploy)\n' "$GREEN" "$RESET" "$name"
+            return 0
+        fi
+    fi
+
+    FAILED_STEPS+=("$name")
+    printf '%sFAIL%s  %s\n' "$RED" "$RESET" "$name"
     return 0
 }
 
-# pipeline_search_await PAYLOAD LABEL — POST /api/media/search with PAYLOAD and
-# poll until at least one canonical item (non-empty asset_id) is returned, or
-# PIPELINE_E2E_INDEX_TIMEOUT_SECONDS elapse. Returns 0 on a hit, 1 on a non-2xx
-# response, 124 on timeout. On success SMOKE_LAST_BODY holds the hit response and
-# the LABEL artifact is retained.
+# pipeline_search_await PAYLOAD LABEL [ASSET_ID_SUBSTRINGS] — POST
+# /api/media/search with PAYLOAD and poll until a canonical item (non-empty
+# asset_id) is returned, or PIPELINE_E2E_INDEX_TIMEOUT_SECONDS elapse.
+#
+# ASSET_ID_SUBSTRINGS is an optional space-separated list of asset_id
+# substrings. When given, the poll only accepts an item whose asset_id matches
+# one of them, and the search keeps retrying until it does. Without it the first
+# hit wins, which is NOT enough for the stock/YouTube assertions: the canonical
+# search willingly answers a query with an older catalog entry, so "a hit
+# appeared" never proves the asset THIS run produced is indexed and
+# retrievable. Returns 0 on a hit, 1 on a non-2xx response, 124 on timeout. On
+# success SMOKE_LAST_BODY holds the hit response and the LABEL artifact is
+# retained.
 #
 # A single-shot search races the asynchronous index leg: the stock/YouTube
 # assertions are "the asset is indexed and retrievable", so they must wait for
 # INDEXED rather than stop at INDEX_PENDING.
 pipeline_search_await() {
-    local payload="$1" label="$2"
+    local payload="$1" label="$2" wanted="${3:-}"
     local deadline=$(( $(date +%s) + PIPELINE_E2E_INDEX_TIMEOUT_SECONDS ))
     while (( $(date +%s) < deadline )); do
         smoke_wallclock_check
@@ -278,7 +347,19 @@ pipeline_search_await() {
         fi
         capture "$label"
         local hits
-        hits=$(jq -r '[(.items // [])[]? | select((.asset_id // "") != "")] | length' "$SMOKE_LAST_BODY")
+        # NOTE: the inner variable binding is load-bearing. `$a | contains(.)`
+        # would rebind `.` to `$a` and so match EVERY item, quietly turning the
+        # identity filter into a no-op.
+        hits=$(jq -r --arg wanted "$wanted" '
+            ($wanted | split(" ") | map(select(. != ""))) as $wanted_ids
+            | [(.items // [])[]?
+               | select((.asset_id // "") != "")
+               | select($wanted_ids == []
+                        or (.asset_id as $a
+                            | ($wanted_ids
+                               | map(. as $w | select($a | contains($w)))
+                               | length) > 0))]
+            | length' "$SMOKE_LAST_BODY")
         if (( hits > 0 )); then
             return 0
         fi
@@ -658,15 +739,23 @@ step_8_stock_drive_artifact() {
     fi
     # Same envelope-duplication collapse as step 4 (.result and .job.result).
     local artifacts
+    # Field paths matter here: the stock artifact projection nests the pipeline's
+    # chunk metadata under `artifact_metadata`, so `drive_folder_id` and
+    # `timestamp_folder_id` do NOT exist at the artifact's top level. Every
+    # projection below is built per-artifact so a value cannot be borrowed from a
+    # sibling artifact.
     artifacts=$(jq -c '
         [ .. | objects | select((.drive_file_id // .remote_file_id // "") != "") ]
         | unique_by(.id // .filename // .remote_file_id)
         | {count: length,
            file_ids: (map(.drive_file_id // .remote_file_id) | unique),
-           links: [.[].drive_link // .[].remote_web_view_link // ""],
-           sizes: [ (.[].size_bytes // .[].size // 0) ],
-           drive_paths: ([.[].drive_path // .[].artifact_metadata.drive_path // ""] | map(select(. != "")) | unique),
-           folder_ids: ([.[].drive_folder_id // .[].timestamp_folder_id // ""] | map(select(. != "")) | unique)}' \
+           links: (map(.remote_web_view_link // .drive_link // "") | map(select(. != "")) | unique),
+           sizes: (map(.size_bytes // .size // 0)),
+           drive_paths: (map(.artifact_metadata.drive_path // .drive_path // "") | map(select(. != "")) | unique),
+           folder_ids: (map(.artifact_metadata.timestamp_folder_id
+                            // .timestamp_folder_id
+                            // .drive_folder_id
+                            // "") | map(select(. != "")) | unique)}' \
         "$full")
     printf '  artifacts: %s\n' "$artifacts"
     if ! jq -e '.count >= 1' <<<"$artifacts" >/dev/null; then
@@ -677,17 +766,20 @@ step_8_stock_drive_artifact() {
         pipeline_fail "no stock chunk carries a drive_link"
         return 1
     fi
-    # IMPORTANT: the stock artifact projection surfaces the Drive FILE identity
-    # (remote_file_id / remote_web_view_link / remote_download_link) plus the
-    # per-clip drive_path, but it does NOT surface the Drive FOLDER id:
-    # artifact_metadata carries `timestamp_folder_id` and
-    # `timestamp_drive_folder_link` as empty strings, and no drive_folder_id key
-    # exists. Asserting folder_ids here is therefore unsatisfiable and used to
-    # fail this step unconditionally. The gate asserts the Drive artifact the
-    # contract actually promises (a real, non-empty, download-addressable file
-    # path); the missing folder projection is tracked as a finalizer gap
-    # (media_assets.folder_id is empty for every stock row) rather than hidden
-    # behind a weaker assertion.
+    # The Drive FOLDER id is now asserted, not just the file identity.
+    # `ChunkState.TimestampFolderID` was never populated and the stock job
+    # finalizer hardcoded `Location.FolderID = ""`, so the artifact projection
+    # carried `timestamp_folder_id: ""` and no folder could be asserted. The
+    # media upsert writes folder_id unconditionally, so that empty value also
+    # BLANKED the folder the post-publication commit had just persisted —
+    # every stock row ended up with media_assets.folder_id="" and no operator
+    # could navigate to the Drive folder from a search hit. Both halves are
+    # fixed, so the gate can now demand the real thing instead of documenting
+    # its absence.
+    if ! jq -e '(.folder_ids | length) >= 1' <<<"$artifacts" >/dev/null; then
+        pipeline_fail "no stock chunk carries its parent Drive folder id (media_assets.folder_id would be blank)"
+        return 1
+    fi
     if ! jq -e '(.drive_paths | length) >= 1' <<<"$artifacts" >/dev/null; then
         pipeline_fail "no stock chunk carries a Drive file path"
         return 1
@@ -700,25 +792,96 @@ step_8_stock_drive_artifact() {
 
 # ── Step 9 — Stock indexed + downloadable ──────────────────────────────
 step_9_stock_indexed_download() {
-    # As in step 5, provenance comes from the server-side stock filter, never
-    # from the retrieval-leg label in `.source`.
-    local payload
-    payload=$(jq -n \
-        --arg q "$RUN_TAG" \
-        '{query: $q, sources: ["stock"], mode: "hybrid", universe: "catalog",
-          filters: {source: "stock", media_type: "video"}, limit: 20}')
-
-    if ! pipeline_search_await "$payload" search-stock; then
-        pipeline_fail "no stock asset became retrievable from the canonical catalog (index worker lag or indexing failure)"
+    # Identity comes from the stock JOB RESULT, not from the retrieval leg:
+    # `artifact.id` IS `media_assets.asset_id` (verified against the media SSOT),
+    # so the artifacts of this job are exactly the assets this run published.
+    # Both the search and the download are bound to that set, because the
+    # canonical search will answer almost any query with an older catalog entry.
+    local full_stock
+    full_stock=$(results_file full-stock-search)
+    if [[ ! -s "$full_stock" ]]; then
+        full_stock=$(results_file full-stock-run)
+    fi
+    if [[ ! -s "$full_stock" ]]; then
+        pipeline_fail "no retained stock job result; cannot bind the search to this run's own assets"
         return 1
     fi
 
-    STOCK_ASSET_ID=$(jq -r '[(.items // [])[]? | select((.asset_id // "") != "")][0].asset_id' "$SMOKE_LAST_BODY")
+    local produced_ids produced_shas
+    produced_ids=$(jq -r '[ .. | objects | select((.remote_file_id // "") != "")
+                             | .id | select((. // "") != "") ] | unique | .[]' "$full_stock")
+    produced_shas=$(jq -r '[ .. | objects | select((.remote_file_id // "") != "")
+                              | .sha256 | select((. // "") != "") ] | unique | .[]' "$full_stock")
+    if [[ -z "$produced_ids" ]]; then
+        pipeline_fail "the stock job result carries no artifact identity; cannot bind the search to this run"
+        return 1
+    fi
+    # Lexical anchors, most specific first: the canonical search_text is built
+    # from the source title plus the source URL, so the title and the source
+    # video id are what can actually retrieve the row. The run tag never appears
+    # in a stock asset's text, which is exactly why a RUN_TAG query silently
+    # resolved to a stale pre-fix catalog row. Several anchors are tried so a
+    # poor lexical match cannot masquerade as an indexing failure — the assertion
+    # itself stays strict, because the poll only accepts THIS run's asset ids.
+    local title_anchor video_anchor
+    title_anchor=$(jq -r '[ .. | objects | select((.remote_file_id // "") != "")
+                             | (.artifact_metadata.title // "") ]
+                           | map(select(. != "")) | .[0] // ""' "$full_stock")
+    video_anchor=$(jq -r '[ .. | objects | select((.remote_file_id // "") != "")
+                             | (.artifact_metadata.source_video_id // "") ]
+                           | map(select(. != "")) | .[0] // ""' "$full_stock")
+    local produced_ids_ws produced_count anchored=0
+    produced_ids_ws=$(paste -sd' ' <<<"$produced_ids")
+    produced_count=$(grep -c . <<<"$produced_ids")
+    printf '  produced : %s asset(s) this run: %s\n' "$produced_count" "$produced_ids_ws"
+
+    local anchor query_text
+    for anchor in "$title_anchor" "$video_anchor" "$RUN_TAG"; do
+        [[ -n "$anchor" ]] || continue
+        query_text="$anchor"
+        # Filter by the stock FAMILY, not by provenance (same reason as step 5):
+        # the canonical stock pipeline acquires through YouTube, so a
+        # YouTube-acquired stock clip is source="youtube" with
+        # asset_kind="stock_video".
+        local payload
+        payload=$(jq -n \
+            --arg q "$query_text" \
+            '{query: $q, sources: ["stock"], mode: "hybrid", universe: "catalog",
+              filters: {asset_kind: "stock_video", media_type: "video"}, limit: 50}')
+        printf '  query    : %s\n' "$query_text"
+        # 124 means this anchor simply never surfaced the asset (try the next
+        # one); anything else is a transport/HTTP failure and must fail now
+        # instead of being retried as if it were a lexical miss.
+        local rc=0
+        pipeline_search_await "$payload" search-stock "$produced_ids_ws" || rc=$?
+        if (( rc == 0 )); then
+            anchored=1
+            break
+        fi
+        if (( rc != 124 )); then
+            pipeline_fail "POST /api/media/search failed with rc=$rc while certifying this run's stock asset"
+            return 1
+        fi
+    done
+    if (( anchored == 0 )); then
+        pipeline_fail "none of this run's stock assets ($produced_ids_ws) became retrievable from the canonical catalog (index worker lag or indexing failure)"
+        return 1
+    fi
+
+    STOCK_ASSET_ID=$(jq -r --arg wanted "$produced_ids_ws" '
+        ($wanted | split(" ") | map(select(. != ""))) as $wanted_ids
+        | [(.items // [])[]?
+           | select((.asset_id // "") != "")
+           | select(.asset_id as $a
+                    | ($wanted_ids
+                       | map(. as $w | select($a | contains($w)))
+                       | length) > 0)][0].asset_id' \
+        "$SMOKE_LAST_BODY")
     if [[ -z "$STOCK_ASSET_ID" || "$STOCK_ASSET_ID" == "null" ]]; then
-        pipeline_fail "no stock asset is retrievable from the canonical catalog"
+        pipeline_fail "no asset published by this run is retrievable from the canonical catalog"
         return 1
     fi
-    printf '  asset id : %s\n' "$STOCK_ASSET_ID"
+    printf '  asset id : %s (published by this run)\n' "$STOCK_ASSET_ID"
 
     local out="$RESULTS_DIR/stock-download-$RUN_TAG.mp4"
     local saved_timeout="$SMOKE_HTTP_TIMEOUT_SECONDS"
@@ -744,22 +907,17 @@ step_9_stock_indexed_download() {
         return 1
     fi
 
-    # BIND THE BYTES TO THIS RUN. The canonical search can answer a query with
-    # an older catalog entry, so "a download succeeded" is not by itself proof
-    # that the byte round trip covers an artifact this run produced. The
-    # downloaded bytes must carry a sha256 that the stock job above produced.
-    local full_stock sha_list got_sha
-    full_stock=$(results_file full-stock-search)
-    [[ -s "$full_stock" ]] || full_stock=$(results_file full-stock-run)
-    sha_list=$(jq -r '[ .. | objects | select((.remote_file_id // "") != "")
-                        | .sha256 | select((. // "") != "") ] | unique | .[]' \
-        "$full_stock" 2>/dev/null || true)
-    if [[ -z "$sha_list" ]]; then
+    # BIND THE BYTES TO THIS RUN. Even with a run-bound asset_id above, "a
+    # download succeeded" is not by itself proof that the byte round trip covers
+    # an artifact this run produced: the bytes must carry a sha256 the stock job
+    # above produced.
+    local got_sha
+    if [[ -z "$produced_shas" ]]; then
         pipeline_fail "the stock job result carries no produced artifact sha256; cannot bind the retrieved bytes to this run"
         return 1
     fi
     got_sha=$(sha256sum "$out" | awk '{print $1}')
-    if ! grep -qx "$got_sha" <<<"$sha_list"; then
+    if ! grep -qx "$got_sha" <<<"$produced_shas"; then
         pipeline_fail "the downloaded clip (sha256=$got_sha) is not one of the artifacts this run produced"
         return 1
     fi

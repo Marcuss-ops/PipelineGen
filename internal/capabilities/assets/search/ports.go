@@ -118,8 +118,14 @@ type VectorSearchRequest struct {
 	MediaType      string
 	Language       string
 	LifecycleState []string // searchable lifecycle allow-list propagated to the Qdrant filter
-	WorkspaceID    string   // QDRANT-004: tenant isolation filter (applied to Qdrant payload)
-	IsSystem       bool     // ADMIN scope bypass — skips workspace isolation for admin users
+	// AssetKind / SemanticRole are the canonical taxonomy equality
+	// dimensions (media_assets.asset_kind / semantic_role), distinct from
+	// Source (physical provenance). The PostgreSQL media plane compiles them
+	// into its WHERE fragment; adapters that predate them may ignore them.
+	AssetKind    string
+	SemanticRole string
+	WorkspaceID  string // QDRANT-004: tenant isolation filter (applied to Qdrant payload)
+	IsSystem     bool   // ADMIN scope bypass — skips workspace isolation for admin users
 }
 
 // VectorSearchResult is a single match from a vector search.
@@ -191,8 +197,11 @@ type HybridSearchRequest struct {
 	MediaType      string
 	Language       string
 	LifecycleState []string // searchable lifecycle allow-list propagated to the Qdrant filter
-	WorkspaceID    string   // QDRANT-004: tenant isolation filter (applied to Qdrant payload)
-	IsSystem       bool     // admin/reconcile flag — skips workspace must-clause in CompileQdrantFilter
+	// AssetKind / SemanticRole: see VectorSearchRequest.AssetKind.
+	AssetKind    string
+	SemanticRole string
+	WorkspaceID  string // QDRANT-004: tenant isolation filter (applied to Qdrant payload)
+	IsSystem     bool   // admin/reconcile flag — skips workspace must-clause in CompileQdrantFilter
 }
 
 // ── Local search ports ────────────────────────────────────────────────

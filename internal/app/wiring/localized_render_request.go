@@ -274,6 +274,39 @@ func (a *localizedRenderEnqueuerAdapter) clipsRootDestination(ctx context.Contex
 	return resolved, nil
 }
 
+// ResolveDocumentFolder resolves the folder a language's script document
+// publishes into: the per-language run folder of its clips,
+// <documents root>/<job>/<language>.
+//
+// It is the SAME resolution the clip destination performs — same FolderAdmin,
+// same cache keys, same names and parents — so the document and the clip of one
+// language converge on one folder per (documents root, job, language) instead
+// of racing to create two. This adapter is the folder authority for the clip
+// lane, so the document lane borrows it rather than opening a second one.
+func (a *localizedRenderEnqueuerAdapter) ResolveDocumentFolder(ctx context.Context, documentsRoot, job, language string) (string, error) {
+	root := strings.TrimSpace(documentsRoot)
+	if root == "" {
+		return "", fmt.Errorf("document folder: documents root is empty")
+	}
+	runFolder := strings.TrimSpace(job)
+	if runFolder == "" {
+		return "", fmt.Errorf("document folder: documents root %q is resolved but the job is unknown", root)
+	}
+	lang := strings.TrimSpace(language)
+	if lang == "" {
+		return "", fmt.Errorf("document folder: language is required")
+	}
+	folder, err := a.resolveFolder(ctx, root+"\x00"+runFolder, runFolder, root)
+	if err != nil {
+		return "", fmt.Errorf("document folder: ensure Drive run folder %q: %w", runFolder, err)
+	}
+	folder, err = a.resolveFolder(ctx, folder+"\x00"+lang, lang, folder)
+	if err != nil {
+		return "", fmt.Errorf("document folder: ensure Drive language folder %q: %w", lang, err)
+	}
+	return folder, nil
+}
+
 func (a *localizedRenderEnqueuerAdapter) resolveFolder(ctx context.Context, key, name, parent string) (string, error) {
 	if a.cfg.FolderAdmin == nil {
 		return "", fmt.Errorf("folder admin is not wired")

@@ -162,6 +162,24 @@ func (b *LocalizationPlanBuilder) Build(ctx context.Context, source SourceInput,
 			}
 		}
 
+		// The preset font must be able to render THIS language's script: a font
+		// without the target script's glyphs burns an empty glyph run, and a
+		// GPU-native render plan treats that as fatal (the whole run dies
+		// mid-render). The effective style is resolved per language and the ASS
+		// style id is derived from it, because the ASS compiler resolves the
+		// burnt font from that id: swapping only one of the two would ship a
+		// style id naming the font the plan no longer uses.
+		subtitlesStyle := source.SubtitlesStyle
+		subtitleStyleHash := source.SubtitleStyleHash
+		swappedStyle, swapped, styleErr := scriptpkg.EnsureSubtitleFontForLanguage(source.SubtitlesStyle, lang)
+		if styleErr != nil {
+			return nil, fmt.Errorf("localization: plan builder: subtitle font for %s: %w", lang, styleErr)
+		}
+		if swapped {
+			subtitlesStyle = swappedStyle
+			subtitleStyleHash = scriptpkg.SubtitleStyleHash(swappedStyle)
+		}
+
 		plan := LocalizedClipPlan{
 			Version:                LocalizedClipPlanVersion,
 			JobID:                  jobID,
@@ -175,7 +193,7 @@ func (b *LocalizationPlanBuilder) Build(ctx context.Context, source SourceInput,
 			TranscriptSHA256:       transcript.SHA256,
 			SubtitleTrackID:        subtitle.TrackID,
 			SubtitleSHA256:         subtitle.SHA256,
-			SubtitleStyleHash:      source.SubtitleStyleHash,
+			SubtitleStyleHash:      subtitleStyleHash,
 			DurationMS:             source.DurationMS,
 			OutputProfileHash:      source.OutputProfileHash,
 			RendererVersion:        source.RendererVersion,
@@ -186,7 +204,7 @@ func (b *LocalizationPlanBuilder) Build(ctx context.Context, source SourceInput,
 			BackgroundMode:         source.BackgroundMode,
 			BackgroundKind:         source.BackgroundKind,
 			ForegroundScalePercent: source.ForegroundScalePercent,
-			SubtitlesStyle:         source.SubtitlesStyle,
+			SubtitlesStyle:         subtitlesStyle,
 			// Language-independent reuse: the SAME overlay identities land on
 			// every plan, so one certified overlay render per item serves all N
 			// languages.

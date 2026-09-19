@@ -380,6 +380,16 @@ func (uc *GenerateOneUseCase) Execute(
 				return nil, uc.logPhaseError(item, "overlay_render", scriptpkg.ErrGenerationFailed,
 					fmt.Errorf("enqueue Chronon overlay: %w", enqueueErr), tracker)
 			}
+			// Production QueueRenderEnqueuer may hand the certified artifact to
+			// its bounded Drive/analytics pool before returning. A direct
+			// generate_item caller has no durable Runner completion boundary, so
+			// join that optional pool here before exposing the result.
+			if waiter, ok := uc.overlayRenderEnqueuer.(interface{ Wait() error }); ok {
+				if waitErr := waiter.Wait(); waitErr != nil {
+					return nil, uc.logPhaseError(item, "overlay_render", scriptpkg.ErrGenerationFailed,
+						fmt.Errorf("overlay publication: %w", waitErr), tracker)
+				}
+			}
 			// The batch result is the public contract returned by
 			// script.generate_item. Preserve the certified identity here so
 			// callers do not have to reconstruct it from logs or Drive.

@@ -124,7 +124,7 @@ func newGoogleTransport() *http.Transport {
 		KeepAlive: 30 * time.Second,
 	}).DialContext
 	transport.TLSHandshakeTimeout = 10 * time.Second
-	transport.ResponseHeaderTimeout = 30 * time.Second
+	transport.ResponseHeaderTimeout = 60 * time.Second
 	transport.ExpectContinueTimeout = 1 * time.Second
 	transport.IdleConnTimeout = 90 * time.Second
 	return transport

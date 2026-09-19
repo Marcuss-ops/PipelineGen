@@ -312,6 +312,15 @@ func registerYouTubeClip(registry *module.Registry, log *zap.Logger, cfg *config
 		regWiring.YouTubeClip = nil
 		return nil
 	}
+	// The media domain deliberately degrades when PostgreSQL media is not
+	// deployed. In that mode BuildDomainBundle returns an artifact-only bundle
+	// without media-dependent services, so an enabled config flag must not turn
+	// an otherwise healthy server boot into a nil-service composition failure.
+	if root == nil || root.Domains == nil || root.Domains.YoutubeClipService == nil {
+		log.Warn("registerYouTubeClip: YouTube feature enabled but media service is unavailable; skipping HTTP route registration")
+		regWiring.YouTubeClip = nil
+		return nil
+	}
 
 	descriptor, err := youtubeapi.Build(youtubeapi.Dependencies{
 		Core: youtubeapi.CoreDeps{

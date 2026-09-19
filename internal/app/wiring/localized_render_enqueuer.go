@@ -514,6 +514,10 @@ func wireLocalizedRenderEnqueuer(cfg *config.Config, root *ComposeRoot, log *zap
 		GlobalConcurrency: cfg.Scripts.LocalizedRenderGlobalConcurrency,
 	}, log, resolver, materializer, transcriptResolver, root.Repos.SubtitleArtifactRepo, root.CanonicalAssetWriter)
 	runner.SetLocalizedRenderEnqueuer(adapter)
+	// One folder authority for the render lane and the documents lane: a
+	// language's script document must land in the SAME
+	// <documents root>/<job>/<language> folder as the clips it describes.
+	runner.SetDocumentFolderResolver(adapter)
 	log.Info("wireScriptFlow: localized render fan-out wired to LocalizationService (RenderingGen/Chronon)",
 		zap.String("source_language", LocalizationConfigFromConfig(cfg).SourceLanguage),
 		zap.String("clips_folder", cfg.Drive.ClipsFolder()))
