@@ -234,6 +234,11 @@ func (w *Worker) completeRendered(
 			}
 		}
 	}
+	// Chronon phase projection from the raw `*.timing.json` sidecar the render
+	// outcome references. Best-effort by construction — metrics must never fail
+	// the render they measure — and the ONLY place those bytes are fetched and
+	// parsed (one parse, one canonical write into performance_operations).
+	w.publishChrononTiming(ctx, outcome, prepared, probe)
 	progress(100, "clip.render completed")
 	return renderedResult(resultJob, req, prepared, plan, subtitleArtifact, outcome, publication), nil
 }

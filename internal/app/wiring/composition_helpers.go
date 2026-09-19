@@ -39,6 +39,7 @@ type registryCrossStepState struct {
 	SearchBackends     *search.BackendRegistry
 	SearchAggregator   *search.Aggregator
 	IdempotencyHandler gin.HandlerFunc
+	StockPrefetcher    scriptports.StockPrefetcher
 }
 
 // Package app — sourcing hash adapter

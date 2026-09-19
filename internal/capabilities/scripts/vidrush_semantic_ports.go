@@ -33,7 +33,6 @@ import (
 	"strings"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediacert"
-	phrasepkg "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/phrases"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/stockintelligence"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
@@ -122,12 +121,12 @@ func groundImportantPhrases(source string, entities []VisualEntity, phrases []st
 		if len(strings.Fields(phrase)) < 2 {
 			continue
 		}
-		// Keep the phrase surface free of proper-name runs even when the
-		// entity extractor missed a name. This validates source-selected or
-		// caller-supplied candidates without rewriting them.
-		if phrasepkg.ContainsProperNamePair(phrase) {
-			continue
-		}
+		// The proper-name filter (phrases.ContainsProperNamePair) is applied
+		// exactly once per candidate source: phrases.Select owns the
+		// selector-derived candidates, and the operator-supplied
+		// MediaExtractionPolicy hints are filtered at their ingress in
+		// vidrush_semantic_chain.go. Re-checking here would validate the same
+		// selector output a second time.
 		span, ok := findEntitySpan(source, phrase)
 		if !ok {
 			continue

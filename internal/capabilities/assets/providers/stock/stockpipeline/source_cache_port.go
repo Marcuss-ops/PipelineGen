@@ -344,10 +344,6 @@ func warmCandidateURLs(urls []string) ([]string, int) {
 			continue
 		}
 		seen[url] = struct{}{}
-		if isDriveURL(url) {
-			skippedDrive++
-			continue
-		}
 		candidates = append(candidates, url)
 	}
 	return candidates, skippedDrive
@@ -397,7 +393,7 @@ func (s *Service) warmOneSource(ctx context.Context, stager acquisition.SourceSt
 	// persistent path, so the warmed job still hits it. A release failure is
 	// logged but NOT reported as a warm failure — the cache entry is already
 	// populated and usable.
-	if prepared.CleanupToken != "" {
+	if prepared.CleanupToken != "" && !isDriveURL(url) {
 		if relErr := stager.Release(ctx, prepared.CleanupToken); relErr != nil && s.log != nil {
 			s.log.Warn("stock source warm: release of the caller's stage failed (cache entry stays valid)",
 				zap.String("source_url", url),

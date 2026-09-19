@@ -187,6 +187,47 @@ func TestRunner_EntityTimelineDerivedFromRealWordTiming(t *testing.T) {
 	require.Nil(t, res.OverlayPlan, "entity cards are semantic data, not part of the final 5+5 editorial plan")
 }
 
+func TestEntitySourcesUseLocalizedMentionForGrounding(t *testing.T) {
+	text := "Elon Musk moved from Sudafrica to North America."
+	annotations := &scriptpkg.SceneAnnotations{
+		Language: "it",
+		PrimaryEntities: []scriptpkg.AnnotatedEntity{{
+			CanonicalName: "South Africa",
+			Type:          "GPE",
+			Mentions: []scriptpkg.AnnotationSpan{{
+				Text: "Sud Africa", StartRune: 21, EndRune: 31,
+			}},
+		}},
+	}
+
+	sources := entitySourcesFromAnnotations(annotations, text)
+	if len(sources) != 1 {
+		t.Fatalf("localized entity sources = %+v, want one grounded source", sources)
+	}
+	if sources[0].Name != "Sudafrica" || sources[0].SpokenName != "Sudafrica" {
+		t.Fatalf("localized entity source = %+v, want grounded Sudafrica name and spoken surface", sources[0])
+	}
+}
+
+func TestEntitySourcesRejectUnrelatedStaleMentionSpan(t *testing.T) {
+	text := "Elon Musk moved from Canada to North America."
+	annotations := &scriptpkg.SceneAnnotations{
+		Language: "it",
+		PrimaryEntities: []scriptpkg.AnnotatedEntity{{
+			CanonicalName: "South Africa",
+			Type:          "GPE",
+			Mentions: []scriptpkg.AnnotationSpan{{
+				Text: "South Africa", StartRune: 21, EndRune: 32,
+			}},
+		}},
+	}
+
+	sources := entitySourcesFromAnnotations(annotations, text)
+	if len(sources) != 1 || sources[0].Name != "South Africa" || sources[0].SpokenName != "South Africa" {
+		t.Fatalf("unrelated stale mention must not invent a localized surface: %+v", sources)
+	}
+}
+
 func occurrenceByID(t *testing.T, scene capabilityentities.SceneEntityTimeline, entityID string) capabilityentities.EntityOccurrence {
 	t.Helper()
 	for _, o := range scene.Entities {

@@ -27,7 +27,9 @@ import (
 	"testing"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
+	module "github.com/Marcuss-ops/PipelineGen/internal/platform/httpserver"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/zap"
 )
 
 // ── Test helpers (package-shared across composition_*_test.go) ─────────────
@@ -417,6 +419,34 @@ func TestComposition_AssetIDToQdrantPointID_SingleDeclaration(t *testing.T) {
 	require.Equalf(t, frozenAssetIDToQdrantPointIDSites, matches,
 		"Task 3: exactly %d `func AssetIDToQdrantPointID` production declaration expected; found %d in: %v. The canonical UUID v5 SHA-1 function lives in internal/platform/qdrant/schema/pointid.go. All callers must route through it — never create ad-hoc point ID generation.",
 		frozenAssetIDToQdrantPointIDSites, matches, matchFiles)
+}
+
+// ── 6. registerYouTubeClip graceful-degrade guard ────────────────────────
+
+// TestRegisterYouTubeClip_EnabledButMediaServiceUnavailable_SkipsRoute pins
+// the September 2026 graceful-degrade guard in registerYouTubeClip: when the
+// YouTube feature flag is ON but the media domain could not be built, the
+// media-dependent service is nil. An enabled config flag must NOT turn an
+// otherwise healthy boot into a nil-service composition failure — the helper
+// must skip route registration, return nil and leave the wiring slot empty.
+func TestRegisterYouTubeClip_EnabledButMediaServiceUnavailable_SkipsRoute(t *testing.T) {
+	cases := map[string]*ComposeRoot{
+		"nil root":                  nil,
+		"nil domains":               {},
+		"domains without yt service": {Domains: &DomainBundle{}},
+	}
+	for name, root := range cases {
+		t.Run(name, func(t *testing.T) {
+			cfg := minimalConfig(t.TempDir())
+			cfg.Features.YouTubeEnabled = true
+			regWiring := &RegistryWiring{}
+			err := registerYouTubeClip(module.NewRegistry(), zap.NewNop(), cfg, root, regWiring, nil, nil, nil)
+			require.NoError(t, err,
+				"an enabled YouTube flag with an unavailable media service must degrade gracefully, not fail the boot")
+			require.Nil(t, regWiring.YouTubeClip,
+				"the YouTubeClip wiring slot must stay empty when the media service is unavailable")
+		})
+	}
 }
 
 // ── Brace-counting helpers (test-private) ────────────────────────────────

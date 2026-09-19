@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
+	phrasepkg "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/phrases"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
@@ -108,7 +109,7 @@ func applyVidRushPrepareProjections(result *GenerateResult, prepared vidRushPrep
 // a matching segment produces grounded annotations (the same precedence the
 // sequential flow used), so a run without a VidRush pipeline still plans
 // intents from the scenes' own annotations.
-func computeSegmentEntityAnnotations(snapshot []sceneTextSnapshot, language Language, segments []scriptpkg.VidRushSegmentResult) map[int]*scriptpkg.SceneAnnotations {
+func computeSegmentEntityAnnotations(snapshot []sceneTextSnapshot, language Language, segments []scriptpkg.VidRushSegmentResult, phraseLimit int, includePhrases bool) map[int]*scriptpkg.SceneAnnotations {
 	annotations := make(map[int]*scriptpkg.SceneAnnotations)
 	for _, s := range snapshot {
 		if s.Annotations != nil {
@@ -139,5 +140,95 @@ func computeSegmentEntityAnnotations(snapshot []sceneTextSnapshot, language Lang
 			annotations[idx] = ann
 		}
 	}
+	if includePhrases && phraseLimit > 0 {
+		// VidRush may return fewer source phrase hints than the final narration
+		// can ground (it often analyzes the brief before the generated prose is
+		// available). Complete that surface locally from the exact final source
+		// text, using the same deterministic selector used for translations.
+		// This never calls a model and never invents a phrase outside the spoken
+		// scene; entity spans remain blocked.
+		corpus := make([]string, 0, len(snapshot))
+		for _, scene := range snapshot {
+			if text := strings.TrimSpace(scene.Text); text != "" {
+				corpus = append(corpus, text)
+			}
+		}
+		for _, scene := range snapshot {
+			text := strings.TrimSpace(scene.Text)
+			if text == "" {
+				continue
+			}
+			ann := annotations[scene.Index]
+			if ann == nil {
+				ann = &scriptpkg.SceneAnnotations{Version: 1, Language: string(language), Status: "completed"}
+				annotations[scene.Index] = ann
+			}
+			supplementSourceImportantPhrases(ann, text, string(language), phraseLimit, corpus)
+		}
+	}
 	return annotations
+}
+
+func supplementSourceImportantPhrases(ann *scriptpkg.SceneAnnotations, text, language string, limit int, corpus []string) {
+	if ann == nil || limit <= len(ann.ImportantPhrases) {
+		return
+	}
+	blocked := make([][2]int, 0, len(ann.PrimaryEntities)+len(ann.SecondaryEntities))
+	for _, entity := range append(append([]scriptpkg.AnnotatedEntity(nil), ann.PrimaryEntities...), ann.SecondaryEntities...) {
+		mentions := entity.Mentions
+		if len(mentions) == 0 {
+			value := strings.TrimSpace(entity.Text)
+			if value == "" {
+				value = strings.TrimSpace(entity.CanonicalName)
+			}
+			if span, ok := findEntitySpan(text, value); ok {
+				mentions = []scriptpkg.AnnotationSpan{span}
+			}
+		}
+		for _, mention := range mentions {
+			if mention.EndRune > mention.StartRune {
+				blocked = append(blocked, [2]int{mention.StartRune, mention.EndRune})
+			}
+		}
+	}
+	candidates := phrasepkg.ImportantPhrasesWithCorpus(text, blocked, limit, language, corpus)
+	existing := make(map[string]struct{}, len(ann.ImportantPhrases))
+	for _, phrase := range ann.ImportantPhrases {
+		existing[phraseKey(phrase.Text)] = struct{}{}
+	}
+	for rank, candidate := range candidates {
+		if len(ann.ImportantPhrases) >= limit {
+			break
+		}
+		key := phraseKey(candidate)
+		if key == "" {
+			continue
+		}
+		if _, ok := existing[key]; ok {
+			continue
+		}
+		span, ok := findEntitySpan(text, candidate)
+		if !ok {
+			continue
+		}
+		overlaps := false
+		for _, prior := range ann.ImportantPhrases {
+			if span.StartRune < prior.EndRune && prior.StartRune < span.EndRune {
+				overlaps = true
+				break
+			}
+		}
+		if overlaps {
+			continue
+		}
+		ann.ImportantPhrases = append(ann.ImportantPhrases, scriptpkg.AnnotationSpan{
+			Text: span.Text, StartRune: span.StartRune, EndRune: span.EndRune,
+			Score: max(0.80-float64(rank)*0.01, 0.05), Kind: "key_statement",
+		})
+		existing[key] = struct{}{}
+	}
+}
+
+func phraseKey(value string) string {
+	return strings.ToLower(strings.Join(strings.Fields(strings.TrimSpace(value)), " "))
 }

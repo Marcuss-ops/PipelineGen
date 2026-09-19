@@ -21,10 +21,6 @@ type ConcurrencyConfig struct {
 	// June 2026 GPU tuning: lowered from 50 to 2 to avoid RAM saturation.
 	MaxConcurrentScriptGenerations int `yaml:"max_concurrent_script_generations" env:"VELOX_CONCURRENT_SCRIPT_GENERATIONS" default:"2"`
 
-	// MaxConcurrentNvidiaGenerations limits concurrent GPU image generation requests.
-	// Was hardcoded at 2; raised to 10 (VRAM-bound).
-	MaxConcurrentNvidiaGenerations int `yaml:"max_concurrent_nvidia_generations" env:"VELOX_CONCURRENT_NVIDIA_GENERATIONS" default:"10"`
-
 	// MaxConcurrentOllamaCalls limits concurrent Ollama model invocations.
 	// Was hardcoded at 2; raised to 50 (model server should handle this load).
 	// June 2026 GPU tuning: lowered from 50 to 1 to avoid RAM saturation on single GPU.
@@ -32,16 +28,6 @@ type ConcurrencyConfig struct {
 	// clips per extract job; Ollama handles this under 2GB VRAM for gemma4:e2b;
 	// lowered again only if host RAM < 16GB via env override).
 	MaxConcurrentOllamaCalls int `yaml:"max_concurrent_ollama_calls" env:"VELOX_CONCURRENT_OLLAMA_CALLS" default:"4"`
-
-	// MaxConcurrentGoogleSlidesGenerations limits the number of Chrome/Playwright
-	// workers used for AI image generation. Each slot is a separate browser
-	// process, so keep this small unless the host has headroom.
-	MaxConcurrentGoogleSlidesGenerations int `yaml:"max_concurrent_google_slides_generations" env:"VELOX_CONCURRENT_GOOGLE_SLIDES_GENERATIONS" default:"2"`
-
-	// GoogleSlidesProfileID selects the first persistent Chrome profile used
-	// by the image-generation pool. Operators can point the pool at an
-	// authenticated profile without changing the application binary.
-	GoogleSlidesProfileID int `yaml:"google_slides_profile_id" env:"VELOX_GOOGLE_SLIDES_PROFILE_ID" default:"0"`
 
 	// MaxConcurrentChannelChecks limits concurrent YouTube channel monitor checks.
 	// Was hardcoded at 3; raised to 20.

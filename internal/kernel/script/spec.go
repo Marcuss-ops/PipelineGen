@@ -1,8 +1,8 @@
 // Package scriptjobs defines the typed contract for script generation jobs.
 //
 // GenerationSpec is the canonical parameters struct for script generation.
-// It is used by the post-processor pipeline (PostGenUseCase, EntityProcessor,
-// MetadataProcessor) to carry generation flags.
+// It is used by the post-processor pipeline (MetadataProcessor and the typed
+// entity adapters) to carry generation flags.
 //
 // PR 12 (June 2026): GeneratePayload / DecodeGeneratePayload removed —
 // the worker now decodes GenerationEnvelopeV2 via DecodeEnvelopeV2.

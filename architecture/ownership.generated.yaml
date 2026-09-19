@@ -216,9 +216,6 @@ canonical_services:
   - service: SceneBuilderUseCase
     constructor: NewSceneBuilderUseCase
     location: internal/app/wiring/wire_script.go
-  - service: PostGenUseCase
-    constructor: NewPostGenUseCase
-    location: internal/app/wiring/wire_script.go
   - service: PipelineUseCase
     constructor: NewPipelineUseCase
     location: internal/app/wiring/wire_script.go

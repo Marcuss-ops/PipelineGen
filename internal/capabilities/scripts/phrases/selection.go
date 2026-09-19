@@ -14,6 +14,7 @@
 package phrases
 
 import (
+	"math"
 	"regexp"
 	"sort"
 	"strings"
@@ -54,10 +55,30 @@ func ImportantPhrases(text string, blockedSpans [][2]int, limit int, language st
 	return Select(text, blockedSpans, limit, profile)
 }
 
+// ImportantPhrasesWithCorpus is ImportantPhrases with a document-wide
+// term-frequency boost: corpus is every text of the SAME document (all scenes,
+// one language). A candidate that recurs across the document outranks an
+// otherwise-equal one that appears once. The selection stays deterministic and
+// makes no model or network call.
+func ImportantPhrasesWithCorpus(text string, blockedSpans [][2]int, limit int, language string, corpus []string) []string {
+	profile := importantPhraseLexicon(language)
+	return SelectWithCorpus(text, blockedSpans, limit, profile, corpus)
+}
+
 // Select is ImportantPhrases against an explicit lexicon profile. A nil profile
 // falls back to the canonical phrase-extraction policy with no stop-word or
 // visual-verb configuration.
 func Select(text string, blockedSpans [][2]int, limit int, profile *linguistics.LexiconProfile) []string {
+	return selectPhrases(text, blockedSpans, limit, profile, nil)
+}
+
+// SelectWithCorpus is Select with the document-wide term-frequency boost. A nil
+// or empty corpus preserves Select exactly.
+func SelectWithCorpus(text string, blockedSpans [][2]int, limit int, profile *linguistics.LexiconProfile, corpus []string) []string {
+	return selectPhrases(text, blockedSpans, limit, profile, corpus)
+}
+
+func selectPhrases(text string, blockedSpans [][2]int, limit int, profile *linguistics.LexiconProfile, corpus []string) []string {
 	text = strings.TrimSpace(text)
 	if text == "" {
 		return nil
@@ -91,6 +112,7 @@ func Select(text string, blockedSpans [][2]int, limit int, profile *linguistics.
 	if len(tokens) < policy.MinWords {
 		return nil
 	}
+	documentCounts := documentPhraseCounts(corpus, policy.MinWords, policy.MaxWords)
 	candidates := make([]importantPhraseCandidate, 0, len(tokens))
 	for start := range tokens {
 		for wordCount := policy.MinWords; wordCount <= policy.MaxWords && start+wordCount <= len(tokens); wordCount++ {
@@ -132,9 +154,12 @@ func Select(text string, blockedSpans [][2]int, limit int, profile *linguistics.
 			}
 
 			// More grounded content words and configured action verbs increase
-			// salience. The shorter-length term breaks otherwise equal choices
-			// toward compact overlays; source order breaks the final tie.
+			// salience. A candidate that recurs across the document adds a
+			// deterministic log-frequency term. The shorter-length term breaks
+			// otherwise equal choices toward compact overlays; source order
+			// breaks the final tie.
 			score := contentWords*4 + visualVerbs*5 - wordCount
+			score += documentTermBoost(documentCounts[normalizedPhraseKey(candidateText)])
 			candidates = append(candidates, importantPhraseCandidate{
 				text: candidateText, start: byteStart,
 				tokenStart: start, tokenEnd: end, score: score,
@@ -219,6 +244,53 @@ func ImportantWordsWithProfile(phrases []string, limit int, profile *linguistics
 	return words
 }
 
+// documentTermFrequencyWeight scales the log-frequency term. Keeping it an
+// integer constant keeps the score integral and the ordering reproducible.
+const documentTermFrequencyWeight = 4
+
+// documentTermBoost turns a document-wide occurrence count into the score
+// bonus k·log(1+occurrences). A candidate seen only once in the document adds
+// nothing, so Select (no corpus) and SelectWithCorpus agree on single-occurrence
+// surfaces; recurrence is the signal.
+func documentTermBoost(occurrences int) int {
+	if occurrences < 2 {
+		return 0
+	}
+	return int(math.Round(documentTermFrequencyWeight * math.Log1p(float64(occurrences))))
+}
+
+// normalizedPhraseKey is the case- and whitespace-insensitive identity used for
+// document-frequency counting. It matches the key the selection dedupe uses, so
+// a candidate and its corpus occurrences resolve to the same bucket.
+func normalizedPhraseKey(value string) string {
+	return strings.ToLower(strings.Join(strings.Fields(value), " "))
+}
+
+// documentPhraseCounts counts how many times each [minWords,maxWords] word
+// window (within a phrase-boundary group) occurs across every corpus text. It
+// enumerates windows with the same tokenizer and boundaries as Select, so a
+// candidate's key is only counted when the document contains that exact
+// surface.
+func documentPhraseCounts(corpus []string, minWords, maxWords int) map[string]int {
+	if len(corpus) == 0 {
+		return nil
+	}
+	counts := make(map[string]int)
+	for _, document := range corpus {
+		tokens := tokenizeImportantPhrases(document)
+		for start := range tokens {
+			for wordCount := minWords; wordCount <= maxWords && start+wordCount <= len(tokens); wordCount++ {
+				end := start + wordCount - 1
+				if tokens[start].group != tokens[end].group {
+					break
+				}
+				counts[normalizedPhraseKey(document[tokens[start].start:tokens[end].end])]++
+			}
+		}
+	}
+	return counts
+}
+
 func importantPhraseLexicon(language string) *linguistics.LexiconProfile {
 	registry := linguistics.DefaultLexiconOrNil()
 	if registry == nil {
@@ -270,9 +342,14 @@ func isConfiguredVisualVerb(word string, profile *linguistics.LexiconProfile) bo
 }
 
 // ContainsProperNamePair reports whether value carries two consecutive
-// capitalised words. Both the selector and the entity-grounding pass use it to
-// keep a phrase surface free of proper-name runs even when the entity extractor
-// missed a name; it validates candidates without rewriting them.
+// capitalised words. The selector is the single owner of this rule: it keeps a
+// phrase surface free of proper-name runs even when the entity extractor missed
+// a name, validating candidates without rewriting them.
+//
+// A word that is ENTIRELY uppercase with two or more letters is an acronym
+// (USA, NATO, AI), not a capitalised name word: it neither starts nor continues
+// a proper-name run. Without this, adjacent acronyms ("USA NATO") or a shouted
+// sentence would be rejected as if they carried a person's name.
 func ContainsProperNamePair(value string) bool {
 	previousTitle := false
 	// FieldsSeq iterates without materialising the []string that
@@ -280,9 +357,11 @@ func ContainsProperNamePair(value string) bool {
 	for raw := range strings.FieldsSeq(value) {
 		word := strings.Trim(raw, ".,;:!?\"'’()[]{}")
 		currentTitle := false
-		for _, r := range word {
-			currentTitle = unicode.IsUpper(r)
-			break
+		if !isAcronymToken(word) {
+			for _, r := range word {
+				currentTitle = unicode.IsUpper(r)
+				break
+			}
 		}
 		if currentTitle && previousTitle {
 			return true
@@ -290,6 +369,23 @@ func ContainsProperNamePair(value string) bool {
 		previousTitle = currentTitle
 	}
 	return false
+}
+
+// isAcronymToken reports whether word is an all-uppercase token of two or more
+// letters (USA, NATO, AI). A single capital ("I", "A") is an ordinary
+// capitalised word, not an acronym, so it keeps its previous meaning.
+func isAcronymToken(word string) bool {
+	letters := 0
+	for _, r := range word {
+		if !unicode.IsLetter(r) {
+			continue
+		}
+		if !unicode.IsUpper(r) {
+			return false
+		}
+		letters++
+	}
+	return letters >= 2
 }
 
 func overlapsAnyRuneSpan(start, end int, spans [][2]int) bool {

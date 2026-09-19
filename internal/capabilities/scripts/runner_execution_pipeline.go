@@ -17,6 +17,8 @@ func (r *Runner) runExecutionPhases(ctx context.Context, runID string, req Gener
 	if !e.start() {
 		return
 	}
+	stockPrefetchDone := r.startStockPrefetch(ctx, req.StockBindings)
+	defer func() { r.waitStockPrefetch(stockPrefetchDone) }()
 	if !e.normalize() {
 		return
 	}
@@ -34,6 +36,8 @@ func (r *Runner) runExecutionPhases(ctx context.Context, runID string, req Gener
 	if !e.generate() {
 		return
 	}
+	r.waitStockPrefetch(stockPrefetchDone)
+	stockPrefetchDone = nil
 	e.ensureResult()
 	if !e.translate() {
 		return

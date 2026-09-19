@@ -12,6 +12,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -100,6 +101,20 @@ func (w *warmStager) CountFor(url string) int {
 	return w.byURL[url]
 }
 
+type warmDriveReader struct{}
+
+func (warmDriveReader) DownloadFile(context.Context, string) (io.ReadCloser, string, error) {
+	return io.NopCloser(strings.NewReader("drive-staged-bytes")), "video/mp4", nil
+}
+
+func (warmDriveReader) ListFiles(context.Context, string) ([]DriveFileInfo, error) {
+	return []DriveFileInfo{{ID: "drive-video", MimeType: "video/mp4"}}, nil
+}
+
+func (warmDriveReader) TrashFile(context.Context, string) error { return nil }
+
+var _ DriveReaderPort = warmDriveReader{}
+
 // newWarmTestService wires the minimal Service surface the warmer consults:
 // the acquisition stager (cold download), the cross-run cache, and the local FS
 // port the cache validates against.
@@ -116,6 +131,7 @@ func newWarmTestService(t *testing.T, stager acquisition.SourceStager, cache *fa
 		log:               zap.NewNop(),
 		localFS:           testFS,
 		sourceStager:      stager,
+		driveReader:       warmDriveReader{},
 		sourceCacheReader: cache,
 		sourceCacheWriter: cache,
 	}
@@ -272,7 +288,7 @@ func TestWarmSourceCache_PerURLFailureIsBestEffort(t *testing.T) {
 // TestWarmSourceCache_SkipsDriveURLs pins the deliberate Drive exclusion: the
 // Drive branch caches a temp path that the stager's own release removes, so
 // warming a Drive URL would download the whole file for nothing.
-func TestWarmSourceCache_SkipsDriveURLs(t *testing.T) {
+func TestWarmSourceCache_WarmsDriveURLs(t *testing.T) {
 	stager := newWarmStager(t)
 	cache := newFakeSourceCache()
 	svc := newWarmTestService(t, stager, cache)
@@ -281,14 +297,17 @@ func TestWarmSourceCache_SkipsDriveURLs(t *testing.T) {
 		"https://drive.google.com/file/d/1AbCdEfGhIjKlMnOpQrStUvWxYz012345/view",
 		warmTestURL(6),
 	})
-	if report.SkippedDrive != 1 {
-		t.Errorf("SkippedDrive = %d, want 1", report.SkippedDrive)
+	if report.SkippedDrive != 0 {
+		t.Errorf("SkippedDrive = %d, want 0", report.SkippedDrive)
 	}
-	if report.Requested != 1 || report.Warmed != 1 {
-		t.Errorf("warm report = %+v, want Requested=1 Warmed=1 (Drive URL excluded)", report)
+	if report.Requested != 2 || report.Warmed != 2 {
+		t.Errorf("warm report = %+v, want Requested=2 Warmed=2 (Drive URL warmed)", report)
 	}
 	if got := stager.Count(); got != 1 {
-		t.Errorf("stager Prepare calls = %d, want 1 (Drive URL must not be downloaded)", got)
+		t.Errorf("non-Drive stager Prepare calls = %d, want 1", got)
+	}
+	if got := cache.Count(); got != 2 {
+		t.Errorf("cache entries = %d, want 2 (Drive URL must be downloaded and cached)", got)
 	}
 }
 

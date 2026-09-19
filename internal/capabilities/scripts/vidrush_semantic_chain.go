@@ -167,7 +167,16 @@ func (e *SceneIRSegmentEnricher) Enrich(ctx context.Context, plan *scriptpkg.Res
 	}
 	var importantPhrases []string
 	if includeImportantPhrases {
-		candidates := append([]string(nil), extraction.ImportantPhrases...)
+		// phrases.Select is the single owner of the proper-name filter for the
+		// selector-derived candidates; operator-supplied MediaExtractionPolicy
+		// hints are external input, so the same rule is applied once here at
+		// their ingress instead of re-validating the selector output later.
+		candidates := make([]string, 0, len(extraction.ImportantPhrases)+len(phraseCandidates))
+		for _, hint := range extraction.ImportantPhrases {
+			if !phrasepkg.ContainsProperNamePair(hint) {
+				candidates = append(candidates, hint)
+			}
+		}
 		candidates = append(candidates, phraseCandidates...)
 		importantPhrases = groundImportantPhrases(sourceForExtraction, entities, candidates, phraseLimit)
 	}

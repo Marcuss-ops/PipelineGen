@@ -23,8 +23,10 @@ import (
 
 // ── Post-gen metadata helpers ───────────────────────────────────────────────
 //
-// Post-gen metadata builders live in the application/scripts package. PostGenUseCase calls them directly
-// from its own package; this transport no longer re-exports them.
+// The LLM-era post-generation phase (PostGenUseCase / GenerateVideoMetadata)
+// was removed in the post-cutover NLP cleanup. The canonical metadata path is
+// the scripts post-processor's MetadataProcessor; this transport never
+// re-exports those builders.
 
 // ── Script history HTTP transport (companion to /api/script) ──────────────
 

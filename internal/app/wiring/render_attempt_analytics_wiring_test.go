@@ -1,10 +1,14 @@
 package wiring
 
-// render_attempt_analytics_wiring_test.go verifies the parallel analytics
-// contract: the coarse per-attempt row (render_ms/encode_ms in
-// render_attempt_analytics) and the granular exclusive-wall phases
-// (chronon.* in performance_operations) are both persisted for the same
-// render — each in its own existing table, with no new table created.
+// render_attempt_analytics_wiring_test.go verifies the coarse per-attempt
+// analytics row (render_ms/encode_ms in render_attempt_analytics) is persisted
+// through the live wiring recorder.
+//
+// The parallel Chronon-phase half of this test was removed together with the
+// orphan internal/app/wiring/chronon package (zero production importers). The
+// live granular-phase path is
+// internal/app/wiring/rendering/metrics.go::NewChrononMetricsAdapter, pinned by
+// internal/app/wiring/rendering/metrics_integration_test.go.
 
 import (
 	"context"
@@ -14,11 +18,8 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 	"go.uber.org/zap"
 
-	chrononwiring "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/chronon"
-	cliprender "github.com/Marcuss-ops/PipelineGen/internal/capabilities/cliprender"
 	capoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
 	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
-	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 )
 
 // renderAttemptAnalyticsWiringSchema is the canonical render_attempt_analytics
@@ -57,12 +58,10 @@ func TestWireRenderAttemptRecorderNilDBIsNil(t *testing.T) {
 	}
 }
 
-// TestParallelAnalyticsPersistenceNoNewTables pins the parallel contract: the
-// same render produces a render_attempt_analytics row (render_ms/encode_ms
-// from the certified artifact) AND the granular chronon.* phase rows in
-// performance_operations, and sqlite_master still holds exactly the two
-// canonical analytics tables — nothing new was created.
-func TestParallelAnalyticsPersistenceNoNewTables(t *testing.T) {
+// TestWireRenderAttemptRecorderPersistsCertifiedRow pins the coarse per-attempt
+// contract: the certified render_ms/encode_ms land verbatim in exactly one
+// render_attempt_analytics row keyed by attempt_id.
+func TestWireRenderAttemptRecorderPersistsCertifiedRow(t *testing.T) {
 	db, err := sql.Open("sqlite3", ":memory:")
 	if err != nil {
 		t.Fatal(err)
@@ -71,21 +70,14 @@ func TestParallelAnalyticsPersistenceNoNewTables(t *testing.T) {
 	if _, err := db.Exec(renderAttemptAnalyticsWiringSchema); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.Exec(chrononMetricsWiringSchema); err != nil {
-		t.Fatal(err)
-	}
 
 	recorder := wireRenderAttemptRecorder(db, zap.NewNop())
 	if recorder == nil {
 		t.Fatal("wireRenderAttemptRecorder over a real DB returned nil")
 	}
-	adapter := chrononwiring.WireChrononMetricsAdapter(db, zap.NewNop())
-	if adapter == nil {
-		t.Fatal("wireChrononMetricsAdapter over a real DB returned nil")
-	}
 
-	// Coarse per-attempt row: render_ms/encode_ms come verbatim from the
-	// certified queue artifact (the worker-measured wall times).
+	// render_ms/encode_ms come verbatim from the certified queue artifact
+	// (the worker-measured wall times).
 	attempt := scriptgen.RenderAttemptAnalytics{
 		AttemptID:  "attempt-parallel-1",
 		JobID:      "job-parallel-1",
@@ -105,25 +97,6 @@ func TestParallelAnalyticsPersistenceNoNewTables(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Granular exclusive-wall phases from the same render's sidecar, published
-	// through the adapter inside a run-bound context (the job-worker path).
-	doc, err := cliprender.ParseChrononSidecar([]byte(chrononMetricsWiringSidecar))
-	if err != nil {
-		t.Fatal(err)
-	}
-	run := kernobs.NewRunObserver(nil).StartRun(context.Background(), kernobs.RunInfo{
-		JobID:     "job-parallel-1",
-		AttemptID: "attempt-parallel-1",
-	})
-	adapter.Publish(kernobs.WithRun(context.Background(), run), doc, cliprender.ChrononMetricsPublishOptions{
-		SourceDurationMS: 45000,
-		Width:            1920,
-		Height:           1080,
-		FPS:              30,
-	})
-
-	// 1) render_attempt_analytics holds exactly one row with the certified
-	// render_ms/encode_ms.
 	var attemptCount int
 	if err := db.QueryRow(`SELECT COUNT(*) FROM render_attempt_analytics WHERE attempt_id='attempt-parallel-1'`).Scan(&attemptCount); err != nil {
 		t.Fatal(err)
@@ -137,42 +110,5 @@ func TestParallelAnalyticsPersistenceNoNewTables(t *testing.T) {
 	}
 	if renderMS != 24971 || encodeMS != 554 {
 		t.Fatalf("render_ms/encode_ms = %d/%d, want 24971/554", renderMS, encodeMS)
-	}
-
-	// 2) performance_operations holds the granular phases for the same job.
-	var opCount int
-	if err := db.QueryRow(`SELECT COUNT(*) FROM performance_operations WHERE job_id='job-parallel-1'`).Scan(&opCount); err != nil {
-		t.Fatal(err)
-	}
-	if opCount != 7 {
-		t.Fatalf("performance_operations rows = %d, want 7 (one per measured exclusive-wall phase)", opCount)
-	}
-
-	// 3) No new table was created: sqlite_master holds exactly the two
-	// canonical analytics tables (plus nothing else).
-	rows, err := db.Query(`SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name`)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer rows.Close()
-	var tables []string
-	for rows.Next() {
-		var name string
-		if err := rows.Scan(&name); err != nil {
-			t.Fatal(err)
-		}
-		tables = append(tables, name)
-	}
-	if err := rows.Err(); err != nil {
-		t.Fatal(err)
-	}
-	wantTables := []string{"performance_operations", "render_attempt_analytics"}
-	if len(tables) != len(wantTables) {
-		t.Fatalf("tables = %v, want exactly %v (no new table created)", tables, wantTables)
-	}
-	for i := range wantTables {
-		if tables[i] != wantTables[i] {
-			t.Fatalf("tables = %v, want exactly %v (no new table created)", tables, wantTables)
-		}
 	}
 }

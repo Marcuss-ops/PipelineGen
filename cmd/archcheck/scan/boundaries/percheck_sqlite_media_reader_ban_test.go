@@ -136,7 +136,7 @@ const q = "SELECT id FROM media_assets WHERE id = ?"
 `
 	for _, rel := range []string{
 		"internal/platform/sqlite/assets/imagesregistry/store.go",
-		"internal/platform/sqlite/catalog/stock_query.go",
+		"internal/platform/sqlite/control_plane.go",
 		"internal/platform/qdrant/indexing/asset_store.go",
 		"cmd/admin/internal/audit/clip_drive_audit.go",
 	} {

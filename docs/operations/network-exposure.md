@@ -179,6 +179,8 @@ curl -i -X POST \
 
 L'endpoint restituisce `202 Accepted` con un `job_id`; il client deve poi eseguire polling su `/api/jobs/${JOB_ID}/full` finché lo stato non diventa `completed`, `failed`, `cancelled` o `dead_letter`.
 
+Lo schema del body di `POST /api/script/generate` (envelope → `items[]` → `source` / `script_params` / `output` / `docs` / `audio` / `media_plan`) e' documentato in [`script-generate-payload-schema.md`](script-generate-payload-schema.md): il body e' fail-closed (`DisallowUnknownFields`), quindi un campo fuori posto e' un `400`, non un campo ignorato.
+
 ---
 
 ## 4. `VELOX_WORKER_TOKEN`: configurazione e propagazione ai worker
@@ -197,11 +199,16 @@ VELOX_PORT=8000
 
 ### Come il server lo carica
 
-- **`start_server.sh`**: cattura `VELOX_WORKER_TOKEN` dall'ambiente systemd
-  (`EnvironmentFile=/etc/pipelinegen/pipelinegen.env`) **prima** di fare
-  `source .env`, e lo **ripristina** dopo — il `.env` del repository non può
-  sovrascrivere il valore canonico (e se il canonico è assente, `unset`
-  disattiva il token worker: `WorkerAuth` rifiuta con 500).
+- **systemd (canone di avvio)**: `pipelinegen.service` avvia
+  `bin/pipelinegen --mode server --config config.yaml` con
+  `EnvironmentFile=/etc/pipelinegen/pipelinegen.env`; ogni modifica richiede
+  `sudo systemctl restart pipelinegen`. **Non** avviare il processo a mano in
+  parallelo: `start_server.sh` compete con il servizio per la porta 8000.
+- **`start_server.sh` (solo sviluppo/E2E)**: il launcher manuale cattura
+  `VELOX_WORKER_TOKEN` dall'ambiente systemd **prima** di fare `source .env`, e
+  lo **ripristina** dopo — il `.env` del repository non può sovrascrivere il
+  valore canonico (e se il canonico è assente, `unset` disattiva il token
+  worker: `WorkerAuth` rifiuta con 500).
 - **Config layer Go**: `cfg.Security.WorkerToken` ← `VELOX_WORKER_TOKEN`;
   ogni modifica richiede `sudo systemctl restart pipelinegen` (l'EnvironmentFile
   è letto solo all'avvio).

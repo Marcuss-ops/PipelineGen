@@ -436,6 +436,24 @@ func compileResultOverlayPlan(result *GenerateResult, language Language, planID,
 	return nil
 }
 
+// setOverlayDriveJobID separates semantic render identity from the public
+// broker job identity. The former is deliberately stable for queue
+// idempotency; the latter is the only valid first segment of the Drive tree.
+func setOverlayDriveJobID(result *GenerateResult, jobID string) {
+	if result == nil {
+		return
+	}
+	jobID = strings.TrimSpace(jobID)
+	if result.OverlayPlan != nil {
+		result.OverlayPlan.DriveJobID = jobID
+	}
+	for _, plan := range result.LocalizedOverlayPlans {
+		if plan != nil {
+			plan.DriveJobID = jobID
+		}
+	}
+}
+
 // overlaySceneInput projects ONE real scene onto the planner's neutral
 // SceneInput. Every candidate is anchored to the certified word timing or
 // the certified entity occurrence; anything not spoken verbatim is skipped

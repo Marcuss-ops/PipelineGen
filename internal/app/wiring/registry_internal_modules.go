@@ -7,7 +7,9 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
+	renderingwiring "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/rendering"
 	searchwiring "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/search"
 	youtubewiring "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/youtube"
 	assetspersistence "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
@@ -31,6 +33,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/httpserver/middleware"
 	infraoverlays "github.com/Marcuss-ops/PipelineGen/internal/platform/overlays"
 	qdrantsearch "github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/search"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/renderinggen"
 	"github.com/gin-gonic/gin"
 
 	"go.uber.org/zap"
@@ -182,6 +185,9 @@ func registerInternalModules(ctx context.Context, registry *module.Registry, log
 		SearchBackends:     searchBackends,
 		SearchAggregator:   searchAgg,
 		IdempotencyHandler: idemHandler,
+	}
+	if stockW != nil && stockW.Service != nil {
+		crossStep.StockPrefetcher = newStockScriptPrefetcher(stockW.Service, log)
 	}
 
 	// Fase 4.1: native Pexels image search provider. Registered
@@ -429,6 +435,35 @@ func registerClipRender(registry *module.Registry, log *zap.Logger, cfg *config.
 		subtitleCompiler.SetArtifactRepository(root.Repos.SubtitleArtifactRepo)
 	}
 	worker.WithSubtitleCompiler(subtitleCompiler)
+
+	// Chronon timing-sidecar projection (2026-09-19). The render outcome carries
+	// a content-addressed reference to the raw `<output>.timing.json` deep
+	// profile RenderingGen preserved; this is the ONE place those bytes are
+	// fetched, parsed (cliprender.ParseChrononSidecar) and recorded as measured
+	// phases in performance_operations through the canonical
+	// OperationReportProjectionRecorder seam. Without it the reference travels
+	// on the job result and the phase history is never written — exactly the
+	// gap the observability matrix used to claim as DONE. Best-effort by
+	// construction: the projection can never fail a render.
+	if root.DB != nil && root.DB.DB != nil {
+		storeURL := strings.TrimSpace(os.Getenv("RENDERINGGEN_STORE_URL"))
+		if storeURL == "" {
+			storeURL = defaultRenderingGenStoreURL
+		}
+		switch fetcher, fErr := renderinggen.NewChrononTimingFetcher(storeURL); {
+		case fErr != nil:
+			log.Warn("registerClipRender: chronon timing metrics NOT wired (object store URL invalid)", zap.Error(fErr))
+		default:
+			if adapter := renderingwiring.NewChrononMetricsAdapter(root.DB.DB, log); adapter == nil {
+				log.Warn("registerClipRender: chronon timing metrics NOT wired (performance store unavailable)")
+			} else {
+				worker.SetChrononMetrics(adapter, fetcher)
+				log.Info("registerClipRender: chronon timing metrics wired (performance_operations)")
+			}
+		}
+	} else {
+		log.Warn("registerClipRender: chronon timing metrics NOT wired (primary SQLite unavailable)")
+	}
 
 	// RenderingGen/Chronon render boundary: the shared executor owns queue
 	// submission; the remote worker owns Chronon execution.
