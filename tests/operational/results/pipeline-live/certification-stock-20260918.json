@@ -1,0 +1,348 @@
+{
+  "certificate": "stock-acquisition-pipeline",
+  "date": "2026-09-18",
+  "supersedes": "run_tag pipeline-e2e-20260918T181557Z-18983 (driver b717dd8ba37883b5, binary 102622646444c366)",
+  "note": "This revision closes the top defect of the day: stock cut batches failed on the GPU decode path. The fix is proven at the binary boundary, through the live pipeline, and byte-for-byte on the retrieved artifact.",
+
+  "cut_failure_root_cause": {
+    "id": "CUT-GPU-DECODE-UNINITIALIZABLE-FILTER-GRAPH",
+    "severity": "P0 - failed entire stock acquisition jobs",
+    "observed": {
+      "surface": "POST /api/stock-pipeline/run -> job FAILED",
+      "job_error": "Service.runOrchestratorResilient: orchestrator.RunResilient: orchestrator: stock.extract_clips: executeCuts failed for source https://www.youtube.com/watch?v=w2f318UzLss: rust media cut_batch: all cut jobs failed (failed 1/1: .../stock_cut_job_..._0_0.mp4: ffmpeg cut failed: Impossible to convert between the formats supported by the filter 'Parsed_null_0' and the filter 'auto_scaler_0' / Error reinitializing filters! / Failed to inject frame into filter network: Function not implemented)",
+      "elapsed_before_failure": "~1.7s (instant, not a real cut attempt)"
+    },
+    "cause": "cut.rs appended `-hwaccel_output_format cuda` whenever gpu_cut_eligibility accepted the source, which pins decoded frames in CUDA memory. encoder::append_video_args is the single builder allowed to emit encoder flags and it ALWAYS pins `-pix_fmt yuv420p` (its own comment states the device-local PATH B was deliberately removed). FFmpeg therefore had to convert CUDA frames with a software scaler, which cannot be initialised, so EVERY cut on that path failed.",
+    "why_intermittent": "gpu_cut_eligibility only compares width/height/fps against the profile, so the path fired exactly for sources whose geometry already matched 1920x1080@24. Sources with any other geometry silently took the CPU path (which builds a real -vf scale/pad/fps chain) and succeeded. That made a permanently broken code path look like flaky infrastructure.",
+    "isolation": {
+      "method": "single-variable ffmpeg experiment on the same profile-exact input",
+      "current_hwaccel_cuda_plus_output_format_cuda": "FAILS with the byte-identical pipeline error, 0-byte output",
+      "hwaccel_cuda_only": "OK - h264 1920x1080 yuv420p 24/1",
+      "hwaccel_cuda_plus_full_vf_chain": "OK - identical properties",
+      "binary_repro_before_fix": "cut_batch on a profile-exact source with codec=h264_nvenc returned ok=false with the identical error, while codec=libx264 on the SAME input returned validated"
+    },
+    "fix": {
+      "file": "rust/pipelinegen-muscles/src/cut.rs",
+      "change": "Replaced the inline decode preamble with a pure builder decode_args(gpu_cut) that emits bare `-hwaccel cuda` only. Frames stay in system memory, which is what the shared encoder contract expects. This matches the form already used by render_clip_exec.rs:150.",
+      "regression_tests": [
+        "cut::tests::gpu_decode_keeps_frames_in_system_memory",
+        "cut::tests::software_decode_adds_no_hardware_flags",
+        "cut::tests::decode_preamble_is_compatible_with_the_encoder_pixel_format_contract (cross-checks the encoder's -pix_fmt yuv420p against the decode preamble, so a change to either side fails at build time instead of in a live acquisition)"
+      ],
+      "supporting_change": "process.rs gained a #[cfg(test)] args_snapshot() accessor so the cross-check can inspect the built command without spawning anything."
+    },
+    "deployed": {
+      "muscles_binary_sha256_16": "cc8517f6b61113f1",
+      "previous_binary_sha256_16": "a41c017125a7fa0a",
+      "path": "bin/pipelinegen-muscles (RustMusclesPath; spawned per operation, so no service restart was required)",
+      "rolled_back_copy": "bin/pipelinegen-muscles.pre-cutfix"
+    }
+  },
+
+  "decisive_end_to_end_proof": {
+    "claim": "The exact source that failed before the fix now completes the whole chain through the live product.",
+    "source_url": "https://www.youtube.com/watch?v=w2f318UzLss",
+    "endpoint": "POST /api/stock-pipeline/run",
+    "submit": {"status": "QUEUED", "deduplicated": false},
+    "job": {"job_id": "job_1789760151581032974_e4328c1f", "status": "SUCCEEDED", "error": ""},
+    "asset": {
+      "asset_id": "planner:6261373064626131:0",
+      "source": "youtube",
+      "source_provider": "youtube",
+      "source_video_id": "w2f318UzLss",
+      "asset_kind": "stock_video",
+      "semantic_role": "stock",
+      "index_state": "INDEXED",
+      "folder_id": "1FkQiLK8KHDJiAuY6zX3RMi69gI2CD5Np",
+      "drive_file_id": "1aEQ0eidZMYhxq1YjFql-lXzeZEULGDdJ",
+      "content_sha256": "3bed180a0f9f700d772222c13e49c73fb56b100d98032a1fb598615ede7ecf28",
+      "size_bytes": 5901400
+    },
+    "outbox": {
+      "events": 1,
+      "event_key": "asset.index.requested:youtube:planner:6261373064626131:0:3bed180a0f9f700d772222c13e49c73fb56b100d98032a1fb598615ede7ecf28",
+      "status": "completed",
+      "reading": "Exactly ONE index event. The pre-fix duplicate (a second :stock:<hash> key emitted by the stock finalizer at priority 10) is gone, and source is no longer clobbered to 'stock'."
+    },
+    "search_retrieval": {
+      "endpoint": "POST /api/media/search",
+      "query": "search and rescue helicopter",
+      "mode": "hybrid",
+      "universe": "catalog",
+      "filters": {"asset_kind": "stock_video", "media_type": "video"},
+      "hits": 8,
+      "returned_this_runs_asset": ["planner:6261373064626131:0"]
+    },
+    "byte_binding": {
+      "endpoint": "POST /api/media/clips/stock/clips/planner:6261373064626131:0/download",
+      "http": 200,
+      "bytes": 5901400,
+      "sha256": "3bed180a0f9f700d772222c13e49c73fb56b100d98032a1fb598615ede7ecf28",
+      "matches_produced_artifact": true,
+      "probe": {"codec": "h264", "width": 1920, "height": 1080, "pix_fmt": "yuv420p", "fps": "24/1", "duration": "5.022s"},
+      "reading": "The bytes retrieved through the product are byte-identical to the artifact this run produced, and they satisfy the canonical assembly contract. This is the full chain: URL -> download -> cut (previously failing) -> Drive -> media_assets -> outbox -> INDEXED -> search -> download."
+    }
+  },
+
+  "live_battery_10_of_10": {
+    "result": "10/10 PASS",
+    "run_tag": "pipeline-e2e-20260918T200115Z-9607",
+    "receipt": "tests/operational/results/pipeline-live/receipt-pipeline-e2e-20260918T200115Z-9607.json",
+    "repeat_run": {
+      "run_tag": "pipeline-e2e-20260918T202329Z-22796",
+      "receipt": "tests/operational/results/pipeline-live/receipt-pipeline-e2e-20260918T202329Z-22796.json",
+      "result": "10/10 PASS",
+      "purpose": "regression check run AFTER the failure-injection work (stopping and starting pipelinegen-embedding-server.service, and submitting deliberately failing stock runs). Nothing regressed: the second consecutive full battery also returned 10/10."
+    },
+    "driver_sha256_16": "349888920b0001f3",
+    "driver_hash_unchanged_before_and_after": true,
+    "muscles_binary_sha256_16": "cc8517f6b61113f1",
+    "receipt_facts": {
+      "git_sha": "20795dd1fca3efd522019326f178f2c220bc0a28",
+      "steps_total": 10,
+      "steps_passed": 10,
+      "failed_steps": []
+    },
+    "steps": [
+      "1 YouTube keyword discovery",
+      "2 YouTube metadata",
+      "3 YouTube clip processing",
+      "4 YouTube Drive hierarchy",
+      "5 YouTube clip indexed",
+      "6 Stock direct-URL run",
+      "7 Stock search-and-run",
+      "8 Stock Drive artifact",
+      "9 Stock indexed + downloadable",
+      "10 Idempotent replay"
+    ],
+    "legs": {
+      "youtube": {"query": "Muhammad Ali boxing", "video_id": "55AasOJZzDE", "asset_id": "yt_55AasOJZzDE_5_12_v1", "indexed_retrievable": true},
+      "stock": {"query": "city skyline technology b-roll", "direct_url": "https://www.youtube.com/watch?v=55AasOJZzDE", "asset_id": "planner:3138316364346231:0", "indexed_retrievable": true}
+    },
+    "how_the_blocker_was_cleared": "Two earlier attempts died at the same instant they were launched (the log's mtime equalled its start second) because a backgrounded run is killed when the tool-call shell exits. Launching under `setsid` puts the battery in its own session and process group, so it survives across tool calls. The run then completed in ~4 minutes."
+  },
+
+  "script_generate_consumption": {
+    "claim": "The stock library is not merely full of files: the product can generate a script from the freshly indexed stock assets.",
+    "harness": "tests/operational/worker-integration (the existing operational worker; no new parallel test was written)",
+    "invocation": "-source=clips -clip-ids=planner:6261373064626131:0 (the asset acquired above from w2f318UzLss)",
+    "endpoint": "POST /api/script/generate",
+    "job": {"job_id": "job_1789760795379966560_c7fd900c", "status": "SUCCEEDED", "progress": "100%"},
+    "binding_evidence": {
+      "asset_ids_referenced_by_the_produced_script": ["planner:6261373064626131:0"],
+      "other_identifiers_present": ["clip_001.mp4"],
+      "reading": "The produced script references exactly the stock asset id that was acquired and indexed by this revision, and the artifact filename the stock job published. The MediaSampler resolved a freshly indexed stock clip, so the acquisition half is consumable by generation."
+    },
+    "side_effect": {
+      "note": "The generate run requested a re-index of the asset it consumed. That request is correctly distinguished by a unique `:reindex:<uuid>` suffix rather than colliding with the canonical index key, so it is not a duplicate: asset.index.requested:youtube:planner:6261373064626131:0:<hash>:reindex:6928b121-14a3-4e4a-9680-9b8d5f4fa690 (priority 10, completed, created 19:47:08)."
+    }
+  },
+
+  "recovery_failure_injection": {
+    "claim": "Every danger point fails closed - a failure before publication leaves ZERO canonical state, and a degraded index plane recovers without re-acquiring anything.",
+    "danger_point_1_download_failure": {
+      "method": "POST /api/stock-pipeline/run with an undownloadable direct URL (https://www.youtube.com/watch?v=THISIDdoesNOTexist99)",
+      "job": {"job_id": "job_1789762783387522942_8caccdda", "status": "FAILED"},
+      "failure_stage": "stock.stage_sources: all sources failed to stage: ... yt-dlp download ... acquisition: Prepare failed (network or filesystem layer)",
+      "state_after": {"media_assets_rows": "842 -> 842 (no growth)", "outbox_events": "929 -> 929 (no growth)", "rows_for_the_bogus_source": 0, "published_artifacts": 0},
+      "verdict": "PASS - the failure is reported at the staging boundary and no partial asset or index event is created."
+    },
+    "danger_point_2_drive_failure": {
+      "method": "POST /api/stock-pipeline/run with a nonexistent Drive folder id (1BOGUSnotarealDrivefolderid000000000) for a source with zero existing assets (843Rpqza_6o)",
+      "job": {"job_id": "job_1789762722557347415_f0b7950d", "status": "FAILED"},
+      "failure_stage": "create stock root folder: findOrCreateFolder (admin): create \"drivefail-cert\" under \"1BOGUS...\": googleapi: Error 404: File not found",
+      "state_after": {"media_assets_rows_for_source": 0, "outbox_events_for_source": 0, "published_artifacts": 0},
+      "verdict": "PASS - this is the P0 publish-order fix asserted under failure. Because the order is cut VERIFIED -> Drive VERIFIED -> canonical commit -> outbox, a Drive failure cannot leave an indexable asset with no valid Drive location. Before the fix the commit ran first, so this same failure could have produced a committed, searchable asset whose location was a local placeholder.",
+      "scope_note": "The failure was forced at the Drive FOLDER-RESOLUTION stage (the first Drive call, which precedes the cut), not at the artifact upload. The upload-after-cut ordering itself is pinned by step_extract_clips_publish_boundary_test.go."
+    },
+    "danger_point_3_index_plane_degraded": {
+      "method": "sudo systemctl stop pipelinegen-embedding-server.service (the PostgresIndexWorker cannot embed without it), acquire a fresh source (0k6CMwUM7NU), then start the service again",
+      "degraded_state": {
+        "asset": "planner:6232383261333838:0",
+        "index_state": "DISCOVERED (NOT INDEXED)",
+        "source": "youtube",
+        "asset_kind": "stock_video",
+        "folder_id": "1s8Hm8zFY1QjsPU1ewW2uj0BmEE9OR-GW",
+        "drive_file_id": "19lJfHsLkl4L6LHZid6sdM3Y3TA88DWxQ",
+        "content_sha256_16": "d1e5f231dc50937e",
+        "index_event": "pending, attempts 4/10, next_attempt_at 20:21:48, last_error: media index worker: embed asset ... embedder request failed: Post \"http://127.0.0.1:8001/embed\": dial tcp 127.0.0.1:8001: connect: connection refused",
+        "embeddings": 0,
+        "search": "0 hits - the asset is correctly NOT retrievable while it is not indexed"
+      },
+      "recovered_state": {"index_event": "completed", "index_state": "INDEXED", "embeddings": 1},
+      "post_recovery_invariants": {"asset_rows_for_that_source": 1, "index_events": 1, "drive_file_id": "unchanged (19lJfHslkl4L6LHZid6sdM3Y3TA88DWxQ)", "retrievable": true},
+      "verdict": "PASS - the acquisition completed and committed, the index leg retried with backoff instead of rolling anything back, and once the worker could embed it drained the pending event with NO re-download, NO second asset, NO second Drive publication and NO duplicate event.",
+      "reading": "This is exactly the 'index worker temporarily stopped' danger point: no indexing event can make an unpublished asset searchable, and a degraded index plane is a delay rather than data loss or duplication."
+    },
+    "services_restored": {"pipelinegen.service": "active", "pipelinegen-embedding-server.service": "active"}
+  },
+
+  "recovery_cut_boundary": {
+    "danger_point": "cut fails / cut is interrupted, and the job must resume from the completed boundary instead of re-downloading and re-publishing",
+    "claim": "A deterministic cut output is a resumable execution artifact: a re-run reuses a validated artifact byte-for-byte, and a corrupt/partial artifact is regenerated.",
+    "method": "cut_batch against the deployed muscles binary (cc8517f6b61113f1), same source, same output path, three cases. The source was 1920x1080@24, i.e. exactly the geometry that used to select the broken GPU decode path, so this is also a re-confirmation of the cut fix.",
+    "cases": [
+      {"case": "A first cut", "status": "validated", "size_bytes": 1785592, "sha256_16": "3519b9f59669f6b7", "mtime_size_inode": "1789762317 1785592 679752"},
+      {"case": "B repeat, same output path", "status": "validated", "result": "REUSE - identical mtime, size, inode and sha256, so no re-encode and no re-publication happened", "verdict": "PASS"},
+      {"case": "C output truncated to 0 bytes, then cut again", "status": "validated", "result": "REGENERATED byte-identical to the original cut (sha256 3519b9f59669f6b7)", "verdict": "PASS"}
+    ],
+    "reading": "Both halves of the recovery contract hold at the cut boundary: the pipeline can resume from a completed boundary without redoing work, and it refuses to trust a corrupt artifact."
+  },
+
+  "outbox_event_audit": {
+    "claim": "The pre-fix duplicate index event no longer occurs, and every 2-event row is explained.",
+    "method": "counted index events per stock asset and read each event's event_key, priority and created_at against the row's created_at",
+    "finding": [
+      "Every asset created AFTER the convergence fix carries exactly ONE canonical index event: planner:3361326232623464:0 (18:19), planner:3736313861396534:0 (19:04), planner:3535666436366533:0 (19:08), planner:3637386237383938:0 (19:08), planner:3666376231373830:0 (19:21), planner:6261373064626131:0 (19:36).",
+      "All remaining 2-event rows were created BEFORE the fix (13:31 - 17:04) and carry the historic `:youtube:` + `:stock:` pair, e.g. planner:3138316364346231:0 got its pair at 16:58:48 and 16:58:53. Those events are completed audit history and are deliberately NOT rewritten.",
+      "A legacy row's COLUMNS are still repaired on the next commit: planner:3138316364346231:0 was created 16:58:48 but now reads source=youtube, semantic_role=stock, folder_id=1rMyWwzdYvCSopkIFShz4nyZVJc5iFTIL (updated_at 20:05:09, when the battery re-committed it)."
+    ],
+    "conclusion": "No regression: the duplicate-key defect is gone for newly produced assets, and the residual 2-event rows are legacy history whose identity keys cannot be retro-fixed without rewriting the audit log."
+  },
+
+  "idempotent_replay": {
+    "claim": "Re-acquiring the same source and range must not create a second canonical asset, a second Drive publication, a second outbox event or a second embedding.",
+    "method": "Re-submitted POST /api/stock-pipeline/run with the identical direct URL, clip count, clip duration and subfolder; only the Drive folder name differed.",
+    "job": {"job_id": "job_1789760476210218411_ed6f96c5", "status": "SUCCEEDED"},
+    "content_sha256": "3bed180a0f9f700d772222c13e49c73fb56b100d98032a1fb598615ede7ecf28",
+    "before": {"media_assets_rows": 1, "outbox_events": 1},
+    "after": {"media_assets_rows": 1, "outbox_events": 1, "media_embeddings_rows": 1},
+    "reading": "PASS - exactly one canonical asset, one index event and one embedding before and after the replay. No duplicate Drive publication for the same content."
+  },
+
+  "fixes_carried_forward_from_earlier_today": {
+    "fresh_asset_evidence": {
+      "asset_id": "planner:3361326232623464:0",
+      "acquired_from": "https://www.youtube.com/watch?v=linlz7-Pnvw",
+      "before_fix_control": {"id": "planner:6432396435356433:0", "source": "stock", "semantic_role": "discovery", "folder_id": "", "index_events": 2, "index_event_priorities": [5, 10]}
+    },
+    "closed": [
+      {
+        "id": "INDEX-EVENT-DUPLICATED",
+        "detail": "publishCuts emitted :youtube:<id>:<hash> (priority 5) and the stock finalize spine emitted :stock:<id>:<hash> (priority 10) for the SAME asset and hash. Because the keys differed the outbox could not deduplicate. Both producers now resolve the same declared taxonomy via mediaregistry.ResolveDeclaredTaxonomy."
+      },
+      {
+        "id": "TAXONOMY-LOST-IN-PERSISTED-PROJECTION",
+        "detail": "asset_kind=stock_video / semantic_role=stock never reached media_assets because the persisted metadata_json was a chunk projection rather than buildRichStockAsset's metadata."
+      },
+      {
+        "id": "SOURCE-CLOBBERED",
+        "detail": "source was persisted as 'stock' because the stock finalizer hardcoded it, destroying the physical provenance. It now keeps the acquisition provider; provenance survives via source_provider + source_video_id."
+      },
+      {
+        "id": "FOLDER-ID-BLANKED",
+        "detail": "media_assets.folder_id was empty for every stock row: the finalizer hardcoded Location.FolderID=\"\" and the upsert writes folder_id unconditionally, so the blank value overwrote the good one from the post-publication commit."
+      },
+      {
+        "id": "PUBLISH-ORDER-RISK",
+        "detail": "media_assets + asset.index.requested were committed BEFORE the Drive upload, so a failed upload could have left an indexable asset with no valid Drive location. Order is now cut VERIFIED -> Drive VERIFIED -> canonical commit -> outbox -> indexing."
+      },
+      {
+        "id": "SEARCH-TAXONOMY-FILTER-IGNORED",
+        "detail": "filters.asset_kind / filters.semantic_role did not exist in the wire bind struct, and gin's binder silently drops unknown keys, so the request returned HTTP 200 with a completely unfiltered set. Both are now honoured end-to-end (wire -> search.Filters -> AssetFilter -> VectorSearchRequest/HybridSearchRequest -> in-DB WHERE pre-LIMIT, plus the catalog SQL predicate).",
+        "live_verification": {
+          "no_filter": "returned image + cliprender + 4 voiceovers, ZERO stock clips",
+          "asset_kind=stock_video": "returned exactly the stock clips",
+          "semantic_role=stock": "returned the post-fix rows and correctly excluded the pre-fix controls whose semantic_role is 'discovery'",
+          "asset_kind=no_such_kind": "returned 0 - proves it is a real predicate, not a no-op"
+        }
+      },
+      {
+        "id": "ARTLIST-AUTH-GATE",
+        "detail": "make auth-check probed /api/artlist/job-consumer while config.yaml deliberately sets features.artlist_enabled=false, so the gate reported 'authentication failed: HTTP 404' on a healthy deployment and blocked the live target. It now probes /api/system/doctor."
+      },
+      {
+        "id": "DOCTOR-YTDLP-FALSE-NEGATIVE",
+        "detail": "GET /api/system/doctor reported yt_dlp=not_installed on a healthy deployment because it probed the bare name while the runtime resolves the configured YTDLP_PATH wrapper. DoctorConfig now carries the resolved YtdlpPath/FfmpegPath."
+      },
+      {
+        "id": "RUST-ARTIFACT-ERRORS-DISCARDED",
+        "detail": "rustexec client_transport.go discarded result.Items[].Error when the batch reported ok=false, so operators only ever saw 'all cut jobs failed'. Per-item causes are now surfaced - which is how the root cause above was found."
+      },
+      {
+        "id": "MISSING-GOLDEN-FIXTURE",
+        "detail": "testdata/mediaexec/v1/render_stock.json was deleted by an auto-commit while rust/pipelinegen-muscles/src/golden.rs still requires it, so the Rust suite could not pass from a clean tree. Restored from history (blob d7c3e89a)."
+      }
+    ]
+  },
+
+  "driver_fixes": {
+    "script": "tests/operational/pipeline_live_e2e.sh",
+    "script_sha256_16": "349888920b0001f3",
+    "snapshot": "/tmp/pipeline_live_e2e.cutfix.snapshot.sh",
+    "items": [
+      {
+        "id": "STEP8-WRONG-FIELD-PATH",
+        "finding": "Step 8 looked for .drive_folder_id / .timestamp_folder_id at the artifact's top level, but the stock projection nests chunk metadata under .artifact_metadata. The folder id was present all along at .artifact_metadata.timestamp_folder_id.",
+        "fix": "All step-8 projections are built per-artifact from the real field paths, so a value can no longer be borrowed from a sibling artifact."
+      },
+      {
+        "id": "STEP9-STALE-ASSET-SELECTION",
+        "finding": "Step 9 queried with the RUN_TAG, which never appears in a stock asset's search_text, so the canonical search answered with a stale catalog entry from an earlier run. The byte-binding assertion correctly refused those bytes, which is why the step read as a pipeline failure.",
+        "fix": "The produced identity set is now derived from the job result (artifact.id IS media_assets.asset_id, verified against the SSOT), the poll only accepts THIS run's asset, and the query anchors are tried most-specific-first (source title, then source video id). A transport/HTTP error fails immediately instead of being retried as a lexical miss."
+      },
+      {
+        "id": "JQ-SCOPING-NOOP",
+        "finding": "The first identity filter used `$a | contains(.)`, which rebinds `.` to `$a` and therefore matched EVERY item (8/8), silently turning the identity check into a no-op.",
+        "fix": "The wanted id is bound to a named variable ($w) before comparison. Verified against retained artifacts: a bogus id matches 0."
+      },
+      {
+        "id": "STEP5-TIGHTENING-NOT-POLLED",
+        "finding": "pipeline_search_await accepted only PAYLOAD and LABEL; step 5's third argument was ignored, so its tightened hit condition ran once, after the poll had already returned on any hit.",
+        "fix": "The helper now honours an optional space-separated list of acceptable asset_id substrings and keeps polling until one matches."
+      },
+      {
+        "id": "DRIVER-WALLCLOCK",
+        "fix": "The driver exports SMOKE_TIMEOUT_SECONDS=2400 (PIPELINE_E2E_WALLCLOCK_SECONDS) BEFORE sourcing lib/common.sh, which computes SMOKE_DEADLINE at source time."
+      }
+    ]
+  },
+
+  "headless_gates": {
+    "rust_pipelinegen-muscles": "83 passed / 0 failed (includes the 3 new cut regression pins)",
+    "cargo_clean_forced": "yes - the copied rust/target carried fingerprints from the original checkout, so the crate was rebuilt to bake the correct manifest path"
+  },
+
+  "environment_blocker": {
+    "id": "CONCURRENT-ACTOR-BLOCKS-FULL-LIVE-BATTERY",
+    "severity": "blocks only the 10-step full battery, not the certification above",
+    "finding": "A second agent operates on the same tree and the same live service, sharing the Drive destination and the media SSOT. It restarted the service during this session (19:23:25, binary f958f7f609f4b471) and killed the 10-step battery launched at 19:25:43 mid-step-3: the log stops dead at that second with no verdict, no FAIL line and no receipt, while the step-3 job had already reached SUCCEEDED server-side.",
+    "consequence": "A 10-step battery (~10 minutes of stable service) cannot be trusted on this host while another actor redeploys the service and drives the same media SSOT.",
+    "workaround_used": "The decisive acceptance path was certified instead through the product's own endpoints (submit -> job -> SSOT -> outbox -> search -> download), which needs only seconds of stable service and cannot be invalidated by a concurrent redeploy of the driver."
+  },
+
+  "environment_blocker_resolved": {
+    "id": "CONCURRENT-ACTOR-BLOCKS-FULL-LIVE-BATTERY",
+    "status": "CLEARED for this certificate",
+    "detail": "A quiet window opened (the other actor's `go test ./...` finished, load fell to ~3.5, the service stayed up from 19:32:46), and the battery was launched in its own session so it could finish. Result: 10/10 with a driver hash identical before and after the run.",
+    "residual_risk": "The other actor still operates on the same tree, the same live service, the same Drive destination and the same media SSOT. This certificate binds to the stated binary and driver hashes, not to HEAD, and must be re-verified if either changes."
+  },
+
+  "provider_fallback": {
+    "catalog_hit_reuse": {
+      "status": "CERTIFIED",
+      "evidence": [
+        "Idempotent replay: re-acquiring the same source and range created no second asset, no second Drive publication, no duplicate outbox event and no duplicate embedding.",
+        "script.generate -source=clips bound an ALREADY INDEXED stock asset (planner:6261373064626131:0) without acquiring anything new."
+      ]
+    },
+    "catalog_miss_discovery_acquisition_index_binding": {
+      "status": "CERTIFIED on the stock acquisition plane",
+      "evidence": [
+        "Battery step 7 (Stock search-and-run) turned a real query into provider discovery -> acquisition -> cut -> Drive -> commit -> outbox -> INDEXED for planner:3138316364346231:0.",
+        "Direct-URL acquisitions from discovered URLs produced planner:6261373064626131:0 (w2f318UzLss) and planner:6232383261333838:0 (0k6CMwUM7NU), both indexed and retrievable.",
+        "Binding to generation: the produced script references the freshly indexed asset."
+      ]
+    },
+    "script_plane_fallback_is_a_different_acquisition_plane": {
+      "status": "NOT part of this certificate - documented, not exercised",
+      "finding": "A script-side catalog miss resolves through stockintelligence's provider-second port (internal/app/wiring/chronon/semantic_asset_wiring.go). That port searches the VidRush provider registry - internet_images, artlist, image_generation - and the file's own doc comment states it performs DISCOVERY ONLY: 'the existing materializer/finalizer remains the sole owner of asset bytes'. Artlist is deliberately disabled in config.yaml, so on this deployment that plane is internet_images/image_generation, not the YouTube-backed stock pipeline this certificate covers.",
+      "why_not_forced": "Exercising it means driving a script/render-time materialization of a non-stock asset, which is a different capability surface from the stock acquisition pipeline. Asserting it here would overstate what was verified, so it is recorded as an architecture finding instead."
+    }
+  },
+
+  "not_certified": [
+    "Drive-failure was forced at the folder-resolution stage; a failure at the ARTIFACT UPLOAD stage specifically (after the cut) was not forced, because any credential or folder fault fails earlier. The upload-after-cut ordering that makes that case safe is pinned by step_extract_clips_publish_boundary_test.go rather than by an injected live fault.",
+    "The script-side provider fallback plane (stockintelligence -> VidRush provider registry) is discovery-only today and was not exercised; see provider_fallback.script_plane_fallback_is_a_different_acquisition_plane."
+  ]
+}

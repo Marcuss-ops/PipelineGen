@@ -1,0 +1,32 @@
+{
+  "schema": "pipelinegen.stock_pipeline_certification.v1",
+  "run_id": "pipeline-e2e-20260918T183742Z-15417",
+  "git_sha": "9714bc4599209be6c64c8918f9956942eda618d1",
+  "api_base": "127.0.0.1:8000",
+  "verdict": "FAIL",
+  "running_binary": {},
+  "steps_total": 10,
+  "steps_passed": 1,
+  "failed_steps": [
+    "2  YouTube metadata 3  YouTube clip processing 4  YouTube Drive hierarchy 5  YouTube clip indexed 6  Stock direct-URL run 7  Stock search-and-run 8  Stock Drive artifact 9  Stock indexed + downloadable 10 Idempotent replay"
+  ],
+  "youtube": {
+    "query": "volcano eruption aerial 4k",
+    "url": "https://www.youtube.com/watch?v=DQx96G4yHd8",
+    "video_id": "",
+    "asset_id": "",
+    "indexed_retrievable": false,
+    "outbox_event": "asset.index.requested",
+    "index_state_expected": "INDEXED",
+    "job": {}
+  },
+  "stock": {
+    "query": "volcano lava flow aerial",
+    "direct_url": "https://www.youtube.com/watch?v=DQx96G4yHd8",
+    "asset_id": "",
+    "indexed_retrievable": false,
+    "outbox_event": "asset.index.requested",
+    "index_state_expected": "INDEXED",
+    "job": {}
+  }
+}

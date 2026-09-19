@@ -1,0 +1,153 @@
+{
+  "schema": "pipelinegen.stock_pipeline_certification.v1",
+  "run_id": "pipeline-e2e-20260918T185004Z-31861",
+  "git_sha": "9714bc4599209be6c64c8918f9956942eda618d1",
+  "api_base": "127.0.0.1:8000",
+  "verdict": "FAIL",
+  "running_binary": {
+    "version": "backup-pre-revert-2652-g9714bc459",
+    "git_commit": "9714bc459",
+    "git_commit_full": "9714bc459",
+    "git_dirty": true,
+    "build_time": "2026-09-18T18:48:27Z",
+    "binary_sha256": "d48ac0a1a9fc27ba45b4c654aaeb1f2b5f3a79c682973b6908391e3d4a09ec6b",
+    "binary_path": "/home/pierone/src/go-master/projects/Pyt/VeloxEditing/refactored/bin/pipelinegen",
+    "config_path": "config.yaml",
+    "mode": "all",
+    "worker_id": "YOutube",
+    "pid": 933662,
+    "started_at": "2026-09-18T18:48:38Z",
+    "identity_hash": "f169957048f73f7a"
+  },
+  "steps_total": 10,
+  "steps_passed": 6,
+  "failed_steps": [
+    "6  Stock direct-URL run 7  Stock search-and-run 8  Stock Drive artifact 9  Stock indexed + downloadable"
+  ],
+  "youtube": {
+    "query": "glacier ice cave aerial 4k",
+    "url": "https://www.youtube.com/watch?v=wKFgAQLw0zM",
+    "video_id": "wKFgAQLw0zM",
+    "asset_id": "yt_wKFgAQLw0zM_5_12_v1",
+    "indexed_retrievable": true,
+    "outbox_event": "asset.index.requested",
+    "index_state_expected": "INDEXED",
+    "job": {
+      "status": "SUCCEEDED",
+      "job_id": "job_1789757446370827064_da76932f",
+      "index_state_expected": "INDEXED",
+      "timing": {
+        "wall_ms": 50312,
+        "execution_wall_ms": 50312,
+        "attributed_ms": 3,
+        "unattributed_ms": 50309,
+        "unattributed_percent": 99.99403720782318,
+        "overlapped_ms": 0,
+        "bottleneck_stage": "post_writer_finalize",
+        "bottleneck_percent": 0.005962792176816664,
+        "critical_path": [
+          {
+            "name": "post_writer_finalize",
+            "duration_ms": 3,
+            "percent": 0.005962792176816664
+          }
+        ],
+        "stages": [
+          {
+            "name": "post_writer_finalize",
+            "duration_ms": 3
+          }
+        ]
+      },
+      "artifacts": [
+        {
+          "artifact_id": "yt_wKFgAQLw0zM_5_12_v1",
+          "filename": "yt_wKFgAQLw0zM_5_12_v1_pipeline-e2e-20260918t185004z-31861-yout.mp4",
+          "size_bytes": 3972064,
+          "sha256": "9f7ab2fc36ab5a5afd579540a68a6cf24901138aae6983a3042420fafa94d96b",
+          "drive_folder_id": "19dWLFd83xsstiJxpoOVbv3UiM6ynhhgT",
+          "remote_file_id": "12dBfGetxy_Bg157h920IijipKn_rAw_6",
+          "remote_web_view_link": "https://drive.google.com/file/d/12dBfGetxy_Bg157h920IijipKn_rAw_6/view?usp=drivesdk",
+          "drive_path": null,
+          "source_url": null,
+          "source_video_id": null,
+          "start_sec": null,
+          "end_sec": null
+        }
+      ]
+    }
+  },
+  "stock": {
+    "query": "glacier ice cave aerial",
+    "direct_url": "https://www.youtube.com/watch?v=wKFgAQLw0zM",
+    "asset_id": "planner:3361326232623464:0",
+    "indexed_retrievable": true,
+    "outbox_event": "asset.index.requested",
+    "index_state_expected": "INDEXED",
+    "job": {
+      "status": "FAILED",
+      "job_id": "job_1789757575545740723_2c82fd15",
+      "index_state_expected": "INDEXED",
+      "timing": {
+        "wall_ms": 55579,
+        "execution_wall_ms": 55579,
+        "attributed_ms": 53988,
+        "unattributed_ms": 1591,
+        "unattributed_percent": 2.8625919861818314,
+        "overlapped_ms": 1541,
+        "bottleneck_stage": "stock.stage_sources",
+        "bottleneck_percent": 88.44707533420898,
+        "critical_path": [
+          {
+            "name": "stock.search",
+            "duration_ms": 3261,
+            "percent": 5.867323989276525
+          },
+          {
+            "name": "stock.stage_sources",
+            "duration_ms": 49158,
+            "percent": 88.44707533420898
+          },
+          {
+            "name": "stock.extract",
+            "duration_ms": 1558,
+            "percent": 2.8032170424081038
+          },
+          {
+            "name": "stock.extract",
+            "duration_ms": 1550,
+            "percent": 2.788823116644776
+          },
+          {
+            "name": "post_writer_finalize",
+            "duration_ms": 2,
+            "percent": 0.0035984814408319687
+          }
+        ],
+        "stages": [
+          {
+            "name": "post_writer_finalize",
+            "duration_ms": 2
+          },
+          {
+            "name": "stock.extract",
+            "duration_ms": 3108
+          },
+          {
+            "name": "stock.search",
+            "duration_ms": 3261
+          },
+          {
+            "name": "stock.stage_sources",
+            "duration_ms": 49158
+          },
+          {
+            "name": "stock.youtube_download",
+            "duration_ms": 48832
+          }
+        ]
+      },
+      "artifacts": []
+    }
+  }
+}
