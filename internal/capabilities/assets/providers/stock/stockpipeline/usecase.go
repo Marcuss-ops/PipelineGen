@@ -9,6 +9,7 @@ import (
 
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	"github.com/Marcuss-ops/PipelineGen/pkg/background"
+	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
 )
 
 // jobsEnqueuer is the narrowed surface of the jobs service that
@@ -29,6 +30,14 @@ type jobsEnqueuer interface {
 // full ffmpeg/render composition graph.
 type ServiceRunner interface {
 	Run(ctx context.Context, input *RunInput) (*PipelineResult, error)
+}
+
+// SourceCacheWarmer is the OPTIONAL narrow surface for pre-claim source cache
+// warming (source_cache_port.go). *Service satisfies it; test doubles that
+// only implement ServiceRunner simply do not, and the submit path degrades to
+// "no warm" instead of failing or panicking on a type assert.
+type SourceCacheWarmer interface {
+	WarmSourceCache(ctx context.Context, urls []string) SourceWarmReport
 }
 
 // StockUseCase centralises stock-pipeline submission. It owns the
@@ -110,6 +119,12 @@ func (u *StockUseCase) Submit(ctx context.Context, cmd *StockCommand, async bool
 			zap.Int("clips", len(cmd.Clips)),
 			zap.Int("total_minutes", cmd.TotalMinutes),
 		)
+		// Pre-claim warm: the job is queued but no worker owns it yet, so the
+		// known direct URLs can be materialised into the cross-run source
+		// cache now. The later in-run stock.stage_sources then finds a HIT and
+		// never pays the yt-dlp download on its critical path. Best-effort and
+		// detached — it cannot delay or fail this Submit.
+		u.warmDirectSourcesBeforeClaim(ctx, job.ID, cmd.DirectURLs)
 		return job.ID, nil
 	}
 
@@ -130,7 +145,44 @@ func (u *StockUseCase) Submit(ctx context.Context, cmd *StockCommand, async bool
 	return "", nil
 }
 
+// warmDirectSourcesBeforeClaim launches a best-effort warming pass for the
+// job's direct source URLs, detached from the caller's request context (a
+// returned HTTP response must not cancel it) and bounded by
+// preClaimSourceWarmBudget. It never blocks Submit and never returns an error:
+// warming only ever removes work from the run's critical path.
+func (u *StockUseCase) warmDirectSourcesBeforeClaim(ctx context.Context, jobID string, directURLs []string) {
+	if u == nil || len(directURLs) == 0 {
+		return
+	}
+	warmer, ok := u.service.(SourceCacheWarmer)
+	if !ok || warmer == nil {
+		// Synchronous-only or stub runner: no cross-run cache to warm.
+		return
+	}
+
+	warmCtx, cancel := background.DetachWithTimeout(ctx, "stock-preclaim-source-warm", preClaimSourceWarmBudget)
+	concurrent.SafeGo("stock-preclaim-source-warm", func() {
+		defer cancel()
+		report := warmer.WarmSourceCache(warmCtx, directURLs)
+		if u.log == nil {
+			return
+		}
+		u.log.Info("stock use case: pre-claim source warm finished",
+			zap.String("job_id", jobID),
+			zap.Int("requested", report.Requested),
+			zap.Int("warmed", report.Warmed),
+			zap.Int("already_cached", report.AlreadyCached),
+			zap.Int("failed", report.Failed),
+			zap.Int("skipped_drive", report.SkippedDrive),
+		)
+	})
+}
+
 // Compile-time check that the concrete *stockpipeline.Service satisfies
 // ServiceRunner. If the runner signature changes, this fails to compile
 // and forces the use case + handler to be updated together.
 var _ ServiceRunner = (*Service)(nil)
+
+// Compile-time check that the concrete *stockpipeline.Service can warm the
+// cross-run source cache on the pre-claim path.
+var _ SourceCacheWarmer = (*Service)(nil)

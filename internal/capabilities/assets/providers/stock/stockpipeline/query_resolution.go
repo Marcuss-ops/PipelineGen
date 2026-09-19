@@ -240,6 +240,24 @@ func (s *Service) enrichDirectURLDurations(ctx context.Context, input *RunInput)
 	if len(input.Clips) > 0 || len(input.DirectURLs) == 0 {
 		return
 	}
+
+	// Canonical stage: the per-URL provider probe is a serial, network-bound
+	// span that runs BEFORE planning. Recording it lets the timing breakdown
+	// attribute it instead of folding it into unattributed wall time.
+	probeMetric := startServiceStockPhase(ctx, "stock.duration_probe", "")
+	defer func() {
+		if probeMetric != nil {
+			resolved := 0
+			for _, raw := range input.DirectURLs {
+				if input.SourceDurations[strings.TrimSpace(raw)] > 0 {
+					resolved++
+				}
+			}
+			probeMetric.SetItems(int64(len(input.DirectURLs)), int64(resolved))
+		}
+		finishServiceStockPhase(s.log, probeMetric, nil)
+	}()
+
 	for _, raw := range input.DirectURLs {
 		url := strings.TrimSpace(raw)
 		if url == "" {

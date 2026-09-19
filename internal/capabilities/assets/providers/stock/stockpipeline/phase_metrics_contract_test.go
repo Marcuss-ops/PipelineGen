@@ -47,6 +47,9 @@ func TestStockPhaseMetricContract_AllRequestedPhases(t *testing.T) {
 		{"stock.compose", 2, 2},
 		{"stock.database_save", 2, 2},
 		{"stock.index", 2, 2},
+		{"stock.publish", 1, 1},
+		{"stock.finalize", 1, 1},
+		{"stock.duration_probe", 1, 1},
 	}
 
 	recorder := &canonicalStageRecorder{}

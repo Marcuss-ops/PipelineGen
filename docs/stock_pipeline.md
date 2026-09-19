@@ -216,9 +216,12 @@ Required checks per clip:
 - Only files with a MIME type starting with `video/` are considered source candidates. Other file types are ignored.
 - Drive source URLs are validated at the HTTP boundary: they must use HTTPS and a public hostname. Private IP or `file://` URLs are rejected.
 - Source download failures surface as `stock.stage_sources` step failures in the job timeline.
+- Independent sources are staged concurrently, bounded by the orchestrator's `MaxConcurrentJobs` (default 3); results are merged in source order so staged assets and checkpoints stay deterministic.
+- Direct source URLs are also warmed into the cross-run source cache **before a worker claims the job** (pre-claim warm on the async submit path, bounded at 3 concurrent downloads). When the warm completes first, the run's `stock.stage_sources` resolves from cache instead of paying the yt-dlp download on its critical path. The warm is best-effort: failures are logged and counted, never block submission, and the run falls back to the normal download path. Drive URLs are deliberately excluded (their cached path is the stager's own temp copy, which the release removes). Search-resolved sources cannot be warmed ahead of claim because they only exist once the run resolves the queries.
 
 ## Related documentation
 
 - [`docs/operations/stock-e2e-runbook.md`](operations/stock-e2e-runbook.md) — operational E2E battery and diagnostics.
 - [`internal/capabilities/assets/stock/handler.go`](../internal/capabilities/assets/stock/handler.go) — HTTP handler and validation rules.
 - [`internal/capabilities/assets/providers/stock/stockpipeline/stager_adapter.go`](../internal/capabilities/assets/providers/stock/stockpipeline/stager_adapter.go) — Drive download and folder expansion logic.
+- [`internal/capabilities/assets/providers/stock/stockpipeline/source_cache_port.go`](../internal/capabilities/assets/providers/stock/stockpipeline/source_cache_port.go) — cross-run source cache ports and pre-claim warming.
