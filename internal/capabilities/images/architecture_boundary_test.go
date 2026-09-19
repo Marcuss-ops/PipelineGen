@@ -31,8 +31,15 @@ func TestApplicationImagesHasNoChromeInfrastructure(t *testing.T) {
 		}
 		for _, imp := range file.Imports {
 			importPath := strings.Trim(imp.Path.Value, `"`)
+			// The concrete Chrome infrastructure lived at
+			// internal/platform/images/chrome (deleted 2026-09-19, zero
+			// production importers). The historical
+			// internal/infrastructure/images/chrome prefix named here before
+			// that does not exist in this tree, so this guard had silently
+			// stopped guarding anything; matching on /images/chrome covers both
+			// spellings and catches a re-introduction.
 			if importPath == "os/exec" ||
-				strings.HasPrefix(importPath, "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/images/chrome") ||
+				strings.Contains(importPath, "/images/chrome") ||
 				strings.Contains(importPath, "/visual_validate") {
 				t.Errorf("%s imports concrete Chrome infrastructure: %s", filepath.Base(path), importPath)
 			}

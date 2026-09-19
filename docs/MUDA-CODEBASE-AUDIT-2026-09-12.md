@@ -83,9 +83,9 @@ A package with zero production importers is unreachable from any binary.
 | ID | Item | Prod LOC | Severity | Effort | Evidence |
 |---|---|---|---|---|---|
 | **D1** | `internal/app/wiring/chronon/` — entire package | **861** (＋444 test) | **High** | S | Only importer is `internal/app/wiring/render_attempt_analytics_wiring_test.go:17`. `NewChrononNativeCertifier` called only from its own test. `ReadChrononMeasuredPhases` called only from `chronon_timing_projection_test.go`. `WireChrononMetricsAdapter` duplicates the **live** path `internal/app/wiring/rendering/metrics.go:14 → cliprender.NewChrononMetricsAdapter`. `chronon_wire.go` even documents that its former plan projector "was deleted", leaving only the certification probe — which itself is never wired. |
-| **D2** | `internal/platform/images/pexels/` — superseded provider | **263** | **High** | S | Only importer is `internal/capabilities/imagesearch/live_relevance_e2e_test.go:57`. The live "pexels" provider is `internal/platform/artlist/fallback` (see `internal/app/wiring/build_bundles_artlist_providers.go:147` and `build_provider_catalog.go:38`). Two independent Pexels clients were built; one shipped. |
-| **D3** | `internal/platform/sqlite/checkpoint/` — stub store | 100 | Medium | S | Declares `ErrNotWired = errors.New("checkpoint sqlite adapter: not wired")` (`store.go:17`). Only importer is `tests/e2e/replay_resume_e2e_test.go`. `checkpoint.New` never called in production. |
-| **D4** | `internal/platform/sqlite/replay/` — stub store | 107 | Medium | S | Same shape: `ErrNotWired` (`store.go:18`), only importer is the same e2e test. |
+| **D2** | `internal/platform/images/pexels/` — superseded provider | **263** | **High** | S | Only importer is `internal/capabilities/imagesearch/live_relevance_e2e_test.go:57`. The live "pexels" provider is `internal/platform/artlist/fallback` (see `internal/app/wiring/build_bundles_artlist_providers.go:147` and `build_provider_catalog.go:38`). Two independent Pexels clients were built; one shipped. **RESOLVED 2026-09-19** — package deleted; the e2e harness now drives the shipped `artlist/fallback` Pexels client (no more native-image leg, no duplicate live calls). |
+| **D3** | `internal/platform/sqlite/checkpoint/` — stub store | 100 | Medium | S | Declares `ErrNotWired = errors.New("checkpoint sqlite adapter: not wired")` (`store.go:17`). Only importer is `tests/e2e/replay_resume_e2e_test.go`. `checkpoint.New` never called in production. **Reclassified 2026-09-19 — NOT a stub, NOT fat.** The `ErrNotWired` sentinel only fires on a nil `*sql.DB` (`New`); the adapter over a real DB is a complete, tested durable store. It is an *unfinished wiring*: `Runner.SetCheckpointResolver` (`runner_deps.go:382`) has no production caller, and the only `capcheckpoint.ArtifactVerifier` (`cas.ArtifactVerifier`) verifies **CAS** objects while the audio checkpoint records a media/Drive artifact (`finalAudio.FinalAudioSHA256` + `finalAudio.DriveLink`, `runner_phase_audio.go:288-289`). A naive wire would fail verification on every run and never resume. Wiring required an artifact verifier matching the audio artifact's real store — **RESOLVED 2026-09-19 by WIRING it** with the media-SSOT verifier; no deletion. See §2.1. |
+| **D4** | `internal/platform/sqlite/replay/` — stub store | 107 | Medium | S | Same shape: `ErrNotWired` (`store.go:18`), only importer is the same e2e test. **Reclassified 2026-09-19 — NOT a stub, NOT fat.** nil-DB guard only; the adapter is a complete durable store. Unwired end-to-end: there is **no production producer** (`BundleStore.Save` has no non-test caller) **and no consumer** (`JobsHandler.SetReplay` has no non-test caller, no `capreplay.Dispatcher` implementation), so `POST /api/jobs/:id/replay` returns 503 today. Wiring = producer (save the bundle after a render) + dispatcher + strategy resolver + the CAS staging asset source — **still OPEN 2026-09-19: no production `capreplay.Dispatcher` implementation exists, so this is an unwired feature, not a deletion.** See §2.1. |
 | **D5** | `internal/capabilities/assets/providers/stock/stockpipeline/reconcile/` | 78 | Medium | S | Only importer is `reconcile_boundary_test.go:12`. |
 | **D6** | Doc-only packages with zero importers | ~20 | Low | S | `internal/kernel/errors/` contains **only** `doc.go`; `internal/platform/` contains **only** `doc.go`. |
 | **D7** | Orphan make target `verify-vidrush-dry` | — | Low | XS | Declared at `make/operations.smoke.mk:37`; zero references from any other target, doc, `AGENTS.md` or `README.md`. |
@@ -94,12 +94,118 @@ A package with zero production importers is unreachable from any binary.
 **Subtotal: ~1 429 production LOC unreachable**, plus the stale matrix row.
 Nothing in that set is reachable from `cmd/server` or `cmd/worker`.
 
+### 2.1 Resolution log (2026-09-19)
+
+Verified against the current tree by resolving the **production** caller set
+(importers excluding the package directory and excluding `_test.go`), the same
+method this audit used.
+
+| Item | Outcome | Evidence |
+|---|---|---|
+| **D1** | **Deleted** (2026-09-18) | Package gone; `render_attempt_analytics_wiring_test.go` now covers the live `wireRenderAttemptRecorder` only. |
+| **D2** | **Deleted** (2026-09-19) | `internal/platform/images/pexels/` removed; the sole importer (`live_relevance_e2e_test.go`) retargeted at the shipped `artlist/fallback` Pexels client. |
+| **D3** | **WIRED, not deleted** (2026-09-19) | The store was never a stub — `ErrNotWired` only guards a nil `*sql.DB`. `BuildScriptGenerationRuntime` now builds `sqlitecheckpoint.New(root.DB.DB)` and calls `runner.SetCheckpointResolver(capcheckpoint.NewResolver(store, verifier))`. The verifier is a NEW media-SSOT adapter (`internal/platform/postgres/media/checkpoint_artifact_verifier.go`), because the audio checkpoint records the *published voiceover artifact* (`finalAudio.FinalAudioSHA256`, `runner_phase_audio.go:288`), whose durable home is `media_assets` — the CAS verifier would have answered "missing" on every run and silently disabled resume. The adapter is derived from the committer's own engine and is fail-closed: a miss is a definitive staleness → re-render. |
+| **D4** | **OPEN — NOT reachable as a bounded change** (2026-09-19) | The store is complete (`sqlite/replay`) and the e2e durability test certifies it. Three independent gaps block a correct wiring, and only the third is decisive: (1) no **producer** — `BundleStore.Save` has NO non-test caller; (2) no **`capreplay.Dispatcher`** — no production implementation exists, only the e2e/handler test doubles; (3) **no job that can carry the bundle's payload** — the replay bundle embeds `render.RenderPlan`, and the only place a sealed `render.RenderPlan` exists in production is the localized-render pipeline, which runs **in-process** (`LocalizedRenderEnqueuer.EnqueueLocalizedRender` → the localization service compiles and executes the plan in the same call, `internal/app/wiring/localized_render_enqueuer.go`), NOT as a queued job. So `Dispatch` has no existing seam to reuse: wiring replay means designing a NEW job type + payload schema + handler and registering it, plus the post-render bundle save and an environment source. That is a feature with product semantics (and its own payload-schema/ownership gates), not a cleanup — left open deliberately rather than guessed. |
+| **D5** | **Deleted** (2026-09-18) | `stockpipeline/reconcile/` removed; contracts pinned in the parent package. |
+
+**D1b — Chronon metrics projection: WIRED (2026-09-19).** The previous
+verification found `rendering.NewChrononMetricsAdapter`,
+`cliprender.ParseChrononSidecar` and `cliprender.ChrononMetricsAdapter` reachable
+only from tests: the production outcome carried the sidecar *reference*
+(`Outcome.ChrononTimingStorageKey/URL/SHA256`, `cliprender/ports.go:143-146`) but
+nothing fetched the bytes, so the matrix row claiming `DONE/MET` was false. Now
+wired end to end: `cliprender.Worker.publishChrononTiming`
+(`chronon_timing_projection.go`, called from
+`worker_completion.go::completeRendered`) fetches through the new
+`renderinggen.ChrononTimingFetcher` (object store `/objects/<key>`, re-hashed
+against the content address), parses once, and publishes through the
+`OperationReportProjectionRecorder` seam. Bound in
+`registerClipRender`; a half-wiring leaves the projection off. Best-effort by
+construction — it can never fail a render.
+
+**D2 follow-up — the media-type lie, corrected (2026-09-19).**
+`build_provider_catalog.go` registered the `pexels` and `pixabay` providers with
+`MediaType: "image"` while wiring the **video** searchers (`fallback.Pexels` /
+`fallback.Pixabay` → `/v1/videos/search`, returning clip-typed assets). The
+policy table is now `providerCatalogPolicies()` with `video` for all three
+entries, pinned by `TestProviderCatalogPoliciesDeclareTheServedSurface` so the
+declaration cannot drift from the wired surface again. Note the residual
+question this exposes: there is currently **no** live Pexels/Pixabay *image*
+surface in production — just the video clients. The declaration is now
+cross-checked against real adapter output, not just a literal:
+`TestProviderCatalogPoliciesMatchTheShippedAdapterSurface` drives the shipped
+`fallback.Pexels` against a canned `/v1/videos/search` response and derives the
+expected policy vocabulary from the returned `ProviderAsset.MediaType`. With
+`"image"` reintroduced the test fails with
+`policy declares media type "image" for pexels, but the wired adapter returns "clip" assets (policy vocabulary "video")`
+— verified by temporarily reverting the fix.
+
+### 2.2 Verification log (2026-09-19)
+
+| Check | Result |
+|---|---|
+| `platform/postgres/media` checkpoint artifact verifier vs **real PostgreSQL** (`TEST_POSTGRES_DSN` → `pipelinegen-postgres-test`) | **PASS** — registered digest → `Exists+SHA256Matches`; unknown digest → definitive miss (no error); empty digest → no availability |
+| `tests/e2e` `TestE2E_RenderCrashResumeRestartReplay` (the durable checkpoint/resume + replay contract the wiring now uses) | **PASS** |
+| Media-type regression pin (bug reintroduced on purpose) | **FAILS as intended**, then restored |
+| `go build ./...` / `go vet ./...` / `cmd/archcheck --strict` / ownership `--dry-run` | **PASS** (`passed: true`, 0 violations) |
+
+The DSN-gated suite is NOT hermetic by design: without `TEST_POSTGRES_DSN` it
+skips rather than faking availability. CI must therefore export the DSN
+(`make test-postgres`) for the first row above to be meaningful — a green
+`go test` without it means "skipped", not "verified".
+
 **Marker debt (lower severity, high count):**
 - 59 `TODO`, 2 `FIXME`, 4 `XXX`, 26 `Deprecated:` across production Go.
 - ~1 257 lines matching `^\s*//\s*(func|if|for|return|err :=|var|const)`. This
   heuristic over-counts (doc comments legitimately start that way), so treat it
   as a *sampling* signal: the honest sub-population is whatever survives
   `rg '^\s*//\s*(if|for|return|err :=)' -g '!*_test.go'` after manual review.
+
+### 2.3 Importer-scan kills (2026-09-19)
+
+Method: enumerate every package under `internal/` + `cmd/`, then count importers
+in **non-test** `.go` files only. Two packages had zero production importers and
+were deleted; a third turned out to hold a *dead guard* rather than dead code.
+
+| ID | Item | Size | Evidence | Verdict |
+|---|---|---|---|---|
+| **D9** | `internal/platform/images/chrome` (+ `visual_validate`) | 15 files, **3 579 LOC** | Retired concrete Chrome/Playwright image-generation infrastructure. `NewChromeImageProvider` / `NewChromeImageProviderPoolFromProfile` have **no non-test construction site**; the only non-test text naming the package is the retirement guard `TestBuildImagesServiceDoesNotWireChromeImageGeneration` (which asserts the composition root leaves `ImagesGenAIDeps.ImageGen` nil); the `chrome-pool-prewarm` prose left in `wire_services.go` / `wire_services_orchestration.go` / `wire_services_startup_plan.go` is stale — no Go symbol remains. | **DELETED** |
+| **D10** | `internal/platform/sqlite/catalog` | 6 files, **365 LOC** | **Zero** importers anywhere, tests included. The directory contains **no `_test.go` at all**, so the earlier claim that it "still carries its own package tests" was stale; `NewRepository` and every `CatalogRecord` type have zero references; its last consumer (`SourceCatalog` via `wiring.searchCatalogAdapter` / `RepoBundle.CatalogRepo`) was removed in the seventh pass. It was exempt from `percheck_sqlite_media_reader_ban` only by the `internal/platform/sqlite` zone prefix, so no debt-register entry had to be removed. | **DELETED** |
+| **D11** | `internal/capabilities/images/architecture_boundary_test.go` | 1 test | The guard forbade imports of `internal/infrastructure/images/chrome`, a path that **does not exist in this tree**, so it had silently stopped guarding anything. It now matches `/images/chrome`, covering both spellings. | **REPAIRED** |
+
+**KEPT deliberately — the capability-side seam is LIVE and fail-closed.**
+`images/generation` builds `NewDefaultRegistry(log, deps.GenAI.ImageGen)` with a
+nil `ImageGenerator` in production, and `GoogleSlidesProvider`'s `Healthy`,
+`Generate` and `TriggerPrewarm` each return early / a typed error on a nil
+delegate. That was read, not assumed: there is **no** nil-delegate panic on the
+production path, so the seam is not fat.
+
+**D4 — fifth independent proof (still OPEN, by decision).** No registered job
+type can carry the replay bundle payload. The complete job-type registry (the
+families in `kernel/job/canonical_definitions.go` plus every `Type*` constant
+declared under `internal/capabilities`) contains **no plan-carrying type**:
+`clip.render` carries a `RenderRequest` and compiles a `ClipRenderPlanV1`
+**inside** the worker, which is a different type from the `render.RenderPlan`
+the bundle embeds. A production `Dispatcher` therefore requires a NEW job type
++ payload codec + handler + registration — a product decision, not a deletion.
+
+| **D12** | dead AI-image-generation config knobs | 3 fields | `ConcurrencyConfig` carried `MaxConcurrentNvidiaGenerations`,
+`MaxConcurrentGoogleSlidesGenerations` and `GoogleSlidesProfileID`, and **no production statement read any of them** (the Nvidia lane has no implementation at all; the Chrome/Google-Slides pool is the package deleted above, D9). Removed from `types.go` and from both example configurations. | **DELETED** |
+
+The retirement is pinned by `TestConfig_RetiredAIImageGenerationKnobsAreGone`
+(`internal/platform/config/config_test.go`, proven non-vacuous by re-adding a key
+to an example and watching it fail): the two example configurations must not
+list the keys, **and** a config that still carries them must LOAD rather than
+fail closed. That second half is deliberate and is the opposite of the retired
+`storage.primary_db_path`, which the loader rejects loudly: operators keep a
+git-ignored `config.yaml`, and ignoring an inert concurrency limit has no
+failure mode, whereas ignoring a database path would silently repoint the
+process at a different database.
+
+Net of 2.3: **-23 files, -4 755 lines** in the deleted packages, plus the three
+retired config fields and their six example-configuration lines, with the full
+`go test ./...` sweep, `go vet ./...`, `cmd/archcheck --strict`, ownership
+`--dry-run` and `verify-component-coverage` all green afterwards.
 
 ---
 
@@ -250,12 +356,18 @@ M ≤ 2 days, L > 2 days.
    **wiring gap, not dead code** — and closing it is a P0 feature, not a
    deletion. That single decision determines whether D1 is a delete or a wire.
 2. **D2 — remove `internal/platform/images/pexels/`** (S). Repoint the one e2e
-   test at the live `artlist/fallback` provider.
+   test at the live `artlist/fallback` provider. **DONE 2026-09-19** — see §2.1.
 3. **D3 + D4 — remove the `ErrNotWired` stub stores** (S). They exist only to
    satisfy interfaces that production never constructs. Either delete both
    packages and their sole e2e consumer, or replace the e2e test's dependency
    with a real implementation — the `ErrNotWired` sentinel says the intent was
-   the latter but it was never finished.
+   the latter but it was never finished. **REVISED 2026-09-19 (§2.1): they are
+   not stubs.** `ErrNotWired` only guards a nil `*sql.DB`; both adapters are
+   complete and durable. The real gap is wiring (no production constructor for
+   either), and for D3 the only `ArtifactVerifier` verifies CAS objects while the
+   audio checkpoint records a media/Drive artifact. Treat as two open feature
+   decisions: wire (with a matching verifier + producer + dispatcher) or retire
+   — delete neither on the strength of this audit alone.
 4. **D5 — remove `stockpipeline/reconcile/`** (S), **D6 — remove the two
    doc-only packages** (XS), **D7 — delete the `verify-vidrush-dry` target** (XS).
 

@@ -370,6 +370,15 @@ hard_gates:
   - percheck_digest_md5_ban
   - percheck_digest_md5_ban_allowlist_missing
   - percheck_legacy_hotspot_growth
+  # External-provider policy single owner (added 2026-09-19): the catalog's
+  # ProviderPolicy table is owned by providerCatalogPolicies() in
+  # internal/app/wiring/build_provider_catalog.go — the ONE declaration whose
+  # MediaType is cross-checked against real adapter output. A second literal
+  # escapes that check, which is how pexels/pixabay came to declare "image"
+  # over video adapters. The semantic half (declared MediaType vs served
+  # surface) is not statically decidable and is pinned by
+  # TestProviderCatalogPoliciesMatchTheShippedAdapterSurface instead.
+  - percheck_provider_policy_single_owner
   - percheck_upsert_points_sole_owner
   - percheck_frame_concept_projection_writer
   - percheck_control_plane_sql_writes

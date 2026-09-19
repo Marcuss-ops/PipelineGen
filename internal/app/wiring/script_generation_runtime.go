@@ -11,6 +11,7 @@ import (
 
 	mediasub "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/media"
 	assetspersistence "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
+	capcheckpoint "github.com/Marcuss-ops/PipelineGen/internal/capabilities/checkpoint"
 	entityports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/entities/ports"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/entitycatalog"
 	capabilityimagesearch "github.com/Marcuss-ops/PipelineGen/internal/capabilities/imagesearch"
@@ -29,11 +30,18 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/observability"
 	pgmedia "github.com/Marcuss-ops/PipelineGen/internal/platform/postgres/media"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/renderinggen"
+	sqlitecheckpoint "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/checkpoint"
 	scriptjobs "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/jobregistry"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/rendermetrics"
 	sqlitescripts "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/scripts"
 	"go.uber.org/zap"
 )
+
+// defaultRenderingGenStoreURL is the fallback object-store endpoint used when
+// RENDERINGGEN_STORE_URL is unset (the local single-host deployment default).
+// Owning it once keeps the overlay-asset prefetch and the Chronon timing
+// sidecar fetch pointed at the same store.
+const defaultRenderingGenStoreURL = "http://127.0.0.1:9000"
 
 // scriptGenerationTranslator adapts the application translation port to the
 // capability runtime without leaking provider DTOs into capabilities/scripts.
@@ -189,6 +197,24 @@ func BuildScriptGenerationRuntime(cfg *config.Config, root *ComposeRoot, runRepo
 	}
 	runner.SetCombinedAudioRenderer(audioRenderer)
 	runner.SetFinalAudioPublisher(newFinalAudioPublisher(root, committer, log))
+	// Durable per-unit checkpoint resume (the audio unit today). The resolver
+	// gates reuse on (input fingerprint + recorded artifact still present +
+	// processor version), so a crash-restart SKIPs a certified audio render
+	// instead of recomputing it. Nil-safe: an unwired resolver keeps the
+	// legacy best-effort path, and a nil artifact verifier blocks SKIP only
+	// for units that recorded an artifact — never an unverified reuse.
+	// The artifact verifier reads the SAME engine that published the
+	// artifact (the canonical media SSOT), derived from the committer.
+	if root.DB != nil && root.DB.DB != nil {
+		if cpStore, cpErr := sqlitecheckpoint.New(root.DB.DB); cpErr != nil {
+			log.Warn("durable checkpoint resolver NOT wired (checkpoint store unavailable)", zap.Error(cpErr))
+		} else {
+			runner.SetCheckpointResolver(capcheckpoint.NewResolver(cpStore, mediaCheckpointArtifactVerifier(committer, log)))
+			log.Info("durable per-unit checkpoint resume wired (audio unit; media-SSOT artifact verification)")
+		}
+	} else {
+		log.Warn("durable checkpoint resolver NOT wired (primary SQLite unavailable)")
+	}
 	// MEDIA-SSOT: the BGM/SFX/overlay resolver and the media preflight read the
 	// PostgreSQL media SSOT, and the engine selection is owned by the canonical
 	// selector. Repeating the branch here made a SECOND engine decision point —
@@ -223,7 +249,7 @@ func BuildScriptGenerationRuntime(cfg *config.Config, root *ComposeRoot, runRepo
 		queueClient := renderinggen.New(queueURL)
 		storeURL := strings.TrimSpace(os.Getenv("RENDERINGGEN_STORE_URL"))
 		if storeURL == "" {
-			storeURL = "http://127.0.0.1:9000"
+			storeURL = defaultRenderingGenStoreURL
 		}
 		queueClient.SetAssetPrefetcher(renderinggen.NewHTTPAssetPrefetcher(storeURL))
 		prepareEnqueuer, err := scriptgen.NewQueuePrepareEnqueuer(queueClient)
@@ -452,6 +478,44 @@ func buildRuntimeMediaCertSpec(plan *scriptpkg.ResolvedGenerationPlan) mediacert
 		})
 	}
 	return spec
+}
+
+// mediaCheckpointArtifactVerifier resolves the durable checkpoint resume
+// artifact port from the canonical committer's OWN engine.
+//
+// WHY THE COMMITTER AND NOT A SECOND HANDLE. The runner's audio unit records
+// the published voiceover artifact in its checkpoint (ArtifactSHA256 =
+// finalAudio.FinalAudioSHA256, runner_phase_audio.go), and
+// final_audio_publisher.go registers that artifact through the canonical
+// media writer into media_assets.content_sha256. The verifier must therefore
+// read the same engine the write landed on — a verifier pointed at the
+// operational SQLite mirror could only ever answer "missing" and would
+// silently disable resume. This is the same derive-the-read-from-the-writer
+// rule the other *FromCommitter helpers follow.
+//
+// nil means the media plane is closed (or the committer does not expose its
+// engine). The resolver then degrades to EXECUTE for artifact-bearing units —
+// never an unverified SKIP, and never a fabricated availability.
+func mediaCheckpointArtifactVerifier(committer assetspersistence.AssetCommitter, log *zap.Logger) capcheckpoint.ArtifactVerifier {
+	if committer == nil {
+		return nil
+	}
+	getter, ok := committer.(interface{ DB() *sql.DB })
+	if !ok || getter == nil {
+		return nil
+	}
+	db := getter.DB()
+	if db == nil {
+		return nil
+	}
+	verifier, err := pgmedia.NewMediaArtifactVerifier(db)
+	if err != nil {
+		if log != nil {
+			log.Warn("checkpoint artifact verifier NOT wired (media SSOT verifier unavailable)", zap.Error(err))
+		}
+		return nil
+	}
+	return verifier
 }
 
 func wireRenderAttemptRecorder(db *sql.DB, log *zap.Logger) scriptgen.RenderAttemptRecorder {

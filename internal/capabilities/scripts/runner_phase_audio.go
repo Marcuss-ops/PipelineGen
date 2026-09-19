@@ -420,6 +420,9 @@ func (r *Runner) runAudioCompilePhase(ctx context.Context, runID string, req Gen
 			r.failRunWithRetry(ctx, runID, StageCompilingAudio, cause)
 			return false
 		}
+		// runID is the semantic/idempotent plan identity. exec.JobID is the
+		// externally returned broker job identity and must own the Drive tree.
+		setOverlayDriveJobID(result, exec.JobID)
 		// END OF THE MEASURED AUDIO COMPILE STAGE. The blocking overlay render
 		// (runOverlayRenderPhase), the editing-timeline projection and the step
 		// completion (runAudioFinalizePhase) are separate boundaries with their

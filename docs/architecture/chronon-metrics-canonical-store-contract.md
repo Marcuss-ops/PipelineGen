@@ -29,8 +29,16 @@ The rule has three consequences:
 The two Chronon render entry points publish into the same canonical store:
 
 ```text
-┌─ Direct path (chronon_clip_renderer.go) ─────────────────────────────┐
+┌─ Clip-render path (clip.render worker — the production entry point) ─┐
 │  chronon3d_cli --report → chronon.mp4 + *.timing.json (sidecar)      │
+│  RenderingGen preserves the sidecar and certifies the reference      │
+│  (outcome.ChrononTimingStorageKey / ChrononTimingURL / SHA256)       │
+│        │                                                             │
+│        ▼                                                             │
+│  cliprender.Worker.publishChrononTiming                              │
+│  (chronon_timing_projection.go, from worker_completion.go::          │
+│   completeRendered) → ChrononTimingFetcher.FetchChrononTiming        │
+│  (platform/renderinggen: GET <store>/objects/<storage key>, re-hash) │
 │        │                                                             │
 │        ▼                                                             │
 │  ParseChrononSidecar (exclusive_wall_timeline + job.gpu + cache)     │
@@ -41,6 +49,12 @@ The two Chronon render entry points publish into the same canonical store:
 │        ▼                                                             │
 │  OperationReportProjectionRecorder → performance_operations          │
 └──────────────────────────────────────────────────────────────────────┘
+
+The adapter and fetcher are bound at the composition root
+(`internal/app/wiring/registry_internal_modules.go::registerClipRender` →
+`rendering.NewChrononMetricsAdapter` + `renderinggen.NewChrononTimingFetcher`).
+A half-wiring (adapter without fetcher, or vice versa) leaves the projection
+off rather than recording facts nobody fetched.
 
 ┌─ Queue path (render_queue.go) ───────────────────────────────────────┐
 │  RenderingGen worker artifact (render_ms / encode_ms / output facts) │

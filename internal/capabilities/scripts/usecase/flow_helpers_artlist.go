@@ -73,7 +73,8 @@ var (
 // to the legacy []ScriptArtlistClipSuggestion wire shape. After
 // the 7-day soak, the CUTOVER phase will retire this wrapper in
 // favor of a direct service call from the caller
-// (insight_builder.go).
+// (the ArtlistClipSearcher adapter in
+// internal/app/wiring/wire_script_adapters.go).
 func SearchArtlistClips(ctx context.Context, svc ClipServices, title string, phrases []string) []ScriptArtlistClipSuggestion {
 	deduped := artlist_phrase.DedupeEmpty(phrases)
 	if len(deduped) == 0 {

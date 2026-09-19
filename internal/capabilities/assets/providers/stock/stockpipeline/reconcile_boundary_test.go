@@ -2,64 +2,22 @@ package stockpipeline
 
 import (
 	"context"
-	"os/exec"
-	"runtime"
 	"testing"
 
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/acquisition"
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers/stock/stockpipeline/reconcile"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/finalization"
 )
-
-// TestReconcileBoundaryHasNoBackImport ensures the neutral package can be
-// loaded independently and does not acquire stockpipeline as a dependency.
-// `go list -deps` is used instead of parsing source text, so aliases and
-// generated import formatting cannot bypass the contract.
-func TestReconcileBoundaryHasNoBackImport(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("shell-free package graph assertion is covered by CI on Unix")
-	}
-	cmd := exec.Command("go", "list", "-deps", "./reconcile")
-	cmd.Dir = "."
-	output, err := cmd.Output()
-	if err != nil {
-		t.Fatalf("go list reconcile deps: %v", err)
-	}
-	if containsPackageLine(string(output), "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers/stock/stockpipeline") {
-		t.Fatalf("reconcile package imports its parent stockpipeline package")
-	}
-}
-
-func containsPackageLine(text, packagePath string) bool {
-	for _, candidate := range splitLines(text) {
-		if candidate == packagePath {
-			return true
-		}
-	}
-	return false
-}
-func splitLines(text string) []string {
-	var lines []string
-	start := 0
-	for i := 0; i < len(text); i++ {
-		if text[i] == '\n' {
-			lines = append(lines, text[start:i])
-			start = i + 1
-		}
-	}
-	if start < len(text) {
-		lines = append(lines, text[start:])
-	}
-	return lines
-}
 
 // TestStockPipelineLegacyContractsCompile pins the public and orchestration
 // seams used by callers. Any incompatible change to StepRunner or the
 // existing ports fails at compile time rather than during integration.
+//
+// The neutral reconcile package (and its boundary test
+// TestReconcileBoundaryHasNoBackImport) was deleted in the dead-code sweep —
+// it had zero production importers and was reachable only from that test.
 func TestStockPipelineLegacyContractsCompile(t *testing.T) {
-	var _ reconcile.ActionKind = reconcile.ActionMarkBatchRetryable
 	var _ Step = StockPublishStep{}
 	var _ Step = StockFinalizeStep{}
 	var _ StepRunner = (*boundaryRunner)(nil)

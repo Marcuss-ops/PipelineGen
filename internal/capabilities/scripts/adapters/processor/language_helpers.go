@@ -1,20 +1,14 @@
 // Package scripts — language helpers + constants extracted from types.go
 // (PG-029, June 2026).
 //
-// Phase 1c Commit 2/4 (June 2026): NormalizeLanguages removed from this
-// package. The helper was relocated DOWN into
-// internal/capabilities/scripts/dto/language_helpers.go so the canonical
-// BuildMetadataLanguages (in dto/metadata.go) could reach it without a
-// dto→adapters import cycle (the canonical dto imports `kernel/script`
-// + `pkg/concurrent` only — adding adapters would have created a future
-// cycle when adapters later reached back to dto). The dto-side helper
-// extends the pre-commit semantics with a lowercase fold (per the
-// user's spec — the pre-commit implementation did trim + dedupe only).
-// SupportedScriptLanguages + the 6 prompt-version consts RETAINED here
-// because adapters is their existing call-site container (the prompt
-// version consts flow through adapters.NormalizationConfig today and
-// would have required a future cycle path if moved alongside
-// NormalizeLanguages).
+// Phase 1c Commit 2/4 (June 2026): NormalizeLanguages was removed from this
+// package. The helper later moved down into the dto package for the canonical
+// BuildMetadataLanguages; both were removed in the post-cutover NLP cleanup
+// (the deterministic VisualNER + phrases.Select chain replaced the LLM
+// post-generation metadata phase). SupportedScriptLanguages + the 6
+// prompt-version consts RETAINED here because adapters is their call-site
+// container (the prompt version consts flow through adapters.NormalizationConfig
+// today).
 package processor
 
 // ── Default prompt version constants ────────────────────────────────────────

@@ -109,6 +109,7 @@ func (e *QueueRenderEnqueuer) enqueueSeparateOverlayItems(ctx context.Context, p
 }
 
 type overlayItemPublicationMetadata struct {
+	JobID            string
 	ItemID           string
 	ItemKind         string
 	EntityID         string
@@ -154,6 +155,7 @@ func separateOverlayItemPlan(parent capoverlay.OverlayPlan, source capoverlay.Ov
 		return capoverlay.OverlayPlan{}, nil, fmt.Errorf("build child plan for %q: %w", source.ID, err)
 	}
 	return child, &overlayItemPublicationMetadata{
+		JobID:  firstNonEmpty(parent.DriveJobID, parent.PlanID),
 		ItemID: source.ID, ItemKind: source.Kind, EntityID: source.EntityID,
 		Text: source.Text, SourceStartUS: startUS, SourceEndUS: startUS + durationUS,
 		TargetDurationUS: targetUS,

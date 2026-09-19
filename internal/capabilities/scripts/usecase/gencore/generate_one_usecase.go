@@ -44,6 +44,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaexec"
 	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters"
+	scriptports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 
@@ -269,6 +270,35 @@ func (uc *GenerateOneUseCase) Execute(
 		return nil, uc.preConstructError("engine_nil", scriptpkg.ErrGenerationFailed, fmt.Errorf("engine not configured"))
 	}
 
+	// Start stock acquisition as soon as the script job begins. The LLM
+	// generation and the bounded stock downloads then overlap; the postprocess
+	// phase waits for the report before exposing the generated result.
+	var stockPrefetchDone chan scriptports.StockPrefetchReport
+	if uc.stockPrefetcher != nil && len(item.Output.StockBindings) > 0 {
+		stockPrefetchDone = make(chan scriptports.StockPrefetchReport, 1)
+		bindings := append([]scriptpkg.StockBindingInput(nil), item.Output.StockBindings...)
+		go func() {
+			stockPrefetchDone <- uc.stockPrefetcher.Prefetch(ctx, bindings)
+		}()
+	}
+	waitStockPrefetch := func() {
+		if stockPrefetchDone == nil {
+			return
+		}
+		report := <-stockPrefetchDone
+		stockPrefetchDone = nil
+		if uc.log != nil {
+			uc.log.Info("script.generate: stock prefetch completed",
+				zap.String("item_id", item.ID),
+				zap.Int("requested", report.Requested),
+				zap.Int("warmed", report.Warmed),
+				zap.Int("cached", report.Cached),
+				zap.Int("failed", report.Failed),
+				zap.Int("skipped", report.Skipped))
+		}
+	}
+	defer waitStockPrefetch()
+
 	// ── Phases 1-4: Prepare ─────────────────────────────────────────
 	var prepared *PreparedGeneration
 	_, err := kernobs.MeasureStageReport(ctx, scriptgen.StageScriptPrepare, func(stageCtx context.Context) error {
@@ -289,6 +319,7 @@ func (uc *GenerateOneUseCase) Execute(
 		return nil, uc.logPhaseError(item, "engine", scriptpkg.ErrGenerationFailed, err, tracker)
 	}
 	engineResult := draft.EngineResult
+	waitStockPrefetch()
 
 	// ── Phase 6: Postprocess ────────────────────────────────────────
 	// script.postprocess is the parent STAGE; the per-processor stages

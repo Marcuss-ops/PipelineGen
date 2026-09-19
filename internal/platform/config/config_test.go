@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -271,5 +272,51 @@ func TestConfigValidateAcceptsValidConfig(t *testing.T) {
 	}
 	if err := cfg.Validate(); err != nil {
 		t.Errorf("expected valid config to pass, got error: %v", err)
+	}
+}
+
+// TestConfig_RetiredAIImageGenerationKnobsAreGone pins the retirement of the
+// three ConcurrencyConfig knobs that belonged to the AI image-generation
+// subsystem: GPU (Nvidia) image generation and the Chrome/Google-Slides slide
+// pool. Both lanes are retired — the composition root passes ImageGen: nil
+// (build_bundles_core.go) and the concrete Chrome infrastructure package
+// (internal/platform/images/chrome) was deleted on 2026-09-19 — and no
+// production statement read any of these fields, so keeping them documented a
+// tunable that had no effect.
+//
+// The upgrade is deliberately NON-BREAKING and that half is pinned too:
+// operators keep a local, git-ignored config.yaml, so a config that still
+// carries the retired keys must LOAD rather than fail closed. This is the
+// difference from the retired storage.primary_db_path, which is rejected
+// loudly: silently ignoring that one would point the process at a different
+// database, whereas an inert concurrency limit has no such failure mode.
+func TestConfig_RetiredAIImageGenerationKnobsAreGone(t *testing.T) {
+	keys := []string{
+		"max_concurrent_nvidia_generations",
+		"max_concurrent_google_slides_generations",
+		"google_slides_profile_id",
+	}
+	for _, name := range []string{"config.example.yaml", "config.production.example.yaml"} {
+		content, err := os.ReadFile(filepath.Join(repoRoot(t), name))
+		if err != nil {
+			if os.IsNotExist(err) {
+				t.Skipf("%s missing", name)
+			}
+			t.Fatalf("read %s: %v", name, err)
+		}
+		for _, key := range keys {
+			if strings.Contains(string(content), key) {
+				t.Errorf("%s still lists retired AI image-generation knob %q, which no production code reads", name, key)
+			}
+		}
+	}
+
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	body := "concurrency:\n  " + keys[0] + ": 10\n  " + keys[1] + ": 2\n  " + keys[2] + ": 0\n"
+	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := GetFromPath(path); err != nil {
+		t.Fatalf("GetFromPath rejected a config carrying retired AI image-generation knobs, so the upgrade would break boot: %v", err)
 	}
 }

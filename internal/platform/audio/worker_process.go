@@ -159,7 +159,12 @@ func (p *Processor) ensureStarted(ctx context.Context) error {
 	}()
 
 	p.baseURL = fmt.Sprintf("http://127.0.0.1:%d", port)
-	p.httpClient = &http.Client{Timeout: 60 * time.Second}
+	// Synthesis of long translated scenes can legitimately exceed one minute
+	// under the bounded multilingual fan-out. Keep the implementation aligned
+	// with the processor contract documented above: the request deadline is
+	// five minutes, while the caller context remains the outer cancellation
+	// authority.
+	p.httpClient = &http.Client{Timeout: 5 * time.Minute}
 	p.started = true
 
 	p.log.Info("audio.Processor: TTS server started",

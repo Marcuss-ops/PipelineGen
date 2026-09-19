@@ -6,8 +6,11 @@
 //
 // The unit battery (golden_battery_test.go) certifies up to the ordered
 // Image Search Query. This harness runs those exact queries against the LIVE
-// providers (native Pexels image search + the Artlist fallback-chain video
-// searchers) and certifies the result side:
+// providers that actually ship — the Pexels/Pixabay clients under
+// internal/platform/artlist/fallback (MUDA D2: the superseded native
+// internal/platform/images/pexels image client was removed; the "pexels"
+// provider name in production is served by artlist/fallback, see
+// build_provider_catalog.go) — and certifies the result side:
 //
 //	relevance@1 / relevance@3 / relevance@5   (requires human labels)
 //	wrong-identity rate                       (deterministic, from the
@@ -15,8 +18,8 @@
 //	                                           metadata — no human judgment)
 //	negated-person selection                  (deterministic, must be zero)
 //
-// WHY HUMAN LABELS FOR relevance@k: both live surfaces echo the search term
-// into the candidate title ("Pexels image: <term> by <photographer>"), so a
+// WHY HUMAN LABELS FOR relevance@k: the live surfaces echo the search term
+// into the candidate title ("Pexels: <term>"), so a
 // candidate's metadata alone cannot prove visual relevance. The harness
 // therefore records the live candidate snapshot and computes the two
 // metrics that ARE decidable without vision deterministically (wrong
@@ -51,10 +54,8 @@ import (
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providerassets"
-	assetproviders "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers"
 	artapp "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers/artlist"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/artlist/fallback"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/images/pexels"
 )
 
 const (
@@ -135,20 +136,6 @@ type liveLabels struct {
 type liveSearcher interface {
 	Name() string
 	Search(ctx context.Context, query string, limit int) ([]liveCandidate, error)
-}
-
-type pexelsImageSearcher struct {
-	p *pexels.Provider
-}
-
-func (s pexelsImageSearcher) Name() string { return "pexels_images" }
-
-func (s pexelsImageSearcher) Search(ctx context.Context, query string, limit int) ([]liveCandidate, error) {
-	res, err := s.p.Search(ctx, assetproviders.SearchRequest{Query: query, Limit: limit})
-	if err != nil {
-		return nil, err
-	}
-	return mapLiveCandidates(res.Candidates, s.Name()), nil
 }
 
 type pexelsVideoSearcher struct {
@@ -505,7 +492,6 @@ func liveSearchers(t *testing.T) []liveSearcher {
 	}
 	baseURL := os.Getenv(envPexelsBaseURL)
 	searchers := []liveSearcher{
-		pexelsImageSearcher{p: pexels.NewProvider(pexels.Config{APIKey: apiKey, BaseURL: baseURL, SourceName: "pexels_images"})},
 		pexelsVideoSearcher{p: fallback.NewPexels(fallback.Config{APIKey: apiKey, BaseURL: baseURL, SourceName: "pexels_videos"})},
 	}
 	if pixabayKey := strings.TrimSpace(os.Getenv(envPixabayAPIKey)); pixabayKey != "" {

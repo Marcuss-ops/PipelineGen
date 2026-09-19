@@ -91,7 +91,7 @@ var ErrSilentAudio = errors.New("audioasset: TTS bridge produced silent audio")
 // so both bridge paths (legacy CLI + persistent worker) share one decision.
 func isBridgeEmptyAudioError(msg string) bool {
 	switch strings.TrimSpace(msg) {
-	case "Empty file", "generated file is empty or missing":
+	case "Empty file", "generated file is empty or missing", "No audio was received. Please verify that your parameters are correct.":
 		return true
 	default:
 		return false

@@ -231,6 +231,7 @@ func BuildGenerateRequest(env *scriptpkg.GenerationEnvelopeV2, idempotencyKey st
 		IdempotencyKey:      idempotencyKey,
 		ForceRefresh:        env.ForceRefresh,
 		Source:              source,
+		StockBindings:       append([]scriptpkg.StockBindingInput(nil), item.Output.StockBindings...),
 		ScriptParams:        item.ScriptParams,
 		MediaPlan:           item.MediaPlan.Clone(),
 		ExtractEntities:     item.Output.ExtractEntities,

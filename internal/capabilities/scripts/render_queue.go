@@ -309,6 +309,7 @@ func (e *QueueRenderEnqueuer) enqueueChrononPlan(ctx context.Context, plan capov
 				ScriptName:      plan.ScriptName,
 				Language:        plan.Language,
 				ProjectID:       plan.ProjectID,
+				JobID:           firstNonEmpty(plan.DriveJobID, plan.PlanID),
 				PlanID:          plan.PlanID,
 				DriveFolderID:   plan.DriveFolderID,
 				CompletionWait:  wait.CompletionWait,
@@ -317,6 +318,9 @@ func (e *QueueRenderEnqueuer) enqueueChrononPlan(ctx context.Context, plan capov
 				PollCount:       wait.PollCount,
 			}
 			if metadata != nil {
+				if metadata.JobID != "" {
+					publication.JobID = metadata.JobID
+				}
 				publication.OverlayItemID = metadata.ItemID
 				publication.OverlayItemKind = metadata.ItemKind
 				publication.OverlayEntityID = metadata.EntityID

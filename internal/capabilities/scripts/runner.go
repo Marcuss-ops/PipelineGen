@@ -29,6 +29,8 @@ import (
 	capcheckpoint "github.com/Marcuss-ops/PipelineGen/internal/capabilities/checkpoint"
 	capabilityimagesearch "github.com/Marcuss-ops/PipelineGen/internal/capabilities/imagesearch"
 	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
+	scriptports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
+	mediadomain "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 	"go.uber.org/zap"
@@ -81,7 +83,9 @@ func (r *Runner) runVidRushJoinAndPrepare(ctx context.Context, runID string, req
 	if err != nil {
 		return vidRushPrepareResult{}, err
 	}
-	annotations := computeSegmentEntityAnnotations(snapshot, req.SourceLanguage, segments)
+	phraseLimit := req.MediaPlan.Extraction.MaxImportantPhrasesPerSegment
+	includePhrases := req.MediaPlan.Extraction.Includes(mediadomain.ExtractionIncludeImportantPhrases)
+	annotations := computeSegmentEntityAnnotations(snapshot, req.SourceLanguage, segments, phraseLimit, includePhrases)
 	var intents []capabilityoverlay.OverlayIntent
 	if r.overlayRegistry != nil {
 		intents = planOverlayIntentsForAnnotations(snapshot, annotations, r.overlayRegistry)
@@ -251,7 +255,8 @@ type Runner struct {
 	// assets, fixed-media original audio/source windows, BGM/SFX assets,
 	// Drive folders, and watermark assets. Fixed-media requests fail closed
 	// when the preflight is not wired; non-fixed legacy tests may omit it.
-	mediaPreflight MediaPreflight
+	mediaPreflight  MediaPreflight
+	stockPrefetcher scriptports.StockPrefetcher
 	// imageSearchResolver is the deterministic Image Search Intent resolver
 	// (capabilities/imagesearch): the editorial/visual decision layer the
 	// golden battery certifies (entity typing + canonicalization + query

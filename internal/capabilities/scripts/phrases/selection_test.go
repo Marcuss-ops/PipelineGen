@@ -70,6 +70,30 @@ func TestSelectImportantPhrasesHonoursBlockedSpans(t *testing.T) {
 	}
 }
 
+// TestSelectWithCorpusBoostsDocumentRecurrence pins the document term-frequency
+// boost: two candidates of equal local strength, but the one that recurs across
+// the document corpus must rank first even when source order would prefer the
+// other. A nil corpus must preserve Select exactly.
+func TestSelectWithCorpusBoostsDocumentRecurrence(t *testing.T) {
+	profile := &linguistics.LexiconProfile{PhrasePolicy: linguistics.DefaultPhraseExtractionPolicy()}
+	const text = "Gamma delta. Alpha beta."
+
+	if got := Select(text, nil, 5, profile); !reflect.DeepEqual(got, []string{"Gamma delta", "Alpha beta"}) {
+		t.Fatalf("corpus-free selection = %#v, want source order", got)
+	}
+	if got := SelectWithCorpus(text, nil, 5, profile, nil); !reflect.DeepEqual(got, []string{"Gamma delta", "Alpha beta"}) {
+		t.Fatalf("nil corpus must preserve Select, got %#v", got)
+	}
+
+	corpus := []string{text, "Alpha beta."}
+	want := []string{"Alpha beta", "Gamma delta"}
+	for run := 0; run < 2; run++ {
+		if got := SelectWithCorpus(text, nil, 5, profile, corpus); !reflect.DeepEqual(got, want) {
+			t.Fatalf("corpus selection run %d = %#v, want %#v", run, got, want)
+		}
+	}
+}
+
 func TestContainsProperNamePairDetectsConsecutiveCapitalisedWords(t *testing.T) {
 	for input, want := range map[string]bool{
 		"Ada Lovelace":     true,
@@ -77,6 +101,25 @@ func TestContainsProperNamePairDetectsConsecutiveCapitalisedWords(t *testing.T) 
 		"the Dolly Parton": true,
 		"fix costumes":     false,
 		"":                 false,
+	} {
+		if got := ContainsProperNamePair(input); got != want {
+			t.Fatalf("ContainsProperNamePair(%q) = %v, want %v", input, got, want)
+		}
+	}
+}
+
+// TestContainsProperNamePairIgnoresAcronymRuns pins the all-caps rule: a word
+// that is entirely uppercase with two or more letters is an acronym, not a
+// proper-name trigger. A single capital stays an ordinary capitalised word, so
+// "John F Kennedy" is still a name run.
+func TestContainsProperNamePairIgnoresAcronymRuns(t *testing.T) {
+	for input, want := range map[string]bool{
+		"USA NATO":       false,
+		"AI ML models":   false,
+		"the AI act":     false,
+		"IBM GmbH":       false,
+		"John F Kennedy": true,
+		"New York":       true,
 	} {
 		if got := ContainsProperNamePair(input); got != want {
 			t.Fatalf("ContainsProperNamePair(%q) = %v, want %v", input, got, want)

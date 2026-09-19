@@ -118,6 +118,14 @@ func (r *Runner) computeLocalizedAnnotations(ctx context.Context, req GenerateRe
 		return nil, nil
 	}
 
+	// Document-wide phrase frequency: group the scene texts by language so the
+	// selector can boost a phrase that recurs across the document (all scenes)
+	// over an otherwise-equal one-shot surface. Pure and deterministic.
+	documentCorpus := make(map[Language][]string, len(langs))
+	for _, item := range work {
+		documentCorpus[item.lang] = append(documentCorpus[item.lang], item.text)
+	}
+
 	entityLimit := extraction.MaxEntitiesPerSegment
 	if entityLimit <= 0 {
 		entityLimit = 3
@@ -188,7 +196,7 @@ func (r *Runner) computeLocalizedAnnotations(ctx context.Context, req GenerateRe
 		// translated surface.
 		outcomes[index].entities = mergeTranslatedNamedEntities(outcomes[index].entities, localizedSourceVisualEntities(sourceMatches[index]))
 		outcomes[index].entities = limitTranslatedVisualEntities(outcomes[index].entities, entityLimit)
-		phraseCandidates := phrasepkg.ImportantPhrases(item.text, entityRuneSpans(item.text, outcomes[index].entities), phraseLimit, string(item.lang))
+		phraseCandidates := phrasepkg.ImportantPhrasesWithCorpus(item.text, entityRuneSpans(item.text, outcomes[index].entities), phraseLimit, string(item.lang), documentCorpus[item.lang])
 		var groundedPhrases []string
 		if includePhrases {
 			groundedPhrases = groundImportantPhrases(item.text, outcomes[index].entities, phraseCandidates, phraseLimit)

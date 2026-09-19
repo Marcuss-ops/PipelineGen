@@ -9,10 +9,15 @@
 // (`asset.ScoreClips`) is the public surface for the SearchClips
 // scoring algorithm; this file no longer holds scoring logic.
 //
-// This file now carries ONLY the canonical DTO types
-// (AdvancedSearchRequest/Result, SearchRequest/Result, Searcher,
-// EntityExtraction* types, SegmentEntities, FullEntityAnalysis). No
+// This file now carries ONLY the canonical search DTO types
+// (AdvancedSearchRequest/Result, SearchRequest/Result, Searcher). No
 // SQL primitives, no `database/sql` import.
+//
+// The LLM-era entity DTOs (EntityExtractionRequest/Result, SegmentEntities,
+// FullEntityAnalysis) were removed in the post-cutover NLP cleanup: the
+// deterministic VisualNER + phrases.Select chain replaced the Ollama entity
+// extraction path, and the canonical typed surface is
+// internal/kernel/script.EntityResult.
 package detail
 
 import (
@@ -99,56 +104,8 @@ type Searcher interface {
 }
 
 // Package core provides canonical shared types for the PipelineGen
-// system. Analysis types moved here from internal/ml/ollama/types to
-// prevent cross-layer imports from handler packages into the ML
-// layer.
-
-// EntityExtractionRequest represents a request to extract entities
-// from a segment.
-type EntityExtractionRequest struct {
-	SegmentText  string `json:"segment_text"`
-	SegmentIndex int    `json:"segment_index"`
-	EntityCount  int    `json:"entity_count"`
-	Language     string `json:"language,omitempty"`
-}
-
-// EntityExtractionResult represents the result of entity extraction
-// for a segment.
+// system.
 //
-// Source carries the provenance of this result. When the LLM backend
-// succeeds, Source is empty (omitted from JSON). When the heuristic
-// fallback path produced this result, Source is set to
-// "heuristic_fallback" (godlike/07 NO-FAKE-AVAILABILITY — callers
-// can distinguish LLM-extracted entities from regex/tokenizer ones).
-type EntityExtractionResult struct {
-	SegmentIndex     int               `json:"segment_index"`
-	FrasiImportanti  []string          `json:"frasi_importanti"`
-	EntitaSenzaTesto map[string]string `json:"entity_senza_testo"`
-	NomiSpeciali     []string          `json:"nomi_speciali"`
-	ParoleImportanti []string          `json:"parole_importanti"`
-	ArtlistPhrases   []string          `json:"artlist_phrases"`
-	NounChunks       []string          `json:"noun_chunks"`
-	Source           string            `json:"source,omitempty"`
-}
-
-// SegmentEntities represents extracted entities for a single segment.
-type SegmentEntities struct {
-	SegmentIndex     int                 `json:"segment_index"`
-	SegmentText      string              `json:"segment_text"`
-	FrasiImportanti  []string            `json:"frasi_importanti"`
-	EntitaSenzaTesto map[string]string   `json:"entity_senza_testo"`
-	NomiSpeciali     []string            `json:"nomi_speciali"`
-	ParoleImportanti []string            `json:"parole_importanti"`
-	ArtlistPhrases   []string            `json:"artlist_phrases"`
-	ArtlistMatches   map[string][]string `json:"artlist_matches"`
-	Source           string              `json:"source,omitempty"`
-}
-
-// FullEntityAnalysis represents the complete entity analysis for a
-// script.
-type FullEntityAnalysis struct {
-	TotalSegments         int               `json:"total_segments"`
-	SegmentEntities       []SegmentEntities `json:"segment_entities"`
-	TotalEntities         int               `json:"total_entities"`
-	EntityCountPerSegment int               `json:"entity_count_per_segment"`
-}
+// The LLM-era entity analysis types that used to live here moved to the
+// canonical typed contracts (internal/kernel/script.EntityResult) when the
+// deterministic NLP cutover removed the Ollama entity-extraction path.

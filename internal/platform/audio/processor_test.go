@@ -549,12 +549,13 @@ func TestSentinels_ErrorsIsProbesAcrossDualWw(t *testing.T) {
 // ───────────────────────────────────────────────────────────────────────
 
 // TestIsBridgeEmptyAudioError pins the single classification site for the
-// two bridge empty-audio strings (legacy CLI "Empty file" + persistent
-// worker "generated file is empty or missing").
+// bridge empty-audio strings (legacy CLI "Empty file", persistent worker
+// "generated file is empty or missing", and the transient Edge stream
+// "No audio was received" response).
 func TestIsBridgeEmptyAudioError(t *testing.T) {
 	t.Parallel()
 
-	for _, msg := range []string{"Empty file", "generated file is empty or missing", "  Empty file\n"} {
+	for _, msg := range []string{"Empty file", "generated file is empty or missing", "No audio was received. Please verify that your parameters are correct.", "  Empty file\n"} {
 		if !isBridgeEmptyAudioError(msg) {
 			t.Errorf("isBridgeEmptyAudioError(%q) = false, want true", msg)
 		}

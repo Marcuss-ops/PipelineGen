@@ -39,10 +39,15 @@ type OverlayPlan struct {
 	// deterministic overlay child below it and falls back to its configured
 	// root only when this value is empty.
 	DriveFolderID string `json:"drive_folder_id,omitempty"`
-	Width         int    `json:"width"`
-	Height        int    `json:"height"`
-	FPSNum        int    `json:"fps_num"`
-	FPSDen        int    `json:"fps_den"`
+	// DriveJobID is the canonical external generation-job identity used only
+	// by PipelineGen's publication boundary. It is intentionally excluded from
+	// the RenderingGen wire contract and from the semantic fingerprint: the
+	// queue renders the plan content, while PipelineGen owns Drive routing.
+	DriveJobID string `json:"-"`
+	Width      int    `json:"width"`
+	Height     int    `json:"height"`
+	FPSNum     int    `json:"fps_num"`
+	FPSDen     int    `json:"fps_den"`
 	// DurationMS is the canonical master-audio/timeline duration projected
 	// onto the overlay plan. It is a floor for the Chronon canvas duration:
 	// overlay items may extend it, but they can never truncate the master

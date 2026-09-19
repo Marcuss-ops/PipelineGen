@@ -93,6 +93,9 @@ type GenerateRequest struct {
 
 	// Source describes the generation input source.
 	Source Source `json:"source"`
+	// StockBindings carries the caller-selected stock folders/assets into the
+	// durable runner so acquisition can overlap scene generation.
+	StockBindings []scriptpkg.StockBindingInput `json:"stock_bindings,omitempty"`
 	// ScriptParams carries the canonical sizing and ordered segment contract
 	// from the envelope into the durable runtime. Dropping it here makes the
 	// scene planner fall back to an unbounded prose envelope.

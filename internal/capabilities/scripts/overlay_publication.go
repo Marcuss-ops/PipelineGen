@@ -15,7 +15,12 @@ type OverlayPublicationSpec struct {
 	ScriptName string
 	Language   string
 	ProjectID  string
-	PlanID     string
+	// JobID is the stable generation/run identity used for Drive folder
+	// routing. PlanID may be a per-item child plan (for example
+	// job:item:003:phrase), so it must not be used as the Drive job folder
+	// when separate item renders are enabled.
+	JobID  string
+	PlanID string
 	// DriveFolderID is the job-selected Drive parent. The platform publisher
 	// creates/reuses its deterministic overlay child and only falls back to
 	// its configured root when this is empty.

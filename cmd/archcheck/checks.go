@@ -125,6 +125,7 @@ func DefaultChecks(productionOnly bool) []CheckSpec {
 		{"percheck_digest_md5_ban", governance.ScanDigestMD5Ban},
 		{"percheck_version_strings_ban", governance.ScanVersionStringsBan},
 		{"percheck_stopword_maps_in_app", governance.ScanStopwordMapsInApp},
+		{"percheck_provider_policy_single_owner", governance.ScanProviderPolicySingleOwner},
 		{"percheck_index_pending_writer_ban", governance.ScanIndexPendingWriterBan},
 		{"percheck_mediatransformer_no_infra_fields", boundaries.ScanMediaTransformerNoInfraFields},
 		{"percheck_no_generic_generation_facade", func(root string, pol *policy.Policy, r *report.Report) {

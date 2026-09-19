@@ -21,6 +21,7 @@ package scriptgeneration
 
 import (
 	"strings"
+	"unicode"
 
 	capabilityentities "github.com/Marcuss-ops/PipelineGen/internal/capabilities/entities"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
@@ -67,6 +68,19 @@ func compileResultEntityTimeline(result *GenerateResult, language Language) erro
 			continue
 		}
 		sources := entitySourcesFromAnnotations(annotations, text)
+		// A translated annotation can outlive the exact surface that produced
+		// it (for example when the final translation is regenerated). Keep the
+		// low-level projection available for compatibility/audit callers, but do
+		// not pass an ungrounded entity into the timeline builder: it would fail
+		// the text gate and poison the whole localized plan. Phrase grounding is
+		// independent and remains available for this language.
+		grounded := sources[:0]
+		for _, source := range sources {
+			if source.TextStart >= 0 && source.TextEnd > source.TextStart {
+				grounded = append(grounded, source)
+			}
+		}
+		sources = grounded
 		if len(sources) == 0 {
 			continue
 		}
@@ -145,17 +159,35 @@ func entitySourcesFromAnnotations(ann *scriptpkg.SceneAnnotations, sceneText str
 		if name == "" {
 			return
 		}
+		// CanonicalName is the identity key and may remain in the source
+		// language. For translated annotations, the first mention is the
+		// grounded surface that actually exists in the localized narration
+		// (for example source "South Africa" -> Italian "Sud Africa"). Use
+		// that surface for the text/timing gates without changing the identity
+		// carried by the annotation itself.
+		spokenName := annotationSpokenSurface(sceneText, name, entity.Mentions)
+		groundedName := name
+		if _, ok := findLocalizedEntitySpan(sceneText, groundedName); !ok && strings.TrimSpace(spokenName) != "" {
+			if _, mentionOK := findLocalizedEntitySpan(sceneText, spokenName); mentionOK {
+				groundedName = spokenName
+			}
+		}
 		source := capabilityentities.EntitySource{
-			Name:       name,
-			SpokenName: annotationSpokenSurface(sceneText, name, entity.Mentions),
+			Name:       groundedName,
+			SpokenName: spokenName,
 			Type:       strings.TrimSpace(entity.Type),
 			Confidence: entity.Confidence,
 			TextStart:  -1,
 			TextEnd:    -1,
 		}
-		if len(entity.Mentions) > 0 {
-			source.TextStart = entity.Mentions[0].StartRune
-			source.TextEnd = entity.Mentions[0].EndRune
+		// Always forward a span freshly resolved against this language's
+		// text. Serialized mention offsets can be stale after translation
+		// (and a joined form such as "Sudafrica" changes the rune width),
+		// so forwarding the old offsets would make a correctly grounded
+		// entity fail the builder's explicit text gate.
+		if span, ok := findLocalizedEntitySpan(sceneText, groundedName); ok {
+			source.TextStart = span.StartRune
+			source.TextEnd = span.EndRune
 		}
 		out = append(out, source)
 	}
@@ -175,21 +207,72 @@ func entitySourcesFromAnnotations(ann *scriptpkg.SceneAnnotations, sceneText str
 // whose span ends before an English possessive suffix, retain that suffix.
 func annotationSpokenSurface(text, canonical string, mentions []scriptpkg.AnnotationSpan) string {
 	if len(mentions) == 0 {
+		if span, ok := findLocalizedEntitySpan(text, canonical); ok {
+			return span.Text
+		}
 		return canonical
 	}
 	mention := mentions[0]
 	runes := []rune(text)
-	if mention.StartRune < 0 || mention.EndRune <= mention.StartRune || mention.EndRune > len(runes) {
-		return canonical
-	}
-	surface := string(runes[mention.StartRune:mention.EndRune])
-	end := mention.EndRune
-	if strings.EqualFold(surface, canonical) && end < len(runes) && (runes[end] == '\'' || runes[end] == '’') {
-		end++
-		if end < len(runes) && (runes[end] == 's' || runes[end] == 'S') {
-			end++
+	if mention.StartRune >= 0 && mention.EndRune > mention.StartRune && mention.EndRune <= len(runes) {
+		surface := string(runes[mention.StartRune:mention.EndRune])
+		// An annotation span is usable only when it still points at the
+		// annotation's own surface. Translation rewrites can leave stale
+		// offsets; never accept the unrelated text at that offset.
+		if strings.TrimSpace(mention.Text) == "" || strings.EqualFold(surface, mention.Text) || strings.EqualFold(surface, canonical) {
+			end := mention.EndRune
+			if strings.EqualFold(surface, canonical) && end < len(runes) && (runes[end] == '\'' || runes[end] == '’') {
+				end++
+				if end < len(runes) && (runes[end] == 's' || runes[end] == 'S') {
+					end++
+				}
+				surface = string(runes[mention.StartRune:end])
+			}
+			return surface
 		}
-		surface = string(runes[mention.StartRune:end])
 	}
-	return surface
+	for _, candidate := range []string{mention.Text, canonical} {
+		if span, ok := findLocalizedEntitySpan(text, candidate); ok {
+			return span.Text
+		}
+	}
+	return canonical
+}
+
+// findLocalizedEntitySpan finds a candidate in the requested text while
+// tolerating localization orthography that joins or separates words (for
+// example English/annotation "South Africa" versus Italian "Sudafrica").
+// Matching ignores Unicode punctuation and spacing, but the returned span is
+// the exact original text, so downstream TTS lookup and text grounding remain
+// verbatim. No transliteration or semantic translation is invented here.
+func findLocalizedEntitySpan(text, candidate string) (scriptpkg.AnnotationSpan, bool) {
+	want := make([]rune, 0, len([]rune(candidate)))
+	for _, r := range []rune(strings.ToLower(strings.TrimSpace(candidate))) {
+		if unicode.IsLetter(r) || unicode.IsNumber(r) {
+			want = append(want, r)
+		}
+	}
+	if len(want) == 0 {
+		return scriptpkg.AnnotationSpan{}, false
+	}
+	runes := []rune(text)
+	for start, r := range runes {
+		if !unicode.IsLetter(r) && !unicode.IsNumber(r) {
+			continue
+		}
+		matched := make([]rune, 0, len(want))
+		end := start
+		for ; end < len(runes) && len(matched) < len(want); end++ {
+			if unicode.IsLetter(runes[end]) || unicode.IsNumber(runes[end]) {
+				matched = append(matched, unicode.ToLower(runes[end]))
+			}
+		}
+		if len(matched) != len(want) || string(matched) != string(want) {
+			continue
+		}
+		return scriptpkg.AnnotationSpan{
+			Text: string(runes[start:end]), StartRune: start, EndRune: end,
+		}, true
+	}
+	return scriptpkg.AnnotationSpan{}, false
 }

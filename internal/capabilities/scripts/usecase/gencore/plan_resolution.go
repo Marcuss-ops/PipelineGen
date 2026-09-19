@@ -26,6 +26,7 @@ type GenerateOneUseCase struct {
 	audioProcessor          mediaexec.AudioProcessor
 	overlayRenderEnqueuer   scriptgen.OverlayRenderEnqueuer
 	overlayBackgroundSource scriptgen.OverlayBackgroundSource
+	stockPrefetcher         scriptports.StockPrefetcher
 }
 
 func (uc *GenerateOneUseCase) SetAudioProcessor(processor mediaexec.AudioProcessor) {
@@ -121,6 +122,16 @@ func (uc *GenerateOneUseCase) SetVidRushCache(cache scriptports.VidRushCachePort
 		return
 	}
 	uc.finalizer.SetVidRushCache(cache)
+}
+
+// SetStockPrefetcher wires the pre-bake acquisition hook for stock bindings
+// already present in a script.generate payload. It is optional for tests and
+// non-stock compositions; production stock wiring injects the real cache
+// warmer from the composition root.
+func (uc *GenerateOneUseCase) SetStockPrefetcher(prefetcher scriptports.StockPrefetcher) {
+	if uc != nil {
+		uc.stockPrefetcher = prefetcher
+	}
 }
 
 // SetSegmentEnricher wires the canonical semantic extraction boundary into

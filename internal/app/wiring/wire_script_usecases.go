@@ -102,6 +102,7 @@ func buildScriptUseCases(
 	ppReg *adapters.PostProcessorRegistry,
 	clipSearchPort scriptports.AssetSearchPort,
 	clipSourceBuilder *usecase.ClipSourceBuilder,
+	stockPrefetcher scriptports.StockPrefetcher,
 	log *zap.Logger,
 ) (
 	*gencore.GenerateOneUseCase,
@@ -113,6 +114,10 @@ func buildScriptUseCases(
 
 	// ── GenerateOneUseCase (single-item pipeline) ───────────────
 	oneUC := gencore.NewGenerateOneUseCase(normCfg, sourceReg, engine, ppReg, log)
+	if stockPrefetcher != nil {
+		oneUC.SetStockPrefetcher(stockPrefetcher)
+		log.Info("wireScriptFlow: script.generate stock prefetch wired")
+	}
 	if strings.TrimSpace(cfg.External.RustVisualNERPath) != "" {
 		visualNERExecutor := rustexec.NewExecutor(cfg.External.RustVisualNERPath, cfg.External.FfmpegPath, log)
 		visualNER, nerErr := rustexec.NewVisualNERAdapter(visualNERExecutor)

@@ -60,6 +60,8 @@ type Worker struct {
 	folderResolver       DestinationFolderResolver // optional: required only when a request carries destination.subfolder_name
 	overlayResolver      OverlaySegmentResolver    // required when a request declares an overlay
 	renderCache          RenderCache               // optional: deterministic fingerprint → certified locator
+	chrononMetrics       *ChrononMetricsAdapter    // optional: Chronon phase projection (performance_operations)
+	chrononTimingFetcher ChrononTimingFetcher      // optional: fetches the raw timing sidecar by content address
 	log                  *zap.Logger
 }
 
