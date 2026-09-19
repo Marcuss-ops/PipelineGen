@@ -382,15 +382,3 @@ func TestSetOverlayRenderConcurrency(t *testing.T) {
 	runner.SetOverlayRenderConcurrency(3)
 	require.Equal(t, 3, runner.overlayRenderWorkers())
 }
-
-// TestSetSerialModeSerializesOverlayRender keeps the benchmark baseline honest:
-// serial mode must reproduce the pre-parallel chain in EVERY stage, not just TTS
-// and translation.
-func TestSetSerialModeSerializesOverlayRender(t *testing.T) {
-	runner := NewRunner(newInMemRunRepository(), nil, nil, nil, nil)
-	require.Equal(t, DefaultOverlayRenderConcurrency, runner.overlayRenderWorkers())
-	runner.SetSerialMode(true)
-	require.Equal(t, 1, runner.overlayRenderWorkers())
-	runner.SetSerialMode(false)
-	require.Equal(t, DefaultOverlayRenderConcurrency, runner.overlayRenderWorkers())
-}

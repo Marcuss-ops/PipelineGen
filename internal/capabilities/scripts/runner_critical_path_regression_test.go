@@ -104,7 +104,7 @@ func (e *countingEnricher) callCount() int {
 func wireCountingVidRush(runner *Runner) *countingEnricher {
 	enricher := &countingEnricher{}
 	runner.SetVidRushPipeline(&VidRushPipeline{
-		Enricher: enricher,
+		NERPort: segmentEnricherNER{enricher: enricher},
 		PlanResolver: VidRushPlanResolverFunc(func(_ context.Context, _ GenerateRequest) (*scriptpkg.ResolvedGenerationPlan, error) {
 			return &scriptpkg.ResolvedGenerationPlan{Language: "en", Title: "test"}, nil
 		}),

@@ -64,6 +64,11 @@ const (
 	// the canonical Drive clip-library root the batch publishes under.
 	dollyPartonDriveParentFolderID = "1ll2RlTaAbhnaLkAjEDBg41lAXUyo-zJ2"
 
+	// dollyPartonDocsFolderID is the canonical Drive root for the generated
+	// scripts and the language-specific rendered clips. It is intentionally
+	// separate from the source clip-library root above.
+	dollyPartonDocsFolderID = "1ST6FxPuRaxwBOIz39MAN8Jj4gDv509-K"
+
 	// dollyPartonSubfolderName is the child folder materialised (and reused)
 	// under the parent by the extraction worker's get-or-create step.
 	dollyPartonSubfolderName = "Dolly Parton"

@@ -54,7 +54,12 @@ func DecideRetry(j *job.Job) RetryDecision {
 
 // RetryDue reports whether a retry-wait job has reached its next retry slot.
 func RetryDue(j *job.Job, now time.Time) bool {
-	if j == nil || !RetryAllowed(j.RetryCount, j.MaxRetries) {
+	// ScheduleRetry increments RetryCount when it moves a running job to
+	// RETRY_WAIT. That increment represents the retry attempt that is now
+	// due, so the final allowed retry has retry_count == max_retries and
+	// must still be re-enqueued once. The next failure is terminal because
+	// DecideRetry sees retry_count == max_retries.
+	if j == nil || j.RetryCount <= 0 || j.RetryCount > j.MaxRetries {
 		return false
 	}
 	backoff := RetryBackoff(j.RetryCount-1, DefaultRetryPolicy)

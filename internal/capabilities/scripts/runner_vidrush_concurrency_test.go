@@ -25,8 +25,8 @@ func vidrushPipelineFixture(runner *Runner) (*fakeSegmentEnricher, *recordingVid
 	enricher := &fakeSegmentEnricher{errs: map[string]error{}}
 	metrics := &recordingVidRushMetrics{}
 	runner.SetVidRushPipeline(&VidRushPipeline{
-		Enricher: enricher,
-		Metrics:  metrics,
+		NERPort: segmentEnricherNER{enricher: enricher},
+		Metrics: metrics,
 		PlanResolver: VidRushPlanResolverFunc(func(_ context.Context, _ GenerateRequest) (*scriptpkg.ResolvedGenerationPlan, error) {
 			return &scriptpkg.ResolvedGenerationPlan{Language: "en", Title: "test"}, nil
 		}),
@@ -64,11 +64,11 @@ func TestRunner_VidRushWiring_IsPerRun(t *testing.T) {
 	assert.Same(t, coordA, runner.vidRushTimingFor(runA))
 
 	// Seed run B's coordinator with its own commit so its runID is pinned.
-	require.NoError(t, coordB.OnSceneCommitted(context.Background(), NewSceneCommitted(runB, Scene{ID: "b-0", Index: 0}, "en", 1)))
+	require.NoError(t, coordB.OnSceneCommitted(context.Background(), NewSceneCommitted(runB, Scene{ID: "b-0", Index: 0, Text: map[Language]string{"en": "scene b"}}, "en", 1)))
 
 	// Run A's commits must route to A's coordinator, not B's — pre-registry
 	// this hit coordB and failed the run-mismatch guard.
-	require.NoError(t, coordA.OnSceneCommitted(context.Background(), NewSceneCommitted(runA, Scene{ID: "a-0", Index: 0}, "en", 1)))
+	require.NoError(t, coordA.OnSceneCommitted(context.Background(), NewSceneCommitted(runA, Scene{ID: "a-0", Index: 0, Text: map[Language]string{"en": "scene a"}}, "en", 1)))
 
 	// Unregistering run A must not disturb run B's wiring.
 	runner.endVidRush(runA)

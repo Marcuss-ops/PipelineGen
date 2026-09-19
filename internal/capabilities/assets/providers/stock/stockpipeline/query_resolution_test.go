@@ -241,6 +241,31 @@ func TestResolveInputQueries_HonorsPerQueryLimit(t *testing.T) {
 	require.Contains(t, calls, "ytsearch3:b", "limit:3 must win over the runtime default")
 }
 
+func TestResolveInputQueries_AppliesMaxVideosAfterDeduplication(t *testing.T) {
+	lister := &queryResolutionLister{
+		results: map[string][]VideoInfo{
+			"interview": {videoInfo("interview-1"), videoInfo("interview-2")},
+			"training":  {videoInfo("training-1"), videoInfo("training-2")},
+			"fight":     {videoInfo("fight-1"), videoInfo("fight-2")},
+		},
+		errors: make(map[string]error),
+	}
+	svc := newQueryResolutionService(lister)
+	input := &RunInput{
+		SearchQueries:     []string{"interview", "training", "fight"},
+		SearchQueryLimits: []int{25, 25, 25},
+		MaxVideos:         4,
+	}
+
+	require.NoError(t, svc.resolveInputQueries(context.Background(), input))
+	require.Equal(t, []string{
+		"https://www.youtube.com/watch?v=interview-1",
+		"https://www.youtube.com/watch?v=interview-2",
+		"https://www.youtube.com/watch?v=training-1",
+		"https://www.youtube.com/watch?v=training-2",
+	}, input.DirectURLs)
+}
+
 func TestResolveInputQueries_DefaultsWhenLimitsMissing(t *testing.T) {
 	// A shorter limits slice (or no limits at all) must fall back to the
 	// runtime default (25) per query rather than zeroing the fan-out.

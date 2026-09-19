@@ -65,10 +65,15 @@ type SearchScope struct {
 // across the writer (clip_metadata_writer_payload.go) + readers
 // (this filter) + the indexer's IndexDocument airlock.
 type AssetFilter struct {
-	Source                string
-	Category              string
-	MediaType             string
-	Language              string
-	LifecycleState        []string
+	Source         string
+	Category       string
+	MediaType      string
+	Language       string
+	LifecycleState []string
+	// AssetKind / SemanticRole are the canonical taxonomy equality
+	// dimensions, distinct from Source (physical provenance). See
+	// Filters.AssetKind for why the two must not be conflated.
+	AssetKind             string
+	SemanticRole          string
 	FolderNormalizedGroup string
 }

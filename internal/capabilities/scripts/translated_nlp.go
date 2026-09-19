@@ -82,6 +82,9 @@ func (r *Runner) computeLocalizedAnnotations(ctx context.Context, req GenerateRe
 	}
 	extraction := req.MediaPlan.Extraction
 	includeEntities := extraction.Includes(mediadomain.ExtractionIncludeEntities) || extraction.Includes(mediadomain.ExtractionIncludeSpecialNames)
+	if req.EntityExtractionDisabled() {
+		includeEntities = false
+	}
 	includePhrases := extraction.Includes(mediadomain.ExtractionIncludeImportantPhrases)
 	includeWords := extraction.Includes(mediadomain.ExtractionIncludeImportantWords)
 	if !includeEntities && !includePhrases && !includeWords {

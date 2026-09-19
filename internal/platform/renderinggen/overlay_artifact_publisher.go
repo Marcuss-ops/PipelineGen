@@ -9,12 +9,16 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	finalization "github.com/Marcuss-ops/PipelineGen/internal/capabilities/finalization"
 	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	pathutil "github.com/Marcuss-ops/PipelineGen/internal/platform/filesystem"
+	"github.com/Marcuss-ops/PipelineGen/pkg/background"
 )
+
+const overlayPublicationTimeout = 30 * time.Minute
 
 // DriveOverlayArtifactPublisher closes the queue→Drive boundary. RenderingGen
 // keeps the certified bytes in its content-addressed object store; this
@@ -62,6 +66,18 @@ func (p *DriveOverlayArtifactPublisher) PublishOverlay(ctx context.Context, spec
 	if artifact == nil || strings.TrimSpace(artifact.URL) == "" || strings.TrimSpace(artifact.SHA256) == "" || artifact.SizeBytes <= 0 {
 		return fmt.Errorf("overlay artifact certification is incomplete")
 	}
+
+	// Rendering has already produced and certified immutable bytes. Drive is a
+	// separate side effect and must not inherit the render/job cancellation:
+	// the worker can cancel its parent immediately after the render phase, and a
+	// request disconnect or lease transition must not turn a certified artifact
+	// into a lost publication. Keep the correlation values, remove parent
+	// cancellation, and impose a bounded upload lifetime owned by this
+	// publisher. The async queue path also detaches its worker, but this
+	// boundary is the final invariant and covers synchronous callers too.
+	publishCtx, cancel := background.DetachWithTimeout(ctx, "overlay-drive-publication", overlayPublicationTimeout)
+	defer cancel()
+	ctx = publishCtx
 
 	ext := filepath.Ext(artifact.URL)
 	if ext == "" {

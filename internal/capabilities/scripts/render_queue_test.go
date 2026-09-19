@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -26,10 +27,122 @@ type captureOverlayPublication struct {
 	artifact *RenderArtifact
 }
 
+type blockingOverlayPublication struct {
+	started chan struct{}
+	release chan struct{}
+}
+
+func (p *blockingOverlayPublication) PublishOverlay(_ context.Context, _ OverlayPublicationSpec, artifact *RenderArtifact) error {
+	close(p.started)
+	<-p.release
+	artifact.DriveFileID = "drive-async"
+	return nil
+}
+
 func (p *captureOverlayPublication) PublishOverlay(_ context.Context, spec OverlayPublicationSpec, artifact *RenderArtifact) error {
 	p.spec = spec
 	p.artifact = artifact
 	return nil
+}
+
+// runScopedOverlayPublication is a Drive publication fake that behaves per RUN:
+// it can hold one run's upload open and fail it while every other run's upload
+// succeeds. That is the shape the live misattribution had — one run's overlay
+// publication failing while another run's publications were in flight on the
+// same process-wide pool — so a test built on it can prove the join is scoped
+// to the run that queued the work.
+type runScopedOverlayPublication struct {
+	mu      sync.Mutex
+	called  map[string]int
+	hold    map[string]chan struct{}
+	started map[string]chan struct{}
+	fail    map[string]error
+}
+
+func newRunScopedOverlayPublication() *runScopedOverlayPublication {
+	return &runScopedOverlayPublication{
+		called:  make(map[string]int),
+		hold:    make(map[string]chan struct{}),
+		started: make(map[string]chan struct{}),
+		fail:    make(map[string]error),
+	}
+}
+
+// holdRun makes the named run's publication block until releaseRun is called.
+func (p *runScopedOverlayPublication) holdRun(runID string) *runScopedOverlayPublication {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.hold[runID] = make(chan struct{})
+	p.started[runID] = make(chan struct{})
+	return p
+}
+
+// failRun makes the named run's publication fail with err.
+func (p *runScopedOverlayPublication) failRun(runID string, err error) *runScopedOverlayPublication {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.fail[runID] = err
+	return p
+}
+
+// waitStarted blocks until the named run's publication has begun.
+func (p *runScopedOverlayPublication) waitStarted(t *testing.T, runID string) {
+	t.Helper()
+	p.mu.Lock()
+	started := p.started[runID]
+	p.mu.Unlock()
+	if started == nil {
+		t.Fatalf("no publication was registered for run %q", runID)
+	}
+	select {
+	case <-started:
+	case <-time.After(2 * time.Second):
+		t.Fatalf("publication for run %q never started", runID)
+	}
+}
+
+func (p *runScopedOverlayPublication) releaseRun(runID string) {
+	p.mu.Lock()
+	hold := p.hold[runID]
+	p.mu.Unlock()
+	if hold != nil {
+		close(hold)
+	}
+}
+
+func (p *runScopedOverlayPublication) calls(runID string) int {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.called[runID]
+}
+
+func (p *runScopedOverlayPublication) PublishOverlay(ctx context.Context, _ OverlayPublicationSpec, artifact *RenderArtifact) error {
+	runID := runIDFromContext(ctx)
+	p.mu.Lock()
+	p.called[runID]++
+	first := p.called[runID] == 1
+	hold, started, fail := p.hold[runID], p.started[runID], p.fail[runID]
+	p.mu.Unlock()
+	if first && started != nil {
+		close(started)
+	}
+	if hold != nil {
+		<-hold
+	}
+	if fail != nil {
+		return fail
+	}
+	artifact.DriveFileID = "drive-" + runID
+	return nil
+}
+
+// runIDFromContext is the publication batch key the enqueuer uses: the kernel
+// run bound to ctx, or "" for a composition that binds none.
+func runIDFromContext(ctx context.Context) string {
+	if run := kernobs.FromContext(ctx); run != nil {
+		return run.Report().RunID
+	}
+	return ""
 }
 
 func newFakeRenderQueueClient() *fakeRenderQueueClient {
@@ -400,6 +513,7 @@ func TestQueueRenderEnqueuerChrononPlan(t *testing.T) {
 			{SHA256: capoverlay.GoldenBackgroundHash, URL: "assets/background.jpg"},
 			{SHA256: capoverlay.GoldenAppleHash, URL: "assets/apple.png"},
 			{SHA256: capoverlay.GoldenPresetFontHash, URL: capoverlay.CanonicalPresetFontPath},
+			{SHA256: capoverlay.GoldenFontHash, URL: capoverlay.CanonicalTextFontPath},
 		},
 		State: "completed",
 		Artifact: &RenderArtifact{
@@ -448,14 +562,17 @@ func TestQueueRenderEnqueuerChrononPlan(t *testing.T) {
 	if doc.SchemaVersion != capoverlay.SchemaVersionPlan {
 		t.Fatalf("submitted plan schema = %q, want %q", doc.SchemaVersion, capoverlay.SchemaVersionPlan)
 	}
-	if len(submitted.Assets) != 3 {
-		t.Fatalf("submitted assets = %d, want 3", len(submitted.Assets))
+	if len(submitted.Assets) != 4 {
+		t.Fatalf("submitted assets = %d, want 4", len(submitted.Assets))
 	}
 	if submitted.Assets[0].SHA256 != capoverlay.GoldenBackgroundHash || submitted.Assets[0].URL != "assets/background.jpg" {
 		t.Fatalf("asset 0 not projected: %+v", submitted.Assets[0])
 	}
 	if submitted.Assets[1].SHA256 != capoverlay.GoldenAppleHash || submitted.Assets[1].URL != "assets/apple.png" {
 		t.Fatalf("asset 1 not projected: %+v", submitted.Assets[1])
+	}
+	if submitted.Assets[3].SHA256 != capoverlay.GoldenFontHash || submitted.Assets[3].URL != capoverlay.CanonicalTextFontPath {
+		t.Fatalf("Cyrillic semantic font not projected: %+v", submitted.Assets[3])
 	}
 }
 
@@ -524,6 +641,45 @@ func TestQueueRenderEnqueuerCarriesJobDriveFolderToPublisherAndOmitsItFromWire(t
 	}
 	if wire.DriveFolderID != "" {
 		t.Fatalf("application-only drive folder leaked onto RenderingGen wire: %q", wire.DriveFolderID)
+	}
+}
+
+func TestQueueRenderEnqueuerAsyncPublicationJoinsBeforeWait(t *testing.T) {
+	client := &freshRenderClient{}
+	enqueuer, err := NewQueueRenderEnqueuer(client)
+	if err != nil {
+		t.Fatal(err)
+	}
+	publisher := &blockingOverlayPublication{started: make(chan struct{}), release: make(chan struct{})}
+	enqueuer.SetArtifactPublisher(publisher)
+	enqueuer.SetAsyncPublication(true)
+
+	ref, err := enqueuer.EnqueueChrononPlan(context.Background(), capoverlay.GoldenOverlayPlanV1())
+	if err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-publisher.started:
+	case <-time.After(time.Second):
+		t.Fatal("async publication did not start")
+	}
+	if ref.Artifact == nil || ref.Artifact.DriveFileID != "" {
+		t.Fatalf("render caller must return before Drive publication completes: %+v", ref.Artifact)
+	}
+
+	waitDone := make(chan error, 1)
+	go func() { waitDone <- enqueuer.Wait(context.Background()) }()
+	select {
+	case err := <-waitDone:
+		t.Fatalf("Wait returned before publication completed: %v", err)
+	case <-time.After(20 * time.Millisecond):
+	}
+	close(publisher.release)
+	if err := <-waitDone; err != nil {
+		t.Fatal(err)
+	}
+	if ref.Artifact.DriveFileID != "drive-async" {
+		t.Fatalf("joined publication did not update certified artifact: %+v", ref.Artifact)
 	}
 }
 
@@ -893,5 +1049,119 @@ func TestNewRenderQueueAssetRoundTripsThroughTheIdentity(t *testing.T) {
 	}
 	if back.MediaType != "" || back.SizeBytes != 0 {
 		t.Errorf("the wire projection must not invent fields the queue does not carry: %+v", back)
+	}
+}
+
+// publicationRunCtx builds a run-bound context the way the job worker does
+// (kernobs.WithRun around the ctx it hands to the script runner), so the
+// enqueuer sees two DISTINCT run identities sharing one pool.
+func publicationRunCtx(t *testing.T, observer *kernobs.RunObserver, runID string) context.Context {
+	t.Helper()
+	run := observer.StartRun(context.Background(), kernobs.RunInfo{RunID: runID, AttemptID: "attempt-1"})
+	if run == nil {
+		t.Fatalf("StartRun returned no run for %q", runID)
+	}
+	return kernobs.WithRun(context.Background(), run)
+}
+
+// TestQueueRenderEnqueuerPublicationJoinIsRunScoped pins the cross-run
+// isolation of the publication pool.
+//
+// The pool is process-wide (the composition root wires ONE enqueuer for the
+// whole process), but each run's completion only joins its OWN publications.
+// The contract, each half of which was violated by the previous shared
+// WaitGroup + single error slot:
+//
+//  1. run A never blocks on run B's in-flight publication;
+//  2. run A is never failed by run B's publication error;
+//  3. a run that already completed (batch retired) does not poison a later run.
+//
+// Point 2 is the live failure this exists for: a run was failed with another
+// run's overlay error (`context canceled` from a different video), so the
+// operator's retry could not fix its own run.
+func TestQueueRenderEnqueuerPublicationJoinIsRunScoped(t *testing.T) {
+	t.Parallel()
+
+	observer := kernobs.NewRunObserver(nil)
+	ctxSlow := publicationRunCtx(t, observer, "run-slow")
+	ctxFast := publicationRunCtx(t, observer, "run-fast")
+
+	imposed := errors.New("drive upload failed for this run only")
+	publisher := newRunScopedOverlayPublication().holdRun("run-slow").failRun("run-slow", imposed)
+
+	enqueuer, err := NewQueueRenderEnqueuer(&freshRenderClient{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	enqueuer.SetArtifactPublisher(publisher)
+	enqueuer.SetAsyncPublication(true)
+
+	// run-slow publishes first and is held open; run-fast publishes after it.
+	if _, err := enqueuer.EnqueueChrononPlan(ctxSlow, capoverlay.GoldenOverlayPlanV1()); err != nil {
+		t.Fatalf("enqueue for run-slow: %v", err)
+	}
+	if _, err := enqueuer.EnqueueChrononPlan(ctxFast, capoverlay.GoldenOverlayPlanV1()); err != nil {
+		t.Fatalf("enqueue for run-fast: %v", err)
+	}
+	publisher.waitStarted(t, "run-slow")
+
+	// (1) run-fast joins its own batch only, while run-slow's upload is still
+	// open on the shared pool.
+	doneFast := make(chan error, 1)
+	go func() { doneFast <- enqueuer.Wait(ctxFast) }()
+	select {
+	case err := <-doneFast:
+		if err != nil {
+			t.Fatalf("run-fast inherited another run's publication failure: %v", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("run-fast's join blocked on run-slow's in-flight publication")
+	}
+	if got := publisher.calls("run-fast"); got != 1 {
+		t.Fatalf("run-fast publications = %d, want 1 (its own publication must have run)", got)
+	}
+
+	// (2) run-slow is failed by its OWN failure — and only now, after the join.
+	publisher.releaseRun("run-slow")
+	if err := enqueuer.Wait(ctxSlow); !errors.Is(err, imposed) {
+		t.Fatalf("run-slow join = %v, want its own publication failure %v", err, imposed)
+	}
+
+	// (3) a later run starts clean: the retired batch left nothing behind.
+	ctxLater := publicationRunCtx(t, observer, "run-later")
+	if _, err := enqueuer.EnqueueChrononPlan(ctxLater, capoverlay.GoldenOverlayPlanV1()); err != nil {
+		t.Fatalf("enqueue for run-later: %v", err)
+	}
+	if err := enqueuer.Wait(ctxLater); err != nil {
+		t.Fatalf("a later run inherited a retired publication failure: %v", err)
+	}
+}
+
+// TestQueueRenderEnqueuerUnboundPublicationJoinsAndClears pins the fallback
+// path: a composition that binds no kernel run (unit-style callers, one-shot
+// CLI calls) keeps the historical process-wide join semantics — the join
+// returns that work's first failure, and TAKES it, so the next join of the same
+// unbound pool is clean instead of re-reporting a failure that is over.
+func TestQueueRenderEnqueuerUnboundPublicationJoinsAndClears(t *testing.T) {
+	t.Parallel()
+
+	imposed := errors.New("drive upload failed")
+	publisher := newRunScopedOverlayPublication().failRun("", imposed)
+
+	enqueuer, err := NewQueueRenderEnqueuer(&freshRenderClient{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	enqueuer.SetArtifactPublisher(publisher)
+	enqueuer.SetAsyncPublication(true)
+
+	if _, err := enqueuer.EnqueueChrononPlan(context.Background(), capoverlay.GoldenOverlayPlanV1()); err != nil {
+		t.Fatalf("enqueue: %v", err)
+	}
+	if err := enqueuer.Wait(context.Background()); !errors.Is(err, imposed) {
+		t.Fatalf("unbound join = %v, want the publication failure %v", err, imposed)
+	}
+	if err := enqueuer.Wait(context.Background()); err != nil {
+		t.Fatalf("a joined failure must be taken, not re-reported: %v", err)
 	}
 }

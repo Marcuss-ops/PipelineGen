@@ -6,7 +6,35 @@ import (
 	"testing"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
+
+// TestFontAssetProjectionMatchesKernelDeclaredCoverage pins the ONE rule the
+// subtitle font swap depends on, across the two packages that own its halves.
+//
+// The kernel (kernel/script) decides which font a language's subtitles may burn
+// by looking up the glyph coverage of the asset a style PROJECTS to. The
+// platform mapper (clip_plan_mapper.go::fontAssetID) is what actually picks the
+// file burned in the render. If those two projections ever disagree, the kernel
+// would certify a run against a font file the renderer never uses — exactly the
+// shape that made a Cyrillic clip die mid-render on an empty glyph vector.
+// Comparing them here (rather than trusting two matching comments) means either
+// side can no longer change its rule alone.
+func TestFontAssetProjectionMatchesKernelDeclaredCoverage(t *testing.T) {
+	t.Parallel()
+
+	// The complete family vocabulary the subtitle style presets can produce,
+	// including families whose .ttf is not shipped here and the empty default.
+	for _, font := range []string{"", "Montserrat", "montserrat_bold", "Poppins", "Impact", "Anton", "Bebas Neue", "Roboto"} {
+		style := &scriptpkg.VideoVisualStyleSpec{Font: font}
+		mapper := fontAssetID(style)
+		kernel := string(scriptpkg.SubtitleFontAssetForStyle(style))
+		if mapper != kernel {
+			t.Errorf("font %q: the render plan burns %q while the kernel certifies coverage of %q",
+				font, mapper, kernel)
+		}
+	}
+}
 
 // TestResolveFontAssetIsAbsoluteAndCertified pins items 11/12: a registered
 // font resolves to an ABSOLUTE path under the configured asset root (never a

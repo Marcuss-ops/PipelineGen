@@ -35,6 +35,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -44,6 +45,48 @@ import (
 	capabilityaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
+
+// segmentEnricherNER adapts a legacy-shaped test double to the current
+// VisualNERPort seam while the coordinator tests continue to exercise the
+// reusable SegmentEnricher contract directly. Production code has no such
+// adapter: Runner always builds SceneIRSegmentEnricher from NERPort.
+type segmentEnricherNER struct {
+	enricher SegmentEnricher
+}
+
+func (n segmentEnricherNER) Extract(ctx context.Context, sourceText string, _ int) ([]VisualEntity, error) {
+	if strings.HasPrefix(sourceText, "[TRANSLATED]") {
+		return nil, nil
+	}
+	if n.enricher == nil {
+		return nil, nil
+	}
+	result, err := n.enricher.Enrich(ctx, nil, scriptpkg.SpecScene{
+		ID:        sourceText,
+		SegmentID: sourceText,
+		Text:      sourceText,
+	})
+	if err != nil {
+		return nil, err
+	}
+	entities := make([]VisualEntity, 0, len(result.Insights.Entities))
+	for _, entity := range result.Insights.Entities {
+		text := strings.TrimSpace(entity.Value)
+		start := strings.Index(sourceText, text)
+		if text == "" || start < 0 {
+			continue
+		}
+		entities = append(entities, VisualEntity{
+			Text:     text,
+			Type:     scriptpkg.EntityType(entity.Type),
+			Score:    float32(entity.Confidence),
+			Start:    start,
+			End:      start + len(text),
+			Evidence: sourceText[start : start+len(text)],
+		})
+	}
+	return entities, nil
+}
 
 // ─────────────────────────────────────────────────────────────────────
 // Stubs — implement the 5 production ports of Runner.

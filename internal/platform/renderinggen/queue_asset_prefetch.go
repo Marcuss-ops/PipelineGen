@@ -86,12 +86,14 @@ func NewHTTPAssetPrefetcher(storeURL string) *AssetPrefetcher {
 			// asset bundle before deciding whether the asset is stageable.
 			// Without this bridge the font reaches the queue manifest but is
 			// silently skipped by prefetch, leaving the worker with a cache miss.
-			if localPath == "" && canonicalPresetFontPath(downloadURL) {
-				font, err := ResolveFontAsset(FontPoppinsBold)
-				if err != nil {
-					return fmt.Errorf("resolve preset font %q: %w", downloadURL, err)
+			if localPath == "" {
+				if fontID, ok := canonicalFontAssetID(downloadURL); ok {
+					font, err := ResolveFontAsset(fontID)
+					if err != nil {
+						return fmt.Errorf("resolve preset font %q: %w", downloadURL, err)
+					}
+					localPath = font.LocalPath
 				}
-				localPath = font.LocalPath
 			}
 			// The canonical identity is the only digest spelling; the local `Hash`
 			// lower-casing that used to live here is the projection's job now.
@@ -175,12 +177,14 @@ func verifiedLocalPath(path, expectedHash string) string {
 	return path
 }
 
-func canonicalPresetFontPath(path string) bool {
+func canonicalFontAssetID(path string) (string, bool) {
 	switch strings.TrimSpace(filepath.Clean(path)) {
 	case "assets/fonts/Poppins-Bold.ttf", "fonts/Poppins-Bold.ttf", "Poppins-Bold.ttf":
-		return true
+		return FontPoppinsBold, true
+	case "assets/fonts/DejaVuSans.ttf", "fonts/DejaVuSans.ttf", "DejaVuSans.ttf":
+		return FontDejaVuSans, true
 	default:
-		return false
+		return "", false
 	}
 }
 

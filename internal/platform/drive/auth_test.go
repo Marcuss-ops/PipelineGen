@@ -127,8 +127,8 @@ func TestNewGoogleTransport_UsesPhaseTimeoutsWithoutWholeRequestDeadline(t *test
 	if transport == nil {
 		t.Fatal("newGoogleTransport returned nil")
 	}
-	if transport.ResponseHeaderTimeout != 30*time.Second {
-		t.Fatalf("ResponseHeaderTimeout = %v, want 30s", transport.ResponseHeaderTimeout)
+	if transport.ResponseHeaderTimeout != 60*time.Second {
+		t.Fatalf("ResponseHeaderTimeout = %v, want 60s", transport.ResponseHeaderTimeout)
 	}
 	if transport.TLSHandshakeTimeout != 10*time.Second {
 		t.Fatalf("TLSHandshakeTimeout = %v, want 10s", transport.TLSHandshakeTimeout)

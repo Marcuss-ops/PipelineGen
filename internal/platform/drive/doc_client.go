@@ -5,8 +5,10 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
+	"github.com/Marcuss-ops/PipelineGen/pkg/retry"
 
 	"google.golang.org/api/docs/v1"
 	"google.golang.org/api/drive/v3"
@@ -82,9 +84,37 @@ func (d *DocClientImpl) createDocWithProps(ctx context.Context, title, content, 
 		docTitle = "Untitled script"
 	}
 
-	created, err := d.docsService.Documents.Create(&docs.Document{
-		Title: docTitle,
-	}).Context(ctx).Do()
+	// The create is retried on Google's TRANSIENT failures. A single
+	// `googleapi: Error 500: Internal error encountered.` while creating ONE
+	// language's document used to fail the whole durable run — every render and
+	// every other language's document was already published — even though the
+	// job was classified retryable and the error was a server blip. Drive's own
+	// put path has retried its transient errors for the same reason
+	// (uploader_put.go); the Docs create is the same class of provider call.
+	// The subsequent insert/move/tag steps keep their own semantics: this
+	// retries the CREATE, so a retry cannot produce two documents for one
+	// (run, language) — nothing was minted when the create failed.
+	created, err := retry.DoWithValue(ctx, func() (*docs.Document, error) {
+		doc, createErr := d.docsService.Documents.Create(&docs.Document{
+			Title: docTitle,
+		}).Context(ctx).Do()
+		if createErr != nil {
+			// Same SDK-exit recipe as classifyDriveUploadError
+			// (uploader_put_helpers.go): the typed envelope is what makes
+			// retry.IsTransient classify Google's 5xx/429 as retryable and
+			// every 4xx (bad request, revoked scope, 404 parent) as
+			// terminal, without a second, hand-rolled taxonomy.
+			return nil, classifyDriveUploadError(createErr)
+		}
+		return doc, nil
+	}, retry.Options{
+		MaxAttempts:    3,
+		InitialBackoff: time.Second,
+		MaxBackoff:     10 * time.Second,
+		BackoffFactor:  3.0,
+		JitterFraction: 0.25,
+		IsRetryable:    retry.IsTransient,
+	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to create google doc: %w", err)
 	}

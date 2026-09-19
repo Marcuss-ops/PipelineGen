@@ -116,7 +116,10 @@ func (s *MediaSearcher) Search(ctx context.Context, req appsearch.VectorSearchRe
 	if err != nil {
 		return nil, err
 	}
-	where, args, err := compileMediaSearchWhere(req.WorkspaceID, req.IsSystem, req.Source, req.Category, req.MediaType, req.Language, req.LifecycleState)
+	where, args, err := compileMediaSearchWhere(req.WorkspaceID, req.IsSystem, mediaSearchFilterDims{
+		source: req.Source, category: req.Category, mediaType: req.MediaType, language: req.Language,
+		assetKind: req.AssetKind, semanticRole: req.SemanticRole,
+	}, req.LifecycleState)
 	if err != nil {
 		return nil, err
 	}
@@ -174,7 +177,10 @@ func (s *MediaSearcher) HybridSearch(ctx context.Context, req appsearch.HybridSe
 	if err != nil {
 		return nil, err
 	}
-	where, args, err := compileMediaSearchWhere(req.WorkspaceID, req.IsSystem, req.Source, req.Category, req.MediaType, req.Language, req.LifecycleState)
+	where, args, err := compileMediaSearchWhere(req.WorkspaceID, req.IsSystem, mediaSearchFilterDims{
+		source: req.Source, category: req.Category, mediaType: req.MediaType, language: req.Language,
+		assetKind: req.AssetKind, semanticRole: req.SemanticRole,
+	}, req.LifecycleState)
 	if err != nil {
 		return nil, err
 	}
@@ -377,12 +383,32 @@ func decodeTagsJSON(raw string) []string {
 	return tags
 }
 
+// mediaSearchFilterDims carries the scalar equality dimensions the pgvector
+// WHERE fragment compiles. It is a struct rather than a positional parameter
+// list so that adding a filter dimension cannot silently shift the arguments
+// of an ever-longer call (the two call sites pass nine facts).
+//
+// The four provenance/classification dimensions and the two TAXONOMY
+// dimensions are deliberately separate: source is where the bytes came from,
+// while asset_kind / semantic_role are the asset family and its usage intent.
+// A stock clip acquired from YouTube is source="youtube" with
+// asset_kind="stock_video" / semantic_role="stock", so both must be
+// expressible independently.
+type mediaSearchFilterDims struct {
+	source       string
+	category     string
+	mediaType    string
+	language     string
+	assetKind    string
+	semanticRole string
+}
+
 // compileMediaSearchWhere builds the WHERE fragment shared by Search and
 // HybridSearch. Invariants mirror qdrant.CompileQdrantFilter:
 //   - workspace must-clause ALWAYS present unless IsSystem
 //   - lifecycle allow-list ALWAYS present (default {"ACTIVE"})
 //   - empty optional filters drop out
-func compileMediaSearchWhere(workspaceID string, isSystem bool, source, category, mediaType, language string, lifecycleStates []string) (string, []any, error) {
+func compileMediaSearchWhere(workspaceID string, isSystem bool, dims mediaSearchFilterDims, lifecycleStates []string) (string, []any, error) {
 	if !isSystem {
 		if strings.TrimSpace(workspaceID) == "" {
 			return "", nil, fmt.Errorf("pgvector search: WorkspaceID is required (set IsSystem=true for admin/reconcile paths)")
@@ -404,10 +430,15 @@ func compileMediaSearchWhere(workspaceID string, isSystem bool, source, category
 		col   string
 		value string
 	}{
-		{"source", strings.TrimSpace(source)},
-		{"category", strings.TrimSpace(category)},
-		{"media_type", strings.TrimSpace(mediaType)},
-		{"language", strings.TrimSpace(language)},
+		{"source", strings.TrimSpace(dims.source)},
+		{"category", strings.TrimSpace(dims.category)},
+		{"media_type", strings.TrimSpace(dims.mediaType)},
+		{"language", strings.TrimSpace(dims.language)},
+		// Canonical taxonomy dimensions (GIN-indexable equality on the media
+		// SSOT). Compiled in-database so the ANN/Hybrid legs narrow BEFORE
+		// the LIMIT rather than being post-filtered after it.
+		{"asset_kind", strings.TrimSpace(dims.assetKind)},
+		{"semantic_role", strings.TrimSpace(dims.semanticRole)},
 	} {
 		if eq.value == "" {
 			continue

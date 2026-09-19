@@ -37,7 +37,7 @@ func TestResolveArtifactRoutingContext_ForwardsVoiceoverFolder(t *testing.T) {
 		"caller-explicit voiceover folder must survive the routing context")
 }
 
-func TestResolveArtifactRoutingContext_DriveFolderFallback(t *testing.T) {
+func TestResolveArtifactRoutingContext_DoesNotUseClipFolderForDocs(t *testing.T) {
 	req := GenerateRequest{
 		Project:        "p",
 		SourceLanguage: "es",
@@ -45,7 +45,8 @@ func TestResolveArtifactRoutingContext_DriveFolderFallback(t *testing.T) {
 	}
 	routing, err := req.resolveArtifactRoutingContext("")
 	require.NoError(t, err)
-	require.Equal(t, "legacy-drive-folder", routing.DocsFolderID)
+	require.Empty(t, routing.DocsFolderID,
+		"the clip destination must not override the configured document root")
 }
 
 func TestResolveArtifactRoutingContext_ConfiguredDefault(t *testing.T) {

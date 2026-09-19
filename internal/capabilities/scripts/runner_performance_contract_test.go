@@ -100,7 +100,7 @@ func blockingVidRushRunner() (*Runner, *inMemRunRepository, *stubVoiceoverGenera
 	timeline := &timelineRecorder{}
 	enricher := newE2EBlockingEnricher(timeline)
 	runner.SetVidRushPipeline(&VidRushPipeline{
-		Enricher: enricher,
+		NERPort: enricher,
 		PlanResolver: VidRushPlanResolverFunc(func(_ context.Context, _ GenerateRequest) (*scriptpkg.ResolvedGenerationPlan, error) {
 			return &scriptpkg.ResolvedGenerationPlan{Language: "en", Title: "test"}, nil
 		}),

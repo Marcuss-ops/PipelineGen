@@ -34,30 +34,22 @@ func (f VidRushPlanResolverFunc) ResolveVidRushPlan(ctx context.Context, req Gen
 // to construct a run-scoped coordinator. It holds only immutable dependencies,
 // never the coordinator itself, so the Runner stays reusable across runs.
 //
-// Fase 1-5 semantic cutover (big-bang): the legacy Enricher/ProviderResolver
-// are replaced by SceneIRSegmentEnricher + SemanticProviderResolver, wired
-// through the new VisualNERPort/MediaSamplerPort/LocalStockResolverPort. The
-// barrier is wrapped by MediaCertBarrier so a CERTIFIED=false run fails the
-// job. The legacy Enricher/ProviderResolver fields remain for composition
-// roots that have not yet wired the new ports; when the new ports are set
-// they take precedence (see Runner.beginVidRush).
+// Fase 1-5 semantic cutover (big-bang): SceneIRSegmentEnricher and
+// SemanticProviderResolver are wired through the new ports. The barrier is
+// wrapped by MediaCertBarrier so a CERTIFIED=false run fails the job.
 type VidRushPipeline struct {
-	// Enricher converts one stable scene into a VidRushSegmentResult. It is
-	// the single-segment owner of extraction/query/cache work. Legacy field;
-	// when NERPort is set, SceneIRSegmentEnricher replaces this.
-	Enricher SegmentEnricher
 	// ProviderResolver fans out the enriched segment's visual provider
 	// searches (Artlist, internet images) after entity extraction. A nil
-	// resolver leaves enrichment at the entities+queries stage. Legacy
-	// field; when StockResolverPort + SamplerPort are set,
-	// SemanticProviderResolver replaces this.
+	// resolver leaves enrichment at the entities+queries stage. When
+	// StockResolverPort + SamplerPort are set, SemanticProviderResolver is
+	// composed with this fan-out resolver.
 	ProviderResolver SegmentProviderResolver
 	// Materializer acquires/verifies/finalizes candidates after provider
 	// search. A nil materializer leaves enrichment at the search stage.
 	Materializer SegmentMaterializer
 	// Metrics records bounded per-scene pipeline events and per-run overlap.
 	Metrics VidRushMetrics
-	// PlanResolver resolves the per-run plan. Required when Enricher is set.
+	// PlanResolver resolves the per-run plan. Required when NERPort is wired.
 	PlanResolver VidRushPlanResolver
 	// Backpressure bounds each stage independently. Zero values use the
 	// canonical defaults (extraction single-slot, search 4, materialize 2).

@@ -79,6 +79,7 @@ import (
 
 	scriptgeneration "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
 	ytusecase "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/usecase"
+	assetpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	detail "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
@@ -151,9 +152,11 @@ func dollyMultilingualLanguages(t *testing.T) []string {
 	}
 	out := make([]string, 0, len(dollyMultilingualTargetLanguages))
 	for _, part := range strings.Split(raw, ",") {
-		if lang := strings.ToLower(strings.TrimSpace(part)); lang != "" {
-			out = append(out, lang)
+		lang, err := assetpkg.Normalize(strings.TrimSpace(part))
+		if err != nil || lang == "und" {
+			continue
 		}
+		out = append(out, lang)
 	}
 	if len(out) == 0 {
 		t.Fatalf("DOLLY_PARTON_LANGUAGES=%q resolved to no language", raw)
@@ -241,6 +244,7 @@ func dollyPartonMultilingualEnvelope(t *testing.T, languages []string) []byte {
 				"docs": map[string]any{
 					"enabled":   true,
 					"languages": docsLanguages,
+					"folder_id": dollyPartonDocsFolderID,
 				},
 			},
 		},
@@ -306,6 +310,8 @@ func TestDollyPartonMultilingualRequestContract(t *testing.T) {
 
 	// 6. One document per language, source included.
 	require.True(t, req.Docs.Enabled, "docs publishing is explicit for this batch")
+	require.Equal(t, dollyPartonDocsFolderID, req.Docs.FolderID,
+		"scripts and rendered clips must be rooted in the canonical Dolly Drive folder")
 }
 
 // stringLanguages flattens the domain Language slice for comparison.
@@ -416,15 +422,17 @@ func verifyDollyPartonMultilingualResult(t *testing.T, result map[string]any, la
 	renders := mapsAt(result, "localized_renders")
 	require.NotEmpty(t, renders, "the run must produce localized renders for the requested languages")
 
-	// The target fan-out is a complete Cartesian matrix: every canonical clip
-	// must produce exactly one artifact for every requested target language.
-	// Checking only "at least one render per language" would allow a partial
-	// job (for example 4/5 clips) to report success.
+	// The run publishes the source language beside the localized targets. The
+	// complete Cartesian matrix is therefore every canonical clip × (source +
+	// requested target languages). Checking only "at least one render per
+	// language" would allow a partial job (for example 4/5 clips) to report
+	// success.
 	clipIDs := dollyPartonCanonicalClipIDs(t)
-	expected := len(clipIDs) * len(languages)
+	allLanguages := append([]string{dollyMultilingualSourceLanguage}, languages...)
+	expected := len(clipIDs) * len(allLanguages)
 	require.Len(t, renders, expected,
-		"the localized result must contain exactly one render per clip/language cell")
-	byLanguage := make(map[string][]map[string]any, len(languages))
+		"the result must contain exactly one render per clip/language cell, including the source language")
+	byLanguage := make(map[string][]map[string]any, len(allLanguages))
 	seenCells := make(map[string]struct{}, expected)
 	for _, render := range renders {
 		lang := strings.ToLower(stringAt(render, "language"))
@@ -438,7 +446,7 @@ func verifyDollyPartonMultilingualResult(t *testing.T, result map[string]any, la
 		byLanguage[lang] = append(byLanguage[lang], render)
 	}
 
-	for _, want := range languages {
+	for _, want := range allLanguages {
 		lang := strings.ToLower(want)
 		got := byLanguage[lang]
 		require.Lenf(t, got, len(clipIDs),
@@ -476,7 +484,7 @@ func verifyDollyPartonMultilingualResult(t *testing.T, result map[string]any, la
 	//
 	// Within one language every clip legitimately shares the language folder; it
 	// is ACROSS languages that a shared folder is the defect.
-	folderByLanguage := make(map[string]string, len(languages))
+	folderByLanguage := make(map[string]string, len(allLanguages))
 	for _, render := range renders {
 		lang := strings.ToLower(stringAt(render, "language"))
 		folder := strings.TrimSpace(stringAt(render, "drive_folder_id"))
@@ -495,6 +503,6 @@ func verifyDollyPartonMultilingualResult(t *testing.T, result map[string]any, la
 		}
 		folderByLanguage[lang] = folder
 	}
-	require.Len(t, folderByLanguage, len(languages),
+	require.Len(t, folderByLanguage, len(allLanguages),
 		"every requested language must own a destination folder, got %v", folderByLanguage)
 }

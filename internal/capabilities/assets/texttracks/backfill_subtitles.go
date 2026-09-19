@@ -153,13 +153,25 @@ func (s *BackfillService) MaterializeSubtitleArtifacts(
 			// No source timing to project onto: nothing to align.
 		default:
 			aligned := map[string][]detail.TimedCue{}
+			// ReplaceTranscriptCues is an atomic WHOLE-ASSET replacement. Keep
+			// every language that already has timing in the replacement batch;
+			// sending only newly aligned languages would delete the existing cue
+			// rows and make the next render regenerate them again.
+			preserved := map[string][]detail.TimedCue{sourceLanguage: append([]detail.TimedCue(nil), srcCues...)}
 			timingFaithful := 0
 			for _, lang := range ordered {
 				if lang == sourceLanguage {
 					continue
 				}
 				track, cues, fErr := s.repo.FindReady(ctx, assetItem.ID, lang, kind)
-				if fErr != nil || track == nil || len(cues) > 0 || track.TextContent == "" {
+				if fErr != nil || track == nil {
+					continue
+				}
+				if len(cues) > 0 {
+					preserved[lang] = append([]detail.TimedCue(nil), cues...)
+					continue
+				}
+				if track.TextContent == "" {
 					continue
 				}
 				// PREFERRED: translate each SOURCE cue and keep its window
@@ -188,8 +200,10 @@ func (s *BackfillService) MaterializeSubtitleArtifacts(
 					zap.Int("source_cues", len(srcCues)))
 			}
 			if len(aligned) > 0 {
-				batch := make(map[string][]detail.TimedCue, len(aligned)+1)
-				batch[sourceLanguage] = srcCues
+				batch := make(map[string][]detail.TimedCue, len(preserved)+len(aligned))
+				for lang, cues := range preserved {
+					batch[lang] = cues
+				}
 				for l, c := range aligned {
 					batch[l] = c
 				}

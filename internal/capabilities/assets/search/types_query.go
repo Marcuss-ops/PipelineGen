@@ -191,12 +191,27 @@ func ParseUniverse(s string) SearchUniverse {
 // test on /internal/v1/media/search survives both PR 8 (alias-only) and
 // PR 10 (alias-with-removed-local-def).
 type Filters struct {
-	Source        string
-	MediaType     string
-	Category      string
-	Language      string
-	Tags          []string // AND semantics: every tag must be present
-	DurationMsMin int      // inclusive lower bound on duration (videos only)
+	Source    string
+	MediaType string
+	Category  string
+	Language  string
+	Tags      []string // AND semantics: every tag must be present
+	// AssetKind / SemanticRole are the canonical TAXONOMY dimensions
+	// (media_assets.asset_kind / semantic_role).
+	//
+	// They are NOT interchangeable with Source. Source is physical
+	// PROVENANCE (where the bytes came from: youtube, artlist, voiceover,
+	// script, …); AssetKind/SemanticRole are the asset FAMILY and its usage
+	// intent. A stock clip acquired from YouTube is source="youtube" with
+	// asset_kind="stock_video" / semantic_role="stock", so a family query
+	// MUST be expressible without overloading Source — otherwise the only
+	// way to ask for "stock clips" is to ask for provenance, which silently
+	// excludes every YouTube-acquired stock clip.
+	//
+	// Both are equality filters, trimmed, and empty means "no constraint".
+	AssetKind     string
+	SemanticRole  string
+	DurationMsMin int // inclusive lower bound on duration (videos only)
 }
 
 // InferCategoryFromQuery applies the shared media-taxonomy vocabulary to

@@ -6,6 +6,7 @@ package scriptgeneration
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -73,8 +74,30 @@ func TestBuildGenerateRequest_MapsExtractEntitiesToggle(t *testing.T) {
 // returns a single entity-bearing segment, so tests can assert both that the
 // enricher runs (default) and that it is skipped (extract_entities disabled).
 type entitySwitchEnricher struct {
-	mu    sync.Mutex
-	calls int
+	mu              sync.Mutex
+	calls           int
+	translatedCalls int
+}
+
+func (e *entitySwitchEnricher) Extract(_ context.Context, text string, _ int) ([]VisualEntity, error) {
+	e.mu.Lock()
+	if strings.HasPrefix(text, "[TRANSLATED]") {
+		e.translatedCalls++
+	} else {
+		e.calls++
+	}
+	e.mu.Unlock()
+	if text == "" {
+		return nil, nil
+	}
+	return []VisualEntity{{
+		Text:     text,
+		Type:     scriptpkg.EntityTypePerson,
+		Score:    0.9,
+		Start:    0,
+		End:      len(text),
+		Evidence: text,
+	}}, nil
 }
 
 func (e *entitySwitchEnricher) Enrich(_ context.Context, _ *scriptpkg.ResolvedGenerationPlan, scene scriptpkg.SpecScene) (scriptpkg.VidRushSegmentResult, error) {
@@ -99,9 +122,9 @@ func (e *entitySwitchEnricher) callCount() int {
 	return e.calls
 }
 
-func entitySwitchPipeline(enricher SegmentEnricher) *VidRushPipeline {
+func entitySwitchPipeline(enricher VisualNERPort) *VidRushPipeline {
 	return &VidRushPipeline{
-		Enricher: enricher,
+		NERPort: enricher,
 		PlanResolver: VidRushPlanResolverFunc(func(_ context.Context, _ GenerateRequest) (*scriptpkg.ResolvedGenerationPlan, error) {
 			return &scriptpkg.ResolvedGenerationPlan{}, nil
 		}),

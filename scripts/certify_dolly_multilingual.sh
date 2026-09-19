@@ -22,6 +22,7 @@ ROOT_DIR="$(cd -- "$SCRIPT_DIR/.." && pwd)"
 
 : "${DOLLY_PARTON_LANGUAGES:=it,es,de,fr}"
 : "${DOLLY_PARTON_RUNTIME_TIMEOUT:=20m}"
+: "${DOLLY_PARTON_GO_TEST_TIMEOUT:=25m}"
 : "${VELOX_API_BASE_URL:=http://127.0.0.1:8000}"
 
 command -v go >/dev/null 2>&1 || { echo "go is required" >&2; exit 2; }
@@ -45,6 +46,23 @@ if [[ "${PIPELINEGEN_DOLLY_PARTON_LIVE:-0}" != "1" ]]; then
   exit 0
 fi
 
+# Keep the shell gate aligned with the Go live test: operators may provide the
+# bearer token directly or through the repository-standard shell env file.
+if [[ -z "${VELOX_ADMIN_TOKEN:-}" && -n "${TOKEN_FILE:-}" && -r "$TOKEN_FILE" ]]; then
+  while IFS= read -r line; do
+    line="${line#export }"
+    if [[ "$line" == VELOX_ADMIN_TOKEN=* ]]; then
+      VELOX_ADMIN_TOKEN="${line#VELOX_ADMIN_TOKEN=}"
+      VELOX_ADMIN_TOKEN="${VELOX_ADMIN_TOKEN%\"}"
+      VELOX_ADMIN_TOKEN="${VELOX_ADMIN_TOKEN#\"}"
+      VELOX_ADMIN_TOKEN="${VELOX_ADMIN_TOKEN%\'}"
+      VELOX_ADMIN_TOKEN="${VELOX_ADMIN_TOKEN#\'}"
+      export VELOX_ADMIN_TOKEN
+      break
+    fi
+  done < "$TOKEN_FILE"
+fi
+
 [[ -n "${VELOX_ADMIN_TOKEN:-}" ]] || {
   echo "VELOX_ADMIN_TOKEN is required for the live lane" >&2
   exit 2
@@ -52,9 +70,10 @@ fi
 
 echo "[3/3] live Dolly target matrix runtime"
 PIPELINEGEN_DOLLY_PARTON_LIVE=1 \
-DOLLY_PARTON_LANGUAGES="$DOLLY_PARTON_LANGUAGES" \
-DOLLY_PARTON_RUNTIME_TIMEOUT="$DOLLY_PARTON_RUNTIME_TIMEOUT" \
-VELOX_API_BASE_URL="$VELOX_API_BASE_URL" \
-go test ./tests/e2e -run '^TestLiveDollyPartonMultilingualRuntime$' -count=1 -v
+  DOLLY_PARTON_LANGUAGES="$DOLLY_PARTON_LANGUAGES" \
+  DOLLY_PARTON_RUNTIME_TIMEOUT="$DOLLY_PARTON_RUNTIME_TIMEOUT" \
+  VELOX_API_BASE_URL="$VELOX_API_BASE_URL" \
+  go test -timeout "$DOLLY_PARTON_GO_TEST_TIMEOUT" \
+    ./tests/e2e -run '^TestLiveDollyPartonMultilingualRuntime$' -count=1 -v
 
 echo "PASS: live Dolly multilingual target lane (matrix verified: 5 clips × requested targets)"

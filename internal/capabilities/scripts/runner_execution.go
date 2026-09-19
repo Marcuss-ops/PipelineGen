@@ -10,6 +10,7 @@ package scriptgeneration
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	capabilityaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
@@ -243,54 +244,22 @@ func (e *executionRun) translate() bool {
 	})
 }
 
-// sceneTextReady runs the SceneTextReady fan-out: the VidRush join +
-// overlay.prepare branch either serially (serialMode, "before" baseline) or
-// in parallel with TTS (the production DAG). It owns the prepare-branch
-// concurrency lifecycle (cancellation, join, projection) and the checkpoint
-// after the fan-out. Returns false on a terminal error.
+// sceneTextReady runs the SceneTextReady fan-out in parallel with TTS. It owns
+// the prepare-branch concurrency lifecycle (cancellation, join, projection)
+// and the checkpoint after the fan-out. Returns false on a terminal error.
 //
 // Translated NLP is part of the fan-out, not a post-join step: it depends on
 // the translations and the SOURCE annotations only, never on TTS, so the
 // parallel path runs it on the semantic branch while TTS is still in flight
-// (see parallelFanOut). The serial path keeps the historical ordering so the
-// "before" baseline stays a faithful reproduction.
+// (see parallelFanOut).
 func (e *executionRun) sceneTextReady() bool {
 	e.snapshot = snapshotSceneText(e.result.Scenes, e.req.SourceLanguage)
 
-	ok := false
-	if e.r.serialMode {
-		ok = e.serialFanOut()
-	} else {
-		ok = e.parallelFanOut()
-	}
+	ok := e.parallelFanOut()
 	if ok {
 		e.result.SourceTrace = sourceTraceFromResult(e.result)
 	}
 	return ok
-}
-
-// serialFanOut reproduces the pre-parallel "before" chain: entities → voiceover.
-// The VidRush join + overlay.prepare runs blocking first, then TTS starts.
-func (e *executionRun) serialFanOut() bool {
-	prepared, err := e.r.runVidRushJoinAndPrepare(e.ctx, e.runID, e.req, e.snapshot)
-	if err != nil {
-		return e.fail(StageGeneratingSceneText, err)
-	}
-	applyVidRushPrepareProjections(e.result, prepared)
-
-	ok := e.measure(kernobs.StageName(voiceoverStage), func(c context.Context) bool {
-		return e.r.runVoiceoverPhase(c, e.runID, e.req, e.routing, e.exec, e.resumeIdx, e.result)
-	})
-	if !ok {
-		return false
-	}
-	// The serial baseline reproduces the pre-parallel chain literally:
-	// entities → voiceover → translated NLP, one after the other.
-	if err := e.r.runTranslatedNLP(e.ctx, e.req, e.result); err != nil {
-		return e.fail(StageTranslatingScenes, err)
-	}
-	e.checkpoint()
-	return true
 }
 
 // parallelFanOut runs the production SceneTextReady DAG: the VidRush join +
@@ -514,5 +483,19 @@ func (e *executionRun) documents() bool {
 // complete finalizes a successful run (render-set certification, critical-path
 // summary, pipeline invariants) and marks it COMPLETED.
 func (e *executionRun) complete() {
+	if e.r.overlayPublicationDrainer != nil {
+		// Run-scoped join: the pool is process-wide, so the drainer resolves
+		// this run's batch from the run context instead of joining whatever
+		// another concurrent run happens to have in flight.
+		if err := e.r.overlayPublicationDrainer.Wait(e.ctx); err != nil {
+			e.r.failRunWithRetry(e.ctx, e.runID, StagePublishingDocuments,
+				fmt.Errorf("overlay publication pool: %w", err))
+			return
+		}
+		// Drive identity is written onto the certified artifact by the
+		// publisher. Persist the final projection before marking the run
+		// complete so a restart never loses a successful upload.
+		e.r.checkpoint(e.ctx, e.runID, e.result)
+	}
 	e.r.completeRun(e.ctx, e.runID, e.result)
 }

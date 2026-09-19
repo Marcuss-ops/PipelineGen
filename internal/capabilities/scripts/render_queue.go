@@ -15,6 +15,8 @@ import (
 
 	capoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
 	kernelasset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
+	"github.com/Marcuss-ops/PipelineGen/pkg/background"
 )
 
 // QueueRenderEnqueuer adapts the central RenderingGen queue for the Chronon
@@ -63,10 +65,22 @@ type QueueRenderEnqueuer struct {
 	// worker while preserving a join before the run is marked complete.
 	asyncPublication bool
 	publicationSem   chan struct{}
-	publicationWG    sync.WaitGroup
-	publicationMu    sync.Mutex
-	publicationErr   error
+	// publicationMu guards the batch registry below. The pool itself is
+	// process-wide (the composition root wires ONE enqueuer for the whole
+	// process), but a publication belongs to exactly one run: joining, and
+	// failing a run, must be scoped to that run's batch. A single shared
+	// WaitGroup + error slot used to make run A join run B's in-flight
+	// publications and inherit B's failure — a live run was failed by
+	// ANOTHER run's overlay error (`context canceled` on a different
+	// video), which is unactionable for the operator whose run died.
+	publicationMu      sync.Mutex
+	publicationBatches map[*kernobs.Run]*publicationBatch
+	publicationUnbound *publicationBatch
 }
+
+// The publication batch type and its join helpers live in
+// overlay_publication.go, next to the publication port they serve; the pool
+// fields above belong to this type.
 
 const defaultOverlayPublicationWorkers = 2
 
@@ -117,23 +131,6 @@ func (e *QueueRenderEnqueuer) SetAsyncPublication(on bool) {
 	if on && e.publicationSem == nil {
 		e.publicationSem = make(chan struct{}, defaultOverlayPublicationWorkers)
 	}
-}
-
-// Wait joins all queued publication/analytics work. It is the completion
-// boundary for the render publication pool: callers must invoke it before
-// reporting a run as COMPLETE.
-func (e *QueueRenderEnqueuer) Wait() error {
-	if e == nil || !e.asyncPublication {
-		return nil
-	}
-	e.publicationWG.Wait()
-	e.publicationMu.Lock()
-	defer e.publicationMu.Unlock()
-	err := e.publicationErr
-	// Errors belong to the publication batch that was just joined. Do not
-	// poison a later run that reuses the process-wide enqueuer.
-	e.publicationErr = nil
-	return err
 }
 
 // SetFreshRender controls whether EnqueueChrononPlan creates a new queue job
@@ -251,13 +248,19 @@ func (e *QueueRenderEnqueuer) enqueueChrononPlan(ctx context.Context, plan capov
 	// applying a layer's explicit font_asset override. Keep both content-
 	// addressed fonts in the queue payload: the explicit PipelineGen font
 	// remains authoritative for the layer, while Poppins satisfies the
-	// registry dependency during plan preparation.
+	// registry dependency during plan preparation. DejaVuSans is also staged
+	// because RenderingGen selects it for Cyrillic semantic plans.
 	for _, item := range semanticPlan.Items {
 		if item.Text != "" || item.TemplateID == "IMPORTANT_WORD" || item.TemplateID == "IMPORTANT_PHRASE" || item.TemplateID == "lower_third" {
 			if _, ok := seen[capoverlay.GoldenPresetFontHash]; !ok {
 				assets = append(assets, NewRenderQueueAsset(
 					kernelasset.Ref{AssetID: capoverlay.CanonicalPresetFontPath, SHA256: capoverlay.GoldenPresetFontHash},
 					capoverlay.CanonicalPresetFontPath, ""))
+			}
+			if _, ok := seen[capoverlay.GoldenFontHash]; !ok {
+				assets = append(assets, NewRenderQueueAsset(
+					kernelasset.Ref{AssetID: capoverlay.CanonicalTextFontPath, SHA256: capoverlay.GoldenFontHash},
+					capoverlay.CanonicalTextFontPath, ""))
 			}
 			break
 		}
@@ -297,7 +300,7 @@ func (e *QueueRenderEnqueuer) enqueueChrononPlan(ctx context.Context, plan capov
 	if err != nil {
 		return RenderReference{}, err
 	}
-	postRender := func() error {
+	postRender := func(postCtx context.Context) error {
 		if e.publisher != nil {
 			if done.Artifact == nil || done.Artifact.SHA256 == "" || done.Artifact.SizeBytes <= 0 || done.Artifact.URL == "" {
 				return fmt.Errorf("render job %s completed without certified artifact", jobID)
@@ -322,7 +325,7 @@ func (e *QueueRenderEnqueuer) enqueueChrononPlan(ctx context.Context, plan capov
 				publication.SourceEndUS = metadata.SourceEndUS
 				publication.TargetDurationUS = metadata.TargetDurationUS
 			}
-			if err := e.publisher.PublishOverlay(ctx, publication, done.Artifact); err != nil {
+			if err := e.publisher.PublishOverlay(postCtx, publication, done.Artifact); err != nil {
 				return fmt.Errorf("publish overlay artifact to Drive: %w", err)
 			}
 		}
@@ -332,27 +335,33 @@ func (e *QueueRenderEnqueuer) enqueueChrononPlan(ctx context.Context, plan capov
 			// so two renders of the same plan record two rows instead of upsert-
 			// colliding on the plan id.
 			attempt := BuildRenderAttemptAnalyticsWithWait(jobID, plan, done.Artifact, wait)
-			if err := e.recorder.RecordAttempt(ctx, attempt); err != nil {
+			if err := e.recorder.RecordAttempt(postCtx, attempt); err != nil {
 				return fmt.Errorf("record render attempt analytics: %w", err)
 			}
 		}
 		return nil
 	}
 	if e.asyncPublication && (e.publisher != nil || e.recorder != nil) {
-		e.publicationWG.Add(1)
+		// The batch is resolved on the SUBMITTING goroutine: the publication
+		// must land in the batch of the run that asked for the render, not in
+		// whatever context happens to still be alive when it finishes.
+		batch := e.publicationBatchFor(ctx)
+		batch.wg.Add(1)
 		go func() {
-			defer e.publicationWG.Done()
+			defer batch.wg.Done()
 			e.publicationSem <- struct{}{}
 			defer func() { <-e.publicationSem }()
-			if err := postRender(); err != nil {
-				e.publicationMu.Lock()
-				if e.publicationErr == nil {
-					e.publicationErr = err
-				}
-				e.publicationMu.Unlock()
+			// The render run may be finalized while this bounded publication
+			// worker is still draining Drive/analytics. Detach only the
+			// publication context; Wait still joins this goroutine before the
+			// run can become COMPLETE, so this is not fire-and-forget.
+			publicationCtx, cancel := background.DetachWithTimeout(ctx, "overlay-publication", 30*time.Minute)
+			defer cancel()
+			if err := postRender(publicationCtx); err != nil {
+				batch.record(err)
 			}
 		}()
-	} else if err := postRender(); err != nil {
+	} else if err := postRender(ctx); err != nil {
 		return RenderReference{}, err
 	}
 	// Map the RenderingGen worker's own phase timings into the canonical

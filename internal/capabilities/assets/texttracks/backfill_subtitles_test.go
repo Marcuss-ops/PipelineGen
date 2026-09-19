@@ -300,6 +300,45 @@ func TestMaterializeSubtitleArtifacts_AlignsTranslatedCuesOntoSourceTiming(t *te
 	}
 }
 
+// TestMaterializeSubtitleArtifacts_PreservesExistingCuesDuringAlignment pins
+// the whole-asset replacement invariant: repairing one text-only language
+// must not delete timing already present for another language.
+func TestMaterializeSubtitleArtifacts_PreservesExistingCuesDuringAlignment(t *testing.T) {
+	src := []detail.TimedCue{{StartMs: 0, EndMs: 1000, Text: "hello"}}
+	de := []detail.TimedCue{{StartMs: 0, EndMs: 1000, Text: "hallo"}}
+	ready := map[string][]detail.TimedCue{"en": src, "de": de, "it": nil}
+	svc, pub := newSubtitleDeliveryService(t, ready)
+	stub := &subtitleTrackRepoStub{ready: ready, text: map[string]string{"it": "ciao"}}
+	svc.repo = stub
+	rec := &subtitleCueWriterRecorder{repo: stub}
+	svc.cues = rec
+
+	rep, err := svc.MaterializeSubtitleArtifacts(
+		context.Background(), youtubeClip("clip-preserve"), "en", []string{"it", "de"}, detail.TextTrackTranscript,
+	)
+	if err != nil {
+		t.Fatalf("MaterializeSubtitleArtifacts: %v", err)
+	}
+	if len(rec.calls) != 1 {
+		t.Fatalf("cue alignment writes = %d, want exactly 1 batch", len(rec.calls))
+	}
+	batch := rec.calls[0]
+	for _, lang := range []string{"en", "de", "it"} {
+		if len(batch[lang]) != 1 {
+			t.Fatalf("replacement batch lost %s cues: got %v", lang, batch)
+		}
+	}
+	if batch["de"][0].Text != "hallo" {
+		t.Fatalf("existing de cue was rewritten unexpectedly: %v", batch["de"])
+	}
+	if rep.Delivered != 3 {
+		t.Fatalf("delivered = %d, want 3 after preserving existing cues", rep.Delivered)
+	}
+	if len(pub.requests) != 3 {
+		t.Fatalf("publishes = %d, want 3", len(pub.requests))
+	}
+}
+
 // TestMaterializeSubtitleArtifacts_ReportsUntimedLanguagesInsteadOfSkippingSilently
 // is the regression for the SECOND half of the ten-assets-one-file bug.
 //

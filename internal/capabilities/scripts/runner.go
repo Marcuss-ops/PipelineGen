@@ -127,14 +127,19 @@ func sourceTraceFromResult(result *GenerateResult) scriptpkg.SourceTrace {
 // Each stage is checkpointed so a retry resumes from the last
 // failed stage.
 type Runner struct {
-	repo                  RunRepository
-	textGen               TextGenerator
-	translator            Translator
-	voiceoverGen          VoiceoverGenerator
-	docPublisher          DocumentPublisher
-	documentRenderer      DocumentRenderer
-	combinedAudioRenderer CombinedAudioRenderer
-	finalAudioPublisher   FinalAudioPublisher
+	repo         RunRepository
+	textGen      TextGenerator
+	translator   Translator
+	voiceoverGen VoiceoverGenerator
+	docPublisher DocumentPublisher
+	// documentFolderResolver resolves the per-language run folder a script
+	// document publishes into (<documents root>/<job>/<language>), so a
+	// document lands beside the clips it describes. Optional: nil keeps the
+	// flat documents root.
+	documentFolderResolver DocumentFolderResolver
+	documentRenderer       DocumentRenderer
+	combinedAudioRenderer  CombinedAudioRenderer
+	finalAudioPublisher    FinalAudioPublisher
 	// audioAssetSource turns the run's BGM/SFX asset_ids into verified
 	// local paths + certified durations before the audio plan is compiled.
 	// Nil means the audio intent block is not resolvable — a run that
@@ -165,13 +170,6 @@ type Runner struct {
 	// sequentially on Chronon. Raising it must be certified for
 	// byte-determinism before the operator moves beyond 2.
 	overlayRenderConcurrency int
-
-	// serialMode reproduces the pre-parallel "before" chain for controlled
-	// benchmarking: the VidRush/NLP join + overlay.prepare runs blocking
-	// BEFORE TTS (entities → voiceover, never overlapping), and both the NLP
-	// extraction and TTS pools are forced to concurrency 1. Default false
-	// (the parallel SceneTextReady DAG).
-	serialMode bool
 
 	// vidRushRuns is the per-run VidRush wiring registry. beginVidRush
 	// registers the fresh coordinator for its run so concurrent runs on this
@@ -237,6 +235,16 @@ type Runner struct {
 	// audio compile and docs stages read the results. Nil means
 	// synchronous publish (backward compat).
 	voiceoverPublishDrainer interface{ Wait() }
+	// overlayPublicationDrainer joins the bounded Drive/analytics pool after
+	// all renders have certified their bytes and before the run is COMPLETE.
+	// Keeping this separate from the render enqueuer releases RenderingGen
+	// capacity while preserving fail-closed publication semantics.
+	//
+	// The join is RUN-SCOPED: the pool is process-wide (one enqueuer for the
+	// whole process) while a publication belongs to one run, so the drainer is
+	// handed THIS run's ctx and joins only this run's batch. A run must never
+	// block on, or inherit the failure of, another concurrent run.
+	overlayPublicationDrainer interface{ Wait(context.Context) error }
 
 	// mediaPreflight runs the fail-fast asset verification after normalize
 	// and before scene-text generation (P0.5). When wired, it verifies clip
@@ -313,22 +321,14 @@ func (r *Runner) beginVidRush(ctx context.Context, runID string, req GenerateReq
 	if p == nil {
 		return nil, nil
 	}
-	// Fase 1-5 semantic cutover (big-bang): when the new ports are wired,
-	// build the SceneIRSegmentEnricher + SemanticProviderResolver and use
-	// them in place of the legacy Enricher/ProviderResolver. The new chain
+	// Fase 1-5 semantic cutover (big-bang): build the SceneIRSegmentEnricher
+	// + SemanticProviderResolver from the new ports. The new chain
 	// compiles a SceneIR (immutable identity), extracts source-grounded
 	// entities via VisualNER, resolves candidates LOCAL FIRST via
 	// stockintelligence, ranks via MediaSampler, and certifies via MediaCert.
-	enricher := p.Enricher
-	if p.NERPort != nil {
-		newEnricher, err := NewSceneIRSegmentEnricher(p.NERPort)
-		if err != nil {
-			return nil, fmt.Errorf("vidrush pipeline: %w", err)
-		}
-		enricher = newEnricher
-	}
-	if enricher == nil {
-		return nil, nil
+	enricher, err := NewSceneIRSegmentEnricher(p.NERPort)
+	if err != nil {
+		return nil, fmt.Errorf("vidrush pipeline: %w", err)
 	}
 	providerResolver := p.ProviderResolver
 	if p.StockResolverPort != nil && p.SamplerPort != nil {
@@ -383,9 +383,6 @@ func (r *Runner) beginVidRush(ctx context.Context, runID string, req GenerateReq
 		certSpec = p.CertSpecResolver.ResolveMediaCertSpec(plan)
 	}
 	backpressure := p.Backpressure
-	if r.serialMode {
-		backpressure.ExtractionLimit = 1
-	}
 	coordinator := NewVidRushIncrementalCoordinatorWithBackpressure(enricher, plan, backpressure)
 	coordinator.SetSegmentProviderResolver(providerResolver)
 	coordinator.SetSegmentMaterializer(p.Materializer)

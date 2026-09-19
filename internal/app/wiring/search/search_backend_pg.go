@@ -90,9 +90,15 @@ func (b *pgLocalSearchBackend) searchByText(ctx context.Context, q search.Query)
 		mediaType = string(ids[0])
 	}
 	hits, err := b.store.SearchLocal(ctx, pgmedia.LocalMediaSearchRequest{
-		Text:                q.Text,
-		Source:              sourceOrAll(q.Filters.Source),
-		Category:            strings.TrimSpace(q.Filters.Category),
+		Text:     q.Text,
+		Source:   sourceOrAll(q.Filters.Source),
+		Category: strings.TrimSpace(q.Filters.Category),
+		// Taxonomy filters, compiled into the SQL predicate so the catalog leg
+		// narrows in-database. Source alone cannot express "stock clips": a
+		// YouTube-acquired stock clip is source="youtube" with
+		// asset_kind="stock_video".
+		AssetKind:           strings.TrimSpace(q.Filters.AssetKind),
+		SemanticRole:        strings.TrimSpace(q.Filters.SemanticRole),
 		MediaType:           mediaType,
 		Limit:               limit,
 		ExcludeUnclassified: true,

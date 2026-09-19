@@ -9,6 +9,7 @@ package scriptgeneration
 
 import (
 	"context"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -77,6 +78,25 @@ func (e *e2eBlockingEnricher) Enrich(ctx context.Context, _ *scriptpkg.ResolvedG
 		Text:      scene.Text,
 		TextHash:  SceneTextHash(scene.Text),
 	}, nil
+}
+
+// Extract lets this blocking fixture act as the current VisualNERPort when it
+// is wired through Runner. The coordinator-only tests above still use Enrich
+// directly, so the fixture covers both seams without restoring a pipeline
+// Enricher field.
+func (e *e2eBlockingEnricher) Extract(ctx context.Context, text string, _ int) ([]VisualEntity, error) {
+	if strings.HasPrefix(text, "[TRANSLATED]") {
+		return nil, nil
+	}
+	sceneID := "scene-0"
+	switch {
+	case strings.Contains(text, "Second scene"):
+		sceneID = "scene-1"
+	case strings.Contains(text, "Third scene"):
+		sceneID = "scene-2"
+	}
+	_, err := e.Enrich(ctx, nil, scriptpkg.SpecScene{ID: sceneID, SegmentID: sceneID, Text: text})
+	return nil, err
 }
 
 // assertSequence asserts that event "before" appears earlier in names than

@@ -43,30 +43,6 @@ func (r *Runner) SetLogger(log *zap.Logger) {
 	}
 }
 
-// SetSerialMode toggles the serial (pre-parallel "before") pipeline for
-// controlled benchmarking. When enabled the NLP/entity branch completes
-// blocking before TTS starts, and the NLP extraction + TTS pools are forced
-// to concurrency 1. Disabling restores the parallel SceneTextReady DAG.
-func (r *Runner) SetSerialMode(on bool) {
-	if r == nil {
-		return
-	}
-	r.serialMode = on
-	if on {
-		r.ttsConcurrency = 1
-		r.translationConcurrency = 1
-		// The overlay render fan-out is part of the "after" DAG too: forcing
-		// it back to one in-flight render keeps the serial baseline a faithful
-		// reproduction of the pre-parallel chain instead of a mix of before
-		// and after behaviour.
-		r.overlayRenderConcurrency = 1
-	} else {
-		r.ttsConcurrency = DefaultTTSConcurrency
-		r.translationConcurrency = DefaultTranslationConcurrency
-		r.overlayRenderConcurrency = DefaultOverlayRenderConcurrency
-	}
-}
-
 // SetScriptDocsFolderID wires the configured default script documents
 // destination (PIPELINEGEN_SCRIPT_DOCS_FOLDER_ID). Nil-safe. When empty,
 // a docs.enabled=true generation fails closed at run start.
@@ -129,6 +105,16 @@ func (r *Runner) SetLocalizedRenderEnqueuer(enqueuer LocalizedRenderEnqueuer) {
 	}
 }
 
+// SetDocumentFolderResolver wires the folder authority that resolves the
+// per-language run folder each script document publishes into
+// (<documents root>/<job>/<language>), so one language's document and its clips
+// share a folder. A nil resolver keeps the historical flat documents root.
+func (r *Runner) SetDocumentFolderResolver(resolver DocumentFolderResolver) {
+	if r != nil {
+		r.documentFolderResolver = resolver
+	}
+}
+
 // SetVoiceoverPublishDrainer wires the async voiceover publish pool
 // (P0.4: separate TTS pool from publish pool). After the voiceover
 // phase, the runner drains the pool so Drive links are hydrated before
@@ -137,6 +123,17 @@ func (r *Runner) SetLocalizedRenderEnqueuer(enqueuer LocalizedRenderEnqueuer) {
 func (r *Runner) SetVoiceoverPublishDrainer(drainer interface{ Wait() }) {
 	if r != nil {
 		r.voiceoverPublishDrainer = drainer
+	}
+}
+
+// SetOverlayPublicationDrainer wires the bounded post-render publication pool.
+// The runner joins it immediately before completion so Drive failures remain
+// terminal even though they no longer occupy a RenderingGen render slot.
+// The drainer is handed the run's context, because the pool is process-wide
+// while the join must be scoped to the run that queued the work.
+func (r *Runner) SetOverlayPublicationDrainer(drainer interface{ Wait(context.Context) error }) {
+	if r != nil {
+		r.overlayPublicationDrainer = drainer
 	}
 }
 

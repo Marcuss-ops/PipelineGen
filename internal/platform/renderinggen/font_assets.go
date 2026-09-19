@@ -29,6 +29,8 @@ const (
 	FontMontserratBold = "font-montserrat-bold"
 	// FontPoppinsBold is the canonical preset font.
 	FontPoppinsBold = "font-poppins-bold"
+	// FontDejaVuSans is the canonical semantic font for Cyrillic overlays.
+	FontDejaVuSans = "font-dejavu-sans"
 )
 
 // AssetRootEnv overrides the configured asset root. When unset the root is
@@ -42,6 +44,7 @@ const AssetRootEnv = "PIPELINEGEN_ASSET_ROOT"
 var canonicalFonts = map[string]string{
 	FontMontserratBold: "assets/fonts/Montserrat-Bold.ttf",
 	FontPoppinsBold:    "assets/fonts/Poppins-Bold.ttf",
+	FontDejaVuSans:     "assets/fonts/DejaVuSans.ttf",
 }
 
 var (

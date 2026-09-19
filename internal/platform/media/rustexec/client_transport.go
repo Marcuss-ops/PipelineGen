@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/observability"
 )
@@ -49,9 +50,58 @@ func (c *Client) call(ctx context.Context, req request) (response, error) {
 	}
 	if !result.OK {
 		cleanupPartFilesRequest(&req)
-		return result, fmt.Errorf("rust media %s: %s", req.Operation, result.Error)
+		return result, fmt.Errorf("rust media %s: %s%s", req.Operation, result.Error, formatItemErrors(result.Items))
 	}
 	return result, nil
+}
+
+// maxReportedItemErrors bounds how many per-item failure reasons are folded
+// into the returned error. A large batch must not flood the log; the count of
+// suppressed items is reported instead so nothing is silently hidden.
+const maxReportedItemErrors = 3
+
+// formatItemErrors renders the per-item failure reasons carried by a Rust
+// response, so the caller receives a CAUSE and not just a verdict.
+//
+// The Rust media executor reports one `items[]` entry per job, each with the
+// real ffmpeg/ffprobe stderr in `error`. The top-level `error` is only ever a
+// generic summary — for cut_batch it is the literal "all cut jobs failed".
+// Dropping the per-item reasons here made that sentence the ONLY
+// operator-visible diagnostic for a failed stock cut: the log said the cut
+// failed without saying why, and the only way to learn the cause was to
+// reproduce the invocation by hand (which then succeeded, because a manual run
+// does not share the service's environment).
+//
+// Returns "" when no item carries a reason, so a response that legitimately
+// fails without per-item detail keeps its original message byte-for-byte.
+func formatItemErrors(items []cutItem) string {
+	if len(items) == 0 {
+		return ""
+	}
+	reasons := make([]string, 0, maxReportedItemErrors)
+	failed := 0
+	for _, item := range items {
+		if item.Status != "failed" && item.Error == "" {
+			continue
+		}
+		failed++
+		if len(reasons) >= maxReportedItemErrors {
+			continue
+		}
+		reason := item.Error
+		if reason == "" {
+			reason = "no reason reported"
+		}
+		reasons = append(reasons, fmt.Sprintf("%s: %s", item.JobID, reason))
+	}
+	if failed == 0 {
+		return ""
+	}
+	out := " (failed " + fmt.Sprintf("%d/%d", failed, len(items)) + ": " + strings.Join(reasons, "; ")
+	if failed > len(reasons) {
+		out += fmt.Sprintf("; +%d more", failed-len(reasons))
+	}
+	return out + ")"
 }
 
 // execute runs one marshaled request through the Rust process runner and
