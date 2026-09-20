@@ -36,6 +36,7 @@ package usecase
 import (
 	"context"
 	"fmt"
+
 	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 
 	"go.uber.org/zap"
@@ -108,7 +109,12 @@ type ServiceVideoDeps struct {
 // orchestrator reads / writes them but never holds external
 // resources directly.
 type ServiceStorageDeps struct {
-	Clips            youtubeports.ClipStorePort
+	Clips youtubeports.ClipStorePort
+	// ClipLister is the narrow media read the search_text rebuild job consumes.
+	// It resolves from the PostgreSQL media SSOT (not the operational clip
+	// store); nil means the media plane is closed and the rebuild handler is
+	// simply not registered — there is no SQLite fallback by design.
+	ClipLister       youtubeports.YouTubeClipLister
 	Cache            youtubeports.CachePort
 	Monitors         youtubeports.MonitorsStorePort
 	Indexer          youtubeports.ClipIndexerPort
@@ -161,6 +167,7 @@ type Service struct {
 	hashSvc         youtubeports.HashServicePort
 
 	clips        youtubeports.ClipStorePort
+	clipLister   youtubeports.YouTubeClipLister
 	monitors     youtubeports.MonitorsStorePort
 	indexer      youtubeports.ClipIndexerPort
 	folderMemory youtubeports.FolderMemoryPort
@@ -217,6 +224,7 @@ func NewServiceFromSubBundles(
 		hashSvc:         adapter.HashSvc,
 
 		clips:        storage.Clips,
+		clipLister:   storage.ClipLister,
 		cache:        storage.Cache,
 		monitors:     storage.Monitors,
 		indexer:      storage.Indexer,

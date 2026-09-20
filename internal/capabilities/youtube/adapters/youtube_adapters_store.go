@@ -6,6 +6,7 @@ package adapters
 
 import (
 	"context"
+
 	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/sourcing"
@@ -53,35 +54,6 @@ func (a *ClipStoreAdapter) SearchClipsAdvanced(ctx context.Context, req detail.A
 }
 func (a *ClipStoreAdapter) CountClips(ctx context.Context) (int, error) {
 	return a.inner.CountClips(ctx)
-}
-func (a *ClipStoreAdapter) ListYouTubeClipIDsForSearchText(ctx context.Context, limit, offset int) ([]string, error) {
-	query := `SELECT id FROM media_assets WHERE source = 'youtube' AND json_extract(metadata_json, '$.youtube_title') != '' ORDER BY id`
-	args := []any{}
-	if limit > 0 {
-		query += " LIMIT ?"
-		args = append(args, limit)
-	}
-	if offset > 0 {
-		if limit <= 0 {
-			query += " LIMIT -1"
-		}
-		query += " OFFSET ?"
-		args = append(args, offset)
-	}
-	rows, err := a.inner.DB().QueryContext(ctx, query, args...)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var ids []string
-	for rows.Next() {
-		var id string
-		if err := rows.Scan(&id); err != nil {
-			continue
-		}
-		ids = append(ids, id)
-	}
-	return ids, rows.Err()
 }
 
 // ── MonitorsStoreAdapter ──────────────────────────────────────────────
