@@ -71,8 +71,6 @@ package boundaries
 //     "the whole package is exempt" into a WORKLIST: every future deletion must
 //     delete its entry in the same change, and the list can only shrink.
 var sqliteMediaReaderInventoriedZoneFiles = map[string]bool{
-	"cmd/admin/internal/backfill/backfill_asset_embeddings_db.go":                true,
-	"cmd/admin/internal/backfill/backfill_media_durations.go":                    true,
 	"cmd/admin/internal/backfill/backfill_missing.go":                            true,
 	"cmd/admin/internal/cleanup/cleanup_drive_orphans.go":                        true,
 	"cmd/admin/internal/drive/drive_reconcile.go":                                true,
