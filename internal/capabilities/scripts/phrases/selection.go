@@ -171,12 +171,17 @@ func selectPhrases(text string, blockedSpans [][2]int, limit int, profile *lingu
 
 			// More grounded content words and configured action verbs increase
 			// salience. A candidate that recurs across the document adds a
-			// deterministic log-frequency term. The shorter-length term breaks
-			// otherwise equal choices toward compact overlays; source order
-			// breaks the final tie.
-			// Prefer complete three/four-word noun or action chunks over tiny
-			// two-word fragments when both carry the same editorial signal.
-			score := contentWords*4 + visualVerbs*5 + wordCount*2 - wordCount
+			// deterministic log-frequency term. Source order breaks the final
+			// tie.
+			score := contentWords*4 + visualVerbs*5 - wordCount
+			if profile != nil {
+				// With a lexicon the function-word guard above already
+				// rejects window cuts, so prefer complete three/four-word noun
+				// or action chunks over tiny two-word fragments carrying the
+				// same editorial signal. Without a profile that guard cannot
+				// fire, so length must not be rewarded blindly.
+				score += wordCount * 2
+			}
 			score += documentTermBoost(documentCounts[normalizedPhraseKey(candidateText)])
 			candidates = append(candidates, importantPhraseCandidate{
 				text: candidateText, start: byteStart,
