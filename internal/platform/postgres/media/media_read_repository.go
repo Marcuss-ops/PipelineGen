@@ -56,6 +56,8 @@ func (s *MediaSearcher) GetMany(
 			DurationMs:     int(row.DurationMs),
 			SearchText:     row.SearchText,
 			LifecycleState: row.LifecycleState,
+			AssetKind:      row.AssetKind,
+			SemanticRole:   row.SemanticRole,
 		})
 	}
 	return out, nil
@@ -69,7 +71,8 @@ func (s *MediaSearcher) fetchAssetForWorkspace(ctx context.Context, assetID, wor
 	query := `
 		SELECT id, name, title, source, media_type, category, language,
 		       tags, search_text, duration_ms, lifecycle_state,
-		       youtube_video_id, youtube_url, start_time, end_time, style
+		       youtube_video_id, youtube_url, start_time, end_time, style,
+		       asset_kind, semantic_role
 		FROM media_assets
 		WHERE id = $1
 	`
@@ -83,7 +86,8 @@ func (s *MediaSearcher) fetchAssetForWorkspace(ctx context.Context, assetID, wor
 	var a assetRow
 	if err := row.Scan(&a.ID, &a.Name, &a.Title, &a.Source, &a.MediaType, &a.Category, &a.Language,
 		&a.Tags, &a.SearchText, &a.DurationMs, &a.LifecycleState,
-		&a.YouTubeVideoID, &a.YouTubeURL, &a.StartTime, &a.EndTime, &a.Style); err != nil {
+		&a.YouTubeVideoID, &a.YouTubeURL, &a.StartTime, &a.EndTime, &a.Style,
+		&a.AssetKind, &a.SemanticRole); err != nil {
 		return nil, err
 	}
 	return &a, nil

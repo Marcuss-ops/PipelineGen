@@ -1,0 +1,38 @@
+{
+  "idempotency_key": "creator-77-stock-first-20260920-01-finalize",
+  "overlays": [
+    {
+      "id": "overlay-01",
+      "asset_id": "029f0db023ca91a4db8b256a273632e7ab41dd118f861904159bdfa45d650373",
+      "drive_file_id": "1doHJp98YAGsbOe3q1ZXRdI-6UM1O4axh",
+      "url": "velox-drive://1doHJp98YAGsbOe3q1ZXRdI-6UM1O4axh",
+      "sha256": "",
+      "start_frame": 120,
+      "end_frame": 240,
+      "frame_count": 120,
+      "mode": "replace",
+      "z_index": 10,
+      "audio_mode": "preserve_final_audio"
+    }
+  ],
+  "runtime_assets": [
+    {
+      "asset_id": "bgm1",
+      "kind": "audio",
+      "role": "music",
+      "url": "velox-drive://1X4-wfIwrR51eDxIegciuBAJzKSdP3gcX",
+      "sha256": "",
+      "size_bytes": 0,
+      "duration_ms": 0
+    },
+    {
+      "asset_id": "whop1",
+      "kind": "audio",
+      "role": "sfx",
+      "url": "velox-drive://1Fgr2jWQC1G6EHo-jhBAwjGtdcZo1PfaX",
+      "sha256": "",
+      "size_bytes": 0,
+      "duration_ms": 1000
+    }
+  ]
+}

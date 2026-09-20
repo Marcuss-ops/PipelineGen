@@ -364,6 +364,7 @@ func TestScanMediaAssetRecord_ColumnAlignment(t *testing.T) {
 		"https://src", "youtube", "vid-1", "vid-1",
 		int64(1000), int64(2000), "folder-1", "parent-1", "/a/b", "2026-09-13T10:00:00Z",
 		`{"clip_summary":"s"}`, `["k1","k2"]`, "approved",
+		"stock_video", "stock",
 	}}
 	rec, err := scanMediaAssetRecord(row)
 	if err != nil {
@@ -391,6 +392,11 @@ func TestScanMediaAssetRecord_ColumnAlignment(t *testing.T) {
 	}
 	if rec.ReviewStatus != "approved" {
 		t.Fatalf("review_status = %q", rec.ReviewStatus)
+	}
+	// Taxonomy must survive the scan: a caller needs asset_kind to tell a
+	// YouTube-native clip from a stock clip acquired from YouTube.
+	if rec.AssetKind != "stock_video" || rec.SemanticRole != "stock" {
+		t.Fatalf("taxonomy = %q/%q, want stock_video/stock", rec.AssetKind, rec.SemanticRole)
 	}
 	hydrated := rec.HydrateAsset()
 	if len(hydrated.SearchTerms) != 2 || hydrated.SearchTerms[0] != "k1" || hydrated.SearchTerms[1] != "k2" {

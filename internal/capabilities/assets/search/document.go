@@ -101,8 +101,15 @@ type MediaAsset struct {
 	// Name (the canonical filename-derived name), and the search result mapper
 	// prefers it for display so a clip never shows up as "clip_010.mp4" when the
 	// catalog knows its real title.
-	Title          string   `json:"title,omitempty"`
-	Source         string   `json:"source"`
+	Title  string `json:"title,omitempty"`
+	Source string `json:"source"`
+	// AssetKind / SemanticRole are the canonical taxonomy dimensions
+	// (media_assets.asset_kind / semantic_role), distinct from Source
+	// (physical provenance). A stock clip acquired from YouTube carries
+	// Source="youtube" AND AssetKind="stock_video"; without this field a
+	// caller could only tell them apart by inspecting the id prefix.
+	AssetKind      string   `json:"asset_kind,omitempty"`
+	SemanticRole   string   `json:"semantic_role,omitempty"`
 	MediaType      string   `json:"media_type"`
 	Category       string   `json:"category"`
 	Tags           []string `json:"tags,omitempty"`

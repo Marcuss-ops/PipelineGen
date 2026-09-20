@@ -21,10 +21,16 @@ package search
 // Score is normalised [0,1] across backends. Hash is a content hash
 // when known (used by dedup policy rank-order 4).
 type Candidate struct {
-	AssetID      string   `json:"asset_id"`
-	Source       string   `json:"source"`               // "youtube","artlist","local","semantic"
-	SourceRef    string   `json:"source_ref,omitempty"` // provider-native ID (YouTube VideoID, artlist ID)
-	MediaType    string   `json:"media_type,omitempty"`
+	AssetID   string `json:"asset_id"`
+	Source    string `json:"source"`               // "youtube","artlist","local","semantic"
+	SourceRef string `json:"source_ref,omitempty"` // provider-native ID (YouTube VideoID, artlist ID)
+	MediaType string `json:"media_type,omitempty"`
+	// AssetKind / SemanticRole are the canonical taxonomy dimensions
+	// (asset FAMILY and usage intent), distinct from Source (physical
+	// provenance). Surfacing them lets a caller select "YouTube-native clips"
+	// without inferring it from an id prefix — the jq workaround this replaces.
+	AssetKind    string   `json:"asset_kind,omitempty"`
+	SemanticRole string   `json:"semantic_role,omitempty"`
 	Title        string   `json:"title,omitempty"`
 	Name         string   `json:"name,omitempty"`       // canonical asset name; may differ from Title when localizations differ
 	SourceURL    string   `json:"source_url,omitempty"` // provider page, never a temporary download URL

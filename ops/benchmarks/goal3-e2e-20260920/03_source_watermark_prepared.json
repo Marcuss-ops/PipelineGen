@@ -57,12 +57,12 @@
         "start_frame": 0,
         "duration_frames": 120,
         "position": [
-          736,
-          -436
+          1536,
+          64
         ],
         "opacity": 0.9
       }
     }
   ],
-  "content_hash": "e1a9f38bd31f4cab5dc9ccce5fd424e7f4695240b68221baa77da4047b069e08"
+  "content_hash": "17f28755e88f77b57c2121d0f18be3542f0068b4635e750ef28a2fe74909d928"
 }

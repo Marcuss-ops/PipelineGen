@@ -58,7 +58,12 @@ cat > "$TMP/curl" <<'EOF'
 #!/usr/bin/env bash
 # `-w '%{http_code}'` requests (deploy-status) always answer 200.
 for a in "$@"; do
-  if [ "$a" = "-w" ]; then printf '200'; exit 0; fi
+  if [ "$a" = "-w" ]; then
+    # Simulate a probe timeout: curl exits non-zero and prints NOTHING (the
+    # real curl prints 000; this fake reproduces the empty-capture case).
+    if [ "${FAKE_CURL_TIMEOUT:-0}" = "1" ]; then exit 28; fi
+    printf '200'; exit 0
+  fi
 done
 state="${FAKE_CURL_STATE:?}"
 n=0
@@ -149,6 +154,18 @@ if status_run FAKE_MAIN_PID="$$" bash "$STATUS" >"$TMP/c5.out" 2>&1; then
   fail "status: MISMATCH must exit non-zero"
 else
   grep -q 'MISMATCH' "$TMP/c5.out" && pass "status: MISMATCH on a mismatched pair" || fail "status: MISMATCH on a mismatched pair"
+fi
+
+# ── Case 6: probe timeout must print 000 ONCE (regression: "HTTP 000000") ─
+# Observed against the live service before the fix: curl prints 000 on a
+# timeout AND a fallback `|| echo 000` appended another, yielding 000000.
+if status_run FAKE_MAIN_PID="$FAKE_PID2" FAKE_CURL_TIMEOUT=1 bash "$STATUS" >"$TMP/c6.out" 2>&1; then
+  : # exit code is irrelevant here
+fi
+if grep -q '000000' "$TMP/c6.out"; then
+  fail "status: probe timeout must not double the 000 sentinel"
+else
+  pass "status: probe timeout reports 000 exactly once"
 fi
 
 printf '== deploy selftest: %d failure(s)\n' "$FAILURES"

@@ -110,8 +110,10 @@ func (r *Runner) runTranslationPhase(ctx context.Context, runID string, req Gene
 			// other translation workers may apply their completed values while
 			// SQLite persists this immutable snapshot.
 			if snapshot != nil {
-				r.checkpoint(ctx, runID, snapshot)
-				checkpointDue.complete()
+				func() {
+					defer checkpointDue.complete()
+					r.checkpoint(ctx, runID, snapshot)
+				}()
 			}
 			return struct{}{}, nil
 		})
@@ -121,7 +123,11 @@ func (r *Runner) runTranslationPhase(ctx context.Context, runID string, req Gene
 		if snapshot, snapshotErr := snapshotGenerateResult(result); snapshotErr != nil {
 			r.log.Warn("translation final checkpoint snapshot failed", zap.String("run_id", runID), zap.Error(snapshotErr))
 		} else if snapshot != nil {
-			r.checkpoint(ctx, runID, snapshot)
+			recordCheckpointFlush()
+			func() {
+				defer checkpointDue.complete()
+				r.checkpoint(ctx, runID, snapshot)
+			}()
 		}
 		if err != nil {
 			r.failExecutionStep(ctx, exec, translationStep, err)

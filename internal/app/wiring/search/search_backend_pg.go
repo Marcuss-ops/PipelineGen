@@ -64,6 +64,8 @@ func (b *pgLocalSearchBackend) searchByHash(ctx context.Context, q search.Query)
 		out = append(out, search.Candidate{
 			AssetID:      rec.ID,
 			Source:       rec.Source,
+			AssetKind:    rec.AssetKind,
+			SemanticRole: rec.SemanticRole,
 			SourceRef:    rec.ID,
 			MediaType:    rec.MediaType,
 			Title:        rec.TitleOrName(),
@@ -119,6 +121,8 @@ func (b *pgLocalSearchBackend) searchByText(ctx context.Context, q search.Query)
 		out = append(out, search.Candidate{
 			AssetID:      rec.ID,
 			Source:       rec.Source,
+			AssetKind:    rec.AssetKind,
+			SemanticRole: rec.SemanticRole,
 			SourceRef:    rec.ID,
 			Title:        rec.TitleOrName(),
 			Name:         rec.Name,

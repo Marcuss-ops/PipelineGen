@@ -5,7 +5,7 @@
     "chronon_abi": 2,
     "chronon_version": "0.1.0",
     "content_digest": "ef04dbe56e77023e6784d17d3895fcb5f4298c811772c4d93cecc333e9adee9e",
-    "git_sha": "0239ddbbd",
+    "git_sha": "9c5e21433",
     "job_id": "goal3-image-bg-nowm",
     "render_plan_schema": "chronon.render-plan.v2",
     "request_digest": "7f9282c5d33bd89a6bc9454d5c2074d40b8dde06ade7b789e0f7991accc94c99"
@@ -70,9 +70,9 @@
   "timing_ms": {
     "count_frames_ms": -1.0,
     "decode_ms": -1.0,
-    "probe_ms": 324.075354,
-    "sha256_ms": 12.942167,
-    "total_ms": 337.329907
+    "probe_ms": 419.817621,
+    "sha256_ms": 12.744627,
+    "total_ms": 432.834374
   },
   "verification": {
     "audio": "skip",

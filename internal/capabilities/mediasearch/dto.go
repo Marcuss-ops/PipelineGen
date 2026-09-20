@@ -37,12 +37,18 @@ type searchResponse struct {
 }
 
 type searchResultItem struct {
-	AssetID    string  `json:"asset_id"`
-	Score      float64 `json:"score"`
-	Title      string  `json:"title"`
-	Source     string  `json:"source"`
-	MediaType  string  `json:"media_type"`
-	PreviewURL string  `json:"preview_url"`
+	AssetID string  `json:"asset_id"`
+	Score   float64 `json:"score"`
+	Title   string  `json:"title"`
+	Source  string  `json:"source"`
+	// AssetKind / SemanticRole are the canonical taxonomy dimensions, distinct
+	// from Source (provenance). They let a caller select the asset FAMILY —
+	// e.g. YouTube-native clips vs stock clips acquired from YouTube — without
+	// inspecting the asset-id prefix.
+	AssetKind    string `json:"asset_kind,omitempty"`
+	SemanticRole string `json:"semantic_role,omitempty"`
+	MediaType    string `json:"media_type"`
+	PreviewURL   string `json:"preview_url"`
 }
 
 // ReadinessReport exposes only canonical semantic-media dependencies. Qdrant
