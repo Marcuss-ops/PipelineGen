@@ -9,169 +9,143 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/cmd/archcheck/scan/structure"
 )
 
-// CheckSpec describes one rule-family scanner.
+// CheckSpec describes one rule-family scanner ready to execute.
 type CheckSpec struct {
 	Name string
 	Run  func(root string, pol *policy.Policy, r *report.Report)
 }
 
-// DefaultChecks returns the canonical scanner sequence.
+// ruleFunc is the production-only-aware scanner signature shared by the
+// data-driven registry below. Scanners that do not care about production-only
+// mode are adapted with simple(); the rest are stored directly.
+type ruleFunc func(root string, pol *policy.Policy, r *report.Report, productionOnly bool)
+
+// simple adapts a production-only-agnostic scanner to ruleFunc.
+func simple(fn func(root string, pol *policy.Policy, r *report.Report)) ruleFunc {
+	return func(root string, pol *policy.Policy, r *report.Report, _ bool) { fn(root, pol, r) }
+}
+
+// rule is one data-driven registry entry: the rule-family id surfaced in the
+// report plus its scanner.
+type rule struct {
+	name string
+	run  ruleFunc
+}
+
+// fileSizeRule keeps the two file/package-size scanners sharing one file-line
+// map (the mode pass populates it, the command-binaries pass consumes it).
+func fileSizeRule(root string, pol *policy.Policy, r *report.Report, productionOnly bool) {
+	fileLines := map[string]int{}
+	structure.ScanPackagesForMode(root, pol, r, fileLines, productionOnly)
+	structure.ScanCommandBinaries(root, pol, r, fileLines)
+}
+
+// clipIngestRule adapts the violations-only scanner to the report shape.
+func clipIngestRule(root string, _ *policy.Policy, r *report.Report, _ bool) {
+	r.Violations = append(r.Violations, boundaries.ScanClipIngestPipelineCanonical1(root)...)
+}
+
+// defaultRules is the canonical scanner registry, in execution order.
+//
+// It is the single source of truth for the rule-family sequence; DefaultChecks
+// projects it to the production-only-unaware CheckSpec surface consumed by the
+// runner. Each id here is also referenced by the scanner that emits it, which
+// is what TestHardGatesAreEmittable checks against architecture/policy.yaml.
+var defaultRules = []rule{
+	{"constructors", simple(structure.ScanConstructors)},
+	{"struct_deps", simple(structure.ScanStructDeps)},
+	{"forbidden_dirs", simple(structure.ScanForbiddenDirs)},
+	{"kernel_subzone_hints", simple(structure.ScanKernelSubzoneHints)},
+	{"kernel_subzone_integrity", simple(structure.ScanKernelSubzoneIntegrity)},
+	{"percheck_kernel_boundary", simple(boundaries.ScanKernelBoundary)},
+	{"unknown_internal_roots", simple(structure.ScanUnknownInternalRoots)},
+	{"percheck_legacy_root_new_code", simple(migrations.ScanLegacyRootNewCode)},
+	{"ownership_doc", simple(structure.ScanOwnershipDoc)},
+	{"legacy_policy_doc", simple(structure.ScanLegacyPolicyDoc)},
+	{"ci_gates_doc", simple(structure.ScanCIGatesDoc)},
+	{"agent_playbook_doc", simple(structure.ScanAgentPlaybookDoc)},
+	{"removal_doc", simple(structure.ScanRemovalDoc)},
+	{"stale_prose_paths", simple(structure.ScanStaleProsePaths)},
+	{"percheck_canon_index_drift", simple(structure.ScanCanonIndexDrift)},
+	{"percheck_type_redecl", simple(governance.ScanTypeRedeclarations)},
+	{"percheck_txcontext_ban", simple(governance.ScanTxContextBan)},
+	{"percheck_monitor_infra_import", simple(governance.ScanMonitorInfraImport)},
+	{"percheck_player_client_centralization", simple(boundaries.ScanPlayerClientCentralization)},
+	{"percheck_dual_mode_sync", simple(governance.ScanDualModeSync)},
+	{"percheck_video_encoder_policy", simple(governance.ScanVideoEncoderPolicy)},
+	{"percheck_root_override_ban", governance.ScanRootOverrideBan},
+	{"percheck_spec_aliases", simple(governance.ScanSpecAliasesTerritory)},
+	{"percheck_voiceover_alias_ban", boundaries.ScanVoiceoverAliasBan},
+	{"percheck_api_module_deps_max_8", simple(governance.ScanApiModuleDepsMax8)},
+	{"percheck_assetbinder_ssot", simple(structure.ScanAssetBinderSSOT)},
+	{"percheck_drive_access_ssot", simple(boundaries.ScanDriveAccessSSOT)},
+	{"percheck_metadata_key_registry", simple(governance.ScanMetadataKeys)},
+	{"percheck_input_immutability", simple(structure.ScanInputImmutability)},
+	{"percheck_sourcestager_transformer", simple(boundaries.ScanSourceStagerTransformer)},
+	{"file_size_pkg_size_thin_command", fileSizeRule},
+	{"file_size_strict", simple(structure.ScanFileLinesStrict)},
+	{"percheck_media_identity_no_location_fields", simple(governance.ScanMediaIdentityNoLocationFields)},
+	{"percheck_media_assets_writer_canonical", simple(boundaries.ScanMediaAssetsWriterCanonical)},
+	{"percheck_media_txn_boundary", simple(boundaries.ScanMediaTxBoundary)},
+	{"percheck_sqlite_media_reader_ban", simple(boundaries.ScanSQLiteMediaReaderBan)},
+	{"percheck_pg_dual_write_contract", simple(boundaries.ScanPGDualWriteContract)},
+	{"percheck_media_write_bridge_ban", simple(boundaries.ScanMediaWriteBridgeBan)},
+	{"percheck_asset_state_no_shadow_enum", simple(governance.ScanAssetStateNoShadowEnum)},
+	{"percheck_157_asset_state_migration_default_wire", simple(migrations.ScanAssetStateMigration157DefaultWire)},
+	{"percheck_rights_status_canonical_6", simple(governance.ScanRightsStatusCanonical6)},
+	{"percheck_review_status_canonical_4", simple(governance.ScanReviewStatusCanonical4)},
+	{"percheck_clip_ingest_pipeline_canonical_1", clipIngestRule},
+	{"percheck_binder_scene_field_writes", simple(structure.ScanBinderSceneFieldWrites)},
+	{"percheck_qdrant_index_import_ban", simple(boundaries.ScanQdrantIndexImportBan)},
+	{"percheck_pipeline_map_carrier_ban", boundaries.ScanPipelineMapCarrierBan},
+	{"percheck_no_pipeline_mapstr", structure.ScanNoPipelineMapStr},
+	{"percheck_indexed_state_writer_ssot", simple(governance.ScanIndexedStateWriterSSOT)},
+	{"percheck_slot_strings_ban", simple(governance.ScanSlotStringsBan)},
+	{"percheck_searchmode_forced_ban", simple(boundaries.ScanSearchModeForcedBan)},
+	{"percheck_digest_sha256_ban", simple(governance.ScanDigestSHA256Ban)},
+	{"percheck_digest_md5_ban", simple(governance.ScanDigestMD5Ban)},
+	{"percheck_version_strings_ban", simple(governance.ScanVersionStringsBan)},
+	{"percheck_stopword_maps_in_app", simple(governance.ScanStopwordMapsInApp)},
+	{"percheck_provider_policy_single_owner", simple(governance.ScanProviderPolicySingleOwner)},
+	{"percheck_index_pending_writer_ban", simple(governance.ScanIndexPendingWriterBan)},
+	{"percheck_mediatransformer_no_infra_fields", simple(boundaries.ScanMediaTransformerNoInfraFields)},
+	{"percheck_no_generic_generation_facade", governance.ScanNoGenericGenerationFacade},
+	{"percheck_assetbinder_no_scenesynthesizer", structure.ScanAssetBinderNoSynthesizer},
+	{"percheck_asset_committer_event_ssot", governance.ScanAssetCommitterEventSSOT},
+	{"percheck_control_plane_sql_writes", boundaries.ScanControlPlaneSQLWrites},
+	{"percheck_upsert_points_sole_owner", governance.ScanUpsertPointsSoleOwner},
+	{"percheck_embedding_constants_ssot", governance.ScanEmbeddingConstantsSSOT},
+	{"percheck_frame_concept_projection_writer", governance.ScanFrameConceptProjectionWriter},
+	{"percheck_search_aggregator_singleton", simple(boundaries.ScanSearchAggregatorSingleton)},
+	{"percheck_api_infrastructure_imports", simple(boundaries.ScanAPIInfrastructureImports)},
+	{"percheck_canonical_application_infrastructure_imports", simple(boundaries.ScanCanonicalApplicationInfrastructureImports)},
+	{"percheck_legacy_root_ban", simple(governance.ScanLegacyRootImportBan)},
+	{"percheck_sqlite_assets_clips_duplicate", simple(boundaries.ScanSQLiteAssetsClipsDuplicateBan)},
+	{"percheck_job_ownership", simple(structure.ScanJobOwnership)},
+	{"percheck_legacy_hotspot_growth", simple(structure.ScanLegacyHotspotGrowth)},
+	{"percheck_handler_generate_fields", simple(structure.ScanHandlerGenerateFields)},
+	{"percheck_brain_infra_ban", simple(boundaries.ScanBrainInfraBan)},
+	{"percheck_brain_single_impl", simple(governance.ScanBrainSingleImpl)},
+	{"percheck_duration_probe_ssot", simple(governance.ScanDurationProbeSSOT)},
+	{"percheck_observability_operation_ssot", simple(governance.ScanObservabilityOperationSSOT)},
+	{"percheck_speech_timing_ssot", simple(governance.ScanSpeechTimingSSOT)},
+	{"percheck_project_derivation_ssot", simple(governance.ScanProjectDerivationSSOT)},
+	{"percheck_evidence_precedence_ssot", simple(governance.ScanEvidencePrecedenceSSOT)},
+	{"percheck_identity_ssot", simple(governance.ScanIdentitySSOT)},
+	{"percheck_governance_artifacts", simple(governance.ScanGovernanceArtifacts)},
+}
+
+// DefaultChecks returns the canonical scanner sequence for the requested mode.
 func DefaultChecks(productionOnly bool) []CheckSpec {
-	return []CheckSpec{
-		{"constructors", structure.ScanConstructors},
-		{"struct_deps", structure.ScanStructDeps},
-		{"forbidden_dirs", structure.ScanForbiddenDirs},
-		{"kernel_subzone_hints", structure.ScanKernelSubzoneHints},
-		{"kernel_subzone_integrity", structure.ScanKernelSubzoneIntegrity},
-		{"percheck_kernel_boundary", boundaries.ScanKernelBoundary},
-		{"unknown_internal_roots", structure.ScanUnknownInternalRoots},
-		{"percheck_legacy_root_new_code", migrations.ScanLegacyRootNewCode},
-		{"ownership_doc", structure.ScanOwnershipDoc},
-		{"legacy_policy_doc", structure.ScanLegacyPolicyDoc},
-		{"ci_gates_doc", structure.ScanCIGatesDoc},
-		{"agent_playbook_doc", structure.ScanAgentPlaybookDoc},
-		{"removal_doc", structure.ScanRemovalDoc},
-		{"stale_prose_paths", structure.ScanStaleProsePaths},
-		{"percheck_canon_index_drift", structure.ScanCanonIndexDrift},
-		{"percheck_type_redecl", governance.ScanTypeRedeclarations},
-		{"percheck_txcontext_ban", governance.ScanTxContextBan},
-		{"percheck_monitor_infra_import", governance.ScanMonitorInfraImport},
-		{"percheck_player_client_centralization", boundaries.ScanPlayerClientCentralization},
-		{"percheck_dual_mode_sync", governance.ScanDualModeSync},
-		{"percheck_video_encoder_policy", governance.ScanVideoEncoderPolicy},
-		{"percheck_root_override_ban", func(root string, pol *policy.Policy, r *report.Report) {
-			governance.ScanRootOverrideBan(root, pol, r, productionOnly)
-		}},
-		{"percheck_spec_aliases", governance.ScanSpecAliasesTerritory},
-		{"percheck_voiceover_alias_ban", func(root string, pol *policy.Policy, r *report.Report) {
-			boundaries.ScanVoiceoverAliasBan(root, pol, r, productionOnly)
-		}},
-		{"percheck_api_module_deps_max_8", governance.ScanApiModuleDepsMax8},
-		{"percheck_assetbinder_ssot", structure.ScanAssetBinderSSOT},
-		{"percheck_drive_access_ssot", boundaries.ScanDriveAccessSSOT},
-		// The typed-metadata `map[string]any` ban (percheck_metadata_registry)
-		// was DEMOLISHED: its scanner walked internal/domain, a root deleted in
-		// August 2026, so it could never match a file and reported green for a
-		// hard gate that protected nothing.
-		{"percheck_metadata_key_registry", governance.ScanMetadataKeys},
-		{"percheck_input_immutability", structure.ScanInputImmutability},
-		{"percheck_sourcestager_transformer", boundaries.ScanSourceStagerTransformer},
-		{"file_size_pkg_size_thin_command", func(root string, pol *policy.Policy, r *report.Report) {
-			fileLines := map[string]int{}
-			structure.ScanPackagesForMode(root, pol, r, fileLines, productionOnly)
-			structure.ScanCommandBinaries(root, pol, r, fileLines)
-		}},
-		{"file_size_strict", structure.ScanFileLinesStrict},
-		// The finalizer-package SQL fence is owned by
-		// percheck_media_assets_writer_canonical (scoped asset_locations /
-		// outbox_events rules) — the two scanners encoded the same fact.
-		// MEDIA-SSOT identity gate (added 2026-09-17): a struct that carries a
-		// CONTENT ADDRESS must not also carry a LOCATION or a producer-local
-		// field. That coexistence is what produced the reported production
-		// failure — a media record whose sha256 said one thing while its
-		// local_path/drive_link said another — and every individual consumer
-		// looked correct, so the disagreement only surfaced later in another
-		// process. This is the forward-prevention half; the runtime half is the
-		// content verification in internal/platform/renderinggen and
-		// RenderingGen/objectstore. Grandfathered offenders live in
-		// docs/migrations/media-identity-location-fields-allowlist.txt with an
-		// owner and a deadline.
-		{"percheck_media_identity_no_location_fields", governance.ScanMediaIdentityNoLocationFields},
-		{"percheck_media_assets_writer_canonical", boundaries.ScanMediaAssetsWriterCanonical},
-		// MEDIA-SSOT (September 2026): the write gate bans direct SQL; this
-		// companion bans the TRANSACTION-BOUND seam on the write boundary —
-		// the construct that let a SQLite *sql.Tx reach the PostgreSQL media
-		// writer. Together they make the old media path unrepresentable.
-		{"percheck_media_txn_boundary", boundaries.ScanMediaTxBoundary},
-		// MEDIA-SSOT read side (added 2026-09-13): the write gate above bans
-		// direct SQL writes; this companion bans NEW SQLite readers of
-		// media_assets. It is the promotion into cmd/archcheck of the historical
-		// certify-media-cutover counter SQLITE_MEDIA_READERS=0, which was
-		// UNVERIFIED after its driver was deleted.
-		{"percheck_sqlite_media_reader_ban", boundaries.ScanSQLiteMediaReaderBan},
-		// MEDIA-SSOT dual-write side (added 2026-09-16): migration 004 adds a
-		// TIMESTAMPTZ mirror beside every legacy TEXT timestamp on the media
-		// hot-path tables and delegates the dual-write to the writer. This gate
-		// enforces that delegation structurally, so a new mutation cannot write
-		// one half of a pair without the other (or from a different bind). It is
-		// the forward-prevention companion to the live dual_write_timestamps_test.
-		{"percheck_pg_dual_write_contract", boundaries.ScanPGDualWriteContract},
-		// MEDIA-SSOT write side (added 2026-09-13): the SQL-level writer gate
-		// above is blind to a write that goes through an interface, because no
-		// SQL appears at the call site. This companion bans the generic
-		// detail.Repository/detail.Service seam write — the construct that let
-		// YouTube enrichment write media_assets on the operational SQLite
-		// engine while PostgreSQL was the SSOT.
-		{"percheck_media_write_bridge_ban", boundaries.ScanMediaWriteBridgeBan},
-		{"percheck_asset_state_no_shadow_enum", governance.ScanAssetStateNoShadowEnum},
-		{"percheck_157_asset_state_migration_default_wire", migrations.ScanAssetStateMigration157DefaultWire},
-		{"percheck_rights_status_canonical_6", governance.ScanRightsStatusCanonical6},
-		{"percheck_review_status_canonical_4", governance.ScanReviewStatusCanonical4},
-		{"percheck_clip_ingest_pipeline_canonical_1", func(root string, _ *policy.Policy, r *report.Report) {
-			r.Violations = append(r.Violations, boundaries.ScanClipIngestPipelineCanonical1(root)...)
-		}},
-		{"percheck_binder_scene_field_writes", structure.ScanBinderSceneFieldWrites},
-		{"percheck_qdrant_index_import_ban", boundaries.ScanQdrantIndexImportBan},
-		{"percheck_pipeline_map_carrier_ban", func(root string, pol *policy.Policy, r *report.Report) {
-			boundaries.ScanPipelineMapCarrierBan(root, pol, r, productionOnly)
-		}},
-		{"percheck_no_pipeline_mapstr", func(root string, pol *policy.Policy, r *report.Report) {
-			structure.ScanNoPipelineMapStr(root, pol, r, productionOnly)
-		}},
-		{"percheck_indexed_state_writer_ssot", governance.ScanIndexedStateWriterSSOT},
-		{"percheck_slot_strings_ban", governance.ScanSlotStringsBan},
-		{"percheck_searchmode_forced_ban", boundaries.ScanSearchModeForcedBan},
-		{"percheck_digest_sha256_ban", governance.ScanDigestSHA256Ban},
-		{"percheck_digest_md5_ban", governance.ScanDigestMD5Ban},
-		{"percheck_version_strings_ban", governance.ScanVersionStringsBan},
-		{"percheck_stopword_maps_in_app", governance.ScanStopwordMapsInApp},
-		{"percheck_provider_policy_single_owner", governance.ScanProviderPolicySingleOwner},
-		{"percheck_index_pending_writer_ban", governance.ScanIndexPendingWriterBan},
-		{"percheck_mediatransformer_no_infra_fields", boundaries.ScanMediaTransformerNoInfraFields},
-		{"percheck_no_generic_generation_facade", func(root string, pol *policy.Policy, r *report.Report) {
-			governance.ScanNoGenericGenerationFacade(root, pol, r, productionOnly)
-		}},
-		{"percheck_assetbinder_no_scenesynthesizer", func(root string, pol *policy.Policy, r *report.Report) {
-			structure.ScanAssetBinderNoSynthesizer(root, pol, r, productionOnly)
-		}},
-		{"percheck_asset_committer_event_ssot", func(root string, pol *policy.Policy, r *report.Report) {
-			governance.ScanAssetCommitterEventSSOT(root, pol, r, productionOnly)
-		}},
-		{"percheck_control_plane_sql_writes", func(root string, pol *policy.Policy, r *report.Report) {
-			boundaries.ScanControlPlaneSQLWrites(root, pol, r, productionOnly)
-		}},
-		{"percheck_upsert_points_sole_owner", func(root string, pol *policy.Policy, r *report.Report) {
-			governance.ScanUpsertPointsSoleOwner(root, pol, r, productionOnly)
-		}},
-		{"percheck_embedding_constants_ssot", func(root string, pol *policy.Policy, r *report.Report) {
-			governance.ScanEmbeddingConstantsSSOT(root, pol, r, productionOnly)
-		}},
-		{"percheck_frame_concept_projection_writer", func(root string, pol *policy.Policy, r *report.Report) {
-			governance.ScanFrameConceptProjectionWriter(root, pol, r, productionOnly)
-		}},
-		{"percheck_search_aggregator_singleton", boundaries.ScanSearchAggregatorSingleton},
-		{"percheck_api_infrastructure_imports", boundaries.ScanAPIInfrastructureImports},
-		{"percheck_canonical_application_infrastructure_imports", boundaries.ScanCanonicalApplicationInfrastructureImports},
-		{"percheck_legacy_root_ban", governance.ScanLegacyRootImportBan},
-		{"percheck_sqlite_assets_clips_duplicate", boundaries.ScanSQLiteAssetsClipsDuplicateBan},
-		{"percheck_job_ownership", structure.ScanJobOwnership},
-		{"percheck_legacy_hotspot_growth", structure.ScanLegacyHotspotGrowth},
-		{"percheck_handler_generate_fields", structure.ScanHandlerGenerateFields},
-		{"percheck_brain_infra_ban", boundaries.ScanBrainInfraBan},
-		{"percheck_brain_single_impl", governance.ScanBrainSingleImpl},
-		{"percheck_duration_probe_ssot", governance.ScanDurationProbeSSOT},
-		{"percheck_observability_operation_ssot", governance.ScanObservabilityOperationSSOT},
-		{"percheck_speech_timing_ssot", governance.ScanSpeechTimingSSOT},
-		{"percheck_project_derivation_ssot", governance.ScanProjectDerivationSSOT},
-		{"percheck_evidence_precedence_ssot", governance.ScanEvidencePrecedenceSSOT},
-		// ONE data-driven gate for every canonical identity fact: event names
-		// and envelope schema versions (internal/kernel/event) plus shared job
-		// types (internal/kernel/job). The vocabulary is read from the owner
-		// packages' registries, never copied here.
-		{"percheck_identity_ssot", governance.ScanIdentitySSOT},
-		// Governance-artifact integrity: orphan allowlists, dangling
-		// references, ghost entries and expired remediation deadlines. The
-		// enforcement layer is subject to godlike/06 too.
-		{"percheck_governance_artifacts", governance.ScanGovernanceArtifacts},
+	specs := make([]CheckSpec, 0, len(defaultRules))
+	for _, ru := range defaultRules {
+		ru := ru
+		specs = append(specs, CheckSpec{
+			Name: ru.name,
+			Run: func(root string, pol *policy.Policy, r *report.Report) {
+				ru.run(root, pol, r, productionOnly)
+			},
+		})
 	}
+	return specs
 }
