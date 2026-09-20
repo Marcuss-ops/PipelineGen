@@ -52,6 +52,36 @@ func TestAttachEntityCardAssetCarriesVerifiedLocalPathWithoutSerializingIt(t *te
 	}
 }
 
+func TestAttachEntityCardAssetResolvesLocalizedStableIdentity(t *testing.T) {
+	image := &scriptpkg.EntityImageBinding{
+		Status: "resolved", AssetID: "asset-mike-tyson", SHA256: strings.Repeat("a", 64),
+		PreviewURL: "https://drive.google.com/uc?export=download&id=entity-image-person-mike-tyson",
+		MediaType:  "image/jpeg",
+	}
+	result := &GenerateResult{Scenes: []Scene{{
+		Annotations: &scriptpkg.SceneAnnotations{PrimaryEntities: []scriptpkg.AnnotatedEntity{{
+			Type: "PERSON", CanonicalName: "Mike Tyson", CanonicalEntityID: "person:mike-tyson", Image: image,
+		}}},
+		LocalizedAnnotations: map[Language]*scriptpkg.SceneAnnotations{
+			"pl": {PrimaryEntities: []scriptpkg.AnnotatedEntity{{
+				Type: "PERSON", CanonicalName: "Mike’a Tysona", CanonicalEntityID: "person:mike-tyson", Image: image,
+			}}},
+		},
+	}}}
+
+	media, canonicalByStable := entityCardMediaIndex(result)
+	localizedStableID := capabilityentities.StableEntityID("PERSON", "Mike’a Tysona")
+	item := attachEntityCardAsset(capabilityoverlay.OverlayItem{
+		ID: "localized-mike-card", EntityID: localizedStableID, Kind: string(capabilityoverlay.KindEntityCard),
+	}, media, canonicalByStable, "plan-1")
+	if item.Kind != string(capabilityoverlay.KindEntityImage) || len(item.AssetRefs) != 1 {
+		t.Fatalf("localized entity image = %#v, want resolved image card", item)
+	}
+	if item.EntityRef == nil || item.EntityRef.CanonicalEntityID != "person:mike-tyson" {
+		t.Fatalf("localized entity ref = %#v, want canonical source identity", item.EntityRef)
+	}
+}
+
 func TestCapEntityImageOverlaysKeepsFiveDistinctIdentities(t *testing.T) {
 	items := make([]capabilityoverlay.OverlayItem, 0, 8)
 	for i, entityID := range []string{"a", "b", "a", "c", "d", "e", "f", "g"} {
