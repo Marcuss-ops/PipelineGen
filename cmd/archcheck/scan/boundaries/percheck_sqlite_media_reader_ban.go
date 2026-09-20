@@ -181,31 +181,30 @@ func blankSpans(s string, spans [][]int) string {
 // legacy SQLite media read plane being retired. Every file beneath them is
 // grandfathered by construction:
 //
-//   - internal/platform/sqlite/ — the operational SQLite state store (the
-//     non-media mutation primitives plus the legacy media read facade).
-//
-// The zone is a prefix and NOT an exact-file list on purpose here (unlike the
-// writer gate's exemptions): this package is the legacy read plane itself, and
-// its internal file layout is expected to shrink, not to be pinned. A NEW
-// package reading media_assets is a violation because it lives outside the
-// zone.
+// EMPTY, AND THAT IS THE TERMINAL STATE OF THE ZONE MECHANISM. Every legacy
+// read-plane package has been converted to an exact-file inventory
+// (sqliteMediaReaderInventoriedZoneFiles), so no directory is exempt as a
+// whole any more and a NEW SQLite media reader anywhere under internal/ or
+// cmd/ is a violation unless someone names it in a register.
 //
 // ZONE CONVERSION RATCHET. A prefix is the STARTING state of a zone, not its
 // terminal architecture: it exempts files nobody has read, so a NEW reader
-// dropped into the package inherits the exemption. Each zone is therefore
-// converted, one at a time, into an exact-file inventory
-// (sqliteMediaReaderInventoriedZoneFiles) as its readers are enumerated; the
-// prefix is dropped in the SAME change, so the converted zone stops
-// auto-exempting anything.
+// dropped into the package inherits the exemption. Each zone was therefore
+// converted, one at a time, into an exact-file inventory as its readers were
+// enumerated; the prefix was dropped in the SAME change, so a converted zone
+// stops auto-exempting anything.
 //
-// CONVERTED SO FAR (2026-09-20): internal/platform/qdrant/indexing/ (the Qdrant
-// media compatibility seam) and cmd/admin/ (operator tooling that deliberately
-// runs against the operational database). Both are deliberately absent from
-// this list: a new file under either is now a violation until someone
-// enumerates it, which is the whole point of the conversion.
-var sqliteMediaReaderGrandfatheredZones = []string{
-	"internal/platform/sqlite/",
-}
+// CONVERTED (2026-09-20): internal/platform/sqlite/ (the operational SQLite
+// state store), internal/platform/qdrant/indexing/ (the Qdrant media
+// compatibility seam) and cmd/admin/ (operator tooling that deliberately runs
+// against the operational database). All three were dropped from this list in
+// the change that enumerated them.
+//
+// The mechanism stays, empty, because it is the shape a FUTURE zone must take
+// while it is being enumerated — and because a zone re-added here without an
+// inventory is exactly the regression TestScanSQLiteMediaReaderBan_
+// ConvertedZoneIsExactFile exercises synthetically.
+var sqliteMediaReaderGrandfatheredZones = []string{}
 
 // sqliteMediaReaderGrandfatheredFiles is the explicit DEBT REGISTER: the
 // non-zone production files that still read media_assets from SQLite today.
@@ -375,65 +374,8 @@ var sqliteMediaReaderGrandfatheredFiles = map[string]bool{}
 // this ratchet: reach it by migrating a site, never by widening the map.
 var sqliteMediaReaderDegradeOnlyFiles = map[string]bool{}
 
-// sqliteMediaReaderInventoriedZoneFiles is the exact-file inventory of a
-// legacy read-plane zone that has been CONVERTED from a path prefix.
-//
-// WHY A CONVERTED ZONE NEEDS A REGISTER OF ITS OWN. A prefix exemption is
-// invisible forward prevention: it pardons the whole package, so a new SQLite
-// reader dropped into that package inherits the pardon and the promoted
-// SQLITE_MEDIA_READERS=0 counter stops meaning anything. Converting a zone
-// means enumerating the files that actually read media_assets today and
-// dropping the prefix in the same change; from then on the package is exact
-// and a new sibling is a violation.
-//
-// This register is the SAME KIND of thing as the two above it (an exact-file
-// pardon that must shrink), and the same three pins cover it: every entry must
-// still exist, every entry must still have a SQLite-dialect media read (never
-// a permanent allowlist), and the entry must be deleted in the same change as
-// its consumer is migrated or removed.
-//
-// CONVERTED ZONES — 2026-09-20. Each prefix was removed from
-// sqliteMediaReaderGrandfatheredZones in the same change that enumerated its
-// readers, so this inventory is the only thing standing between those packages
-// and a clean gate:
-//
-//   - internal/platform/qdrant/indexing/ — the Qdrant media compatibility seam
-//     and its local-catalog payload readers, retired wholesale with the Qdrant
-//     media projection; the files below still hold a media read while that
-//     demolition lands.
-//   - cmd/admin/ — operator tooling that deliberately runs against the
-//     operational database. It is inventoried rather than migrated because
-//     these commands are the documented operational read plane, not a
-//     production split-brain: naming them file by file is what stops a NEW
-//     admin command from inheriting the exemption.
-var sqliteMediaReaderInventoriedZoneFiles = map[string]bool{
-	"cmd/admin/internal/audit/broken_references.go":               true,
-	"cmd/admin/internal/audit/clip_drive_audit.go":                true,
-	"cmd/admin/internal/audit/matt_damon_assets.go":               true,
-	"cmd/admin/internal/audit/repair_stock_metadata.go":           true,
-	"cmd/admin/internal/backfill/backfill_asset_embeddings_db.go": true,
-	"cmd/admin/internal/backfill/backfill_clip_folder_path.go":    true,
-	"cmd/admin/internal/backfill/backfill_embedding_contract.go":  true,
-	"cmd/admin/internal/backfill/backfill_media_durations.go":     true,
-	"cmd/admin/internal/backfill/backfill_missing.go":             true,
-	"cmd/admin/internal/backfill/backfill_provider_timestamps.go": true,
-	"cmd/admin/internal/backfill/backfill_source_url_metadata.go": true, "cmd/admin/internal/cleanup/cleanup_drive_orphans.go": true,
-	"cmd/admin/internal/drive/drive_reconcile.go": true,
-
-	"cmd/admin/internal/soundeffects/classify_sound_effects.go":       true,
-	"cmd/admin/internal/soundeffects/download_sound_effects.go":       true,
-	"cmd/admin/internal/soundeffects/organize_sound_effects_drive.go": true,
-	"cmd/admin/internal/soundeffects/trim_sound_effects.go":           true,
-	"internal/platform/qdrant/indexing/asset_store.go":                true,
-	"internal/platform/qdrant/indexing/asset_store_fetch.go":          true, "internal/platform/qdrant/indexing/asset_store_reconcile.go": true,
-
-	"internal/platform/qdrant/indexing/clipindexer/indexing.go":                 true,
-	"internal/platform/qdrant/indexing/clipindexer/indexing_api.go":             true,
-	"internal/platform/qdrant/indexing/clipindexer/indexing_hash.go":            true,
-	"internal/platform/qdrant/indexing/clipindexer/indexing_skip.go":            true,
-	"internal/platform/qdrant/indexing/clipindexer/indexing_state.go":           true,
-	"internal/platform/qdrant/indexing/clipindexer/indexing_api_persistence.go": true,
-}
+// sqliteMediaReaderInventoriedZoneFiles (the converted-zone inventory) lives in
+// percheck_sqlite_media_reader_zone_inventory.go.
 
 // sqliteMediaReaderNote is the violation Note string.
 const sqliteMediaReaderNote = "forbidden NEW SQLite reader of media_assets (MEDIA-SSOT read-side gate, September 2026): PostgreSQL + pgvector is the sole durable authority for the media domain, so media reads MUST go through internal/platform/postgres/media.MediaSearcher. Reading media_assets from the operational SQLite store reintroduces the Postgres-writer/SQLite-reader split-brain. Route this read through the PostgreSQL media read authority, or add an explicit, justified entry to sqliteMediaReaderGrandfatheredFiles in the same reviewed change. This gate promotes the historical certify-media-cutover counter SQLITE_MEDIA_READERS=0 to enforcement."
