@@ -275,11 +275,11 @@ func DecodeContinuation(raw json.RawMessage) (Continuation, error) {
 // is deterministic for a given sealed plan, which is what makes its digest a
 // meaningful identity.
 type ResumeDocument struct {
-	Plan            ClipRenderPlanV1  `json:"plan"`
+	Plan ClipRenderPlanV1 `json:"plan"`
 	// RemoteRenderID is normally empty and then Plan.RunID is the queue id. A
 	// chunked family uses its content-addressed assembly anchor instead; keeping
 	// that address in the resume document makes settle restart-safe.
-	RemoteRenderID  string             `json:"remote_render_id,omitempty"`
+	RemoteRenderID  string            `json:"remote_render_id,omitempty"`
 	Request         RenderRequest     `json:"request"`
 	PublishFolderID string            `json:"publish_folder_id,omitempty"`
 	SourceTitle     string            `json:"source_title,omitempty"`

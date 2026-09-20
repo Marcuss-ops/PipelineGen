@@ -252,6 +252,12 @@ type RenderQueueBatchSubmitter interface {
 	SubmitBatch(context.Context, []RenderQueueJob) error
 }
 
+// RenderQueueChildrenReader is the optional read surface used to make a
+// replay of an already-created chunk family idempotent.
+type RenderQueueChildrenReader interface {
+	Children(context.Context, string) ([]RenderQueueJob, error)
+}
+
 // RenderQueueWaiter is the optional event-driven completion capability. A
 // queue client that implements it lets the enqueuer observe a terminal render
 // at the state transition instead of sampling the job on a cadence: the

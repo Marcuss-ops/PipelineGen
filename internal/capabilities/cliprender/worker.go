@@ -316,9 +316,16 @@ func (w *Worker) Handle(ctx context.Context, j *job.Job, tools *job.JobExecution
 		if resolver, ok := w.renderer.(RenderJobIDResolver); ok {
 			remoteRenderID = resolver.RenderJobID(plan)
 		}
+		if strings.TrimSpace(remoteRenderID) == "" {
+			remoteRenderID = plan.RunID
+		}
+		resumeRemoteID := ""
+		if remoteRenderID != plan.RunID {
+			resumeRemoteID = remoteRenderID
+		}
 		doc := ResumeDocument{
 			Plan:               plan,
-			RemoteRenderID:     remoteRenderID,
+			RemoteRenderID:     resumeRemoteID,
 			Request:            req,
 			PublishFolderID:    publishFolderID,
 			SourceTitle:        prepared.Source.Title,
