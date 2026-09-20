@@ -50,7 +50,6 @@ import (
 	"encoding/json"
 	"time"
 
-	jobscript "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 	"go.uber.org/zap"
 )
 
@@ -158,13 +157,6 @@ type SiblingDispatchResult struct {
 	Errors []error
 }
 
-// HasRequiredMissing returns true if any REQUIRED sibling failed
-// to enqueue. The caller MUST propagate this into a parent
-// PartialReason="missing_required_downstream" + parent status=FAILED.
-func (r *SiblingDispatchResult) HasRequiredMissing() bool {
-	return len(r.RequiredMissing) > 0
-}
-
 // ── Broker port (Pattern 0) ─────────────────────────────────────────
 
 // SiblingBrokerPort is the narrow broker interface the dispatcher
@@ -219,22 +211,6 @@ type SiblingDispatcher struct {
 	deps SiblingDispatcherDeps
 }
 
-// NewSiblingDispatcher constructs the dispatcher with the canonical
-// defaults applied (Concurrency=4 if zero/negative; nil-safe logger).
-// Fail-fast on nil Broker (WireUp pattern).
-func NewSiblingDispatcher(deps SiblingDispatcherDeps) *SiblingDispatcher {
-	if deps.Broker == nil {
-		panic("jobs.NewSiblingDispatcher: Broker is required (SiblingDispatcherDeps.Broker)")
-	}
-	if deps.Concurrency <= 0 {
-		deps.Concurrency = DefaultSiblingConcurrency
-	}
-	if deps.Logger == nil {
-		deps.Logger = zap.NewNop()
-	}
-	return &SiblingDispatcher{deps: deps}
-}
-
 // ── Compile-time role assertion (canonical SiblingDispatcher identity) ─
 //
 // SiblingDispatcher is registered as a typed singleton in the
@@ -264,17 +240,3 @@ var _ SiblingDispatcherInterface = (*SiblingDispatcher)(nil)
 // type strings + aliases). The dispatcher references the locally-
 // declared TypeScriptVoiceoverSibling / TypeScriptImageSibling here;
 // the domain/job/job.go additions are mirrored in Commit 2 of Step 11B.
-
-// CanonicalTypeStringForKind maps an AssetKind → the canonical
-// domain/job.* Type constant for the sibling. Used by tests +
-// composition-root assertions to detect drift.
-func CanonicalTypeStringForKind(k AssetKind) (string, bool) {
-	switch k {
-	case AssetKindVoiceover:
-		return jobscript.TypeVoiceoverSibling, true
-	case AssetKindImage:
-		return jobscript.TypeImageSibling, true
-	default:
-		return "", false
-	}
-}

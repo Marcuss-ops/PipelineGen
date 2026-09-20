@@ -14,13 +14,6 @@ type Mode int
 
 const ModeFreshPlainText Mode = 0
 
-func (m Mode) String() string {
-	if m == ModeFreshPlainText {
-		return "fresh_plain_text"
-	}
-	return "unknown"
-}
-
 // Scanner converts raw model output into the canonical V1 script envelope.
 type Scanner struct {
 	Mode Mode
