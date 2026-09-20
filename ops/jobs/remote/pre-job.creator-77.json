@@ -51,7 +51,7 @@
   },
   "delivery_plan": [
     {
-      "destination_id": "drive",
+      "destination_id": "drive-production",
       "priority": 1,
       "retry_budget": 3
     }

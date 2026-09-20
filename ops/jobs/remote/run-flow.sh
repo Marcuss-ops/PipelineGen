@@ -56,7 +56,9 @@ run-flow: nothing submitted (dry plan).
 
   plan for --yes --all:
     1. POST {master}/api/v1/jobs/pre                     body: pre-job.creator-77.json
-    2. GET  {master}/api/v1/jobs/{job_id}                poll to terminal
+       → 202 PREPARE, dispatch_status=waiting_runtime_assets
+    2. GET  {master}/api/v1/jobs/{job_id}                confirm the job is visible
+       (a pre-only job stays PENDING and is never claimed: do NOT wait here)
     3. POST {master}/api/v1/jobs/{job_id}/finalize       body: finalize-job.creator-77.json
     4. GET  {master}/api/v1/jobs/{job_id}                poll to terminal
 EOF
@@ -133,6 +135,30 @@ poll_job() { # job_id label
   done
 }
 
+# confirm_pre_visible job_id
+#
+# PREPARE is a two-stage submit: /pre answers 202 with
+# dispatch_status=waiting_runtime_assets and the job stays PENDING (no worker
+# claim, started_at null) until the FINALIZE call for the same job_id arrives.
+# Verified live 2026-09-20: a pre-only job was still PENDING after 56 s.
+# So the pre phase MUST NOT poll for a terminal status — it only confirms the
+# job is visible on the master before we finalize it.
+confirm_pre_visible() { # job_id
+  local job="$1" code status
+  code="$(api GET "/api/v1/jobs/$job" "" "$TMP/poll.json")"
+  if [[ "$code" == "404" ]]; then
+    echo "run-flow: [pre] job $job not visible on $TARGET (HTTP 404)" >&2; return 4
+  fi
+  status="$(jq -r '.status // .job.status // empty' "$TMP/poll.json" 2>/dev/null || true)"
+  printf 'run-flow: [pre] status=%s (ready for finalize)\n' "${status:-<none>}"
+  case "${status^^}" in
+    FAILED|ERROR|CANCELLED|DEAD_LETTER)
+      jq -c '{status, error, dispatch_status}' "$TMP/poll.json" 2>/dev/null || cat "$TMP/poll.json"
+      return 5 ;;
+  esac
+  return 0
+}
+
 submit_pre() { # → prints job_id, returns via stdout
   local code body_job
   if [[ "$SURFACE" == "enqueue" ]]; then
@@ -179,7 +205,17 @@ JOB_ID="${FINALIZE_ID:-}"
 if [[ "$DO_PRE" == "1" ]]; then
   JOB_ID="$(submit_pre)" || exit $?
   echo "run-flow: job_id=$JOB_ID"
-  poll_job "$JOB_ID" pre || exit $?
+  if [[ "$SURFACE" == "enqueue" ]]; then
+    # The legacy enqueue surface is single-stage: the job really runs now.
+    poll_job "$JOB_ID" enqueue || exit $?
+  else
+    confirm_pre_visible "$JOB_ID" || exit $?
+  fi
+fi
+
+if [[ "$DO_FINALIZE" == "1" && "$SURFACE" == "enqueue" && -z "$FINALIZE_ID" ]]; then
+  echo "run-flow: --surface=enqueue is single-stage; nothing to finalize"
+  DO_FINALIZE="0"
 fi
 
 if [[ "$DO_FINALIZE" == "1" ]]; then

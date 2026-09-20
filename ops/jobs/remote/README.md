@@ -3,6 +3,9 @@
 Everything here was verified on 2026-09-20 from **creator-77 (this host,
 `YOutube`, 77.93.152.122)** against the **remote master `51.91.11.36:8000`**.
 
+> **Status (updated 2026-09-20 15:07):** the two-stage flow is live on the remote
+> master and a real job completed end-to-end from this host — see §7.
+
 | File | Purpose |
 |---|---|
 | `preflight.sh` | Read-only connection check: liveness, readiness, M2M key, route inventory. Never enqueues work. |
@@ -15,7 +18,7 @@ Everything here was verified on 2026-09-20 from **creator-77 (this host,
 
 | Role | Endpoint | Evidence |
 |---|---|---|
-| Remote master (target of the pre-job) | `http://51.91.11.36:8000` | `GET /health` → `commit 106f59e4`, `/health/ready` → `ready`, 11 checks |
+| Remote master (target of the pre-job) | `http://51.91.11.36:8000` | `GET /health` → `commit bddf00b4`, `version 1.4.39`, `/health/ready` → `ready`, 11 checks |
 | Local master (creator-77) | `http://127.0.0.1:8000` (77.93.152.122) | `pipelinegen --mode all`, commit `0eaa5ab22`, worker_id `YOutube` |
 | RenderingGen queue / worker / daemon | `127.0.0.1:8081` / `:8085` / `/run/chronon3d/chronon.sock` | native services on this host |
 
@@ -43,16 +46,30 @@ Auth is `Authorization: Bearer $VELOX_M2M_SECRET` (scopes `jobs.submit`,
 | `GET /health`, `GET /health/ready` | 200 | master healthy and ready |
 | `POST /api/v1/jobs` | 401 without token, **400 with our key** | M2M surface mounted, key accepted (`invalid_json` on an empty body — no job created) |
 | `GET /api/v1/jobs/{id}` | 404 on an unknown id | read route mounted, job lookup answered |
-| `POST /api/v1/jobs/pre` | **404** | PREPARE route **not on the running binary** |
-| `POST /api/v1/jobs/{id}/finalize` | **404** | FINALIZE route **not on the running binary** |
+| `POST /api/v1/jobs/pre` | **400 / 202** | PREPARE route **mounted** (the older build answered 404) |
+| `POST /api/v1/jobs/{id}/finalize` | **400 / 202** | FINALIZE route **mounted** |
 | `POST /api/v1/admin/m2m/keys` | 401 (admin token) | admin key-minting surface present on the remote |
 
-`preflight.sh` exits **4** for this state: connection and credentials are good,
-but only the legacy submit/poll surface is live. A prepare/finalize build has to
-be deployed on `51.91.11.36` before the two-stage flow can be exercised there.
-The same probe against the local master (`VELOX_MASTER_URL=http://127.0.0.1:8000`)
-also reports `pre`/`finalize` absent, and its `m2m_clients` table is empty
-(no M2M client provisioned locally).
+`preflight.sh` now exits **0** against `51.91.11.36` (master ready, key accepted,
+prepare/finalize mounted). The same probe against the local master
+(`VELOX_MASTER_URL=http://127.0.0.1:8000`) still reports `pre`/`finalize` absent
+and an empty `m2m_clients` table: the local build is a different, older line.
+
+### 3.1 `delivery_plan.destination_id` (discovered the hard way)
+
+An explicit delivery plan is **mandatory**:
+
+- omitted → `422 {"error":"DELIVERY_TARGET_REQUIRED"}`;
+- unknown id → `422 {"error":"invalid_payload","details":[{"issue":"destination_not_found","path":"delivery_plan.0.destination_id"}]}`.
+
+Probed against the live master (`drive-production`, `drive-prod`, `production`,
+`drive`, `velox-drive`, `clips`, `stock`, `youtube`, `editorial`, `default`,
+`local`): **only `drive-production` is registered** — the payloads here use it.
+An accepted pre-job answers:
+
+```json
+{"phase":"PREPARE","dispatch_status":"waiting_runtime_assets","job_id":"job_…","ok":true}
+```
 
 ## 4. What material we actually have
 
@@ -60,7 +77,7 @@ also reports `pre`/`finalize` absent, and its `m2m_clients` table is empty
 
 | source | n | with Drive id | hours | notes |
 |---|---|---|---|---|
-| youtube | 1 193 | 1 190 | 3.25 | the real scene material (clip extracts) |
+| youtube | 1 343 | 1 340 | 3.58 | the real scene material (clip extracts) |
 | voiceover | 717 | 717 | 3.23 | TTS masters |
 | script | 168 | 168 | — | text tracks |
 | internet_images | 103 | 103 | — | overlay images |
@@ -71,9 +88,10 @@ also reports `pre`/`finalize` absent, and its `m2m_clients` table is empty
 | editorial | 2 | 2 | — | curated plates |
 | **stock** | **2** | **2** | **0.00** | `clip_001.mp4`, `clip_002.mp4` (5 s each) |
 
-The stock collection itself is effectively empty (two 5-second clips plus a
-metadata blob); the usable scene material is the 1 190 Drive-backed youtube
-clips. `binary_sha256` is populated for none of them, so the payloads carry
+The stock collection itself is effectively empty (two 5-second clips —
+`clip_001.mp4` 1 336 115 B, `clip_002.mp4` 4 125 211 B — plus a `metadata.json`
+blob); the usable scene material is the 1 340 Drive-backed youtube clips.
+`binary_sha256` is populated for none of them, so the payloads carry
 `sha256: ""` for everything except `clip_001.mp4`, whose
 `metadata_json.content_hash` is used instead.
 
@@ -120,3 +138,45 @@ timestamp), `--timeout`/`--interval` control polling.
 The `velox` operator CLI is currently out of sync with this master surface
 (`velox search … --json` → `job not found: status=404`); the scripts here talk
 HTTP directly.
+
+## 7. Verified run (2026-09-20)
+
+First real two-stage job driven from this host with `pre-job.creator-77.json`
+(2 scenes: 5 s stock `clip_001` + Dolly Parton youtube clip), finalized with
+`finalize-job.creator-77.json` (frame-native overlay 120→240, BGM + SFX):
+
+| Field | Value |
+|---|---|
+| job | `job_aa976f0b9607ad1d` |
+| task / attempt | `ab20c971-8464-4166-bc74-49b60fd50e02` / `86ad655c-9016-48c9-b2a3-6303f95788da` |
+| worker / lease | `velox-worker-13197` / `l-velox-worker-13197-943a4eb2` |
+| phases | `PREPARE` 202 `waiting_runtime_assets` → `FINALIZE` 202 `prefetch_refresh_queued` |
+| outcome | `SUCCEEDED` in ~64 s (started `13:06:39Z`, completed `13:07:43Z`) |
+| artifact | 47 839 864 B, `sha`-addressed download on the master |
+| `ffprobe` | h264 1920×1080 24 fps 95.0 s + AAC stereo 95.0 s |
+
+Second run, this time entirely through the kit (`./run-flow.sh --yes --all
+--timeout 240`), 2026-09-20 13:10 UTC:
+
+| Field | Value |
+|---|---|
+| job | `job_10af228ce8bbd21d` |
+| task | `e3ee9c8b-c494-4095-b6fa-21baaae4afc4` |
+| worker | `host_57_129_132_133` (a *different* worker than the first run) |
+| phases | `PREPARE` 202 → pre status `PENDING` → `FINALIZE` 202 → `SUCCEEDED` in ~50 s |
+| artifact | 47 880 042 B, h264 1920×1080 24 fps 95.0 s + AAC stereo (ffprobe verified) |
+
+So the remote worker really renders: it claimed the job, executed both stages on
+the same `job_id`/`worker_id`, and returned a playable H.264/AAC artifact — and
+the pool serves more than one worker.
+
+Behaviour worth knowing: a **pre-only** job (no finalize) stays `PENDING` with
+`started_at: null` forever — verified over 56 s on `job_ef304abb6214f08c` — so
+the PREPARE phase must never be polled to a terminal state. `run-flow.sh`
+confirms the job is visible and goes straight to finalize; `GET /api/v1/jobs/{id}`
+does not echo `dispatch_status` (only the `/pre` response carries
+`waiting_runtime_assets`).
+
+Version note: the master reports `1.4.39` (`bddf00b4`) while the worker release
+line quoted by the platform team is `1.4.40` — confirm both before attributing a
+future failure to the payload rather than to a version skew.
