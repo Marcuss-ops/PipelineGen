@@ -276,6 +276,10 @@ func DecodeContinuation(raw json.RawMessage) (Continuation, error) {
 // meaningful identity.
 type ResumeDocument struct {
 	Plan            ClipRenderPlanV1  `json:"plan"`
+	// RemoteRenderID is normally empty and then Plan.RunID is the queue id. A
+	// chunked family uses its content-addressed assembly anchor instead; keeping
+	// that address in the resume document makes settle restart-safe.
+	RemoteRenderID  string             `json:"remote_render_id,omitempty"`
 	Request         RenderRequest     `json:"request"`
 	PublishFolderID string            `json:"publish_folder_id,omitempty"`
 	SourceTitle     string            `json:"source_title,omitempty"`
@@ -309,7 +313,11 @@ func (d ResumeDocument) Validate() error {
 	if d.Subtitles != nil && strings.TrimSpace(d.Subtitles.LocalPath) == "" {
 		return fmt.Errorf("%w: resume document subtitles.local_path is required when subtitles are present", ErrInvalidJobPayload)
 	}
-	if err := d.Attributes(d.Plan.RunID, d.Plan.PlanSHA256); err != nil {
+	renderID := d.Plan.RunID
+	if strings.TrimSpace(d.RemoteRenderID) != "" {
+		renderID = d.RemoteRenderID
+	}
+	if err := d.Attributes(renderID, d.Plan.PlanSHA256); err != nil {
 		return err
 	}
 	return nil
@@ -320,9 +328,13 @@ func (d ResumeDocument) Validate() error {
 // document that drifted would publish an artifact nobody can attribute to the
 // submitted plan, so this is fail-closed.
 func (d ResumeDocument) Attributes(renderJobID, planSHA256 string) error {
-	if d.Plan.RunID != renderJobID {
-		return fmt.Errorf("%w: resume document run_id=%q does not match the submitted render %q",
-			ErrInvalidJobPayload, d.Plan.RunID, renderJobID)
+	documentRenderID := d.Plan.RunID
+	if strings.TrimSpace(d.RemoteRenderID) != "" {
+		documentRenderID = d.RemoteRenderID
+	}
+	if documentRenderID != renderJobID {
+		return fmt.Errorf("%w: resume document render_id=%q does not match the submitted render %q",
+			ErrInvalidJobPayload, documentRenderID, renderJobID)
 	}
 	if d.Plan.PlanSHA256 != planSHA256 {
 		return fmt.Errorf("%w: resume document plan_sha256=%q does not match the submitted plan %q",

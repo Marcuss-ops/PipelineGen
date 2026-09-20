@@ -207,8 +207,11 @@ func metricMillisEither(m map[string]float64, msKey, usKey string) int64 {
 // semantic plan and executes it with Chronon. This client never invokes a
 // local renderer and fails closed on missing or non-Chronon artifacts.
 type ClipRenderExecutor struct {
-	queue    scriptgen.RenderQueueClient
-	interval time.Duration
+	queue          scriptgen.RenderQueueClient
+	interval       time.Duration
+	chunkDuration  time.Duration
+	chunkAlignment int64
+	chunkMax       int
 }
 
 func NewClipRenderExecutor(queue scriptgen.RenderQueueClient) (*ClipRenderExecutor, error) {
@@ -223,6 +226,31 @@ func (e *ClipRenderExecutor) SetPollInterval(interval time.Duration) *ClipRender
 		e.interval = interval
 	}
 	return e
+}
+
+// SetChunking enables the conservative production chunk policy for long,
+// source-only clips. Composition plans remain exclusive.
+func (e *ClipRenderExecutor) SetChunking(chunkDuration time.Duration, alignmentFrames int64, chunkMax int) *ClipRenderExecutor {
+	if e == nil {
+		return e
+	}
+	if chunkDuration > 0 && alignmentFrames > 0 && chunkMax > 1 {
+		e.chunkDuration = chunkDuration
+		e.chunkAlignment = alignmentFrames
+		e.chunkMax = chunkMax
+	}
+	return e
+}
+
+// RenderJobID returns the durable remote address for this plan. Plain renders
+// use RunID; chunk families use their content-addressed assembly anchor.
+func (e *ClipRenderExecutor) RenderJobID(plan cliprender.ClipRenderPlanV1) string {
+	if requested, alignment, ok := e.chunkPolicy(plan); ok {
+		if set, err := cliprender.BuildChunkSet(plan, requested, alignment); err == nil {
+			return set.AnchorJobID()
+		}
+	}
+	return plan.RunID
 }
 
 // Submit is the PRE-RENDER half of the boundary (Wave B): validate the plan,
@@ -240,6 +268,12 @@ func (e *ClipRenderExecutor) Submit(ctx context.Context, plan cliprender.ClipRen
 	}
 	if err := plan.Validate(); err != nil {
 		return fmt.Errorf("renderinggen clip executor: validate plan: %w", err)
+	}
+	if requested, alignment, ok := e.chunkPolicy(plan); ok {
+		if _, err := e.SubmitChunked(ctx, plan, requested, alignment); err != nil {
+			return fmt.Errorf("renderinggen clip executor: submit chunk family: %w", err)
+		}
+		return nil
 	}
 	// MapClipPlanToOverlayPlan produces the renderinggen.overlay-plan.v1
 	// semantic contract. Sending a raw ClipRenderPlanV1 (no schema_version)
@@ -278,6 +312,39 @@ func (e *ClipRenderExecutor) Submit(ctx context.Context, plan cliprender.ClipRen
 		}
 	}
 	return nil
+}
+
+// chunkPolicy is transport optimisation only: a single source-video graph is
+// safe for packet-copy assembly. Watermarks, burned subtitles, backgrounds,
+// overlays and non-full-frame scaling require FullGraph and remain exclusive.
+func (e *ClipRenderExecutor) chunkPolicy(plan cliprender.ClipRenderPlanV1) (int, int64, bool) {
+	if e == nil || e.chunkDuration <= 0 || e.chunkAlignment <= 0 || e.chunkMax < 2 {
+		return 0, 0, false
+	}
+	if plan.Background != nil && plan.Background.Mode != "" && plan.Background.Mode != cliprender.BackgroundModeNone {
+		return 0, 0, false
+	}
+	if plan.Watermark != nil || plan.Overlay != nil {
+		return 0, 0, false
+	}
+	if plan.Subtitles != nil && plan.Subtitles.Mode != "sidecar" {
+		return 0, 0, false
+	}
+	if plan.Output.ForegroundScalePercent != 0 && plan.Output.ForegroundScalePercent != 100 {
+		return 0, 0, false
+	}
+	chunkMS := e.chunkDuration.Milliseconds()
+	if chunkMS <= 0 || plan.DurationMS <= chunkMS {
+		return 0, 0, false
+	}
+	requested := int((plan.DurationMS + chunkMS - 1) / chunkMS)
+	if requested > e.chunkMax {
+		requested = e.chunkMax
+	}
+	if requested < 2 {
+		return 0, 0, false
+	}
+	return requested, e.chunkAlignment, true
 }
 
 // SubmitChunked is the explicit I1 opt-in. It requires the queue's atomic

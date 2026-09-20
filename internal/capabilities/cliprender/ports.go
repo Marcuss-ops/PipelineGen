@@ -176,6 +176,19 @@ type RenderExecutor interface {
 	Settle(ctx context.Context, plan ClipRenderPlanV1) (*RenderOutcome, error)
 }
 
+// RenderJobIDResolver is an optional extension for executors that submit a
+// plan as a durable family. The ordinary plan RunID remains the plain-render
+// address; a chunked executor returns its assembly anchor address here.
+type RenderJobIDResolver interface {
+	RenderJobID(plan ClipRenderPlanV1) string
+}
+
+// RenderExecutorWithJobID lets a restartable settle continuation wait on the
+// executor's durable remote address when it differs from plan.RunID.
+type RenderExecutorWithJobID interface {
+	SettleWithJobID(ctx context.Context, plan ClipRenderPlanV1, renderJobID string) (*RenderOutcome, error)
+}
+
 // RenderArtifactMaterializer is the OPTIONAL capability a render boundary
 // implements when it can fetch the certified artifact it locates in the object
 // store on demand. It exists because `Settle` is locator-first: the canonical
