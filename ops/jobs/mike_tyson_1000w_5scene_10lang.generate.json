@@ -2,6 +2,7 @@
   "version": 2,
   "preset": "custom",
   "correlation_id": "mike-tyson-1000w-5scene-10lang-20260918",
+  "force_refresh": true,
   "items": [
     {
       "id": "mike-tyson-1000w-5scene-10lang",
@@ -126,9 +127,9 @@
         },
         "extraction": {
           "enabled": true,
-          "include": ["entities", "important_phrases"],
-          "max_entities_per_segment": 5,
-          "max_important_phrases_per_segment": 1,
+          "include": ["important_phrases"],
+          "max_entities_per_segment": 0,
+          "max_important_phrases_per_segment": 5,
           "important_phrases": [
             "Origins Shape the Fighter.",
             "Discipline Builds the Foundation.",
@@ -150,7 +151,7 @@
         "loop": false
       },
       "docs": {
-        "enabled": true,
+        "enabled": false,
         "languages": ["it", "en", "pl", "ru", "de", "es", "pt-BR", "fr", "tr", "id"]
       }
     }
