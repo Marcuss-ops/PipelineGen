@@ -333,9 +333,9 @@ func TestCurateResolver_TitleFromResCtx(t *testing.T) {
 // ── PR-DEADC-CURATION-MED-CURATOR-RETIRE migration contract ────────────
 //
 // The retired internal/application/scripts/usecase/media_curator_test.go
-// tested the contract via the stub MediaCurator (deleted in this PR).
+// tested the contract via a retired stub curator (deleted in this PR).
 // The canonical CurateSourceResolver must satisfy the same errors.Is
-// contract on the same sentinel (ErrCurateNoClips at line 58 of
+// contract on the same sentinel (ErrCurateNoClips, declared in
 // source_resolver_curate.go). The 2 tests below migrate the contract
 // from the stub-era tests onto the canonical surface.
 //

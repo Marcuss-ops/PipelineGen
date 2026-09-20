@@ -1,7 +1,7 @@
 # =============================================================================
-# MediaCurator Style Instruction Presets
+# Style Instruction Presets
 # =============================================================================
-# These presets are referenced by name in CurateRequest.StylePreset.
+# These presets are referenced by name when selecting a style preset.
 # The instructions are injected into the LLM prompt's STYLE INSTRUCTIONS section.
 # =============================================================================
 

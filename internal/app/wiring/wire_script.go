@@ -123,7 +123,7 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 	}
 
 	// Use cases and job registration.
-	oneUC, manyUC, genJobHandler, _ := buildScriptUseCases(
+	oneUC, manyUC, genJobHandler := buildScriptUseCases(
 		cfg, root, normCfg, sourceReg, ppReg, clipSearchPort, clipSourceBuilder, stockPrefetcher, log,
 	)
 	if root.Jobs == nil || root.Jobs.Service == nil {

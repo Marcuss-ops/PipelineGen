@@ -864,18 +864,6 @@ measurements:
     migration_adapter: "ObservedQdrantClient is the only permitted future writer; remove or project the unused families without adding another transport timer"
     removal_condition: "A full static writer audit finds an actual single writer and parity passes, or zero-writer collectors are removed"
 
-  - current_symbol: "MediaCuratorSearchDuration"
-    current_owner: "internal/platform/observability/metrics_media.go"
-    current_writer: "metric definition; current search did not find a direct Observe call"
-    current_storage: "Prometheus histogram registered at package init"
-    current_metric: "mediacurator_search_duration_seconds{backend}"
-    canonical_type: operation
-    canonical_stage: "acquire"
-    canonical_component: "media_curator"
-    canonical_operation: "search"
-    migration_adapter: "Observed search provider writes one canonical OperationReport and may project this family"
-    removal_condition: "A concrete writer is identified and migrated to the canonical operation, or the unused collector is removed"
-
   - current_symbol: "OutboxProcessingDuration"
     current_owner: "internal/platform/observability/metrics_jobs.go"
     current_writer: "metric definition; outboxevents.Pool currently writes OutboxDispatchDurationSeconds instead"
@@ -995,18 +983,6 @@ measurements:
     canonical_operation: "flush"
     migration_adapter: "Keep as runtime/event infrastructure; progress events may project stage status but flush latency is not stage execution time"
     removal_condition: "Progress flush remains excluded from RunReport stage/operation totals and no duplicate timer is introduced"
-
-  - current_symbol: "MediaCuratorSearchDuration"
-    current_owner: "internal/platform/observability/metrics_media.go"
-    current_writer: "metric definition; current search did not find a direct Observe call"
-    current_storage: "Prometheus histogram registered at package init"
-    current_metric: "mediacurator_search_duration_seconds{backend}"
-    canonical_type: operation
-    canonical_stage: "acquire"
-    canonical_component: "media_curator"
-    canonical_operation: "search"
-    migration_adapter: "Observed search provider writes one canonical OperationReport and may project this family"
-    removal_condition: "A concrete writer is identified and migrated to the canonical operation, or the unused collector is removed"
 
   - current_symbol: "DeletionReconcilerDuration"
     current_owner: "internal/platform/observability/metrics_media.go"

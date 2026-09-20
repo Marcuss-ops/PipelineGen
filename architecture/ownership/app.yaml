@@ -22,9 +22,6 @@ canonical_services:
   - service: ClipSourceBuilder
     constructor: wireClipSourceBuilder
     location: internal/app/wiring/wire_script.go
-  - service: MediaCurator
-    constructor: wireMediaCurator
-    location: internal/app/wiring/wire_script.go
   - service: SemaphoreUseCase
     constructor: NewSemaphoreUseCase
     location: internal/app/wiring/wire_script.go

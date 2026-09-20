@@ -47,9 +47,9 @@
 //     lifecycle_state=ACTIVE must-clause (stock default; clip path
 //     passes false because CompileQdrantFilter already includes it).
 //
-// nil-safe in MediaCurator + VisualPlanningProcessor — Qdrant-disabled
+// nil-safe in the curate resolver + VisualPlanningProcessor — Qdrant-disabled
 // deployments keep working with HintClipIDs-only / nil-port as before;
-// the port call is skipped when SetClipSearchPort / SetStockSearchPort
+// the port call is skipped when SetAssetSearchPort / SetStockSearchPort
 // has never been invoked.
 package ports
 

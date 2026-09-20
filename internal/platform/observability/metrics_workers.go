@@ -43,10 +43,4 @@ var (
 		Help:    "Distribution of segments found per video by channel",
 		Buckets: []float64{0, 1, 2, 3, 4, 5, 6, 8, 10},
 	}, []string{"channel"})
-
-	// Zero-Legacy §07 deprecation metrics (PR 9, June 2026)
-	CurateLegacyInvocationsTotal = promauto.NewCounterVec(prometheus.CounterOpts{
-		Name: "curate_legacy_invocations_total",
-		Help: "Monotonic counter for the deprecated MediaCurator.Curate entry point (DL-CURATIONTYPES-001).",
-	}, []string{"source"})
 )

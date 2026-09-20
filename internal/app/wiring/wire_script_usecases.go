@@ -4,8 +4,8 @@
 //
 //  1. buildScriptUseCases — canonical factory constructing the
 //     script-domain use cases consumed by the HTTP handler +
-//     the script.generate job handler. Returns the slim 4-tuple
-//     (oneUC, manyUC, genJobHandler, mediaCurator). Takes the
+//     the script.generate job handler. Returns the slim 3-tuple
+//     (oneUC, manyUC, genJobHandler). Takes the
 //     output of buildScriptSourceResolvers plus the ppReg
 //     frozen by the orchestrator.
 //
@@ -66,7 +66,6 @@ import (
 	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
 	adapters "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters"
 	processor "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters/processor"
-	scriptdto "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/dto"
 	jobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/jobs"
 	scriptports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
 	usecase "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/usecase"
@@ -87,8 +86,8 @@ import (
 // is responsible for registering jobs, wiring the handler, and
 // mounting the HTTP module.
 //
-// PR-script-deps-slim (July 2026, P1): returns the slim 4-tuple
-// (oneUC, manyUC, genJobHandler, mediaCurator). The pre-slim 6-tuple
+// PR-script-deps-slim (July 2026, P1): returns the slim 3-tuple
+// (oneUC, manyUC, genJobHandler). The pre-slim 6-tuple
 // also returned SectionRegenerator + CacheEvictionUseCase; those
 // were RETIRED because the corresponding HTTP routes
 // (RegenerateSection + EvictCache) were always 503 — the
@@ -108,7 +107,6 @@ func buildScriptUseCases(
 	*gencore.GenerateOneUseCase,
 	*usecase.GenerateManyUseCase,
 	*jobs.GenerateJobHandler,
-	*scriptdto.MediaCurator,
 ) {
 	engine := root.AI.ScriptEngine
 
@@ -159,27 +157,14 @@ func buildScriptUseCases(
 		}
 	}
 
-	// ── ClipsFolderExtAdapter pre-wiring (Refactor 1 audit) ────────
-	_ = jobs.NewClipsFolderExtAdapter
-	log.Info("wireScriptFlow: jobs.ClipsFolderExtAdapter available at composition root (Refactor 1 adapter pre-wired)")
-
 	// ── GenerateManyUseCase (multi-item fanout) ─────────────────
 	manyUC := usecase.NewGenerateManyUseCase(log)
 	manyUC.SetConcurrency(normCfg.MaxBatchWorkers)
 
-	// ── Media curator ───────────────────────────────────────
-	var mediaCurator *scriptdto.MediaCurator
-	if engine != nil {
-		mediaCurator = scriptdto.NewMediaCurator(cfg.ClipIndexer.ServerURL, clipSourceBuilder, log)
-		if clipSearchPort != nil {
-			mediaCurator.SetClipSearchPort(clipSearchPort)
-		}
-	}
-
 	// ── Generate job handler ────────────────────────────────────
 	genJobHandler := jobs.NewGenerateJobHandler(oneUC, manyUC, log)
 
-	return oneUC, manyUC, genJobHandler, mediaCurator
+	return oneUC, manyUC, genJobHandler
 }
 
 // wireScriptChildJobAuditP04 wires the P0 #4 per-item retry pattern:

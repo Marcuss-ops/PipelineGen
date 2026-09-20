@@ -90,7 +90,7 @@ typed envelope carrying candidates, scores, and source hints.
 
 | Field | Value |
 |---|---|
-| **Primary code paths** | `internal/capabilities/scripts/usecase/source_resolver_search.go` (orchestration), `internal/capabilities/assets/search/ports.go` (`SearchResult` port), `internal/kernel/asset/detail/search_core.go` (`SearchResult` type), `internal/capabilities/scripts/dto/curation_types.go` (`SearchResultInfo`) |
+| **Primary code paths** | `internal/capabilities/scripts/usecase/source_resolver_search.go` (orchestration), `internal/capabilities/assets/search/ports.go` (`SearchResult` port), `internal/kernel/asset/detail/search_core.go` (`SearchResult` type) |
 | **Godlike contract** | godlike/06 SSOT: `assets/search/ports.go` is the only canonical search port; alternative search wrappers MUST route through it. godlike/07: empty result set is a typed failure, not a silent pass. |
 | **Inputs** | `ClipPlan` slots |
 | **Outputs** | `SearchResult` with `[]Candidate` + scores |
