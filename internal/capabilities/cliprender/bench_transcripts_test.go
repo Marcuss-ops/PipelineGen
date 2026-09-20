@@ -104,35 +104,6 @@ func (c *benchTranscriptCache) seed(in TranscriptInput) {
 
 // runTranscriptBatch prepares the same source `clips` times under one
 // transcript policy and returns the wall time plus the ASR resolution state.
-func runTranscriptBatch(t *testing.T, mode string, persist bool, clips int, asrMS time.Duration) (time.Duration, int, int, int) {
-	t.Helper()
-	cache := newBenchTranscriptCache(asrMS)
-
-	assets := newFakeAssetResolver(map[string]AssetRef{"asset-source": {AssetID: "asset-source"}})
-	preparer, err := NewPreparer(assets, &fakeMaterializer{}, cache, NewContractResolver(), zap.NewNop())
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	started := time.Now()
-	for i := 0; i < clips; i++ {
-		req := baseRenderRequest()
-		// persistSet:true makes the boolean EXPLICIT: the scenario measures the
-		// difference between persisting and not persisting, so Normalize must not
-		// substitute its (now true) default for the persist=false half.
-		req.Transcript = &TranscriptSpec{Mode: mode, Language: "en", Persist: persist, persistSet: true}
-		prepared, err := preparer.Prepare(context.Background(), req, fmt.Sprintf("run-%d", i))
-		if err != nil {
-			t.Fatalf("mode=%s clip %d: Prepare: %v", mode, i, err)
-		}
-		if prepared.Transcript == nil || !prepared.Transcript.HasText() {
-			t.Fatalf("mode=%s clip %d: prepared transcript missing text", mode, i)
-		}
-	}
-	elapsed := time.Since(started)
-	gen, lookups, hits := cache.counts()
-	return elapsed, gen, lookups, hits
-}
 
 // runSeededReuseBatch prepares the same source `clips` times under the
 // production default (`reuse`) against a pre-existing READY canonical track,

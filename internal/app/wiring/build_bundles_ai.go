@@ -233,8 +233,8 @@ func BuildAIBundle(ctx context.Context, cfg *config.Config, dbs *Databases, log 
 		whisperAdapter = whisperConcrete
 		// Derived transcript cache: source bytes + Whisper processor version
 		// identify the result; local temporary paths never become cache keys.
-		if dbs.Cache != nil && dbs.Cache.DB != nil {
-			if cache, cacheErr := NewArtifactCache(cfg, dbs.Cache.DB, log); cacheErr == nil {
+		if dbs.Cache != nil && dbs.Cache.DB != nil && dbs.Main != nil && dbs.Main.DB != nil {
+			if cache, cacheErr := NewArtifactCache(cfg, dbs.Cache.DB, dbs.Main.DB, log); cacheErr == nil {
 				// The Whisper bridge has its own execution contract; the Ollama
 				// chat model is unrelated and must not invalidate or alias
 				// transcription artifacts.

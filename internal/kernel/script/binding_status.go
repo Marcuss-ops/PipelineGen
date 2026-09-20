@@ -39,9 +39,6 @@ func (s ImageBindingStatus) Valid() bool {
 }
 
 // IsTerminal reports true for terminal states (Generated or Failed).
-func (s ImageBindingStatus) IsTerminal() bool {
-	return s == ImageStatusGenerated || s == ImageStatusFailed
-}
 
 // VoiceoverBindingStatus enumerates the canonical lifecycle states
 // for a generated voiceover audio binding. Voiceover bindings are
@@ -73,9 +70,6 @@ func (s VoiceoverBindingStatus) Valid() bool {
 }
 
 // IsTerminal is true for any state other than Pending.
-func (s VoiceoverBindingStatus) IsTerminal() bool {
-	return s != VoiceoverStatusPending && s != ""
-}
 
 // ErrSpecSceneInvalid is the sentinel for any specscene validation
 // or enrichment failure (model-invented clip, missing binding on

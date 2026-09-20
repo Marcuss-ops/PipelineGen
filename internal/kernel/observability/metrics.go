@@ -19,4 +19,3 @@ type Collector interface {
 type NoopCollector struct{}
 
 // Collect implements Collector.
-func (NoopCollector) Collect(context.Context, *RunReport) error { return nil }

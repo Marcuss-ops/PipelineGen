@@ -150,12 +150,6 @@ func ValidateNonOpsDeps(d Deps) error {
 // (clips.Build -> NewHandlerStrict -> NewNonOpsHandlerStrict) calls
 // this constructor so the canonical 3-method registration chain is
 // fail-closed at boot per godlike/07.
-func NewNonOpsHandlerStrict(d Deps) (*NonOpsHandler, error) {
-	if err := ValidateNonOpsDeps(d); err != nil {
-		return nil, err
-	}
-	return NewNonOpsHandler(d), nil
-}
 
 // Compile-time pin: *NonOpsHandler must implement Handler. Future
 // drift in any of the 5 method signatures surfaces as a build

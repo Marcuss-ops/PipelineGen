@@ -94,31 +94,3 @@ func RunSyncDriveFolder(args []string) error {
 	}
 	return nil
 }
-
-func WaitForAssetIndexOutbox(ctx context.Context, root *wiring.ComposeRoot, deadLettersBefore int64) error {
-	for {
-		pending, err := root.Outbox.EventsRepo.CountByEventTypeAndStatus(ctx, outboxevents.EventAssetIndexRequested, "pending")
-		if err != nil {
-			return fmt.Errorf("read pending asset index events: %w", err)
-		}
-		processing, err := root.Outbox.EventsRepo.CountByEventTypeAndStatus(ctx, outboxevents.EventAssetIndexRequested, "processing")
-		if err != nil {
-			return fmt.Errorf("read processing asset index events: %w", err)
-		}
-		deadLetters, err := root.Outbox.EventsRepo.CountByEventTypeAndStatus(ctx, outboxevents.EventAssetIndexRequested, "dead_letter")
-		if err != nil {
-			return fmt.Errorf("read asset index dead letters: %w", err)
-		}
-		if deadLetters > deadLettersBefore {
-			return fmt.Errorf("Qdrant indexing failed: %d asset.index.requested events moved to dead-letter", deadLetters-deadLettersBefore)
-		}
-		if pending == 0 && processing == 0 {
-			return nil
-		}
-		select {
-		case <-ctx.Done():
-			return fmt.Errorf("timeout waiting for Qdrant indexing: pending=%d processing=%d", pending, processing)
-		case <-time.After(250 * time.Millisecond):
-		}
-	}
-}

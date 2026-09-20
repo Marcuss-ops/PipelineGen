@@ -637,27 +637,6 @@ type mikeTysonExpectedEntity struct {
 	Type    string
 }
 
-func expectedProbeEntities(language Language) []mikeTysonExpectedEntity {
-	aliases := map[Language]map[string][]string{
-		"en":    {"Mike Tyson": {"mike tyson"}, "Muhammad Ali": {"muhammad ali"}, "Las Vegas": {"las vegas"}},
-		"it":    {"Mike Tyson": {"mike tyson"}, "Muhammad Ali": {"muhammad ali"}, "Las Vegas": {"las vegas"}},
-		"de":    {"Mike Tyson": {"mike tyson"}, "Muhammad Ali": {"muhammad ali"}, "Las Vegas": {"las vegas"}},
-		"es":    {"Mike Tyson": {"mike tyson"}, "Muhammad Ali": {"muhammad ali"}, "Las Vegas": {"las vegas"}},
-		"fr":    {"Mike Tyson": {"mike tyson"}, "Muhammad Ali": {"muhammad ali"}, "Las Vegas": {"las vegas"}},
-		"pt-BR": {"Mike Tyson": {"mike tyson"}, "Muhammad Ali": {"muhammad ali"}, "Las Vegas": {"las vegas"}},
-		"pl":    {"Mike Tyson": {"mike tyson", "mike'a tysona", "mike’a tysona"}, "Muhammad Ali": {"muhammad ali", "muhammada aliego"}, "Las Vegas": {"las vegas"}},
-		"ru":    {"Mike Tyson": {"mike tyson", "майк тайсон", "майка тайсона"}, "Muhammad Ali": {"muhammad ali", "мухаммед али", "мухаммеду али"}, "Las Vegas": {"las vegas", "лас-вегас", "лас вегас"}},
-		"tr":    {"Mike Tyson": {"mike tyson"}, "Muhammad Ali": {"muhammad ali"}, "Las Vegas": {"las vegas"}},
-		"id":    {"Mike Tyson": {"mike tyson"}, "Muhammad Ali": {"muhammad ali"}, "Las Vegas": {"las vegas"}},
-	}
-	byName := aliases[language]
-	return []mikeTysonExpectedEntity{
-		{Scene: 1, Name: "Mike Tyson", Aliases: byName["Mike Tyson"], Type: "PERSON"},
-		{Scene: 2, Name: "Las Vegas", Aliases: byName["Las Vegas"], Type: "GPE"},
-		{Scene: 5, Name: "Muhammad Ali", Aliases: byName["Muhammad Ali"], Type: "PERSON"},
-	}
-}
-
 func documentHasExpectedEntity(document mikeTysonProbeDocument, expected mikeTysonExpectedEntity) bool {
 	if expected.Scene < 1 || expected.Scene > len(document.Scenes) {
 		return false

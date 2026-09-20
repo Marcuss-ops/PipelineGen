@@ -113,11 +113,9 @@ func wireCountingVidRush(runner *Runner) *countingEnricher {
 	return enricher
 }
 
-// TestOverlayPrepare_DoesNotBlockTTSOrNLP pins the prepare branch: while the
-// overlay.prepare enqueue is blocked, TTS has already produced every scene
-// voiceover and NLP has already finished every enrichment. The run remains
-// blocked only on the prepare join — never on TTS/NLP — so prepare sits off
-// the TTS/NLP critical path.
+// TestOverlayPrepare_DoesNotBlockTTSOrNLP pins the prepare gate: a text/phrase-
+// only semantic plan has no asset bytes to prefetch, so overlay.prepare is
+// skipped and cannot add a queue round-trip to the TTS/NLP critical path.
 func TestOverlayPrepare_DoesNotBlockTTSOrNLP(t *testing.T) {
 	repo := newInMemRunRepository()
 	textGen := newStubTextGenerator([]Scene{{
@@ -154,31 +152,18 @@ func TestOverlayPrepare_DoesNotBlockTTSOrNLP(t *testing.T) {
 		runner.Execute(context.Background(), runID, req)
 	}()
 
-	// The prepare enqueue must begin (and block)...
-	require.Eventually(t, prepEnq.hasStarted, 5*time.Second, time.Millisecond,
-		"overlay.prepare must start")
-
-	// ...while TTS completes and NLP has already completed. If prepare were on
-	// the critical path (enqueued synchronously before TTS/NLP), these would
-	// still be zero.
+	// TTS and NLP complete without a prepare round-trip. Asset-bearing plans
+	// are covered by the separate asynchronous prepare tests.
 	require.Eventually(t, func() bool { return voCallCount(voGen) == 1 }, 5*time.Second, time.Millisecond,
-		"TTS must complete all scene voiceovers while overlay.prepare is blocked")
+		"TTS must complete for a text-only plan")
 	require.Equal(t, 1, enricher.callCount(),
-		"NLP must complete before overlay.prepare is enqueued (prepare is downstream of NLP)")
-
-	// The run is blocked only on the prepare join — not completed, not failed.
-	run, err := repo.Get(context.Background(), runID)
-	require.NoError(t, err)
-	require.NotEqual(t, RunStatusCompleted, run.Status,
-		"run must still be blocked on the prepare join, not finished early")
-
-	// Release prepare; the run joins and completes.
-	close(prepEnq.release)
+		"NLP must complete for a text-only plan")
 	select {
 	case <-done:
 	case <-time.After(5 * time.Second):
-		t.Fatal("run did not complete after releasing overlay.prepare")
+		t.Fatal("run did not complete without overlay.prepare")
 	}
+	require.False(t, prepEnq.hasStarted(), "text-only plan must skip overlay.prepare")
 	require.Equal(t, RunStatusCompleted, awaitCompletion(t, repo, runID, time.Second).Status)
 }
 

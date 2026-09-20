@@ -104,9 +104,3 @@ func AssetIDToQdrantPointID(assetID string) string {
 
 // HexDigest exposes the canonical SHA-256 digest of the bare asset ID
 // for diagnostics and tests.
-func HexDigest(assetID string) string {
-	if assetID == "" {
-		return ""
-	}
-	return digest.SHA256Bytes([]byte(assetID))
-}

@@ -97,6 +97,7 @@ build: go-version-check build-muscles
 	GOFLAGS="$(GO_BUILD_GOFLAGS)" $(GO) build -ldflags "$(LDFLAGS) $(GO_LINKER_FLAGS)" -v -o bin/pipelinegen      ./cmd/server
 	GOFLAGS="$(GO_BUILD_GOFLAGS)" $(GO) build -ldflags "$(LDFLAGS) $(GO_LINKER_FLAGS)" -v -o bin/admin            ./cmd/admin
 	GOFLAGS="$(GO_BUILD_GOFLAGS)" $(GO) build -ldflags "$(LDFLAGS) $(GO_LINKER_FLAGS)" -v -o bin/worker           ./cmd/worker
+	GOFLAGS="$(GO_BUILD_GOFLAGS)" $(GO) build -ldflags "$(LDFLAGS) $(GO_LINKER_FLAGS)" -v -o bin/velox            ./cmd/velox
 
 # Build only the server binary. This is the canonical target for server
 # smoke checks and lightweight container builds.

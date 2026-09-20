@@ -20,28 +20,6 @@ type FallbackEntityExtractor struct {
 	Fallback entityports.EntityExtractor
 }
 
-func (e *FallbackEntityExtractor) ExtractEntities(ctx context.Context, req scriptpkg.EntityExtractionRequest) (*scriptpkg.EntityResult, error) {
-	if e == nil {
-		return nil, ErrEntityExtractorUnavailable
-	}
-	result, primaryErr := e.Primary.ExtractEntities(ctx, req)
-	if primaryErr == nil && entityResultHasValues(result) {
-		return result, nil
-	}
-	fallbackResult, fallbackErr := e.Fallback.ExtractEntities(ctx, req)
-	if fallbackErr == nil && fallbackResult != nil {
-		return fallbackResult, nil
-	}
-	if primaryErr != nil {
-		return nil, primaryErr
-	}
-	return result, fallbackErr
-}
-
-func entityResultHasValues(result *scriptpkg.EntityResult) bool {
-	return result != nil && len(result.Persons)+len(result.Places)+len(result.Concepts) > 0
-}
-
 type batchEntityExtractor = entityports.BatchEntityExtractor
 
 type unavailableEntityExtractionAdapter struct{}

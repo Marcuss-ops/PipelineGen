@@ -68,7 +68,6 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/scene"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
-	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
 // P0.D canonical 8-clip ID set. The "round-N" naming matches the
@@ -364,32 +363,6 @@ func TestClipResolution_P0D_BinderOrder(t *testing.T) {
 // the supplied slice into the AcceptedClipIDs / RenderableClipIDs /
 // ClipDetails fan-out. Any reordering here would invalidate the
 // P0.D test itself, not the production code.
-func buildP0DPlanEvidence(clipIDs []string) *scriptpkg.ClipEvidence {
-	ev := &scriptpkg.ClipEvidence{
-		AcceptedClipIDs:   append([]string(nil), clipIDs...),
-		RenderableClipIDs: append([]string(nil), clipIDs...),
-		ClipCount:         len(clipIDs),
-		AssembledText:     "",
-		DriveLinks:        make(map[string]string, len(clipIDs)),
-		ClipNames:         make(map[string]string, len(clipIDs)),
-		ClipDetails:       make(map[string]scriptpkg.ClipDetail, len(clipIDs)),
-	}
-	for _, id := range clipIDs {
-		clip := makeP0DClip(id)
-		ev.DriveLinks[id] = clip.DriveLink()
-		ev.ClipNames[id] = clip.Name
-		ev.ClipDetails[id] = scriptpkg.ClipDetail{
-			Name:        clip.Name,
-			Description: clip.SearchText,
-			Transcript:  "Transcript for " + id,
-			Tags:        append([]string(nil), clip.Tags...),
-			StartMs:     0,
-			EndMs:       10000,
-			DriveLink:   clip.DriveLink(),
-		}
-	}
-	return ev
-}
 
 // compile-time assertion: scene.NewSceneAssetBinder exists with
 // the expected signature; a future signature drift in the

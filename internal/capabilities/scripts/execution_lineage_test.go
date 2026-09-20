@@ -71,15 +71,6 @@ func (r *recordingExecutionRecorder) RecordOperation(_ context.Context, exec Exe
 }
 
 // operationByKey finds the first recorded operation matching kind+scene+lang.
-func (r *recordingExecutionRecorder) operationByKey(kind, sceneID string, lang Language) *ArtifactOperation {
-	for i := range r.operations {
-		op := &r.operations[i]
-		if op.Kind == kind && op.SceneID == sceneID && op.Language == lang {
-			return op
-		}
-	}
-	return nil
-}
 
 func TestRunnerExecutionContextAndLineageCertification(t *testing.T) {
 	runner, repo, _, _, _, _, _ := newTestRunner()

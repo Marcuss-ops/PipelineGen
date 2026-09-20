@@ -170,11 +170,6 @@ func NewAssetResolver() *AssetResolver {
 }
 
 // SetRepository swaps the backing store, e.g. a durable SQLite adapter.
-func (r *AssetResolver) SetRepository(repo AssetRepository) {
-	if repo != nil {
-		r.assets = repo
-	}
-}
 
 // Index upserts one asset record (content-addressed dedup by entity+asset).
 func (r *AssetResolver) Index(asset EntityAsset) error {

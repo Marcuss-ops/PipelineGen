@@ -27,8 +27,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	"strings"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"go.uber.org/zap"
@@ -93,7 +94,6 @@ func (DefaultIDGenerator) IDFor(category, url string) string {
 // NewDefaultIDGenerator returns the canonical generator as an
 // IDGenerator interface. Convenience constructor for callers that
 // prefer the interface form.
-func NewDefaultIDGenerator() IDGenerator { return DefaultIDGenerator{} }
 
 // Service is the canonical use-case orchestrator for the channels
 // capability. Constructed once at composition (Build in module.go)

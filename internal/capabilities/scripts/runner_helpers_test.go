@@ -267,19 +267,6 @@ func newStubRenderEnqueuer() *stubRenderEnqueuer {
 	}
 }
 
-func (e *stubRenderEnqueuer) Enqueue(ctx context.Context, result GenerateResult) (RenderReference, error) {
-	e.mu.Lock()
-	defer e.mu.Unlock()
-	e.callCount++
-	if e.failAfter >= 0 && e.callCount > e.failAfter {
-		return RenderReference{}, e.err
-	}
-	if e.err != nil {
-		return RenderReference{}, e.err
-	}
-	return e.ref, nil
-}
-
 // ─────────────────────────────────────────────────────────────────────
 // Repository stub
 // ─────────────────────────────────────────────────────────────────────

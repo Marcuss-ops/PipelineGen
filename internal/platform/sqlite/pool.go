@@ -180,17 +180,6 @@ func NewDualPool(ctx context.Context, fileUri string, numReaders int) (*DualPool
 // reference DatabaseSet.Primary.DB. New runtime code should prefer
 // DatabaseSet.Primary directly; this adapter exists only while bundle
 // constructors migrate from the retired second-pool topology.
-func AttachDualPool(primary *SQLiteDB) (*DualPool, error) {
-	if primary == nil || primary.DB == nil {
-		return nil, errors.New("sqlite.AttachDualPool: canonical primary is nil")
-	}
-	return &DualPool{
-		Writer:      primary.DB,
-		Reader:      primary.DB,
-		sourcePath:  primary.Path(),
-		ownsHandles: false,
-	}, nil
-}
 
 func applyCanonicalPragmas(ctx context.Context, db *sql.DB) error {
 	var journalMode string

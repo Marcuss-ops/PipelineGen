@@ -146,12 +146,6 @@ func writeFile(t *testing.T, path string, body []byte) {
 }
 
 // mkdirAll is a tiny test-side helper.
-func mkdirAll(t *testing.T, path string) {
-	t.Helper()
-	if err := os.MkdirAll(path, 0o755); err != nil {
-		t.Fatalf("mkdir %q: %v", path, err)
-	}
-}
 
 // symlink is a tiny test-side helper. Wraps os.Symlink so a test
 // failure points to the right line.

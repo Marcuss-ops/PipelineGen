@@ -93,7 +93,6 @@ import (
 
 	"encoding/json"
 	"fmt"
-	"os"
 	"strings"
 	"time"
 
@@ -102,6 +101,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/texttracks"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
+	"github.com/Marcuss-ops/PipelineGen/pkg/atomicwrite"
 )
 
 // textTracksBackfillDeps groups parsed CLI flags. Pure data; the
@@ -394,7 +394,7 @@ func RunTextTracksBackfill(args []string) error {
 
 	if cp != nil && deps.Checkpoint != "" {
 		if b, mErr := json.MarshalIndent(cp, "", "  "); mErr == nil {
-			_ = os.WriteFile(deps.Checkpoint, b, 0o644)
+			_ = atomicwrite.WriteFile(deps.Checkpoint, b, 0o644)
 		}
 	}
 	return nil

@@ -2,6 +2,7 @@
 package clips
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -15,6 +16,19 @@ import (
 	"go.uber.org/zap"
 )
 
+// httpStatusConflict is 409 Conflict. Spelled out so the intent is greppable and
+// the constant does not depend on which net/http version is vendored.
+const httpStatusConflict = 409
+
+// AssetJobStatusLookup reports the in-flight job state for an asset when one
+// exists. It is optional: when it is not wired, the download handler still
+// answers 409 (never a misleading 404) but cannot name the real status.
+type AssetJobStatusLookup interface {
+	// LatestJobStatus returns the latest job status for assetID, the retry
+	// count, and whether any job was found at all.
+	LatestJobStatus(ctx context.Context, assetID string) (status string, retryCount int, found bool)
+}
+
 // ActionDeps contains only the collaborators consumed by the three action
 // endpoints. Use cases are constructed in internal/app, never in transport.
 type ActionDeps struct {
@@ -23,7 +37,11 @@ type ActionDeps struct {
 	DuplicateFinder *duplicates.Finder
 	DownloadUC      *appclips.DownloadUseCase
 	ReuploadUC      *appclips.ReuploadUseCase
-	Log             *zap.Logger
+	// JobStatus is optional. When wired, a download of an asset whose render
+	// job is still running answers 409 with the real status instead of a
+	// generic one.
+	JobStatus AssetJobStatusLookup
+	Log       *zap.Logger
 }
 
 // ActionHandler owns the publication and duplicate-query HTTP endpoints.
@@ -33,6 +51,7 @@ type ActionHandler struct {
 	duplicateFinder *duplicates.Finder
 	downloadUC      *appclips.DownloadUseCase
 	reuploadUC      *appclips.ReuploadUseCase
+	jobStatus       AssetJobStatusLookup
 	log             *zap.Logger
 }
 
@@ -46,6 +65,7 @@ func NewActionHandler(d ActionDeps) *ActionHandler {
 		duplicateFinder: d.DuplicateFinder,
 		downloadUC:      d.DownloadUC,
 		reuploadUC:      d.ReuploadUC,
+		jobStatus:       d.JobStatus,
 		log:             d.Log,
 	}
 }
@@ -62,6 +82,12 @@ func (h *ActionHandler) DownloadClip(c *gin.Context) {
 	result, err := h.downloadUC.Resolve(c.Request.Context(), source, clipID)
 	if err != nil {
 		if strings.Contains(err.Error(), "not found") {
+			// The asset row may be absent only because its job has not
+			// committed it yet. Distinguish "does not exist" from "not
+			// available yet": a running job answers 409, not 404.
+			if h.respondIfNotReady(c, clipID, result) {
+				return
+			}
 			apiutil.NotFound(c, err.Error())
 		} else {
 			apiutil.InternalError(c, err)
@@ -112,7 +138,53 @@ func (h *ActionHandler) DownloadClip(c *gin.Context) {
 		return
 	}
 
-	apiutil.NotFound(c, "clip video not available (no local file and no drive ID)")
+	// The asset row EXISTS (Resolve succeeded); only its artifact is missing.
+	// Answering 404 here made a pending render look like a nonexistent asset.
+	if h.respondIfNotReady(c, clipID, result) {
+		return
+	}
+	h.respondNotReady(c, "RUNNING", 1)
+}
+
+// respondIfNotReady answers 409 Conflict when the asset's video artifact is not
+// available yet, and reports whether it wrote the response.
+//
+// 409 is the honest status: the resource is known but cannot be served yet, and
+// the body tells the caller it is a timing problem (`status`, `retry_count`),
+// not a missing asset. A 404 here was misleading and sent callers looking for a
+// bug that did not exist.
+func (h *ActionHandler) respondIfNotReady(c *gin.Context, clipID string, result *appclips.DownloadResult) bool {
+	if h.jobStatus != nil {
+		if status, retryCount, found := h.jobStatus.LatestJobStatus(c.Request.Context(), clipID); found {
+			h.respondNotReady(c, status, retryCount)
+			return true
+		}
+	}
+	if result == nil || result.Clip == nil {
+		// No asset row and no job record: this is a genuine miss.
+		return false
+	}
+	// The asset row exists but its artifact is not materialized yet.
+	h.respondNotReady(c, "RUNNING", 1)
+	return true
+}
+
+// respondNotReady writes the canonical 409 body. retryCount is the job's retry
+// count when known, otherwise 1 ("a retry is expected").
+func (h *ActionHandler) respondNotReady(c *gin.Context, status string, retryCount int) {
+	if retryCount <= 0 {
+		retryCount = 1
+	}
+	if strings.TrimSpace(status) == "" {
+		status = "RUNNING"
+	}
+	c.Header("Retry-After", "2")
+	c.JSON(httpStatusConflict, gin.H{
+		"ok":          false,
+		"error":       "clip video not available yet",
+		"status":      status,
+		"retry_count": retryCount,
+	})
 }
 
 // ReuploadClip reuploads a clip to Drive through the application use case.

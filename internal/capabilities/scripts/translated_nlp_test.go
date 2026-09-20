@@ -75,20 +75,6 @@ func translatedNLPMediaPlan() mediadomain.MediaPlanSpec {
 	}}
 }
 
-func assertScenePhrase(t *testing.T, result *GenerateResult, sceneIndex int, lang Language, want string) {
-	t.Helper()
-	annotations := result.Scenes[sceneIndex].LocalizedAnnotations[lang]
-	if annotations == nil {
-		t.Fatalf("scene %d missing %s annotations", sceneIndex, lang)
-	}
-	for _, phrase := range annotations.ImportantPhrases {
-		if phrase.Text == want {
-			return
-		}
-	}
-	t.Fatalf("scene %d/%s phrases = %+v, want %q (per-scene mapping)", sceneIndex, lang, annotations.ImportantPhrases, want)
-}
-
 func assertGroundedScenePhrases(t *testing.T, result *GenerateResult, sceneIndex int, lang Language) {
 	t.Helper()
 	annotations := result.Scenes[sceneIndex].LocalizedAnnotations[lang]
@@ -289,6 +275,53 @@ func TestGroundLocalizedSourceEntitiesProjectsPolishInflection(t *testing.T) {
 	// A prefix resemblance alone is not enough to project a source identity.
 	if falsePositive := matchLocalizedSourceEntities("Mikea Tysonic opowieść.", "pl", source); len(falsePositive) != 0 {
 		t.Fatalf("unrelated Polish tokens were projected as Mike Tyson: %+v", falsePositive)
+	}
+}
+
+func TestGroundLocalizedSourceEntitiesProjectsTurkishCaseSuffix(t *testing.T) {
+	text := "Neil Armstrong'un hikayesi uzay tarihini değiştirdi."
+	source := &scriptpkg.SceneAnnotations{Language: "en", PrimaryEntities: []scriptpkg.AnnotatedEntity{{
+		Text: "Neil Armstrong", CanonicalName: "Neil Armstrong", Type: "PERSON", Confidence: 0.98,
+	}}}
+
+	got := matchLocalizedSourceEntities(text, "tr", source)
+	if len(got) != 1 || got[0].Surface != "Neil Armstrong'un" {
+		t.Fatalf("localized source matches = %+v, want Turkish case surface", got)
+	}
+}
+
+func TestRunTranslatedNLPAlignsRussianNERToSourceIdentity(t *testing.T) {
+	runner := &Runner{vidRushPipeline: &VidRushPipeline{NERPort: translatedNLPLocalizedSurfaceNER{surfaces: []VisualEntity{
+		{Text: "Нил Армстронг", Type: scriptpkg.EntityTypePerson, Score: 0.98},
+		{Text: "Базз Олдрин", Type: scriptpkg.EntityTypePerson, Score: 0.98},
+	}}}}
+	req := GenerateRequest{SourceLanguage: "en", Languages: []Language{"ru"}, Model: "test-model", MediaPlan: translatedNLPMediaPlan()}
+	imageNeil := &scriptpkg.EntityImageBinding{Status: "resolved", AssetID: "asset-neil", SHA256: strings.Repeat("a", 64)}
+	imageBuzz := &scriptpkg.EntityImageBinding{Status: "resolved", AssetID: "asset-buzz", SHA256: strings.Repeat("b", 64)}
+	result := &GenerateResult{Scenes: []Scene{{
+		ID: "scene-1", Index: 0,
+		Text: map[Language]string{
+			"en": "Neil Armstrong and Buzz Aldrin changed space history.",
+			"ru": "Нил Армстронг и Базз Олдрин изменили историю космоса.",
+		},
+		Annotations: &scriptpkg.SceneAnnotations{Language: "en", PrimaryEntities: []scriptpkg.AnnotatedEntity{
+			{Text: "Neil Armstrong", CanonicalName: "Neil Armstrong", Type: "PERSON", Confidence: 0.98, CanonicalEntityID: "person:neil-armstrong", Image: imageNeil},
+			{Text: "Buzz Aldrin", CanonicalName: "Buzz Aldrin", Type: "PERSON", Confidence: 0.98, CanonicalEntityID: "person:buzz-aldrin", Image: imageBuzz},
+		}},
+	}}}
+
+	if err := runner.runTranslatedNLP(context.Background(), req, result); err != nil {
+		t.Fatal(err)
+	}
+	annotations := result.Scenes[0].LocalizedAnnotations["ru"]
+	if annotations == nil || len(annotations.PrimaryEntities) != 2 {
+		t.Fatalf("Russian annotations = %+v, want two source-grounded persons", annotations)
+	}
+	if annotations.PrimaryEntities[0].CanonicalEntityID != "person:neil-armstrong" || annotations.PrimaryEntities[0].Image == nil || annotations.PrimaryEntities[0].Image.AssetID != "asset-neil" {
+		t.Fatalf("Neil identity/image = %+v, want source binding", annotations.PrimaryEntities[0])
+	}
+	if annotations.PrimaryEntities[1].CanonicalEntityID != "person:buzz-aldrin" || annotations.PrimaryEntities[1].Image == nil || annotations.PrimaryEntities[1].Image.AssetID != "asset-buzz" {
+		t.Fatalf("Buzz identity/image = %+v, want source binding", annotations.PrimaryEntities[1])
 	}
 }
 

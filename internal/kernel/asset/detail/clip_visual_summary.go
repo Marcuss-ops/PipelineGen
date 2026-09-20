@@ -256,14 +256,6 @@ func (v *VisualSummary) Validate() error {
 // visual_summary/visible_actions/visible_entities entirely
 // when the row is empty. See qdrant.payload_builder_test.go for
 // the omitempty regression contract.
-func EmptyAssetDB(assetID string) (VisualSummary, error) {
-	if strings.TrimSpace(assetID) == "" {
-		return VisualSummary{}, ErrVisualSummaryEmptyAssetID
-	}
-	return VisualSummary{
-		AssetID: assetID,
-	}, nil
-}
 
 // ComputeSourceHash returns the deterministic SHA-256 fingerprint
 // of (sorted_visible_actions || sorted_visible_entities || model_name

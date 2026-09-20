@@ -294,6 +294,7 @@ func BuildScriptGenerationRuntime(cfg *config.Config, root *ComposeRoot, runRepo
 			// RenderingGen has already certified immutable bytes when the
 			// enqueuer returns. Drive publication and analytics therefore run on
 			// the bounded post-render pool; the runner joins it before COMPLETE.
+			renderEnqueuer.SetPublicationWorkers(cfg.Scripts.OverlayPublicationWorkers)
 			renderEnqueuer.SetAsyncPublication(true)
 			runner.SetOverlayPublicationDrainer(renderEnqueuer)
 			log.Info("overlay artifact Drive publisher wired", zap.String("parent_folder_id", overlayParentFolderID), zap.String("child_folder", "overlay"))

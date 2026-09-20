@@ -19,7 +19,6 @@ func DerefOr[T any](p *T, fallback T) T {
 func Bool(v bool) *bool { return Ptr(v) }
 
 // Str is a convenience alias for Ptr[string].
-func Str(v string) *string { return Ptr(v) }
 
 // BoolDefault returns the value of a *bool or def if nil.
 func BoolDefault(v *bool, def bool) bool {

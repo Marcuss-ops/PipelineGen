@@ -18,16 +18,6 @@ import (
 // without a corresponding convert call returns typed-error here.
 // Per godlike/06 SSOT: this single dispatch IS the canonical place
 // where the per-kind wire-shape invariant lives.
-func convertAssetHitsByKind(results []schema.SearchResult, kind KindAsset) []ports.AssetSearchHit {
-	switch kind {
-	case KindClip:
-		return convertClipAssetHits(results)
-	case KindStock:
-		return convertStockAssetHits(results)
-	default:
-		return nil
-	}
-}
 
 // convertClipAssetHits maps infra-level schema.SearchResult →
 // canonical AssetSearchHit (5 fields, DriveLink empty for clip

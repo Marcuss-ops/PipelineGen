@@ -2,13 +2,12 @@ package artlist
 
 import (
 	"fmt"
-	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
-	"os"
 	"strings"
+
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/idempotency"
-	"gopkg.in/yaml.v3"
 )
 
 // PresetConfig defines the configuration for a preset.
@@ -28,19 +27,6 @@ type PresetsConfig struct {
 }
 
 // LoadPresets loads preset configurations from YAML file.
-func LoadPresets(path string) (*PresetsConfig, error) {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return nil, err
-	}
-
-	cfg := &PresetsConfig{}
-	if err := yaml.Unmarshal(data, cfg); err != nil {
-		return nil, err
-	}
-
-	return cfg, nil
-}
 
 // RunTagRequest represents the full Artlist tag pipeline request.
 type RunTagRequest struct {

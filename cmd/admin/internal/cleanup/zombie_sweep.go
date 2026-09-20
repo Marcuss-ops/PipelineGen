@@ -75,7 +75,6 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	jobs "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/jobs"
 )
 
@@ -127,12 +126,6 @@ func formatDryRunReport(cutoff time.Time, reason string) string {
 // ResolveDBPath derives the canonical SQLite DB path exclusively from
 // cfg.Storage.DataDir. A nil config returns an empty path so the caller
 // can surface the typed configuration error.
-func ResolveDBPath(cfg *config.Config) string {
-	if cfg == nil {
-		return ""
-	}
-	return cfg.Storage.PrimaryDBFullPath()
-}
 
 // runZombieSweep is the cmd/admin/main.go switch arm entry point.
 // godlike/06 SSOT: the registered `case "zombie-sweep":` arm is

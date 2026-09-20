@@ -51,14 +51,6 @@ type ResolutionSearchPolicy struct {
 
 // DefaultResolutionSearchPolicy returns the conservative default used
 // by the dashboard preview and other sandboxed callers.
-func DefaultResolutionSearchPolicy() ResolutionSearchPolicy {
-	return ResolutionSearchPolicy{
-		Mode:          SearchModeANN,
-		AllowExternal: false,
-		CacheRead:     true,
-		MaxCandidates: 10,
-	}
-}
 
 // SearchModeToSearch bridges the domain-level SearchMode to the
 // application-level search.SearchMode. It is intentionally thin so

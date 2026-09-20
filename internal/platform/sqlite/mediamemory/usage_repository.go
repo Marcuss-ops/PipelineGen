@@ -34,9 +34,6 @@ type usageRepository struct {
 }
 
 // NewUsageRepository constructs the canonical repository.
-func NewUsageRepository(db *sql.DB) mediamemory.UsageRepository {
-	return &usageRepository{db: db}
-}
 
 // Compile-time assertion.
 var _ mediamemory.UsageRepository = (*usageRepository)(nil)

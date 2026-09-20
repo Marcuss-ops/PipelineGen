@@ -33,13 +33,10 @@ const (
 )
 
 // EmbeddingModel returns the current embedding model name.
-func EmbeddingModel() string { return embeddingModel }
 
 // EmbeddingModelVersion returns the current embedding model version.
-func EmbeddingModelVersion() string { return embeddingModelVersion }
 
 // CollectionVersion returns the compatibility index-schema version.
-func CollectionVersion() string { return collectionVersion }
 
 // IndexAsset is the compatibility entry point of MediaIndexer. In canonical
 // PostgreSQL media mode, composition wires canonicalIndexRequester and this

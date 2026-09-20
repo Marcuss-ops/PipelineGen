@@ -173,12 +173,6 @@ func benchClipsPerMin(n int, d time.Duration) float64 {
 }
 
 // benchSpeedup is the throughput multiple of a run over its baseline.
-func benchSpeedup(baselineClipsPerMin, actualClipsPerMin float64) float64 {
-	if baselineClipsPerMin <= 0 {
-		return 0
-	}
-	return actualClipsPerMin / baselineClipsPerMin
-}
 
 // markdown renders the report as the human-readable table operators eyeball
 // after a change; the JSON artifact stays the machine-readable form.

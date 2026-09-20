@@ -72,12 +72,6 @@ func NewReconciler(db *sql.DB, log *zap.Logger) *PublicationIntentReconciler {
 // locationExists is non-nil it is used for the asset_locations check;
 // otherwise the reconciler falls back to the SQLite db handle (degraded
 // mode).
-func NewReconcilerWithLocations(db *sql.DB, locationExists AssetLocationExists, log *zap.Logger) *PublicationIntentReconciler {
-	if log == nil {
-		log = zap.NewNop()
-	}
-	return &PublicationIntentReconciler{db: db, log: log, locationExists: locationExists}
-}
 
 // ReconcileOrphanResult reports the outcome of one reconciliation sweep.
 type ReconcileOrphanResult struct {
@@ -316,34 +310,6 @@ func (r *PublicationIntentReconciler) transitionState(ctx context.Context, inten
 
 // ListOrphans returns all ORPHANED publication intents for operator
 // inspection. Useful for dashboards and manual cleanup.
-func (r *PublicationIntentReconciler) ListOrphans(ctx context.Context) ([]OrphanInfo, error) {
-	rows, err := r.db.QueryContext(ctx,
-		`SELECT id, job_id, artifact_id, remote_file_id, provider, state,
-		        idempotency_key, last_error, created_at, updated_at
-		 FROM publication_intents
-		 WHERE state = 'ORPHANED'
-		 ORDER BY updated_at DESC
-		 LIMIT 100`,
-	)
-	if err != nil {
-		return nil, fmt.Errorf("reconciler: list orphans: %w", err)
-	}
-	defer rows.Close()
-
-	var out []OrphanInfo
-	for rows.Next() {
-		var o OrphanInfo
-		if err := rows.Scan(
-			&o.ID, &o.JobID, &o.ArtifactID, &o.RemoteFileID,
-			&o.Provider, &o.State, &o.IdempotencyKey,
-			&o.LastError, &o.CreatedAt, &o.UpdatedAt,
-		); err != nil {
-			return nil, fmt.Errorf("reconciler: scan orphan: %w", err)
-		}
-		out = append(out, o)
-	}
-	return out, rows.Err()
-}
 
 // OrphanInfo is the operator-facing view of an orphaned publication intent.
 type OrphanInfo struct {

@@ -114,9 +114,6 @@ const (
 // NewService builds the orchestrator. Fail-closed: all three steps are
 // mandatory — a service that cannot render, upload, or assemble can never
 // complete a fan-out.
-func NewService(renderer *LocalizedClipRenderer, uploader *DrivePublisher, assembler *DocumentAssembler) (*Service, error) {
-	return NewServiceWithConcurrency(renderer, uploader, assembler, defaultGlobalRenderConcurrency, defaultUploadConcurrency)
-}
 
 // NewServiceWithConcurrency builds the orchestrator with separate bounded
 // resource pools. Render slots cover only the renderer; upload slots cover

@@ -17,7 +17,6 @@
 package asset
 
 import (
-	"fmt"
 	"strings"
 	"time"
 )
@@ -59,10 +58,6 @@ var validSourceTypes = map[SourceType]struct{}{
 }
 
 // IsValid reports whether the SourceType matches a known constant.
-func (s SourceType) IsValid() bool {
-	_, ok := validSourceTypes[s]
-	return ok
-}
 
 // ── Tree node (API response shape) ──────────────────────────────────
 
@@ -140,15 +135,6 @@ func NormalizeStrategy(strategy string, force bool) PipelineStrategy {
 
 // ActiveKey produces a deterministic enqueue dedup key for jobs in the
 // inactive/active-pending state.
-func ActiveKey(prefix, term, folderID string, strategy string, dryRun bool) string {
-	return fmt.Sprintf("%s|%s|%s|%s|%t",
-		prefix,
-		term,
-		folderID,
-		strategy,
-		dryRun,
-	)
-}
 
 // ── Monitored source ─────────────────────────────────────────────────
 

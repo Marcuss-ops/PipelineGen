@@ -13,9 +13,6 @@ import (
 
 // NewConfiguredCutter selects the media execution backend at the composition
 // root. The Rust client is the single protocol adapter for every capability.
-func NewConfiguredCutter(rustBinary, ffmpegPath string, policy mediaexec.EncoderPolicy, profile mediaexec.VideoProfile, log *zap.Logger) (stockpipeline.VideoCutter, error) {
-	return NewConfiguredCutterWithExecutor(rustBinary, ffmpegPath, policy, profile, log, nil)
-}
 
 // NewConfiguredCutterWithExecutor uses the composition root's shared Rust
 // Executor when supplied, keeping cutter, renderer, and probe under one

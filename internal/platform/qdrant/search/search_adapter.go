@@ -238,23 +238,9 @@ func assetToVectorSearchResult(asset *indexing.AssetData, hit schema.SearchResul
 // searchResultToVectorSearchResult is intentionally limited to the
 // identity/score projection for callers that need the raw boundary in
 // tests or diagnostics. It does not copy arbitrary Qdrant metadata.
-func searchResultToVectorSearchResult(r schema.SearchResult) appsearch.VectorSearchResult {
-	return appsearch.VectorSearchResult{
-		AssetID:       payloadString(r.Payload, "asset_id"),
-		QdrantPointID: r.ID,
-		Score:         r.Score,
-	}
-}
 
 // convertSearchResults is retained as a raw ID/score-only compatibility
 // helper. API-facing paths must call hydrateSearchResults instead.
-func convertSearchResults(results []schema.SearchResult) []appsearch.VectorSearchResult {
-	out := make([]appsearch.VectorSearchResult, 0, len(results))
-	for _, r := range results {
-		out = append(out, searchResultToVectorSearchResult(r))
-	}
-	return out
-}
 
 // payloadString extracts a string value from a Qdrant payload map.
 func payloadString(payload map[string]any, key string) string {

@@ -200,8 +200,11 @@ func TestSemanticBackendANN(t *testing.T) {
 	if c.AssetID != "asset-1" {
 		t.Errorf("AssetID = %q, want %q", c.AssetID, "asset-1")
 	}
-	if c.Source != "semantic" {
-		t.Errorf("Source = %q, want %q", c.Source, "semantic")
+	// Source carries physical provenance (the catalog row's source), not the
+	// backend label. It used to be the constant "semantic", which made a
+	// server-side sources:["youtube"] filter unenforceable on this leg.
+	if c.Source != "youtube" {
+		t.Errorf("Source = %q, want %q", c.Source, "youtube")
 	}
 	if c.Score != 0.95 {
 		t.Errorf("Score = %v, want 0.95", c.Score)

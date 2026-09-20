@@ -23,10 +23,6 @@ const CurrentSearchTextVersion = schema.CurrentSearchTextVersion
 const DefaultSparseModel = schema.DefaultSparseModel
 
 // ── schema.go ──────────────────────────────────────────────────────────func DefaultV() *IndexSchema        { return DefaultV3Schema() }
-func DefaultV3Schema() *IndexSchema { return schema.DefaultV3Schema() }
-func CompareSchema(expected *IndexSchema, actual *CollectionInfo) *SchemaDiff {
-	return schema.CompareSchema(expected, actual)
-}
 
 // ── types.go ───────────────────────────────────────────────────────────
 
@@ -59,12 +55,8 @@ type ReindexResult = schema.ReindexResult
 type SwitchReport = schema.SwitchReport
 type LocatorCleanupReport = schema.LocatorCleanupReport
 
-func DefaultConfig() *Config { return schema.DefaultConfig() }
-
 // ── pointid.go ─────────────────────────────────────────────────────────
 
 var PipelineGenQdrantNamespace = schema.PipelineGenQdrantNamespace
 
 // Re-exports of unexported symbols that test files still reference.
-func IsValidDistance(d string) bool  { return schema.IsValidDistance(d) }
-func IsValidFieldType(t string) bool { return schema.IsValidFieldType(t) }

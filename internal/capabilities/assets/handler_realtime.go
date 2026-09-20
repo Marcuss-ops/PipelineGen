@@ -10,9 +10,7 @@ package assets
 
 import (
 	"context"
-	"net/http"
 
-	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 )
 
@@ -56,40 +54,9 @@ type RealtimeMatchHandler struct {
 }
 
 // NewRealtimeMatchHandler creates a new realtime match handler.
-func NewRealtimeMatchHandler(svc RealtimeMatcher, log *zap.Logger) *RealtimeMatchHandler {
-	return &RealtimeMatchHandler{
-		svc: svc,
-		log: log,
-	}
-}
 
 // RegisterRoutes registers the realtime routes.
 //
 // Mounted on the empty-prefix module → /api/realtime/match.
-func (h *RealtimeMatchHandler) RegisterRoutes(rg *gin.RouterGroup) {
-	rg.POST("/realtime/match", h.Match)
-}
 
 // Match handles the real-time asset matching request.
-func (h *RealtimeMatchHandler) Match(c *gin.Context) {
-	var req RealtimeMatchRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"ok":    false,
-			"error": "invalid request: " + err.Error(),
-		})
-		return
-	}
-
-	resp, err := h.svc.Match(c.Request.Context(), &req)
-	if err != nil {
-		h.log.Warn("realtime match failed", zap.Error(err))
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"ok":    false,
-			"error": err.Error(),
-		})
-		return
-	}
-
-	c.JSON(http.StatusOK, resp)
-}

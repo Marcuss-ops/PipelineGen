@@ -24,15 +24,7 @@
 package boundaries
 
 import (
-	"go/parser"
-	"go/token"
-	"os"
-	"path/filepath"
 	"regexp"
-	"strings"
-
-	"github.com/Marcuss-ops/PipelineGen/cmd/archcheck/policy"
-	"github.com/Marcuss-ops/PipelineGen/cmd/archcheck/report"
 )
 
 // clipFoldersWriterScanRoots are the directory roots the gate walks. cmd/ is
@@ -70,94 +62,7 @@ const clipFoldersWriterNote = "forbidden direct SQL write to clip_folders outsid
 //
 // God comments are masked before matching, so a doc block that quotes the
 // legacy statement is not reported as a live write.
-func ScanClipFoldersWriterCanonical(root string, _ *policy.Policy, r *report.Report) {
-	for _, scanRoot := range clipFoldersWriterScanRoots {
-		absRoot := filepath.Join(root, scanRoot)
-		filepath.Walk(absRoot, func(path string, info os.FileInfo, walkErr error) error {
-			if walkErr != nil {
-				return walkErr
-			}
-			if info.IsDir() {
-				if policy.StandardSkipDirs[filepath.Base(path)] {
-					return filepath.SkipDir
-				}
-				return nil
-			}
-			if !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
-				return nil
-			}
-			inspectClipFoldersWriterFile(root, path, r)
-			return nil
-		})
-	}
-}
 
 // inspectClipFoldersWriterFile scans one Go file for forbidden clip_folders
 // writes. Canonical owners, the scanner package itself, the SQL migration
 // trees and the closed test-only support list are exempt.
-func inspectClipFoldersWriterFile(root, absPath string, r *report.Report) {
-	relPath, err := filepath.Rel(root, absPath)
-	if err != nil {
-		relPath = absPath
-	}
-	relPath = filepath.ToSlash(relPath)
-
-	if policy.IsCanonicalClipFolderWriter(relPath) {
-		return
-	}
-	if strings.HasPrefix(relPath, policy.ScannerSourcePrefix) {
-		return
-	}
-	if hasAnyPathPrefix(relPath, policy.SQLMigrationPrefixes) || policy.IsTestOnlySupportFile(relPath) {
-		return
-	}
-
-	source, err := os.ReadFile(absPath)
-	if err != nil {
-		r.Violations = append(r.Violations, report.Violation{
-			File:        relPath,
-			Line:        0,
-			Rule:        clipFoldersWriterRule,
-			Severity:    string(report.SeverityError),
-			MatchedRule: "file_unreadable",
-			Note:        clipFoldersWriterNote + " | cannot open file: " + err.Error(),
-		})
-		return
-	}
-
-	masked := source
-	fileSet := token.NewFileSet()
-	if parsed, parseErr := parser.ParseFile(fileSet, absPath, source, parser.ParseComments); parseErr == nil && parsed != nil {
-		masked = maskGoComments(source, fileSet, parsed)
-	}
-	maskedStr := string(masked)
-
-	for _, match := range clipFoldersWriterForbiddenRe.FindAllStringSubmatchIndex(maskedStr, -1) {
-		if len(match) < 4 {
-			continue
-		}
-		verb := ""
-		for group := 2; group+1 < len(match); group += 2 {
-			if match[group] >= 0 {
-				verb = maskedStr[match[group]:match[group+1]]
-				break
-			}
-		}
-		if verb == "" {
-			continue
-		}
-		lineNo := 1 + strings.Count(maskedStr[:match[0]], "\n")
-		r.Violations = append(r.Violations, report.Violation{
-			File:        relPath,
-			Line:        lineNo,
-			Rule:        clipFoldersWriterRule,
-			Severity:    string(report.SeverityError),
-			MatchedRule: "forbidden_sql_" + strings.ToLower(strings.TrimSpace(verb)),
-			Note: clipFoldersWriterNote +
-				" | file: " + relPath +
-				" | matched verb: " + strings.ToLower(strings.TrimSpace(verb)) +
-				" | table: clip_folders" +
-				" | route through the canonical folder repository (FolderProjection port)",
-		})
-	}
-}

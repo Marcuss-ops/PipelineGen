@@ -27,9 +27,6 @@ func NoopFindByPHash(_ context.Context, _ string) (string, error) {
 // what makes content dedup quietly stop working. A registry that cannot answer
 // must leave ContentHashFn nil and fail closed with
 // ErrContentHashLookupNotWired instead.
-func NoopFindByContentHash(_ context.Context, _ string) (*MediaRecord, error) {
-	return nil, nil
-}
 
 // GetAllWithDriveFileID is a generic helper for the common registry pattern:
 // list all records from a repository, convert-and-filter each to a

@@ -14,18 +14,6 @@ func IsStopWord(term string) bool {
 }
 
 // IsStopWordForLanguage checks the requested configured language.
-func IsStopWordForLanguage(term, language string) bool {
-	registry := DefaultLexiconOrNil()
-	if registry == nil {
-		return false
-	}
-	profile, err := registry.ResolveRequired(language)
-	if err != nil {
-		return false
-	}
-	_, ok := profile.StopWords[strings.ToLower(term)]
-	return ok
-}
 
 // DefaultStopWords returns a defensive copy of the fallback stop-word set.
 func DefaultStopWords() map[string]struct{} {

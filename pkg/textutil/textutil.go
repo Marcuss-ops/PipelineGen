@@ -139,33 +139,8 @@ func ContainsCI(s, substr string) bool {
 }
 
 // SplitCSV splits a comma-separated string into a trimmed slice.
-func SplitCSV(text string) []string {
-	if text == "" {
-		return nil
-	}
-	parts := strings.Split(text, ",")
-	var result []string
-	for _, p := range parts {
-		if p = strings.TrimSpace(p); p != "" {
-			result = append(result, p)
-		}
-	}
-	return result
-}
 
 // NormalizeStringSlice normalizes a slice of strings (trim, lowercase, filter empty).
-func NormalizeStringSlice(tags []string) []string {
-	out := make([]string, 0, len(tags))
-	for _, tag := range tags {
-		tag = strings.TrimSpace(tag)
-		if tag == "" {
-			continue
-		}
-		tag = strings.ToLower(tag)
-		out = append(out, tag)
-	}
-	return out
-}
 
 // Tokenize splits text into tokens using unicode-aware word boundaries.
 func Tokenize(text string) []string {
@@ -273,73 +248,18 @@ var (
 )
 
 // CleanForVoiceover strips markdown formatting artifacts and structural labels.
-func CleanForVoiceover(text string) string {
-	text = voReHeadingMarker.ReplaceAllString(text, "")
-	text = voReTrailingHash.ReplaceAllString(text, " ")
-	text = voReHorizontalRule.ReplaceAllString(text, "")
-	text = voReBoldMarker.ReplaceAllString(text, "$1")
-	text = voReItalicMarker.ReplaceAllString(text, "$1")
-	text = voReBracketArtifact.ReplaceAllString(text, "")
-	text = voReBlockquoteMarker.ReplaceAllString(text, "")
-	text = voReChapterLabel.ReplaceAllString(text, "")
-	text = voReMultipleNewlines.ReplaceAllString(text, "\n\n")
-	text = voReMultipleSpaces.ReplaceAllString(text, " ")
-	return strings.TrimSpace(text)
-}
 
 // ── Script Sentence Splitting ───────────────────────────────────────────
 
 var scriptSentenceRe = regexp.MustCompile(`(?m)([^.!?]+[.!?]+|[^.!?]+$)`)
 
 // SplitScriptSentences splits script text into sentences for scene generation.
-func SplitScriptSentences(text string) []string {
-	text = strings.ReplaceAll(text, "\r\n", " ")
-	text = strings.ReplaceAll(text, "\n", " ")
-	parts := scriptSentenceRe.FindAllString(text, -1)
-	out := make([]string, 0, len(parts))
-	for _, part := range parts {
-		part = strings.TrimSpace(part)
-		part = strings.Trim(part, "\u2022-* \t")
-		if part != "" {
-			out = append(out, part)
-		}
-	}
-	return out
-}
 
 // BuildSceneQuery builds the canonical query used for image matching and clip recommendation.
-func BuildSceneQuery(sentence, topic, style, language string) string {
-	parts := []string{strings.TrimSpace(sentence)}
-	if t := strings.TrimSpace(topic); t != "" {
-		parts = append(parts, t)
-	}
-	if s := strings.TrimSpace(style); s != "" {
-		parts = append(parts, s)
-	}
-	if l := strings.TrimSpace(language); l != "" {
-		parts = append(parts, l)
-	}
-	return strings.Join(parts, " | ")
-}
 
 // ExtractJSONArray attempts to find and extract the first JSON array from a string.
-func ExtractJSONArray(s string) string {
-	start := strings.Index(s, "[")
-	end := strings.LastIndex(s, "]")
-	if start == -1 || end == -1 || end < start {
-		return s
-	}
-	return s[start : end+1]
-}
 
 // Float64To32 converts a slice of float64 to float32.
-func Float64To32(in []float64) []float32 {
-	out := make([]float32, len(in))
-	for i, v := range in {
-		out[i] = float32(v)
-	}
-	return out
-}
 
 // ── Script text stripping ───────────────────────────────────────────────
 
@@ -386,18 +306,3 @@ func UniqueStringsVar(items ...string) []string {
 }
 
 // LangFullName returns the full language name for a language code.
-func LangFullName(code string) string {
-	names := map[string]string{
-		"it": "Italian", "es": "Spanish", "fr": "French", "de": "German",
-		"pt": "Portuguese", "nl": "Dutch", "pl": "Polish", "ru": "Russian",
-		"ja": "Japanese", "zh": "Chinese", "ko": "Korean", "ar": "Arabic",
-		"hi": "Hindi", "tr": "Turkish", "sv": "Swedish", "da": "Danish",
-		"fi": "Finnish", "no": "Norwegian", "cs": "Czech", "ro": "Romanian",
-		"hu": "Hungarian", "el": "Greek", "he": "Hebrew", "th": "Thai",
-		"vi": "Vietnamese", "id": "Indonesian", "ms": "Malay",
-	}
-	if name, ok := names[code]; ok {
-		return name
-	}
-	return code
-}

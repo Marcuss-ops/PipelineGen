@@ -2,7 +2,6 @@ package sqlite
 
 import (
 	"database/sql"
-	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -151,18 +150,6 @@ func NewMigratedTestDB(t *testing.T) *sql.DB {
 // NewMigratedTestDBWithExtra creates a fully-migrated DB and then applies
 // additional schema SQL on top. Use this when tests need core migration
 // tables plus test-specific extras.
-func NewMigratedTestDBWithExtra(t *testing.T, extraSchema string) *sql.DB {
-	t.Helper()
-
-	db := NewMigratedTestDB(t)
-	if extraSchema != "" {
-		if _, err := db.Exec(extraSchema); err != nil {
-			db.Close()
-			t.Fatalf("NewMigratedTestDBWithExtra: apply extra schema: %v\nSchema:\n%s", err, extraSchema)
-		}
-	}
-	return db
-}
 
 // testMigrationsDir is the test-time resolution of the migrations directory.
 // Mirrors the production resolveMigrationsDir() in set.go but is its own
@@ -202,33 +189,10 @@ func MustExec(t *testing.T, db *sql.DB, query string, args ...any) {
 
 // MustQueryRow is a test helper that runs a query expecting exactly one row,
 // returning the *sql.Row for scanning.
-func MustQueryRow(t *testing.T, db *sql.DB, query string, args ...any) *sql.Row {
-	t.Helper()
-	return db.QueryRow(query, args...)
-}
 
 // CountRows returns the number of rows matching a query. Fails the test on error.
-func CountRows(t *testing.T, db *sql.DB, query string, args ...any) int {
-	t.Helper()
-	var count int
-	if err := db.QueryRow(query, args...).Scan(&count); err != nil {
-		t.Fatalf("CountRows failed: %v\nQuery: %s", err, query)
-	}
-	return count
-}
 
 // AssertNoRows fails the test if the query returns any rows.
-func AssertNoRows(t *testing.T, db *sql.DB, query string, args ...any) {
-	t.Helper()
-	rows, err := db.Query(query, args...)
-	if err != nil {
-		t.Fatalf("AssertNoRows query failed: %v", err)
-	}
-	defer rows.Close()
-	if rows.Next() {
-		t.Fatalf("expected no rows but found at least one\nQuery: %s", query)
-	}
-}
 
 // TestSchema is a convenience wrapper that builds a CREATE TABLE statement
 // and returns it for use with NewTestDBWithSchema.
@@ -237,15 +201,3 @@ func AssertNoRows(t *testing.T, db *sql.DB, query string, args ...any) {
 //
 //	schema := drive.TestSchema("clips", "id TEXT PRIMARY KEY, name TEXT, tags TEXT")
 //	db := drive.NewTestDBWithSchema(t, schema)
-func TestSchema(tableName string, columns ...string) string {
-	schema := fmt.Sprintf("CREATE TABLE IF NOT EXISTS %s (\n", tableName)
-	for i, col := range columns {
-		schema += "  " + col
-		if i < len(columns)-1 {
-			schema += ","
-		}
-		schema += "\n"
-	}
-	schema += ")"
-	return schema
-}

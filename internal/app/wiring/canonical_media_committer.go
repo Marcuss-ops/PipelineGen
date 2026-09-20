@@ -86,16 +86,6 @@ func canonicalCommitterOrSkipped(root *ComposeRoot, log *zap.Logger) persistence
 // canonicalMediaWriterRequired is the fail-closed variant for wiring sites
 // that CANNOT degrade (the writer is the site's core dependency). Use it
 // only where a nil writer would produce a silently broken service.
-func canonicalMediaWriterRequired(root *ComposeRoot, site string, log *zap.Logger) (persistence.CanonicalAssetWriter, error) {
-	w, err := canonicalCommitterForRoot(root, log)
-	if err != nil {
-		return nil, fmt.Errorf("%s: canonical media writer: %w", site, err)
-	}
-	if w == nil {
-		return nil, fmt.Errorf("%s: canonical media writer unavailable (media PostgreSQL degraded — composition started without a media SSOT handle)", site)
-	}
-	return w, nil
-}
 
 // ClipReader is the narrow media-clip READ surface shared by admin/operator
 // readers. PostgreSQL is the media SSOT, so the production concrete is

@@ -6,9 +6,8 @@ import (
 
 	"go.uber.org/zap"
 
-	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
-	detail "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
-
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/imagesregistry"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/imagesrepo"
 )
@@ -110,9 +109,6 @@ func (r *Resolver) resolveFromDB(ctx context.Context, source, sourceID string) (
 // infrastructure layer free of application-layer imports.
 // Mirrors artifacts.CanonicalSource for the subset of sources
 // this package knows about.
-func canonicalSource(source string) string {
-	return detail.DefaultSourceCatalog().Canonical(source)
-}
 
 // resolveClipFromDB retrieves a clip from the appropriate clips repository
 func (r *Resolver) resolveClipFromDB(ctx context.Context, source, id string) (*AssetRecord, error) {
@@ -167,6 +163,18 @@ func (r *Resolver) resolveVoiceoverFromDB(ctx context.Context, id string) (*Asse
 }
 
 // clipToAssetRecord converts a models.Clip to an AssetRecord
+
+// voiceoverToAssetRecord converts a imagesregistry.Record to an AssetRecord
+
+// getAssetTypeFromSource returns the asset type based on the source.
+// Collapse (June 2026): switch cleaned to use canonical source names;
+// returns the canonical name itself (not MediaType) to preserve
+// existing callers that expect source-specific identifiers.
+
+func canonicalSource(source string) string {
+	return detail.DefaultSourceCatalog().Canonical(source)
+}
+
 func clipToAssetRecord(source string, clip *asset.Asset) *AssetRecord {
 	rec := &AssetRecord{
 		AssetID:       source + "_" + clip.ID,
@@ -187,7 +195,6 @@ func clipToAssetRecord(source string, clip *asset.Asset) *AssetRecord {
 	return rec
 }
 
-// voiceoverToAssetRecord converts a imagesregistry.Record to an AssetRecord
 func voiceoverToAssetRecord(rec *imagesregistry.Record) *AssetRecord {
 	return &AssetRecord{
 		AssetID:       "voiceover_" + rec.ID,
@@ -202,10 +209,6 @@ func voiceoverToAssetRecord(rec *imagesregistry.Record) *AssetRecord {
 	}
 }
 
-// getAssetTypeFromSource returns the asset type based on the source.
-// Collapse (June 2026): switch cleaned to use canonical source names;
-// returns the canonical name itself (not MediaType) to preserve
-// existing callers that expect source-specific identifiers.
 func getAssetTypeFromSource(source string) string {
 	switch canonical := canonicalSource(source); canonical {
 	case "artlist", "clips", "stock", "sound_effect":

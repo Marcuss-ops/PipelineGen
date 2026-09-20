@@ -21,10 +21,6 @@ type StockRenderer struct {
 	profile mediaexec.VideoProfile
 }
 
-func NewStockRenderer(binaryPath, ffmpegPath string, policy mediaexec.EncoderPolicy, profile mediaexec.VideoProfile, log *zap.Logger) *StockRenderer {
-	return NewStockRendererWithExecutor(NewExecutor(binaryPath, ffmpegPath, log), policy, profile, log)
-}
-
 func NewStockRendererWithExecutor(executor *Executor, policy mediaexec.EncoderPolicy, profile mediaexec.VideoProfile, log *zap.Logger) *StockRenderer {
 	return &StockRenderer{client: NewClientWithExecutor(executor, log), policy: policy, profile: profile}
 }

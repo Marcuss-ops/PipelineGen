@@ -9,6 +9,15 @@
 // (jobs/classify.go) switches on `errors.As(err, &ee)` instead of
 // string matching.
 //
+// Sept 2026 (per-item plumbing): the typed verdict is ALSO projected
+// onto the serialized segment result — `fail()` writes
+// `Item.FailureCode` + `Item.Retryable` (dto.ExtractItem) — so
+// jobs/classify.go can classify a segment WITHOUT parsing its Error
+// text. The legacy marker taxonomy it still runs is the fallback for
+// items produced before those fields existed. The top-level
+// `IsRetryable()` method is what makes the aggregate verdict visible to
+// the broker's typed retry probe (`retry.IsTransient`).
+//
 // FASE 6 Cut 6.1.D (July 2026): the Azione-3-8 substring-match
 // fallback to `pkg/retry.IsTransient` was REMOVED. The function
 // is now strictly typed: a `*ExtractionError{Code, Retryable}`
@@ -138,6 +147,23 @@ func (e *ExtractionError) Unwrap() error {
 		return nil
 	}
 	return e.Cause
+}
+
+// IsRetryable exposes the typed Retryable classification through the
+// structural retryability contract consumed by the job broker
+// (pkg/retry.RetryableError → retry.IsTransient).
+//
+// Why a METHOD and not just the field: the worker's retry gate is
+// `retry.IsTransient(dispatchErr)`, a PURE TYPED PROBE — since FASE 6
+// Cut 6.1.D it no longer parses error strings. A struct field is not
+// observable through that probe, so before this method existed every
+// transient extraction failure (yt-dlp 429/timeout, Drive rate-limit)
+// was dead-lettered on the FIRST attempt, silently ignoring the
+// registry retry budget (youtube_clip.extract: DefaultMaxRetries=2).
+//
+// Nil-safe: a nil receiver classifies as non-retryable.
+func (e *ExtractionError) IsRetryable() bool {
+	return e != nil && e.Retryable
 }
 
 // NewExtractionError constructs a typed error. Cause may be nil

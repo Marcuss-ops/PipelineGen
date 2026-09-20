@@ -54,6 +54,7 @@
 	benchmark-vidrush doctor-vidrush \
 	docker-build docker-build-worker docker-run docker-digest \
 	docker-verify-whisper \
+	deploy deploy-status deploy-wait deploy-dry-run deploy-selftest \
 	verify-pipeline-e2e verify-pipeline-e2e-live \
 	test-qdrant-fixtures test-qdrant-fixtures-down \
 	test-postgres test-postgres-down \
@@ -80,6 +81,12 @@ help:
 	@echo "  make build-server     Build server binary"
 	@echo "  make run              Run server (HTTP + scheduler + maintenance via --mode all)"
 	@echo "  make rebuild          Clean + build (idempotent equivalent of clean && build)"
+	@echo ""
+	@echo "DEPLOY"
+	@echo "  make deploy           Build + restart + wait-for-ready + verify the running binary"
+	@echo "  make deploy-status    On-disk vs /proc/<MainPID>/exe hash, uptime, health"
+	@echo "  make deploy-wait      Block until /health answers (no build, no restart)"
+	@echo "  make deploy-dry-run   Preflight + plan only"
 	@echo ""
 	@echo "TEST (unit, headless)"
 	@echo "  make test             Go unit tests with race detector (fast)"
@@ -136,6 +143,7 @@ help:
 	@echo "NEVER push when verify-main is RED. See scripts/hooks/pre-push for the gate."
 
 include make/build.mk
+include make/deploy.mk
 include make/test.mk
 include make/verify.mk
 include make/verify.components.mk

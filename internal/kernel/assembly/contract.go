@@ -35,8 +35,6 @@ type DispatchPolicy struct {
 	Mode   DispatchMode `json:"mode"`
 }
 
-func (p DispatchPolicy) Enabled() bool { return p.Mode != DispatchNever }
-
 type Availability string
 
 const (
@@ -108,21 +106,6 @@ func (p PrepareV1) Validate() error {
 		if err := validateAsset(a); err != nil {
 			return err
 		}
-	}
-	return nil
-}
-func (p FinalizeV1) Validate() error {
-	if p.ContractVersion != ContractVersion {
-		return fmt.Errorf("unsupported assembly contract %q", p.ContractVersion)
-	}
-	if p.AssemblyID == "" || p.PreparationID == "" {
-		return fmt.Errorf("assembly_id and preparation_id are required")
-	}
-	if p.OutputContract != OutputContract {
-		return fmt.Errorf("unsupported output contract %q", p.OutputContract)
-	}
-	if len(p.Timeline) == 0 {
-		return fmt.Errorf("timeline must not be empty")
 	}
 	return nil
 }

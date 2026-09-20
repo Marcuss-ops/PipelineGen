@@ -3,7 +3,6 @@ package jobs
 import (
 	"encoding/json"
 	"errors"
-	"fmt"
 	"time"
 
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
@@ -142,35 +141,3 @@ type RequeueResult struct {
 
 // ValidateTransition checks if the state transition is allowed per the
 // canonical 7-state machine.
-func ValidateTransition(current, next job.Status) error {
-	switch current {
-	case job.StatusQueued:
-		switch next {
-		case job.StatusLeased, job.StatusCancelled:
-			return nil
-		}
-	case job.StatusLeased:
-		switch next {
-		case job.StatusRunning, job.StatusQueued, job.StatusCancelled:
-			return nil
-		}
-	case job.StatusRunning:
-		switch next {
-		case job.StatusFinalizing, job.StatusSucceeded, job.StatusRetryWait, job.StatusFailed, job.StatusCancelled:
-			return nil
-		}
-	case job.StatusFinalizing:
-		switch next {
-		case job.StatusSucceeded, job.StatusRetryWait, job.StatusFailed, job.StatusCancelled:
-			return nil
-		}
-	case job.StatusRetryWait:
-		switch next {
-		case job.StatusQueued, job.StatusFailed, job.StatusCancelled:
-			return nil
-		}
-	case job.StatusSucceeded, job.StatusFailed, job.StatusCancelled:
-		return fmt.Errorf("cannot transition from terminal status %q to %q", current, next)
-	}
-	return fmt.Errorf("invalid transition: %q → %q", current, next)
-}

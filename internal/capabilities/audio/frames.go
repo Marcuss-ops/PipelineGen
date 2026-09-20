@@ -38,8 +38,6 @@ func NewFrameResolver(rate FrameRate) (FrameResolver, error) {
 	return FrameResolver{rate: rate}, nil
 }
 
-func (r FrameResolver) Rate() FrameRate { return r.rate }
-
 func (r FrameResolver) FrameAt(timestampUS int64) (int64, error) {
 	if err := r.rate.Validate(); err != nil {
 		return 0, err

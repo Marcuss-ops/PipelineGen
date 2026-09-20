@@ -20,7 +20,6 @@ package mediamemory
 
 import (
 	"fmt"
-	"strings"
 	"time"
 )
 
@@ -54,12 +53,6 @@ func parseTime(s string) (time.Time, error) {
 // writes NULL instead of an empty literal (godlike/07
 // NO-FAKE-AVAILABILITY: NULL IS the canonical not-yet-known
 // state, NOT empty string).
-func nullableString(s string) any {
-	if s == "" {
-		return nil
-	}
-	return s
-}
 
 // nullableTimePtr returns nil for nil pointer; otherwise the
 // RFC3339Nano UTC string. The SQLite driver writes NULL on nil.
@@ -74,12 +67,6 @@ func nullableTimePtr(t *time.Time) any {
 // SQLite has no BOOLEAN type, so this wire-level conversion lives
 // at the repository boundary (godlike/06 SSOT: canonical bool type
 // is in the application layer; SQLite stores the wire-level int).
-func boolToInt(b bool) int {
-	if b {
-		return 1
-	}
-	return 0
-}
 
 // isUniqueViolation matches a SQLite UNIQUE constraint failure
 // without depending on driver-specific typed sentinels. The
@@ -91,9 +78,10 @@ func boolToInt(b bool) int {
 // part of the SQLite standard error message vocabulary; any
 // future driver change must surface an error with this substring
 // (a forward-pin for the wire contract).
-func isUniqueViolation(err error) bool {
-	if err == nil {
-		return false
+
+func boolToInt(b bool) int {
+	if b {
+		return 1
 	}
-	return strings.Contains(err.Error(), "UNIQUE constraint failed")
+	return 0
 }

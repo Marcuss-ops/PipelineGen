@@ -3,7 +3,6 @@ package dto
 import (
 	"strings"
 
-	sliceutil "github.com/Marcuss-ops/PipelineGen/pkg/sliceutil"
 	"github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
 
@@ -128,69 +127,10 @@ func BuildEmbeddingText(cleanTitle, clipSummary, hook string, topics, speakers, 
 }
 
 // DeriveFallbackClipSummary returns a 2-sentence summary from transcript or description.
-func DeriveFallbackClipSummary(transcript, description string) string {
-	text := transcript
-	if text == "" {
-		text = description
-	}
-	text = CleanYouTubeDescription(text)
-	if text == "" {
-		return ""
-	}
-	parts := strings.Split(text, "\n")
-	var sentences []string
-	for _, part := range parts {
-		part = strings.TrimSpace(part)
-		if part == "" || IsGenericClipTag(part) {
-			continue
-		}
-		sentences = append(sentences, part)
-		if len(sentences) >= 2 {
-			break
-		}
-	}
-	return strings.Join(sentences, " ")
-}
 
 // DeriveFallbackClipTitle derives a concise clip title from available text.
-func DeriveFallbackClipTitle(title, transcript, description string) string {
-	candidates := []string{transcript, description, title}
-	for _, c := range candidates {
-		c = CleanYouTubeDescription(c)
-		c = strings.TrimSpace(c)
-		if c == "" {
-			continue
-		}
-		parts := strings.Fields(c)
-		if len(parts) > 0 {
-			limit := 10
-			if len(parts) < limit {
-				limit = len(parts)
-			}
-			joined := strings.Join(parts[:limit], " ")
-			joined = strings.TrimSpace(joined)
-			if joined != "" {
-				return strings.Title(joined)
-			}
-		}
-	}
-	if title != "" {
-		return title
-	}
-	return "Clip"
-}
 
 // DeriveFallbackShortTitle returns a shortened version of the clean title.
-func DeriveFallbackShortTitle(cleanTitle string) string {
-	words := strings.Fields(cleanTitle)
-	if len(words) == 0 {
-		return ""
-	}
-	if len(words) > 4 {
-		words = words[:4]
-	}
-	return strings.Join(words, " ")
-}
 
 // ExtractFallbackHook returns the strongest opening line from transcript or description.
 func ExtractFallbackHook(transcript, description string) string {
@@ -236,96 +176,9 @@ func DeriveSearchVisibility(qualityScore float64) string {
 }
 
 // FallbackClipMetadata builds a CanonicalClipMetadata from text heuristics.
-func FallbackClipMetadata(title, transcript, description string) *CanonicalClipMetadata {
-	summary := DeriveFallbackClipSummary(transcript, description)
-	cleanTitle := DeriveFallbackClipTitle(title, transcript, description)
-	shortTitle := DeriveFallbackShortTitle(cleanTitle)
-	topics, speakers, mentionedPeople, sourceTags, clipTags, searchKeywords, tags, hook := DeriveFallbackSemanticFields(title, transcript, description, cleanTitle)
-	embeddingText := BuildEmbeddingText(cleanTitle, summary, hook, topics, speakers, mentionedPeople, sourceTags, clipTags, searchKeywords, transcript)
-	return &CanonicalClipMetadata{
-		Summary:         summary,
-		Topics:          topics,
-		Speakers:        speakers,
-		MentionedPeople: mentionedPeople,
-		SourceTags:      sourceTags,
-		ClipTags:        clipTags,
-		SearchKeywords:  searchKeywords,
-		People:          mentionedPeople,
-		Hook:            hook,
-		CleanTitle:      cleanTitle,
-		ShortTitle:      shortTitle,
-		EmbeddingText:   embeddingText,
-		Tags:            tags,
-	}
-}
 
 // NormalizeClipMetadata normalizes and fills gaps in a CanonicalClipMetadata.
 // Returns the canonical type.
-func NormalizeClipMetadata(meta *CanonicalClipMetadata, title, transcript, description string) *CanonicalClipMetadata {
-	if meta == nil {
-		return FallbackClipMetadata(title, transcript, description)
-	}
-	meta.Summary = strings.TrimSpace(meta.Summary)
-	meta.CleanTitle = strings.TrimSpace(meta.CleanTitle)
-	meta.ShortTitle = strings.TrimSpace(meta.ShortTitle)
-	meta.Hook = strings.TrimSpace(meta.Hook)
-	meta.Topics = NormalizeClipTagList(meta.Topics)
-	meta.Speakers = NormalizeClipTagList(meta.Speakers)
-	meta.MentionedPeople = NormalizeClipTagList(meta.MentionedPeople)
-	meta.SourceTags = NormalizeClipTagList(meta.SourceTags)
-	meta.ClipTags = NormalizeClipTagList(meta.ClipTags)
-	meta.SearchKeywords = NormalizeClipTagList(meta.SearchKeywords)
-	meta.People = NormalizeClipTagList(meta.People)
-	meta.Tags = NormalizeClipTagList(meta.Tags)
-	meta.CleanTranscript = CleanClipTranscript(meta.CleanTranscript)
-	meta.EmbeddingText = strings.TrimSpace(meta.EmbeddingText)
-	meta.QualityScore = sliceutil.ClampFloat64(meta.QualityScore, 0, 1)
-	if len(meta.MentionedPeople) == 0 && len(meta.People) > 0 {
-		meta.MentionedPeople = append([]string(nil), meta.People...)
-	}
-	meta.People = MergeTagLists(meta.Speakers, meta.MentionedPeople, meta.People)
-	if meta.CleanTitle == "" {
-		meta.CleanTitle = DeriveFallbackClipTitle(title, transcript, description)
-	}
-	if meta.ShortTitle == "" {
-		meta.ShortTitle = DeriveFallbackShortTitle(meta.CleanTitle)
-	}
-	if meta.Summary == "" {
-		meta.Summary = DeriveFallbackClipSummary(transcript, description)
-	}
-	fallbackTopics, fallbackSpeakers, fallbackMentionedPeople, fallbackSourceTags, fallbackClipTags, fallbackSearchKeywords, _, fallbackHook := DeriveFallbackSemanticFields(title, transcript, description, meta.CleanTitle)
-	if len(meta.Topics) == 0 {
-		meta.Topics = fallbackTopics
-	}
-	if len(meta.Speakers) == 0 {
-		meta.Speakers = fallbackSpeakers
-	}
-	if len(meta.MentionedPeople) == 0 {
-		meta.MentionedPeople = fallbackMentionedPeople
-	}
-	if len(meta.People) == 0 {
-		meta.People = append([]string(nil), meta.MentionedPeople...)
-	}
-	if len(meta.SourceTags) == 0 {
-		meta.SourceTags = fallbackSourceTags
-	}
-	if len(meta.ClipTags) == 0 {
-		meta.ClipTags = fallbackClipTags
-	}
-	if len(meta.SearchKeywords) == 0 {
-		meta.SearchKeywords = fallbackSearchKeywords
-	}
-	if len(meta.Tags) == 0 {
-		meta.Tags = MergeTagLists(meta.SourceTags, meta.ClipTags, meta.SearchKeywords, meta.Topics, meta.Speakers, meta.MentionedPeople)
-	}
-	if meta.EmbeddingText == "" {
-		meta.EmbeddingText = BuildEmbeddingText(meta.CleanTitle, meta.Summary, meta.Hook, meta.Topics, meta.Speakers, meta.MentionedPeople, meta.SourceTags, meta.ClipTags, meta.SearchKeywords, transcript)
-	}
-	if meta.Hook == "" {
-		meta.Hook = fallbackHook
-	}
-	return meta
-}
 
 // MergeYouTubeClipTags combines existing tags, YouTube tags, and clip metadata fields.
 func MergeYouTubeClipTags(existingTags, ytTags []string, clipMetadata *CanonicalClipMetadata) []string {

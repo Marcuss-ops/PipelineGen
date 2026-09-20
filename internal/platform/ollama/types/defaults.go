@@ -30,11 +30,3 @@ func ApplyDefaults(req *TextGenerationRequest) {
 }
 
 // ApplyDefaultsToRegeneration applies default values to RegenerationRequest
-func ApplyDefaultsToRegeneration(req *RegenerationRequest) {
-	if req.Language == "" {
-		req.Language = DefaultLanguage
-	}
-	if req.Tone == "" {
-		req.Tone = DefaultTone
-	}
-}

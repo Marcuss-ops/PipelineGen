@@ -175,9 +175,6 @@ func (r *Router) SetMediasearchHandler(h InternalMediaSearchRouter) {
 // pass-through (admin context) so dev/test/E2E fixtures without a
 // provisioned m2m_clients row keep working. Mirrors the PG-006
 // typed-port convention.
-func (r *Router) SetM2MSecurity(sec mwports.M2MSecurityPort) {
-	r.m2mSec = sec
-}
 
 // SetM2MJobsHandler wires the tiny route module that mounts
 // POST + GET /:id on the /api/v1/jobs M2M group. The group is
@@ -191,9 +188,6 @@ func (r *Router) SetM2MJobsHandler(h interface{ RegisterRoutes(*gin.RouterGroup)
 }
 
 // SetContext sets the context for module lifecycle management
-func (r *Router) SetContext(ctx context.Context) {
-	r.ctx = ctx
-}
 
 // SetHealthService wires the application-layer health.Service into the router.
 // The concrete type is *systemhealth.Service but the field is any

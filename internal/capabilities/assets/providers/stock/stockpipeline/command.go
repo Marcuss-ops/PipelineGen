@@ -124,38 +124,6 @@ type StockCommand struct {
 
 // FromRunPayload converts the run-pipeline request body (POST /run
 // binds JSON directly to *StockRunPayload) into a StockCommand.
-func FromRunPayload(p *StockRunPayload) (*StockCommand, error) {
-	if p == nil {
-		return nil, fmt.Errorf("stockpipeline: FromRunPayload: nil *StockRunPayload")
-	}
-	metadata := chunkMetadataFromRunPayload(p.Metadata)
-	return &StockCommand{
-		SearchQueries:                  append([]string(nil), p.SearchQueries...),
-		DirectURLs:                     append([]string(nil), p.DirectURLs...),
-		DriveURLs:                      append([]string(nil), p.DriveURLs...),
-		Clips:                          append([]ClipSpec(nil), p.Clips...),
-		TotalMinutes:                   p.TotalMinutes,
-		TargetTotalDurationSeconds:     p.TargetTotalDurationSeconds,
-		TargetDurationPerSourceSeconds: p.TargetDurationPerSourceSeconds,
-		ClipsPerSource:                 p.ClipsPerSource,
-		ClipDurationSeconds:            p.ClipDurationSeconds,
-		DownloadMode:                   p.DownloadMode,
-		ChunkDuration:                  p.ChunkDuration,
-		ClipDuration:                   p.ClipDuration,
-		SecondsPerSegment:              p.SecondsPerSegment,
-		NoAudio:                        p.NoAudio,
-		NoEffects:                      p.NoEffects,
-		NoTransitions:                  p.NoTransitions,
-		MaxVideos:                      p.MaxVideos,
-		Subfolder:                      p.Subfolder,
-		FolderName:                     p.FolderName,
-		DriveFolderID:                  p.DriveFolderID,
-		FolderID:                       p.FolderID,
-		Metadata:                       metadata,
-		Async:                          p.Async,
-		Persist:                        p.Persist,
-	}, nil
-}
 
 // FromSearchAndRunRequest converts the search-and-run request body
 // (POST /search-and-run binds JSON directly to *StockSearchAndRunRequest)
@@ -215,21 +183,6 @@ func FromSearchAndRunRequest(r *StockSearchAndRunRequest) (*StockCommand, error)
 		Async:                          r.Async,
 		Persist:                        r.Persist,
 	}, nil
-}
-
-func chunkMetadataFromRunPayload(m *StockRunPayloadMetadata) *ChunkMetadataInput {
-	if m == nil {
-		return nil
-	}
-	return &ChunkMetadataInput{
-		Title:            m.Title,
-		Description:      m.Description,
-		BlockDescription: m.BlockDescription,
-		Tags:             m.Tags,
-		Category:         m.Category,
-		Author:           m.Author,
-		Extra:            m.Extra,
-	}
 }
 
 // ToRunInput projects a StockCommand onto the runner's internal input

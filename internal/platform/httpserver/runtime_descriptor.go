@@ -54,8 +54,6 @@ type StaticCapabilityModule struct {
 	Jobs       []JobHandlerDescriptor
 }
 
-func (m StaticCapabilityModule) Name() string { return m.Capability }
-
 func (m StaticCapabilityModule) Build(BuildContext) (RuntimeModule, error) {
 	descriptor := RuntimeModule{
 		Name: m.Capability,
@@ -245,13 +243,6 @@ func (r *Registry) RegisterCapabilityModule(capability CapabilityModule, ctx Bui
 
 // RegisterRuntimeRoutes is the explicit compatibility entry point for route
 // modules that have not yet migrated to a native CapabilityModule builder.
-func RegisterRuntimeRoutes(reg *Registry, capability, point string, m Module) error {
-	descriptor, err := RuntimeModuleFor(capability, point, m)
-	if err != nil {
-		return err
-	}
-	return reg.RegisterRuntimeModule(descriptor)
-}
 
 // RuntimeModules returns a deep snapshot of descriptors published into the
 // registry, so callers cannot mutate registry-owned slices.

@@ -265,19 +265,6 @@ func TokenScore(queryTokens, targetTokens []string) int {
 }
 
 // ScoreText counts how many terms appear as substrings in the candidate text.
-func ScoreText(candidate string, terms []string) int {
-	candidate = strings.ToLower(candidate)
-	score := 0
-	for _, term := range terms {
-		if term == "" {
-			continue
-		}
-		if strings.Contains(candidate, term) {
-			score++
-		}
-	}
-	return score
-}
 
 func Calculate(p Params) Result {
 	queryTokens := p.QueryTokens

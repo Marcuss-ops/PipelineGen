@@ -108,25 +108,6 @@ func AssetTypeForMediaType(mediaType string) string {
 // order; appended values appear after the base in input order (stable
 // ordering matters for callers that rely on deterministic payloads
 // for diff/audit surfaces).
-func AppendUniqueStrings(base []string, values ...string) []string {
-	seen := make(map[string]struct{}, len(base))
-	for _, v := range base {
-		seen[trimSpace(v)] = struct{}{}
-	}
-	out := make([]string, 0, len(base)+len(values))
-	out = append(out, base...)
-	for _, v := range values {
-		v = trimSpace(v)
-		if v == "" {
-			continue
-		}
-		if _, ok := seen[v]; !ok {
-			seen[v] = struct{}{}
-			out = append(out, v)
-		}
-	}
-	return out
-}
 
 // ── Unified metadata map builder ─────────────────────────────────────
 
@@ -219,47 +200,12 @@ func BuildAssetMetadata(input AssetSemanticInput, existing map[string]any) map[s
 // BuildVideoExtension creates a video-specific extensions slice.
 // Pure builder; no IO; deterministic output. Used by the
 // (now-disabled) MetadataWriter payload construction code paths.
-func BuildVideoExtension(durationSec, width int, codec string, hasAudio bool) []map[string]any {
-	return []map[string]any{
-		{
-			"type":     "video",
-			"duration": durationSec,
-			"width":    width,
-			"codec":    codec,
-			"audio":    hasAudio,
-		},
-	}
-}
 
 // BuildAudioExtension creates an audio-specific extensions slice.
 // Pure builder; matching the video builder contract exactly.
-func BuildAudioExtension(durationSec, sampleRate, channels int, isMusic bool, sourceVideoID string) []map[string]any {
-	return []map[string]any{
-		{
-			"type":         "audio",
-			"duration":     durationSec,
-			"sample_rate":  sampleRate,
-			"channels":     channels,
-			"is_music":     isMusic,
-			"source_video": sourceVideoID,
-		},
-	}
-}
 
 // BuildImageExtension creates an image-specific extensions slice.
 // Pure builder; matching the video/audio builder contract exactly.
-func BuildImageExtension(width, height int, format, dominantColor string, fileSizeBytes int) []map[string]any {
-	return []map[string]any{
-		{
-			"type":           "image",
-			"width":          width,
-			"height":         height,
-			"format":         format,
-			"dominant_color": dominantColor,
-			"file_size":      fileSizeBytes,
-		},
-	}
-}
 
 // ── Internal helpers ──────────────────────────────────────────────────
 

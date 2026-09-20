@@ -55,6 +55,10 @@ type EnqueueInput struct {
 // mapped message); on false the gin context already carries the
 // response — the caller should `return` immediately.
 //
+// The success body is {ok, message, job_id}: job_id is ADDITIVE so
+// existing clients that read only ok/message are unaffected, and new
+// callers can poll the enqueued job by id instead of listing jobs.
+//
 // Mirrors the contract pinned by
 // internal/capabilities/assets/voiceover/handler.go (Wave 18 follow-up),
 // internal/capabilities/assets/clips/bulk_upload_transport.go (Wave 18),
@@ -73,10 +77,16 @@ func EnqueueAsync(c *gin.Context, jobsSvc job.Service, in *EnqueueInput, msg str
 		Project:       in.Project,
 		ActiveKey:     in.ActiveKey,
 	}
-	if _, err := jobsSvc.Enqueue(c.Request.Context(), req); err != nil {
+	jobID, err := jobsSvc.Enqueue(c.Request.Context(), req)
+	if err != nil {
 		apiutil.Error(c, http.StatusInternalServerError, msg+": "+err.Error())
 		return false
 	}
-	apiutil.OK(c, gin.H{"ok": true, "message": msg})
+	// job_id is ADDITIVE to the historical {ok, message} ACK: callers that
+	// only read ok/message keep working, while callers that need to follow
+	// the enqueued job can poll it by id instead of listing jobs and
+	// guessing which one their request produced (the clips/process ACK
+	// carried no id, so the operational e2e had to re-discover the job).
+	apiutil.OK(c, gin.H{"ok": true, "message": msg, "job_id": jobID})
 	return true
 }

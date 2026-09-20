@@ -242,34 +242,6 @@ func (s *ResourceScheduler) Run(ctx context.Context, candidates []SpeculationCan
 
 // RunWithPreemption executes admitted work while exposing a cancellation hook
 // that active job work can call to stop the speculative batch immediately.
-func (s *ResourceScheduler) RunWithPreemption(ctx context.Context, candidates []SpeculationCandidate, execute func(context.Context, SpeculationCandidate) error) error {
-	if execute == nil {
-		return fmt.Errorf("speculation executor is required")
-	}
-	runCtx, cancel := context.WithCancel(ctx)
-	defer cancel()
-	for _, candidate := range s.Admit(candidates) {
-		if s.gate == nil || !s.gate.ActiveWorkAvailable() {
-			cancel()
-			return nil
-		}
-		if err := runCtx.Err(); err != nil {
-			return err
-		}
-		resource := resourceClassOf(candidate.Unit)
-		s.mu.Lock()
-		s.running[resource]++
-		s.mu.Unlock()
-		err := execute(runCtx, candidate)
-		s.mu.Lock()
-		s.running[resource]--
-		s.mu.Unlock()
-		if err != nil {
-			return err
-		}
-	}
-	return nil
-}
 
 // Running returns the live speculative concurrency per resource class
 // (observability projection of the pool).

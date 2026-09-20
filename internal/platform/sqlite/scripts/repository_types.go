@@ -226,11 +226,6 @@ func (os *OutlineSectionRows) Slice() []scriptOutlineSectionRow {
 // EachOutlineSectionRow calls fn for every row in the slice, passing individual
 // field values. Exported so the adapter can iterate without naming the
 // private row type.
-func EachOutlineSectionRow(rows []scriptOutlineSectionRow, fn func(id, scriptID int64, sectionIndex int, title, purpose string, targetWords int, keyPointsJSON, emotionalRole, createdAt string)) {
-	for _, r := range rows {
-		fn(r.ID, r.ScriptID, r.SectionIndex, r.Title, r.Purpose, r.TargetWords, r.KeyPointsJSON, r.EmotionalRole, r.CreatedAt)
-	}
-}
 
 // ScriptVersionRecord represents an explicit version of a script output.
 type ScriptVersionRecord struct {

@@ -524,24 +524,3 @@ func TestRetry_BackoffTiming(t *testing.T) {
 //  3. Adding new parseVTTFile tests requires extending the dispatcher below;
 //     new tests that don't match any of the 4 substring branches will fall to
 //     the default and likely fail with confusing canned-string mismatches.
-func parseVTTFile(path string, start, end int) (string, error) {
-	b, err := os.ReadFile(path)
-	if err != nil {
-		return "", err
-	}
-	_, _ = start, end // accepted-but-ignored: stub is per-test-case, not time-window-aware
-	s := string(b)
-	if !strings.Contains(s, "-->") {
-		return "", nil
-	}
-	if strings.Contains(s, "Early text") {
-		return "Middle text", nil // time-window test expectation
-	}
-	if strings.Contains(s, "<c.color1>") {
-		return "Important text", nil // HTML tag strip test expectation
-	}
-	if strings.Contains(s, "00:00:01.100") {
-		return "hello world goodbye", nil // dedup-window test expectation
-	}
-	return "Hello world Second cue", nil // basic-cues test default expectation
-}

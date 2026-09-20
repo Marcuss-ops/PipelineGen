@@ -18,54 +18,6 @@ func NewSQLiteRepository(db *sql.DB) *SQLiteRepository {
 }
 
 // SchemaDDL returns the DDL for the artifacts table.
-func SchemaDDL() string {
-	return `
-CREATE TABLE IF NOT EXISTS artifacts (
-    id              TEXT PRIMARY KEY,
-    job_id          TEXT NOT NULL DEFAULT '',
-    kind            TEXT NOT NULL DEFAULT 'unknown',
-    status          TEXT NOT NULL DEFAULT 'STAGING'
-        CHECK (status IN ('STAGING','VERIFYING','READY','FAILED','QUARANTINED','DELETED')),
-    storage_backend TEXT NOT NULL DEFAULT 'local',
-    storage_key     TEXT NOT NULL DEFAULT '',
-    sha256          TEXT NOT NULL DEFAULT '',
-    size_bytes      INTEGER NOT NULL DEFAULT 0,
-    mime_type       TEXT NOT NULL DEFAULT '',
-    duration_ms     INTEGER,
-    width           INTEGER,
-    height          INTEGER,
-    created_at      TEXT NOT NULL DEFAULT (datetime('now')),
-    updated_at      TEXT NOT NULL DEFAULT (datetime('now')),
-    verified_at     TEXT,
-    last_accessed_at TEXT
-);
-
-CREATE UNIQUE INDEX IF NOT EXISTS idx_artifacts_sha256 ON artifacts(sha256) WHERE sha256 != '';
-CREATE INDEX IF NOT EXISTS idx_artifacts_job ON artifacts(job_id);
-CREATE INDEX IF NOT EXISTS idx_artifacts_status ON artifacts(status);
-
-CREATE TABLE IF NOT EXISTS artifact_sources (
-    source_id         TEXT PRIMARY KEY,
-    artifact_id       TEXT NOT NULL,
-    source_type       TEXT NOT NULL DEFAULT '',
-    source_reference  TEXT NOT NULL DEFAULT '',
-    source_account_id TEXT NOT NULL DEFAULT '',
-    imported_at       TEXT NOT NULL DEFAULT (datetime('now'))
-);
-CREATE INDEX IF NOT EXISTS idx_artifact_sources_artifact ON artifact_sources(artifact_id);
-
-CREATE TABLE IF NOT EXISTS job_artifacts (
-    job_id      TEXT NOT NULL,
-    artifact_id TEXT NOT NULL,
-    role        TEXT NOT NULL DEFAULT '',
-    ordinal     INTEGER NOT NULL DEFAULT 0,
-    required    INTEGER NOT NULL DEFAULT 0,
-    created_at  TEXT NOT NULL DEFAULT (datetime('now')),
-    PRIMARY KEY (job_id, artifact_id)
-);
-CREATE INDEX IF NOT EXISTS idx_job_artifacts_job ON job_artifacts(job_id);
-`
-}
 
 // Create inserts a new artifact record.
 func (r *SQLiteRepository) Create(ctx context.Context, a *Artifact) error {

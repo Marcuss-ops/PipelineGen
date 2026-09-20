@@ -44,9 +44,6 @@ type DriveDestinations struct {
 	MediaRoot, SoundEffectsRoot, ImagesFolderID string
 }
 
-func (d *DriveDestinations) RootFolder() string   { return d.MediaRoot }
-func (d *DriveDestinations) ImagesFolder() string { return d.ImagesFolderID }
-
 // ── Media processor initialisation ──────────────────────────────────────────
 
 // InitMediaProcessor wires the media processor. PG-011: db is now
@@ -109,7 +106,7 @@ func InitMediaProcessor(cfg *config.Config, db *storage.SQLiteDB, cacheDB *stora
 	// reprocess re-executes Rust/FFmpeg (warm runs would be cold).
 	// Fail-soft: a cache wiring failure degrades to uncached processing.
 	if cacheDB != nil && cacheDB.DB != nil {
-		if cache, cacheErr := NewArtifactCache(cfg, cacheDB.DB, log); cacheErr == nil {
+		if cache, cacheErr := NewArtifactCache(cfg, cacheDB.DB, db.DB, log); cacheErr == nil {
 			proc.SetArtifactCache(cache)
 			log.Info("media processor artifact cache wired")
 		} else {

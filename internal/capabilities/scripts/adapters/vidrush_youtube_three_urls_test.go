@@ -1,32 +1,14 @@
 package adapters
 
 import (
-	"context"
 	"testing"
 
 	stockplan "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers/stock/stockplan"
-	youtubeports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/ports"
 )
 
 type threeURLMetadata struct{}
 
-func (threeURLMetadata) GetVideoInfo(context.Context, string) (*youtubeports.DownloaderMetadata, error) {
-	return &youtubeports.DownloaderMetadata{Title: "WWII documentary", Duration: 60}, nil
-}
-
 type threeURLTranscript struct{}
-
-func (threeURLTranscript) AcquireStockTranscript(_ context.Context, videoID string, _ int64) (*stockplan.Transcript, error) {
-	text := map[string]string{
-		"video-good":    "Germany invaded Poland on September 1 1939 and Warsaw resisted the German advance",
-		"video-generic": "The Second World War involved Germany, armies, battles and many countries",
-		"video-bad":     "The D-Day Normandy landings began in June 1944 on the western front",
-	}
-	return &stockplan.Transcript{
-		Hash: videoID + "-transcript", Language: "en", Source: "youtube_subtitle",
-		Cues: []stockplan.TranscriptCue{{StartMs: 1000, EndMs: 11000, Text: text[videoID]}},
-	}, nil
-}
 
 type threeURLExtractor struct{}
 

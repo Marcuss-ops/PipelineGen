@@ -343,25 +343,6 @@ func validateVisualEntities(sourceText string, entities []VisualEntity) error {
 	return nil
 }
 
-func groundNamedVisualEntities(source string, candidates []VisualEntity) []VisualEntity {
-	runes := []rune(source)
-	grounded := make([]VisualEntity, 0, len(candidates))
-	for _, candidate := range candidates {
-		span, ok := findEntitySpan(source, candidate.Text)
-		if !ok || span.StartRune < 0 || span.EndRune > len(runes) {
-			continue
-		}
-		start := len(string(runes[:span.StartRune]))
-		end := len(string(runes[:span.EndRune]))
-		candidate.Text = span.Text
-		candidate.Start = start
-		candidate.End = end
-		candidate.Evidence = source[start:end]
-		grounded = append(grounded, candidate)
-	}
-	return grounded
-}
-
 func entitiesToStrings(entities []VisualEntity) []string {
 	out := make([]string, 0, len(entities))
 	for _, entity := range entities {

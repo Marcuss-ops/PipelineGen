@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"sort"
 	"sync"
+	"time"
 
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
@@ -74,6 +75,7 @@ func (r *Runner) runTranslationPhase(ctx context.Context, runID string, req Gene
 		// in-flight scene RETRY, and the remaining scenes CONTINUE (resume
 		// reale: no full restart from scene 1).
 		var applyMu sync.Mutex
+		var checkpointDue checkpointGate
 		_, err := concurrent.Map(ctx, work, workers, func(opCtx context.Context, _ int, item translationWork) (struct{}, error) {
 			var value string
 			translateErr := kernobs.MeasureOperation(opCtx, kernobs.OperationInfo{
@@ -89,15 +91,38 @@ func (r *Runner) runTranslationPhase(ctx context.Context, runID string, req Gene
 			if translateErr != nil {
 				return struct{}{}, fmt.Errorf("translate scene %s to %s failed: %w", result.Scenes[item.sceneIndex].ID, item.lang, translateErr)
 			}
+			var snapshot *GenerateResult
 			applyMu.Lock()
 			if result.Scenes[item.sceneIndex].Text == nil {
 				result.Scenes[item.sceneIndex].Text = make(map[Language]string)
 			}
 			result.Scenes[item.sceneIndex].Text[item.lang] = value
-			r.checkpoint(ctx, runID, result)
+			if checkpointDue.due(time.Now()) {
+				var snapshotErr error
+				snapshot, snapshotErr = snapshotGenerateResult(result)
+				if snapshotErr != nil {
+					r.log.Warn("translation checkpoint snapshot failed", zap.String("run_id", runID), zap.Error(snapshotErr))
+					checkpointDue.complete()
+				}
+			}
 			applyMu.Unlock()
+			// The expensive repository write is deliberately outside applyMu:
+			// other translation workers may apply their completed values while
+			// SQLite persists this immutable snapshot.
+			if snapshot != nil {
+				r.checkpoint(ctx, runID, snapshot)
+				checkpointDue.complete()
+			}
 			return struct{}{}, nil
 		})
+		// Flush the newest complete result after all workers have joined. This
+		// closes the debounce window for normal completion and preserves all
+		// successful units even when another worker failed.
+		if snapshot, snapshotErr := snapshotGenerateResult(result); snapshotErr != nil {
+			r.log.Warn("translation final checkpoint snapshot failed", zap.String("run_id", runID), zap.Error(snapshotErr))
+		} else if snapshot != nil {
+			r.checkpoint(ctx, runID, snapshot)
+		}
 		if err != nil {
 			r.failExecutionStep(ctx, exec, translationStep, err)
 			r.failRunWithRetry(ctx, runID, StageTranslatingScenes, err)

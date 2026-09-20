@@ -62,12 +62,6 @@ func (f *fakeAssetsSearchFanOut) Stats() map[string]search.BackendStats {
 	return f.statsResult
 }
 
-func (f *fakeAssetsSearchFanOut) callsCount() int {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	return len(f.calls)
-}
-
 func TestSearchFanOutAdapterTranslatesQueryToCanonical(t *testing.T) {
 	fake := &fakeAssetsSearchFanOut{}
 	adapter, err := NewSearchFanOutAdapter(fake)

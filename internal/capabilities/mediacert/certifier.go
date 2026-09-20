@@ -41,6 +41,3 @@ func Certify(spec Spec, result MediaResult) Report {
 
 // IsCertified is the convenience predicate for callers that only need the
 // verdict and not the full report.
-func IsCertified(spec Spec, result MediaResult) bool {
-	return Certify(spec, result).Certified
-}

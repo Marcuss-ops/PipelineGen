@@ -46,9 +46,3 @@ func (c *Client) ResolveRuntimeCollection(ctx context.Context, alias string) (st
 // ValidateRuntimeCollection rejects every collection except the production
 // collection. Rebuild and emergency code must not call this guard for their
 // private candidate/recovery targets.
-func ValidateRuntimeCollection(name string) error {
-	if name != ProductionCollection {
-		return fmt.Errorf("qdrant runtime collection %q is forbidden; only %q is allowed", name, ProductionCollection)
-	}
-	return nil
-}

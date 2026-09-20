@@ -102,10 +102,6 @@ func DefaultPolicyFor(name ProcessorName) ProcessorPolicy {
 }
 
 // IsCanonicalProcessor reports whether name is part of the canonical set.
-func IsCanonicalProcessor(name ProcessorName) bool {
-	_, ok := descriptorByName[name]
-	return ok
-}
 
 // CanonicalProcessorNames returns the closed set of all active
 // canonical postprocessors in their canonical EXECUTION order.

@@ -233,18 +233,6 @@ func normalizeSegmentText(text string) string {
 // legacy string surface consumed by SegmentInsights and the ad-hoc query
 // builders. It is the only legal way to read Keywords/VisualTerms back as a
 // plain list; values keep the profile's deterministic order.
-func weightedKeywordValues(keywords []scriptpkg.WeightedKeyword) []string {
-	if len(keywords) == 0 {
-		return nil
-	}
-	out := make([]string, 0, len(keywords))
-	for _, keyword := range keywords {
-		if value := strings.TrimSpace(keyword.Value); value != "" {
-			out = append(out, value)
-		}
-	}
-	return out
-}
 
 func versionedSegmentCacheKey(stage string, version scriptports.CacheVersion, parts ...string) string {
 	return segmentCacheKey(append([]string{scriptports.VersionedCacheNamespace(stage, version)}, parts...)...)

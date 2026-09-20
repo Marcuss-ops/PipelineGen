@@ -242,20 +242,6 @@ func compileFrameRate(input CompileInput) (audio.FrameRate, error) {
 
 // FrameAtMS is retained only as a compatibility helper for callers outside
 // the canonical timeline path. New code must use audio.FrameResolver with US.
-func FrameAtMS(milliseconds int64, rate audio.FrameRate) (int64, error) {
-	if milliseconds < 0 {
-		return 0, fmt.Errorf("%w: invalid milliseconds", ErrInvalidPlan)
-	}
-	microseconds, err := audio.MicrosecondsFromMilliseconds(milliseconds)
-	if err != nil {
-		return 0, fmt.Errorf("%w: %v", ErrInvalidPlan, err)
-	}
-	resolver, err := audio.NewFrameResolver(rate)
-	if err != nil {
-		return 0, fmt.Errorf("%w: %v", ErrInvalidPlan, err)
-	}
-	return resolver.FrameAt(microseconds)
-}
 
 func (p RenderPlan) ManifestHash() (string, error) {
 	entries := append([]AssetManifestEntry(nil), p.Manifest...)

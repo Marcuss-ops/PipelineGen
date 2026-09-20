@@ -25,7 +25,6 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/Marcuss-ops/PipelineGen/cmd/archcheck/policy"
 	"github.com/Marcuss-ops/PipelineGen/cmd/archcheck/report"
 )
 
@@ -179,9 +178,6 @@ const metadataKeyScannerNote = "forbidden name-spaced Asset.Metadata key outside
 // godlike/07 fail-closed: the configuration errors are `error`-severity. A
 // silent pass on a missing canonical file would convert the
 // forward-prevention gate into an unconditional no-op.
-func ParseMetadataKeys(root string, _ *policy.Policy, r *report.Report) []string {
-	return parseMetadataKeys(root, r)
-}
 
 // parseMetadataKeys is the engine-facing implementation (the exported wrapper
 // above keeps the historical entry point for callers/tests).

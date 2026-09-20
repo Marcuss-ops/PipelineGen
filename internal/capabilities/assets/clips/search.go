@@ -22,10 +22,11 @@ package clips
 import (
 	"context"
 	"fmt"
-	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"strconv"
 	"strings"
 	"time"
+
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/artifacts"
 	appclips "github.com/Marcuss-ops/PipelineGen/internal/capabilities/clips"
@@ -106,15 +107,6 @@ func NewSearchHandler(d SearchDeps) *SearchHandler {
 // via the shared ClipsRepository. All clip-type sources share the same
 // concrete repo in production. Returns nil for voiceover/images.
 // Authoritative implementation; orchestrator *Handler.repoForSource delegates here.
-func (sh *SearchHandler) repoForSource(source string) appclips.ClipRepositoryPort {
-	if sh.clipsRepo == nil {
-		return nil
-	}
-	if !artifacts.IsClipsSource(source) {
-		return nil
-	}
-	return sh.clipsRepo
-}
 
 // RegisterRoutes installs the 3 Search routes on the supplied gin
 // router group. Read routes install no idem middleware; write routes

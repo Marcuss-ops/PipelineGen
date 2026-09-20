@@ -14,7 +14,6 @@ import (
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/media/rustexec"
 	"go.uber.org/zap"
 )
@@ -171,14 +170,6 @@ func downloadSoundEffect(ctx context.Context, reader interface {
 	return os.Rename(tmpName, dest)
 }
 
-func Sha256File(path string) (string, error) {
-	h, _, err := digest.SHA256File(path)
-	if err != nil {
-		return "", err
-	}
-	return h, nil
-}
-
 type namedSoundEffect struct {
 	OldName     string
 	NewName     string
@@ -269,16 +260,3 @@ func RunApplyAdditionalSoundEffects(args []string) error {
 // probeSoundEffectDuration measures a local audio file through the canonical
 // Rust media probe port (never a raw ffprobe exec). An empty path is a
 // legitimate "no local source" signal and returns (0, nil).
-func ProbeSoundEffectDuration(ctx context.Context, prober *rustexec.VideoProcessor, path string) (time.Duration, error) {
-	if strings.TrimSpace(path) == "" {
-		return 0, nil
-	}
-	info, err := prober.Probe(ctx, path)
-	if err != nil {
-		return 0, err
-	}
-	if info == nil || info.Duration <= 0 {
-		return 0, fmt.Errorf("probe returned invalid duration")
-	}
-	return info.Duration, nil
-}

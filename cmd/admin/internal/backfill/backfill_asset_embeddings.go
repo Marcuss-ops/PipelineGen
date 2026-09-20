@@ -55,7 +55,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"os"
 	"strings"
 	"time"
 
@@ -67,6 +66,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
 	indexing "github.com/Marcuss-ops/PipelineGen/internal/capabilities/indexing/backfill"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
+	"github.com/Marcuss-ops/PipelineGen/pkg/atomicwrite"
 )
 
 // ── Entry point ───────────────────────────────────────────────────────
@@ -130,7 +130,7 @@ func RunBackfillAssetEmbeddings(args []string) error {
 	if deps.Checkpoint != "" && cp != nil {
 		cp.UpdatedAt = time.Now().UTC().Format(time.RFC3339Nano)
 		if b, err := json.MarshalIndent(cp, "", "  "); err == nil {
-			_ = os.WriteFile(deps.Checkpoint, b, 0o644)
+			_ = atomicwrite.WriteFile(deps.Checkpoint, b, 0o644)
 		}
 	}
 

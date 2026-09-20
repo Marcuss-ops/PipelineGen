@@ -223,7 +223,7 @@ func TestBuildSegmentCommand_CarriesResolvedChildFolder(t *testing.T) {
 	seg := youtubetypes.Segment{Name: "clip", Start: "0", End: "10"}
 
 	cmd := buildSegmentCommand(req, seg, 0, "abc123", "/tmp/out",
-		"child-folder-id", "Di-Awl0XyQs_Celebrity_Interviews", true)
+		"child-folder-id", "Di-Awl0XyQs_Celebrity_Interviews", "subtitle-folder-id", true)
 
 	require.Equal(t, "child-folder-id", cmd.DriveFolderID,
 		"Step 8 must receive the CHILD folder id, not the root")

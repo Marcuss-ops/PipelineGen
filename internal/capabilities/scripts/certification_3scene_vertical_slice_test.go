@@ -12,7 +12,7 @@
 //
 //	AUTO ENTITIES        3/3   (each scene carries a grounded per-scene EntityResult)
 //	OVERLAY INTENTS      3/3   (entity intent on every scene, single registry)
-//	PREPARE BEFORE TTS   3/3   (prepare enqueued with 6 pre-timing intents)
+//	PREPARE BEFORE TTS   0/3   (text-only intents skip asset prefetch)
 //	OVERLAY RENDER       3/3   (frozen plan carries 3 grounded phrase items)
 //	FINAL AUDIO          1     (one certified final_audio.m4a)
 //	EDITING TIMELINE     1     (one EditingTimelineV1 projection)
@@ -227,17 +227,10 @@ func TestCertification_ThreeSceneVerticalSlice(t *testing.T) {
 		require.True(t, scenesWithIntents[id], "scene %s must have an intent", id)
 	}
 
-	// ── GATE 3: PREPARE BEFORE TTS 3/3 ─────────────────────────────
-	// overlay.prepare was enqueued exactly once with the 6 PENDING intents —
-	// it ran from entity extraction alone, never waiting for timing/audio.
-	require.Len(t, prepEnq.reqs, 1, "overlay.prepare must be enqueued once")
-	prep := prepEnq.reqs[0]
-	require.Equal(t, runID, prep.PlanID)
-	require.NoError(t, prep.Validate())
-	require.Len(t, prep.Intents, 6, "prepare must carry entity and phrase intents per scene")
-	for _, intent := range prep.Intents {
-		require.Equal(t, capabilityoverlay.TimingStatePending, intent.TimingState, "prepare intents must be pre-timing")
-	}
+	// ── GATE 3: PREPARE SKIP FOR TEXT-ONLY PLAN ─────────────────────
+	// The six PENDING intents contain no asset refs. The final compile resolves
+	// their text templates directly, so the prefetch queue round-trip is omitted.
+	require.Empty(t, prepEnq.reqs, "text-only overlay plan must skip overlay.prepare")
 
 	// ── GATE 4: OVERLAY RENDER 3/3 (frozen plan) ──────────────────
 	// The render enqueuer received the frozen OverlayPlan with 3

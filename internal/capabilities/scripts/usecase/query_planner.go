@@ -42,12 +42,6 @@ func NewQueryPlannerForMetric(metric scriptpkg.RankingMetric) *QueryPlanner {
 }
 
 // WithMetric returns a planner configured for the given metric.
-func (p *QueryPlanner) WithMetric(metric scriptpkg.RankingMetric) *QueryPlanner {
-	if p != nil {
-		p.metric = metric
-	}
-	return p
-}
 
 // Plan returns search queries for the given identity at the specified
 // escalation level. Templates use {name} (canonical) and {alias} (first

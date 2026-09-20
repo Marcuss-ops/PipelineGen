@@ -3,13 +3,10 @@ package audit
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
-	"fmt"
 	"reflect"
 	"strings"
 	"testing"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	_ "github.com/mattn/go-sqlite3"
 )
 
@@ -212,73 +209,3 @@ func TestTruncateSearchTextBytes(t *testing.T) {
 // backfillSearchText is a legacy SQL fixture retained only for the historical
 // unit tests above. Production repair uses backfillSearchTextCanonical, which
 // routes writes through persistence.AssetMutator.
-func backfillSearchText(ctx context.Context, db *sql.DB, sources []string, limit int, apply bool) (int, int, error) {
-	placeholders := make([]string, len(sources))
-	args := make([]any, len(sources))
-	for i, source := range sources {
-		placeholders[i] = "?"
-		args[i] = source
-	}
-	query := `SELECT id, source, name, category, tags, source_url, metadata_json
-		FROM media_assets
-		WHERE (search_text IS NULL OR TRIM(search_text) = '')
-		  AND source IN (` + strings.Join(placeholders, ",") + `)
-		ORDER BY id`
-	if limit > 0 {
-		query += ` LIMIT ?`
-		args = append(args, limit)
-	}
-	rows, err := db.QueryContext(ctx, query, args...)
-	if err != nil {
-		return 0, 0, fmt.Errorf("query search_text fixture: %w", err)
-	}
-	defer rows.Close()
-	type candidate struct {
-		id, source, name, category, tags, sourceURL, metadata string
-	}
-	var candidates []candidate
-	for rows.Next() {
-		var c candidate
-		if err := rows.Scan(&c.id, &c.source, &c.name, &c.category, &c.tags, &c.sourceURL, &c.metadata); err != nil {
-			return 0, 0, err
-		}
-		candidates = append(candidates, c)
-	}
-	if err := rows.Err(); err != nil {
-		return 0, 0, err
-	}
-	if !apply {
-		return len(candidates), 0, nil
-	}
-	registry := detail.NewComposerRegistry()
-	updated := 0
-	for _, c := range candidates {
-		var metadata map[string]any
-		_ = json.Unmarshal([]byte(c.metadata), &metadata)
-		var tags []string
-		_ = json.Unmarshal([]byte(c.tags), &tags)
-		title := c.name
-		if value, ok := metadata["title"].(string); ok && value != "" {
-			title = value
-		}
-		text, err := registry.Compose(detail.SearchTextInput{
-			AssetID: c.id, Source: c.source, Title: title,
-			Description: stringValue(metadata["description"]), Summary: stringValue(metadata["summary"]),
-			Tags: tags, Category: c.category, SourceURL: c.sourceURL,
-		})
-		if err != nil || strings.TrimSpace(text) == "" {
-			continue
-		}
-		text = truncateSearchTextBytes(text, 1024)
-		if _, err := db.ExecContext(ctx, `UPDATE media_assets SET search_text = ? WHERE id = ?`, text, c.id); err != nil {
-			return len(candidates), updated, err
-		}
-		updated++
-	}
-	return len(candidates), updated, nil
-}
-
-func stringValue(value any) string {
-	text, _ := value.(string)
-	return text
-}

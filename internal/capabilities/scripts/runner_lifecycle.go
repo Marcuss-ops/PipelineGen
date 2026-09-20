@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sync"
 	"time"
 
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
@@ -48,6 +49,64 @@ func (r *Runner) checkpoint(ctx context.Context, runID string, result *GenerateR
 	}
 	observability.ScriptCheckpointSeconds.Observe(time.Since(started).Seconds())
 	kernobs.RecordStage(ctx, kernobs.StageInfo{Stage: "checkpoint"}, started, time.Now(), nil)
+}
+
+const partialCheckpointDebounce = 500 * time.Millisecond
+
+// checkpointGate keeps per-unit progress durable without turning every
+// scene×language completion into a full SQLite write. The phase still flushes
+// one final snapshot after the fan-out, so the only intentional crash window
+// is the debounce interval.
+type checkpointGate struct {
+	mu       sync.Mutex
+	last     time.Time
+	inFlight bool
+}
+
+func (g *checkpointGate) due(now time.Time) bool {
+	if g == nil {
+		return false
+	}
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	if g.inFlight {
+		return false
+	}
+	if g.last.IsZero() || now.Sub(g.last) >= partialCheckpointDebounce {
+		g.last = now
+		g.inFlight = true
+		return true
+	}
+	return false
+}
+
+func (g *checkpointGate) complete() {
+	if g == nil {
+		return
+	}
+	g.mu.Lock()
+	g.inFlight = false
+	g.mu.Unlock()
+}
+
+// snapshotGenerateResult creates an immutable checkpoint value. JSON is the
+// durable result contract, so round-tripping it also deep-copies every map and
+// slice that concurrent scene workers may otherwise mutate after the apply
+// lock is released. Callers must create this snapshot while holding the
+// phase's result-apply mutex; the actual repository write happens later.
+func snapshotGenerateResult(result *GenerateResult) (*GenerateResult, error) {
+	if result == nil {
+		return nil, nil
+	}
+	raw, err := json.Marshal(result)
+	if err != nil {
+		return nil, fmt.Errorf("marshal checkpoint snapshot: %w", err)
+	}
+	var snapshot GenerateResult
+	if err := json.Unmarshal(raw, &snapshot); err != nil {
+		return nil, fmt.Errorf("unmarshal checkpoint snapshot: %w", err)
+	}
+	return &snapshot, nil
 }
 
 // observeCheckpointWait records how long a worker waited for the per-unit apply

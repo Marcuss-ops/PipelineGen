@@ -119,12 +119,6 @@ func canonicalCallerHash(fileHash string) string {
 //
 // LegacyFileMD5 keeps the caller's value untouched: it is a read-only
 // compatibility bucket and no decision may read it.
-func contentAddress(localPath, fileHash string) string {
-	if sum, _, ok := byteIdentity(localPath); ok {
-		return sum
-	}
-	return canonicalCallerHash(fileHash)
-}
 
 // ProcessAsset makes the canonical SQLite-owned record before any Drive side
 // effect. The first commit records PUBLISH_PENDING; the second records either

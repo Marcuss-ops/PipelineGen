@@ -14,7 +14,6 @@
 package stock
 
 import (
-	"context"
 	"errors"
 	"fmt"
 
@@ -115,16 +114,6 @@ type SubmitStockPipelineUseCase struct {
 // Pass nil for jobs only in test fixtures — production callers MUST
 // wire the concrete jobs service so Submit can route through the
 // broker pool. The log is never nil (falls back to zap.NewNop()).
-func NewSubmitStockPipelineUseCase(svc *stockpipeline.Service, jobs job.Service, log *zap.Logger) *SubmitStockPipelineUseCase {
-	if log == nil {
-		log = zap.NewNop()
-	}
-	return &SubmitStockPipelineUseCase{
-		svc:  svc,
-		jobs: jobs,
-		log:  log,
-	}
-}
 
 // ErrJobsServiceRequired is returned by Submit when async=true and no
 // jobs service is wired. Matches the S1b+S1c+S2b wording pattern
@@ -149,69 +138,3 @@ var ErrJobsServiceRequired = errors.New("stock: jobs service required for async 
 // The returned error is non-nil on any non-success terminal state;
 // SubmitResult.Error is the human-readable mirror for cases where
 // the api layer prefers a soft-OK + inline error body.
-func (u *SubmitStockPipelineUseCase) Submit(ctx context.Context, cmd *StockCommand, async bool) (*SubmitResult, error) {
-	if cmd == nil {
-		return &SubmitResult{Status: "error", Error: "stock: Submit: nil *StockCommand"},
-			errors.New("stock: Submit: nil *StockCommand")
-	}
-
-	if async {
-		if u.jobs == nil {
-			err := ErrJobsServiceRequired
-			return &SubmitResult{
-				Status: "rejected",
-				Error:  err.Error(),
-			}, err
-		}
-		jobRef, err := u.jobs.Enqueue(ctx, &job.EnqueueRequest{
-			Type:    "media.stock",
-			Payload: cmd.ToJobPayload(),
-		})
-		if err != nil {
-			u.log.Error("submit stock pipeline: enqueue failed", zap.Error(err))
-			return &SubmitResult{
-				Status: "error",
-				Error:  err.Error(),
-			}, err
-		}
-		u.log.Info("submit stock pipeline: enqueued",
-			zap.String("job_id", jobRef.ID),
-			zap.Int("search_queries", len(cmd.SearchQueries)),
-			zap.Int("direct_urls", len(cmd.DirectURLs)),
-			zap.Int("total_minutes", cmd.TotalMinutes),
-		)
-		return &SubmitResult{
-			JobID:  jobRef.ID,
-			Status: "enqueued",
-		}, nil
-	}
-
-	if u.svc == nil {
-		err := errors.New("stock: Submit: stockpipeline service not wired")
-		return &SubmitResult{Status: "error", Error: err.Error()}, err
-	}
-	u.log.Info("submit stock pipeline: running synchronously",
-		zap.Int("search_queries", len(cmd.SearchQueries)),
-		zap.Int("direct_urls", len(cmd.DirectURLs)),
-		zap.Int("total_minutes", cmd.TotalMinutes),
-	)
-	runInput := cmd.ToRunInput()
-	if runInput == nil {
-		err := errors.New("stock: Submit: nil RunInput from cmd.ToRunInput()")
-		return &SubmitResult{Status: "error", Error: err.Error()}, err
-	}
-	pr, err := u.svc.Run(ctx, runInput)
-	if err != nil {
-		u.log.Error("submit stock pipeline: sync run failed", zap.Error(err))
-		return &SubmitResult{
-			Status: "error",
-			Error:  err.Error(),
-		}, err
-	}
-	return &SubmitResult{
-		Status:      "completed",
-		TotalClips:  pr.TotalClips,
-		TotalChunks: pr.TotalChunks,
-		Chunks:      pr.Chunks,
-	}, nil
-}

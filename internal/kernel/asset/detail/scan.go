@@ -47,7 +47,6 @@ var tagDecodeFailures atomic.Int64
 // TagDecodeFailureCount returns the process-wide number of media_assets.tags
 // rows that degraded to an empty tag set because the column failed to decode.
 // A non-zero, growing value means the tags column is being written corrupt.
-func TagDecodeFailureCount() int64 { return tagDecodeFailures.Load() }
 
 // mediaAssetScanner abstracts away the SQL row source so the same
 // scanner implementation handles `sql.Rows` (many rows) and `sql.Row`
@@ -204,9 +203,6 @@ func scanCanonicalAssetRows(rows mediaAssetScanner) (*asset.Asset, error) {
 
 // scanCanonicalAssetRow scans a single canonical asset from any SQL
 // scanner (typically `*sql.Row` via interface satisfaction).
-func scanCanonicalAssetRow(row mediaAssetScanner) (*asset.Asset, error) {
-	return scanMediaAsset(row)
-}
 
 // ScanCanonicalAssetRowsPublic is an exported wrapper for scanCanonicalAssetRows.
 func ScanCanonicalAssetRowsPublic(rows mediaAssetScanner) (*asset.Asset, error) {
@@ -214,6 +210,3 @@ func ScanCanonicalAssetRowsPublic(rows mediaAssetScanner) (*asset.Asset, error) 
 }
 
 // ScanCanonicalAssetRowPublic is the exported scanner for one canonical asset row.
-func ScanCanonicalAssetRowPublic(row mediaAssetScanner) (*asset.Asset, error) {
-	return scanCanonicalAssetRow(row)
-}

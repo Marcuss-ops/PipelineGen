@@ -184,11 +184,3 @@ var CanonicalClipFolderWriterPackagePrefixes = []string{
 // IsCanonicalClipFolderWriter reports whether a repo-relative path is a
 // canonical clip_folders writer. SINGLE owner of that decision; the
 // percheck_clip_folders_writer_canonical scanner composes it.
-func IsCanonicalClipFolderWriter(relPath string) bool {
-	for _, prefix := range CanonicalClipFolderWriterPackagePrefixes {
-		if strings.HasPrefix(relPath, prefix) {
-			return true
-		}
-	}
-	return false
-}

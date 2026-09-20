@@ -1,0 +1,76 @@
+package veloxclient
+
+import (
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+)
+
+// TestRoutesMatchGeneratedManifest is the drift gate for item 4's client slice:
+// every wire path the client/CLI binds to must still exist in the canonical
+// route manifest that cmd/admin/gen_api_docs.go generates from the live router.
+// A server-side rename therefore fails here instead of at runtime.
+func TestRoutesMatchGeneratedManifest(t *testing.T) {
+	root := repoRoot(t)
+	path := filepath.Join(root, "architecture", "routes.yaml")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read route manifest %s: %v", path, err)
+	}
+	manifest := string(data)
+
+	routes := []string{
+		RouteClipsProcess,
+		RouteClipsRender,
+		RouteClipsRenderBatch,
+		RouteJobsEnqueue,
+		RouteMediaSearch,
+		RouteJobsFull(":id"),
+		RouteClipsDownload(":source", ":id"),
+	}
+	for _, r := range routes {
+		if !strings.Contains(manifest, "path: "+r) {
+			t.Errorf("route %q is not in %s — the wire path changed; update pkg/veloxclient/routes.go and its consumers", r, path)
+		}
+	}
+
+	// RouteScriptGenerate is deliberately NOT asserted against the manifest:
+	// it is registered by internal/app/wiring/wire_script.go but the script
+	// flow is not mounted in the gen-api-docs configuration, so it is absent
+	// from the generated surface. Asserting it here would encode that gap as a
+	// failure of the client, not of the manifest. This is the known missing
+	// piece of the generated-contract work.
+	if strings.Contains(manifest, "path: "+RouteScriptGenerate) {
+		t.Logf("note: %s now appears in the manifest — tighten this test to assert it", RouteScriptGenerate)
+	}
+}
+
+// TestRouteHelpersBuildCanonicalPaths pins the two helper builders so a future
+// edit cannot silently change the shape (e.g. drop the /full suffix).
+func TestRouteHelpersBuildCanonicalPaths(t *testing.T) {
+	if got := RouteJobsFull("job_123"); got != "/api/jobs/job_123/full" {
+		t.Errorf("RouteJobsFull = %q", got)
+	}
+	if got := RouteClipsDownload("youtube", "yt_1"); got != "/api/media/clips/youtube/clips/yt_1/download" {
+		t.Errorf("RouteClipsDownload = %q", got)
+	}
+}
+
+func repoRoot(t *testing.T) string {
+	t.Helper()
+	dir, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
+	for {
+		if _, statErr := os.Stat(filepath.Join(dir, "go.mod")); statErr == nil {
+			return dir
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			t.Fatal("could not locate module root (no go.mod found walking up)")
+		}
+		dir = parent
+	}
+}

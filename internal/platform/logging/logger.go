@@ -141,11 +141,6 @@ func WithEncoding(encoding string) Option {
 }
 
 // WithOutput sets the output file
-func WithOutput(output *os.File) Option {
-	return func(c *config) {
-		c.output = output
-	}
-}
 
 // Sync flushes any buffered log entries from the singleton.
 func Sync() error {
@@ -156,14 +151,8 @@ func Sync() error {
 }
 
 // Named returns a named logger from the singleton.
-func Named(name string) *zap.Logger {
-	return Get().Named(name)
-}
 
 // With creates a child logger with fields from the singleton.
-func With(fields ...zap.Field) *zap.Logger {
-	return Get().With(fields...)
-}
 
 // Debug logs a debug message via the singleton.
 func Debug(msg string, fields ...zap.Field) {
@@ -181,11 +170,5 @@ func Warn(msg string, fields ...zap.Field) {
 }
 
 // Error logs an error message via the singleton.
-func Error(msg string, fields ...zap.Field) {
-	Get().Error(msg, fields...)
-}
 
 // Fatal logs a fatal message and exits via the singleton.
-func Fatal(msg string, fields ...zap.Field) {
-	Get().Fatal(msg, fields...)
-}

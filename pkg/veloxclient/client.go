@@ -34,23 +34,11 @@ type Client struct {
 type Option func(*Client)
 
 // WithInsecureTLS disables TLS certificate verification.
-func WithInsecureTLS() Option {
-	return func(c *Client) { c.insecureTLS = true }
-}
 
 // WithTimeout sets the per-request HTTP timeout. Defaults to 30s.
-func WithTimeout(d time.Duration) Option {
-	return func(c *Client) { c.httpClient.Timeout = d }
-}
 
 // WithRetryOptions overrides the retry policy. Default is 3 attempts with
 // 200ms→800ms exponential backoff.
-func WithRetryOptions(opts retry.Options) Option {
-	return func(c *Client) {
-		c.retryOpts = opts
-		c.retryOpts.IsRetryable = isRetryableError
-	}
-}
 
 // New builds a Client.
 func New(baseURL, token string, opts ...Option) *Client {
@@ -136,7 +124,7 @@ func (c *Client) GetJobStatus(ctx context.Context, jobID string) (*JobStatusResp
 	if jobID == "" {
 		return nil, fmt.Errorf("veloxclient: empty jobID")
 	}
-	url := c.baseURL + "/api/jobs/" + jobID + "/full"
+	url := c.baseURL + RouteJobsFull(jobID)
 	resp, retryable, err := c.doRequest(ctx, http.MethodGet, url, nil, "")
 	if err != nil {
 		if errors.Is(err, ErrNotFound) {

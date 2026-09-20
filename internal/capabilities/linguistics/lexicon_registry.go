@@ -128,13 +128,6 @@ func NewLexiconRegistry(rootDir string) (*LexiconRegistry, error) {
 
 // MustNewLexiconRegistry is like NewLexiconRegistry but panics on
 // error. Useful for tests and bootstrap wiring.
-func MustNewLexiconRegistry(rootDir string) *LexiconRegistry {
-	r, err := NewLexiconRegistry(rootDir)
-	if err != nil {
-		panic(fmt.Sprintf("lexicon registry: %v", err))
-	}
-	return r
-}
 
 // Resolve returns the profile for the given language tag. Language
 // tags are normalised to a two-letter code with the region stripped

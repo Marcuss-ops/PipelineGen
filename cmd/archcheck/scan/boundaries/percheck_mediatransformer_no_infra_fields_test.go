@@ -332,9 +332,3 @@ func TestScanMediaTransformerNoInfraFields_CanonicalFileUnreadable(t *testing.T)
 }
 
 // splitKey divides "<DTO>/<Field>" into (dto, field).
-func splitKey(k string) (string, string) {
-	if i := strings.Index(k, "/"); i >= 0 {
-		return k[:i], k[i+1:]
-	}
-	return "", k
-}

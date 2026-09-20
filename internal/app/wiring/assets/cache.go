@@ -15,11 +15,12 @@ import (
 )
 
 // NewArtifactCache constructs the shared derived-artifact cache used by media
-// pipelines. CAS owns immutable bytes; SQLite owns deterministic mappings and
-// metrics.
-func NewArtifactCache(cfg *config.Config, db *sql.DB, log *zap.Logger) (*platformcache.Cache, error) {
-	if cfg == nil || db == nil {
-		return nil, fmt.Errorf("artifact cache wiring: cfg and db are required")
+// pipelines. The cache mappings/metrics live in cacheDB; the immutable CAS
+// content registry is canonical control-plane state and therefore lives in
+// contentDB (the primary media database).
+func NewArtifactCache(cfg *config.Config, cacheDB, contentDB *sql.DB, log *zap.Logger) (*platformcache.Cache, error) {
+	if cfg == nil || cacheDB == nil || contentDB == nil {
+		return nil, fmt.Errorf("artifact cache wiring: cfg, cacheDB, and contentDB are required")
 	}
 	if log == nil {
 		return nil, fmt.Errorf("artifact cache wiring: log is required")
@@ -33,9 +34,9 @@ func NewArtifactCache(cfg *config.Config, db *sql.DB, log *zap.Logger) (*platfor
 	if err != nil {
 		return nil, fmt.Errorf("artifact cache wiring: cas: %w", err)
 	}
-	content, err := regsql.NewContentObjectStore(db)
+	content, err := regsql.NewContentObjectStore(contentDB)
 	if err != nil {
 		return nil, fmt.Errorf("artifact cache wiring: content registry: %w", err)
 	}
-	return platformcache.New(db, store, content)
+	return platformcache.New(cacheDB, store, content)
 }

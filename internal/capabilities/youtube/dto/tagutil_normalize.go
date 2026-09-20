@@ -66,27 +66,6 @@ func IsGenericPersonPhrase(tag string) bool {
 
 // NormalizeSemanticText lowercases, strips punctuation/HTML, filters short
 // words and generic tokens, and returns a cleaned token string.
-func NormalizeSemanticText(text string) string {
-	text = strings.ToLower(strings.TrimSpace(text))
-	text = strings.NewReplacer(
-		"&gt;", " ", "&nbsp;", " ", "https://", " ", "http://", " ",
-		",", " ", ".", " ", "!", " ", "?", " ", ";", " ", ":", " ",
-		"(", " ", ")", " ", "[", " ", "]", " ", "-", " ", "_", " ",
-		"\"", " ", "'", " ", "/", " ", "\\", " ", "|", " ", "#", " ",
-	).Replace(text)
-	words := strings.Fields(text)
-	if len(words) == 0 {
-		return ""
-	}
-	filtered := make([]string, 0, len(words))
-	for _, w := range words {
-		if len(w) < 3 || IsGenericToken(w) {
-			continue
-		}
-		filtered = append(filtered, w)
-	}
-	return strings.Join(filtered, " ")
-}
 
 // IsGenericToken delegates linguistic data to the configured lexicon and
 // keeps only provider-neutral URL/HTML boilerplate locally.

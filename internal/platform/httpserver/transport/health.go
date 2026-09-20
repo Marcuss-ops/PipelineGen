@@ -27,6 +27,8 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+const readyProbeTimeout = 15 * time.Second
+
 // HealthHandler exposes /health and /ready endpoints.
 type HealthHandler struct {
 	svc   *systemhealth.Service
@@ -179,7 +181,7 @@ func (h *HealthHandler) Ready(c *gin.Context) {
 		c.JSON(http.StatusServiceUnavailable, unwired)
 		return
 	}
-	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(c.Request.Context(), readyProbeTimeout)
 	defer cancel()
 	resp := h.ready.CheckReady(ctx)
 	status := http.StatusOK

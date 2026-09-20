@@ -91,12 +91,6 @@ func validateHardDeleteChildTables() {
 // (admin composition) to invoke it once at startup. Illegal to call
 // with nil (a nil logger would NPE at first log, so we round-trip
 // through zap.NewNop() instead).
-func SetLogger(log *zap.Logger) {
-	if log == nil {
-		log = zap.NewNop()
-	}
-	logger.Store(log)
-}
 
 // ── HardDeleteTx ───────────────────────────────────────────────────────────
 
@@ -280,18 +274,3 @@ func HardDeleteTx(ctx context.Context, tx *sql.Tx, id string) error {
 //     reference at admin.PurgeService.RestoreClip pkg-doc). This
 //     primitive does NOT emit a Qdrant re-index event; the caller
 //     can route a fresh outbox event if it wants vector rebuild.
-func RestoreTx(ctx context.Context, tx *sql.Tx, id string) error {
-	if tx == nil {
-		return fmt.Errorf("RestoreTx: tx is required (caller MUST supply the open *sql.Tx)")
-	}
-	if id == "" {
-		return fmt.Errorf("RestoreTx: id is required")
-	}
-
-	if err := RestoreMediaAssetTx(ctx, tx, id); err != nil {
-		return fmt.Errorf("RestoreTx %s: update: %w", id, err)
-	}
-	logger.Load().Info("RestoreTx: lifecycle_state -> ACTIVE",
-		zap.String("id", id))
-	return nil
-}

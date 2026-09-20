@@ -32,6 +32,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+
+	"github.com/Marcuss-ops/PipelineGen/pkg/atomicwrite"
 )
 
 var ownershipSplitFiles = []string{
@@ -66,7 +68,7 @@ func main() {
 		fmt.Fprintf(os.Stderr, "architecture-aggregate: %v\n", err)
 		os.Exit(2)
 	}
-	if err := os.WriteFile(*outPath, gen, 0644); err != nil {
+	if err := atomicwrite.WriteFile(*outPath, gen, 0644); err != nil {
 		fmt.Fprintf(os.Stderr, "architecture-aggregate: write %s: %v\n", *outPath, err)
 		os.Exit(2)
 	}

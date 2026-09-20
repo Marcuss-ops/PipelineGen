@@ -2,10 +2,6 @@ package generation
 
 import (
 	"errors"
-	"fmt"
-	"strings"
-
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 )
 
 var (
@@ -27,37 +23,3 @@ var (
 // ClassifyError maps worker/provider messages onto the canonical typed errors.
 // Case order is intentional: typed content failures win over generic transport
 // words that may be present in the same message.
-func ClassifyError(errMsg string) error {
-	lower := strings.ToLower(errMsg)
-	switch {
-	case strings.Contains(lower, "quota") || strings.Contains(lower, "rate limit") || strings.Contains(lower, "too many") || strings.Contains(lower, "429"):
-		return fmt.Errorf("%w: %s", ErrImageGenQuota, errMsg)
-	case strings.Contains(lower, "auth") || strings.Contains(lower, "login") || strings.Contains(lower, "session") || strings.Contains(lower, "cookie") || strings.Contains(lower, "401") || strings.Contains(lower, "403"):
-		return fmt.Errorf("%w: %s", ErrImageGenAuth, errMsg)
-	case strings.Contains(lower, "policy") || strings.Contains(lower, "safety") || strings.Contains(lower, "blocked") || strings.Contains(lower, "content"):
-		return fmt.Errorf("%w: %s", ErrImageGenPolicy, errMsg)
-	case strings.Contains(lower, "errnoimagecandidate"):
-		return fmt.Errorf("%w: %s", ErrImageGenNoImageCandidate, errMsg)
-	case strings.Contains(lower, "errblankorplaceholder"):
-		return fmt.Errorf("%w: %s", ErrImageGenBlankOrPlaceholder, errMsg)
-	case strings.Contains(lower, "errgenerationtimeout"):
-		return fmt.Errorf("%w: %s", ErrImageGenTimeout, errMsg)
-	case strings.Contains(lower, "errimagegenrationotselected") || strings.Contains(lower, "ratio-not-selected"):
-		return fmt.Errorf("%w: %s", ErrImageGenRatioNotSelected, errMsg)
-	case strings.Contains(lower, "network") || strings.Contains(lower, "connection") || strings.Contains(lower, "timeout") || strings.Contains(lower, "refused") || strings.Contains(lower, "dns") || strings.Contains(lower, "eof"):
-		return fmt.Errorf("%w: %s", ErrImageGenNetwork, errMsg)
-	default:
-		return fmt.Errorf("%w: %s", ErrImageGenPermanent, errMsg)
-	}
-}
-
-func ComputeSourceHash(provider, prompt, style string, width, height int, model string) string {
-	prompt = strings.TrimSpace(strings.ToLower(prompt))
-	style = strings.TrimSpace(strings.ToLower(style))
-	model = strings.TrimSpace(strings.ToLower(model))
-	return digest.SHA256Bytes([]byte(fmt.Sprintf("%s|%s|%s|%d|%d|%s", provider, prompt, style, width, height, model)))
-}
-
-func IsRetryable(err error) bool {
-	return errors.Is(err, ErrImageGenNetwork) || errors.Is(err, ErrImageGenQuota) || errors.Is(err, ErrImageGenAuth)
-}

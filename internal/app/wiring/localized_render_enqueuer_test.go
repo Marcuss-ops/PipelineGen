@@ -501,14 +501,6 @@ func TestLocalizedRenderEnqueuer_ConcurrentLanguagesDontClobberCues(t *testing.T
 	}
 }
 
-func keys(m map[string][]detail.TimedCue) []string {
-	out := make([]string, 0, len(m))
-	for k := range m {
-		out = append(out, k)
-	}
-	return out
-}
-
 // TestLocalizedRenderEnqueuer_ReportsProducedVideo certifies that the adapter
 // projects the certified uploaded video artifact of a successful fan-out back
 // to the runner via OnRendered — the final MP4 (asset id, sha256, Drive link)

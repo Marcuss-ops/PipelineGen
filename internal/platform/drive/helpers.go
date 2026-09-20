@@ -19,21 +19,5 @@ func FolderURLFromID(id string) string {
 }
 
 // BuildNameQuery builds a Drive API search query for a file/folder name.
-func BuildNameQuery(parentID, name, mimeType string) string {
-	q := "'" + name + "' in name and trashed = false"
-	if parentID != "" {
-		q += " and '" + parentID + "' in parents"
-	}
-	if mimeType != "" {
-		q += " and mimeType = '" + mimeType + "'"
-	}
-	return q
-}
 
 // NormalizeDriveFolderLink returns a canonical folder link if folderID is provided.
-func NormalizeDriveFolderLink(link, folderID string) string {
-	if folderID != "" {
-		return FolderURLFromID(folderID)
-	}
-	return link
-}

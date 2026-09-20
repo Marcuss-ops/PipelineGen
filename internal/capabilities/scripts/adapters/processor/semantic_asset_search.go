@@ -183,15 +183,6 @@ func NewSemanticAssetSearch(s search.SearchBackend, e search.QueryEmbedder, log 
 // WithDefaults overrides the adapter's default Limit + MinScore.
 // Non-positive values are ignored (keeps the field at its
 // constructor-time value). Returns the receiver for fluent chaining.
-func (s *SemanticAssetSearch) WithDefaults(limit int, minScore float64) *SemanticAssetSearch {
-	if limit > 0 {
-		s.DefaultLimit = limit
-	}
-	if minScore > 0 {
-		s.DefaultMinScore = minScore
-	}
-	return s
-}
 
 // SearchAssets is the canonical entry point. Implements the 8 contract
 // endpoints per PR-TRANSLATE-SCRIPT-SPEC-§7:

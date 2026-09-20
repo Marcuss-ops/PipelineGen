@@ -91,13 +91,6 @@ func Compile(in CompileInput) (SceneIR, error) {
 
 // MustCompile is the convenience wrapper that panics on a compile error.
 // Use only in tests where an invalid input is itself a test failure.
-func MustCompile(in CompileInput) SceneIR {
-	ir, err := Compile(in)
-	if err != nil {
-		panic(err)
-	}
-	return ir
-}
 
 // buildFullProfile constructs the canonical script.SegmentSemanticProfile
 // from the segment + optional entity result. When the entity result is

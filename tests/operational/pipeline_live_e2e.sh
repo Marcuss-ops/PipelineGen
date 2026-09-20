@@ -21,10 +21,11 @@
 #  10. Idempotent replay                  POST /api/clips/process with the same key
 #
 # Contract facts this battery depends on (verified against the handlers):
-#   - POST /api/clips/process returns an ACK only ({ok,message}). It does NOT
-#     return a job_id, so step 3 locates the job through
-#     GET /api/jobs?type=youtube_clip.extract and matches the segment name.
-#     Set PIPELINE_E2E_JOB_ID to skip the lookup.
+#   - POST /api/clips/process returns an ACK ({ok,message,job_id}). Step 3 binds
+#     to the job through the returned job_id; when the server predates the
+#     additive job_id field it falls back to
+#     GET /api/jobs?type=youtube_clip.extract matched on the segment name.
+#     Set PIPELINE_E2E_JOB_ID to skip both lookups.
 #   - Destination fields MUST be nested under `destination`; the legacy
 #     top-level shape (group/folder_id/folder_path/subfolder_name/
 #     create_subfolder) is rejected with 400 by ExtractRequest.UnmarshalJSON.
@@ -545,8 +546,17 @@ step_3_youtube_process() {
         return 1
     fi
 
+    # Prefer the job id returned by the ACK (additive `job_id`, Sept 2026): no
+    # listing round-trip and no name matching, so the step binds to exactly the
+    # job its own POST enqueued. The listing loop stays as the fallback for
+    # servers that predate the additive field.
+    local ack_job_id
+    ack_job_id=$(jq -r '.job_id // empty' "$SMOKE_LAST_BODY" 2>/dev/null || true)
     if [[ -n "$PIPELINE_E2E_JOB_ID" ]]; then
         YT_JOB_ID="$PIPELINE_E2E_JOB_ID"
+    elif [[ -n "$ack_job_id" ]]; then
+        YT_JOB_ID="$ack_job_id"
+        printf '  job id  : %s (from the clips/process ACK)\n' "$YT_JOB_ID"
     else
         local deadline=$(( $(date +%s) + 120 ))
         while (( $(date +%s) < deadline )); do

@@ -199,6 +199,7 @@ func (r *Runner) runVoiceoverPhase(ctx context.Context, runID string, req Genera
 			// applyMu serializes per-unit result mutation + checkpoint so a
 			// crash mid-phase (kill -9) preserves already-completed scenes.
 			var applyMu sync.Mutex
+			var checkpointDue checkpointGate
 			var ttsStartedOnce, renderStartedOnce sync.Once
 			results, err := concurrent.Map(ctx, work, r.ttsConcurrency, func(opCtx context.Context, idx int, item voiceoverWork) (voiceoverResult, error) {
 				// ── Pipeline KPI: first TTS dispatch ───────────────
@@ -258,6 +259,7 @@ func (r *Runner) runVoiceoverPhase(ctx context.Context, runID string, req Genera
 				// measured because it is a real barrier between the scene×language
 				// workers that no stage timer covered.
 				waitStarted := time.Now()
+				var snapshot *GenerateResult
 				applyMu.Lock()
 				observeCheckpointWait(waitStarted)
 				if item.scene.Voiceover == nil {
@@ -291,8 +293,22 @@ func (r *Runner) runVoiceoverPhase(ctx context.Context, runID string, req Genera
 				// held; the render goroutine must receive a value snapshot, never
 				// dereference the mutable scene after this lock is released.
 				clipID, clipAssetID, clipSHA256, clipDurationMS := localizedRenderClipFields(*item.scene)
-				r.checkpoint(ctx, runID, result)
+				if checkpointDue.due(time.Now()) {
+					var snapshotErr error
+					snapshot, snapshotErr = snapshotGenerateResult(result)
+					if snapshotErr != nil {
+						r.log.Warn("voiceover checkpoint snapshot failed", zap.String("run_id", runID), zap.Error(snapshotErr))
+						checkpointDue.complete()
+					}
+				}
 				applyMu.Unlock()
+				// Persist the immutable copy after releasing applyMu. Other TTS
+				// workers can now apply their audio refs while SQLite performs
+				// the full-result write.
+				if snapshot != nil {
+					r.checkpoint(ctx, runID, snapshot)
+					checkpointDue.complete()
+				}
 
 				// Localized render fan-out: fire the render in a separate
 				// goroutine the moment this language's TTS is final, so the
@@ -347,6 +363,16 @@ func (r *Runner) runVoiceoverPhase(ctx context.Context, runID string, req Genera
 				return voiceoverResult{audioRef: audioRef, metric: metric}, nil
 			})
 			if err != nil {
+				// concurrent.Map has joined the TTS workers, but successful
+				// siblings may already have launched localized render callbacks.
+				// Join them before taking the failure snapshot so the partial
+				// result is race-free and includes every completed sibling.
+				renderWg.Wait()
+				if snapshot, snapshotErr := snapshotGenerateResult(result); snapshotErr != nil {
+					r.log.Warn("voiceover failure checkpoint snapshot failed", zap.String("run_id", runID), zap.Error(snapshotErr))
+				} else if snapshot != nil {
+					r.checkpoint(ctx, runID, snapshot)
+				}
 				cause := fmt.Errorf("voiceover generation failed: %w", err)
 				r.failExecutionStep(ctx, exec, voiceoverStep, cause)
 				r.failRunWithRetry(ctx, runID, StageGeneratingVoiceovers, cause)
@@ -454,6 +480,15 @@ func (r *Runner) runVoiceoverPhase(ctx context.Context, runID string, req Genera
 				applyLocalizedRenderLinkLocked(result, rendered)
 			}
 			r.localizedRenderMu.Unlock()
+			// Final flush after all TTS and localized-render callbacks have
+			// joined. The result is now quiescent, so this snapshot is both
+			// complete and race-free while the repository write runs outside
+			// the render/result locks.
+			if snapshot, snapshotErr := snapshotGenerateResult(result); snapshotErr != nil {
+				r.log.Warn("voiceover final checkpoint snapshot failed", zap.String("run_id", runID), zap.Error(snapshotErr))
+			} else if snapshot != nil {
+				r.checkpoint(ctx, runID, snapshot)
+			}
 		case <-ctx.Done():
 			r.failExecutionStep(ctx, exec, voiceoverStep, ctx.Err())
 			r.failRunWithRetry(ctx, runID, StageGeneratingVoiceovers, ctx.Err())

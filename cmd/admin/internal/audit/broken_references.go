@@ -50,6 +50,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	qdrantschema "github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/schema"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/transport"
+	"github.com/Marcuss-ops/PipelineGen/pkg/atomicwrite"
 )
 
 // ── CLI entry point ───────────────────────────────────────────────────
@@ -96,7 +97,7 @@ func RunBrokenReferences(args []string) error {
 	}
 	switch {
 	case *reportPath != "":
-		if err := os.WriteFile(*reportPath, append(payload, '\n'), 0o644); err != nil {
+		if err := atomicwrite.WriteFile(*reportPath, append(payload, '\n'), 0o644); err != nil {
 			return fmt.Errorf("write report: %w", err)
 		}
 		fmt.Printf("broken-references: report written to %s\n", *reportPath)

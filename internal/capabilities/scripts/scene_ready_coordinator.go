@@ -8,8 +8,10 @@ import (
 	"time"
 
 	capabilityaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
+	mediadomain "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 	kernelscript "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
 	"go.uber.org/zap"
 )
@@ -29,6 +31,7 @@ type sceneReadyCoordinator struct {
 	results    map[int]Scene
 	errors     []error
 	wg         sync.WaitGroup
+	nlpWg      sync.WaitGroup
 	renderWg   sync.WaitGroup
 	started    time.Time
 	transCalls int
@@ -46,8 +49,11 @@ type sceneReadyCoordinator struct {
 	// render fan-out fired from this coordinator's scene workers. The runner
 	// merges them into the run result once the stream joins (the coordinator
 	// has no result pointer of its own).
-	rendered []LocalizedRenderResult
-	failures []LocalizedRenderFailure
+	rendered  []LocalizedRenderResult
+	failures  []LocalizedRenderFailure
+	localized map[int]map[Language]*scriptpkg.SceneAnnotations
+	nlpErrors []error
+	nlpSlots  concurrent.Semaphore
 }
 
 // sceneLanguageWork is one independent (scene, language) unit of the
@@ -94,14 +100,16 @@ func poolSize(value, fallback int) int {
 
 func newSceneReadyCoordinator(ctx context.Context, runner *Runner, runID string, req GenerateRequest, routing kernelscript.ArtifactRoutingContext, exec ExecutionContext) *sceneReadyCoordinator {
 	return &sceneReadyCoordinator{
-		ctx:     ctx,
-		runner:  runner,
-		runID:   runID,
-		req:     req,
-		routing: routing,
-		exec:    exec,
-		results: make(map[int]Scene),
-		started: time.Now(),
+		ctx:       ctx,
+		runner:    runner,
+		runID:     runID,
+		req:       req,
+		routing:   routing,
+		exec:      exec,
+		results:   make(map[int]Scene),
+		localized: make(map[int]map[Language]*scriptpkg.SceneAnnotations),
+		nlpSlots:  concurrent.NewSemaphore(DefaultNLPConcurrency),
+		started:   time.Now(),
 
 		translationSlots: concurrent.NewSemaphore(poolSize(runner.translationConcurrency, DefaultTranslationConcurrency)),
 		ttsSlots:         concurrent.NewSemaphore(poolSize(runner.ttsConcurrency, DefaultTTSConcurrency)),
@@ -165,6 +173,87 @@ func (c *sceneReadyCoordinator) synthesizeLanguage(ctx context.Context, itemIdx 
 	return audioRef, err
 }
 
+func (c *sceneReadyCoordinator) translatedNLPRequested() bool {
+	if c.runner == nil || c.runner.vidRushPipeline == nil {
+		return false
+	}
+	extraction := c.req.MediaPlan.Extraction
+	return extraction.Includes(mediadomain.ExtractionIncludeEntities) ||
+		extraction.Includes(mediadomain.ExtractionIncludeSpecialNames) ||
+		extraction.Includes(mediadomain.ExtractionIncludeImportantPhrases) ||
+		extraction.Includes(mediadomain.ExtractionIncludeImportantWords)
+}
+
+// localizedNLPForScene waits only for this scene's source enrichment and then
+// computes one translated annotation value. It deliberately runs outside the
+// translation/TTS worker: the scene's voiceover can continue while source NER
+// finishes, and the final pass reuses this value instead of calling NER again.
+func (c *sceneReadyCoordinator) localizedNLPForScene(scene Scene, lang Language, text string) (*scriptpkg.SceneAnnotations, error) {
+	if !c.translatedNLPRequested() || lang == c.req.SourceLanguage || strings.TrimSpace(text) == "" {
+		return nil, nil
+	}
+	if err := c.nlpSlots.AcquireCtx(c.ctx); err != nil {
+		return nil, err
+	}
+	defer c.nlpSlots.Release()
+
+	source := scene.Annotations
+	if source == nil {
+		segment, supported, err := c.runner.waitForVidRushScene(c.ctx, c.runID, scene.Index)
+		if err != nil {
+			return nil, err
+		}
+		if !supported {
+			// A test or legacy seam may expose only the document barrier. The
+			// final fan-out still computes the complete localized surface.
+			return nil, nil
+		}
+		snapshot := []sceneTextSnapshot{{
+			ID: scene.ID, Index: 0, Text: scene.Text[c.req.SourceLanguage], Annotations: scene.Annotations,
+		}}
+		phraseLimit := c.req.MediaPlan.Extraction.MaxImportantPhrasesPerSegment
+		includePhrases := c.req.MediaPlan.Extraction.Includes(mediadomain.ExtractionIncludeImportantPhrases)
+		source = computeSegmentEntityAnnotations(snapshot, c.req.SourceLanguage, []scriptpkg.VidRushSegmentResult{segment}, phraseLimit, includePhrases)[0]
+	}
+
+	mini := &GenerateResult{Scenes: []Scene{{
+		ID: scene.ID, Index: 0,
+		Text:        map[Language]string{lang: text},
+		Annotations: source,
+	}}}
+	localized, err := c.runner.computeLocalizedAnnotations(c.ctx, c.req, mini, map[int]*scriptpkg.SceneAnnotations{0: source})
+	if err != nil {
+		return nil, err
+	}
+	if byLanguage := localized[0]; byLanguage != nil {
+		return byLanguage[lang], nil
+	}
+	return nil, nil
+}
+
+func (c *sceneReadyCoordinator) launchLocalizedNLP(scene Scene, lang Language, text string) {
+	if !c.translatedNLPRequested() || lang == c.req.SourceLanguage || strings.TrimSpace(text) == "" {
+		return
+	}
+	c.nlpWg.Add(1)
+	go func() {
+		defer c.nlpWg.Done()
+		annotation, err := c.localizedNLPForScene(scene, lang, text)
+		c.mu.Lock()
+		defer c.mu.Unlock()
+		if err != nil {
+			c.nlpErrors = append(c.nlpErrors, fmt.Errorf("translated NLP ready scene %s/%s: %w", scene.ID, lang, err))
+			return
+		}
+		if annotation != nil {
+			if c.localized[scene.Index] == nil {
+				c.localized[scene.Index] = make(map[Language]*scriptpkg.SceneAnnotations)
+			}
+			c.localized[scene.Index][lang] = annotation
+		}
+	}()
+}
+
 func (c *sceneReadyCoordinator) submit(scene Scene) {
 	c.wg.Add(1)
 	go func() {
@@ -184,68 +273,6 @@ func (c *sceneReadyCoordinator) submit(scene Scene) {
 // every target language (Intro V2 subtitle surface). It performs translation
 // ONLY: no TTS, no voiceover, no audio intents, no render fan-out. An empty
 // source display text is a legitimate no-op (nothing to caption).
-func (c *sceneReadyCoordinator) processFixedDisplayText(out Scene) (Scene, error) {
-	if !out.ExecutionMode.AllowsDisplayTextTranslation() {
-		return out, nil
-	}
-	if out.Text == nil {
-		out.Text = make(map[Language]string)
-	}
-	sourceText := strings.TrimSpace(out.Text[c.req.SourceLanguage])
-	if sourceText == "" {
-		return out, nil
-	}
-	langs := make([]Language, 0, len(c.req.Languages))
-	seen := map[Language]bool{}
-	for _, lang := range c.req.Languages {
-		if lang == "" || lang == c.req.SourceLanguage || seen[lang] {
-			continue
-		}
-		seen[lang] = true
-		if out.Text[lang] != "" {
-			continue
-		}
-		langs = append(langs, lang)
-	}
-	work := make([]sceneLanguageWork, 0, len(langs))
-	for _, lang := range langs {
-		work = append(work, sceneLanguageWork{lang: lang, needsTranslation: true})
-	}
-	outcomes, err := concurrent.Map(c.ctx, work, c.translationSlots.Cap(), func(ctx context.Context, itemIdx int, item sceneLanguageWork) (sceneLanguageOutcome, error) {
-		translated, err := c.translateLanguage(ctx, itemIdx, out.ID, item.lang, sourceText)
-		if err != nil {
-			return sceneLanguageOutcome{}, err
-		}
-		return sceneLanguageOutcome{lang: item.lang, text: translated, translated: true}, nil
-	})
-	if err != nil {
-		return Scene{}, err
-	}
-	for _, res := range outcomes {
-		if res.translated {
-			out.Text[res.lang] = res.text
-		}
-	}
-	for _, res := range outcomes {
-		if !res.translated {
-			continue
-		}
-		if err := c.runner.recordArtifactOperation(c.ctx, c.exec, ArtifactOperation{
-			OperationID: artifactOperationID(c.exec.Attempt, OperationTranslation, out.ID, string(res.lang)),
-			Kind:        OperationTranslation,
-			SceneID:     out.ID,
-			Language:    res.lang,
-			Status:      "COMPLETED",
-		}); err != nil {
-			return Scene{}, err
-		}
-	}
-	c.mu.Lock()
-	c.transCalls += len(outcomes)
-	c.mu.Unlock()
-	return out, nil
-}
-
 func (c *sceneReadyCoordinator) process(scene Scene) (Scene, error) {
 	out := scene
 	if out.ExecutionMode.IsFixedMedia() {
@@ -319,6 +346,7 @@ func (c *sceneReadyCoordinator) process(scene Scene) (Scene, error) {
 			res.text = translated
 			res.translated = true
 		}
+		c.launchLocalizedNLP(out, item.lang, res.text)
 		if needsTTS && voiceoverLanguageRequested(c.req, item.lang) {
 			audioRef, err := c.synthesizeLanguage(ctx, itemIdx, out.ID, item.lang, res.text)
 			if err != nil {
@@ -481,6 +509,13 @@ func (c *sceneReadyCoordinator) wait(ctx context.Context, scenes []Scene) ([]Sce
 	case <-ctx.Done():
 		return nil, nil, nil, ctx.Err()
 	}
+	nlpDone := make(chan struct{})
+	go func() { c.nlpWg.Wait(); close(nlpDone) }()
+	select {
+	case <-nlpDone:
+	case <-ctx.Done():
+		return nil, nil, nil, ctx.Err()
+	}
 	// Wait for all async render goroutines to finish so renderedVideos()
 	// and renderFailures() are complete when the caller collects them.
 	renderDone := make(chan struct{})
@@ -495,6 +530,9 @@ func (c *sceneReadyCoordinator) wait(ctx context.Context, scenes []Scene) ([]Sce
 	if len(c.errors) > 0 {
 		return nil, nil, nil, c.errors[0]
 	}
+	if len(c.nlpErrors) > 0 {
+		return nil, nil, nil, c.nlpErrors[0]
+	}
 	ordered := make([]Scene, len(scenes))
 	for i := range scenes {
 		value, ok := c.results[scenes[i].Index]
@@ -502,6 +540,9 @@ func (c *sceneReadyCoordinator) wait(ctx context.Context, scenes []Scene) ([]Sce
 			return nil, nil, nil, fmt.Errorf("scene ready coordinator missing scene %d", scenes[i].Index)
 		}
 		ordered[i] = value
+		if byLanguage := c.localized[scenes[i].Index]; len(byLanguage) > 0 {
+			ordered[i].LocalizedAnnotations = byLanguage
+		}
 	}
 	var translation, voiceover kernobs.OperationSummary
 	dbCacheHits := 0
@@ -550,37 +591,4 @@ func (c *sceneReadyCoordinator) renderFailures() []LocalizedRenderFailure {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	return append([]LocalizedRenderFailure(nil), c.failures...)
-}
-
-// sceneTextPathReason names WHY a run took the streaming or the batch
-// scene-text path. The runner owns the decision but used to leave no trace of
-// it: `streamed` is a local, and the durable Scene.TextReadyAt family only
-// says in aggregate whether the path was taken. Without a reason, "do
-// production runs actually stream per scene?" can only be inferred from
-// archived results — and every archived run so far came back batch. Naming the
-// blocking gate makes the question answerable from a single log line.
-func sceneTextPathReason(req GenerateRequest, streamed, topologyNeedsMaterialization bool, gen TextGenerator) string {
-	switch {
-	case streamed:
-		return "streamed"
-	case req.ScriptParams.SourceTextVerbatim:
-		return "batch_source_text_verbatim"
-	case len(req.MediaPlan.Extraction.ImportantPhrases) > 0:
-		// Phrase hints are part of the final overlay contract and must be
-		// applied before any SceneTextReady consumer observes a scene.
-		return "batch_important_phrase_hints"
-	case req.Intro != nil || req.Outro != nil:
-		// Literal intro/outro are injected post-LLM and never rewritten.
-		return "batch_intro_outro"
-	case topologyNeedsMaterialization:
-		// A declared segment budget with no explicit segments requires the
-		// whole prose to be materialized before SceneCommitted.
-		return "batch_segment_topology"
-	case req.Source.Type == SourceClips && !SceneStreamingEligibility(req):
-		return "batch_source_clips_ineligible"
-	}
-	if _, ok := gen.(SceneTextStreamer); !ok {
-		return "batch_generator_not_streamable"
-	}
-	return "batch_reason_unclassified"
 }

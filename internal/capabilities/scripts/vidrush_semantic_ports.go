@@ -22,10 +22,9 @@
 //
 // There is deliberately NO model-owned phrase/NLP extraction port: phrase
 // selection is deterministic over the scene text (writer-owned weights +
-// lexicon), and named entities come from VisualNER. The former
-// ImportantPhraseExtractor/BatchImportantPhraseExtractor/SceneNLPExtractor
-// family had zero production readers and was deleted rather than left as a
-// dead alternative to the deterministic path.
+// lexicon), and named entities come from VisualNER. The former model-owned
+// extraction surface had zero production readers and was deleted rather than
+// left as a dead alternative to the deterministic path.
 package scriptgeneration
 
 import (

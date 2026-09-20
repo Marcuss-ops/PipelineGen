@@ -207,11 +207,3 @@ func TestExtractVideoIDHandlesCommonYouTubeURLs(t *testing.T) {
 		assert.Equal(t, expected, extractVideoID(input))
 	}
 }
-
-func countUniqueGroups(items []string, groupOf func(string) string) int {
-	seen := make(map[string]bool)
-	for _, item := range items {
-		seen[groupOf(item)] = true
-	}
-	return len(seen)
-}

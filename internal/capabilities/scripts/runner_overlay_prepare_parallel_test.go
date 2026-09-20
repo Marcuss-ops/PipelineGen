@@ -79,8 +79,8 @@ func TestOverlayPrepare_EnqueuedWhileTTSBlocked(t *testing.T) {
 		runner.Execute(context.Background(), runID, req)
 	}()
 
-	// Wait until TTS has started (and is blocked), then assert the prepare
-	// branch already enqueued overlay.prepare — before TTS completes.
+	// Wait until TTS has started (and is blocked), then assert the asset-bearing
+	// prepare branch already enqueued overlay.prepare — before TTS completes.
 	deadline := time.Now().Add(5 * time.Second)
 	for blockingVO.started.Load() == 0 {
 		if time.Now().After(deadline) {

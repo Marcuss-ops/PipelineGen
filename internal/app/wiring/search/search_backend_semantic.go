@@ -340,8 +340,14 @@ func (b *semanticSearchBackend) Search(ctx context.Context, q search.Query) ([]s
 		}
 
 		candidates = append(candidates, search.Candidate{
-			AssetID:   a.ID,
-			Source:    "semantic",
+			AssetID: a.ID,
+			// Source carries physical PROVENANCE, not the backend name. It used
+			// to be the constant "semantic", which made a server-side
+			// sources:["youtube"] filter impossible to enforce on this leg —
+			// every hit looked like provenance "semantic" and callers fell back
+			// to filtering asset ids with jq. The catalog row knows the real
+			// provenance; fall back to "semantic" only when the row is silent.
+			Source:    semanticSourceProvenance(a.Source),
 			SourceRef: a.ID,
 			MediaType: a.MediaType, // The semantic leg now shows the same label as the lexical leg:
 			// media_assets.title when the catalog has one (e.g. a Stock clip's
@@ -372,6 +378,17 @@ func (b *semanticSearchBackend) Search(ctx context.Context, q search.Query) ([]s
 	candidates = adjusted
 
 	return search.RankByScore(candidates), nil
+}
+
+// semanticSourceProvenance returns the catalog row's provenance for use as a
+// Candidate.Source, falling back to "semantic" when the row does not carry one.
+// The fallback preserves the historical label only for the genuinely unknown
+// case; every row that knows its provenance now reports it.
+func semanticSourceProvenance(rowSource string) string {
+	if s := strings.TrimSpace(rowSource); s != "" {
+		return s
+	}
+	return "semantic"
 }
 
 // ── Filter compilation ────────────────────────────────────────────────

@@ -45,10 +45,15 @@ func NewJobHandler(svc YouTubeExtractor, log *zap.Logger) *JobHandler {
 // roadmap). The new path runs every response through
 // ClassifyExtractionResult and returns:
 //   - nil          → full success (resp.Stats.Failed == 0 && Processed > 0);
-//   - nil          → partial_success (typed PartialSuccessError caught via
-//     errors.As, then logged + returned as result, nil);
-//   - err          → terminal / retryable classification surfaced to the
-//     broker so its retry/timeout policy can react.
+//   - err          → partial_success (typed *PartialSuccessError caught via
+//     errors.As, then re-surfaced as a RETRYABLE error together with the
+//     aggregate result map) AND terminal / retryable classification surfaced
+//     to the broker so its retry/timeout policy can react.
+//
+// Sept 2026: partial_success no longer returns (result, nil). Returning nil
+// made the broker mark the job SUCCEEDED and the failed segments were never
+// re-driven; the typed retryable error keeps the job retryable while the
+// result map still carries partial_success/processed/failed for diagnostics.
 func (h *JobHandler) HandleJob(ctx context.Context, job *job.Job, tools *jobtools.JobTools) (map[string]any, error) {
 	h.log.Info("handling youtube_clip.extract job",
 		zap.String("job_id", job.ID),
@@ -100,16 +105,36 @@ func (h *JobHandler) HandleJob(ctx context.Context, job *job.Job, tools *jobtool
 	if classifyErr != nil {
 		var partial *PartialSuccessError
 		if errors.As(classifyErr, &partial) {
-			h.log.Info("YouTube extract job finished with partial_success",
+			// Partial success is surfaced as a RETRYABLE dispatch error (not as a
+			// silent success): the failed segments are re-driven by the broker on
+			// the next attempt, and the already-committed ones replay as cache
+			// hits (deterministic clip identity → Step 2 cache lookup). The
+			// *PartialSuccessError implements IsRetryable(), so the worker's
+			// typed retry probe (retry.IsTransient) sees the verdict instead of
+			// dead-lettering a run that published real artifacts.
+			h.log.Info("YouTube extract job finished with partial_success — scheduling retry for the failed segments",
 				zap.String("job_id", job.ID),
 				zap.Int("processed", partial.Processed),
 				zap.Int("failed", partial.Failed),
 				zap.String("url", req.URL))
-			result := h.buildResultMap(resp, "YouTube clip extraction finished with partial_success")
+			if tools.Event != nil {
+				tools.Event("extraction_failed", "YouTube clip extraction classified as retryable (partial_success)",
+					map[string]any{
+						"failure_class":   "retryable",
+						"classification":  classifyErr.Error(),
+						"partial_success": true,
+						"processed":       partial.Processed,
+						"failed":          partial.Failed,
+						"stats":           resp.Stats,
+						"items":           resp.Items,
+					})
+			}
+			result := h.buildResultMap(resp, "YouTube clip extraction finished with partial_success — job will be retried")
 			result["partial_success"] = true
+			result["failure_class"] = "retryable"
 			result["processed"] = partial.Processed
 			result["failed"] = partial.Failed
-			return result, nil
+			return result, classifiedFailureError(classifyErr, "retryable", resp, summarizeExtractionItems(resp.Items))
 		}
 		// Retryable / terminal — propagate to broker so its retry policy can react.
 		// The classification sentinels carry no per-item detail, and the broker's

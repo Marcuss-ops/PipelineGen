@@ -120,11 +120,6 @@ func NewEntityIndex() *EntityIndex {
 }
 
 // SetRepository swaps the backing store, e.g. a durable SQLite adapter.
-func (ix *EntityIndex) SetRepository(repo EntityRepository) {
-	if repo != nil {
-		ix.repo = repo
-	}
-}
 
 // SetSemanticLookuper swaps the semantic backend, e.g. a vector index.
 func (ix *EntityIndex) SetSemanticLookuper(s SemanticLookuper) {

@@ -9,10 +9,6 @@
 // themselves.
 package texttracks
 
-import (
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
-)
-
 // MaterializationKey is the canonical key that determines
 // idempotency at the (asset, kind, target_lang) granularity.
 type MaterializationKey struct {
@@ -20,13 +16,6 @@ type MaterializationKey struct {
 	ModelVersion   string
 	PromptVersion  string
 	SourceTextHash string
-}
-
-func (k MaterializationKey) IsEmpty() bool {
-	return k.SourceVersion == "" &&
-		k.ModelVersion == "" &&
-		k.PromptVersion == "" &&
-		k.SourceTextHash == ""
 }
 
 // matches returns true when the existing track's fingerprint
@@ -37,39 +26,14 @@ func (k MaterializationKey) IsEmpty() bool {
 // The k.SourceTextHash is preserved in the struct for
 // IdempotencyKey() construction but is not a per-language
 // skip component.
-func (k MaterializationKey) matches(t *detail.TextTrack) bool {
-	if t == nil {
-		return false
-	}
-	return t.SourceVersion == k.SourceVersion &&
-		t.ModelVersion == k.ModelVersion
-}
 
 // ShouldSkip reports whether the materializer should skip
 // translating into targetLang because an existing READY track
 // already carries the same MaterializationKey.
-func ShouldSkip(existing *detail.TextTrack, key MaterializationKey) bool {
-	if existing == nil {
-		return false
-	}
-	if existing.Status != detail.TextTrackReady {
-		return false
-	}
-	return key.matches(existing)
-}
 
 // ShouldRetranslate reports whether the materializer should
 // retranslate an existing READY track because its fingerprint
 // has drifted from the candidate key.
-func ShouldRetranslate(existing *detail.TextTrack, key MaterializationKey) bool {
-	if existing == nil {
-		return false
-	}
-	if existing.Status != detail.TextTrackReady {
-		return false
-	}
-	return !key.matches(existing)
-}
 
 // IdempotencyKey constructs the canonical outbox event_key for
 // the (asset, kind, source_text_hash, target_language,
@@ -78,22 +42,6 @@ func ShouldRetranslate(existing *detail.TextTrack, key MaterializationKey) bool 
 // Format:
 //
 //	asset.text.translate:<asset_id>:<text_kind>:<source_text_hash>:<target_language>:<model_version>:<prompt_version>
-func IdempotencyKey(
-	assetID string,
-	kind detail.TextTrackKind,
-	sourceTextHash string,
-	targetLanguage string,
-	modelVersion string,
-	promptVersion string,
-) string {
-	return "asset.text.translate:" +
-		assetID + ":" +
-		string(kind) + ":" +
-		sourceTextHash + ":" +
-		targetLanguage + ":" +
-		modelVersion + ":" +
-		promptVersion
-}
 
 // ComputeSourceTextHash is the canonical hash for the source
 // text_content. godlike/06 SSOT: the actual hash function

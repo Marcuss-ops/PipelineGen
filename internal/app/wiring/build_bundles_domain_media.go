@@ -181,8 +181,8 @@ func buildDomainMediaServices(
 		log,
 	)
 	var ollamaBuilder ytmetadata.ClipMetadataBuilder = ollamaBuilderInner
-	if dbs.Cache != nil && dbs.Cache.DB != nil {
-		if cache, cacheErr := NewArtifactCache(cfg, dbs.Cache.DB, log); cacheErr == nil {
+	if dbs.Cache != nil && dbs.Cache.DB != nil && dbs.Main != nil && dbs.Main.DB != nil {
+		if cache, cacheErr := NewArtifactCache(cfg, dbs.Cache.DB, dbs.Main.DB, log); cacheErr == nil {
 			model := buildYouTubeRuntimeConfig(cfg).OllamaMetadataModel
 			if model == "" && ai.OllamaClient != nil {
 				model = ai.OllamaClient.Model()

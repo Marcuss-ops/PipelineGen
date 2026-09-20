@@ -96,14 +96,6 @@ func CanonicalEntitySlug(canonicalID string) string {
 // (IMPORTANT_PHRASE/QUOTE/CLAIM/STATISTIC/RANKING/TITLE/EVENT) are NOT entity
 // types: they describe a surface, not a linkable entity, so they never carry
 // a canonical_entity_id.
-func IsEntityType(t SemanticType) bool {
-	switch t {
-	case SemanticPerson, SemanticOrganization, SemanticLocation, SemanticImageEntity:
-		return true
-	default:
-		return false
-	}
-}
 
 // CanonicalEntityResolver resolves an indexed SemanticItem to its stable
 // canonical entity identity. It is the single owner of the
@@ -121,26 +113,8 @@ type CanonicalEntityResolver struct{}
 //     canonical entity id" is enforced here rather than at every consumer.
 //
 // The input item is never mutated.
-func (CanonicalEntityResolver) Resolve(item SemanticItem) SemanticItem {
-	if strings.TrimSpace(item.NormalizedText) == "" {
-		item.NormalizedText = NormalizeName(item.Text)
-	}
-	if IsEntityType(item.Type) {
-		item.CanonicalEntityID = CanonicalEntityID(string(item.Type), item.Text)
-	} else {
-		item.CanonicalEntityID = ""
-	}
-	return item
-}
 
 // ResolveAll applies Resolve to every item, preserving input order.
-func (r CanonicalEntityResolver) ResolveAll(items []SemanticItem) []SemanticItem {
-	out := make([]SemanticItem, len(items))
-	for i, item := range items {
-		out[i] = r.Resolve(item)
-	}
-	return out
-}
 
 // DefaultCanonicalEntityResolver is the process-wide resolver. Every call
 // site resolves through this single instance so canonical ids stay uniform

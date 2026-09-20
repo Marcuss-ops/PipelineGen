@@ -47,11 +47,6 @@
 //     scanner is additive, not subtractive).
 package detail
 
-import (
-	"sort"
-	"strings"
-)
-
 // MetadataKeySpec is the canonical schema for one allowed
 // Asset.Metadata key.
 type MetadataKeySpec struct {
@@ -128,17 +123,6 @@ var allowedMetadataKeys = []MetadataKeySpec{
 // silent-pass which is a NO-FAKE-AVAILABILITY regression.
 // The positive surface is intentionally tiny (3 entries)
 // so PRs that add keys are visible at code-review time.
-func AllowedMetadataKeys() []MetadataKeySpec {
-	out := make([]MetadataKeySpec, len(allowedMetadataKeys))
-	copy(out, allowedMetadataKeys)
-	sort.Slice(out, func(i, j int) bool {
-		if out[i].Key != out[j].Key {
-			return out[i].Key < out[j].Key
-		}
-		return out[i].Owner < out[j].Owner
-	})
-	return out
-}
 
 // HasMetadataKey returns true iff `key` is in the canonical
 // whitelist. Used by archcheck `percheck_metadata_key_registry`
@@ -151,14 +135,6 @@ func AllowedMetadataKeys() []MetadataKeySpec {
 // wildcard support if a query pattern emerges; the EXACT
 // shape today mirrors godlike/06 "declared + owned by
 // exactly one fact" discipline.
-func HasMetadataKey(key string) bool {
-	for _, k := range allowedMetadataKeys {
-		if k.Key == key {
-			return true
-		}
-	}
-	return false
-}
 
 // ValidateMetadataKeyShape is a godlike/07 fail-closed
 // helper used by both producer and consumer code: a key
@@ -171,20 +147,3 @@ func HasMetadataKey(key string) bool {
 // lower-snake-case dot-separated. Namespaces are sorted
 // lowercase (`youtube.*`, `artlist.*`). Future namespaces
 // (e.g. `stock.*`) follow the same shape.
-func ValidateMetadataKeyShape(key string) bool {
-	if key == "" {
-		return false
-	}
-	if strings.HasPrefix(key, ".") || strings.HasSuffix(key, ".") {
-		return false
-	}
-	for _, r := range key {
-		if r == ' ' || r == '\t' || r == '\n' {
-			return false
-		}
-		if r >= 'A' && r <= 'Z' {
-			return false
-		}
-	}
-	return true
-}

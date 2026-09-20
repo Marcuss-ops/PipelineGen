@@ -52,10 +52,6 @@ func (r *ProviderPolicyRegistry) Get(name string) (ProviderPolicy, bool) {
 }
 
 // Enabled returns whether the provider is enabled by policy.
-func (r *ProviderPolicyRegistry) Enabled(name string) bool {
-	policy, ok := r.Get(name)
-	return ok && policy.Enabled
-}
 
 // Names returns policy names in priority order, then lexicographically.
 func (r *ProviderPolicyRegistry) Names() []string {

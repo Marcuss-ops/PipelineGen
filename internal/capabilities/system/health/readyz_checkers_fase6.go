@@ -225,19 +225,10 @@ type driveRootAdapter struct {
 
 // CheckDriveRoot runs the closure. Returns a typed error if the
 // probe is nil (composition root misconfiguration signal).
-func (a *driveRootAdapter) CheckDriveRoot(ctx context.Context, folderID string) error {
-	if a.probe == nil {
-		return fmt.Errorf("Drive reader not wired")
-	}
-	return a.probe(ctx, folderID)
-}
 
 // NewDriveRootChecker creates a Drive root folder probe from a
 // reachability closure. The closure should call the Drive API
 // (e.g. ListFiles) and return nil on success.
-func NewDriveRootChecker(probe func(ctx context.Context, folderID string) error) DriveRootChecker {
-	return &driveRootAdapter{probe: probe}
-}
 
 // driveRootTrashAdapter composes the reachability probe with a
 // trashed-state probe.

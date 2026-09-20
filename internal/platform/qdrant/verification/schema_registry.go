@@ -84,13 +84,6 @@ func (r *SchemaRegistry) Resolve(version string) (*schema.IndexSchema, error) {
 // is a config error and the process must fail loud at startup
 // before serving any query). Runtime callers in the request path
 // use Resolve + error propagation.
-func (r *SchemaRegistry) MustResolve(version string) *schema.IndexSchema {
-	s, err := r.Resolve(version)
-	if err != nil {
-		panic(err.Error())
-	}
-	return s
-}
 
 // Versions returns the sorted list of registered versions. Useful
 // for dry-run diagnostics ("all registered schemas") and the boot
@@ -131,13 +124,6 @@ func ResolveSchema(version string) (*schema.IndexSchema, error) {
 }
 
 // MustResolveSchema is ResolveSchema-or-panic.
-func MustResolveSchema(version string) *schema.IndexSchema {
-	s, err := ResolveSchema(version)
-	if err != nil {
-		panic(err.Error())
-	}
-	return s
-}
 
 // RegisteredVersions returns the sorted list of registered versions.
 func RegisteredVersions() []string { return defaultSchemaRegistry.Versions() }

@@ -20,6 +20,7 @@
 package scriptgeneration
 
 import (
+	"sort"
 	"strings"
 	"unicode"
 	"unicode/utf8"
@@ -76,7 +77,7 @@ func matchLocalizedSourceEntities(text, language string, source *scriptpkg.Scene
 			span, ok := findExactNameTokenSpan(text, alias)
 			if !ok && kind == scriptpkg.EntityTypePerson {
 				switch strings.ToLower(language) {
-				case "pl", "de":
+				case "pl", "de", "tr":
 					span, ok = findInflectedPersonSpan(text, alias, language)
 				}
 			}
@@ -92,6 +93,89 @@ func matchLocalizedSourceEntities(text, language string, source *scriptpkg.Scene
 		}
 	}
 	return out
+}
+
+// completeOrderedPersonMatches closes the identity gap for scripts whose
+// translation changes the writing system (most notably Russian Cyrillic) or
+// whose NER surface is not derivable from the source spelling. It is a
+// deliberately narrow fallback: only PERSON entities, only ru/tr/pl, only
+// when translated NER returned exactly one candidate per still-unmatched
+// source person, and only in textual order. This lets the localized NER prove
+// that a person is present while the source annotation remains the authority
+// for the canonical identity and image binding. It never invents a person
+// from a source name alone.
+func completeOrderedPersonMatches(text, language string, source *scriptpkg.SceneAnnotations, visual []VisualEntity, existing []localizedSourceMatch) []localizedSourceMatch {
+	if source == nil {
+		return existing
+	}
+	switch strings.ToLower(strings.TrimSpace(language)) {
+	case "ru", "tr", "pl":
+	default:
+		return existing
+	}
+
+	all := append(append([]scriptpkg.AnnotatedEntity(nil), source.PrimaryEntities...), source.SecondaryEntities...)
+	people := make([]scriptpkg.AnnotatedEntity, 0, len(all))
+	matched := make(map[string]struct{}, len(existing))
+	for _, match := range existing {
+		if match.Kind == scriptpkg.EntityTypePerson {
+			matched[localizedSourceEntityKey(match.Source)] = struct{}{}
+		}
+	}
+	for _, entity := range all {
+		if localizedSourceEntityType(entity.Type) != scriptpkg.EntityTypePerson {
+			continue
+		}
+		if _, ok := matched[localizedSourceEntityKey(entity)]; !ok {
+			people = append(people, entity)
+		}
+	}
+	if len(people) == 0 {
+		return existing
+	}
+
+	type candidate struct {
+		entity VisualEntity
+		span   scriptpkg.AnnotationSpan
+	}
+	candidates := make([]candidate, 0, len(visual))
+	for _, entity := range visual {
+		if entity.Type != scriptpkg.EntityTypePerson || strings.TrimSpace(entity.Text) == "" {
+			continue
+		}
+		span, ok := findExactNameTokenSpan(text, entity.Text)
+		if !ok || span.EndRune <= span.StartRune {
+			continue
+		}
+		occupied := false
+		for _, match := range existing {
+			if annotationSpansOverlap([]scriptpkg.AnnotationSpan{span}, match.Span) {
+				occupied = true
+				break
+			}
+		}
+		if !occupied {
+			candidates = append(candidates, candidate{entity: entity, span: span})
+		}
+	}
+	if len(candidates) != len(people) {
+		return existing
+	}
+	sort.SliceStable(candidates, func(i, j int) bool { return candidates[i].span.StartRune < candidates[j].span.StartRune })
+	for i, candidate := range candidates {
+		existing = append(existing, localizedSourceMatch{
+			Source: people[i], Kind: scriptpkg.EntityTypePerson,
+			Span: candidate.span, Surface: candidate.span.Text,
+		})
+	}
+	return existing
+}
+
+func localizedSourceEntityKey(entity scriptpkg.AnnotatedEntity) string {
+	if id := strings.TrimSpace(entity.CanonicalEntityID); id != "" {
+		return "id:" + strings.ToLower(id)
+	}
+	return "name:" + strings.ToLower(strings.TrimSpace(firstNonEmpty(entity.CanonicalName, entity.Text)))
 }
 
 // sourceMatchesCoverEntityLimit reports whether the source-grounded matches
@@ -260,7 +344,8 @@ func findExactNameTokenSpan(text, candidate string) (scriptpkg.AnnotationSpan, b
 }
 
 // findInflectedPersonSpan locates a multi-token person name whose tokens carry a
-// required grammatical suffix (Polish declension, German possessive -s). A
+// required grammatical suffix (Polish declension, German possessive -s or
+// Turkish case/possessive suffix). A
 // single-token name is deliberately not inflected: without a second token there
 // is no evidence the suffix belongs to a name rather than to a different word.
 func findInflectedPersonSpan(text, canonical, language string) (scriptpkg.AnnotationSpan, bool) {
@@ -312,6 +397,11 @@ func localizedInflectedNameTokenMatches(language, canonical, surface string) boo
 		}
 	case "de":
 		return suffix == "s"
+	case "tr":
+		switch suffix {
+		case "'ın", "'in", "'un", "'ün", "'a", "'e", "'ı", "'i", "'u", "'ü", "ın", "in", "un", "ün", "a", "e", "ı", "i", "u", "ü":
+			return true
+		}
 	}
 	return false
 }

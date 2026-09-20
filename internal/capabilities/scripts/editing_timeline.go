@@ -404,17 +404,6 @@ type OverlayArtifactRef struct {
 // EditingOverlayPlanItem returns an OverlayItem-compatible projection of
 // an editing overlay span, suitable for consumption by downstream editing
 // systems that need the OverlayItem shape with microsecond timing.
-func EditingOverlayPlanItem(span EditingOverlaySpan) capabilityoverlay.OverlayItem {
-	return capabilityoverlay.OverlayItem{
-		ID:         span.ArtifactID,
-		SceneID:    span.SceneID,
-		Kind:       "entity_card",
-		TemplateID: span.TemplateID,
-		Text:       span.Entity,
-		StartMs:    span.StartUS / 1000,
-		EndMs:      (span.EndUS + 999) / 1000,
-	}
-}
 
 // planOverlayIntentsForAnnotations plans overlay intents from the read-only
 // snapshot + the per-scene computed annotations (keyed by scene index). It is
@@ -444,10 +433,20 @@ func sceneEntityInput(sceneID string, sceneIndex int, ann *scriptpkg.SceneAnnota
 		if name == "" {
 			return
 		}
+		var image *capabilityoverlay.EntityImageOverlayInput
+		if entity.Image != nil && strings.TrimSpace(entity.Image.AssetID) != "" && strings.TrimSpace(entity.Image.SHA256) != "" {
+			image = &capabilityoverlay.EntityImageOverlayInput{
+				EntityName: name,
+				AssetID:    entity.Image.AssetID,
+				URL:        entity.Image.PreviewURL,
+				SHA256:     entity.Image.SHA256,
+			}
+		}
 		entities = append(entities, capabilityoverlay.EntityOverlayInput{
 			Name:       name,
 			Type:       strings.TrimSpace(entity.Type),
 			Confidence: entity.Confidence,
+			Image:      image,
 			// The canonical identity travels WITH the annotation: the intent
 			// carries it verbatim so nothing downstream has to re-derive (or
 			// re-guess) which entity an overlay is about.

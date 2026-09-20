@@ -47,42 +47,6 @@ func newVectorWriter(t *testing.T) (*pgmedia.VectorSurfaceWriter, *sql.DB) {
 // seedAssetWithEmbedding registers the visual family, commits one asset
 // through the canonical committer, writes one feature row + one embedding
 // — all inside ONE transaction — and returns the resolved model id.
-func seedAssetWithEmbedding(t *testing.T, db *sql.DB, assetID string, vec []float32) (string, *pgmedia.VectorSurfaceWriter) {
-	t.Helper()
-	ctx := context.Background()
-	w := pgmedia.NewVectorSurfaceWriter(db)
-
-	// One registered production family for the visual channel.
-	modelID := "test-siglip-v1"
-	if err := w.RegisterEmbeddingFamily(ctx, "visual", modelID, len(vec)); err != nil {
-		t.Fatalf("RegisterEmbeddingFamily: %v", err)
-	}
-
-	// Canonical asset commit (steps 1-8) — the same producer path.
-	c, _ := newPostgresCommitter(t)
-	req := fullCommitRequest()
-	req.Asset.AssetID = assetID
-	if _, err := c.CommitMediaAsset(ctx, req); err != nil {
-		t.Fatalf("CommitMediaAsset: %v", err)
-	}
-
-	// Derived surfaces in the SAME transaction: features + embedding.
-	tx, err := db.BeginTx(ctx, nil)
-	if err != nil {
-		t.Fatalf("begin tx: %v", err)
-	}
-	features := pgmedia.AssetFeatureRecord{AssetID: assetID, DominantColor: "#ff0000"}
-	if err := w.UpsertAssetFeaturesTx(ctx, tx, features); err != nil {
-		t.Fatalf("UpsertAssetFeaturesTx: %v", err)
-	}
-	if err := w.UpsertEmbeddingTx(ctx, tx, assetID, "visual", modelID, vec); err != nil {
-		t.Fatalf("UpsertEmbeddingTx: %v", err)
-	}
-	if err := tx.Commit(); err != nil {
-		t.Fatalf("commit tx: %v", err)
-	}
-	return modelID, w
-}
 
 // TestCutover_SingleTransactionCommitsAssetLocationFeaturesEmbedding is
 // the core POSTGRES-MEDIA-CUTOVER criterion: one transaction lands the

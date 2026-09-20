@@ -46,6 +46,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/drive"
+	"github.com/Marcuss-ops/PipelineGen/pkg/atomicwrite"
 )
 
 // clipFilenamePrefix / clipFilenameSuffix delimit clip-like Drive files
@@ -211,7 +212,7 @@ func RunClipDriveAudit(args []string) error {
 	}
 
 	if out := strings.TrimSpace(*reportPath); out != "" {
-		if err := os.WriteFile(out, append(payload, '\n'), 0o644); err != nil {
+		if err := atomicwrite.WriteFile(out, append(payload, '\n'), 0o644); err != nil {
 			return fmt.Errorf("clip-drive-audit: write report: %w", err)
 		}
 		fmt.Printf("clip-drive-audit: report written to %s (%d divergences)\n", out, report.Summary.Divergences)

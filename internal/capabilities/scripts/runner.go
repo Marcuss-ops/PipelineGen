@@ -1,22 +1,6 @@
-// Package scriptgeneration — runner.go implements the durable
-// stage-based execution of the script generation workflow. Each
-// stage is executed in order, with checkpoint updates after every
-// successful stage. A retry resumes from the last failed stage.
-//
-// Verdetto contract:
-//
-//	ScriptGenerationRunner
-//	  ├─ Normalize
-//	  ├─ GenerateSceneText
-//	  ├─ TranslateScenes
-//	  ├─ GenerateVoiceovers
-//	  ├─ CompileAudio
-//	  └─ UpsertDocuments
-//
-// Phase implementations live in runner_phase_*.go; this file retains the
-// public Runner contract and linear orchestration.
-// Resume-from-checkpoint: on retry, Execute reads the run from
-// the repo and skips stages that are already checkpointed.
+// Package scriptgeneration — runner.go owns durable stage orchestration and
+// the public Runner contract. Phase implementations live in runner_phase_*.go.
+// On retry, Execute reads the run from the repo and skips checkpointed stages.
 package scriptgeneration
 
 import (
@@ -44,6 +28,13 @@ func (r *Runner) enqueueOverlayPrepare(ctx context.Context, runID string, req Ge
 	if r.overlayPrepareEnqueuer == nil || len(intents) == 0 {
 		return nil
 	}
+	if !overlayPrepareNeedsAssetPrefetch(intents) {
+		// Text/phrase-only intents have no asset bytes for RenderingGen to
+		// resolve or prefetch. The final timing-frozen compile resolves their
+		// templates directly, so an overlay.prepare queue round-trip would only
+		// add lease/IPC latency to the run.
+		return nil
+	}
 	canvas := r.overlayCanvas.withDefaults()
 	// overlay.prepare is a business stage boundary: the enqueue itself is
 	// measured on the canonical Run clock so the run's critical path shows
@@ -65,6 +56,15 @@ func (r *Runner) enqueueOverlayPrepare(ctx context.Context, runID string, req Ge
 		return err
 	}
 	return nil
+}
+
+func overlayPrepareNeedsAssetPrefetch(intents []capabilityoverlay.OverlayIntent) bool {
+	for _, intent := range intents {
+		if len(intent.AssetRefs) > 0 || len(intent.Payload.AssetRefs) > 0 {
+			return true
+		}
+	}
+	return false
 }
 
 // runVidRushJoinAndPrepare is the background branch of the SceneTextReady
@@ -277,6 +277,10 @@ type vidRushWiring struct {
 	observer SceneCommitObserver
 	barrier  VidRushBarrier
 	timing   VidRushTimingRecorder
+}
+
+type vidRushSceneWaiter interface {
+	WaitForScene(context.Context, string, int) (scriptpkg.VidRushSegmentResult, error)
 }
 
 // NewRunner constructs the Runner with all required ports.
@@ -508,6 +512,20 @@ func (r *Runner) waitForVidRush(ctx context.Context, runID string) ([]scriptpkg.
 		return nil, nil
 	}
 	return barrier.WaitForVidRush(ctx, runID)
+}
+
+// waitForVidRushScene resolves the narrow per-scene barrier used by the
+// streaming SceneTextReady path. Test seams that only expose the document
+// barrier return supported=false; the final document-wide pass remains the
+// correctness fallback for those callers.
+func (r *Runner) waitForVidRushScene(ctx context.Context, runID string, sceneIndex int) (scriptpkg.VidRushSegmentResult, bool, error) {
+	observer := r.sceneCommitObserverFor(runID)
+	waiter, ok := observer.(vidRushSceneWaiter)
+	if !ok {
+		return scriptpkg.VidRushSegmentResult{}, false, nil
+	}
+	result, err := waiter.WaitForScene(ctx, runID, sceneIndex)
+	return result, true, err
 }
 
 // Execute runs the complete generation workflow for the given run.

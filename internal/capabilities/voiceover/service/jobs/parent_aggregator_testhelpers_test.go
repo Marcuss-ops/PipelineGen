@@ -33,7 +33,7 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/voiceover/service"
+	voiceover "github.com/Marcuss-ops/PipelineGen/internal/capabilities/voiceover/service"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 )
 
@@ -202,20 +202,6 @@ func makeChildResult(ok bool, status string, errStr string) []byte {
 // align with the stub's childJobs map keys (extractChildJobIDs ↔
 // stub.Get(ctx, childID) must match for the aggregator's loop to
 // reach the FinalizeAggregateParent call).
-func makeParentStateWaitingChildren(childIDs ...string) []byte {
-	ids := childIDs
-	if len(ids) == 0 {
-		ids = []string{"c1", "c2"}
-	}
-	m := map[string]any{
-		"ok":            true,
-		"parent_job_id": "parent-broker",
-		"parent_state":  string(voiceover.ParentWaitingChildren),
-		"child_job_ids": ids,
-	}
-	raw, _ := json.Marshal(m)
-	return raw
-}
 
 // makeChildPayloadWithRequired builds a child job payload with the
 // Required flag set. Simulates the fan-out handler populating the

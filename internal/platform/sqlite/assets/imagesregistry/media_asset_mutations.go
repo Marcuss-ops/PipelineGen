@@ -3,14 +3,10 @@ package imagesregistry
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
 	"fmt"
-	"sort"
 	"strings"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediacommit"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaregistry"
 )
 
@@ -42,9 +38,6 @@ func execAssetUpdate(ctx context.Context, exec mediaAssetSQLExecutor, assetID, o
 }
 
 // ── Projection mutations (retained from the deleted projection-mutations file) ──
-func UpdateMediaAssetImageFields(ctx context.Context, exec mediaAssetSQLExecutor, assetID string, image *mediacommit.ImageDraft) error {
-	return persistMediaAssetImageFields(ctx, exec, assetID, image)
-}
 
 // UpdateMediaAssetUsage delegates reuse-counter persistence to the canonical
 // mutation implementation.
@@ -60,55 +53,6 @@ func persistMediaAssetUsage(ctx context.Context, exec mediaAssetSQLExecutor, ass
 		UPDATE media_assets
 		SET reuse_count = COALESCE(reuse_count, 0) + 1, last_used_at = ?, updated_at = ?
 		WHERE id = ?`, usedAt, usedAt, assetID)
-}
-
-func persistMediaAssetImageFields(ctx context.Context, exec mediaAssetSQLExecutor, assetID string, image *mediacommit.ImageDraft) error {
-	if image == nil {
-		return nil
-	}
-	return execAssetUpdate(ctx, exec, assetID, "image fields update", `
-		UPDATE media_assets
-		SET url = ?, tags = ?, tags_norm = ?, width = ?, height = ?,
-		    relative_path = ?, origin = ?, provider = ?, updated_at = ?
-		WHERE id = ?`,
-		image.URL, image.TagsJSON, image.TagsNorm, image.Width, image.Height,
-		image.RelativePath, image.Origin, image.Provider,
-		time.Now().UTC().Format(time.RFC3339), assetID)
-}
-func resolveMutationIndexIdentity(ctx context.Context, tx *sql.Tx, patch persistence.AssetPatch) (string, string, string, error) {
-	source := strings.TrimSpace(patch.Source)
-	mediaType := strings.TrimSpace(patch.MediaType)
-	sourceVersion := strings.TrimSpace(patch.SourceVersion)
-	if source != "" && mediaType != "" && sourceVersion != "" {
-		return source, mediaType, sourceVersion, nil
-	}
-	var storedSource, storedMediaType, storedVersion, contentHash string
-	if err := tx.QueryRowContext(ctx, `
-		SELECT COALESCE(source,''), COALESCE(media_type,''),
-		       COALESCE(source_version,''), COALESCE(legacy_file_md5,'')
-		FROM media_assets WHERE id = ?`, patch.AssetID).
-		Scan(&storedSource, &storedMediaType, &storedVersion, &contentHash); err != nil {
-		if err == sql.ErrNoRows {
-			return "", "", "", fmt.Errorf("asset mutator: asset %q not found", patch.AssetID)
-		}
-		return "", "", "", fmt.Errorf("asset mutator: resolve index identity %q: %w", patch.AssetID, err)
-	}
-	if source == "" {
-		source = storedSource
-	}
-	if mediaType == "" {
-		mediaType = storedMediaType
-	}
-	if sourceVersion == "" {
-		sourceVersion = storedVersion
-		if sourceVersion == "" {
-			sourceVersion = contentHash
-		}
-	}
-	if source == "" || mediaType == "" || sourceVersion == "" {
-		return "", "", "", fmt.Errorf("asset mutator: asset %q lacks source/media_type/source_version for index request", patch.AssetID)
-	}
-	return source, mediaType, sourceVersion, nil
 }
 
 func UpdateMediaAssetEnrichState(ctx context.Context, exec mediaAssetSQLExecutor, assetID, state, updatedAt string) (int64, error) {
@@ -292,10 +236,6 @@ func UpdateMediaAssetUpdatedAtTx(ctx context.Context, tx *sql.Tx, assetID, updat
 // MarkMediaAssetOrphan persists the maintenance orphan marker through the
 // canonical mutation boundary.
 
-func MarkMediaAssetOrphan(ctx context.Context, db *sql.DB, assetID string, detectedAt time.Time, kind string) error {
-	return UpdateMediaAssetOrphanMetadata(ctx, db, assetID, detectedAt, kind)
-}
-
 // DeleteMediaAssetRow deletes the parent row after dependent rows have been
 // removed by HardDeleteTx. The SQL remains inside the canonical writer family.
 
@@ -315,108 +255,11 @@ func DeleteMediaAssetRow(ctx context.Context, tx *sql.Tx, assetID string) (int64
 // transaction. The SQL is deliberately delegated to the canonical mutation
 // boundary rather than retained by the repository primitive.
 
-func RestoreMediaAssetTx(ctx context.Context, tx *sql.Tx, assetID string) error {
-	return UpdateMediaAssetLifecycle(ctx, tx, assetID, "ACTIVE", "", time.Now().UTC().Format(time.RFC3339))
-}
-
 // HardDeleteMediaAssetTx is the repository-shaped alias for the canonical
 // tx-bound deletion primitive.
 
 func HardDeleteMediaAssetTx(ctx context.Context, tx *sql.Tx, assetID string) error {
 	return HardDeleteTx(ctx, tx, assetID)
-}
-
-func normalizeDriveLocationPatches(changes []persistence.DriveLocationPatch) ([]persistence.DriveLocationPatch, error) {
-	seen := make(map[string]persistence.DriveLocationPatch, len(changes))
-	out := make([]persistence.DriveLocationPatch, 0, len(changes))
-	for _, change := range changes {
-		change.AssetID = strings.TrimSpace(change.AssetID)
-		change.DriveFileID = strings.TrimSpace(change.DriveFileID)
-		change.DriveLink = strings.TrimSpace(change.DriveLink)
-		change.DownloadURL = strings.TrimSpace(change.DownloadURL)
-		if change.AssetID == "" {
-			return nil, fmt.Errorf("asset mutator: drive location asset id is required")
-		}
-		if previous, exists := seen[change.AssetID]; exists {
-			if previous != change {
-				return nil, fmt.Errorf("asset mutator: conflicting drive changes for asset %q", change.AssetID)
-			}
-			continue
-		}
-		seen[change.AssetID] = change
-		out = append(out, change)
-	}
-	sort.Slice(out, func(i, j int) bool { return out[i].AssetID < out[j].AssetID })
-	return out, nil
-}
-
-func hasVerifiedAlternateLocation(ctx context.Context, tx *sql.Tx, assetID string) (bool, error) {
-	var count int
-	err := tx.QueryRowContext(ctx, `
-		SELECT COUNT(*) FROM asset_locations
-		WHERE asset_id = ? AND location_kind IN ('local','object_storage')
-		  AND TRIM(COALESCE(uri,'')) <> ''
-		  AND TRIM(COALESCE(legacy_file_md5,'')) <> ''
-		  AND COALESCE(file_size_bytes,0) > 0`, assetID).Scan(&count)
-	if err != nil {
-		return false, fmt.Errorf("asset mutator: inspect alternate locations %q: %w", assetID, err)
-	}
-	return count > 0, nil
-}
-
-func canonicalDrivePrimary(ctx context.Context, tx *sql.Tx, assetID string) (bool, error) {
-	var existing int
-	err := tx.QueryRowContext(ctx, `SELECT is_primary FROM asset_locations WHERE asset_id=? AND location_kind='drive'`, assetID).Scan(&existing)
-	if err == nil {
-		return existing != 0, nil
-	}
-	if err != sql.ErrNoRows {
-		return false, err
-	}
-	var count int
-	if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM asset_locations WHERE asset_id=? AND is_primary=1`, assetID).Scan(&count); err != nil {
-		return false, err
-	}
-	return count == 0, nil
-}
-
-func boolInt(value bool) int {
-	if value {
-		return 1
-	}
-	return 0
-}
-
-func PatchMediaAssetMetadataJSON(ctx context.Context, exec mediaAssetSQLExecutor, assetID, patchJSON, updatedAt string) error {
-	if strings.TrimSpace(patchJSON) == "" {
-		patchJSON = "{}"
-	}
-	if !json.Valid([]byte(patchJSON)) {
-		return fmt.Errorf("asset committer: metadata patch JSON is invalid")
-	}
-	if strings.TrimSpace(updatedAt) == "" {
-		updatedAt = time.Now().UTC().Format(time.RFC3339)
-	}
-	return execAssetUpdate(ctx, exec, assetID, "metadata patch", `
-		UPDATE media_assets
-		SET metadata_json = json_patch(COALESCE(metadata_json, '{}'), ?), updated_at = ?
-		WHERE id = ?`, patchJSON, updatedAt, assetID)
-}
-
-func UpdateMediaAssetEmbeddingJSON(ctx context.Context, exec mediaAssetSQLExecutor, assetID, value string) error {
-	return execAssetUpdate(ctx, exec, assetID, "semantic embedding update", `UPDATE media_assets SET embedding_json = ?, updated_at = ? WHERE id = ?`, value, time.Now().UTC().Format(time.RFC3339), assetID)
-}
-
-func UpdateMediaAssetTranscriptEmbedding(ctx context.Context, exec mediaAssetSQLExecutor, assetID, value string) error {
-	return execAssetUpdate(ctx, exec, assetID, "transcript embedding update", `UPDATE media_assets SET transcript_embedding = ?, updated_at = ? WHERE id = ?`, value, time.Now().UTC().Format(time.RFC3339), assetID)
-}
-
-func UpdateMediaAssetVisualEmbedding(ctx context.Context, exec mediaAssetSQLExecutor, assetID, value string) error {
-	return execAssetUpdate(ctx, exec, assetID, "visual embedding update", `UPDATE media_assets SET visual_embedding = ?, updated_at = ? WHERE id = ?`, value, time.Now().UTC().Format(time.RFC3339), assetID)
-}
-
-func UpdateMediaAssetAudioEmbedding(ctx context.Context, exec mediaAssetSQLExecutor, assetID, value string) error {
-	return execAssetUpdate(ctx, exec, assetID, "audio embedding update", `UPDATE media_assets SET audio_embedding = ?, updated_at = ? WHERE id = ?`, value, time.Now().UTC().Format(time.RFC3339), assetID)
 }
 
 func UpdateMediaAssetIndexState(ctx context.Context, exec mediaAssetSQLExecutor, assetID, state, updatedAt, lastError string) error {
@@ -435,13 +278,6 @@ func UpdateMediaAssetIndexState(ctx context.Context, exec mediaAssetSQLExecutor,
 	return execAssetUpdate(ctx, exec, assetID, "index state update", query, args...)
 }
 
-func UpdateMediaAssetFolderPath(ctx context.Context, exec mediaAssetSQLExecutor, assetID, folderID, folderPath, updatedAt string) error {
-	if strings.TrimSpace(updatedAt) == "" {
-		updatedAt = time.Now().UTC().Format(time.RFC3339)
-	}
-	return execAssetUpdate(ctx, exec, assetID, "folder path update", `UPDATE media_assets SET folder_id = ?, folder_path = ?, updated_at = ? WHERE id = ?`, folderID, folderPath, updatedAt, assetID)
-}
-
 func UpdateMediaAssetLifecycle(ctx context.Context, exec mediaAssetSQLExecutor, assetID, state, deletedAt, updatedAt string) error {
 	if strings.TrimSpace(updatedAt) == "" {
 		updatedAt = time.Now().UTC().Format(time.RFC3339)
@@ -454,17 +290,6 @@ func UpdateMediaAssetTaxonomy(ctx context.Context, exec mediaAssetSQLExecutor, t
 		return fmt.Errorf("asset committer: taxonomy update: %w", err)
 	}
 	return execAssetUpdate(ctx, exec, taxonomy.AssetID, "taxonomy update", `UPDATE media_assets SET namespace = ?, asset_kind = ?, source_type = ?, semantic_role = ?, updated_at = ? WHERE id = ?`, taxonomy.Namespace, taxonomy.AssetKind, taxonomy.SourceType, taxonomy.SemanticRole, time.Now().UTC().Format(time.RFC3339), taxonomy.AssetID)
-}
-
-func LinkMediaAssetContent(ctx context.Context, exec mediaAssetSQLExecutor, assetID, contentSHA256 string) error {
-	return execAssetUpdate(ctx, exec, assetID, "content link", `UPDATE media_assets SET content_sha256 = ?, updated_at = ? WHERE id = ?`, contentSHA256, time.Now().UTC().Format(time.RFC3339), assetID)
-}
-
-func UpdateMediaAssetSearchText(ctx context.Context, exec mediaAssetSQLExecutor, assetID, searchText, updatedAt string) error {
-	if strings.TrimSpace(updatedAt) == "" {
-		updatedAt = time.Now().UTC().Format(time.RFC3339)
-	}
-	return execAssetUpdate(ctx, exec, assetID, "search text update", `UPDATE media_assets SET search_text = ?, updated_at = ? WHERE id = ?`, searchText, updatedAt, assetID)
 }
 
 func UpdateMediaAssetUpdatedAt(ctx context.Context, exec mediaAssetSQLExecutor, assetID, updatedAt string) error {

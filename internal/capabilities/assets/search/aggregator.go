@@ -255,6 +255,13 @@ func (a *Aggregator) Search(ctx context.Context, q Query) (*Result, error) {
 	}
 
 	merged := Merge(pending, skipSet)
+	// Server-side source enforcement (source_filter.go): Query.Sources selects
+	// backends and Filters.Source narrows the catalog SQL, but neither
+	// guarantees the provenance of every returned Candidate — the semantic
+	// meta-backend is always eligible and a backend that ignores the filter
+	// would leak other provenance into the page. The server is the authority,
+	// not the caller's jq discipline.
+	merged = FilterBySource(merged, q)
 	if len(merged) > limit {
 		merged = merged[:limit]
 	}

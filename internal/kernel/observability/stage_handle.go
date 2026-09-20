@@ -78,32 +78,11 @@ func (h *StageHandle) SetBytes(in, out int64) {
 }
 
 // SetAttempts records the number of attempts represented by the stage.
-func (h *StageHandle) SetAttempts(n int) {
-	if h == nil {
-		return
-	}
-	if n < 0 {
-		n = 0
-	}
-	h.st.Attempts = n
-}
 
 // SetCacheStatus records the typed cache outcome for the stage.
-func (h *StageHandle) SetCacheStatus(status string) {
-	if h == nil {
-		return
-	}
-	h.st.CacheStatus = status
-}
 
 // SetErrorCode records a typed error code for callers that finish a stage
 // with a domain-specific failure classification.
-func (h *StageHandle) SetErrorCode(code string) {
-	if h == nil {
-		return
-	}
-	h.st.ErrorCode = code
-}
 
 // End closes the stage, records it on the bound run, and returns the final
 // report. Safe to call once; repeated calls return the recorded report.

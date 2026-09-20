@@ -10,8 +10,9 @@
 package images
 
 import (
-	detail "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"strings"
+
+	detail "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 )
 
 // ImageFilter is the canonical filter for catalog search.
@@ -136,26 +137,11 @@ func (f ImageFilter) Normalised() ImageFilter {
 
 // FilterByOrigin returns a filter that constrains exactly one
 // territory. Optional providers list narrows further.
-func FilterByOrigin(origin detail.ImageOrigin, providers ...detail.ImageProvider) ImageFilter {
-	return ImageFilter{
-		Origines:  []detail.ImageOrigin{origin},
-		Providers: providers,
-	}
-}
 
 // FilterBySlug returns a filter that constrains exactly one
 // subject slug.
-func FilterBySlug(slug string) ImageFilter {
-	return ImageFilter{Slug: slug}
-}
 
 // FilterByStyle returns a filter that constrains StyleID.
-func FilterByStyle(styleID string, providers ...detail.ImageProvider) ImageFilter {
-	return ImageFilter{
-		StyleIDs:  []string{styleID},
-		Providers: providers,
-	}
-}
 
 func ResolvedLimit(l int) int {
 	if l <= 0 {

@@ -21,12 +21,6 @@ func NewDefaultResolver() PlanResolver {
 }
 
 // NewResolverWithSampler returns a PlanResolver backed by a custom sampler.
-func NewResolverWithSampler(sampler ClipSampler) PlanResolver {
-	return &defaultResolver{
-		sampler:    sampler,
-		highlights: NewHighlightRegistry(),
-	}
-}
 
 // HighlightSelector resolves the provider sampler from the same resolver
 // used by batch planning; handlers and workers must not duplicate this choice.

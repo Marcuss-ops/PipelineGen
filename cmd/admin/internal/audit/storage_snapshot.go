@@ -50,21 +50,11 @@ package audit
 
 import (
 	"context"
-	"database/sql"
-	"encoding/json"
 	"fmt"
-	"os"
-	"path/filepath"
 	"sort"
 	"strings"
 
-	"go.uber.org/zap"
-
-	"github.com/Marcuss-ops/PipelineGen/cmd/admin/internal/cli"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
-	qdrantschema "github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/schema"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/transport"
-	storage "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite"
 )
 
 // ── Manifest types (machine-readable report) ───────────────────────────
@@ -153,84 +143,12 @@ type driveInventoryEntry struct {
 // INTO) and exports per-table row counts for each. The whole section
 // fails (status=error) if either DB fails — a partial backup set is
 // reported, never silently accepted.
-func snapshotSQLiteSet(ctx context.Context, cfg *config.Config, outDir string, log *zap.Logger) (sqliteSnapshotSection, error) {
-	sec := sqliteSnapshotSection{Status: "ok"}
-
-	primarySrc := cfg.Storage.PrimaryDBFullPath()
-	primaryOut := filepath.Join(outDir, "sqlite-primary.sqlite")
-	primary, err := snapshotOneDB(ctx, primarySrc, primaryOut, log)
-	if err != nil {
-		sec.Status = "error"
-		sec.Error = fmt.Sprintf("primary: %v", err)
-		return sec, err
-	}
-	sec.Primary = primary
-
-	obsSrc := cfg.Storage.ObservabilityDBFullPath()
-	obsOut := filepath.Join(outDir, "sqlite-observability.sqlite")
-	obs, err := snapshotOneDB(ctx, obsSrc, obsOut, log)
-	if err != nil {
-		sec.Status = "error"
-		sec.Error = fmt.Sprintf("observability: %v", err)
-		return sec, err
-	}
-	sec.Observability = obs
-	return sec, nil
-}
 
 // snapshotOneDB performs the VACUUM INTO backup then exports per-table
 // row counts from a read-only handle of the SAME source DB.
-func snapshotOneDB(ctx context.Context, srcPath, outPath string, log *zap.Logger) (sqliteDBSnapshot, error) {
-	snap := sqliteDBSnapshot{SourcePath: srcPath, BackupPath: outPath}
-
-	if _, err := os.Stat(srcPath); err != nil {
-		return snap, fmt.Errorf("stat source %s: %w", srcPath, err)
-	}
-
-	res, err := storage.Backup(srcPath, outPath)
-	if err != nil {
-		return snap, fmt.Errorf("backup %s: %w", srcPath, err)
-	}
-	snap.SizeBytes = res.SizeBytes
-	snap.SHA256 = res.SHA256
-	snap.DurationMs = res.DurationMs
-
-	// Read-only handle for the counts (never mutates the source).
-	ro, err := storage.OpenReadOnly(srcPath)
-	if err != nil {
-		return snap, fmt.Errorf("open read-only %s for counts: %w", srcPath, err)
-	}
-	defer ro.Close()
-
-	counts, err := exportTableCounts(ctx, ro)
-	if err != nil {
-		return snap, fmt.Errorf("table counts %s: %w", srcPath, err)
-	}
-	snap.TableCounts = counts
-
-	log.Info("snapshotted DB",
-		zap.String("src", srcPath),
-		zap.String("out", outPath),
-		zap.Int64("size", snap.SizeBytes),
-		zap.String("sha256", snap.SHA256),
-		zap.Int("tables", len(counts)),
-	)
-	return snap, nil
-}
 
 // exportTableCounts returns per-table row counts via the canonical
 // storage.AllUserTables + TableCounts helpers.
-func exportTableCounts(ctx context.Context, db *sql.DB) (map[string]int, error) {
-	tables, err := storage.AllUserTables(ctx, db)
-	if err != nil {
-		return nil, err
-	}
-	counts, err := storage.TableCounts(ctx, db, tables)
-	if err != nil {
-		return nil, err
-	}
-	return counts, nil
-}
 
 // ── Qdrant section ─────────────────────────────────────────────────────
 
@@ -240,65 +158,6 @@ func exportTableCounts(ctx context.Context, db *sql.DB) (map[string]int, error) 
 // is best-effort per collection: a failed snapshot is recorded in
 // SnapshotsErr, but the state section still succeeds (the state is what
 // the GC plan compares against).
-func snapshotQdrant(ctx context.Context, cfg *config.Config, outDir string, skipSnapshots bool, log *zap.Logger) (qdrantSnapshotSection, error) {
-	sec := qdrantSnapshotSection{
-		Status:       "ok",
-		BaseURL:      cfg.Qdrant.BaseURL,
-		RuntimeAlias: qdrantschema.DefaultV3Schema().RuntimeAlias,
-	}
-
-	client := transport.NewClient(&qdrantschema.Config{
-		BaseURL: cfg.Qdrant.BaseURL,
-		APIKey:  cfg.Qdrant.APIKey,
-		Timeout: cfg.Qdrant.Timeout,
-	}, log)
-
-	names, err := client.ListCollections(ctx)
-	if err != nil {
-		sec.Status = "error"
-		sec.Error = fmt.Sprintf("list collections: %v", err)
-		return sec, err
-	}
-	sort.Strings(names)
-
-	// Runtime alias target (the active projection collection).
-	if target, err := client.GetAliasTarget(ctx, sec.RuntimeAlias); err == nil {
-		sec.AliasTarget = target
-	} else {
-		sec.SnapshotsErr = append(sec.SnapshotsErr, fmt.Sprintf("resolve alias %q: %v", sec.RuntimeAlias, err))
-	}
-
-	for _, name := range names {
-		col := qdrantCollection{Name: name}
-		if info, err := client.GetCollection(ctx, name); err == nil {
-			col.Points = info.PointTotal
-			col.Status = info.Status
-		} else if n, cntErr := client.CountPoints(ctx, name); cntErr == nil {
-			col.Points = n
-			col.Status = "unknown"
-		} else {
-			col.Status = "error"
-			sec.SnapshotsErr = append(sec.SnapshotsErr, fmt.Sprintf("collection %q info: %v", name, err))
-		}
-
-		if !skipSnapshots && shouldSnapshotCollection(name) {
-			if snap, snapErr := client.CreateSnapshot(ctx, name); snapErr != nil {
-				sec.SnapshotsErr = append(sec.SnapshotsErr, fmt.Sprintf("snapshot %q: %v", name, snapErr))
-			} else {
-				col.Snapshotted = true
-				col.Snapshot = snap.Name
-				sec.SnapshotsTaken = append(sec.SnapshotsTaken, snap.Name)
-			}
-		}
-		sec.Collections = append(sec.Collections, col)
-	}
-
-	// Persist the collections listing separately for downstream phases.
-	payload, _ := json.MarshalIndent(sec.Collections, "", "  ")
-	_ = os.WriteFile(filepath.Join(outDir, "qdrant-collections.json"), append(payload, '\n'), 0o644)
-
-	return sec, nil
-}
 
 // shouldSnapshotCollection reports whether a collection is a production
 // projection worth snapshotting. Test / recovery / synthetic collections
@@ -319,50 +178,6 @@ func shouldSnapshotCollection(name string) bool {
 // path) to drive-inventory.json. The walk keeps the raw DriveFileInfo
 // metadata so later GC phases (drive_orphans.json) can compute sizes and
 // hashes without re-querying Drive.
-func snapshotDriveInventory(ctx context.Context, cfg *config.Config, outDir string, log *zap.Logger) (driveSnapshotSection, error) {
-	sec := driveSnapshotSection{Status: "ok"}
-
-	roots := collectDriveRoots(cfg.Drive)
-	if len(roots) == 0 {
-		sec.Status = "skipped"
-		sec.Error = "no Drive root folders configured (set media_root_folder or any specific root)"
-		return sec, nil
-	}
-	sec.Roots = roots
-
-	uploader, err := cli.BuildDriveAdminForCLI(ctx, cfg, log)
-	if err != nil {
-		sec.Status = "error"
-		sec.Error = fmt.Sprintf("init Drive client: %v", err)
-		return sec, err
-	}
-
-	inventory, walkFailures := walkDriveInventory(ctx, uploader.ListFiles, roots)
-
-	sec.Summary.Folders = inventory.folders
-	sec.Summary.Files = inventory.files
-	sec.Summary.TotalBytes = inventory.totalBytes
-
-	invPath := filepath.Join(outDir, "drive-inventory.json")
-	payload, _ := json.MarshalIndent(inventory.entries, "", "  ")
-	if err := os.WriteFile(invPath, append(payload, '\n'), 0o644); err != nil {
-		sec.Status = "error"
-		sec.Error = fmt.Sprintf("write inventory: %v", err)
-		return sec, err
-	}
-	sec.InventoryRel = "drive-inventory.json"
-	if len(walkFailures) > 0 {
-		sec.Error = fmt.Sprintf("%d folder(s) failed to walk (see log)", len(walkFailures))
-	}
-	log.Info("drive inventory complete",
-		zap.Int("roots", len(roots)),
-		zap.Int("folders", inventory.folders),
-		zap.Int("files", inventory.files),
-		zap.Int64("total_bytes", inventory.totalBytes),
-		zap.Int("walk_failures", len(walkFailures)),
-	)
-	return sec, nil
-}
 
 // driveInventoryResult is the materialized inventory walk outcome.
 type driveInventoryResult struct {

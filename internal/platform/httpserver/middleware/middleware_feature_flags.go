@@ -33,6 +33,3 @@ func ArtlistEnabled(flags middleware.FeatureFlagsPort) gin.HandlerFunc {
 }
 
 // ScriptClipsEnabled checks if the ScriptClips feature is enabled.
-func ScriptClipsEnabled(flags middleware.FeatureFlagsPort) gin.HandlerFunc {
-	return FeatureFlagChecker("ScriptClips", flags != nil && flags.ScriptClipsEnabled())
-}
