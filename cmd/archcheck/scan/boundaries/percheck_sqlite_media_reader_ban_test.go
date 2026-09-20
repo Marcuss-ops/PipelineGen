@@ -4,9 +4,9 @@
 //
 //	(a) "violation trip" — a NEW non-test Go file outside the grandfathered
 //	    legacy read plane that reads media_assets emits a violation.
-//	(b) "grandfathered zone exempt" — the legacy SQLite/Qdrant/admin read
-//	    plane (internal/platform/sqlite, internal/platform/qdrant/indexing,
-//	    cmd/admin) is exempt.
+//	(b) "grandfathered zone exempt" — the legacy SQLite/admin read plane
+//	    (internal/platform/sqlite, cmd/admin) is exempt, and a zone converted
+//	    from a prefix to an exact-file inventory stops auto-exempting.
 //	(c) "grandfathered file exempt" — the explicit debt-register entries are
 //	    exempt by exact path (a sibling file in the same package is NOT).
 //	(d) "PostgreSQL reader exempt" — the canonical media SSOT readers are
@@ -48,28 +48,50 @@ func mediaReaderViolations(r *report.Report) []report.Violation {
 	return out
 }
 
-// allRegisteredMediaReaderFiles is the union of both registers. Tests iterate
-// it so a new entry in either map is automatically covered by the existence,
-// staleness and exemption pins.
+// allRegisteredMediaReaderFiles is the union of every exact-file register:
+// the production debt register, the degrade-only register, and the inventory of
+// converted zones. Tests iterate it so a new entry in ANY of them is
+// automatically covered by the existence, staleness and exemption pins.
 func allRegisteredMediaReaderFiles() []string {
-	out := make([]string, 0, len(sqliteMediaReaderGrandfatheredFiles)+len(sqliteMediaReaderDegradeOnlyFiles))
-	for rel := range sqliteMediaReaderGrandfatheredFiles {
-		out = append(out, rel)
+	maps := []map[string]bool{
+		sqliteMediaReaderGrandfatheredFiles,
+		sqliteMediaReaderDegradeOnlyFiles,
+		sqliteMediaReaderInventoriedZoneFiles,
 	}
-	for rel := range sqliteMediaReaderDegradeOnlyFiles {
-		out = append(out, rel)
+	total := 0
+	for _, m := range maps {
+		total += len(m)
+	}
+	out := make([]string, 0, total)
+	for _, m := range maps {
+		for rel := range m {
+			out = append(out, rel)
+		}
 	}
 	return out
 }
 
-// TestSQLiteMediaReaderRegistersAreDisjoint pins that the two registers encode
+// TestSQLiteMediaReaderRegistersAreDisjoint pins that the registers encode
 // different facts: production split-brain debt vs. a degrade path selected only
-// when the media SSOT is closed. An entry in both would mean nobody decided
-// which one it is.
+// when the media SSOT is closed vs. the inventory of a converted zone. An entry
+// in two of them would mean nobody decided which one it is — and, worse, an
+// entry moved into the converted-zone inventory while the debt register still
+// held it would hide the migration that emptied it.
 func TestSQLiteMediaReaderRegistersAreDisjoint(t *testing.T) {
+	seen := map[string]string{}
 	for rel := range sqliteMediaReaderGrandfatheredFiles {
-		if sqliteMediaReaderDegradeOnlyFiles[rel] {
-			t.Errorf("%q is in BOTH the debt register and the degrade-only register — pick one (it is either wrong and must be migrated, or it is a documented media-disabled path)", rel)
+		seen[rel] = "the debt register"
+	}
+	for rel := range sqliteMediaReaderDegradeOnlyFiles {
+		if first, ok := seen[rel]; ok {
+			t.Errorf("%q is in BOTH %s and the degrade-only register — pick one (it is either wrong and must be migrated, or it is a documented media-disabled path)", rel, first)
+			continue
+		}
+		seen[rel] = "the degrade-only register"
+	}
+	for rel := range sqliteMediaReaderInventoriedZoneFiles {
+		if first, ok := seen[rel]; ok {
+			t.Errorf("%q is in BOTH %s and the converted-zone inventory — pick one (a converted zone lists the readers that are still there, not the debt that was migrated out)", rel, first)
 		}
 	}
 }
@@ -150,13 +172,49 @@ const q = "SELECT id FROM media_assets WHERE id = ?"
 	for _, rel := range []string{
 		"internal/platform/sqlite/assets/imagesregistry/store.go",
 		"internal/platform/sqlite/control_plane.go",
-		"internal/platform/qdrant/indexing/asset_store.go",
 		"cmd/admin/internal/audit/clip_drive_audit.go",
 	} {
 		writeGoFile(t, tmp, rel, body)
 	}
 	if got := mediaReaderViolations(scanMediaReader(t, tmp)); len(got) != 0 {
 		t.Fatalf("grandfathered zones must be exempt, got %d violations: %+v", len(got), got)
+	}
+}
+
+// TestScanSQLiteMediaReaderBan_ConvertedZoneIsExactFile pins the zone-conversion
+// ratchet: a zone that has been enumerated is exact-file, so the files listed in
+// sqliteMediaReaderInventoriedZoneFiles are exempt while a NEW sibling in the
+// same package is a violation.
+//
+// Without this property the conversion would be cosmetic: a package could stay
+// a prefix by another name, and the forward prevention the conversion exists to
+// buy (a new SQLite media reader cannot land unnoticed) would not exist.
+func TestScanSQLiteMediaReaderBan_ConvertedZoneIsExactFile(t *testing.T) {
+	tmp := t.TempDir()
+	body := `package x
+
+const q = "SELECT id FROM media_assets WHERE id = ?"
+`
+	const listed = "internal/platform/qdrant/indexing/clipindexer/indexing_state.go"
+	if !sqliteMediaReaderInventoriedZoneFiles[listed] {
+		t.Fatalf("%s is no longer in the converted-zone inventory — this test pins the conversion of internal/platform/qdrant/indexing/", listed)
+	}
+	// The zone prefix must be gone, or the listing below would be exempt for the
+	// wrong reason and this test would pass without the register.
+	for _, zone := range sqliteMediaReaderGrandfatheredZones {
+		if strings.HasPrefix(listed, zone) {
+			t.Fatalf("zone %q still covers the converted package — the prefix must be dropped in the same change as the inventory", zone)
+		}
+	}
+	writeGoFile(t, tmp, listed, body)
+	writeGoFile(t, tmp, "internal/platform/qdrant/indexing/clipindexer/brand_new.go", body)
+
+	got := mediaReaderViolations(scanMediaReader(t, tmp))
+	if len(got) != 1 {
+		t.Fatalf("expected exactly the unlisted sibling to be flagged, got %d: %+v", len(got), got)
+	}
+	if !strings.HasSuffix(got[0].File, "brand_new.go") {
+		t.Errorf("flagged %q, want the unlisted sibling brand_new.go", got[0].File)
 	}
 }
 
