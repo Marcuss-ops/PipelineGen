@@ -22,6 +22,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/cmd/admin/internal/cli"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/jsonextract"
+	"github.com/Marcuss-ops/PipelineGen/pkg/atomicwrite"
 )
 
 func RunMigrateLegacyCache(args []string) error {
@@ -164,7 +165,7 @@ func RunMigrateLegacyCache(args []string) error {
 			"rows":     results,
 		}
 		payload, _ := json.MarshalIndent(report, "", "  ")
-		if err := os.WriteFile(*reportPath, append(payload, '\n'), 0o644); err != nil {
+		if err := atomicwrite.WriteFile(*reportPath, append(payload, '\n'), 0o644); err != nil {
 			return fmt.Errorf("migrate-legacy-cache: write report: %w", err)
 		}
 		fmt.Printf("Report written to %s\n", *reportPath)

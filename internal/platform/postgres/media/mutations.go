@@ -375,12 +375,3 @@ func UpdateMediaAssetImageFields(ctx context.Context, exec mediaAssetSQLExecutor
 
 // UpdateMediaAssetUsage increments the reuse counter through the canonical
 // mutation implementation.
-func UpdateMediaAssetUsage(ctx context.Context, exec mediaAssetSQLExecutor, assetID, usedAt string) error {
-	if strings.TrimSpace(usedAt) == "" {
-		usedAt = time.Now().UTC().Format(time.RFC3339)
-	}
-	return execAssetUpdate(ctx, exec, assetID, "usage update", `
-		UPDATE media_assets
-		SET reuse_count = COALESCE(reuse_count, 0) + 1, last_used_at = $1, updated_at = $2, updated_at_ts = NULLIF($2, '')::timestamptz
-		WHERE id = $3`, usedAt, usedAt, assetID)
-}

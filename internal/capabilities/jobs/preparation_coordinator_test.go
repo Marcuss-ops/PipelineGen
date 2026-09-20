@@ -63,18 +63,6 @@ type fakeClaimSnapshotter struct {
 	calls atomic.Int32
 }
 
-func (f *fakeClaimSnapshotter) SnapshotPreparationClaim(_ context.Context, _ job.PreparationClaimInput) (*job.PreparationClaimSnapshot, error) {
-	f.calls.Add(1)
-	return &job.PreparationClaimSnapshot{
-		RequiredUnits:        2,
-		ReadyUnits:           2,
-		RunningUnits:         0,
-		MissingUnits:         0,
-		PreparedAtClaimRatio: 1.0,
-		EstimatedSavedMS:     8500,
-	}, nil
-}
-
 // TestPreparationCoordinator_DoesNotCaptureClaimSnapshots pins the ownership
 // handoff: the claim-time KPI (prepared_at_claim_ratio) is captured by the
 // WORKER claim path on the real ClaimNext/Claim() instant, NOT by the

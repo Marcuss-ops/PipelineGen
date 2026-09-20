@@ -129,15 +129,6 @@ func Load(path string) (*Config, error) {
 }
 
 // Init initializes the global registry once and applies filtering overrides.
-func Init(path string) error {
-	registryOnce.Do(func() {
-		registry, registryErr = Load(path)
-		if registryErr == nil && registry != nil {
-			registry.ApplyFilteringConfig()
-		}
-	})
-	return registryErr
-}
 
 func Get() *Config {
 	return registry

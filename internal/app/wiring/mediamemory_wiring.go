@@ -35,10 +35,6 @@ import (
 	brainPlanner "github.com/Marcuss-ops/PipelineGen/internal/capabilities/brain/planner"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediamemory"
 	qdrantmm "github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediamemory"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/collections"
-	qdrantmediamemory "github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/indexing/mediamemory"
-	platformschema "github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/schema"
-	qdrantschema "github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/schema"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/transport"
 	sqliteMediaMemory "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/mediamemory"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outbox"
@@ -65,43 +61,10 @@ type MediaMemoryQdrantStack struct {
 // collection if absent. godlike/07 NO-FAKE-AVAILABILITY: a nil
 // transport returns wrapped ErrSemanticNotConfigured so a
 // downstream resolver can branch via errors.Is.
-func EnsureConceptCollection(ctx context.Context, transportClient *transport.Client, log *zap.Logger) error {
-	if transportClient == nil {
-		return fmt.Errorf("mediamemory: EnsureConceptCollection transport is nil: %w",
-			mediamemory.ErrSemanticNotConfigured)
-	}
-	mgr, err := collections.NewProjectionManagerFor(platformschema.MediaConceptsProjection(), transportClient, log)
-	if err != nil {
-		return fmt.Errorf("mediamemory: EnsureConceptCollection: %w", err)
-	}
-	if err := mgr.CreateCollection(ctx, qdrantschema.ConceptCollectionName); err != nil {
-		return fmt.Errorf("mediamemory: EnsureConceptCollection: %w", err)
-	}
-	return nil
-}
 
 // NewMediaMemoryQdrantStack wires the Phase 2.1 adapters in
 // one place so boot-time and test wiring share the exact
 // dependency graph.
-func NewMediaMemoryQdrantStack(deps MediaMemoryQdrantWiring) (*MediaMemoryQdrantStack, error) {
-	if deps.Transport == nil ||
-		deps.Embedder == nil ||
-		deps.ConceptsRepo == nil ||
-		deps.BindingsRepo == nil {
-		return nil, fmt.Errorf(
-			"mediamemory: composition root missing dependencies (transport + registry + concept repo + binding repo are required): %w",
-			mediamemory.ErrSemanticNotConfigured,
-		)
-	}
-	log := deps.Log
-	if log == nil {
-		log = zap.NewNop()
-	}
-	return &MediaMemoryQdrantStack{
-		Indexer: qdrantmediamemory.NewQdrantIndexer(deps.Transport, deps.Embedder, log),
-		Lookup:  qdrantmediamemory.NewQdrantSemanticLookup(deps.Transport, deps.Embedder, deps.ConceptsRepo, deps.BindingsRepo, log),
-	}, nil
-}
 
 // WireMediaMemoryResolver builds the canonical mediamemory.Resolver.
 // It wires the MediaMemory cascade as a brain.MediaMemoryResolutionPort,
@@ -207,9 +170,6 @@ func anyToZap(kv []any) []zap.Field {
 type NoopSemanticLookup struct{}
 
 // NewNoopSemanticLookup returns a noop SemanticLookup.
-func NewNoopSemanticLookup() mediamemory.SemanticLookup {
-	return NoopSemanticLookup{}
-}
 
 // LookupByConcept returns (nil, nil) — graceful Level 3-7 miss.
 func (NoopSemanticLookup) LookupByConcept(

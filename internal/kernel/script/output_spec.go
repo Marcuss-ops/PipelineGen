@@ -493,10 +493,6 @@ func FontCoversScript(font string, script FontScript) (covers bool, known bool) 
 // The question is answered through the projected asset, so the guard swaps
 // exactly the fonts proven unable to burn the language, and never swaps one on
 // a guess about a family label.
-func FontCoversLanguage(font, language string) bool {
-	covers, known := FontCoversScript(font, LanguageFontScript(language))
-	return !known || covers
-}
 
 // SubtitleStyleHash is the canonical ASS style id for a subtitle style: the
 // base hash plus the effective font slug. A style with no font keeps the bare

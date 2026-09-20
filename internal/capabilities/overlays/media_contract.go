@@ -12,7 +12,6 @@ package overlays
 import (
 	"context"
 	"fmt"
-	"math"
 	"strings"
 
 	kernelmedia "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
@@ -166,21 +165,9 @@ func (c OverlayMediaContract) Validate(probed OverlayProbeResult) error {
 // DurationMS returns the contract FPS as a float64 frame duration in
 // milliseconds. Useful for computing frame-accurate start/end from
 // microsecond timestamps.
-func (c OverlayMediaContract) DurationMS() float64 {
-	if c.FPSNum <= 0 || c.FPSDen <= 0 {
-		return 0
-	}
-	return 1000.0 * float64(c.FPSDen) / float64(c.FPSNum)
-}
 
 // FrameAtUS converts a microsecond timestamp to the frame index at the
 // contract's FPS. The result is rounded to the nearest integer frame.
-func (c OverlayMediaContract) FrameAtUS(us int64) int64 {
-	if c.FPSNum <= 0 || c.FPSDen <= 0 || us < 0 {
-		return 0
-	}
-	return int64(math.Round(float64(us) * float64(c.FPSNum) / (1000000.0 * float64(c.FPSDen))))
-}
 
 // ── Predefined contracts ────────────────────────────────────────────
 

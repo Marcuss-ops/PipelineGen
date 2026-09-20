@@ -63,8 +63,9 @@ type QueueRenderEnqueuer struct {
 	// of the render caller. RenderingGen has already certified immutable bytes
 	// at this point; keeping this work on a bounded pool releases the render
 	// worker while preserving a join before the run is marked complete.
-	asyncPublication bool
-	publicationSem   chan struct{}
+	asyncPublication   bool
+	publicationSem     chan struct{}
+	publicationWorkers int
 	// publicationMu guards the batch registry below. The pool itself is
 	// process-wide (the composition root wires ONE enqueuer for the whole
 	// process), but a publication belongs to exactly one run: joining, and
@@ -82,7 +83,13 @@ type QueueRenderEnqueuer struct {
 // overlay_publication.go, next to the publication port they serve; the pool
 // fields above belong to this type.
 
-const defaultOverlayPublicationWorkers = 2
+// Drive publication is outside the Chronon/GPU critical path and each
+// artifact is independently idempotent. Six workers keep a multilingual
+// overlay drain from becoming a serial tail while remaining conservative
+// toward Drive/API rate limits; render admission is still owned by
+// RenderingGen's gpu_lanes, not this pool.
+const defaultOverlayPublicationWorkers = 6
+const maxOverlayPublicationWorkers = 8
 
 // NewQueueRenderEnqueuer creates a queue-backed Chronon render enqueuer.
 func NewQueueRenderEnqueuer(client RenderQueueClient) (*QueueRenderEnqueuer, error) {
@@ -129,8 +136,31 @@ func (e *QueueRenderEnqueuer) SetAsyncPublication(on bool) {
 	}
 	e.asyncPublication = on
 	if on && e.publicationSem == nil {
-		e.publicationSem = make(chan struct{}, defaultOverlayPublicationWorkers)
+		e.publicationSem = make(chan struct{}, e.publicationWorkerCount())
 	}
+}
+
+// SetPublicationWorkers configures the bounded Drive/analytics publication
+// pool. Production wiring calls this before SetAsyncPublication; changing a
+// live semaphore would strand goroutines that already hold the old budget.
+func (e *QueueRenderEnqueuer) SetPublicationWorkers(workers int) {
+	if e == nil {
+		return
+	}
+	if workers <= 0 {
+		workers = defaultOverlayPublicationWorkers
+	}
+	if workers > maxOverlayPublicationWorkers {
+		workers = maxOverlayPublicationWorkers
+	}
+	e.publicationWorkers = workers
+}
+
+func (e *QueueRenderEnqueuer) publicationWorkerCount() int {
+	if e == nil || e.publicationWorkers <= 0 {
+		return defaultOverlayPublicationWorkers
+	}
+	return e.publicationWorkers
 }
 
 // SetFreshRender controls whether EnqueueChrononPlan creates a new queue job

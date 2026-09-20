@@ -19,7 +19,6 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
 	worker "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/worker"
-	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/remote/jobbrokerclient"
 	remoteshared "github.com/Marcuss-ops/PipelineGen/internal/platform/remote/shared"
 )
@@ -79,18 +78,6 @@ func (stubAssetClient) UploadFile(_ context.Context, _, _ string) error {
 // unchanged, and clipSvc.HandleJob / the phase7 test handler are
 // still invoked through worker.Registry with their full effect
 // (logging, DB queries, lease-renewal observation, etc).
-func adaptToUploaderSkip(handler appjobs.HandlerFunc) worker.Handler {
-	original := handler
-	return func(ctx context.Context, j *job.Job, tools *job.JobExecutionTools) (job.Result, error) {
-		if _, err := original(ctx, j, tools); err != nil {
-			return nil, err
-		}
-		// Force silent-skip path in runner.uploadManifest:
-		// `len(handlerResult) == 0` short-circuits BEFORE the
-		// non-empty/assetClient-nil fail-closed branch.
-		return map[string]any{}, nil
-	}
-}
 
 // internalV1Prefix is the URL prefix the production server mounts
 // the worker broker handler under (see internal/api/routes.go::Setup,

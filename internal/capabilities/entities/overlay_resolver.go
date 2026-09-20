@@ -182,6 +182,16 @@ func allOccurrences(timeline EntityTimeline) []EntityOccurrence {
 func overlayItemID(o EntityOccurrence) string {
 	scene := strings.TrimSpace(o.SceneID)
 	entity := SafeEntityID(o.Name)
+	// SafeEntityID intentionally emits filesystem/Drive-safe ASCII slugs. For
+	// scripts whose localized surface is written in Cyrillic (or another
+	// non-ASCII alphabet) that slug can be empty for every person in a scene,
+	// which would make distinct overlays look identical and silently drop all
+	// but the first one. The occurrence's stable content address is the
+	// canonical collision-free fallback; it is already part of the entity
+	// timeline and does not depend on display-language spelling.
+	if entity == "" {
+		entity = strings.TrimPrefix(strings.TrimSpace(o.EntityID), "ent_")
+	}
 	if scene == "" {
 		return "overlay-" + entity
 	}

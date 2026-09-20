@@ -47,6 +47,10 @@ clips      → /api/clips/process
 
 Non cambiare obiettivo durante il test.
 
+`POST /api/clips/process` risponde `{ok, message, job_id}`: il `job_id`
+restituito nell'ACK è l'identificativo del job accodato, quindi si interroga
+quello (niente `GET /api/jobs?...` per risalire al job appena inviato).
+
 ## 4. Poll automatico (UN solo poller)
 
 Non usare cicli manuali di `sleep` + query SQL. Per interrogare lo stato di un

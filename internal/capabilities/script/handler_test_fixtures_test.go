@@ -26,10 +26,6 @@ import (
 	domainops "github.com/Marcuss-ops/PipelineGen/internal/capabilities/operations"
 	opsapp "github.com/Marcuss-ops/PipelineGen/internal/capabilities/operations"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
-	sqlitejobs "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/jobs"
-	sqljobs "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/jobs"
-	sqliteops "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/operations"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/submission"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/usecase/gencore"
@@ -269,24 +265,6 @@ func newMinimalScriptFlowDepsForTest(jobs job.Service) (ScriptFlowDeps, *fakeSub
 // the Service touches. Drift between this schema and the
 // production migrations would surface as SQL errors at INSERT
 // time (NOT a silent mismatch).
-func newFASE2OperationsServiceForTest() *opsapp.Service {
-	db, err := sql.Open("sqlite3", ":memory:")
-	if err != nil {
-		panic("newFASE2OperationsServiceForTest: open in-memory SQLite: " + err.Error())
-	}
-	if _, err := db.Exec(schemasFASE2ForTest); err != nil {
-		panic("newFASE2OperationsServiceForTest: apply FASE 2 schemas: " + err.Error())
-	}
-	opsRepo := sqliteops.NewSQLiteRepository(db)
-	jobsStore := sqlitejobs.NewSQLiteStore(db, zap.NewNop())
-	outboxRepo := outboxevents.NewRepository(db)
-	txMgr := &dbTxManagerForTest{db: db}
-	// FASE 2 close-out: jobsStore satisfies the JobGetter port
-	// natively (its Get(ctx, id) method matches the port shape).
-	// Wired twice — once as JobEnqueuer (CreateInTx use) and
-	// once as JobGetter (canonical-state-on-replay read).
-	return opsapp.NewService(opsRepo, jobsStore, jobsStore, outboxRepo, txMgr, zap.NewNop())
-}
 
 // dbTxManagerForTest wraps *sql.DB to satisfy the operations.TxManager
 // port. Mirrors the production sqlTxManager in
@@ -294,10 +272,6 @@ func newFASE2OperationsServiceForTest() *opsapp.Service {
 // avoid the test package importing the production composition root.
 type dbTxManagerForTest struct {
 	db *sql.DB
-}
-
-func (m *dbTxManagerForTest) BeginTx(ctx context.Context) (*sql.Tx, error) {
-	return m.db.BeginTx(ctx, nil)
 }
 
 // schemasFASE2ForTest is the inline mirror of migrations/sqlite/092
@@ -386,6 +360,3 @@ type stubJobStatsReader struct{}
 // accepts the stub. The Stats endpoint is the only consumer
 // of GetStats; tests that exercise the Stats endpoint pass
 // a real *appjobs.Service and bypass this stub.
-func (stubJobStatsReader) GetStats(_ context.Context) (*sqljobs.JobStats, error) {
-	return nil, nil
-}

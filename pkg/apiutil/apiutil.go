@@ -11,7 +11,6 @@
 package apiutil
 
 import (
-	"encoding/json"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -19,13 +18,6 @@ import (
 
 // BindJSONInto binds JSON into an existing pointer target. Returns false (and
 // writes a 400 response) on error. Use BindJSON[T] in new code.
-func BindJSONInto(c *gin.Context, obj any) bool {
-	if err := c.ShouldBindJSON(obj); err != nil {
-		BadRequest(c, "invalid request body: "+err.Error())
-		return false
-	}
-	return true
-}
 
 // BindJSON decodes JSON from the request body into a new value of type T.
 // On error it writes a 400 response and returns false. This is the canonical
@@ -48,14 +40,6 @@ func BindJSON[T any](c *gin.Context) (T, bool) {
 // ParseJSON decodes raw JSON bytes into a map. Returns nil on error.
 // Convenience helper for "passthrough" payloads that have already been
 // received as []byte (e.g. job results, async payloads).
-func ParseJSON(data []byte) map[string]any {
-	var m map[string]any
-	if len(data) == 0 {
-		return nil
-	}
-	_ = json.Unmarshal(data, &m)
-	return m
-}
 
 // ClampLimit clamps a value to [def, max]; returns def if v <= 0 or v > max.
 // Used by list/pagination endpoints to bound response sizes.

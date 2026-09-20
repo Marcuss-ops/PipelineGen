@@ -4,9 +4,7 @@ import (
 	"context"
 	"fmt"
 	"sync"
-	"time"
 
-	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -86,6 +84,3 @@ func (s *Scheduler) Wait() []TaskResult {
 // RecordRenderSlotWait is the scheduler-side seam for callers that use a
 // queue-backed worker pool with an explicit semaphore. It keeps the wait
 // attribution canonical without forcing the scheduler to invent timestamps.
-func RecordRenderSlotWait(ctx context.Context, startedAt, finishedAt time.Time) {
-	kernobs.RecordClipPhase(ctx, kernobs.ClipPhaseRenderSlot, startedAt, finishedAt, kernobs.StageStatusCompleted, nil)
-}

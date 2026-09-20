@@ -186,6 +186,7 @@ type EntityOverlayInput struct {
 	Name       string
 	Type       string
 	Confidence float64
+	Image      *EntityImageOverlayInput
 	// CanonicalID is the entity's canonical identity supplied verbatim by the
 	// caller (see EntityBinding.CanonicalEntityID). Empty when the caller's
 	// surface carries none; the planner never invents one.
@@ -415,6 +416,10 @@ func bindEntityIntent(scene SceneEntityInput, entity EntityOverlayInput, resolve
 	if err != nil {
 		return OverlayIntent{}, false // unknown kind → skip, never invent
 	}
+	payload := IntentPayload{Name: name}
+	if entity.Image != nil && strings.TrimSpace(entity.Image.AssetID) != "" && strings.TrimSpace(entity.Image.SHA256) != "" {
+		payload.AssetRefs = []OverlayAssetRef{{AssetID: entity.Image.AssetID, URL: entity.Image.URL, SHA256: entity.Image.SHA256}}
+	}
 	return OverlayIntent{
 		Version:    OverlayIntentVersion,
 		IntentID:   intentID(scene.SceneID, name),
@@ -427,7 +432,7 @@ func bindEntityIntent(scene SceneEntityInput, entity EntityOverlayInput, resolve
 		},
 		Kind:        string(kind),
 		TemplateID:  entry.Template,
-		Payload:     IntentPayload{Name: name},
+		Payload:     payload,
 		TimingState: TimingStatePending,
 		Source:      IntentSourceEntity,
 	}, true

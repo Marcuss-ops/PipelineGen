@@ -21,14 +21,11 @@
 package stockbuild
 
 import (
-	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"strconv"
 	"time"
-
-	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 )
 
 // ─── Typed Errors (godlike/07) ───────────────────────────────────────────────
@@ -174,36 +171,6 @@ func phaseSpecificInput(phase PhaseName, p Payload) string {
 //
 // godlike/06 SSOT: this is the SOLE place in the codebase that knows
 // the canonical `youtube.stock.build.v1` → handler mapping.
-func RegisterBinding(reg job.MutableJobRegistry, h *Handler) error {
-	if reg == nil {
-		return errors.New("stockbuild: registry is nil")
-	}
-	if h == nil {
-		return errors.New("stockbuild: handler is nil")
-	}
-
-	// 1. RegisterDefinition must precede BindHandler per the registry's
-	// stated ordering (registry.go::BindHandler ErrUnknownJobType contract).
-	if err := reg.RegisterDefinition(Definition()); err != nil {
-		return err
-	}
-
-	// 2. BindHandler — kernel JobHandlerFunc signature wants (ctx, j, payload any)
-	// whereas stockbuild.Handler is typed (ctx, *job.Job, *JobExecutionTools).
-	// The adapter translates the tools.Progress/Event callbacks to the
-	// kernel surface.
-	bound := job.JobHandlerFunc(func(ctx context.Context, j *job.Job, payload any) (result any, err error) {
-		tools := &job.JobExecutionTools{
-			Progress: func(p int, m string) { /* jobkernel surfaces */ },
-			Event:    func(et, m string, d map[string]any) { /* jobkernel surfaces */ },
-		}
-		return h.Handle(ctx, j, tools)
-	})
-	if bindErr := reg.BindHandler(JobType, bound); bindErr != nil {
-		return bindErr
-	}
-	return nil
-}
 
 // ─── internal string helpers (godlike/06 typed surface) ─────────────────────
 

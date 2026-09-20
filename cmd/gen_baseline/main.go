@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite"
+	"github.com/Marcuss-ops/PipelineGen/pkg/atomicwrite"
 	_ "github.com/mattn/go-sqlite3"
 	"go.uber.org/zap"
 )
@@ -143,7 +144,7 @@ func main() {
 	for _, s := range merged {
 		sb.WriteString(rewriteIdempotent(s) + "\n")
 	}
-	if err := os.WriteFile(filepath.Join(targetDir, "000_baseline_267.sql"), []byte(sb.String()), 0644); err != nil {
+	if err := atomicwrite.WriteFile(filepath.Join(targetDir, "000_baseline_267.sql"), []byte(sb.String()), 0644); err != nil {
 		panic(err)
 	}
 	fmt.Printf("Wrote %d merged statements (primary %d, obs %d)\n", len(merged), len(primaryStmts), len(obsStmts))

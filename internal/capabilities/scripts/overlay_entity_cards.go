@@ -201,9 +201,10 @@ func attachEntityCardAsset(item capabilityoverlay.OverlayItem, media *capability
 	item.ImagePresetID = ""
 	item.Text = ""
 	item.Params = nil
-	if item.EntityRef != nil {
-		item.EntityRef.CanonicalEntityID = canonical
+	if item.EntityRef == nil {
+		item.EntityRef = &capabilityoverlay.OverlayEntityRef{}
 	}
+	item.EntityRef.CanonicalEntityID = canonical
 	return item
 }
 

@@ -623,10 +623,6 @@ type errorReturningAggregator struct {
 	err error
 }
 
-func (a *errorReturningAggregator) Search(_ context.Context, _ search.Query) (*search.Result, error) {
-	return nil, a.err
-}
-
 // errTestUnknown is a plain error not matching any sentinel.
 var errTestUnknown = errStr("some unexpected runtime error")
 

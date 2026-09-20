@@ -53,6 +53,7 @@ type VidRushIncrementalCoordinator struct {
 	runID          string
 	latest         map[int]SceneCommitted
 	records        map[int]segmentResultRecord
+	sceneDone      map[int]chan struct{}
 	staleCount     int
 	extractSem     chan struct{}
 	providerSem    chan struct{}
@@ -105,6 +106,7 @@ func NewVidRushIncrementalCoordinatorWithBackpressure(enricher SegmentEnricher, 
 		backpressure:   bp,
 		latest:         make(map[int]SceneCommitted),
 		records:        make(map[int]segmentResultRecord),
+		sceneDone:      make(map[int]chan struct{}),
 		extractSem:     make(chan struct{}, bp.ExtractionLimit),
 		providerSem:    make(chan struct{}, bp.ProviderSearchLimit),
 		materializeSem: make(chan struct{}, bp.MaterializationLimit),
@@ -232,6 +234,12 @@ func (c *VidRushIncrementalCoordinator) OnSceneCommitted(ctx context.Context, ev
 		return fmt.Errorf("vidrush incremental coordinator: scene commit run %q does not match coordinator run %q", event.RunID, c.runID)
 	}
 	c.latest[event.SceneIndex] = event
+	if previous := c.sceneDone[event.SceneIndex]; previous != nil {
+		// Wake waiters for a superseded revision. They will re-check the
+		// revision/text fence and attach themselves to the new channel.
+		close(previous)
+	}
+	c.sceneDone[event.SceneIndex] = make(chan struct{})
 	if !event.ExecutionMode.IsFixedMedia() {
 		c.wg.Add(1)
 	}
@@ -381,6 +389,50 @@ func (c *VidRushIncrementalCoordinator) recordResult(event SceneCommitted, resul
 		textHash: event.TextHash,
 		result:   result,
 		err:      err,
+	}
+	if done := c.sceneDone[event.SceneIndex]; done != nil {
+		close(done)
+		delete(c.sceneDone, event.SceneIndex)
+	}
+}
+
+// WaitForScene waits for exactly one committed scene revision. It is the
+// narrow barrier used by translated NLP in the SceneTextReady coordinator:
+// later languages wait for their own source enrichment instead of holding the
+// whole translated-NLP pass behind the document-wide VidRush barrier.
+func (c *VidRushIncrementalCoordinator) WaitForScene(ctx context.Context, runID string, sceneIndex int) (scriptpkg.VidRushSegmentResult, error) {
+	if runID == "" {
+		return scriptpkg.VidRushSegmentResult{}, fmt.Errorf("vidrush scene barrier: missing run id")
+	}
+	for {
+		c.mu.Lock()
+		if c.runID != "" && c.runID != runID {
+			owner := c.runID
+			c.mu.Unlock()
+			return scriptpkg.VidRushSegmentResult{}, fmt.Errorf("vidrush scene barrier: run %q does not own coordinator (owner %q)", runID, owner)
+		}
+		latest, committed := c.latest[sceneIndex]
+		if !committed {
+			c.mu.Unlock()
+			return scriptpkg.VidRushSegmentResult{}, fmt.Errorf("vidrush scene barrier: scene index %d was not committed", sceneIndex)
+		}
+		if record, ok := c.records[sceneIndex]; ok && record.revision == latest.Revision && record.textHash == latest.TextHash {
+			c.mu.Unlock()
+			if record.err != nil {
+				return scriptpkg.VidRushSegmentResult{}, fmt.Errorf("vidrush scene %q enrichment: %w", latest.SceneID, record.err)
+			}
+			return record.result, nil
+		}
+		done := c.sceneDone[sceneIndex]
+		c.mu.Unlock()
+		if done == nil {
+			return scriptpkg.VidRushSegmentResult{}, fmt.Errorf("vidrush scene barrier: scene index %d has no pending result", sceneIndex)
+		}
+		select {
+		case <-done:
+		case <-ctx.Done():
+			return scriptpkg.VidRushSegmentResult{}, ctx.Err()
+		}
 	}
 }
 

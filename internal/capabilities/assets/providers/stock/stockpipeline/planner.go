@@ -25,10 +25,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	"net/url"
 	"strconv"
 	"strings"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 
 	urlutil "github.com/Marcuss-ops/PipelineGen/pkg/urlutil"
 )
@@ -448,52 +449,3 @@ func (p *explicitPlanner) Plan(_ context.Context, src VideoSource, budgetSec int
 // Backward-compat fallback: when secondsPerSegment is zero, clips
 // whose duration is at least 60 seconds are still expanded into
 // 5-second slices. Shorter explicit clips remain single chunks.
-func ExpandExplicitClipSpecs(clips []ClipSpec, secondsPerSegment int) []ClipSpec {
-	if len(clips) == 0 {
-		return append([]ClipSpec(nil), clips...)
-	}
-	expanded := make([]ClipSpec, 0, len(clips))
-	for _, clip := range clips {
-		stepSec := secondsPerSegment
-		if stepSec <= 0 && clip.EndSec > clip.StartSec {
-			if clip.EndSec-clip.StartSec >= explicitClipAutoSegmentThresholdSec {
-				stepSec = explicitClipAutoSegmentSeconds
-			}
-		}
-		if stepSec <= 0 || clip.EndSec <= clip.StartSec {
-			expanded = append(expanded, clip)
-			continue
-		}
-		step := float64(stepSec)
-		for cursor := clip.StartSec; cursor < clip.EndSec; cursor += step {
-			next := cursor + step
-			if next > clip.EndSec {
-				next = clip.EndSec
-			}
-			child := clip
-			child.ParentSlug = clip.ParentSlug
-			if child.ParentSlug == "" {
-				child.ParentSlug = clip.Slug
-			}
-			child.StartSec = cursor
-			child.EndSec = next
-			if clip.Slug != "" {
-				child.Slug = clip.Slug + "-" + formatTimestampForSlug(cursor, next)
-			}
-			expanded = append(expanded, child)
-		}
-	}
-	return expanded
-}
-
-func formatTimestampForSlug(startSec, endSec float64) string {
-	return formatTimestampSeconds(startSec) + "_to_" + formatTimestampSeconds(endSec)
-}
-
-func formatTimestampSeconds(sec float64) string {
-	total := int(sec)
-	h := total / 3600
-	m := (total % 3600) / 60
-	s := total % 60
-	return strconv.Itoa(h) + "-" + strconv.Itoa(m) + "-" + strconv.Itoa(s)
-}

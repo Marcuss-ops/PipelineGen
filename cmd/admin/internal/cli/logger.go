@@ -64,11 +64,3 @@ func AppLogger() (*config.Config, *zap.Logger, func(), error) {
 //
 // Canonical replacement for the former `productionLogger()` in
 // cmd/admin/logger.go (PR-PKG-SIZE-CMD-ADMIN-1 extraction).
-func ProductionLogger() (*zap.Logger, func(), error) {
-	log, err := zap.NewProduction()
-	if err != nil {
-		return nil, func() {}, err
-	}
-	cleanup := func() { _ = log.Sync() }
-	return log, cleanup, nil
-}

@@ -22,6 +22,7 @@ import (
 	"os"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/models"
+	"github.com/Marcuss-ops/PipelineGen/pkg/atomicwrite"
 )
 
 const generatedPath = "scripts/services/model_registry_generated.py"
@@ -90,7 +91,7 @@ func main() {
 
 	content := render()
 	if *generate {
-		if err := os.WriteFile(generatedPath, content, 0o644); err != nil {
+		if err := atomicwrite.WriteFile(generatedPath, content, 0o644); err != nil {
 			fatal(2, fmt.Errorf("write %s: %w", generatedPath, err))
 		}
 		fmt.Printf("model-registry-gen: regenerated %s\n", generatedPath)

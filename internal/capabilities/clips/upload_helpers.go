@@ -52,13 +52,6 @@ func ExtractDriveFolderID(input string) string {
 }
 
 // CleanFolderName normalizes a folder name for comparison.
-func CleanFolderName(s string) string {
-	s = strings.ToLower(strings.TrimSpace(s))
-	s = strings.ReplaceAll(s, "-", "")
-	s = strings.ReplaceAll(s, "_", "")
-	s = strings.ReplaceAll(s, " ", "")
-	return s
-}
 
 // BuildDriveDescription builds a description string for the Drive file.
 // Pure function: no-op on migration, signature unchanged from the

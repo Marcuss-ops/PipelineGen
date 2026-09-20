@@ -23,8 +23,6 @@
 package audit
 
 import (
-	"encoding/json"
-	"errors"
 	"fmt"
 	"strings"
 
@@ -127,12 +125,6 @@ type ApplyRequest struct {
 
 // MarshalAudit produces a stable JSON encoding of the ApplyRequest so
 // callers can checkpoint apply progress.
-func MarshalAudit(req ApplyRequest) ([]byte, error) {
-	if req.Collection == "" {
-		return nil, errors.New("legacyaudit.MarshalAudit: collection is required")
-	}
-	return json.Marshal(req)
-}
 
 // ValidateAssetIDs returns an error when AssetIDs contains an empty
 // entry. The apply step calls this before any outbox dispatch.

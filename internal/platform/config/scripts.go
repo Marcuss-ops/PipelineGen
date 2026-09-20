@@ -76,6 +76,11 @@ type ScriptsConfig struct {
 	// 0 falls back to that same const at the capability boundary.
 	SeparateItemRenderWorkers int `yaml:"separate_item_render_workers" env:"VELOX_SCRIPTS_SEPARATE_ITEM_RENDER_WORKERS" default:"4"`
 
+	// OverlayPublicationWorkers bounds concurrent Drive/analytics publication
+	// after a certified overlay render. This is an API-I/O budget, not a GPU
+	// budget, and is capped at eight by WithDefaults.
+	OverlayPublicationWorkers int `yaml:"overlay_publication_workers" env:"VELOX_SCRIPTS_OVERLAY_PUBLICATION_WORKERS" default:"6"`
+
 	// MaxInsightEntities caps the number of important words, important phrases,
 	// special names, and artlist phrases extracted per script. Default 12.
 	MaxInsightEntities int `yaml:"max_insight_entities" env:"VELOX_SCRIPTS_MAX_INSIGHT_ENTITIES" default:"12"`
@@ -261,6 +266,12 @@ func (s ScriptsConfig) WithDefaults() ScriptsConfig {
 	// default rather than silently disabling per-item overlay output.
 	if s.SeparateItemRenderWorkers <= 0 {
 		s.SeparateItemRenderWorkers = 4
+	}
+	if s.OverlayPublicationWorkers <= 0 {
+		s.OverlayPublicationWorkers = 6
+	}
+	if s.OverlayPublicationWorkers > 8 {
+		s.OverlayPublicationWorkers = 8
 	}
 	// TTSConcurrency is intentionally not defaulted here: 0 means "defer to
 	// the voiceover provider bound", resolved at the capability wiring

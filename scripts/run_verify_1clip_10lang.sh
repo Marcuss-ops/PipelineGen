@@ -66,24 +66,39 @@ while :; do
       # The acceptance facts: ten languages, one render per language, each with
       # the language it was asked for, a real content-addressed asset id, and a
       # destination folder that is DIFFERENT per language.
-      jq '{
-        job_id: (.id // .job.id),
-        status: (.status // .job.status),
-        total_wall_ms: .timing.wall_ms,
-        documents: (.result.data.result.documents // .result.documents),
-        render_metrics: (.result.data.result.render_metrics // .result.render_metrics),
-        localized_render_failures: (.result.data.result.localized_render_failures // .result.localized_render_failures),
-        renders_by_language: ((.result.data.result.localized_renders // .result.localized_renders // [])
-          | group_by(.language)
-          | map({
-              language: .[0].language,
-              renders: length,
-              folders: ([.[].drive_folder_id] | unique),
-              clips: [.[].clip_id],
-              asset_ids: [.[].asset_id],
-              drive_links: [.[].drive_link]
-            }))
-      }' "$BODY.poll"
+      jq '
+        def result_payload: (.result.result // .result.data.result // .result);
+        def render_groups:
+          ([{
+            language: (result_payload.overlay_plan.language // .job.payload.items[0].language // "source"),
+            items: (result_payload.overlay_render.items // [])
+          }]
+          + ([result_payload.localized_overlay_renders // {} | to_entries[] |
+              {language: .key, items: (.value.items // [])} ]));
+        {
+          job_id: (.id // .job.id),
+          status: (.status // .job.status),
+          total_wall_ms: .timing.wall_ms,
+          attributed_ms: .timing.attributed_ms,
+          unattributed_ms: .timing.unattributed_ms,
+          critical_path: .timing.critical_path,
+          stages: .timing.stages,
+          documents: (result_payload.documents // null),
+          render_metrics: (result_payload.render_metrics // result_payload.overlay_render.metrics // null),
+          localized_render_failures: (result_payload.localized_render_failures // []),
+          renders_by_language: (render_groups | map({
+            language,
+            renders: ([.items[] | select(.status == "COMPLETED")] | length),
+            planned_items: (.items | length),
+            folders: ([.items[].artifact.drive_folder_id] | unique),
+            valid_sha256: ([.items[].artifact.sha256 | select(type == "string" and test("^[0-9a-f]{64}$"))] | length),
+            timing_preserved: ([.items[].artifact.metrics.chronon_timing_preserved | select(. == 1)] | length),
+            receipt_verified: ([.items[].artifact.metrics.chronon_receipt_verification_status | select(. == 1)] | length)
+          })),
+          total_render_items: ([render_groups[].items[]] | length),
+          total_valid_sha256: ([render_groups[].items[].artifact.sha256 | select(type == "string" and test("^[0-9a-f]{64}$"))] | length)
+        }
+      ' "$BODY.poll"
       echo
       echo "Check: every language must report exactly 1 render, exactly 1 folder,"
       echo "and no two languages may share a folder."

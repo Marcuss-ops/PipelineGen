@@ -20,17 +20,6 @@ func (c *Config) RenderSystemPrompt(language, tone string) string {
 }
 
 // RenderDescription renders the description generation prompt.
-func (c *Config) RenderDescription(mediaType, prompt, style string) (system, user string, err error) {
-	if c == nil {
-		return "", "", fmt.Errorf("prompts config not initialized")
-	}
-	user, err = render(c.Description.User, map[string]any{
-		"MediaType": mediaType,
-		"Prompt":    prompt,
-		"Style":     style,
-	})
-	return c.Description.System, user, err
-}
 
 // RenderVisualPrompt renders the visual prompt generation prompt.
 func (c *Config) RenderVisualPrompt(text, topic, style string) (system, user string, err error) {

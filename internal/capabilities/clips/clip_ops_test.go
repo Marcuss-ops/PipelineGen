@@ -11,9 +11,9 @@ package clips
 
 import (
 	"context"
-	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
-	"io"
 	"testing"
+
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
@@ -104,39 +104,7 @@ func (r *testVoiceoverRepo) Upsert(_ context.Context, _ *ClipVoiceoverRecordDTO)
 
 type testImagesRepo struct{ images []*detail.ImageAsset }
 
-func (r *testImagesRepo) ListAll(_ context.Context) ([]*detail.ImageAsset, error) {
-	if r == nil {
-		return nil, nil
-	}
-	return r.images, nil
-}
-
 type testDriveUploader struct{ md5ByFileID map[string]string }
-
-func (d *testDriveUploader) GetOrCreateFolder(_ context.Context, _, _ string) (string, error) {
-	return "", nil
-}
-func (d *testDriveUploader) GetFolderName(_ context.Context, _ string) (string, error) {
-	return "", nil
-}
-func (d *testDriveUploader) TrashFolder(_ context.Context, _ string) error  { return nil }
-func (d *testDriveUploader) DeleteFolder(_ context.Context, _ string) error { return nil }
-func (d *testDriveUploader) DownloadFile(_ context.Context, _ string) (io.ReadCloser, string, error) {
-	return nil, "", nil
-}
-func (d *testDriveUploader) GetFileMD5(_ context.Context, fileID string) (string, error) {
-	if d == nil || d.md5ByFileID == nil {
-		return "", nil
-	}
-	return d.md5ByFileID[fileID], nil
-}
-func (d *testDriveUploader) GetFileMeta(_ context.Context, _ string) (*ClipDriveFileMetaDTO, error) {
-	return &ClipDriveFileMetaDTO{}, nil
-}
-func (d *testDriveUploader) TrashFile(_ context.Context, _ string) error { return nil }
-func (d *testDriveUploader) ListFiles(_ context.Context, _ string) ([]ClipDriveFileDTO, error) {
-	return nil, nil
-}
 
 type testJobsPort struct {
 	enqueued []JobsEnqueueRequest

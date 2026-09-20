@@ -45,9 +45,6 @@ type MonitoredSourceRow struct {
 }
 
 // TableName returns the database table name for MonitoredSourceRow.
-func (MonitoredSourceRow) TableName() string {
-	return "monitored_sources"
-}
 
 // FromDomain converts the domain projection to the SQLite row type. The
 // conversion is field-by-field (no JSON serialisation step) because both
@@ -106,16 +103,6 @@ func (r *MonitoredSourceRow) ToDomain() *asset.MonitoredSource {
 
 // FromMonitoredSourceDomainList maps a slice of domain items to a slice of
 // rows. Nil/empty input produces nil/empty output without surprises.
-func FromMonitoredSourceDomainList(src []*asset.MonitoredSource) []*MonitoredSourceRow {
-	if len(src) == 0 {
-		return nil
-	}
-	out := make([]*MonitoredSourceRow, 0, len(src))
-	for _, s := range src {
-		out = append(out, FromMonitoredSourceDomain(s))
-	}
-	return out
-}
 
 // ToMonitoredSourceDomainList maps a slice of infra rows to a slice of
 // domain projections. Implemented as a free function (not a method on

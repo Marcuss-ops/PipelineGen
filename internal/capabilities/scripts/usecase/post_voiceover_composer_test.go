@@ -319,9 +319,3 @@ func TestStaticRefBindingResolver_Succeeds(t *testing.T) {
 // Sanity: the test file itself does not set ParentFolderID.
 
 // firstN returns the first n bytes of b (or the whole string if shorter).
-func firstN(b []byte, n int) string {
-	if len(b) < n {
-		return string(b)
-	}
-	return string(b[:n])
-}

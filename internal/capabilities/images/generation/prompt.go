@@ -3,7 +3,6 @@ package generation
 import (
 	"context"
 	"regexp"
-	"strings"
 
 	imagestyles "github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/styles"
 )
@@ -96,27 +95,4 @@ type ComposeResult struct {
 	ComposedLen   int
 	StyleAffix    string
 	NegativeAffix string
-}
-
-func ComposePrompt(prompt, style, negativePrompt string) ComposeResult {
-	r := ComposeResult{OriginalLen: len(prompt), WasCompressed: false}
-	var b strings.Builder
-	b.Grow(len(prompt) + len(style) + len(negativePrompt) + 64)
-	b.WriteString(prompt)
-	if style != "" {
-		r.StyleAffix = " [style: " + style + "]"
-		b.WriteString(r.StyleAffix)
-	}
-	if negativePrompt != "" {
-		parts := strings.FieldsFunc(negativePrompt, func(r rune) bool { return r == ',' || r == ';' })
-		for i := range parts {
-			parts[i] = strings.TrimSpace(parts[i])
-		}
-		normalized := strings.Join(parts, ";")
-		r.NegativeAffix = " [negative: do not include " + normalized + "]"
-		b.WriteString(r.NegativeAffix)
-	}
-	r.Composed = b.String()
-	r.ComposedLen = len(r.Composed)
-	return r
 }

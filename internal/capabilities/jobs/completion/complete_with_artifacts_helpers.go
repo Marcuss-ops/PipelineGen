@@ -51,13 +51,6 @@ func (s *WithArtifactsService) lookupInTxCanonicalResponse(
 // (canonical response builder) MUST NOT mint or substitute a
 // different identifier (godlike/06 SSOT: the catalog is the
 // caller's contract).
-func deriveJobAssetIDsFromMappings(req *remote.CompleteWithArtifactsRequest, artifactIDs []string) []string {
-	out := make([]string, len(artifactIDs))
-	for i, id := range artifactIDs {
-		out[i] = req.AssetMappings[id] // empty string if absent
-	}
-	return out
-}
 
 // buildArtifactMapEntriesForArtifacts converts the request's
 // []*finalization.PublishedArtifact (positional argument) into
@@ -68,21 +61,6 @@ func deriveJobAssetIDsFromMappings(req *remote.CompleteWithArtifactsRequest, art
 // Naming: ForArtifacts suffix to make the artifact-aware variant
 // visually distinct at call sites (does NOT collide with C7's
 // lowercase artifactMapEntries helper).
-func buildArtifactMapEntriesForArtifacts(published []*finalization.PublishedArtifact) []ArtifactMapEntry {
-	out := make([]ArtifactMapEntry, 0, len(published))
-	for _, pa := range published {
-		if pa == nil {
-			continue
-		}
-		out = append(out, ArtifactMapEntry{
-			ArtifactID:    pa.ArtifactID,
-			SHA256:        pa.SHA256,
-			RemoteAssetID: pa.Location.FileID,
-			Status:        string(pa.Location.Action),
-		})
-	}
-	return out
-}
 
 // checkArtifactHashRoundTripForArtifacts enforces godlike/07
 // no-fake-availability on the artifact hashes: if a prior
@@ -96,27 +74,6 @@ func buildArtifactMapEntriesForArtifacts(published []*finalization.PublishedArti
 // []job.RemoteArtifact). The two helpers do not share a
 // signature and exist for distinct receiver surfaces — the
 // suffix documents the artifact-aware variant.
-func checkArtifactHashRoundTripForArtifacts(
-	published []*finalization.PublishedArtifact,
-	prior map[string]PriorArtifactHash,
-) ([]string, error) {
-	out := make([]string, 0, len(published))
-	for _, pa := range published {
-		if pa == nil {
-			continue
-		}
-		out = append(out, pa.ArtifactID)
-		p, ok := prior[pa.ArtifactID]
-		if !ok {
-			continue
-		}
-		if p.SHA256 != pa.SHA256 {
-			return out, fmt.Errorf("%w: artifact[%s] prior_sha256=%q new_sha256=%q",
-				remote.ErrRemoteArtifactHashMismatch, pa.ArtifactID, p.SHA256, pa.SHA256)
-		}
-	}
-	return out, nil
-}
 
 // emitArtifactOutboxEvents fans out canonical outbox events
 // for the completed job with artifacts. Mirrors the C7
@@ -209,6 +166,53 @@ func (s *WithArtifactsService) deriveAssetLocationEntries(
 // the typed asset.LocationKind enum. Unknown providers
 // fallback to LocationKindLocal so the typed enum is always set
 // (godlike/07 no-fake-availability on the typed column).
+
+func deriveJobAssetIDsFromMappings(req *remote.CompleteWithArtifactsRequest, artifactIDs []string) []string {
+	out := make([]string, len(artifactIDs))
+	for i, id := range artifactIDs {
+		out[i] = req.AssetMappings[id] // empty string if absent
+	}
+	return out
+}
+
+func buildArtifactMapEntriesForArtifacts(published []*finalization.PublishedArtifact) []ArtifactMapEntry {
+	out := make([]ArtifactMapEntry, 0, len(published))
+	for _, pa := range published {
+		if pa == nil {
+			continue
+		}
+		out = append(out, ArtifactMapEntry{
+			ArtifactID:    pa.ArtifactID,
+			SHA256:        pa.SHA256,
+			RemoteAssetID: pa.Location.FileID,
+			Status:        string(pa.Location.Action),
+		})
+	}
+	return out
+}
+
+func checkArtifactHashRoundTripForArtifacts(
+	published []*finalization.PublishedArtifact,
+	prior map[string]PriorArtifactHash,
+) ([]string, error) {
+	out := make([]string, 0, len(published))
+	for _, pa := range published {
+		if pa == nil {
+			continue
+		}
+		out = append(out, pa.ArtifactID)
+		p, ok := prior[pa.ArtifactID]
+		if !ok {
+			continue
+		}
+		if p.SHA256 != pa.SHA256 {
+			return out, fmt.Errorf("%w: artifact[%s] prior_sha256=%q new_sha256=%q",
+				remote.ErrRemoteArtifactHashMismatch, pa.ArtifactID, p.SHA256, pa.SHA256)
+		}
+	}
+	return out, nil
+}
+
 func locationKindFromProvider(provider string) asset.LocationKind {
 	switch strings.ToLower(strings.TrimSpace(provider)) {
 	case "drive":

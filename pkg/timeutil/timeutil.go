@@ -11,9 +11,6 @@ import "time"
 
 // Now returns the current time in UTC. Centralizing this makes it possible
 // to inject a clock in tests without monkey-patching time.Now.
-func Now() time.Time {
-	return time.Now().UTC()
-}
 
 // ParseRFC3339 parses an RFC3339 timestamp string into a time.Time.
 // Returns the zero time.Time on empty input or parse error.

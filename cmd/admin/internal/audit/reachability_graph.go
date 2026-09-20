@@ -42,6 +42,7 @@ import (
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/cmd/admin/internal/cli"
+	"github.com/Marcuss-ops/PipelineGen/pkg/atomicwrite"
 )
 
 // ── Ownership model types ───────────────────────────────────────────────
@@ -305,7 +306,7 @@ func RunReachabilityGraph(args []string) error {
 	}
 
 	if *reportPath != "" {
-		if err := os.WriteFile(*reportPath, append(payload, '\n'), 0o644); err != nil {
+		if err := atomicwrite.WriteFile(*reportPath, append(payload, '\n'), 0o644); err != nil {
 			return fmt.Errorf("write report: %w", err)
 		}
 		fmt.Printf("reachability-graph: report written to %s\n", *reportPath)

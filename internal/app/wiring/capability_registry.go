@@ -28,18 +28,6 @@ func registerCapabilities(reg *module.Registry, provReg *providers.Registry, dep
 	return registrywiring.RegisterCapabilities(reg, provReg, deps, registrywiring.ValidateRuntimeGraph)
 }
 
-func registerHTTPModules(reg *module.Registry, mods []TrackedHTTPModule) error {
-	return registrywiring.RegisterHTTPModules(reg, mods)
-}
-
-func registerProviders(provReg *providers.Registry, entries []TrackedProviderEntry) error {
-	return registrywiring.RegisterProviders(provReg, entries)
-}
-
-func registerProviderDescriptors(provReg *providers.Registry, descriptors []module.DescriptorProviders) error {
-	return registrywiring.RegisterProviderDescriptors(provReg, descriptors)
-}
-
 func WithRegistrationPoint(point string) strictOption {
 	return registrywiring.WithRegistrationPoint(point)
 }

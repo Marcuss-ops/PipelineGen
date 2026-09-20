@@ -115,12 +115,6 @@ type Result struct {
 
 // AddWarning appends a non-fatal warning. Safe to call on a nil receiver
 // (no-op) so callers can chain without nil checks.
-func (r *Result) AddWarning(msg string) {
-	if r == nil {
-		return
-	}
-	r.Warnings = append(r.Warnings, msg)
-}
 
 // VoiceoverResult is the canonical typed alias of Result, introduced to fix
 // the undefined: domain.VoiceoverResult build break at services.go:97 per

@@ -11,11 +11,13 @@ package scriptgeneration
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	capabilityaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
+	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
 	"go.uber.org/zap"
 )
 
@@ -498,4 +500,93 @@ func (e *executionRun) complete() {
 		e.r.checkpoint(e.ctx, e.runID, e.result)
 	}
 	e.r.completeRun(e.ctx, e.runID, e.result)
+}
+
+// processFixedDisplayText translates fixed-media display text into every
+// target language. Fixed media never enters TTS/narration, but its display
+// text remains a subtitle surface for localized renders.
+func (c *sceneReadyCoordinator) processFixedDisplayText(out Scene) (Scene, error) {
+	if !out.ExecutionMode.AllowsDisplayTextTranslation() {
+		return out, nil
+	}
+	if out.Text == nil {
+		out.Text = make(map[Language]string)
+	}
+	sourceText := strings.TrimSpace(out.Text[c.req.SourceLanguage])
+	if sourceText == "" {
+		return out, nil
+	}
+	langs := make([]Language, 0, len(c.req.Languages))
+	seen := map[Language]bool{}
+	for _, lang := range c.req.Languages {
+		if lang == "" || lang == c.req.SourceLanguage || seen[lang] {
+			continue
+		}
+		seen[lang] = true
+		if out.Text[lang] != "" {
+			continue
+		}
+		langs = append(langs, lang)
+	}
+	work := make([]sceneLanguageWork, 0, len(langs))
+	for _, lang := range langs {
+		work = append(work, sceneLanguageWork{lang: lang, needsTranslation: true})
+	}
+	outcomes, err := concurrent.Map(c.ctx, work, c.translationSlots.Cap(), func(ctx context.Context, itemIdx int, item sceneLanguageWork) (sceneLanguageOutcome, error) {
+		translated, err := c.translateLanguage(ctx, itemIdx, out.ID, item.lang, sourceText)
+		if err != nil {
+			return sceneLanguageOutcome{}, err
+		}
+		return sceneLanguageOutcome{lang: item.lang, text: translated, translated: true}, nil
+	})
+	if err != nil {
+		return Scene{}, err
+	}
+	for _, res := range outcomes {
+		if res.translated {
+			out.Text[res.lang] = res.text
+		}
+	}
+	for _, res := range outcomes {
+		if !res.translated {
+			continue
+		}
+		if err := c.runner.recordArtifactOperation(c.ctx, c.exec, ArtifactOperation{
+			OperationID: artifactOperationID(c.exec.Attempt, OperationTranslation, out.ID, string(res.lang)),
+			Kind:        OperationTranslation,
+			SceneID:     out.ID,
+			Language:    res.lang,
+			Status:      "COMPLETED",
+		}); err != nil {
+			return Scene{}, err
+		}
+	}
+	c.mu.Lock()
+	c.transCalls += len(outcomes)
+	c.mu.Unlock()
+	return out, nil
+}
+
+// sceneTextPathReason names why a run took the streaming or batch scene-text
+// path. The runner owns the decision; this keeps the observability reason
+// independent from the coordinator implementation.
+func sceneTextPathReason(req GenerateRequest, streamed, topologyNeedsMaterialization bool, gen TextGenerator) string {
+	switch {
+	case streamed:
+		return "streamed"
+	case req.ScriptParams.SourceTextVerbatim:
+		return "batch_source_text_verbatim"
+	case len(req.MediaPlan.Extraction.ImportantPhrases) > 0:
+		return "batch_important_phrase_hints"
+	case req.Intro != nil || req.Outro != nil:
+		return "batch_intro_outro"
+	case topologyNeedsMaterialization:
+		return "batch_segment_topology"
+	case req.Source.Type == SourceClips && !SceneStreamingEligibility(req):
+		return "batch_source_clips_ineligible"
+	}
+	if _, ok := gen.(SceneTextStreamer); !ok {
+		return "batch_generator_not_streamable"
+	}
+	return "batch_reason_unclassified"
 }

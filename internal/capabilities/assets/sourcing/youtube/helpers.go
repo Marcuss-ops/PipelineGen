@@ -13,7 +13,6 @@
 package youtube
 
 import (
-	"fmt"
 	"strings"
 
 	domain "github.com/Marcuss-ops/PipelineGen/internal/capabilities/sourcing"
@@ -22,49 +21,9 @@ import (
 // ExtractVideoIDFromURL pulls the YouTube video ID from a raw URL.
 // Supports youtube.com/watch?v=ID and youtu.be/ID formats. Returns "" when
 // the URL is not a recognisable YouTube link.
-func ExtractVideoIDFromURL(rawURL string) string {
-	for _, part := range strings.Split(rawURL, "&") {
-		if strings.HasPrefix(part, "v=") || strings.Contains(part, "?v=") {
-			if idx := strings.Index(part, "v="); idx != -1 {
-				id := part[idx+2:]
-				if len(id) > 11 {
-					id = id[:11]
-				}
-				return id
-			}
-		}
-	}
-	if idx := strings.LastIndex(rawURL, "youtu.be/"); idx != -1 {
-		rest := rawURL[idx+len("youtu.be/"):]
-		if end := strings.IndexAny(rest, "?&#"); end != -1 {
-			rest = rest[:end]
-		}
-		return rest
-	}
-	return ""
-}
 
 // ExtractURLParam parses a numeric ?key=value (or &key=value) parameter
 // from rawURL. Returns 0 when the param is absent or non-numeric.
-func ExtractURLParam(rawURL, key string) float64 {
-	prefixes := []string{"&" + key + "=", "?" + key + "="}
-	for _, pfx := range prefixes {
-		if idx := strings.Index(rawURL, pfx); idx != -1 {
-			rest := rawURL[idx+len(pfx):]
-			for i, c := range rest {
-				if c == '&' || c == '?' || c == '#' {
-					rest = rest[:i]
-					break
-				}
-			}
-			var v float64
-			if _, err := fmt.Sscanf(rest, "%f", &v); err == nil {
-				return v
-			}
-		}
-	}
-	return 0
-}
 
 // BuildRelatedClipsQuery composes a provider-search query for related
 // clips (best-effort, called only when EnrichmentPort.SearchRelated is wired).
@@ -121,9 +80,6 @@ func BuildDriveDescription(name, reqDesc, fetchedDesc string, tags []string, cat
 
 // CleanFolderName normalizes a Drive folder name for case-insensitive comparison
 // (Drive's folder match is case-folded per Google Drive API).
-func CleanFolderName(name string) string {
-	return strings.TrimSpace(strings.ToLower(name))
-}
 
 // IndexStatus renders the indexing-status typed-enum for the
 // RegisterClipResult. §12-5 EXPAND phase (godlike/06 SSOT migration):

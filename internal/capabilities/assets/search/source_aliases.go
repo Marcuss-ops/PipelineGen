@@ -117,20 +117,17 @@ func (r *AliasRegistry) CanonicalizeSources(in []string) []string {
 // canonical name (idempotent re-registration to the same canonical
 // returns true).
 func (r *AliasRegistry) RegisterSourceAlias(alias, canonical string) bool {
+	alias = strings.ToLower(strings.TrimSpace(alias))
+	canonical = strings.ToLower(strings.TrimSpace(canonical))
 	if alias == "" || canonical == "" {
-		return false
-	}
-	aliasLower := strings.ToLower(alias)
-	canonicalLower := strings.ToLower(canonical)
-	if aliasLower == "" || canonicalLower == "" {
 		return false
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	if existing, ok := r.alias[aliasLower]; ok && existing != canonicalLower {
+	if existing, ok := r.alias[alias]; ok && existing != canonical {
 		return false
 	}
-	r.alias[aliasLower] = canonicalLower
+	r.alias[alias] = canonical
 	return true
 }
 
@@ -161,13 +158,12 @@ var (
 // used by BackendRegistry.Eligible for caller-supplied source
 // names. Intended for tests; production code does not call it.
 func SetDefaultAliasRegistry(r *AliasRegistry) {
-	defaultAliasMu.Lock()
-	defer defaultAliasMu.Unlock()
 	if r == nil {
-		defaultSourceAliases = NewAliasRegistry()
 		return
 	}
+	defaultAliasMu.Lock()
 	defaultSourceAliases = r
+	defaultAliasMu.Unlock()
 }
 
 // ResolveCanonical applies the default registry's

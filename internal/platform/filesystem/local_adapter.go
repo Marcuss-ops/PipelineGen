@@ -25,8 +25,6 @@ package filesystem
 import (
 	"io"
 	"os"
-	"path/filepath"
-	"strings"
 )
 
 // Conformance note: *LocalAdapter satisfies stockpipeline.LocalFSPort
@@ -74,32 +72,13 @@ type TempDirFS struct {
 // NewTempDirFS returns a TempDirFS scoped to rootDir. The caller is
 // responsible for creating and cleaning up the directory.
 // Typical test usage: filesystem.NewTempDirFS(t.TempDir()).
-func NewTempDirFS(rootDir string) *TempDirFS {
-	return &TempDirFS{rootDir: rootDir}
-}
-
-func (t *TempDirFS) resolve(name string) string {
-	// Strip leading / so filepath.Join doesn't treat it as absolute
-	// and ignore rootDir (Join("/tmp/test", "/etc/passwd") = "/etc/passwd").
-	name = strings.TrimPrefix(name, "/")
-	return filepath.Join(t.rootDir, name)
-}
 
 // Stat returns the FileInfo for the named file within rootDir.
-func (t *TempDirFS) Stat(name string) (os.FileInfo, error) {
-	return os.Stat(t.resolve(name))
-}
 
 // Open opens the named file for reading within rootDir.
-func (t *TempDirFS) Open(name string) (io.ReadCloser, error) {
-	return os.Open(t.resolve(name))
-}
 
 // Create creates or truncates the named file within rootDir.
 // Matches LocalAdapter.Create behavior — does NOT create parent directories.
-func (t *TempDirFS) Create(name string) (io.WriteCloser, error) {
-	return os.Create(t.resolve(name))
-}
 
 // Stat returns the FileInfo for the named file. Thin pass-through to
 // os.Stat. godlike/07 typed-error: the underlying os error is

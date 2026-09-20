@@ -76,9 +76,6 @@ func (p *ImageProcessor) Name() adapters.ProcessorName { return adapters.Process
 // registered policy via a future PR (per PR 2 spec: "images =
 // configurabile"). The plan arg is accepted for interface uniformity
 // but ignored — images are unconditionally best-effort for now.
-func (p *ImageProcessor) Policy(_ *scriptpkg.ResolvedGenerationPlan) adapters.ProcessorPolicy {
-	return adapters.ProcessorBestEffort
-}
 
 // Process generates per-scene images. PR 9 contract: scenes come
 // directly from engineResult.Output.SpecScene.Scenes (validated by

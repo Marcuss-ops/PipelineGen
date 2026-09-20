@@ -9,6 +9,6 @@ import (
 	"go.uber.org/zap"
 )
 
-func NewArtifactCache(cfg *config.Config, db *sql.DB, log *zap.Logger) (*platformcache.Cache, error) {
-	return assetswiring.NewArtifactCache(cfg, db, log)
+func NewArtifactCache(cfg *config.Config, cacheDB, contentDB *sql.DB, log *zap.Logger) (*platformcache.Cache, error) {
+	return assetswiring.NewArtifactCache(cfg, cacheDB, contentDB, log)
 }

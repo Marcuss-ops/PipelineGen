@@ -325,31 +325,6 @@ func resolveJobsMigrationsDir() string {
 // Health runs `PRAGMA quick_check` on BOTH databases. Returns the
 // first error encountered (primary first, then observability) so the
 // caller can log a structured failure.
-func (s *DatabaseSet) Health(ctx context.Context) error {
-	if s.closed.Load() {
-		return fmt.Errorf("databaseset: already closed")
-	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	if err := quickCheck(ctx, s.Primary.DB); err != nil {
-		return fmt.Errorf("databaseset: primary health: %w", err)
-	}
-	if err := quickCheck(ctx, s.Observability.DB); err != nil {
-		return fmt.Errorf("databaseset: observability health: %w", err)
-	}
-	if s.Cache != nil {
-		if err := quickCheck(ctx, s.Cache.DB); err != nil {
-			return fmt.Errorf("databaseset: cache health: %w", err)
-		}
-	}
-	if s.Jobs != nil {
-		if err := quickCheck(ctx, s.Jobs.DB); err != nil {
-			return fmt.Errorf("databaseset: jobs health: %w", err)
-		}
-	}
-	return nil
-}
 
 // PlaneHealth is the independent health result for one storage plane. A
 // degraded cache or observability plane is reported without masking the
@@ -435,7 +410,6 @@ func (s *DatabaseSet) Close() error {
 }
 
 // Config returns the resolved StorageConfig the set was opened with.
-func (s *DatabaseSet) Config() StorageConfig { return s.cfg }
 
 // PrimaryPath returns the absolute filesystem path to the primary DB.
 func (s *DatabaseSet) PrimaryPath() string {

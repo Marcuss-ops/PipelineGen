@@ -88,12 +88,6 @@ func (f *filterSpyBackend) Search(ctx context.Context, q Query) ([]Candidate, er
 	return f.returnItems, f.returnErr
 }
 
-func (f *filterSpyBackend) snapshot() (Filters, Query, int) {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	return f.lastFilters, f.lastQuery, f.searchCalls
-}
-
 // TestFilterUniformContract is the canonical harness. Three stub
 // backends register against a fresh BackendRegistry; a single fully-
 // populated Query runs through the Aggregator fan-out; each backend's

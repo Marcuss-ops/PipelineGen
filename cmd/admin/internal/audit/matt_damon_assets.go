@@ -35,6 +35,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/cmd/admin/internal/cli"
 	entitycatalog "github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/entitycatalog"
 	storage "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite"
+	"github.com/Marcuss-ops/PipelineGen/pkg/atomicwrite"
 )
 
 const (
@@ -139,7 +140,7 @@ func RunMattDamonAssetsAudit(args []string) error {
 		return fmt.Errorf("audit-matt-damon-assets: marshal report: %w", err)
 	}
 	if *reportPath != "" {
-		if err := os.WriteFile(*reportPath, append(payload, '\n'), 0o644); err != nil {
+		if err := atomicwrite.WriteFile(*reportPath, append(payload, '\n'), 0o644); err != nil {
 			return fmt.Errorf("audit-matt-damon-assets: write report: %w", err)
 		}
 		fmt.Printf("audit-matt-damon-assets: report written to %s\n", *reportPath)

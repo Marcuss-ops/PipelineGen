@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"path/filepath"
 	"strings"
-	"time"
 	"unicode"
 )
 
@@ -36,13 +35,6 @@ func SafeFolderName(name string) string {
 
 // BuildTimestampedSlug builds a deterministic, timestamp-prefixed slug for
 // new media files (name + extension).
-func BuildTimestampedSlug(name, ext string) string {
-	base := SafeFolderName(name)
-	if ext != "" && !strings.HasPrefix(ext, ".") {
-		ext = "." + ext
-	}
-	return fmt.Sprintf("%s-%s%s", time.Now().UTC().Format("20060102-150405"), base, ext)
-}
 
 func SanitizeSubfolderSegment(name string) (string, error) {
 	name = strings.TrimSpace(name)

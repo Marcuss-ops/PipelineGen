@@ -26,6 +26,7 @@ SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 readonly SERVICE="pipelinegen.service"
 readonly DEFAULT_BASE_URL="http://127.0.0.1:8000"
 readonly DEFAULT_READY_TIMEOUT="60"
+readonly READY_PROBE_TIMEOUT="15"
 readonly DEFAULT_RESTART_TIMEOUT="30"
 readonly DEFAULT_LOG_LINES="80"
 readonly CANARY_PATH="/api/drive/canary-upload"
@@ -119,7 +120,7 @@ check_ready() {
             --silent \
             --output /dev/null \
             --write-out '%{http_code}' \
-            --max-time 5 \
+            --max-time "$READY_PROBE_TIMEOUT" \
             "$ready_url" 2>/dev/null || true)"
         if [[ "$code" == "200" ]]; then
             log '/ready returned HTTP 200'

@@ -3,6 +3,7 @@ package media
 import (
 	"encoding/json"
 	"fmt"
+
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 )
 
@@ -331,23 +332,8 @@ type CompositionContract struct {
 
 // DefaultCompositionContract returns the canonical composition contract
 // for an assembly-ready clip: watermark applied, subtitles burned, no overlay.
-func DefaultCompositionContract() CompositionContract {
-	return CompositionContract{
-		WatermarkApplied: true,
-		SubtitlesBurned:  true,
-		OverlayApplied:   false,
-		SlowZoom:         false,
-		ScaleMode:        "cover",
-	}
-}
 
 // Validate checks the composition fields are populated with valid values.
-func (c CompositionContract) Validate() error {
-	if c.ScaleMode != "" && c.ScaleMode != "cover" && c.ScaleMode != "contain" && c.ScaleMode != "fill" && c.ScaleMode != "none" {
-		return fmt.Errorf("composition scale_mode %q not in {cover, contain, fill, none}", c.ScaleMode)
-	}
-	return nil
-}
 
 // StreamSignatureFromProbe builds the actual signature from a probed output.
 // It is the canonical "probe → signature" derivation consumed by the

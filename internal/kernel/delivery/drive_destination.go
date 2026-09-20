@@ -266,7 +266,6 @@ func sanitizedFolderName(s string) string {
 
 // FirstSanitizedQuery is the exported entry point for the canonical
 // first-non-empty-sanitized-query helper.
-func FirstSanitizedQuery(queries []string) string { return firstSanitizedQuery(queries) }
 
 // firstSanitizedQuery returns the first non-empty sanitized search
 // query from queries. Returns "" if none survive.
@@ -281,7 +280,6 @@ func firstSanitizedQuery(queries []string) string {
 
 // FirstSanitizedURLBasename is the exported entry point for the canonical
 // first-non-empty-sanitized-URL-basename helper.
-func FirstSanitizedURLBasename(urls []string) string { return firstSanitizedURLBasename(urls) }
 
 // firstSanitizedURLBasename returns the first non-empty sanitized
 // URL basename (sans file extension) from urls. Returns "" if none survive.
@@ -296,7 +294,6 @@ func firstSanitizedURLBasename(urls []string) string {
 
 // SanitizedURLBasename is the exported entry point for the canonical
 // URL-basename sanitization helper.
-func SanitizedURLBasename(rawURL string) string { return sanitizedURLBasename(rawURL) }
 
 // sanitizedURLBasename strips query + fragment layers from a raw URL,
 // takes the URL path's Base, strips the file extension, then runs

@@ -219,18 +219,3 @@ func TestPromptComposer_StyleProvenance(t *testing.T) {
 
 // checkSubstringCount returns the number of non-overlapping occurrences
 // of `sub` in `s`. Used to lock the non-double-application guarantee.
-func checkSubstringCount(s, sub string) int {
-	if sub == "" {
-		return 0
-	}
-	count := 0
-	for i := 0; i+len(sub) <= len(s); {
-		if s[i:i+len(sub)] == sub {
-			count++
-			i += len(sub)
-			continue
-		}
-		i++
-	}
-	return count
-}

@@ -18,6 +18,7 @@ package usecase
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"sync"
@@ -103,10 +104,9 @@ func (s *ExtractionService) extractFanOut(
 			}()
 			sem <- struct{}{}
 			defer func() { <-sem }()
-			cmd := buildSegmentCommand(req, seg, i, videoID, outDir, driveFolderID, driveFolderPath, keepAudio)
+			cmd := buildSegmentCommand(req, seg, i, videoID, outDir, driveFolderID, driveFolderPath, subtitleFolderID, keepAudio)
 			cmd.PreDownloadedPath = preDownloadedPath
 			cmd.SourceFacts = sourceFacts
-			cmd.SubtitleFolderID = subtitleFolderID
 			res, execErr := s.processSeg.Execute(ctx, cmd)
 			if execErr != nil {
 				res = failedFanOutResult(res, seg, i, driveFolderID, driveFolderPath, execErr)
@@ -128,15 +128,20 @@ func (s *ExtractionService) extractFanOut(
 }
 
 // buildSegmentCommand constructs the ProcessSegmentCommand envelope from
-// the inbound ExtractRequest + one segment + the resolved destination +
-// keepAudio flag. The 13-field struct literal mirrors the prior god-
-// service inline assignment exactly (PR-GODOBJ-1 must NOT change wire
-// behaviour; only split).
+// the inbound ExtractRequest + one segment + the resolved destination,
+// the pre-resolved subtitle folder id, and the keepAudio flag. The
+// struct literal mirrors the prior god-service inline assignment exactly
+// (PR-GODOBJ-1 must NOT change wire behaviour; only split).
+//
+// godlike/06 SSOT: SubtitleFolderID is a build-time input resolved ONCE
+// by the orchestrator before fan-out (extraction_destination.go
+// resolveSubtitleDestination) — the builder is the SOLE writer of the
+// field, so there is no second assignment to keep in sync.
 func buildSegmentCommand(
 	req *youtubetypes.ExtractRequest,
 	seg youtubetypes.Segment,
 	index int,
-	videoID, outDir, driveFolderID, driveFolderPath string,
+	videoID, outDir, driveFolderID, driveFolderPath, subtitleFolderID string,
 	keepAudio bool,
 ) youtubetypes.ProcessSegmentCommand {
 	return youtubetypes.ProcessSegmentCommand{
@@ -152,17 +157,18 @@ func buildSegmentCommand(
 		KeepAudio:                      &keepAudio,
 		Strategy:                       req.Strategy,
 		Destination:                    req.Destination,
-		SubtitleFolderID:               "", // resolved by the caller (extractFanOut) after pre-resolution
-		SubtitleFolderPath:             subtitleFolderPath(req),
+		SubtitleFolderID:               subtitleFolderID,
 		RequireAllLanguagesBeforeVideo: req.RequireAllLanguagesBeforeVideo,
 		RequireTranscriptReady:         req.RequireTranscriptReady,
 	}
 }
 
-func subtitleFolderPath(req *youtubetypes.ExtractRequest) string {
-	return ""
-}
-
+// failedFanOutResult normalizes a segment that failed OUTSIDE the typed
+// step pipeline (goroutine panic, or an error surfaced by
+// ProcessYouTubeSegmentUseCase.Execute) into the canonical failed-item
+// shape. When the error carries the typed extraction envelope, its
+// FailureCode/Retryable verdict rides on the item too, so the job-side
+// classifier does not have to scan Error text (dto.ExtractItem).
 func failedFanOutResult(
 	res youtubetypes.ProcessSegmentResult,
 	seg youtubetypes.Segment,
@@ -185,6 +191,14 @@ func failedFanOutResult(
 	res.Item.DriveFolderPath = driveFolderPath
 	if res.Item.Error == "" && err != nil {
 		res.Item.Error = err.Error()
+	}
+	if res.Item.Retryable == nil {
+		var typed *ExtractionError
+		if errors.As(err, &typed) && typed != nil {
+			res.Item.FailureCode = string(typed.Code)
+			retryable := typed.IsRetryable()
+			res.Item.Retryable = &retryable
+		}
 	}
 	if res.Error == nil {
 		res.Error = err

@@ -9,25 +9,31 @@
 //
 // Two independent signals, from strongest to weakest:
 //
-//  1. Script check (confident). For a target written in a non-Latin script
-//     (Russian → Cyrillic, Japanese → Han/Kana, Korean → Hangul, Arabic,
-//     Hebrew, Greek, Thai, Devanagari) a translation with ZERO letters of the
-//     expected script is not that language — full stop.
+//  1. Script check (confident, self-contained). For a target written in a
+//     non-Latin script (Russian → Cyrillic, Japanese → Han/Kana, Korean →
+//     Hangul, Arabic, Hebrew, Greek, Thai, Devanagari) a translation with ZERO
+//     letters of the expected script is not that language — full stop.
 //  2. Function-word check (heuristic). For the Latin-script targets the script
-//     cannot distinguish languages, so VerifyTargetLanguage scores the text
-//     against small function-word sets. It only fails when the text carries NO
-//     function word of the target AND clearly matches another supported
-//     language. A technical/vocabulary fragment with no function words at all
-//     therefore stays accepted (no false positive on "rendering pipeline 4K").
+//     cannot distinguish languages, so the text is scored against the
+//     per-language function-word sets of the canonical LexiconRegistry. It only
+//     fails when the text carries NO function word of the target AND clearly
+//     matches another supported language. A technical/vocabulary fragment with
+//     no function words at all stays accepted (no false positive on
+//     "rendering pipeline 4K").
 //
-// godlike/07: the verifier is a pure function over the text; it never guesses a
-// language from a truncated sample (a text with fewer than minWordsForStopwords
-// words is accepted without a stopword verdict).
+// godlike/06 SSOT: this file declares NO linguistic data. The word sets come
+// from linguistics.DefaultLexicon() (config/lexicons/<lang>/*.txt), the single
+// owner of per-language data in this repository. When the composition root has
+// not installed the registry (isolated tests), the function-word check abstains
+// rather than manufacturing data; DefaultLexicon() would panic, so the
+// non-failing DefaultLexiconOrNil() is used deliberately.
 package translation
 
 import (
 	"strings"
 	"unicode"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/linguistics"
 )
 
 // scriptClass is the writing-system family of a rune. Only the families the
@@ -59,6 +65,12 @@ const minWordsForStopwords = 8
 // minForeignStopwordHits is how many function words another language must match
 // before the text is declared to be that other language.
 const minForeignStopwordHits = 3
+
+// lexicallyComparableLanguages is the fixed iteration order of the
+// function-word comparison, so the verdict is deterministic even when two
+// languages tie. It lists LANGUAGE CODES only — every word set is resolved from
+// the LexiconRegistry, never hardcoded here.
+var lexicallyComparableLanguages = []string{"en", "it", "es", "de", "fr", "pt", "nl", "pl", "ru", "tr", "id"}
 
 // VerifyTargetLanguage reports whether text is plausibly written in lang. The
 // returned reason is a short operator-facing explanation and is empty when the
@@ -105,7 +117,7 @@ func baseLanguage(tag string) string {
 
 // expectedScripts maps a base language to the writing systems a text in that
 // language must contain. Latin-script targets return [scriptLatin]; the script
-// check passes for them and the stopword check does the real work.
+// check passes for them and the function-word check does the real work.
 func expectedScripts(base string) []scriptClass {
 	switch base {
 	case "ru", "uk", "bg", "sr", "mk", "be", "kk":
@@ -204,25 +216,37 @@ func totalLetters(counts map[scriptClass]int) int {
 }
 
 // stopwordMismatch fails the text when it carries no target function word but
-// clearly matches another supported Latin-script language.
+// clearly matches another supported Latin-script language. It abstains when the
+// LexiconRegistry is not installed or the target has no configured word set.
 func stopwordMismatch(text, base string) (bool, string) {
-	target, known := stopwords[base]
-	if !known {
-		return false, "" // no table for this target: abstain
+	registry := linguistics.DefaultLexiconOrNil()
+	if registry == nil {
+		return false, ""
 	}
+	// The word-count gate comes BEFORE any registry lookup: it is the cheap
+	// reject for the common case (a short cue), and a profile resolve clones
+	// the language's word sets.
 	words := tokenizeWords(text)
 	if len(words) < minWordsForStopwords {
+		return false, ""
+	}
+	target, ok := functionWordSet(registry, base)
+	if !ok {
 		return false, ""
 	}
 	if countStopwords(words, target) > 0 {
 		return false, ""
 	}
 	bestLang, bestHits := "", 0
-	for _, lang := range latinStopwordLanguages {
+	for _, lang := range lexicallyComparableLanguages {
 		if lang == base {
 			continue
 		}
-		if hits := countStopwords(words, stopwords[lang]); hits > bestHits {
+		set, ok := functionWordSet(registry, lang)
+		if !ok {
+			continue
+		}
+		if hits := countStopwords(words, set); hits > bestHits {
 			bestLang, bestHits = lang, hits
 		}
 	}
@@ -230,6 +254,28 @@ func stopwordMismatch(text, base string) (bool, string) {
 		return true, "text carries no " + base + " function words but matches " + bestLang
 	}
 	return false, ""
+}
+
+// functionWordSet returns the union of a language's configured stop-words and
+// function words. The union matters: the configured data is split across the
+// two files (e.g. pl/ru/tr/id carry function_words.txt only), and both are
+// high-frequency grammatical tokens for this purpose.
+func functionWordSet(registry *linguistics.LexiconRegistry, lang string) (map[string]struct{}, bool) {
+	profile, err := registry.ResolveRequired(lang)
+	if err != nil {
+		return nil, false
+	}
+	combined := make(map[string]struct{}, len(profile.StopWords)+len(profile.FunctionWords))
+	for word := range profile.StopWords {
+		combined[word] = struct{}{}
+	}
+	for word := range profile.FunctionWords {
+		combined[word] = struct{}{}
+	}
+	if len(combined) == 0 {
+		return nil, false
+	}
+	return combined, true
 }
 
 // tokenizeWords lowercases text and splits it into alphabetic word tokens.
@@ -254,32 +300,4 @@ func countStopwords(words []string, set map[string]struct{}) int {
 		}
 	}
 	return hits
-}
-
-// latinStopwordLanguages is the fixed iteration order of the function-word
-// comparison, so the verdict is deterministic even when two languages tie.
-var latinStopwordLanguages = []string{"en", "it", "es", "de", "fr", "pt", "nl", "pl", "tr", "id"}
-
-func stopwordSet(words ...string) map[string]struct{} {
-	set := make(map[string]struct{}, len(words))
-	for _, w := range words {
-		set[w] = struct{}{}
-	}
-	return set
-}
-
-// stopwords holds a small, high-signal function-word set per Latin-script
-// target. Precision matters more than recall: a false negative (abstaining)
-// costs nothing, a false positive would reject a good translation.
-var stopwords = map[string]map[string]struct{}{
-	"en": stopwordSet("the", "a", "an", "and", "or", "but", "of", "to", "in", "on", "for", "with", "is", "are", "was", "were", "that", "this", "it", "as", "by", "at", "from", "not"),
-	"it": stopwordSet("il", "lo", "la", "i", "gli", "le", "un", "uno", "una", "e", "ed", "o", "ma", "di", "a", "da", "in", "con", "per", "su", "che", "non", "è", "sono", "del", "della", "dei", "più"),
-	"es": stopwordSet("el", "la", "los", "las", "un", "una", "y", "e", "o", "u", "pero", "de", "del", "en", "con", "por", "para", "que", "no", "es", "son", "al", "se", "su", "más"),
-	"de": stopwordSet("der", "die", "das", "den", "dem", "des", "ein", "eine", "einen", "und", "oder", "aber", "von", "zu", "im", "in", "mit", "für", "auf", "ist", "sind", "nicht", "dass", "es", "auch"),
-	"fr": stopwordSet("le", "la", "les", "un", "une", "des", "et", "ou", "mais", "de", "du", "en", "dans", "avec", "pour", "sur", "que", "qui", "ne", "pas", "est", "sont", "ce", "cette", "plus"),
-	"pt": stopwordSet("o", "a", "os", "as", "um", "uma", "e", "ou", "mas", "de", "do", "da", "em", "com", "por", "para", "que", "não", "é", "são", "no", "na", "se", "mais"),
-	"nl": stopwordSet("de", "het", "een", "en", "of", "maar", "van", "in", "met", "voor", "op", "is", "zijn", "niet", "dat", "dit", "die", "te", "aan", "ook"),
-	"pl": stopwordSet("i", "oraz", "lub", "ale", "nie", "jest", "są", "to", "że", "się", "na", "w", "z", "do", "dla", "po", "od", "jak", "tego", "tym", "więc"),
-	"tr": stopwordSet("ve", "veya", "ama", "fakat", "bir", "bu", "şu", "o", "ile", "için", "de", "da", "değil", "çok", "daha", "olarak", "ise", "ne", "ki", "gibi"),
-	"id": stopwordSet("dan", "atau", "tapi", "tetapi", "tidak", "yang", "di", "ke", "dari", "untuk", "dengan", "ini", "itu", "adalah", "pada", "sebagai", "karena", "juga", "akan", "oleh"),
 }

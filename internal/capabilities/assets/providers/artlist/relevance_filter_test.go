@@ -550,6 +550,7 @@ func TestLogFilterStats_NilLogger(t *testing.T) {
 
 // stringsToLower is a small helper used by a few sub-tests for
 // assertions on lowercased haystack. Kept private to the test file.
-func stringsToLower(s string) string { return strings.ToLower(s) }
 
 var _ = stringsToLower
+
+func stringsToLower(s string) string { return strings.ToLower(s) }

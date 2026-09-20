@@ -3,12 +3,15 @@ package rendering
 import (
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"sort"
 
 	"github.com/gin-gonic/gin"
 	"gopkg.in/yaml.v3"
+
+	"github.com/Marcuss-ops/PipelineGen/pkg/atomicwrite"
 )
 
 type runtimeRouteManifest struct {
@@ -63,26 +66,26 @@ func publishRuntimeRouteArtifacts(docsPath, manifestPath string, markdown []byte
 	if err != nil {
 		return fmt.Errorf("marshal route manifest: %w", err)
 	}
-	docsTemp, err := stageAtomicFile(docsPath, markdown, 0644)
+	docsTemp, err := atomicwrite.Stage(docsPath, 0644, byteWriter(markdown))
 	if err != nil {
 		return fmt.Errorf("stage docs: %w", err)
 	}
-	manifestTemp, err := stageAtomicFile(manifestPath, manifest, 0644)
+	manifestTemp, err := atomicwrite.Stage(manifestPath, 0644, byteWriter(manifest))
 	if err != nil {
-		_ = os.Remove(docsTemp)
+		_ = atomicwrite.Discard(docsTemp)
 		return fmt.Errorf("stage manifest: %w", err)
 	}
 
 	docsBackup, docsExisted, err := backupExistingFile(docsPath)
 	if err != nil {
-		_ = os.Remove(docsTemp)
-		_ = os.Remove(manifestTemp)
+		_ = atomicwrite.Discard(docsTemp)
+		_ = atomicwrite.Discard(manifestTemp)
 		return fmt.Errorf("backup docs: %w", err)
 	}
 	manifestBackup, manifestExisted, err := backupExistingFile(manifestPath)
 	if err != nil {
-		_ = os.Remove(docsTemp)
-		_ = os.Remove(manifestTemp)
+		_ = atomicwrite.Discard(docsTemp)
+		_ = atomicwrite.Discard(manifestTemp)
 		_ = restoreExistingFile(docsBackup, docsPath, docsExisted)
 		return fmt.Errorf("backup manifest: %w", err)
 	}
@@ -98,16 +101,16 @@ func publishRuntimeRouteArtifacts(docsPath, manifestPath string, markdown []byte
 		}
 		_ = restoreExistingFile(manifestBackup, manifestPath, manifestExisted)
 		_ = restoreExistingFile(docsBackup, docsPath, docsExisted)
-		_ = os.Remove(docsTemp)
-		_ = os.Remove(manifestTemp)
+		_ = atomicwrite.Discard(docsTemp)
+		_ = atomicwrite.Discard(manifestTemp)
 	}
 
-	if err := os.Rename(docsTemp, docsPath); err != nil {
+	if err := atomicwrite.Commit(docsTemp, docsPath); err != nil {
 		rollback()
 		return fmt.Errorf("publish docs: %w", err)
 	}
 	publishedDocs = true
-	if err := os.Rename(manifestTemp, manifestPath); err != nil {
+	if err := atomicwrite.Commit(manifestTemp, manifestPath); err != nil {
 		rollback()
 		return fmt.Errorf("publish manifest: %w", err)
 	}
@@ -147,43 +150,18 @@ func restoreExistingFile(backupPath, path string, existed bool) error {
 	return nil
 }
 
+// writeAtomicFile routes every single-file emission of this package through the
+// canonical pkg/atomicwrite utility (temp + fsync + rename + dir sync) so a
+// crash cannot leave a truncated generated artifact behind.
 func writeAtomicFile(path string, data []byte, mode os.FileMode) error {
-	temp, err := stageAtomicFile(path, data, mode)
-	if err != nil {
-		return err
-	}
-	if err := os.Rename(temp, path); err != nil {
-		_ = os.Remove(temp)
-		return err
-	}
-	return nil
+	return atomicwrite.WriteFile(path, data, mode)
 }
 
-func stageAtomicFile(path string, data []byte, mode os.FileMode) (string, error) {
-	file, err := os.CreateTemp(filepath.Dir(path), "."+filepath.Base(path)+".tmp-*")
-	if err != nil {
-		return "", err
+// byteWriter adapts a byte slice to atomicwrite.Writer without an intermediate
+// closure allocation at each call site.
+func byteWriter(data []byte) atomicwrite.Writer {
+	return func(w io.Writer) error {
+		_, err := w.Write(data)
+		return err
 	}
-	temp := file.Name()
-	cleanup := func() {
-		_ = file.Close()
-		_ = os.Remove(temp)
-	}
-	if err := file.Chmod(mode); err != nil {
-		cleanup()
-		return "", err
-	}
-	if _, err := file.Write(data); err != nil {
-		cleanup()
-		return "", err
-	}
-	if err := file.Sync(); err != nil {
-		cleanup()
-		return "", err
-	}
-	if err := file.Close(); err != nil {
-		_ = os.Remove(temp)
-		return "", err
-	}
-	return temp, nil
 }

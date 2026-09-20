@@ -70,10 +70,6 @@ func (fakeCanonicalResolver) ResolveSource(_ context.Context, sourceType, source
 	return CanonicalIdentity{SourceType: sourceType, SourceRef: sourceRef}, nil
 }
 
-func (fakeCanonicalResolver) ResolveContent(_ context.Context, _ string) (CanonicalIdentity, error) {
-	return CanonicalIdentity{}, nil
-}
-
 func assetIDs(items []Candidate) []string {
 	out := make([]string, len(items))
 	for i, c := range items {

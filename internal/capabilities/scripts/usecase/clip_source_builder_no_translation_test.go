@@ -42,11 +42,6 @@ type stubTranslationPort struct {
 	calls int
 }
 
-func (s *stubTranslationPort) Translate(_ context.Context, _ translation.TranslationCommand) (translation.TranslationResult, error) {
-	s.calls++
-	return translation.TranslationResult{}, nil
-}
-
 // TestClipSourceBuilder_NeverInvokesTranslationPort is the Fase 4
 // release-gate regression pin (test #7 in the §19 spec). It pins:
 //

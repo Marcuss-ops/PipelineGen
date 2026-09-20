@@ -23,6 +23,7 @@ type translatedNLPWork struct {
 // over the exact translated text.
 type translatedNLPOutcome struct {
 	entities []VisualEntity
+	cached   *scriptpkg.SceneAnnotations
 }
 
 // runTranslatedNLP extracts translated names/entities with VisualNER and
@@ -156,6 +157,11 @@ func (r *Runner) computeLocalizedAnnotations(ctx context.Context, req GenerateRe
 
 	outcomes, err := concurrent.Map(ctx, work, workers, func(opCtx context.Context, idx int, item translatedNLPWork) (translatedNLPOutcome, error) {
 		var outcome translatedNLPOutcome
+		if cached := result.Scenes[item.sceneIndex].LocalizedAnnotations[item.lang]; cached != nil {
+			// SceneTextReady may already have computed this exact scene/language
+			// surface. Reuse it instead of issuing a second translated NER call.
+			return translatedNLPOutcome{cached: cached}, nil
+		}
 		// The translated NER call is SKIPPED when the source annotations
 		// already cover the entity limit for this language. Skipping is
 		// output-equivalent, not an approximation: mergeTranslatedNamedEntities
@@ -188,6 +194,17 @@ func (r *Runner) computeLocalizedAnnotations(ctx context.Context, req GenerateRe
 	// translation's own text. Source entity matches carry stable identity only;
 	// phrase surfaces are always selected from the localized narration.
 	for index, item := range work {
+		if outcomes[index].cached != nil {
+			if localized[item.sceneIndex] == nil {
+				localized[item.sceneIndex] = make(map[Language]*scriptpkg.SceneAnnotations)
+			}
+			localized[item.sceneIndex][item.lang] = outcomes[index].cached
+			continue
+		}
+		sourceMatches[index] = completeOrderedPersonMatches(
+			item.text, string(item.lang), sourceAnnotationsFor(item.sceneIndex),
+			outcomes[index].entities, sourceMatches[index],
+		)
 		// Already-extracted source names act as identity hints only. A hint is
 		// copied into the localized annotations only when its name can be found
 		// in this translated scene, so it cannot invent a mention or a phrase.

@@ -304,24 +304,6 @@ func NewDownstreamRequestImages(
 // non-nil invariant (passing nil for either sub-struct is a
 // programming error — the dispatcher's fail-closed branch will
 // reject the envelope if either is missing at run time).
-func NewDownstreamRequestBoth(
-	itemRef string,
-	required bool,
-	voiceover *VoiceoverRequirements,
-	imageRequirements *ImagesRequirements,
-	outputDest OutputDestination,
-) *DownstreamRequest {
-	return &DownstreamRequest{
-		Kind:     DownstreamBoth,
-		ItemRef:  itemRef,
-		Required: required,
-		AssetRequirements: AssetRequirements{
-			Voiceover: voiceover,
-			Images:    imageRequirements,
-		},
-		OutputDest: outputDest,
-	}
-}
 
 // NewDownstreamRequestDocument constructs a DownstreamRequest envelope
 // for a Google Doc-only downstream sibling. Added in PR-1 of the
@@ -336,19 +318,6 @@ func NewDownstreamRequestBoth(
 // The outputDest must specify Kind="google_doc" with a non-empty
 // FolderID + DocumentTitle for the dispatcher's fail-closed path
 // (validation happens in the dispatcher, not in this helper).
-func NewDownstreamRequestDocument(
-	itemRef string,
-	required bool,
-	outputDest OutputDestination,
-) *DownstreamRequest {
-	return &DownstreamRequest{
-		Kind:              DownstreamDocument,
-		ItemRef:           itemRef,
-		Required:          required,
-		AssetRequirements: AssetRequirements{}, // no sub-structs for Doc
-		OutputDest:        outputDest,
-	}
-}
 
 // ── ManifestV2 — canonical container ──────────────────────────────────
 

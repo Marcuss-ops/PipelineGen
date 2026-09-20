@@ -136,6 +136,3 @@ func BumpEmbeddingVersion(prev string) (string, error) {
 //	flows through this predicate. The closed-set pattern keeps
 //	drift impossible: callers that compare against the constant
 //	inline cannot accidentally diverge from this check.
-func IsCurrentEmbeddingVersion(v string) bool {
-	return v == ConceptEmbeddingVersion
-}

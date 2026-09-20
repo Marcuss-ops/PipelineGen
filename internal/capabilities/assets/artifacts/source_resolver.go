@@ -93,9 +93,6 @@ func CanonicalSource(source string) string {
 
 // IsValidSource reports whether source or alias is registered by the kernel
 // catalog.
-func IsValidSource(source string) bool {
-	return CanonicalSource(source) != ""
-}
 
 // IsClipsSource reports whether a source uses the clips-family repository.
 func IsClipsSource(source string) bool {

@@ -5,9 +5,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
-	"os/signal"
 	"runtime/debug"
-	"syscall"
 	"time"
 
 	mwports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/middleware"
@@ -57,20 +55,6 @@ type Server struct {
 // lifecycle (optional) is used for Start/Stop of background services.
 // healthSvc (optional) is the application-layer health.Service; when nil,
 // health endpoints return 503.
-func NewServer(
-	cfg *config.Config,
-	registry *Registry,
-	workerHandler interface{ RegisterRoutes(*gin.RouterGroup) },
-	internalMediaHandler MediaInternalRouter,
-	lifecycle LifecycleManager,
-) *Server {
-	return NewServerWithHealth(ServerDeps{
-		Config:    cfg,
-		Registry:  registry,
-		Handlers:  InternalHandlers{Worker: workerHandler, Media: internalMediaHandler},
-		Lifecycle: lifecycle,
-	})
-}
 
 // InternalHandlers bundles the optional typed-port internal-route handlers.
 // MUST be wired before router.Setup() runs — the QDRANT-route-constructor
@@ -286,9 +270,6 @@ func NewServerWithHealth(deps ServerDeps) *Server {
 
 // SetLifecycle wires a LifecycleManager after construction (for callers
 // that don't pass it through NewServer).
-func (s *Server) SetLifecycle(lc LifecycleManager) {
-	s.lifecycle = lc
-}
 
 // Start starts the HTTP server via an internal signal-aware context.
 // Background services are managed by the LifecycleManager — this
@@ -299,11 +280,6 @@ func (s *Server) SetLifecycle(lc LifecycleManager) {
 // ownership stays unambiguous (cmd/server/main.go owns OS signals and
 // hands the resulting ctx into the runtime; cmd/server no longer relies
 // on this internal-signal path).
-func (s *Server) Start() error {
-	rootCtx, rootCancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
-	defer rootCancel()
-	return s.StartWithContext(rootCtx)
-}
 
 // StartWithContext drives the HTTP server until ctx is cancelled.
 // Caller is responsible for OS signal handling: cmd/server/main.go
@@ -403,9 +379,6 @@ func (s *Server) StartWithContext(ctx context.Context) error {
 
 // SetWorkerHandler wires internal worker routes into the server's router.
 // Delegates to Router.SetWorkerHandler.
-func (s *Server) SetWorkerHandler(h interface{ RegisterRoutes(*gin.RouterGroup) }) {
-	s.appRouter.SetWorkerHandler(h)
-}
 
 // SetInternalMediaHandler wires the QDRANT-001 server-to-server media
 // routes (POST /internal/v1/media/sync) into the server's
@@ -414,9 +387,6 @@ func (s *Server) SetWorkerHandler(h interface{ RegisterRoutes(*gin.RouterGroup) 
 // QDRANT-001 closure: the production binding is supplied by the asset
 // module's storage.Handler — see internal/app/bootstrap.go or whoever
 // holds the assets module after WireRegistry runs.
-func (s *Server) SetInternalMediaHandler(h MediaInternalRouter) {
-	s.appRouter.SetInternalMediaHandler(h)
-}
 
 // GetRouter returns the gin router (for testing)
 func (s *Server) GetRouter() *gin.Engine {

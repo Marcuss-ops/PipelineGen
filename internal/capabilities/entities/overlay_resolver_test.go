@@ -307,3 +307,31 @@ func TestResolveEntityOverlayPlan_DeduplicatesRepeatedEntityWithinScene(t *testi
 	findItem(t, rankedPlan, "overlay-scene-0-cus-d-amato")
 	findItem(t, rankedPlan, "overlay-scene-0-mike-tyson")
 }
+
+func TestResolveEntityOverlayPlanKeepsDistinctCyrillicEntities(t *testing.T) {
+	occurrence := func(entityID, name string, startUS int64) EntityOccurrence {
+		return EntityOccurrence{
+			EntityID: entityID, Name: name, Type: "PERSON", SceneID: "scene-ru", SceneIndex: 0,
+			TextStart: 0, TextEnd: len([]rune(name)), WordStart: 0, WordEnd: 2,
+			LocalStartUS: startUS, LocalEndUS: startUS + 500_000,
+			AudioStartUS: startUS, AudioEndUS: startUS + 500_000, Confidence: 0.9,
+		}
+	}
+	timeline := EntityTimeline{
+		Version: EntityTimelineVersion, DurationUS: 4_000_000,
+		Scenes: []SceneEntityTimeline{{
+			SceneID: "scene-ru", SceneIndex: 0, TimelineStartUS: 0,
+			Entities: []EntityOccurrence{
+				occurrence("ent-neil", "Нила Армстронга", 100_000),
+				occurrence("ent-buzz", "Базза Олдрина", 1_000_000),
+			},
+		}},
+	}
+
+	plan, err := ResolveEntityOverlayPlan(timeline, "plan-ru", "video-ru", "", 1920, 1080, 30, 1)
+	require.NoError(t, err)
+	require.Len(t, plan.Items, 2, "distinct Cyrillic names must not collapse to one empty ASCII slug")
+	require.NotEqual(t, plan.Items[0].ID, plan.Items[1].ID)
+	require.Contains(t, plan.Items[0].ID, "ent-")
+	require.Contains(t, plan.Items[1].ID, "ent-")
+}

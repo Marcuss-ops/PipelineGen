@@ -36,18 +36,10 @@ var (
 // SetPanicReporter installs the canonical structured sink for recovered
 // goroutine panics. Passing nil restores the default stdlib logger. The
 // recovered-panic counter is maintained independently and is unaffected.
-func SetPanicReporter(reporter PanicReporter) {
-	if reporter == nil {
-		panicReporter.Store(nil)
-		return
-	}
-	panicReporter.Store(&reporter)
-}
 
 // PanicsRecovered returns the process-wide count of recovered goroutine
 // panics since start. It is exported so a metrics exporter can surface the
 // anomaly even when no reporter is installed.
-func PanicsRecovered() int64 { return panicsRecovered.Load() }
 
 // reportPanic is the SINGLE sink for every recovered panic in this package.
 func reportPanic(goroutine string, recovered any) {

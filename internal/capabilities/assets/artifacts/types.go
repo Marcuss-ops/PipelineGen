@@ -186,19 +186,10 @@ type ResolverRegistry struct {
 }
 
 // NewResolverRegistry creates an empty resolver registry.
-func NewResolverRegistry() *ResolverRegistry {
-	return &ResolverRegistry{resolvers: make(map[string]Resolver)}
-}
 
 // Register adds a resolver for a URI scheme.
-func (r *ResolverRegistry) Register(resolver Resolver) {
-	r.resolvers[resolver.Scheme()] = resolver
-}
 
 // Get returns the resolver for a scheme, or nil.
-func (r *ResolverRegistry) Get(scheme string) Resolver {
-	return r.resolvers[scheme]
-}
 
 // ── Binding Extraction ─────────────────────────────────────────────
 
@@ -234,23 +225,10 @@ type BindingExtractorRegistry struct {
 }
 
 // NewBindingExtractorRegistry creates an empty extractor registry.
-func NewBindingExtractorRegistry() *BindingExtractorRegistry {
-	return &BindingExtractorRegistry{
-		extractors: make([]BindingExtractor, 0),
-		byJobType:  make(map[string][]BindingExtractor),
-	}
-}
 
 // Register adds an extractor for a job type.
-func (e *BindingExtractorRegistry) Register(ext BindingExtractor) {
-	e.extractors = append(e.extractors, ext)
-	e.byJobType[ext.JobType()] = append(e.byJobType[ext.JobType()], ext)
-}
 
 // GetForJobType returns all extractors that match a job type.
-func (e *BindingExtractorRegistry) GetForJobType(jobType string) []BindingExtractor {
-	return e.byJobType[jobType]
-}
 
 // ── Service Input/Output ───────────────────────────────────────────
 
@@ -289,61 +267,12 @@ type ResolveAndRegisterResult struct {
 // ── Path Safety Helpers (ported from assetregistry) ───────────────
 
 // CleanArtifactPath normalizes a file URI or path for safe access.
-func CleanArtifactPath(raw string) string {
-	// Handle file:// prefix
-	if len(raw) > 7 && raw[:7] == "file://" {
-		raw = raw[7:]
-	}
-	return cleanFilePath(raw)
-}
 
 // IsSafePath checks whether a cleaned path falls within any of the allowed directories.
-func IsSafePath(allowedDirs []string, cleanPath string) bool {
-	for _, dir := range allowedDirs {
-		if isUnderDir(cleanPath, dir) {
-			return true
-		}
-	}
-	return false
-}
 
 // cleanFilePath removes path traversal and normalizes.
-func cleanFilePath(p string) string {
-	// Remove leading ./
-	for len(p) > 1 && p[0] == '.' && p[1] == '/' {
-		p = p[2:]
-	}
-	// Resolve .. segments
-	segments := splitPath(p)
-	var cleaned []string
-	for _, seg := range segments {
-		switch seg {
-		case "", ".":
-			continue
-		case "..":
-			if len(cleaned) > 0 {
-				cleaned = cleaned[:len(cleaned)-1]
-			}
-		default:
-			cleaned = append(cleaned, seg)
-		}
-	}
-	result := ""
-	for i, seg := range cleaned {
-		if i > 0 {
-			result += "/"
-		}
-		result += seg
-	}
-	return result
-}
 
 // isUnderDir checks if a path is within a given directory.
-func isUnderDir(path, dir string) bool {
-	path = cleanFilePath(path)
-	dir = cleanFilePath(dir)
-	return path == dir || (len(path) > len(dir) && path[:len(dir)] == dir && path[len(dir)] == '/')
-}
 
 // MediaRecord is a legacy unified media record absorbed from media/assetregistry.
 type MediaRecord struct {
@@ -390,19 +319,4 @@ type FinalizeResult struct {
 	DriveUploaded bool
 	Error         string
 	Record        *MediaRecord
-}
-
-func splitPath(p string) []string {
-	var segs []string
-	start := 0
-	for i := 0; i < len(p); i++ {
-		if p[i] == '/' {
-			segs = append(segs, p[start:i])
-			start = i + 1
-		}
-	}
-	if start < len(p) {
-		segs = append(segs, p[start:])
-	}
-	return segs
 }

@@ -47,11 +47,6 @@ func NewEntityMediaIndex() *EntityMediaIndex {
 }
 
 // SetRepository swaps the backing store, e.g. a durable SQLite adapter.
-func (ix *EntityMediaIndex) SetRepository(repo AssetRepository) {
-	if repo != nil {
-		ix.repo = repo
-	}
-}
 
 // IndexForEntity upserts an asset bound to the canonical entity identified by
 // (type, name). The asset's EntityID is derived via CanonicalEntityID — the

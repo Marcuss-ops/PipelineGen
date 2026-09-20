@@ -252,6 +252,22 @@ type ExtractItem struct {
 	Error           string `json:"error,omitempty"`
 	DriveFolderID   string `json:"drive_folder_id,omitempty"`
 	DriveFolderPath string `json:"drive_folder_path,omitempty"`
+	// FailureCode is the typed classification of a FAILED segment
+	// (usecase.FailureCode, e.g. "duration_out_of_range", "hash_failed").
+	//
+	// godlike/07 no-fake-availability + godlike/06 SSOT (Sept 2026): the
+	// per-segment fail-closed path already KNOWS the verdict, so it travels
+	// as a typed field instead of being re-derived downstream by scanning
+	// Error text. The job-side classifier reads this first and only falls
+	// back to the historical transient-marker taxonomy when the field is
+	// absent (rows/payloads produced by an older server).
+	FailureCode string `json:"failure_code,omitempty"`
+	// Retryable mirrors ExtractionError.Retryable for this item: true =
+	// transient (worth a broker retry), false = terminal (a retry cannot
+	// change the outcome). nil means "no typed verdict" — either the item
+	// did not fail, or it came from a producer that only set Error (the
+	// classifier then uses the legacy marker taxonomy).
+	Retryable *bool `json:"retryable,omitempty"`
 }
 
 // ── Commit C DTOs (PR-C-YouTube-Cutover, June 2026) ───────────────────────
@@ -298,8 +314,7 @@ type ProcessSegmentCommand struct {
 	// materialised the per-video child folder, so every segment uploads
 	// straight into it without any per-segment GetOrCreateFolder call.
 	// Empty string means no subtitle destination — Step 6-9 skips upload.
-	SubtitleFolderID   string
-	SubtitleFolderPath string
+	SubtitleFolderID string
 	// PreDownloadedPath is the optional full-source file staged BEFORE fanout.
 	// When non-empty, VideoPipelineDownloadAndCut MUST cut locally via ffmpeg -c copy
 	// instead of spawning a per-segment yt-dlp --download-sections subprocess.

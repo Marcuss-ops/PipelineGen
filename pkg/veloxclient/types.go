@@ -32,6 +32,22 @@ const (
 )
 
 // IsTerminal returns true if the status will not transition further.
+
+var (
+	ErrUnauthorized = errors.New("veloxclient: unauthorized (rotate token)")
+	ErrBadRequest   = errors.New("veloxclient: bad request (do not retry)")
+	ErrServer       = errors.New("veloxclient: server error (surface to operator)")
+	ErrNotFound     = errors.New("veloxclient: job not found")
+	// ErrNotReady is returned when the server answers 409 Conflict: the
+	// resource exists but is not available yet (e.g. a clip whose render job
+	// is still RUNNING). It is deliberately distinct from ErrNotFound so
+	// callers can retry instead of treating the asset as missing.
+	ErrNotReady = errors.New("veloxclient: resource not ready (retry)")
+)
+
+const DefaultMaxAttempts = 3
+const DefaultRetryBase = 200 * time.Millisecond
+
 func IsTerminal(status string) bool {
 	switch status {
 	case StatusCompleted, StatusFailed, StatusCancelled:
@@ -39,13 +55,3 @@ func IsTerminal(status string) bool {
 	}
 	return false
 }
-
-var (
-	ErrUnauthorized = errors.New("veloxclient: unauthorized (rotate token)")
-	ErrBadRequest   = errors.New("veloxclient: bad request (do not retry)")
-	ErrServer       = errors.New("veloxclient: server error (surface to operator)")
-	ErrNotFound     = errors.New("veloxclient: job not found")
-)
-
-const DefaultMaxAttempts = 3
-const DefaultRetryBase = 200 * time.Millisecond

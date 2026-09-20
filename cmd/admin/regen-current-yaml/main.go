@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 
 	"github.com/Marcuss-ops/PipelineGen/pkg/architecturecatalog"
+	"github.com/Marcuss-ops/PipelineGen/pkg/atomicwrite"
 )
 
 func main() {
@@ -63,7 +64,7 @@ func writeFile(path string, data []byte) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return fmt.Errorf("create parent for %s: %w", path, err)
 	}
-	if err := os.WriteFile(path, data, 0o644); err != nil {
+	if err := atomicwrite.WriteFile(path, data, 0o644); err != nil {
 		return fmt.Errorf("write %s: %w", path, err)
 	}
 	return nil

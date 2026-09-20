@@ -25,10 +25,17 @@ import (
 // — the caller just propagates the typed error directly instead of
 // unpacking a 2-tuple. Unexported helpers, no external API change
 // (godlike/07 minimum-blast-radius holds).
+//
+// Sept 2026: the typed verdict is ALSO projected onto the serialized item
+// (Item.FailureCode + Item.Retryable) so the job-side classifier can read
+// it instead of re-deriving it from Error text. See dto.ExtractItem.
 func (u *ProcessYouTubeSegmentUseCase) fail(out *youtubetypes.ProcessSegmentResult, typed *ExtractionError) *ExtractionError {
 	out.Item.Status = "failed"
 	if typed != nil {
 		out.Item.Error = typed.Error()
+		out.Item.FailureCode = string(typed.Code)
+		retryable := typed.IsRetryable()
+		out.Item.Retryable = &retryable
 		out.Error = typed
 	}
 	return typed

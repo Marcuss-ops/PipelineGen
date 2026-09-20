@@ -178,15 +178,12 @@ func NewStateMachine(parentJobID string, expectedChildren int) *StateMachine {
 func (sm *StateMachine) State() ParentState { return sm.state }
 
 // Terminated returns the count of children that have reached terminal.
-func (sm *StateMachine) Terminated() int { return sm.terminatedChildren }
 
 // Expected returns the expected total child count.
-func (sm *StateMachine) Expected() int { return sm.expectedChildren }
 
 // Version returns the monotonic counter (incremented on each successful
 // Transition). Used by the durable parent_aggregator_state projection for
 // optimistic CAS updates (C2 migration + repository).
-func (sm *StateMachine) Version() int { return sm.version }
 
 // Succeeded returns the JobIDs of children that reached SUCCEEDED.
 func (sm *StateMachine) Succeeded() []string { return sm.succeeded }
@@ -228,7 +225,6 @@ func (sm *StateMachine) TransitionToWaitingChildren(childIDs []string) error {
 // ChildIDs returns the child job IDs recorded at TransitionToWaitingChildren.
 // Returns nil if TransitionToWaitingChildren was never called (implicit
 // Dispatching→WaitingChildren via first child event).
-func (sm *StateMachine) ChildIDs() []string { return sm.childIDs }
 
 // Transition applies a single child_terminated event. Idempotent on duplicate
 // child JobID (returns ErrDuplicateChildEvent). Idempotent on terminal state
@@ -333,18 +329,6 @@ func (sm *StateMachine) Compute() error {
 // Snapshot returns a serializable view of the state machine at the
 // current version. Used by the durable projection in
 // parent_aggregator_state SQLite table.
-func (sm *StateMachine) Snapshot() StateSnapshot {
-	return StateSnapshot{
-		ParentJobID:        sm.parentJobID,
-		State:              sm.state,
-		ExpectedChildren:   sm.expectedChildren,
-		TerminatedChildren: sm.terminatedChildren,
-		Succeeded:          append([]string{}, sm.succeeded...),
-		Failed:             append([]string{}, sm.failed...),
-		ChildIDs:           append([]string{}, sm.childIDs...),
-		Version:            sm.version,
-	}
-}
 
 // StateSnapshot is the durable projection of a StateMachine.
 type StateSnapshot struct {

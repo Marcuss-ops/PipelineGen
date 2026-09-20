@@ -131,30 +131,11 @@ func PerClipLeafName(clip ClipNamingInput) string {
 }
 
 // TimestampParentLeafName derives the parent leaf for expanded timestamp clips.
-func TimestampParentLeafName(clip ClipNamingInput) string {
-	if raw := strings.TrimSpace(clip.ParentSlug); raw != "" {
-		if safe := pathutil.SafeFolderName(raw); safe != "" && safe != "untitled" && containsAlphanumeric(safe) {
-			return safe
-		}
-	}
-	if title := strings.TrimSpace(clip.Title); title != "" {
-		if safe := SlugifyTitle(title); safe != "" && safe != "untitled" {
-			return safe
-		}
-	}
-	if raw := strings.TrimSpace(clip.Slug); raw != "" {
-		if safe := pathutil.SafeFolderName(raw); safe != "" && safe != "untitled" && containsAlphanumeric(safe) {
-			return safe
-		}
-	}
-	return timestampLeaf(clip.StartSec, clip.EndSec)
-}
 
 // SlugifyTitle delegates to the repository-wide canonical title slug.
 func SlugifyTitle(title string) string { return slug.SlugifyTitle(title) }
 
 // SafeName is the neutral trim-only naming primitive; empty stays empty.
-func SafeName(value string) string { return strings.TrimSpace(value) }
 
 // URLBasename strips URL query/fragment and extension, then sanitizes it.
 func URLBasename(raw string) string {

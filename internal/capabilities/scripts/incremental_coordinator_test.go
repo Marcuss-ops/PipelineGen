@@ -118,6 +118,18 @@ func TestIncrementalCoordinator_EachCommittedSceneProcessedExactlyOnce(t *testin
 	assert.Equal(t, 0, coordinator.StaleResults())
 }
 
+func TestIncrementalCoordinator_WaitForSceneReturnsOnlyItsFencedResult(t *testing.T) {
+	enricher := &fakeSegmentEnricher{errs: map[string]error{}}
+	coordinator := NewVidRushIncrementalCoordinator(enricher, nil, 4)
+	commit(t, coordinator, "run-scene-barrier", "scene-0", 0, "First scene text", 1)
+	commit(t, coordinator, "run-scene-barrier", "scene-1", 1, "Second scene text", 1)
+
+	result, err := coordinator.WaitForScene(context.Background(), "run-scene-barrier", 0)
+	require.NoError(t, err)
+	assert.Equal(t, "scene-0", result.SceneID)
+	assert.Equal(t, "First scene text", result.Text)
+}
+
 func TestIncrementalCoordinator_RejectsMismatchedResultIdentity(t *testing.T) {
 	event := SceneCommitted{SceneID: "latte-art", SceneIndex: 1, Text: "A barista makes latte art.", TextHash: SceneTextHash("A barista makes latte art."), Revision: 1}
 	result := scriptpkg.VidRushSegmentResult{

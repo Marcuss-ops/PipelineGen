@@ -66,15 +66,6 @@ func writeFixtureFile(t *testing.T, dir, name, content string) {
 // openFreshDB returns a fresh SQLiteDB under t.TempDir() — used by
 // the header-scope-respected sub-tests so each sub-test gets a
 // canonical-pristine DB regardless of which previous sub-test ran.
-func openFreshDB(t *testing.T, label string) *SQLiteDB {
-	t.Helper()
-	db, err := NewSQLiteDB(t.TempDir(), label+".sqlite", zaptest.NewLogger(t))
-	if err != nil {
-		t.Fatalf("NewSQLiteDB %s: %v", label, err)
-	}
-	t.Cleanup(func() { _ = db.Close() })
-	return db
-}
 
 // TestBoot_OnEmpty_Primary_AllExpectedTablesExist verifies that a
 // fresh primary DB ends up with the canonical media-side tables

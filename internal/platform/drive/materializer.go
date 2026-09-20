@@ -489,25 +489,6 @@ func (m *CanonicalAssetMaterializer) contentVerifier() *digest.Verifier {
 
 // copyFile copies src to dst (used as a fallback when os.Rename fails
 // across device boundaries).
-func copyFile(src, dst string) error {
-	in, err := os.Open(src)
-	if err != nil {
-		return err
-	}
-	defer in.Close()
-	if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
-		return err
-	}
-	out, err := os.Create(dst)
-	if err != nil {
-		return err
-	}
-	defer out.Close()
-	if _, err := io.Copy(out, in); err != nil {
-		return err
-	}
-	return out.Sync()
-}
 
 // cleanExpectedSHA256 returns the value when it is a canonical 64-char
 // lowercase hex SHA-256, and "" otherwise. A prefixed, uppercase, or

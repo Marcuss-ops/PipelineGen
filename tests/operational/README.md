@@ -47,10 +47,12 @@ Environment for the live layer:
 | `PIPELINE_E2E_JOB_ID` | no | skips the `youtube_clip.extract` job lookup in step 3 |
 | `PIPELINE_E2E_YT_QUERY` / `_STOCK_QUERY` / `_RUN_TAG` / `_RESULTS_DIR` / `_POLL_TIMEOUT_SECONDS` | no | overrides with documented defaults |
 
-`POST /api/clips/process` returns an ACK only (no `job_id`), so step 3 locates
-its job through `GET /api/jobs?type=youtube_clip.extract` by matching the
-segment name; `POST /api/media/search` returning 503 means the search backend
-is not mounted — reported verbatim, never softened into a PASS.
+`POST /api/clips/process` returns `{ok, message, job_id}`, so step 3 binds to
+the job its own request enqueued through the returned `job_id`; if the server
+predates that additive field, the step falls back to
+`GET /api/jobs?type=youtube_clip.extract` by matching the segment name.
+`POST /api/media/search` returning 503 means the search backend is not mounted
+— reported verbatim, never softened into a PASS.
 
 ## Exit-code discipline (`lib/common.sh`)
 

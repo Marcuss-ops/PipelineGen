@@ -16,7 +16,6 @@ import (
 	"strings"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
-	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
 )
 
 const defaultPhraseParallelism = 4
@@ -105,20 +104,6 @@ func (translatorNilSentinel) Is(target error) bool {
 // translation. The returned map keys are the deduped, trimmed
 // phrases — exactly the keys the caller will see in
 // PhraseMatch.Phrase.
-func TranslateEach(ctx context.Context, translator PhraseTranslator, phrases []string) map[string]TranslationResult {
-	deduped := DedupeEmpty(phrases)
-	out := make(map[string]TranslationResult, len(deduped))
-	if len(deduped) == 0 {
-		return out
-	}
-	results := concurrent.ParallelMap(deduped, phraseParallelism(len(deduped)), func(_ int, phrase string) TranslationResult {
-		return translatePhrase(ctx, translator, phrase)
-	})
-	for i, phrase := range deduped {
-		out[phrase] = results[i]
-	}
-	return out
-}
 
 func translatePhrase(ctx context.Context, translator PhraseTranslator, phrase string) TranslationResult {
 	if translator == nil {

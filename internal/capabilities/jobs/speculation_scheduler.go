@@ -41,9 +41,6 @@ const (
 
 // DefaultResourceBudget is the canonical per-class budget for speculative
 // work; the value lives in jobs/scheduling.
-func DefaultResourceBudget(capacity, speculativeMax int) scheduling.ResourceBudget {
-	return scheduling.DefaultResourceBudget(capacity, speculativeMax)
-}
 
 // DefaultSpeculationConfig returns production-shaped admission limits.
 func DefaultSpeculationConfig() scheduling.SpeculationConfig {
@@ -53,9 +50,6 @@ func DefaultSpeculationConfig() scheduling.SpeculationConfig {
 // NewResourceScheduler constructs a resource-aware scheduler with per-class
 // speculative budgets. The gate is required: nil gate disables all
 // speculation (fail-closed — active work wins by default).
-func NewResourceScheduler(config scheduling.SpeculationConfig, gate scheduling.ActiveWorkGate) *scheduling.ResourceScheduler {
-	return scheduling.NewResourceScheduler(config, gate)
-}
 
 // NewSpeculationScheduler is the legacy-name constructor for the same
 // resource-aware scheduler.

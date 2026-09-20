@@ -123,40 +123,6 @@ Rules:
 }
 
 // BuildRegenerationChatMessages builds the message list for script regeneration.
-func BuildRegenerationChatMessages(req *types.RegenerationRequest) []types.Message {
-	sanitizedScript := types.SanitizeInput(req.OriginalScript)
-	sanitizedTitle := types.SanitizeInput(req.Title)
-
-	var userContent string
-	if cfg := Get(); cfg != nil {
-		rendered, err := cfg.RenderScriptRegeneration(sanitizedTitle, req.Tone, sanitizedScript)
-		if err == nil {
-			userContent = rendered
-		}
-	}
-	if userContent == "" {
-		userContent = fmt.Sprintf(`Rewrite the following documentary script in a cleaner, more compelling form.
-
-VIDEO TITLE: %s
-NARRATIVE STYLE: %s
-
-SCRIPT TO REWRITE:
-"%s"
-
-STRICT RULES:
-1. Return ONLY the rewritten spoken script.
-2. Keep it as straight continuous prose.
-3. Do not add timestamps, headings, labels, or stage directions.
-4. Preserve the original subject and factual content unless the rewrite improves clarity or flow.
-
-SCRIPT:`, sanitizedTitle, req.Tone, sanitizedScript)
-	}
-
-	return []types.Message{
-		{Role: "system", Content: BuildSystemPrompt(req.Language, req.Tone)},
-		{Role: "user", Content: userContent},
-	}
-}
 
 // BuildTextPrompt builds the prompt for text generation (no chat messages wrapper).
 func BuildTextPrompt(req *types.TextGenerationRequest) string {

@@ -73,15 +73,6 @@ type auditTableRow struct {
 
 // reportTableFailures lists every table whose classification recorded an
 // error, in deterministic (table) order.
-func reportTableFailures(report *auditRecord) []string {
-	var failed []string
-	for _, t := range report.Tables {
-		if t.Error != "" {
-			failed = append(failed, t.Table+": "+t.Error)
-		}
-	}
-	return failed
-}
 
 // ── Audit engine ─────────────────────────────────────────────────────────
 

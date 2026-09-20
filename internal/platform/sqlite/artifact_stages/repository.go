@@ -53,7 +53,6 @@ package artifactstages
 
 import (
 	"database/sql"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
@@ -239,13 +238,6 @@ func parseRFC3339Nano(s, columnName string) (time.Time, error) {
 // SQLite (per migration 147). Callers MAY pass any string-format
 // payload; the repository does not interpret the bytes (forward-
 // compat with shape evolution).
-func MarshalPublishedLocation(loc any) (string, error) {
-	b, err := json.Marshal(loc)
-	if err != nil {
-		return "", fmt.Errorf("artifact_stages.MarshalPublishedLocation: %w", err)
-	}
-	return string(b), nil
-}
 
 // ErrTimestampEmpty is the canonical repository-level sentinel
 // returned by parseRFC3339Nano when the column value is the empty

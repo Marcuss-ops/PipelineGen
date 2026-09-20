@@ -4,8 +4,6 @@ import (
 	"context"
 	"fmt"
 
-	capcheckpoint "github.com/Marcuss-ops/PipelineGen/internal/capabilities/checkpoint"
-
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 )
 
@@ -147,32 +145,6 @@ func (c *PreparationCoordinator) inspect(ctx context.Context) error {
 
 // ExecuteCheckpointFirst implements the canonical order: checkpoint lookup,
 // prepared result adoption, then official computation on MISS.
-func ExecuteCheckpointFirst(ctx context.Context, checkpoints capcheckpoint.Store, adopter PreparedResultAdopter, official CheckpointFirstExecutor, candidate SpeculationCandidate) (bool, error) {
-	if candidate.Job == nil || checkpoints == nil || official == nil {
-		return false, fmt.Errorf("checkpoint-first execution requires job, checkpoint store, and official executor")
-	}
-	stage := candidate.Unit.Kind
-	checkpoint, err := checkpoints.Get(ctx, candidate.Job.ID, stage, candidate.Unit.ID)
-	if err != nil {
-		return false, err
-	}
-	if checkpoint != nil && checkpoint.Status == capcheckpoint.StatusCompleted && checkpoint.InputFingerprint == candidate.Unit.Fingerprint {
-		return true, nil
-	}
-	if adopter != nil {
-		adopted, err := adopter.AdoptPreparedResult(ctx, candidate)
-		if err != nil {
-			return false, err
-		}
-		if adopted {
-			return true, nil
-		}
-	}
-	if err := official.ExecuteOfficial(ctx, candidate); err != nil {
-		return false, err
-	}
-	return true, nil
-}
 
 func costEstimate(cost string) int64 {
 	switch cost {

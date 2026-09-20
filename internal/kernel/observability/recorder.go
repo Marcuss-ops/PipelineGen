@@ -55,5 +55,3 @@ func noteRecorderFailure(ctx context.Context, runID, operation string, err error
 }
 
 type NoopRecorder struct{}
-
-func (NoopRecorder) SaveReport(context.Context, *RunReport) error { return nil }

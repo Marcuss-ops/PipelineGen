@@ -64,6 +64,7 @@ func TestOverlayPrepareEnqueueRecordsStage(t *testing.T) {
 		Version: capabilityoverlay.OverlayIntentVersion, IntentID: "intent-scene-0",
 		SceneID: "scene-0", SceneIndex: 0, Source: capabilityoverlay.IntentSourceEntity,
 		Kind: string(capabilityoverlay.KindEntityCard), TemplateID: "person_default",
+		Payload:     capabilityoverlay.IntentPayload{AssetRefs: []capabilityoverlay.OverlayAssetRef{{AssetID: "person-asset", SHA256: "person-sha"}}},
 		TimingState: capabilityoverlay.TimingStatePending,
 	}}
 

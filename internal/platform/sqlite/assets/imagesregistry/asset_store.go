@@ -13,7 +13,6 @@ import (
 
 	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	timeutil "github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
 	"go.uber.org/zap"
 )
@@ -215,9 +214,3 @@ func (s *AssetStoreSQLite) List(ctx context.Context, filter asset.Filter) ([]*as
 // NewService is the canonical surface for constructing the high-level asset
 // Service. The Service remains in the domain package; persistence writes are
 // injected separately through the canonical writer callbacks above.
-func NewService(store *AssetStoreSQLite, log *zap.Logger) *detail.Service {
-	if log == nil {
-		log = zap.NewNop()
-	}
-	return detail.NewService(store, log)
-}

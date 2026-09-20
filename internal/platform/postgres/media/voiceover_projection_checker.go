@@ -50,12 +50,6 @@ func NewMediaVoiceoverProjectionChecker(db *sql.DB) *MediaVoiceoverProjectionChe
 
 // DB exposes the underlying handle so callers can assert the checker lives on
 // the media SSOT.
-func (c *MediaVoiceoverProjectionChecker) DB() *sql.DB {
-	if c == nil {
-		return nil
-	}
-	return c.db
-}
 
 // VoiceoverProjectionExists reports whether a media_assets row exists for the id
 // with source='voiceover'.

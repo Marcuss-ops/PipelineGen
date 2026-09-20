@@ -415,7 +415,6 @@ func TestRunner_OverlayPrepare_EnqueuedBeforeTTS(t *testing.T) {
 	runner.Execute(context.Background(), runID, req)
 	final := awaitCompletion(t, repo, runID, 5*time.Second)
 	require.Equal(t, RunStatusCompleted, final.Status, "run must complete: %s", final.ErrorMessage)
-
 	// The prepare job was submitted exactly once with the pre-timing intents.
 	require.Len(t, prepEnq.reqs, 1, "overlay.prepare must be enqueued once")
 	prep := prepEnq.reqs[0]

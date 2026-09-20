@@ -52,14 +52,6 @@ func (s *stubWhisper) TranscribeAudioWithDetection(_ context.Context, _ string) 
 
 // writeVTTFile writes a minimal VTT file to a temp path and
 // returns the path. Used by the priority-2 local-file test.
-func writeVTTFile(t *testing.T, content string) string {
-	t.Helper()
-	dir := t.TempDir()
-	path := filepath.Join(dir, "clip.vtt")
-	err := os.WriteFile(path, []byte(content), 0o644)
-	require.NoError(t, err)
-	return path
-}
 
 // TestAcquireService_Priority2_LocalVTT verifies that when a
 // local .vtt file exists next to the clip's local_path, the

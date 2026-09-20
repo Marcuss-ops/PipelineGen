@@ -80,48 +80,6 @@ type SearchDocument struct {
 // agree byte-for-byte. The MediaSearch side reads payload via the
 // infra qdrant/payload_mapper.go's read path — never via this
 // function (the direction is wrong for retrieval).
-func (d SearchDocument) AsPayloadMap() map[string]any {
-	out := map[string]any{
-		"asset_id": d.AssetID,
-	}
-	if d.Source != "" {
-		out["source"] = d.Source
-	}
-	if d.Name != "" {
-		out["name"] = d.Name
-	}
-	if d.Category != "" {
-		out["category"] = d.Category
-	}
-	if d.MediaType != "" {
-		out["media_type"] = d.MediaType
-	}
-	if d.Style != "" {
-		out["style"] = d.Style
-	}
-	if d.Language != "" {
-		out["language"] = d.Language
-	}
-	if d.YouTubeVideoID != "" {
-		out["youtube_video_id"] = d.YouTubeVideoID
-	}
-	if d.YouTubeURL != "" {
-		out["youtube_url"] = d.YouTubeURL
-	}
-	if d.StartTime != "" {
-		out["start_time"] = d.StartTime
-	}
-	if d.EndTime != "" {
-		out["end_time"] = d.EndTime
-	}
-	if len(d.Tags) > 0 {
-		out["tags"] = d.Tags
-	}
-	if d.SearchText != "" {
-		out["search_text"] = d.SearchText
-	}
-	return out
-}
 
 // MediaAsset is the canonical typed envelope for SQLite hydration.
 // Shape mirrors the legacy `mediasearch.MediaAsset` 1:1

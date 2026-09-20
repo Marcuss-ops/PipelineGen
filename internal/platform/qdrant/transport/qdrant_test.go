@@ -767,10 +767,3 @@ func TestIsValidFieldType(t *testing.T) {
 // ── Helpers ──────────────────────────────────────────────────────────
 
 // makeFloat32Slice creates a []float32 of the given size, filled with 1.0.
-func makeFloat32Slice(size int) []float32 {
-	v := make([]float32, size)
-	for i := range v {
-		v[i] = 1.0
-	}
-	return v
-}

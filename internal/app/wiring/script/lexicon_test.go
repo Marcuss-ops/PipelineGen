@@ -3,17 +3,11 @@ package script
 import (
 	"os"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"testing"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )
-
-func testLexiconRoot() string {
-	_, filename, _, _ := runtime.Caller(0)
-	return filepath.Clean(filepath.Join(filepath.Dir(filename), "../../../../config/lexicons"))
-}
 
 func TestInitLinguisticsFailsWhenRequiredLanguageMissing(t *testing.T) {
 	cfg := &config.Config{

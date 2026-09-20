@@ -137,31 +137,6 @@ type Deps struct {
 }
 
 // NewService is the canonical fail-closed constructor for Service.
-func NewService(d Deps) (*Service, error) {
-	if d.Cfg == nil {
-		return nil, errors.New("maintenance.NewService: cfg is nil")
-	}
-	if d.Log == nil {
-		return nil, errors.New("maintenance.NewService: log is nil")
-	}
-	if !d.Cfg.Qdrant.Enabled {
-		return nil, errors.New(
-			"qdrant is disabled in config (qdrant.enabled=false); " +
-				"qdrant-maintenance requires qdrant.enabled=true",
-		)
-	}
-	if d.Cleaner == nil {
-		return nil, errors.New("maintenance.NewService: cleaner is nil (composition root missing QdrantCleaner port)")
-	}
-	return &Service{
-		cfg:        d.Cfg,
-		log:        d.Log,
-		cli:        NewCLIOutput(d.CliWriter),
-		cleaner:    d.Cleaner,
-		dispatcher: d.Dispatcher,
-		sqliteDB:   d.SQLiteDB,
-	}, nil
-}
 
 // Mode is the canonical typed enum for the 3-mode set that the
 // `qdrant-maintenance` admin command accepts (audit / repair-locators /
@@ -189,13 +164,6 @@ const (
 )
 
 // IsValid returns true for canonical 3-mode set.
-func (m Mode) IsValid() bool {
-	switch m {
-	case ModeAudit, ModeRepairLocators, ModeDeleteInvalid:
-		return true
-	}
-	return false
-}
 
 // Run is the canonical main entry point for the Service. Per mode it
 // populates the lazy fields (if needed) and dispatches to the typed

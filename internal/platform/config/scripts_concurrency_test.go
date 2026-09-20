@@ -79,6 +79,26 @@ func TestScriptsSeparateItemRenderWorkersResolution(t *testing.T) {
 	}
 }
 
+func TestScriptsOverlayPublicationWorkersResolution(t *testing.T) {
+	cfg := &Config{}
+	applyDefaults(cfg)
+	if got := cfg.Scripts.OverlayPublicationWorkers; got != 6 {
+		t.Fatalf("OverlayPublicationWorkers default = %d, want 6", got)
+	}
+
+	t.Setenv("VELOX_SCRIPTS_OVERLAY_PUBLICATION_WORKERS", "8")
+	applyEnvVars(cfg)
+	if got := cfg.Scripts.OverlayPublicationWorkers; got != 8 {
+		t.Fatalf("OverlayPublicationWorkers after env = %d, want 8", got)
+	}
+	if got := (ScriptsConfig{OverlayPublicationWorkers: 99}).WithDefaults().OverlayPublicationWorkers; got != 8 {
+		t.Fatalf("OverlayPublicationWorkers cap = %d, want 8", got)
+	}
+	if got := (ScriptsConfig{}).WithDefaults().OverlayPublicationWorkers; got != 6 {
+		t.Fatalf("OverlayPublicationWorkers zero default = %d, want 6", got)
+	}
+}
+
 // TestScriptsOverlayRenderConcurrencyResolution pins the multilingual overlay
 // render fan-out as an operator surface: it defaults to the certified 2, it is
 // overridable from the environment, and it can never resolve to 0 — a zero-slot

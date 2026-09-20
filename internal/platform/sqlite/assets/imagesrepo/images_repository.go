@@ -56,24 +56,6 @@ func (r *ImagesRepository) DB() *sql.DB {
 }
 
 // normalizeTags converte una lista di tag in una stringa normalizzata per ricerca full-text.
-func normalizeTags(tags []string) string {
-	var b strings.Builder
-	for _, t := range tags {
-		t = strings.TrimSpace(t)
-		if t == "" {
-			continue
-		}
-		low := strings.ToLower(t)
-		low = strings.NewReplacer(
-			"Ã ", "a", "Ã¨", "e", "Ã©", "e", "Ã¬", "i", "Ã²", "o", "Ã¹", "u",
-		).Replace(low)
-		if b.Len() > 0 {
-			b.WriteByte(' ')
-		}
-		b.WriteString(low)
-	}
-	return b.String()
-}
 
 // scanImageAssetFromRow is the canonical helper that scans a single image row
 // into *detail.ImageAsset. Both *sql.Row and *sql.Rows satisfy its Scan shape.

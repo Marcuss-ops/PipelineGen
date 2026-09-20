@@ -190,6 +190,11 @@ func (p *Processor) ensureStarted(ctx context.Context) error {
 		MaxBackoff:     100 * time.Millisecond,
 		BackoffFactor:  1.0,
 		DisableJitter:  true,
+		// Startup is the one deliberate exception to the repository's
+		// fail-closed nil-predicate default: the port is printed before
+		// aiohttp has finished binding /health, so connection-refused is
+		// expected during the short local warmup window.
+		IsRetryable: func(error) bool { return true },
 	})
 	if healthErr == nil && ctx.Err() != nil {
 		healthErr = ctx.Err()

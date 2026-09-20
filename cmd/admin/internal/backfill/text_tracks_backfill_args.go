@@ -83,17 +83,6 @@ func parseTextTracksBackfillArgs(args []string) (textTracksBackfillDeps, error) 
 }
 
 // splitCSV splits a comma-separated list into trimmed non-empty values.
-func SplitCSV(csv string) []string {
-	parts := strings.Split(csv, ",")
-	out := make([]string, 0, len(parts))
-	for _, p := range parts {
-		v := strings.TrimSpace(p)
-		if v != "" {
-			out = append(out, v)
-		}
-	}
-	return out
-}
 
 // splitLanguages splits the --languages CSV into (source, targets).
 // The first entry is the source language; the rest are targets.

@@ -17,11 +17,8 @@ package voiceover
 
 import (
 	"context"
-	"errors"
 	"fmt"
-	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"go.uber.org/zap"
 
@@ -187,120 +184,6 @@ func NewGenerateVoiceoversUseCase(deps UseCaseDeps) *GenerateVoiceoversUseCase {
 // Caller contract: command emitted to a worker via the voiceover
 // job broker should set JobID after Execute returns; the dispatcher
 // uses result.RequestID to thread audit back to the originating job.
-func (u *GenerateVoiceoversUseCase) Execute(ctx context.Context, cmd *GenerateVoiceoversCommand) (*GenerateVoiceoversResult, error) {
-	// Step 1: validate the Command envelope at the use case boundary.
-	// Mirrors the path-traversal-rejection-before-field-access pattern
-	// pinned by TestGenerateBatch_RejectsPathTraversalPayload.
-	if err := cmd.Validate(); err != nil {
-		return nil, fmt.Errorf("GenerateVoiceoversUseCase.Execute: validate: %w", err)
-	}
-
-	// Step 1b: normalize strategy at the boundary (mirrors
-	// BatchRequest.normalizeBatchRequest at types.go:289). Unknown
-	// inputs collapse to asset.StrategyVerify. Without this,
-	// invalid strings like "" or "fast" pass through unchanged and
-	// break downstream `req.Strategy == "replace"` comparisons in
-	// process.go / stages.go.
-	cmd.Strategy = asset.NormalizeStrategy(string(cmd.Strategy), false)
-
-	// Step 1c: per-batch requestID is computed once by Plan() so the
-	// value is shared by every Task.RequestID AND by the top-level
-	// result.RequestID below. Single source of truth — no two
-	// independent buildRequestID() calls per batch (auditors correlate
-	// request_id ↔ task IDs via the same value).
-	//
-	// Step 5 (P0.3 items-model recovery, June 2026): TotalOutputs and
-	// PerLanguage capacity are now sourced from len(cmd.Items) (one
-	// output per VoiceoverItem, NOT one output per language code).
-	result := &GenerateVoiceoversResult{
-		OK:           true,
-		RequestID:    "",
-		TotalOutputs: len(cmd.Items),
-		PerLanguage:  make([]VoiceoverItemResult, 0, len(cmd.Items)),
-		StartedAt:    time.Now().UTC(),
-	}
-
-	// Step 2: resolve destination once. Cross-cutting failure path —
-	// bubble up so the caller short-circuits (no per-item fan-out).
-	//
-	// PR-VO-DRY-PAIR (July 2026): delegate to the shared
-	// ResolveDestinationWithFallback free function (destination_helpers.go).
-	// Pre-DRY this was a ~25-line switch block duplicated in
-	// process_voiceover_item.go::Execute. Post-DRY both callers
-	// route through the same single function.
-	dest, err := ResolveDestinationWithFallback(ctx, cmd.Destination,
-		u.deps.DestinationResolver, u.deps.DefaultFolderResolver, u.deps.Logger)
-	if err != nil {
-		result.OK = false
-		result.Error = fmt.Sprintf("destination resolve: %v", err)
-		if errors.Is(err, ErrVoiceoverDestinationUnavailable) {
-			result.ErrorCode = VoiceoverDestinationUnavailableCode
-		}
-		result.CompletedAt = time.Now().UTC()
-		return result, fmt.Errorf("GenerateVoiceoversUseCase.Execute: resolve destination: %w", err)
-	}
-
-	// Step 2b: textHash is computed lazily by Plan() (one SHA256 per
-	// batch, threaded into every Task.TextHash + every filename
-	// substitution `{hash}` token). The Result ID lineage is owned by
-	// the executor's per-task fn closure; this Execute layer stays
-	// pure orchestrator (Pattern 0).
-
-	// Step 3: bounded parallel fan-out per language (Block 3).
-	// Plan materialises []Task (one per language) with all the
-	// per-task side-data pre-computed (filename, ID, voice override,
-	// requestID, textHash). EffectiveParallelism clamps the requested
-	// cap against deps.MaxParallelism and len(tasks) so we never
-	// spawn more workers than languages. The TaskFn closure binds
-	// the executor to processOneTask (Task → TaskResult) so the
-	// per-language fan-out body stays a single implementation in
-	// processOneLanguage (the executor only orchestrates, doesn't
-	// own business logic — Pattern 0).
-	// Step 3 (cont): Plan() returns the per-batch requestID and
-	// textHash it threaded into every Task. Use the SAME requestID
-	// for result.RequestID so audit correlates result ↔ tasks.
-	tasks, requestID, _ := u.Plan(cmd, dest)
-	result.RequestID = requestID
-	requested := cmd.Parallelism
-	if requested <= 0 {
-		// cmd.Parallelism zero/unset → fall back to the constructor's
-		// clamped DefaultParallelism (production: 3 per AGENTS.md
-		// utilities table / voiceover Master Plan).
-		requested = u.deps.DefaultParallelism
-	}
-	concurrency := EffectiveParallelism(requested, u.deps.MaxParallelism, len(tasks))
-	// PR-VO-TYPED-PRIMITIVES (July 2026): the per-task textHash is
-	// threaded from Task.TextHash (typed envelope) verbatim. The
-	// underlying string representation is byte-equivalent with the
-	// pre-refactor value at every wire boundary.
-	taskFn := func(ctx context.Context, t Task) TaskResult {
-		return u.processOneTask(ctx, t)
-	}
-	results, runErr := u.executor.Run(ctx, tasks, concurrency, taskFn, nil)
-	if runErr != nil {
-		// Composition root did not bind the per-language worker OR
-		// the executor hit a cross-cutting setup error. Surface loudly
-		// so the missing wire-up is fixed before deploy (godlike/07
-		// — no fake availability).
-		result.OK = false
-		result.Error = fmt.Sprintf("executor.Run: %v", runErr)
-		result.CompletedAt = time.Now().UTC()
-		return result, fmt.Errorf("GenerateVoiceoversUseCase.Execute: %w", runErr)
-	}
-	result.PerLanguage = results
-	for _, item := range results {
-		switch item.Status {
-		case StatusCompleted:
-			result.SuccessCount++
-		default: // StatusFailed or any unexpected value
-			result.OK = false
-			result.FailedCount++
-		}
-	}
-
-	result.CompletedAt = time.Now().UTC()
-	return result, nil
-}
 
 // processOneLanguage is the per-item orchestrator. Block 2 uses
 // the sequential fan-out; Block 3 introduces the bounded pool around
@@ -455,35 +338,6 @@ func (u *GenerateVoiceoversUseCase) processOneLanguage(
 // service_test.go's path-traversal contract. Defensive bounds-check
 // on t.Index surfaces a stale Task (out-of-range index after a
 // concurrent re-plan) as StatusFailed rather than a runtime panic.
-func (u *GenerateVoiceoversUseCase) processOneTask(ctx context.Context, t Task) VoiceoverItemResult {
-	if t.Command == nil {
-		// Defensive: Plan always populates Command, so a nil here means
-		// a stale executor task. Surface the failure with the task's
-		// recorded Language (Plan-derived) for log readability.
-		return VoiceoverItemResult{
-			Language: t.Language,
-			Status:   StatusFailed,
-			Error:    "task.Command is nil (plan produced an orphan task)",
-		}
-	}
-	if t.Index < 0 || t.Index >= len(t.Command.Items) {
-		// Defensive bounds-check: source the displayed Language from
-		// Task.Language (Plan-derived from itemSpec.Language) so the
-		// error path's item↔index mapping is consistent with the happy
-		// path's display.
-		return VoiceoverItemResult{
-			Language: t.Language,
-			Status:   StatusFailed,
-			Error:    fmt.Sprintf("task item index %d out of bounds (len(Items)=%d)", t.Index, len(t.Command.Items)),
-		}
-	}
-	// Step 5 invariant: pull text/lang/voice/filename from THIS item,
-	// not from the now-removed cmd.Languages/cmd.VoiceOverrides/cmd.
-	// FilenameTemplate flat fields. processOneLanguage takes the item
-	// directly so the per-item payload is honoured end-to-end.
-	item := t.Command.Items[t.Index]
-	return u.processOneLanguage(ctx, t.Command, item, t.RequestID, t.TextHash, t.Destination)
-}
 
 // buildCommandFilenameForItem — REMOVED in E4 (June 2026). The
 // per-item filename grammar now lives in BuildVoiceoverFilename at

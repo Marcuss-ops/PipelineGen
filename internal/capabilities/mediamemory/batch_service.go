@@ -148,15 +148,6 @@ type defaultBatchService struct {
 // NewDefaultBatchService constructs the service without a
 // DiscoveryWorker. Use NewDefaultBatchServiceWithWorker when
 // wiring the canonical catalog_only orchestrator.
-func NewDefaultBatchService(
-	candidates CandidateRepository,
-	planner AcquisitionPlanner,
-	rights RightsValidator,
-	log Logger,
-	clock Clock,
-) *defaultBatchService {
-	return NewDefaultBatchServiceWithWorker(candidates, planner, rights, nil, nil, log, clock)
-}
 
 // NewDefaultBatchServiceWithWorker is the canonical Fase 3.1
 // constructor. Composition root uses this form so catalog_only

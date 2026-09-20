@@ -327,23 +327,6 @@ func (b EntityImageBinding) Ref() kernelasset.Ref {
 // intentionally repeated for each clip; timeline order is represented by the
 // binding order, while the runtime renderer uses the same policy to assign
 // consecutive timeline offsets and protected original-audio intents.
-func fixedPlaybackClipBindings(ids []string, playback FixedPlaybackPolicy) []ClipBinding {
-	playback = playback.Normalize()
-	bindings := make([]ClipBinding, 0, len(ids))
-	segmentDuration := int64(0)
-	if playback.SourceOutMS > playback.SourceInMS {
-		segmentDuration = playback.SourceOutMS - playback.SourceInMS
-	}
-	for _, id := range ids {
-		bindings = append(bindings, ClipBinding{
-			ClipID:     id,
-			StartMs:    playback.SourceInMS,
-			EndMs:      playback.SourceOutMS,
-			DurationMs: segmentDuration,
-		})
-	}
-	return bindings
-}
 
 // Validate checks structural invariants on a single scene.
 //

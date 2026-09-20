@@ -97,9 +97,6 @@ func (cm *CollectionManager) RebuildV4(
 // non-deterministic ordered top-K. It is the single owner of the golden
 // certification step (item 14), shared by RebuildV4Projection and the
 // operator-facing reindex command.
-func CertifyGoldenQueries(ctx context.Context, collection string, exec GoldenQueryExecutor) error {
-	return certifyV4Golden(ctx, collection, exec)
-}
 
 // certifyV4Golden runs the canonical golden query set against the candidate
 // collection GoldenQueryRunCount times each and asserts deterministic ordered

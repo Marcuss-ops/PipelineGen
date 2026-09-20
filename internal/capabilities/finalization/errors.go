@@ -210,21 +210,10 @@ const (
 //	FORMAT_UNAVAILABLE   → permanent (unless policy changes)
 //	OUTPUT_EMPTY         → retryable once, then terminal
 //	DISK_FULL            → permanent (until resource freed)
-func (c VideoFailureCode) IsPermanent() bool {
-	switch c {
-	case VideoPrivate, VideoRemoved, VideoGeoBlocked,
-		VideoAuthRequired, VideoFormatUnavailable, VideoDiskFull:
-		return true
-	}
-	return false
-}
 
 // IsRetryable returns the inverse of IsPermanent. OUTPUT_EMPTY is
 // treated as retryable at this level; the worker's retry policy
 // enforces the "once, then terminal" rule.
-func (c VideoFailureCode) IsRetryable() bool {
-	return !c.IsPermanent()
-}
 
 // ── VideoError (§ 9.5) ─────────────────────────────────────────────
 
@@ -251,26 +240,9 @@ type VideoError struct {
 }
 
 // Error implements the error interface.
-func (e *VideoError) Error() string {
-	if e.Cause != nil {
-		return fmt.Sprintf("youtube: %s (video=%s retryable=%v): %v", e.Code, e.VideoID, e.Retryable, e.Cause)
-	}
-	return fmt.Sprintf("youtube: %s (video=%s retryable=%v)", e.Code, e.VideoID, e.Retryable)
-}
 
 // Unwrap returns the underlying cause for errors.Is / errors.As.
-func (e *VideoError) Unwrap() error {
-	return e.Cause
-}
 
 // NewVideoError constructs a VideoError. The Retryable field is
 // derived from the failure code's IsRetryable() default but can
 // be overridden by the caller for context-specific exceptions.
-func NewVideoError(code VideoFailureCode, videoID string, cause error) *VideoError {
-	return &VideoError{
-		Code:      code,
-		VideoID:   videoID,
-		Retryable: code.IsRetryable(),
-		Cause:     cause,
-	}
-}
