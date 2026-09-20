@@ -182,15 +182,13 @@ func blankSpans(s string, spans [][]int) string {
 // grandfathered by construction:
 //
 //   - internal/platform/sqlite/ — the operational SQLite state store (the
-//     non-media mutation primitives plus the legacy media read facade);
-//   - cmd/admin/ — operator tooling that deliberately runs against the
-//     operational database.
+//     non-media mutation primitives plus the legacy media read facade).
 //
-// The zones are prefixes and NOT an exact-file list on purpose here (unlike
-// the writer gate's exemptions): these two packages are the whole legacy read
-// plane, and their internal file layout is expected to shrink, not to be
-// pinned. A NEW package reading media_assets is a violation because it lives
-// outside every zone.
+// The zone is a prefix and NOT an exact-file list on purpose here (unlike the
+// writer gate's exemptions): this package is the legacy read plane itself, and
+// its internal file layout is expected to shrink, not to be pinned. A NEW
+// package reading media_assets is a violation because it lives outside the
+// zone.
 //
 // ZONE CONVERSION RATCHET. A prefix is the STARTING state of a zone, not its
 // terminal architecture: it exempts files nobody has read, so a NEW reader
@@ -200,13 +198,13 @@ func blankSpans(s string, spans [][]int) string {
 // prefix is dropped in the SAME change, so the converted zone stops
 // auto-exempting anything.
 //
-// internal/platform/qdrant/indexing/ was the first zone converted (2026-09-20)
-// once the exact-file registers reached zero. It is deliberately absent from
-// this list: a new file under it is now a violation until someone enumerates
-// it, which is the whole point of the conversion.
+// CONVERTED SO FAR (2026-09-20): internal/platform/qdrant/indexing/ (the Qdrant
+// media compatibility seam) and cmd/admin/ (operator tooling that deliberately
+// runs against the operational database). Both are deliberately absent from
+// this list: a new file under either is now a violation until someone
+// enumerates it, which is the whole point of the conversion.
 var sqliteMediaReaderGrandfatheredZones = []string{
 	"internal/platform/sqlite/",
-	"cmd/admin/",
 }
 
 // sqliteMediaReaderGrandfatheredFiles is the explicit DEBT REGISTER: the
@@ -394,16 +392,40 @@ var sqliteMediaReaderDegradeOnlyFiles = map[string]bool{}
 // a permanent allowlist), and the entry must be deleted in the same change as
 // its consumer is migrated or removed.
 //
-// FIRST CONVERTED ZONE — internal/platform/qdrant/indexing/, 2026-09-20. It is
-// the Qdrant media compatibility seam and its local-catalog payload readers,
-// retired wholesale with the Qdrant media projection; the files below are the
-// ones still holding a media read while that demolition lands. The prefix was
-// removed from sqliteMediaReaderGrandfatheredZones in this same change, so the
-// inventory is now the only thing standing between that package and a clean
-// gate.
+// CONVERTED ZONES — 2026-09-20. Each prefix was removed from
+// sqliteMediaReaderGrandfatheredZones in the same change that enumerated its
+// readers, so this inventory is the only thing standing between those packages
+// and a clean gate:
+//
+//   - internal/platform/qdrant/indexing/ — the Qdrant media compatibility seam
+//     and its local-catalog payload readers, retired wholesale with the Qdrant
+//     media projection; the files below still hold a media read while that
+//     demolition lands.
+//   - cmd/admin/ — operator tooling that deliberately runs against the
+//     operational database. It is inventoried rather than migrated because
+//     these commands are the documented operational read plane, not a
+//     production split-brain: naming them file by file is what stops a NEW
+//     admin command from inheriting the exemption.
 var sqliteMediaReaderInventoriedZoneFiles = map[string]bool{
-	"internal/platform/qdrant/indexing/asset_store.go":       true,
-	"internal/platform/qdrant/indexing/asset_store_fetch.go": true, "internal/platform/qdrant/indexing/asset_store_reconcile.go": true,
+	"cmd/admin/internal/audit/broken_references.go":               true,
+	"cmd/admin/internal/audit/clip_drive_audit.go":                true,
+	"cmd/admin/internal/audit/matt_damon_assets.go":               true,
+	"cmd/admin/internal/audit/repair_stock_metadata.go":           true,
+	"cmd/admin/internal/backfill/backfill_asset_embeddings_db.go": true,
+	"cmd/admin/internal/backfill/backfill_clip_folder_path.go":    true,
+	"cmd/admin/internal/backfill/backfill_embedding_contract.go":  true,
+	"cmd/admin/internal/backfill/backfill_media_durations.go":     true,
+	"cmd/admin/internal/backfill/backfill_missing.go":             true,
+	"cmd/admin/internal/backfill/backfill_provider_timestamps.go": true,
+	"cmd/admin/internal/backfill/backfill_source_url_metadata.go": true, "cmd/admin/internal/cleanup/cleanup_drive_orphans.go": true,
+	"cmd/admin/internal/drive/drive_reconcile.go": true,
+
+	"cmd/admin/internal/soundeffects/classify_sound_effects.go":       true,
+	"cmd/admin/internal/soundeffects/download_sound_effects.go":       true,
+	"cmd/admin/internal/soundeffects/organize_sound_effects_drive.go": true,
+	"cmd/admin/internal/soundeffects/trim_sound_effects.go":           true,
+	"internal/platform/qdrant/indexing/asset_store.go":                true,
+	"internal/platform/qdrant/indexing/asset_store_fetch.go":          true, "internal/platform/qdrant/indexing/asset_store_reconcile.go": true,
 
 	"internal/platform/qdrant/indexing/clipindexer/indexing.go":                 true,
 	"internal/platform/qdrant/indexing/clipindexer/indexing_api.go":             true,

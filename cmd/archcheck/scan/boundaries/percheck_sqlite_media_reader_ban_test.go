@@ -172,7 +172,6 @@ const q = "SELECT id FROM media_assets WHERE id = ?"
 	for _, rel := range []string{
 		"internal/platform/sqlite/assets/imagesregistry/store.go",
 		"internal/platform/sqlite/control_plane.go",
-		"cmd/admin/internal/audit/clip_drive_audit.go",
 	} {
 		writeGoFile(t, tmp, rel, body)
 	}
@@ -190,31 +189,50 @@ const q = "SELECT id FROM media_assets WHERE id = ?"
 // a prefix by another name, and the forward prevention the conversion exists to
 // buy (a new SQLite media reader cannot land unnoticed) would not exist.
 func TestScanSQLiteMediaReaderBan_ConvertedZoneIsExactFile(t *testing.T) {
-	tmp := t.TempDir()
-	body := `package x
+	cases := []struct {
+		zone    string
+		listed  string
+		sibling string
+	}{
+		{
+			zone:    "internal/platform/qdrant/indexing/",
+			listed:  "internal/platform/qdrant/indexing/clipindexer/indexing_state.go",
+			sibling: "internal/platform/qdrant/indexing/clipindexer/brand_new.go",
+		},
+		{
+			zone:    "cmd/admin/",
+			listed:  "cmd/admin/internal/audit/clip_drive_audit.go",
+			sibling: "cmd/admin/internal/audit/brand_new.go",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.zone, func(t *testing.T) {
+			tmp := t.TempDir()
+			body := `package x
 
 const q = "SELECT id FROM media_assets WHERE id = ?"
 `
-	const listed = "internal/platform/qdrant/indexing/clipindexer/indexing_state.go"
-	if !sqliteMediaReaderInventoriedZoneFiles[listed] {
-		t.Fatalf("%s is no longer in the converted-zone inventory — this test pins the conversion of internal/platform/qdrant/indexing/", listed)
-	}
-	// The zone prefix must be gone, or the listing below would be exempt for the
-	// wrong reason and this test would pass without the register.
-	for _, zone := range sqliteMediaReaderGrandfatheredZones {
-		if strings.HasPrefix(listed, zone) {
-			t.Fatalf("zone %q still covers the converted package — the prefix must be dropped in the same change as the inventory", zone)
-		}
-	}
-	writeGoFile(t, tmp, listed, body)
-	writeGoFile(t, tmp, "internal/platform/qdrant/indexing/clipindexer/brand_new.go", body)
+			if !sqliteMediaReaderInventoriedZoneFiles[tc.listed] {
+				t.Fatalf("%s is no longer in the converted-zone inventory — this test pins the conversion of %s", tc.listed, tc.zone)
+			}
+			// The zone prefix must be gone, or the listing below would be exempt
+			// for the wrong reason and this test would pass without the register.
+			for _, zone := range sqliteMediaReaderGrandfatheredZones {
+				if strings.HasPrefix(tc.listed, zone) {
+					t.Fatalf("zone %q still covers the converted package — the prefix must be dropped in the same change as the inventory", zone)
+				}
+			}
+			writeGoFile(t, tmp, tc.listed, body)
+			writeGoFile(t, tmp, tc.sibling, body)
 
-	got := mediaReaderViolations(scanMediaReader(t, tmp))
-	if len(got) != 1 {
-		t.Fatalf("expected exactly the unlisted sibling to be flagged, got %d: %+v", len(got), got)
-	}
-	if !strings.HasSuffix(got[0].File, "brand_new.go") {
-		t.Errorf("flagged %q, want the unlisted sibling brand_new.go", got[0].File)
+			got := mediaReaderViolations(scanMediaReader(t, tmp))
+			if len(got) != 1 {
+				t.Fatalf("expected exactly the unlisted sibling to be flagged, got %d: %+v", len(got), got)
+			}
+			if !strings.HasSuffix(got[0].File, filepath.Base(tc.sibling)) {
+				t.Errorf("flagged %q, want the unlisted sibling %s", got[0].File, filepath.Base(tc.sibling))
+			}
+		})
 	}
 }
 
