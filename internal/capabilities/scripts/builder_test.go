@@ -62,14 +62,19 @@ func TestMikeTyson1000WordManifestBuildsFiveSceneTenLanguageRuntimeRequest(t *te
 	if request.Model != "gemma4:e4b" || request.SourceLanguage != "en" || len(request.Languages) != 9 || len(request.VoiceoverLanguages) != 10 {
 		t.Fatalf("generation model/language fanout model=%q source=%q translations=%v voiceovers=%v", request.Model, request.SourceLanguage, request.Languages, request.VoiceoverLanguages)
 	}
-	if request.ForceRefresh || request.Source.ForceRefresh || request.ScriptParams.ForceRefresh {
-		t.Fatal("manifest must reuse persisted generation/cache data instead of forcing regeneration")
+	// The rehearsal manifest deliberately forces regeneration so the run does
+	// not reuse persisted generation/cache data; the top-level force_refresh
+	// fans out to every surface in BuildGenerateRequest.
+	if !request.ForceRefresh || !request.Source.ForceRefresh || !request.ScriptParams.ForceRefresh {
+		t.Fatalf("manifest must force regeneration on every surface: request=%t source=%t script=%t", request.ForceRefresh, request.Source.ForceRefresh, request.ScriptParams.ForceRefresh)
 	}
 	if !request.SaveToDB || !request.Render.Enabled || !request.Render.RequireGPU || request.Render.Subtitles == nil || !request.Render.Subtitles.Enabled {
 		t.Fatalf("persistence/render/subtitle contract not enabled: save=%t render=%+v", request.SaveToDB, request.Render)
 	}
-	if !request.Docs.Enabled || len(request.Docs.Languages) != 10 {
-		t.Fatalf("docs language fanout enabled=%t languages=%v, want all ten", request.Docs.Enabled, request.Docs.Languages)
+	// The rehearsal manifest publishes no Docs artifacts but still carries the
+	// full ten-language fanout for translation.
+	if request.Docs.Enabled || len(request.Docs.Languages) != 10 {
+		t.Fatalf("docs contract enabled=%t languages=%v, want docs disabled with all ten languages retained", request.Docs.Enabled, request.Docs.Languages)
 	}
 	if request.Audio != capabilityaudio.AudioModeCombinedTimeline || len(request.SoundEffects) != 5 || len(request.BackgroundMusic) != 1 {
 		t.Fatalf("audio contract mode=%q SFX=%d BGM=%d, want combined/5/1", request.Audio, len(request.SoundEffects), len(request.BackgroundMusic))
