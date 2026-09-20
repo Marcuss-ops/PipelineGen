@@ -47,14 +47,6 @@ type ClipsFolderExtPort interface {
 // once at composition time.
 type clipsFolderExtAdapter struct{}
 
-// NewClipsFolderExtAdapter constructs the production adapter wrapping
-// clips.ExtractDriveFolderID. Returns a fresh instance per call; for
-// shared use, callers can cache the result themselves (the adapter is
-// stateless and goroutine-safe).
-func NewClipsFolderExtAdapter() ClipsFolderExtPort {
-	return &clipsFolderExtAdapter{}
-}
-
 // Compile-time assertion (AGENTS.md Pattern 0): the adapter must
 // structurally satisfy the port. Drift between adapter signature and
 // port contract surfaces as a compile error here.

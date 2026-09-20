@@ -15,23 +15,6 @@ import (
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
-// CompileOverlayPlanFromGenerationResult adapts the legacy/batch domain result
-// to the canonical overlay compiler. timingArtifacts must contain the
-// word-level artifact captured by the exact TTS call that produced each scene
-// audio file; no timestamp is inferred from text length or from bundle links.
-func CompileOverlayPlanFromGenerationResult(
-	result *scriptpkg.GenerationResult,
-	language Language,
-	timingArtifacts map[string]*capabilityaudio.SpeechTimingArtifact,
-	background *scriptpkg.OverlayBackgroundSpec,
-	planID string,
-	projectID string,
-) (*capabilityoverlay.OverlayPlan, error) {
-	return CompileOverlayPlanFromGenerationResultWithStyle(
-		result, language, timingArtifacts, background, nil, planID, projectID,
-	)
-}
-
 // CompileOverlayPlanFromGenerationResultWithStyle is the batch bridge used by
 // script.generate_item. It keeps the legacy signature above source-compatible
 // while carrying the same caller-owned overlay style that the durable Runner

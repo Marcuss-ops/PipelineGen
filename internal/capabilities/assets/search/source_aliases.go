@@ -109,41 +109,6 @@ func (r *AliasRegistry) CanonicalizeSources(in []string) []string {
 	return out
 }
 
-// RegisterSourceAlias adds an alias to the registry. Intended for
-// test-time extension only; production code must NOT mutate the
-// registry after composition root boot (so AlreadyRegistered in
-// PR-10+ won't be silently broken). Returns false if alias or
-// canonical is empty or if the alias already maps to a different
-// canonical name (idempotent re-registration to the same canonical
-// returns true).
-func (r *AliasRegistry) RegisterSourceAlias(alias, canonical string) bool {
-	alias = strings.ToLower(strings.TrimSpace(alias))
-	canonical = strings.ToLower(strings.TrimSpace(canonical))
-	if alias == "" || canonical == "" {
-		return false
-	}
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	if existing, ok := r.alias[alias]; ok && existing != canonical {
-		return false
-	}
-	r.alias[alias] = canonical
-	return true
-}
-
-// Snapshot returns a read-only copy of the alias table — useful for
-// diagnostics and tests. Not optimised for hot paths; Equal is the
-// faster path used at fanout time.
-func (r *AliasRegistry) Snapshot() map[string]string {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
-	out := make(map[string]string, len(r.alias))
-	for k, v := range r.alias {
-		out[k] = v
-	}
-	return out
-}
-
 // defaultSourceAliases is the package-level registry used by
 // BackendRegistry.Eligible. Tests can swap it via
 // SetDefaultAliasRegistry to inject per-test customisations; this
@@ -153,18 +118,6 @@ var (
 	defaultAliasMu       sync.RWMutex
 	defaultSourceAliases = NewAliasRegistry()
 )
-
-// SetDefaultAliasRegistry replaces the package-level alias registry
-// used by BackendRegistry.Eligible for caller-supplied source
-// names. Intended for tests; production code does not call it.
-func SetDefaultAliasRegistry(r *AliasRegistry) {
-	if r == nil {
-		return
-	}
-	defaultAliasMu.Lock()
-	defaultSourceAliases = r
-	defaultAliasMu.Unlock()
-}
 
 // ResolveCanonical applies the default registry's
 // CanonicalizeSource to a single string. Returns "" if s is empty
