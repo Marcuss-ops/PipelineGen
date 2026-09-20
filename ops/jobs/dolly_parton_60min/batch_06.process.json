@@ -1,0 +1,155 @@
+{
+  "_comment": "Canonical POST /api/clips/process payload (ExtractRequest). Batch 06 of 07 — clip_id 51-60 of the Dolly Parton '60 Minutes Australia' interview (video tnoMGevqWAM). Destination: explicit child folder 1C-q2swarUlf4JEUYHVe0Ol88MDSU8FUq, create_subfolder=false. Deterministic clip ids (yt_<videoID>_<startSec>_<endSec>_v1) make a re-submit an UPSERT, not a duplicate.",
+  "url": "https://www.youtube.com/watch?v=tnoMGevqWAM",
+  "strategy": "verify",
+  "concurrency": 3,
+  "force_keyframes": true,
+  "keep_audio": true,
+  "write_summary": true,
+  "destination": {
+    "folder_id": "1C-q2swarUlf4JEUYHVe0Ol88MDSU8FUq",
+    "create_subfolder": false
+  },
+  "segments": [
+    {
+      "start": "40:21",
+      "end": "41:10",
+      "name": "I rischi di autodistruzione tra dipendenze e fuga nel paradiso artificiale",
+      "category": "celebrity_interview",
+      "source_title": "EXTENDED INTERVIEW: Dolly Parton on Plastic Surgery and Her 47-Year Marriage | 60 Minutes Australia",
+      "source_channel": "60 Minutes Australia",
+      "summary": "Ringrazia di non essere mai caduta nel vortice di droghe e farmaci, spiegando che molti artisti cercano nelle sostanze una pace ultraterrena anticipata.",
+      "topics": [
+        "droghe alcol farmaci star system fuga dolore paradiso anticipato spiritualità fede"
+      ],
+      "tags": ["Dolly Parton", "60 Minutes Australia", "celebrity_interview"],
+      "mentioned_people": ["Dolly Parton"]
+    },
+    {
+      "start": "41:10",
+      "end": "42:03",
+      "name": "La scelta di essere gentili senza farsi mettere i piedi in testa",
+      "category": "celebrity_interview",
+      "source_title": "EXTENDED INTERVIEW: Dolly Parton on Plastic Surgery and Her 47-Year Marriage | 60 Minutes Australia",
+      "source_channel": "60 Minutes Australia",
+      "summary": "Spiega che essere gentili è una decisione quotidiana che richiede sforzo, ma avverte che sa tirare fuori le unghie quando qualcuno cerca di approfittarsene.",
+      "topics": [
+        "gentilezza carattere fermezza rispetto rabbia controllo non farsi calpestare integrità"
+      ],
+      "tags": ["Dolly Parton", "60 Minutes Australia", "celebrity_interview"],
+      "mentioned_people": ["Dolly Parton"]
+    },
+    {
+      "start": "42:03",
+      "end": "43:05",
+      "name": "Non essere 'vaniglia': l'orgoglio del temperamento montanaro",
+      "category": "celebrity_interview",
+      "source_title": "EXTENDED INTERVIEW: Dolly Parton on Plastic Surgery and Her 47-Year Marriage | 60 Minutes Australia",
+      "source_channel": "60 Minutes Australia",
+      "summary": "Rifiuta l'etichetta di persona docile e zuccherosa, paragonandosi a un gusto deciso e ammettendo di conservare il carattere fiero e focoso del padre.",
+      "topics": [
+        "gusto vaniglia rocky road temperamento redneck padre radici montane difendere diritti"
+      ],
+      "tags": ["Dolly Parton", "60 Minutes Australia", "celebrity_interview"],
+      "mentioned_people": ["Dolly Parton"]
+    },
+    {
+      "start": "43:05",
+      "end": "44:04",
+      "name": "La grave depressione negli anni '80 tra menopausa e crisi personale",
+      "category": "celebrity_interview",
+      "source_title": "EXTENDED INTERVIEW: Dolly Parton on Plastic Surgery and Her 47-Year Marriage | 60 Minutes Australia",
+      "source_channel": "60 Minutes Australia",
+      "summary": "Confessa di aver attraversato una cupa depressione negli anni Ottanta tra scompensi ormonali, peso eccessivo e problemi personali arrivando a capire le ragioni del suicidio.",
+      "topics": [
+        "depressione anni 1980 menopausa problemi ginecologici sovrappeso crisi identità pensieri suicidi"
+      ],
+      "tags": ["Dolly Parton", "60 Minutes Australia", "celebrity_interview"],
+      "mentioned_people": ["Dolly Parton"]
+    },
+    {
+      "start": "44:04",
+      "end": "44:56",
+      "name": "Il superamento della crisi tramite preghiera e determinazione",
+      "category": "celebrity_interview",
+      "source_title": "EXTENDED INTERVIEW: Dolly Parton on Plastic Surgery and Her 47-Year Marriage | 60 Minutes Australia",
+      "source_channel": "60 Minutes Australia",
+      "summary": "Narra come la preghiera, il supporto degli amici e la decisione di reagire con forza d'animo le abbiano fatto superare i momenti più oscuri.",
+      "topics": [
+        "preghiera fede amici superamento pensieri suicidi riscatto forza volontà reazione"
+      ],
+      "tags": ["Dolly Parton", "60 Minutes Australia", "celebrity_interview"],
+      "mentioned_people": ["Dolly Parton"]
+    },
+    {
+      "start": "44:56",
+      "end": "45:50",
+      "name": "Il valore dell'empatia verso gli altri e lo stress per i problemi altrui",
+      "category": "celebrity_interview",
+      "source_title": "EXTENDED INTERVIEW: Dolly Parton on Plastic Surgery and Her 47-Year Marriage | 60 Minutes Australia",
+      "source_channel": "60 Minutes Australia",
+      "summary": "Riconosce a quella sofferenza passata il dono di averle insegnato a comprendere il dolore degli altri, pur soffrendo ancora molto per i problemi dei suoi cari.",
+      "topics": [
+        "empatia comprensione dolore famiglia divorzi stress affetto credit to God cash to Dolly"
+      ],
+      "tags": ["Dolly Parton", "60 Minutes Australia", "celebrity_interview"],
+      "mentioned_people": ["Dolly Parton"]
+    },
+    {
+      "start": "45:50",
+      "end": "46:44",
+      "name": "L'album 'Blue Smoke' e le reinterpretazioni di Bob Dylan",
+      "category": "celebrity_interview",
+      "source_title": "EXTENDED INTERVIEW: Dolly Parton on Plastic Surgery and Her 47-Year Marriage | 60 Minutes Australia",
+      "source_channel": "60 Minutes Australia",
+      "summary": "Presenta il nuovo progetto 'Blue Smoke' e il suo amore per le reinterpretazioni di grandi classici, tra cui un brano di Bob Dylan e uno di Cat Stevens.",
+      "topics": [
+        "album Blue Smoke world tour cover Bob Dylan Don't Think Twice It's All Right Cat Stevens Peace Train"
+      ],
+      "tags": ["Dolly Parton", "60 Minutes Australia", "celebrity_interview"],
+      "mentioned_people": ["Dolly Parton", "Bob Dylan", "Cat Stevens"]
+    },
+    {
+      "start": "46:44",
+      "end": "47:32",
+      "name": "Le cover di Bon Jovi, Led Zeppelin e l'interpretazione dei testi",
+      "category": "celebrity_interview",
+      "source_title": "EXTENDED INTERVIEW: Dolly Parton on Plastic Surgery and Her 47-Year Marriage | 60 Minutes Australia",
+      "source_channel": "60 Minutes Australia",
+      "summary": "Parla delle cover di Bon Jovi e Led Zeppelin, ironizzando sul significato criptico di celebri testi rock come quelli di Neil Young.",
+      "topics": [
+        "Bon Jovi Lay Your Hands on Me Stairway to Heaven Led Zeppelin After the Gold Rush Neil Young testi misteriosi"
+      ],
+      "tags": ["Dolly Parton", "60 Minutes Australia", "celebrity_interview"],
+      "mentioned_people": ["Dolly Parton", "Bon Jovi", "Led Zeppelin", "Neil Young"]
+    },
+    {
+      "start": "47:32",
+      "end": "48:38",
+      "name": "La complessità ritmica nel duettare con Willie Nelson",
+      "category": "celebrity_interview",
+      "source_title": "EXTENDED INTERVIEW: Dolly Parton on Plastic Surgery and Her 47-Year Marriage | 60 Minutes Australia",
+      "source_channel": "60 Minutes Australia",
+      "summary": "Racconta la grande difficoltà tecnica nell'armonizzare le voci durante un duetto con Willie Nelson a causa del suo personalissimo e imprevedibile fraseggio.",
+      "topics": [
+        "duetto Willie Nelson fraseggio sincopato stile canoro sfida vocale affetto stima artistica"
+      ],
+      "tags": ["Dolly Parton", "60 Minutes Australia", "celebrity_interview"],
+      "mentioned_people": ["Dolly Parton", "Willie Nelson"]
+    },
+    {
+      "start": "48:38",
+      "end": "49:46",
+      "name": "L'imbarazzo tecnico dei baci cinematografici con Burt Reynolds",
+      "category": "celebrity_interview",
+      "source_title": "EXTENDED INTERVIEW: Dolly Parton on Plastic Surgery and Her 47-Year Marriage | 60 Minutes Australia",
+      "source_channel": "60 Minutes Australia",
+      "summary": "Descrive l'imbarazzo e la finzione dei baci sul set, ricordando quando il trucco nero dei baffi di Burt Reynolds le imbrattò il viso durante le riprese.",
+      "topics": [
+        "recitazione cinema baci copione Burt Reynolds Best Little Whorehouse Texas baffi trucco nero"
+      ],
+      "tags": ["Dolly Parton", "60 Minutes Australia", "celebrity_interview"],
+      "mentioned_people": ["Dolly Parton", "Burt Reynolds"]
+    }
+  ]
+}

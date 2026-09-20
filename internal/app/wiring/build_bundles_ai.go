@@ -17,6 +17,7 @@ package wiring
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 
 	processor "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters/processor"
@@ -40,6 +41,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/ollama"
 	ollamaadapters "github.com/Marcuss-ops/PipelineGen/internal/platform/ollama/adapters"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/ollama/client"
+	pgmedia "github.com/Marcuss-ops/PipelineGen/internal/platform/postgres/media"
 	sqlitescripts "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/scripts"
 	ytinfra "github.com/Marcuss-ops/PipelineGen/internal/platform/youtube"
 	ytplatform "github.com/Marcuss-ops/PipelineGen/internal/platform/youtube"
@@ -87,7 +89,13 @@ func whisperBridgeVersion(scriptPath string) string {
 // PR4.A (June 2026): MemoryRepo is created here (dbs.DualPool.Writer), not in BuildRepoBundle,
 // so that the single consumer (startGemmaMemorySweeper) reads it from root.AI
 // without going through RepoBundle.
-func BuildAIBundle(ctx context.Context, cfg *config.Config, dbs *Databases, log *zap.Logger, repos *RepoBundle, drive *DriveBundle) (*AIBundle, error) {
+//
+// MEDIA LEGACY READ-PLANE DEMOLITION (2026-09-20): the RepoBundle parameter was
+// REMOVED. This builder's only RepoBundle use was wiring the operational SQLite
+// ClipsRepository as the SceneTextGenerator clip asset resolver; that resolver
+// is a media read and therefore must come from the PostgreSQL media SSOT, which
+// the builder now takes as a direct mediaDB handle instead.
+func BuildAIBundle(ctx context.Context, cfg *config.Config, dbs *Databases, log *zap.Logger, drive *DriveBundle, mediaDB *sql.DB) (*AIBundle, error) {
 	_ = ctx
 	_ = drive
 	ollamaClient := client.NewClient(cfg.External.OllamaURL, cfg.External.OllamaModel, cfg.External.OllamaTimeoutSeconds)
@@ -257,9 +265,16 @@ func BuildAIBundle(ctx context.Context, cfg *config.Config, dbs *Databases, log 
 	// to the existing engine ResolvedGenerationPlan.
 	sceneTextGen := NewSceneTextGenerator(engine, log)
 	sceneTextGen.SetMemoryService(memSvc)
-	if repos != nil && repos.ClipsRepo != nil {
-		sceneTextGen.SetClipAssetResolver(repos.ClipsRepo)
-		log.Info("SceneTextGenerator canonical clip asset resolver configured")
+	// MEDIA LEGACY READ-PLANE DEMOLITION (2026-09-20): the clip asset resolver
+	// reads the PostgreSQL media SSOT (pgmedia.MediaSearcher implements
+	// ClipAssetResolver's ResolveByMediaAssetID), NEVER the operational SQLite
+	// ClipsRepository — media_assets is PostgreSQL-owned, so a SQLite-backed
+	// resolver returned not-found for every post-cutover clip while also reading
+	// a second engine. Without the media handle the resolver stays nil and the
+	// canonical render plan fails closed.
+	if mediaDB != nil {
+		sceneTextGen.SetClipAssetResolver(pgmedia.NewMediaSearcher(mediaDB))
+		log.Info("SceneTextGenerator canonical clip asset resolver configured (PostgreSQL media SSOT)")
 	} else {
 		log.Warn("SceneTextGenerator clip asset resolver unavailable; canonical render plans will fail closed")
 	}

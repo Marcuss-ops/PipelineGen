@@ -44,6 +44,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/indexing/backfill"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
+	pgmedia "github.com/Marcuss-ops/PipelineGen/internal/platform/postgres/media"
 	sqlitemediaregistry "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/mediaregistry"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
 )
@@ -213,7 +214,14 @@ func RunRepairStockMetadata(args []string) error {
 	// Composes search_text from the row's existing fields for the target
 	// sources when the column is empty.
 	if !deps.SkipSearchText {
-		matched, updated, err := backfillSearchTextCanonical(ctx, db, mutator, deps.Sources, deps.Limit, deps.Apply)
+		// MEDIA-SSOT: the candidate scan is a media_assets read, so it resolves
+		// from the PostgreSQL media SSOT. Writes still go through the canonical
+		// mutator, so both halves agree on one engine.
+		searchTextSource := pgmedia.NewSearchTextBackfillReader(root.MediaPostgres)
+		if searchTextSource == nil {
+			return fmt.Errorf("search_text repair: media PostgreSQL SSOT is required")
+		}
+		matched, updated, err := backfillSearchTextCanonical(ctx, searchTextSource, mutator, deps.Sources, deps.Limit, deps.Apply)
 		if err != nil {
 			return fmt.Errorf("search_text repair: %w", err)
 		}
@@ -288,61 +296,30 @@ func printRepairStockMetadataReport(r repairStockMetadataReport) {
 	}
 }
 
+// searchTextBackfillSource is the narrow media read the repair depends on.
+//
+// MEDIA-SSOT: production binds the PostgreSQL reader
+// (pgmedia.SearchTextBackfillReader) because both media_assets and
+// asset_text_tracks are PostgreSQL-owned; the composer's inputs must never come
+// from the operational mirror, which holds no committed media rows.
+type searchTextBackfillSource interface {
+	ListSearchTextBackfillCandidates(ctx context.Context, sources []string, limit int) ([]pgmedia.SearchTextBackfillCandidate, error)
+}
+
 // backfillSearchTextCanonical composes search_text from read-only asset data
 // and routes every write through the canonical AssetMutationCommitter. Admin
 // repair commands must not issue SQL mutations against media_assets directly.
-func backfillSearchTextCanonical(ctx context.Context, db *sql.DB, mutator persistence.AssetMutator, sources []string, limit int, apply bool) (int, int, error) {
-	if db == nil || mutator == nil {
-		return 0, 0, fmt.Errorf("canonical search_text repair requires database and asset mutator")
+func backfillSearchTextCanonical(ctx context.Context, src searchTextBackfillSource, mutator persistence.AssetMutator, sources []string, limit int, apply bool) (int, int, error) {
+	if src == nil || mutator == nil {
+		return 0, 0, fmt.Errorf("canonical search_text repair requires media source and asset mutator")
 	}
 	if len(sources) == 0 {
 		return 0, 0, fmt.Errorf("canonical search_text repair requires at least one source")
 	}
 
-	placeholders := make([]string, len(sources))
-	args := make([]any, len(sources))
-	for i, source := range sources {
-		placeholders[i] = "?"
-		args[i] = source
-	}
-	query := `
-		SELECT m.id, COALESCE(m.source, ''), COALESCE(m.name, ''), COALESCE(m.category, ''),
-		       COALESCE(m.tags, '[]'), COALESCE(m.source_url, ''),
-		       COALESCE(json_extract(COALESCE(m.metadata_json, '{}'), '$.description'), ''),
-		       COALESCE(json_extract(COALESCE(m.metadata_json, '{}'), '$.summary'), ''),
-		       COALESCE(json_extract(COALESCE(m.metadata_json, '{}'), '$.title'), ''),
-		       COALESCE((SELECT t.text_content FROM asset_text_tracks t
-		                 WHERE t.asset_id = m.id AND t.text_kind = 'transcript' AND t.is_current = 1
-		                 ORDER BY t.id LIMIT 1), '')
-		FROM media_assets m
-		WHERE (m.search_text IS NULL OR TRIM(m.search_text) = '')
-		  AND m.source IN (` + strings.Join(placeholders, ",") + `)
-		ORDER BY m.id`
-	if limit > 0 {
-		query += ` LIMIT ?`
-		args = append(args, limit)
-	}
-
-	rows, err := db.QueryContext(ctx, query, args...)
+	candidates, err := src.ListSearchTextBackfillCandidates(ctx, sources, limit)
 	if err != nil {
 		return 0, 0, fmt.Errorf("query canonical search_text candidates: %w", err)
-	}
-	defer rows.Close()
-
-	type candidate struct {
-		id, source, name, category, tagsJSON, sourceURL, description, summary, title, transcript string
-	}
-	var candidates []candidate
-	for rows.Next() {
-		var candidate candidate
-		if err := rows.Scan(&candidate.id, &candidate.source, &candidate.name, &candidate.category, &candidate.tagsJSON, &candidate.sourceURL,
-			&candidate.description, &candidate.summary, &candidate.title, &candidate.transcript); err != nil {
-			return 0, 0, fmt.Errorf("scan canonical search_text candidate: %w", err)
-		}
-		candidates = append(candidates, candidate)
-	}
-	if err := rows.Err(); err != nil {
-		return 0, 0, fmt.Errorf("iterate canonical search_text candidates: %w", err)
 	}
 	matched := len(candidates)
 	if !apply {
@@ -353,24 +330,24 @@ func backfillSearchTextCanonical(ctx context.Context, db *sql.DB, mutator persis
 	updated := 0
 	nowStr := time.Now().UTC().Format(time.RFC3339)
 	for _, candidate := range candidates {
-		title := candidate.title
+		title := candidate.Title
 		if title == "" {
-			title = candidate.name
+			title = candidate.Name
 		}
 		var tags []string
-		if strings.TrimSpace(candidate.tagsJSON) != "" {
-			if err := json.Unmarshal([]byte(candidate.tagsJSON), &tags); err != nil {
+		if strings.TrimSpace(candidate.TagsJSON) != "" {
+			if err := json.Unmarshal([]byte(candidate.TagsJSON), &tags); err != nil {
 				// A malformed tags column must never be silently repaired with
 				// empty tags: that would drop searchable metadata forever.
 				return matched, updated, fmt.Errorf("parse tags JSON for asset %q (source=%q): %w",
-					candidate.id, candidate.source, err)
+					candidate.ID, candidate.Source, err)
 			}
 		}
 		text, err := registry.Compose(detail.SearchTextInput{
-			AssetID: candidate.id, Source: candidate.source, Title: title,
-			Description: candidate.description, Summary: candidate.summary,
-			Transcript: candidate.transcript, Tags: tags, Category: candidate.category,
-			SourceURL: candidate.sourceURL,
+			AssetID: candidate.ID, Source: candidate.Source, Title: title,
+			Description: candidate.Description, Summary: candidate.Summary,
+			Transcript: candidate.Transcript, Tags: tags, Category: candidate.Category,
+			SourceURL: candidate.SourceURL,
 		})
 		if err != nil {
 			continue
@@ -380,9 +357,9 @@ func backfillSearchTextCanonical(ctx context.Context, db *sql.DB, mutator persis
 			continue
 		}
 		if err := mutator.PatchAsset(ctx, persistence.AssetPatch{
-			AssetID: candidate.id, SearchText: &text, UpdatedAt: &nowStr,
+			AssetID: candidate.ID, SearchText: &text, UpdatedAt: &nowStr,
 		}); err != nil {
-			return matched, updated, fmt.Errorf("canonical update search_text for %q: %w", candidate.id, err)
+			return matched, updated, fmt.Errorf("canonical update search_text for %q: %w", candidate.ID, err)
 		}
 		updated++
 	}

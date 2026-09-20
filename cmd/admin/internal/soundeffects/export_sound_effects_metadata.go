@@ -2,7 +2,6 @@ package soundeffects
 
 import (
 	"github.com/Marcuss-ops/PipelineGen/cmd/admin/internal/cli"
-	artlist "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/artlist"
 
 	"context"
 	"fmt"
@@ -12,6 +11,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/adminmedia"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/delivery"
+	pgmedia "github.com/Marcuss-ops/PipelineGen/internal/platform/postgres/media"
 )
 
 const soundEffectsMetadataDriveFolderID = "1vfZQHVNZab-pU2fBaj4qzR3iSz1sOVhW"
@@ -31,13 +31,21 @@ func RunExportSoundEffectsMetadata(args []string) error {
 	if root == nil || root.DB == nil || root.DB.DB == nil || root.Drive == nil || root.Drive.Publisher == nil {
 		return fmt.Errorf("database and Drive publisher are required")
 	}
+	// MEDIA-SSOT: the sound-effect projection is a media_assets read, so it MUST
+	// resolve from the PostgreSQL media SSOT. A closed media plane fails closed
+	// rather than degrading onto the operational SQLite store (which holds no
+	// committed media rows).
+	source := pgmedia.NewSoundEffectSource(root.MediaPostgres)
+	if source == nil {
+		return fmt.Errorf("media PostgreSQL SSOT is required for sound-effect metadata export")
+	}
 	uploader, err := delivery.NewAdminUploadService(root.Drive.Publisher)
 	if err != nil {
 		return err
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Minute)
 	defer cancel()
-	report, err := adminmedia.ExportSoundEffectsMetadata(ctx, artlist.AdminMediaMetadataSource{DB: root.DB.DB}, uploader, soundEffectsMetadataDriveFolderID, "sound_effects_metadata.json")
+	report, err := adminmedia.ExportSoundEffectsMetadata(ctx, source, uploader, soundEffectsMetadataDriveFolderID, "sound_effects_metadata.json")
 	if err != nil {
 		return err
 	}

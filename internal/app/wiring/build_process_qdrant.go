@@ -224,11 +224,6 @@ func buildQdrantDeps(ctx context.Context, cfg *config.Config, dbs *Databases, re
 		if ledgerErr != nil {
 			return nil, fmt.Errorf("buildQdrantDeps: media registry ledger: %w", ledgerErr)
 		}
-		// Keep the ACTIVE projection checkpoint current with incremental
-		// indexing so the startup sequence gate (ValidateProjectionSequence)
-		// does not fail closed on the next restart after assets are
-		// committed + embedded outside a full reindex.
-		clipIndexerService.SetProjectionSequenceAdvancer(registryLedger)
 		var rerr error
 		runtime, rerr = qdrant.NewRuntime(qdrant.RuntimeConfig{
 			QdrantCfg: &schema.Config{
@@ -279,13 +274,14 @@ func buildQdrantDeps(ctx context.Context, cfg *config.Config, dbs *Databases, re
 		// Qdrant and IndexWriter always present. ClipIndexer is the sidecar
 		// path (writes via the AI server) and stays independent of the
 		// outbox deletion path.
-		if clipIndexerService.IsEnabled() {
-			clipIndexerService.SetVectorStore(runtime.Writer)
-			log.Info("QDRANT-003 PR4: IndexWriter (from QdrantRuntime) wired as clipindexer VectorStoreIndexer",
-				zap.String("runtime_alias", runtime.Schema.RuntimeAlias))
-		} else {
-			log.Info("QDRANT-003 PR4: Qdrant enabled, ClipIndexer disabled — QdrantRuntime constructed for IndexDeleteHandler path; VectorStore not wired into clipindexer service")
-		}
+		// MEDIA LEGACY READ-PLANE DEMOLITION (2026-09-20): the Qdrant media write
+		// plane (clipindexer VectorStoreIndexer + projection-sequence advancer) is
+		// RETIRED. QdrantRuntime is still constructed for the non-media
+		// IndexDeleteHandler path (QdrantDeleter below); it is no longer rebound as
+		// the clipindexer vector authority because clipindexer is a pure
+		// PostgreSQL-outbox delegator.
+		log.Info("MEDIA-CUTOVER: Qdrant media write plane retired — QdrantRuntime retained for the non-media IndexDeleteHandler path",
+			zap.String("runtime_alias", runtime.Schema.RuntimeAlias))
 	} else {
 		log.Info("QDRANT-003: Qdrant disabled — no QdrantRuntime wired (buildQdrantDeps pre-phase)")
 	}

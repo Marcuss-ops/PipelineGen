@@ -35,7 +35,6 @@ import (
 	driveutil "github.com/Marcuss-ops/PipelineGen/internal/platform/drive"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/drive/resolver"
 	pgmedia "github.com/Marcuss-ops/PipelineGen/internal/platform/postgres/media"
-	assetsrepo "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/channels"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outbox"
 	corid "github.com/Marcuss-ops/PipelineGen/pkg/corid"
 	"go.uber.org/zap"
@@ -398,18 +397,21 @@ var _ batch.ClipJobEnqueuer = (*clipJobEnqueuerAdapter)(nil)
 // struct{} + cfg) so it is testable in isolation with zero infrastructure
 // dependencies.
 // newSourcingClipStore selects the YouTube sourcing clip store. PostgreSQL is
-// the media SSOT, so dedupe/read go through it whenever the handle is wired;
-// the legacy SQLite ClipsRepository is used only for the documented
-// graceful-degrade path (media PostgreSQL disabled). Reading dedupe state from
-// SQLite while producers commit to PostgreSQL was the read split-brain that
-// made PG-registered YouTube clips look new.
-func newSourcingClipStore(mediaDB *sql.DB, clipsRepo *assetsrepo.ClipsRepository) sourcing.ClipStorePort {
-	if mediaDB != nil {
-		if adapter := ytadapters.NewSourcingClipStorePGAdapter(pgmedia.NewMediaSearcher(mediaDB)); adapter != nil {
-			return adapter
-		}
+// the media SSOT, so dedupe/read go through it whenever the handle is wired.
+//
+// MEDIA LEGACY READ-PLANE DEMOLITION (2026-09-20): the SQLite
+// ClipsRepository fallback was DELETED. Reading dedupe state from SQLite while
+// producers commit to PostgreSQL was the read split-brain that made
+// PG-registered YouTube clips look new, and the operational mirror holds no
+// committed media rows, so the fallback could only ever answer "not found"
+// while PostgreSQL held the assets. A missing handle therefore returns nil and
+// the consumer (sourcing.youtube.Service.dedupCheck) fails closed rather than
+// degrading onto a second engine.
+func newSourcingClipStore(mediaDB *sql.DB) sourcing.ClipStorePort {
+	if mediaDB == nil {
+		return nil
 	}
-	return ytadapters.NewSourcingClipStoreAdapter(clipsRepo)
+	return ytadapters.NewSourcingClipStorePGAdapter(pgmedia.NewMediaSearcher(mediaDB))
 }
 
 func wireSourcingAtomic(cfg *config.Config, h sourcing.SourcingAtomicPort) (sourcing.SourcingAtomicPort, error) {

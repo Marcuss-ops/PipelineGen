@@ -32,13 +32,37 @@ package boundaries
 //
 //   - internal/platform/qdrant/indexing/ — the Qdrant media compatibility seam
 //     and its local-catalog payload readers, retired wholesale with the Qdrant
-//     media projection; the files below still hold a media read while that
-//     demolition lands.
+//     media projection. PROGRESS 2026-09-20: the six `clipindexer/` legacy
+//     implementation files left the inventory (and the tree) when clipindexer
+//     was reduced to a pure PostgreSQL-outbox delegator, and
+//     `asset_store_reconcile.go` followed it once its `ListAssetsForReconcile`
+//     scan was CERTIFIED CALLERLESS — the `reconciliation` capability its
+//     header named has no non-test importer at all, and reads through its own
+//     `SQLiteReconcileReader.ListForReconcile` port instead, which nothing
+//     implements.
+//
+//     The two readers that remain are NOT deletable yet, and the blocker is
+//     per-file rather than generic debt:
+//
+//   - asset_store_fetch.go is LIVE. `FetchAsset` is called by the Qdrant search
+//     hydration (search_adapter.go, semantic_asset_search_adapter.go),
+//     `ListAllAssetIDs` by verification/verifier_counts.go and
+//     indexing/payload_mapper.go, and `ErrAssetNotFound` is matched with
+//     errors.Is by those same two search adapters — so deleting the file breaks
+//     the build. Step 2 of the MEDIA LEGACY READ-PLANE DEMOLITION plan
+//     ("only after their production responsibilities have moved to PostgreSQL
+//     or have no callers") is therefore NOT satisfied for it.
+//
+//   - asset_store.go owns the `canonicalQuery` + `assetRowScanner` +
+//     `maxTranscriptsPerAsset` triple shared with asset_store_fetch.go and
+//     asset_store_batch.go, so it can only leave after both do.
+//
 //   - cmd/admin/ — operator tooling that deliberately runs against the
 //     operational database. It is inventoried rather than migrated because
 //     these commands are the documented operational read plane, not a
 //     production split-brain: naming them file by file is what stops a NEW
 //     admin command from inheriting the exemption.
+//
 //   - internal/platform/sqlite/ — the operational SQLite state store, and the
 //     largest converted zone (32 files). It is the legacy read plane itself
 //     (the ClipsRepository/AssetStoreSQLite facade, the operator read port, the
@@ -47,10 +71,6 @@ package boundaries
 //     "the whole package is exempt" into a WORKLIST: every future deletion must
 //     delete its entry in the same change, and the list can only shrink.
 var sqliteMediaReaderInventoriedZoneFiles = map[string]bool{
-	"cmd/admin/internal/audit/broken_references.go":                              true,
-	"cmd/admin/internal/audit/clip_drive_audit.go":                               true,
-	"cmd/admin/internal/audit/matt_damon_assets.go":                              true,
-	"cmd/admin/internal/audit/repair_stock_metadata.go":                          true,
 	"cmd/admin/internal/backfill/backfill_asset_embeddings_db.go":                true,
 	"cmd/admin/internal/backfill/backfill_clip_folder_path.go":                   true,
 	"cmd/admin/internal/backfill/backfill_embedding_contract.go":                 true,
@@ -60,30 +80,15 @@ var sqliteMediaReaderInventoriedZoneFiles = map[string]bool{
 	"cmd/admin/internal/backfill/backfill_source_url_metadata.go":                true,
 	"cmd/admin/internal/cleanup/cleanup_drive_orphans.go":                        true,
 	"cmd/admin/internal/drive/drive_reconcile.go":                                true,
-	"cmd/admin/internal/soundeffects/classify_sound_effects.go":                  true,
-	"cmd/admin/internal/soundeffects/download_sound_effects.go":                  true,
-	"cmd/admin/internal/soundeffects/organize_sound_effects_drive.go":            true,
-	"cmd/admin/internal/soundeffects/trim_sound_effects.go":                      true,
 	"internal/platform/qdrant/indexing/asset_store.go":                           true,
 	"internal/platform/qdrant/indexing/asset_store_fetch.go":                     true,
-	"internal/platform/qdrant/indexing/asset_store_reconcile.go":                 true,
-	"internal/platform/qdrant/indexing/clipindexer/indexing.go":                  true,
-	"internal/platform/qdrant/indexing/clipindexer/indexing_api.go":              true,
-	"internal/platform/qdrant/indexing/clipindexer/indexing_hash.go":             true,
-	"internal/platform/qdrant/indexing/clipindexer/indexing_skip.go":             true,
-	"internal/platform/qdrant/indexing/clipindexer/indexing_state.go":            true,
-	"internal/platform/qdrant/indexing/clipindexer/indexing_api_persistence.go":  true,
-	"internal/platform/sqlite/assets/artlist/adminmedia_source.go":               true,
 	"internal/platform/sqlite/assets/imagesregistry/asset_store.go":              true,
 	"internal/platform/sqlite/assets/imagesregistry/asset_store_batch.go":        true,
 	"internal/platform/sqlite/assets/imagesregistry/clip_list_queries.go":        true,
-	"internal/platform/sqlite/assets/imagesregistry/clips_enrich_state.go":       true,
 	"internal/platform/sqlite/assets/imagesregistry/clips_index_state.go":        true,
 	"internal/platform/sqlite/assets/imagesregistry/clips_queries.go":            true,
 	"internal/platform/sqlite/assets/imagesregistry/clips_repository_queries.go": true,
-	"internal/platform/sqlite/assets/imagesregistry/clips_resolution.go":         true,
 	"internal/platform/sqlite/assets/imagesregistry/clips_statistics.go":         true,
-	"internal/platform/sqlite/assets/imagesregistry/dedup_queries.go":            true,
 	"internal/platform/sqlite/assets/imagesregistry/folder_queries.go":           true,
 	"internal/platform/sqlite/assets/imagesregistry/maintenance_repository.go":   true,
 	"internal/platform/sqlite/assets/imagesregistry/media_asset_mutations.go":    true,
@@ -96,9 +101,6 @@ var sqliteMediaReaderInventoriedZoneFiles = map[string]bool{
 	"internal/platform/sqlite/assets/imagesrepo/images_generated.go":             true,
 	"internal/platform/sqlite/assets/imagesrepo/images_insert_update.go":         true,
 	"internal/platform/sqlite/assets/imagesrepo/images_search.go":                true,
-	"internal/platform/sqlite/assets/operatorread/detail_query.go":               true,
-	"internal/platform/sqlite/assets/operatorread/facets_query.go":               true,
-	"internal/platform/sqlite/assets/operatorread/list_query.go":                 true,
 	"internal/platform/sqlite/controlplane/verifier.go":                          true,
 	"internal/platform/sqlite/deletion/stuck_row_scanner.go":                     true,
 	"internal/platform/sqlite/mediaregistry/canonical_identity.go":               true,

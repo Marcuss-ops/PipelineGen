@@ -307,24 +307,29 @@ func scanMetadataKeysRuleFile(state any, path, relPath string, r *report.Report,
 	}
 }
 
-// ── 8. Indexed-state writer (single canonical outbox consumer) ──────────
+// ── 8. Indexed-state writer (single canonical media index plane) ────────
 //
-// The ONLY legitimate writer of media_assets.index_state='INDEXED' is the
-// canonical outbox consumer chain
-// (IndexingHandler → clipindexer.IndexClip → setIndexedAt). The gate bans the
-// SQL write from any file outside the canonical writer packages, with a
-// per-file `// INDEXED_WRITER_SCOPE: clipindexer` comment-marker allowlist.
-const indexedStateWriterSSOTScopeMarker = "INDEXED_WRITER_SCOPE: clipindexer"
+// The ONLY legitimate writer of the terminal INDEXED state on media_assets is
+// the PostgreSQL media index plane (PostgresIndexWorker). The gate bans the SQL
+// write from any file outside the canonical writer package, with a per-file
+// `// INDEXED_WRITER_SCOPE: media-ssot` comment-marker allowlist.
+//
+// MEDIA LEGACY READ-PLANE DEMOLITION (2026-09-20): the historical SQLite
+// writer (clipindexer.setIndexedAt, wired through the
+// IndexingHandler → clipindexer.IndexClip → setIndexedAt chain) was DELETED
+// together with the Qdrant media compatibility seam, so the canonical-path
+// list ratcheted from 2 entries to 1. Listing a second engine here would have
+// kept blessing a writer that no longer exists.
+const indexedStateWriterSSOTScopeMarker = "INDEXED_WRITER_SCOPE: media-ssot"
 
 // indexedStateWriterSSOTCanonicalPaths lists the canonical INDEXED writer
-// packages: setIndexedAt (SQLite/Qdrant mode) and PostgresIndexWorker
-// (media-SSOT mode). Files under either prefix are exempt.
+// package(s). The single owner is the PostgreSQL media index plane; files
+// under this prefix are exempt.
 var indexedStateWriterSSOTCanonicalPaths = []string{
-	"internal/platform/qdrant/indexing/clipindexer/",
 	"internal/platform/postgres/media/",
 }
 
-const indexedStateWriterSSOTNote = "forbidden SQL write to media_assets.index_state='INDEXED' from a non-canonical file; the canonical INDEXED state transition is via the outbox consumer pipeline: IndexingHandler.Handle (internal/capabilities/jobs/outbox/indexing_handle.go) -> clipindexer.IndexClip (internal/platform/qdrant/indexing/clipindexer/indexing.go) -> setIndexedAt (internal/platform/qdrant/indexing/clipindexer/indexing_state.go, single atomic UPDATE with CAS fence on source_version + index_state='INDEXING'). Workflows MUST NOT bypass the outbox consumer; the only way to transition to INDEXED is via the canonical outbox consumer. _test.go files are exempt (regression-guard surface). The comment-marker `// INDEXED_WRITER_SCOPE: clipindexer` in a file header is the documented allowlist for edge cases (none today). Per godlike/06 SSOT (one canonical owner per fact), the only legitimate writer to index_state='INDEXED' is setIndexedAt. Per the user directive (Italian, July 2026): 'Fare in modo che lo stato asset.index.state=INDEXED passi solo dal consumer outbox dedicato.'"
+const indexedStateWriterSSOTNote = "forbidden SQL write to media_assets.index_state='INDEXED' from a non-canonical file; the canonical INDEXED state transition is owned SOLELY by the PostgreSQL media index plane: PostgresIndexWorker (internal/platform/postgres/media/) -> embedding -> pgvector upsert -> fenced INDEXED (single atomic UPDATE on the media SSOT) -> outbox completed. Workflows MUST NOT bypass the canonical index worker; the only way to transition to INDEXED is through it. _test.go files are exempt (regression-guard surface). The comment-marker `// INDEXED_WRITER_SCOPE: media-ssot` in a file header is the documented allowlist for edge cases (none today). Per godlike/06 SSOT (one canonical owner per fact), the ONLY legitimate writer of index_state='INDEXED' is PostgresIndexWorker; the historical SQLite writer clipindexer.setIndexedAt was DELETED in the MEDIA LEGACY READ-PLANE DEMOLITION (2026-09-20). Per the user directive (Italian, July 2026): 'Fare in modo che lo stato asset.index.state=INDEXED passi solo dal consumer outbox dedicato.'"
 
 // indexedStateWriterSSOTRe matches a literal INDEXED assignment in an SQL SET
 // clause. Qualified read predicates such as `alias.index_state = 'INDEXED'`

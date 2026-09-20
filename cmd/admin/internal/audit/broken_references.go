@@ -46,14 +46,32 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/cmd/admin/internal/cli"
-	capregistry "github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaregistry"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
+	pgmedia "github.com/Marcuss-ops/PipelineGen/internal/platform/postgres/media"
 	qdrantschema "github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/schema"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/transport"
 	"github.com/Marcuss-ops/PipelineGen/pkg/atomicwrite"
 )
 
 // ── CLI entry point ───────────────────────────────────────────────────
+
+// brokenRefMediaSource is the narrow media read the audit depends on.
+//
+// MEDIA-SSOT: production binds the PostgreSQL media SSOT reader
+// (pgmedia.MediaReferenceAuditReader). The audit's operational SQLite sweep
+// deliberately skips media_assets, because that table is PostgreSQL-owned and
+// the mirror holds no committed media rows — sweeping it there reported a
+// clean bill of health over an empty table.
+type brokenRefMediaSource interface {
+	ListDriveFileRefs(ctx context.Context) ([]pgmedia.MediaDriveRef, error)
+	ListLocalPaths(ctx context.Context) ([]pgmedia.MediaLocalPathRef, error)
+	ListSearchEligibleAssetIDs(ctx context.Context) ([]string, error)
+}
+
+// mediaOwnedAuditTables are the tables the operational SQLite sweep must NOT
+// read media rows from. They are answered by the PostgreSQL media SSOT via
+// brokenRefMediaSource instead.
+var mediaOwnedAuditTables = map[string]bool{"media_assets": true}
 
 func RunBrokenReferences(args []string) error {
 	fs := flag.NewFlagSet("broken-references", flag.ContinueOnError)
@@ -84,7 +102,25 @@ func RunBrokenReferences(args []string) error {
 	defer dbSet.Close()
 	sdb := dbSet.Primary
 
-	report, err := executeBrokenReferences(ctx, sdb.DB, cfg, log,
+	// MEDIA-SSOT: the drive/local/Qdrant checks all read media_assets, so the
+	// audit resolves them from the PostgreSQL media SSOT. The handle is only
+	// required when at least one of those checks will actually run; an audit
+	// that skips all three reads no media rows at all. A nil handle fails
+	// closed (the check is recorded as a failure, never silently skipped).
+	var media brokenRefMediaSource
+	if !(*skipDrive && *skipLocal && *skipQdrant) {
+		mediaDB, mErr := cli.OpenMediaPostgres(ctx, cfg)
+		if mErr != nil {
+			return fmt.Errorf("open media postgres: %w", mErr)
+		}
+		if mediaDB == nil {
+			return fmt.Errorf("media PostgreSQL SSOT is required for broken-references")
+		}
+		defer mediaDB.Close()
+		media = pgmedia.NewMediaReferenceAuditReader(mediaDB)
+	}
+
+	report, err := executeBrokenReferences(ctx, sdb.DB, media, cfg, log,
 		*skipDrive, *skipLocal, *skipQdrant, *noOrphanDetail, *driveInvPath)
 	if err != nil {
 		return err
@@ -119,6 +155,7 @@ func RunBrokenReferences(args []string) error {
 func executeBrokenReferences(
 	ctx context.Context,
 	db *sql.DB,
+	media brokenRefMediaSource,
 	cfg *config.Config,
 	log *zap.Logger,
 	skipDrive, skipLocal, skipQdrant bool,
@@ -142,9 +179,9 @@ func executeBrokenReferences(
 	}
 	r.Summary.FKOrphanTables = len(fkOrphans)
 
-	// 2. Drive references.
+	// 2. Drive references (operational tables + the PostgreSQL media SSOT).
 	if !skipDrive {
-		broken, total, driveErrs, err := detectBrokenDriveRefs(ctx, db, cfg, log, driveInvPath)
+		broken, total, driveErrs, err := detectBrokenDriveRefsAndMedia(ctx, db, media, cfg, log, driveInvPath)
 		if err != nil {
 			r.Errors = append(r.Errors, fmt.Sprintf("drive refs: %v", err))
 		} else {
@@ -155,21 +192,28 @@ func executeBrokenReferences(
 		}
 	}
 
-	// 3. Local path references.
+	// 3. Local path references (operational tables + the PostgreSQL media SSOT).
 	if !skipLocal {
 		broken, total, err := detectBrokenLocalPaths(ctx, db)
 		if err != nil {
 			r.Errors = append(r.Errors, fmt.Sprintf("local paths: %v", err))
 		} else {
+			mediaBroken, mediaTotal, mErr := detectBrokenMediaLocalPaths(ctx, media)
+			if mErr != nil {
+				r.Errors = append(r.Errors, fmt.Sprintf("local paths (media SSOT): %v", mErr))
+			} else {
+				broken = append(broken, mediaBroken...)
+				total += mediaTotal
+			}
 			r.LocalBroken = broken
 			r.Summary.LocalRefsTotal = total
 			r.Summary.LocalBroken = len(broken)
 		}
 	}
 
-	// 4. Qdrant points referenced by eligible SQLite assets.
+	// 4. Qdrant points referenced by eligible media assets (PostgreSQL SSOT).
 	if !skipQdrant && cfg.Qdrant.Enabled {
-		missing, eligible, qErr := detectMissingQdrantPoints(ctx, db, cfg, log)
+		missing, eligible, qErr := detectMissingQdrantPoints(ctx, media, cfg, log)
 		if qErr != nil {
 			r.Errors = append(r.Errors, fmt.Sprintf("qdrant: %v", qErr))
 		} else {
@@ -294,30 +338,60 @@ func detectFKOrphans(ctx context.Context, db *sql.DB, noDetail bool) ([]fkOrphan
 
 // ── Drive file cross-check ───────────────────────────────────────────
 
-func detectBrokenDriveRefs(
+// loadKnownDriveIDs resolves the set of Drive file IDs that currently exist,
+// either from a Fase 1 snapshot or from a live Drive walk. Failure is returned
+// as data (errs) when a walk partially failed, and as an error only when the
+// inventory could not be established at all.
+func loadKnownDriveIDs(ctx context.Context, cfg *config.Config, log *zap.Logger, inventoryPath string) (map[string]bool, []string, error) {
+	if inventoryPath != "" {
+		knownIDs, errs := loadDriveInventoryFromFile(inventoryPath)
+		return knownIDs, errs, nil
+	}
+	knownIDs, errs, err := walkLiveDriveIDs(ctx, cfg, log)
+	if err != nil {
+		return nil, errs, err
+	}
+	return knownIDs, errs, nil
+}
+
+// detectBrokenDriveRefsAndMedia cross-checks BOTH engines against the SAME
+// Drive inventory: the operational tables (non-media) and the PostgreSQL media
+// SSOT. The known-ID set is loaded once, so a live Drive walk is never performed
+// twice for a single audit run.
+func detectBrokenDriveRefsAndMedia(
 	ctx context.Context,
 	db *sql.DB,
+	media brokenRefMediaSource,
 	cfg *config.Config,
 	log *zap.Logger,
 	inventoryPath string,
 ) ([]brokenDriveRef, int, []string, error) {
-	// Load the set of known Drive file IDs.
-	var knownIDs map[string]bool
-	var errs []string
-
-	if inventoryPath != "" {
-		// Load from Fase 1 snapshot.
-		knownIDs, errs = loadDriveInventoryFromFile(inventoryPath)
-	} else {
-		// Walk live Drive.
-		var err error
-		knownIDs, errs, err = walkLiveDriveIDs(ctx, cfg, log)
-		if err != nil {
-			return nil, 0, errs, err
-		}
+	knownIDs, errs, err := loadKnownDriveIDs(ctx, cfg, log, inventoryPath)
+	if err != nil {
+		return nil, 0, errs, err
 	}
 
-	// Find all tables with a drive_file_id column.
+	broken, total, opErrs, err := detectBrokenDriveRefs(ctx, db, knownIDs)
+	errs = append(errs, opErrs...)
+	if err != nil {
+		return nil, 0, errs, err
+	}
+
+	mediaBroken, mediaTotal, mediaErrs, err := detectBrokenMediaDriveRefs(ctx, media, knownIDs)
+	errs = append(errs, mediaErrs...)
+	if err != nil {
+		return nil, 0, errs, err
+	}
+
+	return append(broken, mediaBroken...), total + mediaTotal, errs, nil
+}
+
+// detectBrokenDriveRefs sweeps the OPERATIONAL tables that carry a
+// drive_file_id column. media_assets is excluded by construction: it is
+// PostgreSQL-owned, so its rows are checked by detectBrokenMediaDriveRefs.
+func detectBrokenDriveRefs(ctx context.Context, db *sql.DB, knownIDs map[string]bool) ([]brokenDriveRef, int, []string, error) {
+	var errs []string
+
 	tables, err := tablesWithColumn(ctx, db, "drive_file_id")
 	if err != nil {
 		return nil, 0, errs, err
@@ -327,6 +401,12 @@ func detectBrokenDriveRefs(
 	total := 0
 
 	for _, tbl := range tables {
+		if mediaOwnedAuditTables[tbl] {
+			// MEDIA-SSOT: see detectBrokenMediaDriveRefs — the mirror holds no
+			// committed media rows, so sweeping it here would report no broken
+			// references while the SSOT held the broken ones.
+			continue
+		}
 		rows, err := db.QueryContext(ctx,
 			fmt.Sprintf(`SELECT %s FROM %s WHERE %s IS NOT NULL AND %s!=''`,
 				qt("drive_file_id"), qt(tbl), qt("drive_file_id"), qt("drive_file_id")),
@@ -359,25 +439,33 @@ func detectBrokenDriveRefs(
 		}
 	}
 
-	// Also check asset_id + drive_file_id for media_assets specifically.
-	// For media_assets, add the asset_id for better diagnostics.
-	for i := range broken {
-		if broken[i].Table == "media_assets" {
-			var assetID string
-			if err := db.QueryRowContext(ctx,
-				`SELECT id FROM media_assets WHERE drive_file_id=?`, broken[i].RefValue,
-			).Scan(&assetID); err != nil {
-				// Enrichment is diagnostic-only, but a persistent failure means
-				// every asset_id is missing: record it once instead of silently
-				// degrading the report.
-				errs = append(errs, fmt.Sprintf("enrich media_assets drive_file_id %q: %v", broken[i].RefValue, err))
-				break
-			}
-			broken[i].AssetID = assetID
+	return broken, total, errs, nil
+}
+
+// detectBrokenMediaDriveRefs answers the media half of the Drive cross-check
+// from the PostgreSQL media SSOT. The asset_id comes from the SSOT row itself,
+// so no enrichment lookup is needed.
+func detectBrokenMediaDriveRefs(ctx context.Context, media brokenRefMediaSource, knownIDs map[string]bool) ([]brokenDriveRef, int, []string, error) {
+	if media == nil {
+		return nil, 0, nil, fmt.Errorf("media SSOT reader is not wired")
+	}
+	refs, err := media.ListDriveFileRefs(ctx)
+	if err != nil {
+		return nil, 0, nil, err
+	}
+	var broken []brokenDriveRef
+	for _, ref := range refs {
+		if !knownIDs[ref.DriveFileID] {
+			broken = append(broken, brokenDriveRef{
+				Table:       "media_assets",
+				Column:      "drive_file_id",
+				RefValue:    ref.DriveFileID,
+				AssetID:     ref.AssetID,
+				FailureKind: "drive_file_not_found",
+			})
 		}
 	}
-
-	return broken, total, errs, nil
+	return broken, len(refs), nil, nil
 }
 
 func loadDriveInventoryFromFile(path string) (map[string]bool, []string) {
@@ -423,6 +511,9 @@ func walkLiveDriveIDs(ctx context.Context, cfg *config.Config, log *zap.Logger) 
 
 // ── Local path cross-check ───────────────────────────────────────────
 
+// detectBrokenLocalPaths sweeps the OPERATIONAL tables that carry a local_path
+// column. media_assets is excluded by construction: it is PostgreSQL-owned, so
+// its rows are checked by detectBrokenMediaLocalPaths.
 func detectBrokenLocalPaths(ctx context.Context, db *sql.DB) ([]brokenLocalRef, int, error) {
 	tables, err := tablesWithColumn(ctx, db, "local_path")
 	if err != nil {
@@ -433,6 +524,10 @@ func detectBrokenLocalPaths(ctx context.Context, db *sql.DB) ([]brokenLocalRef, 
 	total := 0
 
 	for _, tbl := range tables {
+		if mediaOwnedAuditTables[tbl] {
+			// MEDIA-SSOT: see detectBrokenMediaLocalPaths.
+			continue
+		}
 		query := fmt.Sprintf(`SELECT local_path FROM %s WHERE local_path IS NOT NULL AND local_path!=''`, qt(tbl))
 		rows, err := db.QueryContext(ctx, query)
 		if err != nil {
@@ -475,35 +570,67 @@ func detectBrokenLocalPaths(ctx context.Context, db *sql.DB) ([]brokenLocalRef, 
 	return broken, total, nil
 }
 
+// detectBrokenMediaLocalPaths answers the media half of the local-path
+// cross-check from the PostgreSQL media SSOT. Existence is checked on the local
+// filesystem, exactly as for the operational tables: a path that does not
+// resolve is reported, never assumed readable.
+func detectBrokenMediaLocalPaths(ctx context.Context, media brokenRefMediaSource) ([]brokenLocalRef, int, error) {
+	if media == nil {
+		return nil, 0, fmt.Errorf("media SSOT reader is not wired")
+	}
+	refs, err := media.ListLocalPaths(ctx)
+	if err != nil {
+		return nil, 0, err
+	}
+	var broken []brokenLocalRef
+	for _, ref := range refs {
+		info, statErr := os.Stat(ref.LocalPath)
+		if statErr != nil {
+			kind := "stat_error"
+			if os.IsNotExist(statErr) {
+				kind = "file_not_found"
+			}
+			broken = append(broken, brokenLocalRef{
+				Table:       "media_assets",
+				Column:      "local_path",
+				LocalPath:   ref.LocalPath,
+				FailureKind: kind,
+				Error:       statErr.Error(),
+			})
+			continue
+		}
+		if info.IsDir() {
+			// A directory is suspicious but not necessarily broken: artifact
+			// caches legitimately point at directories.
+			continue
+		}
+	}
+	return broken, len(refs), nil
+}
+
 // ── Qdrant point cross-check ─────────────────────────────────────────
 
+// detectMissingQdrantPoints compares the canonical eligibility set against the
+// actual Qdrant projection.
+//
+// MEDIA-SSOT: the eligibility set is read from the PostgreSQL media SSOT
+// (pgmedia.MediaReferenceAuditReader), which applies the SAME canonical
+// predicate (capregistry.SearchIndexEligibilitySQL) the projection writers use.
+// Reading it from the operational mirror would compare a populated projection
+// against an empty eligible set and report every point as an orphan.
 func detectMissingQdrantPoints(
 	ctx context.Context,
-	db *sql.DB,
+	media brokenRefMediaSource,
 	cfg *config.Config,
 	log *zap.Logger,
 ) ([]string, int, error) {
-	// 1. Query eligible asset IDs from SQLite.
-	eligibleQuery := fmt.Sprintf(
-		`SELECT id FROM media_assets WHERE (%s) AND COALESCE(media_type,'')!='folder' ORDER BY id`,
-		capregistry.SearchIndexEligibilitySQL,
-	)
-	rows, err := db.QueryContext(ctx, eligibleQuery)
+	if media == nil {
+		return nil, 0, fmt.Errorf("media SSOT reader is not wired")
+	}
+	// 1. Query eligible asset IDs from the media SSOT.
+	eligibleIDs, err := media.ListSearchEligibleAssetIDs(ctx)
 	if err != nil {
-		return nil, 0, fmt.Errorf("query eligible assets: %w", err)
-	}
-	defer rows.Close()
-
-	var eligibleIDs []string
-	for rows.Next() {
-		var id string
-		if err := rows.Scan(&id); err != nil {
-			return nil, 0, fmt.Errorf("scan eligible asset: %w", err)
-		}
-		eligibleIDs = append(eligibleIDs, id)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, 0, fmt.Errorf("iterate eligible assets: %w", err)
+		return nil, 0, err
 	}
 
 	// 2. Scroll Qdrant for actual asset_ids.

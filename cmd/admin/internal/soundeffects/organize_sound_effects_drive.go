@@ -4,7 +4,6 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/cmd/admin/internal/cli"
 
 	"context"
-	"database/sql"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -17,6 +16,7 @@ import (
 	detail "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/drive"
+	pgmedia "github.com/Marcuss-ops/PipelineGen/internal/platform/postgres/media"
 )
 
 const soundEffectsDriveFolderID = "1vfZQHVNZab-pU2fBaj4qzR3iSz1sOVhW"
@@ -51,9 +51,16 @@ func RunOrganizeSoundEffectsDrive(args []string) error {
 		return fmt.Errorf("Drive reader, admin and database are required")
 	}
 
+	// MEDIA-SSOT: the Drive classification is a media_assets read, so it MUST
+	// resolve from the PostgreSQL media SSOT.
+	catalog := pgmedia.NewSoundEffectCatalog(root.MediaPostgres)
+	if catalog == nil {
+		return fmt.Errorf("media PostgreSQL SSOT is required for sound-effect Drive organization")
+	}
+
 	ctx, cancel := context.WithTimeout(context.Background(), time.Hour)
 	defer cancel()
-	classification, err := loadSoundEffectDriveClassification(ctx, root.DB.DB)
+	classification, err := loadSoundEffectDriveClassification(ctx, catalog)
 	if err != nil {
 		return err
 	}
@@ -119,21 +126,14 @@ func RunOrganizeSoundEffectsDrive(args []string) error {
 	return nil
 }
 
-func loadSoundEffectDriveClassification(ctx context.Context, db *sql.DB) (map[string]soundEffectDriveAsset, error) {
-	rows, err := db.QueryContext(ctx, `
-		SELECT drive_file_id, name, metadata_json
-		FROM media_assets
-		WHERE source='sound_effect' AND media_type='sound_effect' AND category='file'`)
+func loadSoundEffectDriveClassification(ctx context.Context, catalog *pgmedia.SoundEffectCatalog) (map[string]soundEffectDriveAsset, error) {
+	rows, err := catalog.ListRows(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("load SFX Drive classification: %w", err)
 	}
-	defer rows.Close()
 	result := make(map[string]soundEffectDriveAsset)
-	for rows.Next() {
-		var driveID, name, metadataJSON string
-		if err := rows.Scan(&driveID, &name, &metadataJSON); err != nil {
-			return nil, fmt.Errorf("scan SFX Drive classification: %w", err)
-		}
+	for _, row := range rows {
+		driveID, name, metadataJSON := row.DriveFileID, row.Name, row.MetadataJSON
 		var metadata map[string]any
 		if strings.TrimSpace(metadataJSON) != "" {
 			if err := json.Unmarshal([]byte(metadataJSON), &metadata); err != nil {
@@ -151,9 +151,6 @@ func loadSoundEffectDriveClassification(ctx context.Context, db *sql.DB) (map[st
 		if name != "" {
 			result[name] = entry
 		}
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterate SFX Drive classification: %w", err)
 	}
 	return result, nil
 }

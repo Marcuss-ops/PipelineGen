@@ -7,8 +7,8 @@ import (
 	operatorapi "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/operator"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	module "github.com/Marcuss-ops/PipelineGen/internal/platform/httpserver"
+	pgmedia "github.com/Marcuss-ops/PipelineGen/internal/platform/postgres/media"
 	operatorverify "github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/verification"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/operatorread"
 	"go.uber.org/zap"
 )
 
@@ -38,9 +38,19 @@ func registerOperatorAdminAPI(registry *module.Registry, log *zap.Logger, cfg *c
 		allowedRoots = append(allowedRoots, cfg.Storage.AbsDataDir())
 	}
 
+	// MEDIA LEGACY READ-PLANE DEMOLITION (2026-09-20): the operator inventory
+	// read model (Content Library, Asset Inspector, filter facets) is answered
+	// from the PostgreSQL media SSOT — NEVER the operational SQLite mirror.
+	// The retired operatorread package read lifecycle_state/index_state/
+	// embedding_json/metadata_json from a database the canonical committer
+	// never populates, so a freshly committed asset was invisible to the
+	// console and the facet counts described the mirror. When the media plane
+	// is closed the handle is nil and the port stays unwired, so the handler
+	// returns 503 per request (godlike/07 fail-closed) instead of serving a
+	// divergent catalog.
 	var readModel operator.AssetInventoryReader
-	if root.DB != nil {
-		readModel = operatorread.NewInventoryReader(root.DB.DB, log)
+	if root.MediaPostgres != nil {
+		readModel = pgmedia.NewOperatorInventoryReader(root.MediaPostgres, log)
 	}
 
 	var verifier operator.IndexVerifier

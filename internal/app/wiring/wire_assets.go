@@ -295,7 +295,7 @@ func buildRegisterBundle(
 	dispatcher *outbox.Dispatcher,
 	jobs *JobsBundle,
 ) (*assetregister.RegisterDescriptor, error) {
-	sourcingClipStore := newSourcingClipStore(deps.MediaPostgres, deps.Core.Repositories.ClipsRepo)
+	sourcingClipStore := newSourcingClipStore(deps.MediaPostgres)
 	// 2026-09-17: the canonical atomic terminal write for the register path is
 	// the same PostgreSQL committer the extraction path uses. Resolved from the
 	// media SSOT handle; nil (media PostgreSQL disabled) leaves the legacy split

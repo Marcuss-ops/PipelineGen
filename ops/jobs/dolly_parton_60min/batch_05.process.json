@@ -1,0 +1,155 @@
+{
+  "_comment": "Canonical POST /api/clips/process payload (ExtractRequest). Batch 05 of 07 — clip_id 41-50 of the Dolly Parton '60 Minutes Australia' interview (video tnoMGevqWAM). Destination: explicit child folder 1C-q2swarUlf4JEUYHVe0Ol88MDSU8FUq, create_subfolder=false. Deterministic clip ids (yt_<videoID>_<startSec>_<endSec>_v1) make a re-submit an UPSERT, not a duplicate.",
+  "url": "https://www.youtube.com/watch?v=tnoMGevqWAM",
+  "strategy": "verify",
+  "concurrency": 3,
+  "force_keyframes": true,
+  "keep_audio": true,
+  "write_summary": true,
+  "destination": {
+    "folder_id": "1C-q2swarUlf4JEUYHVe0Ol88MDSU8FUq",
+    "create_subfolder": false
+  },
+  "segments": [
+    {
+      "start": "31:43",
+      "end": "32:37",
+      "name": "L'ironia su Carl Dean e l'uso di 'I Will Always Love You' ai funerali",
+      "category": "celebrity_interview",
+      "source_title": "EXTENDED INTERVIEW: Dolly Parton on Plastic Surgery and Her 47-Year Marriage | 60 Minutes Australia",
+      "source_channel": "60 Minutes Australia",
+      "summary": "Scherza sulla pigrizia domestica del marito e racconta delle lettere ricevute da chi ha usato 'I Will Always Love You' ai funerali o per i figli al college.",
+      "topics": [
+        "poltrona lazy boy battuta palco funerali commiato speranza padre figli college"
+      ],
+      "tags": ["Dolly Parton", "60 Minutes Australia", "celebrity_interview"],
+      "mentioned_people": ["Dolly Parton", "Carl Dean"]
+    },
+    {
+      "start": "32:37",
+      "end": "33:36",
+      "name": "La rottura professionale con Porter Wagoner",
+      "category": "celebrity_interview",
+      "source_title": "EXTENDED INTERVIEW: Dolly Parton on Plastic Surgery and Her 47-Year Marriage | 60 Minutes Australia",
+      "source_channel": "60 Minutes Australia",
+      "summary": "Spiega la decisione di lasciare dopo cinque anni il programma televisivo di Porter Wagoner per intraprendere una carriera solista autonoma.",
+      "topics": [
+        "Porter Wagoner show syndication quinquennio autonomia artistica litigi vertenze legali"
+      ],
+      "tags": ["Dolly Parton", "60 Minutes Australia", "celebrity_interview"],
+      "mentioned_people": ["Dolly Parton", "Porter Wagoner"]
+    },
+    {
+      "start": "33:36",
+      "end": "34:22",
+      "name": "La nascita di 'I Will Always Love You' come lettera di ringraziamento",
+      "category": "celebrity_interview",
+      "source_title": "EXTENDED INTERVIEW: Dolly Parton on Plastic Surgery and Her 47-Year Marriage | 60 Minutes Australia",
+      "source_channel": "60 Minutes Australia",
+      "summary": "Descrive come 'I Will Always Love You' fu scritta come lettera cantata per ringraziare Wagoner e risolvere pacificamente il loro scontro professionale.",
+      "topics": [
+        "scrittura I Will Always Love You addio gratitudine Porter Wagoner divergenze stima riconciliazione"
+      ],
+      "tags": ["Dolly Parton", "60 Minutes Australia", "celebrity_interview"],
+      "mentioned_people": ["Dolly Parton", "Porter Wagoner"]
+    },
+    {
+      "start": "34:22",
+      "end": "35:09",
+      "name": "La richiesta di Colonel Tom Parker sui diritti d'autore per Elvis",
+      "category": "celebrity_interview",
+      "source_title": "EXTENDED INTERVIEW: Dolly Parton on Plastic Surgery and Her 47-Year Marriage | 60 Minutes Australia",
+      "source_channel": "60 Minutes Australia",
+      "summary": "Rivela la telefonata del manager di Elvis Presley, che pretendeva la metà dei diritti editoriali come condizione per far incidere il brano a Elvis.",
+      "topics": [
+        "Elvis Presley Colonel Tom Parker pretesa 50 percento publishing diritti d'autore copyright Nashville"
+      ],
+      "tags": ["Dolly Parton", "60 Minutes Australia", "celebrity_interview"],
+      "mentioned_people": ["Dolly Parton", "Elvis Presley", "Colonel Tom Parker"]
+    },
+    {
+      "start": "35:09",
+      "end": "36:03",
+      "name": "Il rifiuto a Elvis Presley per tutelare l'eredità familiare",
+      "category": "celebrity_interview",
+      "source_title": "EXTENDED INTERVIEW: Dolly Parton on Plastic Surgery and Her 47-Year Marriage | 60 Minutes Australia",
+      "source_channel": "60 Minutes Australia",
+      "summary": "Racconta il pianto liberatorio di quella notte ma la ferma scelta di proteggere il proprio copyright come eredità economica per la famiglia.",
+      "topics": [
+        "tutela patrimonio copyright editoria musicale pianto notturno decisione economica integrità"
+      ],
+      "tags": ["Dolly Parton", "60 Minutes Australia", "celebrity_interview"],
+      "mentioned_people": ["Dolly Parton", "Elvis Presley"]
+    },
+    {
+      "start": "36:03",
+      "end": "36:57",
+      "name": "Il duetto immaginario 'I Dreamed About Elvis' e la cover di Whitney Houston",
+      "category": "celebrity_interview",
+      "source_title": "EXTENDED INTERVIEW: Dolly Parton on Plastic Surgery and Her 47-Year Marriage | 60 Minutes Australia",
+      "source_channel": "60 Minutes Australia",
+      "summary": "Menziona il brano in cui ha cantato con un sosia di Elvis e loda la straordinaria reinterpretazione di Whitney Houston prodotta da David Foster.",
+      "topics": [
+        "brano I Dreamed About Elvis Ronnie McDowell sosia Whitney Houston The Bodyguard David Foster"
+      ],
+      "tags": ["Dolly Parton", "60 Minutes Australia", "celebrity_interview"],
+      "mentioned_people": ["Dolly Parton", "Elvis Presley", "Whitney Houston", "David Foster"]
+    },
+    {
+      "start": "36:57",
+      "end": "37:50",
+      "name": "Il primo ascolto shock della versione di Whitney alla guida",
+      "category": "celebrity_interview",
+      "source_title": "EXTENDED INTERVIEW: Dolly Parton on Plastic Surgery and Her 47-Year Marriage | 60 Minutes Australia",
+      "source_channel": "60 Minutes Australia",
+      "summary": "Narra come scoprì per caso alla radio la versione di Whitney Houston mentre guidava verso Brentwood, rischiando di uscire di strada per l'emozione.",
+      "topics": [
+        "ascolto radio autoradio Brentwood Tennessee versione a cappella shock rischio incidente"
+      ],
+      "tags": ["Dolly Parton", "60 Minutes Australia", "celebrity_interview"],
+      "mentioned_people": ["Dolly Parton", "Whitney Houston"]
+    },
+    {
+      "start": "37:50",
+      "end": "38:40",
+      "name": "La gioia travolgente per l'omaggio a Whitney Houston",
+      "category": "celebrity_interview",
+      "source_title": "EXTENDED INTERVIEW: Dolly Parton on Plastic Surgery and Her 47-Year Marriage | 60 Minutes Australia",
+      "source_channel": "60 Minutes Australia",
+      "summary": "Esprime l'orgoglio provato nel vedere la sua semplice composizione country trasformata in uno dei capolavori vocali più grandi della storia.",
+      "topics": [
+        "arrangiamento David Foster emozione riscatto economico soddisfazione artistica successo planetario"
+      ],
+      "tags": ["Dolly Parton", "60 Minutes Australia", "celebrity_interview"],
+      "mentioned_people": ["Dolly Parton", "Whitney Houston", "David Foster"]
+    },
+    {
+      "start": "38:40",
+      "end": "39:30",
+      "name": "Il dolore per la perdita di Michael Jackson e Whitney Houston",
+      "category": "celebrity_interview",
+      "source_title": "EXTENDED INTERVIEW: Dolly Parton on Plastic Surgery and Her 47-Year Marriage | 60 Minutes Australia",
+      "source_channel": "60 Minutes Australia",
+      "summary": "Rievoca la scomparsa prematura degli amici Michael Jackson e Whitney Houston e il pianto durante l'uscita della bara di Whitney al suono della sua canzone.",
+      "topics": [
+        "Michael Jackson Whitney Houston scomparsa prematura funerali bara I Will Always Love You lutto"
+      ],
+      "tags": ["Dolly Parton", "60 Minutes Australia", "celebrity_interview"],
+      "mentioned_people": ["Dolly Parton", "Michael Jackson", "Whitney Houston"]
+    },
+    {
+      "start": "39:30",
+      "end": "40:21",
+      "name": "La connessione eterna con Whitney e l'ipotesi per il proprio funerale",
+      "category": "celebrity_interview",
+      "source_title": "EXTENDED INTERVIEW: Dolly Parton on Plastic Surgery and Her 47-Year Marriage | 60 Minutes Australia",
+      "source_channel": "60 Minutes Australia",
+      "summary": "Riflette sul vincolo indissolubile con la memoria di Whitney Houston e ipotizza che la stessa melodia verrà suonata anche al suo funerale.",
+      "topics": [
+        "legame eterno Whitney Houston funerali bara destino canoro musica commiato"
+      ],
+      "tags": ["Dolly Parton", "60 Minutes Australia", "celebrity_interview"],
+      "mentioned_people": ["Dolly Parton", "Whitney Houston"]
+    }
+  ]
+}

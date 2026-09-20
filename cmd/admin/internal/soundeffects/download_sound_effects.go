@@ -4,7 +4,6 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/cmd/admin/internal/cli"
 
 	"context"
-	"database/sql"
 	"flag"
 	"fmt"
 	"io"
@@ -15,6 +14,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/media/rustexec"
+	pgmedia "github.com/Marcuss-ops/PipelineGen/internal/platform/postgres/media"
 	"go.uber.org/zap"
 )
 
@@ -47,6 +47,13 @@ func RunDownloadSoundEffects(args []string) error {
 		return fmt.Errorf("clips repository and outbox dispatcher are required")
 	}
 
+	// MEDIA-SSOT: the sound-effect listing is a media_assets read, so it MUST
+	// resolve from the PostgreSQL media SSOT.
+	catalog := pgmedia.NewSoundEffectCatalog(root.MediaPostgres)
+	if catalog == nil {
+		return fmt.Errorf("media PostgreSQL SSOT is required for sound-effect download")
+	}
+
 	ctx, cancel := context.WithTimeout(context.Background(), time.Hour)
 	defer cancel()
 	rootDir := cfg.Storage.FullPath(filepath.Join(cfg.Storage.MediaDir, "sound_effects"))
@@ -54,22 +61,14 @@ func RunDownloadSoundEffects(args []string) error {
 		return fmt.Errorf("create sound effects directory: %w", err)
 	}
 
-	rows, err := root.DB.DB.QueryContext(ctx, `
-		SELECT id, COALESCE(name, ''), COALESCE(drive_file_id, ''), COALESCE(folder_path, '')
-		FROM media_assets
-		WHERE source = 'sound_effect' AND category = 'file'
-		ORDER BY id`)
+	rows, err := catalog.ListRows(ctx)
 	if err != nil {
 		return fmt.Errorf("list sound effects: %w", err)
 	}
-	defer rows.Close()
 
 	var downloaded, skipped, failed int
-	for rows.Next() {
-		var id, name, driveID, folderPath string
-		if err := rows.Scan(&id, &name, &driveID, &folderPath); err != nil {
-			return fmt.Errorf("scan sound effect: %w", err)
-		}
+	for _, row := range rows {
+		id, name, driveID, folderPath := row.ID, row.Name, row.DriveFileID, row.FolderPath
 		if strings.TrimSpace(driveID) == "" {
 			failed++
 			log.Warn("sound effect has no Drive file ID", zap.String("asset_id", id), zap.String("name", name))
@@ -115,9 +114,6 @@ func RunDownloadSoundEffects(args []string) error {
 			return fmt.Errorf("persist local sound effect %s: %w", id, err)
 		}
 		downloaded++
-	}
-	if err := rows.Err(); err != nil {
-		return err
 	}
 
 	log.Info("sound effects downloaded", zap.String("directory", rootDir), zap.Int("downloaded", downloaded), zap.Int("skipped", skipped), zap.Int("failed", failed))
@@ -198,23 +194,26 @@ func RunApplyAdditionalSoundEffects(args []string) error {
 	if root == nil || root.DB == nil || root.Drive == nil || root.Drive.Admin == nil || root.Repos == nil || root.Repos.ClipsRepo == nil || root.Outbox == nil || root.Outbox.Dispatcher == nil {
 		return fmt.Errorf("database, Drive admin, clips repository and outbox dispatcher are required")
 	}
+	// MEDIA-SSOT: the row probe is a media_assets read, so it MUST resolve from
+	// the PostgreSQL media SSOT.
+	catalog := pgmedia.NewSoundEffectCatalog(root.MediaPostgres)
+	if catalog == nil {
+		return fmt.Errorf("media PostgreSQL SSOT is required for additional sound effects")
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), time.Hour)
 	defer cancel()
 	prober := rustexec.NewVideoProcessor(cfg.External.RustMusclesPath, cfg.External.FfmpegPath, log)
 	changed := 0
 	for _, item := range additionalSoundEffects() {
-		var id, currentName, driveID, localPath string
-		err := root.DB.DB.QueryRowContext(ctx, `
-			SELECT id, name, COALESCE(drive_file_id, ''), COALESCE(local_path, '')
-			FROM media_assets WHERE source='sound_effect' AND category='file' AND name IN (?, ?) LIMIT 1`, item.OldName, item.NewName).
-			Scan(&id, &currentName, &driveID, &localPath)
+		row, err := catalog.FindByName(ctx, item.OldName, item.NewName)
 		if err != nil {
-			if err == sql.ErrNoRows {
-				log.Warn("additional sound effect already superseded or absent", zap.String("name", item.OldName))
-				continue
-			}
 			return fmt.Errorf("find %q: %w", item.OldName, err)
 		}
+		if row == nil {
+			log.Warn("additional sound effect already superseded or absent", zap.String("name", item.OldName))
+			continue
+		}
+		id, currentName, driveID, localPath := row.ID, row.Name, row.DriveFileID, row.LocalPath
 		if currentName != item.NewName {
 			if err := root.Drive.Admin.RenameFile(ctx, driveID, item.NewName); err != nil {
 				return fmt.Errorf("rename Drive file %s: %w", driveID, err)

@@ -216,8 +216,8 @@ func TestScanSQLiteMediaReaderBan_ConvertedZoneIsExactFile(t *testing.T) {
 	}{
 		{
 			zone:    "internal/platform/qdrant/indexing/",
-			listed:  "internal/platform/qdrant/indexing/clipindexer/indexing_state.go",
-			sibling: "internal/platform/qdrant/indexing/clipindexer/brand_new.go",
+			listed:  "internal/platform/qdrant/indexing/asset_store.go",
+			sibling: "internal/platform/qdrant/indexing/brand_new.go",
 		},
 		{
 			zone:    "cmd/admin/",
