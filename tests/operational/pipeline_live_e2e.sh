@@ -47,6 +47,11 @@
 #     `.items[].source == "stock"` (or "youtube") can never match and used to
 #     make steps 5/9 unreachable; the canonical discriminator is the returned
 #     `asset_id` for the provenance-scoped request.
+#   - The stock FAMILY is selected by `filters.asset_kind="stock_video"` (or
+#     `semantic_role="stock"`), NOT by `sources:["stock"]`: a stock clip keeps
+#     its physical provider on the provenance axis (source="youtube" under the
+#     YouTube-only acquisition policy), so a `sources:["stock"]` leg matches no
+#     row and made step 9 permanently unreachable.
 #   - Indexing is asynchronous: the stock/YouTube legs assert that the produced
 #     asset became RETRIEVABLE from the canonical catalog (index_state=INDEXED),
 #     so both searches poll with a bounded deadline instead of racing the
@@ -853,10 +858,18 @@ step_9_stock_indexed_download() {
         # the canonical stock pipeline acquires through YouTube, so a
         # YouTube-acquired stock clip is source="youtube" with
         # asset_kind="stock_video".
+        #
+        # The request therefore carries NO provenance `sources:[...]` leg.
+        # Asking for sources:["stock"] is not merely redundant — it is wrong:
+        # the provenance axis can never contain "stock" (only the physical
+        # providers can), so the provenance leg filtered out every row this run
+        # just produced and the step failed with "none of this run's stock
+        # assets became retrievable". The taxonomy filter below is the canonical
+        # discriminator (see internal/capabilities/assets/search/source_filter.go).
         local payload
         payload=$(jq -n \
             --arg q "$query_text" \
-            '{query: $q, sources: ["stock"], mode: "hybrid", universe: "catalog",
+            '{query: $q, mode: "hybrid", universe: "catalog",
               filters: {asset_kind: "stock_video", media_type: "video"}, limit: 50}')
         printf '  query    : %s\n' "$query_text"
         # 124 means this anchor simply never surfaced the asset (try the next

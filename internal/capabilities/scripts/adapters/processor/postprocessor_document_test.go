@@ -162,9 +162,16 @@ func TestDocumentsProcessor_UsesMetadataTitleOnly(t *testing.T) {
 	if !strings.Contains(content, "<h1>Titolo YouTube</h1>") {
 		t.Errorf("document missing metadata title: %s", content)
 	}
+	// The human section is what must stay free of the raw Description/Tags.
+	// The machine JSON blocks (SpecScene + Editing Assets Policy) legitimately
+	// carry every editorial catalog alias, including "drive-background-boxe"
+	// (which contains the substring "boxe"). Scoping the check to the human
+	// surface is what keeps the invariant correct after the background + BGM
+	// catalog is projected into the document itself.
+	human := documentHumanSection(t, content)
 	for _, forbidden := range []string{"<h2>Description</h2>", "Descrizione", "<h2>Tags</h2>", "boxe", "analisi"} {
-		if strings.Contains(content, forbidden) {
-			t.Errorf("document must not render %q: %s", forbidden, content)
+		if strings.Contains(human, forbidden) {
+			t.Errorf("document human section must not render %q: %s", forbidden, human)
 		}
 	}
 }

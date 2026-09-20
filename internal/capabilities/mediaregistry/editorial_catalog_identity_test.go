@@ -7,9 +7,9 @@ func TestEditorialCatalogIsCanonicalAcrossDomains(t *testing.T) {
 		t.Fatal(err)
 	}
 	ids := EditorialAssetIdentities()
-	// 6 background plates + 6 BGM + 6 whop + 3 bound whoosh.
-	if len(ids) != 21 {
-		t.Fatalf("unified editorial identities = %d, want 21", len(ids))
+	// 11 background plates + 6 BGM + 6 whop + 3 bound whoosh.
+	if len(ids) != 26 {
+		t.Fatalf("unified editorial identities = %d, want 26", len(ids))
 	}
 	if ids["drive-background-01"] != "16j67if3LUqMeVVSpOjPd5rD0cPwn9l0A" {
 		t.Errorf("drive-background-01 identity = %q", ids["drive-background-01"])

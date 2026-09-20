@@ -1,6 +1,7 @@
 package script
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -174,6 +175,34 @@ type VideoRenderSpec struct {
 type VideoBackgroundSpec struct {
 	Mode    string `json:"mode,omitempty"`
 	AssetID string `json:"asset_id,omitempty"`
+	// Profile is a human-friendly editorial label (for example "Boxe" or
+	// "Discovery"). The script-generation boundary resolves it to AssetID
+	// before the request enters the durable pipeline.
+	Profile string `json:"profile,omitempty"`
+}
+
+// UnmarshalJSON keeps the payload ergonomic: `background: "Boxe"` is
+// accepted alongside the canonical object form. Resolution remains outside
+// this kernel package so the kernel does not depend on the media registry.
+func (s *VideoBackgroundSpec) UnmarshalJSON(data []byte) error {
+	if s == nil {
+		return fmt.Errorf("video background: cannot unmarshal into nil receiver")
+	}
+	if len(data) > 0 && data[0] == '"' {
+		var profile string
+		if err := json.Unmarshal(data, &profile); err != nil {
+			return fmt.Errorf("video background profile: %w", err)
+		}
+		*s = VideoBackgroundSpec{Profile: profile}
+		return nil
+	}
+	type plainVideoBackgroundSpec VideoBackgroundSpec
+	var decoded plainVideoBackgroundSpec
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		return fmt.Errorf("video background object: %w", err)
+	}
+	*s = VideoBackgroundSpec(decoded)
+	return nil
 }
 
 // VideoVisualStyleSpec is the canonical shared visual override block for

@@ -74,6 +74,9 @@ func BuildGenerateRequest(env *scriptpkg.GenerationEnvelopeV2, idempotencyKey st
 		}
 		item.Output.Render.DriveSubfolderName = scriptFolderName
 	}
+	if err := resolveBackgroundReference(&item.Output.Render); err != nil {
+		return GenerateRequest{}, fmt.Errorf("scriptgeneration: resolve render background: %w", err)
+	}
 	item.Output.Render.Normalize()
 	// SSOT: output.render.watermark / output.render.subtitles are the only
 	// spellings. The legacy top-level output.watermark/output.subtitles
@@ -333,6 +336,45 @@ func cloneInt(src *int) *int {
 // videoBackgroundModeAsset is the canonical clip-background mode literal owned
 // by the cliprender capability (none | blur_source | asset).
 const videoBackgroundModeAsset = "asset"
+
+// resolveBackgroundReference converts a human channel label (or a friendly
+// asset id such as "Boxe") into the canonical registry alias before the
+// generic render normalizer applies its mode defaults. This keeps payloads
+// readable while preserving the existing asset-id-only render contract.
+func resolveBackgroundReference(render *scriptpkg.VideoRenderSpec) error {
+	if render == nil || render.Background == nil {
+		return nil
+	}
+	background := render.Background
+	profile := strings.TrimSpace(background.Profile)
+	assetID := strings.TrimSpace(background.AssetID)
+	if profile != "" {
+		asset, ok := mediaregistry.ResolveEditorialBackgroundReference(profile)
+		if !ok {
+			return fmt.Errorf("unknown background profile %q", profile)
+		}
+		if assetID != "" && !strings.EqualFold(assetID, asset.ID) {
+			return fmt.Errorf("background profile %q conflicts with asset_id %q", profile, assetID)
+		}
+		if mode := strings.ToLower(strings.TrimSpace(background.Mode)); mode != "" && mode != videoBackgroundModeAsset {
+			return fmt.Errorf("background profile %q cannot be used with mode %q", profile, background.Mode)
+		}
+		background.AssetID = asset.ID
+		background.Mode = videoBackgroundModeAsset
+		background.Profile = ""
+		return nil
+	}
+	if assetID == "" {
+		return nil
+	}
+	if asset, ok := mediaregistry.ResolveEditorialBackgroundReference(assetID); ok {
+		background.AssetID = asset.ID
+		if strings.TrimSpace(background.Mode) == "" {
+			background.Mode = videoBackgroundModeAsset
+		}
+	}
+	return nil
+}
 
 // ApplyEditingAssetPolicy fills the editorial assets a request left blank,
 // using the canonical selection policy. It is OPT-IN: nothing calls it

@@ -7,8 +7,8 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaregistry"
 )
 
-// TestRemoteBackgroundCatalogIsProjectedFromTheRegistry pins that the six
-// curated plates reach the remote assembler from the SAME registry that binds
+// TestRemoteBackgroundCatalogIsProjectedFromTheRegistry pins that every
+// curated plate reaches the remote assembler from the SAME registry that binds
 // BGM and SFX — not from a second catalog maintained next to the payload.
 func TestRemoteBackgroundCatalogIsProjectedFromTheRegistry(t *testing.T) {
 	catalog := remoteBackgroundCatalog()
