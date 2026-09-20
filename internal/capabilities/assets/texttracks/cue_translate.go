@@ -246,10 +246,11 @@ func applyBatchTranslations(out []detail.TimedCue, cues []detail.TimedCue, index
 		if !ok {
 			return fmt.Errorf("batch translation is missing cue %d", index+1)
 		}
-		if text == "" {
+		cleaned := translation.PostEdit(text)
+		if cleaned == "" {
 			return fmt.Errorf("batch translation returned empty text for cue %d", index+1)
 		}
-		staged[position] = detail.TimedCue{StartMs: cues[index].StartMs, EndMs: cues[index].EndMs, Text: text}
+		staged[position] = detail.TimedCue{StartMs: cues[index].StartMs, EndMs: cues[index].EndMs, Text: cleaned}
 	}
 	for position, index := range indexes {
 		out[index] = staged[position]
@@ -307,7 +308,10 @@ func (t *CueTranslator) translateOne(ctx context.Context, text, targetLang strin
 			return "", err
 		}
 		if strings.TrimSpace(res.TranslatedText) != "" {
-			return res.TranslatedText, nil
+			// PostEdit is the canonical cleanup of a translated cue (whitespace +
+			// punctuation spacing). A cue is a sentence fragment, so letter case is
+			// deliberately left untouched.
+			return translation.PostEdit(res.TranslatedText), nil
 		}
 		lastEmpty = &ErrEmptyTranslation{
 			Provider:   res.UsedProvider,

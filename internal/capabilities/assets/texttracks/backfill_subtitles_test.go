@@ -462,7 +462,10 @@ func TestMaterializeSubtitleArtifacts_PrefersTimingFaithfulCueTranslation(t *tes
 	if len(aligned) != len(src) {
 		t.Fatalf("aligned cues = %d, want %d (1:1 with the source)", len(aligned), len(src))
 	}
-	if aligned[1].Text != "it:how are you" {
+	// The per-cue answer is post-edited (translation.PostEdit): the stub's
+	// glued "it:how" colon gets the canonical space back, so the assertion
+	// guards both the timing-faithful path AND the cleanup of the answer.
+	if aligned[1].Text != "it: how are you" {
 		t.Fatalf("cue 1 text = %q, want the per-cue translation (not a word-count slice)", aligned[1].Text)
 	}
 	if aligned[1].StartMs != src[1].StartMs || aligned[1].EndMs != src[1].EndMs {

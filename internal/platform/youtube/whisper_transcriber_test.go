@@ -82,8 +82,9 @@ print(json.dumps({"text": "hello world from bridge", "detected_language": "en", 
 	if err != nil {
 		t.Fatalf("expected nil error, got: %v", err)
 	}
-	if res.Text != "hello world from bridge" {
-		t.Fatalf("expected text 'hello world from bridge', got: %q", res.Text)
+	// The transcript is sentence-cased by the ASR cleanup (whisper_cues.go).
+	if res.Text != "Hello world from bridge" {
+		t.Fatalf("expected sentence-cased text 'Hello world from bridge', got: %q", res.Text)
 	}
 	if res.DetectedLanguage != "en" {
 		t.Fatalf("expected detected_language 'en', got: %q", res.DetectedLanguage)

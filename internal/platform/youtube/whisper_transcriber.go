@@ -205,8 +205,46 @@ func (a *WhisperTranscriberAdapter) TranscribeAudioWithDetection(ctx context.Con
 		}
 	}
 
+	// ASR cleanup (whisper_cues.go): strip non-speech tags/symbols, drop cue
+	// duplicates and speechless cues, and rebuild the transcript from what
+	// survives. A transcript whose every cue was noise has no usable text, so
+	// the honest answer is an empty Text and the acquisition chain falls through
+	// to the next priority — never a subtitle that says "[Music]" translated
+	// into ten languages.
+	text := RestoreSentenceCase(res.Text, lang)
+	if len(res.Cues) > 0 {
+		cleaned := CleanWhisperCues(cues)
+		if len(cleaned) == 0 {
+			a.log.Warn("whisper: every segment was non-speech; returning an empty transcript",
+				zap.String("local_path", localPath),
+				zap.Int("segments", len(res.Cues)),
+			)
+			return detail.TranscriptResult{
+				DetectedLanguage: lang,
+				Confidence:       confPtr,
+				DurationMs:       res.DurationMs,
+			}, nil
+		}
+		cues = cleaned
+		if joined := JoinCueTexts(cleaned); joined != "" {
+			text = RestoreSentenceCase(joined, lang)
+		}
+	}
+
+	// A very low language probability means the detected source language is
+	// unreliable, which corrupts every downstream translation. Surface it
+	// loudly; the transcript itself is still returned, because dropping real
+	// speech over a language guess would be a worse failure.
+	if confPtr != nil && *confPtr > 0 && *confPtr < whisperLowLanguageConfidence {
+		a.log.Warn("whisper: low language-confidence transcript",
+			zap.String("local_path", localPath),
+			zap.String("language", lang),
+			zap.Float64("language_probability", *confPtr),
+		)
+	}
+
 	return detail.TranscriptResult{
-		Text:             res.Text,
+		Text:             text,
 		DetectedLanguage: lang,
 		Confidence:       confPtr,
 		DurationMs:       res.DurationMs,
