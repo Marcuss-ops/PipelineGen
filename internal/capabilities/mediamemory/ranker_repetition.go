@@ -20,27 +20,22 @@
 //   - ranker_types.go         : RankingInput + RankingOutput + RankingVerdict + FilteredCandidate
 //   - ranker_weights.go       : DefaultRankWeights + Weights() + VerdictThresholds + DefaultVerdictThresholds + classifyScore + verdictReason
 //   - ranker_gates.go         : PreRankGate + 7 gates + RunMandatoryGates + HasAvailableMedia/HasValidDuration/HasSupportedFormat/mediaCandidateIsWellFormed + ComputeDurationFit + PopulateRightsPenalty
-//   - ranker_repetition.go    : AntiRepetitionHistoryLimit + 4 channel-recency/ceiling consts + DiversityFinalScoreDelta + RepetitionPenaltyWeights + DefaultRepetitionPenaltyWeights + PopulateRepetitionPenalty + PickTopFromRose + extractCandidateVideoID/ChannelID  ← this file
+//   - ranker_repetition.go    : 4 channel-recency/ceiling consts + DiversityFinalScoreDelta + RepetitionPenaltyWeights + DefaultRepetitionPenaltyWeights + PopulateRepetitionPenalty + PickTopFromRose + extractCandidateVideoID/ChannelID  ← this file
+//     (AntiRepetitionHistoryLimit and PopulateRepetitionPenalty's history
+//     parameter were DELETED on 2026-09-20 with the Fase 2.3 UsageRepository
+//     seam; the constants stay because DefaultRepetitionPenaltyWeights still
+//     pins them as the documented canonical values.)
 package mediamemory
 
 import (
-	"math"
 	"time"
 )
 
 // ── Fase 2.2/2.3 anti-repetition constants / weights ────────────────
 
-// AntiRepetitionHistoryLimit is the canonical upper bound on the
-// resolver's per-call history read (UsageRepository.ListProjectUsages).
-// godlike/06 SSOT: the resolver MUST NOT read unbounded project
-// history at the resolver hot path; a hard ceiling at the
-// repository seam is the canonical safeguard.
-//
-// 1000 rows covers ~100k of audio/video at 100 events/render, which
-// is the architectural-doc reference scale for a Maya-style
-// documentary project.
-const AntiRepetitionHistoryLimit = 1000
-
+// AntiRepetitionHistoryLimit was DELETED here on 2026-09-20. It bounded the
+// resolver's per-call UsageRepository.ListProjectUsages read, and that read is
+// gone with the port (the append-only log had no writer left either).
 // Fase 2.2 anti-repetition: 24h channel-recency window (canonical
 // SSOT value). Any project-history event for the candidate's
 // ChannelID whose CreatedAt is within this window contributes to
@@ -190,101 +185,43 @@ func DefaultRepetitionPenaltyWeights() RepetitionPenaltyWeights {
 // populated. ChannelID is sourced from the per-binding envelope
 // (Binding hasn't ChannelID yet — Fase 2.3 candidates read it
 // from MediaCandidate.Provider channel or fall back to "").
+//
+// FASE-2.3 RETIREMENT (2026-09-20): the signature lost its `history
+// []UsageEvent` and `now time.Time` parameters and three of its four
+// components with them. Same-asset, channel-saturation and channel-recency
+// were each fed EXCLUSIVELY by the append-only UsageEvent log, whose only
+// writer was FeedbackService — a service composition never constructed
+// (NewDefaultFeedbackService had zero callers) on top of a UsageRepository
+// implementation that had zero callers of its own. The resolver therefore
+// always passed an EMPTY history, so those three components could only ever
+// add 0.0 and `now` was only read by the recency window. Keeping them would
+// have preserved arithmetic production never reached, which is the structural
+// reading of deadcode this package now applies: a component whose only input
+// source cannot be constructed is debt, not a seam. What remains is the
+// consecutive-source component, derived from prevVideoID with no history read.
 func PopulateRepetitionPenalty(
 	inputs []RankingInput,
-	history []UsageEvent,
 	prevVideoID string,
-	now time.Time,
 ) []RankingInput {
 	weights := DefaultRepetitionPenaltyWeights()
-
-	// Pre-compute (asset, channel) sighting maps from history.
-	// godlike/06 SSOT: O(N+M) pass; the resolver's hot path always
-	// reads from canonical append-only audit log so we can
-	// recompute cheaply on every slot.
-	assetSightings := make(map[string]int, 32)
-	channelSightings := make(map[string]int, 8)
-	// Fase 2.2: pre-compute per-candidate-channel 24h-window
-	// sighting counts (no asset_id scope — the recency penalty
-	// is channel-level, not asset-level). Recency is keyed by
-	// (project_id, channel_id, ev.CreatedAt) so we filter the
-	// per-channel count to events within ChannelRecencyWindow
-	// of `now`.
-	channelRecency := make(map[string]int, 8)
-	for _, ev := range history {
-		if ev.ProjectID == "" {
-			continue
-		}
-		if ev.AssetID != "" {
-			assetSightings[ev.AssetID]++
-		}
-		if ev.ChannelID != "" {
-			channelSightings[ev.ChannelID]++
-			// In-window events contribute to the recency
-			// component (empty `now` → zero-value → no
-			// recency matches, godlike/07 backward compat).
-			if !now.IsZero() && now.Sub(ev.CreatedAt) >= 0 &&
-				now.Sub(ev.CreatedAt) <= weights.ChannelRecencyWindow {
-				channelRecency[ev.ChannelID]++
-			}
-		}
-	}
 
 	out := make([]RankingInput, 0, len(inputs))
 	for _, in := range inputs {
 		penalty := 0.0
 
-		// 1. Same asset penalty (capped at SameAssetPenalty so
-		//    unbounded reuse never blows past the ranker math).
-		if n := assetSightings[in.Candidate.AssetID]; n > 0 {
-			penalty += math.Min(
-				float64(n)*weights.SameAssetPenalty,
-				weights.SameAssetPenalty,
-			)
-		}
-
-		// 2. Consecutive-source penalty: the candidate's
-		//    video_id (when populated — Fase 4 linker) falls
-		//    back to AssetID for Fase 2.3 so the per-asset
-		//    signal still propagates without a parallel seam.
+		// Consecutive-source penalty: the candidate's
+		// video_id (when populated — Fase 4 linker) falls
+		// back to AssetID for Fase 2.3 so the per-asset
+		// signal still propagates without a parallel seam.
 		candidateVideoID := extractCandidateVideoID(in.Candidate)
 		if prevVideoID != "" && candidateVideoID != "" && candidateVideoID == prevVideoID {
 			penalty += weights.SameVideoInConsecutiveScenePenalty
 		}
 
-		// 3. Channel-saturation penalty (candidate carries the
-		//    source channel via MediaCandidate.ChannelID as of
-		//    Fase 2.3). Phase 2.3 candidates from Level 9
-		//    (external SearchFanOut) carry the forwarding
-		//    provider as ChannelID (forward-pin to Fase 3
-		//    linker); the binding path gets ChannelID via the
-		//    denormalized UsageEvent history rows.
-		candidateChannelID := extractCandidateChannelID(in.Candidate)
-		if candidateChannelID != "" {
-			if n := channelSightings[candidateChannelID]; n >= weights.ChannelSaturationMinSightings {
-				penalty += weights.ChannelSaturationBase * float64(n-weights.ChannelSaturationMinSightings)
-			}
-			// 4. Channel-recency penalty (Fase 2.2 NEW):
-			//    SPEC's "stesso canale nelle ultime 24h".
-			//    Per in-window event for the candidate's
-			//    ChannelID, add ChannelRecencyPenaltyPerEvent.
-			//    Capped at ChannelRecencyMaxPenalty per
-			//    candidate so a channel with hundreds of
-			//    recent hits doesn't push the candidate into
-			//    VerdictDrop solely on recency grounds.
-			if n := channelRecency[candidateChannelID]; n > 0 {
-				penalty += math.Min(
-					float64(n)*weights.ChannelRecencyPenaltyPerEvent,
-					weights.ChannelRecencyMaxPenalty,
-				)
-			}
-		}
-
-		// Final ceiling clamp: prevents 4-component compounding
-		// from routinely forcing VerdictDrop on otherwise
-		// strong candidates. The ranker's diversity filter
-		// downstream still sees the candidate (in Downrank
-		// band) so the top-K rose can rotate it out.
+		// Ceiling clamp is retained: it is the invariant that a
+		// single-source penalty can never drive a semantically
+		// strong candidate into VerdictDrop, and it must hold
+		// for whatever components a future version adds back.
 		if penalty > RepetitionPenaltyTotalCeiling {
 			penalty = RepetitionPenaltyTotalCeiling
 		}

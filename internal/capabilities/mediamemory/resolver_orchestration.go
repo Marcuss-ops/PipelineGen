@@ -57,34 +57,16 @@ func (r *VisualResolver) Resolve(ctx context.Context, req ResolveRequest) (Resol
 		Warnings:  make([]string, 0),
 	}
 
-	// godlike/06 SSOT (Fase 2.3 anti-repetition wiring): the
-	// entire Resolve batch pre-caches the project history ONCE
-	// (canonical scope: AntiRepetitionHistoryLimit rows, newest
-	// first). When r.usage is nil the resolver degrades
-	// gracefully (no penalty input available). When the read
-	// errors, we surface it as a typed warning so the batch
-	// still progresses.
-	//
-	// godlike/06 SSOT (per-project cache, not per-scene): the
-	// level-by-level warnings are per-scene but the history is
-	// project-scoped. Hoisting it out of resolveScene keeps the
-	// inner loop's IO surface narrow (one repository call per
-	// Resolve, not per scene).
+	// 2026-09-20: the project-history pre-cache was DELETED with the
+	// UsageRepository seam (its own producer had been removed long before —
+	// see the note in resolver.go). `prevVideoID` stays because the
+	// consecutive-source penalty is derived from the prior scene's winner
+	// and needs no audit-log read, which also removes one repository call
+	// per Resolve from the hot path.
 	prevVideoID := ""
-	projectHistory := make([]UsageEvent, 0)
-	if r.usage != nil && req.ProjectID != "" {
-		history, histErr := r.usage.ListProjectUsages(ctx, req.ProjectID, AntiRepetitionHistoryLimit)
-		if histErr != nil {
-			result.Warnings = append(result.Warnings,
-				fmt.Sprintf("project_id=%q: anti-repetition history read failed (degraded to no-penalty mode): %s",
-					req.ProjectID, histErr.Error()))
-		} else {
-			projectHistory = history
-		}
-	}
 
 	for _, scene := range req.Scenes {
-		plan, warns, err := r.resolveScene(ctx, req, scene, prevVideoID, projectHistory)
+		plan, warns, err := r.resolveScene(ctx, req, scene, prevVideoID)
 		if err != nil {
 			// godlike/07 NO-FAKE-AVAILABILITY: per-scene failure
 			// is surfaced as a typed warning; the batch continues.
@@ -146,17 +128,16 @@ func priorSceneVideoID(plan SceneVisualPlan) string {
 // video) + Layer 2 (secondary image) + Layer 3 (evidence overlay)
 // are the canonical renderer ceiling; exceeding it is forbidden.
 //
-// godlike/06 SSOT (Fase 2.3 anti-repetition wiring): projectHistory
-// is the project-scoped cache read once per Resolve() batch;
-// prevVideoID is the prior-scene winning layer's video_id (empty
-// on the first scene) so the consecutive-source penalty fires
-// deterministically.
+// godlike/06 SSOT (Fase 2.3 anti-repetition wiring): prevVideoID is
+// the prior-scene winning layer's video_id (empty on the first scene)
+// so the consecutive-source penalty fires deterministically. The
+// projectHistory parameter and its read were DELETED on 2026-09-20
+// with the UsageRepository seam.
 func (r *VisualResolver) resolveScene(
 	ctx context.Context,
 	req ResolveRequest,
 	scene SceneSpec,
 	prevVideoID string,
-	projectHistory []UsageEvent,
 ) (SceneVisualPlan, []string, error) {
 	plan := SceneVisualPlan{
 		ProjectID:  req.ProjectID,
@@ -228,10 +209,10 @@ func (r *VisualResolver) resolveScene(
 		// PopulateRepetitionPenalty BEFORE Score so the
 		// ranker's canonical formula subtracts the penalty
 		// directly (no re-Score pass, no post-Score nudge).
-		// Empty projectHistory (no UsageRepository wired / no
-		// project_id / read error previously surfaced as a
-		// warning) -> all penalties stay 0, the ranker still
-		// scores candidates normally.
+		// 2026-09-20: the history-derived components left with
+		// the UsageRepository seam; the surviving component is
+		// the prevVideoID consecutive-source penalty, so the
+		// ranker still scores every candidate normally.
 		inputs := make([]RankingInput, 0, len(filtered))
 		for _, fc := range filtered {
 			inputs = append(inputs, buildRankingInput(scene, fc))
@@ -245,7 +226,7 @@ func (r *VisualResolver) resolveScene(
 		// drop in FinalScore comparison while the rose top
 		// remains the highest-scoring survivor. No rotation is
 		// needed: the deterministic sort keeps determinism.
-		inputs = PopulateRepetitionPenalty(inputs, projectHistory, prevVideoID, r.clock.Now())
+		inputs = PopulateRepetitionPenalty(inputs, prevVideoID)
 
 		scored := make([]rankedCandidate, 0, len(inputs))
 		for _, in := range inputs {

@@ -132,12 +132,15 @@ func (m *EnrichStateMachine) Transition(ctx context.Context, assetID string, fro
 		}
 	}
 	if err := m.repo.SetEnrichStateIfCurrent(ctx, assetID, from, to); err != nil {
-		// Remap the SQL primitive's row-missing/current-state-mismatch
+		// Remap the store's row-missing/current-state-mismatch
 		// fmt.Errorf into the canonical typed sentinel (godlike/07).
-		// The probe format is "clips.SetEnrichStateIfCurrent(<id>,
-		// <from>, <to>): asset row missing or current state mismatch"
-		// (clips_enrich_state.go) — stable enough to string-match for
-		// the remap without coupling to internal format details.
+		// The probe string is "asset row missing or current state
+		// mismatch", emitted by the PostgreSQL media SSOT store
+		// (pgmedia.MediaEnrichStateStore.SetEnrichStateIfCurrent) —
+		// stable enough to string-match for the remap without coupling
+		// to internal format details. The retired SQLite implementation
+		// (clips_enrich_state.go, deleted 2026-09-20) used the same
+		// suffix, so the probe is unchanged.
 		if strings.Contains(err.Error(), "asset row missing or current state mismatch") {
 			return ErrEnrichStateMissing
 		}

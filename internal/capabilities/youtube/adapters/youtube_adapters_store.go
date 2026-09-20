@@ -1,7 +1,12 @@
 // Package app — YouTube clip + monitor store adapters
 // split from youtube_adapters.go (PR-GODOBJ-Azione-4, July 2026).
 //
-// 3 adapters: ClipStoreAdapter, MonitorsStoreAdapter, SourcingClipStoreAdapter.
+// 2 adapters: ClipStoreAdapter, MonitorsStoreAdapter.
+//
+// MEDIA LEGACY READ-PLANE DEMOLITION (2026-09-20): the third adapter,
+// SourcingClipStoreAdapter (the SQLite dedupe lookup for the YouTube sourcing
+// registrar), was DELETED. Dedupe now reads the PostgreSQL media SSOT through
+// SourcingClipStorePGAdapter; see youtube_sourcing_pg_adapter.go.
 package adapters
 
 import (
@@ -9,7 +14,6 @@ import (
 
 	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/sourcing"
 	youtubeports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/ports"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	assetsrepo "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/channels"
@@ -74,51 +78,4 @@ func (a *MonitorsStoreAdapter) UpsertSource(ctx context.Context, ms *asset.Monit
 }
 func (a *MonitorsStoreAdapter) IncrementProcessed(ctx context.Context, id string) error {
 	return a.inner.IncrementProcessed(ctx, id)
-}
-
-// ── SourcingClipStoreAdapter ──────────────────────────────────────────
-// Merged from youtube_drive_legacy_adapter.go (PR-GODOBJ-Azione-4, July 2026).
-
-type SourcingClipStoreAdapter struct {
-	repo *assetsrepo.ClipsRepository
-}
-
-func (a *SourcingClipStoreAdapter) FindByName(ctx context.Context, name string) (string, error) {
-	if a.repo == nil {
-		return "", nil
-	}
-	return a.repo.FindByName(ctx, name)
-}
-
-func (a *SourcingClipStoreAdapter) FindExisting(ctx context.Context, videoID, url string, startSec, endSec float64) (string, error) {
-	if a.repo == nil {
-		return "", nil
-	}
-	hasSegment := endSec > startSec
-	if videoID != "" {
-		if id, err := a.repo.FindByYouTubeVideoID(ctx, videoID, hasSegment, startSec, endSec); err == nil && id != "" {
-			return id, nil
-		} else if err != nil {
-			return "", err
-		}
-	}
-	if url != "" && !hasSegment {
-		if id, err := a.repo.FindBySourceURL(ctx, url); err == nil && id != "" {
-			return id, nil
-		} else if err != nil {
-			return "", err
-		}
-	}
-	return "", nil
-}
-
-func (a *SourcingClipStoreAdapter) GetClip(ctx context.Context, id string) (*sourcing.ExistingClip, error) {
-	if a.repo == nil {
-		return nil, nil
-	}
-	clip, err := a.repo.GetClip(ctx, id)
-	if err != nil || clip == nil {
-		return nil, err
-	}
-	return toExistingClip(clip), nil
 }

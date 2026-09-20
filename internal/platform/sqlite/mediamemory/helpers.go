@@ -63,25 +63,10 @@ func nullableTimePtr(t *time.Time) any {
 	return t.Format(time.RFC3339Nano)
 }
 
-// boolToInt converts a bool to the SQLite 0/1 representation.
-// SQLite has no BOOLEAN type, so this wire-level conversion lives
-// at the repository boundary (godlike/06 SSOT: canonical bool type
-// is in the application layer; SQLite stores the wire-level int).
-
-// isUniqueViolation matches a SQLite UNIQUE constraint failure
-// without depending on driver-specific typed sentinels. The
-// modernc.org/sqlite driver returns Error whose .Error() includes
-// the literal "UNIQUE constraint failed"; the canonical
-// ErrDuplicateBinding envelope is wrapped around the match.
-//
-// godlike/06 SSOT: the substring "UNIQUE constraint failed" is
-// part of the SQLite standard error message vocabulary; any
-// future driver change must surface an error with this substring
-// (a forward-pin for the wire contract).
-
-func boolToInt(b bool) int {
-	if b {
-		return 1
-	}
-	return 0
-}
+// 2026-09-20: the boolToInt helper was DELETED from this file —
+// usage_repository.go was its only caller, and that repository had zero
+// callers of its own (`deadcode -test ./...` reported both as unreachable), so
+// the whole Fase 2.3 usage-audit surface left with it. The isUniqueViolation
+// doc block that sat here was removed in the same change: it described a
+// function this file did not contain. What remains are parseTime,
+// nullableTimePtr and rowScanner.

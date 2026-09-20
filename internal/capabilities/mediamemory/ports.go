@@ -103,13 +103,13 @@ type CandidateRepository interface {
 
 // ── UsageRepository ────────────────────────────────────────────────
 
-type UsageRepository interface {
-	Append(ctx context.Context, ev UsageEvent) error
-	ListByConcept(ctx context.Context, conceptID string, limit int) ([]UsageEvent, error)
-	ListByAsset(ctx context.Context, assetID string, limit int) ([]UsageEvent, error)
-	ListProjectUsages(ctx context.Context, projectID string, limit int) ([]UsageEvent, error)
-	ListSince(ctx context.Context, since time.Time, limit int) ([]UsageEvent, error)
-}
+// UsageRepository was DELETED here on 2026-09-20. It was the read/write port
+// for the append-only UsageEvent audit log; its single implementation
+// (sqlite/mediamemory/usage_repository.go) had ZERO callers repo-wide — not
+// even its own tests — and its single consumer (FeedbackService) was never
+// constructed by composition. A port with no implementation and no caller is
+// the structural-deadcode case, so both halves were removed rather than left
+// as a seam nobody can wire.
 
 // ── External ports ─────────────────────────────────────────────────
 
@@ -141,26 +141,23 @@ type RightsValidator interface {
 
 // ── Fase 3.2 linker ports ─────────────────────────────────────────
 
-type TranscriptExtractor interface {
-	Extract(ctx context.Context, sourceURL string, mediaType string) ([]TranscriptSegment, error)
-}
-
-type KeyframeExtractor interface {
-	Extract(ctx context.Context, sourceURL string, mediaType string) ([]Keyframe, error)
-}
-
-type VisualDescriptionGenerator interface {
-	Generate(ctx context.Context, k Keyframe) (string, error)
-}
-
-type EntityDetector interface {
-	DetectEntities(ctx context.Context, transcript string, visualDesc string) ([]string, error)
-}
-
-type EmbeddingEncoder interface {
-	Encode(ctx context.Context, channels EncodingChannels) (MediaEmbedding, error)
-}
-
-type LinkerWorker interface {
-	EnrichCandidate(ctx context.Context, req LinkerRequest) (LinkerResult, error)
-}
+// TranscriptExtractor, KeyframeExtractor, VisualDescriptionGenerator,
+// EntityDetector, EmbeddingEncoder and LinkerWorker were REMOVED here on
+// 2026-09-20, together with types_linker.go and the Fase 3.1/3.2/3.3 batch
+// surface (batch_service*, discovery_worker, acquisition_planner).
+//
+// WHY DELETION RATHER THAN A DEBT CARD. The whole batch + linker pipeline was
+// reachable ONLY from its own tests: no production composition site ever
+// constructed a BatchService, a DiscoveryWorker or a LinkerWorker
+// (NewDefaultBatchServiceWithWorker, NewDefaultDiscoveryWorker and
+// NewDefaultAcquisitionPlanner had zero callers outside _test.go),
+// mediamemory_wiring.go wires only the Resolver and the BindingService, and
+// nothing consumed the BatchService or LinkerWorker interfaces. A port whose
+// only implementor is a test stub, next to a service the binary cannot
+// construct, is the structural reading of "godlike/07 no-fake-availability":
+// test-only reachability is debt, so the surface goes rather than the tests.
+//
+// The surviving production seam is MaterializeWorker
+// (media_materialize_worker.go): the stockpipeline asset materializer
+// constructs it at runtime and calls PromoteOnDemand, so it stays — and so
+// does AcquisitionPromote, the promote envelope its request carries.

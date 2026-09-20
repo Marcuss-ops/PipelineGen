@@ -5,11 +5,12 @@
 // godlike/06 SSOT: MaterializeWorker is the SINGLE owner of the
 // (candidate → asset_id) materialization seam between the
 // candidate repository and the canonical stockpipeline orchestrator.
-// The worker sits DOWNSTREAM of DiscoveryWorker (Fase 3.1) and
-// LinkerWorker (Fase 3.2) in the canonical pipeline; upstream
-// phases populate the (DiscoveryStatus, MaterializationStatus)
-// envelopes and the linker stamps the AssetID only on Hot-tier
-// promotion.
+// The worker used to sit DOWNSTREAM of DiscoveryWorker (Fase 3.1) and
+// LinkerWorker (Fase 3.2); both, and the batch orchestrator above them, were
+// DELETED on 2026-09-20 because nothing in production constructed them (see
+// the note in ports.go). This worker is the surviving production seam: the
+// stockpipeline asset materializer constructs it and calls PromoteOnDemand,
+// which stamps the AssetID on Hot-tier promotion.
 //
 // godlike/06 SSOT (tier SSOT): three canonical materialization
 // tiers per types.go (godlike/06 closed set):
@@ -39,6 +40,23 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 	"strings"
 )
+
+// AcquisitionPromote is one promote decision carried by a
+// MaterializationRequest: the candidate snapshot (so the worker needs no
+// second repository round-trip) plus the target tier, the optional TargetSlot
+// hint, the HotCache flag and an audit Reason.
+//
+// 2026-09-20: this type SURVIVED the Fase 3.1/3.2/3.3 batch demolition. It
+// used to live in acquisition_planner.go, but this worker's request envelope
+// is part of the production path, so the planner was deleted and the envelope
+// moved here rather than the other way round.
+type AcquisitionPromote struct {
+	Candidate  MediaCandidate
+	Target     MaterializationStatus
+	TargetSlot SlotKind
+	HotCache   bool
+	Reason     string
+}
 
 // MaterializationRequest is the canonical input to the worker for
 // top-K promotion (Materialize). godlike/06 SSOT (narrow port):

@@ -28,7 +28,7 @@ func classify(sqliteSet map[string]AssetSnapshot, qdrantSet map[string]pointWith
 		if _, ok := qdrantSet[id]; !ok {
 			// PR 10+11: surface content_hash so repair dispatch can
 			// compute the deterministic outbox dedupe key without an
-			// extra sqlite lookup. Empty when ListAssetsForReconcile
+			// extra sqlite lookup. Empty when ListForReconcile
 			// returned "" for this row (e.g. row without metadata_json
 			// or pre-hash ingest path).
 			missing = append(missing, Classification{

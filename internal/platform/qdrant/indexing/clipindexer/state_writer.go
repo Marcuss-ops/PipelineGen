@@ -68,8 +68,9 @@ var _ IndexerStateUpdater = (*Service)(nil)
 //
 // Routes through the private setIndexState helper which refuses
 // to write StateIndexed (the canonical panic guard enforces the
-// SSOT that ONLY setIndexedAt may write INDEXED — see
-// indexing_state.go for the rationale).
+// SSOT that ONLY PostgresIndexWorker — on the PostgreSQL media
+// SSOT — may write INDEXED; see indexing_state.go for the
+// rationale).
 // StateIndexingSkippedNoIndexer is NOT in the panic list so
 // this write is permitted without touching the terminal-state
 // fence.

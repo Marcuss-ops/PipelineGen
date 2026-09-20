@@ -14,8 +14,9 @@
 // godlike/06 SSOT: the canonical index_state enum lives in
 // internal/kernel/asset/index_state.go (StateDiscovered, StateIndexed, etc.).
 // The production DISCOVERED → INDEXED transition is performed by
-// setIndexedAt in internal/infrastructure/indexing/clipindexer; for tests
-// we simulate it with a plain SQL UPDATE on metadata_json.$.index_state.
+// PostgresIndexWorker on the PostgreSQL media SSOT
+// (internal/platform/postgres/media/); for tests we simulate the
+// terminal state with a plain SQL UPDATE on metadata_json.$.index_state.
 //
 // Test-double strategy (per user directive: "riusa i test doubles esistenti"):
 //   - successMediaProcessor (gate01_happy_path_test.go) — same as gate08.
@@ -25,8 +26,8 @@
 //   - We do NOT add a new dispatcher test double for gate06 because the
 //     stub already produces a real media_assets row, and the index_state
 //     transition is a downstream concern (worker-side, not dispatcher-side).
-//     The test simulates the worker's setIndexedAt by directly writing
-//     index_state=INDEXED to the same row the stub produced.
+//     The test simulates the worker's terminal transition by directly
+//     writing index_state=INDEXED to the same row the stub produced.
 package artlist
 
 import (
@@ -60,8 +61,8 @@ import (
 //
 // The test simulates the production Qdrant indexing flow by manually
 // transitioning each processed clip's metadata_json.$.index_state
-// from DISCOVERED to INDEXED — this mirrors the canonical setIndexedAt
-// path in internal/infrastructure/indexing/clipindexer/service.go.
+// from DISCOVERED to INDEXED — this mirrors the canonical
+// PostgresIndexWorker terminal transition on the media SSOT.
 func TestGate06_QdrantIndexStateAfterRun(t *testing.T) {
 	ctx := context.Background()
 	tmp := t.TempDir()
@@ -148,10 +149,10 @@ func TestGate06_QdrantIndexStateAfterRun(t *testing.T) {
 	require.Equal(t, 3, resp.Processed, "all 3 clips must be processed before indexing")
 	require.Equal(t, 0, resp.Failed)
 
-	// Simulate the production Qdrant indexing flow: each processed
-	// clip transitions to index_state=INDEXED. In production this is
-	// done by setIndexedAt (atomic UPDATE on metadata_json). For
-	// tests, a plain SQL UPDATE is sufficient — the contract is
+	// Simulate the production indexing flow: each processed clip
+	// transitions to index_state=INDEXED. In production this terminal
+	// transition is owned by PostgresIndexWorker on the media SSOT.
+	// For tests, a plain SQL UPDATE is sufficient — the contract is
 	// "the row has index_state=INDEXED", which is what operators
 	// and search consumers observe.
 	for _, clipID := range []string{"gate06-clip-1", "gate06-clip-2", "gate06-clip-3"} {
@@ -284,7 +285,7 @@ func TestGate06_QdrantIndexStatePerClip(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, 2, resp.Processed)
 
-	// Simulate per-clip Qdrant indexing (setIndexedAt on each row).
+	// Simulate per-clip terminal indexing (INDEXED on each row).
 	for _, clipID := range []string{"gate06-per-1", "gate06-per-2"} {
 		_, err := db.Exec(
 			`UPDATE media_assets

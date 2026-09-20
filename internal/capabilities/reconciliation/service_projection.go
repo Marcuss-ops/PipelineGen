@@ -95,7 +95,7 @@ type legacyStripTotals struct {
 //     KindNonCanonicalPointID: outbox.EnqueueReindex(assetID, contentHash).
 //     The contentHash is propagated from Classification.ContentHash
 //     (the scanner-side hash, sourced from media_assets.metadata_json.$
-//     .content_hash via SQLiteAssetStore.ListAssetsForReconcile).
+//     .content_hash via SQLiteReconcileReader.ListForReconcile).
 //     It feeds BOTH the PR-11 outbox dedupe key
 //     (assetID:targetSchema:contentHash) AND the worker's source_version
 //     supersede gate. Empty contentHash is rare but legal for newly-

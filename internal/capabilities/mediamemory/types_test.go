@@ -148,23 +148,10 @@ func TestIsKnownMaterializationStatusRejectsDrift(t *testing.T) {
 
 // ── BatchState ────────────────────────────────────────────────
 
-func TestIsKnownBatchStateAcceptsCanonical(t *testing.T) {
-	for _, s := range []BatchState{
-		BatchPending, BatchReconciling, BatchCompleted, BatchFailed,
-	} {
-		assert.Truef(t, IsKnownBatchState(s),
-			"canonical BatchState %q MUST be accepted", s)
-	}
-}
-
-func TestIsKnownBatchStateRejectsDrift(t *testing.T) {
-	for _, s := range []BatchState{
-		"", "PENDING", "complete", "abort",
-	} {
-		assert.Falsef(t, IsKnownBatchState(s),
-			"uncanonical BatchState %q MUST be rejected", s)
-	}
-}
+// The BatchState accept/reject cases were DELETED 2026-09-20 together with the
+// enum and validator they pinned (see the note in types_enums.go): the Fase 3.4
+// batch orchestrator had no production constructor, so these cases were
+// certifying a closed set for a state machine the binary cannot enter.
 
 // ── RightsStatus ──────────────────────────────────────────────
 
@@ -221,8 +208,6 @@ func TestErrorSentinelsAreDistinctAndNonEmpty(t *testing.T) {
 		"ErrInvalidSlotKind":                ErrInvalidSlotKind,
 		"ErrApprovalRequired":               ErrApprovalRequired,
 		"ErrCandidateMaterializationFailed": ErrCandidateMaterializationFailed,
-		"ErrBatchNotFound":                  ErrBatchNotFound,
-		"ErrBatchNotReconcilable":           ErrBatchNotReconcilable,
 		"ErrInvalidFeedbackAction":          ErrInvalidFeedbackAction,
 		"ErrCandidateNotFound":              ErrCandidateNotFound,
 	}
@@ -264,6 +249,5 @@ var _ ApprovalStatus = ApprovalApproved
 var _ Origin = OriginManual
 var _ DiscoveryStatus = DiscoverySearched
 var _ MaterializationStatus = MaterializationHot // canonical hot-tier pin
-var _ BatchState = BatchCompleted
 var _ RightsStatus = RightsVerified
 var _ FeedbackAction = FeedbackAccepted

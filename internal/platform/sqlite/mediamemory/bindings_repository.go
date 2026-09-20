@@ -435,7 +435,8 @@ func scanBindingRow(s rowScanner) (mediamemory.MediaBinding, error) {
 
 // ── Nullable helpers ───────────────────────────────────
 //
-// Shared helpers (parseTime, nullableString, nullableTimePtr,
-// boolToInt, isUniqueViolation, rowScanner) live in helpers.go
-// per godlike/06 SSOT; this file no longer redeclares them.
+// Shared helpers (parseTime, nullableTimePtr, rowScanner) live in
+// helpers.go per godlike/06 SSOT; this file no longer redeclares them.
+// boolToInt and the isUniqueViolation doc block left helpers.go on 2026-09-20
+// with the retired usage-audit surface.
 // (parseTime is consumed at the scanBindingRow call sites below.)

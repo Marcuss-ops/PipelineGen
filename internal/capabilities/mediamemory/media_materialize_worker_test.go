@@ -6,19 +6,13 @@
 //  2. MaterializeWorker.PromoteOnDemand promotes a single
 //     candidate Cold|Warm → Hot with AssetID set; rights-denied
 //     candidates surface ErrApprovalRequired.
-//  3. AcquisitionPlanner.Plan ranks by CandidateScore desc with
-//     CandidateID asc tiebreaker, caps at TopK, drops rights-
-//     denied and already-Warm/already-Hot rows.
-//  4. AcquisitionPlanner.PlanOnDemand flips Cold|Warm → Hot
-//     when rights verified; rights-denied returns
-//     ErrApprovalRequired.
-//  5. BatchService.SetMaterializeWorker refuses nil and
-//     refuses rewire.
-//  6. BatchService.MaterializeTopK with 1000 candidates and
-//     TopK=100 → exactly 100 promotes, parent.IndexedCount
-//     increments by 100.
-//  7. BatchService.MaterializeTopK on a Completed batch surfaces
-//     ErrBatchNotReconcilable.
+//
+// 2026-09-20: the AcquisitionPlanner (items 3-4) and BatchService (items 5-7)
+// cases were DELETED from this file with the Fase 3.1/3.2/3.3 batch surface
+// they exercised — batch_service*, acquisition_planner, discovery_worker and
+// types_linker had no production constructor, so those cases were pinning a
+// pipeline the binary cannot reach. What remains pins only the production
+// MaterializeWorker seam.
 package mediamemory
 
 import (
@@ -338,64 +332,5 @@ func TestMaterializeWorker_PromoteOnDemand_HappyPathMintsAssetIDAndHot(t *testin
 	}
 	if cands.byID["c77"].DiscoveryStatus != DiscoveryMaterialized {
 		t.Fatalf("expected DiscoveryMaterialized, got %s", cands.byID["c77"].DiscoveryStatus)
-	}
-}
-
-// ── Test 8: SetMaterializeWorker nil-refuses + rewire-refuses ────
-
-func TestBatchService_SetMaterializeWorker_RefusesNilAndRewire(t *testing.T) {
-	svc := &defaultBatchService{batches: map[string]*batchRow{}, children: map[string]*batchChildRow{}}
-	if err := svc.SetMaterializeWorker(nil); !errors.Is(err, ErrInvalidPhrase) {
-		t.Fatalf("expected ErrInvalidPhrase for nil, got %v", err)
-	}
-	if err := svc.SetMaterializeWorker(NewDefaultMaterializeWorker(newFakeStockPipeline(), newFakeCandidateRepoMat(), newAlwaysAllowRights(), nil, nil)); err != nil {
-		t.Fatalf("first wire failed: %v", err)
-	}
-	if err := svc.SetMaterializeWorker(NewDefaultMaterializeWorker(newFakeStockPipeline(), newFakeCandidateRepoMat(), newAlwaysAllowRights(), nil, nil)); !errors.Is(err, ErrLinkerInvariantBroken) {
-		t.Fatalf("expected ErrLinkerInvariantBroken on rewire, got %v", err)
-	}
-}
-
-// ── Test 9: AcquisitionPlanner.Plan caps at TopK ────────────────
-
-func TestAcquisitionPlanner_Plan_TopKCapAndRightsGate(t *testing.T) {
-	p := NewDefaultAcquisitionPlanner(nil)
-	cands := []MediaCandidate{}
-	// 5 candidates with descending score; 1 rights-denied (must
-	// drop); 1 already-Warm (must skip). TopK=2 -> picks c1,
-	// c2 only.
-	for i, score := range []float64{0.95, 0.85, 0.75, 0.65, 0.55} {
-		rights := RightsVerified
-		if i == 4 {
-			rights = RightsDenied
-		}
-		mat := MaterializationCold
-		if i == 3 {
-			mat = MaterializationWarm
-		}
-		cands = append(cands, MediaCandidate{ID: fmt.Sprintf("c%d", i), CandidateScore: score, RightsStatus: rights, MaterializationStatus: mat})
-	}
-	out, err := p.Plan(context.Background(), AcquisitionInput{TopK: 2, Candidates: cands})
-	if err != nil {
-		t.Fatalf("Plan: %v", err)
-	}
-	if len(out) != 2 {
-		t.Fatalf("expected 2 promotes, got %d", len(out))
-	}
-	if out[0].Candidate.ID != "c0" || out[1].Candidate.ID != "c1" {
-		t.Fatalf("expected order c0,c1, got %s,%s", out[0].Candidate.ID, out[1].Candidate.ID)
-	}
-	if out[0].Target != MaterializationWarm {
-		t.Fatalf("expected target Warm, got %s", out[0].Target)
-	}
-}
-
-// ── Test 10: AcquisitionPlanner.PlanOnDemand rights-denied ───────
-
-func TestAcquisitionPlanner_PlanOnDemand_RightsDeniedReturnsApprovalRequired(t *testing.T) {
-	p := NewDefaultAcquisitionPlanner(nil)
-	_, err := p.PlanOnDemand(context.Background(), MediaCandidate{ID: "c1", RightsStatus: RightsDenied})
-	if !errors.Is(err, ErrApprovalRequired) {
-		t.Fatalf("expected ErrApprovalRequired, got %v", err)
 	}
 }

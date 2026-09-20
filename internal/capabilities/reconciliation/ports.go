@@ -64,7 +64,7 @@ type AssetPointIDFunc func(assetID string) string
 // which made the outbox layer non-idempotent at the dedupe layer.
 //
 // contentHash MUST match media_assets.metadata_json.$.content_hash
-// at scan time (see SQLiteAssetStore.ListAssetsForReconcile). Empty
+// at scan time (see SQLiteReconcileReader.ListForReconcile). Empty
 // contentHash is rejected by the canonical envelope builder because
 // the worker supersede gate (IndexingHandler) requires it.
 //

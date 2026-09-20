@@ -49,12 +49,6 @@ func MapError(err error) MappedError {
 			Code:    "invalid_slot_kind",
 			Message: err.Error(),
 		}
-	case errors.Is(err, ErrInvalidFeedbackAction):
-		return MappedError{
-			Status:  http.StatusBadRequest,
-			Code:    "invalid_feedback_action",
-			Message: err.Error(),
-		}
 	case errors.Is(err, ErrInvalidPhrase):
 		return MappedError{
 			Status:  http.StatusBadRequest,
@@ -101,18 +95,6 @@ func MapError(err error) MappedError {
 		return MappedError{
 			Status:  http.StatusPreconditionRequired,
 			Code:    "approval_required",
-			Message: err.Error(),
-		}
-	case errors.Is(err, ErrBatchNotFound):
-		return MappedError{
-			Status:  http.StatusNotFound,
-			Code:    "batch_not_found",
-			Message: err.Error(),
-		}
-	case errors.Is(err, ErrBatchNotReconcilable):
-		return MappedError{
-			Status:  http.StatusConflict,
-			Code:    "batch_not_reconcilable",
 			Message: err.Error(),
 		}
 	default:
