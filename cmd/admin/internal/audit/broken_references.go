@@ -55,23 +55,8 @@ import (
 
 // ── CLI entry point ───────────────────────────────────────────────────
 
-// brokenRefMediaSource is the narrow media read the audit depends on.
-//
-// MEDIA-SSOT: production binds the PostgreSQL media SSOT reader
-// (pgmedia.MediaReferenceAuditReader). The audit's operational SQLite sweep
-// deliberately skips media_assets, because that table is PostgreSQL-owned and
-// the mirror holds no committed media rows — sweeping it there reported a
-// clean bill of health over an empty table.
-type brokenRefMediaSource interface {
-	ListDriveFileRefs(ctx context.Context) ([]pgmedia.MediaDriveRef, error)
-	ListLocalPaths(ctx context.Context) ([]pgmedia.MediaLocalPathRef, error)
-	ListSearchEligibleAssetIDs(ctx context.Context) ([]string, error)
-}
-
-// mediaOwnedAuditTables are the tables the operational SQLite sweep must NOT
-// read media rows from. They are answered by the PostgreSQL media SSOT via
-// brokenRefMediaSource instead.
-var mediaOwnedAuditTables = map[string]bool{"media_assets": true}
+// The media-engine boundary (brokenRefMediaSource, mediaOwnedAuditTables and
+// the PostgreSQL media detectors) lives in broken_references_media.go.
 
 func RunBrokenReferences(args []string) error {
 	fs := flag.NewFlagSet("broken-references", flag.ContinueOnError)
@@ -338,22 +323,6 @@ func detectFKOrphans(ctx context.Context, db *sql.DB, noDetail bool) ([]fkOrphan
 
 // ── Drive file cross-check ───────────────────────────────────────────
 
-// loadKnownDriveIDs resolves the set of Drive file IDs that currently exist,
-// either from a Fase 1 snapshot or from a live Drive walk. Failure is returned
-// as data (errs) when a walk partially failed, and as an error only when the
-// inventory could not be established at all.
-func loadKnownDriveIDs(ctx context.Context, cfg *config.Config, log *zap.Logger, inventoryPath string) (map[string]bool, []string, error) {
-	if inventoryPath != "" {
-		knownIDs, errs := loadDriveInventoryFromFile(inventoryPath)
-		return knownIDs, errs, nil
-	}
-	knownIDs, errs, err := walkLiveDriveIDs(ctx, cfg, log)
-	if err != nil {
-		return nil, errs, err
-	}
-	return knownIDs, errs, nil
-}
-
 // detectBrokenDriveRefsAndMedia cross-checks BOTH engines against the SAME
 // Drive inventory: the operational tables (non-media) and the PostgreSQL media
 // SSOT. The known-ID set is loaded once, so a live Drive walk is never performed
@@ -442,72 +411,8 @@ func detectBrokenDriveRefs(ctx context.Context, db *sql.DB, knownIDs map[string]
 	return broken, total, errs, nil
 }
 
-// detectBrokenMediaDriveRefs answers the media half of the Drive cross-check
-// from the PostgreSQL media SSOT. The asset_id comes from the SSOT row itself,
-// so no enrichment lookup is needed.
-func detectBrokenMediaDriveRefs(ctx context.Context, media brokenRefMediaSource, knownIDs map[string]bool) ([]brokenDriveRef, int, []string, error) {
-	if media == nil {
-		return nil, 0, nil, fmt.Errorf("media SSOT reader is not wired")
-	}
-	refs, err := media.ListDriveFileRefs(ctx)
-	if err != nil {
-		return nil, 0, nil, err
-	}
-	var broken []brokenDriveRef
-	for _, ref := range refs {
-		if !knownIDs[ref.DriveFileID] {
-			broken = append(broken, brokenDriveRef{
-				Table:       "media_assets",
-				Column:      "drive_file_id",
-				RefValue:    ref.DriveFileID,
-				AssetID:     ref.AssetID,
-				FailureKind: "drive_file_not_found",
-			})
-		}
-	}
-	return broken, len(refs), nil, nil
-}
-
-func loadDriveInventoryFromFile(path string) (map[string]bool, []string) {
-	var errs []string
-	data, err := os.ReadFile(path)
-	if err != nil {
-		errs = append(errs, fmt.Sprintf("read drive inventory %s: %v", path, err))
-		return nil, errs
-	}
-	var entries []driveInventoryEntry
-	if err := json.Unmarshal(data, &entries); err != nil {
-		errs = append(errs, fmt.Sprintf("parse drive inventory %s: %v", path, err))
-		return nil, errs
-	}
-	known := make(map[string]bool, len(entries))
-	for _, e := range entries {
-		known[e.ID] = true
-	}
-	return known, errs
-}
-
-func walkLiveDriveIDs(ctx context.Context, cfg *config.Config, log *zap.Logger) (map[string]bool, []string, error) {
-	uploader, err := cli.BuildDriveAdminForCLI(ctx, cfg, log)
-	if err != nil {
-		return nil, nil, fmt.Errorf("init Drive: %w", err)
-	}
-
-	roots := collectDriveRoots(cfg.Drive)
-	if len(roots) == 0 {
-		return make(map[string]bool), []string{"no Drive roots configured"}, nil
-	}
-
-	inventory, failures := walkDriveInventory(ctx, uploader.ListFiles, roots)
-	errs := make([]string, len(failures))
-	copy(errs, failures)
-
-	known := make(map[string]bool, len(inventory.entries))
-	for _, e := range inventory.entries {
-		known[e.ID] = true
-	}
-	return known, errs, nil
-}
+// The Drive-inventory loaders (loadKnownDriveIDs, loadDriveInventoryFromFile,
+// walkLiveDriveIDs) live in broken_references_drive.go.
 
 // ── Local path cross-check ───────────────────────────────────────────
 
@@ -568,44 +473,6 @@ func detectBrokenLocalPaths(ctx context.Context, db *sql.DB) ([]brokenLocalRef, 
 	}
 
 	return broken, total, nil
-}
-
-// detectBrokenMediaLocalPaths answers the media half of the local-path
-// cross-check from the PostgreSQL media SSOT. Existence is checked on the local
-// filesystem, exactly as for the operational tables: a path that does not
-// resolve is reported, never assumed readable.
-func detectBrokenMediaLocalPaths(ctx context.Context, media brokenRefMediaSource) ([]brokenLocalRef, int, error) {
-	if media == nil {
-		return nil, 0, fmt.Errorf("media SSOT reader is not wired")
-	}
-	refs, err := media.ListLocalPaths(ctx)
-	if err != nil {
-		return nil, 0, err
-	}
-	var broken []brokenLocalRef
-	for _, ref := range refs {
-		info, statErr := os.Stat(ref.LocalPath)
-		if statErr != nil {
-			kind := "stat_error"
-			if os.IsNotExist(statErr) {
-				kind = "file_not_found"
-			}
-			broken = append(broken, brokenLocalRef{
-				Table:       "media_assets",
-				Column:      "local_path",
-				LocalPath:   ref.LocalPath,
-				FailureKind: kind,
-				Error:       statErr.Error(),
-			})
-			continue
-		}
-		if info.IsDir() {
-			// A directory is suspicious but not necessarily broken: artifact
-			// caches legitimately point at directories.
-			continue
-		}
-	}
-	return broken, len(refs), nil
 }
 
 // ── Qdrant point cross-check ─────────────────────────────────────────

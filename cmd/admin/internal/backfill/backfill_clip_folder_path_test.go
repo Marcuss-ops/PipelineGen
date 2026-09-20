@@ -19,7 +19,48 @@ import (
 	"testing"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/drive"
+	pgmedia "github.com/Marcuss-ops/PipelineGen/internal/platform/postgres/media"
 )
+
+// sqliteClipFolderSource adapts the in-memory SQLite fixture to the backfill's
+// narrow clipFolderSource port.
+//
+// The production read moved to the PostgreSQL media SSOT
+// (pgmedia.BackfillReader) because media_assets is PostgreSQL-owned and the
+// operational mirror holds no committed media rows — the candidate scan would
+// have found nothing to realign. These tests keep pinning the RESOLUTION and
+// write-path behaviour (nested-path walk, cycle bound, idempotence, dry-run)
+// against a deterministic fixture, so the adapter carries the retired SQLite
+// statement verbatim. It is test-only by construction.
+type sqliteClipFolderSource struct{ db *sql.DB }
+
+func (s sqliteClipFolderSource) ListYouTubeClipFolderCandidates(ctx context.Context, limit int) ([]pgmedia.ClipFolderCandidate, error) {
+	query := `SELECT id, COALESCE(drive_file_id,''), COALESCE(folder_id,''), COALESCE(folder_path,'')
+		FROM media_assets
+		WHERE source = 'youtube'
+		  AND id LIKE 'yt_%'
+		  AND TRIM(COALESCE(drive_file_id, '')) <> ''
+		ORDER BY id`
+	var args []any
+	if limit > 0 {
+		query += ` LIMIT ?`
+		args = append(args, limit)
+	}
+	rows, err := s.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []pgmedia.ClipFolderCandidate
+	for rows.Next() {
+		var rec pgmedia.ClipFolderCandidate
+		if err := rows.Scan(&rec.ID, &rec.DriveFileID, &rec.FolderID, &rec.FolderPath); err != nil {
+			return nil, err
+		}
+		out = append(out, rec)
+	}
+	return out, rows.Err()
+}
 
 // fakeDriveMeta is a canned Drive metadata map keyed by file/folder ID.
 type fakeDriveMeta map[string]*drive.FileMeta
@@ -222,7 +263,7 @@ func TestBackfillClipFolderPath_UpdatesAndIsIdempotent(t *testing.T) {
 	// Row already aligned (must stay untouched).
 	insertClipFolderRow(t, db, "yt_clip-2", uVoFileID, uVoFolderID, uVoFilePath)
 
-	stats, err := backfillClipFolderPath(context.Background(), db, resolve, 0, 4, true, &testAssetMutator{db: db})
+	stats, err := backfillClipFolderPath(context.Background(), sqliteClipFolderSource{db: db}, resolve, 0, 4, true, &testAssetMutator{db: db})
 	if err != nil {
 		t.Fatalf("backfill: %v", err)
 	}
@@ -235,7 +276,7 @@ func TestBackfillClipFolderPath_UpdatesAndIsIdempotent(t *testing.T) {
 	}
 
 	// Second run must be a pure no-op.
-	stats, err = backfillClipFolderPath(context.Background(), db, resolve, 0, 4, true, &testAssetMutator{db: db})
+	stats, err = backfillClipFolderPath(context.Background(), sqliteClipFolderSource{db: db}, resolve, 0, 4, true, &testAssetMutator{db: db})
 	if err != nil {
 		t.Fatalf("backfill run 2: %v", err)
 	}
@@ -252,7 +293,7 @@ func TestBackfillClipFolderPath_DryRunNeverWrites(t *testing.T) {
 	}
 	insertClipFolderRow(t, db, "yt_clip-1", uVoFileID, tomHollandID, tomHollandDir)
 
-	stats, err := backfillClipFolderPath(context.Background(), db, resolve, 0, 4, false, &testAssetMutator{db: db})
+	stats, err := backfillClipFolderPath(context.Background(), sqliteClipFolderSource{db: db}, resolve, 0, 4, false, &testAssetMutator{db: db})
 	if err != nil {
 		t.Fatalf("backfill dry-run: %v", err)
 	}
@@ -276,7 +317,7 @@ func TestBackfillClipFolderPath_FailedRowsAreCountedNotSilentlySkipped(t *testin
 	insertClipFolderRow(t, db, "yt_clip-ok", uVoFileID, tomHollandID, tomHollandDir)
 	insertClipFolderRow(t, db, "yt_clip-bad", "missing-file", tomHollandID, tomHollandDir)
 
-	stats, err := backfillClipFolderPath(context.Background(), db, resolve, 0, 4, true, &testAssetMutator{db: db})
+	stats, err := backfillClipFolderPath(context.Background(), sqliteClipFolderSource{db: db}, resolve, 0, 4, true, &testAssetMutator{db: db})
 	if err != nil {
 		t.Fatalf("backfill: %v", err)
 	}
@@ -299,7 +340,7 @@ func TestBackfillClipFolderPath_ExcludesNonClipRows(t *testing.T) {
 	// out of scope (it lives under a different Drive root).
 	insertClipFolderRow(t, db, "planner:abc:1", uVoFileID, tomHollandID, tomHollandDir)
 
-	stats, err := backfillClipFolderPath(context.Background(), db, resolve, 0, 4, true, &testAssetMutator{db: db})
+	stats, err := backfillClipFolderPath(context.Background(), sqliteClipFolderSource{db: db}, resolve, 0, 4, true, &testAssetMutator{db: db})
 	if err != nil {
 		t.Fatalf("backfill: %v", err)
 	}
@@ -318,7 +359,7 @@ func TestBackfillClipFolderPath_RespectsLimit(t *testing.T) {
 		insertClipFolderRow(t, db, fmt.Sprintf("yt_clip-%d", i), uVoFileID, tomHollandID, tomHollandDir)
 	}
 
-	stats, err := backfillClipFolderPath(context.Background(), db, resolve, 2, 4, true, &testAssetMutator{db: db})
+	stats, err := backfillClipFolderPath(context.Background(), sqliteClipFolderSource{db: db}, resolve, 2, 4, true, &testAssetMutator{db: db})
 	if err != nil {
 		t.Fatalf("backfill: %v", err)
 	}

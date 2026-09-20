@@ -3,7 +3,6 @@ package backfill
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -13,6 +12,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/cmd/admin/internal/cli"
 	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
+	pgmedia "github.com/Marcuss-ops/PipelineGen/internal/platform/postgres/media"
 )
 
 // RunBackfillSourceURLMetadata reconciles the source_url metadata mirror
@@ -46,7 +46,14 @@ func RunBackfillSourceURLMetadata(args []string) error {
 	if !ok || mutator == nil {
 		return fmt.Errorf("canonical asset mutation committer is not available")
 	}
-	matched, updated, err := backfillSourceURLMetadataCanonical(ctx, root.DB, mutator, *limit)
+	// MEDIA-SSOT: the candidate scan reads media_assets, so it resolves from the
+	// PostgreSQL media SSOT. Reads and the canonical patches now agree on one
+	// engine instead of scanning a mirror that holds no committed media rows.
+	source := pgmedia.NewBackfillReader(root.MediaPostgres)
+	if source == nil {
+		return fmt.Errorf("media PostgreSQL SSOT is required for source_url backfill")
+	}
+	matched, updated, err := backfillSourceURLMetadataCanonical(ctx, source, mutator, *limit)
 	if err != nil {
 		return err
 	}
@@ -54,59 +61,38 @@ func RunBackfillSourceURLMetadata(args []string) error {
 	return nil
 }
 
-type dbExecer interface {
-	QueryContext(context.Context, string, ...any) (*sql.Rows, error)
-	QueryRowContext(context.Context, string, ...any) *sql.Row
-	ExecContext(context.Context, string, ...any) (sql.Result, error)
+// sourceURLMetadataSource is the narrow media read this backfill depends on.
+//
+// MEDIA-SSOT: production binds the PostgreSQL reader
+// (pgmedia.BackfillReader); the port is engine-specific so the candidate scan
+// cannot drift back onto the operational SQLite mirror.
+type sourceURLMetadataSource interface {
+	CountSourceURLMetadataCandidates(ctx context.Context) (int, error)
+	ListSourceURLMetadataCandidates(ctx context.Context, limit int) ([]pgmedia.SourceURLMetadataCandidate, error)
 }
 
-func backfillSourceURLMetadataCanonical(ctx context.Context, db dbExecer, mutator persistence.AssetMutator, limit int) (int, int, error) {
-	if db == nil || mutator == nil {
+func backfillSourceURLMetadataCanonical(ctx context.Context, src sourceURLMetadataSource, mutator persistence.AssetMutator, limit int) (int, int, error) {
+	if src == nil || mutator == nil {
 		return 0, 0, fmt.Errorf("backfill-source-url-metadata: canonical asset mutator is required")
 	}
-	predicate := `COALESCE(media_type, '') <> 'image' AND TRIM(COALESCE(url, '')) <> '' AND json_extract(COALESCE(metadata_json, '{}'), '$.source_url') IS NULL`
-	var matched int
-	if err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM media_assets WHERE `+predicate).Scan(&matched); err != nil {
+	matched, err := src.CountSourceURLMetadataCandidates(ctx)
+	if err != nil {
 		return 0, 0, fmt.Errorf("backfill-source-url-metadata: count: %w", err)
 	}
-	query := `SELECT id, url FROM media_assets WHERE ` + predicate + ` ORDER BY id`
-	args := []any{}
-	if limit > 0 {
-		query += ` LIMIT ?`
-		args = append(args, limit)
-	}
-	rows, err := db.QueryContext(ctx, query, args...)
+	candidates, err := src.ListSourceURLMetadataCandidates(ctx, limit)
 	if err != nil {
 		return 0, 0, fmt.Errorf("backfill-source-url-metadata: candidates: %w", err)
 	}
-	type candidate struct {
-		assetID   string
-		sourceURL string
-	}
-	candidates := make([]candidate, 0)
-	for rows.Next() {
-		var item candidate
-		if err := rows.Scan(&item.assetID, &item.sourceURL); err != nil {
-			rows.Close()
-			return matched, 0, err
-		}
-		candidates = append(candidates, item)
-	}
-	if err := rows.Err(); err != nil {
-		rows.Close()
-		return matched, 0, err
-	}
-	rows.Close()
 
 	updated := 0
 	for _, item := range candidates {
-		patchJSONBytes, err := json.Marshal(map[string]string{"source_url": item.sourceURL})
+		patchJSONBytes, err := json.Marshal(map[string]string{"source_url": item.SourceURL})
 		if err != nil {
-			return matched, updated, fmt.Errorf("backfill-source-url-metadata: marshal %s: %w", item.assetID, err)
+			return matched, updated, fmt.Errorf("backfill-source-url-metadata: marshal %s: %w", item.AssetID, err)
 		}
 		patchJSON := string(patchJSONBytes)
-		if err := mutator.PatchAsset(ctx, persistence.AssetPatch{AssetID: item.assetID, MetadataPatchJSON: &patchJSON}); err != nil {
-			return matched, updated, fmt.Errorf("backfill-source-url-metadata: patch %s: %w", item.assetID, err)
+		if err := mutator.PatchAsset(ctx, persistence.AssetPatch{AssetID: item.AssetID, MetadataPatchJSON: &patchJSON}); err != nil {
+			return matched, updated, fmt.Errorf("backfill-source-url-metadata: patch %s: %w", item.AssetID, err)
 		}
 		updated++
 	}

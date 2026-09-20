@@ -35,27 +35,13 @@ import (
 	voiceover "github.com/Marcuss-ops/PipelineGen/internal/capabilities/voiceover/service"
 )
 
-// stubClipsFolderExt is the canonical test-double for ClipsFolderExtPort.
-// Returns canned folder IDs so the test can assert what the helper
-// forwarded to the port.
-//
-// RESIDUE (audit 2026-07-03): post-refactor, BuildVoiceoverDestination's
-// 2nd parameter is `resolveFolder func(ctx, input, defaultRootID string)
-// (string, error)` (a closure) rather than a port interface. Test 1's
-// stub.calls assertion is now stale — production under the new
-// signature does NOT invoke stub.ExtractDriveFolderID (production
-// uses clips.ExtractDriveFolderID at job_helpers.go:50 directly).
-// Stub retained for audit; runtime assertion expected to fail, out of
-// scope for the current go vet cleanup.
-type stubClipsFolderExt struct {
-	fixedFolderID string
-	calls         []string
-}
-
-func (s *stubClipsFolderExt) ExtractDriveFolderID(raw string) string {
-	s.calls = append(s.calls, raw)
-	return s.fixedFolderID
-}
+// stubClipsFolderExt was DELETED here on 2026-09-20, together with the
+// ClipsFolderExtPort it doubled and the never-constructed clipsFolderExtAdapter.
+// It was already dead weight before that: no production signature ever invoked
+// it, and the three call sites below only did `_ = folderExt` to keep the local
+// alive, which is what its own RESIDUE note admitted. The folder extraction it
+// stood in for now runs through pkg/urlutil.FolderIDFromDriveLink inside
+// BuildVoiceoverDestination.
 
 // stubVoiceoverGroupResolver is the canonical test-double for
 // ports.VoiceoverGroupResolver. Returns a canned folder ID for matching
@@ -133,17 +119,16 @@ func (s *stubVoiceoverExecutor) Execute(_ context.Context, item *voiceover.Gener
 
 var _ ports.VoiceoverGroupResolver = (*stubVoiceoverGroupResolver)(nil)
 var _ voiceover.VoiceoverItemExecutor = (*stubVoiceoverExecutor)(nil)
-var _ ClipsFolderExtPort = (*stubClipsFolderExt)(nil)
 
-// — Audit §3 case 1: destination routes through port (folder-id non-empty -> direct folder)
+// — Audit §3 case 1: destination with a non-empty folder id -> direct folder
 
-func TestBuildVoiceoverDestination_RoutesThroughFolderExtPort_DirectFolder(t *testing.T) {
-	// Production uses clips.ExtractDriveFolderID directly; the legacy
-	// folderExt port stub is retained only as audit residue.
+func TestBuildVoiceoverDestination_DirectFolderFromDriveLink(t *testing.T) {
+	// The folder id is extracted inside the helper by
+	// pkg/urlutil.FolderIDFromDriveLink (the port that used to do this is gone).
 
 	dest := BuildVoiceoverDestination(
 		context.Background(),
-		nil, // resolveFolder closure: unused — folder-id branch fires first (production uses clips.ExtractDriveFolderID directly)
+		nil, // resolveFolder closure: unused — folder-id branch fires first (extraction happens in the helper)
 		zap.NewNop(),
 		"Top 10 Funny Moments",
 		"https://drive.google.com/drive/folders/ext-folder-id?usp=drive_link", // voiceoverFolderID
@@ -156,20 +141,16 @@ func TestBuildVoiceoverDestination_RoutesThroughFolderExtPort_DirectFolder(t *te
 	require.Equal(t, "ext-folder-id", dest.FolderID)
 	require.Equal(t, "top-10-funny-moments", dest.SubfolderName)
 	require.True(t, dest.CreateSubfolder)
-	// Production uses clips.ExtractDriveFolderID directly; the port stub
-	// is retained only as audit residue and is not invoked.
 }
 
 // — Audit §3 case 2: destination routes through port (folder-id empty, group non-empty)
 
 func TestBuildVoiceoverDestination_RoutesThroughVoiceoverGroupResolver_GroupNonEmpty(t *testing.T) {
-	folderExt := &stubClipsFolderExt{fixedFolderID: ""} // forced-empty so groupsResolver branch fires
 	resolver := &stubVoiceoverGroupResolver{
 		folderByName: map[string]string{
 			"Jackie Chan": "jackie-folder-id",
 		},
 	}
-	_ = folderExt
 	_ = resolver // RESIDUE (audit 2026-07-03): stub cannot satisfy *destination.Resolver concrete struct; nil passed below.
 
 	dest := BuildVoiceoverDestination(
@@ -196,13 +177,11 @@ func TestBuildVoiceoverDestination_RoutesThroughVoiceoverGroupResolver_GroupNonE
 // resolver signals "unknown group". This is the canonical sentinel
 // flow from ports/voiceover_group_port.go.
 func TestBuildVoiceoverDestination_FallsThroughOnGroupNotFound(t *testing.T) {
-	folderExt := &stubClipsFolderExt{fixedFolderID: ""}
 	resolver := &stubVoiceoverGroupResolver{
 		errByName: map[string]error{
 			"missing-group": ports.ErrVoiceoverGroupNotFound,
 		},
 	}
-	_ = folderExt
 	_ = resolver // RESIDUE (audit 2026-07-03): see RoutesThroughVoiceoverGroupResolver.
 
 	dest := BuildVoiceoverDestination(
@@ -243,8 +222,6 @@ func TestBuildVoiceoverDestination_MalformedExplicitURLDoesNotFallback(t *testin
 // Bonus: nil resolver behaves the same as before refactor. Defensive
 // parity check to ensure the refactor preserves nil-resolver leg.
 func TestBuildVoiceoverDestination_NilResolverStillSucceeds(t *testing.T) {
-	folderExt := &stubClipsFolderExt{fixedFolderID: "ext-folder-id"}
-	_ = folderExt
 
 	dest := BuildVoiceoverDestination(
 		context.Background(),

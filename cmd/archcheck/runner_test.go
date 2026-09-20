@@ -39,9 +39,23 @@ func TestReportContract(t *testing.T) {
 		t.Fatalf("go build failed: %v\n%s", err, out)
 	}
 
+	// Resolve HEAD before the pair of runs. This machine hosts concurrent
+	// sessions that commit while the two archcheck invocations execute, so the
+	// report's git_commit_sha can legitimately change between them: the
+	// determinism contract compares the reports with that one external-input
+	// field removed, and the source-identity assertion below stays strict
+	// whenever HEAD did not move for the whole test.
+	headCmd := exec.Command("git", "rev-parse", "HEAD")
+	headCmd.Dir = projectRoot
+	headOut, err := headCmd.Output()
+	if err != nil {
+		t.Fatalf("git rev-parse HEAD: %v", err)
+	}
+	wantSHA := strings.TrimSpace(string(headOut))
+
 	first := runArchcheckForReport(t, binPath, projectRoot)
 	second := runArchcheckForReport(t, binPath, projectRoot)
-	if string(first) != string(second) {
+	if reportWithoutSHA(t, first) != reportWithoutSHA(t, second) {
 		t.Fatalf("report output is not deterministic\n%s", firstNLines(string(first), 40))
 	}
 
@@ -58,15 +72,19 @@ func TestReportContract(t *testing.T) {
 		t.Fatalf("unmarshal report: %v", err)
 	}
 
-	headCmd := exec.Command("git", "rev-parse", "HEAD")
-	headCmd.Dir = projectRoot
-	headOut, err := headCmd.Output()
+	headAfterCmd := exec.Command("git", "rev-parse", "HEAD")
+	headAfterCmd.Dir = projectRoot
+	headAfterOut, err := headAfterCmd.Output()
 	if err != nil {
 		t.Fatalf("git rev-parse HEAD: %v", err)
 	}
-	wantSHA := strings.TrimSpace(string(headOut))
-	if got.GitCommitSHA != wantSHA {
-		t.Fatalf("git_commit_sha=%q, want HEAD %q", got.GitCommitSHA, wantSHA)
+	headAfter := strings.TrimSpace(string(headAfterOut))
+	if headAfter == wantSHA {
+		if got.GitCommitSHA != wantSHA {
+			t.Fatalf("git_commit_sha=%q, want HEAD %q", got.GitCommitSHA, wantSHA)
+		}
+	} else {
+		t.Logf("HEAD moved during TestReportContract (%s -> %s; concurrent writer): strict source-identity equality skipped", wantSHA, headAfter)
 	}
 	if got.Policy.MaxClipIngestPipelineFields != 9 {
 		t.Fatalf("policy_snapshot.MaxClipIngestPipelineFields=%d, want 9", got.Policy.MaxClipIngestPipelineFields)
@@ -194,6 +212,23 @@ func TestProjectRootContainsPolicyAndCatalog(t *testing.T) {
 			t.Fatalf("expected %s to exist: %v", path, err)
 		}
 	}
+}
+
+// reportWithoutSHA returns the report JSON with the externally-resolved
+// git_commit_sha field removed, so two archcheck runs can be compared for real
+// nondeterminism even when a concurrent session commits between them.
+func reportWithoutSHA(t *testing.T, data []byte) string {
+	t.Helper()
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(data, &fields); err != nil {
+		t.Fatalf("unmarshal report: %v", err)
+	}
+	delete(fields, "git_commit_sha")
+	normalized, err := json.Marshal(fields)
+	if err != nil {
+		t.Fatalf("marshal normalized report: %v", err)
+	}
+	return string(normalized)
 }
 
 func firstNLines(s string, n int) string {

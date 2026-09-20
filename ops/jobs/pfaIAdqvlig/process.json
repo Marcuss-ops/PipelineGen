@@ -1,0 +1,525 @@
+{
+  "_comment": "Full combined 30 clips for pfaIAdqvlig (Dan Rather) - split above is canonical; this is archive",
+  "url": "https://www.youtube.com/watch?v=pfaIAdqvlig",
+  "strategy": "verify",
+  "concurrency": 3,
+  "force_keyframes": true,
+  "keep_audio": true,
+  "write_summary": true,
+  "destination": {
+    "folder_id": "1C-q2swarUlf4JEUYHVe0Ol88MDSU8FUq",
+    "create_subfolder": false
+  },
+  "segments": [
+    {
+      "start": "00:00",
+      "end": "00:52",
+      "name": "Saluti iniziali a Dollywood e ironia sul fisico",
+      "category": "celebrity_interview",
+      "source_title": "R.I.P. Dolly Parton | The Big Interview with Dan Rather",
+      "source_channel": "The Big Interview with Dan Rather",
+      "summary": "Dan Rather intervista Dolly Parton a Dollywood, scambiando complimenti affettuosi e scherzando sulla forma fisica e il vitino da vespa della cantante.",
+      "topics": [
+        "Dan Rather Dolly Parton incontro Dollywood Pigeon Forge Tennessee forma fisica vita vespa complimenti"
+      ],
+      "tags": [
+        "Dolly Parton",
+        "Dan Rather",
+        "celebrity_interview"
+      ]
+    },
+    {
+      "start": "00:52",
+      "end": "01:37",
+      "name": "Filosofia estetica tra chirurgia, trucco e attitudine interiore",
+      "category": "celebrity_interview",
+      "source_title": "R.I.P. Dolly Parton | The Big Interview with Dan Rather",
+      "source_channel": "The Big Interview with Dan Rather",
+      "summary": "Dolly paragona la cura del proprio aspetto alla toelettatura di un cavallo da esposizione, rivendicando con autoironia il ricorso a Botox e make-up uniti a un atteggiamento positivo.",
+      "topics": [
+        "cura corpo show horse chirurgia estetica lifting ritocchi Botox trucco pesante energia interiore"
+      ],
+      "tags": [
+        "Dolly Parton",
+        "Dan Rather",
+        "celebrity_interview"
+      ]
+    },
+    {
+      "start": "01:37",
+      "end": "02:27",
+      "name": "Composizione continua e canzoni nascoste in ogni cassetto",
+      "category": "celebrity_interview",
+      "source_title": "R.I.P. Dolly Parton | The Big Interview with Dan Rather",
+      "source_channel": "The Big Interview with Dan Rather",
+      "summary": "Racconta di scrivere ininterrottamente da quando aveva sette anni, ritrovando testi e appunti musicali sparsi in ogni cassetto o scatola della casa.",
+      "topics": [
+        "scrittura brani 3000 canzoni chitarra 7 anni testi cassetti biancheria terapia gioia ispirazione"
+      ],
+      "tags": [
+        "Dolly Parton",
+        "Dan Rather",
+        "celebrity_interview"
+      ]
+    },
+    {
+      "start": "02:27",
+      "end": "03:04",
+      "name": "Il processo creativo tra registratore e sincronia di testo e musica",
+      "category": "celebrity_interview",
+      "source_title": "R.I.P. Dolly Parton | The Big Interview with Dan Rather",
+      "source_channel": "The Big Interview with Dan Rather",
+      "summary": "Spiega come fissa melodie e frasi su nastro al risveglio da un sogno, notando come parole e musica le si presentino solitamente in perfetta sincronia.",
+      "topics": [
+        "processo creativo registratore nastri melodia parole risveglio sogni catalogazione idee"
+      ],
+      "tags": [
+        "Dolly Parton",
+        "Dan Rather",
+        "celebrity_interview"
+      ]
+    },
+    {
+      "start": "03:04",
+      "end": "04:10",
+      "name": "Le 'wee hours of wisdom' e la produttività al mattino presto",
+      "category": "celebrity_interview",
+      "source_title": "R.I.P. Dolly Parton | The Big Interview with Dan Rather",
+      "source_channel": "The Big Interview with Dan Rather",
+      "summary": "Descrive la sua abitudine di svegliarsi all'alba per comporre, sfruttando il silenzio e la quiete delle prime ore del giorno per assorbire idee e creare.",
+      "topics": [
+        "wee hours of wisdom sveglia presto insonnia produttività mattutina calma silenzio sonnellini Bob Hope"
+      ],
+      "tags": [
+        "Dolly Parton",
+        "Dan Rather",
+        "celebrity_interview"
+      ]
+    },
+    {
+      "start": "04:10",
+      "end": "05:00",
+      "name": "I treni nella tradizione country e la paura dell'aereo",
+      "category": "celebrity_interview",
+      "source_title": "R.I.P. Dolly Parton | The Big Interview with Dan Rather",
+      "source_channel": "The Big Interview with Dan Rather",
+      "summary": "Analizza il fascino nostalgico dei treni nella cultura country, confessando che molti artisti delle montagne preferivano viaggiare su rotaia per la paura di volare.",
+      "topics": [
+        "canzoni treni musica country Hank Williams Merle Haggard solitudine fobia volo aerei vagoni"
+      ],
+      "tags": [
+        "Dolly Parton",
+        "Dan Rather",
+        "celebrity_interview"
+      ]
+    },
+    {
+      "start": "05:00",
+      "end": "06:18",
+      "name": "Il legame con Roy Acuff e il classico 'Wabash Cannonball'",
+      "category": "celebrity_interview",
+      "source_title": "R.I.P. Dolly Parton | The Big Interview with Dan Rather",
+      "source_channel": "The Big Interview with Dan Rather",
+      "summary": "Rievoca l'affetto quasi familiare per Roy Acuff, ricordando i duetti improvvisati nei camerini del Grand Ole Opry sulle note di 'Wabash Cannonball'.",
+      "topics": [
+        "Grand Ole Opry Roy Acuff Wabash Cannonball East Tennessee camerino Porter Wagoner bluegrass"
+      ],
+      "tags": [
+        "Dolly Parton",
+        "Dan Rather",
+        "celebrity_interview"
+      ]
+    },
+    {
+      "start": "06:18",
+      "end": "06:58",
+      "name": "Canticchiando il ritornello di 'Wabash Cannonball'",
+      "category": "celebrity_interview",
+      "source_title": "R.I.P. Dolly Parton | The Big Interview with Dan Rather",
+      "source_channel": "The Big Interview with Dan Rather",
+      "summary": "Dan Rather e Dolly intonano a memoria i primi versi di 'Wabash Cannonball', celebrando la freschezza e la popolarità intramontabile del pezzo.",
+      "topics": [
+        "Wabash Cannonball intonazione ritornello memoria canora melodia orecchiabile duetto spontaneo"
+      ],
+      "tags": [
+        "Dolly Parton",
+        "Dan Rather",
+        "celebrity_interview"
+      ]
+    },
+    {
+      "start": "06:58",
+      "end": "07:37",
+      "name": "Il museo Chasing Rainbows e i costumi di 'Rhinestone'",
+      "category": "celebrity_interview",
+      "source_title": "R.I.P. Dolly Parton | The Big Interview with Dan Rather",
+      "source_channel": "The Big Interview with Dan Rather",
+      "summary": "Vengono presentati i cimeli del museo Chasing Rainbows a Dollywood, inclusi i costumi indossati con Sylvester Stallone nel film 'Rhinestone'.",
+      "topics": [
+        "Chasing Rainbows Museum Dollywood abiti scena film Rhinestone Sylvester Stallone Steel Magnolias memoria"
+      ],
+      "tags": [
+        "Dolly Parton",
+        "Dan Rather",
+        "celebrity_interview"
+      ]
+    },
+    {
+      "start": "07:37",
+      "end": "08:29",
+      "name": "L'impero Dollywood: investimenti milionari e montagne russe",
+      "category": "celebrity_interview",
+      "source_title": "R.I.P. Dolly Parton | The Big Interview with Dan Rather",
+      "source_channel": "The Big Interview with Dan Rather",
+      "summary": "Illustra il piano di espansione da 300 milioni di dollari del parco tematico e scherza sul fatto di non salire sulle montagne russe per non perdere la parrucca.",
+      "topics": [
+        "Dollywood impero turistico 300 milioni investimenti resort FireChaser Express montagne russe paura perdere parrucca"
+      ],
+      "tags": [
+        "Dolly Parton",
+        "Dan Rather",
+        "celebrity_interview"
+      ]
+    },
+    {
+      "start": "08:29",
+      "end": "09:34",
+      "name": "Il senso degli affari ereditato dall'etica contadina del padre",
+      "category": "celebrity_interview",
+      "source_title": "R.I.P. Dolly Parton | The Big Interview with Dan Rather",
+      "source_channel": "The Big Interview with Dan Rather",
+      "summary": "Attribuisce il proprio fiuto commerciale al padre, un uomo analfabeta ma ingegnoso e instancabile, capace di sostenere dodici figli con il buon senso montanaro.",
+      "topics": [
+        "padre analfabetismo intelligenza pratica baratto horse trading etica lavoro agricoltura edilizia"
+      ],
+      "tags": [
+        "Dolly Parton",
+        "Dan Rather",
+        "celebrity_interview"
+      ]
+    },
+    {
+      "start": "09:34",
+      "end": "10:30",
+      "name": "L'unione di talento materno ed etica paterna: le edizioni musicali",
+      "category": "celebrity_interview",
+      "source_title": "R.I.P. Dolly Parton | The Big Interview with Dan Rather",
+      "source_channel": "The Big Interview with Dan Rather",
+      "summary": "Spiega di aver fuso la musicalità ereditata dalla madre con il rigore del padre, decidendo fin da giovane di fondare la propria casa editrice per proteggere i guadagni.",
+      "topics": [
+        "musica madre etica lavoro padre industria musicale edizioni musicali publishing tutela guadagni"
+      ],
+      "tags": [
+        "Dolly Parton",
+        "Dan Rather",
+        "celebrity_interview"
+      ]
+    },
+    {
+      "start": "10:30",
+      "end": "11:36",
+      "name": "L'arrivo a Nashville a 18 anni e la confidenza con gli uomini",
+      "category": "celebrity_interview",
+      "source_title": "R.I.P. Dolly Parton | The Big Interview with Dan Rather",
+      "source_channel": "The Big Interview with Dan Rather",
+      "summary": "Racconta che crescere circondata da fratelli e zii le permise di comprendere la mentalità maschile senza farsi intimidire dai dirigenti dell'industria discografica.",
+      "topics": [
+        "Nashville 18 anni fratelli maschi psicologia maschile sicurezza talento aspetto appariscente affari"
+      ],
+      "tags": [
+        "Dolly Parton",
+        "Dan Rather",
+        "celebrity_interview"
+      ]
+    },
+    {
+      "start": "11:36",
+      "end": "12:52",
+      "name": "Gestire le avances maschili e chiudere affari senza compromessi",
+      "category": "celebrity_interview",
+      "source_title": "R.I.P. Dolly Parton | The Big Interview with Dan Rather",
+      "source_channel": "The Big Interview with Dan Rather",
+      "summary": "Spiega come neutralizzava le avances con garbo ma fermezza, ribadendo di non essere mai scesa a compromessi sessuali e di chiudere i contratti prima che la sottovalutassero.",
+      "topics": [
+        "flirt avances confini professionali accordi commerciali fermezza indipendenza abbigliamento vistoso"
+      ],
+      "tags": [
+        "Dolly Parton",
+        "Dan Rather",
+        "celebrity_interview"
+      ]
+    },
+    {
+      "start": "12:52",
+      "end": "13:57",
+      "name": "L'amore di Elvis per 'I Will Always Love You' e l'invito in studio",
+      "category": "celebrity_interview",
+      "source_title": "R.I.P. Dolly Parton | The Big Interview with Dan Rather",
+      "source_channel": "The Big Interview with Dan Rather",
+      "summary": "Ricorda l'affetto di Elvis per 'I Will Always Love You', che il cantante intonò a Priscilla il giorno del divorzio, portando all'organizzazione di una sessione d'incisione.",
+      "topics": [
+        "Elvis Presley Priscilla divorzio I Will Always Love You sessione registrazione Nashville invito studio"
+      ],
+      "tags": [
+        "Dolly Parton",
+        "Dan Rather",
+        "celebrity_interview"
+      ]
+    },
+    {
+      "start": "13:57",
+      "end": "14:45",
+      "name": "L'ultimatum di Colonel Parker sui diritti di pubblicazione",
+      "category": "celebrity_interview",
+      "source_title": "R.I.P. Dolly Parton | The Big Interview with Dan Rather",
+      "source_channel": "The Big Interview with Dan Rather",
+      "summary": "Descrive la telefonata del manager Colonel Parker che esigeva la metà dei diritti editoriali del brano e il suo categorico rifiuto a cedere un copyright già affermatosi come hit.",
+      "topics": [
+        "Colonel Tom Parker pretesa 50 percento publishing diritti d'autore rifiuto Dolly Parton tutela copyright"
+      ],
+      "tags": [
+        "Dolly Parton",
+        "Dan Rather",
+        "celebrity_interview"
+      ]
+    },
+    {
+      "start": "14:45",
+      "end": "15:29",
+      "name": "Il dolore della rinuncia e la lungimiranza patrimoniale",
+      "category": "celebrity_interview",
+      "source_title": "R.I.P. Dolly Parton | The Big Interview with Dan Rather",
+      "source_channel": "The Big Interview with Dan Rather",
+      "summary": "Confessa la delusione provata nel dover annunciare che Elvis non avrebbe inciso la traccia, difesa tuttavia a protezione dell'eredità futura della sua famiglia.",
+      "topics": [
+        "delusione pianto rinuncia integrità artistica eredità familiare publishing company intuito"
+      ],
+      "tags": [
+        "Dolly Parton",
+        "Dan Rather",
+        "celebrity_interview"
+      ]
+    },
+    {
+      "start": "15:29",
+      "end": "16:20",
+      "name": "Il trionfo planetario con Whitney Houston e la piena proprietà dei diritti",
+      "category": "celebrity_interview",
+      "source_title": "R.I.P. Dolly Parton | The Big Interview with Dan Rather",
+      "source_channel": "The Big Interview with Dan Rather",
+      "summary": "Sottolinea come il mantenimento del 100% dei diritti d'autore abbia dato i suoi frutti storici quando Whitney Houston rese la canzone un successo globale travolgente.",
+      "topics": [
+        "Whitney Houston The Bodyguard David Foster Kevin Costner 100 percento diritti royalties mondiali"
+      ],
+      "tags": [
+        "Dolly Parton",
+        "Dan Rather",
+        "celebrity_interview"
+      ]
+    },
+    {
+      "start": "16:20",
+      "end": "17:06",
+      "name": "Lo shock del primo ascolto alla guida verso Brentwood",
+      "category": "celebrity_interview",
+      "source_title": "R.I.P. Dolly Parton | The Big Interview with Dan Rather",
+      "source_channel": "The Big Interview with Dan Rather",
+      "summary": "Rivive il brivido provato sentendo per caso l'attacco a cappella di Whitney alla radio mentre guidava verso casa, temendo quasi di avere un infarto per l'emozione.",
+      "topics": [
+        "guida autoradio Nashville Brentwood introduzione a cappella brivido emozione infarto sfiorato"
+      ],
+      "tags": [
+        "Dolly Parton",
+        "Dan Rather",
+        "celebrity_interview"
+      ]
+    },
+    {
+      "start": "17:06",
+      "end": "17:47",
+      "name": "Il record globale di cover di 'Jolene' e la proposta di Jane Fonda",
+      "category": "celebrity_interview",
+      "source_title": "R.I.P. Dolly Parton | The Big Interview with Dan Rather",
+      "source_channel": "The Big Interview with Dan Rather",
+      "summary": "Ricorda che 'Jolene' è il suo brano più reinterpretato a livello planetario e introduce l'offerta cinematografica ricevuta da Jane Fonda per il film '9 to 5'.",
+      "topics": [
+        "Jolene cover mondiali garage band lingue film 9 to 5 Jane Fonda offerta recitazione"
+      ],
+      "tags": [
+        "Dolly Parton",
+        "Dan Rather",
+        "celebrity_interview"
+      ]
+    },
+    {
+      "start": "17:47",
+      "end": "18:47",
+      "name": "L'accordo strategico per '9 to 5': recitare solo componendo la sigla",
+      "category": "celebrity_interview",
+      "source_title": "R.I.P. Dolly Parton | The Big Interview with Dan Rather",
+      "source_channel": "The Big Interview with Dan Rather",
+      "summary": "Svela la strategia dietro il suo debutto sul grande schermo: accettare la parte solo a patto di firmare la sigla per consolidare la propria identità di cantautrice.",
+      "topics": [
+        "film 9 to 5 accordo Jane Fonda Lily Tomlin colonna sonora sigla priorità cantautrice"
+      ],
+      "tags": [
+        "Dolly Parton",
+        "Dan Rather",
+        "celebrity_interview"
+      ]
+    },
+    {
+      "start": "18:47",
+      "end": "19:41",
+      "name": "La vita privata lontano dai riflettori: casalinga e gite in camper",
+      "category": "celebrity_interview",
+      "source_title": "R.I.P. Dolly Parton | The Big Interview with Dan Rather",
+      "source_channel": "The Big Interview with Dan Rather",
+      "summary": "Smentisce l'immagine di donna mondana, definendosi una persona tranquilla che ama cucinare per il marito e fare escursioni in camper lontano dalla folla.",
+      "topics": [
+        "vita privata cucina casalinga marito camper RV rifiuto mondanità feste tranquillità domestica"
+      ],
+      "tags": [
+        "Dolly Parton",
+        "Dan Rather",
+        "celebrity_interview"
+      ]
+    },
+    {
+      "start": "19:41",
+      "end": "20:18",
+      "name": "La verità sui tacchi alti: tra statura minuta e abitudine fisica",
+      "category": "celebrity_interview",
+      "source_title": "R.I.P. Dolly Parton | The Big Interview with Dan Rather",
+      "source_channel": "The Big Interview with Dan Rather",
+      "summary": "Chiarisce di non indossare tacchi in doccia ma di usarli costantemente a casa per raggiungere gli scaffali e per non affaticare i muscoli abituati all'altezza.",
+      "topics": [
+        "tacchi alti pantofole casa statura minuta pensili cucina muscoli gambe smentita doccia"
+      ],
+      "tags": [
+        "Dolly Parton",
+        "Dan Rather",
+        "celebrity_interview"
+      ]
+    },
+    {
+      "start": "20:18",
+      "end": "21:16",
+      "name": "La collaborazione canora con Willie Nelson e la sincronia del fraseggio",
+      "category": "celebrity_interview",
+      "source_title": "R.I.P. Dolly Parton | The Big Interview with Dan Rather",
+      "source_channel": "The Big Interview with Dan Rather",
+      "summary": "Descrive la difficoltà tecnica nell'armonizzare la voce con il peculiare fraseggio di Willie Nelson nel brano 'From Here to the Moon and Back'.",
+      "topics": [
+        "Willie Nelson duetto Blue Smoke From Here to the Moon and Back fraseggio sincopato Kenny Rogers accordi"
+      ],
+      "tags": [
+        "Dolly Parton",
+        "Dan Rather",
+        "celebrity_interview"
+      ]
+    },
+    {
+      "start": "21:16",
+      "end": "22:16",
+      "name": "I primi passi paralleli con Willie Nelson e il suo trasferimento ad Austin",
+      "category": "celebrity_interview",
+      "source_title": "R.I.P. Dolly Parton | The Big Interview with Dan Rather",
+      "source_channel": "The Big Interview with Dan Rather",
+      "summary": "Ripercorre gli inizi condivisi con Willie Nelson a Nashville e il momento in cui il collega scelse di trasferirsi ad Austin per fuggire dalle restrizioni discografiche.",
+      "topics": [
+        "Combine Music Fred Foster RCA Nashville trasferimento Austin Texas disillusione industria"
+      ],
+      "tags": [
+        "Dolly Parton",
+        "Dan Rather",
+        "celebrity_interview"
+      ]
+    },
+    {
+      "start": "22:16",
+      "end": "22:58",
+      "name": "Il movimento degli Outlaws e l'ammirazione per Waylon Jennings",
+      "category": "celebrity_interview",
+      "source_title": "R.I.P. Dolly Parton | The Big Interview with Dan Rather",
+      "source_channel": "The Big Interview with Dan Rather",
+      "summary": "Esprime profonda ammirazione per la corrente dei 'fuorilegge' del country, citando la battuta amara di Waylon Jennings sulla durezza di Nashville verso i vivi.",
+      "topics": [
+        "Outlaw country Waylon Jennings Nashville morte artisti indipendenza artistica regole discografiche"
+      ],
+      "tags": [
+        "Dolly Parton",
+        "Dan Rather",
+        "celebrity_interview"
+      ]
+    },
+    {
+      "start": "22:58",
+      "end": "23:44",
+      "name": "La nascita dell'Imagination Library in onore del padre",
+      "category": "celebrity_interview",
+      "source_title": "R.I.P. Dolly Parton | The Big Interview with Dan Rather",
+      "source_channel": "The Big Interview with Dan Rather",
+      "summary": "Spiega di aver creato l'Imagination Library per onorare il padre analfabeta, donando libri mensili ai bambini della sua contea per stimolare l'istruzione precoce.",
+      "topics": [
+        "Imagination Library Sevier County Tennessee padre analfabeta riscatto sociale libri infanzia"
+      ],
+      "tags": [
+        "Dolly Parton",
+        "Dan Rather",
+        "celebrity_interview"
+      ]
+    },
+    {
+      "start": "23:44",
+      "end": "25:04",
+      "name": "La crescita internazionale dell'Imagination Library con oltre 50 milioni di libri",
+      "category": "celebrity_interview",
+      "source_title": "R.I.P. Dolly Parton | The Big Interview with Dan Rather",
+      "source_channel": "The Big Interview with Dan Rather",
+      "summary": "Illustra la diffusione mondiale del progetto benefico, arrivato a distribuire oltre cinquanta milioni di volumi gratuiti come strumento di emancipazione culturale.",
+      "topics": [
+        "Phil Bredesen espansione USA Canada Scozia Australia United Way Rotary 50 milioni libri autoformazione"
+      ],
+      "tags": [
+        "Dolly Parton",
+        "Dan Rather",
+        "celebrity_interview"
+      ]
+    },
+    {
+      "start": "25:04",
+      "end": "26:06",
+      "name": "L'essenza interiore oltre l'artificio esteriore",
+      "category": "celebrity_interview",
+      "source_title": "R.I.P. Dolly Parton | The Big Interview with Dan Rather",
+      "source_channel": "The Big Interview with Dan Rather",
+      "summary": "Riflette sulla propria identità autentica, ammettendo di avere un aspetto deliberatamente costruito ed esagerato ma un cuore profondamente spirituale e sincero.",
+      "topics": [
+        "identità interiore artificio esteriore look costruito generosità ottimismo fede spiritualità"
+      ],
+      "tags": [
+        "Dolly Parton",
+        "Dan Rather",
+        "celebrity_interview"
+      ]
+    },
+    {
+      "start": "26:06",
+      "end": "27:17",
+      "name": "Intelligenza, determinazione e congedo finale con Dan Rather",
+      "category": "celebrity_interview",
+      "source_title": "R.I.P. Dolly Parton | The Big Interview with Dan Rather",
+      "source_channel": "The Big Interview with Dan Rather",
+      "summary": "Dan Rather riconosce in lei una straordinaria intelligenza e Dolly conclude ringraziando per l'incontro e sottolineando come la tenacia valga più del semplice talento.",
+      "topics": [
+        "intelligenza coraggio determinazione doni divini massimizzare vita ringraziamenti stima reciproca"
+      ],
+      "tags": [
+        "Dolly Parton",
+        "Dan Rather",
+        "celebrity_interview"
+      ]
+    }
+  ]
+}

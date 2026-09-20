@@ -111,6 +111,10 @@ pre_payload="$TMP/pre.json"
 jq --arg k "$RUN_ID-pre" '.idempotency_key = $k' "$PRE_JOB" >"$pre_payload"
 fin_payload="$TMP/finalize.json"
 jq --arg k "$RUN_ID-finalize" '.idempotency_key = $k' "$FINALIZE_JOB" >"$fin_payload"
+if [[ "$(jq -r '.copy_only // false' "$pre_payload")" != "true" ]]; then
+  echo "run-flow: FAIL — PRE payload must carry copy_only=true" >&2
+  exit 2
+fi
 
 poll_job() { # job_id label
   local job="$1" label="$2" start now status body code
@@ -166,7 +170,7 @@ submit_pre() { # → prints job_id, returns via stdout
     jq -n --slurpfile p "$pre_payload" --arg k "$RUN_ID-pre" \
       '{type: $p[0].job_type, video_name: $p[0].video_name, idempotency_key: $k,
         payload: {script_text: $p[0].script_text, scenes: $p[0].scenes,
-                  output: $p[0].output, delivery_plan: $p[0].delivery_plan}}' >"$enq"
+                  output: $p[0].output, copy_only: $p[0].copy_only, delivery_plan: $p[0].delivery_plan}}' >"$enq"
     echo "run-flow: POST /api/v1/jobs (legacy enqueue surface)" >&2
     code="$(api POST /api/v1/jobs "$enq" "$TMP/submit.json")"
   else

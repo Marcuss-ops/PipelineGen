@@ -50,132 +50,86 @@ package backfill
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
-	"strings"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/indexing/backfill"
-	capregistry "github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaregistry"
+	pgmedia "github.com/Marcuss-ops/PipelineGen/internal/platform/postgres/media"
 )
 
-// searchableMediaAssetWhere is the taxonomy SSOT for embedding backfill.
-// Registered audio/document/text assets are real registry rows but must not
-// be sent through semantic embedding or Qdrant projection.
-const searchableMediaAssetWhere = capregistry.SearchIndexTaxonomySQL
+// embeddingCandidateSource is the narrow media read the embedding backfill
+// depends on.
+//
+// MEDIA-SSOT: production binds the PostgreSQL reader (pgmedia.BackfillReader),
+// whose scan applies capregistry.SearchIndexTaxonomySQL — the same eligibility
+// boundary the projection planes use. The retired SQLite scan graded the
+// operational mirror, which holds no committed media rows.
+type embeddingCandidateSource interface {
+	ListEmbeddingBackfillCandidates(ctx context.Context, q pgmedia.EmbeddingCandidateQuery) ([]pgmedia.EmbeddingCandidate, error)
+	ListEmbeddingCandidatesByID(ctx context.Context, ids []string) ([]pgmedia.EmbeddingCandidate, error)
+}
 
-// fetchEmbeddingCandidates queries media_assets for assets that need
-// embedding backfill. In --only-missing mode, only returns assets with
-// at least one empty embedding column.
+// fetchEmbeddingCandidates queries the media SSOT for assets that need
+// embedding backfill. In --only-missing mode, only returns assets with at least
+// one empty embedding channel.
 func fetchEmbeddingCandidates(
 	ctx context.Context,
-	db *sql.DB,
+	src embeddingCandidateSource,
 	deps indexing.Deps,
 	cp *indexing.Checkpoint,
 ) ([]indexing.Candidate, error) {
-	query := `
-		SELECT id, COALESCE(source, ''), COALESCE(name, ''), COALESCE(media_type, ''),
-		       COALESCE(local_path, ''),
-		       COALESCE(json_extract(metadata_json, '$.content_hash'), json_extract(metadata_json, '$.file_hash'), legacy_file_md5, ''),
-		       CASE WHEN embedding_json IS NOT NULL AND embedding_json != '' AND embedding_json != '[]' AND embedding_json != '{}' THEN 1 ELSE 0 END,
-		       CASE WHEN transcript_embedding IS NOT NULL AND transcript_embedding != '' AND transcript_embedding != '[]' AND transcript_embedding != '{}' THEN 1 ELSE 0 END,
-		       CASE WHEN visual_embedding IS NOT NULL AND visual_embedding != '' AND visual_embedding != '[]' AND visual_embedding != '{}' THEN 1 ELSE 0 END,
-		       CASE WHEN audio_embedding IS NOT NULL AND audio_embedding != '' AND audio_embedding != '[]' AND audio_embedding != '{}' THEN 1 ELSE 0 END
-		FROM media_assets
-		WHERE ` + searchableMediaAssetWhere
+	if src == nil {
+		return nil, fmt.Errorf("query embedding candidates: media SSOT reader is not wired")
+	}
 
-	var queryArgs []any
-
-	// Resume: start after last processed ID.
+	q := pgmedia.EmbeddingCandidateQuery{Source: deps.Source, Limit: deps.Limit}
+	// Resume: start after the last processed ID.
 	if cp != nil && cp.LastProcessedID != "" && deps.Resume {
-		query += ` AND id > ?`
-		queryArgs = append(queryArgs, cp.LastProcessedID)
+		q.AfterID = cp.LastProcessedID
 	}
 
-	// Source filter.
-	if deps.Source != "" {
-		query += ` AND source = ?`
-		queryArgs = append(queryArgs, deps.Source)
-	}
-
-	query += ` ORDER BY id ASC`
-
-	if deps.Limit > 0 {
-		query += ` LIMIT ?`
-		queryArgs = append(queryArgs, deps.Limit)
-	}
-
-	rows, err := db.QueryContext(ctx, query, queryArgs...)
+	found, err := src.ListEmbeddingBackfillCandidates(ctx, q)
 	if err != nil {
 		return nil, fmt.Errorf("query embedding candidates: %w", err)
 	}
-	defer rows.Close()
+	return embeddingCandidatesFromRows(found, deps.OnlyMissing), nil
+}
 
-	var out []indexing.Candidate
-	for rows.Next() {
-		var a indexing.Candidate
-		var hasText, hasTranscript, hasVisual, hasAudio int
-		if err := rows.Scan(&a.ID, &a.Source, &a.Name, &a.MediaType,
-			&a.LocalPath, &a.ContentHash, &hasText, &hasTranscript, &hasVisual, &hasAudio); err != nil {
-			return nil, fmt.Errorf("scan candidate: %w", err)
+// embeddingCandidatesFromRows maps SSOT rows onto the indexing candidate model,
+// dropping fully-embedded rows in --only-missing mode.
+func embeddingCandidatesFromRows(found []pgmedia.EmbeddingCandidate, onlyMissing bool) []indexing.Candidate {
+	out := make([]indexing.Candidate, 0, len(found))
+	for _, rec := range found {
+		candidate := indexing.Candidate{
+			ID:            rec.ID,
+			Source:        rec.Source,
+			Name:          rec.Name,
+			MediaType:     rec.MediaType,
+			LocalPath:     rec.LocalPath,
+			ContentHash:   rec.ContentHash,
+			HasText:       rec.HasText,
+			HasTranscript: rec.HasTranscript,
+			HasVisual:     rec.HasVisual,
+			HasAudio:      rec.HasAudio,
 		}
-		a.HasText = hasText == 1
-		a.HasTranscript = hasTranscript == 1
-		a.HasVisual = hasVisual == 1
-		a.HasAudio = hasAudio == 1
-
-		if deps.OnlyMissing && a.HasText && a.HasTranscript && a.HasVisual && a.HasAudio {
+		if onlyMissing && candidate.HasText && candidate.HasTranscript && candidate.HasVisual && candidate.HasAudio {
 			continue // fully embedded, skip in --only-missing mode
 		}
-		out = append(out, a)
+		out = append(out, candidate)
 	}
-	return out, rows.Err()
+	return out
 }
 
 // fetchFailedCandidates returns candidate rows only for the given asset IDs.
-func fetchFailedCandidates(ctx context.Context, db *sql.DB, ids []string) ([]indexing.Candidate, error) {
+func fetchFailedCandidates(ctx context.Context, src embeddingCandidateSource, ids []string) ([]indexing.Candidate, error) {
 	if len(ids) == 0 {
 		return nil, nil
 	}
-
-	placeholders := make([]string, len(ids))
-	args := make([]any, len(ids))
-	for i, id := range ids {
-		placeholders[i] = "?"
-		args[i] = id
+	if src == nil {
+		return nil, fmt.Errorf("query failed candidates: media SSOT reader is not wired")
 	}
-
-	query := fmt.Sprintf(`
-		SELECT id, COALESCE(source, ''), COALESCE(name, ''), COALESCE(media_type, ''),
-		       COALESCE(local_path, ''),
-		       COALESCE(json_extract(metadata_json, '$.content_hash'), json_extract(metadata_json, '$.file_hash'), legacy_file_md5, ''),
-		       CASE WHEN embedding_json IS NOT NULL AND embedding_json != '' AND embedding_json != '[]' AND embedding_json != '{}' THEN 1 ELSE 0 END,
-		       CASE WHEN transcript_embedding IS NOT NULL AND transcript_embedding != '' AND transcript_embedding != '[]' AND transcript_embedding != '{}' THEN 1 ELSE 0 END,
-		       CASE WHEN visual_embedding IS NOT NULL AND visual_embedding != '' AND visual_embedding != '[]' AND visual_embedding != '{}' THEN 1 ELSE 0 END,
-		       CASE WHEN audio_embedding IS NOT NULL AND audio_embedding != '' AND audio_embedding != '[]' AND audio_embedding != '{}' THEN 1 ELSE 0 END
-		FROM media_assets
-		WHERE id IN (%s)
-		  AND `+searchableMediaAssetWhere+`
-		ORDER BY id ASC`, strings.Join(placeholders, ","))
-
-	rows, err := db.QueryContext(ctx, query, args...)
+	found, err := src.ListEmbeddingCandidatesByID(ctx, ids)
 	if err != nil {
 		return nil, fmt.Errorf("query failed candidates: %w", err)
 	}
-	defer rows.Close()
-
-	var out []indexing.Candidate
-	for rows.Next() {
-		var a indexing.Candidate
-		var hasText, hasTranscript, hasVisual, hasAudio int
-		if err := rows.Scan(&a.ID, &a.Source, &a.Name, &a.MediaType,
-			&a.LocalPath, &a.ContentHash, &hasText, &hasTranscript, &hasVisual, &hasAudio); err != nil {
-			return nil, fmt.Errorf("scan failed candidate: %w", err)
-		}
-		a.HasText = hasText == 1
-		a.HasTranscript = hasTranscript == 1
-		a.HasVisual = hasVisual == 1
-		a.HasAudio = hasAudio == 1
-		out = append(out, a)
-	}
-	return out, rows.Err()
+	return embeddingCandidatesFromRows(found, false), nil
 }

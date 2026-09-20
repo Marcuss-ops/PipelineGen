@@ -12,6 +12,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/cmd/admin/internal/cli"
 	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
+	pgmedia "github.com/Marcuss-ops/PipelineGen/internal/platform/postgres/media"
 	sqlitemediaregistry "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/mediaregistry"
 	"go.uber.org/zap"
 )
@@ -108,7 +109,14 @@ func RunBackfillProviderTimestamps(args []string) error {
 	if !ok || mutator == nil {
 		return fmt.Errorf("canonical asset mutator is not available")
 	}
-	matched, updated, err := backfillProviderTimestampsCanonical(ctx, root.DB, mutator, *limit)
+	// MEDIA-SSOT: the candidate scan reads media_assets, so it resolves from the
+	// PostgreSQL media SSOT; the canonical patches already wrote there. The
+	// operational handle is no longer needed for this command's reads.
+	source := pgmedia.NewBackfillReader(root.MediaPostgres)
+	if source == nil {
+		return fmt.Errorf("media PostgreSQL SSOT is required for provider-timestamp backfill")
+	}
+	matched, updated, err := backfillProviderTimestampsCanonical(ctx, source, mutator, *limit)
 	if err != nil {
 		return err
 	}
@@ -116,72 +124,67 @@ func RunBackfillProviderTimestamps(args []string) error {
 	return nil
 }
 
-func backfillProviderTimestampsCanonical(ctx context.Context, db dbExecer, mutator persistence.AssetMutator, limit int) (int, int, error) {
-	if db == nil || mutator == nil {
+// providerTimestampSource is the narrow media read this backfill depends on.
+//
+// MEDIA-SSOT: production binds the PostgreSQL reader (pgmedia.BackfillReader).
+// The rule SQL (which column feeds which metadata key) lives in that package,
+// so this command names a rule instead of assembling dialect-specific SQL.
+type providerTimestampSource interface {
+	CountProviderTimestampCandidates(ctx context.Context) (int, error)
+	ListProviderTimestampCandidates(ctx context.Context, key string) ([]pgmedia.ProviderTimestampCandidate, error)
+}
+
+func backfillProviderTimestampsCanonical(ctx context.Context, src providerTimestampSource, mutator persistence.AssetMutator, limit int) (int, int, error) {
+	if src == nil || mutator == nil {
 		return 0, 0, fmt.Errorf("backfill-provider-timestamps: canonical asset mutator is required")
 	}
-	updates := []struct{ key, predicate, valueExpr string }{
-		{"source_provider", `TRIM(COALESCE(source_provider, '')) <> '' AND json_extract(COALESCE(metadata_json, '{}'), '$.source_provider') IS NULL`, `source_provider`},
-		{"source_video_id", `TRIM(COALESCE(source_video_id, '')) <> '' AND json_extract(COALESCE(metadata_json, '{}'), '$.source_video_id') IS NULL`, `source_video_id`},
-		{"start_sec", `COALESCE(start_ms, 0) <> 0 AND json_extract(COALESCE(metadata_json, '{}'), '$.start_sec') IS NULL`, `(COALESCE(start_ms, 0) / 1000.0)`},
-		{"end_sec", `COALESCE(end_ms, 0) <> 0 AND json_extract(COALESCE(metadata_json, '{}'), '$.end_sec') IS NULL`, `(COALESCE(end_ms, 0) / 1000.0)`},
-	}
-	countQuery := `SELECT COUNT(*) FROM media_assets WHERE (` + updates[0].predicate + ` OR ` + updates[1].predicate + ` OR ` + updates[2].predicate + ` OR ` + updates[3].predicate + `)`
-	var matched int
-	if err := db.QueryRowContext(ctx, countQuery).Scan(&matched); err != nil {
+	matched, err := src.CountProviderTimestampCandidates(ctx)
+	if err != nil {
 		return 0, 0, fmt.Errorf("backfill-provider-timestamps: count: %w", err)
 	}
 	matchedIDs := make(map[string]struct{})
 	updatedIDs := make(map[string]struct{})
 	now := time.Now().UTC().Format(time.RFC3339)
-	type candidate struct {
-		assetID  string
-		rawValue string
-	}
-	for _, update := range updates {
-		query := `SELECT id, CAST(` + update.valueExpr + ` AS TEXT) FROM media_assets WHERE ` + update.predicate + ` ORDER BY id`
-		rows, err := db.QueryContext(ctx, query)
+	for _, key := range pgmedia.ProviderTimestampRuleKeys() {
+		candidates, err := src.ListProviderTimestampCandidates(ctx, key)
 		if err != nil {
-			return len(matchedIDs), len(updatedIDs), fmt.Errorf("backfill-provider-timestamps: candidates %s: %w", update.key, err)
+			return len(matchedIDs), len(updatedIDs), fmt.Errorf("backfill-provider-timestamps: candidates %s: %w", key, err)
 		}
-		candidates := make([]candidate, 0)
-		for rows.Next() {
-			var item candidate
-			if err := rows.Scan(&item.assetID, &item.rawValue); err != nil {
-				rows.Close()
-				return len(matchedIDs), len(updatedIDs), fmt.Errorf("backfill-provider-timestamps: scan %s: %w", update.key, err)
-			}
-			if _, exists := matchedIDs[item.assetID]; !exists {
-				matchedIDs[item.assetID] = struct{}{}
-			}
-			if limit <= 0 || len(candidates) < limit {
-				candidates = append(candidates, item)
+		// The union is counted over EVERY matching row; --limit bounds only the
+		// repaired set, exactly as the retired scan did.
+		for _, item := range candidates {
+			if _, exists := matchedIDs[item.AssetID]; !exists {
+				matchedIDs[item.AssetID] = struct{}{}
 			}
 		}
-		if err := rows.Err(); err != nil {
-			rows.Close()
-			return len(matchedIDs), len(updatedIDs), fmt.Errorf("backfill-provider-timestamps: iterate %s: %w", update.key, err)
+		if limit > 0 && len(candidates) > limit {
+			candidates = candidates[:limit]
 		}
-		rows.Close()
 
 		for _, item := range candidates {
-			var patchValue any = item.rawValue
-			if update.key == "start_sec" || update.key == "end_sec" {
-				patchValue, err = strconv.ParseFloat(item.rawValue, 64)
+			var patchValue any = item.RawValue
+			if key == "start_sec" || key == "end_sec" {
+				patchValue, err = strconv.ParseFloat(item.RawValue, 64)
 				if err != nil {
-					return len(matchedIDs), len(updatedIDs), fmt.Errorf("backfill-provider-timestamps: parse %s for %s: %w", update.key, item.assetID, err)
+					return len(matchedIDs), len(updatedIDs), fmt.Errorf("backfill-provider-timestamps: parse %s for %s: %w", key, item.AssetID, err)
 				}
 			}
-			patchBytes, err := json.Marshal(map[string]any{update.key: patchValue})
+			patchBytes, err := json.Marshal(map[string]any{key: patchValue})
 			if err != nil {
-				return len(matchedIDs), len(updatedIDs), fmt.Errorf("backfill-provider-timestamps: marshal %s for %s: %w", update.key, item.assetID, err)
+				return len(matchedIDs), len(updatedIDs), fmt.Errorf("backfill-provider-timestamps: marshal %s for %s: %w", key, item.AssetID, err)
 			}
 			patchJSON := string(patchBytes)
-			if err := mutator.PatchAsset(ctx, persistence.AssetPatch{AssetID: item.assetID, MetadataPatchJSON: &patchJSON, UpdatedAt: &now}); err != nil {
-				return len(matchedIDs), len(updatedIDs), fmt.Errorf("backfill-provider-timestamps: patch %s for %s: %w", update.key, item.assetID, err)
+			if err := mutator.PatchAsset(ctx, persistence.AssetPatch{AssetID: item.AssetID, MetadataPatchJSON: &patchJSON, UpdatedAt: &now}); err != nil {
+				return len(matchedIDs), len(updatedIDs), fmt.Errorf("backfill-provider-timestamps: patch %s for %s: %w", key, item.AssetID, err)
 			}
-			updatedIDs[item.assetID] = struct{}{}
+			updatedIDs[item.AssetID] = struct{}{}
 		}
+	}
+	// Fail closed on a contradiction instead of reporting it as progress: the
+	// union count and the union of scanned IDs describe the same row set, so a
+	// disagreement means the per-rule scan did not observe what the count did.
+	if matched != len(matchedIDs) {
+		return len(matchedIDs), len(updatedIDs), fmt.Errorf("backfill-provider-timestamps: candidate count %d disagrees with %d scanned rows", matched, len(matchedIDs))
 	}
 	return len(matchedIDs), len(updatedIDs), nil
 }

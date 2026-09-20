@@ -220,9 +220,15 @@ func TestScanSQLiteMediaReaderBan_ConvertedZoneIsExactFile(t *testing.T) {
 			sibling: "internal/platform/qdrant/indexing/brand_new.go",
 		},
 		{
+			// repointed 2026-09-20: the previous representative,
+			// cmd/admin/internal/audit/clip_drive_audit.go, was delisted in the
+			// same change that moved its read onto
+			// pgmedia.NewClipDriveAuditReader. A representative must be a LIVE
+			// register entry — the assertion below is what caught it, so it is
+			// repointed rather than dropped.
 			zone:    "cmd/admin/",
-			listed:  "cmd/admin/internal/audit/clip_drive_audit.go",
-			sibling: "cmd/admin/internal/audit/brand_new.go",
+			listed:  "cmd/admin/internal/backfill/backfill_missing.go",
+			sibling: "cmd/admin/internal/backfill/brand_new.go",
 		},
 		{
 			zone:    "internal/platform/sqlite/",

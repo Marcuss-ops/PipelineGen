@@ -11,13 +11,11 @@ import (
 	stockpipeline "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers/stock/stockpipeline"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers/stock/stockplan"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/search"
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/sourcing"
 	stockbatches "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/stockbatches"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/clips/aistock"
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
 	opsapp "github.com/Marcuss-ops/PipelineGen/internal/capabilities/operations"
 	scriptports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/checksum"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/drive"
 	api "github.com/Marcuss-ops/PipelineGen/internal/platform/httpserver"
 	ollamaclient "github.com/Marcuss-ops/PipelineGen/internal/platform/ollama/client"
@@ -42,19 +40,14 @@ type registryCrossStepState struct {
 	StockPrefetcher    scriptports.StockPrefetcher
 }
 
-// Package app — sourcing hash adapter
-// split from youtube_metadata_adapter.go (PR-GODOBJ-Azione-4, July 2026).
-//
-// 1 adapter: sourcingHashAdapter.
-// ── sourcingHashAdapter ───────────────────────────────────────────────
-
-type sourcingHashAdapter struct{}
-
-func (a *sourcingHashAdapter) MD5File(path string) (string, error) {
-	return checksum.LegacyMD5File(path)
-}
-
-var _ sourcing.HashPort = (*sourcingHashAdapter)(nil)
+// sourcingHashAdapter was DELETED here on 2026-09-20, together with its
+// sourcing.HashPort port (internal/capabilities/assets/sourcing/ports.go).
+// The adapter was never constructed anywhere in the tree and HashPort had zero
+// consumers — no field, parameter or return value was typed by it. The
+// canonical MD5 surface is clips.ClipHashPort, implemented by clipsHashAdapter
+// (clips_adapters_index.go) and consumed by clips.BulkUploadWorker.hasher; this
+// was a superseded duplicate of the same checksum.LegacyMD5File call. Both are
+// deleted so nothing pins the shape back into existence.
 
 // searxngWebSearchProviderAdapter wraps the existing Ollama WebSearcher
 // (backed by SearXNG) as a WebSearchProvider for the multi-provider

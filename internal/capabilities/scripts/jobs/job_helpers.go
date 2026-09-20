@@ -11,12 +11,12 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/clips"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
 	voiceover "github.com/Marcuss-ops/PipelineGen/internal/capabilities/voiceover/service"
 
 	"github.com/Marcuss-ops/PipelineGen/pkg/background"
 	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
+	"github.com/Marcuss-ops/PipelineGen/pkg/urlutil"
 )
 
 // ── buildVoiceoverDestination ────────────────────────────────────────────────
@@ -30,9 +30,18 @@ func BuildVoiceoverDestination(
 	title, voiceoverFolderID, voiceoverGroup, voRootID string,
 	groupsResolver ports.VoiceoverGroupResolver,
 ) *voiceover.DestinationRequest {
+	// Cross-capability import removal (2026-09-20): these two calls used to go
+	// through clips.ExtractDriveFolderID, kept reachable only by the
+	// scripts/jobs ClipsFolderExtPort + its never-constructed
+	// clipsFolderExtAdapter. pkg/urlutil.FolderIDFromDriveLink is the documented
+	// canonical replacement (same permissive contract: "" stays "", an
+	// unrecognised URL returns the input, a /folders/<id> path yields the id) and
+	// it trims internally, so the two call shapes collapse onto one function.
+	// scripts/jobs now imports no capabilities package for folder extraction, and
+	// the port that existed only to hide that import is gone.
 	rawVoiceoverFolderID := strings.TrimSpace(voiceoverFolderID)
-	voiceoverFolderID = clips.ExtractDriveFolderID(rawVoiceoverFolderID)
-	voRootID = clips.ExtractDriveFolderID(strings.TrimSpace(voRootID))
+	voiceoverFolderID = urlutil.FolderIDFromDriveLink(rawVoiceoverFolderID)
+	voRootID = urlutil.FolderIDFromDriveLink(voRootID)
 	subfolderName := textutil.SlugifyWithMax(title, 40)
 
 	if rawVoiceoverFolderID != "" &&

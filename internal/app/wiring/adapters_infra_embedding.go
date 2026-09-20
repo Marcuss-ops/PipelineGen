@@ -8,20 +8,14 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/search"
 )
 
-// searchEmbedAdapter bridges the infrastructure-layer search.TextEmbedder to
-// the application-layer search.QueryEmbedder port.
-type searchEmbedAdapter struct {
-	embedder search.TextEmbedder
-}
-
-var _ searchpkg.QueryEmbedder = (*searchEmbedAdapter)(nil)
-
-func (a *searchEmbedAdapter) Embed(ctx context.Context, text string) ([]float32, error) {
-	if a == nil || a.embedder == nil {
-		return nil, fmt.Errorf("searchEmbedAdapter: underlying qdrant embedder not wired")
-	}
-	return a.embedder.Embed(ctx, text)
-}
+// searchEmbedAdapter was DELETED here on 2026-09-20. It bridged the
+// infrastructure search.TextEmbedder to the application search.QueryEmbedder
+// port, but was never constructed anywhere in the tree, so its Embed method was
+// unreachable. The production semantic-search path no longer routes through the
+// single-text QueryEmbedder seam: it goes through the per-channel
+// EmbeddingChannelRegistry below (embeddingRegistryAdapter.EmbedQuery +
+// textChannelEncoderAdapter.EmbedTextQuery), which is why that registry is the
+// canonical surface and gets constructed while this one never was.
 
 // embeddingRegistryAdapter is the composition-only implementation of the
 // canonical embedding-channel registry.

@@ -50,13 +50,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providerassets"
 	imagesrouting "github.com/Marcuss-ops/PipelineGen/internal/capabilities/images"
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
 	adapters "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters"
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/usecase"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
-	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 
 	"go.uber.org/zap"
@@ -141,82 +138,14 @@ func validateScriptGenerateWiring(root *ComposeRoot, log *zap.Logger) error {
 
 // ── Postprocessor clip-search adapter structs (composition-root-local) ──
 
-// artlistClipSearchAdapter wraps usecase.SearchArtlistClips into the
-// adapters.ArtlistClipSearcher port. This adapter lives in the
-// composition root (NOT in the adapters package) to avoid a circular
-// import: adapters cannot import usecase.
-//
-// godlike/06 SSOT one-canonical-owner-per-fact: this is the canonical
-// SOLE adapter between ArtlistClipSearcher and SearchArtlistClips.
-type artlistClipSearchAdapter struct {
-	svc          usecase.ClipServices
-	remoteSearch func(context.Context, providerassets.SearchRequest) (providerassets.SearchResult, error)
-}
-
-// SearchClips satisfies adapters.ArtlistClipSearcher.
-func (a *artlistClipSearchAdapter) SearchClips(ctx context.Context, title string, phrases []string) ([]adapters.ArtlistClipMatch, error) {
-	if a == nil {
-		return nil, fmt.Errorf("ArtlistClipSearcher not configured")
-	}
-	if a.remoteSearch != nil {
-		matches := make([]adapters.ArtlistClipMatch, 0, len(phrases))
-		for _, phrase := range phrases {
-			phrase = strings.TrimSpace(phrase)
-			if phrase == "" {
-				continue
-			}
-			result, err := a.remoteSearch(ctx, providerassets.SearchRequest{Query: phrase, Limit: 10})
-			if err != nil {
-				return nil, fmt.Errorf("artlist query %q: %w", phrase, err)
-			}
-			match := adapters.ArtlistClipMatch{Phrase: phrase, Remote: true}
-			for _, candidate := range result.Assets {
-				link := strings.TrimSpace(candidate.SourceRef)
-				if link == "" {
-					link = strings.TrimSpace(candidate.PreviewURL)
-				}
-				if link == "" {
-					continue
-				}
-				match.ClipNames = append(match.ClipNames, candidate.Title)
-				match.ClipDriveLinks = append(match.ClipDriveLinks, link)
-				if match.FolderLink == "" {
-					match.FolderLink = candidate.PageURL
-				}
-			}
-			if len(match.ClipDriveLinks) > 0 {
-				matches = append(matches, match)
-			}
-		}
-		return matches, nil
-	}
-	suggestions := usecase.SearchArtlistClips(ctx, a.svc, title, phrases)
-	if len(suggestions) == 0 {
-		return nil, nil
-	}
-
-	// Convert usecase.ScriptArtlistClipSuggestion → adapters.ArtlistClipMatch.
-	// adapters cannot import usecase types directly, so we convert at
-	// the composition-root boundary.
-	matches := make([]adapters.ArtlistClipMatch, 0, len(suggestions))
-	for _, s := range suggestions {
-		m := adapters.ArtlistClipMatch{
-			Phrase:           s.Phrase,
-			FolderLink:       s.FolderLink,
-			FolderName:       s.FolderName,
-			FolderID:         s.FolderID,
-			TranslationError: s.TranslationError,
-		}
-		for _, c := range s.Clips {
-			m.ClipNames = append(m.ClipNames, c.Name)
-			m.ClipDriveLinks = append(m.ClipDriveLinks, c.DriveLink)
-		}
-		matches = append(matches, m)
-	}
-	return matches, nil
-}
-
-var _ adapters.ArtlistClipSearcher = (*artlistClipSearchAdapter)(nil)
+// artlistClipSearchAdapter was DELETED here on 2026-09-20. It was the
+// pre-registry Artlist fallback (wrapping usecase.SearchArtlistClips plus an
+// optional remote provider search) and it had no construction site anywhere in
+// the tree. wire_script_postprocess_ai.go states the disposition in the code it
+// replaced it with: "the old ClipServices/Drive/Jobs/remote fallback is
+// intentionally gone". The canonical implementation is
+// adapters.VidRushRegistryMediaResolver over the VidRushAssetProviderRegistry,
+// which is what that file now assigns to adapters.ArtlistClipSearcher.
 
 // internetImageSearchAdapter wraps the canonical ImageSearchResolver
 // into the adapters.InternetImageSearcher port.
@@ -374,60 +303,14 @@ func retrievedImageRightsBasis(license, author string) string {
 
 var _ adapters.InternetImageSearcher = (*internetImageSearchAdapter)(nil)
 
-// ── ClipServices adapter structs (composition-root-local) ─────────────────
-
-// driveCheckServiceAdapter wraps drive.Uploader.FileIsNotTrashed into
-// usecase.DriveCheckService. This adapter lives in the composition
-// root (NOT in the adapters or usecase packages) to avoid import cycles.
-//
-// godlike/06 SSOT: this is the canonical SOLE adapter between the
-// drive.Uploader and the usecase.DriveCheckService port.
-type driveCheckServiceAdapter struct {
-	up interface {
-		FileIsNotTrashed(ctx context.Context, fileID string) (bool, error)
-	}
-}
-
-// FileIsNotTrashed satisfies usecase.DriveCheckService.
-func (a *driveCheckServiceAdapter) FileIsNotTrashed(ctx context.Context, fileID string) (bool, error) {
-	if a == nil || a.up == nil {
-		return false, fmt.Errorf("driveCheckServiceAdapter: drive uploader not wired")
-	}
-	return a.up.FileIsNotTrashed(ctx, fileID)
-}
-
-var _ usecase.DriveCheckService = (*driveCheckServiceAdapter)(nil)
-
-// jobsEnqueueServiceAdapter wraps appjobs.Service.Enqueue into
-// usecase.JobEnqueueService. This adapter lives in the composition
-// root (NOT in the adapters or usecase packages) to avoid import cycles.
-//
-// The adapter bridges the typed appjobs.Service.Enqueue(ctx,
-// *job.EnqueueRequest) (*job.Job, error) to the interface-based
-// usecase.JobEnqueueService.Enqueue(ctx, any) (any, error)
-// expected by the artlist background job enqueue path.
-//
-// godlike/06 SSOT: this is the canonical SOLE adapter between the
-// jobs.Service and the usecase.JobEnqueueService port.
-type jobsEnqueueServiceAdapter struct {
-	svc interface {
-		Enqueue(ctx context.Context, req *job.EnqueueRequest) (*job.Job, error)
-	}
-}
-
-// Enqueue satisfies usecase.JobEnqueueService.
-func (a *jobsEnqueueServiceAdapter) Enqueue(ctx context.Context, req any) (any, error) {
-	if a == nil || a.svc == nil {
-		return nil, fmt.Errorf("jobsEnqueueServiceAdapter: jobs service not wired")
-	}
-	typedReq, ok := req.(*job.EnqueueRequest)
-	if !ok {
-		return nil, fmt.Errorf("jobsEnqueueServiceAdapter: req is %T, want *job.EnqueueRequest", req)
-	}
-	return a.svc.Enqueue(ctx, typedReq)
-}
-
-var _ usecase.JobEnqueueService = (*jobsEnqueueServiceAdapter)(nil)
+// driveCheckServiceAdapter and jobsEnqueueServiceAdapter were DELETED here on
+// 2026-09-20, together with the usecase.DriveCheckService and
+// usecase.JobEnqueueService ports they implemented and the ClipServices.DriveSvc
+// / ClipServices.JobsSvc fields they fed. Neither adapter had a construction
+// site anywhere in the tree, and the usecase.ClipServices fields they satisfied
+// had no reader: they belonged to the same ClipServices/Drive/Jobs/remote
+// fallback path that wire_script_postprocess_ai.go records as "intentionally
+// gone", replaced by the VidRushAssetProviderRegistry route.
 
 // ── Composition validation: required processors MUST register ────────
 

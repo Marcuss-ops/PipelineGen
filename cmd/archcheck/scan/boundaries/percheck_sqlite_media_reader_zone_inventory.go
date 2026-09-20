@@ -72,12 +72,8 @@ package boundaries
 //     delete its entry in the same change, and the list can only shrink.
 var sqliteMediaReaderInventoriedZoneFiles = map[string]bool{
 	"cmd/admin/internal/backfill/backfill_asset_embeddings_db.go":                true,
-	"cmd/admin/internal/backfill/backfill_clip_folder_path.go":                   true,
-	"cmd/admin/internal/backfill/backfill_embedding_contract.go":                 true,
 	"cmd/admin/internal/backfill/backfill_media_durations.go":                    true,
 	"cmd/admin/internal/backfill/backfill_missing.go":                            true,
-	"cmd/admin/internal/backfill/backfill_provider_timestamps.go":                true,
-	"cmd/admin/internal/backfill/backfill_source_url_metadata.go":                true,
 	"cmd/admin/internal/cleanup/cleanup_drive_orphans.go":                        true,
 	"cmd/admin/internal/drive/drive_reconcile.go":                                true,
 	"internal/platform/qdrant/indexing/asset_store.go":                           true,

@@ -10,9 +10,20 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/cmd/admin/internal/cli"
 	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
-	capregistry "github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaregistry"
 	coreembedding "github.com/Marcuss-ops/PipelineGen/internal/kernel/embedding"
+	pgmedia "github.com/Marcuss-ops/PipelineGen/internal/platform/postgres/media"
 )
+
+// embeddingContractSource is the narrow media read this backfill depends on.
+//
+// MEDIA-SSOT: production binds the PostgreSQL reader (pgmedia.BackfillReader).
+// The eligibility boundary is capregistry.SearchIndexTaxonomySQL inside that
+// reader, so the backfill grades exactly the rows the indexer projects.
+type embeddingContractSource interface {
+	CountEmbeddingContractEligible(ctx context.Context, modelID, modelRevision string) (int, error)
+	CountEmbeddingContractStamped(ctx context.Context, contractHash string) (int, error)
+	ListEmbeddingContractToStamp(ctx context.Context, modelID, modelRevision, contractHash string) ([]string, error)
+}
 
 // runBackfillEmbeddingContract stamps the canonical contract hash only on
 // rows whose observed model and revision already match the E5 contract. It
@@ -43,30 +54,33 @@ func RunBackfillEmbeddingContract(args []string) error {
 	if !ok || mutator == nil {
 		return fmt.Errorf("canonical asset mutation committer is not available")
 	}
-	db := root.DB.DB
+
+	// MEDIA-SSOT: the candidate scan reads media_assets, so it resolves from the
+	// PostgreSQL media SSOT rather than the operational mirror, which holds no
+	// committed media rows.
+	source := pgmedia.NewBackfillReader(root.MediaPostgres)
+	if source == nil {
+		return fmt.Errorf("media PostgreSQL SSOT is required for embedding-contract backfill")
+	}
 
 	ctx := context.Background()
-	const searchable = capregistry.SearchIndexTaxonomySQL + ` AND lifecycle_state IN ('ACTIVE','PUBLISHED')`
-	var eligible, already, updated int
-	if err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM media_assets WHERE `+searchable+` AND COALESCE(json_extract(metadata_json,'$.embedding_model'),'')=? AND COALESCE(json_extract(metadata_json,'$.embedding_model_version'),'')=?`, coreembedding.CanonicalText.ModelID, coreembedding.CanonicalText.ModelRevision).Scan(&eligible); err != nil {
-		return fmt.Errorf("count eligible embeddings: %w", err)
+	eligible, err := source.CountEmbeddingContractEligible(ctx, coreembedding.CanonicalText.ModelID, coreembedding.CanonicalText.ModelRevision)
+	if err != nil {
+		return err
 	}
-	if err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM media_assets WHERE `+searchable+` AND COALESCE(json_extract(metadata_json,'$.embedding_contract_hash'),'')=?`, coreembedding.CanonicalText.Hash()).Scan(&already); err != nil {
-		return fmt.Errorf("count stamped embeddings: %w", err)
+	already, err := source.CountEmbeddingContractStamped(ctx, coreembedding.CanonicalText.Hash())
+	if err != nil {
+		return err
 	}
+	updated := 0
 	if *apply {
-		rows, err := db.QueryContext(ctx, `SELECT id FROM media_assets WHERE `+searchable+` AND COALESCE(json_extract(metadata_json,'$.embedding_model'),'')=? AND COALESCE(json_extract(metadata_json,'$.embedding_model_version'),'')=? AND COALESCE(json_extract(metadata_json,'$.embedding_contract_hash'),'') != ? ORDER BY id`, coreembedding.CanonicalText.ModelID, coreembedding.CanonicalText.ModelRevision, coreembedding.CanonicalText.Hash())
+		ids, err := source.ListEmbeddingContractToStamp(ctx, coreembedding.CanonicalText.ModelID, coreembedding.CanonicalText.ModelRevision, coreembedding.CanonicalText.Hash())
 		if err != nil {
-			return fmt.Errorf("find embeddings to stamp: %w", err)
+			return err
 		}
-		defer rows.Close()
 		now := time.Now().UTC().Format(time.RFC3339)
 		patch, _ := json.Marshal(map[string]string{"embedding_contract_hash": coreembedding.CanonicalText.Hash()})
-		for rows.Next() {
-			var assetID string
-			if err := rows.Scan(&assetID); err != nil {
-				return fmt.Errorf("scan embedding to stamp: %w", err)
-			}
+		for _, assetID := range ids {
 			patchJSON := string(patch)
 			if err := mutator.PatchAsset(ctx, persistence.AssetPatch{
 				AssetID: assetID, MetadataPatchJSON: &patchJSON, UpdatedAt: &now,
@@ -74,9 +88,6 @@ func RunBackfillEmbeddingContract(args []string) error {
 				return fmt.Errorf("stamp embedding contract hash for %s: %w", assetID, err)
 			}
 			updated++
-		}
-		if err := rows.Err(); err != nil {
-			return fmt.Errorf("iterate embeddings to stamp: %w", err)
 		}
 	}
 	report := map[string]any{"mode": "dry-run", "eligible_observed_e5": eligible, "already_stamped": already, "updated": updated, "contract_hash": coreembedding.CanonicalText.Hash()}

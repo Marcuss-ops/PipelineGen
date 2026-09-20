@@ -142,11 +142,11 @@ func TestSplit_RepoAdapter_PanicInvariants(t *testing.T) {
 
 // ─────────────────────────────────────────────────────────────────────
 // Cluster 4 — FINALIZATION sidecars (projection.go).
-// Pins: NewVoiceoverProjectionAdapter (nil svc → panic);
-// NewVoiceoverPostCommitVerifierAdapter (nil db → panic).
+// Pin: NewVoiceoverProjectionAdapter (nil svc → panic).
 //
-// Note: this cluster's file imports `database/sql` for the *sql.Tx
-// parameter type — see PR-VO-ADAPTERS-TYPED-PORT forward-pointer.
+// The two PostCommitVerifier panic pins and their stubProjectionChecker
+// fixture were DELETED with the adapter itself on 2026-09-20 (see
+// adapters_voiceover_projection.go's package header).
 // ─────────────────────────────────────────────────────────────────────
 
 func TestSplit_ProjectionAdapter_PanicInvariants(t *testing.T) {
@@ -156,34 +156,7 @@ func TestSplit_ProjectionAdapter_PanicInvariants(t *testing.T) {
 			func() { _ = NewVoiceoverProjectionAdapter(nil) },
 			"NewVoiceoverProjectionAdapter must panic with the canonical message when svc is nil")
 	})
-	t.Run("PostCommitVerifier_NilDB_Panics", func(t *testing.T) {
-		require.PanicsWithValue(t,
-			"app.adapters_voiceover_use_case: NewVoiceoverPostCommitVerifierAdapter: db is required (*sql.DB)",
-			func() { _ = NewVoiceoverPostCommitVerifierAdapter(nil, stubProjectionChecker{}) },
-			"NewVoiceoverPostCommitVerifierAdapter must panic with the canonical message when db is nil")
-	})
-	// MEDIA-SSOT P2-9 Phase 2: the verifier now checks TWO tables on TWO engines,
-	// so the media half is required too. Fail-fast on a missing media checker is
-	// what stops a single-handle construction from silently reappearing and
-	// grading media_assets on the operational store again.
-	t.Run("PostCommitVerifier_NilMediaChecker_Panics", func(t *testing.T) {
-		require.PanicsWithValue(t,
-			"app.adapters_voiceover_use_case: NewVoiceoverPostCommitVerifierAdapter: media is required (VoiceoverProjectionChecker; media_assets is PostgreSQL-owned)",
-			func() { _ = NewVoiceoverPostCommitVerifierAdapter(&sql.DB{}, nil) },
-			"NewVoiceoverPostCommitVerifierAdapter must panic when the media-SSOT checker is nil")
-	})
 }
-
-// stubProjectionChecker satisfies VoiceoverProjectionChecker for constructor
-// tests only. It exists so the panic invariants can be exercised without a live
-// media SSOT handle.
-type stubProjectionChecker struct{}
-
-func (stubProjectionChecker) VoiceoverProjectionExists(context.Context, string) (bool, error) {
-	return false, nil
-}
-
-var _ VoiceoverProjectionChecker = stubProjectionChecker{}
 
 // stubMediaReader satisfies VoiceoverMediaReader for constructor tests only.
 type stubMediaReader struct{}

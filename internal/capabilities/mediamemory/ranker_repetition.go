@@ -322,12 +322,8 @@ func extractCandidateVideoID(c MediaCandidate) string {
 	return c.AssetID
 }
 
-// extractCandidateChannelID returns the canonical channel_id for
-// a candidate. godlike/06 SSOT (Fase 2.3 fallback): MediaCandidate
-// carries ChannelID as a first-class field as of Fase 2.3 (forward-
-// pointer to Fase 3 linker). When unset (empty string), the
-// ranker treats it as "no channel-saturation input available"
-// (channel penalty stays 0).
-func extractCandidateChannelID(c MediaCandidate) string {
-	return c.ChannelID
-}
+// extractCandidateChannelID was DELETED here on 2026-09-20. Its only caller
+// was the channel-saturation component of PopulateRepetitionPenalty, which was
+// fed exclusively by the retired UsageEvent log and therefore always computed
+// 0.0. MediaCandidate.ChannelID remains a first-class field; nothing in this
+// file reads it now that the saturation term is gone.

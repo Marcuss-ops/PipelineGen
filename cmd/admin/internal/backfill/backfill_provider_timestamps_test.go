@@ -13,10 +13,86 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"fmt"
 	"testing"
 
+	pgmedia "github.com/Marcuss-ops/PipelineGen/internal/platform/postgres/media"
 	_ "github.com/mattn/go-sqlite3"
 )
+
+// sqliteProviderTimestampSource adapts the in-memory SQLite fixture to the
+// backfill's narrow providerTimestampSource port.
+//
+// The production read moved to the PostgreSQL media SSOT
+// (pgmedia.BackfillReader) because media_assets is PostgreSQL-owned and the
+// operational mirror holds no committed media rows. These tests keep pinning
+// the RULES — which column feeds which canonical key, additive-only stamping,
+// ms→seconds conversion, idempotence — against a deterministic fixture, so the
+// adapter carries the retired SQLite predicates (json_extract + `?`) verbatim.
+// It is test-only by construction, which is the point: no production file reads
+// media_assets from SQLite any more.
+type sqliteProviderTimestampSource struct{ db *sql.DB }
+
+var sqliteProviderTimestampRules = map[string]struct{ predicate, valueExpr string }{
+	"source_provider": {
+		`TRIM(COALESCE(source_provider, '')) <> '' AND json_extract(COALESCE(metadata_json, '{}'), '$.source_provider') IS NULL`,
+		`source_provider`,
+	},
+	"source_video_id": {
+		`TRIM(COALESCE(source_video_id, '')) <> '' AND json_extract(COALESCE(metadata_json, '{}'), '$.source_video_id') IS NULL`,
+		`source_video_id`,
+	},
+	"start_sec": {
+		`COALESCE(start_ms, 0) <> 0 AND json_extract(COALESCE(metadata_json, '{}'), '$.start_sec') IS NULL`,
+		`(COALESCE(start_ms, 0) / 1000.0)`,
+	},
+	"end_sec": {
+		`COALESCE(end_ms, 0) <> 0 AND json_extract(COALESCE(metadata_json, '{}'), '$.end_sec') IS NULL`,
+		`(COALESCE(end_ms, 0) / 1000.0)`,
+	},
+}
+
+func (s sqliteProviderTimestampSource) CountProviderTimestampCandidates(ctx context.Context) (int, error) {
+	predicates := make([]string, 0, len(sqliteProviderTimestampRules))
+	for _, key := range pgmedia.ProviderTimestampRuleKeys() {
+		predicates = append(predicates, sqliteProviderTimestampRules[key].predicate)
+	}
+	var count int
+	query := `SELECT COUNT(*) FROM media_assets WHERE (`
+	for i, predicate := range predicates {
+		if i > 0 {
+			query += " OR "
+		}
+		query += predicate
+	}
+	query += `)`
+	if err := s.db.QueryRowContext(ctx, query).Scan(&count); err != nil {
+		return 0, err
+	}
+	return count, nil
+}
+
+func (s sqliteProviderTimestampSource) ListProviderTimestampCandidates(ctx context.Context, key string) ([]pgmedia.ProviderTimestampCandidate, error) {
+	rule, ok := sqliteProviderTimestampRules[key]
+	if !ok {
+		return nil, fmt.Errorf("unknown provider timestamp rule %q", key)
+	}
+	query := `SELECT id, CAST(` + rule.valueExpr + ` AS TEXT) FROM media_assets WHERE ` + rule.predicate + ` ORDER BY id`
+	rows, err := s.db.QueryContext(ctx, query)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []pgmedia.ProviderTimestampCandidate
+	for rows.Next() {
+		var rec pgmedia.ProviderTimestampCandidate
+		if err := rows.Scan(&rec.AssetID, &rec.RawValue); err != nil {
+			return nil, err
+		}
+		out = append(out, rec)
+	}
+	return out, rows.Err()
+}
 
 // newProviderTimestampsTestDB builds an in-memory media_assets table
 // with the columns the provider/timestamp backfill touches.
@@ -96,7 +172,7 @@ func TestBackfillProviderTimestamps_StampsCanonicalKeys(t *testing.T) {
 	// Row with only provider populated.
 	insertProviderRow(t, db, "stock-1", "clip", "stock", "", 0, 0, `{}`)
 
-	matched, updated, err := backfillProviderTimestampsCanonical(context.Background(), db, &testAssetMutator{db: db}, 0)
+	matched, updated, err := backfillProviderTimestampsCanonical(context.Background(), sqliteProviderTimestampSource{db: db}, &testAssetMutator{db: db}, 0)
 	if err != nil {
 		t.Fatalf("backfill: %v", err)
 	}
@@ -132,7 +208,7 @@ func TestBackfillProviderTimestamps_DoesNotOverwriteExistingKeys(t *testing.T) {
 	insertProviderRow(t, db, "yt-1", "video", "youtube", "abc123XYZ", 12500, 35000,
 		`{"source_provider":"artlist","source_video_id":"keep-me","start_sec":9.0,"end_sec":20.0}`)
 
-	matched, updated, err := backfillProviderTimestampsCanonical(context.Background(), db, &testAssetMutator{db: db}, 0)
+	matched, updated, err := backfillProviderTimestampsCanonical(context.Background(), sqliteProviderTimestampSource{db: db}, &testAssetMutator{db: db}, 0)
 	if err != nil {
 		t.Fatalf("backfill: %v", err)
 	}
@@ -154,11 +230,11 @@ func TestBackfillProviderTimestamps_IsIdempotent(t *testing.T) {
 	db := newProviderTimestampsTestDB(t)
 	insertProviderRow(t, db, "yt-1", "video", "youtube", "abc123XYZ", 12500, 35000, `{}`)
 
-	if _, updated, err := backfillProviderTimestampsCanonical(context.Background(), db, &testAssetMutator{db: db}, 0); err != nil || updated != 1 {
+	if _, updated, err := backfillProviderTimestampsCanonical(context.Background(), sqliteProviderTimestampSource{db: db}, &testAssetMutator{db: db}, 0); err != nil || updated != 1 {
 		t.Fatalf("first run: updated=%d err=%v, want 1/nil", updated, err)
 	}
 
-	matched, updated, err := backfillProviderTimestampsCanonical(context.Background(), db, &testAssetMutator{db: db}, 0)
+	matched, updated, err := backfillProviderTimestampsCanonical(context.Background(), sqliteProviderTimestampSource{db: db}, &testAssetMutator{db: db}, 0)
 	if err != nil {
 		t.Fatalf("second run: %v", err)
 	}
@@ -173,7 +249,7 @@ func TestBackfillProviderTimestamps_NoNullPollution(t *testing.T) {
 	// canonical keys must stay ABSENT (never written as JSON null).
 	insertProviderRow(t, db, "stock-1", "clip", "stock", "", 0, 0, `{}`)
 
-	if _, updated, err := backfillProviderTimestampsCanonical(context.Background(), db, &testAssetMutator{db: db}, 0); err != nil || updated != 1 {
+	if _, updated, err := backfillProviderTimestampsCanonical(context.Background(), sqliteProviderTimestampSource{db: db}, &testAssetMutator{db: db}, 0); err != nil || updated != 1 {
 		t.Fatalf("run: updated=%d err=%v, want 1/nil", updated, err)
 	}
 
@@ -201,7 +277,7 @@ func TestBackfillProviderTimestamps_RespectsLimit(t *testing.T) {
 	insertProviderRow(t, db, "yt-2", "video", "youtube", "b", 3000, 4000, `{}`)
 	insertProviderRow(t, db, "yt-3", "video", "youtube", "c", 5000, 6000, `{}`)
 
-	matched, updated, err := backfillProviderTimestampsCanonical(context.Background(), db, &testAssetMutator{db: db}, 2)
+	matched, updated, err := backfillProviderTimestampsCanonical(context.Background(), sqliteProviderTimestampSource{db: db}, &testAssetMutator{db: db}, 2)
 	if err != nil {
 		t.Fatalf("backfill with limit: %v", err)
 	}

@@ -65,6 +65,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
 	indexing "github.com/Marcuss-ops/PipelineGen/internal/capabilities/indexing/backfill"
+	pgmedia "github.com/Marcuss-ops/PipelineGen/internal/platform/postgres/media"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
 	"github.com/Marcuss-ops/PipelineGen/pkg/atomicwrite"
 )
@@ -112,13 +113,21 @@ func RunBackfillAssetEmbeddings(args []string) error {
 	}
 	adapter := outbox.NewRepairAdapter(root.DB.DB, outboxevents.NewRepository(root.DB.DB), outboxevents.ReindexEnvelopeV1Schema, mutator)
 
-	// SQL-backed candidate source: retry mode only re-processes
-	// previously-failed assets; otherwise the forward resume-anchored query.
+	// MEDIA-SSOT: the candidate scan reads media_assets, so it resolves from the
+	// PostgreSQL media SSOT. The operational handle above stays bound to the
+	// canonical outbox the repair enqueues through.
+	candidateSource := pgmedia.NewBackfillReader(root.MediaPostgres)
+	if candidateSource == nil {
+		return fmt.Errorf("media PostgreSQL SSOT is required for embedding backfill")
+	}
+
+	// Candidate source: retry mode only re-processes previously-failed
+	// assets; otherwise the forward resume-anchored query.
 	fetch := func(ctx context.Context, d indexing.Deps, cp *indexing.Checkpoint) ([]indexing.Candidate, error) {
 		if d.RetryFailed && cp != nil && len(cp.FailedIDs) > 0 {
-			return fetchFailedCandidates(ctx, root.DB.DB, cp.FailedIDs)
+			return fetchFailedCandidates(ctx, candidateSource, cp.FailedIDs)
 		}
-		return fetchEmbeddingCandidates(ctx, root.DB.DB, d, cp)
+		return fetchEmbeddingCandidates(ctx, candidateSource, d, cp)
 	}
 
 	report, cp, err := indexing.Run(ctx, deps, fetch, adapter, log)
