@@ -62,23 +62,6 @@ type QdrantScannerAdapter struct {
 	lastNextOffset string
 }
 
-// NewQdrantScannerAdapter constructs the adapter wired against the
-// canonical qdrant.Client. pageSize is hard-clamped to <= 1000 —
-// Qdrant REST cannot return more than 1000 points per scroll page.
-// 0 (zero) and negative values default to 500 (the canonical default).
-// This clamping is the single source of truth for the scan-limit
-// invariants; the orchestrator passes deps.Limit directly without
-// pre-clamping.
-func NewQdrantScannerAdapter(client *transport.Client, activeCol string, pageSize int) *QdrantScannerAdapter {
-	if pageSize <= 0 {
-		pageSize = 500
-	}
-	if pageSize > 1000 {
-		pageSize = 1000
-	}
-	return &QdrantScannerAdapter{client: client, activeCol: activeCol, pageSize: pageSize}
-}
-
 // ScrollPoints returns up to limit points from the next page and
 // stashes the NextOffset in lastNextOffset so the classify loop's
 // NextOffsetExtractor call can drive the cursor.
@@ -120,17 +103,3 @@ var (
 	_ legacyaudit.QdrantScanner       = (*QdrantScannerAdapter)(nil)
 	_ legacyaudit.NextOffsetExtractor = (*QdrantScannerAdapter)(nil)
 )
-
-// classifyForMaintenance (FASE 1.2 PR-GODOBJ-12 — verbatim migration from
-// cmd/admin/qdrant_maintenance_classify.go).
-//
-// Used by both audit + delete-invalid modes (the 2 modes that need the
-// classification report). Sibling to repair-locators (which does NOT
-// classify — it strips keys directly via LocatorCleaner).
-//
-// Returns the *legacyaudit.Report and the classify error. On partial failure,
-// the caller logs the error and decides whether to print the partial report
-// (audit mode: yes; delete-invalid mode: no — see the per-mode handlers).
-func classifyForMaintenance(ctx context.Context, scanner *QdrantScannerAdapter, activeCol string, pageSize int) (*legacyaudit.Report, error) {
-	return legacyaudit.Classify(ctx, scanner, activeCol, pageSize)
-}
