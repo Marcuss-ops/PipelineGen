@@ -65,6 +65,15 @@ var (
 		// content the gate cannot change), which is the failure mode that turns
 		// a real invariant into noise and gets it ignored.
 		"benchmarks": true,
+		// remote is also RUN OUTPUT, not a projection: ops/jobs/remote holds
+		// the exact pre/finalize payloads that were submitted to a live master
+		// (creator-77 → 51.91.11.36) and the scripts that produce them. Each
+		// payload legitimately echoes Drive identities (bgm1/whop1 → their Drive
+		// file ids) because that is the wire format the worker consumes —
+		// echoing an identity is not owning a catalog. Scanning it would make
+		// the gate fire on every new creator/remote pair, same failure mode as
+		// benchmarks above. See ops/jobs/remote/README.md for the topology.
+		"remote": true,
 	}
 )
 
