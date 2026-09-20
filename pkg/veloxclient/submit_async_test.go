@@ -60,3 +60,47 @@ func TestSubmitAsync_JobIDEmptyOnLegacyAck(t *testing.T) {
 	require.NotNil(t, resp)
 	require.Empty(t, resp.JobID)
 }
+
+// TestSubmitAsync_DecodesJobObjectAck pins the OTHER observed ACK shape: a
+// deployed build answered `job_id` with the full job object instead of its id.
+//
+// Live regression (2026-09-20): POST /api/clips/process returned
+//
+//	{"job_id":{"id":"job_1789910036360274691_b7eb4f16","type":…,"status":"QUEUED"}}
+//
+// and `velox submit` failed to decode it AFTER the job had been enqueued, so
+// the only handle on the already-running work was discarded. The client must
+// extract the id from either shape.
+func TestSubmitAsync_DecodesJobObjectAck(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"job_id":{"id":"job_1789910036360274691_b7eb4f16","type":"youtube_clip.extract","status":"QUEUED","priority":0}}`))
+	}))
+	defer srv.Close()
+
+	resp, err := New(srv.URL, "test-token").SubmitAsync(context.Background(),
+		"/api/clips/process", map[string]any{"url": "x"}, "req-3")
+
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+	require.Equal(t, "job_1789910036360274691_b7eb4f16", resp.JobID,
+		"the id inside the job object must reach the caller so the job can be polled")
+}
+
+// TestSubmitAsync_JobObjectAckWithoutIDIsNotAnError pins that a job object
+// carrying no id degrades to an empty JobID (the documented legacy-ACK
+// fallback) instead of failing the decode.
+func TestSubmitAsync_JobObjectAckWithoutIDIsNotAnError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"job_id":{"status":"QUEUED"}}`))
+	}))
+	defer srv.Close()
+
+	resp, err := New(srv.URL, "test-token").SubmitAsync(context.Background(),
+		"/api/clips/process", map[string]any{"url": "x"}, "req-4")
+
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+	require.Empty(t, resp.JobID)
+}

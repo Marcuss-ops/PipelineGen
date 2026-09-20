@@ -3,6 +3,7 @@
 package veloxclient
 
 import (
+	"encoding/json"
 	"errors"
 	"time"
 )
@@ -11,6 +12,49 @@ import (
 type AsyncResponse struct {
 	JobID  string `json:"job_id"`
 	Status string `json:"status"`
+}
+
+// UnmarshalJSON decodes BOTH shapes the same endpoint has been observed to
+// answer with for `job_id`:
+//
+//	"job_id": "job_1789_abc"          // canonical transport.EnqueueAsync ACK
+//	"job_id": {"id": "job_1789_abc"} // older deployed build: the job itself
+//
+// Observed live (2026-09-20): a deployed server answered
+// POST /api/clips/process with the object form. The job WAS enqueued, but
+// every `velox submit` failed with
+//
+//	decode response: json: cannot unmarshal object into Go struct field
+//	AsyncResponse.job_id of type string
+//
+// so the operator was told the submission failed while the work was already
+// queued — and the job id (the only handle on that work) was thrown away.
+// Tolerating both shapes keeps the CLI usable against either build instead of
+// coupling its usefulness to which binary happens to be deployed.
+func (a *AsyncResponse) UnmarshalJSON(data []byte) error {
+	var raw struct {
+		JobID  json.RawMessage `json:"job_id"`
+		Status string          `json:"status"`
+	}
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	a.JobID = ""
+	a.Status = raw.Status
+	if len(raw.JobID) == 0 || string(raw.JobID) == "null" {
+		return nil
+	}
+	if raw.JobID[0] == '"' {
+		return json.Unmarshal(raw.JobID, &a.JobID)
+	}
+	var carrier struct {
+		ID string `json:"id"`
+	}
+	if err := json.Unmarshal(raw.JobID, &carrier); err != nil {
+		return err
+	}
+	a.JobID = carrier.ID
+	return nil
 }
 
 // JobStatusResponse mirrors GET /api/jobs/{ID}/full.
