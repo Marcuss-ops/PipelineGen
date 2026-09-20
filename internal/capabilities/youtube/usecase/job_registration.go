@@ -46,10 +46,11 @@ func (s *Service) RegisterHandler(jobsSvc *jobtools.Service) error {
 		s.log.Info("registered youtube.stock job handler", zap.String("type", jobyoutube.TypeStock))
 	}
 
-	// rebuild_search_text needs Clips to be wired so the rebuild can
-	// locate the indexed-clip rows. Guard keeps a half-wired bundle from
-	// registering a handler that would no-op on first invocation.
-	if s.clips != nil {
+	// rebuild_search_text needs the PostgreSQL media clip lister to be wired so
+	// the rebuild can locate the indexed rows. Guard keeps a half-wired (or
+	// media-closed) bundle from registering a handler that would no-op on first
+	// invocation; there is no SQLite fallback by design.
+	if s.clipLister != nil {
 		if err := jobsSvc.RegisterHandler(jobyoutube.TypeRebuildSearchText, jobtools.HandlerFunc(s.HandleRebuildSearchTextJob)); err != nil {
 			return fmt.Errorf("youtube.Service.RegisterHandler: bind %q to dispatcher: %w", jobyoutube.TypeRebuildSearchText, err)
 		}
@@ -77,7 +78,7 @@ func (s *Service) HandleRebuildSearchTextJob(ctx context.Context, j *jobs.Job, t
 	deps := ytjobs.RebuildDeps{
 		Log:     s.log,
 		Indexer: s.indexer,
-		Clips:   s.clips,
+		Clips:   s.clipLister,
 		Enricher: func(ctx context.Context, clipID string, meta any, force bool) {
 			var m *youtubeports.DownloaderMetadata
 			if meta != nil {

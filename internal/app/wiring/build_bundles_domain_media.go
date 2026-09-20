@@ -456,7 +456,6 @@ func buildDomainMediaServices(
 			// so the registry's step-progress port resolves from the canonical
 			// committer's engine rather than the operational SQLite store.
 			Registry: artifacts.NewClipsRegistryWithLogger(
-				dbs.DualPool.Writer,
 				mediaDetailsReaderFromCommitter(committer),
 				persistence.CanonicalAssetProcessingWriter(committer),
 				committer,
@@ -474,6 +473,7 @@ func buildDomainMediaServices(
 	}
 	youtubeStorage := youtube.ServiceStorageDeps{
 		Clips:            ytadapters.NewClipStoreAdapter(repos.ClipsRepo),
+		ClipLister:       mediaYouTubeClipListerFromCommitter(committer),
 		Cache:            youtubeCache,
 		Monitors:         ytadapters.NewMonitorsStoreAdapter(repos.MonitorsRepo),
 		Indexer:          clipIndexerAdapterValue,

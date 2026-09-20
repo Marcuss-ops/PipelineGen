@@ -16,8 +16,9 @@ package ports
 import (
 	"context"
 	"errors"
-	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"time"
+
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaexec"
 	youtubetypes "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/dto"
@@ -127,13 +128,21 @@ type ClipStorePort interface {
 	Upsert(ctx context.Context, m *asset.Asset) error
 	UpsertFolder(ctx context.Context, f *detail.ClipFolder) error
 	DeleteClip(ctx context.Context, id string) error
-	ListYouTubeClipIDsForSearchText(ctx context.Context, limit, offset int) ([]string, error)
 	// PR3-Wave14 PR5 / PG-003 (June 2026): the youtube handler used to
 	// reach through *assets.ClipsRepository for advanced search + counts;
 	// now those flow through the port so the handler depends only on
 	// application-layer contracts.
 	SearchClipsAdvanced(ctx context.Context, req detail.AdvancedSearchRequest) (*detail.AdvancedSearchResult, error)
 	CountClips(ctx context.Context) (int, error)
+}
+
+// YouTubeClipLister is the narrow media read the search_text rebuild job
+// consumes. It is deliberately NOT part of ClipStorePort: the clip store is the
+// operational local catalog, while this listing reads media_assets, which
+// PostgreSQL owns — keeping the two apart is what lets the rebuild resolve the
+// lister from the media SSOT instead of the local mirror.
+type YouTubeClipLister interface {
+	ListYouTubeClipIDsForSearchText(ctx context.Context, limit, offset int) ([]string, error)
 }
 
 type MonitorsStorePort interface {
