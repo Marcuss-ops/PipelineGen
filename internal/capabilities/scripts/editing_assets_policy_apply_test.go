@@ -211,6 +211,26 @@ func TestBuildGenerateRequest_IntroV2CentralizedBackgroundPlate(t *testing.T) {
 			t.Fatalf("explicit plate was overridden: %+v", got.Render.Background)
 		}
 	})
+
+	t.Run("a channel label selects its canonical plate", func(t *testing.T) {
+		got, err := BuildGenerateRequest(decode(clipScript(`,"render":{"background":"Boxe"}`)), "intro-v2-key")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got.Render.Background == nil || got.Render.Background.Mode != videoBackgroundModeAsset || got.Render.Background.AssetID != "drive-background-boxe" {
+			t.Fatalf("channel label was not resolved: %+v", got.Render.Background)
+		}
+	})
+
+	t.Run("an object profile selects its canonical plate", func(t *testing.T) {
+		got, err := BuildGenerateRequest(decode(clipScript(`,"render":{"background":{"profile":"Discovery"}}`)), "intro-v2-key")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got.Render.Background == nil || got.Render.Background.AssetID != "drive-background-discovery" {
+			t.Fatalf("object profile was not resolved: %+v", got.Render.Background)
+		}
+	})
 }
 
 func containsString(values []string, want string) bool {

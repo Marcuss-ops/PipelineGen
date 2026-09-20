@@ -11,8 +11,8 @@ func TestDefaultEditingAssetsPolicyIsValid(t *testing.T) {
 	if err := policy.Validate(); err != nil {
 		t.Fatal(err)
 	}
-	if got := len(policy.Backgrounds.Pool); got != 6 {
-		t.Errorf("background pool = %d, want 6", got)
+	if got := len(policy.Backgrounds.Pool); got != 11 {
+		t.Errorf("background pool = %d, want 11", got)
 	}
 	if got := len(policy.BGM.Pool); got != 6 {
 		t.Errorf("bgm pool = %d, want 6", got)

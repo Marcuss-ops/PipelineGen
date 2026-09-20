@@ -48,10 +48,13 @@ must not be mixed when selecting assets.
 
 ## Backgrounds
 
-The six curated video plates are registered in the SAME registry:
+The curated video plates are registered in the SAME registry:
 `internal/capabilities/mediaregistry/editorial_backgrounds.go` binds
-`drive-background-01`–`drive-background-06` to their Drive identity, content
-hash and normalized contract (`video-background-v1`). RenderingGen's
+the generic `drive-background-01`–`drive-background-06` plates plus the
+channel aliases `drive-background-boxe`, `drive-background-crime`,
+`drive-background-music`, `drive-background-wwe` and
+`drive-background-discovery` to their Drive identity, content hash and
+normalized contract (`video-background-v1`). RenderingGen's
 `assets/backgrounds/manifest.json` is the projection of that catalog, not a
 second source of truth, and `editorial_projection_test.go` fails the build if
 the two diverge.
@@ -84,6 +87,10 @@ That rule is enforced, not merely documented:
 content hash **fails closed at asset-resolution time** instead of rendering the
 wrong artifact. `classic1` and other legacy plates are deliberately outside the
 curated set and are unaffected.
+
+For human-authored generation payloads, `output.render.background` also accepts
+the labels `Boxe`, `Crime`, `Music`, `Wwe` and `Discovery`; the ingress builder
+resolves them to the canonical channel aliases before rendering.
 
 ## Selection policy
 

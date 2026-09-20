@@ -156,7 +156,7 @@ type backgroundManifestProjection struct {
 
 // TestBackgroundManifestIsAProjectionOfTheRegistry closes the cross-repo
 // duplication: RenderingGen's background manifest and PipelineGen's registry
-// describe the same six plates, and nothing compared them before.
+// describe the same curated plates, and nothing compared them before.
 func TestBackgroundManifestIsAProjectionOfTheRegistry(t *testing.T) {
 	data, err := os.ReadFile(filepath.Clean(backgroundManifestRel))
 	if err != nil {

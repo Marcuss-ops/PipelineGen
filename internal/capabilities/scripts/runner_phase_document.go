@@ -105,8 +105,8 @@ func remoteEditingAssetsPolicy() map[string]any {
 	}
 }
 
-// remoteBackgroundCatalog is the stable alias-to-Drive mapping for the six
-// curated video background plates, exposed next to the BGM and SFX catalogs so
+// remoteBackgroundCatalog is the stable alias-to-Drive mapping for every
+// curated video background plate, exposed next to the BGM and SFX catalogs so
 // the remote assembler selects every editorial asset from the SAME registry
 // (mediaregistry). It is a projection of the registry, never a second catalog.
 func remoteBackgroundCatalog() map[string]map[string]string {
