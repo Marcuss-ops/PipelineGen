@@ -6,7 +6,7 @@
       "asset_id": "029f0db023ca91a4db8b256a273632e7ab41dd118f861904159bdfa45d650373",
       "drive_file_id": "1doHJp98YAGsbOe3q1ZXRdI-6UM1O4axh",
       "url": "velox-drive://1doHJp98YAGsbOe3q1ZXRdI-6UM1O4axh",
-      "sha256": "",
+      "sha256": "89b6055bce7b65d3922a5036c38510ebc24bf95b95cc106ed18619bd593070a1",
       "start_frame": 120,
       "end_frame": 240,
       "frame_count": 120,
@@ -21,7 +21,7 @@
       "kind": "audio",
       "role": "music",
       "url": "velox-drive://1X4-wfIwrR51eDxIegciuBAJzKSdP3gcX",
-      "sha256": "",
+      "sha256": "110d6ac60fee4769445ab828638e4e1d0647d55ee0534e61d07e63f3621c9971",
       "size_bytes": 0,
       "duration_ms": 0
     },
@@ -30,7 +30,7 @@
       "kind": "audio",
       "role": "sfx",
       "url": "velox-drive://1Fgr2jWQC1G6EHo-jhBAwjGtdcZo1PfaX",
-      "sha256": "",
+      "sha256": "1062107b1116e86e14698c46859e81efe5048639a6e6752714851f4daca8b7a8",
       "size_bytes": 0,
       "duration_ms": 1000
     }
