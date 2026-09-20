@@ -201,9 +201,6 @@ canonical_services:
   - service: ClipSourceBuilder
     constructor: wireClipSourceBuilder
     location: internal/app/wiring/wire_script.go
-  - service: MediaCurator
-    constructor: wireMediaCurator
-    location: internal/app/wiring/wire_script.go
   - service: SemaphoreUseCase
     constructor: NewSemaphoreUseCase
     location: internal/app/wiring/wire_script.go
@@ -478,7 +475,7 @@ application_scripts:
     state (June 2026) is being unwound in PR-G (4-phase migration
     EXPAND → BACKFILL → CUTOVER → CONTRACT per godlike/07).
   target_subdirs:  # PR-G.1 EXPAND registered 2026-06-27
-    - scripts/curation       # NEW per PR-G; owns MediaCurator + clip ports + scene stubs
+    - scripts/curation       # NEW per PR-G; owns clip ports + scene stubs
     - scripts/generation     # NEW per PR-G; owns Engine + Pipeline + html + enqueue + job + parity-covered plan builder (BACKFILL)
     - scripts/persistence    # NEW per PR-G; owns ScriptRepository contract + adapter
     - scripts/postprocess    # NEW per PR-G; owns PostprocessorRegistry + 7 processor_*.go

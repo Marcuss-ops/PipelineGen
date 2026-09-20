@@ -130,18 +130,6 @@ var (
 		Buckets: []float64{0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10, 30, 60, 120},
 	}, []string{"endpoint", "outcome"})
 
-	// Media Curator Metrics
-	MediaCuratorSearchTotal = promauto.NewCounterVec(prometheus.CounterOpts{
-		Name: "mediacurator_search_total",
-		Help: "Total number of MediaCurator searches, partitioned by backend (qdrant, like, error)",
-	}, []string{"backend"})
-
-	MediaCuratorSearchDuration = promauto.NewHistogramVec(prometheus.HistogramOpts{
-		Name:    "mediacurator_search_duration_seconds",
-		Help:    "Duration of MediaCurator search operations by backend",
-		Buckets: []float64{0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10},
-	}, []string{"backend"})
-
 	// Dedup Metrics
 	DedupHits = promauto.NewCounterVec(prometheus.CounterOpts{
 		Name: "clip_dedup_hits_total",
