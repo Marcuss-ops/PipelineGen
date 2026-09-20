@@ -72,6 +72,8 @@ func BuildClipRenderRuntime(cfg *config.Config, root *ComposeRoot, log *zap.Logg
 	if err != nil {
 		return nil, fmt.Errorf("clip render runtime: build RenderingGen executor: %w", err)
 	}
+	video := cfg.Video.WithDefaults()
+	executor.SetChunking(time.Duration(video.ChunkDuration)*time.Second, int64(video.KeyframeInterval), 2)
 	// Completion is event-driven (the queue client long-polls
 	// GET /jobs/{id}/wait), so this only tunes the polling FALLBACK used when
 	// the queue server lacks that route. The configured value (default 0 →

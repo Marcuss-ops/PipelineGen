@@ -98,6 +98,21 @@ func (c *Client) Get(ctx context.Context, id string) (scriptgen.RenderQueueJob, 
 	return toScriptJob(job), nil
 }
 
+func (c *Client) Children(ctx context.Context, parentID string) ([]scriptgen.RenderQueueJob, error) {
+	if c == nil || c.q == nil {
+		return nil, fmt.Errorf("renderinggen children: client is not configured")
+	}
+	jobs, err := c.q.Children(ctx, parentID)
+	if err != nil {
+		return nil, fmt.Errorf("renderinggen children: %w", err)
+	}
+	out := make([]scriptgen.RenderQueueJob, len(jobs))
+	for i := range jobs {
+		out[i] = toScriptJob(jobs[i])
+	}
+	return out, nil
+}
+
 // WaitTerminal implements scriptgen.RenderQueueWaiter over the queue's
 // job-status long poll (GET /jobs/{id}/wait). The enqueuer observes a
 // terminal render at the state transition instead of at the next polling
@@ -119,6 +134,10 @@ func (c *Client) WaitTerminal(ctx context.Context, id string) (scriptgen.RenderQ
 func toScriptJob(job queueclient.Job) scriptgen.RenderQueueJob {
 	return scriptgen.RenderQueueJob{
 		ID:          job.ID,
+		JobType:     job.JobType,
+		ParentJobID: job.ParentJobID,
+		ChunkIndex:  job.ChunkIndex,
+		FrameRange:  fromQueueFrameRange(job.FrameRange),
 		OverlaySpec: job.RenderPlan,
 		Assets:      fromQueueAssets(job.Assets),
 		State:       string(job.State),
@@ -130,6 +149,13 @@ func toScriptJob(job queueclient.Job) scriptgen.RenderQueueJob {
 		StartedAt:   job.StartedAt,
 		CompletedAt: job.CompletedAt,
 	}
+}
+
+func fromQueueFrameRange(in *queueclient.FrameRange) *scriptgen.RenderFrameRange {
+	if in == nil {
+		return nil
+	}
+	return &scriptgen.RenderFrameRange{Start: in.Start, End: in.End}
 }
 
 // Retry resets a failed job back to pending state.
@@ -362,7 +388,54 @@ func (e *ClipRenderExecutor) SubmitChunked(ctx context.Context, plan cliprender.
 	if err != nil {
 		return cliprender.ChunkSet{}, err
 	}
-	return producer.Submit(ctx, plan, requestedChunks, alignmentFrames)
+	set, err := cliprender.BuildChunkSet(plan, requestedChunks, alignmentFrames)
+	if err != nil {
+		return cliprender.ChunkSet{}, fmt.Errorf("renderinggen clip executor: plan chunks: %w", err)
+	}
+	if _, err = producer.Submit(ctx, plan, requestedChunks, alignmentFrames); err == nil {
+		return set, nil
+	}
+	if !errors.Is(err, scriptgen.ErrJobExists) {
+		return cliprender.ChunkSet{}, err
+	}
+	if rearmErr := rearmChunkFamily(ctx, e.queue, set.AnchorJobID(), set.Chunks); rearmErr != nil {
+		return cliprender.ChunkSet{}, rearmErr
+	}
+	return set, nil
+}
+
+func rearmChunkFamily(ctx context.Context, queue scriptgen.RenderQueueClient, anchorID string, chunks []cliprender.Chunk) error {
+	childrenReader, ok := queue.(scriptgen.RenderQueueChildrenReader)
+	if !ok {
+		return fmt.Errorf("renderinggen chunk family already exists but queue cannot inspect children")
+	}
+	retrier, ok := queue.(scriptgen.RenderQueueRetrier)
+	if !ok {
+		return fmt.Errorf("renderinggen chunk family already exists but queue cannot retry failed members")
+	}
+	parent, err := queue.Get(ctx, anchorID)
+	if err != nil {
+		return fmt.Errorf("renderinggen chunk family parent: %w", err)
+	}
+	if parent.State == string(queueclient.StateFailed) {
+		return fmt.Errorf("renderinggen chunk family anchor %s is failed; finalizer retry requires operator action", parent.ID)
+	}
+	children, err := childrenReader.Children(ctx, anchorID)
+	if err != nil {
+		return err
+	}
+	if len(children) != len(chunks) {
+		return fmt.Errorf("renderinggen chunk family has %d children, want %d", len(children), len(chunks))
+	}
+	for _, child := range children {
+		if child.State != string(queueclient.StateFailed) {
+			continue
+		}
+		if err := retrier.Retry(ctx, child.ID); err != nil {
+			return fmt.Errorf("renderinggen retry chunk %s: %w", child.ID, err)
+		}
+	}
+	return nil
 }
 
 // Settle is the POST-SUBMIT half of the boundary: wait for the remote render's
@@ -382,16 +455,25 @@ func (e *ClipRenderExecutor) SubmitChunked(ctx context.Context, plan cliprender.
 // worker slot. Resumable: it addresses plan.RunID, so it needs no process-local
 // state from the submit call.
 func (e *ClipRenderExecutor) Settle(ctx context.Context, plan cliprender.ClipRenderPlanV1) (*cliprender.RenderOutcome, error) {
+	return e.SettleWithJobID(ctx, plan, plan.RunID)
+}
+
+// SettleWithJobID is the restart-safe settle path for chunk families whose
+// assembly anchor is derived from the sealed plan digest rather than RunID.
+func (e *ClipRenderExecutor) SettleWithJobID(ctx context.Context, plan cliprender.ClipRenderPlanV1, renderJobID string) (*cliprender.RenderOutcome, error) {
 	if e == nil || e.queue == nil {
 		return nil, fmt.Errorf("%w: RenderingGen queue is not configured", cliprender.ErrBackendUnavailable)
 	}
 	if err := plan.Validate(); err != nil {
 		return nil, fmt.Errorf("renderinggen clip executor: validate plan: %w", err)
 	}
+	if strings.TrimSpace(renderJobID) == "" {
+		return nil, fmt.Errorf("renderinggen clip executor: remote render job id is required")
+	}
 	// The wait is the canonical capability wait (scriptgen.
 	// WaitRenderQueueTerminal), not a local copy: the settle continuation and
 	// the overlay enqueue path must agree on what "terminal" means.
-	completed, _, err := scriptgen.WaitRenderQueueTerminal(ctx, e.queue, plan.RunID, e.interval)
+	completed, _, err := scriptgen.WaitRenderQueueTerminal(ctx, e.queue, renderJobID, e.interval)
 	if err != nil {
 		return nil, fmt.Errorf("renderinggen clip executor: wait: %w", err)
 	}
