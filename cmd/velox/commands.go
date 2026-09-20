@@ -432,7 +432,8 @@ func cmdSearch(args []string) int {
 			fmt.Println()
 		}
 		return exitOK
-	}		var envelope struct {
+	}
+	var envelope struct {
 		Items []struct {
 			AssetID      string  `json:"asset_id"`
 			Source       string  `json:"source"`

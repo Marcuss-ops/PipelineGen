@@ -51,6 +51,9 @@ func (p *ChunkProducer) Submit(ctx context.Context, plan cliprender.ClipRenderPl
 	if err != nil {
 		return cliprender.ChunkSet{}, fmt.Errorf("chunk producer: asset refs: %w", err)
 	}
+	if err := prefetchClipAssets(ctx, plan, refs); err != nil {
+		return cliprender.ChunkSet{}, fmt.Errorf("chunk producer: prefetch assets: %w", err)
+	}
 	assets := make([]scriptgen.RenderQueueAsset, len(refs))
 	for i, ref := range refs {
 		assets[i] = scriptgen.NewRenderQueueAsset(

@@ -20,6 +20,20 @@ import (
 
 const overlayPublicationTimeout = 30 * time.Minute
 
+// EventOverlayDrivePublicationRequested is the durable hand-off between a
+// certified RenderingGen artifact and the slow Drive side effect. The event
+// is intentionally owned by this adapter's wire contract so the producer and
+// outbox consumer cannot drift on the literal.
+const EventOverlayDrivePublicationRequested = "overlay.drive.publication.requested.v1"
+
+// OverlayDrivePublicationRequest is the immutable outbox payload. The queue
+// artifact is a locator-first certification; the consumer downloads and
+// verifies those exact bytes before invoking the direct Drive publisher.
+type OverlayDrivePublicationRequest struct {
+	Spec     scriptgen.OverlayPublicationSpec `json:"spec"`
+	Artifact scriptgen.RenderArtifact         `json:"artifact"`
+}
+
 // DriveOverlayArtifactPublisher closes the queue→Drive boundary. RenderingGen
 // keeps the certified bytes in its content-addressed object store; this
 // adapter streams those bytes to a short-lived local file solely because the
@@ -120,16 +134,23 @@ func (p *DriveOverlayArtifactPublisher) PublishOverlay(ctx context.Context, spec
 		scriptName, language, strings.ToLower(artifact.SHA256),
 	}, ":")
 	verified := finalization.VerifiedArtifact{
-		ArtifactID:       "overlay:" + artifactID,
-		Kind:             finalization.KindVideo,
-		Filename:         filename,
-		LocalPath:        path,
-		MIMEType:         firstNonEmpty(artifact.MimeType, "video/mp4"),
-		SizeBytes:        artifact.SizeBytes,
-		SHA256:           strings.ToLower(artifact.SHA256),
-		SourceVersion:    1,
-		Requirement:      finalization.ArtifactRequirementRequired,
-		IdempotencyKey:   "overlay:" + artifact.SHA256,
+		ArtifactID:    "overlay:" + artifactID,
+		Kind:          finalization.KindVideo,
+		Filename:      filename,
+		LocalPath:     path,
+		MIMEType:      firstNonEmpty(artifact.MimeType, "video/mp4"),
+		SizeBytes:     artifact.SizeBytes,
+		SHA256:        strings.ToLower(artifact.SHA256),
+		SourceVersion: 1,
+		Requirement:   finalization.ArtifactRequirementRequired,
+		// The same bytes may legitimately back two semantic items. Drive
+		// identity therefore includes the stable item lineage, not only the
+		// content hash; otherwise one overlay item overwrites another in the
+		// same language tree.
+		IdempotencyKey: "overlay:" + strings.Join([]string{
+			scriptName, language, firstNonEmpty(spec.JobID, spec.PlanID), spec.PlanID,
+			spec.OverlayItemID, strings.ToLower(artifact.SHA256),
+		}, ":"),
 		RootFolderName:   scriptName,
 		Description:      "Chronon overlay " + scriptName + " (" + language + ")",
 		Source:           "chronon",
