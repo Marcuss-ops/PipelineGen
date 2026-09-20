@@ -183,20 +183,29 @@ func blankSpans(s string, spans [][]int) string {
 //
 //   - internal/platform/sqlite/ — the operational SQLite state store (the
 //     non-media mutation primitives plus the legacy media read facade);
-//   - internal/platform/qdrant/indexing/ — the Qdrant media compatibility
-//     seam and its local-catalog payload readers (retired with the Qdrant
-//     media projection);
 //   - cmd/admin/ — operator tooling that deliberately runs against the
 //     operational database.
 //
 // The zones are prefixes and NOT an exact-file list on purpose here (unlike
-// the writer gate's exemptions): these three packages are the whole legacy
-// read plane, and their internal file layout is expected to shrink, not to be
+// the writer gate's exemptions): these two packages are the whole legacy read
+// plane, and their internal file layout is expected to shrink, not to be
 // pinned. A NEW package reading media_assets is a violation because it lives
 // outside every zone.
+//
+// ZONE CONVERSION RATCHET. A prefix is the STARTING state of a zone, not its
+// terminal architecture: it exempts files nobody has read, so a NEW reader
+// dropped into the package inherits the exemption. Each zone is therefore
+// converted, one at a time, into an exact-file inventory
+// (sqliteMediaReaderInventoriedZoneFiles) as its readers are enumerated; the
+// prefix is dropped in the SAME change, so the converted zone stops
+// auto-exempting anything.
+//
+// internal/platform/qdrant/indexing/ was the first zone converted (2026-09-20)
+// once the exact-file registers reached zero. It is deliberately absent from
+// this list: a new file under it is now a violation until someone enumerates
+// it, which is the whole point of the conversion.
 var sqliteMediaReaderGrandfatheredZones = []string{
 	"internal/platform/sqlite/",
-	"internal/platform/qdrant/indexing/",
 	"cmd/admin/",
 }
 
@@ -368,6 +377,42 @@ var sqliteMediaReaderGrandfatheredFiles = map[string]bool{}
 // this ratchet: reach it by migrating a site, never by widening the map.
 var sqliteMediaReaderDegradeOnlyFiles = map[string]bool{}
 
+// sqliteMediaReaderInventoriedZoneFiles is the exact-file inventory of a
+// legacy read-plane zone that has been CONVERTED from a path prefix.
+//
+// WHY A CONVERTED ZONE NEEDS A REGISTER OF ITS OWN. A prefix exemption is
+// invisible forward prevention: it pardons the whole package, so a new SQLite
+// reader dropped into that package inherits the pardon and the promoted
+// SQLITE_MEDIA_READERS=0 counter stops meaning anything. Converting a zone
+// means enumerating the files that actually read media_assets today and
+// dropping the prefix in the same change; from then on the package is exact
+// and a new sibling is a violation.
+//
+// This register is the SAME KIND of thing as the two above it (an exact-file
+// pardon that must shrink), and the same three pins cover it: every entry must
+// still exist, every entry must still have a SQLite-dialect media read (never
+// a permanent allowlist), and the entry must be deleted in the same change as
+// its consumer is migrated or removed.
+//
+// FIRST CONVERTED ZONE — internal/platform/qdrant/indexing/, 2026-09-20. It is
+// the Qdrant media compatibility seam and its local-catalog payload readers,
+// retired wholesale with the Qdrant media projection; the files below are the
+// ones still holding a media read while that demolition lands. The prefix was
+// removed from sqliteMediaReaderGrandfatheredZones in this same change, so the
+// inventory is now the only thing standing between that package and a clean
+// gate.
+var sqliteMediaReaderInventoriedZoneFiles = map[string]bool{
+	"internal/platform/qdrant/indexing/asset_store.go":       true,
+	"internal/platform/qdrant/indexing/asset_store_fetch.go": true, "internal/platform/qdrant/indexing/asset_store_reconcile.go": true,
+
+	"internal/platform/qdrant/indexing/clipindexer/indexing.go":                 true,
+	"internal/platform/qdrant/indexing/clipindexer/indexing_api.go":             true,
+	"internal/platform/qdrant/indexing/clipindexer/indexing_hash.go":            true,
+	"internal/platform/qdrant/indexing/clipindexer/indexing_skip.go":            true,
+	"internal/platform/qdrant/indexing/clipindexer/indexing_state.go":           true,
+	"internal/platform/qdrant/indexing/clipindexer/indexing_api_persistence.go": true,
+}
+
 // sqliteMediaReaderNote is the violation Note string.
 const sqliteMediaReaderNote = "forbidden NEW SQLite reader of media_assets (MEDIA-SSOT read-side gate, September 2026): PostgreSQL + pgvector is the sole durable authority for the media domain, so media reads MUST go through internal/platform/postgres/media.MediaSearcher. Reading media_assets from the operational SQLite store reintroduces the Postgres-writer/SQLite-reader split-brain. Route this read through the PostgreSQL media read authority, or add an explicit, justified entry to sqliteMediaReaderGrandfatheredFiles in the same reviewed change. This gate promotes the historical certify-media-cutover counter SQLITE_MEDIA_READERS=0 to enforcement."
 
@@ -375,7 +420,7 @@ const sqliteMediaReaderNote = "forbidden NEW SQLite reader of media_assets (MEDI
 // exempt: inside a legacy read-plane zone, or an explicitly listed debt
 // register entry.
 func sqliteMediaReaderIsGrandfathered(relPath string) bool {
-	if sqliteMediaReaderGrandfatheredFiles[relPath] || sqliteMediaReaderDegradeOnlyFiles[relPath] {
+	if sqliteMediaReaderGrandfatheredFiles[relPath] || sqliteMediaReaderDegradeOnlyFiles[relPath] || sqliteMediaReaderInventoriedZoneFiles[relPath] {
 		return true
 	}
 	for _, zone := range sqliteMediaReaderGrandfatheredZones {
