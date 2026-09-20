@@ -3,8 +3,9 @@
 Everything here was verified on 2026-09-20 from **creator-77 (this host,
 `YOutube`, 77.93.152.122)** against the **remote master `51.91.11.36:8000`**.
 
-> **Status (updated 2026-09-20 15:07):** the two-stage flow is live on the remote
-> master and a real job completed end-to-end from this host — see §7.
+> **Status (updated 2026-09-20 15:30):** the two-stage flow is live on the remote
+> master, three real jobs completed end-to-end from this host and the render of
+> each one was found on Drive by content address — see §7.
 
 | File | Purpose |
 |---|---|
@@ -13,6 +14,8 @@ Everything here was verified on 2026-09-20 from **creator-77 (this host,
 | `pre-job.creator-77.json` | First PREPARE payload, built from real DB assets. |
 | `finalize-job.creator-77.json` | First FINALIZE payload (overlay + runtime audio), built from real Drive identities. |
 | `run-flow.sh` | Submitter/poller for `pre → finalize`. Submits only with `--yes`. |
+| `sync-payload-hashes.sh` | Fills each payload's `sha256` from the media SSOT `content_sha256` (read-only on the DB; `--write` patches the JSON). |
+| `verify-delivery.sh` | Proves the render reached Drive: streams the master artifact, hashes it, looks the file up on Drive by content address. |
 
 ## 1. Topology (verified)
 
@@ -91,9 +94,22 @@ An accepted pre-job answers:
 The stock collection itself is effectively empty (two 5-second clips —
 `clip_001.mp4` 1 336 115 B, `clip_002.mp4` 4 125 211 B — plus a `metadata.json`
 blob); the usable scene material is the 1 340 Drive-backed youtube clips.
-`binary_sha256` is populated for none of them, so the payloads carry
-`sha256: ""` for everything except `clip_001.mp4`, whose
-`metadata_json.content_hash` is used instead.
+
+Hashes: `content_sha256` is populated for **100% of the rows** (1 344/1 344
+youtube, 168/168 script, 103/103 images, …), and it matches the Drive
+`sha256Checksum` of the same file — verified on `clip_001.mp4`, the Dolly
+Parton clip and the overlay image. `binary_sha256` is the *compatibility
+projection* of that column (see `internal/capabilities/mediaregistry/hashes.go`)
+and is empty on **every** row of the PostgreSQL plane: no Postgres migration
+projects it, unlike the SQLite migration
+`152_add_canonical_metadata_columns.sql`. Readers are unaffected because every
+read path goes through `COALESCE(binary_sha256, content_sha256, legacy_file_md5)`,
+but the invariant "binary_sha256 == content_sha256" does not hold at rest on the
+Postgres plane — that is an owner task, not a payload problem.
+
+`sync-payload-hashes.sh` therefore fills the payloads from `content_sha256`
+(never from a download). Before it existed the payloads carried `sha256: ""`
+for every asset, which silently removed any integrity check on the worker side.
 
 ## 5. Provenance of the assets in the payloads
 
@@ -107,9 +123,10 @@ blob); the usable scene material is the 1 340 Drive-backed youtube clips.
 
 Caveats:
 
-- the `internet_images` rows store Drive ids with a trailing `|` artifact
-  (`…4axh|`); the payload uses the trimmed id — if the overlay 404s on Drive,
-  re-read the id from the media search surface before blaming the worker;
+- a "trailing `|`" on `internet_images` Drive ids was reported earlier in this
+  kit and is **wrong**: every `drive_file_id` in the media SSOT is a clean
+  33-char Drive id (`drive_file_id LIKE '%|%'` matches 0 rows). The pipe was an
+  artifact of a table dump, not of the data — do not "fix" ids on that basis;
 - overlay windows are frame-native: `frame_count = end_frame - start_frame`
   (120 frames = 5 s at 24 fps);
 - `bgm1`/`whop1` identities come from
@@ -125,7 +142,11 @@ cd refactored/ops/jobs/remote
 ./preflight.sh                       # connection verdict (exit 4 = surface absent)
 ./run-flow.sh                        # preflight + the exact requests that would be sent
 
-./run-flow.sh --yes --pre            # submit only the pre-job, poll to terminal
+./sync-payload-hashes.sh            # payload hashes vs the media SSOT (exit 1 if stale)
+./sync-payload-hashes.sh --write    # pin them into the JSON files
+./verify-delivery.sh JOB             # prove the render reached Drive
+
+./run-flow.sh --yes --pre            # submit only the pre-job (stays PENDING by design)
 ./run-flow.sh --yes --finalize JOB   # finalize an existing job
 ./run-flow.sh --yes --all            # pre → poll → finalize → poll
 ./run-flow.sh --yes --all --surface=enqueue   # force the legacy submit surface
@@ -170,12 +191,33 @@ So the remote worker really renders: it claimed the job, executed both stages on
 the same `job_id`/`worker_id`, and returned a playable H.264/AAC artifact — and
 the pool serves more than one worker.
 
+Third run, after `sync-payload-hashes.sh --write` filled every `sha256` from the
+SSOT (`job_b11cccb276ca509f`, 2026-09-20 13:23 UTC): `SUCCEEDED` in ~58 s, same
+worker path — the worker accepts payloads whose hashes are pinned.
+
+Delivery is provable, not assumed: `verify-delivery.sh` streams the master's
+artifact, computes its SHA-256 and finds it on Drive as
+`<sha256>.f4v` (MIME `video/mp4`) in a per-job folder that holds that single
+file. Verified on all three jobs:
+
+| job | artifact | Drive file |
+|---|---|---|
+| `job_aa976f0b9607ad1d` | 47 839 864 B | `afba3475….f4v` in `1TV3M5zR56XOwlrHxf083F1Ml13qZW3XQ` |
+| `job_10af228ce8bbd21d` | 47 880 042 B | `63b67b1e….f4v` in `1yTtcTGJ48rkb9t4gX-PjVOWiQF8FigA2` |
+| `job_b11cccb276ca509f` | 47 727 418 B | `4197f05f….f4v` in `1b7ZukBiM2zwBgU3jZly4FVFY2XdneO-z` |
+
+The hash in the Drive filename equals the SHA-256 of the artifact downloaded
+from the master, byte for byte.
+
 Behaviour worth knowing: a **pre-only** job (no finalize) stays `PENDING` with
 `started_at: null` forever — verified over 56 s on `job_ef304abb6214f08c` — so
 the PREPARE phase must never be polled to a terminal state. `run-flow.sh`
 confirms the job is visible and goes straight to finalize; `GET /api/v1/jobs/{id}`
 does not echo `dispatch_status` (only the `/pre` response carries
-`waiting_runtime_assets`).
+`waiting_runtime_assets`). There is also **no cancel surface** for an M2M
+client: `DELETE /api/v1/jobs/{id}` and `POST /api/v1/jobs/{id}/cancel` both
+answer 404, so a submitted-and-never-finalized job can only be reclaimed by a
+master-side TTL/GC. Confirm that TTL exists before generating pre-jobs in bulk.
 
 Version note: the master reports `1.4.39` (`bddf00b4`) while the worker release
 line quoted by the platform team is `1.4.40` — confirm both before attributing a
