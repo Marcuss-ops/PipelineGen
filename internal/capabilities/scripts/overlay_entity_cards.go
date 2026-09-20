@@ -71,52 +71,61 @@ func entityCardMediaIndex(result *GenerateResult) (*capabilityentities.EntityMed
 		}
 	}
 	for i := range result.Scenes {
-		ann := result.Scenes[i].Annotations
-		if ann == nil {
-			continue
+		indexAnnotations := func(ann *scriptpkg.SceneAnnotations) {
+			if ann == nil {
+				return
+			}
+			for _, entity := range append(append([]scriptpkg.AnnotatedEntity(nil), ann.PrimaryEntities...), ann.SecondaryEntities...) {
+				if !entityCardKind(capabilityoverlay.EntityTypeToKind(entity.Type)) {
+					continue
+				}
+				binding := entity.Image
+				if binding == nil || strings.TrimSpace(binding.AssetID) == "" {
+					continue
+				}
+				canonical := annotationCanonicalEntityID(entity)
+				if canonical == "" {
+					continue
+				}
+				stable := annotationStableEntityID(entity)
+				canonicalByStable[stable] = canonical
+				url := entityImageURL(binding)
+				if url == "" || strings.TrimSpace(binding.SHA256) == "" {
+					continue
+				}
+				localPath := binding.LocalPath
+				if !usableLocalAssetPath(localPath) {
+					localPath = localPathByAsset[binding.AssetID]
+				}
+				score := entity.Confidence
+				if score <= 0 {
+					score = 0.9
+				}
+				// Fail-open on an invalid record: the card stays text-only rather
+				// than failing the whole overlay plan over one unverifiable asset.
+				// Fail-open must still be visible: a registry rejecting every
+				// binding would silently degrade every card to text-only.
+				if err := index.IndexForCanonicalID(canonical, capabilityentities.EntityAsset{
+					AssetID: binding.AssetID, AssetType: entityImageAssetType(binding),
+					SHA256: binding.SHA256, StorageURL: url,
+					LocalPath:    localPath,
+					QualityScore: score, Source: binding.Source,
+				}); err != nil {
+					logger.Warn("overlay plan: entity card asset not indexed (card stays text-only)",
+						zap.String("entity", entity.CanonicalName),
+						zap.String("canonical_entity_id", canonical),
+						zap.Error(err),
+					)
+				}
+			}
 		}
-		for _, entity := range append(append([]scriptpkg.AnnotatedEntity(nil), ann.PrimaryEntities...), ann.SecondaryEntities...) {
-			if !entityCardKind(capabilityoverlay.EntityTypeToKind(entity.Type)) {
-				continue
-			}
-			binding := entity.Image
-			if binding == nil || strings.TrimSpace(binding.AssetID) == "" {
-				continue
-			}
-			canonical := annotationCanonicalEntityID(entity)
-			if canonical == "" {
-				continue
-			}
-			stable := annotationStableEntityID(entity)
-			canonicalByStable[stable] = canonical
-			url := entityImageURL(binding)
-			if url == "" || strings.TrimSpace(binding.SHA256) == "" {
-				continue
-			}
-			localPath := binding.LocalPath
-			if !usableLocalAssetPath(localPath) {
-				localPath = localPathByAsset[binding.AssetID]
-			}
-			score := entity.Confidence
-			if score <= 0 {
-				score = 0.9
-			}
-			// Fail-open on an invalid record: the card stays text-only rather
-			// than failing the whole overlay plan over one unverifiable asset.
-			// Fail-open must still be visible: a registry rejecting every
-			// binding would silently degrade every card to text-only.
-			if err := index.IndexForCanonicalID(canonical, capabilityentities.EntityAsset{
-				AssetID: binding.AssetID, AssetType: entityImageAssetType(binding),
-				SHA256: binding.SHA256, StorageURL: url,
-				LocalPath:    localPath,
-				QualityScore: score, Source: binding.Source,
-			}); err != nil {
-				logger.Warn("overlay plan: entity card asset not indexed (card stays text-only)",
-					zap.String("entity", entity.CanonicalName),
-					zap.String("canonical_entity_id", canonical),
-					zap.Error(err),
-				)
-			}
+		// Localized annotations inherit the source image binding, but their
+		// translated/inflected surface produces a different stable occurrence
+		// ID. Index them too so localized entity-card items can join the same
+		// canonical asset without re-resolving or inventing an identity.
+		indexAnnotations(result.Scenes[i].Annotations)
+		for _, localized := range result.Scenes[i].LocalizedAnnotations {
+			indexAnnotations(localized)
 		}
 	}
 	media.SetIndex(index)

@@ -10,11 +10,11 @@
       "title": "Production rehearsal — consistency becomes results",
       "language": "en",
       "tone": "clear, concise and documentary",
-      "style": "Write a concise narration grounded only in the supplied source text. Do not invent facts, quotes or people. Preserve the central idea and make the result suitable for localized overlay rendering.",
+      "style": "Write a concise documentary narration grounded only in the supplied source text. Do not invent facts, quotes or people. Preserve the central idea and make the result suitable for localized overlay rendering. Keep named entities from the source when they are relevant.",
       "source": {
         "type": "text",
         "topic": "How a repeatable creative process turns an idea into a finished result",
-        "source_text": "Consistency turns an idea into results. Progress rarely arrives in one dramatic moment; it comes from repeating a clear process, learning from each attempt, and improving the next one. A strong creative workflow turns a rough concept into a finished video by combining editorial judgment, precise timing, readable typography, and reliable rendering. The goal is not only to make one successful clip, but to build a system that can produce the same quality again."
+        "source_text": "A repeatable creative process turns an ambitious idea into a finished result. The Apollo 11 mission showed how NASA combined engineering, precise timing, and thousands of coordinated decisions to send Neil Armstrong and Buzz Aldrin to the Moon in 1969. The lesson is not that one dramatic moment creates success, but that preparation, testing, and disciplined teamwork make a difficult result repeatable. A reliable workflow applies the same principle to writing, editing, typography, and rendering: build the system carefully, learn from each attempt, and improve the next one."
       },
       "script_params": {
         "target_words": 90,
@@ -27,19 +27,31 @@
         "save_to_db": true,
         "extract_entities": true,
         "generate_metadata": true,
-        "generate_timeline": false,
-        "voiceover_enabled": false,
+        "generate_timeline": true,
+        "voiceover_enabled": true,
         "languages": ["en", "it", "pl", "ru", "de", "es", "pt-BR", "fr", "tr", "id"],
         "render": {
-          "enabled": false,
+          "enabled": true,
+          "drive_folder_id": "1J_xUGo_bchzXDIGqSX04CU44c_Dm3SxS",
+          "require_gpu": true,
+          "render_concurrency": 2,
           "subtitles": {"enabled": false}
+        }
+      },
+      "audio": {
+        "mode": "COMBINED_TIMELINE",
+        "mix_policy": "VOICEOVER_ONLY",
+        "timing": {
+          "mode": "required",
+          "boundary": "word",
+          "formats": ["json", "srt", "vtt"]
         }
       },
       "media_plan": {
         "mode": "hybrid",
         "cache": {"read": true, "write": true},
         "provider_policy": {
-          "internet_images": "disabled",
+          "internet_images": "enabled",
           "artlist": "disabled",
           "image_generation": "disabled",
           "youtube": "disabled"
@@ -49,9 +61,15 @@
           "include": ["entities", "important_phrases"],
           "max_entities_per_segment": 4,
           "max_important_phrases_per_segment": 3,
-          "max_image_queries_per_segment": 0
+          "max_image_queries_per_segment": 2,
+          "entity_images": {
+            "enabled": true,
+            "entity_types": ["PERSON", "ORG", "GPE", "PRODUCT", "LOGO"],
+            "max_per_entity": 1,
+            "upload_to_drive": true
+          }
         },
-        "materialization": {"mode": "selected", "upload_to_drive": false, "wait_for_ready": false},
+        "materialization": {"mode": "selected", "upload_to_drive": true, "wait_for_ready": true},
         "planner": {"candidate_limit": 1},
         "include_trace": true
       },
