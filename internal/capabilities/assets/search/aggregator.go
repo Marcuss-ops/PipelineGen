@@ -262,6 +262,10 @@ func (a *Aggregator) Search(ctx context.Context, q Query) (*Result, error) {
 	// would leak other provenance into the page. The server is the authority,
 	// not the caller's jq discipline.
 	merged = FilterBySource(merged, q)
+	// Taxonomy is the orthogonal axis (asset FAMILY, not provenance) and must
+	// hold with the same authority: a backend that ignores filters.asset_kind
+	// would otherwise leak the very assets the caller excluded.
+	merged = FilterByTaxonomy(merged, q)
 	if len(merged) > limit {
 		merged = merged[:limit]
 	}

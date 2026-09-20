@@ -339,6 +339,10 @@ type assetRow struct {
 	StartTime      string
 	EndTime        string
 	Style          string
+	// AssetKind / SemanticRole are the canonical taxonomy dimensions
+	// (media_assets.asset_kind / semantic_role).
+	AssetKind    string
+	SemanticRole string
 }
 
 // assetToVectorSearchResult maps a hydrated SSOT row onto the canonical

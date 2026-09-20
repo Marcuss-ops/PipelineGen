@@ -70,6 +70,7 @@ func (g *checkpointGate) due(now time.Time) bool {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	if g.inFlight {
+		observability.ScriptCheckpointDebouncedTotal.Inc()
 		return false
 	}
 	if g.last.IsZero() || now.Sub(g.last) >= partialCheckpointDebounce {
@@ -77,6 +78,7 @@ func (g *checkpointGate) due(now time.Time) bool {
 		g.inFlight = true
 		return true
 	}
+	observability.ScriptCheckpointDebouncedTotal.Inc()
 	return false
 }
 
@@ -87,6 +89,10 @@ func (g *checkpointGate) complete() {
 	g.mu.Lock()
 	g.inFlight = false
 	g.mu.Unlock()
+}
+
+func recordCheckpointFlush() {
+	observability.ScriptCheckpointFlushTotal.Inc()
 }
 
 // snapshotGenerateResult creates an immutable checkpoint value. JSON is the

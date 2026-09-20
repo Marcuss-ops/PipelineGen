@@ -35,14 +35,24 @@ func TestRoutesMatchGeneratedManifest(t *testing.T) {
 		}
 	}
 
-	// RouteScriptGenerate is deliberately NOT asserted against the manifest:
-	// it is registered by internal/app/wiring/wire_script.go but the script
-	// flow is not mounted in the gen-api-docs configuration, so it is absent
-	// from the generated surface. Asserting it here would encode that gap as a
-	// failure of the client, not of the manifest. This is the known missing
-	// piece of the generated-contract work.
+	// RouteScriptGenerate cannot be asserted against the generated manifest: the
+	// script flow is not wired in the gen-api-docs composition, so the route is
+	// absent from routes.yaml even though the LIVE server serves it (verified:
+	// POST /api/script/generate answers 401 unauthenticated, GET answers 404, so
+	// the route is mounted). Asserting the manifest would encode that generator
+	// gap as a client failure. Instead, tie the constant to a REAL registration
+	// anchor: the capability prefix the router mounts it under.
 	if strings.Contains(manifest, "path: "+RouteScriptGenerate) {
 		t.Logf("note: %s now appears in the manifest — tighten this test to assert it", RouteScriptGenerate)
+	} else {
+		wirePath := filepath.Join(root, "internal", "platform", "httpserver", "transport", "wire.go")
+		wire, werr := os.ReadFile(wirePath)
+		if werr != nil {
+			t.Fatalf("read capability prefix registry %s: %v", wirePath, werr)
+		}
+		if !strings.Contains(string(wire), `"/api/script"`) {
+			t.Errorf("%s is neither in the route manifest nor backed by a \"/api/script\" capability prefix in %s — the path is unjustified", RouteScriptGenerate, wirePath)
+		}
 	}
 }
 

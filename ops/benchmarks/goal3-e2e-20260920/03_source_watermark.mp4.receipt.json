@@ -4,11 +4,11 @@
     "asset_manifest_digest": "ad44ee481991ada8b422c0c2fe4171d321d676a12ec6b406fec191906526c16f",
     "chronon_abi": 2,
     "chronon_version": "0.1.0",
-    "content_digest": "53c4b0a600e74d2903ca316f3b39fd7589d8f60748df9cf5e9b959b155fd2c36",
-    "git_sha": "0239ddbbd",
+    "content_digest": "1f97b4a3c745fa27086cb91e267296274783707aef42ce3b7e07fea65b45914f",
+    "git_sha": "9c5e21433",
     "job_id": "goal3-source-wm",
     "render_plan_schema": "chronon.render-plan.v2",
-    "request_digest": "ec08e4b051e197f9d7d39d33062bdaf990a94572e23bbccea87926555e0bb5b7"
+    "request_digest": "5afa1c9e4d2141801020fa7098f62fff1287d3f795e75c608b08170bd12cb33e"
   },
   "media": {
     "audio_bitrate": "58524",
@@ -53,8 +53,8 @@
     "width": 1920
   },
   "output": {
-    "bytes": 5408291,
-    "sha256": "28bee568704027e823dea93c73bd7a457b7447192eb1605074a76419d7459453"
+    "bytes": 5408022,
+    "sha256": "27f31726beb1e89070245339ba61cef082291e58bc9fee05979b95a055e1e2c7"
   },
   "render": {
     "backend": "vulkan",
@@ -70,9 +70,9 @@
   "timing_ms": {
     "count_frames_ms": -1.0,
     "decode_ms": -1.0,
-    "probe_ms": 301.202852,
-    "sha256_ms": 27.151547,
-    "total_ms": 328.993815
+    "probe_ms": 329.801178,
+    "sha256_ms": 20.753016,
+    "total_ms": 350.78304
   },
   "verification": {
     "audio": "skip",

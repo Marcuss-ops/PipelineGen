@@ -49,6 +49,10 @@ type MediaAssetRecord struct {
 	FolderPath     string
 	CreatedAt      string
 	MetadataJSON   string
+	// AssetKind / SemanticRole are the canonical taxonomy dimensions
+	// (media_assets.asset_kind / semantic_role).
+	AssetKind    string
+	SemanticRole string
 	// SearchTerms is the JSON-encoded keyword array (media_assets.search_terms)
 	// and ReviewStatus the governance column; both are part of the admin
 	// console's editable surface, so the canonical read model must carry them
@@ -195,7 +199,13 @@ const mediaAssetReadColumns = `
 	COALESCE(NULLIF(thumbnail_url, ''), thumb_url),
 	source_url, source_provider, source_video_id, youtube_video_id,
 	start_ms, end_ms, folder_id, parent_folder_id, folder_path, created_at, metadata_json,
-	search_terms, review_status
+	search_terms, review_status,
+	-- Taxonomy dimensions (asset_kind = asset FAMILY, semantic_role = usage
+	-- intent). They are distinct from source (physical provenance): a stock
+	-- clip acquired from YouTube is source='youtube' AND
+	-- asset_kind='stock_video', so a caller can no longer be forced to infer the
+	-- family from the id prefix.
+	asset_kind, semantic_role
 `
 
 type mediaAssetScanner interface {
@@ -214,6 +224,7 @@ func scanMediaAssetRecord(row mediaAssetScanner) (*MediaAssetRecord, error) {
 		&rec.SourceURL, &rec.SourceProvider, &rec.SourceVideoID, &rec.YouTubeVideoID,
 		&rec.StartMS, &rec.EndMS, &rec.FolderID, &rec.ParentFolderID, &rec.FolderPath, &rec.CreatedAt,
 		&rec.MetadataJSON, &rec.SearchTerms, &rec.ReviewStatus,
+		&rec.AssetKind, &rec.SemanticRole,
 	); err != nil {
 		return nil, err
 	}

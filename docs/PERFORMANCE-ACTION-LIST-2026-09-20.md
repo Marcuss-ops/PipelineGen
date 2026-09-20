@@ -46,9 +46,11 @@
 - [x] Cartelle Drive: 10 cartelle distinte (una per lingua), nessuna collisione; tutti i render risultano `COMPLETED`.
 - [x] Verifier aggiornato al payload reale (`result.result` + mappe `localized_overlay_*`): ora espone stage, critical path, conteggio item, cartelle, SHA-256, receipt e timing invece di riportare campi vuoti.
 
-### Nota di correttezza overlay ancora aperta
+### Nota di correttezza overlay — chiusa nel rerun live
 
-Il contratto tecnico è integro per tutti i 47 render: ogni frase ha `motion_id`, ogni immagine ha `preset_id`, timing valido e asset hashato. Il matching applicativo è stato esteso con suffissi turchi e un fallback NER conservativo per ru/tr/pl: l’identità canonica e il binding immagine vengono ereditati solo quando il NER restituisce esattamente gli stessi PERSON in ordine testuale. Serve ancora un rerun production per certificare che `ru` e `tr` passino da `3/0` e `3/1` a `3/2`, senza dichiarare la parità editoriale prima del dato reale.
+Il contratto tecnico è integro per tutti i 47 render: ogni frase ha `motion_id`, ogni immagine ha `preset_id`, timing valido e asset hashato. Il matching applicativo è stato esteso con suffissi turchi e un fallback NER conservativo per ru/tr/pl: l’identità canonica e il binding immagine vengono ereditati solo quando il NER restituisce esattamente gli stessi PERSON in ordine testuale.
+
+Rerun live `job_1789899217398473074_edcdaa26`: `SUCCEEDED`; tutte le 9 lingue localizzate hanno 5 item, di cui 2 `entity_image` (`ru=2/2`, `tr=2/2`, `pl=2/2`). Il fix aggiuntivo era il fallback collision-safe dell’overlay ID per nomi cirillici: lo slug ASCII vuoto faceva collassare due persone distinte nel resolver.
 
 ## Lavori prioritari ancora aperti
 
@@ -87,15 +89,17 @@ Il contratto tecnico è integro per tutti i 47 render: ogni frase ha `motion_id`
 - [ ] Misurare errori HTTP/rate-limit Drive e latenza p50/p95 prima di passare a 8.
 - [ ] Valutare in seguito la separazione dello stato `SUCCEEDED` del job dalla conferma Drive, mantenendo un retry/outbox verificabile.
 
+  Ultimo rerun: 11 risposte Drive HTTP 502 transitorie sono state ritentate; il job è comunque terminato `SUCCEEDED`, ma il wall di `434.993 s` non è confrontabile con la baseline a causa del retry storm. Questo conferma che la separazione `SUCCEEDED`/outbox richiede una semantica durevole prima di essere attivata.
+
 ### P2 — parità immagini tradotte
 
 - [x] Aggiungere matching dei suffissi di caso/possessivo turchi.
 - [x] Aggiungere fallback ru/tr/pl basato su NER localizzato, conteggio PERSON e ordine delle occorrenze; nessuna identità viene inventata se il conteggio non coincide.
-- [ ] Rilanciare il rehearsal e certificare i conteggi immagine per lingua prima del gate editoriale.
+- [x] Rilanciare il rehearsal e certificare i conteggi immagine per lingua prima del gate editoriale: `9/9` lingue localizzate con `2/2` immagini.
 
 ### P2 — checkpoint follow-up
 
-- [ ] Aggiungere metriche esplicite `checkpoint_debounced_total` e `checkpoint_flush_total`.
+- [x] Aggiungere metriche esplicite `checkpoint_debounced_total` e `checkpoint_flush_total`; il gate rilascia `inFlight` con `defer` anche su panic della scrittura.
 - [ ] Verificare con un fault injection che il crash in ogni finestra conservi l’ultimo snapshot e che il resume non rilanci unità già certificate.
 
 ## Bound da non modificare senza nuova certificazione

@@ -306,8 +306,10 @@ func (r *Runner) runVoiceoverPhase(ctx context.Context, runID string, req Genera
 				// workers can now apply their audio refs while SQLite performs
 				// the full-result write.
 				if snapshot != nil {
-					r.checkpoint(ctx, runID, snapshot)
-					checkpointDue.complete()
+					func() {
+						defer checkpointDue.complete()
+						r.checkpoint(ctx, runID, snapshot)
+					}()
 				}
 
 				// Localized render fan-out: fire the render in a separate
@@ -487,6 +489,7 @@ func (r *Runner) runVoiceoverPhase(ctx context.Context, runID string, req Genera
 			if snapshot, snapshotErr := snapshotGenerateResult(result); snapshotErr != nil {
 				r.log.Warn("voiceover final checkpoint snapshot failed", zap.String("run_id", runID), zap.Error(snapshotErr))
 			} else if snapshot != nil {
+				recordCheckpointFlush()
 				r.checkpoint(ctx, runID, snapshot)
 			}
 		case <-ctx.Done():

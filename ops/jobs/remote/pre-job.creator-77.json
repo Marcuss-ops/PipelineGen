@@ -1,0 +1,59 @@
+{
+  "idempotency_key": "creator-77-stock-first-20260920-01",
+  "job_type": "scene.composite.v1",
+  "video_name": "creator-77 first pre-job — stock + youtube source",
+  "script_text": "Connection test for the remote worker: one stock chunk followed by one youtube-derived clip.",
+  "scenes": [
+    {
+      "scene_id": "scene-0",
+      "index": 0,
+      "kind": "clip",
+      "text": "Stock chunk clip_001 (5s, Mike Tyson humbleness segment).",
+      "duration_seconds": 5,
+      "clip": {
+        "asset_id": "planner:6432396435356433:0",
+        "drive_file_id": "18MzFZcGHPqOnSwtqrWG5dIF9X8jKIvG-",
+        "url": "velox-drive://18MzFZcGHPqOnSwtqrWG5dIF9X8jKIvG-",
+        "sha256": "ed23dd9ac93951253a0bacc49445dbc1972d878c1f76c4e22b26175f338a9cd9",
+        "size_bytes": 1336115,
+        "duration_ms": 5000
+      },
+      "stock": {
+        "asset_id": "planner:6432396435356433:0",
+        "drive_file_id": "18MzFZcGHPqOnSwtqrWG5dIF9X8jKIvG-",
+        "url": "velox-drive://18MzFZcGHPqOnSwtqrWG5dIF9X8jKIvG-",
+        "sha256": "ed23dd9ac93951253a0bacc49445dbc1972d878c1f76c4e22b26175f338a9cd9",
+        "size_bytes": 1336115,
+        "duration_ms": 5000
+      }
+    },
+    {
+      "scene_id": "scene-1",
+      "index": 1,
+      "kind": "clip",
+      "text": "Youtube-derived clip (Dolly Parton, 85s asset; a 30s window is used).",
+      "duration_seconds": 30,
+      "clip": {
+        "asset_id": "yt_vLRjqTIiMjc_270_355_v1",
+        "drive_file_id": "1kC7WB7S-HlIdOCiTEPAeB-Uv7gqzY-JN",
+        "url": "velox-drive://1kC7WB7S-HlIdOCiTEPAeB-Uv7gqzY-JN",
+        "sha256": "",
+        "size_bytes": 0,
+        "duration_ms": 85000
+      }
+    }
+  ],
+  "output": {
+    "width": 1920,
+    "height": 1080,
+    "fps": 24,
+    "format": "mp4"
+  },
+  "delivery_plan": [
+    {
+      "destination_id": "drive",
+      "priority": 1,
+      "retry_budget": 3
+    }
+  ]
+}

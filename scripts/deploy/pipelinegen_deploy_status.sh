@@ -79,13 +79,25 @@ HEALTH_CODE="000"
 HEALTH_BODY=""
 if command -v "$CURL_BIN" >/dev/null 2>&1; then
   HEALTH_BODY="$("$CURL_BIN" -s --max-time 3 "$BASE_URL/health" 2>/dev/null || true)"
-  HEALTH_CODE="$("$CURL_BIN" -s -o /dev/null -w '%{http_code}' --max-time 3 "$BASE_URL/health" 2>/dev/null || echo 000)"
+  HEALTH_CODE="$("$CURL_BIN" -s -o /dev/null -w '%{http_code}' --max-time 3 "$BASE_URL/health" 2>/dev/null)"
 fi
 
 READY_CODE="000"
 if command -v "$CURL_BIN" >/dev/null 2>&1; then
-  READY_CODE="$("$CURL_BIN" -s -o /dev/null -w '%{http_code}' --max-time 3 "$BASE_URL/ready" 2>/dev/null || echo 000)"
+  # /ready is a DEEP probe: it walks every canonical sub-system, so a short
+  # timeout reports a misleading 000 for a service that is merely busy. Use a
+  # generous probe timeout. NOTE: do NOT add `|| echo 000` — curl already
+  # prints 000 on a timeout, and the fallback would append a SECOND one
+  # (`HTTP 000000`, observed against the live service).
+  READY_CODE="$("$CURL_BIN" -s -o /dev/null -w '%{http_code}' --max-time 15 "$BASE_URL/ready" 2>/dev/null)"
 fi
+
+# Normalise an empty capture (curl produced nothing at all) to the canonical
+# unknown-code sentinel, once.
+health_code_normalized="${HEALTH_CODE:-000}"
+ready_code_normalized="${READY_CODE:-000}"
+HEALTH_CODE="$health_code_normalized"
+READY_CODE="$ready_code_normalized"
 
 if [ "$JSON" = "1" ]; then
   printf '{"service":"%s","bin_path":"%s","disk_sha256":"%s","disk_mtime":"%s","main_pid":"%s","running_sha256":"%s","verdict":"%s","uptime":"%s","health_code":"%s","ready_code":"%s"}\n' \

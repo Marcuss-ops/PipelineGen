@@ -349,7 +349,12 @@ func (b *semanticSearchBackend) Search(ctx context.Context, q search.Query) ([]s
 			// provenance; fall back to "semantic" only when the row is silent.
 			Source:    semanticSourceProvenance(a.Source),
 			SourceRef: a.ID,
-			MediaType: a.MediaType, // The semantic leg now shows the same label as the lexical leg:
+			// Taxonomy dimensions travel with the candidate so the caller can
+			// select the asset FAMILY (e.g. "youtube-native clip" vs
+			// "stock clip acquired from YouTube") without parsing the id.
+			AssetKind:    a.AssetKind,
+			SemanticRole: a.SemanticRole,
+			MediaType:    a.MediaType, // The semantic leg now shows the same label as the lexical leg:
 			// media_assets.title when the catalog has one (e.g. a Stock clip's
 			// source video title), else the canonical name. Without this the two
 			// legs disagreed — one returned "IRON MIKE TYSON IN ACTION" and the

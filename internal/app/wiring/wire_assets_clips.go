@@ -76,6 +76,37 @@ type buildClipsParams struct {
 	IdemHandler   gin.HandlerFunc
 }
 
+// clipsAssetJobStatus adapts the canonical job execution ledger to the clips
+// capability's optional download-status port.
+//
+// The ledger field is the write-only capjobregistry.Registry interface, so the
+// concrete read method is reached by a narrow structural assertion: a ledger
+// implementation without it (or a nil bundle) simply leaves the port nil, and
+// the download handler falls back to its generic 409 answer. No fake status is
+// ever produced.
+func clipsAssetJobStatus(jobs *JobsBundle) clipsapi.AssetJobStatusLookup {
+	if jobs == nil || jobs.JobLedger == nil {
+		return nil
+	}
+	reader, ok := jobs.JobLedger.(interface {
+		LatestAssetJobStatus(context.Context, string) (string, int, bool)
+	})
+	if !ok {
+		return nil
+	}
+	return clipsAssetJobStatusReader{reader: reader}
+}
+
+type clipsAssetJobStatusReader struct {
+	reader interface {
+		LatestAssetJobStatus(context.Context, string) (string, int, bool)
+	}
+}
+
+func (a clipsAssetJobStatusReader) LatestJobStatus(ctx context.Context, assetID string) (string, int, bool) {
+	return a.reader.LatestAssetJobStatus(ctx, assetID)
+}
+
 // ── clips text-search media SSOT adapter ─────────────────────────────
 
 // clipsMediaSearcher is the narrow read surface the adapter needs. It is
@@ -290,6 +321,7 @@ func buildClipsBundle(params buildClipsParams) (*clipsapi.ClipsModule, appclips.
 				DuplicateFinder: duplicateFinder,
 				DownloadUC:      downloadUC,
 				ReuploadUC:      reuploadUC,
+				JobStatus:       clipsAssetJobStatus(params.Jobs),
 				Log:             params.Log,
 			},
 		},

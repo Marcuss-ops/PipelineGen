@@ -72,10 +72,13 @@ func (c *Client) Submit(ctx context.Context, job scriptgen.RenderQueueJob) error
 		}
 	}
 	err := c.q.Submit(ctx, queueclient.Job{
-		ID:         job.ID,
-		JobType:    job.JobType,
-		RenderPlan: job.OverlaySpec,
-		Assets:     toQueueAssets(job.Assets),
+		ID:          job.ID,
+		JobType:     job.JobType,
+		ParentJobID: job.ParentJobID,
+		ChunkIndex:  job.ChunkIndex,
+		FrameRange:  toQueueFrameRange(job.FrameRange),
+		RenderPlan:  job.OverlaySpec,
+		Assets:      toQueueAssets(job.Assets),
 	})
 	if errors.Is(err, queueclient.ErrJobExists) {
 		return fmt.Errorf("%w: job %s", scriptgen.ErrJobExists, job.ID)
@@ -84,6 +87,47 @@ func (c *Client) Submit(ctx context.Context, job scriptgen.RenderQueueJob) error
 		return fmt.Errorf("renderinggen submit: %w", err)
 	}
 	return nil
+}
+
+// SubmitBatch maps and submits a complete chunk family through RenderingGen's
+// atomic endpoint. Prefetch runs before the transaction so a materialization
+// failure cannot leave a family whose children can never render.
+func (c *Client) SubmitBatch(ctx context.Context, jobs []scriptgen.RenderQueueJob) error {
+	if c == nil || c.q == nil {
+		return fmt.Errorf("renderinggen submit batch: client is not configured")
+	}
+	if len(jobs) == 0 {
+		return fmt.Errorf("renderinggen submit batch: jobs are required")
+	}
+	for _, job := range jobs {
+		if c.prefetch != nil {
+			if err := c.prefetch.Prefetch(ctx, job.Assets); err != nil {
+				return fmt.Errorf("renderinggen asset prefetch: %w", err)
+			}
+		}
+	}
+	wire := make([]queueclient.Job, len(jobs))
+	for i, job := range jobs {
+		wire[i] = queueclient.Job{
+			ID: job.ID, JobType: job.JobType, ParentJobID: job.ParentJobID,
+			ChunkIndex: job.ChunkIndex, FrameRange: toQueueFrameRange(job.FrameRange),
+			RenderPlan: job.OverlaySpec, Assets: toQueueAssets(job.Assets),
+		}
+	}
+	if err := c.q.SubmitBatch(ctx, wire); err != nil {
+		if errors.Is(err, queueclient.ErrJobExists) {
+			return fmt.Errorf("%w: chunk family", scriptgen.ErrJobExists)
+		}
+		return fmt.Errorf("renderinggen submit batch: %w", err)
+	}
+	return nil
+}
+
+func toQueueFrameRange(in *scriptgen.RenderFrameRange) *queueclient.FrameRange {
+	if in == nil {
+		return nil
+	}
+	return &queueclient.FrameRange{Start: in.Start, End: in.End}
 }
 
 // Get returns the current state of a job, including its artifact once done.
@@ -275,6 +319,24 @@ func (e *ClipRenderExecutor) Submit(ctx context.Context, plan cliprender.ClipRen
 		}
 	}
 	return nil
+}
+
+// SubmitChunked is the explicit I1 opt-in. It requires the queue's atomic
+// batch capability and therefore cannot silently downgrade to N independent
+// submissions (which would reintroduce the anchor-claim race).
+func (e *ClipRenderExecutor) SubmitChunked(ctx context.Context, plan cliprender.ClipRenderPlanV1, requestedChunks int, alignmentFrames int64) (cliprender.ChunkSet, error) {
+	if e == nil || e.queue == nil {
+		return cliprender.ChunkSet{}, fmt.Errorf("%w: RenderingGen queue is not configured", cliprender.ErrBackendUnavailable)
+	}
+	batch, ok := e.queue.(scriptgen.RenderQueueBatchSubmitter)
+	if !ok {
+		return cliprender.ChunkSet{}, fmt.Errorf("renderinggen clip executor: queue does not support atomic chunk families")
+	}
+	producer, err := NewChunkProducer(batch)
+	if err != nil {
+		return cliprender.ChunkSet{}, err
+	}
+	return producer.Submit(ctx, plan, requestedChunks, alignmentFrames)
 }
 
 // Settle is the POST-SUBMIT half of the boundary: wait for the remote render's
@@ -563,8 +625,9 @@ func scriptAssets(in []queueclient.AssetRef) []scriptgen.RenderQueueAsset {
 // scriptgen.WaitRenderQueueTerminal, called from ClipRenderExecutor.Settle.
 
 var (
-	_ scriptgen.RenderQueueClient  = (*Client)(nil)
-	_ scriptgen.RenderQueueWaiter  = (*Client)(nil)
-	_ scriptgen.RenderQueueRetrier = (*Client)(nil)
-	_ cliprender.RenderExecutor    = (*ClipRenderExecutor)(nil)
+	_ scriptgen.RenderQueueClient         = (*Client)(nil)
+	_ scriptgen.RenderQueueBatchSubmitter = (*Client)(nil)
+	_ scriptgen.RenderQueueWaiter         = (*Client)(nil)
+	_ scriptgen.RenderQueueRetrier        = (*Client)(nil)
+	_ cliprender.RenderExecutor           = (*ClipRenderExecutor)(nil)
 )

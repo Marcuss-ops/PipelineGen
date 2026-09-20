@@ -40,11 +40,13 @@ func resultToResponse(r *search.Result, query string, mode search.SearchMode, un
 		}
 		for _, c := range r.Items {
 			items = append(items, searchResultItem{
-				AssetID:   c.AssetID,
-				Score:     c.Score,
-				Title:     c.Title,
-				Source:    c.Source,
-				MediaType: c.MediaType,
+				AssetID:      c.AssetID,
+				Score:        c.Score,
+				Title:        c.Title,
+				Source:       c.Source,
+				AssetKind:    c.AssetKind,
+				SemanticRole: c.SemanticRole,
+				MediaType:    c.MediaType,
 				// PreviewURL passes through UNCHANGED:
 				// search.Candidate.PreviewURL is the canonical
 				// signed delivery URL produced by the only

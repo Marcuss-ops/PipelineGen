@@ -389,12 +389,28 @@ func cmdSearch(args []string) int {
 	}
 	query := strings.Join(fs.pos, " ")
 
+	filters := map[string]any{}
+	if src := fs.get("source", ""); src != "" {
+		filters["source"] = src
+	}
+	// Taxonomy flags select the asset FAMILY / usage intent, which provenance
+	// cannot express: a stock clip acquired from YouTube is source=youtube with
+	// asset_kind=stock_video. Passing --kind keeps that distinction on the wire
+	// instead of leaving the operator to filter asset ids by hand.
+	if kind := fs.get("kind", ""); kind != "" {
+		filters["asset_kind"] = kind
+	}
+	if role := fs.get("role", ""); role != "" {
+		filters["semantic_role"] = role
+	}
 	body := map[string]any{"query": query, "limit": attrInt(fs.get("limit", ""), 20)}
 	if src := fs.get("source", ""); src != "" {
-		// Both the source list and the structured filter are sent, so the
-		// server enforces the constraint twice (see the aggregator filter).
+		// The source list is sent alongside the structured filter so the
+		// server enforces the constraint on both axes (see the aggregator).
 		body["sources"] = []string{src}
-		body["filters"] = map[string]any{"source": src}
+	}
+	if len(filters) > 0 {
+		body["filters"] = filters
 	}
 	if u := fs.get("universe", ""); u != "" {
 		body["universe"] = u
@@ -416,14 +432,15 @@ func cmdSearch(args []string) int {
 			fmt.Println()
 		}
 		return exitOK
-	}
-	var envelope struct {
+	}		var envelope struct {
 		Items []struct {
-			AssetID   string  `json:"asset_id"`
-			Source    string  `json:"source"`
-			Title     string  `json:"title"`
-			MediaType string  `json:"media_type"`
-			Score     float64 `json:"score"`
+			AssetID      string  `json:"asset_id"`
+			Source       string  `json:"source"`
+			AssetKind    string  `json:"asset_kind"`
+			SemanticRole string  `json:"semantic_role"`
+			Title        string  `json:"title"`
+			MediaType    string  `json:"media_type"`
+			Score        float64 `json:"score"`
 		} `json:"items"`
 		Partial        bool              `json:"partial"`
 		ProviderErrors map[string]string `json:"provider_errors"`
@@ -433,7 +450,10 @@ func cmdSearch(args []string) int {
 		return exitFailure
 	}
 	for _, it := range envelope.Items {
-		fmt.Printf("%-6.3f  %-10s  %-28s  %s\n", it.Score, it.Source, it.AssetID, it.Title)
+		// asset_kind is printed next to source so a stock clip acquired from
+		// YouTube is visibly distinct from a YouTube-native clip; provenance
+		// alone cannot tell them apart.
+		fmt.Printf("%-6.3f  %-10s  %-14s  %-28s  %s\n", it.Score, it.Source, it.AssetKind, it.AssetID, it.Title)
 	}
 	fmt.Printf("%d item(s)%s\n", len(envelope.Items), partialNote(envelope.Partial, envelope.ProviderErrors))
 	return exitOK

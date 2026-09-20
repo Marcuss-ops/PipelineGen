@@ -205,6 +205,9 @@ func NewRenderQueueAsset(ref kernelasset.Ref, logicalPath, sourceURL string) Ren
 type RenderQueueJob struct {
 	ID          string             `json:"id"`
 	JobType     string             `json:"job_type,omitempty"`
+	ParentJobID string             `json:"parent_job_id,omitempty"`
+	ChunkIndex  int                `json:"chunk_index,omitempty"`
+	FrameRange  *RenderFrameRange  `json:"frame_range,omitempty"`
 	OverlaySpec json.RawMessage    `json:"overlay_spec"`
 	Assets      []RenderQueueAsset `json:"assets"`
 	State       string             `json:"state"`
@@ -222,6 +225,14 @@ type RenderQueueJob struct {
 	CompletedAt time.Time `json:"completed_at,omitempty"`
 }
 
+// RenderFrameRange is the half-open [Start, End) range carried by a chunk
+// family. It mirrors the queue wire contract without coupling this capability
+// package to the RenderingGen transport package.
+type RenderFrameRange struct {
+	Start int64 `json:"start"`
+	End   int64 `json:"end"`
+}
+
 // RenderQueueClient is the narrow port for the central RenderingGen queue.
 // The capability stays independent of HTTP; the concrete client lives in
 // internal/platform/renderinggen.
@@ -232,6 +243,13 @@ type RenderQueueClient interface {
 	// Get returns the current state of a job, including its artifact once
 	// the job completes.
 	Get(ctx context.Context, id string) (RenderQueueJob, error)
+}
+
+// RenderQueueBatchSubmitter is the optional atomic anchor+children submit
+// capability. Chunked production submission fails closed when a deployment
+// does not provide it; ordinary render callers remain source-compatible.
+type RenderQueueBatchSubmitter interface {
+	SubmitBatch(context.Context, []RenderQueueJob) error
 }
 
 // RenderQueueWaiter is the optional event-driven completion capability. A

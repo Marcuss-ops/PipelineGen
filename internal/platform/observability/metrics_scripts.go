@@ -91,4 +91,20 @@ var (
 		Help:    "Wall time a voiceover worker waited for the per-unit apply lock before checkpointing.",
 		Buckets: []float64{0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5},
 	})
+
+	// ScriptCheckpointDebouncedTotal counts completed units that did not start
+	// another repository write because the current debounce window was still
+	// active (or another snapshot was in flight).
+	ScriptCheckpointDebouncedTotal = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "script_checkpoint_debounced_total",
+		Help: "Total number of per-unit checkpoint opportunities coalesced by the debounce gate.",
+	})
+
+	// ScriptCheckpointFlushTotal counts the explicit quiescent snapshots at the
+	// end of translation/voiceover fan-out. These close the intentional crash
+	// window without reintroducing a write for every completed unit.
+	ScriptCheckpointFlushTotal = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "script_checkpoint_flush_total",
+		Help: "Total number of final quiescent checkpoint flushes after script fan-out.",
+	})
 )
