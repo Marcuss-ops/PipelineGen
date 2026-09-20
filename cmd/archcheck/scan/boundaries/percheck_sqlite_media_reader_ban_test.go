@@ -74,6 +74,19 @@ func TestSQLiteMediaReaderRegistersAreDisjoint(t *testing.T) {
 	}
 }
 
+// TestSQLiteMediaReaderRegistersAreEmpty pins the terminal state of the P2-9
+// Phase 2 read ratchet: BOTH exact-file registers are empty. A new entry means a
+// file still reads media_assets from SQLite (or claims a media-disabled degrade
+// path); the correct response is to migrate the read, not to keep the entry.
+func TestSQLiteMediaReaderRegistersAreEmpty(t *testing.T) {
+	if len(sqliteMediaReaderGrandfatheredFiles) != 0 {
+		t.Errorf("sqliteMediaReaderGrandfatheredFiles must be EMPTY (terminal ratchet state); got %d entr(ies): %v", len(sqliteMediaReaderGrandfatheredFiles), sqliteMediaReaderGrandfatheredFiles)
+	}
+	if len(sqliteMediaReaderDegradeOnlyFiles) != 0 {
+		t.Errorf("sqliteMediaReaderDegradeOnlyFiles must be EMPTY (terminal ratchet state); got %d entr(ies): %v", len(sqliteMediaReaderDegradeOnlyFiles), sqliteMediaReaderDegradeOnlyFiles)
+	}
+}
+
 func writeGoFile(t *testing.T, root, rel, content string) {
 	t.Helper()
 	path := filepath.Join(root, filepath.FromSlash(rel))
@@ -147,6 +160,25 @@ const q = "SELECT id FROM media_assets WHERE id = ?"
 	}
 }
 
+// withRegisteredMediaReaderFile installs a synthetic debt-register entry for
+// the lifetime of one test and restores the register afterwards.
+//
+// The register is EMPTY today (see TestSQLiteMediaReaderRegistersAreEmpty), so
+// the exact-path property has to be exercised against an injected entry rather
+// than against the live inventory — otherwise reaching the terminal ratchet
+// state would silently stop testing the mechanism that keeps it empty.
+func withRegisteredMediaReaderFile(t *testing.T, rel string) {
+	t.Helper()
+	_, existed := sqliteMediaReaderDegradeOnlyFiles[rel]
+	sqliteMediaReaderDegradeOnlyFiles[rel] = true
+	t.Cleanup(func() {
+		if existed {
+			return
+		}
+		delete(sqliteMediaReaderDegradeOnlyFiles, rel)
+	})
+}
+
 // TestScanSQLiteMediaReaderBan_GrandfatheredFileExemptByExactPath pins that
 // the debt register is exact-file: the listed file is exempt, a NEW sibling in
 // the same package is not.
@@ -156,14 +188,8 @@ func TestScanSQLiteMediaReaderBan_GrandfatheredFileExemptByExactPath(t *testing.
 
 const q = "SELECT id FROM media_assets WHERE id = ?"
 `
-	listed := ""
-	for _, rel := range allRegisteredMediaReaderFiles() {
-		listed = rel
-		break
-	}
-	if listed == "" {
-		t.Fatal("the debt register is empty — the exact-path property cannot be tested")
-	}
+	const listed = "internal/capabilities/nouveau/listed.go"
+	withRegisteredMediaReaderFile(t, listed)
 	writeGoFile(t, tmp, listed, body)
 	writeGoFile(t, tmp, filepath.ToSlash(filepath.Join(filepath.Dir(listed), "brand_new.go")), body)
 
@@ -211,9 +237,11 @@ const q = "SELECT COALESCE(source_version,'') FROM media_assets WHERE id=$1"
 
 // TestScanSQLiteMediaReaderBan_MixedFileReportsOnlySQLite pins precision: in a
 // file holding both a PostgreSQL read and a SQLite fallback, exactly the
-// SQLite read is reported. This is the real shape of
-// internal/capabilities/assets/artifacts/clips_adapter.go, which stays in the
-// debt register for its SQLite branch alone.
+// SQLite read is reported. This was the real shape of
+// internal/capabilities/assets/artifacts/clips_adapter.go while its SQLite
+// branch existed; that branch has since been deleted (its reads now fail closed
+// on the canonical media committer), so the shape is pinned here synthetically
+// instead of by the live tree.
 func TestScanSQLiteMediaReaderBan_MixedFileReportsOnlySQLite(t *testing.T) {
 	tmp := t.TempDir()
 	writeGoFile(t, tmp, "internal/capabilities/nouveau/mixed.go", `package nouveau

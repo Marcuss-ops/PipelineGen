@@ -352,16 +352,21 @@ var sqliteMediaReaderGrandfatheredFiles = map[string]bool{}
 // exempt — and deleting the entry in the same change is exactly what the
 // staleness pin (TestSQLiteMediaReaderRegisterHasNoStaleEntries) enforces.
 //
+// THE REGISTER IS NOW EMPTY TOO. Both entries left on 2026-09-20, each by
+// removing the SQLite read rather than reclassifying it:
+//
 //   - internal/capabilities/assets/artifacts/clips_adapter.go — the Sqlite
-//     branch of ClipsRegistry, taken only when pgDB() reports no PostgreSQL
-//     media committer.
+//     branch of ClipsRegistry (and the *sql.DB handle it needed) was DELETED;
+//     GetAllWithDriveFileID / FindByPHash / FindByContentHash now resolve from
+//     the canonical committer's engine and fail closed when it is absent.
 //   - internal/capabilities/youtube/adapters/youtube_adapters_store.go — the
-//     legacy sourcing adapter retained for the documented graceful-degrade
-//     path (see youtube_sourcing_pg_adapter.go).
-var sqliteMediaReaderDegradeOnlyFiles = map[string]bool{
-	"internal/capabilities/assets/artifacts/clips_adapter.go":          true,
-	"internal/capabilities/youtube/adapters/youtube_adapters_store.go": true,
-}
+//     ListYouTubeClipIDsForSearchText read left the ClipStorePort entirely and
+//     is now answered by pgmedia.MediaYouTubeClipLister over the media SSOT,
+//     resolved by wiring.mediaYouTubeClipListerFromCommitter.
+//
+// As with the production register above, emptiness is the terminal state of
+// this ratchet: reach it by migrating a site, never by widening the map.
+var sqliteMediaReaderDegradeOnlyFiles = map[string]bool{}
 
 // sqliteMediaReaderNote is the violation Note string.
 const sqliteMediaReaderNote = "forbidden NEW SQLite reader of media_assets (MEDIA-SSOT read-side gate, September 2026): PostgreSQL + pgvector is the sole durable authority for the media domain, so media reads MUST go through internal/platform/postgres/media.MediaSearcher. Reading media_assets from the operational SQLite store reintroduces the Postgres-writer/SQLite-reader split-brain. Route this read through the PostgreSQL media read authority, or add an explicit, justified entry to sqliteMediaReaderGrandfatheredFiles in the same reviewed change. This gate promotes the historical certify-media-cutover counter SQLITE_MEDIA_READERS=0 to enforcement."
