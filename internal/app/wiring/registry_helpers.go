@@ -46,12 +46,11 @@ type DriveDestinations struct {
 
 // ── Media processor initialisation ──────────────────────────────────────────
 
-// InitMediaProcessor wires the media processor. PG-011: db is now
-// *storage.SQLiteDB (the typed canonical handle) instead of raw *sql.DB;
-// the artifacts.NewClipsRegistry constructor still takes *sql.DB so we
-// deref via db.DB at the call site — this keeps the upstream contract
-// unchanged while letting the composition layer stop holding a raw
-// sqlite handle in signatures.
+// InitMediaProcessor wires the media processor. PG-011: db is
+// *storage.SQLiteDB (the typed canonical handle) instead of raw *sql.DB.
+// MEDIA-SSOT (Sept 2026): the ClipsRegistry no longer takes a database handle
+// at all — its media reads resolve from the canonical committer's engine — so
+// this function no longer dereferences db.DB for the registry.
 //
 // PR 8 (June 2026, codex/qdrant-app-writers-fail-closed): mutationsDisp
 // is the 8th positional arg so the embedded artifacts.NewClipsRegistry
@@ -94,7 +93,7 @@ func InitMediaProcessor(cfg *config.Config, db *storage.SQLiteDB, cacheDB *stora
 	ffmpegProc := rustexec.NewConfiguredVideoProcessor(cfg.External.RustMusclesPath, cfg.External.FfmpegPath, mediaConfig.Policy, mediaConfig.Profile, log)
 	// MEDIA-SSOT P2-9 step 2: MediaProcessor hydrates clip records from the
 	// canonical committer's engine, so it cannot read a divergent media mirror.
-	clipsRegistry := artifacts.NewClipsRegistryWithLogger(db.DB, mediaDetailsReaderFromCommitter(committer), processing, committer, log)
+	clipsRegistry := artifacts.NewClipsRegistryWithLogger(mediaDetailsReaderFromCommitter(committer), processing, committer, log)
 	profile := mediaConfig.Profile
 	policy := mediaConfig.Policy
 	videoCfg := mediaexec.NormalizeOptions{Profile: profile, Policy: policy, Duration: cfg.Video.CanonicalClip().Duration,

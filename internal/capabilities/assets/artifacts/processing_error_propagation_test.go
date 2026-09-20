@@ -47,7 +47,7 @@ var _ persistence.AssetProcessingWriter = (*registryProcessingErrorRepo)(nil)
 func TestClipsRegistryUpsertMediaPropagatesProcessingError(t *testing.T) {
 	cause := errors.New("registry complete failed")
 	processing := &registryProcessingErrorRepo{completeErr: cause}
-	registry := NewClipsRegistry(nil, nil, processing, processingTestCommitter{})
+	registry := NewClipsRegistry(nil, processing, processingTestCommitter{})
 
 	err := registry.UpsertMedia(context.Background(), &MediaRecord{ID: "clip-registry", Status: "ACTIVE"})
 
@@ -59,7 +59,7 @@ func TestClipsRegistryUpsertMediaPropagatesProcessingError(t *testing.T) {
 func TestClipsRegistryUpsertMediaProcessingBestEffortDoesNotBlockPGCommit(t *testing.T) {
 	cause := errors.New("processing write failed")
 	processing := &registryProcessingErrorRepo{completeErr: cause}
-	registry := NewClipsRegistry(nil, nil, processing, processingTestCommitter{})
+	registry := NewClipsRegistry(nil, processing, processingTestCommitter{})
 
 	err := registry.UpsertMedia(context.Background(), &MediaRecord{ID: "clip-best-effort", Status: "ACTIVE", MediaType: "audio"})
 	if err != nil {

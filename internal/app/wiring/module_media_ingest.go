@@ -140,9 +140,9 @@ func WireMediaIngest(cfg *config.Config, log *zap.Logger, bundle *MediaIngestBun
 		// operational SQLite store; it holds no committed media rows, so a
 		// listing served from it could never see the SSOT.
 		mediaDriveFileIDs := mediaDriveFileListerFromCommitter(bundle.Committer)
-		clipRegistry := artifacts.NewClipsRegistryWithLogger(bundle.DB.DB, mediaDetails, mediaProcessing, bundle.Committer, log)
+		clipRegistry := artifacts.NewClipsRegistryWithLogger(mediaDetails, mediaProcessing, bundle.Committer, log)
 		clipLifecycle := NewLifecycleFromDeps(&AssetLifecycleDeps{Registry: clipRegistry, Publisher: bundle.Publisher, DriveReader: bundle.DriveUploader, AssetIndex: bundle.AssetIndexService, Store: ingest.NewClipStoreAdapter(bundle.DB.DB, mediaRetirer, mediaDetails, mediaLocations, mediaProcessing, mutationsDisp, mediaDriveFileIDs)}, log)
-		stockRegistry := artifacts.NewClipsRegistryWithLogger(bundle.DB.DB, mediaDetails, mediaProcessing, bundle.Committer, log)
+		stockRegistry := artifacts.NewClipsRegistryWithLogger(mediaDetails, mediaProcessing, bundle.Committer, log)
 		stockLifecycle := NewLifecycleFromDeps(&AssetLifecycleDeps{Registry: stockRegistry, Publisher: bundle.Publisher, DriveReader: bundle.DriveUploader, AssetIndex: bundle.AssetIndexService, Store: ingest.NewClipStoreAdapter(bundle.DB.DB, mediaRetirer, mediaDetails, mediaLocations, mediaProcessing, mutationsDisp, mediaDriveFileIDs)}, log)
 		var downloader assets.MediaDownloader = downloader.NewMediaDownloader(90 * time.Second)
 		// CAS-backed source-aware downloader (August 2026): optional
