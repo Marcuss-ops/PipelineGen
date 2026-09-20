@@ -51,6 +51,31 @@ func TestCueTranslator_PreservesOneToOneTiming(t *testing.T) {
 	}
 }
 
+// glitchyTranslator answers with the spacing artifacts a deterministic MT
+// engine emits, so the test can pin the post-editing of a translated cue.
+type glitchyTranslator struct{}
+
+func (glitchyTranslator) Translate(_ context.Context, _ translation.TranslationCommand) (translation.TranslationResult, error) {
+	return translation.TranslationResult{TranslatedText: "  ciao ,  mondo  [it] "}, nil
+}
+
+func TestCueTranslator_PostEditsTranslatedCue(t *testing.T) {
+	src := []detail.TimedCue{{StartMs: 0, EndMs: 1200, Text: "hello world"}}
+	ct := NewCueTranslator(glitchyTranslator{}, "en", "", 1, nil)
+	ct.SetBatchChunkSize(0)
+
+	got, _, err := ct.Translate(context.Background(), src, "it")
+	if err != nil {
+		t.Fatalf("Translate: %v", err)
+	}
+	if got[0].Text != "ciao, mondo [it]" {
+		t.Fatalf("cue text = %q, want the post-edited translation", got[0].Text)
+	}
+	if got[0].StartMs != src[0].StartMs || got[0].EndMs != src[0].EndMs {
+		t.Fatalf("cue window drifted: got [%d,%d] want [%d,%d]", got[0].StartMs, got[0].EndMs, src[0].StartMs, src[0].EndMs)
+	}
+}
+
 func TestCueTranslator_NilTranslatorFailsClosed(t *testing.T) {
 	ct := NewCueTranslator(nil, "en", "gemma4:e4b", 1, nil)
 	if _, _, err := ct.Translate(context.Background(), []detail.TimedCue{{StartMs: 0, EndMs: 1, Text: "x"}}, "it"); err == nil {

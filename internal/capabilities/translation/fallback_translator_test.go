@@ -106,3 +106,55 @@ func TestFallbackTranslator_BothFail(t *testing.T) {
 		t.Fatalf("expected fallback error to propagate, got: %v", err)
 	}
 }
+
+// TestFallbackTranslator_DegeneratePrimaryFallsBack pins the quality gate: a
+// non-empty but degenerate primary answer (here: the source copied verbatim)
+// must NOT be returned; the request continues to the fallback provider.
+func TestFallbackTranslator_DegeneratePrimaryFallsBack(t *testing.T) {
+	primary := &scriptedTranslator{res: TranslationResult{TranslatedText: "hello world", UsedProvider: "argos"}}
+	fallback := &scriptedTranslator{res: TranslationResult{TranslatedText: "ciao mondo", UsedProvider: "ollama"}}
+	f := NewFallbackTranslator(primary, fallback, zap.NewNop())
+
+	res, err := f.Translate(context.Background(), TranslationCommand{SourceLang: "en", TargetLang: "it", Text: "hello world"})
+	if err != nil {
+		t.Fatalf("expected the fallback answer, got error: %v", err)
+	}
+	if res.UsedProvider != "ollama" || res.TranslatedText != "ciao mondo" {
+		t.Fatalf("expected the fallback provider answer, got provider=%q text=%q", res.UsedProvider, res.TranslatedText)
+	}
+}
+
+// TestFallbackTranslator_DegenerateFallbackFailsLoud pins the fail-closed edge:
+// when the fallback is ALSO degenerate there is no acceptable answer, so the
+// chain returns a typed error instead of a wrong subtitle.
+func TestFallbackTranslator_DegenerateFallbackFailsLoud(t *testing.T) {
+	primary := &scriptedTranslator{err: errors.New("argos down")}
+	fallback := &scriptedTranslator{res: TranslationResult{TranslatedText: "hello world", UsedProvider: "ollama"}}
+	f := NewFallbackTranslator(primary, fallback, zap.NewNop())
+
+	_, err := f.Translate(context.Background(), TranslationCommand{SourceLang: "en", TargetLang: "it", Text: "hello world"})
+	var degenerate *ErrDegenerateTranslation
+	if !errors.As(err, &degenerate) {
+		t.Fatalf("expected *ErrDegenerateTranslation, got: %v", err)
+	}
+	if degenerate.TargetLang != "it" {
+		t.Fatalf("typed error target = %q, want it", degenerate.TargetLang)
+	}
+}
+
+// TestFallbackTranslator_DegeneratePrimaryWithoutFallbackFailsLoud pins the
+// no-fallback edge: the answer is still surfaced (so the caller can inspect it)
+// alongside the typed error.
+func TestFallbackTranslator_DegeneratePrimaryWithoutFallbackFailsLoud(t *testing.T) {
+	primary := &scriptedTranslator{res: TranslationResult{TranslatedText: "hello world", UsedProvider: "argos"}}
+	f := NewFallbackTranslator(primary, nil, zap.NewNop())
+
+	res, err := f.Translate(context.Background(), TranslationCommand{SourceLang: "en", TargetLang: "it", Text: "hello world"})
+	var degenerate *ErrDegenerateTranslation
+	if !errors.As(err, &degenerate) {
+		t.Fatalf("expected *ErrDegenerateTranslation, got: %v", err)
+	}
+	if res.TranslatedText != "hello world" {
+		t.Fatalf("expected the rejected answer to be surfaced, got %q", res.TranslatedText)
+	}
+}
