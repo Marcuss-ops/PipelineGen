@@ -32,7 +32,6 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/cmd/admin/internal/cli"
 
 	"context"
-	"database/sql"
 	"flag"
 	"fmt"
 	"os"
@@ -43,6 +42,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/drive"
+	pgmedia "github.com/Marcuss-ops/PipelineGen/internal/platform/postgres/media"
 )
 
 // maxFolderDepth guards the parent-chain walk against Drive cycles (a
@@ -62,18 +62,19 @@ type clipFolderPathStats struct {
 	Failed         int // rows whose Drive resolution failed (counted, surfaced)
 }
 
-// clipAssetFolderRow is the minimal media_assets projection the backfill
-// needs for a single row.
-type clipAssetFolderRow struct {
-	id            string
-	driveFileID   string
-	curFolderID   string
-	curFolderPath string
+// clipFolderSource is the narrow media read this backfill depends on.
+//
+// MEDIA-SSOT: production binds the PostgreSQL reader
+// (pgmedia.BackfillReader) because media_assets is PostgreSQL-owned and the
+// operational mirror holds no committed media rows. The port is engine-specific
+// so the candidate scan cannot drift back onto that mirror.
+type clipFolderSource interface {
+	ListYouTubeClipFolderCandidates(ctx context.Context, limit int) ([]pgmedia.ClipFolderCandidate, error)
 }
 
-// resolvedClipAssetRow pairs a row with its Drive resolution outcome.
+// resolvedClipAssetRow pairs a candidate with its Drive resolution outcome.
 type resolvedClipAssetRow struct {
-	row        clipAssetFolderRow
+	row        pgmedia.ClipFolderCandidate
 	folderID   string
 	folderPath string
 	err        error
@@ -136,7 +137,14 @@ func RunBackfillClipFolderPath(args []string) error {
 	if !ok || mutator == nil {
 		return fmt.Errorf("canonical asset mutator is not available")
 	}
-	stats, err := backfillClipFolderPath(ctx, rootCtx.DB.DB, resolve, *limit, *concurrency, *apply, mutator)
+	// MEDIA-SSOT: the candidate scan reads media_assets, so it resolves from the
+	// PostgreSQL media SSOT; the writes already went through the canonical
+	// mutator, so both halves now agree on one engine.
+	source := pgmedia.NewBackfillReader(rootCtx.MediaPostgres)
+	if source == nil {
+		return fmt.Errorf("media PostgreSQL SSOT is required for clip-folder-path backfill")
+	}
+	stats, err := backfillClipFolderPath(ctx, source, resolve, *limit, *concurrency, *apply, mutator)
 	if err != nil {
 		return err
 	}
@@ -156,7 +164,7 @@ func RunBackfillClipFolderPath(args []string) error {
 // Idempotent: already-aligned rows are never rewritten.
 func backfillClipFolderPath(
 	ctx context.Context,
-	db *sql.DB,
+	src clipFolderSource,
 	resolve clipFolderPathResolver,
 	limit, concurrency int,
 	apply bool,
@@ -164,32 +172,12 @@ func backfillClipFolderPath(
 ) (clipFolderPathStats, error) {
 	var stats clipFolderPathStats
 
-	query := `SELECT id, COALESCE(drive_file_id,''), COALESCE(folder_id,''), COALESCE(folder_path,'')
-		FROM media_assets
-		WHERE source = 'youtube'
-		  AND id LIKE 'yt_%'
-		  AND TRIM(COALESCE(drive_file_id, '')) <> ''
-		ORDER BY id`
-	if limit > 0 {
-		query += fmt.Sprintf(" LIMIT %d", limit)
+	if src == nil {
+		return stats, fmt.Errorf("backfill-clip-folder-path: media SSOT reader is not wired")
 	}
-
-	rows, err := db.QueryContext(ctx, query)
+	candidates, err := src.ListYouTubeClipFolderCandidates(ctx, limit)
 	if err != nil {
 		return stats, fmt.Errorf("backfill-clip-folder-path: query: %w", err)
-	}
-	defer rows.Close()
-
-	var candidates []clipAssetFolderRow
-	for rows.Next() {
-		var r clipAssetFolderRow
-		if err := rows.Scan(&r.id, &r.driveFileID, &r.curFolderID, &r.curFolderPath); err != nil {
-			return stats, fmt.Errorf("backfill-clip-folder-path: scan: %w", err)
-		}
-		candidates = append(candidates, r)
-	}
-	if err := rows.Err(); err != nil {
-		return stats, fmt.Errorf("backfill-clip-folder-path: rows: %w", err)
 	}
 	stats.Matched = len(candidates)
 
@@ -204,7 +192,7 @@ func backfillClipFolderPath(
 			defer wg.Done()
 			sem <- struct{}{}
 			defer func() { <-sem }()
-			folderID, folderPath, rErr := resolve(ctx, r.driveFileID)
+			folderID, folderPath, rErr := resolve(ctx, r.DriveFileID)
 			results[i] = resolvedClipAssetRow{row: r, folderID: folderID, folderPath: folderPath, err: rErr}
 		}()
 	}
@@ -214,25 +202,25 @@ func backfillClipFolderPath(
 	for _, res := range results {
 		if res.err != nil {
 			stats.Failed++
-			fmt.Fprintf(os.Stderr, "  SKIP %s: %v\n", res.row.id, res.err)
+			fmt.Fprintf(os.Stderr, "  SKIP %s: %v\n", res.row.ID, res.err)
 			continue
 		}
-		if res.folderID == res.row.curFolderID && res.folderPath == res.row.curFolderPath {
+		if res.folderID == res.row.FolderID && res.folderPath == res.row.FolderPath {
 			stats.AlreadyAligned++
 			continue
 		}
 		stats.Updated++
 		if !apply {
 			fmt.Printf("  WOULD-UPDATE %s: folder_id=%s folder_path=%q\n",
-				res.row.id, res.folderID, res.folderPath)
+				res.row.ID, res.folderID, res.folderPath)
 			continue
 		}
 		if len(mutators) > 0 && mutators[0] != nil {
 			folderID, folderPath := res.folderID, res.folderPath
 			if err := mutators[0].PatchAsset(ctx, persistence.AssetPatch{
-				AssetID: res.row.id, FolderID: &folderID, FolderPath: &folderPath,
+				AssetID: res.row.ID, FolderID: &folderID, FolderPath: &folderPath,
 			}); err != nil {
-				return stats, fmt.Errorf("backfill-clip-folder-path: canonical update %s: %w", res.row.id, err)
+				return stats, fmt.Errorf("backfill-clip-folder-path: canonical update %s: %w", res.row.ID, err)
 			}
 		} else {
 			return stats, fmt.Errorf("backfill-clip-folder-path: canonical asset mutator is required")

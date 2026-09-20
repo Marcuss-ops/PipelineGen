@@ -2,7 +2,6 @@ package jobs
 
 import (
 	"context"
-	"fmt"
 	"sync"
 
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
@@ -202,14 +201,22 @@ func (e *PreparationWorkEstimator) BootstrapSources(ctx context.Context, limit i
 	return firstErr
 }
 
-// String implements fmt.Stringer for diagnostics.
-func (e *PreparationWorkEstimator) String() string {
-	if e == nil {
-		return "PreparationWorkEstimator<nil>"
-	}
-	e.mu.Lock()
-	defer e.mu.Unlock()
-	return fmt.Sprintf("PreparationWorkEstimator{alpha=%.2f, kinds=%d}", e.alpha, len(e.byKind))
-}
-
-var _ fmt.Stringer = (*PreparationWorkEstimator)(nil)
+// String was DELETED here on 2026-09-20, together with the
+// `var _ fmt.Stringer = (*PreparationWorkEstimator)(nil)` pin that kept it
+// honest and the now-unused "fmt" import. It was unreachable because nothing
+// ever formatted an estimator, and that was audited rather than assumed: every
+// file that holds or references one — app/wiring/lifecycle.go,
+// app/wiring/lifecycle_preparation.go,
+// platform/sqlite/jobs/preparation_work_observations.go, this file, and
+// preparation_coordinator.go — contains zero zap.Any, zero zap.Stringer, zero
+// %v/%+v and zero Sprint/Sprintf outside this method's own body, no explicit
+// .String() call exists anywhere in the tree, and no test pinned the output.
+//
+// The estimator is consumed strictly as a value by
+// PreparationCoordinator.estimator (set via WithWorkEstimator, read via
+// Expect/ExpectUnit) and is never handed to a logger; the coordinator's own log
+// lines in app/wiring/lifecycle_preparation.go pass explicit zap.Error fields
+// rather than the struct. Deleting this did NOT remove the sync.Mutex —
+// Observe/Expect still guard the EMA maps. If a diagnostic dump is ever wanted,
+// the canonical shape is a typed zap field at the logging site, not a
+// fmt.Stringer on the estimator.

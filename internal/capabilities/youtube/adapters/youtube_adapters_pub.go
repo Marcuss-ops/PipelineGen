@@ -1,17 +1,23 @@
-// Package app — sourcing publisher + dispatcher adapters
+// Package app — sourcing publisher adapter
 // consolidated from youtube_publisher_adapter.go
 // (PR-GODOBJ-Azione-4, July 2026).
 //
-// 2 adapters: SourcingPublisherAdapter, SourcingDispatcherAdapter.
+// 1 adapter: SourcingPublisherAdapter.
+//
+// SourcingDispatcherAdapter was DELETED here on 2026-09-20. sourcing.
+// IndexDispatcherPort still has a live consumer (sourcing/youtube/service.go's
+// indexDisp field) but its canonical implementer is
+// ytadapters.YoutubeIndexDispatcherAdapter, pinned in the composition root at
+// internal/app/wiring/assets_register_adapters.go:37. Two adapters satisfied the
+// same port and only one was ever constructed, so this one's EnqueueAndIndex was
+// unreachable.
 package adapters
 
 import (
 	"context"
 	"fmt"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/sourcing"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/delivery"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outbox"
 )
 
 // ── SourcingPublisherAdapter ──────────────────────────────────────────
@@ -28,20 +34,5 @@ func (a *SourcingPublisherAdapter) Publish(ctx context.Context, req delivery.Pub
 }
 
 // ── SourcingDispatcherAdapter ─────────────────────────────────────────
-
-type SourcingDispatcherAdapter struct {
-	disp *outbox.Dispatcher
-}
-
-var _ sourcing.IndexDispatcherPort = (*SourcingDispatcherAdapter)(nil)
-
-func (a *SourcingDispatcherAdapter) EnqueueAndIndex(ctx context.Context, clip *sourcing.ExistingClip, contentHash string) error {
-	if a.disp == nil {
-		return nil
-	}
-	if clip == nil {
-		return fmt.Errorf("SourcingDispatcherAdapter: clip is nil")
-	}
-	domainAsset := fromExistingClip(clip)
-	return a.disp.EnqueueAndIndex(ctx, domainAsset, contentHash)
-}
+//
+// Deleted on 2026-09-20; see the package header for why.

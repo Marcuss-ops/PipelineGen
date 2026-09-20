@@ -93,18 +93,12 @@ func NewWithArtifactsService(rxRunner CompleteJobTxRunner, cache IdempotencyCach
 	return &WithArtifactsService{rxRunner: rxRunner, cache: cache, log: zap.NewNop()}, nil
 }
 
-// WithLogger wires a nil-safe logger. Returns the receiver for
-// fluent-chain composition; nil logger → zap.NewNop().
-func (s *WithArtifactsService) WithLogger(log *zap.Logger) *WithArtifactsService {
-	if s == nil {
-		return nil
-	}
-	if log == nil {
-		log = zap.NewNop()
-	}
-	s.log = log
-	return s
-}
+// WithArtifactsService.WithLogger was DELETED here on 2026-09-20: no call site
+// ever invoked it, so every instance kept the zap.NewNop() logger the
+// constructor assigns. Callers that need a real logger must now go through the
+// constructor rather than a fluent setter nothing calls — the sibling
+// Service.WithLogger on the non-artifacts completion service is a separate
+// surface and is untouched.
 
 // Compile-time pins (Pattern 0): catastrophic drift between the
 // canonical port definitions and the implementation surfaces is a

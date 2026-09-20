@@ -1,0 +1,147 @@
+{
+  "_comment": "Canonical POST /api/clips/process payload (ExtractRequest, drift source: internal/capabilities/youtube/dto/types.go). WIRED - Dolly Parton Answers the Web's Most Searched Questions (video Bc9gTqiljLA, 12 clips 00:00-08:44). Destination: explicit child folder 1C-q2swarUlf4JEUYHVe0Ol88MDSU8FUq ('Dolly Parton' under drive.normal_clips_source_folder 1ll2RlTaAbhnaLkAjEDBg41lAXUyo-zJ2); create_subfolder=false so clips upload straight into it (no derived per-video child). Clip identity deterministic yt_Bc9gTqiljLA_<startSec>_<endSec>_v1. Duration gate: all segments 34-67s, inside deployed VELOX_YOUTUBE_MAX_SEGMENT_DURATION_SECONDS=240 (default 60s would reject 64s/67s).",
+  "url": "https://www.youtube.com/watch?v=Bc9gTqiljLA",
+  "strategy": "verify",
+  "concurrency": 3,
+  "force_keyframes": true,
+  "keep_audio": true,
+  "write_summary": true,
+  "destination": {
+    "folder_id": "1C-q2swarUlf4JEUYHVe0Ol88MDSU8FUq",
+    "create_subfolder": false
+  },
+  "segments": [
+    {
+      "start": "00:00",
+      "end": "00:36",
+      "name": "Intro e registro vocale da soprano",
+      "category": "celebrity_interview",
+      "source_title": "Dolly Parton Answers the Web's Most Searched Questions | WIRED",
+      "source_channel": "WIRED",
+      "summary": "Dolly Parton introduce l'intervista autocomplete di WIRED e risponde scherzosamente sulla sua voce spiegando di essere un soprano.",
+      "topics": ["WIRED autocomplete interview National Enquirer Google registro vocale soprano estensione note acute"],
+      "tags": ["Dolly Parton", "WIRED", "celebrity_interview"]
+    },
+    {
+      "start": "00:36",
+      "end": "01:12",
+      "name": "Radici nella musica country e madrina di Miley Cyrus",
+      "category": "celebrity_interview",
+      "source_title": "Dolly Parton Answers the Web's Most Searched Questions | WIRED",
+      "source_channel": "WIRED",
+      "summary": "Rivendica con orgoglio le sue radici country pur spaziando nel pop e conferma di essere la fata madrina di Miley Cyrus.",
+      "topics": ["musica country pop generi musicali fairy godmother madrina Miley Cyrus legame familiare artistico"],
+      "tags": ["Dolly Parton", "WIRED", "celebrity_interview"]
+    },
+    {
+      "start": "01:12",
+      "end": "01:48",
+      "name": "Il film 'Steel Magnolias' e il brano 'Eagle When She Flies'",
+      "category": "celebrity_interview",
+      "source_title": "Dolly Parton Answers the Web's Most Searched Questions | WIRED",
+      "source_channel": "WIRED",
+      "summary": "Afferma di identificarsi come una magnolia d'acciaio citando i versi composti per 'Eagle When She Flies' dedicati alla forza delle donne.",
+      "topics": ["Steel Magnolias film Eagle When She Flies canzone testo forza resilienza fede donna"],
+      "tags": ["Dolly Parton", "WIRED", "celebrity_interview"]
+    },
+    {
+      "start": "01:48",
+      "end": "02:26",
+      "name": "54 anni di matrimonio con Carl Dean e identità personale",
+      "category": "celebrity_interview",
+      "source_title": "Dolly Parton Answers the Web's Most Searched Questions | WIRED",
+      "source_channel": "WIRED",
+      "summary": "Ricorda di essere felicemente sposata da 54 anni con Carl Dean e si definisce una persona sfaccettata, legata alla famiglia e ai fan.",
+      "topics": ["matrimonio Carl Dean 54 anni 2020 relazione 56 anni famiglia fan ragazza molti colori"],
+      "tags": ["Dolly Parton", "WIRED", "celebrity_interview"]
+    },
+    {
+      "start": "02:26",
+      "end": "03:00",
+      "name": "Il look ispirato alla donna di strada del paese natale",
+      "category": "celebrity_interview",
+      "source_title": "Dolly Parton Answers the Web's Most Searched Questions | WIRED",
+      "source_channel": "WIRED",
+      "summary": "Racconta divertita di aver modellato la propria estetica eccentrica su una donna appariscente del suo paese d'origine considerata da tutti scandalosa.",
+      "topics": ["look clown town tramp trucco parrucche tacchi alti abiti vistosi Sevierville Tennessee"],
+      "tags": ["Dolly Parton", "WIRED", "celebrity_interview"]
+    },
+    {
+      "start": "03:00",
+      "end": "03:52",
+      "name": "Scrivere per gli altri e il nuovo album 'A Holly Dolly Christmas'",
+      "category": "celebrity_interview",
+      "source_title": "Dolly Parton Answers the Web's Most Searched Questions | WIRED",
+      "source_channel": "WIRED",
+      "summary": "Spiega di scrivere brani per dar voce alle emozioni del pubblico e presenta il disco natalizio ricco di collaborazioni prestigiose.",
+      "topics": ["composizione scrittura testi rime album natalizio A Holly Dolly Christmas duetti Michael Buble Jimmy Fallon Willie Nelson"],
+      "tags": ["Dolly Parton", "WIRED", "celebrity_interview"]
+    },
+    {
+      "start": "03:52",
+      "end": "04:32",
+      "name": "Il colore bianco sul palco e la passione per le patate",
+      "category": "celebrity_interview",
+      "source_title": "Dolly Parton Answers the Web's Most Searched Questions | WIRED",
+      "source_channel": "WIRED",
+      "summary": "Svela di prediligere gli abiti bianchi per le esibizioni sul palco e confessa il suo debole irrefrenabile per qualsiasi piatto a base di patate.",
+      "topics": ["colore bianco abiti scena palcoscenico cibo preferito patate patatine fritte diete carboidrati"],
+      "tags": ["Dolly Parton", "WIRED", "celebrity_interview"]
+    },
+    {
+      "start": "04:32",
+      "end": "05:07",
+      "name": "Il vero colore dei capelli tra schiariture e aneddoti familiari",
+      "category": "celebrity_interview",
+      "source_title": "Dolly Parton Answers the Web's Most Searched Questions | WIRED",
+      "source_channel": "WIRED",
+      "summary": "Svela di essere nata con capelli chiarissimi e di essere naturalmente un biondo scuro che decolora costantemente fin dalla giovinezza.",
+      "topics": ["colore capelli biondo sporco decolorazione radici scure nipote sorella Stella cotone infanzia"],
+      "tags": ["Dolly Parton", "WIRED", "celebrity_interview"]
+    },
+    {
+      "start": "05:07",
+      "end": "05:46",
+      "name": "La prima canzone a 5 anni 'Little Tiny Tassel Top' e il primo disco",
+      "category": "celebrity_interview",
+      "source_title": "Dolly Parton Answers the Web's Most Searched Questions | WIRED",
+      "source_channel": "WIRED",
+      "summary": "Ricorda la prima filastrocca inventata a cinque anni per una bambola di pannocchia e il debutto discografico a dieci anni con 'Puppy Love'.",
+      "topics": ["bambola pannocchia Tiny Tassel Top 5 anni prima canzone Puppy Love primo 45 giri 10 anni"],
+      "tags": ["Dolly Parton", "WIRED", "celebrity_interview"]
+    },
+    {
+      "start": "05:46",
+      "end": "06:33",
+      "name": "La cucina tradizionale del Sud e la salute della voce",
+      "category": "celebrity_interview",
+      "source_title": "Dolly Parton Answers the Web's Most Searched Questions | WIRED",
+      "source_channel": "WIRED",
+      "summary": "Afferma di essere un'ottima cuoca di piatti tradizionali calorici del Sud e spiega che per mantenere intatta la voce bisogna cantare ogni giorno.",
+      "topics": ["cucina tradizionale soul food ricette madre nonne calorie voce canto allenamento corde vocali"],
+      "tags": ["Dolly Parton", "WIRED", "celebrity_interview"]
+    },
+    {
+      "start": "06:33",
+      "end": "07:37",
+      "name": "Yodel country, brano 'Muleskinner Blues' e nostalgia dei concerti",
+      "category": "celebrity_interview",
+      "source_title": "Dolly Parton Answers the Web's Most Searched Questions | WIRED",
+      "source_channel": "WIRED",
+      "summary": "Dimostra il suo stile personale di yodel country citando 'Muleskinner Blues' ed esprime nostalgia per il contatto diretto con il pubblico nei tour.",
+      "topics": ["yodel country Muleskinner Blues tour concerti dal vivo scambio energia pubblico fan pandemia"],
+      "tags": ["Dolly Parton", "WIRED", "celebrity_interview"]
+    },
+    {
+      "start": "07:37",
+      "end": "08:44",
+      "name": "Caffè mattutino, 'cup of ambition', scrittura e saluti finali",
+      "category": "celebrity_interview",
+      "source_title": "Dolly Parton Answers the Web's Most Searched Questions | WIRED",
+      "source_channel": "WIRED",
+      "summary": "Descrive la carica mattutina della sua immancabile tazza di caffè, ribadisce di comporre gran parte del suo catalogo e chiude salutando la community del web.",
+      "topics": ["caffe tazza ambizione 9 to 5 risveglio scrittura canzoni titoli album Holly Dolly Christmas commiato"],
+      "tags": ["Dolly Parton", "WIRED", "celebrity_interview"]
+    }
+  ]
+}

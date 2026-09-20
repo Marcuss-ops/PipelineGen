@@ -4,7 +4,6 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/cmd/admin/internal/cli"
 
 	"context"
-	"database/sql"
 	"flag"
 	"fmt"
 	"io"
@@ -16,6 +15,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/media/rustexec"
+	pgmedia "github.com/Marcuss-ops/PipelineGen/internal/platform/postgres/media"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
 )
 
@@ -72,7 +72,14 @@ func RunBackfillMediaDurations(args []string) error {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
 	defer cancel()
-	rows, err := selectDurationBackfillRows(ctx, root.DB, *folderID, *assetIDs, *limit, *force)
+	// MEDIA-SSOT: the candidate scan reads media_assets, so it resolves from the
+	// PostgreSQL media SSOT rather than the operational mirror, which holds no
+	// committed media rows.
+	durationSource := pgmedia.NewBackfillReader(root.MediaPostgres)
+	if durationSource == nil {
+		return fmt.Errorf("media PostgreSQL SSOT is required for duration backfill")
+	}
+	rows, err := selectDurationBackfillRows(ctx, durationSource, *folderID, *assetIDs, *limit, *force)
 	if err != nil {
 		return err
 	}
@@ -119,52 +126,34 @@ type durationBackfillRow struct {
 	ID string
 }
 
-type queryer interface {
-	QueryContext(context.Context, string, ...any) (*sql.Rows, error)
+// durationBackfillSource is the narrow media read this backfill depends on.
+//
+// MEDIA-SSOT: production binds the PostgreSQL reader (pgmedia.BackfillReader).
+// The eligibility predicate (media_type / lifecycle / index_state / location)
+// lives in that package, so this command cannot grade a different boundary than
+// the media SSOT.
+type durationBackfillSource interface {
+	ListDurationBackfillCandidates(ctx context.Context, q pgmedia.DurationBackfillQuery) ([]string, error)
 }
 
-func selectDurationBackfillRows(ctx context.Context, db queryer, folderID, rawIDs string, limit int, force bool) ([]durationBackfillRow, error) {
-	where := []string{
-		"media_type IN ('video', 'clip')",
-		"UPPER(COALESCE(lifecycle_state, '')) = 'ACTIVE'",
-		"UPPER(COALESCE(index_state, '')) = 'INDEXED'",
-		"(TRIM(COALESCE(drive_file_id, '')) <> '' OR TRIM(COALESCE(local_path, '')) <> '')",
+// selectDurationBackfillRows resolves the candidate set. The CLI-side CSV
+// parsing stays here; the row predicate is the media SSOT's.
+func selectDurationBackfillRows(ctx context.Context, src durationBackfillSource, folderID, rawIDs string, limit int, force bool) ([]durationBackfillRow, error) {
+	if src == nil {
+		return nil, fmt.Errorf("select duration backfill assets: media SSOT reader is not wired")
 	}
-	if !force {
-		where = append(where, "COALESCE(duration_ms, 0) <= 0")
-	}
-	args := make([]any, 0)
-	if ids := cli.SplitBackfillCSV(rawIDs); len(ids) > 0 {
-		marks := strings.TrimSuffix(strings.Repeat("?,", len(ids)), ",")
-		where = append(where, "id IN ("+marks+")")
-		for _, id := range ids {
-			args = append(args, id)
-		}
-	}
-	if folderID = strings.TrimSpace(folderID); folderID != "" {
-		where = append(where, "(parent_folder_id = ? OR drive_folder_id = ? OR folder_id = ?)")
-		args = append(args, folderID, folderID, folderID)
-	}
-	query := "SELECT id FROM media_assets WHERE " + strings.Join(where, " AND ") + " ORDER BY id"
-	if limit > 0 {
-		query += " LIMIT ?"
-		args = append(args, limit)
-	}
-	rows, err := db.QueryContext(ctx, query, args...)
+	ids, err := src.ListDurationBackfillCandidates(ctx, pgmedia.DurationBackfillQuery{
+		FolderID: strings.TrimSpace(folderID),
+		IDs:      cli.SplitBackfillCSV(rawIDs),
+		Limit:    limit,
+		Force:    force,
+	})
 	if err != nil {
 		return nil, fmt.Errorf("select duration backfill assets: %w", err)
 	}
-	defer rows.Close()
-	var result []durationBackfillRow
-	for rows.Next() {
-		var row durationBackfillRow
-		if err := rows.Scan(&row.ID); err != nil {
-			return nil, fmt.Errorf("scan duration backfill asset: %w", err)
-		}
-		result = append(result, row)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterate duration backfill assets: %w", err)
+	result := make([]durationBackfillRow, 0, len(ids))
+	for _, id := range ids {
+		result = append(result, durationBackfillRow{ID: id})
 	}
 	return result, nil
 }

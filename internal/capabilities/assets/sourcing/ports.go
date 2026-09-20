@@ -162,11 +162,12 @@ type JobsPort interface {
 // the scan when the bulk_upload_youtube_clips job executes).
 
 // ── Hash ports ─────────────────────────────────────────────────────────
-
-// HashPort computes file hashes.
-type HashPort interface {
-	MD5File(path string) (string, error)
-}
+//
+// HashPort was DELETED from this section on 2026-09-20. Its only
+// reference in the tree was a compile-time pin on an unwired composition
+// adapter (app/wiring sourcingHashAdapter, deleted in the same change):
+// no field, parameter or return value was typed by it. The canonical MD5
+// surface is clips.ClipHashPort, consumed by clips.BulkUploadWorker.hasher.
 
 // ── Transcription ports ────────────────────────────────────────────────
 

@@ -13,12 +13,72 @@ package backfill
 import (
 	"context"
 	"database/sql"
+	"fmt"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	pgmedia "github.com/Marcuss-ops/PipelineGen/internal/platform/postgres/media"
 	_ "github.com/mattn/go-sqlite3"
 )
+
+// sqliteDurationBackfillSource adapts the in-memory SQLite fixture to the
+// backfill's narrow durationBackfillSource port.
+//
+// The production read moved to the PostgreSQL media SSOT
+// (pgmedia.BackfillReader) because media_assets is PostgreSQL-owned and the
+// operational mirror holds no committed media rows. The eligibility rules are
+// still pinned here end-to-end against a deterministic fixture, so the adapter
+// carries the retired SQLite selector verbatim — INCLUDING the legacy
+// drive_folder_id disjunct that the PostgreSQL SSOT does not have, so this test
+// keeps documenting what the retired selector matched. It is test-only by
+// construction, which is the point: no production file reads media_assets from
+// SQLite any more.
+type sqliteDurationBackfillSource struct{ db *sql.DB }
+
+func (s sqliteDurationBackfillSource) ListDurationBackfillCandidates(ctx context.Context, q pgmedia.DurationBackfillQuery) ([]string, error) {
+	where := []string{
+		"media_type IN ('video', 'clip')",
+		"UPPER(COALESCE(lifecycle_state, '')) = 'ACTIVE'",
+		"UPPER(COALESCE(index_state, '')) = 'INDEXED'",
+		"(TRIM(COALESCE(drive_file_id, '')) <> '' OR TRIM(COALESCE(local_path, '')) <> '')",
+	}
+	if !q.Force {
+		where = append(where, "COALESCE(duration_ms, 0) <= 0")
+	}
+	args := make([]any, 0)
+	if len(q.IDs) > 0 {
+		marks := strings.TrimSuffix(strings.Repeat("?,", len(q.IDs)), ",")
+		where = append(where, "id IN ("+marks+")")
+		for _, id := range q.IDs {
+			args = append(args, id)
+		}
+	}
+	if folderID := strings.TrimSpace(q.FolderID); folderID != "" {
+		where = append(where, "(parent_folder_id = ? OR drive_folder_id = ? OR folder_id = ?)")
+		args = append(args, folderID, folderID, folderID)
+	}
+	query := "SELECT id FROM media_assets WHERE " + strings.Join(where, " AND ") + " ORDER BY id"
+	if q.Limit > 0 {
+		query += " LIMIT ?"
+		args = append(args, q.Limit)
+	}
+	rows, err := s.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("select duration backfill assets: %w", err)
+	}
+	defer rows.Close()
+	var out []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, fmt.Errorf("scan duration backfill asset: %w", err)
+		}
+		out = append(out, id)
+	}
+	return out, rows.Err()
+}
 
 func clipWithDuration(d time.Duration, durationSource string) *asset.Asset {
 	a := &asset.Asset{Duration: d}
@@ -163,7 +223,7 @@ func TestSelectDurationBackfillRows_DefaultMissingOnly(t *testing.T) {
 	insertDurationBackfillRow(t, db, "inactive", "video", "INACTIVE", "INDEXED", "d5", "", int64p(0))
 	insertDurationBackfillRow(t, db, "no-source", "video", "ACTIVE", "INDEXED", "", "", int64p(0))
 
-	rows, err := selectDurationBackfillRows(context.Background(), db, "", "", 0, false)
+	rows, err := selectDurationBackfillRows(context.Background(), sqliteDurationBackfillSource{db: db}, "", "", 0, false)
 	if err != nil {
 		t.Fatalf("select: %v", err)
 	}
@@ -188,7 +248,7 @@ func TestSelectDurationBackfillRows_ForceIncludesKnown(t *testing.T) {
 	insertDurationBackfillRow(t, db, "already-known", "video", "ACTIVE", "INDEXED", "d3", "", int64p(5000))
 	insertDurationBackfillRow(t, db, "missing", "video", "ACTIVE", "INDEXED", "d1", "", int64p(0))
 
-	rows, err := selectDurationBackfillRows(context.Background(), db, "", "", 0, true)
+	rows, err := selectDurationBackfillRows(context.Background(), sqliteDurationBackfillSource{db: db}, "", "", 0, true)
 	if err != nil {
 		t.Fatalf("select: %v", err)
 	}

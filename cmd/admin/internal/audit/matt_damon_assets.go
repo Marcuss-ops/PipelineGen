@@ -89,34 +89,10 @@ type mattDamonContentGroup struct {
 	AssetIDs []string `json:"asset_ids"`
 }
 
-type mattDamonAssetRow struct {
-	ID             string
-	MediaType      string
-	DriveFileID    string
-	YouTubeVideoID string
-	StartMS        int64
-	EndMS          int64
-	ContentSHA256  string
-	BinarySHA256   string
-	MetadataJSON   string
-}
-
 type mattDamonSourceRow struct {
 	AssetID    string
 	SourceType string
 	SourceURI  string
-}
-
-// mattDamonMediaSource is the narrow media read this audit depends on.
-//
-// MEDIA-SSOT: production binds the PostgreSQL reader
-// (pgmedia.StructuredAssetIdentityReader). The operational SQLite handle is
-// still used for the image-domain membership tables (subjects /
-// entity_image_catalog_*), which have no PostgreSQL home, but it MUST NOT be
-// used for the asset inventory: the mirror holds no committed media rows, so
-// reading it there would report zero assets while the SSOT held them.
-type mattDamonMediaSource interface {
-	ListStructuredAssetIdentities(ctx context.Context) ([]pgmedia.StructuredAssetIdentityRow, error)
 }
 
 // RunMattDamonAssetsAudit is intentionally read-only. It has no --apply flag
@@ -359,79 +335,6 @@ func mattDamonCatalogAssets(ctx context.Context, db *sql.DB) (map[string]struct{
 	// catalog IDs are retained as evidence but never count as assets by
 	// themselves.
 	return assetIDs, evidence, nil, nil
-}
-
-func mattDamonStructuredAssets(ctx context.Context, media mattDamonMediaSource, subjectTokens, catalogAssetIDs map[string]struct{}, catalogEvidence map[string][]string) ([]mattDamonAssetRecord, error) {
-	rows, err := media.ListStructuredAssetIdentities(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("audit-matt-damon-assets: read media assets: %w", err)
-	}
-
-	out := make([]mattDamonAssetRecord, 0, len(rows))
-	seen := make(map[string]struct{})
-	for _, source := range rows {
-		row := mattDamonAssetRow{
-			ID:             source.ID,
-			MediaType:      source.MediaType,
-			DriveFileID:    source.DriveFileID,
-			YouTubeVideoID: source.YouTubeVideoID,
-			StartMS:        source.StartMS,
-			EndMS:          source.EndMS,
-			ContentSHA256:  source.ContentSHA256,
-			BinarySHA256:   source.BinarySHA256,
-			MetadataJSON:   source.MetadataJSON,
-		}
-		row.ID = strings.TrimSpace(row.ID)
-		if row.ID == "" {
-			continue
-		}
-		metadata := map[string]any{}
-		if strings.TrimSpace(row.MetadataJSON) != "" && strings.TrimSpace(row.MetadataJSON) != "{}" {
-			if err := json.Unmarshal([]byte(row.MetadataJSON), &metadata); err != nil {
-				return nil, fmt.Errorf("audit-matt-damon-assets: malformed metadata_json for asset %q: %w", row.ID, err)
-			}
-		}
-
-		evidence := append([]string(nil), catalogEvidence[row.ID]...)
-		if structuredMetadataMatches(metadata, subjectTokens) {
-			evidence = appendUniqueString(evidence, "metadata_json.structured_entity")
-		}
-		if _, ok := catalogAssetIDs[row.ID]; ok {
-			evidence = appendUniqueString(evidence, "entity_catalog_materialization")
-		}
-		if len(evidence) == 0 {
-			continue
-		}
-		if _, ok := seen[row.ID]; ok {
-			continue
-		}
-		seen[row.ID] = struct{}{}
-		out = append(out, mattDamonAssetRecord{
-			AssetID:        row.ID,
-			MediaType:      row.MediaType,
-			DriveFileID:    row.DriveFileID,
-			YouTubeVideoID: row.YouTubeVideoID,
-			StartMS:        row.StartMS,
-			EndMS:          row.EndMS,
-			ContentSHA256:  row.ContentSHA256,
-			BinarySHA256:   row.BinarySHA256,
-			Evidence:       evidence,
-		})
-	}
-	return out, nil
-}
-
-func structuredMetadataMatches(metadata map[string]any, subjectTokens map[string]struct{}) bool {
-	for _, key := range []string{"canonical_entity_id", "subject_id"} {
-		value, ok := metadata[key].(string)
-		if !ok {
-			continue
-		}
-		if _, ok := subjectTokens[strings.TrimSpace(value)]; ok {
-			return true
-		}
-	}
-	return false
 }
 
 func mattDamonSourceRows(ctx context.Context, db *sql.DB, assetIDs map[string]struct{}) ([]mattDamonSourceRow, error) {

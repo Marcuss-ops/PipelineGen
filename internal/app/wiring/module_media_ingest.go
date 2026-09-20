@@ -1,7 +1,6 @@
 package wiring
 
 import (
-	"context"
 	"database/sql"
 	"fmt"
 	"time"
@@ -14,7 +13,6 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/artifacts"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/ingest"
 	assetspersistence "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
-	appstorage "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/storage"
 	voapp "github.com/Marcuss-ops/PipelineGen/internal/capabilities/voiceover/service"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/delivery"
 
@@ -33,40 +31,17 @@ import (
 	"go.uber.org/zap"
 )
 
-// storageDriveAdapter adapts drive.Uploader to storage.DrivePort.
-type storageDriveAdapter struct {
-	up        *driveutil.Uploader
-	lifecycle driveutil.FileLifecycle
-}
-
-var _ appstorage.DrivePort = (*storageDriveAdapter)(nil)
-
-func (a *storageDriveAdapter) ListFiles(ctx context.Context, folderID string) ([]appstorage.DriveFile, error) {
-	files, err := a.up.ListFiles(ctx, folderID)
-	if err != nil {
-		return nil, err
-	}
-	out := make([]appstorage.DriveFile, len(files))
-	for i, f := range files {
-		out[i] = appstorage.DriveFile{ID: f.ID, Name: f.Name, MimeType: f.MimeType}
-	}
-	return out, nil
-}
-
-func (a *storageDriveAdapter) MoveFile(ctx context.Context, fileID, fromFolderID, toFolderID string) error {
-	return a.up.MoveFile(ctx, fileID, fromFolderID, toFolderID)
-}
-
-func (a *storageDriveAdapter) GetOrCreateFolder(ctx context.Context, name, parentID string) (string, error) {
-	return a.up.GetOrCreateFolder(ctx, name, parentID)
-}
-
-func (a *storageDriveAdapter) RenameFile(ctx context.Context, fileID, newName string) error {
-	if a.lifecycle == nil {
-		return fmt.Errorf("storageDriveAdapter: lifecycle not wired (P1-5 CUTOVER requires FileLifecycle)")
-	}
-	return a.lifecycle.Rename(ctx, fileID, newName)
-}
+// storageDriveAdapter and its four DrivePort methods were DELETED here on
+// 2026-09-20. The adapter was never constructed anywhere in the tree, and
+// appstorage.DrivePort (internal/capabilities/assets/storage/ports.go) had
+// zero consumers: no struct field, parameter or return value in the module
+// was typed by it. Ingest lifecycle services read Drive through the narrower
+// ingest.DriveReader port (bundle.DriveUploader), which is the canonical
+// surface — DrivePort was a superseded duplicate of driveutil.Uploader's
+// ListFiles/MoveFile/GetOrCreateFolder plus FileLifecycle.Rename, so all four
+// methods were unreachable. Deleted together: the port + its only witness
+// (storage_wiring_test.go's fakeDriveForPortTest), so nothing pins the shape
+// back into existence.
 
 // MediaIngestBundle is the capability bundle for the media-ingest module.
 //

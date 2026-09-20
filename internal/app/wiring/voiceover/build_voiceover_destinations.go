@@ -1,9 +1,11 @@
 // Package app — build_voiceover_destinations.go
 // Destination resolution for the canonical per-item voiceover use case.
-// A nil asset.Resolver (typical of internal/app/*_test.go stub-bootstrap
-// helpers) is replaced by a nil-tolerant NewNopDestinationResolver so the
-// ProcessVoiceoverItemUseCase constructor's nil guard passes while the
-// use case still fails closed with "missing_folder_id".
+// The real adapter is the only resolver produced here: the use case
+// tolerates a nil asset.Resolver on its own (nil DestinationResolver +
+// nil DefaultFolderResolver short-circuits to "missing_folder_id"), which
+// is why the NewNopDestinationResolver companion that used to live in this
+// file was deleted on 2026-09-20 — nothing constructed it, not even the
+// stub-bootstrap helpers it was written for.
 //
 // Extracted from buildVoiceoverService (build_bundles_voiceover.go) as
 // part of the July 2026 domain split: tts / destinations / jobs /
@@ -11,8 +13,6 @@
 package voiceover
 
 import (
-	"context"
-
 	"go.uber.org/zap"
 
 	voiceover "github.com/Marcuss-ops/PipelineGen/internal/capabilities/voiceover/service"
@@ -66,39 +66,11 @@ func BuildVoiceoverDestResolvers(
 	return destResolverAdapter, defaultFolderResolver
 }
 
-// NewNopDestinationResolver is a nil-tolerant DestinationResolver used
-// by the composition root when no asset.Resolver is wired (typical
-// of `internal/app/*_test.go` stub-bootstrap helpers that exercise
-// the composition root without the full asset resolution chain).
-//
-// The ProcessVoiceoverItemUseCase constructor panics on nil
-// DestinationResolver (a composition-time fail-closed guard), so the
-// composition root cannot pass a literal nil interface. The nop
-// resolver returns (nil, nil) — a value that the downstream
-// ResolveDestinationWithFallback function correctly maps to the
-// canonical "missing_folder_id" short-circuit, so the use case
-// surfaces a typed failure on every Execute call rather than
-// silently falling back to /tmp or some other unspecified
-// destination.
-//
-// godlike/07 NO-FAKE-AVAILABILITY: this is a TEST-BOOTSTRAP-ONLY
-// degradation. Production composition root paths always wire a
-// real asset.Resolver (the `else` branch in
-// BuildVoiceoverDestResolvers logs a Warn so operators see the
-// dev-mode shortcut). The Warn + the "missing_folder_id" failure
-// mode together preserve the no-fake-availability invariant: a
-// misconfigured composition root fails loud, not silent.
-type NewNopDestinationResolver struct{}
-
-// Compile-time assertion (AGENTS.md Pattern 0): the nop resolver
-// must structurally satisfy the narrow voiceover.DestinationResolver
-// port so a future port drift triggers a compile error here.
-var _ voiceover.DestinationResolver = NewNopDestinationResolver{}
-
-// Resolve is the canonical nop implementation: returns (nil, nil) so
-// the use case's ResolveDestinationWithFallback short-circuits to
-// "missing_folder_id" via the canonical Rule 2 + Rule 3 path
-// (destReq == nil AND defaultResolver is nil → return nil).
-func (NewNopDestinationResolver) Resolve(_ context.Context, _ *voiceover.DestinationRequest) (*voiceover.ResolvedDestination, error) {
-	return nil, nil
-}
+// NewNopDestinationResolver was DELETED here on 2026-09-20. It was a
+// nil-tolerant DestinationResolver documented as a TEST-BOOTSTRAP-ONLY
+// degradation for `internal/app/*_test.go` stub-bootstrap helpers, but no such
+// helper (and no production path) ever constructed it — its Resolve was
+// unreachable. Production still wires the real adapter built above, and the
+// use case's own ResolveDestinationWithFallback short-circuits to
+// "missing_folder_id" when the resolver returns (nil, nil), so the failure mode
+// the nop existed to produce is unchanged without it.

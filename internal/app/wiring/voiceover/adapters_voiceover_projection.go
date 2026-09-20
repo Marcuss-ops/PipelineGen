@@ -1,34 +1,49 @@
-// Package app — voiceover LifecycleProjectionUpserter +
-// VoiceoverPostCommitVerifier adapters (PR-VO-ADAPTERS-SPLIT,
-// July 2026).
+// Package app — voiceover LifecycleProjectionUpserter adapter
+// (PR-VO-ADAPTERS-SPLIT, July 2026).
 //
-// Capability cluster: FINALIZATION sidecars. Both adapters feed the
-// voiceover finalizer's 6-step atomic commit sequence:
+// Capability cluster: FINALIZATION sidecars. This adapter feeds the
+// voiceover finalizer's 6-step atomic commit sequence at step 4:
 //
 //  4. media_assets projection (UpsertVoiceoverProjectionTx, LifecycleProjectionUpserter)
-//  6. NEW post-commit verification (Verify, VoiceoverPostCommitVerifier)
+//
+// VoiceoverPostCommitVerifierAdapter (step 6, P0.4 Fase 4a) was DELETED here on
+// 2026-09-20. Its Verify had no caller — not in production, not in tests — and
+// the question "wire it at the composition root or delete it" resolves to
+// delete on evidence: the port it implemented is consumed by exactly one field
+// (voiceover.Service.postCommitVerifier), and voiceover.Service itself has NO
+// construction site anywhere in the tree (voiceover.VoiceoverDeps is built only
+// in service_test.go). The composition root builds the per-item use case
+// (ProcessVoiceoverItemUseCase) instead, whose finalize deps carry only
+// Finalizer. So there is nothing to wire the verifier into without first
+// resurrecting the retired batch Service, and a verifier that can never run is
+// worse than none: finalizer.go's own table records that an unwired verifier
+// yields "" for the verification state, which omitempty then hides — the audit
+// P0.5 divergence signal was silently absent. Music: wiring this back requires
+// deciding to bring up the batch Service again AND confirming the live per-item
+// path writes the media_assets projection the verifier checks; until both hold,
+// the delete is the honest state.
+//
+// The media-SSOT half (pgmedia.MediaVoiceoverProjectionChecker) was NOT deleted
+// with the adapter: it is a tested, engine-correct media_assets read surface in
+// its own right, and removing it would have reached into the postgres/media
+// package for no deadcode gain. VoiceoverPostCommitVerifier (the capability
+// port) and the nullable Service field also stay; both are inert, and the port
+// is what a future re-wire would implement again.
 //
 // Note: this file imports database/sql for the *sql.Tx parameter
-// type that the canonical port signatures require (see
-// internal/capabilities/voiceover/ports.go::UpsertVoiceoverProjectionTx
-// and Verify). The actual SQL work happens in
+// type that the canonical port signature requires (see
+// internal/capabilities/voiceover/ports.go::UpsertVoiceoverProjectionTx).
+// The actual SQL work happens in
 // Service.UpsertVoiceoverProjectionTx (P0.4 Fase 3a) — which is now a
-// fail-closed stub on the retired legacy branch — and in the
-// operational `voiceovers` read in VoiceoverPostCommitVerifierAdapter.
-// The media_assets half of that verification goes through
-// VoiceoverProjectionChecker (MEDIA-SSOT P2-9 Phase 2) instead of raw SQL.
-// Future PR-VO-ADAPTERS-TYPED-PORT (deadline TBD, forward-pointer)
-// will abstract the *sql.Tx parameter into a typed envelope so the
-// import collapses.
+// fail-closed stub on the retired legacy branch.
 //
-// Fail-closed: nil svc / nil db panic at construction (fail-fast per
+// Fail-closed: nil svc panics at construction (fail-fast per
 // AGENTS.md WireUp pattern).
 package voiceover
 
 import (
 	"context"
 	"database/sql"
-	"fmt"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/lifecycle"
 	voiceover "github.com/Marcuss-ops/PipelineGen/internal/capabilities/voiceover/service"
@@ -82,97 +97,6 @@ func (a *VoiceoverProjectionAdapter) UpsertVoiceoverProjectionTx(ctx context.Con
 
 var _ voiceover.LifecycleProjectionUpserter = (*VoiceoverProjectionAdapter)(nil)
 
-// ─────────────────────────────────────────────────────────────
-// PostCommitVerifier adapter (P0.4 Fase 4a, July 2026).
-//
-// Bridges the operational handle + a narrow media port →
-// voiceover.VoiceoverPostCommitVerifier.Verify. Runs two SELECTs
-// outside any tx (post-commit) to confirm both the voiceovers row
-// and the media_assets projection exist.
-//
-// MEDIA-SSOT P2-9 Phase 2: the check spans TWO tables on TWO
-// engines — `voiceovers` (operational) and `media_assets`
-// (PostgreSQL media SSOT) — so it now takes TWO handles instead of
-// one. The previous single-handle form read media_assets on the
-// operational store, which holds no committed media rows, so the
-// verifier would have reported a MISSING projection for every asset
-// the canonical writer had just committed. Splitting the reads is
-// the general shape for a two-engine verification: neither engine is
-// chosen for the other's table.
-// ─────────────────────────────────────────────────────────────
-
-// VoiceoverProjectionChecker is the narrow media-SSOT read the verifier needs:
-// whether the canonical voiceover projection of an asset exists. Declaring it
-// here keeps this adapter from naming an engine for the media half;
-// pgmedia.MediaVoiceoverProjectionChecker implements it and the composition root
-// supplies it.
-type VoiceoverProjectionChecker interface {
-	VoiceoverProjectionExists(ctx context.Context, assetID string) (bool, error)
-}
-
-type VoiceoverPostCommitVerifierAdapter struct {
-	db *sql.DB
-	// media is the media-SSOT half of the verification. nil means the media
-	// plane is closed; Verify then reports the projection as unverifiable rather
-	// than silently passing, because both possible outcomes of a failed check map
-	// to the SAME severity (StateCompletedUnverified), and passing would not.
-	media VoiceoverProjectionChecker
-}
-
-func NewVoiceoverPostCommitVerifierAdapter(db *sql.DB, media VoiceoverProjectionChecker) *VoiceoverPostCommitVerifierAdapter {
-	if db == nil {
-		panic("app.adapters_voiceover_use_case: NewVoiceoverPostCommitVerifierAdapter: db is required (*sql.DB)")
-	}
-	if media == nil {
-		panic("app.adapters_voiceover_use_case: NewVoiceoverPostCommitVerifierAdapter: media is required (VoiceoverProjectionChecker; media_assets is PostgreSQL-owned)")
-	}
-	return &VoiceoverPostCommitVerifierAdapter{db: db, media: media}
-}
-
-func (a *VoiceoverPostCommitVerifierAdapter) Verify(ctx context.Context, voiceoverID string) error {
-	// Check voiceovers row.
-	var voStatus string
-	err := a.db.QueryRowContext(ctx,
-		`SELECT status FROM voiceovers WHERE id = ?`, voiceoverID,
-	).Scan(&voStatus)
-	if err != nil {
-		if err == sql.ErrNoRows {
-			// Audit P0.5 (July 2026): severe divergence — the canonical
-			// voiceovers row itself is missing after the tx committed.
-			// Wrap with voiceover.ErrReconciliationRequired so
-			// finalizeStage can react via errors.Is and surface
-			// CompletionState=StateReconciliationRequired on
-			// FinalizeResult (godlike/07 honest signal; godlike/06
-			// typed-port contract).
-			return fmt.Errorf("post-commit verification: voiceovers row missing for id=%q: %w", voiceoverID, voiceover.ErrReconciliationRequired)
-		}
-		return fmt.Errorf("post-commit verification: voiceovers SELECT error for id=%q: %w", voiceoverID, err)
-	}
-
-	// Check media_assets projection — on the MEDIA SSOT, not on a.db.
-	//
-	// The retired single-handle form returned a bare error in BOTH the missing-row
-	// and the query-error case, so this keeps that shape exactly: the two cases
-	// stay distinguishable in the message but share the severity, which
-	// finalizeStage maps to CompletionState=StateCompletedUnverified (audit P0.5).
-	// Notably, a nil media port must NOT pass the check: an unverifiable
-	// projection is not a verified one.
-	if a.media == nil {
-		return fmt.Errorf("post-commit verification: no media-SSOT projection checker wired for id=%q (media plane closed)", voiceoverID)
-	}
-	exists, err := a.media.VoiceoverProjectionExists(ctx, voiceoverID)
-	if err != nil {
-		return fmt.Errorf("post-commit verification: media_assets lookup error for id=%q: %w", voiceoverID, err)
-	}
-	if !exists {
-		// Warn-level divergence: the canonical voiceovers row IS present (verified
-		// above) but the secondary media_assets projection is missing. Bare error
-		// (not wrapping ErrReconciliationRequired) so finalizeStage maps this to
-		// CompletionState=StateCompletedUnverified (audit P0.5).
-		return fmt.Errorf("post-commit verification: media_assets projection missing for id=%q (source='voiceover')", voiceoverID)
-	}
-
-	return nil
-}
-
-var _ voiceover.VoiceoverPostCommitVerifier = (*VoiceoverPostCommitVerifierAdapter)(nil)
+// The PostCommitVerifier adapter section lived here until 2026-09-20; see the
+// package header for why it was deleted and what has to be true before it can
+// be wired back.

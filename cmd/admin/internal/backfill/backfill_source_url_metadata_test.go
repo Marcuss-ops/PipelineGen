@@ -15,8 +15,53 @@ import (
 	"testing"
 	"time"
 
+	pgmedia "github.com/Marcuss-ops/PipelineGen/internal/platform/postgres/media"
 	_ "github.com/mattn/go-sqlite3"
 )
+
+// sqliteSourceURLMetadataSource adapts the in-memory SQLite fixture to the
+// backfill's narrow sourceURLMetadataSource port.
+//
+// The production read moved to the PostgreSQL media SSOT
+// (pgmedia.BackfillReader) because media_assets is PostgreSQL-owned and the
+// operational mirror holds no committed media rows. These tests keep pinning
+// the SELECTION rules — image rows excluded, existing keys never overwritten,
+// idempotence — against a deterministic in-memory fixture, so the adapter
+// carries the retired SQLite predicate (json_extract + `?` binds) verbatim. It
+// is test-only by construction, which is the point: no production file reads
+// media_assets from SQLite any more.
+type sqliteSourceURLMetadataSource struct{ db *sql.DB }
+
+const sqliteSourceURLMetadataPredicate = `COALESCE(media_type, '') <> 'image' AND TRIM(COALESCE(url, '')) <> '' AND json_extract(COALESCE(metadata_json, '{}'), '$.source_url') IS NULL`
+
+func (s sqliteSourceURLMetadataSource) CountSourceURLMetadataCandidates(ctx context.Context) (int, error) {
+	var matched int
+	err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM media_assets WHERE `+sqliteSourceURLMetadataPredicate).Scan(&matched)
+	return matched, err
+}
+
+func (s sqliteSourceURLMetadataSource) ListSourceURLMetadataCandidates(ctx context.Context, limit int) ([]pgmedia.SourceURLMetadataCandidate, error) {
+	query := `SELECT id, url FROM media_assets WHERE ` + sqliteSourceURLMetadataPredicate + ` ORDER BY id`
+	var args []any
+	if limit > 0 {
+		query += ` LIMIT ?`
+		args = append(args, limit)
+	}
+	rows, err := s.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []pgmedia.SourceURLMetadataCandidate
+	for rows.Next() {
+		var rec pgmedia.SourceURLMetadataCandidate
+		if err := rows.Scan(&rec.AssetID, &rec.SourceURL); err != nil {
+			return nil, err
+		}
+		out = append(out, rec)
+	}
+	return out, rows.Err()
+}
 
 // newBackfillTestDB builds an in-memory media_assets table with the
 // minimal columns the backfill touches.
@@ -92,7 +137,7 @@ func TestBackfillSourceURLMetadata_BackfillsNonImage(t *testing.T) {
 	// Legacy row with NULL media_type behaves like a non-image row.
 	insertBackfillRow(t, db, "legacy-1", "https://example.com/legacy.mp4", "", `{}`)
 
-	matched, updated, err := backfillSourceURLMetadataCanonical(context.Background(), db, &testAssetMutator{db: db}, 0)
+	matched, updated, err := backfillSourceURLMetadataCanonical(context.Background(), sqliteSourceURLMetadataSource{db: db}, &testAssetMutator{db: db}, 0)
 	if err != nil {
 		t.Fatalf("backfill: %v", err)
 	}
@@ -118,7 +163,7 @@ func TestBackfillSourceURLMetadata_DoesNotOverwriteExistingKey(t *testing.T) {
 	db := newBackfillTestDB(t)
 	insertBackfillRow(t, db, "clip-1", "https://example.com/current.mp4", "clip", `{"source_url":"https://example.com/original.mp4"}`)
 
-	matched, updated, err := backfillSourceURLMetadataCanonical(context.Background(), db, &testAssetMutator{db: db}, 0)
+	matched, updated, err := backfillSourceURLMetadataCanonical(context.Background(), sqliteSourceURLMetadataSource{db: db}, &testAssetMutator{db: db}, 0)
 	if err != nil {
 		t.Fatalf("backfill: %v", err)
 	}
@@ -134,13 +179,13 @@ func TestBackfillSourceURLMetadata_IsIdempotent(t *testing.T) {
 	db := newBackfillTestDB(t)
 	insertBackfillRow(t, db, "clip-1", "https://example.com/a.mp4", "clip", `{"title":"A"}`)
 
-	if _, updated, err := backfillSourceURLMetadataCanonical(context.Background(), db, &testAssetMutator{db: db}, 0); err != nil || updated != 1 {
+	if _, updated, err := backfillSourceURLMetadataCanonical(context.Background(), sqliteSourceURLMetadataSource{db: db}, &testAssetMutator{db: db}, 0); err != nil || updated != 1 {
 		t.Fatalf("first run: updated=%d err=%v, want 1/nil", updated, err)
 	}
 	before, _ := readBackfillRow(t, db, "clip-1")
 
 	// Second run must be a no-op (key now present).
-	matched, updated, err := backfillSourceURLMetadataCanonical(context.Background(), db, &testAssetMutator{db: db}, 0)
+	matched, updated, err := backfillSourceURLMetadataCanonical(context.Background(), sqliteSourceURLMetadataSource{db: db}, &testAssetMutator{db: db}, 0)
 	if err != nil {
 		t.Fatalf("second run: %v", err)
 	}
@@ -178,7 +223,7 @@ func TestBackfillSourceURLMetadata_RespectsLimit(t *testing.T) {
 		id := "clip-" + time.Duration(i).String() + "-" + string(rune('a'+i))
 		insertBackfillRow(t, db, id, "https://example.com/"+id+".mp4", "clip", `{}`)
 	}
-	matched, updated, err := backfillSourceURLMetadataCanonical(context.Background(), db, &testAssetMutator{db: db}, 2)
+	matched, updated, err := backfillSourceURLMetadataCanonical(context.Background(), sqliteSourceURLMetadataSource{db: db}, &testAssetMutator{db: db}, 2)
 	if err != nil {
 		t.Fatalf("backfill with limit: %v", err)
 	}

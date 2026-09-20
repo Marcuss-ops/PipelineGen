@@ -11,7 +11,15 @@
 //
 //	rateLimitedTTSProvider   wraps voiceover.TTSProvider
 //	rateLimitedPublisher     wraps voiceover.VoiceoverPublisher
-//	rateLimitedTranslator    wraps translation.TranslationPort
+//
+// rateLimitedTranslator was DELETED from this file on 2026-09-20: it had no
+// construction site anywhere in the tree. Removing it changes no runtime
+// behaviour, because the canonical path already passes the un-wrapped
+// translation.NewOllamaTranslator to translation.TranslationPort; what it does
+// remove is the illusion that translation calls are semaphore-bounded and
+// per-call-timeout-bounded. If that protection is wanted, it has to be wired as
+// a real injection site next to the TTS and publisher adapters above, not kept
+// as a satisfied-looking port implementation that nothing constructs.
 //
 // Semaphore acquire happens BEFORE timeout-derivation so the per-call
 // timeout budget covers execution only. Queue-wait is bounded by the
@@ -34,7 +42,6 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/translation"
 	voiceover "github.com/Marcuss-ops/PipelineGen/internal/capabilities/voiceover/service"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/Marcuss-ops/PipelineGen/pkg/retry"
@@ -328,29 +335,6 @@ func (r *rateLimitedPublisher) Publish(ctx context.Context, cmd voiceover.Voiceo
 	return fileID, nil
 }
 
-// ── rateLimitedTranslator ─────────────────────────────────────────────────
-
-// rateLimitedTranslator wraps a translation.TranslationPort with a bounded
-// concurrency semaphore and per-call timeout for Ollama inference calls
-// originating from the voiceover pipeline (promo translation).
-//
-// Compile-time assertion: the adapter satisfies TranslationPort.
-var _ translation.TranslationPort = (*rateLimitedTranslator)(nil)
-
-type rateLimitedTranslator struct {
-	inner   translation.TranslationPort
-	sem     chan struct{}
-	timeout time.Duration
-}
-
-func (r *rateLimitedTranslator) Translate(ctx context.Context, cmd translation.TranslationCommand) (translation.TranslationResult, error) {
-	select {
-	case r.sem <- struct{}{}:
-		defer func() { <-r.sem }()
-	case <-ctx.Done():
-		return translation.TranslationResult{}, ctx.Err()
-	}
-	timedCtx, cancel := context.WithTimeout(ctx, r.timeout)
-	defer cancel()
-	return r.inner.Translate(timedCtx, cmd)
-}
+// rateLimitedTranslator lived here until 2026-09-20. See the file header for
+// why it was deleted and what would have to exist before the protection it
+// described could be claimed.

@@ -1,0 +1,185 @@
+{
+  "_comment": "Canonical POST /api/clips/process payload (ExtractRequest). Batch 01 of 03 — clips 1-10 of the Dan Rather Big Interview (video pfaIAdqvlig, 27:17). Destination: explicit child folder 1C-q2swarUlf4JEUYHVe0Ol88MDSU8FUq ('Dolly Parton' under drive.normal_clips_source_folder 1ll2RlTaAbhnaLkAjEDBg41lAXUyo-zJ2); create_subfolder=false. Deterministic yt_pfaIAdqvlig_<startSec>_<endSec>_v1. Duration gate VELOX_YOUTUBE_MAX_SEGMENT_DURATION_SECONDS=240.",
+  "url": "https://www.youtube.com/watch?v=pfaIAdqvlig",
+  "strategy": "verify",
+  "concurrency": 3,
+  "force_keyframes": true,
+  "keep_audio": true,
+  "write_summary": true,
+  "destination": {
+    "folder_id": "1C-q2swarUlf4JEUYHVe0Ol88MDSU8FUq",
+    "create_subfolder": false
+  },
+  "segments": [
+    {
+      "start": "00:00",
+      "end": "00:52",
+      "name": "Saluti iniziali a Dollywood e ironia sul fisico",
+      "category": "celebrity_interview",
+      "source_title": "R.I.P. Dolly Parton | The Big Interview with Dan Rather",
+      "source_channel": "The Big Interview with Dan Rather",
+      "summary": "Dan Rather intervista Dolly Parton a Dollywood, scambiando complimenti affettuosi e scherzando sulla forma fisica e il vitino da vespa della cantante.",
+      "topics": [
+        "Dan Rather Dolly Parton incontro Dollywood Pigeon Forge Tennessee forma fisica vita vespa complimenti"
+      ],
+      "tags": [
+        "Dolly Parton",
+        "Dan Rather",
+        "celebrity_interview"
+      ]
+    },
+    {
+      "start": "00:52",
+      "end": "01:37",
+      "name": "Filosofia estetica tra chirurgia, trucco e attitudine interiore",
+      "category": "celebrity_interview",
+      "source_title": "R.I.P. Dolly Parton | The Big Interview with Dan Rather",
+      "source_channel": "The Big Interview with Dan Rather",
+      "summary": "Dolly paragona la cura del proprio aspetto alla toelettatura di un cavallo da esposizione, rivendicando con autoironia il ricorso a Botox e make-up uniti a un atteggiamento positivo.",
+      "topics": [
+        "cura corpo show horse chirurgia estetica lifting ritocchi Botox trucco pesante energia interiore"
+      ],
+      "tags": [
+        "Dolly Parton",
+        "Dan Rather",
+        "celebrity_interview"
+      ]
+    },
+    {
+      "start": "01:37",
+      "end": "02:27",
+      "name": "Composizione continua e canzoni nascoste in ogni cassetto",
+      "category": "celebrity_interview",
+      "source_title": "R.I.P. Dolly Parton | The Big Interview with Dan Rather",
+      "source_channel": "The Big Interview with Dan Rather",
+      "summary": "Racconta di scrivere ininterrottamente da quando aveva sette anni, ritrovando testi e appunti musicali sparsi in ogni cassetto o scatola della casa.",
+      "topics": [
+        "scrittura brani 3000 canzoni chitarra 7 anni testi cassetti biancheria terapia gioia ispirazione"
+      ],
+      "tags": [
+        "Dolly Parton",
+        "Dan Rather",
+        "celebrity_interview"
+      ]
+    },
+    {
+      "start": "02:27",
+      "end": "03:04",
+      "name": "Il processo creativo tra registratore e sincronia di testo e musica",
+      "category": "celebrity_interview",
+      "source_title": "R.I.P. Dolly Parton | The Big Interview with Dan Rather",
+      "source_channel": "The Big Interview with Dan Rather",
+      "summary": "Spiega come fissa melodie e frasi su nastro al risveglio da un sogno, notando come parole e musica le si presentino solitamente in perfetta sincronia.",
+      "topics": [
+        "processo creativo registratore nastri melodia parole risveglio sogni catalogazione idee"
+      ],
+      "tags": [
+        "Dolly Parton",
+        "Dan Rather",
+        "celebrity_interview"
+      ]
+    },
+    {
+      "start": "03:04",
+      "end": "04:10",
+      "name": "Le 'wee hours of wisdom' e la produttività al mattino presto",
+      "category": "celebrity_interview",
+      "source_title": "R.I.P. Dolly Parton | The Big Interview with Dan Rather",
+      "source_channel": "The Big Interview with Dan Rather",
+      "summary": "Descrive la sua abitudine di svegliarsi all'alba per comporre, sfruttando il silenzio e la quiete delle prime ore del giorno per assorbire idee e creare.",
+      "topics": [
+        "wee hours of wisdom sveglia presto insonnia produttività mattutina calma silenzio sonnellini Bob Hope"
+      ],
+      "tags": [
+        "Dolly Parton",
+        "Dan Rather",
+        "celebrity_interview"
+      ]
+    },
+    {
+      "start": "04:10",
+      "end": "05:00",
+      "name": "I treni nella tradizione country e la paura dell'aereo",
+      "category": "celebrity_interview",
+      "source_title": "R.I.P. Dolly Parton | The Big Interview with Dan Rather",
+      "source_channel": "The Big Interview with Dan Rather",
+      "summary": "Analizza il fascino nostalgico dei treni nella cultura country, confessando che molti artisti delle montagne preferivano viaggiare su rotaia per la paura di volare.",
+      "topics": [
+        "canzoni treni musica country Hank Williams Merle Haggard solitudine fobia volo aerei vagoni"
+      ],
+      "tags": [
+        "Dolly Parton",
+        "Dan Rather",
+        "celebrity_interview"
+      ]
+    },
+    {
+      "start": "05:00",
+      "end": "06:18",
+      "name": "Il legame con Roy Acuff e il classico 'Wabash Cannonball'",
+      "category": "celebrity_interview",
+      "source_title": "R.I.P. Dolly Parton | The Big Interview with Dan Rather",
+      "source_channel": "The Big Interview with Dan Rather",
+      "summary": "Rievoca l'affetto quasi familiare per Roy Acuff, ricordando i duetti improvvisati nei camerini del Grand Ole Opry sulle note di 'Wabash Cannonball'.",
+      "topics": [
+        "Grand Ole Opry Roy Acuff Wabash Cannonball East Tennessee camerino Porter Wagoner bluegrass"
+      ],
+      "tags": [
+        "Dolly Parton",
+        "Dan Rather",
+        "celebrity_interview"
+      ]
+    },
+    {
+      "start": "06:18",
+      "end": "06:58",
+      "name": "Canticchiando il ritornello di 'Wabash Cannonball'",
+      "category": "celebrity_interview",
+      "source_title": "R.I.P. Dolly Parton | The Big Interview with Dan Rather",
+      "source_channel": "The Big Interview with Dan Rather",
+      "summary": "Dan Rather e Dolly intonano a memoria i primi versi di 'Wabash Cannonball', celebrando la freschezza e la popolarità intramontabile del pezzo.",
+      "topics": [
+        "Wabash Cannonball intonazione ritornello memoria canora melodia orecchiabile duetto spontaneo"
+      ],
+      "tags": [
+        "Dolly Parton",
+        "Dan Rather",
+        "celebrity_interview"
+      ]
+    },
+    {
+      "start": "06:58",
+      "end": "07:37",
+      "name": "Il museo Chasing Rainbows e i costumi di 'Rhinestone'",
+      "category": "celebrity_interview",
+      "source_title": "R.I.P. Dolly Parton | The Big Interview with Dan Rather",
+      "source_channel": "The Big Interview with Dan Rather",
+      "summary": "Vengono presentati i cimeli del museo Chasing Rainbows a Dollywood, inclusi i costumi indossati con Sylvester Stallone nel film 'Rhinestone'.",
+      "topics": [
+        "Chasing Rainbows Museum Dollywood abiti scena film Rhinestone Sylvester Stallone Steel Magnolias memoria"
+      ],
+      "tags": [
+        "Dolly Parton",
+        "Dan Rather",
+        "celebrity_interview"
+      ]
+    },
+    {
+      "start": "07:37",
+      "end": "08:29",
+      "name": "L'impero Dollywood: investimenti milionari e montagne russe",
+      "category": "celebrity_interview",
+      "source_title": "R.I.P. Dolly Parton | The Big Interview with Dan Rather",
+      "source_channel": "The Big Interview with Dan Rather",
+      "summary": "Illustra il piano di espansione da 300 milioni di dollari del parco tematico e scherza sul fatto di non salire sulle montagne russe per non perdere la parrucca.",
+      "topics": [
+        "Dollywood impero turistico 300 milioni investimenti resort FireChaser Express montagne russe paura perdere parrucca"
+      ],
+      "tags": [
+        "Dolly Parton",
+        "Dan Rather",
+        "celebrity_interview"
+      ]
+    }
+  ]
+}

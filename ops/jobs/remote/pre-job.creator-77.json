@@ -1,6 +1,7 @@
 {
   "idempotency_key": "creator-77-stock-first-20260920-01",
   "job_type": "scene.composite.v1",
+  "copy_only": true,
   "video_name": "creator-77 first pre-job — stock + youtube source",
   "script_text": "Connection test for the remote worker: one stock chunk followed by one youtube-derived clip.",
   "scenes": [

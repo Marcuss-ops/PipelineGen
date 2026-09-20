@@ -1,0 +1,185 @@
+{
+  "_comment": "Canonical POST /api/clips/process payload (ExtractRequest). Batch 02 of 03 — clips 11-20 of the Dan Rather Big Interview (video pfaIAdqvlig, 27:17). Destination: explicit child folder 1C-q2swarUlf4JEUYHVe0Ol88MDSU8FUq ('Dolly Parton' under drive.normal_clips_source_folder 1ll2RlTaAbhnaLkAjEDBg41lAXUyo-zJ2); create_subfolder=false. Deterministic yt_pfaIAdqvlig_<startSec>_<endSec>_v1. Duration gate VELOX_YOUTUBE_MAX_SEGMENT_DURATION_SECONDS=240.",
+  "url": "https://www.youtube.com/watch?v=pfaIAdqvlig",
+  "strategy": "verify",
+  "concurrency": 3,
+  "force_keyframes": true,
+  "keep_audio": true,
+  "write_summary": true,
+  "destination": {
+    "folder_id": "1C-q2swarUlf4JEUYHVe0Ol88MDSU8FUq",
+    "create_subfolder": false
+  },
+  "segments": [
+    {
+      "start": "08:29",
+      "end": "09:34",
+      "name": "Il senso degli affari ereditato dall'etica contadina del padre",
+      "category": "celebrity_interview",
+      "source_title": "R.I.P. Dolly Parton | The Big Interview with Dan Rather",
+      "source_channel": "The Big Interview with Dan Rather",
+      "summary": "Attribuisce il proprio fiuto commerciale al padre, un uomo analfabeta ma ingegnoso e instancabile, capace di sostenere dodici figli con il buon senso montanaro.",
+      "topics": [
+        "padre analfabetismo intelligenza pratica baratto horse trading etica lavoro agricoltura edilizia"
+      ],
+      "tags": [
+        "Dolly Parton",
+        "Dan Rather",
+        "celebrity_interview"
+      ]
+    },
+    {
+      "start": "09:34",
+      "end": "10:30",
+      "name": "L'unione di talento materno ed etica paterna: le edizioni musicali",
+      "category": "celebrity_interview",
+      "source_title": "R.I.P. Dolly Parton | The Big Interview with Dan Rather",
+      "source_channel": "The Big Interview with Dan Rather",
+      "summary": "Spiega di aver fuso la musicalità ereditata dalla madre con il rigore del padre, decidendo fin da giovane di fondare la propria casa editrice per proteggere i guadagni.",
+      "topics": [
+        "musica madre etica lavoro padre industria musicale edizioni musicali publishing tutela guadagni"
+      ],
+      "tags": [
+        "Dolly Parton",
+        "Dan Rather",
+        "celebrity_interview"
+      ]
+    },
+    {
+      "start": "10:30",
+      "end": "11:36",
+      "name": "L'arrivo a Nashville a 18 anni e la confidenza con gli uomini",
+      "category": "celebrity_interview",
+      "source_title": "R.I.P. Dolly Parton | The Big Interview with Dan Rather",
+      "source_channel": "The Big Interview with Dan Rather",
+      "summary": "Racconta che crescere circondata da fratelli e zii le permise di comprendere la mentalità maschile senza farsi intimidire dai dirigenti dell'industria discografica.",
+      "topics": [
+        "Nashville 18 anni fratelli maschi psicologia maschile sicurezza talento aspetto appariscente affari"
+      ],
+      "tags": [
+        "Dolly Parton",
+        "Dan Rather",
+        "celebrity_interview"
+      ]
+    },
+    {
+      "start": "11:36",
+      "end": "12:52",
+      "name": "Gestire le avances maschili e chiudere affari senza compromessi",
+      "category": "celebrity_interview",
+      "source_title": "R.I.P. Dolly Parton | The Big Interview with Dan Rather",
+      "source_channel": "The Big Interview with Dan Rather",
+      "summary": "Spiega come neutralizzava le avances con garbo ma fermezza, ribadendo di non essere mai scesa a compromessi sessuali e di chiudere i contratti prima che la sottovalutassero.",
+      "topics": [
+        "flirt avances confini professionali accordi commerciali fermezza indipendenza abbigliamento vistoso"
+      ],
+      "tags": [
+        "Dolly Parton",
+        "Dan Rather",
+        "celebrity_interview"
+      ]
+    },
+    {
+      "start": "12:52",
+      "end": "13:57",
+      "name": "L'amore di Elvis per 'I Will Always Love You' e l'invito in studio",
+      "category": "celebrity_interview",
+      "source_title": "R.I.P. Dolly Parton | The Big Interview with Dan Rather",
+      "source_channel": "The Big Interview with Dan Rather",
+      "summary": "Ricorda l'affetto di Elvis per 'I Will Always Love You', che il cantante intonò a Priscilla il giorno del divorzio, portando all'organizzazione di una sessione d'incisione.",
+      "topics": [
+        "Elvis Presley Priscilla divorzio I Will Always Love You sessione registrazione Nashville invito studio"
+      ],
+      "tags": [
+        "Dolly Parton",
+        "Dan Rather",
+        "celebrity_interview"
+      ]
+    },
+    {
+      "start": "13:57",
+      "end": "14:45",
+      "name": "L'ultimatum di Colonel Parker sui diritti di pubblicazione",
+      "category": "celebrity_interview",
+      "source_title": "R.I.P. Dolly Parton | The Big Interview with Dan Rather",
+      "source_channel": "The Big Interview with Dan Rather",
+      "summary": "Descrive la telefonata del manager Colonel Parker che esigeva la metà dei diritti editoriali del brano e il suo categorico rifiuto a cedere un copyright già affermatosi come hit.",
+      "topics": [
+        "Colonel Tom Parker pretesa 50 percento publishing diritti d'autore rifiuto Dolly Parton tutela copyright"
+      ],
+      "tags": [
+        "Dolly Parton",
+        "Dan Rather",
+        "celebrity_interview"
+      ]
+    },
+    {
+      "start": "14:45",
+      "end": "15:29",
+      "name": "Il dolore della rinuncia e la lungimiranza patrimoniale",
+      "category": "celebrity_interview",
+      "source_title": "R.I.P. Dolly Parton | The Big Interview with Dan Rather",
+      "source_channel": "The Big Interview with Dan Rather",
+      "summary": "Confessa la delusione provata nel dover annunciare che Elvis non avrebbe inciso la traccia, difesa tuttavia a protezione dell'eredità futura della sua famiglia.",
+      "topics": [
+        "delusione pianto rinuncia integrità artistica eredità familiare publishing company intuito"
+      ],
+      "tags": [
+        "Dolly Parton",
+        "Dan Rather",
+        "celebrity_interview"
+      ]
+    },
+    {
+      "start": "15:29",
+      "end": "16:20",
+      "name": "Il trionfo planetario con Whitney Houston e la piena proprietà dei diritti",
+      "category": "celebrity_interview",
+      "source_title": "R.I.P. Dolly Parton | The Big Interview with Dan Rather",
+      "source_channel": "The Big Interview with Dan Rather",
+      "summary": "Sottolinea come il mantenimento del 100% dei diritti d'autore abbia dato i suoi frutti storici quando Whitney Houston rese la canzone un successo globale travolgente.",
+      "topics": [
+        "Whitney Houston The Bodyguard David Foster Kevin Costner 100 percento diritti royalties mondiali"
+      ],
+      "tags": [
+        "Dolly Parton",
+        "Dan Rather",
+        "celebrity_interview"
+      ]
+    },
+    {
+      "start": "16:20",
+      "end": "17:06",
+      "name": "Lo shock del primo ascolto alla guida verso Brentwood",
+      "category": "celebrity_interview",
+      "source_title": "R.I.P. Dolly Parton | The Big Interview with Dan Rather",
+      "source_channel": "The Big Interview with Dan Rather",
+      "summary": "Rivive il brivido provato sentendo per caso l'attacco a cappella di Whitney alla radio mentre guidava verso casa, temendo quasi di avere un infarto per l'emozione.",
+      "topics": [
+        "guida autoradio Nashville Brentwood introduzione a cappella brivido emozione infarto sfiorato"
+      ],
+      "tags": [
+        "Dolly Parton",
+        "Dan Rather",
+        "celebrity_interview"
+      ]
+    },
+    {
+      "start": "17:06",
+      "end": "17:47",
+      "name": "Il record globale di cover di 'Jolene' e la proposta di Jane Fonda",
+      "category": "celebrity_interview",
+      "source_title": "R.I.P. Dolly Parton | The Big Interview with Dan Rather",
+      "source_channel": "The Big Interview with Dan Rather",
+      "summary": "Ricorda che 'Jolene' è il suo brano più reinterpretato a livello planetario e introduce l'offerta cinematografica ricevuta da Jane Fonda per il film '9 to 5'.",
+      "topics": [
+        "Jolene cover mondiali garage band lingue film 9 to 5 Jane Fonda offerta recitazione"
+      ],
+      "tags": [
+        "Dolly Parton",
+        "Dan Rather",
+        "celebrity_interview"
+      ]
+    }
+  ]
+}

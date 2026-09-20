@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/ai/semantic"
 	clips "github.com/Marcuss-ops/PipelineGen/internal/capabilities/clips"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/drive"
 )
@@ -120,41 +119,11 @@ func (a *ClipsDriveAdapter) ListFiles(ctx context.Context, query string) ([]clip
 }
 
 // ── Meta writer adapter ──────────────────────────────────────────
-
-// ClipMetaWriterAdapter wraps semantic.MetadataWriterPort to satisfy
-// clips.ClipMetaWriterPort. GeneratePayload translates the narrowed
-// ClipMetaWriteRequest → concrete semantic.WriteRequest at the
-// adapter boundary, executes the call, and projects the result onto
-// ClipMetaPayload so callers never import the SDK.
-type ClipMetaWriterAdapter struct {
-	inner semantic.MetadataWriterPort
-}
-
-// Compile-time assertion: ClipMetaWriterAdapter satisfies clips.ClipMetaWriterPort.
-var _ clips.ClipMetaWriterPort = (*ClipMetaWriterAdapter)(nil)
-
-func (a *ClipMetaWriterAdapter) GeneratePayload(ctx context.Context, req clips.ClipMetaWriteRequest) (*clips.ClipMetaPayload, string, error) {
-	concreteReq := semantic.WriteRequest{
-		AssetID:   req.AssetID,
-		AssetType: req.AssetType,
-		MediaType: req.MediaType,
-		Source:    req.Source,
-		Generator: req.Generator,
-		Style:     req.Style,
-		Prompt:    req.Prompt,
-		LocalPath: req.LocalPath,
-	}
-	payload, status, err := a.inner.GeneratePayload(ctx, concreteReq)
-	if err != nil {
-		return nil, status, err
-	}
-	if payload == nil {
-		return nil, status, nil
-	}
-	return &clips.ClipMetaPayload{
-		SearchText:          payload.SearchText,
-		Tags:                payload.Tags,
-		SemanticDescription: payload.SemanticDescription,
-		RetrievalScore:      payload.RetrievalScore,
-	}, status, nil
-}
+//
+// ClipMetaWriterAdapter was DELETED here on 2026-09-20. It was never
+// constructed anywhere in the tree, and clips.ClipMetaWriterPort — the port it
+// was the sole implementer of — has no consumer either: no field, parameter or
+// return value in the tree is typed by it. The adapter was therefore an
+// implementer waiting for a port nobody read; the port is kept (declared in
+// internal/capabilities/clips/ports.go) because it documents the intended
+// narrow surface, but wiring it needs both a construction site and a consumer.

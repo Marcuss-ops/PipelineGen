@@ -6,9 +6,17 @@
 // Translator) + the dead MetadataModel field (wired at composition
 // time but with 0 readers in any use-case site). The canonical
 // Fase 9 step-2 surface TranslationPort remains the SOLE owner of
-// the translation contract; the canonical Modern-side surfaces
-// (AssocSvc + DriveSvc + JobsSvc + HarvestSvc) remain the SOLE
-// owner of the post-Phase-2 contracts.
+// the translation contract.
+//
+// CLIPSERVICES DRIVE/JOBS RETIREMENT (2026-09-20): DriveSvc and JobsSvc were
+// the remaining two fields of that same legacy fallback, and they are now gone
+// too. The July note above described them as canonical Modern-side owners, but
+// the follow-up change that retired the ClipServices postprocessor path
+// (wire_script_postprocess_ai.go: "the old ClipServices/Drive/Jobs/remote
+// fallback is intentionally gone") removed their last reader, leaving two
+// fields + two interfaces whose only implementers (a composition-root
+// driveCheckServiceAdapter and jobsEnqueueServiceAdapter) were never
+// constructed. AssocSvc + HarvestSvc remain, and they do have readers.
 package usecase
 
 import (
@@ -42,8 +50,6 @@ type ClipServices struct {
 	// original phrase).
 	TranslationPort translation.TranslationPort
 	AssocSvc        AssocSearchService
-	DriveSvc        DriveCheckService
-	JobsSvc         JobEnqueueService
 	ArtlistFolder   string
 	ImgSvc          ImageGenService
 }
@@ -60,20 +66,20 @@ type AssociationService interface {
 	BuildCandidates(ctx context.Context, req any) (any, error)
 }
 
-// DriveCheckService narrows drive check operations.
-type DriveCheckService interface {
-	FileIsNotTrashed(ctx context.Context, fileID string) (bool, error)
-}
+// DriveCheckService was DELETED here on 2026-09-20 with ClipServices.DriveSvc:
+// its only implementer was the unwired composition-root driveCheckServiceAdapter
+// and the field had no reader left after the ClipServices postprocessor
+// fallback was retired.
 
 // ImageSearchService narrows image search operations.
 type ImageSearchService interface {
 	Search(ctx context.Context, query string, limit int) ([]any, error)
 }
 
-// JobEnqueueService narrows job enqueue operations.
-type JobEnqueueService interface {
-	Enqueue(ctx context.Context, req any) (any, error)
-}
+// JobEnqueueService was DELETED here on 2026-09-20 with ClipServices.JobsSvc:
+// its only implementer was the unwired composition-root jobsEnqueueServiceAdapter
+// and the field had no reader left after the ClipServices postprocessor
+// fallback was retired.
 
 // HarvestService narrows harvest operations.
 type HarvestService interface {

@@ -173,27 +173,6 @@ func TestIsKnownRightsStatusRejectsDrift(t *testing.T) {
 	}
 }
 
-// ── FeedbackAction ────────────────────────────────────────────
-
-func TestIsKnownFeedbackActionAcceptsCanonical(t *testing.T) {
-	for _, a := range []FeedbackAction{
-		FeedbackAccepted, FeedbackRejected, FeedbackReplaced,
-		FeedbackTrimmed, FeedbackUsedSuccessful,
-	} {
-		assert.Truef(t, IsKnownFeedbackAction(a),
-			"canonical FeedbackAction %q MUST be accepted", a)
-	}
-}
-
-func TestIsKnownFeedbackActionRejectsDrift(t *testing.T) {
-	for _, a := range []FeedbackAction{
-		"", "ACCEPTED", "ignore", "queue", "BURN",
-	} {
-		assert.Falsef(t, IsKnownFeedbackAction(a),
-			"uncanonical FeedbackAction %q MUST be rejected", a)
-	}
-}
-
 // ── Typed-sentinel envelope sanity ────────────────────────────
 
 // TestErrorSentinelsAreDistinctAndNonEmpty guards against
@@ -208,7 +187,6 @@ func TestErrorSentinelsAreDistinctAndNonEmpty(t *testing.T) {
 		"ErrInvalidSlotKind":                ErrInvalidSlotKind,
 		"ErrApprovalRequired":               ErrApprovalRequired,
 		"ErrCandidateMaterializationFailed": ErrCandidateMaterializationFailed,
-		"ErrInvalidFeedbackAction":          ErrInvalidFeedbackAction,
 		"ErrCandidateNotFound":              ErrCandidateNotFound,
 	}
 	seen := make(map[string]string, len(sentinels))
@@ -250,4 +228,3 @@ var _ Origin = OriginManual
 var _ DiscoveryStatus = DiscoverySearched
 var _ MaterializationStatus = MaterializationHot // canonical hot-tier pin
 var _ RightsStatus = RightsVerified
-var _ FeedbackAction = FeedbackAccepted
