@@ -12,7 +12,7 @@ import (
 // no media details reader wired, GetMedia must surface a typed error rather
 // than report a missing asset for a catalog it cannot read.
 func TestClipsRegistryGetMedia_FailsClosedWithoutMediaDetailsReader(t *testing.T) {
-	registry := NewClipsRegistryWithLogger(nil, nil, nil, nil, nil)
+	registry := NewClipsRegistryWithLogger(nil, nil, nil, nil)
 	rec, err := registry.GetMedia(context.Background(), "clip-1")
 	if err == nil {
 		t.Fatal("expected a typed fail-closed error when no media details reader is wired")
@@ -27,7 +27,7 @@ func TestClipsRegistryGetMedia_FailsClosedWithoutMediaDetailsReader(t *testing.T
 // the media engine instead of this capability naming the legacy SQLite service.
 func TestClipsRegistry_SatisfiesAssetDetailsReaderPort(t *testing.T) {
 	var _ AssetDetailsReader = (*stubArtifactsDetailsReader)(nil)
-	if registry := NewClipsRegistryWithLogger(nil, &stubArtifactsDetailsReader{}, nil, nil, nil); registry == nil {
+	if registry := NewClipsRegistryWithLogger(&stubArtifactsDetailsReader{}, nil, nil, nil); registry == nil {
 		t.Fatal("expected a registry for a wired details reader")
 	}
 }

@@ -137,9 +137,9 @@ func buildIngestService(
 	// the SSOT. nil means the media plane is closed and the listing fails
 	// closed — never dbs.Main.
 	mediaDriveFileIDs := mediaDriveFileListerFromCommitter(canonicalCommitter)
-	clipRegistry := artifacts.NewClipsRegistryWithLogger(dbs.Main.DB, mediaDetails, mediaProcessing, canonicalCommitter, log)
+	clipRegistry := artifacts.NewClipsRegistryWithLogger(mediaDetails, mediaProcessing, canonicalCommitter, log)
 	clipLifecycle := NewLifecycleFromDeps(&AssetLifecycleDeps{Registry: clipRegistry, Publisher: publisher, DriveReader: driveUploader, AssetIndex: search.AssetIndexService, Store: ingest.NewClipStoreAdapter(dbs.Main.DB, mediaRetirer, mediaDetails, mediaLocations, mediaProcessing, mutationsDisp, mediaDriveFileIDs)}, log)
-	stockRegistry := artifacts.NewClipsRegistryWithLogger(dbs.Main.DB, mediaDetails, mediaProcessing, canonicalCommitter, log)
+	stockRegistry := artifacts.NewClipsRegistryWithLogger(mediaDetails, mediaProcessing, canonicalCommitter, log)
 	stockLifecycle := NewLifecycleFromDeps(&AssetLifecycleDeps{Registry: stockRegistry, Publisher: publisher, DriveReader: driveUploader, AssetIndex: search.AssetIndexService, Store: ingest.NewClipStoreAdapter(dbs.Main.DB, mediaRetirer, mediaDetails, mediaLocations, mediaProcessing, mutationsDisp, mediaDriveFileIDs)}, log)
 	return ingest.NewService(cfg, log, downloader.NewMediaDownloader(10*time.Minute), map[ingest.Kind]*ingest.Pipeline{
 		ingest.KindImage:     {Kind: ingest.KindImage, DefaultSource: "image", RootFolderID: cfg.Drive.ImagesFolder(), Lifecycle: imagesLifecycle},

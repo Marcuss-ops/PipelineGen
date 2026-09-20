@@ -14,9 +14,10 @@ package artifacts
 import (
 	"context"
 	"errors"
-	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"sync/atomic"
 	"testing"
+
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -65,7 +66,6 @@ var _ mutations.AssetMutationDispatcher = (*pr7StubDispatcher)(nil)
 // surface that actually rejects the call.
 func TestPR7_ClipsRegistry_UpsertMedia_NilDispatcher_FailClosed(t *testing.T) {
 	r := NewClipsRegistry(
-		nil, // db
 		nil, // querySvc
 		nil, // processing
 		nil, // committer nil → strict fail-closed

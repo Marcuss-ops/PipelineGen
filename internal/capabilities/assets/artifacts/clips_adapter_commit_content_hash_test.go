@@ -48,7 +48,7 @@ func TestClipsRegistryUpsertMediaSendsTheContentAddressNotTheLegacyMD5(t *testin
 	}
 
 	committer := &commitRequestCapturingCommitter{}
-	registry := NewClipsRegistry(nil, nil, nil, committer)
+	registry := NewClipsRegistry(nil, nil, committer)
 
 	err := registry.UpsertMedia(context.Background(), &MediaRecord{
 		ID:            "asset-content-address",
