@@ -33,6 +33,12 @@ credentials.json
 token.json
 token_full.json
 
+# Host-specific systemd drop-in recording the operator's Drive credential /
+# token file paths (VELOX_CREDENTIALS_FILE, VELOX_TOKEN_FILE). Host state, not
+# source — the canonical location is /etc/systemd/system/pipelinegen.service.d/
+# (see scripts/systemd/README.md). Never track it.
+scripts/systemd/pipelinegen.service.d/drive-auth.conf
+
 # Production config — never commit real credentials, folder IDs, or IPs
 config.yaml
 !config.example.yaml
