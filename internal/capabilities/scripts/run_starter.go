@@ -35,15 +35,6 @@ type GenerationRunStarter struct {
 	repo   RunRepository
 }
 
-// NewGenerationRunStarter constructs the starter with a runner for
-// background execution. When runner is nil, Start still creates the
-// run but no background execution is launched.
-func NewGenerationRunStarter(runner *Runner) *GenerationRunStarter {
-	return &GenerationRunStarter{
-		runner: runner,
-	}
-}
-
 // NewGenerationRunStarterWithRepo constructs the transport-side starter with
 // durable run persistence. The runner is optional because the canonical job
 // worker may own execution; the run must still be created before submission.

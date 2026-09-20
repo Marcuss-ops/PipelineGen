@@ -75,15 +75,6 @@ func NewService(
 	}
 }
 
-// SetCombinedAudioRenderer wires the production audio execution port after
-// the composition root has built the media adapter. Combined jobs fail closed
-// until this port is present; chunked jobs remain independent.
-func (s *Service) SetCombinedAudioRenderer(renderer CombinedAudioRenderer) {
-	if s != nil && s.runner != nil {
-		s.runner.SetCombinedAudioRenderer(renderer)
-	}
-}
-
 // SetScriptDocsFolderID wires the configured default script documents
 // destination (PIPELINEGEN_SCRIPT_DOCS_FOLDER_ID). A docs.enabled=true run
 // fails closed at run start when neither the request nor this default
