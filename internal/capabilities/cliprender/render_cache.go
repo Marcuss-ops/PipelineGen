@@ -76,6 +76,14 @@ type RenderCache interface {
 	Put(ctx context.Context, rec *RenderCacheRecord) error
 }
 
+// ChunkRenderCache is the segmented-render cache contract. A whole-clip
+// fingerprint is intentionally insufficient once one sealed plan produces
+// multiple certified artifacts; the half-open frame range is part of the key.
+type ChunkRenderCache interface {
+	GetChunk(ctx context.Context, fingerprint string, startFrame, endFrame int64) (*RenderCacheRecord, error)
+	PutChunk(ctx context.Context, fingerprint string, startFrame, endFrame int64, rec *RenderCacheRecord) error
+}
+
 // ErrCacheMiss is returned when no cache entry exists for a fingerprint.
 var ErrCacheMiss = errors.New("clip.render cache: miss")
 
@@ -140,10 +148,92 @@ func ensureRenderCacheTable(ctx context.Context, db *sql.DB) error {
 		);
 		CREATE INDEX IF NOT EXISTS idx_clip_render_cache_asset
 			ON clip_render_cache (asset_id);
+		CREATE TABLE IF NOT EXISTS clip_render_chunk_cache (
+			fingerprint  TEXT NOT NULL,
+			frame_start  BIGINT NOT NULL,
+			frame_end    BIGINT NOT NULL,
+			asset_id     TEXT NOT NULL,
+			storage_key  TEXT NOT NULL DEFAULT '',
+			artifact_url TEXT NOT NULL DEFAULT '',
+			content_type TEXT NOT NULL DEFAULT '',
+			sha256       TEXT NOT NULL,
+			size_bytes   BIGINT NOT NULL,
+			duration_sec REAL NOT NULL DEFAULT 0,
+			width        INTEGER NOT NULL DEFAULT 0,
+			height       INTEGER NOT NULL DEFAULT 0,
+			fps_num      INTEGER NOT NULL DEFAULT 0,
+			fps_den      INTEGER NOT NULL DEFAULT 1,
+			backend      TEXT NOT NULL DEFAULT '',
+			created_at   TEXT NOT NULL DEFAULT '',
+			PRIMARY KEY (fingerprint, frame_start, frame_end)
+		);
+		CREATE INDEX IF NOT EXISTS idx_clip_render_chunk_cache_asset
+			ON clip_render_chunk_cache (asset_id);
 	`
 	_, err := db.ExecContext(ctx, ddl)
 	if err != nil {
 		return fmt.Errorf("clip.render cache: ensure table: %w", err)
+	}
+	return nil
+}
+
+func (c *pgRenderCache) GetChunk(ctx context.Context, fingerprint string, startFrame, endFrame int64) (*RenderCacheRecord, error) {
+	fingerprint = strings.ToLower(strings.TrimSpace(fingerprint))
+	if fingerprint == "" || startFrame < 0 || endFrame <= startFrame {
+		return nil, fmt.Errorf("clip.render chunk cache: fingerprint and valid frame range are required")
+	}
+	if c == nil || c.db == nil {
+		return nil, fmt.Errorf("clip.render chunk cache: not wired (media DB nil)")
+	}
+	const q = `
+		SELECT c.fingerprint, c.asset_id, c.storage_key, c.artifact_url, c.content_type,
+		       c.sha256, c.size_bytes, c.duration_sec, c.width, c.height, c.fps_num, c.fps_den, c.backend
+		FROM clip_render_chunk_cache c
+		JOIN media_assets a ON a.id = c.asset_id AND a.content_sha256 = c.sha256
+		WHERE c.fingerprint = $1 AND c.frame_start = $2 AND c.frame_end = $3
+		  AND a.lifecycle_state = 'ACTIVE' AND a.deleted_at = ''`
+	row := c.db.QueryRowContext(ctx, q, fingerprint, startFrame, endFrame)
+	var r RenderCacheRecord
+	var backend string
+	if err := row.Scan(&r.Fingerprint, &r.AssetID, &r.StorageKey, &r.ArtifactURL, &r.ContentType,
+		&r.SHA256, &r.SizeBytes, &r.DurationSec, &r.Width, &r.Height, &r.FPSNum, &r.FPSDen, &backend); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, ErrCacheMiss
+		}
+		return nil, fmt.Errorf("clip.render chunk cache: get %q [%d,%d): %w", fingerprint, startFrame, endFrame, err)
+	}
+	r.Backend = RenderBackend(backend)
+	return &r, nil
+}
+
+func (c *pgRenderCache) PutChunk(ctx context.Context, fingerprint string, startFrame, endFrame int64, rec *RenderCacheRecord) error {
+	fingerprint = strings.ToLower(strings.TrimSpace(fingerprint))
+	if fingerprint == "" || startFrame < 0 || endFrame <= startFrame {
+		return fmt.Errorf("clip.render chunk cache: fingerprint and valid frame range are required")
+	}
+	if rec == nil || strings.TrimSpace(rec.SHA256) == "" || rec.SizeBytes <= 0 {
+		return fmt.Errorf("clip.render chunk cache: record/sha256/size are required")
+	}
+	if c == nil || c.db == nil {
+		return fmt.Errorf("clip.render chunk cache: not wired (media DB nil)")
+	}
+	const q = `
+		INSERT INTO clip_render_chunk_cache
+			(fingerprint, frame_start, frame_end, asset_id, storage_key, artifact_url, content_type,
+			 sha256, size_bytes, duration_sec, width, height, fps_num, fps_den, backend, created_at)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,NOW()::text)
+		ON CONFLICT (fingerprint, frame_start, frame_end) DO UPDATE SET
+			asset_id=EXCLUDED.asset_id, storage_key=EXCLUDED.storage_key,
+			artifact_url=EXCLUDED.artifact_url, content_type=EXCLUDED.content_type,
+			sha256=EXCLUDED.sha256, size_bytes=EXCLUDED.size_bytes,
+			duration_sec=EXCLUDED.duration_sec, width=EXCLUDED.width, height=EXCLUDED.height,
+			fps_num=EXCLUDED.fps_num, fps_den=EXCLUDED.fps_den, backend=EXCLUDED.backend,
+			created_at=NOW()::text`
+	_, err := c.db.ExecContext(ctx, q, fingerprint, startFrame, endFrame, rec.AssetID, rec.StorageKey,
+		rec.ArtifactURL, rec.ContentType, strings.ToLower(rec.SHA256), rec.SizeBytes, rec.DurationSec,
+		rec.Width, rec.Height, rec.FPSNum, rec.FPSDen, string(rec.Backend))
+	if err != nil {
+		return fmt.Errorf("clip.render chunk cache: put %q [%d,%d): %w", fingerprint, startFrame, endFrame, err)
 	}
 	return nil
 }

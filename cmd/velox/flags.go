@@ -16,7 +16,8 @@ Usage:
   velox poll     <job_id> [--timeout 30m] [--interval 3s] [--json]
   velox replay   <job_id> [--json]
   velox download <asset_id> [--source SOURCE] [-o FILE]
-  velox search   "<query>" [--source SOURCE] [--limit N] [--universe U] [--json]
+  velox search   "<query>" [--source SOURCE] [--kind ASSET_KIND] [--role SEMANTIC_ROLE]
+                 [--limit N] [--universe U] [--json]
   velox jobs     [--json]
 
 Environment:

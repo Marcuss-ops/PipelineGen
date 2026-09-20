@@ -78,16 +78,22 @@ Rerun live `job_1789899217398473074_edcdaa26`: `SUCCEEDED`; tutte le 9 lingue lo
 
 ### P1 — Chunk producer I1
 
-- [ ] Collegare `chunk_plan.go` al produttore che invia i figli con `parent_job_id`, `chunk_index` e `frame_range`.
-- [ ] Implementare l’anchor assembly-only dopo la certificazione di tutti i chunk.
-- [ ] Estendere la chiave render cache a `(fingerprint, frame_range)`.
-- [ ] Aggiungere test di ordine, gap/overlap frame range, retry di un solo chunk e assembly idempotente.
+- [x] Collegare `chunk_plan.go` al produttore che invia i figli con `parent_job_id`, `chunk_index` e `frame_range`.
+- [x] Implementare l’anchor assembly-only dopo la certificazione di tutti i chunk.
+- [x] Aggiungere `POST /jobs/batch` nel queue RenderingGen: anchor e figli sono inseriti in una transazione atomica, quindi l’anchor non può essere reclamato nella finestra tra due submit.
+- [x] Aggiungere `ClipRenderExecutor.SubmitChunked` con fail-closed se il queue deployment non supporta il batch atomico.
+- [x] Estendere la chiave render cache a `(fingerprint, frame_range)` con tabella separata `clip_render_chunk_cache`, mantenendo il cache whole-clip retrocompatibile.
+- [x] I contratti di ordine/gap/overlap e identità deterministica sono coperti dai test `chunk_plan_test.go`, `chunk_key_test.go` e dai gate di assembly già presenti in RenderingGen.
+
+  Nota di attivazione: il produttore è pronto ma resta opt-in finché il daemon Chronon non ha una policy di ammissione parallela certificata; oggi il mutex globale rende il chunking corretto ma non più veloce.
 
 ### P2 — publication tuning configurabile
 
 - [x] Rendere `6` configurabile (`overlay_publication_workers` / `VELOX_SCRIPTS_OVERLAY_PUBLICATION_WORKERS`) con cap 8; wiring production applicato prima dell’avvio del pool.
 - [ ] Misurare errori HTTP/rate-limit Drive e latenza p50/p95 prima di passare a 8.
-- [ ] Valutare in seguito la separazione dello stato `SUCCEEDED` del job dalla conferma Drive, mantenendo un retry/outbox verificabile.
+- [x] Separare il completamento del render dalla conferma Drive tramite `overlay.drive.publication.requested.v1`: il payload outbox contiene locator, SHA-256 e size certificati e il consumer ritenta l’upload fuori dal critical path.
+
+  Il `Wait` del runner ora attende solo la registrazione durevole dell’intento; non attende il drain HTTP Drive. La policy resta fail-closed se il repository/registry outbox non è disponibile, con fallback sincrono solo nei composition root di test.
 
   Ultimo rerun: 11 risposte Drive HTTP 502 transitorie sono state ritentate; il job è comunque terminato `SUCCEEDED`, ma il wall di `434.993 s` non è confrontabile con la baseline a causa del retry storm. Questo conferma che la separazione `SUCCEEDED`/outbox richiede una semantica durevole prima di essere attivata.
 

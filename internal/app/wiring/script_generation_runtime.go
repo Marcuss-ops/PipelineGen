@@ -290,14 +290,21 @@ func BuildScriptGenerationRuntime(cfg *config.Config, root *ComposeRoot, runRepo
 			// language. The configured folder is only the root; an empty
 			// ScriptsGenerateFolder must not silently flatten the overlay tree.
 			overlayPublisher.SetScriptLanguageRouting(true)
-			renderEnqueuer.SetArtifactPublisher(overlayPublisher)
+			publicationPublisher, pubErr := wireDurableOverlayPublisher(root, overlayPublisher)
+			if pubErr != nil {
+				return nil, pubErr
+			}
+			renderEnqueuer.SetArtifactPublisher(publicationPublisher)
 			// RenderingGen has already certified immutable bytes when the
 			// enqueuer returns. Drive publication and analytics therefore run on
 			// the bounded post-render pool; the runner joins it before COMPLETE.
 			renderEnqueuer.SetPublicationWorkers(cfg.Scripts.OverlayPublicationWorkers)
 			renderEnqueuer.SetAsyncPublication(true)
 			runner.SetOverlayPublicationDrainer(renderEnqueuer)
-			log.Info("overlay artifact Drive publisher wired", zap.String("parent_folder_id", overlayParentFolderID), zap.String("child_folder", "overlay"))
+			log.Info("overlay artifact Drive publisher wired",
+				zap.String("parent_folder_id", overlayParentFolderID),
+				zap.String("child_folder", "overlay"),
+				zap.Bool("durable_outbox", publicationPublisher != overlayPublisher))
 		} else {
 			return nil, fmt.Errorf("build overlay render runtime: automatic Drive publisher is required")
 		}

@@ -89,11 +89,12 @@ func TestStoreRoundTripWritesNoTempFiles(t *testing.T) {
 // ── command-level tests ───────────────────────────────────────────────
 
 type fakeServer struct {
-	mu          sync.Mutex
-	idemKeys    []string
-	statusCalls int
-	submitCount int
-	downloadGET bool
+	mu             sync.Mutex
+	idemKeys       []string
+	statusCalls    int
+	submitCount    int
+	downloadGET    bool
+	lastSearchBody string
 }
 
 func (f *fakeServer) handler() http.Handler {
@@ -129,12 +130,15 @@ func (f *fakeServer) handler() http.Handler {
 	})
 	mux.HandleFunc("/api/media/search", func(w http.ResponseWriter, r *http.Request) {
 		body, _ := io.ReadAll(r.Body)
+		f.mu.Lock()
+		f.lastSearchBody = string(body)
+		f.mu.Unlock()
 		if !strings.Contains(string(body), `"sources":["youtube"]`) {
 			w.WriteHeader(http.StatusBadRequest)
 			_, _ = w.Write([]byte(`{"error":"sources not forwarded"}`))
 			return
 		}
-		_, _ = w.Write([]byte(`{"items":[{"asset_id":"yt_1","source":"youtube","score":0.9,"title":"x"}],"partial":false}`))
+		_, _ = w.Write([]byte(`{"items":[{"asset_id":"yt_1","source":"youtube","asset_kind":"stock_video","score":0.9,"title":"x"}],"partial":false}`))
 	})
 	return mux
 }
@@ -267,6 +271,29 @@ func TestSearchForwardsSourceFilter(t *testing.T) {
 	}
 	if !strings.Contains(out, "yt_1") {
 		t.Fatalf("search output lacks the item: %q", out)
+	}
+}
+
+// TestSearchForwardsTaxonomy pins that --kind/--role reach the wire, so an
+// operator can select the asset FAMILY instead of filtering ids by hand.
+func TestSearchForwardsTaxonomy(t *testing.T) {
+	fake := &fakeServer{}
+	srv := httptest.NewServer(fake.handler())
+	defer srv.Close()
+	t.Setenv("VELOX_BASE_URL", srv.URL)
+	t.Setenv("VELOX_HOME", t.TempDir())
+
+	code, _, errOut := capture(t, func() int {
+		return run([]string{"search", "Mike Tyson", "--source", "youtube", "--kind", "stock_video", "--role", "stock"})
+	})
+	if code != exitOK {
+		t.Fatalf("search exit=%d err=%q", code, errOut)
+	}
+	body := fake.lastSearchBody
+	for _, want := range []string{`"asset_kind":"stock_video"`, `"semantic_role":"stock"`, `"filters"`} {
+		if !strings.Contains(body, want) {
+			t.Errorf("request body %s does not contain %s", body, want)
+		}
 	}
 }
 
