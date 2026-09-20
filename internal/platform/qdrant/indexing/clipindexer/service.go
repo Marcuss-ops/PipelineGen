@@ -58,16 +58,16 @@ type CanonicalIndexRequester interface {
 // embeds *sql.DB. This closes the last intentional *sql.DB escape hatch
 // inside internal/app/ test code (worker_registry_e2e_test.go).
 type Service struct {
-	db          *storage.SQLiteDB
-	dbPath      string
-	cfg         *Config
-	log         *zap.Logger
-	scriptPath  string
-	vectorStore VectorStoreIndexer
+	db         *storage.SQLiteDB
+	dbPath     string
+	cfg        *Config
+	log        *zap.Logger
+	scriptPath string
 
 	// canonicalIndexRequester is non-nil after POSTGRES-MEDIA-CUTOVER. It
-	// short-circuits the retired SQLite -> Qdrant indexing implementation and
-	// delegates every imperative reindex request to the canonical PG outbox.
+	// delegates every imperative reindex request to the canonical PG outbox;
+	// the retired SQLite -> Qdrant indexing implementation was DELETED in the
+	// MEDIA LEGACY READ-PLANE DEMOLITION (2026-09-20).
 	canonicalIndexRequester CanonicalIndexRequester
 
 	// mediaEligibility is the narrow media-SSOT read behind the eligibility
@@ -79,12 +79,7 @@ type Service struct {
 	// fails closed rather than reading a second engine.
 	mediaEligibility capregistry.AssetEligibilityReader
 
-	// projectionAdvancer is the optional checkpoint advancer called after a
-	// successful Qdrant upsert. It is retained only for isolated legacy tests
-	// and non-canonical compatibility code; PostgreSQL media mode never reaches
-	// this path because canonicalIndexRequester short-circuits first.
-	projectionAdvancer capregistry.ProjectionSequenceAdvancer
-	assetMutator       persistence.AssetMutationCommitter
+	assetMutator persistence.AssetMutationCommitter
 }
 
 // NewService constructs a clip indexer bound to a database path and script directory.
@@ -155,12 +150,6 @@ func (s *Service) Eligibility(ctx context.Context, assetID string) (capregistry.
 
 func (s *Service) IsEnabled() bool {
 	return s.cfg.Enabled
-}
-
-// VectorStore returns the configured legacy vector-store indexer, if any.
-// Canonical PostgreSQL media mode never reaches it.
-func (s *Service) VectorStore() VectorStoreIndexer {
-	return s.vectorStore
 }
 
 // StartServer starts the Python embedding server as a background process

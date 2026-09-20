@@ -38,6 +38,12 @@ func execAssetUpdate(ctx context.Context, exec mediaAssetSQLExecutor, assetID, o
 }
 
 // ── Projection mutations (retained from the deleted projection-mutations file) ──
+//
+// MEDIA LEGACY READ-PLANE DEMOLITION (2026-09-20): the two enrich_state
+// helpers (UpdateMediaAssetEnrichState / UpdateMediaAssetEnrichStateIfCurrent)
+// were DELETED together with clips_enrich_state.go — their only caller. The
+// enrich_state transitions are owned by pgmedia.MediaEnrichStateStore on the
+// PostgreSQL media SSOT, so no SQLite writer of that column may survive.
 
 // UpdateMediaAssetUsage delegates reuse-counter persistence to the canonical
 // mutation implementation.
@@ -53,45 +59,6 @@ func persistMediaAssetUsage(ctx context.Context, exec mediaAssetSQLExecutor, ass
 		UPDATE media_assets
 		SET reuse_count = COALESCE(reuse_count, 0) + 1, last_used_at = ?, updated_at = ?
 		WHERE id = ?`, usedAt, usedAt, assetID)
-}
-
-func UpdateMediaAssetEnrichState(ctx context.Context, exec mediaAssetSQLExecutor, assetID, state, updatedAt string) (int64, error) {
-	if strings.TrimSpace(updatedAt) == "" {
-		updatedAt = time.Now().UTC().Format(time.RFC3339)
-	}
-	result, err := exec.ExecContext(ctx, `
-		UPDATE media_assets
-		SET enrich_state = ?, enrich_state_updated_at = ?, updated_at = ?
-		WHERE id = ?`, state, updatedAt, updatedAt, assetID)
-	if err != nil {
-		return 0, fmt.Errorf("asset committer: enrich state update: %w", err)
-	}
-	affected, err := result.RowsAffected()
-	if err != nil {
-		return 0, fmt.Errorf("asset committer: enrich state rows affected: %w", err)
-	}
-	return affected, nil
-}
-
-// UpdateMediaAssetEnrichStateIfCurrent performs the CAS form of the
-// enrichment transition.
-
-func UpdateMediaAssetEnrichStateIfCurrent(ctx context.Context, exec mediaAssetSQLExecutor, assetID, from, to, updatedAt string) (int64, error) {
-	if strings.TrimSpace(updatedAt) == "" {
-		updatedAt = time.Now().UTC().Format(time.RFC3339)
-	}
-	result, err := exec.ExecContext(ctx, `
-		UPDATE media_assets
-		SET enrich_state = ?, enrich_state_updated_at = ?, updated_at = ?
-		WHERE id = ? AND enrich_state = ?`, to, updatedAt, updatedAt, assetID, from)
-	if err != nil {
-		return 0, fmt.Errorf("asset committer: enrich state CAS update: %w", err)
-	}
-	affected, err := result.RowsAffected()
-	if err != nil {
-		return 0, fmt.Errorf("asset committer: enrich state CAS rows affected: %w", err)
-	}
-	return affected, nil
 }
 
 // CheckAndIncrementMediaAssetVersion performs the canonical optimistic

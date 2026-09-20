@@ -25,18 +25,12 @@
 //     populateTranscriptsBatch.
 //     ~150 LOC.
 //
-//   - asset_store_reconcile.go    : RECONCILE DRY-RUN —
-//     ListAssetsForReconcile (minimum
-//     payload for the admin
-//     reconcile_qdrant.go CLI).
-//     ~90 LOC.
-//
 // WHY THIS SPLIT (NOT entity-family / clip|voiceover|image):
 //   - SQLiteAssetStore methods do NOT discriminate on
 //     media_assets.media_type (no "clip-only fetch" /
 //     "voiceover-only fetch"). FetchAsset / FetchAssetBatch /
-//     ListAllAssetIDs / ListAssetsForReconcile all treat the
-//     media_assets row uniformly — entity-family is a column,
+//     ListAllAssetIDs all treat the media_assets row uniformly —
+//     entity-family is a column,
 //     not an axis of behavior.
 //   - AssetData (in index_writer_types.go) is an entity-agnostic
 //     projection; it carries ALL fields per row, including a
@@ -46,6 +40,13 @@
 //     empty sibling files (no code differs per family). The
 //     operation-flow split above has one axis of change per file
 //     and matches the actual code structure.
+//
+// MEDIA LEGACY READ-PLANE DEMOLITION (2026-09-20): the sibling
+// asset_store_reconcile.go was DELETED when its ListAssetsForReconcile scan was
+// certified callerless; the RECONCILE DRY-RUN bullet left this header in the
+// same change. This file and asset_store_fetch.go are the two readers still on
+// the Qdrant media read inventory, and this one is last because it owns the
+// scanner shared by the other two.
 //
 // godlike/06 SSOT: this file owns the SQL column-vs-pointer mapping
 // (the assetRowScanner and canonicalQuery). The column ORDER is

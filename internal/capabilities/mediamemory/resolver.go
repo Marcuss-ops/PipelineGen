@@ -67,18 +67,19 @@ type Resolver interface {
 // the canonical ports declared in ports.go — there is no parallel
 // "fast path" (godlike/06 SSOT).
 //
-// godlike/06 SSOT (Fase 2.3 anti-repetition wiring): the resolver
-// holds an optional UsageRepository (nil-safe composition) so the
-// per-project history read can flow through the canonical
-// append-only audit log. When nil, the resolver degrades
-// gracefully: RepetitionPenalty stays 0 (no penalty input
-// available) and the ranker still scores candidates normally.
+// godlike/06 SSOT (Fase 2.3 wiring, RETIRED 2026-09-20): the resolver
+// used to hold an optional UsageRepository so the per-project history
+// read could flow through the append-only audit log. That read had no
+// producer left — the feedback service that appended the events was
+// never constructed and the sqlite usage repository had zero callers —
+// so the port, the field and the read are DELETED in one change.
+// RepetitionPenalty is now driven only by the prevVideoID
+// consecutive-source component, which needs no history at all.
 type VisualResolver struct {
 	concepts   ConceptRepository
 	bindings   BindingRepository
 	external   SearchFanOut
 	semantic   SemanticLookup
-	usage      UsageRepository // optional; nil-safe for backward compat
 	ranker     Ranker
 	normalizer Normalizer // godlike/06 SSOT: SINGLE canonical normalization surface
 	log        Logger
@@ -87,13 +88,12 @@ type VisualResolver struct {
 }
 
 // ResolverDeps keeps the resolver composition boundary typed and stable as
-// optional anti-repetition and observability ports evolve.
+// observability ports evolve.
 type ResolverDeps struct {
 	Concepts ConceptRepository
 	Bindings BindingRepository
 	External SearchFanOut
 	Semantic SemanticLookup
-	Usage    UsageRepository
 	Ranker   Ranker
 	Log      Logger
 	Clock    Clock
@@ -111,21 +111,11 @@ type ResolverDeps struct {
 // (composition-root-friendly default) so test harnesses can
 // pass nil without breaking the SSOT.
 //
-// godlike/06 SSOT (Fase 2.3 wiring): the optional UsageRepository
-// is the consumer seam for ListProjectUsages. A nil usage
-// surfaces as "anti-repetition disabled" — penalties stay 0 and the
-// ranker still scores candidates normally. Composition root wires
-// the canonical concrete UsageRepository (sqlite-backed) unless
-// the caller explicitly opts out (e.g. test harnesses).
+// 2026-09-20: NewVisualResolverWithUsage was DELETED. It was the only
+// consumer of the UsageRepository seam — NewVisualResolver discarded the
+// field with `deps.Usage = nil` and then delegated to it — so the two
+// constructors collapse into this one, keeping the same nil-defaults.
 func NewVisualResolver(deps ResolverDeps) *VisualResolver {
-	deps.Usage = nil
-	return NewVisualResolverWithUsage(deps)
-}
-
-// NewVisualResolverWithUsage is the canonical Fase 2.3
-// constructor. Composition root uses this form when wiring the
-// concrete UsageRepository so repetition_penalty has identity.
-func NewVisualResolverWithUsage(deps ResolverDeps) *VisualResolver {
 	if deps.Log == nil {
 		deps.Log = NoopLogger()
 	}
@@ -140,7 +130,6 @@ func NewVisualResolverWithUsage(deps ResolverDeps) *VisualResolver {
 		bindings:   deps.Bindings,
 		external:   deps.External,
 		semantic:   deps.Semantic,
-		usage:      deps.Usage,
 		ranker:     deps.Ranker,
 		normalizer: NewDefaultNormalizer(""), // godlike/06 SSOT: canonical SHA256 surface
 		log:        deps.Log,

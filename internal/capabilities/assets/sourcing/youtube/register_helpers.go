@@ -50,6 +50,15 @@ import (
 // dedupCheck returns a pre-built RegisterClipResult when the clip already
 // exists in the database, or nil when registration should proceed.
 func (s *Service) dedupCheck(ctx context.Context, cmd sourcing.RegisterClipCommand, md *usecase.ResolvedMetadata) *sourcing.RegisterClipResult {
+	// MEDIA LEGACY READ-PLANE DEMOLITION (2026-09-20): the clip store is the
+	// PostgreSQL media SSOT or nothing. A nil port (media PostgreSQL disabled)
+	// fails closed to "no dedupe hit" instead of degrading onto the SQLite
+	// mirror, which holds no committed media rows and could only ever answer
+	// not-found while PostgreSQL held the assets.
+	if s.clips == nil {
+		s.log.Warn("dedup check skipped: media SSOT clip store is not wired")
+		return nil
+	}
 	existing, err := s.clips.FindExisting(ctx, md.VideoID, md.RawURL, md.StartSec, md.EndSec)
 	if err != nil || existing == "" {
 		return nil

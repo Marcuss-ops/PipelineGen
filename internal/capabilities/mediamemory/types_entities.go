@@ -3,7 +3,8 @@
 // (concept row), MediaBinding (concept × asset × slot_kind link),
 // MediaCandidate (discovery result, pre-binding), BatchSpec /
 // Batch / BatchChild (the Fase 3.4 catalog-only batch surface
-// godlike/06 SSOT), and UsageEvent (append-only feedback audit).
+// godlike/06 SSOT). UsageEvent left with the Fase 2.3 anti-repetition surface
+// on 2026-09-20 (see the note where BatchSpec used to be).
 //
 // godlike/06 SSOT (sister to search.Candidate): MediaCandidate
 // mirrors the canonical search.Candidate projection: NO
@@ -135,77 +136,19 @@ type MediaCandidate struct {
 	UpdatedAt time.Time
 }
 
-// BatchSpec is the canonical input to BatchService for catalog-only
-// discovery runs (e.g. 1000 candidates across multiple queries).
-type BatchSpec struct {
-	Name            string
-	Queries         []string
-	Language        string
-	MediaTypes      []string // "video", "image", ...
-	Providers       []string // "artlist", "youtube", "images"
-	MaxCandidates   int
-	MaterializeTopK int
-	Mode            BatchMode // canonical closed-set: ModeCatalogOnly | ModeMaterializeTopK
-}
+// BatchSpec / Batch / BatchChild were DELETED here on 2026-09-20 with the
+// Fase 3.4 catalog-only batch surface they described (batch_service*,
+// discovery_worker, acquisition_planner, types_linker). Nothing in production
+// ever constructed a BatchService, so these envelopes were reachable only from
+// `batch_service_test.go`. MaterializationRequest (media_materialize_worker.go)
+// is the surviving worker input, and MediaCandidate below is still the
+// candidate envelope the production materialize path uses.
 
-// Batch is the parent; BatchChild is each (query × provider) sub-job.
-// godlike/06 SSOT: parent's MaxCandidates / MaterializeTopK are
-// canonical for ALL children; on resume, children re-read from the
-// parent so the policy is consistent across resumption.
-type Batch struct {
-	ID                string
-	Name              string
-	Spec              BatchSpec
-	State             BatchState
-	Children          []string
-	CreatedAt         time.Time
-	UpdatedAt         time.Time
-	CompletedAt       *time.Time
-	Failures          []string
-	CandidateCount    int
-	IndexedCount      int
-	MaterializedCount int
-}
-
-// BatchChild is one (query × provider) sub-job.
-type BatchChild struct {
-	ID           string
-	BatchID      string
-	Query        string
-	Provider     string
-	State        BatchState
-	CandidateIDs []string
-	CreatedAt    time.Time
-	UpdatedAt    time.Time
-}
-
-// UsageEvent records one human/auto action in the feedback loop.
-// godlike/06 SSOT: the ranker promotes success_score from these
-// rows (SuccessScore increment on RenderCompleted + !Rejected).
-//
-// godlike/06 SSOT (Fase 2.3 anti-repetition contract): ChannelID
-// and VideoID are recorded alongside the existing ProjectID /
-// AssetID so the resolver can apply repetition_penalty deterministically
-// without a runtime join against media_assets. ChannelID is
-// the canonical YouTube channel_id (or any equivalent publishing
-// channel); VideoID is the canonical source_video_id of the
-// underlying clip/image. Empty values are valid (caller-side
-// omitted, e.g. legacy log rows pre-Fase 2.3) — the ranker treats
-// empty channel/video as "no penalty input available" but the
-// same-asset penalty still drives the contract.
-type UsageEvent struct {
-	ID               string
-	ProjectID        string
-	SceneID          string
-	ConceptID        string
-	AssetID          string
-	BindingID        string
-	SlotKind         media.SlotKind
-	ChannelID        string
-	VideoID          string
-	Selected         bool
-	ManuallySelected bool
-	Rejected         bool
-	RenderCompleted  bool
-	CreatedAt        time.Time
-}
+// UsageEvent was DELETED here on 2026-09-20. It was the append-only feedback
+// audit row: FeedbackService wrote it and the resolver's project-history read
+// consumed it to derive the same-asset / channel-saturation / channel-recency
+// penalties. With the feedback service gone (never constructed) and the
+// UsageRepository port gone (zero callers), nothing could produce or read a
+// UsageEvent, so the type and the three penalty components it fed left in the
+// same change — see the retirement note on PopulateRepetitionPenalty in
+// ranker_repetition.go.

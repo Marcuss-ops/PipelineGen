@@ -1,37 +1,16 @@
 // Package clipindexer — helpers for parsing the embedding-server
-// JSON responses. Lives in its own file to keep indexing_api.go focused
-// on the request lifecycle.
+// JSON responses.
+//
+// MEDIA LEGACY READ-PLANE DEMOLITION (2026-09-20): readJSONResponse was
+// DELETED from this file. Its only consumer was indexing_api.go, itself removed
+// with the legacy SQLite→Qdrant implementation, and `deadcode -test ./...`
+// reported it as unreachable. The surviving helpers parse an already-decoded
+// JSON object, so net/http, io and encoding/json are no longer imported here.
 package clipindexer
 
 import (
-	"encoding/json"
 	"fmt"
-	"io"
-	"net/http"
 )
-
-// readJSONResponse reads the body of resp and parses it as JSON. The
-// returned map is the parsed payload; the body is closed by the caller
-// of readJSONResponse (whoever owns resp). Returns an empty map on
-// non-JSON body but never returns an error for HTTP-level status —
-// callers inspect resp.StatusCode separately.
-func readJSONResponse(resp *http.Response, route string) (map[string]any, string) {
-	raw, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Sprintf("<read body: %v>", err)
-	}
-	body := string(raw)
-	if len(raw) == 0 {
-		return map[string]any{}, body
-	}
-	out := map[string]any{}
-	if err := json.Unmarshal(raw, &out); err != nil {
-		// Surface the raw body in the log-friendly form so callers can
-		// still see what the sidecar said.
-		return nil, body
-	}
-	return out, body
-}
 
 // extractEmbedding returns the "embedding" array (slice of float64) from
 // a sidecar JSON response, validating dimension > 0.

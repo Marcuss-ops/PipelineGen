@@ -120,7 +120,7 @@ type Classification struct {
 	Kind    ClassificationKind `json:"kind"`
 	AssetID string             `json:"asset_id"`
 	// ContentHash is the media_assets content_hash (extracted from
-	// metadata_json.$.content_hash by ListAssetsForReconcile) at
+	// metadata_json.$.content_hash by ListForReconcile) at
 	// scan time. PR 10+11: this hash is the deterministic key
 	// component for the outbox event_key, the supersede-gate
 	// fingerprint, and the operator audit trail. Empty for Orphan

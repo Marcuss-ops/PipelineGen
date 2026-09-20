@@ -13,8 +13,9 @@ import (
 // SSOT contract (forward-prevention pair to
 // percheck_indexed_state_writer_ssot in cmd/archcheck/scan/...):
 // media_assets.index_state=INDEXED transitions ONLY via the
-// canonical outbox consumer (IndexingHandler → clipindexer.IndexClip
-// → setIndexedAt). CommitAsset (FinalizeAsset) MUST leave the row
+// canonical PostgreSQL media index plane (PostgresIndexWorker →
+// embedding → pgvector → fenced INDEXED). CommitAsset
+// (FinalizeAsset) MUST leave the row
 // in a non-INDEXED state — specifically, the canonical projection-
 // time hint 'INDEXING_PENDING' that the finalizer's spine write
 // sets.
@@ -81,7 +82,7 @@ func TestIndexState_INDEXED_OnlyViaOutboxConsumer(t *testing.T) {
 		t.Fatalf("query index_state: %v", err)
 	}
 	if indexState == "INDEXED" {
-		t.Fatalf("media_assets.index_state = %q after CommitAsset WITHOUT outbox consumption; want != INDEXED (godlike/06 SSOT: INDEXED is exclusively outbox-consumer-driven via setIndexedAt)",
+		t.Fatalf("media_assets.index_state = %q after CommitAsset WITHOUT outbox consumption; want != INDEXED (godlike/06 SSOT: INDEXED is exclusively owned by the PostgreSQL media index plane, PostgresIndexWorker)",
 			indexState)
 	}
 	if indexState != "DISCOVERED" {

@@ -11,7 +11,6 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/delivery"
 	driveutil "github.com/Marcuss-ops/PipelineGen/internal/platform/drive"
 	clipindexer "github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/indexing/clipindexer"
-	assetsrepo "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/channels"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outbox"
 )
 
@@ -43,11 +42,6 @@ func NewSourcingSearchAdapter(registry *providers.Registry) *SourcingSearchAdapt
 // NewSourcingFetchAdapter wires the provider registry for fetch.
 func NewSourcingFetchAdapter(registry *providers.Registry) *SourcingFetchAdapter {
 	return &SourcingFetchAdapter{registry: registry}
-}
-
-// NewSourcingClipStoreAdapter wires the clips repository for sourcing lookups.
-func NewSourcingClipStoreAdapter(repo *assetsrepo.ClipsRepository) *SourcingClipStoreAdapter {
-	return &SourcingClipStoreAdapter{repo: repo}
 }
 
 // NewSourcingPublisherAdapter wires the delivery publisher.

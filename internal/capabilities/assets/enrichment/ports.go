@@ -3,8 +3,9 @@
 // (PR-ENRICHMENT-STATE-MACHINE, July 2026, godlike/06 SSOT).
 //
 // The typed state-machine wrapper (state_machine.go) implements
-// EnrichStateMachinePort; the SQL primitive (SetEnrichState on
-// ClipsRepository) implements EnrichRepositoryPort. The two ports
+// EnrichStateMachinePort; the media SSOT store
+// (pgmedia.MediaEnrichStateStore on internal/platform/postgres/media/)
+// implements EnrichRepositoryPort. The two ports
 // together form the canonical closure of "one owner per fact" for
 // the media_assets.enrich_state column — only the wrapper reads
 // (assetID)→(current state) and writes transitions; only the SQL
@@ -25,9 +26,13 @@ import (
 
 // EnrichRepositoryPort is the canonical read+write seam to the
 // media_assets.enrich_state column. Implemented in production by
-// *ClipsRepository.SetEnrichState + GetEnrichState (mirrors
-// SetIndexState + GetIndexState shape — the index_state.go file
-// holds GetIndexState as a similar read primitive).
+// pgmedia.MediaEnrichStateStore over the PostgreSQL media SSOT
+// (internal/platform/postgres/media/enrich_state_store.go), resolved in
+// wiring by enrichStateStoreFromCommitter. MEDIA LEGACY READ-PLANE
+// DEMOLITION (2026-09-20): the historical SQLite implementation
+// (*ClipsRepository.SetEnrichState + GetEnrichState) was DELETED with
+// clips_enrich_state.go — media_assets is PostgreSQL-owned, so no SQLite
+// second writer of the column may survive.
 //
 // Pattern 0 contract per godlike/06:
 //   - The typed state-machine wrapper is the only caller that should

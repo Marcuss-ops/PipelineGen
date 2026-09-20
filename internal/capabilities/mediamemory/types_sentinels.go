@@ -25,15 +25,6 @@ var (
 	ErrCandidateMaterializationFailed = errors.New(
 		"mediamemory: materialize worker returned no asset_id for the candidate (stockpipeline failed)",
 	)
-	ErrBatchNotFound = errors.New(
-		"mediamemory: batch_id unknown to BatchService",
-	)
-	ErrBatchNotReconcilable = errors.New(
-		"mediamemory: batch is in a terminal state (already Completed/Failed) — start a new batch",
-	)
-	ErrInvalidFeedbackAction = errors.New(
-		"mediamemory: unknown FeedbackAction value (closed set: accepted/rejected/replaced/trimmed/used_successfully)",
-	)
 	ErrInvalidAggregateSince = errors.New(
 		"mediamemory: AggregateSince `since` is not a valid RFC3339 timestamp",
 	)

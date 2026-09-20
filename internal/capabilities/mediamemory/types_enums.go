@@ -132,63 +132,29 @@ func IsKnownRightsStatus(r RightsStatus) bool {
 
 // ── BatchMode ────────────────────────────────────────────────────
 
-type BatchMode string
-
-const (
-	ModeCatalogOnly     BatchMode = "catalog_only"
-	ModeMaterializeTopK BatchMode = "materialize_top_k"
-)
-
-func IsKnownBatchMode(m BatchMode) bool {
-	switch m {
-	case ModeCatalogOnly, ModeMaterializeTopK:
-		return true
-	default:
-		return false
-	}
-}
+// BatchMode / ModeCatalogOnly / ModeMaterializeTopK / IsKnownBatchMode were
+// DELETED 2026-09-20 with the Fase 3.4 batch surface that used them (BatchSpec
+// carried the Mode field and batch_service was the only reader). `deadcode
+// -test ./...` surfaced IsKnownBatchMode as newly unreachable the moment the
+// batch service left, so it is removed in the same change rather than left
+// behind as a validator with nothing to validate.
 
 // ── BatchState ───────────────────────────────────────────────────
 
-type BatchState string
-
-const (
-	BatchPending     BatchState = "pending"
-	BatchReconciling BatchState = "reconciling"
-	BatchCompleted   BatchState = "completed"
-	BatchFailed      BatchState = "failed"
-)
-
-func IsKnownBatchState(s BatchState) bool {
-	switch s {
-	case BatchPending, BatchReconciling, BatchCompleted, BatchFailed:
-		return true
-	default:
-		return false
-	}
-}
+// BatchState / BatchPending / BatchReconciling / BatchCompleted / BatchFailed /
+// IsKnownBatchState were DELETED in the same change with the batch orchestrator
+// they described. The LIVE batch state machine is an unrelated type with the
+// same name: stockpipeline.BatchState in
+// internal/capabilities/assets/providers/stock.
 
 // ── FeedbackAction ───────────────────────────────────────────────
 
-type FeedbackAction string
-
-const (
-	FeedbackAccepted       FeedbackAction = "accepted"
-	FeedbackRejected       FeedbackAction = "rejected"
-	FeedbackReplaced       FeedbackAction = "replaced"
-	FeedbackTrimmed        FeedbackAction = "trimmed"
-	FeedbackUsedSuccessful FeedbackAction = "used_successfully"
-)
-
-func IsKnownFeedbackAction(a FeedbackAction) bool {
-	switch a {
-	case FeedbackAccepted, FeedbackRejected, FeedbackReplaced,
-		FeedbackTrimmed, FeedbackUsedSuccessful:
-		return true
-	default:
-		return false
-	}
-}
+// FeedbackAction / FeedbackAccepted / FeedbackRejected / FeedbackReplaced /
+// FeedbackTrimmed / FeedbackUsedSuccessful / IsKnownFeedbackAction were DELETED
+// here on 2026-09-20 with the Fase 2.3 feedback surface. This closed set was
+// the input vocabulary of FeedbackService.Record and the key of
+// DeltaForAction's score-delta table; both departed with the service, which
+// composition never constructed, so the validator had no consumer left.
 
 // ── Provider tag constants ───────────────────────────────────────
 

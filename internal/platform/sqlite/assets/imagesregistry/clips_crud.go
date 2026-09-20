@@ -18,7 +18,9 @@ import (
 // dispatcher-only UpsertClip + DeleteClip wrappers, and the typed
 // command-dispatcher Mutate entry point. SetIndexState/SoftDelete/DeleteClipByDriveLink
 // live in clips_index_state.go; tx-scoped mutations in clips_transactions.go;
-// filtered Count in clips_queries.go; ResolveBy* lookups in clips_resolution.go.
+// filtered Count in clips_queries.go. The ResolveBy* lookups moved to the
+// PostgreSQL media SSOT (pgmedia.MediaSearcher) when clips_resolution.go was
+// deleted on 2026-09-20.
 // The receiver type + helpers + MediaAssetColumns live in clips_repository.go.
 
 // Upsert is the canonical low-level write path that ALL production

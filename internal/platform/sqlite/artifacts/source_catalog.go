@@ -24,7 +24,12 @@ func (a *artifactClipsSourceAdapter) GetByDriveFileID(ctx context.Context, id st
 	if a.inner == nil {
 		return nil, nil
 	}
-	return a.inner.GetByDriveFileID(ctx, id)
+	// MEDIA LEGACY READ-PLANE DEMOLITION (2026-09-20): calls the canonical
+	// AssetStoreSQLite lookup directly. The ClipsRepository.GetByDriveFileID
+	// alias that used to sit here was deleted with clips_resolution.go; media
+	// rows reach the catalog through the canonical writer/committer, and the
+	// resolver-side media reads now live on pgmedia.MediaSearcher.
+	return a.inner.GetClipByDriveFileID(ctx, id)
 }
 func (a *artifactClipsSourceAdapter) Delete(ctx context.Context, id string) error {
 	if a.inner == nil {
