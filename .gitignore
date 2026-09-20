@@ -265,6 +265,14 @@ local.env
 #   go build -o mediacert ./cmd/mediacert/main.go
 /mediacert
 
+# Aggregate binaries (built locally from cmd/architecture-aggregate and
+# cmd/capability-inventory-aggregate). Anchored so only the root-level
+# build artifact is ignored — same pattern as /archcheck + /mediacert.
+# Rebuild: go build -o architecture-aggregate ./cmd/architecture-aggregate/
+#          go build -o capability-inventory-aggregate ./cmd/capability-inventory-aggregate/
+/architecture-aggregate
+/capability-inventory-aggregate
+
 # Docker secrets (never commit tokens)
 secrets/
 
