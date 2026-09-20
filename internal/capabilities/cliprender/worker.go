@@ -312,8 +312,13 @@ func (w *Worker) Handle(ctx context.Context, j *job.Job, tools *job.JobExecution
 		if w.continuationStore == nil || w.continuationEnqueuer == nil {
 			return nil, fmt.Errorf("clip.render: executor is wired but continuation store/enqueuer is missing")
 		}
+		remoteRenderID := plan.RunID
+		if resolver, ok := w.renderer.(RenderJobIDResolver); ok {
+			remoteRenderID = resolver.RenderJobID(plan)
+		}
 		doc := ResumeDocument{
 			Plan:               plan,
+			RemoteRenderID:     remoteRenderID,
 			Request:            req,
 			PublishFolderID:    publishFolderID,
 			SourceTitle:        prepared.Source.Title,
@@ -332,7 +337,7 @@ func (w *Worker) Handle(ctx context.Context, j *job.Job, tools *job.JobExecution
 			return nil, fmt.Errorf("clip.render: persist continuation: %w", storeErr)
 		}
 		submission := Submission{
-			RenderJobID:   plan.RunID,
+			RenderJobID:   remoteRenderID,
 			PlanSHA256:    plan.PlanSHA256,
 			CorrelationID: j.CorrelationID,
 			State:         RemoteRenderSubmitted,
@@ -345,7 +350,7 @@ func (w *Worker) Handle(ctx context.Context, j *job.Job, tools *job.JobExecution
 		childID, enqueueErr := w.continuationEnqueuer.EnqueueContinuation(ctx, ContinuationRequest{
 			ParentJobID:  j.ID,
 			ParentRunID:  j.ID,
-			ActiveKey:    ActiveKeyFor(plan.RunID, submission.Attempt),
+			ActiveKey:    ActiveKeyFor(submission.RenderJobID, submission.Attempt),
 			Continuation: continuation,
 		})
 		if enqueueErr != nil {
@@ -389,7 +394,11 @@ func (w *Worker) Handle(ctx context.Context, j *job.Job, tools *job.JobExecution
 			// Submit returned above with its result, so the only phase that
 			// reaches the render boundary here is the settle continuation.
 			var rErr error
-			o, rErr = w.renderer.Settle(opCtx, plan)
+			if settle, ok := w.renderer.(RenderExecutorWithJobID); ok {
+				o, rErr = settle.SettleWithJobID(opCtx, plan, continuation.Submission.RenderJobID)
+			} else {
+				o, rErr = w.renderer.Settle(opCtx, plan)
+			}
 			return rErr
 		})
 		return o, e
