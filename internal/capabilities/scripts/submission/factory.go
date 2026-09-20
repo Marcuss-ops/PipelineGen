@@ -49,18 +49,6 @@ func NewSubmitRequestFactory() *SubmitRequestFactory {
 	}
 }
 
-// NewSubmitRequestFactoryWithResolver constructs the factory with a
-// custom policy resolver. Useful for tests that want to inject
-// explicit policies.
-func NewSubmitRequestFactoryWithResolver(policy *JobPolicyResolver) *SubmitRequestFactory {
-	if policy == nil {
-		policy = NewJobPolicyResolver()
-	}
-	return &SubmitRequestFactory{
-		policy: policy,
-	}
-}
-
 // Build creates an operations.SubmitRequest from a GenerateCommand.
 // It marshals the envelope, derives the canonical request hash from
 // the envelope identity, and resolves the job policy for the

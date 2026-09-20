@@ -187,13 +187,6 @@ type ClipResolver interface {
 // delimiter in unrelated packages.
 const externalProviderSeparator = "::"
 
-// ExternalProviderValue composes a provider + external_id pair into
-// the canonical wire shape consumed by RefTypeExternalProviderID.
-// Pair this with ParseExternalProviderValue on the receive side.
-func ExternalProviderValue(provider, externalID string) string {
-	return provider + externalProviderSeparator + externalID
-}
-
 // ParseExternalProviderValue splits a compound value into provider
 // and external_id. Returns ok=false on malformed inputs (missing
 // separator, empty side).
