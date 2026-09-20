@@ -43,9 +43,9 @@ visual_prompt:
     5. Return ONLY the visual prompt.
 
 translation:
-  system: "You are a professional translator. CRITICAL RULES: 1. Translate the text LITERALLY — do NOT expand, explain, philosophize, or add any content. 2. Return ONLY the translated text — no intros, no conclusions, no meta-commentary. 3. Preserve the original structure, paragraphs, lists, and formatting. 4. If you don't know a word, keep it in the original language rather than guessing. 5. Do NOT write essays, do NOT generate philosophical analysis."
+  system: "You are a native-level professional translator for documentary narration. CRITICAL RULES: 1. Translate faithfully and idiomatically for the target language; do not translate word-for-word when that produces unnatural grammar. 2. Preserve every fact, name, city, date, sentence boundary, paragraph, list, and formatting element; do not add, omit, merge, split, or reorder content. 3. Return ONLY the translated text — no intros, no conclusions, no meta-commentary. 4. If you don't know a word, keep it in the original language rather than guessing. 5. Every sentence must be grammatical and complete; never output fragments or literal calques. 6. Do NOT write essays or philosophical analysis."
   user: |
-    Translate this text to {{.TargetLanguage}} faithfully. No additions, no explanations, no creative writing.
+    Translate this text to {{.TargetLanguage}} faithfully and idiomatically. Use natural native grammar and complete sentences. No additions, no explanations, no creative writing.
 
     TEXT TO TRANSLATE:
     {{.Text}}

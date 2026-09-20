@@ -126,9 +126,18 @@ func selectPhrases(text string, blockedSpans [][2]int, limit int, profile *lingu
 			}
 			contentWords, visualVerbs := 0, 0
 			allVisualVerbs := true
+			hasFunctionWord := false
 			for i := start; i <= end; i++ {
 				word := strings.ToLower(tokens[i].text)
-				if isImportantPhraseFunctionWord(word, profile) || len([]rune(word)) < 3 {
+				if isImportantPhraseFunctionWord(word, profile) {
+					// A phrase overlay is an editorial headline, not an arbitrary
+					// window cut out of a sentence. Internal articles, auxiliaries,
+					// prepositions and pronouns are therefore rejected as well as
+					// endpoint function words. This prevents surfaces such as
+					// "felt like", "ambition often" and "vida vivida dentro".
+					hasFunctionWord = true
+				}
+				if len([]rune(word)) < 3 {
 					continue
 				}
 				contentWords++
@@ -138,7 +147,14 @@ func selectPhrases(text string, blockedSpans [][2]int, limit int, profile *lingu
 					allVisualVerbs = false
 				}
 			}
-			if contentWords < 2 || (policy.RejectVerbsWhenAll && allVisualVerbs) {
+			if hasFunctionWord || contentWords < 2 || (policy.RejectVerbsWhenAll && allVisualVerbs) {
+				continue
+			}
+			// A capitalised token after a comma/colon is usually a proper name
+			// rather than the start of an editorial phrase (for example
+			// "Tyson primero respiró"). Entity extraction may be disabled for a
+			// phrase-only run, so keep that surface out deterministically here.
+			if startsWithInteriorCapital(text, tokens[start].start) {
 				continue
 			}
 
@@ -158,7 +174,9 @@ func selectPhrases(text string, blockedSpans [][2]int, limit int, profile *lingu
 			// deterministic log-frequency term. The shorter-length term breaks
 			// otherwise equal choices toward compact overlays; source order
 			// breaks the final tie.
-			score := contentWords*4 + visualVerbs*5 - wordCount
+			// Prefer complete three/four-word noun or action chunks over tiny
+			// two-word fragments when both carry the same editorial signal.
+			score := contentWords*4 + visualVerbs*5 + wordCount*2 - wordCount
 			score += documentTermBoost(documentCounts[normalizedPhraseKey(candidateText)])
 			candidates = append(candidates, importantPhraseCandidate{
 				text: candidateText, start: byteStart,
@@ -322,6 +340,18 @@ func tokenizeImportantPhrases(text string) []importantPhraseToken {
 
 func phraseBoundaryBetween(gap string) bool {
 	return strings.ContainsAny(gap, ".!?;,:—–\n\r")
+}
+
+func startsWithInteriorCapital(text string, byteStart int) bool {
+	if byteStart <= 0 || byteStart > len(text) {
+		return false
+	}
+	previous := strings.TrimSpace(text[:byteStart])
+	if previous == "" {
+		return false
+	}
+	last, _ := utf8.DecodeLastRuneInString(previous)
+	return last == ','
 }
 
 func isImportantPhraseFunctionWord(word string, profile *linguistics.LexiconProfile) bool {
