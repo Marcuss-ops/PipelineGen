@@ -1,0 +1,61 @@
+{
+  "version": 2,
+  "preset": "custom",
+  "correlation_id": "production-rehearsal-new-text-20260920-v2",
+  "force_refresh": true,
+  "items": [
+    {
+      "id": "production-rehearsal-new-text-v2",
+      "project": "production-rehearsal-new-text",
+      "title": "Production rehearsal — consistency becomes results",
+      "language": "en",
+      "tone": "clear, concise and documentary",
+      "style": "Write a concise narration grounded only in the supplied source text. Do not invent facts, quotes or people. Preserve the central idea and make the result suitable for localized overlay rendering.",
+      "source": {
+        "type": "text",
+        "topic": "How a repeatable creative process turns an idea into a finished result",
+        "source_text": "Consistency turns an idea into results. Progress rarely arrives in one dramatic moment; it comes from repeating a clear process, learning from each attempt, and improving the next one. A strong creative workflow turns a rough concept into a finished video by combining editorial judgment, precise timing, readable typography, and reliable rendering. The goal is not only to make one successful clip, but to build a system that can produce the same quality again."
+      },
+      "script_params": {
+        "target_words": 90,
+        "min_words": 60,
+        "segment_words": 90,
+        "single_scene": true,
+        "force_refresh": true
+      },
+      "output": {
+        "save_to_db": true,
+        "extract_entities": true,
+        "generate_metadata": true,
+        "generate_timeline": false,
+        "voiceover_enabled": false,
+        "languages": ["en", "it", "pl", "ru", "de", "es", "pt-BR", "fr", "tr", "id"],
+        "render": {
+          "enabled": false,
+          "subtitles": {"enabled": false}
+        }
+      },
+      "media_plan": {
+        "mode": "hybrid",
+        "cache": {"read": true, "write": true},
+        "provider_policy": {
+          "internet_images": "disabled",
+          "artlist": "disabled",
+          "image_generation": "disabled",
+          "youtube": "disabled"
+        },
+        "extraction": {
+          "enabled": true,
+          "include": ["entities", "important_phrases"],
+          "max_entities_per_segment": 4,
+          "max_important_phrases_per_segment": 3,
+          "max_image_queries_per_segment": 0
+        },
+        "materialization": {"mode": "selected", "upload_to_drive": false, "wait_for_ready": false},
+        "planner": {"candidate_limit": 1},
+        "include_trace": true
+      },
+      "docs": {"enabled": false}
+    }
+  ]
+}
