@@ -49,40 +49,6 @@ import (
 // dashboards light up uniformly.
 var ErrPromoVoiceoverGeneration = errors.New("voiceover promo: per-item generation failed")
 
-// GeneratePromo is the canonical entry point for the promo workflow
-// (translate → generate per language). P0-#3: the per-language
-// generation is delegated to the per-item use case via
-// promoVoiceoverAdapter (port-driven; the adapter is constructed
-// inline because it carries no state beyond the executor + log).
-//
-// Composition root contract: callers must pass the canonical
-// per-item use case into voiceover.NewService via
-// VoiceoverIntegrationDeps.ProcessItem (see build_bundles_voiceover.go).
-// A nil executor at construction time surfaces here as a fail-closed
-// error so the missing wire-up is fixed before deploy (godlike/07
-// NO-FAKE-AVAILABILITY: a misconfigured composition root must NOT
-// silently fall back to a no-op promo generation).
-func (s *Service) GeneratePromo(ctx context.Context, req *promo.Request) (*promo.Response, error) {
-	if s.translator == nil {
-		return nil, fmt.Errorf("translator not configured")
-	}
-	if s.processItem == nil {
-		return nil, fmt.Errorf("voiceover.Service.GeneratePromo: processItem use case not wired (P0-#3 cutover requires VoiceoverItemExecutor — composition root should pass processItemUseCase into voiceover.NewService)")
-	}
-
-	// The adapter is constructed inline because it carries no state
-	// beyond the executor + log; the canonical per-item use case
-	// (ProcessVoiceoverItemUseCase) is goroutine-safe so the adapter
-	// is too. A future refactor can hoist the adapter to a struct
-	// field if memoisation becomes a concern.
-	gen := promo.NewGenerator(s.translator, &promoVoiceoverAdapter{
-		executor: s.processItem,
-		log:      s.log,
-	}, s.log)
-
-	return gen.Generate(ctx, req)
-}
-
 // promoVoiceoverAdapter adapts the canonical per-item use case
 // (voiceover.VoiceoverItemExecutor) to the promo workflow's narrow
 // VoiceoverGenerator port.

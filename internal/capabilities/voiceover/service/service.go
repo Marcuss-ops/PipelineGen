@@ -2,10 +2,10 @@ package voiceover
 
 import (
 	"context"
+
 	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/lifecycle"
-	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/translation"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"go.uber.org/zap"
@@ -233,15 +233,5 @@ func NewService(deps VoiceoverDeps) *Service {
 		languageRegistry:   deps.Integration.LanguageRegistry,
 		processSeg:         deps.Execution.ProcessSegment,
 		processItem:        deps.Execution.ProcessItem,
-	}
-}
-
-// RegisterHandler registers this service as a handler for voiceover jobs
-// (both batch and promo).
-func (s *Service) RegisterHandler(jobsSvc *appjobs.Service) {
-	if jobsSvc != nil {
-		jobsSvc.RegisterHandler(appjobs.TypeVoiceoverBatch, appjobs.HandlerFunc(s.HandleJob))
-		jobsSvc.RegisterHandler(appjobs.TypeVoiceoverPromo, appjobs.HandlerFunc(s.HandleJob))
-		s.log.Info("registered voiceover job handlers (batch + promo)")
 	}
 }
