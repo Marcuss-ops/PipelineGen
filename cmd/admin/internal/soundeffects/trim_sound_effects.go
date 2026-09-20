@@ -15,6 +15,7 @@ import (
 	mediawiring "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/media"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/adminmedia"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/media/rustexec"
+	pgmedia "github.com/Marcuss-ops/PipelineGen/internal/platform/postgres/media"
 )
 
 // runTrimSoundEffects caps local SFX files at maxSeconds. Files already at or
@@ -49,25 +50,24 @@ func RunTrimSoundEffects(args []string) error {
 		return fmt.Errorf("outbox dispatcher is required unless --dry-run is used")
 	}
 
+	// MEDIA-SSOT: the sound-effect listing is a media_assets read, so it MUST
+	// resolve from the PostgreSQL media SSOT.
+	catalog := pgmedia.NewSoundEffectCatalog(root.MediaPostgres)
+	if catalog == nil {
+		return fmt.Errorf("media PostgreSQL SSOT is required for sound-effect trim")
+	}
+
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Hour)
 	defer cancel()
-	rows, err := root.DB.DB.QueryContext(ctx, `
-		SELECT id FROM media_assets
-		WHERE source='sound_effect' AND media_type='sound_effect' AND category='file'
-		ORDER BY name, id`)
+	ids, err := catalog.ListIDs(ctx)
 	if err != nil {
 		return fmt.Errorf("list sound effects: %w", err)
 	}
-	defer rows.Close()
 
 	mediaConfig := mediawiring.MediaexecConfig(cfg)
 	mediaEditor := rustexec.NewAdminMediaProcessor(cfg.External.RustMusclesPath, cfg.External.FfmpegPath, mediaConfig.Policy, mediaConfig.Profile, log)
 	changed, untouched, metadataUpdated := 0, 0, 0
-	for rows.Next() {
-		var id string
-		if err := rows.Scan(&id); err != nil {
-			return fmt.Errorf("scan sound effect: %w", err)
-		}
+	for _, id := range ids {
 		clip, err := root.GetMediaClip(ctx, id)
 		if err != nil || clip == nil {
 			return fmt.Errorf("load sound effect %s: %w", id, err)
@@ -119,9 +119,6 @@ func RunTrimSoundEffects(args []string) error {
 			return fmt.Errorf("reindex trimmed effect %s: %w", clip.Name, err)
 		}
 		changed++
-	}
-	if err := rows.Err(); err != nil {
-		return fmt.Errorf("iterate sound effects: %w", err)
 	}
 	fmt.Printf("Sound effects: changed=%d untouched=%d metadata_updated=%d max_seconds=%.2f\n", changed, untouched, metadataUpdated, *maxSeconds)
 	return nil

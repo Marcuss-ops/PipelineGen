@@ -1,0 +1,155 @@
+{
+  "_comment": "Canonical POST /api/clips/process payload (ExtractRequest). Batch 03 of 07 — clip_id 21-30 of the Dolly Parton '60 Minutes Australia' interview (video tnoMGevqWAM). Destination: explicit child folder 1C-q2swarUlf4JEUYHVe0Ol88MDSU8FUq, create_subfolder=false. Deterministic clip ids (yt_<videoID>_<startSec>_<endSec>_v1) make a re-submit an UPSERT, not a duplicate.",
+  "url": "https://www.youtube.com/watch?v=tnoMGevqWAM",
+  "strategy": "verify",
+  "concurrency": 3,
+  "force_keyframes": true,
+  "keep_audio": true,
+  "write_summary": true,
+  "destination": {
+    "folder_id": "1C-q2swarUlf4JEUYHVe0Ol88MDSU8FUq",
+    "create_subfolder": false
+  },
+  "segments": [
+    {
+      "start": "14:30",
+      "end": "15:20",
+      "name": "Il legame spirituale e l'umorismo ereditati dalla madre",
+      "category": "celebrity_interview",
+      "source_title": "EXTENDED INTERVIEW: Dolly Parton on Plastic Surgery and Her 47-Year Marriage | 60 Minutes Australia",
+      "source_channel": "60 Minutes Australia",
+      "summary": "Delinea la figura della madre, dotata di grande umorismo e doti canore, che preferì la famiglia numerosa alle ambizioni artistiche.",
+      "topics": [
+        "madre talento canoro fede spiritualità umorismo doti medianiche dodici figli rinunce materne"
+      ],
+      "tags": ["Dolly Parton", "60 Minutes Australia", "celebrity_interview"],
+      "mentioned_people": ["Dolly Parton"]
+    },
+    {
+      "start": "15:20",
+      "end": "16:17",
+      "name": "La determinazione rispetto ai fratelli e l'apertura verso il prossimo",
+      "category": "celebrity_interview",
+      "source_title": "EXTENDED INTERVIEW: Dolly Parton on Plastic Surgery and Her 47-Year Marriage | 60 Minutes Australia",
+      "source_channel": "60 Minutes Australia",
+      "summary": "Spiega che a distinguerla dai fratelli, altrettanto talentuosi, fu la sua incrollabile estroversione e l'incapacità di considerare chiunque un estraneo.",
+      "topics": [
+        "dodici fratelli timidezza ambizione estroversione estranei amici fiducia innocenza determinazione"
+      ],
+      "tags": ["Dolly Parton", "60 Minutes Australia", "celebrity_interview"],
+      "mentioned_people": ["Dolly Parton"]
+    },
+    {
+      "start": "16:17",
+      "end": "17:27",
+      "name": "L'amicizia con Judy Ogle e le risate al diploma",
+      "category": "celebrity_interview",
+      "source_title": "EXTENDED INTERVIEW: Dolly Parton on Plastic Surgery and Her 47-Year Marriage | 60 Minutes Australia",
+      "source_channel": "60 Minutes Australia",
+      "summary": "Racconta della storica amica Judy Ogle e delle derisioni suscitate tra i presenti al diploma quando annunciò di voler diventare una star a Nashville.",
+      "topics": [
+        "amica Judy Ogle diploma scuola risate pubblico sogno Nashville star musica country Knoxville"
+      ],
+      "tags": ["Dolly Parton", "60 Minutes Australia", "celebrity_interview"],
+      "mentioned_people": ["Dolly Parton"]
+    },
+    {
+      "start": "17:27",
+      "end": "18:18",
+      "name": "La scelta di Nashville rispetto a New York e Hollywood",
+      "category": "celebrity_interview",
+      "source_title": "EXTENDED INTERVIEW: Dolly Parton on Plastic Surgery and Her 47-Year Marriage | 60 Minutes Australia",
+      "source_channel": "60 Minutes Australia",
+      "summary": "Chiarisce perché scelse Nashville al posto di New York o Los Angeles: la musica country e il Grand Ole Opry erano il suo unico punto di riferimento.",
+      "topics": [
+        "Nashville Grand Ole Opry Knoxville musica country orizzonte rurale New York lontananza"
+      ],
+      "tags": ["Dolly Parton", "60 Minutes Australia", "celebrity_interview"],
+      "mentioned_people": ["Dolly Parton"]
+    },
+    {
+      "start": "18:18",
+      "end": "19:03",
+      "name": "Le condizioni di estrema povertà tra le montagne del Tennessee",
+      "category": "celebrity_interview",
+      "source_title": "EXTENDED INTERVIEW: Dolly Parton on Plastic Surgery and Her 47-Year Marriage | 60 Minutes Australia",
+      "source_channel": "60 Minutes Australia",
+      "summary": "Descrive la vita d'infanzia senza elettricità né servizi igienici, spiegando la necessità di aprirsi al mondo per piccoli passi progressivi.",
+      "topics": [
+        "white trash infanzia rurale senza elettricità impianti idraulici boschi isolamento gradualità ascesa"
+      ],
+      "tags": ["Dolly Parton", "60 Minutes Australia", "celebrity_interview"],
+      "mentioned_people": ["Dolly Parton"]
+    },
+    {
+      "start": "19:03",
+      "end": "19:40",
+      "name": "L'amplificazione vocale come scossa per l'anima",
+      "category": "celebrity_interview",
+      "source_title": "EXTENDED INTERVIEW: Dolly Parton on Plastic Surgery and Her 47-Year Marriage | 60 Minutes Australia",
+      "source_channel": "60 Minutes Australia",
+      "summary": "Definisce l'emozione di sentire per la prima volta la propria voce amplificata attraverso un microfono come una sensazione folgorante.",
+      "topics": [
+        "microfono amplificazione voce dipendenza emozionale pubblico adrenalina vocazione irrefrenabile"
+      ],
+      "tags": ["Dolly Parton", "60 Minutes Australia", "celebrity_interview"],
+      "mentioned_people": ["Dolly Parton"]
+    },
+    {
+      "start": "19:40",
+      "end": "20:32",
+      "name": "L'impatto con Johnny Cash e la scoperta del sex appeal",
+      "category": "celebrity_interview",
+      "source_title": "EXTENDED INTERVIEW: Dolly Parton on Plastic Surgery and Her 47-Year Marriage | 60 Minutes Australia",
+      "source_channel": "60 Minutes Australia",
+      "summary": "Rievoca l'infatuazione giovanile per Johnny Cash, che le fece comprendere fisicamente per la prima volta il fascino e il sex appeal maschile.",
+      "topics": [
+        "Johnny Cash magnetismo sex appeal carisma June Carter infatuazione adolescenziale movenze"
+      ],
+      "tags": ["Dolly Parton", "60 Minutes Australia", "celebrity_interview"],
+      "mentioned_people": ["Dolly Parton", "Johnny Cash"]
+    },
+    {
+      "start": "20:32",
+      "end": "21:10",
+      "name": "La definizione di carisma: Elvis Presley e Marilyn Monroe",
+      "category": "celebrity_interview",
+      "source_title": "EXTENDED INTERVIEW: Dolly Parton on Plastic Surgery and Her 47-Year Marriage | 60 Minutes Australia",
+      "source_channel": "60 Minutes Australia",
+      "summary": "Riflette sulla natura del carisma scenico come dote innata e impossibile da insegnare, citando figure come Elvis e Marilyn.",
+      "topics": [
+        "carisma magnetismo Elvis Presley Marilyn Monroe dono innato presenza scenica"
+      ],
+      "tags": ["Dolly Parton", "60 Minutes Australia", "celebrity_interview"],
+      "mentioned_people": ["Dolly Parton", "Elvis Presley", "Marilyn Monroe"]
+    },
+    {
+      "start": "21:10",
+      "end": "21:58",
+      "name": "Flirt sul lavoro, fedeltà coniugale e pettegolezzi sui colleghi",
+      "category": "celebrity_interview",
+      "source_title": "EXTENDED INTERVIEW: Dolly Parton on Plastic Surgery and Her 47-Year Marriage | 60 Minutes Australia",
+      "source_channel": "60 Minutes Australia",
+      "summary": "Scherza sulla sua indole civettuola sul set e sui costanti rumors di tradimento con i colleghi, precisando di essere fedele ma non cieca.",
+      "topics": [
+        "matrimonio 47 anni flirt set Sylvester Stallone gossip voci tabloid provocazione"
+      ],
+      "tags": ["Dolly Parton", "60 Minutes Australia", "celebrity_interview"],
+      "mentioned_people": ["Dolly Parton"]
+    },
+    {
+      "start": "21:58",
+      "end": "22:52",
+      "name": "Il marito Carl Dean e la sua avversione per le telecamere",
+      "category": "celebrity_interview",
+      "source_title": "EXTENDED INTERVIEW: Dolly Parton on Plastic Surgery and Her 47-Year Marriage | 60 Minutes Australia",
+      "source_channel": "60 Minutes Australia",
+      "summary": "Illustra il carattere schivo del marito Carl Dean, che non ama apparire in pubblico e ha preso un aereo solo una volta per le Hawaii.",
+      "topics": [
+        "marito Carl Dean matrimonio 1966 riservatezza fobia telecamere concerti aerei Hawaii"
+      ],
+      "tags": ["Dolly Parton", "60 Minutes Australia", "celebrity_interview"],
+      "mentioned_people": ["Dolly Parton", "Carl Dean"]
+    }
+  ]
+}

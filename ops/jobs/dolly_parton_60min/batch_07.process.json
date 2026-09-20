@@ -1,0 +1,99 @@
+{
+  "_comment": "Canonical POST /api/clips/process payload (ExtractRequest). Batch 07 of 07 — clip_id 61-66 (final) of the Dolly Parton '60 Minutes Australia' interview (video tnoMGevqWAM). Destination: explicit child folder 1C-q2swarUlf4JEUYHVe0Ol88MDSU8FUq, create_subfolder=false. Deterministic clip ids (yt_<videoID>_<startSec>_<endSec>_v1) make a re-submit an UPSERT, not a duplicate.",
+  "url": "https://www.youtube.com/watch?v=tnoMGevqWAM",
+  "strategy": "verify",
+  "concurrency": 3,
+  "force_keyframes": true,
+  "keep_audio": true,
+  "write_summary": true,
+  "destination": {
+    "folder_id": "1C-q2swarUlf4JEUYHVe0Ol88MDSU8FUq",
+    "create_subfolder": false
+  },
+  "segments": [
+    {
+      "start": "49:46",
+      "end": "50:39",
+      "name": "Il bacio autentico con James Woods in 'Straight Talk'",
+      "category": "celebrity_interview",
+      "source_title": "EXTENDED INTERVIEW: Dolly Parton on Plastic Surgery and Her 47-Year Marriage | 60 Minutes Australia",
+      "source_channel": "60 Minutes Australia",
+      "summary": "Elogia divertita James Woods come miglior baciatore con cui abbia mai recitato, sottolineando quanto i baci da copione restino comunque una forzatura.",
+      "topics": [
+        "attore James Woods film Straight Talk bacio baciatori imbarazzo set recitazione"
+      ],
+      "tags": ["Dolly Parton", "60 Minutes Australia", "celebrity_interview"],
+      "mentioned_people": ["Dolly Parton", "James Woods"]
+    },
+    {
+      "start": "50:39",
+      "end": "51:25",
+      "name": "Le difficoltà tecniche sul set: segni sul pavimento e luci",
+      "category": "celebrity_interview",
+      "source_title": "EXTENDED INTERVIEW: Dolly Parton on Plastic Surgery and Her 47-Year Marriage | 60 Minutes Australia",
+      "source_channel": "60 Minutes Australia",
+      "summary": "Confessa i propri limiti nell'arte drammatica, spiegando di preferire la spontaneità del teatro rispetto alla rigida geometria tecnica dei set cinematografici.",
+      "topics": [
+        "recitazione cinematografica novizia 9 to 5 segni pavimento luci set Steel Magnolias copione"
+      ],
+      "tags": ["Dolly Parton", "60 Minutes Australia", "celebrity_interview"],
+      "mentioned_people": ["Dolly Parton"]
+    },
+    {
+      "start": "51:25",
+      "end": "52:15",
+      "name": "La passione per la musica rispetto ai soldi e l'opinione di Kenny Rogers",
+      "category": "celebrity_interview",
+      "source_title": "EXTENDED INTERVIEW: Dolly Parton on Plastic Surgery and Her 47-Year Marriage | 60 Minutes Australia",
+      "source_channel": "60 Minutes Australia",
+      "summary": "Dichiara che canterebbe anche gratis nei locali e commenta la frase di Kenny Rogers secondo cui Dolly occuperebbe uno spazio enorme rispetto alla sua taglia.",
+      "topics": [
+        "passione musica gratis locali Kenny Rogers carisma presenza scenica ambizione generosità"
+      ],
+      "tags": ["Dolly Parton", "60 Minutes Australia", "celebrity_interview"],
+      "mentioned_people": ["Dolly Parton", "Kenny Rogers"]
+    },
+    {
+      "start": "52:15",
+      "end": "53:05",
+      "name": "Il rifiuto della pensione e l'amore per il business musicale",
+      "category": "celebrity_interview",
+      "source_title": "EXTENDED INTERVIEW: Dolly Parton on Plastic Surgery and Her 47-Year Marriage | 60 Minutes Australia",
+      "source_channel": "60 Minutes Australia",
+      "summary": "Esclude categoricamente l'idea della pensione, dichiarando che continuerà finché voce, mente e la salute del marito glielo consentiranno.",
+      "topics": [
+        "rifiuto pensione ritiro salute marito Carl Dean voce energia amore lavoro industria"
+      ],
+      "tags": ["Dolly Parton", "60 Minutes Australia", "celebrity_interview"],
+      "mentioned_people": ["Dolly Parton", "Carl Dean"]
+    },
+    {
+      "start": "53:05",
+      "end": "54:12",
+      "name": "La logistica marittima dei tour bus verso l'Australia",
+      "category": "celebrity_interview",
+      "source_title": "EXTENDED INTERVIEW: Dolly Parton on Plastic Surgery and Her 47-Year Marriage | 60 Minutes Australia",
+      "source_channel": "60 Minutes Australia",
+      "summary": "Spiega di aver spedito in Australia via nave i propri autobus arredati con vasca da bagno per evitare di volare e alloggiare in hotel.",
+      "topics": [
+        "Australia tour logistica nave 8 settimane tour bus Inghilterra fobia aereo doccia vasca bagno"
+      ],
+      "tags": ["Dolly Parton", "60 Minutes Australia", "celebrity_interview"],
+      "mentioned_people": ["Dolly Parton"]
+    },
+    {
+      "start": "54:12",
+      "end": "55:24",
+      "name": "Cosa aspettarsi dal nuovo tour australiano e saluti finali",
+      "category": "celebrity_interview",
+      "source_title": "EXTENDED INTERVIEW: Dolly Parton on Plastic Surgery and Her 47-Year Marriage | 60 Minutes Australia",
+      "source_channel": "60 Minutes Australia",
+      "summary": "Illustra il programma dello spettacolo per il tour australiano tra grandi medley, gag comiche, pezzi gospel e una carovana di ottanta persone al seguito.",
+      "topics": [
+        "tour 80 persone equipaggio medley vecchi successi commedia strumenti gospel saluti chiusura intervista"
+      ],
+      "tags": ["Dolly Parton", "60 Minutes Australia", "celebrity_interview"],
+      "mentioned_people": ["Dolly Parton"]
+    }
+  ]
+}

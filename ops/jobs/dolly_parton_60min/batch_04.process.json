@@ -1,0 +1,155 @@
+{
+  "_comment": "Canonical POST /api/clips/process payload (ExtractRequest). Batch 04 of 07 — clip_id 31-40 of the Dolly Parton '60 Minutes Australia' interview (video tnoMGevqWAM). Destination: explicit child folder 1C-q2swarUlf4JEUYHVe0Ol88MDSU8FUq, create_subfolder=false. Deterministic clip ids (yt_<videoID>_<startSec>_<endSec>_v1) make a re-submit an UPSERT, not a duplicate.",
+  "url": "https://www.youtube.com/watch?v=tnoMGevqWAM",
+  "strategy": "verify",
+  "concurrency": 3,
+  "force_keyframes": true,
+  "keep_audio": true,
+  "write_summary": true,
+  "destination": {
+    "folder_id": "1C-q2swarUlf4JEUYHVe0Ol88MDSU8FUq",
+    "create_subfolder": false
+  },
+  "segments": [
+    {
+      "start": "22:52",
+      "end": "23:48",
+      "name": "Le visite in incognito di Carl a Dollywood e le bufale sul divorzio",
+      "category": "celebrity_interview",
+      "source_title": "EXTENDED INTERVIEW: Dolly Parton on Plastic Surgery and Her 47-Year Marriage | 60 Minutes Australia",
+      "source_channel": "60 Minutes Australia",
+      "summary": "Narra come il marito visiti Dollywood in incognito facendo la fila come un turista qualunque e smentisce con ironia le false voci di divorzio miliardario.",
+      "topics": [
+        "parco Dollywood Tennessee biglietto anonimo smentita gossip divorzio 450 milioni dollari"
+      ],
+      "tags": ["Dolly Parton", "60 Minutes Australia", "celebrity_interview"],
+      "mentioned_people": ["Dolly Parton", "Carl Dean"]
+    },
+    {
+      "start": "23:48",
+      "end": "24:30",
+      "name": "L'amicizia con Keith Urban e Nicole Kidman",
+      "category": "celebrity_interview",
+      "source_title": "EXTENDED INTERVIEW: Dolly Parton on Plastic Surgery and Her 47-Year Marriage | 60 Minutes Australia",
+      "source_channel": "60 Minutes Australia",
+      "summary": "Esprime grande stima per il collega Keith Urban e per la moglie Nicole Kidman, ironizzando sulla differenza d'età.",
+      "topics": [
+        "Keith Urban simpatia carisma talento Nicole Kidman gelosia scherzosa battute"
+      ],
+      "tags": ["Dolly Parton", "60 Minutes Australia", "celebrity_interview"],
+      "mentioned_people": ["Dolly Parton", "Keith Urban", "Nicole Kidman"]
+    },
+    {
+      "start": "24:30",
+      "end": "25:22",
+      "name": "La catalogazione delle idee e i ritiri di digiuno per comporre",
+      "category": "celebrity_interview",
+      "source_title": "EXTENDED INTERVIEW: Dolly Parton on Plastic Surgery and Her 47-Year Marriage | 60 Minutes Australia",
+      "source_channel": "60 Minutes Australia",
+      "summary": "Illustra il metodo di isolarsi per settimane digiunando e pregando per comporre fino a quaranta brani attingendo agli appunti accumulati.",
+      "topics": [
+        "appunti titoli telegiornale mese ottobre ritiro spirituale digiuno 40 canzoni due settimane"
+      ],
+      "tags": ["Dolly Parton", "60 Minutes Australia", "celebrity_interview"],
+      "mentioned_people": ["Dolly Parton"]
+    },
+    {
+      "start": "25:22",
+      "end": "26:09",
+      "name": "La scrittura come terapia e l'eredità artistica",
+      "category": "celebrity_interview",
+      "source_title": "EXTENDED INTERVIEW: Dolly Parton on Plastic Surgery and Her 47-Year Marriage | 60 Minutes Australia",
+      "source_channel": "60 Minutes Australia",
+      "summary": "Dichiara di amare la scrittura musicale più di ogni altra cosa, considerandola una terapia per lasciare una traccia indelebile nel mondo.",
+      "topics": [
+        "terapia interiore pittura poesia processo creativo studio registrazione eredità canzoni"
+      ],
+      "tags": ["Dolly Parton", "60 Minutes Australia", "celebrity_interview"],
+      "mentioned_people": ["Dolly Parton"]
+    },
+    {
+      "start": "26:09",
+      "end": "27:04",
+      "name": "La nascita del celebre verso 'pour a cup of ambition' in '9 to 5'",
+      "category": "celebrity_interview",
+      "source_title": "EXTENDED INTERVIEW: Dolly Parton on Plastic Surgery and Her 47-Year Marriage | 60 Minutes Australia",
+      "source_channel": "60 Minutes Australia",
+      "summary": "Spiega come nacque la rima 'kitchen-ambition' nella hit '9 to 5' immaginando i gesti dei lavoratori al risveglio mattutino.",
+      "topics": [
+        "brano 9 to 5 film tema musicale rima kitchen ambition caffe routine operai"
+      ],
+      "tags": ["Dolly Parton", "60 Minutes Australia", "celebrity_interview"],
+      "mentioned_people": ["Dolly Parton"]
+    },
+    {
+      "start": "27:04",
+      "end": "27:46",
+      "name": "Posizione sul femminismo e richiesta di parità salariale",
+      "category": "celebrity_interview",
+      "source_title": "EXTENDED INTERVIEW: Dolly Parton on Plastic Surgery and Her 47-Year Marriage | 60 Minutes Australia",
+      "source_channel": "60 Minutes Australia",
+      "summary": "Espone la sua visione sui diritti delle donne: parità di compenso e rispetto per lo stesso lavoro svolto, respingendo ogni fanatismo.",
+      "topics": [
+        "femminismo parità retributiva diritti rispetto dignità lavoratrici fratelli maschi"
+      ],
+      "tags": ["Dolly Parton", "60 Minutes Australia", "celebrity_interview"],
+      "mentioned_people": ["Dolly Parton"]
+    },
+    {
+      "start": "27:46",
+      "end": "28:48",
+      "name": "Indipendenza sessuale e la connessione con il pubblico femminile",
+      "category": "celebrity_interview",
+      "source_title": "EXTENDED INTERVIEW: Dolly Parton on Plastic Surgery and Her 47-Year Marriage | 60 Minutes Australia",
+      "source_channel": "60 Minutes Australia",
+      "summary": "Rivendica la totale indipendenza nelle scelte personali senza mai cedere a compromessi professionali e spiega perché le donne si fidino di lei.",
+      "topics": [
+        "autonomia corpo molestie compromessi indipendenza concerto Sydney modelli femminili identificazione"
+      ],
+      "tags": ["Dolly Parton", "60 Minutes Australia", "celebrity_interview"],
+      "mentioned_people": ["Dolly Parton"]
+    },
+    {
+      "start": "28:48",
+      "end": "29:47",
+      "name": "La genesi del nome 'Jolene' da una giovane fan",
+      "category": "celebrity_interview",
+      "source_title": "EXTENDED INTERVIEW: Dolly Parton on Plastic Surgery and Her 47-Year Marriage | 60 Minutes Australia",
+      "source_channel": "60 Minutes Australia",
+      "summary": "Racconta come memorizzò il nome di una piccola fan dai capelli rossi ripetendolo continuamente sul bus per comporre la celebre melodia.",
+      "topics": [
+        "Porter Wagoner show bambina capelli rossi autografo nome Jolene promessa canzone autobus tour"
+      ],
+      "tags": ["Dolly Parton", "60 Minutes Australia", "celebrity_interview"],
+      "mentioned_people": ["Dolly Parton", "Porter Wagoner"]
+    },
+    {
+      "start": "29:47",
+      "end": "30:41",
+      "name": "La cassiera della banca e l'idea della rivale in amore",
+      "category": "celebrity_interview",
+      "source_title": "EXTENDED INTERVIEW: Dolly Parton on Plastic Surgery and Her 47-Year Marriage | 60 Minutes Australia",
+      "source_channel": "60 Minutes Australia",
+      "summary": "Rivela che la storia di gelosia di 'Jolene' nacque dalle visite troppo frequenti del marito a una bella cassiera di banca.",
+      "topics": [
+        "cassiera banca gelosia Carl Dean flauto vocale melodia riadattamento maschile Keith Urban"
+      ],
+      "tags": ["Dolly Parton", "60 Minutes Australia", "celebrity_interview"],
+      "mentioned_people": ["Dolly Parton", "Carl Dean", "Keith Urban"]
+    },
+    {
+      "start": "30:41",
+      "end": "31:43",
+      "name": "La vulnerabilità universale racchiusa nel brano 'Jolene'",
+      "category": "celebrity_interview",
+      "source_title": "EXTENDED INTERVIEW: Dolly Parton on Plastic Surgery and Her 47-Year Marriage | 60 Minutes Australia",
+      "source_channel": "60 Minutes Australia",
+      "summary": "Analizza il successo mondiale di 'Jolene', attribuendolo alla paura universale che una persona più affascinante possa sottrarre l'uomo amato.",
+      "topics": [
+        "paura rivale insicurezza bellezza altrui vulnerabilità amore lealtà successo internazionale"
+      ],
+      "tags": ["Dolly Parton", "60 Minutes Australia", "celebrity_interview"],
+      "mentioned_people": ["Dolly Parton"]
+    }
+  ]
+}

@@ -35,7 +35,6 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/cmd/admin/internal/cli"
 
 	"context"
-	"database/sql"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -46,6 +45,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/drive"
+	pgmedia "github.com/Marcuss-ops/PipelineGen/internal/platform/postgres/media"
 	"github.com/Marcuss-ops/PipelineGen/pkg/atomicwrite"
 )
 
@@ -60,6 +60,14 @@ const (
 // driveLister lists the non-trashed children of a Drive folder. Injected so
 // tests can stub Drive responses without a network.
 type driveLister func(ctx context.Context, parentID string) ([]drive.DriveFileInfo, error)
+
+// clipAuditSource is the narrow media read the clip-drive audit depends on.
+// Production binds the PostgreSQL media SSOT reader
+// (pgmedia.ClipDriveAuditReader); tests bind a SQLite-backed fixture so the
+// comparison logic is exercised without a live PG connection.
+type clipAuditSource interface {
+	ListYouTubeClipRows(ctx context.Context, limit int) ([]pgmedia.ClipAuditRow, error)
+}
 
 // driveTreeFolder is a folder discovered by the tree walk. The audit only
 // needs the folder count; the file entries carry the physical location data.
@@ -202,7 +210,14 @@ func RunClipDriveAudit(args []string) error {
 		return fmt.Errorf("drive root folder is not configured (set config drive.normal_clips_source_folder or pass --root)")
 	}
 
-	report, err := clipDriveAudit(ctx, rootCtx.DB.DB, rootCtx.Drive.Reader.ListFiles, rootFolderID, *limit)
+	// MEDIA-SSOT: the clip-drive comparison reads media_assets, so it MUST
+	// resolve from the PostgreSQL media SSOT rather than the operational SQLite
+	// store (which holds no committed media rows).
+	auditSource := pgmedia.NewClipDriveAuditReader(rootCtx.MediaPostgres)
+	if auditSource == nil {
+		return fmt.Errorf("media PostgreSQL SSOT is required for clip-drive audit")
+	}
+	report, err := clipDriveAudit(ctx, auditSource, rootCtx.Drive.Reader.ListFiles, rootFolderID, *limit)
 	if err != nil {
 		return err
 	}
@@ -228,14 +243,14 @@ func RunClipDriveAudit(args []string) error {
 // WalkFailures (fail-closed, never silently treated as aligned).
 func clipDriveAudit(
 	ctx context.Context,
-	db *sql.DB,
+	src clipAuditSource,
 	list driveLister,
 	rootFolderID string,
 	limit int,
 ) (*clipDriveAuditReport, error) {
 	tree, failures := walkDriveTree(ctx, list, rootFolderID)
 
-	rows, err := loadClipAuditRows(ctx, db, limit)
+	rows, err := loadClipAuditRows(ctx, src, limit)
 	if err != nil {
 		return nil, err
 	}
@@ -332,11 +347,11 @@ func clipDriveAudit(
 	}
 	if limit > 0 {
 		var err error
-		allFileIDs, err = loadAllClipDriveFileIDs(ctx, db)
+		allFileIDs, err = loadAllClipDriveFileIDs(ctx, src)
 		if err != nil {
 			return nil, err
 		}
-		if allLinkFileIDs, err = loadAllClipLinkFileIDs(ctx, db); err != nil {
+		if allLinkFileIDs, err = loadAllClipLinkFileIDs(ctx, src); err != nil {
 			return nil, err
 		}
 	}
@@ -383,31 +398,21 @@ func clipDriveAudit(
 
 // loadClipAuditRows selects the canonical youtube-clip rows
 // (source='youtube' AND id LIKE 'yt_%'), matching the backfill scope.
-func loadClipAuditRows(ctx context.Context, db *sql.DB, limit int) ([]clipAssetAuditRow, error) {
-	query := `SELECT id, COALESCE(drive_file_id,''), COALESCE(drive_link,''), COALESCE(download_link,''), COALESCE(folder_id,''), COALESCE(folder_path,'')
-		FROM media_assets
-		WHERE source = 'youtube'
-		  AND id LIKE 'yt_%'
-		ORDER BY id`
-	if limit > 0 {
-		query += fmt.Sprintf(" LIMIT %d", limit)
-	}
-	rows, err := db.QueryContext(ctx, query)
+func loadClipAuditRows(ctx context.Context, src clipAuditSource, limit int) ([]clipAssetAuditRow, error) {
+	rows, err := src.ListYouTubeClipRows(ctx, limit)
 	if err != nil {
 		return nil, fmt.Errorf("clip-drive-audit: query: %w", err)
 	}
-	defer rows.Close()
-
-	var out []clipAssetAuditRow
-	for rows.Next() {
-		var r clipAssetAuditRow
-		if err := rows.Scan(&r.id, &r.driveFileID, &r.driveLink, &r.downloadLink, &r.dbFolderID, &r.dbFolderPath); err != nil {
-			return nil, fmt.Errorf("clip-drive-audit: scan: %w", err)
-		}
-		out = append(out, r)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("clip-drive-audit: rows: %w", err)
+	out := make([]clipAssetAuditRow, 0, len(rows))
+	for _, r := range rows {
+		out = append(out, clipAssetAuditRow{
+			id:           r.ID,
+			driveFileID:  r.DriveFileID,
+			driveLink:    r.DriveLink,
+			downloadLink: r.DownloadLink,
+			dbFolderID:   r.FolderID,
+			dbFolderPath: r.FolderPath,
+		})
 	}
 	return out, nil
 }
@@ -416,30 +421,19 @@ func loadClipAuditRows(ctx context.Context, db *sql.DB, limit int) ([]clipAssetA
 // referenced by drive_link/download_link for canonical youtube clips,
 // regardless of any --limit. Used for untracked-upload detection so a
 // bounded run never mislabels a link-referenced file.
-func loadAllClipLinkFileIDs(ctx context.Context, db *sql.DB) (map[string]struct{}, error) {
-	rows, err := db.QueryContext(ctx, `SELECT COALESCE(drive_link,''), COALESCE(download_link,'') FROM media_assets
-		WHERE source = 'youtube'
-		  AND id LIKE 'yt_%'`)
+func loadAllClipLinkFileIDs(ctx context.Context, src clipAuditSource) (map[string]struct{}, error) {
+	rows, err := src.ListYouTubeClipRows(ctx, 0)
 	if err != nil {
 		return nil, fmt.Errorf("clip-drive-audit: link id query: %w", err)
 	}
-	defer rows.Close()
-
 	out := map[string]struct{}{}
-	for rows.Next() {
-		var driveLink, downloadLink string
-		if err := rows.Scan(&driveLink, &downloadLink); err != nil {
-			return nil, fmt.Errorf("clip-drive-audit: link id scan: %w", err)
-		}
-		if id := extractDriveFileID(driveLink); id != "" {
+	for _, r := range rows {
+		if id := extractDriveFileID(r.DriveLink); id != "" {
 			out[id] = struct{}{}
 		}
-		if id := extractDriveFileID(downloadLink); id != "" {
+		if id := extractDriveFileID(r.DownloadLink); id != "" {
 			out[id] = struct{}{}
 		}
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("clip-drive-audit: link id rows: %w", err)
 	}
 	return out, nil
 }
@@ -448,26 +442,16 @@ func loadAllClipLinkFileIDs(ctx context.Context, db *sql.DB) (map[string]struct{
 // drive_file_id values for canonical youtube clips, regardless of any
 // --limit. Used exclusively for orphan detection so a bounded run never
 // mislabels reachable Drive files as DB orphans.
-func loadAllClipDriveFileIDs(ctx context.Context, db *sql.DB) (map[string]struct{}, error) {
-	rows, err := db.QueryContext(ctx, `SELECT drive_file_id FROM media_assets
-		WHERE source = 'youtube'
-		  AND id LIKE 'yt_%'
-		  AND TRIM(COALESCE(drive_file_id, '')) <> ''`)
+func loadAllClipDriveFileIDs(ctx context.Context, src clipAuditSource) (map[string]struct{}, error) {
+	rows, err := src.ListYouTubeClipRows(ctx, 0)
 	if err != nil {
 		return nil, fmt.Errorf("clip-drive-audit: orphan query: %w", err)
 	}
-	defer rows.Close()
-
 	out := map[string]struct{}{}
-	for rows.Next() {
-		var id string
-		if err := rows.Scan(&id); err != nil {
-			return nil, fmt.Errorf("clip-drive-audit: orphan scan: %w", err)
+	for _, r := range rows {
+		if id := strings.TrimSpace(r.DriveFileID); id != "" {
+			out[id] = struct{}{}
 		}
-		out[id] = struct{}{}
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("clip-drive-audit: orphan rows: %w", err)
 	}
 	return out, nil
 }

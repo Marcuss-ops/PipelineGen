@@ -1,0 +1,155 @@
+{
+  "_comment": "Canonical POST /api/clips/process payload (ExtractRequest). Batch 02 of 07 — clip_id 11-20 of the Dolly Parton '60 Minutes Australia' interview (video tnoMGevqWAM). Destination: explicit child folder 1C-q2swarUlf4JEUYHVe0Ol88MDSU8FUq, create_subfolder=false. Deterministic clip ids (yt_<videoID>_<startSec>_<endSec>_v1) make a re-submit an UPSERT, not a duplicate.",
+  "url": "https://www.youtube.com/watch?v=tnoMGevqWAM",
+  "strategy": "verify",
+  "concurrency": 3,
+  "force_keyframes": true,
+  "keep_audio": true,
+  "write_summary": true,
+  "destination": {
+    "folder_id": "1C-q2swarUlf4JEUYHVe0Ol88MDSU8FUq",
+    "create_subfolder": false
+  },
+  "segments": [
+    {
+      "start": "06:15",
+      "end": "07:05",
+      "name": "La percezione della propria bellezza e i primi ritocchi estetici",
+      "category": "celebrity_interview",
+      "source_title": "EXTENDED INTERVIEW: Dolly Parton on Plastic Surgery and Her 47-Year Marriage | 60 Minutes Australia",
+      "source_channel": "60 Minutes Australia",
+      "summary": "Dichiara di non essersi mai ritenuta una bellezza naturale e colloca i suoi primi interventi di chirurgia estetica dopo il trasferimento a Nashville.",
+      "topics": [
+        "bellezza naturale tela trucco monti chirurgia seno Nashville interventi estetici"
+      ],
+      "tags": ["Dolly Parton", "60 Minutes Australia", "celebrity_interview"],
+      "mentioned_people": ["Dolly Parton"]
+    },
+    {
+      "start": "07:05",
+      "end": "08:04",
+      "name": "Gli interventi al viso a quarant'anni, Botox e collagene",
+      "category": "celebrity_interview",
+      "source_title": "EXTENDED INTERVIEW: Dolly Parton on Plastic Surgery and Her 47-Year Marriage | 60 Minutes Australia",
+      "source_channel": "60 Minutes Australia",
+      "summary": "Illustra la scelta di operarsi al viso a quarant'anni e l'uso regolare di collagene e Botox, parlandone apertamente senza tabù.",
+      "topics": [
+        "chirurgia plastica viso 40 anni borse occhi telecamera collagene Botox proteine naturali trasparenza"
+      ],
+      "tags": ["Dolly Parton", "60 Minutes Australia", "celebrity_interview"],
+      "mentioned_people": ["Dolly Parton"]
+    },
+    {
+      "start": "08:04",
+      "end": "08:42",
+      "name": "La battuta nel film con Queen Latifah e la libertà di rifarsi",
+      "category": "celebrity_interview",
+      "source_title": "EXTENDED INTERVIEW: Dolly Parton on Plastic Surgery and Her 47-Year Marriage | 60 Minutes Australia",
+      "source_channel": "60 Minutes Australia",
+      "summary": "Cita una scena comica con Queen Latifah sui ritocchi chirurgici, ribadendo la ferma intenzione di curare il proprio aspetto a oltranza.",
+      "topics": [
+        "Queen Latifah Joyful Noise battuta cinque interventi ritocchi estetici 100 anni longevità"
+      ],
+      "tags": ["Dolly Parton", "60 Minutes Australia", "celebrity_interview"],
+      "mentioned_people": ["Dolly Parton"]
+    },
+    {
+      "start": "08:42",
+      "end": "09:20",
+      "name": "La cura del corpo come manutenzione e la scelta dei chirurghi",
+      "category": "celebrity_interview",
+      "source_title": "EXTENDED INTERVIEW: Dolly Parton on Plastic Surgery and Her 47-Year Marriage | 60 Minutes Australia",
+      "source_channel": "60 Minutes Australia",
+      "summary": "Paragona i ritocchi estetici alla manutenzione di un'auto o di un animale da esposizione, raccomandando di affidarsi solo a medici esperti.",
+      "topics": [
+        "manutenzione automobile cane show cavallo telecamera chirurghi accreditati professionalità sicurezza"
+      ],
+      "tags": ["Dolly Parton", "60 Minutes Australia", "celebrity_interview"],
+      "mentioned_people": ["Dolly Parton"]
+    },
+    {
+      "start": "09:20",
+      "end": "10:03",
+      "name": "Il nonno predicatore e il brano 'Daddy Was an Oldtime Preacher Man'",
+      "category": "celebrity_interview",
+      "source_title": "EXTENDED INTERVIEW: Dolly Parton on Plastic Surgery and Her 47-Year Marriage | 60 Minutes Australia",
+      "source_channel": "60 Minutes Australia",
+      "summary": "Ricorda le preoccupazioni religiose del nonno, poi trasformatesi in orgoglio dopo il successo della canzone dedicata alla sua figura.",
+      "topics": [
+        "nonno predicatore inferno canzone Daddy Was an Oldtime Preacher Man orgoglio familiare perdono"
+      ],
+      "tags": ["Dolly Parton", "60 Minutes Australia", "celebrity_interview"],
+      "mentioned_people": ["Dolly Parton"]
+    },
+    {
+      "start": "10:03",
+      "end": "11:08",
+      "name": "L'ispirazione estetica tratta dalla donna di strada del paese",
+      "category": "celebrity_interview",
+      "source_title": "EXTENDED INTERVIEW: Dolly Parton on Plastic Surgery and Her 47-Year Marriage | 60 Minutes Australia",
+      "source_channel": "60 Minutes Australia",
+      "summary": "Rivela che il suo look sgargiante nacque ammirando l'abbigliamento provocante dell'unica donna di strada della sua cittadina rurale.",
+      "topics": [
+        "tramp prostituta paese biondo platino rossetto rosso gonne strette tacchi pesciolini modello estetico"
+      ],
+      "tags": ["Dolly Parton", "60 Minutes Australia", "celebrity_interview"],
+      "mentioned_people": ["Dolly Parton"]
+    },
+    {
+      "start": "11:08",
+      "end": "12:00",
+      "name": "La complicità della madre nel confezionare abiti appariscenti",
+      "category": "celebrity_interview",
+      "source_title": "EXTENDED INTERVIEW: Dolly Parton on Plastic Surgery and Her 47-Year Marriage | 60 Minutes Australia",
+      "source_channel": "60 Minutes Australia",
+      "summary": "Mentre il padre la puniva duramente per il suo stile vistoso, la madre la sosteneva cucendo di nascosto gli abiti per i suoi spettacoli.",
+      "topics": [
+        "punizioni padre madre comprensione talento abiti scollati radio televisione sartoria casalinga"
+      ],
+      "tags": ["Dolly Parton", "60 Minutes Australia", "celebrity_interview"],
+      "mentioned_people": ["Dolly Parton"]
+    },
+    {
+      "start": "12:00",
+      "end": "12:49",
+      "name": "La precocità artistica e la collaborazione con lo zio Bill Owens",
+      "category": "celebrity_interview",
+      "source_title": "EXTENDED INTERVIEW: Dolly Parton on Plastic Surgery and Her 47-Year Marriage | 60 Minutes Australia",
+      "source_channel": "60 Minutes Australia",
+      "summary": "Descrive l'esordio radiofonico da bambina e le prime sessioni di scrittura itineranti insieme allo zio Bill Owens.",
+      "topics": [
+        "radio 10 11 anni zio Bill Owens chitarra composizione brani viaggi ambizione giovanile"
+      ],
+      "tags": ["Dolly Parton", "60 Minutes Australia", "celebrity_interview"],
+      "mentioned_people": ["Dolly Parton"]
+    },
+    {
+      "start": "12:49",
+      "end": "13:34",
+      "name": "Il debutto al Cass Walker Show e la cassa di mele",
+      "category": "celebrity_interview",
+      "source_title": "EXTENDED INTERVIEW: Dolly Parton on Plastic Surgery and Her 47-Year Marriage | 60 Minutes Australia",
+      "source_channel": "60 Minutes Australia",
+      "summary": "Evoca il battesimo del palco al Cass Walker Show, dove salì su una cassa di mele per cantare riscuotendo un enorme successo.",
+      "topics": [
+        "Cass Walker Show supermercati pubblico acclamazione cassa mele microfono vocazione scenica"
+      ],
+      "tags": ["Dolly Parton", "60 Minutes Australia", "celebrity_interview"],
+      "mentioned_people": ["Dolly Parton"]
+    },
+    {
+      "start": "13:34",
+      "end": "14:30",
+      "name": "La prima canzone a 5 anni ispirata ai lutti familiari",
+      "category": "celebrity_interview",
+      "source_title": "EXTENDED INTERVIEW: Dolly Parton on Plastic Surgery and Her 47-Year Marriage | 60 Minutes Australia",
+      "source_channel": "60 Minutes Australia",
+      "summary": "Spiega di aver composto la prima canzone a cinque anni rimando le storie dolorose di guerra raccontate dalle donne della sua famiglia.",
+      "topics": [
+        "cinque anni brano Life Don't Mean Much to Me racconti nonna zie lutti guerra rime precoci"
+      ],
+      "tags": ["Dolly Parton", "60 Minutes Australia", "celebrity_interview"],
+      "mentioned_people": ["Dolly Parton"]
+    }
+  ]
+}

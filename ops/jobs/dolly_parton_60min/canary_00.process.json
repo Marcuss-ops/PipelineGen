@@ -1,0 +1,29 @@
+{
+  "_comment": "CANARY (1 clip). Run this before batch_01..batch_07: it exercises the exact same chain (stage -> ffmpeg cut -> sha256 -> Drive upload into 1C-q2swarUlf4JEUYHVe0Ol88MDSU8FUq -> media_assets + asset_locations + asset_text_tracks -> asset.index.requested -> PostgresIndexWorker -> index_state=INDEXED) on a single 46s clip, so a mis-wired destination or index leg is caught in minutes instead of after 66 clips. Same deterministic clip id as batch_01 segment 1 (yt_tnoMGevqWAM_0_46_v1), so the later full batch re-uses this row via UPSERT instead of duplicating it.",
+  "url": "https://www.youtube.com/watch?v=tnoMGevqWAM",
+  "strategy": "verify",
+  "concurrency": 3,
+  "force_keyframes": true,
+  "keep_audio": true,
+  "write_summary": true,
+  "destination": {
+    "folder_id": "1C-q2swarUlf4JEUYHVe0Ol88MDSU8FUq",
+    "create_subfolder": false
+  },
+  "segments": [
+    {
+      "start": "00:00",
+      "end": "00:46",
+      "name": "Incontro con Ray Martin e longevità delle rispettive carriere",
+      "category": "celebrity_interview",
+      "source_title": "EXTENDED INTERVIEW: Dolly Parton on Plastic Surgery and Her 47-Year Marriage | 60 Minutes Australia",
+      "source_channel": "60 Minutes Australia",
+      "summary": "Dolly Parton incontra Ray Martin scherzando sui decenni trascorsi sotto i riflettori e sui suoi 47 anni di matrimonio.",
+      "topics": [
+        "Dolly Parton Ray Martin 60 Minutes Australia New York corrispondenza televisione 47 anni matrimonio decenni carriera"
+      ],
+      "tags": ["Dolly Parton", "60 Minutes Australia", "celebrity_interview"],
+      "mentioned_people": ["Dolly Parton", "Ray Martin"]
+    }
+  ]
+}

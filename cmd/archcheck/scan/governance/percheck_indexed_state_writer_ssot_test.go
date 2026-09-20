@@ -3,8 +3,8 @@
 //
 // Pins the forward-prevention scanner for the godlike/06 SSOT
 // contract: media_assets.index_state='INDEXED' transitions ONLY
-// via the canonical outbox consumer (IndexingHandler →
-// clipindexer.IndexClip → setIndexedAt).
+// via the canonical PostgreSQL media index plane
+// (PostgresIndexWorker → embedding → pgvector → fenced INDEXED).
 //
 // godlike/07 fail-fast: the tests use synthetic .go files inside
 // t.TempDir() — no production files are touched at test time.
@@ -23,8 +23,8 @@ import (
 )
 
 // writeFakeIndexedStateWriterViolation writes a synthetic Go file
-// inside internal/application/** (NOT the canonical clipindexer
-// path) that contains an SQL write to index_state='INDEXED'. The
+// inside internal/application/** (NOT the canonical PostgreSQL
+// media path) that contains an SQL write to index_state='INDEXED'. The
 // fixture filename is `dirty_indexed_state_writer.go` so the
 // forward-prevention assertion maps to the user's literal scenario
 // (a workflow bypassing the outbox consumer).
@@ -39,8 +39,8 @@ func writeFakeIndexedStateWriterViolation(t *testing.T, tempDir, fixturePath str
 		"// dirty_indexed_state_writer.go: violation fixture —\n" +
 		"// writing media_assets.index_state='INDEXED' from a workflow\n" +
 		"// (internal/capabilities/images/workflow/) is FORBIDDEN. The canonical\n" +
-		"// INDEXED state transition is via the outbox consumer\n" +
-		"// (IndexingHandler → IndexClip → setIndexedAt).\n" +
+		"// INDEXED state transition is via the PostgreSQL media\n" +
+		"// index plane (PostgresIndexWorker).\n" +
 		"func dirty() error {\n" +
 		"\t_, err := db.Exec(`UPDATE media_assets SET index_state = 'INDEXED' WHERE id = ?`, id)\n" +
 		"\treturn err\n" +
@@ -52,19 +52,18 @@ func writeFakeIndexedStateWriterViolation(t *testing.T, tempDir, fixturePath str
 }
 
 // writeFakeIndexedStateWriterCanonical writes a synthetic Go file
-// inside the canonical clipindexer package
-// (internal/infrastructure/indexing/clipindexer/) that contains an
-// SQL write to index_state='INDEXED'. The canonical writer —
-// must NOT trip.
+// inside the canonical PostgreSQL media index plane
+// (internal/platform/postgres/media/) that contains an SQL write to
+// index_state='INDEXED'. The canonical writer — must NOT trip.
 func writeFakeIndexedStateWriterCanonical(t *testing.T, tempDir string) string {
 	t.Helper()
-	dir := filepath.Join(tempDir, "internal", "platform", "qdrant", "indexing", "clipindexer")
+	dir := filepath.Join(tempDir, "internal", "platform", "postgres", "media")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatalf("mkdir canonical dir: %v", err)
 	}
-	path := filepath.Join(dir, "set_indexed_at.go")
-	body := "package clipindexer\n\n" +
-		"// set_indexed_at.go: the canonical INDEXED writer — must\n" +
+	path := filepath.Join(dir, "set_indexed.go")
+	body := "package media\n\n" +
+		"// set_indexed.go: the canonical INDEXED writer — must\n" +
 		"// NOT trip the percheck (canonical package exempt).\n" +
 		"func canonicalSetIndexedAt() error {\n" +
 		"\t_, err := db.Exec(`UPDATE media_assets SET index_state = 'INDEXED' WHERE id = ? AND source_version = ? AND index_state = 'INDEXING'`, id, sv)\n" +
@@ -120,8 +119,8 @@ func writeFakeIndexedStateWriterCommentOnly(t *testing.T, tempDir string) string
 		"//\n" +
 		"// NOTE: a workflow MUST NOT write\n" +
 		"// `index_state = 'INDEXED'` directly. The canonical path\n" +
-		"// is the outbox consumer (IndexingHandler → IndexClip →\n" +
-		"// setIndexedAt).\n"
+		"// is the PostgreSQL media index plane\n" +
+		"// (PostgresIndexWorker).\n"
 	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
 		t.Fatalf("write comment-only file: %v", err)
 	}
@@ -140,7 +139,7 @@ func writeFakeIndexedStateWriterScopeMarker(t *testing.T, tempDir string) string
 	}
 	path := filepath.Join(dir, "reconcile_stale_indexed.go")
 	body := "package reconcile\n\n" +
-		"// INDEXED_WRITER_SCOPE: clipindexer\n" +
+		"// INDEXED_WRITER_SCOPE: media-ssot\n" +
 		"//\n" +
 		"// reconcile_stale_indexed.go: future admin-tool reconcile\n" +
 		"// path that re-stamps a stale INDEXED row. Uses the\n" +
@@ -156,8 +155,8 @@ func writeFakeIndexedStateWriterScopeMarker(t *testing.T, tempDir string) string
 }
 
 // TestScanIndexedStateWriterSSOT_OnlyCanonicalPasses verifies the
-// happy path: only the canonical clipindexer package + a scope-
-// marker file write INDEXED, so zero violations are emitted.
+// happy path: only the canonical PostgreSQL media package + a
+// scope-marker file write INDEXED, so zero violations are emitted.
 func TestScanIndexedStateWriterSSOT_OnlyCanonicalPasses(t *testing.T) {
 	tempDir := t.TempDir()
 	writeFakeIndexedStateWriterCanonical(t, tempDir)
@@ -212,8 +211,8 @@ func TestScanIndexedStateWriterSSOT_DirtyApplicationFails(t *testing.T) {
 			if !strings.Contains(v.Note, "forbidden") {
 				t.Errorf("Note must include 'forbidden'; got %q", v.Note)
 			}
-			if !strings.Contains(v.Note, "IndexingHandler") {
-				t.Errorf("Note must include 'IndexingHandler' canonical-path reference; got %q", v.Note)
+			if !strings.Contains(v.Note, "PostgresIndexWorker") {
+				t.Errorf("Note must include 'PostgresIndexWorker' canonical-path reference; got %q", v.Note)
 			}
 		}
 	}
@@ -225,7 +224,7 @@ func TestScanIndexedStateWriterSSOT_DirtyApplicationFails(t *testing.T) {
 
 // TestScanIndexedStateWriterSSOT_CanonicalExempted verifies the
 // canonical writer package is exempt: a file at
-// internal/infrastructure/indexing/clipindexer/** that writes
+// internal/platform/postgres/media/** that writes
 // index_state='INDEXED' MUST NOT trip the gate.
 func TestScanIndexedStateWriterSSOT_CanonicalExempted(t *testing.T) {
 	tempDir := t.TempDir()
@@ -237,8 +236,8 @@ func TestScanIndexedStateWriterSSOT_CanonicalExempted(t *testing.T) {
 	ScanIndexedStateWriterSSOT(tempDir, &policy.Policy{}, r)
 	for _, v := range r.Violations {
 		if v.Rule == indexedStateWriterSSOTRule &&
-			strings.Contains(v.File, "set_indexed_at.go") {
-			t.Errorf("canonical clipindexer package MUST be exempt; got violation: %s", v.Note)
+			strings.Contains(v.File, "set_indexed.go") {
+			t.Errorf("canonical postgres media package MUST be exempt; got violation: %s", v.Note)
 		}
 	}
 }
@@ -325,7 +324,7 @@ func TestScanIndexedStateWriterSSOT_CommentOnlyIsResidue(t *testing.T) {
 
 // TestScanIndexedStateWriterSSOT_ScopeMarkerExempted verifies
 // the comment-marker allowlist: a file with
-// `// INDEXED_WRITER_SCOPE: clipindexer` in its header that
+// `// INDEXED_WRITER_SCOPE: media-ssot` in its header that
 // writes index_state='INDEXED' MUST NOT trip the gate.
 func TestScanIndexedStateWriterSSOT_ScopeMarkerExempted(t *testing.T) {
 	tempDir := t.TempDir()

@@ -38,10 +38,11 @@ func TestBuildAIBundle_WhisperUnavailableDegradesSoftly(t *testing.T) {
 		}
 	})
 
-	repos, err := BuildRepoBundle(context.Background(), cfg, dbs, log)
-	require.NoError(t, err, "BuildRepoBundle")
+	if _, err := BuildRepoBundle(context.Background(), cfg, dbs, log); err != nil {
+		t.Fatalf("BuildRepoBundle: %v", err)
+	}
 
-	bundle, err := BuildAIBundle(context.Background(), cfg, dbs, log, repos, nil)
+	bundle, err := BuildAIBundle(context.Background(), cfg, dbs, log, nil, nil)
 	require.NoError(t, err, "Whisper unavailability must degrade softly, not abort boot")
 	require.Nil(t, bundle.WhisperTranscriber,
 		"WhisperTranscriber must be nil when the bridge is unavailable (the acquisition chain skips the Whisper fallback)")

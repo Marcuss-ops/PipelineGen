@@ -68,7 +68,7 @@ func NewComposition(ctx context.Context, cfg *config.Config, dbs *Databases, log
 		jobs.History = historyReader
 	}
 
-	ai, err := BuildAIBundle(ctx, cfg, dbs, log, repos, driveBundle)
+	ai, err := BuildAIBundle(ctx, cfg, dbs, log, driveBundle, mediaPG)
 	if err != nil {
 		return nil, fmt.Errorf("compose ai: %w", err)
 	}

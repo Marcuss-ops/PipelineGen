@@ -7,8 +7,64 @@ import (
 	"strings"
 	"testing"
 
+	pgmedia "github.com/Marcuss-ops/PipelineGen/internal/platform/postgres/media"
 	_ "github.com/mattn/go-sqlite3"
 )
+
+// sqliteSearchTextBackfillSource adapts the in-memory SQLite fixture to the
+// repair's narrow searchTextBackfillSource port.
+//
+// The production read moved to the PostgreSQL media SSOT
+// (pgmedia.SearchTextBackfillReader) because media_assets and asset_text_tracks
+// are PostgreSQL-owned and the operational mirror holds no committed media
+// rows. These tests keep pinning the COMPOSITION behaviour — which rows are
+// candidates, which are left alone, and that nothing is written on dry-run —
+// against a deterministic in-memory fixture, so the adapter carries the retired
+// SQLite statement (json_extract + `?` binds) verbatim. It is test-only by
+// construction, which is the point: no production file reads media_assets from
+// SQLite any more.
+type sqliteSearchTextBackfillSource struct{ db *sql.DB }
+
+func (s sqliteSearchTextBackfillSource) ListSearchTextBackfillCandidates(ctx context.Context, sources []string, limit int) ([]pgmedia.SearchTextBackfillCandidate, error) {
+	placeholders := make([]string, len(sources))
+	args := make([]any, len(sources))
+	for i, source := range sources {
+		placeholders[i] = "?"
+		args[i] = source
+	}
+	query := `
+		SELECT m.id, COALESCE(m.source, ''), COALESCE(m.name, ''), COALESCE(m.category, ''),
+		       COALESCE(m.tags, '[]'), COALESCE(m.source_url, ''),
+		       COALESCE(json_extract(COALESCE(m.metadata_json, '{}'), '$.description'), ''),
+		       COALESCE(json_extract(COALESCE(m.metadata_json, '{}'), '$.summary'), ''),
+		       COALESCE(json_extract(COALESCE(m.metadata_json, '{}'), '$.title'), ''),
+		       COALESCE((SELECT t.text_content FROM asset_text_tracks t
+		                 WHERE t.asset_id = m.id AND t.text_kind = 'transcript' AND t.is_current = 1
+		                 ORDER BY t.id LIMIT 1), '')
+		FROM media_assets m
+		WHERE (m.search_text IS NULL OR TRIM(m.search_text) = '')
+		  AND m.source IN (` + strings.Join(placeholders, ",") + `)
+		ORDER BY m.id`
+	if limit > 0 {
+		query += ` LIMIT ?`
+		args = append(args, limit)
+	}
+	rows, err := s.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []pgmedia.SearchTextBackfillCandidate
+	for rows.Next() {
+		var rec pgmedia.SearchTextBackfillCandidate
+		if err := rows.Scan(&rec.ID, &rec.Source, &rec.Name, &rec.Category, &rec.TagsJSON, &rec.SourceURL,
+			&rec.Description, &rec.Summary, &rec.Title, &rec.Transcript); err != nil {
+			return nil, err
+		}
+		out = append(out, rec)
+	}
+	return out, rows.Err()
+}
 
 // TestBackfillSearchText_ComposesOnlyMissing pins that the search_text
 // repair composes canonical search text from existing fields, never
@@ -81,7 +137,7 @@ func TestBackfillSearchText_ComposesOnlyMissing(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	matched, updated, err := backfillSearchTextCanonical(context.Background(), db, &testAssetMutator{db: db}, []string{"stock", "youtube"}, 0, true)
+	matched, updated, err := backfillSearchTextCanonical(context.Background(), sqliteSearchTextBackfillSource{db: db}, &testAssetMutator{db: db}, []string{"stock", "youtube"}, 0, true)
 	if err != nil {
 		t.Fatalf("backfillSearchText: %v", err)
 	}
@@ -148,7 +204,7 @@ func TestBackfillSearchText_DryRunCountsOnly(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	matched, updated, err := backfillSearchTextCanonical(context.Background(), db, &testAssetMutator{db: db}, []string{"stock"}, 0, false)
+	matched, updated, err := backfillSearchTextCanonical(context.Background(), sqliteSearchTextBackfillSource{db: db}, &testAssetMutator{db: db}, []string{"stock"}, 0, false)
 	if err != nil {
 		t.Fatalf("backfillSearchText dry-run: %v", err)
 	}

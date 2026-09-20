@@ -19,6 +19,12 @@
 // duplicate: CAS explicitly permits several logical assets to reference the
 // same immutable bytes. No UPDATE, DELETE, or write-capable SQLite handle is
 // used by the CLI command.
+//
+// MEDIA-SSOT (2026-09-20): the asset inventory resolves from the PostgreSQL
+// media SSOT (pgmedia.StructuredAssetIdentityReader). The read-only SQLite
+// handle still answers the image-domain membership tables (subjects /
+// entity_image_catalog_*), so the command opens both engines deliberately and
+// fails closed if either half is missing.
 package audit
 
 import (
@@ -34,6 +40,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/cmd/admin/internal/cli"
 	entitycatalog "github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/entitycatalog"
+	pgmedia "github.com/Marcuss-ops/PipelineGen/internal/platform/postgres/media"
 	storage "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite"
 	"github.com/Marcuss-ops/PipelineGen/pkg/atomicwrite"
 )
@@ -100,6 +107,18 @@ type mattDamonSourceRow struct {
 	SourceURI  string
 }
 
+// mattDamonMediaSource is the narrow media read this audit depends on.
+//
+// MEDIA-SSOT: production binds the PostgreSQL reader
+// (pgmedia.StructuredAssetIdentityReader). The operational SQLite handle is
+// still used for the image-domain membership tables (subjects /
+// entity_image_catalog_*), which have no PostgreSQL home, but it MUST NOT be
+// used for the asset inventory: the mirror holds no committed media rows, so
+// reading it there would report zero assets while the SSOT held them.
+type mattDamonMediaSource interface {
+	ListStructuredAssetIdentities(ctx context.Context) ([]pgmedia.StructuredAssetIdentityRow, error)
+}
+
 // RunMattDamonAssetsAudit is intentionally read-only. It has no --apply flag
 // because selecting a survivor or mutating production rows requires a
 // separate, explicitly reviewed migration plan.
@@ -130,7 +149,20 @@ func RunMattDamonAssetsAudit(args []string) error {
 	}
 	defer db.Close()
 
-	report, err := auditMattDamonAssets(cli.CmdContext(), db, *expectedCount)
+	// MEDIA-SSOT: the asset inventory is a media_assets read. The operational
+	// SQLite handle above stays read-only for the image-domain membership
+	// tables; the asset rows themselves resolve from PostgreSQL.
+	mediaDB, err := cli.OpenMediaPostgres(cli.CmdContext(), cfg)
+	if err != nil {
+		return fmt.Errorf("audit-matt-damon-assets: %w", err)
+	}
+	if mediaDB == nil {
+		return errors.New("audit-matt-damon-assets: media PostgreSQL SSOT is required")
+	}
+	defer mediaDB.Close()
+	mediaSource := pgmedia.NewStructuredAssetIdentityReader(mediaDB)
+
+	report, err := auditMattDamonAssets(cli.CmdContext(), db, mediaSource, *expectedCount)
 	if err != nil {
 		return err
 	}
@@ -159,9 +191,12 @@ func RunMattDamonAssetsAudit(args []string) error {
 	return nil
 }
 
-func auditMattDamonAssets(ctx context.Context, db *sql.DB, expectedCount int) (mattDamonAuditReport, error) {
+func auditMattDamonAssets(ctx context.Context, db *sql.DB, media mattDamonMediaSource, expectedCount int) (mattDamonAuditReport, error) {
 	if db == nil {
 		return mattDamonAuditReport{}, errors.New("audit-matt-damon-assets: nil database")
+	}
+	if media == nil {
+		return mattDamonAuditReport{}, errors.New("audit-matt-damon-assets: nil media source")
 	}
 	identity, err := entitycatalog.CanonicalizePersonName(mattDamonCanonicalName)
 	if err != nil {
@@ -180,7 +215,7 @@ func auditMattDamonAssets(ctx context.Context, db *sql.DB, expectedCount int) (m
 	if err != nil {
 		return mattDamonAuditReport{}, err
 	}
-	assets, err := mattDamonStructuredAssets(ctx, db, subjectTokens, catalogAssetIDs, catalogEvidence)
+	assets, err := mattDamonStructuredAssets(ctx, media, subjectTokens, catalogAssetIDs, catalogEvidence)
 	if err != nil {
 		return mattDamonAuditReport{}, err
 	}
@@ -326,31 +361,25 @@ func mattDamonCatalogAssets(ctx context.Context, db *sql.DB) (map[string]struct{
 	return assetIDs, evidence, nil, nil
 }
 
-func mattDamonStructuredAssets(ctx context.Context, db *sql.DB, subjectTokens, catalogAssetIDs map[string]struct{}, catalogEvidence map[string][]string) ([]mattDamonAssetRecord, error) {
-	rows, err := db.QueryContext(ctx, `
-		SELECT id,
-		       COALESCE(media_type, ''),
-		       COALESCE(drive_file_id, ''),
-		       COALESCE(source_video_id, COALESCE(youtube_video_id, '')),
-		       COALESCE(start_ms, 0),
-		       COALESCE(end_ms, 0),
-		       COALESCE(content_sha256, ''),
-		       COALESCE(binary_sha256, ''),
-		       COALESCE(metadata_json, '{}')
-		FROM media_assets
-		WHERE COALESCE(lifecycle_state, '') <> 'DELETED'
-		ORDER BY id`)
+func mattDamonStructuredAssets(ctx context.Context, media mattDamonMediaSource, subjectTokens, catalogAssetIDs map[string]struct{}, catalogEvidence map[string][]string) ([]mattDamonAssetRecord, error) {
+	rows, err := media.ListStructuredAssetIdentities(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("audit-matt-damon-assets: scan media_assets: %w", err)
+		return nil, fmt.Errorf("audit-matt-damon-assets: read media assets: %w", err)
 	}
-	defer rows.Close()
 
-	out := make([]mattDamonAssetRecord, 0)
+	out := make([]mattDamonAssetRecord, 0, len(rows))
 	seen := make(map[string]struct{})
-	for rows.Next() {
-		var row mattDamonAssetRow
-		if err := rows.Scan(&row.ID, &row.MediaType, &row.DriveFileID, &row.YouTubeVideoID, &row.StartMS, &row.EndMS, &row.ContentSHA256, &row.BinarySHA256, &row.MetadataJSON); err != nil {
-			return nil, fmt.Errorf("audit-matt-damon-assets: scan media asset: %w", err)
+	for _, source := range rows {
+		row := mattDamonAssetRow{
+			ID:             source.ID,
+			MediaType:      source.MediaType,
+			DriveFileID:    source.DriveFileID,
+			YouTubeVideoID: source.YouTubeVideoID,
+			StartMS:        source.StartMS,
+			EndMS:          source.EndMS,
+			ContentSHA256:  source.ContentSHA256,
+			BinarySHA256:   source.BinarySHA256,
+			MetadataJSON:   source.MetadataJSON,
 		}
 		row.ID = strings.TrimSpace(row.ID)
 		if row.ID == "" {
@@ -388,9 +417,6 @@ func mattDamonStructuredAssets(ctx context.Context, db *sql.DB, subjectTokens, c
 			BinarySHA256:   row.BinarySHA256,
 			Evidence:       evidence,
 		})
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("audit-matt-damon-assets: iterate media_assets: %w", err)
 	}
 	return out, nil
 }

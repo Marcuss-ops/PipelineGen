@@ -332,15 +332,25 @@ func WireArtlist(
 	// dispatch) into the handler-side artlist.ClipResolverPort
 	// (Recommend method) via the new clipResolverRecommendAdapter
 	// (field-weighted Jaccard scoring layer). The adapter is the
-	// SINGLE translation site per godlike/06 SSOT. godlike/07
-	// fail-closed: nil ClipsRepo (mandatory gate above) or nil
-	// canonical would yield a nil adapter; the handler's nil-
-	// tolerance continues to return 503 on /recommend in that
-	// case (unchanged runtime contract for unavailable canonical).
-	bundle.ClipResolver = NewClipResolverRecommendAdapter(
-		processor.NewClipResolver(bundle.ClipsRepo, log),
-		log,
-	)
+	// SINGLE translation site per godlike/06 SSOT.
+	//
+	// MEDIA LEGACY READ-PLANE DEMOLITION (2026-09-20): the resolver's media port
+	// is the PostgreSQL media SSOT (pgmedia.MediaSearcher implements
+	// ports.ClipRepositoryReader), NEVER the operational SQLite ClipsRepository —
+	// media_assets is PostgreSQL-owned, so a SQLite-backed resolver reported every
+	// post-cutover clip as unresolved while also reading a second engine.
+	// godlike/07 fail-closed: without the media handle the canonical resolver is
+	// left unwired, so the handler's nil-tolerance returns 503 on /recommend
+	// (unchanged runtime contract for an unavailable canonical), never a
+	// degraded read off the mirror.
+	if bundle.MediaDB != nil {
+		bundle.ClipResolver = NewClipResolverRecommendAdapter(
+			processor.NewClipResolver(pgmedia.NewMediaSearcher(bundle.MediaDB), log),
+			log,
+		)
+	} else {
+		log.Warn("WireArtlist: media PostgreSQL unavailable — canonical clip resolver NOT wired (fail-closed, no SQLite media mirror)")
+	}
 
 	descriptor, err := artlistapi.Build(artlistapi.Dependencies{
 		Service:     service,

@@ -12,6 +12,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 	detail "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
+	pgmedia "github.com/Marcuss-ops/PipelineGen/internal/platform/postgres/media"
 )
 
 // runClassifySoundEffects backfills semantic SFX taxonomy and re-emits the
@@ -42,23 +43,23 @@ func RunClassifySoundEffects(args []string) error {
 		return fmt.Errorf("outbox dispatcher is required unless --dry-run is used")
 	}
 
+	// MEDIA-SSOT: the sound-effect listing is a media_assets read, so it MUST
+	// resolve from the PostgreSQL media SSOT rather than the operational SQLite
+	// store (which holds no committed media rows).
+	catalog := pgmedia.NewSoundEffectCatalog(root.MediaPostgres)
+	if catalog == nil {
+		return fmt.Errorf("media PostgreSQL SSOT is required for sound-effect classification")
+	}
+
 	ctx, cancel := context.WithTimeout(context.Background(), time.Hour)
 	defer cancel()
-	rows, err := root.DB.DB.QueryContext(ctx, `
-		SELECT id FROM media_assets
-		WHERE source='sound_effect' AND media_type='sound_effect' AND category='file'
-		ORDER BY name, id`)
+	ids, err := catalog.ListIDs(ctx)
 	if err != nil {
 		return fmt.Errorf("list sound effects: %w", err)
 	}
-	defer rows.Close()
 
 	updated := 0
-	for rows.Next() {
-		var id string
-		if err := rows.Scan(&id); err != nil {
-			return fmt.Errorf("scan sound effect: %w", err)
-		}
+	for _, id := range ids {
 		clip, err := root.GetMediaClip(ctx, id)
 		if err != nil || clip == nil {
 			return fmt.Errorf("load sound effect %s: %w", id, err)
@@ -95,9 +96,6 @@ func RunClassifySoundEffects(args []string) error {
 			return fmt.Errorf("reindex sound effect %s: %w", id, err)
 		}
 		updated++
-	}
-	if err := rows.Err(); err != nil {
-		return fmt.Errorf("iterate sound effects: %w", err)
 	}
 	if *dryRun {
 		return nil

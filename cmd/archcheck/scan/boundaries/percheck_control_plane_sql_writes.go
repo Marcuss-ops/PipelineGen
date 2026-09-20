@@ -33,8 +33,6 @@ var controlPlaneSQLCanonicalPrefixes = []string{
 	// September 2026): the staged successor of the SQLite media surfaces,
 	// implementing the identical persistence.AssetCommitter port.
 	"internal/platform/postgres/media/",
-	"internal/platform/qdrant/indexing/clipindexer/indexing_api_persistence.go",
-	"internal/platform/qdrant/indexing/clipindexer/indexing_state.go",
 	"internal/capabilities/assets/providers/stock/enrichment/handler_repository.go",
 	"internal/capabilities/assets/lifecycle/service_voiceover.go",
 	"internal/capabilities/jobs/policy/job_completion_writer.go",

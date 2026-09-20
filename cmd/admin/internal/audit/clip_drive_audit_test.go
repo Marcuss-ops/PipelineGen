@@ -19,6 +19,7 @@ import (
 	"testing"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/drive"
+	pgmedia "github.com/Marcuss-ops/PipelineGen/internal/platform/postgres/media"
 )
 
 // fakeDriveTree is a canned ListFiles responder keyed by folder ID.
@@ -65,6 +66,43 @@ func newAuditDriveTree() *fakeDriveTree {
 	t.folder(auditUvoFolderID, "uVoMqnwEdBQ", auditUncatID)
 	t.file(auditUvoFileID, "yt_uVoMqnwEdBQ_1890_1950_v1_clip.mp4", auditUvoFolderID)
 	return t
+}
+
+// sqliteClipAuditSource adapts the in-memory SQLite fixture to the audit's
+// narrow clipAuditSource port.
+//
+// The production read moved to the PostgreSQL media SSOT
+// (pgmedia.ClipDriveAuditReader) because media_assets is PostgreSQL-owned and
+// the operational mirror holds no committed media rows. These tests keep
+// exercising the comparison logic itself — tree walk, divergence
+// classification, orphan/untracked detection — against a deterministic
+// in-memory fixture, so the adapter carries the retired SQLite statement
+// verbatim. It is test-only by construction, which is the point: no production
+// file reads media_assets from SQLite any more.
+type sqliteClipAuditSource struct{ db *sql.DB }
+
+func (s sqliteClipAuditSource) ListYouTubeClipRows(ctx context.Context, limit int) ([]pgmedia.ClipAuditRow, error) {
+	query := `SELECT id, COALESCE(drive_file_id,''), COALESCE(drive_link,''), COALESCE(download_link,''), COALESCE(folder_id,''), COALESCE(folder_path,'')
+		FROM media_assets
+		WHERE source = 'youtube' AND id LIKE 'yt_%'
+		ORDER BY id`
+	if limit > 0 {
+		query += fmt.Sprintf(" LIMIT %d", limit)
+	}
+	rows, err := s.db.QueryContext(ctx, query)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []pgmedia.ClipAuditRow
+	for rows.Next() {
+		var rec pgmedia.ClipAuditRow
+		if err := rows.Scan(&rec.ID, &rec.DriveFileID, &rec.DriveLink, &rec.DownloadLink, &rec.FolderID, &rec.FolderPath); err != nil {
+			return nil, err
+		}
+		out = append(out, rec)
+	}
+	return out, rows.Err()
 }
 
 func newAuditDB(t *testing.T) *sql.DB {
@@ -133,7 +171,7 @@ func TestClipDriveAudit_AlignedClipZeroDivergence(t *testing.T) {
 	db := newAuditDB(t)
 	insertAuditRow(t, db, "yt_uVoMqnwEdBQ_1890_1950_v1", auditUvoFileID, auditUvoFolderID, "Tom Holland/youtube_uncategorized/uVoMqnwEdBQ")
 
-	report, err := clipDriveAudit(context.Background(), db, newAuditDriveTree().list, auditRootID, 0)
+	report, err := clipDriveAudit(context.Background(), sqliteClipAuditSource{db: db}, newAuditDriveTree().list, auditRootID, 0)
 	if err != nil {
 		t.Fatalf("audit: %v", err)
 	}
@@ -151,7 +189,7 @@ func TestClipDriveAudit_ReportsFolderIDAndPathMismatches(t *testing.T) {
 	// while the file physically lives in the nested per-video folder.
 	insertAuditRow(t, db, "yt_uVoMqnwEdBQ_1890_1950_v1", auditUvoFileID, auditTomHolland, "Tom Holland")
 
-	report, err := clipDriveAudit(context.Background(), db, newAuditDriveTree().list, auditRootID, 0)
+	report, err := clipDriveAudit(context.Background(), sqliteClipAuditSource{db: db}, newAuditDriveTree().list, auditRootID, 0)
 	if err != nil {
 		t.Fatalf("audit: %v", err)
 	}
@@ -171,7 +209,7 @@ func TestClipDriveAudit_FileMissingOnDriveFailsClosed(t *testing.T) {
 	db := newAuditDB(t)
 	insertAuditRow(t, db, "yt_ghost_1_v1", "deleted-file-id", auditUvoFolderID, "Tom Holland/youtube_uncategorized/uVoMqnwEdBQ")
 
-	report, err := clipDriveAudit(context.Background(), db, newAuditDriveTree().list, auditRootID, 0)
+	report, err := clipDriveAudit(context.Background(), sqliteClipAuditSource{db: db}, newAuditDriveTree().list, auditRootID, 0)
 	if err != nil {
 		t.Fatalf("audit: %v", err)
 	}
@@ -187,7 +225,7 @@ func TestClipDriveAudit_NoDriveFileIDReported(t *testing.T) {
 	db := newAuditDB(t)
 	insertAuditRow(t, db, "yt_uVoMqnwEdBQ_200_212_v1", "", auditTomHolland, "Tom Holland")
 
-	report, err := clipDriveAudit(context.Background(), db, newAuditDriveTree().list, auditRootID, 0)
+	report, err := clipDriveAudit(context.Background(), sqliteClipAuditSource{db: db}, newAuditDriveTree().list, auditRootID, 0)
 	if err != nil {
 		t.Fatalf("audit: %v", err)
 	}
@@ -210,7 +248,7 @@ func TestClipDriveAudit_OrphanDetection(t *testing.T) {
 	// A non-clip file must NOT be reported as an orphan.
 	tree.file("manifest-file", "manifest.json", auditUvoFolderID)
 
-	report, err := clipDriveAudit(context.Background(), db, tree.list, auditRootID, 0)
+	report, err := clipDriveAudit(context.Background(), sqliteClipAuditSource{db: db}, tree.list, auditRootID, 0)
 	if err != nil {
 		t.Fatalf("audit: %v", err)
 	}
@@ -226,7 +264,7 @@ func TestClipDriveAudit_ExcludesNonClipRows(t *testing.T) {
 	db := newAuditDB(t)
 	insertAuditRow(t, db, "planner:abc:1", auditUvoFileID, auditTomHolland, "Tom Holland")
 
-	report, err := clipDriveAudit(context.Background(), db, newAuditDriveTree().list, auditRootID, 0)
+	report, err := clipDriveAudit(context.Background(), sqliteClipAuditSource{db: db}, newAuditDriveTree().list, auditRootID, 0)
 	if err != nil {
 		t.Fatalf("audit: %v", err)
 	}
@@ -245,7 +283,7 @@ func TestClipDriveAudit_OrphansUnaffectedByLimit(t *testing.T) {
 	tree := newAuditDriveTree()
 	tree.file("second-file", "yt_second_1_v1_second.mp4", auditTomHolland)
 
-	report, err := clipDriveAudit(context.Background(), db, tree.list, auditRootID, 1)
+	report, err := clipDriveAudit(context.Background(), sqliteClipAuditSource{db: db}, tree.list, auditRootID, 1)
 	if err != nil {
 		t.Fatalf("audit: %v", err)
 	}
@@ -264,7 +302,7 @@ func TestClipDriveAudit_RespectsLimit(t *testing.T) {
 		insertAuditRow(t, db, id, auditUvoFileID, auditUvoFolderID, "Tom Holland/youtube_uncategorized/uVoMqnwEdBQ")
 	}
 
-	report, err := clipDriveAudit(context.Background(), db, newAuditDriveTree().list, auditRootID, 2)
+	report, err := clipDriveAudit(context.Background(), sqliteClipAuditSource{db: db}, newAuditDriveTree().list, auditRootID, 2)
 	if err != nil {
 		t.Fatalf("audit: %v", err)
 	}
@@ -282,7 +320,7 @@ func TestClipDriveAudit_WalkFailureSurfacedNotSilentlyAligned(t *testing.T) {
 	}
 	insertAuditRow(t, db, "yt_uVoMqnwEdBQ_1890_1950_v1", auditUvoFileID, auditUvoFolderID, "Tom Holland/youtube_uncategorized/uVoMqnwEdBQ")
 
-	report, err := clipDriveAudit(context.Background(), db, flaky, auditRootID, 0)
+	report, err := clipDriveAudit(context.Background(), sqliteClipAuditSource{db: db}, flaky, auditRootID, 0)
 	if err != nil {
 		t.Fatalf("audit: %v", err)
 	}
@@ -325,7 +363,7 @@ func TestClipDriveAudit_LinkFileIDMismatchAndUntrackedUpload(t *testing.T) {
 		"Tom Holland/youtube_uncategorized/uVoMqnwEdBQ",
 	)
 
-	report, err := clipDriveAudit(context.Background(), db, newLinkTestTree().list, auditRootID, 0)
+	report, err := clipDriveAudit(context.Background(), sqliteClipAuditSource{db: db}, newLinkTestTree().list, auditRootID, 0)
 	if err != nil {
 		t.Fatalf("audit: %v", err)
 	}
@@ -373,7 +411,7 @@ func TestClipDriveAudit_LinkFileMissingOnDrive(t *testing.T) {
 		"Tom Holland/youtube_uncategorized/uVoMqnwEdBQ",
 	)
 
-	report, err := clipDriveAudit(context.Background(), db, newLinkTestTree().list, auditRootID, 0)
+	report, err := clipDriveAudit(context.Background(), sqliteClipAuditSource{db: db}, newLinkTestTree().list, auditRootID, 0)
 	if err != nil {
 		t.Fatalf("audit: %v", err)
 	}

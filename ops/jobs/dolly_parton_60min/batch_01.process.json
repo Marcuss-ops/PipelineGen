@@ -1,0 +1,155 @@
+{
+  "_comment": "Canonical POST /api/clips/process payload (ExtractRequest, drift source of truth: internal/capabilities/youtube/dto/types.go). Batch 01 of 07 — clip_id 1-10 of the Dolly Parton '60 Minutes Australia' interview (video tnoMGevqWAM). Destination: the explicit child folder 1C-q2swarUlf4JEUYHVe0Ol88MDSU8FUq ('Dolly Parton' under drive.normal_clips_source_folder 1ll2RlTaAbhnaLkAjEDBg41lAXUyo-zJ2); create_subfolder=false so clips upload straight into it (no derived per-video child). Clip identity is deterministic yt_<videoID>_<startSec>_<endSec>_v1, so re-submitting this exact payload UPSERTs the same media_assets rows instead of minting duplicates. Duration gate: all segments are 19-72s, inside the deployed VELOX_YOUTUBE_MAX_SEGMENT_DURATION_SECONDS=240.",
+  "url": "https://www.youtube.com/watch?v=tnoMGevqWAM",
+  "strategy": "verify",
+  "concurrency": 3,
+  "force_keyframes": true,
+  "keep_audio": true,
+  "write_summary": true,
+  "destination": {
+    "folder_id": "1C-q2swarUlf4JEUYHVe0Ol88MDSU8FUq",
+    "create_subfolder": false
+  },
+  "segments": [
+    {
+      "start": "00:00",
+      "end": "00:46",
+      "name": "Incontro con Ray Martin e longevità delle rispettive carriere",
+      "category": "celebrity_interview",
+      "source_title": "EXTENDED INTERVIEW: Dolly Parton on Plastic Surgery and Her 47-Year Marriage | 60 Minutes Australia",
+      "source_channel": "60 Minutes Australia",
+      "summary": "Dolly Parton incontra Ray Martin scherzando sui decenni trascorsi sotto i riflettori e sui suoi 47 anni di matrimonio.",
+      "topics": [
+        "Dolly Parton Ray Martin 60 Minutes Australia New York corrispondenza televisione 47 anni matrimonio decenni carriera"
+      ],
+      "tags": ["Dolly Parton", "60 Minutes Australia", "celebrity_interview"],
+      "mentioned_people": ["Dolly Parton", "Ray Martin"]
+    },
+    {
+      "start": "00:46",
+      "end": "01:05",
+      "name": "Lo shock culturale della guida a sinistra",
+      "category": "celebrity_interview",
+      "source_title": "EXTENDED INTERVIEW: Dolly Parton on Plastic Surgery and Her 47-Year Marriage | 60 Minutes Australia",
+      "source_channel": "60 Minutes Australia",
+      "summary": "Dolly racconta con umorismo il disorientamento provocato dal traffico sul lato sinistro della strada in Australia e nel Regno Unito.",
+      "topics": [
+        "Australia Inghilterra guida senso contrario circolazione stradale shock timore incidenti"
+      ],
+      "tags": ["Dolly Parton", "60 Minutes Australia", "celebrity_interview"],
+      "mentioned_people": ["Dolly Parton"]
+    },
+    {
+      "start": "01:05",
+      "end": "01:36",
+      "name": "La routine mattutina di make-up e la collezione di parrucche",
+      "category": "celebrity_interview",
+      "source_title": "EXTENDED INTERVIEW: Dolly Parton on Plastic Surgery and Her 47-Year Marriage | 60 Minutes Australia",
+      "source_channel": "60 Minutes Australia",
+      "summary": "Spiega di truccarsi da sola in meno di mezz'ora ogni mattina e di avere parrucche già allestite per ogni abito.",
+      "topics": [
+        "routine trucco venti minuti mattino parrucche camerino stylist abbinamento abiti"
+      ],
+      "tags": ["Dolly Parton", "60 Minutes Australia", "celebrity_interview"],
+      "mentioned_people": ["Dolly Parton"]
+    },
+    {
+      "start": "01:36",
+      "end": "02:04",
+      "name": "Parrucche quotidiane e l'uso pratico per il palco",
+      "category": "celebrity_interview",
+      "source_title": "EXTENDED INTERVIEW: Dolly Parton on Plastic Surgery and Her 47-Year Marriage | 60 Minutes Australia",
+      "source_channel": "60 Minutes Australia",
+      "summary": "Afferma di possedere oltre 365 parrucche e di preferirle per comodità quando si esibisce o appare in pubblico.",
+      "topics": [
+        "365 parrucche giorni anno scrunchie capelli naturali comodità performance spettacoli pubblici"
+      ],
+      "tags": ["Dolly Parton", "60 Minutes Australia", "celebrity_interview"],
+      "mentioned_people": ["Dolly Parton"]
+    },
+    {
+      "start": "02:04",
+      "end": "02:36",
+      "name": "I tacchi alti a casa e la cura dell'aspetto per il marito",
+      "category": "celebrity_interview",
+      "source_title": "EXTENDED INTERVIEW: Dolly Parton on Plastic Surgery and Her 47-Year Marriage | 60 Minutes Australia",
+      "source_channel": "60 Minutes Australia",
+      "summary": "Riferisce di indossare i tacchi alti anche in casa per raggiungere i mobili e di pettinarsi per non apparire sciatta davanti al marito.",
+      "topics": [
+        "tacchi alti statura minuta pensili cucina Carl Dean rulli caldi look domestico rispetto coniuge"
+      ],
+      "tags": ["Dolly Parton", "60 Minutes Australia", "celebrity_interview"],
+      "mentioned_people": ["Dolly Parton"]
+    },
+    {
+      "start": "02:36",
+      "end": "03:22",
+      "name": "Il timore di foto imbarazzanti e l'immagine pubblica",
+      "category": "celebrity_interview",
+      "source_title": "EXTENDED INTERVIEW: Dolly Parton on Plastic Surgery and Her 47-Year Marriage | 60 Minutes Australia",
+      "source_channel": "60 Minutes Australia",
+      "summary": "Sottolinea l'abitudine di sistemarsi sempre prima di uscire per timore di essere immortalata in condizioni poco dignitose o in una foto segnaletica.",
+      "topics": [
+        "riconoscimento voce pubblico celebrità foto sciatte mugshot arresto eccesso velocità decenza pubblica"
+      ],
+      "tags": ["Dolly Parton", "60 Minutes Australia", "celebrity_interview"],
+      "mentioned_people": ["Dolly Parton"]
+    },
+    {
+      "start": "03:22",
+      "end": "04:03",
+      "name": "La spesa notturna al supermercato per evitare i paparazzi",
+      "category": "celebrity_interview",
+      "source_title": "EXTENDED INTERVIEW: Dolly Parton on Plastic Surgery and Her 47-Year Marriage | 60 Minutes Australia",
+      "source_channel": "60 Minutes Australia",
+      "summary": "Racconta di andare al supermercato con il marito a notte fonda, tra mezzanotte e le quattro del mattino, per scegliere gli ingredienti in tranquillità.",
+      "topics": [
+        "spesa notturna supermercato 24 ore Carl Dean cucina festività ingredienti mezzanotte quattro mattina"
+      ],
+      "tags": ["Dolly Parton", "60 Minutes Australia", "celebrity_interview"],
+      "mentioned_people": ["Dolly Parton"]
+    },
+    {
+      "start": "04:03",
+      "end": "04:32",
+      "name": "Scelta oculata dei ristoranti ed equilibrio con la notorietà",
+      "category": "celebrity_interview",
+      "source_title": "EXTENDED INTERVIEW: Dolly Parton on Plastic Surgery and Her 47-Year Marriage | 60 Minutes Australia",
+      "source_channel": "60 Minutes Australia",
+      "summary": "Spiega di selezionare con cura i ristoranti per aggirare i fotografi e di non essersi mai sentita limitata dalla fama.",
+      "topics": [
+        "ristoranti riservatezza gestione paparazzi compromesso celebrità libertà personale"
+      ],
+      "tags": ["Dolly Parton", "60 Minutes Australia", "celebrity_interview"],
+      "mentioned_people": ["Dolly Parton"]
+    },
+    {
+      "start": "04:32",
+      "end": "05:19",
+      "name": "La passione precoce per il glamour e le imbottiture fai-da-te",
+      "category": "celebrity_interview",
+      "source_title": "EXTENDED INTERVIEW: Dolly Parton on Plastic Surgery and Her 47-Year Marriage | 60 Minutes Australia",
+      "source_channel": "60 Minutes Australia",
+      "summary": "Dolly rievoca la sua giovanile attrazione per il make-up e l'ingegno con cui ricavava imbottiture dai cappotti della nonna prima dei reggiseni moderni.",
+      "topics": [
+        "backwoods Barbie adolescenza 14 anni imbottiture cappotto nonna Fredericks of Hollywood push up decollete"
+      ],
+      "tags": ["Dolly Parton", "60 Minutes Australia", "celebrity_interview"],
+      "mentioned_people": ["Dolly Parton"]
+    },
+    {
+      "start": "05:19",
+      "end": "06:15",
+      "name": "Il trucco con bacche selvatiche e le punizioni paterne",
+      "category": "celebrity_interview",
+      "source_title": "EXTENDED INTERVIEW: Dolly Parton on Plastic Surgery and Her 47-Year Marriage | 60 Minutes Australia",
+      "source_channel": "60 Minutes Australia",
+      "summary": "Ricorda di tingersi le labbra con il succo delle bacche selvatiche indelebili, subendo le percosse del padre che credeva usasse vero trucco.",
+      "topics": [
+        "campagna povertà poke berries succo bacche selvatiche labbra rossetto punizioni fisiche padre"
+      ],
+      "tags": ["Dolly Parton", "60 Minutes Australia", "celebrity_interview"],
+      "mentioned_people": ["Dolly Parton"]
+    }
+  ]
+}

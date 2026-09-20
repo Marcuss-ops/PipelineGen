@@ -4,7 +4,9 @@
 //   - youtube_dispatcher_adapter.go (ytadapters.YoutubeIndexDispatcherAdapter)
 //   - youtube_enrichment_adapter.go (ytadapters.YoutubeEnrichmentAdapter)
 //   - youtube_fetch_adapter.go (ytadapters.SourcingFetchAdapter)
-//   - youtube_drive_legacy_adapter.go (sourcingDriveAdapter + ytadapters.SourcingClipStoreAdapter)
+//   - youtube_sourcing_pg_adapter.go (ytadapters.SourcingClipStorePGAdapter — the
+//     PostgreSQL media SSOT dedupe lookup; the SQLite SourcingClipStoreAdapter
+//     was deleted in the MEDIA LEGACY READ-PLANE DEMOLITION, 2026-09-20)
 //   - youtube_metadata_adapter.go (ytadapters.SourcingMetadataAdapter + ytadapters.SourcingEnrichmentAdapter +
 //     ytadapters.SourcingConfigAdapter + ytadapters.SourcingTranscriberAdapter + ytadapters.SourcingSearchAdapter +
 //     sourcingHashAdapter + ytadapters.ZapSourcingLogger)

@@ -164,11 +164,8 @@ func (r *Repository) enqueue(ctx context.Context, tx *sql.Tx, withPriority bool,
 	}, nil
 }
 
-// exec returns the right exec-handle based on whether a tx is in scope
-// (SQLite mirror: outboxevents.Repository.exec).
-func (r *Repository) exec(ctx context.Context, tx *sql.Tx) func(context.Context, string, ...any) (sql.Result, error) {
-	if tx != nil {
-		return tx.ExecContext
-	}
-	return r.db.ExecContext
-}
+// MEDIA LEGACY READ-PLANE DEMOLITION (2026-09-20): the private helper
+// Repository.exec was DELETED here. It resolved an exec-handle between the
+// in-scope *sql.Tx and r.db, but every media outbox write goes through the
+// explicit Enqueue/EnqueueWithPriority tx path, so it had no caller and
+// `deadcode -test ./...` reported it as unreachable.

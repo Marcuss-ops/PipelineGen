@@ -28,6 +28,7 @@ import (
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
+	pgmedia "github.com/Marcuss-ops/PipelineGen/internal/platform/postgres/media"
 )
 
 func RunClipDriveOrphanCleanup(args []string) error {
@@ -57,8 +58,8 @@ func RunClipDriveOrphanCleanup(args []string) error {
 		return fmt.Errorf("initialize composition: %w", err)
 	}
 	defer rootCleanup()
-	if rootCtx == nil || rootCtx.DB == nil || rootCtx.DB.DB == nil {
-		return fmt.Errorf("database is required")
+	if rootCtx == nil {
+		return fmt.Errorf("composition root is unavailable")
 	}
 	if rootCtx.Drive == nil || rootCtx.Drive.Reader == nil {
 		return fmt.Errorf("drive reader port is not available")
@@ -75,7 +76,14 @@ func RunClipDriveOrphanCleanup(args []string) error {
 		return fmt.Errorf("drive root folder is not configured (set config drive.normal_clips_source_folder or pass --root)")
 	}
 
-	report, err := clipDriveAudit(ctx, rootCtx.DB.DB, rootCtx.Drive.Reader.ListFiles, rootFolderID, *limit)
+	// MEDIA-SSOT: the orphan comparison reads media_assets, so it MUST resolve
+	// from the PostgreSQL media SSOT rather than the operational SQLite store.
+	auditSource := pgmedia.NewClipDriveAuditReader(rootCtx.MediaPostgres)
+	if auditSource == nil {
+		return fmt.Errorf("media PostgreSQL SSOT is required for clip-drive orphan cleanup")
+	}
+
+	report, err := clipDriveAudit(ctx, auditSource, rootCtx.Drive.Reader.ListFiles, rootFolderID, *limit)
 	if err != nil {
 		return err
 	}
@@ -103,11 +111,11 @@ func RunClipDriveOrphanCleanup(args []string) error {
 	// Fresh re-verification set, so a concurrent drive_file_id/link update
 	// between the audit and this point skips the file instead of trashing a
 	// now-referenced file.
-	identity, err := loadAllClipDriveFileIDs(ctx, rootCtx.DB.DB)
+	identity, err := loadAllClipDriveFileIDs(ctx, auditSource)
 	if err != nil {
 		return err
 	}
-	linkIDs, err := loadAllClipLinkFileIDs(ctx, rootCtx.DB.DB)
+	linkIDs, err := loadAllClipLinkFileIDs(ctx, auditSource)
 	if err != nil {
 		return err
 	}
