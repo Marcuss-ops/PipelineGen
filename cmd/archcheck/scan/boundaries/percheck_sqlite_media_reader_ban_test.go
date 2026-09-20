@@ -161,22 +161,42 @@ const q = "SELECT t.term FROM clip_search_terms t JOIN media_assets m ON m.id = 
 	}
 }
 
+// withGrandfatheredZone installs a synthetic zone prefix for the lifetime of
+// one test and restores the zone list afterwards.
+//
+// The zone list is EMPTY today (every legacy read plane has been converted to
+// an exact-file inventory), so the prefix property is exercised against an
+// injected zone rather than against the live list — otherwise reaching the
+// terminal state would silently stop testing the mechanism that a future zone
+// must use while it is being enumerated.
+func withGrandfatheredZone(t *testing.T, prefix string) {
+	t.Helper()
+	prev := sqliteMediaReaderGrandfatheredZones
+	sqliteMediaReaderGrandfatheredZones = append(append([]string{}, prev...), prefix)
+	t.Cleanup(func() { sqliteMediaReaderGrandfatheredZones = prev })
+}
+
 // TestScanSQLiteMediaReaderBan_GrandfatheredZoneExempt pins the legacy read
-// plane exemption.
+// plane exemption: an injected zone pardons its files and nothing outside it.
 func TestScanSQLiteMediaReaderBan_GrandfatheredZoneExempt(t *testing.T) {
 	tmp := t.TempDir()
 	body := `package whatever
 
 const q = "SELECT id FROM media_assets WHERE id = ?"
 `
-	for _, rel := range []string{
-		"internal/platform/sqlite/assets/imagesregistry/store.go",
-		"internal/platform/sqlite/control_plane.go",
-	} {
-		writeGoFile(t, tmp, rel, body)
-	}
+	withGrandfatheredZone(t, "internal/legacy/")
+	writeGoFile(t, tmp, "internal/legacy/assets/imagesregistry/store.go", body)
+	writeGoFile(t, tmp, "internal/legacy/control_plane.go", body)
+
 	if got := mediaReaderViolations(scanMediaReader(t, tmp)); len(got) != 0 {
 		t.Fatalf("grandfathered zones must be exempt, got %d violations: %+v", len(got), got)
+	}
+
+	// The exemption must be a prefix, not a blanket pardon.
+	writeGoFile(t, tmp, "internal/capabilities/nouveau/store.go", body)
+	got := mediaReaderViolations(scanMediaReader(t, tmp))
+	if len(got) != 1 || !strings.HasSuffix(got[0].File, "internal/capabilities/nouveau/store.go") {
+		t.Fatalf("a reader outside the zone must be flagged, got %+v", got)
 	}
 }
 
@@ -203,6 +223,11 @@ func TestScanSQLiteMediaReaderBan_ConvertedZoneIsExactFile(t *testing.T) {
 			zone:    "cmd/admin/",
 			listed:  "cmd/admin/internal/audit/clip_drive_audit.go",
 			sibling: "cmd/admin/internal/audit/brand_new.go",
+		},
+		{
+			zone:    "internal/platform/sqlite/",
+			listed:  "internal/platform/sqlite/assets/imagesregistry/repo_queries.go",
+			sibling: "internal/platform/sqlite/assets/imagesregistry/brand_new.go",
 		},
 	}
 	for _, tc := range cases {
