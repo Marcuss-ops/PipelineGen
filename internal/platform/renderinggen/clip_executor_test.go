@@ -83,6 +83,27 @@ func validClipPlan(t *testing.T) cliprender.ClipRenderPlanV1 {
 	return plan
 }
 
+func TestChunkPolicyRefusesPlansWithAudio(t *testing.T) {
+	plan := validClipPlan(t)
+	plan.DurationMS = int64((2 * time.Minute) / time.Millisecond)
+	if err := plan.Seal(); err != nil {
+		t.Fatalf("seal long clip plan: %v", err)
+	}
+
+	executor, err := NewClipRenderExecutor(&fakeClipQueue{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	executor.SetChunking(time.Minute, 48, 2)
+
+	if requested, alignment, ok := executor.chunkPolicy(plan); ok {
+		t.Fatalf("audio plan must not be chunked: requested=%d alignment=%d", requested, alignment)
+	}
+	if got := executor.RenderJobID(plan); got != plan.RunID {
+		t.Fatalf("audio plan must retain the plain render job id: got %q, want %q", got, plan.RunID)
+	}
+}
+
 // TestClipRenderExecutorSubmitsOverlayPlanV1 verifies the critical contract:
 // the submitted JSON carries schema_version="renderinggen.overlay-plan.v1",
 // NOT a raw ClipRenderPlanV1 (which would be silently pass-through'd by the

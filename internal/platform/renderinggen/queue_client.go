@@ -340,6 +340,14 @@ func (e *ClipRenderExecutor) chunkPolicy(plan cliprender.ClipRenderPlanV1) (int,
 	if e == nil || e.chunkDuration <= 0 || e.chunkAlignment <= 0 || e.chunkMax < 2 {
 		return 0, 0, false
 	}
+	// Chunk assembly is video-only. Audio packet boundaries and the source
+	// audio policy belong to the complete clip, so splitting a plan that carries
+	// audio can produce failed children or an assembled parent without audio.
+	// Keep this guard here, next to the transport optimisation it protects:
+	// every valid compiled clip plan currently carries a non-empty audio mode.
+	if plan.Audio.Mode != "" {
+		return 0, 0, false
+	}
 	if plan.Background != nil && plan.Background.Mode != "" && plan.Background.Mode != cliprender.BackgroundModeNone {
 		return 0, 0, false
 	}
