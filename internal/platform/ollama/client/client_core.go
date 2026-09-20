@@ -149,15 +149,6 @@ func (c *Client) ChatDetailed(ctx context.Context, messages []types.Message, opt
 	return c.chatWithRetryAndFallbackDetailed(ctx, model, messages, options, format, types.MaxRetries)
 }
 
-// chatWithRetryAndFallback implements retry logic with model fallback.
-func (c *Client) chatWithRetryAndFallback(ctx context.Context, model string, messages []types.Message, options map[string]any, format json.RawMessage, maxRetries int) (string, error) {
-	result, err := c.chatWithRetryAndFallbackDetailed(ctx, model, messages, options, format, maxRetries)
-	if err != nil {
-		return "", err
-	}
-	return result.Content, nil
-}
-
 // chatWithRetryAndFallbackDetailed implements retry logic with model fallback
 // and returns the metrics of the successful call.
 func (c *Client) chatWithRetryAndFallbackDetailed(ctx context.Context, model string, messages []types.Message, options map[string]any, format json.RawMessage, maxRetries int) (ChatResult, error) {

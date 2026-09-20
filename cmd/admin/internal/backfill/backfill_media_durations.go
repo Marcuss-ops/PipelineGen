@@ -378,21 +378,3 @@ negative_duration        = %d`,
 		r.AssetsTotal, r.AlreadyKnown, r.ProbedLocal, r.ProbedDrive,
 		r.ProviderMetadata, r.StillUnknown, r.InvalidZeroDuration, r.NegativeDuration)
 }
-
-func SplitBackfillCSV(raw string) []string {
-	parts := strings.Split(raw, ",")
-	result := make([]string, 0, len(parts))
-	seen := make(map[string]struct{}, len(parts))
-	for _, part := range parts {
-		part = strings.TrimSpace(part)
-		if part == "" {
-			continue
-		}
-		if _, ok := seen[part]; ok {
-			continue
-		}
-		seen[part] = struct{}{}
-		result = append(result, part)
-	}
-	return result
-}

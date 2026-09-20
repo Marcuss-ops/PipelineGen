@@ -31,14 +31,11 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"fmt"
 	"io"
 
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/schema"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/transport"
 )
 
 // QdrantCleaner is the godlike/06 SSOT port for the drive_link/local_path
@@ -165,81 +162,12 @@ const (
 
 // IsValid returns true for canonical 3-mode set.
 
-// Run is the canonical main entry point for the Service. Per mode it
-// populates the lazy fields (if needed) and dispatches to the typed
-// per-mode handler.
-//
-// For audit + delete modes, initHeavy opens the composition root and
-// extracts root.Outbox.Dispatcher into the Service's dispatcher field —
-// godlike/07 minimum-blast-radius: the dispatcher is NOT a constructor
-// arg (matches the pre-split mctx.root.Outbox.Dispatcher reach-through).
-//
-// godlike/07 fail-closed (post-review fixup): for Delete mode, surface
-// ErrDispatcherNil immediately after initHeavy if the dispatcher wire
-// failed — same fail-closed-at-boot contract as the pre-split code
-// (mctx.root.Outbox.Dispatcher == nil check at mode-handler entry).
-func (s *Service) Run(ctx context.Context, mode Mode, opts RunOptions) error {
-	switch mode {
-	case ModeRepairLocators:
-		return s.Repair(ctx, RepairOptions{JSON: opts.JSON})
-
-	case ModeAudit:
-		if err := s.initHeavy(ctx, opts.Limit); err != nil {
-			return err
-		}
-		return s.Audit(ctx, AuditOptions{JSON: opts.JSON, Limit: opts.Limit})
-
-	case ModeDeleteInvalid:
-		if err := s.initHeavy(ctx, opts.Limit); err != nil {
-			return err
-		}
-		if s.dispatcher == nil {
-			return ErrDispatcherNil
-		}
-		return s.Delete(ctx, DeleteOptions{JSON: opts.JSON, Limit: opts.Limit})
-	}
-	return fmt.Errorf("maintenance.Run: unknown mode %q (valid: audit, repair-locators, delete-invalid)", mode)
-}
-
 // RunOptions is the typed-input envelope for Service.Run — combines the
 // 3 per-mode option envelopes into one facade so cmd/admin can call a
 // single method.
 type RunOptions struct {
 	JSON  bool
 	Limit int
-}
-
-// initHeavy populates the lazy fields on the Service from the canonical
-// primary SQLite handle injected by the composition root and constructs
-// the QdrantClient + Scanner. Used by Audit + Delete modes;
-// Repair mode invokes the Cleaner port directly without these fields.
-//
-// Database ownership remains with DatabaseSet/OpenSet; this service never
-// opens or closes the injected primary handle.
-//
-// Per godlike/07 (post-review fixup): also extracts root.Outbox.Dispatcher
-// into the Service.dispatcher field. The pre-split cmd/admin reached
-// through this exact path (`mctx.root.Outbox.Dispatcher.EnqueueAndDelete`),
-// so the post-split lazy-init preserves byte-equivalent runtime behavior.
-func (s *Service) initHeavy(ctx context.Context, limit int) error {
-	if s.sqliteDB == nil {
-		return fmt.Errorf("maintenance: canonical primary SQLite handle is not injected; use DatabaseSet.Primary.DB")
-	}
-
-	client := transport.NewClient(&schema.Config{
-		BaseURL: s.cfg.Qdrant.BaseURL,
-		APIKey:  s.cfg.Qdrant.APIKey,
-		Timeout: s.cfg.Qdrant.Timeout,
-	}, s.log)
-	idxSchema := schema.DefaultV3Schema()
-	active, err := client.ResolveRuntimeCollection(ctx, idxSchema.RuntimeAlias)
-	if err != nil {
-		return fmt.Errorf("resolve active collection: %w", err)
-	}
-	s.client = client
-	s.activeCol = active
-	s.scanner = NewQdrantScannerAdapter(client, active, limit)
-	return nil
 }
 
 // ErrDispatcherNil is the godlike/07 fail-closed typed sentinel used

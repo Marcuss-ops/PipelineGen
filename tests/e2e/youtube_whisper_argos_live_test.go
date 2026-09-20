@@ -138,12 +138,6 @@ func (p *recordingPublisher) ResolveFolder(_ context.Context, req delivery.Publi
 	return req.DestinationFolderID, nil
 }
 
-func (p *recordingPublisher) recorded() []recordedUpload {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	return append([]recordedUpload(nil), p.uploads...)
-}
-
 // recordedResult is what a publisher RETURNED for one publication: in real
 // mode these are Drive-issued ids, which is what turns "the destination
 // contract held" into "the artifact exists in Drive".
