@@ -13,11 +13,6 @@
 package maintenance
 
 import (
-	"context"
-	"fmt"
-
-	"go.uber.org/zap"
-
 	qdrantdr "github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/dr"
 )
 
@@ -32,46 +27,3 @@ type RepairOptions struct {
 // QdrantCleaner port. Its canonical definition lives in the dependency-free
 // domain package so application and infrastructure use the same type.
 type LocatorCleanupReport = qdrantdr.LocatorCleanupReport
-
-// Service.Repair handles the `repair-locators` mode of qdrant-maintenance.
-// Pre-conditions:
-//   - cfg.Qdrant.Enabled = true
-//   - s.cleaner is non-nil (QdrantCleaner port injected at composition time)
-func (s *Service) Repair(ctx context.Context, opts RepairOptions) error {
-	s.log.Info("qdrant-maintenance repair-locators: scanning for legacy drive_link / local_path keys")
-
-	report, err := s.cleaner.CleanLocators(ctx, true)
-	if err != nil {
-		s.log.Error("qdrant-maintenance repair-locators failed", zap.Error(err))
-		if report != nil && opts.JSON {
-			if jErr := s.cli.JSON(report); jErr != nil {
-				s.log.Warn("qdrant-maintenance: partial-report JSON marshal failed (dropping partial line; main err returned below)", zap.Error(jErr))
-			}
-		}
-		return err
-	}
-
-	if report == nil || !report.CompleteScan {
-		return fmt.Errorf("repair-locators aborted: cleanup report is incomplete; no zero-residue claim is valid")
-	}
-	if opts.JSON {
-		return s.cli.JSON(report)
-	}
-
-	s.cli.HumanLine("=== qdrant-maintenance repair-locators ===")
-	s.cli.HumanLinef("  Collection:       %s\n", report.Collection)
-	s.cli.HumanLinef("  Points scrolled:  %d\n", report.TotalPointsScrolled)
-	s.cli.HumanLinef("  With drive_link:  %d\n", report.PointsWithDriveLink)
-	s.cli.HumanLinef("  With local_path:  %d\n", report.PointsWithLocalPath)
-	s.cli.HumanLinef("  Affected (total): %d\n", report.PointsAffected)
-	s.cli.HumanLinef("  Keys removed:     %d\n", report.KeysRemoved)
-	s.cli.HumanLinef("  Batch calls:      %d\n", report.BatchCount)
-	if len(report.Errors) > 0 {
-		s.cli.HumanLinef("  Errors:           %d\n", len(report.Errors))
-		for i, e := range report.Errors {
-			s.cli.HumanLinef("    [%d] %s\n", i, e)
-		}
-	}
-	s.cli.HumanLine("\nRun 'qdrant-maintenance audit' to confirm zero LegacyLocatorPayload hits.")
-	return nil
-}
