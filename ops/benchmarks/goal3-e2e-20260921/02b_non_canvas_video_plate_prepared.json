@@ -86,12 +86,12 @@
         "start_frame": 0,
         "duration_frames": 120,
         "position": [
-          1536,
-          64
+          1696,
+          104
         ],
         "opacity": 0.9
       }
     }
   ],
-  "content_hash": "66f5ffe5c7034960b8e05ec18fa2a8fe30f50122fe68089759a8dc07b1edfac3"
+  "content_hash": "55a49d2c2f3fed0f881f43f844ca4e1c5d74b347bd6583df8b3945e01ee7b02f"
 }

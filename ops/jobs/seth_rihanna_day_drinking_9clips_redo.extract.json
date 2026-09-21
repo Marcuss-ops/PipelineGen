@@ -1,0 +1,162 @@
+{
+  "url": "https://www.youtube.com/watch?v=X3n5Pk8fkLg",
+  "strategy": "verify",
+  "destination": {
+    "folder_id": "1u1rYpWeTkcedezM2f-lX6FTrq2hiIZJL"
+  },
+  "segments": [
+    {
+      "start": "00:00",
+      "end": "00:15",
+      "name": "Brindisi iniziale e prom date",
+      "source_title": "Seth and Rihanna Go Day Drinking",
+      "source_channel": "Late Night with Seth Meyers",
+      "summary": "Seth Meyers e Rihanna aprono il segmento Day Drinking con un brindisi guardandosi negli occhi stile ballo scolastico.",
+      "topics": ["Brindisi iniziale e prom date"],
+      "texts": [
+        {
+          "language_code": "en",
+          "source_type": "provided",
+          "is_original": true,
+          "description": "Seth Meyers Rihanna Day Drinking Late Night NBC brindisi eye contact prom date intro bar"
+        }
+      ]
+    },
+    {
+      "start": "00:15",
+      "end": "00:27",
+      "name": "Sigla introduttiva Day Drinking",
+      "source_title": "Seth and Rihanna Go Day Drinking",
+      "source_channel": "Late Night with Seth Meyers",
+      "summary": "Presentazione ufficiale dello sketch comico con la canzone d'introduzione del Day Drinking.",
+      "topics": ["Sigla introduttiva Day Drinking"],
+      "texts": [
+        {
+          "language_code": "en",
+          "source_type": "provided",
+          "is_original": true,
+          "description": "Seth Meyers Rihanna theme song Day Drinking NBC Late Night intro musica"
+        }
+      ]
+    },
+    {
+      "start": "06:40",
+      "end": "06:55",
+      "name": "Consiglio matrimoniale esplicito",
+      "source_title": "Seth and Rihanna Go Day Drinking",
+      "source_channel": "Late Night with Seth Meyers",
+      "summary": "Rihanna offre una risposta comica ed esplicita alla richiesta di Seth su come sorprendere sua moglie.",
+      "topics": ["Consiglio matrimoniale esplicito"],
+      "texts": [
+        {
+          "language_code": "en",
+          "source_type": "provided",
+          "is_original": true,
+          "description": "marriage advice romantic night out Seth Meyers wife NSFW adult comedy network television"
+        }
+      ]
+    },
+    {
+      "start": "07:01",
+      "end": "07:35",
+      "name": "Soprannome per Seth",
+      "source_title": "Seth and Rihanna Go Day Drinking",
+      "source_channel": "Late Night with Seth Meyers",
+      "summary": "Seth chiede a Rihanna un soprannome accattivante stile Ri-Ri, ma lei risponde semplicemente Seth.",
+      "topics": ["Soprannome per Seth"],
+      "texts": [
+        {
+          "language_code": "en",
+          "source_type": "provided",
+          "is_original": true,
+          "description": "Ri-Ri nickname game count to three Seth Meyers Rihanna bar banter"
+        }
+      ]
+    },
+    {
+      "start": "07:45",
+      "end": "08:35",
+      "name": "Pickup lines e campanello",
+      "source_title": "Seth and Rihanna Go Day Drinking",
+      "source_channel": "Late Night with Seth Meyers",
+      "summary": "Seth prova pietose frasi d'approccio su Game of Thrones e sul film Battleship, venendo bocciato al campanello.",
+      "topics": ["Pickup lines e campanello"],
+      "texts": [
+        {
+          "language_code": "en",
+          "source_type": "provided",
+          "is_original": true,
+          "description": "pickup lines Game of Thrones Battleship movie bell ring dating game rejection"
+        }
+      ]
+    },
+    {
+      "start": "08:35",
+      "end": "09:20",
+      "name": "Sessione trucco Fenty Beauty",
+      "source_title": "Seth and Rihanna Go Day Drinking",
+      "source_channel": "Late Night with Seth Meyers",
+      "summary": "Rihanna applica i cosmetici Fenty Beauty sugli occhi di Seth lamentandosi delle sue rughe mentre parla.",
+      "topics": ["Sessione trucco Fenty Beauty"],
+      "texts": [
+        {
+          "language_code": "en",
+          "source_type": "provided",
+          "is_original": true,
+          "description": "Fenty Beauty makeup tutorial summer eye eyeshadow wrinkles beauty business Rihanna Seth Meyers"
+        }
+      ]
+    },
+    {
+      "start": "09:23",
+      "end": "09:50",
+      "name": "Look Avatar vs Unicorn",
+      "source_title": "Seth and Rihanna Go Day Drinking",
+      "source_channel": "Late Night with Seth Meyers",
+      "summary": "Seth aggiunge ombretto blu sostenendo di somigliare ai personaggi di Avatar dopo averli scambiati per unicorni.",
+      "topics": ["Look Avatar vs Unicorn"],
+      "texts": [
+        {
+          "language_code": "en",
+          "source_type": "provided",
+          "is_original": true,
+          "description": "blue eyeshadow Avatar movie Unicorn James Cameron blue people makeup fail"
+        }
+      ]
+    },
+    {
+      "start": "09:53",
+      "end": "10:40",
+      "name": "Seth canta Work con le cuffie",
+      "source_title": "Seth and Rihanna Go Day Drinking",
+      "source_channel": "Late Night with Seth Meyers",
+      "summary": "Seth indossa cuffie isolanti e canta a squarciagola il brano Work stravolgendo comicità e intonazione.",
+      "topics": ["Seth canta Work con le cuffie"],
+      "texts": [
+        {
+          "language_code": "en",
+          "source_type": "provided",
+          "is_original": true,
+          "description": "Work Rihanna song cover noise canceling headphones Late Night performance karaoke singing"
+        }
+      ]
+    },
+    {
+      "start": "10:45",
+      "end": "11:00",
+      "name": "Hook duetto alcolico Work",
+      "source_title": "Seth and Rihanna Go Day Drinking",
+      "source_channel": "Late Night with Seth Meyers",
+      "summary": "Rihanna e Seth cantano insieme il ritornello di Work richiedendo a gran voce l'ultimo giro di shot.",
+      "topics": ["Hook duetto alcolico Work"],
+      "texts": [
+        {
+          "language_code": "en",
+          "source_type": "provided",
+          "is_original": true,
+          "description": "Work singing drunk duet tequila shot scream Late Night closing hook"
+        }
+      ]
+    }
+  ]
+}

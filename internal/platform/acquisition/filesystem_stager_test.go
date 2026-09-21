@@ -296,6 +296,98 @@ func TestFilesystemStager_Prepare_SecondCall_HitsCache(t *testing.T) {
 	assert.Equal(t, first.SHA256, second.SHA256, "cache hit returns the same SHA256")
 }
 
+// ── Orphaned / truncated stage: cache hit MUST be rejected ─────────
+//
+// Regression (observed live 2026-09-21 on the YouTube download-once lane).
+// `releaseByContext` removes the staged file and THEN the sidecar, so a
+// shutdown landing between the two `RemoveAll` calls leaves a `.meta.json`
+// whose LocalPath is gone. The cache-hit path trusted the sidecar, handed
+// every segment a PreDownloadedPath that did not exist, and the extraction
+// died in ~1s with `rust media cut_and_normalize: source file is not
+// readable` — classified TERMINAL, so no retry could recover it for the 24h
+// TTL of the sidecar. bytes-on-disk is the contract; a dangling receipt must
+// re-download.
+func TestFilesystemStager_Prepare_OrphanedMeta_ReDownloadsInsteadOfReturningDanglingPath(t *testing.T) {
+	root := t.TempDir()
+
+	var fetchCalls int32
+	var mu sync.Mutex
+	wrappedFetch := func(ctx context.Context, req appacq.PrepareRequest, dstPath string, onWireSHA256 func(string)) error {
+		mu.Lock()
+		fetchCalls++
+		mu.Unlock()
+		return fileFetchFn(t)(ctx, req, dstPath, onWireSHA256)
+	}
+
+	stager, err := NewFilesystemStager(Options{StagingRoot: root, Fetch: wrappedFetch})
+	require.NoError(t, err)
+	req := appacq.PrepareRequest{
+		Source:         appacq.SourceRef{URL: "https://example.com/orphaned.mp4"},
+		IdempotencyKey: "orphan-key",
+	}
+
+	first, err := stager.Prepare(context.Background(), req)
+	require.NoError(t, err)
+	require.FileExists(t, first.LocalPath)
+
+	// Simulate the interrupted Release: the bytes are gone, the sidecar stays.
+	require.NoError(t, os.RemoveAll(first.LocalPath))
+	require.FileExists(t, first.LocalPath+".meta.json", "the surviving sidecar IS the orphan the incident left behind")
+
+	second, err := stager.Prepare(context.Background(), req)
+	require.NoError(t, err)
+	assert.FileExists(t, second.LocalPath, "a rejected cache hit MUST re-download the bytes")
+	assert.EqualValues(t, 2, fetchCalls, "an orphaned sidecar MUST NOT satisfy the cache")
+	assert.Equal(t, first.LocalPath, second.LocalPath, "the canonical stage path is stable across the re-download")
+	assert.Equal(t, first.CleanupToken, second.CleanupToken, "the CleanupToken is derived from the SourceRef")
+	assert.Len(t, second.SHA256, 64)
+
+	// The recovered stage is a real cache hit again: a third Prepare must
+	// not re-fetch.
+	third, err := stager.Prepare(context.Background(), req)
+	require.NoError(t, err)
+	assert.EqualValues(t, 2, fetchCalls, "the re-downloaded stage satisfies the next Prepare")
+	assert.Equal(t, second.SHA256, third.SHA256)
+}
+
+// A truncated staged file that outlived its sidecar is worse than a missing
+// one: the caller would cut from silently wrong bytes. The size cross-check
+// against the sidecar's declared SizeBytes must reject it the same way.
+func TestFilesystemStager_Prepare_TruncatedStage_ReDownloads(t *testing.T) {
+	root := t.TempDir()
+
+	var fetchCalls int32
+	var mu sync.Mutex
+	wrappedFetch := func(ctx context.Context, req appacq.PrepareRequest, dstPath string, onWireSHA256 func(string)) error {
+		mu.Lock()
+		fetchCalls++
+		mu.Unlock()
+		return fileFetchFn(t)(ctx, req, dstPath, onWireSHA256)
+	}
+
+	stager, err := NewFilesystemStager(Options{StagingRoot: root, Fetch: wrappedFetch})
+	require.NoError(t, err)
+	req := appacq.PrepareRequest{
+		Source:         appacq.SourceRef{URL: "https://example.com/truncated.mp4"},
+		IdempotencyKey: "truncated-key",
+	}
+
+	first, err := stager.Prepare(context.Background(), req)
+	require.NoError(t, err)
+	require.EqualValues(t, int64(len(fileFetchFnBody)), first.SizeBytes)
+
+	// Truncate in place, keeping the sidecar's declared SizeBytes intact.
+	require.NoError(t, os.WriteFile(first.LocalPath, fileFetchFnBody[:4], 0o644))
+
+	second, err := stager.Prepare(context.Background(), req)
+	require.NoError(t, err)
+	assert.EqualValues(t, 2, fetchCalls, "a truncated stage MUST NOT satisfy the cache")
+	info, statErr := os.Stat(second.LocalPath)
+	require.NoError(t, statErr)
+	assert.EqualValues(t, int64(len(fileFetchFnBody)), info.Size(), "the re-download restores the full body")
+	assert.EqualValues(t, first.SizeBytes, second.SizeBytes)
+}
+
 // ── Release: success + typed-error branches ────────────────────────
 
 func TestFilesystemStager_Release_HappyPath_RemovesStagedFileAndMeta(t *testing.T) {

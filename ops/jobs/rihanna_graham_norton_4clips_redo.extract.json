@@ -1,0 +1,77 @@
+{
+  "url": "https://www.youtube.com/watch?v=5ksU76kWyvU",
+  "strategy": "verify",
+  "destination": {
+    "folder_id": "1u1rYpWeTkcedezM2f-lX6FTrq2hiIZJL"
+  },
+  "segments": [
+    {
+      "start": "00:54",
+      "end": "01:09",
+      "name": "Cast femminile e unicità di Ocean's 8",
+      "source_title": "Rihanna Has A Little Problem | Extended Interview | The Graham Norton Show",
+      "source_channel": "The Graham Norton Show",
+      "summary": "Graham e il cast scherzano sull'eccezionalità di avere un ensemble al femminile composto da cinque protagoniste di alto livello.",
+      "topics": ["Cast femminile e unicità di Ocean's 8"],
+      "texts": [
+        {
+          "language_code": "en",
+          "source_type": "provided",
+          "is_original": true,
+          "description": "Graham Norton Oceans 8 cast femminile Sandra Bullock Cate Blanchett Helena Bonham Carter Sarah Paulson Rihanna"
+        }
+      ]
+    },
+    {
+      "start": "01:25",
+      "end": "01:50",
+      "name": "Canti sul set e jingle improvvisati",
+      "source_title": "Rihanna Has A Little Problem | Extended Interview | The Graham Norton Show",
+      "source_channel": "The Graham Norton Show",
+      "summary": "Helena Bonham Carter rivela divertita come Rihanna cantasse continuamente sul set e ricorda i jingle inventati per scherzo.",
+      "topics": ["Canti sul set e jingle improvvisati"],
+      "texts": [
+        {
+          "language_code": "en",
+          "source_type": "provided",
+          "is_original": true,
+          "description": "Helena Bonham Carter Rihanna canto canticchiare set improvvisazione Bird Cage jingle canzoni"
+        }
+      ]
+    },
+    {
+      "start": "02:35",
+      "end": "02:51",
+      "name": "Piccoli furti d'infanzia",
+      "source_title": "Rihanna Has A Little Problem | Extended Interview | The Graham Norton Show",
+      "source_channel": "The Graham Norton Show",
+      "summary": "Graham Norton racconta un aneddoto d'infanzia sul furto di un astuccio di pelo e la severa reazione della madre.",
+      "topics": ["Piccoli furti d'infanzia"],
+      "texts": [
+        {
+          "language_code": "en",
+          "source_type": "provided",
+          "is_original": true,
+          "description": "astuccio pelo matite furto infanzia bottega Irlanda madre rimprovero Graham Norton"
+        }
+      ]
+    },
+    {
+      "start": "09:00",
+      "end": "09:15",
+      "name": "Hook: La domanda sul nuovo album",
+      "source_title": "Rihanna Has A Little Problem | Extended Interview | The Graham Norton Show",
+      "source_channel": "The Graham Norton Show",
+      "summary": "Graham incalza Rihanna sulla data d'uscita del nuovo album su esplicita richiesta disperata dei fan.",
+      "topics": ["Hook: La domanda sul nuovo album"],
+      "texts": [
+        {
+          "language_code": "en",
+          "source_type": "provided",
+          "is_original": true,
+          "description": "fan domande nuovo album musica Rihanna studio registrazione Graham Norton insistenza"
+        }
+      ]
+    }
+  ]
+}
