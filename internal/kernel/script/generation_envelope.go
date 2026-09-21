@@ -202,23 +202,32 @@ const (
 )
 
 // FixedPlaybackPolicy is the explicit playback contract for fixed media.
-// A zero policy normalizes to original_clip with the whole source window.
+// A zero policy normalizes to original_clip with a deterministic five-second
+// editorial window, so the timeline compiler always receives a duration.
 type FixedPlaybackPolicy struct {
 	AudioMode   FixedPlaybackAudioMode `json:"audio_mode"`
 	SourceInMS  int64                  `json:"source_in_ms,omitempty"`
 	SourceOutMS int64                  `json:"source_out_ms,omitempty"`
 }
 
+// DefaultFixedPlaybackDurationMS is the safe editorial window used when a
+// fixed section omits both source endpoints. Callers can still request any
+// other window explicitly.
+const DefaultFixedPlaybackDurationMS int64 = 5000
+
 // Normalize returns the canonical fixed playback policy.
 func (p FixedPlaybackPolicy) Normalize() FixedPlaybackPolicy {
 	if p.AudioMode == "" {
 		p.AudioMode = FixedPlaybackOriginalClip
 	}
+	if p.SourceInMS == 0 && p.SourceOutMS == 0 {
+		p.SourceOutMS = DefaultFixedPlaybackDurationMS
+	}
 	return p
 }
 
 // Valid reports whether the fixed playback policy is structurally valid.
-// A zero source window means the complete source clip; a partial window must
+// A zero-value policy is valid after normalization; a partial window must
 // have both endpoints and a strictly positive duration.
 func (p FixedPlaybackPolicy) Valid() bool {
 	p = p.Normalize()

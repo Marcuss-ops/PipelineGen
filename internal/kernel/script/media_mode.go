@@ -32,8 +32,10 @@ func clipReferences(item GenerationItemV2) bool {
 	return item.Source.Type == SourceClips || len(item.Source.ClipIDs) > 0
 }
 
-// validateMediaMode enforces the explicit stock/clip separation before the
-// request reaches the queue or any provider.
+// validateMediaMode enforces the explicit stock/clip contract before the
+// request reaches the queue or any provider. Mixed is intentionally explicit:
+// it is the only mode allowed to carry both clip evidence and caller-selected
+// stock bindings in one generation item.
 func validateMediaMode(item GenerationItemV2, ref string) error {
 	mode := item.MediaMode
 	if !mode.Valid() {
@@ -74,7 +76,21 @@ func validateMediaMode(item GenerationItemV2, ref string) error {
 			return mediaModeError(item, "CLIP_ONLY_STOCK_REFERENCE_FORBIDDEN", ref+": clip_only cannot contain stock references")
 		}
 	case MediaModeMixed:
-		return mediaModeError(item, "MEDIA_MODE_UNSUPPORTED", ref+": media_mode=mixed is not supported")
+		if item.Source.Type != SourceClips || len(item.Source.ClipIDs) == 0 {
+			return mediaModeError(item, "MIXED_CLIP_SOURCE_REQUIRED", ref+": mixed requires source.type=clips with clip_ids")
+		}
+		if !item.Output.StockEnabled.AsBool() || len(item.Output.StockBindings) == 0 {
+			return mediaModeError(item, "MIXED_STOCK_BINDINGS_REQUIRED", ref+": mixed requires stock_enabled=enabled and stock_bindings")
+		}
+		for i, binding := range item.Output.StockBindings {
+			if strings.TrimSpace(binding.AssetID) == "" && strings.TrimSpace(binding.DriveLink) == "" && strings.TrimSpace(binding.FolderID) == "" && strings.TrimSpace(binding.FolderLink) == "" {
+				return mediaModeError(item, "MIXED_STOCK_BINDING_EMPTY", fmt.Sprintf("%s: stock_bindings[%d] requires an asset, drive link, or folder", ref, i))
+			}
+			folderID, folderLink := strings.TrimSpace(binding.FolderID), strings.TrimSpace(binding.FolderLink)
+			if folderLink != "" && urlutil.FolderIDFromDriveLink(folderLink) != folderID {
+				return mediaModeError(item, "MIXED_STOCK_FOLDER_MISMATCH", fmt.Sprintf("%s: stock_bindings[%d] folder_link does not match folder_id", ref, i))
+			}
+		}
 	case "":
 		if stock && clips {
 			return mediaModeError(item, "MEDIA_MODE_REQUIRED_FOR_MIXED_REFERENCES", ref+": media_mode is required when clip and stock references are combined")

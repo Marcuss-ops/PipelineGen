@@ -6,11 +6,15 @@ import (
 )
 
 type ExternalConfig struct {
-	OllamaURL                   string   `yaml:"ollama_url" env:"OLLAMA_ADDR" default:"http://localhost:11434"`
-	OllamaModel                 string   `yaml:"ollama_model" env:"OLLAMA_MODEL" default:"gemma4:e4b"`
-	OllamaEmbedModel            string   `yaml:"ollama_embed_model" env:"OLLAMA_EMBED_MODEL"`
-	OllamaMetadataModel         string   `yaml:"ollama_metadata_model" env:"OLLAMA_METADATA_MODEL" default:""`
-	OllamaTimeoutSeconds        int      `yaml:"ollama_timeout_seconds" env:"OLLAMA_TIMEOUT" default:"600"`
+	OllamaURL            string `yaml:"ollama_url" env:"OLLAMA_ADDR" default:"http://localhost:11434"`
+	OllamaModel          string `yaml:"ollama_model" env:"OLLAMA_MODEL" default:"gemma4:e4b"`
+	OllamaEmbedModel     string `yaml:"ollama_embed_model" env:"OLLAMA_EMBED_MODEL"`
+	OllamaMetadataModel  string `yaml:"ollama_metadata_model" env:"OLLAMA_METADATA_MODEL" default:""`
+	OllamaTimeoutSeconds int    `yaml:"ollama_timeout_seconds" env:"OLLAMA_TIMEOUT" default:"600"`
+	// OllamaWarmTimeoutSeconds is separate from the per-request timeout:
+	// startup/model residency may legitimately spend several minutes loading a
+	// cold model into VRAM before the first token is produced.
+	OllamaWarmTimeoutSeconds    int      `yaml:"ollama_warm_timeout_seconds" env:"VELOX_OLLAMA_WARM_TIMEOUT" default:"600"`
 	YtdlpPath                   string   `yaml:"ytdlp_path" env:"YTDLP_PATH" default:"yt-dlp"`
 	YoutubePlayerClientFallback []string `yaml:"youtube_player_client_fallback" env:"VELOX_YOUTUBE_PLAYER_CLIENT_FALLBACK" default:"[]"`
 	YoutubeMinSleepSeconds      int      `yaml:"youtube_min_sleep_seconds" env:"YTDLP_MIN_SLEEP_SECONDS" default:"0"`

@@ -61,6 +61,27 @@ func TestApplyFixedSectionsStampsExplicitRoles(t *testing.T) {
 	}
 }
 
+func TestApplyFixedSectionsDefaultsOmittedPlaybackWindow(t *testing.T) {
+	req := GenerateRequest{
+		SourceLanguage: "en",
+		Intro:          &scriptpkg.FixedSection{ClipIDs: []string{"intro-default"}},
+	}
+	scenes, err := applyFixedSections(req, []Scene{{
+		ID: "body", Index: 0, DurationUS: 1_000_000,
+		Text: map[Language]string{"en": "BODY"},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	intro := scenes[0]
+	if intro.DurationMS != scriptpkg.DefaultFixedPlaybackDurationMS {
+		t.Fatalf("default intro duration = %dms, want %dms", intro.DurationMS, scriptpkg.DefaultFixedPlaybackDurationMS)
+	}
+	if intro.FixedPlayback == nil || intro.FixedPlayback.SourceOutMS != scriptpkg.DefaultFixedPlaybackDurationMS {
+		t.Fatalf("default intro playback = %#v", intro.FixedPlayback)
+	}
+}
+
 // TestRenderUnitsForSceneFansTwoClipFixedSections certifies the canonical
 // render-unit decomposition: a 2-clip fixed intro/outro produces two render
 // units (one per clip) so the second clip receives its own final render,

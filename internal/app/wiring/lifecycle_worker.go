@@ -73,7 +73,11 @@ func buildOllamaWarmStep(cfg *config.Config, root *ComposeRoot, log *zap.Logger)
 		Name:     "ollama-model-warm",
 		Required: true,
 		Start: func(startCtx context.Context) error {
-			ctx, cancel := context.WithTimeout(startCtx, 2*time.Minute)
+			warmTimeout := time.Duration(cfg.External.OllamaWarmTimeoutSeconds) * time.Second
+			if warmTimeout <= 0 {
+				warmTimeout = 10 * time.Minute
+			}
+			ctx, cancel := context.WithTimeout(startCtx, warmTimeout)
 			defer cancel()
 			started := time.Now()
 			if err := root.AI.OllamaClient.WarmModel(ctx, model); err != nil {
@@ -82,6 +86,7 @@ func buildOllamaWarmStep(cfg *config.Config, root *ComposeRoot, log *zap.Logger)
 			if log != nil {
 				log.Info("StartupStep: Ollama model resident",
 					zap.String("model", model),
+					zap.Duration("warm_timeout", warmTimeout),
 					zap.Int64("warm_ms", time.Since(started).Milliseconds()),
 				)
 			}

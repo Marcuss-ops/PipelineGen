@@ -27,6 +27,16 @@ func clipOnlyItem() GenerationItemV2 {
 		ScriptParams: ScriptSpec{TargetWords: 100}}
 }
 
+func mixedItem() GenerationItemV2 {
+	return GenerationItemV2{ID: "mixed", MediaMode: MediaModeMixed,
+		Source: SourceSpec{Type: SourceClips, ClipIDs: []string{"intro-clip", "body-clip"}},
+		Output: OutputSpec{StockEnabled: ToggleEnabled, StockBindings: []StockBindingInput{{
+			Index: 1, FolderID: testFolderID, FolderLink: testFolderLink, StartMs: 0, EndMs: 5000,
+		}}},
+		ScriptParams: ScriptSpec{TargetWords: 100},
+	}
+}
+
 func validateMediaItem(t *testing.T, item GenerationItemV2) *PayloadValidationError {
 	t.Helper()
 	err := (&GenerationEnvelopeV2{Version: 2, Items: []GenerationItemV2{item}}).Validate()
@@ -171,6 +181,25 @@ func TestMediaModeStockOnlyRequiresMatchingFolderIDAndLink(t *testing.T) {
 func TestMediaModeClipOnlyAcceptsSourceClips(t *testing.T) {
 	if err := (&GenerationEnvelopeV2{Version: 2, Items: []GenerationItemV2{clipOnlyItem()}}).Validate(); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestMediaModeMixedAcceptsClipSourceAndStockBindings(t *testing.T) {
+	if err := (&GenerationEnvelopeV2{Version: 2, Items: []GenerationItemV2{mixedItem()}}).Validate(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestMediaModeMixedRequiresBothMediaFamilies(t *testing.T) {
+	i := mixedItem()
+	i.Source.ClipIDs = nil
+	if got := validateMediaItem(t, i).Code; got != "MIXED_CLIP_SOURCE_REQUIRED" {
+		t.Fatalf("code=%s", got)
+	}
+	i = mixedItem()
+	i.Output.StockBindings = nil
+	if got := validateMediaItem(t, i).Code; got != "MIXED_STOCK_BINDINGS_REQUIRED" {
+		t.Fatalf("code=%s", got)
 	}
 }
 

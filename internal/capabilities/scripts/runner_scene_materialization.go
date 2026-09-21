@@ -298,8 +298,8 @@ func applyFixedSections(req GenerateRequest, scenes []Scene) ([]Scene, error) {
 
 // fixedMediaClipProjection creates the authoritative clip/audio projection
 // for a protected section. A partial playback window applies to each bound
-// clip; a zero window remains unresolved until the clip registry supplies the
-// complete source duration.
+// clip; the zero-value policy has already normalized to the canonical default
+// window before this projection is built.
 func fixedMediaClipProjection(ids []string, playback scriptpkg.FixedPlaybackPolicy) ([]*ClipReference, []capabilityaudio.AudioIntent, int64) {
 	playback = playback.Normalize()
 	clips := make([]*ClipReference, 0, len(ids))
