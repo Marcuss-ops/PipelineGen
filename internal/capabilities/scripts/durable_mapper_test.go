@@ -22,6 +22,22 @@ func TestDurableResultToDomainPreservesOutputTextAndWordCount(t *testing.T) {
 	assert.Equal(t, 4, out.Output.WordCount)
 }
 
+func TestDurableResultToDomainMapsMixedStockAlongsideClip(t *testing.T) {
+	in := &GenerateResult{Scenes: []Scene{{
+		ID: "scene-0", Index: 0, Text: map[Language]string{"en": "Mixed scene."},
+		Clip:  &ClipReference{ID: "clip-0", DriveLink: "https://drive.google.com/file/d/clip/view"},
+		Stock: &scriptpkg.StockBinding{FolderID: "folder-1", FolderLink: "https://drive.google.com/drive/folders/folder-1", EndMs: 5000, DurationMs: 5000},
+	}}}
+	out := DurableResultToDomain(in)
+	require.NotNil(t, out)
+	require.Len(t, out.Output.SpecScene.Scenes, 1)
+	scene := out.Output.SpecScene.Scenes[0]
+	assert.NotNil(t, scene.Bindings.Clip)
+	assert.Equal(t, "clip-0", scene.Bindings.Clip.ClipID)
+	require.NotNil(t, scene.Bindings.Stock)
+	assert.Equal(t, "folder-1", scene.Bindings.Stock.FolderID)
+}
+
 // TestDurableResultToDomainMapsFixedSectionsFromRoleNotID certifies that
 // fixed intro/outro sections reach the durable domain surface with their
 // document kinds derived from the explicit SceneRole — never from the scene

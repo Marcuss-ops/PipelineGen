@@ -318,6 +318,7 @@ func (r *Runner) runSceneTextPhase(ctx context.Context, runID string, req Genera
 			r.failRunWithRetry(ctx, runID, StageGeneratingSceneText, cause)
 			return result, false
 		}
+		applyDurableStockBindings(req, scenes)
 		// Caller-provided important phrases are an explicit overlay contract.
 		// Keep them grounded in the final narration text even when a small/local
 		// model paraphrases the brief and drops the requested literal surface.
