@@ -73,6 +73,7 @@ external:
   ollama_url: "http://localhost:11434"
   ollama_model: "gemma4:e4b"
   ollama_timeout_seconds: 120
+  ollama_warm_timeout_seconds: 600
   # Ollama concurrency budget: the client keeps at most OLLAMA_NUM_PARALLEL
   # generation requests in flight (3 on the certified worker), shared by every
   # pool on this endpoint (script, NLP, translation, cues, embeddings).

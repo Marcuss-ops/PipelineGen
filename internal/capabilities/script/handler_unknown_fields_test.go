@@ -1,6 +1,7 @@
 package script
 
 import (
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -9,6 +10,13 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 )
+
+func TestFriendlyGenerateJSONErrorSuggestsCanonicalRenderPath(t *testing.T) {
+	err := friendlyGenerateJSONError(errors.New(`json: unknown field "render"`))
+	if !strings.Contains(err, "items[].output.render") {
+		t.Fatalf("error = %q, want canonical output.render suggestion", err)
+	}
+}
 
 func TestGenerate_RejectsRemovedAssembleFinalField(t *testing.T) {
 	gin.SetMode(gin.TestMode)

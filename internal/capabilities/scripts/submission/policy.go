@@ -26,6 +26,11 @@ type JobPolicy struct {
 // accept configuration to override defaults.
 type JobPolicyResolver struct{}
 
+// ScriptGeneratePriority keeps interactive/editorial script jobs ahead of
+// bulk asset extraction and enrichment work. The queue remains FIFO within a
+// priority, so this changes admission order without changing retry semantics.
+const ScriptGeneratePriority = 100
+
 // NewJobPolicyResolver returns the canonical resolver.
 func NewJobPolicyResolver() *JobPolicyResolver {
 	return &JobPolicyResolver{}
@@ -41,7 +46,7 @@ var ErrUnknownJobType = errors.New("submission: unknown job type")
 func (r *JobPolicyResolver) Resolve(jobType string) (JobPolicy, error) {
 	switch jobType {
 	case scriptpkg.TypeGenerate:
-		return JobPolicy{Priority: 0, MaxRetries: 3}, nil
+		return JobPolicy{Priority: ScriptGeneratePriority, MaxRetries: 3}, nil
 	default:
 		return JobPolicy{}, fmt.Errorf("%w: %s", ErrUnknownJobType, jobType)
 	}

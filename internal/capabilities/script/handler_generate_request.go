@@ -90,7 +90,7 @@ func bindGenerateEnvelope(c *gin.Context, validator *gencore.PayloadValidator) (
 	dec := json.NewDecoder(bytes.NewReader(body))
 	dec.DisallowUnknownFields()
 	if err := dec.Decode(&env); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"ok": false, "error": "invalid payload: " + err.Error()})
+		c.JSON(http.StatusBadRequest, gin.H{"ok": false, "error": "invalid payload: " + friendlyGenerateJSONError(err)})
 		return nil, false
 	}
 
@@ -123,6 +123,20 @@ func bindGenerateEnvelope(c *gin.Context, validator *gencore.PayloadValidator) (
 	}
 
 	return &env, true
+}
+
+// friendlyGenerateJSONError keeps the strict decoder while turning the most
+// common render-shape mistake into an actionable contract error. Render is
+// owned by OutputSpec, so the valid wire path is items[].output.render.
+func friendlyGenerateJSONError(err error) string {
+	if err == nil {
+		return ""
+	}
+	message := err.Error()
+	if strings.Contains(message, `unknown field "render"`) {
+		return message + `; use items[].output.render`
+	}
+	return message
 }
 
 // removedGenerateFields maps retired script.generate contract keys to the

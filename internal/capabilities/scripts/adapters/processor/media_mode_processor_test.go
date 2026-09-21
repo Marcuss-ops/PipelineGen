@@ -52,3 +52,28 @@ func TestMediaModeClipOnlyClearsOppositeStockBinding(t *testing.T) {
 		t.Fatal("clip_only must not retain a stock binding")
 	}
 }
+
+func TestMediaModeMixedPreservesClipAndAddsStockBinding(t *testing.T) {
+	result, err := NewStockBindingsProcessor().Process(context.Background(), &scriptpkg.ResolvedGenerationPlan{
+		MediaMode: scriptpkg.MediaModeMixed,
+	}, adapters.ProcessInput{
+		StockEnabled: scriptpkg.ToggleEnabled,
+		StockBindings: []scriptpkg.StockBindingInput{{
+			Index: 0, SceneID: "scene-0", AssetID: "stock-1", StartMs: 0, EndMs: 5000,
+		}},
+		SpecScene: scriptpkg.SpecSceneOutput{Scenes: []scriptpkg.SpecScene{{
+			ID: "scene-0", Index: 0, Kind: scriptpkg.SceneClip,
+			Bindings: scriptpkg.SceneBindings{Clip: &scriptpkg.ClipBinding{ClipID: "clip-1"}},
+		}}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	scene := result.UpdatedSpecScene.Scenes[0]
+	if scene.Bindings.Clip == nil || scene.Bindings.Clip.ClipID != "clip-1" {
+		t.Fatalf("mixed mode lost clip binding: %#v", scene.Bindings.Clip)
+	}
+	if scene.Bindings.Stock == nil || scene.Bindings.Stock.AssetID != "stock-1" {
+		t.Fatalf("mixed mode did not retain stock binding: %#v", scene.Bindings.Stock)
+	}
+}

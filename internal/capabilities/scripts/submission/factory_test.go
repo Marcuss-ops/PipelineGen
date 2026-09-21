@@ -18,8 +18,8 @@ func TestJobPolicyResolver_ResolveScriptGenerate(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	if policy.Priority != 0 {
-		t.Fatalf("expected priority 0, got %d", policy.Priority)
+	if policy.Priority != ScriptGeneratePriority {
+		t.Fatalf("expected priority %d, got %d", ScriptGeneratePriority, policy.Priority)
 	}
 	if policy.MaxRetries != 3 {
 		t.Fatalf("expected max retries 3, got %d", policy.MaxRetries)
@@ -72,8 +72,8 @@ func TestSubmitRequestFactory_Build(t *testing.T) {
 	if req.IdempotencyKey != "idem-key-1" {
 		t.Fatalf("expected idempotency key idem-key-1, got %s", req.IdempotencyKey)
 	}
-	if req.JobPriority != 0 {
-		t.Fatalf("expected priority 0, got %d", req.JobPriority)
+	if req.JobPriority != ScriptGeneratePriority {
+		t.Fatalf("expected priority %d, got %d", ScriptGeneratePriority, req.JobPriority)
 	}
 	if req.JobMaxRetries != 3 {
 		t.Fatalf("expected max retries 3, got %d", req.JobMaxRetries)

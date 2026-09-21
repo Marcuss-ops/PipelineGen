@@ -55,6 +55,24 @@ lives **inside an item**; there are no top-level shortcut keys.
 
 ## Fail-closed contract (why a wrong body returns 400)
 
+### Media modes and render placement
+
+`media_mode` is explicit. `clip_only` accepts clip evidence only, `stock_only`
+accepts caller-selected stock folders/assets only, and `mixed` requires
+`source.type=clips` plus `output.stock_enabled=enabled` and
+`output.stock_bindings`. In mixed mode the clip binding and the stock binding
+are preserved on the same scene, so one generation job can combine fixed
+intro clips with stock-backed body scenes.
+
+Video rendering belongs under `items[].output.render`. A sibling
+`items[].render` field is rejected with an error pointing to that canonical
+path.
+
+Fixed `intro`/`outro` sections may omit `playback.source_in_ms` and
+`playback.source_out_ms`; the runtime uses a deterministic five-second window.
+Any other window must specify both endpoints with `source_out_ms >
+source_in_ms`.
+
 `bindGenerateEnvelope` decodes with **`DisallowUnknownFields`** and
 additionally rejects removed contract keys against the raw body before
 decoding. Therefore a misplaced or retired key is a hard `400`, never a
