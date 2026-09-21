@@ -5,7 +5,7 @@
     "chronon_abi": 2,
     "chronon_version": "0.1.0",
     "content_digest": "1f97b4a3c745fa27086cb91e267296274783707aef42ce3b7e07fea65b45914f",
-    "git_sha": "9c5e21433",
+    "git_sha": "3d0d599d5",
     "job_id": "goal3-source-wm",
     "render_plan_schema": "chronon.render-plan.v2",
     "request_digest": "5afa1c9e4d2141801020fa7098f62fff1287d3f795e75c608b08170bd12cb33e"
@@ -70,9 +70,9 @@
   "timing_ms": {
     "count_frames_ms": -1.0,
     "decode_ms": -1.0,
-    "probe_ms": 329.801178,
-    "sha256_ms": 20.753016,
-    "total_ms": 350.78304
+    "probe_ms": 267.452505,
+    "sha256_ms": 21.30697,
+    "total_ms": 288.967668
   },
   "verification": {
     "audio": "skip",
