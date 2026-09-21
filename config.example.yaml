@@ -264,6 +264,23 @@ scripts:
   # Concurrency caps for /api/script/legacy-batch phases
   batch_web_search_concurrency: 4     # Parallel SearXNG searches (1-16)
   batch_chapter_concurrency: 3        # Parallel Ollama chapter generations (1-10)
+  # Localized render lane (one Localize call per scene x language).
+  # localized_render_global_concurrency is the MACHINE bound shared by every
+  # concurrent Localize call: a payload whose render_concurrency is wider is
+  # clamped to it and logged as a WARN, so it must be >= the widest payload
+  # width or the extra scenes silently queue for a slot (a 5-scene job at 4
+  # pays one full extra render wait). It is a pipelining bound, not a GPU
+  # bound: the RenderingGen worker owns worker.gpu_lanes and stays the only
+  # authority on concurrent GPU work.
+  localized_render_global_concurrency: 6   # VELOX_SCRIPTS_LOCALIZED_RENDER_GLOBAL_CONCURRENCY
+  # Drive uploads are bounded separately so a slow publish never holds a
+  # render slot. Keep it >= the render width or the final clip's upload
+  # re-serialises the tail.
+  localized_render_upload_concurrency: 6   # VELOX_SCRIPTS_LOCALIZED_RENDER_UPLOAD_CONCURRENCY
+  # CAUTION: localized_render_concurrency is ALSO the runner's TTS pool width,
+  # so it is NOT the knob for widening rendering (raising it changes the
+  # certified voiceover fan-out).
+  # localized_render_concurrency: 4        # VELOX_SCRIPTS_LOCALIZED_RENDER_CONCURRENCY
   # Canonical default Google Drive folder for script documents.
   # Canonical config: env PIPELINEGEN_SCRIPT_DOCS_FOLDER_ID (this yaml value
   # is overridden by the env var). Leave empty unless a docs.enabled=true

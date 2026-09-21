@@ -1,0 +1,298 @@
+{
+  "url": "https://www.youtube.com/watch?v=2QJjviuM6PM",
+  "strategy": "verify",
+  "destination": {
+    "folder_id": "1EBVkSLSLDeoVZTDRybsJ14wsHTTDHHse"
+  },
+  "segments": [
+    {
+      "start": "01:30",
+      "end": "01:45",
+      "name": "Hook: Il paragone con il Motown 25 di Michael Jackson",
+      "source_title": "Exclusive: Justin Timberlake Sits Down with Sway & Talks Jay Z, Kanye, Drake, Miley Cyrus + more",
+      "source_channel": "Sway's Universe",
+      "summary": "Sway paragona l'esibizione di Justin ai VMA allo storico momento in cui Michael Jackson si consacrò da solista al Motown 25.",
+      "topics": ["Hook: Il paragone con il Motown 25 di Michael Jackson"],
+      "texts": [
+        {
+          "language_code": "en",
+          "source_type": "provided",
+          "is_original": true,
+          "description": "Michael Jackson Motown 25 VMA performance Justin Timberlake Sway MTV live icon"
+        }
+      ]
+    },
+    {
+      "start": "03:15",
+      "end": "03:35",
+      "name": "Hook: Justin canta Shake Your Body a cappella",
+      "source_title": "Exclusive: Justin Timberlake Sits Down with Sway & Talks Jay Z, Kanye, Drake, Miley Cyrus + more",
+      "source_channel": "Sway's Universe",
+      "summary": "Justin intona a cappella il brano dei Jackson 5 Shake Your Body omaggiando i riff vocali di Michael Jackson.",
+      "topics": ["Hook: Justin canta Shake Your Body a cappella"],
+      "texts": [
+        {
+          "language_code": "en",
+          "source_type": "provided",
+          "is_original": true,
+          "description": "Shake Your Body Jackson 5 a cappella improvvisazione canto Michael Jackson tributo Sway"
+        }
+      ]
+    },
+    {
+      "start": "04:30",
+      "end": "05:15",
+      "name": "L'energia di Michael Jackson vs l'intimità di Paul McCartney",
+      "source_title": "Exclusive: Justin Timberlake Sits Down with Sway & Talks Jay Z, Kanye, Drake, Miley Cyrus + more",
+      "source_channel": "Sway's Universe",
+      "summary": "Timberlake analizza i suoi due massimi modelli live: l'energia irraggiungibile di Michael Jackson e la calda naturalezza da salotto di Paul McCartney.",
+      "topics": ["L'energia di Michael Jackson vs l'intimità di Paul McCartney"],
+      "texts": [
+        {
+          "language_code": "en",
+          "source_type": "provided",
+          "is_original": true,
+          "description": "Michael Jackson Paul McCartney carisma palco contrasto performance stadi intimità concerto"
+        }
+      ]
+    },
+    {
+      "start": "06:45",
+      "end": "07:25",
+      "name": "Il concept del tour con Jay-Z come block party privato",
+      "source_title": "Exclusive: Justin Timberlake Sits Down with Sway & Talks Jay Z, Kanye, Drake, Miley Cyrus + more",
+      "source_channel": "Sway's Universe",
+      "summary": "Justin descrive l'impostazione del tour negli stadi con Jay-Z, concepito come una gigantesca festa di quartiere suonando solo il loro repertorio.",
+      "topics": ["Il concept del tour con Jay-Z come block party privato"],
+      "texts": [
+        {
+          "language_code": "en",
+          "source_type": "provided",
+          "is_original": true,
+          "description": "Legends of the Summer Tour Jay-Z Justin Timberlake Timbaland Pharrell scaletta block party stadi"
+        }
+      ]
+    },
+    {
+      "start": "08:15",
+      "end": "08:45",
+      "name": "Hook: La nascita spontanea di Suit & Tie e Holy Grail",
+      "source_title": "Exclusive: Justin Timberlake Sits Down with Sway & Talks Jay Z, Kanye, Drake, Miley Cyrus + more",
+      "source_channel": "Sway's Universe",
+      "summary": "Justin spiega come le collaborazioni con Jay-Z siano nate spontaneamente condividendo gli studi durante la lavorazione dei rispettivi album.",
+      "topics": ["Hook: La nascita spontanea di Suit & Tie e Holy Grail"],
+      "texts": [
+        {
+          "language_code": "en",
+          "source_type": "provided",
+          "is_original": true,
+          "description": "Suit and Tie Holy Grail Jay-Z 2020 Experience Magna Carta registrazioni studio Hit Factory"
+        }
+      ]
+    },
+    {
+      "start": "09:05",
+      "end": "09:25",
+      "name": "Hook: Lo spoiler del featuring con Drake in Cabaret",
+      "source_title": "Exclusive: Justin Timberlake Sits Down with Sway & Talks Jay Z, Kanye, Drake, Miley Cyrus + more",
+      "source_channel": "Sway's Universe",
+      "summary": "Sway indovina in diretta il nome del secondo rapper ospite nel nuovo album, rivelando la collaborazione con Drake.",
+      "topics": ["Hook: Lo spoiler del featuring con Drake in Cabaret"],
+      "texts": [
+        {
+          "language_code": "en",
+          "source_type": "provided",
+          "is_original": true,
+          "description": "Drake Cabaret 2020 Experience 2 featuring annuncio Sway radio scoop"
+        }
+      ]
+    },
+    {
+      "start": "09:50",
+      "end": "10:30",
+      "name": "La conversazione di un'ora con Kanye West ai VMA",
+      "source_title": "Exclusive: Justin Timberlake Sits Down with Sway & Talks Jay Z, Kanye, Drake, Miley Cyrus + more",
+      "source_channel": "Sway's Universe",
+      "summary": "Timberlake racconta di aver parlato privatamente per un'ora con Kanye West per chiarire le critiche pubbliche mosse contro Suit & Tie.",
+      "topics": ["La conversazione di un'ora con Kanye West ai VMA"],
+      "texts": [
+        {
+          "language_code": "en",
+          "source_type": "provided",
+          "is_original": true,
+          "description": "Kanye West Suit and Tie VMA confronto discussione chiarimento SNL dissing"
+        }
+      ]
+    },
+    {
+      "start": "11:25",
+      "end": "12:00",
+      "name": "La stima per Kanye West e la visione di Yeezus",
+      "source_title": "Exclusive: Justin Timberlake Sits Down with Sway & Talks Jay Z, Kanye, Drake, Miley Cyrus + more",
+      "source_channel": "Sway's Universe",
+      "summary": "Justin ribadisce la totale stima per l'album Yeezus e per l'approccio pionieristico di Kanye, respingendo l'idea di una rivalità personale.",
+      "topics": ["La stima per Kanye West e la visione di Yeezus"],
+      "texts": [
+        {
+          "language_code": "en",
+          "source_type": "provided",
+          "is_original": true,
+          "description": "Kanye West Yeezus stima genio avanguardia rispetto reciproco produzione"
+        }
+      ]
+    },
+    {
+      "start": "13:10",
+      "end": "13:40",
+      "name": "Scrivere per Beyoncé e l'incontro con Jay-Z a Miami",
+      "source_title": "Exclusive: Justin Timberlake Sits Down with Sway & Talks Jay Z, Kanye, Drake, Miley Cyrus + more",
+      "source_channel": "Sway's Universe",
+      "summary": "Justin svela che le storiche tracce con Jay-Z sono nate a Miami mentre stava collaborando con Timbaland alla scrittura del disco di Beyoncé.",
+      "topics": ["Scrivere per Beyoncé e l'incontro con Jay-Z a Miami"],
+      "texts": [
+        {
+          "language_code": "en",
+          "source_type": "provided",
+          "is_original": true,
+          "description": "Beyonce sessioni scrittura Hit Factory Miami Timbaland Jay-Z studio session"
+        }
+      ]
+    },
+    {
+      "start": "14:35",
+      "end": "15:15",
+      "name": "Stronger, SexyBack e lo show allo Staples Center con Kanye",
+      "source_title": "Exclusive: Justin Timberlake Sits Down with Sway & Talks Jay Z, Kanye, Drake, Miley Cyrus + more",
+      "source_channel": "Sway's Universe",
+      "summary": "Timberlake ricorda quando Kanye riconobbe l'influenza di SexyBack sul suo brano Stronger prima di cantarlo insieme a Los Angeles.",
+      "topics": ["Stronger, SexyBack e lo show allo Staples Center con Kanye"],
+      "texts": [
+        {
+          "language_code": "en",
+          "source_type": "provided",
+          "is_original": true,
+          "description": "Stronger SexyBack Staples Center Los Angeles live stage duetto influenza musicale"
+        }
+      ]
+    },
+    {
+      "start": "16:05",
+      "end": "16:45",
+      "name": "L'analogia delle due sorelle per The 20/20 Experience Parte 2",
+      "source_title": "Exclusive: Justin Timberlake Sits Down with Sway & Talks Jay Z, Kanye, Drake, Miley Cyrus + more",
+      "source_channel": "Sway's Universe",
+      "summary": "Justin riassume la differenza tra le due parti del progetto paragonando la prima all'amore innocente del liceo e la seconda alla sorella maggiore trasgressiva.",
+      "topics": ["L'analogia delle due sorelle per The 20/20 Experience Parte 2"],
+      "texts": [
+        {
+          "language_code": "en",
+          "source_type": "provided",
+          "is_original": true,
+          "description": "The 2020 Experience 2 analogia sorelle sonorit oscura sexy provocante liceo"
+        }
+      ]
+    },
+    {
+      "start": "17:30",
+      "end": "17:55",
+      "name": "Hook: Il significato del brano Cabaret con Drake",
+      "source_title": "Exclusive: Justin Timberlake Sits Down with Sway & Talks Jay Z, Kanye, Drake, Miley Cyrus + more",
+      "source_channel": "Sway's Universe",
+      "summary": "Timberlake definisce senza filtri il brano inciso con Drake spiegando che si tratta a tutti gli effetti di un inno da strip club.",
+      "topics": ["Hook: Il significato del brano Cabaret con Drake"],
+      "texts": [
+        {
+          "language_code": "en",
+          "source_type": "provided",
+          "is_original": true,
+          "description": "Cabaret Drake strip club anthem The 2020 Experience 2 testo tematica"
+        }
+      ]
+    },
+    {
+      "start": "19:25",
+      "end": "19:55",
+      "name": "Hook: Timbaland rintanato in camerino con i biscotti",
+      "source_title": "Exclusive: Justin Timberlake Sits Down with Sway & Talks Jay Z, Kanye, Drake, Miley Cyrus + more",
+      "source_channel": "Sway's Universe",
+      "summary": "Justin imita in modo esilarante Timbaland che rifiuta di uscire dal camerino dei VMA preferendo mangiare biscotti in disparte.",
+      "topics": ["Hook: Timbaland rintanato in camerino con i biscotti"],
+      "texts": [
+        {
+          "language_code": "en",
+          "source_type": "provided",
+          "is_original": true,
+          "description": "Timbaland backstage biscotti imitazione VMA paura caos risate camerino"
+        }
+      ]
+    },
+    {
+      "start": "20:45",
+      "end": "21:40",
+      "name": "Le trappole del successo per le star bambine",
+      "source_title": "Exclusive: Justin Timberlake Sits Down with Sway & Talks Jay Z, Kanye, Drake, Miley Cyrus + more",
+      "source_channel": "Sway's Universe",
+      "summary": "Justin analizza i crolli emotivi delle giovani star, spiegando come denaro precoce e accesso illimitato amplifichino gli errori tipici della crescita.",
+      "topics": ["Le trappole del successo per le star bambine"],
+      "texts": [
+        {
+          "language_code": "en",
+          "source_type": "provided",
+          "is_original": true,
+          "description": "baby star Disney Club soldi accesso eccessi decadenza giovinezza vulnerabilità"
+        }
+      ]
+    },
+    {
+      "start": "22:20",
+      "end": "22:45",
+      "name": "Hook: In difesa di Miley Cyrus ai VMA 2013",
+      "source_title": "Exclusive: Justin Timberlake Sits Down with Sway & Talks Jay Z, Kanye, Drake, Miley Cyrus + more",
+      "source_channel": "Sway's Universe",
+      "summary": "Timberlake difende Miley Cyrus dalle critiche moraliste sottolineando che a vent'anni stava solo manifestando la propria emancipazione artistica.",
+      "topics": ["Hook: In difesa di Miley Cyrus ai VMA 2013"],
+      "texts": [
+        {
+          "language_code": "en",
+          "source_type": "provided",
+          "is_original": true,
+          "description": "Miley Cyrus VMA 2013 scandalo twerking difesa giovane eta palco MTV"
+        }
+      ]
+    },
+    {
+      "start": "23:10",
+      "end": "23:45",
+      "name": "I precedenti trasgressivi ai VMA: Madonna e Britney Spears",
+      "source_title": "Exclusive: Justin Timberlake Sits Down with Sway & Talks Jay Z, Kanye, Drake, Miley Cyrus + more",
+      "source_channel": "Sway's Universe",
+      "summary": "Justin ridimensiona le polemiche ricordando i precedenti provocatori del palco dei VMA, dal celebre abito bianco di Madonna al bacio con Britney Spears.",
+      "topics": ["I precedenti trasgressivi ai VMA: Madonna e Britney Spears"],
+      "texts": [
+        {
+          "language_code": "en",
+          "source_type": "provided",
+          "is_original": true,
+          "description": "Madonna abito da sposa Britney Spears striptease bacio VMA trasgressione MTV"
+        }
+      ]
+    },
+    {
+      "start": "27:20",
+      "end": "28:10",
+      "name": "L'organizzazione del tributo a Charlie Wilson ai BET Awards",
+      "source_title": "Exclusive: Justin Timberlake Sits Down with Sway & Talks Jay Z, Kanye, Drake, Miley Cyrus + more",
+      "source_channel": "Sway's Universe",
+      "summary": "Justin ripercorre l'improvvisata telefonata per convincere Pharrell a rientrare dall'Europa e affiancare lui e Snoop Dogg nel tributo a Charlie Wilson.",
+      "topics": ["L'organizzazione del tributo a Charlie Wilson ai BET Awards"],
+      "texts": [
+        {
+          "language_code": "en",
+          "source_type": "provided",
+          "is_original": true,
+          "description": "Charlie Wilson BET Awards Gap Band Pharrell Snoop Dogg tributo reunion leggende soul"
+        }
+      ]
+    }
+  ]
+}

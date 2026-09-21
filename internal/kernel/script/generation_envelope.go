@@ -239,8 +239,9 @@ func (p FixedPlaybackPolicy) Valid() bool {
 // renders burn translated captions. Playback explicitly selects original clip
 // audio and a source window.
 type FixedSection struct {
-	// ClipIDs is the authoritative clip binding for this section. One or two
-	// clips are allowed (e.g. a section spanning two back-to-back clips).
+	// ClipIDs is the authoritative ordered clip binding for this section. Any
+	// non-empty sequence is allowed, so an intro/outro can span as many
+	// back-to-back clips as the caller needs.
 	ClipIDs []string `json:"clip_ids,omitempty"`
 	// Title is an optional human-readable title for the Docs scene.
 	Title string `json:"title,omitempty"`

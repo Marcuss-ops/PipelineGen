@@ -221,6 +221,14 @@ scripts:
     require_database: true
   batch_web_search_concurrency: 4
   batch_chapter_concurrency: 3
+  # Localized render lane (one Localize call per scene x language).
+  # global = MACHINE bound shared by every concurrent Localize call; a wider
+  # payload render_concurrency is clamped to it and logged as a WARN. Pipelining
+  # bound, not a GPU bound: the RenderingGen worker owns worker.gpu_lanes.
+  localized_render_global_concurrency: 6   # VELOX_SCRIPTS_LOCALIZED_RENDER_GLOBAL_CONCURRENCY
+  # Uploads are bounded separately so a slow publish never holds a render slot.
+  localized_render_upload_concurrency: 6   # VELOX_SCRIPTS_LOCALIZED_RENDER_UPLOAD_CONCURRENCY
+  # CAUTION: localized_render_concurrency is ALSO the runner's TTS pool width.
   script_docs_folder_id: ""
 
 concurrency:

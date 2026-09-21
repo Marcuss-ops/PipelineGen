@@ -1,0 +1,349 @@
+{
+  "url": "https://www.youtube.com/watch?v=X3n5Pk8fkLg",
+  "strategy": "verify",
+  "destination": {
+    "folder_id": "1u1rYpWeTkcedezM2f-lX6FTrq2hiIZJL"
+  },
+  "segments": [
+    {
+      "start": "00:00",
+      "end": "00:15",
+      "name": "Brindisi iniziale e prom date",
+      "source_title": "Seth and Rihanna Go Day Drinking",
+      "source_channel": "Late Night with Seth Meyers",
+      "summary": "Seth Meyers e Rihanna aprono il segmento Day Drinking con un brindisi guardandosi negli occhi stile ballo scolastico.",
+      "topics": ["Brindisi iniziale e prom date"],
+      "texts": [
+        {
+          "language_code": "en",
+          "source_type": "provided",
+          "is_original": true,
+          "description": "Seth Meyers Rihanna Day Drinking Late Night NBC brindisi eye contact prom date intro bar"
+        }
+      ]
+    },
+    {
+      "start": "00:15",
+      "end": "00:27",
+      "name": "Sigla introduttiva Day Drinking",
+      "source_title": "Seth and Rihanna Go Day Drinking",
+      "source_channel": "Late Night with Seth Meyers",
+      "summary": "Presentazione ufficiale dello sketch comico con la canzone d'introduzione del Day Drinking.",
+      "topics": ["Sigla introduttiva Day Drinking"],
+      "texts": [
+        {
+          "language_code": "en",
+          "source_type": "provided",
+          "is_original": true,
+          "description": "Seth Meyers Rihanna theme song Day Drinking NBC Late Night intro musica"
+        }
+      ]
+    },
+    {
+      "start": "00:43",
+      "end": "01:25",
+      "name": "Cocktail Under My Rum-brella",
+      "source_title": "Seth and Rihanna Go Day Drinking",
+      "source_channel": "Late Night with Seth Meyers",
+      "summary": "Seth prepara un cocktail ispirato alla canzone Umbrella mescolando rum, palline al cioccolato e gelato al rum.",
+      "topics": ["Cocktail Under My Rum-brella"],
+      "texts": [
+        {
+          "language_code": "en",
+          "source_type": "provided",
+          "is_original": true,
+          "description": "Under My Rum-brella cocktail Umbrella Rihanna rum chocolate rum balls rum raisin ice cream drink"
+        }
+      ]
+    },
+    {
+      "start": "01:29",
+      "end": "01:55",
+      "name": "Cocktail Diamonds in the Rye",
+      "source_title": "Seth and Rihanna Go Day Drinking",
+      "source_channel": "Late Night with Seth Meyers",
+      "summary": "Seth serve a Rihanna una miscela di rye whiskey e latte di mandorle ispirata al brano Diamonds.",
+      "topics": ["Cocktail Diamonds in the Rye"],
+      "texts": [
+        {
+          "language_code": "en",
+          "source_type": "provided",
+          "is_original": true,
+          "description": "Diamonds in the Rye Diamonds Rihanna rye whiskey Blue Diamond almond milk nut milk drink"
+        }
+      ]
+    },
+    {
+      "start": "01:58",
+      "end": "02:50",
+      "name": "We Found Veuve in a Hostess Place",
+      "source_title": "Seth and Rihanna Go Day Drinking",
+      "source_channel": "Late Night with Seth Meyers",
+      "summary": "Seth unisce champagne Veuve Clicquot e merendine Twinkies Hostess rievocando la celebre hit We Found Love.",
+      "topics": ["We Found Veuve in a Hostess Place"],
+      "texts": [
+        {
+          "language_code": "en",
+          "source_type": "provided",
+          "is_original": true,
+          "description": "We Found Love We Found Veuve in a Hostess Place Veuve Clicquot champagne Twinkies Hostess snack"
+        }
+      ]
+    },
+    {
+      "start": "03:01",
+      "end": "03:15",
+      "name": "Hook coniglio di cioccolato",
+      "source_title": "Seth and Rihanna Go Day Drinking",
+      "source_channel": "Late Night with Seth Meyers",
+      "summary": "Seth decapita a sorpresa un coniglietto pasquale di cioccolato per usarlo come bicchiere da shot.",
+      "topics": ["Hook coniglio di cioccolato"],
+      "texts": [
+        {
+          "language_code": "en",
+          "source_type": "provided",
+          "is_original": true,
+          "description": "Bitch Better Have My Bunny chocolate bunny decapitation tequila prop shock hook"
+        }
+      ]
+    },
+    {
+      "start": "03:15",
+      "end": "03:36",
+      "name": "Cocktail Bitch Better Have My Bunny",
+      "source_title": "Seth and Rihanna Go Day Drinking",
+      "source_channel": "Late Night with Seth Meyers",
+      "summary": "Seth e Rihanna versano e bevono tequila direttamente dall'interno del coniglio di cioccolato cavo.",
+      "topics": ["Cocktail Bitch Better Have My Bunny"],
+      "texts": [
+        {
+          "language_code": "en",
+          "source_type": "provided",
+          "is_original": true,
+          "description": "Bitch Better Have My Money Bitch Better Have My Bunny chocolate bunny tequila shot"
+        }
+      ]
+    },
+    {
+      "start": "03:37",
+      "end": "04:15",
+      "name": "Drinking Game: Outfit Met Gala",
+      "source_title": "Seth and Rihanna Go Day Drinking",
+      "source_channel": "Late Night with Seth Meyers",
+      "summary": "Rihanna riconosce all'istante l'abito del Met Gala costringendo Seth a bere due bicchierini consecutivi.",
+      "topics": ["Drinking Game: Outfit Met Gala"],
+      "texts": [
+        {
+          "language_code": "en",
+          "source_type": "provided",
+          "is_original": true,
+          "description": "drinking game fashion icon Met Gala Met ball outfit identification shot Seth Meyers Rihanna"
+        }
+      ]
+    },
+    {
+      "start": "04:16",
+      "end": "04:45",
+      "name": "Drinking Game: Look street New York",
+      "source_title": "Seth and Rihanna Go Day Drinking",
+      "source_channel": "Late Night with Seth Meyers",
+      "summary": "Rihanna identifica la via di New York della seconda foto e fa uno shot di tequila con stile impeccabile.",
+      "topics": ["Drinking Game: Look street New York"],
+      "texts": [
+        {
+          "language_code": "en",
+          "source_type": "provided",
+          "is_original": true,
+          "description": "New York City street outfit fashion style tequila shot drinking game salt lick"
+        }
+      ]
+    },
+    {
+      "start": "04:50",
+      "end": "05:05",
+      "name": "Hook indovinello dal dentista",
+      "source_title": "Seth and Rihanna Go Day Drinking",
+      "source_channel": "Late Night with Seth Meyers",
+      "summary": "Rihanna indovina incredibilmente l'outfit indossato per andare dal dentista a Manhattan.",
+      "topics": ["Hook indovinello dal dentista"],
+      "texts": [
+        {
+          "language_code": "en",
+          "source_type": "provided",
+          "is_original": true,
+          "description": "dentist street outfit New York Rihanna Seth Meyers shock disbelief drinking game"
+        }
+      ]
+    },
+    {
+      "start": "05:05",
+      "end": "05:32",
+      "name": "Reazione e shot per lo staff",
+      "source_title": "Seth and Rihanna Go Day Drinking",
+      "source_channel": "Late Night with Seth Meyers",
+      "summary": "Seth impreca scherzosamente contro i propri autori per aver inserito la via del dentista ed è costretto a bere.",
+      "topics": ["Reazione e shot per lo staff"],
+      "texts": [
+        {
+          "language_code": "en",
+          "source_type": "provided",
+          "is_original": true,
+          "description": "crew prank failure dentist outfit shot drink Seth Meyers Rihanna comedy backstage"
+        }
+      ]
+    },
+    {
+      "start": "05:35",
+      "end": "06:30",
+      "name": "Consiglio di carriera: Rihanna pilota",
+      "source_title": "Seth and Rihanna Go Day Drinking",
+      "source_channel": "Late Night with Seth Meyers",
+      "summary": "Rihanna chiede cosa fare se lasciasse la musica e rivela di aver sognato di fare il pilota nonostante i voti bassi a scuola.",
+      "topics": ["Consiglio di carriera: Rihanna pilota"],
+      "texts": [
+        {
+          "language_code": "en",
+          "source_type": "provided",
+          "is_original": true,
+          "description": "bartender advice career change music pilot school grades aviation Rihanna Seth Meyers"
+        }
+      ]
+    },
+    {
+      "start": "06:40",
+      "end": "06:55",
+      "name": "Consiglio matrimoniale esplicito",
+      "source_title": "Seth and Rihanna Go Day Drinking",
+      "source_channel": "Late Night with Seth Meyers",
+      "summary": "Rihanna offre una risposta comica ed esplicita alla richiesta di Seth su come sorprendere sua moglie.",
+      "topics": ["Consiglio matrimoniale esplicito"],
+      "texts": [
+        {
+          "language_code": "en",
+          "source_type": "provided",
+          "is_original": true,
+          "description": "marriage advice romantic night out Seth Meyers wife NSFW adult comedy network television"
+        }
+      ]
+    },
+    {
+      "start": "07:01",
+      "end": "07:35",
+      "name": "Soprannome per Seth",
+      "source_title": "Seth and Rihanna Go Day Drinking",
+      "source_channel": "Late Night with Seth Meyers",
+      "summary": "Seth chiede a Rihanna un soprannome accattivante stile Ri-Ri, ma lei risponde semplicemente Seth.",
+      "topics": ["Soprannome per Seth"],
+      "texts": [
+        {
+          "language_code": "en",
+          "source_type": "provided",
+          "is_original": true,
+          "description": "Ri-Ri nickname game count to three Seth Meyers Rihanna bar banter"
+        }
+      ]
+    },
+    {
+      "start": "07:45",
+      "end": "08:35",
+      "name": "Pickup lines e campanello",
+      "source_title": "Seth and Rihanna Go Day Drinking",
+      "source_channel": "Late Night with Seth Meyers",
+      "summary": "Seth prova pietose frasi d'approccio su Game of Thrones e sul film Battleship, venendo bocciato al campanello.",
+      "topics": ["Pickup lines e campanello"],
+      "texts": [
+        {
+          "language_code": "en",
+          "source_type": "provided",
+          "is_original": true,
+          "description": "pickup lines Game of Thrones Battleship movie bell ring dating game rejection"
+        }
+      ]
+    },
+    {
+      "start": "08:35",
+      "end": "09:20",
+      "name": "Sessione trucco Fenty Beauty",
+      "source_title": "Seth and Rihanna Go Day Drinking",
+      "source_channel": "Late Night with Seth Meyers",
+      "summary": "Rihanna applica i cosmetici Fenty Beauty sugli occhi di Seth lamentandosi delle sue rughe mentre parla.",
+      "topics": ["Sessione trucco Fenty Beauty"],
+      "texts": [
+        {
+          "language_code": "en",
+          "source_type": "provided",
+          "is_original": true,
+          "description": "Fenty Beauty makeup tutorial summer eye eyeshadow wrinkles beauty business Rihanna Seth Meyers"
+        }
+      ]
+    },
+    {
+      "start": "09:23",
+      "end": "09:50",
+      "name": "Look Avatar vs Unicorn",
+      "source_title": "Seth and Rihanna Go Day Drinking",
+      "source_channel": "Late Night with Seth Meyers",
+      "summary": "Seth aggiunge ombretto blu sostenendo di somigliare ai personaggi di Avatar dopo averli scambiati per unicorni.",
+      "topics": ["Look Avatar vs Unicorn"],
+      "texts": [
+        {
+          "language_code": "en",
+          "source_type": "provided",
+          "is_original": true,
+          "description": "blue eyeshadow Avatar movie Unicorn James Cameron blue people makeup fail"
+        }
+      ]
+    },
+    {
+      "start": "09:53",
+      "end": "10:40",
+      "name": "Seth canta Work con le cuffie",
+      "source_title": "Seth and Rihanna Go Day Drinking",
+      "source_channel": "Late Night with Seth Meyers",
+      "summary": "Seth indossa cuffie isolanti e canta a squarciagola il brano Work stravolgendo comicità e intonazione.",
+      "topics": ["Seth canta Work con le cuffie"],
+      "texts": [
+        {
+          "language_code": "en",
+          "source_type": "provided",
+          "is_original": true,
+          "description": "Work Rihanna song cover noise canceling headphones Late Night performance karaoke singing"
+        }
+      ]
+    },
+    {
+      "start": "10:45",
+      "end": "11:00",
+      "name": "Hook duetto alcolico Work",
+      "source_title": "Seth and Rihanna Go Day Drinking",
+      "source_channel": "Late Night with Seth Meyers",
+      "summary": "Rihanna e Seth cantano insieme il ritornello di Work richiedendo a gran voce l'ultimo giro di shot.",
+      "topics": ["Hook duetto alcolico Work"],
+      "texts": [
+        {
+          "language_code": "en",
+          "source_type": "provided",
+          "is_original": true,
+          "description": "Work singing drunk duet tequila shot scream Late Night closing hook"
+        }
+      ]
+    },
+    {
+      "start": "11:00",
+      "end": "11:50",
+      "name": "Duetto finale e brindisi di chiusura",
+      "source_title": "Seth and Rihanna Go Day Drinking",
+      "source_channel": "Late Night with Seth Meyers",
+      "summary": "I due concludono il duetto canoro visibilmente brilli e chiudono l'episodio tra risate e applausi del pubblico.",
+      "topics": ["Duetto finale e brindisi di chiusura"],
+      "texts": [
+        {
+          "language_code": "en",
+          "source_type": "provided",
+          "is_original": true,
+          "description": "karaoke duet Work outro applause credits Day Drinking Seth Meyers Rihanna"
+        }
+      ]
+    }
+  ]
+}

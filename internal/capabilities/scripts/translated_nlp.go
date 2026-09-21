@@ -26,6 +26,95 @@ type translatedNLPOutcome struct {
 	cached   *scriptpkg.SceneAnnotations
 }
 
+// ── Coordinator-side translated-NLP dispatch ──────────────────────────
+// Split out of scene_ready_coordinator.go to keep that file under the
+// godlike/08 max_lines_per_file_strict cap (600). Same package, same behaviour:
+// these are the sceneReadyCoordinator methods that schedule one translated-NLP
+// computation per (scene, language) the moment that language's translation is
+// final, so the source-NER wait overlaps the remaining TTS instead of forming a
+// post-join barrier (see localizedNLPForScene).
+
+func (c *sceneReadyCoordinator) translatedNLPRequested() bool {
+	if c.runner == nil || c.runner.vidRushPipeline == nil {
+		return false
+	}
+	extraction := c.req.MediaPlan.Extraction
+	return extraction.Includes(mediadomain.ExtractionIncludeEntities) ||
+		extraction.Includes(mediadomain.ExtractionIncludeSpecialNames) ||
+		extraction.Includes(mediadomain.ExtractionIncludeImportantPhrases) ||
+		extraction.Includes(mediadomain.ExtractionIncludeImportantWords)
+}
+
+// localizedNLPForScene waits only for this scene's source enrichment and then
+// computes one translated annotation value. It deliberately runs outside the
+// translation/TTS worker: the scene's voiceover can continue while source NER
+// finishes, and the final pass reuses this value instead of calling NER again.
+func (c *sceneReadyCoordinator) localizedNLPForScene(scene Scene, lang Language, text string) (*scriptpkg.SceneAnnotations, error) {
+	if !c.translatedNLPRequested() || lang == c.req.SourceLanguage || strings.TrimSpace(text) == "" {
+		return nil, nil
+	}
+	if err := c.nlpSlots.AcquireCtx(c.ctx); err != nil {
+		return nil, err
+	}
+	defer c.nlpSlots.Release()
+
+	source := scene.Annotations
+	if source == nil {
+		segment, supported, err := c.runner.waitForVidRushScene(c.ctx, c.runID, scene.Index)
+		if err != nil {
+			return nil, err
+		}
+		if !supported {
+			// A test or legacy seam may expose only the document barrier. The
+			// final fan-out still computes the complete localized surface.
+			return nil, nil
+		}
+		snapshot := []sceneTextSnapshot{{
+			ID: scene.ID, Index: 0, Text: scene.Text[c.req.SourceLanguage], Annotations: scene.Annotations,
+		}}
+		phraseLimit := c.req.MediaPlan.Extraction.MaxImportantPhrasesPerSegment
+		includePhrases := c.req.MediaPlan.Extraction.Includes(mediadomain.ExtractionIncludeImportantPhrases)
+		source = computeSegmentEntityAnnotations(snapshot, c.req.SourceLanguage, []scriptpkg.VidRushSegmentResult{segment}, phraseLimit, includePhrases)[0]
+	}
+
+	mini := &GenerateResult{Scenes: []Scene{{
+		ID: scene.ID, Index: 0,
+		Text:        map[Language]string{lang: text},
+		Annotations: source,
+	}}}
+	localized, err := c.runner.computeLocalizedAnnotations(c.ctx, c.req, mini, map[int]*scriptpkg.SceneAnnotations{0: source})
+	if err != nil {
+		return nil, err
+	}
+	if byLanguage := localized[0]; byLanguage != nil {
+		return byLanguage[lang], nil
+	}
+	return nil, nil
+}
+
+func (c *sceneReadyCoordinator) launchLocalizedNLP(scene Scene, lang Language, text string) {
+	if !c.translatedNLPRequested() || lang == c.req.SourceLanguage || strings.TrimSpace(text) == "" {
+		return
+	}
+	c.nlpWg.Add(1)
+	go func() {
+		defer c.nlpWg.Done()
+		annotation, err := c.localizedNLPForScene(scene, lang, text)
+		c.mu.Lock()
+		defer c.mu.Unlock()
+		if err != nil {
+			c.nlpErrors = append(c.nlpErrors, fmt.Errorf("translated NLP ready scene %s/%s: %w", scene.ID, lang, err))
+			return
+		}
+		if annotation != nil {
+			if c.localized[scene.Index] == nil {
+				c.localized[scene.Index] = make(map[Language]*scriptpkg.SceneAnnotations)
+			}
+			c.localized[scene.Index][lang] = annotation
+		}
+	}()
+}
+
 // runTranslatedNLP extracts translated names/entities with VisualNER and
 // selects important phrases from translated text using deterministic local
 // rules. Source annotations remain untouched; every translated surface gets

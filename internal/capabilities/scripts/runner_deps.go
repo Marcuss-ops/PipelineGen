@@ -256,7 +256,10 @@ func (r *Runner) recordLocalizedRender(ctx context.Context, exec ExecutionContex
 	// joinable on (scene_id, language, asset_id) like every other produced
 	// artifact of the run. No lock held — recorder serialises internally.
 	if err := r.recordArtifactOperation(ctx, exec, ArtifactOperation{
-		OperationID: artifactOperationID(exec.Attempt, OperationRender, rendered.SceneID, string(rendered.Language)),
+		// A fixed intro/outro can fan out several source clips under the
+		// same scene and language. ClipID is part of the operation identity
+		// so each produced MP4 has its own durable lineage row.
+		OperationID: artifactOperationID(exec.Attempt, OperationRender, rendered.SceneID, string(rendered.Language), rendered.ClipID),
 		Kind:        OperationRender,
 		SceneID:     rendered.SceneID,
 		Language:    rendered.Language,

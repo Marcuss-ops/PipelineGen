@@ -8,7 +8,6 @@ import (
 	"time"
 
 	capabilityaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
-	mediadomain "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 	kernelscript "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
@@ -173,87 +172,6 @@ func (c *sceneReadyCoordinator) synthesizeLanguage(ctx context.Context, itemIdx 
 	return audioRef, err
 }
 
-func (c *sceneReadyCoordinator) translatedNLPRequested() bool {
-	if c.runner == nil || c.runner.vidRushPipeline == nil {
-		return false
-	}
-	extraction := c.req.MediaPlan.Extraction
-	return extraction.Includes(mediadomain.ExtractionIncludeEntities) ||
-		extraction.Includes(mediadomain.ExtractionIncludeSpecialNames) ||
-		extraction.Includes(mediadomain.ExtractionIncludeImportantPhrases) ||
-		extraction.Includes(mediadomain.ExtractionIncludeImportantWords)
-}
-
-// localizedNLPForScene waits only for this scene's source enrichment and then
-// computes one translated annotation value. It deliberately runs outside the
-// translation/TTS worker: the scene's voiceover can continue while source NER
-// finishes, and the final pass reuses this value instead of calling NER again.
-func (c *sceneReadyCoordinator) localizedNLPForScene(scene Scene, lang Language, text string) (*scriptpkg.SceneAnnotations, error) {
-	if !c.translatedNLPRequested() || lang == c.req.SourceLanguage || strings.TrimSpace(text) == "" {
-		return nil, nil
-	}
-	if err := c.nlpSlots.AcquireCtx(c.ctx); err != nil {
-		return nil, err
-	}
-	defer c.nlpSlots.Release()
-
-	source := scene.Annotations
-	if source == nil {
-		segment, supported, err := c.runner.waitForVidRushScene(c.ctx, c.runID, scene.Index)
-		if err != nil {
-			return nil, err
-		}
-		if !supported {
-			// A test or legacy seam may expose only the document barrier. The
-			// final fan-out still computes the complete localized surface.
-			return nil, nil
-		}
-		snapshot := []sceneTextSnapshot{{
-			ID: scene.ID, Index: 0, Text: scene.Text[c.req.SourceLanguage], Annotations: scene.Annotations,
-		}}
-		phraseLimit := c.req.MediaPlan.Extraction.MaxImportantPhrasesPerSegment
-		includePhrases := c.req.MediaPlan.Extraction.Includes(mediadomain.ExtractionIncludeImportantPhrases)
-		source = computeSegmentEntityAnnotations(snapshot, c.req.SourceLanguage, []scriptpkg.VidRushSegmentResult{segment}, phraseLimit, includePhrases)[0]
-	}
-
-	mini := &GenerateResult{Scenes: []Scene{{
-		ID: scene.ID, Index: 0,
-		Text:        map[Language]string{lang: text},
-		Annotations: source,
-	}}}
-	localized, err := c.runner.computeLocalizedAnnotations(c.ctx, c.req, mini, map[int]*scriptpkg.SceneAnnotations{0: source})
-	if err != nil {
-		return nil, err
-	}
-	if byLanguage := localized[0]; byLanguage != nil {
-		return byLanguage[lang], nil
-	}
-	return nil, nil
-}
-
-func (c *sceneReadyCoordinator) launchLocalizedNLP(scene Scene, lang Language, text string) {
-	if !c.translatedNLPRequested() || lang == c.req.SourceLanguage || strings.TrimSpace(text) == "" {
-		return
-	}
-	c.nlpWg.Add(1)
-	go func() {
-		defer c.nlpWg.Done()
-		annotation, err := c.localizedNLPForScene(scene, lang, text)
-		c.mu.Lock()
-		defer c.mu.Unlock()
-		if err != nil {
-			c.nlpErrors = append(c.nlpErrors, fmt.Errorf("translated NLP ready scene %s/%s: %w", scene.ID, lang, err))
-			return
-		}
-		if annotation != nil {
-			if c.localized[scene.Index] == nil {
-				c.localized[scene.Index] = make(map[Language]*scriptpkg.SceneAnnotations)
-			}
-			c.localized[scene.Index][lang] = annotation
-		}
-	}()
-}
-
 func (c *sceneReadyCoordinator) submit(scene Scene) {
 	c.wg.Add(1)
 	go func() {
@@ -271,16 +189,21 @@ func (c *sceneReadyCoordinator) submit(scene Scene) {
 
 // processFixedDisplayText translates a fixed-media scene's display text into
 // every target language (Intro V2 subtitle surface). It performs translation
-// ONLY: no TTS, no voiceover, no audio intents, no render fan-out. An empty
-// source display text is a legitimate no-op (nothing to caption).
+// ONLY: no TTS, no voiceover, no audio intents. The render fan-out is launched
+// immediately after this translation completes, one unit per bound clip.
 func (c *sceneReadyCoordinator) process(scene Scene) (Scene, error) {
 	out := scene
 	if out.ExecutionMode.IsFixedMedia() {
 		// Intro V2: fixed media never enters TTS/narration, but its display
 		// text IS a subtitle surface — translate it so localized renders burn
-		// translated captions. No voiceover, no render fan-out here (renders
-		// fan out per language in the localized-render phase).
-		return c.processFixedDisplayText(out)
+		// translated captions. It still needs the localized render fan-out;
+		// fixed media has no TTS completion event to trigger that fan-out.
+		translated, err := c.processFixedDisplayText(out)
+		if err != nil {
+			return Scene{}, err
+		}
+		c.launchFixedMediaRenders(translated)
+		return translated, nil
 	}
 	if !out.ExecutionMode.AllowsTranslation() || !out.ExecutionMode.AllowsTTS() || !out.ExecutionMode.AllowsGeneratedAudio() {
 		return out, nil
@@ -408,19 +331,6 @@ func (c *sceneReadyCoordinator) process(scene Scene) (Scene, error) {
 			out.Audio = capabilityaudio.AudioIntent{Mode: capabilityaudio.AudioVoiceover, VoiceoverAssetID: audioRef.ID}
 			out.AudioIntents = []capabilityaudio.AudioIntent{out.Audio}
 		}
-		// Per-(scene, language) TTS correlation: record the produced
-		// voiceover asset so the translation → TTS → render → Drive lineage
-		// is joinable on (scene_id, language, asset_id).
-		if err := c.runner.recordArtifactOperation(c.ctx, c.exec, ArtifactOperation{
-			OperationID: artifactOperationID(c.exec.Attempt, OperationTTS, out.ID, string(lang)),
-			Kind:        OperationTTS,
-			SceneID:     out.ID,
-			Language:    lang,
-			AssetID:     out.Voiceover[lang].ID,
-			Status:      "COMPLETED",
-		}); err != nil {
-			return Scene{}, err
-		}
 		// Localized render fan-out: fire the render in a separate goroutine
 		// the moment this language's TTS is final, so Rust starts on this
 		// clip while later scenes are still being translated/voiced — and,
@@ -486,6 +396,19 @@ func (c *sceneReadyCoordinator) process(scene Scene) (Scene, error) {
 				c.mu.Unlock()
 			}
 		}()
+		// TTS lineage record, deliberately AFTER the dispatch above: this write
+		// is durable bookkeeping, never an input to the render, so it must not
+		// sit in front of the render start (2026-09-21 tail audit).
+		if err := c.runner.recordArtifactOperation(c.ctx, c.exec, ArtifactOperation{
+			OperationID: artifactOperationID(c.exec.Attempt, OperationTTS, out.ID, string(lang)),
+			Kind:        OperationTTS,
+			SceneID:     out.ID,
+			Language:    lang,
+			AssetID:     out.Voiceover[lang].ID,
+			Status:      "COMPLETED",
+		}); err != nil {
+			return Scene{}, err
+		}
 	}
 	// The scene duration is the source language's narration length: langs[0]
 	// is the source language whenever it is set, so outcomes[0] is its
@@ -498,6 +421,62 @@ func (c *sceneReadyCoordinator) process(scene Scene) (Scene, error) {
 	c.ttsCalls += voiceoverCalls
 	c.mu.Unlock()
 	return out, nil
+}
+
+// launchFixedMediaRenders starts the localized render matrix for a fixed
+// intro/outro after its display text has been translated. Fixed sections have
+// no voiceover worker whose completion could trigger rendering, so they must
+// be dispatched explicitly here. The matrix is deliberately unbounded by a
+// hard-coded clip count: every validated bound clip gets one render per
+// language, preserving both order and clip identity.
+func (c *sceneReadyCoordinator) launchFixedMediaRenders(scene Scene) {
+	if c == nil || !c.req.Render.Enabled || c.req.Source.Type != SourceClips {
+		return
+	}
+	for _, lang := range fixedRenderLanguages(c.req, scene) {
+		lang := lang
+		text := fixedCaptionText(scene, c.req.SourceLanguage, lang)
+		sourceText := strings.TrimSpace(scene.Text[c.req.SourceLanguage])
+		for _, unit := range RenderUnitsForScene(scene) {
+			unit := unit
+			clipID, clipAssetID, clipSHA256, clipDurationMS := localizedRenderUnitClipFields(unit)
+			c.renderWg.Add(1)
+			go func() {
+				defer c.renderWg.Done()
+				if err := c.runner.enqueueLocalizedRender(c.ctx, LocalizedRenderInput{
+					RunID: c.runID, ParentJobID: c.exec.JobID,
+					DocsFolderID: c.routing.DocsFolderID, JobID: c.exec.JobID,
+					SceneID: scene.ID, SceneIndex: scene.Index,
+					Language: lang, Text: text,
+					SourceLanguage: c.req.SourceLanguage, SourceText: sourceText,
+					ClipID: clipID, ClipAssetID: clipAssetID, ClipSHA256: clipSHA256,
+					ClipDurationMS: clipDurationMS, Render: c.req.Render,
+					OnRendered: func(rendered LocalizedRenderResult) error {
+						c.mu.Lock()
+						c.rendered = append(c.rendered, rendered)
+						c.mu.Unlock()
+						return c.runner.recordLocalizedRender(c.ctx, c.exec, nil, rendered)
+					},
+					OnFailed: func(failure LocalizedRenderFailure) error {
+						c.mu.Lock()
+						c.failures = append(c.failures, failure)
+						c.mu.Unlock()
+						return nil
+					},
+				}); err != nil {
+					c.runner.log.Error("fixed-media localized render enqueue failed",
+						zap.String("scene_id", scene.ID), zap.String("clip_id", clipID),
+						zap.String("language", string(lang)), zap.Error(err))
+					c.mu.Lock()
+					c.failures = append(c.failures, LocalizedRenderFailure{
+						SceneID: scene.ID, Language: lang, ClipID: clipID,
+						ErrorCode: "LOCALIZED_RENDER_ENQUEUE_FAILED", Error: err.Error(),
+					})
+					c.mu.Unlock()
+				}
+			}()
+		}
+	}
 }
 
 func (c *sceneReadyCoordinator) wait(ctx context.Context, scenes []Scene) ([]Scene, *TranslationPipelineMetrics, *AudioPipelineMetrics, error) {

@@ -163,10 +163,10 @@ func RunMediaPreflight(ctx context.Context, in MediaPreflightInput) PreflightRes
 		if name == "" {
 			name = "fixed"
 		}
-		if len(section.ClipIDs) < 1 || len(section.ClipIDs) > 2 {
+		if len(section.ClipIDs) < 1 {
 			failures = append(failures, PreflightFailure{
 				Category: "fixed_media", AssetID: name,
-				Detail: "fixed section must contain 1 or 2 clip_ids",
+				Detail: "fixed section must contain at least one clip_id",
 			})
 		}
 		if !section.Playback.Valid() {

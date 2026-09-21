@@ -352,8 +352,8 @@ func (r *Runner) runSceneTextPhase(ctx context.Context, runID string, req Genera
 		}
 		if req.Source.Type == SourceClips && req.Render.Enabled {
 			// Expected renders are the canonical render-unit count, not the
-			// scene count: a fixed intro/outro bound to two clips contributes
-			// two units (one final render per clip), fanned out per render
+			// scene count: a fixed intro/outro contributes one unit per bound
+			// clip (one final render per clip), fanned out per render
 			// language for fixed media (Intro V2).
 			expectedUnits := expectedRenderUnits(req, scenes)
 			result.ExpectedRenderCount = expectedUnits

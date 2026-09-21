@@ -1,0 +1,179 @@
+{
+  "url": "https://www.youtube.com/watch?v=lQ66h_B5f00",
+  "strategy": "verify",
+  "destination": {
+    "folder_id": "19rnS2EiF9RfSFRaFXDfuJhlMvFgSiRtl"
+  },
+  "segments": [
+    {
+      "start": "00:00",
+      "end": "00:15",
+      "name": "Hook: L'industria discografica che lucra sul dolore",
+      "source_title": "Sally ft. The Weeknd : relations toxiques, santé mentale et dépression. L'interview.",
+      "source_channel": "Sally",
+      "summary": "The Weeknd evidenzia come l'industria richieda continua sofferenza e tristezza autentica per sfornare brani d'impatto.",
+      "topics": ["Hook: L'industria discografica che lucra sul dolore"],
+      "texts": [
+        {
+          "language_code": "en",
+          "source_type": "provided",
+          "is_original": true,
+          "description": "industria musicale monetizzazione tristezza dolore canzoni tristi autenticità mercato cinismo"
+        }
+      ]
+    },
+    {
+      "start": "00:15",
+      "end": "00:25",
+      "name": "Hook: Il pericolo di inseguire l'oscurità",
+      "source_title": "Sally ft. The Weeknd : relations toxiques, santé mentale et dépression. L'interview.",
+      "source_channel": "Sally",
+      "summary": "Abel riflette sul rischio di forzare situazioni negative o rotture personali solo per alimentare la scrittura musicale.",
+      "topics": ["Hook: Il pericolo di inseguire l'oscurità"],
+      "texts": [
+        {
+          "language_code": "en",
+          "source_type": "provided",
+          "is_original": true,
+          "description": "buio autodistruzione songwriting trappola emotiva tossicità isolamento"
+        }
+      ]
+    },
+    {
+      "start": "04:45",
+      "end": "05:00",
+      "name": "Hook: Il fallimento come presupposto della grandezza",
+      "source_title": "Sally ft. The Weeknd : relations toxiques, santé mentale et dépression. L'interview.",
+      "source_channel": "Sally",
+      "summary": "Abel sintetizza la propria etica: chiunque abbia raggiunto risultati straordinari è passato attraverso innumerevoli fallimenti.",
+      "topics": ["Hook: Il fallimento come presupposto della grandezza"],
+      "texts": [
+        {
+          "language_code": "en",
+          "source_type": "provided",
+          "is_original": true,
+          "description": "fallimento maestro errori tentativi sconfitte successo resilienza filosofia di vita"
+        }
+      ]
+    },
+    {
+      "start": "05:00",
+      "end": "05:35",
+      "name": "Saper incassare le sconfitte e imparare",
+      "source_title": "Sally ft. The Weeknd : relations toxiques, santé mentale et dépression. L'interview.",
+      "source_channel": "Sally",
+      "summary": "The Weeknd descrive il fallimento come la scuola più formativa, indispensabile per imparare a rialzarsi senza farsi distruggere.",
+      "topics": ["Saper incassare le sconfitte e imparare"],
+      "texts": [
+        {
+          "language_code": "en",
+          "source_type": "provided",
+          "is_original": true,
+          "description": "take the L scuola di vita apprendimento errori pubblici sconfitta crescita personale"
+        }
+      ]
+    },
+    {
+      "start": "08:05",
+      "end": "08:55",
+      "name": "Bruciare l'alter ego di The Weeknd",
+      "source_title": "Sally ft. The Weeknd : relations toxiques, santé mentale et dépression. L'interview.",
+      "source_channel": "Sally",
+      "summary": "Abel spiega la necessità di distruggere il personaggio di The Weeknd per non restare incatenato al suo immaginario distruttivo a quarant'anni.",
+      "topics": ["Bruciare l'alter ego di The Weeknd"],
+      "texts": [
+        {
+          "language_code": "en",
+          "source_type": "provided",
+          "is_original": true,
+          "description": "bruciare persona The Weeknd rinascita identità Abel Tesfaye maturità rottura maschera"
+        }
+      ]
+    },
+    {
+      "start": "10:00",
+      "end": "10:15",
+      "name": "Hook: Il taglio netto dei capelli Basquiat",
+      "source_title": "Sally ft. The Weeknd : relations toxiques, santé mentale et dépression. L'interview.",
+      "source_channel": "Sally",
+      "summary": "Il ricordo di quando tagliò i capelli dall'oggi al domani contro il parere di tutti per non farsi imprigionare da un'etichetta estetica.",
+      "topics": ["Hook: Il taglio netto dei capelli Basquiat"],
+      "texts": [
+        {
+          "language_code": "en",
+          "source_type": "provided",
+          "is_original": true,
+          "description": "Basquiat hair taglio capelli rifiuto gabbia identità management iconografia autonomia"
+        }
+      ]
+    },
+    {
+      "start": "10:15",
+      "end": "11:05",
+      "name": "Il corpo che impone lo stop e l'ingordigia",
+      "source_title": "Sally ft. The Weeknd : relations toxiques, santé mentale et dépression. L'interview.",
+      "source_channel": "Sally",
+      "summary": "Abel interpreta la perdita della voce come un segnale d'allarme biologico che gli imponeva di fermarsi e non pretendere sempre di più.",
+      "topics": ["Il corpo che impone lo stop e l'ingordigia"],
+      "texts": [
+        {
+          "language_code": "en",
+          "source_type": "provided",
+          "is_original": true,
+          "description": "burnout overthinking limite fisico gratitudine ingordigia pausa SoFi Stadium ascolto interiore"
+        }
+      ]
+    },
+    {
+      "start": "11:10",
+      "end": "12:00",
+      "name": "Il valore umano oltre il talento sul palco",
+      "source_title": "Sally ft. The Weeknd : relations toxiques, santé mentale et dépression. L'interview.",
+      "source_channel": "Sally",
+      "summary": "La consapevolezza maturata dopo il trauma: capire che il proprio valore come essere umano prescinde dal superpotere vocale.",
+      "topics": ["Il valore umano oltre il talento sul palco"],
+      "texts": [
+        {
+          "language_code": "en",
+          "source_type": "provided",
+          "is_original": true,
+          "description": "superpotere voce identità valore personale palco febbre sicurezza performance"
+        }
+      ]
+    },
+    {
+      "start": "13:45",
+      "end": "14:00",
+      "name": "Hook: Saltare nel fuoco senza paura",
+      "source_title": "Sally ft. The Weeknd : relations toxiques, santé mentale et dépression. L'interview.",
+      "source_channel": "Sally",
+      "summary": "L'invito diretto di Abel a non aspettare il momento ideale ma a lanciarsi a capofitto nelle nuove sfide accettando il rischio.",
+      "topics": ["Hook: Saltare nel fuoco senza paura"],
+      "texts": [
+        {
+          "language_code": "en",
+          "source_type": "provided",
+          "is_original": true,
+          "description": "jump into fire coraggio buttarsi recitazione comfort zone azione senza calcoli"
+        }
+      ]
+    },
+    {
+      "start": "14:35",
+      "end": "15:20",
+      "name": "L'ansia pre-show e l'importanza del rischio",
+      "source_title": "Sally ft. The Weeknd : relations toxiques, santé mentale et dépression. L'interview.",
+      "source_channel": "Sally",
+      "summary": "Trey e Abel sottolineano che essere nervosi prima di salire sul palco è segno di cura autentica e che senza rischi si vive solo di rimpianti.",
+      "topics": ["L'ansia pre-show e l'importanza del rischio"],
+      "texts": [
+        {
+          "language_code": "en",
+          "source_type": "provided",
+          "is_original": true,
+          "description": "ansia da prestazione adrenalina rischi comfort zone rimpianti passione performance"
+        }
+      ]
+    }
+  ]
+}

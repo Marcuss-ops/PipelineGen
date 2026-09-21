@@ -8,9 +8,9 @@ import "strings"
 // never needs to understand fixed intro/outro sections:
 //
 //	generated scene   → 1 unit on its primary clip
-//	fixed_media scene → 1 unit PER bound clip (1..2)
+//	fixed_media scene → 1 unit PER bound clip
 //
-// A two-clip intro/outro therefore receives two final renders instead of
+// A multi-clip intro/outro therefore receives one final render per clip instead of
 // silently dropping the second clip (the pre-unit contract rendered only
 // Clip/Clips[0] per scene).
 
@@ -25,16 +25,16 @@ type SceneRenderUnit struct {
 	Scene Scene
 	// ClipIndex is the 0-based clip position within the scene. Generated
 	// scenes always render their primary clip (ClipIndex 0); fixed media may
-	// fan one unit per bound clip (ClipIndex 0..1).
+	// fan one unit per bound clip.
 	ClipIndex int
 	// Clip is the unit's authoritative source clip.
 	Clip *ClipReference
 }
 
 // RenderUnitsForScene decomposes a scene into its localized render units.
-// Protected fixed-media scenes produce one unit per bound clip (1..2 clips is
-// the validated contract); every other scene produces a single unit on its
-// primary clip, preserving the historical fan-out shape.
+// Protected fixed-media scenes produce one unit per bound clip (any non-empty
+// validated sequence is allowed); every other scene produces a single unit on
+// its primary clip, preserving the historical fan-out shape.
 func RenderUnitsForScene(scene Scene) []SceneRenderUnit {
 	if scene.ExecutionMode.IsFixedMedia() {
 		clips := scene.Clips
@@ -65,8 +65,8 @@ func RenderUnitsForScene(scene Scene) []SceneRenderUnit {
 
 // RenderUnitCount returns the total number of localized render units across
 // an ordered scene list. It is the authoritative expected-render count for a
-// clip fan-out: fixed sections with two clips count twice, so a 2-clip
-// intro/outro can never be reported as a single expected render.
+// clip fan-out: every bound clip in a fixed section contributes one unit,
+// so no multi-clip intro/outro can be reported as a single expected render.
 func RenderUnitCount(scenes []Scene) int {
 	total := 0
 	for _, scene := range scenes {
@@ -77,8 +77,8 @@ func RenderUnitCount(scenes []Scene) int {
 
 // localizedRenderUnitClipFields resolves the source-clip reference a localized
 // render needs from one render unit. It mirrors localizedRenderClipFields but
-// works on the unit's exact clip so a two-clip fixed section fans out each
-// clip with its own identity. The clip ID doubles as the media asset id
+// works on the unit's exact clip so every fixed-section clip fans out with its
+// own identity. The clip ID doubles as the media asset id
 // (ClipReference.ID is the canonical asset identity) and duration is converted
 // to milliseconds with the same fallback chain as the scene-level helper.
 func localizedRenderUnitClipFields(unit SceneRenderUnit) (clipID, assetID, sha256 string, durationMS int64) {

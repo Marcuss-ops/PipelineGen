@@ -194,8 +194,6 @@ func validateFixedSections(item GenerationItemV2, ref string) []string {
 		ids := sec.NormalizedClipIDs()
 		if len(ids) == 0 {
 			d = append(d, ref+": "+pair.name+".clip_ids requires at least one clip_id")
-		} else if len(ids) > 2 {
-			d = append(d, ref+": "+pair.name+".clip_ids must contain 1 or 2 clip_ids (got "+strconv.Itoa(len(ids))+")")
 		}
 		for _, id := range ids {
 			if id == "" {

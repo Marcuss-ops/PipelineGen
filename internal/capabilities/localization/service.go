@@ -111,6 +111,29 @@ const (
 	defaultUploadConcurrency       = 4
 )
 
+// RenderWidth resolves the effective render fan-out for ONE Localize call from
+// the shared machine bound and the caller's requested width. Every call holds
+// BOTH a per-call gate (the request) and the shared machine gate, so a request
+// wider than the machine bound is throttled by the shared gate silently: an
+// operator who sends render_concurrency=5 against a machine bound of 4 pays a
+// full extra per-scene wait with no signal at all (2026-09-21 tail audit: the
+// fifth of five scenes always waited for a slot). Resolving the width once, and
+// reporting the clamp, turns that invisible throttle into an explicit one.
+//
+// machineBound <1 means "no shared bound" (unbounded); requested <1 falls back
+// to DefaultRenderConcurrency. cramped is true exactly when the machine bound
+// is the stricter of the two, i.e. when the caller must raise the deployment
+// bound for the request to take effect.
+func RenderWidth(machineBound, requested int) (effective int, cramped bool) {
+	if requested < 1 {
+		requested = DefaultRenderConcurrency
+	}
+	if machineBound > 0 && machineBound < requested {
+		return machineBound, true
+	}
+	return requested, false
+}
+
 // NewService builds the orchestrator. Fail-closed: all three steps are
 // mandatory — a service that cannot render, upload, or assemble can never
 // complete a fan-out.
@@ -154,10 +177,11 @@ func (s *Service) Localize(ctx context.Context, in LocalizeInput) (*LocalizeResu
 		return nil, fmt.Errorf("localization: localize: plans is required")
 	}
 
-	concurrency := in.Concurrency
-	if concurrency < 1 {
-		concurrency = DefaultRenderConcurrency
-	}
+	// The per-call render gate is the requested width capped by the shared
+	// machine gate (see RenderWidth). Resolving it here keeps the two gates from
+	// disagreeing about how wide this call may be, so the clamp is a single,
+	// testable fact instead of an emergent property of two semaphores.
+	concurrency, _ := RenderWidth(cap(s.renderGate), in.Concurrency)
 
 	// Streaming producer-consumer pipeline. Each worker owns a plan, releases
 	// the render slots at RENDERED, and immediately enters the independent
@@ -221,6 +245,19 @@ func (s *Service) Localize(ctx context.Context, in LocalizeInput) (*LocalizeResu
 	}
 	pipelineWG.Wait()
 
+	// ── Document entries require UPLOADED artifacts ──────────────────────
+	// The manifest IS the set of uploaded Drive links: LocalizedDocumentEntry
+	// carries DriveFileID / DriveLink, and docs.go renders "no link" when they
+	// are absent. So this projection deliberately runs AFTER every upload has
+	// settled, and a plan whose upload failed is excluded from the doc rather
+	// than listed without its link. Two tempting reorderings are therefore
+	// forbidden, not merely untried: (a) populating entries from the RENDERED
+	// artifact (OnRendered fires before Drive publication, so the link is not
+	// known yet) and (b) assembling the doc in parallel with the remaining
+	// uploads. Either publishes a manifest that lists clips with blank links
+	// (godlike/07 no-fake-availability) while making the run look faster. The
+	// ordering is a correctness contract pinned by
+	// TestService_DocumentAssemblyRequiresUploadedLinks.
 	artifacts := make([]LocalizedClipArtifact, 0, len(results))
 	entries := make([]LocalizedDocumentEntry, 0, len(results))
 	failures := make([]TaskResult, 0)

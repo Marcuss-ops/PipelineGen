@@ -1,0 +1,160 @@
+{
+  "version": 2,
+  "preset": "custom",
+  "correlation_id": "dolly-8clips-intro3-prefetch-20260921T121700Z",
+  "force_refresh": true,
+  "items": [
+    {
+      "id": "dolly-parton-8clips-intro3-prefetch-en",
+      "project": "dolly-parton-8clips-intro3-prefetch",
+      "title": "Dolly Parton — tre lampi e cinque storie",
+      "language": "en",
+      "tone": "warm, witty, elegant and energetic",
+      "style": "Write exactly five short, charming scenes in the supplied order. Stay grounded in each brief and in the Dolly Parton stock folder. Each scene should have a vivid opening image, one clear idea and a memorable, warm closing line. Do not invent dates, quotes, awards or events. Keep the five scenes separate and do not mention these instructions.",
+      "model": "gemma4:e2b",
+      "media_mode": "stock_only",
+      "source": {
+        "type": "text",
+        "topic": "Dolly Parton: voice, songs, imagination and grounded humor",
+        "source_text": "After a three-clip consecutive intro, tell five compact stories about Dolly Parton: her unmistakable voice, the universal feeling inside a song, the scale of her creative world, the life of a song beyond its first singer, and the humor that keeps fame human.",
+        "force_refresh": true
+      },
+      "intro": {
+        "clip_ids": [
+          "yt_tnoMGevqWAM_0_46_v1",
+          "yt_tnoMGevqWAM_46_65_v1",
+          "yt_tnoMGevqWAM_65_96_v1"
+        ],
+        "title": "Dolly Parton — tre lampi consecutivi",
+        "display_text": "Tre lampi, una sola energia.",
+        "playback": {
+          "audio_mode": "original_clip",
+          "source_in_ms": 0,
+          "source_out_ms": 5000
+        }
+      },
+      "script_params": {
+        "target_words": 175,
+        "min_words": 110,
+        "segment_words": 35,
+        "concurrency": 1,
+        "force_refresh": true,
+        "segments": [
+          {
+            "id": "dolly-voice",
+            "kind": "stock",
+            "topic": "Una voce che entra subito nella stanza",
+            "source_text": "Racconta il carattere riconoscibile della voce di Dolly: calore, brillantezza e personalità. Fai sentire come una voce possa diventare immediatamente un mondo, senza inventare citazioni o dettagli biografici.",
+            "target_words": 35,
+            "min_words": 20,
+            "max_words": 60,
+            "stock_folder_id": "1C-q2swarUlf4JEUYHVe0Ol88MDSU8FUq"
+          },
+          {
+            "id": "dolly-song",
+            "kind": "stock",
+            "topic": "Il sentimento universale dietro una canzone",
+            "source_text": "Descrivi il modo in cui una canzone di Dolly può trasformare desiderio, vulnerabilità e memoria in un sentimento condiviso. Tono poetico ma concreto, senza attribuire frasi non presenti nel materiale.",
+            "target_words": 35,
+            "min_words": 20,
+            "max_words": 60,
+            "stock_folder_id": "1C-q2swarUlf4JEUYHVe0Ol88MDSU8FUq"
+          },
+          {
+            "id": "dolly-imagination",
+            "kind": "stock",
+            "topic": "Un piccolo sogno con una grande scenografia",
+            "source_text": "Mostra l'immaginazione di Dolly come una forza capace di trasformare un'idea semplice in un'esperienza piena di colore, movimento e meraviglia. Resta ancorato alle immagini dello stock.",
+            "target_words": 35,
+            "min_words": 20,
+            "max_words": 60,
+            "stock_folder_id": "1C-q2swarUlf4JEUYHVe0Ol88MDSU8FUq"
+          },
+          {
+            "id": "dolly-song-life",
+            "kind": "stock",
+            "topic": "Quando una canzone continua a vivere",
+            "source_text": "Racconta con eleganza come una canzone possa viaggiare, cambiare voce e restare emotivamente intatta. Non inventare classifiche, date, premi o citazioni: punta sull'idea della vita lunga di una buona melodia.",
+            "target_words": 35,
+            "min_words": 20,
+            "max_words": 60,
+            "stock_folder_id": "1C-q2swarUlf4JEUYHVe0Ol88MDSU8FUq"
+          },
+          {
+            "id": "dolly-humor",
+            "kind": "stock",
+            "topic": "L'ironia che tiene i piedi per terra",
+            "source_text": "Chiudi con l'umorismo di Dolly: brillante, autoironico e capace di ridimensionare la fama senza spegnere la luce. La chiusa deve essere affettuosa e memorabile, senza inventare una citazione letterale.",
+            "target_words": 35,
+            "min_words": 20,
+            "max_words": 60,
+            "stock_folder_id": "1C-q2swarUlf4JEUYHVe0Ol88MDSU8FUq"
+          }
+        ]
+      },
+      "docs": {
+        "enabled": true,
+        "languages": ["en"],
+        "folder_id": "1ST6FxPuRaxwBOIz39MAN8Jj4gDv509-K"
+      },
+      "audio": {
+        "mode": "CHUNKED_VOICEOVER",
+        "timing": {
+          "mode": "required",
+          "boundary": "word",
+          "formats": ["json", "srt", "vtt"]
+        }
+      },
+      "output": {
+        "render": {
+          "enabled": true,
+          "background": { "mode": "blur_source" },
+          "watermark": {
+            "enabled": true,
+            "text": "VELOX EDITING",
+            "position": "top_right",
+            "opacity": 0.85,
+            "style": {
+              "font": "Impact",
+              "scale_percent": 100,
+              "shadow": {
+                "color": "#000000",
+                "opacity": 0.6,
+                "blur_px": 12,
+                "offset_y": 4
+              }
+            }
+          },
+          "subtitles": {
+            "enabled": true,
+            "mode": "burn",
+            "preset": "subs-young",
+            "style": {
+              "position": "bottom_center",
+              "color": "#FFFFFF",
+              "stroke": { "color": "#000000", "width": 2 },
+              "shadow": {
+                "color": "#000000",
+                "opacity": 0.8,
+                "blur_px": 8,
+                "offset_y": 4
+              }
+            }
+          },
+          "render_concurrency": 5,
+          "foreground_scale_percent": 85,
+          "drive_folder_id": "1ST6FxPuRaxwBOIz39MAN8Jj4gDv509-K",
+          "drive_subfolder_name": "dolly-parton-8clips-intro3-prefetch-20260921T121700Z"
+        },
+        "save_to_db": true,
+        "generate_timeline": true,
+        "stock_enabled": "enabled",
+        "voiceover_enabled": "enabled",
+        "extract_entities": "disabled",
+        "generate_metadata": "disabled",
+        "drive_folder_id": "1ST6FxPuRaxwBOIz39MAN8Jj4gDv509-K",
+        "languages": ["en"]
+      }
+    }
+  ]
+}
