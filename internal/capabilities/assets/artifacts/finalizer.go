@@ -270,9 +270,12 @@ func (f *Finalizer) writeMetadataJSON(rec *MediaRecord) {
 		assetType = f.metadata.AssetTypeForMediaType(rec.MediaType)
 	}
 
-	// Supersede-gate fix: content_hash MUST be in metadata_json so
-	// SourceVersionFor() reads Tier 1 (highest priority) instead of
-	// falling back to stale Tier 2 (file_hash from a previous ingest).
+	// Supersede-gate fix: content_hash MUST be in metadata_json so a
+	// fingerprint read takes the primary slot instead of falling back to
+	// a stale secondary one (file_hash from a previous ingest). The SQLite
+	// SourceVersionFor() helper this comment used to name is deleted
+	// (MEDIA LEGACY READ-PLANE DEMOLITION, 2026-09-21); the media-SSOT read
+	// is pgmedia/index_event.go.
 	//
 	// MEDIA-IDENTITY (Sept 2026): the fallback is RESOLVED through the canonical
 	// rule instead of copied. rec.LegacyFileMD5 is the compatibility bucket and

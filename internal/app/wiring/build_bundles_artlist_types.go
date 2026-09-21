@@ -34,8 +34,13 @@ import (
 // Pattern 0 compile-time pins (AGENTS.md): canonical DIRECT receivers
 // straight-satisfy the artlist ports. Drift in any signature surfaces as
 // a build failure here rather than as a runtime panic on first dispatch.
+//
+// MEDIA LEGACY READ-PLANE DEMOLITION (2026-09-21): the artlist.AssetStore pin
+// still names *assets.ClipsRepository, because the media aggregates were moved
+// OFF that port (they are now artlist.MediaStats, owned by
+// pgmedia.MediaStatisticsReader) instead of being stubbed on the repository.
 var (
-	_ artlist.AssetStore = (*assets.ClipsRepository)(nil) // 7-method set via *AssetStoreSQLite method-promotion
+	_ artlist.AssetStore = (*assets.ClipsRepository)(nil) // 5-method set via *AssetStoreSQLite method-promotion
 	_ artlist.Indexer    = (*clipindexer.Service)(nil)    // IndexClip + IsEnabled
 	_ artlist.Dispatcher = (*outbox.Dispatcher)(nil)      // EnqueueAndIndex + SaveDiscoveredAsset
 	_ job.Service        = (*appjobs.Service)(nil)        // cross-package alias safety (Build Deps.Jobs + ServiceDeps.JobsSvc)

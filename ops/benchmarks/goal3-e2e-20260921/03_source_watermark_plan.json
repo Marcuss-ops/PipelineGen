@@ -1,0 +1,56 @@
+{
+  "schema": "chronon.render-plan.v2",
+  "version": 2,
+  "job_id": "goal3-source-wm",
+  "canvas": {
+    "width": 1920,
+    "height": 1080,
+    "fps_num": 24,
+    "fps_den": 1,
+    "duration_frames": 120
+  },
+  "layers": [
+    {
+      "id": "source",
+      "type": "video",
+      "source": "assets/semantic/goal3-foreground/source.mp4",
+      "size": [
+        1920,
+        1080
+      ],
+      "fit": "cover",
+      "start_frame": 0,
+      "duration_frames": 120
+    },
+    {
+      "id": "watermark",
+      "type": "text",
+      "text": "PipelineGen",
+      "size": [
+        320,
+        80
+      ],
+      "position": [
+        1536,
+        64
+      ],
+      "style": {
+        "font": "assets/semantic/goal3-font/Poppins-Bold.ttf",
+        "font_size": 48,
+        "fill": "#FFFFFF",
+        "stroke": {
+          "color": "#000000",
+          "width": 3
+        }
+      },
+      "start_frame": 0,
+      "duration_frames": 120,
+      "opacity": 0.9
+    }
+  ],
+  "output": {
+    "path": "/home/pierone/src/go-master/projects/Pyt/VeloxEditing/refactored/ops/benchmarks/goal3-e2e-20260921/03_source_watermark.mp4",
+    "format": "mp4",
+    "codec": "h264"
+  }
+}

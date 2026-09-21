@@ -35,6 +35,10 @@
 //     SearchClips/SearchByTerms reads; they resolve against
 //     media_assets.search_terms in PostgreSQL, never the operational
 //     clip_search_terms index (MEDIA-SSOT P2-9 unblock step 1).
+//   - pgmedia.MediaStatisticsReader — the SINGLE owner of the media_assets
+//     aggregates the Artlist surfaces report (artlist.MediaStats port: the
+//     per-source count, the catalogue total and the newest matching run
+//     timestamp; MEDIA LEGACY READ-PLANE DEMOLITION, 2026-09-21).
 //
 // godlike/07 minimum-blast-radius: configuration-only changes (no
 // field renames; the field-to-field translation is the canonical
@@ -183,6 +187,9 @@ type artlistLocalSearcher struct {
 var (
 	_ artlist.Searcher       = (*artlistLocalSearcher)(nil)
 	_ artlistLocalMediaStore = (*pgmedia.MediaSearcher)(nil)
+	// Pattern 0: the Artlist media-statistics port has exactly one concrete
+	// owner, on the media SSOT.
+	_ artlist.MediaStats = (*pgmedia.MediaStatisticsReader)(nil)
 )
 
 // newArtlistLocalSearcher returns nil when the media SSOT store is absent so

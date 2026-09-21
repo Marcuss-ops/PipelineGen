@@ -130,46 +130,9 @@ func (r *ClipsRepository) List(ctx context.Context, filter asset.Filter) ([]*ass
 	return out, nil
 }
 
-func (r *ClipsRepository) StreamAssetIDs(ctx context.Context, pageSize int, onPage func([]string) error) error {
-	if pageSize <= 0 {
-		pageSize = 1000
-	}
-	offset := 0
-	for {
-		rows, err := r.db.QueryContext(ctx, `SELECT id FROM media_assets LIMIT ? OFFSET ?`, pageSize, offset)
-		if err != nil {
-			return fmt.Errorf("stream asset ids (limit=%d, offset=%d): %w", pageSize, offset, err)
-		}
-		batch := make([]string, 0, pageSize)
-		for rows.Next() {
-			var id string
-			if err := rows.Scan(&id); err != nil {
-				rows.Close()
-				return fmt.Errorf("scan asset id at offset %d: %w", offset, err)
-			}
-			batch = append(batch, id)
-		}
-		rows.Close()
-		if err := rows.Err(); err != nil {
-			return fmt.Errorf("iterate asset ids: %w", err)
-		}
-		if len(batch) == 0 {
-			return nil
-		}
-		if err := onPage(batch); err != nil {
-			return err
-		}
-		if len(batch) < pageSize {
-			return nil
-		}
-		offset += pageSize
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		default:
-		}
-	}
-}
+// MEDIA LEGACY READ-PLANE DEMOLITION (2026-09-21): StreamAssetIDs is DELETED
+// (zero production and zero test call sites — the paged ID stream had no
+// consumer left once the clips API moved to the PostgreSQL media SSOT).
 
 func inClause(n int, col string, notOpt ...string) string {
 	if n <= 0 {

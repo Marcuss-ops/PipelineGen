@@ -145,8 +145,3 @@ func (r *ClipsRepository) UpsertDriveFolder(ctx context.Context, attrs DriveFold
 		Group:      attrs.GroupName,
 	})
 }
-
-// StreamAssetIDs pages through `SELECT id FROM media_assets LIMIT ? OFFSET ?`
-// rows calling onPage once per non-empty page. The callback can abort
-// iteration by returning a non-nil error; that error is propagated
-// verbatim. ctx.Err() is honored between pages.

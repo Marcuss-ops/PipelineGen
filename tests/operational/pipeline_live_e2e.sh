@@ -31,8 +31,11 @@
 #     create_subfolder) is rejected with 400 by ExtractRequest.UnmarshalJSON.
 #   - /api/stock-pipeline/run takes `search_queries` (legacy shape).
 #     /api/stock-pipeline/search-and-run takes `queries:[{q,limit}]`.
-#     Sending `search_queries` to search-and-run is silently ignored by the
-#     binding and then fails the source-presence gate with 400.
+#     Sending `search_queries` to search-and-run is dropped by that endpoint's
+#     deliberately permissive binding (it accepts provider-specific probe
+#     fields), so the source-presence gate answers 400. The message names the
+#     dropped key and the accepted shape, so the misroute is diagnosable from
+#     the response body alone (see the handler contract test that pins it).
 #   - The explicit Stock duration contract is all-or-nothing:
 #     target_total_duration_seconds, target_duration_per_source_seconds,
 #     clips_per_source, clip_duration_seconds (per_source must equal

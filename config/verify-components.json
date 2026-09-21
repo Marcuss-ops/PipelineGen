@@ -381,9 +381,11 @@
   "youtube": {
     "paths": [
       "internal/capabilities/youtube/",
+      "internal/capabilities/assets/youtube/",
       "internal/capabilities/assets/providers/youtube/",
       "internal/capabilities/assets/sourcing/youtube/",
       "internal/platform/youtube/",
+      "internal/platform/ytdlp/",
       "tests/operational/pipeline_live_e2e.sh",
       "scripts/bridges/whisper_transcriber.py",
       "scripts/requirements-whisper.txt",
@@ -398,9 +400,11 @@
     ],
     "go_packages": [
       "./internal/capabilities/youtube/...",
+      "./internal/capabilities/assets/youtube/...",
       "./internal/capabilities/assets/providers/youtube/...",
       "./internal/capabilities/assets/sourcing/youtube/...",
-      "./internal/platform/youtube/..."
+      "./internal/platform/youtube/...",
+      "./internal/platform/ytdlp/..."
     ],
     "node_tests": [],
     "python_tests": [],

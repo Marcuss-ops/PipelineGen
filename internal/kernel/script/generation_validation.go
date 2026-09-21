@@ -49,6 +49,15 @@ func (e *GenerationEnvelopeV2) Validate() error {
 			return err
 		}
 
+		// Expand the public per-segment Drive-folder shorthand before media
+		// validation so stock_only sees the same canonical internal bindings
+		// as legacy callers. The envelope is intentionally mutated once at
+		// ingress; the resulting bindings travel through the durable request.
+		if err := ExpandSegmentStockFolders(&e.Items[i]); err != nil {
+			return err
+		}
+		item = e.Items[i]
+
 		// Universal numeric invariants — every payload must satisfy these
 		// regardless of config, caller, or installation.
 		if details := validateGenerationScriptParams(item.ScriptParams, ref); len(details) > 0 {

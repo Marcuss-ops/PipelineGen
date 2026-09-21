@@ -2,10 +2,7 @@ package imagesregistry
 
 import (
 	"context"
-	"database/sql"
-	"errors"
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
@@ -17,12 +14,28 @@ import (
 // clips_index_state.go holds the *ClipsRepository methods that
 // transition media_assets into lifecycle / indexing states. SoftDelete
 // flips into 'deleted' (tombstone); SetIndexState writes the
-// canonical index_state column (QDRANT-002 PR6 / migration 094);
-// DeleteClipByDriveLink performs the legacy drive-link-based
-// delete-by-link soft-delete (QDRANT-002 outbox-bypass note). The
+// canonical index_state column (QDRANT-002 PR6 / migration 094). The
 // dispatcher (outbox.Dispatcher) is the canonical caller of the tx-scoped
 // SetIndexStateTx mirror (in clips_transactions.go) and the production-grade
 // deletion path.
+//
+// MEDIA LEGACY READ-PLANE DEMOLITION (2026-09-21): DeleteClipByDriveLink is
+// DELETED. It had zero production and zero test call sites and had already
+// been reduced to a fail-closed stub that returned an error instead of doing
+// the outbox-bypassing soft-delete, so it was a dead door with no behaviour
+// left to preserve (the canonical path is Dispatcher/
+// DeletionService by asset ID).
+//
+// MEDIA LEGACY READ-PLANE DEMOLITION (2026-09-21, sub-wave B): GetIndexState is
+// DELETED. It was this file's only media READ and it had zero production call
+// sites — the production read resolves on the media SSOT through the
+// postgresCatalogRepository router (pgmedia.MediaSearcher), and the only
+// remaining consumer shape, the catalogsync degrade branch, now answers the
+// index-state slot with noMediaPlaneIndexState instead of reading
+// media_assets.index_state off the operational mirror (which holds no committed
+// media rows). What remains here are the two terminal WRITES — SoftDelete and
+// SetIndexState — so this file left the sqliteMediaReaderInventoriedZoneFiles
+// register in the same change.
 
 func (r *ClipsRepository) SoftDelete(ctx context.Context, id string) error {
 	nowStr := timeutil.FormatRFC3339(time.Now())
@@ -59,53 +72,4 @@ func (r *ClipsRepository) SetIndexState(ctx context.Context, id string, state as
 		return fmt.Errorf("clips.SetIndexState(%s, %s): %w", id, state, err)
 	}
 	return nil
-}
-
-// GetIndexState reads the canonical media_assets.index_state column
-// (migration 094). Returns StateDiscovered when the row is missing or
-// the column is empty (the migration DEFAULT sentinel) so producers can
-// branch on "already indexed" without error-handling ceremony.
-//
-// Index-state reads are diagnostic only. They must not suppress a new
-// index intent: SQLite INDEXED does not prove that the active Qdrant
-// projection contains the asset. Exact retries are deduplicated by the
-// canonical outbox event key.
-func (r *ClipsRepository) GetIndexState(ctx context.Context, id string) (asset.IndexState, error) {
-	if id == "" {
-		return asset.StateDiscovered, fmt.Errorf("clips.GetIndexState: id is required")
-	}
-	var state string
-	err := r.db.QueryRowContext(ctx,
-		`SELECT COALESCE(index_state, '') FROM media_assets WHERE id = ?`, id,
-	).Scan(&state)
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return asset.StateDiscovered, nil
-		}
-		return asset.StateDiscovered, fmt.Errorf("clips.GetIndexState(%s): %w", id, err)
-	}
-	if state == "" {
-		return asset.StateDiscovered, nil
-	}
-	return asset.IndexState(state), nil
-}
-
-// DeleteClipByDriveLink soft-deletes by drive/download link.
-//
-// QDRANT-002: THIS METHOD BYPASSES THE OUTBOX. It flips lifecycle_state
-// to 'deleted' without emitting an asset.index.delete_requested event,
-// which means the Qdrant point is never cleaned up.
-//
-// Callers should use deletion.DeletionService.DeleteClip (which routes
-// through outbox.Dispatcher.EnqueueAndDelete) or call the dispatcher
-// directly.
-func (r *ClipsRepository) DeleteClipByDriveLink(ctx context.Context, driveLink string) error {
-	driveLink = strings.TrimSpace(driveLink)
-	if driveLink == "" {
-		return fmt.Errorf("drive link is required")
-	}
-	// Fail closed: deleting by locator cannot emit the canonical
-	// asset.index.delete_requested outbox event atomically. Callers must use
-	// DeletionService/Dispatcher with the asset ID instead.
-	return fmt.Errorf("DeleteClipByDriveLink is disabled: use the canonical Dispatcher deletion path")
 }

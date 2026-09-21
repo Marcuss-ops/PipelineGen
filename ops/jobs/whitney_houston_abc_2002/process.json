@@ -1,0 +1,197 @@
+{
+  "_comment": "Canonical POST /api/clips/process payload (ExtractRequest, drift source: internal/capabilities/youtube/dto/types.go). Whitney Houston 'ABC Primetime Special Edition with Diane Sawyer 2002' (video 4ybE1Zlf8mM, 2490s) — 13 curated moments. Destination: the CLIP-tree child folder 1JNHiylD-yLrYQiu_gs87tQB8bElI3h6m ('Whitney Houston' under the clip root 1wES95cH_RVYxl5I3kxnppbv-AlymCRqG); create_subfolder=false so clips upload straight into it (NOT the stock tree). Deterministic clip ids yt_<videoID>_<startSec>_<endSec>_v1 make a re-submit an UPSERT. Duration gate: all segments are 48-60s, inside the deployed VELOX_YOUTUBE_MAX_SEGMENT_DURATION_SECONDS=240.",
+  "url": "https://www.youtube.com/watch?v=4ybE1Zlf8mM",
+  "strategy": "verify",
+  "concurrency": 3,
+  "force_keyframes": true,
+  "keep_audio": true,
+  "write_summary": true,
+  "destination": {
+    "folder_id": "1JNHiylD-yLrYQiu_gs87tQB8bElI3h6m",
+    "create_subfolder": false
+  },
+  "segments": [
+    {
+      "start": "04:50",
+      "end": "05:45",
+      "name": "Risposta alle accuse di anoressia e magrezza estrema",
+      "category": "celebrity_interview",
+      "source_title": "Whitney Houston - ABC Primetime Special Edition with Diane Sawyer 2002",
+      "source_channel": "The Whitney Houston Platinum Club",
+      "summary": "Whitney smentisce categoricamente le voci su presunti disturbi alimentari, spiegando di essere sempre stata longilinea e rifiutando l'etichetta di malata.",
+      "topics": [
+        "Whitney Houston Diane Sawyer anoressia bulimia magrezza perdita peso Michael Jackson tribute 2001 speculazioni salute intervista ABC Primetime"
+      ],
+      "tags": ["Whitney Houston", "ABC Primetime", "celebrity_interview"],
+      "mentioned_people": ["Whitney Houston", "Diane Sawyer"]
+    },
+    {
+      "start": "06:11",
+      "end": "07:05",
+      "name": "La celebre dichiarazione 'Crack is whack'",
+      "category": "celebrity_interview",
+      "source_title": "Whitney Houston - ABC Primetime Special Edition with Diane Sawyer 2002",
+      "source_channel": "The Whitney Houston Platinum Club",
+      "summary": "Houston rigetta con sdegno l'accusa di fumare crack definendola una droga da poco prezzo incompatibile con il suo patrimonio e pronunciando la celebre frase 'crack is whack'.",
+      "topics": [
+        "Whitney Houston Diane Sawyer crack is whack sostanze stupefacenti reddito milionario dipendenza smentita scandalo tabloid ABC 2002"
+      ],
+      "tags": ["Whitney Houston", "ABC Primetime", "celebrity_interview"],
+      "mentioned_people": ["Whitney Houston", "Diane Sawyer"]
+    },
+    {
+      "start": "07:18",
+      "end": "08:15",
+      "name": "Gli inizi gospel e la scoperta di Clive Davis",
+      "category": "celebrity_interview",
+      "source_title": "Whitney Houston - ABC Primetime Special Edition with Diane Sawyer 2002",
+      "source_channel": "The Whitney Houston Platinum Club",
+      "summary": "Vengono ripercorsi i primi passi canori nella chiesa battista con la madre Cissy Houston e l'incontro decisivo a 17 anni con il mentore Clive Davis.",
+      "topics": [
+        "Whitney Houston Cissy Houston New Hope Baptist Church Newark Clive Davis Arista Records debutto discografico gospel Grammy"
+      ],
+      "tags": ["Whitney Houston", "ABC Primetime", "celebrity_interview"],
+      "mentioned_people": ["Whitney Houston", "Cissy Houston", "Clive Davis"]
+    },
+    {
+      "start": "10:48",
+      "end": "11:45",
+      "name": "Il licenziamento dalla cerimonia degli Oscar 2000",
+      "category": "celebrity_interview",
+      "source_title": "Whitney Houston - ABC Primetime Special Edition with Diane Sawyer 2002",
+      "source_channel": "The Whitney Houston Platinum Club",
+      "summary": "Whitney ammette di essere stata licenziata dalle prove degli Academy Awards per tensioni con la direzione musicale, smentendo la versione ufficiale della sola laringite.",
+      "topics": [
+        "Whitney Houston Oscar 2000 Academy Awards licenziamento Burt Bacharach laringite bronchite prove cancellazione controversia"
+      ],
+      "tags": ["Whitney Houston", "ABC Primetime", "celebrity_interview"],
+      "mentioned_people": ["Whitney Houston", "Burt Bacharach"]
+    },
+    {
+      "start": "14:15",
+      "end": "15:05",
+      "name": "La paura sul set del film 'The Bodyguard' con Kevin Costner",
+      "category": "celebrity_interview",
+      "source_title": "Whitney Houston - ABC Primetime Special Edition with Diane Sawyer 2002",
+      "source_channel": "The Whitney Houston Platinum Club",
+      "summary": "L'artista confessa il terrore provato al debutto cinematografico in 'The Bodyguard' e il supporto del marito Bobby Brown che le impedì di abbandonare il set.",
+      "topics": [
+        "Whitney Houston The Bodyguard Kevin Costner cinema debutto attrice paura fallimento Bobby Brown incoraggiamento box office"
+      ],
+      "tags": ["Whitney Houston", "ABC Primetime", "celebrity_interview"],
+      "mentioned_people": ["Whitney Houston", "Kevin Costner", "Bobby Brown"]
+    },
+    {
+      "start": "17:05",
+      "end": "17:59",
+      "name": "Chiarimento sulle accuse di violenza domestica nel matrimonio",
+      "category": "celebrity_interview",
+      "source_title": "Whitney Houston - ABC Primetime Special Edition with Diane Sawyer 2002",
+      "source_channel": "The Whitney Houston Platinum Club",
+      "summary": "Houston nega che Bobby Brown l'abbia mai colpita fisicamente, ammettendo di aver reagito lei stessa con rabbia in passato e dedicandogli il Grammy del 2000.",
+      "topics": [
+        "Whitney Houston Bobby Brown violenza domestica percosse smentita matrimonio Grammy 2000 tabloid gossip"
+      ],
+      "tags": ["Whitney Houston", "ABC Primetime", "celebrity_interview"],
+      "mentioned_people": ["Whitney Houston", "Bobby Brown"]
+    },
+    {
+      "start": "20:07",
+      "end": "21:05",
+      "name": "Bobby Brown su violenza e dinamiche di coppia sul palco",
+      "category": "celebrity_interview",
+      "source_title": "Whitney Houston - ABC Primetime Special Edition with Diane Sawyer 2002",
+      "source_channel": "The Whitney Houston Platinum Club",
+      "summary": "Intervenuto al colloquio, Bobby Brown ribadisce il totale rifiuto della violenza fisica e descrive il rispetto reciproco per i rispettivi ruoli artistici.",
+      "topics": [
+        "Bobby Brown Diane Sawyer intervista violenza donne famiglia rispetto Whitney Houston ego intrattenimento successo"
+      ],
+      "tags": ["Whitney Houston", "ABC Primetime", "celebrity_interview"],
+      "mentioned_people": ["Bobby Brown", "Whitney Houston", "Diane Sawyer"]
+    },
+    {
+      "start": "22:01",
+      "end": "22:58",
+      "name": "Bipolarismo e uso di sostanze dichiarato da Bobby Brown",
+      "category": "celebrity_interview",
+      "source_title": "Whitney Houston - ABC Primetime Special Edition with Diane Sawyer 2002",
+      "source_channel": "The Whitney Houston Platinum Club",
+      "summary": "Bobby Brown dichiara la diagnosi di disturbo bipolare, spiegando di rifiutare il litio e di usare saltuariamente marijuana per gestire i cambi d'umore.",
+      "topics": [
+        "Bobby Brown disturbo bipolare diagnosi medica litio marijuana dipendenza farmaci stabilizzazione umore"
+      ],
+      "tags": ["Whitney Houston", "ABC Primetime", "celebrity_interview"],
+      "mentioned_people": ["Bobby Brown"]
+    },
+    {
+      "start": "25:35",
+      "end": "26:30",
+      "name": "Il tabloid da 730.000 dollari e l'ammissione sull'abuso di sostanze",
+      "category": "celebrity_interview",
+      "source_title": "Whitney Houston - ABC Primetime Special Edition with Diane Sawyer 2002",
+      "source_channel": "The Whitney Houston Platinum Club",
+      "summary": "Whitney ride dell'articolo che le attribuiva spese faraoniche per la droga chiedendo ironicamente le ricevute, ma ammette l'uso passato di alcol, cocaina e pillole.",
+      "topics": [
+        "Whitney Houston 730000 dollari spesa droga ricevute smentita cocaina alcool farmaci pillole abuso sostanze"
+      ],
+      "tags": ["Whitney Houston", "ABC Primetime", "celebrity_interview"],
+      "mentioned_people": ["Whitney Houston", "Diane Sawyer"]
+    },
+    {
+      "start": "26:18",
+      "end": "27:18",
+      "name": "Il vero nemico interiore: 'The biggest devil is me'",
+      "category": "celebrity_interview",
+      "source_title": "Whitney Houston - ABC Primetime Special Edition with Diane Sawyer 2002",
+      "source_channel": "The Whitney Houston Platinum Club",
+      "summary": "In uno dei passaggi più iconici, Houston dichiara che il peggior diavolo e nemico da affrontare è se stessa, definendo la propria dipendenza una pessima abitudine da spezzare.",
+      "topics": [
+        "Whitney Houston the biggest devil is me autodistruzione libero arbitrio tentazione cattiva abitudine riflessione interiore"
+      ],
+      "tags": ["Whitney Houston", "ABC Primetime", "celebrity_interview"],
+      "mentioned_people": ["Whitney Houston"]
+    },
+    {
+      "start": "27:30",
+      "end": "28:20",
+      "name": "Il tentato intervento della madre Cissy Houston",
+      "category": "celebrity_interview",
+      "source_title": "Whitney Houston - ABC Primetime Special Edition with Diane Sawyer 2002",
+      "source_channel": "The Whitney Houston Platinum Club",
+      "summary": "Racconta lo scontro con la madre Cissy presentatasi a casa con un team di supporto, spiegando di aver respinto l'intervento per non cedere il controllo della propria vita ad estranei.",
+      "topics": [
+        "Cissy Houston intervento madre riabilitazione scontro minaccia fuga Bobbi Kristina famiglia fede"
+      ],
+      "tags": ["Whitney Houston", "ABC Primetime", "celebrity_interview"],
+      "mentioned_people": ["Whitney Houston", "Cissy Houston", "Bobbi Kristina Brown"]
+    },
+    {
+      "start": "36:17",
+      "end": "37:15",
+      "name": "La causa legale da 100 milioni di dollari intentata dal padre",
+      "category": "celebrity_interview",
+      "source_title": "Whitney Houston - ABC Primetime Special Edition with Diane Sawyer 2002",
+      "source_channel": "The Whitney Houston Platinum Club",
+      "summary": "Whitney esprime profondo dolore per la causa intentata dalla società del padre ottantenne malato, ribadendo che non gli avrebbe mai versato quella cifra pur continuando ad amarlo.",
+      "topics": [
+        "John Houston causa legale 100 milioni dollari padre management tradimento affettivo malattia Arista Records"
+      ],
+      "tags": ["Whitney Houston", "ABC Primetime", "celebrity_interview"],
+      "mentioned_people": ["Whitney Houston", "John Houston"]
+    },
+    {
+      "start": "39:30",
+      "end": "40:25",
+      "name": "Il legame con la figlia Bobbi Kristina e i sogni per il futuro",
+      "category": "celebrity_interview",
+      "source_title": "Whitney Houston - ABC Primetime Special Edition with Diane Sawyer 2002",
+      "source_channel": "The Whitney Houston Platinum Club",
+      "summary": "L'intervista si conclude con il momento affettuoso tra Whitney e la piccola Bobbi Kristina mentre accenna 'I Will Always Love You', immaginando un futuro sereno e in pensione da nonna.",
+      "topics": [
+        "Bobbi Kristina Brown Whitney Houston maternita ninna nanna I Will Always Love You ritiro famiglia nipoti"
+      ],
+      "tags": ["Whitney Houston", "ABC Primetime", "celebrity_interview"],
+      "mentioned_people": ["Whitney Houston", "Bobbi Kristina Brown"]
+    }
+  ]
+}

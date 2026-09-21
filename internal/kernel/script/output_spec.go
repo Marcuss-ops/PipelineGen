@@ -356,13 +356,15 @@ func (r *VideoRenderSpec) Normalize() {
 		}
 		if r.Subtitles.Style.Font == "" && presetID != "" {
 			// Named presets resolve through the single preset registry —
-			// canonical table first, then request-local presets. No
-			// hardcoded font/size branches live in Normalize.
+			// canonical table first, then request-local presets. Explicit
+			// fields in an inline style remain authoritative: in particular,
+			// a caller-provided stroke/shadow must not disappear merely because
+			// the font and size came from a named preset.
 			if preset, ok := canonicalSubtitlePresets[presetID]; ok {
-				style := preset
+				style := mergeSubtitlePreset(r.Subtitles.Style, preset)
 				r.Subtitles.Style = &style
 			} else if preset, ok := r.SubtitlePresets[presetID]; ok {
-				style := preset
+				style := mergeSubtitlePreset(r.Subtitles.Style, preset)
 				r.Subtitles.Style = &style
 			}
 		}

@@ -1,5 +1,46 @@
 # Canonical job manifests
 
+## Dolly Parton clip manifests
+
+`dolly_parton_best_moments_50.generate.json` is the canonical 50-clip run and
+`dolly_parton_5clips_preview_en.generate.json` is its 5-clip English preview
+(the same five ids appear as scenes 0-4 of the 50-clip manifest, so the preview
+is a real prefix and its timing is transferable).
+
+Both are `source.type=clips` payloads, which matters for two reasons:
+
+- explicit clip ids **bypass the ClipSampler** — the eleven quality gates
+  (`topic_relevance`, `diversity`, `duration`, `coverage`, …) are evaluated only
+  on the `search`/`catalog`/`curate` retrieval path. A clip list that is wrong
+  is therefore *used*, not filtered: pick the ids deliberately. The preview
+  takes one clip per interview (WIRED intro, `Jolene`, Dollywood, Whitney
+  Houston, the bronze statue) so four distinct source videos are exercised;
+- `script_params.segments` is capped at the deployed `MaxSegmentsCap` = 50, so
+the 50-clip manifest sits exactly on the limit. A 51st scene — intro/outro
+included, if written as a segment — is rejected `400 TOO_MANY_SEGMENTS`. The
+canonical intro/outro contract is the `item.intro` fixed section, never a
+segment, and `source.intro_clip_ids` is a retired poison-pill field.
+
+The two payloads are deliberately `language: "en"`: all 73 indexed Dolly clips
+own a READY `en` transcript in `asset_text_tracks`, while only 17 own an `it`
+one, and a clip without a track in the requested language makes
+`ClipSourceBuilder` materialize (translate) it at runtime. Use `it` only when
+that extra work is the thing under test.
+
+The preview additionally carries the render lane contract: watermark
+`top_right`, burned subtitles (`subs-young`) and a `blur_source` background
+behind the foreground clip. `blur_source` is chosen over an `asset` plate so the
+test does not depend on a curated plate being registered with its certified
+content hash (a mismatched plate fails closed at asset-resolution time).
+
+Neither payload carries a `_comment` key: the envelope body is decoded with
+`DisallowUnknownFields`, so a "documentation" key on a generate payload is a
+`400`, not a comment. Notes about a payload belong in this file.
+
+The response body of `POST /api/script/generate` is the async envelope
+(`ok`, `job_id`, `status`, `status_url`, `current_stage`); poll
+`status_url` (`/api/jobs/{id}/full`) for phase transitions and timing.
+
 `matt_damon_20_clips_profiling.generate.json` is the canonical source of
 truth for the Matt Damon 20-clip profiling job. Future submissions and
 Google Docs payload sections must be derived from this manifest, not from

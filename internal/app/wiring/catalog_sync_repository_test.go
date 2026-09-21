@@ -142,20 +142,44 @@ func TestNewCatalogSyncRepository_FolderRoutingFollowsProjection(t *testing.T) {
 }
 
 func TestNewCatalogSyncRepository_LegacyFallback(t *testing.T) {
-	// With no PostgreSQL media handle the router must not be used: the legacy
-	// SQLite repository is returned verbatim as both ports (graceful degrade).
+	// With no PostgreSQL media handle the router must not be used: the folder /
+	// GetClip half degrades onto the operational SQLite repository.
 	legacy := imagesregistry.NewClipsRepository(nil, zap.NewNop())
 	repo, indexer := newCatalogSyncRepository(nil, legacy)
-	if repo != legacy || indexer != legacy {
-		t.Fatalf("legacy fallback = %T/%T, want the concrete legacy repo", repo, indexer)
+	if repo != legacy {
+		t.Fatalf("degrade repo = %T, want the concrete legacy repo", repo)
 	}
 
-	// A nil legacy (even typed-nil) must not fabricate a PostgreSQL router.
+	// MEDIA LEGACY READ-PLANE DEMOLITION (2026-09-21, sub-wave B): the
+	// index-state half must NOT come from the operational mirror. It fails
+	// closed and names the missing media plane instead of reporting a state the
+	// mirror cannot know.
+	if _, ok := indexer.(noMediaPlaneIndexState); !ok {
+		t.Fatalf("degrade indexer = %T, want noMediaPlaneIndexState (never the mirror)", indexer)
+	}
+	state, err := indexer.GetIndexState(context.Background(), "clip-1")
+	if !errors.Is(err, errNoMediaPlaneIndexState) {
+		t.Fatalf("degraded index state error = %v, want errNoMediaPlaneIndexState", err)
+	}
+	if state != asset.StateDiscovered {
+		t.Fatalf("degraded index state = %q, want %q (a diagnostic read must never claim a proven index)", state, asset.StateDiscovered)
+	}
+	// Both slots stay non-nil: catalogsync.NewService rejects a nil port.
+	if repo == nil || indexer == nil {
+		t.Fatal("the degrade pair must stay non-nil (catalogsync refuses nil ports)")
+	}
+
+	// A nil legacy must not fabricate a PostgreSQL router, and it must degrade
+	// to true nil interfaces rather than typed-nil wrappers the target
+	// validation cannot detect.
 	repo, indexer = newCatalogSyncRepository(nil, (*imagesregistry.ClipsRepository)(nil))
 	if _, ok := repo.(*postgresCatalogRepository); ok {
 		t.Fatalf("nil legacy fabricated a router: %T", repo)
 	}
 	if _, ok := indexer.(*postgresCatalogRepository); ok {
 		t.Fatalf("nil legacy fabricated a router: %T", indexer)
+	}
+	if repo != nil || indexer != nil {
+		t.Fatalf("nil legacy must degrade to nil ports, got %T/%T", repo, indexer)
 	}
 }

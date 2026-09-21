@@ -1,0 +1,547 @@
+{
+  "version": 2,
+  "preset": "custom",
+  "correlation_id": "dolly-parton-best-moments-50-clips",
+  "force_refresh": true,
+  "items": [
+    {
+      "id": "dolly-parton-best-moments-50-clips",
+      "project": "dolly-parton-best-moments",
+      "title": "Dolly Parton — Best Moments (50 Clips)",
+      "language": "en",
+      "tone": "warm, witty and fast-paced; the voice of a narrator who loves the subject",
+      "style": "One scene per provided clip, in the given order. Narrate only what the clip transcript says; never invent quotes, dates or facts. Each scene must stand alone and lead into the next.",
+      "source": {
+        "type": "clips",
+        "topic": "Dolly Parton — Best Moments",
+        "source_text": "Fifty best moments from four Dolly Parton interviews: 60 Minutes Australia, the WIRED autocomplete interview, Conan, and Dan Rather at Dollywood.",
+        "clip_ids": [
+          "yt_tnoMGevqWAM_0_46_v1",
+          "yt_tnoMGevqWAM_46_65_v1",
+          "yt_tnoMGevqWAM_65_96_v1",
+          "yt_tnoMGevqWAM_96_124_v1",
+          "yt_tnoMGevqWAM_124_156_v1",
+          "yt_tnoMGevqWAM_156_202_v1",
+          "yt_tnoMGevqWAM_202_243_v1",
+          "yt_tnoMGevqWAM_243_272_v1",
+          "yt_tnoMGevqWAM_272_319_v1",
+          "yt_tnoMGevqWAM_319_375_v1",
+          "yt_tnoMGevqWAM_375_425_v1",
+          "yt_tnoMGevqWAM_425_484_v1",
+          "yt_tnoMGevqWAM_484_522_v1",
+          "yt_tnoMGevqWAM_522_560_v1",
+          "yt_tnoMGevqWAM_560_603_v1",
+          "yt_tnoMGevqWAM_603_668_v1",
+          "yt_tnoMGevqWAM_668_720_v1",
+          "yt_tnoMGevqWAM_720_769_v1",
+          "yt_tnoMGevqWAM_769_814_v1",
+          "yt_tnoMGevqWAM_814_870_v1",
+          "yt_tnoMGevqWAM_870_920_v1",
+          "yt_tnoMGevqWAM_1318_1372_v1",
+          "yt_tnoMGevqWAM_1841_1903_v1",
+          "yt_tnoMGevqWAM_2370_2421_v1",
+          "yt_tnoMGevqWAM_2470_2523_v1",
+          "yt_tnoMGevqWAM_3039_3085_v1",
+          "yt_Bc9gTqiljLA_0_36_v1",
+          "yt_Bc9gTqiljLA_36_72_v1",
+          "yt_Bc9gTqiljLA_72_108_v1",
+          "yt_Bc9gTqiljLA_108_146_v1",
+          "yt_Bc9gTqiljLA_146_180_v1",
+          "yt_Bc9gTqiljLA_180_232_v1",
+          "yt_Bc9gTqiljLA_232_272_v1",
+          "yt_Bc9gTqiljLA_272_307_v1",
+          "yt_Bc9gTqiljLA_307_346_v1",
+          "yt_Bc9gTqiljLA_346_393_v1",
+          "yt_Bc9gTqiljLA_393_457_v1",
+          "yt_Bc9gTqiljLA_457_524_v1",
+          "yt_vLRjqTIiMjc_0_25_v1",
+          "yt_vLRjqTIiMjc_39_90_v1",
+          "yt_vLRjqTIiMjc_100_184_v1",
+          "yt_vLRjqTIiMjc_211_256_v1",
+          "yt_vLRjqTIiMjc_270_355_v1",
+          "yt_pfaIAdqvlig_457_509_v1",
+          "yt_pfaIAdqvlig_630_696_v1",
+          "yt_pfaIAdqvlig_772_837_v1",
+          "yt_pfaIAdqvlig_837_885_v1",
+          "yt_pfaIAdqvlig_929_980_v1",
+          "yt_pfaIAdqvlig_1026_1067_v1",
+          "yt_pfaIAdqvlig_1566_1637_v1"
+        ],
+        "num_clips": 50,
+        "ordering_strategy": "input_order",
+        "grounding_policy": "clips_primary",
+        "fallback_policy": "strict",
+        "force_refresh": true
+      },
+      "script_params": {
+        "target_words": 1050,
+        "min_words": 800,
+        "segment_words": 21,
+        "skip_quality_gate": true,
+        "force_refresh": true,
+        "segments": [
+          {
+            "id": "scene-00",
+            "kind": "clip",
+            "topic": "Meeting Ray Martin and outliving your own career",
+            "clip_ids": [
+              "yt_tnoMGevqWAM_0_46_v1"
+            ],
+            "target_words": 21
+          },
+          {
+            "id": "scene-01",
+            "kind": "clip",
+            "topic": "The culture shock of driving on the left",
+            "clip_ids": [
+              "yt_tnoMGevqWAM_46_65_v1"
+            ],
+            "target_words": 21
+          },
+          {
+            "id": "scene-02",
+            "kind": "clip",
+            "topic": "The morning make-up routine and the wig collection",
+            "clip_ids": [
+              "yt_tnoMGevqWAM_65_96_v1"
+            ],
+            "target_words": 21
+          },
+          {
+            "id": "scene-03",
+            "kind": "clip",
+            "topic": "Daily wigs and why they are practical on stage",
+            "clip_ids": [
+              "yt_tnoMGevqWAM_96_124_v1"
+            ],
+            "target_words": 21
+          },
+          {
+            "id": "scene-04",
+            "kind": "clip",
+            "topic": "High heels at home and looking after herself for her husband",
+            "clip_ids": [
+              "yt_tnoMGevqWAM_124_156_v1"
+            ],
+            "target_words": 21
+          },
+          {
+            "id": "scene-05",
+            "kind": "clip",
+            "topic": "Fear of unflattering photographs and the public image",
+            "clip_ids": [
+              "yt_tnoMGevqWAM_156_202_v1"
+            ],
+            "target_words": 21
+          },
+          {
+            "id": "scene-06",
+            "kind": "clip",
+            "topic": "Shopping for groceries at night to dodge the paparazzi",
+            "clip_ids": [
+              "yt_tnoMGevqWAM_202_243_v1"
+            ],
+            "target_words": 21
+          },
+          {
+            "id": "scene-07",
+            "kind": "clip",
+            "topic": "Choosing restaurants carefully and staying free inside fame",
+            "clip_ids": [
+              "yt_tnoMGevqWAM_243_272_v1"
+            ],
+            "target_words": 21
+          },
+          {
+            "id": "scene-08",
+            "kind": "clip",
+            "topic": "Early hunger for glamour and home-made padding",
+            "clip_ids": [
+              "yt_tnoMGevqWAM_272_319_v1"
+            ],
+            "target_words": 21
+          },
+          {
+            "id": "scene-09",
+            "kind": "clip",
+            "topic": "Lipstick made from wild poke berries and her father's punishment",
+            "clip_ids": [
+              "yt_tnoMGevqWAM_319_375_v1"
+            ],
+            "target_words": 21
+          },
+          {
+            "id": "scene-10",
+            "kind": "clip",
+            "topic": "How she sees her own beauty and her first cosmetic work",
+            "clip_ids": [
+              "yt_tnoMGevqWAM_375_425_v1"
+            ],
+            "target_words": 21
+          },
+          {
+            "id": "scene-11",
+            "kind": "clip",
+            "topic": "Face work at forty, Botox and collagen",
+            "clip_ids": [
+              "yt_tnoMGevqWAM_425_484_v1"
+            ],
+            "target_words": 21
+          },
+          {
+            "id": "scene-12",
+            "kind": "clip",
+            "topic": "The joke in the film with Queen Latifah and the freedom to redo yourself",
+            "clip_ids": [
+              "yt_tnoMGevqWAM_484_522_v1"
+            ],
+            "target_words": 21
+          },
+          {
+            "id": "scene-13",
+            "kind": "clip",
+            "topic": "Body care as maintenance and choosing your surgeons",
+            "clip_ids": [
+              "yt_tnoMGevqWAM_522_560_v1"
+            ],
+            "target_words": 21
+          },
+          {
+            "id": "scene-14",
+            "kind": "clip",
+            "topic": "Her preacher grandfather and 'Daddy Was an Old Time Preacher Man'",
+            "clip_ids": [
+              "yt_tnoMGevqWAM_560_603_v1"
+            ],
+            "target_words": 21
+          },
+          {
+            "id": "scene-15",
+            "kind": "clip",
+            "topic": "The town tramp as her earliest beauty inspiration",
+            "clip_ids": [
+              "yt_tnoMGevqWAM_603_668_v1"
+            ],
+            "target_words": 21
+          },
+          {
+            "id": "scene-16",
+            "kind": "clip",
+            "topic": "Her mother's complicity in making flashy clothes",
+            "clip_ids": [
+              "yt_tnoMGevqWAM_668_720_v1"
+            ],
+            "target_words": 21
+          },
+          {
+            "id": "scene-17",
+            "kind": "clip",
+            "topic": "Early artistry and writing with her uncle Bill Owens",
+            "clip_ids": [
+              "yt_tnoMGevqWAM_720_769_v1"
+            ],
+            "target_words": 21
+          },
+          {
+            "id": "scene-18",
+            "kind": "clip",
+            "topic": "The Cass Walker Show debut and the apple box",
+            "clip_ids": [
+              "yt_tnoMGevqWAM_769_814_v1"
+            ],
+            "target_words": 21
+          },
+          {
+            "id": "scene-19",
+            "kind": "clip",
+            "topic": "Her first song at five, born from family grief",
+            "clip_ids": [
+              "yt_tnoMGevqWAM_814_870_v1"
+            ],
+            "target_words": 21
+          },
+          {
+            "id": "scene-20",
+            "kind": "clip",
+            "topic": "The spirituality and humour inherited from her mother",
+            "clip_ids": [
+              "yt_tnoMGevqWAM_870_920_v1"
+            ],
+            "target_words": 21
+          },
+          {
+            "id": "scene-21",
+            "kind": "clip",
+            "topic": "Carl Dean and his hatred of cameras",
+            "clip_ids": [
+              "yt_tnoMGevqWAM_1318_1372_v1"
+            ],
+            "target_words": 21
+          },
+          {
+            "id": "scene-22",
+            "kind": "clip",
+            "topic": "The universal vulnerability inside 'Jolene'",
+            "clip_ids": [
+              "yt_tnoMGevqWAM_1841_1903_v1"
+            ],
+            "target_words": 21
+          },
+          {
+            "id": "scene-23",
+            "kind": "clip",
+            "topic": "Her eternal bond with Whitney and the funeral joke",
+            "clip_ids": [
+              "yt_tnoMGevqWAM_2370_2421_v1"
+            ],
+            "target_words": 21
+          },
+          {
+            "id": "scene-24",
+            "kind": "clip",
+            "topic": "Choosing to be kind without being walked over",
+            "clip_ids": [
+              "yt_tnoMGevqWAM_2470_2523_v1"
+            ],
+            "target_words": 21
+          },
+          {
+            "id": "scene-25",
+            "kind": "clip",
+            "topic": "Floor marks and lights: the technical trouble on set",
+            "clip_ids": [
+              "yt_tnoMGevqWAM_3039_3085_v1"
+            ],
+            "target_words": 21
+          },
+          {
+            "id": "scene-26",
+            "kind": "clip",
+            "topic": "The WIRED intro and her soprano register",
+            "clip_ids": [
+              "yt_Bc9gTqiljLA_0_36_v1"
+            ],
+            "target_words": 21
+          },
+          {
+            "id": "scene-27",
+            "kind": "clip",
+            "topic": "Country roots and being Miley Cyrus's godmother",
+            "clip_ids": [
+              "yt_Bc9gTqiljLA_36_72_v1"
+            ],
+            "target_words": 21
+          },
+          {
+            "id": "scene-28",
+            "kind": "clip",
+            "topic": "'Steel Magnolias' and 'Eagle When She Flies'",
+            "clip_ids": [
+              "yt_Bc9gTqiljLA_72_108_v1"
+            ],
+            "target_words": 21
+          },
+          {
+            "id": "scene-29",
+            "kind": "clip",
+            "topic": "Fifty-four years of marriage to Carl Dean and her own identity",
+            "clip_ids": [
+              "yt_Bc9gTqiljLA_108_146_v1"
+            ],
+            "target_words": 21
+          },
+          {
+            "id": "scene-30",
+            "kind": "clip",
+            "topic": "The look inspired by the town tramp",
+            "clip_ids": [
+              "yt_Bc9gTqiljLA_146_180_v1"
+            ],
+            "target_words": 21
+          },
+          {
+            "id": "scene-31",
+            "kind": "clip",
+            "topic": "Writing for other artists and 'A Holly Dolly Christmas'",
+            "clip_ids": [
+              "yt_Bc9gTqiljLA_180_232_v1"
+            ],
+            "target_words": 21
+          },
+          {
+            "id": "scene-32",
+            "kind": "clip",
+            "topic": "White on stage and her love of potatoes",
+            "clip_ids": [
+              "yt_Bc9gTqiljLA_232_272_v1"
+            ],
+            "target_words": 21
+          },
+          {
+            "id": "scene-33",
+            "kind": "clip",
+            "topic": "The real colour of her hair",
+            "clip_ids": [
+              "yt_Bc9gTqiljLA_272_307_v1"
+            ],
+            "target_words": 21
+          },
+          {
+            "id": "scene-34",
+            "kind": "clip",
+            "topic": "First song at five and her first record",
+            "clip_ids": [
+              "yt_Bc9gTqiljLA_307_346_v1"
+            ],
+            "target_words": 21
+          },
+          {
+            "id": "scene-35",
+            "kind": "clip",
+            "topic": "Southern cooking and keeping the voice healthy",
+            "clip_ids": [
+              "yt_Bc9gTqiljLA_346_393_v1"
+            ],
+            "target_words": 21
+          },
+          {
+            "id": "scene-36",
+            "kind": "clip",
+            "topic": "Country yodelling, 'Muleskinner Blues' and missing live shows",
+            "clip_ids": [
+              "yt_Bc9gTqiljLA_393_457_v1"
+            ],
+            "target_words": 21
+          },
+          {
+            "id": "scene-37",
+            "kind": "clip",
+            "topic": "Morning coffee, the cup of ambition, and signing off",
+            "clip_ids": [
+              "yt_Bc9gTqiljLA_457_524_v1"
+            ],
+            "target_words": 21
+          },
+          {
+            "id": "scene-38",
+            "kind": "clip",
+            "topic": "The hippie outfit and Conan's tribute to Ireland",
+            "clip_ids": [
+              "yt_vLRjqTIiMjc_0_25_v1"
+            ],
+            "target_words": 21
+          },
+          {
+            "id": "scene-39",
+            "kind": "clip",
+            "topic": "Mistaken for prostitutes and thrown out of a hotel",
+            "clip_ids": [
+              "yt_vLRjqTIiMjc_39_90_v1"
+            ],
+            "target_words": 21
+          },
+          {
+            "id": "scene-40",
+            "kind": "clip",
+            "topic": "The pistol in her purse and the harasser on 42nd Street",
+            "clip_ids": [
+              "yt_vLRjqTIiMjc_100_184_v1"
+            ],
+            "target_words": 21
+          },
+          {
+            "id": "scene-41",
+            "kind": "clip",
+            "topic": "The bronze statue and her father's line about pigeons",
+            "clip_ids": [
+              "yt_vLRjqTIiMjc_211_256_v1"
+            ],
+            "target_words": 21
+          },
+          {
+            "id": "scene-42",
+            "kind": "clip",
+            "topic": "The tabloids and the jokes about her bust",
+            "clip_ids": [
+              "yt_vLRjqTIiMjc_270_355_v1"
+            ],
+            "target_words": 21
+          },
+          {
+            "id": "scene-43",
+            "kind": "clip",
+            "topic": "The Dollywood empire, its millions and its roller coasters",
+            "clip_ids": [
+              "yt_pfaIAdqvlig_457_509_v1"
+            ],
+            "target_words": 21
+          },
+          {
+            "id": "scene-44",
+            "kind": "clip",
+            "topic": "Arriving in Nashville at eighteen",
+            "clip_ids": [
+              "yt_pfaIAdqvlig_630_696_v1"
+            ],
+            "target_words": 21
+          },
+          {
+            "id": "scene-45",
+            "kind": "clip",
+            "topic": "Elvis loved 'I Will Always Love You'",
+            "clip_ids": [
+              "yt_pfaIAdqvlig_772_837_v1"
+            ],
+            "target_words": 21
+          },
+          {
+            "id": "scene-46",
+            "kind": "clip",
+            "topic": "Colonel Parker's ultimatum over the publishing rights",
+            "clip_ids": [
+              "yt_pfaIAdqvlig_837_885_v1"
+            ],
+            "target_words": 21
+          },
+          {
+            "id": "scene-47",
+            "kind": "clip",
+            "topic": "Whitney Houston's global triumph and owning the rights",
+            "clip_ids": [
+              "yt_pfaIAdqvlig_929_980_v1"
+            ],
+            "target_words": 21
+          },
+          {
+            "id": "scene-48",
+            "kind": "clip",
+            "topic": "The global record for 'Jolene' covers and Jane Fonda's offer",
+            "clip_ids": [
+              "yt_pfaIAdqvlig_1026_1067_v1"
+            ],
+            "target_words": 21
+          },
+          {
+            "id": "scene-49",
+            "kind": "clip",
+            "topic": "Intelligence, determination, and goodbye to Dan Rather",
+            "clip_ids": [
+              "yt_pfaIAdqvlig_1566_1637_v1"
+            ],
+            "target_words": 21
+          }
+        ]
+      },
+      "output": {
+        "save_to_db": true,
+        "generate_timeline": true,
+        "generate_metadata": false,
+        "extract_entities": "disabled",
+        "voiceover_enabled": false
+      },
+      "docs": {
+        "enabled": false
+      }
+    }
+  ]
+}

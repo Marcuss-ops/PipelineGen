@@ -1,0 +1,113 @@
+{
+  "_comment": "Canonical POST /api/clips/process payload (ExtractRequest, drift source: internal/capabilities/youtube/dto/types.go). Beyoncé 'First Appearance on The Ellen Show (Full Interview)' (video BD5lsaASHoE, 885s) — 7 curated moments. Destination: the CLIP-tree child folder 1x0iBNB6jmfGCTO36zBnlyFBeqLM_eBk_ ('Beyoncé' under the clip root 1wES95cH_RVYxl5I3kxnppbv-AlymCRqG); create_subfolder=false so clips upload straight into it (NOT the stock tree). Deterministic clip ids yt_<videoID>_<startSec>_<endSec>_v1 make a re-submit an UPSERT. Duration gate: all segments are 45-50s, inside the deployed VELOX_YOUTUBE_MAX_SEGMENT_DURATION_SECONDS=240.",
+  "url": "https://www.youtube.com/watch?v=BD5lsaASHoE",
+  "strategy": "verify",
+  "concurrency": 3,
+  "force_keyframes": true,
+  "keep_audio": true,
+  "write_summary": true,
+  "destination": {
+    "folder_id": "1x0iBNB6jmfGCTO36zBnlyFBeqLM_eBk_",
+    "create_subfolder": false
+  },
+  "segments": [
+    {
+      "start": "01:05",
+      "end": "01:55",
+      "name": "La 'life list' di Beyoncé: imparare l'arabo e la danza classica",
+      "category": "celebrity_interview",
+      "source_title": "Beyoncé's First Appearance on The Ellen Show (Full Interview)",
+      "source_channel": "TheEllenShow",
+      "summary": "Beyoncé condivide con Ellen i suoi obiettivi personali, tra cui imparare l'arabo, fare paracadutismo e tentare lezioni di danza classica.",
+      "topics": [
+        "Beyonce Ellen DeGeneres life list imparare arabo paracadutismo danza classica Point ballet Alvin Ailey impara"
+      ],
+      "tags": ["Beyoncé", "The Ellen Show", "celebrity_interview"],
+      "mentioned_people": ["Beyoncé", "Ellen DeGeneres"]
+    },
+    {
+      "start": "02:55",
+      "end": "03:45",
+      "name": "I rumor sul matrimonio con Jay-Z e il loro primo incontro",
+      "category": "celebrity_interview",
+      "source_title": "Beyoncé's First Appearance on The Ellen Show (Full Interview)",
+      "source_channel": "TheEllenShow",
+      "summary": "Ellen interroga Beyoncé sui pettegolezzi di nozze con Jay-Z, raccontando di quando lui si avvicinò presentandosi come suo grande fan.",
+      "topics": [
+        "Jay-Z Beyonce matrimonio rumor gossip ristorante sushi fan primo incontro intelligenza business talento"
+      ],
+      "tags": ["Beyoncé", "The Ellen Show", "celebrity_interview"],
+      "mentioned_people": ["Beyoncé", "Jay-Z", "Ellen DeGeneres"]
+    },
+    {
+      "start": "05:46",
+      "end": "06:45",
+      "name": "La dieta Master Cleanse e la perdita di peso per 'Dreamgirls'",
+      "category": "celebrity_interview",
+      "source_title": "Beyoncé's First Appearance on The Ellen Show (Full Interview)",
+      "source_channel": "TheEllenShow",
+      "summary": "Beyoncé racconta l'esperienza estrema della Master Cleanse per perdere 20 libbre nel film 'Dreamgirls' e la voglia di mangiare ciambelle a fine riprese.",
+      "topics": [
+        "Dreamgirls film recitazione dimagrimento Master Cleanse dieta fame Krispy Kreme ciambelle vodka 20 libbre"
+      ],
+      "tags": ["Beyoncé", "The Ellen Show", "celebrity_interview"],
+      "mentioned_people": ["Beyoncé"]
+    },
+    {
+      "start": "06:58",
+      "end": "07:42",
+      "name": "La registrazione segreta dell'album 'B-Day'",
+      "category": "celebrity_interview",
+      "source_title": "Beyoncé's First Appearance on The Ellen Show (Full Interview)",
+      "source_channel": "TheEllenShow",
+      "summary": "Svela come è riuscita a registrare l'album 'B-Day' in gran segreto in sole due settimane e mezzo fingendo di essere in vacanza.",
+      "topics": [
+        "B-Day album registrazione segreta vacanza due settimane e mezzo produttori Sony studio musica successo"
+      ],
+      "tags": ["Beyoncé", "The Ellen Show", "celebrity_interview"],
+      "mentioned_people": ["Beyoncé"]
+    },
+    {
+      "start": "07:43",
+      "end": "08:28",
+      "name": "La band interamente femminile e il female empowerment",
+      "category": "celebrity_interview",
+      "source_title": "Beyoncé's First Appearance on The Ellen Show (Full Interview)",
+      "source_channel": "TheEllenShow",
+      "summary": "Spiega la scelta di formare una band formata da sole donne provenienti da tutto il mondo per ispirare le nuove generazioni.",
+      "topics": [
+        "band femminile empowerment donne musiciste Giappone Russia audizioni talenti tournée Beyonce empowerment"
+      ],
+      "tags": ["Beyoncé", "The Ellen Show", "celebrity_interview"],
+      "mentioned_people": ["Beyoncé"]
+    },
+    {
+      "start": "08:30",
+      "end": "09:20",
+      "name": "Il video d'infanzia inedito e il mito di Michael Jackson",
+      "category": "celebrity_interview",
+      "source_title": "Beyoncé's First Appearance on The Ellen Show (Full Interview)",
+      "source_channel": "TheEllenShow",
+      "summary": "Viene mostrato un video di Beyoncé bambina mentre canta e balla ispirata da Michael Jackson, raccontando la sua timidezza iniziale.",
+      "topics": [
+        "video infanzia inedito ballo canto Michael Jackson timidezza talent show scuola danza Miss Darlet"
+      ],
+      "tags": ["Beyoncé", "The Ellen Show", "celebrity_interview"],
+      "mentioned_people": ["Beyoncé", "Michael Jackson"]
+    },
+    {
+      "start": "11:15",
+      "end": "12:05",
+      "name": "La sorpresa in studio con la prima insegnante d'infanzia Miss Darlet",
+      "category": "celebrity_interview",
+      "source_title": "Beyoncé's First Appearance on The Ellen Show (Full Interview)",
+      "source_channel": "TheEllenShow",
+      "summary": "Entra a sorpresa in studio Miss Darlet, l'insegnante che per prima scoprì la voce di Beyoncé durante le lezioni di danza.",
+      "topics": [
+        "Miss Darlet insegnante danza infanzia sorpresa studio rivelazione talento vocale genitori infanzia provino"
+      ],
+      "tags": ["Beyoncé", "The Ellen Show", "celebrity_interview"],
+      "mentioned_people": ["Beyoncé", "Miss Darlet"]
+    }
+  ]
+}

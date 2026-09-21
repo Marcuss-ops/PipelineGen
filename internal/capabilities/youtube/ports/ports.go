@@ -129,11 +129,17 @@ type ClipStorePort interface {
 	UpsertFolder(ctx context.Context, f *detail.ClipFolder) error
 	DeleteClip(ctx context.Context, id string) error
 	// PR3-Wave14 PR5 / PG-003 (June 2026): the youtube handler used to
-	// reach through *assets.ClipsRepository for advanced search + counts;
-	// now those flow through the port so the handler depends only on
+	// reach through *assets.ClipsRepository for advanced search;
+	// now it flows through the port so the handler depends only on
 	// application-layer contracts.
+	//
+	// MEDIA LEGACY READ-PLANE DEMOLITION (2026-09-21, sub-wave B'): CountClips is
+	// DELETED from this port (and from ClipStoreAdapter). It had ZERO call sites
+	// anywhere in the tree — the only live consumer of the capability's count was
+	// the Artlist diagnostics surface, which reads its own port — and it kept a
+	// media_assets read (imagesregistry/clip_list_queries.go) alive on the
+	// operational store for a method nothing called.
 	SearchClipsAdvanced(ctx context.Context, req detail.AdvancedSearchRequest) (*detail.AdvancedSearchResult, error)
-	CountClips(ctx context.Context) (int, error)
 }
 
 // YouTubeClipLister is the narrow media read the search_text rebuild job

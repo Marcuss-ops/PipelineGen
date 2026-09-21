@@ -22,10 +22,11 @@ import (
 )
 
 type recordingYouTubeClipService struct {
-	folderCalls []folderCall
-	searchQuery string
-	searchLimit int
-	searchSort  string
+	folderCalls          []folderCall
+	searchQuery          string
+	searchLimit          int
+	searchSort           string
+	searchPublishedAfter string
 }
 
 type folderCall struct {
@@ -41,10 +42,11 @@ func (s *recordingYouTubeClipService) GetVideoInfo(_ context.Context, _ string) 
 	return &ytports.DownloaderMetadata{}, nil
 }
 
-func (s *recordingYouTubeClipService) SearchByTopicWithFilter(_ context.Context, query string, limit int, sort, _ string) (*youtube.TopicSearchResponse, error) {
+func (s *recordingYouTubeClipService) SearchByTopicWithFilter(_ context.Context, query string, limit int, sort, publishedAfter string) (*youtube.TopicSearchResponse, error) {
 	s.searchQuery = query
 	s.searchLimit = limit
 	s.searchSort = sort
+	s.searchPublishedAfter = publishedAfter
 	return &youtube.TopicSearchResponse{OK: true}, nil
 }
 
@@ -97,7 +99,11 @@ func TestYouTubeClipHandler_SearchByTopic_GetDelegatesKeywordAndOptions(t *testi
 	svc := &recordingYouTubeClipService{}
 	handler := NewYouTubeClipHandler(svc, zap.NewNop(), nil, nil, nil, nil, nil, nil)
 
-	req := httptest.NewRequest(http.MethodGet, "/api/clips/search?q=Muhammad%20Ali%20boxing&limit=12&sort=views", nil)
+	// published_after rides along because the over-fetch in the search use case
+	// exists ONLY to absorb that filter: dropping it at the transport layer
+	// would silently disable date filtering while every other assertion here
+	// still passed, so it is pinned alongside the keyword/limit/sort trio.
+	req := httptest.NewRequest(http.MethodGet, "/api/clips/search?q=Muhammad%20Ali%20boxing&limit=12&sort=views&published_after=2025-01-01T00%3A00%3A00Z", nil)
 	rec := httptest.NewRecorder()
 	ctx, _ := gin.CreateTestContext(rec)
 	ctx.Request = req
@@ -108,7 +114,31 @@ func TestYouTubeClipHandler_SearchByTopic_GetDelegatesKeywordAndOptions(t *testi
 	require.Equal(t, "Muhammad Ali boxing", svc.searchQuery)
 	require.Equal(t, 12, svc.searchLimit)
 	require.Equal(t, "views", svc.searchSort)
+	require.Equal(t, "2025-01-01T00:00:00Z", svc.searchPublishedAfter)
 	require.JSONEq(t, `{"ok":true,"query":"","limit":0,"count":0,"source":"","results":null}`, rec.Body.String())
+}
+
+// TestYouTubeClipHandler_SearchByTopic_AbsentLimitForwardsZero pins the
+// transport/application boundary for the page size: the handler forwards the
+// raw absence (0) and the search use case owns the default. A handler-side
+// default would silently shadow — and out-rank — the use case's canonical one,
+// which is also the value the response cap is applied against.
+func TestYouTubeClipHandler_SearchByTopic_AbsentLimitForwardsZero(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	svc := &recordingYouTubeClipService{}
+	handler := NewYouTubeClipHandler(svc, zap.NewNop(), nil, nil, nil, nil, nil, nil)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/clips/search?q=boxing", nil)
+	rec := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(rec)
+	ctx.Request = req
+
+	handler.SearchByTopic(ctx)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Equal(t, "boxing", svc.searchQuery)
+	require.Equal(t, 0, svc.searchLimit)
+	require.Empty(t, svc.searchPublishedAfter)
 }
 
 func TestYouTubeClipHandler_SearchByTopic_RejectsMissingQuery(t *testing.T) {

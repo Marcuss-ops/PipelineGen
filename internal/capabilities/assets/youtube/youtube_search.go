@@ -15,6 +15,7 @@ import (
 
 	search "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/search"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/ytdlp"
 	apiutil "github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 )
 
@@ -60,16 +61,30 @@ func (h *YouTubeClipHandler) Diagnostics(c *gin.Context) {
 		}
 		checks["node"] = dependencyCheck{Required: true, OK: nodeOK}
 
-		// Check cookies file
+		// Check cookies file. The failure mode that matters is
+		// "configured but malformed": yt-dlp rejects a jar whose first line is
+		// not the Netscape header outright, yet a readability-only probe reported
+		// ok=true for exactly that jar while every YouTube leg failed with an
+		// unrelated 503 (observed on GET /api/clips/search). The verdict now comes
+		// from the SAME validator the composition root gates on, so diagnostics
+		// and boot can never disagree. An unconfigured jar stays OK: cookies are
+		// optional, and with no path the builder omits --cookies entirely.
 		cookiesPath := cfg.YouTubeCookiesPath
-		cookiesOK := cookiesPath != "" && fileReadable(cookiesPath)
+		cookiesErr := ytdlp.ValidateCookiesFile(cookiesPath)
+		cookiesOK := cookiesErr == nil
 		checks["cookies"] = dependencyCheck{Required: false, OK: cookiesOK}
 
+		cookieErrText := ""
+		if cookiesErr != nil {
+			cookieErrText = cookiesErr.Error()
+		}
 		configDetails := gin.H{
 			"youtube_enabled":        cfg.YouTubeEnabled,
 			"extract_timeout":        cfg.YouTubeExtractTimeout,
 			"cookie_file_configured": cookiesPath != "",
-			"cookie_file_readable":   cookiesOK,
+			"cookie_file_readable":   cookiesPath != "" && fileReadable(cookiesPath),
+			"cookie_file_valid":      cookiesOK,
+			"cookie_file_error":      cookieErrText,
 			"ytdlp_path":             ytdlpPath,
 			"js_runtime_path":        cfg.YouTubeJSRuntimePath,
 		}

@@ -460,9 +460,10 @@ type IndexDocument struct {
 	// domain.AssetLifecycleActive on empty.
 	LifecycleState asset.LifecycleState
 
-	// SourceVersion is the ingest-time version string used by the
-	// outbox supersede gate (port: jobsoutbox.SourceVersionQuerier).
-	// Empty for legacy rows.
+	// SourceVersion is the ingest-time version string the outbox
+	// supersede gate compared (its querier port was retired with the
+	// SQLite IndexingHandler family; the media plane reads the same
+	// fingerprint through pgmedia). Empty for legacy rows.
 	SourceVersion string
 
 	// ContentHash is the content-addressable digest (currently

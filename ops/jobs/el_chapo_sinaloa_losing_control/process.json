@@ -1,0 +1,225 @@
+{
+  "_comment": "Canonical POST /api/clips/process payload (ExtractRequest, drift source of truth: internal/capabilities/youtube/dto/types.go). 'The Sinaloa Cartel Is Losing Control Of It's Own Territory' (video 5BoHiN5XQJg, 4595s, channel 'The Connect: With Johnny Mitchell') — 15 curated moments. Destination: the EXISTING child folder 1i1g5UNNssoNGkHGYx17jFZxPt3_nAm_L ('El Chapo', under the Narcos parent 1zcSUzYvw_AipiNyvtW6v-TOy3fK4nLOI), alongside the NBC/Sean Penn job and the Sinaloa-dynasty job; create_subfolder=false so clips upload straight into it. Clip identity is deterministic yt_<videoID>_<startSec>_<endSec>_v1, so re-submitting this exact payload UPSERTs the same media_assets rows instead of minting duplicates. Duration gate: segments are 45-61s, inside the deployed VELOX_YOUTUBE_MAX_SEGMENT_DURATION_SECONDS=240 (the canonical SegmentPolicy default of 60s also accepts all but the 61s one, which the deployed 240s bound covers). Validated against live metadata (duration=4595s): the last segment ends at 63:18 < 76:35.",
+  "url": "https://www.youtube.com/watch?v=5BoHiN5XQJg",
+  "strategy": "verify",
+  "concurrency": 3,
+  "force_keyframes": true,
+  "keep_audio": true,
+  "write_summary": true,
+  "destination": {
+    "folder_id": "1i1g5UNNssoNGkHGYx17jFZxPt3_nAm_L",
+    "create_subfolder": false
+  },
+  "segments": [
+    {
+      "start": "00:00",
+      "end": "00:45",
+      "name": "Collasso del controllo territoriale e ascesa del CJNG",
+      "category": "celebrity_interview",
+      "source_title": "The Sinaloa Cartel Is Losing Control Of It's Own Territory",
+      "source_channel": "The Connect: With Johnny Mitchell",
+      "summary": "Introduzione sul tracollo operativo dei Chapitos e sulla strategia del CJNG pronta a prendere il controllo totale del territorio di Sinaloa.",
+      "topics": [
+        "Sinaloa cartel Chapitos CJNG Cartel Jalisco Nueva Generacion alleanza assorbimento Culiacan sicari estinzione Johnny Mitchell Cat Schultz"
+      ],
+      "tags": ["El Chapo", "Sinaloa Cartel", "celebrity_interview"],
+      "mentioned_people": ["Johnny Mitchell", "Cat Schultz"]
+    },
+    {
+      "start": "01:36",
+      "end": "02:31",
+      "name": "Escalation di violenza urbana ed esecuzioni mirate a Culiacán",
+      "category": "celebrity_interview",
+      "source_title": "The Sinaloa Cartel Is Losing Control Of It's Own Territory",
+      "source_channel": "The Connect: With Johnny Mitchell",
+      "summary": "Cat Schultz descrive il clima pesante a Culiacán, caratterizzato da omicidi a raffica e dall'esecuzione in diretta streaming di figure schierate con le fazioni.",
+      "topics": [
+        "Culiacan Sinaloa omicidi livestream influencer esecuzioni fazioni Mayitos Chapitos violenza controllo criminale territorio"
+      ],
+      "tags": ["El Chapo", "Sinaloa Cartel", "celebrity_interview"],
+      "mentioned_people": ["Cat Schultz"]
+    },
+    {
+      "start": "03:32",
+      "end": "04:29",
+      "name": "Indagine federale USA contro il governatore Rubén Rocha Moya",
+      "category": "celebrity_interview",
+      "source_title": "The Sinaloa Cartel Is Losing Control Of It's Own Territory",
+      "source_channel": "The Connect: With Johnny Mitchell",
+      "summary": "Analisi dell'incriminazione del governatore di Sinaloa da parte degli Stati Uniti e delle ritorsioni armate contro la sua residenza.",
+      "topics": [
+        "Ruben Rocha Moya Morena party Dipartimento Giustizia USA incriminazione collusione Chapitos Mayitos sparatoria casa Culiacan"
+      ],
+      "tags": ["El Chapo", "Sinaloa Cartel", "celebrity_interview"],
+      "mentioned_people": ["Rubén Rocha Moya"]
+    },
+    {
+      "start": "06:00",
+      "end": "07:00",
+      "name": "Consegna di El Mayo Zambada e accordi con gli Stati Uniti",
+      "category": "celebrity_interview",
+      "source_title": "The Sinaloa Cartel Is Losing Control Of It's Own Territory",
+      "source_channel": "The Connect: With Johnny Mitchell",
+      "summary": "La giornalista ripercorre il rapimento di El Mayo Zambada orchestrato dai Chapitos e le pesanti implicazioni politiche per il governo messicano.",
+      "topics": [
+        "Ismael El Mayo Zambada rapimento tradimento Chapitos DEA plea deals San Ysidro Claudia Sheinbaum estradizione Morena"
+      ],
+      "tags": ["El Chapo", "Sinaloa Cartel", "celebrity_interview"],
+      "mentioned_people": ["Ismael Zambada García", "Claudia Sheinbaum"]
+    },
+    {
+      "start": "13:21",
+      "end": "14:20",
+      "name": "Dinamica degli agguati e sorveglianza delle scene del crimine",
+      "category": "celebrity_interview",
+      "source_title": "The Sinaloa Cartel Is Losing Control Of It's Own Territory",
+      "source_channel": "The Connect: With Johnny Mitchell",
+      "summary": "Viene documentato l'agguato a un transfuga in un parcheggio e la presenza costante di vedette del cartello che controllano inquirenti e reporter sul posto.",
+      "topics": [
+        "Culiacan Walmart omicidio cambio fazione vendetta vedette lookouts giornalisti monitoraggio social media narcos"
+      ],
+      "tags": ["El Chapo", "Sinaloa Cartel", "celebrity_interview"],
+      "mentioned_people": []
+    },
+    {
+      "start": "14:48",
+      "end": "15:48",
+      "name": "Inazione delle forze dell'ordine messicane",
+      "category": "celebrity_interview",
+      "source_title": "The Sinaloa Cartel Is Losing Control Of It's Own Territory",
+      "source_channel": "The Connect: With Johnny Mitchell",
+      "summary": "Le autorità locali e militari si limitano a rimuovere i cadaveri senza avviare indagini o istituire posti di blocco per fermare i sicari.",
+      "topics": [
+        "polizia messicana esercito inazione mancata indagine repertamento cadaveri guerra per logoramento Culiacan impunita"
+      ],
+      "tags": ["El Chapo", "Sinaloa Cartel", "celebrity_interview"],
+      "mentioned_people": []
+    },
+    {
+      "start": "21:14",
+      "end": "22:10",
+      "name": "Origine della faida totale tra Chapitos e Mayitos",
+      "category": "celebrity_interview",
+      "source_title": "The Sinaloa Cartel Is Losing Control Of It's Own Territory",
+      "source_channel": "The Connect: With Johnny Mitchell",
+      "summary": "Viene evidenziato come la rottura definitiva tra fazioni sia una guerra a oltranza senza possibilità di tregua diplomatica.",
+      "topics": [
+        "MF Mayito Flaco Chapitos CJNG rifornimenti armi uomini aereo tradimento El Mayo controllo Sinaloa"
+      ],
+      "tags": ["El Chapo", "Sinaloa Cartel", "celebrity_interview"],
+      "mentioned_people": []
+    },
+    {
+      "start": "23:49",
+      "end": "24:47",
+      "name": "Struttura del CJNG dopo l'eliminazione di El Mencho",
+      "category": "celebrity_interview",
+      "source_title": "The Sinaloa Cartel Is Losing Control Of It's Own Territory",
+      "source_channel": "The Connect: With Johnny Mitchell",
+      "summary": "A differenza di Sinaloa, il CJNG non si è disgregato dopo l'uccisione di El Mencho, passando prontamente il comando al figliastro senza vuoti di potere.",
+      "topics": [
+        "El Mencho uccisione successione El 3 CJNG tenuta organizzativa ritirata rinforzi Michoacan Jalisco kingpin strategy"
+      ],
+      "tags": ["El Chapo", "Sinaloa Cartel", "celebrity_interview"],
+      "mentioned_people": ["Nemesio Oseguera Cervantes"]
+    },
+    {
+      "start": "30:40",
+      "end": "31:40",
+      "name": "Incontri con convogli armati del cartello sulle autostrade",
+      "category": "celebrity_interview",
+      "source_title": "The Sinaloa Cartel Is Losing Control Of It's Own Territory",
+      "source_channel": "The Connect: With Johnny Mitchell",
+      "summary": "La testimonianza sui pericoli affrontati dai reporter durante il transito su strade montane affiancate da camionette piene di miliziani armati.",
+      "topics": [
+        "convogli narco veicoli blindati fucili d'assalto Jalisco autostrada posti di blocco reporter sicurezza sul campo"
+      ],
+      "tags": ["El Chapo", "Sinaloa Cartel", "celebrity_interview"],
+      "mentioned_people": []
+    },
+    {
+      "start": "37:18",
+      "end": "38:16",
+      "name": "Reclutamento disperato di sicari low-cost",
+      "category": "celebrity_interview",
+      "source_title": "The Sinaloa Cartel Is Losing Control Of It's Own Territory",
+      "source_channel": "The Connect: With Johnny Mitchell",
+      "summary": "I cartelli a Sinaloa arruolano chiunque sia disposto a compiere omicidi per appena 200 dollari o dosi di droga per saldare debiti.",
+      "topics": [
+        "sicari reclutamento economico 5000 pesos tossicodipendenza debiti manovalanza usa e getta violenza incontrollata"
+      ],
+      "tags": ["El Chapo", "Sinaloa Cartel", "celebrity_interview"],
+      "mentioned_people": []
+    },
+    {
+      "start": "45:29",
+      "end": "46:25",
+      "name": "Strategia giudiziaria USA e pressione politica su Morena",
+      "category": "celebrity_interview",
+      "source_title": "The Sinaloa Cartel Is Losing Control Of It's Own Territory",
+      "source_channel": "The Connect: With Johnny Mitchell",
+      "summary": "I rimanenti leader Guzmán puntano a scambiare prove schiaccianti contro la leadership politica messicana in cambio di immunità negli USA.",
+      "topics": [
+        "Ivan Archivaldo Jesus Alfredo Guzman Salazar resa DEA tangenti dossier Morena influenza politica sovranita"
+      ],
+      "tags": ["El Chapo", "Sinaloa Cartel", "celebrity_interview"],
+      "mentioned_people": ["Iván Archivaldo Guzmán Salazar", "Jesús Alfredo Guzmán Salazar"]
+    },
+    {
+      "start": "48:06",
+      "end": "49:02",
+      "name": "Strategia aziendale di assorbimento del CJNG",
+      "category": "celebrity_interview",
+      "source_title": "The Sinaloa Cartel Is Losing Control Of It's Own Territory",
+      "source_channel": "The Connect: With Johnny Mitchell",
+      "summary": "Viene illustrato l'approccio cinico e pragmatico del CJNG, pronto a rilevare interamente le piazze dei Chapitos una volta completata la loro resa.",
+      "topics": [
+        "CJNG corporativismo annessione territorio manodopera calcolo strategico alleanze tattiche Culiacan Jalisco"
+      ],
+      "tags": ["El Chapo", "Sinaloa Cartel", "celebrity_interview"],
+      "mentioned_people": []
+    },
+    {
+      "start": "56:46",
+      "end": "57:47",
+      "name": "Reclutamento forzato e campi di addestramento clandestini",
+      "category": "celebrity_interview",
+      "source_title": "The Sinaloa Cartel Is Losing Control Of It's Own Territory",
+      "source_channel": "The Connect: With Johnny Mitchell",
+      "summary": "Dettagli sulle pratiche di sequestro ed estorsione impiegate per addestrare con la violenza nuove leve costrette a combattere tra loro.",
+      "topics": [
+        "leva forzata rapimenti Rancho Izote Guadalajara Puerto Vallarta training campi scontro mortale estorsione"
+      ],
+      "tags": ["El Chapo", "Sinaloa Cartel", "celebrity_interview"],
+      "mentioned_people": []
+    },
+    {
+      "start": "60:48",
+      "end": "61:43",
+      "name": "Fine del mito narco alla cappella di Jesús Malverde",
+      "category": "celebrity_interview",
+      "source_title": "The Sinaloa Cartel Is Losing Control Of It's Own Territory",
+      "source_channel": "The Connect: With Johnny Mitchell",
+      "summary": "Alla storica cappella di Malverde è stato vietato il commercio di gadget sui cartelli a causa del clima di terrore che ha infranto il mito dei boss.",
+      "topics": [
+        "Capilla Jesus Malverde narcocultura merchandising Culiacan terrore fine idolatria narcotraffico cadaveri decapitazioni"
+      ],
+      "tags": ["El Chapo", "Sinaloa Cartel", "celebrity_interview"],
+      "mentioned_people": []
+    },
+    {
+      "start": "62:19",
+      "end": "63:18",
+      "name": "Reti di tratta di esseri umani e sfruttamento sessuale",
+      "category": "celebrity_interview",
+      "source_title": "The Sinaloa Cartel Is Losing Control Of It's Own Territory",
+      "source_channel": "The Connect: With Johnny Mitchell",
+      "summary": "La giornalista rivela i retroscena del traffico di donne attirate con l'inganno da aree rurali del Messico e ridotte in schiavitù tra Tijuana e gli USA.",
+      "topics": [
+        "human trafficking tratta persone metodo loverboy Tijuana Houston New York schiavitu prostituzione coatta"
+      ],
+      "tags": ["El Chapo", "Sinaloa Cartel", "celebrity_interview"],
+      "mentioned_people": []
+    }
+  ]
+}

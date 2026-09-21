@@ -123,6 +123,11 @@ type CreateFoldersRequest struct {
 // POST /api/drive/folders
 // Body: { "parent_id": "root-folder-id", "folders": ["ziwe", "TeamCoco"] }
 // Response: { "ok": true, "created": {"ziwe": "folder-id-1", "TeamCoco": "folder-id-2"} }
+//
+// The operation is a get-or-create per name: re-submitting a name that already
+// exists under the same parent returns its existing id instead of minting a
+// duplicate folder. A Drive URL parent is accepted and normalised to its bare
+// folder id (clips.ExtractDriveFolderID).
 func (h *DriveHandler) CreateFolders(c *gin.Context) {
 	if h.driveOps == nil {
 		apiutil.Error(c, 500, "drive uploader not configured")
@@ -146,14 +151,28 @@ func (h *DriveHandler) CreateFolders(c *gin.Context) {
 		return
 	}
 
+	// A name only becomes a folder name once it is trimmed: a whitespace-only
+	// entry used to be forwarded verbatim (only "" was skipped) and created a
+	// Drive folder literally named "   " — invisible in the web UI, real on the
+	// API, and unreachable by the name the operator thought they passed. Fail
+	// closed when nothing survives, instead of answering ok:true with an empty
+	// created map that reads like "already existed".
+	names := make([]string, 0, len(req.Folders))
+	for _, raw := range req.Folders {
+		if name := strings.TrimSpace(raw); name != "" {
+			names = append(names, name)
+		}
+	}
+	if len(names) == 0 {
+		apiutil.BadRequest(c, "folders list is empty")
+		return
+	}
+
 	ctx := c.Request.Context()
-	created := make(map[string]string, len(req.Folders))
+	created := make(map[string]string, len(names))
 	var errs []string
 
-	for _, folderName := range req.Folders {
-		if folderName == "" {
-			continue
-		}
+	for _, folderName := range names {
 		folderID, err := h.driveOps.GetOrCreateFolder(ctx, folderName, parentID)
 		if err != nil {
 			errs = append(errs, fmt.Sprintf("%s: %v", folderName, err))

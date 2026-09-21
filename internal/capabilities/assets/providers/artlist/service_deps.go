@@ -31,8 +31,15 @@ import (
 // ErrPublisherUnavailable (mirrors QDRANT-002 PR7 composition-time
 // dispatcher guard).
 type ServicePorts struct {
-	AssetStore     AssetStore
-	Indexer        Indexer
+	AssetStore AssetStore
+	Indexer    Indexer
+	// MediaStats answers the media_assets aggregates the Artlist surfaces report
+	// (the per-source count and catalogue total on /api/artlist/diagnostics and
+	// /api/artlist/stats, plus the newest matching run timestamp). It is
+	// OPTIONAL: nil means no media SSOT handle is wired, so each field is
+	// reported as unavailable (godlike/07) instead of being read off the
+	// operational store (MEDIA LEGACY READ-PLANE DEMOLITION, 2026-09-21).
+	MediaStats     MediaStats
 	MetadataWriter MetadataWriter
 	// Publisher is the canonical Drive upload/folder-resolution canal
 	// (FASE 8, June 2026; F2.11: now MANDATORY at composition per the

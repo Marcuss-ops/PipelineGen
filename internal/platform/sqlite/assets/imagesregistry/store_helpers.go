@@ -18,12 +18,10 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"time"
 
 	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
-	timeutil "github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
 	"go.uber.org/zap"
 )
 
@@ -138,21 +136,10 @@ func (s *AssetStoreSQLite) FindByPHash(ctx context.Context, phash string) (strin
 	return id, nil
 }
 
-// MarkUsed marks a clip as used (canonical migration 059 columns).
-func (s *AssetStoreSQLite) MarkUsed(ctx context.Context, clipID string) error {
-	if clipID == "" {
-		return nil
-	}
-	now := timeutil.FormatRFC3339(time.Now())
-	return UpdateMediaAssetUsage(ctx, s.db, clipID, now)
-}
-
-// MarkClipsUsed marks multiple clips as used.
-func (s *AssetStoreSQLite) MarkClipsUsed(ctx context.Context, clipIDs []string) error {
-	for _, id := range clipIDs {
-		if err := s.MarkUsed(ctx, id); err != nil {
-			return err
-		}
-	}
-	return nil
-}
+// MEDIA LEGACY READ-PLANE DEMOLITION (2026-09-21): MarkUsed and MarkClipsUsed
+// are DELETED. A method-name scan (production and test call sites) showed zero
+// callers for both, and they were the only caller of the SQLite
+// UpdateMediaAssetUsage primitive — whose successor already lives on the media
+// SSOT (internal/platform/postgres/media/mutations.go, UpdateMediaAssetUsage).
+// Keeping them alive would have preserved a second writer of
+// media_assets.reuse_count / last_used_at with nothing behind it.

@@ -117,6 +117,42 @@ type FileLifecycle interface {
 	// failures, surface to ops dashboards) without re-issuing a
 	// Files.List to count what happened.
 	Cleanup(ctx context.Context, req CleanupRequest) (CleanupResult, error)
+
+	// ListTrashed returns up to maxResults items currently in Drive's
+	// trash. Read-only counterpart of EmptyTrash, used by the admin CLI
+	// (drive-empty-trash) to preview — fail-closed — exactly what a
+	// purge would permanently remove before the operator passes
+	// --apply. Order is unspecified (Drive Files.List order). A
+	// maxResults <= 0 falls back to the Drive page-size cap (1000).
+	//
+	// August 2026: added alongside EmptyTrash so the destructive
+	// purge is never the first (and only) trash-observing operation a
+	// caller has available — the dry-run preview and the purge share
+	// one owner (this port) instead of the CLI re-implementing a
+	// Files.List query outside the Drive boundary.
+	ListTrashed(ctx context.Context, maxResults int) ([]TrashedItem, error)
+
+	// EmptyTrash permanently deletes every item currently in Drive's
+	// trash (Drive Files.EmptyTrash). NOT recoverable: unlike Trash,
+	// there is no per-item undo once this returns. On shared drives
+	// the purge applies to the trash items visible to the
+	// authenticated service account.
+	//
+	// Callers MUST gate this behind an explicit confirmation. The
+	// admin CLI subcommand drive-empty-trash is fail-closed: without
+	// --apply it only prints the ListTrashed preview and never
+	// reaches this method.
+	EmptyTrash(ctx context.Context) error
+}
+
+// TrashedItem is one entry in the Drive trash listing surfaced by
+// FileLifecycle.ListTrashed. Deliberately minimal (id/name/mimeType —
+// the three fields a preview needs to be actionable) so the port does
+// not leak the full Drive file resource.
+type TrashedItem struct {
+	ID       string
+	Name     string
+	MimeType string
 }
 
 // CleanupResult is the structured return value for FileLifecycle.Cleanup

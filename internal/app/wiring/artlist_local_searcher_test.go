@@ -76,13 +76,14 @@ func TestArtlistLocalSearcher_ReadsPostgresMediaSSOT(t *testing.T) {
 type fakeArtlistAssetStore struct {
 	searchClipsCalls       int
 	searchTermsCalls       int
-	countClipsCalls        int
+	getCalls               int
 	updateSearchTermsCalls int
 }
 
 var _ artlist.AssetStore = (*fakeArtlistAssetStore)(nil)
 
 func (f *fakeArtlistAssetStore) Get(context.Context, string) (*asset.Asset, error) {
+	f.getCalls++
 	return nil, nil
 }
 
@@ -98,16 +99,10 @@ func (f *fakeArtlistAssetStore) SearchClips(_ context.Context, _, _ string) ([]*
 	return nil, nil
 }
 
-func (f *fakeArtlistAssetStore) CountClips(context.Context) (int, error) {
-	f.countClipsCalls++
-	return 7, nil
-}
-
-func (f *fakeArtlistAssetStore) CountBySource(context.Context, string) (int, error) { return 7, nil }
-
-func (f *fakeArtlistAssetStore) LastUpdatedAtForTerm(context.Context, string) (*string, error) {
-	return nil, nil
-}
+// CountClips / LastUpdatedAtForTerm / CountBySource are deliberately NOT
+// implemented here any more: they left artlist.AssetStore in the sub-wave B'
+// pass (they are media_assets aggregates, now on artlist.MediaStats), so a fake
+// that still answered them would silently re-widen the operational port.
 
 func (f *fakeArtlistAssetStore) UpdateSearchTerms(context.Context, string, string, string, []string, string) error {
 	f.updateSearchTermsCalls++
@@ -254,15 +249,20 @@ func TestArtlistMediaSSOTAssetStore_SearchByTermsHonorsLimit(t *testing.T) {
 // TestArtlistMediaSSOTAssetStore_DelegatesRemainingMethods pins that the
 // decorator is surgical: methods outside the DB-only search surface still go
 // to the operational store.
+//
+// MEDIA LEGACY READ-PLANE DEMOLITION (2026-09-21, sub-wave B'): this used to
+// exercise CountClips, which left both the port and the decorator in this pass
+// (it is a media_assets aggregate now answered by artlist.MediaStats on the
+// media SSOT). The delegation invariant is unchanged and is pinned through a
+// method that stayed operational.
 func TestArtlistMediaSSOTAssetStore_DelegatesRemainingMethods(t *testing.T) {
 	delegate := &fakeArtlistAssetStore{}
 	sut := newArtlistMediaSSOTAssetStore(delegate, &fakeArtlistLocalStore{}, nil)
-	got, err := sut.CountClips(context.Background())
-	if err != nil {
-		t.Fatalf("CountClips: %v", err)
+	if _, err := sut.Get(context.Background(), "clip-1"); err != nil {
+		t.Fatalf("Get: %v", err)
 	}
-	if got != 7 || delegate.countClipsCalls != 1 {
-		t.Fatalf("CountClips = %d (delegate calls %d), want the delegate's answer", got, delegate.countClipsCalls)
+	if delegate.getCalls != 1 {
+		t.Fatalf("delegate Get calls = %d, want 1 (the decorator must stay surgical)", delegate.getCalls)
 	}
 }
 

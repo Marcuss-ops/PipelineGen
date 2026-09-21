@@ -13,14 +13,22 @@ import (
 // ── PR1 (June 2026) — file role ───────────────────────────────────────────
 //
 // clips_crud.go holds the *ClipsRepository methods that map to the
-// canonical mutation surface (CRUD-shaped): Upsert + Get + GetClip +
-// SourceVersionFor (the narrow SSOT port implementation), the
+// canonical mutation surface (CRUD-shaped): Upsert + Get + GetClip, the
 // dispatcher-only UpsertClip + DeleteClip wrappers, and the typed
-// command-dispatcher Mutate entry point. SetIndexState/SoftDelete/DeleteClipByDriveLink
+// command-dispatcher Mutate entry point. SetIndexState/SoftDelete
 // live in clips_index_state.go; tx-scoped mutations in clips_transactions.go;
 // filtered Count in clips_queries.go. The ResolveBy* lookups moved to the
 // PostgreSQL media SSOT (pgmedia.MediaSearcher) when clips_resolution.go was
 // deleted on 2026-09-20.
+//
+// MEDIA LEGACY READ-PLANE DEMOLITION (2026-09-21): SourceVersionFor is DELETED
+// together with source_version.go (this method was its only wrapper). The
+// supersede gate it fed was retired with the IndexingHandler family on
+// 2026-09-12, so the narrow detail.SourceVersionQuerier port it implemented had
+// no consumer left, and the media-SSOT fingerprint read is owned by pgmedia
+// (index_event.go's COALESCE over source_version / legacy_file_md5). The
+// cmd/admin producer path never called it either: backfill_missing.go computes
+// its own content-hash projection inline.
 // The receiver type + helpers + MediaAssetColumns live in clips_repository.go.
 
 // Upsert is the canonical low-level write path that ALL production
@@ -53,27 +61,6 @@ func (r *ClipsRepository) Get(ctx context.Context, id string) (*asset.Asset, err
 
 func (r *ClipsRepository) GetClip(ctx context.Context, id string) (*asset.Asset, error) {
 	return r.Get(ctx, id)
-}
-
-// SourceVersionFor is the PR 11 follow-up narrow port implementation
-// consumed by the IndexingHandler source_version supersede gate.
-// Delegates to the package-level helper (source_version.go) so the
-// priority-chain semantics are owned by ONE function even though two
-// upstream callers (this method + cmd/admin inline) flow through it.
-//
-// Returns sql.ErrNoRows unchanged so the upstream consumer can
-// distinguish "row missing" from "row exists but empty fingerprint".
-// Both paths fall through to "skip the gate, let IndexClip decide";
-// the diagnostic value of distinguishing them lives in tests
-// (TestSourceVersionFor_AssetNotFoundReturnsErrNoRows).
-//
-// Note: GetClip (above) remains because IndexDeleteHandler keeps it
-// via the AssetDeleter interface — that's a separate concern
-// (deletion rather than version lookup). Removing GetClip would
-// trigger a separate refactor (AssetDeleter → AssetMutator) which
-// is out of scope for the PR 11 followup.
-func (r *ClipsRepository) SourceVersionFor(ctx context.Context, id string) (string, error) {
-	return SourceVersionFor(ctx, r.db, id)
 }
 
 // UpsertClip upserts a clip through the low-level Save() path.

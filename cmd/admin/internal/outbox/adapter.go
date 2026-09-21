@@ -110,12 +110,16 @@ func NewRepairAdapter(db *sql.DB, outboxRepo *outboxevents.Repository, schemaVer
 // :force suffix differentiates the event_key.
 //
 // The content_hash is PASSED BY THE CALLER (not fetched here) per
-// PR 11 (June 2026) — the canonical reconciler flow
-// (internal/capabilities/reconciliation/service.go) already
-// calls assets.SourceVersionFor(...) once per asset and threads
-// the value here. Callers MUST hand in a non-empty contentHash;
-// the adapter is fail-closed on empty (deterministic event_key
-// requires a fingerprint).
+// PR 11 (June 2026): the caller resolves the fingerprint once per
+// asset and threads the value here. Callers MUST hand in a
+// non-empty contentHash; the adapter is fail-closed on empty
+// (deterministic event_key requires a fingerprint).
+//
+// MEDIA LEGACY READ-PLANE DEMOLITION (2026-09-21, sub-wave B): the
+// assets.SourceVersionFor(...) helper this note used to name is deleted; the
+// admin producers compute the fingerprint in their own SQL
+// (backfill_missing.go's COALESCE over metadata_json.content_hash →
+// .file_hash → legacy_file_md5) and the media-SSOT read lives on pgmedia.
 //
 // force (Card 7.1, July 2026): the admin reindex path passes
 // force=true. Production reconciler --apply also passes force=true
@@ -128,7 +132,7 @@ func (a *RepairAdapter) EnqueueReindex(ctx context.Context, assetID, contentHash
 		return errors.New("outbox.RepairAdapter.EnqueueReindex: assetID must not be empty")
 	}
 	if contentHash == "" {
-		return errors.New("outbox.RepairAdapter.EnqueueReindex: contentHash must not be empty — PR 11 contract (deterministic event_key requires a fingerprint; caller must pre-fetch via assets.SourceVersionFor before invoking)")
+		return errors.New("outbox.RepairAdapter.EnqueueReindex: contentHash must not be empty — PR 11 contract (deterministic event_key requires a fingerprint; the caller must resolve it before invoking)")
 	}
 	tx, err := a.db.BeginTx(ctx, nil)
 	if err != nil {

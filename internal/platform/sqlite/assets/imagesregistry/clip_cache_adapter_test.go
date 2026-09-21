@@ -9,9 +9,10 @@
 // previously carried `t.Skip("BLOCKER #5: CGO sqlite3 not available
 // in test environment")` now run against a real in-memory SQLite
 // repository (`sql.Open("sqlite3", ":memory:")` + NewClipsRepository),
-// matching the established pattern in clips_crud_test.go /
-// clips_statistics_test.go. There is no longer any skipped test in
-// this file.
+// matching the established pattern in clips_crud_test.go. (That note also
+// named clips_statistics_test.go, which was deleted on 2026-09-21 with
+// CountPersistedSince — MEDIA LEGACY READ-PLANE DEMOLITION.) There is no
+// longer any skipped test in this file.
 package imagesregistry
 
 import (

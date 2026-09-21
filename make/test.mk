@@ -32,7 +32,7 @@ vet: go-version-check
 	$(GO) vet ./...
 
 verify-go-core:
-	$(GO) test -race ./internal/kernel/... ./internal/capabilities/...
+	$(GO) test -race ./internal/kernel/... ./internal/capabilities/... ./internal/app/...
 
 verify-go-infrastructure:
 	$(GO) test -race ./internal/platform/...
@@ -56,8 +56,13 @@ verify-go:
 	$(GO) build ./...
 	@echo "✅ Go verification passed"
 
+# verify-unit-fast — the fast non-race subset consumed by verify-push, and
+# therefore by the pre-push hook and CI (`.github/workflows/ci.yml` runs
+# verify-main). Kept in sync with verify-go-core + verify-go-commands, which
+# today means ./internal/app/... is included: the composition root's tests
+# must run in the gate that actually blocks a push.
 verify-unit-fast:
-	$(GO) test ./internal/kernel/... ./internal/capabilities/... ./cmd/... ./pkg/...
+	$(GO) test ./internal/kernel/... ./internal/capabilities/... ./internal/app/... ./cmd/... ./pkg/...
 
 # bench-cliprender — the canonical clip.render performance benchmark. Headless
 # and CI-safe: it drives the REAL worker (submit + settle phases), the real

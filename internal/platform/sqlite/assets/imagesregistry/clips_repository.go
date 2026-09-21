@@ -8,8 +8,6 @@ import (
 	"go.uber.org/zap"
 )
 
-var _ detail.SourceVersionQuerier = (*ClipsRepository)(nil)
-
 // MediaAssetColumns is the canonical SELECT projection used by every
 // Get/List/Search/Resolve path in this package. It is read-only topology; all
 // writes route through the composition-wired canonical asset writer.

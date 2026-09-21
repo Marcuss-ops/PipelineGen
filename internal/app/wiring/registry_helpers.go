@@ -136,8 +136,16 @@ func BuildSyncTargets(cfg *config.Config, repo catalogsync.CatalogRepository, in
 // indexer. PostgreSQL is the media SSOT, so the GetClip existence check and
 // GetIndexState read it whenever the handle is wired (MEDIA-SSOT read
 // split-brain fix); folder operations stay on the operational SQLite
-// repository until the clip_folders writers migrate. The legacy SQLite
-// ClipsRepository implements both ports and is the graceful-degrade fallback.
+// repository until the clip_folders writers migrate.
+//
+// MEDIA LEGACY READ-PLANE DEMOLITION (2026-09-21, sub-wave B): the degrade
+// branch keeps serving the folder/GetClip half from `legacy`, but it no longer
+// serves the INDEX-STATE half from the mirror. An index state is a media fact,
+// the engine decision point (mediasub.RequireMediaPostgres) declares that there
+// is no SQLite fallback and that the operational mirror holds no committed
+// media rows, so the slot is answered by noMediaPlaneIndexState, which fails
+// closed. The former *assets.ClipsRepository.GetIndexState implementation is
+// deleted with it.
 func newCatalogSyncRepository(mediaDB *sql.DB, legacy *assets.ClipsRepository) (catalogsync.CatalogRepository, catalogsync.AssetIndexer) {
 	if mediaDB != nil && legacy != nil {
 		router := &postgresCatalogRepository{media: pgmedia.NewMediaSearcher(mediaDB), legacy: legacy}
@@ -151,7 +159,15 @@ func newCatalogSyncRepository(mediaDB *sql.DB, legacy *assets.ClipsRepository) (
 		}
 		return router, router
 	}
-	return legacy, legacy
+	// No media plane: the folder/GetClip degrade stays on the operational store,
+	// the index-state slot fails closed (never the mirror — see
+	// noMediaPlaneIndexState). A nil legacy is returned as a true nil interface
+	// so the catalogsync target validation sees the missing port instead of a
+	// typed-nil it cannot detect.
+	if legacy == nil {
+		return nil, nil
+	}
+	return legacy, noMediaPlaneIndexState{}
 }
 
 // postgresCatalogRepository routes media reads (GetClip/GetIndexState) to the

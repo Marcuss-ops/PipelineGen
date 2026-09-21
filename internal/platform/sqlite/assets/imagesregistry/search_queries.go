@@ -62,8 +62,8 @@ func ClassifiedAssetFilter() string {
 
 // buildSearchableMediaAssetQuery mirrors buildMediaAssetQuery but uses
 // SearchableLifecycleFilter (the stricter ACTIVE-only+PUBLISHED filter)
-// instead of SoftDeleteFilter. Used exclusively by the 3 search functions
-// (SearchClips, SearchClipsByKeywords, SearchStockByKeywords) so search
+// instead of SoftDeleteFilter. Used exclusively by the search functions
+// (SearchClips, SearchClipsAdvanced) so search
 // results never include DELETED/DELETE_REQUESTED/DRIVE_DELETE_PENDING/...
 // assets.
 //
@@ -136,8 +136,10 @@ func resolveSortDir(asc bool) string {
 //   - search_queries.go — SearchClips + SearchClipsAdvanced (this file).
 //   - search_terms_queries.go — SearchByTerms + fetchClipsByIDs
 //     (indexed lookup).
-//   - search_queries.go SearchStockByKeywords (source='stock' shortcut).
-//   - clip_list_queries.go — list ops + LastUpdatedAtForTerm.
+//
+// (clip_list_queries.go held the count ops + LastUpdatedAtForTerm until
+// MEDIA LEGACY READ-PLANE DEMOLITION sub-wave B', 2026-09-21: both moved to the
+// media SSOT behind artlist.MediaStats and the file is deleted.)
 func (s *AssetStoreSQLite) SearchClips(ctx context.Context, source, tag string) ([]*asset.Asset, error) {
 	keywords := strings.Fields(tag)
 	if len(keywords) == 0 {
@@ -220,43 +222,11 @@ func (s *AssetStoreSQLite) SearchClips(ctx context.Context, source, tag string) 
 	return detail.ScoreClips(results, keywords), nil
 }
 
-// SearchClipsByKeywords searches clips by keywords using LIKE on the
-// media_assets table.
-func (s *AssetStoreSQLite) SearchClipsByKeywords(ctx context.Context, source string, keywords []string, limit int) ([]*asset.Asset, error) {
-	if len(keywords) == 0 {
-		return []*asset.Asset{}, nil
-	}
-
-	columns := clipSearchColumns()
-	conditionSQL, args := sqlutil.BuildFallbackLikeConditions(keywords, columns)
-	if conditionSQL == "" {
-		return []*asset.Asset{}, nil
-	}
-
-	query := fmt.Sprintf("%s AND (%s) LIMIT ?", buildSearchableMediaAssetQuery(source), conditionSQL)
-	finalArgs := []any{}
-	if source != "" && source != "all" && source != "unified" {
-		finalArgs = append(finalArgs, source)
-	}
-	finalArgs = append(finalArgs, args...)
-	finalArgs = append(finalArgs, limit)
-
-	rows, err := s.db.QueryContext(ctx, query, finalArgs...)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	var clips []*asset.Asset
-	for rows.Next() {
-		clip, err := ScanCanonicalAssetRowsPublic(rows)
-		if err != nil {
-			return nil, err
-		}
-		clips = append(clips, clip)
-	}
-	return clips, rows.Err()
-}
+// MEDIA LEGACY READ-PLANE DEMOLITION (2026-09-21): SearchClipsByKeywords is
+// DELETED (zero production call sites; the only caller left was its own test in
+// search_queries_lifecycle_test.go, deleted in the same change). The SQLite
+// keyword surface it provided has no PostgreSQL counterpart to migrate, and the
+// clips API reads the media SSOT through SearchClipsAdvanced (live) instead.
 
 // SearchClipsAdvanced searches clips with structured filters.
 func (s *AssetStoreSQLite) SearchClipsAdvanced(ctx context.Context, req detail.AdvancedSearchRequest) (*detail.AdvancedSearchResult, error) {
@@ -401,42 +371,9 @@ func (s *AssetStoreSQLite) SearchClipsAdvanced(ctx context.Context, req detail.A
 	}, rows.Err()
 }
 
-// SearchStockByKeywords searches stock clips by keywords using LIKE on
-// the media_assets table. The source is hard-coded to 'stock'.
-func (s *AssetStoreSQLite) SearchStockByKeywords(ctx context.Context, keywords []string, limit int) ([]*asset.Asset, error) {
-	if len(keywords) == 0 {
-		return []*asset.Asset{}, nil
-	}
-
-	columns := clipSearchColumns()
-	conditionSQL, args := sqlutil.BuildFallbackLikeConditions(keywords, columns)
-	if conditionSQL == "" {
-		return []*asset.Asset{}, nil
-	}
-
-	query := fmt.Sprintf(`
-		SELECT %s
-		FROM media_assets
-		WHERE source = 'stock' AND `+SearchableLifecycleFilter()+` AND (%s)
-		LIMIT ?`,
-		MediaAssetColumns,
-		conditionSQL,
-	)
-	args = append(args, limit)
-
-	rows, err := s.db.QueryContext(ctx, query, args...)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	var clips []*asset.Asset
-	for rows.Next() {
-		clip, err := ScanCanonicalAssetRowsPublic(rows)
-		if err != nil {
-			return nil, err
-		}
-		clips = append(clips, clip)
-	}
-	return clips, rows.Err()
-}
+// MEDIA LEGACY READ-PLANE DEMOLITION (2026-09-21): SearchStockByKeywords is
+// DELETED (zero production call sites; kept alive only by its own test). The
+// stock family is selected through the taxonomy axis on the media SSOT search
+// (filters asset_kind=stock_video / semantic_role=stock), not through a
+// source='stock' SQLite LIKE query — see
+// internal/capabilities/assets/search/source_filter.go.

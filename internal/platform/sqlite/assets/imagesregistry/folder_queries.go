@@ -14,7 +14,6 @@ import (
 	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
-	sqlutil "github.com/Marcuss-ops/PipelineGen/pkg/sqlutil"
 	timeutil "github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
 )
 
@@ -163,14 +162,10 @@ func (s *AssetStoreSQLite) ListByFolderPath(ctx context.Context, folderPath stri
 	return clips, rows.Err()
 }
 
-// CountByFolderID returns the number of clips in a folder (folder_id
-// is a canonical column).
-func (s *AssetStoreSQLite) CountByFolderID(ctx context.Context, folderID string) (int, error) {
-	row := s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM media_assets WHERE folder_id = ?", folderID)
-	var count int
-	err := row.Scan(&count)
-	return count, err
-}
+// MEDIA LEGACY READ-PLANE DEMOLITION (2026-09-21): CountByFolderID is DELETED
+// (zero production and zero test call sites). It was the only media_assets
+// read left in this file; the folder CRUD below reads `clip_folders`, which is
+// not a media row, so those receivers stay here.
 
 // ListFolders returns all clip folders, optionally filtered by source.
 func (s *AssetStoreSQLite) ListFolders(ctx context.Context, source string) ([]*detail.ClipFolder, error) {
@@ -197,46 +192,9 @@ func (s *AssetStoreSQLite) ListFolders(ctx context.Context, source string) ([]*d
 	return folders, rows.Err()
 }
 
-// SearchFolders searches clip folders by keyword in source_url,
-// video_id, group_name, or folder_path.
-//
-// Uses the canonical LIKE-fallback builder from pkg/sqlutil (FTS5
-// banned, see ARCHITECTURE.md §6 persistence / AGENTS.md). The
-// original `clips_core.go::SearchFolders` body was the template for
-// this implementation — Phase 1 of Wave C preserves the contract
-// verbatim so existing callers (folder_tree.go:46 etc.) keep the
-// same observable behavior.
-//
-// Returns ([], nil) when the keyword-tokenizer yields zero usable
-// tokens (mirrors the legacy `if conditionSQL == "" { return ...;
-// nil }` short-circuit so a bare keyword like "  " matches nothing
-// rather than returning the full table).
-func (s *AssetStoreSQLite) SearchFolders(ctx context.Context, keyword string) ([]*detail.ClipFolder, error) {
-	columns := []string{"source_url", "video_id", "group_name", "folder_path"}
-	keywords := strings.Fields(keyword)
-	if len(keywords) == 0 {
-		keywords = []string{keyword}
-	}
-
-	conditionSQL, args := sqlutil.BuildFallbackLikeConditions(keywords, columns)
-	if conditionSQL == "" {
-		return []*detail.ClipFolder{}, nil
-	}
-
-	query := buildClipFolderQuery("") + " WHERE " + conditionSQL + " ORDER BY updated_at DESC"
-	rows, err := s.db.QueryContext(ctx, query, args...)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	var folders []*detail.ClipFolder
-	for rows.Next() {
-		f, err := s.scanClipFolder(rows)
-		if err != nil {
-			return nil, err
-		}
-		folders = append(folders, f)
-	}
-	return folders, rows.Err()
-}
+// MEDIA LEGACY READ-PLANE DEMOLITION (2026-09-21): SearchFolders is DELETED.
+// The method-name scan found zero production and zero test call sites (the
+// "existing callers" named in its retired doc comment no longer exist), so the
+// folder keyword search became a second, unowned door onto clip_folders. The
+// canonical folder reads are the CRUD/listing receivers above; a keyword search
+// can be re-added as a PostgreSQL folder query if a consumer appears.

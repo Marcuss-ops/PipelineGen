@@ -185,6 +185,15 @@ func (s *Service) TopicSearch(ctx context.Context, query string, limit int, sort
 		return ranked[i].Duration > ranked[j].Duration
 	})
 
+	// The `limit*2` over-fetch above exists ONLY to keep enough survivors for
+	// the publishedAfter filter — it must never reach the caller. `limit` is
+	// the response contract (TopicSearchResponse.Limit restates it), so the
+	// ranked list is capped at it after filtering AND after ranking, so the
+	// rows kept are the highest-scoring ones rather than the first fetched.
+	if len(ranked) > limit {
+		ranked = ranked[:limit]
+	}
+
 	return &TopicSearchResponse{
 		OK:      true,
 		Query:   query,

@@ -61,3 +61,23 @@ func TestVideoRenderSpecNormalizeResolvesYoungSubtitleFamily(t *testing.T) {
 		t.Fatalf("style_id subs-young resolved = %+v", viaStyleID.Subtitles.Style)
 	}
 }
+
+func TestVideoRenderSpecNormalizePresetPreservesInlineStroke(t *testing.T) {
+	render := VideoRenderSpec{Subtitles: &VideoSubtitlesSpec{
+		Enabled: true,
+		Preset:  "subs-young",
+		Style: &VideoVisualStyleSpec{
+			Position: "bottom_center",
+			Color:    "#FFFFFF",
+			Stroke:   &VideoStrokeSpec{Color: "#000000", Width: 2},
+		},
+	}}
+	render.Normalize()
+	style := render.Subtitles.Style
+	if style == nil || style.Font != "Poppins" || style.FontSizePX != 60 {
+		t.Fatalf("preset fields were not merged: %+v", style)
+	}
+	if style.Position != "bottom_center" || style.Stroke == nil || style.Stroke.Color != "#000000" || style.Stroke.Width != 2 {
+		t.Fatalf("inline subtitle style was dropped: %+v", style)
+	}
+}
