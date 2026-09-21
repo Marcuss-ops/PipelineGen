@@ -70,9 +70,16 @@ func RunSyncDriveFolder(args []string) error {
 	go root.Outbox.EventsPool.Start(ctx, 1)
 	defer func() { _ = root.Outbox.EventsPool.Stop(15 * time.Second) }()
 
+	// MEDIA LEGACY READ-PLANE DEMOLITION (2026-09-21, sub-wave B): the
+	// catalog-sync repository + indexer pair comes from the SHARED engine
+	// decision point (wiring.CatalogSyncPorts) instead of handing the
+	// operational SQLite mirror in for both slots. With the media SSOT wired
+	// the media reads resolve on PostgreSQL; without it the folder half stays
+	// operational and the index-state slot fails closed.
+	catalogRepo, catalogIndexer := wiring.CatalogSyncPorts(root.MediaPostgres, root.Repos.ClipsRepo)
 	summary, err := root.Sync.CatalogSync.SyncFolderID(
 		ctx, strings.TrimSpace(*folder), strings.TrimSpace(*source),
-		strings.TrimSpace(*name), strings.TrimSpace(*mediaType), root.Repos.ClipsRepo, root.Repos.ClipsRepo,
+		strings.TrimSpace(*name), strings.TrimSpace(*mediaType), catalogRepo, catalogIndexer,
 	)
 	if err != nil {
 		return fmt.Errorf("sync Drive folder recursively: %w", err)

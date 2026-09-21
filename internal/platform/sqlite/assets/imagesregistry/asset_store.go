@@ -25,10 +25,6 @@ type AssetStoreSQLite struct {
 	canonicalSave   func(context.Context, *asset.Details) error
 	canonicalDelete func(context.Context, string) error
 
-	// batchCache is the LRU-style cache for BatchGetByIDs (search
-	// hydration). Lazily initialised on first BatchGetByIDs call.
-	batchCache *batchCache
-
 	// folderProjection is the optional PostgreSQL clip_folders mirror
 	// (MEDIA-SSOT). Nil keeps the legacy SQLite-only behaviour; when
 	// attached every folder write is dual-written to PostgreSQL.

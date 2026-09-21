@@ -1,7 +1,12 @@
 // Package assets — search_queries_lifecycle_test.go pins the
-// PR-QDRANT-SEARCH-LIFECYCLE-FILTER contract: search functions
-// (SearchClipsAdvanced, SearchClipsByKeywords, SearchStockByKeywords)
-// MUST exclude assets whose lifecycle_state is NOT in {ACTIVE, PUBLISHED}.
+// PR-QDRANT-SEARCH-LIFECYCLE-FILTER contract: the search function
+// (SearchClipsAdvanced) MUST exclude assets whose lifecycle_state is NOT in
+// {ACTIVE, PUBLISHED}.
+//
+// MEDIA LEGACY READ-PLANE DEMOLITION (2026-09-21): the SearchClipsByKeywords /
+// SearchStockByKeywords receivers this file also covered were DELETED (zero
+// production call sites; their only callers were the two tests removed below),
+// so the contract is now pinned on the one live receiver.
 //
 // The previous bug (T5): search used SoftDeleteFilter() which only
 // excluded terminal DELETED. Assets in DELETE_REQUESTED,
@@ -277,53 +282,8 @@ func TestSearchClipsAdvanced_ExcludesUnclassified(t *testing.T) {
 		"control: artifact present without the gate (proves the gate discriminates)")
 }
 
-// TestSearchClipsByKeywords_ExcludesDeleteRequested proves that
-// the SearchClipsByKeywords path also uses the stricter filter.
-func TestSearchClipsByKeywords_ExcludesDeleteRequested(t *testing.T) {
-	db := newLifecycleTestDB(t)
-	s := NewAssetStoreSQLite(db, zap.NewNop())
-	ctx := context.Background()
-
-	clips, err := s.SearchClipsByKeywords(ctx, "youtube", []string{"boxing"}, 50)
-	require.NoError(t, err)
-
-	ids := make(map[string]bool)
-	for _, c := range clips {
-		ids[c.ID] = true
-	}
-
-	assert.True(t, ids["lifecycle-active-1"],
-		"ACTIVE asset must appear")
-	assert.True(t, ids["lifecycle-published-1"],
-		"PUBLISHED asset must appear")
-	assert.False(t, ids["lifecycle-deleted-req-1"],
-		"DELETE_REQUESTED asset must NOT appear in SearchClipsByKeywords (T5)")
-}
-
-// TestSearchStockByKeywords_ExcludesDeleteRequested proves that
-// the SearchStockByKeywords path also uses the stricter filter.
-func TestSearchStockByKeywords_ExcludesDeleteRequested(t *testing.T) {
-	db := newLifecycleTestDB(t)
-	s := NewAssetStoreSQLite(db, zap.NewNop())
-	ctx := context.Background()
-
-	// Re-seed with source=stock for this test
-	_, err := db.ExecContext(ctx,
-		`UPDATE media_assets SET source = 'stock' WHERE id IN ('lifecycle-active-1','lifecycle-published-1','lifecycle-deleted-req-1')`)
-	require.NoError(t, err)
-
-	clips, err := s.SearchStockByKeywords(ctx, []string{"boxing"}, 50)
-	require.NoError(t, err)
-
-	ids := make(map[string]bool)
-	for _, c := range clips {
-		ids[c.ID] = true
-	}
-
-	assert.True(t, ids["lifecycle-active-1"],
-		"ACTIVE stock asset must appear")
-	assert.True(t, ids["lifecycle-published-1"],
-		"PUBLISHED stock asset must appear")
-	assert.False(t, ids["lifecycle-deleted-req-1"],
-		"DELETE_REQUESTED stock asset must NOT appear in SearchStockByKeywords (T5)")
-}
+// MEDIA LEGACY READ-PLANE DEMOLITION (2026-09-21): the two receivers these
+// tests pinned (SearchClipsByKeywords, SearchStockByKeywords) are deleted, and
+// their tests are deleted with them — a test suite that only keeps a dead
+// method alive is not coverage. SearchClipsAdvanced is the live keyword
+// surface and keeps its lifecycle-filter tests above.

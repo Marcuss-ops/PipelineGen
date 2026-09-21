@@ -217,10 +217,21 @@ func WireArtlist(
 	// so a clip committed by the canonical PG committer was invisible to
 	// /api/artlist/search. Without the PG handle the decorator is a no-op and
 	// the operational store keeps its documented SQLite-only degrade mode.
+	//
+	// MEDIA LEGACY READ-PLANE DEMOLITION (2026-09-21, sub-wave B'): the media
+	// aggregates the Artlist surfaces report (per-source count, catalogue total,
+	// newest matching run for a term) are media-SSOT facts and live on their own
+	// port (artlist.MediaStats), so none of them rides on this delegate. The port
+	// is wired from the media handle below and stays nil without one — each field
+	// is then reported as unavailable instead of being read off the operational
+	// SQLite mirror (the retired clips_statistics.go CountBySource and
+	// clip_list_queries.go CountClips/LastUpdatedAtForTerm).
+	var mediaStats artlist.MediaStats
 	assetStore := artlist.AssetStore(bundle.ClipsRepo)
 	if bundle.MediaDB != nil {
 		mediaSearcher := pgmedia.NewMediaSearcher(bundle.MediaDB)
 		localSearcher = newArtlistLocalSearcher(mediaSearcher)
+		mediaStats = pgmedia.NewMediaStatisticsReader(bundle.MediaDB)
 		// P2-9 (F5 writer half): the derived term corpus must be written by the
 		// canonical media writer, never the operational clip_search_terms mirror.
 		// The bundle field is typed as the narrow AssetCommitter, so recover its
@@ -232,7 +243,7 @@ func WireArtlist(
 		}
 		assetStore = newArtlistMediaSSOTAssetStore(assetStore, mediaSearcher, mutator)
 	} else {
-		log.Warn("WireArtlist: media PostgreSQL unavailable — local Artlist catalog searcher NOT wired (fail-closed, no SQLite media mirror)")
+		log.Warn("WireArtlist: media PostgreSQL unavailable — local Artlist catalog searcher NOT wired (fail-closed, no SQLite media mirror) and the media statistics port stays nil for the same reason")
 	}
 
 	service, err := artlist.NewService(artlist.ServiceDeps{
@@ -252,6 +263,7 @@ func WireArtlist(
 			DetailFetcher:   scraperProvider,
 			Stager:          providers.ArtlistStager,
 			IsLiveProbe:     providers.IsLiveProbe,
+			MediaStats:      mediaStats,
 			// PR-ARTLIST-PERSIST-FIX (2026-07-04): mandatory
 			// RunRepository port wiring (godlike/07 fail-closed).
 			// The concrete in sqlite/assets/ is wrapped via the

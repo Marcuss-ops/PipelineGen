@@ -46,6 +46,13 @@ func (h *StockHandler) RegisterRoutes(r *gin.RouterGroup) {
 // bound permissively because operators may attach provider-specific
 // fields (for example `test` and `request_tag`) without changing the
 // execution command.
+//
+// Consequence of that permissive binding (diagnosability contract): a
+// legacy `search_queries` key is DROPPED rather than rejected the way
+// POST /run rejects an unknown `queries` key. The source-presence error
+// below therefore names both shapes explicitly, so the misrouted request
+// class is diagnosable from the response body alone instead of surfacing
+// as a generic "no sources" 400.
 func (h *StockHandler) SearchAndRun(c *gin.Context) {
 	var req stockapp.StockSearchAndRunRequest
 	decoder := json.NewDecoder(c.Request.Body)
@@ -60,8 +67,9 @@ func (h *StockHandler) SearchAndRun(c *gin.Context) {
 
 	if len(req.Queries) == 0 && len(req.DirectURLs) == 0 && len(req.DriveURLs) == 0 && len(req.Clips) == 0 {
 		c.JSON(http.StatusBadRequest, runResponse{
-			Status:    StatusError,
-			Error:     "at least one of queries, direct_urls, drive_urls, or clips is required",
+			Status: StatusError,
+			Error: "at least one of queries, direct_urls, drive_urls, or clips is required" +
+				" (this endpoint takes queries:[{q,limit}]; the legacy search_queries shape is only accepted by POST /api/stock-pipeline/run)",
 			ErrorCode: ErrCodeInvalidPayload,
 		})
 		return

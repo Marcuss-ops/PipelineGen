@@ -111,6 +111,26 @@ func buildDomainMediaServices(
 		return nil, nil, nil, fmt.Errorf("compose domains: youtube SearchRunnerPort typed-nil (portutil.IsNilPort true — fail-closed per PR2)")
 	}
 
+	// Cookie-jar FORMAT gate (fail loud, at boot). Every YouTube leg hands the
+	// resolved jar to yt-dlp through BaseArgs; a jar yt-dlp cannot parse aborts
+	// each invocation with "does not look like a Netscape format cookies file".
+	// That verdict used to reach the operator only as an unrelated 5xx on
+	// whichever endpoint happened to touch YouTube first (observed: 503 on
+	// GET /api/clips/search and on every stock acquisition), so it is raised here
+	// instead — the jar is the one YouTube input this process cannot repair at
+	// runtime. Scoped to a YouTube-ENABLED deployment: a jar left behind by a
+	// disabled feature must not block an unrelated boot, but it is reported
+	// rather than silently ignored.
+	cookieJar := cfg.External.ResolveYouTubeCookiesPath()
+	cookieJarErr := ytdlp.ValidateCookiesFile(cookieJar)
+	switch {
+	case cookieJarErr != nil && cfg.Features.YouTubeEnabled:
+		return nil, nil, nil, fmt.Errorf("compose domains: %w", cookieJarErr)
+	case cookieJarErr != nil:
+		log.Warn("youtube cookies file is unusable but the YouTube feature is disabled; continuing",
+			zap.String("path", cookieJar), zap.Error(cookieJarErr))
+	}
+
 	hashAdapter := ytinfra.NewHashAdapter()
 
 	// Use the canonical resolved cookie path for subtitle acquisition; the

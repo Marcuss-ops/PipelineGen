@@ -164,3 +164,38 @@ var _ FileLifecycle = (*FileLifecycleAdapter)(nil)
 // tests are wired (e.g. when happy-path Drive round-trip tests are
 // gated behind an integration build tag in a follow-up).
 var _ *gdrive.Service = nil
+
+// TestFileLifecycleAdapter_EmptyTrash_NilService pins the misconfig
+// branch of the destructive trash purge: with no Drive service wired the
+// method MUST fail before reaching the SDK, so a half-configured
+// composition can never report a successful purge. EmptyTrash has no
+// input validation (there is nothing to validate), so the nil-service
+// check is its only early-rejection path.
+func TestFileLifecycleAdapter_EmptyTrash_NilService(t *testing.T) {
+	a := NewFileLifecycleAdapter(nil, nil)
+	err := a.EmptyTrash(context.Background())
+	if err == nil {
+		t.Fatal("EmptyTrash(nil service) should reject")
+	}
+	if !strings.Contains(err.Error(), "drive service not configured") {
+		t.Errorf("EmptyTrash: unexpected error: %v", err)
+	}
+}
+
+// TestFileLifecycleAdapter_ListTrashed_NilService pins the read-only
+// preview's misconfig branch. ListTrashed clamps maxResults (rather than
+// rejecting it) because the call mutates nothing; the ONLY rejection is
+// the missing Drive service, which this test asserts.
+func TestFileLifecycleAdapter_ListTrashed_NilService(t *testing.T) {
+	a := NewFileLifecycleAdapter(nil, nil)
+	items, err := a.ListTrashed(context.Background(), 10)
+	if err == nil {
+		t.Fatal("ListTrashed(nil service) should reject")
+	}
+	if !strings.Contains(err.Error(), "drive service not configured") {
+		t.Errorf("ListTrashed: unexpected error: %v", err)
+	}
+	if items != nil {
+		t.Errorf("ListTrashed(nil service) should return nil items, got: %v", items)
+	}
+}

@@ -87,7 +87,11 @@ func TestUpsertPreservingExisting_DispatcherPath(t *testing.T) {
 	clip.SetLegacyFileMD5("abc123")
 	clip.SetDriveLink("https://drive.google.com/file/d/abc")
 
-	require.NoError(t, svc.upsertPreservingExisting(ctx, repo, repo, clip))
+	// MEDIA LEGACY READ-PLANE DEMOLITION (2026-09-21, sub-wave B): the indexer
+	// slot is a testIndexer — the operational repository no longer implements
+	// AssetIndexer (its GetIndexState media read is deleted), and this test only
+	// needs the non-nil slot the service validates.
+	require.NoError(t, svc.upsertPreservingExisting(ctx, repo, testIndexer{}, clip))
 
 	// media_assets row must be present (atomic with the outbox write).
 	stored, err := repo.GetClip(ctx, "test_clip_001")
@@ -139,7 +143,7 @@ func TestUpsertPreservingExisting_DispatcherPath_FolderSkipsOutbox(t *testing.T)
 	folder.SetIsFolder(true)
 	folder.SetFolderID("test_folder_001")
 
-	require.NoError(t, svc.upsertPreservingExisting(ctx, repo, repo, folder))
+	require.NoError(t, svc.upsertPreservingExisting(ctx, repo, testIndexer{}, folder))
 
 	// media_assets row must be present (folder metadata is canonical).
 	stored, err := repo.GetClip(ctx, "test_folder_001")
@@ -185,7 +189,7 @@ func TestUpsertPreservingExisting_NilDispatcherReturnsError(t *testing.T) {
 	clip.SetIsFolder(false)
 	clip.SetLegacyFileMD5("legacy_hash")
 
-	err := svc.upsertPreservingExisting(ctx, repo, repo, clip)
+	err := svc.upsertPreservingExisting(ctx, repo, testIndexer{}, clip)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "dispatcher is nil")
 }

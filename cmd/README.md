@@ -29,7 +29,9 @@ with no arguments to list all registered commands (~95 total). Key categories:
   `backfill-source-url-metadata`, `backfill-missing`, `backfill-visual-embeddings`
 - **Drive operations**: `drive-reconcile`, `drive-doctor`, `drive-bootstrap`,
   `sync-all-drive`, `sync-drive-folder`, `drive-create-folder`,
-  `trash-drive-files`, `upload-drive-file`
+  `trash-drive-files`, `upload-drive-file`,
+  `drive-empty-trash` (fail-closed: previews the trash and only permanently
+  purges with the explicit `--apply` flag)
   (`remove-drive-folder-recursive` is still registered but RETIRED — its
   preflight and asset planning read the quarantined SQLite media catalog, so it
   fails closed before touching Drive)

@@ -133,8 +133,8 @@ func subtitleStyleFingerprint(plan LocalizedClipPlan) string {
 }
 
 // visualStyleFingerprint canonicalizes a VisualStyleSpec into a stable string
-// (hex color, pixel sizes, %-scale, shadow, transition). Floats are formatted
-// with a fixed precision so equivalent values fold identically.
+// (hex color, pixel sizes, %-scale, stroke, shadow, transition). Floats are
+// formatted with a fixed precision so equivalent values fold identically.
 func visualStyleFingerprint(s *scriptpkg.VideoVisualStyleSpec) string {
 	if s == nil {
 		return ""
@@ -148,6 +148,13 @@ func visualStyleFingerprint(s *scriptpkg.VideoVisualStyleSpec) string {
 		fmt.Sprintf("%d", s.WidthPX),
 		fmt.Sprintf("%d", s.HeightPX),
 		fmt.Sprintf("%.6f", s.ScalePercent),
+	}
+	if s.Stroke != nil {
+		parts = append(parts, strings.Join([]string{
+			"stroke",
+			strings.TrimSpace(s.Stroke.Color),
+			fmt.Sprintf("%.6f", s.Stroke.Width),
+		}, "\x1e"))
 	}
 	if s.Shadow != nil {
 		parts = append(parts, strings.Join([]string{

@@ -16,6 +16,10 @@
 //
 //   - 4 receivers (GetFolderChildren/FindByPHash/MarkUsed/MarkClipsUsed) →
 //     internal/platform/sqlite/assets/store_helpers.go
+//     (MEDIA LEGACY READ-PLANE DEMOLITION, 2026-09-21: MarkUsed and
+//     MarkClipsUsed were later DELETED from that file — zero production and
+//     zero test call sites — so only GetFolderChildren and FindByPHash remain
+//     there today.)
 //   - 9 Store-CRD receivers (Get/Save/Delete/List) on the asset store →
 //     internal/platform/sqlite/assets/asset_store.go
 //     (asset_repository_adapter + summary_query)

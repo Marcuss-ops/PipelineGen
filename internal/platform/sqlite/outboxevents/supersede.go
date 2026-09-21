@@ -47,9 +47,9 @@ type SupersedeError struct {
 	AssetID string
 	// Current is the current canonical index_revision read from the
 	// asset (media_assets.metadata_json.$.index_revision; legacy rows
-	// fall back to content_hash via SourceVersionFor). Empty when the
-	// asset row is absent — the handler may then fall through to a
-	// different terminal branch.
+	// fall back to the stored fingerprint via the media-SSOT read in
+	// pgmedia/index_event.go). Empty when the asset row is absent — the
+	// handler may then fall through to a different terminal branch.
 	Current string
 	// Expected is the index_revision embedded in the event payload (the
 	// canonical supersede fingerprint; the legacy source_version alias

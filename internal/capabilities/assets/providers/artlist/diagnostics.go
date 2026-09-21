@@ -96,9 +96,10 @@ type SystemProber interface {
 // DiagnosticsService fornisce statistiche e diagnostiche sul catalogo Artlist.
 // (Fase 2, July 2026): the diagnostics surface now goes through
 // systemProber.ProbeAll for the 10 wire-by-wire probes, plus
-// runRepo.LatestRun + assetStore.CountBySource for the special
-// informational fields, plus the legacy assetStore term-search for
-// the term-keyed surface. NO aggregated top-level OK field — godlike/07.
+// runRepo.LatestRun + the mediaStats aggregates (per-source count, newest
+// matching run timestamp) for the special informational fields, plus the legacy
+// assetStore term-search for the term-keyed surface. NO aggregated top-level OK
+// field — godlike/07.
 type DiagnosticsService struct {
 	svc          *Service
 	systemProber SystemProber
@@ -158,16 +159,37 @@ func (stubSystemProber) ProbeAll(ctx context.Context) ProbeSet {
 // /api/artlist/diagnostics endpoint rewrite; do it in a follow-up that
 // also updates the 4 stock-e2e script consumers in lockstep.
 func (d *DiagnosticsService) GetStats(ctx context.Context) (*Stats, error) {
-	totalClips, err := d.svc.assetStore.CountClips(ctx)
+	totalClips, err := d.countClips(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to count clips: %w", err)
 	}
 
 	return &Stats{
-		OK:                true,
+		OK: true,
+		// Preserved quirk, pinned by the diagnostics tests: this legacy surface
+		// reports the catalogue total in BOTH fields, including the one named
+		// "artlist". The artlist-specific number is the one /api/artlist/
+		// diagnostics reports through CountBySource; re-pointing these two fields
+		// would silently change a number four operator scripts read.
 		ClipsTotal:        totalClips,
 		ArtlistClipsTotal: totalClips,
 	}, nil
+}
+
+// countClips answers the catalogue total from the media SSOT.
+//
+// MEDIA LEGACY READ-PLANE DEMOLITION (2026-09-21, sub-wave B'): this used to be
+// d.svc.assetStore.CountClips — the operational SQLite store — so
+// /api/artlist/stats reported a count read off a mirror the canonical PostgreSQL
+// committer does not write to (and could panic on a nil store). It now reads the
+// media SSOT through the optional MediaStats port, on the same rule as the rest
+// of the surface: a nil port is a TYPED FAILURE, never a zero, because an
+// aggregate has no field to carry "unknown" and godlike/07 forbids inventing it.
+func (d *DiagnosticsService) countClips(ctx context.Context) (int, error) {
+	if d == nil || d.svc == nil || d.svc.mediaStats == nil {
+		return 0, ErrMediaStatsUnavailable
+	}
+	return d.svc.mediaStats.CountClips(ctx)
 }
 
 // Diagnostics ottiene informazioni diagnostiche wire-by-wire per il
@@ -206,8 +228,11 @@ func (d *DiagnosticsService) Diagnostics(ctx context.Context, term string) (*Dia
 
 	// Special informational surfaces (Fase 2): LatestRun + LastError
 	// sourced from RunRepository (canonical SSOT for artlist_runs
-	// aggregate writer). CountBySource('artlist') sourced from
-	// ClipsRepository (canonical SSOT post-Fase 0 clips_statistics.go).
+	// aggregate writer). CountBySource('artlist') is sourced from the
+	// media SSOT (pgmedia.MediaStatisticsReader) since the MEDIA LEGACY
+	// READ-PLANE DEMOLITION of 2026-09-21 retired the SQLite
+	// ClipsRepository implementation; without a media handle the port
+	// fails closed and the field stays unpopulated.
 	if d.svc.runRepo != nil {
 		if latest, err := d.svc.runRepo.LatestRun(ctx); err == nil && latest != nil {
 			resp.LatestRun = &LatestRunSummary{
@@ -221,29 +246,44 @@ func (d *DiagnosticsService) Diagnostics(ctx context.Context, term string) (*Dia
 		}
 	}
 
-	if d.svc.assetStore != nil {
-		// PR-P2-DIAGNOSTICS-REALE (July 2026): per-source count is
-		// sourced from the canonical ClipsRepository.CountBySource
-		// (godlike/06 SSOT; Fase 0 added this helper). never fall back
-		// to v1's CountClips() (which counts everything across sources
-		// — wrong attribution for an "artlist indexed clips" surface).
-		if count, err := d.svc.assetStore.CountBySource(ctx, "artlist"); err == nil {
+	// PR-P2-DIAGNOSTICS-REALE (July 2026): the per-source count comes from the
+	// dedicated MediaStats port, not AssetStore (MEDIA LEGACY READ-PLANE
+	// DEMOLITION, 2026-09-21: keeping it on AssetStore forced the operational
+	// SQLite store to own a media_assets read). The port is answered by
+	// pgmedia.MediaStatisticsReader on the media SSOT. Both guards are
+	// deliberate: a nil port (no media handle wired) and a non-nil error both
+	// leave the field unavailable rather than fabricated — never fall back to
+	// v1's all-sources count (wrong attribution for an "artlist indexed clips"
+	// surface).
+	if d.svc.mediaStats != nil {
+		if count, err := d.svc.mediaStats.CountBySource(ctx, "artlist"); err == nil {
 			resp.ClipsArtlistTotal = count
 		}
+	}
+
+	term = strings.TrimSpace(term)
+	if d.svc.assetStore != nil {
 
 		// Legacy term-search surface preserved (no fail-closed
 		// enforcement on these fields — they were always informational,
 		// not probe-shaped, and operator scripts/queries rely on them).
-		term = strings.TrimSpace(term)
 		if term != "" {
 			resp.SearchTerm = term
 			if matches, err := d.svc.assetStore.SearchClips(ctx, "artlist", term); err == nil {
 				resp.MatchingClips = len(matches)
 				resp.EstimatedSize = len(matches)
 			}
-			if lastProcessedAt, err := d.svc.assetStore.LastUpdatedAtForTerm(ctx, term); err == nil {
-				resp.LastProcessedAt = lastProcessedAt
-			}
+		}
+	}
+
+	// MEDIA LEGACY READ-PLANE DEMOLITION (2026-09-21, sub-wave B'): the newest
+	// matching created_at is a media_assets read, so it moved off assetStore (the
+	// operational mirror) onto the media SSOT port with its siblings. It stays
+	// informational like the neighbours above: a nil port or an error leaves the
+	// field unset rather than inventing a timestamp.
+	if term != "" && d.svc.mediaStats != nil {
+		if lastProcessedAt, err := d.svc.mediaStats.LastUpdatedAtForTerm(ctx, term); err == nil {
+			resp.LastProcessedAt = lastProcessedAt
 		}
 	}
 

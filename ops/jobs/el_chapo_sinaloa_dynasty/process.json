@@ -1,0 +1,183 @@
+{
+  "_comment": "Canonical POST /api/clips/process payload (ExtractRequest, drift source of truth: internal/capabilities/youtube/dto/types.go). 'El Chapo's Family Is Finished: Inside The Fall Of The Sinaloa Cartel Dynasty' (video 4b4RPzvnQM8, 907s, channel 'The Connect: With Johnny Mitchell') — 12 curated moments. Destination: the EXISTING child folder 1i1g5UNNssoNGkHGYx17jFZxPt3_nAm_L ('El Chapo', under the Narcos parent 1zcSUzYvw_AipiNyvtW6v-TOy3fK4nLOI), the same folder that holds the NBC/Sean Penn job (el_chapo_nbc_penn); create_subfolder=false so clips upload straight into it. Clip identity is deterministic yt_<videoID>_<startSec>_<endSec>_v1, so re-submitting this exact payload UPSERTs the same media_assets rows instead of minting duplicates. Duration gate: segments are 29-58s, inside the deployed VELOX_YOUTUBE_MAX_SEGMENT_DURATION_SECONDS=240 (the canonical SegmentPolicy default of 60s also accepts them). Validated against live metadata (duration=907s): the last segment ends at 14:45 < 15:07. Category kept as 'celebrity_interview' to match the sibling job already indexed in this folder.",
+  "url": "https://www.youtube.com/watch?v=4b4RPzvnQM8",
+  "strategy": "verify",
+  "concurrency": 3,
+  "force_keyframes": true,
+  "keep_audio": true,
+  "write_summary": true,
+  "destination": {
+    "folder_id": "1i1g5UNNssoNGkHGYx17jFZxPt3_nAm_L",
+    "create_subfolder": false
+  },
+  "segments": [
+    {
+      "start": "00:00",
+      "end": "00:45",
+      "name": "Incriminazione dei politici di Sinaloa da parte degli Stati Uniti",
+      "category": "celebrity_interview",
+      "source_title": "El Chapo's Family Is Finished: Inside The Fall Of The Sinaloa Cartel Dynasty",
+      "source_channel": "The Connect: With Johnny Mitchell",
+      "summary": "Il Dipartimento di Giustizia USA incrimina dieci politici dello stato di Sinaloa per collusione con la fazione dei Chapitos.",
+      "topics": [
+        "US Justice Department indictment Chapitos Sinaloa cartel Ruben Rocha Moya Culiacan Andres Manuel Lopez Obrador Mayitos guerra narcotraffico corruzione"
+      ],
+      "tags": ["El Chapo", "Sinaloa Cartel", "celebrity_interview"],
+      "mentioned_people": ["Rubén Rocha Moya", "Andrés Manuel López Obrador"]
+    },
+    {
+      "start": "00:45",
+      "end": "01:40",
+      "name": "Nuova strategia USA e implicazioni geopolitiche",
+      "category": "celebrity_interview",
+      "source_title": "El Chapo's Family Is Finished: Inside The Fall Of The Sinaloa Cartel Dynasty",
+      "source_channel": "The Connect: With Johnny Mitchell",
+      "summary": "Le autorità statunitensi cambiano strategia colpendo le protezioni politiche dei cartelli, sollevando interrogativi su sovranità e operazioni coperte.",
+      "topics": [
+        "US law enforcement shift kingpins politicians intelligence CIA car bombing sovranita messicana intervento militare Culiacan"
+      ],
+      "tags": ["El Chapo", "Sinaloa Cartel", "celebrity_interview"],
+      "mentioned_people": ["Rubén Rocha Moya"]
+    },
+    {
+      "start": "01:59",
+      "end": "02:44",
+      "name": "Agguato e rapimento di Ismael 'El Mayo' Zambada",
+      "category": "celebrity_interview",
+      "source_title": "El Chapo's Family Is Finished: Inside The Fall Of The Sinaloa Cartel Dynasty",
+      "source_channel": "The Connect: With Johnny Mitchell",
+      "summary": "Viene ricostruito il rapimento di El Mayo Zambada in Sonora e il suo trasporto aereo negli Stati Uniti in mano alla DEA.",
+      "topics": [
+        "Ismael El Mayo Zambada Sinaloa cartel imboscata Sonora kidnapping volo El Paso Texas DEA Joaquin Guzman Lopez Chapitos Mayitos faida"
+      ],
+      "tags": ["El Chapo", "Sinaloa Cartel", "celebrity_interview"],
+      "mentioned_people": ["Ismael Zambada García", "Joaquín Guzmán López"]
+    },
+    {
+      "start": "02:44",
+      "end": "03:41",
+      "name": "Doppio gioco dei Chapitos e ruolo di Ovidio Guzmán",
+      "category": "celebrity_interview",
+      "source_title": "El Chapo's Family Is Finished: Inside The Fall Of The Sinaloa Cartel Dynasty",
+      "source_channel": "The Connect: With Johnny Mitchell",
+      "summary": "Il tradimento ai danni di Zambada si rivela una manovra concordata da Joaquín López Guzmán con la DEA per favorire il fratello Ovidio.",
+      "topics": [
+        "Ruben Rocha Moya mediazione politica tradimento Joaquin Lopez Guzman DEA Ovidio Guzman Culiacanazo estradizione USA"
+      ],
+      "tags": ["El Chapo", "Sinaloa Cartel", "celebrity_interview"],
+      "mentioned_people": ["Joaquín Guzmán López", "Ovidio Guzmán López", "Rubén Rocha Moya"]
+    },
+    {
+      "start": "04:29",
+      "end": "05:12",
+      "name": "Latitanza di Iván Archivaldo e resa della famiglia Guzmán",
+      "category": "celebrity_interview",
+      "source_title": "El Chapo's Family Is Finished: Inside The Fall Of The Sinaloa Cartel Dynasty",
+      "source_channel": "The Connect: With Johnny Mitchell",
+      "summary": "Mentre Iván Archivaldo si dà alla macchia sui monti, l'ex moglie di El Chapo e diversi familiari si consegnano alle autorità statunitensi a San Ysidro.",
+      "topics": [
+        "Ivan Archivaldo Guzman Sierra Madre Griselda Lopez Port of San Ysidro San Diego DEA US Marshals witness protection programma protezione testimoni"
+      ],
+      "tags": ["El Chapo", "Sinaloa Cartel", "celebrity_interview"],
+      "mentioned_people": ["Iván Archivaldo Guzmán Salazar", "Griselda López Pérez"]
+    },
+    {
+      "start": "05:12",
+      "end": "06:10",
+      "name": "Alleanza e caduta dei vertici del CJNG",
+      "category": "celebrity_interview",
+      "source_title": "El Chapo's Family Is Finished: Inside The Fall Of The Sinaloa Cartel Dynasty",
+      "source_channel": "The Connect: With Johnny Mitchell",
+      "summary": "Il patto disperato tra i Chapitos e il CJNG fallisce a seguito dell'uccisione di El Mencho e dell'arresto del suo secondo El Jardinero.",
+      "topics": [
+        "CJNG Cartel Jalisco Nueva Generacion El Mencho Nemesio Oseguera Cervantes raid militare Jalisco El Jardinero arresto estradizione alleanza rottura"
+      ],
+      "tags": ["El Chapo", "Sinaloa Cartel", "celebrity_interview"],
+      "mentioned_people": ["Nemesio Oseguera Cervantes"]
+    },
+    {
+      "start": "06:50",
+      "end": "07:44",
+      "name": "Dettagli dell'indagine federale contro il governatore Moya",
+      "category": "celebrity_interview",
+      "source_title": "El Chapo's Family Is Finished: Inside The Fall Of The Sinaloa Cartel Dynasty",
+      "source_channel": "The Connect: With Johnny Mitchell",
+      "summary": "I dettagli dell'indagine USA rivelano accuse di traffico d'armi e riciclaggio contro il governatore Rocha Moya, ora irreperibile.",
+      "topics": [
+        "34-page indictment Ruben Rocha Moya polizia municipale Culiacan narcotraffico armi riciclaggio denaro fuga Los Mayitos sparatoria covo"
+      ],
+      "tags": ["El Chapo", "Sinaloa Cartel", "celebrity_interview"],
+      "mentioned_people": ["Rubén Rocha Moya"]
+    },
+    {
+      "start": "07:44",
+      "end": "08:36",
+      "name": "Dilemma politico per la presidente Claudia Sheinbaum",
+      "category": "celebrity_interview",
+      "source_title": "El Chapo's Family Is Finished: Inside The Fall Of The Sinaloa Cartel Dynasty",
+      "source_channel": "The Connect: With Johnny Mitchell",
+      "summary": "La presidenza messicana affronta una crisi diplomatica tra il rispetto della sovranità nazionale e i rischi politici legati a una potenziale estradizione.",
+      "topics": [
+        "Claudia Sheinbaum Morena party sovranita estradizione consenso politico scandalo dossier corruzione Ruben Rocha Moya"
+      ],
+      "tags": ["El Chapo", "Sinaloa Cartel", "celebrity_interview"],
+      "mentioned_people": ["Claudia Sheinbaum", "Rubén Rocha Moya"]
+    },
+    {
+      "start": "09:05",
+      "end": "10:00",
+      "name": "Torre Centinela e sorveglianza biometrica a Ciudad Juárez",
+      "category": "celebrity_interview",
+      "source_title": "El Chapo's Family Is Finished: Inside The Fall Of The Sinaloa Cartel Dynasty",
+      "source_channel": "The Connect: With Johnny Mitchell",
+      "summary": "A Ciudad Juárez sorge un centro di sorveglianza integrata ad alta tecnologia operato in coordinamento con le agenzie federali statunitensi.",
+      "topics": [
+        "Torre Centinela Ciudad Juarez Chihuahua FBI DEA ATF Homeland Security CBP droni telecamere biometrica AI surveillance big brother data"
+      ],
+      "tags": ["El Chapo", "Sinaloa Cartel", "celebrity_interview"],
+      "mentioned_people": []
+    },
+    {
+      "start": "10:00",
+      "end": "10:58",
+      "name": "Operazioni segrete e autobomba a Città del Messico",
+      "category": "celebrity_interview",
+      "source_title": "El Chapo's Family Is Finished: Inside The Fall Of The Sinaloa Cartel Dynasty",
+      "source_channel": "The Connect: With Johnny Mitchell",
+      "summary": "Episodi mortali e attentati dinamitardi contro esponenti del cartello sollevano sospetti su azioni paramilitari e intelligence sul suolo messicano.",
+      "topics": [
+        "Chihuahua CIA agenti lab metanfetamina autobomba Mexico City Benito Juarez airport Francisco El Pin Beltran Beltran Leyva omicidio mirato"
+      ],
+      "tags": ["El Chapo", "Sinaloa Cartel", "celebrity_interview"],
+      "mentioned_people": []
+    },
+    {
+      "start": "12:09",
+      "end": "13:05",
+      "name": "Trattative di resa e declino della dinastia Guzmán",
+      "category": "celebrity_interview",
+      "source_title": "El Chapo's Family Is Finished: Inside The Fall Of The Sinaloa Cartel Dynasty",
+      "source_channel": "The Connect: With Johnny Mitchell",
+      "summary": "Gli ultimi figli rimasti al vertice valutano la resa alla DEA, segnando il tracollo definitivo del controllo dei Guzmán su Sinaloa.",
+      "topics": [
+        "Ivan Archivaldo Alfredo Guzman Salazar resa DEA negoziati Mayitos CIA destabilizzazione interessi strategici materie prime risorse"
+      ],
+      "tags": ["El Chapo", "Sinaloa Cartel", "celebrity_interview"],
+      "mentioned_people": ["Iván Archivaldo Guzmán Salazar", "Alfredo Guzmán Salazar"]
+    },
+    {
+      "start": "13:46",
+      "end": "14:45",
+      "name": "Trasformazione tecnologica del narcotraffico",
+      "category": "celebrity_interview",
+      "source_title": "El Chapo's Family Is Finished: Inside The Fall Of The Sinaloa Cartel Dynasty",
+      "source_channel": "The Connect: With Johnny Mitchell",
+      "summary": "Le nuove tecnologie di tracciamento e intelligence pongono fine al vecchio modello rurale dei cartelli a favore di strutture più sommerse e sofisticate.",
+      "topics": [
+        "Flock cameras Palantir sorveglianza predittiva riciclaggio crimine organizzato white collar deep state fine narcostato"
+      ],
+      "tags": ["El Chapo", "Sinaloa Cartel", "celebrity_interview"],
+      "mentioned_people": []
+    }
+  ]
+}

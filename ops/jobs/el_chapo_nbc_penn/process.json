@@ -1,0 +1,57 @@
+{
+  "_comment": "Canonical POST /api/clips/process payload (ExtractRequest, drift source of truth: internal/capabilities/youtube/dto/types.go). 'Full ‘El Chapo’ Interview with Sean Penn Released By Rolling Stone | NBC Nightly News' (video W3KJZUSxN9A, 150s, channel 'NBC News') — 3 curated moments. Destination: the explicit child folder 1i1g5UNNssoNGkHGYx17jFZxPt3_nAm_L ('El Chapo', created under the Narcos parent 1zcSUzYvw_AipiNyvtW6v-TOy3fK4nLOI via `admin drive-create-folder`); create_subfolder=false so clips upload straight into it. Clip identity is deterministic yt_<videoID>_<startSec>_<endSec>_v1, so re-submitting this exact payload UPSERTs the same media_assets rows instead of minting duplicates. Duration gate: segments are 43s / 32s / 58s, inside the deployed VELOX_YOUTUBE_MAX_SEGMENT_DURATION_SECONDS=240 (the canonical SegmentPolicy default of 60s also accepts them). All three segments were validated against the live metadata (duration=150s): the last ends at 02:13 < 02:30.",
+  "url": "https://www.youtube.com/watch?v=W3KJZUSxN9A",
+  "strategy": "verify",
+  "concurrency": 3,
+  "force_keyframes": true,
+  "keep_audio": true,
+  "write_summary": true,
+  "destination": {
+    "folder_id": "1i1g5UNNssoNGkHGYx17jFZxPt3_nAm_L",
+    "create_subfolder": false
+  },
+  "segments": [
+    {
+      "start": "00:00",
+      "end": "00:43",
+      "name": "Cattura di El Chapo e intervista a Rolling Stone",
+      "category": "celebrity_interview",
+      "source_title": "Full ‘El Chapo’ Interview with Sean Penn Released By Rolling Stone | NBC Nightly News",
+      "source_channel": "NBC News",
+      "summary": "Presentazione del covo in cui è stato catturato El Chapo a Sinaloa e dettagli sulle dichiarazioni rilasciate dal narcotrafficante a Sean Penn per Rolling Stone.",
+      "topics": [
+        "Joaquin El Chapo Guzman cattura Rolling Stone intervista Sean Penn fuga sparatoria covo latitanza Sinaloa messico NBC Gabe Gutierrez"
+      ],
+      "tags": ["El Chapo", "NBC Nightly News", "celebrity_interview"],
+      "mentioned_people": ["Joaquín Guzmán Loera", "Sean Penn"]
+    },
+    {
+      "start": "00:43",
+      "end": "01:15",
+      "name": "Ispezione del covo e ruolo di Kate del Castillo",
+      "category": "celebrity_interview",
+      "source_title": "Full ‘El Chapo’ Interview with Sean Penn Released By Rolling Stone | NBC Nightly News",
+      "source_channel": "NBC News",
+      "summary": "Il corrispondente mostra i segni della sparatoria all'interno dell'abitazione e il ritrovamento di copie DVD della serie interpretata da Kate del Castillo, intermediaria dell'incontro.",
+      "topics": [
+        "covo Los Mochis Sinaloa fori proiettile scontro a fuoco DVD La Reina del Sur Kate del Castillo attrice telenovela Sean Penn incontro clandestino"
+      ],
+      "tags": ["El Chapo", "NBC Nightly News", "celebrity_interview"],
+      "mentioned_people": ["Joaquín Guzmán Loera", "Kate del Castillo", "Sean Penn"]
+    },
+    {
+      "start": "01:15",
+      "end": "02:13",
+      "name": "Indagini, raid interrotto e regime di detenzione",
+      "category": "celebrity_interview",
+      "source_title": "Full ‘El Chapo’ Interview with Sean Penn Released By Rolling Stone | NBC Nightly News",
+      "source_channel": "NBC News",
+      "summary": "Analisi delle versioni contrastanti sul ruolo dell'intervista nella localizzazione del boss e conferma del regime di massimo isolamento a cui Guzman è sottoposto.",
+      "topics": [
+        "Procuratore Generale Messico Marina sorveglianza blitz annullato fuga soffiata polizia cattura carcere massima sicurezza isolamento Gabe Gutierrez"
+      ],
+      "tags": ["El Chapo", "NBC Nightly News", "celebrity_interview"],
+      "mentioned_people": ["Joaquín Guzmán Loera"]
+    }
+  ]
+}

@@ -242,8 +242,11 @@ var routeDescriptions = map[string]string{
 	"POST /api/drive/reconcile":     "Reconcile Drive metadata",
 	"POST /api/drive/resolve-by-id": "Resolve Drive folder by ID",
 	"POST /api/drive/cleanup":       "Clean up empty Drive folders",
-	"POST /api/drive/folders":       "List Drive folders",
+	"GET /api/drive/files":          "List a Drive folder's files",
+	"POST /api/drive/folders":       "Create Drive folders under a parent (idempotent get-or-create)",
 	"POST /api/drive/move":          "Move Drive files",
+	"POST /api/drive/rename":        "Rename a Drive file or folder",
+	"POST /api/drive/canary-upload": "Upload a readiness canary file into a Drive folder (folder_id or folder_alias)",
 
 	// ── Fullimages ───────────────────────────────────────────
 	// POST /api/fullimages/image/generate was retired and merged into

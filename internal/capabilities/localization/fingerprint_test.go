@@ -77,6 +77,12 @@ func TestFingerprint_EachRenderFactChangesDigest(t *testing.T) {
 		{"subtitle_style", func(p *LocalizedClipPlan) {
 			p.SubtitlesStyle = &scriptpkg.VideoVisualStyleSpec{Color: "#FFFFFF", FontSizePX: 54}
 		}},
+		{"subtitle_stroke", func(p *LocalizedClipPlan) {
+			p.SubtitlesStyle = &scriptpkg.VideoVisualStyleSpec{
+				Color: "#FFFFFF", FontSizePX: 54,
+				Stroke: &scriptpkg.VideoStrokeSpec{Color: "#000000", Width: 2},
+			}
+		}},
 		{"watermark_style", func(p *LocalizedClipPlan) {
 			p.Watermark = &cliprender.MaterializedAsset{AssetID: "asset-wm", LocalPath: "/x.png", SHA256: strings.Repeat("e", 64)}
 			p.WatermarkSpec = &cliprender.WatermarkSpec{Enabled: true, AssetID: "asset-wm", Position: "top_right", Opacity: 0.9, MarginPX: 24,
@@ -117,6 +123,9 @@ func TestFingerprint_StyleDeltaChangesDigest(t *testing.T) {
 		name   string
 		mutate func(*LocalizedClipPlan)
 	}{
+		{"subtitle stroke width", func(p *LocalizedClipPlan) {
+			p.SubtitlesStyle.Stroke = &scriptpkg.VideoStrokeSpec{Color: "#000000", Width: 2}
+		}},
 		{"watermark shadow offset", func(p *LocalizedClipPlan) { p.WatermarkSpec.Style.Shadow.OffsetY = 9 }},
 		{"watermark shadow color", func(p *LocalizedClipPlan) { p.WatermarkSpec.Style.Shadow.Color = "#FF0000" }},
 		{"watermark transition added", func(p *LocalizedClipPlan) {

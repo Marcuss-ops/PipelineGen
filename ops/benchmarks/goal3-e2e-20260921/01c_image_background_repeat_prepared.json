@@ -1,0 +1,97 @@
+{
+  "plan_id": "goal3-image-bg",
+  "assets": [
+    {
+      "key": "33d6172fe42db6de6ae22fbf28536ae9a735bf74d175247addd0685e3e4885c5",
+      "kind": "image",
+      "content_hash": "11e7f03590138cc4aecf3665e852c7440c9df010de3e7d71dc09ca982105f255",
+      "logical_path": "assets/semantic/goal3-bg-image/background.png",
+      "size": [
+        1920,
+        1080
+      ],
+      "fit": "cover"
+    },
+    {
+      "key": "964b056b172bce20b2eda358c8f59a9c6e5b92fdce772448be5000dec4a2a6ed",
+      "kind": "video",
+      "content_hash": "876315db320442a640495eb9a5c4a9469730db115e0d78eca027ff5b47f79bd0",
+      "logical_path": "assets/semantic/goal3-foreground/source.mp4",
+      "size": [
+        1920,
+        1080
+      ],
+      "fit": "cover"
+    }
+  ],
+  "text_runs": [
+    {
+      "key": "b0eeabf8f5111e5237689f2f088126479f4b03b814e6cab32dc210f4a5a431cc",
+      "text": "PipelineGen",
+      "font": "assets/semantic/goal3-font/Poppins-Bold.ttf",
+      "font_size": 48,
+      "fill": "#FFFFFF",
+      "stroke_color": "#000000",
+      "stroke_width": 3,
+      "size": [
+        320,
+        80
+      ],
+      "style": {
+        "font": "assets/semantic/goal3-font/Poppins-Bold.ttf",
+        "font_size": 48,
+        "fill": "#FFFFFF",
+        "stroke": {
+          "color": "#000000",
+          "width": 3
+        }
+      }
+    }
+  ],
+  "overlays": [
+    {
+      "id": "background",
+      "kind": "image",
+      "asset_key": "33d6172fe42db6de6ae22fbf28536ae9a735bf74d175247addd0685e3e4885c5",
+      "static": true,
+      "dynamic": {
+        "start_frame": 0,
+        "duration_frames": 120
+      }
+    },
+    {
+      "id": "source",
+      "kind": "video",
+      "asset_key": "964b056b172bce20b2eda358c8f59a9c6e5b92fdce772448be5000dec4a2a6ed",
+      "static": true,
+      "dynamic": {
+        "start_frame": 0,
+        "duration_frames": 120,
+        "position": [
+          -960,
+          -540
+        ],
+        "scale": [
+          0.7,
+          0.7
+        ]
+      }
+    },
+    {
+      "id": "watermark",
+      "kind": "text",
+      "text_key": "b0eeabf8f5111e5237689f2f088126479f4b03b814e6cab32dc210f4a5a431cc",
+      "static": true,
+      "dynamic": {
+        "start_frame": 0,
+        "duration_frames": 120,
+        "position": [
+          1536,
+          64
+        ],
+        "opacity": 0.9
+      }
+    }
+  ],
+  "content_hash": "4a122e17a62e461b128dc454d8c3a6b2630476de463b5fbf24b561f88937fa4b"
+}

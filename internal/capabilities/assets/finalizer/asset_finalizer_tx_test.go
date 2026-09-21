@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/finalization"
-	assets "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/imagesregistry"
 	testsupport "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/imagesregistry/testsupport"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
 	_ "github.com/mattn/go-sqlite3"
@@ -736,16 +735,20 @@ func TestAssetTxFinalizer_IndexStatePendingAtInsert(t *testing.T) {
 
 // TestAssetTxFinalizer_ContentHashInMetadataJson pins the godlike/07
 // no-fake-availability contract for the source_version supersede-gate
-// fix: metadata_json MUST include content_hash = artifact.SHA256 so
-// that SourceVersionFor() (Tier 1, see
-// internal/platform/sqlite/assets/source_version.go)
-// reads the correct fingerprint from the same write boundary as the
-// outbox event.
+// fix: metadata_json MUST include content_hash = artifact.SHA256 so the
+// fingerprint a supersede gate compares is stamped by the same write
+// boundary as the outbox event.
 //
 // Without this key, a republish that changes legacy_file_md5 would leave
-// metadata_json.$.legacy_file_md5 stale (from the previous ingest), causing
-// SourceVersionFor to return the OLD hash and the IndexingHandler to
-// mark the NEW event as superseded — Qdrant never updates.
+// metadata_json.$.legacy_file_md5 stale (from the previous ingest), so a
+// gate reading the fingerprint would see the OLD hash and mark the NEW event
+// as superseded — the projection never updates.
+//
+// MEDIA LEGACY READ-PLANE DEMOLITION (2026-09-21, sub-wave B): the SQLite
+// SourceVersionFor() oracle that used to close this loop (and the
+// source_version.go helper behind it) is deleted; the assertions below read
+// the same slots directly, and the media-SSOT fingerprint read lives on
+// pgmedia/index_event.go.
 func TestAssetTxFinalizer_ContentHashInMetadataJson(t *testing.T) {
 	db := setupTestDB(t)
 	defer db.Close()
@@ -780,15 +783,13 @@ func TestAssetTxFinalizer_ContentHashInMetadataJson(t *testing.T) {
 			meta1["content_hash"], "old-hash")
 	}
 
-	// End-to-end: SourceVersionFor() must read Tier 1 (content_hash)
-	// and return the hash from the first ingest.
-	sv1, err := assets.SourceVersionFor(ctx, db, "asset-content-hash")
-	if err != nil {
-		t.Fatalf("SourceVersionFor (1st): %v", err)
-	}
-	if sv1 != "old-hash" {
-		t.Errorf("SourceVersionFor() after 1st ingest = %q, want %q (Tier 1 broken!)", sv1, "old-hash")
-	}
+	// MEDIA LEGACY READ-PLANE DEMOLITION (2026-09-21, sub-wave B): the
+	// assets.SourceVersionFor() oracle this test used to close the loop was
+	// deleted with source_version.go. The assertion above (metadata_json
+	// .content_hash is the freshly ingested value) is the contract that
+	// remains: the SQLite fingerprint reader and the supersede gate it fed
+	// are both retired, and the media-SSOT fingerprint is pgmedia's
+	// (index_event.go).
 
 	// Second ingest: republish with new hash (the bug scenario).
 	tx2, _ := db.BeginTx(ctx, nil)
@@ -820,16 +821,9 @@ func TestAssetTxFinalizer_ContentHashInMetadataJson(t *testing.T) {
 			meta2["content_hash"], "new-hash")
 	}
 
-	// End-to-end: SourceVersionFor() must now return the NEW hash
-	// from Tier 1 — this is the canonical production contract that
-	// prevents the supersede gate from firing on republish.
-	sv2, err := assets.SourceVersionFor(ctx, db, "asset-content-hash")
-	if err != nil {
-		t.Fatalf("SourceVersionFor (2nd): %v", err)
-	}
-	if sv2 != "new-hash" {
-		t.Errorf("SourceVersionFor() after republish = %q, want %q (supersede gate would fire!)", sv2, "new-hash")
-	}
+	// The republish contract is the assertion above: metadata_json.content_hash
+	// now holds the NEW hash, so a supersede gate comparing Tier 1 would see the
+	// current identity. See the deleted-oracle note on the first ingest.
 
 	// Verify legacy_file_md5 column is also the new hash.
 	var colHash string
@@ -854,10 +848,12 @@ func TestAssetTxFinalizer_ContentHashInMetadataJson(t *testing.T) {
 	if payload["source_version"] != "new-hash" {
 		t.Errorf("outbox source_version = %v, want %q", payload["source_version"], "new-hash")
 	}
-	// Final consistency: outbox source_version == content_hash == SourceVersionFor.
-	if payload["source_version"] != sv2 {
-		t.Errorf("outbox source_version=%v != SourceVersionFor()=%q (write boundary inconsistency!)",
-			payload["source_version"], sv2)
+	// Final consistency: the outbox source_version must equal the content_hash
+	// the SAME write boundary stamped into metadata_json — that slot is exactly
+	// what the deleted SourceVersionFor oracle read.
+	if payload["source_version"] != meta2["content_hash"] {
+		t.Errorf("outbox source_version=%v != metadata_json.content_hash=%q (write boundary inconsistency!)",
+			payload["source_version"], meta2["content_hash"])
 	}
 }
 

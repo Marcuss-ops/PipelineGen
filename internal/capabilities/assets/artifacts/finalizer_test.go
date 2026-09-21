@@ -646,9 +646,9 @@ const (
 
 // TestFinalizer_WriteMetadataJSON_ContentHashInMetadataJson pins the
 // supersede-gate fix for the artifacts finalizer: writeMetadataJSON
-// MUST include content_hash in the Extra map so that SourceVersionFor()
-// reads Tier 1 (highest priority) instead of falling back to stale
-// Tier 2 (file_hash from a previous ingest). Without this fix, a
+// MUST include content_hash in the Extra map so a fingerprint read takes
+// the primary slot instead of falling back to a stale secondary one
+// (file_hash from a previous ingest). Without this fix, a
 // republish that changes file_hash would leave metadata_json.$.file_hash
 // stale and the supersede gate would fire incorrectly.
 //

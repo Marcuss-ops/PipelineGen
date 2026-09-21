@@ -71,6 +71,12 @@ type Service struct {
 	assetStore     AssetStore
 	indexer        Indexer
 	metadataWriter MetadataWriter
+	// mediaStats answers the media_assets aggregates the diagnostics and stats
+	// surfaces report. nil when no media SSOT handle is wired: the diagnostics
+	// fields are then reported as unavailable and the aggregate surface fails
+	// closed, never read off the operational store (MEDIA LEGACY READ-PLANE
+	// DEMOLITION, 2026-09-21).
+	mediaStats MediaStats
 
 	// Dispatcher is the canonical outbox dispatcher; nil means
 	// dispatchBridge falls back to the legacy UpsertClip + IndexClip
@@ -233,6 +239,7 @@ func NewService(deps ServiceDeps) (*Service, error) {
 		assetStore:        deps.AssetStore,
 		indexer:           deps.Indexer,
 		metadataWriter:    deps.MetadataWriter,
+		mediaStats:        deps.MediaStats,
 		dispatcher:        deps.Ports.Dispatcher,
 		publisher:         deps.Publisher,
 		mediaProcessor:    deps.Domain.MediaProcessor,

@@ -46,6 +46,60 @@ func TestMediaModeStockOnlyAcceptsFolderBindings(t *testing.T) {
 	}
 }
 
+func TestMediaModeStockOnlyExpandsSegmentDriveFolder(t *testing.T) {
+	item := GenerationItemV2{
+		ID: "five-boxers", MediaMode: MediaModeStockOnly,
+		Source: SourceSpec{Type: SourceText, Topic: "five boxers"},
+		ScriptParams: ScriptSpec{Segments: []ScriptSegment{
+			{ID: "boxer-1", Topic: "Boxer 1", StockFolderID: testFolderID},
+		}},
+	}
+	env := &GenerationEnvelopeV2{Version: 2, Items: []GenerationItemV2{item}}
+	if err := env.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	if len(env.Items[0].Output.StockBindings) != 1 {
+		t.Fatalf("generated stock bindings = %d, want 1", len(env.Items[0].Output.StockBindings))
+	}
+	binding := env.Items[0].Output.StockBindings[0]
+	if binding.Index != 0 || binding.SceneID != "scene-0" || binding.SegmentID != "boxer-1" {
+		t.Fatalf("generated binding identity = %+v", binding)
+	}
+	if binding.FolderID != testFolderID || binding.FolderLink != "https://drive.google.com/drive/folders/"+testFolderID {
+		t.Fatalf("generated folder binding = %+v", binding)
+	}
+	if item.Output.StockEnabled == ToggleEnabled {
+		t.Fatal("test must verify validation mutates the envelope, not the original item")
+	}
+}
+
+func TestMediaModeStockOnlyExpandsSegmentDriveFolderLink(t *testing.T) {
+	item := stockOnlyItem()
+	item.Output.StockBindings = nil
+	item.ScriptParams = ScriptSpec{Segments: []ScriptSegment{{
+		ID: "boxer-1", Topic: "Boxer 1", StockFolderLink: testFolderLink,
+	}}}
+	if err := (&GenerationEnvelopeV2{Version: 2, Items: []GenerationItemV2{item}}).Validate(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestMediaModeStockOnlyRejectsMismatchedSegmentDriveFolder(t *testing.T) {
+	item := GenerationItemV2{
+		ID: "boxer", MediaMode: MediaModeStockOnly,
+		Source: SourceSpec{Type: SourceText, Topic: "boxer"},
+		ScriptParams: ScriptSpec{Segments: []ScriptSegment{{
+			ID: "boxer-1", Topic: "Boxer 1", StockFolderID: testFolderID,
+			StockFolderLink: "https://drive.google.com/drive/folders/other-folder",
+		}}},
+	}
+	err := (&GenerationEnvelopeV2{Version: 2, Items: []GenerationItemV2{item}}).Validate()
+	var pve *PayloadValidationError
+	if !errors.As(err, &pve) || pve.Code != "INVALID_STOCK_FOLDER" {
+		t.Fatalf("error = %v, want INVALID_STOCK_FOLDER", err)
+	}
+}
+
 func TestMediaModeStockOnlyRejectsSourceClips(t *testing.T) {
 	i := stockOnlyItem()
 	i.Source = SourceSpec{Type: SourceClips, ClipIDs: []string{"clip-1"}}

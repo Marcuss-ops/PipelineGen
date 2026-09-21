@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/gin-gonic/gin"
@@ -131,6 +132,45 @@ func TestStockHandler_SearchAndRun_AsyncOmitted_Returns200(t *testing.T) {
 	}
 	if resp.Status != StatusCompleted || resp.JobID != "" {
 		t.Fatalf("omitted async on search-and-run must be synchronous: %+v", resp)
+	}
+}
+
+// TestStockHandler_SearchAndRun_LegacySearchQueries_ReturnsActionable400
+// guards the diagnosability contract of this endpoint's deliberately
+// permissive binding: the legacy /run shape (`search_queries`) is dropped by
+// the decoder instead of being rejected as an unknown field (POST /run does
+// reject the mirror-image mistake). Without an explicit hint the caller only
+// ever sees a generic "no sources" 400 and has no way to learn which key was
+// dropped — exactly the misroute class the live battery documents as a trap.
+// The gate must stay fail-closed (400) while the message names both shapes.
+func TestStockHandler_SearchAndRun_LegacySearchQueries_ReturnsActionable400(t *testing.T) {
+	_, router := newStockHandler(nil, "job-search-and-run")
+
+	payload := `{"search_queries":["boxing training gym"],"clip_duration":5,"folder_name":"legacy-shape"}`
+	req := httptest.NewRequest(http.MethodPost, "/search-and-run", bytes.NewBufferString(payload))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("legacy search_queries on search-and-run must fail closed with 400, got %d: %s", w.Code, w.Body.String())
+	}
+	var resp testRunResponse
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if resp.Status != StatusError {
+		t.Errorf("expected status %q, got %q", StatusError, resp.Status)
+	}
+	if resp.ErrorCode != ErrCodeInvalidPayload {
+		t.Errorf("expected error_code %q, got %q", ErrCodeInvalidPayload, resp.ErrorCode)
+	}
+	// Each fragment pins one half of the guidance: the dropped key, the
+	// accepted shape, and the endpoint that does accept the legacy shape.
+	for _, want := range []string{"search_queries", "queries:[{q,limit}]", "/api/stock-pipeline/run"} {
+		if !strings.Contains(resp.Error, want) {
+			t.Errorf("error must mention %q so the dropped key is diagnosable; got %q", want, resp.Error)
+		}
 	}
 }
 

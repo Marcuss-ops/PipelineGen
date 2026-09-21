@@ -1,11 +1,16 @@
 // Package asset — search DTOs (Wave C / Phase 2 slim).
 //
-// Phase 2 (Wave C / Blocco 1 asset.Asset SSOT, June 2026): the 4 SQL
+// Phase 2 (Wave C / Blocco 1 asset.Asset SSOT, June 2026): the 4 SQL
 // receivers (SearchClips/SearchClipsByKeywords/SearchClipsAdvanced/
 // SearchStockByKeywords) that used to live here are now canonical on
 // the LOCAL infra sqlite asset store
 // (internal/platform/sqlite/assets/search_queries.go)
-// and reached via HYBRID-embed promotion. Cross-package scoring
+// and reached via HYBRID-embed promotion.
+//
+// MEDIA LEGACY READ-PLANE DEMOLITION (2026-09-21): SearchClipsByKeywords and
+// SearchStockByKeywords have since been DELETED from that file (zero call
+// sites); SearchClips and SearchClipsAdvanced remain.
+// Cross-package scoring
 // (`asset.ScoreClips`) is the public surface for the SearchClips
 // scoring algorithm; this file no longer holds scoring logic.
 //

@@ -14,12 +14,18 @@ package script
 // ScriptSpec.Segments is the SOLE canonical owner;
 // SourceSpec and Item layers consume via generator-normalizer copies.
 type ScriptSegment struct {
-	ID          string   `json:"id,omitempty"`
-	Kind        string   `json:"kind,omitempty"`
-	Topic       string   `json:"topic"`
-	SourceText  string   `json:"source_text,omitempty"`
-	ClipIDs     []string `json:"clip_ids,omitempty"`
-	TargetWords int      `json:"target_words,omitempty"`
+	ID         string   `json:"id,omitempty"`
+	Kind       string   `json:"kind,omitempty"`
+	Topic      string   `json:"topic"`
+	SourceText string   `json:"source_text,omitempty"`
+	ClipIDs    []string `json:"clip_ids,omitempty"`
+	// StockFolderID/StockFolderLink select a Drive folder whose stock assets
+	// belong to this segment. The ingress expands these fields into the
+	// internal stock binding contract; callers do not need to provide
+	// stock_bindings manually.
+	StockFolderID   string `json:"stock_folder_id,omitempty"`
+	StockFolderLink string `json:"stock_folder_link,omitempty"`
+	TargetWords     int    `json:"target_words,omitempty"`
 	// MinWords and MaxWords are optional QA bounds. Explicit MinWords keeps the
 	// configured undershoot tolerance during generated-prose validation. When
 	// MinWords is omitted, the validator derives a minimum from TargetWords and

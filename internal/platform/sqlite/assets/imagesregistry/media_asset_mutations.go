@@ -45,21 +45,12 @@ func execAssetUpdate(ctx context.Context, exec mediaAssetSQLExecutor, assetID, o
 // enrich_state transitions are owned by pgmedia.MediaEnrichStateStore on the
 // PostgreSQL media SSOT, so no SQLite writer of that column may survive.
 
-// UpdateMediaAssetUsage delegates reuse-counter persistence to the canonical
-// mutation implementation.
-func UpdateMediaAssetUsage(ctx context.Context, exec mediaAssetSQLExecutor, assetID, usedAt string) error {
-	return persistMediaAssetUsage(ctx, exec, assetID, usedAt)
-}
-
-func persistMediaAssetUsage(ctx context.Context, exec mediaAssetSQLExecutor, assetID, usedAt string) error {
-	if strings.TrimSpace(usedAt) == "" {
-		usedAt = time.Now().UTC().Format(time.RFC3339)
-	}
-	return execAssetUpdate(ctx, exec, assetID, "usage update", `
-		UPDATE media_assets
-		SET reuse_count = COALESCE(reuse_count, 0) + 1, last_used_at = ?, updated_at = ?
-		WHERE id = ?`, usedAt, usedAt, assetID)
-}
+// MEDIA LEGACY READ-PLANE DEMOLITION (2026-09-21): UpdateMediaAssetUsage and
+// its persistMediaAssetUsage body are DELETED together with their only caller
+// (MarkUsed/MarkClipsUsed in store_helpers.go). The canonical reuse-counter
+// mutation already lives on the media SSOT
+// (internal/platform/postgres/media/mutations.go, UpdateMediaAssetUsage), so
+// no SQLite writer of media_assets.reuse_count / last_used_at may survive here.
 
 // CheckAndIncrementMediaAssetVersion performs the canonical optimistic
 // concurrency update used by the admin console. The read-back remains here

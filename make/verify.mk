@@ -122,6 +122,13 @@ verify-full: verify-main verify-race
 
 # verify-go-core — domain and application logic tests. Isolates failures
 # in the core business packages so a domain test failure is immediately
+# distinguishable from an infrastructure or API failure. The recipe keeps
+# both halves of that name: "domain" is internal/kernel + internal/capabilities
+# and "application" is internal/app, the WAVE-24 successor of the retired
+# internal/application root. Dropping the application leg leaves the
+# composition root's tests unexecuted by every verify target, so verify-main
+# (and therefore CI) would pass green without ever running them.
+
 # verify-integration — operational, integration, and E2E tests under ./tests/.
 verify-integration: go-version-check
 	@$(MAKE) verify-go-tests

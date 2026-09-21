@@ -1,0 +1,210 @@
+{
+  "version": 2,
+  "preset": "custom",
+  "correlation_id": "dolly-parton-5clips-preview-en-20260921T00Z",
+  "force_refresh": true,
+  "items": [
+    {
+      "id": "dolly-parton-5clips-preview-en",
+      "project": "dolly-parton-preview-en",
+      "title": "Dolly Parton — Best Moments (5 clips preview, en)",
+      "language": "en",
+      "tone": "warm, witty and energetic",
+      "style": "One scene per provided clip, in the given order. Stay strictly grounded on each clip transcript; do not invent facts. Each scene is a single sentence or two, punchy, quickly paced, about 40 words per scene.",
+      "model": "gemma4:e2b",
+      "source": {
+        "type": "clips",
+        "topic": "Dolly Parton — 5 best moments",
+        "source_text": "A five-clip teaser of Dolly Parton's best moments, drawn from four interviews (WIRED, 60 Minutes Australia, Dan Rather at Dollywood, Conan).",
+        "clip_ids": [
+          "yt_Bc9gTqiljLA_0_36_v1",
+          "yt_tnoMGevqWAM_1841_1903_v1",
+          "yt_pfaIAdqvlig_457_509_v1",
+          "yt_pfaIAdqvlig_929_980_v1",
+          "yt_vLRjqTIiMjc_211_256_v1"
+        ],
+        "num_clips": 5,
+        "ordering_strategy": "input_order",
+        "grounding_policy": "clips_primary",
+        "fallback_policy": "strict",
+        "force_refresh": true
+      },
+      "script_params": {
+        "target_words": 200,
+        "min_words": 150,
+        "segment_words": 40,
+        "concurrency": 1,
+        "force_refresh": true,
+        "segments": [
+          {
+            "id": "scene-0",
+            "kind": "clip",
+            "topic": "WIRED introduction and her soprano register",
+            "source_text": "Dolly introduces the WIRED autocomplete interview and jokes about her voice, explaining that she is a soprano.",
+            "clip_ids": [
+              "yt_Bc9gTqiljLA_0_36_v1"
+            ],
+            "target_words": 40,
+            "min_words": 25,
+            "max_words": 60
+          },
+          {
+            "id": "scene-1",
+            "kind": "clip",
+            "topic": "The universal vulnerability inside 'Jolene'",
+            "source_text": "Dolly breaks down what made Jolene a global hit: the shared vulnerability in wanting and fearing to lose someone.",
+            "clip_ids": [
+              "yt_tnoMGevqWAM_1841_1903_v1"
+            ],
+            "target_words": 40,
+            "min_words": 25,
+            "max_words": 60
+          },
+          {
+            "id": "scene-2",
+            "kind": "clip",
+            "topic": "The Dollywood empire — millions and its roller coasters",
+            "source_text": "Inside Dollywood: how Dolly turned her hometown dream into a 300-million-dollar theme park and keeps building roller coasters.",
+            "clip_ids": [
+              "yt_pfaIAdqvlig_457_509_v1"
+            ],
+            "target_words": 40,
+            "min_words": 25,
+            "max_words": 60
+          },
+          {
+            "id": "scene-3",
+            "kind": "clip",
+            "topic": "Whitney Houston's cover of 'I Will Always Love You'",
+            "source_text": "When Whitney Houston cut Dolly's song, the world went platinum and Dolly, who kept the publishing, understood the lifelong value of owning her rights.",
+            "clip_ids": [
+              "yt_pfaIAdqvlig_929_980_v1"
+            ],
+            "target_words": 40,
+            "min_words": 25,
+            "max_words": 60
+          },
+          {
+            "id": "scene-4",
+            "kind": "clip",
+            "topic": "The bronze statue and the line about pigeons",
+            "source_text": "Dolly's hometown erected a bronze statue for her — and her father's line kept her modest: 'To pigeons you're just another outdoor restroom.'",
+            "clip_ids": [
+              "yt_vLRjqTIiMjc_211_256_v1"
+            ],
+            "target_words": 40,
+            "min_words": 25,
+            "max_words": 60
+          }
+        ]
+      },
+      "docs": {
+        "enabled": true,
+        "languages": [
+          "en"
+        ],
+        "folder_id": "1ST6FxPuRaxwBOIz39MAN8Jj4gDv509-K"
+      },
+      "audio": {
+        "mode": "CHUNKED_VOICEOVER",
+        "mix_policy": "VOICEOVER_ONLY",
+        "timing": {
+          "mode": "required",
+          "boundary": "word",
+          "formats": [
+            "json",
+            "srt",
+            "vtt"
+          ]
+        }
+      },
+      "output": {
+        "save_to_db": true,
+        "extract_entities": "disabled",
+        "generate_metadata": false,
+        "generate_timeline": true,
+        "voiceover_enabled": true,
+        "languages": [
+          "en"
+        ],
+        "render": {
+          "enabled": true,
+          "drive_folder_id": "1ST6FxPuRaxwBOIz39MAN8Jj4gDv509-K",
+          "drive_subfolder_name": "dolly-parton-5clips-preview-en-20260921",
+          "render_concurrency": 5,
+          "foreground_scale_percent": 85,
+          "output_dir": "",
+          "require_gpu": false,
+          "background": {
+            "mode": "blur_source"
+          },
+          "watermark": {
+            "enabled": true,
+            "text": "VELOX EDITING",
+            "position": "top_right",
+            "opacity": 0.85,
+            "style": {
+              "font": "Impact",
+              "scale_percent": 100,
+              "shadow": {
+                "color": "#000000",
+                "opacity": 0.6,
+                "blur_px": 12,
+                "offset_x": 0,
+                "offset_y": 4
+              }
+            }
+          },
+          "subtitles": {
+            "enabled": true,
+            "mode": "burn",
+            "preset": "subs-young",
+            "style": {
+              "color": "#FFFFFF",
+              "position": "bottom_center",
+              "shadow": {
+                "color": "#000000",
+                "opacity": 0.8,
+                "blur_px": 8,
+                "offset_x": 0,
+                "offset_y": 4
+              }
+            }
+          }
+        },
+        "drive_folder_id": "1ST6FxPuRaxwBOIz39MAN8Jj4gDv509-K"
+      },
+      "overlay_background": {
+        "kind": "color",
+        "color": [
+          0.9333333333333333,
+          0.9450980392156862,
+          0.9058823529411765,
+          1
+        ],
+        "fit": "cover",
+        "opacity": 1,
+        "loop": false
+      },
+      "media_plan": {
+        "mode": "clip_only",
+        "cache": {
+          "read": true,
+          "write": true
+        },
+        "provider_policy": {
+          "internet_images": "disabled",
+          "artlist": "disabled",
+          "image_generation": "disabled",
+          "youtube": "disabled"
+        },
+        "materialization": {
+          "mode": "selected",
+          "upload_to_drive": true,
+          "wait_for_ready": true
+        },
+        "include_trace": true
+      }
+    }
+  ]
+}

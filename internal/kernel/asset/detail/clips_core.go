@@ -8,6 +8,18 @@
 // (internal/platform/sqlite/assets/folder_queries.go)
 // and reached via HYBRID-embed promotion through the legacy struct.
 //
+// MEDIA LEGACY READ-PLANE DEMOLITION (2026-09-21): of those nine receivers,
+// CountByFolderID and SearchFolders have since been DELETED from that file
+// (zero call sites). The seven folder-CRUD receivers remain and still read
+// `clip_folders`, not `media_assets`.
+//
+// MEDIA LEGACY READ-PLANE DEMOLITION (2026-09-21, sub-wave B): the
+// SourceVersionQuerier interface is DELETED together with source_version.go.
+// Its only implementation was *assets.ClipsRepository and its only consumer
+// (the IndexingHandler source_version supersede gate) was retired on
+// 2026-09-12, so it was a port with no port consumer. The fingerprint read it
+// described now lives on the media SSOT (pgmedia/index_event.go).
+//
 // This file now carries ONLY the canonical domain types
 // (ClipFolder/ClipManifest/ClipFolderStats/ClipManifestItem) and the
 // `ClipManifestItem.UnmarshalJSON` parser. No SQL primitives, no
@@ -16,17 +28,11 @@
 package detail
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
 )
-
-// SourceVersionQuerier queries the source version for a given asset ID.
-type SourceVersionQuerier interface {
-	SourceVersionFor(ctx context.Context, assetID string) (string, error)
-}
 
 // ClipFolder represents a folder containing multiple clips from the same source.
 type ClipFolder struct {

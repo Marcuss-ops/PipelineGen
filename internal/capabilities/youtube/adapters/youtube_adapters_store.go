@@ -56,9 +56,11 @@ func (a *ClipStoreAdapter) GetFolder(ctx context.Context, folderID string) (*det
 func (a *ClipStoreAdapter) SearchClipsAdvanced(ctx context.Context, req detail.AdvancedSearchRequest) (*detail.AdvancedSearchResult, error) {
 	return a.inner.SearchClipsAdvanced(ctx, req)
 }
-func (a *ClipStoreAdapter) CountClips(ctx context.Context) (int, error) {
-	return a.inner.CountClips(ctx)
-}
+
+// CountClips was DELETED with the port method it satisfied
+// (MEDIA LEGACY READ-PLANE DEMOLITION, 2026-09-21, sub-wave B'): zero call sites
+// in the tree, and it was the only reason the operational store still exposed a
+// media_assets count.
 
 // ── MonitorsStoreAdapter ──────────────────────────────────────────────
 

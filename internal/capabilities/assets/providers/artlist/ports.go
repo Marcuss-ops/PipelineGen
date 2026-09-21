@@ -57,15 +57,59 @@ type Transcriber interface {
 }
 
 // AssetStore is the canonical Artlist-facing media asset persistence port.
+//
+// MEDIA LEGACY READ-PLANE DEMOLITION (2026-09-21, sub-wave B'): CountClips and
+// LastUpdatedAtForTerm are REMOVED from this interface. They are aggregates over
+// media_assets, i.e. media-SSOT facts, and keeping them here forced the
+// operational SQLite store to own a media_assets read
+// (imagesregistry/clip_list_queries.go) purely to satisfy the interface. They now
+// live on MediaStats, answered by the engine that owns the rows. Removing them is
+// what let that file leave the read-plane inventory; every other consumer of this
+// port keeps compiling, because removing methods from an interface does not break
+// its implementers.
 type AssetStore interface {
 	Get(ctx context.Context, id string) (*asset.Asset, error)
 	Upsert(ctx context.Context, clip *asset.Asset) error
 	SearchByTerms(ctx context.Context, source string, keywords []string, limit int) ([]*asset.Asset, error)
 	SearchClips(ctx context.Context, source string, term string) ([]*asset.Asset, error)
-	CountClips(ctx context.Context) (int, error)
-	CountBySource(ctx context.Context, source string) (int, error)
-	LastUpdatedAtForTerm(ctx context.Context, term string) (*string, error)
 	UpdateSearchTerms(ctx context.Context, clipID string, source string, name string, tags []string, searchText string) error
+}
+
+// ErrMediaStatsUnavailable is the typed fail-closed sentinel for the aggregate
+// surfaces that have no media SSOT handle to answer them. It exists because an
+// aggregate like /api/artlist/stats has no per-field way to say "unknown": three
+// int/bool fields cannot carry an availability state, so answering 0 would be the
+// fabricated availability godlike/07 forbids.
+var ErrMediaStatsUnavailable = errors.New("artlist: media statistics port is not wired (no media PostgreSQL SSOT handle at composition) — the aggregate cannot be answered, and must not be reported as 0")
+
+// MediaStats reports the media_assets aggregates the Artlist surfaces need.
+//
+// WHY IT IS NOT PART OF AssetStore (MEDIA LEGACY READ-PLANE DEMOLITION). These
+// are media-SSOT facts, not operational-store ones, and they used to be bolted
+// onto AssetStore — which forced the operational SQLite store to keep
+// implementing media_assets reads (imagesregistry/clips_statistics.go, then
+// clip_list_queries.go) purely to satisfy that interface. A separate port lets the
+// operational store stop reading the media table altogether, while the numbers
+// are answered by the engine that owns them: pgmedia.MediaStatisticsReader.
+//
+// The three methods answer three DIFFERENT questions on purpose; that reader's
+// live-PostgreSQL tests pin each difference:
+//
+//   - CountBySource: rows for one source, soft-deleted INCLUDED (an indexed-row
+//     metric, not an online one);
+//   - CountClips: non-soft-deleted rows across every source, so it is
+//     deliberately NOT the sum of CountBySource;
+//   - LastUpdatedAtForTerm: the newest artlist created_at whose tags carry the
+//     term, nil when nothing matches.
+//
+// OPTIONAL AT COMPOSITION (godlike/07): it is nil when no media SSOT handle is
+// wired. The diagnostics surface then reports each field as unavailable instead
+// of fabricating a number, and the aggregate surface fails closed with
+// ErrMediaStatsUnavailable.
+type MediaStats interface {
+	CountBySource(ctx context.Context, source string) (int, error)
+	CountClips(ctx context.Context) (int, error)
+	LastUpdatedAtForTerm(ctx context.Context, term string) (*string, error)
 }
 
 type Indexer interface {
