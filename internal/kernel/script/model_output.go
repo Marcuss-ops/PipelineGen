@@ -1,6 +1,21 @@
 // Package script — model_output.go defines the canonical structured
-// model output envelope for script generation.
+// model output envelope for script generation AND its failure
+// contract: the ErrModelOutputMalformed sentinel plus the
+// ModelOutputError detail carrier.
+//
+// The envelope and its error shape are ONE contract — an output is
+// never simply valid-or-invalid, it is valid or it is a
+// ModelOutputError with structured details — so they live in one
+// file. They were previously split across model_output.go and
+// model_output_errors.go; the package sat at 66 production files
+// against max_files_per_package=65, and this cohesive pair is the
+// natural merge rather than a cosmetic one.
 package script
+
+import (
+	"fmt"
+	"strings"
+)
 
 // ModelScriptOutputV1 is the canonical structured output the LLM
 // must return for every script generation. SchemaVersion is always 1
@@ -49,3 +64,23 @@ type ModelScriptOutputV1 struct {
 	// "generated". omitempty.
 	CacheStatus string `json:"cache_status,omitempty"`
 }
+
+// ErrModelOutputMalformed is the sentinel for any model-output
+// decode or validation failure (malformed JSON, missing fields,
+// unsupported schema version).
+var ErrModelOutputMalformed = fmt.Errorf("script: model output malformed")
+
+// ModelOutputError carries the structured details behind
+// ErrModelOutputMalformed.
+type ModelOutputError struct {
+	Details []string
+}
+
+func (e *ModelOutputError) Error() string {
+	if e == nil || len(e.Details) == 0 {
+		return ErrModelOutputMalformed.Error()
+	}
+	return fmt.Sprintf("%s: %s", ErrModelOutputMalformed.Error(), strings.Join(e.Details, "; "))
+}
+
+func (e *ModelOutputError) Unwrap() error { return ErrModelOutputMalformed }

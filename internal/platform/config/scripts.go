@@ -56,15 +56,39 @@ type ScriptsConfig struct {
 
 	// LocalizedRenderConcurrency bounds concurrent clip renders within one
 	// script. Set to 4 for high-throughput Vulkan/Direct-YUV rendering.
+	//
+	// CAUTION: this single knob is ALSO the runner's TTS pool width
+	// (script_generation_runtime.go::SetTTSConcurrency), so raising it does not
+	// only widen rendering — it widens the certified voiceover fan-out too
+	// (DefaultTTSConcurrency=4 is measured: pool 8 → wall 51.2s→58.2s). Change
+	// it only with a fresh TTS measurement; use the GLOBAL/upload knobs below to
+	// widen the render lane on its own.
 	LocalizedRenderConcurrency int `yaml:"localized_render_concurrency" env:"VELOX_SCRIPTS_LOCALIZED_RENDER_CONCURRENCY" default:"4"`
 
 	// LocalizedRenderGlobalConcurrency bounds the number of render jobs allowed
-	// across the script fan-out.
-	LocalizedRenderGlobalConcurrency int `yaml:"localized_render_global_concurrency" env:"VELOX_SCRIPTS_LOCALIZED_RENDER_GLOBAL_CONCURRENCY" default:"4"`
+	// across the script fan-out. It is the MACHINE bound shared by every
+	// concurrent Localize call, so a payload whose render_concurrency is higher
+	// than this value is silently throttled to it.
+	//
+	// 6, not 4: the localized fan-out fires ONE Localize call per (scene,
+	// language), so with a 5-scene job the fifth render always waited for a
+	// slot while the certified payload width was 5 (2026-09-21 tail audit:
+	// last render → job close was ~11s of pure gate + doc assembly). This is a
+	// PIPELINING bound, not a GPU bound: the RenderingGen worker owns
+	// worker.gpu_lanes and remains the only authority on concurrent GPU work
+	// (PERFORMANCE-BLOAT-AUDIT §R1), so widening it fills the worker queue
+	// rather than oversubscribing the GPU. Lower it via env on a GPU-constrained
+	// host; render_concurrency is clamped with a WARN (not silently capped).
+	LocalizedRenderGlobalConcurrency int `yaml:"localized_render_global_concurrency" env:"VELOX_SCRIPTS_LOCALIZED_RENDER_GLOBAL_CONCURRENCY" default:"6"`
 
 	// LocalizedRenderUploadConcurrency bounds Drive uploads independently from
 	// GPU rendering. Uploads must not retain a render slot while waiting on I/O.
-	LocalizedRenderUploadConcurrency int `yaml:"localized_render_upload_concurrency" env:"VELOX_SCRIPTS_LOCALIZED_RENDER_UPLOAD_CONCURRENCY" default:"4"`
+	//
+	// 6, not 4: the upload pool must be at least as wide as the render pool, or
+	// the last clip's Drive publish re-serialises the tail the render gate just
+	// paid for (a 5-upload queue behind a 4-slot pool delays the final
+	// document by one full upload). Upload is API-I/O, not a GPU budget.
+	LocalizedRenderUploadConcurrency int `yaml:"localized_render_upload_concurrency" env:"VELOX_SCRIPTS_LOCALIZED_RENDER_UPLOAD_CONCURRENCY" default:"6"`
 
 	// SeparateItemRenderWorkers bounds how many PER-ITEM overlay renders may be
 	// in flight at once when production renders one video per semantic overlay

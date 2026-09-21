@@ -1,0 +1,179 @@
+{
+  "url": "https://www.youtube.com/watch?v=oMWu7YqVP1E",
+  "strategy": "verify",
+  "destination": {
+    "folder_id": "19rnS2EiF9RfSFRaFXDfuJhlMvFgSiRtl"
+  },
+  "segments": [
+    {
+      "start": "01:07",
+      "end": "01:20",
+      "name": "Hook: Tom Cruise balla Can't Feel My Face",
+      "source_title": "The Weeknd Reveals How Tom Cruise Transformed His Career, Talks Filming HURRY UP TOMORROW (Extended)",
+      "source_channel": "The Tonight Show Starring Jimmy Fallon",
+      "summary": "Clip storica del playback di Tom Cruise che ha dato una spinta virale decisiva al singolo di The Weeknd.",
+      "topics": ["Hook: Tom Cruise balla Can't Feel My Face"],
+      "texts": [
+        {
+          "language_code": "en",
+          "source_type": "provided",
+          "is_original": true,
+          "description": "Tom Cruise Lip Sync Battle Can't Feel My Face The Weeknd Tonight Show Jimmy Fallon ballo virale"
+        }
+      ]
+    },
+    {
+      "start": "01:40",
+      "end": "02:15",
+      "name": "L'impatto di Tom Cruise sulle classifiche",
+      "source_title": "The Weeknd Reveals How Tom Cruise Transformed His Career, Talks Filming HURRY UP TOMORROW (Extended)",
+      "source_channel": "The Tonight Show Starring Jimmy Fallon",
+      "summary": "Abel ringrazia Tom Cruise per aver portato il brano in vetta alle classifiche e rivela la sua passione per i suoi film.",
+      "topics": ["L'impatto di Tom Cruise sulle classifiche"],
+      "texts": [
+        {
+          "language_code": "en",
+          "source_type": "provided",
+          "is_original": true,
+          "description": "The Weeknd Tom Cruise Can't Feel My Face vetta classifiche Vanilla Sky Rain Man stima fan"
+        }
+      ]
+    },
+    {
+      "start": "03:45",
+      "end": "04:22",
+      "name": "Record mondiali di streaming su Spotify",
+      "source_title": "The Weeknd Reveals How Tom Cruise Transformed His Career, Talks Filming HURRY UP TOMORROW (Extended)",
+      "source_channel": "The Tonight Show Starring Jimmy Fallon",
+      "summary": "Jimmy Fallon riassume i record storici di Abel, tra cui i 5 miliardi di stream per Blinding Lights.",
+      "topics": ["Record mondiali di streaming su Spotify"],
+      "texts": [
+        {
+          "language_code": "en",
+          "source_type": "provided",
+          "is_original": true,
+          "description": "record Spotify 27 brani miliardo ascolti Blinding Lights 5 miliardi stream primato storico musica"
+        }
+      ]
+    },
+    {
+      "start": "05:05",
+      "end": "05:40",
+      "name": "Origini: American Apparel e musica anonima",
+      "source_title": "The Weeknd Reveals How Tom Cruise Transformed His Career, Talks Filming HURRY UP TOMORROW (Extended)",
+      "source_channel": "The Tonight Show Starring Jimmy Fallon",
+      "summary": "Abel ricorda quando a diciannove anni piegava abiti ascoltando i suoi stessi pezzi trasmessi in negozio in totale anonimato.",
+      "topics": ["Origini: American Apparel e musica anonima"],
+      "texts": [
+        {
+          "language_code": "en",
+          "source_type": "provided",
+          "is_original": true,
+          "description": "American Apparel commesso piegare magliette Toronto House of Balloons anonimato identità"
+        }
+      ]
+    },
+    {
+      "start": "06:05",
+      "end": "06:20",
+      "name": "Hook: Abbandono della scuola per la musica",
+      "source_title": "The Weeknd Reveals How Tom Cruise Transformed His Career, Talks Filming HURRY UP TOMORROW (Extended)",
+      "source_channel": "The Tonight Show Starring Jimmy Fallon",
+      "summary": "L'incoraggiamento di un amico nei corridoi scolastici spinge Abel ad abbandonare la scuola superiore per inseguire la musica.",
+      "topics": ["Hook: Abbandono della scuola per la musica"],
+      "texts": [
+        {
+          "language_code": "en",
+          "source_type": "provided",
+          "is_original": true,
+          "description": "Canadian Idol corridoio scuola voce talento drop out high school svolta carriera"
+        }
+      ]
+    },
+    {
+      "start": "06:45",
+      "end": "07:35",
+      "name": "Chiusura della trilogia Hurry Up Tomorrow",
+      "source_title": "The Weeknd Reveals How Tom Cruise Transformed His Career, Talks Filming HURRY UP TOMORROW (Extended)",
+      "source_channel": "The Tonight Show Starring Jimmy Fallon",
+      "summary": "Abel illustra l'architettura narrativa del disco come capitolo conclusivo della trilogia avviata con After Hours.",
+      "topics": ["Chiusura della trilogia Hurry Up Tomorrow"],
+      "texts": [
+        {
+          "language_code": "en",
+          "source_type": "provided",
+          "is_original": true,
+          "description": "Hurry Up Tomorrow After Hours Dawn FM trilogia George Lucas Peter Jackson concept album"
+        }
+      ]
+    },
+    {
+      "start": "08:30",
+      "end": "08:45",
+      "name": "Hook: Perdita della voce al SoFi Stadium",
+      "source_title": "The Weeknd Reveals How Tom Cruise Transformed His Career, Talks Filming HURRY UP TOMORROW (Extended)",
+      "source_channel": "The Tonight Show Starring Jimmy Fallon",
+      "summary": "The Weeknd racconta il momento traumatico in cui la voce lo ha abbandonato davanti a un intero stadio gremito.",
+      "topics": ["Hook: Perdita della voce al SoFi Stadium"],
+      "texts": [
+        {
+          "language_code": "en",
+          "source_type": "provided",
+          "is_original": true,
+          "description": "SoFi Stadium Los Angeles perdita voce afonia 80000 persone palco trauma vocal injury"
+        }
+      ]
+    },
+    {
+      "start": "08:46",
+      "end": "09:12",
+      "name": "La natura psicologica dell'infortunio",
+      "source_title": "The Weeknd Reveals How Tom Cruise Transformed His Career, Talks Filming HURRY UP TOMORROW (Extended)",
+      "source_channel": "The Tonight Show Starring Jimmy Fallon",
+      "summary": "L'artista spiega che la perdita della voce era di matrice puramente psicologica, trasformata poi nel concept centrale del film.",
+      "topics": ["La natura psicologica dell'infortunio"],
+      "texts": [
+        {
+          "language_code": "en",
+          "source_type": "provided",
+          "is_original": true,
+          "description": "blocco psicologico psicosomatico stress trauma terapia elaborazione artistica catarsi"
+        }
+      ]
+    },
+    {
+      "start": "09:30",
+      "end": "10:00",
+      "name": "Ispirazioni registiche: David Lynch e Carl Jung",
+      "source_title": "The Weeknd Reveals How Tom Cruise Transformed His Career, Talks Filming HURRY UP TOMORROW (Extended)",
+      "source_channel": "The Tonight Show Starring Jimmy Fallon",
+      "summary": "The Weeknd definisce il lungometraggio un thriller psicologico fortemente influenzato dalle teorie di Jung e dal surrealismo di Lynch.",
+      "topics": ["Ispirazioni registiche: David Lynch e Carl Jung"],
+      "texts": [
+        {
+          "language_code": "en",
+          "source_type": "provided",
+          "is_original": true,
+          "description": "Carl Jung David Lynch thriller psicologico doppio ombra introspezione Hurry Up Tomorrow"
+        }
+      ]
+    },
+    {
+      "start": "10:41",
+      "end": "10:55",
+      "name": "Hook: Scena clou del film nel camerino",
+      "source_title": "The Weeknd Reveals How Tom Cruise Transformed His Career, Talks Filming HURRY UP TOMORROW (Extended)",
+      "source_channel": "The Tonight Show Starring Jimmy Fallon",
+      "summary": "Estratto ad alta tensione dal film in cui il protagonista vive un crollo emotivo dietro le porte chiuse del backstage.",
+      "topics": ["Hook: Scena clou del film nel camerino"],
+      "texts": [
+        {
+          "language_code": "en",
+          "source_type": "provided",
+          "is_original": true,
+          "description": "scena recitazione film Hurry Up Tomorrow camerino crisi Bobby dramma backstage"
+        }
+      ]
+    }
+  ]
+}

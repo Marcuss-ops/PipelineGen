@@ -360,8 +360,8 @@ func (s *SpecScene) Validate() error {
 			if len(bindings) == 0 && s.Bindings.Clip != nil {
 				bindings = []ClipBinding{*s.Bindings.Clip}
 			}
-			if len(bindings) == 0 || len(bindings) > 2 {
-				details = append(details, "fixed_media requires 1 or 2 clip bindings")
+			if len(bindings) == 0 {
+				details = append(details, "fixed_media requires at least one clip binding")
 			} else {
 				expectedDuration := int64(0)
 				if playback.SourceOutMS > playback.SourceInMS {

@@ -28,7 +28,7 @@ func TestModelScriptOutputForDocumentDerivesFixedKindFromRole(t *testing.T) {
 				Role:          scriptpkg.SceneRoleOpening,
 				ExecutionMode: scriptpkg.SceneExecutionFixedMedia,
 				Text:          map[Language]string{"en": "Welcome"},
-				Clips:         []*ClipReference{{ID: "intro-a"}, {ID: "intro-b"}},
+				Clips:         []*ClipReference{{ID: "intro-a"}, {ID: "intro-b"}, {ID: "intro-c"}},
 			},
 			{
 				ID: "body-0", Index: 1,
@@ -54,7 +54,11 @@ func TestModelScriptOutputForDocumentDerivesFixedKindFromRole(t *testing.T) {
 	if intro.Text != "" || intro.DisplayText != "Welcome" {
 		t.Fatalf("doc intro text=%q display=%q, want display text only", intro.Text, intro.DisplayText)
 	}
-	require.Len(t, intro.Bindings.Clips, 2, "two-clip fixed intro must carry both clip bindings")
+	wantIntroClipIDs := []string{"intro-a", "intro-b", "intro-c"}
+	require.Len(t, intro.Bindings.Clips, len(wantIntroClipIDs), "fixed intro must carry every clip binding")
+	for i, wantID := range wantIntroClipIDs {
+		require.Equal(t, wantID, intro.Bindings.Clips[i].ClipID, "fixed intro clip order at index %d", i)
+	}
 	if model.SpecScene.Scenes[1].Kind != scriptpkg.SceneClip {
 		t.Fatalf("doc body kind = %q, want SceneClip", model.SpecScene.Scenes[1].Kind)
 	}

@@ -70,6 +70,10 @@ type LocalizationService struct {
 	plans   localization.PlanBuilder
 	service *localization.Service
 	cfg     LocalizationConfig
+	// log reports a render_concurrency request the deployment's global render
+	// gate will throttle. It is never nil: NewLocalizationService installs a
+	// no-op logger so the warning path cannot nil-panic in a hermetic test.
+	log *zap.Logger
 }
 
 type LocalizationDeps struct {
@@ -112,10 +116,14 @@ func NewLocalizationService(deps LocalizationDeps, cfg LocalizationConfig) (*Loc
 	if err != nil {
 		return nil, fmt.Errorf("localization service: document assembler: %w", err)
 	}
-	renderConcurrency := cfg.GlobalRenderConcurrency
-	if renderConcurrency < 1 {
-		renderConcurrency = 4
+	// Resolve the machine render bound ONCE. The gate width, the per-call clamp
+	// and the Localize warning must read the SAME number: an unset value used to
+	// mean 4 at the gate but 0 in the warning path, so a clamped request could go
+	// unreported — the exact silent-throttle the 2026-09-21 tail audit found.
+	if cfg.GlobalRenderConcurrency < 1 {
+		cfg.GlobalRenderConcurrency = localization.DefaultRenderConcurrency
 	}
+	renderConcurrency := cfg.GlobalRenderConcurrency
 	uploadConcurrency := cfg.UploadConcurrency
 	if uploadConcurrency < 1 {
 		uploadConcurrency = 4
@@ -128,7 +136,7 @@ func NewLocalizationService(deps LocalizationDeps, cfg LocalizationConfig) (*Loc
 	if err != nil {
 		return nil, fmt.Errorf("localization service: plan builder: %w", err)
 	}
-	return &LocalizationService{sources: deps.Sources, plans: plans, service: svc, cfg: cfg}, nil
+	return &LocalizationService{sources: deps.Sources, plans: plans, service: svc, cfg: cfg, log: zap.NewNop()}, nil
 }
 
 type LocalizeInput struct {
@@ -204,6 +212,19 @@ func (s *LocalizationService) Localize(ctx context.Context, in LocalizeInput) (*
 	plans, err := s.plans.Build(ctx, sourceInput, in.Request.Languages)
 	if err != nil {
 		return nil, fmt.Errorf("localization: localize: build plans: %w", err)
+	}
+
+	// A payload wider than the shared machine gate is throttled by that gate, so
+	// the operator must see the clamp instead of paying an unexplained per-scene
+	// wait (the fifth render of a 5-scene job used to wait for a slot with no
+	// signal at all). The gate stays the authority; only the invisibility goes.
+	if _, cramped := localization.RenderWidth(s.cfg.GlobalRenderConcurrency, in.Request.RenderConcurrency); cramped {
+		s.log.Warn("localization: render_concurrency request exceeds the global render gate; the machine bound wins",
+			zap.String("subsystem", "localization_service"),
+			zap.Int("requested_render_concurrency", in.Request.RenderConcurrency),
+			zap.Int("global_render_concurrency", s.cfg.GlobalRenderConcurrency),
+			zap.Int("upload_concurrency", s.cfg.UploadConcurrency),
+			zap.String("lever", "VELOX_SCRIPTS_LOCALIZED_RENDER_GLOBAL_CONCURRENCY"))
 	}
 
 	return s.service.Localize(ctx, localization.LocalizeInput{
@@ -316,7 +337,7 @@ func BuildLocalizationService(cfg *config.Config, root *ComposeRoot, log *zap.Lo
 		renderReuse = localizationadapters.NewLocalizedRenderReuse(root.MediaPostgres, log)
 	}
 
-	return NewLocalizationService(LocalizationDeps{
+	svc, err := NewLocalizationService(LocalizationDeps{
 		Sources:          sources,
 		TrackResolver:    localizationadapters.NewTrackResolver(trackStore),
 		SubtitleResolver: subtitleResolver,
@@ -326,6 +347,11 @@ func BuildLocalizationService(cfg *config.Config, root *ComposeRoot, log *zap.Lo
 		DocPublisher:     docPublisher,
 		RenderReuse:      renderReuse,
 	}, svcCfg)
+	if err != nil {
+		return nil, err
+	}
+	svc.log = log
+	return svc, nil
 }
 
 func LocalizationConfigFromConfig(cfg *config.Config) LocalizationConfig {

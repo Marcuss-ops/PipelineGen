@@ -102,6 +102,28 @@ func TestRenderUnitsForSceneFansTwoClipFixedSections(t *testing.T) {
 	}
 }
 
+// TestRenderUnitsForSceneAcceptsAnyFixedSectionLength protects the public
+// contract that fixed intro/outro sections are ordered sequences, not a
+// two-clip special case.
+func TestRenderUnitsForSceneAcceptsAnyFixedSectionLength(t *testing.T) {
+	fixed := Scene{
+		ID: "scene-fixed-many", ExecutionMode: scriptpkg.SceneExecutionFixedMedia,
+		Clips: []*ClipReference{
+			{ID: "intro-a"}, {ID: "intro-b"}, {ID: "intro-c"}, {ID: "intro-d"},
+		},
+	}
+	units := RenderUnitsForScene(fixed)
+	if len(units) != 4 {
+		t.Fatalf("fixed 4-clip units = %d, want 4", len(units))
+	}
+	for i, unit := range units {
+		want := fixed.Clips[i].ID
+		if unit.ClipIndex != i || unit.Clip == nil || unit.Clip.ID != want {
+			t.Fatalf("unit[%d] = index %d clip %v, want ordered clip %q", i, unit.ClipIndex, unit.Clip, want)
+		}
+	}
+}
+
 // TestLocalizedRenderCaptionTextNeverFallsBackForFixedMedia certifies that a
 // fixed scene with no display text renders with an empty caption: the BODY
 // source_text must never leak into the intro/outro localized render.

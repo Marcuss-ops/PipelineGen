@@ -3,6 +3,7 @@ package localization
 import (
 	"context"
 	"fmt"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -329,4 +330,80 @@ func pipelinePlans(n int) []LocalizedClipPlan {
 		plans[i].Fingerprint = Fingerprint(plans[i])
 	}
 	return plans
+}
+
+// TestRenderWidth pins the clamp that makes the shared render gate legible: a
+// request wider than the machine bound resolves to the bound and reports
+// cramped, so the composition root can warn instead of letting the operator pay
+// an unexplained extra per-scene wait (2026-09-21 tail audit: the fifth of five
+// scenes always waited for a slot at global=4 while the payload asked 5).
+func TestRenderWidth(t *testing.T) {
+	cases := []struct {
+		name      string
+		machine   int
+		requested int
+		want      int
+		cramped   bool
+	}{
+		{name: "request under the bound", machine: 6, requested: 5, want: 5},
+		{name: "request equal to the bound", machine: 5, requested: 5, want: 5},
+		{name: "request above the bound is cramped", machine: 4, requested: 5, want: 4, cramped: true},
+		{name: "unset machine bound is not a bound", machine: 0, requested: 5, want: 5},
+		{name: "zero request falls back to the default", machine: 6, requested: 0, want: DefaultRenderConcurrency},
+		{name: "negative request falls back to the default", machine: 0, requested: -3, want: DefaultRenderConcurrency},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got, cramped := RenderWidth(tc.machine, tc.requested)
+			if got != tc.want || cramped != tc.cramped {
+				t.Fatalf("RenderWidth(%d, %d) = (%d, %v), want (%d, %v)", tc.machine, tc.requested, got, cramped, tc.want, tc.cramped)
+			}
+		})
+	}
+}
+
+// TestService_DocumentAssemblyRequiresUploadedLinks pins the tail invariant:
+// the manifest IS the set of uploaded Drive links, so a plan whose upload
+// failed is absent from the doc and every entry that reaches it carries a
+// non-empty link. It exists because "assemble the doc once the renders are
+// ready, in parallel with the remaining uploads" reads like a safe latency win
+// but publishes a manifest with blank links (godlike/07 no-fake-availability).
+func TestService_DocumentAssemblyRequiresUploadedLinks(t *testing.T) {
+	executor := &pipelineRenderExecutor{third: make(chan struct{})}
+	renderer := newTestRenderer(t, pipelineCompiler{}, newTestWire(t, pipelineSubtitleResolver{}, pipelineSubtitleCompiler{}), executor)
+	// The 2nd upload fails: exactly one plan must be dropped from the manifest.
+	uploader := &boundedPipelineUploader{delay: time.Millisecond, failAt: map[int]error{2: context.DeadlineExceeded}}
+	docs := &fakeDocPublisher{result: &DocPublishResult{ID: "doc", Link: "https://docs/doc"}}
+	assembler, err := NewDocumentAssembler(docs)
+	if err != nil {
+		t.Fatal(err)
+	}
+	service, err := NewServiceWithConcurrency(renderer, newTestPublisher(t, uploader), assembler, 2, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := service.Localize(context.Background(), LocalizeInput{
+		Concurrency: 2, FolderID: "folder", DocTitle: "Localization", Plans: pipelinePlans(3),
+	})
+	if err != nil {
+		t.Fatalf("Localize: %v", err)
+	}
+	if len(result.Artifacts) != 2 || len(result.Failures) != 1 {
+		t.Fatalf("artifacts=%d failures=%d, want 2/1", len(result.Artifacts), len(result.Failures))
+	}
+	if result.Ref == nil || len(result.Ref.Entries) != 2 {
+		t.Fatalf("doc ref = %+v, want exactly the 2 uploaded plans", result.Ref)
+	}
+	for _, entry := range result.Ref.Entries {
+		if entry.DriveLink == "" || entry.DriveFileID == "" {
+			t.Fatalf("doc entry reached the manifest without its Drive link: %+v", entry)
+		}
+	}
+	if strings.Contains(docs.got.Content, "no link") {
+		t.Fatalf("manifest lists a clip with no link:\n%s", docs.got.Content)
+	}
+	if got := strings.Count(docs.got.Content, "<a href="); got != 2 {
+		t.Fatalf("manifest links = %d, want 2 (the failed upload must not be listed)", got)
+	}
 }

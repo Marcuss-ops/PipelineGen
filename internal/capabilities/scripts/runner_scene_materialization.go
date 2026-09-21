@@ -217,8 +217,8 @@ func applyFixedSections(req GenerateRequest, scenes []Scene) ([]Scene, error) {
 			return nil, fmt.Errorf("intro.playback must use audio_mode=original_clip with a valid source window")
 		}
 		ids := req.Intro.NormalizedClipIDs()
-		if len(ids) == 0 || len(ids) > 2 {
-			return nil, fmt.Errorf("intro.clip_ids must contain 1 or 2 clip_ids")
+		if len(ids) == 0 {
+			return nil, fmt.Errorf("intro.clip_ids must contain at least one clip_id")
 		}
 	}
 	if req.Outro != nil {
@@ -226,8 +226,8 @@ func applyFixedSections(req GenerateRequest, scenes []Scene) ([]Scene, error) {
 			return nil, fmt.Errorf("outro.playback must use audio_mode=original_clip with a valid source window")
 		}
 		ids := req.Outro.NormalizedClipIDs()
-		if len(ids) == 0 || len(ids) > 2 {
-			return nil, fmt.Errorf("outro.clip_ids must contain 1 or 2 clip_ids")
+		if len(ids) == 0 {
+			return nil, fmt.Errorf("outro.clip_ids must contain at least one clip_id")
 		}
 	}
 	out := make([]Scene, 0, len(scenes)+4)

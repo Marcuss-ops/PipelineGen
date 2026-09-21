@@ -1,0 +1,264 @@
+{
+  "url": "https://www.youtube.com/watch?v=5ksU76kWyvU",
+  "strategy": "verify",
+  "destination": {
+    "folder_id": "1u1rYpWeTkcedezM2f-lX6FTrq2hiIZJL"
+  },
+  "segments": [
+    {
+      "start": "00:54",
+      "end": "01:09",
+      "name": "Cast femminile e unicità di Ocean's 8",
+      "source_title": "Rihanna Has A Little Problem | Extended Interview | The Graham Norton Show",
+      "source_channel": "The Graham Norton Show",
+      "summary": "Graham e il cast scherzano sull'eccezionalità di avere un ensemble al femminile composto da cinque protagoniste di alto livello.",
+      "topics": ["Cast femminile e unicità di Ocean's 8"],
+      "texts": [
+        {
+          "language_code": "en",
+          "source_type": "provided",
+          "is_original": true,
+          "description": "Graham Norton Oceans 8 cast femminile Sandra Bullock Cate Blanchett Helena Bonham Carter Sarah Paulson Rihanna"
+        }
+      ]
+    },
+    {
+      "start": "01:25",
+      "end": "01:50",
+      "name": "Canti sul set e jingle improvvisati",
+      "source_title": "Rihanna Has A Little Problem | Extended Interview | The Graham Norton Show",
+      "source_channel": "The Graham Norton Show",
+      "summary": "Helena Bonham Carter rivela divertita come Rihanna cantasse continuamente sul set e ricorda i jingle inventati per scherzo.",
+      "topics": ["Canti sul set e jingle improvvisati"],
+      "texts": [
+        {
+          "language_code": "en",
+          "source_type": "provided",
+          "is_original": true,
+          "description": "Helena Bonham Carter Rihanna canto canticchiare set improvvisazione Bird Cage jingle canzoni"
+        }
+      ]
+    },
+    {
+      "start": "02:35",
+      "end": "02:51",
+      "name": "Piccoli furti d'infanzia",
+      "source_title": "Rihanna Has A Little Problem | Extended Interview | The Graham Norton Show",
+      "source_channel": "The Graham Norton Show",
+      "summary": "Graham Norton racconta un aneddoto d'infanzia sul furto di un astuccio di pelo e la severa reazione della madre.",
+      "topics": ["Piccoli furti d'infanzia"],
+      "texts": [
+        {
+          "language_code": "en",
+          "source_type": "provided",
+          "is_original": true,
+          "description": "astuccio pelo matite furto infanzia bottega Irlanda madre rimprovero Graham Norton"
+        }
+      ]
+    },
+    {
+      "start": "02:55",
+      "end": "03:10",
+      "name": "Rihanna sul personaggio di Nineball",
+      "source_title": "Rihanna Has A Little Problem | Extended Interview | The Graham Norton Show",
+      "source_channel": "The Graham Norton Show",
+      "summary": "Rihanna descrive il suo personaggio hacker Nineball, ammettendo ironicamente di non sapere quasi accendere un iPhone.",
+      "topics": ["Rihanna sul personaggio di Nineball"],
+      "texts": [
+        {
+          "language_code": "en",
+          "source_type": "provided",
+          "is_original": true,
+          "description": "Nineball hacker computer tecnologia iPhone Oceans 8 recitazione Rihanna"
+        }
+      ]
+    },
+    {
+      "start": "03:30",
+      "end": "03:52",
+      "name": "L'accento irlandese improvvisato",
+      "source_title": "Rihanna Has A Little Problem | Extended Interview | The Graham Norton Show",
+      "source_channel": "The Graham Norton Show",
+      "summary": "Helena Bonham Carter confessa di aver scelto un improbabile accento irlandese per recitare il ruolo della stilista.",
+      "topics": ["L'accento irlandese improvvisato"],
+      "texts": [
+        {
+          "language_code": "en",
+          "source_type": "provided",
+          "is_original": true,
+          "description": "Helena Bonham Carter accento irlandese personaggio fashion designer recitazione improvvisazione"
+        }
+      ]
+    },
+    {
+      "start": "04:02",
+      "end": "04:15",
+      "name": "Hook: Graham accusa Rihanna di rubare bicchieri",
+      "source_title": "Rihanna Has A Little Problem | Extended Interview | The Graham Norton Show",
+      "source_channel": "The Graham Norton Show",
+      "summary": "Graham mostra la prima foto di Rihanna che esce da un club con un calice in mano accusandola con ironia.",
+      "topics": ["Hook: Graham accusa Rihanna di rubare bicchieri"],
+      "texts": [
+        {
+          "language_code": "en",
+          "source_type": "provided",
+          "is_original": true,
+          "description": "Graham Norton Rihanna foto bicchiere club furto prove paparazzi accusa"
+        }
+      ]
+    },
+    {
+      "start": "04:16",
+      "end": "04:45",
+      "name": "La galleria di bicchieri rubati",
+      "source_title": "Rihanna Has A Little Problem | Extended Interview | The Graham Norton Show",
+      "source_channel": "The Graham Norton Show",
+      "summary": "Graham passa in rassegna diverse foto dove Rihanna lascia eventi, hotel e club con bicchieri e bottiglie in mano.",
+      "topics": ["La galleria di bicchieri rubati"],
+      "texts": [
+        {
+          "language_code": "en",
+          "source_type": "provided",
+          "is_original": true,
+          "description": "galleria immagini bicchieri calici vino sfilata moda hotel paparazzi scuse Rihanna"
+        }
+      ]
+    },
+    {
+      "start": "04:55",
+      "end": "05:10",
+      "name": "Hook: Scuse alla mamma per i bicchieri",
+      "source_title": "Rihanna Has A Little Problem | Extended Interview | The Graham Norton Show",
+      "source_channel": "The Graham Norton Show",
+      "summary": "Rihanna chiede scusa a sua madre guardando in camera tra le risate generali prima di dichiarare di possedere quei bicchieri.",
+      "topics": ["Hook: Scuse alla mamma per i bicchieri"],
+      "texts": [
+        {
+          "language_code": "en",
+          "source_type": "provided",
+          "is_original": true,
+          "description": "scuse mamma battuta bicchieri proprietà bottiglia vino Graham Norton risate pubblico"
+        }
+      ]
+    },
+    {
+      "start": "05:22",
+      "end": "05:48",
+      "name": "Il metodo di digitazione da hacker",
+      "source_title": "Rihanna Has A Little Problem | Extended Interview | The Graham Norton Show",
+      "source_channel": "The Graham Norton Show",
+      "summary": "Rihanna mima il modo buffo e teatrale in cui batteva sulla tastiera per apparire come un'esperta hacker.",
+      "topics": ["Il metodo di digitazione da hacker"],
+      "texts": [
+        {
+          "language_code": "en",
+          "source_type": "provided",
+          "is_original": true,
+          "description": "digitazione tastiera linguaggio del corpo hacker computer riprese elezioni USA macchinetta"
+        }
+      ]
+    },
+    {
+      "start": "06:33",
+      "end": "06:52",
+      "name": "L'outfit da papessa al Met Gala",
+      "source_title": "Rihanna Has A Little Problem | Extended Interview | The Graham Norton Show",
+      "source_channel": "The Graham Norton Show",
+      "summary": "Rihanna commenta il suo celebre look papale del Met Gala Heavenly Bodies scherzando sul fatto di aver rubato la mitra.",
+      "topics": ["L'outfit da papessa al Met Gala"],
+      "texts": [
+        {
+          "language_code": "en",
+          "source_type": "provided",
+          "is_original": true,
+          "description": "Met Gala Heavenly Bodies tema Vaticano copricapo vescovo papessa tiara furto abito"
+        }
+      ]
+    },
+    {
+      "start": "07:23",
+      "end": "07:38",
+      "name": "Hook: La logistica dell'abito giallo omelette",
+      "source_title": "Rihanna Has A Little Problem | Extended Interview | The Graham Norton Show",
+      "source_channel": "The Graham Norton Show",
+      "summary": "Rihanna spiega di aver dovuto noleggiare una limousine allungata per riuscire a trasportare il celebre abito giallo.",
+      "topics": ["Hook: La logistica dell'abito giallo omelette"],
+      "texts": [
+        {
+          "language_code": "en",
+          "source_type": "provided",
+          "is_original": true,
+          "description": "abito giallo Guo Pei omelette Met Gala 2015 limousine logistica vestizione"
+        }
+      ]
+    },
+    {
+      "start": "07:39",
+      "end": "08:15",
+      "name": "Sei persone per trasportare lo strascico",
+      "source_title": "Rihanna Has A Little Problem | Extended Interview | The Graham Norton Show",
+      "source_channel": "The Graham Norton Show",
+      "summary": "Rihanna racconta come siano servite sei persone nascoste e coordinate per aiutarla a salire le scale con l'abito.",
+      "topics": ["Sei persone per trasportare lo strascico"],
+      "texts": [
+        {
+          "language_code": "en",
+          "source_type": "provided",
+          "is_original": true,
+          "description": "strascico peso 6 assistenti coreografia scale Met Gala limousine vestito Guo Pei"
+        }
+      ]
+    },
+    {
+      "start": "08:33",
+      "end": "08:55",
+      "name": "I meme: Omelette, pizza e tortino di carne",
+      "source_title": "Rihanna Has A Little Problem | Extended Interview | The Graham Norton Show",
+      "source_channel": "The Graham Norton Show",
+      "summary": "Graham mostra i meme più famosi nati sul web che paragonano lo strascico giallo a una pizza o a un tortino di carne.",
+      "topics": ["I meme: Omelette, pizza e tortino di carne"],
+      "texts": [
+        {
+          "language_code": "en",
+          "source_type": "provided",
+          "is_original": true,
+          "description": "meme internet omelette pizza Ginsters pasticcio di carne virale vestito giallo"
+        }
+      ]
+    },
+    {
+      "start": "09:00",
+      "end": "09:15",
+      "name": "Hook: La domanda sul nuovo album",
+      "source_title": "Rihanna Has A Little Problem | Extended Interview | The Graham Norton Show",
+      "source_channel": "The Graham Norton Show",
+      "summary": "Graham incalza Rihanna sulla data d'uscita del nuovo album su esplicita richiesta disperata dei fan.",
+      "topics": ["Hook: La domanda sul nuovo album"],
+      "texts": [
+        {
+          "language_code": "en",
+          "source_type": "provided",
+          "is_original": true,
+          "description": "fan domande nuovo album musica Rihanna studio registrazione Graham Norton insistenza"
+        }
+      ]
+    },
+    {
+      "start": "09:15",
+      "end": "09:35",
+      "name": "Rihanna conferma il lavoro in studio",
+      "source_title": "Rihanna Has A Little Problem | Extended Interview | The Graham Norton Show",
+      "source_channel": "The Graham Norton Show",
+      "summary": "Rihanna rassicura i fan confermando di essere al lavoro in studio, ma evita abilmente di fornire scadenze o date precise.",
+      "topics": ["Rihanna conferma il lavoro in studio"],
+      "texts": [
+        {
+          "language_code": "en",
+          "source_type": "provided",
+          "is_original": true,
+          "description": "studio registrazione nuova musica deadline scadenza risposta evasiva fan pressione"
+        }
+      ]
+    }
+  ]
+}
