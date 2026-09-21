@@ -96,6 +96,26 @@ func TestBuildGenerateRequest_PropagatesLLMIdentity(t *testing.T) {
 	}
 }
 
+func TestBuildGenerateRequestPropagatesMixedMediaMode(t *testing.T) {
+	env := &scriptpkg.GenerationEnvelopeV2{Version: 2, Items: []scriptpkg.GenerationItemV2{{
+		ID: "mixed-builder", Language: "en", MediaMode: scriptpkg.MediaModeMixed,
+		Source: scriptpkg.SourceSpec{Type: scriptpkg.SourceClips, ClipIDs: []string{"clip-0"}},
+		Output: scriptpkg.OutputSpec{StockEnabled: scriptpkg.ToggleEnabled, StockBindings: []scriptpkg.StockBindingInput{{
+			Index: 0, FolderID: "folder-1", FolderLink: "https://drive.google.com/drive/folders/folder-1", StartMs: 0, EndMs: 5000,
+		}}},
+	}}}
+	got, err := BuildGenerateRequest(env, "mixed-builder-key")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.MediaMode != scriptpkg.MediaModeMixed {
+		t.Fatalf("media mode = %q, want mixed", got.MediaMode)
+	}
+	if len(got.StockBindings) != 1 {
+		t.Fatalf("stock bindings = %d, want 1", len(got.StockBindings))
+	}
+}
+
 func TestBuildGenerateRequest_ForceRefreshReachesGenerationAndVidRush(t *testing.T) {
 	env := scriptpkg.GenerationEnvelopeV2{
 		Items: []scriptpkg.GenerationItemV2{{

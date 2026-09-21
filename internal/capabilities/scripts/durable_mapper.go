@@ -72,6 +72,10 @@ func DurableResultToDomain(in *GenerateResult) *domain.GenerationResult {
 		if len(ds.Bindings.Clips) > 0 {
 			ds.Bindings.Clip = &ds.Bindings.Clips[0]
 		}
+		if scene.Stock != nil {
+			stock := *scene.Stock
+			ds.Bindings.Stock = &stock
+		}
 		if vo, ok := scene.Voiceover[Language(lang)]; ok {
 			ds.Bindings.Voiceover = durableVoiceoverBinding(lang, vo)
 		} else {

@@ -93,6 +93,9 @@ type GenerateRequest struct {
 
 	// Source describes the generation input source.
 	Source Source `json:"source"`
+	// MediaMode is the explicit stock/clip ownership contract carried from
+	// script.generate into the durable runner.
+	MediaMode scriptpkg.MediaMode `json:"media_mode,omitempty"`
 	// StockBindings carries the caller-selected stock folders/assets into the
 	// durable runner so acquisition can overlap scene generation.
 	StockBindings []scriptpkg.StockBindingInput `json:"stock_bindings,omitempty"`
@@ -203,11 +206,14 @@ type Scene struct {
 	DurationMS int64  `json:"duration_ms,omitempty"`
 	// DurationUS is the sealed internal timing value. DurationMS remains only
 	// as a legacy wire field at the boundary.
-	DurationUS int64                       `json:"duration_us,omitempty"`
-	Clip       *ClipReference              `json:"clip,omitempty"`
-	Clips      []*ClipReference            `json:"clips,omitempty"`
-	Text       map[Language]string         `json:"text"`
-	Voiceover  map[Language]AudioReference `json:"voiceover,omitempty"`
+	DurationUS int64            `json:"duration_us,omitempty"`
+	Clip       *ClipReference   `json:"clip,omitempty"`
+	Clips      []*ClipReference `json:"clips,omitempty"`
+	// Stock preserves the caller-selected stock binding alongside Clip for
+	// mixed media scenes.
+	Stock     *scriptpkg.StockBinding     `json:"stock,omitempty"`
+	Text      map[Language]string         `json:"text"`
+	Voiceover map[Language]AudioReference `json:"voiceover,omitempty"`
 
 	// ExecutionMode is the canonical authorization boundary shared with
 	// SpecScene. Empty is generated for backward compatibility.

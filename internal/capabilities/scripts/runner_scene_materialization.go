@@ -296,6 +296,45 @@ func applyFixedSections(req GenerateRequest, scenes []Scene) ([]Scene, error) {
 	return out, nil
 }
 
+// applyDurableStockBindings projects direct stock bindings onto the durable
+// Scene surface. The legacy postprocessor path performs the equivalent
+// projection on SpecScene; script.generate single-item jobs use this runner
+// directly and must retain the same mixed-media contract.
+func applyDurableStockBindings(req GenerateRequest, scenes []Scene) {
+	if req.MediaMode == scriptpkg.MediaModeClipOnly || len(req.StockBindings) == 0 {
+		return
+	}
+	body := make([]int, 0, len(scenes))
+	for i := range scenes {
+		if !scenes[i].ExecutionMode.IsFixedMedia() {
+			body = append(body, i)
+		}
+	}
+	for _, input := range req.StockBindings {
+		target := -1
+		if strings.TrimSpace(input.SceneID) != "" {
+			for _, index := range body {
+				if scenes[index].ID == input.SceneID {
+					target = index
+					break
+				}
+			}
+		}
+		if target < 0 && input.Index >= 0 && input.Index < len(body) {
+			target = body[input.Index]
+		}
+		if target < 0 {
+			continue
+		}
+		scenes[target].Stock = &scriptpkg.StockBinding{
+			AssetID: input.AssetID, Name: input.Name, Source: input.Source,
+			DriveLink: input.DriveLink, FolderID: input.FolderID,
+			FolderLink: input.FolderLink, Score: input.Score, Fallback: input.Fallback,
+			StartMs: input.StartMs, EndMs: input.EndMs, DurationMs: input.EndMs - input.StartMs,
+		}
+	}
+}
+
 // fixedMediaClipProjection creates the authoritative clip/audio projection
 // for a protected section. A partial playback window applies to each bound
 // clip; the zero-value policy has already normalized to the canonical default

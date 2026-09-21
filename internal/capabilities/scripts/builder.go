@@ -234,6 +234,7 @@ func BuildGenerateRequest(env *scriptpkg.GenerationEnvelopeV2, idempotencyKey st
 		IdempotencyKey:      idempotencyKey,
 		ForceRefresh:        env.ForceRefresh,
 		Source:              source,
+		MediaMode:           item.MediaMode,
 		StockBindings:       append([]scriptpkg.StockBindingInput(nil), item.Output.StockBindings...),
 		ScriptParams:        item.ScriptParams,
 		MediaPlan:           item.MediaPlan.Clone(),
@@ -337,6 +338,18 @@ func cloneInt(src *int) *int {
 // by the cliprender capability (none | blur_source | asset).
 const videoBackgroundModeAsset = "asset"
 
+const (
+	// overlayBackgroundPlateKind is the media family of every curated editorial
+	// background plate (the video-background-v1 contract normalizes them all to
+	// video-only MP4), so a plate selected for the overlay render carries the
+	// same kind as one selected for the clip render.
+	overlayBackgroundPlateKind = "video"
+	// overlayBackgroundPlateFit is the deterministic crop-to-fill the overlay
+	// compiler defaults to; it is spelled out here so the policy's selection is
+	// explicit instead of relying on the compiler's default.
+	overlayBackgroundPlateFit = "cover"
+)
+
 // resolveBackgroundReference converts a human channel label (or a friendly
 // asset id such as "Boxe") into the canonical registry alias before the
 // generic render normalizer applies its mode defaults. This keeps payloads
@@ -385,6 +398,11 @@ func resolveBackgroundReference(render *scriptpkg.VideoRenderSpec) error {
 //   - the clip background is filled only when the request left it blank (a
 //     nil block, or an empty mode AND an empty asset_id). An explicit mode —
 //     including "none" — is caller intent and is preserved.
+//   - the overlay background is filled only when the request ALREADY enabled
+//     rendering (req.Render.Enabled) and left the overlay background blank.
+//     A background must never turn overlay rendering on by itself, and an
+//     explicit kind (including "color", i.e. the deliberate black canvas) is
+//     preserved.
 //   - background music is filled only when the request declared no BGM AND the
 //     request is in the COMBINED_TIMELINE audio mode. Injecting a BGM layer
 //     into a job that never builds an audio plan would be a silent no-op.
@@ -405,6 +423,9 @@ func ApplyEditingAssetPolicy(req *GenerateRequest, policy mediaregistry.EditingA
 	if err := applyBackgroundSelection(req, policy, seed); err != nil {
 		return err
 	}
+	if err := applyOverlayBackgroundSelection(req, policy, seed); err != nil {
+		return err
+	}
 	return applyBackgroundMusicSelection(req, policy, seed)
 }
 
@@ -422,6 +443,54 @@ func applyBackgroundSelection(req *GenerateRequest, policy mediaregistry.Editing
 	req.Render.Background.Mode = videoBackgroundModeAsset
 	req.Render.Background.AssetID = plate.ID
 	return nil
+}
+
+// applyOverlayBackgroundSelection fills the OVERLAY render's background plate
+// when the caller left it blank. It is the overlay counterpart of
+// applyBackgroundSelection and uses the same curated pool and the same seed, so
+// the two render surfaces of one job cannot disagree about which plates exist
+// and a replay selects the same one.
+//
+// It is deliberately gated on req.Render.Enabled: the overlay pipeline treats a
+// non-nil OverlayBackground as a request to compile an overlay plan, so filling
+// it for a job that never asked for a render would silently ENABLE overlay
+// rendering. Filling only ever completes a render the caller already requested.
+// An explicit caller selection is preserved untouched — including kind "color",
+// which is how a caller deliberately asks for the black canvas this default
+// would otherwise replace.
+func applyOverlayBackgroundSelection(req *GenerateRequest, policy mediaregistry.EditingAssetsPolicy, seed string) error {
+	if req == nil || !req.Render.Enabled {
+		return nil
+	}
+	if !overlayBackgroundSelectionIsBlank(req.OverlayBackground) {
+		return nil
+	}
+	plate, err := policy.SelectBackground(seed)
+	if err != nil {
+		return fmt.Errorf("apply editing asset policy: overlay background: %w", err)
+	}
+	req.OverlayBackground = &scriptpkg.OverlayBackgroundSpec{
+		Kind:    overlayBackgroundPlateKind,
+		AssetID: plate.ID,
+		Fit:     overlayBackgroundPlateFit,
+		Loop:    true,
+	}
+	return nil
+}
+
+// overlayBackgroundSelectionIsBlank reports whether the caller left the overlay
+// background unspecified. Any declared kind is caller intent and is preserved:
+// notably kind "color" is the deliberate black canvas, and a kind that carries
+// no identity yet (kind "video" with the asset resolved later) is still the
+// caller's choice.
+func overlayBackgroundSelectionIsBlank(spec *scriptpkg.OverlayBackgroundSpec) bool {
+	if spec == nil {
+		return true
+	}
+	return strings.TrimSpace(spec.Kind) == "" &&
+		strings.TrimSpace(spec.AssetID) == "" &&
+		strings.TrimSpace(spec.URL) == "" &&
+		strings.TrimSpace(spec.SHA256) == ""
 }
 
 func applyBackgroundMusicSelection(req *GenerateRequest, policy mediaregistry.EditingAssetsPolicy, seed string) error {

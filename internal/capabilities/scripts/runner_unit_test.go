@@ -69,6 +69,30 @@ func TestBindExplicitClipSceneTextPreservesGeneratedNarration(t *testing.T) {
 	assert.Equal(t, "Another new funny line", scenes[1].Text["en"])
 }
 
+func TestApplyDurableStockBindingsPreservesMixedClipOwnership(t *testing.T) {
+	req := GenerateRequest{
+		MediaMode: scriptpkg.MediaModeMixed,
+		StockBindings: []scriptpkg.StockBindingInput{{
+			Index: 0, SceneID: "scene-0", FolderID: "folder-1",
+			FolderLink: "https://drive.google.com/drive/folders/folder-1", StartMs: 0, EndMs: 5000,
+		}},
+	}
+	scenes := []Scene{
+		{ID: "scene-intro", ExecutionMode: scriptpkg.SceneExecutionFixedMedia},
+		{ID: "scene-0", Clip: &ClipReference{ID: "clip-0"}},
+	}
+	applyDurableStockBindings(req, scenes)
+	if scenes[1].Clip == nil || scenes[1].Clip.ID != "clip-0" {
+		t.Fatalf("mixed binding lost clip: %#v", scenes[1].Clip)
+	}
+	if scenes[1].Stock == nil || scenes[1].Stock.FolderID != "folder-1" {
+		t.Fatalf("mixed binding missing stock: %#v", scenes[1].Stock)
+	}
+	if scenes[0].Stock != nil {
+		t.Fatal("fixed intro must not receive a body stock binding")
+	}
+}
+
 func TestModelScriptOutputForDocumentPreservesCanonicalSceneData(t *testing.T) {
 	scenes := []Scene{{ID: "scene-0", Index: 0, Text: map[Language]string{"en": "Hello world", "es": "Hola mundo"}}, {ID: "scene-1", Index: 1, Text: map[Language]string{"en": "Second scene", "es": "Segunda escena"}}}
 	enModel := modelScriptOutputForDocument(&GenerateResult{Scenes: scenes}, "en")
