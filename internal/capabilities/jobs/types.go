@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"runtime/debug"
 	"sync"
 	"time"
 
@@ -174,7 +175,10 @@ func (d *Dispatcher) HasHandler(jobType string) bool {
 func (d *Dispatcher) Dispatch(ctx context.Context, j *jobs.Job, tools *JobExecutionTools) (result Result, err error) {
 	defer func() {
 		if r := recover(); r != nil {
-			err = fmt.Errorf("panic in handler for job type %s: %v", j.Type, r)
+			// Preserve the original handler stack. Without it the worker only
+			// reports this dispatcher frame, making a production panic
+			// impossible to diagnose from the job record.
+			err = fmt.Errorf("panic in handler for job type %s: %v\n%s", j.Type, r, debug.Stack())
 		}
 	}()
 

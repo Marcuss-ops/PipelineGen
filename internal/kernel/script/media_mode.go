@@ -47,6 +47,11 @@ func validateMediaMode(item GenerationItemV2, ref string) error {
 		if clips {
 			return mediaModeError(item, "MEDIA_MODE_CONFLICT", ref+": stock_only cannot use clip source or clip IDs")
 		}
+		for i, segment := range item.ScriptParams.Segments {
+			if len(segment.ClipIDs) > 0 {
+				return mediaModeError(item, "MEDIA_MODE_CONFLICT", fmt.Sprintf("%s: stock_only cannot use script_params.segments[%d].clip_ids", ref, i))
+			}
+		}
 		if item.Source.Type != SourceText && item.Source.Type != SourceResearch {
 			return mediaModeError(item, "MEDIA_MODE_CONFLICT", ref+": stock_only requires source.type=text or research")
 		}

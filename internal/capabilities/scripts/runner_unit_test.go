@@ -88,6 +88,9 @@ func TestApplyDurableStockBindingsPreservesMixedClipOwnership(t *testing.T) {
 	if scenes[1].Stock == nil || scenes[1].Stock.FolderID != "folder-1" {
 		t.Fatalf("mixed binding missing stock: %#v", scenes[1].Stock)
 	}
+	if scenes[1].DurationMS != 5000 || scenes[1].DurationUS != 5_000_000 {
+		t.Fatalf("stock editorial duration = %dms/%dus, want 5000ms/5000000us", scenes[1].DurationMS, scenes[1].DurationUS)
+	}
 	if scenes[0].Stock != nil {
 		t.Fatal("fixed intro must not receive a body stock binding")
 	}

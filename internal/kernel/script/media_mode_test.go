@@ -126,6 +126,14 @@ func TestMediaModeStockOnlyRejectsClipIDs(t *testing.T) {
 	}
 }
 
+func TestMediaModeStockOnlyRejectsSegmentClipIDs(t *testing.T) {
+	i := stockOnlyItem()
+	i.ScriptParams.Segments = []ScriptSegment{{ID: "scene-0", Topic: "stock", ClipIDs: []string{"clip-1"}}}
+	if got := validateMediaItem(t, i).Code; got != "MEDIA_MODE_CONFLICT" {
+		t.Fatalf("code=%s", got)
+	}
+}
+
 func TestMediaModeStockOnlyRejectsDeprecatedIntroClipIDs(t *testing.T) {
 	// source.intro_clip_ids was removed from the contract (July 2026): any
 	// payload still carrying it fails closed at the envelope fence, before

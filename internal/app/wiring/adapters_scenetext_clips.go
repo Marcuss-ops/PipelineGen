@@ -10,6 +10,9 @@ import (
 )
 
 func (g *SceneTextGenerator) resolveEvidenceClip(ctx context.Context, plan *scriptpkg.ResolvedGenerationPlan, clipID string, allowDriveOnly bool) (*scriptgen.ClipReference, error) {
+	if plan == nil || plan.ClipEvidence == nil {
+		return nil, fmt.Errorf("clip %s requires resolved clip evidence", clipID)
+	}
 	detail := plan.ClipEvidence.ClipDetails[clipID]
 	// Local media wins when present: the COMBINED_TIMELINE audio-only master
 	// mixes the original clip audio, so the resolved clip must carry the
