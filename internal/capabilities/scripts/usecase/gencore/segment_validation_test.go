@@ -72,6 +72,26 @@ func TestEngineGenerate_UsesGlobalSourceTextFallback(t *testing.T) {
 	}
 }
 
+func TestEngineGenerate_StockOnlyAcceptsNonEmptyShortNarration(t *testing.T) {
+	gen := &sequentialSegmentGenerator{results: []*scriptports.GenerationResult{
+		proseResult("A short stock narration."),
+	}}
+	engine := &Engine{ollamaGen: gen, log: zap.NewNop()}
+	engine.ConfigureSegmentValidation(15, 10, 0)
+	plan := &scriptpkg.ResolvedGenerationPlan{
+		Title: "stock only", Topic: "stock only", Language: "en", Mode: "text",
+		MediaMode: scriptpkg.MediaModeStockOnly, TargetWords: 35,
+		Segments: []scriptpkg.ScriptSegment{{ID: "scene-0", Topic: "stock", TargetWords: 35, MinWords: 20, MaxWords: 60}},
+	}
+	result, err := engine.Generate(context.Background(), plan)
+	if err != nil {
+		t.Fatalf("stock-only short narration returned error: %v", err)
+	}
+	if result.Output.Text != "A short stock narration." {
+		t.Fatalf("stock-only narration = %q", result.Output.Text)
+	}
+}
+
 func segmentPlan(target int) *scriptpkg.ResolvedGenerationPlan {
 	return &scriptpkg.ResolvedGenerationPlan{
 		Title:       "segment validation",

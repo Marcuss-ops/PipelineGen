@@ -223,7 +223,7 @@ func (e *Engine) generateSegments(
 				// a non-empty answer is useful even when it misses the editorial
 				// word band or paragraph shape by a small amount. Keep only the
 				// hard safety check (empty output) and avoid a second Ollama call.
-				if relaxedShortClipQuality(plan) && strings.TrimSpace(candidate[0]) != "" &&
+				if (relaxedShortClipQuality(plan) || relaxedStockOnlyQuality(plan, candidate[0], budget)) && strings.TrimSpace(candidate[0]) != "" &&
 					!isRepeatedClipSource(candidate[0], segment.SourceText) {
 					break
 				}
@@ -388,6 +388,19 @@ func relaxedShortClipQuality(plan *scriptpkg.ResolvedGenerationPlan) bool {
 		return false
 	}
 	return strings.Contains(strings.ToLower(strings.TrimSpace(plan.Model)), "e2b")
+}
+
+// relaxedStockOnlyQuality keeps folder-backed stock jobs available when a
+// small local model returns a short but non-empty narration. Stock-only
+// generation has no clip-evidence rewrite contract to protect; rejecting the
+// whole job for a soft word-budget miss would also prevent the independent
+// stock prefetch and render stages from running. Explicit max_words remains a
+// hard safety boundary.
+func relaxedStockOnlyQuality(plan *scriptpkg.ResolvedGenerationPlan, text string, budget segmentBudget) bool {
+	if plan == nil || plan.MediaMode != scriptpkg.MediaModeStockOnly || strings.TrimSpace(text) == "" {
+		return false
+	}
+	return budget.Max <= 0 || textutil.CountWords(text) <= budget.Max
 }
 
 func isRepeatedClipSource(candidate, source string) bool {

@@ -332,6 +332,14 @@ func applyDurableStockBindings(req GenerateRequest, scenes []Scene) {
 			FolderLink: input.FolderLink, Score: input.Score, Fallback: input.Fallback,
 			StartMs: input.StartMs, EndMs: input.EndMs, DurationMs: input.EndMs - input.StartMs,
 		}
+		// Stock-only scenes do not receive a clip duration or TTS duration.
+		// Project the editorial window onto the durable Scene now so the
+		// canonical timeline compiler never has to guess (or reject a valid
+		// folder-backed stock scene as duration-less).
+		if scenes[target].DurationMS <= 0 && scenes[target].Stock.DurationMs > 0 {
+			scenes[target].DurationMS = scenes[target].Stock.DurationMs
+			scenes[target].DurationUS = scenes[target].Stock.DurationMs * 1000
+		}
 	}
 }
 
