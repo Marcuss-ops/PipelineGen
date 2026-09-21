@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -46,13 +47,31 @@ func (f *FilesystemStager) Prepare(ctx context.Context, req appacq.PrepareReques
 		// through to the re-download path (so the staging surface
 		// always reflects the LATEST bytes, not stale ones).
 		if existing.SourceRef == req.Source && !existing.Expired() {
-			f.log.Info("acquisition prepare cache hit",
-				zap.String("stage_id", stageID),
-				zap.String("sha256", existing.SHA256),
-				zap.Time("expires_at", existing.ExpiresAt),
-			)
-			f.cacheToken(existing.CleanupToken, *existing)
-			return existing, nil
+			// godlike/07 no-fake-availability: the sidecar is a CLAIM about the
+			// staged bytes, not the bytes themselves. Verify the claim before
+			// handing `LocalPath` to a caller — an orphaned sidecar (see
+			// stagedArtifactUsable) MUST degrade to a re-download, never to a
+			// receipt for bytes that are not there.
+			if artifactErr := stagedArtifactUsable(existing); artifactErr != nil {
+				f.log.Warn("acquisition prepare cache hit rejected: staged artifact unusable; re-downloading",
+					zap.String("stage_id", stageID),
+					zap.String("local_path", existing.LocalPath),
+					zap.String("sha256", existing.SHA256),
+					zap.Error(artifactErr),
+				)
+				// Drop the stale sidecar so the poisoning cannot survive this
+				// call even if the re-download below fails.
+				_ = os.RemoveAll(metaPath)
+				f.forgetToken(existing.CleanupToken)
+			} else {
+				f.log.Info("acquisition prepare cache hit",
+					zap.String("stage_id", stageID),
+					zap.String("sha256", existing.SHA256),
+					zap.Time("expires_at", existing.ExpiresAt),
+				)
+				f.cacheToken(existing.CleanupToken, *existing)
+				return existing, nil
+			}
 		}
 	}
 
@@ -146,6 +165,48 @@ func (f *FilesystemStager) Prepare(ctx context.Context, req appacq.PrepareReques
 
 // Release is the canonical SourceStager.Release implementation.
 // See `SourceStager.Release` in `internal/capabilities/acquisition/port.go`
+
+// stagedArtifactUsable verifies that a cached PrepareContext still describes
+// bytes that exist on disk. It is the gate between `readMeta` and a cache HIT.
+//
+// WHY THIS EXISTS (Sept 2026 incident, observed live on the YouTube
+// download-once lane): the cache-hit path used to trust the `.meta.json`
+// blindly. `Release` removes the staged file and the sidecar in TWO steps
+// (`releaseByContext`), so a shutdown that lands between them — or any
+// out-of-band sweep of the staging root — leaves an ORPHANED sidecar whose
+// LocalPath no longer exists. The next Prepare returned that path, every
+// segment of the extraction was handed a `PreDownloadedPath` that did not
+// exist, and the whole job died in ~1s with
+//
+//	rust media cut_and_normalize: source file is not readable: <path>
+//
+// which is classified TERMINAL (not transient), so no retry could recover it
+// for the 24h TTL of the sidecar. The bytes behind a receipt are the contract;
+// a missing file must re-download.
+//
+// The size cross-check catches TRUNCATION too: a partially written file that
+// survived the sidecar is worse than a missing one, because the caller would
+// cut from silently wrong bytes instead of failing loudly.
+func stagedArtifactUsable(ctx *appacq.PrepareContext) error {
+	if ctx == nil {
+		return errors.New("nil prepare context")
+	}
+	info, err := os.Stat(ctx.LocalPath)
+	if err != nil {
+		return fmt.Errorf("staged artifact %q not readable: %w", ctx.LocalPath, err)
+	}
+	if info.IsDir() {
+		return fmt.Errorf("staged artifact %q is a directory", ctx.LocalPath)
+	}
+	if info.Size() == 0 {
+		return fmt.Errorf("staged artifact %q is empty", ctx.LocalPath)
+	}
+	if ctx.SizeBytes > 0 && info.Size() != ctx.SizeBytes {
+		return fmt.Errorf("staged artifact %q is %d bytes but the sidecar declares %d (truncated?)",
+			ctx.LocalPath, info.Size(), ctx.SizeBytes)
+	}
+	return nil
+}
 
 func fileSHA256(path string) (string, error) {
 	f, err := os.Open(path)

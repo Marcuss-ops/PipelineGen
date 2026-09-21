@@ -4,11 +4,11 @@
     "asset_manifest_digest": "66c96bfaa03ff87ebe0731357bbf9a2e2bbcab3c5bc7258ca6d04d4901f38c93",
     "chronon_abi": 2,
     "chronon_version": "0.1.0",
-    "content_digest": "ef04dbe56e77023e6784d17d3895fcb5f4298c811772c4d93cecc333e9adee9e",
-    "git_sha": "3d0d599d5",
+    "content_digest": "d6ae761c96b78e9a2a1399517a319e11f7296a42b0774d102cd2b71b9d697a83",
+    "git_sha": "d73102e1a",
     "job_id": "goal3-image-bg-nowm",
     "render_plan_schema": "chronon.render-plan.v2",
-    "request_digest": "7f9282c5d33bd89a6bc9454d5c2074d40b8dde06ade7b789e0f7991accc94c99"
+    "request_digest": "3ffc9670d3ab6c0d1e3c4429aa4dbfb472ae3a5b307028bec6d9137d6c3daa6d"
   },
   "media": {
     "audio_bitrate": "58524",
@@ -70,9 +70,9 @@
   "timing_ms": {
     "count_frames_ms": -1.0,
     "decode_ms": -1.0,
-    "probe_ms": 282.660512,
-    "sha256_ms": 12.045036,
-    "total_ms": 294.961177
+    "probe_ms": 260.031502,
+    "sha256_ms": 11.795845,
+    "total_ms": 272.079529
   },
   "verification": {
     "audio": "skip",

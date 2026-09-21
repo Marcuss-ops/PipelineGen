@@ -120,6 +120,97 @@ func TestApplyEditingAssetPolicyNeverOverridesCallerIntent(t *testing.T) {
 	})
 }
 
+// TestApplyEditingAssetPolicyFillsOverlayBackground certifies the overlay
+// counterpart of the clip background: a job that already enabled rendering and
+// named no overlay background receives ONE canonical editorial plate, so the
+// overlays are not composited over the black canvas by default.
+func TestApplyEditingAssetPolicyFillsOverlayBackground(t *testing.T) {
+	policy := mediaregistry.DefaultEditingAssetsPolicy()
+	req := combinedTimelineRequest("overlay-bg")
+	req.Render.Enabled = true
+	if err := ApplyEditingAssetPolicy(&req, policy); err != nil {
+		t.Fatalf("ApplyEditingAssetPolicy: %v", err)
+	}
+	bg := req.OverlayBackground
+	if bg == nil {
+		t.Fatal("overlay background was not selected for an enabled render")
+	}
+	if bg.Kind != overlayBackgroundPlateKind {
+		t.Errorf("overlay background kind = %q, want %q", bg.Kind, overlayBackgroundPlateKind)
+	}
+	if _, ok := mediaregistry.LookupEditorialBackground(bg.AssetID); !ok {
+		t.Errorf("selected overlay background %q is not a canonical plate", bg.AssetID)
+	}
+	if bg.Fit != overlayBackgroundPlateFit || !bg.Loop {
+		t.Errorf("overlay background plate contract not applied: %+v", bg)
+	}
+}
+
+// TestApplyEditingAssetPolicyOverlayBackgroundIsGatedOnRender is the guardrail
+// that keeps the fill from being a back door: the overlay pipeline compiles a
+// plan as soon as OverlayBackground is non-nil, so a job that never asked for a
+// render must not receive one.
+func TestApplyEditingAssetPolicyOverlayBackgroundIsGatedOnRender(t *testing.T) {
+	policy := mediaregistry.DefaultEditingAssetsPolicy()
+	req := combinedTimelineRequest("no-render")
+	if err := ApplyEditingAssetPolicy(&req, policy); err != nil {
+		t.Fatal(err)
+	}
+	if req.OverlayBackground != nil {
+		t.Errorf("overlay background must not enable overlay rendering: %+v", req.OverlayBackground)
+	}
+}
+
+// TestApplyEditingAssetPolicyPreservesExplicitOverlayBackground pins the
+// caller-intent rule on the overlay surface too: an explicit kind survives,
+// including the deliberate black canvas (kind "color").
+func TestApplyEditingAssetPolicyPreservesExplicitOverlayBackground(t *testing.T) {
+	policy := mediaregistry.DefaultEditingAssetsPolicy()
+
+	t.Run("black canvas is preserved", func(t *testing.T) {
+		req := combinedTimelineRequest("key")
+		req.Render.Enabled = true
+		req.OverlayBackground = &scriptpkg.OverlayBackgroundSpec{Kind: "color", Color: []float64{0, 0, 0, 1}}
+		if err := ApplyEditingAssetPolicy(&req, policy); err != nil {
+			t.Fatal(err)
+		}
+		if req.OverlayBackground.Kind != "color" || req.OverlayBackground.AssetID != "" {
+			t.Errorf("explicit color background was replaced: %+v", req.OverlayBackground)
+		}
+	})
+
+	t.Run("explicit plate is preserved", func(t *testing.T) {
+		req := combinedTimelineRequest("key")
+		req.Render.Enabled = true
+		req.OverlayBackground = &scriptpkg.OverlayBackgroundSpec{Kind: "video", AssetID: "drive-background-01"}
+		if err := ApplyEditingAssetPolicy(&req, policy); err != nil {
+			t.Fatal(err)
+		}
+		if req.OverlayBackground.AssetID != "drive-background-01" {
+			t.Errorf("explicit plate was replaced: %+v", req.OverlayBackground)
+		}
+	})
+
+	t.Run("selection is deterministic", func(t *testing.T) {
+		first := combinedTimelineRequest("same-key")
+		first.Render.Enabled = true
+		second := combinedTimelineRequest("same-key")
+		second.Render.Enabled = true
+		if err := ApplyEditingAssetPolicy(&first, policy); err != nil {
+			t.Fatal(err)
+		}
+		if err := ApplyEditingAssetPolicy(&second, policy); err != nil {
+			t.Fatal(err)
+		}
+		if first.OverlayBackground == nil || second.OverlayBackground == nil {
+			t.Fatal("both requests must receive an overlay plate")
+		}
+		if first.OverlayBackground.AssetID != second.OverlayBackground.AssetID {
+			t.Errorf("overlay plate selection is not deterministic: %q vs %q", first.OverlayBackground.AssetID, second.OverlayBackground.AssetID)
+		}
+	})
+}
+
 func TestApplyEditingAssetPolicyFailsClosed(t *testing.T) {
 	if err := ApplyEditingAssetPolicy(nil, mediaregistry.DefaultEditingAssetsPolicy()); err == nil {
 		t.Fatal("nil request must fail closed")
