@@ -14,6 +14,8 @@ Only current, executable information belongs in the working tree. Historical pla
 | Current system architecture and target root decision | `ARCHITECTURE.md` |
 | Build and startup | `README.md` |
 | Live HTTP routes | `docs/api/ACTIVE_API_GENERATED.md` |
+| Pipeline phase (stage) names recorded on a Run, and their canonical order | `internal/kernel/observability/registry.go` (`AllStages`, `StageMilestones`) — one owner for every phase literal; capabilities alias it instead of declaring their own |
+| Workflow-progress stages reported to a parent job | `internal/kernel/job/stage_progress.go` (`CanonicalStageOrder`) — the progress dimension, distinct from the execution-phase registry above |
 | Architecture policy, target roots, and legacy-root restrictions | `architecture/policy.yaml` |
 | Legacy-root migration ownership and deadlines | `architecture/package_hotspots.json` |
 | Architecture policy navigation | `docs/architecture/godlike/INDEX.md` |

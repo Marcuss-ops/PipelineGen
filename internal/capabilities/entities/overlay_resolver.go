@@ -125,7 +125,12 @@ func ResolveRankedEntityOverlayPlan(timeline EntityTimeline, planID, videoID, pr
 				TemplateID:    entry.Template,
 				PresetID:      capabilityoverlay.SelectEntityNamePreset(planID, occurrence.SceneID, identity, occurrence.Type),
 				ImagePresetID: capabilityoverlay.SelectEntityImagePreset(planID, occurrence.SceneID, identity),
-				Text:          occurrence.Name,
+				// The name card states its own entrance motion. Leaving it empty
+				// would let the compiler fall back to the preset's motion, which on
+				// the installed catalog is the glyph-level apple_phrase_v2 stack the
+				// native text lane rejects (see SelectTextMotion).
+				MotionID: capabilityoverlay.SelectTextMotion(planID, occurrence.SceneID, identity),
+				Text:     occurrence.Name,
 				// The plan's entity_ref: RenderingGen receives WHO the overlay is
 				// about (stable content-addressed id + type + canonical name +
 				// surface text), never a bare name.

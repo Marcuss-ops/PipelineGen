@@ -15,19 +15,35 @@
 # hash computed in step 2 is exactly the name to look for in step 4. A single
 # job folder holds a single file.
 #
+# The artifact is also gated on the canonical audio identity before Drive is
+# consulted. `scene.composite.v1` renders VIDEO ONLY, so a silent MP4 is the
+# normal output of this lane and `SUCCEEDED` says nothing about audio; the gate
+# is `mux-final-audio.sh --verify` (see its header for the contract). Pass
+# --allow-silent only to re-verify a legacy artifact that predates it.
+#
 # Usage:
 #   ops/jobs/remote/verify-delivery.sh job_10af228ce8bbd21d
 #   VELOX_DRIVE_TOKEN_FILE=/path/token.json ops/jobs/remote/verify-delivery.sh <job_id>
+#   ops/jobs/remote/verify-delivery.sh <job_id> --allow-silent
 #
 # Exit codes: 0 delivered · 1 usage/config · 2 master/transport · 3 artifact
 #             download failed · 4 Drive auth failed · 5 NOT on Drive (or size
-#             mismatch)
+#             mismatch) · 6 artifact has no canonical audio (see --allow-silent)
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-JOB_ID="${1:-}"
+JOB_ID=""
+ALLOW_SILENT="${VELOX_ALLOW_SILENT_ARTIFACT:-0}"
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --allow-silent) ALLOW_SILENT="1"; shift ;;
+    -h|--help) sed -n '2,38p' "${BASH_SOURCE[0]}"; exit 0 ;;
+    -*) echo "verify-delivery: unknown argument $1" >&2; exit 1 ;;
+    *) JOB_ID="$1"; shift ;;
+  esac
+done
 if [[ -z "$JOB_ID" ]]; then
-  sed -n '2,28p' "${BASH_SOURCE[0]}"
+  sed -n '2,38p' "${BASH_SOURCE[0]}"
   exit 1
 fi
 
@@ -82,12 +98,29 @@ if [[ -z "$ARTIFACT_URL" ]]; then
 fi
 
 # ── 2. artifact bytes → sha256 (streamed; never stored) ────────────────────
-SHA="$(curl -sS -m 300 "$ARTIFACT_URL" -H "Authorization: Bearer $M2M_SECRET" | sha256sum | cut -d' ' -f1)"
+SHA="$(curl -sS -m 300 "$ARTIFACT_URL" -H "Authorization: Bearer $M2M_SECRET" \
+  | tee "$TMP/artifact.mp4" | sha256sum | cut -d' ' -f1)"
 if [[ -z "$SHA" ]]; then
   echo "verify-delivery: FAIL — artifact download/read failed" >&2
   exit 3
 fi
 echo "verify-delivery: artifact sha256=$SHA"
+
+# ── 2b. canonical audio gate ───────────────────────────────────────────────
+# The master publishes whatever the worker produced, and the worker produces no
+# audio at all. Without this gate a silent artifact verifies as delivered.
+if [[ "$ALLOW_SILENT" != "1" ]]; then
+  set +e
+  "$SCRIPT_DIR/mux-final-audio.sh" --verify "$TMP/artifact.mp4"
+  GATE_RC=$?
+  set -e
+  if [[ "$GATE_RC" != "0" ]]; then
+    echo "verify-delivery: FAIL — the delivered artifact does not satisfy the canonical audio contract (gate rc=$GATE_RC)" >&2
+    echo "verify-delivery: the worker renders video only; the audio leg is owned by the PipelineGen host" >&2
+    echo "verify-delivery: rebuild it with ops/jobs/remote/mux-final-audio.sh (README §8)" >&2
+    exit 6
+  fi
+fi
 
 # ── 3. Drive access token from the operator OAuth files ────────────────────
 if [[ ! -f "$DRIVE_CREDENTIALS" || ! -f "$DRIVE_TOKEN" ]]; then

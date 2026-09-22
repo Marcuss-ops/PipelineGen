@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -819,8 +820,8 @@ func TestRun_ConcurrentCounters(t *testing.T) {
 // ── registry ─────────────────────────────────────────────────────────
 
 func TestRegistry_CanonicalNames(t *testing.T) {
-	if len(AllStages()) != 21 {
-		t.Fatalf("stages = %d, want 21", len(AllStages()))
+	if len(AllStages()) != 66 {
+		t.Fatalf("stages = %d, want 66", len(AllStages()))
 	}
 	if len(AllComponents()) != 15 {
 		t.Fatalf("components = %d, want 15", len(AllComponents()))
@@ -830,5 +831,93 @@ func TestRegistry_CanonicalNames(t *testing.T) {
 	}
 	if string(StageAcquire) != "acquire" || string(ComponentQdrant) != "qdrant" || string(OperationUpsert) != "upsert" {
 		t.Fatal("registry literals drifted from the canonical strings")
+	}
+}
+
+// TestRegistry_StageOrderHasNoDuplicates pins that the single ordered stage
+// declaration cannot list the same phase twice, so AllStages() is a phase set
+// with a total order and not an accidentally repeated sequence.
+func TestRegistry_StageOrderHasNoDuplicates(t *testing.T) {
+	seen := make(map[StageName]int, len(AllStages()))
+	for i, stage := range AllStages() {
+		if stage == "" {
+			t.Fatalf("AllStages[%d] is empty", i)
+		}
+		if prev, dup := seen[stage]; dup {
+			t.Fatalf("stage %q listed twice (indexes %d and %d)", stage, prev, i)
+		}
+		seen[stage] = i
+	}
+}
+
+// TestRegistry_StageFamiliesAreOwnedHere pins the phases that used to be
+// declared locally in the capability that emits them. A capability that
+// re-declares one of these literals instead of aliasing this registry is a
+// silent drift hazard; this test is the regression pin for the migration.
+func TestRegistry_StageFamiliesAreOwnedHere(t *testing.T) {
+	want := []StageName{
+		"script.prepare", "script.normalize", "script.validate",
+		"source.resolve", "script.plan", "script.engine", "script.postprocess",
+		"scene_analysis", "overlay.prepare", "overlay_render",
+		"audio.pipeline", "audio_finalize", "audio_publish",
+		"audio_compile", "begin_vidrush", "document.prepare", "document.publish",
+		"post_writer_finalize", "persistence.sqlite", "tts", "audio_post",
+		// "clip.render" is deliberately absent: its literal is the job type
+		// owned by internal/kernel/job (TypeClipRender) and is derived there.
+		"clip.destination_resolve", "clip.subtitles", "clip.probe", "clip.publish",
+		"stock.plan", "stock.stage_sources", "stock.search", "stock.youtube_download",
+		"stock.extract_clips", "stock.extract", "stock.duration_probe",
+		"stock.compose_chunks", "stock.compose", "stock.database_save",
+		"stock.index", "stock.publish", "stock.finalize",
+	}
+	registered := make(map[StageName]struct{}, len(AllStages()))
+	for _, stage := range AllStages() {
+		registered[stage] = struct{}{}
+	}
+	for _, stage := range want {
+		if _, ok := registered[stage]; !ok {
+			t.Errorf("phase %q is emitted in production but absent from the registry", stage)
+		}
+	}
+}
+
+// TestRegistry_MilestonesAreNotWorkPhases pins the CORE_READY contract: the
+// milestone has one declared owner, and it never appears in the work-phase
+// order (reporting and resume tooling must not treat it as a phase).
+func TestRegistry_MilestonesAreNotWorkPhases(t *testing.T) {
+	milestones := StageMilestones()
+	if len(milestones) == 0 {
+		t.Fatal("no milestones declared")
+	}
+	for _, milestone := range milestones {
+		for _, stage := range AllStages() {
+			if stage == milestone {
+				t.Fatalf("milestone %q appears in AllStages()", milestone)
+			}
+		}
+	}
+	if string(StageRunCoreReady) != "CORE_READY" {
+		t.Fatalf("CORE_READY literal drifted: %q", StageRunCoreReady)
+	}
+}
+
+// TestRegistry_HasNoCoverPhase pins an OWNERSHIP boundary, not a missing
+// feature: the cover/thumbnail lane is produced outside this pipeline, so no
+// phase name for it may appear here. A cover phase in this registry would
+// advertise work this pipeline does not perform (godlike/07
+// no-fake-availability), and would put a phase on the critical path that no
+// producer owns.
+func TestRegistry_HasNoCoverPhase(t *testing.T) {
+	outside := map[string]struct{}{"cover": {}, "copertina": {}, "thumbnail": {}}
+	for _, stage := range AllStages() {
+		// Match whole tokens, not substrings: "discover" is a phase, "cover.generate"
+		// would belong to the cover lane.
+		for _, token := range strings.FieldsFunc(strings.ToLower(string(stage)), func(r rune) bool {
+			return r == '.' || r == '_' || r == '-'
+		}) {
+			if _, banned := outside[token]; banned {
+				t.Errorf("phase %q belongs to the cover lane, owned outside this pipeline", stage)
+			}
+		}
 	}
 }

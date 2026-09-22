@@ -349,6 +349,11 @@ func (testFeatureFlagsAdapter) ScriptClipsEnabled() bool { return false }
 // route is mounted as before (with token if set, without if not) so
 // local dev workflows don't break. The 4-case matrix covers every
 // (mode, token_set) combination.
+//
+// The matrix assumes a dev/local listener bound to a loopback address
+// (ServerLoopbackOnly=true): that is the only bind where a token-less /metrics
+// is preserved. A non-loopback bind is fail-closed in EVERY mode — see
+// TestMetricsRouteNonLoopbackBindIsFailClosed.
 func TestMetricsRouteReleaseMode(t *testing.T) {
 	cases := []struct {
 		name        string
@@ -368,10 +373,11 @@ func TestMetricsRouteReleaseMode(t *testing.T) {
 			t.Setenv("METRICS_AUTH_TOKEN", tc.token)
 
 			router := NewRouter(&RouterConfig{
-				ServerGinMode: tc.ginMode,
-				Log:           zap.NewNop(),
-				Rate:          testRateLimitAdapter{},
-				Features:      testFeatureFlagsAdapter{},
+				ServerGinMode:      tc.ginMode,
+				ServerLoopbackOnly: true, // dev/local listener; the public bind has its own test
+				Log:                zap.NewNop(),
+				Rate:               testRateLimitAdapter{},
+				Features:           testFeatureFlagsAdapter{},
 			})
 			engine := router.Setup()
 			mounted := false
@@ -393,6 +399,11 @@ func TestMetricsRouteReleaseMode(t *testing.T) {
 // restriction is a middleware check on each request's RemoteAddr —
 // requests from 127.0.0.0/8 or ::1 succeed; all others return 403
 // Forbidden (PR-METRICS-FAILCLOSED loopback addendum, July 2026).
+//
+// This branch is only reachable when the listener itself is loopback-only
+// (ServerLoopbackOnly=true). On a non-loopback bind the route is not mounted at
+// all, because behind a proxy the peer address would be the proxy's loopback and
+// the check below would wave the request through.
 func TestMetricsDevModeLoopbackRestriction(t *testing.T) {
 	cases := []struct {
 		name       string
@@ -409,10 +420,11 @@ func TestMetricsDevModeLoopbackRestriction(t *testing.T) {
 			t.Setenv("METRICS_AUTH_TOKEN", "")
 
 			router := NewRouter(&RouterConfig{
-				ServerGinMode: gin.DebugMode,
-				Log:           zap.NewNop(),
-				Rate:          testRateLimitAdapter{},
-				Features:      testFeatureFlagsAdapter{},
+				ServerGinMode:      gin.DebugMode,
+				ServerLoopbackOnly: true, // the branch under test only exists on a loopback bind
+				Log:                zap.NewNop(),
+				Rate:               testRateLimitAdapter{},
+				Features:           testFeatureFlagsAdapter{},
 			})
 			engine := router.Setup()
 
@@ -460,6 +472,108 @@ func TestMetricsDevModeTokenSetIgnoresLoopbackCheck(t *testing.T) {
 	engine.ServeHTTP(w2, req2)
 	if w2.Code != http.StatusOK {
 		t.Errorf("expected 200 (with bearer) for non-loopback+token-env set, got %d", w2.Code)
+	}
+}
+
+// TestMetricsRouteNonLoopbackBindIsFailClosed pins the July 2026 hardening of
+// the /metrics posture (PR-METRICS-FAILCLOSED bind-address addendum): the
+// decision keys on the BIND ADDRESS, so a listener that is not loopback-only
+// never serves the metric surface without a token — not even in dev modes.
+//
+// This is the case that was live on a remote master on 2026-09-22: a
+// non-loopback bind (or a front proxy making the peer address loopback) under a
+// dev-mode binary answered 200 with no Authorization header at all, publishing
+// per-worker CPU/disk/network, queue depth and cost models to the network.
+func TestMetricsRouteNonLoopbackBindIsFailClosed(t *testing.T) {
+	cases := []struct {
+		name         string
+		ginMode      string
+		loopbackOnly bool
+		token        string
+		wantMounted  bool
+	}{
+		{"public bind + no token + debug (fail-closed)", gin.DebugMode, false, "", false},
+		{"public bind + no token + test (fail-closed)", gin.TestMode, false, "", false},
+		{"public bind + no token + release (fail-closed)", gin.ReleaseMode, false, "", false},
+		{"public bind + token (mounted, bearer required)", gin.DebugMode, false, "secret", true},
+		{"loopback bind + no token + debug (dev preserved)", gin.DebugMode, true, "", true},
+		{"loopback bind + no token + release (fail-closed)", gin.ReleaseMode, true, "", false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv("METRICS_AUTH_TOKEN", tc.token)
+
+			router := NewRouter(&RouterConfig{
+				ServerGinMode:      tc.ginMode,
+				ServerLoopbackOnly: tc.loopbackOnly,
+				Log:                zap.NewNop(),
+				Rate:               testRateLimitAdapter{},
+				Features:           testFeatureFlagsAdapter{},
+			})
+			engine := router.Setup()
+
+			mounted := false
+			for _, route := range engine.Routes() {
+				if route.Path == "/metrics" {
+					mounted = true
+					break
+				}
+			}
+			if mounted != tc.wantMounted {
+				t.Fatalf("got mounted=%v, want mounted=%v", mounted, tc.wantMounted)
+			}
+
+			// A fail-closed route must be ABSENT, not merely unauthorized:
+			// 404 is the only answer that cannot leak a metrics body by mistake.
+			req := httptest.NewRequest(http.MethodGet, "/metrics", nil)
+			req.RemoteAddr = "10.0.0.1:54321"
+			w := httptest.NewRecorder()
+			engine.ServeHTTP(w, req)
+			if !tc.wantMounted {
+				if w.Code != http.StatusNotFound {
+					t.Errorf("unmounted /metrics answered %d, want 404", w.Code)
+				}
+				return
+			}
+			if tc.token != "" {
+				if w.Code != http.StatusUnauthorized {
+					t.Errorf("mounted /metrics without bearer answered %d, want 401", w.Code)
+				}
+				req.Header.Set("Authorization", "Bearer "+tc.token)
+				wm := httptest.NewRecorder()
+				engine.ServeHTTP(wm, req)
+				if wm.Code != http.StatusOK {
+					t.Errorf("mounted /metrics with bearer answered %d, want 200", wm.Code)
+				}
+			}
+		})
+	}
+}
+
+// TestMetricsRouteIgnoresSpoofedForwardedFor is the "why" of keying on the bind
+// address: X-Forwarded-For / X-Real-Ip are attacker-controlled, so a public bind
+// must not be talked into serving metrics by a client claiming to be a proxy.
+func TestMetricsRouteIgnoresSpoofedForwardedFor(t *testing.T) {
+	t.Setenv("METRICS_AUTH_TOKEN", "")
+
+	router := NewRouter(&RouterConfig{
+		ServerGinMode:      gin.DebugMode,
+		ServerLoopbackOnly: false, // bound to 0.0.0.0
+		Log:                zap.NewNop(),
+		Rate:               testRateLimitAdapter{},
+		Features:           testFeatureFlagsAdapter{},
+	})
+	engine := router.Setup()
+
+	req := httptest.NewRequest(http.MethodGet, "/metrics", nil)
+	req.RemoteAddr = "203.0.113.7:12345"
+	req.Header.Set("X-Forwarded-For", "127.0.0.1")
+	req.Header.Set("X-Real-Ip", "127.0.0.1")
+	w := httptest.NewRecorder()
+	engine.ServeHTTP(w, req)
+
+	if w.Code != http.StatusNotFound {
+		t.Errorf("spoofed X-Forwarded-For served metrics on a public bind: got %d, want 404", w.Code)
 	}
 }
 

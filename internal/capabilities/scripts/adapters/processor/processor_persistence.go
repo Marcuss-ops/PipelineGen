@@ -66,7 +66,7 @@ const persistenceOperationTimeout = 30 * time.Second
 // boundary owned by the persistence processor. It nests under the processor
 // stage recorded by the composite runner ("persistence") and is measured on
 // the same canonical clock — never with a second ad-hoc timer.
-const stagePersistenceSQLite kernobs.StageName = "persistence.sqlite"
+const stagePersistenceSQLite = kernobs.StagePersistenceSQLite
 
 // NewPersistenceProcessor creates a PersistenceProcessor.
 // repo must be non-nil (enforced at registration time).

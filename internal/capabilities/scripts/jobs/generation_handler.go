@@ -257,7 +257,16 @@ func (h *GenerateJobHandler) Handle(
 		if validateErr := manifest.Validate(); validateErr != nil {
 			return nil, fmt.Errorf("generate job handler: durable artifact manifest: %w", validateErr)
 		}
-		return map[string]any{"run_id": run.ID, "parent_state": "completed", "result": updated.Result, job.ManifestKey: manifest}, nil
+		// stage_progress is the same key the batch children publish, so a parent
+		// aggregator merges a durable run's stages (including `render`, which
+		// only the durable lane produces) exactly like an item child's.
+		return map[string]any{
+			"run_id":         run.ID,
+			"parent_state":   "completed",
+			"result":         updated.Result,
+			"stage_progress": domainResult.StageProgress,
+			job.ManifestKey:  manifest,
+		}, nil
 	}
 
 	result, dispatchErr := h.dispatcher.Dispatch(ctx, j, env, tools)

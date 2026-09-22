@@ -49,8 +49,9 @@ func TestBuildPlanRejectsAnUncertifiedMotionPool(t *testing.T) {
 		t.Fatal("an uncertified motion id must fail closed")
 	}
 
+	certified := CertifiedPhraseMotions()
 	dup := base()
-	dup.PhraseMotions = []string{"kinetic_split_word", "kinetic_split_word"}
+	dup.PhraseMotions = []string{certified[0], certified[0]}
 	if _, err := BuildPlan(dup, cfg); err == nil {
 		t.Fatal("a duplicated motion id must fail closed")
 	}
@@ -61,7 +62,8 @@ func TestBuildPlanRejectsAnUncertifiedMotionPool(t *testing.T) {
 // from the pool instead of the certified default list, and the selection
 // stays deterministic across runs.
 func TestBuildPlanRotatesWithinTheChannelPool(t *testing.T) {
-	pool := []string{"kinetic_split_word", "masked_upward_reveal"}
+	certified := CertifiedPhraseMotions()
+	pool := []string{certified[0], certified[1]}
 	input := PlanInput{
 		PlanID: "pool", VideoID: "video-pool", Width: 1280, Height: 720, FPSNum: 30, FPSDen: 1,
 		PhraseMotions: pool,

@@ -160,7 +160,7 @@ func (e *executionRun) normalize() bool {
 // synchronous: fixed intro/outro assets, original audio, and source windows
 // must be certified before the LLM, translator, or TTS can start.
 func (e *executionRun) mediaPreflightPhase() bool {
-	return e.measure(kernobs.StageName(StagePreflight), func(c context.Context) bool {
+	return e.measure(kernobs.StageRunMediaPreflight, func(c context.Context) bool {
 		if stageSkipped(e.resumeIdx, StagePreflight) {
 			return true
 		}
@@ -196,7 +196,7 @@ func (e *executionRun) mediaPreflightPhase() bool {
 // owned by the caller so concurrent runs stay isolated.
 func (e *executionRun) beginVidRushPhase() bool {
 	var beginVidRushErr error
-	kernobs.MeasureStage(e.ctx, "begin_vidrush", func(stageCtx context.Context) error {
+	kernobs.MeasureStage(e.ctx, kernobs.StageBeginVidRush, func(stageCtx context.Context) error {
 		e.coordinator, beginVidRushErr = e.r.beginVidRush(stageCtx, e.runID, e.req)
 		return beginVidRushErr
 	})
@@ -455,7 +455,7 @@ func (e *executionRun) markCoreReady() {
 	}
 
 	started := time.Now()
-	kernobs.RecordStage(e.ctx, kernobs.StageInfo{Stage: kernobs.StageName(StageCoreReady)}, started, time.Now(), nil)
+	kernobs.RecordStage(e.ctx, kernobs.StageInfo{Stage: kernobs.StageRunCoreReady}, started, time.Now(), nil)
 	if run := kernobs.FromContext(e.ctx); run != nil {
 		kernobs.RecordKPIMilestone(e.ctx, "core_ready_ms", run.ElapsedMs())
 	}

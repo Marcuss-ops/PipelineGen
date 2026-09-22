@@ -310,7 +310,7 @@ func (r *Runner) runLease(parent context.Context, lease *jobs.Lease) (retErr err
 		// attributed to the RunReport instead of surfacing as
 		// unattributed time.
 		kernobs.RecordStage(jobCtx, kernobs.StageInfo{
-			Stage: kernobs.StageName("post_writer_finalize"),
+			Stage: kernobs.StagePostWriterFinalize,
 		}, finalizeStarted, time.Now().UTC(), completeErr)
 		if completeErr != nil {
 			terminalErr = completeErr

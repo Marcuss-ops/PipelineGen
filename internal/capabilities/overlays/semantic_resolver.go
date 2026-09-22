@@ -24,10 +24,18 @@ type SemanticPreset string
 
 // The canonical Chronon preset ids (mirror of Chronon3d's VisualPresetRegistry
 // seeds). These are the only presets a semantic role may resolve to.
+//
+// The TEXT ids point at the glow-free text preset: the native text lane cannot
+// keep a glow (style.glow) resident on the GPU and rejects glyph/word text
+// animators, so the canonical apple_v2 phrase/word/name ids — which author the
+// canary glow and the apple_phrase_v2 glyph motion — are not renderable for a
+// generated overlay on this lane (see preset_selection.go for the measured
+// matrix). The animation of a text item is carried by an explicit motion id
+// (SelectTextMotion), never by the preset.
 const (
-	PresetModernPhrase SemanticPreset = "apple_v2"
-	PresetModernWord   SemanticPreset = "apple_v2"
-	PresetModernName   SemanticPreset = "apple_v2"
+	PresetModernPhrase SemanticPreset = "static_text_smoke"
+	PresetModernWord   SemanticPreset = "static_text_smoke"
+	PresetModernName   SemanticPreset = "static_text_smoke"
 	PresetModernImage  SemanticPreset = "image_fade_in"
 )
 

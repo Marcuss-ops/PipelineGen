@@ -158,15 +158,35 @@ func TestResolveEntityOverlayPlan_MichaelJordanReplayDeterministic(t *testing.T)
 }
 
 func TestSpecialNamePresetsFollowEntityType(t *testing.T) {
-	// The render-safe name candidate set collapsed to the one canonical Chronon
-	// text preset (name_glow_slide/name_glow_pop are retired, and the runtime
-	// registry no longer resolves them), so the entity type still selects the
-	// name family through overlays.SelectEntityNamePreset but every family now
-	// resolves to the same id. The expectation is read from the single owner of
-	// that id (overlays.PresetModernName) instead of a copy of it.
+	// The render-safe name candidate set collapsed to the one glow-free Chronon
+	// text preset this lane renders (name_glow_slide/name_glow_pop are retired,
+	// and apple_v2 carries the glow the native residency check drops), so the
+	// entity type still selects the name family through
+	// overlays.SelectEntityNamePreset but every family now resolves to the same
+	// id. The expectation is read from the single owner of that id
+	// (overlays.PresetModernName) instead of a copy of it.
 	for _, entityType := range []string{"PERSON", "ORGANIZATION", "LOCATION", "UNKNOWN"} {
 		got := capabilityoverlay.SelectEntityNamePreset("test-job", "scene", "entity-"+entityType, entityType)
 		require.Equal(t, string(capabilityoverlay.PresetModernName), got, entityType)
+	}
+}
+
+// TestResolvedEntityCardsCarryARenderSafeMotion pins the other half of the
+// entity-card render contract: the name card states its own entrance motion.
+// Without it the compiler falls back to the preset's motion, which on the
+// installed catalog is the glyph-level apple_phrase_v2 stack the native text
+// lane rejects — so an entity card would be the one overlay that never renders.
+func TestResolvedEntityCardsCarryARenderSafeMotion(t *testing.T) {
+	safe := make(map[string]bool)
+	for _, id := range capabilityoverlay.RenderSafeTextMotions() {
+		safe[id] = true
+	}
+	plan, err := ResolveEntityOverlayPlan(entityTimelineFixture(t), "motion-contract", "video-motion", "", 1920, 1080, 30, 1)
+	require.NoError(t, err)
+	require.NotEmpty(t, plan.Items)
+	for _, item := range plan.Items {
+		require.Equal(t, string(capabilityoverlay.PresetModernName), item.PresetID, item.ID)
+		require.True(t, safe[item.MotionID], "entity card %q motion %q is outside the render-safe pool", item.ID, item.MotionID)
 	}
 }
 

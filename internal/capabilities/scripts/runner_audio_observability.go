@@ -9,15 +9,17 @@ import (
 // audioCompileStage is the canonical observability stage under which the
 // combined-audio subtimings are recorded as operations. It mirrors the
 // AUDIO_COMPILE execution step: the step is the business/orchestration phase,
-// and each subtiming below it is a technical operation. It is a
-// business-stage name (like the clipindexer "index" stage), not a generic
-// observability-taxonomy entry.
-const audioCompileStage = "audio_compile"
+// and each subtiming below it is a technical operation. The literal is owned
+// by internal/kernel/observability (registry.go) and aliased here — a phase
+// name is a wire fact, so a second spelling is a silent drift hazard.
+//
+// It is carried as a plain string (like the report lookups that consume it);
+// sites that measure on the canonical clock pass kernobs.StageName(stage).
+const audioCompileStage = string(kernobs.StageRunAudioCompile)
 
 // voiceoverStage mirrors the VOICEOVER execution step and hosts the
-// owner-measured TTS subtiming. Like audioCompileStage it is a business-stage
-// name, not a generic observability-taxonomy entry.
-const voiceoverStage = "voiceover"
+// owner-measured TTS subtiming. Same ownership rule as audioCompileStage.
+const voiceoverStage = string(kernobs.StageRunVoiceover)
 
 // recordAudioOperation appends one owner-measured audio subtiming as an
 // OperationReport under the audio_compile stage. The duration comes from the

@@ -261,7 +261,7 @@ func (r *Runner) computeLocalizedAnnotations(ctx context.Context, req GenerateRe
 		// that precondition (and refuses to skip for any other entity kind).
 		if includeEntities && r.vidRushPipeline.NERPort != nil && !sourceMatchesCoverEntityLimit(sourceMatches[idx], entityLimit) {
 			err := kernobs.MeasureOperation(opCtx, kernobs.OperationInfo{
-				Stage: kernobs.StageName("scene_analysis"), Component: kernobs.ComponentNLP, Operation: kernobs.OperationExtract,
+				Stage: kernobs.StageSceneAnalysis, Component: kernobs.ComponentNLP, Operation: kernobs.OperationExtract,
 				Provider: string(item.lang), MetadataJSON: fmt.Sprintf("{\"scene_id\":%q,\"language\":%q,\"surface\":\"translation\"}", result.Scenes[item.sceneIndex].ID, item.lang),
 			}, func(measureCtx context.Context) error {
 				var extractErr error

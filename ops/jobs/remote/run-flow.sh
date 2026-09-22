@@ -14,10 +14,18 @@
 #   ops/jobs/remote/run-flow.sh --yes --pre          # submit only the pre-job
 #   ops/jobs/remote/run-flow.sh --yes --finalize ID  # finalize an existing job
 #   ops/jobs/remote/run-flow.sh --yes --all          # pre → poll → finalize → poll
+#   ops/jobs/remote/run-flow.sh --yes --all \
+#     --pre-payload ops/jobs/remote/dolly5-pre.creator-77.json
+#   ops/jobs/remote/run-flow.sh --phases   # the phase sequence this kit drives
 #
 # Options:
+#   --phases                     print the canonical phase sequence this kit
+#                                drives (PREPARE/FINALIZE mapping) and exit
 #   --surface auto|pre|enqueue   submit surface (auto = /pre when mounted,
 #                                otherwise enqueue on POST /api/v1/jobs)
+#   --pre-payload FILE           PREPARE payload (default: pre-job.creator-77.json).
+#                                The file MUST carry copy_only=true.
+#   --finalize-payload FILE      FINALIZE payload (default: finalize-job.creator-77.json)
 #   --run-id ID                  idempotency-key prefix (default: UTC timestamp)
 #   --timeout SEC                poll budget per phase (default 1800)
 #   --interval SEC               poll interval (default 10)
@@ -27,39 +35,79 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PRE_JOB="$SCRIPT_DIR/pre-job.creator-77.json"
-FINALIZE_JOB="$SCRIPT_DIR/finalize-job.creator-77.json"
+PRE_PAYLOAD="$SCRIPT_DIR/pre-job.creator-77.json"
+FINALIZE_PAYLOAD="$SCRIPT_DIR/finalize-job.creator-77.json"
 
 DO_PRE="0"; DO_FINALIZE="0"; FINALIZE_ID=""; ASSUME_YES="0"
 SURFACE="auto"; RUN_ID="$(date -u +%Y%m%d-%H%M%S)"; TIMEOUT="1800"; INTERVAL="10"
+SHOW_PHASES="0"
+
+# Canonical phases this kit drives, with the payload field that carries each
+# one. The phase NAMES come from the canonical vocabulary owned by
+# internal/kernel/observability/registry.go (execution phases) and
+# internal/kernel/job/stage_progress.go (workflow stages) — never invented here.
+#
+# The cover/thumbnail lane is NOT part of this flow: it is produced by the
+# owner of the cover lane and must not appear as a phase here (pinning the
+# absence in the daemon's own phase contract: see the registry test
+# TestRegistry_HasNoCoverPhase).
+kit_phases() {
+  cat <<'EOF'
+  phase          surface   carried by
+  -------------  --------  ----------------------------------------------------
+  script         PREPARE   pre-job.script_text + scenes[].text
+  clips          PREPARE   scenes[].clip{asset_id,drive_file_id,sha256,size_bytes}
+  stock          PREPARE   scenes[].stock{asset_id,drive_file_id,sha256,duration_ms}
+  overlay        FINALIZE  overlays[]{start_frame,end_frame,frame_count,mode,z_index}
+  audio_compile  FINALIZE  runtime_assets[]{kind,role,url,sha256} (music/SFX)
+  render         FINALIZE  the worker's certified artifact (sha-addressed, polled to terminal)
+  publish        FINALIZE  delivery_plan[].destination_id (drive-production)
+
+  not a phase here: cover/thumbnail (owned outside this pipeline).
+EOF
+}
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
+    --phases) SHOW_PHASES="1"; shift ;;
     --yes|-y) ASSUME_YES="1"; shift ;;
     --pre) DO_PRE="1"; shift ;;
     --all) DO_PRE="1"; DO_FINALIZE="1"; shift ;;
     --finalize) DO_FINALIZE="1"; FINALIZE_ID="${2:?--finalize needs a job_id}"; shift 2 ;;
+    --pre-payload) PRE_PAYLOAD="${2:?--pre-payload needs a file}"; shift 2 ;;
+    --finalize-payload) FINALIZE_PAYLOAD="${2:?--finalize-payload needs a file}"; shift 2 ;;
     --surface) SURFACE="${2:?--surface needs a value}"; shift 2 ;;
     --run-id) RUN_ID="${2:?--run-id needs a value}"; shift 2 ;;
     --timeout) TIMEOUT="${2:?--timeout needs a value}"; shift 2 ;;
     --interval) INTERVAL="${2:?--interval needs a value}"; shift 2 ;;
-    -h|--help) sed -n '2,24p' "${BASH_SOURCE[0]}"; exit 0 ;;
+    -h|--help) sed -n '2,39p' "${BASH_SOURCE[0]}"; exit 0 ;;
     *) echo "run-flow: unknown argument $1" >&2; exit 1 ;;
   esac
 done
 
+if [[ "$SHOW_PHASES" == "1" ]]; then
+  echo "run-flow: canonical phases driven by this kit (target ${VELOX_MASTER_URL:-<unset>})"
+  kit_phases
+  exit 0
+fi
+
 if [[ "$DO_PRE" == "0" && "$DO_FINALIZE" == "0" ]]; then
   "$SCRIPT_DIR/preflight.sh" || true
-  cat <<'EOF'
+  cat <<EOF
 
 run-flow: nothing submitted (dry plan).
 
+run-flow: canonical phases (run-flow.sh --phases for the full table):
+EOF
+  kit_phases
+  cat <<EOF
+
   plan for --yes --all:
-    1. POST {master}/api/v1/jobs/pre                     body: pre-job.creator-77.json
+    1. POST {master}/api/v1/jobs/pre                     body: ${PRE_PAYLOAD}
        → 202 PREPARE, dispatch_status=waiting_runtime_assets
     2. GET  {master}/api/v1/jobs/{job_id}                confirm the job is visible
        (a pre-only job stays PENDING and is never claimed: do NOT wait here)
-    3. POST {master}/api/v1/jobs/{job_id}/finalize       body: finalize-job.creator-77.json
+    3. POST {master}/api/v1/jobs/{job_id}/finalize       body: ${FINALIZE_PAYLOAD}
     4. GET  {master}/api/v1/jobs/{job_id}                poll to terminal
 EOF
   exit 0
@@ -108,9 +156,11 @@ if [[ "$PF_STATUS" != "0" && "$PF_STATUS" != "4" ]]; then exit "$PF_STATUS"; fi
 echo
 
 pre_payload="$TMP/pre.json"
-jq --arg k "$RUN_ID-pre" '.idempotency_key = $k' "$PRE_JOB" >"$pre_payload"
+[[ -r "$PRE_PAYLOAD" ]] || { echo "run-flow: FAIL — PRE payload not readable: $PRE_PAYLOAD" >&2; exit 1; }
+jq --arg k "$RUN_ID-pre" '.idempotency_key = $k' "$PRE_PAYLOAD" >"$pre_payload"
 fin_payload="$TMP/finalize.json"
-jq --arg k "$RUN_ID-finalize" '.idempotency_key = $k' "$FINALIZE_JOB" >"$fin_payload"
+[[ -r "$FINALIZE_PAYLOAD" ]] || { echo "run-flow: FAIL — FINALIZE payload not readable: $FINALIZE_PAYLOAD" >&2; exit 1; }
+jq --arg k "$RUN_ID-finalize" '.idempotency_key = $k' "$FINALIZE_PAYLOAD" >"$fin_payload"
 if [[ "$(jq -r '.copy_only // false' "$pre_payload")" != "true" ]]; then
   echo "run-flow: FAIL — PRE payload must carry copy_only=true" >&2
   exit 2

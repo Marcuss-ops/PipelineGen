@@ -276,7 +276,7 @@ func TestDocsPrepare_DoesNotBlockTTS(t *testing.T) {
 	var voiceoverFinished, docPrepareStarted time.Time
 	for _, st := range run.Report().Stages {
 		switch st.Name {
-		case voiceoverStage:
+		case string(voiceoverStage):
 			voiceoverFinished = st.FinishedAt
 		case string(StageDocumentPrepare):
 			docPrepareStarted = st.StartedAt

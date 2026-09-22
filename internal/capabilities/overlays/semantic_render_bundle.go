@@ -251,6 +251,10 @@ func BuildOverlayPlan(b SemanticRenderBundleV1, videoID, projectID string, width
 			displayText = strings.TrimSpace(e.CanonicalText)
 		}
 		item := OverlayItem{ID: e.EntityID, SceneID: b.Scene.SegmentID, EntityID: e.EntityID, Kind: kind, StartMs: ev.StartMs, EndMs: ev.EndMs, TemplateID: templateID, PresetID: ev.PresetID, Text: displayText,
+			// A text card carries an explicit render-safe entrance motion; an
+			// image_popup card below replaces the text surface and keeps its own
+			// params.animation instead, so the motion is dropped with the text.
+			MotionID:  SelectTextMotion(b.RunID, b.Scene.SegmentID, e.EntityID),
 			EntityRef: &OverlayEntityRef{EntityID: e.EntityID, Type: e.Type, Name: e.CanonicalText, SurfaceText: displayText}}
 		if a, ok := assets[e.EntityID]; ok {
 			// An image is a capability choice, not merely an extra field on a
@@ -261,6 +265,10 @@ func BuildOverlayPlan(b SemanticRenderBundleV1, videoID, projectID string, width
 			item.PresetID = SelectEntityImagePreset(b.RunID, b.Scene.SegmentID, e.EntityID)
 			item.EndMs = item.StartMs + MaxImageOverlayDurationMS
 			item.Text = ""
+			// The text surface is gone: the card renders as an image layer, so a
+			// text motion id must not travel with it.
+			item.MotionID = ""
+			item.MotionParams = nil
 			item.Params = map[string]any{"animation": map[string]any{"preset": SelectEntityImageAnimation(b.RunID, b.Scene.SegmentID, e.EntityID)}}
 			item.AssetRefs = []OverlayAssetRef{NewOverlayAssetRef(
 				asset.New(a.AssetID, a.ContentHash, "image/jpeg", 0), a.SourceURL, "")}

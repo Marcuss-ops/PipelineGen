@@ -527,8 +527,16 @@ func (r *Runner) runSceneTextPhase(ctx context.Context, runID string, req Genera
 				applyLocalizedRenderLinkLocked(result, rendered)
 				result.LocalizedRenders = append(result.LocalizedRenders, rendered)
 				accumulateLocalizedRenderMetrics(result, rendered)
+				// The streaming fan-out has no result pointer of its own, so its
+				// parent-visible render observations are projected here, at the
+				// join, instead of being lost with the coordinator.
+				recordRenderStageProgress(result, rendered)
 			}
-			result.LocalizedRenderFailures = append(result.LocalizedRenderFailures, ready.renderFailures()...)
+			failures := ready.renderFailures()
+			result.LocalizedRenderFailures = append(result.LocalizedRenderFailures, failures...)
+			for _, failure := range failures {
+				recordRenderStageFailure(result, failure)
+			}
 		}
 		r.checkpoint(ctx, runID, result)
 		if !streamed {

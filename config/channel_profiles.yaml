@@ -35,7 +35,10 @@
 #
 # Vocabularies (validated at boot, fail-closed):
 #   subtitles.preset  → canonical subtitle presets (kernel/output_spec.go)
-#   phrase_motions    → certified motions (overlays.CertifiedPhraseMotions)
+#   phrase_motions    → render-safe motions (overlays.CertifiedPhraseMotions):
+#                       the native text lane renders only motions that lower
+#                       to composition tracks (no glow, no glyph/word text
+#                       animators) — see overlays.RenderSafeTextMotions()
 #   sound_effects[].gain_db must be <= 0 dB (the master mix owns the level)
 #   font: only Montserrat-Bold and Poppins-Bold ship as files; any other
 #         family name projects onto one of those two (same rule as
@@ -85,8 +88,8 @@ profiles:
         duration_frames: 8
     mix_policy: VOICEOVER_DUCKED_CLIP
     phrase_motions:
-      - masked_upward_reveal
-      - velocity_inertia_snap
+      - slide_up
+      - precision_spring_up
     # sound_effects:
     #   - asset_id: whoosh1      # must exist in this deployment's catalog
     #     at_ms: 0               # absolute placement (mutually exclusive with scene_id)
@@ -110,8 +113,8 @@ profiles:
         color: "#FFFFFF"
         font_size_px: 40
     phrase_motions:
-      - soft_edge_spotlight_dissolve
-      - staggered_char_float
+      - soft_scale_reveal
+      - fade_in
 
   - channel_id: "young"
     description: "Short-form line for the younger audience: rounder, larger captions, Poppins wordmark, livelier phrase motion."
@@ -130,9 +133,9 @@ profiles:
         color: "#FFFFFF"
         font_size_px: 36
     phrase_motions:
-      - kinetic_split_word
-      - staggered_char_float
-      - soft_edge_spotlight_dissolve
+      - scale_in
+      - slide_from_right
+      - fade_in
     # sound_effects:
     #   - asset_id: whoosh3
     #     scene_id: "scene-1"    # scene ids vary per run: prefer at_ms unless the run pins them
