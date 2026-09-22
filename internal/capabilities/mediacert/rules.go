@@ -363,17 +363,27 @@ func ruleEntityGrounding(spec Spec, result MediaResult) CheckResult {
 }
 
 // entityHasEvidence reports whether an entity's value appears as a
-// substring of the segment's source text.
+// substring of the segment's source text or of its committed narration.
+// The extractor mines the narration (the per-segment SourceText is an
+// editorial brief for text/clips payloads), so narration is first-class
+// evidence here: NO EVIDENCE → NO ENTITY still holds because the entity is
+// demonstrated verbatim in the text the video speaks, which is the same
+// surface the entity timeline anchors overlay cards to.
 func entityHasEvidence(ent script.ExtractedEntity, seg ResultSegment) bool {
 	needle := strings.ToLower(strings.TrimSpace(ent.Value))
 	if needle == "" {
 		return false
 	}
-	hay := strings.ToLower(seg.SourceText)
+	source := seg.SourceText
+	narration := seg.NarrationText
 	if seg.SceneIR != nil {
-		hay = strings.ToLower(seg.SceneIR.SourceText)
+		source = seg.SceneIR.SourceText
+		narration = seg.SceneIR.NarrationText
 	}
-	return strings.Contains(hay, needle)
+	if strings.Contains(strings.ToLower(source), needle) {
+		return true
+	}
+	return strings.Contains(strings.ToLower(narration), needle)
 }
 
 // ruleImageFanout verifies one image query per entity and the configured

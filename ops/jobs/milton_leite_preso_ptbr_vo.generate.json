@@ -1,0 +1,197 @@
+{
+  "version": 2,
+  "preset": "custom",
+  "correlation_id": "milton-leite-preso-vo-ptbr-20260922d",
+  "items": [
+    {
+      "id": "milton-leite-preso-vo",
+      "title": "Milton Leite PRESO!",
+      "project": "brazil-cronaca-nera",
+      "language": "pt",
+      "tone": "investigativo, direto, impactante",
+      "style": "Narrativa em português do Brasil no tom de crime real paulista, escrita para locução: fluida, ritmada e fácil de ouvir do começo ao fim. Cada cena precisa de desenvolvimento real, não de resumo: abra com o fato forte, explique como o esquema funciona, acrescente o detalhe concreto (número, data, nome, valor, documento, horário) e feche conectando com a cena seguinte. Desenvolva o raciocínio em voz alta: o que a polícia sustenta, o que a defesa responde, o que ainda não está provado. Use frases curtas e transições naturais (\"mas há um detalhe\", \"é aqui que o caso muda\", \"o que ninguém explica até agora é\", \"e tem mais\"). Atribua sempre a fonte dentro da cena (segundo a Polícia Civil, afirma o relatório, diz a defesa). Nunca invente fatos, nomes, datas ou números que não estejam nas clips. Não repita informação entre cenas e não use enchimento genérico: prefira aprofundar o detalhe que já existe.",
+      "media_mode": "clip_only",
+      "source": {
+        "type": "clips",
+        "topic": "Operação Vectura Corrupta: a prisão de Milton Leite, a infiltração do PCC nas empresas de ônibus de São Paulo e o furto misterioso do escritório",
+        "clip_ids": [
+          "yt_kBWlon1GMs0_192_228_v1",
+          "yt_DLFi4zEjI4Q_400_455_v1",
+          "yt_DLFi4zEjI4Q_147_195_v1",
+          "yt_ogu6YuDUdnQ_125_155_v1",
+          "yt_ogu6YuDUdnQ_50_65_v1",
+          "yt_DLFi4zEjI4Q_68_98_v1",
+          "yt_DLFi4zEjI4Q_258_335_v1",
+          "yt_DLFi4zEjI4Q_455_515_v1",
+          "yt_kBWlon1GMs0_395_451_v1",
+          "yt_kBWlon1GMs0_325_365_v1"
+        ],
+        "num_clips": 10,
+        "ordering_strategy": "input_order",
+        "grounding_policy": "clips_primary",
+        "fallback_policy": "strict",
+        "transcript_policy": "strict"
+      },
+      "intro": {
+        "title": "Cold open: Milton Leite PRESO",
+        "display_text": "MILTON LEITE PRESO!",
+        "clip_ids": [
+          "yt_kBWlon1GMs0_0_15_v1",
+          "yt_ogu6YuDUdnQ_65_84_v1",
+          "yt_DLFi4zEjI4Q_55_68_v1"
+        ],
+        "playback": {
+          "audio_mode": "original_clip"
+        }
+      },
+      "script_params": {
+        "target_words": 2460,
+        "segment_words": 246,
+        "segments": [
+          {
+            "id": "scene-0",
+            "kind": "clip",
+            "topic": "A Operação Vectura Corrupta, os 16 mandados e a latitância de Milton Leite",
+            "source_text": "Abra com o impacto da operação e desenvolva em profundidade: 17 de setembro, Polícia Civil e MPSP deflagram a Vectura Corrupta com 16 mandados de prisão temporária e 18 buscas, 10 presos no primeiro dia e 6 foragidos. Detalhe a fuga de Milton Leite: mais de 24 horas foragido, passagem secreta na casa dele e apresentação espontânea na própria delegacia que conduzia a investigação. Explique o que é a prisão temporária, o que a Justiça considerou para mantê-la, o mal-estar relatado na audiência de custódia e o que a defesa alega. Feche mostrando que a operação foi planejada por meses: identificação do veículo, coordenação entre equipes e o cumprimento simultâneo dos mandados.",
+            "clip_ids": [
+              "yt_kBWlon1GMs0_192_228_v1"
+            ],
+            "target_words": 210
+          },
+          {
+            "id": "scene-1",
+            "kind": "clip",
+            "topic": "PCC nos ônibus: 12 das 22 empresas de São Paulo e o dinheiro lavado",
+            "source_text": "Explique o esquema com detalhe: ao menos 12 das 22 empresas de transporte coletivo da capital estariam controladas ou influenciadas pelo PCC. Descreva os mecanismos — empresas de fachada, direcionamento de licitações, apoio político e lavagem de capitais — e diga por que o setor de ônibus é tão atraente para a facção: fluxo de dinheiro vivo, contratos públicos longos e capilaridade nos bairros. Traga o contexto histórico, de cooperativas de transporte a empresas de ônibus, e mostre em que momento a investigação identifica a contaminação. Feche com a consequência concreta para quem pega ônibus todos os dias e para as contas públicas.",
+            "clip_ids": [
+              "yt_DLFi4zEjI4Q_400_455_v1"
+            ],
+            "target_words": 230
+          },
+          {
+            "id": "scene-2",
+            "kind": "clip",
+            "topic": "Os áudios do operador do PCC que citam Milton Leite",
+            "source_text": "Aprofunde as provas: as interceptações em que o operador do PCC aparece negociando a substituição das linhas de ônibus depois da Operação Fim de Linha, citando expressamente Milton Leite como peça decisiva para resolver a situação da UPBus. Explique quem aparece nas conversas, o tom das tratativas, a cautela dos investigados sobre como envolver cada pessoa e as menções a nomes ligados ao transporte. Desenvolva o peso jurídico do material: por que uma citação em áudio é tratada como indício, o que ainda precisa ser provado e como a defesa responde. Feche mostrando que o áudio é o fio que liga a facção ao poder político.",
+            "clip_ids": [
+              "yt_DLFi4zEjI4Q_147_195_v1"
+            ],
+            "target_words": 275
+          },
+          {
+            "id": "scene-3",
+            "kind": "clip",
+            "topic": "Transwolff: o político apontado como dono de fato da empresa",
+            "source_text": "Descreva a Transwolff e o peso da acusação: empresa de ônibus que já era alvo da Operação Fim de Linha e que aparece como ponto central do esquema na zona sul. Explique que policiais militares apontaram Milton Leite como dono de fato, o que significa \"dono de fato\" na prática, e registre com clareza que tanto a empresa quanto o político negam envolvimento. Desenvolva o detalhe do imóvel ligado ao esquema, a natureza e a cobertura usada por essas estruturas empresariais e por que provar o controle real de uma empresa de ônibus é tão difícil para a investigação.",
+            "clip_ids": [
+              "yt_ogu6YuDUdnQ_125_155_v1"
+            ],
+            "target_words": 175
+          },
+          {
+            "id": "scene-4",
+            "kind": "clip",
+            "topic": "A noite do furto: o HD das câmeras sumiu, o dinheiro ficou",
+            "source_text": "Reconstrua a cena com riqueza de detalhe: na noite de domingo, criminosos invadem o escritório de Milton Leite na zona sul e levam apenas o HD com as imagens das câmeras de segurança, deixando para trás mais de R$ 19 mil em espécie e cartões do ex-vereador. Descreva o que as filmagens mostram — o portão sendo levantado, o carro saindo, o veículo em manobra de ré — e por que a seletividade do roubo intriga os investigadores. Explique a diferença entre esse imóvel e o endereço que era alvo principal da busca e apreensão e o que a perícia recolheu no local. Feche com a pergunta que a polícia ainda não conseguiu responder: por que abandonar um valor tão alto ao lado do único item que interessava.",
+            "clip_ids": [
+              "yt_ogu6YuDUdnQ_50_65_v1"
+            ],
+            "target_words": 240
+          },
+          {
+            "id": "scene-5",
+            "kind": "clip",
+            "topic": "Furto simulado? As duas hipóteses que dividem a polícia",
+            "source_text": "Apresente as duas linhas de investigação em confronto direto: a hipótese de que a ação foi encomendada para eliminar registros de uma invasão anterior e a hipótese de conexão direta com a prisão de Milton Leite e a Vectura Corrupta. Explique que a polícia ainda não confirma oficialmente nenhum vínculo, o que abre o debate sobre classificar o episódio como assalto ou usar aspas em torno do termo. Aprofunde como o desaparecimento de imagens de segurança pode virar, ele mesmo, objeto de apuração, e o que os investigadores procuram nos registros apreendidos.",
+            "clip_ids": [
+              "yt_DLFi4zEjI4Q_68_98_v1"
+            ],
+            "target_words": 200
+          },
+          {
+            "id": "scene-6",
+            "kind": "clip",
+            "topic": "A hegemonia política e as alianças do clã Leite",
+            "source_text": "Aprofunde a trajetória política: a recusa constante de cargos federais em favor do controle total e capilar da cidade de São Paulo, a análise de que ele tinha voto, influência e poder para disputar uma cadeira federal mas preferiu não fazê-lo, e a comparação de que São Paulo era a sua \"vila\". Descreva as alianças construídas no cenário paulista, os mandatos acumulados na Câmara Municipal e o episódio da candidatura a vice em 2024. Desenvolva como esse poder local se converte em influência sobre licitações, contratos e nomeações, e por que os indícios descritos pela polícia e pelo Ministério Público são considerados devastadores para alguém que operava tão dentro das instituições.",
+            "clip_ids": [
+              "yt_DLFi4zEjI4Q_258_335_v1"
+            ],
+            "target_words": 375
+          },
+          {
+            "id": "scene-7",
+            "kind": "clip",
+            "topic": "A rede allargata: aeroporto, fintech e policiais envolvidos",
+            "source_text": "Mostre que o caso não se limita aos ônibus: a investigação alcança a execução no aeroporto de Guarulhos, o esquema de lavagem por meio de fintechs e a suspeita de envolvimento de agentes de segurança pública. Descreva a operação federal que atingiu fintechs e postos ligados ao PCC, explique quantas pessoas estão implicadas e como o dinheiro circularia entre transportes, apostas e empresas de fachada. Aprofunde a gravidade institucional: quando a própria força de segurança é investigada por proteger quem deveria combater, o caso deixa de ser sobre um político e passa a ser sobre o alcance do crime organizado no Estado.",
+            "clip_ids": [
+              "yt_DLFi4zEjI4Q_455_515_v1"
+            ],
+            "target_words": 335
+          },
+          {
+            "id": "scene-8",
+            "kind": "clip",
+            "topic": "A perícia forense dentro do imóvel",
+            "source_text": "Feche os fatos técnicos: a polícia científica no imóvel, os peritos dactiloscópicos recolhendo impressões digitais e vestígios biológicos, a expectativa de material genético e o cruzamento com bancos de dados e com o histórico de quem já passou pelo local. Explique o valor probatório da perícia num caso em que as imagens de segurança desapareceram e detalhe o trabalho porta a porta da Polícia Civil, com agentes nos bairros coletando testemunhos, para montar o quadro que se junta às câmeras privadas.",
+            "clip_ids": [
+              "yt_kBWlon1GMs0_395_451_v1"
+            ],
+            "target_words": 190
+          },
+          {
+            "id": "scene-9",
+            "kind": "clip",
+            "topic": "O que ainda falta esclarecer",
+            "source_text": "Encerre amarrando os fios soltos sem repetir o que já foi dito: a defesa nega, a Justiça manteve a prisão temporária, a polícia ainda precisa identificar os invasores do escritório e esclarecer se o furto e a operação estão conectados. Aprofunde a leitura de conjunto: doze das vinte e duas empresas de ônibus sob influência, uma facção que atravessa o poder político e a pergunta que fica sobre quem protege quem. Feche com uma provocação direta ao público pedindo opinião nos comentários e deixando claro que o caso continua em aberto, com desdobramentos esperados nos próximos dias.",
+            "clip_ids": [
+              "yt_kBWlon1GMs0_325_365_v1"
+            ],
+            "target_words": 230
+          }
+        ]
+      },
+      "output": {
+        "save_to_db": true,
+        "extract_entities": true,
+        "generate_scene_images": true,
+        "generate_timeline": true,
+        "voiceover_enabled": true,
+        "render": {
+          "enabled": true,
+          "foreground_scale_percent": 85,
+          "render_concurrency": 2,
+          "drive_folder_id": "1Re-ZJYeKXaG4XaO38KOzbcyIcwx71iCo",
+          "drive_subfolder_name": "milton-leite-preso-voz",
+          "background": {
+            "mode": "asset",
+            "asset_id": "drive-background-01"
+          },
+          "subtitles": {
+            "enabled": true,
+            "mode": "burn",
+            "preset": "impact"
+          }
+        }
+      },
+      "audio": {
+        "mode": "COMBINED_TIMELINE",
+        "mix_policy": "VOICEOVER_DUCKED_CLIP",
+        "timing": {
+          "mode": "required",
+          "boundary": "word",
+          "formats": [
+            "json",
+            "srt",
+            "vtt"
+          ]
+        }
+      },
+      "docs": {
+        "enabled": true,
+        "languages": [
+          "pt"
+        ]
+      }
+    }
+  ]
+}

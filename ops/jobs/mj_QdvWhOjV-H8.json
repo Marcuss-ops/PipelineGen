@@ -1,0 +1,227 @@
+{
+ "url": "https://www.youtube.com/watch?v=QdvWhOjV-H8",
+ "force_keyframes": true,
+ "write_summary": true,
+ "require_transcript_ready": true,
+ "destination": {
+  "folder_id": "1QMbexs6jFky-NjgVNgq_muMm9CixB_YC",
+  "create_subfolder": false
+ },
+ "subtitle_destination": {
+  "folder_id": "1QMbexs6jFky-NjgVNgq_muMm9CixB_YC",
+  "create_subfolder": false,
+  "per_clip_subfolders": false
+ },
+ "segments": [
+  {
+   "start": "00:00",
+   "end": "00:15",
+   "name": "Edizione straordinaria: Michael Jackson in arresto cardiaco",
+   "summary": "Wolf Blitzer interrompe le trasmissioni con un'edizione straordinaria per annunciare il ricovero urgente del cinquantenne Michael Jackson per arresto cardiaco.",
+   "topics": [
+    "Edizione straordinaria: Michael Jackson in arresto cardiaco"
+   ],
+   "tags": [
+    "Wolf",
+    "Blitzer",
+    "The",
+    "Situation",
+    "Room",
+    "CNN",
+    "breaking",
+    "news",
+    "Michael",
+    "Jackson",
+    "anni",
+    "King",
+    "Pop",
+    "ricovero"
+   ]
+  },
+  {
+   "start": "00:15",
+   "end": "00:23",
+   "name": "I primi lanci di agenzia e il trasporto all'UCLA",
+   "summary": "La corrispondente Deborah Feyerick riporta le prime notizie diffuse dall'emittente KTLA sulla corsa in ambulanza verso l'UCLA Medical Center.",
+   "topics": [
+    "I primi lanci di agenzia e il trasporto all'UCLA"
+   ],
+   "tags": [
+    "Deborah",
+    "Feyerick",
+    "KTLA",
+    "UCLA",
+    "Medical",
+    "Center",
+    "Los",
+    "Angeles",
+    "ambulanza",
+    "arresto",
+    "cardiaco"
+   ]
+  },
+  {
+   "start": "00:23",
+   "end": "00:36",
+   "name": "La chiamata al 911 da Carolwood Drive",
+   "summary": "I vigili del fuoco di Los Angeles confermano la ricezione di una richiesta di soccorso medico alle 12:21 presso la residenza di Carolwood Drive.",
+   "topics": [
+    "La chiamata al 911 da Carolwood Drive"
+   ],
+   "tags": [
+    "chiamata",
+    "911",
+    "Los",
+    "Angeles",
+    "Fire",
+    "Department",
+    "Carolwood",
+    "Drive",
+    "Holmby",
+    "Hills",
+    "West",
+    "Los",
+    "Angeles",
+    "soccorsi"
+   ]
+  },
+  {
+   "start": "00:43",
+   "end": "00:57",
+   "name": "La conferma del collasso da parte del legale e del fratello",
+   "summary": "Il legale della famiglia Brian Oxman riferisce le dichiarazioni del fratello Randy Jackson, confermando che il cantante e collassato all'improvviso in casa.",
+   "topics": [
+    "La conferma del collasso da parte del legale e del fratello"
+   ],
+   "tags": [
+    "Brian",
+    "Oxman",
+    "avvocato",
+    "famiglia",
+    "Randy",
+    "Jackson",
+    "fratello",
+    "collasso",
+    "villa",
+    "Los",
+    "Angeles",
+    "paramedici"
+   ]
+  },
+  {
+   "start": "01:05",
+   "end": "01:18",
+   "name": "Fonti ospedaliere: Michael Jackson in coma",
+   "summary": "Molteplici fonti giornalistiche e sanitarie confermano a CNN che l'artista si trova in stato di coma profondo presso l'ospedale universitario.",
+   "topics": [
+    "Fonti ospedaliere: Michael Jackson in coma"
+   ],
+   "tags": [
+    "Wolf",
+    "Blitzer",
+    "fonti",
+    "multiple",
+    "CNN",
+    "stato",
+    "coma",
+    "UCLA",
+    "Medical",
+    "Center",
+    "condizioni",
+    "critiche",
+    "terapia",
+    "intensiva"
+   ]
+  },
+  {
+   "start": "01:18",
+   "end": "01:30",
+   "name": "La folla di fan si raduna davanti all'ospedale",
+   "summary": "Le telecamere aeree documentano centinaia di fan radunati all'esterno dell'ospedale in attesa di notizie sullo stato di salute della popstar.",
+   "topics": [
+    "La folla di fan si raduna davanti all'ospedale"
+   ],
+   "tags": [
+    "immagini",
+    "aeree",
+    "elicottero",
+    "folla",
+    "raduno",
+    "fan",
+    "UCLA",
+    "Medical",
+    "Center",
+    "incredulita",
+    "star",
+    "power"
+   ]
+  },
+  {
+   "start": "01:30",
+   "end": "01:45",
+   "name": "I lanci di morte da LA Times e CBS News",
+   "summary": "Il Los Angeles Times e CBS News battono la notizia del decesso di Michael Jackson, mentre CNN mantiene una linea di cautela in attesa di riscontri ufficiali.",
+   "topics": [
+    "I lanci di morte da LA Times e CBS News"
+   ],
+   "tags": [
+    "Los",
+    "Angeles",
+    "Times",
+    "CBS",
+    "News",
+    "annuncio",
+    "morte",
+    "Michael",
+    "Jackson",
+    "breaking",
+    "news",
+    "anni",
+    "CNN"
+   ]
+  },
+  {
+   "start": "01:56",
+   "end": "02:09",
+   "name": "I preparativi a Los Angeles per il tour This Is It",
+   "summary": "In studio si ripercorrono le ultime settimane di vita a Los Angeles, dedicate alle estenuanti prove generali per l'atteso ritorno sul palco a Londra.",
+   "topics": [
+    "I preparativi a Los Angeles per il tour This Is It"
+   ],
+   "tags": [
+    "Hammer",
+    "Showbiz",
+    "Tonight",
+    "prove",
+    "concerti",
+    "This",
+    "Londra",
+    "Arena",
+    "tour",
+    "mondiale"
+   ]
+  },
+  {
+   "start": "02:09",
+   "end": "02:17",
+   "name": "La conferma definitiva del medico legale",
+   "summary": "La conduttrice interrompe il collegamento per dare la conferma ufficiale definitiva: il medico legale della contea di Los Angeles ha certificato la morte di Michael Jackson.",
+   "topics": [
+    "La conferma definitiva del medico legale"
+   ],
+   "tags": [
+    "County",
+    "Coroner",
+    "medico",
+    "legale",
+    "Los",
+    "Angeles",
+    "conferma",
+    "ufficiale",
+    "decesso",
+    "Michael",
+    "Jackson"
+   ]
+  }
+ ]
+}

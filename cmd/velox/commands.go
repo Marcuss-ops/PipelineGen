@@ -32,6 +32,9 @@ var endpointAliases = map[string]string{
 var ansiPattern = regexp.MustCompile(`\x1b\[[0-9;?]*[ -/]*[@-~]`)
 
 func newClient(cfg config) *veloxclient.Client {
+	if cfg.m2m {
+		return veloxclient.New(cfg.baseURL, cfg.token, veloxclient.WithM2M)
+	}
 	return veloxclient.New(cfg.baseURL, cfg.token)
 }
 
@@ -58,6 +61,19 @@ func bytesReplaceCR(b []byte) []byte {
 	return out
 }
 
+// addM2MIdempotencyKey keeps the transport header and the M2M enqueue DTO in
+// sync. The M2M service uses the DTO field for per-client deduplication.
+func addM2MIdempotencyKey(payload []byte, key string) ([]byte, error) {
+	var envelope map[string]any
+	if err := json.Unmarshal(payload, &envelope); err != nil {
+		return nil, err
+	}
+	if _, exists := envelope["idempotency_key"]; !exists {
+		envelope["idempotency_key"] = key
+	}
+	return json.Marshal(envelope)
+}
+
 // ── submit ────────────────────────────────────────────────────────────
 
 func cmdSubmit(args []string) int {
@@ -68,9 +84,19 @@ func cmdSubmit(args []string) int {
 		return exitUsage
 	}
 	cfg.json = fs.has("json")
+	if fs.has("m2m") {
+		cfg.m2m = true
+		cfg.token = strings.TrimSpace(os.Getenv("VELOX_M2M_SECRET"))
+	}
 
 	endpoint := fs.get("path", "")
-	if endpoint == "" {
+	if cfg.m2m {
+		// M2M has one intentionally narrow enqueue route. The payload must
+		// be the canonical EnqueueRequest envelope (type + payload), which
+		// lets the same remote client submit clip, script, stock, voiceover,
+		// and future registered job types without exposing admin routes.
+		endpoint = veloxclient.RouteM2MJobs
+	} else if endpoint == "" {
 		if len(fs.pos) == 0 {
 			fmt.Fprintln(os.Stderr, "velox submit: <job-alias> or --path is required")
 			return exitUsage
@@ -107,6 +133,13 @@ func cmdSubmit(args []string) int {
 	key := fs.get("idem-key", "")
 	if key == "" {
 		key = idempotencyKey(project, payload)
+	}
+	if cfg.m2m {
+		payload, err = addM2MIdempotencyKey(payload, key)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "velox submit: M2M payload: %v\n", err)
+			return exitUsage
+		}
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
@@ -163,6 +196,10 @@ func cmdPoll(args []string) int {
 		return exitUsage
 	}
 	cfg.json = fs.has("json")
+	if fs.has("m2m") {
+		cfg.m2m = true
+		cfg.token = strings.TrimSpace(os.Getenv("VELOX_M2M_SECRET"))
+	}
 	if len(fs.pos) == 0 {
 		fmt.Fprintln(os.Stderr, "velox poll: <job_id> is required")
 		return exitUsage
@@ -243,6 +280,10 @@ func cmdReplay(args []string) int {
 		return exitUsage
 	}
 	cfg.json = fs.has("json")
+	if fs.has("m2m") {
+		cfg.m2m = true
+		cfg.token = strings.TrimSpace(os.Getenv("VELOX_M2M_SECRET"))
+	}
 	if len(fs.pos) == 0 {
 		fmt.Fprintln(os.Stderr, "velox replay: <job_id> is required")
 		return exitUsage
@@ -469,6 +510,34 @@ func partialNote(partial bool, errs map[string]string) string {
 		parts = append(parts, k+": "+v)
 	}
 	return " [partial: " + strings.Join(parts, "; ") + "]"
+}
+
+// ── types ─────────────────────────────────────────────────────────────
+
+func cmdTypes(args []string) int {
+	cfg := loadConfig()
+	fs, err := parseFlags(args)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "velox types: %v\n", err)
+		return exitUsage
+	}
+	cfg.json = fs.has("json")
+	cfg.m2m = true
+	cfg.token = strings.TrimSpace(os.Getenv("VELOX_M2M_SECRET"))
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	resp, err := newClient(cfg).ListM2MJobTypes(ctx)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "velox types: %v\n", err)
+		return exitFailure
+	}
+	if cfg.json {
+		return emitJSON(resp)
+	}
+	for _, jobType := range resp.Types {
+		fmt.Println(jobType)
+	}
+	return exitOK
 }
 
 // ── jobs ──────────────────────────────────────────────────────────────

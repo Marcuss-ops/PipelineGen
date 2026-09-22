@@ -54,6 +54,17 @@ package_hotspot_baselines:
       the production count. The remaining 50-file core is the irreducible
       SCC: reaching below ~44 without breaking type cycles would require
       a semantic refactor of the interlocking step/orchestrator types.
+  - date: "2026-09-22"
+    change: "internal/capabilities/scripts 89 → 90"
+    note: |
+      Channel-profile capability: channel_profile_apply.go landed as one
+      cohesive request-policy file — ApplyChannelProfile, the default-fill
+      sibling of the builder.go ApplyEditingAssetPolicy ingress gate
+      (per-channel subtitle/watermark/overlay/SFX/mix defaults resolved at
+      request build from config/channel_profiles.yaml). Per-file LOC caps
+      respected (builder.go 541; output_spec.go back to 594 after the
+      strict-600 gate fired and was cleared by compressing added comments).
+      Owner/deadline/targets unchanged; global cap remains 65.
 
 max_files_per_package:
   current: 65

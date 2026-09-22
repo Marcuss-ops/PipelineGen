@@ -68,7 +68,12 @@ type InternalHandlers struct {
 	// PG-M2M (Aug 2026): the M2M job surface (POST + GET /:id on
 	// /api/v1/jobs). Mounted on its own group with
 	// JobClientAuthMiddleware; nil-safe (group skipped when nil).
-	M2MJobs     interface{ RegisterRoutes(*gin.RouterGroup) }
+	M2MJobs interface{ RegisterRoutes(*gin.RouterGroup) }
+	// PG-M2M (Sep 2026): the M2M media-read surface (GET /assets,
+	// /assets/:id, /facets on /api/v1/media). Mounted on its own group
+	// with JobClientAuthMiddleware + the media.read scope; nil-safe (the
+	// group is skipped when nil).
+	M2MMedia    interface{ RegisterRoutes(*gin.RouterGroup) }
 	M2MSecurity mwports.M2MSecurityPort
 }
 
@@ -102,6 +107,7 @@ func NewServerWithHealth(deps ServerDeps) *Server {
 	outboxHandler := deps.Handlers.Outbox
 	mediasearchHandler := deps.Handlers.MediaSearch
 	m2mJobsHandler := deps.Handlers.M2MJobs
+	m2mMediaHandler := deps.Handlers.M2MMedia
 	m2mSecurity := deps.Handlers.M2MSecurity
 	lifecycle := deps.Lifecycle
 	healthSvc := deps.Health
@@ -174,6 +180,9 @@ func NewServerWithHealth(deps ServerDeps) *Server {
 		if m2mJobsHandler != nil {
 			router.SetM2MJobsHandler(m2mJobsHandler)
 		}
+		if m2mMediaHandler != nil {
+			router.SetM2MMediaHandler(m2mMediaHandler)
+		}
 		if healthSvc != nil {
 			router.SetHealthService(healthSvc)
 		}
@@ -236,6 +245,9 @@ func NewServerWithHealth(deps ServerDeps) *Server {
 	// the /api/v1/jobs group when an M2MJobs handler is supplied.
 	if m2mJobsHandler != nil {
 		router.SetM2MJobsHandler(m2mJobsHandler)
+	}
+	if m2mMediaHandler != nil {
+		router.SetM2MMediaHandler(m2mMediaHandler)
 	}
 	if healthSvc != nil {
 		router.SetHealthService(healthSvc)

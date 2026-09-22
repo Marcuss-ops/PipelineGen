@@ -32,10 +32,19 @@ import (
 
 // SceneIRSegmentEnricher implements SegmentEnricher using the new chain:
 // it compiles a SceneIR from the committed scene (Fase 1, immutable source
-// identity), then extracts source-grounded entities via VisualNER (Fase 3).
+// identity), then extracts narration-grounded entities via VisualNER (Fase 3).
 // The returned VidRushSegmentResult carries the SceneIR's immutable identity
 // + the VisualNER entities, so downstream provider search consumes
 // SourceText + Profile (never NarrationText).
+//
+// Extraction surface (September 2026): the extractor mines the committed
+// NARRATION, not the per-segment SourceText. For text/clips payloads
+// script_params.segments[].source_text is an editorial BRIEF handed to the
+// model ("Describe Musk's move…"), so mining it returned prompt fragments
+// ("Describe Musk", "Explain Tesla") and mis-typed toponyms as extractable
+// entities. The brief stays the immutable SceneIR identity; only the
+// extractor input moved to the text the video actually speaks, which is
+// also the only text the entity timeline can anchor overlay cards to.
 type SceneIRSegmentEnricher struct {
 	nerPort VisualNERPort
 }
@@ -81,7 +90,11 @@ func (e *SceneIRSegmentEnricher) Enrich(ctx context.Context, plan *scriptpkg.Res
 	if err := normalized.Validate(); err != nil {
 		return scriptpkg.VidRushSegmentResult{}, fmt.Errorf("sceneir enrich: %w: %s", sceneir.ErrCompileInputInvalid, err.Error())
 	}
-	sourceForExtraction := normalized.SourceText
+	// Extraction surface: the committed narration (never the per-segment
+	// SourceText brief — see the type comment). narrationText already fell
+	// back to the canonical source above, so an evidence-only segment with
+	// no narration keeps the historical source-grounded extraction.
+	sourceForExtraction := narrationText
 
 	// The payload can explicitly narrow semantic extraction to the surfaces
 	// needed by the current production pass. Keep the historical default of

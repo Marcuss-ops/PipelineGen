@@ -1,0 +1,115 @@
+{
+  "version": 2,
+  "preset": "custom",
+  "correlation_id": "elon-musk-1000w-overlay-docs-entities-20260922",
+  "force_refresh": true,
+  "items": [
+    {
+      "id": "elon-musk-1000w-overlay-docs-entities",
+      "project": "elon-musk-1000w-overlay",
+      "title": "Elon Musk — innovazione, rischio e scala (overlay + docs test)",
+      "language": "en",
+      "tone": "documentario informativo, sobrio e verificabile",
+      "style": "Write an English documentary script of about 1,000 words in five balanced scenes. Use only the supplied factual briefs. Do not invent quotations, private thoughts, financial figures, dates, or unsupported claims. Keep the scenes separate and preserve their order. Write natural narration rather than lists or slogans.",
+      "model": "gemma4:e4b",
+      "source": {
+        "type": "text",
+        "topic": "Elon Musk and the public history of technology companies, engineering risk, and ambitious scale",
+        "source_text": "Create a factual five-scene documentary from the supplied briefs. Explain the public record in clear narration, distinguish documented events from interpretation, and avoid promotional language. Do not add editorial captions or requested phrases; the narration itself is the only source text."
+      },
+      "script_params": {
+        "target_words": 1000,
+        "min_words": 900,
+        "segment_words": 200,
+        "single_scene": false,
+        "skip_quality_gate": false,
+        "segments": [
+          {
+            "id": "early-internet",
+            "kind": "narration",
+            "topic": "Elon Musk's early internet ventures",
+            "source_text": "Describe Musk's move from South Africa to North America, his studies, and the early internet businesses associated with Zip2 and X.com. Explain how online payments and software distribution shaped the opportunities of the period. Keep the account focused on public business history, with no invented dialogue or personal judgments presented as fact.",
+            "target_words": 200,
+            "min_words": 170
+          },
+          {
+            "id": "electric-cars",
+            "kind": "narration",
+            "topic": "Tesla and the challenge of electric vehicles",
+            "source_text": "Explain Tesla's role in bringing electric vehicles into mainstream discussion. Cover the engineering and manufacturing difficulties of battery packs, software, charging infrastructure, production scale, and vehicle demand. Separate Musk's public leadership role from the work of the wider engineering and manufacturing teams. Avoid unsupported claims about individual inventions or exact production results.",
+            "target_words": 200,
+            "min_words": 170
+          },
+          {
+            "id": "rockets",
+            "kind": "narration",
+            "topic": "SpaceX and reusable launch systems",
+            "source_text": "Describe SpaceX's development of launch vehicles, the early failures that were reported publicly, later orbital missions, and the engineering significance of landing and reusing boosters. Explain why launch cadence, reliability, regulation, and supply chains matter. Do not turn the scene into a celebration or attribute every technical achievement to one person.",
+            "target_words": 200,
+            "min_words": 170
+          },
+          {
+            "id": "social-platform",
+            "kind": "narration",
+            "topic": "The acquisition and transformation of Twitter",
+            "source_text": "Describe Musk's acquisition of Twitter, the change to the X identity, and the public debates around moderation, verification, advertisers, and platform governance. Present competing viewpoints carefully and avoid asserting motives that cannot be established from public evidence. Explain how a social platform differs from a manufacturing or launch company.",
+            "target_words": 200,
+            "min_words": 170
+          },
+          {
+            "id": "scale-and-risk",
+            "kind": "narration",
+            "topic": "Scale, public attention, and unresolved risks",
+            "source_text": "Close by comparing the common pattern across software, vehicles, launch systems, and social media: ambitious targets, rapid iteration, high capital requirements, regulatory exposure, and concentrated public attention. Discuss what can and cannot be inferred from company outcomes. End with a balanced description of the unresolved technical, organizational, and social risks rather than a prediction or slogan.",
+            "target_words": 200,
+            "min_words": 170
+          }
+        ]
+      },
+      "output": {
+        "save_to_db": true,
+        "extract_entities": true,
+        "generate_metadata": true,
+        "generate_timeline": true,
+        "voiceover_enabled": true,
+        "languages": ["en"],
+        "drive_folder_id": "1J_xUGo_bchzXDIGqSX04CU44c_Dm3SxS",
+        "render": {
+          "enabled": true,
+          "drive_folder_id": "1J_xUGo_bchzXDIGqSX04CU44c_Dm3SxS",
+          "require_gpu": true,
+          "subtitles": { "enabled": false }
+        }
+      },
+      "audio": {
+        "mode": "COMBINED_TIMELINE",
+        "timing": {
+          "mode": "required",
+          "boundary": "word",
+          "formats": ["json", "srt", "vtt"]
+        }
+      },
+      "media_plan": {
+        "mode": "hybrid",
+        "cache": { "read": true, "write": true },
+        "provider_policy": {
+          "internet_images": "disabled",
+          "artlist": "disabled",
+          "image_generation": "disabled",
+          "youtube": "disabled"
+        },
+        "extraction": {
+          "enabled": true,
+          "include": ["entities", "important_phrases"],
+          "max_entities_per_segment": 8,
+          "max_important_phrases_per_segment": 5,
+          "max_image_queries_per_segment": 0
+        },
+        "materialization": { "mode": "selected", "upload_to_drive": false, "wait_for_ready": false },
+        "planner": { "candidate_limit": 1 },
+        "include_trace": true
+      },
+      "docs": { "enabled": true, "languages": ["en"] }
+    }
+  ]
+}

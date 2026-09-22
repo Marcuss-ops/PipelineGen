@@ -28,6 +28,14 @@ func TestRoutesMatchGeneratedManifest(t *testing.T) {
 		RouteMediaSearch,
 		RouteJobsFull(":id"),
 		RouteClipsDownload(":source", ":id"),
+		RouteClipsTopicSearch,
+		RouteClipsInfo,
+		RouteClipsStock,
+		RouteMediaClipsFor(":source"),
+		RouteMediaRegisterBatch,
+		RouteMediaRegisterFromYouTube,
+		RouteMediaUploadVideo,
+		RouteMediaResolve(":asset_id"),
 	}
 	for _, r := range routes {
 		if !strings.Contains(manifest, "path: "+r) {
@@ -52,6 +60,27 @@ func TestRoutesMatchGeneratedManifest(t *testing.T) {
 		}
 		if !strings.Contains(string(wire), `"/api/script"`) {
 			t.Errorf("%s is neither in the route manifest nor backed by a \"/api/script\" capability prefix in %s — the path is unjustified", RouteScriptGenerate, wirePath)
+		}
+	}
+
+	// RouteStockPipelineRun / RouteStockPipelineSearchAndRun are in the SAME
+	// category as RouteScriptGenerate: the gen-api-docs composition does not
+	// mount the stock capability, so the routes are absent from routes.yaml
+	// even though the live server serves them (pinned by
+	// internal/capabilities/assets/stock/handler_contract_test.go). Anchor them
+	// to the capability prefix registry so a rename still fails here.
+	for _, r := range []string{RouteStockPipelineRun, RouteStockPipelineSearchAndRun} {
+		if strings.Contains(manifest, "path: "+r) {
+			t.Logf("note: %s now appears in the manifest — tighten this test to assert it", r)
+			continue
+		}
+		wirePath := filepath.Join(root, "internal", "platform", "httpserver", "transport", "wire.go")
+		wire, werr := os.ReadFile(wirePath)
+		if werr != nil {
+			t.Fatalf("read capability prefix registry %s: %v", wirePath, werr)
+		}
+		if !strings.Contains(string(wire), `"/api/stock-pipeline"`) {
+			t.Errorf("%s is neither in the route manifest nor backed by a \"/api/stock-pipeline\" capability prefix — the path is unjustified", r)
 		}
 	}
 }

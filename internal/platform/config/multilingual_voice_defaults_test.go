@@ -17,6 +17,7 @@ func TestMultilingualVoiceDefaultsAreExplicitAndMale(t *testing.T) {
 		"de":    "de-DE-FlorianMultilingualNeural",
 		"es":    "es-ES-AlvaroNeural",
 		"pt-BR": "pt-BR-AntonioNeural",
+		"pt":    "pt-BR-AntonioNeural",
 		"fr":    "fr-FR-RemyMultilingualNeural",
 		"tr":    "tr-TR-AhmetNeural",
 		"id":    "id-ID-ArdiNeural",

@@ -340,6 +340,7 @@ func WireServices(cfg *config.Config, log *zap.Logger, mode string) (*AppDeps, e
 			OutboxHandler:        registryWiring.OutboxHandler,
 			MediasearchHandler:   registryWiring.MediasearchHandler,
 			M2MJobsHandler:       registryWiring.M2MJobsHandler,
+			M2MMediaHandler:      registryWiring.M2MMediaHandler,
 			M2MSecurity: func() mwports.M2MSecurityPort {
 				if root.DB == nil || root.DB.DB == nil {
 					return nil

@@ -12,6 +12,7 @@ import (
 	assetspersistence "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
 	stockpipeline "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers/stock/stockpipeline"
 	assetsearch "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/search"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/channelprofile"
 	scriptapi "github.com/Marcuss-ops/PipelineGen/internal/capabilities/script"
 	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
 	adapters "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters"
@@ -40,6 +41,19 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 	if !cfg.Scripts.Capability.Enabled {
 		log.Info("wireScriptFlow: script capability disabled by configuration")
 		return nil
+	}
+	// Channel profiles: operator-editable per-channel render defaults
+	// (subtitles, watermark, overlay style, SFX, mix policy, phrase-motion
+	// pool) resolved at request build by BuildGenerateRequest. The file is
+	// OPTIONAL — absent means "no profiles configured" and the feature stays
+	// inert — while a file that exists and does not parse fails closed HERE,
+	// before any job can render against a half-readable profile set. Editing
+	// the file and restarting the server is the whole runtime knob: nothing
+	// about RenderingGen changes, and no renderer redeploy is involved.
+	if loaded, loadErr := channelprofile.LoadOptional(channelProfilesPath()); loadErr != nil {
+		return fmt.Errorf("wireScriptFlow: %w", loadErr)
+	} else if loaded {
+		log.Info("wireScriptFlow: channel profiles loaded", zap.Int("profiles", len(channelprofile.Snapshot())))
 	}
 	ready, err := validateScriptFlowDependencies(cfg, root, log)
 	if err != nil {

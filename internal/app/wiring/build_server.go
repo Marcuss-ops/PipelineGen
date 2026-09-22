@@ -92,6 +92,7 @@ func BuildServer(cfg *config.Config, mode string, log *zap.Logger) (*ServerRunti
 			Outbox:      deps.Handlers.OutboxHandler,
 			MediaSearch: deps.Handlers.MediasearchHandler,
 			M2MJobs:     deps.Handlers.M2MJobsHandler,
+			M2MMedia:    deps.Handlers.M2MMediaHandler,
 			M2MSecurity: deps.Handlers.M2MSecurity,
 		},
 		Lifecycle:    deps.Runtime.Lifecycle,

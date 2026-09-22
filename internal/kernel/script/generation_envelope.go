@@ -64,7 +64,17 @@ type GenerationItemV2 struct {
 	Title string `json:"title,omitempty"`
 	// Project is the explicit artifact-routing namespace. It is resolved at
 	// ingress and propagated unchanged to every published artifact.
-	Project   string `json:"project,omitempty"`
+	Project string `json:"project,omitempty"`
+	// ChannelID is the editorial channel this item is produced FOR (the
+	// canonical YouTube channel id, or any operator-defined channel key).
+	//
+	// It is optional and selection-only: when present it names a channel
+	// profile (config/channel_profiles.yaml, loaded at composition time) that
+	// fills the subtitle, watermark, overlay-style, SFX and phrase-motion
+	// choices the caller left BLANK. An explicit caller value always wins, an
+	// empty ChannelID selects no profile, and a channel without a profile is
+	// not an error — channels are open-ended, profiles are curated.
+	ChannelID string `json:"channel_id,omitempty"`
 	Language  string `json:"language,omitempty"`
 	Tone      string `json:"tone,omitempty"`
 	Style     string `json:"style,omitempty"`

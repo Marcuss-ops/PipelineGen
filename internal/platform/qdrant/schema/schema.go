@@ -36,8 +36,9 @@ const (
 // v3 represents the QDRANT-003 schema with real embedding models:
 //   - text: multilingual-e5-base, 768 dims, Cosine, normalized
 //   - transcript: same model, distinct vector name
-//   - visual: SigLIP so400m patch14-384, 768 dims, Cosine, normalized (real model, no fake)
-//   - audio: CLAP HTSAT, 512 dims, Cosine (optional, only when model available)
+//   - visual: SigLIP so400m patch14-384, models.CanonicalVisualModelDimensions
+//     (1152 — sidecar-probed pooled output; the old 768 doc value never matched)
+//   - audio: CLAP HTSAT, 512 dims, Cosine — currently disabled (not deployed)
 //   - bm25_text: BM25 sparse vector for lexical search
 func DefaultV3Schema() *IndexSchema {
 	return &IndexSchema{

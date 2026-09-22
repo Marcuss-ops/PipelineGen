@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"strconv"
 	"time"
 
@@ -103,6 +104,28 @@ func (h *JobsHandler) Enqueue(c *gin.Context) {
 		return
 	}
 
+	// M2M must never accept a policy-only type with no live consumer. The
+	// admin surface keeps its historical enqueue semantics; only requests
+	// authenticated as a real M2M client receive this fail-closed check.
+	if _, isM2M := c.Get("m2m_client"); isM2M {
+		catalog, ok := h.service.(interface{ HandlerTypes() []string })
+		if !ok {
+			apiutil.Error(c, http.StatusInternalServerError, "job handler catalog is not configured")
+			return
+		}
+		supported := false
+		for _, jobType := range catalog.HandlerTypes() {
+			if jobType == dto.Type {
+				supported = true
+				break
+			}
+		}
+		if !supported {
+			apiutil.Error(c, http.StatusUnprocessableEntity, "job type is not runnable on this Master: "+dto.Type)
+			return
+		}
+	}
+
 	// PG-M2M (Aug 2026): resolve the M2M client_id from the gin context.
 	// JobClientAuthMiddleware stores the resolved *M2MClient under
 	// jobClientContextKey when the request came through the M2M surface
@@ -149,6 +172,18 @@ func (h *JobsHandler) Enqueue(c *gin.Context) {
 			"progress": j.Progress,
 		},
 	})
+}
+
+// M2MTypes exposes only job types with a live handler in this Master.
+// Remote computers use it to discover runnable work before submitting a
+// payload; registry-only/orphan types are deliberately not advertised.
+func (h *JobsHandler) M2MTypes(c *gin.Context) {
+	catalog, ok := h.service.(interface{ HandlerTypes() []string })
+	if !ok {
+		apiutil.Error(c, http.StatusInternalServerError, "job handler catalog is not configured")
+		return
+	}
+	apiutil.OK(c, gin.H{"types": catalog.HandlerTypes()})
 }
 
 func (h *JobsHandler) Get(c *gin.Context) {

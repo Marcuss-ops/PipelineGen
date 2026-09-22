@@ -134,6 +134,11 @@ PRE_CODE="$(probe POST /api/v1/jobs/pre "$TMP/pre.json" auth)"
 FIN_CODE="$(probe POST /api/v1/jobs/preflight-probe/finalize "$TMP/fin.json" auth)"
 KEYS_CODE="$(probe POST /api/v1/admin/m2m/keys "$TMP/keys.json")"
 GETJOB_CODE="$(probe GET /api/v1/jobs/preflight-probe "$TMP/getjob.json" auth)"
+# Media SSOT read surface (scope media.read): lets the remote build a payload
+# from real rows instead of reading the master's database out of band.
+# 200 = mounted and the key carries media.read; 403 = mounted but the key is
+# missing the media.read scope (grant it on the master); 404 = not deployed.
+MEDIA_CODE="$(probe GET '/api/v1/media/assets?limit=1' "$TMP/media.json" auth)"
 sleep 0.3
 printf '  POST /api/v1/jobs/pre                        %s  (%s)\n' "$PRE_CODE" "$(classify "$PRE_CODE")"
 printf '  POST /api/v1/jobs/{id}/finalize              %s  (%s)\n' "$FIN_CODE" "$(classify "$FIN_CODE")"
@@ -142,6 +147,12 @@ printf '  POST /api/v1/jobs/{id}/finalize              %s  (%s)\n' "$FIN_CODE" "
 GETJOB_STATE="$(classify "$GETJOB_CODE")"
 if [[ "$GETJOB_CODE" == "404" ]]; then GETJOB_STATE="mounted (404 = unknown job id)"; fi
 printf '  GET  /api/v1/jobs/{id}                       %s  (%s)\n' "$GETJOB_CODE" "$GETJOB_STATE"
+case "$MEDIA_CODE" in
+  200) MEDIA_STATE="mounted (key has media.read)" ;;
+  403) MEDIA_STATE="mounted (key misses media.read scope)" ;;
+  *)   MEDIA_STATE="$(classify "$MEDIA_CODE")" ;;
+esac
+printf '  GET  /api/v1/media/assets                    %s  (%s)\n' "$MEDIA_CODE" "$MEDIA_STATE"
 printf '  POST /api/v1/admin/m2m/keys (admin token)    %s  (%s)\n' "$KEYS_CODE" "$(classify "$KEYS_CODE")"
 echo
 

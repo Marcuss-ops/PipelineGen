@@ -4,8 +4,10 @@
 //
 // Tests against a real Qdrant instance (Docker-based) using 5 synthetic
 // assets covering all media sources: YouTube, Voiceover, Artlist, Image,
-// and AI-generated images. Each asset carries artificial vectors across
-// all 4 v3 channels (text/768, transcript/768, visual/768, audio/512).
+// and AI-generated images. Each asset carries artificial vectors for every
+// dense channel schema.DefaultV3Schema defines (text/transcript = E5 768,
+// visual = SigLIP 1152; audio/CLAP is emitted only when the schema
+// re-enables that channel).
 //
 // Prerequisites:
 //
@@ -25,7 +27,6 @@ package fixtures
 import (
 	"context"
 	"fmt"
-	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"os"
 	"strings"
 	"testing"
@@ -117,22 +118,34 @@ type syntheticAsset struct {
 	Category         string    // clip, voiceover, sfx, stock, generated
 	Language         string    // en, it, etc.
 	Style            string    // cinematic, documentary, etc.
-	TextVector       []float32 // 768 dims
-	TranscriptVector []float32 // 768 dims
-	VisualVector     []float32 // 768 dims
-	AudioVector      []float32 // 512 dims
+	TextVector       []float32 // schema-owned dims (E5 768)
+	TranscriptVector []float32 // schema-owned dims (E5 768)
+	VisualVector     []float32 // schema-owned dims (SigLIP 1152)
+	AudioVector      []float32 // schema-owned dims (CLAP 512); empty when the audio channel is absent
 }
 
-// toPoint converts a syntheticAsset into a Qdrant Point.
+// toPoint converts a syntheticAsset into a Qdrant Point. Only channels the
+// schema defines are emitted: Qdrant rejects a vector whose channel name has
+// no collection config (the audio/CLAP channel is disabled today), and an
+// empty synthetic vector means "channel not present in the schema".
 func (a *syntheticAsset) toPoint() schema.Point {
+	vectors := make(map[string]interface{}, 4)
+	for _, ch := range []struct {
+		name string
+		vec  []float32
+	}{
+		{"text", a.TextVector},
+		{"transcript", a.TranscriptVector},
+		{"visual", a.VisualVector},
+		{"audio", a.AudioVector},
+	} {
+		if len(ch.vec) > 0 {
+			vectors[ch.name] = ch.vec
+		}
+	}
 	return schema.Point{
-		ID: schema.AssetIDToQdrantPointID(a.AssetID),
-		Vectors: map[string]interface{}{
-			"text":       a.TextVector,
-			"transcript": a.TranscriptVector,
-			"visual":     a.VisualVector,
-			"audio":      a.AudioVector,
-		},
+		ID:      schema.AssetIDToQdrantPointID(a.AssetID),
+		Vectors: vectors,
 		Payload: map[string]interface{}{
 			"asset_id":                     a.AssetID,
 			"name":                         a.Name,
@@ -172,75 +185,78 @@ func makeVector(dim, channelOffset, assetIndex int) []float32 {
 	return v
 }
 
+// schemaDenseDims returns the dense channel → dimension map owned by
+// schema.DefaultV3Schema. The model registry is the SSOT for dimensions
+// (visual was corrected 768 → 1152 when the sidecar probe revealed the real
+// SigLIP pooled output), so synthetic vectors derive from this map and can
+// never drift from the collection shape again.
+func schemaDenseDims() map[string]int {
+	dims := make(map[string]int)
+	for _, spec := range schema.DefaultV3Schema().DenseVectors {
+		dims[spec.Channel] = spec.Dimensions
+	}
+	return dims
+}
+
 // syntheticAssets returns the 5 synthetic assets covering all media sources.
+// Vectors are built per schema channel; a channel the schema does not define
+// (audio/CLAP today) stays empty and is omitted from the point.
 func syntheticAssets() []syntheticAsset {
-	return []syntheticAsset{
+	dims := schemaDenseDims()
+	assets := []syntheticAsset{
 		{
-			AssetID:          "yt_test_clip_001",
-			Name:             "Synthetic YouTube Clip",
-			Source:           "youtube",
-			MediaType:        "video",
-			Category:         "clip",
-			Language:         "en",
-			Style:            "cinematic",
-			TextVector:       makeVector(768, 100, 0),
-			TranscriptVector: makeVector(768, 200, 0),
-			VisualVector:     makeVector(768, 300, 0),
-			AudioVector:      makeVector(512, 400, 0),
+			AssetID:   "yt_test_clip_001",
+			Name:      "Synthetic YouTube Clip",
+			Source:    "youtube",
+			MediaType: "video",
+			Category:  "clip",
+			Language:  "en",
+			Style:     "cinematic",
 		},
 		{
-			AssetID:          "vo_test_clip_002",
-			Name:             "Synthetic Voiceover Clip",
-			Source:           "voiceover",
-			MediaType:        "audio",
-			Category:         "voiceover",
-			Language:         "it",
-			Style:            "narrative",
-			TextVector:       makeVector(768, 100, 1),
-			TranscriptVector: makeVector(768, 200, 1),
-			VisualVector:     makeVector(768, 300, 1),
-			AudioVector:      makeVector(512, 400, 1),
+			AssetID:   "vo_test_clip_002",
+			Name:      "Synthetic Voiceover Clip",
+			Source:    "voiceover",
+			MediaType: "audio",
+			Category:  "voiceover",
+			Language:  "it",
+			Style:     "narrative",
 		},
 		{
-			AssetID:          "art_test_clip_003",
-			Name:             "Synthetic Artlist Clip",
-			Source:           "artlist",
-			MediaType:        "video",
-			Category:         "clip",
-			Language:         "en",
-			Style:            "documentary",
-			TextVector:       makeVector(768, 100, 2),
-			TranscriptVector: makeVector(768, 200, 2),
-			VisualVector:     makeVector(768, 300, 2),
-			AudioVector:      makeVector(512, 400, 2),
+			AssetID:   "art_test_clip_003",
+			Name:      "Synthetic Artlist Clip",
+			Source:    "artlist",
+			MediaType: "video",
+			Category:  "clip",
+			Language:  "en",
+			Style:     "documentary",
 		},
 		{
-			AssetID:          "img_test_clip_004",
-			Name:             "Synthetic Stock Image",
-			Source:           "image",
-			MediaType:        "image",
-			Category:         "stock",
-			Language:         "en",
-			Style:            "photographic",
-			TextVector:       makeVector(768, 100, 3),
-			TranscriptVector: makeVector(768, 200, 3),
-			VisualVector:     makeVector(768, 300, 3),
-			AudioVector:      makeVector(512, 400, 3),
+			AssetID:   "img_test_clip_004",
+			Name:      "Synthetic Stock Image",
+			Source:    "image",
+			MediaType: "image",
+			Category:  "stock",
+			Language:  "en",
+			Style:     "photographic",
 		},
 		{
-			AssetID:          "gen_test_clip_005",
-			Name:             "Synthetic AI-Generated Image",
-			Source:           "generated",
-			MediaType:        "image",
-			Category:         "generated",
-			Language:         "en",
-			Style:            "illustration",
-			TextVector:       makeVector(768, 100, 4),
-			TranscriptVector: makeVector(768, 200, 4),
-			VisualVector:     makeVector(768, 300, 4),
-			AudioVector:      makeVector(512, 400, 4),
+			AssetID:   "gen_test_clip_005",
+			Name:      "Synthetic AI-Generated Image",
+			Source:    "generated",
+			MediaType: "image",
+			Category:  "generated",
+			Language:  "en",
+			Style:     "illustration",
 		},
 	}
+	for i := range assets {
+		assets[i].TextVector = makeVector(dims["text"], 100, i)
+		assets[i].TranscriptVector = makeVector(dims["transcript"], 200, i)
+		assets[i].VisualVector = makeVector(dims["visual"], 300, i)
+		assets[i].AudioVector = makeVector(dims["audio"], 400, i)
+	}
+	return assets
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────
@@ -336,7 +352,7 @@ func TestSyntheticAssets_SearchBySource(t *testing.T) {
 	require.NoError(t, err)
 
 	// Search for "youtube" source with a generic query vector.
-	queryVec := makeVector(768, 100, 0) // close to youtube asset
+	queryVec := makeVector(schemaDenseDims()["text"], 100, 0) // close to youtube asset
 	req := schema.SearchRequest{
 		QueryVector: queryVec,
 		VectorName:  "text",
@@ -355,10 +371,22 @@ func TestSyntheticAssets_SearchBySource(t *testing.T) {
 	require.NoError(t, err)
 	assert.GreaterOrEqual(t, len(results), 1, "should find at least one youtube result")
 
-	// All results should have source=youtube.
+	// The production SearchPoints contract returns ONLY the canonical
+	// identity (with_payload = ["asset_id"]) — payload metadata such as
+	// "source" is never an API source of truth. Filter correctness is
+	// therefore verified through the identity: every hit must be one of the
+	// assets whose source is "youtube".
+	youtubeIDs := map[string]bool{}
+	for _, a := range assets {
+		if a.Source == "youtube" {
+			youtubeIDs[a.AssetID] = true
+		}
+	}
 	for _, r := range results {
-		src, _ := r.Payload["source"].(string)
-		assert.Equal(t, "youtube", src, "filtered search should only return youtube assets")
+		id, ok := r.Payload["asset_id"].(string)
+		require.True(t, ok, "search result must carry the canonical asset_id payload")
+		assert.True(t, youtubeIDs[id],
+			"filtered search returned asset %q, which is not a youtube-source asset", id)
 	}
 }
 

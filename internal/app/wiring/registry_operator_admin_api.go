@@ -15,7 +15,13 @@ import (
 // registerOperatorAdminAPI wires and registers the operator admin API module.
 // This module provides admin-facing read-only endpoints consumed by the
 // React admin UI under /admin/. Routes are mounted under /api/assets/operator/.
-func registerOperatorAdminAPI(registry *module.Registry, log *zap.Logger, cfg *config.Config, root *ComposeRoot) error {
+//
+// PG-M2M (Sep 2026): it also builds the M2M media-read surface from the SAME
+// read model and publishes it on wiring.M2MMediaHandler, so a remote submitter
+// with a media.read-scoped M2M key can see the media SSOT elements without
+// admin credentials. The read model is constructed once here and shared by
+// both surfaces — no second projection can drift.
+func registerOperatorAdminAPI(registry *module.Registry, log *zap.Logger, cfg *config.Config, root *ComposeRoot, wiring *RegistryWiring) error {
 	assetReader := root.MediaAssetReader()
 	if assetReader == nil {
 		// Skip, do not abort boot: the operator console is a media-read surface,
@@ -51,6 +57,17 @@ func registerOperatorAdminAPI(registry *module.Registry, log *zap.Logger, cfg *c
 	var readModel operator.AssetInventoryReader
 	if root.MediaPostgres != nil {
 		readModel = pgmedia.NewOperatorInventoryReader(root.MediaPostgres, log)
+	}
+
+	// PG-M2M (Sep 2026): publish the M2M media-read surface from the same
+	// reader. The group is mounted by the server composition on
+	// /api/v1/media behind JobClientAuthMiddleware + RequireScope(media.read).
+	// Enabled closure is true so the routes exist whenever the media SSOT
+	// read model is wired; the EnableM2M() gate + the media.read scope live
+	// inside the middleware.
+	if wiring != nil {
+		wiring.M2MMediaHandler = operatorapi.NewM2MModule(readModel, log, func() bool { return true })
+		log.Info("created M2M media read module (GET /assets, /assets/:id, /facets on /api/v1/media)")
 	}
 
 	var verifier operator.IndexVerifier

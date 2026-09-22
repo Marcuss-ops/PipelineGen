@@ -191,7 +191,15 @@ type PlanInput struct {
 	// Background is copied verbatim into the sealed overlay plan when the
 	// script/render payload explicitly requests one.
 	Background *OverlayBackground
-	Scenes     []SceneInput
+	// PhraseMotions optionally REPLACES the certified phrase-motion rotation
+	// pool for this run (the animated IMPORTANT_PHRASE overlays). It carries a
+	// channel profile's motion choice — PipelineGen resolves it at request
+	// build; the planner only rotates within it, deterministically, exactly as
+	// it does with the certified default pool. Empty keeps the default pool,
+	// and an id outside CertifiedPhraseMotions() is a compile failure: the
+	// rotation must never hand the renderer a motion it cannot run.
+	PhraseMotions []string
+	Scenes        []SceneInput
 }
 
 // BuildPlan selects bounded overlays from scene annotations. Candidates with
@@ -200,6 +208,9 @@ type PlanInput struct {
 // later materialized by RenderingGen from the asset manifest.
 func BuildPlan(input PlanInput, config PlannerConfig) (OverlayPlan, error) {
 	config = config.withDefaults()
+	if err := validatePhraseMotionPool(input.PhraseMotions); err != nil {
+		return OverlayPlan{}, err
+	}
 	plan := OverlayPlan{
 		SchemaVersion: SchemaVersionPlan,
 		PlanID:        input.PlanID, VideoID: input.VideoID, ProjectID: input.ProjectID,
@@ -344,13 +355,41 @@ func BuildPlan(input PlanInput, config PlannerConfig) (OverlayPlan, error) {
 		if plan.Items[i].Kind != "text_phrase" {
 			continue
 		}
-		plan.Items[i].MotionID = selectPhraseMotion(input.PlanID, "run", phraseOrdinal)
+		plan.Items[i].MotionID = selectPhraseMotion(input.PlanID, "run", phraseOrdinal, input.PhraseMotions)
 		phraseOrdinal++
 	}
 	if err := plan.Validate(); err != nil {
 		return OverlayPlan{}, err
 	}
 	return plan, nil
+}
+
+// validatePhraseMotionPool fails closed on a caller-supplied motion pool that
+// names an id this build cannot render, or that would make the rotation
+// ambiguous (duplicates). An empty pool is the certified default and is
+// always valid.
+func validatePhraseMotionPool(pool []string) error {
+	if len(pool) == 0 {
+		return nil
+	}
+	certified := make(map[string]bool)
+	for _, id := range CertifiedPhraseMotions() {
+		certified[id] = true
+	}
+	seen := make(map[string]bool, len(pool))
+	for _, id := range pool {
+		if strings.TrimSpace(id) == "" {
+			return fmt.Errorf("overlay: phrase motion pool carries an empty id")
+		}
+		if !certified[id] {
+			return fmt.Errorf("overlay: phrase motion %q is not a certified motion", id)
+		}
+		if seen[id] {
+			return fmt.Errorf("overlay: phrase motion pool repeats %q", id)
+		}
+		seen[id] = true
+	}
+	return nil
 }
 
 // PhraseOverlayBudget reports the requested editorial phrase ceiling and how

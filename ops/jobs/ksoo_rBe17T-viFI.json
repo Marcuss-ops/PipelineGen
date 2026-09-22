@@ -1,0 +1,26 @@
+{
+  "url": "https://www.youtube.com/watch?v=rBe17T-viFI",
+  "force_keyframes": true,
+  "write_summary": true,
+  "require_transcript_ready": true,
+  "destination": {
+    "folder_id": "1IiRjfyFmaGvDLdAtxxpv2eGACDhrP1In",
+    "create_subfolder": false
+  },
+  "subtitle_destination": {
+    "folder_id": "1IiRjfyFmaGvDLdAtxxpv2eGACDhrP1In",
+    "create_subfolder": false,
+    "per_clip_subfolders": false
+  },
+  "segments": [
+    {"start": "00:00", "end": "00:13", "name": "Annuncio della condanna all'ergastolo di Ksoo", "summary": "Il notiziario introduce la notizia della condanna al carcere a vita per il rapper Ksoo e il cugino per l'omicidio di Charles McCormack Jr.", "topics": ["Annuncio della condanna all'ergastolo di Ksoo"], "tags": ["Hakeem Robinson", "Ksoo", "Leroy Whitaker", "ergastolo", "omicidio", "Charles McCormack", "Jacksonville", "First Coast News", "tribunale Duval County"]},
+    {"start": "00:23", "end": "00:34", "name": "Reazione degli imputati in aula", "summary": "La reporter descrive il momento in aula in cui entrambi gli imputati apprendono la pena del carcere a vita senza rilasciare dichiarazioni.", "topics": ["Reazione degli imputati in aula"], "tags": ["Robinson", "Whitaker", "aula", "tribunale", "ergastolo senza condizionale", "imputati", "sentenza", "giudice"]},
+    {"start": "00:34", "end": "00:48", "name": "Dichiarazione sull'impatto del delitto", "summary": "Viene data lettura dell'impatto devastante del crimine sui familiari e del sollievo per la neutralizzazione definitiva della violenza degli imputati.", "topics": ["Dichiarazione sull'impatto del delitto"], "tags": ["impact statement", "famiglia vittima", "lutto", "ingiustizia", "sollievo", "protezione comunita"]},
+    {"start": "00:48", "end": "01:03", "name": "Pronuncia formale della sentenza del giudice", "summary": "Il giudice legge formalmente il verdetto di colpevolezza e infligge l'ergastolo obbligatorio senza possibilita di liberta condizionale.", "topics": ["Pronuncia formale della sentenza del giudice"], "tags": ["giudice", "verdetto", "colpevole", "mandatory life sentence", "carcere a vita", "aula tribunale"]},
+    {"start": "01:03", "end": "01:17", "name": "Riepilogo delle imputazioni e della vittima", "summary": "Riepilogo delle figure chiave del processo e dell'uccisione nel 2020 del ventitreenne Charles McCormack Jr.", "topics": ["Riepilogo delle imputazioni e della vittima"], "tags": ["Ksoo", "Leroy Whitaker", "Charles McCormack", "omicidio 2020", "23 anni", "ergastolo", "Jacksonville"]},
+    {"start": "01:17", "end": "01:31", "name": "Dinamica dell'agguato a Dames Point Plaza", "summary": "La polizia descrive la dinamica del raid armato, con il sicario che ha sparato da distanza ravvicinata con un fucile davanti a un poliziotto fuori servizio.", "topics": ["Dinamica dell'agguato a Dames Point Plaza"], "tags": ["sparatoria", "15 gennaio 2020", "Dames Point Plaza", "Arlington", "testimone", "poliziotto fuori servizio", "fucile", "arma da fuoco"]},
+    {"start": "01:31", "end": "01:45", "name": "Inseguimento in auto, schianto e arresto", "summary": "L'inseguimento della vettura dei killer si conclude con uno schianto e la successiva cattura di Ksoo e Whitaker con l'accusa di omicidio aggravato.", "topics": ["Inseguimento in auto, schianto e arresto"], "tags": ["fuga", "Nissan Altima", "inseguimento", "incidente stradale", "tre sospetti", "arresto", "omicidio primo grado"]},
+    {"start": "01:54", "end": "02:05", "name": "Monito della famiglia sulle decisioni sconsiderate", "summary": "La famiglia della vittima rivolge un accorato appello pubblico su come un singolo gesto criminale distrugga per sempre intere esistenze.", "topics": ["Monito della famiglia sulle decisioni sconsiderate"], "tags": ["messaggio famiglia vittima", "avvertimento", "giovani", "distruzione vite", "rimorso", "lutto"]},
+    {"start": "02:05", "end": "02:18", "name": "Denuncia della musica che glorifica la violenza", "summary": "I familiari esortano la comunita a rigettare fermamente i messaggi musicali che esaltano le sparatorie e le morti violente.", "topics": ["Denuncia della musica che glorifica la violenza"], "tags": ["glorificazione violenza", "rap", "trap", "drill", "cultura armi", "vittime innocenti", "presa di posizione sociale"]}
+  ]
+}

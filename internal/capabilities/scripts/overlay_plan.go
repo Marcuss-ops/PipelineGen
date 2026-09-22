@@ -42,6 +42,11 @@ type OverlayCanvasSpec struct {
 	ForegroundScalePercent int
 	Background             *capabilityoverlay.OverlayBackground
 	Style                  *scriptpkg.OverlayStyleSpec
+	// PhraseMotions is the run's phrase-motion rotation pool, carried from
+	// the request's channel profile (empty = the certified default pool). It
+	// lives here because the canvas is the run-level render context this
+	// function already receives; the planner validates the ids fail-closed.
+	PhraseMotions []string
 }
 
 // GoldenOverlayCanvas is the validated golden canary canvas (1280×720,
@@ -253,8 +258,9 @@ func CompileOverlayPlan(result *GenerateResult, language Language, canvas Overla
 	plannerPlan, err := capabilityoverlay.BuildPlan(capabilityoverlay.PlanInput{
 		PlanID: planID, VideoID: videoID, ProjectID: projectID,
 		Width: canvas.Width, Height: canvas.Height, FPSNum: canvas.FPSNum, FPSDen: canvas.FPSDen,
-		Scenes:     scenes,
-		Background: canvas.Background,
+		Scenes:        scenes,
+		Background:    canvas.Background,
+		PhraseMotions: canvas.PhraseMotions,
 	}, capabilityoverlay.AllCandidatesPlannerConfig(scenes))
 	if err != nil {
 		return nil, fmt.Errorf("overlay plan: plan: %w", err)

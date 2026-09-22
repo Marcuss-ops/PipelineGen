@@ -28,6 +28,7 @@ type Client struct {
 	httpClient  *http.Client
 	retryOpts   retry.Options
 	insecureTLS bool
+	m2m         bool
 }
 
 // Option configures the Client at construction time.
@@ -39,6 +40,10 @@ type Option func(*Client)
 
 // WithRetryOptions overrides the retry policy. Default is 3 attempts with
 // 200ms→800ms exponential backoff.
+
+// WithM2M selects the scoped machine-to-machine job surface
+// (/api/v1/jobs and /api/v1/jobs/{id}) instead of the admin surface.
+func WithM2M(c *Client) { c.m2m = true }
 
 // New builds a Client.
 func New(baseURL, token string, opts ...Option) *Client {
@@ -118,13 +123,33 @@ func (c *Client) SubmitAsync(ctx context.Context, path string, payload any, reqI
 	return result, err
 }
 
-// GetJobStatus GETs /api/jobs/{jobID}/full.
+// ListM2MJobTypes returns only job types with a live handler on the Master.
+func (c *Client) ListM2MJobTypes(ctx context.Context) (*M2MJobTypesResponse, error) {
+	resp, retryable, err := c.doRequest(ctx, http.MethodGet, c.baseURL+RouteM2MJobTypes, nil, "")
+	if err != nil {
+		return nil, err
+	}
+	if retryable {
+		return nil, ErrServer
+	}
+	var out M2MJobTypesResponse
+	if err := json.Unmarshal(resp.body, &out); err != nil {
+		return nil, fmt.Errorf("veloxclient: decode M2M job types: %w", err)
+	}
+	return &out, nil
+}
+
+// GetJobStatus GETs /api/jobs/{jobID}/full or the scoped M2M equivalent.
 func (c *Client) GetJobStatus(ctx context.Context, jobID string) (*JobStatusResponse, error) {
 	jobID = strings.TrimSpace(jobID)
 	if jobID == "" {
 		return nil, fmt.Errorf("veloxclient: empty jobID")
 	}
-	url := c.baseURL + RouteJobsFull(jobID)
+	path := RouteJobsFull(jobID)
+	if c.m2m {
+		path = RouteM2MJob(jobID)
+	}
+	url := c.baseURL + path
 	resp, retryable, err := c.doRequest(ctx, http.MethodGet, url, nil, "")
 	if err != nil {
 		if errors.Is(err, ErrNotFound) {

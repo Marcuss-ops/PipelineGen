@@ -32,6 +32,10 @@ security:
   admin_token: "***REDACTED***"  # Use scripts/rotate_token.sh verbatim to generate the canonical 64-hex.
   worker_token: "dev-worker-token-change-me"
   delivery_hmac_secret: "dev-hmac-secret-32-bytes-minimum-change-me"
+  # M2M job + media-read surface (/api/v1/jobs, /api/v1/media). When true
+  # the per-client Bearer secret (VELOX_M2M_SECRET) is enforced; when false
+  # the guard passes through (dev/test only). Override via VELOX_ENABLE_M2M.
+  enable_m2m: true
   # CORS origins - leave empty to block all cross-origin requests
   cors_origins: []
   rate_limit_enabled: true
@@ -167,6 +171,13 @@ media:
       - code: pt-BR
         enabled: true
         translate_clips: true
+        generate_tts: true
+        edge_tts_voice: pt-BR-AntonioNeural
+      # Script generation uses the plain ISO-639-1 code `pt`; this is
+      # TTS-only and does not create a second translated clip track.
+      - code: pt
+        enabled: true
+        translate_clips: false
         generate_tts: true
         edge_tts_voice: pt-BR-AntonioNeural
       - code: fr

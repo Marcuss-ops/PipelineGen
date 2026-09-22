@@ -1,0 +1,135 @@
+{
+  "version": 2,
+  "preset": "custom",
+  "correlation_id": "milton-leite-preso-doc-ptbr-20260922",
+  "items": [
+    {
+      "id": "milton-leite-preso-doc",
+      "title": "Milton Leite PRESO!",
+      "project": "brazil-cronaca-nera",
+      "language": "pt",
+      "tone": "investigativo, direto, impactante",
+      "style": "Narrativa em português do Brasil no tom de crime real paulista: direta, com atribuição de fontes (segundo a Polícia Civil, segundo a defesa, segundo o relatório). Nunca invente fatos além do que as clips mostram. Use os números fortes (12 das 22 empresas, R$ 19 mil, 16 mandados) como ganchos.",
+      "media_mode": "clip_only",
+      "source": {
+        "type": "clips",
+        "topic": "Operação Vectura Corrupta: a prisão de Milton Leite, a infiltração do PCC nas empresas de ônibus de São Paulo e o furto misterioso do escritório",
+        "clip_ids": [
+          "yt_kBWlon1GMs0_192_228_v1",
+          "yt_kBWlon1GMs0_228_259_v1",
+          "yt_kBWlon1GMs0_325_365_v1",
+          "yt_kBWlon1GMs0_395_451_v1",
+          "yt_DLFi4zEjI4Q_68_98_v1",
+          "yt_DLFi4zEjI4Q_147_195_v1",
+          "yt_DLFi4zEjI4Q_195_258_v1",
+          "yt_DLFi4zEjI4Q_455_515_v1",
+          "yt_ogu6YuDUdnQ_50_65_v1",
+          "yt_ogu6YuDUdnQ_91_105_v1",
+          "yt_ogu6YuDUdnQ_125_155_v1"
+        ],
+        "num_clips": 11,
+        "ordering_strategy": "input_order",
+        "grounding_policy": "clips_primary",
+        "fallback_policy": "strict",
+        "transcript_policy": "strict"
+      },
+      "script_params": {
+        "target_words": 2000,
+        "segment_words": 200,
+        "segments": [
+          {
+            "id": "scene-0",
+            "kind": "clip",
+            "topic": "A Operação Vectura Corrupta e os 16 mandados de prisão temporária",
+            "source_text": "Abra com o impacto da operação: 17 de setembro, Polícia Civil e MPSP deflagram a Vectura Corrupta, 16 mandados de prisão temporária e 18 buscas, 10 presos no primeiro dia e 6 foragidos, entre eles o ex-presidente da Câmara Milton Leite.",
+            "clip_ids": ["yt_kBWlon1GMs0_192_228_v1"],
+            "target_words": 180
+          },
+          {
+            "id": "scene-1",
+            "kind": "clip",
+            "topic": "PCC nos ônibus: 12 das 22 empresas de São Paulo",
+            "source_text": "Explique o esquema: ao menos 12 das 22 empresas de transporte coletivo da capital estariam controladas ou influenciadas pelo PCC, com empresas de fachada, direcionamento de licitações, apoio político e lavagem de capitais.",
+            "clip_ids": ["yt_kBWlon1GMs0_228_259_v1"],
+            "target_words": 220
+          },
+          {
+            "id": "scene-2",
+            "kind": "clip",
+            "topic": "Os áudios do operador do PCC que citam Milton Leite",
+            "source_text": "Detalhe as provas: áudios de José Daniel Satilite, o operador do PCC, com o advogado Cícero, citando Milton Leite para resolver a questão da UPBus depois da Operação Fim de Linha, e a conversa com o Levi da SPTrans.",
+            "clip_ids": ["yt_DLFi4zEjI4Q_147_195_v1"],
+            "target_words": 200
+          },
+          {
+            "id": "scene-3",
+            "kind": "clip",
+            "topic": "Transwolff: o político apontado como dono de fato",
+            "source_text": "Fale da Transwolff, empresa de ônibus já alvo da Fim de Linha: policiais militares apontaram Milton Leite como dono de fato, a empresa e o político negam, e o relatório descreve a contaminação do crime organizado no transporte.",
+            "clip_ids": ["yt_ogu6YuDUdnQ_125_155_v1"],
+            "target_words": 220
+          },
+          {
+            "id": "scene-4",
+            "kind": "clip",
+            "topic": "A noite do furto: o HD das câmeras sumiu, o dinheiro ficou",
+            "source_text": "Conte o colpo de scena: na noite de domingo, criminosos invadem o escritório de Milton Leite na Zona Sul, levam apenas o HD com as imagens das câmeras e deixam mais de R$ 19 mil em espécie e cartões do ex-vereador para trás.",
+            "clip_ids": ["yt_ogu6YuDUdnQ_50_65_v1", "yt_ogu6YuDUdnQ_91_105_v1"],
+            "target_words": 230
+          },
+          {
+            "id": "scene-5",
+            "kind": "clip",
+            "topic": "Furto simulado ou delírio? A dúvida que dividiu a polícia",
+            "source_text": "Apresente as duas hipóteses que os investigadores trabalham: se a ação foi direcionada para eliminar registros da invasão e se tem relação com a prisão de Milton Leite e a Operação Vectura Corrupta. A polícia ainda não confirma o vínculo.",
+            "clip_ids": ["yt_DLFi4zEjI4Q_68_98_v1"],
+            "target_words": 200
+          },
+          {
+            "id": "scene-6",
+            "kind": "clip",
+            "topic": "A egemonia política e as alianças do clã Leite",
+            "source_text": "Reconstrua o poder do ex-vereador: recusa de cargos federais para manter controle local, alianças com Tarcisio de Freitas, a queda na corrida a vice-prefeito em 2024 e o nome do clã na política paulista.",
+            "clip_ids": ["yt_DLFi4zEjI4Q_195_258_v1"],
+            "target_words": 180
+          },
+          {
+            "id": "scene-7",
+            "kind": "clip",
+            "topic": "A rede allargata: aeroporto, fintech e policiais corrompidos",
+            "source_text": "Mostre que não é só ônibus: a investigação alcança a execução de Gritzbach em Guarulhos, o lavaggio via fintech e policiais envolvidos, fechando o quadro de uma organização que atravessa a política, o transporte e as forças de segurança.",
+            "clip_ids": ["yt_DLFi4zEjI4Q_455_515_v1"],
+            "target_words": 200
+          },
+          {
+            "id": "scene-8",
+            "kind": "clip",
+            "topic": "A perícia forense e a investigação trienal",
+            "source_text": "Feche os fatos: perícia da polícia científica com improntas, amostras biológicas e banco de DNA no imóvel, a investigação de três anos e a tese de que o furto teria sido encomendado para fazer desaparecer documentos comprometedores.",
+            "clip_ids": ["yt_kBWlon1GMs0_395_451_v1"],
+            "target_words": 190
+          },
+          {
+            "id": "scene-9",
+            "kind": "clip",
+            "topic": "O que ainda falta esclarecer",
+            "source_text": "Encerre com as perguntas abertas: a defesa nega, a Justiça manteve a prisão temporária, a polícia precisa identificar os invasores do escritório e esclarecer se furto e operação se conectam. Pergunte ao público o que acha nos comentários.",
+            "clip_ids": ["yt_kBWlon1GMs0_325_365_v1"],
+            "target_words": 180
+          }
+        ]
+      },
+      "output": {
+        "save_to_db": true,
+        "extract_entities": true
+      },
+      "audio": {
+        "mode": "NONE"
+      },
+      "docs": {
+        "enabled": true,
+        "languages": ["pt"]
+      }
+    }
+  ]
+}

@@ -57,7 +57,13 @@ func (a *AsyncResponse) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-// JobStatusResponse mirrors GET /api/jobs/{ID}/full.
+// M2MJobTypesResponse is the runnable job catalog exposed to remote clients.
+type M2MJobTypesResponse struct {
+	Types []string `json:"types"`
+}
+
+// JobStatusResponse mirrors the enriched status response returned by both
+// GET /api/jobs/{ID}/full and GET /api/v1/jobs/{ID}.
 type JobStatusResponse struct {
 	ID       string         `json:"id"`
 	Status   string         `json:"status"`
