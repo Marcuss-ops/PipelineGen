@@ -182,6 +182,7 @@ eval_results.json
 # ============================================
 scratch/
 .tmp-diag/
+tmp_lang_audit/
 
 # ============================================
 # Cache and Book Generation
