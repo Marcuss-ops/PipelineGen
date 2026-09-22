@@ -41,6 +41,36 @@ The response body of `POST /api/script/generate` is the async envelope
 (`ok`, `job_id`, `status`, `status_url`, `current_stage`); poll
 `status_url` (`/api/jobs/{id}/full`) for phase transitions and timing.
 
+`dolly_parton_5clips_wm_dualbg_subsstyle.generate.json` is the visual-contract
+variant of that preview: the same five clip ids, but the render block asks for
+the FULL stack in one request — a top-right text watermark carrying both a
+stroke and a shadow (the same blocks the subtitles use), an `asset` background
+plate (`drive-background-05`, one of the two certified plates that are actually
+registered in the media SSOT) with `foreground_scale_percent: 82` so the plate
+stays visible behind the clip, the `subs-young` burned subtitle preset with its
+own stroke/shadow, and an `overlay_background` colour for the overlay canvas.
+It is also the audio-prefetch stress payload: `audio.background_music` (bgm1),
+two `audio.sound_effects` (whoosh1/whop1) and
+`mix_policy: VOICEOVER_DUCKED_CLIP` give `PrefetchAudioAssets` real work
+(BGM/SFX resolution PLUS clip-audio materialization) while TTS runs.
+The manifest carries `docs.folder_id` and that field — not
+`output.render.drive_folder_id` / `drive_subfolder_name` — is what decides
+where the clips are published: a localized clip lands in
+`<resolved documents root>/<job id>/<language>`, and the clips-root spelling is
+read only by a run with NO resolvable documents root. Without `docs.folder_id`
+the destination falls back to the deployment default
+(`PIPELINEGEN_SCRIPT_DOCS_FOLDER_ID`), which on the reference host points at the
+Overlay Chronon folder rather than at the scripts root.
+
+Run ids of record (2026-09-22): `job_1790091295751404561_e73027c5` —
+SUCCEEDED, 5/5 renders on the remote `renderinggen-host` worker
+(`chronon_vulkan`, `verification_passed: 1`); and
+`job_1790092276095209221_a55bdbb5` with an explicit
+`docs.folder_id = 1ST6FxPuRaxwBOIz39MAN8Jj4gDv509-K`, which published the same
+five certified artifacts (reused by render fingerprint, `wall_ms 20408`) into
+`<scripts root>/<job id>/en/`. Evidence and the observed Drive trees:
+`ops/benchmarks/dolly-wm-dualbg-20260922/`.
+
 `matt_damon_20_clips_profiling.generate.json` is the canonical source of
 truth for the Matt Damon 20-clip profiling job. Future submissions and
 Google Docs payload sections must be derived from this manifest, not from
@@ -132,6 +162,55 @@ curated set and are unaffected.
 For human-authored generation payloads, `output.render.background` also accepts
 the labels `Boxe`, `Crime`, `Music`, `Wwe` and `Discovery`; the ingress builder
 resolves them to the canonical channel aliases before rendering.
+
+## Audio prefetch (P1.1) — cosa aspettarsi e come leggerlo
+
+Ogni run `COMBINED_TIMELINE` con BGM/SFX o `mix_policy=VOICEOVER_DUCKED_CLIP`
+risolve gli asset audio **in parallelo a TTS e al fan-out dei render**, prima che
+l'audio compile ne abbia bisogno. Il contratto verificato (fix 2026-09-22):
+
+- **fail-soft per asset**: un asset che fallisce NON scarta quelli già risolti;
+  l'esito resta parziale e la compile risolve il resto per via sincrona
+  attraverso lo stesso adapter (cache hit → fall-through).
+- **fail-closed sulla wiring**: una sorgente richiesta ma non collegata (nil)
+  fallisce subito, come prima.
+- **budget bounded** (`audioPrefetchBudget`, 25 s): un asset lento non può
+  ritardare il join del fan-out all'infinito; ciò che è in cache resta.
+- **BGM/SFX canonicalizzati**: il payload usa l'alias pubblico (`bgm1`), il
+  registry la Drive identity: il prefetch risolve con
+  `audio.CanonicalAssetID(alias)` — lo stesso id della compile — e mette in
+  cache **entrambe** le chiavi.
+- **dedup**: id ripetuti (lo stesso clip in due scene) vengono risolti una volta.
+
+L'esito è nel payload di polling, in `result.result.audio_prefetch`:
+
+```json
+{"bgm_requested":1,"sfx_requested":2,"clip_audio_requested":5,
+ "bgm_sfx_resolved":3,"clip_audio_ready":5,"duration_ms":21283,"degraded":false,
+ "assets":[{"kind":"clip_audio","asset_id":"yt_…","ok":true,"duration_ms":17423}, …]}
+```
+
+`degraded: true` + `failures[]` significa "parte dell'I/O è stata pagata in
+`audio_compile`": non è un errore, ma è il segnale che il run non ha usato il
+prefetch per intero. Con `clip_audio_prepare_ms > 0` in `audio_metrics` si vede
+quanto è costata quella parte (0 = tutto servito dalla cache del prefetch).
+
+## Correlazione del lavoro remoto (master → coda → worker)
+
+Il job di render inviato alla coda RenderingGen porta `parent_job_id` = id di
+correlazione del run (`pkg/corid`), quindi `GET http://127.0.0.1:8081/jobs/{id}`
+permette di risalire dal render remoto al job del master. Senza di esso l'unica
+chiave era la plan revision (`yt_<clip>/<lang>/overlay-v3/<hash>`), che identifica
+l'artefatto ma non il run che l'ha chiesto.
+
+Per raccogliere l'intera catena (stage/timing del master, decisioni prefetch,
+record della coda, log del worker GPU, telemetria, cache locali, destinazioni
+Drive) in un unico report:
+
+```bash
+scripts/collect_chain_debug.sh <job_id>
+# → ops/benchmarks/chain-debug/<job_id>.md (+ raw artifacts accanto)
+```
 
 ## Selection policy
 

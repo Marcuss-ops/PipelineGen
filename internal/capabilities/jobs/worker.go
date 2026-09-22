@@ -567,8 +567,25 @@ func (w *Worker) requeueDueRetries(ctx context.Context) {
 		if !jobscheduling.RetryDue(j, now) {
 			continue
 		}
-		if _, err := w.repo.Retry(ctx, j.ID); err != nil && !errors.Is(err, job.ErrTransitionConflict) {
-			w.log.Warn("failed to requeue retry-wait job", zap.String("job_id", j.ID), zap.Error(err))
+		if _, err := w.repo.Retry(ctx, j.ID); err != nil {
+			// P0 (Sept 2026) — an exhausted retry budget is terminal, not a
+			// failed requeue. The store has already moved the row to FAILED and
+			// archived it in dead_letter_jobs, so this fires exactly once per
+			// job (the next sweep no longer lists it) instead of once per tick
+			// forever. It is logged at Error level and distinctly from the
+			// transient requeue failure below so "job died" and "requeue
+			// hiccup" are never confused in the operator log.
+			if errors.Is(err, job.ErrRetryExhausted) {
+				w.log.Error("retry-wait job exhausted its retry budget — failed and dead-lettered",
+					zap.String("job_id", j.ID),
+					zap.Int("retry_count", j.RetryCount),
+					zap.Int("max_retries", j.MaxRetries),
+					zap.Error(err))
+				continue
+			}
+			if !errors.Is(err, job.ErrTransitionConflict) {
+				w.log.Warn("failed to requeue retry-wait job", zap.String("job_id", j.ID), zap.Error(err))
+			}
 		}
 	}
 }

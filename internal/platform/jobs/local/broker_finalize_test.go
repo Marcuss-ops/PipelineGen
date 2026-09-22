@@ -506,3 +506,51 @@ func TestBroker_CompleteWithArtifacts_PreValidationFailsClosed(t *testing.T) {
 		t.Errorf("finalizer ran %d times, want 0", fin.calls)
 	}
 }
+
+// ── P0 destination-bug fix: language is never invented ────────────────────
+
+// TestVerifiedFromStagedRefDoesNotInventLanguage pins the P0 destination-bug
+// fix. Before it, an artifact with no language was defaulted to the hard-coded
+// literal "it", so every language-less (and every `en`) run published its
+// script.json / scenes.json into `<docs root>/<job>/it`. The hint now comes
+// from the producer only; an artifact without one stays empty and the
+// language-scoped destinations fail closed downstream instead of guessing.
+func TestVerifiedFromStagedRefDoesNotInventLanguage(t *testing.T) {
+	cases := []struct {
+		name     string
+		lang     string
+		metadata map[string]any
+		want     string
+	}{
+		{name: "DriveLanguage wins", lang: "en", want: "en"},
+		{name: "language metadata is honored", metadata: map[string]any{"language": "es"}, want: "es"},
+		// Precedence pin: the artifact-metadata key is the more specific
+		// producer statement and wins over the Artifact field (same order as
+		// the ProjectID handling it sits next to).
+		{name: "metadata wins over DriveLanguage", lang: "en", metadata: map[string]any{"language": "es"}, want: "es"},
+		{name: "no language signal stays empty", want: ""},
+	}
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			verified, err := verifiedFromStagedRef(context.Background(), &remote.StagedArtifactReference{
+				ArtifactID:       "job-lang-1:script_json",
+				Destination:      "script",
+				Path:             filepath.Join(t.TempDir(), "script.json"),
+				Filename:         "script.json",
+				DriveLanguage:    tc.lang,
+				ArtifactMetadata: tc.metadata,
+			}, "job-lang-1", nil)
+			if err != nil {
+				t.Fatalf("verifiedFromStagedRef: %v", err)
+			}
+			if verified.Language != tc.want {
+				t.Errorf("Language = %q, want %q (an absent language must never be fabricated, least of all as %q)",
+					verified.Language, tc.want, "it")
+			}
+			if verified.ProjectID != "job-lang-1" {
+				t.Errorf("ProjectID = %q, want the job identity fallback", verified.ProjectID)
+			}
+		})
+	}
+}

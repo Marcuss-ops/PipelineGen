@@ -153,16 +153,37 @@ func TestJobLifecycle_P1B_RetryLimitRespected(t *testing.T) {
 	// a row whose retry_count has already reached max_retries. Asserting
 	// this here (rather than driving a phantom cycle 3) is the load-bearing
 	// assertion for the "retry limit respected" user-spec invariant.
+	//
+	// P0 (Sept 2026): the refusal is now TERMINAL and typed. Before the fix
+	// the row stayed RETRY_WAIT with an untyped "exhausted" error, so the
+	// worker's requeue sweep re-listed and re-logged the same job on every
+	// tick, forever (19.360 identical warn lines in one master.log).
 	_, retryErr := store.Retry(ctx, jobID)
 	require.Error(t, retryErr,
 		"Retry MUST refuse to re-enqueue when retry_count == max_retries (canonical retry-limit invariant)")
+	require.ErrorIs(t, retryErr, job.ErrRetryExhausted,
+		"the refusal MUST carry the typed terminal sentinel so callers stop retrying")
 	assert.Contains(t, retryErr.Error(), "exhausted",
 		"Retry error MUST surface the 'exhausted' reason for operator visibility")
 
-	// The row MUST stay in RETRY_WAIT (Retry refused, so no transition).
+	// Exhaustion is terminal: the row leaves RETRY_WAIT forever and is
+	// archived so it can no longer be re-listed (and re-logged) by the sweep.
 	row = readLifecycleRow(t, db, jobID)
-	assert.Equal(t, "RETRY_WAIT", row.status,
-		"Retry refusal MUST leave the row in RETRY_WAIT (no silent QUEUED transition)")
+	assert.Equal(t, "FAILED", row.status,
+		"exhausted Retry MUST drive the row to FAILED (never leave it re-listable in RETRY_WAIT)")
 	assert.Equal(t, 2, row.retryCount,
-		"retry_count MUST stay at max_retries (Retry refusal does not mutate state)")
+		"retry_count MUST stay at max_retries (exhaustion archives, it does not re-queue)")
+	var deadLetters int
+	require.NoError(t, db.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM dead_letter_jobs WHERE job_id = ?`, jobID).Scan(&deadLetters))
+	assert.Equal(t, 1, deadLetters,
+		"an exhausted job MUST be archived in dead_letter_jobs exactly once")
+
+	// Idempotence: a second sweep pass must not archive a duplicate row and
+	// must keep reporting the same terminal classification.
+	_, retryErrAgain := store.Retry(ctx, jobID)
+	require.ErrorIs(t, retryErrAgain, job.ErrRetryExhausted)
+	require.NoError(t, db.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM dead_letter_jobs WHERE job_id = ?`, jobID).Scan(&deadLetters))
+	assert.Equal(t, 1, deadLetters, "repeated exhaustion MUST NOT duplicate the dead-letter archive")
 }

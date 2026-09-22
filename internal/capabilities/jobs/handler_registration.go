@@ -110,9 +110,9 @@ func (s *Service) HasHandler(jobType string) bool {
 }
 
 // HandlerTypes returns the sorted set of job types with a live consumer
-// bound in this Master process. It is the source for the remote M2M
-// capability catalog; policy-only types are intentionally excluded because
-// accepting them would create jobs that can never run.
+// bound in this Master process. It is retained for internal diagnostics;
+// remote callers must use AutomationCatalog so policy-only and internal jobs
+// are not exposed merely because a handler exists.
 func (s *Service) HandlerTypes() []string {
 	if s == nil || s.dispatcher == nil {
 		return nil
@@ -124,6 +124,16 @@ func (s *Service) HandlerTypes() []string {
 	}
 	sort.Strings(out)
 	return out
+}
+
+// AutomationCatalog returns the single agent-facing projection of the
+// canonical registry and live handler set. It is rebuilt as a snapshot so
+// callers cannot mutate process wiring through the returned value.
+func (s *Service) AutomationCatalog() *AutomationCatalog {
+	if s == nil {
+		return NewAutomationCatalog(nil, nil)
+	}
+	return NewAutomationCatalog(s.registry, s.HandlerTypes())
 }
 
 // ValidateHandlerCompleteness checks that every job type registered in

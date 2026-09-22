@@ -210,17 +210,23 @@ func (r *LocalizedClipRenderer) Render(ctx context.Context, plan LocalizedClipPl
 		ClipID:          plan.ClipID,
 		Language:        plan.TargetLanguage,
 		PlanFingerprint: plan.Fingerprint,
-		LocalPath:       facts.LocalPath,
-		SubtitlePath:    ass.LocalPath,
-		SubtitleSHA256:  ass.SHA256,
-		SHA256:          facts.SHA256,
-		SizeBytes:       facts.SizeBytes,
-		DurationMS:      facts.DurationMS,
-		VideoCodec:      facts.VideoCodec,
-		AudioCodec:      facts.AudioCodec,
-		Backend:         facts.Backend,
-		MetricsJSON:     metricsJSON(facts.Metrics),
-		Status:          LocalizedClipRendered,
+		// The render job identity travels with the certified bytes so a run
+		// result can name the render that produced them (previously it was
+		// only observable as a `plan_revision` line in the master log).
+		PlanRevision:   renderPlan.Revision,
+		LocalPath:      facts.LocalPath,
+		SubtitlePath:   ass.LocalPath,
+		SubtitleSHA256: ass.SHA256,
+		SHA256:         facts.SHA256,
+		SizeBytes:      facts.SizeBytes,
+		DurationMS:     facts.DurationMS,
+		VideoCodec:     facts.VideoCodec,
+		AudioCodec:     facts.AudioCodec,
+		Backend:        facts.Backend, MetricsJSON: metricsJSON(facts.Metrics),
+		Status: LocalizedClipRendered,
+		// Fresh bytes: name the origin so a consumer never has to guess it from
+		// the presence or absence of timing metrics.
+		RenderSource: RenderSourceFreshGPU,
 	}, nil
 }
 

@@ -17,6 +17,20 @@ const DefaultOverlayRenderRootFolderID = "1J_xUGo_bchzXDIGqSX04CU44c_Dm3SxS"
 // even when the local config.yaml is absent or ignored by Git.
 const DefaultImagesRootFolderID = "1kr8c1KZmUus10mkIdqJlYqAzXDyoNZeY"
 
+// DefaultMediaRootFolderID is the canonical Drive "Media" root used by
+// read-only operator tooling (drive-ls, list-drive-folder, drive-doctor,
+// drive-reconcile) when VELOX_DRIVE_MEDIA_ROOT is not configured.
+//
+// It is deliberately NOT wired into RootFolder()/ResolveFolder(): those
+// feed the runtime publishers and MUST keep their existing fail-closed
+// behaviour, so an unset media root still surfaces as "not configured"
+// at publish time. This constant only gives operator commands a sane,
+// honestly-labelled (source=default) folder to point at.
+//
+// Keeping the default in tracked code mirrors DefaultOverlayRenderRootFolderID
+// and DefaultImagesRootFolderID above.
+const DefaultMediaRootFolderID = "1MB9pTRjvHUdMXUtGOMBcvgRc-MZG2rA4"
+
 // DriveConfig holds Google Drive configuration.
 // MediaRootFolder is the single root for ALL media on Drive.
 type DriveConfig struct {

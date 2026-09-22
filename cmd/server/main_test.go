@@ -67,7 +67,8 @@ func TestServerMetricsMountMatrix(t *testing.T) {
 				Log:           zap.NewNop(),
 				Auth:          testMetricsAuthAdapter{},
 				Rate:          testMetricsRateAdapter{},
-				Features:      testMetricsFeaturesAdapter{},
+				Features:           testMetricsFeaturesAdapter{},
+				ServerLoopbackOnly: true,
 			})
 			engine := router.Setup()
 
@@ -99,7 +100,8 @@ func TestServerMetricsLoopbackRestriction(t *testing.T) {
 		Log:           zap.NewNop(),
 		Auth:          testMetricsAuthAdapter{},
 		Rate:          testMetricsRateAdapter{},
-		Features:      testMetricsFeaturesAdapter{},
+		Features:           testMetricsFeaturesAdapter{},
+		ServerLoopbackOnly: true,
 	})
 	engine := router.Setup()
 

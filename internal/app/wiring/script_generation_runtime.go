@@ -192,6 +192,12 @@ func BuildScriptGenerationRuntime(cfg *config.Config, root *ComposeRoot, runRepo
 		docPublisher,
 		scriptGenerationDocumentRenderer{},
 	)
+	// Bind the run logger BEFORE any other wiring: NewRunner defaults to
+	// zap.NewNop(), so without this call every runner decision (stage
+	// transitions, prefetch outcome, skipped/failed units, checkpoint
+	// reuse) was invisible in production logs while the same code logged
+	// normally in tests. Nil-safe.
+	runner.SetLogger(log)
 	if cfg != nil && cfg.Scripts.LocalizedRenderConcurrency > 0 {
 		runner.SetTTSConcurrency(cfg.Scripts.LocalizedRenderConcurrency)
 	}

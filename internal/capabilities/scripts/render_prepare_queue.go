@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	capoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
+	"github.com/Marcuss-ops/PipelineGen/pkg/corid"
 )
 
 // QueuePrepareEnqueuer submits the overlay.prepare job for the run's
@@ -49,8 +50,11 @@ func (e *QueuePrepareEnqueuer) EnqueuePrepare(ctx context.Context, req capoverla
 		return fmt.Errorf("chronon queue prepare marshal: %w", err)
 	}
 	job := RenderQueueJob{
-		ID:          "prepare-" + req.PlanID,
-		JobType:     capoverlay.JobTypePrepare,
+		ID:      "prepare-" + req.PlanID,
+		JobType: capoverlay.JobTypePrepare,
+		// Same correlation contract as the overlay render job: the queue
+		// entry carries the id of the run that asked for it.
+		ParentJobID: corid.FromContext(ctx),
 		OverlaySpec: spec,
 		Assets:      prepareAssets(req.Intents),
 	}

@@ -126,6 +126,25 @@ func TestLocalizedClipRenderer_RendersCertifiedArtifact(t *testing.T) {
 	}
 }
 
+// TestLocalizedClipRenderer_ProjectsTheRenderJobIdentity pins the P1 fix
+// (Sept 2026): the certified artifact must name the render plan that produced
+// it, so a run result can correlate a produced clip with its render job
+// directly. Before this the id existed only as a `plan_revision` line in the
+// master log and had to be scraped out.
+func TestLocalizedClipRenderer_ProjectsTheRenderJobIdentity(t *testing.T) {
+	const revision = "clip-1/es/overlay-v3/0123456789abcdef"
+	compiler := &fakeRendererCompiler{plan: render.RenderPlan{OutputPath: "/tmp/renders/clip-1.es.mp4", Revision: revision}}
+	r := newTestRenderer(t, compiler, newTestWire(t, &fakeSubtitleResolver{track: matchingTrack()}, &fakeSubtitleCompiler{asset: validSubtitleAsset()}), &fakeRenderPlanExecutor{facts: validRenderFacts()})
+
+	got, err := r.Render(context.Background(), validPlan())
+	if err != nil {
+		t.Fatalf("Render: %v", err)
+	}
+	if got.PlanRevision != revision {
+		t.Fatalf("PlanRevision = %q, want the render plan's revision %q", got.PlanRevision, revision)
+	}
+}
+
 // TestLocalizedClipRenderer_ReplayUsesCertifiedCacheHit verifies the two-run
 // idempotency contract locally: the first run stores one certified artifact and
 // the identical replay returns it without invoking the render executor again.
@@ -162,6 +181,15 @@ func TestLocalizedClipRenderer_ReplayUsesCertifiedCacheHit(t *testing.T) {
 	}
 	if second.Status != LocalizedClipRendered || second.PlanFingerprint != first.PlanFingerprint || second.SHA256 != first.SHA256 || second.LocalPath != first.LocalPath {
 		t.Fatalf("replay artifact differs from first artifact: first=%+v second=%+v", first, second)
+	}
+	// The cache hit must be OBSERVABLE, not inferred from a missing metric map: a
+	// dedup replay used to look exactly like a fresh render that reported no
+	// timings, so "where did the time go?" had no answer.
+	if first.Reused || first.RenderSource != RenderSourceFreshGPU {
+		t.Errorf("first render: reused=%v source=%q, want false/%q", first.Reused, first.RenderSource, RenderSourceFreshGPU)
+	}
+	if !second.Reused || second.RenderSource != RenderSourceDeterministicCache {
+		t.Errorf("replay: reused=%v source=%q, want true/%q", second.Reused, second.RenderSource, RenderSourceDeterministicCache)
 	}
 }
 

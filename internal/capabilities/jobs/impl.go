@@ -104,24 +104,17 @@ func (h *JobsHandler) Enqueue(c *gin.Context) {
 		return
 	}
 
-	// M2M must never accept a policy-only type with no live consumer. The
-	// admin surface keeps its historical enqueue semantics; only requests
-	// authenticated as a real M2M client receive this fail-closed check.
+	// M2M must submit only an explicitly external-safe capability. A live
+	// handler alone is insufficient: internal maintenance and child jobs can
+	// also have consumers but are not an agent contract.
 	if _, isM2M := c.Get("m2m_client"); isM2M {
-		catalog, ok := h.service.(interface{ HandlerTypes() []string })
-		if !ok {
-			apiutil.Error(c, http.StatusInternalServerError, "job handler catalog is not configured")
+		catalog, ok := h.service.(interface{ AutomationCatalog() *AutomationCatalog })
+		if !ok || catalog.AutomationCatalog() == nil {
+			apiutil.Error(c, http.StatusInternalServerError, "automation catalog is not configured")
 			return
 		}
-		supported := false
-		for _, jobType := range catalog.HandlerTypes() {
-			if jobType == dto.Type {
-				supported = true
-				break
-			}
-		}
-		if !supported {
-			apiutil.Error(c, http.StatusUnprocessableEntity, "job type is not runnable on this Master: "+dto.Type)
+		if !catalog.AutomationCatalog().Allows(dto.Type) {
+			apiutil.Error(c, http.StatusUnprocessableEntity, "job type is not external-safe: "+dto.Type)
 			return
 		}
 	}
@@ -174,16 +167,16 @@ func (h *JobsHandler) Enqueue(c *gin.Context) {
 	})
 }
 
-// M2MTypes exposes only job types with a live handler in this Master.
-// Remote computers use it to discover runnable work before submitting a
-// payload; registry-only/orphan types are deliberately not advertised.
+// M2MTypes exposes the canonical external-safe automation catalog. Remote
+// computers use it to discover stable tools; internal and orphaned jobs are
+// never advertised.
 func (h *JobsHandler) M2MTypes(c *gin.Context) {
-	catalog, ok := h.service.(interface{ HandlerTypes() []string })
-	if !ok {
-		apiutil.Error(c, http.StatusInternalServerError, "job handler catalog is not configured")
+	catalog, ok := h.service.(interface{ AutomationCatalog() *AutomationCatalog })
+	if !ok || catalog.AutomationCatalog() == nil {
+		apiutil.Error(c, http.StatusInternalServerError, "automation catalog is not configured")
 		return
 	}
-	apiutil.OK(c, gin.H{"types": catalog.HandlerTypes()})
+	apiutil.OK(c, gin.H{"types": catalog.AutomationCatalog().List()})
 }
 
 func (h *JobsHandler) Get(c *gin.Context) {

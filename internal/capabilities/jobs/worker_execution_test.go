@@ -162,6 +162,57 @@ func TestExtractStagedArtifacts_OverlayManifestPreservesDriveRouting(t *testing.
 	}
 }
 
+// TestExtractStagedArtifacts_LanguageRoutingPreserved pins the language half of
+// the same hop for the P0 destination-bug fix (Sept 2026): the language hint a
+// producer stamped on the artifact (Artifact.DriveLanguage + the `language`
+// metadata key) must survive the manifest→staged-reference projection, because
+// the broker resolves the Drive destination from THAT reference. An artifact
+// with no hint must not acquire one here either.
+func TestExtractStagedArtifacts_LanguageRoutingPreserved(t *testing.T) {
+	manifest := &job.ArtifactManifest{
+		SchemaVersion: job.SchemaVersionArtifactManifestV1,
+		JobID:         "job_lang",
+		Artifacts: []job.Artifact{
+			{
+				ID: "job_lang:script_json", Kind: job.ArtifactKindScriptJSON,
+				Path: "/tmp/pipelinegen/jobs/job_lang/output/script.json", Filename: "script.json",
+				MIMEType: "application/json", SizeBytes: 42, SHA256: "abc", Required: true,
+				DriveLanguage:    "en",
+				ArtifactMetadata: map[string]any{"language": "en"},
+			},
+			{
+				ID: "job_lang:image:0", Kind: job.ArtifactKindImage,
+				Path: "/tmp/pipelinegen/jobs/job_lang/output/image.png", Filename: "image.png",
+				MIMEType: "image/png", SizeBytes: 7, SHA256: "def", Required: false,
+			},
+		},
+	}
+
+	raw, err := extractStagedArtifacts(map[string]any{job.ManifestKey: manifestToRawJSON(t, manifest)}, "script.generate")
+	if err != nil {
+		t.Fatalf("extractStagedArtifacts: %v", err)
+	}
+	var artifacts remote.StagedArtifacts
+	if err := json.Unmarshal(raw, &artifacts); err != nil {
+		t.Fatalf("unmarshal staged artifacts: %v", err)
+	}
+	if len(artifacts) != 2 {
+		t.Fatalf("expected 2 artifacts, got %d", len(artifacts))
+	}
+	if got := artifacts[0].DriveLanguage; got != "en" {
+		t.Errorf("script_json DriveLanguage = %q, want en", got)
+	}
+	if got, _ := artifacts[0].ArtifactMetadata["language"].(string); got != "en" {
+		t.Errorf("script_json metadata language = %q, want en", got)
+	}
+	if artifacts[0].Destination != "script" {
+		t.Errorf("Destination = %q, want script", artifacts[0].Destination)
+	}
+	if got := artifacts[1].DriveLanguage; got != "" {
+		t.Errorf("language-less artifact DriveLanguage = %q, want empty (never fabricated)", got)
+	}
+}
+
 func TestExtractStagedArtifacts_NilResult(t *testing.T) {
 	// FASE 1 close-out typed-error contract: a nil handler result
 	// surfaces job.ErrArtifactManifestMissing — the spec mandates

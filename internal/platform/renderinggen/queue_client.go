@@ -15,6 +15,7 @@ import (
 	cliprender "github.com/Marcuss-ops/PipelineGen/internal/capabilities/cliprender"
 	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
 	kernelasset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/pkg/corid"
 	queueclient "github.com/Marcuss-ops/RenderingGen/queue/client"
 )
 
@@ -317,7 +318,18 @@ func (e *ClipRenderExecutor) Submit(ctx context.Context, plan cliprender.ClipRen
 	for i, r := range refs {
 		assets[i] = queueclient.AssetRef{Hash: r.Hash, LogicalPath: r.LogicalPath}
 	}
-	submitErr := e.queue.Submit(ctx, scriptgen.RenderQueueJob{ID: plan.RunID, JobType: "render_segment", OverlaySpec: rawPlan, Assets: scriptAssets(assets)})
+	// ParentJobID is the correlation id of the run that produced this plan
+	// (pkg/corid). The remote queue stores it with the job, so a slow or
+	// failed render can be traced back to the master run and its logs
+	// WITHOUT sharing a process: the plan revision alone only joins the
+	// render artifact, not the run that asked for it.
+	submitErr := e.queue.Submit(ctx, scriptgen.RenderQueueJob{
+		ID:          plan.RunID,
+		JobType:     "render_segment",
+		ParentJobID: corid.FromContext(ctx),
+		OverlaySpec: rawPlan,
+		Assets:      scriptAssets(assets),
+	})
 	if submitErr != nil && !errors.Is(submitErr, scriptgen.ErrJobExists) {
 		return fmt.Errorf("renderinggen clip executor: submit: %w", submitErr)
 	}
