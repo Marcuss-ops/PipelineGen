@@ -157,6 +157,11 @@ func (r *Runner) runAudioCompilePhase(ctx context.Context, runID string, req Gen
 				r.failRunWithRetry(ctx, runID, StageCompilingAudio, cause)
 				return false
 			}
+			// The compile returns its own subtimings; the clip-audio preparation
+			// measured above is the owner of ClipAudioPrepareMS, so it is
+			// re-applied instead of being silently replaced by the compile's
+			// probe window.
+			compileTimings = mergeAudioCompileTimings(compileTimings, clipPrepareMS)
 			r.recordAudioCompileOperations(ctx, compileTimings)
 			if result.ResolvedScenes, err = ResolveScenes(result.Scenes, req.SourceLanguage, mode, false); err != nil {
 				cause := fmt.Errorf("resolve scenes for persistence failed: %w", err)

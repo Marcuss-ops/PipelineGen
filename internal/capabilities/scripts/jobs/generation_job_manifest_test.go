@@ -21,6 +21,7 @@ package jobs
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -341,6 +342,59 @@ func TestPersistGeneratedArtifacts_ScriptJSONOnDisk(t *testing.T) {
 		if a.SHA256 == "" {
 			t.Errorf(`script-json SHA256 = "", want non-empty`)
 		}
+	}
+}
+
+// TestPersistGeneratedArtifacts_StampsLanguageRouting pins the P0
+// destination-bug fix (Sept 2026) end-to-end inside this repo: the
+// persisted sidecars must carry the run's language as a routing hint
+// (Artifact.DriveLanguage + the `language` artifact-metadata key), and
+// the worker's staged-artifact projection must forward it unchanged to
+// the broker — which is the only place the Drive destination is resolved.
+//
+// Pre-fix, the manifest carried neither, so the broker fell back to a
+// hard-coded "it" and an `en` run published into <docs root>/<job>/it.
+// A run with NO language must stay language-less: the hint is never
+// fabricated at this layer either.
+func TestPersistGeneratedArtifacts_StampsLanguageRouting(t *testing.T) {
+	cases := []struct {
+		name         string
+		language     string
+		wantLanguage string
+	}{
+		{name: "en run routes to en", language: "en", wantLanguage: "en"},
+		{name: "it run routes to it", language: "it", wantLanguage: "it"},
+		{name: "unknown language stays empty", language: "", wantLanguage: ""},
+	}
+	for i, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			jobID := fmt.Sprintf("c12-language-routing-%d", i)
+			res := validScriptResult("en")
+			res.Language = tc.language
+			_, manifest := canonicalEmit(t, jobID, res)
+			if manifest == nil {
+				t.Fatal("manifest is nil")
+			}
+			for _, a := range manifest.Artifacts {
+				if a.Kind != job.ArtifactKindScriptJSON && a.Kind != job.ArtifactKindScenes {
+					continue
+				}
+				if a.DriveLanguage != tc.wantLanguage {
+					t.Errorf("artifact %q: DriveLanguage = %q, want %q", a.ID, a.DriveLanguage, tc.wantLanguage)
+				}
+				got, _ := a.ArtifactMetadata["language"].(string)
+				if got != tc.wantLanguage {
+					t.Errorf("artifact %q: metadata language = %q, want %q", a.ID, got, tc.wantLanguage)
+				}
+			}
+			// The next hop (manifest → broker staged references) is pinned by
+			// TestExtractStagedArtifacts_LanguageRoutingPreserved in
+			// internal/capabilities/jobs, where that projection lives.
+			if len(manifest.Artifacts) == 0 {
+				t.Fatal("manifest has no artifacts")
+			}
+		})
 	}
 }
 

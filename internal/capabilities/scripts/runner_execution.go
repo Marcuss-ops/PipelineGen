@@ -325,13 +325,37 @@ func (e *executionRun) parallelFanOut() bool {
 			if candidate, ok := e.r.audioAssetSource.(ClipAudioAssetSource); ok {
 				clipAudioSource = candidate
 			}
-			pf, pfErr := PrefetchAudioAssets(prepareCtx, bgmIDs, sfxIDs, e.r.audioAssetSource, clipIDs, clipAudioSource, e.req.MixPolicy)
-			if pfErr != nil {
-				e.r.log.Warn("audio prefetch failed — audio compile will run with synchronous resolution",
+			// The prefetch is BOUNDED by its own budget: it overlaps TTS and
+			// the render fan-out, but a stalled asset resolution must never
+			// delay the join (and therefore the audio stage) indefinitely.
+			// Whatever is cached when the budget expires is kept; the
+			// remainder is resolved synchronously by audio compile through
+			// the same cache adapters (their fall-through path).
+			prefetchCtx, cancelPrefetch := context.WithTimeout(prepareCtx, audioPrefetchBudget)
+			pf, pfErr := PrefetchAudioAssets(prefetchCtx, bgmIDs, sfxIDs, e.r.audioAssetSource, clipIDs, clipAudioSource, e.req.MixPolicy)
+			cancelPrefetch()
+			switch {
+			case pfErr != nil:
+				e.r.log.Warn("audio prefetch not attempted — audio compile will run with synchronous resolution",
 					zap.String("run_id", e.runID),
 					zap.Error(pfErr))
-			} else {
+			case pf.Degraded:
+				// Partial success is kept: the cached assets are served from
+				// memory and only the missing ones fall through to I/O.
 				prefetched = pf
+				e.r.log.Warn("audio prefetch degraded — part of the audio I/O will be resolved synchronously",
+					zap.String("run_id", e.runID),
+					zap.Int("requested", pf.RequestedCount()),
+					zap.Int("cached", pf.CachedCount()),
+					zap.Int64("duration_ms", pf.DurationMS),
+					zap.Strings("failures", pf.Failures))
+			default:
+				prefetched = pf
+				e.r.log.Info("audio prefetch complete",
+					zap.String("run_id", e.runID),
+					zap.Int("requested", pf.RequestedCount()),
+					zap.Int("cached", pf.CachedCount()),
+					zap.Int64("duration_ms", pf.DurationMS))
 			}
 		}
 		assetsDone <- vidRushPrepareOutcome{

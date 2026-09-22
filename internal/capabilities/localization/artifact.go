@@ -73,6 +73,12 @@ type LocalizedClipArtifact struct {
 	// PlanFingerprint is the canonical LocalizedClipPlan.Fingerprint of the
 	// plan that produced this artifact — provenance, not recomputed here.
 	PlanFingerprint string `json:"plan_fingerprint"`
+	// PlanRevision is the sealed render plan's revision identity
+	// (`<clip>/<language>/overlay-v3/<fingerprint16>`, see localizedRevision).
+	// It is the id of the render that produced these bytes, projected so a
+	// consumer can correlate a produced clip with the render job directly
+	// instead of scraping `plan_revision` out of the master log.
+	PlanRevision string `json:"plan_revision,omitempty"`
 
 	// ── Asset identity ───────────────────────────────────────────
 	// AssetID is the canonical derived-asset id assigned once the artifact
@@ -117,4 +123,16 @@ type LocalizedClipArtifact struct {
 	// Status is the artifact lifecycle state (LocalizedClipPending …
 	// LocalizedClipUploaded / LocalizedClipFailed).
 	Status LocalizedClipStatus `json:"status"`
+
+	// Reused reports that these bytes were NOT rendered by this call: the
+	// deterministic render cache held a certified artifact for the same plan
+	// fingerprint and its bytes re-hashed to the certified digest. It is an
+	// explicit fact (and RenderSource names the origin) so an operator can tell
+	// "0 s of GPU because it was cached" from "the worker returned no timing
+	// metrics", which previously looked identical.
+	Reused bool `json:"reused,omitempty"`
+	// RenderSource is "fresh_gpu" for a render this process executed and
+	// "deterministic_render_cache" for a verified cache hit
+	// (localization.RenderSourceFreshGPU / RenderSourceDeterministicCache).
+	RenderSource string `json:"render_source,omitempty"`
 }

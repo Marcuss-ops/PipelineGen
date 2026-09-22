@@ -17,6 +17,7 @@ import (
 	kernelasset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 	"github.com/Marcuss-ops/PipelineGen/pkg/background"
+	"github.com/Marcuss-ops/PipelineGen/pkg/corid"
 )
 
 // QueueRenderEnqueuer adapts the central RenderingGen queue for the Chronon
@@ -304,8 +305,14 @@ func (e *QueueRenderEnqueuer) enqueueChrononPlan(ctx context.Context, plan capov
 	// contract/ffprobe checks); omitting it silently falls back to the legacy
 	// render_segment path.
 	job := RenderQueueJob{
-		ID:          jobID,
-		JobType:     capoverlay.JobTypeRender,
+		ID:      jobID,
+		JobType: capoverlay.JobTypeRender,
+		// ParentJobID is the correlation id of the run that produced this
+		// render (pkg/corid). It is the ONLY join key between a master run
+		// and the remote queue entry: without it the queue record cannot be
+		// traced back to the job that asked for the render. Empty when no
+		// correlation id was propagated.
+		ParentJobID: corid.FromContext(ctx),
 		OverlaySpec: spec,
 		Assets:      assets,
 	}

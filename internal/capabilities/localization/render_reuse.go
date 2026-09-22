@@ -35,6 +35,21 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 )
 
+// RenderSource names WHERE a certified artifact's bytes came from. It is the
+// difference between "0 s of GPU because the deterministic cache held these
+// bytes" and "the worker reported nothing": a dedup re-run and an unmeasured
+// fresh render both produced `metrics: null` with a short wall, and no consumer
+// could tell them apart. Every localized artifact therefore states its source
+// explicitly instead of leaving it to be inferred from a missing metric map.
+const (
+	// RenderSourceFreshGPU is a render that actually executed the Chronon
+	// boundary in this process.
+	RenderSourceFreshGPU = "fresh_gpu"
+	// RenderSourceDeterministicCache is a render skipped because the same plan
+	// fingerprint's bytes were already certified and re-hashed successfully.
+	RenderSourceDeterministicCache = "deterministic_render_cache"
+)
+
 // ReusedRenderArtifact is the certified output of a previous render of the SAME
 // plan fingerprint, as far as a reuse consumer can verify it locally.
 type ReusedRenderArtifact struct {
@@ -112,6 +127,11 @@ func (r *LocalizedClipRenderer) reusedArtifact(ctx context.Context, plan Localiz
 		AudioCodec:      cached.AudioCodec,
 		Backend:         cached.Backend,
 		Status:          LocalizedClipRendered,
+		// A hit is a FACT about this artifact, not an absence of telemetry:
+		// without it a reused clip is indistinguishable from a fresh render
+		// that reported no metrics at all.
+		Reused:       true,
+		RenderSource: RenderSourceDeterministicCache,
 	}
 	if ass != nil {
 		artifact.SubtitlePath = ass.LocalPath

@@ -72,6 +72,37 @@ func (r *SQLiteStore) ScheduleRetry(ctx context.Context, id string, workerID, le
 	return nil
 }
 
+// exhaustRetry is the terminal half of an exhausted retry budget: a CAS-fenced
+// RETRY_WAIT → FAILED transition, a job_failed audit event and a
+// dead_letter_jobs archive. It is idempotent by construction — a caller that
+// lost the CAS race (rows affected == 0) archives nothing, because the winner
+// already did.
+func (r *SQLiteStore) exhaustRetry(ctx context.Context, j *job.Job) error {
+	nowStr := timeutil.FormatRFC3339(time.Now())
+	msg := fmt.Sprintf("retry exhausted (%d/%d)", j.RetryCount, j.MaxRetries)
+	res, err := r.db.ExecContext(ctx,
+		`UPDATE jobs SET status = 'FAILED', error = ?, worker_id = '', lease_id = '',
+		 lease_expiry = NULL, revision = revision + 1, updated_at = ?
+		 WHERE id = ? AND status = 'RETRY_WAIT' AND revision = ?`,
+		msg, nowStr, j.ID, j.Revision)
+	if err != nil {
+		return fmt.Errorf("retry: exhaust: %w", err)
+	}
+	if mustRowsAffected(res) == 0 {
+		return nil
+	}
+	evtID := fmt.Sprintf("evt_%d_%s", time.Now().UnixNano(), hashutil.RandomString(6))
+	evtData, _ := json.Marshal(map[string]string{"error": msg})
+	if _, err := r.db.ExecContext(ctx, `INSERT INTO job_events (id, job_id, type, message, data_json, created_at) VALUES (?, ?, ?, ?, ?, ?)`,
+		evtID, j.ID, "job_failed", msg, string(evtData), nowStr); err != nil {
+		return fmt.Errorf("retry: exhaust event: %w", err)
+	}
+	if err := r.DeadLetter(ctx, j.ID, msg); err != nil {
+		return fmt.Errorf("retry: exhaust dead-letter: %w", err)
+	}
+	return nil
+}
+
 // ── Cancel ───────────────────────────────────────────────────────────────
 
 // Cancel transitions a non-terminal job to cancelled. Idempotent.
@@ -130,16 +161,29 @@ func (r *SQLiteStore) DeadLetter(ctx context.Context, id string, errMsg string) 
 // ── Retry (transition retry_wait/failed → queued) ───────────────────────
 
 // Retry re-enqueues a failed or retry_wait job.
+//
+// P0 (Sept 2026) — exhaustion is TERMINAL. The pre-fix code returned an
+// untyped "retry: exhausted (n/m)" error WITHOUT touching the row, so an
+// exhausted RETRY_WAIT job stayed RETRY_WAIT and the worker's requeue sweep
+// re-listed and re-logged it on every tick, forever (19.360 of 20.388 lines in
+// one job's master.log were the same warn). An exhausted RETRY_WAIT row is now
+// driven to FAILED + dead_letter_jobs here, once, and the typed
+// job.ErrRetryExhausted tells the caller the retry lifecycle is over.
 func (r *SQLiteStore) Retry(ctx context.Context, id string) (*job.Job, error) {
 	j, err := r.Get(ctx, id)
 	if err != nil || j == nil {
 		return nil, fmt.Errorf("retry: job %s not found", id)
 	}
-	if j.RetryCount >= j.MaxRetries {
-		return nil, fmt.Errorf("retry: exhausted (%d/%d)", j.RetryCount, j.MaxRetries)
-	}
 	if j.Status != job.StatusRetryWait && j.Status != job.StatusFailed {
 		return nil, fmt.Errorf("retry: invalid status %q", j.Status)
+	}
+	if j.RetryCount >= j.MaxRetries {
+		if j.Status == job.StatusRetryWait {
+			if exhaustErr := r.exhaustRetry(ctx, j); exhaustErr != nil {
+				return nil, exhaustErr
+			}
+		}
+		return nil, fmt.Errorf("retry: %w (%d/%d)", job.ErrRetryExhausted, j.RetryCount, j.MaxRetries)
 	}
 
 	now := timeutil.FormatRFC3339(time.Now())

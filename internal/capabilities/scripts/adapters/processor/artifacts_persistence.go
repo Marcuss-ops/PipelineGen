@@ -102,6 +102,15 @@ func PersistGeneratedArtifacts(
 		return nil, fmt.Errorf("artifacts_persistence: mkdir %s: %w", outDir, err)
 	}
 
+	// P0 destination-bug fix (Sept 2026): the persisted sidecars MUST carry
+	// the language they were generated in. Without it the pre-finalization
+	// publisher falls back to a hard-coded default ("it") and an `en` run's
+	// script.json / scenes.json / final_audio.m4a land in
+	// <docs root>/<job>/it — one wrong-language folder per run. The language
+	// is a routing HINT (never a folder id): the Drive resolver stays the only
+	// owner of folder topology.
+	language := strings.TrimSpace(result.Language)
+
 	artifacts := make([]job.Artifact, 0, 3 /* script, scenes, optional final audio */)
 
 	// ── 1. script-json (REQUIRED) ──────────────────────────────────────
@@ -128,14 +137,16 @@ func PersistGeneratedArtifacts(
 		return nil, fmt.Errorf("artifacts_persistence: sha256 script.json: %w", shaErr)
 	}
 	artifacts = append(artifacts, job.Artifact{
-		ID:        jobID + ":script_json",
-		Kind:      job.ArtifactKindScriptJSON,
-		Path:      scriptJSONPath,
-		Filename:  "script.json",
-		MIMEType:  "application/json",
-		SizeBytes: int64(len(scriptData)),
-		SHA256:    sha,
-		Required:  true,
+		ID:               jobID + ":script_json",
+		Kind:             job.ArtifactKindScriptJSON,
+		Path:             scriptJSONPath,
+		Filename:         "script.json",
+		MIMEType:         "application/json",
+		SizeBytes:        int64(len(scriptData)),
+		SHA256:           sha,
+		Required:         true,
+		DriveLanguage:    language,
+		ArtifactMetadata: languageRoutingMetadata(language),
 	})
 
 	// ── 2. scenes (OPTIONAL when generated) ────────────────────────────
@@ -153,14 +164,16 @@ func PersistGeneratedArtifacts(
 			return nil, fmt.Errorf("artifacts_persistence: sha256 scenes.json: %w", scenesSHAErr)
 		}
 		artifacts = append(artifacts, job.Artifact{
-			ID:        jobID + ":scenes",
-			Kind:      job.ArtifactKindScenes,
-			Path:      scenesJSONPath,
-			Filename:  "scenes.json",
-			MIMEType:  "application/json",
-			SizeBytes: int64(len(scenesData)),
-			SHA256:    scenesSHA,
-			Required:  false,
+			ID:               jobID + ":scenes",
+			Kind:             job.ArtifactKindScenes,
+			Path:             scenesJSONPath,
+			Filename:         "scenes.json",
+			MIMEType:         "application/json",
+			SizeBytes:        int64(len(scenesData)),
+			SHA256:           scenesSHA,
+			Required:         false,
+			DriveLanguage:    language,
+			ArtifactMetadata: languageRoutingMetadata(language),
 		})
 	}
 
@@ -223,29 +236,51 @@ func PersistGeneratedArtifacts(
 		result.FinalAudio.Path = finalPath
 		result.FinalAudio.SizeBytes = info.Size()
 		result.FinalAudio.FinalAudioSHA256 = sha
+		// The certified master is an audio artifact and routes to the
+		// voiceover destination, which (like script) is project+language
+		// scoped: it must carry the same language hint as the sidecars or it
+		// re-introduces the wrong-language fallback for the audio tree.
+		finalAudioMetadata := map[string]any{
+			"audio_asset_id":         result.FinalAudio.AssetID,
+			"audio_contract_version": result.FinalAudio.AudioContractVersion,
+			"audio_plan_version":     result.FinalAudio.AudioPlanVersion,
+			"audio_plan_sha256":      result.FinalAudio.AudioPlanSHA256,
+			"final_audio_sha256":     result.FinalAudio.FinalAudioSHA256,
+			"audio_strategy":         "FINAL_AUDIO_COPY",
+			"codec":                  result.FinalAudio.Codec, "profile": result.FinalAudio.Profile,
+			"sample_rate": result.FinalAudio.SampleRate, "channels": result.FinalAudio.Channels,
+			"channel_layout": result.FinalAudio.ChannelLayout,
+			"bitrate":        result.FinalAudio.Bitrate, "size_bytes": result.FinalAudio.SizeBytes,
+			"duration_ms": result.FinalAudio.DurationMS, "start_pts": result.FinalAudio.StartPTS,
+			"final_mix":     result.FinalAudio.FinalMix,
+			"copy_eligible": result.FinalAudio.CopyEligible,
+		}
+		for key, value := range languageRoutingMetadata(language) {
+			finalAudioMetadata[key] = value
+		}
 		artifacts = append(artifacts, job.Artifact{
 			ID: result.FinalAudio.AssetID, Kind: job.ArtifactKindFinalAudio,
 			Path: finalPath, Filename: "final_audio.m4a", MIMEType: "audio/mp4",
 			SizeBytes: info.Size(), SHA256: sha, Required: true,
-			ArtifactMetadata: map[string]any{
-				"audio_asset_id":         result.FinalAudio.AssetID,
-				"audio_contract_version": result.FinalAudio.AudioContractVersion,
-				"audio_plan_version":     result.FinalAudio.AudioPlanVersion,
-				"audio_plan_sha256":      result.FinalAudio.AudioPlanSHA256,
-				"final_audio_sha256":     result.FinalAudio.FinalAudioSHA256,
-				"audio_strategy":         "FINAL_AUDIO_COPY",
-				"codec":                  result.FinalAudio.Codec, "profile": result.FinalAudio.Profile,
-				"sample_rate": result.FinalAudio.SampleRate, "channels": result.FinalAudio.Channels,
-				"channel_layout": result.FinalAudio.ChannelLayout,
-				"bitrate":        result.FinalAudio.Bitrate, "size_bytes": result.FinalAudio.SizeBytes,
-				"duration_ms": result.FinalAudio.DurationMS, "start_pts": result.FinalAudio.StartPTS,
-				"final_mix":     result.FinalAudio.FinalMix,
-				"copy_eligible": result.FinalAudio.CopyEligible,
-			},
+			DriveLanguage:    language,
+			ArtifactMetadata: finalAudioMetadata,
 		})
 	}
 
 	return artifacts, nil
+}
+
+// languageRoutingMetadata returns the artifact-metadata half of the language
+// routing hint (the Artifact.DriveLanguage field is the other half). It is
+// empty for an unknown language: the canonical publisher derives the
+// destination from DriveLanguage / the `language` metadata key and MUST NOT be
+// handed a fabricated default (the pre-fix hard-coded "it" is why an `en` run
+// published into the Italian tree).
+func languageRoutingMetadata(language string) map[string]any {
+	if strings.TrimSpace(language) == "" {
+		return nil
+	}
+	return map[string]any{"language": language}
 }
 
 func stripVoiceoverLocalPaths(in domainScript.SpecSceneOutput) domainScript.SpecSceneOutput {

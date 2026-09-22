@@ -27,8 +27,15 @@ with no arguments to list all registered commands (~95 total). Key categories:
 - **Asset backfills**: `backfill-asset-embeddings`, `backfill-clip-folder-path`,
   `backfill-media-durations`, `backfill-payload-hash`, `backfill-provider-timestamps`,
   `backfill-source-url-metadata`, `backfill-missing`, `backfill-visual-embeddings`
-- **Drive operations**: `drive-reconcile`, `drive-doctor`, `drive-bootstrap`,
-  `sync-all-drive`, `sync-drive-folder`, `drive-create-folder`,
+- **Drive operations**: `drive-ls` (read-only listing of a folder's files and
+  folders; `--recursive`, `--files-only`, `--json`), `list-drive-folder`
+  (recursive folder-only walk + optional DB sync), `search-drive` (raw Drive
+  query via `--query`), `drive-reconcile`, `drive-doctor`, `drive-bootstrap`,
+  `sync-all-drive`, `sync-drive-folder`,
+  `drive-create-folder` (accepts a nested `--name "a/b/c"` path;
+  `--dry-run` plans without writing),
+  `drive-mv` (move files between folders; dry-run by default, `--apply` to
+  execute),
   `trash-drive-files`, `upload-drive-file`,
   `drive-empty-trash` (fail-closed: previews the trash and only permanently
   purges with the explicit `--apply` flag)

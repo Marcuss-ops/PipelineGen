@@ -21,6 +21,17 @@ var ErrFinalizeAttemptArtifactStale = errors.New("FinalizeAttempt: artifact-stat
 var ErrFinalizeAttemptOutboxEventMissing = errors.New("FinalizeAttempt: outbox event missing required Type or EventKey (uniqueness invariant)")
 var ErrFinalizeAttemptDLQIncompatible = errors.New("FinalizeAttempt: DLQPayload is only valid with FAILED_PERMANENT or SCHEDULE_RETRY outcomes (terminal-failure invariant)")
 
+// ErrRetryExhausted is returned by Store.Retry when the job's retry budget is
+// spent (RetryCount >= MaxRetries). It is a TERMINAL classification, not a
+// transient one: the SQLite adapter moves an exhausted RETRY_WAIT row to
+// FAILED and archives it in dead_letter_jobs in the same call, so callers must
+// stop retrying (and stop logging the same failure every tick) once they see
+// it. Before this sentinel existed the adapter returned an untyped
+// "retry: exhausted (n/m)" error without changing the row's status, which left
+// the job in RETRY_WAIT forever and produced 19.360 identical warn lines in a
+// single job's master.log.
+var ErrRetryExhausted = errors.New("jobs: retry exhausted — retry budget spent, job moved to FAILED and dead-lettered")
+
 // ErrMissingDeps is the shared fail-closed sentinel for registration APIs
 // invoked before the composition root has wired their dependencies.
 var ErrMissingDeps = errors.New("job: required dependency is nil")

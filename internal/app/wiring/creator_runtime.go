@@ -75,7 +75,6 @@ import (
 	scriptjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/jobs"
 	usecase "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/usecase"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/usecase/gencore"
-	capvoiceover "github.com/Marcuss-ops/PipelineGen/internal/capabilities/voiceover"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
@@ -268,18 +267,9 @@ func BuildCreatorRuntime(cfg *config.Config, log *zap.Logger) (*CreatorRuntime, 
 		return nil, nil, fmt.Errorf("creator: register script.generate handler: %w", err)
 	}
 
-	// Blocco 3.x: register real voiceover.generate_item handler.
-	// Tracked: VO-DECOMPOSITION-2026-07-04. The placeholder returns a clear
-	// "not yet implemented" error so the Creator never silently drops
-	// voiceover jobs on an unsigned dispatcher.
-	placeholderVO := func(ctx context.Context, j *job.Job, tools *appjobs.JobExecutionTools) (map[string]any, error) {
-		return nil, fmt.Errorf("voiceover.generate_item: not yet implemented in Creator composition (Blocco 3.x)")
-	}
-	if err := dispatcher.Register(capvoiceover.TypeGenerateItem, placeholderVO); err != nil {
-		cleanup()
-		return nil, nil, fmt.Errorf("creator: register voiceover.generate_item placeholder: %w", err)
-	}
-	log.Info("creator: voiceover.generate_item placeholder registered (Blocco 3.x — wire real engine, tracked: VO-DECOMPOSITION-2026-07-04)")
+	// Creator is intentionally script-only. Voiceover/image/media handlers
+	// belong to the full content profile; registering placeholders here would
+	// advertise capabilities that cannot actually execute.
 
 	dispatcher.Freeze()
 

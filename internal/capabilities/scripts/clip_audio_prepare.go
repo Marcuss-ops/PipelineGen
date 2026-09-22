@@ -10,6 +10,21 @@ import (
 	capabilityaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
 )
 
+// mergeAudioCompileTimings re-asserts the subtimings that the compile
+// boundary cannot measure itself.
+//
+// CompileCanonicalAudioPlanAudioOnly* returns its OWN AudioCompileTimings
+// (it probes the timeline/plan phases it owns). Assigning that value straight
+// over the struct also replaces ClipAudioPrepareMS with the compile's probe
+// window, which made the reported clip_audio_prepare_ms a near-zero constant
+// even when prepareClipAudioAssets had just spent tens of seconds
+// materializing clip audio. The prepare measured here is the OWNER of that
+// subtiming, so it is re-applied after the compile returns.
+func mergeAudioCompileTimings(compiled AudioCompileTimings, measuredClipPrepareMS int64) AudioCompileTimings {
+	compiled.ClipAudioPrepareMS = measuredClipPrepareMS
+	return compiled
+}
+
 // prepareClipAudioAssets seals the physical source audio contract before the
 // canonical timeline is compiled. VOICEOVER_DUCKED_CLIP cannot be compiled
 // from a Drive URL or a semantic clip ID: the renderer needs a verified local

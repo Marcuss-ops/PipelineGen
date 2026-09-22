@@ -241,6 +241,9 @@ func (a *localizedRenderEnqueuerAdapter) EnqueueLocalizedRender(ctx context.Cont
 				SceneID:       artifact.SceneID,
 				SceneIndex:    in.SceneIndex,
 				Language:      scriptgeneration.Language(artifact.Language),
+				RenderJobID:   artifact.PlanRevision,
+				Reused:        artifact.Reused,
+				RenderSource:  artifact.RenderSource,
 				ClipID:        artifact.ClipID,
 				AssetID:       artifact.AssetID,
 				SHA256:        artifact.SHA256,
@@ -307,7 +310,11 @@ func (a *localizedRenderEnqueuerAdapter) UploadRendered(ctx context.Context, in 
 	artifact := localization.LocalizedClipArtifact{
 		Version: localization.LocalizedClipArtifactVersion, JobID: in.RunID,
 		SceneID: staged.SceneID, ClipID: clipID, Language: string(staged.Language),
-		AssetID: staged.AssetID, LocalPath: staged.LocalPath, SHA256: staged.SHA256,
+		// Carry the original render identity across the crash recovery: the
+		// recovered artifact was produced by that same render job, so the run
+		// result keeps naming it after the upload-only retry.
+		PlanRevision: staged.RenderJobID,
+		AssetID:      staged.AssetID, LocalPath: staged.LocalPath, SHA256: staged.SHA256,
 		DurationMS: staged.DurationMS, Status: localization.LocalizedClipRendered,
 	}
 	uploader, ok := a.svc.(localizedArtifactUploader)
@@ -321,6 +328,8 @@ func (a *localizedRenderEnqueuerAdapter) UploadRendered(ctx context.Context, in 
 	if in.OnRendered != nil {
 		return in.OnRendered(scriptgeneration.LocalizedRenderResult{
 			SceneID: published.SceneID, SceneIndex: in.SceneIndex, Language: scriptgeneration.Language(published.Language),
+			RenderJobID: published.PlanRevision,
+			Reused:      published.Reused, RenderSource: published.RenderSource,
 			ClipID: published.ClipID, AssetID: published.AssetID, SHA256: published.SHA256,
 			DriveFileID: published.DriveFileID, DriveLink: published.DriveLink, DriveFolderID: published.DriveFolderID,
 			DurationMS: published.DurationMS,

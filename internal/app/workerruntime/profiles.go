@@ -8,8 +8,9 @@
 //
 // Profiles registered by NewProfileRegistry:
 //
-//	creator — script.generate + voiceover.generate_item
-//	          (image.generate.google reserved for future opt-in)
+//	creator — script.generate (minimal script-only runtime)
+//	content — full content pipeline capabilities, backed by the complete
+//	          composition root and live handler registry
 //	renderer — overlay.prepare + overlay.render, GPU/FFmpeg required
 //
 // ResolveCapabilities is the canonical entry point when a profile
@@ -65,12 +66,25 @@ func NewProfileRegistry() *WorkerProfileRegistry {
 			"creator": {
 				Name: "creator",
 				AllowedJobTypes: []string{
-					"script.generate",
-					"voiceover.generate_item",
-					"image.generate.google",
-					"media.stock",
+					job.TypeScriptGenerate,
+					job.TypeVoiceoverGenerateItem,
+					job.TypeImageGenerateGoogle,
+					appjobs.TypeMediaStock,
 				},
 				MaxParallel: 1, // script generation is memory-heavy
+			},
+			"content": {
+				Name: "content",
+				AllowedJobTypes: []string{
+					job.TypeScriptGenerate,
+					job.TypeVoiceoverGenerate,
+					job.TypeVoiceoverGenerateItem,
+					appjobs.TypeMediaStock,
+					appjobs.TypeYouTubeClipExtract,
+					appjobs.TypeImageGenerateGoogle,
+					job.TypeClipRender,
+				},
+				MaxParallel: 2,
 			},
 			"renderer": {
 				Name: "renderer",
