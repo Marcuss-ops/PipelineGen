@@ -1,0 +1,27 @@
+{
+  "url": "https://www.youtube.com/watch?v=ogu6YuDUdnQ",
+  "force_keyframes": true,
+  "write_summary": true,
+  "require_transcript_ready": true,
+  "destination": {
+    "folder_id": "1Re-ZJYeKXaG4XaO38KOzbcyIcwx71iCo",
+    "create_subfolder": false
+  },
+  "subtitle_destination": {
+    "folder_id": "1Re-ZJYeKXaG4XaO38KOzbcyIcwx71iCo",
+    "create_subfolder": false,
+    "per_clip_subfolders": false
+  },
+  "segments": [
+    {"start": "00:00", "end": "00:15", "name": "Collegamento in diretta e perizia sul posto", "summary": "Il reporter si collega in diretta davanti all'ufficio di Milton Leite dopo i primi rilievi della perizia notturna.", "topics": ["Collegamento in diretta e perizia sul posto"], "tags": ["g1", "GloboNews", "diretta", "ufficio politico", "Milton Leite", "Santo Amaro", "perizia"]},
+    {"start": "00:15", "end": "00:30", "name": "Immobile escluso dalla perquisizione giudiziaria", "summary": "Viene rivelato che l'immobile svaligiato non figurava tra gli indirizzi perquisiti ufficialmente durante il blitz giudiziario precedente.", "topics": ["Immobile escluso dalla perquisizione giudiziaria"], "tags": ["ufficio ombra", "mandato busca", "operazione polizia civile", "Mogi das Cruzes"]},
+    {"start": "00:30", "end": "00:50", "name": "Agenti in borghese e raccolta testimonianze", "summary": "Due investigatori della Polizia Civile arrivano in borghese sul posto per interrogare i residenti che avevano notato i movimenti sospetti.", "topics": ["Agenti in borghese e raccolta testimonianze"], "tags": ["polizia civile", "agenti in borghese", "auto civetta", "testimonianza", "vicinato"]},
+    {"start": "00:50", "end": "01:05", "name": "Video della fuga e forzatura del cancello", "summary": "Una telecamera di sicurezza privata riprende il momento in cui i malviventi sollevano il portone del garage per fuggire.", "topics": ["Video della fuga e forzatura del cancello"], "tags": ["telecamera", "circuito chiuso", "cancello forzato", "fuga", "nastro registrazioni"]},
+    {"start": "01:05", "end": "01:24", "name": "Sottrazione selettiva dell'hard disk", "summary": "Gli intrusi sottraggono in modo mirato l'hard disk contenente i filmati interni dell'ufficio per impedire l'identificazione.", "topics": ["Sottrazione selettiva dell'hard disk"], "tags": ["furto HD", "hard disk", "telecamere sorveglianza", "Milton Leite", "cancellazione tracce"]},
+    {"start": "01:31", "end": "01:45", "name": "Denaro in contanti abbandonato sul divano", "summary": "La polizia constata che i ladri hanno lasciato intatti 19.000 reais in contanti appoggiati sul divano dell'immobile.", "topics": ["Denaro in contanti abbandonato sul divano"], "tags": ["19000 reais", "contanti", "divano", "furto simulato", "occultamento prove"]},
+    {"start": "01:50", "end": "02:05", "name": "Dettagli del veicolo in retromarcia", "summary": "La telecamera dello stabile adiacente mostra l'automobile impiegata per il colpo mentre esce tranquillamente in retromarcia sulla via.", "topics": ["Dettagli del veicolo in retromarcia"], "tags": ["veicolo bianco", "retromarcia", "telecamera", "fuga", "identificazione targa"]},
+    {"start": "02:05", "end": "02:35", "name": "Inchiesta Transwolf e riciclaggio PCC", "summary": "L'episodio si inserisce nel quadro accusatorio che contesta a Leite il riciclaggio dei proventi del PCC tramite le societa di trasporto locale.", "topics": ["Inchiesta Transwolf e riciclaggio PCC"], "tags": ["Milton Leite", "riciclaggio", "PCC", "Transwolf", "concessioni autobus", "camera municipale"]},
+    {"start": "02:35", "end": "03:00", "name": "Indagine porta a porta della Polizia Civile", "summary": "Gli agenti battono il quartiere porta a porta per raccogliere dettagli utili a chiarire l'impatto della sottrazione sull'indagine principale.", "topics": ["Indagine porta a porta della Polizia Civile"], "tags": ["Policia Civil", "porta a porta", "interrogatori", "condomini", "processo penale"]},
+    {"start": "03:00", "end": "03:29", "name": "Sospetto conclamato di distruzione prove", "summary": "In studio i commentatori evidenziano come la rimozione dell'HD e l'abbandono del denaro confermino pienamente l'ipotesi di distruzione mirata di prove.", "topics": ["Sospetto conclamato di distruzione prove"], "tags": ["Leo Arcoverde", "eliminazione prove", "asportazione HD", "contanti ignorati"]}
+  ]
+}

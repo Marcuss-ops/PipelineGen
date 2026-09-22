@@ -410,6 +410,10 @@ func (r *Runner) runAudioCompilePhase(ctx context.Context, runID string, req Gen
 		canvas.ForegroundScalePercent = req.Render.ForegroundScalePercent
 		canvas.Background = overlayBackgroundFromPayload(background)
 		canvas.Style = req.OverlayStyle
+		// The channel profile's phrase-motion rotation pool rides the canvas
+		// into the planner (empty = the certified default pool). Same fill-only
+		// provenance as Style: resolved once at ingress, never re-derived here.
+		canvas.PhraseMotions = req.PhraseMotions
 		if canvas.Style == nil && background != nil {
 			canvas.Style = background.Style
 		}

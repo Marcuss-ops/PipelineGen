@@ -51,6 +51,16 @@ type GenerateRequest struct {
 	// Render is the explicit per-clip reconstruction request. It is copied
 	// once at ingress and consumed by the localized render fan-out.
 	Render scriptpkg.VideoRenderSpec `json:"render,omitempty"`
+	// ChannelID is the editorial channel this request is produced for (the
+	// canonical YouTube channel id, or any operator-defined channel key).
+	// Carried verbatim from the envelope item; empty means "no channel
+	// profile applies".
+	ChannelID string `json:"channel_id,omitempty"`
+	// PhraseMotions is the channel profile's phrase-motion rotation pool,
+	// resolved ONCE at ingress (BuildGenerateRequest) and consumed by the
+	// overlay planner. Empty keeps the certified default pool. It is not
+	// caller wire vocabulary: only a channel profile sets it.
+	PhraseMotions []string `json:"phrase_motions,omitempty"`
 	// OverlayBackground is the visual background selected by script.generate;
 	// it is transported into the sealed OverlayPlan at render time.
 	OverlayBackground *scriptpkg.OverlayBackgroundSpec `json:"overlay_background,omitempty"`

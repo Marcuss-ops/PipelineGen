@@ -43,6 +43,7 @@ package jobs
 
 import (
 	"fmt"
+	"sort"
 
 	jobqueue "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/queue"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
@@ -106,6 +107,23 @@ func (s *Service) HasHandler(jobType string) bool {
 	}
 	_, ok := s.dispatcher.AllHandlers()[jobType]
 	return ok
+}
+
+// HandlerTypes returns the sorted set of job types with a live consumer
+// bound in this Master process. It is the source for the remote M2M
+// capability catalog; policy-only types are intentionally excluded because
+// accepting them would create jobs that can never run.
+func (s *Service) HandlerTypes() []string {
+	if s == nil || s.dispatcher == nil {
+		return nil
+	}
+	handlers := s.dispatcher.AllHandlers()
+	out := make([]string, 0, len(handlers))
+	for jobType := range handlers {
+		out = append(out, jobType)
+	}
+	sort.Strings(out)
+	return out
 }
 
 // ValidateHandlerCompleteness checks that every job type registered in

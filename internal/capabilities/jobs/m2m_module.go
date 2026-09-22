@@ -12,8 +12,8 @@ import (
 // (PipelineGen / Agent / second PC) needs to submit a job and poll its
 // status, each gated by the per-route scope check:
 //
-//	POST /api/v1/jobs      → Enqueue     (scope: jobs.submit)
-//	GET  /api/v1/jobs/:id  → Get         (scope: jobs.read)
+//	POST /api/v1/jobs      → Enqueue     (scope: jobs.submit)	//	GET  /api/v1/jobs/:id  → Get         (scope: jobs.read)
+//	GET  /api/v1/jobs/types → M2MTypes    (scope: jobs.read)
 //
 // It is deliberately distinct from the full JobsHandler (module.go),
 // which registers ALL 9 job routes (List, Stats, GetFull, Cancel, Retry,
@@ -92,6 +92,7 @@ func (m *M2MJobsModule) RegisterRoutes(rg *gin.RouterGroup) {
 		return
 	}
 	rg.POST("", apimw.RequireScope(ScopeJobsSubmit), m.handler.Enqueue)
+	rg.GET("/types", apimw.RequireScope(ScopeJobsRead), m.handler.M2MTypes)
 	rg.GET("/:id", apimw.RequireScope(ScopeJobsRead), m.handler.Get)
 }
 

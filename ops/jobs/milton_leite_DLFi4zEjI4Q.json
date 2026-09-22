@@ -1,0 +1,28 @@
+{
+  "url": "https://www.youtube.com/watch?v=DLFi4zEjI4Q",
+  "force_keyframes": true,
+  "write_summary": true,
+  "require_transcript_ready": true,
+  "destination": {
+    "folder_id": "1Re-ZJYeKXaG4XaO38KOzbcyIcwx71iCo",
+    "create_subfolder": false
+  },
+  "subtitle_destination": {
+    "folder_id": "1Re-ZJYeKXaG4XaO38KOzbcyIcwx71iCo",
+    "create_subfolder": false,
+    "per_clip_subfolders": false
+  },
+  "segments": [
+    {"start": "00:00", "end": "00:15", "name": "Furto anomalo nello studio di Milton Leite", "summary": "L'ufficio politico di Milton Leite viene svaligiato: gli intrusi portano via esclusivamente l'hard disk delle telecamere, ignorando oltre 19.000 reais in contanti.", "topics": ["Furto anomalo nello studio di Milton Leite"], "tags": ["Milton Leite", "ufficio politico", "furto", "HD telecamere", "sicurezza", "Zona Sul Sao Paulo", "19000 reais", "polizia civile"]},
+    {"start": "00:15", "end": "00:30", "name": "Sospetto occultamento prove e documenti rinvenuti", "summary": "La polizia sequestra carte bancarie e documenti abbandonati sul posto, mentre la dinamica fa emergere il forte sospetto di eliminazione mirata di prove.", "topics": ["Sospetto occultamento prove e documenti rinvenuti"], "tags": ["occultamento prove", "documenti bancari", "assegni", "sequestro", "polizia civile", "perquisizione"]},
+    {"start": "00:55", "end": "01:08", "name": "Arresto di Milton Leite a Mogi das Cruzes", "summary": "L'ex presidente della Camera municipale di San Paolo si consegna alla polizia di Mogi das Cruzes dopo l'emissione dell'ordinanza di custodia cautelare.", "topics": ["Arresto di Milton Leite a Mogi das Cruzes"], "tags": ["Milton Leite", "arresto", "custodia cautelare", "Mogi das Cruzes", "camera municipale"]},
+    {"start": "01:08", "end": "01:38", "name": "Dubbi sul finto furto e penetrazione del PCC", "summary": "I cronisti mettono in dubbio la natura della rapina e sottolineano il livello di radicamento del Primeiro Comando da Capital nelle istituzioni pauliste.", "topics": ["Dubbi sul finto furto e penetrazione del PCC"], "tags": ["GloboNews", "finto furto", "PCC", "Primeiro Comando da Capital", "camera municipale San Paolo", "criminalita organizzata"]},
+    {"start": "02:00", "end": "02:27", "name": "Scadenze legali e indagine Gaeco", "summary": "Gli inquirenti del Gaeco e della Polizia Civile affrontano la scadenza dei trenta giorni di arresto per formalizzare l'imputazione.", "topics": ["Scadenze legali e indagine Gaeco"], "tags": ["Gaeco", "Ministerio Publico", "Polizia Civile", "prigione temporanea", "denuncia penale"]},
+    {"start": "02:27", "end": "03:15", "name": "Intercettazioni audio e controllo bus Transwolf", "summary": "Emergono intercettazioni telefoniche in cui esponenti del PCC discutono della sostituzione delle linee bus citando espressamente Milton Leite come garante.", "topics": ["Intercettazioni audio e controllo bus Transwolf"], "tags": ["Transwolf", "concessioni autobus", "trasporto pubblico", "intercettazioni audio", "riciclaggio", "PCC"]},
+    {"start": "03:15", "end": "04:18", "name": "L'egemonia politica locale di Leite", "summary": "L'analisi giornalistica evidenzia come Leite abbia sempre rifiutato cariche federali per mantenere un controllo totale e capillare sulla citta di San Paolo.", "topics": ["L'egemonia politica locale di Leite"], "tags": ["Reinaldo Azevedo", "potere locale", "San Paolo", "deputato federale", "influenza politica", "prove"]},
+    {"start": "04:18", "end": "05:35", "name": "Rapporti con Tarcisio de Freitas e clan Leite", "summary": "Vengono esaminati i legami elettorali e le dichiarazioni del governatore Tarcisio de Freitas relative al clan politico dei Leite.", "topics": ["Rapporti con Tarcisio de Freitas e clan Leite"], "tags": ["Tarcisio de Freitas", "governatore", "alleanze politiche", "clan Leite", "elezioni", "Gaeco"]},
+    {"start": "05:35", "end": "06:40", "name": "Mancata candidatura a vice e caso Sabesp", "summary": "Viene ricostruita la caduta politica di Leite nel 2024, dalla sfumata carica di vicesindaco fino alle pressioni legate alla privatizzazione della Sabesp.", "topics": ["Mancata candidatura a vice e caso Sabesp"], "tags": ["Ricardo Nunes", "vice sindaco", "elezioni 2024", "Transwolf", "Gaeco", "Sabesp"]},
+    {"start": "06:40", "end": "07:35", "name": "Infiltrazione del PCC nei trasporti urbani", "summary": "Il parlamentare Ivan Valente denuncia come dodici compagnie di trasporto urbano siano finite sotto il controllo o l'influenza diretta del cartello criminale.", "topics": ["Infiltrazione del PCC nei trasporti urbani"], "tags": ["Ivan Valente", "PSOL", "trasporti urbani", "PCC", "camera municipale"]},
+    {"start": "07:35", "end": "08:35", "name": "Rete allargata: aeroporto, fintech e forze dell'ordine", "summary": "Il quadro accusatorio si estende all'esecuzione di Gritzbach a Guarulhos, al riciclaggio tramite fintech e ai legami corruttivi nelle forze di sicurezza.", "topics": ["Rete allargata: aeroporto, fintech e forze dell'ordine"], "tags": ["omicidio Gritzbach", "aeroporto Guarulhos", "fintech", "riciclaggio", "poliziotti corrotti", "omerta"]}
+  ]
+}

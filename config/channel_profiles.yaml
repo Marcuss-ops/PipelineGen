@@ -1,0 +1,147 @@
+# =============================================================================
+# Channel profiles — per-channel render defaults, resolved at request build
+# =============================================================================
+#
+# WHAT THIS IS. One profile per editorial channel (a YouTube channel id, or
+# any operator-defined key). A generation request that DECLARES `channel_id`
+# gets these values filled in for the choices it left BLANK — never over its
+# explicit ones. A request without `channel_id`, or a channel missing here,
+# behaves exactly as before this file existed (profiles are curated, not a
+# closed vocabulary).
+#
+# WHERE IT PLUGS IN. BuildGenerateRequest (the single ingress both job
+# handlers share) → ApplyChannelProfile, right before the editing-asset
+# policy. Everything downstream — overlay plan, ASS burn, clip render,
+# master mix — sees a normal request. RenderingGen is untouched: it still
+# receives renderinggen.overlay-plan.v1 with every value spelled out, so the
+# renderer never invents style and the golden canary stays byte-identical.
+#
+# HOW TO EDIT (the "runtime" knob). Change a value, restart the server
+# (PIPELINEGEN_CHANNEL_PROFILES overrides this path). A document that does
+# not parse stops the boot — a typo can never ship half a channel's look.
+# `version` must stay 1.
+#
+# WHAT A PROFILE MAY DECLARE (all optional):
+#   subtitles       mode (burn|sidecar) + canonical preset + inline style
+#   watermark       text watermark (position/margin/opacity/style)
+#   overlay_style   phrase/word overlay color, size, shadow, entry animation
+#   sound_effects   SFX intents (absolute at_ms, or scene_id+anchor+offset)
+#   mix_policy      VOICEOVER_ONLY | VOICEOVER_DUCKED_CLIP
+#   phrase_motions  rotation pool for animated IMPORTANT_PHRASE overlays
+#
+# GATES (mirroring ApplyEditingAssetPolicy): the visual blocks only fill a
+# request that already enabled the render (output.render.enabled); SFX and
+# mix_policy only fill a COMBINED_TIMELINE run.
+#
+# Vocabularies (validated at boot, fail-closed):
+#   subtitles.preset  → canonical subtitle presets (kernel/output_spec.go)
+#   phrase_motions    → certified motions (overlays.CertifiedPhraseMotions)
+#   sound_effects[].gain_db must be <= 0 dB (the master mix owns the level)
+#   font: only Montserrat-Bold and Poppins-Bold ship as files; any other
+#         family name projects onto one of those two (same rule as
+#         SubtitleFontAssetForStyle) — declare the family you want the
+#         ASS/Chronon header to carry, not a file you expect to exist.
+#
+# SOUND EFFECTS ARE DELIBERATELY COMMENTED OUT IN THE SEED: an intent that
+# names an asset this deployment cannot resolve fails the whole run (by
+# design — the compile never ships a partial plan). Uncomment only the
+# aliases that exist in THIS deployment's catalog (ops/jobs/sfx_catalog.json
+# or the built-in one-shot set).
+# =============================================================================
+
+version: 1
+
+profiles:
+  - channel_id: "crime"
+    description: "True-crime line: condensed heavy captions, top-right wordmark, ducked clip under the narration."
+    subtitles:
+      mode: burn
+      preset: impact
+      style:
+        color: "#F5F5F5"
+        position: bottom_center
+        stroke:
+          color: "#000000"
+          width: 4.5
+    watermark:
+      text: "CRIME FILES"
+      position: top_right
+      opacity: 0.85
+      margin_px: 48
+      style:
+        font: "Montserrat"
+        color: "#FFFFFF"
+        font_size_px: 42
+    overlay_style:
+      color: [1.0, 1.0, 1.0, 1.0]
+      shadow:
+        enabled: true
+        color: "#000000"
+        opacity: 0.72
+        blur: 12.0
+        offset: [0.0, 4.0]
+      transition_in:
+        preset: fade_in
+        duration_frames: 8
+    mix_policy: VOICEOVER_DUCKED_CLIP
+    phrase_motions:
+      - masked_upward_reveal
+      - velocity_inertia_snap
+    # sound_effects:
+    #   - asset_id: whoosh1      # must exist in this deployment's catalog
+    #     at_ms: 0               # absolute placement (mutually exclusive with scene_id)
+    #     gain_db: -18           # attenuation only: gains must be <= 0 dB
+
+  - channel_id: "discovery"
+    description: "Documentary/factual line: clean Montserrat captions, quiet phrase motion, neutral wordmark."
+    subtitles:
+      mode: burn
+      preset: montserrat
+      style:
+        color: "#FFFFFF"
+        position: bottom_center
+    watermark:
+      text: "DISCOVERY"
+      position: top_right
+      opacity: 0.8
+      margin_px: 40
+      style:
+        font: "Montserrat"
+        color: "#FFFFFF"
+        font_size_px: 40
+    phrase_motions:
+      - soft_edge_spotlight_dissolve
+      - staggered_char_float
+
+  - channel_id: "young"
+    description: "Short-form line for the younger audience: rounder, larger captions, Poppins wordmark, livelier phrase motion."
+    subtitles:
+      mode: burn
+      preset: subs-young-pop
+      style:
+        position: bottom_center
+    watermark:
+      text: "YOUNG CUT"
+      position: bottom_left
+      opacity: 0.75
+      margin_px: 40
+      style:
+        font: "Poppins"
+        color: "#FFFFFF"
+        font_size_px: 36
+    phrase_motions:
+      - kinetic_split_word
+      - staggered_char_float
+      - soft_edge_spotlight_dissolve
+    # sound_effects:
+    #   - asset_id: whoosh3
+    #     scene_id: "scene-1"    # scene ids vary per run: prefer at_ms unless the run pins them
+    #     anchor: start
+    #     offset_ms: -250        # the whoosh lands just BEFORE the scene cut
+    #     gain_db: -20
+
+  # Reserved fallback: applied to ANY request that declares a channel_id with
+  # no exact match above. Deliberately EMPTY — activate it (delete the next
+  # two comment markers) only when a uniform baseline is wanted.
+  # - channel_id: "default"
+  #   description: "Baseline applied to every channel without a specific profile."

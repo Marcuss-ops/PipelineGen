@@ -479,6 +479,7 @@ type fakeM2MJobsHandler struct{}
 
 func (fakeM2MJobsHandler) RegisterRoutes(rg *gin.RouterGroup) {
 	rg.POST("", func(c *gin.Context) {})
+	rg.GET("/types", func(c *gin.Context) {})
 	rg.GET("/:id", func(c *gin.Context) {})
 }
 
@@ -523,6 +524,7 @@ func TestRoutes_M2MJobsGroupMountedSeparately(t *testing.T) {
 
 		want := []string{
 			"POST /api/v1/jobs",
+			"GET /api/v1/jobs/types",
 			"GET /api/v1/jobs/:id",
 		}
 		for _, w := range want {
@@ -547,6 +549,84 @@ func TestRoutes_M2MJobsGroupMountedSeparately(t *testing.T) {
 		for _, route := range engine.Routes() {
 			if strings.HasPrefix(route.Path, "/api/v1/jobs") {
 				t.Errorf("M2M route %s %q leaked without an M2MJobs handler — the group must be skipped when no handler is supplied", route.Method, route.Path)
+			}
+		}
+	})
+}
+
+// fakeM2MMediaHandler is the minimal stub for the M2M media-read surface
+// test (TestRoutes_M2MMediaGroupMountedSeparately). It mounts the three
+// read routes on the supplied group — mirrors production
+// internal/capabilities/assets/operator/m2m_module.go::M2MModule.
+type fakeM2MMediaHandler struct{}
+
+func (fakeM2MMediaHandler) RegisterRoutes(rg *gin.RouterGroup) {
+	rg.GET("/assets", func(c *gin.Context) {})
+	rg.GET("/assets/:id", func(c *gin.Context) {})
+	rg.GET("/facets", func(c *gin.Context) {})
+}
+
+// TestRoutes_M2MMediaGroupMountedSeparately is the anti-regression gate for
+// the M2M media-read surface (GET /api/v1/media/{assets,assets/:id,facets}),
+// the read-only counterpart of the M2M job surface.
+//
+// Regression targets:
+//
+//  1. The three read routes ARE registered under /api/v1/media when an M2M
+//     media handler is supplied — proving the group mounts and does NOT
+//     collide with the admin /api/assets/operator surface.
+//  2. The group is NOT registered when no handler is supplied — so dev/test
+//     fixtures without a media SSOT keep working.
+//
+// The per-request auth/scope path is covered by the module tests in
+// internal/capabilities/assets/operator/m2m_module_test.go.
+func TestRoutes_M2MMediaGroupMountedSeparately(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	authAdapter := &middleware.TokenSecurityAdapter{Enable: false}
+
+	t.Run("M2M media group mounts when handler supplied", func(t *testing.T) {
+		router := NewRouter(&RouterConfig{
+			Auth:          authAdapter,
+			Rate:          testRateLimitAdapter{},
+			Features:      testFeatureFlagsAdapter{},
+			Log:           zap.NewNop(),
+			ServerGinMode: gin.TestMode,
+		})
+		router.SetM2MMediaHandler(fakeM2MMediaHandler{})
+
+		engine := router.Setup()
+		have := make(map[string]bool, len(engine.Routes()))
+		for _, route := range engine.Routes() {
+			have[route.Method+" "+route.Path] = true
+		}
+
+		want := []string{
+			"GET /api/v1/media/assets",
+			"GET /api/v1/media/assets/:id",
+			"GET /api/v1/media/facets",
+		}
+		for _, w := range want {
+			if !have[w] {
+				t.Errorf("expected M2M media route %q to be registered, but it is missing", w)
+			}
+		}
+	})
+
+	t.Run("M2M media group skipped when no handler supplied", func(t *testing.T) {
+		router := NewRouter(&RouterConfig{
+			Auth:          authAdapter,
+			Rate:          testRateLimitAdapter{},
+			Features:      testFeatureFlagsAdapter{},
+			Log:           zap.NewNop(),
+			ServerGinMode: gin.TestMode,
+		})
+		// NOTE: deliberately NO SetM2MMediaHandler.
+
+		engine := router.Setup()
+		for _, route := range engine.Routes() {
+			if strings.HasPrefix(route.Path, "/api/v1/media") {
+				t.Errorf("M2M media route %s %q leaked without an M2MMedia handler — the group must be skipped when no handler is supplied", route.Method, route.Path)
 			}
 		}
 	})

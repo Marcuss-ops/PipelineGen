@@ -47,37 +47,75 @@ func (s *recordingVisualNER) Extract(_ context.Context, source string, limit int
 	return s.entities, nil
 }
 
-// TestSceneIRSegmentEnricherExtractsFromTheCanonicalCompiledSource pins the
-// single-pass equivalence the enricher relies on: the canonical segment is
-// normalized once and VisualNER extracts from exactly the source_text the
-// compiled SceneIR exposes. sceneir.Compile derives ir.SourceText from
-// script.NormalizeCanonicalSegment and never from EntityResult, so collapsing
-// the throwaway first compile into a plain normalization must not move the
-// extraction input by a single byte.
-func TestSceneIRSegmentEnricherExtractsFromTheCanonicalCompiledSource(t *testing.T) {
-	const source = "Greek salad contains tomatoes, feta cheese and olives."
-	ner := &recordingVisualNER{entities: greekSaladEntities()}
+// TestSceneIRSegmentEnricherExtractsFromNarrationNotEditorialBrief pins the
+// extraction-input contract: VisualNER mines the committed NARRATION, never
+// the per-segment SourceText. For text/clips payloads script_params.segments
+// [].source_text is an editorial BRIEF handed to the model ("Describe
+// Musk's move…"), so mining it returned prompt fragments as entities. The
+// brief stays the immutable SceneIR identity (trimmed verbatim + hashed);
+// extraction spans are validated against the narration, which is also the
+// only text the entity timeline can anchor overlay cards to.
+func TestSceneIRSegmentEnricherExtractsFromNarrationNotEditorialBrief(t *testing.T) {
+	const brief = "Greek salad contains tomatoes, feta cheese and olives."
+	const narration = "Our narrator plates a Greek salad with tomatoes, feta and olives."
+	narrationEntities := func() []VisualEntity {
+		span := func(value string, score float32) VisualEntity {
+			start := strings.Index(narration, value)
+			return VisualEntity{Text: value, Score: score, Start: start, End: start + len(value), Evidence: value}
+		}
+		return []VisualEntity{span("tomatoes", 0.9), span("feta", 0.85), span("olives", 0.8)}
+	}
+	ner := &recordingVisualNER{entities: narrationEntities()}
 	enricher, err := NewSceneIRSegmentEnricher(ner)
 	require.NoError(t, err)
 
 	result, err := enricher.Enrich(context.Background(), nil, scriptpkg.SpecScene{
 		ID:    "mediterranean-01-greek-salad",
 		Index: 0,
-		// Narration is fenced from the editorial source (which arrives
-		// padded here) — the enricher must extract from the trimmed
-		// canonical source, not from narration and not from raw metadata.
-		Text:     "Narration rewritten by the model.",
-		Metadata: &scriptpkg.SceneMetadata{SourceText: "  " + source + "  "},
+		// The brief arrives padded — it must be trimmed for identity only.
+		Text:     narration,
+		Metadata: &scriptpkg.SceneMetadata{SourceText: "  " + brief + "  "},
 	})
 	require.NoError(t, err)
 
 	require.Equal(t, 1, ner.calls, "VisualNER must be called exactly once per scene")
-	require.Equal(t, source, ner.source, "VisualNER must extract from the canonical source_text")
-	require.Equal(t, result.SourceText, ner.source,
-		"the extraction text and the compiled source_text must be the same string")
-	require.Equal(t, scriptpkg.ComputeCanonicalSegmentTextHash(source), result.SourceTextHash)
-	require.Equal(t, "Narration rewritten by the model.", result.Text,
+	require.Equal(t, narration, ner.source,
+		"VisualNER must extract from the committed narration, never the editorial brief")
+	require.Equal(t, brief, result.SourceText,
+		"the compiled source identity must stay the canonical (trimmed) brief")
+	require.Equal(t, scriptpkg.ComputeCanonicalSegmentTextHash(brief), result.SourceTextHash)
+	require.Equal(t, narration, result.Text,
 		"the narration must stay fenced from the canonical source")
+	require.Len(t, result.Insights.Entities, 3,
+		"narration-grounded entities must survive the projection")
+}
+
+// TestSceneIRSegmentEnricherFallsBackToSourceWithoutNarration preserves the
+// evidence-only lane: a segment with no committed narration (verbatim
+// source / evidence seeds) still extracts from the canonical SourceText —
+// excluding the brief must never remove the ONLY text the segment has.
+func TestSceneIRSegmentEnricherFallsBackToSourceWithoutNarration(t *testing.T) {
+	const brief = "Mike Tyson was born in Brooklyn in 1966."
+	narration := "Mike Tyson was born in Brooklyn in 1966."
+	start := strings.Index(narration, "Mike Tyson")
+	ner := &recordingVisualNER{entities: []VisualEntity{{
+		Text: "Mike Tyson", Type: scriptpkg.EntityTypePerson, Score: 1,
+		Start: start, End: start + len("Mike Tyson"), Evidence: "Mike Tyson",
+	}}}
+	enricher, err := NewSceneIRSegmentEnricher(ner)
+	require.NoError(t, err)
+
+	result, err := enricher.Enrich(context.Background(), nil, scriptpkg.SpecScene{
+		ID: "brooklyn-origins", Index: 0, Text: "",
+		Metadata: &scriptpkg.SceneMetadata{SourceText: brief},
+	})
+	require.NoError(t, err)
+	require.Equal(t, 1, ner.calls, "VisualNER must still run on evidence-only segments")
+	require.Equal(t, narration, ner.source,
+		"without narration the canonical source must remain the extraction input")
+	require.Equal(t, brief, result.SourceText)
+	require.Equal(t, narration, result.Text)
+	require.Len(t, result.Insights.Entities, 1)
 }
 
 // TestSceneIRSegmentEnricherFailsClosedBeforeVisualNER pins the fail-fast
@@ -277,10 +315,16 @@ func TestMediaCertProjectionKeepsSourceAndNarrationSeparate(t *testing.T) {
 	require.Equal(t, narration, segments[0].NarrationText)
 }
 
-func TestSceneIRSegmentEnricherUsesCommittedSourceEvidenceForGrounding(t *testing.T) {
-	const brief = "In 1990, Mike Tyson lost his heavyweight title in Tokyo."
-	const narration = "The champion faced a career-defining defeat on a global stage."
-	start := strings.Index(brief, "Mike Tyson")
+// TestSceneIRSegmentEnricherKeepsBriefIdentityWhileExtractingFromNarration
+// pins the split contract: the editorial brief stays the immutable source
+// identity while the extractor only sees narration spans. The entity below
+// exists ONLY in the narration — a brief-spanned stub would now be rejected
+// by validateVisualEntities, so this test fails if extraction ever moves
+// back onto the brief.
+func TestSceneIRSegmentEnricherKeepsBriefIdentityWhileExtractingFromNarration(t *testing.T) {
+	const brief = "In 1990, the champion lost his heavyweight title in Tokyo."
+	const narration = "Mike Tyson walked away from Tokyo after the upset."
+	start := strings.Index(narration, "Mike Tyson")
 	enricher, err := NewSceneIRSegmentEnricher(stubVisualNER{entities: []VisualEntity{{
 		Text: "Mike Tyson", Type: scriptpkg.EntityTypePerson, Score: 1,
 		Start: start, End: start + len("Mike Tyson"), Evidence: "Mike Tyson",

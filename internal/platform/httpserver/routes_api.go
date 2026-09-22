@@ -68,6 +68,26 @@ func (r *Router) registerAPIRoutes(engine *gin.Engine, log *zap.Logger) *gin.Rou
 		} else {
 			log.Info("M2M job surface not mounted (no M2M jobs handler wired)")
 		}
+
+		// M2M media-read surface — /api/v1/media. Same principal as the
+		// M2M job surface (Bearer VELOX_M2M_SECRET) but a distinct scope
+		// (media.read). It lets a remote submitter enumerate the media
+		// SSOT elements (filters + pagination + facets) and read a single
+		// asset, so it can build a job payload from real rows instead of
+		// reading the Master's database out of band. Read-only by
+		// construction: the module mounts only GET /assets, /assets/:id
+		// and /facets — no mutation reaches this principal.
+		// Nil-safe on the handler: skip when no M2M media handler is wired
+		// (dev/test/E2E fixtures). Mounted on its own group so it does NOT
+		// inherit the admin Auth guard.
+		if r.m2mMediaHandler != nil {
+			m2mMedia := api.Group("/v1/media")
+			m2mMedia.Use(middleware.JobClientAuthMiddleware(r.cfg.M2M, r.cfg.Log))
+			r.m2mMediaHandler.RegisterRoutes(m2mMedia)
+			log.Info("M2M media read surface mounted", zap.String("prefix", "/api/v1/media"))
+		} else {
+			log.Info("M2M media read surface not mounted (no M2M media handler wired)")
+		}
 	}
 	return api
 }

@@ -1,0 +1,342 @@
+{
+ "url": "https://www.youtube.com/watch?v=00kQibp-xNM",
+ "force_keyframes": true,
+ "write_summary": true,
+ "require_transcript_ready": true,
+ "destination": {
+  "folder_id": "1swtgqSqZ0nVAof3OhX6YoTj6Kx-ILV8g",
+  "create_subfolder": false
+ },
+ "subtitle_destination": {
+  "folder_id": "1swtgqSqZ0nVAof3OhX6YoTj6Kx-ILV8g",
+  "create_subfolder": false,
+  "per_clip_subfolders": false
+ },
+ "segments": [
+  {
+   "start": "00:00",
+   "end": "00:15",
+   "name": "Annuncio della scomparsa di Dolly Parton a Nashville",
+   "summary": "ABC News annuncia la scomparsa all'eta di 80 anni della leggenda della musica country Dolly Parton, spentasi a Nashville dopo una breve battaglia contro il cancro.",
+   "topics": [
+    "Annuncio della scomparsa di Dolly Parton a Nashville"
+   ],
+   "tags": [
+    "breaking",
+    "news",
+    "ABC",
+    "News",
+    "Dolly",
+    "Parton",
+    "decesso",
+    "anni",
+    "Nashville",
+    "battaglia",
+    "cancro",
+    "icona",
+    "country"
+   ]
+  },
+  {
+   "start": "00:23",
+   "end": "00:36",
+   "name": "Il commovente messaggio del nipote e il riposo meritato",
+   "summary": "Il nipote rivela le parole intime di Dolly Parton sul desiderio di riposare senza il peso degli strass che hanno accompagnato tutta la sua carriera.",
+   "topics": [
+    "Il commovente messaggio del nipote e il riposo meritato"
+   ],
+   "tags": [
+    "dichiarazione",
+    "nipote",
+    "riposo",
+    "letto",
+    "cotone",
+    "strass",
+    "pesanti",
+    "carriera",
+    "sacrifici",
+    "comodita",
+    "pace"
+   ]
+  },
+  {
+   "start": "00:36",
+   "end": "00:50",
+   "name": "Origini povere nelle Smoky Mountains e sacco di farina",
+   "summary": "Vengono ripercorse le umili origini nel Tennessee rurale, dove il padre pago il medico per il parto con un sacco di farina di mais.",
+   "topics": [
+    "Origini povere nelle Smoky Mountains e sacco di farina"
+   ],
+   "tags": [
+    "Dolly",
+    "Rebecca",
+    "Parton",
+    "1946",
+    "Smoky",
+    "Mountains",
+    "baracca",
+    "poverta",
+    "senza",
+    "elettricita",
+    "parto",
+    "pagamento",
+    "farina",
+    "dottore"
+   ]
+  },
+  {
+   "start": "00:55",
+   "end": "01:08",
+   "name": "Coat of Many Colors e orgoglio familiare",
+   "summary": "La celebre canzone Coat of Many Colors racconta il cappotto cucito dalla nonna con ritagli di stracci, simbolo del suo profondo legame con la famiglia.",
+   "topics": [
+    "Coat of Many Colors e orgoglio familiare"
+   ],
+   "tags": [
+    "Coat",
+    "Many",
+    "Colors",
+    "canzone",
+    "celebre",
+    "cappotto",
+    "stracci",
+    "nonna",
+    "orgoglio",
+    "infanzia",
+    "Smoky",
+    "Mountains"
+   ]
+  },
+  {
+   "start": "01:11",
+   "end": "01:25",
+   "name": "Debutto al Grand Ole Opry e l'addio a Porter Wagoner",
+   "summary": "Introdotta da Johnny Cash al Grand Ole Opry, conquista la celebrita al Porter Wagoner Show prima di comporre la sua canzone d'addio per il mentore.",
+   "topics": [
+    "Debutto al Grand Ole Opry e l'addio a Porter Wagoner"
+   ],
+   "tags": [
+    "Grand",
+    "Ole",
+    "Opry",
+    "debutto",
+    "Johnny",
+    "Cash",
+    "Porter",
+    "Wagoner",
+    "Show",
+    "ascesa",
+    "Will",
+    "Always",
+    "Love",
+    "You"
+   ]
+  },
+  {
+   "start": "01:28",
+   "end": "01:43",
+   "name": "La reazione al primo ascolto della versione di Whitney Houston",
+   "summary": "Dolly racconta lo shock travolgente quando ascolto per la prima volta alla radio la celebre reinterpretazione di Whitney Houston fermandosi sul ciglio della strada.",
+   "topics": [
+    "La reazione al primo ascolto della versione di Whitney Houston"
+   ],
+   "tags": [
+    "Whitney",
+    "Houston",
+    "Will",
+    "Always",
+    "Love",
+    "You",
+    "ascolto",
+    "Walmarks",
+    "sensazione",
+    "travolgente",
+    "cover",
+    "capolavoro"
+   ]
+  },
+  {
+   "start": "02:02",
+   "end": "02:15",
+   "name": "6 milioni di dollari e lo stesso giorno di Jolene",
+   "summary": "Scherza sui milioni guadagnati grazie ai diritti d'autore e ricorda di aver scritto I Will Always Love You e Jolene nello stesso identico giorno.",
+   "topics": [
+    "6 milioni di dollari e lo stesso giorno di Jolene"
+   ],
+   "tags": [
+    "Whitney",
+    "Houston",
+    "guadagni",
+    "diritti",
+    "autore",
+    "milioni",
+    "dollari",
+    "composizione",
+    "Jolene",
+    "stesso",
+    "giorno"
+   ]
+  },
+  {
+   "start": "02:15",
+   "end": "02:29",
+   "name": "La nascita del classico senza tempo Jolene",
+   "summary": "Ispirata da una cassiera di banca che flirtava con suo marito, Jolene diventa una delle canzoni piu reinterpretate e iconiche di sempre.",
+   "topics": [
+    "La nascita del classico senza tempo Jolene"
+   ],
+   "tags": [
+    "Jolene",
+    "cassiera",
+    "banca",
+    "marito",
+    "gelosia",
+    "Carl",
+    "Dean",
+    "brano",
+    "piu",
+    "reinterpretato",
+    "musica",
+    "country"
+   ]
+  },
+  {
+   "start": "02:35",
+   "end": "02:49",
+   "name": "Rifiuto di cambiare immagine",
+   "summary": "Respinge le pressioni dell'industria per addolcire il look con la sua celebre battuta: Costa un sacco di soldi avere un aspetto cosi a buon mercato.",
+   "topics": [
+    "Rifiuto di cambiare immagine"
+   ],
+   "tags": [
+    "immagine",
+    "bionda",
+    "look",
+    "appariscente",
+    "parrucche",
+    "citazione",
+    "celebre",
+    "make",
+    "fortune",
+    "cheap",
+    "look",
+    "industria",
+    "discografica"
+   ]
+  },
+  {
+   "start": "02:49",
+   "end": "03:04",
+   "name": "L'inno delle lavoratrici 9 to 5 e il ritmo con le unghie",
+   "summary": "Con 9 to 5 diventa star di Hollywood e candidata all'Oscar, componendo il celebre inno scandendo il ritmo direttamente con le unghie acriliche sul set.",
+   "topics": [
+    "L'inno delle lavoratrici 9 to 5 e il ritmo con le unghie"
+   ],
+   "tags": [
+    "film",
+    "nomination",
+    "oscar",
+    "inno",
+    "femministe",
+    "donne",
+    "lavoratrici",
+    "unghie",
+    "acriliche",
+    "macchina",
+    "scrivere"
+   ]
+  },
+  {
+   "start": "03:04",
+   "end": "03:22",
+   "name": "I numeri di una carriera leggendaria",
+   "summary": "Un'artista polistrumentista straordinaria con oltre 3.000 brani scritti, 100 milioni di dischi venduti, 10 Grammy e l'ingresso nella Rock and Roll Hall of Fame.",
+   "topics": [
+    "I numeri di una carriera leggendaria"
+   ],
+   "tags": [
+    "polistrumentista",
+    "chitarra",
+    "banjo",
+    "piano",
+    "3000",
+    "canzoni",
+    "100",
+    "milioni",
+    "dischi",
+    "Grammy",
+    "Rock",
+    "and",
+    "Roll",
+    "Hall",
+    "Fame"
+   ]
+  },
+  {
+   "start": "03:22",
+   "end": "03:41",
+   "name": "L'incontro e la storia d'amore con Carl Dean",
+   "summary": "Ripercorre il primo incontro con il futuro marito Carl Dean davanti a una lavanderia a gettoni di Nashville nel 1964, unione durata quasi sessant'anni.",
+   "topics": [
+    "L'incontro e la storia d'amore con Carl Dean"
+   ],
+   "tags": [
+    "Carl",
+    "Dean",
+    "lavanderia",
+    "gettoni",
+    "Nashville",
+    "1964",
+    "matrimonio",
+    "anni",
+    "amore",
+    "silenzioso"
+   ]
+  },
+  {
+   "start": "03:41",
+   "end": "03:56",
+   "name": "La perdita del marito e la battuta sull'epitaffio",
+   "summary": "Dopo la scomparsa del marito confessa la fatica degli ultimi anni e cita la sua storica battuta sull'epigrafe.",
+   "topics": [
+    "La perdita del marito e la battuta sull'epitaffio"
+   ],
+   "tags": [
+    "morte",
+    "marito",
+    "Carl",
+    "Dean",
+    "assistenza",
+    "cura",
+    "epitaffio",
+    "lapide",
+    "ironia",
+    "intervista",
+    "iconica"
+   ]
+  },
+  {
+   "start": "04:01",
+   "end": "04:17",
+   "name": "L'inno gospel finale scelto per le esequie",
+   "summary": "Per il suo funerale Dolly Parton sceglie il commovente gospel tradizionale amato dal padre, intonando un messaggio di ritrovo nell'aldila.",
+   "topics": [
+    "L'inno gospel finale scelto per le esequie"
+   ],
+   "tags": [
+    "funerale",
+    "inno",
+    "gospel",
+    "preferito",
+    "padre",
+    "Never",
+    "Meet",
+    "Again",
+    "riva",
+    "paradiso",
+    "addio",
+    "commozione"
+   ]
+  }
+ ]
+}

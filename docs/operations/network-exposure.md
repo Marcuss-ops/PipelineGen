@@ -229,6 +229,7 @@ non è più nel repository — eliminato dal commit `7e6965aab`; il client Go
 | `/internal/v1/jobs/claim` e altri `/internal/v1/*` | **solo** `VELOX_WORKER_TOKEN` | `WorkerAuth` rifiuta il token admin (difesa in profondità) |
 | `/internal/v1/media/search` | worker + workspace reale | i worker sono forzati a workspace `default` → servono principal tenant o admin (`X-Workspace-ID`) |
 | `/api/script/generate`, polling job | admin **o** worker | i worker non-admin usano `VELOX_WORKER_TOKEN` |
+| `/api/v1/jobs`, `/api/v1/media` (M2M) | `VELOX_M2M_SECRET` (per-client) | altro principal: submitter remoto, scope `jobs.submit` / `jobs.read` / `media.read`; richiede `VELOX_ENABLE_M2M=true` |
 
 Il client di riferimento Go (`pkg/veloxclient`) prende il token da
 `VELOX_WORKER_TOKEN` e lo invia come Bearer; usa lo **stesso** valore
@@ -271,6 +272,59 @@ configurato sul server.
 - Rotazione admin/worker: procedura manuale (genera 64-hex, sostituisci nel
   secret file, riavvia il servizio, verifica l'ambiente del PID riavviato e
   `make auth-check`). Non esiste uno script di rotazione nel repository.
+
+---
+
+## 5. `VELOX_ENABLE_M2M`: accesso remoto ai job e agli elementi del DB
+
+Il surface macchina-macchina (`/api/v1/jobs` per inviare/pollare i job e
+`/api/v1/media` per leggere gli elementi della media SSOT con la stessa key)
+usa un principal distinto da admin e worker: un secret **per client**
+(`VELOX_M2M_SECRET`), salvato solo come `SHA-256` in `m2m_clients.secret_hash`.
+
+```env
+VELOX_ENABLE_M2M=true
+```
+
+- **`true`**: il Bearer viene risolto a una riga `m2m_clients` e ogni route
+  verifica lo scope (`jobs.submit`, `jobs.read`, `media.read`).
+- **`false`** (default del codice): la guardia passa in modalità pass-through
+  (contesto admin) per non rompere i fixture dev/test. Su qualunque host
+  raggiungibile **deve** essere `true`, altrimenti `/api/v1/jobs` e
+  `/api/v1/media` rispondono senza key. I config del repository
+  (`config.yaml`, `config.example.yaml`, `config.production.example.yaml`)
+  ora impostano `enable_m2m: true`.
+
+Provisioning di una key (admin):
+
+```bash
+curl -sS -X POST https://pipeline.example.com/api/v1/admin/m2m/keys \
+  -H "Authorization: Bearer $VELOX_ADMIN_TOKEN" -H 'Content-Type: application/json' \
+  -d '{"client_id":"computer-editor-77-01","scopes":["jobs.submit","jobs.read","media.read"]}'
+```
+
+Lettura remota degli elementi (M2M):
+
+```bash
+curl -sS -H "Authorization: Bearer $VELOX_M2M_SECRET" \
+  "https://pipeline.example.com/api/v1/media/assets?source=youtube&limit=20"
+```
+
+Il polling dello stato job resta `GET /api/v1/jobs/{id}` (superficie M2M). La stessa superficie accetta tutti i job type con un handler realmente attivo sul Master: clip, script, stock, voiceover e quelli aggiunti successivamente al runtime. Il catalogo è disponibile con `GET /api/v1/jobs/types` (scope `jobs.read`); i tipi presenti solo nella policy ma senza consumer vengono rifiutati con `422`, così un PC remoto non può lasciare job non eseguibili in coda. Il body standard è `{type, payload, idempotency_key, project}`.
+
+Da un secondo PC, con il file credenziali M2M già distribuito fuori dal repository:
+
+```bash
+export VELOX_M2M_ENV="$HOME/computer-editor-77-01.env"
+set -a; . "$VELOX_M2M_ENV"; set +a
+export VELOX_M2M=true
+
+# enqueue generico: enqueue.json contiene {"type":"...","payload":{...}}
+velox submit jobs --m2m --key progetto-01 --payload enqueue.json --json
+velox poll <job_id> --m2m --interval 3s --timeout 30m
+```
+
+Il comando usa `POST /api/v1/jobs` per l’invio e `GET /api/v1/jobs/{id}` per il polling, riconosce gli stati `queued/running/completed` e `SUCCEEDED/FAILED/CANCELLED`, e restituisce codice d’uscita non-zero in caso di errore o timeout. Per gli endpoint admin legacy (`/api/script/generate`, `/api/clips/process`) resta disponibile il comando senza `--m2m`, con `VELOX_ADMIN_TOKEN`.
 
 ---
 

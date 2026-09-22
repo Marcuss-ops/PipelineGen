@@ -284,16 +284,45 @@ var canonicalSubtitlePresets = map[string]VideoVisualStyleSpec{
 	"roboto_bold":     {Font: "Roboto", FontSizePX: 52},
 	"montserrat":      {Font: "Montserrat", FontSizePX: 54},
 	"montserrat_bold": {Font: "Montserrat", FontSizePX: 54},
-	// "Young" family — short-form subtitle presets for the younger-audience
-	// clip line. These entries are the generate-time projection of the ASS
-	// typography owned by
-	// assets/texttracks/ass_materializer.go::ResolveFontPreset, which matches
-	// the same style ids by substring; the font size here is the Chronon
-	// overlay size that must agree with the burnt ASS preset.
-	"subs-young":        {Font: "Poppins", FontSizePX: 60},
-	"subs-young-pop":    {Font: "Poppins", FontSizePX: 64},
-	"subs-young-clean":  {Font: "Montserrat", FontSizePX: 56},
-	"subs-young-center": {Font: "Poppins", FontSizePX: 60, Position: "middle_center"},
+	// "Young" family — generate-time projection of the ASS typography in
+	// assets/texttracks/ass_materializer.go::ResolveFontPreset (same ids by
+	// substring); sizes must agree with the burnt ASS preset.
+	"subs-young":       {Font: "Poppins", FontSizePX: 60},
+	"subs-young-pop":   {Font: "Poppins", FontSizePX: 64},
+	"subs-young-clean": {Font: "Montserrat", FontSizePX: 56}, "subs-young-center": {Font: "Poppins", FontSizePX: 60, Position: "middle_center"},
+}
+
+// IsValidSubtitlePreset reports whether id names a CANONICAL subtitle preset
+// (the table above). Request-local presets are deliberately out of scope: they
+// live inside one request and a durable channel profile can never reference
+// them. It exists so a durable profile naming a preset this build does not
+// ship is rejected at load time instead of silently falling back to another
+// typography at render time.
+func IsValidSubtitlePreset(id string) bool {
+	trimmed := strings.ToLower(strings.TrimSpace(id))
+	if trimmed == "" {
+		return false
+	}
+	_, ok := canonicalSubtitlePresets[trimmed]
+	return ok
+}
+
+// ResolveSubtitleStyle projects a canonical subtitle preset (by id) UNDER an
+// inline style override (explicit inline fields win), the same precedence rule
+// Normalize applies. Empty presetID returns the inline style untouched; an
+// unknown preset fails closed. Color/font/position defaulting stays in
+// VideoRenderSpec.Normalize, AFTER this merge.
+func ResolveSubtitleStyle(presetID string, inline *VideoVisualStyleSpec) (*VideoVisualStyleSpec, error) {
+	id := strings.ToLower(strings.TrimSpace(presetID))
+	if id == "" {
+		return inline, nil
+	}
+	preset, ok := canonicalSubtitlePresets[id]
+	if !ok {
+		return nil, fmt.Errorf("script: unknown subtitle preset %q", strings.TrimSpace(presetID))
+	}
+	merged := mergeSubtitlePreset(inline, preset)
+	return &merged, nil
 }
 
 // Normalize preserves the caller's explicit choices and enables the video

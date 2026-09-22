@@ -71,8 +71,12 @@ func selectPhrasePreset(jobID, sceneID, itemID string) string {
 	return selectPreset(jobID, sceneID, itemID, "important_phrase", phrasePresetCandidates)
 }
 
-func selectPhraseMotion(jobID, sceneID string, ordinal int) string {
-	if len(phraseMotionCandidates) == 0 {
+func selectPhraseMotion(jobID, sceneID string, ordinal int, pool []string) string {
+	candidates := phraseMotionCandidates
+	if len(pool) > 0 {
+		candidates = pool
+	}
+	if len(candidates) == 0 {
 		return ""
 	}
 	// The caller supplies one run-wide ordinal after editorial ranking and
@@ -86,16 +90,28 @@ func selectPhraseMotion(jobID, sceneID string, ordinal int) string {
 		// choose different starting points and could reintroduce collisions.
 		SemanticID:   sceneID,
 		PresetFamily: "important_phrase_motion",
-		Presets:      phraseMotionCandidates,
+		Presets:      candidates,
 	}).Preset
 	start := 0
-	for i, candidate := range phraseMotionCandidates {
+	for i, candidate := range candidates {
 		if candidate == seeded {
 			start = i
 			break
 		}
 	}
-	return phraseMotionCandidates[(start+ordinal)%len(phraseMotionCandidates)]
+	return candidates[(start+ordinal)%len(candidates)]
+}
+
+// CertifiedPhraseMotions returns the certified phrase-motion pool this build
+// rotates over. It is the membership authority a caller-supplied pool is
+// validated against (see PlanInput.PhraseMotions): the motions are
+// implemented by RenderingGen's certified apple_v2 phrase catalog, so an id
+// outside this list cannot render.
+//
+// The returned slice is a copy — callers may keep it without pinning the
+// package's own storage.
+func CertifiedPhraseMotions() []string {
+	return append([]string(nil), phraseMotionCandidates...)
 }
 
 func selectWordPreset(jobID, sceneID, itemID string) string {

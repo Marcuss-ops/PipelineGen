@@ -26,6 +26,7 @@ import (
 	"strings"
 
 	audiocap "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/channelprofile"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaregistry"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
@@ -271,6 +272,21 @@ func BuildGenerateRequest(env *scriptpkg.GenerationEnvelopeV2, idempotencyKey st
 		MixPolicy:         mixPolicy,
 		BackgroundMusic:   backgroundMusic,
 		SoundEffects:      soundEffects,
+		// ChannelID is carried verbatim from the envelope item: it is the
+		// lookup key for the channel profile applied below, never a value the
+		// builder derives.
+		ChannelID: item.ChannelID,
+	}
+	// Channel profile: curated per-channel defaults for the choices this
+	// request left BLANK (subtitles, watermark, overlay style, SFX, mix
+	// policy, phrase-motion pool). Applied BEFORE the editing asset policy so
+	// the policy can still fill whatever the profile — like the caller — left
+	// unset. An unknown/empty channel is a no-op: profiles are curated, not a
+	// closed vocabulary.
+	if profile, ok := channelprofile.Lookup(item.ChannelID); ok {
+		if err := ApplyChannelProfile(&req, profile); err != nil {
+			return GenerateRequest{}, fmt.Errorf("scriptgeneration: apply channel profile: %w", err)
+		}
 	}
 	// Background centralizzato ON (Intro V2): the canonical editorial
 	// selection policy fills the assets the caller left blank (background

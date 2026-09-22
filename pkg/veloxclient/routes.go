@@ -9,7 +9,10 @@
 // test instead of failing at runtime.
 package veloxclient
 
-import "fmt"
+import (
+	"fmt"
+	"net/url"
+)
 
 // Static async endpoints.
 const (
@@ -21,19 +24,80 @@ const (
 	RouteClipsRenderBatch = "/api/clips/render/batch"
 	// RouteScriptGenerate generates a script (async).
 	RouteScriptGenerate = "/api/script/generate"
-	// RouteJobsEnqueue enqueues a job directly.
+	// RouteJobsEnqueue enqueues a job directly on the admin surface.
 	RouteJobsEnqueue = "/api/jobs"
+	// RouteM2MJobs is the scoped remote submit surface. Its body is the
+	// canonical EnqueueRequest envelope: {type, payload, ...}.
+	RouteM2MJobs = "/api/v1/jobs"
 	// RouteMediaSearch is the unified media search surface.
 	RouteMediaSearch = "/api/media/search"
 )
 
-// RouteJobsFull is GET /api/jobs/{id}/full — the canonical poll endpoint.
+// Discovery / metadata endpoints (the remote material agent's read side).
+const (
+	// RouteClipsTopicSearch is GET /api/clips/search — LIVE YouTube discovery
+	// and ranking for a keyword. Distinct from RouteMediaSearch, which
+	// searches the already-registered local catalog.
+	RouteClipsTopicSearch = "/api/clips/search"
+	// RouteClipsInfo is GET /api/clips/info?url=... — full metadata for a
+	// single YouTube URL without downloading it.
+	RouteClipsInfo = "/api/clips/info"
+	// RouteClipsStock is POST /api/clips/stock — the clip-side stock ingest.
+	RouteClipsStock = "/api/clips/stock"
+	// RouteMediaClipsList is GET /api/media/clips/:source/clips — list rows
+	// in a source's clip tree (the catalog browse arm).
+	RouteMediaClipsList = "/api/media/clips/%s/clips"
+	// RouteMediaRegisterBatch is POST /api/media/register-batch — the
+	// wire-shape-only registration path for clips already on Drive. The
+	// canonical way a remote adds material it produced itself.
+	RouteMediaRegisterBatch = "/api/media/register-batch"
+	// RouteMediaRegisterFromYouTube is POST /api/media/register-from-youtube.
+	RouteMediaRegisterFromYouTube = "/api/media/register-from-youtube"
+	// RouteMediaUploadVideo is POST /api/media/clips/upload-video — multipart
+	// upload of a video file with metadata (the upload arm of self-import).
+	RouteMediaUploadVideo = "/api/media/clips/upload-video"
+)
+
+// Stock-pipeline endpoints. NOTE: like RouteScriptGenerate, these are absent
+// from the generated architecture/routes.yaml because the gen-api-docs
+// composition does not mount the stock capability; routes_test.go therefore
+// anchors them to the capability prefix registry instead of the manifest.
+const (
+	// RouteStockPipelineRun is POST /api/stock-pipeline/run (search_queries /
+	// direct_urls / drive_urls / clips).
+	RouteStockPipelineRun = "/api/stock-pipeline/run"
+	// RouteStockPipelineSearchAndRun is POST
+	// /api/stock-pipeline/search-and-run (queries:[{q,limit}] — NOT
+	// search_queries, which is the legacy /run shape and fails closed here).
+	RouteStockPipelineSearchAndRun = "/api/stock-pipeline/search-and-run"
+)
+
+// RouteJobsFull is GET /api/jobs/{id}/full — the canonical admin poll endpoint.
 func RouteJobsFull(jobID string) string {
 	return "/api/jobs/" + jobID + "/full"
+}
+
+// RouteM2MJobTypes is GET /api/v1/jobs/types, the scoped runnable-job catalog.
+const RouteM2MJobTypes = "/api/v1/jobs/types"
+
+// RouteM2MJob is GET /api/v1/jobs/{id}, the scoped remote poll endpoint.
+func RouteM2MJob(jobID string) string {
+	return "/api/v1/jobs/" + url.PathEscape(jobID)
 }
 
 // RouteClipsDownload is POST /api/media/clips/{source}/clips/{id}/download.
 // POST-only: a GET returns 404, which is the mistake this constant prevents.
 func RouteClipsDownload(source, clipID string) string {
 	return fmt.Sprintf("/api/media/clips/%s/clips/%s/download", source, clipID)
+}
+
+// RouteMediaClipsFor builds GET /api/media/clips/{source}/clips.
+func RouteMediaClipsFor(source string) string {
+	return fmt.Sprintf(RouteMediaClipsList, source)
+}
+
+// RouteMediaResolve is GET /api/media/resolve/{asset_id} — resolve an asset
+// id to its canonical record without searching.
+func RouteMediaResolve(assetID string) string {
+	return "/api/media/resolve/" + url.PathEscape(assetID)
 }

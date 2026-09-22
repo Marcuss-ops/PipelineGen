@@ -161,6 +161,16 @@ type RegistryWiring struct {
 	// nil when the M2M store is not wired (the group is then skipped).
 	M2MJobsHandler RouteRegistrar
 
+	// PG-M2M (Sep 2026): the M2M MEDIA-READ surface — GET /assets,
+	// /assets/:id and /facets on the /api/v1/media group protected by
+	// JobClientAuthMiddleware + the media.read scope. Constructed by
+	// registerOperatorAdminAPI (it reuses the operator media SSOT read
+	// model) but, like M2MJobsHandler, NOT registered in the public
+	// /api registry; it is plumbed through AppDeps and mounted on its
+	// own group by the server composition. nil when the media read
+	// model is unavailable (the group is then skipped).
+	M2MMediaHandler RouteRegistrar
+
 	// SearchFanOut is the public accessor for the canonical search
 	// aggregator (PR-AGENTE2-READINESS). Populated by WireRegistry
 	// from the explicit cross-step capability state.
@@ -242,7 +252,7 @@ func WireRegistry(ctx context.Context, cfg *config.Config, log *zap.Logger, root
 	// Step 5a — Operator Console: admin-facing read-only API for the
 	// operator console binary. Registered after assets (needs detail.Service)
 	// and before late bindings (no cross-step state dependency).
-	if err := registerOperatorAdminAPI(registry, log, cfg, root); err != nil {
+	if err := registerOperatorAdminAPI(registry, log, cfg, root, wiring); err != nil {
 		return nil, fmt.Errorf("wire registry: operator-admin-api: %w", err)
 	}
 

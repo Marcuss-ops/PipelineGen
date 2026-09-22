@@ -68,13 +68,14 @@ type Router struct {
 	// JobClientAuthMiddleware. Both are nil-safe — when either is
 	// nil the M2M group is not registered (dev/test fixtures that
 	// have not provisioned an m2m_clients row keep working).
-	m2mJobsHandler interface{ RegisterRoutes(*gin.RouterGroup) }
-	m2mSec         mwports.M2MSecurityPort
-	ctx            context.Context
-	healthSvc      any                      // *systemhealth.Service; any keeps the router infra-clean.
-	readyChecker   any                      // *systemhealth.ReadyChecker; any keeps the router infra-clean.
-	qdrantHealth   any                      // *transport.QdrantHealthHandler; any keeps the router infra-clean.
-	modelsHandler  *transport.ModelsHandler // Task 10: /models endpoint (E5 + SigLIP model probes).
+	m2mJobsHandler  interface{ RegisterRoutes(*gin.RouterGroup) }
+	m2mMediaHandler interface{ RegisterRoutes(*gin.RouterGroup) }
+	m2mSec          mwports.M2MSecurityPort
+	ctx             context.Context
+	healthSvc       any                      // *systemhealth.Service; any keeps the router infra-clean.
+	readyChecker    any                      // *systemhealth.ReadyChecker; any keeps the router infra-clean.
+	qdrantHealth    any                      // *transport.QdrantHealthHandler; any keeps the router infra-clean.
+	modelsHandler   *transport.ModelsHandler // Task 10: /models endpoint (E5 + SigLIP model probes).
 }
 
 // MediaInternalRouter is the narrow port for /internal/v1/media/*
@@ -185,6 +186,14 @@ func (r *Router) SetMediasearchHandler(h InternalMediaSearchRouter) {
 // admin /api/jobs surface via the module registry).
 func (r *Router) SetM2MJobsHandler(h interface{ RegisterRoutes(*gin.RouterGroup) }) {
 	r.m2mJobsHandler = h
+}
+
+// SetM2MMediaHandler wires the M2M media-read module (GET /assets,
+// /assets/:id, /facets) on its own /api/v1/media group, protected by
+// JobClientAuthMiddleware + the media.read scope. Mirrors
+// SetM2MJobsHandler; nil-safe (the group is skipped when nil).
+func (r *Router) SetM2MMediaHandler(h interface{ RegisterRoutes(*gin.RouterGroup) }) {
+	r.m2mMediaHandler = h
 }
 
 // SetContext sets the context for module lifecycle management

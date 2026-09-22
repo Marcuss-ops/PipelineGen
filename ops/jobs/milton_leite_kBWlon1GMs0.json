@@ -1,0 +1,28 @@
+{
+  "url": "https://www.youtube.com/watch?v=kBWlon1GMs0",
+  "force_keyframes": true,
+  "write_summary": true,
+  "require_transcript_ready": true,
+  "destination": {
+    "folder_id": "1Re-ZJYeKXaG4XaO38KOzbcyIcwx71iCo",
+    "create_subfolder": false
+  },
+  "subtitle_destination": {
+    "folder_id": "1Re-ZJYeKXaG4XaO38KOzbcyIcwx71iCo",
+    "create_subfolder": false,
+    "per_clip_subfolders": false
+  },
+  "segments": [
+    {"start": "00:00", "end": "00:15", "name": "Assalto all'immobile di Milton Leite", "summary": "La redazione di SBT Noticias documenta l'irruzione criminale avvenuta nella notte presso un immobile ricondotto all'ex consigliere Milton Leite.", "topics": ["Assalto all'immobile di Milton Leite"], "tags": ["Milton Leite", "ufficio politico", "rapina notturna", "Santo Amaro", "Policia Militar", "SBT Noticias"]},
+    {"start": "00:15", "end": "00:30", "name": "Arresto ed elo con il PCC", "summary": "L'episodio fa seguito all'arresto di Leite, indagato per presunti legami diretti con il PCC nel controllo degli appalti di trasporto su gomma.", "topics": ["Arresto ed elo con il PCC"], "tags": ["Milton Leite", "arresto", "PCC", "trasporto pubblico", "corruzione", "concessioni autobus", "San Paolo"]},
+    {"start": "00:54", "end": "01:08", "name": "Natura e copertura dell'immobile a Santo Amaro", "summary": "Il caseggiato a Santo Amaro non era noto al vicinato: la polizia lo classifica come ufficio politico ombra, mentre la difesa dichiara appartenga a un'impresa edile.", "topics": ["Natura e copertura dell'immobile a Santo Amaro"], "tags": ["Santo Amaro", "Zona Sul", "ufficio politico", "costruttura immobiliare", "difesa legale"]},
+    {"start": "01:12", "end": "01:26", "name": "Furto mirato del DVR e documenti", "summary": "I malviventi forzano il cancello e sottraggono faldoni di documenti assieme all'apparato DVR che custodisce i filmati di videosorveglianza.", "topics": ["Furto mirato del DVR e documenti"], "tags": ["scasso", "portone", "garage", "furto DVR", "videosorveglianza", "documenti"]},
+    {"start": "01:38", "end": "02:07", "name": "Beni abbandonati e sospetti d'insabbiamento", "summary": "La banda ignora oltre 19.000 reais in banconote, un cellulare e una scheda SIM, confermando l'ipotesi investigativa di un'azione tesa a cancellare indizi.", "topics": ["Beni abbandonati e sospetti d'insabbiamento"], "tags": ["19000 reais", "contanti", "cellulare", "SIM", "occultamento prove", "Gaeco"]},
+    {"start": "02:27", "end": "03:12", "name": "Identificazione dell'auto blu e coordinamento Mogi", "summary": "Gli inquirenti individuano un'auto blu utilizzata durante il colpo e trasmettono i rilievi alla delegacia di Mogi das Cruzes che guida l'inchiesta madre.", "topics": ["Identificazione dell'auto blu e coordinamento Mogi"], "tags": ["veicolo blu", "telecamere sicurezza", "Policia Civil", "Mogi das Cruzes"]},
+    {"start": "03:12", "end": "03:48", "name": "Misure cautelari, latitanza e caso Transwolf", "summary": "Vengono riassunti i 16 ordini di cattura dell'operazione, la latitanza di oltre 24 ore di Leite e la sua imputazione quale titolare occulto della ditta Transwolf.", "topics": ["Misure cautelari, latitanza e caso Transwolf"], "tags": ["16 mandati arresto", "18 perquisizioni", "latitanza", "Transwolf", "linee bus", "Zona Sul"]},
+    {"start": "03:48", "end": "04:19", "name": "Infiltrazione del crimine nelle concessioni bus", "summary": "Il quadro investigativo evidenzia come su 22 consorzi di trasporto urbano a San Paolo, ben 12 siano controllati dal PCC per riciclare proventi illeciti.", "topics": ["Infiltrazione del crimine nelle concessioni bus"], "tags": ["22 concessioni", "linee bus", "12 aziende", "PCC", "lavaggio denaro", "monopolio municipale"]},
+    {"start": "05:25", "end": "06:05", "name": "Evoluzione storica: da cooperative a cartello dei trasporti", "summary": "L'approfondimento in studio traccia la metamorfosi ventennale del sistema dei trasporti, passato da cooperative clandestine ad aziende organiche alla fazione criminale.", "topics": ["Evoluzione storica: da cooperative a cartello dei trasporti"], "tags": ["cooperative anni 2000", "transizione aziende 2010", "criminalita organizzata", "infiltrazione sistemica"]},
+    {"start": "06:35", "end": "07:31", "name": "Rilievi forensi, impronte e banca dati DNA", "summary": "La polizia scientifica e i periti dattiloscopici repertano tracce biologiche e impronte sull'immobile per incrociarle col registri del casellario giudiziario.", "topics": ["Rilievi forensi, impronte e banca dati DNA"], "tags": ["Policia Cientifica", "perizia", "impronte digitali", "campioni biologici", "DNA", "banca dati polizia"]},
+    {"start": "07:37", "end": "08:35", "name": "Inchiesta triennale e valore probatorio delle carte", "summary": "Al termine di un'istruttoria iniziata nel 2024, le autorita verificano se il raid sia stato commissionato dai vertici del cartello per far sparire documenti scottanti.", "topics": ["Inchiesta triennale e valore probatorio delle carte"], "tags": ["indagine triennale", "Ministerio Publico", "mandato criminale", "distruzione carte"]}
+  ]
+}

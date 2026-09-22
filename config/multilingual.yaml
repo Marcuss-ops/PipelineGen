@@ -46,6 +46,13 @@ media:
         translate_clips: true
         generate_tts: true
         edge_tts_voice: pt-BR-AntonioNeural
+      # Script generation uses the plain ISO-639-1 code `pt`; keep this
+      # TTS-only entry distinct from the pt-BR translation target.
+      - code: pt
+        enabled: true
+        translate_clips: false
+        generate_tts: true
+        edge_tts_voice: pt-BR-AntonioNeural
       - code: fr
         enabled: true
         translate_clips: true

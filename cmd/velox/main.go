@@ -37,6 +37,7 @@ type config struct {
 	token     string
 	storePath string
 	json      bool
+	m2m       bool
 }
 
 func main() {
@@ -65,6 +66,8 @@ func run(args []string) int {
 		return cmdSearch(rest)
 	case "jobs":
 		return cmdJobs(rest)
+	case "types":
+		return cmdTypes(rest)
 	default:
 		os.Stderr.WriteString("velox: unknown command " + cmd + "\n\n")
 		usage(os.Stderr)
@@ -86,11 +89,14 @@ func loadConfig() config {
 		}
 		base = "http://127.0.0.1:" + port
 	}
+	m2m := strings.EqualFold(strings.TrimSpace(os.Getenv("VELOX_M2M")), "true")
 	token := strings.TrimSpace(os.Getenv("VELOX_ADMIN_TOKEN"))
-	if token == "" {
+	if m2m {
+		token = strings.TrimSpace(os.Getenv("VELOX_M2M_SECRET"))
+	} else if token == "" {
 		token = strings.TrimSpace(os.Getenv("VELOX_WORKER_TOKEN"))
 	}
-	return config{baseURL: base, token: token, storePath: defaultStorePath()}
+	return config{baseURL: base, token: token, storePath: defaultStorePath(), m2m: m2m}
 }
 
 func defaultStorePath() string {

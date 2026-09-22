@@ -83,7 +83,12 @@ type AppHandlers struct {
 	// /api/v1/jobs). Plumbed through from RegistryWiring.M2MJobsHandler;
 	// nil when the M2M store is not wired (the group is then skipped).
 	M2MJobsHandler RouteRegistrar
-	M2MSecurity    mwports.M2MSecurityPort
+	// PG-M2M (Sep 2026): the M2M media-read surface (GET /assets,
+	// /assets/:id, /facets on /api/v1/media). Plumbed through from
+	// RegistryWiring.M2MMediaHandler; nil when the media SSOT read model
+	// is unavailable (the group is then skipped).
+	M2MMediaHandler RouteRegistrar
+	M2MSecurity     mwports.M2MSecurityPort
 }
 
 // AppRuntime groups the lifecycle / server-control surface. Kept as

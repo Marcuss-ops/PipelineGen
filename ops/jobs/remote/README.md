@@ -51,12 +51,91 @@ Auth is `Authorization: Bearer $VELOX_M2M_SECRET` (scopes `jobs.submit`,
 | `GET /api/v1/jobs/{id}` | 404 on an unknown id | read route mounted, job lookup answered |
 | `POST /api/v1/jobs/pre` | **400 / 202** | PREPARE route **mounted** (the older build answered 404) |
 | `POST /api/v1/jobs/{id}/finalize` | **400 / 202** | FINALIZE route **mounted** |
+| `GET /api/v1/media/assets?limit=1` | **200 / 403** | media SSOT read surface; 403 = key without `media.read` |
+| `GET /api/v1/media/assets/{id}` | **200 / 404** | single-element inspection |
+| `GET /api/v1/media/facets` | **200** | filter counts (sources, media types, states) |
 | `POST /api/v1/admin/m2m/keys` | 401 (admin token) | admin key-minting surface present on the remote |
 
 `preflight.sh` now exits **0** against `51.91.11.36` (master ready, key accepted,
 prepare/finalize mounted). The same probe against the local master
 (`VELOX_MASTER_URL=http://127.0.0.1:8000`) still reports `pre`/`finalize` absent
 and an empty `m2m_clients` table: the local build is a different, older line.
+
+### 3.0 Seeing the elements (M2M media read surface)
+
+The Master's media SSOT (`media_assets` — youtube clips, voiceover, script,
+images, stock, …) is readable from a remote computer with the SAME M2M key,
+through a read-only surface that mirrors the operator console projection
+(lifecycle/index state, derived asset state, content hash, Drive/local
+presence, pending outbox events):
+
+| Method + path | Scope | Returns |
+|---|---|---|
+| `GET /api/v1/media/assets` | `media.read` | `{items[], total, has_more, next_cursor}` |
+| `GET /api/v1/media/assets/{id}` | `media.read` | full `AssetInspection` (locations, processing, outbox) |
+| `GET /api/v1/media/facets` | `media.read` | counts per source / media type / lifecycle / asset state / index state |
+
+Filters on `/assets`: `source`, `provider`, `media_type`, `lifecycle_state`,
+`asset_state`, `index_state`, `search`, plus `limit` (page size) and `cursor`
+(the next offset). This is the HTTP equivalent of `./inventory.sh` — use it so
+a remote host does NOT need a `docker exec psql` session against the master:
+
+```bash
+source ~/creator-77-master.env
+curl -sS -H "Authorization: Bearer $VELOX_M2M_SECRET" \
+  "$VELOX_MASTER_URL/api/v1/media/assets?source=youtube&limit=20" | jq -r \
+  '.items[] | [.id,.name,.media_type,.duration_ms // "-",.has_drive_file] | @tsv'
+```
+
+The surface is read-only by construction: no mutation route is mounted on the
+`/api/v1/media` group, and `jobs.read` alone is NOT enough — the key must be
+granted `media.read` (a key with only `jobs.read`/`jobs.submit` gets 403).
+
+**Enforcement.** The M2M guard is only real when the master has
+`security.enable_m2m: true` (env `VELOX_ENABLE_M2M=true`). With it `false` the
+middleware passes through in admin context and the `/api/v1/*` surface is open
+— that default is for dev/test fixtures only and MUST be `true` on any host
+reachable from outside the loopback (`config.yaml`, `config.production.example.yaml`
+and `config.example.yaml` now ship `enable_m2m: true`). `preflight.sh` probes
+`GET /api/v1/media/assets` and reports `media.read` accordingly.
+
+`GET /api/v1/jobs/{id}` remains the polling endpoint for job status; polling
+semantics are unchanged (see §7 for the PREPARE-stays-PENDING caveat).
+
+### 3.2 Generic jobs from another PC
+
+The M2M endpoint is generic: the same `POST /api/v1/jobs` accepts every job
+registered by the Master (clip, script, stock, voiceover, and future types).
+Use the canonical envelope:
+
+```json
+{
+  "type": "script.generate",
+  "project": "project-01",
+  "idempotency_key": "project-01-run-001",
+  "payload": { }
+}
+```
+
+The remote `velox` CLI supports the same flow without admin credentials:
+
+```bash
+export VELOX_M2M=true
+export VELOX_M2M_ENV="$HOME/computer-editor-77-01.env"
+set -a; . "$VELOX_M2M_ENV"; set +a
+velox submit jobs --m2m --key project-01 --payload enqueue.json --json
+velox poll <job_id> --m2m --interval 3s --timeout 30m
+```
+
+`--m2m` selects `POST /api/v1/jobs` and `GET /api/v1/jobs/{id}`; without it,
+`velox` keeps the admin endpoint aliases for endpoint-specific flows.The M2M secret needs both `jobs.submit` and `jobs.read` scopes. Before submitting, a remote PC can discover exactly which consumers are active on this Master:
+
+```bash
+velox types --m2m
+```
+
+Only types returned by this catalog are accepted by M2M enqueue. This prevents
+policy-only or not-yet-wired types from becoming permanently queued jobs.
 
 ### 3.1 `delivery_plan.destination_id` (discovered the hard way)
 
