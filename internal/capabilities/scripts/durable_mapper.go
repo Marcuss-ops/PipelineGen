@@ -29,6 +29,11 @@ func DurableResultToDomain(in *GenerateResult) *domain.GenerationResult {
 		Title: in.Title, Language: string(inLanguage(in)), VoiceoverGroup: in.VoiceoverGroup, AudioMode: string(in.AudioMode),
 		AudioStrategy: string(in.AudioStrategy),
 		Source:        in.SourceTrace,
+		// The durable lane's workflow-progress projection travels with the
+		// result: the localized render fan-out is the only producer of the
+		// `render` stage, and without this line it would stop at the capability
+		// boundary while the batch lane's postprocessor map reached the parent.
+		StageProgress: in.StageProgress,
 		Output:        domain.ScriptOutput{Text: outputText, WordCount: wordCount},
 	}
 	out.Output.SpecScene.Version = 1

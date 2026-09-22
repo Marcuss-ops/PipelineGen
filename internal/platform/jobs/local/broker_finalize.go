@@ -55,7 +55,7 @@ func (b *Broker) CompleteWithArtifacts(ctx context.Context, cmd appjobs.Complete
 	// artifact prepare/hash/publish helpers and the completion TX below
 	// attribute their operations to post_writer_finalize instead of the
 	// neutral publish default.
-	ctx = kernobs.WithStage(ctx, kernobs.StageName("post_writer_finalize"))
+	ctx = kernobs.WithStage(ctx, kernobs.StagePostWriterFinalize)
 
 	if b.finalizer == nil {
 		return nil, ErrFinalizerNotConfigured
@@ -192,7 +192,7 @@ func (b *Broker) CompleteWithArtifacts(ctx context.Context, cmd appjobs.Complete
 	// unattributed post_writer_finalize time.
 	var finResult *finalization.FinalizationResult
 	if opErr := kernobs.MeasureOperation(ctx, kernobs.OperationInfo{
-		Stage:     kernobs.StageName("post_writer_finalize"),
+		Stage:     kernobs.StagePostWriterFinalize,
 		Component: kernobs.ComponentName("finalize"),
 		Operation: kernobs.OperationName("completion_tx"),
 		Items:     int64(len(artifacts)),

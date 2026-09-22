@@ -124,10 +124,19 @@ type RouterConfig struct {
 
 	// Primitive runtime fields (constructed from *config.Config by
 	// the composition root before RouterConfig reaches the api layer).
-	ServerGinMode string   // cfg.Server.GinMode
-	DataDir       string   // cfg.Storage.DataDir
-	DownloadDir   string   // cfg.GoogleAccounting.DownloadDir
-	CORSOrigins   []string // cfg.Security.CORSOrigins
+	ServerGinMode string // cfg.Server.GinMode
+	// ServerLoopbackOnly is true when the server binds an explicit loopback
+	// host, i.e. only this machine can reach it. Derived by the composition
+	// root from config.IsLoopbackBindHost(cfg.Server.Host).
+	//
+	// The /metrics posture keys on THIS, not on gin mode: a proxied deployment
+	// runs a non-loopback bind under a dev-mode binary, and there the peer
+	// address is the proxy's loopback, so a mode-only or RemoteAddr-only check
+	// serves the metric surface to the network (verified 2026-09-22).
+	ServerLoopbackOnly bool     // config.IsLoopbackBindHost(cfg.Server.Host)
+	DataDir            string   // cfg.Storage.DataDir
+	DownloadDir        string   // cfg.GoogleAccounting.DownloadDir
+	CORSOrigins        []string // cfg.Security.CORSOrigins
 }
 
 // NewRouter creates a new API router.

@@ -2,7 +2,10 @@
 // STAGE names for the clip.render pipeline.
 //
 // These names are the STAGE dimension (business phase boundaries) recorded
-// on the kernel RunReport. The clip.render worker is strictly sequential
+// on the kernel RunReport, and are ALIASES of the canonical constants in
+// internal/kernel/observability — the registry is the single owner of every
+// phase literal (see registry.go); StageClipRender additionally matches the
+// clip.render job type, pinned by stage_timing_test.go. The clip.render worker is strictly sequential
 // (preparer → subtitle compile → renderer → probe → publisher), so each
 // stage's wall time IS its critical-path contribution
 // within the job: the RunReport breakdown orders them by start time and the
@@ -27,21 +30,21 @@ const (
 	// runs before preparation when the request names a script/batch
 	// subfolder. Recorded only when destination.subfolder_name is set — a
 	// request publishing into a pre-resolved folder has no resolution stage.
-	StageClipDestinationResolve kernobs.StageName = "clip.destination_resolve"
+	StageClipDestinationResolve = kernobs.StageClipDestinationResolve
 	// StageClipPrepare is the parallel preparation phase (asset resolution +
 	// materialization + transcript lookup/reuse). Hosts the transcript
 	// generation (ASR) work when a fresh transcript is required.
-	StageClipPrepare kernobs.StageName = "clip.prepare"
+	StageClipPrepare = kernobs.StageClipPrepare
 	// StageClipSubtitles is the deterministic ASS compile phase (burn-in
 	// artifact). Recorded only when subtitles are enabled.
-	StageClipSubtitles kernobs.StageName = "clip.subtitles"
+	StageClipSubtitles = kernobs.StageClipSubtitles
 	// StageClipRender is the RenderingGen/Chronon render boundary (queue +
 	// single-pass render). Its wall includes the whole renderer port call;
 	// the chronon.render_clip operation carries the accumulated work.
-	StageClipRender kernobs.StageName = kernobs.StageName(job.TypeClipRender)
+	StageClipRender = kernobs.StageName(job.TypeClipRender)
 	// StageClipProbe is the post-render byte certification (probe + exact
 	// contract validation). Part of the render-side serial chain.
-	StageClipProbe kernobs.StageName = "clip.probe"
+	StageClipProbe = kernobs.StageClipProbe
 	// NOTE: there is no overlay stage. A declared overlay is resolved BEFORE
 	// the plan is sealed and composited inside the render pass (a timed video
 	// layer), so its cost is part of StageClipRender — the historical
@@ -49,5 +52,5 @@ const (
 	// StageClipPublish is the Drive publication + asset commit boundary —
 	// the clip.render "drive" phase, distinct from the render-side probe
 	// stage that precedes it.
-	StageClipPublish kernobs.StageName = "clip.publish"
+	StageClipPublish = kernobs.StageClipPublish
 )

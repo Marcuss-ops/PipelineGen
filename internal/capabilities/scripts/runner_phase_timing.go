@@ -17,11 +17,15 @@ import (
 //   - generate      ← runSceneTextPhase   (ollama.generate is recorded under kernobs.StageGenerate)
 //   - voiceover     ← runVoiceoverPhase   (tts.synthesize under voiceoverStage)
 //   - audio_compile ← runAudioCompilePhase + publishFinalAudio (audio ops + drive.upload under audioCompileStage)
+//
+// Aliased from internal/kernel/observability: the registry is the single
+// owner of every phase literal, so the runner cannot drift from the taxonomy
+// a report is joined against.
 const (
-	stageNormalize   = "normalize"
-	stageTranslation = "translation"
-	stagePersistence = "persistence"
-	stageDocument    = "document"
+	stageNormalize   kernobs.StageName = kernobs.StageRunNormalize
+	stageTranslation kernobs.StageName = kernobs.StageRunTranslation
+	stagePersistence kernobs.StageName = kernobs.StageRunPersistence
+	stageDocument    kernobs.StageName = kernobs.StageRunDocument
 )
 
 // errPhaseFailed marks a phase that returned false inside measurePhase so the

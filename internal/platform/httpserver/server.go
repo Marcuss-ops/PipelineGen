@@ -141,15 +141,16 @@ func NewServerWithHealth(deps ServerDeps) *Server {
 			ScriptClips: cfg.Features.ScriptClipsEnabled,
 		}
 		router := NewRouter(&RouterConfig{
-			Auth:          authAdapter,
-			Rate:          rateAdapter,
-			Features:      featuresAdapter,
-			Log:           zap.L().Named("router"),
-			ServerGinMode: cfg.Server.GinMode,
-			DataDir:       cfg.Storage.DataDir,
-			DownloadDir:   cfg.GoogleAccounting.DownloadDir,
-			CORSOrigins:   cfg.Security.CORSOrigins,
-			M2M:           m2mSecurity,
+			Auth:               authAdapter,
+			Rate:               rateAdapter,
+			Features:           featuresAdapter,
+			Log:                zap.L().Named("router"),
+			ServerGinMode:      cfg.Server.GinMode,
+			ServerLoopbackOnly: config.IsLoopbackBindHost(cfg.Server.Host),
+			DataDir:            cfg.Storage.DataDir,
+			DownloadDir:        cfg.GoogleAccounting.DownloadDir,
+			CORSOrigins:        cfg.Security.CORSOrigins,
+			M2M:                m2mSecurity,
 		})
 		router.SetRegistry(registry)
 		if workerHandler != nil {

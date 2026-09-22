@@ -26,12 +26,16 @@ func TestDAGObservability_SeparatesPipelineBoundaries(t *testing.T) {
 	}
 
 	measure(kernobs.StageGenerate, kernobs.ComponentOllama, kernobs.OperationGenerate)
-	measure(voiceoverStage, kernobs.ComponentTTS, kernobs.OperationSynthesize)
+	// audioCompileStage/voiceoverStage are carried as strings (see
+	// runner_audio_observability.go) but their literals are owned by
+	// internal/kernel/observability; the taxonomy type is applied at the
+	// observability boundary.
+	measure(kernobs.StageName(voiceoverStage), kernobs.ComponentTTS, kernobs.OperationSynthesize)
 	measure(StageSceneAnalysis, kernobs.ComponentNLP, kernobs.OperationExtract)
 	measure(StageSceneAnalysis, kernobs.ComponentNLP, kernobs.OperationSearch)
 	measure(StageSceneAnalysis, kernobs.ComponentArtlist, kernobs.OperationResolve)
 	measure(StageOverlayPrepare, kernobs.ComponentRenderQueue, kernobs.OperationPlan)
-	measure(audioCompileStage, kernobs.ComponentChronon, kernobs.OperationRender)
+	measure(kernobs.StageName(audioCompileStage), kernobs.ComponentChronon, kernobs.OperationRender)
 	measure(StageDocumentPrepare, kernobs.ComponentGoogleDocs, kernobs.OperationRender)
 	measure(StageDocumentPublish, kernobs.ComponentGoogleDocs, kernobs.OperationPublish)
 	run.Finish()

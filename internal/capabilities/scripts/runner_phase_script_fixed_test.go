@@ -1,11 +1,14 @@
 package scriptgeneration
 
 import (
+	"context"
 	"strings"
+	"sync"
 	"testing"
 
 	capabilityaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
+	"go.uber.org/zap"
 )
 
 // TestApplyFixedSectionsStampsExplicitRoles certifies that injected fixed
@@ -289,6 +292,100 @@ func TestFixedCaptionTextFallsBackToSourceNeverBody(t *testing.T) {
 		Text: map[Language]string{"en": ""}}
 	if got := fixedCaptionText(empty, "en", "it"); got != "" {
 		t.Fatalf("fixedCaptionText empty = %q, want empty (no BODY fallback)", got)
+	}
+}
+
+// TestFixedMediaRenderUnitsSizesTheFailureChannel pins the counter that sizes
+// the voiceover phase's render-failure channel: it counts ONLY the fixed part
+// of the matrix, and it counts exactly what the fixed fan-out can spawn.
+func TestFixedMediaRenderUnitsSizesTheFailureChannel(t *testing.T) {
+	req := GenerateRequest{SourceLanguage: "en", Languages: []Language{"it", "es"}}
+	fixed := Scene{ID: "scene-intro", ExecutionMode: scriptpkg.SceneExecutionFixedMedia,
+		Clips: []*ClipReference{{ID: "intro-1"}, {ID: "intro-2"}}}
+	generated := Scene{ID: "scene-0", ExecutionMode: scriptpkg.SceneExecutionGenerated,
+		Clip: &ClipReference{ID: "clip-0"}}
+	if got := fixedMediaRenderUnits(req, []Scene{fixed, generated}); got != 6 {
+		t.Fatalf("fixedMediaRenderUnits = %d, want 6 (2 clips x 3 languages)", got)
+	}
+	if got := fixedMediaRenderUnits(req, []Scene{generated}); got != 0 {
+		t.Fatalf("fixedMediaRenderUnits(generated only) = %d, want 0", got)
+	}
+}
+
+// TestLaunchFixedMediaRendersDispatchesEveryUnitAndLanguage is the regression
+// for the live INCOMPLETE_RENDER_SET (expected=13 successful=10) on the
+// voiceover path: a fixed intro/outro has no voiceover work item, so the TTS
+// fan-out can never trigger its renders. The ONE owner of that matrix must
+// dispatch one render per bound clip per render language, with the fixed
+// caption text of that language, and report through the injected sink.
+func TestLaunchFixedMediaRendersDispatchesEveryUnitAndLanguage(t *testing.T) {
+	rec := &recordingLocalizedRenderEnqueuer{}
+	runner := NewRunner(newInMemRunRepository(), newStubTextGenerator(nil), newStubTranslator(),
+		&entityTimelineVoiceoverGenerator{}, newStubDocumentPublisher(), canonicalTestDocumentRenderer{})
+	runner.SetLogger(zap.NewNop())
+	runner.SetLocalizedRenderEnqueuer(rec)
+
+	req := defaultTestRequest()
+	req.Source.Type = SourceClips
+	req.SourceLanguage = "en"
+	req.Languages = []Language{"it"}
+	req.Render.Enabled = true
+
+	scene := Scene{
+		ID: "scene-intro", Index: 0, Role: scriptpkg.SceneRoleOpening,
+		ExecutionMode: scriptpkg.SceneExecutionFixedMedia,
+		Text:          map[Language]string{"en": "MILTON LEITE PRESO!", "it": "MILTON LEITE PRESO!"},
+		Clips: []*ClipReference{
+			{ID: "intro-a", DurationUS: 5_000_000},
+			{ID: "intro-b", DurationUS: 5_000_000},
+		},
+	}
+	scene.Clip = scene.Clips[0]
+
+	var wg sync.WaitGroup
+	var failures []LocalizedRenderFailure
+	runner.launchFixedMediaRenders(context.Background(), "run-fixed", req,
+		scriptpkg.ArtifactRoutingContext{}, ExecutionContext{JobID: "job-fixed"},
+		scene, &wg, nil, fixedMediaRenderSink{
+			OnFailed: func(failure LocalizedRenderFailure) error {
+				failures = append(failures, failure)
+				return nil
+			},
+		})
+	wg.Wait()
+
+	rec.mu.Lock()
+	inputs := append([]LocalizedRenderInput(nil), rec.inputs...)
+	rec.mu.Unlock()
+	if len(failures) != 0 {
+		t.Fatalf("fixed fan-out reported failures: %+v", failures)
+	}
+	if want := fixedMediaRenderUnits(req, []Scene{scene}); len(inputs) != want {
+		t.Fatalf("dispatched %d fixed renders, want %d (one per clip per language)", len(inputs), want)
+	}
+	seen := map[string]string{}
+	for _, in := range inputs {
+		key := in.ClipID + "/" + string(in.Language)
+		if _, dup := seen[key]; dup {
+			t.Fatalf("clip/language unit dispatched twice: %s", key)
+		}
+		seen[key] = in.Text
+		if in.SceneID != scene.ID {
+			t.Fatalf("unit scene = %q, want %q", in.SceneID, scene.ID)
+		}
+		if in.ClipID == "" || in.ClipAssetID != in.ClipID {
+			t.Fatalf("unit clip binding = %q/%q", in.ClipID, in.ClipAssetID)
+		}
+		if strings.TrimSpace(in.Text) == "" {
+			t.Fatalf("unit %s carries no caption text", key)
+		}
+	}
+	for _, clip := range []string{"intro-a", "intro-b"} {
+		for _, lang := range []Language{"en", "it"} {
+			if _, ok := seen[clip+"/"+string(lang)]; !ok {
+				t.Fatalf("missing fixed render for clip %s language %s (dispatched %v)", clip, lang, seen)
+			}
+		}
 	}
 }
 

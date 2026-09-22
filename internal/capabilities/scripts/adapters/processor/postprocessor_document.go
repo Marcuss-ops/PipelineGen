@@ -16,7 +16,7 @@ import (
 // publish boundary owned by the documents processor. It nests under the
 // processor stage recorded by the composite runner ("document") and is
 // measured on the same canonical clock — never with a second ad-hoc timer.
-const stageDocumentPublish kernobs.StageName = "document.publish"
+const stageDocumentPublish = kernobs.StageDocumentPublish
 
 // DocumentsProcessor publishes the canonical SpecScene representation to
 // Google Docs when the request explicitly enables document output.

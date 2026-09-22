@@ -268,9 +268,11 @@ func TestBuildPlanAssignsDistinctCertifiedMotionsAcrossRunAfterBudget(t *testing
 	if len(plan.Items) != MaxPhraseOverlaysPerRun {
 		t.Fatalf("phrase overlays = %d, want %d", len(plan.Items), MaxPhraseOverlaysPerRun)
 	}
-	allowed := map[string]bool{
-		"kinetic_split_word": true, "masked_upward_reveal": true, "staggered_char_float": true,
-		"soft_edge_spotlight_dissolve": true, "velocity_inertia_snap": true,
+	// The rotation pool is read from its single owner: a test that kept its own
+	// copy could pass while the planner rotated over an unrenderable motion.
+	allowed := map[string]bool{}
+	for _, id := range CertifiedPhraseMotions() {
+		allowed[id] = true
 	}
 	seen := make(map[string]bool, len(plan.Items))
 	for _, item := range plan.Items {

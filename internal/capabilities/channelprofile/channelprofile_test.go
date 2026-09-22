@@ -27,7 +27,7 @@ func validProfile() Profile {
 		SoundEffects: []SoundEffectProfile{{AssetID: "whoosh1", AtMS: 0, GainDB: &gain}},
 		MixPolicy:    "VOICEOVER_DUCKED_CLIP",
 		PhraseMotions: []string{
-			"masked_upward_reveal", "velocity_inertia_snap",
+			"slide_up", "fade_in",
 		},
 	}
 }
@@ -62,7 +62,7 @@ func TestValidateFailsClosed(t *testing.T) {
 		{"absolute and scene sfx placement", func(p *Profile) { p.SoundEffects = []SoundEffectProfile{{AssetID: "x", AtMS: 10, SceneID: "scene-1"}} }, "both"},
 		{"unknown mix policy", func(p *Profile) { p.MixPolicy = "duck_everything" }, "mix_policy"},
 		{"uncertified motion", func(p *Profile) { p.PhraseMotions = []string{"not_a_motion"} }, "certified"},
-		{"duplicate motion", func(p *Profile) { p.PhraseMotions = []string{"kinetic_split_word", "kinetic_split_word"} }, "repeats"},
+		{"duplicate motion", func(p *Profile) { p.PhraseMotions = []string{"slide_up", "slide_up"} }, "repeats"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			p := validProfile()

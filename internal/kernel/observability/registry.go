@@ -2,19 +2,34 @@ package observability
 
 import "time"
 
-// StageName identifies one canonical pipeline stage in the global
+// StageName identifies one canonical pipeline phase in the global
 // observability taxonomy.
 //
-// NOTE: this is the OBSERVABILITY stage taxonomy (validate/acquire/
-// process/...). It is intentionally distinct from
-// internal/kernel/job.StageName (script/translation/voiceover/...),
-// which identifies the workflow-stage dimension of job progress. The
-// two vocabularies are kept separate so a job can report both its
-// workflow progress and its execution timing without merging the two
-// concepts.
+// ── Owner of every phase name (SSOT) ────────────────────────────────
+//
+// THIS package is the single owner of every stage name recorded on a Run.
+// A capability MUST alias the constant declared here instead of writing the
+// literal a second time (`const stageX kernobs.StageName = kernobs.StageX`),
+// for the same reason internal/kernel/job owns the job-type wire strings: a
+// second declaration is a silent drift hazard, and it is invisible until a
+// report joins two spellings of the same phase and finds nothing.
+//
+// Before this file carried the capability families, ~30 phase names were
+// declared locally in the packages that emit them (script.prepare,
+// overlay_render, clip.probe, stock.extract_clips, tts, ...) while AllStages()
+// listed 21 — so the "gate tooling that must not invent stage names outside
+// the registry" this comment used to promise was false.
+//
+// NOTE: this taxonomy is the EXECUTION/measurement dimension. It is
+// intentionally distinct from internal/kernel/job.StageName
+// (script/translation/voiceover/upload/persistence), which is the
+// workflow-progress dimension reported to a parent job. The two vocabularies
+// are kept separate so a job can report both its workflow progress and its
+// execution timing without merging the two concepts.
 type StageName string
 
 const (
+	// ── Generic execution phases ────────────────────────────────────
 	StageValidate StageName = "validate"
 	StageResolve  StageName = "resolve"
 	StageGenerate StageName = "generate"
@@ -27,8 +42,72 @@ const (
 	StagePublish  StageName = "publish"
 	StageVerify   StageName = "verify"
 	StageCleanup  StageName = "cleanup"
-	// Clip timeline stages. These remain namespaced to avoid collisions with
-	// generic pipeline stages while preserving the canonical RunReport model.
+
+	// ── Run-level phases of the script-generation pipeline ─────────
+	//
+	// These are the phases the durable Runner executes in order (see
+	// capabilities/scripts/runner_execution_pipeline.go) and the phases a
+	// GenerationRun reports as CurrentStage. The uppercase spellings are the
+	// historical wire values of the run Stage enum and are preserved
+	// verbatim: they are already persisted in pipeline_run rows and recorded
+	// in RunReports, so they must not be "tidied" into lowercase.
+	StageRunNormalize      StageName = "normalize"
+	StageRunMediaPreflight StageName = "MEDIA_PREFLIGHT"
+	StageBeginVidRush      StageName = "begin_vidrush"
+	StageRunTranslation    StageName = "translation"
+	StageRunVoiceover      StageName = "voiceover"
+	StageRunAudioCompile   StageName = "audio_compile"
+	StageRunPersistence    StageName = "persistence"
+	StageRunDocument       StageName = "document"
+
+	// StageRunCoreReady is the CORE_READY milestone: a milestone, NOT a work
+	// phase — it is declared here so the name has one owner, and it is
+	// deliberately excluded from allStageRegistry (see StageMilestones) so no
+	// tooling can mistake it for a phase with work of its own.
+	StageRunCoreReady StageName = "CORE_READY"
+
+	// ── Script-generation sub-phases ────────────────────────────────
+	StageScriptPrepare     StageName = "script.prepare"
+	StageScriptNormalize   StageName = "script.normalize"
+	StageScriptValidate    StageName = "script.validate"
+	StageSourceResolve     StageName = "source.resolve"
+	StageScriptPlan        StageName = "script.plan"
+	StageScriptEngine      StageName = "script.engine"
+	StageScriptPostprocess StageName = "script.postprocess"
+
+	// ── Scene / overlay / audio / document phases ─────────────────────
+	// StageSceneAnalysis hosts per-scene entity/phrase/word extraction
+	// (nlp.extract operations).
+	StageSceneAnalysis StageName = "scene_analysis"
+	// StageOverlayPrepare is the overlay.prepare job enqueue (submitted
+	// before TTS).
+	StageOverlayPrepare StageName = "overlay.prepare"
+	// StageOverlayRender is the BLOCKING overlay render boundary (submit +
+	// wait + publish + RenderingGen phase projection). It is a sibling of the
+	// audio stages, never nested inside them: sequenced inside the audio phase
+	// it was charged to audio_compile and the render never reached the
+	// critical path.
+	StageOverlayRender   StageName = "overlay_render"
+	StageAudioPipeline   StageName = "audio.pipeline"
+	StageAudioFinalize   StageName = "audio_finalize"
+	StageAudioPublish    StageName = "audio_publish"
+	StageDocumentPrepare StageName = "document.prepare"
+	StageDocumentPublish StageName = "document.publish"
+	// StagePostWriterFinalize hosts the worker-side artifact/Drive
+	// finalization that runs AFTER the run returns (worker_execution.go).
+	StagePostWriterFinalize StageName = "post_writer_finalize"
+	// StagePersistenceSQLite is the SQLite scripts-table write boundary owned
+	// by the persistence processor; it nests under StageRunPersistence.
+	StagePersistenceSQLite StageName = "persistence.sqlite"
+
+	// ── Voiceover service sub-phases ───────────────────────────────
+	StageTTS       StageName = "tts"
+	StageAudioPost StageName = "audio_post"
+	StageFinalize  StageName = "finalize"
+
+	// ── Clip timeline stages ───────────────────────────────────────
+	// Namespaced to avoid collisions with the generic phases while
+	// preserving the canonical RunReport model.
 	StageClipSubmitted  StageName = "clip.submitted"
 	StageClipClaimed    StageName = "clip.claimed"
 	StageClipPrepare    StageName = "clip.prepare"
@@ -38,7 +117,83 @@ const (
 	StageClipUploadSlot StageName = "clip.upload_slot"
 	StageClipDrive      StageName = "clip.drive"
 	StageClipFinalize   StageName = "clip.finalize"
+
+	// clip.render worker phases. There is no overlay phase here: a declared
+	// overlay is resolved BEFORE the plan is sealed and composited inside the
+	// render pass, so its cost belongs to the render stage.
+	//
+	// The render stage itself is NOT declared here on purpose: its literal IS
+	// the clip.render JOB TYPE, owned by internal/kernel/job
+	// (TypeClipRender) and enforced by percheck_identity_ssot. The capability
+	// derives its stage from that owner constant, so this registry holds no
+	// second spelling of it.
+	StageClipDestinationResolve StageName = "clip.destination_resolve"
+	StageClipSubtitles          StageName = "clip.subtitles"
+	StageClipProbe              StageName = "clip.probe"
+	StageClipPublish            StageName = "clip.publish"
+
+	// ── Stock pipeline phases ──────────────────────────────────────
+	// The stock.run step keys are the phases recorded by the stock
+	// orchestrator (a step key IS the stage name it is measured under).
+	StageStockPlan          StageName = "stock.plan"
+	StageStockStageSources  StageName = "stock.stage_sources"
+	StageStockExtractClips  StageName = "stock.extract_clips"
+	StageStockComposeChunks StageName = "stock.compose_chunks"
+	StageStockPublish       StageName = "stock.publish"
+	StageStockFinalize      StageName = "stock.finalize"
+	// Service-level stock phases recorded inside those steps.
+	StageStockSearch          StageName = "stock.search"
+	StageStockYouTubeDownload StageName = "stock.youtube_download"
+	StageStockExtract         StageName = "stock.extract"
+	StageStockCompose         StageName = "stock.compose"
+	StageStockDurationProbe   StageName = "stock.duration_probe"
+	StageStockDatabaseSave    StageName = "stock.database_save"
+	StageStockIndex           StageName = "stock.index"
 )
+
+// allStageRegistry is the ONE ordered declaration of the work phases. Every
+// constant above that is a work phase MUST appear here exactly once, in
+// canonical execution order; AllStages() is derived from it so the ordered
+// list can no longer drift from the declarations. Pinned by
+// TestRegistry_StageOrderIsCanonical and TestRegistry_StageOrderHasNoDuplicates.
+var allStageRegistry = []StageName{
+	// generic
+	StageValidate, StageResolve, StageGenerate, StageDiscover,
+	StageAcquire, StageProcess, StageEnrich, StagePersist,
+	StageIndex, StagePublish, StageVerify, StageCleanup,
+	// run-level, in execution order
+	StageRunNormalize, StageRunMediaPreflight, StageBeginVidRush,
+	StageScriptPrepare,
+	StageScriptNormalize, StageSourceResolve, StageScriptValidate, StageScriptPlan,
+	StageScriptEngine, StageSceneAnalysis, StageScriptPostprocess,
+	StageRunTranslation, StageOverlayPrepare, StageRunVoiceover,
+	StageTTS, StageAudioPost, StageOverlayRender, StageRunAudioCompile,
+	StageAudioPipeline, StageAudioFinalize, StageAudioPublish,
+	StageRunPersistence, StagePersistenceSQLite, StageFinalize,
+	StageDocumentPrepare, StageDocumentPublish, StageRunDocument,
+	StagePostWriterFinalize,
+	// clip timeline
+	StageClipSubmitted, StageClipClaimed, StageClipPrepare,
+	StageClipRenderSlot, StageClipFFmpeg, StageClipHashProbe,
+	StageClipUploadSlot, StageClipDrive, StageClipFinalize,
+	StageClipDestinationResolve, StageClipSubtitles,
+	StageClipProbe, StageClipPublish,
+	// stock pipeline, in execution order
+	StageStockPlan, StageStockStageSources, StageStockSearch,
+	StageStockYouTubeDownload, StageStockExtractClips, StageStockExtract,
+	StageStockDurationProbe, StageStockComposeChunks, StageStockCompose,
+	StageStockDatabaseSave, StageStockIndex, StageStockPublish,
+	StageStockFinalize,
+}
+
+// StageMilestones returns the recorded stage names that are milestones, not
+// work phases: they carry no work of their own and MUST NOT be treated as a
+// phase boundary by resume/report tooling (CORE_READY is mapped explicitly
+// onto the first phase that still has work). They are declared with the other
+// stage constants so the name has exactly one owner.
+func StageMilestones() []StageName {
+	return []StageName{StageRunCoreReady}
+}
 
 // ComponentName identifies one external component (the adapter boundary).
 type ComponentName string
@@ -153,18 +308,15 @@ const (
 	OperationGPUReadback     OperationName = "gpu_readback"
 )
 
-// AllStages returns the canonical stage names in registry order. It is
-// useful to gate tooling (reporting, dashboards) that must not invent
-// stage names outside the registry.
+// AllStages returns every canonical work-phase name in canonical order. It
+// is the gate for tooling (reporting, dashboards) that must not invent stage
+// names outside the registry: a name absent here is not a phase. Derived from
+// allStageRegistry, never re-listed by hand. Milestones are NOT included —
+// see StageMilestones.
 func AllStages() []StageName {
-	return []StageName{
-		StageValidate, StageResolve, StageGenerate, StageDiscover,
-		StageAcquire, StageProcess, StageEnrich, StagePersist,
-		StageIndex, StagePublish, StageVerify, StageCleanup,
-		StageClipSubmitted, StageClipClaimed, StageClipPrepare,
-		StageClipRenderSlot, StageClipFFmpeg, StageClipHashProbe,
-		StageClipUploadSlot, StageClipDrive, StageClipFinalize,
-	}
+	out := make([]StageName, len(allStageRegistry))
+	copy(out, allStageRegistry)
+	return out
 }
 
 // AllOperations returns the canonical operation names in registry order.

@@ -4,6 +4,7 @@ import (
 	"context"
 
 	scriptports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
+	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 	"go.uber.org/zap"
 )
@@ -61,6 +62,68 @@ func (r *Runner) runExecutionPhases(ctx context.Context, runID string, req Gener
 		return
 	}
 	e.complete()
+}
+
+// RunnerPhaseSequence returns the canonical ordered phase sequence executed by
+// the durable Runner — the phases runExecutionPhases calls above, in order,
+// named by the observability stage each one is measured under. The phase
+// LITERALS are owned by internal/kernel/observability (registry.go); this
+// function owns the ORDER, which is the fact the pipeline actually guarantees.
+//
+// It is the contract a report is read against: a phase missing from this
+// sequence is not part of script.generate, and a phase measured in a different
+// order is a defect in the pipeline, not a new phase. Pinned by
+// runner_phase_sequence_test.go.
+//
+// Deliberately NOT included:
+//
+//   - CORE_READY — a milestone emitted at the persist seam, with no work of
+//     its own (see observability.StageMilestones).
+//   - the cover/thumbnail lane — produced outside this pipeline, so it must
+//     never become a phase here.
+//   - the worker-side artifact/Drive finalization
+//     (observability.StagePostWriterFinalize), which runs after the Runner
+//     returns (capabilities/jobs/worker_execution.go).
+func RunnerPhaseSequence() []kernobs.StageName {
+	return []kernobs.StageName{
+		kernobs.StageRunNormalize,
+		kernobs.StageRunMediaPreflight,
+		kernobs.StageBeginVidRush,
+		kernobs.StageGenerate,
+		kernobs.StageRunTranslation,
+		kernobs.StageRunVoiceover,
+		kernobs.StageRunAudioCompile,
+		kernobs.StageRunPersistence,
+		kernobs.StageRunDocument,
+	}
+}
+
+// runStagePhase maps a durable-run stage (model_run.go) to the observability
+// phase the run reports while it is in that stage. It is the bridge between the
+// two deliberately separate vocabularies: the run stage is the durable,
+// caller-visible progress value, the phase is where the wall time is measured.
+//
+// It reports ok=false for the milestones and terminal stages, which are not
+// phases and must never be mapped onto one.
+func runStagePhase(stage Stage) (kernobs.StageName, bool) {
+	switch stage {
+	case StageNormalizing:
+		return kernobs.StageRunNormalize, true
+	case StagePreflight:
+		return kernobs.StageRunMediaPreflight, true
+	case StageGeneratingSceneText:
+		return kernobs.StageGenerate, true
+	case StageTranslatingScenes:
+		return kernobs.StageRunTranslation, true
+	case StageGeneratingVoiceovers:
+		return kernobs.StageRunVoiceover, true
+	case StageCompilingAudio:
+		return kernobs.StageRunAudioCompile, true
+	case StagePublishingDocuments:
+		return kernobs.StageRunDocument, true
+	default:
+		return "", false
+	}
 }
 
 // SetStockPrefetcher wires the best-effort acquisition hook for the stock

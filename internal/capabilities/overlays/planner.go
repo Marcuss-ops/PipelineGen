@@ -289,7 +289,8 @@ func BuildPlan(input PlanInput, config PlannerConfig) (OverlayPlan, error) {
 			id := itemID(scene.ID, "number", number.Text)
 			plan.Items = append(plan.Items, OverlayItem{
 				ID: id, SceneID: scene.ID, PresetID: selectWordPreset(input.PlanID, scene.ID, id),
-				Kind: "number", TemplateID: "NUMBER", Text: number.Text,
+				MotionID: SelectTextMotion(input.PlanID, scene.ID, id),
+				Kind:     "number", TemplateID: "NUMBER", Text: number.Text,
 				StartMs: number.StartMs, EndMs: number.EndMs, StartUS: number.StartUS, DurationUS: number.DurationUS,
 				Params: map[string]any{"position": "center", "style": "stat", "priority": number.Score},
 			})
@@ -303,7 +304,8 @@ func BuildPlan(input PlanInput, config PlannerConfig) (OverlayPlan, error) {
 			id := itemID(scene.ID, "quote", quote.Text)
 			plan.Items = append(plan.Items, OverlayItem{
 				ID: id, SceneID: scene.ID, PresetID: selectPhrasePreset(input.PlanID, scene.ID, id),
-				Kind: "quote", TemplateID: "QUOTE", Text: quote.Text,
+				MotionID: SelectTextMotion(input.PlanID, scene.ID, id),
+				Kind:     "quote", TemplateID: "QUOTE", Text: quote.Text,
 				StartMs: quote.StartMs, EndMs: quote.EndMs, StartUS: quote.StartUS, DurationUS: quote.DurationUS,
 				Params: map[string]any{"position": "center", "style": "quote", "priority": quote.Score},
 			})
@@ -317,7 +319,8 @@ func BuildPlan(input PlanInput, config PlannerConfig) (OverlayPlan, error) {
 			id := itemID(scene.ID, "keyword", candidate.Text)
 			plan.Items = append(plan.Items, OverlayItem{
 				ID: id, SceneID: scene.ID, PresetID: selectWordPreset(input.PlanID, scene.ID, id),
-				Kind: "keyword", TemplateID: "IMPORTANT_WORD", Text: candidate.Text,
+				MotionID: SelectTextMotion(input.PlanID, scene.ID, id),
+				Kind:     "keyword", TemplateID: "IMPORTANT_WORD", Text: candidate.Text,
 				StartMs: candidate.StartMs, EndMs: candidate.EndMs, StartUS: candidate.StartUS, DurationUS: candidate.DurationUS,
 				Params: map[string]any{"position": "top", "style": "alert", "priority": candidate.Score},
 			})

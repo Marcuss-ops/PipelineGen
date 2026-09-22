@@ -424,59 +424,29 @@ func (c *sceneReadyCoordinator) process(scene Scene) (Scene, error) {
 }
 
 // launchFixedMediaRenders starts the localized render matrix for a fixed
-// intro/outro after its display text has been translated. Fixed sections have
-// no voiceover worker whose completion could trigger rendering, so they must
-// be dispatched explicitly here. The matrix is deliberately unbounded by a
-// hard-coded clip count: every validated bound clip gets one render per
-// language, preserving both order and clip identity.
+// intro/outro after its display text has been translated, and collects the
+// outcomes into the coordinator's own slices. The matrix itself is owned by
+// Runner.launchFixedMediaRenders: this method only supplies the collector, so
+// the streaming path and the batch voiceover phase cannot drift into two
+// different fan-outs (one of which used to dispatch nothing at all).
 func (c *sceneReadyCoordinator) launchFixedMediaRenders(scene Scene) {
-	if c == nil || !c.req.Render.Enabled || c.req.Source.Type != SourceClips {
+	if c == nil {
 		return
 	}
-	for _, lang := range fixedRenderLanguages(c.req, scene) {
-		lang := lang
-		text := fixedCaptionText(scene, c.req.SourceLanguage, lang)
-		sourceText := strings.TrimSpace(scene.Text[c.req.SourceLanguage])
-		for _, unit := range RenderUnitsForScene(scene) {
-			unit := unit
-			clipID, clipAssetID, clipSHA256, clipDurationMS := localizedRenderUnitClipFields(unit)
-			c.renderWg.Add(1)
-			go func() {
-				defer c.renderWg.Done()
-				if err := c.runner.enqueueLocalizedRender(c.ctx, LocalizedRenderInput{
-					RunID: c.runID, ParentJobID: c.exec.JobID,
-					DocsFolderID: c.routing.DocsFolderID, JobID: c.exec.JobID,
-					SceneID: scene.ID, SceneIndex: scene.Index,
-					Language: lang, Text: text,
-					SourceLanguage: c.req.SourceLanguage, SourceText: sourceText,
-					ClipID: clipID, ClipAssetID: clipAssetID, ClipSHA256: clipSHA256,
-					ClipDurationMS: clipDurationMS, Render: c.req.Render,
-					OnRendered: func(rendered LocalizedRenderResult) error {
-						c.mu.Lock()
-						c.rendered = append(c.rendered, rendered)
-						c.mu.Unlock()
-						return c.runner.recordLocalizedRender(c.ctx, c.exec, nil, rendered)
-					},
-					OnFailed: func(failure LocalizedRenderFailure) error {
-						c.mu.Lock()
-						c.failures = append(c.failures, failure)
-						c.mu.Unlock()
-						return nil
-					},
-				}); err != nil {
-					c.runner.log.Error("fixed-media localized render enqueue failed",
-						zap.String("scene_id", scene.ID), zap.String("clip_id", clipID),
-						zap.String("language", string(lang)), zap.Error(err))
-					c.mu.Lock()
-					c.failures = append(c.failures, LocalizedRenderFailure{
-						SceneID: scene.ID, Language: lang, ClipID: clipID,
-						ErrorCode: "LOCALIZED_RENDER_ENQUEUE_FAILED", Error: err.Error(),
-					})
-					c.mu.Unlock()
-				}
-			}()
-		}
-	}
+	c.runner.launchFixedMediaRenders(c.ctx, c.runID, c.req, c.routing, c.exec, scene, &c.renderWg, nil, fixedMediaRenderSink{
+		OnRendered: func(rendered LocalizedRenderResult) error {
+			c.mu.Lock()
+			c.rendered = append(c.rendered, rendered)
+			c.mu.Unlock()
+			return c.runner.recordLocalizedRender(c.ctx, c.exec, nil, rendered)
+		},
+		OnFailed: func(failure LocalizedRenderFailure) error {
+			c.mu.Lock()
+			c.failures = append(c.failures, failure)
+			c.mu.Unlock()
+			return nil
+		},
+	})
 }
 
 func (c *sceneReadyCoordinator) wait(ctx context.Context, scenes []Scene) ([]Scene, *TranslationPipelineMetrics, *AudioPipelineMetrics, error) {

@@ -210,6 +210,10 @@ func (r *Runner) recordLocalizedRenderReady(ctx context.Context, exec ExecutionC
 	if !found {
 		result.LocalizedRenderStaged = append(result.LocalizedRenderStaged, rendered)
 	}
+	// The render itself is certified (only its publication is pending), so the
+	// parent-visible `render` stage is reported completed here too: the upload
+	// stage separately owns the publication that has not happened yet.
+	recordRenderStageProgress(result, rendered)
 	// Copy for checkpoint outside lock.
 	snapshot := *result
 	r.localizedRenderMu.Unlock()
@@ -248,6 +252,7 @@ func (r *Runner) recordLocalizedRender(ctx context.Context, exec ExecutionContex
 		removeStagedLocalizedRenderLocked(result, rendered)
 		result.LocalizedRenders = append(result.LocalizedRenders, rendered)
 		accumulateLocalizedRenderMetrics(result, rendered)
+		recordRenderStageProgress(result, rendered)
 		snap := *result
 		snapshot = &snap
 		r.localizedRenderMu.Unlock()

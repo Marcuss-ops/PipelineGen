@@ -7,6 +7,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
@@ -20,6 +21,27 @@ func TestDurableResultToDomainPreservesOutputTextAndWordCount(t *testing.T) {
 	require.NotNil(t, out)
 	assert.Equal(t, "La civiltà Maya prosperò.", out.Output.Text)
 	assert.Equal(t, 4, out.Output.WordCount)
+}
+
+// TestDurableResultToDomainCarriesRenderStageProgress pins the wire between the
+// durable lane's render fan-out and the parent-visible result: the domain
+// envelope has no LocalizedRenders field, so without this projection the render
+// stage would stop at the capability boundary and no parent could observe it.
+func TestDurableResultToDomainCarriesRenderStageProgress(t *testing.T) {
+	in := &GenerateResult{}
+	recordRenderStageProgress(in, LocalizedRenderResult{SceneID: "scene-1", Language: "it", ClipID: "clip-7", Status: "RENDERED"})
+
+	out := DurableResultToDomain(in)
+	require.NotNil(t, out)
+	progress, ok := out.StageProgress[string(job.StageRender)]
+	require.True(t, ok, "render stage must reach the domain result")
+	require.Len(t, progress.Languages, 1)
+	assert.Equal(t, job.StageRender, progress.Languages[0].Stage)
+	assert.Equal(t, "it", progress.Languages[0].Language)
+	assert.Equal(t, "scene-1/clip-7", progress.Languages[0].Unit)
+	assert.Equal(t, job.StageCompleted, progress.Languages[0].Status)
+	assert.Equal(t, 1, progress.Completed)
+	assert.Equal(t, 1, progress.Total)
 }
 
 func TestDurableResultToDomainMapsMixedStockAlongsideClip(t *testing.T) {

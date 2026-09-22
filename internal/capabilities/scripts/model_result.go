@@ -8,6 +8,7 @@ import (
 	capabilityaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
 	capabilityentities "github.com/Marcuss-ops/PipelineGen/internal/capabilities/entities"
 	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
+	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
@@ -181,6 +182,13 @@ type GenerateResult struct {
 	// clip audio materialization) populated by the P1.1 prefetch goroutine
 	// during TTS. Nil means prefetch was not needed or not wired.
 	AudioPrefetch *AudioPrefetchResult `json:"-"`
+
+	// StageProgress is the parent-facing workflow-progress projection of THIS
+	// run, keyed by job.StageName. It is the durable lane's counterpart of the
+	// postprocessor map: the localized render fan-out has no postprocessor, so
+	// without it the `render` stage would never reach a parent job or the run
+	// result. Persisted with the run and projected by DurableResultToDomain.
+	StageProgress map[string]job.StageProgress `json:"stage_progress,omitempty"`
 }
 
 type RenderMetrics struct {

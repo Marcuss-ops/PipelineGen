@@ -8,11 +8,14 @@ import (
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 )
 
+// Aliased from internal/kernel/observability: the registry is the single
+// owner of every phase literal, so the voiceover service cannot drift from
+// the taxonomy a report is joined against.
 const (
-	canonicalStageTTS       kernobs.StageName = "tts"
-	canonicalStageAudioPost kernobs.StageName = "audio_post"
-	canonicalStagePublish   kernobs.StageName = "publish"
-	canonicalStageFinalize  kernobs.StageName = "finalize"
+	canonicalStageTTS       = kernobs.StageTTS
+	canonicalStageAudioPost = kernobs.StageAudioPost
+	canonicalStagePublish   = kernobs.StagePublish
+	canonicalStageFinalize  = kernobs.StageFinalize
 )
 
 // BuildVoiceoverIdempotencyKey derives the deterministic retry-safe

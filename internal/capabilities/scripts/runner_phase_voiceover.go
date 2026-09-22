@@ -193,7 +193,10 @@ func (r *Runner) runVoiceoverPhase(ctx context.Context, runID string, req Genera
 		)
 		var dbCacheHits int
 		var renderWg sync.WaitGroup
-		renderErrors := make(chan error, len(work))
+		// The channel must hold one error per dispatchable render: the
+		// voiceover work items AND the fixed intro/outro units below, which are
+		// dispatched from this phase because nothing else can trigger them.
+		renderErrors := make(chan error, len(work)+fixedMediaRenderUnits(req, result.Scenes))
 		if len(work) > 0 {
 
 			// applyMu serializes per-unit result mutation + checkpoint so a
@@ -454,6 +457,28 @@ func (r *Runner) runVoiceoverPhase(ctx context.Context, runID string, req Genera
 				Operation: kernobs.OperationName("tts_publish_drain"),
 				Items:     int64(result.AudioMetrics.VoiceoverGenerated),
 			}, 0)
+		}
+
+		// Fixed intro/outro sections carry no voiceover work item, so the TTS
+		// fan-out above can never trigger their renders. Dispatch their matrix
+		// here — the translation phase has already finalized the display text
+		// this burns as captions. Without this the run finishes with
+		// successful < expected and is failed closed as INCOMPLETE_RENDER_SET.
+		for i := range result.Scenes {
+			if !result.Scenes[i].ExecutionMode.IsFixedMedia() {
+				continue
+			}
+			r.launchFixedMediaRenders(ctx, runID, req, routing, exec, result.Scenes[i], &renderWg, renderErrors, fixedMediaRenderSink{
+				OnRendered: func(rendered LocalizedRenderResult) error {
+					return r.recordLocalizedRender(ctx, exec, result, rendered)
+				},
+				OnFailed: func(failure LocalizedRenderFailure) error {
+					r.localizedRenderMu.Lock()
+					result.LocalizedRenderFailures = append(result.LocalizedRenderFailures, failure)
+					r.localizedRenderMu.Unlock()
+					return nil
+				},
+			})
 		}
 
 		// Wait for all async localized renders spawned during voiceover to complete.

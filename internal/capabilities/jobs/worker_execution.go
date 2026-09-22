@@ -338,7 +338,7 @@ func (w *Worker) runJob(parent context.Context, j *job.Job) {
 	// SQLite contention, artifact publication, or finalizer retries cannot be
 	// misreported as unattributed wall time.
 	kernobs.RecordStage(jobCtx, kernobs.StageInfo{
-		Stage: kernobs.StageName("post_writer_finalize"),
+		Stage: kernobs.StagePostWriterFinalize,
 	}, postWriterFinalizeStarted, time.Now().UTC(), dispatchErr)
 	w.log.Info("worker: post-writer finalization complete",
 		zap.String("job_id", j.ID),
