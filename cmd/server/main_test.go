@@ -63,10 +63,10 @@ func TestServerMetricsMountMatrix(t *testing.T) {
 
 			gin.SetMode(tc.ginMode)
 			router := httpserver.NewRouter(&httpserver.RouterConfig{
-				ServerGinMode: tc.ginMode,
-				Log:           zap.NewNop(),
-				Auth:          testMetricsAuthAdapter{},
-				Rate:          testMetricsRateAdapter{},
+				ServerGinMode:      tc.ginMode,
+				Log:                zap.NewNop(),
+				Auth:               testMetricsAuthAdapter{},
+				Rate:               testMetricsRateAdapter{},
 				Features:           testMetricsFeaturesAdapter{},
 				ServerLoopbackOnly: true,
 			})
@@ -96,10 +96,10 @@ func TestServerMetricsLoopbackRestriction(t *testing.T) {
 	t.Cleanup(func() { _ = os.Unsetenv("METRICS_AUTH_TOKEN") })
 
 	router := httpserver.NewRouter(&httpserver.RouterConfig{
-		ServerGinMode: gin.DebugMode,
-		Log:           zap.NewNop(),
-		Auth:          testMetricsAuthAdapter{},
-		Rate:          testMetricsRateAdapter{},
+		ServerGinMode:      gin.DebugMode,
+		Log:                zap.NewNop(),
+		Auth:               testMetricsAuthAdapter{},
+		Rate:               testMetricsRateAdapter{},
 		Features:           testMetricsFeaturesAdapter{},
 		ServerLoopbackOnly: true,
 	})
