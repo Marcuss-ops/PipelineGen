@@ -33,9 +33,16 @@ type SemanticPreset string
 // matrix). The animation of a text item is carried by an explicit motion id
 // (SelectTextMotion), never by the preset.
 const (
-	PresetModernPhrase SemanticPreset = "static_text_smoke"
-	PresetModernWord   SemanticPreset = "static_text_smoke"
-	PresetModernName   SemanticPreset = "static_text_smoke"
+	// The three text surfaces track the ONE glow-free modern Chrome preset the
+	// lane renders. They must stay equal to the candidate lists in
+	// preset_selection.go (namePresetRenderSafeCandidates / phrasePresetCandidates
+	// / wordPresetCandidates): the sampler emits the candidate id while the
+	// semantic table emits these constants, so a divergence makes the entity
+	// name/preset contract test fail. phrase_apple_clean is the SSOT; the old
+	// static_text_smoke remains the certified smoke/E2E fallback only.
+	PresetModernPhrase SemanticPreset = "phrase_apple_clean"
+	PresetModernWord   SemanticPreset = "phrase_apple_clean"
+	PresetModernName   SemanticPreset = "phrase_apple_clean"
 	PresetModernImage  SemanticPreset = "image_fade_in"
 )
 

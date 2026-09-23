@@ -120,6 +120,24 @@ func NewYouTubeResolver(client *veloxclient.Client) *YouTubeResolver {
 // Name implements Resolver.
 func (r *YouTubeResolver) Name() string { return ResolverYouTube }
 
+// ProbeCaptions implements the optional captionProber capability: it reads the
+// caption availability from the clip metadata endpoint. known is false when the
+// endpoint answers without the field (an older server) or the probe fails, so
+// the Agent's fail-closed gate can decide what to do instead of guessing.
+func (r *YouTubeResolver) ProbeCaptions(ctx context.Context, c Candidate) (known, has bool) {
+	if c.CaptionsKnown {
+		return true, c.HasCaptions
+	}
+	if strings.TrimSpace(c.SourceURL) == "" {
+		return false, false
+	}
+	meta, err := r.client.ClipInfo(ctx, c.SourceURL)
+	if err != nil || meta == nil || meta.HasCaptions == nil {
+		return false, false
+	}
+	return true, *meta.HasCaptions
+}
+
 // Search implements Resolver.
 func (r *YouTubeResolver) Search(ctx context.Context, req MaterialRequest) ([]Candidate, error) {
 	resp, err := r.client.SearchClipsByTopic(ctx, veloxclient.TopicSearchQuery{
@@ -143,6 +161,11 @@ func (r *YouTubeResolver) Search(ctx context.Context, req MaterialRequest) ([]Ca
 			SourceURL:       item.DirectLink,
 			DurationSeconds: float64(item.Duration),
 			Relevance:       float64(item.SimilarityScore) / 100.0,
+			// Tri-state: only an explicit server answer is authoritative, so
+			// a search result that predates the probe stays "unknown" and is
+			// resolved later by ProbeCaptions instead of being read as "none".
+			CaptionsKnown: item.HasCaptions != nil,
+			HasCaptions:   item.HasCaptions != nil && *item.HasCaptions,
 		})
 	}
 	return out, nil
@@ -153,6 +176,19 @@ func (r *YouTubeResolver) Search(ctx context.Context, req MaterialRequest) ([]Ca
 func (r *YouTubeResolver) Materialize(ctx context.Context, c Candidate, req MaterialRequest) (*Material, error) {
 	if strings.TrimSpace(c.SourceURL) == "" {
 		return nil, fmt.Errorf("youtube materialize: candidate has no source url")
+	}
+
+	// Pre-extraction dedup probe (T1.3): if the Master already owns this video,
+	// return the registered material with 0 jobs and 0 downloads. A probe
+	// FAILURE is non-fatal — extraction proceeds, and the deterministic
+	// idempotency key keeps a re-submit from minting a duplicate if the video
+	// was in fact already processed.
+	if probe, perr := r.client.ClipExists(ctx, c.SourceURL); perr == nil && probe != nil && probe.Exists {
+		m := &Material{Candidate: c, Registered: true}
+		if probe.ClipID != "" {
+			m.AssetID = probe.ClipID
+		}
+		return m, nil
 	}
 
 	// Best-effort metadata enrichment: the caller may want the canonical title

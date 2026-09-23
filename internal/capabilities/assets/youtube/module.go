@@ -24,6 +24,13 @@ type CoreDeps struct {
 	ClipStorePort ytports.ClipStorePort
 	ToolChecker   appassets.ToolChecker
 	StockService  *stockplan.StockService
+	// ExistencePort (T1.3) backs GET /api/clips/exists. Optional: nil
+	// leaves the route answering 503 (media PostgreSQL SSOT not deployed).
+	ExistencePort ytports.YouTubeClipExistencePort
+	// TranscriptSource backs GET /api/clips/transcript: the canonical
+	// SubtitleFetcherPort (VTT-only yt-dlp fetch, never the video).
+	// Optional: nil leaves the route answering 503.
+	TranscriptSource ytports.SubtitleFetcherPort
 }
 
 // SearchDeps groups the optional search surfaces used by advanced search and
@@ -105,6 +112,8 @@ func Build(deps Dependencies) (api.Descriptor, error) {
 		deps.Search.FanOut,
 	)
 	handler.stockService = deps.Core.StockService
+	handler.existence = deps.Core.ExistencePort
+	handler.transcript = deps.Core.TranscriptSource
 
 	module := api.NewRouteModule(
 		"clips",

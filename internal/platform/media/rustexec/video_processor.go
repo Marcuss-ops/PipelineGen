@@ -329,6 +329,31 @@ func (p *VideoProcessor) RemoveSilence(ctx context.Context, input, output string
 	return p.run(ctx, request{Operation: OperationRemoveSilence, SourcePath: input, OutputPath: output})
 }
 
+// AssembleCopy is the VeloxEditing packet-copy assembly boundary
+// (assemble_copy / video.assemble.copy.v1): it concatenates COPY-CERTIFIED
+// segments in the given timeline order with zero decode, zero encode and zero
+// compositing. The Rust side re-probes every input and enforces the shared
+// copy-safety contract (per-input certification + cross-input stream identity);
+// there is deliberately NO re-encode fallback.
+func (p *VideoProcessor) AssembleCopy(ctx context.Context, inputs []string, output string, cert CopyCertification) error {
+	if len(inputs) == 0 {
+		return fmt.Errorf("assemble_copy: input_paths are required")
+	}
+	if strings.TrimSpace(output) == "" {
+		return fmt.Errorf("assemble_copy: output_path is required")
+	}
+	if err := cert.Validate(); err != nil {
+		return err
+	}
+	for _, input := range inputs {
+		info, err := os.Stat(input)
+		if err != nil || !info.Mode().IsRegular() || info.Size() <= 0 {
+			return fmt.Errorf("assemble_copy: input %s is unavailable", input)
+		}
+	}
+	return p.run(ctx, request{Operation: OperationAssembleCopy, InputPaths: inputs, OutputPath: output, CopyCertification: &cert})
+}
+
 func (p *VideoProcessor) RenderAudioPlan(ctx context.Context, plan audio.CompiledAudioPlan, assets audio.ResolvedAudioAssets, output string) (audio.FinalAudioAsset, error) {
 	asset, _, err := p.RenderAudioPlanWithMetrics(ctx, plan, assets, output)
 	return asset, err

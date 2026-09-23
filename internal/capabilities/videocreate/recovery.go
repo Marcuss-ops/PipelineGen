@@ -74,7 +74,8 @@ func RehydrateFacts(ctx context.Context, run *Run) error {
 
 // rehydrateAcquired rebuilds the acquired-clip facts. The pairing
 // contract (ChildJobs[i] produced Artifacts[i]) restores the durable
-// identity; the child result restores the local materialization.
+// identity; the child family's REAL result wire contract (decoded by
+// decodeAcquireChildResult) restores the local materialization.
 func rehydrateAcquired(ctx context.Context, run *Run) error {
 	rec := run.State.StageRecordFor("03_media_acquire")
 	if rec == nil {
@@ -91,8 +92,9 @@ func rehydrateAcquired(ctx context.Context, run *Run) error {
 			if err != nil {
 				return fmt.Errorf("%w: rehydrate acquire child %s: %v", ErrStateCorrupt, childID, err)
 			}
-			var res AcquireChildResult
-			if err := childResult(child, &res); err != nil {
+			_, jobType := acquireFamily(ref.Source)
+			res, err := decodeAcquireChildResult(jobType, child.Result)
+			if err != nil {
 				return fmt.Errorf("%w: rehydrate acquire child %s result: %v", ErrStateCorrupt, childID, err)
 			}
 			localPath = res.LocalPath
@@ -107,32 +109,15 @@ func rehydrateAcquired(ctx context.Context, run *Run) error {
 	return nil
 }
 
-// rehydrateVoiceover rebuilds the voiceover facts from its child result.
-func rehydrateVoiceover(ctx context.Context, run *Run) error {
+// rehydrateVoiceover rebuilds the voiceover materializations from the
+// stage's durable output (VoiceoverAssetRef carries the per-item local
+// materializations the audio master mixes from).
+func rehydrateVoiceover(_ context.Context, run *Run) error {
 	rec := run.State.StageRecordFor("04_voiceover")
-	if rec == nil || len(rec.Jobs) == 0 {
+	if rec == nil || rec.Status == StageSkipped {
 		return nil
 	}
-	ref := StageArtifactRef{}
-	if len(rec.Output.Artifacts) > 0 {
-		ref = rec.Output.Artifacts[0]
-	}
-	fact := &VoiceoverFact{Ref: ref}
-	if rec.Jobs[0] != "" && rec.Status != StageSkipped {
-		child, err := run.Deps.Children.WaitTerminal(ctx, rec.Jobs[0])
-		if err != nil {
-			return fmt.Errorf("%w: rehydrate voiceover child: %v", ErrStateCorrupt, err)
-		}
-		var res VoiceoverChildResult
-		if err := childResult(child, &res); err != nil {
-			return fmt.Errorf("%w: rehydrate voiceover child result: %v", ErrStateCorrupt, err)
-		}
-		fact.LocalPath = res.LocalPath
-		fact.SampleRate = res.SampleRate
-		fact.Channels = res.Channels
-		fact.Codec = res.Codec
-	}
-	run.Facts.Voiceover = fact
+	run.Facts.VoiceoverItems = rec.Output.Voiceovers
 	return nil
 }
 
@@ -156,19 +141,16 @@ func rehydrateRendered(ctx context.Context, run *Run) error {
 		if err != nil {
 			return fmt.Errorf("%w: rehydrate render child %s: %v", ErrStateCorrupt, childID, err)
 		}
-		var res RenderChildResult
-		if err := childResult(child, &res); err != nil {
+		res, err := decodeRenderChildResult(child.Result)
+		if err != nil {
 			return fmt.Errorf("%w: rehydrate render child %s result: %v", ErrStateCorrupt, childID, err)
 		}
+		segment, err := res.assembleSegment()
+		if err != nil {
+			return fmt.Errorf("%w: rehydrate render child %s: %v", ErrStateCorrupt, childID, err)
+		}
 		run.Facts.Rendered = append(run.Facts.Rendered, RenderedClip{
-			Segment: AssembleSegment{
-				AssetID:         res.AssetID,
-				SHA256:          res.ContentSHA,
-				DurationMS:      res.DurationMS,
-				CopyCertified:   res.CopyCertified,
-				ContractID:      res.ContractID,
-				StreamSignature: res.StreamSignature,
-			},
+			Segment:   segment,
 			LocalPath: res.LocalPath,
 			SceneID:   sceneID,
 		})

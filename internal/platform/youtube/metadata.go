@@ -20,6 +20,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/url"
+	"sort"
 	"strings"
 
 	youtubedto "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/ports"
@@ -53,6 +54,46 @@ type ytDLPJSON struct {
 	} `json:"chapters"`
 	Categories []string `json:"categories"`
 	Tags       []string `json:"tags"`
+	// T1.2 probe: the two caption dictionaries yt-dlp emits per video.
+	// `subtitles` holds creator-uploaded tracks, `automatic_captions` the
+	// ASR ones. Their presence is the ONLY cheap signal of whether a
+	// transcript can be fetched without paying a Whisper run, so the
+	// dump must surface them (flat-playlist search entries do not carry
+	// them — see the metadata probe note in the topic-search use case).
+	Subtitles         map[string][]captionTrackJSON `json:"subtitles"`
+	AutomaticCaptions map[string][]captionTrackJSON `json:"automatic_captions"`
+}
+
+// captionTrackJSON is the per-language caption entry of a yt-dlp dump.
+// Only url/name/ext are consumed today; the struct exists so future
+// format selection (e.g. prefer vtt over srv3) has a typed field.
+type captionTrackJSON struct {
+	URL  string `json:"url"`
+	Name string `json:"name"`
+	Ext  string `json:"ext"`
+}
+
+// captionFlags derives the probe fields from the raw caption maps:
+// HasCaptions when either dictionary is non-empty, CaptionLanguages as
+// the sorted union of both key sets (manual + ASR, deduplicated).
+func (r *ytDLPJSON) captionFlags() (bool, []string) {
+	seen := make(map[string]struct{}, len(r.Subtitles)+len(r.AutomaticCaptions))
+	for lang := range r.Subtitles {
+		if lang != "" {
+			seen[lang] = struct{}{}
+		}
+	}
+	for lang := range r.AutomaticCaptions {
+		if lang != "" {
+			seen[lang] = struct{}{}
+		}
+	}
+	langs := make([]string, 0, len(seen))
+	for lang := range seen {
+		langs = append(langs, lang)
+	}
+	sort.Strings(langs)
+	return len(seen) > 0, langs
 }
 
 // MetadataFetcherAdapter implements youtube.VideoMetadataFetcherPort. It shells out
@@ -114,21 +155,24 @@ func (a *MetadataFetcherAdapter) GetVideoMetadata(ctx context.Context, videoURL 
 	if thumbURL == "" && len(raw.Thumbnails) > 0 {
 		thumbURL = raw.Thumbnails[len(raw.Thumbnails)-1].URL
 	}
+	hasCaptions, captionLangs := raw.captionFlags()
 
 	dto := &youtubedto.DownloaderMetadata{
-		ID:           raw.ID,
-		Title:        raw.Title,
-		LiveStatus:   raw.LiveStatus,
-		URL:          videoURL,
-		Description:  raw.Description,
-		Duration:     raw.Duration,
-		Uploader:     raw.Uploader,
-		UploadDate:   raw.UploadDate,
-		ViewCount:    raw.ViewCount,
-		Language:     raw.Language,
-		ThumbnailURL: thumbURL,
-		Categories:   raw.Categories,
-		Tags:         raw.Tags,
+		HasCaptions:      hasCaptions,
+		CaptionLanguages: captionLangs,
+		ID:               raw.ID,
+		Title:            raw.Title,
+		LiveStatus:       raw.LiveStatus,
+		URL:              videoURL,
+		Description:      raw.Description,
+		Duration:         raw.Duration,
+		Uploader:         raw.Uploader,
+		UploadDate:       raw.UploadDate,
+		ViewCount:        raw.ViewCount,
+		Language:         raw.Language,
+		ThumbnailURL:     thumbURL,
+		Categories:       raw.Categories,
+		Tags:             raw.Tags,
 	}
 	for _, t := range raw.Thumbnails {
 		dto.Thumbnails = append(dto.Thumbnails, youtubedto.VideoThumbnail{

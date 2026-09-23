@@ -21,6 +21,13 @@ import (
 
 // EmbeddingCandidate is one media asset the canonical embedding backfill may
 // have to embed, together with which embedding channels it already has.
+//
+// POSTGRES-MEDIA-CUTOVER channel semantics: HasText is the LIVE text channel —
+// a text vector row in media_embeddings, the exact channel the
+// PostgresIndexWorker produces and semantic search consumes. The legacy
+// media_assets embedding columns (transcript/visual/audio) are a retired read
+// model kept for reporting only: they never converge post-cutover and MUST NOT
+// drive skip decisions, or every repair run re-enqueues the whole scope.
 type EmbeddingCandidate struct {
 	ID            string
 	Source        string
@@ -52,6 +59,15 @@ func embeddingPresenceExpr(column string) string {
 	return "CASE WHEN " + column + " IS NOT NULL AND " + column + " NOT IN ('', '[]', '{}') THEN 1 ELSE 0 END"
 }
 
+// liveTextPresenceExpr is the LIVE-plan counterpart of embeddingPresenceExpr:
+// the text channel is populated iff media_embeddings holds a text vector for
+// the asset. That is the single source of truth semantic retrieval reads
+// (media_searcher ANN over media_embeddings), so the repair meter must grade
+// the same surface the search consumes.
+func liveTextPresenceExpr(assetAlias string) string {
+	return "CASE WHEN EXISTS (SELECT 1 FROM media_embeddings e WHERE e.asset_id = " + assetAlias + ".id AND e.embedding_type = 'text') THEN 1 ELSE 0 END"
+}
+
 // mediaContentHashExpr is the canonical content-hash fallback chain
 // (metadata content_hash → metadata file_hash → legacy_file_md5 → empty).
 func mediaContentHashExpr(alias string) string {
@@ -75,7 +91,7 @@ func (r *BackfillReader) ListEmbeddingBackfillCandidates(ctx context.Context, q 
 		SELECT m.id, COALESCE(m.source, ''), COALESCE(m.name, ''), COALESCE(m.media_type, ''),
 		       COALESCE(m.local_path, ''),
 		       ` + mediaContentHashExpr("m") + `,
-		       ` + embeddingPresenceExpr("m.embedding_json") + `,
+		       ` + liveTextPresenceExpr("m") + `,
 		       ` + embeddingPresenceExpr("m.transcript_embedding") + `,
 		       ` + embeddingPresenceExpr("m.visual_embedding") + `,
 		       ` + embeddingPresenceExpr("m.audio_embedding") + `
@@ -142,7 +158,7 @@ func (r *BackfillReader) ListEmbeddingCandidatesByID(ctx context.Context, ids []
 		SELECT m.id, COALESCE(m.source, ''), COALESCE(m.name, ''), COALESCE(m.media_type, ''),
 		       COALESCE(m.local_path, ''),
 		       ` + mediaContentHashExpr("m") + `,
-		       ` + embeddingPresenceExpr("m.embedding_json") + `,
+		       ` + liveTextPresenceExpr("m") + `,
 		       ` + embeddingPresenceExpr("m.transcript_embedding") + `,
 		       ` + embeddingPresenceExpr("m.visual_embedding") + `,
 		       ` + embeddingPresenceExpr("m.audio_embedding") + `
@@ -185,8 +201,9 @@ type MissingEmbeddingAsset struct {
 	ContentHash string
 }
 
-// ListMissingEmbeddingAssets returns the assets whose embedding_json is empty,
-// newest first, optionally restricted to an explicit id set and/or one source.
+// ListMissingEmbeddingAssets returns the assets with no live text vector
+// (media_embeddings), newest first, optionally restricted to an explicit id
+// set and/or one source.
 //
 // The retired SQLite scan had NO taxonomy filter (unlike the embedding
 // backfill), because this command re-enqueues assets the operator explicitly
@@ -208,7 +225,7 @@ func (r *BackfillReader) ListMissingEmbeddingAssets(ctx context.Context, ids []s
 		}
 		query += "m.id IN (" + strings.Join(marks, ",") + ")"
 	} else {
-		query += "(m.embedding_json IS NULL OR m.embedding_json = '[]' OR m.embedding_json = '')"
+		query += "(" + liveTextPresenceExpr("m") + " = 0)"
 	}
 	if strings.TrimSpace(source) != "" {
 		args = append(args, source)

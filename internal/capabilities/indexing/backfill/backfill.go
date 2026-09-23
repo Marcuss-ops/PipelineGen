@@ -89,10 +89,15 @@ type Checkpoint struct {
 // SQL-backed fetcher); Run falls back to "legacy_no_hash_<id>" when
 // the asset carries no hash.
 type Candidate struct {
-	ID            string
-	Source        string
-	Name          string
-	MediaType     string
+	ID        string
+	Source    string
+	Name      string
+	MediaType string
+	// HasText is the LIVE text channel: a text vector exists in
+	// media_embeddings (the channel the PostgresIndexWorker produces and
+	// semantic search consumes). The other channel flags are legacy
+	// read-model state kept for reporting only — they never converge
+	// post-cutover and MUST NOT drive skip decisions.
 	HasText       bool
 	HasTranscript bool
 	HasVisual     bool
@@ -179,24 +184,22 @@ func Run(ctx context.Context, deps Deps, fetch Fetcher, enq Enqueuer, log *zap.L
 	// ── Count missing channels ──────────────────────────────────────
 	report.TotalCandidates = len(candidates)
 	for _, c := range candidates {
-		hasAll := true
 		if !c.HasText {
 			report.MissingText++
-			hasAll = false
 		}
 		if !c.HasTranscript {
 			report.MissingTranscript++
-			hasAll = false
 		}
 		if !c.HasVisual {
 			report.MissingVisual++
-			hasAll = false
 		}
 		if !c.HasAudio {
 			report.MissingAudio++
-			hasAll = false
 		}
-		if hasAll {
+		// "Complete" is graded on the live text channel only: that is the
+		// one channel the indexing pipeline produces, so it is the only
+		// channel with a convergent end state.
+		if c.HasText {
 			report.AlreadyComplete++
 		} else {
 			report.AnyMissing++
@@ -231,8 +234,10 @@ func Run(ctx context.Context, deps Deps, fetch Fetcher, enq Enqueuer, log *zap.L
 		default:
 		}
 
-		// Skip already-complete assets in --only-missing mode.
-		if deps.OnlyMissing && c.HasText && c.HasTranscript && c.HasVisual && c.HasAudio {
+		// Skip already-complete assets in --only-missing mode. The live
+		// indexing pipeline produces exactly ONE vector channel (the text
+		// vector in media_embeddings), so "nothing left to do" is HasText.
+		if deps.OnlyMissing && c.HasText {
 			report.Skipped++
 			continue
 		}

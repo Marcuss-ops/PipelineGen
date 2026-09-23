@@ -62,6 +62,13 @@ type Constraints struct {
 	MinQuality         string
 	// MinWidth is the pixel-width floor used by the scorer (0 = unset).
 	MinWidth int
+	// RequireCaptions makes the agent drop shortlist candidates that are known
+	// (or probed and found) to expose no caption track. It is the gate an
+	// interview/transcript harvest sets. Material whose captions cannot be
+	// established (probe error, or the probe budget is spent) fails closed
+	// too: a transcript-dependent request cannot be served by material we
+	// cannot verify.
+	RequireCaptions bool
 }
 
 // Destination is the Drive placement for materialized clips. It maps onto the
@@ -112,6 +119,14 @@ type Candidate struct {
 	HasDrive bool
 	HasLocal bool
 
+	// CaptionsKnown reports whether HasCaptions is authoritative. It is false
+	// when the source cannot answer (catalog rows, stock) or when the server
+	// predates the caption probe; a caller must NOT read unknown as "none".
+	CaptionsKnown bool
+	// HasCaptions is meaningful only when CaptionsKnown: whether the media
+	// exposes at least one caption/subtitle track.
+	HasCaptions bool
+
 	// Relevance is the resolver's normalised [0,1] relevance (catalog score or
 	// topic-similarity). The scorer weighs it; it is not the final score.
 	Relevance float64
@@ -148,3 +163,10 @@ type Resolver interface {
 // simply does not exist yet — callers should treat it as "needs operator
 // attention", not as a bug.
 var ErrNoMaterial = errors.New("materialagent: no resolver produced material for the request")
+
+// ErrNoCaptions classifies the fail-closed caption gate: a candidate was
+// rejected because it exposes no caption track (or its captions could not be
+// established under RequireCaptions). It is joined into the ErrNoMaterial
+// chain so a caller can distinguish "no material" from "material that cannot
+// be transcribed".
+var ErrNoCaptions = errors.New("materialagent: candidate has no usable captions")

@@ -42,6 +42,17 @@ const (
 	// RouteClipsInfo is GET /api/clips/info?url=... — full metadata for a
 	// single YouTube URL without downloading it.
 	RouteClipsInfo = "/api/clips/info"
+	// RouteClipsExists is GET /api/clips/exists?url=... — the pre-extraction
+	// dedup probe: answers {exists, clip_id} for a YouTube URL so an agent
+	// skips /api/clips/process entirely for candidates already in the
+	// catalog (0 downloads, 0 jobs, 0 rate-limit).
+	RouteClipsExists = "/api/clips/exists"
+	// RouteClipsTranscript is GET /api/clips/transcript?url=...&start=&end=
+	// — transcript-as-a-service: readable text + per-cue timings for a
+	// YouTube URL WITHOUT downloading the video or running Whisper
+	// (yt-dlp --write-subs/--write-auto-subs --skip-download + the
+	// canonical VTT parser server-side).
+	RouteClipsTranscript = "/api/clips/transcript"
 	// RouteClipsStock is POST /api/clips/stock — the clip-side stock ingest.
 	RouteClipsStock = "/api/clips/stock"
 	// RouteMediaClipsList is GET /api/media/clips/:source/clips — list rows

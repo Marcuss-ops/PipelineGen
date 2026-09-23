@@ -14,6 +14,8 @@ package youtube
 
 import (
 	"context"
+	"net/http"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
@@ -70,6 +72,15 @@ type YouTubeClipHandler struct {
 	// GET /api/clips/stats payload).
 	searchFanOut search.SearchFanOut
 	stockService *stockplan.StockService
+	// existence (T1.3) answers GET /api/clips/exists — the pre-extraction
+	// dedup probe. Optional by design: when the media PostgreSQL SSOT is
+	// not deployed the port stays nil and the route fails closed with 503
+	// instead of degrading onto a divergent read plane.
+	existence ytports.YouTubeClipExistencePort
+	// transcript backs GET /api/clips/transcript: the canonical
+	// SubtitleFetcherPort (VTT-only fetch — --skip-download, no Whisper
+	// when captions exist). Optional: nil answers 503.
+	transcript ytports.SubtitleFetcherPort
 } // NewYouTubeClipHandler builds the YouTubeClipHandler.
 // service          - YouTube service used by this handler.
 // log              - zap logger for diagnostics.
@@ -125,6 +136,14 @@ func (h *YouTubeClipHandler) RegisterRoutes(r *gin.RouterGroup) {
 	r.GET("/info", h.GetVideoInfo)
 	r.GET("/search", h.SearchByTopic)
 	r.GET("/diagnostics", h.Diagnostics)
+	// T1.3: pre-extraction dedup probe. Registered unconditionally so the
+	// route contract is stable (routes.yaml / veloxclient constant sync);
+	// an unwired port answers 503 rather than 404.
+	r.GET("/exists", h.GetClipExists)
+	// Transcript-as-a-service: readable text + per-cue timings for a
+	// YouTube URL without downloading the video. Same unconditional
+	// registration contract as /exists.
+	r.GET("/transcript", h.GetTranscript)
 }
 
 // Wave 16 PR1 (June 2026): SearchTopics + searchTopicsViaProvider +
@@ -160,6 +179,30 @@ func (h *YouTubeClipHandler) GetVideoInfo(c *gin.Context) {
 	}
 
 	apiutil.OK(c, metadata)
+}
+
+// GetClipExists answers GET /api/clips/exists?url=... — the T1.3
+// pre-extraction dedup probe. An autonomous agent calls it BEFORE
+// POST /api/clips/process: an already-registered candidate returns
+// {exists:true, clip_id} and costs zero download, zero job, zero rate
+// limit. Fails closed with 503 when the media-SSOT-backed port is not
+// wired (never a silent {exists:false} that would re-trigger extraction).
+func (h *YouTubeClipHandler) GetClipExists(c *gin.Context) {
+	videoURL := strings.TrimSpace(c.Query("url"))
+	if videoURL == "" {
+		apiutil.BadRequest(c, "url parameter is required")
+		return
+	}
+	if h.existence == nil {
+		apiutil.Error(c, http.StatusServiceUnavailable, "clip existence probe not wired (media PostgreSQL SSOT unavailable)")
+		return
+	}
+	clipID, err := h.existence.FindExistingClipID(c.Request.Context(), videoURL)
+	if err != nil {
+		apiutil.InternalError(c, err)
+		return
+	}
+	apiutil.OK(c, gin.H{"ok": true, "exists": clipID != "", "clip_id": clipID})
 }
 
 // S3d (June 2026) removal: getAllClipRepos() is REMOVED.

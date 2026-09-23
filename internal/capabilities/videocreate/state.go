@@ -88,6 +88,10 @@ type StageOutput struct {
 	// AudioPlan is the compiled audio plan the children produced
 	// (§13: the workflow reuses it verbatim, never re-derives it).
 	AudioPlan json.RawMessage `json:"audio_plan,omitempty"`
+	// Voiceovers are the voiceover materializations the stage produced
+	// (04's per-item results, or the §9 per-scene voiceovers of 01) —
+	// the durable input set 05 mixes from.
+	Voiceovers []VoiceoverAssetRef `json:"voiceovers,omitempty"`
 	// AudioMaster is the certified canonical final-audio master
 	// (05_audio_master output, or the §9 reused master).
 	AudioMaster *MasteredAudio `json:"audio_master,omitempty"`
@@ -251,7 +255,8 @@ func (s *WorkflowState) ChildLedger() (scripts string, youtube, stock []string, 
 		voiceover = jobs[0]
 	}
 	render = get("07_render")
-	// "08_assemble" ChildJobs contract: [prepare, finalize].
+	// "08_assemble" ChildJobs contract: EMPTY — assembly runs on the
+	// VeloxEditing media plane (assemble_copy), not on child jobs.
 	assembly = get("08_assemble")
 	return scripts, youtube, stock, voiceover, render, assembly
 }

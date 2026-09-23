@@ -60,6 +60,8 @@ func TestResolve_FallsBackToYouTubeAndExtracts(t *testing.T) {
 			_, _ = w.Write([]byte(`{"items":[]}`))
 		case "/api/clips/search":
 			_, _ = w.Write([]byte(`{"ok":true,"results":[{"video_id":"vid1","title":"Factory tour","direct_link":"https://youtu.be/vid1","duration":600,"similarity_score":80}]}`))
+		case "/api/clips/exists":
+			_, _ = w.Write([]byte(`{"ok":true,"exists":false}`))
 		case "/api/clips/info":
 			_, _ = w.Write([]byte(`{"id":"vid1","title":"Factory tour","duration":600}`))
 		case "/api/clips/process":
@@ -193,6 +195,8 @@ func TestResolve_CallerSourceOverride(t *testing.T) {
 			_, _ = w.Write([]byte(`{"items":[{"asset_id":"cat","score":1}]}`))
 		case "/api/clips/search":
 			_, _ = w.Write([]byte(`{"results":[{"video_id":"v","direct_link":"https://youtu.be/v","similarity_score":10}]}`))
+		case "/api/clips/exists":
+			_, _ = w.Write([]byte(`{"ok":true,"exists":false}`))
 		case "/api/clips/info":
 			_, _ = w.Write([]byte(`{}`))
 		case "/api/clips/process":

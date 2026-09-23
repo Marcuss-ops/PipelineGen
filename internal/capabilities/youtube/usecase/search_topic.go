@@ -56,6 +56,13 @@ type TopicSearchResult struct {
 	SimilarityScore    int    `json:"similarity_score"`
 	FormatMatchPercent int    `json:"format_match_percent"`
 	DirectLink         string `json:"direct_link"`
+	// HasCaptions propagates the metadata probe (see ports.DownloaderMetadata):
+	// true when the video exposes manual or automatic caption tracks. The
+	// enrichment here is the SAME GetVideoInfo call the scorers already
+	// make, so the probe costs zero extra metadata requests on this path.
+	HasCaptions bool `json:"has_captions"`
+	// CaptionLanguages is the sorted union of caption language tags.
+	CaptionLanguages []string `json:"caption_languages,omitempty"`
 }
 
 // ── Scoring constants ───────────────────────────────────────────────────
@@ -275,6 +282,8 @@ func (s *Service) enrichTopicResult(ctx context.Context, query string, clip asse
 		SimilarityScore:    similarity,
 		FormatMatchPercent: formatMatch,
 		DirectLink:         metadata.URL,
+		HasCaptions:        metadata.HasCaptions,
+		CaptionLanguages:   metadata.CaptionLanguages,
 	}, nil
 }
 

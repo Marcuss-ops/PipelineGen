@@ -5,6 +5,7 @@ package veloxclient
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"time"
 )
 
@@ -86,8 +87,14 @@ const (
 var (
 	ErrUnauthorized = errors.New("veloxclient: unauthorized (rotate token)")
 	ErrBadRequest   = errors.New("veloxclient: bad request (do not retry)")
-	ErrServer       = errors.New("veloxclient: server error (surface to operator)")
-	ErrNotFound     = errors.New("veloxclient: job not found")
+	// ErrRateLimited answers HTTP 429. It WRAPS ErrBadRequest on purpose:
+	// callers that only know "bad request, do not retry" keep working
+	// unchanged, while retry-aware callers (pkg/ytagent) detect congestion
+	// with errors.Is(err, ErrRateLimited) and apply jittered backoff instead
+	// of failing a whole harvest on the first rate-limit answer.
+	ErrRateLimited = fmt.Errorf("%w: rate limited (back off and retry)", ErrBadRequest)
+	ErrServer      = errors.New("veloxclient: server error (surface to operator)")
+	ErrNotFound    = errors.New("veloxclient: job not found")
 	// ErrNotReady is returned when the server answers 409 Conflict: the
 	// resource exists but is not available yet (e.g. a clip whose render job
 	// is still RUNNING). It is deliberately distinct from ErrNotFound so

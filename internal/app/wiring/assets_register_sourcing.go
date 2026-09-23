@@ -14,6 +14,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	mediasub "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/media"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/assettree"
@@ -27,6 +28,7 @@ import (
 	appclips "github.com/Marcuss-ops/PipelineGen/internal/capabilities/clips"
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
 	ytadapters "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/adapters"
+	ytports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/ports"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
@@ -412,6 +414,87 @@ func newSourcingClipStore(mediaDB *sql.DB) sourcing.ClipStorePort {
 		return nil
 	}
 	return ytadapters.NewSourcingClipStorePGAdapter(pgmedia.NewMediaSearcher(mediaDB))
+}
+
+// ── T1.3 pre-extraction dedup probe (GET /api/clips/exists) ────────────────
+
+// youtubeMediaExistenceLookup is the narrow read surface the existence
+// adapter needs; *pgmedia.MediaSearcher satisfies it.
+type youtubeMediaExistenceLookup interface {
+	FindClipIDByYouTubeVideoID(ctx context.Context, videoID string, hasSegment bool, startSec, endSec float64) (string, error)
+	FindClipIDBySourceURL(ctx context.Context, url string) (string, error)
+}
+
+// youtubeClipExistenceAdapter implements ytports.YouTubeClipExistencePort
+// on the PostgreSQL media SSOT: exact video-id match first (the canonical
+// identity), then the recorded source URL as fallback. There is no SQLite
+// fallback by design — the operational mirror holds no committed media
+// rows (MEDIA LEGACY READ-PLANE DEMOLITION, 2026-09-20), so a missing
+// handle returns nil and the handler fails closed with 503.
+type youtubeClipExistenceAdapter struct {
+	media youtubeMediaExistenceLookup
+}
+
+func (a *youtubeClipExistenceAdapter) FindExistingClipID(ctx context.Context, videoURL string) (string, error) {
+	if a == nil || a.media == nil {
+		return "", nil
+	}
+	if videoID := youtubeVideoIDFromURL(videoURL); videoID != "" {
+		clipID, err := a.media.FindClipIDByYouTubeVideoID(ctx, videoID, false, 0, 0)
+		if err != nil {
+			return "", fmt.Errorf("clip existence probe: youtube video id lookup: %w", err)
+		}
+		if clipID != "" {
+			return clipID, nil
+		}
+	}
+	clipID, err := a.media.FindClipIDBySourceURL(ctx, videoURL)
+	if err != nil {
+		return "", fmt.Errorf("clip existence probe: source url lookup: %w", err)
+	}
+	return clipID, nil
+}
+
+// newYouTubeClipExistencePort builds the T1.3 dedup port from the media
+// SSOT handle. Nil (media PostgreSQL disabled) propagates as nil so the
+// capability layer fails closed instead of degrading onto a second engine.
+func newYouTubeClipExistencePort(mediaDB *sql.DB) ytports.YouTubeClipExistencePort {
+	if mediaDB == nil {
+		return nil
+	}
+	return &youtubeClipExistenceAdapter{media: pgmedia.NewMediaSearcher(mediaDB)}
+}
+
+// youtubeVideoIDFromURL extracts the 11-char video id from the common
+// YouTube URL shapes (watch?v=, youtu.be/, shorts, embed, live). Returns
+// "" when the URL carries no recognizable id — the caller then relies on
+// the source-URL lookup alone.
+func youtubeVideoIDFromURL(raw string) string {
+	s := strings.TrimSpace(raw)
+	if s == "" {
+		return ""
+	}
+	if idx := strings.Index(s, "v="); idx >= 0 {
+		return firstYouTubeIDSegment(s[idx+2:])
+	}
+	for _, marker := range []string{"youtu.be/", "/shorts/", "/embed/", "/live/"} {
+		if idx := strings.Index(s, marker); idx >= 0 {
+			return firstYouTubeIDSegment(s[idx+len(marker):])
+		}
+	}
+	return ""
+}
+
+// firstYouTubeIDSegment cuts the id at the first path/query separator and
+// validates the canonical 11-char length.
+func firstYouTubeIDSegment(rest string) string {
+	if idx := strings.IndexAny(rest, "?&#/"); idx >= 0 {
+		rest = rest[:idx]
+	}
+	if len(rest) == 11 {
+		return rest
+	}
+	return ""
 }
 
 func wireSourcingAtomic(cfg *config.Config, h sourcing.SourcingAtomicPort) (sourcing.SourcingAtomicPort, error) {

@@ -103,6 +103,23 @@ func (a *Agent) Resolve(ctx context.Context, req MaterialRequest) ([]Material, e
 		}
 
 		ranked := a.scorer.Rank(candidates, req)
+		if req.Constraints.RequireCaptions {
+			budget := a.policy.MaxMetadataProbes
+			if budget <= 0 {
+				budget = DefaultMaxMetadataProbes
+			}
+			kept, dropped := a.applyCaptionGate(ctx, resolver, ranked, &budget)
+			ranked = kept
+			if dropped > 0 {
+				// A scene that required captions and found only caption-less
+				// candidates is a real outcome: record it (classified) instead
+				// of degrading silently.
+				errs = append(errs, fmt.Errorf("%s: %d candidate(s) rejected: %w", name, dropped, ErrNoCaptions))
+			}
+			if len(ranked) == 0 {
+				continue
+			}
+		}
 		perResolver := a.policy.MaxPerResolver
 		if perResolver <= 0 || perResolver > len(ranked) {
 			perResolver = len(ranked)
@@ -127,6 +144,51 @@ func (a *Agent) Resolve(ctx context.Context, req MaterialRequest) ([]Material, e
 		return nil, errors.Join(append([]error{ErrNoMaterial}, errs...)...)
 	}
 	return out, nil
+}
+
+// captionProber is an OPTIONAL Resolver capability: a resolver whose candidates
+// can be probed for caption availability (live YouTube). Resolvers that do not
+// implement it are exempt from the caption gate — reading the catalog or
+// acquiring stock must not pay a probe per candidate.
+type captionProber interface {
+	// ProbeCaptions reports whether candidate c exposes captions. known is
+	// false when the probe could not establish it (leaving the caller to apply
+	// its fail-closed policy).
+	ProbeCaptions(ctx context.Context, c Candidate) (known, has bool)
+}
+
+// applyCaptionGate filters ranked candidates against the RequireCaptions gate
+// using the resolver's caption probe and spending at most *budget probes.
+//
+// Semantics (fail-closed): a candidate known to expose no captions is dropped;
+// a candidate whose captions cannot be established — probe error, or the
+// budget is already spent — is dropped too. Only candidates known to HAVE
+// captions survive. Resolvers without a captionProber pass through untouched.
+// It returns the survivors and how many were dropped.
+func (a *Agent) applyCaptionGate(ctx context.Context, res Resolver, ranked []Candidate, budget *int) ([]Candidate, int) {
+	prober, ok := res.(captionProber)
+	if !ok {
+		return ranked, 0
+	}
+	survivors := make([]Candidate, 0, len(ranked))
+	dropped := 0
+	for _, c := range ranked {
+		// A candidate already answered by the search arm needs no probe.
+		if !c.CaptionsKnown && *budget > 0 {
+			*budget--
+			known, has := prober.ProbeCaptions(ctx, c)
+			if known {
+				c.CaptionsKnown = true
+				c.HasCaptions = has
+			}
+		}
+		if c.CaptionsKnown && c.HasCaptions {
+			survivors = append(survivors, c)
+			continue
+		}
+		dropped++
+	}
+	return survivors, dropped
 }
 
 // ImportFile registers material the remote produced or acquired on its own

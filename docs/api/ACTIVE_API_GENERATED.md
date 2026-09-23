@@ -13,26 +13,17 @@
 | GET | `/models` | ⚠️ MISSING DESCRIPTION |
 | GET | `/ready` | Readiness probe |
 
-## /admin/*filepath
-
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/admin/*filepath` | ⚠️ MISSING DESCRIPTION |
-| HEAD | `/admin/*filepath` | ⚠️ MISSING DESCRIPTION |
-
 ## /api/admin
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/api/admin/auth/me` | ⚠️ MISSING DESCRIPTION |
 | GET | `/api/admin/entities` | ⚠️ MISSING DESCRIPTION |
 | GET | `/api/admin/entities/:entity` | ⚠️ MISSING DESCRIPTION |
 | GET | `/api/admin/entities/:entity/:id` | ⚠️ MISSING DESCRIPTION |
 | GET | `/api/admin/entities/:entity/schema` | ⚠️ MISSING DESCRIPTION |
 | PATCH | `/api/admin/entities/:entity/:id` | ⚠️ MISSING DESCRIPTION |
-| POST | `/api/admin/auth/login` | ⚠️ MISSING DESCRIPTION |
-| POST | `/api/admin/auth/logout` | ⚠️ MISSING DESCRIPTION |
 | POST | `/api/admin/entities/:entity/:id/actions/:action` | ⚠️ MISSING DESCRIPTION |
+| POST | `/api/admin/research/cache/invalidate` | ⚠️ MISSING DESCRIPTION |
 
 ## /api/artlist
 
@@ -77,8 +68,10 @@
 | Method | Path | Description |
 |--------|------|-------------|
 | GET | `/api/clips/diagnostics` | Clips diagnostics |
+| GET | `/api/clips/exists` | Pre-extraction dedup probe: answers {exists, clip_id} for a YouTube URL so callers skip /api/clips/process for known candidates |
 | GET | `/api/clips/info` | Get YouTube video metadata |
 | GET | `/api/clips/search` | Search and rank YouTube videos by topic |
+| GET | `/api/clips/transcript` | Transcript-as-a-service: readable text + per-cue timings for a YouTube URL without downloading the video (yt-dlp --skip-download + canonical VTT parser) |
 | POST | `/api/clips/process` | Download and process clips |
 | POST | `/api/clips/render` | Render a canonical clip into a VeloxEditing-compatible derived clip (background/watermark/subtitles, async clip.render job) |
 | POST | `/api/clips/render/batch` | Render up to 50 canonical clips with fingerprint deduplication and async clip.render jobs |
@@ -117,6 +110,12 @@
 | POST | `/api/images/sync` | Sync images to Drive |
 | POST | `/api/images/upload` | Upload an image |
 
+## /api/internal
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/internal/slug` | ⚠️ MISSING DESCRIPTION |
+
 ## /api/jobs
 
 | Method | Path | Description |
@@ -128,6 +127,7 @@
 | GET | `/api/jobs/stats` | Get job statistics |
 | POST | `/api/jobs` | Enqueue a new job |
 | POST | `/api/jobs/:id/cancel` | Cancel a job |
+| POST | `/api/jobs/:id/replay` | ⚠️ MISSING DESCRIPTION |
 | POST | `/api/jobs/:id/retry` | Retry a failed job |
 
 ## /api/media

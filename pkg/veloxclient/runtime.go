@@ -63,6 +63,14 @@ type TopicSearchResult struct {
 	SimilarityScore    int    `json:"similarity_score"`
 	FormatMatchPercent int    `json:"format_match_percent"`
 	DirectLink         string `json:"direct_link"`
+	// HasCaptions is a TRI-STATE caption probe: nil means the server did not
+	// report the field (an older build), while true/false is authoritative. A
+	// plain bool would read "absent" as "no captions" and wrongly discard
+	// every candidate against a server that predates the probe.
+	HasCaptions *bool `json:"has_captions,omitempty"`
+	// CaptionLanguages is the sorted union of manual + ASR caption language
+	// tags; empty when the video exposes none.
+	CaptionLanguages []string `json:"caption_languages,omitempty"`
 }
 
 // SearchClipsByTopic performs LIVE YouTube discovery. Distinct from
@@ -96,14 +104,20 @@ func (c *Client) SearchClipsByTopic(ctx context.Context, q TopicSearchQuery) (*T
 // needs a field this struct does not model (chapters, thumbnails, ...) can
 // decode it without a client release.
 type ClipMetadata struct {
-	ID        string          `json:"id"`
-	Title     string          `json:"title"`
-	Duration  float64         `json:"duration"`
-	Uploader  string          `json:"uploader"`
-	ViewCount int64           `json:"view_count"`
-	Thumbnail string          `json:"thumbnail"`
-	Tags      []string        `json:"tags"`
-	Raw       json.RawMessage `json:"-"`
+	ID        string   `json:"id"`
+	Title     string   `json:"title"`
+	Duration  float64  `json:"duration"`
+	Uploader  string   `json:"uploader"`
+	ViewCount int64    `json:"view_count"`
+	Thumbnail string   `json:"thumbnail"`
+	Tags      []string `json:"tags"`
+	// HasCaptions is the same tri-state probe as TopicSearchResult: nil means
+	// the server predates the field, true/false is authoritative.
+	HasCaptions *bool `json:"has_captions,omitempty"`
+	// CaptionLanguages is the sorted union of manual + ASR caption language
+	// tags; empty when the video exposes none.
+	CaptionLanguages []string        `json:"caption_languages,omitempty"`
+	Raw              json.RawMessage `json:"-"`
 }
 
 // ClipInfo fetches full metadata for a single YouTube URL without downloading
@@ -123,6 +137,87 @@ func (c *Client) ClipInfo(ctx context.Context, videoURL string) (*ClipMetadata, 
 	}
 	meta.Raw = append(json.RawMessage(nil), raw...)
 	return &meta, nil
+}
+
+// ClipExistsResponse is the GET /api/clips/exists envelope.
+type ClipExistsResponse struct {
+	OK     bool   `json:"ok"`
+	Exists bool   `json:"exists"`
+	ClipID string `json:"clip_id,omitempty"`
+}
+
+// ClipExists probes the catalog dedup for a YouTube URL (T1.3): an
+// already-registered candidate returns Exists=true + its clip id so the
+// caller can skip POST /api/clips/process entirely (0 downloads, 0 jobs,
+// 0 rate-limit). A 503 (probe not wired: media PostgreSQL SSOT disabled)
+// is surfaced as an error — never a silent "not exists".
+func (c *Client) ClipExists(ctx context.Context, videoURL string) (*ClipExistsResponse, error) {
+	if strings.TrimSpace(videoURL) == "" {
+		return nil, fmt.Errorf("veloxclient: ClipExists requires a non-empty url")
+	}
+	path := RouteClipsExists + "?url=" + url.QueryEscape(videoURL)
+	raw, err := c.getRaw(ctx, path)
+	if err != nil {
+		return nil, err
+	}
+	var resp ClipExistsResponse
+	if err := json.Unmarshal(raw, &resp); err != nil {
+		return nil, fmt.Errorf("veloxclient: decode clip exists: %w (body=%s)", err, truncate(raw, 256))
+	}
+	return &resp, nil
+}
+
+// TranscriptCue mirrors one timed cue of the transcript response.
+type TranscriptCue struct {
+	StartMs int64  `json:"start_ms"`
+	EndMs   int64  `json:"end_ms"`
+	Text    string `json:"text"`
+}
+
+// Transcript is the GET /api/clips/transcript payload: readable text
+// plus per-cue timings, with the resolved provenance (language,
+// source_type, provider) so callers can honour evidence honesty
+// (youtube_subtitle/manual vs whisper ASR) instead of treating all
+// transcripts as equal.
+type Transcript struct {
+	OK             bool            `json:"ok"`
+	VideoID        string          `json:"video_id"`
+	Language       string          `json:"language"`
+	SourceLanguage string          `json:"source_language,omitempty"`
+	SourceType     string          `json:"source_type"`
+	IsOriginal     bool            `json:"is_original"`
+	Provider       string          `json:"provider,omitempty"`
+	Text           string          `json:"text"`
+	Cues           []TranscriptCue `json:"cues"`
+	CueCount       int             `json:"cue_count"`
+}
+
+// ClipTranscript fetches the transcript for a YouTube URL without
+// downloading the video or running Whisper (server-side yt-dlp
+// --skip-download + canonical VTT parser). start/end slice the cue
+// window in seconds; 0/0 means the whole video. A 404 (video exposes no
+// captions on the configured languages) is surfaced as an error.
+func (c *Client) ClipTranscript(ctx context.Context, videoURL string, startSec, endSec int) (*Transcript, error) {
+	if strings.TrimSpace(videoURL) == "" {
+		return nil, fmt.Errorf("veloxclient: ClipTranscript requires a non-empty url")
+	}
+	q := url.Values{}
+	q.Set("url", videoURL)
+	if startSec > 0 {
+		q.Set("start", strconv.Itoa(startSec))
+	}
+	if endSec > 0 {
+		q.Set("end", strconv.Itoa(endSec))
+	}
+	raw, err := c.getRaw(ctx, RouteClipsTranscript+"?"+q.Encode())
+	if err != nil {
+		return nil, err
+	}
+	var tr Transcript
+	if err := json.Unmarshal(raw, &tr); err != nil {
+		return nil, fmt.Errorf("veloxclient: decode transcript: %w (body=%s)", err, truncate(raw, 256))
+	}
+	return &tr, nil
 }
 
 // ── Catalog: POST /api/media/search ─────────────────────────────────────────

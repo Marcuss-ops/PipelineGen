@@ -46,6 +46,15 @@ type DownloaderMetadata struct {
 	Categories   []string         `json:"categories,omitempty"`
 	Tags         []string         `json:"tags,omitempty"`
 	CachedAt     time.Time        `json:"cached_at,omitempty"`
+	// HasCaptions reports whether the video exposes ANY caption track
+	// (manual subtitles or automatic_captions) according to the yt-dlp
+	// dump. It is the selection probe: a candidate without captions can
+	// only be transcribed by paying a Whisper run, so the agent filters
+	// on this AFTER scoring instead of discovering it post-extraction.
+	HasCaptions bool `json:"has_captions"`
+	// CaptionLanguages is the sorted union of manual + ASR caption
+	// language tags (e.g. ["en","it"]). Empty when HasCaptions=false.
+	CaptionLanguages []string `json:"caption_languages,omitempty"`
 }
 
 // VideoChapter represents a single chapter slice in a video.
@@ -187,6 +196,17 @@ type OllamaClientPort interface {
 type SearchRunnerPort interface {
 	SearchLive(ctx context.Context, query string, limit int, sort string) ([]SearchLiveResult, error)
 	GetVideoInfo(ctx context.Context, videoURL string) (*DownloaderMetadata, error)
+}
+
+// YouTubeClipExistencePort is the T1.3 pre-extraction dedup probe behind
+// GET /api/clips/exists?url=...: it answers whether the catalog already
+// holds a clip for the given YouTube URL and returns its id ("" = none).
+// The autonomous agent MUST consult it before POST /api/clips/process so
+// an already-registered candidate costs 0 downloads, 0 jobs and 0 rate
+// limit. Errors propagate (fail-closed: a broken probe is an error, never
+// a silent "not registered" answer that would re-trigger extraction).
+type YouTubeClipExistencePort interface {
+	FindExistingClipID(ctx context.Context, videoURL string) (string, error)
 }
 
 type ClipIndexerPort interface {

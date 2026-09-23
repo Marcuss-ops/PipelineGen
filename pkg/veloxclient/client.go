@@ -229,6 +229,15 @@ func (c *Client) doRequest(ctx context.Context, method, url string, body []byte,
 		return nil, false, fmt.Errorf("%w: status=%d body=%s", ErrUnauthorized, resp.StatusCode, truncate(raw, 256))
 	case resp.StatusCode == 404:
 		return nil, false, fmt.Errorf("%w: status=%d", ErrNotFound, resp.StatusCode)
+	case resp.StatusCode == http.StatusTooManyRequests:
+		// 429 is congestion, not a request fault: surface a dedicated
+		// sentinel (wrapping ErrBadRequest, so existing ErrBadRequest
+		// callers keep their "do not retry blindly" semantics) that
+		// retry-aware callers (pkg/ytagent's transcript fetcher) use for
+		// honest jittered backoff. The raw body carries the server's
+		// canonical {kind, retry_after_seconds} envelope for callers that
+		// want the exact hint.
+		return nil, false, fmt.Errorf("%w: status=%d body=%s", ErrRateLimited, resp.StatusCode, truncate(raw, 256))
 	case resp.StatusCode >= 400 && resp.StatusCode < 500:
 		return nil, false, fmt.Errorf("%w: status=%d body=%s", ErrBadRequest, resp.StatusCode, truncate(raw, 256))
 	default:

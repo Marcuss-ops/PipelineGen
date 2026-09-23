@@ -86,7 +86,10 @@ func handle(ctx context.Context, j *job.Job, tools *job.JobExecutionTools, deps 
 // starts media search, downloads or rendering. A registered job policy is not
 // evidence that its child capability has a live consumer.
 func validateChildHandlers(payload appjobs.VideoCreatePayload, children ChildJobs) error {
-	required := []string{appjobs.TypeScriptGenerate, job.TypeClipRender, appjobs.TypeAssemblyPrepare, appjobs.TypeAssemblyFinalize}
+	// The assembly boundary (VeloxEditing: assemble_copy) and the final
+	// mux are media-plane operations behind the Assembler/AudioMaster
+	// ports — NOT child job types. Only real child lanes are checked here.
+	required := []string{appjobs.TypeScriptGenerate, job.TypeClipRender}
 	for _, source := range payload.MediaSources {
 		_, jobType := acquireFamily(source)
 		required = append(required, jobType)

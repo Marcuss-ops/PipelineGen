@@ -32,6 +32,10 @@ type VideoInfo struct {
 	Chapters     []VideoChapter
 	Categories   []string
 	Tags         []string
+	// T1.2 probe: caption availability derived from the dump's
+	// subtitles/automatic_captions dictionaries (see GetVideoInfo).
+	HasCaptions      bool
+	CaptionLanguages []string
 }
 
 type VideoThumbnail struct {
@@ -192,6 +196,9 @@ func (a *YTDLPAdapter) GetVideoInfo(ctx context.Context, videoURL string) (Video
 		} `json:"chapters"`
 		Categories []string `json:"categories"`
 		Tags       []string `json:"tags"`
+		// T1.2 probe: the two caption dictionaries of the yt-dlp dump.
+		Subtitles         map[string][]captionTrackJSON `json:"subtitles"`
+		AutomaticCaptions map[string][]captionTrackJSON `json:"automatic_captions"`
 	}
 	if err := json.Unmarshal([]byte(stdout), &raw); err != nil {
 		return VideoInfo{}, fmt.Errorf("failed to parse video info: %w", err)
@@ -218,5 +225,7 @@ func (a *YTDLPAdapter) GetVideoInfo(ctx context.Context, videoURL string) (Video
 	for _, c := range raw.Chapters {
 		out.Chapters = append(out.Chapters, VideoChapter{Title: c.Title, StartTime: c.StartTime, EndTime: c.EndTime})
 	}
+	rawCaps := ytDLPJSON{Subtitles: raw.Subtitles, AutomaticCaptions: raw.AutomaticCaptions}
+	out.HasCaptions, out.CaptionLanguages = rawCaps.captionFlags()
 	return out, nil
 }

@@ -30,6 +30,8 @@ func TestRoutesMatchGeneratedManifest(t *testing.T) {
 		RouteClipsDownload(":source", ":id"),
 		RouteClipsTopicSearch,
 		RouteClipsInfo,
+		RouteClipsExists,
+		RouteClipsTranscript,
 		RouteClipsStock,
 		RouteMediaClipsFor(":source"),
 		RouteMediaRegisterBatch,

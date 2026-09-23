@@ -12,12 +12,6 @@ routes:
       path: /
       source: cmd/admin/gen_api_docs.go
     - method: GET
-      path: /admin/*filepath
-      source: cmd/admin/gen_api_docs.go
-    - method: GET
-      path: /api/admin/auth/me
-      source: cmd/admin/gen_api_docs.go
-    - method: GET
       path: /api/admin/entities
       source: cmd/admin/gen_api_docs.go
     - method: GET
@@ -78,10 +72,16 @@ routes:
       path: /api/clips/diagnostics
       source: cmd/admin/gen_api_docs.go
     - method: GET
+      path: /api/clips/exists
+      source: cmd/admin/gen_api_docs.go
+    - method: GET
       path: /api/clips/info
       source: cmd/admin/gen_api_docs.go
     - method: GET
       path: /api/clips/search
+      source: cmd/admin/gen_api_docs.go
+    - method: GET
+      path: /api/clips/transcript
       source: cmd/admin/gen_api_docs.go
     - method: GET
       path: /api/drive/files
@@ -103,6 +103,9 @@ routes:
       source: cmd/admin/gen_api_docs.go
     - method: GET
       path: /api/images/search
+      source: cmd/admin/gen_api_docs.go
+    - method: GET
+      path: /api/internal/slug
       source: cmd/admin/gen_api_docs.go
     - method: GET
       path: /api/jobs
@@ -177,9 +180,6 @@ routes:
       path: /ready
       source: cmd/admin/gen_api_docs.go
     - method: HEAD
-      path: /admin/*filepath
-      source: cmd/admin/gen_api_docs.go
-    - method: HEAD
       path: /assets/*filepath
       source: cmd/admin/gen_api_docs.go
     - method: HEAD
@@ -192,13 +192,10 @@ routes:
       path: /api/media/clips/:source/clips/:id
       source: cmd/admin/gen_api_docs.go
     - method: POST
-      path: /api/admin/auth/login
-      source: cmd/admin/gen_api_docs.go
-    - method: POST
-      path: /api/admin/auth/logout
-      source: cmd/admin/gen_api_docs.go
-    - method: POST
       path: /api/admin/entities/:entity/:id/actions/:action
+      source: cmd/admin/gen_api_docs.go
+    - method: POST
+      path: /api/admin/research/cache/invalidate
       source: cmd/admin/gen_api_docs.go
     - method: POST
       path: /api/artlist/import
@@ -274,6 +271,9 @@ routes:
       source: cmd/admin/gen_api_docs.go
     - method: POST
       path: /api/jobs/:id/cancel
+      source: cmd/admin/gen_api_docs.go
+    - method: POST
+      path: /api/jobs/:id/replay
       source: cmd/admin/gen_api_docs.go
     - method: POST
       path: /api/jobs/:id/retry

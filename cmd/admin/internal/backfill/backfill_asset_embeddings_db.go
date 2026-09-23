@@ -30,8 +30,11 @@
 //   - The CASE WHEN embedding_* IS NOT NULL AND ... != '[]' AND ... !=
 //     '{}' truthiness idiom is preserved verbatim across both helpers.
 //     The "empty blob ⇒ false" semantics IS the production contract
-//     for the embedding channels (an empty JSON object/array is
-//     indistinguishable from NULL for the backfill purpose).
+//     for the legacy embedding channels (an empty JSON object/array is
+//     indistinguishable from NULL for the backfill purpose). The LIVE
+//     text channel is graded on media_embeddings instead (see
+//     pgmedia.liveTextPresenceExpr) — the legacy blobs never converge
+//     post-cutover and cannot drive skip decisions.
 //
 // godlike/07 honest lock:
 //   - The empty-id-list fast-path on fetchFailedCandidates returns
@@ -95,7 +98,9 @@ func fetchEmbeddingCandidates(
 }
 
 // embeddingCandidatesFromRows maps SSOT rows onto the indexing candidate model,
-// dropping fully-embedded rows in --only-missing mode.
+// dropping already-embedded rows in --only-missing mode. "Embedded" is the
+// live text channel (pgmedia.EmbeddingCandidate.HasText = a media_embeddings
+// text vector): the only channel the indexing pipeline produces.
 func embeddingCandidatesFromRows(found []pgmedia.EmbeddingCandidate, onlyMissing bool) []indexing.Candidate {
 	out := make([]indexing.Candidate, 0, len(found))
 	for _, rec := range found {
@@ -111,8 +116,8 @@ func embeddingCandidatesFromRows(found []pgmedia.EmbeddingCandidate, onlyMissing
 			HasVisual:     rec.HasVisual,
 			HasAudio:      rec.HasAudio,
 		}
-		if onlyMissing && candidate.HasText && candidate.HasTranscript && candidate.HasVisual && candidate.HasAudio {
-			continue // fully embedded, skip in --only-missing mode
+		if onlyMissing && candidate.HasText {
+			continue // live text vector present, skip in --only-missing mode
 		}
 		out = append(out, candidate)
 	}

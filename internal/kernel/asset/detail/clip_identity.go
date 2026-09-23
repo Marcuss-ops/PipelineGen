@@ -35,6 +35,7 @@ package detail
 import (
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 )
 
@@ -200,6 +201,59 @@ func NewYouTubeClipIdentity(params YouTubeClipIdentityParams) (ClipIdentity, err
 		ContentHash:   contentHash,
 		IndexEventKey: eventKey,
 	}, nil
+}
+
+// ErrYouTubeClipAssetIDShape signals an asset id that does not match the
+// canonical `yt_{videoID}_{startSec}_{endSec}_{policyVer}` contract.
+var ErrYouTubeClipAssetIDShape = errors.New("clip identity: asset_id does not match yt_{videoID}_{startSec}_{endSec}_{policyVer}")
+
+// ParseYouTubeClipAssetID is the INVERSE of YouTubeClipAssetID (the sole
+// owner of the format). It recovers (videoID, startSec, endSec, policyVer)
+// from a canonical YouTube clip asset id so callers can rebuild the source
+// video URL and the exact clip window WITHOUT guessing (godlike/06 SSOT:
+// the format has one owner, both directions).
+//
+// Parsing is right-anchored because the videoID itself may contain
+// underscores (YouTube ids are alphanumeric plus '-' and '_'), while the
+// policy version may be multi-token (e.g. "whisper_v1"): scanning from the
+// right consumes the non-numeric policy tail, then the two numeric
+// boundaries, and everything left of them is the videoID.
+//
+// Fail-closed: any shape mismatch returns ErrYouTubeClipAssetIDShape.
+func ParseYouTubeClipAssetID(assetID string) (videoID string, startSec, endSec int, policyVer string, err error) {
+	trimmed := strings.TrimSpace(assetID)
+	if !strings.HasPrefix(trimmed, "yt_") || trimmed == "yt_" {
+		return "", 0, 0, "", fmt.Errorf("%w: %q", ErrYouTubeClipAssetIDShape, assetID)
+	}
+	parts := strings.Split(strings.TrimPrefix(trimmed, "yt_"), "_")
+	if len(parts) < 4 {
+		return "", 0, 0, "", fmt.Errorf("%w: %q", ErrYouTubeClipAssetIDShape, assetID)
+	}
+	// Right-anchored scan: policy tail (non-numeric) + the two boundaries.
+	policyTokens := []string{}
+	i := len(parts) - 1
+	for ; i >= 0; i-- {
+		if _, nerr := strconv.Atoi(parts[i]); nerr == nil {
+			break
+		}
+		policyTokens = append([]string{parts[i]}, policyTokens...)
+	}
+	if i < 1 || len(policyTokens) == 0 {
+		return "", 0, 0, "", fmt.Errorf("%w: %q", ErrYouTubeClipAssetIDShape, assetID)
+	}
+	endSec, convErr := strconv.Atoi(parts[i])
+	if convErr != nil {
+		return "", 0, 0, "", fmt.Errorf("%w: %q", ErrYouTubeClipAssetIDShape, assetID)
+	}
+	startSec, convErr = strconv.Atoi(parts[i-1])
+	if convErr != nil {
+		return "", 0, 0, "", fmt.Errorf("%w: %q", ErrYouTubeClipAssetIDShape, assetID)
+	}
+	videoID = strings.Join(parts[:i-1], "_")
+	if videoID == "" || endSec < startSec {
+		return "", 0, 0, "", fmt.Errorf("%w: %q", ErrYouTubeClipAssetIDShape, assetID)
+	}
+	return videoID, startSec, endSec, strings.Join(policyTokens, "_"), nil
 }
 
 // ── Stock builder ───────────────────────────────────────────────────

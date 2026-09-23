@@ -39,14 +39,16 @@ func (r *recordingEnqueuer) ids() []string {
 func nopLog() *zap.Logger { return zap.NewNop() }
 
 // TestRun_OnlyMissingEnqueuesOnlyIncompleteAssets pins the core contract of
-// the embedding backfill: in --only-missing mode (the default), fully-embedded
-// assets are skipped and only assets with at least one missing channel are
-// enqueued, always with force=true.
+// the embedding backfill: in --only-missing mode (the default), assets whose
+// LIVE text channel is populated are skipped and only assets missing the live
+// text vector are enqueued, always with force=true. HasText is the skip driver
+// because the indexing pipeline produces exactly one vector channel (the text
+// vector in media_embeddings); the legacy channel flags are reporting-only.
 func TestRun_OnlyMissingEnqueuesOnlyIncompleteAssets(t *testing.T) {
 	candidates := []Candidate{
 		{ID: "a1", HasText: true, HasTranscript: true, HasVisual: true, HasAudio: true},     // complete → skip
-		{ID: "a2", HasText: true, HasTranscript: true, HasVisual: true, HasAudio: false},    // missing audio → enqueue
-		{ID: "a3", HasText: false, HasTranscript: false, HasVisual: false, HasAudio: false}, // all missing → enqueue
+		{ID: "a2", HasText: true, HasTranscript: true, HasVisual: true, HasAudio: false},    // live text present (legacy drift) → skip
+		{ID: "a3", HasText: false, HasTranscript: false, HasVisual: false, HasAudio: false}, // no live text vector → enqueue
 	}
 	fetch := func(_ context.Context, _ Deps, _ *Checkpoint) ([]Candidate, error) {
 		return candidates, nil
@@ -58,7 +60,7 @@ func TestRun_OnlyMissingEnqueuesOnlyIncompleteAssets(t *testing.T) {
 		t.Fatalf("Run: %v", err)
 	}
 
-	if want := []string{"a2", "a3"}; !reflect.DeepEqual(enq.ids(), want) {
+	if want := []string{"a3"}; !reflect.DeepEqual(enq.ids(), want) {
 		t.Fatalf("enqueued = %v, want %v", enq.ids(), want)
 	}
 	for _, c := range enq.calls {
@@ -66,15 +68,19 @@ func TestRun_OnlyMissingEnqueuesOnlyIncompleteAssets(t *testing.T) {
 			t.Fatalf("enqueue for %s must carry force=true (admin repair opt-in), got force=%v", c.id, c.force)
 		}
 	}
-	if report.Processed != 2 || report.Succeeded != 2 || report.Skipped != 1 {
-		t.Fatalf("report = %+v, want processed=2 succeeded=2 skipped=1", report)
+	if report.Processed != 1 || report.Succeeded != 1 || report.Skipped != 2 {
+		t.Fatalf("report = %+v, want processed=1 succeeded=1 skipped=2", report)
 	}
 	if report.Mode != "apply" {
 		t.Fatalf("mode = %q, want apply", report.Mode)
 	}
-	// a2 misses only audio; a3 misses all four channels.
+	// Only a3 misses the live text channel; a2 keeps reporting one legacy
+	// gap (audio) but is already complete on the live pipeline.
 	if report.MissingAudio != 2 || report.MissingText != 1 || report.MissingTranscript != 1 || report.MissingVisual != 1 {
 		t.Fatalf("missing channel counts = %+v, want text=1 transcript=1 visual=1 audio=2", report)
+	}
+	if report.AlreadyComplete != 2 || report.AnyMissing != 1 {
+		t.Fatalf("completion counts = %+v, want already_complete=2 any_missing=1", report)
 	}
 }
 
