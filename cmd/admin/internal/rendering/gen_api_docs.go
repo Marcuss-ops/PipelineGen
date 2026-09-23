@@ -3,6 +3,7 @@ package rendering
 import (
 	"context"
 	"fmt"
+	"os"
 	"sort"
 	"strings"
 
@@ -19,6 +20,12 @@ func RunGenAPIDocs(args []string) error {
 	log, _ := zap.NewDevelopment()
 	defer log.Sync()
 
+	// Media PostgreSQL handle for this run (see the feature-gate note
+	// below): read from the canonical env var so the generator composes
+	// the same way the server does, without parsing config.yaml.
+	mediaDSN := strings.TrimSpace(os.Getenv("PIPELINEGEN_MEDIA_POSTGRES_DSN"))
+	mediaPG := mediaDSN != ""
+
 	cfg := &config.Config{
 		Server: config.ServerConfig{
 			GinMode: "test",
@@ -26,13 +33,24 @@ func RunGenAPIDocs(args []string) error {
 		Security: config.SecurityConfig{
 			CORSOrigins: []string{},
 		},
+		// PRE-EXISTING GENERATOR GAP, resolved dynamically: Artlist AND
+		// clip.render both fail closed on a nil AssetTxFinalizer committer
+		// (godlike/07), and that committer exists only with a media
+		// PostgreSQL handle — which a DB-less docs snapshot cannot open.
+		// Boot used to abort at registerArtlist before any route was
+		// collected, so the manifest could not be regenerated at all.
+		// Both features are therefore mounted ONLY when the canonical
+		// PIPELINEGEN_MEDIA_POSTGRES_DSN env var is present (any host
+		// running the server has it); without it the generator produces
+		// the rest of the manifest and their description keys live in
+		// routeDescriptionsGated ("absence is gating, not drift").
 		Features: config.FeaturesConfig{
-			ArtlistEnabled:     true,
+			ArtlistEnabled:     mediaPG,
 			YouTubeEnabled:     true,
 			VoiceoverEnabled:   true,
 			ImagesEnabled:      true,
 			ScriptClipsEnabled: true,
-			ClipRenderEnabled:  true,
+			ClipRenderEnabled:  mediaPG,
 		},
 		Storage: config.StorageConfig{
 			DataDir: "/tmp/test-data",
@@ -46,6 +64,30 @@ func RunGenAPIDocs(args []string) error {
 		},
 		External: config.ExternalConfig{
 			ArtlistScraperServerURL: "http://localhost:0",
+			// BuildClipRenderRuntime fail-closes when the RenderingGen queue
+			// URL is empty. Docs runs never submit a render job (the queue
+			// client is constructed, never dialed at boot), so the canonical
+			// config.yaml value is pinned here; like the ClipIndexer URL
+			// above it is a construction input, not an I/O dependency.
+			RenderingGenQueueURL: "http://127.0.0.1:8081",
+		},
+		MediaPostgreSQL: config.PostgreSQLMediaConfig{
+			Enabled:                mediaPG,
+			DSN:                    mediaDSN,
+			MaxOpenConnections:     5,
+			MaxIdleConnections:     2,
+			ConnMaxLifetimeSeconds: 60,
+			EmbeddingModel:         "intfloat/multilingual-e5-base",
+		},
+		// BuildOutboxBundle fail-closes when media PG is on and the E5
+		// embedding sidecar URL is missing. Docs runs point at the
+		// canonical sidecar address from config.yaml but never call it:
+		// the docs-only media DB (see the DSN above) has an empty outbox.
+		ClipIndexer: config.ClipIndexerConfig{
+			Enabled:               true,
+			ServerURL:             "http://127.0.0.1:8001",
+			MaxConcurrentIndexing: 1,
+			EmbedTimeoutSeconds:   60,
 		},
 	}
 
@@ -84,13 +126,20 @@ func RunGenAPIDocs(args []string) error {
 	}
 	routerCfg := &httpserver.RouterConfig{
 		ServerGinMode: cfg.Server.GinMode,
-		DataDir:       cfg.Storage.DataDir,
-		DownloadDir:   cfg.GoogleAccounting.DownloadDir,
-		CORSOrigins:   cfg.Security.CORSOrigins,
-		Log:           log,
-		Auth:          authAdapter,
-		Rate:          rateAdapter,
-		Features:      featuresAdapter,
+		// The production server binds an explicit loopback address, which
+		// is what PR-METRICS-FAILCLOSED keys the /metrics mount on
+		// (token-less dev mount requires a loopback listener). Without
+		// this flag the docs snapshot would silently drop /metrics from
+		// the manifest while the live server serves it — drift, not
+		// gating. METRICS_AUTH_TOKEN (if set) still wins in every mode.
+		ServerLoopbackOnly: true,
+		DataDir:            cfg.Storage.DataDir,
+		DownloadDir:        cfg.GoogleAccounting.DownloadDir,
+		CORSOrigins:        cfg.Security.CORSOrigins,
+		Log:                log,
+		Auth:               authAdapter,
+		Rate:               rateAdapter,
+		Features:           featuresAdapter,
 	}
 	router := httpserver.NewRouter(routerCfg)
 	router.SetRegistry(appDeps.Handlers.Registry)
@@ -171,6 +220,8 @@ var routeDescriptions = map[string]string{
 	"POST /api/clips/render/batch": "Render up to 50 canonical clips with fingerprint deduplication and async clip.render jobs",
 	"GET /api/clips/info":          "Get YouTube video metadata",
 	"GET /api/clips/search":        "Search and rank YouTube videos by topic",
+	"GET /api/clips/exists":        "Pre-extraction dedup probe: answers {exists, clip_id} for a YouTube URL so callers skip /api/clips/process for known candidates",
+	"GET /api/clips/transcript":    "Transcript-as-a-service: readable text + per-cue timings for a YouTube URL without downloading the video (yt-dlp --skip-download + canonical VTT parser)",
 	"GET /api/clips/diagnostics":   "Clips diagnostics",
 
 	// ── Media / Clips ─────────────────────────────────────────
@@ -394,6 +445,23 @@ var routeDescriptionsGated = map[string]bool{
 	"GET /api/script/clips/search": true,
 	"GET /api/script/jobs/:id":     true,
 	"POST /api/script/generate":    true,
+	// Artlist (see the ArtlistEnabled note in the cfg above): the routes
+	// are live in production, but the docs snapshot cannot wire the
+	// capability without a media PostgreSQL committer, so their absence
+	// from the manifest is gating, not drift.
+	"POST /api/artlist/run":           true,
+	"POST /api/artlist/search":        true,
+	"GET /api/artlist/search/live":    true,
+	"GET /api/artlist/stats":          true,
+	"GET /api/artlist/runs/:run_id":   true,
+	"GET /api/artlist/diagnostics":    true,
+	"POST /api/artlist/sync-catalogs": true,
+	"POST /api/artlist/recommend":     true,
+	// clip.render (ClipRenderEnabled, same media PostgreSQL gate as
+	// Artlist above): mounted only when the docs snapshot has a media
+	// SSOT handle, otherwise gating not drift.
+	"POST /api/clips/render":       true,
+	"POST /api/clips/render/batch": true,
 }
 
 // staleDescriptionKeys returns the description keys that match no registered

@@ -30,8 +30,6 @@
 package youtube
 
 import (
-	"os"
-
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 )
 
@@ -45,14 +43,6 @@ import (
 // importing the Whisper port here.
 func triggerWhisperFallback() (*detail.ResolvedTextBundle, error) {
 	return nil, nil
-}
-
-// isVttMissing reports whether the expected cached VTT file is
-// missing on disk. Used by the facade to detect the "yt-dlp
-// succeeded but wrote nothing" outcome.
-func isVttMissing(vttPath string) bool {
-	_, statErr := os.Stat(vttPath)
-	return statErr != nil
 }
 
 // isContentEmpty reports whether the parsed subtitle result has no

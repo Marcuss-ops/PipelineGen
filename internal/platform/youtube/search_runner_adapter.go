@@ -152,6 +152,10 @@ func (a *SearchRunnerAdapter) GetVideoInfo(ctx context.Context, videoURL string)
 		ThumbnailURL: raw.ThumbnailURL,
 		Categories:   append([]string(nil), raw.Categories...),
 		Tags:         append([]string(nil), raw.Tags...),
+		// T1.2 probe: carry the caption flags derived by the infra dump
+		// (GetVideoInfo) across the adapter boundary.
+		HasCaptions:      raw.HasCaptions,
+		CaptionLanguages: append([]string(nil), raw.CaptionLanguages...),
 	}
 	// Translate thumbnails — fixes CPR-LR-1 (the previous infra→app
 	// conversion path dropped raw.Thumbnails array on the floor).

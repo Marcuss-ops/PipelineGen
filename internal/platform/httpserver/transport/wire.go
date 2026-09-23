@@ -67,6 +67,8 @@ var knownCapabilities = []struct {
 	{name: "youtube", prefixes: []string{
 		"/api/clips/search",
 		"/api/clips/info",
+		"/api/clips/exists",
+		"/api/clips/transcript",
 		"/api/clips/process",
 		"/api/clips/stock",
 		"/api/clips/diagnostics",

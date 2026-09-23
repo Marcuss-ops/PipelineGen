@@ -11,11 +11,11 @@
 //
 //	children     → the canonical job registry (script.generate,
 //	               youtube_clip.extract, media.stock, voiceover.generate,
-//	               clip.render, assembly.prepare/finalize). Never
+//	               clip.render). Never
 //	               exec.Command("yt-dlp") / exec.Command("ffmpeg"):
 //	               media-binary execution is owned by
 //	               internal/platform/media/rustexec and reached through
-//	               the MediaProber/AudioMaster ports.
+//	               the MediaProber/AudioMaster/Assembler ports.
 //	media search → the canonical SearchAggregator port (the same
 //	               /api/media/search backend), never an HTTP call to
 //	               itself and never a re-implementation of ranking.
@@ -23,8 +23,9 @@
 //	               resumable step store). The WorkflowState document is
 //	               a PROJECTION of those rows, never a second authority.
 //	digests      → internal/kernel/digest (SHA-256 SSOT).
-//	assembly     → the canonical assembly.prepare/finalize contract
-//	               (internal/kernel/assembly), never a private concat.
+//	assembly     → the VeloxEditing media plane (assemble_copy /
+//	               video.assemble.copy.v1: packet-copy over
+//	               copy-certified segments), never a private concat.
 //
 // Stage outputs exchange DURABLE IDENTITIES (asset ids, content SHA-256,
 // Drive file ids, durations, media types) — never local filesystem paths

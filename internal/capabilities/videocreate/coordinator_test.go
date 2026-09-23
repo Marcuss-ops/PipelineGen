@@ -72,9 +72,11 @@ func TestCoordinator_FullLadder(t *testing.T) {
 		t.Errorf("final_video = %#v", finalVideo)
 	}
 	childrenCount := children.enqueueCount()
-	// script(1) + acquire(2) + voiceover(1) + render(2) = 6 children.
-	if childrenCount != 6 {
-		t.Errorf("distinct children = %d, want 6", childrenCount)
+	// script(1) + acquire(2) + voiceover parent(1) + voiceover
+	// generate_item fan-out(2) + render(2) = 8 children. Assembly and
+	// mux run on the VeloxEditing media plane and fan out NOTHING.
+	if childrenCount != 8 {
+		t.Errorf("distinct children = %d, want 8", childrenCount)
 	}
 }
 

@@ -63,10 +63,8 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/cmd/admin/internal/cli"
 	"github.com/Marcuss-ops/PipelineGen/cmd/admin/internal/outbox"
 	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
 	indexing "github.com/Marcuss-ops/PipelineGen/internal/capabilities/indexing/backfill"
 	pgmedia "github.com/Marcuss-ops/PipelineGen/internal/platform/postgres/media"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
 	"github.com/Marcuss-ops/PipelineGen/pkg/atomicwrite"
 )
 
@@ -107,11 +105,13 @@ func RunBackfillAssetEmbeddings(args []string) error {
 		return fmt.Errorf("database not initialized in composition root")
 	}
 
-	mutator, ok := root.CanonicalAssetWriter.(persistence.AssetMutator)
-	if !ok || mutator == nil {
-		return fmt.Errorf("canonical asset mutator is not available")
-	}
-	adapter := outbox.NewRepairAdapter(root.DB.DB, outboxevents.NewRepository(root.DB.DB), outboxevents.ReindexEnvelopeV1Schema, mutator)
+	// POSTGRES-MEDIA-CUTOVER: the reindex enqueue targets the LIVE media
+	// index lane — the PostgreSQL outbox drained by the pgvector
+	// PostgresIndexWorker. The SQLite outbox RepairAdapter is the repair
+	// seam for OTHER event types; asset.index.requested has no SQLite
+	// handler in any mode, so enqueueing there dead-letters the event
+	// ("no handler registered") and no embedding is ever produced.
+	adapter := outbox.NewPGMediaEnqueuer(root.MediaPostgres)
 
 	// MEDIA-SSOT: the candidate scan reads media_assets, so it resolves from the
 	// PostgreSQL media SSOT. The operational handle above stays bound to the

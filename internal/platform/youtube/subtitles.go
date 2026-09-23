@@ -45,7 +45,6 @@ import (
 	"context"
 	"fmt"
 	"net/url"
-	"path/filepath"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	ytcfg "github.com/Marcuss-ops/PipelineGen/internal/platform/config"
@@ -131,7 +130,9 @@ func NewSubtitleFetcherAdapter(cfg SubtitleCacheConfig, runner ProcessRunnerPort
 //   - subtitles_normalize.go::normalizeSubtitleLanguage — BCP-47 of
 //     the configured langs CSV (strict; rejects underscore separators
 //     like "pt_BR"),
-//   - subtitles_fallback.go::isVttMissing + isContentEmpty +
+//   - subtitles_fetch.go::resolveCachedVTT (locates the
+//     language-suffixed `<id>.<lang>.vtt` yt-dlp actually writes);
+//     subtitles_fallback.go::isContentEmpty +
 //     triggerWhisperFallback — sentinel (nil, nil) pattern that the
 //     application-layer orchestrator interprets as "fall through to
 //     Whisper".
@@ -163,8 +164,8 @@ func (a *SubtitleFetcherAdapter) FetchSegmentSubtitles(ctx context.Context, vide
 		return nil, fmt.Errorf("subtitles.FetchSegmentSubtitles: fetch: %w", fetchErr)
 	}
 
-	vttPath := filepath.Join(a.cacheDir, videoID+".vtt")
-	if isVttMissing(vttPath) {
+	vttPath, found := a.resolveCachedVTT(videoID)
+	if !found {
 		// No VTT landed (e.g. yt-dlp succeeded but wrote nothing).
 		// The fallback sentinel (nil, nil) lets the application-layer
 		// orchestrator (text_track_resolver.go::AcquireSegmentText)
@@ -184,11 +185,12 @@ func (a *SubtitleFetcherAdapter) FetchSegmentSubtitles(ctx context.Context, vide
 	if cueErr != nil {
 		return nil, fmt.Errorf("subtitles.FetchSegmentSubtitles: parse cues: %w", cueErr)
 	}
+	// ParseVTTEntries already applied the canonical window filter via
+	// loadCues (0/0 = whole video, per loadCues's contract), so this is a
+	// pure projection. A second filter pass here would drop EVERY cue in
+	// the whole-video case, because `e.Start >= 0` is always true.
 	cues := make([]detail.TimedCue, 0, len(entries))
 	for _, e := range entries {
-		if e.End <= float64(startSec) || e.Start >= float64(endSec) {
-			continue
-		}
 		cues = append(cues, detail.TimedCue{
 			StartMs: int64(e.Start * 1000),
 			EndMs:   int64(e.End * 1000),

@@ -5,7 +5,14 @@ import (
 	"fmt"
 	"strings"
 
+	stockpipeline "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers/stock/stockpipeline"
+	audio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
+	cliprender "github.com/Marcuss-ops/PipelineGen/internal/capabilities/cliprender"
+	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
+	voicesvc "github.com/Marcuss-ops/PipelineGen/internal/capabilities/voiceover/service"
+	youtubetypes "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/dto"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
 // ── Child-job identity (the §8 idempotency contract) ──────────────────
@@ -21,7 +28,6 @@ import (
 //	calendar:128:2026-09-24:stock:scene:003
 //	calendar:128:2026-09-24:voiceover
 //	calendar:128:2026-09-24:render:scene:001
-//	calendar:128:2026-09-24:assemble
 //
 // The broker's (client_id, idempotency_key) UNIQUE pair answers a
 // duplicate enqueue with the EXISTING child, so a replayed workflow
@@ -72,98 +78,250 @@ func ChildCorrelationID(parentCorrelationID, jobType, childKey string) string {
 	return base + ":vc:" + childKey
 }
 
-// ── Typed child request payloads (stage-side wire projection) ─────────
+// ── Typed child payloads: the REAL handler wire contracts ─────────────
 //
-// Each struct is the stage-side projection of the corresponding child
-// family's wire contract: what the workflow MUST tell that child and
-// nothing more. The children themselves keep owning their envelopes —
-// video.create never re-implements their behaviour. Infrastructure
-// facts (worker addresses, engine URLs, local paths) are deliberately
-// absent here as well: they belong to the runtime executing the child.
+// godlike/06 SSOT: every builder below returns the child family's OWN
+// canonical request type — the exact struct the registered handler
+// decodes from job.Payload. The workflow's payload can therefore never
+// drift from the contract the child speaks; children_contracts_test.go
+// pins the round trip against the handler-side decoders.
+//
+// Infrastructure facts (worker addresses, engine URLs, local paths) are
+// deliberately absent: they belong to the runtime executing the child.
 
-// ScriptChildRequest drives the script.generate child (the §9 first
-// stage: script + scene plan + canonical timeline facts).
-type ScriptChildRequest struct {
-	Topic           string `json:"topic"`
-	Language        string `json:"language"`
-	DurationSeconds int    `json:"duration_seconds"`
-	// MediaSources is echoed so the script stage can pre-bind scene
-	// sources to the families the media stage will search.
-	MediaSources []string `json:"media_sources,omitempty"`
+// ScriptChildPayload drives the script.generate child (the §9 first
+// stage) with its REAL wire contract: one GenerationEnvelopeV2 item
+// (kernel/script). The item asks for the canonical timeline and — when
+// the request wants voiceover — for the per-scene voiceovers plus the
+// COMBINED_TIMELINE canonical audio master, which the §9 reuse rule
+// then carries into 09_audio_mux without re-doing the work.
+//
+// Source is text/topic based (the workflow's request is a topic), and
+// target_words is derived from the requested duration at the canonical
+// narration pace (~2 words/second) so the script's length tracks the
+// requested video length.
+func ScriptChildPayload(req appjobs.VideoCreatePayload, project, videoName, itemID string) (scriptpkg.GenerationEnvelopeV2, error) {
+	language := strings.TrimSpace(req.Language)
+	if language == "" {
+		language = "en"
+	}
+	targetWords := req.DurationSeconds * 2
+	if targetWords < 40 {
+		targetWords = 40
+	}
+	item := scriptpkg.GenerationItemV2{
+		ID:       itemID,
+		Title:    req.Topic,
+		Project:  project,
+		Language: language,
+		Source: scriptpkg.SourceSpec{
+			Type:  scriptpkg.SourceText,
+			Topic: req.Topic,
+		},
+		ScriptParams: scriptpkg.ScriptSpec{TargetWords: targetWords},
+		Output: scriptpkg.OutputSpec{
+			SaveToDB:         true,
+			GenerateTimeline: true,
+		},
+	}
+	if req.Voiceover {
+		item.Output.VoiceoverEnabled = scriptpkg.ToggleEnabled
+		item.Audio = scriptpkg.AudioOutputConfig{Mode: string(audio.AudioModeCombinedTimeline)}
+		item.Output.Audio = item.Audio
+	}
+	env := scriptpkg.GenerationEnvelopeV2{
+		Version:       scriptpkg.EnvelopeVersion,
+		Preset:        scriptpkg.PresetCustom,
+		CorrelationID: itemID,
+		Items:         []scriptpkg.GenerationItemV2{item},
+	}
+	if err := env.Validate(); err != nil {
+		return env, fmt.Errorf("videocreate: script child payload: %w", err)
+	}
+	return env, nil
 }
 
-// MediaAcquireChildRequest drives one acquisition child
-// (youtube_clip.extract for a YouTube candidate, media.stock for a
-// stock/Artlist candidate). scene_index is 1-based timeline order.
-type MediaAcquireChildRequest struct {
-	Project     string `json:"project,omitempty"`
-	VideoName   string `json:"video_name,omitempty"`
-	SceneIndex  int    `json:"scene_index"`
-	Source      string `json:"source"`
-	SourceURL   string `json:"source_url,omitempty"`
-	Query       string `json:"query,omitempty"`
-	StartSecond int    `json:"start_second,omitempty"`
-	EndSecond   int    `json:"end_second,omitempty"`
+// AcquireChildPayload drives ONE acquisition child with its REAL wire
+// contract: youtube_clip.extract receives a youtubetypes.ExtractRequest,
+// media.stock a stockpipeline.StockRunPayload. sceneIndex is 1-based
+// timeline order; sceneSeconds is the per-scene budget derived from the
+// requested duration and the scene count.
+func AcquireChildPayload(cand MediaCandidate, req appjobs.VideoCreatePayload, project, videoName string, sceneSeconds int) (any, string, error) {
+	language := strings.TrimSpace(req.Language)
+	if language == "" {
+		language = "en"
+	}
+	if cand.Source == "youtube" {
+		// Subtitle/transcript acquisition is a hard pre-commit
+		// requirement: 07_render runs with transcript.mode=reuse and a
+		// clip without a READY transcript would fail at render time.
+		requireTranscript := boolPtr(true)
+		if cand.SourceVideoID != "" && cand.EndSec > cand.StartSec {
+			// Registry candidate with a KNOWN window: re-extract the EXACT
+			// clip (explicit segments) so the scene plays the selected
+			// content. The extraction pipeline's identity contract
+			// (kernel/asset/detail.YouTubeClipAssetID) converges the
+			// re-cut on the SAME asset id as the registry clip.
+			name := strings.TrimSpace(cand.Title)
+			if name == "" {
+				name = videoName
+			}
+			return youtubetypes.ExtractRequest{
+				URL: fmt.Sprintf("https://www.youtube.com/watch?v=%s", cand.SourceVideoID),
+				Segments: []youtubetypes.Segment{{
+					Start: hmsTimestamp(cand.StartSec),
+					End:   hmsTimestamp(cand.EndSec),
+					Name:  name,
+				}},
+				ForceKeyframes:         true,
+				RequireTranscriptReady: requireTranscript,
+			}, "youtube", nil
+		}
+		payload := youtubetypes.ExtractRequest{
+			URL:                    cand.SourceURL,
+			ForceKeyframes:         true,
+			RequireTranscriptReady: requireTranscript,
+			// No source window known: the canonical analyzer derives the
+			// clip from the video transcript through the SAME extraction
+			// pipeline explicit segments use.
+			Selection: &youtubetypes.SegmentSelection{
+				Mode:        string(youtubetypes.SegmentSelectionModeImportant),
+				Language:    language,
+				MaxSegments: 1,
+			},
+		}
+		return payload, "youtube", nil
+	}
+	payload := stockpipeline.StockRunPayload{
+		SearchQueries:                  []string{searchTermFor(cand, req.Topic)},
+		TotalMinutes:                   minutesFor(sceneSeconds),
+		TargetTotalDurationSeconds:     sceneSeconds,
+		TargetDurationPerSourceSeconds: sceneSeconds,
+		ClipsPerSource:                 1,
+		ClipDurationSeconds:            sceneSeconds,
+		MaxVideos:                      1,
+		Subfolder:                      project,
+		FolderName:                     videoName,
+	}
+	return payload, "stock", nil
 }
 
-// VoiceoverChildRequest drives the voiceover.generate child (§12: the
-// EXTERNAL-SAFE parent, never the internal voiceover.generate_item).
-type VoiceoverChildRequest struct {
-	Project         string   `json:"project,omitempty"`
-	Language        string   `json:"language"`
-	ScriptAssetID   string   `json:"script_asset_id"`
-	Scenes          []string `json:"scenes,omitempty"`
-	DurationSeconds int      `json:"duration_seconds"`
+// searchTermFor is the deterministic stock search term: the candidate's
+// title when the search produced one, else the request topic.
+func searchTermFor(cand MediaCandidate, topic string) string {
+	if t := strings.TrimSpace(cand.Title); t != "" {
+		return t
+	}
+	return strings.TrimSpace(topic)
 }
 
-// RenderChildRequest drives one clip.render child (§14: RenderingGen →
-// Chronon is behind that boundary; video.create never talks to Chronon).
-type RenderChildRequest struct {
-	Project      string   `json:"project,omitempty"`
-	SceneID      string   `json:"scene_id"`
-	SceneIndex   int      `json:"scene_index"`
-	SourceRefs   []string `json:"source_refs"`
-	OverlayPlan  bool     `json:"overlay_plan"`
-	AspectRatio  string   `json:"aspect_ratio,omitempty"`
-	Language     string   `json:"language"`
-	TextSegments []string `json:"text_segments,omitempty"`
+// minutesFor rounds a scene's second budget up to whole minutes (the
+// stock contract's unit), with a floor of one minute.
+func minutesFor(sceneSeconds int) int {
+	if sceneSeconds <= 0 {
+		return 1
+	}
+	return (sceneSeconds + 59) / 60
 }
 
-// AssemblePrepareChildRequest drives the canonical assembly.prepare
-// child (§15: the production assembly path —
-// internal/kernel/assembly's copy-certified contract, never a private
-// concat and never an unwired assembler "because it exists").
-type AssemblePrepareChildRequest struct {
-	AssemblyID string            `json:"assembly_id"`
-	Segments   []AssembleSegment `json:"segments"`
+// VoiceoverChildPayload drives the voiceover.generate child (§12: the
+// EXTERNAL-SAFE parent, never the internal voiceover.generate_item
+// child) with its REAL wire contract: one GenerateVoiceoversCommand
+// whose items[] are the scene narration texts in the requested
+// language. The parent fans out one generate_item child per item.
+func VoiceoverChildPayload(texts []string, language, project string) (voicesvc.GenerateVoiceoversCommand, error) {
+	lang := strings.TrimSpace(language)
+	if lang == "" {
+		lang = "en"
+	}
+	cmd := voicesvc.GenerateVoiceoversCommand{
+		Project: project,
+		Items:   make([]voicesvc.VoiceoverItem, 0, len(texts)),
+	}
+	for i, text := range texts {
+		if strings.TrimSpace(text) == "" {
+			continue
+		}
+		cmd.Items = append(cmd.Items, voicesvc.VoiceoverItem{
+			Text:     text,
+			Language: voicesvc.Language(lang),
+			Filename: fmt.Sprintf("scene-%03d", i+1),
+			Required: true,
+		})
+	}
+	if len(cmd.Items) == 0 {
+		return cmd, fmt.Errorf("videocreate: voiceover child payload: no speakable scene text")
+	}
+	if err := cmd.Validate(); err != nil {
+		return cmd, fmt.Errorf("videocreate: voiceover child payload: %w", err)
+	}
+	return cmd, nil
 }
 
-// AssembleFinalizeChildRequest drives the canonical assembly.finalize
-// child (timeline order over the certified segments).
-type AssembleFinalizeChildRequest struct {
-	AssemblyID  string          `json:"assembly_id"`
-	Preparation string          `json:"preparation_id"`
-	Timeline    []AssembleScene `json:"timeline"`
+// RenderChildPayload drives one clip.render child (§14: RenderingGen →
+// Chronon is behind that boundary; video.create never talks to Chronon)
+// with its REAL wire contract: a cliprender.RenderRequest over the
+// scene's acquired source asset, normalized and validated fail-closed
+// here so a request the clip.render worker would reject is never
+// enqueued. Overlays become burned subtitles (the text-overlay family
+// of the render plan) — cover/thumbnail stays owned by the caller side.
+func RenderChildPayload(sourceAssetID, language, aspectRatio string, overlays bool) (cliprender.RenderRequest, error) {
+	lang := strings.TrimSpace(language)
+	if lang == "" {
+		lang = cliprender.DefaultLanguage
+	}
+	width, height, err := aspectDimensions(aspectRatio)
+	if err != nil {
+		return cliprender.RenderRequest{}, err
+	}
+	payload := cliprender.RenderRequest{
+		SourceAssetID: sourceAssetID,
+		Transcript: &cliprender.TranscriptSpec{
+			Mode:     cliprender.TranscriptModeReuse,
+			Language: lang,
+		},
+		Output: &cliprender.OutputSpec{
+			Contract: cliprender.OutputContractVeloxAssemblyReadyV1,
+			Width:    width,
+			Height:   height,
+		},
+	}
+	if overlays {
+		payload.Subtitles = &cliprender.SubtitlesSpec{
+			Enabled: true,
+			Mode:    cliprender.SubtitlesModeBurn,
+		}
+	}
+	payload.Normalize()
+	if err := payload.Validate(); err != nil {
+		return payload, fmt.Errorf("videocreate: render child payload: %w", err)
+	}
+	return payload, nil
 }
 
-// AssembleScene is one timeline entry of the assembly contract.
-type AssembleScene struct {
-	SceneID string `json:"scene_id"`
-	AssetID string `json:"asset_id"`
+// aspectDimensions maps the requested aspect ratio onto the canonical
+// render dimensions. An empty ratio is the canonical 16:9 YouTube
+// output; a vertical request fails closed here because the clip.render
+// output contract is horizontal-only (the worker rejects it too).
+func aspectDimensions(aspectRatio string) (int, int, error) {
+	switch strings.TrimSpace(aspectRatio) {
+	case "", "16:9", "16x9":
+		return 1920, 1080, nil
+	default:
+		return 0, 0, fmt.Errorf("%w: aspect_ratio %q is not the canonical 16:9 output", ErrInvalidPayload, aspectRatio)
+	}
 }
 
-// AssembleSegment is one copy-certified render segment admitted to the
-// canonical assembler (kernel/media.AssemblyContract facts: closed GOP,
-// first-frame keyframe, stream signature). The workflow refuses to
-// assemble a segment whose copy certification is missing — the
-// assembler rule is copy-only and there is no re-encode fallback.
-type AssembleSegment struct {
-	AssetID         string `json:"asset_id"`
-	SHA256          string `json:"sha256"`
-	DurationMS      int64  `json:"duration_ms"`
-	CopyCertified   bool   `json:"copy_certified"`
-	ContractID      string `json:"contract_id,omitempty"`
-	StreamSignature string `json:"stream_signature,omitempty"`
+func boolPtr(v bool) *bool { return &v }
+
+// hmsTimestamp renders whole seconds as the canonical "HH:MM:SS" segment
+// timestamp (the exact shape the extraction DTO's ParseTimestamp reads and
+// the production fixtures carry).
+func hmsTimestamp(sec int) string {
+	if sec < 0 {
+		sec = 0
+	}
+	return fmt.Sprintf("%02d:%02d:%02d", sec/3600, (sec%3600)/60, sec%60)
 }
 
 // marshalChild encodes one typed child payload for the broker. The

@@ -67,6 +67,11 @@ func (a *VideoPipelineAdapter) DownloadAndCutYouTubeVideo(ctx context.Context, r
 			ThumbnailURL: ym.ThumbnailURL,
 			Categories:   ym.Categories,
 			Tags:         ym.Tags,
+			// T1.2 probe propagation: the infra dump derived these from the
+			// subtitles/automatic_captions dictionaries; carry them across
+			// so the cut result reports caption availability too.
+			HasCaptions:      ym.HasCaptions,
+			CaptionLanguages: append([]string(nil), ym.CaptionLanguages...),
 		}
 		for _, ch := range ym.Chapters {
 			meta.Chapters = append(meta.Chapters, youtubeapp.VideoChapter{

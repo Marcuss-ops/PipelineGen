@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
@@ -33,6 +34,48 @@ type YouTubeMetadata struct {
 	Duration     float64          `json:"duration"`
 	Chapters     []YouTubeChapter `json:"chapters"`
 	ThumbnailURL string           `json:"thumbnail"`
+	// T1.2 probe: caption dictionaries from the yt-dlp dump (manual
+	// `subtitles` + ASR `automatic_captions`). Derived into the
+	// HasCaptions/CaptionLanguages probe fields after unmarshal — see
+	// deriveCaptionFlags. They are what makes a transcript fetch
+	// predictable instead of a post-extraction surprise.
+	Subtitles         map[string][]YouTubeCaptionTrack `json:"subtitles"`
+	AutomaticCaptions map[string][]YouTubeCaptionTrack `json:"automatic_captions"`
+	// HasCaptions is derived (not read from the dump): true when either
+	// caption dictionary is non-empty.
+	HasCaptions bool `json:"has_captions"`
+	// CaptionLanguages is the sorted union of both dictionaries' language
+	// tags; empty when HasCaptions=false.
+	CaptionLanguages []string `json:"caption_languages,omitempty"`
+}
+
+// YouTubeCaptionTrack is one per-language caption entry of a dump.
+type YouTubeCaptionTrack struct {
+	URL  string `json:"url"`
+	Name string `json:"name"`
+	Ext  string `json:"ext"`
+}
+
+// deriveCaptionFlags computes the probe fields from the raw caption maps
+// (union of manual + ASR language tags, sorted, deduplicated).
+func (m *YouTubeMetadata) deriveCaptionFlags() {
+	seen := map[string]struct{}{}
+	for lang := range m.Subtitles {
+		if lang != "" {
+			seen[lang] = struct{}{}
+		}
+	}
+	for lang := range m.AutomaticCaptions {
+		if lang != "" {
+			seen[lang] = struct{}{}
+		}
+	}
+	m.HasCaptions = len(seen) > 0
+	m.CaptionLanguages = m.CaptionLanguages[:0]
+	for lang := range seen {
+		m.CaptionLanguages = append(m.CaptionLanguages, lang)
+	}
+	sort.Strings(m.CaptionLanguages)
 }
 
 // YouTubeChapter represents a chapter within a YouTube video.
@@ -139,6 +182,7 @@ func (d *YTDLPDownloader) GetVideoMetadata(ctx context.Context, videoURL string)
 	if meta.ID == "" {
 		meta.ID = extractIDFromURL(videoURL)
 	}
+	meta.deriveCaptionFlags()
 
 	return &meta, nil
 }

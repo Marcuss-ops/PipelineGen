@@ -35,15 +35,6 @@ type AcquiredClip struct {
 	SceneIndex int
 }
 
-// VoiceoverFact is the voiceover stage output facts.
-type VoiceoverFact struct {
-	Ref        StageArtifactRef
-	LocalPath  string
-	SampleRate int
-	Channels   int
-	Codec      string
-}
-
 // OverlayPlanFact is the overlay plan record (§19-adjacent: overlays
 // enter the RENDER plan; the cover/thumbnail is NOT a render-lane phase
 // and stays owned by the caller side).
@@ -65,20 +56,20 @@ type RenderedClip struct {
 // Facts is the transient execution state, rehydrated from the child
 // ledger + step outputs after a restart (recovery.go).
 type Facts struct {
-	ScriptAssetID string
-	Scenes        []string
-	TextSegments  []string
-	AudioPlanJSON json.RawMessage
-	Candidates    []MediaCandidate
-	Acquired      []AcquiredClip
-	Voiceover     *VoiceoverFact
-	FinalAudio    *MasteredAudio
-	OverlayPlan   *OverlayPlanFact
-	Rendered      []RenderedClip
-	Assembled     *AssembleResult
-	Muxed         *MuxedVideo
-	Verified      *VerifiedFacts
-	Published     *PublishedArtifact
+	ScriptAssetID  string
+	Scenes         []string
+	TextSegments   []string
+	AudioPlanJSON  json.RawMessage
+	Candidates     []MediaCandidate
+	Acquired       []AcquiredClip
+	VoiceoverItems []VoiceoverAssetRef
+	FinalAudio     *MasteredAudio
+	OverlayPlan    *OverlayPlanFact
+	Rendered       []RenderedClip
+	Assembled      *AssembleResult
+	Muxed          *MuxedVideo
+	Verified       *VerifiedFacts
+	Published      *PublishedArtifact
 }
 
 // Run is one video.create execution.

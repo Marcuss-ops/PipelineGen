@@ -105,11 +105,14 @@ func registerVideoCreate(root *ComposeRoot, log *zap.Logger, rustMusclesPath, ff
 	// binaries: the workflow reaches render_audio_plan / mux_audio_copy /
 	// ffprobe through it and never spawns anything itself.
 	executor := rustexec.NewConfiguredVideoProcessor(rustMusclesPath, ffmpegPath, root.MediaExec.Policy, root.MediaExec.Profile, log)
-	audioMaster, prober := videocreate.NewMediaPlane(executor)
+	audioMaster, prober, assembler := videocreate.NewMediaPlane(executor)
 	children := videocreate.NewChildJobs(root.Jobs.Facade)
 	workspace := os.Getenv("VIDEO_CREATE_WORKSPACE_ROOT")
 	if workspace == "" {
 		workspace = filepath.Join("data", "video-create", "workspaces")
+	}
+	if root.Repos == nil || root.Repos.TextTrackRepo == nil {
+		return fmt.Errorf("registerVideoCreate: text track repository is not wired")
 	}
 	handler, err := videocreate.NewHandler(videocreate.Deps{
 		Steps:     steps.NewSQLiteStore(root.DB.DB),
@@ -117,8 +120,9 @@ func registerVideoCreate(root *ComposeRoot, log *zap.Logger, rustMusclesPath, ff
 		Search:    videocreate.NewMediaSearch(searchAgg),
 		Audio:     audioMaster,
 		Probe:     prober,
-		Assembler: videocreate.NewAssemblerViaChildren(children),
+		Assembler: assembler,
 		Publish:   videocreate.NewDeliveryPublisher(root.Drive.Publisher, delivery.DestinationRenderedClip),
+		Texts:     videocreate.NewTranscriptReadiness(root.Repos.TextTrackRepo),
 		Workspace: workspace,
 		Log:       log,
 	})
@@ -128,17 +132,11 @@ func registerVideoCreate(root *ComposeRoot, log *zap.Logger, rustMusclesPath, ff
 	if err := root.Jobs.Facade.RegisterHandler(capjobs.TypeVideoCreate, capjobs.HandlerFunc(handler)); err != nil {
 		return fmt.Errorf("registerVideoCreate: bind %q to dispatcher: %w", capjobs.TypeVideoCreate, err)
 	}
-	// §21 no-fake-availability honesty about the ASSEMBLY lane: the
-	// workflow's 08_assemble dispatches the canonical assembly family
-	// (assembly.prepare / assembly.finalize, kernel/assembly contract).
-	// The certified production executor for that family is the
-	// RenderingGen ParentFinalizer → ASSEMBLE_SEGMENTS lane (the
-	// video.assemble.copy.v1 cutover decision is deliberately deferred —
-	// see videocreate/adapters.go). A deployment whose workers do not
-	// claim that family would stall at ASSEMBLING, so say it at startup.
-	log.Warn("video.create: assembly.prepare/assembly.finalize children require their canonical production handlers " +
-		"(RenderingGen ParentFinalizer → ASSEMBLE_SEGMENTS lane or the registered assembly executors); " +
-		"verify the content worker profile claims them before live runs")
-	log.Info("created video.create workflow handler (durable parent: script/media/voiceover/audio/render/assemble/mux/verify/publish)")
+	// §21 honesty about the ASSEMBLY lane: 08_assemble runs on the
+	// VeloxEditing media plane (assemble_copy / video.assemble.copy.v1,
+	// rustexec → pipelinegen-muscles) — packet-copy over copy-certified
+	// segments, no child job types and no re-encode fallback. The final
+	// mux is the same plane's mux_audio_copy.
+	log.Info("created video.create workflow handler (durable parent: script/media/voiceover/audio/render/assemble@VeloxEditing/mux/verify/publish)")
 	return nil
 }

@@ -62,3 +62,17 @@ func (s *Service) AcquireStockTranscript(ctx context.Context, videoID string, du
 func (s *Service) Config() youtubetypes.RuntimeConfig {
 	return s.cfg
 }
+
+// Subtitles exposes the canonical SubtitleFetcherPort for the
+// GET /api/clips/transcript endpoint (a pure re-packaging — no new
+// acquisition logic): it is the SAME fetcher the 5-level acquisition
+// chain uses, i.e. yt-dlp --write-sibs/--write-auto-subs with
+// --skip-download (VTT only, never the video) + the canonical
+// ParseVTTFile. Returns nil when the port was not wired so the handler
+// can answer 503 fail-closed instead of dereferencing nil.
+func (s *Service) Subtitles() youtubeports.SubtitleFetcherPort {
+	if s == nil {
+		return nil
+	}
+	return s.subtitleFetcher
+}

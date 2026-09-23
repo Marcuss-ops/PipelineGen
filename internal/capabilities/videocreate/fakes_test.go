@@ -8,9 +8,13 @@ import (
 	"path/filepath"
 	"sync"
 
+	stockpipeline "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers/stock/stockpipeline"
 	audio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
+	cliprender "github.com/Marcuss-ops/PipelineGen/internal/capabilities/cliprender"
 	steps "github.com/Marcuss-ops/PipelineGen/internal/capabilities/execution/steps"
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
+	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
+	youtubetypes "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/dto"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 )
@@ -204,6 +208,14 @@ func (f *fakeChildren) EnqueueChild(_ context.Context, req ChildJobRequest) (str
 		Status: status, Error: errText, Result: result,
 	}
 	f.order = append(f.order, req.IdempotencyKey)
+	// voiceover.generate is an EXTERNAL-SAFE parent: its real contract
+	// fans out one generate_item child per item and reports their ids in
+	// the fan-out result map. The fake reproduces that fan-out so the
+	// workflow's item waits run against the real parent→item shape.
+	if req.JobType == job.TypeVoiceoverGenerate && status == job.StatusSucceeded {
+		itemIDs, languages := f.spawnVoiceoverItemsLocked(req)
+		f.byKey[req.IdempotencyKey].Result = cannedVoiceoverFanoutResult(id, req.CorrelationID, itemIDs, languages)
+	}
 	if f.waitErrKeys[req.IdempotencyKey] {
 		delete(f.waitErrKeys, req.IdempotencyKey)
 		f.waitErrIDs[id] = true
@@ -227,53 +239,224 @@ func (f *fakeChildren) WaitTerminal(_ context.Context, childJobID string) (*job.
 	return nil, fmt.Errorf("fakeChildren: unknown child %s", childJobID)
 }
 
-// cannedChildResult returns each family's typed terminal result.
+// ── REAL child wire shapes ───────────────────────────────────────────
+//
+// Every canned result below is the child family's OWN result wire
+// contract — the exact JSON the registered handler writes into
+// job.Result (script.generate's durable {run_id, parent_state, result,
+// __artifact_manifest} envelope; youtube_clip.extract's
+// ExtractResponse-shaped map; media.stock's StockJobResult.ToResultMap;
+// voiceover.generate's fan-out map + generate_item item maps;
+// clip.render's renderedResult map). children_contracts_test.go pins
+// these against the handler-side types so a contract drift breaks the
+// build instead of silently emptying a stage.
+
+// cannedChildResult returns each family's REAL terminal result wire shape.
 func cannedChildResult(jobType, id, key string, payload json.RawMessage) json.RawMessage {
 	sha := digest.SHA256String(key)
 	switch jobType {
 	case job.TypeScriptGenerate:
-		return mustRaw(ScriptChildResult{
-			ScriptAssetID: "script:" + sha[:12],
-			Scenes:        []string{"scene-001", "scene-002"},
-			TextSegments:  []string{"Mike Tyson training", "championship rounds"},
-			AudioPlan:     json.RawMessage(`{"audio_plan_version":"compiled-audio-plan.v2","timeline_version":"canonical-timeline.v2"}`),
-		})
-	case appjobs.TypeYouTubeClipExtract, appjobs.TypeMediaStock:
-		var req MediaAcquireChildRequest
-		_ = json.Unmarshal(payload, &req)
-		source := "stock"
-		if jobType == appjobs.TypeYouTubeClipExtract {
-			source = "youtube"
-		}
-		return mustRaw(AcquireChildResult{
-			AssetID: source + ":" + sha[:12], ContentSHA: sha,
-			DurationMS: 5000,
-			MediaType:  "video", Source: source, SourceURL: req.SourceURL,
-			DriveRef: DriveRef{DriveFileID: "drive_" + sha[:10]},
-			LocalRef: LocalRef{LocalPath: "/fake/materialized/" + key + ".mp4"},
-		})
-	case job.TypeVoiceoverGenerate:
-		return mustRaw(VoiceoverChildResult{
-			AssetID: "voiceover:" + sha[:12], ContentSHA: sha, DurationMS: 58000,
-			SampleRate: 48000, Channels: 2, Codec: "aac",
-			LocalRef:  LocalRef{LocalPath: "/fake/materialized/voiceover.aac"},
-			AudioPlan: json.RawMessage(`{"audio_plan_version":"compiled-audio-plan.v2","timeline_version":"canonical-timeline.v2"}`),
-		})
+		return cannedScriptResult(id, sha)
+	case appjobs.TypeYouTubeClipExtract:
+		return cannedYouTubeResult(payload, sha)
+	case appjobs.TypeMediaStock:
+		return cannedStockResult(id, sha)
 	case job.TypeClipRender:
-		return mustRaw(RenderChildResult{
-			AssetID: "clip:" + sha[:12], ContentSHA: sha, DurationMS: 60000,
-			LocalRef:        LocalRef{LocalPath: "/fake/materialized/" + key + "_render.mp4"},
-			CopyCertified:   true,
-			ContractID:      "assembly-contract.v2",
-			StreamSignature: "h264:1920x1080:30:1:aac",
-		})
-	case appjobs.TypeAssemblyPrepare:
-		return mustRaw(map[string]any{"preparation_id": id})
-	case appjobs.TypeAssemblyFinalize:
-		return mustRaw(map[string]any{"artifact_id": "assembled:" + sha[:12], "artifact_path": "/fake/materialized/assembled.mp4"})
+		return cannedRenderResult(id, payload, sha)
 	default:
 		return mustRaw(map[string]any{})
 	}
+}
+
+// cannedScriptResult is the real durable single-item script.generate
+// result map (scripts/jobs/generation_handler.go::Handle, durable
+// branch), built from the handler-side capability result type.
+func cannedScriptResult(id, sha string) json.RawMessage {
+	lang := scriptgen.Language("en")
+	res := scriptgen.GenerateResult{
+		Output: scriptgen.GenerateOutput{Text: "Mike Tyson training\n\nchampionship rounds", WordCount: 6},
+		Scenes: []scriptgen.Scene{
+			{ID: "scene-001", Index: 0, Text: map[scriptgen.Language]string{lang: "Mike Tyson training"},
+				Voiceover: map[scriptgen.Language]scriptgen.AudioReference{lang: {URL: "https://drive.test/vo-1", FilePath: "/fake/materialized/script-voiceover-1.aac", Duration: 3.5}}},
+			{ID: "scene-002", Index: 1, Text: map[scriptgen.Language]string{lang: "championship rounds"},
+				Voiceover: map[scriptgen.Language]scriptgen.AudioReference{lang: {URL: "https://drive.test/vo-2", FilePath: "/fake/materialized/script-voiceover-2.aac", Duration: 3.5}}},
+		},
+		AudioPlan: &audio.CompiledAudioPlan{Version: "compiled-audio-plan.v2"},
+	}
+	return mustRaw(scriptDurableWire{
+		RunID:       "run_" + sha[:8],
+		ParentState: "completed",
+		Result:      &res,
+		Manifest: &job.ArtifactManifest{
+			SchemaVersion: job.SchemaVersionArtifactManifestV1,
+			JobID:         id,
+			Artifacts: []job.Artifact{{
+				ID: "script:" + sha[:12], Kind: job.ArtifactKindScriptJSON,
+				Path: "/fake/script.json", Filename: "script.json", MIMEType: "application/json",
+				SHA256: sha,
+			}},
+		},
+	})
+}
+
+// cannedYouTubeResult is the real youtube_clip.extract result map
+// (youtube/jobs/job_handler.go::buildResultMap), projected through the
+// handler-side ExtractResponse DTO.
+func cannedYouTubeResult(payload json.RawMessage, sha string) json.RawMessage {
+	var req youtubetypes.ExtractRequest
+	_ = json.Unmarshal(payload, &req)
+	return mustRaw(youtubetypes.ExtractResponse{
+		OK:        true,
+		SourceURL: req.URL,
+		VideoID:   "yt_" + sha[:8],
+		Stats:     &youtubetypes.ExtractStats{Requested: 1, Processed: 1},
+		Items: []youtubetypes.ExtractItem{{
+			ID: "yt_" + sha[:12], Name: "scene-001",
+			Start: "00:00:00.000", End: "00:00:05.000",
+			StartSeconds: 0, EndSeconds: 5, Duration: 5,
+			LegacyFileMD5: sha, SizeBytes: 1024,
+			LocalPath:   "/fake/materialized/yt_" + sha[:8] + ".mp4",
+			DriveFileID: "drive_" + sha[:10], DriveLink: "https://drive.test/" + sha[:10],
+			Status: "completed",
+		}},
+		DriveFolderID: "drive_folder_" + sha[:8],
+	})
+}
+
+// cannedStockResult is the real media.stock result map
+// (stockpipeline.StockJobResult.ToResultMap — the handler's own
+// projection), so the workflow decodes exactly what production emits.
+func cannedStockResult(id, sha string) json.RawMessage {
+	res := stockpipeline.StockJobResult{
+		FinalStatus: "completed",
+		TotalClips:  1,
+		TotalChunks: 1,
+		Chunks: []stockpipeline.ChunkResult{{
+			Index: 0, TimelineStart: 0, TimelineEnd: 5,
+			LocalPath:   "/fake/materialized/stk_" + sha[:8] + ".mp4",
+			DriveFileID: "drive_" + sha[:10], DriveLink: "https://drive.test/" + sha[:10],
+			SHA256: sha, Title: "stock clip", Rendered: true, Uploaded: true,
+		}},
+		Manifest: &job.ArtifactManifest{
+			SchemaVersion: job.SchemaVersionArtifactManifestV1,
+			JobID:         id,
+			Artifacts: []job.Artifact{{
+				ID: "stock:" + sha[:12], Kind: "media",
+				SHA256: sha, SizeBytes: 2048,
+				ArtifactMetadata: map[string]any{"asset_id": "stock:" + sha[:12]},
+			}},
+		},
+	}
+	return mustRaw(res.ToResultMap())
+}
+
+// cannedRenderResult mirrors the clip.render result map
+// (cliprender/worker_result.go::renderedResult) key for key.
+func cannedRenderResult(id string, payload json.RawMessage, sha string) json.RawMessage {
+	var req cliprender.RenderRequest
+	_ = json.Unmarshal(payload, &req)
+	return mustRaw(map[string]any{
+		"job_id":          id,
+		"source_asset_id": req.SourceAssetID,
+		"phase":           "rendered",
+		"transcript_mode": "reuse",
+		"contract_id":     cliprender.OutputContractVeloxAssemblyReadyV1,
+		"contract": map[string]any{
+			"width": 1920, "height": 1080, "fps_num": 24, "fps_den": 1,
+			"video_codec": "h264", "audio_codec": "aac", "pixel_format": "yuv420p",
+		},
+		"render": map[string]any{
+			"output_path":         "/fake/materialized/" + sha[:8] + "_render.mp4",
+			"size_bytes":          4096,
+			"duration_sec":        5.0,
+			"width":               1920,
+			"height":              1080,
+			"fps_num":             24,
+			"fps_den":             1,
+			"backend":             "chronon_vulkan",
+			"audio_copy_eligible": true,
+		},
+		"asset": map[string]any{
+			"asset_id":           "clip:" + sha[:12],
+			"drive_file_id":      "drive_" + sha[:10],
+			"drive_link":         "https://drive.test/" + sha[:10],
+			"publication_status": "PUBLISHED",
+			"size_bytes":         4096,
+		},
+	})
+}
+
+// cannedVoiceoverFanoutResult mirrors the voiceover.generate parent
+// result map (voiceover/service/jobs/generate_handler.go::toFanoutResultMap).
+func cannedVoiceoverFanoutResult(id, requestID string, itemIDs, languages []string) json.RawMessage {
+	return mustRaw(map[string]any{
+		"ok":                   true,
+		"parent_job_id":        id,
+		"request_id":           requestID,
+		"total_outputs":        len(itemIDs),
+		"enqueued_count":       len(itemIDs),
+		"failed_enqueue_count": 0,
+		"child_job_ids":        itemIDs,
+		"per_language":         languages,
+		"parent_state":         "AWAITING_CHILDREN",
+	})
+}
+
+// cannedVoiceoverItemResult mirrors the voiceover.generate_item result
+// map (voiceover/service/jobs/generate_item_handler.go::toItemResultMap).
+func cannedVoiceoverItemResult(id, requestID, language, key string) json.RawMessage {
+	sha := digest.SHA256String(key)
+	return mustRaw(map[string]any{
+		"job_id":        id,
+		"request_id":    requestID,
+		"language":      language,
+		"status":        "completed",
+		"ok":            true,
+		"voice":         "default",
+		"drive_link":    "https://drive.test/" + sha[:10],
+		"drive_file_id": "drive_" + sha[:10],
+		"local_path":    "/fake/materialized/voiceover-" + sha[:6] + ".aac",
+		"error":         "",
+		"error_code":    "",
+		"timing":        map[string]any{"duration_us": 3_500_000},
+	})
+}
+
+// spawnVoiceoverItemsLocked registers one generate_item child per
+// command item and returns their ids + languages (the fan-out the real
+// voiceover.generate parent performs).
+func (f *fakeChildren) spawnVoiceoverItemsLocked(req ChildJobRequest) (itemIDs, languages []string) {
+	var cmd struct {
+		Items []struct {
+			Language string `json:"language"`
+		} `json:"items"`
+	}
+	_ = json.Unmarshal(req.Payload, &cmd)
+	for i, item := range cmd.Items {
+		itemKey := fmt.Sprintf("%s:item:%03d", req.IdempotencyKey, i+1)
+		lang := item.Language
+		if lang == "" {
+			lang = "en"
+		}
+		if existing, ok := f.byKey[itemKey]; ok {
+			itemIDs = append(itemIDs, existing.ID)
+			languages = append(languages, lang)
+			continue
+		}
+		itemID := fmt.Sprintf("child_%03d_%s", len(f.order)+1, digest.SHA256String(itemKey)[:8])
+		f.byKey[itemKey] = &job.Job{
+			ID: itemID, Type: job.TypeVoiceoverGenerateItem,
+			Project: req.Project, VideoName: req.VideoName,
+			CorrelationID:  ChildCorrelationID(req.CorrelationID, job.TypeVoiceoverGenerateItem, itemKey),
+			IdempotencyKey: itemKey,
+			Status:         job.StatusSucceeded,
+			Result:         cannedVoiceoverItemResult(itemID, req.CorrelationID, lang, itemKey),
+		}
+		f.order = append(f.order, itemKey)
+		itemIDs = append(itemIDs, itemID)
+		languages = append(languages, lang)
+	}
+	return itemIDs, languages
 }
 
 func mustRaw(v any) json.RawMessage {
@@ -351,12 +534,19 @@ type fakeAssembler struct {
 
 func (f *fakeAssembler) Assemble(_ context.Context, req AssembleRequest) (AssembleResult, error) {
 	f.calls++
-	path := filepath.Join(f.dir, "assembled.mp4")
+	path := req.OutputPath
+	if path == "" {
+		path = filepath.Join(f.dir, "assembled.mp4")
+	}
 	_ = os.WriteFile(path, []byte("fake assembled video"), 0o644)
+	var totalMS int64
+	for _, seg := range req.Segments {
+		totalMS += seg.DurationMS
+	}
 	return AssembleResult{
-		ArtifactID:  "assembled:" + digest.SHA256String(req.AssemblyID)[:12],
-		Path:        path,
-		ChildJobIDs: []string{"child_prepare_fake", "child_finalize_fake"},
+		ArtifactID: "assembled:" + digest.SHA256String(req.AssemblyID)[:12],
+		Path:       path,
+		DurationMS: totalMS,
 	}, nil
 }
 

@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	cliprender "github.com/Marcuss-ops/PipelineGen/internal/capabilities/cliprender"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaexec"
 	capabilityrender "github.com/Marcuss-ops/PipelineGen/internal/capabilities/render"
 	pathutil "github.com/Marcuss-ops/PipelineGen/internal/platform/filesystem"
 )
@@ -34,6 +35,7 @@ const (
 	OperationRemoveSilence      Operation = "remove_silence"
 	OperationRenderAudioPlan    Operation = "render_audio_plan"
 	OperationMuxAudioCopy       Operation = "mux_audio_copy"
+	OperationAssembleCopy       Operation = "assemble_copy"
 )
 
 func (o Operation) String() string { return string(o) }
@@ -45,7 +47,7 @@ func (o Operation) valid() bool {
 		OperationExtractFrame, OperationGenerateProxy, OperationGenerateStoryboard,
 		OperationRemuxHLS, OperationTrim, OperationRenderStock, OperationRenderClip,
 		OperationAdminRender, OperationMergeInputs, OperationRemoveSilence,
-		OperationRenderAudioPlan, OperationMuxAudioCopy:
+		OperationRenderAudioPlan, OperationMuxAudioCopy, OperationAssembleCopy:
 		return true
 	default:
 		return false
@@ -99,15 +101,16 @@ type request struct {
 	// `effect_paths` / `overlay_opacity` fields were removed outright —
 	// no production writer populated them and the executor fails closed
 	// without a canonical plan, so they only encoded a dead wire shape.
-	NoTransitions   bool            `json:"no_transitions,omitempty"`
-	ClipDurationSec int             `json:"clip_duration_sec,omitempty"`
-	NoEffects       bool            `json:"no_effects,omitempty"`
-	Font            string          `json:"font,omitempty"`
-	Effects         []renderEffect  `json:"effects,omitempty"`
-	Overlays        []renderOverlay `json:"overlays,omitempty"`
-	MaxDurationSec  float64         `json:"max_duration_sec,omitempty"`
-	AudioPlan       json.RawMessage `json:"audio_plan,omitempty"`
-	AudioAssets     []audioAsset    `json:"audio_assets,omitempty"`
+	NoTransitions     bool               `json:"no_transitions,omitempty"`
+	ClipDurationSec   int                `json:"clip_duration_sec,omitempty"`
+	NoEffects         bool               `json:"no_effects,omitempty"`
+	Font              string             `json:"font,omitempty"`
+	Effects           []renderEffect     `json:"effects,omitempty"`
+	Overlays          []renderOverlay    `json:"overlays,omitempty"`
+	MaxDurationSec    float64            `json:"max_duration_sec,omitempty"`
+	AudioPlan         json.RawMessage    `json:"audio_plan,omitempty"`
+	AudioAssets       []audioAsset       `json:"audio_assets,omitempty"`
+	CopyCertification *CopyCertification `json:"copy_certification,omitempty"`
 	// RenderPlan is the sealed generation-time contract. The Go adapter
 	// validates its hashes and manifest files before this envelope is sent;
 	// keeping the exact JSON here lets the executor audit the same plan.
@@ -172,6 +175,17 @@ func (r request) Validate() error {
 			return fmt.Errorf("%s: exactly video and final audio inputs are required", r.Operation)
 		}
 		return nil
+	case OperationAssembleCopy:
+		if len(r.InputPaths) == 0 {
+			return fmt.Errorf("%s: input_paths are required", r.Operation)
+		}
+		if err := requireOutput(); err != nil {
+			return err
+		}
+		if r.CopyCertification == nil {
+			return fmt.Errorf("%s: copy_certification is required", r.Operation)
+		}
+		return r.CopyCertification.Validate()
 	case OperationProbe:
 		return requireSource()
 	case OperationCutBatch:
@@ -242,6 +256,15 @@ type audioAsset struct {
 	AssetID string `json:"asset_id"`
 	Path    string `json:"path"`
 }
+
+// CopyCertification is the copy-only certification of assembled segments —
+// the Go side of the SHARED copy-safety contract the Rust
+// AssemblyCompatibilityGate (pipelinegen-muscles assemble_copy,
+// video.assemble.copy.v1) enforces per input and across inputs. ONE owner:
+// internal/capabilities/mediaexec (the media capability type every Go
+// boundary dispatches copy assembly through); the alias keeps this
+// transport layer's wire vocabulary stable.
+type CopyCertification = mediaexec.CopyCertification
 
 type renderEffect struct {
 	Path     string  `json:"path"`

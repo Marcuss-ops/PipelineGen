@@ -452,3 +452,42 @@ func TestClipIdentityStruct_FieldsAccessible(t *testing.T) {
 		t.Errorf("struct fields not accessible: %+v", id)
 	}
 }
+
+// TestParseYouTubeClipAssetID_RoundTrip pins the inverse of the SOLE
+// format owner: builder output parses back to its inputs, including the
+// two hard shapes (underscored video IDs, multi-token policy versions).
+func TestParseYouTubeClipAssetID_RoundTrip(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		videoID, policy  string
+		startSec, endSec int
+	}{
+		{"dQw4w9WgXcQ", "v1", 0, 60},
+		{"a_b_c_12", "v1", 42, 57},              // videoID with underscores
+		{"Di-Awl0XyQs", "whisper_v1", 125, 250}, // multi-token policy
+	} {
+		id, err := YouTubeClipAssetID(tc.videoID, tc.startSec, tc.endSec, tc.policy)
+		if err != nil {
+			t.Fatalf("build(%q): %v", tc.videoID, err)
+		}
+		vid, start, end, policy, err := ParseYouTubeClipAssetID(id)
+		if err != nil {
+			t.Fatalf("parse(%q): %v", id, err)
+		}
+		if vid != tc.videoID || start != tc.startSec || end != tc.endSec || policy != tc.policy {
+			t.Errorf("round trip %q = (%q,%d,%d,%q), want (%q,%d,%d,%q)",
+				id, vid, start, end, policy, tc.videoID, tc.startSec, tc.endSec, tc.policy)
+		}
+	}
+}
+
+// TestParseYouTubeClipAssetID_FailClosed pins godlike/07: malformed ids
+// return ErrYouTubeClipAssetIDShape instead of partial values.
+func TestParseYouTubeClipAssetID_FailClosed(t *testing.T) {
+	t.Parallel()
+	for _, bad := range []string{"", "yt_", "abc_0_60_v1", "yt_abc_0_60", "yt_abc_x_60_v1", "yt_abc_60_0_v1"} {
+		if _, _, _, _, err := ParseYouTubeClipAssetID(bad); err == nil {
+			t.Errorf("ParseYouTubeClipAssetID(%q) = nil error, want shape failure", bad)
+		}
+	}
+}

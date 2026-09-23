@@ -39,7 +39,7 @@ func TestPayload_StrictDecode(t *testing.T) {
 
 func TestHandler_FailsBeforeWorkWhenRequiredChildHandlerMissing(t *testing.T) {
 	children := newFakeChildren()
-	children.missingHandlers[appjobs.TypeAssemblyFinalize] = true
+	children.missingHandlers[job.TypeClipRender] = true
 	deps, _, _ := newTestDeps(t, children, fakeProbe{})
 	handler, err := NewHandler(deps)
 	if err != nil {
@@ -51,7 +51,7 @@ func TestHandler_FailsBeforeWorkWhenRequiredChildHandlerMissing(t *testing.T) {
 		t.Fatalf("handler error = %v, want ErrChildHandlerUnavailable", err)
 	}
 	if got := children.enqueueCount(); got != 0 {
-		t.Fatalf("enqueued %d children despite missing required assembly handler", got)
+		t.Fatalf("enqueued %d children despite missing required child handler", got)
 	}
 	rows, err := deps.Steps.ListByJob(context.Background(), j.ID)
 	if err != nil {

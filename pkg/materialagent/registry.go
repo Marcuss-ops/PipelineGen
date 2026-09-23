@@ -68,6 +68,12 @@ const (
 	ResolverImport  = "import"
 )
 
+// DefaultMaxMetadataProbes caps the caption probes one Resolve may spend when
+// Constraints.RequireCaptions is set. Five is deliberate: it matches the
+// default shortlist length and keeps the gate at most one probe per candidate
+// without an unbounded fan-out.
+const DefaultMaxMetadataProbes = 5
+
 // Policy decides WHICH resolvers a request may use and in what order. The
 // ordering is the autonomy rule the platform wants: consult the material we
 // already own before acquiring anything new.
@@ -77,6 +83,10 @@ type Policy struct {
 	// MaxPerResolver caps how many candidates a single resolver may
 	// materialize for one request (guards a runaway fallback).
 	MaxPerResolver int
+	// MaxMetadataProbes caps how many shortlist candidates get a caption
+	// metadata probe per Resolve call (guards an unbounded probe fan-out).
+	// <=0 falls back to DefaultMaxMetadataProbes.
+	MaxMetadataProbes int
 }
 
 // DefaultPolicy is catalog → live YouTube discovery → stock acquisition. The
@@ -84,8 +94,9 @@ type Policy struct {
 // is downloaded again.
 func DefaultPolicy() Policy {
 	return Policy{
-		Order:          []string{ResolverCatalog, ResolverYouTube, ResolverStock},
-		MaxPerResolver: 5,
+		Order:             []string{ResolverCatalog, ResolverYouTube, ResolverStock},
+		MaxPerResolver:    5,
+		MaxMetadataProbes: DefaultMaxMetadataProbes,
 	}
 }
 

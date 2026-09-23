@@ -37,6 +37,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
+	"strings"
 )
 
 // FetchFullVTT downloads the auto-generated transcript for videoURL
@@ -65,9 +67,8 @@ func (a *SubtitleFetcherAdapter) FetchFullVTT(ctx context.Context, videoURL stri
 		return nil, fmt.Errorf("subtitles: videoURL is required")
 	}
 	id := extractIDFromURL(videoURL)
-	cachedPath := filepath.Join(a.cacheDir, id+".vtt")
 
-	if _, err := os.Stat(cachedPath); err == nil {
+	if cachedPath, ok := a.resolveCachedVTT(id); ok {
 		return ParseVTTEntries(cachedPath, 0, 0)
 	}
 	if err := os.MkdirAll(a.cacheDir, 0o755); err != nil {
@@ -86,10 +87,71 @@ func (a *SubtitleFetcherAdapter) FetchFullVTT(ctx context.Context, videoURL stri
 	args = append(args, "-o", filepath.Join(a.cacheDir, "%(id)s.%(ext)s"))
 	// best-effort: no error if yt-dlp can't fetch subs.
 	_, _, _ = a.runner.Run(ctx, a.ytdlpPath, args)
-	if _, err := os.Stat(cachedPath); err != nil {
-		return nil, nil
+	if cachedPath, ok := a.resolveCachedVTT(id); ok {
+		return ParseVTTEntries(cachedPath, 0, 0)
 	}
-	return ParseVTTEntries(cachedPath, 0, 0)
+	return nil, nil
+}
+
+// splitLangs splits the configured BCP-47 CSV into trimmed, non-empty
+// entries (order preserved — it mirrors the --sub-langs preference order).
+func splitLangs(langs string) []string {
+	if strings.TrimSpace(langs) == "" {
+		return nil
+	}
+	parts := strings.Split(langs, ",")
+	out := make([]string, 0, len(parts))
+	for _, p := range parts {
+		if p = strings.TrimSpace(p); p != "" {
+			out = append(out, p)
+		}
+	}
+	return out
+}
+
+// resolveCachedVTT locates the VTT file yt-dlp ACTUALLY wrote for videoID.
+//
+// yt-dlp always inserts the track language into a subtitle filename, so the
+// canonical `-o %(id)s.%(ext)s` invocation produces `<id>.<lang>.vtt`
+// (observed: `506AyzC7d-k.it.vtt`, `506AyzC7d-k.it-orig.vtt`,
+// `506AyzC7d-k.fr.vtt`) and NEVER the bare `<id>.vtt`. Probing only for
+// `<id>.vtt` reported a successful --skip-download fetch as "no captions" and
+// silently fell through to Whisper — i.e. the transcript capability never
+// found the subtitles it had just downloaded.
+//
+// Preference order: the bare `<id>.vtt` (legacy / hand-placed), then one file
+// per configured language including its `-orig` variant, then any
+// `<id>.*.vtt` (deterministic alphabetical choice) so a track whose language
+// is outside the configured CSV is still surfaced rather than dropped.
+func (a *SubtitleFetcherAdapter) resolveCachedVTT(videoID string) (string, bool) {
+	if videoID == "" || a.cacheDir == "" {
+		return "", false
+	}
+	if bare := filepath.Join(a.cacheDir, videoID+".vtt"); fileExists(bare) {
+		return bare, true
+	}
+	for _, lang := range splitLangs(a.langs) {
+		for _, cand := range []string{
+			filepath.Join(a.cacheDir, videoID+"."+lang+".vtt"),
+			filepath.Join(a.cacheDir, videoID+"."+lang+"-orig.vtt"),
+		} {
+			if fileExists(cand) {
+				return cand, true
+			}
+		}
+	}
+	matches, _ := filepath.Glob(filepath.Join(a.cacheDir, videoID+".*.vtt"))
+	if len(matches) > 0 {
+		sort.Strings(matches)
+		return matches[0], true
+	}
+	return "", false
+}
+
+// fileExists reports whether path is an existing regular file.
+func fileExists(path string) bool {
+	info, err := os.Stat(path)
+	return err == nil && !info.IsDir()
 }
 
 // SliceSubtitles reads the cached VTT for videoID, applies the
@@ -103,8 +165,8 @@ func (a *SubtitleFetcherAdapter) SliceSubtitles(_ context.Context, videoID strin
 	if outputPath == "" {
 		return fmt.Errorf("subtitles: outputPath is required")
 	}
-	vttPath := filepath.Join(a.cacheDir, videoID+".vtt")
-	if _, err := os.Stat(vttPath); err != nil {
+	vttPath, found := a.resolveCachedVTT(videoID)
+	if !found {
 		if writeErr := os.WriteFile(outputPath, []byte{}, 0o644); writeErr != nil {
 			return fmt.Errorf("subtitles: write empty transcript at %s: %w", outputPath, writeErr)
 		}

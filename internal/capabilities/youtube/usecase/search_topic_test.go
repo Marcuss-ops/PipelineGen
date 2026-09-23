@@ -55,6 +55,11 @@ func (*stubTopicMetaFetcher) GetVideoMetadata(_ context.Context, videoURL string
 		Duration:   900,
 		UploadDate: "20240601",
 		ViewCount:  1000,
+		// T1.2 probe: this candidate HAS captions; the topic search must
+		// propagate the flag onto the ranked result row (asserted by
+		// TestTopicSearchPropagatesCaptionProbe).
+		HasCaptions:      true,
+		CaptionLanguages: []string{"en", "it"},
 	}, nil
 }
 

@@ -22,6 +22,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 
 	imagestyles "github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/styles"
@@ -232,6 +233,19 @@ func BuildDriveBundle(ctx context.Context, cfg *config.Config, dbs *Databases, l
 		lifecycle = drive.NewFileLifecycleAdapter(driveUploader.Service, log)
 	}
 
+	// DEV-STUB (September 2026): mirror of the publisher stub below — when
+	// Drive is not configured, hand consumers a Reader port that fails
+	// closed with typed errors instead of a nil port. A nil Reader aborts
+	// composition at registerClipRender ("canonical asset materializer:
+	// Drive reader is required") even though NO Drive read happens at boot,
+	// which made the route manifest unregenerable on credential-less hosts.
+	// The stub keeps boot semantics honest: read-only endpoints serve, any
+	// actual Drive op surfaces a loud typed error.
+	if reader == nil {
+		log.Warn("DEV-STUB: Google Drive not configured — injecting stub reader (Download/GetMeta will return typed errors). Production MUST set Drive credentials.")
+		reader = &driveStubReader{log: log}
+	}
+
 	// Reconnect the canonical asset.Resolver to the real Drive
 	// get-or-create surface (drive.Admin). The previous wiring was nil
 	// because drive.NewDestinationResolver was tied to drive.Store, which
@@ -274,6 +288,53 @@ func BuildDriveBundle(ctx context.Context, cfg *config.Config, dbs *Databases, l
 }
 
 var _ delivery.Publisher = (*driveStubPublisher)(nil)
+var _ drive.Reader = (*driveStubReader)(nil)
+
+// driveStubReader is a no-op drive.Reader used when Google Drive is not
+// configured (dev/smoke-test/docs-snapshot environments). Every method logs
+// and returns a typed "drive not configured (DEV-STUB)" error so callers that
+// actually need Drive surface the gap loudly, while composition can wire the
+// port without a nil-port abort (see the DEV-STUB note above).
+type driveStubReader struct {
+	log *zap.Logger
+}
+
+func (s *driveStubReader) notConfigured(op string) error {
+	s.log.Warn("driveStubReader: Drive not configured", zap.String("op", op))
+	return fmt.Errorf("drive not configured: cannot %s (DEV-STUB)", op)
+}
+
+func (s *driveStubReader) DownloadFile(_ context.Context, fileID string) (io.ReadCloser, string, error) {
+	return nil, "", s.notConfigured("download file " + fileID)
+}
+
+func (s *driveStubReader) GetFileMD5(_ context.Context, fileID string) (string, error) {
+	return "", s.notConfigured("get md5 of file " + fileID)
+}
+
+func (s *driveStubReader) GetFileMeta(_ context.Context, fileID string) (*drive.FileMeta, error) {
+	return nil, s.notConfigured("get metadata of file " + fileID)
+}
+
+func (s *driveStubReader) ListFiles(_ context.Context, parentID string) ([]drive.DriveFileInfo, error) {
+	return nil, s.notConfigured("list files in folder " + parentID)
+}
+
+func (s *driveStubReader) FindFileByName(_ context.Context, folderID, filename string) (drive.ExistingFileLookup, error) {
+	return drive.ExistingFileLookup{}, s.notConfigured("find file " + filename + " in folder " + folderID)
+}
+
+func (s *driveStubReader) FileIsNotTrashed(_ context.Context, fileID string) (bool, error) {
+	return false, s.notConfigured("check trash state of file " + fileID)
+}
+
+func (s *driveStubReader) FileExists(_ context.Context, fileID string) (bool, error) {
+	return false, s.notConfigured("check existence of file " + fileID)
+}
+
+func (s *driveStubReader) SearchFiles(_ context.Context, query string) ([]drive.DriveFileInfo, error) {
+	return nil, s.notConfigured("search files with query " + query)
+}
 
 // driveStubPublisher is a no-op delivery.Publisher used when Google Drive
 // is not configured (dev/smoke-test environments). Publish and ResolveFolder

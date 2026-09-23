@@ -4,14 +4,16 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/search"
 	audio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
 	delivery "github.com/Marcuss-ops/PipelineGen/internal/capabilities/delivery"
-	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaexec"
+	assetdetail "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
+	kernelmedia "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 )
 
 // ── Production adapters (the composition-root bindings) ───────────────
@@ -92,17 +94,72 @@ func (a childJobs) WaitTerminal(ctx context.Context, childJobID string) (*job.Jo
 type aggregatorSearch struct{ agg *search.Aggregator }
 
 // NewMediaSearch binds the canonical media search aggregator.
+// transcriptReadiness polls the canonical text-track repository until the
+// requested-language transcript is READY (bounded). The translation fan-out
+// (asset.text.materialize) is triggered by the acquisition children; this
+// wait only SEQUENCES the workflow's render fan-out behind that readiness.
+type transcriptReadiness struct {
+	repo    assetdetail.TextTrackRepository
+	every   time.Duration
+	timeout time.Duration
+}
+
+// NewTranscriptReadiness binds the canonical text-track repository. Poll
+// cadence and deadline are the workflow's sequencing policy (2s / 5min).
+func NewTranscriptReadiness(repo assetdetail.TextTrackRepository) TranscriptReady {
+	return &transcriptReadiness{repo: repo, every: 2 * time.Second, timeout: 5 * time.Minute}
+}
+
+func (t *transcriptReadiness) WaitTranscriptReady(ctx context.Context, assetID, language string) error {
+	if t == nil || t.repo == nil {
+		return fmt.Errorf("videocreate: transcript readiness: text track repository is not wired")
+	}
+	lang := strings.TrimSpace(language)
+	if lang == "" {
+		lang = "en"
+	}
+	deadline := time.Now().Add(t.timeout)
+	for {
+		track, _, err := t.repo.FindReady(ctx, assetID, lang, assetdetail.TextTrackTranscript)
+		if err != nil {
+			return fmt.Errorf("videocreate: transcript readiness %q/%q: %w", assetID, lang, err)
+		}
+		if track != nil {
+			return nil
+		}
+		if time.Now().After(deadline) {
+			return fmt.Errorf("videocreate: transcript %q/%q not READY within %s (translation materialization did not converge)", assetID, lang, t.timeout)
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(t.every):
+		}
+	}
+}
+
 func NewMediaSearch(agg *search.Aggregator) MediaSearch { return aggregatorSearch{agg: agg} }
 
 func (a aggregatorSearch) Search(ctx context.Context, req MediaSearchRequest) ([]MediaCandidate, error) {
 	if a.agg == nil {
 		return nil, fmt.Errorf("videocreate: media search aggregator is not wired")
 	}
+	// The durable parent is an internal SYSTEM principal (it is not a
+	// tenant request): Actor.IsAdmin/IsSystem make the semantic backend's
+	// filter skip the workspace must-clause, exactly like the admin HTTP
+	// surface does (mediasearch handler extractActor). With a zero Actor
+	// the semantic backend fails closed on the missing workspace and the
+	// whole search dies ("all eligible backends failed"). Universe is
+	// pinned to catalog: the workflow needs REGISTRY clips to extract,
+	// never live provider (discovery) traffic.
 	result, err := a.agg.Search(ctx, search.Query{
 		Text:       req.Topic,
 		Sources:    req.Sources,
 		MediaTypes: []string{"video"},
 		Limit:      req.Limit,
+		Mode:       search.SearchModeHybrid,
+		Universe:   search.SearchCatalog,
+		Actor:      search.Actor{IsAdmin: true, IsSystem: true},
 	})
 	if err != nil {
 		return nil, fmt.Errorf("videocreate: media search: %w", err)
@@ -112,14 +169,30 @@ func (a aggregatorSearch) Search(ctx context.Context, req MediaSearchRequest) ([
 	}
 	out := make([]MediaCandidate, 0, len(result.Items))
 	for _, item := range result.Items {
+		// Registry (catalog) hits carry their identity in the canonical
+		// YouTube asset id; recover the source video + exact window so the
+		// acquisition child re-extracts THAT clip and not a re-derived one.
+		videoID, startSec, endSec := "", 0, 0
+		if item.Source == "youtube" {
+			if vid, s, e, _, perr := assetdetail.ParseYouTubeClipAssetID(item.AssetID); perr == nil {
+				videoID, startSec, endSec = vid, s, e
+			}
+		}
+		sourceURL := item.SourceURL
+		if sourceURL == "" && videoID != "" {
+			sourceURL = "https://www.youtube.com/watch?v=" + videoID
+		}
 		out = append(out, MediaCandidate{
-			AssetID:    item.AssetID,
-			Source:     item.Source,
-			SourceURL:  item.SourceURL,
-			Title:      item.Title,
-			MediaType:  item.MediaType,
-			DurationMS: item.DurationMs,
-			Score:      item.Score,
+			AssetID:       item.AssetID,
+			Source:        item.Source,
+			SourceURL:     sourceURL,
+			SourceVideoID: videoID,
+			StartSec:      startSec,
+			EndSec:        endSec,
+			Title:         item.Title,
+			MediaType:     item.MediaType,
+			DurationMS:    item.DurationMs,
+			Score:         item.Score,
 		})
 	}
 	return out, nil
@@ -127,21 +200,26 @@ func (a aggregatorSearch) Search(ctx context.Context, req MediaSearchRequest) ([
 
 // MediaPlaneExecutor is the narrow execution seam of the canonical
 // media plane (rustexec VideoProcessor): the ONLY sanctioned owner of
-// media binaries (render_audio_plan / mux_audio_copy / ffprobe). The
-// interface keeps this capability free of platform imports.
+// media binaries (render_audio_plan / assemble_copy / mux_audio_copy /
+// ffprobe). The interface keeps this capability free of platform
+// imports; the copy certification is the media capability's own shared
+// contract type (mediaexec.CopyCertification).
 type MediaPlaneExecutor interface {
 	RenderAudioPlan(ctx context.Context, plan audio.CompiledAudioPlan, assets audio.ResolvedAudioAssets, output string) (audio.FinalAudioAsset, error)
 	MuxFinalAudioCopy(ctx context.Context, video, finalAudio, output string, asset audio.FinalAudioAsset) error
+	AssembleCopy(ctx context.Context, inputs []string, output string, cert mediaexec.CopyCertification) error
 	Probe(ctx context.Context, path string) (*mediaexec.MediaInfo, error)
 }
 
 // mediaPlane binds AudioMaster + MediaProber to one MediaPlaneExecutor.
 type mediaPlane struct{ exec MediaPlaneExecutor }
 
-// NewMediaPlane binds the canonical media plane to BOTH media ports.
-func NewMediaPlane(exec MediaPlaneExecutor) (AudioMaster, MediaProber) {
+// NewMediaPlane binds the canonical media plane to the media ports: the
+// audio master + mux surface (AudioMaster), the probe surface
+// (MediaProber) and the VeloxEditing copy-assembly boundary (Assembler).
+func NewMediaPlane(exec MediaPlaneExecutor) (AudioMaster, MediaProber, Assembler) {
 	p := mediaPlane{exec: exec}
-	return p, p
+	return p, p, assemblerViaMediaPlane{exec: exec}
 }
 
 func (p mediaPlane) Master(ctx context.Context, req MasterRequest) (MasteredAudio, error) {
@@ -196,89 +274,108 @@ func (p mediaPlane) Probe(ctx context.Context, path string) (ProbeFacts, error) 
 	}, nil
 }
 
-// assemblerViaChildren binds Assembler to the CANONICAL production
-// assembly path: the assembly.prepare / assembly.finalize job contract
-// (internal/kernel/assembly — the copy-certified, packet-copy segment
-// assembly the production lane certifies). The certified-but-unwired
-// video.assemble.copy.v1 backend (rust transform_assemble.rs) is
-// deliberately NOT wired: when the cutover decision is taken it becomes
-// a second implementation of THIS port (§15).
-type assemblerViaChildren struct{ children ChildJobs }
+// assemblerViaMediaPlane binds Assembler to the VeloxEditing media
+// plane: assemble_copy / video.assemble.copy.v1 (pipelinegen-muscles) —
+// packet-copy concatenation of the copy-certified scene segments with
+// zero decode, zero encode, zero compositing. It is the LIVE assembly
+// boundary of the durable video.create workflow (the user's explicit
+// cutover decision, 2026-09-23): RenderingGen's ParentFinalizer → daemon
+// ASSEMBLE_SEGMENTS keeps assembling the chunks of ONE render job, this
+// boundary assembles the independent scene segments of a final video.
+// Both enforce the same copy-safety facts, so the two lanes cannot
+// disagree about what is assemblable.
+type assemblerViaMediaPlane struct{ exec MediaPlaneExecutor }
 
-// NewAssemblerViaChildren binds the canonical assembly job contract.
-func NewAssemblerViaChildren(children ChildJobs) Assembler {
-	return assemblerViaChildren{children: children}
+// NewAssemblerViaMediaPlane binds the VeloxEditing copy-assembly boundary.
+func NewAssemblerViaMediaPlane(exec MediaPlaneExecutor) Assembler {
+	return assemblerViaMediaPlane{exec: exec}
 }
 
-func (a assemblerViaChildren) Assemble(ctx context.Context, req AssembleRequest) (AssembleResult, error) {
-	if a.children == nil {
-		return AssembleResult{}, fmt.Errorf("videocreate: assembler children are not wired")
+func (a assemblerViaMediaPlane) Assemble(ctx context.Context, req AssembleRequest) (AssembleResult, error) {
+	if a.exec == nil {
+		return AssembleResult{}, fmt.Errorf("videocreate: media plane is not wired")
 	}
-	parentJobID, parentRunID := "", ""
-	if req.ParentJob != nil {
-		parentJobID, parentRunID = req.ParentJob.ID, req.ParentJob.CorrelationID
+	if len(req.Segments) == 0 {
+		return AssembleResult{}, fmt.Errorf("videocreate: assemble: no segments")
 	}
-	prepareKey := ChildKey(req.AssemblyID, "assemble:prepare")
-	preparePayload, err := marshalChild(AssemblePrepareChildRequest{
-		AssemblyID: req.AssemblyID,
-		Segments:   req.Segments,
-	}, parentJobID, parentRunID)
+	if strings.TrimSpace(req.OutputPath) == "" {
+		return AssembleResult{}, fmt.Errorf("videocreate: assemble: output path is required")
+	}
+	cert, err := CopyCertificationFor(req.Segments)
 	if err != nil {
 		return AssembleResult{}, err
 	}
-	prepareID, err := a.children.EnqueueChild(ctx, ChildJobRequest{
-		JobType:        appjobs.TypeAssemblyPrepare,
-		IdempotencyKey: prepareKey,
-		CorrelationID:  ChildCorrelationID(parentRunID, appjobs.TypeAssemblyPrepare, prepareKey),
-		Payload:        preparePayload,
-	})
-	if err != nil {
-		return AssembleResult{}, fmt.Errorf("videocreate: assembly.prepare: %w", err)
+	inputs := make([]string, 0, len(req.Segments))
+	var totalMS int64
+	for i, seg := range req.Segments {
+		if !seg.CopyCertified {
+			return AssembleResult{}, fmt.Errorf("videocreate: assemble: segment %d (%s) is not copy-certified (the assembler is copy-only)", i, seg.AssetID)
+		}
+		if strings.TrimSpace(seg.LocalPath) == "" {
+			return AssembleResult{}, fmt.Errorf("videocreate: assemble: segment %d (%s) has no local materialization", i, seg.AssetID)
+		}
+		inputs = append(inputs, seg.LocalPath)
+		totalMS += seg.DurationMS
 	}
-	finalizeKey := ChildKey(req.AssemblyID, "assemble:finalize")
-	finalizePayload, err := marshalChild(AssembleFinalizeChildRequest{
-		AssemblyID:  req.AssemblyID,
-		Preparation: prepareID,
-		Timeline:    req.Timeline,
-	}, parentJobID, parentRunID)
-	if err != nil {
-		return AssembleResult{}, err
+	if err := a.exec.AssembleCopy(ctx, inputs, req.OutputPath, cert); err != nil {
+		return AssembleResult{}, fmt.Errorf("videocreate: assemble_copy: %w", err)
 	}
-	finalizeID, err := a.children.EnqueueChild(ctx, ChildJobRequest{
-		JobType:        appjobs.TypeAssemblyFinalize,
-		IdempotencyKey: finalizeKey,
-		CorrelationID:  ChildCorrelationID(parentRunID, appjobs.TypeAssemblyFinalize, finalizeKey),
-		Payload:        finalizePayload,
-	})
-	if err != nil {
-		return AssembleResult{}, fmt.Errorf("videocreate: assembly.finalize: %w", err)
-	}
-	if _, err := a.children.WaitTerminal(ctx, prepareID); err != nil {
-		return AssembleResult{}, fmt.Errorf("videocreate: assembly.prepare wait: %w", err)
-	}
-	finalize, err := a.children.WaitTerminal(ctx, finalizeID)
-	if err != nil {
-		return AssembleResult{}, fmt.Errorf("videocreate: assembly.finalize wait: %w", err)
-	}
-	if finalize.Status != job.StatusSucceeded {
-		return AssembleResult{}, fmt.Errorf("videocreate: assembly.finalize child %s failed: %s", finalizeID, finalize.Error)
-	}
-	// The canonical finalize contract (kernel/assembly FinalizeResultV1).
-	var res struct {
-		ArtifactID   string `json:"artifact_id"`
-		ArtifactPath string `json:"artifact_path"`
-	}
-	if err := childResult(finalize, &res); err != nil {
-		return AssembleResult{}, fmt.Errorf("videocreate: assembly.finalize result: %w", err)
-	}
-	if res.ArtifactID == "" || res.ArtifactPath == "" {
-		return AssembleResult{}, fmt.Errorf("videocreate: assembly.finalize produced no artifact_id/artifact_path")
+	var size int64
+	if stat, statErr := os.Stat(req.OutputPath); statErr == nil {
+		size = stat.Size()
 	}
 	return AssembleResult{
-		ArtifactID:  res.ArtifactID,
-		Path:        res.ArtifactPath,
-		ChildJobIDs: []string{prepareID, finalizeID},
+		ArtifactID: req.AssemblyID + ":assembled_video",
+		Path:       req.OutputPath,
+		SizeBytes:  size,
+		DurationMS: totalMS,
 	}, nil
+}
+
+// CopyCertificationFor derives the shared copy-safety certification for
+// one assembly batch from the segments' reported output-contract facts.
+// Fail-closed on any disagreement between segments (the assembler is
+// copy-only): every segment must carry the assembly-ready contract id
+// and the IDENTICAL contract block, or the batch is refused before a
+// Rust process starts.
+//
+// closed_gop / first_frame_keyframe are the assembly-ready output
+// contract's own guarantees (the clip.render lane resolves
+// VELOX_ASSEMBLY_READY_V1 with closed GOP + first-frame keyframe); the
+// contract id on every segment IS that claim, and the Rust gate
+// re-probes each input against these facts.
+func CopyCertificationFor(segments []AssembleSegment) (mediaexec.CopyCertification, error) {
+	if len(segments) == 0 {
+		return mediaexec.CopyCertification{}, fmt.Errorf("videocreate: assemble: no segments")
+	}
+	first := segments[0]
+	if first.ContractID != kernelmedia.AssemblyMediaContractID {
+		return mediaexec.CopyCertification{}, fmt.Errorf("videocreate: assemble: segment contract %q is not the assembly-ready contract %s", first.ContractID, kernelmedia.AssemblyMediaContractID)
+	}
+	for i, seg := range segments {
+		if seg.ContractID != first.ContractID {
+			return mediaexec.CopyCertification{}, fmt.Errorf("videocreate: assemble: segment %d contract %q != %q (ASSEMBLY_INPUT_CONTRACT_MISMATCH)", i, seg.ContractID, first.ContractID)
+		}
+		if seg.Contract != first.Contract {
+			return mediaexec.CopyCertification{}, fmt.Errorf("videocreate: assemble: segment %d contract block %+v != %+v (ASSEMBLY_INPUT_CONTRACT_MISMATCH)", i, seg.Contract, first.Contract)
+		}
+	}
+	cert := mediaexec.CopyCertification{
+		CopyEligible:       true,
+		ProfileID:          first.ContractID,
+		Codec:              first.Contract.VideoCodec,
+		Width:              uint32(first.Contract.Width),
+		Height:             uint32(first.Contract.Height),
+		FPSNum:             uint32(first.Contract.FPSNum),
+		FPSDen:             uint32(first.Contract.FPSDen),
+		ClosedGOP:          true,
+		FirstFrameKeyframe: true,
+		ContractID:         first.ContractID,
+	}
+	if err := cert.Validate(); err != nil {
+		return mediaexec.CopyCertification{}, fmt.Errorf("videocreate: assemble: %w", err)
+	}
+	return cert, nil
 }
 
 // deliveryPublisher binds ArtifactPublisher to the canonical delivery
