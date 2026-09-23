@@ -18,8 +18,11 @@ func TestNewProfileRegistry_ContentIsDistinctFromCreator(t *testing.T) {
 	if len(content.AllowedJobTypes) <= len(creator.AllowedJobTypes) {
 		t.Fatalf("content profile should expose the broader full-composition ceiling: creator=%v content=%v", creator.AllowedJobTypes, content.AllowedJobTypes)
 	}
-	if !contains(content.AllowedJobTypes, "voiceover.generate") || !contains(content.AllowedJobTypes, "clip.render") {
+	if !contains(content.AllowedJobTypes, "voiceover.generate") || !contains(content.AllowedJobTypes, "clip.render") || !contains(content.AllowedJobTypes, "video.create") {
 		t.Fatalf("content profile missing core content capabilities: %v", content.AllowedJobTypes)
+	}
+	if contains(content.AllowedJobTypes, "assembly.prepare") || contains(content.AllowedJobTypes, "assembly.finalize") {
+		t.Fatalf("content profile advertises assembly handlers that are not wired: %v", content.AllowedJobTypes)
 	}
 }
 

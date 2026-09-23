@@ -419,6 +419,7 @@ func (r *Runner) runAudioCompilePhase(ctx context.Context, runID string, req Gen
 		// into the planner (empty = the certified default pool). Same fill-only
 		// provenance as Style: resolved once at ingress, never re-derived here.
 		canvas.PhraseMotions = req.PhraseMotions
+		canvas.ImageMotions = req.ImageMotions
 		if canvas.Style == nil && background != nil {
 			canvas.Style = background.Style
 		}

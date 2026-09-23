@@ -159,30 +159,55 @@ func (s *Service) TopicSearch(ctx context.Context, query string, limit int, sort
 
 	for i := range tmp {
 		if filled[i] {
-			// Apply publishedAfter filter if set
-			if publishedAfter != "" && tmp[i].UploadDate != "" {
+			if publishedAfter != "" {
 				pubDate, err := timeutil.ParseYouTubeUploadDate(tmp[i].UploadDate)
-				if err == nil {
-					filterAfter := timeutil.ParseRFC3339(publishedAfter)
-					if !filterAfter.IsZero() && pubDate.Before(filterAfter) {
-						continue // skip videos published before the filter date
-					}
+				filterAfter := timeutil.ParseRFC3339(publishedAfter)
+				if err != nil || filterAfter.IsZero() || pubDate.Before(filterAfter) {
+					continue
 				}
 			}
 			ranked = append(ranked, tmp[i])
 		}
 	}
 
+	sortMode = strings.ToLower(strings.TrimSpace(sortMode))
 	sort.SliceStable(ranked, func(i, j int) bool {
-		scoreI := ranked[i].SimilarityScore*70 + ranked[i].FormatMatchPercent*30
-		scoreJ := ranked[j].SimilarityScore*70 + ranked[j].FormatMatchPercent*30
-		if scoreI != scoreJ {
-			return scoreI > scoreJ
+		a, b := ranked[i], ranked[j]
+		switch sortMode {
+		case "newest", "oldest":
+			if a.UploadDate == "" && b.UploadDate != "" {
+				return false
+			}
+			if a.UploadDate != "" && b.UploadDate == "" {
+				return true
+			}
+			if a.UploadDate != b.UploadDate {
+				if sortMode == "newest" {
+					return a.UploadDate > b.UploadDate
+				}
+				return a.UploadDate < b.UploadDate
+			}
+		case "longest", "shortest":
+			if a.Duration != b.Duration {
+				if sortMode == "longest" {
+					return a.Duration > b.Duration
+				}
+				return a.Duration < b.Duration
+			}
+		case "views":
+			if a.ViewCount != b.ViewCount {
+				return a.ViewCount > b.ViewCount
+			}
 		}
-		if ranked[i].ViewCount != ranked[j].ViewCount {
-			return ranked[i].ViewCount > ranked[j].ViewCount
+		scoreA := a.SimilarityScore*70 + a.FormatMatchPercent*30
+		scoreB := b.SimilarityScore*70 + b.FormatMatchPercent*30
+		if scoreA != scoreB {
+			return scoreA > scoreB
 		}
-		return ranked[i].Duration > ranked[j].Duration
+		if a.VideoID != b.VideoID {
+			return a.VideoID < b.VideoID
+		}
+		return a.Title < b.Title
 	})
 
 	// The `limit*2` over-fetch above exists ONLY to keep enough survivors for
@@ -221,14 +246,31 @@ func (s *Service) enrichTopicResult(ctx context.Context, query string, clip asse
 
 	similarity := scoreTopicSimilarity(query, metadata)
 	formatMatch := scoreFormatMatch(query, metadata)
+	viewCount := metadata.ViewCount
+	uploadDate := metadata.UploadDate
+	if raw := map[string]any(clip.Metadata); raw != nil {
+		if viewCount == 0 {
+			switch value := raw["view_count"].(type) {
+			case int64:
+				viewCount = value
+			case int:
+				viewCount = int64(value)
+			case float64:
+				viewCount = int64(value)
+			}
+		}
+		if uploadDate == "" {
+			uploadDate, _ = raw["upload_date"].(string)
+		}
+	}
 
 	return TopicSearchResult{
 		VideoID:            metadata.ID,
 		Title:              metadata.Title,
 		ChannelName:        metadata.Uploader,
 		ThumbnailURL:       metadata.ThumbnailURL,
-		ViewCount:          metadata.ViewCount,
-		UploadDate:         metadata.UploadDate,
+		ViewCount:          viewCount,
+		UploadDate:         uploadDate,
 		Duration:           int(metadata.Duration),
 		SimilarityScore:    similarity,
 		FormatMatchPercent: formatMatch,

@@ -1,34 +1,21 @@
-// Package search — rank.go implements Wave 21 PR 9 deterministic
-// scoring-aware ranking used by Aggregator.Search after dedup.
-//
-// PR 9 spec: "Ranking globale" with stable ordering across calls
-// so cursor pagination is byte-stable (callers can compute offset
-// deltas without re-scoring). Score is normalised [0,1]; higher
-// wins. Tiebreak is fixed: Source ASC → AssetID ASC.
-//
-// Stable secondary is required for cursor stability — without it,
-// two candidates with the same Score could swap position between
-// pages and produce duplicates / gaps in the user's stream.
-//
-// The sort is implemented as a copy + SliceStable so the input
-// slice is not mutated (good citizen at the merge step where the
-// dedupIndex's merged slice is shared with future insert paths).
+// Package search — rank.go implements deterministic ranking for the
+// Aggregator. Provider-native discovery sorts are applied only when requested;
+// otherwise relevance ordering remains Score DESC, Source ASC, AssetID ASC.
 package search
 
-import "sort"
+import (
+	"sort"
+	"strings"
+	"time"
+)
 
-// RankByScore returns a copy of in sorted by Score DESC, then
-// Source ASC, then AssetID ASC. Ties resolve deterministically
-// (stable secondary). The input slice is not mutated.
-//
-// Pre-condition: callers run this after dedup so each Candidate's
-// 4-key identity is unique within the slice.
+// RankByScore returns a copy sorted by Score DESC, then Source ASC, then
+// AssetID ASC. The input slice is not mutated.
 func RankByScore(in []Candidate) []Candidate {
 	if len(in) == 0 {
 		return []Candidate{}
 	}
-	out := make([]Candidate, len(in))
-	copy(out, in)
+	out := append([]Candidate(nil), in...)
 	sort.SliceStable(out, func(i, j int) bool {
 		if out[i].Score != out[j].Score {
 			return out[i].Score > out[j].Score
@@ -39,4 +26,77 @@ func RankByScore(in []Candidate) []Candidate {
 		return out[i].AssetID < out[j].AssetID
 	})
 	return out
+}
+
+// RankForQuery applies provider sort semantics after deduplication and
+// server-side filters. Missing provider metadata sorts after known metadata;
+// ties use relevance ranking for deterministic pagination.
+func RankForQuery(in []Candidate, q Query) []Candidate {
+	mode := strings.ToLower(strings.TrimSpace(q.Filters.Sort))
+	if mode == "" || mode == "relevance" {
+		return RankByScore(in)
+	}
+	out := append([]Candidate(nil), in...)
+	sort.SliceStable(out, func(i, j int) bool {
+		a, b := out[i], out[j]
+		switch mode {
+		case "newest", "oldest":
+			if a.PublishedAt == nil && b.PublishedAt != nil {
+				return false
+			}
+			if a.PublishedAt != nil && b.PublishedAt == nil {
+				return true
+			}
+			if cmp := comparePublishedAt(a.PublishedAt, b.PublishedAt); cmp != 0 {
+				if mode == "newest" {
+					return cmp > 0
+				}
+				return cmp < 0
+			}
+		case "longest", "shortest":
+			if a.DurationMs == 0 && b.DurationMs != 0 {
+				return false
+			}
+			if a.DurationMs != 0 && b.DurationMs == 0 {
+				return true
+			}
+			if a.DurationMs != b.DurationMs {
+				if mode == "longest" {
+					return a.DurationMs > b.DurationMs
+				}
+				return a.DurationMs < b.DurationMs
+			}
+		case "views":
+			if a.ViewCount != b.ViewCount {
+				return a.ViewCount > b.ViewCount
+			}
+		}
+		if a.Score != b.Score {
+			return a.Score > b.Score
+		}
+		if a.Source != b.Source {
+			return a.Source < b.Source
+		}
+		return a.AssetID < b.AssetID
+	})
+	return out
+}
+
+// comparePublishedAt compares two nullable publication timestamps. Known
+// timestamps sort ahead of unknown ones in either direction.
+func comparePublishedAt(a, b *time.Time) int {
+	switch {
+	case a == nil && b == nil:
+		return 0
+	case a == nil:
+		return 0
+	case b == nil:
+		return 0
+	case a.After(*b):
+		return 1
+	case a.Before(*b):
+		return -1
+	default:
+		return 0
+	}
 }

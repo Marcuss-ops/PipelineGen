@@ -1,6 +1,11 @@
 package overlays
 
-import "testing"
+import (
+	"encoding/json"
+	"os"
+	"path/filepath"
+	"testing"
+)
 
 // TestCertifiedPhraseMotionsIsTheRotationAuthority pins the membership list a
 // caller-supplied pool is validated against: it must be non-empty and it must
@@ -118,4 +123,94 @@ func containsString(haystack []string, needle string) bool {
 		}
 	}
 	return false
+}
+
+func TestCertifiedImageMotionPoolAndPlannerAssignment(t *testing.T) {
+	want := []string{"image_25d_depth_float_in", "image_25d_yaw_flip_in", "image_25d_pitch_lift", "image_25d_pop_z_bounce", "image_25d_swipe_3d", "image_25d_card_swing", "image_25d_blur_focus_in", "image_25d_blur_scale_in"}
+	got := CertifiedImageMotions()
+	if len(got) != len(want) {
+		t.Fatalf("CertifiedImageMotions has %d entries, want %d", len(got), len(want))
+	}
+	for i := range want {
+		if got[i] != want[i] || imageMotionCandidates[i] != want[i] {
+			t.Fatalf("image motion %d = %q / %q, want catalog contract %q", i, got[i], imageMotionCandidates[i], want[i])
+		}
+	}
+	input := PlanInput{PlanID: "image-motion-pool", VideoID: "v", Width: 1280, Height: 720, FPSNum: 30, FPSDen: 1,
+		Scenes: []SceneInput{{ID: "s", Images: []ImageCandidate{
+			{AssetID: "a", StartMs: 0, EndMs: 3000, StartUS: 0, DurationUS: 3_000_000, Score: 1},
+			{AssetID: "b", StartMs: 4000, EndMs: 7000, StartUS: 4_000_000, DurationUS: 3_000_000, Score: .9},
+		}}},
+	}
+	input.ImageMotions = got[:2]
+	plan, err := BuildPlan(input, AllCandidatesPlannerConfig(input.Scenes))
+	if err != nil {
+		t.Fatal(err)
+	}
+	seen := map[string]bool{}
+	for _, item := range plan.Items {
+		if item.Kind != "image" {
+			continue
+		}
+		if !containsString(input.ImageMotions, item.MotionID) || seen[item.MotionID] {
+			t.Fatalf("image item %q has uncertified/repeated motion %q", item.ID, item.MotionID)
+		}
+		seen[item.MotionID] = true
+	}
+	if len(seen) != 2 {
+		t.Fatalf("assigned %d image motions, want 2", len(seen))
+	}
+	input.ImageMotions = []string{"not_certified"}
+	if _, err := BuildPlan(input, AllCandidatesPlannerConfig(input.Scenes)); err == nil {
+		t.Fatal("uncertified image motion pool must fail closed")
+	}
+}
+
+func TestImageMotionPoolMatchesCanonicalChrononCatalog(t *testing.T) {
+	root, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var catalogPath string
+	for dir := root; ; dir = filepath.Dir(dir) {
+		candidate := filepath.Join(dir, "ChrononTemplate", "catalog", "motion_catalog.v1.json")
+		if _, err := os.Stat(candidate); err == nil {
+			catalogPath = candidate
+			break
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			break
+		}
+	}
+	if catalogPath == "" {
+		t.Fatal("could not locate canonical ChrononTemplate motion catalog")
+	}
+	data, err := os.ReadFile(catalogPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var document struct {
+		Motions []struct {
+			ID       string `json:"id"`
+			Category string `json:"category"`
+		} `json:"motions"`
+	}
+	if err := json.Unmarshal(data, &document); err != nil {
+		t.Fatal(err)
+	}
+	var catalogIDs []string
+	for _, definition := range document.Motions {
+		if definition.Category == "image_25d_clean_v1" {
+			catalogIDs = append(catalogIDs, definition.ID)
+		}
+	}
+	if len(catalogIDs) != len(imageMotionCandidates) {
+		t.Fatalf("catalog has %d clean image motions, pool has %d", len(catalogIDs), len(imageMotionCandidates))
+	}
+	for i := range catalogIDs {
+		if catalogIDs[i] != imageMotionCandidates[i] {
+			t.Fatalf("catalog motion %d=%q, pool=%q", i, catalogIDs[i], imageMotionCandidates[i])
+		}
+	}
 }

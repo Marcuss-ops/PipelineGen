@@ -47,6 +47,7 @@ type OverlayCanvasSpec struct {
 	// lives here because the canvas is the run-level render context this
 	// function already receives; the planner validates the ids fail-closed.
 	PhraseMotions []string
+	ImageMotions  []string
 }
 
 // GoldenOverlayCanvas is the validated golden canary canvas (1280×720,
@@ -260,7 +261,7 @@ func CompileOverlayPlan(result *GenerateResult, language Language, canvas Overla
 		Width: canvas.Width, Height: canvas.Height, FPSNum: canvas.FPSNum, FPSDen: canvas.FPSDen,
 		Scenes:        scenes,
 		Background:    canvas.Background,
-		PhraseMotions: canvas.PhraseMotions,
+		PhraseMotions: canvas.PhraseMotions, ImageMotions: canvas.ImageMotions,
 	}, capabilityoverlay.AllCandidatesPlannerConfig(scenes))
 	if err != nil {
 		return nil, fmt.Errorf("overlay plan: plan: %w", err)

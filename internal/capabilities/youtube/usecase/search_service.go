@@ -134,9 +134,11 @@ func (s *SearchService) SearchLive(ctx context.Context, query string, limit int,
 	results := make([]asset.Asset, 0, len(rawResults))
 	for _, r := range rawResults {
 		metadata := map[string]any{
-			"uploader": r.Uploader,
-			"duration": r.Duration,
-			"video_id": r.ID,
+			"uploader":    r.Uploader,
+			"duration":    r.Duration,
+			"video_id":    r.ID,
+			"upload_date": r.UploadDate,
+			"view_count":  r.ViewCount,
 		}
 		results = append(results, asset.Asset{
 			ID:           "youtube_" + r.ID,

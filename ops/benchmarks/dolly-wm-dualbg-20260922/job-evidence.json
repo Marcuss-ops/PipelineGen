@@ -1,0 +1,292 @@
+{
+  "job_id": "job_1790091295751404561_e73027c5",
+  "status": "SUCCEEDED",
+  "current_stage": "job_completed",
+  "correlation_id": "dolly-5clips-wm-dualbg-20260922T153455Z",
+  "stages": [
+    {
+      "name": "MEDIA_PREFLIGHT",
+      "duration_ms": 0
+    },
+    {
+      "name": "audio_compile",
+      "duration_ms": 15073
+    },
+    {
+      "name": "audio_finalize",
+      "duration_ms": 12
+    },
+    {
+      "name": "audio_publish",
+      "duration_ms": 6616
+    },
+    {
+      "name": "begin_vidrush",
+      "duration_ms": 0
+    },
+    {
+      "name": "checkpoint",
+      "duration_ms": 91
+    },
+    {
+      "name": "complete_finalize",
+      "duration_ms": 18
+    },
+    {
+      "name": "document",
+      "duration_ms": 0
+    },
+    {
+      "name": "finalize",
+      "duration_ms": 202
+    },
+    {
+      "name": "generate",
+      "duration_ms": 79433
+    },
+    {
+      "name": "normalize",
+      "duration_ms": 1
+    },
+    {
+      "name": "overlay_render",
+      "duration_ms": 0
+    },
+    {
+      "name": "persistence",
+      "duration_ms": 27
+    },
+    {
+      "name": "post_writer_finalize",
+      "duration_ms": 5020
+    },
+    {
+      "name": "prepare_join",
+      "duration_ms": 0
+    },
+    {
+      "name": "publish",
+      "duration_ms": 18488
+    },
+    {
+      "name": "translation",
+      "duration_ms": 23
+    },
+    {
+      "name": "tts",
+      "duration_ms": 18478
+    },
+    {
+      "name": "voiceover",
+      "duration_ms": 28
+    }
+  ],
+  "fanout": [
+    {
+      "stage": "audio_compile",
+      "wall_ms": 15073,
+      "calls": 6,
+      "work_ms": 21009,
+      "max_ms": 12192
+    },
+    {
+      "stage": "audio_publish",
+      "wall_ms": 6616,
+      "calls": 1,
+      "work_ms": 6595,
+      "max_ms": 6595
+    },
+    {
+      "stage": "generate",
+      "wall_ms": 79433,
+      "calls": 6,
+      "work_ms": 29782,
+      "max_ms": 16172
+    },
+    {
+      "stage": "post_writer_finalize",
+      "wall_ms": 5020,
+      "calls": 10,
+      "work_ms": 13083,
+      "max_ms": 4906
+    },
+    {
+      "stage": "publish",
+      "wall_ms": 18488,
+      "calls": 3,
+      "work_ms": 6597,
+      "max_ms": 6513
+    },
+    {
+      "stage": "voiceover",
+      "wall_ms": 28,
+      "calls": 6,
+      "work_ms": 37227,
+      "max_ms": 8791
+    }
+  ],
+  "render_metrics": {
+    "expected": 5,
+    "successful": 5,
+    "failed": 0,
+    "wall_ms": 51437,
+    "work_ms": 150669,
+    "concurrency": 5
+  },
+  "localized_renders": [
+    {
+      "scene_id": "scene-0",
+      "clip_id": "yt_Bc9gTqiljLA_0_36_v1",
+      "asset_id": "cliprender_36104b99c19e49d14bdab300",
+      "sha256": "36104b99c19e49d14bdab300cd30036a25dbb043566c9cd36b36789616778911",
+      "duration_ms": 36000,
+      "backend": "chronon_vulkan",
+      "drive_link": "https://drive.google.com/file/d/1QbIkeBLYLJVGom6tcqhHdD1duXz8Q8iF/view?usp=drivesdk",
+      "drive_folder_id": "1ufNQYfVBChXYOoeXInTqlp-8BivJIwmZ",
+      "chronon_queue_wait_ms": 55,
+      "chronon_service_ms": 8281,
+      "verification_passed": 1,
+      "realtime_factor": 4.347156204885877
+    },
+    {
+      "scene_id": "scene-1",
+      "clip_id": "yt_tnoMGevqWAM_1841_1903_v1",
+      "asset_id": "cliprender_df350121ff9f38110f71da14",
+      "sha256": "df350121ff9f38110f71da142aaedee2de1995913175612ad21d1c3cc832381c",
+      "duration_ms": 62000,
+      "backend": "chronon_vulkan",
+      "drive_link": "https://drive.google.com/file/d/1GJOvuZMBkJFyakHXErDbY4hJNrmPWzB7/view?usp=drivesdk",
+      "drive_folder_id": "1ufNQYfVBChXYOoeXInTqlp-8BivJIwmZ",
+      "chronon_queue_wait_ms": 10,
+      "chronon_service_ms": 9206,
+      "verification_passed": 1,
+      "realtime_factor": 6.7348399178992215
+    },
+    {
+      "scene_id": "scene-2",
+      "clip_id": "yt_pfaIAdqvlig_457_509_v1",
+      "asset_id": "cliprender_9059e48c46b8568c95478c49",
+      "sha256": "9059e48c46b8568c95478c49e9923434f7caba264d86e583d8d61a04c688935f",
+      "duration_ms": 52000,
+      "backend": "chronon_vulkan",
+      "drive_link": "https://drive.google.com/file/d/1VKFELVYLKJ6eXbFERoDW6A_m2lejmTjE/view?usp=drivesdk",
+      "drive_folder_id": "1ufNQYfVBChXYOoeXInTqlp-8BivJIwmZ",
+      "chronon_queue_wait_ms": 6597,
+      "chronon_service_ms": 8181,
+      "verification_passed": 1,
+      "realtime_factor": 6.356181132668239
+    },
+    {
+      "scene_id": "scene-3",
+      "clip_id": "yt_pfaIAdqvlig_929_980_v1",
+      "asset_id": "cliprender_6cfcc44640ef29bfd6fa9a4d",
+      "sha256": "6cfcc44640ef29bfd6fa9a4d23c13065af526dd62518f952bf1b45a2f2f1da12",
+      "duration_ms": 51000,
+      "backend": "chronon_vulkan",
+      "drive_link": "https://drive.google.com/file/d/1QCo8NogU8f_ZpmX2kaGDfhbVisBWMUVd/view?usp=drivesdk",
+      "drive_folder_id": "1ufNQYfVBChXYOoeXInTqlp-8BivJIwmZ",
+      "chronon_queue_wait_ms": 12310,
+      "chronon_service_ms": 6001,
+      "verification_passed": 1,
+      "realtime_factor": 8.498619662693004
+    },
+    {
+      "scene_id": "scene-4",
+      "clip_id": "yt_vLRjqTIiMjc_211_256_v1",
+      "asset_id": "cliprender_99d17daecc3e6555b3b5a135",
+      "sha256": "99d17daecc3e6555b3b5a135eb9744c6ce537920ea2c80d62593ddd47afef40e",
+      "duration_ms": 45000,
+      "backend": "chronon_vulkan",
+      "drive_link": "https://drive.google.com/file/d/1zKpc9cEgpWQYu8pON08wsqBrqgGZEQfT/view?usp=drivesdk",
+      "drive_folder_id": "1ufNQYfVBChXYOoeXInTqlp-8BivJIwmZ",
+      "chronon_queue_wait_ms": 18179,
+      "chronon_service_ms": 5776,
+      "verification_passed": 1,
+      "realtime_factor": 7.791361643587531
+    }
+  ],
+  "audio": {
+    "mode": "COMBINED_TIMELINE",
+    "mix_policy": "VOICEOVER_DUCKED_CLIP",
+    "tracks": [
+      "CLIP_AUDIO",
+      "VOICEOVER",
+      "BGM",
+      "SFX"
+    ],
+    "metrics": {
+      "tts_ms": 37227,
+      "media_fetch_ms": 0,
+      "audio_asset_resolve_ms": 0,
+      "timeline_compile_ms": 0,
+      "audio_plan_compile_ms": 17,
+      "clip_audio_prepare_ms": 0,
+      "mix_ms": 0,
+      "aac_encode_ms": 8530,
+      "probe_ms": 226,
+      "hash_ms": 28,
+      "upload_ms": 6595,
+      "total_ms": 12192,
+      "audio_duration_ms": 151176,
+      "tts_calls": 5,
+      "audio_rtf": 0.0806477218606128,
+      "audio_speed": 12.399606299212598,
+      "audio_encode_passes": 1
+    }
+  },
+  "resolved_render": {
+    "enabled": true,
+    "background": {
+      "mode": "asset",
+      "asset_id": "drive-background-05"
+    },
+    "watermark": {
+      "enabled": true,
+      "text": "VELOX EDITING",
+      "position": "top_right",
+      "opacity": 0.9,
+      "margin_px": 60,
+      "style": {
+        "font": "Montserrat",
+        "color": "#FFFFFF",
+        "font_size_px": 40,
+        "stroke": {
+          "color": "#000000",
+          "width": 4
+        },
+        "shadow": {
+          "color": "#000000",
+          "opacity": 0.95,
+          "blur_px": 10,
+          "offset_x": 2,
+          "offset_y": 3
+        }
+      }
+    },
+    "subtitles": {
+      "enabled": true,
+      "mode": "burn",
+      "preset": "subs-young",
+      "style": {
+        "font": "Poppins",
+        "position": "bottom_center",
+        "color": "#FFFFFF",
+        "font_size_px": 60,
+        "stroke": {
+          "color": "#000000",
+          "width": 3
+        },
+        "shadow": {
+          "color": "#000000",
+          "opacity": 0.8,
+          "blur_px": 8,
+          "offset_y": 4
+        }
+      }
+    },
+    "render_concurrency": 5,
+    "foreground_scale_percent": 82,
+    "drive_folder_id": "1ST6FxPuRaxwBOIz39MAN8Jj4gDv509-K",
+    "drive_subfolder_name": "dolly-5clips-wm-dualbg-20260922"
+  }
+}

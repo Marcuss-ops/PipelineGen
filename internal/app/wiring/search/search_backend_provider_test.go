@@ -9,6 +9,9 @@ package search
 import (
 	"context"
 	"testing"
+	"time"
+
+	"go.uber.org/zap"
 
 	providers "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers"
 	search "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/search"
@@ -34,17 +37,83 @@ func (s *canonicalIdentityStub) ResolveContent(_ context.Context, _ string) (sea
 
 // fakeSearchProvider is a minimal providers.SearchProvider.
 type fakeSearchProvider struct {
-	name string
-	res  providers.SearchResult
-	err  error
+	name    string
+	res     providers.SearchResult
+	err     error
+	request providers.SearchRequest
 }
 
 func (f *fakeSearchProvider) Name() string { return f.name }
 func (f *fakeSearchProvider) Capabilities() []providers.Capability {
 	return []providers.Capability{providers.CapabilitySearch, providers.CapabilityVideo}
 }
-func (f *fakeSearchProvider) Search(_ context.Context, _ providers.SearchRequest) (providers.SearchResult, error) {
+func (f *fakeSearchProvider) Search(_ context.Context, req providers.SearchRequest) (providers.SearchResult, error) {
+	f.request = req
 	return f.res, f.err
+}
+
+func TestProviderBackendForwardsYouTubeDiscoveryControls(t *testing.T) {
+	publishedAfter := time.Date(2025, 1, 2, 3, 4, 5, 0, time.UTC)
+	provider := &fakeSearchProvider{name: "youtube"}
+	backend := &providerSearchBackend{provider: provider}
+	_, err := backend.Search(context.Background(), search.Query{
+		Text: "boxing", Limit: 7, Filters: search.Filters{
+			MediaType: "video", Sort: string(providers.SortByViews), PublishedAfter: &publishedAfter,
+		},
+	})
+	if err != nil {
+		t.Fatalf("Search err = %v", err)
+	}
+	if provider.request.Filters.Sort != providers.SortByViews {
+		t.Fatalf("sort = %q, want %q", provider.request.Filters.Sort, providers.SortByViews)
+	}
+	if provider.request.Filters.PublishedAfter == nil || !provider.request.Filters.PublishedAfter.Equal(publishedAfter) {
+		t.Fatalf("published_after = %v, want %v", provider.request.Filters.PublishedAfter, publishedAfter)
+	}
+}
+
+func TestProviderBackendPreservesYouTubeSortMetadata(t *testing.T) {
+	publishedAt := time.Date(2025, 2, 3, 0, 0, 0, 0, time.UTC)
+	provider := &fakeSearchProvider{
+		name: "youtube",
+		res: providers.SearchResult{Candidates: []providers.Candidate{{
+			ID: "video-1", ExternalID: "video-1", Title: "Latest",
+			Duration: 42 * time.Second, PublishedAt: &publishedAt, ViewCount: 9876,
+		}}},
+	}
+	backend := &providerSearchBackend{provider: provider}
+	items, err := backend.Search(context.Background(), search.Query{Text: "boxing", Limit: 5})
+	if err != nil {
+		t.Fatalf("Search err = %v", err)
+	}
+	if len(items) != 1 {
+		t.Fatalf("items=%+v, want one item", items)
+	}
+	got := items[0]
+	if got.DurationMs != 42_000 || got.PublishedAt == nil || !got.PublishedAt.Equal(publishedAt) || got.ViewCount != 9876 {
+		t.Fatalf("sort metadata was lost: %+v", got)
+	}
+}
+
+func TestBuildSearchBackendsMountsYouTubeDiscoveryProvider(t *testing.T) {
+	providerReg := providers.NewRegistry()
+	provider := &fakeSearchProvider{name: "youtube"}
+	if err := providerReg.RegisterSearch(provider); err != nil {
+		t.Fatal(err)
+	}
+	providerReg.Freeze()
+	backends, err := BuildSearchBackends(SearchBackendBuildOpts{
+		Logger: zap.NewNop(), ProviderReg: providerReg,
+	})
+	if err != nil {
+		t.Fatalf("BuildSearchBackends: %v", err)
+	}
+	eligible := backends.Eligible(search.Query{
+		Sources: []string{"youtube"}, Universe: search.SearchDiscovery,
+	})
+	if len(eligible) != 1 || eligible[0].Name() != "youtube" || eligible[0].Universe() != search.SearchDiscovery {
+		t.Fatalf("eligible discovery backends=%+v, want the mounted YouTube provider", eligible)
+	}
 }
 
 func TestProviderBackendResolvesCanonicalIdentityNotProviderID(t *testing.T) {

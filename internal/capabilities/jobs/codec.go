@@ -4,7 +4,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"reflect"
+	"strings"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 )
 
@@ -149,6 +151,204 @@ type AssetsResolvePayload struct {
 // assets.resolve.
 type AssetsResolveResult struct {
 	AssetRefs []string `json:"asset_refs"`
+}
+
+// ── C2: video.create workflow family (payload + result) ────────────
+
+// VideoCreatePayload is the canonical typed request payload for
+// video.create — ONE request that drives the whole durable video
+// workflow (script -> media -> voiceover -> audio master -> render ->
+// assemble -> mux -> verify -> publish).
+//
+// Contract discipline (godlike/07 no-fake-availability): this is the
+// WHAT, never the HOW. Infrastructure facts (worker addresses,
+// RenderingGen URLs, Chronon sockets, local filesystem paths) MUST NOT
+// appear here — they are owned by the runtime that executes the
+// workflow. The handler decodes with DisallowUnknownFields so a
+// payload carrying such fields fails closed instead of being ignored.
+type VideoCreatePayload struct {
+	Topic           string   `json:"topic"`
+	Language        string   `json:"language"`
+	DurationSeconds int      `json:"duration_seconds"`
+	MediaSources    []string `json:"media_sources"`
+	Voiceover       bool     `json:"voiceover"`
+	Overlays        bool     `json:"overlays"`
+	AspectRatio     string   `json:"aspect_ratio,omitempty"`
+	// DeliveryDestinationID is the optional publication destination
+	// identity (the 51's delivery registry entry). Empty = the
+	// workflow's canonical project destination.
+	DeliveryDestinationID string         `json:"delivery_destination_id,omitempty"`
+	Metadata              map[string]any `json:"metadata,omitempty"`
+}
+
+// VideoCreateMediaSources is the closed vocabulary of media_sources.
+var VideoCreateMediaSources = []string{"youtube", "stock", "artlist"}
+
+// Validate fails closed on an incomplete or out-of-contract request.
+func (p VideoCreatePayload) Validate() error {
+	if strings.TrimSpace(p.Topic) == "" {
+		return fmt.Errorf("video.create payload: topic is required")
+	}
+	if p.DurationSeconds <= 0 {
+		return fmt.Errorf("video.create payload: duration_seconds must be > 0")
+	}
+	if len(p.MediaSources) == 0 {
+		return fmt.Errorf("video.create payload: media_sources must not be empty")
+	}
+	seen := make(map[string]bool, len(p.MediaSources))
+	for _, src := range p.MediaSources {
+		src = strings.TrimSpace(src)
+		known := false
+		for _, allowed := range VideoCreateMediaSources {
+			if src == allowed {
+				known = true
+				break
+			}
+		}
+		if !known {
+			return fmt.Errorf("video.create payload: media_sources %q is not one of %v", src, VideoCreateMediaSources)
+		}
+		if seen[src] {
+			return fmt.Errorf("video.create payload: media_sources contains duplicate %q", src)
+		}
+		seen[src] = true
+	}
+	return nil
+}
+
+// FinalVideoArtifact is the durable identity of the published final
+// video. Every fact the caller (the 51's Calendar) needs to show and
+// replay the video WITHOUT knowing RenderingGen, Chronon or any local
+// path: the media registry identity, the Drive identity, the playback
+// URL and the certified content facts.
+// ── Media identity value objects (media-identity gate, godlike/06) ─
+//
+// A CONTENT ADDRESS (AssetID/SHA256: what the bytes ARE) and a LOCATION
+// (DriveFileID/LocalPath: WHERE the bytes are) are different facts with
+// different owners; a struct that binds both can disagree with itself.
+// These value objects carry the location facts so identity structs never
+// declare them. Embedded anonymously they FLATTEN on the JSON wire, so
+// the contract keys (drive_file_id / local_path) are unchanged.
+//
+// Declared here (the codec contract package) because both the codec
+// wire types and the videocreate workflow project them; one owner.
+
+// DriveRef is the Drive LOCATION of bytes (file id).
+type DriveRef struct {
+	DriveFileID string `json:"drive_file_id,omitempty"`
+}
+
+// LocalRef is the producer-local materialization of bytes (a runtime
+// cache value, valid in ONE process).
+type LocalRef struct {
+	LocalPath string `json:"local_path,omitempty"`
+}
+
+type FinalVideoArtifact struct {
+	AssetID    string `json:"asset_id"`
+	MediaURL   string `json:"media_url"`
+	SHA256     string `json:"sha256"`
+	SizeBytes  int64  `json:"size_bytes"`
+	DurationMS int64  `json:"duration_ms"`
+	// DriveRef carries the Drive location (wire key drive_file_id).
+	DriveRef
+}
+
+// Validate fails closed on an unpublished or uncertified artifact:
+// a final video without a durable URL, Drive identity, canonical
+// SHA-256 or non-trivial size/duration is not a result.
+func (a FinalVideoArtifact) Validate() error {
+	if strings.TrimSpace(a.AssetID) == "" {
+		return fmt.Errorf("final_video.asset_id is required")
+	}
+	if strings.TrimSpace(a.MediaURL) == "" {
+		return fmt.Errorf("final_video.media_url is required")
+	}
+	if strings.TrimSpace(a.DriveFileID) == "" {
+		return fmt.Errorf("final_video.drive_file_id is required")
+	}
+	if !digest.IsCanonicalSHA256(a.SHA256) {
+		return fmt.Errorf("final_video.sha256 must be a canonical SHA-256")
+	}
+	if a.SizeBytes <= 0 {
+		return fmt.Errorf("final_video.size_bytes must be > 0")
+	}
+	if a.DurationMS <= 0 {
+		return fmt.Errorf("final_video.duration_ms must be > 0")
+	}
+	return nil
+}
+
+// ThumbnailArtifact is the durable identity of an already-generated
+// cover image (optional; see ThumbnailContext for the 51-side path).
+type ThumbnailArtifact struct {
+	AssetID   string `json:"asset_id"`
+	MediaURL  string `json:"media_url"`
+	SHA256    string `json:"sha256"`
+	SizeBytes int64  `json:"size_bytes"`
+	// DriveRef carries the Drive location (wire key drive_file_id).
+	DriveRef
+}
+
+// ThumbnailContext is the cover-generation context handed BACK to the
+// caller so the thumbnail stays owned by the component that already
+// owns covers (InstaeditLogin on the 51), instead of duplicating that
+// feature inside the render lane (PipelineGen documents that
+// cover/thumbnail is NOT a rendering-lane phase).
+type ThumbnailContext struct {
+	Title           string   `json:"title"`
+	Subjects        []string `json:"subjects"`
+	SuggestedPrompt string   `json:"suggested_prompt"`
+	FrameAssetIDs   []string `json:"frame_asset_ids,omitempty"`
+}
+
+// VideoCreateChildren is the child-job ledger of the workflow: the
+// durable broker IDs of every child the parent orchestrated, grouped
+// by stage. Recovery and replay audit read this instead of trusting
+// process memory.
+type VideoCreateChildren struct {
+	Script    string   `json:"script,omitempty"`
+	YouTube   []string `json:"youtube,omitempty"`
+	Stock     []string `json:"stock,omitempty"`
+	Voiceover string   `json:"voiceover,omitempty"`
+	Render    []string `json:"render,omitempty"`
+	Assembly  []string `json:"assembly,omitempty"`
+}
+
+// VideoCreateResult is the canonical typed response result for
+// video.create — the contract the 51 polls. It is returned ONLY when
+// the job is about to turn SUCCEEDED: the final video is published
+// (Drive + media registry), certified (ffprobe facts + SHA-256) and
+// the child ledger is complete. A missing final audio stream fails the
+// workflow (FINAL_VIDEO_AUDIO_MISSING) instead of producing a result.
+type VideoCreateResult struct {
+	VideoID          string              `json:"video_id"`
+	ScriptAssetID    string              `json:"script_asset_id,omitempty"`
+	FinalVideo       FinalVideoArtifact  `json:"final_video"`
+	Thumbnail        *ThumbnailArtifact  `json:"thumbnail,omitempty"`
+	ThumbnailContext *ThumbnailContext   `json:"thumbnail_context,omitempty"`
+	Children         VideoCreateChildren `json:"children"`
+	DurationMS       int64               `json:"duration_ms"`
+	CompletedStages  []string            `json:"completed_stages"`
+}
+
+// Validate fails closed on a result that cannot be consumed by the
+// caller (missing video identity, uncertified final video, or a
+// workflow that claims success without naming its completed stages).
+func (r VideoCreateResult) Validate() error {
+	if strings.TrimSpace(r.VideoID) == "" {
+		return fmt.Errorf("video.create result: video_id is required")
+	}
+	if err := r.FinalVideo.Validate(); err != nil {
+		return fmt.Errorf("video.create result: %w", err)
+	}
+	if r.DurationMS <= 0 {
+		return fmt.Errorf("video.create result: duration_ms must be > 0")
+	}
+	if len(r.CompletedStages) == 0 {
+		return fmt.Errorf("video.create result: completed_stages must not be empty")
+	}
+	return nil
 }
 
 // ── C2: TypedCodecAdapter[T,R] (domain bridge) ──────────────────────

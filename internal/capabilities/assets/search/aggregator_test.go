@@ -140,6 +140,60 @@ func TestAggregatorConcurrentFanout(t *testing.T) {
 // TestAggregatorPartialFailure — one backend errors; the other two
 // succeed. Result has Partial=true and ProviderErrors["err-backend"]
 // populated; surviving items are still served.
+func TestAggregatorRankForQueryUsesProviderMetadata(t *testing.T) {
+	publishedOld := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
+	publishedNew := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
+	registry := NewBackendRegistry()
+	if err := registry.Register(&stubBackend{
+		name: "youtube", universe: SearchDiscovery,
+		items: []Candidate{
+			{AssetID: "older-high-relevance", Source: "youtube", Score: 0.99, PublishedAt: &publishedOld, DurationMs: 60_000, ViewCount: 100},
+			{AssetID: "newer", Source: "youtube", Score: 0.1, PublishedAt: &publishedNew, DurationMs: 30_000, ViewCount: 900},
+			{AssetID: "longer", Source: "youtube", Score: 0.2, PublishedAt: timePointer(publishedNew.Add(24 * time.Hour)), DurationMs: 120_000, ViewCount: 500},
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	registry.Freeze()
+
+	for _, tc := range []struct {
+		mode  string
+		first string
+	}{
+		{"newest", "longer"},
+		{"oldest", "older-high-relevance"},
+		{"longest", "longer"},
+		{"shortest", "newer"},
+		{"views", "newer"},
+	} {
+		t.Run(tc.mode, func(t *testing.T) {
+			res, err := NewAggregator(registry, nil).Search(context.Background(), Query{
+				Universe: SearchDiscovery, Sources: []string{"youtube"}, Limit: 10,
+				Filters: Filters{Sort: tc.mode},
+			})
+			if err != nil {
+				t.Fatalf("Search: %v", err)
+			}
+			if len(res.Items) != 3 || res.Items[0].AssetID != tc.first {
+				t.Fatalf("ordered ids=%+v, first want %q", res.Items, tc.first)
+			}
+		})
+	}
+}
+
+func timePointer(value time.Time) *time.Time { return &value }
+
+func TestAggregatorMinScoreFilteringIsInclusiveAndNonMutating(t *testing.T) {
+	input := []Candidate{{AssetID: "equal", Score: 0.5}, {AssetID: "under", Score: 0.49}}
+	got := FilterByMinScore(input, 0.5)
+	if len(got) != 1 || got[0].AssetID != "equal" {
+		t.Fatalf("filtered=%+v, want inclusive score equal to threshold", got)
+	}
+	if len(input) != 2 {
+		t.Fatalf("filter mutated backend-owned results: %+v", input)
+	}
+}
+
 func TestAggregatorPartialFailure(t *testing.T) {
 	registry := NewBackendRegistry()
 

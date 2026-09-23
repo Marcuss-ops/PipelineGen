@@ -123,6 +123,7 @@ var canonicalJobTypes = []string{
 	TypeClipRender,             // capabilities/cliprender/request.go (canonical clip post-processing, August 2026)
 	TypeAssemblyPrepare,        // kernel/assembly/contract.go
 	TypeAssemblyFinalize,       // kernel/assembly/contract.go
+	TypeVideoCreate,            // kernel/job/canonical_definitions.go (durable video workflow parent, Sept 2026)
 }
 
 // sortedCanonicalTypes returns the canonical list sorted ascending

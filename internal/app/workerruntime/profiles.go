@@ -83,6 +83,12 @@ func NewProfileRegistry() *WorkerProfileRegistry {
 					appjobs.TypeYouTubeClipExtract,
 					appjobs.TypeImageGenerateGoogle,
 					job.TypeClipRender,
+					// The video.create workflow parent.
+					// Assembly child types are intentionally absent until
+					// production handlers are actually wired; advertising
+					// them here would make the content worker fail startup or
+					// claim jobs it cannot execute.
+					job.TypeVideoCreate,
 				},
 				MaxParallel: 2,
 			},

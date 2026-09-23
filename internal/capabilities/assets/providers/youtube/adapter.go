@@ -114,10 +114,9 @@ func (a *Adapter) Capabilities() []providers.Capability {
 //   - req.Limit               -> native limit. 0 / negative clamped
 //     to default 10; > 50 clamped to 50.
 //   - req.TopicOnly           -> ignored (YouTube IS topic-based).
-//   - req.Filters.Sort        -> native sortMode string.
-//     SortByRelevance + empty both map
-//     to the native default (""); other
-//     known modes pass through verbatim.
+//   - req.Filters.Sort        -> native sortMode string; relevance + empty
+//     select the native default and the supported discovery sorts are applied
+//     by TopicSearch after metadata enrichment.
 //   - req.Filters.PublishedAfter
 //     -> RFC3339 string forwarded to the
 //     underlying service. Nil = no filter.
@@ -169,7 +168,9 @@ func (a *Adapter) Search(ctx context.Context, req providers.SearchRequest) (prov
 			ThumbnailURL: r.ThumbnailURL,
 			MediaType:    youtubeMediaType,
 			Duration:     time.Duration(float64(r.Duration) * float64(time.Second)),
+			DurationMs:   int64(r.Duration) * 1000,
 			PublishedAt:  parseYouTubeUploadDate(r.UploadDate),
+			ViewCount:    r.ViewCount,
 			Score:        combinedScore(r.SimilarityScore, r.FormatMatchPercent),
 		})
 	}
@@ -350,6 +351,8 @@ func mapSortMode(s providers.SortMode) string {
 		return "longest"
 	case providers.SortByShortest:
 		return "shortest"
+	case providers.SortByViews:
+		return "views"
 	default:
 		return string(s)
 	}

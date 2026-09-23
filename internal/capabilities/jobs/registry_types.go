@@ -287,7 +287,10 @@ const (
 	// kernel (internal/kernel/job/canonical_definitions.go) and is
 	// re-exported by the owning capability; this is a pure re-export
 	// alias so registry files reference one stable identifier.
-	TypeClipRender       = job.TypeClipRender
+	TypeClipRender = job.TypeClipRender
+	// TypeVideoCreate is the durable end-to-end video workflow parent
+	// (canonical string owned by internal/kernel/job per godlike/06).
+	TypeVideoCreate      = job.TypeVideoCreate
 	TypeAssemblyPrepare  = assembly.PrepareJobType
 	TypeAssemblyFinalize = assembly.FinalizeJobType
 )

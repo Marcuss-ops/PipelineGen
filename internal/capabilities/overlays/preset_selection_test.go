@@ -55,7 +55,7 @@ func TestSelectEntityImagePresetUsesOnlyRenderSafeCandidates(t *testing.T) {
 // an empty MotionID lets the compiler fall back to the preset's own
 // glyph-level motion.
 func TestGeneratedTextOverlaysStayOnTheRenderSafeTextContract(t *testing.T) {
-	glowFree := map[string]bool{"static_text_smoke": true}
+	glowFree := map[string]bool{"static_text_smoke": true, "phrase_apple_clean": true}
 	for _, id := range append(append([]string{}, namePresetRenderSafeCandidates...),
 		append(append([]string{}, phrasePresetCandidates...), wordPresetCandidates...)...) {
 		if !glowFree[id] {

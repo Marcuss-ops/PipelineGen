@@ -44,6 +44,7 @@ var canonicalWiredJobTypes = []string{
 	TypeScriptGenerate,
 	TypeImagesGenerate,
 	TypeAssetsResolve,
+	TypeVideoCreate,
 }
 
 // scriptGenerateCodec returns the canonical PayloadCodec + ResultCodec
@@ -73,6 +74,13 @@ func assetsResolveCodec(t *testing.T) (job.PayloadCodec, job.ResultCodec) {
 	return adapter, adapter
 }
 
+func videoCreateCodec(t *testing.T) (job.PayloadCodec, job.ResultCodec) {
+	t.Helper()
+	inner := NewTypedCodec[VideoCreatePayload, VideoCreateResult](TypeVideoCreate)
+	adapter := NewTypedCodecAdapter(inner, "pipelinegen.video.create.v1")
+	return adapter, adapter
+}
+
 // codecFor dispatches to the per-family helper. A future commit
 // that adds a 5th wired family must add a case here.
 func codecFor(t *testing.T, jobType string) (job.PayloadCodec, job.ResultCodec) {
@@ -84,6 +92,8 @@ func codecFor(t *testing.T, jobType string) (job.PayloadCodec, job.ResultCodec) 
 		return imagesGenerateCodec(t)
 	case TypeAssetsResolve:
 		return assetsResolveCodec(t)
+	case TypeVideoCreate:
+		return videoCreateCodec(t)
 	default:
 		t.Fatalf("codecFor: unknown canonical job type %q (add a helper here)", jobType)
 		return nil, nil
@@ -304,4 +314,92 @@ func TestCodecCompleteness_ConcreteAdapterTypesAvailable(t *testing.T) {
 	_ = ImagesGenerateResult{}
 	_ = AssetsResolvePayload{}
 	_ = AssetsResolveResult{}
+	_ = VideoCreatePayload{}
+	_ = VideoCreateResult{}
+}
+
+// TestCodecCompleteness_RoundTrip_VideoCreate exercises the typed
+// adapter for video.create (the durable workflow parent). The result
+// round-trip is the load-bearing one here: VideoCreateResult is the
+// contract the remote Calendar polls (final_video.media_url /
+// drive_file_id / sha256 + the child-job ledger), so a decode that
+// drops or renames a field breaks the consumer without a compile
+// error anywhere in this repository.
+func TestCodecCompleteness_RoundTrip_VideoCreate(t *testing.T) {
+	payloadCodec, resultCodec := videoCreateCodec(t)
+
+	in := VideoCreatePayload{
+		Topic:           "Mike Tyson training",
+		Language:        "en",
+		DurationSeconds: 600,
+		MediaSources:    []string{"youtube", "stock"},
+		Voiceover:       true,
+		Overlays:        true,
+		AspectRatio:     "16:9",
+	}
+	if err := in.Validate(); err != nil {
+		t.Fatalf("Validate(video.create payload): %v", err)
+	}
+	raw, err := payloadCodec.EncodePayload(in)
+	if err != nil {
+		t.Fatalf("EncodePayload(video.create): %v", err)
+	}
+	decoded, err := payloadCodec.DecodePayload(raw)
+	if err != nil {
+		t.Fatalf("DecodePayload(video.create): %v", err)
+	}
+	out, ok := decoded.(VideoCreatePayload)
+	if !ok {
+		t.Fatalf("payload round-trip: decoded type = %T, want VideoCreatePayload", decoded)
+	}
+	if out.Topic != "Mike Tyson training" || out.DurationSeconds != 600 {
+		t.Errorf("payload round-trip: got %+v", out)
+	}
+	if len(out.MediaSources) != 2 || out.MediaSources[0] != "youtube" {
+		t.Errorf("payload round-trip: MediaSources = %v", out.MediaSources)
+	}
+
+	inResult := VideoCreateResult{
+		VideoID: "video-123",
+		FinalVideo: FinalVideoArtifact{
+			AssetID:    "asset-final-1",
+			MediaURL:   "https://drive.google.com/uc?id=drive-1",
+			DriveRef:   DriveRef{DriveFileID: "drive-1"},
+			SHA256:     "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+			SizeBytes:  123456789,
+			DurationMS: 601123,
+		},
+		Children: VideoCreateChildren{
+			Script:    "job-script-1",
+			YouTube:   []string{"job-youtube-1"},
+			Voiceover: "job-voice-1",
+			Render:    []string{"job-render-1"},
+		},
+		DurationMS:      601123,
+		CompletedStages: []string{"01_script", "11_publish"},
+	}
+	if err := inResult.Validate(); err != nil {
+		t.Fatalf("Validate(video.create result): %v", err)
+	}
+	rawResult, err := resultCodec.EncodeResult(inResult)
+	if err != nil {
+		t.Fatalf("EncodeResult(video.create): %v", err)
+	}
+	decodedResult, err := resultCodec.DecodeResult(rawResult)
+	if err != nil {
+		t.Fatalf("DecodeResult(video.create): %v", err)
+	}
+	outResult, ok := decodedResult.(VideoCreateResult)
+	if !ok {
+		t.Fatalf("result round-trip: decoded type = %T, want VideoCreateResult", decodedResult)
+	}
+	if outResult.VideoID != "video-123" {
+		t.Errorf("result round-trip: VideoID = %q", outResult.VideoID)
+	}
+	if outResult.FinalVideo.MediaURL == "" || outResult.FinalVideo.DriveFileID != "drive-1" {
+		t.Errorf("result round-trip: FinalVideo = %+v", outResult.FinalVideo)
+	}
+	if outResult.Children.Script != "job-script-1" || len(outResult.Children.Render) != 1 {
+		t.Errorf("result round-trip: Children = %+v", outResult.Children)
+	}
 }

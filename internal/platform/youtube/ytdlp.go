@@ -115,6 +115,8 @@ func (a *YTDLPAdapter) SearchLive(ctx context.Context, query string, limit int, 
 			Title      string  `json:"title"`
 			Duration   float64 `json:"duration"`
 			Uploader   string  `json:"uploader"`
+			UploadDate string  `json:"upload_date"`
+			ViewCount  int64   `json:"view_count"`
 			Thumbnails []struct {
 				URL string `json:"url"`
 			} `json:"thumbnails"`
@@ -128,12 +130,14 @@ func (a *YTDLPAdapter) SearchLive(ctx context.Context, query string, limit int, 
 			thumb = item.Thumbnails[len(item.Thumbnails)-1].URL
 		}
 		results = append(results, LiveSearchResult{
-			ID:        item.ID,
-			URL:       item.URL,
-			Title:     item.Title,
-			Duration:  item.Duration,
-			Uploader:  item.Uploader,
-			Thumbnail: thumb,
+			ID:         item.ID,
+			URL:        item.URL,
+			Title:      item.Title,
+			Duration:   item.Duration,
+			Uploader:   item.Uploader,
+			Thumbnail:  thumb,
+			UploadDate: item.UploadDate,
+			ViewCount:  item.ViewCount,
 		})
 	}
 	return results, nil

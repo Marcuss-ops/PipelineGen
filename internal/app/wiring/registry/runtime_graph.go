@@ -78,6 +78,10 @@ func ValidateRuntimeGraph() error {
 		images.TypeImagesGenerate,
 		asset.TypeResolve,
 		media.TypeClipRegister,
+		// video.create is the durable end-to-end workflow parent: its
+		// presence in the workflow refs pins its C3 definition, codecs and
+		// handler binding at every boot (the §4.5 validator fails closed).
+		job.TypeVideoCreate,
 	}
 	validator := job.DefaultStartupValidator{}
 	return validator.ValidateRuntimeGraph(job.StartupValidationInput{

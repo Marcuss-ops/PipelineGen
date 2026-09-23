@@ -29,12 +29,14 @@ type TimedEntry struct {
 // LiveSearchResult is the raw shape of one yt-dlp --dump-json --flat-playlist
 // search hit.
 type LiveSearchResult struct {
-	ID        string
-	URL       string
-	Title     string
-	Duration  float64
-	Uploader  string
-	Thumbnail string
+	ID         string
+	URL        string
+	Title      string
+	Duration   float64
+	Uploader   string
+	Thumbnail  string
+	UploadDate string
+	ViewCount  int64
 }
 
 // VideoInfo / VideoThumbnail / VideoChapter are declared in ytdlp.go

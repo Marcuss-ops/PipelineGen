@@ -13,6 +13,7 @@
 //	CanonicalClipRegister      media.clip      / creator_allowed / pure-data (zero Artifacts)
 //	CanonicalImagesGenerate    images.generate / creator_allowed / multi-image artifacts
 //	CanonicalScriptGenerate    script.generate / creator_allowed / heavy artifacts
+//	CanonicalVideoCreate       video.create    / creator_allowed / pure-data (application-owned publish)
 //
 // ── Update discipline ───────────────────────────────────────────────
 //
@@ -95,6 +96,18 @@ const (
 	// capability (canonical VeloxEditing-compatible clip
 	// post-processing).
 	TypeClipRender = "clip.render"
+
+	// TypeVideoCreate is the canonical job type of the durable
+	// end-to-end video creation workflow: ONE parent job that takes a
+	// video.create request (topic/language/duration/sources) to a
+	// verified, published final video by orchestrating the EXISTING
+	// child capabilities (script.generate, media search,
+	// youtube_clip.extract, media.stock, voiceover.generate,
+	// clip.render, assembly.prepare/finalize) through their canonical
+	// registries. The M2M surface is POST /api/v1/jobs with
+	// type=video.create — there is deliberately NO /api/v1/video/create
+	// endpoint (one submission surface, filtered by AutomationCatalog).
+	TypeVideoCreate = "video.create"
 )
 
 // CanonicalScriptGenerate is the canonical JobDefinition for
@@ -188,9 +201,42 @@ var CanonicalClipRegister = JobDefinition{
 	// ProducesArtifacts=false: per-item tx owns artifact persistence.
 }
 
+// CanonicalVideoCreate is the canonical JobDefinition for
+// video.create — the durable end-to-end video workflow parent
+// (script -> media -> voiceover -> audio master -> render ->
+// assemble -> mux -> verify -> publish).
+//
+// ArtifactPolicy is the PURE-DATA value (ProducesArtifacts=false)
+// on purpose: the workflow's finalizer publishes the final MP4
+// through the canonical Drive/media-identity publication port INSIDE
+// the job (the youtube_clip.extract / media.clip application-owned
+// pattern — per-item tx: Drive upload + media_assets row + content
+// hash) so the typed result can carry the durable identities the
+// caller polls for (final_video.media_url / drive_file_id / sha256).
+// A WorkerSpine-owned artifact (ProducesArtifacts=true) is published
+// only AFTER the handler returns, so the result could never carry
+// media_url — the two contracts are mutually exclusive and this one
+// is dictated by VideoCreateResult (godlike/07 no-fake-availability:
+// an empty media_url "filled later" would be a result that lies).
+var CanonicalVideoCreate = JobDefinition{
+	Type:           TypeVideoCreate,
+	ExecutionClass: ExecutionCreatorAllowed,
+	Queue:          "default",
+	Timeout:        3 * time.Hour,
+	RetryPolicyKey: "max_retries_2",
+	ConcurrencyKey: "single_global",
+	RequiredCapabilities: []Capability{
+		"video.create",
+	},
+	PayloadCodec: NewCodecDescriptorMarker("pipelinegen.payload.video.create.v1", TypeVideoCreate),
+	ResultCodec:  NewCodecDescriptorMarker("pipelinegen.result.video.create.v1", TypeVideoCreate),
+	// Pure-data job: zero ArtifactPolicy left implicit (see the
+	// application-owned publish rationale above).
+}
+
 // CanonicalJobDefinitions is the slice used by composition-root
 // startup wiring (internal/app/registry.go::WireRegistry) to
-// register all 5 canonical families into the C3 MutableJobRegistry
+// register all canonical families into the C3 MutableJobRegistry
 // in a single loop. Order is deterministic (alphabetical-by-Type)
 // because CreatorCapabilities() derives from this slice via
 // sorted-union across RequiredCapabilities.
@@ -199,4 +245,5 @@ var CanonicalJobDefinitions = []JobDefinition{
 	CanonicalClipRegister,   // c (media.clip — async batch-register)
 	CanonicalImagesGenerate, // i
 	CanonicalScriptGenerate, // s
+	CanonicalVideoCreate,    // v (video.create — durable workflow parent)
 }

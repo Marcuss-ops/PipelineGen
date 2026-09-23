@@ -196,10 +196,12 @@ func registerInternalModules(ctx context.Context, registry *module.Registry, log
 		return registryCrossStepState{}, err
 	}
 
-	// Clip render (canonical VeloxEditing-compatible clip
-	// post-processing): a NEW capability on the same Master queue —
-	// no second renderer, no second queue.
+	// Clip render (canonical VeloxEditing-compatible clip post-processing).
 	if err := registerClipRender(registry, log, cfg, root, idemHandler); err != nil {
+		return registryCrossStepState{}, err
+	}
+	// video.create durable workflow parent (POST /api/v1/jobs, no dedicated endpoint).
+	if err := registerVideoCreate(root, log, cfg.External.RustMusclesPath, cfg.External.FfmpegPath, searchAgg); err != nil {
 		return registryCrossStepState{}, err
 	}
 
