@@ -59,6 +59,8 @@ type Profile struct {
 	// run (the animated IMPORTANT_PHRASE overlays). Empty means "keep the
 	// certified default pool"; every id must be a certified motion.
 	PhraseMotions []string `yaml:"phrase_motions,omitempty"`
+	// ImageMotions narrows the certified layer-only 2.5D image motion pool.
+	ImageMotions []string `yaml:"image_motions,omitempty"`
 }
 
 // SubtitlesProfile is the channel's subtitle choice. Presence of the block

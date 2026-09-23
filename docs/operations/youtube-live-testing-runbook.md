@@ -1,6 +1,6 @@
-# YouTube Live Search Testing Runbook
+# YouTube Live Search and Clip Testing Runbook
 
-Operational notes and current limitations for testing the PipelineGen YouTube search surface.
+Operational notes, current contracts, and explicit verification boundaries for YouTube discovery, clip extraction, and the Stock pipeline.
 
 ## Canonical search endpoint
 
@@ -11,24 +11,24 @@ Content-Type: application/json
 {
   "query": "Mike Tyson training documentary",
   "sources": ["youtube"],
+  "universe": "discovery",
   "mode": "hybrid",
+  "filters": {
+    "sort": "views",
+    "published_after": "2025-01-01T00:00:00Z"
+  },
+  "min_score": 0.5,
   "limit": 10
 }
 ```
 
 ## Current limitations
 
-### 1. YouTube live backend is not mounted
+### 1. Discovery provider wiring and behavior
 
-`GET /api/capabilities` reports the `youtube` capability as `NOT_MOUNTED`. As a result, `POST /api/media/search` with `sources: ["youtube"]` does **not** reach a live YouTube search provider. The aggregator falls back to the only eligible backend: the semantic (Qdrant) backend.
+The canonical composition path conditionally registers the YouTube search adapter when `features.youtube_enabled` is true and the YouTube service is available (`internal/app/wiring/registry_internal_modules.go`). The provider registry is frozen before search composition; `BuildSearchBackends` adapts registered providers into `SearchDiscovery` backends. If YouTube is disabled or the service is unavailable, it is not mounted; discovery then fails with no eligible backend rather than falling back to the catalog.
 
-Consequences for callers:
-
-- Returned items have `"source": "semantic"` instead of `"youtube"`.
-- Items expose `"drive_link"` (a Google Drive URL hydrated from SQLite) instead of `"thumbnail_url"` / `"preview_url"`.
-- Titles are often asset IDs or generic test labels rather than real YouTube titles.
-
-**Forward pointer:** canonical wiring surface is `internal/app/wiring/search/search_backends.go` (`BuildSearchBackends`). The YouTube adapter lives in `internal/capabilities/assets/providers/youtube/adapter.go` and must be registered in the provider registry passed to `BuildSearchBackends`.
+For unified search, callers must request `universe: "discovery"` and `sources: ["youtube"]`. The endpoint is metadata search; clip downloads/commits go through `POST /api/clips/process` and the asynchronous job flow. Stock acquisition's text queries are separately resolved through its YouTube `ChannelLister`.
 
 ### 2. No true "Suggested videos" endpoint
 
@@ -36,31 +36,29 @@ There is currently no `/api/media/suggested`, `/api/media/related`, or equivalen
 
 **Forward pointer:** any new related/suggested endpoint should be owned by the search capability (`internal/capabilities/assets/search`) and delegate to the canonical `search.Aggregator`.
 
-### 3. `sort` and `publishedAfter` are not exposed in the public DTO
+### 3. Sort and publication-date filter contract
 
-The internal YouTube provider adapter (`internal/capabilities/assets/providers/youtube/adapter.go`) supports native sort modes and a `publishedAfter` filter, but the public `POST /api/media/search` request DTO does not include `sort` or `publishedAfter` fields. Callers cannot request view-based sorting or date filtering through the canonical HTTP surface.
+For YouTube discovery, the canonical request fields are `filters.sort` and `filters.published_after` (RFC3339 timestamp, inclusive). Supported sort values are `relevance`, `newest`, `oldest`, `longest`, `shortest`, and `views`. `relevance` is the default ordering and is accepted as a neutral value; the non-default sort modes and `published_after` are rejected with HTTP 400 unless the request selects `universe: "discovery"` and `sources` includes `youtube`. Sort/date metadata survives the provider adapter; after merge, the aggregator applies the requested deterministic ordering and inclusive date floor. Missing publication dates fail closed when a date floor is requested. Provider scores break ties after the requested primary sort.
 
-**Forward pointer:** extend `searchRequest` in `internal/capabilities/assets/search/handler.go` and map the new fields to `providers.SearchFilters` in the handler.
+### 4. Score floor and catalog/discovery separation
 
-### 4. Nonsense queries still return semantic matches
-
-Because the semantic backend performs approximate vector matching, a query such as `zzzz_pipelinegen_impossible_query_987654321` does **not** return an empty `items` array. It returns low-score matches from the indexed corpus. This makes the "no results" negative test fail until the live YouTube backend is mounted or a score cutoff is applied.
-
-**Forward pointer:** add a minimum-score threshold in `internal/capabilities/assets/search/aggregator.go` or in the semantic backend (`internal/app/wiring/search/search_backend_semantic.go`).
+`min_score` is optional and must be in `[0,1]`; a positive value is forwarded to the semantic backend when selected and applied as an inclusive floor to merged candidates from every backend. Zero means no caller-specified floor (catalog backends may still apply their own retrieval floor). Use `universe: "discovery"` to avoid catalog semantic results entirely. A score floor changes what is returned but does not prove a live YouTube result set is empty.
 
 ## Verified working surfaces
 
-The following endpoints were tested and behave as expected:
+### Local contract evidence
 
-- `GET /api/clips/diagnostics` — returns `ok: true` with `ytdlp`, `ffmpeg`, and `node` checks passing.
-- `GET /api/clips/info?url=...` — correctly resolves both `https://www.youtube.com/watch?v=...` and `https://youtu.be/...` URLs and returns full metadata including `id`, `title`, `duration`, `uploader`, `view_count`, `thumbnail`, `thumbnails`, `chapters`, `categories`, and `tags`.
+- `handler_discovery_contract_test.go` pins JSON binding, discovery selection, forwarded sort/date/min_score, invalid fields, date filtering and min_score behavior.
+- `search_backend_provider_test.go` pins query forwarding, sort metadata preservation, and discovery backend mounting from a registered YouTube provider.
+- `adapter_test.go` pins YouTube sort/date translation and candidate metadata; `search_topic_test.go` pins sorted/date-filtered results.
+- `make verify-youtube`, `make verify-stock-unit`, and `make verify-pipeline-e2e` are the repository-owned local gates. They are not live YouTube/Drive/PostgreSQL certification.
 
 ## Live end-to-end certificate: YouTube → 10 languages → PostgreSQL → pgvector
 
-`tests/e2e/youtube_multilingual_live_test.go` is the real (non-hermetic) certificate for the
+`tests/e2e/youtube_multilingual_live_test.go` is the opt-in real (non-hermetic) certificate for the
 whole chain: download a real YouTube clip, acquire its real subtitle transcript, commit it to the
 PostgreSQL media SSOT, translate it into every configured language, rebuild the multilingual
-`search_text`, and index it into pgvector. It is hard-gated behind `VELOX_E2E_LIVE=1` so
+`search_text`, and index it into PostgreSQL pgvector. It was not run as part of this repository-only verification. It is hard-gated behind `VELOX_E2E_LIVE=1` so
 `go test ./...` stays hermetic — a live test that silently degrades to a mock is worse than no test.
 
 The test calls **no** fakes on the critical path: `yt-dlp` for the download and the subtitles, the
@@ -98,8 +96,7 @@ go test ./tests/e2e/ -run TestLiveYouTube_TranscriptTranslatedInTenLanguagesAndI
 
 ### What it asserts
 
-1. Download-once: ONE `yt-dlp` invocation fetches only the configured section; the artifact is
-   cached in `VELOX_E2E_WORKDIR` and reused on the next run.
+1. Download-once: one source stage is reused for the configured segments; hermetic coverage for the extraction service is in `extraction_staging_test.go`. The opt-in live test uses its configured workdir cache.
 2. The real English subtitle track parses through the canonical VTT parser and yields cues; the
    empty-text cues YouTube auto-captions emit are dropped (the committer rejects them).
 3. The clip, the READY transcript, the timed cues and the index request land in **one PostgreSQL

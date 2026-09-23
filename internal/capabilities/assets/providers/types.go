@@ -58,6 +58,8 @@ const (
 	SortByOldest    SortMode = "oldest"
 	SortByLongest   SortMode = "longest"
 	SortByShortest  SortMode = "shortest"
+	// SortByViews requests popularity ordering from providers that support it.
+	SortByViews SortMode = "views"
 )
 
 // SearchFilters carries provider-specific predicates as a typed

@@ -106,12 +106,14 @@ func (a *SearchRunnerAdapter) SearchLive(ctx context.Context, query string, limi
 	out := make([]youtubeports.SearchLiveResult, 0, len(raw))
 	for _, r := range raw {
 		out = append(out, youtubeports.SearchLiveResult{
-			ID:        r.ID,
-			Title:     r.Title,
-			URL:       r.URL,
-			Uploader:  r.Uploader,
-			Duration:  r.Duration,
-			Thumbnail: r.Thumbnail,
+			ID:         r.ID,
+			Title:      r.Title,
+			URL:        r.URL,
+			Uploader:   r.Uploader,
+			Duration:   r.Duration,
+			Thumbnail:  r.Thumbnail,
+			UploadDate: r.UploadDate,
+			ViewCount:  r.ViewCount,
 		})
 	}
 	return out, nil

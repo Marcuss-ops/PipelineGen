@@ -301,6 +301,7 @@ func TestSearch_SortModeMapping(t *testing.T) {
 		{"SortByOldest passes through", providers.SortByOldest, "oldest"},
 		{"SortByLongest passes through", providers.SortByLongest, "longest"},
 		{"SortByShortest passes through", providers.SortByShortest, "shortest"},
+		{"SortByViews maps to native popularity sort", providers.SortByViews, "views"},
 		{"unknown value passes through verbatim", providers.SortMode("custom"), "custom"},
 	}
 	for _, tc := range cases {
@@ -447,6 +448,12 @@ func TestSearch_CandidateTranslation(t *testing.T) {
 	}
 	if c.PublishedAt == nil {
 		t.Errorf("expected non-nil PublishedAt (parsed from YYYYMMDD)")
+	}
+	if c.DurationMs != 123_000 {
+		t.Errorf("DurationMs=%d want 123000", c.DurationMs)
+	}
+	if c.ViewCount != 9000 {
+		t.Errorf("ViewCount=%d want 9000", c.ViewCount)
 	}
 	// combinedScore: 80*70 + 60*30 = 5600 + 1800 = 7400 → 0.74.
 	if c.Score != 0.74 {

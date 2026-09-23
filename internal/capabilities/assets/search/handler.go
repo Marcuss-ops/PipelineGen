@@ -15,9 +15,12 @@ package search
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"math"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
@@ -95,7 +98,8 @@ func (h *Handler) Resolve(c *gin.Context) {
 //   - query     — Text field for canonical Query
 //   - sources   — Source filter (empty=all: artlist,youtube,stock,clips,sound_effect)
 //   - mode      — "hybrid" (default) or "ann" for semantic backend
-//   - filters   — Structured filters (source, media_type, category, language, tags, duration_ms_min)
+//   - filters   — Structured filters; YouTube discovery accepts sort=relevance|newest|oldest|longest|shortest|views and published_after as an RFC3339 inclusive date floor.
+//   - min_score — Optional inclusive score floor in [0,1], forwarded to capable catalog backends and applied uniformly to merged results.
 //   - limit     — Page size. Aggregator clamps to DefaultLimit / MaxLimit.
 //   - cursor    — Opaque base64-JSON pagination token.
 type searchRequest struct {
@@ -104,16 +108,19 @@ type searchRequest struct {
 	Mode     string              `json:"mode,omitempty"`
 	Universe string              `json:"universe,omitempty"` // "catalog" (default) | "discovery" | "blended"
 	Filters  searchRequestFilter `json:"filters,omitempty"`
+	MinScore float64             `json:"min_score,omitempty"`
 	Limit    int                 `json:"limit,omitempty"`
 	Cursor   string              `json:"cursor,omitempty"`
 }
 
 type searchRequestFilter struct {
-	Source    string   `json:"source,omitempty"`
-	MediaType string   `json:"media_type,omitempty"`
-	Category  string   `json:"category,omitempty"`
-	Language  string   `json:"language,omitempty"`
-	Tags      []string `json:"tags,omitempty"`
+	Source         string          `json:"source,omitempty"`
+	MediaType      string          `json:"media_type,omitempty"`
+	Category       string          `json:"category,omitempty"`
+	Language       string          `json:"language,omitempty"`
+	Tags           []string        `json:"tags,omitempty"`
+	Sort           string          `json:"sort,omitempty"`
+	PublishedAfter json.RawMessage `json:"published_after,omitempty"`
 	// AssetKind / SemanticRole are the canonical taxonomy dimensions,
 	// distinct from Source (physical provenance). They must be declared here:
 	// the JSON binder drops unknown keys silently, so before they existed
@@ -134,6 +141,34 @@ type searchRequestFilter struct {
 //	422 — invalid cursor (semantic error from Aggregator)
 //	500 — internal error from Aggregator fanout (providerErrors populated)
 //	503 — search aggregator not wired
+func parsePublishedAfter(raw json.RawMessage) (*time.Time, error) {
+	if len(raw) == 0 || string(raw) == "null" {
+		return nil, nil
+	}
+	var value string
+	if err := json.Unmarshal(raw, &value); err != nil {
+		return nil, err
+	}
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return nil, nil
+	}
+	parsed, err := time.Parse(time.RFC3339, value)
+	if err != nil {
+		return nil, err
+	}
+	return &parsed, nil
+}
+
+func containsSource(sources []string, want string) bool {
+	for _, source := range sources {
+		if canonicalSourceName(source) == want {
+			return true
+		}
+	}
+	return false
+}
+
 func (h *Handler) Search(c *gin.Context) {
 	if h.aggreg == nil {
 		apiutil.Error(c, http.StatusServiceUnavailable, "search aggregator not wired")
@@ -151,6 +186,34 @@ func (h *Handler) Search(c *gin.Context) {
 		return
 	}
 	limit := defaults.Int(req.Limit, DefaultLimit)
+	if universe := strings.TrimSpace(req.Universe); universe != "" && !IsValidUniverse(universe) {
+		apiutil.BadRequest(c, "universe must be one of catalog, discovery, blended")
+		return
+	}
+	if math.IsNaN(req.MinScore) || math.IsInf(req.MinScore, 0) || req.MinScore < 0 || req.MinScore > 1 {
+		apiutil.BadRequest(c, "min_score must be between 0 and 1")
+		return
+	}
+	publishedAfter, err := parsePublishedAfter(req.Filters.PublishedAfter)
+	if err != nil {
+		apiutil.BadRequest(c, "filters.published_after must be an RFC3339 timestamp")
+		return
+	}
+	sortMode := strings.ToLower(strings.TrimSpace(req.Filters.Sort))
+	if sortMode != "" && sortMode != "relevance" && (ParseUniverse(req.Universe) != SearchDiscovery || !containsSource(req.Sources, "youtube")) {
+		apiutil.BadRequest(c, "filters.sort is supported only for YouTube discovery")
+		return
+	}
+	if publishedAfter != nil && (ParseUniverse(req.Universe) != SearchDiscovery || !containsSource(req.Sources, "youtube")) {
+		apiutil.BadRequest(c, "filters.published_after is supported only for YouTube discovery")
+		return
+	}
+	switch sortMode {
+	case "", "relevance", "newest", "oldest", "longest", "shortest", "views":
+	default:
+		apiutil.BadRequest(c, "filters.sort must be one of relevance, newest, oldest, longest, shortest, views")
+		return
+	}
 
 	// Parse mode from the wire value; unknown/empty defaults to hybrid.
 	mode := ParseMode(req.Mode)
@@ -174,19 +237,22 @@ func (h *Handler) Search(c *gin.Context) {
 		Text:     q,
 		Sources:  req.Sources,
 		Limit:    limit,
+		MinScore: req.MinScore,
 		Mode:     mode,
 		Universe: ParseUniverse(req.Universe),
 		Cursor:   req.Cursor,
 		Actor:    actor,
 		Filters: Filters{
-			Source:        strings.TrimSpace(req.Filters.Source),
-			MediaType:     strings.TrimSpace(req.Filters.MediaType),
-			Category:      strings.TrimSpace(req.Filters.Category),
-			Language:      strings.TrimSpace(req.Filters.Language),
-			Tags:          req.Filters.Tags,
-			AssetKind:     strings.TrimSpace(req.Filters.AssetKind),
-			SemanticRole:  strings.TrimSpace(req.Filters.SemanticRole),
-			DurationMsMin: req.Filters.DurationMsMin,
+			Source:         strings.TrimSpace(req.Filters.Source),
+			MediaType:      strings.TrimSpace(req.Filters.MediaType),
+			Category:       strings.TrimSpace(req.Filters.Category),
+			Language:       strings.TrimSpace(req.Filters.Language),
+			Tags:           req.Filters.Tags,
+			AssetKind:      strings.TrimSpace(req.Filters.AssetKind),
+			SemanticRole:   strings.TrimSpace(req.Filters.SemanticRole),
+			DurationMsMin:  req.Filters.DurationMsMin,
+			Sort:           sortMode,
+			PublishedAfter: publishedAfter,
 		},
 	})
 	if err != nil {

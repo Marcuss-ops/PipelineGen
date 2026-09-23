@@ -25,6 +25,15 @@ func registerMediaEntries(r *Registry) {
 	// FinalizationStrategyLegacyComplete.
 	r.Register(JobPolicy{Completion: CompletionDeclaration{JobType: TypeClipRender, ArtifactOwnership: ArtifactOwnershipApplication, FinalizationStrategy: FinalizationStrategyLegacyComplete}, Description: "Clip render (background/watermark/subtitles baked in one render pass -> VeloxEditing-compatible derived media asset + provenance)", Timeout: 30 * time.Minute, DefaultMaxRetries: 2})
 
+	// ── Video create (durable end-to-end video workflow parent) ──
+	// The workflow's finalizer commits its own Drive publication +
+	// media_assets identity + content hash in the publish stage (mirror of
+	// media.clip / clip.render application-owned publish), because the typed
+	// VideoCreateResult must carry the published media_url / drive_file_id /
+	// sha256 to the polling caller. ArtifactOwnershipApplication +
+	// FinalizationStrategyLegacyComplete.
+	r.Register(JobPolicy{Completion: CompletionDeclaration{JobType: TypeVideoCreate, ArtifactOwnership: ArtifactOwnershipApplication, FinalizationStrategy: FinalizationStrategyLegacyComplete}, Description: "Video create (script/media/voiceover/audio/render/assemble/mux/verify/publish -> verified final video)", Timeout: 3 * time.Hour, DefaultMaxRetries: 2, RequiredCapabilities: []string{"video.create"}})
+
 	// ── System ──
 	r.Register(JobPolicy{Completion: CompletionDeclaration{JobType: TypeSystemCleanup, ArtifactOwnership: ArtifactOwnershipNone, FinalizationStrategy: FinalizationStrategyLegacyComplete}, Description: "System cleanup", Timeout: 2 * time.Minute, DefaultMaxRetries: 1})
 

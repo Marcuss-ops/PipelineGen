@@ -147,6 +147,9 @@ type ProviderAsset struct {
 	// PublishedAt is the provider publication time, when available.
 	PublishedAt *time.Time
 
+	// ViewCount is the provider-reported audience count when available.
+	ViewCount int64
+
 	// Score is a provider-specific relevance score.
 	Score float64
 

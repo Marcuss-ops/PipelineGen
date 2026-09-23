@@ -1,0 +1,17 @@
+{
+  "type": "video.create",
+  "project": "e2e-video-create",
+  "idempotency_key": "e2e-video-create-001",
+  "correlation_id": "e2e-video-create-001",
+  "payload": {
+    "topic": "Mike Tyson training",
+    "language": "en",
+    "duration_seconds": 60,
+    "media_sources": [
+      "youtube",
+      "stock"
+    ],
+    "voiceover": true,
+    "overlays": true
+  }
+}

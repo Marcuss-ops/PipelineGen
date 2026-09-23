@@ -79,10 +79,12 @@ func (b *providerSearchBackend) Search(ctx context.Context, q search.Query) ([]s
 		Query: q.Text,
 		Limit: q.Limit,
 		Filters: providers.SearchFilters{
-			MediaTypes: mediaTypesSingleFromString(q.Filters.MediaType),
-			Category:   strings.TrimSpace(q.Filters.Category),
-			Language:   strings.TrimSpace(q.Filters.Language),
-			Tags:       append([]string(nil), q.Filters.Tags...),
+			MediaTypes:     mediaTypesSingleFromString(q.Filters.MediaType),
+			Category:       strings.TrimSpace(q.Filters.Category),
+			Language:       strings.TrimSpace(q.Filters.Language),
+			Tags:           append([]string(nil), q.Filters.Tags...),
+			Sort:           providers.SortMode(q.Filters.Sort),
+			PublishedAfter: q.Filters.PublishedAfter,
 		},
 	}
 	res, err := b.provider.Search(ctx, provReq)
@@ -117,7 +119,9 @@ func (b *providerSearchBackend) Search(ctx context.Context, q search.Query) ([]s
 			SourceURL:    c.PageURL,
 			ThumbnailURL: c.ThumbnailURL,
 			PreviewURL:   c.PreviewURL,
-			DurationMs:   c.DurationMs,
+			DurationMs:   providerDurationMs(c),
+			PublishedAt:  c.PublishedAt,
+			ViewCount:    c.ViewCount,
 			Width:        c.Width,
 			Height:       c.Height,
 			Tags:         append([]string(nil), c.Keywords...),
@@ -149,6 +153,13 @@ func (b *providerSearchBackend) resolveKnownAssetID(ctx context.Context, ext sea
 // (ExternalID preferred, ID as legacy fallback, SourceRef last resort).
 func providerSourceRef(c providers.Candidate) string {
 	return firstNonEmptyProvider(c.ExternalID, c.ID, c.SourceRef)
+}
+
+func providerDurationMs(c providers.Candidate) int64 {
+	if c.DurationMs != 0 {
+		return c.DurationMs
+	}
+	return c.Duration.Milliseconds()
 }
 
 func firstNonEmptyProvider(values ...string) string {

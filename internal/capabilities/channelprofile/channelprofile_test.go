@@ -27,8 +27,9 @@ func validProfile() Profile {
 		SoundEffects: []SoundEffectProfile{{AssetID: "whoosh1", AtMS: 0, GainDB: &gain}},
 		MixPolicy:    "VOICEOVER_DUCKED_CLIP",
 		PhraseMotions: []string{
-			"slide_up", "fade_in",
+			"phrase_apple_clean_01_blur_soft_reveal", "phrase_apple_clean_02_blur_focus_snap",
 		},
+		ImageMotions: []string{"image_25d_depth_float_in", "image_25d_yaw_flip_in"},
 	}
 }
 
@@ -62,7 +63,11 @@ func TestValidateFailsClosed(t *testing.T) {
 		{"absolute and scene sfx placement", func(p *Profile) { p.SoundEffects = []SoundEffectProfile{{AssetID: "x", AtMS: 10, SceneID: "scene-1"}} }, "both"},
 		{"unknown mix policy", func(p *Profile) { p.MixPolicy = "duck_everything" }, "mix_policy"},
 		{"uncertified motion", func(p *Profile) { p.PhraseMotions = []string{"not_a_motion"} }, "certified"},
-		{"duplicate motion", func(p *Profile) { p.PhraseMotions = []string{"slide_up", "slide_up"} }, "repeats"},
+		{"duplicate motion", func(p *Profile) {
+			p.PhraseMotions = []string{"phrase_apple_clean_01_blur_soft_reveal", "phrase_apple_clean_01_blur_soft_reveal"}
+		}, "repeats"},
+		{"uncertified image motion", func(p *Profile) { p.ImageMotions = []string{"image_25d_orbit_arc"} }, "certified image motion"},
+		{"duplicate image motion", func(p *Profile) { p.ImageMotions = []string{"image_25d_depth_float_in", "image_25d_depth_float_in"} }, "repeats"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			p := validProfile()

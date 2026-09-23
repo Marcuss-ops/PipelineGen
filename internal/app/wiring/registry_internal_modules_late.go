@@ -11,11 +11,18 @@ package wiring
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 
+	search "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/search"
+	delivery "github.com/Marcuss-ops/PipelineGen/internal/capabilities/delivery"
+	steps "github.com/Marcuss-ops/PipelineGen/internal/capabilities/execution/steps"
 	capjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
 	mediasearchapi "github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediasearch"
 	outboxapi "github.com/Marcuss-ops/PipelineGen/internal/capabilities/outbox"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/videocreate"
 	module "github.com/Marcuss-ops/PipelineGen/internal/platform/httpserver"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/media/rustexec"
 
 	"go.uber.org/zap"
 )
@@ -69,4 +76,69 @@ func applyLateBindings(_ *module.Registry, log *zap.Logger, root *ComposeRoot, r
 		})
 	}
 	return prepared, nil
+}
+
+// registerVideoCreate wires the durable video.create workflow parent.
+//
+// There is deliberately NO dedicated HTTP endpoint (§2): the surface is
+// POST /api/v1/jobs with type=video.create, filtered by the same M2M
+// AutomationCatalog gate as every other job. Every dependency binds to
+// a canonical implementation the composition root already owns (job
+// registry, search aggregator, rustexec media plane, execution/steps
+// resumable store, canonical assembly children, delivery publisher).
+// Registration is fail-closed: a missing dependency is a startup error,
+// never a half-wired handler (godlike/05).
+func registerVideoCreate(root *ComposeRoot, log *zap.Logger, rustMusclesPath, ffmpegPath string, searchAgg *search.Aggregator) error {
+	if root == nil || root.Jobs == nil || root.Jobs.Facade == nil {
+		return fmt.Errorf("registerVideoCreate: jobs facade is not wired")
+	}
+	if root.DB == nil || root.DB.DB == nil {
+		return fmt.Errorf("registerVideoCreate: sqlite db is not wired")
+	}
+	if root.Drive == nil || root.Drive.Publisher == nil {
+		return fmt.Errorf("registerVideoCreate: delivery publisher is not wired")
+	}
+	if searchAgg == nil {
+		return fmt.Errorf("registerVideoCreate: media search aggregator is not wired")
+	}
+	// The canonical media plane (rustexec) is the ONLY owner of media
+	// binaries: the workflow reaches render_audio_plan / mux_audio_copy /
+	// ffprobe through it and never spawns anything itself.
+	executor := rustexec.NewConfiguredVideoProcessor(rustMusclesPath, ffmpegPath, root.MediaExec.Policy, root.MediaExec.Profile, log)
+	audioMaster, prober := videocreate.NewMediaPlane(executor)
+	children := videocreate.NewChildJobs(root.Jobs.Facade)
+	workspace := os.Getenv("VIDEO_CREATE_WORKSPACE_ROOT")
+	if workspace == "" {
+		workspace = filepath.Join("data", "video-create", "workspaces")
+	}
+	handler, err := videocreate.NewHandler(videocreate.Deps{
+		Steps:     steps.NewSQLiteStore(root.DB.DB),
+		Children:  children,
+		Search:    videocreate.NewMediaSearch(searchAgg),
+		Audio:     audioMaster,
+		Probe:     prober,
+		Assembler: videocreate.NewAssemblerViaChildren(children),
+		Publish:   videocreate.NewDeliveryPublisher(root.Drive.Publisher, delivery.DestinationRenderedClip),
+		Workspace: workspace,
+		Log:       log,
+	})
+	if err != nil {
+		return fmt.Errorf("registerVideoCreate: %w", err)
+	}
+	if err := root.Jobs.Facade.RegisterHandler(capjobs.TypeVideoCreate, capjobs.HandlerFunc(handler)); err != nil {
+		return fmt.Errorf("registerVideoCreate: bind %q to dispatcher: %w", capjobs.TypeVideoCreate, err)
+	}
+	// §21 no-fake-availability honesty about the ASSEMBLY lane: the
+	// workflow's 08_assemble dispatches the canonical assembly family
+	// (assembly.prepare / assembly.finalize, kernel/assembly contract).
+	// The certified production executor for that family is the
+	// RenderingGen ParentFinalizer → ASSEMBLE_SEGMENTS lane (the
+	// video.assemble.copy.v1 cutover decision is deliberately deferred —
+	// see videocreate/adapters.go). A deployment whose workers do not
+	// claim that family would stall at ASSEMBLING, so say it at startup.
+	log.Warn("video.create: assembly.prepare/assembly.finalize children require their canonical production handlers " +
+		"(RenderingGen ParentFinalizer → ASSEMBLE_SEGMENTS lane or the registered assembly executors); " +
+		"verify the content worker profile claims them before live runs")
+	log.Info("created video.create workflow handler (durable parent: script/media/voiceover/audio/render/assemble/mux/verify/publish)")
+	return nil
 }

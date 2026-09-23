@@ -266,6 +266,13 @@ func (a *Aggregator) Search(ctx context.Context, q Query) (*Result, error) {
 	// hold with the same authority: a backend that ignores filters.asset_kind
 	// would otherwise leak the very assets the caller excluded.
 	merged = FilterByTaxonomy(merged, q)
+	if q.EffectiveUniverse() == SearchDiscovery {
+		merged = FilterByPublishedAfter(merged, q.Filters.PublishedAfter)
+	}
+	if q.MinScore > 0 {
+		merged = FilterByMinScore(merged, q.MinScore)
+	}
+	merged = RankForQuery(merged, q)
 	if len(merged) > limit {
 		merged = merged[:limit]
 	}

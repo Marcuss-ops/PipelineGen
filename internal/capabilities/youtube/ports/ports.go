@@ -111,12 +111,14 @@ type VideoPipelinePort interface {
 
 // SearchLiveResult is the per-video result row returned by YouTube search.
 type SearchLiveResult struct {
-	ID        string  `json:"id"`
-	Title     string  `json:"title"`
-	URL       string  `json:"url"`
-	Uploader  string  `json:"uploader"`
-	Duration  float64 `json:"duration"`
-	Thumbnail string  `json:"thumbnail"`
+	ID         string  `json:"id"`
+	Title      string  `json:"title"`
+	URL        string  `json:"url"`
+	Uploader   string  `json:"uploader"`
+	Duration   float64 `json:"duration"`
+	Thumbnail  string  `json:"thumbnail"`
+	UploadDate string  `json:"upload_date,omitempty"`
+	ViewCount  int64   `json:"view_count,omitempty"`
 }
 
 // ── Structural ports (signature-bearing) ─────────────────────────────────

@@ -120,6 +120,36 @@ func TestTopicSearchCapsResultsAtLimit(t *testing.T) {
 	}
 }
 
+func TestTopicSearchHonorsRequestedSortAndDateFilter(t *testing.T) {
+	corpus := []youtubeports.SearchLiveResult{
+		{ID: "old", Title: "Denzel Washington Interview", URL: "https://www.youtube.com/watch?v=old"},
+		{ID: "new-low", Title: "Denzel Washington Interview", URL: "https://www.youtube.com/watch?v=new-low"},
+		{ID: "new-high-views", Title: "Denzel Washington Interview", URL: "https://www.youtube.com/watch?v=new-high-views"},
+	}
+	meta := &sortMetadataFetcher{byID: map[string]*youtubeports.DownloaderMetadata{
+		"old":            {ID: "old", Title: "Denzel Washington Interview", UploadDate: "20240101", ViewCount: 9000, Duration: 90},
+		"new-low":        {ID: "new-low", Title: "Denzel Washington Interview", UploadDate: "20250101", ViewCount: 10, Duration: 50},
+		"new-high-views": {ID: "new-high-views", Title: "Denzel Washington Interview", UploadDate: "20250601", ViewCount: 500, Duration: 70},
+	}}
+	runner := &stubTopicSearchRunner{corpus: corpus}
+	svc := &Service{log: zap.NewNop(), search: NewSearchService(SearchDeps{SearchRunner: runner, Log: zap.NewNop()}), metaFetcher: meta}
+	resp, err := svc.TopicSearch(context.Background(), "Denzel Washington Interview", 5, "views", "2025-01-01T00:00:00Z")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(resp.Results) != 2 || resp.Results[0].VideoID != "new-high-views" || resp.Results[1].VideoID != "new-low" {
+		t.Fatalf("results=%+v, want only post-date videos ordered by view count", resp.Results)
+	}
+}
+
+type sortMetadataFetcher struct {
+	byID map[string]*youtubeports.DownloaderMetadata
+}
+
+func (f *sortMetadataFetcher) GetVideoMetadata(_ context.Context, videoURL string) (*youtubeports.DownloaderMetadata, error) {
+	return f.byID[topicVideoID(videoURL)], nil
+}
+
 func TestScoreTopicSimilarityPrefersExactTopicMatch(t *testing.T) {
 	meta := &youtubeports.DownloaderMetadata{
 		Title:      "Denzel Washington Interview with Graham Bensinger",

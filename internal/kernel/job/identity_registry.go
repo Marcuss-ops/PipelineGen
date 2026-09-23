@@ -39,5 +39,6 @@ func CanonicalTypeIdentities() []TypeIdentity {
 		{"TypeSystemCleanup", TypeSystemCleanup},
 		{"TypeDriveFolderSync", TypeDriveFolderSync},
 		{"TypeClipRender", TypeClipRender},
+		{"TypeVideoCreate", TypeVideoCreate},
 	}
 }

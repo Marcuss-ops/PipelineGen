@@ -1,47 +1,41 @@
 package overlays
 
-// The installed REQUIRE_GPU_NATIVE text lane accepts exactly one shape of
-// generated text overlay, and it is fixed by the engine, not by taste. Both
-// rules below were measured on the installed chronon3d_cli (vulkan backend,
-// gpu-hot-path-mode=require_gpu_native, nvenc), one variable at a time:
+// The installed REQUIRE_GPU_NATIVE lane now carries the modern Apple-clean
+// phrase look: a glow-free, shadow-legible text preset plus 30 text
+// animators that lower to the native MTSDF kernel.
 //
-//  1. GLOW IS NOT RENDERABLE ON THIS LANE. A text layer that carries
-//     style.glow cannot stay resident on the GPU: the halo effect stack needs
-//     a CPU pixel-backed source, so the frame dies in the composite
-//     ("[native-surface] cannot upload from framebuffer without CPU pixel
-//     backing" / "native residency violation") even when the layer itself is
-//     static. The canonical apple_v2 phrase preset authors canaryGlow(), so
-//     every generated phrase/name/word built from it is unrenderable here.
+// Historical rules (measured on chronon3d_cli vulkan + require_gpu_native):
+//  1. A text layer carrying style.glow cannot stay resident when the effect
+//     stack needs a CPU backing. apple_v2's canaryGlow() therefore blocks
+//     the lane. The new phrase preset phrase_apple_clean is glow-free
+//     (shadow + stroke only) so it stays resident; blur/tracking are
+//     supplied by the motion itself ("shadow glow finito pulito + blur
+//     moderno" without the unverified halo).
+//  2. Per-glyph animators are rejected unless they match the canonical GPU
+//     contract: a single animator, selector unit glyph/character/grapheme,
+//     shape square|smooth, order forward, combine replace, no randomize,
+//     no time-dependent offset, ease 0->100, amount 100, and properties
+//     limited to opacity/position/scale/tracking/blur. The legacy pool
+//     (kinetic_split_word, masked_upward_reveal, …) and apple_phrase_v2
+//     violated this (word/line units, ramp_up, unsupported props) and were
+//     rejected. The 30 phrase_apple_clean_v1 motions are curated to satisfy
+//     exactly that contract, so they lower per-glyph on the GPU instead of
+//     falling back to software.
 //
-//  2. PER-GLYPH/PER-WORD TEXT ANIMATORS ARE REJECTED. The native MTSDF text
-//     kernel only accepts a lowerable animator stack; the glyph/word selector
-//     family resolves to route=reject reason=unsupported_animation
-//     ("animated glyph state requires software path"), which is fail-closed
-//     and — with a glow present — crashes the render process. The motions the
-//     planner used to rotate over (kinetic_split_word, masked_upward_reveal,
-//     staggered_char_float, soft_edge_spotlight_dissolve,
-//     velocity_inertia_snap) are exactly that family, and so is the apple_v2
-//     preset's own apple_phrase_v2 motion.
+// Every generated text item therefore carries an explicit MotionID from
+// renderSafeTextMotions (preset motion is bypassed; semantic_compile:
+// MotionID wins over PresetID), so no untracked animator is ever
+// transported.
 //
-// What DOES render is the glow-free text preset certified on this lane, with a
-// motion that lowers to COMPOSITION-level tracks only: the whole layer fades /
-// slides / scales in, the shaped text run stays static, and the native kernel
-// accepts it. Every generated text item therefore carries an explicit motion
-// id from renderSafeTextMotions — the preset's own motion is bypassed by the
-// compiler (semantic_compile: MotionID wins over PresetID), so no text
-// animator is ever transported for a generated overlay.
-//
-// These ids are owned by Chronon's VisualPresetRegistry/catalog. PipelineGen
-// only selects deterministically and transports the opaque id downstream.
+// Ids are owned by ChrononTemplate/catalog. PipelineGen only selects
+// deterministically and transports the opaque id.
 var (
-	// static_text_smoke is the ONLY glow-free, motion-free text preset the
-	// installed RenderingGen catalog declares, and it is the preset the
-	// certified runtime overlay scenario renders its phrases with. It owns the
-	// name, phrase and word surfaces so there is a single render-safe owner and
-	// no second candidate list can drift off the certified lane.
-	namePresetRenderSafeCandidates = []string{"static_text_smoke"}
-	phrasePresetCandidates         = []string{"static_text_smoke"}
-	wordPresetCandidates           = []string{"static_text_smoke"}
+	// phrase_apple_clean is the glow-free modern Apple style: 1920x260 band,
+	// Poppins-Bold 64, white fill, stroke + soft shadow, 60+12 entrance.
+	// static_text_smoke remains as the certified fallback for smoke/E2E.
+	namePresetRenderSafeCandidates = []string{"phrase_apple_clean"}
+	phrasePresetCandidates         = []string{"phrase_apple_clean"}
+	wordPresetCandidates           = []string{"phrase_apple_clean"}
 	imagePresetCandidates          = []string{
 		// Auto-selected images use an entrance long enough to remain visible.
 		// image_fast_fade is an explicit short variant (<1.5 s), so it stays
@@ -57,20 +51,64 @@ var (
 	imageAnimationCandidates = []string{
 		"fade_in", "reveal_from_bottom", "scale_drop", "fade_shift_vertical",
 	}
-	// renderSafeTextMotions is the whole motion vocabulary a generated text
-	// overlay may use on this lane. Every id is a catalog motion that lowers to
-	// composition tracks ONLY (no text_animators), so it renders natively
-	// without a soft-* or an animator stack: fade_in (opacity), slide_up and
-	// precision_spring_up (position_y), slide_from_right (position_x), scale_in
-	// (scale) and soft_scale_reveal (scale + opacity). They carry distinct,
-	// visible entrances and the layer owns its exit fade.
+	// renderSafeImageMotions is the catalog-certified, layer-only subset of
+	// image_25d_clean_v1. Camera-driven recipes remain template-only because
+	// they move the source composition rather than one overlay layer.
+	renderSafeImageMotions = []string{
+		"image_25d_depth_float_in", "image_25d_yaw_flip_in",
+		"image_25d_pitch_lift", "image_25d_pop_z_bounce",
+		"image_25d_swipe_3d", "image_25d_card_swing",
+		"image_25d_blur_focus_in", "image_25d_blur_scale_in",
+	}
+	imageMotionCandidates = renderSafeImageMotions
+	// renderSafeTextMotions is the GPU-native phrase vocabulary: 30 modern
+	// Apple-clean motions (phrase_apple_clean_v1) plus the 6 legacy layer
+	// motions that remain smoke-verified. All 36 satisfy
+	// can_lower_gpu_text_animation (single glyph animator, forward
+	// square/smooth, opacity/position/scale/tracking/blur) and the layer
+	// vocabulary, so they render on require_gpu_native without readback.
 	renderSafeTextMotions = []string{
+		// 30 Apple-clean (2s @30fps = 60 enter + 12 exit, blur/tracking modern)
+		"phrase_apple_clean_01_blur_soft_reveal",
+		"phrase_apple_clean_02_blur_focus_snap",
+		"phrase_apple_clean_03_blur_scale_clean",
+		"phrase_apple_clean_04_blur_tracking_drift",
+		"phrase_apple_clean_05_blur_apple_fade",
+		"phrase_apple_clean_06_blur_gravity",
+		"phrase_apple_clean_07_slide_up_soft",
+		"phrase_apple_clean_08_slide_up_spring",
+		"phrase_apple_clean_09_slide_down_catch",
+		"phrase_apple_clean_10_slide_from_right_apple",
+		"phrase_apple_clean_11_slide_left_ease",
+		"phrase_apple_clean_12_slide_diagonal_pop",
+		"phrase_apple_clean_13_scale_soft_pop",
+		"phrase_apple_clean_14_scale_bounce_clean",
+		"phrase_apple_clean_15_scale_hero_focus",
+		"phrase_apple_clean_16_scale_line_build",
+		"phrase_apple_clean_17_scale_in_place",
+		"phrase_apple_clean_18_scale_card_tilt",
+		"phrase_apple_clean_19_tracking_tighten",
+		"phrase_apple_clean_20_tracking_spread_clean",
+		"phrase_apple_clean_21_tracking_magnetic",
+		"phrase_apple_clean_22_tracking_word_focus",
+		"phrase_apple_clean_23_tracking_precision_lock",
+		"phrase_apple_clean_24_tracking_soft_kinetic",
+		"phrase_apple_clean_25_opacity_soft_reveal",
+		"phrase_apple_clean_26_opacity_depth_push",
+		"phrase_apple_clean_27_opacity_parallax",
+		"phrase_apple_clean_28_opacity_cinematic",
+		"phrase_apple_clean_29_opacity_hero_settle",
+		"phrase_apple_clean_30_opacity_clean_apple",
+		// 6 legacy layer-only smoke motions
 		"fade_in", "slide_up", "slide_from_right",
 		"scale_in", "soft_scale_reveal", "precision_spring_up",
 	}
-	// phraseMotionCandidates is the run-wide rotation pool for IMPORTANT_PHRASE
-	// overlays. It is the render-safe vocabulary above, nothing else.
-	phraseMotionCandidates = renderSafeTextMotions
+	// phraseMotionCandidates is the run-wide rotation pool for IMPORTANT_PHRASE.
+	// It is exactly the modern Apple-clean vocabulary (first 30 entries) so
+	// every admitted phrase rotates over a distinct, visible Apple finish;
+	// the 6 legacy entries remain available via direct MotionID but are not
+	// part of the editorial rotation.
+	phraseMotionCandidates = renderSafeTextMotions[:30]
 )
 
 // ImagePresetCandidates returns a copy of the render-safe generated-image
@@ -189,4 +227,29 @@ func SelectEntityImageAnimation(jobID, sceneID, itemID string) string {
 // SelectImageAnimation is the generic image/product/logo planner selector.
 func SelectImageAnimation(jobID, sceneID, itemID string) string {
 	return SelectEntityImageAnimation(jobID, sceneID, itemID)
+}
+
+// CertifiedImageMotions returns the image 2.5D motions admitted by the
+// catalog parity contract. Callers receive a copy.
+func CertifiedImageMotions() []string {
+	return append([]string(nil), imageMotionCandidates...)
+}
+
+func selectImageMotion(jobID, sceneID string, ordinal int, pool []string) string {
+	candidates := imageMotionCandidates
+	if len(pool) > 0 {
+		candidates = pool
+	}
+	if len(candidates) == 0 {
+		return ""
+	}
+	seeded := selectPreset(jobID, sceneID, sceneID, "image_motion", candidates)
+	start := 0
+	for i, candidate := range candidates {
+		if candidate == seeded {
+			start = i
+			break
+		}
+	}
+	return candidates[(start+ordinal)%len(candidates)]
 }

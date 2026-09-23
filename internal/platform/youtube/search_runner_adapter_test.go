@@ -9,6 +9,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/ytdlp"
+
 	// SearchRunnerPort + sentinel errors live in ports/.
 	youtubedto "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/ports"
 	ytcfg "github.com/Marcuss-ops/PipelineGen/internal/platform/config"
@@ -63,6 +65,28 @@ func TestSearchRunnerAdapter_SearchLive_ContextCancel(t *testing.T) {
 
 // TestSearchRunnerAdapter_GetVideoInfo_ContextCancel mirrors the SearchLive
 // cancellation test for the GetVideoInfo method.
+type captureSearchRunner struct {
+	stdout string
+}
+
+func (r captureSearchRunner) Run(_ context.Context, _ string, _ []string) (string, string, error) {
+	return r.stdout, "", nil
+}
+
+func TestSearchRunnerAdapter_MapsPublicationAndViewMetadata(t *testing.T) {
+	inner := &YTDLPAdapter{
+		cfg: &ytcfg.Config{}, log: zap.NewNop(),
+		runner:     captureSearchRunner{stdout: `{"id":"v1","title":"Video","upload_date":"20250102","view_count":12345}`},
+		cmdBuilder: ytdlp.NewCommandBuilder(&ytcfg.Config{}),
+	}
+	adapter := &SearchRunnerAdapter{inner: inner, log: zap.NewNop()}
+	got, err := adapter.SearchLive(context.Background(), "x", 1, "views")
+	require.NoError(t, err)
+	require.Len(t, got, 1)
+	require.Equal(t, "20250102", got[0].UploadDate)
+	require.Equal(t, int64(12345), got[0].ViewCount)
+}
+
 func TestSearchRunnerAdapter_GetVideoInfo_ContextCancel(t *testing.T) {
 	cfg := &ytcfg.Config{}
 	a := NewSearchRunnerAdapter(cfg, zap.NewNop())

@@ -183,12 +183,8 @@ func canonicalURL(u string) string {
 // Merge applies the 4-key dedup policy to incoming candidates,
 // dropping items whose identity appears in skip (cursor stability)
 // and ranking the survivors. Returns a freshly-allocated slice;
-// the input is not mutated.
-//
-// Order: dedup first (preserving arrival order — backend errors
-// can yield candidates that arrive out-of-score order), then
-// rank by Score DESC with stable secondary (Source ASC, AssetID
-// ASC) so pagination is byte-stable across calls.
+// the input is not mutated. Generic relevance ranking is preserved here;
+// Aggregator applies an explicit provider sort after server-side filters.
 func Merge(in []Candidate, skip map[string]struct{}) []Candidate {
 	if len(in) == 0 {
 		return []Candidate{}

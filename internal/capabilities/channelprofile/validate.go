@@ -50,6 +50,9 @@ func (p Profile) Validate() error {
 	if err := p.validatePhraseMotions(); err != nil {
 		return fmt.Errorf("channelprofile %q: %w", p.ChannelID, err)
 	}
+	if err := p.validateImageMotions(); err != nil {
+		return fmt.Errorf("channelprofile %q: %w", p.ChannelID, err)
+	}
 	return nil
 }
 
@@ -215,6 +218,28 @@ func (p Profile) validatePhraseMotions() error {
 			return fmt.Errorf("phrase_motions repeats %q (a rotation pool must be distinct)", trimmed)
 		}
 		seen[trimmed] = true
+	}
+	return nil
+}
+
+func (p Profile) validateImageMotions() error {
+	if len(p.ImageMotions) == 0 {
+		return nil
+	}
+	certified := make(map[string]bool)
+	for _, id := range overlays.CertifiedImageMotions() {
+		certified[id] = true
+	}
+	seen := make(map[string]bool, len(p.ImageMotions))
+	for _, id := range p.ImageMotions {
+		id = strings.TrimSpace(id)
+		if id == "" || !certified[id] {
+			return fmt.Errorf("image_motions id %q is not a certified image motion", id)
+		}
+		if seen[id] {
+			return fmt.Errorf("image_motions repeats %q (a rotation pool must be distinct)", id)
+		}
+		seen[id] = true
 	}
 	return nil
 }

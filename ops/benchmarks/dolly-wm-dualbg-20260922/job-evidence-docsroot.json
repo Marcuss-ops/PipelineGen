@@ -1,0 +1,178 @@
+{
+  "job_id": "job_1790092276095209221_a55bdbb5",
+  "status": "SUCCEEDED",
+  "correlation_id": "dolly-5clips-docsroot-20260922T155116Z",
+  "stages": [
+    {
+      "name": "MEDIA_PREFLIGHT",
+      "duration_ms": 0
+    },
+    {
+      "name": "audio_compile",
+      "duration_ms": 12504
+    },
+    {
+      "name": "audio_finalize",
+      "duration_ms": 21
+    },
+    {
+      "name": "audio_publish",
+      "duration_ms": 5035
+    },
+    {
+      "name": "begin_vidrush",
+      "duration_ms": 0
+    },
+    {
+      "name": "checkpoint",
+      "duration_ms": 77
+    },
+    {
+      "name": "complete_finalize",
+      "duration_ms": 27
+    },
+    {
+      "name": "document",
+      "duration_ms": 1
+    },
+    {
+      "name": "finalize",
+      "duration_ms": 55
+    },
+    {
+      "name": "generate",
+      "duration_ms": 27595
+    },
+    {
+      "name": "normalize",
+      "duration_ms": 0
+    },
+    {
+      "name": "overlay_render",
+      "duration_ms": 0
+    },
+    {
+      "name": "persistence",
+      "duration_ms": 21
+    },
+    {
+      "name": "post_writer_finalize",
+      "duration_ms": 4319
+    },
+    {
+      "name": "prepare_join",
+      "duration_ms": 0
+    },
+    {
+      "name": "publish",
+      "duration_ms": 2381
+    },
+    {
+      "name": "translation",
+      "duration_ms": 19
+    },
+    {
+      "name": "tts",
+      "duration_ms": 20605
+    },
+    {
+      "name": "voiceover",
+      "duration_ms": 39
+    }
+  ],
+  "render_metrics": {
+    "expected": 5,
+    "successful": 5,
+    "failed": 0,
+    "wall_ms": 20408,
+    "work_ms": 39760,
+    "concurrency": 5
+  },
+  "localized_renders": [
+    {
+      "scene_id": "scene-0",
+      "asset_id": "cliprender_36104b99c19e49d14bdab300",
+      "status": "UPLOADED",
+      "drive_folder_id": "1-23kdf4GcfZF3Xx8_8RFI5TaAlxul7hu"
+    },
+    {
+      "scene_id": "scene-1",
+      "asset_id": "cliprender_df350121ff9f38110f71da14",
+      "status": "UPLOADED",
+      "drive_folder_id": "1-23kdf4GcfZF3Xx8_8RFI5TaAlxul7hu"
+    },
+    {
+      "scene_id": "scene-2",
+      "asset_id": "cliprender_9059e48c46b8568c95478c49",
+      "status": "UPLOADED",
+      "drive_folder_id": "1-23kdf4GcfZF3Xx8_8RFI5TaAlxul7hu"
+    },
+    {
+      "scene_id": "scene-4",
+      "asset_id": "cliprender_99d17daecc3e6555b3b5a135",
+      "status": "UPLOADED",
+      "drive_folder_id": "1-23kdf4GcfZF3Xx8_8RFI5TaAlxul7hu"
+    },
+    {
+      "scene_id": "scene-3",
+      "asset_id": "cliprender_6cfcc44640ef29bfd6fa9a4d",
+      "status": "UPLOADED",
+      "drive_folder_id": "1-23kdf4GcfZF3Xx8_8RFI5TaAlxul7hu"
+    }
+  ],
+  "resolved_render": {
+    "enabled": true,
+    "background": {
+      "mode": "asset",
+      "asset_id": "drive-background-05"
+    },
+    "watermark": {
+      "enabled": true,
+      "text": "VELOX EDITING",
+      "position": "top_right",
+      "opacity": 0.9,
+      "margin_px": 60,
+      "style": {
+        "font": "Montserrat",
+        "color": "#FFFFFF",
+        "font_size_px": 40,
+        "stroke": {
+          "color": "#000000",
+          "width": 4
+        },
+        "shadow": {
+          "color": "#000000",
+          "opacity": 0.95,
+          "blur_px": 10,
+          "offset_x": 2,
+          "offset_y": 3
+        }
+      }
+    },
+    "subtitles": {
+      "enabled": true,
+      "mode": "burn",
+      "preset": "subs-young",
+      "style": {
+        "font": "Poppins",
+        "position": "bottom_center",
+        "color": "#FFFFFF",
+        "font_size_px": 60,
+        "stroke": {
+          "color": "#000000",
+          "width": 3
+        },
+        "shadow": {
+          "color": "#000000",
+          "opacity": 0.8,
+          "blur_px": 8,
+          "offset_y": 4
+        }
+      }
+    },
+    "render_concurrency": 5,
+    "foreground_scale_percent": 82,
+    "drive_folder_id": "1ST6FxPuRaxwBOIz39MAN8Jj4gDv509-K",
+    "drive_subfolder_name": "dolly-5clips-wm-dualbg-20260922"
+  }
+}

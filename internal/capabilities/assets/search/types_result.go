@@ -10,6 +10,8 @@
 // (godlike/06 SSOT — every sentinel in one place).
 package search
 
+import "time"
+
 // ── Candidate ──────────────────────────────────────────────────────
 //
 // Candidate is the universal search hit. Raw server-internal locators
@@ -29,20 +31,22 @@ type Candidate struct {
 	// (asset FAMILY and usage intent), distinct from Source (physical
 	// provenance). Surfacing them lets a caller select "YouTube-native clips"
 	// without inferring it from an id prefix — the jq workaround this replaces.
-	AssetKind    string   `json:"asset_kind,omitempty"`
-	SemanticRole string   `json:"semantic_role,omitempty"`
-	Title        string   `json:"title,omitempty"`
-	Name         string   `json:"name,omitempty"`       // canonical asset name; may differ from Title when localizations differ
-	SourceURL    string   `json:"source_url,omitempty"` // provider page, never a temporary download URL
-	ThumbnailURL string   `json:"thumbnail_url,omitempty"`
-	PreviewURL   string   `json:"preview_url,omitempty"` // signed; NEVER raw Drive URL
-	DurationMs   int64    `json:"duration_ms,omitempty"`
-	Width        int      `json:"width,omitempty"`
-	Height       int      `json:"height,omitempty"`
-	Tags         []string `json:"tags,omitempty"`
-	DriveLink    string   `json:"-"` // internal SQLite enrichment; never public JSON
-	Score        float64  `json:"score"`
-	Hash         string   `json:"hash,omitempty"`
+	AssetKind    string     `json:"asset_kind,omitempty"`
+	SemanticRole string     `json:"semantic_role,omitempty"`
+	Title        string     `json:"title,omitempty"`
+	Name         string     `json:"name,omitempty"`       // canonical asset name; may differ from Title when localizations differ
+	SourceURL    string     `json:"source_url,omitempty"` // provider page, never a temporary download URL
+	ThumbnailURL string     `json:"thumbnail_url,omitempty"`
+	PreviewURL   string     `json:"preview_url,omitempty"` // signed; NEVER raw Drive URL
+	DurationMs   int64      `json:"duration_ms,omitempty"`
+	PublishedAt  *time.Time `json:"published_at,omitempty"`
+	ViewCount    int64      `json:"view_count,omitempty"`
+	Width        int        `json:"width,omitempty"`
+	Height       int        `json:"height,omitempty"`
+	Tags         []string   `json:"tags,omitempty"`
+	DriveLink    string     `json:"-"` // internal SQLite enrichment; never public JSON
+	Score        float64    `json:"score"`
+	Hash         string     `json:"hash,omitempty"`
 }
 
 // ── Result ──────────────────────────────────────────────────────────

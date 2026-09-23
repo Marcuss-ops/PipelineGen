@@ -199,7 +199,9 @@ type PlanInput struct {
 	// and an id outside CertifiedPhraseMotions() is a compile failure: the
 	// rotation must never hand the renderer a motion it cannot run.
 	PhraseMotions []string
-	Scenes        []SceneInput
+	// ImageMotions optionally narrows the certified layer-only image motion pool.
+	ImageMotions []string
+	Scenes       []SceneInput
 }
 
 // BuildPlan selects bounded overlays from scene annotations. Candidates with
@@ -209,6 +211,9 @@ type PlanInput struct {
 func BuildPlan(input PlanInput, config PlannerConfig) (OverlayPlan, error) {
 	config = config.withDefaults()
 	if err := validatePhraseMotionPool(input.PhraseMotions); err != nil {
+		return OverlayPlan{}, err
+	}
+	if err := validateImageMotionPool(input.ImageMotions); err != nil {
 		return OverlayPlan{}, err
 	}
 	plan := OverlayPlan{
@@ -354,7 +359,13 @@ func BuildPlan(input PlanInput, config PlannerConfig) (OverlayPlan, error) {
 	// phrases span different scenes or the winning candidates were not the
 	// first annotations supplied by NLP.
 	phraseOrdinal := 0
+	imageOrdinal := 0
 	for i := range plan.Items {
+		switch plan.Items[i].Kind {
+		case "image", "product", "logo":
+			plan.Items[i].MotionID = selectImageMotion(input.PlanID, "run", imageOrdinal, input.ImageMotions)
+			imageOrdinal++
+		}
 		if plan.Items[i].Kind != "text_phrase" {
 			continue
 		}
@@ -365,6 +376,27 @@ func BuildPlan(input PlanInput, config PlannerConfig) (OverlayPlan, error) {
 		return OverlayPlan{}, err
 	}
 	return plan, nil
+}
+
+func validateImageMotionPool(pool []string) error {
+	if len(pool) == 0 {
+		return nil
+	}
+	certified := make(map[string]bool)
+	for _, id := range CertifiedImageMotions() {
+		certified[id] = true
+	}
+	seen := make(map[string]bool, len(pool))
+	for _, id := range pool {
+		if strings.TrimSpace(id) == "" || !certified[id] {
+			return fmt.Errorf("overlay: image motion %q is not a certified motion", id)
+		}
+		if seen[id] {
+			return fmt.Errorf("overlay: image motion pool repeats %q", id)
+		}
+		seen[id] = true
+	}
+	return nil
 }
 
 // validatePhraseMotionPool fails closed on a caller-supplied motion pool that

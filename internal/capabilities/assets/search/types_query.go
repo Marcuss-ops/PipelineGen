@@ -24,6 +24,7 @@ package search
 import (
 	"context"
 	"strings"
+	"time"
 )
 
 // ExternalCandidate is a provider result before canonical asset hydration.
@@ -189,7 +190,8 @@ func ParseUniverse(s string) SearchUniverse {
 // Field names match legacy MediaSearchFilter 1:1 (Source / MediaType /
 // Category / Language / Tags / DurationMsMin) so the byte-equivalence
 // test on /internal/v1/media/search survives both PR 8 (alias-only) and
-// PR 10 (alias-with-removed-local-def).
+// PR 10 (alias-with-removed-local-def). Sort and PublishedAfter are optional
+// discovery-provider controls and do not alter catalog filtering.
 type Filters struct {
 	Source    string
 	MediaType string
@@ -212,6 +214,10 @@ type Filters struct {
 	AssetKind     string
 	SemanticRole  string
 	DurationMsMin int // inclusive lower bound on duration (videos only)
+	// Sort is forwarded to discovery providers that support native sorting.
+	Sort string
+	// PublishedAfter is forwarded to providers with native publication-date filters.
+	PublishedAfter *time.Time
 }
 
 // InferCategoryFromQuery applies the shared media-taxonomy vocabulary to

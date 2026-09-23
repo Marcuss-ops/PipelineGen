@@ -2,11 +2,12 @@ package e2e
 
 // This is the runtime gate for the Mike Tyson overlay matrix. It deliberately
 // talks to the live PipelineGen HTTP API with net/http: no shell, curl, local
-// fixture substitution, or fake renderer is involved.
+// result substitution, or fake renderer is involved.
 
 import (
 	"bytes"
 	"context"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -15,17 +16,110 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"sort"
 	"strings"
 	"testing"
 	"time"
 )
 
-const (
-	mikeTysonDriveRoot       = "1J_xUGo_bchzXDIGqSX04CU44c_Dm3SxS"
-	mikeTysonSimpleSubfolder = "Mike Tyson — potenza e disciplina"
-	mikeTysonLongSubfolder   = "Mike Tyson — 3 entità 3 frasi"
-)
+type mikeTysonMatrixCase struct {
+	id            string
+	fixture       string
+	people        []string
+	phrases       []string
+	driveFolderID string
+	subfolder     string
+	docLanguages  []string
+}
+
+type mikeTysonMatrixContract struct {
+	SchemaVersion string `json:"schema_version"`
+	Cases         []struct {
+		ID         string   `json:"id"`
+		Fixture    string   `json:"fixture"`
+		ResultFile string   `json:"result_file"`
+		Persons    []string `json:"persons"`
+		Phrases    []string `json:"phrases"`
+	} `json:"cases"`
+}
+
+type mikeTysonRequestFixture struct {
+	Items []struct {
+		MediaPlan struct {
+			Extraction struct {
+				MaxEntitiesPerSegment         int      `json:"max_entities_per_segment"`
+				MaxImportantPhrasesPerSegment int      `json:"max_important_phrases_per_segment"`
+				ImportantPhrases              []string `json:"important_phrases"`
+			} `json:"extraction"`
+		} `json:"media_plan"`
+		Style  string `json:"style"`
+		Source struct {
+			SourceText string `json:"source_text"`
+		} `json:"source"`
+		ScriptParams struct {
+			Segments []struct {
+				SourceText string `json:"source_text"`
+			} `json:"segments"`
+		} `json:"script_params"`
+		Output struct {
+			Render struct {
+				Enabled            bool   `json:"enabled"`
+				DriveFolderID      string `json:"drive_folder_id"`
+				DriveSubfolderName string `json:"drive_subfolder_name"`
+			} `json:"render"`
+		} `json:"output"`
+		Docs struct {
+			Languages []string `json:"languages"`
+		} `json:"docs"`
+	} `json:"items"`
+}
+
+type certifiedOverlayItem struct {
+	JobID     string
+	SHA256    string
+	DriveLink string
+}
+
+func TestMikeTysonOverlaySemanticGate(t *testing.T) {
+	wantPhrases := []string{"Potenza e disciplina"}
+	valid := []map[string]any{
+		{"kind": "entity_image"},
+		{"kind": "text_phrase", "text": "Potenza e disciplina"},
+	}
+	images, phrases, texts, err := validateMikeTysonOverlayItems(valid, 1, wantPhrases)
+	if err != nil || images != 1 || phrases != 1 || !slices.Equal(texts, wantPhrases) {
+		t.Fatalf("valid semantic plan rejected: images=%d phrases=%d texts=%v err=%v", images, phrases, texts, err)
+	}
+
+	for _, test := range []struct {
+		name  string
+		items []map[string]any
+		want  string
+	}{
+		{"unknown kind", []map[string]any{{"kind": "entity_image"}, {"kind": "text_phrase", "text": wantPhrases[0]}, {"kind": "mystery"}}, "unsupported/unclassified"},
+		{"extra image", []map[string]any{{"kind": "entity_image"}, {"kind": "image"}, {"kind": "text_phrase", "text": wantPhrases[0]}}, "image overlay count=2"},
+		{"wrong phrase", []map[string]any{{"kind": "entity_image"}, {"kind": "text_phrase", "text": "wrong"}}, "rendered phrase overlay text"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			if _, _, _, err := validateMikeTysonOverlayItems(test.items, 1, wantPhrases); err == nil || !strings.Contains(err.Error(), test.want) {
+				t.Fatalf("validation error=%v, want substring %q", err, test.want)
+			}
+		})
+	}
+}
+
+func TestMikeTysonMatrixContract(t *testing.T) {
+	cases := mikeTysonMatrixCases(t)
+	if len(cases) != 3 {
+		t.Fatalf("matrix cases=%d, want 3", len(cases))
+	}
+	for index, count := range []int{1, 3, 5} {
+		if len(cases[index].people) != count || len(cases[index].phrases) != count {
+			t.Errorf("case %q has people/phrases=%d/%d, want %d/%d", cases[index].id, len(cases[index].people), len(cases[index].phrases), count, count)
+		}
+	}
+}
 
 func TestLiveMikeTysonOverlayRuntime(t *testing.T) {
 	if os.Getenv("PIPELINEGEN_MIKE_TYSON_LIVE") != "1" {
@@ -38,56 +132,8 @@ func TestLiveMikeTysonOverlayRuntime(t *testing.T) {
 
 	baseURL := strings.TrimRight(getenv("VELOX_API_BASE_URL", "http://127.0.0.1:8000"), "/")
 	client := &http.Client{}
-
-	cases := []struct {
-		name          string
-		fixture       string
-		people        []string
-		phrases       []string
-		images        int
-		phraseRenders int
-		subfolder     string
-		docLanguages  []string
-	}{
-		{
-			name:    "1 persona + 1 frase",
-			fixture: "mike_tyson_generate_request.json",
-			people:  []string{"Mike Tyson"},
-			phrases: []string{"Potenza e disciplina"},
-			images:  1, phraseRenders: 1,
-			subfolder: mikeTysonSimpleSubfolder,
-		},
-		{
-			name:    "3 entità + 3 frasi",
-			fixture: "mike_tyson_extended_generate_request.json",
-			people:  []string{"Mike Tyson", "Cus D'Amato", "Muhammad Ali"},
-			phrases: []string{
-				"La velocità apre la distanza.",
-				"La pressione mantiene il controllo.",
-				"La disciplina trasforma la potenza.",
-			},
-			images: 3, phraseRenders: 3,
-			subfolder: mikeTysonLongSubfolder,
-		},
-		{
-			name:    "5 entità + 5 frasi",
-			fixture: "mike_tyson_five_generate_request.json",
-			people:  []string{"Mike Tyson", "Cus D'Amato", "Muhammad Ali", "Sugar Ray Robinson", "Joe Frazier"},
-			phrases: []string{
-				"La velocità apre la distanza.",
-				"La pressione mantiene il controllo.",
-				"La disciplina trasforma la potenza.",
-				"Il ritmo costruisce il vantaggio.",
-				"La tecnica sostiene il coraggio.",
-			},
-			images: 5, phraseRenders: 5,
-			subfolder:    "Mike Tyson — 5 entità 5 frasi",
-			docLanguages: []string{"it", "en"},
-		},
-	}
-
-	for _, tc := range cases {
-		if !t.Run(tc.name, func(t *testing.T) {
+	for _, tc := range mikeTysonMatrixCases(t) {
+		if !t.Run(tc.id, func(t *testing.T) {
 			body := readMikeTysonFixture(t, tc.fixture)
 			jobID := submitMikeTysonRuntime(t, client, baseURL, token, body)
 			full := waitForMikeTysonRuntime(t, client, baseURL, token, jobID)
@@ -95,10 +141,10 @@ func TestLiveMikeTysonOverlayRuntime(t *testing.T) {
 			if result == nil {
 				t.Fatalf("job %s completed without job.result.result", jobID)
 			}
-			verifyMikeTysonRuntimeResult(t, result, tc.people, tc.phrases, tc.images, tc.phraseRenders, tc.subfolder, tc.docLanguages)
-			t.Logf("runtime PASS: job=%s people=%d phrases=%d image_renders=%d phrase_renders=%d", jobID, len(tc.people), len(tc.phrases), tc.images, tc.phraseRenders)
+			verifyMikeTysonRuntimeResult(t, result, tc.people, tc.phrases, tc.driveFolderID, tc.subfolder, tc.docLanguages)
+			t.Logf("runtime PASS: job=%s people=%d phrases=%d image_renders=%d phrase_renders=%d", jobID, len(tc.people), len(tc.phrases), len(tc.people), len(tc.phrases))
 		}) {
-			t.Fatalf("stopping Mike Tyson runtime matrix after failed case %q", tc.name)
+			t.Fatalf("stopping Mike Tyson runtime matrix after failed case %q", tc.id)
 		}
 	}
 }
@@ -125,6 +171,86 @@ func TestLiveMikeTysonTenLanguageRuntime(t *testing.T) {
 	}
 	verifyMikeTysonTenLanguageRuntimeResult(t, result)
 	t.Logf("runtime PASS: job=%s script_id=%d languages=10 scenes=5", jobID, integerAt(result, "script_id"))
+}
+
+func mikeTysonMatrixCases(t *testing.T) []mikeTysonMatrixCase {
+	t.Helper()
+	var contract mikeTysonMatrixContract
+	if err := json.Unmarshal(readMikeTysonFixture(t, "matrix_cases.json"), &contract); err != nil {
+		t.Fatalf("decode Mike Tyson matrix contract: %v", err)
+	}
+	if contract.SchemaVersion != "mike-tyson-overlay-matrix.v1" {
+		t.Fatalf("matrix schema_version=%q, want mike-tyson-overlay-matrix.v1", contract.SchemaVersion)
+	}
+
+	wantIDs, wantCounts := []string{"simple", "extended", "five"}, []int{1, 3, 5}
+	if len(contract.Cases) != len(wantIDs) {
+		t.Fatalf("matrix cases=%d, want %d", len(contract.Cases), len(wantIDs))
+	}
+
+	out := make([]mikeTysonMatrixCase, 0, len(contract.Cases))
+	for index, entry := range contract.Cases {
+		if entry.ID != wantIDs[index] {
+			t.Fatalf("matrix case[%d]=%q, want %q", index, entry.ID, wantIDs[index])
+		}
+		if len(entry.Persons) != wantCounts[index] || len(entry.Phrases) != wantCounts[index] || entry.Fixture == "" || entry.ResultFile == "" || filepath.Base(entry.ResultFile) != entry.ResultFile || strings.Contains(entry.Fixture, "..") || strings.Contains(entry.ResultFile, "..") {
+			t.Fatalf("matrix case %q must declare exactly %d persons and phrases plus fixture/result filenames", entry.ID, wantCounts[index])
+		}
+		if duplicateStrings(entry.Persons) || duplicateStrings(entry.Phrases) {
+			t.Fatalf("matrix case %q repeats a person or phrase", entry.ID)
+		}
+		if filepath.Base(entry.Fixture) != entry.Fixture {
+			t.Fatalf("matrix case %q fixture must be a filename", entry.ID)
+		}
+
+		var request mikeTysonRequestFixture
+		if err := json.Unmarshal(readMikeTysonFixture(t, entry.Fixture), &request); err != nil {
+			t.Fatalf("decode matrix fixture %s: %v", entry.Fixture, err)
+		}
+		if len(request.Items) != 1 {
+			t.Fatalf("matrix fixture %s contains %d request items, want 1", entry.Fixture, len(request.Items))
+		}
+		fixture := request.Items[0]
+		requestText := fixture.Style + " " + fixture.Source.SourceText
+		for _, segment := range fixture.ScriptParams.Segments {
+			requestText += " " + segment.SourceText
+		}
+		for _, person := range entry.Persons {
+			if !strings.Contains(strings.ToLower(requestText), strings.ToLower(person)) {
+				t.Fatalf("matrix %s expected person %q is not named in request instructions/source", entry.ID, person)
+			}
+		}
+		if !slices.Equal(entry.Phrases, fixture.MediaPlan.Extraction.ImportantPhrases) {
+			t.Fatalf("matrix %s phrases=%v differ from fixture phrases=%v", entry.ID, entry.Phrases, fixture.MediaPlan.Extraction.ImportantPhrases)
+		}
+		if fixture.MediaPlan.Extraction.MaxEntitiesPerSegment != len(entry.Persons) ||
+			fixture.MediaPlan.Extraction.MaxImportantPhrasesPerSegment != len(entry.Phrases) {
+			t.Fatalf("matrix %s fixture budgets do not match expected people/phrases", entry.ID)
+		}
+		if !fixture.Output.Render.Enabled || fixture.Output.Render.DriveFolderID == "" || fixture.Output.Render.DriveSubfolderName == "" {
+			t.Fatalf("matrix fixture %s must enable render and declare Drive destination", entry.Fixture)
+		}
+		if len(fixture.Docs.Languages) == 0 {
+			t.Fatalf("matrix fixture %s must declare document languages", entry.Fixture)
+		}
+		out = append(out, mikeTysonMatrixCase{
+			id: entry.ID, fixture: entry.Fixture, people: entry.Persons, phrases: entry.Phrases,
+			driveFolderID: fixture.Output.Render.DriveFolderID, subfolder: fixture.Output.Render.DriveSubfolderName,
+			docLanguages: fixture.Docs.Languages,
+		})
+	}
+	return out
+}
+
+func duplicateStrings(values []string) bool {
+	seen := make(map[string]struct{}, len(values))
+	for _, value := range values {
+		if _, exists := seen[value]; exists {
+			return true
+		}
+		seen[value] = struct{}{}
+	}
+	return false
 }
 
 // liveAdminToken resolves the admin bearer token shared by every live gate in
@@ -195,6 +321,7 @@ func verifyMikeTysonTenLanguageRuntimeResult(t *testing.T, result map[string]any
 	}
 	sourcePlan := mapAt(result, "overlay_plan")
 	verifyMikeTysonLanguageOverlayPlan(t, "en", sourcePlan, wantCities, nil, mapsAt(result, "scenes"))
+
 	localizedPlans := mapAt(result, "localized_overlay_plans")
 	localizedRenders := mapAt(result, "localized_overlay_renders")
 	if len(localizedPlans) != 9 || len(localizedRenders) != 9 {
@@ -204,10 +331,11 @@ func verifyMikeTysonTenLanguageRuntimeResult(t *testing.T, result map[string]any
 		if language == "en" {
 			continue
 		}
-		verifyMikeTysonLanguageOverlayPlan(t, language, mapAt(localizedPlans, language), wantCities, nil, mapsAt(result, "scenes"))
-		verifyCertifiedOverlayReference(t, language, mapAt(localizedRenders, language))
+		plan := mapAt(localizedPlans, language)
+		verifyMikeTysonLanguageOverlayPlan(t, language, plan, wantCities, nil, mapsAt(result, "scenes"))
+		verifyCertifiedOverlayReference(t, language, mapAt(localizedRenders, language), overlayPlanItemIDs(plan))
 	}
-	verifyCertifiedOverlayReference(t, "en", mapAt(result, "overlay_render"))
+	verifyCertifiedOverlayReference(t, "en", mapAt(result, "overlay_render"), overlayPlanItemIDs(sourcePlan))
 
 	documents := mapAt(result, "documents")
 	if len(documents) != 10 {
@@ -343,14 +471,70 @@ func phraseOverlapsSurface(text, phrase, surface string) bool {
 	return phraseStart < entityEnd && entityStart < phraseEnd
 }
 
-func verifyCertifiedOverlayReference(t *testing.T, language string, render map[string]any) {
+func verifyCertifiedOverlayReference(t *testing.T, language string, render map[string]any, expectedItemIDs []string) map[string]certifiedOverlayItem {
 	t.Helper()
 	artifact := mapAt(render, "artifact")
 	if !isSuccessStatus(firstNonEmpty(stringAt(render, "status"), stringAt(artifact, "status"))) ||
+		!isSHA256Hex(stringAt(artifact, "sha256")) || integerAt(artifact, "size_bytes") <= 0 ||
 		integerAt(artifact, "frame_count") <= 0 ||
 		firstNonEmpty(stringAt(artifact, "drive_link"), stringAt(artifact, "url")) == "" {
 		t.Fatalf("%s overlay artifact is not certified/published: %s", language, compactJSON(render))
 	}
+	items := mapsAt(render, "items")
+	if len(items) != len(expectedItemIDs) {
+		t.Fatalf("%s rendered item refs=%d, want %d for the semantic plan", language, len(items), len(expectedItemIDs))
+	}
+	seen := make(map[string]struct{}, len(items))
+	seenJobs := make(map[string]struct{}, len(items))
+	certified := make(map[string]certifiedOverlayItem, len(items))
+	for index, item := range items {
+		itemID, jobID := stringAt(item, "item_id"), stringAt(item, "job_id")
+		if index >= len(expectedItemIDs) || itemID != expectedItemIDs[index] {
+			t.Fatalf("%s render item[%d]=%q, want plan item %q", language, index, itemID, expectedItemIDs[index])
+		}
+		if _, duplicate := seen[itemID]; duplicate {
+			t.Fatalf("%s render repeats item_id %q", language, itemID)
+		}
+		itemArtifact := mapAt(item, "artifact")
+		itemSHA := stringAt(itemArtifact, "sha256")
+		itemDriveLink := firstNonEmpty(stringAt(itemArtifact, "drive_link"), stringAt(itemArtifact, "url"))
+		if jobID == "" || !isSuccessStatus(stringAt(item, "status")) || !isSHA256Hex(itemSHA) ||
+			integerAt(itemArtifact, "size_bytes") <= 0 || integerAt(itemArtifact, "frame_count") <= 0 || itemDriveLink == "" {
+			t.Fatalf("%s per-item render is not certified/published: %s", language, compactJSON(item))
+		}
+		if _, duplicate := seenJobs[jobID]; duplicate {
+			t.Fatalf("%s item render job %q is reused", language, jobID)
+		}
+		seen[itemID], seenJobs[jobID] = struct{}{}, struct{}{}
+		certified[itemID] = certifiedOverlayItem{JobID: jobID, SHA256: itemSHA, DriveLink: stringAt(itemArtifact, "drive_link")}
+	}
+	if len(expectedItemIDs) == 0 {
+		t.Fatalf("%s semantic overlay plan has no renderable items", language)
+	}
+	if firstNonEmpty(stringAt(render, "job_id")) != certified[expectedItemIDs[0]].JobID ||
+		stringAt(artifact, "sha256") != certified[expectedItemIDs[0]].SHA256 {
+		t.Fatalf("%s top-level render reference is not the first certified item", language)
+	}
+	return certified
+}
+
+func isSHA256Hex(value string) bool {
+	if len(value) != 64 {
+		return false
+	}
+	decoded, err := hex.DecodeString(value)
+	return err == nil && len(decoded) == 32
+}
+
+func overlayPlanItemIDs(plan map[string]any) []string {
+	items := mapsAt(plan, "items")
+	ids := make([]string, 0, len(items))
+	for _, item := range items {
+		if id := stringAt(item, "id"); id != "" {
+			ids = append(ids, id)
+		}
+	}
+	return ids
 }
 
 func submitMikeTysonRuntime(t *testing.T, client *http.Client, baseURL, token string, body []byte) string {
@@ -464,7 +648,7 @@ func getLiveJob(t *testing.T, ctx context.Context, client *http.Client, baseURL,
 	return full, status, nil
 }
 
-func verifyMikeTysonRuntimeResult(t *testing.T, result map[string]any, wantPeople, wantPhrases []string, wantImages, wantPhraseRenders int, wantSubfolder string, wantDocLanguages []string) {
+func verifyMikeTysonRuntimeResult(t *testing.T, result map[string]any, wantPeople, wantPhrases []string, wantDriveFolderID, wantSubfolder string, wantDocLanguages []string) {
 	t.Helper()
 	gotPeople := stringValues(valueAt(mapAt(result, "entities"), "persons"), "value")
 	assertExactStrings(t, "persons", gotPeople, wantPeople)
@@ -476,15 +660,33 @@ func verifyMikeTysonRuntimeResult(t *testing.T, result map[string]any, wantPeopl
 		t.Fatal("result.overlay_plan is missing")
 	}
 	items := mapsAt(plan, "items")
-	imageCount, phraseCount := 0, 0
+	_, _, _, err := validateMikeTysonOverlayItems(items, len(wantPeople), wantPhrases)
+	if err != nil {
+		t.Fatal(err)
+	}
 	phraseMotions := make(map[string]struct{})
+	planIDs := make(map[string]struct{}, len(items))
+	planItemsByID := make(map[string]map[string]any, len(items))
+	planFingerprint := stringAt(plan, "fingerprint")
+	videoID := stringAt(plan, "video_id")
+	if planFingerprint == "" || videoID == "" {
+		t.Fatal("overlay plan is missing its fingerprint or source video identity")
+	}
 	for _, item := range items {
-		kind := stringAt(item, "kind")
-		if kind == "entity_image" || kind == "image" {
-			imageCount++
+		itemID := stringAt(item, "id")
+		if itemID == "" {
+			t.Fatalf("overlay plan item has no id: %s", compactJSON(item))
 		}
+		if stringAt(item, "render_key") == "" {
+			t.Fatalf("overlay plan item %q is missing its content render_key", itemID)
+		}
+		if _, duplicate := planIDs[itemID]; duplicate {
+			t.Fatalf("overlay plan repeats item id %q", itemID)
+		}
+		planIDs[itemID] = struct{}{}
+		planItemsByID[itemID] = item
+		kind := stringAt(item, "kind")
 		if kind == "text_phrase" {
-			phraseCount++
 			motion := firstNonEmpty(stringAt(item, "motion_id"), animationParam(item))
 			if motion == "" {
 				t.Fatalf("phrase %q has no runtime motion_id/animation", stringAt(item, "text"))
@@ -493,49 +695,99 @@ func verifyMikeTysonRuntimeResult(t *testing.T, result map[string]any, wantPeopl
 		}
 		start, end := integerAt(item, "start_ms"), integerAt(item, "end_ms")
 		if start < 0 || end <= start {
-			t.Fatalf("overlay %q has invalid timing [%d,%d]ms", stringAt(item, "id"), start, end)
+			t.Fatalf("overlay %q has invalid timing [%d,%d]ms", itemID, start, end)
 		}
-	}
-	if imageCount != wantImages {
-		t.Fatalf("image overlay count=%d, want=%d items=%s", imageCount, wantImages, compactJSON(items))
-	}
-	if phraseCount != len(wantPhrases) {
-		t.Fatalf("phrase overlay count=%d, want=%d", phraseCount, len(wantPhrases))
 	}
 	if len(phraseMotions) != len(wantPhrases) {
 		t.Fatalf("phrase motion count=%d, want %d distinct motions", len(phraseMotions), len(wantPhrases))
 	}
 
-	overlays := mapsAt(mapAt(result, "editing_timeline"), "overlays")
-	if len(overlays) != wantImages+wantPhraseRenders {
-		t.Fatalf("editing_timeline overlay renders=%d, want=%d", len(overlays), wantImages+wantPhraseRenders)
+	// Image-only plans intentionally omit display text. Join each card to its
+	// certified PERSON occurrence instead of accepting a similarly named plan
+	// label or an unrelated image card.
+	peopleByEntityID := make(map[string]string)
+	for _, scene := range mapsAt(mapAt(result, "entity_timeline"), "scenes") {
+		for _, entity := range mapsAt(scene, "entities") {
+			if stringAt(entity, "type") != "PERSON" {
+				continue
+			}
+			entityID, name := stringAt(entity, "entity_id"), stringAt(entity, "name")
+			if entityID != "" && containsString(wantPeople, name) {
+				peopleByEntityID[entityID] = name
+			}
+		}
 	}
+	seenImagePeople := make(map[string]struct{}, len(wantPeople))
+	for _, item := range items {
+		if stringAt(item, "kind") != "entity_image" && stringAt(item, "kind") != "image" {
+			continue
+		}
+		entityID := stringAt(item, "entity_id")
+		name, ok := peopleByEntityID[entityID]
+		if !ok {
+			t.Fatalf("image overlay %q is not bound to an expected PERSON occurrence: entity_id=%q", stringAt(item, "id"), entityID)
+		}
+		if _, duplicate := seenImagePeople[name]; duplicate {
+			t.Fatalf("person %q has more than one image overlay", name)
+		}
+		seenImagePeople[name] = struct{}{}
+	}
+	if len(seenImagePeople) != len(wantPeople) {
+		t.Fatalf("image overlays bound to %v, want exactly %v", sortedKeys(seenImagePeople), wantPeople)
+	}
+	assertExactStrings(t, "image overlay people", sortedKeys(seenImagePeople), wantPeople)
+
+	overlays := mapsAt(mapAt(result, "editing_timeline"), "overlays")
+	if len(overlays) != len(items) {
+		t.Fatalf("editing_timeline overlay renders=%d, want one per plan item (%d)", len(overlays), len(items))
+	}
+	perItemArtifacts := verifyCertifiedOverlayReference(t, "it", mapAt(result, "overlay_render"), overlayPlanItemIDs(plan))
+	seenTimelineItems := make(map[string]struct{}, len(overlays))
 	seenRenderJobs := make(map[string]struct{})
 	for _, overlay := range overlays {
-		if stringAt(overlay, "artifact_id") == "" || stringAt(overlay, "render_job_id") == "" || stringAt(overlay, "drive_link") == "" {
-			t.Fatalf("overlay render is not published: %s", compactJSON(overlay))
+		artifactID := stringAt(overlay, "artifact_id")
+		if _, ok := planIDs[artifactID]; !ok {
+			t.Fatalf("editing_timeline has unexpected overlay artifact_id %q", artifactID)
 		}
-		seenRenderJobs[stringAt(overlay, "render_job_id")] = struct{}{}
+		if _, duplicate := seenTimelineItems[artifactID]; duplicate {
+			t.Fatalf("editing_timeline repeats artifact_id %q", artifactID)
+		}
+		seenTimelineItems[artifactID] = struct{}{}
+		renderJobID, driveLink, artifactSHA := stringAt(overlay, "render_job_id"), stringAt(overlay, "drive_link"), stringAt(overlay, "sha256")
+		if renderJobID == "" || driveLink == "" || !isSHA256Hex(artifactSHA) {
+			t.Fatalf("overlay render is missing certified publication lineage: %s", compactJSON(overlay))
+		}
+		itemRender, ok := perItemArtifacts[artifactID]
+		if !ok || renderJobID != itemRender.JobID || artifactSHA != itemRender.SHA256 {
+			t.Fatalf("editing_timeline artifact does not match per-item render reference: %s", compactJSON(overlay))
+		}
+		if itemRender.DriveLink != "" && driveLink != itemRender.DriveLink {
+			t.Fatalf("editing_timeline Drive link does not match per-item artifact for %q", artifactID)
+		}
+		planItem := planItemsByID[artifactID]
+		if stringAt(overlay, "plan_fingerprint") != planFingerprint ||
+			stringAt(overlay, "render_key") != stringAt(planItem, "render_key") ||
+			stringAt(overlay, "source_video_asset_id") != videoID {
+			t.Fatalf("editing_timeline provenance differs from frozen plan for %q: %s", artifactID, compactJSON(overlay))
+		}
+		seenRenderJobs[renderJobID] = struct{}{}
 		if integerAt(overlay, "start_us") < 0 || integerAt(overlay, "end_us") <= integerAt(overlay, "start_us") {
 			t.Fatalf("overlay render has invalid timing: %s", compactJSON(overlay))
 		}
+	}
+	if len(seenTimelineItems) != len(planIDs) {
+		t.Fatalf("editing_timeline covers %d/%d plan items", len(seenTimelineItems), len(planIDs))
 	}
 	if len(seenRenderJobs) != len(overlays) {
 		t.Fatalf("overlay renders reuse render_job_id: %d unique for %d overlays", len(seenRenderJobs), len(overlays))
 	}
 
-	render := mapAt(result, "overlay_render")
-	artifact := mapAt(render, "artifact")
-	if !isSuccessStatus(firstNonEmpty(stringAt(render, "status"), stringAt(artifact, "status"))) || integerAt(artifact, "frame_count") <= 0 || firstNonEmpty(stringAt(artifact, "drive_link"), stringAt(artifact, "url")) == "" {
-		t.Fatalf("overlay render artifact is not certified: %s", compactJSON(render))
-	}
-
-	doc := mapAt(mapAt(result, "documents"), "it")
-	if stringAt(doc, "link") == "" {
-		t.Fatal("Italian Google Doc link is missing")
+	documents := mapAt(result, "documents")
+	if len(documents) != len(wantDocLanguages) {
+		t.Fatalf("published documents=%d, want exactly %d languages", len(documents), len(wantDocLanguages))
 	}
 	for _, language := range wantDocLanguages {
-		if published := mapAt(mapAt(result, "documents"), language); stringAt(published, "link") == "" {
+		if stringAt(mapAt(documents, language), "link") == "" {
 			t.Fatalf("%s Google Doc link is missing", language)
 		}
 	}
@@ -543,9 +795,51 @@ func verifyMikeTysonRuntimeResult(t *testing.T, result map[string]any, wantPeopl
 		t.Fatalf("translation metrics=%s, want at least %d target call(s)", compactJSON(mapAt(result, "translation_metrics")), len(wantDocLanguages)-1)
 	}
 	renderConfig := mapAt(result, "render")
-	if stringAt(renderConfig, "drive_folder_id") != mikeTysonDriveRoot || stringAt(renderConfig, "drive_subfolder_name") != wantSubfolder {
-		t.Fatalf("render Drive routing=%s, want root=%s subfolder=%s", compactJSON(renderConfig), mikeTysonDriveRoot, wantSubfolder)
+	if stringAt(renderConfig, "drive_folder_id") != wantDriveFolderID || stringAt(renderConfig, "drive_subfolder_name") != wantSubfolder {
+		t.Fatalf("render Drive routing=%s, want root=%s subfolder=%s", compactJSON(renderConfig), wantDriveFolderID, wantSubfolder)
 	}
+}
+
+// validateMikeTysonOverlayItems is the side-effect-free semantic gate shared
+// by the live runtime assertion and offline contract tests.
+func validateMikeTysonOverlayItems(items []map[string]any, wantImages int, wantPhrases []string) (int, int, []string, error) {
+	imageCount, phraseCount := 0, 0
+	phraseTexts := make([]string, 0, len(wantPhrases))
+	for index, item := range items {
+		kind := stringAt(item, "kind")
+		switch kind {
+		case "entity_image", "image":
+			imageCount++
+		case "text_phrase":
+			phraseCount++
+			phraseTexts = append(phraseTexts, stringAt(item, "text"))
+		default:
+			return 0, 0, nil, fmt.Errorf("overlay plan item[%d] has unsupported/unclassified kind %q", index, kind)
+		}
+	}
+	if imageCount != wantImages {
+		return 0, 0, nil, fmt.Errorf("image overlay count=%d, want exactly %d", imageCount, wantImages)
+	}
+	if phraseCount != len(wantPhrases) {
+		return 0, 0, nil, fmt.Errorf("phrase overlay count=%d, want exactly %d", phraseCount, len(wantPhrases))
+	}
+	got := append([]string(nil), phraseTexts...)
+	want := append([]string(nil), wantPhrases...)
+	sort.Strings(got)
+	sort.Strings(want)
+	if !slices.Equal(got, want) {
+		return 0, 0, nil, fmt.Errorf("rendered phrase overlay text=%v, want exactly %v", got, want)
+	}
+	return imageCount, phraseCount, phraseTexts, nil
+}
+
+func sortedKeys(values map[string]struct{}) []string {
+	out := make([]string, 0, len(values))
+	for value := range values {
+		out = append(out, value)
+	}
+	sort.Strings(out)
+	return out
 }
 
 func animationParam(item map[string]any) string {
