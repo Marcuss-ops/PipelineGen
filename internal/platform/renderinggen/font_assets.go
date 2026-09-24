@@ -31,6 +31,20 @@ const (
 	FontPoppinsBold = "font-poppins-bold"
 	// FontDejaVuSans is the canonical semantic font for Cyrillic overlays.
 	FontDejaVuSans = "font-dejavu-sans"
+
+	// Modern local font fleet. The files are variable fonts from the
+	// Google Fonts source tree and are registered here so callers can resolve
+	// them through the same absolute-path + SHA-256 asset contract.
+	FontInter              = "font-inter"
+	FontManrope            = "font-manrope"
+	FontDMSans             = "font-dm-sans"
+	FontInstrumentSans     = "font-instrument-sans"
+	FontPlusJakartaSans    = "font-plus-jakarta-sans"
+	FontSora               = "font-sora"
+	FontSpaceGrotesk       = "font-space-grotesk"
+	FontOutfit             = "font-outfit"
+	FontUrbanist           = "font-urbanist"
+	FontBricolageGrotesque = "font-bricolage-grotesque"
 )
 
 // AssetRootEnv overrides the configured asset root. When unset the root is
@@ -42,9 +56,19 @@ const AssetRootEnv = "PIPELINEGEN_ASSET_ROOT"
 // path. This map is the single owner of "which file backs which font id"; the
 // mapper never hardcodes a font path.
 var canonicalFonts = map[string]string{
-	FontMontserratBold: "assets/fonts/Montserrat-Bold.ttf",
-	FontPoppinsBold:    "assets/fonts/Poppins-Bold.ttf",
-	FontDejaVuSans:     "assets/fonts/DejaVuSans.ttf",
+	FontMontserratBold:     "assets/fonts/Montserrat-Bold.ttf",
+	FontPoppinsBold:        "assets/fonts/Poppins-Bold.ttf",
+	FontDejaVuSans:         "assets/fonts/DejaVuSans.ttf",
+	FontInter:              "assets/fonts/Inter.ttf",
+	FontManrope:            "assets/fonts/Manrope.ttf",
+	FontDMSans:             "assets/fonts/DM-Sans.ttf",
+	FontInstrumentSans:     "assets/fonts/Instrument-Sans.ttf",
+	FontPlusJakartaSans:    "assets/fonts/Plus-Jakarta-Sans.ttf",
+	FontSora:               "assets/fonts/Sora.ttf",
+	FontSpaceGrotesk:       "assets/fonts/Space-Grotesk.ttf",
+	FontOutfit:             "assets/fonts/Outfit.ttf",
+	FontUrbanist:           "assets/fonts/Urbanist.ttf",
+	FontBricolageGrotesque: "assets/fonts/Bricolage-Grotesque.ttf",
 }
 
 var (

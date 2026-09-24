@@ -242,6 +242,36 @@ func TestOperatorInventoryReader_List_IndexHealthCases(t *testing.T) {
 	require.Equal(t, "embedding failed", byID["asset-3"].IndexHealth.Description)
 }
 
+func TestOperatorInventoryReader_List_CanonicalContentHashAndDuration(t *testing.T) {
+	db := newMediaTestDB(t)
+	seedOperatorFixture(t, db)
+	mustExecOperator(t, db, `UPDATE media_assets SET binary_sha256 = $1, content_sha256 = $2, duration_ms = $3 WHERE id = $4`,
+		"binary-sha256", "content-sha256", int64(62000), "asset-1")
+	reader := pgmedia.NewOperatorInventoryReader(db, nil)
+
+	page, err := reader.List(context.Background(), operator.AssetInventoryQuery{Source: "artlist", Limit: 10})
+	require.NoError(t, err)
+	var got *operator.AssetInventoryItem
+	for _, item := range page.Items {
+		if item.ID == "asset-1" {
+			got = item
+			break
+		}
+	}
+	require.NotNil(t, got)
+	require.Equal(t, "binary-sha256", got.ContentHash, "binary SHA-256 is the canonical first choice")
+	require.Equal(t, int64(62000), got.DurationMS)
+
+	mustExecOperator(t, db, `UPDATE media_assets SET binary_sha256 = '' WHERE id = $1`, "asset-1")
+	page, err = reader.List(context.Background(), operator.AssetInventoryQuery{Source: "artlist", Limit: 10})
+	require.NoError(t, err)
+	for _, item := range page.Items {
+		if item.ID == "asset-1" {
+			require.Equal(t, "content-sha256", item.ContentHash, "content SHA-256 is the fallback before legacy hashes")
+		}
+	}
+}
+
 func TestOperatorInventoryReader_List_StorageFlags(t *testing.T) {
 	reader := newOperatorReader(t)
 	ctx := context.Background()

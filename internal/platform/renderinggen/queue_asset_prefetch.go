@@ -183,6 +183,26 @@ func canonicalFontAssetID(path string) (string, bool) {
 		return FontPoppinsBold, true
 	case "assets/fonts/DejaVuSans.ttf", "fonts/DejaVuSans.ttf", "DejaVuSans.ttf":
 		return FontDejaVuSans, true
+	case "assets/fonts/Inter.ttf", "fonts/Inter.ttf", "Inter.ttf":
+		return FontInter, true
+	case "assets/fonts/Manrope.ttf", "fonts/Manrope.ttf", "Manrope.ttf":
+		return FontManrope, true
+	case "assets/fonts/DM-Sans.ttf", "fonts/DM-Sans.ttf", "DM-Sans.ttf":
+		return FontDMSans, true
+	case "assets/fonts/Instrument-Sans.ttf", "fonts/Instrument-Sans.ttf", "Instrument-Sans.ttf":
+		return FontInstrumentSans, true
+	case "assets/fonts/Plus-Jakarta-Sans.ttf", "fonts/Plus-Jakarta-Sans.ttf", "Plus-Jakarta-Sans.ttf":
+		return FontPlusJakartaSans, true
+	case "assets/fonts/Sora.ttf", "fonts/Sora.ttf", "Sora.ttf":
+		return FontSora, true
+	case "assets/fonts/Space-Grotesk.ttf", "fonts/Space-Grotesk.ttf", "Space-Grotesk.ttf":
+		return FontSpaceGrotesk, true
+	case "assets/fonts/Outfit.ttf", "fonts/Outfit.ttf", "Outfit.ttf":
+		return FontOutfit, true
+	case "assets/fonts/Urbanist.ttf", "fonts/Urbanist.ttf", "Urbanist.ttf":
+		return FontUrbanist, true
+	case "assets/fonts/Bricolage-Grotesque.ttf", "fonts/Bricolage-Grotesque.ttf", "Bricolage-Grotesque.ttf":
+		return FontBricolageGrotesque, true
 	default:
 		return "", false
 	}

@@ -55,6 +55,7 @@ type AssetInventoryItem struct {
 	Source    string `json:"source"`
 	Provider  string `json:"provider"`
 	MediaType string `json:"media_type"`
+	DurationMS int64  `json:"duration_ms"`
 
 	LifecycleState asset.LifecycleState `json:"lifecycle_state"`
 	AssetState     asset.AssetState     `json:"asset_state"`
