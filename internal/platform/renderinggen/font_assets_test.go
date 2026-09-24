@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	capoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
@@ -112,5 +113,42 @@ func TestResolveFontAssetUsesConfiguredRootAndCachesDescriptor(t *testing.T) {
 func TestResolveFontAssetRejectsUnknownID(t *testing.T) {
 	if _, err := ResolveFontAsset("font-not-registered"); err == nil {
 		t.Fatal("unknown font id must fail closed")
+	}
+}
+
+func TestModernFontFleetIsRegisteredAndCertified(t *testing.T) {
+	fonts := []string{
+		FontInter,
+		FontManrope,
+		FontDMSans,
+		FontInstrumentSans,
+		FontPlusJakartaSans,
+		FontSora,
+		FontSpaceGrotesk,
+		FontOutfit,
+		FontUrbanist,
+		FontBricolageGrotesque,
+	}
+	for _, id := range fonts {
+		ref, err := ResolveFontAsset(id)
+		if err != nil {
+			t.Fatalf("ResolveFontAsset(%s): %v", id, err)
+		}
+		if !filepath.IsAbs(ref.LocalPath) || len(ref.Hash) != 64 || ref.LogicalPath == "" {
+			t.Fatalf("%s is not fully indexed: %+v", id, ref)
+		}
+		info, err := os.Stat(ref.LocalPath)
+		if err != nil || info.Size() == 0 {
+			t.Fatalf("%s file is missing or empty: %q (%v)", id, ref.LocalPath, err)
+		}
+	}
+}
+
+func TestModernFontPathsMapToCanonicalRegistry(t *testing.T) {
+	for id, rel := range capoverlay.ModernFontPaths {
+		got, ok := canonicalFontAssetID(rel)
+		if !ok || got != id {
+			t.Errorf("modern font path %q maps to (%q, %v), want %q", rel, got, ok, id)
+		}
 	}
 }

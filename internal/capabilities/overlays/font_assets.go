@@ -19,3 +19,20 @@ const (
 	// GoldenPresetFontHash is the SHA-256 of CanonicalPresetFontPath.
 	GoldenPresetFontHash = "983676516167748b74de6f4771fb384c664fd913acb8b471122ecacf5da5ea6c"
 )
+
+// ModernFontPaths is the local, workspace-relative registry for the
+// downloaded Google Fonts variable-font fleet. RenderingGen resolves these
+// paths through ResolveFontAsset, so they share its absolute-path and
+// SHA-256 contract instead of being loaded ad hoc.
+var ModernFontPaths = map[string]string{
+	"font-inter":               "assets/fonts/Inter.ttf",
+	"font-manrope":             "assets/fonts/Manrope.ttf",
+	"font-dm-sans":             "assets/fonts/DM-Sans.ttf",
+	"font-instrument-sans":     "assets/fonts/Instrument-Sans.ttf",
+	"font-plus-jakarta-sans":   "assets/fonts/Plus-Jakarta-Sans.ttf",
+	"font-sora":                "assets/fonts/Sora.ttf",
+	"font-space-grotesk":       "assets/fonts/Space-Grotesk.ttf",
+	"font-outfit":              "assets/fonts/Outfit.ttf",
+	"font-urbanist":            "assets/fonts/Urbanist.ttf",
+	"font-bricolage-grotesque": "assets/fonts/Bricolage-Grotesque.ttf",
+}

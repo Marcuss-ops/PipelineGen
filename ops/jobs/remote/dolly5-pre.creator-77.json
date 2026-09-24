@@ -1,5 +1,5 @@
 {
-  "idempotency_key": "creator-77-dolly5-preview-01-pre",
+  "_comment": "Selection manifest only: each asset_id is a curated Dolly Parton clip that must be resolved and validated against the live Creator 77 M2M media API before a PREPARE payload is produced. Hashes, Drive IDs, durations, names, and availability are never trusted from this file.",
   "job_type": "scene.composite.v1",
   "copy_only": true,
   "video_name": "Dolly Parton Best Moments preview — 5 clips (remote render handoff)",
@@ -7,78 +7,33 @@
   "scenes": [
     {
       "scene_id": "scene-0",
-      "index": 0,
-      "kind": "clip",
+      "asset_id": "yt_Bc9gTqiljLA_0_36_v1",
       "text": "WIRED intro — soprano register",
-      "duration_seconds": 10,
-      "clip": {
-        "asset_id": "yt_Bc9gTqiljLA_0_36_v1",
-        "drive_file_id": "1ovBSR3gaK-d7xok-5r_bW8nz2uE9mzCa",
-        "url": "velox-drive://1ovBSR3gaK-d7xok-5r_bW8nz2uE9mzCa",
-        "sha256": "bf9053af850095e184850d70d74f94fd431da26a2180f1f4e80ee538576c8649",
-        "size_bytes": 0,
-        "duration_ms": 36000
-      }
+      "duration_seconds": 10
     },
     {
       "scene_id": "scene-1",
-      "index": 1,
-      "kind": "clip",
+      "asset_id": "yt_tnoMGevqWAM_1841_1903_v1",
       "text": "60 Minutes AU — the vulnerability inside Jolene",
-      "duration_seconds": 10,
-      "clip": {
-        "asset_id": "yt_tnoMGevqWAM_1841_1903_v1",
-        "drive_file_id": "1pFlQwoaGHJU2iScwhm8azIcdsQI0Zpbl",
-        "url": "velox-drive://1pFlQwoaGHJU2iScwhm8azIcdsQI0Zpbl",
-        "sha256": "2cacc2a295174da9c265e68176589d82ee2ec282374a037729915575b08e4cde",
-        "size_bytes": 0,
-        "duration_ms": 62000
-      }
+      "duration_seconds": 10
     },
     {
       "scene_id": "scene-2",
-      "index": 2,
-      "kind": "clip",
+      "asset_id": "yt_pfaIAdqvlig_457_509_v1",
       "text": "Dan Rather — Dollywood empire",
-      "duration_seconds": 10,
-      "clip": {
-        "asset_id": "yt_pfaIAdqvlig_457_509_v1",
-        "drive_file_id": "122_JpVz-4-rFl7f_KudGs6ZnLY1JVr83",
-        "url": "velox-drive://122_JpVz-4-rFl7f_KudGs6ZnLY1JVr83",
-        "sha256": "056f38d69e06ff17c3bee7959eba3c306eb5bc6507cfe87c3f568828903d5fda",
-        "size_bytes": 0,
-        "duration_ms": 52000
-      }
+      "duration_seconds": 10
     },
     {
       "scene_id": "scene-3",
-      "index": 3,
-      "kind": "clip",
+      "asset_id": "yt_pfaIAdqvlig_929_980_v1",
       "text": "Dan Rather — Whitney Houston cover",
-      "duration_seconds": 10,
-      "clip": {
-        "asset_id": "yt_pfaIAdqvlig_929_980_v1",
-        "drive_file_id": "1xcQRErjOjGK2py_FDNRQ6cdYsWPY9rq_",
-        "url": "velox-drive://1xcQRErjOjGK2py_FDNRQ6cdYsWPY9rq_",
-        "sha256": "0fb9e837e445cc4b59645669d7e635e15aa1274c2b65197c79aaa2ea9c877289",
-        "size_bytes": 0,
-        "duration_ms": 51000
-      }
+      "duration_seconds": 10
     },
     {
       "scene_id": "scene-4",
-      "index": 4,
-      "kind": "clip",
+      "asset_id": "yt_vLRjqTIiMjc_211_256_v1",
       "text": "Conan — bronze statue and pigeons",
-      "duration_seconds": 10,
-      "clip": {
-        "asset_id": "yt_vLRjqTIiMjc_211_256_v1",
-        "drive_file_id": "12OqkbqWBaWWwzeXbwphdsRhVty541Dxy",
-        "url": "velox-drive://12OqkbqWBaWWwzeXbwphdsRhVty541Dxy",
-        "sha256": "00e202e5b081ea4ee992a1369b712af91c8a5b219d59af46836a63c681dddf26",
-        "size_bytes": 0,
-        "duration_ms": 45000
-      }
+      "duration_seconds": 10
     }
   ],
   "output": {
