@@ -84,6 +84,69 @@ func TestSceneTextReady_TTSDoesNotWaitForAnalysis(t *testing.T) {
 	require.Contains(t, names, "vidrush scene-0 completed")
 }
 
+func TestImportantPhraseHintsReachTTSBeforeSceneReadyConsumers(t *testing.T) {
+	repo := newInMemRunRepository()
+	streamer := newGatedStreamingTextGenerator(defaultTestScenes())
+	translator := newStubTranslator()
+	voiceover := newStubVoiceoverGenerator()
+	runner := NewRunner(repo, streamer, translator, voiceover, newStubDocumentPublisher(), canonicalTestDocumentRenderer{})
+	runner.SetLogger(zap.NewNop())
+	runner.SetScriptDocsFolderID("test-docs-folder")
+	req := defaultTestRequest()
+	req.Languages = []Language{"en"}
+	req.MediaPlan.Extraction.ImportantPhrases = []string{"The requested phrase is appended before synthesis"}
+	const runID = "run-hint-materialized-before-tts"
+	require.NoError(t, repo.Create(context.Background(), &GenerationRun{
+		ID: runID, Request: req, Status: RunStatusPending, CurrentStage: StageNormalizing,
+	}))
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		runner.Execute(context.Background(), runID, req)
+	}()
+
+	// If the source-type branch accidentally bypasses the hint materialization
+	// gate, streaming emits scene 0 and dispatches TTS while the producer waits
+	// here. Release it so the test reaches its text assertion instead of hanging.
+	deadline := time.Now().Add(5 * time.Second)
+	for voCallCount(voiceover) == 0 {
+		select {
+		case <-done:
+			deadline = time.Time{}
+		case <-time.After(time.Millisecond):
+		}
+		if deadline.IsZero() || time.Now().After(deadline) {
+			break
+		}
+	}
+	select {
+	case <-streamer.emitted:
+		select {
+		case <-streamer.release:
+		default:
+			close(streamer.release)
+		}
+	default:
+	}
+	select {
+	case <-done:
+	case <-time.After(10 * time.Second):
+		t.Fatal("run did not complete")
+	}
+	require.Equal(t, RunStatusCompleted, awaitCompletion(t, repo, runID, time.Second).Status)
+
+	inputs := voiceover.capturedInputs()
+	require.NotEmpty(t, inputs)
+	found := false
+	for _, input := range inputs {
+		if strings.Contains(input.Text, req.MediaPlan.Extraction.ImportantPhrases[0]) {
+			found = true
+		}
+	}
+	require.True(t, found, "the voiceover must synthesize the final scene text including the requested hint")
+}
+
 // ── Translated NLP ↔ TTS overlap (audit P2) ──────────────────────────
 //
 // runTranslatedNLP used to run AFTER the SceneTextReady join, i.e. after TTS had

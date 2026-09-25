@@ -171,6 +171,9 @@ type OverlayStyleProfile struct {
 	Size         *OverlaySizeProfile       `yaml:"size,omitempty"`
 	Shadow       *OverlayShadowProfile     `yaml:"shadow,omitempty"`
 	TransitionIn *OverlayTransitionProfile `yaml:"transition_in,omitempty"`
+	FontFamily   string                    `yaml:"font_family,omitempty"`
+	GlowSize     *float64                  `yaml:"glow_size,omitempty"`
+	StrokeSize   *float64                  `yaml:"stroke_size,omitempty"`
 }
 
 // OverlaySizeProfile mirrors scriptpkg.OverlaySizeSpec.
@@ -201,7 +204,8 @@ func (o *OverlayStyleProfile) OverlayStyle() *scriptpkg.OverlayStyleSpec {
 		return nil
 	}
 	out := &scriptpkg.OverlayStyleSpec{
-		Color: append([]float64(nil), o.Color...),
+		Color:      append([]float64(nil), o.Color...),
+		FontFamily: o.FontFamily, GlowSize: o.GlowSize, StrokeSize: o.StrokeSize,
 	}
 	if o.Size != nil {
 		size := &scriptpkg.OverlaySizeSpec{

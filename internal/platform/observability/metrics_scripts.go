@@ -39,6 +39,11 @@ var (
 		Help: "Total number of generated-body fallbacks applied, by bounded reason.",
 	}, []string{"reason"})
 
+	ScriptTimingProjectionSkipTotal = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "script_timing_projection_skip_total",
+		Help: "Optional phrase or entity timing anchors omitted because they were absent from captured voiceover word timing.",
+	}, []string{"scene_id", "surface"})
+
 	// ── Checkpoint write-amplification instrumentation ──────────────────
 	//
 	// The script voiceover phase checkpoints the WHOLE GenerateResult once per

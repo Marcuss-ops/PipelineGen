@@ -178,6 +178,7 @@ type stubVoiceoverGenerator struct {
 	err       error
 	failAfter int
 	callCount int
+	inputs    []VoiceoverInput
 }
 
 func newStubVoiceoverGenerator() *stubVoiceoverGenerator {
@@ -195,6 +196,7 @@ func (v *stubVoiceoverGenerator) Generate(ctx context.Context, input VoiceoverIn
 	v.mu.Lock()
 	defer v.mu.Unlock()
 	v.callCount++
+	v.inputs = append(v.inputs, input)
 	if v.failAfter >= 0 && v.callCount > v.failAfter {
 		return AudioReference{}, v.err
 	}
@@ -209,6 +211,12 @@ func (v *stubVoiceoverGenerator) Generate(ctx context.Context, input VoiceoverIn
 	ref.ID = "vo-" + input.SceneID + "-" + string(input.Language)
 	ref.FilePath = "/tmp/voiceover-" + input.SceneID + "-" + string(input.Language) + ".mp3"
 	return ref, nil
+}
+
+func (v *stubVoiceoverGenerator) capturedInputs() []VoiceoverInput {
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	return append([]VoiceoverInput(nil), v.inputs...)
 }
 
 // stubDocumentPublisher implements DocumentPublisher with fault injection.

@@ -36,6 +36,12 @@ lives **inside an item**; there are no top-level shortcut keys.
       "language": "en",
       "source":       { "type": "text", "source_text": "..." },
       "script_params": { "target_words": 1200 },
+      "overlay_style": {
+        "font_family": "inter",
+        "size": { "font_size": 64 },
+        "glow_size": 18,
+        "stroke_size": 3
+      },
       "output":       { "...": "opt-in post-generation artifacts" },
       "docs":         { "enabled": true, "languages": ["en", "it"] },
       "audio":        { "...": "audio.mode + editorial audio intent" },
@@ -44,6 +50,13 @@ lives **inside an item**; there are no top-level shortcut keys.
   ]
 }
 ```
+
+`overlay_style` controls the visual style of generated **text** overlays.
+`font_family` accepts `poppins`, `inter`, or `dejavu_sans`; `size.font_size`
+sets the text size in pixels; `glow_size` accepts `0..256`; and `stroke_size`
+accepts `0..64`. Omit a field to keep the certified preset value. These
+overrides are applied to phrase, word, number, and quote overlays; image cards
+keep their image style.
 
 - `version` is always `2`. `items` must contain **at least one** entry.
 - A single-item envelope maps to the unified `/generate` flow; multiple

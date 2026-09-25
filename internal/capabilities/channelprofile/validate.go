@@ -144,6 +144,15 @@ func (p Profile) validateOverlayStyle() error {
 	if o.TransitionIn != nil && o.TransitionIn.DurationFrames < 0 {
 		return fmt.Errorf("overlay_style.transition_in.duration_frames is negative")
 	}
+	style := &scriptpkg.OverlayStyleSpec{
+		FontFamily: o.FontFamily, GlowSize: o.GlowSize, StrokeSize: o.StrokeSize,
+	}
+	if o.Size != nil {
+		style.Size = &scriptpkg.OverlaySizeSpec{FontSize: o.Size.FontSize}
+	}
+	if err := style.Validate(); err != nil {
+		return err
+	}
 	return nil
 }
 

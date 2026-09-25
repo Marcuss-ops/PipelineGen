@@ -8,6 +8,7 @@ import (
 	capabilityaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
 	capcheckpoint "github.com/Marcuss-ops/PipelineGen/internal/capabilities/checkpoint"
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/observability"
 	"go.uber.org/zap"
 )
 
@@ -375,10 +376,17 @@ func (r *Runner) runAudioCompilePhase(ctx context.Context, runID string, req Gen
 		result.CanonicalTimeline = &canonicalTimeline
 		// ── PHRASE TIMING PROJECTION ──────────────────────────────
 		// Derive the phrase→timestamp projection from the per-scene voiceover
-		// timing artifacts (captured in the same synthesis stream as the
-		// audio). Fail-closed: a scene with timing that cannot anchor its
-		// narration verbatim fails the run.
-		if err := compileResultPhraseTimings(result, req.SourceLanguage); err != nil {
+		// timing artifacts captured with the audio. Mismatched optional
+		// anchors are skipped and reported; they never fail the generation job.
+		reportTimingSkip := func(skip timingProjectionSkip) {
+			observability.ScriptTimingProjectionSkipTotal.WithLabelValues(skip.SceneID, skip.Surface).Inc()
+			r.log.Warn("voiceover timing projection skipped an unanchored surface",
+				zap.String("scene_id", skip.SceneID),
+				zap.String("surface", skip.Surface),
+				zap.Error(skip.Cause),
+			)
+		}
+		if err := compileResultPhraseTimings(result, req.SourceLanguage, reportTimingSkip); err != nil {
 			cause := fmt.Errorf("phrase timing compilation failed: %w", err)
 			r.failExecutionStep(ctx, exec, payloadStep, cause)
 			r.failRunWithRetry(ctx, runID, StageCompilingAudio, cause)
@@ -389,9 +397,9 @@ func (r *Runner) runAudioCompilePhase(ctx context.Context, runID string, req Gen
 		// word timing: every entity occurrence is anchored to the REAL
 		// voiceover (first spoken word start → last spoken word end) and
 		// mapped onto the final timeline via the scene's canonical offset.
-		// Fail-closed like the phrase projection: a scene that carries both
-		// annotations and word timing must speak every entity verbatim.
-		if err := compileResultEntityTimeline(result, req.SourceLanguage); err != nil {
+		// Unspoken entity candidates are omitted and reported like unmatched
+		// narration anchors; the remaining spoken entities still project.
+		if err := compileResultEntityTimeline(result, req.SourceLanguage, reportTimingSkip); err != nil {
 			cause := fmt.Errorf("entity timeline compilation failed: %w", err)
 			r.failExecutionStep(ctx, exec, payloadStep, cause)
 			r.failRunWithRetry(ctx, runID, StageCompilingAudio, cause)

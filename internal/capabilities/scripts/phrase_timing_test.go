@@ -79,6 +79,35 @@ func TestCompilePhraseTimings_PersistsLocalAndGlobalSpans(t *testing.T) {
 	}
 }
 
+func TestCompileResultPhraseTimingsSkipsOnlyUnanchoredScene(t *testing.T) {
+	goodTiming := speechTimingForWords([]string{"hello", "world"})
+	badTiming := speechTimingForWords([]string{"different", "words"})
+	result := &GenerateResult{
+		Scenes: []Scene{
+			{ID: "good", Index: 0, Text: map[Language]string{"en": "hello world"}, Voiceover: map[Language]AudioReference{"en": {ID: "a", Timing: &goodTiming}}},
+			{ID: "mismatch", Index: 1, Text: map[Language]string{"en": "not in the voiceover"}, Voiceover: map[Language]AudioReference{"en": {ID: "b", Timing: &badTiming}}},
+		},
+		ResolvedScenes: []ResolvedScene{
+			{ID: "good", Index: 0, TimelineStartUS: 0},
+			{ID: "mismatch", Index: 1, TimelineStartUS: 200_000},
+		},
+	}
+	var skips []timingProjectionSkip
+	err := compileResultPhraseTimings(result, "en", func(skip timingProjectionSkip) { skips = append(skips, skip) })
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.PhraseTimings) != 1 || result.PhraseTimings[0].Text != "hello world" {
+		t.Fatalf("phrase timings = %#v, want only matching scene", result.PhraseTimings)
+	}
+	if len(result.SceneSpeechTimings) != 1 || result.SceneSpeechTimings[0].SceneID != "good" {
+		t.Fatalf("speech timings = %#v, want matching scene retained", result.SceneSpeechTimings)
+	}
+	if len(skips) != 1 || skips[0].SceneID != "mismatch" || skips[0].Surface != "narration" || skips[0].Cause == nil {
+		t.Fatalf("skip reports = %#v, want mismatch/narration diagnostic", skips)
+	}
+}
+
 // TestCompilePhraseTimings_SerializesOnGenerateResult pins the persistence
 // surface: the projection survives a JSON round-trip on GenerateResult and
 // stays valid.

@@ -37,6 +37,9 @@ func ValidateItem(item scriptpkg.GenerationItemV2) error {
 
 	details = append(details, validateSource(item.Source, ref)...)
 	details = append(details, validateOutput(item.Output, ref)...)
+	if err := item.OverlayStyle.Validate(); err != nil {
+		details = append(details, ref+": "+err.Error())
+	}
 	details = append(details, validateScript(item.ScriptParams, ref)...)
 	if item.ScriptParams.SourceTextVerbatim && item.Source.Type != scriptpkg.SourceText {
 		details = append(details, ref+": script_params.source_text_verbatim requires source.type=text")

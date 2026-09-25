@@ -7,6 +7,36 @@ import (
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
+func TestOverlayStyleParamsExposeTextRuntimeControls(t *testing.T) {
+	fontSize, glow, stroke := 64.0, 18.0, 3.0
+	got := overlayStyleParams(&scriptpkg.OverlayStyleSpec{
+		FontFamily: "inter", Size: &scriptpkg.OverlaySizeSpec{FontSize: &fontSize},
+		GlowSize: &glow, StrokeSize: &stroke,
+	})
+	for key, want := range map[string]any{"font_family": "inter", "font_size_px": 64.0, "glow_size": 18.0, "stroke_size": 3.0} {
+		if got[key] != want {
+			t.Errorf("%s = %#v, want %#v", key, got[key], want)
+		}
+	}
+	style, ok := got["style"].(map[string]any)
+	if !ok || style["font_size"] != 64.0 {
+		t.Fatalf("nested style font size = %#v, want 64", got["style"])
+	}
+}
+
+func TestRuntimeTextStyleTargetsPlannerRenderKinds(t *testing.T) {
+	for _, kind := range []string{"text_phrase", "text_word", "number", "quote"} {
+		if !isTextOverlayKind(kind) {
+			t.Errorf("%q should receive runtime text style", kind)
+		}
+	}
+	for _, kind := range []string{"image", "entity_image", "video_overlay"} {
+		if isTextOverlayKind(kind) {
+			t.Errorf("%q must not receive runtime text style", kind)
+		}
+	}
+}
+
 type testOverlayBackgroundSource struct {
 	asset OverlayBackgroundAsset
 	seen  string

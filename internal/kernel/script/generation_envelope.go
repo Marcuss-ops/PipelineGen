@@ -11,6 +11,8 @@
 package script
 
 import (
+	"fmt"
+	"math"
 	"strings"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
@@ -176,6 +178,37 @@ type OverlayStyleSpec struct {
 	Color        []float64              `json:"color,omitempty"`
 	Size         *OverlaySizeSpec       `json:"size,omitempty"`
 	TransitionIn *OverlayTransitionSpec `json:"transition_in,omitempty"`
+	// FontFamily is one of RenderingGen's bundled text families. Empty keeps
+	// the preset font. Runtime IDs are intentionally closed and path-free.
+	FontFamily string `json:"font_family,omitempty"`
+	// GlowSize and StrokeSize are pixel widths. Explicit zero disables the
+	// corresponding effect; nil preserves the preset's value.
+	GlowSize   *float64 `json:"glow_size,omitempty"`
+	StrokeSize *float64 `json:"stroke_size,omitempty"`
+}
+
+// Validate checks caller-controlled text runtime overrides before they reach
+// the RenderingGen queue. RenderingGen repeats these checks at its own trust
+// boundary; this validation gives script.generate an early, actionable error.
+func (s *OverlayStyleSpec) Validate() error {
+	if s == nil {
+		return nil
+	}
+	switch s.FontFamily {
+	case "", "poppins", "inter", "dejavu_sans":
+	default:
+		return fmt.Errorf("overlay_style.font_family %q is unsupported (poppins, inter, dejavu_sans)", s.FontFamily)
+	}
+	if s.GlowSize != nil && (math.IsNaN(*s.GlowSize) || math.IsInf(*s.GlowSize, 0) || *s.GlowSize < 0 || *s.GlowSize > 256) {
+		return fmt.Errorf("overlay_style.glow_size must be between 0 and 256 pixels")
+	}
+	if s.StrokeSize != nil && (math.IsNaN(*s.StrokeSize) || math.IsInf(*s.StrokeSize, 0) || *s.StrokeSize < 0 || *s.StrokeSize > 64) {
+		return fmt.Errorf("overlay_style.stroke_size must be between 0 and 64 pixels")
+	}
+	if s.Size != nil && s.Size.FontSize != nil && (math.IsNaN(*s.Size.FontSize) || math.IsInf(*s.Size.FontSize, 0) || *s.Size.FontSize <= 0 || *s.Size.FontSize > 512) {
+		return fmt.Errorf("overlay_style.size.font_size must be greater than 0 and at most 512 pixels")
+	}
+	return nil
 }
 
 type OverlayShadowSpec struct {
