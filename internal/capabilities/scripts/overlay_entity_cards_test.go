@@ -36,9 +36,19 @@ func TestAttachEntityCardAssetCarriesVerifiedLocalPathWithoutSerializingIt(t *te
 	stableID := capabilityentities.StableEntityID("PERSON", "Ada Lovelace")
 	item := attachEntityCardAsset(capabilityoverlay.OverlayItem{
 		ID: "ada-card", EntityID: stableID, Kind: string(capabilityoverlay.KindEntityCard),
+		MotionID:     "phrase_apple_clean_01_blur_soft_reveal",
+		MotionParams: map[string]any{"stagger": 3},
 	}, media, canonicalByStable, "plan-1")
 	if item.Kind != string(capabilityoverlay.KindEntityImage) || len(item.AssetRefs) != 1 {
 		t.Fatalf("entity image = %#v, want resolved image card", item)
+	}
+	imageMotionIDs := capabilityoverlay.CertifiedImageMotions()
+	imageMotions := make(map[string]bool, len(imageMotionIDs))
+	for _, motionID := range imageMotionIDs {
+		imageMotions[motionID] = true
+	}
+	if !imageMotions[item.MotionID] || item.MotionParams != nil {
+		t.Fatalf("entity image motion = %q params=%v, want a certified image motion without stale text params", item.MotionID, item.MotionParams)
 	}
 	if item.AssetRefs[0].LocalPath != localPath {
 		t.Fatalf("local path = %q, want verified producer path", item.AssetRefs[0].LocalPath)

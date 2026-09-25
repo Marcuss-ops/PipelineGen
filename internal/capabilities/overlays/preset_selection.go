@@ -241,6 +241,12 @@ func CertifiedImageMotions() []string {
 	return append([]string(nil), imageMotionCandidates...)
 }
 
+// SelectImageMotion chooses a stable catalog image motion for one image
+// overlay. Retries of the same job, scene and item resolve identically.
+func SelectImageMotion(jobID, sceneID, itemID string) string {
+	return selectPreset(jobID, sceneID, itemID, "image_motion", imageMotionCandidates)
+}
+
 func selectImageMotion(jobID, sceneID string, ordinal int, pool []string) string {
 	candidates := imageMotionCandidates
 	if len(pool) > 0 {
