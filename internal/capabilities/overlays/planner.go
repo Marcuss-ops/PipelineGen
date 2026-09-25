@@ -381,13 +381,7 @@ func BuildPlan(input PlanInput, config PlannerConfig) (OverlayPlan, error) {
 	// phrases span different scenes or the winning candidates were not the
 	// first annotations supplied by NLP.
 	phraseOrdinal := 0
-	imageOrdinal := 0
 	for i := range plan.Items {
-		switch plan.Items[i].Kind {
-		case "image", "product", "logo":
-			plan.Items[i].MotionID = selectImageMotion(input.PlanID, "run", imageOrdinal, input.ImageMotions)
-			imageOrdinal++
-		}
 		if plan.Items[i].Kind != "text_phrase" {
 			continue
 		}
