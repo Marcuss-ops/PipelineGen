@@ -120,6 +120,9 @@ func (a *SQLiteArtlistSearchCacheAdapter) Get(ctx context.Context, term string) 
 		return nil, time.Time{}, false, nil
 	}
 	if time.Since(cachedAt) > MaxCacheAgeHardLimit {
+		// Best-effort eviction of the over-age row: this branch already returns
+		// a miss, so a failed DELETE cannot expose stale data — it only leaves
+		// the row for the next lookup to reject again.
 		_, _ = a.db.ExecContext(ctx, `DELETE FROM artlist_search_cache WHERE term = ?`, term)
 		return nil, time.Time{}, false, nil
 	}

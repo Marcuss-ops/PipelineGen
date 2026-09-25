@@ -8,12 +8,13 @@ import (
 	"testing"
 
 	steps "github.com/Marcuss-ops/PipelineGen/internal/capabilities/execution/steps"
+	executionsteps "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/executionsteps"
 
 	_ "github.com/mattn/go-sqlite3"
 )
 
 // TestRecovery_SQLiteStore_RestartAndReplay is the §7/§26 acceptance
-// test against the PRODUCTION durable store (steps.NewSQLiteStore), not
+// test against the PRODUCTION durable store (executionsteps.NewSQLiteStore), not
 // a fake: two handler lifetimes over ONE SQLite file, with a process
 // death mid-render between them.
 //
@@ -70,7 +71,7 @@ func TestRecovery_SQLiteStore_RestartAndReplay(t *testing.T) {
 			ON execution_steps (lease_until) WHERE lease_until != ''`); err != nil {
 			t.Fatalf("open sqlite: apply execution_steps lease index: %v", err)
 		}
-		return db, steps.NewSQLiteStore(db)
+		return db, executionsteps.NewSQLiteStore(db)
 	}
 
 	// ── Process lifetime 1: dies at render 40% ───────────────────────

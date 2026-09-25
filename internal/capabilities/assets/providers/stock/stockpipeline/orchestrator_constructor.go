@@ -56,7 +56,7 @@ func newStockPipeline(cfg OrchestratorConfig, planner ClipPlanner, stager acquis
 	if cfg.StepStore != nil {
 		// Step 10 C2/4 (July 2026): the production composition root
 		// supplies a concrete Store (typically
-		// steps.NewSQLiteStore(db) bound to the canonical
+		// executionsteps.NewSQLiteStore(db) bound to the canonical
 		// execution_steps table). The godlike/06 "one owner per
 		// fact" invariant: caller is the sole injector and
 		// NewTestStockOrchestrator never overrides a non-nil store (the

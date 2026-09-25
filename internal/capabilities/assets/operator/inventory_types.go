@@ -49,12 +49,12 @@ type AssetInventoryPage struct {
 // separate so the UI can render distinct badges instead of a single
 // overloaded status.
 type AssetInventoryItem struct {
-	ID        string `json:"id"`
-	Name      string `json:"name"`
-	Filename  string `json:"filename"`
-	Source    string `json:"source"`
-	Provider  string `json:"provider"`
-	MediaType string `json:"media_type"`
+	ID         string `json:"id"`
+	Name       string `json:"name"`
+	Filename   string `json:"filename"`
+	Source     string `json:"source"`
+	Provider   string `json:"provider"`
+	MediaType  string `json:"media_type"`
 	DurationMS int64  `json:"duration_ms"`
 
 	LifecycleState asset.LifecycleState `json:"lifecycle_state"`

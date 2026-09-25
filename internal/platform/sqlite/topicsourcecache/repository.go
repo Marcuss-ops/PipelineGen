@@ -44,6 +44,10 @@ func (r *Repository) GetResearchCache(ctx context.Context, key string) (string, 
 	if err != nil {
 		return "", err
 	}
+	// Hit accounting is deliberately best-effort: the read already succeeded,
+	// so a failed counter bump must never turn a cache hit into an error.
+	// GetResearchCacheRecord reads the same row without the accounting side
+	// effect for callers that must not touch hit_count.
 	_, _ = r.db.ExecContext(ctx, `
 		UPDATE research_cache
 		SET last_used = datetime('now'), hit_count = hit_count + 1
@@ -169,11 +173,44 @@ func (r *Repository) DeleteResearchCache(ctx context.Context, scope, topic, rank
 }
 
 func (r *Repository) execDelete(ctx context.Context, query string, args ...any) (int64, error) {
+	if r == nil || r.db == nil {
+		return 0, nil
+	}
 	res, err := r.db.ExecContext(ctx, query, args...)
 	if err != nil {
 		return 0, err
 	}
 	return res.RowsAffected()
+}
+
+// TouchResearchCache refreshes last_used for a key and returns the number of
+// rows affected.
+func (r *Repository) TouchResearchCache(ctx context.Context, key string) (int64, error) {
+	if r == nil || r.db == nil {
+		return 0, nil
+	}
+	res, err := r.db.ExecContext(ctx, `UPDATE research_cache SET last_used = datetime('now') WHERE key = ?`, key)
+	if err != nil {
+		return 0, err
+	}
+	return res.RowsAffected()
+}
+
+// SweepExpiredResearchCache deletes rows whose expires_at is in the past.
+func (r *Repository) SweepExpiredResearchCache(ctx context.Context) (int64, error) {
+	return r.execDelete(ctx, `DELETE FROM research_cache WHERE expires_at IS NOT NULL AND expires_at < datetime('now')`)
+}
+
+// SweepStaleResearchCache deletes rows whose last_used is older than
+// maxAgeDays. This is the legacy sweeper; prefer SweepExpiredResearchCache.
+func (r *Repository) SweepStaleResearchCache(ctx context.Context, maxAgeDays int) (int64, error) {
+	if maxAgeDays <= 0 {
+		maxAgeDays = 30
+	}
+	return r.execDelete(ctx,
+		`DELETE FROM research_cache WHERE last_used < datetime('now', ?)`,
+		fmt.Sprintf("-%d days", maxAgeDays),
+	)
 }
 
 func toSQLiteDatetime(t time.Time) interface{} {

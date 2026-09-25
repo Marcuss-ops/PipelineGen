@@ -30,6 +30,7 @@ import (
 	_ "github.com/mattn/go-sqlite3" // driver lock per AGENTS.md
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/execution/steps"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/executionsteps"
 	"github.com/stretchr/testify/require"
 )
 
@@ -48,7 +49,7 @@ func (s *stateMutatingStep) Run(_ context.Context, runner StepRunner) error {
 // a pre-completed step with no checkpoint payload aborts resume.
 func TestOrchestrator_RunResilient_EmptyResultFailsClosed(t *testing.T) {
 	db := openOrchestratorResumeTestDB(t)
-	store := steps.NewSQLiteStoreWithDB(db)
+	store := executionsteps.NewSQLiteStoreWithDB(db)
 	ctx := context.Background()
 	jobID := "empty-result-test-1"
 
@@ -96,7 +97,7 @@ func TestOrchestrator_RunResilient_EmptyResultFailsClosed(t *testing.T) {
 // that a checkpoint from a newer release is not resumed silently.
 func TestOrchestrator_RunResilient_FutureCheckpointVersionFailsClosed(t *testing.T) {
 	db := openOrchestratorResumeTestDB(t)
-	store := steps.NewSQLiteStoreWithDB(db)
+	store := executionsteps.NewSQLiteStoreWithDB(db)
 	ctx := context.Background()
 	jobID := "future-checkpoint-version-test-1"
 
@@ -143,7 +144,7 @@ func TestRunStateCheckpoint_CompatibilityShapes(t *testing.T) {
 // aborts the run rather than silently resuming with empty state.
 func TestOrchestrator_RunResilient_MalformedResultFailsClosed(t *testing.T) {
 	db := openOrchestratorResumeTestDB(t)
-	store := steps.NewSQLiteStoreWithDB(db)
+	store := executionsteps.NewSQLiteStoreWithDB(db)
 	ctx := context.Background()
 	jobID := "malformed-result-test-1"
 
@@ -188,7 +189,7 @@ func TestOrchestrator_RunResilient_IncompatibleCheckpointShapesFailClosed(t *tes
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			db := openOrchestratorResumeTestDB(t)
-			store := steps.NewSQLiteStoreWithDB(db)
+			store := executionsteps.NewSQLiteStoreWithDB(db)
 			ctx := context.Background()
 			jobID := "incompatible-checkpoint-" + tc.name
 			key := steps.StepKey{JobID: jobID, StepKey: "stock.plan", InputFingerprint: legacyStepInputFingerprint(jobID, "stock.plan")}

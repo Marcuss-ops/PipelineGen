@@ -11,13 +11,13 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/acquisition"
 	stockpipeline "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers/stock/stockpipeline"
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/execution/steps"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/finalization"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	filesystem "github.com/Marcuss-ops/PipelineGen/internal/platform/filesystem"
 	storage "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite"
 	assetindex "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assetindex"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/executionsteps"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outbox"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/stockbatches"
 )
@@ -102,7 +102,7 @@ func TestBuildStockBundle_WiresSourceDurationProbeIntoProductionService(t *testi
 			Log:        log,
 			DB:         db.DB,
 			JobCreator: jobsBundle.Repo,
-			StepStore:  steps.NewSQLiteStore(db.DB),
+			StepStore:  executionsteps.NewSQLiteStore(db.DB),
 		},
 		Delivery: StockDeliveryDeps{
 			Publisher:     noOpPublisher{},

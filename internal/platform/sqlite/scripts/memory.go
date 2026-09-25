@@ -173,7 +173,9 @@ func (r *MemoryRepository) SweepStaleMemories(ctx context.Context, maxAgeDays in
 	if maxAgeDays <= 0 {
 		maxAgeDays = 90
 	}
-	// Decay usefulness_score of memories not used in the last 7 days (reducing priority by 10% per sweep cycle)
+	// Decay usefulness_score of memories not used in the last 7 days (reducing priority by 10% per sweep cycle).
+	// The decay is best-effort bookkeeping: a failure must not abort the sweep,
+	// whose owned effect is the DELETE below (whose error IS returned).
 	_, _ = r.db.ExecContext(ctx, "UPDATE gemma_memory_entries SET usefulness_score = usefulness_score * 0.9 WHERE last_used_at < datetime('now', ?)", "-7 days")
 
 	res, err := r.db.ExecContext(ctx,

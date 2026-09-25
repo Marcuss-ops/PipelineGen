@@ -65,6 +65,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/execution/steps"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/executionsteps"
 	pkgretry "github.com/Marcuss-ops/PipelineGen/pkg/retry"
 )
 
@@ -308,7 +309,7 @@ func TestStock_RetryPolicy_DriveFailure_ResumesWithoutReRendering(t *testing.T) 
 	// race-detector / WAL-lock issue this avoids.
 
 	db := openOrchestratorResumeTestDB(t)
-	store := steps.NewSQLiteStoreWithDB(db)
+	store := executionsteps.NewSQLiteStoreWithDB(db)
 	ctx := context.Background()
 	jobID := "drive-failure-retry-1"
 
@@ -560,7 +561,7 @@ func TestStock_RetryPolicy_QdrantDown_OutboxKeepsRetryClassifier(t *testing.T) {
 	// RunResilient as 're-run from scratch on retry' (a
 	// regression), this test fails loudly.
 	db := openOrchestratorResumeTestDB(t)
-	store := steps.NewSQLiteStoreWithDB(db)
+	store := executionsteps.NewSQLiteStoreWithDB(db)
 	ctx := context.Background()
 	jobID := "qdrant-down-resume-1"
 

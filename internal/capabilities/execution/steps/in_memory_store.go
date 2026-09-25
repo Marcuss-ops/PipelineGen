@@ -133,7 +133,7 @@ func (s *inMemoryStore) MarkCompleted(_ context.Context, key StepKey, result, ar
 		return ErrStepNotFound
 	}
 	if existing.Status == StatusCompleted {
-		if bytesEqual(existing.Result, result) && bytesEqual(existing.ArtifactRefs, artifactRefs) {
+		if EqualRawMessage(existing.Result, result) && EqualRawMessage(existing.ArtifactRefs, artifactRefs) {
 			return nil
 		}
 		return ErrStepAlreadyCompleted
@@ -247,18 +247,4 @@ func (s *inMemoryStore) ListByJob(_ context.Context, jobID string) ([]StepState,
 		return out[i].ID < out[j].ID
 	})
 	return out, nil
-}
-
-// bytesEqual compares two json.RawMessage values for byte-equality.
-// Two nil rawMessages are byte-equal; mixed nil/non-nil are not.
-func bytesEqual(a, b json.RawMessage) bool {
-	if len(a) != len(b) {
-		return false
-	}
-	for i := range a {
-		if a[i] != b[i] {
-			return false
-		}
-	}
-	return true
 }

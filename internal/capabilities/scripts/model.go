@@ -60,8 +60,9 @@ type GenerateRequest struct {
 	// resolved ONCE at ingress (BuildGenerateRequest) and consumed by the
 	// overlay planner. Empty keeps the certified default pool. It is not
 	// caller wire vocabulary: only a channel profile sets it.
-	PhraseMotions []string `json:"phrase_motions,omitempty"`
-	ImageMotions  []string `json:"image_motions,omitempty"`
+	PhraseMotions      []string `json:"phrase_motions,omitempty"`
+	PhraseMotionFamily string   `json:"phrase_motion_family,omitempty"`
+	ImageMotions       []string `json:"image_motions,omitempty"`
 	// OverlayBackground is the visual background selected by script.generate;
 	// it is transported into the sealed OverlayPlan at render time.
 	OverlayBackground *scriptpkg.OverlayBackgroundSpec `json:"overlay_background,omitempty"`

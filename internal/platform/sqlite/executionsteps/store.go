@@ -1,4 +1,10 @@
-// Package steps — sqlite_store.go (Step 10 / Stock Cutover C1/4, July 2026).
+// Package executionsteps — store.go (Step 10 / Stock Cutover C1/4, July 2026;
+// moved out of internal/capabilities/execution/steps on 2026-09-24).
+//
+// OWNERSHIP: the port (steps.Store and its types/sentinels) is owned by
+// internal/capabilities/execution/steps, which is driver-free by design. This
+// package is the SQLite ADAPTER that implements it; no database/sql type may
+// appear in the port, and no SQL may appear in the capability package.
 //
 // SQLiteStore is the persistent implementation of the canonical
 // steps.Store port (see store.go in this package). It backs every
@@ -37,7 +43,7 @@
 // No application-level mutex is needed — the underlying SQL
 // constraint model is sufficient (proven by 053_job_lifecycle_atomic.sql
 // precedent on the jobs table).
-package steps
+package executionsteps
 
 import (
 	"context"
@@ -49,6 +55,34 @@ import (
 
 	// mattn/go-sqlite3 — canonical driver (AGENTS.md bans switching).
 	_ "github.com/mattn/go-sqlite3"
+
+	steps "github.com/Marcuss-ops/PipelineGen/internal/capabilities/execution/steps"
+)
+
+// ── Port vocabulary ──────────────────────────────────────────────────
+// The adapter implements steps.Store. The aliases below let the SQL speak
+// the port's own vocabulary without restating it: an alias cannot carry
+// methods, so a reintroduced definition or an override fails to compile, and
+// every semantic keeps its single owner in the port package. Nothing here
+// leaks a database/sql type back into capabilities.
+type (
+	Store      = steps.Store
+	StepKey    = steps.StepKey
+	StepState  = steps.StepState
+	StepStatus = steps.StepStatus
+)
+
+const (
+	StatusPending   = steps.StatusPending
+	StatusRunning   = steps.StatusRunning
+	StatusCompleted = steps.StatusCompleted
+	StatusFailed    = steps.StatusFailed
+)
+
+var (
+	ErrStepAlreadyCompleted = steps.ErrStepAlreadyCompleted
+	ErrStepNotFound         = steps.ErrStepNotFound
+	ErrInvalidStepKey       = steps.ErrInvalidStepKey
 )
 
 // DefaultLeaseTTL is the canonical lease_until offset the
@@ -206,7 +240,7 @@ func (s *sqliteStore) MarkCompleted(ctx context.Context, key StepKey, result, ar
 	}
 
 	if row.Status == StatusCompleted {
-		if bytesEqual(row.Result, result) && bytesEqual(row.ArtifactRefs, artifactRefs) {
+		if steps.EqualRawMessage(row.Result, result) && steps.EqualRawMessage(row.ArtifactRefs, artifactRefs) {
 			return nil // idempotent re-completion with same shape
 		}
 		return ErrStepAlreadyCompleted

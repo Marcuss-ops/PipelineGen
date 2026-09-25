@@ -21,12 +21,15 @@ type VideoProfile struct {
 	Channels         int
 }
 
-// FrameRate returns rational FPS. Canonical 24/1.
+// FrameRate returns rational FPS. An unset profile resolves to the canonical
+// assembly contract's FPS, so the 24/1 literal has exactly one owner
+// (assembly_contract.go) instead of being restated here.
 func (p VideoProfile) FrameRate() (num, den int) {
 	if p.FPSNum > 0 && p.FPSDen > 0 {
 		return p.FPSNum, p.FPSDen
 	}
-	return 24, 1
+	canonical := DefaultAssemblyMediaContractV2()
+	return canonical.FPS.Num, canonical.FPS.Den
 }
 
 func (p VideoProfile) FPSFloat() float64 {

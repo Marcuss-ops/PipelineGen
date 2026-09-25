@@ -36,6 +36,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/execution/steps"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/executionsteps"
 )
 
 // blockingStep is a Step impl that blocks on ctx.Done() until the
@@ -116,7 +117,7 @@ func TestOrchestrator_CtxCancellation_PropagatesToBlockingStep(t *testing.T) {
 	t.Parallel()
 
 	db := openOrchestratorResumeTestDB(t)
-	store := steps.NewSQLiteStoreWithDB(db)
+	store := executionsteps.NewSQLiteStoreWithDB(db)
 	jobID := "cancel-stock-test-1"
 
 	// Pre-Complete "stock.plan" — orchestrator will skip it via
@@ -248,7 +249,7 @@ func TestOrchestrator_CtxCancellation_DoesNotRunSubsequentSteps(t *testing.T) {
 	t.Parallel()
 
 	db := openOrchestratorResumeTestDB(t)
-	store := steps.NewSQLiteStoreWithDB(db)
+	store := executionsteps.NewSQLiteStoreWithDB(db)
 	jobID := "cancel-stock-test-2"
 
 	// Track entry into the blocking step + the two subsequent steps.
@@ -316,7 +317,7 @@ func TestOrchestrator_CtxCancellation_PreservesPreCompletedArtifacts(t *testing.
 	t.Parallel()
 
 	db := openOrchestratorResumeTestDB(t)
-	store := steps.NewSQLiteStoreWithDB(db)
+	store := executionsteps.NewSQLiteStoreWithDB(db)
 	jobID := "cancel-stock-test-3"
 
 	// Pre-Complete TWO stages, each with non-trivial result_json

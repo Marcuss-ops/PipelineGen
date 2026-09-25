@@ -161,6 +161,7 @@
 | POST | `/api/media/clips/enrich` | Enrich a media asset with AI metadata |
 | POST | `/api/media/clips/ingest/ai-stock` | Ingest an AI-generated stock clip from visual analysis + Drive video |
 | POST | `/api/media/clips/upload-video` | Upload video clip |
+| POST | `/api/media/import` | Ingest media (image / voiceover / clip / stock) by request kind |
 | POST | `/api/media/qdrant/cleanup` | Clean up stale Qdrant points |
 | POST | `/api/media/register-batch` | Batch register assets |
 | POST | `/api/media/register-from-youtube` | Register asset from YouTube URL |
@@ -187,6 +188,20 @@
 |--------|------|-------------|
 | GET | `/api/scripts` | List scripts |
 | GET | `/api/scripts/:id` | Get script by ID |
+
+## /api/stock-batches
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/stock-batches/:id` | Get stock batch status |
+| POST | `/api/stock-batches/run` | Run a stock batch (source_url + destination + sampling + groups) |
+
+## /api/stock-pipeline
+
+| Method | Path | Description |
+|--------|------|-------------|
+| POST | `/api/stock-pipeline/run` | Run the stock pipeline (search_queries / direct_urls / drive_urls / clips) |
+| POST | `/api/stock-pipeline/search-and-run` | Search-and-run the stock pipeline (queries: [{q, limit}]) |
 
 ## /api/system
 

@@ -51,6 +51,32 @@ func RunGenAPIDocs(args []string) error {
 			ImagesEnabled:      true,
 			ScriptClipsEnabled: true,
 			ClipRenderEnabled:  mediaPG,
+			// StockPipelineEnabled: the /api/stock-pipeline/* and
+			// /api/stock-batches/* routes are mounted live with the
+			// production default (stock_pipeline_enabled: true) and are
+			// therefore part of the committed manifest. They ride the same
+			// media-PostgreSQL gate as Artlist/ClipRender because
+			// WireStockPipeline needs the media committer; without the DSN
+			// their description keys live in routeDescriptionsGated
+			// ("absence is gating, not drift"), WITH the DSN they are
+			// mounted and the keys match a real route again.
+			StockPipelineEnabled: mediaPG,
+		},
+		// Drive credentials: the docs snapshot must be able to mount every
+		// route the PRODUCTION default enables, and WireStockPipeline
+		// requires root.Drive.Admin — which exists only when the Drive SDK
+		// handle could be built. Leaving Paths empty (pre-fix) made
+		// GetCredentialsPath() return "", the Drive client fail, Admin stay
+		// nil, and the stock-pipeline routes vanish from the committed
+		// manifest while the live server served them (stock_pipeline_enabled
+		// defaults to true) — drift, not gating. Pinning the canonical
+		// repo-relative names keeps this a construction input: a host WITH
+		// credentials generates the production manifest, a credential-less
+		// host still boots (soft mode) and the stock keys fall back to
+		// routeDescriptionsGated.
+		Paths: config.PathsConfig{
+			CredentialsFile: "credentials.json",
+			TokenFile:       "token.json",
 		},
 		Storage: config.StorageConfig{
 			DataDir: "/tmp/test-data",
@@ -203,6 +229,15 @@ var routeDescriptions = map[string]string{
 	"GET /api/artlist/diagnostics":    "Artlist diagnostics",
 	"POST /api/artlist/sync-catalogs": "Sync Artlist catalogs to media DB",
 	"POST /api/artlist/recommend":     "Get Artlist recommendations for a term",
+
+	// ── Stock pipeline / stock batches ───────────────────────
+	// StockPipelineEnabled (same media-PostgreSQL gate as Artlist above;
+	// keys mirrored in routeDescriptionsGated).
+	"POST /api/stock-pipeline/run":            "Run the stock pipeline (search_queries / direct_urls / drive_urls / clips)",
+	"POST /api/stock-pipeline/search-and-run": "Search-and-run the stock pipeline (queries: [{q, limit}])",
+	"POST /api/stock-batches/run":             "Run a stock batch (source_url + destination + sampling + groups)",
+	"GET /api/stock-batches/:id":              "Get stock batch status",
+	"POST /api/media/import":                  "Ingest media (image / voiceover / clip / stock) by request kind",
 
 	// ── Jobs ──────────────────────────────────────────────────
 	"GET /api/jobs":             "List jobs",
@@ -462,6 +497,20 @@ var routeDescriptionsGated = map[string]bool{
 	// SSOT handle, otherwise gating not drift.
 	"POST /api/clips/render":       true,
 	"POST /api/clips/render/batch": true,
+	// stock-pipeline + stock-batches (StockPipelineEnabled, same
+	// media PostgreSQL gate as Artlist / clip.render above): mounted only
+	// when the docs snapshot has a media SSOT handle, otherwise gating
+	// not drift.
+	"POST /api/stock-pipeline/run":            true,
+	"POST /api/stock-pipeline/search-and-run": true,
+	"POST /api/stock-batches/run":             true,
+	"GET /api/stock-batches/:id":              true,
+	// POST /api/media/import is mounted only when the media ingest
+	// pipeline could be built — which needs the Drive admin handle (the
+	// ingest path resolves/creates Drive folders). Gated for the same
+	// reason as stock above: absence on a credential-less host is
+	// gating, not drift.
+	"POST /api/media/import": true,
 }
 
 // staleDescriptionKeys returns the description keys that match no registered

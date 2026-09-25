@@ -199,6 +199,9 @@ type PlanInput struct {
 	// and an id outside CertifiedPhraseMotions() is a compile failure: the
 	// rotation must never hand the renderer a motion it cannot run.
 	PhraseMotions []string
+	// PhraseMotionFamily optionally limits automatic phrase-motion selection
+	// to a certified family and applies the one sampled motion to every phrase.
+	PhraseMotionFamily string
 	// ImageMotions optionally narrows the certified layer-only image motion pool.
 	ImageMotions []string
 	Scenes       []SceneInput
@@ -212,6 +215,25 @@ func BuildPlan(input PlanInput, config PlannerConfig) (OverlayPlan, error) {
 	config = config.withDefaults()
 	if err := validatePhraseMotionPool(input.PhraseMotions); err != nil {
 		return OverlayPlan{}, err
+	}
+	if input.PhraseMotionFamily != "" {
+		familyPool := certifiedPhraseFamily(input.PhraseMotionFamily)
+		if len(familyPool) == 0 {
+			return OverlayPlan{}, fmt.Errorf("overlay planner: phrase motion family %q has no certified motions", input.PhraseMotionFamily)
+		}
+		if len(input.PhraseMotions) > 0 {
+			allowed := make(map[string]bool, len(familyPool))
+			for _, id := range familyPool {
+				allowed[id] = true
+			}
+			for _, id := range input.PhraseMotions {
+				if !allowed[id] {
+					return OverlayPlan{}, fmt.Errorf("overlay planner: phrase motion %q is outside family %q", id, input.PhraseMotionFamily)
+				}
+			}
+			familyPool = input.PhraseMotions
+		}
+		input.PhraseMotions = familyPool
 	}
 	if err := validateImageMotionPool(input.ImageMotions); err != nil {
 		return OverlayPlan{}, err
@@ -369,7 +391,11 @@ func BuildPlan(input PlanInput, config PlannerConfig) (OverlayPlan, error) {
 		if plan.Items[i].Kind != "text_phrase" {
 			continue
 		}
-		plan.Items[i].MotionID = selectPhraseMotion(input.PlanID, "run", phraseOrdinal, input.PhraseMotions)
+		ordinal := phraseOrdinal
+		if input.PhraseMotionFamily != "" {
+			ordinal = 0
+		}
+		plan.Items[i].MotionID = selectPhraseMotion(input.PlanID, "run", ordinal, input.PhraseMotions)
 		phraseOrdinal++
 	}
 	if err := plan.Validate(); err != nil {
@@ -425,103 +451,6 @@ func validatePhraseMotionPool(pool []string) error {
 		seen[id] = true
 	}
 	return nil
-}
-
-// PhraseOverlayBudget reports the requested editorial phrase ceiling and how
-// many unique grounded phrase overlays were actually materialized.
-type PhraseOverlayBudget struct {
-	Requested    int `json:"requested_phrase_overlays"`
-	Materialized int `json:"materialized_phrase_overlays"`
-	Shortfall    int `json:"phrase_overlay_shortfall"`
-}
-
-// ApplyPhraseOverlayBudget deduplicates phrase items across the entire run,
-// chooses the highest-priority unique phrases up to the hard cap, and retains
-// the input ordering among admitted items. Ties preserve the original order.
-// Non-phrase items are copied through unchanged.
-func ApplyPhraseOverlayBudget(items []OverlayItem) ([]OverlayItem, PhraseOverlayBudget) {
-	phraseIndices := make([]int, 0, MaxPhraseOverlaysPerRun)
-	bestByText := make(map[string]int)
-	for i, item := range items {
-		if item.Kind != "text_phrase" {
-			continue
-		}
-		key := strings.ToLower(strings.Join(strings.Fields(item.Text), " "))
-		if key == "" {
-			continue
-		}
-		if existing, ok := bestByText[key]; ok {
-			if overlayItemPriority(item) > overlayItemPriority(items[existing]) {
-				bestByText[key] = i
-			}
-			continue
-		}
-		bestByText[key] = i
-	}
-	for _, index := range bestByText {
-		phraseIndices = append(phraseIndices, index)
-	}
-	sort.SliceStable(phraseIndices, func(i, j int) bool {
-		left, right := phraseIndices[i], phraseIndices[j]
-		if lp, rp := overlayItemPriority(items[left]), overlayItemPriority(items[right]); lp != rp {
-			return lp > rp
-		}
-		return left < right
-	})
-	if len(phraseIndices) > MaxPhraseOverlaysPerRun {
-		phraseIndices = phraseIndices[:MaxPhraseOverlaysPerRun]
-	}
-	keep := make(map[int]struct{}, len(phraseIndices))
-	for _, index := range phraseIndices {
-		keep[index] = struct{}{}
-	}
-	out := make([]OverlayItem, 0, len(items))
-	seenPhraseText := make(map[string]struct{}, len(bestByText))
-	for i, item := range items {
-		if item.Kind != "text_phrase" {
-			out = append(out, item)
-			continue
-		}
-		key := strings.ToLower(strings.Join(strings.Fields(item.Text), " "))
-		if _, admitted := keep[i]; !admitted {
-			continue
-		}
-		if _, duplicate := seenPhraseText[key]; duplicate {
-			continue
-		}
-		seenPhraseText[key] = struct{}{}
-		out = append(out, item)
-	}
-	return out, MeasurePhraseOverlayBudget(out)
-}
-
-// MeasurePhraseOverlayBudget reports how many unique grounded phrase items
-// are present in an already compiled plan. It does not change the plan.
-func MeasurePhraseOverlayBudget(items []OverlayItem) PhraseOverlayBudget {
-	budget := PhraseOverlayBudget{Requested: MaxPhraseOverlaysPerRun}
-	seen := make(map[string]struct{})
-	for _, item := range items {
-		if item.Kind != "text_phrase" {
-			continue
-		}
-		key := strings.ToLower(strings.Join(strings.Fields(item.Text), " "))
-		if key != "" {
-			seen[key] = struct{}{}
-		}
-	}
-	budget.Materialized = len(seen)
-	if budget.Materialized > budget.Requested {
-		budget.Materialized = budget.Requested
-	}
-	budget.Shortfall = budget.Requested - budget.Materialized
-	return budget
-}
-
-func overlayItemPriority(item OverlayItem) float64 {
-	if value, ok := item.Params["priority"].(float64); ok {
-		return value
-	}
-	return 0
 }
 
 func rankedValid(in []TimedAnnotation, maxWords int) []TimedAnnotation {
