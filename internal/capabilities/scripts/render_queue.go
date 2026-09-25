@@ -296,6 +296,11 @@ func (e *QueueRenderEnqueuer) enqueueChrononPlan(ctx context.Context, plan capov
 			break
 		}
 	}
+	// A payload-selected runtime font is a real Chronon dependency: its
+	// workspace-relative path must be staged alongside the preset fonts before
+	// the worker mounts the plan. The runtime family vocabulary is closed at
+	// OverlayStyleSpec.Validate, and this mapping is the matching asset owner.
+	assets = append(assets, runtimeFontAssets(semanticPlan)...)
 	jobID := plan.PlanID
 	if e.freshRender {
 		jobID = fmt.Sprintf("%s:render:%d:%d", plan.PlanID, time.Now().UTC().UnixNano(), e.freshSeq.Add(1))
@@ -411,6 +416,18 @@ func (e *QueueRenderEnqueuer) enqueueChrononPlan(ctx context.Context, plan capov
 	// never re-times a phase the worker already measured).
 	recordRenderingGenPhases(ctx, done.Artifact)
 	return RenderReference{JobID: jobID, Status: "COMPLETED", Artifact: done.Artifact}, nil
+}
+
+func runtimeFontAssets(plan capoverlay.OverlayPlan) []RenderQueueAsset {
+	for _, item := range plan.Items {
+		family, _ := item.Params["font_family"].(string)
+		if strings.TrimSpace(family) == "inter" {
+			return []RenderQueueAsset{NewRenderQueueAsset(
+				kernelasset.Ref{AssetID: capoverlay.CanonicalInterFontPath, SHA256: capoverlay.CanonicalInterFontHash},
+				capoverlay.CanonicalInterFontPath, "")}
+		}
+	}
+	return nil
 }
 
 // RenderingGen queue job states (the `state` field of GET /jobs/{id}).

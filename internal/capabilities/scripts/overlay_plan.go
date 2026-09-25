@@ -107,7 +107,17 @@ func overlayStyleParams(style *scriptpkg.OverlayStyleSpec) map[string]any {
 		}
 		if style.Size.FontSize != nil {
 			p["style"] = mergeStyleParam(p["style"], map[string]any{"font_size": *style.Size.FontSize})
+			p["font_size_px"] = *style.Size.FontSize
 		}
+	}
+	if style.FontFamily != "" {
+		p["font_family"] = style.FontFamily
+	}
+	if style.GlowSize != nil {
+		p["glow_size"] = *style.GlowSize
+	}
+	if style.StrokeSize != nil {
+		p["stroke_size"] = *style.StrokeSize
 	}
 	if style.TransitionIn != nil && strings.TrimSpace(style.TransitionIn.Preset) != "" {
 		anim := map[string]any{"preset": style.TransitionIn.Preset}
@@ -294,6 +304,9 @@ func CompileOverlayPlan(result *GenerateResult, language Language, canvas Overla
 				merged[k] = v
 			}
 			for k, v := range styleParams {
+				if isRuntimeTextStyleParam(k) && !isTextOverlayKind(items[i].Kind) {
+					continue
+				}
 				if k == "style" {
 					merged[k] = mergeStyleParam(merged[k], v.(map[string]any))
 				} else if _, exists := merged[k]; !exists {
@@ -401,6 +414,21 @@ func CompileOverlayPlan(result *GenerateResult, language Language, canvas Overla
 		return nil, fmt.Errorf("overlay plan: seal: %w", err)
 	}
 	return &plan, nil
+}
+
+func isRuntimeTextStyleParam(key string) bool {
+	switch key {
+	case "font_family", "font_size_px", "glow_size", "stroke_size":
+		return true
+	default:
+		return false
+	}
+}
+
+func isTextOverlayKind(kind string) bool {
+	// BuildPlan lowers semantic overlay kinds to render kinds such as
+	// text_phrase. Keep runtime typography controls off image/video layers.
+	return strings.HasPrefix(kind, "text_") || kind == "number" || kind == "quote"
 }
 
 // compileResultOverlayPlan is the runner-facing projection: it derives the

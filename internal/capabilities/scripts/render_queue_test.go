@@ -576,6 +576,32 @@ func TestQueueRenderEnqueuerChrononPlan(t *testing.T) {
 	}
 }
 
+func TestRuntimeFontAssetsStagesSelectedInterFont(t *testing.T) {
+	plan := capoverlay.GoldenOverlayPlanV1()
+	for i := range plan.Items {
+		if plan.Items[i].Text != "" {
+			if plan.Items[i].Params == nil {
+				plan.Items[i].Params = map[string]any{}
+			}
+			plan.Items[i].Params["font_family"] = "inter"
+			break
+		}
+	}
+	assets := runtimeFontAssets(plan)
+	if len(assets) != 1 {
+		t.Fatalf("runtime font assets = %d, want selected Inter asset", len(assets))
+	}
+	if assets[0].SHA256 != capoverlay.CanonicalInterFontHash || assets[0].URL != capoverlay.CanonicalInterFontPath {
+		t.Fatalf("runtime font asset = %+v, want content-addressed Inter asset", assets[0])
+	}
+	for i := range plan.Items {
+		delete(plan.Items[i].Params, "font_family")
+	}
+	if got := runtimeFontAssets(plan); len(got) != 0 {
+		t.Fatalf("default font should not add a runtime override asset: %+v", got)
+	}
+}
+
 type freshRenderClient struct {
 	job RenderQueueJob
 }

@@ -32,10 +32,10 @@ import (
 // annotations (NLP output), the scene's voiceover word timing (the actual
 // synthesis stream) and the scene's canonical timeline offset.
 //
-// Nil when no scene carries both annotations and word timing. Fail-closed
-// when any scene carries both: every entity must be grounded in the scene
-// text and spoken verbatim in the voiceover, or the projection aborts.
-func compileResultEntityTimeline(result *GenerateResult, language Language) error {
+// Nil when no scene carries both annotations and word timing. Unspoken
+// candidates are omitted individually and reported; matching candidates and
+// other scenes remain in the projection.
+func compileResultEntityTimeline(result *GenerateResult, language Language, reporters ...func(timingProjectionSkip)) error {
 	if result == nil || result.CanonicalTimeline == nil {
 		return nil
 	}
@@ -94,6 +94,8 @@ func compileResultEntityTimeline(result *GenerateResult, language Language) erro
 			}
 			if _, err := capabilityaudio.LocatePhrase(*ref.Timing, name); err == nil {
 				spoken = append(spoken, source)
+			} else {
+				reportTimingProjectionSkip(reporters, timingProjectionSkip{SceneID: scene.ID, Surface: "entity", Cause: err})
 			}
 		}
 		sources = spoken

@@ -17,6 +17,20 @@ type PhraseTimingSource struct {
 	VoiceoverAssetID string
 }
 
+type timingProjectionSkip struct {
+	SceneID string
+	Surface string
+	Cause   error
+}
+
+func reportTimingProjectionSkip(reporters []func(timingProjectionSkip), skip timingProjectionSkip) {
+	for _, report := range reporters {
+		if report != nil {
+			report(skip)
+		}
+	}
+}
+
 // CompilePhraseTimings builds the flat, ordered phrase→timestamp projection
 // for every scene that has a timing source. Each phrase's local span comes
 // from the canonical word timing; its global span is TimelineStartUS (the
@@ -103,7 +117,7 @@ func CompileSceneSpeechTimings(scenes []ResolvedScene, sources map[string]Phrase
 // carries timing the projection stays nil — timing capture is opt-in at the
 // voiceover port, so a timing-less run is a legitimate no-op rather than a
 // failure.
-func compileResultPhraseTimings(result *GenerateResult, language Language) error {
+func compileResultPhraseTimings(result *GenerateResult, language Language, reporters ...func(timingProjectionSkip)) error {
 	if result == nil {
 		return nil
 	}
@@ -117,11 +131,10 @@ func compileResultPhraseTimings(result *GenerateResult, language Language) error
 		if text == "" {
 			continue
 		}
-		// Voice generation can legitimately normalize or shorten a scene. The
-		// linked word timing is authoritative; do not fail the whole run because
-		// the editorial text is not an exact transcript. Without a verbatim
-		// anchor we omit this optional scene-level projection.
+		// Voice generation can legitimately normalize or shorten a scene. Keep
+		// the timing projection for other scenes and report this unanchored one.
 		if _, err := capabilityaudio.LocatePhrase(*ref.Timing, text); err != nil {
+			reportTimingProjectionSkip(reporters, timingProjectionSkip{SceneID: scene.ID, Surface: "narration", Cause: err})
 			continue
 		}
 		sources[scene.ID] = PhraseTimingSource{Timing: *ref.Timing, Phrases: []string{text}, VoiceoverAssetID: ref.ID}
