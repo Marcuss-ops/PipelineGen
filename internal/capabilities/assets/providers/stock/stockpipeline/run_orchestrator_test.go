@@ -67,6 +67,59 @@ func (r *recordingPublisher) ResolveFolder(_ context.Context, _ delivery.Publish
 //
 // The Publisher remains untouched because the orchestrator never reaches
 // stock.publish (it fails at the entry gate before dispatching any steps).
+// TestEffectiveExecutionBounds pins the Service→OrchestratorConfig bridge for
+// the two stock fan-out bounds. The chain is:
+//
+//	config.yaml concurrency.max_concurrent_stock_* → wiring.stockRuntimeConfig
+//	→ Service.runtime → effectiveExecutionBounds → OrchestratorConfig
+//
+// Each joint is tested at its own seam; this one owns the last two. A zero
+// must survive as a zero (the orchestrator's defensive defaults then apply) so
+// test/CLI Services that never had a RuntimeConfig keep today's behaviour.
+func TestEffectiveExecutionBounds(t *testing.T) {
+	t.Run("nil service", func(t *testing.T) {
+		downloads, cuts := effectiveExecutionBounds(nil)
+		if downloads != 0 || cuts != 0 {
+			t.Fatalf("got (%d, %d), want (0, 0) so the orchestrator defaults apply", downloads, cuts)
+		}
+	})
+
+	t.Run("service without runtime config", func(t *testing.T) {
+		downloads, cuts := effectiveExecutionBounds(&Service{})
+		if downloads != 0 || cuts != 0 {
+			t.Fatalf("got (%d, %d), want (0, 0)", downloads, cuts)
+		}
+	})
+
+	t.Run("operator values pass through untouched", func(t *testing.T) {
+		svc := &Service{runtime: &RuntimeConfig{MaxConcurrentDownloads: 9, MaxConcurrentCuts: 2}}
+		downloads, cuts := effectiveExecutionBounds(svc)
+		if downloads != 9 || cuts != 2 {
+			t.Fatalf("got (%d, %d), want (9, 2) — the flattening site must not re-normalize explicit values", downloads, cuts)
+		}
+	})
+}
+
+// TestOrchestratorConfigNormalizesUnsetExecutionBounds closes the chain: an
+// unset (zero) bound becomes the documented default instead of a zero-capacity
+// fan-out, which would suspend every worker forever.
+func TestOrchestratorConfigNormalizesUnsetExecutionBounds(t *testing.T) {
+	o := newStockPipeline(OrchestratorConfig{}, nil, nil, nil, nil)
+	if o.cfg.MaxConcurrentJobs != DefaultMaxConcurrentJobs {
+		t.Fatalf("MaxConcurrentJobs = %d, want %d", o.cfg.MaxConcurrentJobs, DefaultMaxConcurrentJobs)
+	}
+	if o.cfg.MaxConcurrentDownloads != DefaultMaxConcurrentDownloads {
+		t.Fatalf("MaxConcurrentDownloads = %d, want %d", o.cfg.MaxConcurrentDownloads, DefaultMaxConcurrentDownloads)
+	}
+
+	// Explicit values are preserved: only the <=0 "unset" case is normalized.
+	explicit := newStockPipeline(OrchestratorConfig{MaxConcurrentJobs: 2, MaxConcurrentDownloads: 9}, nil, nil, nil, nil)
+	if explicit.cfg.MaxConcurrentJobs != 2 || explicit.cfg.MaxConcurrentDownloads != 9 {
+		t.Fatalf("explicit bounds were rewritten: jobs=%d downloads=%d, want 2/9",
+			explicit.cfg.MaxConcurrentJobs, explicit.cfg.MaxConcurrentDownloads)
+	}
+}
+
 func TestService_HandleJob_DelegatesToRunOrchestratorResilient(t *testing.T) {
 	rec := &recordingPublisher{}
 	svc := &Service{log: zap.NewNop(), publisher: rec}

@@ -209,6 +209,12 @@ func stockRuntimeConfig(cfg *config.Config) *stockpipeline.RuntimeConfig {
 		WorkDir: cfg.Storage.TempPath(), ClipDurationSec: v.ClipDuration,
 		ChunkDurationSec: v.ChunkDuration, MaxResults: v.MaxClipsPerSource,
 		PolicyVersion: "v1",
+		// Single-owner concurrency contract (as in buildYouTubeRuntimeConfig):
+		// the yaml/env config is the SSOT and this flattening site must not
+		// re-normalize explicit operator values. Only the <=0 "unset" case is
+		// guarded downstream by the orchestrator's defensive defaults.
+		MaxConcurrentDownloads: cfg.Concurrency.MaxConcurrentStockDownloads,
+		MaxConcurrentCuts:      cfg.Concurrency.MaxConcurrentStockCuts,
 		// Operator requirement: a Stock clips folder must contain only the
 		// produced videos. The metadata.json is still composed + hashed and
 		// recorded in the media SSOT, but it is never uploaded to Drive

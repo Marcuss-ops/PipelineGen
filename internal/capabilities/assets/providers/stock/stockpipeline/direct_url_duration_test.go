@@ -134,6 +134,68 @@ func TestEnrichDirectURLDurations_NilAndEmptyGuards(t *testing.T) {
 	require.Empty(t, input.SourceDurations)
 }
 
+// TestEnrichDirectURLDurations_ProbesInParallel pins the bounded-pool
+// contract: independent source URLs are probed concurrently instead of
+// serially, so a multi-source run does not pay N sequential provider
+// round-trips before planning can start. Every URL must still land its
+// duration regardless of completion order.
+func TestEnrichDirectURLDurations_ProbesInParallel(t *testing.T) {
+	urls := []string{
+		"https://www.youtube.com/watch?v=aaaaaaaaaaa",
+		"https://www.youtube.com/watch?v=bbbbbbbbbbb",
+		"https://www.youtube.com/watch?v=ccccccccccc",
+		"https://www.youtube.com/watch?v=ddddddddddd",
+		"https://www.youtube.com/watch?v=eeeeeeeeeee",
+		"https://www.youtube.com/watch?v=fffffffffff",
+	}
+	results := make(map[string][]VideoInfo, len(urls))
+	for i, url := range urls {
+		results[url] = []VideoInfo{{ID: url, Title: url, Duration: float64(100 + i)}}
+	}
+	lister := &queryResolutionLister{
+		results: results,
+		errors:  make(map[string]error),
+		delay:   200 * time.Millisecond,
+	}
+	svc := newQueryResolutionService(lister)
+
+	input := &RunInput{DirectURLs: append([]string(nil), urls...)}
+	svc.enrichDirectURLDurations(context.Background(), input)
+
+	for i, url := range urls {
+		require.Equal(t, float64(100+i), input.SourceDurations[url], "duration for %s", url)
+	}
+	maxActive, calls, _ := lister.snapshot()
+	require.Len(t, calls, len(urls))
+	require.GreaterOrEqual(t, maxActive, 2,
+		"independent probes must overlap; maxActive=%d means the pool ran serially", maxActive)
+}
+
+// TestEnrichDirectURLDurations_SuppliedDurationsSkipTheProbe pins the
+// source_durations payload contract at the enrichment layer: when the caller
+// already described every direct URL, no provider probe is issued at all.
+func TestEnrichDirectURLDurations_SuppliedDurationsSkipTheProbe(t *testing.T) {
+	urls := []string{
+		"https://www.youtube.com/watch?v=aaaaaaaaaaa",
+		"https://www.youtube.com/watch?v=bbbbbbbbbbb",
+	}
+	lister := &queryResolutionLister{
+		results: map[string][]VideoInfo{urls[0]: {{ID: urls[0], Duration: 9999}}},
+		errors:  make(map[string]error),
+	}
+	svc := newQueryResolutionService(lister)
+
+	input := &RunInput{
+		DirectURLs:      append([]string(nil), urls...),
+		SourceDurations: map[string]float64{urls[0]: 640, urls[1]: 900},
+	}
+	svc.enrichDirectURLDurations(context.Background(), input)
+
+	require.Equal(t, map[string]float64{urls[0]: 640, urls[1]: 900}, input.SourceDurations)
+	_, calls, _ := lister.snapshot()
+	require.Empty(t, calls, "caller-supplied durations must not trigger a probe")
+}
+
 // deadlineLister records the deadline the enrichment attaches to each probe
 // so the test can pin the bounded-probe contract without waiting it out.
 type deadlineLister struct {

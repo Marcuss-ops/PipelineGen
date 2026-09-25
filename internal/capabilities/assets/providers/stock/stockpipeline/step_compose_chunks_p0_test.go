@@ -143,6 +143,7 @@ func TestExecuteCuts_UsesFinalArtifactNameForCanonicalCut(t *testing.T) {
 		[]ClipPlan{{SourceID: "source-a", StartSec: 0, EndSec: 5}},
 		0,
 		false,
+		0,
 	)
 	if err != nil {
 		t.Fatalf("executeCuts returned unexpected error: %v", err)

@@ -359,8 +359,6 @@ func (p *deterministicPlanner) Plan(_ context.Context, src VideoSource, budgetSe
 // plan.Description after this function returns — see
 // (p *explicitPlanner).Plan below.
 func buildClipPlan(src VideoSource, start, end float64, idx int, policyVer string) ClipPlan {
-	h := digest.SHA256Bytes([]byte(fmt.Sprintf("%s|%d|%s|%s|%s", src.URL, idx, policyVer, windowKey(start), windowKey(end))))
-	id := fmt.Sprintf("planner:%x:%d", h[:8], idx)
 	return ClipPlan{
 		SourceID:        src.URL,
 		SourceProvider:  InferSourceProvider(src.URL),
@@ -368,9 +366,22 @@ func buildClipPlan(src VideoSource, start, end float64, idx int, policyVer strin
 		SourceVersion:   "v1",
 		StartSec:        start,
 		EndSec:          end,
-		OutputLogicalID: id,
+		OutputLogicalID: mintOutputLogicalID(src.URL, idx, policyVer, start, end),
 		PolicyVersion:   policyVer,
 	}
+}
+
+// mintOutputLogicalID derives the canonical plan identity for one clip window.
+//
+// godlike/06 SSOT: this is the ONLY place the OutputLogicalID formula lives.
+// It is a separate function (not inlined in buildClipPlan) because the
+// sections_only layout pass re-anchors an already-built plan: the ID covers the
+// clip window, so moving a window MUST re-mint the ID through the same formula —
+// otherwise an asset would claim a timestamp range it no longer describes, and
+// two runs of the same source would dedupe against the wrong identity.
+func mintOutputLogicalID(sourceURL string, idx int, policyVer string, start, end float64) string {
+	h := digest.SHA256Bytes([]byte(fmt.Sprintf("%s|%d|%s|%s|%s", sourceURL, idx, policyVer, windowKey(start), windowKey(end))))
+	return fmt.Sprintf("planner:%x:%d", h[:8], idx)
 }
 
 // windowKey renders a clip-window boundary deterministically for the

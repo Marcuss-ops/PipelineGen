@@ -101,6 +101,11 @@ func (s *Service) runOrchestratorResilient(ctx context.Context, input *RunInput,
 		ChunkDurationSec: effectiveChunkDurationSec(input, s),
 		ClipDurationSec:  effectiveClipDurationSec(input, s),
 	}
+	// Execution bounds come from concurrency.max_concurrent_stock_downloads /
+	// max_concurrent_stock_cuts. Zeros (operator never set them, or a test/CLI
+	// Service with no RuntimeConfig) leave the orchestrator's own defaults in
+	// place via the <=0 normalization in the constructors.
+	cfg.MaxConcurrentDownloads, cfg.MaxConcurrentJobs = effectiveExecutionBounds(s)
 	// Phase 2 (July 2026): wire SQLite-backed step store for
 	// crash-resume across process restarts. When db is nil (stock
 	// Service routed via imageSvc, WireStockPipeline stubbed), the

@@ -27,7 +27,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 
 	"go.uber.org/zap"
 )
@@ -110,7 +113,11 @@ func (StockPlanStep) Run(ctx context.Context, runner StepRunner) error {
 			return fmt.Errorf("orchestrator: stock.plan: explicit planner: %w", err)
 		}
 		runner.State().Plan = plans
-		if in.DownloadMode == "sections_only" {
+		// Explicit clips keep their operator-authored absolute windows AND a
+		// per-clip stage key: re-anchoring them into one block, or downloading a
+		// single span covering several operator ranges, would change what the
+		// operator asked for. Sectioning an explicit run is a separate decision.
+		if in.DownloadMode == DownloadModeSectionsOnly {
 			for i := range runner.State().Plan {
 				runner.State().Plan[i].StageKey = runner.State().Plan[i].OutputLogicalID
 			}
@@ -162,10 +169,15 @@ func (StockPlanStep) Run(ctx context.Context, runner StepRunner) error {
 	// is searchable ("mike tyson" finds mike tyson clips) instead of
 	// landing as an anonymous clip_### row.
 	applySourceTitlesToPlans(allPlans, in.SourceTitles)
-	if in.DownloadMode == "sections_only" {
-		for i := range allPlans {
-			allPlans[i].StageKey = allPlans[i].OutputLogicalID
-		}
+	if in.DownloadMode == DownloadModeSectionsOnly {
+		// sections_only publishes only the planned seconds, so download only
+		// the planned seconds: collapse each source's clips into ONE contiguous
+		// block and let the stager fetch exactly that slice. Runs after the
+		// title/metadata passes (which do not touch windows) and before the
+		// duration-contract validation below, which is window-agnostic because
+		// compaction preserves both the clip count and the per-clip duration.
+		allPlans = compactPlansIntoSections(allPlans, sources, runner.Cfg().PolicyVersion)
+		assignSectionStageKeys(allPlans)
 	}
 	runner.State().Plan = allPlans
 	if in.ClipsPerSource > 0 {
@@ -319,4 +331,153 @@ func expandExplicitClipSpecs(clips []ClipSpec, secondsPerSegment int) []ClipSpec
 func clipTimestamp(seconds float64) string {
 	total := int(seconds)
 	return fmt.Sprintf("%d-%d-%d", total/3600, (total%3600)/60, total%60)
+}
+
+// ── sections_only layout pass ────────────────────────────────────────────────
+//
+// SOLE owner of WHERE a sections_only run's clips sit inside their source. The
+// download window itself is derived from the outcome of this pass (see
+// downloader_port.go), so layout and download cannot drift.
+//
+// Why the layout is contiguous: a sections_only run publishes
+// clips_per_source × clip_duration_seconds per source (8 × 5s = 40s) out of a
+// source that can be an hour long. Spreading those windows across the whole video
+// forces either one whole-source download or one download per window;
+// collapsing them into a single block lets ONE yt-dlp invocation fetch exactly
+// the published seconds.
+
+// compactPlansIntoSections re-anchors every source's clips into ONE contiguous
+// block inside that source, in place, and returns the same slice.
+//
+// Contract:
+//   - Clip count, per-clip duration and total published duration are UNCHANGED
+//     (the duration contract validated by the caller still holds verbatim); only
+//     the offsets move, so the plan stays inside the planner's own horizon.
+//   - Sources with an unknown or too-short duration are left exactly as the
+//     planner produced them (unknown duration still fails closed downstream at
+//     extract time, which is the pre-existing contract): a scattered plan makes
+//     sectionWindowForPlans return ok=false, so staging downloads the whole
+//     source instead of truncating it on a guess.
+//   - OutputLogicalID is re-minted through mintOutputLogicalID because the ID
+//     hashes the clip window.
+func compactPlansIntoSections(plans []ClipPlan, sources []VideoSource, policyVersion string) []ClipPlan {
+	if len(plans) == 0 {
+		return plans
+	}
+	durations := make(map[string]float64, len(sources))
+	for _, src := range sources {
+		if src.DurationSec > 0 {
+			durations[src.URL] = src.DurationSec
+		}
+	}
+
+	groups := make(map[string][]int, len(plans))
+	order := make([]string, 0, len(plans))
+	for idx, plan := range plans {
+		if _, seen := groups[plan.SourceID]; !seen {
+			order = append(order, plan.SourceID)
+		}
+		groups[plan.SourceID] = append(groups[plan.SourceID], idx)
+	}
+
+	for _, sourceID := range order {
+		indices := groups[sourceID]
+		if len(indices) == 0 {
+			continue
+		}
+		clipDuration := plans[indices[0]].EndSec - plans[indices[0]].StartSec
+		if clipDuration <= 0 {
+			continue
+		}
+		duration := durations[sourceID]
+		if duration <= 0 {
+			// Unknown source length: the planner's budget*10 horizon is not a real
+			// bound, so there is nothing safe to anchor against.
+			continue
+		}
+		horizon := int(duration) - sourceDurationHorizonMarginSec
+		blockSeconds := clipDuration * float64(len(indices))
+		maxStart := float64(horizon) - blockSeconds
+		if maxStart < 0 {
+			// The plan does not fit the (now known) source: leave it for the
+			// extract-time fail-closed bounds check to report honestly.
+			continue
+		}
+
+		margin := int(float64(horizon) * sectionInteriorMarginRatio)
+		lo, hi := margin, int(maxStart)-margin
+		if hi < lo {
+			lo, hi = 0, int(maxStart)
+		}
+		anchor := float64(sectionAnchorSec(sourceID, policyVersion, lo, hi))
+
+		for i, idx := range indices {
+			start := anchor + float64(i)*clipDuration
+			end := start + clipDuration
+			plans[idx].StartSec = start
+			plans[idx].EndSec = end
+			plans[idx].OutputLogicalID = mintOutputLogicalID(sourceID, i, policyVersion, start, end)
+		}
+	}
+	return plans
+}
+
+// sectionAnchorSec picks the deterministic block offset inside [lo, hi].
+//
+// Deterministic by construction (SHA-256 of source + policy version, no rng, no
+// clock), so the same source always yields the same block across restarts,
+// workers, and retries — which is what keeps the staged section cacheable.
+// Callers pass lo/hi already clamped, so a degenerate range collapses to lo.
+func sectionAnchorSec(sourceID, policyVersion string, lo, hi int) int {
+	if hi <= lo {
+		return lo
+	}
+	// digest.SHA256Bytes returns the hex digest; consume the first 64 bits of it.
+	n, err := strconv.ParseUint(digest.SHA256Bytes([]byte("stock.section-anchor|" + sourceID + "|" + policyVersion))[:16], 16, 64)
+	if err != nil {
+		// Unreachable for a fixed-length hex digest; biasing to the low end keeps
+		// the function total instead of panicking on a nil/empty digest.
+		return lo
+	}
+	span := uint64(hi-lo) + 1
+	return lo + int(n%span)
+}
+
+// assignSectionStageKeys stamps every clip with its source's section StageKey.
+//
+// StageKey is identity/observability only — durable artifact rows key off
+// plan.SourceID (see durableSourceIDForGroup) — but it must stop claiming a
+// per-clip staging key once the whole source is staged as one slice. Clips whose
+// group is not a contiguous slice fall back to the per-clip OutputLogicalID,
+// which is exactly the pre-existing behaviour for a whole-source stage.
+func assignSectionStageKeys(plans []ClipPlan) {
+	groups := make(map[string][]ClipPlan, len(plans))
+	order := make([]string, 0, len(plans))
+	for _, plan := range plans {
+		if _, seen := groups[plan.SourceID]; !seen {
+			order = append(order, plan.SourceID)
+		}
+		groups[plan.SourceID] = append(groups[plan.SourceID], plan)
+	}
+	keys := make(map[string]string, len(order))
+	for _, sourceID := range order {
+		if start, end, ok := sectionWindowForPlans(groups[sourceID]); ok {
+			keys[sourceID] = sectionStageKey(sourceID, start, end)
+		}
+	}
+	for i := range plans {
+		if key := keys[plans[i].SourceID]; key != "" {
+			plans[i].StageKey = key
+			continue
+		}
+		plans[i].StageKey = plans[i].OutputLogicalID
+	}
+}
+
+// sectionStageKey renders the canonical StageKey shared by every clip of a
+// source's staged section. The stager and the cutter derive the actual window
+// from the plans themselves via sectionWindowForPlans, so this string is
+// observability/identity only.
+func sectionStageKey(sourceID string, start, end float64) string {
+	return fmt.Sprintf("section:%s|%s", sourceID, sectionDownloadString(start, end))
 }

@@ -30,6 +30,11 @@ import (
 var (
 	ErrStockClipsOutOfRange      = errors.New("stock.extract_clips: clip EndSec exceeds source duration")
 	ErrStockClipsUnknownDuration = errors.New("stock.extract_clips: source duration is unknown")
+	// ErrStockExtractClipsBeforeSection fires when a clip window sits before
+	// the start of the file it must be cut from — a negative seek. It is a
+	// fail-closed guard, not a data condition: the section offset is derived from
+	// the very plans being cut, so a negative window means the two drifted.
+	ErrStockExtractClipsBeforeSection = errors.New("stock.extract_clips: clip window precedes the staged section")
 )
 
 // maxDriveUploadWorkers caps concurrent Drive uploads per source group.
@@ -48,6 +53,13 @@ type stockSourceGroup struct {
 	sourceID string
 	plans    []ClipPlan
 	index    int
+	// cutOffsetSec is the seconds to subtract from the group's absolute plan
+	// timestamps before seeking inside the STAGED file. Non-zero only for a
+	// sections_only run whose source was staged as a time slice: the staged
+	// file starts at the section start, so plan timestamps are absolute while
+	// the cutter works in file-relative time. Derived from the plans by the same
+	// helper the stager used to pick the section, so the two cannot drift.
+	cutOffsetSec float64
 }
 
 type stockSourceCutResult struct {
@@ -137,7 +149,7 @@ func boundedSourceCuts(ctx context.Context, runner StepRunner, groups []stockSou
 				}
 
 				sourceDuration, _, validationErr := validateAndProbeSourceDuration(
-					workCtx, runner, group.sourceID, staged.LocalPath, staged, group.plans)
+					workCtx, runner, group.sourceID, staged.LocalPath, staged, group.plans, group.cutOffsetSec)
 				if validationErr != nil {
 					if ctx.Err() == nil {
 						setError(validationErr)
@@ -146,7 +158,7 @@ func boundedSourceCuts(ctx context.Context, runner StepRunner, groups []stockSou
 				}
 				result, cutErr := executeCuts(
 					workCtx, runner, group.sourceID, staged.LocalPath, sourceDuration,
-					group.plans, group.index, noAudio,
+					group.plans, group.index, noAudio, group.cutOffsetSec,
 				)
 				successful := result.SuccessfulItems()
 				if cutErr != nil && len(successful) == 0 {
@@ -234,10 +246,15 @@ func (s StockExtractClipsStep) Run(ctx context.Context, runner StepRunner) error
 	}
 
 	in := runner.RunInput()
-	// Staging is source-scoped even in sections_only mode. The source file
-	// is downloaded once; each plan keeps its original timestamps for the
-	// local cutter below.
+	// Staging is source-scoped, and each source is downloaded once. The plan
+	// keeps ABSOLUTE timestamps (they are the published clip identity: titles,
+	// metadata, artifact rows), while the staged file — in sections_only runs —
+	// starts at the source's section start. cutOffsetSec bridges the two, so seek
+	// arithmetic only ever happens at the cutter.
 	groups := orderedPlanGroups(plans)
+	for i := range groups {
+		groups[i].cutOffsetSec = sectionCutOffsetSec(in, groups[i].plans)
+	}
 	noAudio := in != nil && in.NoAudio
 	batchID := runner.JobID()
 	rootFolderName := stockRootFolderName(in)

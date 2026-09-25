@@ -46,6 +46,7 @@ func TestValidateAndProbeSourceDuration_StrictUnknownFailsClosed(t *testing.T) {
 				durationProbeRunner{fakeStepRunner: runner, probe: tc.probe},
 				staged.SourceID, staged.LocalPath, staged,
 				[]ClipPlan{{SourceID: staged.SourceID, EndSec: 10}},
+				0,
 			)
 			if err == nil || !errors.Is(err, ErrStockClipsUnknownDuration) {
 				t.Fatalf("err = %v, want ErrStockClipsUnknownDuration", err)
@@ -63,6 +64,7 @@ func TestValidateAndProbeSourceDuration_NonStrictFixtureSkipsUnknown(t *testing.
 	duration, _, err := validateAndProbeSourceDuration(
 		context.Background(), runner, staged.SourceID, staged.LocalPath, staged,
 		[]ClipPlan{{SourceID: staged.SourceID, EndSec: 10}},
+		0,
 	)
 	if err != nil {
 		t.Fatalf("err = %v, want nil in non-strict fixture mode", err)

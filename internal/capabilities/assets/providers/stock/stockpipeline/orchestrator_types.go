@@ -52,12 +52,23 @@ type OrchestratorConfig struct {
 	// ClipDurationSec is the per-clip video budget (passed through
 	// to the planner for budget-vs-clipDuration validation).
 	ClipDurationSec int
-	// MaxConcurrentJobs bounds the per-source parallelism the
-	// orchestrator fans out to: both the stock.stage_sources source
-	// download fan-out and the stock.extract_clips cut fan-out.
-	// 0 means "use the default 3" so operators can rely on the
-	// legacy run.go semaphore.
+	// MaxConcurrentJobs bounds the per-source parallelism of the
+	// CPU-bound stock.extract_clips cut fan-out. 0 means "use the
+	// default 3" so operators can rely on the legacy run.go semaphore.
 	MaxConcurrentJobs int
+	// MaxConcurrentDownloads bounds the stock.stage_sources download
+	// fan-out, which is NOT CPU-bound and must not share a knob with the
+	// cut fan-out above.
+	//
+	// Measured on the production host (2026-09-25): one yt-dlp
+	// invocation costs a fixed ~15-20s regardless of how much media it
+	// fetches — JS challenge, format negotiation, muxer spawn, plus the
+	// 2-5s rate-limit pacing sleep — while a cut is CPU-bound and scales
+	// with core count. Sharing one bound of 3 turned a 15-source stage
+	// into ceil(15/3) = 5 sequential waves of that fixed cost (~90s
+	// measured), and shrinking the fan-out cannot be paid back by making
+	// the downloads shorter. 0 means "use the default 6".
+	MaxConcurrentDownloads int
 	// StrictDurationValidation is enabled only by the production
 	// constructor. It prevents unknown source durations from bypassing
 	// timestamp bounds checks before FFmpeg receives a clip.
@@ -77,6 +88,20 @@ type OrchestratorConfig struct {
 // OrchestratorConfig.MaxConcurrentJobs is zero. Matches the
 // legacy run.go `sem := make(chan struct{}, 3)` literal.
 const DefaultMaxConcurrentJobs = 3
+
+// DefaultMaxConcurrentDownloads is the orchestrator's fallback when
+// OrchestratorConfig.MaxConcurrentDownloads is zero.
+//
+// Downloads are latency-bound, not CPU-bound: the cost is yt-dlp's fixed
+// per-invocation overhead (~15-20s measured: JS challenge, format
+// negotiation, muxer spawn, 2-5s pacing sleep) rather than the bytes
+// fetched. A wider pool therefore shrinks the stage wall almost linearly
+// (the stage is ceil(N/workers) waves of a constant), while the CPU-bound
+// cut fan-out keeps its own, smaller bound. 6 keeps the source fan-out
+// well inside the rate-limit budget the pacing sleep exists to protect
+// (and inside Drive/disk headroom) without serializing a 15-source actor
+// set into 5 waves.
+const DefaultMaxConcurrentDownloads = 6
 
 // DefaultOrchestratorJobId is the Orchestrator's fallback when
 // OrchestratorConfig.JobId is empty — used by Service.Run (the

@@ -108,7 +108,7 @@ func TestExecuteCuts_UsesCanonicalCPUCodec(t *testing.T) {
 		SourceID: sourceID,
 		StartSec: 0,
 		EndSec:   5,
-	}}, 0, true)
+	}}, 0, true, 0)
 	if err != nil {
 		t.Fatalf("executeCuts returned unexpected error: %v", err)
 	}

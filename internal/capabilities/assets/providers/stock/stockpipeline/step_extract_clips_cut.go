@@ -11,7 +11,11 @@ import (
 // effects or transitions, the cutter's normalized output is already the
 // canonical final artifact and receives the stock_final name used by resume
 // and downstream publication.
-func executeCuts(ctx context.Context, runner StepRunner, sourceID, sourcePath string, sourceDuration float64, groupPlans []ClipPlan, sourceIdx int, noAudio bool) (CutBatchResult, error) {
+//
+// cutOffsetSec converts the group's ABSOLUTE plan timestamps into seeks inside
+// the staged file: 0 when the whole source was staged, the section start when a
+// sections_only run staged only its planned slice.
+func executeCuts(ctx context.Context, runner StepRunner, sourceID, sourcePath string, sourceDuration float64, groupPlans []ClipPlan, sourceIdx int, noAudio bool, cutOffsetSec float64) (CutBatchResult, error) {
 	cutter := runner.Cutter()
 	localFS := runner.LocalFS()
 	if localFS == nil {
@@ -32,11 +36,20 @@ func executeCuts(ctx context.Context, runner StepRunner, sourceID, sourcePath st
 		outputPrefix = "stock_final"
 	}
 	for clipIdx, plan := range groupPlans {
+		start := plan.StartSec - cutOffsetSec
+		end := plan.EndSec - cutOffsetSec
+		if start < 0 || end <= start {
+			// Fail closed: a negative seek would silently publish the wrong
+			// seconds. Unreachable for a section derived from these same plans
+			// (sectionCutOffsetSec is the group's minimum StartSec).
+			return CutBatchResult{}, fmt.Errorf("%w: clip[%d] %s window=[%.3f,%.3f] section_offset=%.3f",
+				ErrStockExtractClipsBeforeSection, clipIdx, plan.OutputLogicalID, plan.StartSec, plan.EndSec, cutOffsetSec)
+		}
 		outputPath := filepath.Join(workspaceDir,
 			fmt.Sprintf("%s_%s_%d_%d.mp4", outputPrefix, runner.JobID(), sourceIdx, clipIdx))
 		jobs[clipIdx] = CutJob{
-			StartSec:   plan.StartSec,
-			EndSec:     plan.EndSec,
+			StartSec:   start,
+			EndSec:     end,
 			OutputPath: outputPath,
 		}
 	}
@@ -77,4 +90,25 @@ func executeCuts(ctx context.Context, runner StepRunner, sourceID, sourcePath st
 // the conservative legacy behavior and requires compose_chunks.
 func isCanonicalFinalCut(input *RunInput) bool {
 	return input != nil && input.NoEffects && input.NoTransitions
+}
+
+// sectionCutOffsetSec returns the seconds to subtract from a plan's absolute
+// timestamps before seeking inside the STAGED file. A sections_only run stages
+// only the source's section, so the staged file starts at the section start and
+// the first planned clip sits at local offset 0.
+//
+// Returns 0 when the run stages whole sources (plan timestamps are already
+// file-relative) and 0 for a group that is not one contiguous slice, matching the
+// stager's decision to download that source whole (sectionWindowForPlans, in
+// downloader_port.go). It lives next to executeCuts because that is the only
+// consumer of the seek it produces.
+func sectionCutOffsetSec(in *RunInput, plans []ClipPlan) float64 {
+	if !isSectionedRun(in) {
+		return 0
+	}
+	start, _, ok := sectionWindowForPlans(plans)
+	if !ok {
+		return 0
+	}
+	return start
 }

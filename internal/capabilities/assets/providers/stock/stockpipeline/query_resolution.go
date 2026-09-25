@@ -227,7 +227,14 @@ const directURLDurationProbeTimeout = 20 * time.Second
 //     deterministic horizon).
 //   - Non-YouTube direct URLs are skipped (the duration-native metadata path
 //     here is YouTube-only).
-//   - URLs whose duration is already known are never overwritten.
+//   - URLs whose duration is already known are never overwritten. A caller
+//     that already knows the durations (the curated `source_durations`
+//     payload field) therefore pays ZERO provider probes on this path.
+//
+// Parallelism: the probes are independent per URL and run through a bounded
+// pool (maxDurationProbeWorkers) with per-probe deadlines; the results are
+// applied in DirectURLs order so logging and the resulting maps stay
+// deterministic.
 //
 // godlike/07 contract: a failed or empty probe is NON-FATAL. It logs a Warn
 // and leaves the plan on the planner's conservative fallback; it never
@@ -258,6 +265,11 @@ func (s *Service) enrichDirectURLDurations(ctx context.Context, input *RunInput)
 		finishServiceStockPhase(s.log, probeMetric, nil)
 	}()
 
+	// Deterministic work list: DirectURLs order, minus the URLs that already
+	// carry a duration (operator-supplied source_durations or a duration the
+	// search resolution propagated) and the non-YouTube sources this metadata
+	// path cannot probe.
+	targets := make([]string, 0, len(input.DirectURLs))
 	for _, raw := range input.DirectURLs {
 		url := strings.TrimSpace(raw)
 		if url == "" {
@@ -269,34 +281,87 @@ func (s *Service) enrichDirectURLDurations(ctx context.Context, input *RunInput)
 		if InferSourceProvider(url) != SourceProviderYouTube {
 			continue
 		}
+		targets = append(targets, url)
+	}
+	if len(targets) == 0 {
+		// Every source already carries a duration — the probe is skipped
+		// entirely (the caller paid for the metadata once, upstream).
+		return
+	}
 
-		probeCtx, cancel := context.WithTimeout(ctx, directURLDurationProbeTimeout)
-		videos, err := s.channelLister.ListChannel(probeCtx, url, 1)
-		cancel()
-		if err != nil {
+	// The probes are independent per URL, so they run through a bounded pool
+	// instead of the previous serial loop: a 15-source run paid 15 sequential
+	// provider round-trips (~90s measured) before planning could start. Writes
+	// stay off the shared maps here — each worker fills its own slot and the
+	// caller applies the results in DirectURLs order below, so log lines and
+	// map contents remain deterministic regardless of completion order.
+	results := make([]durationProbeResult, len(targets))
+	workers := maxDurationProbeWorkers
+	if workers > len(targets) {
+		workers = len(targets)
+	}
+	workCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	jobs := make(chan int)
+	var wg sync.WaitGroup
+	wg.Add(workers)
+	for worker := 0; worker < workers; worker++ {
+		concurrent.SafeGo("stock-duration-probe", func() {
+			defer wg.Done()
+			for {
+				select {
+				case <-workCtx.Done():
+					return
+				case index, ok := <-jobs:
+					if !ok {
+						return
+					}
+					if err := workCtx.Err(); err != nil {
+						results[index] = durationProbeResult{err: err}
+						continue
+					}
+					results[index] = s.probeDirectURLDuration(workCtx, targets[index])
+				}
+			}
+		})
+	}
+
+	dispatching := true
+	for index := range targets {
+		if !dispatching {
+			break
+		}
+		select {
+		case jobs <- index:
+		case <-workCtx.Done():
+			dispatching = false
+		}
+	}
+	close(jobs)
+	wg.Wait()
+
+	for index, url := range targets {
+		if ctx.Err() != nil {
+			// The run is being cancelled: stop applying results, the planner
+			// fallback is irrelevant once the job is aborted.
+			return
+		}
+		result := results[index]
+		if result.err != nil {
 			if s.log != nil {
 				s.log.Warn("stock: direct URL duration probe failed — planner fallback applies",
-					zap.String("source_url", url), zap.Error(err))
+					zap.String("source_url", url), zap.Error(result.err))
 			}
 			continue
 		}
-		duration := 0.0
-		probedTitle := ""
-		for _, video := range videos {
-			if video.Duration > duration {
-				duration = video.Duration
-			}
-			if probedTitle == "" {
-				probedTitle = strings.TrimSpace(video.Title)
-			}
-		}
-		if probedTitle != "" {
+		if result.title != "" {
 			if input.SourceTitles == nil {
 				input.SourceTitles = make(map[string]string)
 			}
-			input.SourceTitles[url] = probedTitle
+			input.SourceTitles[url] = result.title
 		}
-		if duration <= 0 {
+		if result.duration <= 0 {
 			if s.log != nil {
 				s.log.Warn("stock: direct URL duration probe returned no duration — planner fallback applies",
 					zap.String("source_url", url))
@@ -306,10 +371,47 @@ func (s *Service) enrichDirectURLDurations(ctx context.Context, input *RunInput)
 		if input.SourceDurations == nil {
 			input.SourceDurations = make(map[string]float64)
 		}
-		input.SourceDurations[url] = duration
+		input.SourceDurations[url] = result.duration
 		if s.log != nil {
 			s.log.Info("stock: enriched direct URL duration from provider metadata",
-				zap.String("source_url", url), zap.Float64("duration_sec", duration))
+				zap.String("source_url", url), zap.Float64("duration_sec", result.duration))
 		}
 	}
+}
+
+// maxDurationProbeWorkers bounds the concurrent provider duration probes.
+// Each probe is a provider metadata call (one yt-dlp invocation on the
+// YouTube path), so the pool is deliberately small: large enough to remove
+// the serial round-trip latency of a multi-source run, small enough not to
+// starve the downloads that follow it on the same host.
+const maxDurationProbeWorkers = 6
+
+// durationProbeResult is one probe's outcome. Workers write it into their own
+// slot so the shared RunInput maps are only touched by the caller, in
+// DirectURLs order.
+type durationProbeResult struct {
+	duration float64
+	title    string
+	err      error
+}
+
+// probeDirectURLDuration runs one bounded provider metadata probe. The
+// per-probe deadline is what keeps a hung provider from stalling the pool.
+func (s *Service) probeDirectURLDuration(ctx context.Context, url string) durationProbeResult {
+	probeCtx, cancel := context.WithTimeout(ctx, directURLDurationProbeTimeout)
+	defer cancel()
+	videos, err := s.channelLister.ListChannel(probeCtx, url, 1)
+	if err != nil {
+		return durationProbeResult{err: err}
+	}
+	result := durationProbeResult{}
+	for _, video := range videos {
+		if video.Duration > result.duration {
+			result.duration = video.Duration
+		}
+		if result.title == "" {
+			result.title = strings.TrimSpace(video.Title)
+		}
+	}
+	return result
 }

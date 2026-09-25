@@ -6,8 +6,12 @@
 // N-source request paid the SUM of N yt-dlp downloads and dominated the run
 // wall (the pipeline's single largest cost). These tests pin the new contract:
 //
-//  1. independent sources stage CONCURRENTLY, bounded by Cfg().MaxConcurrentJobs;
-//  2. MaxConcurrentJobs=0 falls back to DefaultMaxConcurrentJobs;
+//  1. independent sources stage CONCURRENTLY, bounded by
+//     Cfg().MaxConcurrentDownloads;
+//  2. MaxConcurrentDownloads=0 falls back to DefaultMaxConcurrentDownloads;
+//     2b. the download bound is DECOUPLED from the CPU-bound cut bound
+//     (Cfg().MaxConcurrentJobs): changing one must not change the other, or
+//     staging pays ceil(N/3) waves of yt-dlp's fixed per-invocation cost again;
 //  3. StagedAssets stay in canonical plan order regardless of completion order
 //     (checkpoints + run fingerprints must not depend on goroutine scheduling);
 //  4. per-source failures are graceful and still surface through
@@ -83,12 +87,15 @@ type stagingFakeRunner struct {
 
 func (r *stagingFakeRunner) SourceStager() acquisition.SourceStager { return r.stager }
 
-func newStagingFakeRunner(plans []ClipPlan, stager acquisition.SourceStager, maxConcurrent int) *stagingFakeRunner {
+func newStagingFakeRunner(plans []ClipPlan, stager acquisition.SourceStager, maxDownloads int) *stagingFakeRunner {
 	return &stagingFakeRunner{
 		fakeStepRunner: &fakeStepRunner{
 			runInput: &RunInput{ClipDuration: 5, TotalMinutes: 1},
-			cfg:      OrchestratorConfig{PolicyVersion: "test-policy-v1", MaxConcurrentJobs: maxConcurrent},
-			state:    &RunState{Plan: plans},
+			cfg: OrchestratorConfig{
+				PolicyVersion:          "test-policy-v1",
+				MaxConcurrentDownloads: maxDownloads,
+			},
+			state: &RunState{Plan: plans},
 		},
 		stager: stager,
 	}
@@ -145,15 +152,20 @@ func TestStockStageSources_BoundedConcurrencyPreservesPlanOrder(t *testing.T) {
 }
 
 // TestStockStageSources_UnsetParallelismFallsBackToDefault pins the fallback:
-// MaxConcurrentJobs=0 must use DefaultMaxConcurrentJobs, never a zero-capacity
-// pool (which would suspend every worker forever).
+// MaxConcurrentDownloads=0 must use DefaultMaxConcurrentDownloads, never a
+// zero-capacity pool (which would suspend every worker forever).
 func TestStockStageSources_UnsetParallelismFallsBackToDefault(t *testing.T) {
+	// More sources than the default bound, so the observed peak is the bound
+	// itself and not the source count (which would make the assertion pass for
+	// any fallback <= len(urls)).
 	urls := []string{
 		"https://example.com/a.mp4",
 		"https://example.com/b.mp4",
 		"https://example.com/c.mp4",
 		"https://example.com/d.mp4",
 		"https://example.com/e.mp4",
+		"https://example.com/f.mp4",
+		"https://example.com/g.mp4",
 	}
 
 	stager := &boundedStagingStager{delay: 20 * time.Millisecond}
@@ -163,8 +175,38 @@ func TestStockStageSources_UnsetParallelismFallsBackToDefault(t *testing.T) {
 		t.Fatalf("Run: %v", err)
 	}
 
-	if got := stager.maxConcurrency(); got != DefaultMaxConcurrentJobs {
-		t.Fatalf("max concurrent Prepare calls = %d, want %d (DefaultMaxConcurrentJobs)", got, DefaultMaxConcurrentJobs)
+	if got := stager.maxConcurrency(); got != DefaultMaxConcurrentDownloads {
+		t.Fatalf("max concurrent Prepare calls = %d, want %d (DefaultMaxConcurrentDownloads)", got, DefaultMaxConcurrentDownloads)
+	}
+	if got := len(runner.State().StagedAssets); got != len(urls) {
+		t.Fatalf("StagedAssets = %d, want %d", got, len(urls))
+	}
+}
+
+// TestStockStageSources_DownloadBoundIsIndependentOfTheCutBound is the
+// decoupling guard: the download fan-out must follow
+// Cfg().MaxConcurrentDownloads even when the CPU-bound cut bound
+// (Cfg().MaxConcurrentJobs) is far smaller. If staging ever reads the cut knob
+// again, a 15-source actor set silently collapses back to ceil(15/3) waves of
+// yt-dlp's fixed ~15-20s per-invocation cost.
+func TestStockStageSources_DownloadBoundIsIndependentOfTheCutBound(t *testing.T) {
+	urls := []string{
+		"https://example.com/a.mp4",
+		"https://example.com/b.mp4",
+		"https://example.com/c.mp4",
+		"https://example.com/d.mp4",
+	}
+
+	stager := &boundedStagingStager{delay: 30 * time.Millisecond}
+	runner := newStagingFakeRunner(stageSourcePlans(urls...), stager, 4)
+	runner.cfg.MaxConcurrentJobs = 1
+
+	if err := (StockStageSourcesStep{}).Run(context.Background(), runner); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+
+	if got := stager.maxConcurrency(); got != 4 {
+		t.Fatalf("max concurrent Prepare calls = %d, want 4 (MaxConcurrentDownloads, not MaxConcurrentJobs=1)", got)
 	}
 	if got := len(runner.State().StagedAssets); got != len(urls) {
 		t.Fatalf("StagedAssets = %d, want %d", got, len(urls))
