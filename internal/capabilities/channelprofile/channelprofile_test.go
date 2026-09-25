@@ -29,7 +29,6 @@ func validProfile() Profile {
 		PhraseMotions: []string{
 			"phrase_apple_clean_01_blur_soft_reveal", "phrase_apple_clean_02_blur_focus_snap",
 		},
-		ImageMotions: []string{"image_25d_depth_float_in", "image_25d_yaw_flip_in"},
 	}
 }
 
@@ -66,8 +65,7 @@ func TestValidateFailsClosed(t *testing.T) {
 		{"duplicate motion", func(p *Profile) {
 			p.PhraseMotions = []string{"phrase_apple_clean_01_blur_soft_reveal", "phrase_apple_clean_01_blur_soft_reveal"}
 		}, "repeats"},
-		{"uncertified image motion", func(p *Profile) { p.ImageMotions = []string{"image_25d_orbit_arc"} }, "certified image motion"},
-		{"duplicate image motion", func(p *Profile) { p.ImageMotions = []string{"image_25d_depth_float_in", "image_25d_depth_float_in"} }, "repeats"},
+		{"deprecated image motion", func(p *Profile) { p.ImageMotions = []string{"image_25d_depth_float_in"} }, "deprecated and unsupported"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			p := validProfile()

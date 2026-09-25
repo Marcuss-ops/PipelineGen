@@ -59,7 +59,8 @@ type Profile struct {
 	// run (the animated IMPORTANT_PHRASE overlays). Empty means "keep the
 	// certified default pool"; every id must be a certified motion.
 	PhraseMotions []string `yaml:"phrase_motions,omitempty"`
-	// ImageMotions narrows the certified layer-only 2.5D image motion pool.
+	// ImageMotions is retained for payload compatibility. Non-empty values are
+	// rejected because generated images currently use certified 2D presets.
 	ImageMotions []string `yaml:"image_motions,omitempty"`
 }
 

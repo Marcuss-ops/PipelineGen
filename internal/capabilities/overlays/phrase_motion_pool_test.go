@@ -4,13 +4,13 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
 // TestCertifiedPhraseMotionsIsTheRotationAuthority pins the membership list a
-// caller-supplied pool is validated against: it must be non-empty and it must
-// be the same list the default rotation uses, so a channel profile can only
-// ever narrow the choice, never widen it.
+// caller-supplied pool is validated against: it must be non-empty and contain
+// every motion the semantic planner is allowed to select.
 func TestCertifiedPhraseMotionsIsTheRotationAuthority(t *testing.T) {
 	certified := CertifiedPhraseMotions()
 	if len(certified) == 0 {
@@ -68,7 +68,9 @@ func TestBuildPlanRejectsAnUncertifiedMotionPool(t *testing.T) {
 // stays deterministic across runs.
 func TestBuildPlanRotatesWithinTheChannelPool(t *testing.T) {
 	certified := CertifiedPhraseMotions()
-	pool := []string{certified[0], certified[1]}
+	// Explicit pools replace the soft six-motion default; these entries are
+	// certified but intentionally outside that default subset.
+	pool := []string{certified[6], certified[7]}
 	input := PlanInput{
 		PlanID: "pool", VideoID: "video-pool", Width: 1280, Height: 720, FPSNum: 30, FPSDen: 1,
 		PhraseMotions: pool,
@@ -116,6 +118,23 @@ func TestBuildPlanRotatesWithinTheChannelPool(t *testing.T) {
 	}
 }
 
+func TestModernAppleFamilyIncludesCertifiedMotionsOutsideSoftDefault(t *testing.T) {
+	family := certifiedPhraseFamily("modern_apple")
+	if len(family) <= len(generatedPhraseMotions) {
+		t.Fatalf("modern_apple family has %d motions, want more than soft default %d", len(family), len(generatedPhraseMotions))
+	}
+	for _, id := range generatedPhraseMotions {
+		if !containsString(family, id) {
+			t.Fatalf("modern_apple family omitted default motion %q", id)
+		}
+	}
+	for _, id := range []string{"phrase_apple_clean_07_slide_up_soft", "phrase_apple_clean_25_opacity_soft_reveal"} {
+		if !containsString(family, id) {
+			t.Fatalf("modern_apple family omitted certified motion %q", id)
+		}
+	}
+}
+
 func containsString(haystack []string, needle string) bool {
 	for _, s := range haystack {
 		if s == needle {
@@ -142,7 +161,6 @@ func TestCertifiedImageMotionPoolAndPlannerAssignment(t *testing.T) {
 			{AssetID: "b", StartMs: 4000, EndMs: 7000, StartUS: 4_000_000, DurationUS: 3_000_000, Score: .9},
 		}}},
 	}
-	input.ImageMotions = got[:2]
 	plan, err := BuildPlan(input, AllCandidatesPlannerConfig(input.Scenes))
 	if err != nil {
 		t.Fatal(err)
@@ -160,9 +178,9 @@ func TestCertifiedImageMotionPoolAndPlannerAssignment(t *testing.T) {
 	if imageCount != 2 {
 		t.Fatalf("planned %d images, want 2", imageCount)
 	}
-	input.ImageMotions = []string{"not_certified"}
-	if _, err := BuildPlan(input, AllCandidatesPlannerConfig(input.Scenes)); err == nil {
-		t.Fatal("uncertified image motion pool must fail closed")
+	input.ImageMotions = got[:2]
+	if _, err := BuildPlan(input, AllCandidatesPlannerConfig(input.Scenes)); err == nil || !strings.Contains(err.Error(), "deprecated and unsupported") {
+		t.Fatalf("non-empty image motion pool must be rejected clearly, got %v", err)
 	}
 }
 
