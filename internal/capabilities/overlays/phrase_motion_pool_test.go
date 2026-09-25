@@ -147,18 +147,18 @@ func TestCertifiedImageMotionPoolAndPlannerAssignment(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	seen := map[string]bool{}
+	imageCount := 0
 	for _, item := range plan.Items {
 		if item.Kind != "image" {
 			continue
 		}
-		if !containsString(input.ImageMotions, item.MotionID) || seen[item.MotionID] {
-			t.Fatalf("image item %q has uncertified/repeated motion %q", item.ID, item.MotionID)
+		if item.MotionID != "" || item.PresetID == "" {
+			t.Fatalf("image item %q must use its 2D preset animation, preset=%q motion=%q", item.ID, item.PresetID, item.MotionID)
 		}
-		seen[item.MotionID] = true
+		imageCount++
 	}
-	if len(seen) != 2 {
-		t.Fatalf("assigned %d image motions, want 2", len(seen))
+	if imageCount != 2 {
+		t.Fatalf("planned %d images, want 2", imageCount)
 	}
 	input.ImageMotions = []string{"not_certified"}
 	if _, err := BuildPlan(input, AllCandidatesPlannerConfig(input.Scenes)); err == nil {

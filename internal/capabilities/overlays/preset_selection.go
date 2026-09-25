@@ -81,12 +81,11 @@ var (
 		"fade_in", "slide_up", "slide_from_right",
 		"scale_in", "soft_scale_reveal", "precision_spring_up",
 	}
-	// phraseMotionCandidates is the run-wide rotation pool for IMPORTANT_PHRASE.
-	// It is exactly the modern Apple-clean vocabulary (first 30 entries) so
-	// every admitted phrase rotates over a distinct, visible Apple finish;
-	// the 6 legacy entries remain available via direct MotionID but are not
-	// part of the editorial rotation.
+	// Keep the complete certified catalog as the payload/profile validation
+	// vocabulary. Generated scripts use only restrained blur/opacity entries;
+	// slides, bounces, large scale changes and parallax remain explicit choices.
 	phraseMotionCandidates = renderSafeTextMotions[:30]
+	generatedPhraseMotions = phraseMotionCandidates[:6]
 )
 
 // ImagePresetCandidates returns a copy of the render-safe generated-image
@@ -119,26 +118,22 @@ func selectPhrasePreset(jobID, sceneID, itemID string) string {
 }
 
 func selectPhraseMotion(jobID, sceneID string, ordinal int, pool []string) string {
-	candidates := phraseMotionCandidates
+	candidates := generatedPhraseMotions
 	if len(pool) > 0 {
-		candidates = pool
+		candidates = nil
+		for _, id := range pool {
+			if containsMotion(generatedPhraseMotions, id) {
+				candidates = append(candidates, id)
+			}
+		}
+		if len(candidates) == 0 {
+			candidates = generatedPhraseMotions
+		}
 	}
 	if len(candidates) == 0 {
 		return ""
 	}
-	// The caller supplies one run-wide ordinal after editorial ranking and
-	// dedupe. Hash selection varies the first effect by job; rotating the
-	// certified catalog then guarantees distinct motions across the admitted
-	// phrase set.
-	seeded := DefaultDeterministicPresetSampler.Sample(PresetSampleInput{
-		JobFingerprint: jobID,
-		SceneID:        sceneID,
-		// The caller passes the stable run sentinel here. Per-scene seeds would
-		// choose different starting points and could reintroduce collisions.
-		SemanticID:   sceneID,
-		PresetFamily: "important_phrase_motion",
-		Presets:      candidates,
-	}).Preset
+	seeded := selectPreset(jobID, sceneID, "run", "important_phrase_motion", candidates)
 	start := 0
 	for i, candidate := range candidates {
 		if candidate == seeded {
@@ -167,7 +162,7 @@ func CertifiedPhraseMotions() []string {
 // render-safe members are intentionally rejected by the planner.
 func certifiedPhraseFamily(family string) []string {
 	ids := make([]string, 0)
-	for _, id := range phraseMotionCandidates {
+	for _, id := range generatedPhraseMotions {
 		matched := false
 		switch family {
 		case "modern_apple":
@@ -206,7 +201,16 @@ func RenderSafeTextMotions() []string {
 // motion explicitly. A new job fingerprint can select another treatment while
 // retries of the same job stay bit-identical.
 func SelectTextMotion(jobID, sceneID, itemID string) string {
-	return selectPreset(jobID, sceneID, itemID, "text_motion", renderSafeTextMotions)
+	return selectPreset(jobID, sceneID, itemID, "text_motion", generatedPhraseMotions)
+}
+
+func containsMotion(pool []string, id string) bool {
+	for _, candidate := range pool {
+		if candidate == id {
+			return true
+		}
+	}
+	return false
 }
 
 func selectWordPreset(jobID, sceneID, itemID string) string {

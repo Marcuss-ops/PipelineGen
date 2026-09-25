@@ -304,7 +304,7 @@ func TestBuildPlanAssignsDistinctCertifiedMotionsAcrossRunAfterBudget(t *testing
 	// The rotation pool is read from its single owner: a test that kept its own
 	// copy could pass while the planner rotated over an unrenderable motion.
 	allowed := map[string]bool{}
-	for _, id := range CertifiedPhraseMotions() {
+	for _, id := range phraseMotionCandidates {
 		allowed[id] = true
 	}
 	seen := make(map[string]bool, len(plan.Items))
