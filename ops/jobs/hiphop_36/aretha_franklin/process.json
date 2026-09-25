@@ -1,0 +1,351 @@
+{
+  "_comment": "POST /api/clips/process payload (ExtractRequest, drift source: internal/capabilities/youtube/dto/types.go). Source: Aretha Franklin interviewed on US morning TV in 1992, ahead of singing the national anthem at the Democratic National Convention — https://www.youtube.com/watch?v=M4hjFUDbKAk (340s). Destination: the Clips/HipHop child folder 1IrydTfYW8OoMofD3XJKiEfXZnGHhmsx ('Aretha Franklin'), create_subfolder=false. Windows picked BY HAND from the timed transcript printed by ops/jobs/hiphop_36/tx.py; no LLM selection. 7 main clips 17-45s (canonical 4-60s SegmentPolicy gate) + 7 hook openers <=14s carved inside the matching main window. Deterministic ids yt_<videoID>_<startSec>_<endSec>_v1 -> re-submit is an UPSERT. topics/summary/hook are keyword-dense on purpose: composeYouTubeClipSearchText feeds search_text -> 768d pgvector embedding, texts[] lands in asset_text_tracks in the same atomic commit.",
+  "url": "https://www.youtube.com/watch?v=M4hjFUDbKAk",
+  "strategy": "verify",
+  "concurrency": 3,
+  "force_keyframes": true,
+  "keep_audio": true,
+  "write_summary": true,
+  "destination": {
+    "folder_id": "1IrydTfYW8OoMofD3XJKiEfXZnGHhmsx",
+    "create_subfolder": false
+  },
+  "segments": [
+    {
+      "start": "00:00:16",
+      "end": "00:00:52",
+      "name": "Aretha non vola: da Detroit a New York in pullman privato",
+      "category": "celebrity_interview",
+      "source_title": "Aretha Franklin - great 6-min interview (1992)",
+      "source_channel": "US morning TV 1992",
+      "summary": "Aretha Franklin ammette di non amare l'aereo e di viaggiare con un pullman privato, anche per arrivare a New York per la convention democratica. Ricorda poi l'invito del 1988 di Jesse Jackson, che non riuscì a incastrare nella sua agenda.",
+      "topics": [
+        "Aretha Franklin paura di volare non vola pullman privato custom bus Detroit New York convention democratica 1992 Jesse Jackson invito 1988 agenda tour viaggi Queen of Soul"
+      ],
+      "tags": ["Aretha Franklin", "celebrity_interview", "1992", "convention"],
+      "speakers": ["Aretha Franklin"],
+      "mentioned_people": ["Aretha Franklin", "Jesse Jackson"],
+      "hook": "Non volo, non mi piace volare: da Detroit sono arrivata con un pullman privato, un bel viaggio.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Aretha Franklin: 'non volo'",
+          "summary": "Aretha Franklin racconta come viaggia e ricorda l'invito mancato di Jesse Jackson nel 1988.",
+          "description": "Intervista TV del 1992: Aretha Franklin spiega di non amare l'aereo e di spostarsi con un pullman privato, e ricorda che nel 1988 Jesse Jackson la invitò alla convention ma non riuscirono a trovare una data compatibile con la sua agenda."
+        }
+      ]
+    },
+    {
+      "start": "00:00:18",
+      "end": "00:00:32",
+      "name": "Hook: 'non volo, viaggio in pullman'",
+      "category": "celebrity_interview",
+      "source_title": "Aretha Franklin - great 6-min interview (1992)",
+      "source_channel": "US morning TV 1992",
+      "summary": "Apertura secca (14s): come viaggia la Queen of Soul.",
+      "topics": [
+        "Aretha Franklin hook apertura short non volo paura di volare pullman privato Detroit New York 1992 clip breve opening-short viaggi tour"
+      ],
+      "tags": ["Aretha Franklin", "celebrity_interview", "hook", "1992"],
+      "speakers": ["Aretha Franklin"],
+      "mentioned_people": ["Aretha Franklin"],
+      "hook": "Non volo, non mi piace volare: sono arrivata da Detroit con un pullman privato.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Hook: 'non volo'",
+          "summary": "Clip di apertura di 14 secondi su come Aretha Franklin si sposta in tour.",
+          "description": "Hook di 14 secondi: Aretha Franklin spiega perché evita l'aereo."
+        }
+      ]
+    },
+    {
+      "start": "00:00:54",
+      "end": "00:01:23",
+      "name": "Come arrivano gli inviti: agenti, amici e nessun incontro con Clinton",
+      "category": "celebrity_interview",
+      "source_title": "Aretha Franklin - great 6-min interview (1992)",
+      "source_channel": "US morning TV 1992",
+      "summary": "Aretha spiega che gli inviti arrivano tramite i suoi agenti o amici personali e che non ha ancora avuto il piacere di conoscere né Ron Brown né Bill Clinton; l'invito a cantare arriva dal partito, non da un rapporto diretto.",
+      "topics": [
+        "Aretha Franklin inviti convention democratica 1992 Ron Brown Bill Clinton agenti amici personali nessun incontro diretta candidatura campagna elettorale musica e politica"
+      ],
+      "tags": ["Aretha Franklin", "celebrity_interview", "1992", "politica"],
+      "speakers": ["Aretha Franklin"],
+      "mentioned_people": ["Aretha Franklin", "Bill Clinton", "Ron Brown"],
+      "hook": "Non ho ancora avuto il piacere di incontrare Clinton: gli inviti arrivano attraverso i miei agenti o amici personali.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Aretha Franklin: come arrivano gli inviti politici",
+          "summary": "Aretha Franklin spiega la filiera degli inviti alla convention democratica del 1992.",
+          "description": "Intervista 1992: Aretha Franklin racconta che gli inviti istituzionali le arrivano tramite gli agenti o amici personali e che non ha mai conosciuto direttamente né Ron Brown né Bill Clinton."
+        }
+      ]
+    },
+    {
+      "start": "00:01:01",
+      "end": "00:01:14",
+      "name": "Hook: 'non ho ancora conosciuto Clinton'",
+      "category": "celebrity_interview",
+      "source_title": "Aretha Franklin - great 6-min interview (1992)",
+      "source_channel": "US morning TV 1992",
+      "summary": "Apertura secca (13s): la filiera degli inviti secondo Aretha.",
+      "topics": [
+        "Aretha Franklin hook apertura short non ho conosciuto Clinton inviti agenti amici personali convention 1992 clip breve opening-short politica"
+      ],
+      "tags": ["Aretha Franklin", "celebrity_interview", "hook", "1992"],
+      "speakers": ["Aretha Franklin"],
+      "mentioned_people": ["Aretha Franklin", "Bill Clinton"],
+      "hook": "Non ho ancora avuto il piacere di incontrare Bill Clinton: gli inviti passano dai miei agenti.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Hook: gli inviti di Aretha",
+          "summary": "Clip di apertura di 13 secondi su come Aretha riceve le richieste istituzionali.",
+          "description": "Hook di 13 secondi: Aretha Franklin spiega da chi riceve gli inviti."
+        }
+      ]
+    },
+    {
+      "start": "00:01:23",
+      "end": "00:02:02",
+      "name": "'Se hai range, l'inno non è difficile': il mito delle note impossibili",
+      "category": "celebrity_interview",
+      "source_title": "Aretha Franklin - great 6-min interview (1992)",
+      "source_channel": "US morning TV 1992",
+      "summary": "Aretha smonta la leggenda per cui l'inno americano sarebbe impossibile da cantare perché le note basse sono troppo basse e le alte troppo alte: con un vero range si passa da un estremo all'altro e il picco su 'land of the free' si prende senza forzare.",
+      "topics": [
+        "Aretha Franklin Star-Spangled Banner inno nazionale difficoltà range note basse alte land of the free picco tecnica vocale soul 1992 convention democratica canto esecuzione"
+      ],
+      "tags": ["Aretha Franklin", "celebrity_interview", "1992", "inno"],
+      "speakers": ["Aretha Franklin"],
+      "mentioned_people": ["Aretha Franklin"],
+      "hook": "Non è vero che le note basse siano troppo basse e le alte troppo alte: se hai range vai da un estremo all'altro della scala.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Aretha Franklin sull'inno americano",
+          "summary": "Aretha Franklin spiega perché l'Inno americano non le crea problemi tecnici.",
+          "description": "Intervista 1992: Aretha Franklin ridimensiona il luogo comune secondo cui l'inno americano sarebbe ingovernabile per estensione vocale, spiegando che chi ha range passa senza difficoltà da un estremo all'altro e che il picco su 'land of the free' è una nota interna alla melodia."
+        }
+      ]
+    },
+    {
+      "start": "00:01:47",
+      "end": "00:02:00",
+      "name": "Hook: 'se hai range, l'inno non è difficile'",
+      "category": "celebrity_interview",
+      "source_title": "Aretha Franklin - great 6-min interview (1992)",
+      "source_channel": "US morning TV 1992",
+      "summary": "Apertura secca (13s): la tecnica vocale secondo Aretha.",
+      "topics": [
+        "Aretha Franklin hook apertura short range inno americano note basse alte tecnica vocale non è difficile 1992 clip breve opening-short"
+      ],
+      "tags": ["Aretha Franklin", "celebrity_interview", "hook", "1992"],
+      "speakers": ["Aretha Franklin"],
+      "mentioned_people": ["Aretha Franklin"],
+      "hook": "Se hai range, l'inno non è difficile: vai da un capo all'altro dello spettro.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Hook: il range di Aretha",
+          "summary": "Clip di apertura di 13 secondi sull'approccio di Aretha all'inno americano.",
+          "description": "Hook di 13 secondi: Aretha Franklin spiega perché l'inno non è un problema per lei."
+        }
+      ]
+    },
+    {
+      "start": "00:02:02",
+      "end": "00:02:36",
+      "name": "'Preferisco lo Star-Spangled Banner', e l'inno afroamericano",
+      "category": "celebrity_interview",
+      "source_title": "Aretha Franklin - great 6-min interview (1992)",
+      "source_channel": "US morning TV 1992",
+      "summary": "Aretha racconta di aver potuto scegliere tra i brani patriottici e di preferire lo Star-Spangled Banner ad America the Beautiful; dice di amare anche Lift Every Voice and Sing, l'inno afroamericano, ma rispetta la richiesta del partito.",
+      "topics": [
+        "Aretha Franklin Star-Spangled Banner America the Beautiful Lift Every Voice and Sing inno afroamericano negro anthem scelta repertorio convention democratica 1992 rispetto della richiesta canto patriottico"
+      ],
+      "tags": ["Aretha Franklin", "celebrity_interview", "1992", "inno"],
+      "speakers": ["Aretha Franklin"],
+      "mentioned_people": ["Aretha Franklin"],
+      "hook": "Avevo una scelta: preferisco lo Star-Spangled Banner, e amo anche Lift Every Voice and Sing, l'inno afroamericano.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Aretha Franklin e i brani patriottici",
+          "summary": "Aretha Franklin spiega quali inni preferisce e come ha accolto la richiesta della convention.",
+          "description": "Intervista 1992: Aretha Franklin racconta di aver potuto scegliere tra i brani patriottici, di preferire lo Star-Spangled Banner ad America the Beautiful e di amare Lift Every Voice and Sing, l'inno della comunità afroamericana, pur rispettando la richiesta ufficiale del partito democratico."
+        }
+      ]
+    },
+    {
+      "start": "00:02:14",
+      "end": "00:02:28",
+      "name": "Hook: 'preferisco lo Star-Spangled Banner'",
+      "category": "celebrity_interview",
+      "source_title": "Aretha Franklin - great 6-min interview (1992)",
+      "source_channel": "US morning TV 1992",
+      "summary": "Apertura secca (14s): i brani che Aretha preferisce cantare.",
+      "topics": [
+        "Aretha Franklin hook apertura short preferisco Star-Spangled Banner America the Beautiful Lift Every Voice and Sing inno 1992 clip breve opening-short"
+      ],
+      "tags": ["Aretha Franklin", "celebrity_interview", "hook", "1992"],
+      "speakers": ["Aretha Franklin"],
+      "mentioned_people": ["Aretha Franklin"],
+      "hook": "Avevo una scelta e preferisco lo Star-Spangled Banner: amo anche Lift Every Voice and Sing.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Hook: la scelta di Aretha",
+          "summary": "Clip di apertura di 14 secondi sui brani patriottici preferiti da Aretha.",
+          "description": "Hook di 14 secondi: Aretha Franklin elenca i brani che preferisce cantare."
+        }
+      ]
+    },
+    {
+      "start": "00:02:36",
+      "end": "00:02:56",
+      "name": "'Sì, voterei per Clinton'",
+      "category": "celebrity_interview",
+      "source_title": "Aretha Franklin - great 6-min interview (1992)",
+      "source_channel": "US morning TV 1992",
+      "summary": "Chiesta quanto sia politicamente schierata, Aretha risponde di essere consapevole delle questioni e dei candidati e dichiara che voterebbe per Bill Clinton, pur partecipando alla convention in veste di entertainer.",
+      "topics": [
+        "Aretha Franklin politica 1992 voterei per Clinton Bill Clinton convention democratica impegno civile consapevolezza delle questioni entertainer sostegno candidato elezioni americane"
+      ],
+      "tags": ["Aretha Franklin", "celebrity_interview", "1992", "politica"],
+      "speakers": ["Aretha Franklin"],
+      "mentioned_people": ["Aretha Franklin", "Bill Clinton"],
+      "hook": "Sono consapevole delle questioni e dei candidati: sì, voterei per Clinton.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Aretha Franklin: 'voterei per Clinton'",
+          "summary": "Aretha Franklin dichiara il proprio orientamento politico nel 1992.",
+          "description": "Intervista 1992: Aretha Franklin dice di essere consapevole dei temi politici e dei candidati e dichiara che voterebbe per Bill Clinton, pur prendendo parte alla convention democratica solo in veste di interprete."
+        }
+      ]
+    },
+    {
+      "start": "00:02:47",
+      "end": "00:02:56",
+      "name": "Hook: 'voterei per Clinton'",
+      "category": "celebrity_interview",
+      "source_title": "Aretha Franklin - great 6-min interview (1992)",
+      "source_channel": "US morning TV 1992",
+      "summary": "Apertura secca (9s): la dichiarazione politica di Aretha.",
+      "topics": [
+        "Aretha Franklin hook apertura short voterei per Clinton 1992 elezioni presidente sostegno dichiarazione politica clip breve opening-short"
+      ],
+      "tags": ["Aretha Franklin", "celebrity_interview", "hook", "1992"],
+      "speakers": ["Aretha Franklin"],
+      "mentioned_people": ["Aretha Franklin", "Bill Clinton"],
+      "hook": "Sì, voterei per Bill Clinton.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Hook: il voto di Aretha",
+          "summary": "Clip di apertura di 9 secondi sulla posizione politica di Aretha Franklin.",
+          "description": "Hook di 9 secondi: Aretha Franklin dichiara per chi voterebbe."
+        }
+      ]
+    },
+    {
+      "start": "00:03:49",
+      "end": "00:04:09",
+      "name": "Il balletto studiato alla New York Academy of Ballet",
+      "category": "celebrity_interview",
+      "source_title": "Aretha Franklin - great 6-min interview (1992)",
+      "source_channel": "US morning TV 1992",
+      "summary": "Dopo il video di un balletto improvvisato alla festa per Clive Davis della Arista, Aretha conferma che l'idea fu sua: ha studiato balletto alla New York Academy of Ballet sulla Madison Avenue, ma da cantante non ha mai il tempo di dedicarsi davvero alla danza.",
+      "topics": [
+        "Aretha Franklin balletto New York Academy of Ballet Madison Avenue studi danza Clive Davis Arista Records festa video ballo idea sua cantante tempo carriera 1992"
+      ],
+      "tags": ["Aretha Franklin", "celebrity_interview", "1992", "balletto"],
+      "speakers": ["Aretha Franklin"],
+      "mentioned_people": ["Aretha Franklin", "Clive Davis"],
+      "hook": "L'idea era mia: conosco un po' di balletto, ho studiato alla New York Academy of Ballet sulla Madison Avenue.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Aretha Franklin: gli studi di balletto",
+          "summary": "Aretha Franklin racconta la sua formazione di danzatrice e il balletto improvvisato alla festa Arista.",
+          "description": "Intervista 1992: commentando un video di un balletto eseguito alla festa per Clive Davis, Aretha Franklin conferma di essere stata lei a volerlo e racconta di aver studiato alla New York Academy of Ballet sulla Madison Avenue, senza però poter coltivare la danza come vorrebbe a causa della carriera di cantante."
+        }
+      ]
+    },
+    {
+      "start": "00:03:49",
+      "end": "00:04:02",
+      "name": "Hook: 'ho studiato alla New York Academy of Ballet'",
+      "category": "celebrity_interview",
+      "source_title": "Aretha Franklin - great 6-min interview (1992)",
+      "source_channel": "US morning TV 1992",
+      "summary": "Apertura secca (13s): la formazione di danza di Aretha.",
+      "topics": [
+        "Aretha Franklin hook apertura short balletto New York Academy of Ballet studi danza Madison Avenue 1992 clip breve opening-short"
+      ],
+      "tags": ["Aretha Franklin", "celebrity_interview", "hook", "1992"],
+      "speakers": ["Aretha Franklin"],
+      "mentioned_people": ["Aretha Franklin"],
+      "hook": "L'idea era mia: ho studiato balletto alla New York Academy of Ballet.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Hook: Aretha e il balletto",
+          "summary": "Clip di apertura di 13 secondi sulla passione di Aretha per il balletto.",
+          "description": "Hook di 13 secondi: Aretha Franklin racconta i suoi studi di danza."
+        }
+      ]
+    },
+    {
+      "start": "00:04:16",
+      "end": "00:04:54",
+      "name": "Gli obiettivi che restano: 'il canto è il mio primo amore, ma voglio fare film'",
+      "category": "celebrity_interview",
+      "source_title": "Aretha Franklin - great 6-min interview (1992)",
+      "source_channel": "US morning TV 1992",
+      "summary": "Aretha fa il punto sui progetti: uno speciale HBO ad agosto con Bonnie Raitt come ospite, il greatest hits e il tour. Alla domanda se abbia ancora obiettivi da conquistare risponde di sì: vorrebbe fare più film e telefilm, senza smettere di cantare, che resta il suo primo amore.",
+      "topics": [
+        "Aretha Franklin obiettivi carriera film cinema telefilm recitazione HBO special agosto 1992 Bonnie Raitt ospite greatest hits tour canto primo amore progetti futuri"
+      ],
+      "tags": ["Aretha Franklin", "celebrity_interview", "1992", "carriera"],
+      "speakers": ["Aretha Franklin"],
+      "mentioned_people": ["Aretha Franklin", "Bonnie Raitt"],
+      "hook": "Ci sono ancora obiettivi: vorrei fare film. Il canto è il mio primo amore, ma voglio fare più cinema e telefilm.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Aretha Franklin: 'voglio fare più film'",
+          "summary": "Aretha Franklin elenca i progetti del 1992 e l'obiettivo di recitare di più.",
+          "description": "Intervista 1992: Aretha Franklin parla dello speciale HBO di agosto con Bonnie Raitt, del greatest hits e del tour, e dice che tra gli obiettivi ancora da conquistare c'è il cinema: vorrebbe fare più film e telefilm pur restando fedele al canto, il suo primo amore."
+        }
+      ]
+    },
+    {
+      "start": "00:04:31",
+      "end": "00:04:45",
+      "name": "Hook: 'voglio fare più film'",
+      "category": "celebrity_interview",
+      "source_title": "Aretha Franklin - great 6-min interview (1992)",
+      "source_channel": "US morning TV 1992",
+      "summary": "Apertura secca (14s): l'obiettivo cinematografico di Aretha.",
+      "topics": [
+        "Aretha Franklin hook apertura short voglio fare piu film canto primo amore cinema recitazione 1992 clip breve opening-short"
+      ],
+      "tags": ["Aretha Franklin", "celebrity_interview", "hook", "1992"],
+      "speakers": ["Aretha Franklin"],
+      "mentioned_people": ["Aretha Franklin"],
+      "hook": "Ci sono ancora obiettivi: il canto è il mio primo amore, ma voglio fare più film.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Hook: il cinema secondo Aretha",
+          "summary": "Clip di apertura di 14 secondi sui progetti futuri di Aretha Franklin.",
+          "description": "Hook di 14 secondi: Aretha Franklin racconta cosa vuole ancora fare."
+        }
+      ]
+    }
+  ]
+}

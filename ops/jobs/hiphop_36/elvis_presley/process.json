@@ -1,0 +1,351 @@
+{
+  "_comment": "POST /api/clips/process payload (ExtractRequest, drift source: internal/capabilities/youtube/dto/types.go). Source: Elvis Presley press conference, Houston, 25 February 1970 (Houston Livestock Show & Rodeo) — https://www.youtube.com/watch?v=QVsIIAfFNok (500s). Destination: the Clips/HipHop child folder 1xO5ECk6uKgGkx_GBV86EX2TfzEUUMD8t ('Elvis Presley'), create_subfolder=false. Windows picked BY HAND from the timed transcript printed by ops/jobs/hiphop_36/tx.py; no LLM selection. 6 main clips 25-36s (canonical 4-60s SegmentPolicy gate) + 6 hook openers <=14s carved inside the matching main window. Deterministic ids yt_<videoID>_<startSec>_<endSec>_v1 -> re-submit is an UPSERT. topics/summary/hook are keyword-dense on purpose: composeYouTubeClipSearchText feeds search_text -> 768d pgvector embedding, texts[] lands in asset_text_tracks in the same atomic commit.",
+  "url": "https://www.youtube.com/watch?v=QVsIIAfFNok",
+  "strategy": "verify",
+  "concurrency": 3,
+  "force_keyframes": true,
+  "keep_audio": true,
+  "write_summary": true,
+  "destination": {
+    "folder_id": "1xO5ECk6uKgGkx_GBV86EX2TfzEUUMD8t",
+    "create_subfolder": false
+  },
+  "segments": [
+    {
+      "start": "00:00:09",
+      "end": "00:00:41",
+      "name": "'Ho iniziato proprio qui in Texas': Houston, Corpus Christi, Longview",
+      "category": "celebrity_interview",
+      "source_title": "Elvis interview; February 25, 1970 - Houston, Texas",
+      "source_channel": "Houston Livestock Show & Rodeo 1970",
+      "summary": "Elvis racconta di essere partito proprio dal Texas: i primi show li fece tra Houston, Corpus Christi e Longview, girando tutto lo stato, e dice di amarlo ancora.",
+      "topics": [
+        "Elvis Presley Texas Houston inizi carriera primi show Corpus Christi Longview tour anni 50 conferenza stampa 25 febbraio 1970 Livestock Show Rodeo ritorno alle esibizioni dal vivo intervista"
+      ],
+      "tags": ["Elvis Presley", "celebrity_interview", "1970", "Houston"],
+      "speakers": ["Elvis Presley"],
+      "mentioned_people": ["Elvis Presley"],
+      "hook": "Ho iniziato proprio qui in Texas: ho lavorato a Houston, Corpus Christi, ogni piccola città — ho girato tutto il Texas.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Elvis: 'ho iniziato in Texas'",
+          "summary": "Elvis Presley ricorda gli inizi della carriera nei locali del Texas.",
+          "description": "Conferenza stampa di Houston del 25 febbraio 1970: Elvis Presley racconta che i suoi primi spettacoli si tennero proprio in Texas, tra Houston, Corpus Christi e Longview, e che ancora oggi ama quello stato."
+        }
+      ]
+    },
+    {
+      "start": "00:00:31",
+      "end": "00:00:41",
+      "name": "Hook: 'ho girato tutto il Texas'",
+      "category": "celebrity_interview",
+      "source_title": "Elvis interview; February 25, 1970 - Houston, Texas",
+      "source_channel": "Houston Livestock Show & Rodeo 1970",
+      "summary": "Apertura secca (10s): le prime tappe texane di Elvis.",
+      "topics": [
+        "Elvis Presley hook apertura short Texas Houston Corpus Christi Longview ho girato tutto il Texas 1970 clip breve opening-short"
+      ],
+      "tags": ["Elvis Presley", "celebrity_interview", "hook", "1970"],
+      "speakers": ["Elvis Presley"],
+      "mentioned_people": ["Elvis Presley"],
+      "hook": "Ho lavorato a Houston, Corpus Christi, ogni piccola città: ho girato tutto il Texas.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Hook: le tappe texane",
+          "summary": "Clip di apertura di 10 secondi sulle prime esibizioni di Elvis in Texas.",
+          "description": "Hook di 10 secondi: Elvis elenca le città texane in cui si è esibito all'inizio della carriera."
+        }
+      ]
+    },
+    {
+      "start": "00:00:43",
+      "end": "00:01:14",
+      "name": "'Era da tanto che non salivo su un palco davanti a qualcuno'",
+      "category": "celebrity_interview",
+      "source_title": "Elvis interview; February 25, 1970 - Houston, Texas",
+      "source_channel": "Houston Livestock Show & Rodeo 1970",
+      "summary": "Elvis spiega perché accettò il rodeo di Houston: erano anni che non faceva un'esibizione dal vivo davanti a un pubblico e voleva tornare sul palco; non aveva mai visto l'interno dell'Astrodome, un posto che gli sembra enorme.",
+      "topics": [
+        "Elvis Presley ritorno dal vivo Astrodome Houston 1970 non salivo su un palco da anni voglia di pubblico live appearances periodo film Las Vegas scelta rodeo Livestock Show"
+      ],
+      "tags": ["Elvis Presley", "celebrity_interview", "1970", "Houston"],
+      "speakers": ["Elvis Presley"],
+      "mentioned_people": ["Elvis Presley"],
+      "hook": "Era da molto tempo che non salivo su un palco davanti a qualcuno: volevo fare esibizioni dal vivo, era l'occasione giusta.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Elvis: il ritorno alle esibizioni dal vivo",
+          "summary": "Elvis Presley spiega la scelta di tornare sul palco dopo la lunga stagione cinematografica.",
+          "description": "Conferenza stampa di Houston 1970: Elvis Presley racconta di aver accettato il rodeo perché era ansioso di tornare a esibirsi dal vivo dopo tanto tempo lontano dal palco e perché non aveva mai visto l'interno dell'Astrodome, che gli appare enorme."
+        }
+      ]
+    },
+    {
+      "start": "00:00:57",
+      "end": "00:01:11",
+      "name": "Hook: 'volevo esibirmi dal vivo di nuovo'",
+      "category": "celebrity_interview",
+      "source_title": "Elvis interview; February 25, 1970 - Houston, Texas",
+      "source_channel": "Houston Livestock Show & Rodeo 1970",
+      "summary": "Apertura secca (14s): la voglia di palco di Elvis.",
+      "topics": [
+        "Elvis Presley hook apertura short voglia di palco esibizioni dal vivo era da tempo non salivo su un palco 1970 clip breve opening-short"
+      ],
+      "tags": ["Elvis Presley", "celebrity_interview", "hook", "1970"],
+      "speakers": ["Elvis Presley"],
+      "mentioned_people": ["Elvis Presley"],
+      "hook": "Non salivo su un palco davanti a un pubblico da molto tempo ed ero ansioso di farlo.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Hook: 'ero ansioso di esibirmi'",
+          "summary": "Clip di apertura di 14 secondi sul ritorno dal vivo di Elvis.",
+          "description": "Hook di 14 secondi: Elvis spiega perché voleva tornare a esibirsi dal vivo."
+        }
+      ]
+    },
+    {
+      "start": "00:01:17",
+      "end": "00:01:52",
+      "name": "Sul palco 'faccio semplicemente quello che sento'",
+      "category": "celebrity_interview",
+      "source_title": "Elvis interview; February 25, 1970 - Houston, Texas",
+      "source_channel": "Houston Livestock Show & Rodeo 1970",
+      "summary": "Chiesto se il suo stile è cambiato dai tempi del 'King of rock and roll', Elvis risponde che nel complesso il suono è migliorato e che dipende dalle canzoni; sulla presenza scenica dice di fare semplicemente ciò che sente, come ha sempre fatto.",
+      "topics": [
+        "Elvis Presley king of rock and roll stile cambiato suono migliorato dipende dalle canzoni presenza scenica faccio quello che sento palco improvvisazione 1970 Houston conferenza stampa"
+      ],
+      "tags": ["Elvis Presley", "celebrity_interview", "1970", "stile"],
+      "speakers": ["Elvis Presley"],
+      "mentioned_people": ["Elvis Presley"],
+      "hook": "Sul palco faccio semplicemente quello che sento, come ho sempre fatto.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Elvis: 'faccio quello che sento'",
+          "summary": "Elvis Presley parla dell'evoluzione del suo suono e del rapporto istintivo con il palco.",
+          "description": "Conferenza stampa di Houston 1970: alla domanda se il suo stile sia cambiato dai tempi del King of rock and roll, Elvis Presley risponde che nel complesso il suono è migliorato ma che tutto dipende dalle canzoni, e che sul palco si limita a fare ciò che sente, come ha sempre fatto."
+        }
+      ]
+    },
+    {
+      "start": "00:01:39",
+      "end": "00:01:52",
+      "name": "Hook: 'faccio semplicemente quello che sento'",
+      "category": "celebrity_interview",
+      "source_title": "Elvis interview; February 25, 1970 - Houston, Texas",
+      "source_channel": "Houston Livestock Show & Rodeo 1970",
+      "summary": "Apertura secca (13s): l'istinto scenico di Elvis.",
+      "topics": [
+        "Elvis Presley hook apertura short faccio quello che sento palco istinto spettacolo 1970 clip breve opening-short conferenza stampa Houston rock and roll presenza scenica"
+      ],
+      "tags": ["Elvis Presley", "celebrity_interview", "hook", "1970"],
+      "speakers": ["Elvis Presley"],
+      "mentioned_people": ["Elvis Presley"],
+      "hook": "Sul palco faccio semplicemente quello che sento.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Hook: l'istinto di Elvis",
+          "summary": "Clip di apertura di 13 secondi sulla presenza scenica di Elvis Presley.",
+          "description": "Hook di 13 secondi: Elvis spiega come costruisce i suoi show."
+        }
+      ]
+    },
+    {
+      "start": "00:03:02",
+      "end": "00:03:36",
+      "name": "Le radici: country, gospel e rhythm and blues",
+      "category": "celebrity_interview",
+      "source_title": "Elvis interview; February 25, 1970 - Houston, Texas",
+      "source_channel": "Houston Livestock Show & Rodeo 1970",
+      "summary": "Elvis accoglie con entusiasmo la riscoperta della country music: dice che la country è sempre stata parte della sua influenza e che la sua musica è una combinazione di country, gospel e rhythm and blues, ascoltati fin da bambino, insieme alla grand opera.",
+      "topics": [
+        "Elvis Presley radici musicali country music gospel rhythm and blues influenza da bambino grand opera prima cosa ascoltata musica americana Memphis Sun Records contaminazione generi 1970 Houston"
+      ],
+      "tags": ["Elvis Presley", "celebrity_interview", "1970", "country"],
+      "speakers": ["Elvis Presley"],
+      "mentioned_people": ["Elvis Presley"],
+      "hook": "La country è sempre stata parte della mia influenza: la mia musica è country, gospel e rhythm and blues combinati, esattamente come quando ero bambino.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Elvis e le sue radici musicali",
+          "summary": "Elvis Presley spiega come country, gospel e rhythm and blues abbiano formato il suo suono.",
+          "description": "Conferenza stampa di Houston 1970: Elvis Presley si dice entusiasta del rinnovato interesse per la country music, che è sempre stata parte della sua influenza, e definisce la propria musica come una combinazione di country, gospel e rhythm and blues ascoltati fin dall'infanzia."
+        }
+      ]
+    },
+    {
+      "start": "00:03:23",
+      "end": "00:03:36",
+      "name": "Hook: country + gospel + rhythm and blues",
+      "category": "celebrity_interview",
+      "source_title": "Elvis interview; February 25, 1970 - Houston, Texas",
+      "source_channel": "Houston Livestock Show & Rodeo 1970",
+      "summary": "Apertura secca (13s): la formula musicale di Elvis.",
+      "topics": [
+        "Elvis Presley hook apertura short country gospel rhythm and blues combinazione influenza formula musicale 1970 clip breve opening-short"
+      ],
+      "tags": ["Elvis Presley", "celebrity_interview", "hook", "1970"],
+      "speakers": ["Elvis Presley"],
+      "mentioned_people": ["Elvis Presley"],
+      "hook": "Country, gospel e rhythm and blues combinati: è quello che la mia musica è sempre stata.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Hook: le radici di Elvis",
+          "summary": "Clip di apertura di 13 secondi sui generi che hanno formato Elvis.",
+          "description": "Hook di 13 secondi: Elvis Presley elenca le radici della propria musica."
+        }
+      ]
+    },
+    {
+      "start": "00:03:59",
+      "end": "00:04:35",
+      "name": "'L'ispirazione del pubblico dal vivo: mi mancava'",
+      "category": "celebrity_interview",
+      "source_title": "Elvis interview; February 25, 1970 - Houston, Texas",
+      "source_channel": "Houston Livestock Show & Rodeo 1970",
+      "summary": "Elvis racconta di non riascoltare i vecchi dischi Sun, pieni di eco, ma di preferire il suono di oggi; il periodo dei film lo aveva tenuto lontano dal pubblico e la cosa più importante, dice, è l'ispirazione che gli dà il pubblico dal vivo, che gli mancava.",
+      "topics": [
+        "Elvis Presley ispirazione pubblico dal vivo mi mancava periodo film lontano dal palco vecchi dischi Sun Records eco suono migliorato Houston 1970 ritorno"
+      ],
+      "tags": ["Elvis Presley", "celebrity_interview", "1970", "palco"],
+      "speakers": ["Elvis Presley"],
+      "mentioned_people": ["Elvis Presley"],
+      "hook": "La cosa più importante è l'ispirazione che mi dà il pubblico dal vivo: mi mancava.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Elvis: 'mi mancava il pubblico dal vivo'",
+          "summary": "Elvis Presley spiega cosa gli hanno dato gli anni di tournée dopo la stagione dei film.",
+          "description": "Conferenza stampa di Houston 1970: Elvis Presley racconta di preferire il suono di oggi ai dischi Sun pieni di eco e dice che il periodo cinematografico lo aveva allontanato dal palco; la cosa più importante del suo ritorno, spiega, è l'ispirazione che riceve dal pubblico dal vivo."
+        }
+      ]
+    },
+    {
+      "start": "00:04:22",
+      "end": "00:04:35",
+      "name": "Hook: 'mi mancava il pubblico dal vivo'",
+      "category": "celebrity_interview",
+      "source_title": "Elvis interview; February 25, 1970 - Houston, Texas",
+      "source_channel": "Houston Livestock Show & Rodeo 1970",
+      "summary": "Apertura secca (13s): cosa mancava davvero a Elvis.",
+      "topics": [
+        "Elvis Presley hook apertura short ispirazione pubblico dal vivo mi mancava palco 1970 clip breve opening-short contatto con i fan tournée ritorno alle esibizioni dopo i film"
+      ],
+      "tags": ["Elvis Presley", "celebrity_interview", "hook", "1970"],
+      "speakers": ["Elvis Presley"],
+      "mentioned_people": ["Elvis Presley"],
+      "hook": "La cosa più importante è l'ispirazione che ti dà il pubblico dal vivo: mi mancava.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Hook: il pubblico di Elvis",
+          "summary": "Clip di apertura di 13 secondi su cosa rappresenta il pubblico per Elvis.",
+          "description": "Hook di 13 secondi: Elvis spiega perché il contatto con il pubblico dal vivo è insostituibile."
+        }
+      ]
+    },
+    {
+      "start": "00:06:01",
+      "end": "00:06:25",
+      "name": "Il karate-gi e la vita lontano dai riflettori",
+      "category": "celebrity_interview",
+      "source_title": "Elvis interview; February 25, 1970 - Houston, Texas",
+      "source_channel": "Houston Livestock Show & Rodeo 1970",
+      "summary": "Elvis spiega che il suo abito di scena nasce da un karate-gi perché ha studiato karate a lungo, e che per rilassarsi legge molto e va a cavallo; vive metà del tempo a Memphis e metà a Los Angeles.",
+      "topics": [
+        "Elvis Presley karate karate suit abito di scena jumpsuit idea karate-gi studiato karate a lungo relax leggere cavalcare Memphis Los Angeles vita privata 1970 Houston"
+      ],
+      "tags": ["Elvis Presley", "celebrity_interview", "1970", "karate"],
+      "speakers": ["Elvis Presley"],
+      "mentioned_people": ["Elvis Presley"],
+      "hook": "L'idea del mio abito viene da un karate-gi: ho studiato karate per molto tempo e me ne sono fatti fare un paio.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Elvis: il karate-gi e il tempo libero",
+          "summary": "Elvis Presley racconta l'origine del suo abito di scena e come passa il tempo libero.",
+          "description": "Conferenza stampa di Houston 1970: Elvis Presley spiega che il suo abito deriva da un karate-gi, essendo lui a lungo praticante di karate, e che nel tempo libero legge molto e va a cavallo, dividendo la vita tra Memphis e Los Angeles."
+        }
+      ]
+    },
+    {
+      "start": "00:06:01",
+      "end": "00:06:14",
+      "name": "Hook: 'l'idea viene da un karate-gi'",
+      "category": "celebrity_interview",
+      "source_title": "Elvis interview; February 25, 1970 - Houston, Texas",
+      "source_channel": "Houston Livestock Show & Rodeo 1970",
+      "summary": "Apertura secca (13s): l'origine del look di scena di Elvis.",
+      "topics": [
+        "Elvis Presley hook apertura short karate-gi abito di scena karate look 1970 clip breve opening-short costume bianco studioso di karate Memphis anni 70"
+      ],
+      "tags": ["Elvis Presley", "celebrity_interview", "hook", "1970"],
+      "speakers": ["Elvis Presley"],
+      "mentioned_people": ["Elvis Presley"],
+      "hook": "L'idea l'ho presa da un karate-gi: ho studiato karate per molto tempo e me ne sono fatti fare un paio.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Hook: il look di Elvis",
+          "summary": "Clip di apertura di 13 secondi sull'origine del costume di scena di Elvis.",
+          "description": "Hook di 13 secondi: Elvis Presley spiega la genesi del suo abito."
+        }
+      ]
+    },
+    {
+      "start": "00:06:46",
+      "end": "00:07:19",
+      "name": "'Se riesco a fare un buon show, sento di aver fatto qualcosa'",
+      "category": "celebrity_interview",
+      "source_title": "Elvis interview; February 25, 1970 - Houston, Texas",
+      "source_channel": "Houston Livestock Show & Rodeo 1970",
+      "summary": "Elvis dice che l'unica cosa che conta è riuscire a fare un buon spettacolo: se ci riesce, sente di aver fatto qualcosa. Il pubblico più numeroso davanti a cui si è esibito finora è stato di circa 25.000 persone.",
+      "topics": [
+        "Elvis Presley buon show se riesco sento di aver fatto qualcosa pubblico più numeroso 25.000 persone record Astrodome Houston 1970 ambizione spettacolo"
+      ],
+      "tags": ["Elvis Presley", "celebrity_interview", "1970", "Houston"],
+      "speakers": ["Elvis Presley"],
+      "mentioned_people": ["Elvis Presley"],
+      "hook": "Se riesco a fare un buon show, allora sento di aver fatto qualcosa.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Elvis: 'l'importante è fare un buon show'",
+          "summary": "Elvis Presley racconta cosa rende riuscita una serata e quale sia il suo record di pubblico.",
+          "description": "Conferenza stampa di Houston 1970: Elvis Presley dice che l'unico obiettivo è fare un buon spettacolo, perché solo così sente di aver realizzato qualcosa, e ricorda che il pubblico più numeroso davanti a cui si è esibito contava circa 25.000 persone."
+        }
+      ]
+    },
+    {
+      "start": "00:07:05",
+      "end": "00:07:17",
+      "name": "Hook: 'se faccio un buon show ho fatto qualcosa'",
+      "category": "celebrity_interview",
+      "source_title": "Elvis interview; February 25, 1970 - Houston, Texas",
+      "source_channel": "Houston Livestock Show & Rodeo 1970",
+      "summary": "Apertura secca (12s): l'unico obiettivo di Elvis.",
+      "topics": [
+        "Elvis Presley hook apertura short buon show obiettivo sento di aver fatto qualcosa 1970 clip breve opening-short spettacolo riuscito soddisfazione palco Houston Astrodome"
+      ],
+      "tags": ["Elvis Presley", "celebrity_interview", "hook", "1970"],
+      "speakers": ["Elvis Presley"],
+      "mentioned_people": ["Elvis Presley"],
+      "hook": "Se riesco a fare un buon show, allora sento di aver fatto qualcosa.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Hook: l'obiettivo di Elvis",
+          "summary": "Clip di apertura di 12 secondi su cosa significa per Elvis una buona serata.",
+          "description": "Hook di 12 secondi: Elvis Presley spiega il suo unico metro di giudizio."
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,351 @@
+{
+  "_comment": "POST /api/clips/process payload (ExtractRequest, drift source: internal/capabilities/youtube/dto/types.go). Source: Elton John on the Russell Harty show, 1975 — https://www.youtube.com/watch?v=f94vagnlEzA (436s, uploaded by 'EJ Collection'). Destination: the Clips/HipHop child folder 1-tRyH-hjLnfiemmxFkv8Ehnn5Kb7jnCP ('Elton John'), create_subfolder=false. Every window was picked BY HAND from the timed transcript produced by ops/jobs/hiphop_36/tx.py (no LLM selection). 7 main clips 32-54s (inside the canonical 4-60s SegmentPolicy gate) + 7 hook openers <=15s taken inside the matching main window. Deterministic ids yt_<videoID>_<startSec>_<endSec>_v1 -> re-submit is an UPSERT. topics/summary/hook are deliberately keyword-dense: they feed composeYouTubeClipSearchText -> search_text -> 768d pgvector embedding, and texts[] lands in asset_text_tracks in the same atomic commit.",
+  "url": "https://www.youtube.com/watch?v=f94vagnlEzA",
+  "strategy": "verify",
+  "concurrency": 3,
+  "force_keyframes": true,
+  "keep_audio": true,
+  "write_summary": true,
+  "destination": {
+    "folder_id": "1-tRyH-hjLnfiemmxFkv8Ehnn5Kb7jnCP",
+    "create_subfolder": false
+  },
+  "segments": [
+    {
+      "start": "00:00:50",
+      "end": "00:01:22",
+      "name": "La casa da sogno, le tasse e il 'mamma, dov'è il mio toast'",
+      "category": "celebrity_interview",
+      "source_title": "Elton John - Russell Harty Interview - 1975",
+      "source_channel": "EJ Collection",
+      "summary": "Elton scherza su come si accorge che il successo è reale ('grido: mamma, dov'è il mio toast, e so che sono io') e dice di non sentirsi in colpa per la casa enorme: paga così tante tasse da potersela permettere.",
+      "topics": [
+        "Elton John casa costosa villa tre quarti di milione di sterline tasse britanniche sentirsi in colpa successo ricchezza Russell Harty intervista 1975 tea and toast mamma dov'è il mio toast non mi sento in colpa pago abbastanza tasse big house I don't feel guilty I pay enough tax"
+      ],
+      "tags": ["Elton John", "Russell Harty", "celebrity_interview", "1975"],
+      "speakers": ["Elton John", "Russell Harty"],
+      "mentioned_people": ["Elton John", "Russell Harty"],
+      "hook": "Appena grido 'mamma, dov'è il mio toast' so che è tutto vero: e non mi sento in colpa per la casa grande, pago abbastanza tasse.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Elton John: la casa, il toast e le tasse",
+          "summary": "Elton John racconta con ironia il rapporto con il successo economico e con il fisco britannico.",
+          "description": "Intervista 1975: Elton John scherza sul fatto di non svegliarsi mai credendo che il successo sia di qualcun altro, e risponde alle critiche sulla casa da tre quarti di milione di sterline dicendo che paga abbastanza tasse da potersela permettere."
+        }
+      ]
+    },
+    {
+      "start": "00:00:52",
+      "end": "00:01:05",
+      "name": "Hook: 'mamma, dov'è il mio toast'",
+      "category": "celebrity_interview",
+      "source_title": "Elton John - Russell Harty Interview - 1975",
+      "source_channel": "EJ Collection",
+      "summary": "Apertura secca (13s): Elton John e l'ironia sul successo e sulla casa da sogno.",
+      "topics": [
+        "Elton John hook apertura short casa successo toast mamma tasse non mi sento in colpa intervista 1975 clip breve opening-short"
+      ],
+      "tags": ["Elton John", "Russell Harty", "celebrity_interview", "hook", "1975"],
+      "speakers": ["Elton John"],
+      "mentioned_people": ["Elton John"],
+      "hook": "Appena grido 'mamma, dov'è il mio toast' so che è tutto vero.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Hook: 'mamma, dov'è il mio toast'",
+          "summary": "Clip di apertura di 13 secondi su Elton John e il successo.",
+          "description": "Hook di 13 secondi: Elton John racconta come riconosce il proprio successo."
+        }
+      ]
+    },
+    {
+      "start": "00:01:24",
+      "end": "00:02:18",
+      "name": "80 acri, la fattoria e il latte che torna a casa sua",
+      "category": "celebrity_interview",
+      "source_title": "Elton John - Russell Harty Interview - 1975",
+      "source_channel": "EJ Collection",
+      "summary": "Elton racconta la fattoria di 80 acri che sta comprando ('tre ditte di trasloco mi hanno già scritto per mungere le mie mucche') e il paradosso del latte: quello delle sue mucche finisce nella latteria che gli consegna il latte a casa.",
+      "topics": [
+        "Elton John fattoria 80 acri mucche latte latteria mungitura automatica casa di campagna trasloco arredare riciclo latte agricoltura lusso Russell Harty 1975 dairy farm 80 acres cows milk recycling removal firms"
+      ],
+      "tags": ["Elton John", "Russell Harty", "celebrity_interview", "1975"],
+      "speakers": ["Elton John", "Russell Harty"],
+      "mentioned_people": ["Elton John"],
+      "hook": "Il latte delle mie mucche va alla latteria che consegna il latte a casa mia: è riciclo, ma è ridicolo.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Elton John e la fattoria di 80 acri",
+          "summary": "Elton John descrive la casa di campagna con 80 acri e gli imprevisti comici della vita da fattore.",
+          "description": "Intervista 1975: Elton John racconta l'acquisto della tenuta di 80 acri con fattoria, il prezzo 'un po' alto', le tre ditte di trasloco già pronte e il paradosso del latte delle sue mucche che finisce nella stessa latteria che rifornisce casa sua."
+        }
+      ]
+    },
+    {
+      "start": "00:02:01",
+      "end": "00:02:15",
+      "name": "Hook: 'la mungitura è automatica, come un registratore'",
+      "category": "celebrity_interview",
+      "source_title": "Elton John - Russell Harty Interview - 1975",
+      "source_channel": "EJ Collection",
+      "summary": "Apertura secca (14s): la battuta di Elton sulla mungitura automatica e sul latte riciclato.",
+      "topics": [
+        "Elton John hook apertura short fattoria mungitura automatica mucche latte riciclo registratore intervista 1975 clip breve opening-short"
+      ],
+      "tags": ["Elton John", "Russell Harty", "celebrity_interview", "hook", "1975"],
+      "speakers": ["Elton John"],
+      "mentioned_people": ["Elton John"],
+      "hook": "La mungitura è tutta automatica: è come mettere un registratore, solo che non puoi riascoltarlo.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Hook: la fattoria di Elton John",
+          "summary": "Clip di apertura di 14 secondi sulla fattoria e sulla mungitura automatica.",
+          "description": "Hook di 14 secondi: Elton John scherza sulla mungitura automatica e sul latte delle sue mucche."
+        }
+      ]
+    },
+    {
+      "start": "00:02:52",
+      "end": "00:03:34",
+      "name": "Watford: perché tifa una squadra di terza divisione",
+      "category": "celebrity_interview",
+      "source_title": "Elton John - Russell Harty Interview - 1975",
+      "source_channel": "EJ Collection",
+      "summary": "Elton spiega perché tifa Watford, squadra di terza divisione: è nato a Northwood, a tre miglia dallo stadio, e non vuole tifare per nessun altro; il legame con il club è stata una delle ragioni per cui è rimasto a vivere in Inghilterra.",
+      "topics": [
+        "Elton John Watford FC tifo calcio terza divisione Northwood perché tifa Watford club inglese passione sportiva rimanere in Inghilterra Vicarage Road intervista 1975 why do you support Watford third division team born three miles from Watford"
+      ],
+      "tags": ["Elton John", "Russell Harty", "celebrity_interview", "1975", "Watford"],
+      "speakers": ["Elton John", "Russell Harty"],
+      "mentioned_people": ["Elton John"],
+      "hook": "Sono nato a tre miglia da Watford, li tifo da tutta la vita e non voglio tifare nessun altro: è una delle ragioni per cui sono rimasto in Inghilterra.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Elton John e la fede per il Watford",
+          "summary": "Elton John racconta perché sostiene il Watford di terza divisione e come il club lo leghi all'Inghilterra.",
+          "description": "Intervista 1975: Elton John risponde alle critiche di chi non capisce perché tifi una squadra di terza divisione, spiegando di essere nato a Northwood, a tre miglia da Watford, e che il legame con il club è una delle ragioni per cui non ha lasciato il paese."
+        }
+      ]
+    },
+    {
+      "start": "00:03:09",
+      "end": "00:03:22",
+      "name": "Hook: 'li tifo da tutta la vita, non voglio tifare nessun altro'",
+      "category": "celebrity_interview",
+      "source_title": "Elton John - Russell Harty Interview - 1975",
+      "source_channel": "EJ Collection",
+      "summary": "Apertura secca (13s): Elton e la fedeltà al Watford di terza divisione.",
+      "topics": [
+        "Elton John hook apertura short Watford terza divisione tifo Northwood nato tre miglia nessun altro club 1975 clip breve opening-short"
+      ],
+      "tags": ["Elton John", "Russell Harty", "celebrity_interview", "hook", "1975"],
+      "speakers": ["Elton John"],
+      "mentioned_people": ["Elton John"],
+      "hook": "Sono nato a tre miglia da Watford, li tifo da tutta la vita e non voglio tifare nessun altro.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Hook: Elton John e Watford",
+          "summary": "Clip di apertura di 13 secondi sul tifo di Elton John per il Watford.",
+          "description": "Hook di 13 secondi: Elton John spiega la sua fede calcistica per il Watford."
+        }
+      ]
+    },
+    {
+      "start": "00:03:41",
+      "end": "00:04:33",
+      "name": "Il calcio non si compra: 'amo il Watford dal profondo del cuore'",
+      "category": "celebrity_interview",
+      "source_title": "Elton John - Russell Harty Interview - 1975",
+      "source_channel": "EJ Collection",
+      "summary": "Per Elton il successo nel calcio non si compra: contano un buon manager, spirito di squadra e una buona dirigenza. Il Watford lo riporta con i piedi per terra, dove nessuno lo tratta da pop star, e vuole restare coinvolto anche in Southern League.",
+      "topics": [
+        "Elton John Watford calcio non si compra il successo manager spirito di squadra dirigenza amore per il club piedi per terra pop star trattato normalmente anni a venire Southern League bill nicholson intervista 1975 you can't buy success in football"
+      ],
+      "tags": ["Elton John", "Russell Harty", "celebrity_interview", "1975", "Watford"],
+      "speakers": ["Elton John", "Russell Harty"],
+      "mentioned_people": ["Elton John"],
+      "hook": "Amo il Watford dal profondo del cuore: mi riporta con i piedi per terra, lì nessuno mi tratta da Elton John pop star.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Elton John: 'il calcio non si compra'",
+          "summary": "Elton John spiega cosa serve per far vincere una squadra e cosa gli dà il Watford come persona.",
+          "description": "Intervista 1975: Elton John sostiene che il successo calcistico non si compra con i soldi ma dipende da manager, gruppo e dirigenza, e racconta che il Watford lo tiene con i piedi per terra perché lo tratta come una persona normale e non come una pop star."
+        }
+      ]
+    },
+    {
+      "start": "00:04:04",
+      "end": "00:04:17",
+      "name": "Hook: 'amo il Watford, mi tiene con i piedi per terra'",
+      "category": "celebrity_interview",
+      "source_title": "Elton John - Russell Harty Interview - 1975",
+      "source_channel": "EJ Collection",
+      "summary": "Apertura secca (13s): perché il Watford conta più della fama.",
+      "topics": [
+        "Elton John hook apertura short Watford piedi per terra non pop star amore club trattato normalmente 1975 clip breve opening-short"
+      ],
+      "tags": ["Elton John", "Russell Harty", "celebrity_interview", "hook", "1975"],
+      "speakers": ["Elton John"],
+      "mentioned_people": ["Elton John"],
+      "hook": "Amo il Watford dal profondo del cuore: mi riporta con i piedi per terra.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Hook: 'mi tiene con i piedi per terra'",
+          "summary": "Clip di apertura di 13 secondi su Watford ed Elton John.",
+          "description": "Hook di 13 secondi: Elton John racconta cosa gli dà il Watford."
+        }
+      ]
+    },
+    {
+      "start": "00:04:45",
+      "end": "00:05:33",
+      "name": "Essere trattato come una persona normale (e lo scherzo sul fuoco)",
+      "category": "celebrity_interview",
+      "source_title": "Elton John - Russell Harty Interview - 1975",
+      "source_channel": "EJ Collection",
+      "summary": "Russell racconta di averlo visto trattato 'straordinariamente normalmente' a una festa, sotto una palma, solo e annoiato. Elton risponde che non si aspetta che Pete Townshend gli faccia inchini, e chiude con lo scherzo: si è dato fuoco per attirare attenzione e nessuno se n'è accorto.",
+      "topics": [
+        "Elton John trattato normalmente persone normali Pete Townshend inchini festa ricevimento pop star attenzione scherzo darsi fuoco brown bit intervista 1975 Russell Harty being treated normally ordinary people"
+      ],
+      "tags": ["Elton John", "Russell Harty", "celebrity_interview", "1975", "Pete Townshend"],
+      "speakers": ["Elton John", "Russell Harty"],
+      "mentioned_people": ["Elton John", "Pete Townshend"],
+      "hook": "Dopo che sei andato via mi sono dato fuoco per attirare attenzione, ma nessuno se n'è accorto: ecco spiegata quella macchia marrone.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Elton John: 'essere trattato normalmente'",
+          "summary": "Elton John e il piacere di essere trattato come una persona qualunque, senza inchini da pop star.",
+          "description": "Intervista 1975: Russell Harty racconta di aver visto Elton John trattato normalmente a una festa e lui risponde che tra amici non si aspetta riverenze da star, chiudendo con lo scherzo surreale di essersi dato fuoco senza che nessuno se ne accorgesse."
+        }
+      ]
+    },
+    {
+      "start": "00:05:22",
+      "end": "00:05:33",
+      "name": "Hook: 'mi sono dato fuoco, ma nessuno se n'è accorto'",
+      "category": "celebrity_interview",
+      "source_title": "Elton John - Russell Harty Interview - 1975",
+      "source_channel": "EJ Collection",
+      "summary": "Apertura secca (11s): la battuta di Elton sull'attenzione mai arrivata.",
+      "topics": [
+        "Elton John hook apertura short darsi fuoco attirare attenzione nessuno se n'è accorto macchia marrone battuta intervista 1975 clip breve opening-short"
+      ],
+      "tags": ["Elton John", "Russell Harty", "celebrity_interview", "hook", "1975"],
+      "speakers": ["Elton John"],
+      "mentioned_people": ["Elton John"],
+      "hook": "Mi sono dato fuoco per attirare attenzione ma nessuno se n'è accorto.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Hook: 'nessuno se n'è accorto'",
+          "summary": "Clip di apertura di 11 secondi con la battuta di Elton John.",
+          "description": "Hook di 11 secondi: Elton John e lo scherzo di essersi dato fuoco senza essere notato."
+        }
+      ]
+    },
+    {
+      "start": "00:05:41",
+      "end": "00:06:35",
+      "name": "Le mutande, la principessa Margaret e l'inflazione 'che ha colpito il cavallo dei pantaloni'",
+      "category": "celebrity_interview",
+      "source_title": "Elton John - Russell Harty Interview - 1975",
+      "source_channel": "EJ Collection",
+      "summary": "Elton racconta la volta in cui fu sorpreso in mutande ('non sono uno spettacolo piacevole') e scherza sul prezzo degli slip, con la battuta: l'inflazione ha colpito il cavallo dei pantaloni.",
+      "topics": [
+        "Elton John mutande slip underpants imbarazzo camerino principessa margaret Barbra Streisand sorpreso inflazione prezzo mutande grande magazzino battuta bargain Cooper Wy fronts intervista 1975 inflazione colpito il cavallo dei pantaloni"
+      ],
+      "tags": ["Elton John", "Russell Harty", "celebrity_interview", "1975", "aneddoto"],
+      "speakers": ["Elton John", "Russell Harty"],
+      "mentioned_people": ["Elton John", "Princess Margaret", "Barbra Streisand"],
+      "hook": "Ho comprato delle mutande in un grande magazzino: sorprendente quanto costino oggi, l'inflazione ha colpito il cavallo dei pantaloni.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Elton John: mutande, prezzi e imbarazzi",
+          "summary": "Elton John racconta gli incontri imbarazzanti in camerino e scherza sul costo degli slip.",
+          "description": "Intervista 1975: Elton John racconta di essere stato sorpreso in mutande da persone illustri e scherza sul prezzo degli indumenti intimi comprati in un grande magazzino, con la battuta sull'inflazione che ha colpito il cavallo dei pantaloni."
+        }
+      ]
+    },
+    {
+      "start": "00:06:10",
+      "end": "00:06:23",
+      "name": "Hook: 'l'inflazione ha colpito il cavallo dei pantaloni'",
+      "category": "celebrity_interview",
+      "source_title": "Elton John - Russell Harty Interview - 1975",
+      "source_channel": "EJ Collection",
+      "summary": "Apertura secca (13s): la battuta di Elton John sul prezzo delle mutande.",
+      "topics": [
+        "Elton John hook apertura short inflazione cavallo dei pantaloni mutande prezzo battuta intervista 1975 clip breve opening-short"
+      ],
+      "tags": ["Elton John", "Russell Harty", "celebrity_interview", "hook", "1975"],
+      "speakers": ["Elton John"],
+      "mentioned_people": ["Elton John"],
+      "hook": "L'inflazione ha colpito il cavallo dei pantaloni.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Hook: 'l'inflazione ha colpito il cavallo dei pantaloni'",
+          "summary": "Clip di apertura di 13 secondi con la battuta di Elton John.",
+          "description": "Hook di 13 secondi: Elton John ironizza sul costo degli slip."
+        }
+      ]
+    },
+    {
+      "start": "00:06:34",
+      "end": "00:07:16",
+      "name": "Chi l'ha visto in mutande: Barbra Streisand, la principessa Margaret e Diana Ross",
+      "category": "celebrity_interview",
+      "source_title": "Elton John - Russell Harty Interview - 1975",
+      "source_channel": "EJ Collection",
+      "summary": "Elton elenca chi è entrato in camerino mentre si cambiava: Barbra Streisand è entrata e uscita di corsa, la principessa Margaret è stata gentile, Diana Ross 'sarebbe rimasta per sempre'. Se dovesse leggere la lista completa, starebbe lì tutta la notte.",
+      "topics": [
+        "Elton John camerino Barbra Streisand principessa Margaret Diana Ross lista di persone vista in mutande vestirsi imbarazzo diva aneddoti pop anni 70 intervista 1975 dressing room princess margaret would have stayed forever"
+      ],
+      "tags": ["Elton John", "Russell Harty", "celebrity_interview", "1975", "aneddoto"],
+      "speakers": ["Elton John", "Russell Harty"],
+      "mentioned_people": ["Elton John", "Barbra Streisand", "Princess Margaret", "Diana Ross"],
+      "hook": "Diana Ross è stata grande: sarebbe rimasta per sempre. Se leggessi la lista di chi mi ha visto in mutande starei qui tutta la notte.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Elton John: Streisand, Margaret e Diana Ross in camerino",
+          "summary": "Elton John elenca le celebrità che lo hanno visto in mutande, tra sorrisi e imbarazzi.",
+          "description": "Intervista 1975: Elton John racconta che Barbra Streisand entrò e uscì subito dal camerino mentre si cambiava, che la principessa Margaret fu molto gentile e che Diana Ross, al contrario, sarebbe rimasta per sempre."
+        }
+      ]
+    },
+    {
+      "start": "00:06:58",
+      "end": "00:07:12",
+      "name": "Hook: 'se leggessi la lista starei qui tutta la notte'",
+      "category": "celebrity_interview",
+      "source_title": "Elton John - Russell Harty Interview - 1975",
+      "source_channel": "EJ Collection",
+      "summary": "Apertura secca (14s): la lista di chi ha visto Elton John in mutande.",
+      "topics": [
+        "Elton John hook apertura short lista mutande Diana Ross sarebbe rimasta per sempre tutta la notte battuta intervista 1975 clip breve opening-short"
+      ],
+      "tags": ["Elton John", "Russell Harty", "celebrity_interview", "hook", "1975"],
+      "speakers": ["Elton John"],
+      "mentioned_people": ["Elton John", "Diana Ross"],
+      "hook": "Se leggessi la lista di chi mi ha visto in mutande starei qui tutta la notte.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Hook: la lista in camerino",
+          "summary": "Clip di apertura di 14 secondi sugli aneddoti da camerino di Elton John.",
+          "description": "Hook di 14 secondi: Elton John ironizza sull'elenco di celebrità che lo hanno visto cambiarsi."
+        }
+      ]
+    }
+  ]
+}

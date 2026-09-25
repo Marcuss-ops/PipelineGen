@@ -1,0 +1,399 @@
+{
+  "_comment": "POST /api/clips/process payload (ExtractRequest, drift source: internal/capabilities/youtube/dto/types.go). Source: Bryan Adams on Lorraine (Ultimate greatest-hits campaign, Pretty Woman musical) — https://www.youtube.com/watch?v=5IzV-etVjfI (645s). Destination: the Clips/HipHop child folder 1SZ91zretBH2pB139yM_8DQqb_xgoMJi8 ('Bryan Adams'), create_subfolder=false. Windows picked BY HAND from the timed transcript printed by ops/jobs/hiphop_36/tx.py; no LLM selection. 8 main clips 33-57s (canonical 4-60s SegmentPolicy gate) + 8 hook openers 13-14s carved inside the matching main window. Deterministic ids yt_<videoID>_<startSec>_<endSec>_v1 -> re-submit is an UPSERT. topics/summary/hook are keyword-dense on purpose: composeYouTubeClipSearchText feeds search_text -> 768d pgvector embedding, texts[] lands in asset_text_tracks in the same atomic commit.",
+  "url": "https://www.youtube.com/watch?v=5IzV-etVjfI",
+  "strategy": "verify",
+  "concurrency": 3,
+  "force_keyframes": true,
+  "keep_audio": true,
+  "write_summary": true,
+  "destination": {
+    "folder_id": "1SZ91zretBH2pB139yM_8DQqb_xgoMJi8",
+    "create_subfolder": false
+  },
+  "segments": [
+    {
+      "start": "00:00:25",
+      "end": "00:01:22",
+      "name": "'Potrebbe essere il mio ultimo CD': 75 singoli ridotti a 20",
+      "category": "celebrity_interview",
+      "source_title": "Bryan Adams Remembers Exactly Where He Was When He Wrote 'Everything I Do' (Extended)",
+      "source_channel": "Lorraine",
+      "summary": "Bryan Adams presenta l'album Ultimate e racconta che la casa discografica gli ha detto che potrebbe essere il suo ultimo CD fisico. Scegliere venti canzoni da oltre settantacinque singoli è stato come scegliere tra i propri figli: ha selezionato quelle che suona sempre dal vivo.",
+      "topics": [
+        "Bryan Adams Ultimate greatest hits 2017 fine del CD fisico ultimo CD casa discografica 75 singoli venti canzoni selezione repertorio concerti come scegliere tra i figli album compilation"
+      ],
+      "tags": ["Bryan Adams", "Lorraine", "celebrity_interview", "2017"],
+      "speakers": ["Bryan Adams"],
+      "mentioned_people": ["Bryan Adams"],
+      "hook": "La casa discografica mi ha detto che questo potrebbe essere il mio ultimo CD: tra un paio d'anni i CD potrebbero non esistere più.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Bryan Adams: 'potrebbe essere il mio ultimo CD'",
+          "summary": "Bryan Adams racconta come è nato l'album Ultimate e il difficile lavoro di selezione dei successi.",
+          "description": "Intervista a Lorraine nel 2017: Bryan Adams racconta che la casa discografica gli ha prospettato l'album Ultimate come il suo ultimo Compact Disc fisico e che scegliere circa venti brani tra oltre settantacinque singoli è stato difficile, tanto da paragonarlo alla scelta tra i propri figli; ha privilegiato le canzoni che suona sempre dal vivo."
+        }
+      ]
+    },
+    {
+      "start": "00:00:27",
+      "end": "00:00:41",
+      "name": "Hook: 'potrebbe essere il mio ultimo CD'",
+      "category": "celebrity_interview",
+      "source_title": "Bryan Adams Remembers Exactly Where He Was When He Wrote 'Everything I Do' (Extended)",
+      "source_channel": "Lorraine",
+      "summary": "Apertura secca (14s): la fine del formato fisico secondo Bryan Adams.",
+      "topics": [
+        "Bryan Adams hook apertura short ultimo CD fine del formato fisico compact disc 2017 clip breve opening-short"
+      ],
+      "tags": ["Bryan Adams", "Lorraine", "celebrity_interview", "hook"],
+      "speakers": ["Bryan Adams"],
+      "mentioned_people": ["Bryan Adams"],
+      "hook": "Questo potrebbe essere il mio ultimo CD: tra un paio d'anni non esisteranno più.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Hook: l'ultimo CD",
+          "summary": "Clip di apertura di 14 secondi sulla fine del supporto fisico secondo Bryan Adams.",
+          "description": "Hook di 14 secondi: Bryan Adams commenta la possibile scomparsa del CD."
+        }
+      ]
+    },
+    {
+      "start": "00:01:37",
+      "end": "00:02:25",
+      "name": "'Please Stay': la canzone nata da una scena di Pretty Woman",
+      "category": "celebrity_interview",
+      "source_title": "Bryan Adams Remembers Exactly Where He Was When He Wrote 'Everything I Do' (Extended)",
+      "source_channel": "Lorraine",
+      "summary": "Adams racconta che Please Stay, uno dei due brani inediti di Ultimate, era stata scritta per il musical tratto da Pretty Woman: la scena in cui lei se ne va infuriata e lui la riporta indietro gli sembrava il momento giusto per una canzone. Nel musical alla fine è stata sostituita, così l'ha messa sull'album.",
+      "topics": [
+        "Bryan Adams Please Stay canzone inedita musical Pretty Woman scena film lei se ne va lui la riporta indietro scrittura per il teatro musicale Ultimate 2017 Broadway"
+      ],
+      "tags": ["Bryan Adams", "Lorraine", "celebrity_interview", "2017", "Pretty Woman"],
+      "speakers": ["Bryan Adams"],
+      "mentioned_people": ["Bryan Adams"],
+      "hook": "C'è una scena dove lei se ne va infuriata e lui la riporta indietro: ho pensato fosse il momento giusto per una canzone.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Bryan Adams: la canzone per Pretty Woman",
+          "summary": "Bryan Adams racconta come è nata Please Stay, nata per il musical di Pretty Woman.",
+          "description": "Intervista 2017: Bryan Adams racconta che Please Stay fu scritta per il musical tratto da Pretty Woman, ispirata alla scena in cui l protagonista se ne va arrabbiata e viene riportata indietro; poiché nel musical servivano altri brani, la canzone è finita sull'album Ultimate."
+        }
+      ]
+    },
+    {
+      "start": "00:02:03",
+      "end": "00:02:17",
+      "name": "Hook: la scena di Pretty Woman da cui è nata la canzone",
+      "category": "celebrity_interview",
+      "source_title": "Bryan Adams Remembers Exactly Where He Was When He Wrote 'Everything I Do' (Extended)",
+      "source_channel": "Lorraine",
+      "summary": "Apertura secca (14s): l'ispirazione cinematografica di Please Stay.",
+      "topics": [
+        "Bryan Adams hook apertura short Pretty Woman scena canzone Please Stay film musical 2017 clip breve opening-short"
+      ],
+      "tags": ["Bryan Adams", "Lorraine", "celebrity_interview", "hook"],
+      "speakers": ["Bryan Adams"],
+      "mentioned_people": ["Bryan Adams"],
+      "hook": "In quella scena lei fa i capricci e lui la riporta indietro: era il momento per una canzone.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Hook: la scena di Pretty Woman",
+          "summary": "Clip di apertura di 14 secondi sull'ispirazione di Please Stay.",
+          "description": "Hook di 14 secondi: Bryan Adams spiega da quale scena del film è nata la canzone."
+        }
+      ]
+    },
+    {
+      "start": "00:03:40",
+      "end": "00:04:30",
+      "name": "'Cuts Like a Knife', 'Summer of 69': canzoni con una vita oltre le classifiche",
+      "category": "celebrity_interview",
+      "source_title": "Bryan Adams Remembers Exactly Where He Was When He Wrote 'Everything I Do' (Extended)",
+      "source_channel": "Lorraine",
+      "summary": "Adams dice che la sua preferita è Please Forgive Me e racconta di apprezzare Cuts Like a Knife, mai entrata in classifica nel Regno Unito ma cantata dal pubblico ogni sera; ricorda che Summer of '69 andò al numero uno in Olanda quasi dieci anni dopo l'uscita, segno che le canzoni vivono oltre i piazzamenti.",
+      "topics": [
+        "Bryan Adams Cuts Like a Knife mai hit in UK Summer of 69 numero uno Olanda 1993 dieci anni dopo Please Forgive Me canzone preferita setlist live classifiche longevita dei brani"
+      ],
+      "tags": ["Bryan Adams", "Lorraine", "celebrity_interview", "2017", "Summer of 69"],
+      "speakers": ["Bryan Adams"],
+      "mentioned_people": ["Bryan Adams"],
+      "hook": "Cuts Like a Knife non è mai stata un hit qui, ma ogni sera la canto e il pubblico la canta con me: le canzoni hanno una vita oltre le classifiche.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Bryan Adams: le canzoni oltre le classifiche",
+          "summary": "Bryan Adams racconta il rapporto con i propri brani meno commerciali e la longevità di Summer of '69.",
+          "description": "Intervista 2017: Bryan Adams indica Please Forgive Me come canzone preferita, difende Cuts Like a Knife mai entrata nelle classifiche britanniche e ricorda che Summer of '69 arrivò al primo posto in Olanda quasi dieci anni dopo l'uscita, dimostrando che i brani possono vivere ben oltre i piazzamenti."
+        }
+      ]
+    },
+    {
+      "start": "00:04:06",
+      "end": "00:04:20",
+      "name": "Hook: 'le canzoni hanno una vita oltre le classifiche'",
+      "category": "celebrity_interview",
+      "source_title": "Bryan Adams Remembers Exactly Where He Was When He Wrote 'Everything I Do' (Extended)",
+      "source_channel": "Lorraine",
+      "summary": "Apertura secca (14s): il rapporto di Bryan Adams con il proprio repertorio.",
+      "topics": [
+        "Bryan Adams hook apertura short Cuts Like a Knife canto ogni sera pubblico longevita canzoni 2017 clip breve opening-short"
+      ],
+      "tags": ["Bryan Adams", "Lorraine", "celebrity_interview", "hook"],
+      "speakers": ["Bryan Adams"],
+      "mentioned_people": ["Bryan Adams"],
+      "hook": "Ogni sera canto Cuts Like a Knife e il pubblico la canta con me.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Hook: il repertorio dal vivo",
+          "summary": "Clip di apertura di 14 secondi sul rapporto di Bryan Adams con i suoi brani dal vivo.",
+          "description": "Hook di 14 secondi: Bryan Adams racconta come il pubblico ha adottato canzoni mai passate in radio."
+        }
+      ]
+    },
+    {
+      "start": "00:05:21",
+      "end": "00:06:07",
+      "name": "Il record di 'Everything I Do' e il tentativo di Drake",
+      "category": "celebrity_interview",
+      "source_title": "Bryan Adams Remembers Exactly Where He Was When He Wrote 'Everything I Do' (Extended)",
+      "source_channel": "Lorraine",
+      "summary": "Il brano di Pretty Woman detiene ancora il record di permanenza in vetta alle classifiche britanniche: l'anno precedente si pensava che One Dance di Drake potesse superarlo, ma si è fermato sotto. Adams dice che non è una cosa a cui pensa, e che dal vivo gli basta girare il microfono verso il pubblico.",
+      "topics": [
+        "Bryan Adams Everything I Do I Do It for You record 16 settimane numero uno classifiche UK Drake One Dance 2016 battuto longevità Robin Hood principe dei ladri 1991"
+      ],
+      "tags": ["Bryan Adams", "Lorraine", "celebrity_interview", "2017", "Everything I Do"],
+      "speakers": ["Bryan Adams"],
+      "mentioned_people": ["Bryan Adams", "Drake"],
+      "hook": "L'anno scorso tutti pensavano che Drake potesse battere il record, ma non è successo: è una cosa a cui non penso davvero.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Bryan Adams e il record di Everything I Do",
+          "summary": "Bryan Adams commenta il primato di permanenza in classifica del suo brano più famoso.",
+          "description": "Intervista 2017: Bryan Adams ricorda il record di settimane al primo posto detenuto da Everything I Do (I Do It for You) e il tentativo di One Dance di Drake di superarlo, spiegando di non pensare ai primati e che dal vivo gli basta rivolgere il microfono al pubblico."
+        }
+      ]
+    },
+    {
+      "start": "00:05:36",
+      "end": "00:05:50",
+      "name": "Hook: 'Drake non ha battuto il record'",
+      "category": "celebrity_interview",
+      "source_title": "Bryan Adams Remembers Exactly Where He Was When He Wrote 'Everything I Do' (Extended)",
+      "source_channel": "Lorraine",
+      "summary": "Apertura secca (14s): il record di Everything I Do e il tentativo di Drake.",
+      "topics": [
+        "Bryan Adams hook apertura short Drake One Dance record numero uno Everything I Do classifiche UK 2017 clip breve opening-short"
+      ],
+      "tags": ["Bryan Adams", "Lorraine", "celebrity_interview", "hook"],
+      "speakers": ["Bryan Adams"],
+      "mentioned_people": ["Bryan Adams", "Drake"],
+      "hook": "Tutti pensavano che Drake potesse battere il record, ma non è riuscito a superarlo.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Hook: il record di Bryan Adams",
+          "summary": "Clip di apertura di 14 secondi sul primato di Everything I Do.",
+          "description": "Hook di 14 secondi: Bryan Adams commenta il record ancora imbattuto del suo brano."
+        }
+      ]
+    },
+    {
+      "start": "00:06:35",
+      "end": "00:07:30",
+      "name": "'La canzone si è scritta da sola': dove è nata Everything I Do",
+      "category": "celebrity_interview",
+      "source_title": "Bryan Adams Remembers Exactly Where He Was When He Wrote 'Everything I Do' (Extended)",
+      "source_channel": "Lorraine",
+      "summary": "Adams ricorda con precisione il luogo in cui ha scritto Everything I Do: a Willesden, nel retro di uno studio, partendo da un frammento di musica del film, mentre 'giocavano' per far succedere qualcosa. Non aveva idea che sarebbe diventata una canzone iconica: se lo avesse saputo, dice, lo farebbe ogni volta.",
+      "topics": [
+        "Bryan Adams Everything I Do scritta a Willesden retro di uno studio frammento musica dal film Robin Hood 1991 canzone si è scritta da sola Michael Kamen processo creativo 2017 Lorraine"
+      ],
+      "tags": ["Bryan Adams", "Lorraine", "celebrity_interview", "2017", "songwriting"],
+      "speakers": ["Bryan Adams"],
+      "mentioned_people": ["Bryan Adams"],
+      "hook": "Ero a Willesden, nel retro di uno studio, e giocavamo con un pezzo di musica del film: la canzone si è scritta da sola.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Bryan Adams: dove è nata Everything I Do",
+          "summary": "Bryan Adams ricorda il momento e il luogo in cui ha composto il brano più celebre della sua carriera.",
+          "description": "Intervista 2017: Bryan Adams racconta di aver scritto Everything I Do (I Do It for You) a Willesden, nel retro di uno studio, partendo da un frammento musicale del film e senza alcuna aspettativa, tanto che la canzone, dice, si è praticamente scritta da sola."
+        }
+      ]
+    },
+    {
+      "start": "00:06:42",
+      "end": "00:06:56",
+      "name": "Hook: 'la canzone si è scritta da sola'",
+      "category": "celebrity_interview",
+      "source_title": "Bryan Adams Remembers Exactly Where He Was When He Wrote 'Everything I Do' (Extended)",
+      "source_channel": "Lorraine",
+      "summary": "Apertura secca (14s): la genesi di Everything I Do.",
+      "topics": [
+        "Bryan Adams hook apertura short Willesden studio canzone si è scritta da sola Everything I Do 2017 clip breve opening-short"
+      ],
+      "tags": ["Bryan Adams", "Lorraine", "celebrity_interview", "hook"],
+      "speakers": ["Bryan Adams"],
+      "mentioned_people": ["Bryan Adams"],
+      "hook": "Stavo a Willesden, nel retro di uno studio: la canzone si è scritta da sola.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Hook: la genesi di Everything I Do",
+          "summary": "Clip di apertura di 14 secondi su come è nato il brano più famoso di Bryan Adams.",
+          "description": "Hook di 14 secondi: Bryan Adams racconta il momento della scrittura."
+        }
+      ]
+    },
+    {
+      "start": "00:07:30",
+      "end": "00:08:04",
+      "name": "Invictus Games e il libro fotografico sui soldati feriti",
+      "category": "celebrity_interview",
+      "source_title": "Bryan Adams Remembers Exactly Where He Was When He Wrote 'Everything I Do' (Extended)",
+      "source_channel": "Lorraine",
+      "summary": "Adams racconta di aver suonato agli Invictus Games per la seconda volta e di essere molto vicino al tema dei soldati feriti, a cui ha dedicato anni prima un libro fotografico: per questo, quando gli è stato chiesto di esibirsi di nuovo, ha accettato senza esitare.",
+      "topics": [
+        "Bryan Adams Invictus Games Prince Harry soldati feriti libro fotografico wounded veterans beneficenza concerto Londra impegno civile 2017 Lorraine"
+      ],
+      "tags": ["Bryan Adams", "Lorraine", "celebrity_interview", "2017", "Invictus Games"],
+      "speakers": ["Bryan Adams"],
+      "mentioned_people": ["Bryan Adams", "Prince Harry"],
+      "hook": "Sono molto vicino ai soldati feriti: qualche anno fa ho pubblicato un libro fotografico su di loro, quindi quando me l'hanno chiesto di nuovo ho detto sì.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Bryan Adams e gli Invictus Games",
+          "summary": "Bryan Adams spiega il proprio legame con i veterani feriti e la sua partecipazione agli Invictus Games.",
+          "description": "Intervista 2017: Bryan Adams racconta di aver suonato per la seconda volta agli Invictus Games e di essere da anni vicino al tema dei soldati feriti, a cui ha dedicato un libro fotografico, motivo per cui ha accettato subito l'invito a esibirsi di nuovo."
+        }
+      ]
+    },
+    {
+      "start": "00:07:39",
+      "end": "00:07:53",
+      "name": "Hook: 'ho pubblicato un libro fotografico sui veterani'",
+      "category": "celebrity_interview",
+      "source_title": "Bryan Adams Remembers Exactly Where He Was When He Wrote 'Everything I Do' (Extended)",
+      "source_channel": "Lorraine",
+      "summary": "Apertura secca (14s): l'impegno di Adams per i soldati feriti.",
+      "topics": [
+        "Bryan Adams hook apertura short libro fotografico veterani soldati feriti invictus games 2017 clip breve opening-short"
+      ],
+      "tags": ["Bryan Adams", "Lorraine", "celebrity_interview", "hook"],
+      "speakers": ["Bryan Adams"],
+      "mentioned_people": ["Bryan Adams"],
+      "hook": "Sono molto vicino ai soldati feriti: ho pubblicato un libro fotografico su di loro.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Hook: il libro sui veterani",
+          "summary": "Clip di apertura di 14 secondi sull'impegno civile di Bryan Adams.",
+          "description": "Hook di 14 secondi: Bryan Adams racconta il progetto fotografico dedicato ai soldati feriti."
+        }
+      ]
+    },
+    {
+      "start": "00:08:10",
+      "end": "00:08:46",
+      "name": "Il ritratto della regina nel 2002: 'mi hanno chiamato per il Giubileo'",
+      "category": "celebrity_interview",
+      "source_title": "Bryan Adams Remembers Exactly Where He Was When He Wrote 'Everything I Do' (Extended)",
+      "source_channel": "Lorraine",
+      "summary": "Adams racconta la sua 'seconda vita' da fotografo: è entrato nell'agenzia Camera Press, legata alla famiglia reale, e un giorno ricevette la chiamata per un ritratto in occasione del Giubileo del 2002. Dice di amare quella foto della regina perché è riuscito a coglierla in modo naturale.",
+      "topics": [
+        "Bryan Adams fotografo ritratto regina Elisabetta 2002 Giubileo Camera Press Buckingham Palace agenzia fotografica famiglia reale ritratto naturale 2017 Lorraine"
+      ],
+      "tags": ["Bryan Adams", "Lorraine", "celebrity_interview", "2017", "fotografia"],
+      "speakers": ["Bryan Adams"],
+      "mentioned_people": ["Bryan Adams"],
+      "hook": "Mi hanno chiamato per un ritratto per il Giubileo del 2002: era a Buckingham Palace.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Bryan Adams fotografo della regina",
+          "summary": "Bryan Adams racconta come è arrivato a ritrarre la regina Elisabetta nel 2002.",
+          "description": "Intervista 2017: Bryan Adams racconta di essere entrato nell'agenzia fotografica Camera Press, legata alla famiglia reale, e di essere stato chiamato per un ritratto ufficiale in occasione del Giubileo del 2002, realizzato a Buckingham Palace e da lui considerato uno dei propri scatti preferiti."
+        }
+      ]
+    },
+    {
+      "start": "00:08:32",
+      "end": "00:08:45",
+      "name": "Hook: 'un ritratto a Buckingham Palace'",
+      "category": "celebrity_interview",
+      "source_title": "Bryan Adams Remembers Exactly Where He Was When He Wrote 'Everything I Do' (Extended)",
+      "source_channel": "Lorraine",
+      "summary": "Apertura secca (13s): il lavoro di Bryan Adams come fotografo ufficiale del Giubileo.",
+      "topics": [
+        "Bryan Adams hook apertura short ritratto Buckingham Palace Giubileo 2002 regina fotografia clip breve opening-short"
+      ],
+      "tags": ["Bryan Adams", "Lorraine", "celebrity_interview", "hook"],
+      "speakers": ["Bryan Adams"],
+      "mentioned_people": ["Bryan Adams"],
+      "hook": "Mi hanno chiesto un ritratto per il Giubileo: si faceva a Buckingham Palace.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Hook: il ritratto reale",
+          "summary": "Clip di apertura di 13 secondi sul ritratto della regina firmato Bryan Adams.",
+          "description": "Hook di 13 secondi: Bryan Adams racconta la chiamata per il ritratto del Giubileo."
+        }
+      ]
+    },
+    {
+      "start": "00:09:42",
+      "end": "00:10:15",
+      "name": "Essere padre: 'devi indicare la direzione'",
+      "category": "celebrity_interview",
+      "source_title": "Bryan Adams Remembers Exactly Where He Was When He Wrote 'Everything I Do' (Extended)",
+      "source_channel": "Lorraine",
+      "summary": "Chiesto come riesca a bilanciare musica, fotografia e famiglia, Adams dice che essere padre è la cosa più importante: passare tempo con le figlie, indicare la direzione, influenzarle perché crescano creative, con una vita piena e a contatto con la cultura, senza isolarsi.",
+      "topics": [
+        "Bryan Adams essere padre figlie famiglia equilibrio carriera musica fotografia educazione creatività cultura genitorialità 2017 Lorraine vita privata"
+      ],
+      "tags": ["Bryan Adams", "Lorraine", "celebrity_interview", "2017", "famiglia"],
+      "speakers": ["Bryan Adams"],
+      "mentioned_people": ["Bryan Adams"],
+      "hook": "Essere papà è tutto: devi indicare la direzione e assicurarti di influenzarle, farle crescere creative e a contatto con la cultura.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Bryan Adams: 'essere papà è tutto'",
+          "summary": "Bryan Adams racconta come concilia carriera, fotografia e paternità.",
+          "description": "Intervista 2017: Bryan Adams dice che essere padre è la cosa più importante, racconta di aver passato la giornata con le figlie e spiega che il suo compito è indicare la direzione, influenzarle e farle crescere creative, con una vita piena e a contatto con la cultura."
+        }
+      ]
+    },
+    {
+      "start": "00:09:53",
+      "end": "00:10:07",
+      "name": "Hook: 'essere papà è tutto'",
+      "category": "celebrity_interview",
+      "source_title": "Bryan Adams Remembers Exactly Where He Was When He Wrote 'Everything I Do' (Extended)",
+      "source_channel": "Lorraine",
+      "summary": "Apertura secca (14s): la priorità di Bryan Adams.",
+      "topics": [
+        "Bryan Adams hook apertura short essere papà è tutto figlie famiglia priorita 2017 clip breve opening-short"
+      ],
+      "tags": ["Bryan Adams", "Lorraine", "celebrity_interview", "hook"],
+      "speakers": ["Bryan Adams"],
+      "mentioned_people": ["Bryan Adams"],
+      "hook": "Essere papà è tutto: devi indicare la direzione e influenzarle.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Hook: la paternità",
+          "summary": "Clip di apertura di 14 secondi sulla priorità familiare di Bryan Adams.",
+          "description": "Hook di 14 secondi: Bryan Adams racconta cosa significa per lui essere padre."
+        }
+      ]
+    }
+  ]
+}

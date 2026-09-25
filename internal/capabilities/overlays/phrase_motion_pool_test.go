@@ -2,9 +2,9 @@ package overlays
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 )
 
@@ -68,8 +68,8 @@ func TestBuildPlanRejectsAnUncertifiedMotionPool(t *testing.T) {
 // stays deterministic across runs.
 func TestBuildPlanRotatesWithinTheChannelPool(t *testing.T) {
 	certified := CertifiedPhraseMotions()
-	// Explicit pools replace the soft six-motion default; these entries are
-	// certified but intentionally outside that default subset.
+	// Explicit pools replace the generated 30-motion default; these entries
+	// are certified but intentionally outside the Apple motion family.
 	pool := []string{certified[6], certified[7]}
 	input := PlanInput{
 		PlanID: "pool", VideoID: "video-pool", Width: 1280, Height: 720, FPSNum: 30, FPSDen: 1,
@@ -120,8 +120,8 @@ func TestBuildPlanRotatesWithinTheChannelPool(t *testing.T) {
 
 func TestModernAppleFamilyIncludesCertifiedMotionsOutsideSoftDefault(t *testing.T) {
 	family := certifiedPhraseFamily("modern_apple")
-	if len(family) <= len(generatedPhraseMotions) {
-		t.Fatalf("modern_apple family has %d motions, want more than soft default %d", len(family), len(generatedPhraseMotions))
+	if len(family) != len(generatedPhraseMotions) {
+		t.Fatalf("modern_apple family has %d motions, want all %d generated motions", len(family), len(generatedPhraseMotions))
 	}
 	for _, id := range generatedPhraseMotions {
 		if !containsString(family, id) {
@@ -132,6 +132,58 @@ func TestModernAppleFamilyIncludesCertifiedMotionsOutsideSoftDefault(t *testing.
 		if !containsString(family, id) {
 			t.Fatalf("modern_apple family omitted certified motion %q", id)
 		}
+	}
+}
+
+func TestGeneratedPhraseRotationCoversFifteenAndFits24FPSTiming(t *testing.T) {
+	if len(generatedPhraseMotions) != 30 {
+		t.Fatalf("generated phrase pool has %d entries, want all 30 certified Apple motions", len(generatedPhraseMotions))
+	}
+	phrases := make([]TimedAnnotation, 15)
+	for i := range phrases {
+		phrases[i] = TimedAnnotation{
+			Text:       fmt.Sprintf("distinct spoken phrase %02d", i),
+			StartMs:    int64(i * 2200),
+			EndMs:      int64(i*2200 + 2000),
+			StartUS:    int64(i*2200) * 1000,
+			DurationUS: 2_000_000,
+			Score:      1 - float64(i)*0.01,
+		}
+	}
+	input := PlanInput{
+		PlanID: "phrase-rotation-15", VideoID: "v", Width: 1920, Height: 1080, FPSNum: 24, FPSDen: 1,
+		Scenes: []SceneInput{{ID: "scene-1", Phrases: phrases}},
+	}
+	cfg := AllCandidatesPlannerConfig(input.Scenes)
+	cfg.MaxPhrases = 15
+	plan, err := BuildPlan(input, cfg)
+	if err != nil {
+		t.Fatalf("BuildPlan: %v", err)
+	}
+	seen := make(map[string]bool, 15)
+	count := 0
+	for _, item := range plan.Items {
+		if item.Kind != "text_phrase" {
+			continue
+		}
+		count++
+		if seen[item.MotionID] {
+			t.Fatalf("motion %q repeated before the 15th phrase", item.MotionID)
+		}
+		seen[item.MotionID] = true
+		if got := item.MotionParams["enter_frames"]; got != 16 {
+			t.Fatalf("phrase %q enter_frames = %v, want 16 frames (about 650 ms at 24 fps)", item.Text, got)
+		}
+	}
+	if count != 15 {
+		t.Fatalf("planned %d phrase items, want 15", count)
+	}
+}
+
+func TestPhraseMotionEntranceScalesDownForShortPhrase(t *testing.T) {
+	params := phraseMotionParams(TimedAnnotation{StartMs: 0, EndMs: 800, DurationUS: 800_000}, 24, 1)
+	if got := params["enter_frames"]; got != 8 {
+		t.Fatalf("short phrase enter_frames = %v, want 8 frames (40%% of 800 ms at 24 fps)", got)
 	}
 }
 
@@ -170,8 +222,8 @@ func TestCertifiedImageMotionPoolAndPlannerAssignment(t *testing.T) {
 		if item.Kind != "image" {
 			continue
 		}
-		if item.MotionID != "" || item.PresetID == "" {
-			t.Fatalf("image item %q must use its 2D preset animation, preset=%q motion=%q", item.ID, item.PresetID, item.MotionID)
+		if !containsString(got, item.MotionID) || item.PresetID == "" {
+			t.Fatalf("image item %q must use a certified 2.5D motion and image preset, preset=%q motion=%q", item.ID, item.PresetID, item.MotionID)
 		}
 		imageCount++
 	}
@@ -179,8 +231,14 @@ func TestCertifiedImageMotionPoolAndPlannerAssignment(t *testing.T) {
 		t.Fatalf("planned %d images, want 2", imageCount)
 	}
 	input.ImageMotions = got[:2]
-	if _, err := BuildPlan(input, AllCandidatesPlannerConfig(input.Scenes)); err == nil || !strings.Contains(err.Error(), "deprecated and unsupported") {
-		t.Fatalf("non-empty image motion pool must be rejected clearly, got %v", err)
+	plan, err = BuildPlan(input, AllCandidatesPlannerConfig(input.Scenes))
+	if err != nil {
+		t.Fatalf("certified explicit image motion pool: %v", err)
+	}
+	for _, item := range plan.Items {
+		if item.Kind == "image" && !containsString(input.ImageMotions, item.MotionID) {
+			t.Fatalf("image motion %q escaped the explicit pool %v", item.MotionID, input.ImageMotions)
+		}
 	}
 }
 

@@ -1,0 +1,627 @@
+{
+  "_comment": "POST /api/clips/process payload (ExtractRequest, drift source: internal/capabilities/youtube/dto/types.go). Source: Diana Ross Explains Why She Enjoys Performing Live | Celebs Up Close (https://www.youtube.com/watch?v=a6port1qeh4). Destination: the Clips/HipHop child folder for Diana Ross (see check.py FOLDERS), create_subfolder=false. Windows picked BY HAND from the timed transcript printed by ops/jobs/hiphop_36/tx.py; no LLM selection. Clip ids are deterministic (yt_<videoID>_<startSec>_<endSec>_v1) so a re-submit is an UPSERT. topics/summary/hook are keyword-dense on purpose: composeYouTubeClipSearchText feeds search_text -> 768d pgvector embedding, texts[] lands in asset_text_tracks in the same atomic commit.",
+  "url": "https://www.youtube.com/watch?v=a6port1qeh4",
+  "strategy": "verify",
+  "concurrency": 3,
+  "force_keyframes": true,
+  "keep_audio": true,
+  "write_summary": true,
+  "destination": {
+    "folder_id": "1nHzvgsiEh5k4BWkldpMEkb9GDpXKGPqQ",
+    "create_subfolder": false
+  },
+  "segments": [
+    {
+      "start": "00:00:02",
+      "end": "00:00:19",
+      "name": "58 album in trent'anni e Stevie Wonder conosciuto a nove anni",
+      "category": "celebrity_interview",
+      "source_title": "Diana Ross Explains Why She Enjoys Performing Live | Celebs Up Close",
+      "source_channel": "Wogan (BBC)",
+      "summary": "Diana Ross dice di non averli mai contati ma che le risultano 58 album pubblicati in trent'anni, e ricorda Stevie Wonder, autore della title track: lo conosce da quando lui aveva nove anni e lei dieci.",
+      "topics": [
+        "Diana Ross 58 album in 30 anni carriera discografica Motown Stevie Wonder amicizia d'infanzia nove anni dieci anni title track Wogan 1986 Supremes longevità"
+      ],
+      "tags": [
+        "Diana Ross",
+        "Wogan",
+        "celebrity_interview",
+        "Motown",
+        "Supremes",
+        "1986"
+      ],
+      "speakers": [
+        "Diana Ross",
+        "Terry Wogan"
+      ],
+      "mentioned_people": [
+        "Diana Ross",
+        "Stevie Wonder"
+      ],
+      "hook": "Dicono che abbia pubblicato 58 album in trent'anni: conosco Stevie Wonder da quando aveva nove anni, io ne avevo dieci.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Diana Ross: 58 album in trent'anni",
+          "summary": "Diana Ross ripercorre la longevità della sua carriera e l'amicizia con Stevie Wonder.",
+          "description": "Diana Ross dice di non averli mai contati ma che le risultano 58 album pubblicati in trent'anni, e ricorda Stevie Wonder, autore della title track: lo conosce da quando lui aveva nove anni e lei dieci. Contesto: Diana Ross 58 album in 30 anni carriera discografica Motown Stevie Wonder amicizia d'infanzia nove anni dieci anni title track Wogan 1986 Supremes longevità"
+        }
+      ]
+    },
+    {
+      "start": "00:00:05",
+      "end": "00:00:19",
+      "name": "Hook: 'conosco Stevie Wonder da quando aveva nove anni'",
+      "category": "celebrity_interview",
+      "source_title": "Diana Ross Explains Why She Enjoys Performing Live | Celebs Up Close",
+      "source_channel": "Wogan (BBC)",
+      "summary": "Apertura secca (14s): quarant'anni di carriera e l'amicizia con Stevie Wonder.",
+      "topics": [
+        "Diana Ross 58 album in 30 anni carriera discografica Motown Stevie Wonder amicizia d'infanzia nove anni dieci anni title track Wogan 1986 Supremes longevità hook apertura short opening-short"
+      ],
+      "tags": [
+        "Diana Ross",
+        "Wogan",
+        "celebrity_interview",
+        "Motown",
+        "Supremes",
+        "1986",
+        "hook"
+      ],
+      "speakers": [
+        "Diana Ross",
+        "Terry Wogan"
+      ],
+      "mentioned_people": [
+        "Diana Ross",
+        "Stevie Wonder"
+      ],
+      "hook": "Dicono che abbia pubblicato 58 album in trent'anni: conosco Stevie Wonder da quando aveva nove anni, io ne avevo dieci.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Diana Ross: 58 album in trent'anni",
+          "summary": "Diana Ross ripercorre la longevità della sua carriera e l'amicizia con Stevie Wonder.",
+          "description": "Apertura secca (14s): quarant'anni di carriera e l'amicizia con Stevie Wonder. Contesto: Diana Ross 58 album in 30 anni carriera discografica Motown Stevie Wonder amicizia d'infanzia nove anni dieci anni title track Wogan 1986 Supremes longevità hook apertura short opening-short"
+        }
+      ]
+    },
+    {
+      "start": "00:00:23",
+      "end": "00:00:47",
+      "name": "La sua musica custodisce i ricordi delle persone",
+      "category": "celebrity_interview",
+      "source_title": "Diana Ross Explains Why She Enjoys Performing Live | Celebs Up Close",
+      "source_channel": "Wogan (BBC)",
+      "summary": "Alla notizia di essere la preferita del Primo Ministro, Diana Ross racconta che il marito le ha mandato l'articolo e riflette sul fatto che la sua musica è legata ai ricordi della gente: una canzone che suonava nel momento in cui qualcosa di speciale è accaduto nella loro vita.",
+      "topics": [
+        "Diana Ross musica e memoria ricordi del pubblico canzone colonna sonora della vita prima fidanzata Primo Ministro preferito articolo marito carriera che fa la differenza Wogan 1986"
+      ],
+      "tags": [
+        "Diana Ross",
+        "Wogan",
+        "celebrity_interview",
+        "Motown",
+        "Supremes",
+        "1986"
+      ],
+      "speakers": [
+        "Diana Ross",
+        "Terry Wogan"
+      ],
+      "mentioned_people": [
+        "Diana Ross",
+        "The Supremes",
+        "Motown"
+      ],
+      "hook": "La mia musica è legata ai ricordi di tante persone: c'era questa canzone nel momento speciale della loro vita.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Diana Ross: la musica che custodisce i ricordi",
+          "summary": "Diana Ross spiega perché la sua musica appartiene ai ricordi personali di chi la ascolta.",
+          "description": "Alla notizia di essere la preferita del Primo Ministro, Diana Ross racconta che il marito le ha mandato l'articolo e riflette sul fatto che la sua musica è legata ai ricordi della gente: una canzone che suonava nel momento in cui qualcosa di speciale è accaduto nella loro vita. Contesto: Diana Ross musica e memoria ricordi del pubblico canzone colonna sonora della vita prima fidanzata Primo Ministro preferito articolo marito carriera che fa la differenza Wogan 1986"
+        }
+      ]
+    },
+    {
+      "start": "00:00:29",
+      "end": "00:00:42",
+      "name": "Hook: 'c'era questa canzone nel momento speciale'",
+      "category": "celebrity_interview",
+      "source_title": "Diana Ross Explains Why She Enjoys Performing Live | Celebs Up Close",
+      "source_channel": "Wogan (BBC)",
+      "summary": "Apertura secca (13s): il legame tra le sue canzoni e i ricordi del pubblico.",
+      "topics": [
+        "Diana Ross musica e memoria ricordi del pubblico canzone colonna sonora della vita prima fidanzata Primo Ministro preferito articolo marito carriera che fa la differenza Wogan 1986 hook apertura short opening-short"
+      ],
+      "tags": [
+        "Diana Ross",
+        "Wogan",
+        "celebrity_interview",
+        "Motown",
+        "Supremes",
+        "1986",
+        "hook"
+      ],
+      "speakers": [
+        "Diana Ross",
+        "Terry Wogan"
+      ],
+      "mentioned_people": [
+        "Diana Ross",
+        "The Supremes",
+        "Motown"
+      ],
+      "hook": "La mia musica è legata ai ricordi di tante persone: c'era questa canzone nel momento speciale della loro vita.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Diana Ross: la musica che custodisce i ricordi",
+          "summary": "Diana Ross spiega perché la sua musica appartiene ai ricordi personali di chi la ascolta.",
+          "description": "Apertura secca (13s): il legame tra le sue canzoni e i ricordi del pubblico. Contesto: Diana Ross musica e memoria ricordi del pubblico canzone colonna sonora della vita prima fidanzata Primo Ministro preferito articolo marito carriera che fa la differenza Wogan 1986 hook apertura short opening-short"
+        }
+      ]
+    },
+    {
+      "start": "00:00:49",
+      "end": "00:01:09",
+      "name": "Martin Luther King parlò alle Supremes: 'un'ispirazione'",
+      "category": "celebrity_interview",
+      "source_title": "Diana Ross Explains Why She Enjoys Performing Live | Celebs Up Close",
+      "source_channel": "Wogan (BBC)",
+      "summary": "Diana Ross ricorda l'incontro tra Martin Luther King e le Supremes nei primi anni: parlò con loro dell'importanza della loro musica e dell'immagine che dovevano trasmettere, e per lei fu senz'altro un'ispirazione.",
+      "topics": [
+        "Diana Ross Martin Luther King incontro Supremes primi anni '60 immagine dei neri nella musica ispirazione Dr King diritti civili Motown impegno Wogan 1986 testimonianza"
+      ],
+      "tags": [
+        "Diana Ross",
+        "Wogan",
+        "celebrity_interview",
+        "Motown",
+        "Supremes",
+        "1986"
+      ],
+      "speakers": [
+        "Diana Ross",
+        "Terry Wogan"
+      ],
+      "mentioned_people": [
+        "Diana Ross",
+        "Martin Luther King",
+        "The Supremes"
+      ],
+      "hook": "Nei primi anni, con le Supremes, abbiamo incontrato Martin Luther King: ci parlò dell'importanza della nostra musica. Per me è stato un'ispirazione.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Diana Ross: l'incontro con Martin Luther King",
+          "summary": "Diana Ross racconta il colloquio tra Martin Luther King e le Supremes e lo definisce un'ispirazione.",
+          "description": "Diana Ross ricorda l'incontro tra Martin Luther King e le Supremes nei primi anni: parlò con loro dell'importanza della loro musica e dell'immagine che dovevano trasmettere, e per lei fu senz'altro un'ispirazione. Contesto: Diana Ross Martin Luther King incontro Supremes primi anni '60 immagine dei neri nella musica ispirazione Dr King diritti civili Motown impegno Wogan 1986 testimonianza"
+        }
+      ]
+    },
+    {
+      "start": "00:00:52",
+      "end": "00:01:05",
+      "name": "Hook: 'Martin Luther King era un fan'",
+      "category": "celebrity_interview",
+      "source_title": "Diana Ross Explains Why She Enjoys Performing Live | Celebs Up Close",
+      "source_channel": "Wogan (BBC)",
+      "summary": "Apertura secca (13s): l'incontro tra il dottor King e le Supremes.",
+      "topics": [
+        "Diana Ross Martin Luther King incontro Supremes primi anni '60 immagine dei neri nella musica ispirazione Dr King diritti civili Motown impegno Wogan 1986 testimonianza hook apertura short opening-short"
+      ],
+      "tags": [
+        "Diana Ross",
+        "Wogan",
+        "celebrity_interview",
+        "Motown",
+        "Supremes",
+        "1986",
+        "hook"
+      ],
+      "speakers": [
+        "Diana Ross",
+        "Terry Wogan"
+      ],
+      "mentioned_people": [
+        "Diana Ross",
+        "Martin Luther King",
+        "The Supremes"
+      ],
+      "hook": "Nei primi anni, con le Supremes, abbiamo incontrato Martin Luther King: ci parlò dell'importanza della nostra musica. Per me è stato un'ispirazione.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Diana Ross: l'incontro con Martin Luther King",
+          "summary": "Diana Ross racconta il colloquio tra Martin Luther King e le Supremes e lo definisce un'ispirazione.",
+          "description": "Apertura secca (13s): l'incontro tra il dottor King e le Supremes. Contesto: Diana Ross Martin Luther King incontro Supremes primi anni '60 immagine dei neri nella musica ispirazione Dr King diritti civili Motown impegno Wogan 1986 testimonianza hook apertura short opening-short"
+        }
+      ]
+    },
+    {
+      "start": "00:01:10",
+      "end": "00:02:00",
+      "name": "La Artists Development della Motown: una scuola di stile",
+      "category": "celebrity_interview",
+      "source_title": "Diana Ross Explains Why She Enjoys Performing Live | Celebs Up Close",
+      "source_channel": "Wogan (BBC)",
+      "summary": "Diana Ross descrive il dipartimento creato da Berry Gordy per togliere dal ghetto ragazze e ragazzi giovani: una sorta di scuola di portamento dove si imparavano i passi di danza, come sedersi e accavallare le gambe, cose che capì quanto fossero preziose solo quando iniziò a viaggiare.",
+      "topics": [
+        "Diana Ross Motown Artists Development Department Berry Gordy anni '60 scuola di portamento charm school passi di danza postura accavallare le gambe ragazze del ghetto formazione artistica viaggiare Wogan 1986 memorie"
+      ],
+      "tags": [
+        "Diana Ross",
+        "Wogan",
+        "celebrity_interview",
+        "Motown",
+        "Supremes",
+        "1986"
+      ],
+      "speakers": [
+        "Diana Ross",
+        "Terry Wogan"
+      ],
+      "mentioned_people": [
+        "Diana Ross",
+        "Berry Gordy",
+        "The Supremes"
+      ],
+      "hook": "Berry Gordy prendeva ragazze e ragazzi dal ghetto e ci insegnava come stare in scena: passi di danza, come sedersi, come accavallare le gambe. Capii quanto valeva solo viaggiando.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Diana Ross: la scuola di stile della Motown",
+          "summary": "Diana Ross racconta i corsi di portamento e danza con cui Berry Gordy preparava gli artisti della Motown.",
+          "description": "Diana Ross descrive il dipartimento creato da Berry Gordy per togliere dal ghetto ragazze e ragazzi giovani: una sorta di scuola di portamento dove si imparavano i passi di danza, come sedersi e accavallare le gambe, cose che capì quanto fossero preziose solo quando iniziò a viaggiare. Contesto: Diana Ross Motown Artists Development Department Berry Gordy anni '60 scuola di portamento charm school passi di danza postura accavallare le gambe ragazze del ghetto formazione artistica viaggiare Wogan 1986 memorie"
+        }
+      ]
+    },
+    {
+      "start": "00:01:16",
+      "end": "00:01:30",
+      "name": "Hook: 'una scuola di portamento firmata Motown'",
+      "category": "celebrity_interview",
+      "source_title": "Diana Ross Explains Why She Enjoys Performing Live | Celebs Up Close",
+      "source_channel": "Wogan (BBC)",
+      "summary": "Apertura secca (14s): la formazione delle Supremes alla Motown.",
+      "topics": [
+        "Diana Ross Motown Artists Development Department Berry Gordy anni '60 scuola di portamento charm school passi di danza postura accavallare le gambe ragazze del ghetto formazione artistica viaggiare Wogan 1986 memorie hook apertura short opening-short"
+      ],
+      "tags": [
+        "Diana Ross",
+        "Wogan",
+        "celebrity_interview",
+        "Motown",
+        "Supremes",
+        "1986",
+        "hook"
+      ],
+      "speakers": [
+        "Diana Ross",
+        "Terry Wogan"
+      ],
+      "mentioned_people": [
+        "Diana Ross",
+        "Berry Gordy",
+        "The Supremes"
+      ],
+      "hook": "Berry Gordy prendeva ragazze e ragazzi dal ghetto e ci insegnava come stare in scena: passi di danza, come sedersi, come accavallare le gambe. Capii quanto valeva solo viaggiando.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Diana Ross: la scuola di stile della Motown",
+          "summary": "Diana Ross racconta i corsi di portamento e danza con cui Berry Gordy preparava gli artisti della Motown.",
+          "description": "Apertura secca (14s): la formazione delle Supremes alla Motown. Contesto: Diana Ross Motown Artists Development Department Berry Gordy anni '60 scuola di portamento charm school passi di danza postura accavallare le gambe ragazze del ghetto formazione artistica viaggiare Wogan 1986 memorie hook apertura short opening-short"
+        }
+      ]
+    },
+    {
+      "start": "00:02:02",
+      "end": "00:02:28",
+      "name": "Tornare alla Motown come comproprietaria, non con i dollari",
+      "category": "celebrity_interview",
+      "source_title": "Diana Ross Explains Why She Enjoys Performing Live | Celebs Up Close",
+      "source_channel": "Wogan (BBC)",
+      "summary": "Diana Ross spiega che la nuova Motown fu venduta a un nuovo gruppo e che, quando le chiesero di rientrare, al posto dei dollari volle una quota azionaria: per lei è il modo di restituire qualcosa all'azienda e aiutare i giovani artisti ricreando lo spirito di famiglia dei primi anni.",
+      "topics": [
+        "Diana Ross ritorno alla Motown nuova proprietà quota azionaria part owner invece di dollari aiutare giovani artisti spirito di famiglia board consiglio di amministrazione restituire Wogan 1986 business musicale"
+      ],
+      "tags": [
+        "Diana Ross",
+        "Wogan",
+        "celebrity_interview",
+        "Motown",
+        "Supremes",
+        "1986"
+      ],
+      "speakers": [
+        "Diana Ross",
+        "Terry Wogan"
+      ],
+      "mentioned_people": [
+        "Diana Ross",
+        "The Supremes",
+        "Motown"
+      ],
+      "hook": "Quando mi hanno chiesto di rientrare in Motown al posto dei dollari ho preso una quota societaria: è il mio modo per restituire qualcosa.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Diana Ross torna nella Motown da comproprietaria",
+          "summary": "Diana Ross racconta perché ha scelto una quota societaria Motown invece del compenso in denaro.",
+          "description": "Diana Ross spiega che la nuova Motown fu venduta a un nuovo gruppo e che, quando le chiesero di rientrare, al posto dei dollari volle una quota azionaria: per lei è il modo di restituire qualcosa all'azienda e aiutare i giovani artisti ricreando lo spirito di famiglia dei primi anni. Contesto: Diana Ross ritorno alla Motown nuova proprietà quota azionaria part owner invece di dollari aiutare giovani artisti spirito di famiglia board consiglio di amministrazione restituire Wogan 1986 business musicale"
+        }
+      ]
+    },
+    {
+      "start": "00:02:08",
+      "end": "00:02:22",
+      "name": "Hook: 'comproprietaria invece che pagata'",
+      "category": "celebrity_interview",
+      "source_title": "Diana Ross Explains Why She Enjoys Performing Live | Celebs Up Close",
+      "source_channel": "Wogan (BBC)",
+      "summary": "Apertura secca (14s): il rientro di Diana Ross nella Motown venduta.",
+      "topics": [
+        "Diana Ross ritorno alla Motown nuova proprietà quota azionaria part owner invece di dollari aiutare giovani artisti spirito di famiglia board consiglio di amministrazione restituire Wogan 1986 business musicale hook apertura short opening-short"
+      ],
+      "tags": [
+        "Diana Ross",
+        "Wogan",
+        "celebrity_interview",
+        "Motown",
+        "Supremes",
+        "1986",
+        "hook"
+      ],
+      "speakers": [
+        "Diana Ross",
+        "Terry Wogan"
+      ],
+      "mentioned_people": [
+        "Diana Ross",
+        "The Supremes",
+        "Motown"
+      ],
+      "hook": "Quando mi hanno chiesto di rientrare in Motown al posto dei dollari ho preso una quota societaria: è il mio modo per restituire qualcosa.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Diana Ross torna nella Motown da comproprietaria",
+          "summary": "Diana Ross racconta perché ha scelto una quota societaria Motown invece del compenso in denaro.",
+          "description": "Apertura secca (14s): il rientro di Diana Ross nella Motown venduta. Contesto: Diana Ross ritorno alla Motown nuova proprietà quota azionaria part owner invece di dollari aiutare giovani artisti spirito di famiglia board consiglio di amministrazione restituire Wogan 1986 business musicale hook apertura short opening-short"
+        }
+      ]
+    },
+    {
+      "start": "00:04:56",
+      "end": "00:05:43",
+      "name": "Central Park: 'li ho fatti uscire dal parco con la mia voce'",
+      "category": "celebrity_interview",
+      "source_title": "Diana Ross Explains Why She Enjoys Performing Live | Celebs Up Close",
+      "source_channel": "Wogan (BBC)",
+      "summary": "Diana Ross racconta la sera del concerto gratuito a Central Park: dopo la tempesta elettrica decise di non lasciare il palco e provò a far uscire il pubblico parlando con la voce, convinta che se l'avessero sentita sarebbe andato tutto bene. Con oltre mezzo milione di persone e le luci spente, si sentiva responsabile del pubblico.",
+      "topics": [
+        "Diana Ross concerto gratuito Central Park 1983 tempesta elettrica luci spente mezzo milione di persone non lascio il palco far uscire il pubblico con la voce microfono portatile vestiti bagnati senso di responsabilità evento memorabile Wogan 1986"
+      ],
+      "tags": [
+        "Diana Ross",
+        "Wogan",
+        "celebrity_interview",
+        "Motown",
+        "Supremes",
+        "1986"
+      ],
+      "speakers": [
+        "Diana Ross",
+        "Terry Wogan"
+      ],
+      "mentioned_people": [
+        "Diana Ross",
+        "The Supremes",
+        "Motown"
+      ],
+      "hook": "Ho deciso che non avrei lasciato il palco: avrei fatto uscire la gente con la mia voce, perché se mi sentivano tutto sarebbe andato bene.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Diana Ross a Central Park sotto la tempesta",
+          "summary": "Diana Ross ripercorre il concerto gratuito del 1983 a Central Park tra fulmini, buio e mezzo milione di persone.",
+          "description": "Diana Ross racconta la sera del concerto gratuito a Central Park: dopo la tempesta elettrica decise di non lasciare il palco e provò a far uscire il pubblico parlando con la voce, convinta che se l'avessero sentita sarebbe andato tutto bene. Con oltre mezzo milione di persone e le luci spente, si sentiva responsabile del pubblico. Contesto: Diana Ross concerto gratuito Central Park 1983 tempesta elettrica luci spente mezzo milione di persone non lascio il palco far uscire il pubblico con la voce microfono portatile vestiti bagnati senso di responsabilità evento memorabile Wogan 1986"
+        }
+      ]
+    },
+    {
+      "start": "00:05:00",
+      "end": "00:05:14",
+      "name": "Hook: 'non lascio il palco'",
+      "category": "celebrity_interview",
+      "source_title": "Diana Ross Explains Why She Enjoys Performing Live | Celebs Up Close",
+      "source_channel": "Wogan (BBC)",
+      "summary": "Apertura secca (14s): la decisione di Diana Ross durante la tempesta.",
+      "topics": [
+        "Diana Ross concerto gratuito Central Park 1983 tempesta elettrica luci spente mezzo milione di persone non lascio il palco far uscire il pubblico con la voce microfono portatile vestiti bagnati senso di responsabilità evento memorabile Wogan 1986 hook apertura short opening-short"
+      ],
+      "tags": [
+        "Diana Ross",
+        "Wogan",
+        "celebrity_interview",
+        "Motown",
+        "Supremes",
+        "1986",
+        "hook"
+      ],
+      "speakers": [
+        "Diana Ross",
+        "Terry Wogan"
+      ],
+      "mentioned_people": [
+        "Diana Ross",
+        "The Supremes",
+        "Motown"
+      ],
+      "hook": "Ho deciso che non avrei lasciato il palco: avrei fatto uscire la gente con la mia voce, perché se mi sentivano tutto sarebbe andato bene.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Diana Ross a Central Park sotto la tempesta",
+          "summary": "Diana Ross ripercorre il concerto gratuito del 1983 a Central Park tra fulmini, buio e mezzo milione di persone.",
+          "description": "Apertura secca (14s): la decisione di Diana Ross durante la tempesta. Contesto: Diana Ross concerto gratuito Central Park 1983 tempesta elettrica luci spente mezzo milione di persone non lascio il palco far uscire il pubblico con la voce microfono portatile vestiti bagnati senso di responsabilità evento memorabile Wogan 1986 hook apertura short opening-short"
+        }
+      ]
+    },
+    {
+      "start": "00:05:47",
+      "end": "00:06:23",
+      "name": "Lady Sings the Blues, l'Oscar e i cinque figli",
+      "category": "celebrity_interview",
+      "source_title": "Diana Ross Explains Why She Enjoys Performing Live | Celebs Up Close",
+      "source_channel": "Wogan (BBC)",
+      "summary": "Diana Ross ricorda la nomination all'Oscar per Lady Sings the Blues, il film su Billie Holiday, e spiega perché dopo pochi film si è dedicata alla famiglia: ha fatto figli e si è occupata della vita personale, ha letto molti copioni e vuole tornare sul set solo con qualcosa di davvero speciale, perché la priorità sono i figli.",
+      "topics": [
+        "Diana Ross Lady Sings the Blues Billie Holiday nomination Oscar anni '70 carriera cinematografica cinque figli famiglia priorità copioni letti ritorno al cinema vita personale Wogan 1986"
+      ],
+      "tags": [
+        "Diana Ross",
+        "Wogan",
+        "celebrity_interview",
+        "Motown",
+        "Supremes",
+        "1986"
+      ],
+      "speakers": [
+        "Diana Ross",
+        "Terry Wogan"
+      ],
+      "mentioned_people": [
+        "Diana Ross",
+        "Billie Holiday"
+      ],
+      "hook": "Sono stata impegnata a fare figli e a occuparmi della mia vita: la priorità è la famiglia, i miei cinque bambini.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Diana Ross tra l'Oscar e i cinque figli",
+          "summary": "Diana Ross bilancia la nomination per Lady Sings the Blues con la scelta di mettere la famiglia al primo posto.",
+          "description": "Diana Ross ricorda la nomination all'Oscar per Lady Sings the Blues, il film su Billie Holiday, e spiega perché dopo pochi film si è dedicata alla famiglia: ha fatto figli e si è occupata della vita personale, ha letto molti copioni e vuole tornare sul set solo con qualcosa di davvero speciale, perché la priorità sono i figli. Contesto: Diana Ross Lady Sings the Blues Billie Holiday nomination Oscar anni '70 carriera cinematografica cinque figli famiglia priorità copioni letti ritorno al cinema vita personale Wogan 1986"
+        }
+      ]
+    },
+    {
+      "start": "00:05:53",
+      "end": "00:06:08",
+      "name": "Hook: 'ho fatto figli, la priorità è la famiglia'",
+      "category": "celebrity_interview",
+      "source_title": "Diana Ross Explains Why She Enjoys Performing Live | Celebs Up Close",
+      "source_channel": "Wogan (BBC)",
+      "summary": "Apertura secca (15s): perché Diana Ross ha rallentato con il cinema.",
+      "topics": [
+        "Diana Ross Lady Sings the Blues Billie Holiday nomination Oscar anni '70 carriera cinematografica cinque figli famiglia priorità copioni letti ritorno al cinema vita personale Wogan 1986 hook apertura short opening-short"
+      ],
+      "tags": [
+        "Diana Ross",
+        "Wogan",
+        "celebrity_interview",
+        "Motown",
+        "Supremes",
+        "1986",
+        "hook"
+      ],
+      "speakers": [
+        "Diana Ross",
+        "Terry Wogan"
+      ],
+      "mentioned_people": [
+        "Diana Ross",
+        "Billie Holiday"
+      ],
+      "hook": "Sono stata impegnata a fare figli e a occuparmi della mia vita: la priorità è la famiglia, i miei cinque bambini.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Diana Ross tra l'Oscar e i cinque figli",
+          "summary": "Diana Ross bilancia la nomination per Lady Sings the Blues con la scelta di mettere la famiglia al primo posto.",
+          "description": "Apertura secca (15s): perché Diana Ross ha rallentato con il cinema. Contesto: Diana Ross Lady Sings the Blues Billie Holiday nomination Oscar anni '70 carriera cinematografica cinque figli famiglia priorità copioni letti ritorno al cinema vita personale Wogan 1986 hook apertura short opening-short"
+        }
+      ]
+    },
+    {
+      "start": "00:07:37",
+      "end": "00:08:22",
+      "name": "Il consiglio a chi vuole diventare una rock star",
+      "category": "celebrity_interview",
+      "source_title": "Diana Ross Explains Why She Enjoys Performing Live | Celebs Up Close",
+      "source_channel": "Wogan (BBC)",
+      "summary": "Diana Ross spiega cosa fa alla Motown con i giovani artisti: mette a disposizione il vantaggio della propria esperienza per raccontare il business dello show business, dai problemi con il fisco all'idea sbagliata che basti salire sul palco e cantare, fino alla necessità di buoni avvocati e business manager che seguano davvero i loro interessi.",
+      "topics": [
+        "Diana Ross consigli ai giovani artisti Motown business dello show business tasse fisco avvocati business manager denaro gestione carriera esperienza errori fatti imparare i giovani performer il resto lo fanno gli altri illusione Wogan 1986"
+      ],
+      "tags": [
+        "Diana Ross",
+        "Wogan",
+        "celebrity_interview",
+        "Motown",
+        "Supremes",
+        "1986"
+      ],
+      "speakers": [
+        "Diana Ross",
+        "Terry Wogan"
+      ],
+      "mentioned_people": [
+        "Diana Ross",
+        "The Supremes",
+        "Motown"
+      ],
+      "hook": "Voglio mettere a disposizione la mia esperienza: molti pensano che basti salire sul palco e cantare, ma il business dello show business è un'altra cosa.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Diana Ross ai giovani artisti: scegliete buoni avvocati",
+          "summary": "Diana Ross racconta come usa la propria esperienza per avvertire i giovani del lato economico dello spettacolo.",
+          "description": "Diana Ross spiega cosa fa alla Motown con i giovani artisti: mette a disposizione il vantaggio della propria esperienza per raccontare il business dello show business, dai problemi con il fisco all'idea sbagliata che basti salire sul palco e cantare, fino alla necessità di buoni avvocati e business manager che seguano davvero i loro interessi. Contesto: Diana Ross consigli ai giovani artisti Motown business dello show business tasse fisco avvocati business manager denaro gestione carriera esperienza errori fatti imparare i giovani performer il resto lo fanno gli altri illusione Wogan 1986"
+        }
+      ]
+    },
+    {
+      "start": "00:07:41",
+      "end": "00:07:55",
+      "name": "Hook: 'il business dello show business'",
+      "category": "celebrity_interview",
+      "source_title": "Diana Ross Explains Why She Enjoys Performing Live | Celebs Up Close",
+      "source_channel": "Wogan (BBC)",
+      "summary": "Apertura secca (14s): i consigli ai giovani artisti sulle tasse e sui manager.",
+      "topics": [
+        "Diana Ross consigli ai giovani artisti Motown business dello show business tasse fisco avvocati business manager denaro gestione carriera esperienza errori fatti imparare i giovani performer il resto lo fanno gli altri illusione Wogan 1986 hook apertura short opening-short"
+      ],
+      "tags": [
+        "Diana Ross",
+        "Wogan",
+        "celebrity_interview",
+        "Motown",
+        "Supremes",
+        "1986",
+        "hook"
+      ],
+      "speakers": [
+        "Diana Ross",
+        "Terry Wogan"
+      ],
+      "mentioned_people": [
+        "Diana Ross",
+        "The Supremes",
+        "Motown"
+      ],
+      "hook": "Voglio mettere a disposizione la mia esperienza: molti pensano che basti salire sul palco e cantare, ma il business dello show business è un'altra cosa.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Diana Ross ai giovani artisti: scegliete buoni avvocati",
+          "summary": "Diana Ross racconta come usa la propria esperienza per avvertire i giovani del lato economico dello spettacolo.",
+          "description": "Apertura secca (14s): i consigli ai giovani artisti sulle tasse e sui manager. Contesto: Diana Ross consigli ai giovani artisti Motown business dello show business tasse fisco avvocati business manager denaro gestione carriera esperienza errori fatti imparare i giovani performer il resto lo fanno gli altri illusione Wogan 1986 hook apertura short opening-short"
+        }
+      ]
+    }
+  ]
+}

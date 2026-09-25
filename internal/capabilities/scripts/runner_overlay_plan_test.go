@@ -253,13 +253,13 @@ func TestRunner_OverlayPlanAppliesRunLevelEditorialBudget(t *testing.T) {
 		case "text_phrase":
 			phrases++
 		default:
-			t.Fatalf("non-editorial overlay survived 5+5 budget: %+v", item)
+			t.Fatalf("non-editorial overlay survived editorial budget: %+v", item)
 		}
 	}
 	require.Equal(t, 1, images)
 	require.Equal(t, 2, phrases)
 	require.Len(t, res.OverlayPlan.Items, 3)
-	require.Equal(t, capabilityoverlay.PhraseOverlayBudget{Requested: 5, Materialized: 2, Shortfall: 3}, *res.PhraseOverlayBudget)
+	require.Equal(t, capabilityoverlay.PhraseOverlayBudget{Requested: 15, Materialized: 2, Shortfall: 13}, *res.PhraseOverlayBudget)
 
 	phrase := byID["scene-0-phrase-changed-everything"]
 	require.Equal(t, "IMPORTANT_PHRASE", phrase.TemplateID)

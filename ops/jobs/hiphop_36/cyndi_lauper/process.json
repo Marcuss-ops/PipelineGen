@@ -1,0 +1,399 @@
+{
+  "_comment": "POST /api/clips/process payload (ExtractRequest, drift source: internal/capabilities/youtube/dto/types.go). Source: Cyndi Lauper on Late Night with David Letterman, 1984 (She's So Unusual / Girls Just Want to Have Fun era) — https://www.youtube.com/watch?v=9wj70m0yVgk (588s). Destination: the Clips/HipHop child folder 1m-z83yQXp5UJuP2dBPPg_DNzJffRMn0v ('Cyndi Lauper'), create_subfolder=false. Windows picked BY HAND from the timed transcript printed by ops/jobs/hiphop_36/tx.py; no LLM selection. 8 main clips 24-58s (canonical 4-60s SegmentPolicy gate) + 8 hook openers 12-14s carved inside the matching main window. Deterministic ids yt_<videoID>_<startSec>_<endSec>_v1 -> re-submit is an UPSERT. topics/summary/hook are keyword-dense on purpose: composeYouTubeClipSearchText feeds search_text -> 768d pgvector embedding, texts[] lands in asset_text_tracks in the same atomic commit.",
+  "url": "https://www.youtube.com/watch?v=9wj70m0yVgk",
+  "strategy": "verify",
+  "concurrency": 3,
+  "force_keyframes": true,
+  "keep_audio": true,
+  "write_summary": true,
+  "destination": {
+    "folder_id": "1m-z83yQXp5UJuP2dBPPg_DNzJffRMn0v",
+    "create_subfolder": false
+  },
+  "segments": [
+    {
+      "start": "00:01:00",
+      "end": "00:01:24",
+      "name": "Sua madre al debutto come attrice nel video di Girls Just Want to Have Fun",
+      "category": "celebrity_interview",
+      "source_title": "Cyndi Interview with David Letterman - 1984",
+      "source_channel": "Late Night with David Letterman",
+      "summary": "Cyndi racconta che nel video di Girls Just Want to Have Fun i genitori sono interpretati da attori: sua madre faceva il suo debutto e lei la considera un vero talento naturale, tanto da spingerla subito davanti alla telecamera.",
+      "topics": [
+        "Cyndi Lauper madre attrice debutto video Girls Just Want to Have Fun 1983 1984 Letterman famiglia video musicale She's So Unusual talento naturale recitazione"
+      ],
+      "tags": ["Cyndi Lauper", "Letterman", "celebrity_interview", "1984"],
+      "speakers": ["Cyndi Lauper", "David Letterman"],
+      "mentioned_people": ["Cyndi Lauper"],
+      "hook": "Mia madre era al suo debutto come attrice: credo sia un vero talento, una naturale, e l'ho spinta subito davanti alla telecamera.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Cyndi Lauper: la madre nel video di Girls Just Want to Have Fun",
+          "summary": "Cyndi Lauper racconta il debutto recitativo della madre nel suo video più famoso.",
+          "description": "Intervista al Late Night con David Letterman del 1984: Cyndi Lauper racconta che nel video di Girls Just Want to Have Fun sua madre interpretava se stessa per la prima volta come attrice e che lei la considera un talento naturale."
+        }
+      ]
+    },
+    {
+      "start": "00:01:05",
+      "end": "00:01:19",
+      "name": "Hook: 'mia madre è una naturale'",
+      "category": "celebrity_interview",
+      "source_title": "Cyndi Interview with David Letterman - 1984",
+      "source_channel": "Late Night with David Letterman",
+      "summary": "Apertura secca (14s): il debutto della madre di Cyndi nel video.",
+      "topics": [
+        "Cyndi Lauper hook apertura short madre naturale talento debutto attrice video 1984 clip breve opening-short"
+      ],
+      "tags": ["Cyndi Lauper", "Letterman", "celebrity_interview", "hook"],
+      "speakers": ["Cyndi Lauper"],
+      "mentioned_people": ["Cyndi Lauper"],
+      "hook": "Mia madre è una naturale: era il suo debutto come attrice.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Hook: la madre attrice",
+          "summary": "Clip di apertura di 14 secondi sul debutto recitativo della madre di Cyndi Lauper.",
+          "description": "Hook di 14 secondi: Cyndi Lauper commenta la performance della madre nel video."
+        }
+      ]
+    },
+    {
+      "start": "00:01:24",
+      "end": "00:02:22",
+      "name": "La madre 'dottoressa dei pesci' e l'ascesso tagliato via",
+      "category": "celebrity_interview",
+      "source_title": "Cyndi Interview with David Letterman - 1984",
+      "source_channel": "Late Night with David Letterman",
+      "summary": "Cyndi racconta cosa faceva sua madre prima del video: curava i pesci dell'acquario. Un pesce aveva un ascesso, lei lo tirò fuori dalla boccia, lo mise sul tavolo e glielo tagliò via, e il pesce sopravvisse; poi il maschio lo uccise e, dopo averlo rimproverato, con una sberla accidentale gli fece perdere la coda. Chiude ricordando che si esercitava a rompere le uova sulle battute musicali.",
+      "topics": [
+        "Cyndi Lauper madre pesci acquario pesce ascesso tagliato via pesce chirurgo pesce combattente siamese maschio uccide coda staccata sberla storia comica 1984 Letterman famiglia bizzarra"
+      ],
+      "tags": ["Cyndi Lauper", "Letterman", "celebrity_interview", "1984"],
+      "speakers": ["Cyndi Lauper", "David Letterman"],
+      "mentioned_people": ["Cyndi Lauper"],
+      "hook": "Un pesce aveva un ascesso: mia madre l'ha tirato fuori dalla boccia, l'ha messo sul tavolo e gliel'ha tagliato via, e il pesce è sopravvissuto.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "La madre di Cyndi Lauper e i pesci",
+          "summary": "Cyndi Lauper racconta l'episodio del pesce curato dalla madre come un chirurgo.",
+          "description": "Intervista 1984: Cyndi Lauper descrive la madre come una vera veterinaria dei pesci, capace di estrarre un pesce dalla boccia, tagliargli via un ascesso sul tavolo di cucina e rimetterlo in vita; completa il racconto con la fine tragica del pesce combattente e con l'immagine della madre che si esercitava a rompere le uova a tempo di musica."
+        }
+      ]
+    },
+    {
+      "start": "00:01:45",
+      "end": "00:01:57",
+      "name": "Hook: 'il pesce è sopravvissuto'",
+      "category": "celebrity_interview",
+      "source_title": "Cyndi Interview with David Letterman - 1984",
+      "source_channel": "Late Night with David Letterman",
+      "summary": "Apertura secca (12s): la madre di Cyndi chirurgo dei pesci.",
+      "topics": [
+        "Cyndi Lauper hook apertura short pesce ascesso tagliato sopravvissuto madre acquario 1984 clip breve opening-short"
+      ],
+      "tags": ["Cyndi Lauper", "Letterman", "celebrity_interview", "hook"],
+      "speakers": ["Cyndi Lauper"],
+      "mentioned_people": ["Cyndi Lauper"],
+      "hook": "Gli ha tagliato via l'ascesso e il pesce è sopravvissuto.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Hook: il pesce curato",
+          "summary": "Clip di apertura di 12 secondi sull'aneddoto del pesce.",
+          "description": "Hook di 12 secondi: Cyndi Lauper racconta l'intervento della madre sul pesce."
+        }
+      ]
+    },
+    {
+      "start": "00:02:25",
+      "end": "00:03:05",
+      "name": "Captain Lou Albano è 'il mio consulente personale'",
+      "category": "celebrity_interview",
+      "source_title": "Cyndi Interview with David Letterman - 1984",
+      "source_channel": "Late Night with David Letterman",
+      "summary": "Nel video il padre di Cyndi è interpretato da Captain Lou Albano, manager di wrestling famoso per i Wild Samoans e il Magnifico Muraco. Cyndi lo presenta come 'il mio consulente personale', nonostante Letterman provi a spiegare al pubblico chi sia.",
+      "topics": [
+        "Cyndi Lauper Captain Lou Albano consulente personale video padre wrestling manager Wild Samoans Magnifico Muraco WWF 1984 collaborazione Girls Just Want to Have Fun Letterman"
+      ],
+      "tags": ["Cyndi Lauper", "Letterman", "celebrity_interview", "1984", "Lou Albano"],
+      "speakers": ["Cyndi Lauper", "David Letterman"],
+      "mentioned_people": ["Cyndi Lauper", "Lou Albano"],
+      "hook": "Nei panni di mio padre nel video c'è Captain Lou Albano: è il mio consulente personale.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Cyndi Lauper e Captain Lou Albano",
+          "summary": "Cyndi Lauper spiega chi è il wrestler che interpreta suo padre nel video.",
+          "description": "Intervista 1984: Cyndi Lauper racconta che nel video di Girls Just Want to Have Fun suo padre è interpretato dal manager di wrestling Captain Lou Albano, noto per i Wild Samoans e il Magnifico Muraco, e lo definisce con ironia il proprio consulente personale."
+        }
+      ]
+    },
+    {
+      "start": "00:02:29",
+      "end": "00:02:42",
+      "name": "Hook: 'Captain Lou è il mio consulente personale'",
+      "category": "celebrity_interview",
+      "source_title": "Cyndi Interview with David Letterman - 1984",
+      "source_channel": "Late Night with David Letterman",
+      "summary": "Apertura secca (13s): Lou Albano e Cyndi Lauper.",
+      "topics": [
+        "Cyndi Lauper hook apertura short Captain Lou Albano consulente personale video padre 1984 clip breve opening-short"
+      ],
+      "tags": ["Cyndi Lauper", "Letterman", "celebrity_interview", "hook"],
+      "speakers": ["Cyndi Lauper"],
+      "mentioned_people": ["Cyndi Lauper", "Lou Albano"],
+      "hook": "Captain Lou Albano è il mio consulente personale.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Hook: Captain Lou Albano",
+          "summary": "Clip di apertura di 13 secondi sul consulente personale di Cyndi Lauper.",
+          "description": "Hook di 13 secondi: Cyndi Lauper presenta Captain Lou Albano."
+        }
+      ]
+    },
+    {
+      "start": "00:02:48",
+      "end": "00:03:41",
+      "name": "Il principio P.E.G.: Politeness, Etiquette and Grooming",
+      "category": "celebrity_interview",
+      "source_title": "Cyndi Interview with David Letterman - 1984",
+      "source_channel": "Late Night with David Letterman",
+      "summary": "Cyndi spiega il principio inventato da Captain Lou Albano: PEG, cioè Politeness, Etiquette and Grooming. Secondo lei guardando i Wild Samoans si capisce subito che lo hanno interiorizzato, e sostiene che i wrestler siano in realtà molto più curati di quanto si pensi.",
+      "topics": [
+        "Cyndi Lauper PEG principle Politeness Etiquette Grooming Captain Lou Albano wrestler Wild Samoans cura di sé ordine immagine 1984 Letterman aneddoto"
+      ],
+      "tags": ["Cyndi Lauper", "Letterman", "celebrity_interview", "1984", "PEG"],
+      "speakers": ["Cyndi Lauper", "David Letterman"],
+      "mentioned_people": ["Cyndi Lauper", "Lou Albano"],
+      "hook": "PEG significa Politeness, Etiquette and Grooming: è il principio che Captain Lou ha inventato, e guardando i Samoans si capisce che l'hanno capito.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Cyndi Lauper e il principio PEG",
+          "summary": "Cyndi Lauper spiega il codice di comportamento inventato da Captain Lou Albano.",
+          "description": "Intervista 1984: Cyndi Lauper illustra il principio PEG di Captain Lou Albano, acronimo di Politeness, Etiquette and Grooming, sostenendo che i Wild Samoans lo abbiano pienamente interiorizzato e che i wrestler siano molto più in ordine di quanto il pubblico immagini."
+        }
+      ]
+    },
+    {
+      "start": "00:02:54",
+      "end": "00:03:08",
+      "name": "Hook: 'PEG: Politeness, Etiquette and Grooming'",
+      "category": "celebrity_interview",
+      "source_title": "Cyndi Interview with David Letterman - 1984",
+      "source_channel": "Late Night with David Letterman",
+      "summary": "Apertura secca (14s): il principio di Captain Lou.",
+      "topics": [
+        "Cyndi Lauper hook apertura short PEG politeness etiquette grooming Captain Lou Albano 1984 clip breve opening-short"
+      ],
+      "tags": ["Cyndi Lauper", "Letterman", "celebrity_interview", "hook"],
+      "speakers": ["Cyndi Lauper"],
+      "mentioned_people": ["Cyndi Lauper", "Lou Albano"],
+      "hook": "PEG sta per Politeness, Etiquette and Grooming.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Hook: il principio PEG",
+          "summary": "Clip di apertura di 14 secondi sul principio di Captain Lou Albano.",
+          "description": "Hook di 14 secondi: Cyndi Lauper spiega cosa significa PEG."
+        }
+      ]
+    },
+    {
+      "start": "00:04:28",
+      "end": "00:05:24",
+      "name": "L'incontro su un aereo da Puerto Rico con i Blue Angel",
+      "category": "celebrity_interview",
+      "source_title": "Cyndi Interview with David Letterman - 1984",
+      "source_channel": "Late Night with David Letterman",
+      "summary": "Cyndi racconta di aver conosciuto Captain Lou Albano su un aereo di ritorno da Puerto Rico, dove suonava con i Blue Angel: lui viaggiava per il wrestling. Gli chiese un autografo, una foto e se fosse disponibile a fare uno dei suoi spot comici; l'occasione arrivò solo dopo lo scioglimento della band.",
+      "topics": [
+        "Cyndi Lauper incontro Captain Lou Albano aereo Puerto Rico Blue Angel band rock new wave autografo foto spot commerciali carriera prima del successo 1984"
+      ],
+      "tags": ["Cyndi Lauper", "Letterman", "celebrity_interview", "1984", "Blue Angel"],
+      "speakers": ["Cyndi Lauper", "David Letterman"],
+      "mentioned_people": ["Cyndi Lauper", "Lou Albano"],
+      "hook": "L'ho conosciuto su un aereo di ritorno da Puerto Rico: stavo suonando lì con i Blue Angel e lui viaggiava per il wrestling.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Cyndi Lauper: l'incontro con Lou Albano",
+          "summary": "Cyndi Lauper racconta dove ha conosciuto il wrestler che sarebbe diventato la sua spalla comica.",
+          "description": "Intervista 1984: Cyndi Lauper racconta di aver incontrato Captain Lou Albano su un volo di ritorno da Puerto Rico, dove si esibiva con i Blue Angel, e di avergli chiesto autografo, foto e disponibilità per uno dei suoi spot comici, concretizzatasi solo dopo lo scioglimento della band."
+        }
+      ]
+    },
+    {
+      "start": "00:04:36",
+      "end": "00:04:49",
+      "name": "Hook: 'ci siamo conosciuti su un aereo'",
+      "category": "celebrity_interview",
+      "source_title": "Cyndi Interview with David Letterman - 1984",
+      "source_channel": "Late Night with David Letterman",
+      "summary": "Apertura secca (13s): l'incontro tra Cyndi e Lou Albano.",
+      "topics": [
+        "Cyndi Lauper hook apertura short aereo Puerto Rico Blue Angel incontro Captain Lou Albano 1984 clip breve opening-short"
+      ],
+      "tags": ["Cyndi Lauper", "Letterman", "celebrity_interview", "hook"],
+      "speakers": ["Cyndi Lauper"],
+      "mentioned_people": ["Cyndi Lauper", "Lou Albano"],
+      "hook": "Ci siamo conosciuti su un aereo di ritorno da Puerto Rico.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Hook: l'incontro sull'aereo",
+          "summary": "Clip di apertura di 13 secondi su come Cyndi ha conosciuto Lou Albano.",
+          "description": "Hook di 13 secondi: Cyndi Lauper racconta l'incontro con il wrestler."
+        }
+      ]
+    },
+    {
+      "start": "00:06:09",
+      "end": "00:06:46",
+      "name": "Da Lou Albano a Pee-wee Herman",
+      "category": "celebrity_interview",
+      "source_title": "Cyndi Interview with David Letterman - 1984",
+      "source_channel": "Late Night with David Letterman",
+      "summary": "Letterman mostra un filmato in cui Captain Lou Albano presenta Cyndi a Pee-wee Herman, su un campo da minigolf: è Lou, racconta Cyndi, ad averle fatto conoscere il personaggio, tra elastici, barba e orecchini.",
+      "topics": [
+        "Cyndi Lauper Captain Lou Albano Pee-wee Herman presentazione minigolf elastici barba orecchini video comico 1984 Letterman cultura pop anni 80"
+      ],
+      "tags": ["Cyndi Lauper", "Letterman", "celebrity_interview", "1984", "Pee-wee Herman"],
+      "speakers": ["Cyndi Lauper", "David Letterman"],
+      "mentioned_people": ["Cyndi Lauper", "Lou Albano", "Pee-wee Herman"],
+      "hook": "È stato Lou Albano a farmi conoscere Pee-wee Herman: gli elastici, la barba, gli orecchini.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Cyndi Lauper e Pee-wee Herman",
+          "summary": "Cyndi Lauper racconta come Captain Lou Albano le abbia presentato Pee-wee Herman.",
+          "description": "Intervista 1984: guardando un filmato al minigolf, Cyndi Lauper conferma che fu Captain Lou Albano a presentarle Pee-wee Herman, descrivendo la scena con gli elastici, la barba e gli orecchini del personaggio."
+        }
+      ]
+    },
+    {
+      "start": "00:06:13",
+      "end": "00:06:26",
+      "name": "Hook: 'Lou mi ha presentato Pee-wee Herman'",
+      "category": "celebrity_interview",
+      "source_title": "Cyndi Interview with David Letterman - 1984",
+      "source_channel": "Late Night with David Letterman",
+      "summary": "Apertura secca (13s): la presentazione di Pee-wee Herman.",
+      "topics": [
+        "Cyndi Lauper hook apertura short Lou Albano Pee-wee Herman presentazione minigolf 1984 clip breve opening-short"
+      ],
+      "tags": ["Cyndi Lauper", "Letterman", "celebrity_interview", "hook"],
+      "speakers": ["Cyndi Lauper"],
+      "mentioned_people": ["Pee-wee Herman", "Lou Albano"],
+      "hook": "Lou Albano mi ha presentato Pee-wee Herman.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Hook: Pee-wee Herman",
+          "summary": "Clip di apertura di 13 secondi su come Cyndi Lauper ha conosciuto Pee-wee Herman.",
+          "description": "Hook di 13 secondi: Cyndi Lauper racconta la presentazione avvenuta grazie a Lou Albano."
+        }
+      ]
+    },
+    {
+      "start": "00:06:46",
+      "end": "00:07:35",
+      "name": "'Bisogna saper mangiare': fair play ed etichetta nel music business",
+      "category": "celebrity_interview",
+      "source_title": "Cyndi Interview with David Letterman - 1984",
+      "source_channel": "Late Night with David Letterman",
+      "summary": "Cyndi spiega che nel suo ambiente il fair play è la regola e che i rocker sono molto educati; poi indica l'etichetta a tavola come parte del mestiere, visto che buona parte del business si discute a pranzo o a cena, tra portaburro a destra e la necessità di capire quale sia il proprio piatto.",
+      "topics": [
+        "Cyndi Lauper etichetta a tavola music business cena pranzo fair play politeness rock and roll educazione portaburro buone maniere consigli Captain Lou 1984 Letterman"
+      ],
+      "tags": ["Cyndi Lauper", "Letterman", "celebrity_interview", "1984", "etichetta"],
+      "speakers": ["Cyndi Lauper", "David Letterman"],
+      "mentioned_people": ["Cyndi Lauper", "Lou Albano"],
+      "hook": "Dobbiamo saper mangiare bene, perché molto business si fa a pranzo o a cena: se sbagli a tavola se ne accorgono.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Cyndi Lauper: etichetta e fair play",
+          "summary": "Cyndi Lauper spiega perché l'educazione a tavola fa parte del mestiere della musicista.",
+          "description": "Intervista 1984: Cyndi Lauper racconta che nel music business conta il fair play e che i rock and roller sono molto educati, sottolineando l'importanza dell'etichetta a tavola visto che gran parte degli affari si discute durante pranzi e cene."
+        }
+      ]
+    },
+    {
+      "start": "00:07:17",
+      "end": "00:07:31",
+      "name": "Hook: 'molto business si fa a cena'",
+      "category": "celebrity_interview",
+      "source_title": "Cyndi Interview with David Letterman - 1984",
+      "source_channel": "Late Night with David Letterman",
+      "summary": "Apertura secca (14s): l'etichetta a tavola secondo Cyndi.",
+      "topics": [
+        "Cyndi Lauper hook apertura short business a cena pranzo etichetta a tavola se sbagli se ne accorgono 1984 clip breve opening-short"
+      ],
+      "tags": ["Cyndi Lauper", "Letterman", "celebrity_interview", "hook"],
+      "speakers": ["Cyndi Lauper"],
+      "mentioned_people": ["Cyndi Lauper"],
+      "hook": "Molto business si fa a pranzo o a cena: se sbagli a tavola, se ne accorgono.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Hook: l'etichetta secondo Cyndi",
+          "summary": "Clip di apertura di 14 secondi sull'etichetta nel music business.",
+          "description": "Hook di 14 secondi: Cyndi Lauper spiega perché a tavola si giocano anche gli affari."
+        }
+      ]
+    },
+    {
+      "start": "00:08:29",
+      "end": "00:09:20",
+      "name": "Il lavoro da geisha: 'lì volevo davvero nascondermi'",
+      "category": "celebrity_interview",
+      "source_title": "Cyndi Interview with David Letterman - 1984",
+      "source_channel": "Late Night with David Letterman",
+      "summary": "Cyndi conferma di aver lavorato come geisha tra la fine dei Blue Angel e l'inizio della carriera solista, nel periodo in cui una band nuova si trova sempre cattivi affari attorno e lei voleva nascondersi. Racconta che le permettevano di essere se stessa e che la comunità giapponese era molto chiusa per la barriera linguistica.",
+      "topics": [
+        "Cyndi Lauper lavoro geisha anni 70 tra Blue Angel e carriera solista volevo nascondermi cattivi affari nelle band manager David Wolff New York comunita giapponese barriera linguistica 1984 Letterman"
+      ],
+      "tags": ["Cyndi Lauper", "Letterman", "celebrity_interview", "1984", "geisha"],
+      "speakers": ["Cyndi Lauper", "David Letterman"],
+      "mentioned_people": ["Cyndi Lauper"],
+      "hook": "È stato lì che volevo davvero nascondermi: era tra la vecchia e la nuova band, quando una band appena nata ha sempre cattivi affari attorno.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Cyndi Lauper e il lavoro da geisha",
+          "summary": "Cyndi Lauper racconta il periodo in cui lavorò come geisha prima del successo solista.",
+          "description": "Intervista 1984: Cyndi Lauper conferma di aver lavorato come geisha nel periodo tra lo scioglimento dei Blue Angel e l'inizio della carriera solista, quando voleva nascondersi dalle difficoltà del mondo musicale, raccontando che le permettevano di restare se stessa e che la comunità giapponese di New York era molto chiusa a causa della barriera linguistica."
+        }
+      ]
+    },
+    {
+      "start": "00:08:47",
+      "end": "00:09:00",
+      "name": "Hook: 'lì volevo nascondermi'",
+      "category": "celebrity_interview",
+      "source_title": "Cyndi Interview with David Letterman - 1984",
+      "source_channel": "Late Night with David Letterman",
+      "summary": "Apertura secca (13s): il periodo più duro di Cyndi Lauper.",
+      "topics": [
+        "Cyndi Lauper hook apertura short volevo nascondermi geisha band cattivi affari periodo difficile 1984 clip breve opening-short"
+      ],
+      "tags": ["Cyndi Lauper", "Letterman", "celebrity_interview", "hook"],
+      "speakers": ["Cyndi Lauper"],
+      "mentioned_people": ["Cyndi Lauper"],
+      "hook": "Lì volevo davvero nascondermi: una band nuova ha sempre cattivi affari attorno.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Hook: il periodo difficile",
+          "summary": "Clip di apertura di 13 secondi sul periodo precedente al successo di Cyndi Lauper.",
+          "description": "Hook di 13 secondi: Cyndi Lauper racconta quando voleva sparire dal mondo della musica."
+        }
+      ]
+    }
+  ]
+}

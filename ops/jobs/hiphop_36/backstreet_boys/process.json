@@ -1,0 +1,255 @@
+{
+  "_comment": "POST /api/clips/process payload (ExtractRequest, drift source: internal/capabilities/youtube/dto/types.go). Source: Backstreet Boys dismantling online myths (Ryan Gosling, stage name Tony Denetti, *NSYNC rivalry) on a US late-night show, DNA World Tour era — https://www.youtube.com/watch?v=LlbA6lG-Yms (317s). Destination: the Clips/HipHop child folder 1Q9JyIC4anqf_Oa6stZQ7AdX2gf84yKbe ('Backstreet Boys'), create_subfolder=false. Windows picked BY HAND from the timed transcript printed by ops/jobs/hiphop_36/tx.py; no LLM selection. 4 main clips 41-58s (canonical 4-60s SegmentPolicy gate) + 4 hook openers <=14s carved inside the matching main window. Deterministic ids yt_<videoID>_<startSec>_<endSec>_v1 -> re-submit is an UPSERT. topics/summary/hook are keyword-dense on purpose: composeYouTubeClipSearchText feeds search_text -> 768d pgvector embedding, texts[] lands in asset_text_tracks in the same atomic commit.",
+  "url": "https://www.youtube.com/watch?v=LlbA6lG-Yms",
+  "strategy": "verify",
+  "concurrency": 3,
+  "force_keyframes": true,
+  "keep_audio": true,
+  "write_summary": true,
+  "destination": {
+    "folder_id": "1Q9JyIC4anqf_Oa6stZQ7AdX2gf84yKbe",
+    "create_subfolder": false
+  },
+  "segments": [
+    {
+      "start": "00:00:13",
+      "end": "00:01:07",
+      "name": "Ryan Gosling quasi un Backstreet Boy: 'i New Kids l'hanno già fatto'",
+      "category": "celebrity_interview",
+      "source_title": "Backstreet Boys Clear Up Ryan Gosling and *NSYNC Rivalry Rumors",
+      "source_channel": "US late-night show",
+      "summary": "I Backstreet Boys confermano a metà il mito: vivevano nello stesso complesso di appartamenti di Ryan Gosling ai tempi del Mickey Mouse Club, con Justin, Christina e Britney, e giocavano a basket quasi ogni giorno. Gli dicevano quanto sarebbe stato grande il gruppo e lui rispondeva che i New Kids l'avevano già fatto e non avrebbe funzionato.",
+      "topics": [
+        "Backstreet Boys Ryan Gosling quasi membro mito Mickey Mouse Club Justin Timberlake Christina Aguilera Britney Spears appartamenti basket New Kids on the Block scetticismo carriera attore 2022 leggenda"
+      ],
+      "tags": ["Backstreet Boys", "celebrity_interview", "2022", "Ryan Gosling"],
+      "speakers": ["Brian Littrell", "Howie Dorough", "Nick Carter", "AJ McLean", "Kevin Richardson"],
+      "mentioned_people": ["Ryan Gosling", "Justin Timberlake", "Christina Aguilera", "Britney Spears"],
+      "hook": "Gli dicevo quanto sarebbe stato grande e lui: 'i New Kids l'hanno già fatto, non funzionerà mai, tira il pallone'.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Backstreet Boys: il mito Ryan Gosling",
+          "summary": "I Backstreet Boys raccontano perché Ryan Gosling fu vicinissimo al gruppo e perché rifiutò l'idea.",
+          "description": "Intervista promozionale del DNA World Tour: i Backstreet Boys spiegano che Ryan Gosling viveva nello stesso complesso di appartamenti ai tempi del Mickey Mouse Club e che giocavano a basket quasi ogni giorno; quando gli dicevano quanto sarebbe stato grande il gruppo, lui rispondeva che i New Kids on the Block l'avevano già fatto e non avrebbe funzionato."
+        }
+      ]
+    },
+    {
+      "start": "00:00:34",
+      "end": "00:00:47",
+      "name": "Hook: 'i New Kids l'hanno già fatto, tira il pallone'",
+      "category": "celebrity_interview",
+      "source_title": "Backstreet Boys Clear Up Ryan Gosling and *NSYNC Rivalry Rumors",
+      "source_channel": "US late-night show",
+      "summary": "Apertura secca (13s): lo scetticismo di Ryan Gosling sui Backstreet Boys.",
+      "topics": [
+        "Backstreet Boys hook apertura short Ryan Gosling New Kids l'hanno già fatto tira il pallone scetticismo 2022 clip breve opening-short"
+      ],
+      "tags": ["Backstreet Boys", "celebrity_interview", "hook", "2022"],
+      "speakers": ["Brian Littrell"],
+      "mentioned_people": ["Ryan Gosling"],
+      "hook": "Gli dicevo quanto sarebbe stato grande e lui: 'i New Kids l'hanno già fatto, non funzionerà mai'.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Hook: lo scetticismo di Ryan Gosling",
+          "summary": "Clip di apertura di 13 secondi sulla reazione di Ryan Gosling all'idea del gruppo.",
+          "description": "Hook di 13 secondi: i Backstreet Boys raccontano cosa rispondeva Ryan Gosling."
+        }
+      ]
+    },
+    {
+      "start": "00:01:20",
+      "end": "00:02:18",
+      "name": "Tony Denetti: lo pseudonimo che quasi costò il gruppo a Howie",
+      "category": "celebrity_interview",
+      "source_title": "Backstreet Boys Clear Up Ryan Gosling and *NSYNC Rivalry Rumors",
+      "source_channel": "US late-night show",
+      "summary": "Howie conferma il mito dello pseudonimo: a 14 anni un manager pensava che 'Howard Dorough' non fosse un nome abbastanza cool e lo trasformò in un italiano, Tony Denetti, cambiando anche l'origine portoricano-irlandese. Il nome rischiò di escluderlo dal gruppo, perché il suo provino fu apprezzato ma gli avevano perso la foto e non c'era modo di rintracciarlo.",
+      "topics": [
+        "Backstreet Boys Howie Dorough pseudonimo Tony Denetti stage name mito manager nome non cool italiano portoricano irlandese 14 anni provino foto persa audizioni chiamata ritorno gruppo 2022 Dorough"
+      ],
+      "tags": ["Backstreet Boys", "celebrity_interview", "2022", "Howie Dorough"],
+      "speakers": ["Howie Dorough", "Brian Littrell", "AJ McLean"],
+      "mentioned_people": ["Howie Dorough", "AJ McLean"],
+      "hook": "A quattordici anni il mio manager pensava che Howard Dorough non fosse abbastanza cool, così mi trasformò in un italiano: Tony Denetti.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Backstreet Boys: lo pseudonimo Tony Denetti",
+          "summary": "Howie Dorough racconta come uno pseudonimo impostogli da un manager rischiò di escluderlo dalla band.",
+          "description": "Intervista: Howie Dorough conferma di aver avuto uno pseudonimo, Tony Denetti, imposto a quattordici anni da un manager convinto che Howard Dorough non fosse un nome abbastanza cool e che lo trasformò in italiano; il nome rischiò di costargli l'ingresso nel gruppo perché, dopo il provino, il suo materiale si perse senza recapiti per rintracciarlo."
+        }
+      ]
+    },
+    {
+      "start": "00:01:30",
+      "end": "00:01:44",
+      "name": "Hook: 'Howard Dorough non è un nome cool'",
+      "category": "celebrity_interview",
+      "source_title": "Backstreet Boys Clear Up Ryan Gosling and *NSYNC Rivalry Rumors",
+      "source_channel": "US late-night show",
+      "summary": "Apertura secca (14s): la nascita di Tony Denetti.",
+      "topics": [
+        "Backstreet Boys hook apertura short Howard Dorough Tony Denetti nome cool manager sedici anni 2022 clip breve opening-short"
+      ],
+      "tags": ["Backstreet Boys", "celebrity_interview", "hook", "2022"],
+      "speakers": ["Howie Dorough"],
+      "mentioned_people": ["Howie Dorough"],
+      "hook": "Il mio manager pensava che Howard Dorough non fosse un nome cool, così mi ha trasformato in un italiano.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Hook: Tony Denetti",
+          "summary": "Clip di apertura di 14 secondi sullo pseudonimo di Howie Dorough.",
+          "description": "Hook di 14 secondi: Howie Dorough racconta da dove arriva il nome Tony Denetti."
+        }
+      ]
+    },
+    {
+      "start": "00:02:24",
+      "end": "00:03:20",
+      "name": "Backstreet Boys contro *NSYNC: 'è peggio che mai' (sto scherzando)",
+      "category": "celebrity_interview",
+      "source_title": "Backstreet Boys Clear Up Ryan Gosling and *NSYNC Rivalry Rumors",
+      "source_channel": "US late-night show",
+      "summary": "Alla domanda sulla rivalità con *NSYNC i Backstreet Boys scherzano: 'è peggio che mai, non possiamo stare nella stessa stanza'. Poi la verità: si amano, e l'unico momento di vera competizione fu tra la fine dei Novanta e i primi Duemila, quando entrambi i gruppi erano al massimo.",
+      "topics": [
+        "Backstreet Boys NSYNC rivalita mito boy band anni 90 2000 scherzo peggio che mai li amiamo Justin Timberlake amicizia competizione pop americano 2022 intervista"
+      ],
+      "tags": ["Backstreet Boys", "celebrity_interview", "2022", "*NSYNC"],
+      "speakers": ["AJ McLean", "Nick Carter", "Brian Littrell"],
+      "mentioned_people": ["*NSYNC", "Justin Timberlake"],
+      "hook": "È peggio che mai: non possiamo nemmeno stare nella stessa stanza con loro. Sto scherzando: li amiamo, sono ragazzi fantastici.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Backstreet Boys e la rivalità con *NSYNC",
+          "summary": "I Backstreet Boys smontano il mito della rivalità con *NSYNC.",
+          "description": "Intervista: alla domanda sulla presunta rivalità con *NSYNC i Backstreet Boys rispondono scherzando che è 'peggio che mai' e che non possono stare nella stessa stanza, per poi chiarire che si trattano da amici e che l'unico periodo di vera competizione fu tra la fine degli anni Novanta e i primi Duemila."
+        }
+      ]
+    },
+    {
+      "start": "00:02:37",
+      "end": "00:02:50",
+      "name": "Hook: 'è peggio che mai' (scherzo)",
+      "category": "celebrity_interview",
+      "source_title": "Backstreet Boys Clear Up Ryan Gosling and *NSYNC Rivalry Rumors",
+      "source_channel": "US late-night show",
+      "summary": "Apertura secca (13s): la finta risposta dei BSB sulla rivalità.",
+      "topics": [
+        "Backstreet Boys hook apertura short rivalita NSYNC peggio che mai scherzo li amiamo 2022 clip breve opening-short boy band anni 90 Justin Timberlake amicizia"
+      ],
+      "tags": ["Backstreet Boys", "celebrity_interview", "hook", "2022"],
+      "speakers": ["AJ McLean"],
+      "mentioned_people": ["*NSYNC"],
+      "hook": "È peggio che mai: non possiamo nemmeno stare nella stessa stanza con loro. Sto scherzando.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Hook: la rivalità con *NSYNC",
+          "summary": "Clip di apertura di 13 secondi sulla risposta ironica dei Backstreet Boys.",
+          "description": "Hook di 13 secondi: i Backstreet Boys scherzano sulla presunta rivalità con *NSYNC."
+        }
+      ]
+    },
+    {
+      "start": "00:03:01",
+      "end": "00:03:50",
+      "name": "Il Super Bowl rifiutato: 'pensavamo fosse più prestigioso'",
+      "category": "celebrity_interview",
+      "source_title": "Backstreet Boys Clear Up Ryan Gosling and *NSYNC Rivalry Rumors",
+      "source_channel": "US late-night show",
+      "summary": "Il ricordo più concreto della competizione: per il Super Bowl avevano la scelta tra halftime show e inno nazionale e scelsero l'inno convinti che fosse più prestigioso, lasciando l'halftime a Britney e *NSYNC. Guardando indietro lo considerano quasi un rimpianto, tanto da rilanciare l'idea di un halftime tutto loro.",
+      "topics": [
+        "Backstreet Boys Super Bowl halftime show inno nazionale scelta prestigio Britney Spears NSYNC Black and Blue tour 2001 rimpianto bucket list esibizione 2022 intervista"
+      ],
+      "tags": ["Backstreet Boys", "celebrity_interview", "2022", "Super Bowl"],
+      "speakers": ["AJ McLean", "Nick Carter", "Kevin Richardson"],
+      "mentioned_people": ["Britney Spears", "*NSYNC"],
+      "hook": "Pensavamo che l'inno nazionale fosse più prestigioso: guardando indietro, è quasi un rimpianto non aver fatto il Super Bowl halftime.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Backstreet Boys: il Super Bowl che non fecero",
+          "summary": "I Backstreet Boys raccontano la scelta tra inno nazionale e halftime show del Super Bowl.",
+          "description": "Intervista: i Backstreet Boys ricordano di aver potuto scegliere tra l'halftime show e l'inno nazionale del Super Bowl e di aver optato per l'inno convinti fosse più prestigioso, lasciando il halftime a Britney Spears e *NSYNC; col senno di poi lo considerano un piccolo rimpianto da lista dei desideri."
+        }
+      ]
+    },
+    {
+      "start": "00:03:17",
+      "end": "00:03:30",
+      "name": "Hook: 'pensavamo fosse più prestigioso'",
+      "category": "celebrity_interview",
+      "source_title": "Backstreet Boys Clear Up Ryan Gosling and *NSYNC Rivalry Rumors",
+      "source_channel": "US late-night show",
+      "summary": "Apertura secca (13s): la scelta del Super Bowl.",
+      "topics": [
+        "Backstreet Boys hook apertura short Super Bowl inno nazionale piu prestigioso rimpianto halftime 2022 clip breve opening-short"
+      ],
+      "tags": ["Backstreet Boys", "celebrity_interview", "hook", "2022"],
+      "speakers": ["Nick Carter"],
+      "mentioned_people": ["*NSYNC"],
+      "hook": "Pensavamo che fare l'inno nazionale fosse più prestigioso che fare il halftime.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Hook: la scelta del Super Bowl",
+          "summary": "Clip di apertura di 13 secondi sulla decisione dei Backstreet Boys.",
+          "description": "Hook di 13 secondi: i Backstreet Boys spiegano perché scelsero l'inno nazionale."
+        }
+      ]
+    },
+    {
+      "start": "00:03:59",
+      "end": "00:04:40",
+      "name": "Denim, DNA World Tour: 'uno spettacolo che copre 26 anni'",
+      "category": "celebrity_interview",
+      "source_title": "Backstreet Boys Clear Up Ryan Gosling and *NSYNC Rivalry Rumors",
+      "source_channel": "US late-night show",
+      "summary": "I Backstreet Boys descrivono la seconda leg del DNA World Tour: per loro è un'occasione per girare di nuovo il mondo, con uno show da quasi due ore e 32 canzoni in scaletta che ripercorre ventisei anni di carriera, tra grandi classici e brani del disco DNA.",
+      "topics": [
+        "Backstreet Boys DNA World Tour seconda leg America show due ore 32 canzoni scaletta 26 anni carriera Millennium tour arene anfiteatri visuals 2022 esibizione dal vivo"
+      ],
+      "tags": ["Backstreet Boys", "celebrity_interview", "2022", "DNA World Tour"],
+      "speakers": ["Nick Carter", "AJ McLean", "Brian Littrell"],
+      "mentioned_people": ["Backstreet Boys"],
+      "hook": "È quasi uno spettacolo di due ore, 32 canzoni in scaletta: un viaggio di ventisei anni più i brani del disco DNA.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Backstreet Boys: il DNA World Tour",
+          "summary": "I Backstreet Boys raccontano com'è strutturato lo show del loro ultimo tour.",
+          "description": "Intervista: i Backstreet Boys descrivono la seconda leg americana del DNA World Tour come un'opportunità per girare di nuovo il mondo, con uno spettacolo di quasi due ore e 32 canzoni in scaletta che ripercorre ventisei anni di carriera accanto ai brani dell'album DNA."
+        }
+      ]
+    },
+    {
+      "start": "00:04:26",
+      "end": "00:04:39",
+      "name": "Hook: 'quasi due ore, 32 canzoni'",
+      "category": "celebrity_interview",
+      "source_title": "Backstreet Boys Clear Up Ryan Gosling and *NSYNC Rivalry Rumors",
+      "source_channel": "US late-night show",
+      "summary": "Apertura secca (13s): i numeri dello show dei Backstreet Boys.",
+      "topics": [
+        "Backstreet Boys hook apertura short due ore 32 canzoni scaletta tour DNA 2022 clip breve opening-short Millennium show arene anfiteatri setlist"
+      ],
+      "tags": ["Backstreet Boys", "celebrity_interview", "hook", "2022"],
+      "speakers": ["Nick Carter"],
+      "mentioned_people": ["Backstreet Boys"],
+      "hook": "È quasi uno spettacolo di due ore, con 32 canzoni in scaletta.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Hook: i numeri dello show",
+          "summary": "Clip di apertura di 13 secondi sulla scaletta dei Backstreet Boys.",
+          "description": "Hook di 13 secondi: i Backstreet Boys elencano le dimensioni del loro spettacolo."
+        }
+      ]
+    }
+  ]
+}

@@ -81,11 +81,11 @@ var (
 		"fade_in", "slide_up", "slide_from_right",
 		"scale_in", "soft_scale_reveal", "precision_spring_up",
 	}
-	// Keep the complete certified catalog as the payload/profile validation
-	// vocabulary. Generated scripts use only restrained blur/opacity entries;
-	// slides, bounces, large scale changes and parallax remain explicit choices.
+	// Keep the complete certified catalog as both the payload/profile
+	// validation vocabulary and the generated phrase rotation. This gives long
+	// runs more than six distinct entrances before the sequence repeats.
 	phraseMotionCandidates = renderSafeTextMotions[:30]
-	generatedPhraseMotions = phraseMotionCandidates[:6]
+	generatedPhraseMotions = phraseMotionCandidates
 )
 
 // ImagePresetCandidates returns a copy of the render-safe generated-image
