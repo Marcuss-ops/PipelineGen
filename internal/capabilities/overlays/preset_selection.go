@@ -2,33 +2,10 @@ package overlays
 
 import "strings"
 
-// The installed REQUIRE_GPU_NATIVE lane now carries the modern Apple-clean
-// phrase look: a glow-free, shadow-legible text preset plus 30 text
-// animators that lower to the native MTSDF kernel.
-//
-// Historical rules (measured on chronon3d_cli vulkan + require_gpu_native):
-//  1. A text layer carrying style.glow cannot stay resident when the effect
-//     stack needs a CPU backing. apple_v2's canaryGlow() therefore blocks
-//     the lane. The new phrase preset phrase_apple_clean is glow-free
-//     (shadow + stroke only) so it stays resident; blur/tracking are
-//     supplied by the motion itself ("shadow glow finito pulito + blur
-//     moderno" without the unverified halo).
-//  2. Per-glyph animators are rejected unless they match the canonical GPU
-//     contract: a single animator, selector unit glyph/character/grapheme,
-//     shape square|smooth, order forward, combine replace, no randomize,
-//     no time-dependent offset, ease 0->100, amount 100, and properties
-//     limited to opacity/position/scale/tracking/blur. The legacy pool
-//     (kinetic_split_word, masked_upward_reveal, …) and apple_phrase_v2
-//     violated this (word/line units, ramp_up, unsupported props) and were
-//     rejected. The 30 phrase_apple_clean_v1 motions are curated to satisfy
-//     exactly that contract, so they lower per-glyph on the GPU instead of
-//     falling back to software.
-//
-// Every generated text item therefore carries an explicit MotionID from
-// renderSafeTextMotions (preset motion is bypassed; semantic_compile:
-// MotionID wins over PresetID), so no untracked animator is ever
-// transported.
-//
+// Generated text uses RenderingGen's canonical phrase_default visual style
+// and an independently selected phrase_apple_clean motion. The motion pool is
+// curated for the native MTSDF lane; PipelineGen transports catalog ids without
+// synthesizing visual properties.
 // Ids are owned by ChrononTemplate/catalog. PipelineGen only selects
 // deterministically and transports the opaque id.
 var (
