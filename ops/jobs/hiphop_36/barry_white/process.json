@@ -1,0 +1,351 @@
+{
+  "_comment": "POST /api/clips/process payload (ExtractRequest, drift source: internal/capabilities/youtube/dto/types.go). Source: Barry White on Late Night with Conan O'Brien, Ultimate Collection era — https://www.youtube.com/watch?v=AqAiKn9liIs (333s). Destination: the Clips/HipHop child folder 1PjhPMm8fzahbp7yVo0T4qXUeB8m4n7yZ ('Barry White'), create_subfolder=false. Windows picked BY HAND from the timed transcript printed by ops/jobs/hiphop_36/tx.py; no LLM selection. 7 main clips 9-47s (canonical 4-60s SegmentPolicy gate) + 7 hook openers 9-14s carved inside the matching main window. Deterministic ids yt_<videoID>_<startSec>_<endSec>_v1 -> re-submit is an UPSERT. topics/summary/hook are keyword-dense on purpose: composeYouTubeClipSearchText feeds search_text -> 768d pgvector embedding, texts[] lands in asset_text_tracks in the same atomic commit.",
+  "url": "https://www.youtube.com/watch?v=AqAiKn9liIs",
+  "strategy": "verify",
+  "concurrency": 3,
+  "force_keyframes": true,
+  "keep_audio": true,
+  "write_summary": true,
+  "destination": {
+    "folder_id": "1PjhPMm8fzahbp7yVo0T4qXUeB8m4n7yZ",
+    "create_subfolder": false
+  },
+  "segments": [
+    {
+      "start": "00:00:16",
+      "end": "00:00:41",
+      "name": "Dr Love, maestro dell'amore e 'king of disco'",
+      "category": "celebrity_interview",
+      "source_title": "Barry White on Late Night with Conan O'Brien",
+      "source_channel": "Late Night with Conan O'Brien",
+      "summary": "Conan ripercorre i soprannomi accumulati da Barry White in carriera: Dr Love, Mr Love, il maestro dell'amore, principe del pillow talk, ambasciatore del romanticismo e king of disco. Barry commenta che gli altri nomi sono migliori.",
+      "topics": [
+        "Barry White soprannomi Dr Love Mr Love maestro dell'amore prince of pillow talk ambasciatore del romanticismo king of disco voce profonda soul disco music icona romantica intervista Conan O'Brien"
+      ],
+      "tags": ["Barry White", "Conan O'Brien", "celebrity_interview"],
+      "speakers": ["Barry White", "Conan O'Brien"],
+      "mentioned_people": ["Barry White"],
+      "hook": "Dr Love, Mr Love, il maestro dell'amore, principe del pillow talk, ambasciatore del romanticismo: gli altri nomi sono migliori di king of disco.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Barry White e i suoi soprannomi",
+          "summary": "Barry White commenta i soprannomi con cui il pubblico lo ha ribattezzato negli anni.",
+          "description": "Intervista al Late Night con Conan O'Brien: Barry White ripercorre i soprannomi della sua carriera, da Dr Love al maestro dell'amore e principe del pillow talk fino a king of disco, che considera il meno adatto."
+        }
+      ]
+    },
+    {
+      "start": "00:00:21",
+      "end": "00:00:35",
+      "name": "Hook: 'Dr Love, maestro dell'amore'",
+      "category": "celebrity_interview",
+      "source_title": "Barry White on Late Night with Conan O'Brien",
+      "source_channel": "Late Night with Conan O'Brien",
+      "summary": "Apertura secca (14s): l'elenco dei soprannomi di Barry White.",
+      "topics": [
+        "Barry White hook apertura short Dr Love maestro dell'amore pillow talk king of disco soprannomi clip breve opening-short soul"
+      ],
+      "tags": ["Barry White", "Conan O'Brien", "celebrity_interview", "hook"],
+      "speakers": ["Conan O'Brien"],
+      "mentioned_people": ["Barry White"],
+      "hook": "Dr Love, Mr Love, il maestro dell'amore, principe del pillow talk, ambasciatore del romanticismo e king of disco.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Hook: i nomi di Barry White",
+          "summary": "Clip di apertura di 14 secondi con i soprannomi di Barry White.",
+          "description": "Hook di 14 secondi: l'elenco dei nomi con cui Barry White è conosciuto nel mondo."
+        }
+      ]
+    },
+    {
+      "start": "00:00:41",
+      "end": "00:01:26",
+      "name": "La voce che cambia a 14 anni: 'mi sentivo un fenomeno da baraccone'",
+      "category": "celebrity_interview",
+      "source_title": "Barry White on Late Night with Conan O'Brien",
+      "source_channel": "Late Night with Conan O'Brien",
+      "summary": "Barry racconta di non essere nato con quella voce: si è svegliato a 14 anni e, parlando con la madre, si è accorto di avere una voce nuova. Si è sentito un fenomeno da baraccone per circa un mese, perché tutti gli amici ne facevano un gran parlare, ma alle ragazze piaceva.",
+      "topics": [
+        "Barry White voce profonda cambiamento a 14 anni basso registro vocale imbarazzo fenomeno da baraccone amici reazioni ragazze timbro unico carriera soul"
+      ],
+      "tags": ["Barry White", "Conan O'Brien", "celebrity_interview", "voce"],
+      "speakers": ["Barry White", "Conan O'Brien"],
+      "mentioned_people": ["Barry White"],
+      "hook": "Mi sono svegliato una mattina a quattordici anni e la voce era già quella: mi sono sentito un fenomeno da baraccone per un mese.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Barry White: la voce che cambia a 14 anni",
+          "summary": "Barry White racconta la trasformazione improvvisa della propria voce e il disagio che ne seguì.",
+          "description": "Intervista: Barry White spiega che la sua voce da basso non era quella di nascita ma cambiò di colpo a quattordici anni; racconta di essersi sentito un fenomeno da baraccone per circa un mese, con gli amici che ne facevano un grande argomento di conversazione, mentre alle ragazze la voce piaceva."
+        }
+      ]
+    },
+    {
+      "start": "00:01:06",
+      "end": "00:01:20",
+      "name": "Hook: 'la voce è cambiata a 14 anni'",
+      "category": "celebrity_interview",
+      "source_title": "Barry White on Late Night with Conan O'Brien",
+      "source_channel": "Late Night with Conan O'Brien",
+      "summary": "Apertura secca (14s): l'origine della voce di Barry White.",
+      "topics": [
+        "Barry White hook apertura short voce cambiata quattordici anni basso registro timbro clip breve opening-short imbarazzo amici adolescente Detroit"
+      ],
+      "tags": ["Barry White", "Conan O'Brien", "celebrity_interview", "hook"],
+      "speakers": ["Barry White"],
+      "mentioned_people": ["Barry White"],
+      "hook": "Mi sono svegliato una mattina a quattordici anni e la voce era già quella.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Hook: la voce a 14 anni",
+          "summary": "Clip di apertura di 14 secondi su come è nata la voce di Barry White.",
+          "description": "Hook di 14 secondi: Barry White racconta il giorno in cui la sua voce è cambiata."
+        }
+      ]
+    },
+    {
+      "start": "00:02:01",
+      "end": "00:02:23",
+      "name": "'Tutto il tempo': la gente concepita con la sua musica",
+      "category": "celebrity_interview",
+      "source_title": "Barry White on Late Night with Conan O'Brien",
+      "source_channel": "Late Night with Conan O'Brien",
+      "summary": "Chiesto se incontri davvero persone che dicono di essere state concepite con la sua musica, Barry risponde che succede tutto il tempo: gli si avvicinano portando i figli e dicendo che sono nati grazie a lui e alla moglie/partner.",
+      "topics": [
+        "Barry White musica da fare l'amore canzoni romantiche gente concepita con la sua musica fan racconto tutto il tempo figli leggenda love theme romanticismo soul"
+      ],
+      "tags": ["Barry White", "Conan O'Brien", "celebrity_interview", "fan"],
+      "speakers": ["Barry White", "Conan O'Brien"],
+      "mentioned_people": ["Barry White"],
+      "hook": "Succede tutto il tempo: la gente viene da me e dice 'io sono qui grazie a te', portando i figli.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Barry White: 'le persone concepite con la mia musica'",
+          "summary": "Barry White conferma di incontrare continuamente fan concepiti al suono delle sue canzoni.",
+          "description": "Intervista: alla domanda se incontri davvero persone che affermano di essere state concepite mentre ascoltavano la sua musica, Barry White risponde che accade continuamente, con fan che gli presentano i figli nati all'ombra delle sue canzoni romantiche."
+        }
+      ]
+    },
+    {
+      "start": "00:02:11",
+      "end": "00:02:23",
+      "name": "Hook: 'io sono qui grazie a te'",
+      "category": "celebrity_interview",
+      "source_title": "Barry White on Late Night with Conan O'Brien",
+      "source_channel": "Late Night with Conan O'Brien",
+      "summary": "Apertura secca (12s): i fan concepite con la musica di Barry White.",
+      "topics": [
+        "Barry White hook apertura short fan concepiti musica gracias io sono qui grazie a te romanticismo clip breve opening-short"
+      ],
+      "tags": ["Barry White", "Conan O'Brien", "celebrity_interview", "hook"],
+      "speakers": ["Barry White"],
+      "mentioned_people": ["Barry White"],
+      "hook": "Succede tutto il tempo: la gente arriva e dice 'io sono qui grazie a te'.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Hook: i fan di Barry White",
+          "summary": "Clip di apertura di 12 secondi sui fan che si presentano a Barry White.",
+          "description": "Hook di 12 secondi: Barry White racconta come i fan gli raccontano di essere stati concepiti con la sua musica."
+        }
+      ]
+    },
+    {
+      "start": "00:02:33",
+      "end": "00:03:15",
+      "name": "'Non ascolto Barry White quando faccio l'amore': la musica mi spezza la concentrazione",
+      "category": "celebrity_interview",
+      "source_title": "Barry White on Late Night with Conan O'Brien",
+      "source_channel": "Late Night with Conan O'Brien",
+      "summary": "Alla domanda se lui ascolti Barry White mentre fa l'amore, la risposta è netta: no, non ha bisogno di musica e anzi la musica gli spezza la concentrazione. «La musica è la mia scusa», scherza, invertendo il cliché costruito su di lui.",
+      "topics": [
+        "Barry White musica da letto fare l'amore non ascolto la mia musica non serve la notte sill'ambientazione romanticismo cliché sex symbol concentrazione battuta ironia soul disco"
+      ],
+      "tags": ["Barry White", "Conan O'Brien", "celebrity_interview", "aneddoto"],
+      "speakers": ["Barry White", "Conan O'Brien"],
+      "mentioned_people": ["Barry White"],
+      "hook": "No, non ho bisogno di musica in quel momento: mi spezza la concentrazione. La musica è la mia scusa.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Barry White: 'la musica mi spezza la concentrazione'",
+          "summary": "Barry White ribalta il cliché delle sue canzoni da letto.",
+          "description": "Intervista: alla domanda se ascolti Barry White mentre fa l'amore, il cantante risponde di no, di non aver bisogno di musica e che questa gli spezza la concentrazione, chiudendo la battuta con un 'la musica è la mia scusa'."
+        }
+      ]
+    },
+    {
+      "start": "00:03:06",
+      "end": "00:03:15",
+      "name": "Hook: 'la musica mi spezza la concentrazione'",
+      "category": "celebrity_interview",
+      "source_title": "Barry White on Late Night with Conan O'Brien",
+      "source_channel": "Late Night with Conan O'Brien",
+      "summary": "Apertura secca (9s): la battuta di Barry White sulla sua musica.",
+      "topics": [
+        "Barry White hook apertura short musica concentrazione fare l'amore battuta ironia clip breve opening-short romanticismo cliché Barry White records"
+      ],
+      "tags": ["Barry White", "Conan O'Brien", "celebrity_interview", "hook"],
+      "speakers": ["Barry White"],
+      "mentioned_people": ["Barry White"],
+      "hook": "La musica mi spezza la concentrazione: è la mia scusa.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Hook: 'la musica è la mia scusa'",
+          "summary": "Clip di apertura di 9 secondi con la battuta di Barry White.",
+          "description": "Hook di 9 secondi: Barry White spiega perché non ascolta la propria musica."
+        }
+      ]
+    },
+    {
+      "start": "00:03:23",
+      "end": "00:03:46",
+      "name": "Nei concerti lanciano mutandine e chiavi di casa",
+      "category": "celebrity_interview",
+      "source_title": "Barry White on Late Night with Conan O'Brien",
+      "source_channel": "Late Night with Conan O'Brien",
+      "summary": "Barry descrive le reazioni del pubblico femminile dal vivo, diverse da paese a paese: lanciano mutandine e chiavi di casa o appartamento. Conan commenta che una chiave presa in fronte non deve essere piacevole, e Barry ne conviene.",
+      "topics": [
+        "Barry White concerti dal vivo fan donne lanciano mutandine chiavi di casa reazioni del pubblico tour mondiale spettacolo soul discoteca aneddoto Conan"
+      ],
+      "tags": ["Barry White", "Conan O'Brien", "celebrity_interview", "concerti"],
+      "speakers": ["Barry White", "Conan O'Brien"],
+      "mentioned_people": ["Barry White"],
+      "hook": "Le reazioni cambiano da paese a paese: lanciano mutandine e chiavi di casa — e una chiave in fronte potrebbe farti male.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Barry White: cosa lanciano i fan",
+          "summary": "Barry White racconta le reazioni del pubblico femminile durante i concerti.",
+          "description": "Intervista: Barry White descrive le reazioni delle fan dal vivo, più accese in certi paesi, con lancio di mutandine e chiavi di casa, scherzando con Conan sul rischio di prendere una chiave in fronte."
+        }
+      ]
+    },
+    {
+      "start": "00:03:34",
+      "end": "00:03:46",
+      "name": "Hook: 'lanciano chiavi di casa'",
+      "category": "celebrity_interview",
+      "source_title": "Barry White on Late Night with Conan O'Brien",
+      "source_channel": "Late Night with Conan O'Brien",
+      "summary": "Apertura secca (12s): cosa arriva sul palco di Barry White.",
+      "topics": [
+        "Barry White hook apertura short fan mutandine chiavi di casa lancio palco concerti clip breve opening-short reazioni del pubblico tour mondiale soul disco"
+      ],
+      "tags": ["Barry White", "Conan O'Brien", "celebrity_interview", "hook"],
+      "speakers": ["Barry White"],
+      "mentioned_people": ["Barry White"],
+      "hook": "Lanciano mutandine e chiavi di casa: una chiave in fronte potrebbe farti male.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Hook: il pubblico di Barry White",
+          "summary": "Clip di apertura di 12 secondi sulle reazioni delle fan di Barry White.",
+          "description": "Hook di 12 secondi: Barry White racconta cosa gli lanciano dal pubblico."
+        }
+      ]
+    },
+    {
+      "start": "00:03:46",
+      "end": "00:04:06",
+      "name": "L'immagine da mantenere: 'ti aspetti un letto a forma di cuore'",
+      "category": "celebrity_interview",
+      "source_title": "Barry White on Late Night with Conan O'Brien",
+      "source_channel": "Late Night with Conan O'Brien",
+      "summary": "Conan gli chiede se sia difficile vivere all'altezza dell'immagine di Barry White: chi entra a casa sua si aspetta un letto a forma di cuore e la love mobile. Barry non si sottrae al cliché e risponde che è tutto naturale per lui.",
+      "topics": [
+        "Barry White immagine pubblica cliché letto a forma di cuore love mobile aspettative del pubblico sex symbol romanticismo vivere all'altezza dell'immagine battuta Conan"
+      ],
+      "tags": ["Barry White", "Conan O'Brien", "celebrity_interview", "immagine"],
+      "speakers": ["Barry White", "Conan O'Brien"],
+      "mentioned_people": ["Barry White"],
+      "hook": "Chi entra a casa mia si aspetta un letto a forma di cuore e la love mobile.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Barry White: l'immagine da mantenere",
+          "summary": "Conan O'Brien mette alla prova Barry White sull'immagine romantica che lo precede.",
+          "description": "Intervista: Conan O'Brien chiede a Barry White se sia difficile vivere all'altezza dell'immagine pubblica, fatta di letti a forma di cuore e love mobile, e il cantante risponde con ironia che per lui è tutto naturale."
+        }
+      ]
+    },
+    {
+      "start": "00:03:51",
+      "end": "00:04:03",
+      "name": "Hook: 'un letto a forma di cuore'",
+      "category": "celebrity_interview",
+      "source_title": "Barry White on Late Night with Conan O'Brien",
+      "source_channel": "Late Night with Conan O'Brien",
+      "summary": "Apertura secca (12s): il cliché sull'immagine di Barry White.",
+      "topics": [
+        "Barry White hook apertura short letto a forma di cuore love mobile immagine romantica cliché clip breve opening-short casa del cantante aspettative del pubblico"
+      ],
+      "tags": ["Barry White", "Conan O'Brien", "celebrity_interview", "hook"],
+      "speakers": ["Conan O'Brien"],
+      "mentioned_people": ["Barry White"],
+      "hook": "Chi entra a casa sua si aspetta un letto a forma di cuore.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Hook: l'immagine di Barry White",
+          "summary": "Clip di apertura di 12 secondi sul cliché legato a Barry White.",
+          "description": "Hook di 12 secondi: Conan O'Brien descrive l'immagine che il pubblico associa a Barry White."
+        }
+      ]
+    },
+    {
+      "start": "00:04:12",
+      "end": "00:04:59",
+      "name": "'Sono sempre me stesso': gentilezza e la voce non basta",
+      "category": "celebrity_interview",
+      "source_title": "Barry White on Late Night with Conan O'Brien",
+      "source_channel": "Late Night with Conan O'Brien",
+      "summary": "Barry spiega di non avere alcuna difficoltà a sostenere la propria immagine: è sempre se stesso, entra in una stanza e parla, cercando di comportarsi da gentiluomo e di rispettare le signore. Sulla voce dice che è estremamente bassa, diversa da quella di tanti altri, ma che conta cosa ci fai: se avesse solo il timbro basso non funzionerebbe.",
+      "topics": [
+        "Barry White essere se stesso gentiluomo rispetto per le signore voce bassa timbro diverso conta cosa ci fai personalita carisma immagine autenticita intervista Conan"
+      ],
+      "tags": ["Barry White", "Conan O'Brien", "celebrity_interview", "voce"],
+      "speakers": ["Barry White", "Conan O'Brien"],
+      "mentioned_people": ["Barry White"],
+      "hook": "Non è per niente difficile: sono sempre me stesso e cerco di comportarmi da gentiluomo. La voce è bassa, ma conta cosa ci fai: col solo timbro basso non funzionerebbe.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Barry White: 'sono sempre me stesso'",
+          "summary": "Barry White spiega perché non gli pesa l'immagine pubblica e quanto conti l'uso della voce.",
+          "description": "Intervista: Barry White dice di non avere difficoltà a vivere all'altezza della propria immagine perché è sempre se stesso e cerca di comportarsi da gentiluomo rispettando le persone; sulla voce precisa che essere bassi non basta, perché quello che conta è cosa ci fai."
+        }
+      ]
+    },
+    {
+      "start": "00:04:29",
+      "end": "00:04:43",
+      "name": "Hook: 'sono sempre me stesso'",
+      "category": "celebrity_interview",
+      "source_title": "Barry White on Late Night with Conan O'Brien",
+      "source_channel": "Late Night with Conan O'Brien",
+      "summary": "Apertura secca (14s): l'autenticità di Barry White.",
+      "topics": [
+        "Barry White hook apertura short sono sempre me stesso gentiluomo rispetto autenticita immagine voce bassa clip breve opening-short"
+      ],
+      "tags": ["Barry White", "Conan O'Brien", "celebrity_interview", "hook"],
+      "speakers": ["Barry White"],
+      "mentioned_people": ["Barry White"],
+      "hook": "Sono sempre me stesso: cerco di comportarmi da gentiluomo e di rispettare le signore.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Hook: 'sono sempre me stesso'",
+          "summary": "Clip di apertura di 14 secondi sull'autenticità di Barry White.",
+          "description": "Hook di 14 secondi: Barry White spiega come vive la propria immagine pubblica."
+        }
+      ]
+    }
+  ]
+}

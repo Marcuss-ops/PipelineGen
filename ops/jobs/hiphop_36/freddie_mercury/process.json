@@ -1,0 +1,399 @@
+{
+  "_comment": "POST /api/clips/process payload (ExtractRequest, drift source: internal/capabilities/youtube/dto/types.go). Source: Freddie Mercury interviewed by Molly Meldrum on Countdown, 1977 (19 minutes, on the release of News of the World) — https://www.youtube.com/watch?v=Vf0uBcgwL-U (1122s, uploaded by 'Nyquest Limited'). Destination: the Clips/HipHop child folder 1XjmETXySwb3V6aRLvRUyVb5EKeh0YxFq ('Freddie Mercury'), create_subfolder=false. Windows picked BY HAND from the timed transcript printed by ops/jobs/hiphop_36/tx.py; no LLM selection, no LLM metadata. 8 main clips 40-59s (canonical 4-60s SegmentPolicy gate) + 8 hook openers <=15s carved inside the matching main window. Deterministic ids yt_<videoID>_<startSec>_<endSec>_v1 -> re-submit is an UPSERT. topics/summary/hook are keyword-dense on purpose: composeYouTubeClipSearchText feeds search_text -> 768d pgvector embedding, texts[] lands in asset_text_tracks in the same atomic commit.",
+  "url": "https://www.youtube.com/watch?v=Vf0uBcgwL-U",
+  "strategy": "verify",
+  "concurrency": 3,
+  "force_keyframes": true,
+  "keep_audio": true,
+  "write_summary": true,
+  "destination": {
+    "folder_id": "1XjmETXySwb3V6aRLvRUyVb5EKeh0YxFq",
+    "create_subfolder": false
+  },
+  "segments": [
+    {
+      "start": "00:02:52",
+      "end": "00:03:44",
+      "name": "Trident, la EMI e il primo album registrato in quattro settimane",
+      "category": "celebrity_interview",
+      "source_title": "Freddie Mercury interviewed by Molly Meldrum 1977",
+      "source_channel": "Countdown 1977",
+      "summary": "Freddie ricostruisce gli inizi con la produzione Trident e il contratto con la EMI, spiegando che il primo album fu registrato in circa quattro settimane proprio perché il materiale era già rodato dal vivo; il resto arrivò in studio, con i pezzi scritti durante le sessioni.",
+      "topics": [
+        "Freddie Mercury Queen Trident production company EMI primo album Queen I 1973 registrazione quattro settimane materiale suonato dal vivo esperienza studio Molly Meldrum Countdown Australia 1977 inizi carriera"
+      ],
+      "tags": ["Freddie Mercury", "Queen", "Countdown", "celebrity_interview", "1977"],
+      "speakers": ["Freddie Mercury", "Molly Meldrum"],
+      "mentioned_people": ["Freddie Mercury", "Molly Meldrum"],
+      "hook": "Il primo album lo registrammo in circa quattro settimane: era materiale che conoscevamo benissimo, lo suonavamo dal vivo già da prima.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Freddie Mercury: il primo album dei Queen in quattro settimane",
+          "summary": "Freddie Mercury racconta la genesi del primo album e il ruolo della produzione Trident e della EMI.",
+          "description": "Intervista di Molly Meldrum a Freddie Mercury nel 1977: il cantante ricorda che i Queen erano sostenuti dalla Trident, con cui arrivò il contratto EMI, e che il primo album fu inciso in circa quattro settimane perché il repertorio era già stato suonato dal vivo, mentre i brani successivi nacquero direttamente in studio."
+        }
+      ]
+    },
+    {
+      "start": "00:03:22",
+      "end": "00:03:35",
+      "name": "Hook: 'il primo album in quattro settimane'",
+      "category": "celebrity_interview",
+      "source_title": "Freddie Mercury interviewed by Molly Meldrum 1977",
+      "source_channel": "Countdown 1977",
+      "summary": "Apertura secca (13s): l'esordio discografico dei Queen secondo Freddie.",
+      "topics": [
+        "Freddie Mercury hook apertura short primo album quattro settimane Queen 1973 materiale suonato dal vivo studio EMI clip breve opening-short"
+      ],
+      "tags": ["Freddie Mercury", "Queen", "celebrity_interview", "hook", "1977"],
+      "speakers": ["Freddie Mercury"],
+      "mentioned_people": ["Freddie Mercury"],
+      "hook": "Facemmo il primo album molto in fretta: circa quattro settimane.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Hook: il primo album dei Queen",
+          "summary": "Clip di apertura di 13 secondi sui tempi di registrazione del primo album.",
+          "description": "Hook di 13 secondi: Freddie Mercury spiega perché il primo album dei Queen fu registrato in fretta."
+        }
+      ]
+    },
+    {
+      "start": "00:06:00",
+      "end": "00:06:39",
+      "name": "Il video di Bohemian Rhapsody girato in quattro ore",
+      "category": "celebrity_interview",
+      "source_title": "Freddie Mercury interviewed by Molly Meldrum 1977",
+      "source_channel": "Countdown 1977",
+      "summary": "Freddie rivendica la paternità dell'idea visiva di Bohemian Rhapsody: pensavano alla canzone già in termini di immagini, quindi girare il film promozionale fu quasi semplice. La gente crede che ci abbiano lavorato ore e ore, ma ci vollero circa quattro ore.",
+      "topics": [
+        "Freddie Mercury Bohemian Rhapsody video promo film 1975 quattro ore riprese idea visuale concept immagini Queen A Night at the Opera Molly Meldrum intervista 1977 leggenda"
+      ],
+      "tags": ["Freddie Mercury", "Queen", "Countdown", "celebrity_interview", "1977", "Bohemian Rhapsody"],
+      "speakers": ["Freddie Mercury", "Molly Meldrum"],
+      "mentioned_people": ["Freddie Mercury"],
+      "hook": "La gente pensa che abbiamo passato ore e ore a fare quel film: in realtà ci sono volute circa quattro ore.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Freddie Mercury: il video di Bohemian Rhapsody in quattro ore",
+          "summary": "Freddie Mercury racconta come nacque il film promozionale di Bohemian Rhapsody.",
+          "description": "Intervista 1977: Freddie Mercury spiega che i Queen pensavano a Bohemian Rhapsody già in termini visivi e che l'idea del film promozionale fu loro, tanto che girarlo risultò semplice; smentisce poi la leggenda secondo cui ci avrebbero lavorato ore e ore, precisando che servirono circa quattro ore."
+        }
+      ]
+    },
+    {
+      "start": "00:06:23",
+      "end": "00:06:36",
+      "name": "Hook: 'ci sono volute circa quattro ore'",
+      "category": "celebrity_interview",
+      "source_title": "Freddie Mercury interviewed by Molly Meldrum 1977",
+      "source_channel": "Countdown 1977",
+      "summary": "Apertura secca (13s): la smentita di Freddie sui tempi del video.",
+      "topics": [
+        "Freddie Mercury hook apertura short Bohemian Rhapsody video quattro ore smentita leggenda promo film 1977 clip breve opening-short"
+      ],
+      "tags": ["Freddie Mercury", "Queen", "celebrity_interview", "hook", "1977"],
+      "speakers": ["Freddie Mercury"],
+      "mentioned_people": ["Freddie Mercury"],
+      "hook": "La gente pensa che ci abbiamo messo ore e ore: in realtà è stato questione di quattro ore.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Hook: quattro ore per Bohemian Rhapsody",
+          "summary": "Clip di apertura di 13 secondi sul video di Bohemian Rhapsody.",
+          "description": "Hook di 13 secondi: Freddie Mercury smentisce i tempi di lavorazione del video."
+        }
+      ]
+    },
+    {
+      "start": "00:07:56",
+      "end": "00:08:36",
+      "name": "'O la senti tutta o scegli un'altra canzone': il muro dei sei minuti",
+      "category": "celebrity_interview",
+      "source_title": "Freddie Mercury interviewed by Molly Meldrum 1977",
+      "source_channel": "Countdown 1977",
+      "summary": "Freddie racconta i litigi con la casa discografica che voleva editare Bohemian Rhapsody: per lui non aveva senso, o si ascolta per intero o si sceglie un altro brano. Sapevano che era un rischio, un flop enorme o un successo enorme, e alla fine singolo e album diventarono mostri da classifica.",
+      "topics": [
+        "Freddie Mercury Bohemian Rhapsody sei minuti casa discografica voleva editare rifiuto litigi rischio flop enorme successo enorme singolo album chart monsters brano integrale cinque minuti radio 1975"
+      ],
+      "tags": ["Freddie Mercury", "Queen", "Countdown", "celebrity_interview", "1977", "Bohemian Rhapsody"],
+      "speakers": ["Freddie Mercury", "Molly Meldrum"],
+      "mentioned_people": ["Freddie Mercury"],
+      "hook": "Non aveva senso editarla: o la senti per intero o scegli un'altra canzone. Era un rischio, poteva essere un flop enorme come un successo enorme.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Freddie Mercury: il no all'editing di Bohemian Rhapsody",
+          "summary": "Freddie Mercury racconta la battaglia per pubblicare Bohemian Rhapsody senza tagli.",
+          "description": "Intervista 1977: Freddie Mercury ricorda che la casa discografica voleva editare Bohemian Rhapsody, una canzone di sei minuti impensabile per il formato radiofonico dell'epoca, e che i Queen rifiutarono dicendo che o si ascoltava per intero o si scegliva un altro brano; il rischio era enorme ma singolo e album diventarono campioni di vendite."
+        }
+      ]
+    },
+    {
+      "start": "00:08:06",
+      "end": "00:08:19",
+      "name": "Hook: 'o la senti tutta o scegli un'altra canzone'",
+      "category": "celebrity_interview",
+      "source_title": "Freddie Mercury interviewed by Molly Meldrum 1977",
+      "source_channel": "Countdown 1977",
+      "summary": "Apertura secca (13s): il rifiuto dei Queen di tagliare Bohemian Rhapsody.",
+      "topics": [
+        "Freddie Mercury hook apertura short Bohemian Rhapsody integrale oppure altra canzone no editing sei minuti 1975 clip breve opening-short"
+      ],
+      "tags": ["Freddie Mercury", "Queen", "celebrity_interview", "hook", "1977"],
+      "speakers": ["Freddie Mercury"],
+      "mentioned_people": ["Freddie Mercury"],
+      "hook": "O la senti nella sua interezza o scegli un'altra canzone.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Hook: 'o tutta o niente'",
+          "summary": "Clip di apertura di 13 secondi sul rifiuto di editare Bohemian Rhapsody.",
+          "description": "Hook di 13 secondi: Freddie Mercury spiega la posizione dei Queen sui tagli."
+        }
+      ]
+    },
+    {
+      "start": "00:08:36",
+      "end": "00:09:22",
+      "name": "'Somebody to Love è una canzone migliore di Bohemian Rhapsody'",
+      "category": "celebrity_interview",
+      "source_title": "Freddie Mercury interviewed by Molly Meldrum 1977",
+      "source_channel": "Countdown 1977",
+      "summary": "Sulla pressione del disco successivo, A Day at the Races, Freddie dice che è inevitabile essere giudicati sui successi passati, ma che tocca al gruppo pensare in modo diverso: dopo Bohemian Rhapsody era convinto di poter scrivere meglio e considera Somebody to Love, dal punto di vista della scrittura, una canzone superiore.",
+      "topics": [
+        "Freddie Mercury Somebody to Love Bohemian Rhapsody scrittura migliore A Day at the Races pressione disco successivo giudizio pubblico hit miglioramento scrittura Queen 1976 intervista 1977"
+      ],
+      "tags": ["Freddie Mercury", "Queen", "Countdown", "celebrity_interview", "1977", "Somebody to Love"],
+      "speakers": ["Freddie Mercury", "Molly Meldrum"],
+      "mentioned_people": ["Freddie Mercury"],
+      "hook": "Dopo Bohemian Rhapsody pensavo di poter scrivere meglio: dal punto di vista della scrittura, Somebody to Love è una canzone migliore.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Freddie Mercury: 'Somebody to Love è migliore'",
+          "summary": "Freddie Mercury spiega perché considera Somebody to Love superiore a Bohemian Rhapsody sul piano della scrittura.",
+          "description": "Intervista 1977: Freddie Mercury commenta la pressione seguita al successo di Bohemian Rhapsody e di A Night at the Opera, sostiene che il gruppo debba pensare in modo diverso rispetto ai successi passati e afferma di aver capito di poter scrivere meglio, indicando Somebody to Love come una canzone superiore dal punto di vista compositivo."
+        }
+      ]
+    },
+    {
+      "start": "00:09:01",
+      "end": "00:09:15",
+      "name": "Hook: 'potevo scrivere meglio di Bohemian Rhapsody'",
+      "category": "celebrity_interview",
+      "source_title": "Freddie Mercury interviewed by Molly Meldrum 1977",
+      "source_channel": "Countdown 1977",
+      "summary": "Apertura secca (14s): Freddie sull'evoluzione della propria scrittura.",
+      "topics": [
+        "Freddie Mercury hook apertura short scrivere meglio Bohemian Rhapsody Somebody to Love evoluzione scrittura Queen 1977 clip breve opening-short"
+      ],
+      "tags": ["Freddie Mercury", "Queen", "celebrity_interview", "hook", "1977"],
+      "speakers": ["Freddie Mercury"],
+      "mentioned_people": ["Freddie Mercury"],
+      "hook": "Bohemian Rhapsody è stato un grande successo, ma per quanto riguarda le mie capacità di scrittura potevo fare meglio.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Hook: 'potevo scrivere meglio'",
+          "summary": "Clip di apertura di 14 secondi sulla crescita compositiva di Freddie Mercury.",
+          "description": "Hook di 14 secondi: Freddie Mercury spiega come ha vissuto il successo di Bohemian Rhapsody."
+        }
+      ]
+    },
+    {
+      "start": "00:09:41",
+      "end": "00:10:34",
+      "name": "Fuga dalla sovrapproduzione: 'avevamo fatto a morte armonie e multitraccia'",
+      "category": "celebrity_interview",
+      "source_title": "Freddie Mercury interviewed by Molly Meldrum 1977",
+      "source_channel": "Countdown 1977",
+      "summary": "Freddie ammette il periodo difficile: era giù e passava tutto il tempo chiuso in studio, tanto che ancora pagavano i conti di A Day at the Races. Con il nuovo album decisero di ridurre le sessioni perché multitraccia, armonie e produzioni sontuose erano state sfruttate fino in fondo: volevano un approccio più fresco e crudo.",
+      "topics": [
+        "Freddie Mercury studi di registrazione depressi chiuso in studio A Day at the Races spese conti News of the World nuovo album multitraccia armonie produzione sontuosa approccio fresco crudo raw 1977 cambiamento"
+      ],
+      "tags": ["Freddie Mercury", "Queen", "Countdown", "celebrity_interview", "1977", "News of the World"],
+      "speakers": ["Freddie Mercury", "Molly Meldrum"],
+      "mentioned_people": ["Freddie Mercury"],
+      "hook": "Avevamo fatto a morte multitraccia, armonie e produzioni sontuose: per il nuovo album volevamo un approccio più fresco e più crudo.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Freddie Mercury: 'volevamo un approccio più crudo'",
+          "summary": "Freddie Mercury spiega come i Queen siano usciti dalla stagione delle produzioni elaborate.",
+          "description": "Intervista 1977: Freddie Mercury ricorda il periodo in cui era depresso e viveva chiuso in studio, con i conti di A Day at the Races ancora da pagare, e racconta che per News of the World i Queen decisero di limare le sessioni di registrazione perché multitraccia, armonie e produzioni sontuose erano ormai sfruttate fino in fondo e serviva un approccio più fresco e crudo."
+        }
+      ]
+    },
+    {
+      "start": "00:10:11",
+      "end": "00:10:24",
+      "name": "Hook: 'volevamo un approccio più fresco e crudo'",
+      "category": "celebrity_interview",
+      "source_title": "Freddie Mercury interviewed by Molly Meldrum 1977",
+      "source_channel": "Countdown 1977",
+      "summary": "Apertura secca (13s): la svolta stilistica di News of the World.",
+      "topics": [
+        "Freddie Mercury hook apertura short approccio fresco crudo multitrack armonie produzione fine ciclo News of the World 1977 clip breve opening-short"
+      ],
+      "tags": ["Freddie Mercury", "Queen", "celebrity_interview", "hook", "1977"],
+      "speakers": ["Freddie Mercury"],
+      "mentioned_people": ["Freddie Mercury"],
+      "hook": "Avevamo fatto a morte il multitraccia e le produzioni sontuose: volevamo un approccio più fresco e crudo.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Hook: la svolta dei Queen",
+          "summary": "Clip di apertura di 13 secondi sul cambio di suono dei Queen.",
+          "description": "Hook di 13 secondi: Freddie Mercury spiega perché i Queen cambiarono approccio in studio."
+        }
+      ]
+    },
+    {
+      "start": "00:12:07",
+      "end": "00:12:39",
+      "name": "We Are the Champions è 'tongue in cheek': non va presa troppo sul serio",
+      "category": "celebrity_interview",
+      "source_title": "Freddie Mercury interviewed by Molly Meldrum 1977",
+      "source_channel": "Countdown 1977",
+      "summary": "Freddie spiega che We Are the Champions è un brano ironico, non da prendere alla lettera: voleva una canzone diretta, fredda e calcolata, pensata per far partecipare il pubblico dal vivo, senza girarci intorno. Le sue canzoni non affermano mai nulla in modo categorico.",
+      "topics": [
+        "Freddie Mercury We Are the Champions significato tongue in cheek ironia non presa sul serio canzone di partecipazione pubblico freddo e calcolato diretto testo interpretazione 1977 News of the World"
+      ],
+      "tags": ["Freddie Mercury", "Queen", "Countdown", "celebrity_interview", "1977", "We Are the Champions"],
+      "speakers": ["Freddie Mercury", "Molly Meldrum"],
+      "mentioned_people": ["Freddie Mercury"],
+      "hook": "Se mi chiedi di cosa parla, direi che è tongue in cheek e non va presa troppo sul serio: volevo una canzone diretta, fredda e calcolata, di partecipazione.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Freddie Mercury: 'We Are the Champions è ironica'",
+          "summary": "Freddie Mercury spiega il vero tono di We Are the Champions.",
+          "description": "Intervista 1977: Freddie Mercury sostiene che We Are the Champions sia un brano tongue in cheek da non prendere alla lettera, scritto volutamente in modo diretto, freddo e calcolato per far partecipare il pubblico dal vivo; aggiunge che le sue canzoni non affermano mai nulla in modo categorico per lasciare spazio all'interpretazione dell'ascoltatore."
+        }
+      ]
+    },
+    {
+      "start": "00:12:10",
+      "end": "00:12:23",
+      "name": "Hook: 'è ironica, non va presa troppo sul serio'",
+      "category": "celebrity_interview",
+      "source_title": "Freddie Mercury interviewed by Molly Meldrum 1977",
+      "source_channel": "Countdown 1977",
+      "summary": "Apertura secca (13s): il chiarimento su We Are the Champions.",
+      "topics": [
+        "Freddie Mercury hook apertura short We Are the Champions ironica tongue in cheek non presa sul serio 1977 clip breve opening-short"
+      ],
+      "tags": ["Freddie Mercury", "Queen", "celebrity_interview", "hook", "1977"],
+      "speakers": ["Freddie Mercury"],
+      "mentioned_people": ["Freddie Mercury"],
+      "hook": "È tongue in cheek: non va presa troppo sul serio.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Hook: 'non va presa sul serio'",
+          "summary": "Clip di apertura di 13 secondi sul significato di We Are the Champions.",
+          "description": "Hook di 13 secondi: Freddie Mercury spiega il tono ironico del brano."
+        }
+      ]
+    },
+    {
+      "start": "00:12:50",
+      "end": "00:13:44",
+      "name": "'Non è stato un letto di rose': la vita da rock star non è una vacanza",
+      "category": "celebrity_interview",
+      "source_title": "Freddie Mercury interviewed by Molly Meldrum 1977",
+      "source_channel": "Countdown 1977",
+      "summary": "Partendo dal verso 'ho scontato la mia pena senza commettere crimini' e dal ringraziamento per fama e fortuna, Freddie spiega che è il suo modo di dire che fare la rock star non è la vita facile che molti immaginano: quando dice che vanno in tour in America, la gente pensa a una lunga vacanza, ma non è tutto rose e fiori.",
+      "topics": [
+        "Freddie Mercury We Are the Champions testo I've done my sentence no bed of roses vita da rock star non facile tour America vacanza lavoro duro fama fortuna gratitudine 1977 intervista Molly Meldrum"
+      ],
+      "tags": ["Freddie Mercury", "Queen", "Countdown", "celebrity_interview", "1977"],
+      "speakers": ["Freddie Mercury", "Molly Meldrum"],
+      "mentioned_people": ["Freddie Mercury"],
+      "hook": "Non è stato un letto di rose: quando dico che andiamo in tour in America la gente pensa a una lunga vacanza, ma non è una vita facile.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Freddie Mercury: 'la vita da rock star non è una vacanza'",
+          "summary": "Freddie Mercury smonta il cliché della vita facile delle rock star partendo dal testo di We Are the Champions.",
+          "description": "Intervista 1977: commentando i versi di We Are the Champions sulla pena scontata senza crimini e sul ringraziamento per fama e fortuna, Freddie Mercury spiega che è il suo modo di dire che la vita di una rock star non è affatto facile come si crede, perché la gente scambia i tour in America per lunghe vacanze quando non è tutto rose e fiori."
+        }
+      ]
+    },
+    {
+      "start": "00:13:31",
+      "end": "00:13:44",
+      "name": "Hook: 'non è tutto rose e fiori'",
+      "category": "celebrity_interview",
+      "source_title": "Freddie Mercury interviewed by Molly Meldrum 1977",
+      "source_channel": "Countdown 1977",
+      "summary": "Apertura secca (13s): il mito della vita facile delle rock star.",
+      "topics": [
+        "Freddie Mercury hook apertura short vita da rock star non facile non tutto rose e fiori tour America vacanza 1977 clip breve opening-short"
+      ],
+      "tags": ["Freddie Mercury", "Queen", "celebrity_interview", "hook", "1977"],
+      "speakers": ["Freddie Mercury"],
+      "mentioned_people": ["Freddie Mercury"],
+      "hook": "Non pensate per un minuto che sia tutto rose e fiori.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Hook: 'non è tutto rose e fiori'",
+          "summary": "Clip di apertura di 13 secondi sulla realtà del mestiere di rock star.",
+          "description": "Hook di 13 secondi: Freddie Mercury racconta il lato faticoso del suo lavoro."
+        }
+      ]
+    },
+    {
+      "start": "00:15:25",
+      "end": "00:16:24",
+      "name": "Punk e concorrenza: 'la competizione è la mia forza motrice'",
+      "category": "celebrity_interview",
+      "source_title": "Freddie Mercury interviewed by Molly Meldrum 1977",
+      "source_channel": "Countdown 1977",
+      "summary": "Sull'onda del punk che attacca i grandi gruppi, Freddie risponde che la sfida c'è sempre stata: guardando le classifiche sente un'enorme competizione con artisti affermati come ELO, ABBA e Rod Stewart. È proprio la concorrenza a tenerlo in movimento, perché non si riposa mai sugli allori.",
+      "topics": [
+        "Freddie Mercury punk rock 1977 sfida competizione classifiche ELO ABBA Rod Stewart concorrenza forza motrice non riposarsi sugli allori nuovi movimenti Queen reazione"
+      ],
+      "tags": ["Freddie Mercury", "Queen", "Countdown", "celebrity_interview", "1977", "punk"],
+      "speakers": ["Freddie Mercury", "Molly Meldrum"],
+      "mentioned_people": ["Freddie Mercury", "Rod Stewart"],
+      "hook": "Guardate le classifiche: ELO, ABBA, Rod Stewart. La competizione c'è sempre e io non mi riposo mai sugli allori, è quella la forza motrice.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Freddie Mercury: 'la competizione mi tiene in movimento'",
+          "summary": "Freddie Mercury risponde all'onda punk rivendicando il valore della concorrenza tra artisti.",
+          "description": "Intervista 1977: sollecitato dal movimento punk che attacca i grandi gruppi affermati, Freddie Mercury risponde che la sfida è sempre esistita e che guardando le classifiche sente una forte competizione con ELO, ABBA e Rod Stewart; è la concorrenza, dice, a stimolarlo, perché non si riposa mai sugli allori."
+        }
+      ]
+    },
+    {
+      "start": "00:15:52",
+      "end": "00:16:07",
+      "name": "Hook: 'ELO, ABBA, Rod Stewart: la competizione c'è sempre'",
+      "category": "celebrity_interview",
+      "source_title": "Freddie Mercury interviewed by Molly Meldrum 1977",
+      "source_channel": "Countdown 1977",
+      "summary": "Apertura secca (15s): Freddie Mercury sulla concorrenza in classifica.",
+      "topics": [
+        "Freddie Mercury hook apertura short competizione classifiche ELO ABBA Rod Stewart non riposarsi sugli allori 1977 clip breve opening-short"
+      ],
+      "tags": ["Freddie Mercury", "Queen", "celebrity_interview", "hook", "1977"],
+      "speakers": ["Freddie Mercury"],
+      "mentioned_people": ["Freddie Mercury", "Rod Stewart"],
+      "hook": "Al momento sento un'enorme competizione: c'è ELO, ci sono gli ABBA, c'è Rod Stewart, e non mi riposo mai sugli allori.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Hook: la competizione secondo Freddie",
+          "summary": "Clip di apertura di 15 secondi sulla concorrenza tra grandi artisti.",
+          "description": "Hook di 15 secondi: Freddie Mercury elenca i rivali in classifica e spiega cosa lo motiva."
+        }
+      ]
+    }
+  ]
+}

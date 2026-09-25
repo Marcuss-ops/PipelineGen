@@ -1,0 +1,399 @@
+{
+  "_comment": "POST /api/clips/process payload (ExtractRequest, drift source: internal/capabilities/youtube/dto/types.go). Source: Jon Bon Jovi on Late Night with Conan O'Brien (Lost Highway era, hosting Saturday Night Live) — https://www.youtube.com/watch?v=H2cJWeacoM0 (519s). Destination: the Clips/HipHop child folder 1WHij1cIrMFiYFOyCurSNG25ZBISy0DTM ('Bon Jovi'), create_subfolder=false. Windows picked BY HAND from the timed transcript printed by ops/jobs/hiphop_36/tx.py; no LLM selection. 8 main clips 21-58s (canonical 4-60s SegmentPolicy gate) + 8 hook openers 12-14s carved inside the matching main window. Deterministic ids yt_<videoID>_<startSec>_<endSec>_v1 -> re-submit is an UPSERT. topics/summary/hook are keyword-dense on purpose: composeYouTubeClipSearchText feeds search_text -> 768d pgvector embedding, texts[] lands in asset_text_tracks in the same atomic commit.",
+  "url": "https://www.youtube.com/watch?v=H2cJWeacoM0",
+  "strategy": "verify",
+  "concurrency": 3,
+  "force_keyframes": true,
+  "keep_audio": true,
+  "write_summary": true,
+  "destination": {
+    "folder_id": "1WHij1cIrMFiYFOyCurSNG25ZBISy0DTM",
+    "create_subfolder": false
+  },
+  "segments": [
+    {
+      "start": "00:00:07",
+      "end": "00:01:04",
+      "name": "100 milioni di dischi e l'esordio a Saturday Night Live",
+      "category": "celebrity_interview",
+      "source_title": "Jon Bon Jovi's Dinner with Conan (Late Night)",
+      "source_channel": "Late Night with Conan O'Brien",
+      "summary": "Conan ricorda i cento milioni di dischi venduti nel mondo e chiede come si prepari a condurre Saturday Night Live: Jon racconta di aver portato le sue idee a cena, ma che su cinquanta sketch consegnati l'ultima notte nessuna delle sue è passata.",
+      "topics": [
+        "Bon Jovi cento milioni di dischi venduti Jon Bon Jovi conduce Saturday Night Live sketch preparazione cena con Conan idee bocciate cento sketch carriera rock 2007 Lost Highway"
+      ],
+      "tags": ["Bon Jovi", "Conan O'Brien", "celebrity_interview", "SNL"],
+      "speakers": ["Jon Bon Jovi", "Conan O'Brien"],
+      "mentioned_people": ["Jon Bon Jovi"],
+      "hook": "Mi consegnano cinquanta sketch la notte prima e nessuna delle mie idee è passata: mi hanno detto 'John, qui abbiamo finito'.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Bon Jovi: cento milioni di dischi e SNL",
+          "summary": "Jon Bon Jovi racconta l'esperienza come conduttore di Saturday Night Live e i numeri della sua carriera.",
+          "description": "Intervista al Late Night con Conan O'Brien: dopo aver ricordato i cento milioni di dischi venduti, Jon Bon Jovi racconta con ironia la preparazione dell'episodio di Saturday Night Live che ha condotto, con le sue idee comiche puntualmente scartate in favore degli sketch dello show."
+        }
+      ]
+    },
+    {
+      "start": "00:00:51",
+      "end": "00:01:04",
+      "name": "Hook: 'nessuna delle mie idee è passata'",
+      "category": "celebrity_interview",
+      "source_title": "Jon Bon Jovi's Dinner with Conan (Late Night)",
+      "source_channel": "Late Night with Conan O'Brien",
+      "summary": "Apertura secca (13s): le idee comiche bocciate di Bon Jovi.",
+      "topics": [
+        "Bon Jovi hook apertura short Saturday Night Live idee bocciate cinquanta sketch nessuna delle mie clip breve opening-short"
+      ],
+      "tags": ["Bon Jovi", "Conan O'Brien", "celebrity_interview", "hook"],
+      "speakers": ["Jon Bon Jovi"],
+      "mentioned_people": ["Jon Bon Jovi"],
+      "hook": "Mi hanno consegnato cinquanta sketch e nessuna delle mie idee è stata usata.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Hook: le idee bocciate",
+          "summary": "Clip di apertura di 13 secondi sull'esordio comico di Jon Bon Jovi.",
+          "description": "Hook di 13 secondi: Jon Bon Jovi racconta cosa è successo alle sue idee per SNL."
+        }
+      ]
+    },
+    {
+      "start": "00:01:15",
+      "end": "00:01:40",
+      "name": "'Bono, Bono e Bon Jovi': lo studio legale mai realizzato",
+      "category": "celebrity_interview",
+      "source_title": "Jon Bon Jovi's Dinner with Conan (Late Night)",
+      "source_channel": "Late Night with Conan O'Brien",
+      "summary": "Jon racconta l'idea di cui era più fiero per SNL: uno sketch su uno studio legale chiamato 'Bono, Bono e Bon Jovi', con Bono degli U2 e Sonny Bono. Dice che allo show l'hanno definita geniale, ma nessuno l'ha poi scritta.",
+      "topics": [
+        "Bon Jovi Bono Bono and Bon Jovi studio legale sketch comico Bono U2 Sonny Bono idea geniale mai scritta Saturday Night Live 2007 intervista Conan"
+      ],
+      "tags": ["Bon Jovi", "Conan O'Brien", "celebrity_interview", "SNL"],
+      "speakers": ["Jon Bon Jovi", "Conan O'Brien"],
+      "mentioned_people": ["Jon Bon Jovi", "Bono", "Sonny Bono"],
+      "hook": "Ero molto fiero dello studio legale Bono, Bono e Bon Jovi: Bono degli U2, Sonny Bono e Bon Jovi. Hanno detto che era geniale, ma nessuno l'ha scritta.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Bon Jovi e lo sketch 'Bono, Bono e Bon Jovi'",
+          "summary": "Jon Bon Jovi racconta l'idea comica che considerava la migliore e che non fu mai prodotta.",
+          "description": "Intervista: Jon Bon Jovi racconta di aver proposto per Saturday Night Live uno sketch su uno studio legale chiamato Bono, Bono e Bon Jovi, con Bono degli U2 e Sonny Bono; l'idea fu definita geniale ma non venne mai scritta."
+        }
+      ]
+    },
+    {
+      "start": "00:01:16",
+      "end": "00:01:30",
+      "name": "Hook: 'Bono, Bono e Bon Jovi'",
+      "category": "celebrity_interview",
+      "source_title": "Jon Bon Jovi's Dinner with Conan (Late Night)",
+      "source_channel": "Late Night with Conan O'Brien",
+      "summary": "Apertura secca (14s): la migliore idea comica di Jon Bon Jovi.",
+      "topics": [
+        "Bon Jovi hook apertura short Bono Bono e Bon Jovi studio legale Bono U2 Sonny Bono sketch clip breve opening-short"
+      ],
+      "tags": ["Bon Jovi", "Conan O'Brien", "celebrity_interview", "hook"],
+      "speakers": ["Jon Bon Jovi"],
+      "mentioned_people": ["Jon Bon Jovi", "Bono", "Sonny Bono"],
+      "hook": "Bono, Bono e Bon Jovi: uno studio legale con Bono degli U2, Sonny Bono e me.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Hook: 'Bono, Bono e Bon Jovi'",
+          "summary": "Clip di apertura di 14 secondi con l'idea comica di Bon Jovi.",
+          "description": "Hook di 14 secondi: Jon Bon Jovi presenta la sua idea di sketch mai realizzata."
+        }
+      ]
+    },
+    {
+      "start": "00:01:40",
+      "end": "00:02:20",
+      "name": "Blues Brothers con Richie e 'mi hanno messo in tutù'",
+      "category": "celebrity_interview",
+      "source_title": "Jon Bon Jovi's Dinner with Conan (Late Night)",
+      "source_channel": "Late Night with Conan O'Brien",
+      "summary": "Jon elenca le altre idee scartate: un Blues Brothers con Ritchie Sambora che balla male mentre il pubblico li fischia, e un akroi che sale dal pubblico per buttarlo fuori dal quadro e suonare l'armonica con la band. Risultato finale: lo hanno messo in tutù con i capelli anni Ottanta.",
+      "topics": [
+        "Bon Jovi Blues Brothers sketch Ritchie Sambora balla male fischiato pubblico tutu capelli anni 80 harmoica band Saturday Night Live idee scartate comicità 2007"
+      ],
+      "tags": ["Bon Jovi", "Conan O'Brien", "celebrity_interview", "SNL"],
+      "speakers": ["Jon Bon Jovi", "Conan O'Brien"],
+      "mentioned_people": ["Jon Bon Jovi", "Ritchie Sambora"],
+      "hook": "Finora mi hanno messo in un tutù e con un sacco di capelli anni Ottanta.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Bon Jovi: le idee scartate per SNL",
+          "summary": "Jon Bon Jovi elenca gli sketch mai prodotti, dal Blues Brothers con Sambora al tutù.",
+          "description": "Intervista: Jon Bon Jovi racconta le idee comiche proposte e mai realizzate per Saturday Night Live, tra un Blues Brothers con Ritchie Sambora che balla male e viene fischiato dal pubblico e un akroi che sale dal pubblico per suonare l'armonica con la band, concludendo che alla fine gli hanno fatto indossare un tutù e capelli anni Ottanta."
+        }
+      ]
+    },
+    {
+      "start": "00:02:04",
+      "end": "00:02:17",
+      "name": "Hook: 'mi hanno messo in tutù e capelli anni 80'",
+      "category": "celebrity_interview",
+      "source_title": "Jon Bon Jovi's Dinner with Conan (Late Night)",
+      "source_channel": "Late Night with Conan O'Brien",
+      "summary": "Apertura secca (13s): cosa gli è toccato fare davvero a SNL.",
+      "topics": [
+        "Bon Jovi hook apertura short tutu capelli anni 80 Saturday Night Live costume sketch 2007 clip breve opening-short"
+      ],
+      "tags": ["Bon Jovi", "Conan O'Brien", "celebrity_interview", "hook"],
+      "speakers": ["Jon Bon Jovi"],
+      "mentioned_people": ["Jon Bon Jovi"],
+      "hook": "Finora mi hanno messo in un tutù e con un sacco di capelli anni Ottanta.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Hook: il tutù di Bon Jovi",
+          "summary": "Clip di apertura di 13 secondi su cosa hanno fatto indossare a Jon Bon Jovi.",
+          "description": "Hook di 13 secondi: Jon Bon Jovi racconta il look imposto dallo show."
+        }
+      ]
+    },
+    {
+      "start": "00:02:23",
+      "end": "00:02:48",
+      "name": "Quasi 18 anni di matrimonio nel rock: 'sono anni canini'",
+      "category": "celebrity_interview",
+      "source_title": "Jon Bon Jovi's Dinner with Conan (Late Night)",
+      "source_channel": "Late Night with Conan O'Brien",
+      "summary": "Dopo la cena doppia con le rispettive mogli, Conan chiede da quanto sia sposato Jon con Dorothea: quasi diciotto o diciannove anni. Conan osserva che nel mondo del rock and roll una longevità simile si sente raramente e scherza paragonandola agli anni canini.",
+      "topics": [
+        "Bon Jovi matrimonio Dorothea Hurley quasi 18 anni 19 anni stabilità rock and roll coppia moglie cena Conan anni canini 2007 vita privata"
+      ],
+      "tags": ["Bon Jovi", "Conan O'Brien", "celebrity_interview", "matrimonio"],
+      "speakers": ["Jon Bon Jovi", "Conan O'Brien"],
+      "mentioned_people": ["Jon Bon Jovi", "Dorothea Hurley"],
+      "hook": "Siamo sposati da quasi diciotto o diciannove anni: nel mondo del rock and roll è come contarli in anni canini.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Bon Jovi: quasi 18 anni di matrimonio",
+          "summary": "Jon Bon Jovi e Conan ironizzano sulla longevità del matrimonio nel mondo del rock.",
+          "description": "Intervista: Jon Bon Jovi racconta che lui e Dorothea sono sposati da quasi diciotto o diciannove anni, e Conan O'Brien commenta che una durata simile è rarissima nel rock and roll, scherzando sull'equivalenza con gli anni canini."
+        }
+      ]
+    },
+    {
+      "start": "00:02:30",
+      "end": "00:02:44",
+      "name": "Hook: 'nel rock sono anni canini'",
+      "category": "celebrity_interview",
+      "source_title": "Jon Bon Jovi's Dinner with Conan (Late Night)",
+      "source_channel": "Late Night with Conan O'Brien",
+      "summary": "Apertura secca (14s): l'ironia sui matrimoni lunghi nel rock.",
+      "topics": [
+        "Bon Jovi hook apertura short matrimonio 18 anni rock and roll anni canini Dorothea clip breve opening-short"
+      ],
+      "tags": ["Bon Jovi", "Conan O'Brien", "celebrity_interview", "hook"],
+      "speakers": ["Jon Bon Jovi", "Conan O'Brien"],
+      "mentioned_people": ["Jon Bon Jovi", "Dorothea Hurley"],
+      "hook": "Quasi diciannove anni di matrimonio: nel rock and roll sono come anni canini.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Hook: il matrimonio di Bon Jovi",
+          "summary": "Clip di apertura di 14 secondi sulla stabilità familiare di Jon Bon Jovi.",
+          "description": "Hook di 14 secondi: Jon Bon Jovi e Conan scherzano sulla durata del suo matrimonio."
+        }
+      ]
+    },
+    {
+      "start": "00:02:48",
+      "end": "00:03:16",
+      "name": "'Continuo a proporre quella battuta': non si molla lo sketch",
+      "category": "celebrity_interview",
+      "source_title": "Jon Bon Jovi's Dinner with Conan (Late Night)",
+      "source_channel": "Late Night with Conan O'Brien",
+      "summary": "Jon continua a inserire lo studio legale immaginario nelle conversazioni: dice che nel suo 'studio legale' ci sono uomini sposati da quando lui è Bono, e che continuerà a proporre l'idea dello sketch perché non si molla mai una battuta. Conan gli propone di girarlo nel suo show.",
+      "topics": [
+        "Bon Jovi studio legale immaginario battuta ricorrente Bono sposati da quando sono Bono Conan propone sketch nel suo show comicità perseveranza 2007"
+      ],
+      "tags": ["Bon Jovi", "Conan O'Brien", "celebrity_interview", "comicità"],
+      "speakers": ["Jon Bon Jovi", "Conan O'Brien"],
+      "mentioned_people": ["Jon Bon Jovi", "Bono"],
+      "hook": "Bisogna continuare a proporre una battuta finché non passa: Bono, Bono e Bon Jovi non si molla.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Bon Jovi e la battuta dello studio legale",
+          "summary": "Jon Bon Jovi spiega perché continua a proporre lo sketch 'Bono, Bono e Bon Jovi'.",
+          "description": "Intervista: Jon Bon Jovi racconta di continuare a usare la battuta dello studio legale immaginario in ogni conversazione, sostenendo che nel suo studio ci sono uomini sposati da quando lui è Bono, e ribadisce che non smetterà di proporre l'idea; Conan gli offre di girarla nel proprio show."
+        }
+      ]
+    },
+    {
+      "start": "00:03:00",
+      "end": "00:03:13",
+      "name": "Hook: 'non si molla una battuta'",
+      "category": "celebrity_interview",
+      "source_title": "Jon Bon Jovi's Dinner with Conan (Late Night)",
+      "source_channel": "Late Night with Conan O'Brien",
+      "summary": "Apertura secca (13s): la perseveranza comica di Bon Jovi.",
+      "topics": [
+        "Bon Jovi hook apertura short non si molla una battuta Bono Bono Bon Jovi sketch perseveranza clip breve opening-short"
+      ],
+      "tags": ["Bon Jovi", "Conan O'Brien", "celebrity_interview", "hook"],
+      "speakers": ["Jon Bon Jovi"],
+      "mentioned_people": ["Jon Bon Jovi"],
+      "hook": "Bisogna continuare a proporre una battuta: non si molla mai.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Hook: la battuta ricorrente",
+          "summary": "Clip di apertura di 13 secondi sull'insistenza comica di Bon Jovi.",
+          "description": "Hook di 13 secondi: Jon Bon Jovi spiega perché continua a proporre la stessa idea."
+        }
+      ]
+    },
+    {
+      "start": "00:03:16",
+      "end": "00:04:12",
+      "name": "Ritchie Sambora: 'è disponibile, sta intervistando ragazze'",
+      "category": "celebrity_interview",
+      "source_title": "Jon Bon Jovi's Dinner with Conan (Late Night)",
+      "source_channel": "Late Night with Conan O'Brien",
+      "summary": "Conan fa notare che la vita di Ritchie Sambora è l'opposto della stabilità di Jon: Jon risponde che Ritchie sta bene, è uscito dalla rehab in anticipo per buona condotta, è libero e 'sta intervistando ragazze'. Poi lancia lui stesso il pettegolezzo su una presunta frequentazione, scherzando.",
+      "topics": [
+        "Bon Jovi Ritchie Sambora rehab uscito buona condotta vita privata disponibile libero appuntamenti pettegolezzo Lindsey Lohan stabilità opposta a Jon Bon Jovi 2007 intervista Conan"
+      ],
+      "tags": ["Bon Jovi", "Conan O'Brien", "celebrity_interview", "Ritchie Sambora"],
+      "speakers": ["Jon Bon Jovi", "Conan O'Brien"],
+      "mentioned_people": ["Jon Bon Jovi", "Ritchie Sambora", "Lindsay Lohan"],
+      "hook": "Sor sta benissimo: è disponibile, è libero, sta intervistando ragazze là fuori.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Bon Jovi su Ritchie Sambora",
+          "summary": "Jon Bon Jovi racconta cosa sta facendo Ritchie Sambora dopo la rehab.",
+          "description": "Intervista: sollecitato da Conan sul contrasto tra la propria stabilità familiare e la vita di Ritchie Sambora, Jon Bon Jovi risponde che il chitarrista sta bene, è uscito dalla rehab in anticipo per buona condotta, è disponibile e 'sta intervistando ragazze', lanciando poi lui stesso un pettegolezzo su una presunta frequentazione."
+        }
+      ]
+    },
+    {
+      "start": "00:03:41",
+      "end": "00:03:53",
+      "name": "Hook: 'sta intervistando ragazze'",
+      "category": "celebrity_interview",
+      "source_title": "Jon Bon Jovi's Dinner with Conan (Late Night)",
+      "source_channel": "Late Night with Conan O'Brien",
+      "summary": "Apertura secca (12s): cosa fa Ritchie Sambora secondo Bon Jovi.",
+      "topics": [
+        "Bon Jovi hook apertura short Ritchie Sambora disponibile libero sta intervistando ragazze clip breve opening-short"
+      ],
+      "tags": ["Bon Jovi", "Conan O'Brien", "celebrity_interview", "hook"],
+      "speakers": ["Jon Bon Jovi"],
+      "mentioned_people": ["Ritchie Sambora"],
+      "hook": "Sor sta benissimo: è libero e sta intervistando ragazze.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Hook: Ritchie Sambora",
+          "summary": "Clip di apertura di 12 secondi su Ritchie Sambora secondo Jon Bon Jovi.",
+          "description": "Hook di 12 secondi: Jon Bon Jovi aggiorna il pubblico sulla vita del chitarrista."
+        }
+      ]
+    },
+    {
+      "start": "00:04:18",
+      "end": "00:05:00",
+      "name": "25 anni insieme e il tastierista senza nome",
+      "category": "celebrity_interview",
+      "source_title": "Jon Bon Jovi's Dinner with Conan (Late Night)",
+      "source_channel": "Late Night with Conan O'Brien",
+      "summary": "Conan scherza sul nome della band, definendolo un'idea geniale, e passa in rassegna la formazione: Ritchie Sambora, Tico Torres, e 'quell'altro ragazzo' che non sa nominare. Jon ammette che è David Bryan, il tastierista che sta con loro da venticinque anni.",
+      "topics": [
+        "Bon Jovi nome della band formazione Richie Sambora Tico Torres David Bryan tastierista 25 anni non saprei il nome Conan scherzo 2007 Lost Highway"
+      ],
+      "tags": ["Bon Jovi", "Conan O'Brien", "celebrity_interview", "band"],
+      "speakers": ["Jon Bon Jovi", "Conan O'Brien"],
+      "mentioned_people": ["Jon Bon Jovi", "Richie Sambora", "Tico Torres", "David Bryan"],
+      "hook": "Venticinque anni insieme e non sapevi il nome del tastierista: è David Bryan.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Bon Jovi: la formazione tra scherzi",
+          "summary": "Conan O'Brien mette in difficoltà Jon Bon Jovi sul nome del tastierista della band.",
+          "description": "Intervista: Conan O'Brien definisce geniale la scelta del nome Bon Jovi e passa in rassegna la formazione, riuscendo a mettere in difficoltà Jon Bon Jovi sul tastierista David Bryan, nella band da venticinque anni."
+        }
+      ]
+    },
+    {
+      "start": "00:04:42",
+      "end": "00:04:56",
+      "name": "Hook: 'il tastierista da 25 anni'",
+      "category": "celebrity_interview",
+      "source_title": "Jon Bon Jovi's Dinner with Conan (Late Night)",
+      "source_channel": "Late Night with Conan O'Brien",
+      "summary": "Apertura secca (14s): il lapsus di Bon Jovi sulla formazione.",
+      "topics": [
+        "Bon Jovi hook apertura short tastierista 25 anni David Bryan nome formazione clip breve opening-short"
+      ],
+      "tags": ["Bon Jovi", "Conan O'Brien", "celebrity_interview", "hook"],
+      "speakers": ["Jon Bon Jovi", "Conan O'Brien"],
+      "mentioned_people": ["David Bryan"],
+      "hook": "Venticinque anni insieme e non ricordavo il nome del tastierista: David Bryan.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Hook: il tastierista dei Bon Jovi",
+          "summary": "Clip di apertura di 14 secondi sul divertente scambio su David Bryan.",
+          "description": "Hook di 14 secondi: Jon Bon Jovi e Conan scherzano sul tastierista della band."
+        }
+      ]
+    },
+    {
+      "start": "00:05:27",
+      "end": "00:06:25",
+      "name": "Triumph, il cane comico: 'abbiamo chiesto noi di farci insultare'",
+      "category": "celebrity_interview",
+      "source_title": "Jon Bon Jovi's Dinner with Conan (Late Night)",
+      "source_channel": "Late Night with Conan O'Brien",
+      "summary": "Conan ricorda che i Bon Jovi chiamarono lo show chiedendo di mandare Triumph the Insult Comic Dog a insultarli e di poter mandare in onda tutto. Jon spiega che Triumph non gioca pulito perché tiene per sé le forbici del montaggio, nonostante loro avessero repliche pronte.",
+      "topics": [
+        "Bon Jovi Triumph the Insult Comic Dog Conan chiamata autolesionismo insulti montaggio forbici red carpet anni 2000 clip show ironia band coraggio"
+      ],
+      "tags": ["Bon Jovi", "Conan O'Brien", "celebrity_interview", "Triumph"],
+      "speakers": ["Jon Bon Jovi", "Conan O'Brien"],
+      "mentioned_people": ["Jon Bon Jovi"],
+      "hook": "Abbiamo chiamato noi: mandate Triumph a insultarci e mandatelo in onda. Lui non gioca pulito, tiene le forbici del montaggio.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Bon Jovi e Triumph the Insult Comic Dog",
+          "summary": "Jon Bon Jovi racconta la richiesta di farsi insultare dallo show e il vantaggio del montaggio.",
+          "description": "Intervista: Conan O'Brien ricorda che i Bon Jovi contattarono lo show chiedendo di mandare Triumph the Insult Comic Dog a insultarli e di trasmettere tutto; Jon Bon Jovi spiega che il cane comico non gioca pulito perché conserva per sé le forbici del montaggio, nonostante la band avesse repliche pronte."
+        }
+      ]
+    },
+    {
+      "start": "00:06:04",
+      "end": "00:06:17",
+      "name": "Hook: 'mandate Triumph a insultarci'",
+      "category": "celebrity_interview",
+      "source_title": "Jon Bon Jovi's Dinner with Conan (Late Night)",
+      "source_channel": "Late Night with Conan O'Brien",
+      "summary": "Apertura secca (13s): la richiesta dei Bon Jovi allo show.",
+      "topics": [
+        "Bon Jovi hook apertura short Triumph insult comic dog mandate a insultarci in onda clip breve opening-short"
+      ],
+      "tags": ["Bon Jovi", "Conan O'Brien", "celebrity_interview", "hook"],
+      "speakers": ["Jon Bon Jovi"],
+      "mentioned_people": ["Jon Bon Jovi"],
+      "hook": "Telefonammo noi: mandate Triumph a insultarci e mandatelo in onda.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Hook: Triumph contro i Bon Jovi",
+          "summary": "Clip di apertura di 13 secondi sulla richiesta della band allo show.",
+          "description": "Hook di 13 secondi: Jon Bon Jovi racconta da dove è nata la gag con Triumph."
+        }
+      ]
+    }
+  ]
+}

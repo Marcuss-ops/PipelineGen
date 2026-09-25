@@ -1,0 +1,399 @@
+{
+  "_comment": "POST /api/clips/process payload (ExtractRequest, drift source: internal/capabilities/youtube/dto/types.go). Source: Madonna on ABC Nightline, 3 December 1990 (the Justify My Love / censorship interview) — https://www.youtube.com/watch?v=duzoq8HPCsw (859s, uploaded by 'A Doss'). Destination: the Clips/HipHop child folder 144ki_Hn4yOAOuF3P3fMvXR6-GE6R7jSL ('Madonna'), create_subfolder=false. Windows picked BY HAND from the timed transcript printed by ops/jobs/hiphop_36/tx.py; no LLM selection, no LLM metadata. 8 main clips 33-54s (canonical 4-60s SegmentPolicy gate) + 8 hook openers <=15s carved inside the matching main window. Deterministic ids yt_<videoID>_<startSec>_<endSec>_v1 -> re-submit is an UPSERT. topics/summary/hook are keyword-dense on purpose: composeYouTubeClipSearchText feeds search_text -> 768d pgvector embedding, texts[] lands in asset_text_tracks in the same atomic commit.",
+  "url": "https://www.youtube.com/watch?v=duzoq8HPCsw",
+  "strategy": "verify",
+  "concurrency": 3,
+  "force_keyframes": true,
+  "keep_audio": true,
+  "write_summary": true,
+  "destination": {
+    "folder_id": "144ki_Hn4yOAOuF3P3fMvXR6-GE6R7jSL",
+    "create_subfolder": false
+  },
+  "segments": [
+    {
+      "start": "00:01:04",
+      "end": "00:01:50",
+      "name": "Il vestito trasparente di Vogue e la 'bending the rules' con MTV",
+      "category": "celebrity_interview",
+      "source_title": "Madonna Nightline Interview December 3, 1990",
+      "source_channel": "A Doss",
+      "summary": "Madonna racconta che nel video di Vogue si vedevano i suoi seni, che MTV le chiese di tagliare la scena e che lei si rifiutò: la trasmisero comunque. Metà di lei pensava di farla franca, l'altra metà vedeva l'onda di censura e conservatorismo che attraversava il paese.",
+      "topics": [
+        "Madonna Vogue video 1990 vestito trasparente seni nudita MTV censura tagliare la scena bending the rules onda di censura conservatorismo America intervista Nightline 1990 giustificare se stessa regole"
+      ],
+      "tags": ["Madonna", "Nightline", "celebrity_interview", "1990", "MTV"],
+      "speakers": ["Madonna", "Ted Koppel"],
+      "mentioned_people": ["Madonna"],
+      "hook": "Nel video di Vogue si vedevano i miei seni: MTV voleva che tagliassi la scena, io dissi di no e la trasmisero comunque. Pensavo di poter piegare le regole ancora una volta.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Madonna, Vogue e i limiti di MTV",
+          "summary": "Madonna racconta come ha forzato le regole di MTV con il video di Vogue.",
+          "description": "Intervista Nightline del 3 dicembre 1990: Madonna ricorda che nel video di Vogue una scena mostrava il suo seno attraverso un vestito trasparente, che MTV chiese di rimuoverla e che il video fu trasmesso lo stesso; racconta poi di aver oscillato tra la fiducia di farla franca e la percezione dell'onda di censura e conservatorismo negli Stati Uniti."
+        }
+      ]
+    },
+    {
+      "start": "00:01:06",
+      "end": "00:01:19",
+      "name": "Hook: 'dissi di no e la trasmisero comunque'",
+      "category": "celebrity_interview",
+      "source_title": "Madonna Nightline Interview December 3, 1990",
+      "source_channel": "A Doss",
+      "summary": "Apertura secca (13s): Madonna e il braccio di ferro con MTV.",
+      "topics": [
+        "Madonna hook apertura short MTV Vogue scena seni dissi di no trasmisero comunque piegare le regole 1990 clip breve opening-short"
+      ],
+      "tags": ["Madonna", "Nightline", "celebrity_interview", "hook", "1990"],
+      "speakers": ["Madonna"],
+      "mentioned_people": ["Madonna"],
+      "hook": "Dissi che non avrei tagliato la scena e loro la trasmisero comunque.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Hook: Madonna contro MTV",
+          "summary": "Clip di apertura di 13 secondi sul braccio di ferro con MTV.",
+          "description": "Hook di 13 secondi: Madonna racconta di aver rifiutato il taglio richiesto da MTV."
+        }
+      ]
+    },
+    {
+      "start": "00:02:02",
+      "end": "00:02:47",
+      "name": "'L'arte è sperimentare': il video come espressione filmica della canzone",
+      "category": "celebrity_interview",
+      "source_title": "Madonna Nightline Interview December 3, 1990",
+      "source_channel": "A Doss",
+      "summary": "Per Madonna l'arte è sperimentazione e il video è l'espressione filmica della canzone: legge le parole di Justify My Love, una donna che chiede al partner di raccontarle i suoi sogni e le sue paure, e dice che sta semplicemente mostrando la verità su fantasie e onestà nella coppia.",
+      "topics": [
+        "Madonna arte sperimentare video espressione filmica della canzone Justify My Love testo tell me your dreams am I in them tell me your fears fantasie sessuali onesta col partner verita espressione artistica intervista Nightline 1990"
+      ],
+      "tags": ["Madonna", "Nightline", "celebrity_interview", "1990", "Justify My Love"],
+      "speakers": ["Madonna", "Ted Koppel"],
+      "mentioned_people": ["Madonna"],
+      "hook": "L'arte è sperimentare: un video è l'espressione filmica della canzone. La donna di Justify My Love dice al partner 'raccontami i tuoi sogni, raccontami le tue paure, non ho paura di chi sei'.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Madonna: 'l'arte è sperimentare'",
+          "summary": "Madonna spiega perché il video è per lei strumento di espressione artistica e non solo marketing.",
+          "description": "Intervista Nightline 1990: Madonna afferma che l'arte consiste nello sperimentare e che il video è l'espressione filmica di una canzone; cita il testo di Justify My Love, in cui una donna chiede al partner di raccontarle sogni e paure, e sostiene di mostrare semplicemente la verità su fantasie sessuali e onestà nella coppia."
+        }
+      ]
+    },
+    {
+      "start": "00:02:24",
+      "end": "00:02:39",
+      "name": "Hook: 'raccontami le tue paure, non ho paura di chi sei'",
+      "category": "celebrity_interview",
+      "source_title": "Madonna Nightline Interview December 3, 1990",
+      "source_channel": "A Doss",
+      "summary": "Apertura secca (15s): Madonna recita le parole di Justify My Love.",
+      "topics": [
+        "Madonna hook apertura short Justify My Love testo raccontami i tuoi sogni raccontami le tue paure non ho paura di chi sei fantasie onesta 1990 clip breve opening-short"
+      ],
+      "tags": ["Madonna", "Nightline", "celebrity_interview", "hook", "1990"],
+      "speakers": ["Madonna"],
+      "mentioned_people": ["Madonna"],
+      "hook": "Raccontami i tuoi sogni, ci sono dentro? Raccontami le tue paure, hai paura? Raccontami le tue storie, non ho paura di chi sei.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Hook: le parole di Justify My Love",
+          "summary": "Clip di apertura di 15 secondi con le parole della canzone di Madonna.",
+          "description": "Hook di 15 secondi: Madonna legge il testo di Justify My Love spiegando il senso del video."
+        }
+      ]
+    },
+    {
+      "start": "00:03:03",
+      "end": "00:03:57",
+      "name": "Justify My Love bocciato da MTV: 'non è una scena, è il tono'",
+      "category": "celebrity_interview",
+      "source_title": "Madonna Nightline Interview December 3, 1990",
+      "source_channel": "A Doss",
+      "summary": "Madonna ricostruisce il dietro le quinte di Justify My Love: non aveva pianificato di vendere il video, MTV lo rifiutò in blocco ('non è una scena specifica, è il tono'), così con il manager decisero di venderlo come video singolo, cosa mai fatta prima. La polemica, dice, è arrivata da sola.",
+      "topics": [
+        "Madonna Justify My Love video rifiutato da MTV tutto il tono non una scena specifica vendita video singolo mai fatto prima polemica non pianificata pubblicita caso mediatico censura 1990 intervista Nightline lucky me"
+      ],
+      "tags": ["Madonna", "Nightline", "celebrity_interview", "1990", "Justify My Love"],
+      "speakers": ["Madonna", "Ted Koppel"],
+      "mentioned_people": ["Madonna"],
+      "hook": "Chiesi se c'era una scena specifica che li disturbava e mi risposero: no, è tutto il tono. Così decidemmo di venderlo come video singolo, cosa che nessuno aveva mai fatto.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Madonna: il rifiuto di MTV e la vendita del video",
+          "summary": "Madonna racconta la genesi commerciale di Justify My Love dopo il rifiuto di MTV.",
+          "description": "Intervista Nightline 1990: Madonna spiega di non aver pianificato la vendita del video di Justify My Love, che MTV lo respinse completamente adducendo che il problema non era una scena ma il tono generale, e che quindi con il suo manager decisero di pubblicarlo come video singolo, operazione mai tentata prima; la controversia, sostiene, non era programmata."
+        }
+      ]
+    },
+    {
+      "start": "00:03:32",
+      "end": "00:03:45",
+      "name": "Hook: 'no, è tutto il tono'",
+      "category": "celebrity_interview",
+      "source_title": "Madonna Nightline Interview December 3, 1990",
+      "source_channel": "A Doss",
+      "summary": "Apertura secca (13s): la motivazione del rifiuto di MTV.",
+      "topics": [
+        "Madonna hook apertura short MTV rifiuto Justify My Love non una scena tutto il tono video bocciato 1990 clip breve opening-short"
+      ],
+      "tags": ["Madonna", "Nightline", "celebrity_interview", "hook", "1990"],
+      "speakers": ["Madonna"],
+      "mentioned_people": ["Madonna"],
+      "hook": "Chiesi quale scena li disturbasse: mi risposero che non era una scena, era tutto il tono.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Hook: 'è tutto il tono'",
+          "summary": "Clip di apertura di 13 secondi sul rifiuto di MTV.",
+          "description": "Hook di 13 secondi: Madonna racconta la motivazione ufficiale del rifiuto di MTV."
+        }
+      ]
+    },
+    {
+      "start": "00:05:10",
+      "end": "00:05:56",
+      "name": "'Mi sono incatenata da sola': il video di Express Yourself",
+      "category": "celebrity_interview",
+      "source_title": "Madonna Nightline Interview December 3, 1990",
+      "source_channel": "A Doss",
+      "summary": "Davanti all'accusa che Express Yourself mostri una donna incatenata e umiliata, Madonna risponde che le catene se le è messe da sola ed era incatenata ai propri desideri: non c'era un uomo a imporglielo. La degradazione, dice, è quando qualcun altro ti costringe a fare qualcosa contro la tua volontà.",
+      "topics": [
+        "Madonna Express Yourself video catene donna incatenata tavolo accusa pornografia arte umiliazione degradazione volonta propria I chained myself chained to my desires in charge volere desideri femminismo intervista Nightline 1990"
+      ],
+      "tags": ["Madonna", "Nightline", "celebrity_interview", "1990", "Express Yourself"],
+      "speakers": ["Madonna", "Ted Koppel"],
+      "mentioned_people": ["Madonna"],
+      "hook": "Le catene me le sono messe da sola: ero incatenata ai miei desideri, non c'era un uomo a impormelo. Faccio tutto di mia volontà, sono io al comando. La degradazione è quando qualcun altro ti costringe contro la tua volontà.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Madonna su Express Yourself: 'mi sono incatenata da sola'",
+          "summary": "Madonna ribatte alle critiche sul video di Express Yourself rivendicando la propria volontà.",
+          "description": "Intervista Nightline 1990: accusata di mostrare immagini di donna incatenata e umiliata nel video di Express Yourself, Madonna risponde di essersi incatenata da sola e di essere incatenata ai propri desideri, senza nessun uomo che la costringesse; definisce degradazione solo il caso in cui qualcuno impone qualcosa contro la volontà della persona."
+        }
+      ]
+    },
+    {
+      "start": "00:05:27",
+      "end": "00:05:40",
+      "name": "Hook: 'ero incatenata ai miei desideri'",
+      "category": "celebrity_interview",
+      "source_title": "Madonna Nightline Interview December 3, 1990",
+      "source_channel": "A Doss",
+      "summary": "Apertura secca (13s): la risposta di Madonna alle accuse su Express Yourself.",
+      "topics": [
+        "Madonna hook apertura short incatenata da sola catene desideri nessun uomo volonta sono io al comando Express Yourself 1990 clip breve opening-short"
+      ],
+      "tags": ["Madonna", "Nightline", "celebrity_interview", "hook", "1990"],
+      "speakers": ["Madonna"],
+      "mentioned_people": ["Madonna"],
+      "hook": "Sono io che mi sono incatenata: ero incatenata ai miei desideri, e faccio tutto di mia volontà.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Hook: 'mi sono incatenata da sola'",
+          "summary": "Clip di apertura di 13 secondi sulla difesa del video di Express Yourself.",
+          "description": "Hook di 13 secondi: Madonna spiega il senso delle catene nel video di Express Yourself."
+        }
+      ]
+    },
+    {
+      "start": "00:06:14",
+      "end": "00:07:06",
+      "name": "'L'ora della violenza': MTV, l'ipocrisia e la doppia morale americana",
+      "category": "celebrity_interview",
+      "source_title": "Madonna Nightline Interview December 3, 1990",
+      "source_channel": "A Doss",
+      "summary": "Madonna propone di applicare le etichette a tutto: MTV dovrebbe avere l'ora della violenza e quella della degradazione delle donne, e solo dopo l'ora dei video a tema sessuale adulto. Se si fa censura, dice, non si può essere ipocriti: perché un bambino può vedere un corpo fatto a pezzi e non due adulti consenzienti che si mostrano affetto?",
+      "topics": [
+        "Madonna censura labeling etichette MTV ora della violenza degradation to women hour video a tema sessuale adulto ipocrisia doppia morale americana 10-year-old corpo fatto a pezzi Sam Kinison Jessica Hahn due adulti consenzienti affetto intervista Nightline 1990"
+      ],
+      "tags": ["Madonna", "Nightline", "celebrity_interview", "1990", "censura"],
+      "speakers": ["Madonna", "Ted Koppel"],
+      "mentioned_people": ["Madonna", "Sam Kinison", "Jessica Hahn"],
+      "hook": "MTV dovrebbe avere l'ora della violenza e l'ora della degradazione delle donne, e poi l'ora dei video sessuali: se facciamo censura, non facciamoci ipocriti. Perché un bambino può vedere un corpo fatto a pezzi e non due adulti consenzienti?",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Madonna: censura, etichette e ipocrisia",
+          "summary": "Madonna attacca la doppia morale americana tra violenza tollerata e sessualità censurata.",
+          "description": "Intervista Nightline 1990: Madonna si dice contraria a qualsiasi censura ma favorevole alle etichette di avvertimento e propone ironicamente che MTV dedichi un'ora alla violenza e una alla degradazione delle donne prima di un'ora ai video a tema sessuale; accusa la doppia morale per cui un bambino può vedere un corpo fatto a pezzi ma non due adulti consenzienti che si mostrano affetto."
+        }
+      ]
+    },
+    {
+      "start": "00:06:34",
+      "end": "00:06:49",
+      "name": "Hook: 'l'ora della violenza e l'ora della degradazione delle donne'",
+      "category": "celebrity_interview",
+      "source_title": "Madonna Nightline Interview December 3, 1990",
+      "source_channel": "A Doss",
+      "summary": "Apertura secca (15s): la provocazione di Madonna sulle categorie di MTV.",
+      "topics": [
+        "Madonna hook apertura short MTV ora della violenza ora della degradazione delle donne ora video sessuali etichette provocazione 1990 clip breve opening-short"
+      ],
+      "tags": ["Madonna", "Nightline", "celebrity_interview", "hook", "1990"],
+      "speakers": ["Madonna"],
+      "mentioned_people": ["Madonna"],
+      "hook": "MTV dovrebbe avere la sua ora della violenza e la sua ora della degradazione delle donne, e poi l'ora dei video a tema sessuale.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Hook: le categorie di Madonna per MTV",
+          "summary": "Clip di apertura di 15 secondi sulla proposta provocatoria di Madonna.",
+          "description": "Hook di 15 secondi: Madonna propone ironicamente le categorie di contenuti per MTV."
+        }
+      ]
+    },
+    {
+      "start": "00:10:13",
+      "end": "00:11:01",
+      "name": "'I genitori non stanno facendo il loro lavoro': gravidanze teen e AIDS",
+      "category": "celebrity_interview",
+      "source_title": "Madonna Nightline Interview December 3, 1990",
+      "source_channel": "A Doss",
+      "summary": "Madonna rovescia l'obiezione dei genitori che non vogliono i suoi video in casa: non stanno facendo il loro lavoro, visto che le gravidanze tra adolescenti sono ai massimi storici, ci sono studentesse che aspettano il secondo figlio e l'AIDS cresce nella comunità eterosessuale a un ritmo spaventoso.",
+      "topics": [
+        "Madonna genitori non fanno il loro lavoro gravidanze adolescenti ai massimi storici studentesse secondo figlio AIDS crescita comunita eterosessuale ritmo spaventoso educazione sessuale ignoranza America 1990 intervista Nightline"
+      ],
+      "tags": ["Madonna", "Nightline", "celebrity_interview", "1990", "AIDS"],
+      "speakers": ["Madonna", "Ted Koppel"],
+      "mentioned_people": ["Madonna"],
+      "hook": "I genitori non stanno facendo il loro lavoro: le gravidanze tra adolescenti sono ai massimi storici e l'AIDS cresce nella comunità eterosessuale a un ritmo spaventoso.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Madonna: 'i genitori non fanno il loro lavoro'",
+          "summary": "Madonna risponde a chi la accusa di corrompere i minori con i dati su gravidanze e AIDS.",
+          "description": "Intervista Nightline 1990: Madonna ribatte ai genitori che non vogliono i suoi video in casa sostenendo che non stanno svolgendo il loro compito, con le gravidanze adolescenziali ai massimi storici, ragazze che aspettano il secondo figlio e una crescita spaventosa dell'AIDS nella comunità eterosessuale."
+        }
+      ]
+    },
+    {
+      "start": "00:10:17",
+      "end": "00:10:31",
+      "name": "Hook: 'le gravidanze teen ai massimi, l'AIDS cresce'",
+      "category": "celebrity_interview",
+      "source_title": "Madonna Nightline Interview December 3, 1990",
+      "source_channel": "A Doss",
+      "summary": "Apertura secca (14s): i dati usati da Madonna contro i genitori.",
+      "topics": [
+        "Madonna hook apertura short gravidanze adolescenti massimi AIDS comunita eterosessuale genitori non fanno il lavoro 1990 clip breve opening-short"
+      ],
+      "tags": ["Madonna", "Nightline", "celebrity_interview", "hook", "1990"],
+      "speakers": ["Madonna"],
+      "mentioned_people": ["Madonna"],
+      "hook": "Le gravidanze tra adolescenti sono ai massimi storici e l'AIDS cresce tra gli eterosessuali a un ritmo spaventoso.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Hook: i dati di Madonna",
+          "summary": "Clip di apertura di 14 secondi sui dati citati da Madonna.",
+          "description": "Hook di 14 secondi: Madonna elenca gravidanze teen e diffusione dell'AIDS per criticare i genitori."
+        }
+      ]
+    },
+    {
+      "start": "00:11:01",
+      "end": "00:11:48",
+      "name": "'Sono responsabile': safe sex, preservativi e il senso di Justify My Love",
+      "category": "celebrity_interview",
+      "source_title": "Madonna Nightline Interview December 3, 1990",
+      "source_channel": "A Doss",
+      "summary": "Madonna rivendica di comportarsi responsabilmente: il video mostra persone oneste sulla propria sessualità, senza alienare o degradare nessuno, ed è una celebrazione del sesso. Nei suoi album mette materiale informativo su contraccezione e preservativi e promuove il sesso sicuro appena può.",
+      "topics": [
+        "Madonna responsabilita artista mainstream safe sex preservativi contraccezione materiale informativo negli album celebrazione del sesso onesta nessuna degradazione nessuna alienazione promotrice sesso sicuro intervista Nightline 1990"
+      ],
+      "tags": ["Madonna", "Nightline", "celebrity_interview", "1990", "safe sex"],
+      "speakers": ["Madonna", "Ted Koppel"],
+      "mentioned_people": ["Madonna"],
+      "hook": "Mi comporto in modo responsabile: promuovo il sesso sicuro appena posso e metto nei miei album materiale su contraccezione e preservativi. È una celebrazione del sesso, non c'è niente di sbagliato.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Madonna: 'sono responsabile'",
+          "summary": "Madonna spiega perché considera responsabile la propria arte e il proprio attivismo sul sesso sicuro.",
+          "description": "Intervista Nightline 1990: Madonna sostiene di agire responsabilmente perché il video mostra persone oneste sulla propria sessualità senza alienare né degradare nessuno, e perché promuove il sesso sicuro inserendo materiale informativo su contraccezione e preservativi nei suoi album."
+        }
+      ]
+    },
+    {
+      "start": "00:11:25",
+      "end": "00:11:38",
+      "name": "Hook: \"è una celebrazione del sesso, non c'è niente di sbagliato\"",
+      "category": "celebrity_interview",
+      "source_title": "Madonna Nightline Interview December 3, 1990",
+      "source_channel": "A Doss",
+      "summary": "Apertura secca (13s): la difesa artistica di Madonna.",
+      "topics": [
+        "Madonna hook apertura short celebrazione del sesso onesta nessuna degradazione niente di sbagliato responsabilita artista 1990 clip breve opening-short"
+      ],
+      "tags": ["Madonna", "Nightline", "celebrity_interview", "hook", "1990"],
+      "speakers": ["Madonna"],
+      "mentioned_people": ["Madonna"],
+      "hook": "È una celebrazione del sesso: non c'è niente di sbagliato in questo.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Hook: 'una celebrazione del sesso'",
+          "summary": "Clip di apertura di 13 secondi sulla difesa del proprio lavoro.",
+          "description": "Hook di 13 secondi: Madonna rivendica il senso del video di Justify My Love."
+        }
+      ]
+    },
+    {
+      "start": "00:12:58",
+      "end": "00:13:31",
+      "name": "La risposta alle femministe: 'posso vestirmi da ochetta, ma sono io al comando'",
+      "category": "celebrity_interview",
+      "source_title": "Madonna Nightline Interview December 3, 1990",
+      "source_channel": "A Doss",
+      "summary": "Alle femministe che la accusano di riproporre vecchi valori, dalla fibbia 'boy toy' a Material Girl, Madonna risponde che possono vestirla da ochetta ma le fantasie sono le sue: nessuno dubita che sia lei a comandare la carriera e la vita, ed è esattamente questo che il femminismo chiede, uguaglianza e libertà di decidere.",
+      "topics": [
+        "Madonna femminismo critiche femministe boy toy belt buckle Material Girl vecchi valori ochetta bimbo ma sono io al comando delle mie fantasie carriera vita uguaglianza decidere da sola intervista Nightline 1990"
+      ],
+      "tags": ["Madonna", "Nightline", "celebrity_interview", "1990", "femminismo"],
+      "speakers": ["Madonna", "Ted Koppel"],
+      "mentioned_people": ["Madonna"],
+      "hook": "Posso vestirmi come la tipica ochetta, ma sono io al comando delle mie fantasie: nessuno pensa che non controlli la mia carriera e la mia vita, e non è questo il femminismo?",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Madonna risponde alle femministe",
+          "summary": "Madonna spiega perché si considera in linea con i valori del femminismo.",
+          "description": "Intervista Nightline 1990: alle femministe che la accusano di riflettere vecchi valori, dalla fibbia boy toy al video di Material Girl, Madonna risponde che il suo abbigliamento può sembrare quello della tipica ochetta ma sono le sue fantasie, che è lei al comando della propria carriera e della propria vita, e che questo coincide con l'uguaglianza e la libertà di scelta che il femminismo rivendica."
+        }
+      ]
+    },
+    {
+      "start": "00:13:01",
+      "end": "00:13:15",
+      "name": "Hook: 'posso vestirmi da ochetta, ma sono io al comando'",
+      "category": "celebrity_interview",
+      "source_title": "Madonna Nightline Interview December 3, 1990",
+      "source_channel": "A Doss",
+      "summary": "Apertura secca (14s): la replica di Madonna alle femministe.",
+      "topics": [
+        "Madonna hook apertura short femministe ochetta bimbo sono io al comando fantasie carriera vita uguaglianza 1990 clip breve opening-short"
+      ],
+      "tags": ["Madonna", "Nightline", "celebrity_interview", "hook", "1990"],
+      "speakers": ["Madonna"],
+      "mentioned_people": ["Madonna"],
+      "hook": "Posso vestirmi come la tipica ochetta, ma sono io al comando delle mie fantasie.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Hook: Madonna e il femminismo",
+          "summary": "Clip di apertura di 14 secondi sulla risposta di Madonna alle critiche femministe.",
+          "description": "Hook di 14 secondi: Madonna rivendica il controllo delle proprie fantasie e della propria vita."
+        }
+      ]
+    }
+  ]
+}

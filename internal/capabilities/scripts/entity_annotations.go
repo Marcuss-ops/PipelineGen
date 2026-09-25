@@ -37,7 +37,7 @@ func projectEntityAnnotations(text, language string, seg scriptpkg.VidRushSegmen
 			ann.ImportantPhrases = append(ann.ImportantPhrases, scriptpkg.AnnotationSpan{
 				Text: span.Text, StartRune: span.StartRune, EndRune: span.EndRune,
 				// NLP returns candidates strongest-first. Preserve that ranking
-				// through the run-level 5-phrase budget so a scene's second or
+				// through the run-level phrase budget so a scene's second or
 				// third suggestion cannot displace another scene's best line.
 				Score: max(0.95-float64(rank)*0.05, 0.01), Kind: "key_statement",
 			})

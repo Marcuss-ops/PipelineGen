@@ -1,0 +1,303 @@
+{
+  "_comment": "POST /api/clips/process payload (ExtractRequest, drift source: internal/capabilities/youtube/dto/types.go). Source: Queen interviewed in Perth during the 1976 Australian tour — https://www.youtube.com/watch?v=HT99qGWFpgM (354s, uploaded by 'Chief Mouse'). Destination: the Clips/HipHop child folder 1K-twA8EZ9_xs9-xTB-rtjU7e_X_WxJnO ('Queen'), create_subfolder=false. Windows picked BY HAND from the timed transcript printed by ops/jobs/hiphop_36/tx.py; no LLM selection, no LLM metadata. 6 main clips 40-54s (canonical 4-60s SegmentPolicy gate) + 6 hook openers <=15s carved inside the matching main window. Deterministic ids yt_<videoID>_<startSec>_<endSec>_v1 -> re-submit is an UPSERT. topics/summary/hook are keyword-dense on purpose: composeYouTubeClipSearchText feeds search_text -> 768d pgvector embedding, texts[] lands in asset_text_tracks in the same atomic commit.",
+  "url": "https://www.youtube.com/watch?v=HT99qGWFpgM",
+  "strategy": "verify",
+  "concurrency": 3,
+  "force_keyframes": true,
+  "keep_audio": true,
+  "write_summary": true,
+  "destination": {
+    "folder_id": "1K-twA8EZ9_xs9-xTB-rtjU7e_X_WxJnO",
+    "create_subfolder": false
+  },
+  "segments": [
+    {
+      "start": "00:00:26",
+      "end": "00:01:06",
+      "name": "'A Night at the Opera' è il nostro picco: difficile superarsi dopo Bohemian Rhapsody",
+      "category": "celebrity_interview",
+      "source_title": "Queen - Interview in Perth 1976 (Best Version)",
+      "source_channel": "Chief Mouse",
+      "summary": "La band ammette che A Night at the Opera è il momento più alto della carriera e che sarà difficile fare meglio, soprattutto dopo Bohemian Rhapsody; poi racconta le lettere di chi li accusa di demonologia per la parola Beelzebub.",
+      "topics": [
+        "Queen A Night at the Opera 1975 album Bohemian Rhapsody successo picco carriera difficile superare pressione lettere accuse demonologia satanismo Beelzebub parola potente intervista Perth 1976 Australia tour Roy Thomas Baker produzione"
+      ],
+      "tags": ["Queen", "Chief Mouse", "celebrity_interview", "1976", "A Night at the Opera"],
+      "speakers": ["Freddie Mercury", "Brian May", "Roger Taylor", "John Deacon"],
+      "mentioned_people": ["Freddie Mercury", "Brian May", "Roger Taylor", "John Deacon"],
+      "hook": "A Night at the Opera è il nostro picco: dopo Bohemian Rhapsody sarà difficile fare meglio.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Queen: il picco di A Night at the Opera",
+          "summary": "Queen commentano A Night at the Opera, Bohemian Rhapsody e le lettere di accuse sataniche.",
+          "description": "Intervista Queen a Perth nel 1976: la band riconosce in A Night at the Opera il momento più alto della propria carriera, ammette che superare Bohemian Rhapsody sarà difficile e racconta le lettere di fan che li accusavano di demonologia per l'uso della parola Beelzebub."
+        }
+      ]
+    },
+    {
+      "start": "00:00:52",
+      "end": "00:01:06",
+      "name": "Hook: 'non studio demonologia, amo solo la parola Beelzebub'",
+      "category": "celebrity_interview",
+      "source_title": "Queen - Interview in Perth 1976 (Best Version)",
+      "source_channel": "Chief Mouse",
+      "summary": "Apertura secca (14s): la risposta di Queen alle accuse di satanismo.",
+      "topics": [
+        "Queen hook apertura short Beelzebub demonologia satanismo lettere accuse Bohemian Rhapsody parola potente 1976 clip breve opening-short"
+      ],
+      "tags": ["Queen", "Chief Mouse", "celebrity_interview", "hook", "1976"],
+      "speakers": ["Freddie Mercury"],
+      "mentioned_people": ["Freddie Mercury"],
+      "hook": "Amo la parola Beelzebub, è una parola fantastica: non significa che studio demonologia.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Hook: 'amo la parola Beelzebub'",
+          "summary": "Clip di apertura di 14 secondi sulle accuse di satanismo a Queen.",
+          "description": "Hook di 14 secondi: Queen rispondono alle lettere che li accusavano di demonologia."
+        }
+      ]
+    },
+    {
+      "start": "00:01:17",
+      "end": "00:02:04",
+      "name": "Il prossimo singolo e la varietà dell'album: 'songs about death'",
+      "category": "celebrity_interview",
+      "source_title": "Queen - Interview in Perth 1976 (Best Version)",
+      "source_channel": "Chief Mouse",
+      "summary": "La band presenta You're My Best Friend come prossimo singolo e spiega che la struttura diversa da Bohemian Rhapsody è ciò che rende l'album attraente, grazie ai contributi di tutti e quattro; il giornalista chiede conto delle canzoni sulla morte.",
+      "topics": [
+        "Queen You're My Best Friend singolo successivo struttura diversa Bohemian Rhapsody varieta album contributi di tutti e quattro i membri canzoni sulla morte temi dark intervista Perth 1976"
+      ],
+      "tags": ["Queen", "Chief Mouse", "celebrity_interview", "1976", "You're My Best Friend"],
+      "speakers": ["Freddie Mercury", "Brian May", "Roger Taylor", "John Deacon"],
+      "mentioned_people": ["Freddie Mercury", "John Deacon"],
+      "hook": "You're My Best Friend è il prossimo singolo: una struttura completamente diversa da Bohemian Rhapsody, ed è proprio questo che rende l'album attraente.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Queen: You're My Best Friend e la varietà",
+          "summary": "Queen spiegano come la varietà di contributi renda A Night at the Opera un album unico.",
+          "description": "Intervista Queen 1976: la band annuncia You're My Best Friend come singolo successivo, spiega che la sua struttura diversa da Bohemian Rhapsody è il punto di forza dell'album e rivendica la varietà nata dal contributo di tutti e quattro i membri, rispondendo anche alle domande sui temi di morte nei testi."
+        }
+      ]
+    },
+    {
+      "start": "00:01:29",
+      "end": "00:01:42",
+      "name": "Hook: 'è la cosa che facciamo bene tutti insieme'",
+      "category": "celebrity_interview",
+      "source_title": "Queen - Interview in Perth 1976 (Best Version)",
+      "source_channel": "Chief Mouse",
+      "summary": "Apertura secca (13s): la varietà come forza del gruppo.",
+      "topics": [
+        "Queen hook apertura short varieta album tutti e quattro i membri contributi canzoni diverse 1976 clip breve opening-short"
+      ],
+      "tags": ["Queen", "Chief Mouse", "celebrity_interview", "hook", "1976"],
+      "speakers": ["Freddie Mercury"],
+      "mentioned_people": ["Freddie Mercury"],
+      "hook": "È una delle cose che facciamo bene tutti insieme: dà varietà ai nostri album.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Hook: la varietà dei Queen",
+          "summary": "Clip di apertura di 13 secondi sulla varietà degli album dei Queen.",
+          "description": "Hook di 13 secondi: Queen spiegano da dove nasce la varietà dei loro album."
+        }
+      ]
+    },
+    {
+      "start": "00:01:57",
+      "end": "00:02:47",
+      "name": "'Non è camp, è teatro': da music hall anni 20 al rock pesante",
+      "category": "celebrity_interview",
+      "source_title": "Queen - Interview in Perth 1976 (Best Version)",
+      "source_channel": "Chief Mouse",
+      "summary": "Queen rifiutano l'etichetta di 'camp' e rivendicano il lato visuale e teatrale dello show: ogni canzone ha un significato diverso, dalla music hall anni 20 al rock più duro fino alla ballata, ed è per questo che è difficile etichettarli.",
+      "topics": [
+        "Queen camp etichetta rock and roll visuale teatro show dal vivo music hall anni 20 rock pesante ballata varieta non etichettabile performance costumi intervista Perth 1976 theatrical live show"
+      ],
+      "tags": ["Queen", "Chief Mouse", "celebrity_interview", "1976", "teatro"],
+      "speakers": ["Freddie Mercury", "Brian May", "Roger Taylor"],
+      "mentioned_people": ["Freddie Mercury", "Brian May"],
+      "hook": "Non è camp, è rock and roll con una parte visuale: potresti chiamarlo teatro, ogni canzone è una categoria a sé, dalla music hall anni 20 al rock più duro.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Queen: 'è teatro, non camp'",
+          "summary": "Queen rivendicano l'anima teatrale e visuale del loro spettacolo dal vivo.",
+          "description": "Intervista Queen 1976: la band respinge l'etichetta di camp e spiega che il proprio è rock and roll con una forte componente visuale e teatrale, dove ogni brano appartiene a un genere diverso, dalla music hall anni venti al rock più pesante fino alla ballata."
+        }
+      ]
+    },
+    {
+      "start": "00:02:22",
+      "end": "00:02:36",
+      "name": "Hook: 'potresti chiamarlo teatro'",
+      "category": "celebrity_interview",
+      "source_title": "Queen - Interview in Perth 1976 (Best Version)",
+      "source_channel": "Chief Mouse",
+      "summary": "Apertura secca (14s): Queen e l'etichetta impossibile.",
+      "topics": [
+        "Queen hook apertura short teatro etichetta impossibile ogni canzone categoria music hall rock ballata 1976 clip breve opening-short"
+      ],
+      "tags": ["Queen", "Chief Mouse", "celebrity_interview", "hook", "1976"],
+      "speakers": ["Freddie Mercury"],
+      "mentioned_people": ["Freddie Mercury"],
+      "hook": "Potresti chiamarlo teatro: è difficile etichettarci perché ogni canzone è una categoria a sé.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Hook: 'potresti chiamarlo teatro'",
+          "summary": "Clip di apertura di 14 secondi sull'anima teatrale dei Queen.",
+          "description": "Hook di 14 secondi: Queen spiegano perché è impossibile etichettare la loro musica."
+        }
+      ]
+    },
+    {
+      "start": "00:02:40",
+      "end": "00:03:31",
+      "name": "Giappone: bodyguard, ascensori di servizio e la fuga sulla spiaggia di Perth",
+      "category": "celebrity_interview",
+      "source_title": "Queen - Interview in Perth 1976 (Best Version)",
+      "source_channel": "Chief Mouse",
+      "summary": "Dalla statua gigante in Giappone al lato claustrofobico della fama: in Giappone non potevano lasciare l'hotel, usavano gli ascensori della lavanderia e le cucine; Elton John's-style panic quasi fobico, finché non scapparono due giorni prima a Perth e nessuno li riconobbe in spiaggia.",
+      "topics": [
+        "Queen Giappone tour 1976 statua gigante folla bodyguard non potevano lasciare l'hotel ascensori di servizio cucine fama claustrofobia quasi fobico fuga Perth spiaggia tranquillita anonimato intervista"
+      ],
+      "tags": ["Queen", "Chief Mouse", "celebrity_interview", "1976", "Giappone"],
+      "speakers": ["Freddie Mercury", "Roger Taylor", "Brian May"],
+      "mentioned_people": ["Freddie Mercury", "Roger Taylor"],
+      "hook": "In Giappone non potevamo lasciare l'hotel: viaggiavamo negli ascensori di servizio e passando per le cucine; poi siamo scappati due giorni prima a Perth e nessuno sapeva che eravamo qui, in spiaggia, con la pace e il silenzio.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Queen: la claustrofobia della fama in Giappone",
+          "summary": "Queen raccontano il lato fobico del successo giapponese e la fuga sulla spiaggia di Perth.",
+          "description": "Intervista Queen 1976: la band racconta che in Giappone non poteva lasciare l'hotel per la folla, che servivano bodyguard e che dovevano passare da cucine e ascensori di servizio; il fenomeno divenne quasi fobico finché non arrivarono due giorni prima a Perth, dove nessuno li conosceva e poterono godersi spiaggia e silenzio."
+        }
+      ]
+    },
+    {
+      "start": "00:03:18",
+      "end": "00:03:31",
+      "name": "Hook: 'in spiaggia a Perth, nessuno sapeva che eravamo qui'",
+      "category": "celebrity_interview",
+      "source_title": "Queen - Interview in Perth 1976 (Best Version)",
+      "source_channel": "Chief Mouse",
+      "summary": "Apertura secca (13s): il momento di anonimato rubato a Perth.",
+      "topics": [
+        "Queen hook apertura short Perth spiaggia anonimato nessuno sapeva silenzio pace due giorni prima tour 1976 clip breve opening-short"
+      ],
+      "tags": ["Queen", "Chief Mouse", "celebrity_interview", "hook", "1976"],
+      "speakers": ["Freddie Mercury"],
+      "mentioned_people": ["Freddie Mercury"],
+      "hook": "Siamo arrivati due giorni prima a Perth e nessuno sapeva che eravamo qui: siamo andati in spiaggia, era silenzio e pace.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Hook: la fuga a Perth",
+          "summary": "Clip di apertura di 13 secondi sull'anonimato ritrovato dai Queen.",
+          "description": "Hook di 13 secondi: Queen raccontano i due giorni di libertà prima del tour australiano."
+        }
+      ]
+    },
+    {
+      "start": "00:03:51",
+      "end": "00:04:42",
+      "name": "Scrivere in tour è impossibile: 'il palco viene prima delle canzoni'",
+      "category": "celebrity_interview",
+      "source_title": "Queen - Interview in Perth 1976 (Best Version)",
+      "source_channel": "Chief Mouse",
+      "summary": "Queen spiegano che i tour mondiali danno idee ed esperienze utili, ma scrivere in camera d'albergo è quasi impossibile: quando sono in tournée pensano solo a suonare nei teatri e a comunicare con il pubblico.",
+      "topics": [
+        "Queen scrivere canzoni in tour camera d'albergo difficile ideas esperienze viaggi influenze tournees teatri pubblico suonare dal vivo priorita intervista Perth 1976 songwriting on the road"
+      ],
+      "tags": ["Queen", "Chief Mouse", "celebrity_interview", "1976", "songwriting"],
+      "speakers": ["Freddie Mercury", "Brian May", "Roger Taylor"],
+      "mentioned_people": ["Freddie Mercury", "Brian May"],
+      "hook": "In tour raccogli solo influenze ed esperienze: scrivere in camera d'albergo è impossibile, quando suoniamo siamo completamente assorbiti dal palco.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Queen: scrivere in tour è impossibile",
+          "summary": "Queen raccontano perché le canzoni nascono a casa e non durante le tournée.",
+          "description": "Intervista Queen 1976: la band spiega che i tour mondiali forniscono esperienze e influenze utili per la scrittura, ma che comporre in camera d'albergo è molto difficile perché durante le tournée l'attenzione è tutta sul suonare nei teatri e sul contatto con il pubblico."
+        }
+      ]
+    },
+    {
+      "start": "00:04:24",
+      "end": "00:04:37",
+      "name": "Hook: 'i tour ci danno materiale, ma non si scrive in albergo'",
+      "category": "celebrity_interview",
+      "source_title": "Queen - Interview in Perth 1976 (Best Version)",
+      "source_channel": "Chief Mouse",
+      "summary": "Apertura secca (13s): Queen sulla scrittura durante le tournée.",
+      "topics": [
+        "Queen hook apertura short tour scrivere camera d'albergo influenze esperienze palco pubblico 1976 clip breve opening-short"
+      ],
+      "tags": ["Queen", "Chief Mouse", "celebrity_interview", "hook", "1976"],
+      "speakers": ["Brian May"],
+      "mentioned_people": ["Brian May"],
+      "hook": "In tour raccogli influenze ed esperienze: sono utilissime quando poi ti metti a scrivere.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Hook: scrivere dopo i tour",
+          "summary": "Clip di apertura di 13 secondi su come nascono le canzoni dei Queen.",
+          "description": "Hook di 13 secondi: Queen spiegano il rapporto tra tournée e scrittura."
+        }
+      ]
+    },
+    {
+      "start": "00:04:42",
+      "end": "00:05:36",
+      "name": "La stampa musicale: 'una rivista che parla seriamente di politica e rock è assurda'",
+      "category": "celebrity_interview",
+      "source_title": "Queen - Interview in Perth 1976 (Best Version)",
+      "source_channel": "Chief Mouse",
+      "summary": "Queen attaccano la stampa rock: Rolling Stone e NME li hanno portati dal fondo alla vetta e poi giù di nuovo, quindi non prendono sul serio i giudizi; una rivista che pretende di scrivere seriamente di politica e rock and roll insieme è, per loro, totalmente assurda.",
+      "topics": [
+        "Queen stampa musicale critica Rolling Stone NME condiscendente giudizi alti e bassi non prendiamo nulla sul serio nouvel Musical Express vernice politica rock and roll assurdo giornalismo musicale intervista Perth 1976"
+      ],
+      "tags": ["Queen", "Chief Mouse", "celebrity_interview", "1976", "stampa"],
+      "speakers": ["Freddie Mercury", "Roger Taylor"],
+      "mentioned_people": ["Freddie Mercury", "Roger Taylor"],
+      "hook": "Non prendiamo nulla sul serio: ci hanno portato dal fondo alla vetta e poi giù di nuovo. Una rivista che scrive seriamente di politica e rock and roll è totalmente assurda.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Queen contro la stampa musicale",
+          "summary": "Queen spiegano perché non prendono sul serio la critica rock e il giornalismo musicale.",
+          "description": "Intervista Queen 1976: la band racconta di essere stata portata dalla stampa musicale dal fondo alla vetta e poi di nuovo giù, e per questo dice di non prendere nulla sul serio; per loro una rivista che pretende di trattare seriamente politica e rock and roll insieme è totalmente assurda."
+        }
+      ]
+    },
+    {
+      "start": "00:04:52",
+      "end": "00:05:06",
+      "name": "Hook: 'dal fondo alla vetta e poi giù: non prendiamo nulla sul serio'",
+      "category": "celebrity_interview",
+      "source_title": "Queen - Interview in Perth 1976 (Best Version)",
+      "source_channel": "Chief Mouse",
+      "summary": "Apertura secca (14s): Queen e i giudizi della critica.",
+      "topics": [
+        "Queen hook apertura short stampa critica fondo vetta giudizi non prendiamo nulla sul serio giornalismo musicale 1976 clip breve opening-short"
+      ],
+      "tags": ["Queen", "Chief Mouse", "celebrity_interview", "hook", "1976"],
+      "speakers": ["Roger Taylor"],
+      "mentioned_people": ["Roger Taylor"],
+      "hook": "Ci hanno portato dal fondo alla vetta e poi di nuovo giù: non possiamo prenderli sul serio.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Hook: Queen e la critica",
+          "summary": "Clip di apertura di 14 secondi sul rapporto tra Queen e la stampa.",
+          "description": "Hook di 14 secondi: Queen spiegano perché non danno peso ai giudizi della critica."
+        }
+      ]
+    }
+  ]
+}

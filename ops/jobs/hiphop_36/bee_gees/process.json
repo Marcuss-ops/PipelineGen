@@ -1,0 +1,255 @@
+{
+  "_comment": "POST /api/clips/process payload (ExtractRequest, drift source: internal/capabilities/youtube/dto/types.go). Source: Bee Gees on Late Show with David Letterman, 1989 (The One album campaign) — https://www.youtube.com/watch?v=BCmsGgZHZKg (284s). Destination: the Clips/HipHop child folder 1sBf3_MviwHkdoJTUo3Um32I-lITT9qCW ('Bee Gees'), create_subfolder=false. Windows picked BY HAND from the timed transcript printed by ops/jobs/hiphop_36/tx.py; no LLM selection. 5 main clips 19-54s (canonical 4-60s SegmentPolicy gate) + 5 hook openers <=14s carved inside the matching main window. Deterministic ids yt_<videoID>_<startSec>_<endSec>_v1 -> re-submit is an UPSERT. topics/summary/hook are keyword-dense on purpose: composeYouTubeClipSearchText feeds search_text -> 768d pgvector embedding, texts[] lands in asset_text_tracks in the same atomic commit.",
+  "url": "https://www.youtube.com/watch?v=BCmsGgZHZKg",
+  "strategy": "verify",
+  "concurrency": 3,
+  "force_keyframes": true,
+  "keep_audio": true,
+  "write_summary": true,
+  "destination": {
+    "folder_id": "1sBf3_MviwHkdoJTUo3Um32I-lITT9qCW",
+    "create_subfolder": false
+  },
+  "segments": [
+    {
+      "start": "00:00:29",
+      "end": "00:01:09",
+      "name": "Vent'anni di dischi e 'siamo ancora affamati'",
+      "category": "celebrity_interview",
+      "source_title": "Bee Gees Interview with Letterman on The Late Show 1989",
+      "source_channel": "Late Show with David Letterman",
+      "summary": "I Bee Gees presentano il nuovo album dopo due anni di pausa discografica e vent'anni di carriera internazionale: dicono di sentirsi come agli inizi, ancora affamati, attenti alle classifiche e a quante volte passano in radio. Poi la battuta: ogni tanto un mobile lo costruiscono.",
+      "topics": [
+        "Bee Gees Letterman 1989 venti anni carriera internazionale nuovo album The One due anni pausa ancora affamati ancora hungry classifiche passaggi radio battuta falegnameria cabinet Barry Robin Maurice Gibb"
+      ],
+      "tags": ["Bee Gees", "Letterman", "celebrity_interview", "1989", "The One"],
+      "speakers": ["Barry Gibb", "Robin Gibb", "Maurice Gibb", "David Letterman"],
+      "mentioned_people": ["Barry Gibb", "Robin Gibb", "Maurice Gibb"],
+      "hook": "Ci sentiamo come allora: siamo ancora affamati, guardiamo ancora quante volte passiamo in radio e le classifiche.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Bee Gees: 'siamo ancora affamati'",
+          "summary": "I Bee Gees raccontano vent'anni di carriera e l'entusiasmo per il nuovo album.",
+          "description": "Intervista al Late Show con David Letterman nel 1989: i Bee Gees presentano il primo album dopo due anni e raccontano che, a vent'anni dall'inizio dell'attività internazionale, si sentono ancora affamati e continuano a seguire classifiche e passaggi radiofonici con lo stesso interesse di sempre."
+        }
+      ]
+    },
+    {
+      "start": "00:00:51",
+      "end": "00:01:04",
+      "name": "Hook: 'siamo ancora affamati'",
+      "category": "celebrity_interview",
+      "source_title": "Bee Gees Interview with Letterman on The Late Show 1989",
+      "source_channel": "Late Show with David Letterman",
+      "summary": "Apertura secca (13s): l'atteggiamento dei Bee Gees dopo vent'anni.",
+      "topics": [
+        "Bee Gees hook apertura short ancora affamati venti anni classifiche radio 1989 clip breve opening-short Barry Robin Maurice Gibb entusiasmo nuovo album The One"
+      ],
+      "tags": ["Bee Gees", "Letterman", "celebrity_interview", "hook", "1989"],
+      "speakers": ["Barry Gibb", "Robin Gibb", "Maurice Gibb"],
+      "mentioned_people": ["Barry Gibb"],
+      "hook": "Ci sentiamo come allora: siamo ancora affamati, guardiamo ancora quante volte passiamo in radio.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Hook: 'siamo ancora affamati'",
+          "summary": "Clip di apertura di 13 secondi sull'entusiasmo dei Bee Gees.",
+          "description": "Hook di 13 secondi: i Bee Gees spiegano cosa li muove ancora dopo vent'anni."
+        }
+      ]
+    },
+    {
+      "start": "00:01:09",
+      "end": "00:01:59",
+      "name": "Il concerto di Giacarta sotto il monsone: 'se la spalla esce vivo, salite?'",
+      "category": "celebrity_interview",
+      "source_title": "Bee Gees Interview with Letterman on The Late Show 1989",
+      "source_channel": "Late Show with David Letterman",
+      "summary": "I Bee Gees raccontano il concerto all'aperto di Giacarta come un'esperienza orribile: monsone a metà show, corrente saltata, un pollice d'acqua sul palco e la paura di restare fulminati. Il promoter li convinse dicendo che se il gruppo spalla fosse uscito vivo, sarebbero saliti anche loro.",
+      "topics": [
+        "Bee Gees concerto Giacarta Indonesia monsone pioggia palco all'aperto corrente saltata rischio elettrocuzione promoter gruppo spalla esca President Sukarno militari 1989 aneddoto tour mondiale"
+      ],
+      "tags": ["Bee Gees", "Letterman", "celebrity_interview", "1989", "Giacarta"],
+      "speakers": ["Barry Gibb", "Robin Gibb", "Maurice Gibb", "David Letterman"],
+      "mentioned_people": ["Barry Gibb", "Robin Gibb", "Maurice Gibb", "Sukarno"],
+      "hook": "Il promoter ci disse: se il gruppo prima di voi esce vivo, salite voi? E noi usammo il gruppo spalla come esca.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Bee Gees: il monsone di Giacarta",
+          "summary": "I Bee Gees raccontano il concerto più pericoloso della loro carriera.",
+          "description": "Intervista 1989: i Bee Gees ricordano il concerto all'aperto di Giacarta in Indonesia, interrotto da un monsone con la corrente elettrica saltata e un pollice d'acqua sul palco, con il terrore di rimanere fulminati; il promoter li convinse a esibirsi dicendo che se il gruppo spalla fosse sopravvissuto sarebbero potuti salire anche loro."
+        }
+      ]
+    },
+    {
+      "start": "00:01:28",
+      "end": "00:01:42",
+      "name": "Hook: 'se il gruppo prima di voi esce vivo, salite?'",
+      "category": "celebrity_interview",
+      "source_title": "Bee Gees Interview with Letterman on The Late Show 1989",
+      "source_channel": "Late Show with David Letterman",
+      "summary": "Apertura secca (14s): il patto surreale con il promoter di Giacarta.",
+      "topics": [
+        "Bee Gees hook apertura short Giacarta promoter gruppo spalla esca monsone corrente vivo 1989 clip breve opening-short Indonesia pericolo elettrocuzione concerto all'aperto"
+      ],
+      "tags": ["Bee Gees", "Letterman", "celebrity_interview", "hook", "1989"],
+      "speakers": ["Barry Gibb", "Robin Gibb"],
+      "mentioned_people": ["Barry Gibb"],
+      "hook": "Se il gruppo che suona prima di voi esce vivo, salite? E così hanno usato il gruppo spalla come esca.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Hook: il patto di Giacarta",
+          "summary": "Clip di apertura di 14 secondi sull'esibizione più rischiosa dei Bee Gees.",
+          "description": "Hook di 14 secondi: i Bee Gees raccontano come furono convinti a salire sul palco allagato di Giacarta."
+        }
+      ]
+    },
+    {
+      "start": "00:02:03",
+      "end": "00:02:57",
+      "name": "Il monastero di 800 anni e il fantasma con i calzoni alla zuava",
+      "category": "celebrity_interview",
+      "source_title": "Bee Gees Interview with Letterman on The Late Show 1989",
+      "source_channel": "Late Show with David Letterman",
+      "summary": "Robin racconta di vivere in un monastero di 800 anni: un fonte battesimale si riempie d'acqua da solo e il comune, dopo le analisi, ha escluso una perdita. Il fantasma della casa prende la forma di un giardiniere in calzoni alla zuava, visto anche da alcuni sensitivi; in casa ci sono 'piccole persone' ancora più spaventose.",
+      "topics": [
+        "Bee Gees Robin Gibb casa infestata monastero 800 anni fonte battesimale si riempie d'acqua analisi comune non è una perdita fantasma giardiniere calzoni alla zuava sensitivi casa Thame Inghilterra 1989 intervista Letterman"
+      ],
+      "tags": ["Bee Gees", "Letterman", "celebrity_interview", "1989", "casa"],
+      "speakers": ["Robin Gibb", "Barry Gibb", "David Letterman"],
+      "mentioned_people": ["Robin Gibb", "Barry Gibb"],
+      "hook": "Il fantasma prende la forma di un giardiniere, con i calzoni alla zuava: tutti dicono che l'ho visto tranne me.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Bee Gees: la casa infestata di Robin",
+          "summary": "Robin Gibb racconta il monastero di 800 anni e il mistero del fonte battesimale che si riempie d'acqua.",
+          "description": "Intervista 1989: Robin Gibb racconta di abitare in un monastero di 800 anni nel quale un fonte battesimale si riempie d'acqua senza motivo, nonostante le analisi del comune escludano perdite; descrive poi il fantasma della casa come un giardiniere in calzoni alla zuava e scherza sulle piccole presenze che lo spaventano più del fantasma."
+        }
+      ]
+    },
+    {
+      "start": "00:02:44",
+      "end": "00:02:57",
+      "name": "Hook: 'il fantasma è un giardiniere'",
+      "category": "celebrity_interview",
+      "source_title": "Bee Gees Interview with Letterman on The Late Show 1989",
+      "source_channel": "Late Show with David Letterman",
+      "summary": "Apertura secca (14s): il fantasma della casa di Robin.",
+      "topics": [
+        "Bee Gees hook apertura short fantasma giardiniere calzoni alla zuava casa infestata monastero 1989 clip breve opening-short"
+      ],
+      "tags": ["Bee Gees", "Letterman", "celebrity_interview", "hook", "1989"],
+      "speakers": ["Robin Gibb"],
+      "mentioned_people": ["Robin Gibb"],
+      "hook": "Tutti dicono che ho visto un fantasma, tranne me: prende la forma di un giardiniere.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Hook: il fantasma di casa Gibb",
+          "summary": "Clip di apertura di 14 secondi sul fantasma descritto da Robin Gibb.",
+          "description": "Hook di 14 secondi: Robin Gibb racconta la presenza che abita la sua casa."
+        }
+      ]
+    },
+    {
+      "start": "00:03:20",
+      "end": "00:04:04",
+      "name": "La tenuta con cappella e 50 acri, poi la tournée americana",
+      "category": "celebrity_interview",
+      "source_title": "Bee Gees Interview with Letterman on The Late Show 1989",
+      "source_channel": "Late Show with David Letterman",
+      "summary": "Robin descrive la casa appartenuta a preti e monaci, con una cappella e circa 50 acri, mentre Barry ne ha più di terreno arabile. Poi il calendario: tappa europea conclusa tra Germania, Scandinavia, Paesi Bassi e Inghilterra, tappa americana dal 28 maggio fino a fine agosto.",
+      "topics": [
+        "Bee Gees casa monastero cappella 50 acri terreno arabile Barry Robin proprietà Inghilterra tour europeo Germania Scandinavia Paesi Bassi Inghilterra tappa americana 28 maggio fine agosto 1989 The One"
+      ],
+      "tags": ["Bee Gees", "Letterman", "celebrity_interview", "1989", "tour"],
+      "speakers": ["Robin Gibb", "Barry Gibb", "David Letterman"],
+      "mentioned_people": ["Robin Gibb", "Barry Gibb"],
+      "hook": "Abbiamo appena finito la tappa europea, tra Germania, Scandinavia, Paesi Bassi e Inghilterra: la parte americana parte il 28 maggio.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Bee Gees: la tenuta e il tour 1989",
+          "summary": "I Bee Gees raccontano la proprietà di Robin e il calendario della tournée dell'album The One.",
+          "description": "Intervista 1989: Robin Gibb descrive la casa già appartenuta a preti e monaci, con una cappella e circa cinquanta acri di terreno, mentre il fratello Barry ne possiede di più; la band fa poi il punto sul tour, con la tappa europea conclusa e quella americana in partenza il 28 maggio."
+        }
+      ]
+    },
+    {
+      "start": "00:03:44",
+      "end": "00:03:57",
+      "name": "Hook: 'la tappa americana parte il 28 maggio'",
+      "category": "celebrity_interview",
+      "source_title": "Bee Gees Interview with Letterman on The Late Show 1989",
+      "source_channel": "Late Show with David Letterman",
+      "summary": "Apertura secca (13s): il calendario del tour dei Bee Gees.",
+      "topics": [
+        "Bee Gees hook apertura short tour tappa europea tappa americana 28 maggio fine agosto 1989 clip breve opening-short Germania Scandinavia Paesi Bassi Inghilterra date concerti"
+      ],
+      "tags": ["Bee Gees", "Letterman", "celebrity_interview", "hook", "1989"],
+      "speakers": ["Barry Gibb"],
+      "mentioned_people": ["Barry Gibb"],
+      "hook": "Abbiamo appena finito la tappa europea e iniziamo quella americana il 28 maggio.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Hook: il tour dei Bee Gees",
+          "summary": "Clip di apertura di 13 secondi sulle date del tour 1989.",
+          "description": "Hook di 13 secondi: i Bee Gees riassumono le tappe europea e americana."
+        }
+      ]
+    },
+    {
+      "start": "00:04:04",
+      "end": "00:04:23",
+      "name": "'Ai quei tempi i dischi non duravano più di tre minuti'",
+      "category": "celebrity_interview",
+      "source_title": "Bee Gees Interview with Letterman on The Late Show 1989",
+      "source_channel": "Late Show with David Letterman",
+      "summary": "Chiudendo la puntata, i Bee Gees ricordano i vincoli dell'epoca: i dischi non superavano i tre minuti, quindi dal vivo bisognava allungare i brani improvvisando, come si faceva 'vamp till ready'. Oggi, scherzano, sembra di suonare a Nashville.",
+      "topics": [
+        "Bee Gees dischi tre minuti formato singolo anni 60 vincoli radio vamp till ready allungare i brani dal vivo improvvisazione Nashville musica country 1989 Letterman"
+      ],
+      "tags": ["Bee Gees", "Letterman", "celebrity_interview", "1989", "discografia"],
+      "speakers": ["Barry Gibb", "Robin Gibb", "Maurice Gibb"],
+      "mentioned_people": ["Barry Gibb"],
+      "hook": "A quei tempi i dischi non duravano più di tre minuti: dovevamo allungare i brani dal vivo, vamp till ready.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Bee Gees: i dischi da tre minuti",
+          "summary": "I Bee Gees ricordano i vincoli tecnici del formato singolo negli anni Sessanta.",
+          "description": "Intervista 1989: i Bee Gees ricordano che ai loro esordi i dischi non superavano i tre minuti, il che li costringeva ad allungare i brani dal vivo improvvisando secondo la tecnica del vamp till ready, una prassi che oggi li fa sorridere."
+        }
+      ]
+    },
+    {
+      "start": "00:04:14",
+      "end": "00:04:23",
+      "name": "Hook: 'allungavamo i brani dal vivo'",
+      "category": "celebrity_interview",
+      "source_title": "Bee Gees Interview with Letterman on The Late Show 1989",
+      "source_channel": "Late Show with David Letterman",
+      "summary": "Apertura secca (9s): i vincoli del formato a 45 giri.",
+      "topics": [
+        "Bee Gees hook apertura short dischi tre minuti vamp till ready allungare brani dal vivo 1989 clip breve opening-short formato 45 giri singoli anni sessanta"
+      ],
+      "tags": ["Bee Gees", "Letterman", "celebrity_interview", "hook", "1989"],
+      "speakers": ["Barry Gibb"],
+      "mentioned_people": ["Barry Gibb"],
+      "hook": "I dischi non duravano più di tre minuti: dovevamo allungarli dal vivo.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Hook: i dischi da tre minuti",
+          "summary": "Clip di apertura di 9 secondi sui limiti del formato singolo.",
+          "description": "Hook di 9 secondi: i Bee Gees spiegano come aggiravano il limite dei tre minuti."
+        }
+      ]
+    }
+  ]
+}

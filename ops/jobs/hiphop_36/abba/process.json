@@ -1,0 +1,303 @@
+{
+  "_comment": "POST /api/clips/process payload (ExtractRequest, drift source: internal/capabilities/youtube/dto/types.go). Source: ABBA 'Interview (Career/Sweden/Influences/Personal Tastes) 1977' (Reelin' In The Years Archive) — https://www.youtube.com/watch?v=2z53Ft0STog, 366s. Destination: the Clips/HipHop child folder 1BYKuBGYaeTe37n70gFbE_Fn-CM23mKpV ('ABBA'), create_subfolder=false so clips land flat in the artist folder. Every moment was picked BY HAND from the timed transcript (no LLM selection); timestamps come from the YouTube caption runs printed by ops/jobs/hiphop_36/tx.py. 6 main clips (32-41s, all inside the canonical 4-60s SegmentPolicy gate) + 6 hook openers (<=15s) taken inside the matching main window. Deterministic ids yt_<videoID>_<startSec>_<endSec>_v1 -> a re-submit is an UPSERT. topics/summary/hook are keyword-dense on purpose: composeYouTubeClipSearchText (title->summary->hook->topics->url->speakers->mentioned_people) feeds search_text and the 768d pgvector embedding, plus the asset_text_tracks rows written from texts[] in the same commit.",
+  "url": "https://www.youtube.com/watch?v=2z53Ft0STog",
+  "strategy": "verify",
+  "concurrency": 3,
+  "force_keyframes": true,
+  "keep_audio": true,
+  "write_summary": true,
+  "destination": {
+    "folder_id": "1BYKuBGYaeTe37n70gFbE_Fn-CM23mKpV",
+    "create_subfolder": false
+  },
+  "segments": [
+    {
+      "start": "00:00:22",
+      "end": "00:00:57",
+      "name": "Cinque anni, quattro album e 48 canzoni: 'se abbiamo avuto tanti successi non è colpa nostra'",
+      "category": "celebrity_interview",
+      "source_title": "ABBA Interview (Career/Sweden/Influences/Personal Tastes) 1977",
+      "source_channel": "Reelin' In The Years Archive",
+      "summary": "Gli ABBA raccontano il ritmo di lavoro del gruppo: quattro album e 48 canzoni in cinque anni, e rispondono alle accuse di successo 'facile' dicendo che stanno solo facendo la musica che vogliono fare.",
+      "topics": [
+        "ABBA 1977 intervista Reelin In The Years carriera cinque anni insieme quattro album 48 canzoni successo hits discografia produttività lavoro discografico pop svedese non è colpa nostra stiamo facendo la musica che vogliamo Bjorn Ulvaeus Benny Andersson Agnetha Faltskog Frida Lyngstad recording career five years four albums hits not our fault making the music we want"
+      ],
+      "tags": ["ABBA", "Reelin' In The Years Archive", "celebrity_interview", "1977"],
+      "speakers": ["ABBA"],
+      "mentioned_people": ["Bjorn Ulvaeus", "Benny Andersson", "Agnetha Faltskog", "Anni-Frid Lyngstad"],
+      "hook": "Se abbiamo avuto tanti successi non è colpa nostra: stiamo solo facendo la musica che vogliamo fare.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Cinque anni, quattro album e 48 canzoni: 'non è colpa nostra'",
+          "summary": "Gli ABBA spiegano il loro ritmo di lavoro: quattro album e 48 canzoni in cinque anni con la band.",
+          "description": "Intervista ABBA 1977: il gruppo racconta cinque anni di carriera, quattro album e 48 canzoni pubblicate e rivendica la libertà di fare la musica che vuole, senza sentirsi in colpa per i successi ottenuti."
+        }
+      ]
+    },
+    {
+      "start": "00:00:33",
+      "end": "00:00:46",
+      "name": "Hook: 'se abbiamo avuto tanti successi non è colpa nostra'",
+      "category": "celebrity_interview",
+      "source_title": "ABBA Interview (Career/Sweden/Influences/Personal Tastes) 1977",
+      "source_channel": "Reelin' In The Years Archive",
+      "summary": "Apertura secca (13s): gli ABBA rivendicano la loro musica di fronte alle accuse di successo facile.",
+      "topics": [
+        "ABBA hook apertura short successo non è colpa nostra tanti hits quattro album 48 canzoni cinque anni musica pop svedese intervista 1977 clip breve opening-short"
+      ],
+      "tags": ["ABBA", "Reelin' In The Years Archive", "celebrity_interview", "hook", "1977"],
+      "speakers": ["ABBA"],
+      "mentioned_people": ["Bjorn Ulvaeus", "Benny Andersson", "Agnetha Faltskog", "Anni-Frid Lyngstad"],
+      "hook": "Se abbiamo avuto tanti successi non è colpa nostra: stiamo solo facendo la musica che vogliamo.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Hook: 'non è colpa nostra'",
+          "summary": "Clip di apertura di 13 secondi con la battuta di ABBA sui successi ottenuti.",
+          "description": "Hook di 13 secondi: gli ABBA rispondono alle accuse di successo facile rivendicando la propria musica."
+        }
+      ]
+    },
+    {
+      "start": "00:00:54",
+      "end": "00:01:31",
+      "name": "Perché ABBA vivono ancora in Svezia (e non per le tasse)",
+      "category": "celebrity_interview",
+      "source_title": "ABBA Interview (Career/Sweden/Influences/Personal Tastes) 1977",
+      "source_channel": "Reelin' In The Years Archive",
+      "summary": "Il gruppo racconta il rapporto con la Svezia: la gente chiede sempre perché non si trasferiscano per le tasse, ma loro non riescono nemmeno a immaginare di vivere altrove.",
+      "topics": [
+        "ABBA vivere in Svezia tasse domicilio residenza Stoccolma perché restano in Svezia non potremmo vivere altrove trasferirsi all'estero patria legame nazionalità artisti svedesi pop export intervista 1977 living in Sweden taxes why we live in Sweden we can't live somewhere else"
+      ],
+      "tags": ["ABBA", "Reelin' In The Years Archive", "celebrity_interview", "1977", "Svezia"],
+      "speakers": ["ABBA"],
+      "mentioned_people": ["Bjorn Ulvaeus", "Benny Andersson", "Agnetha Faltskog", "Anni-Frid Lyngstad"],
+      "hook": "Tutti ci chiedono perché viviamo in Svezia, parlano delle tasse: non potremmo vivere altrove, è difficile persino pensarci.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Perché ABBA vivono ancora in Svezia",
+          "summary": "Il gruppo spiega di restare in Svezia nonostante le tasse: non riescono a immaginarsi altrove.",
+          "description": "ABBA 1977: alla domanda sul perché continuino a vivere in Svezia, il gruppo risponde che tutti chiedono se sia per le tasse, ma che per loro è impensabile vivere in un altro paese."
+        }
+      ]
+    },
+    {
+      "start": "00:00:57",
+      "end": "00:01:11",
+      "name": "Hook: 'tutti ci chiedono perché viviamo in Svezia'",
+      "category": "celebrity_interview",
+      "source_title": "ABBA Interview (Career/Sweden/Influences/Personal Tastes) 1977",
+      "source_channel": "Reelin' In The Years Archive",
+      "summary": "Apertura secca (14s): ABBA e la scelta di restare in Svezia tra tasse e radici.",
+      "topics": [
+        "ABBA hook apertura short Svezia tasse perché viviamo in Svezia radici non vivremmo altrove intervista 1977 clip breve opening-short"
+      ],
+      "tags": ["ABBA", "Reelin' In The Years Archive", "celebrity_interview", "hook", "1977"],
+      "speakers": ["ABBA"],
+      "mentioned_people": ["Bjorn Ulvaeus", "Benny Andersson"],
+      "hook": "Tutti ci chiedono perché viviamo in Svezia, parlano delle tasse: non potremmo vivere altrove.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Hook: 'perché viviamo in Svezia'",
+          "summary": "Clip di apertura di 14 secondi su ABBA e la Svezia.",
+          "description": "Hook di 14 secondi: ABBA spiegano perché non lasciano la Svezia."
+        }
+      ]
+    },
+    {
+      "start": "00:01:54",
+      "end": "00:02:33",
+      "name": "Cosa ascoltano gli ABBA: Eagles, Queen, Beatles, 10cc e Beach Boys",
+      "category": "celebrity_interview",
+      "source_title": "ABBA Interview (Career/Sweden/Influences/Personal Tastes) 1977",
+      "source_channel": "Reelin' In The Years Archive",
+      "summary": "Alla domanda su quali gruppi ascoltino nel tempo libero, gli ABBA citano Eagles e Queen, i Beatles 'ancora ottimi anche come suono', Rufus, 10cc per la produzione e i Beach Boys.",
+      "topics": [
+        "ABBA gusti musicali cosa ascoltano Eagles Queen Beatles dischi preferiti 10cc Rufus Beach Boys produzione suono rock pop anni 70 influenze musicali collezione dischi famiglia musical tastes favourite records influences listening habits interview 1977"
+      ],
+      "tags": ["ABBA", "Reelin' In The Years Archive", "celebrity_interview", "1977", "influenze"],
+      "speakers": ["ABBA"],
+      "mentioned_people": ["Eagles", "Queen", "The Beatles", "10cc", "Rufus", "The Beach Boys"],
+      "hook": "Mi piacciono ancora gli Eagles, i Queen, alcuni dischi dei Beatles sono ottimi anche come suono: 10cc per la produzione, Rufus, e sarò sempre un fan dei Beach Boys.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "I gusti musicali degli ABBA",
+          "summary": "ABBA citano Eagles, Queen, Beatles, 10cc, Rufus e Beach Boys tra i dischi che ascoltano.",
+          "description": "Intervista ABBA 1977 sui gusti musicali: il gruppo elenca Eagles, Queen, i dischi dei Beatles ancora ottimi dal punto di vista del suono, Rufus, 10cc apprezzati per la produzione e i Beach Boys."
+        }
+      ]
+    },
+    {
+      "start": "00:02:05",
+      "end": "00:02:17",
+      "name": "Hook: 'Eagles, Queen, Beatles: ecco cosa ascoltano gli ABBA'",
+      "category": "celebrity_interview",
+      "source_title": "ABBA Interview (Career/Sweden/Influences/Personal Tastes) 1977",
+      "source_channel": "Reelin' In The Years Archive",
+      "summary": "Apertura secca (12s): la lista di dischi amati dagli ABBA.",
+      "topics": [
+        "ABBA hook apertura short clip breve Eagles Queen Beatles dischi preferiti gusti musicali suono produzione 10cc Rufus Beach Boys influenze pop svedese intervista 1977 opening-short"
+      ],
+      "tags": ["ABBA", "Reelin' In The Years Archive", "celebrity_interview", "hook", "1977"],
+      "speakers": ["ABBA"],
+      "mentioned_people": ["Eagles", "Queen", "The Beatles"],
+      "hook": "Mi piacciono ancora gli Eagles, i Queen, e alcuni dischi dei Beatles sono ottimi anche come suono.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Hook: i dischi degli ABBA",
+          "summary": "Clip di apertura di 12 secondi sui gusti musicali degli ABBA.",
+          "description": "Hook di 12 secondi: ABBA elencano Eagles, Queen e Beatles tra i loro ascolti."
+        }
+      ]
+    },
+    {
+      "start": "00:03:30",
+      "end": "00:04:15",
+      "name": "Il paragone con i Beatles: 'non vogliamo essere messi in competizione'",
+      "category": "celebrity_interview",
+      "source_title": "ABBA Interview (Career/Sweden/Influences/Personal Tastes) 1977",
+      "source_channel": "Reelin' In The Years Archive",
+      "summary": "Chiesti se li spaventi il paragone con il fenomeno Beatles degli anni 60, gli ABBA rifiutano la competizione e ammettono che sono stati proprio i Beatles a spingerli a scrivere canzoni.",
+      "topics": [
+        "ABBA paragone Beatles Beatlemania anni 60 competizione confronto non vogliamo essere paragonati ai Beatles influenza iniziare a scrivere canzoni senza saperlo fenomeno pop intervista 1977 comparison with the Beatles they made us write songs influence"
+      ],
+      "tags": ["ABBA", "Reelin' In The Years Archive", "celebrity_interview", "1977", "Beatles"],
+      "speakers": ["ABBA"],
+      "mentioned_people": ["The Beatles", "Bjorn Ulvaeus", "Benny Andersson"],
+      "hook": "Non vogliamo essere messi in competizione con i Beatles: semmai sono stati loro a farci iniziare a scrivere canzoni.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "ABBA e il paragone con i Beatles",
+          "summary": "Il gruppo rifiuta il paragone con i Beatles e riconosce la loro influenza sulla propria scrittura.",
+          "description": "ABBA 1977: alla domanda se li spaventi essere paragonati ai Beatles, rispondono che non vogliono entrare in quella competizione e che è stato proprio l'esempio dei Beatles a farli iniziare a scrivere."
+        }
+      ]
+    },
+    {
+      "start": "00:03:55",
+      "end": "00:04:08",
+      "name": "Hook: 'non vogliamo essere in competizione con i Beatles'",
+      "category": "celebrity_interview",
+      "source_title": "ABBA Interview (Career/Sweden/Influences/Personal Tastes) 1977",
+      "source_channel": "Reelin' In The Years Archive",
+      "summary": "Apertura secca (13s): ABBA rifiutano il paragone con i Beatles.",
+      "topics": [
+        "ABBA hook apertura short clip breve paragone Beatles competizione confronto Beatlemania influenza iniziare a scrivere canzoni gruppo pop svedese intervista 1977 opening-short"
+      ],
+      "tags": ["ABBA", "Reelin' In The Years Archive", "celebrity_interview", "hook", "1977"],
+      "speakers": ["ABBA"],
+      "mentioned_people": ["The Beatles"],
+      "hook": "Non vogliamo essere messi in competizione con i Beatles.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Hook: ABBA e i Beatles",
+          "summary": "Clip di apertura di 13 secondi sul paragone con i Beatles.",
+          "description": "Hook di 13 secondi: ABBA spiegano perché non vogliono essere paragonati ai Beatles."
+        }
+      ]
+    },
+    {
+      "start": "00:04:14",
+      "end": "00:04:48",
+      "name": "L'Europa che ora conta nel music business",
+      "category": "celebrity_interview",
+      "source_title": "ABBA Interview (Career/Sweden/Influences/Personal Tastes) 1977",
+      "source_channel": "Reelin' In The Years Archive",
+      "summary": "Gli ABBA si dicono orgogliosi che l'industria discografica mondiale guardi finalmente all'Europa: un buon disco non deve arrivare per forza da America, Australia o Inghilterra.",
+      "topics": [
+        "ABBA Europa mercato discografico music business mondiale Spagna Italia Svezia Norvegia non deve essere americano australiano inglese orgoglio industria musicale europea esportare dischi intervista 1977 Europe recording market not just American English good record"
+      ],
+      "tags": ["ABBA", "Reelin' In The Years Archive", "celebrity_interview", "1977", "Europa"],
+      "speakers": ["ABBA"],
+      "mentioned_people": ["Bjorn Ulvaeus", "Benny Andersson"],
+      "hook": "È molto sano per l'industria musicale aver capito che un buon disco non deve essere per forza americano, australiano o inglese.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "ABBA e l'Europa della musica",
+          "summary": "Il gruppo commenta il nuovo peso dell'Europa nel mercato discografico mondiale.",
+          "description": "ABBA 1977: il gruppo si dice contento che il mercato discografico mondiale guardi ora a Spagna, Italia, Svezia e Norvegia, perché un buon disco non deve necessariamente arrivare dai paesi di lingua inglese."
+        }
+      ]
+    },
+    {
+      "start": "00:04:25",
+      "end": "00:04:38",
+      "name": "Hook: 'un buon disco non deve essere americano o inglese'",
+      "category": "celebrity_interview",
+      "source_title": "ABBA Interview (Career/Sweden/Influences/Personal Tastes) 1977",
+      "source_channel": "Reelin' In The Years Archive",
+      "summary": "Apertura secca (13s): ABBA sull'Europa che esporta musica nel mondo.",
+      "topics": [
+        "ABBA hook apertura short Europa mercato discografico buon disco non americano inglese Spagna Italia Svezia 1977 clip breve opening-short"
+      ],
+      "tags": ["ABBA", "Reelin' In The Years Archive", "celebrity_interview", "hook", "1977"],
+      "speakers": ["ABBA"],
+      "mentioned_people": ["Bjorn Ulvaeus"],
+      "hook": "È molto sano per l'industria musicale: un buon disco non deve essere americano, australiano o inglese.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Hook: l'Europa della musica",
+          "summary": "Clip di apertura di 13 secondi sul mercato europeo secondo ABBA.",
+          "description": "Hook di 13 secondi: ABBA sull'Europa che entra nel mercato discografico mondiale."
+        }
+      ]
+    },
+    {
+      "start": "00:04:48",
+      "end": "00:05:27",
+      "name": "Ring Ring, l'Eurovision e Neil Sedaka: 'un po' un trucco'",
+      "category": "celebrity_interview",
+      "source_title": "ABBA Interview (Career/Sweden/Influences/Personal Tastes) 1977",
+      "source_channel": "Reelin' In The Years Archive",
+      "summary": "Il retroscena di Ring Ring: nata per l'Eurovision con testo svedese, poi tradotta; chiamare Neil Sedaka per la versione inglese fu ammesso come 'un po' un trucco' per creare interesse attorno alla canzone.",
+      "topics": [
+        "ABBA Ring Ring 1972 Neil Sedaka testo inglese Eurovision song contest traduzione testo svedese Stig Anderson gimmick trucco marketing canzone interesse Waterloo preistoria del gruppo primi anni intervista 1977"
+      ],
+      "tags": ["ABBA", "Reelin' In The Years Archive", "celebrity_interview", "1977", "Eurovision"],
+      "speakers": ["ABBA"],
+      "mentioned_people": ["Neil Sedaka", "Stig Anderson", "Bjorn Ulvaeus", "Benny Andersson"],
+      "hook": "Per Ring Ring avevamo bisogno di una buona traduzione e abbiamo confessato che era un po' un trucco: avere uno famoso come Sedaka avrebbe creato interesse attorno alla canzone.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Il trucco dietro Ring Ring e Neil Sedaka",
+          "summary": "ABBA raccontano come Ring Ring, nata per l'Eurovision, fu tradotta coinvolgendo Neil Sedaka come mossa di marketing.",
+          "description": "Intervista ABBA 1977: il gruppo racconta che Ring Ring fu scritta per l'Eurovision in svedese e che per la versione inglese coinvolsero Neil Sedaka, ammettendo che era in parte un espediente per attirare interesse sulla canzone."
+        }
+      ]
+    },
+    {
+      "start": "00:05:12",
+      "end": "00:05:25",
+      "name": "Hook: 'chiamare Neil Sedaka fu un po' un trucco'",
+      "category": "celebrity_interview",
+      "source_title": "ABBA Interview (Career/Sweden/Influences/Personal Tastes) 1977",
+      "source_channel": "Reelin' In The Years Archive",
+      "summary": "Apertura secca (13s): il retroscena marketing di Ring Ring.",
+      "topics": [
+        "ABBA hook apertura short Ring Ring Neil Sedaka trucco gimmick Eurovision interesse canzone 1977 clip breve opening-short"
+      ],
+      "tags": ["ABBA", "Reelin' In The Years Archive", "celebrity_interview", "hook", "1977"],
+      "speakers": ["ABBA"],
+      "mentioned_people": ["Neil Sedaka"],
+      "hook": "Ammettiamo che era un po' un trucco: uno famoso come Sedaka avrebbe creato interesse attorno alla canzone.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Hook: il trucco di Ring Ring",
+          "summary": "Clip di apertura di 13 secondi sul retroscena di Ring Ring.",
+          "description": "Hook di 13 secondi: ABBA ammettono che il coinvolgimento di Neil Sedaka in Ring Ring era un espediente."
+        }
+      ]
+    }
+  ]
+}

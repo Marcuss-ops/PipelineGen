@@ -1,0 +1,303 @@
+{
+  "_comment": "POST /api/clips/process payload (ExtractRequest, drift source: internal/capabilities/youtube/dto/types.go). Source: David Bowie on Dick Cavett, 1974 — https://www.youtube.com/watch?v=RSSf3k4UU64 (951s, uploaded by 'RetroClips'). Destination: the Clips/HipHop child folder 1omBF1Nn_291b_VGu5824Lg2r0WiB46XQ ('David Bowie'), create_subfolder=false. Windows picked BY HAND from the timed transcript printed by ops/jobs/hiphop_36/tx.py (no LLM selection); caption runs start a sentence ~1-2s late, hence the small pre-roll. 6 main clips 57-59s (inside the canonical 4-60s SegmentPolicy gate) + 6 hook openers 12-15s carved inside the matching main window. Deterministic ids yt_<videoID>_<startSec>_<endSec>_v1 -> re-submit is an UPSERT. topics/summary/hook are keyword-dense on purpose: composeYouTubeClipSearchText feeds search_text -> 768d pgvector embedding, and texts[] is written to asset_text_tracks in the same commit.",
+  "url": "https://www.youtube.com/watch?v=RSSf3k4UU64",
+  "strategy": "verify",
+  "concurrency": 3,
+  "force_keyframes": true,
+  "keep_audio": true,
+  "write_summary": true,
+  "destination": {
+    "folder_id": "1omBF1Nn_291b_VGu5824Lg2r0WiB46XQ",
+    "create_subfolder": false
+  },
+  "segments": [
+    {
+      "start": "00:00:52",
+      "end": "00:01:50",
+      "name": "Le reazioni assurde della gente: 'mi avrebbe morso il collo'",
+      "category": "celebrity_interview",
+      "source_title": "David Bowie Interview on Dick Cavett - 1974",
+      "source_channel": "RetroClips",
+      "summary": "Bowie racconta le reazioni più folli del pubblico: qualcuno temeva che mordesse il collo, una signora pensava praticasse magia nera, altri lo vedono come un performer abilissimo che cambia forma di continuo.",
+      "topics": [
+        "David Bowie Dick Cavett 1974 reazioni del pubblico paura mordere il collo magia nera black magic performer abile glam rock Ziggy Stardust personaggio maschera intervista americana 1974 weirdest reactions people said you would bite my neck working actor"
+      ],
+      "tags": ["David Bowie", "Dick Cavett", "celebrity_interview", "1974"],
+      "speakers": ["David Bowie", "Dick Cavett"],
+      "mentioned_people": ["David Bowie", "Dick Cavett"],
+      "hook": "Alcuni dicevano che ti avrei morso il collo, una signora pensava che praticassi magia nera; altri vedono solo un performer che cambia forma.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Bowie e le reazioni del pubblico nel 1974",
+          "summary": "Bowie racconta le voci e le paure che circondavano la sua figura durante gli anni di Ziggy Stardust.",
+          "description": "Intervista Dick Cavett 1974: David Bowie racconta di aver avuto reazioni assurde dagli americani, tra chi temeva che mordesse i colli e chi lo considerava un artista dedito alla magia nera, mentre altri lo vedono semplicemente come un performer abilissimo che cambia identità nel tempo."
+        }
+      ]
+    },
+    {
+      "start": "00:01:06",
+      "end": "00:01:20",
+      "name": "Hook: 'alcuni dicevano che ti avrei morso il collo'",
+      "category": "celebrity_interview",
+      "source_title": "David Bowie Interview on Dick Cavett - 1974",
+      "source_channel": "RetroClips",
+      "summary": "Apertura secca (14s): le paure del pubblico americano davanti a Bowie.",
+      "topics": [
+        "David Bowie hook apertura short reazioni pubblico mordere il collo magia nera paura personaggio 1974 clip breve opening-short"
+      ],
+      "tags": ["David Bowie", "Dick Cavett", "celebrity_interview", "hook", "1974"],
+      "speakers": ["David Bowie"],
+      "mentioned_people": ["David Bowie"],
+      "hook": "Alcuni dicevano che ti avrei morso il collo, altri pensavano che praticassi magia nera.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Hook: le reazioni alla figura di Bowie",
+          "summary": "Clip di apertura di 14 secondi sulle paure suscitate da Bowie.",
+          "description": "Hook di 14 secondi: Bowie racconta cosa si diceva di lui nel 1974."
+        }
+      ]
+    },
+    {
+      "start": "00:02:48",
+      "end": "00:03:45",
+      "name": "La copertina di Diamond Dogs: 'ho rubato l'idea a Guy Peellaert'",
+      "category": "celebrity_interview",
+      "source_title": "David Bowie Interview on Dick Cavett - 1974",
+      "source_channel": "RetroClips",
+      "summary": "Bowie rivela l'origine dell'immagine di Diamond Dogs: l'artista belga Guy Peellaert e il libro Rock Dreams, visto a casa di Mick Jagger. Ammette candidamente di aver 'rubato' l'idea, come ha rubato molto altro.",
+      "topics": [
+        "David Bowie copertina Diamond Dogs 1974 Guy Peellaert Rock Dreams artista belga Mick Jagger libro fotografico rubare l'idea arte album cover Dali immagine provocatoria canile intervista Dick Cavett artwork"
+      ],
+      "tags": ["David Bowie", "Dick Cavett", "celebrity_interview", "1974", "Diamond Dogs"],
+      "speakers": ["David Bowie", "Dick Cavett"],
+      "mentioned_people": ["David Bowie", "Guy Peellaert", "Mick Jagger"],
+      "hook": "Ho rubato l'idea: avevo visto il libro Rock Dreams di Guy Peellaert a casa di Mick Jagger e ho preso da lì la copertina.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Bowie: 'ho rubato l'idea della copertina'",
+          "summary": "Bowie racconta come è nata la copertina di Diamond Dogs, ispirata al libro Rock Dreams di Guy Peellaert.",
+          "description": "Intervista Dick Cavett 1974: David Bowie spiega che l'immagine di copertina di Diamond Dogs nacque dal libro Rock Dreams dell'artista belga Guy Peellaert, scoperto a casa di Mick Jagger, e ammette senza problemi di averne rubato l'idea."
+        }
+      ]
+    },
+    {
+      "start": "00:03:02",
+      "end": "00:03:15",
+      "name": "Hook: 'ho rubato l'idea a Rock Dreams'",
+      "category": "celebrity_interview",
+      "source_title": "David Bowie Interview on Dick Cavett - 1974",
+      "source_channel": "RetroClips",
+      "summary": "Apertura secca (13s): l'origine rubata della copertina di Diamond Dogs.",
+      "topics": [
+        "David Bowie hook apertura short copertina Diamond Dogs Guy Peellaert Rock Dreams Mick Jagger rubato l'idea artwork 1974 clip breve opening-short"
+      ],
+      "tags": ["David Bowie", "Dick Cavett", "celebrity_interview", "hook", "1974"],
+      "speakers": ["David Bowie"],
+      "mentioned_people": ["David Bowie", "Guy Peellaert", "Mick Jagger"],
+      "hook": "Ho visto il libro Rock Dreams di Guy Peellaert a casa di Mick Jagger e ho rubato l'idea della copertina.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Hook: la copertina di Diamond Dogs",
+          "summary": "Clip di apertura di 13 secondi sull'origine della copertina di Diamond Dogs.",
+          "description": "Hook di 13 secondi: Bowie ammette di aver preso l'idea della copertina da Guy Peellaert."
+        }
+      ]
+    },
+    {
+      "start": "00:06:36",
+      "end": "00:07:34",
+      "name": "È il pubblico a influenzare me: il periodo 'in scatola'",
+      "category": "celebrity_interview",
+      "source_title": "David Bowie Interview on Dick Cavett - 1974",
+      "source_channel": "RetroClips",
+      "summary": "Bowie racconta il rovesciamento della fama: all'inizio poteva uscire, andare nei club e ballare; poi la vita è diventata 'in scatola' e ha iniziato a vedere il mondo attraverso ciò che indossavano i fan, finendo per essere influenzato dal suo pubblico.",
+      "topics": [
+        "David Bowie vita privata fama isolamento cocooned in scatola influenza del pubblico fan vedere cosa indossano abitudini clubbing ballare vita pubblica controllo immagine intervista Dick Cavett 1974 private life versus fans influenced by audience"
+      ],
+      "tags": ["David Bowie", "Dick Cavett", "celebrity_interview", "1974", "fama"],
+      "speakers": ["David Bowie", "Dick Cavett"],
+      "mentioned_people": ["David Bowie"],
+      "hook": "La mia vita è diventata in scatola: ho iniziato a vedere cosa indossavano i fan ai concerti e sono stato io a essere influenzato dal pubblico.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Bowie: 'è il pubblico a influenzare me'",
+          "summary": "Bowie descrive come il successo lo abbia isolato e reso influenzabile dal suo stesso pubblico.",
+          "description": "Intervista Dick Cavett 1974: David Bowie spiega che dopo l'esplosione della fama la sua vita è diventata 'in scatola' e che ha iniziato a percepire il mondo attraverso i fan, finendo per essere influenzato da loro anziché il contrario."
+        }
+      ]
+    },
+    {
+      "start": "00:07:05",
+      "end": "00:07:20",
+      "name": "Hook: 'sono io a essere influenzato dal pubblico'",
+      "category": "celebrity_interview",
+      "source_title": "David Bowie Interview on Dick Cavett - 1974",
+      "source_channel": "RetroClips",
+      "summary": "Apertura secca (15s): Bowie sul rapporto invertito tra artista e fan.",
+      "topics": [
+        "David Bowie hook apertura short pubblico influenza fan cosa indossano vita in scatola cocooned artista intervista 1974 clip breve opening-short"
+      ],
+      "tags": ["David Bowie", "Dick Cavett", "celebrity_interview", "hook", "1974"],
+      "speakers": ["David Bowie"],
+      "mentioned_people": ["David Bowie"],
+      "hook": "Vedevo cosa indossavano tutti gli altri e finivo per essere influenzato dalle persone che venivano ai concerti.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Hook: Bowie e il suo pubblico",
+          "summary": "Clip di apertura di 15 secondi sull'influenza del pubblico su Bowie.",
+          "description": "Hook di 15 secondi: Bowie racconta come i fan abbiano influenzato la sua vita e la sua immagine."
+        }
+      ]
+    },
+    {
+      "start": "00:07:45",
+      "end": "00:08:42",
+      "name": "Non volo: la Transiberiana e i 'presentimenti di sventura' dei rock star",
+      "category": "celebrity_interview",
+      "source_title": "David Bowie Interview on Dick Cavett - 1974",
+      "source_channel": "RetroClips",
+      "summary": "Bowie spiega di non volare e di prendere nave o treno, come la Transiberiana: decollare gli sembra correre velocissimo e poi buttarsi dal bordo di un precipizio. Cavett gli fa notare che i rock star sembrano avere presentimenti di sventura, e lui parla di 'menti molto ingarbugliate'.",
+      "topics": [
+        "David Bowie paura di volare non volo aereo Transiberiana trans-siberian railway Mosca Berlino Est treno nave viaggi rock star presentimenti di sventura premonitions of doom menti ingarbugliate Dick Cavett 1974 won't fly tangled minds"
+      ],
+      "tags": ["David Bowie", "Dick Cavett", "celebrity_interview", "1974", "viaggi"],
+      "speakers": ["David Bowie", "Dick Cavett"],
+      "mentioned_people": ["David Bowie"],
+      "hook": "Non volo: decollare mi sembra di correre velocissimo e poi buttarmi dal bordo di un precipizio. Prendo navi e treni, come la Transiberiana.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Bowie: 'non volo, prendo la Transiberiana'",
+          "summary": "Bowie racconta la paura di volare, i viaggi in treno e il cliché dei rock star con presentimenti di sventura.",
+          "description": "Intervista Dick Cavett 1974: David Bowie spiega di evitare gli aerei perché il decollo gli sembra un salto nel vuoto e di viaggiare in nave o in treno, citando la Transiberiana verso Mosca; Cavett collega la cosa ai presentimenti di sventura tipici delle rock star e Bowie parla di menti molto ingarbugliate."
+        }
+      ]
+    },
+    {
+      "start": "00:08:09",
+      "end": "00:08:22",
+      "name": "Hook: 'decollare è come buttarsi da un precipizio'",
+      "category": "celebrity_interview",
+      "source_title": "David Bowie Interview on Dick Cavett - 1974",
+      "source_channel": "RetroClips",
+      "summary": "Apertura secca (13s): la paura di volare di Bowie.",
+      "topics": [
+        "David Bowie hook apertura short paura di volare aereo decollo precipizio cliff Transiberiana treno 1974 clip breve opening-short"
+      ],
+      "tags": ["David Bowie", "Dick Cavett", "celebrity_interview", "hook", "1974"],
+      "speakers": ["David Bowie"],
+      "mentioned_people": ["David Bowie"],
+      "hook": "Non mi piace la sensazione di salire: è come correre velocissimo e buttarsi dal bordo di un precipizio.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Hook: Bowie e la paura di volare",
+          "summary": "Clip di apertura di 13 secondi sulla paura di volare di Bowie.",
+          "description": "Hook di 13 secondi: Bowie descrive perché non prende l'aereo."
+        }
+      ]
+    },
+    {
+      "start": "00:10:10",
+      "end": "00:11:09",
+      "name": "Il 'black noise': la bomba sonora in vendita all'ufficio brevetti di Parigi",
+      "category": "celebrity_interview",
+      "source_title": "David Bowie Interview on Dick Cavett - 1974",
+      "source_channel": "RetroClips",
+      "summary": "Bowie descrive il 'black noise', il registro di vibrazioni capace di spaccare il vetro e le persone: una vera e propria bomba sonora il cui brevetto, fino all'anno prima, si poteva comprare all'ufficio brevetti francese per pochi dollari. 'Un'idea bizzarra, non mia.'",
+      "topics": [
+        "David Bowie black noise bomba sonora arma acustica brevetto ufficio brevetti francese Parigi vibrazioni spaccare il vetro controllo mentale noise bomb controllo delle masse Burroughs intervista Dick Cavett 1974 patent three or four dollars destroy a city"
+      ],
+      "tags": ["David Bowie", "Dick Cavett", "celebrity_interview", "1974", "black noise"],
+      "speakers": ["David Bowie", "Dick Cavett"],
+      "mentioned_people": ["David Bowie", "William Burroughs"],
+      "hook": "Il black noise è il registro in cui puoi spaccare una città: fino all'anno scorso il brevetto si comprava all'ufficio brevetti francese per tre o quattro dollari.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Bowie e la bomba sonora 'black noise'",
+          "summary": "Bowie spiega cos'è il black noise, l'arma acustica il cui brevetto era acquistabile in Francia per pochi dollari.",
+          "description": "Intervista Dick Cavett 1974: David Bowie descrive il black noise come il registro di frequenze in grado di incrinare vetro e persone, una vera bomba sonora il cui brevetto era acquistabile all'ufficio brevetti francese per l'equivalente di tre o quattro dollari, con effetti da pochi morti fino alla distruzione di una città."
+        }
+      ]
+    },
+    {
+      "start": "00:10:55",
+      "end": "00:11:09",
+      "name": "Hook: 'una piccola uccide quattro persone, una grande distrugge una città'",
+      "category": "celebrity_interview",
+      "source_title": "David Bowie Interview on Dick Cavett - 1974",
+      "source_channel": "RetroClips",
+      "summary": "Apertura secca (14s): il black noise spiegato da Bowie.",
+      "topics": [
+        "David Bowie hook apertura short black noise bomba sonora brevetto Francia quattro persone distruggere una città 1974 clip breve opening-short"
+      ],
+      "tags": ["David Bowie", "Dick Cavett", "celebrity_interview", "hook", "1974"],
+      "speakers": ["David Bowie"],
+      "mentioned_people": ["David Bowie"],
+      "hook": "Una piccola potrebbe uccidere quattro persone, una grande potrebbe distruggere una città.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Hook: il black noise",
+          "summary": "Clip di apertura di 14 secondi sulla bomba sonora descritta da Bowie.",
+          "description": "Hook di 14 secondi: Bowie spiega la potenza del black noise."
+        }
+      ]
+    },
+    {
+      "start": "00:13:37",
+      "end": "00:14:35",
+      "name": "I critici e le analisi erudite: 'Ziggy dice che non c'è niente da capire'",
+      "category": "celebrity_interview",
+      "source_title": "David Bowie Interview on Dick Cavett - 1974",
+      "source_channel": "RetroClips",
+      "summary": "Sui critici che scrivono analisi intellettuali del suo lavoro Bowie dice che legge solo quelle buone, perché vuole essere capito; poi spiega di preferire interpretare i personaggi che scrive invece di esibirsi come se stesso, e che continuerà a farlo perché gli piace.",
+      "topics": [
+        "David Bowie critici analisi intellettuali recensioni leggere le buone vuole essere capito Ziggy Stardust niente da capire interpretare personaggi invece di esibirsi come se stesso enact personaggio teatro narratore intervista Dick Cavett 1974 critics intellectual analyses nothing to understand"
+      ],
+      "tags": ["David Bowie", "Dick Cavett", "celebrity_interview", "1974", "Ziggy Stardust"],
+      "speakers": ["David Bowie", "Dick Cavett"],
+      "mentioned_people": ["David Bowie"],
+      "hook": "Leggo solo le recensioni buone perché voglio essere capito: preferisco interpretare i personaggi che scrivo invece di esibirmi come me stesso.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Bowie: critici, Ziggy e l'arte di interpretare",
+          "summary": "Bowie parla delle analisi dei critici e della scelta di interpretare personaggi invece di esibirsi come se stesso.",
+          "description": "Intervista Dick Cavett 1974: David Bowie racconta di leggere solo le recensioni positive perché vuole essere capito, di convivere con le letture intellettuali del suo lavoro e di preferire interpretare i personaggi che scrive piuttosto che esibirsi come se stesso, attività che continuerà a fare perché gli piace."
+        }
+      ]
+    },
+    {
+      "start": "00:14:07",
+      "end": "00:14:19",
+      "name": "Hook: 'preferisco interpretare i personaggi che scrivo'",
+      "category": "celebrity_interview",
+      "source_title": "David Bowie Interview on Dick Cavett - 1974",
+      "source_channel": "RetroClips",
+      "summary": "Apertura secca (12s): Bowie sulla scelta di interpretare invece di esibirsi.",
+      "topics": [
+        "David Bowie hook apertura short interpretare personaggi scrivere invece di esibirsi come se stesso arte teatro 1974 clip breve opening-short"
+      ],
+      "tags": ["David Bowie", "Dick Cavett", "celebrity_interview", "hook", "1974"],
+      "speakers": ["David Bowie"],
+      "mentioned_people": ["David Bowie"],
+      "hook": "Ho deciso che preferisco interpretare gran parte del materiale che scrivo invece di esibirmi come me stesso.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Hook: interpretare invece di esibirsi",
+          "summary": "Clip di apertura di 12 secondi sulla poetica di Bowie.",
+          "description": "Hook di 12 secondi: Bowie spiega perché interpreta i suoi personaggi."
+        }
+      ]
+    }
+  ]
+}

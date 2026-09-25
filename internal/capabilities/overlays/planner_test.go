@@ -98,6 +98,11 @@ func TestBuildPlanAppliesRunLevelPhraseBudgetAcrossScenes(t *testing.T) {
 			{Text: "Echo phrase", StartMs: 1000, EndMs: 1200, Score: 0.1},
 		}},
 	}
+	for i := 0; i < 13; i++ {
+		scenes[1].Phrases = append(scenes[1].Phrases, TimedAnnotation{
+			Text: fmt.Sprintf("Additional phrase %02d", i), StartMs: int64(1300 + i*300), EndMs: int64(1500 + i*300), Score: 0.09 - float64(i)*0.001,
+		})
+	}
 	plan, err := BuildPlan(PlanInput{
 		PlanID: "global-phrase-budget", VideoID: "video-global-phrase-budget",
 		Width: 1280, Height: 720, FPSNum: 30, FPSDen: 1, Scenes: scenes,
@@ -123,7 +128,7 @@ func TestBuildPlanAppliesRunLevelPhraseBudgetAcrossScenes(t *testing.T) {
 		}
 		seen[key] = true
 	}
-	if !seen["shared phrase"] || !seen["alpha phrase"] || !seen["bravo phrase"] || !seen["charlie phrase"] || !seen["delta phrase"] || seen["echo phrase"] {
+	if !seen["shared phrase"] || !seen["alpha phrase"] || !seen["bravo phrase"] || !seen["charlie phrase"] || !seen["delta phrase"] || !seen["echo phrase"] || seen["additional phrase 12"] {
 		t.Fatalf("run-level rank/dedupe chose wrong phrases: %+v", phrases)
 	}
 }
@@ -138,13 +143,13 @@ func TestApplyPhraseOverlayBudgetReportsShortfallWithoutInventingItems(t *testin
 	if len(got) != 2 || got[0].ID != "phrase-1" || got[1].ID != "keyword-1" {
 		t.Fatalf("budgeted items = %+v, want one grounded phrase and the non-phrase item", got)
 	}
-	if budget.Requested != 5 || budget.Materialized != 1 || budget.Shortfall != 4 {
-		t.Fatalf("phrase budget = %+v, want requested=5 materialized=1 shortfall=4", budget)
+	if budget.Requested != 15 || budget.Materialized != 1 || budget.Shortfall != 14 {
+		t.Fatalf("phrase budget = %+v, want requested=15 materialized=1 shortfall=14", budget)
 	}
 }
 
-func TestApplyEditorialOverlayBudgetEnforcesRunLevelFivePlusFive(t *testing.T) {
-	items := make([]OverlayItem, 0, 15)
+func TestApplyEditorialOverlayBudgetEnforcesRunLevelFiveImagesAndFifteenPhrases(t *testing.T) {
+	items := make([]OverlayItem, 0, 30)
 	for i := 0; i < 7; i++ {
 		items = append(items, OverlayItem{
 			ID:        fmt.Sprintf("image-%d", i),
@@ -153,7 +158,7 @@ func TestApplyEditorialOverlayBudgetEnforcesRunLevelFivePlusFive(t *testing.T) {
 			Params:    map[string]any{"priority": float64(i)},
 		})
 	}
-	for i := 0; i < 7; i++ {
+	for i := 0; i < 17; i++ {
 		items = append(items, OverlayItem{
 			ID:     fmt.Sprintf("phrase-%d", i),
 			Kind:   "text_phrase",
@@ -175,13 +180,13 @@ func TestApplyEditorialOverlayBudgetEnforcesRunLevelFivePlusFive(t *testing.T) {
 			t.Fatalf("non-editorial overlay survived: %+v", item)
 		}
 	}
-	if images != MaxImageOverlaysPerRun || phrases != MaxPhraseOverlaysPerRun || len(got) != 10 {
-		t.Fatalf("image/phrase/total counts = %d/%d/%d, want 5/5/10", images, phrases, len(got))
+	if images != MaxImageOverlaysPerRun || phrases != MaxPhraseOverlaysPerRun || len(got) != 20 {
+		t.Fatalf("image/phrase/total counts = %d/%d/%d, want 5/15/20", images, phrases, len(got))
 	}
-	if budget != (PhraseOverlayBudget{Requested: 5, Materialized: 5, Shortfall: 0}) {
-		t.Fatalf("phrase budget = %+v, want 5 requested and materialized", budget)
+	if budget != (PhraseOverlayBudget{Requested: 15, Materialized: 15, Shortfall: 0}) {
+		t.Fatalf("phrase budget = %+v, want 15 requested and materialized", budget)
 	}
-	if got[0].ID != "image-2" || got[4].ID != "image-6" || got[5].ID != "phrase-2" || got[9].ID != "phrase-6" {
+	if got[0].ID != "image-2" || got[4].ID != "image-6" || got[5].ID != "phrase-2" || got[19].ID != "phrase-16" {
 		t.Fatalf("run-level ranking chose wrong survivors: %+v", got)
 	}
 }
@@ -195,12 +200,12 @@ func TestApplyEditorialOverlayBudgetDoesNotInventPhraseShortfall(t *testing.T) {
 	if len(got) != 2 || got[0].ID != "phrase-1" || got[1].ID != "image-1" {
 		t.Fatalf("budgeted items = %+v, want only the provided phrase and image", got)
 	}
-	if budget != (PhraseOverlayBudget{Requested: 5, Materialized: 1, Shortfall: 4}) {
-		t.Fatalf("phrase budget = %+v, want requested=5 materialized=1 shortfall=4", budget)
+	if budget != (PhraseOverlayBudget{Requested: 15, Materialized: 1, Shortfall: 14}) {
+		t.Fatalf("phrase budget = %+v, want requested=15 materialized=1 shortfall=14", budget)
 	}
 }
 
-func TestBuildPlanClampsImageDurationAndSelectsAnimation(t *testing.T) {
+func TestBuildPlanClampsImageDurationAndSelects25DMotion(t *testing.T) {
 	plan, err := BuildPlan(PlanInput{
 		PlanID: "image-duration", VideoID: "v1", Width: 1920, Height: 1080, FPSNum: 24, FPSDen: 1,
 		Scenes: []SceneInput{{ID: "scene-1", Images: []ImageCandidate{{
@@ -217,9 +222,8 @@ func TestBuildPlanClampsImageDurationAndSelectsAnimation(t *testing.T) {
 	if item.EndMs-item.StartMs > MaxImageOverlayDurationMS {
 		t.Fatalf("image duration = %dms, want <= %dms", item.EndMs-item.StartMs, MaxImageOverlayDurationMS)
 	}
-	animation, ok := item.Params["animation"].(map[string]any)
-	if !ok || animation["preset"] != SelectImageAnimation("image-duration", "scene-1", item.ID) {
-		t.Fatalf("image animation = %#v", item.Params["animation"])
+	if !containsString(CertifiedImageMotions(), item.MotionID) {
+		t.Fatalf("image motion = %q, want a certified 2.5D motion", item.MotionID)
 	}
 }
 
@@ -298,8 +302,8 @@ func TestBuildPlanAssignsDistinctCertifiedMotionsAcrossRunAfterBudget(t *testing
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(plan.Items) != MaxPhraseOverlaysPerRun {
-		t.Fatalf("phrase overlays = %d, want %d", len(plan.Items), MaxPhraseOverlaysPerRun)
+	if len(plan.Items) != len(scenes) {
+		t.Fatalf("phrase overlays = %d, want one for each of %d supplied scenes", len(plan.Items), len(scenes))
 	}
 	// The rotation pool is read from its single owner: a test that kept its own
 	// copy could pass while the planner rotated over an unrenderable motion.

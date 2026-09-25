@@ -216,6 +216,9 @@ func BuildPlan(input PlanInput, config PlannerConfig) (OverlayPlan, error) {
 	if err := validatePhraseMotionPool(input.PhraseMotions); err != nil {
 		return OverlayPlan{}, err
 	}
+	if err := validateImageMotionPool(input.ImageMotions); err != nil {
+		return OverlayPlan{}, err
+	}
 	if input.PhraseMotionFamily != "" {
 		familyPool := certifiedPhraseFamily(input.PhraseMotionFamily)
 		if len(familyPool) == 0 {
@@ -234,9 +237,6 @@ func BuildPlan(input PlanInput, config PlannerConfig) (OverlayPlan, error) {
 			familyPool = input.PhraseMotions
 		}
 		input.PhraseMotions = familyPool
-	}
-	if len(input.ImageMotions) > 0 {
-		return OverlayPlan{}, fmt.Errorf("overlay planner: image_motions is deprecated and unsupported; generated images use certified 2D image presets")
 	}
 	plan := OverlayPlan{
 		SchemaVersion: SchemaVersionPlan,
@@ -269,8 +269,7 @@ func BuildPlan(input PlanInput, config PlannerConfig) (OverlayPlan, error) {
 				Kind: "image", TemplateID: "IMAGE_OVERLAY",
 				StartMs: image.StartMs, EndMs: image.EndMs, StartUS: image.StartUS, DurationUS: image.DurationUS,
 				AssetRefs: []OverlayAssetRef{NewOverlayAssetRef(asset.New(image.AssetID, image.SHA256, image.MediaType, 0), image.URL, image.LocalPath)},
-				Params: map[string]any{"position": "right", "style": "popup", "priority": image.Score,
-					"animation": map[string]any{"preset": SelectImageAnimation(input.PlanID, scene.ID, id)}},
+				Params:    map[string]any{"position": "right", "style": "popup", "priority": image.Score},
 			})
 		}
 
@@ -286,8 +285,7 @@ func BuildPlan(input PlanInput, config PlannerConfig) (OverlayPlan, error) {
 				Kind: "product", TemplateID: "PRODUCT",
 				StartMs: product.StartMs, EndMs: product.EndMs, StartUS: product.StartUS, DurationUS: product.DurationUS,
 				AssetRefs: []OverlayAssetRef{NewOverlayAssetRef(asset.New(product.AssetID, product.SHA256, product.MediaType, 0), product.URL, product.LocalPath)},
-				Params: map[string]any{"position": "right", "style": "popup", "priority": product.Score,
-					"animation": map[string]any{"preset": SelectImageAnimation(input.PlanID, scene.ID, id)}},
+				Params:    map[string]any{"position": "right", "style": "popup", "priority": product.Score},
 			})
 		}
 
@@ -303,8 +301,7 @@ func BuildPlan(input PlanInput, config PlannerConfig) (OverlayPlan, error) {
 				Kind: "logo", TemplateID: "LOGO",
 				StartMs: logo.StartMs, EndMs: logo.EndMs, StartUS: logo.StartUS, DurationUS: logo.DurationUS,
 				AssetRefs: []OverlayAssetRef{NewOverlayAssetRef(asset.New(logo.AssetID, logo.SHA256, logo.MediaType, 0), logo.URL, logo.LocalPath)},
-				Params: map[string]any{"position": "corner", "style": "logo", "priority": logo.Score,
-					"animation": map[string]any{"preset": SelectImageAnimation(input.PlanID, scene.ID, id)}},
+				Params:    map[string]any{"position": "corner", "style": "logo", "priority": logo.Score},
 			})
 		}
 
@@ -363,7 +360,8 @@ func BuildPlan(input PlanInput, config PlannerConfig) (OverlayPlan, error) {
 				ID: id, SceneID: scene.ID, PresetID: selectPhrasePreset(input.PlanID, scene.ID, id),
 				Kind: "text_phrase", TemplateID: "IMPORTANT_PHRASE", Text: candidate.Text,
 				StartMs: candidate.StartMs, EndMs: candidate.EndMs, StartUS: candidate.StartUS, DurationUS: candidate.DurationUS,
-				Params: map[string]any{"position": "center", "style": "headline", "priority": candidate.Score},
+				MotionParams: phraseMotionParams(candidate, input.FPSNum, input.FPSDen),
+				Params:       map[string]any{"position": "center", "style": "headline", "priority": candidate.Score},
 			})
 		}
 	}
@@ -381,21 +379,54 @@ func BuildPlan(input PlanInput, config PlannerConfig) (OverlayPlan, error) {
 	// phrases span different scenes or the winning candidates were not the
 	// first annotations supplied by NLP.
 	phraseOrdinal := 0
+	imageOrdinal := 0
 	for i := range plan.Items {
-		if plan.Items[i].Kind != "text_phrase" {
-			continue
+		switch plan.Items[i].Kind {
+		case "text_phrase":
+			ordinal := phraseOrdinal
+			if input.PhraseMotionFamily != "" {
+				ordinal = 0
+			}
+			plan.Items[i].MotionID = selectPhraseMotion(input.PlanID, "run", ordinal, input.PhraseMotions)
+			phraseOrdinal++
+		case "image", "entity_image", "product", "logo":
+			plan.Items[i].MotionID = selectImageMotion(input.PlanID, "run", imageOrdinal, input.ImageMotions)
+			imageOrdinal++
 		}
-		ordinal := phraseOrdinal
-		if input.PhraseMotionFamily != "" {
-			ordinal = 0
-		}
-		plan.Items[i].MotionID = selectPhraseMotion(input.PlanID, "run", ordinal, input.PhraseMotions)
-		phraseOrdinal++
 	}
 	if err := plan.Validate(); err != nil {
 		return OverlayPlan{}, err
 	}
 	return plan, nil
+}
+
+// phraseMotionParams bounds the entrance to the smaller of 650 ms or 40% of
+// the spoken phrase. Motion catalog windows are frame counts, so convert the
+// desired wall-clock duration using the output FPS before sending the plan.
+// This leaves a readable settled interval for typical 1.8–2.8 s phrases and
+// keeps short phrases from spending their entire lifetime in motion.
+func phraseMotionParams(candidate TimedAnnotation, fpsNum, fpsDen int) map[string]any {
+	if fpsNum <= 0 || fpsDen <= 0 {
+		return nil
+	}
+	durationUS := candidate.DurationUS
+	if durationUS <= 0 {
+		durationUS = (candidate.EndMs - candidate.StartMs) * 1000
+	}
+	if durationUS <= 0 {
+		return nil
+	}
+	enterUS := durationUS * 2 / 5
+	if enterUS > 650_000 {
+		enterUS = 650_000
+	}
+	framesNumerator := enterUS * int64(fpsNum)
+	framesDenominator := 1_000_000 * int64(fpsDen)
+	frames := (framesNumerator + framesDenominator - 1) / framesDenominator
+	if frames < 1 {
+		frames = 1
+	}
+	return map[string]any{"enter_frames": int(frames)}
 }
 
 // validatePhraseMotionPool fails closed on a caller-supplied motion pool that
@@ -420,6 +451,27 @@ func validatePhraseMotionPool(pool []string) error {
 		}
 		if seen[id] {
 			return fmt.Errorf("overlay: phrase motion pool repeats %q", id)
+		}
+		seen[id] = true
+	}
+	return nil
+}
+
+func validateImageMotionPool(pool []string) error {
+	if len(pool) == 0 {
+		return nil
+	}
+	certified := make(map[string]bool)
+	for _, id := range CertifiedImageMotions() {
+		certified[id] = true
+	}
+	seen := make(map[string]bool, len(pool))
+	for _, id := range pool {
+		if !certified[id] {
+			return fmt.Errorf("overlay planner: image motion %q is not in the certified render-safe pool", id)
+		}
+		if seen[id] {
+			return fmt.Errorf("overlay planner: image motion pool repeats %q", id)
 		}
 		seen[id] = true
 	}

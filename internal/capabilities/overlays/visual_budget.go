@@ -33,10 +33,10 @@ const MaxEntityImageOverlaysPerRun = MaxImageOverlaysPerRun
 // MaxPhraseOverlaysPerRun is the hard run-level ceiling for grounded phrase
 // overlays. Phrase candidates are deduplicated across scenes, ranked by their
 // certified semantic score, and only then admitted to the render plan.
-const MaxPhraseOverlaysPerRun = 5
+const MaxPhraseOverlaysPerRun = 15
 
 // ApplyEditorialOverlayBudget enforces the production run-level visual
-// contract: up to five unique images plus five unique grounded phrases. Other
+// contract: up to five unique images plus fifteen unique grounded phrases. Other
 // content overlay kinds are excluded; structural background layers are not
 // represented as OverlayItems and remain intact. When there are fewer valid
 // candidates, it returns fewer items rather than inventing content.
