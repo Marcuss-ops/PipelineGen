@@ -85,7 +85,7 @@ func (r *Runner) runVidRushJoinAndPrepare(ctx context.Context, runID string, req
 	}
 	phraseLimit := req.MediaPlan.Extraction.MaxImportantPhrasesPerSegment
 	includePhrases := req.MediaPlan.Extraction.Includes(mediadomain.ExtractionIncludeImportantPhrases)
-	annotations := computeSegmentEntityAnnotations(snapshot, req.SourceLanguage, segments, phraseLimit, includePhrases)
+	annotations := computeSegmentEntityAnnotations(snapshot, req.SourceLanguage, segments, phraseLimit, includePhrases, req.MediaPlan.Extraction.ImportantPhrases)
 	var intents []capabilityoverlay.OverlayIntent
 	if r.overlayRegistry != nil {
 		intents = planOverlayIntentsForAnnotations(snapshot, annotations, r.overlayRegistry)

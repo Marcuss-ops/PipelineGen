@@ -109,7 +109,7 @@ func applyVidRushPrepareProjections(result *GenerateResult, prepared vidRushPrep
 // a matching segment produces grounded annotations (the same precedence the
 // sequential flow used), so a run without a VidRush pipeline still plans
 // intents from the scenes' own annotations.
-func computeSegmentEntityAnnotations(snapshot []sceneTextSnapshot, language Language, segments []scriptpkg.VidRushSegmentResult, phraseLimit int, includePhrases bool) map[int]*scriptpkg.SceneAnnotations {
+func computeSegmentEntityAnnotations(snapshot []sceneTextSnapshot, language Language, segments []scriptpkg.VidRushSegmentResult, phraseLimit int, includePhrases bool, requestedPhraseSets ...[]string) map[int]*scriptpkg.SceneAnnotations {
 	annotations := make(map[int]*scriptpkg.SceneAnnotations)
 	for _, s := range snapshot {
 		if s.Annotations != nil {
@@ -164,6 +164,41 @@ func computeSegmentEntityAnnotations(snapshot []sceneTextSnapshot, language Lang
 				annotations[scene.Index] = ann
 			}
 			supplementSourceImportantPhrases(ann, text, string(language), phraseLimit, corpus)
+		}
+	}
+	if len(requestedPhraseSets) > 0 {
+		for _, scene := range snapshot {
+			text := strings.TrimSpace(scene.Text)
+			if text == "" {
+				continue
+			}
+			ann := annotations[scene.Index]
+			if ann == nil {
+				ann = &scriptpkg.SceneAnnotations{Version: 1, Language: string(language), Status: "completed"}
+				annotations[scene.Index] = ann
+			}
+			for _, requested := range requestedPhraseSets[0] {
+				span, ok := findEntitySpan(text, requested)
+				if !ok {
+					continue
+				}
+				found := false
+				for i := range ann.ImportantPhrases {
+					if ann.ImportantPhrases[i].StartRune == span.StartRune && ann.ImportantPhrases[i].EndRune == span.EndRune {
+						ann.ImportantPhrases[i].Text = strings.TrimSpace(requested)
+						ann.ImportantPhrases[i].Score = 1
+						ann.ImportantPhrases[i].Kind = "key_statement"
+						found = true
+						break
+					}
+				}
+				if !found {
+					ann.ImportantPhrases = append(ann.ImportantPhrases, scriptpkg.AnnotationSpan{
+						Text: strings.TrimSpace(requested), StartRune: span.StartRune, EndRune: span.EndRune,
+						Score: 1, Kind: "key_statement",
+					})
+				}
+			}
 		}
 	}
 	return annotations
