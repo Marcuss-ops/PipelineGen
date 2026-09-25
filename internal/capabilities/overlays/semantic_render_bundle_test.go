@@ -116,8 +116,8 @@ func TestBuildOverlayPlanUsesCanonicalImageCapability(t *testing.T) {
 	if item.Kind != string(KindEntityImage) || item.TemplateID != "image_popup" || item.PresetID != SelectEntityImagePreset(bundle.RunID, scene.SegmentID, entityID) {
 		t.Fatalf("image item = %+v", item)
 	}
-	if item.MotionID != SelectImageMotion(bundle.RunID, scene.SegmentID, entityID) {
-		t.Fatalf("entity image motion = %q, want selected 2.5D motion %q", item.MotionID, SelectImageMotion(bundle.RunID, scene.SegmentID, entityID))
+	if item.MotionID != "" {
+		t.Fatalf("entity portrait motion = %q, want the official 2D image preset without perspective warp", item.MotionID)
 	}
 	if item.EndMs-item.StartMs != MaxImageOverlayDurationMS {
 		t.Fatalf("entity image duration = %dms, want %dms", item.EndMs-item.StartMs, MaxImageOverlayDurationMS)

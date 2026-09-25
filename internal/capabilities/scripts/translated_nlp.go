@@ -74,7 +74,7 @@ func (c *sceneReadyCoordinator) localizedNLPForScene(scene Scene, lang Language,
 		}}
 		phraseLimit := c.req.MediaPlan.Extraction.MaxImportantPhrasesPerSegment
 		includePhrases := c.req.MediaPlan.Extraction.Includes(mediadomain.ExtractionIncludeImportantPhrases)
-		source = computeSegmentEntityAnnotations(snapshot, c.req.SourceLanguage, []scriptpkg.VidRushSegmentResult{segment}, phraseLimit, includePhrases)[0]
+		source = computeSegmentEntityAnnotations(snapshot, c.req.SourceLanguage, []scriptpkg.VidRushSegmentResult{segment}, phraseLimit, includePhrases, c.req.MediaPlan.Extraction.ImportantPhrases)[0]
 	}
 
 	mini := &GenerateResult{Scenes: []Scene{{

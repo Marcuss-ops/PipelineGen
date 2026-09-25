@@ -252,7 +252,7 @@ func BuildOverlayPlan(b SemanticRenderBundleV1, videoID, projectID string, width
 		}
 		item := OverlayItem{ID: e.EntityID, SceneID: b.Scene.SegmentID, EntityID: e.EntityID, Kind: kind, StartMs: ev.StartMs, EndMs: ev.EndMs, TemplateID: templateID, PresetID: ev.PresetID, Text: displayText,
 			// Text cards carry an explicit render-safe entrance motion; image
-			// cards replace it below with an independently selected image motion.
+			// cards replace it below with their official image preset animation.
 			MotionID:  SelectTextMotion(b.RunID, b.Scene.SegmentID, e.EntityID),
 			EntityRef: &OverlayEntityRef{EntityID: e.EntityID, Type: e.Type, Name: e.CanonicalText, SurfaceText: displayText}}
 		if a, ok := assets[e.EntityID]; ok {
@@ -264,9 +264,9 @@ func BuildOverlayPlan(b SemanticRenderBundleV1, videoID, projectID string, width
 			item.PresetID = SelectEntityImagePreset(b.RunID, b.Scene.SegmentID, e.EntityID)
 			item.EndMs = item.StartMs + MaxImageOverlayDurationMS
 			item.Text = ""
-			// The text surface is gone: the card renders as an image layer, so
-			// give it an independently selected certified 2.5D image motion.
-			item.MotionID = SelectImageMotion(b.RunID, b.Scene.SegmentID, e.EntityID)
+			// Entity portraits use the image preset's 2D entrance; a generic
+			// 2.5D motion would perspective-warp the photo itself.
+			item.MotionID = ""
 			item.MotionParams = nil
 			item.Params = nil
 			item.AssetRefs = []OverlayAssetRef{NewOverlayAssetRef(
