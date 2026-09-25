@@ -235,20 +235,5 @@ func (p Profile) validateImageMotions() error {
 	if len(p.ImageMotions) == 0 {
 		return nil
 	}
-	certified := make(map[string]bool)
-	for _, id := range overlays.CertifiedImageMotions() {
-		certified[id] = true
-	}
-	seen := make(map[string]bool, len(p.ImageMotions))
-	for _, id := range p.ImageMotions {
-		id = strings.TrimSpace(id)
-		if id == "" || !certified[id] {
-			return fmt.Errorf("image_motions id %q is not a certified image motion", id)
-		}
-		if seen[id] {
-			return fmt.Errorf("image_motions repeats %q (a rotation pool must be distinct)", id)
-		}
-		seen[id] = true
-	}
-	return nil
+	return fmt.Errorf("image_motions is deprecated and unsupported; generated images use certified 2D image presets")
 }

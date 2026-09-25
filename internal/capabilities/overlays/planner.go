@@ -235,8 +235,8 @@ func BuildPlan(input PlanInput, config PlannerConfig) (OverlayPlan, error) {
 		}
 		input.PhraseMotions = familyPool
 	}
-	if err := validateImageMotionPool(input.ImageMotions); err != nil {
-		return OverlayPlan{}, err
+	if len(input.ImageMotions) > 0 {
+		return OverlayPlan{}, fmt.Errorf("overlay planner: image_motions is deprecated and unsupported; generated images use certified 2D image presets")
 	}
 	plan := OverlayPlan{
 		SchemaVersion: SchemaVersionPlan,
@@ -396,27 +396,6 @@ func BuildPlan(input PlanInput, config PlannerConfig) (OverlayPlan, error) {
 		return OverlayPlan{}, err
 	}
 	return plan, nil
-}
-
-func validateImageMotionPool(pool []string) error {
-	if len(pool) == 0 {
-		return nil
-	}
-	certified := make(map[string]bool)
-	for _, id := range CertifiedImageMotions() {
-		certified[id] = true
-	}
-	seen := make(map[string]bool, len(pool))
-	for _, id := range pool {
-		if strings.TrimSpace(id) == "" || !certified[id] {
-			return fmt.Errorf("overlay: image motion %q is not a certified motion", id)
-		}
-		if seen[id] {
-			return fmt.Errorf("overlay: image motion pool repeats %q", id)
-		}
-		seen[id] = true
-	}
-	return nil
 }
 
 // validatePhraseMotionPool fails closed on a caller-supplied motion pool that

@@ -120,15 +120,10 @@ func selectPhrasePreset(jobID, sceneID, itemID string) string {
 func selectPhraseMotion(jobID, sceneID string, ordinal int, pool []string) string {
 	candidates := generatedPhraseMotions
 	if len(pool) > 0 {
-		candidates = nil
-		for _, id := range pool {
-			if containsMotion(generatedPhraseMotions, id) {
-				candidates = append(candidates, id)
-			}
-		}
-		if len(candidates) == 0 {
-			candidates = generatedPhraseMotions
-		}
+		// BuildPlan validates caller pools against the complete certified
+		// vocabulary. Explicit profile choices therefore replace the soft
+		// generated default instead of being silently narrowed to its first six.
+		candidates = pool
 	}
 	if len(candidates) == 0 {
 		return ""
@@ -162,7 +157,7 @@ func CertifiedPhraseMotions() []string {
 // render-safe members are intentionally rejected by the planner.
 func certifiedPhraseFamily(family string) []string {
 	ids := make([]string, 0)
-	for _, id := range generatedPhraseMotions {
+	for _, id := range phraseMotionCandidates {
 		matched := false
 		switch family {
 		case "modern_apple":
