@@ -159,6 +159,9 @@ routes:
       path: /api/scripts/:id
       source: cmd/admin/gen_api_docs.go
     - method: GET
+      path: /api/stock-batches/:id
+      source: cmd/admin/gen_api_docs.go
+    - method: GET
       path: /api/system/doctor
       source: cmd/admin/gen_api_docs.go
     - method: GET
@@ -336,6 +339,9 @@ routes:
       path: /api/media/clips/upload-video
       source: cmd/admin/gen_api_docs.go
     - method: POST
+      path: /api/media/import
+      source: cmd/admin/gen_api_docs.go
+    - method: POST
       path: /api/media/qdrant/cleanup
       source: cmd/admin/gen_api_docs.go
     - method: POST
@@ -358,6 +364,15 @@ routes:
       source: cmd/admin/gen_api_docs.go
     - method: POST
       path: /api/media/voiceover/generate
+      source: cmd/admin/gen_api_docs.go
+    - method: POST
+      path: /api/stock-batches/run
+      source: cmd/admin/gen_api_docs.go
+    - method: POST
+      path: /api/stock-pipeline/run
+      source: cmd/admin/gen_api_docs.go
+    - method: POST
+      path: /api/stock-pipeline/search-and-run
       source: cmd/admin/gen_api_docs.go
     - method: POST
       path: /vlm/autotag/analyze-file

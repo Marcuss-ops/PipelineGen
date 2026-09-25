@@ -250,6 +250,39 @@ func TestBuildPlanAssignsDistinctPhraseMotions(t *testing.T) {
 	}
 }
 
+func TestBuildPlanSharesPayloadSelectedPhraseFamilyMotion(t *testing.T) {
+	scenes := []SceneInput{{ID: "scene-1", Phrases: []TimedAnnotation{
+		{Text: "Prima frase", StartMs: 100, EndMs: 900, Score: 1},
+		{Text: "Seconda frase", StartMs: 1000, EndMs: 1800, Score: .9},
+		{Text: "Terza frase", StartMs: 1900, EndMs: 2700, Score: .8},
+	}}}
+	input := PlanInput{PlanID: "family-payload", VideoID: "v1", Width: 1920, Height: 1080, FPSNum: 24, FPSDen: 1,
+		PhraseMotionFamily: "modern_apple", Scenes: scenes}
+	first, err := BuildPlan(input, PlannerConfig{MaxPhrases: 3})
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := BuildPlan(input, PlannerConfig{MaxPhrases: 3})
+	if err != nil {
+		t.Fatal(err)
+	}
+	chosen := ""
+	for i, item := range first.Items {
+		if item.Kind != "text_phrase" {
+			continue
+		}
+		if chosen == "" {
+			chosen = item.MotionID
+		}
+		if item.MotionID != chosen || item.MotionID != second.Items[i].MotionID {
+			t.Fatalf("phrase motions differ within/reacross payload: first=%q item=%q retry=%q", chosen, item.MotionID, second.Items[i].MotionID)
+		}
+	}
+	if chosen == "" || !strings.HasPrefix(chosen, "phrase_apple_clean_") {
+		t.Fatalf("family selected motion %q, want modern_apple", chosen)
+	}
+}
+
 func TestBuildPlanAssignsDistinctCertifiedMotionsAcrossRunAfterBudget(t *testing.T) {
 	scenes := []SceneInput{
 		{ID: "scene-0", Phrases: []TimedAnnotation{{Text: "Discipline gave speed a direction", StartMs: 0, EndMs: 900, Score: 0.8}}},

@@ -128,6 +128,26 @@ func registerInternalModules(ctx context.Context, registry *module.Registry, log
 			}
 		}
 		providerEntries = append(providerEntries, TrackedProviderEntry{Id: "stock", Kind: ProviderKindSearch, Search: stockadapter.NewAdapter(stockW.Service)})
+	} else if stockErr != nil {
+		// FAIL-LOUD GATING (September 2026): the error used to be captured in
+		// stockErr and never read, so a required-dep miss (Drive.Admin is the
+		// usual one: the port exists only when the Drive SDK handle could be
+		// built from credentials) made /api/stock-pipeline/* and
+		// /api/stock-batches/* disappear SILENTLY while the production config
+		// advertises stock_pipeline_enabled: true. The only symptom was a
+		// diff between the live router and the generated API manifest. The
+		// capability stays absent (not mounted is the honest state — no fake
+		// availability), but the reason is now observable at boot.
+		log.Warn("registerInternalModules: stock pipeline NOT mounted — WireStockPipeline returned an error",
+			zap.String("registration_point", "register.StockPipeline"),
+			zap.Bool("feature_flag_enabled", cfg != nil && cfg.Features.StockPipelineEnabled),
+			zap.Error(stockErr))
+	} else if stockW != nil && stockW.Module == nil {
+		// Defensive: wiring succeeded but produced no route Module. Same
+		// silent-absence class as above (e.g. a future refactor that stops
+		// populating Module) — surface it instead of dropping the routes.
+		log.Warn("registerInternalModules: stock pipeline wiring produced no route Module; /api/stock-pipeline/* stays unmounted",
+			zap.String("registration_point", "register.StockPipeline"))
 	}
 	scriptAssetsDescriptor, err := scriptassetsapi.Build(scriptassetsapi.Dependencies{Logger: log})
 	if err != nil {

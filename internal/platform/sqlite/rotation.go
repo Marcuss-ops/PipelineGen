@@ -110,6 +110,9 @@ func RotateObservability(ctx context.Context, src *sql.DB, opts RotateOptions) (
 		return r, fmt.Errorf("rotation: ATTACH %s: %w", offloadPath, err)
 	}
 	defer func() {
+		// Best-effort DETACH: the caller already receives the rotation result
+		// (or its error) from the body below, and a failed detach is not
+		// actionable here — it cannot corrupt the offload file just written.
 		_, _ = src.ExecContext(ctx, "DETACH offload")
 	}()
 

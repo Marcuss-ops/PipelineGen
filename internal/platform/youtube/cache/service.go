@@ -118,9 +118,11 @@ func (s *Service) BumpMetaHits(ctx context.Context, videoID string) {
 	if s.db == nil {
 		return
 	}
-	_, _ = s.db.ExecContext(ctx,
+	if _, err := s.db.ExecContext(ctx,
 		`UPDATE youtube_video_metadata_cache SET hit_count = hit_count + 1, last_used = datetime('now') WHERE video_id = ?`,
-		videoID)
+		videoID); err != nil && s.log != nil {
+		s.log.Warn("failed to bump youtube metadata hit count", zap.String("video_id", videoID), zap.Error(err))
+	}
 }
 
 // PrewarmMeta returns the top N (video_id, metadata_json) rows from the hot cache.
@@ -167,9 +169,11 @@ func (s *Service) SetSegments(ctx context.Context, videoID, segmentsJSON string)
 	if s.db == nil {
 		return
 	}
-	_, _ = s.db.ExecContext(ctx,
+	if _, err := s.db.ExecContext(ctx,
 		"INSERT OR REPLACE INTO youtube_segments_cache (video_id, segments_json, cached_at) VALUES (?, ?, datetime('now'))",
-		videoID, segmentsJSON)
+		videoID, segmentsJSON); err != nil && s.log != nil {
+		s.log.Warn("failed to cache youtube segments", zap.String("video_id", videoID), zap.Error(err))
+	}
 }
 
 // ── Category cache ─────────────────────────────────────────────────────────
@@ -194,7 +198,9 @@ func (s *Service) SetCategory(ctx context.Context, videoTitle, category string) 
 	if s.db == nil {
 		return
 	}
-	_, _ = s.db.ExecContext(ctx,
+	if _, err := s.db.ExecContext(ctx,
 		"INSERT OR REPLACE INTO youtube_category_cache (video_title, category, cached_at) VALUES (?, ?, datetime('now'))",
-		videoTitle, category)
+		videoTitle, category); err != nil && s.log != nil {
+		s.log.Warn("failed to cache youtube category", zap.String("video_title", videoTitle), zap.Error(err))
+	}
 }

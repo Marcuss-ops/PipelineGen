@@ -74,7 +74,7 @@ func ApplyChannelProfile(req *GenerateRequest, p channelprofile.Profile) error {
 	if req.OverlayStyle == nil && p.OverlayStyle != nil {
 		req.OverlayStyle = p.OverlayStyle.OverlayStyle()
 	}
-	if len(req.PhraseMotions) == 0 && len(p.PhraseMotions) > 0 {
+	if req.PhraseMotionFamily == "" && len(req.PhraseMotions) == 0 && len(p.PhraseMotions) > 0 {
 		req.PhraseMotions = append([]string(nil), p.PhraseMotions...)
 	}
 	if len(req.ImageMotions) == 0 && len(p.ImageMotions) > 0 {

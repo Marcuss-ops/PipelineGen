@@ -1,5 +1,7 @@
 package overlays
 
+import "strings"
+
 // The installed REQUIRE_GPU_NATIVE lane now carries the modern Apple-clean
 // phrase look: a glow-free, shadow-legible text preset plus 30 text
 // animators that lower to the native MTSDF kernel.
@@ -30,12 +32,11 @@ package overlays
 // Ids are owned by ChrononTemplate/catalog. PipelineGen only selects
 // deterministically and transports the opaque id.
 var (
-	// phrase_apple_clean is the glow-free modern Apple style: 1920x260 band,
-	// Poppins-Bold 64, white fill, stroke + soft shadow, 60+12 entrance.
-	// static_text_smoke remains as the certified fallback for smoke/E2E.
-	namePresetRenderSafeCandidates = []string{"phrase_apple_clean"}
-	phrasePresetCandidates         = []string{"phrase_apple_clean"}
-	wordPresetCandidates           = []string{"phrase_apple_clean"}
+	// phrase_default is the official animated phrase style. Motion ids carry
+	// Apple-clean animation independently; static_text_smoke is the fallback.
+	namePresetRenderSafeCandidates = []string{"phrase_default"}
+	phrasePresetCandidates         = []string{"phrase_default"}
+	wordPresetCandidates           = []string{"phrase_default"}
 	imagePresetCandidates          = []string{
 		// Auto-selected images use an entrance long enough to remain visible.
 		// image_fast_fade is an explicit short variant (<1.5 s), so it stays
@@ -182,6 +183,34 @@ func selectPhraseMotion(jobID, sceneID string, ordinal int, pool []string) strin
 // package's own storage.
 func CertifiedPhraseMotions() []string {
 	return append([]string(nil), phraseMotionCandidates...)
+}
+
+// certifiedPhraseFamily returns the subset of the production-safe phrase
+// vocabulary that belongs to a public motion family. Families with no
+// render-safe members are intentionally rejected by the planner.
+func certifiedPhraseFamily(family string) []string {
+	ids := make([]string, 0)
+	for _, id := range phraseMotionCandidates {
+		matched := false
+		switch family {
+		case "modern_apple":
+			matched = strings.HasPrefix(id, "phrase_apple_clean_")
+		case "typewriter":
+			matched = strings.HasPrefix(id, "typewriter_")
+		case "classic_apple":
+			matched = strings.HasPrefix(id, "apple_v2_")
+		case "web":
+			matched = strings.HasPrefix(id, "web_")
+		case "3d":
+			matched = strings.Contains(id, "_3d_") || strings.HasSuffix(id, "_3d")
+		default:
+			return nil
+		}
+		if matched {
+			ids = append(ids, id)
+		}
+	}
+	return ids
 }
 
 // RenderSafeTextMotions returns the render-safe text-motion vocabulary. It is

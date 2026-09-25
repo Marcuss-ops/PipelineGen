@@ -16,7 +16,11 @@
 //     returns the full fingerprint-version audit log.
 //   - godlike/07 fail-closed: concurrent goroutines racing on
 //     the same key surface typed sentinels (not opaque strings).
-package steps
+//
+// Package executionsteps — the SQLite adapter's own suite. It exercises the
+// adapter through the canonical steps.Store CONTRACT (the aliases below point
+// at the port's types), so a port change surfaces here as a compile failure.
+package executionsteps
 
 import (
 	"bytes"
@@ -392,10 +396,10 @@ func TestSQLiteStore_FirstNonCompleted_PartialProgress(t *testing.T) {
 	mustStart := func(k StepKey) { require.NoError(t, store.MarkStarted(ctx, k)) }
 	mustComplete := func(k StepKey) { require.NoError(t, store.MarkCompleted(ctx, k, json.RawMessage(`{}`), nil)) }
 
-	plan := StepKey{"run-11", "stock.plan", "run-11|stock.plan"}
-	stage := StepKey{"run-11", "stock.stage_sources", "run-11|stock.stage_sources"}
-	extract := StepKey{"run-11", "stock.extract_clips", "run-11|stock.extract_clips"}
-	compose := StepKey{"run-11", "stock.compose_chunks", "run-11|stock.compose_chunks"}
+	plan := StepKey{JobID: "run-11", StepKey: "stock.plan", InputFingerprint: "run-11|stock.plan"}
+	stage := StepKey{JobID: "run-11", StepKey: "stock.stage_sources", InputFingerprint: "run-11|stock.stage_sources"}
+	extract := StepKey{JobID: "run-11", StepKey: "stock.extract_clips", InputFingerprint: "run-11|stock.extract_clips"}
+	compose := StepKey{JobID: "run-11", StepKey: "stock.compose_chunks", InputFingerprint: "run-11|stock.compose_chunks"}
 
 	mustStart(plan)
 	mustComplete(plan)
@@ -426,7 +430,7 @@ func TestSQLiteStore_FirstNonCompleted_AllCompleted_ReturnsNil(t *testing.T) {
 	ctx := context.Background()
 
 	for _, stepKey := range []string{"stock.plan", "stock.stage_sources", "stock.publish", "stock.finalize"} {
-		k := StepKey{"run-12", stepKey, "run-12|" + stepKey}
+		k := StepKey{JobID: "run-12", StepKey: stepKey, InputFingerprint: "run-12|" + stepKey}
 		require.NoError(t, store.MarkStarted(ctx, k))
 		require.NoError(t, store.MarkCompleted(ctx, k, json.RawMessage(`{}`), nil))
 	}
@@ -457,8 +461,8 @@ func TestSQLiteStore_ListByJob_FingerprintVersioning(t *testing.T) {
 	store, _ := newTestStore(t)
 	ctx := context.Background()
 
-	k1 := StepKey{"run-13", "stock.extract_clips", "v1-fingerprint"}
-	k2 := StepKey{"run-13", "stock.extract_clips", "v2-fingerprint"}
+	k1 := StepKey{JobID: "run-13", StepKey: "stock.extract_clips", InputFingerprint: "v1-fingerprint"}
+	k2 := StepKey{JobID: "run-13", StepKey: "stock.extract_clips", InputFingerprint: "v2-fingerprint"}
 
 	require.NoError(t, store.MarkStarted(ctx, k1))
 	require.NoError(t, store.MarkCompleted(ctx, k1, json.RawMessage(`{"version":1}`), nil))
@@ -484,7 +488,7 @@ func TestSQLiteStore_ListByJob_OrderedByStepKeyASC(t *testing.T) {
 	ctx := context.Background()
 
 	for _, stepKey := range []string{"stock.finalize", "stock.publish", "stock.extract_clips", "stock.plan"} {
-		k := StepKey{"run-14", stepKey, "run-14|" + stepKey}
+		k := StepKey{JobID: "run-14", StepKey: stepKey, InputFingerprint: "run-14|" + stepKey}
 		require.NoError(t, store.MarkStarted(ctx, k))
 		require.NoError(t, store.MarkCompleted(ctx, k, json.RawMessage(`{}`), nil))
 	}
@@ -523,7 +527,7 @@ func TestSQLiteStore_LeaseUntil_StampOnMarkStarted(t *testing.T) {
 	store, db := newTestStore(t)
 	ctx := context.Background()
 
-	key := StepKey{"run-15", "stock.stage_sources", "run-15|stock.stage_sources"}
+	key := StepKey{JobID: "run-15", StepKey: "stock.stage_sources", InputFingerprint: "run-15|stock.stage_sources"}
 	before := time.Now()
 	require.NoError(t, store.MarkStarted(ctx, key))
 	after := time.Now()
@@ -548,7 +552,7 @@ func TestSQLiteStore_LeaseUntil_ClearedOnMarkCompleted(t *testing.T) {
 	store, db := newTestStore(t)
 	ctx := context.Background()
 
-	key := StepKey{"run-16", "stock.publish", "run-16|stock.publish"}
+	key := StepKey{JobID: "run-16", StepKey: "stock.publish", InputFingerprint: "run-16|stock.publish"}
 	require.NoError(t, store.MarkStarted(ctx, key))
 	require.NoError(t, store.MarkCompleted(ctx, key, json.RawMessage(`{}`), nil))
 
@@ -564,7 +568,7 @@ func TestSQLiteStore_LeaseUntil_ClearedOnMarkFailed(t *testing.T) {
 	store, db := newTestStore(t)
 	ctx := context.Background()
 
-	key := StepKey{"run-17", "stock.publish", "run-17|stock.publish"}
+	key := StepKey{JobID: "run-17", StepKey: "stock.publish", InputFingerprint: "run-17|stock.publish"}
 	require.NoError(t, store.MarkStarted(ctx, key))
 	require.NoError(t, store.MarkFailed(ctx, key, "boom"))
 
@@ -590,7 +594,7 @@ func TestSQLiteStore_Concurrent_MarkStarted_SerializeOnUniqueIndex(t *testing.T)
 	store, db := newTestStore(t)
 	ctx := context.Background()
 
-	contendedKey := StepKey{"run-18", "stock.finalize", "run-18|stock.finalize"}
+	contendedKey := StepKey{JobID: "run-18", StepKey: "stock.finalize", InputFingerprint: "run-18|stock.finalize"}
 	var wg sync.WaitGroup
 
 	// 5 concurrent goroutines on the same key.

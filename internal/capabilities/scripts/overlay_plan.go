@@ -46,8 +46,9 @@ type OverlayCanvasSpec struct {
 	// the request's channel profile (empty = the certified default pool). It
 	// lives here because the canvas is the run-level render context this
 	// function already receives; the planner validates the ids fail-closed.
-	PhraseMotions []string
-	ImageMotions  []string
+	PhraseMotions      []string
+	PhraseMotionFamily string
+	ImageMotions       []string
 }
 
 // GoldenOverlayCanvas is the validated golden canary canvas (1280×720,
@@ -261,7 +262,7 @@ func CompileOverlayPlan(result *GenerateResult, language Language, canvas Overla
 		Width: canvas.Width, Height: canvas.Height, FPSNum: canvas.FPSNum, FPSDen: canvas.FPSDen,
 		Scenes:        scenes,
 		Background:    canvas.Background,
-		PhraseMotions: canvas.PhraseMotions, ImageMotions: canvas.ImageMotions,
+		PhraseMotions: canvas.PhraseMotions, PhraseMotionFamily: canvas.PhraseMotionFamily, ImageMotions: canvas.ImageMotions,
 	}, capabilityoverlay.AllCandidatesPlannerConfig(scenes))
 	if err != nil {
 		return nil, fmt.Errorf("overlay plan: plan: %w", err)
@@ -594,7 +595,3 @@ func occurrenceFor(occurrences []capabilityentities.EntityOccurrence, entity scr
 	}
 	return nil
 }
-
-// entityCardTemplate reports whether a resolver template is an entity card
-// (the only resolver output the compiler keeps; everything else is owned by
-// the planner).

@@ -232,6 +232,7 @@ func BuildGenerateRequest(env *scriptpkg.GenerationEnvelopeV2, idempotencyKey st
 		Render:              item.Output.Render,
 		OverlayBackground:   item.OverlayBackground,
 		OverlayStyle:        item.OverlayStyle,
+		PhraseMotionFamily:  item.PhraseMotionFamily,
 		IdempotencyKey:      idempotencyKey,
 		ForceRefresh:        env.ForceRefresh,
 		Source:              source,

@@ -66,7 +66,7 @@ type OrchestratorConfig struct {
 	// §12-3 / godlike/06 SSOT). nil ⇒ defaults to
 	// steps.NewInMemoryStore() inside NewOrchestrator (the
 	// hermetic default for tests + dev modes). Production
-	// composition roots should inject steps.NewSQLiteStore(db) so
+	// composition roots should inject executionsteps.NewSQLiteStore(db) so
 	// per-step state survives process restarts and the resume
 	// contract (MarkStarted → ErrStepAlreadyCompleted → skip-on-
 	// orchestrator-continue) takes effect.

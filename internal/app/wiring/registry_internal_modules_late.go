@@ -16,13 +16,13 @@ import (
 
 	search "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/search"
 	delivery "github.com/Marcuss-ops/PipelineGen/internal/capabilities/delivery"
-	steps "github.com/Marcuss-ops/PipelineGen/internal/capabilities/execution/steps"
 	capjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
 	mediasearchapi "github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediasearch"
 	outboxapi "github.com/Marcuss-ops/PipelineGen/internal/capabilities/outbox"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/videocreate"
 	module "github.com/Marcuss-ops/PipelineGen/internal/platform/httpserver"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/media/rustexec"
+	executionsteps "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/executionsteps"
 
 	"go.uber.org/zap"
 )
@@ -115,7 +115,7 @@ func registerVideoCreate(root *ComposeRoot, log *zap.Logger, rustMusclesPath, ff
 		return fmt.Errorf("registerVideoCreate: text track repository is not wired")
 	}
 	handler, err := videocreate.NewHandler(videocreate.Deps{
-		Steps:     steps.NewSQLiteStore(root.DB.DB),
+		Steps:     executionsteps.NewSQLiteStore(root.DB.DB),
 		Children:  children,
 		Search:    videocreate.NewMediaSearch(searchAgg),
 		Audio:     audioMaster,

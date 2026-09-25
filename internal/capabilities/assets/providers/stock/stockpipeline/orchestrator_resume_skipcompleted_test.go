@@ -30,6 +30,7 @@ import (
 	_ "github.com/mattn/go-sqlite3" // driver lock per AGENTS.md
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/execution/steps"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/executionsteps"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -139,7 +140,7 @@ func TestOrchestrator_RunResilient_DoesNotResumeMismatchedV2Checkpoint(t *testin
 
 func TestLoadCompletedStepRows_DropsStaleCompletedWhenLatestAttemptFailed(t *testing.T) {
 	db := openOrchestratorResumeTestDB(t)
-	store := steps.NewSQLiteStoreWithDB(db)
+	store := executionsteps.NewSQLiteStoreWithDB(db)
 	ctx := context.Background()
 	jobID := "latest-failed-attempt"
 	completedKey := steps.StepKey{JobID: jobID, StepKey: "stock.plan", InputFingerprint: "fp-completed"}
@@ -171,7 +172,7 @@ func TestLoadCompletedStepRows_DropsStaleCompletedWhenLatestAttemptFailed(t *tes
 //     MarkCompleted (now 5 Completed rows total in the steps.Store)
 func TestOrchestrator_RunResilient_SkipAlreadyCompleted(t *testing.T) {
 	db := openOrchestratorResumeTestDB(t)
-	store := steps.NewSQLiteStoreWithDB(db)
+	store := executionsteps.NewSQLiteStoreWithDB(db)
 	ctx := context.Background()
 	jobID := "resume-test-1"
 
@@ -260,7 +261,7 @@ func TestOrchestrator_RunResilient_SkipAlreadyCompleted(t *testing.T) {
 // skips every step's Run via ErrStepAlreadyCompleted.
 func TestOrchestrator_RunResilient_AllPreCompletedSkipsAll(t *testing.T) {
 	db := openOrchestratorResumeTestDB(t)
-	store := steps.NewSQLiteStoreWithDB(db)
+	store := executionsteps.NewSQLiteStoreWithDB(db)
 	ctx := context.Background()
 	jobID := "all-completed-test"
 

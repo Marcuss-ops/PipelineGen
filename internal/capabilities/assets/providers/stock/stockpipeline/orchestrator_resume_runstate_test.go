@@ -32,13 +32,14 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/execution/steps"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/executionsteps"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 func TestOrchestrator_RunResilient_NewStepFailureMarkFailed(t *testing.T) {
 	db := openOrchestratorResumeTestDB(t)
-	store := steps.NewSQLiteStoreWithDB(db)
+	store := executionsteps.NewSQLiteStoreWithDB(db)
 	ctx := context.Background()
 	jobID := "fail-test"
 
@@ -133,7 +134,7 @@ func TestOrchestrator_RunResilient_NewStepFailureMarkFailed(t *testing.T) {
 // and the resumed run's stock.stage_sources step must observe it.
 func TestOrchestrator_RunResilient_RehydratesRunState(t *testing.T) {
 	db := openOrchestratorResumeTestDB(t)
-	store := steps.NewSQLiteStoreWithDB(db)
+	store := executionsteps.NewSQLiteStoreWithDB(db)
 	ctx := context.Background()
 	jobID := "rehydrate-test-1"
 
@@ -234,7 +235,7 @@ func (s *stateAssertingStep) Run(_ context.Context, runner StepRunner) error {
 // stock.plan row and assert its result_json contains the mutation.
 func TestOrchestrator_RunResilient_PersistsRunState(t *testing.T) {
 	db := openOrchestratorResumeTestDB(t)
-	store := steps.NewSQLiteStoreWithDB(db)
+	store := executionsteps.NewSQLiteStoreWithDB(db)
 	ctx := context.Background()
 	jobID := "persist-state-test-1"
 
@@ -291,7 +292,7 @@ func TestOrchestrator_RunResilient_PersistsRunState(t *testing.T) {
 // is the one from the latest pre-completed step.
 func TestOrchestrator_RunResilient_RehydratesMultipleSteps(t *testing.T) {
 	db := openOrchestratorResumeTestDB(t)
-	store := steps.NewSQLiteStoreWithDB(db)
+	store := executionsteps.NewSQLiteStoreWithDB(db)
 	ctx := context.Background()
 	jobID := "rehydrate-multi-test-1"
 

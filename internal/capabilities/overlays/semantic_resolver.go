@@ -25,24 +25,16 @@ type SemanticPreset string
 // The canonical Chronon preset ids (mirror of Chronon3d's VisualPresetRegistry
 // seeds). These are the only presets a semantic role may resolve to.
 //
-// The TEXT ids point at the glow-free text preset: the native text lane cannot
-// keep a glow (style.glow) resident on the GPU and rejects glyph/word text
-// animators, so the canonical apple_v2 phrase/word/name ids — which author the
-// canary glow and the apple_phrase_v2 glyph motion — are not renderable for a
-// generated overlay on this lane (see preset_selection.go for the measured
-// matrix). The animation of a text item is carried by an explicit motion id
-// (SelectTextMotion), never by the preset.
+// TEXT ids point at RenderingGen's canonical animated phrase style. Motion is
+// still selected independently through an explicit MotionID; PipelineGen does
+// not select a second visual style for each motion.
 const (
-	// The three text surfaces track the ONE glow-free modern Chrome preset the
-	// lane renders. They must stay equal to the candidate lists in
-	// preset_selection.go (namePresetRenderSafeCandidates / phrasePresetCandidates
-	// / wordPresetCandidates): the sampler emits the candidate id while the
-	// semantic table emits these constants, so a divergence makes the entity
-	// name/preset contract test fail. phrase_apple_clean is the SSOT; the old
-	// static_text_smoke remains the certified smoke/E2E fallback only.
-	PresetModernPhrase SemanticPreset = "phrase_apple_clean"
-	PresetModernWord   SemanticPreset = "phrase_apple_clean"
-	PresetModernName   SemanticPreset = "phrase_apple_clean"
+// The three text surfaces and the generated candidate lists must resolve to
+// the official RenderingGen preset id. Keep them aligned with
+// preset_selection.go; motions remain separately represented by MotionID.
+	PresetModernPhrase SemanticPreset = "phrase_default"
+	PresetModernWord   SemanticPreset = "phrase_default"
+	PresetModernName   SemanticPreset = "phrase_default"
 	PresetModernImage  SemanticPreset = "image_fade_in"
 )
 

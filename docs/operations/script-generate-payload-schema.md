@@ -50,8 +50,25 @@ lives **inside an item**; there are no top-level shortcut keys.
   items map to batch generation.
 - Every per-item block (`source`, `script_params`, `output`, `docs`,
   `audio`, `media_plan`, `overlay_background`, `overlay_style`,
+  `phrase_motion_family`,
   `video_metadata`, `intro`, `outro`) is optional unless its own
   validator says otherwise (`source` is required).
+
+For phrase overlays, set `phrase_motion_family` to `modern_apple` to sample
+one certified modern Apple motion for the payload and reuse it for every
+phrase. Retries with the same job identity keep the same selection. Omit the
+field to retain the default run-wide phrase motion rotation. Image motions are
+sampled independently per image item.
+
+```json
+{
+  "version": 2,
+  "items": [{
+    "source": { "type": "clips", "clip_ids": ["clip-1"] },
+    "phrase_motion_family": "modern_apple"
+  }]
+}
+```
 
 ## Fail-closed contract (why a wrong body returns 400)
 

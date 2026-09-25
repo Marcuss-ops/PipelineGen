@@ -113,6 +113,9 @@ type GenerationItemV2 struct {
 	// phrase/word/image overlays. It is transport-only; Chronon's preset
 	// registry remains the source of defaults.
 	OverlayStyle *OverlayStyleSpec `json:"overlay_style,omitempty"`
+	// PhraseMotionFamily selects the certified motion family used by phrase
+	// overlays. One motion is sampled per payload and shared by every phrase.
+	PhraseMotionFamily string `json:"phrase_motion_family,omitempty"`
 
 	// Audio configures the audio execution mode (audio.mode) plus the
 	// editorial audio intent block (mix_policy, background_music,

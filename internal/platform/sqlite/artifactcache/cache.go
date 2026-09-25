@@ -81,7 +81,13 @@ func (c *Cache) Lookup(ctx context.Context, key capcache.Key, expectedWorkMS int
 		return nil, false, err
 	}
 	if !verified.Exists || !verified.Verified {
-		_, _ = c.db.ExecContext(ctx, `UPDATE artifact_cache_entries SET status='INVALID', updated_at=?, error_message=? WHERE cache_key=?`, now, "CAS object missing or corrupt", digest)
+		// The invalidation IS the state transition this branch exists to
+		// perform: bumping the invalidation metric while the row still reads
+		// READY would report a cleanup that did not happen, so the write
+		// fails closed like every other write in this function.
+		if _, invalidationErr := c.db.ExecContext(ctx, `UPDATE artifact_cache_entries SET status='INVALID', updated_at=?, error_message=? WHERE cache_key=?`, now, "CAS object missing or corrupt", digest); invalidationErr != nil {
+			return nil, false, fmt.Errorf("artifact cache invalidate %q: %w", digest, invalidationErr)
+		}
 		if metricErr := c.bumpInvalidation(ctx, key.Operation, now); metricErr != nil {
 			return nil, false, metricErr
 		}
@@ -160,7 +166,11 @@ func (c *Cache) Claim(ctx context.Context, key capcache.Key, lease time.Duration
 			}
 			if verified.Exists && verified.Verified {
 				entry.LastAccessedAt = now.Format(time.RFC3339Nano)
-				_, _ = c.db.ExecContext(ctx, `UPDATE artifact_cache_entries SET last_accessed_at=?,updated_at=? WHERE cache_key=?`, entry.LastAccessedAt, entry.LastAccessedAt, digest)
+				// Same statement the Lookup path already fails closed on: a claim
+				// that cannot be recorded must not be reported as a cache hit.
+				if _, touchErr := c.db.ExecContext(ctx, `UPDATE artifact_cache_entries SET last_accessed_at=?,updated_at=? WHERE cache_key=?`, entry.LastAccessedAt, entry.LastAccessedAt, digest); touchErr != nil {
+					return capcache.Claim{}, fmt.Errorf("artifact cache touch %q: %w", digest, touchErr)
+				}
 				if metricErr := c.bumpMetric(ctx, key.Operation, true, entry.SizeBytes, expectedWorkMS, entry.LastAccessedAt); metricErr != nil {
 					return capcache.Claim{}, metricErr
 				}

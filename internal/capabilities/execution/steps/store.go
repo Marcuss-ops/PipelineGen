@@ -209,3 +209,24 @@ type Store interface {
 	// audit log. Returns (nil, nil) for unseen jobID.
 	ListByJob(ctx context.Context, jobID string) ([]StepState, error)
 }
+
+// EqualRawMessage reports byte-equality of two json.RawMessage payloads under
+// the port's idempotency rule: two empty payloads are equal (nil and
+// json.RawMessage{} are interchangeable), while a nil payload is NOT equal to
+// a non-empty one.
+//
+// The rule belongs to the PORT, not to an implementation: MarkCompleted's
+// byte-equality idempotency contract is defined in terms of it, so the
+// in-memory fake and the SQLite adapter MUST agree. One owner here instead of
+// one private comparison helper per implementation.
+func EqualRawMessage(a, b json.RawMessage) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
+}

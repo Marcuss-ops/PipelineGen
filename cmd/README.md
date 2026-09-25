@@ -36,6 +36,10 @@ with no arguments to list all registered commands (~95 total). Key categories:
   `--dry-run` plans without writing),
   `drive-mv` (move files between folders; dry-run by default, `--apply` to
   execute),
+  `drive-rename` (rename files/folders by `--file` + `--new-name`, by
+  `--from` + `--name`, or by bulk `--rename "ID=New Name"` pairs; dry-run by
+  default, `--apply` to execute, fail-closed when a sibling already carries
+  the target name unless `--allow-collision` is passed),
   `trash-drive-files`, `upload-drive-file`,
   `drive-empty-trash` (fail-closed: previews the trash and only permanently
   purges with the explicit `--apply` flag)

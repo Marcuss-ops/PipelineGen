@@ -51,6 +51,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/execution/steps"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/executionsteps"
 )
 
 // ── Test 1: no duplicate step rows after restart ───────────────────
@@ -65,7 +66,7 @@ func TestOrchestrator_PostRestart_StepStoreHasNoDuplicateRows(t *testing.T) {
 	t.Parallel()
 
 	db := openOrchestratorResumeTestDB(t)
-	store := steps.NewSQLiteStoreWithDB(db)
+	store := executionsteps.NewSQLiteStoreWithDB(db)
 	jobID := "post-restart-no-dup-1"
 
 	// Simulate prior progress: 4 of 5 stages pre-Completed by
@@ -147,7 +148,7 @@ func TestOrchestrator_PostRestart_AllStepsCASPreserveAttempt1(t *testing.T) {
 	t.Parallel()
 
 	db := openOrchestratorResumeTestDB(t)
-	store := steps.NewSQLiteStoreWithDB(db)
+	store := executionsteps.NewSQLiteStoreWithDB(db)
 	jobID := "post-restart-cas-1"
 
 	// Pre-Complete 2 stages; the orchestrator's `continue` path
@@ -215,7 +216,7 @@ func TestOrchestrator_PostRestart_ListRowCountMatchesDispatchSlice(t *testing.T)
 	t.Parallel()
 
 	db := openOrchestratorResumeTestDB(t)
-	store := steps.NewSQLiteStoreWithDB(db)
+	store := executionsteps.NewSQLiteStoreWithDB(db)
 	jobID := "post-restart-count-1"
 
 	// Pre-Complete 1 stage; run the orchestrator; the operator's

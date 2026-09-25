@@ -81,6 +81,7 @@ var commandRegistry = map[string]commandHandler{
 	"drive-empty-trash":              drive.RunEmptyDriveTrash,
 	"drive-ls":                       drive.RunDriveLS,
 	"drive-mv":                       drive.RunDriveMV,
+	"drive-rename":                   drive.RunDriveRename,
 	"export-sound-effects-metadata":  soundeffects.RunExportSoundEffectsMetadata,
 	"folder-path-backfill":           backfill.RunFolderPathBackfill,
 	"gen-api-docs":                   rendering.RunGenAPIDocs,

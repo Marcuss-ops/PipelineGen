@@ -43,6 +43,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/media/render"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/media/rustexec"
 	pgmedia "github.com/Marcuss-ops/PipelineGen/internal/platform/postgres/media"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/executionsteps"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/stockbatches"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/stocksourcecache"
@@ -321,7 +322,7 @@ func WireStockPipeline(cfg *config.Config, log *zap.Logger, root *ComposeRoot) (
 				if stockDB == nil {
 					return nil
 				}
-				return steps.NewSQLiteStore(stockDB)
+				return executionsteps.NewSQLiteStore(stockDB)
 			}(),
 		},
 		Delivery: StockDeliveryDeps{
