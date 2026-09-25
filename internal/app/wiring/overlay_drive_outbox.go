@@ -8,6 +8,7 @@ import (
 
 	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/renderinggen"
+	sqljobs "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/jobs"
 	outboxevents "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
 )
 
@@ -50,7 +51,8 @@ func firstNonEmptyOverlay(values ...string) string {
 }
 
 type overlayDrivePublicationHandler struct {
-	direct scriptgen.OverlayArtifactPublisher
+	direct  scriptgen.OverlayArtifactPublisher
+	results *sqljobs.SQLiteStore
 }
 
 func (h *overlayDrivePublicationHandler) EventType() string {
@@ -71,6 +73,17 @@ func (h *overlayDrivePublicationHandler) Handle(ctx context.Context, evt outboxe
 	if err := h.direct.PublishOverlay(ctx, req.Spec, &req.Artifact); err != nil {
 		return fmt.Errorf("publish overlay Drive artifact: %w", err)
 	}
+	if h.results == nil {
+		return fmt.Errorf("overlay Drive result projection is not configured")
+	}
+	jobID := firstNonEmptyOverlay(evt.AggregateID, req.Spec.JobID)
+	if err := h.results.RecordOverlayDriveLink(ctx, jobID, sqljobs.OverlayDriveLink{
+		ItemID: req.Spec.OverlayItemID, Language: req.Spec.Language, PlanID: req.Spec.PlanID,
+		DriveFileID: req.Artifact.DriveFileID, DriveLink: req.Artifact.DriveLink,
+		FolderID: req.Artifact.DriveFolderID,
+	}); err != nil {
+		return fmt.Errorf("project overlay Drive link into job result: %w", err)
+	}
 	return nil
 }
 
@@ -78,7 +91,10 @@ func wireDurableOverlayPublisher(root *ComposeRoot, direct scriptgen.OverlayArti
 	if root == nil || root.Outbox == nil || root.Outbox.EventsRepo == nil || root.Outbox.EventsRegistry == nil {
 		return direct, nil
 	}
-	handler := &overlayDrivePublicationHandler{direct: direct}
+	if root.Jobs == nil || root.Jobs.Repo == nil {
+		return nil, fmt.Errorf("wire overlay Drive publisher: jobs result repository is required")
+	}
+	handler := &overlayDrivePublicationHandler{direct: direct, results: root.Jobs.Repo}
 	if err := root.Outbox.EventsRegistry.Register(handler); err != nil {
 		return nil, fmt.Errorf("register overlay Drive outbox handler: %w", err)
 	}
