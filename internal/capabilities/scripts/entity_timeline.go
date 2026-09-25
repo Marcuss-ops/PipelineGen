@@ -12,17 +12,16 @@
 // contract — the projection surface is the entity's first renderable
 // occurrence, and consumers must not assume per-mention events.
 //
-// The projection is fail-closed, exactly like the phrase timing projection:
-// a scene that carries both annotations and word timing must ground and
-// speak every entity verbatim, or the run fails instead of producing a
-// plausible-but-wrong timestamp. Scenes without annotations, or without
-// word timing, contribute nothing (legitimate no-op).
+// Entity candidates that cannot be grounded in the captured speech are
+// omitted. A missing optional overlay must not fail an otherwise valid run,
+// and no timestamp is fabricated for an unspoken candidate.
 package scriptgeneration
 
 import (
 	"strings"
 	"unicode"
 
+	capabilityaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
 	capabilityentities "github.com/Marcuss-ops/PipelineGen/internal/capabilities/entities"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
@@ -81,6 +80,23 @@ func compileResultEntityTimeline(result *GenerateResult, language Language) erro
 			}
 		}
 		sources = grounded
+		if len(sources) == 0 {
+			continue
+		}
+		// Entity annotations are candidates, not a reason to abort generation.
+		// Keep only names actually present in the captured voiceover timing;
+		// omitted candidates simply cannot receive a defensible timestamp.
+		spoken := sources[:0]
+		for _, source := range sources {
+			name := strings.TrimSpace(source.SpokenName)
+			if name == "" {
+				name = source.Name
+			}
+			if _, err := capabilityaudio.LocatePhrase(*ref.Timing, name); err == nil {
+				spoken = append(spoken, source)
+			}
+		}
+		sources = spoken
 		if len(sources) == 0 {
 			continue
 		}

@@ -3,12 +3,123 @@ package jobs
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 )
+
+// OverlayDriveLink is the operator-facing receipt written after the durable
+// Drive outbox event has completed.
+type OverlayDriveLink struct {
+	ItemID      string `json:"item_id"`
+	Language    string `json:"language"`
+	PlanID      string `json:"plan_id,omitempty"`
+	DriveFileID string `json:"drive_file_id"`
+	DriveLink   string `json:"drive_link"`
+	FolderID    string `json:"drive_folder_id,omitempty"`
+}
+
+// RecordOverlayDriveLink merges one completed overlay publication into the
+// terminal job result. Outbox handlers can run before the parent job commits;
+// returning an error in that case lets the outbox retry instead of writing a
+// link that a later job completion would overwrite. Compare-and-swap updates
+// preserve links when several overlay events complete concurrently.
+func (r *SQLiteStore) RecordOverlayDriveLink(ctx context.Context, jobID string, link OverlayDriveLink) error {
+	if r == nil || r.db == nil || strings.TrimSpace(jobID) == "" || strings.TrimSpace(link.ItemID) == "" || strings.TrimSpace(link.DriveLink) == "" {
+		return fmt.Errorf("record overlay Drive link: job id, item id and Drive link are required")
+	}
+	for attempt := 0; attempt < 12; attempt++ {
+		var status string
+		if err := r.db.QueryRowContext(ctx, `SELECT status FROM jobs WHERE id = ?`, jobID).Scan(&status); err != nil {
+			return fmt.Errorf("record overlay Drive link: read job status: %w", err)
+		}
+		if !job.Status(status).IsTerminal() {
+			return fmt.Errorf("record overlay Drive link: job %s is not terminal (status %s)", jobID, status)
+		}
+		var rowID int64
+		var oldPayload string
+		if err := r.db.QueryRowContext(ctx, `SELECT id, result_payload FROM job_results WHERE job_id = ? ORDER BY attempt DESC, id DESC LIMIT 1`, jobID).Scan(&rowID, &oldPayload); err != nil {
+			return fmt.Errorf("record overlay Drive link: read job result: %w", err)
+		}
+		var result map[string]json.RawMessage
+		if err := json.Unmarshal([]byte(oldPayload), &result); err != nil {
+			return fmt.Errorf("record overlay Drive link: decode job result: %w", err)
+		}
+		if result == nil {
+			return fmt.Errorf("record overlay Drive link: job result is not a JSON object")
+		}
+		// script.generate stores its rich GenerateResult under the envelope's
+		// `result` member; keep the links beside overlay_render there so the
+		// status API exposes job.result.result.overlay_links. Other job shapes
+		// receive the projection at their root.
+		projection := result
+		nestedResult := false
+		if nested := result["result"]; len(nested) != 0 {
+			var decoded map[string]json.RawMessage
+			if err := json.Unmarshal(nested, &decoded); err != nil {
+				return fmt.Errorf("record overlay Drive link: decode nested result: %w", err)
+			}
+			if decoded != nil {
+				projection = decoded
+				nestedResult = true
+			}
+		}
+		var links []OverlayDriveLink
+		if raw := projection["overlay_links"]; len(raw) != 0 {
+			if err := json.Unmarshal(raw, &links); err != nil {
+				return fmt.Errorf("record overlay Drive link: decode existing links: %w", err)
+			}
+		}
+		updated := false
+		for i := range links {
+			if links[i].ItemID == link.ItemID && links[i].Language == link.Language {
+				links[i], updated = link, true
+				break
+			}
+		}
+		if !updated {
+			links = append(links, link)
+		}
+		sort.Slice(links, func(i, j int) bool {
+			if links[i].Language == links[j].Language {
+				return links[i].ItemID < links[j].ItemID
+			}
+			return links[i].Language < links[j].Language
+		})
+		encodedLinks, err := json.Marshal(links)
+		if err != nil {
+			return fmt.Errorf("record overlay Drive link: encode links: %w", err)
+		}
+		projection["overlay_links"] = encodedLinks
+		if nestedResult {
+			nested, err := json.Marshal(projection)
+			if err != nil {
+				return fmt.Errorf("record overlay Drive link: encode nested result: %w", err)
+			}
+			result["result"] = nested
+		}
+		updatedPayload, err := json.Marshal(result)
+		if err != nil {
+			return fmt.Errorf("record overlay Drive link: encode result: %w", err)
+		}
+		res, err := r.db.ExecContext(ctx, `UPDATE job_results SET result_payload = ?, result_hash = ? WHERE id = ? AND result_payload = ?`, string(updatedPayload), digest.SHA256String(string(updatedPayload)), rowID, oldPayload)
+		if err != nil {
+			return fmt.Errorf("record overlay Drive link: update result: %w", err)
+		}
+		n, err := res.RowsAffected()
+		if err != nil {
+			return fmt.Errorf("record overlay Drive link: inspect update: %w", err)
+		}
+		if n == 1 {
+			return nil
+		}
+	}
+	return fmt.Errorf("record overlay Drive link: result for job %s kept changing", jobID)
+}
 
 // persistJobResult is the sole write path for durable job results. The hot
 // jobs row intentionally does not carry the result payload; callers invoke

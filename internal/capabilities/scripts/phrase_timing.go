@@ -117,6 +117,13 @@ func compileResultPhraseTimings(result *GenerateResult, language Language) error
 		if text == "" {
 			continue
 		}
+		// Voice generation can legitimately normalize or shorten a scene. The
+		// linked word timing is authoritative; do not fail the whole run because
+		// the editorial text is not an exact transcript. Without a verbatim
+		// anchor we omit this optional scene-level projection.
+		if _, err := capabilityaudio.LocatePhrase(*ref.Timing, text); err != nil {
+			continue
+		}
 		sources[scene.ID] = PhraseTimingSource{Timing: *ref.Timing, Phrases: []string{text}, VoiceoverAssetID: ref.ID}
 	}
 	if len(sources) == 0 {

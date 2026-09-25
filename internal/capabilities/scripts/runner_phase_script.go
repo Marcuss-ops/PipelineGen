@@ -214,12 +214,21 @@ func (r *Runner) runSceneTextPhase(ctx context.Context, runID string, req Genera
 		// per-request: clips with no SCENE N: markers in source text
 		// are streamable (no post-gen rebinding).
 		streamable := SceneStreamingEligibility(req)
+		segmentTopologyNeedsMaterialization := req.ScriptParams.SegmentWords > 0 && !req.ScriptParams.SingleScene && len(req.ScriptParams.Segments) == 0
 		// Explicit important-phrase hints are part of the final overlay
 		// contract. They must be applied before any SceneTextReady consumer
 		// (NLP/TTS/render) observes the scene, so keep this narrow path batch-
 		// materialized and let ensureRequestedImportantPhrases run first.
+		// The gate must hold for EVERY source type, not only SourceClips:
+		// ensureRequestedImportantPhrases appends unspoken hints to the scene
+		// text after generation, so a streaming TTS dispatch on the batch text
+		// would synthesize audio for a prefix of the final narration and the
+		// phrase-timing projection would reject the mismatched narration
+		// (observed: 116 script tokens vs 95 TTS word boundaries; the artifact's
+		// text_sha256 matched the hint-less prefix).
 		if len(req.MediaPlan.Extraction.ImportantPhrases) > 0 {
 			streamable = false
+			segmentTopologyNeedsMaterialization = true
 		}
 		// Literal intro/outro must not be streamed scene-by-scene: they are
 		// injected verbatim post-LLM and never rewritten from source_text.
@@ -232,7 +241,6 @@ func (r *Runner) runSceneTextPhase(ctx context.Context, runID string, req Genera
 		// whole-prose materialization before SceneCommitted; streaming a
 		// model's provisional single scene would permanently launch VidRush
 		// enrichment with the wrong topology.
-		segmentTopologyNeedsMaterialization := req.ScriptParams.SegmentWords > 0 && !req.ScriptParams.SingleScene && len(req.ScriptParams.Segments) == 0
 		// Explicit segment plans are already authoritative and the production
 		// SceneTextGenerator streams one isolated model call per segment with a
 		// stable ID/index. Keep them streamable so SceneTextReady can start
