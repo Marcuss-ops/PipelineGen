@@ -92,7 +92,7 @@ profiles:
     phrase_motions:
       - phrase_apple_clean_07_slide_up_soft
       - phrase_apple_clean_08_slide_up_spring
-      - phrase_apple_clean_04_blur_tracking_drift
+      - phrase_apple_clean_11_slide_left_ease
     # sound_effects:
     #   - asset_id: whoosh1      # must exist in this deployment's catalog
     #     at_ms: 0               # absolute placement (mutually exclusive with scene_id)

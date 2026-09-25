@@ -13,7 +13,9 @@ package ytdlp
 import (
 	"reflect"
 
+	"regexp"
 	"slices"
+	"strconv"
 	"testing"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
@@ -339,6 +341,66 @@ func TestCommandBuilder_FallbackYouTubePlayerClients(t *testing.T) {
 			t.Fatalf("fallback mutation leaked into the builder")
 		}
 	})
+}
+
+// heightCapPattern extracts the `height<=N` caps a yt-dlp -f selector
+// expresses. A selector's effective resolution is bounded by its SMALLEST
+// cap, so the guard below compares minima rather than maxima.
+var heightCapPattern = regexp.MustCompile(`height<=(\d+)`)
+
+// selectorHeightCaps returns every height cap in a -f selector, in order.
+func selectorHeightCaps(t *testing.T, selector string) []int {
+	t.Helper()
+	matches := heightCapPattern.FindAllStringSubmatch(selector, -1)
+	if len(matches) == 0 {
+		t.Fatalf("selector expresses no height cap: %q", selector)
+	}
+	caps := make([]int, 0, len(matches))
+	for _, match := range matches {
+		value, err := strconv.Atoi(match[1])
+		if err != nil {
+			t.Fatalf("unparsable height cap %q in %q", match[1], selector)
+		}
+		caps = append(caps, value)
+	}
+	return caps
+}
+
+// TestSectionFormatArg_NeverSelectsBelowTheOutputHeight is the quality guard
+// for the --download-sections path.
+//
+// Every sectioned download exists only to feed the stock cutter, whose output
+// contract is the canonical 1920x1080 profile: a section selector capped below
+// that height is not "enough resolution", it is an upscale baked into the
+// published clip. A 720p cap shipped once and made every sectioned stock clip
+// soft; this test turns a repeat into a red build instead of a silently
+// degraded deliverable.
+func TestSectionFormatArg_NeverSelectsBelowTheOutputHeight(t *testing.T) {
+	b := newTestBuilder(t, false, false)
+
+	arg := b.SectionFormatArg(true)
+	if len(arg) != 2 || arg[0] != "-f" {
+		t.Fatalf("SectionFormatArg must return a single -f pair, got %v", arg)
+	}
+	if arg[1] != DefaultYouTubeSectionFormatSelectors {
+		t.Fatalf("SectionFormatArg must reference the constant (SSOT), got %q", arg[1])
+	}
+
+	sectionCaps := selectorHeightCaps(t, arg[1])
+	fullCaps := selectorHeightCaps(t, DefaultYouTubeFormatSelectors)
+	if got, want := slices.Min(sectionCaps), 1080; got != want {
+		t.Fatalf("section selector caps at %dp, want the canonical output height %dp", got, want)
+	}
+	if slices.Min(sectionCaps) < slices.Min(fullCaps) {
+		t.Fatalf("section selector (%dp) must never select below the full-source selector (%dp)",
+			slices.Min(sectionCaps), slices.Min(fullCaps))
+	}
+
+	// addFormat=false stays a no-op: metadata-only callers must not be handed
+	// a format selector they did not ask for.
+	if got := b.SectionFormatArg(false); got != nil {
+		t.Fatalf("SectionFormatArg(false) must return nil, got %v", got)
+	}
 }
 
 // TestCommandBuilder_PrimaryYouTubePlayerClient pins the canonical

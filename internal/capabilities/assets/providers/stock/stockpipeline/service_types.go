@@ -87,6 +87,23 @@ type RuntimeConfig struct {
 	// legacy publish-to-Drive behaviour, which is what the unit fixtures
 	// exercise.
 	SkipMetadataUpload bool
+	// MaxConcurrentDownloads / MaxConcurrentCuts carry the operator's two
+	// INDEPENDENT execution bounds from
+	// concurrency.max_concurrent_stock_downloads and
+	// concurrency.max_concurrent_stock_cuts (flattened by
+	// wiring.stockRuntimeConfig) into the orchestrator config.
+	//
+	// They are separate because the phases have different bottlenecks:
+	// staging pays yt-dlp's fixed ~15-20s per invocation (latency-bound, so
+	// more workers shrink the stage wall almost linearly), while cutting is
+	// CPU-bound at ~3.5 cores per clip. Sharing one bound serialized staging
+	// behind a knob sized for CPU work.
+	//
+	// Zero means "operator left it unset": the orchestrator's own defaults
+	// (DefaultMaxConcurrentDownloads / DefaultMaxConcurrentJobs) apply, which
+	// is what CLI and test callers get.
+	MaxConcurrentDownloads int
+	MaxConcurrentCuts      int
 }
 
 // StorageDeps groups the canonical media write surface.

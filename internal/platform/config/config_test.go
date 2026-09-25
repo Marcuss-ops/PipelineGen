@@ -27,6 +27,90 @@ func TestConfigLoaderRejectsRetiredPrimaryDBOverrides(t *testing.T) {
 	})
 }
 
+// TestConfigLoaderResolvesStockConcurrencyBounds pins the operator surface for
+// the stock pipeline's two independent fan-out bounds. They exist as config
+// keys (instead of Go constants) because the right width depends on the host:
+// downloads are latency-bound by yt-dlp's fixed per-invocation cost, cuts are
+// CPU-bound. The defaults must match the orchestrator's own defensive defaults
+// (DefaultMaxConcurrentDownloads / DefaultMaxConcurrentJobs), otherwise an
+// unset key and an absent key would behave differently.
+func TestConfigLoaderResolvesStockConcurrencyBounds(t *testing.T) {
+	// Neutralize inherited env: an empty value makes applyEnvVars skip the key
+	// (it only applies non-empty values), so the default tag is what is tested.
+	t.Setenv("VELOX_CONCURRENT_STOCK_DOWNLOADS", "")
+	t.Setenv("VELOX_CONCURRENT_STOCK_CUTS", "")
+
+	t.Run("defaults when unset", func(t *testing.T) {
+		cfg, err := GetFromPath(filepath.Join(t.TempDir(), "missing.yaml"))
+		if err != nil {
+			t.Fatalf("GetFromPath: %v", err)
+		}
+		if cfg.Concurrency.MaxConcurrentStockDownloads != 6 {
+			t.Fatalf("max_concurrent_stock_downloads default = %d, want 6", cfg.Concurrency.MaxConcurrentStockDownloads)
+		}
+		if cfg.Concurrency.MaxConcurrentStockCuts != 3 {
+			t.Fatalf("max_concurrent_stock_cuts default = %d, want 3", cfg.Concurrency.MaxConcurrentStockCuts)
+		}
+	})
+
+	t.Run("yaml overrides and unset siblings keep their default", func(t *testing.T) {
+		path := filepath.Join(t.TempDir(), "config.yaml")
+		content := []byte("concurrency:\n  max_concurrent_stock_downloads: 9\n")
+		if err := os.WriteFile(path, content, 0o600); err != nil {
+			t.Fatal(err)
+		}
+		cfg, err := GetFromPath(path)
+		if err != nil {
+			t.Fatalf("GetFromPath: %v", err)
+		}
+		if cfg.Concurrency.MaxConcurrentStockDownloads != 9 {
+			t.Fatalf("yaml value not applied: got %d want 9", cfg.Concurrency.MaxConcurrentStockDownloads)
+		}
+		if cfg.Concurrency.MaxConcurrentStockCuts != 3 {
+			t.Fatalf("sibling key lost its default: got %d want 3", cfg.Concurrency.MaxConcurrentStockCuts)
+		}
+	})
+
+	t.Run("environment wins over yaml", func(t *testing.T) {
+		path := filepath.Join(t.TempDir(), "config.yaml")
+		content := []byte("concurrency:\n  max_concurrent_stock_downloads: 9\n  max_concurrent_stock_cuts: 5\n")
+		if err := os.WriteFile(path, content, 0o600); err != nil {
+			t.Fatal(err)
+		}
+		t.Setenv("VELOX_CONCURRENT_STOCK_DOWNLOADS", "11")
+		t.Setenv("VELOX_CONCURRENT_STOCK_CUTS", "2")
+		cfg, err := GetFromPath(path)
+		if err != nil {
+			t.Fatalf("GetFromPath: %v", err)
+		}
+		if cfg.Concurrency.MaxConcurrentStockDownloads != 11 {
+			t.Fatalf("env value not applied: got %d want 11", cfg.Concurrency.MaxConcurrentStockDownloads)
+		}
+		if cfg.Concurrency.MaxConcurrentStockCuts != 2 {
+			t.Fatalf("env value not applied: got %d want 2", cfg.Concurrency.MaxConcurrentStockCuts)
+		}
+	})
+
+	t.Run("explicit zero means let the orchestrator default apply", func(t *testing.T) {
+		// The default tag only fills a zero BEFORE yaml loading, so an explicit
+		// `0` survives as 0 — which every downstream site reads as "unset" and
+		// replaces with its own defensive default. Pinned so a future change
+		// cannot silently turn operator-supplied 0 into "no concurrency".
+		path := filepath.Join(t.TempDir(), "config.yaml")
+		content := []byte("concurrency:\n  max_concurrent_stock_downloads: 0\n")
+		if err := os.WriteFile(path, content, 0o600); err != nil {
+			t.Fatal(err)
+		}
+		cfg, err := GetFromPath(path)
+		if err != nil {
+			t.Fatalf("GetFromPath: %v", err)
+		}
+		if cfg.Concurrency.MaxConcurrentStockDownloads != 0 {
+			t.Fatalf("explicit zero was rewritten to %d", cfg.Concurrency.MaxConcurrentStockDownloads)
+		}
+	})
+}
+
 func TestConfigLoaderResolvesMediaPostgreSQLEnvironment(t *testing.T) {
 	t.Setenv("PIPELINEGEN_MEDIA_POSTGRES_ENABLED", "true")
 	t.Setenv("PIPELINEGEN_MEDIA_POSTGRES_DSN", "postgres://user:pass@localhost/media")

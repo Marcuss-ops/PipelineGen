@@ -12,7 +12,15 @@ import (
 // validateAndProbeSourceDuration resolves the source duration and bounds-checks
 // every clip's EndSec against it. Returns the duration, a per-clip error map
 // (for soft-degradation paths), and a hard error on the first out-of-range clip.
-func validateAndProbeSourceDuration(ctx context.Context, runner StepRunner, sourceID, sourcePath string, staged *assets.StagedAsset, groupPlans []ClipPlan) (float64, map[int]error, error) {
+//
+// cutOffsetSec converts the group's absolute plan timestamps into the staged
+// file's own timeline (0 for a whole-source stage). This is what keeps the
+// fail-closed contract meaningful for a sections_only run: the probed duration
+// here is the SECTION's duration (~40s), so an absolute EndSec of 512s would
+// otherwise look out of range on every clip. It also means a section that came
+// back SHORTER than planned (provider truncated it, or the source ended inside
+// the block) still fails closed instead of publishing a clipped-out gap.
+func validateAndProbeSourceDuration(ctx context.Context, runner StepRunner, sourceID, sourcePath string, staged *assets.StagedAsset, groupPlans []ClipPlan, cutOffsetSec float64) (float64, map[int]error, error) {
 	// Tier 1: staged.DurationSec fast-path.
 	duration := staged.DurationSec
 
@@ -56,12 +64,14 @@ func validateAndProbeSourceDuration(ctx context.Context, runner StepRunner, sour
 		return 0, nil, nil
 	}
 
-	// Bounds-check: every clip.EndSec must be ≤ duration.
+	// Bounds-check: every clip.EndSec must be ≤ duration, in the staged file's
+	// own timeline (see cutOffsetSec in the doc comment above).
 	for i, plan := range groupPlans {
-		if plan.EndSec > duration {
-			overrun := plan.EndSec - duration
-			return duration, nil, fmt.Errorf("%w: clip[%d] %s EndSec=%.2f > duration=%.2f overrun=%.2fs",
-				ErrStockClipsOutOfRange, i, plan.OutputLogicalID, plan.EndSec, duration, overrun)
+		localEnd := plan.EndSec - cutOffsetSec
+		if localEnd > duration {
+			overrun := localEnd - duration
+			return duration, nil, fmt.Errorf("%w: clip[%d] %s EndSec=%.2f > duration=%.2f overrun=%.2fs (section_offset=%.3f)",
+				ErrStockClipsOutOfRange, i, plan.OutputLogicalID, localEnd, duration, overrun, cutOffsetSec)
 		}
 	}
 

@@ -4,8 +4,13 @@ import stockpipeline "github.com/Marcuss-ops/PipelineGen/internal/capabilities/a
 
 // runRequest is the JSON body for POST /api/stock-pipeline/run.
 type runRequest struct {
-	SearchQueries                  []string                          `json:"search_queries"`
-	DirectURLs                     []string                          `json:"direct_urls,omitempty"`
+	SearchQueries []string `json:"search_queries"`
+	DirectURLs    []string `json:"direct_urls,omitempty"`
+	// SourceDurations lets the caller supply the durations it already knows
+	// for its direct_urls (URL → seconds), skipping the server-side provider
+	// probe for those URLs before planning. Optional; URLs left out keep the
+	// probe. Durations <= 0 are treated as unknown.
+	SourceDurations                map[string]float64                `json:"source_durations,omitempty"`
 	DriveURLs                      []string                          `json:"drive_urls,omitempty"`
 	Clips                          []stockpipeline.ClipSpec          `json:"clips,omitempty"`
 	TotalMinutes                   int                               `json:"total_minutes"`

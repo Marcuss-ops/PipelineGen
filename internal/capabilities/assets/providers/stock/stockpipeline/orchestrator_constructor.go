@@ -28,8 +28,9 @@ import (
 // Cutter, and Renderer when they exercise RunResilient.
 //
 // Default fallbacks (Stock Cutover Commit 2):
-//   - MaxConcurrentJobs<=0 ⇒ DefaultMaxConcurrentJobs (3)
-//   - JobId==""            ⇒ DefaultOrchestratorJobId ("stock_orchestrator_v1")
+//   - MaxConcurrentJobs<=0      ⇒ DefaultMaxConcurrentJobs (3)
+//   - MaxConcurrentDownloads<=0 ⇒ DefaultMaxConcurrentDownloads (6)
+//   - JobId==""                 ⇒ DefaultOrchestratorJobId ("stock_orchestrator_v1")
 //
 // Resilience default fallbacks (Stock Cutover Commit 4-expanded):
 //   - builder    ⇒ stockManifestBuilder (5-entry C12 envelope)
@@ -48,6 +49,9 @@ func NewTestStockOrchestrator(cfg OrchestratorConfig, planner ClipPlanner, stage
 func newStockPipeline(cfg OrchestratorConfig, planner ClipPlanner, stager acquisition.SourceStager, cutter VideoCutter, renderer StockRenderer) *Orchestrator {
 	if cfg.MaxConcurrentJobs <= 0 {
 		cfg.MaxConcurrentJobs = DefaultMaxConcurrentJobs
+	}
+	if cfg.MaxConcurrentDownloads <= 0 {
+		cfg.MaxConcurrentDownloads = DefaultMaxConcurrentDownloads
 	}
 	if cfg.JobId == "" {
 		cfg.JobId = DefaultOrchestratorJobId

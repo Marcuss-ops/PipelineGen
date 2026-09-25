@@ -94,7 +94,7 @@ func (StockStageSourcesStep) Run(ctx context.Context, runner StepRunner) (err er
 		return nil
 	}
 
-	sources := ingestSourcesFromClipPlans(plans)
+	sources := ingestSourcesFromClipPlans(plans, isSectionedRun(runner.RunInput()))
 
 	plansBySource := make(map[string]ClipPlan, len(plans))
 	for _, plan := range plans {
@@ -117,12 +117,14 @@ func (StockStageSourcesStep) Run(ctx context.Context, runner StepRunner) (err er
 
 	// Bounded fan-out (September 2026): independent source downloads are
 	// network/disk-bound, so they run in a bounded pool of
-	// Cfg().MaxConcurrentJobs workers — the same knob stock.extract_clips
-	// uses. The previous implementation staged sources strictly in series,
-	// so an N-source request paid the SUM of N downloads and dominated the
-	// run wall (the pipeline's single largest cost). Results are merged in
-	// uniqueSources order so StagedAssets, SourceErrors, checkpoints, and
-	// run fingerprints stay deterministic regardless of completion order.
+	// Cfg().MaxConcurrentDownloads workers — deliberately NOT the
+	// Cfg().MaxConcurrentJobs knob stock.extract_clips uses. Downloads pay
+	// yt-dlp's fixed per-invocation overhead (~15-20s measured) whatever the
+	// window size, while cuts are CPU-bound: one shared bound of 3 turned a
+	// 15-source actor set into 5 sequential waves of that constant cost.
+	// Results are merged in uniqueSources order so StagedAssets,
+	// SourceErrors, checkpoints, and run fingerprints stay deterministic
+	// regardless of completion order.
 	staged, stageFailures := stageUniqueSourcesBounded(ctx, runner, preparer, uniqueSources, plansBySource)
 
 	// Publish partial success BEFORE the fail-closed gates below: on the
@@ -174,10 +176,13 @@ type stagedSourceOutcome struct {
 }
 
 // stageUniqueSourcesBounded stages every unique source with a bounded worker
-// pool of Cfg().MaxConcurrentJobs (default DefaultMaxConcurrentJobs). Source
-// downloads are network/disk-bound and independent, so overlapping them is the
-// single largest wall-time win for a multi-source request; the previous
-// sequential loop paid their sum.
+// pool of Cfg().MaxConcurrentDownloads (default DefaultMaxConcurrentDownloads).
+// Source downloads are network/disk-bound and independent, so overlapping them
+// is the single largest wall-time win for a multi-source request; the previous
+// sequential loop paid their sum. The bound is intentionally separate from the
+// CPU-bound cut fan-out (Cfg().MaxConcurrentJobs): a download's cost is yt-dlp's
+// fixed per-invocation overhead, not the bytes fetched, so paying one bound for
+// both phases serialized staging behind a knob sized for CPU work.
 //
 // Contract (mirrors boundedSourceCuts in step_extract_clips.go):
 //   - per-source failures are GRACEFUL: collected, never fatal, and never
@@ -199,9 +204,9 @@ func stageUniqueSourcesBounded(
 		return nil, failures
 	}
 
-	parallelism := runner.Cfg().MaxConcurrentJobs
+	parallelism := runner.Cfg().MaxConcurrentDownloads
 	if parallelism <= 0 {
-		parallelism = DefaultMaxConcurrentJobs
+		parallelism = DefaultMaxConcurrentDownloads
 	}
 	if parallelism > len(uniqueSources) {
 		parallelism = len(uniqueSources)
@@ -219,11 +224,18 @@ func stageUniqueSourcesBounded(
 		for idx := range jobs {
 			source := uniqueSources[idx]
 			plan := plansBySource[source.ID]
-			// Stage the complete source once. In sections_only mode the clip
-			// timestamps are cut locally by stock.extract_clips; using StageKey
-			// or DownloadSection here would create a distinct cache key per
-			// clip and invoke yt-dlp repeatedly for the same YouTube video.
+			// ONE download per source, never one per clip: sectioning per clip
+			// would give every clip its own cache key and pay yt-dlp's fixed cost
+			// (JS challenge, format negotiation, ffmpeg spawn) once per clip. In
+			// sections_only mode the single downloaded slice is exactly the plan
+			// group's contiguous window (source.DownloadSection), and
+			// stock.extract_clips cuts the individual clips out of it locally at
+			// plan.StartSec - section start.
 			stageKey := source.ID
+			// source.DownloadSection is the sections_only window derived from
+			// this source's plan group (empty → the stager fetches the whole
+			// source). It is the single reason a 40-second actor set no longer
+			// pulls whole interviews.
 			prepared, stageErr := preparer.Prepare(ctx, source)
 			switch {
 			case stageErr != nil:
@@ -257,9 +269,17 @@ func stageUniqueSourcesBounded(
 						zap.String("source_id", plan.SourceID),
 						zap.String("stage_key", stageKey),
 						zap.Int("section_count", 1),
-						zap.Float64("requested_section_seconds", plan.EndSec-plan.StartSec),
+						zap.String("download_section", source.DownloadSection),
 						zap.String("download_mode", runner.RunInput().DownloadMode),
-						zap.Float64("downloaded_file_duration_seconds", asset.DurationSec),
+						// NOTE: no downloaded_file_duration_seconds here. StagedAsset.DurationSec
+						// is deliberately left 0 by the stager: the only authority on the
+						// staged file's real duration is stock.extract_clips'
+						// SourceDurationProbe (step_extract_clips_validation.go Tier 2),
+						// which is what keeps a TRUNCATED section from publishing a gap.
+						// Filling this field from the planned window instead would make
+						// the bounds check circular (the plan would vouch for itself)
+						// and would also change the run fingerprint. Logging 0 here
+						// read as "empty download", so the field is simply not emitted.
 						zap.String("local_path", asset.LocalPath),
 						zap.Int64("bytes", asset.Bytes))
 				}

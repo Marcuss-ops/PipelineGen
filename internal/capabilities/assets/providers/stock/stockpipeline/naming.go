@@ -189,14 +189,55 @@ func ingestSourceFromClipPlan(plan ClipPlan) ingest.Source {
 	return ingest.Source{ID: plan.SourceID, URL: stagingSourceURL(plan)}
 }
 
-// ingestSourcesFromClipPlans preserves plan order and multiplicity. Callers
-// that need one request per source must apply ingest.UniqueSources afterwards.
-func ingestSourcesFromClipPlans(plans []ClipPlan) []ingest.Source {
-	sources := make([]ingest.Source, 0, len(plans))
+// ingestSourcesFromClipPlans maps the plan onto the ingest boundary: ONE entry
+// per distinct SourceID in first-appearance order.
+//
+// Grouping (rather than the previous one-entry-per-plan list) is what makes the
+// sections_only download window derivable: the span to download is a property of
+// the source's whole clip group, not of a single plan. The returned list is
+// therefore already deduplicated — the caller's ingest.UniqueSources remains a
+// harmless no-op — and every entry carries the DownloadSection the stager must
+// fetch (empty when the run stages whole sources).
+func ingestSourcesFromClipPlans(plans []ClipPlan, sectioned bool) []ingest.Source {
+	groups := make(map[string][]ClipPlan, len(plans))
+	order := make([]string, 0, len(plans))
 	for _, plan := range plans {
-		sources = append(sources, ingestSourceFromClipPlan(plan))
+		if _, seen := groups[plan.SourceID]; !seen {
+			order = append(order, plan.SourceID)
+		}
+		groups[plan.SourceID] = append(groups[plan.SourceID], plan)
+	}
+
+	sources := make([]ingest.Source, 0, len(order))
+	for _, sourceID := range order {
+		source := ingestSourceFromClipPlan(groups[sourceID][0])
+		if sectioned {
+			// A group that is not one contiguous slice leaves the section empty:
+			// the stager then downloads the whole source, which is the only safe
+			// answer for a plan it cannot bound.
+			if start, end, ok := sectionWindowForPlans(groups[sourceID]); ok {
+				source.DownloadSection = sectionDownloadString(start, end)
+			}
+		}
+		sources = append(sources, source)
 	}
 	return sources
+}
+
+// sectionDownloadForPlans returns the yt-dlp --download-sections value for one
+// source's plan group, or "" when the run/source must be staged whole. It lives
+// here because this file owns the plan → ingest boundary that carries the value;
+// the derivation itself is sectionWindowForPlans (downloader_port.go) and the
+// seek side is sectionCutOffsetSec (step_extract_clips_cut.go).
+func sectionDownloadForPlans(in *RunInput, plans []ClipPlan) string {
+	if !isSectionedRun(in) {
+		return ""
+	}
+	start, end, ok := sectionWindowForPlans(plans)
+	if !ok {
+		return ""
+	}
+	return sectionDownloadString(start, end)
 }
 
 // stockIngestPreparer adapts the canonical acquisition port to the neutral
@@ -214,8 +255,16 @@ func (p *stockIngestPreparer) Prepare(ctx context.Context, source ingest.Source)
 		return nil, fmt.Errorf("stock ingest: source stager is not wired")
 	}
 
-	ref := acquisition.SourceRef{URL: source.URL}
-	keyRef := acquisition.SourceRef{URL: source.URL, PolicyVersion: p.policyVersion}
+	// DownloadSection MUST travel to the stager: dropping it here (as this
+	// adapter did) silently turned every sections_only run into a full-source
+	// download. ForceKeyframes re-encodes the cut so the staged file starts at
+	// exactly the requested timestamp — a keyframe-snapped section would shift
+	// every subsequent local seek by up to one GOP.
+	section := strings.TrimSpace(source.DownloadSection)
+	ref := acquisition.SourceRef{URL: source.URL, DownloadSection: section, ForceKeyframes: section != ""}
+	// The idempotency key includes the section, so two different slices of the
+	// same URL can never share a staged artifact.
+	keyRef := acquisition.SourceRef{URL: source.URL, DownloadSection: section, PolicyVersion: p.policyVersion}
 	prepared, err := p.stager.Prepare(ctx, acquisition.PrepareRequest{
 		Source:         ref,
 		IdempotencyKey: acquisition.DeriveIdempotencyKey(keyRef),

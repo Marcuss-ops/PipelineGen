@@ -90,6 +90,25 @@ func effectiveClipDurationSec(input *RunInput, s *Service) int {
 	return 0
 }
 
+// effectiveExecutionBounds resolves the stock run's two fan-out bounds from the
+// Service's operator config (concurrency.max_concurrent_stock_downloads /
+// max_concurrent_stock_cuts, flattened by wiring.stockRuntimeConfig).
+//
+// Both are returned as 0 when the Service has no RuntimeConfig (test/CLI
+// callers) or the operator left them unset, and 0 means "unset" all the way
+// down: OrchestratorConfig normalizes <=0 to DefaultMaxConcurrentDownloads and
+// DefaultMaxConcurrentJobs. This site therefore must NOT substitute a value the
+// operator did not ask for — same contract as the youtube runtime flattening.
+//
+// Downloads and cuts stay separate because their bottlenecks differ: staging
+// pays yt-dlp's fixed per-invocation cost (latency-bound), cutting is CPU-bound.
+func effectiveExecutionBounds(s *Service) (downloads, cuts int) {
+	if s == nil || s.runtime == nil {
+		return 0, 0
+	}
+	return s.runtime.MaxConcurrentDownloads, s.runtime.MaxConcurrentCuts
+}
+
 // stagerForRun resolves the canonical acquisition.SourceStager for the
 // stock pipeline. StockStager implements acquisition.SourceStager via
 // the Prepare/Release adapter methods (stager_adapter.go).

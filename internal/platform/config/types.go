@@ -32,6 +32,25 @@ type ConcurrencyConfig struct {
 	// MaxConcurrentChannelChecks limits concurrent YouTube channel monitor checks.
 	// Was hardcoded at 3; raised to 20.
 	MaxConcurrentChannelChecks int `yaml:"max_concurrent_channel_checks" env:"VELOX_CONCURRENT_CHANNEL_CHECKS" default:"20"`
+
+	// MaxConcurrentStockDownloads bounds the stock pipeline's SOURCE DOWNLOAD
+	// fan-out (stock.stage_sources). It is deliberately independent from
+	// MaxConcurrentStockCuts: a download's cost is yt-dlp's fixed
+	// per-invocation overhead (~15-20s measured on the production host: JS
+	// challenge, format negotiation, muxer spawn, 2-5s rate-limit pacing),
+	// not the bytes fetched, while a cut is CPU-bound and scales with core
+	// count. Sharing one bound of 3 turned a 15-source actor set into
+	// ceil(15/3) = 5 sequential waves of that constant (~90s measured), which
+	// no shorter window can pay back. Default 6 stays inside the rate-limit
+	// budget the pacing sleep exists to protect.
+	MaxConcurrentStockDownloads int `yaml:"max_concurrent_stock_downloads" env:"VELOX_CONCURRENT_STOCK_DOWNLOADS" default:"6"`
+
+	// MaxConcurrentStockCuts bounds the stock pipeline's CPU-BOUND cut fan-out
+	// (stock.extract_clips): one clip is one FFmpeg process (~1.8s measured,
+	// of which ~0.6s is NVENC session init) and ~3.5 cores are busy for its
+	// duration, so this is a core-count knob, not a latency knob. Default 3
+	// matches the orchestrator's DefaultMaxConcurrentJobs.
+	MaxConcurrentStockCuts int `yaml:"max_concurrent_stock_cuts" env:"VELOX_CONCURRENT_STOCK_CUTS" default:"3"`
 }
 
 // TranslationConfig holds translation-service policy (FASE 9 VO-OPERATIONAL-READINESS, July 2026).

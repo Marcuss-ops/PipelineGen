@@ -17,8 +17,51 @@ import (
 
 	stockpipeline "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers/stock/stockpipeline"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/finalization"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/delivery"
 )
+
+// TestStockRuntimeConfigCarriesBothConcurrencyBounds pins the flattening
+// contract for the stock execution bounds: this is the ONE site that reads
+// concurrency.max_concurrent_stock_* out of the operator config, so a dropped
+// field here silently reverts both phases to Go constants that operators
+// cannot see or tune.
+func TestStockRuntimeConfigCarriesBothConcurrencyBounds(t *testing.T) {
+	cfg := &config.Config{}
+	cfg.Concurrency.MaxConcurrentStockDownloads = 9
+	cfg.Concurrency.MaxConcurrentStockCuts = 2
+
+	rt := stockRuntimeConfig(cfg)
+	if rt == nil {
+		t.Fatal("stockRuntimeConfig(non-nil cfg) returned nil")
+	}
+	if rt.MaxConcurrentDownloads != 9 {
+		t.Fatalf("MaxConcurrentDownloads = %d, want 9 (flattened)", rt.MaxConcurrentDownloads)
+	}
+	if rt.MaxConcurrentCuts != 2 {
+		t.Fatalf("MaxConcurrentCuts = %d, want 2 (flattened)", rt.MaxConcurrentCuts)
+	}
+}
+
+// TestStockRuntimeConfigLeavesUnsetBoundsAtZero pins the other half: the
+// composition root must not invent a bound. A zero propagates as zero and the
+// orchestrator's own defaults (DefaultMaxConcurrentDownloads /
+// DefaultMaxConcurrentJobs) apply, so test/CLI Services and a config that
+// omits the keys keep working unchanged.
+func TestStockRuntimeConfigLeavesUnsetBoundsAtZero(t *testing.T) {
+	if rt := stockRuntimeConfig(nil); rt != nil {
+		t.Fatalf("stockRuntimeConfig(nil) = %+v, want nil", rt)
+	}
+
+	rt := stockRuntimeConfig(&config.Config{})
+	if rt == nil {
+		t.Fatal("stockRuntimeConfig(&config.Config{}) returned nil")
+	}
+	if rt.MaxConcurrentDownloads != 0 || rt.MaxConcurrentCuts != 0 {
+		t.Fatalf("unset bounds must stay zero (got downloads=%d cuts=%d) so the orchestrator defaults apply",
+			rt.MaxConcurrentDownloads, rt.MaxConcurrentCuts)
+	}
+}
 
 // noOpPublisher is a structurally conformant delivery.Publisher for
 // the gate test — we don't need a real Drive write canal; we just

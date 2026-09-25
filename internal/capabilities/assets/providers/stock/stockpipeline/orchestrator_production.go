@@ -107,6 +107,9 @@ func NewProductionStockOrchestrator(cfg OrchestratorConfig, deps ProductionStock
 	if cfg.MaxConcurrentJobs <= 0 {
 		cfg.MaxConcurrentJobs = DefaultMaxConcurrentJobs
 	}
+	if cfg.MaxConcurrentDownloads <= 0 {
+		cfg.MaxConcurrentDownloads = DefaultMaxConcurrentDownloads
+	}
 	if cfg.JobId == "" {
 		cfg.JobId = DefaultOrchestratorJobId
 	}

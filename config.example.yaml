@@ -304,6 +304,11 @@ concurrency:
   max_concurrent_script_generations: 2
   max_concurrent_ollama_calls: 4
   max_concurrent_channel_checks: 20
+  # Stock pipeline execution bounds. Downloads pay yt-dlp's fixed ~15-20s
+  # per-invocation cost (latency-bound), cuts are CPU-bound (~3.5 cores per
+  # clip), so the two phases do NOT share a bound.
+  max_concurrent_stock_downloads: 6
+  max_concurrent_stock_cuts: 3
 
 features:
   # Stable modules - enable as needed

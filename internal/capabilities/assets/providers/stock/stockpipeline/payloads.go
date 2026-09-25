@@ -3,9 +3,14 @@ package stockpipeline
 // StockRunPayload is the job payload for media.stock jobs.
 // It was previously in the now-deleted internal/core/jobs/payloads.go (PR4).
 type StockRunPayload struct {
-	SearchQueries                  []string                 `json:"search_queries"`
-	SearchQueryLimits              []int                    `json:"search_query_limits,omitempty"`
-	DirectURLs                     []string                 `json:"direct_urls,omitempty"`
+	SearchQueries     []string `json:"search_queries"`
+	SearchQueryLimits []int    `json:"search_query_limits,omitempty"`
+	DirectURLs        []string `json:"direct_urls,omitempty"`
+	// SourceDurations carries the caller-supplied per-source durations
+	// (URL → seconds) across the jobs wire so the worker's duration probe
+	// only runs for the URLs the submitter could not describe. Optional:
+	// a payload without it keeps the probe-for-everything behaviour.
+	SourceDurations                map[string]float64       `json:"source_durations,omitempty"`
 	DriveURLs                      []string                 `json:"drive_urls,omitempty"`
 	Clips                          []ClipSpec               `json:"clips,omitempty"`
 	TotalMinutes                   int                      `json:"total_minutes"`

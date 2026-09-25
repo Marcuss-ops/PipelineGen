@@ -307,6 +307,7 @@ func (h *StockHandler) Run(c *gin.Context) {
 	cmd := &stockpipeline.StockCommand{
 		SearchQueries:                  req.SearchQueries,
 		DirectURLs:                     req.DirectURLs,
+		SourceDurations:                req.SourceDurations,
 		DriveURLs:                      req.DriveURLs,
 		Clips:                          req.Clips,
 		TotalMinutes:                   req.TotalMinutes,

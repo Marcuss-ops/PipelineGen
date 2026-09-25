@@ -27,11 +27,19 @@ import (
 // is not available".
 const DefaultYouTubeFormatSelectors = "bv*[height<=1080][ext=mp4]+ba[ext=m4a]/b[height<=1080][ext=mp4]/best[height<=1080][ext=mp4]/best[ext=mp4]/best"
 
-// Section downloads only need enough resolution for the stock clip output.
-// Keeping them at 720p materially reduces the amount of media yt-dlp must
-// fetch before ffmpeg can cut a 30-second window, while preserving the
-// existing 1080p selector for full-source downloads.
-const DefaultYouTubeSectionFormatSelectors = "bv*[height<=720][ext=mp4]+ba[ext=m4a]/b[height<=720][ext=mp4]/best[height<=720][ext=mp4]/best[ext=mp4]/best"
+// DefaultYouTubeSectionFormatSelectors is the selector for time-windowed
+// (--download-sections) downloads. It deliberately caps at the SAME height as
+// DefaultYouTubeFormatSelectors (1080p) even though it fetches only a window:
+// the published stock contract is 1920x1080, so a lower cap is not "enough
+// resolution", it is an upscale baked into every published clip. The section
+// path used to cap at 720p, which the cutter then scaled up to 1920x1080 —
+// soft output that no downstream step can recover. The bandwidth argument for
+// the cap is negligible here: a 40-second window is ~8 MiB at 1080p versus
+// ~4 MiB at 720p, against the multiple GiB the same path used to fetch before
+// it became sectioned. Keep both selectors height-aligned; the guard test
+// (TestSectionFormatArg_NeverSelectsBelowTheOutputHeight) fails if this cap
+// drifts below the canonical one.
+const DefaultYouTubeSectionFormatSelectors = "bv*[height<=1080][ext=mp4]+ba[ext=m4a]/b[height<=1080][ext=mp4]/best[height<=1080][ext=mp4]/best[ext=mp4]/best"
 
 // canonicalYouTubePlayerClient is the player client used by BaseArgs for
 // the first (primary) download attempt. Alternate clients from

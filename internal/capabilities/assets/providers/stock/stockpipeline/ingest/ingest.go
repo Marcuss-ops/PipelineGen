@@ -6,6 +6,13 @@ import "context"
 type Source struct {
 	ID  string
 	URL string
+	// DownloadSection is the absolute yt-dlp --download-sections range
+	// ("*HH:MM:SS.mmm-HH:MM:SS.mmm") that contains every planned clip of this
+	// source. Empty means "stage the whole source", which is the behaviour for
+	// every run that is not sections_only and for a plan whose clips are not
+	// contiguous. It travels the boundary so the stager downloads only the
+	// published seconds instead of a whole interview.
+	DownloadSection string
 }
 
 type PreparedSource struct {
