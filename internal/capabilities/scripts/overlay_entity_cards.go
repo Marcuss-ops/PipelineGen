@@ -198,6 +198,8 @@ func attachEntityCardAsset(item capabilityoverlay.OverlayItem, media *capability
 	item.Kind = string(capabilityoverlay.KindEntityImage)
 	item.TemplateID = "image_popup"
 	item.PresetID = capabilityoverlay.SelectEntityImagePreset(planID, item.SceneID, item.ID)
+	item.MotionID = capabilityoverlay.SelectImageMotion(planID, item.SceneID, item.ID)
+	item.MotionParams = nil
 	item.ImagePresetID = ""
 	item.Text = ""
 	item.Params = nil
