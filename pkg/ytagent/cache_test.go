@@ -27,6 +27,10 @@ func TestCache_PersistsReadableJSONWithProvenance(t *testing.T) {
 	dir := t.TempDir()
 	cache := NewCache(dir)
 	at := time.Date(2026, 9, 23, 12, 0, 0, 0, time.UTC)
+	// Keep the fixture independent of the wall clock: the timestamp is for
+	// readable provenance, while the injected clock makes it a fresh entry
+	// regardless of when this test runs.
+	cache.now = func() time.Time { return at.Add(time.Minute) }
 	tr := &veloxclient.Transcript{
 		OK:         true,
 		VideoID:    "vidJSON",
