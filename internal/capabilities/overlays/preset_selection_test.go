@@ -38,22 +38,8 @@ func TestSelectEntityImagePresetUsesOnlyRenderSafeCandidates(t *testing.T) {
 	}
 }
 
-// TestGeneratedTextOverlaysStayOnTheRenderSafeTextContract pins the only
-// shape of generated text overlay the native text lane renders. Both rules
-// were measured on the installed engine (vulkan backend,
-// gpu-hot-path-mode=require_gpu_native), one variable at a time:
-//
-//   - a text layer carrying style.glow dies in the composite ("native
-//     residency violation": the halo stack needs a CPU pixel-backed source),
-//     and the canonical apple_v2 preset authors canaryGlow();
-//   - a text layer carrying glyph/word TEXT ANIMATORS is rejected outright
-//     (route=reject reason=unsupported_animation) — which is exactly what the
-//     former rotation pool and apple_v2's own apple_phrase_v2 motion produce.
-//
-// So a generated overlay may only name the glow-free text preset and a motion
-// that lowers to composition tracks, and it must name that motion explicitly:
-// an empty MotionID lets the compiler fall back to the preset's own
-// glyph-level motion.
+// TestGeneratedTextOverlaysStayOnTheRenderSafeTextContract pins official
+// RenderingGen preset ids and the explicit native motion contract.
 func TestGeneratedTextOverlaysStayOnTheRenderSafeTextContract(t *testing.T) {
 	officialTextPreset := map[string]bool{"static_text_smoke": true, "phrase_default": true}
 	for _, id := range append(append([]string{}, namePresetRenderSafeCandidates...),

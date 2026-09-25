@@ -29,9 +29,8 @@ type SemanticPreset string
 // still selected independently through an explicit MotionID; PipelineGen does
 // not select a second visual style for each motion.
 const (
-// The three text surfaces and the generated candidate lists must resolve to
-// the official RenderingGen preset id. Keep them aligned with
-// preset_selection.go; motions remain separately represented by MotionID.
+	// Keep these official text ids aligned with the generated candidate lists
+	// in preset_selection.go; motions are represented separately by MotionID.
 	PresetModernPhrase SemanticPreset = "phrase_default"
 	PresetModernWord   SemanticPreset = "phrase_default"
 	PresetModernName   SemanticPreset = "phrase_default"
