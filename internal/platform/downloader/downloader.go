@@ -19,6 +19,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
+
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/process"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/ytdlp"
@@ -32,14 +34,19 @@ type YTDLPDownloader struct {
 	cmdBuilder         *ytdlp.CommandBuilder
 	verifier           *ytdlp.OutputVerifier
 	// ytMinSleepSeconds / ytMaxSleepSeconds pace YouTube downloads
-	// (August 2026 rate-limit recovery). 0 = disabled. Clamped by
-	// NewYTDLP via cfg.External.ResolvedYouTubeSleepSeconds.
+	// (August 2026 rate-limit recovery). Production defaults 2/5; zero keeps
+	// the legacy disabled path for manually-assembled test configs.
 	ytMinSleepSeconds int
 	ytMaxSleepSeconds int
 	// sectionConcurrency bounds simultaneous yt-dlp section processes for a
 	// single source. Zero keeps the conservative sequential behaviour for
 	// test fixtures; production construction sets the bounded default.
 	sectionConcurrency int
+	// ytGate is the shared IP budget gate (all NewYTDLP instances share one
+	// process-global semaphore via ensureYouTubeGate). yt429Cooldown is the
+	// per-process 429 pause armed by runYouTube.
+	ytGate        concurrent.Semaphore
+	yt429Cooldown time.Duration
 	// runner is the Pattern 0 port for executing external processes
 	// (godlike/07 minimum-blast-radius + testability). The production
 	// default is `defaultRunner{}` which wraps process.Run; tests inject
@@ -56,9 +63,13 @@ func (d *YTDLPDownloader) run(ctx context.Context, args []string, opts process.O
 }
 
 // isYouTubeURL reports whether the URL targets YouTube (the only host where
-// the player-client fallback and sleep pacing apply).
+// the player-client fallback, sleep pacing and the global gate apply).
+// ytsearch pseudo-URLs (ytsearch / ytsearch10: / ytsearchall:) are treated as
+// YouTube because they drive YouTube extraction.
 func isYouTubeURL(url string) bool {
-	return strings.Contains(url, "youtube.com") || strings.Contains(url, "youtu.be")
+	return strings.Contains(url, "youtube.com") ||
+		strings.Contains(url, "youtu.be") ||
+		strings.HasPrefix(url, "ytsearch")
 }
 
 // youtubeClientRetryableRe matches errors where another YouTube player client
@@ -168,7 +179,7 @@ func (d *YTDLPDownloader) runWithClientFallback(ctx context.Context, url string,
 				return lastResult, err
 			}
 		}
-		result, err := d.run(ctx, buildArgs(client), opts)
+		result, err := d.runYouTube(ctx, url, buildArgs(client), opts)
 		if err == nil {
 			return result, nil
 		}
@@ -214,6 +225,14 @@ func NewYTDLP(cfg *config.Config) *YTDLPDownloader {
 	path := cfg.External.ResolvedYtdlpPath()
 	cookiesPath := cfg.External.ResolveYouTubeCookiesPath()
 	minSleep, maxSleep := cfg.External.ResolvedYouTubeSleepSeconds()
+	gateWidth := cfg.External.YoutubeGlobalConcurrency
+	if gateWidth <= 0 {
+		gateWidth = ytGateWidthDefault
+	}
+	cooldownSec := cfg.External.Youtube429CooldownSeconds
+	if cooldownSec <= 0 {
+		cooldownSec = int(ytCooldownDefault.Seconds())
+	}
 	return &YTDLPDownloader{
 		path:               path,
 		cookiesPath:        cookiesPath,
@@ -223,6 +242,8 @@ func NewYTDLP(cfg *config.Config) *YTDLPDownloader {
 		ytMinSleepSeconds:  minSleep,
 		ytMaxSleepSeconds:  maxSleep,
 		sectionConcurrency: 3,
+		ytGate:             ensureYouTubeGate(gateWidth),
+		yt429Cooldown:      time.Duration(cooldownSec) * time.Second,
 		runner:             defaultRunner{},
 	}
 }

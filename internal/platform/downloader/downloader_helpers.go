@@ -112,7 +112,7 @@ func (d *YTDLPDownloader) ListChannelVideos(ctx context.Context, req ListChannel
 
 	args = append(args, req.ChannelURL)
 
-	result, err := d.run(ctx, args, process.Options{
+	result, err := d.runYouTube(ctx, req.ChannelURL, args, process.Options{
 		Timeout: 60 * time.Second,
 	})
 	if err != nil {
@@ -162,7 +162,7 @@ func (d *YTDLPDownloader) GetVideoMetadata(ctx context.Context, videoURL string)
 
 	args = append(args, videoURL)
 
-	result, err := d.run(ctx, args, process.Options{
+	result, err := d.runYouTube(ctx, videoURL, args, process.Options{
 		Timeout: 30 * time.Second,
 	})
 	if err != nil {
@@ -230,7 +230,7 @@ func (d *YTDLPDownloader) ListChannel(ctx context.Context, channelURL string, li
 		channelURL,
 	)
 
-	result, err := d.run(ctx, args, process.Options{
+	result, err := d.runYouTube(ctx, channelURL, args, process.Options{
 		Timeout: 60 * time.Second,
 	})
 	if err != nil {
