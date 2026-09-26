@@ -73,6 +73,8 @@ package jobs
 
 import (
 	"context"
+	instaeditcalendar "github.com/Marcuss-ops/PipelineGen/internal/platform/instaeditcalendar"
+	"go.uber.org/zap"
 	"sync/atomic"
 	"time"
 
@@ -154,4 +156,19 @@ func (w *Worker) renewLeaseLoopWith(ctx context.Context, jobID string, stop <-ch
 			}
 		}
 	}
+}
+
+func (w *Worker) reportCalendar(jobID, kind, status, phase string, progress *int, failure *instaeditcalendar.WorkerError) {
+	if w.calendarReporter == nil || jobID == "" {
+		return
+	}
+	update := instaeditcalendar.Progress{Kind: kind, Status: status, Phase: phase, Progress: progress, Error: failure}
+	if err := w.calendarReporter.EnqueueJobProgress(jobID, update); err != nil {
+		w.log.Warn("calendar progress spool failed", zap.String("job_id", jobID), zap.Error(err))
+	}
+}
+
+func (w *Worker) WithCalendarReporter(reporter *instaeditcalendar.Reporter) *Worker {
+	w.calendarReporter = reporter
+	return w
 }

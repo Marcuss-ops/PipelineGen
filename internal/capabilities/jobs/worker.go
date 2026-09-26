@@ -3,26 +3,31 @@
 // Per-Worker constructor + lifecycle entrypoint. Owns:
 //
 //   - package init + workerIDPrefix (host/pid bootstrap)
+//
 //   - type Worker struct (the single-instance Worker state)
+//
 //   - func NewWorker (constructor)
+//
 //   - func (w *Worker) WithRegistry (HC-1 typed Registry attach)
+//
 //   - func (w *Worker) jobTimeoutFor (private helper reading the
 //     HC-1 snapshot)
+//
 //   - func (w *Worker) Start (the outer poll loop that applies the
 //     jobs/scheduling polling state machine)
+//
 //   - func mapToRawMessage (free helper used by runJob on success
 //     path; tiny enough to live in the bootstrap file as a stable
 //     utility home)
 //
-// PR7 split relocated 5 categories of detail into same-package
-// helpers (per the user's 6-file spec):
-//
-//   - worker_metrics.go        → MetricRefresher interface + StartMetricsRefresher free func
-//   - worker_backoff.go        → BackoffConfig struct + effectiveSleep + jitterDuration
 //   - worker_polling.go        → sleepBackoff (timer + notifier Subscribe + ticker block)
+//
 //   - worker_execution.go      → runJob (per-job dispatch + finalisation with
 //     finalizationCtx = context.Background() + finalizationTimeout invariant)
+//
 //   - worker_lease.go          → renewLeaseLoop (lease renewal ticker)
+//
+//   - worker_calendar_report.go → durable Calendar event reporting
 //
 // VINCOLI (PR7 rigid):
 //  1. Stesso *Worker receiver — no new types/interfaces beyond what
@@ -63,9 +68,9 @@ import (
 
 	capjobregistry "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobregistry"
 	jobscheduling "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/scheduling"
-	instaeditcalendar "github.com/Marcuss-ops/PipelineGen/internal/instaeditcalendar"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
+	instaeditcalendar "github.com/Marcuss-ops/PipelineGen/internal/platform/instaeditcalendar"
 	metrics "github.com/Marcuss-ops/PipelineGen/internal/platform/observability"
 )
 
@@ -362,21 +367,6 @@ func (w *Worker) WithResourceSampler(s kernobs.RunResourceSampler, host string) 
 // recovery sweep finalises the parent — it never fails the completed job.
 //
 // Returns the receiver to allow builder-style chaining at the composition site.
-func (w *Worker) reportCalendar(jobID, kind, status, phase string, progress *int, failure *instaeditcalendar.WorkerError) {
-	if w.calendarReporter == nil || jobID == "" {
-		return
-	}
-	update := instaeditcalendar.Progress{Kind: kind, Status: status, Phase: phase, Progress: progress, Error: failure}
-	if err := w.calendarReporter.EnqueueJobProgress(jobID, update); err != nil {
-		w.log.Warn("calendar progress spool failed", zap.String("job_id", jobID), zap.Error(err))
-	}
-}
-
-func (w *Worker) WithCalendarReporter(reporter *instaeditcalendar.Reporter) *Worker {
-	w.calendarReporter = reporter
-	return w
-}
-
 func (w *Worker) WithParentCompletionNotifier(n ParentCompletionNotifier) *Worker {
 	w.parentNotifier = n
 	return w
@@ -423,35 +413,6 @@ func (w *Worker) captureClaimSnapshot(ctx context.Context, claimed *job.Job) {
 // attached registry, (b) the snapshot is nil, or (c) the job type is
 // not registered. Mirrors the pre-HC-1 jobTimeout() helper semantics
 // without the global mutex.
-func (w *Worker) jobTimeoutFor(jobType string) time.Duration {
-	if w.timeouts != nil {
-		if d, ok := w.timeouts[jobType]; ok && d > 0 {
-			return d
-		}
-	}
-	return 10 * time.Minute
-}
-
-// maxRetriesFor returns the default max-retry count for a job type,
-// sourced from the attached Registry. Falls back to the canonical
-// 3-retry default when the worker has no attached Registry or the
-// job type is not registered. Mirrors the timeout lookup pattern
-// (jobTimeoutFor).
-//
-// Issue 2 / P0 (June 2026): locks the Worker-side retry lookup so
-// the future Issue 4 (P1, Enqueue path) integration into runJob is
-// a one-line swap — pass effectiveRetries := w.maxRetriesFor(j.Type)
-// when j.MaxRetries == 0. The companion regression test
-// TestWorker_HonorsRegistryRetries (in registry_wiring_test.go)
-// pins this contract today so Issue 4 cannot accidentally regress
-// the lookup surface.
-func (w *Worker) maxRetriesFor(jobType string) int {
-	if w.reg != nil {
-		return w.reg.DefaultMaxRetries(jobType)
-	}
-	return 3
-}
-
 // Start runs the Worker poll loop until ctx is cancelled.
 //
 // State machine (PR-Polling / ADR §D6.5):
