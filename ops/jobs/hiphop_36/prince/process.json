@@ -1,0 +1,409 @@
+{
+  "_comment": "Canonical POST /api/clips/process payload (ExtractRequest, drift source: internal/capabilities/youtube/dto/types.go). Prince 'Tavis Smiley Complete 2 Night Interview' (video FqtaKUm5c7M, 2901s) — 12 curated moments. Destination: the CLIP-tree child folder 1jfB96z8Mcgx1R8f6MyDN4A9AqypEdVMi ('Prince' under the clip root 1wES95cH_RVYxl5I3kxnppbv-AlymCRqG); create_subfolder=false so clips upload straight into it (NOT the stock tree). Deterministic clip ids yt_<videoID>_<startSec>_<endSec>_v1 make a re-submit an UPSERT. Duration gate: all segments are 52-63s, inside the deployed VELOX_YOUTUBE_MAX_SEGMENT_DURATION_SECONDS=240.",
+  "url": "https://www.youtube.com/watch?v=FqtaKUm5c7M",
+  "strategy": "verify",
+  "concurrency": 3,
+  "force_keyframes": true,
+  "keep_audio": true,
+  "write_summary": true,
+  "destination": {
+    "folder_id": "1jfB96z8Mcgx1R8f6MyDN4A9AqypEdVMi",
+    "create_subfolder": false
+  },
+  "segments": [
+    {
+      "start": "04:54",
+      "end": "05:48",
+      "name": "Epilessia infantile e nascita dell'alter ego appariscente",
+      "category": "celebrity_interview",
+      "source_title": "27th & 28th April 2009 ~ Tavis Smiley ~ Complete 2 Night Interview",
+      "source_channel": "The Prince Encyclopedia",
+      "summary": "Prince svela per la prima volta di essere nato epilettico e spiega di aver sviluppato il suo stile rumoroso e vistoso per compensare le prese in giro subite a scuola.",
+      "topics": [
+        "Prince infanzia epilessia crisi convulsive madre guarigione miracolosa angelo bullismo scuola flashy noisy compensazione estetica"
+      ],
+      "tags": [
+        "Prince",
+        "Tavis Smiley",
+        "celebrity_interview"
+      ],
+      "mentioned_people": [
+        "Prince"
+      ],
+      "hook": "Prince svela per la prima volta di essere nato epilettico e spiega di aver sviluppato il suo stile rumoroso e vistoso per compensare le prese in giro subite a s",
+      "speakers": [
+        "Prince"
+      ],
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Epilessia infantile e nascita dell'alter ego appariscente",
+          "summary": "Prince svela per la prima volta di essere nato epilettico e spiega di aver sviluppato il suo stile rumoroso e vistoso per compensare le prese in giro subite a scuola.",
+          "description": "Prince svela per la prima volta di essere nato epilettico e spiega di aver sviluppato il suo stile rumoroso e vistoso per compensare le prese in giro subite a scuola."
+        }
+      ]
+    },
+    {
+      "start": "06:44",
+      "end": "07:38",
+      "name": "Autodidatta al pianoforte dopo l'abbandono del padre",
+      "category": "celebrity_interview",
+      "source_title": "27th & 28th April 2009 ~ Tavis Smiley ~ Complete 2 Night Interview",
+      "source_channel": "The Prince Encyclopedia",
+      "summary": "Racconta di aver imparato a suonare da solo sul pianoforte lasciato dal padre, trasformando il divieto paterno nella motivazione per eguagliarne la bravura.",
+      "topics": [
+        "Prince padre pianoforte talento autodidatta musica abbandono determinazione isolamento quartiere riconoscimento Minneapolis"
+      ],
+      "tags": [
+        "Prince",
+        "Tavis Smiley",
+        "celebrity_interview"
+      ],
+      "mentioned_people": [
+        "Prince",
+        "John L. Nelson"
+      ],
+      "hook": "Racconta di aver imparato a suonare da solo sul pianoforte lasciato dal padre, trasformando il divieto paterno nella motivazione per eguagliarne la bravura.",
+      "speakers": [
+        "Prince"
+      ],
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Autodidatta al pianoforte dopo l'abbandono del padre",
+          "summary": "Racconta di aver imparato a suonare da solo sul pianoforte lasciato dal padre, trasformando il divieto paterno nella motivazione per eguagliarne la bravura.",
+          "description": "Racconta di aver imparato a suonare da solo sul pianoforte lasciato dal padre, trasformando il divieto paterno nella motivazione per eguagliarne la bravura."
+        }
+      ]
+    },
+    {
+      "start": "09:12",
+      "end": "10:04",
+      "name": "La severità paterna e l'apprendimento per dimostrazione pratica",
+      "category": "celebrity_interview",
+      "source_title": "27th & 28th April 2009 ~ Tavis Smiley ~ Complete 2 Night Interview",
+      "source_channel": "The Prince Encyclopedia",
+      "summary": "Descrive la ferrea severità del padre come uno standard quasi militare, spiegando che l'eccellenza musicale si apprende con l'esempio pratico e non sui libri.",
+      "topics": [
+        "John L Nelson severità disciplina militare standard elevati John Blackwell mentoring trasmissione orale musica pratica celebrity interview artist career music pop culture stage television talk show intervista carriera musica artista successo pubblico memoria spettacolo"
+      ],
+      "tags": [
+        "Prince",
+        "Tavis Smiley",
+        "celebrity_interview"
+      ],
+      "mentioned_people": [
+        "Prince",
+        "John L. Nelson"
+      ],
+      "hook": "Descrive la ferrea severità del padre come uno standard quasi militare, spiegando che l'eccellenza musicale si apprende con l'esempio pratico e non sui libri.",
+      "speakers": [
+        "Prince"
+      ],
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "La severità paterna e l'apprendimento per dimostrazione prat",
+          "summary": "Descrive la ferrea severità del padre come uno standard quasi militare, spiegando che l'eccellenza musicale si apprende con l'esempio pratico e non sui libri.",
+          "description": "Descrive la ferrea severità del padre come uno standard quasi militare, spiegando che l'eccellenza musicale si apprende con l'esempio pratico e non sui libri."
+        }
+      ]
+    },
+    {
+      "start": "10:55",
+      "end": "11:51",
+      "name": "Incanalare la rabbia nella musica e creare il proprio universo",
+      "category": "celebrity_interview",
+      "source_title": "27th & 28th April 2009 ~ Tavis Smiley ~ Complete 2 Night Interview",
+      "source_channel": "The Prince Encyclopedia",
+      "summary": "Prince ammette di avere un lato duro e competitivo ereditato dal padre, spiegando di aver imparato a incanalare l'aggressività nella musica creando un proprio universo autonomo.",
+      "topics": [
+        "aggressività competitività pugilato creazione universo isolamento artistico Paisley Park indipendenza mentale protezione"
+      ],
+      "tags": [
+        "Prince",
+        "Tavis Smiley",
+        "celebrity_interview"
+      ],
+      "mentioned_people": [
+        "Prince"
+      ],
+      "hook": "Prince ammette di avere un lato duro e competitivo ereditato dal padre, spiegando di aver imparato a incanalare l'aggressività nella musica creando un proprio u",
+      "speakers": [
+        "Prince"
+      ],
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Incanalare la rabbia nella musica e creare il proprio univer",
+          "summary": "Prince ammette di avere un lato duro e competitivo ereditato dal padre, spiegando di aver imparato a incanalare l'aggressività nella musica creando un proprio universo autonomo.",
+          "description": "Prince ammette di avere un lato duro e competitivo ereditato dal padre, spiegando di aver imparato a incanalare l'aggressività nella musica creando un proprio universo autonomo."
+        }
+      ]
+    },
+    {
+      "start": "14:15",
+      "end": "15:10",
+      "name": "Il rapporto con Miles Davis e le critiche alla persona",
+      "category": "celebrity_interview",
+      "source_title": "27th & 28th April 2009 ~ Tavis Smiley ~ Complete 2 Night Interview",
+      "source_channel": "The Prince Encyclopedia",
+      "summary": "Ricorda l'amicizia con Miles Davis e il valore dei suoi consigli basati sull'umorismo e l'affetto, criticando i recensori che attaccano la sua personalità anziché il valore dell'opera.",
+      "topics": [
+        "Miles Davis mentore jazz critica costruttiva giornalismo musicale attacchi personali stampa recensioni pregiudizio celebrity interview artist career music pop culture stage television talk show intervista carriera musica artista successo pubblico memoria spettacolo"
+      ],
+      "tags": [
+        "Prince",
+        "Tavis Smiley",
+        "celebrity_interview"
+      ],
+      "mentioned_people": [
+        "Prince",
+        "Miles Davis"
+      ],
+      "hook": "Ricorda l'amicizia con Miles Davis e il valore dei suoi consigli basati sull'umorismo e l'affetto, criticando i recensori che attaccano la sua personalità anzic",
+      "speakers": [
+        "Prince"
+      ],
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Il rapporto con Miles Davis e le critiche alla persona",
+          "summary": "Ricorda l'amicizia con Miles Davis e il valore dei suoi consigli basati sull'umorismo e l'affetto, criticando i recensori che attaccano la sua personalità anziché il valore dell'op",
+          "description": "Ricorda l'amicizia con Miles Davis e il valore dei suoi consigli basati sull'umorismo e l'affetto, criticando i recensori che attaccano la sua personalità anziché il valore dell'opera."
+        }
+      ]
+    },
+    {
+      "start": "17:08",
+      "end": "17:55",
+      "name": "La battaglia per i master come Jack Johnson sul ring",
+      "category": "celebrity_interview",
+      "source_title": "27th & 28th April 2009 ~ Tavis Smiley ~ Complete 2 Night Interview",
+      "source_channel": "The Prince Encyclopedia",
+      "summary": "Paragonandosi al pugile Jack Johnson, Prince ribadisce che la proprietà dei propri master tapes è un diritto sacrosanto e prevede battaglie future sulla proprietà del genoma umano.",
+      "topics": [
+        "Jack Johnson boxe diritti master tapes proprietà intellettuale etichette discografiche DNA genoma umano indipendenza contrattuale"
+      ],
+      "tags": [
+        "Prince",
+        "Tavis Smiley",
+        "celebrity_interview"
+      ],
+      "mentioned_people": [
+        "Prince",
+        "Jack Johnson"
+      ],
+      "hook": "Paragonandosi al pugile Jack Johnson, Prince ribadisce che la proprietà dei propri master tapes è un diritto sacrosanto e prevede battaglie future sulla proprie",
+      "speakers": [
+        "Prince"
+      ],
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "La battaglia per i master come Jack Johnson sul ring",
+          "summary": "Paragonandosi al pugile Jack Johnson, Prince ribadisce che la proprietà dei propri master tapes è un diritto sacrosanto e prevede battaglie future sulla proprietà del genoma umano.",
+          "description": "Paragonandosi al pugile Jack Johnson, Prince ribadisce che la proprietà dei propri master tapes è un diritto sacrosanto e prevede battaglie future sulla proprietà del genoma umano."
+        }
+      ]
+    },
+    {
+      "start": "20:50",
+      "end": "21:49",
+      "name": "Servitù della società e la scelta di non votare",
+      "category": "celebrity_interview",
+      "source_title": "27th & 28th April 2009 ~ Tavis Smiley ~ Complete 2 Night Interview",
+      "source_channel": "The Prince Encyclopedia",
+      "summary": "Analizza il testo del brano 'Dreamer', definendo i cittadini moderni servi della gleba e spiegando di non votare a causa della sua fede nei Testimoni di Geova pur stimando Obama.",
+      "topics": [
+        "Dreamer canzone schiavitù moderna servitù debitoria piantagione presidenti George Washington Testimoni di Geova voto Barack Obama elezioni"
+      ],
+      "tags": [
+        "Prince",
+        "Tavis Smiley",
+        "celebrity_interview"
+      ],
+      "mentioned_people": [
+        "Prince",
+        "Barack Obama",
+        "George Washington"
+      ],
+      "hook": "Analizza il testo del brano 'Dreamer', definendo i cittadini moderni servi della gleba e spiegando di non votare a causa della sua fede nei Testimoni di Geova p",
+      "speakers": [
+        "Prince"
+      ],
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Servitù della società e la scelta di non votare",
+          "summary": "Analizza il testo del brano 'Dreamer', definendo i cittadini moderni servi della gleba e spiegando di non votare a causa della sua fede nei Testimoni di Geova pur stimando Obama.",
+          "description": "Analizza il testo del brano 'Dreamer', definendo i cittadini moderni servi della gleba e spiegando di non votare a causa della sua fede nei Testimoni di Geova pur stimando Obama."
+        }
+      ]
+    },
+    {
+      "start": "27:18",
+      "end": "28:15",
+      "name": "L'aneddoto della rissa di Larry Graham e Freddie Stone a New York",
+      "category": "celebrity_interview",
+      "source_title": "27th & 28th April 2009 ~ Tavis Smiley ~ Complete 2 Night Interview",
+      "source_channel": "The Prince Encyclopedia",
+      "summary": "Racconta divertito la rissa da strada di Larry Graham e Freddie Stone mentre trasportavano amplificatori prima di salire sul palco per aprire il concerto di Jimi Hendrix.",
+      "topics": [
+        "Larry Graham Freddie Stone Sly and the Family Stone rissa incidente stradale amplificatori Jimi Hendrix Oakland funk celebrity interview artist career music pop culture stage television talk show intervista carriera musica artista successo pubblico memoria spettacolo"
+      ],
+      "tags": [
+        "Prince",
+        "Tavis Smiley",
+        "celebrity_interview"
+      ],
+      "mentioned_people": [
+        "Prince",
+        "Larry Graham",
+        "Freddie Stone",
+        "Jimi Hendrix"
+      ],
+      "hook": "Racconta divertito la rissa da strada di Larry Graham e Freddie Stone mentre trasportavano amplificatori prima di salire sul palco per aprire il concerto di Jim",
+      "speakers": [
+        "Prince"
+      ],
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "L'aneddoto della rissa di Larry Graham e Freddie Stone a New",
+          "summary": "Racconta divertito la rissa da strada di Larry Graham e Freddie Stone mentre trasportavano amplificatori prima di salire sul palco per aprire il concerto di Jimi Hendrix.",
+          "description": "Racconta divertito la rissa da strada di Larry Graham e Freddie Stone mentre trasportavano amplificatori prima di salire sul palco per aprire il concerto di Jimi Hendrix."
+        }
+      ]
+    },
+    {
+      "start": "29:35",
+      "end": "30:35",
+      "name": "I brogli sui conteggi di vendita e il sistema SoundScan",
+      "category": "celebrity_interview",
+      "source_title": "27th & 28th April 2009 ~ Tavis Smiley ~ Complete 2 Night Interview",
+      "source_channel": "The Prince Encyclopedia",
+      "summary": "Denuncia le opacità dei conteggi ufficiali di SoundScan e delle major discografiche, sostenendo che gli artisti vengano sistematicamente defraudati e che nessuno conosca le vere cifre di 'Purple Rain'.",
+      "topics": [
+        "Feel Better SoundScan conteggio vendite copie royalties truffa case discografiche Purple Rain barcode pirateria internet"
+      ],
+      "tags": [
+        "Prince",
+        "Tavis Smiley",
+        "celebrity_interview"
+      ],
+      "mentioned_people": [
+        "Prince"
+      ],
+      "hook": "Denuncia le opacità dei conteggi ufficiali di SoundScan e delle major discografiche, sostenendo che gli artisti vengano sistematicamente defraudati e che nessun",
+      "speakers": [
+        "Prince"
+      ],
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "I brogli sui conteggi di vendita e il sistema SoundScan",
+          "summary": "Denuncia le opacità dei conteggi ufficiali di SoundScan e delle major discografiche, sostenendo che gli artisti vengano sistematicamente defraudati e che nessuno conosca le vere ci",
+          "description": "Denuncia le opacità dei conteggi ufficiali di SoundScan e delle major discografiche, sostenendo che gli artisti vengano sistematicamente defraudati e che nessuno conosca le vere cifre di 'Purple Rain'."
+        }
+      ]
+    },
+    {
+      "start": "32:38",
+      "end": "33:30",
+      "name": "Rifiuto totale dei contratti standard e dei '360 deals'",
+      "category": "celebrity_interview",
+      "source_title": "27th & 28th April 2009 ~ Tavis Smiley ~ Complete 2 Night Interview",
+      "source_channel": "The Prince Encyclopedia",
+      "summary": "Esorta i colleghi a rifiutare i moderni contratti a 360 gradi proposti dalle etichette, bollando come insensata la rinuncia alle quote su merchandising e concerti.",
+      "topics": [
+        "360 deal contratti capestro industria musicale major etichette Anita Baker clausole diritti indipendenza discografica celebrity interview artist career music pop culture stage television talk show intervista carriera musica artista successo pubblico memoria spettacolo"
+      ],
+      "tags": [
+        "Prince",
+        "Tavis Smiley",
+        "celebrity_interview"
+      ],
+      "mentioned_people": [
+        "Prince",
+        "Anita Baker"
+      ],
+      "hook": "Esorta i colleghi a rifiutare i moderni contratti a 360 gradi proposti dalle etichette, bollando come insensata la rinuncia alle quote su merchandising e concer",
+      "speakers": [
+        "Prince"
+      ],
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Rifiuto totale dei contratti standard e dei '360 deals'",
+          "summary": "Esorta i colleghi a rifiutare i moderni contratti a 360 gradi proposti dalle etichette, bollando come insensata la rinuncia alle quote su merchandising e concerti.",
+          "description": "Esorta i colleghi a rifiutare i moderni contratti a 360 gradi proposti dalle etichette, bollando come insensata la rinuncia alle quote su merchandising e concerti."
+        }
+      ]
+    },
+    {
+      "start": "34:25",
+      "end": "35:15",
+      "name": "L'accordo di distribuzione fisica diretta con la catena Target",
+      "category": "celebrity_interview",
+      "source_title": "27th & 28th April 2009 ~ Tavis Smiley ~ Complete 2 Night Interview",
+      "source_channel": "The Prince Encyclopedia",
+      "summary": "Illustra il modello di distribuzione diretta del triplo CD con i magazzini Target, evidenziando come i negozi al dettaglio acquistino gli album allo stesso prezzo delle major garantendo guadagni immediati.",
+      "topics": [
+        "Target retail accordo commerciale Lotusflow3r boicottaggio radio major distribuzione indipendente senza etichetta 30 milioni clienti"
+      ],
+      "tags": [
+        "Prince",
+        "Tavis Smiley",
+        "celebrity_interview"
+      ],
+      "mentioned_people": [
+        "Prince"
+      ],
+      "hook": "Illustra il modello di distribuzione diretta del triplo CD con i magazzini Target, evidenziando come i negozi al dettaglio acquistino gli album allo stesso prez",
+      "speakers": [
+        "Prince"
+      ],
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "L'accordo di distribuzione fisica diretta con la catena Targ",
+          "summary": "Illustra il modello di distribuzione diretta del triplo CD con i magazzini Target, evidenziando come i negozi al dettaglio acquistino gli album allo stesso prezzo delle major garan",
+          "description": "Illustra il modello di distribuzione diretta del triplo CD con i magazzini Target, evidenziando come i negozi al dettaglio acquistino gli album allo stesso prezzo delle major garantendo guadagni immediati."
+        }
+      ]
+    },
+    {
+      "start": "37:28",
+      "end": "38:20",
+      "name": "Critica al videogioco Guitar Hero e valore dello strumento reale",
+      "category": "celebrity_interview",
+      "source_title": "27th & 28th April 2009 ~ Tavis Smiley ~ Complete 2 Night Interview",
+      "source_channel": "The Prince Encyclopedia",
+      "summary": "Critica il fenomeno miliardario di 'Guitar Hero' e ribadisce l'importanza per i giovani di imparare la fatica e la gioia di suonare realmente uno strumento musicale.",
+      "topics": [
+        "Guitar Hero videogame Activision due miliardi chitarra acustica elettrica suonare studio disciplina creazione composizione"
+      ],
+      "tags": [
+        "Prince",
+        "Tavis Smiley",
+        "celebrity_interview"
+      ],
+      "mentioned_people": [
+        "Prince"
+      ],
+      "hook": "Critica il fenomeno miliardario di 'Guitar Hero' e ribadisce l'importanza per i giovani di imparare la fatica e la gioia di suonare realmente uno strumento musi",
+      "speakers": [
+        "Prince"
+      ],
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Critica al videogioco Guitar Hero e valore dello strumento r",
+          "summary": "Critica il fenomeno miliardario di 'Guitar Hero' e ribadisce l'importanza per i giovani di imparare la fatica e la gioia di suonare realmente uno strumento musicale.",
+          "description": "Critica il fenomeno miliardario di 'Guitar Hero' e ribadisce l'importanza per i giovani di imparare la fatica e la gioia di suonare realmente uno strumento musicale."
+        }
+      ]
+    }
+  ]
+}

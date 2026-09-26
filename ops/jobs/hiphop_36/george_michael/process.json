@@ -1,0 +1,441 @@
+{
+  "_comment": "POST /api/clips/process payload (ExtractRequest, drift source: internal/capabilities/youtube/dto/types.go). Source: George Michael  - The MTV Older Interview (1996) (https://www.youtube.com/watch?v=eH0hHCPyfZM). Destination: the Clips/HipHop child folder for George Michael (see check.py FOLDERS), create_subfolder=false. Windows picked BY HAND from the timed transcript printed by ops/jobs/hiphop_36/tx.py; no LLM selection. Clip ids are deterministic (yt_<videoID>_<startSec>_<endSec>_v1) so a re-submit is an UPSERT. topics/summary/hook are keyword-dense on purpose: composeYouTubeClipSearchText feeds search_text -> 768d pgvector embedding, texts[] lands in asset_text_tracks in the same atomic commit.",
+  "url": "https://www.youtube.com/watch?v=eH0hHCPyfZM",
+  "strategy": "verify",
+  "concurrency": 3,
+  "force_keyframes": true,
+  "keep_audio": true,
+  "write_summary": true,
+  "destination": {
+    "folder_id": "19CWgvlV1IPbfeAwGQSnIBFv01ysRpp1T",
+    "create_subfolder": false
+  },
+  "segments": [
+    {
+      "start": "00:04",
+      "end": "00:49",
+      "name": "George Michael — intervista momento 1: So, Mr. Michael, welcome back. ",
+      "category": "celebrity_interview",
+      "source_title": "George Michael  - The MTV Older Interview (1996)",
+      "source_channel": "YouTube Interview",
+      "summary": "George Michael in George Michael - The MTV Older Interview (1996): So, Mr. Michael, welcome back. As as some as some girl shouted out during the some as some girl shouted out during the unplugged the other night, welcome",
+      "topics": [
+        "George Michael George Michael  - The MTV Older Interview (1996) interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo george michael So, Mr. Michael, welcome back. As as some as some girl shouted out during the so e"
+      ],
+      "tags": [
+        "George Michael",
+        "interview",
+        "celebrity_interview",
+        "interview",
+        "talk show"
+      ],
+      "speakers": [
+        "George Michael",
+        "MTV Host"
+      ],
+      "mentioned_people": [
+        "George Michael"
+      ],
+      "hook": "the comeback for George Michael this year, is it a comeback, do you think?",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "George Michael — intervista momento 1: So, Mr. Michael, we",
+          "summary": "George Michael in George Michael - The MTV Older Interview (1996): So, Mr. Michael, welcome back. As as some as some girl shouted out during the some as some girl shouted",
+          "description": "George Michael in George Michael - The MTV Older Interview (1996): So, Mr. Michael, welcome back. As as some as some girl shouted out during the some as some girl shouted out during the unplugged the other night, welcome Contesto: George Michael George Michael  - The MTV Older Interview (1996) interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo george michael So, Mr. Michael, welcome back. As as some as some girl shouted out during the so e"
+        }
+      ]
+    },
+    {
+      "start": "00:12",
+      "end": "00:24",
+      "name": "Hook: the comeback for george michael thi",
+      "category": "celebrity_interview",
+      "source_title": "George Michael  - The MTV Older Interview (1996)",
+      "source_channel": "YouTube Interview",
+      "summary": "Apertura secca (12s): apertura secca dal colloquio George Michael",
+      "topics": [
+        "George Michael George Michael  - The MTV Older Interview (1996) interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo george michael So, Mr. Michael, welcome back. As as some as some girl shouted out during the so e hook apertura short opening-short"
+      ],
+      "tags": [
+        "George Michael",
+        "interview",
+        "celebrity_interview",
+        "interview",
+        "talk show",
+        "hook"
+      ],
+      "speakers": [
+        "George Michael",
+        "MTV Host"
+      ],
+      "mentioned_people": [
+        "George Michael"
+      ],
+      "hook": "the comeback for George Michael this year, is it a comeback, do you think?",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "George Michael — intervista momento 1: So, Mr. Michael, we",
+          "summary": "George Michael in George Michael - The MTV Older Interview (1996): So, Mr. Michael, welcome back. As as some as some girl shouted out during the some as some girl shouted",
+          "description": "Apertura secca (12s): apertura secca dal colloquio George Michael Contesto: George Michael George Michael  - The MTV Older Interview (1996) interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo george michael So, Mr. Michael, welcome back. As as some as some girl shouted out during the so e hook apertura short opening-short"
+        }
+      ]
+    },
+    {
+      "start": "03:33",
+      "end": "04:18",
+      "name": "George Michael — intervista momento 2: just lost I I lost completely. ",
+      "category": "celebrity_interview",
+      "source_title": "George Michael  - The MTV Older Interview (1996)",
+      "source_channel": "YouTube Interview",
+      "summary": "George Michael in George Michael - The MTV Older Interview (1996): just lost I I lost completely. I mean I lost on everything every count. They lost on everything every count. They then called up and you know kind of sai",
+      "topics": [
+        "George Michael George Michael  - The MTV Older Interview (1996) interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo george michael just lost I I lost completely. I mean I lost on everything every count. They los e"
+      ],
+      "tags": [
+        "George Michael",
+        "interview",
+        "celebrity_interview",
+        "interview",
+        "talk show"
+      ],
+      "speakers": [
+        "George Michael",
+        "MTV Host"
+      ],
+      "mentioned_people": [
+        "George Michael"
+      ],
+      "hook": "years out of my career and was an embarrassment, I would imagine, to Sony.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "George Michael — intervista momento 2: just lost I I lost ",
+          "summary": "George Michael in George Michael - The MTV Older Interview (1996): just lost I I lost completely. I mean I lost on everything every count. They lost on everything every c",
+          "description": "George Michael in George Michael - The MTV Older Interview (1996): just lost I I lost completely. I mean I lost on everything every count. They lost on everything every count. They then called up and you know kind of sai Contesto: George Michael George Michael  - The MTV Older Interview (1996) interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo george michael just lost I I lost completely. I mean I lost on everything every count. They los e"
+        }
+      ]
+    },
+    {
+      "start": "03:41",
+      "end": "03:53",
+      "name": "Hook: years out of my career and was an e",
+      "category": "celebrity_interview",
+      "source_title": "George Michael  - The MTV Older Interview (1996)",
+      "source_channel": "YouTube Interview",
+      "summary": "Apertura secca (12s): apertura secca dal colloquio George Michael",
+      "topics": [
+        "George Michael George Michael  - The MTV Older Interview (1996) interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo george michael just lost I I lost completely. I mean I lost on everything every count. They los e hook apertura short opening-short"
+      ],
+      "tags": [
+        "George Michael",
+        "interview",
+        "celebrity_interview",
+        "interview",
+        "talk show",
+        "hook"
+      ],
+      "speakers": [
+        "George Michael",
+        "MTV Host"
+      ],
+      "mentioned_people": [
+        "George Michael"
+      ],
+      "hook": "years out of my career and was an embarrassment, I would imagine, to Sony.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "George Michael — intervista momento 2: just lost I I lost ",
+          "summary": "George Michael in George Michael - The MTV Older Interview (1996): just lost I I lost completely. I mean I lost on everything every count. They lost on everything every c",
+          "description": "Apertura secca (12s): apertura secca dal colloquio George Michael Contesto: George Michael George Michael  - The MTV Older Interview (1996) interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo george michael just lost I I lost completely. I mean I lost on everything every count. They los e hook apertura short opening-short"
+        }
+      ]
+    },
+    {
+      "start": "07:03",
+      "end": "07:48",
+      "name": "George Michael — intervista momento 3: the than not working you know i",
+      "category": "celebrity_interview",
+      "source_title": "George Michael  - The MTV Older Interview (1996)",
+      "source_channel": "YouTube Interview",
+      "summary": "George Michael in George Michael - The MTV Older Interview (1996): the than not working you know in reality. I mean, it was a typical thing. reality. I mean, it was a typical thing. You're out on the road for 10 months. ",
+      "topics": [
+        "George Michael George Michael  - The MTV Older Interview (1996) interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo george michael the than not working you know in reality. I mean, it was a typical thing. realit e"
+      ],
+      "tags": [
+        "George Michael",
+        "interview",
+        "celebrity_interview",
+        "interview",
+        "talk show"
+      ],
+      "speakers": [
+        "George Michael",
+        "MTV Host"
+      ],
+      "mentioned_people": [
+        "George Michael"
+      ],
+      "hook": "Um but yeah, I I think that that no, I didn't go into any deep depression. And",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "George Michael — intervista momento 3: the than not workin",
+          "summary": "George Michael in George Michael - The MTV Older Interview (1996): the than not working you know in reality. I mean, it was a typical thing. reality. I mean, it was a typ",
+          "description": "George Michael in George Michael - The MTV Older Interview (1996): the than not working you know in reality. I mean, it was a typical thing. reality. I mean, it was a typical thing. You're out on the road for 10 months.  Contesto: George Michael George Michael  - The MTV Older Interview (1996) interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo george michael the than not working you know in reality. I mean, it was a typical thing. realit e"
+        }
+      ]
+    },
+    {
+      "start": "07:11",
+      "end": "07:23",
+      "name": "Hook: um but yeah, i i think that that no",
+      "category": "celebrity_interview",
+      "source_title": "George Michael  - The MTV Older Interview (1996)",
+      "source_channel": "YouTube Interview",
+      "summary": "Apertura secca (12s): apertura secca dal colloquio George Michael",
+      "topics": [
+        "George Michael George Michael  - The MTV Older Interview (1996) interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo george michael the than not working you know in reality. I mean, it was a typical thing. realit e hook apertura short opening-short"
+      ],
+      "tags": [
+        "George Michael",
+        "interview",
+        "celebrity_interview",
+        "interview",
+        "talk show",
+        "hook"
+      ],
+      "speakers": [
+        "George Michael",
+        "MTV Host"
+      ],
+      "mentioned_people": [
+        "George Michael"
+      ],
+      "hook": "Um but yeah, I I think that that no, I didn't go into any deep depression. And",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "George Michael — intervista momento 3: the than not workin",
+          "summary": "George Michael in George Michael - The MTV Older Interview (1996): the than not working you know in reality. I mean, it was a typical thing. reality. I mean, it was a typ",
+          "description": "Apertura secca (12s): apertura secca dal colloquio George Michael Contesto: George Michael George Michael  - The MTV Older Interview (1996) interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo george michael the than not working you know in reality. I mean, it was a typical thing. realit e hook apertura short opening-short"
+        }
+      ]
+    },
+    {
+      "start": "10:32",
+      "end": "11:17",
+      "name": "George Michael — intervista momento 4: going around selling his wares.",
+      "category": "celebrity_interview",
+      "source_title": "George Michael  - The MTV Older Interview (1996)",
+      "source_channel": "YouTube Interview",
+      "summary": "George Michael in George Michael - The MTV Older Interview (1996): going around selling his wares. You know, for instance, today in this know, for instance, today in this building, everyone will treat me as building, eve",
+      "topics": [
+        "George Michael George Michael  - The MTV Older Interview (1996) interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo george michael going around selling his wares. You know, for instance, today in this know, for  e"
+      ],
+      "tags": [
+        "George Michael",
+        "interview",
+        "celebrity_interview",
+        "interview",
+        "talk show"
+      ],
+      "speakers": [
+        "George Michael",
+        "MTV Host"
+      ],
+      "mentioned_people": [
+        "George Michael"
+      ],
+      "hook": "and and it does it does the job of communicating the music that I want to",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "George Michael — intervista momento 4: going around sellin",
+          "summary": "George Michael in George Michael - The MTV Older Interview (1996): going around selling his wares. You know, for instance, today in this know, for instance, today in this",
+          "description": "George Michael in George Michael - The MTV Older Interview (1996): going around selling his wares. You know, for instance, today in this know, for instance, today in this building, everyone will treat me as building, eve Contesto: George Michael George Michael  - The MTV Older Interview (1996) interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo george michael going around selling his wares. You know, for instance, today in this know, for  e"
+        }
+      ]
+    },
+    {
+      "start": "10:40",
+      "end": "10:52",
+      "name": "Hook: and and it does it does the job of ",
+      "category": "celebrity_interview",
+      "source_title": "George Michael  - The MTV Older Interview (1996)",
+      "source_channel": "YouTube Interview",
+      "summary": "Apertura secca (12s): apertura secca dal colloquio George Michael",
+      "topics": [
+        "George Michael George Michael  - The MTV Older Interview (1996) interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo george michael going around selling his wares. You know, for instance, today in this know, for  e hook apertura short opening-short"
+      ],
+      "tags": [
+        "George Michael",
+        "interview",
+        "celebrity_interview",
+        "interview",
+        "talk show",
+        "hook"
+      ],
+      "speakers": [
+        "George Michael",
+        "MTV Host"
+      ],
+      "mentioned_people": [
+        "George Michael"
+      ],
+      "hook": "and and it does it does the job of communicating the music that I want to",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "George Michael — intervista momento 4: going around sellin",
+          "summary": "George Michael in George Michael - The MTV Older Interview (1996): going around selling his wares. You know, for instance, today in this know, for instance, today in this",
+          "description": "Apertura secca (12s): apertura secca dal colloquio George Michael Contesto: George Michael George Michael  - The MTV Older Interview (1996) interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo george michael going around selling his wares. You know, for instance, today in this know, for  e hook apertura short opening-short"
+        }
+      ]
+    },
+    {
+      "start": "14:02",
+      "end": "14:47",
+      "name": "George Michael — intervista momento 5: many things that in the 80s I d",
+      "category": "celebrity_interview",
+      "source_title": "George Michael  - The MTV Older Interview (1996)",
+      "source_channel": "YouTube Interview",
+      "summary": "George Michael in George Michael - The MTV Older Interview (1996): many things that in the 80s I didn't feel I was free of. And and uh so it's a feel I was free of. And and uh so it's a it's a personal statement. It does",
+      "topics": [
+        "George Michael George Michael  - The MTV Older Interview (1996) interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo george michael many things that in the 80s I didn't feel I was free of. And and uh so it's a fe e"
+      ],
+      "tags": [
+        "George Michael",
+        "interview",
+        "celebrity_interview",
+        "interview",
+        "talk show"
+      ],
+      "speakers": [
+        "George Michael",
+        "MTV Host"
+      ],
+      "mentioned_people": [
+        "George Michael"
+      ],
+      "hook": "particularly radio friendly, let's call it song from",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "George Michael — intervista momento 5: many things that in",
+          "summary": "George Michael in George Michael - The MTV Older Interview (1996): many things that in the 80s I didn't feel I was free of. And and uh so it's a feel I was free of. And a",
+          "description": "George Michael in George Michael - The MTV Older Interview (1996): many things that in the 80s I didn't feel I was free of. And and uh so it's a feel I was free of. And and uh so it's a it's a personal statement. It does Contesto: George Michael George Michael  - The MTV Older Interview (1996) interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo george michael many things that in the 80s I didn't feel I was free of. And and uh so it's a fe e"
+        }
+      ]
+    },
+    {
+      "start": "14:10",
+      "end": "14:22",
+      "name": "Hook: particularly radio friendly, let's ",
+      "category": "celebrity_interview",
+      "source_title": "George Michael  - The MTV Older Interview (1996)",
+      "source_channel": "YouTube Interview",
+      "summary": "Apertura secca (12s): apertura secca dal colloquio George Michael",
+      "topics": [
+        "George Michael George Michael  - The MTV Older Interview (1996) interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo george michael many things that in the 80s I didn't feel I was free of. And and uh so it's a fe e hook apertura short opening-short"
+      ],
+      "tags": [
+        "George Michael",
+        "interview",
+        "celebrity_interview",
+        "interview",
+        "talk show",
+        "hook"
+      ],
+      "speakers": [
+        "George Michael",
+        "MTV Host"
+      ],
+      "mentioned_people": [
+        "George Michael"
+      ],
+      "hook": "particularly radio friendly, let's call it song from",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "George Michael — intervista momento 5: many things that in",
+          "summary": "George Michael in George Michael - The MTV Older Interview (1996): many things that in the 80s I didn't feel I was free of. And and uh so it's a feel I was free of. And a",
+          "description": "Apertura secca (12s): apertura secca dal colloquio George Michael Contesto: George Michael George Michael  - The MTV Older Interview (1996) interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo george michael many things that in the 80s I didn't feel I was free of. And and uh so it's a fe e hook apertura short opening-short"
+        }
+      ]
+    },
+    {
+      "start": "17:31",
+      "end": "18:16",
+      "name": "George Michael — intervista momento 6: following all the way up up to ",
+      "category": "celebrity_interview",
+      "source_title": "George Michael  - The MTV Older Interview (1996)",
+      "source_channel": "YouTube Interview",
+      "summary": "George Michael in George Michael - The MTV Older Interview (1996): following all the way up up to now. Anyway, um Anyway, um do those do those fans have a right to do those do those fans have a right to either know if we",
+      "topics": [
+        "George Michael George Michael  - The MTV Older Interview (1996) interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo george michael following all the way up up to now. Anyway, um Anyway, um do those do those fans e"
+      ],
+      "tags": [
+        "George Michael",
+        "interview",
+        "celebrity_interview",
+        "interview",
+        "talk show"
+      ],
+      "speakers": [
+        "George Michael",
+        "MTV Host"
+      ],
+      "mentioned_people": [
+        "George Michael"
+      ],
+      "hook": "up the confusion here and and stop you know teasing us. I guess",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "George Michael — intervista momento 6: following all the w",
+          "summary": "George Michael in George Michael - The MTV Older Interview (1996): following all the way up up to now. Anyway, um Anyway, um do those do those fans have a right to do tho",
+          "description": "George Michael in George Michael - The MTV Older Interview (1996): following all the way up up to now. Anyway, um Anyway, um do those do those fans have a right to do those do those fans have a right to either know if we Contesto: George Michael George Michael  - The MTV Older Interview (1996) interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo george michael following all the way up up to now. Anyway, um Anyway, um do those do those fans e"
+        }
+      ]
+    },
+    {
+      "start": "17:39",
+      "end": "17:51",
+      "name": "Hook: up the confusion here and and stop ",
+      "category": "celebrity_interview",
+      "source_title": "George Michael  - The MTV Older Interview (1996)",
+      "source_channel": "YouTube Interview",
+      "summary": "Apertura secca (12s): apertura secca dal colloquio George Michael",
+      "topics": [
+        "George Michael George Michael  - The MTV Older Interview (1996) interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo george michael following all the way up up to now. Anyway, um Anyway, um do those do those fans e hook apertura short opening-short"
+      ],
+      "tags": [
+        "George Michael",
+        "interview",
+        "celebrity_interview",
+        "interview",
+        "talk show",
+        "hook"
+      ],
+      "speakers": [
+        "George Michael",
+        "MTV Host"
+      ],
+      "mentioned_people": [
+        "George Michael"
+      ],
+      "hook": "up the confusion here and and stop you know teasing us. I guess",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "George Michael — intervista momento 6: following all the w",
+          "summary": "George Michael in George Michael - The MTV Older Interview (1996): following all the way up up to now. Anyway, um Anyway, um do those do those fans have a right to do tho",
+          "description": "Apertura secca (12s): apertura secca dal colloquio George Michael Contesto: George Michael George Michael  - The MTV Older Interview (1996) interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo george michael following all the way up up to now. Anyway, um Anyway, um do those do those fans e hook apertura short opening-short"
+        }
+      ]
+    }
+  ]
+}

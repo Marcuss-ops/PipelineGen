@@ -94,8 +94,12 @@ func TestGeneratedTextOverlaysStayOnTheRenderSafeTextContract(t *testing.T) {
 		if item.MotionID == "" {
 			t.Fatalf("text item %q carries no explicit motion: the preset's own glyph motion would be transported", item.ID)
 		}
-		if !safe[item.MotionID] {
-			t.Fatalf("text item %q motion %q is outside the render-safe pool %v", item.ID, item.MotionID, motions)
+		if item.Kind == "text_phrase" {
+			if !containsString(CertifiedPhraseMotions(), item.MotionID) {
+				t.Fatalf("phrase item %q motion %q is outside the callable phrase catalog", item.ID, item.MotionID)
+			}
+		} else if !safe[item.MotionID] {
+			t.Fatalf("non-phrase text item %q motion %q is outside the render-safe pool %v", item.ID, item.MotionID, motions)
 		}
 	}
 	if textItems == 0 {

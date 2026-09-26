@@ -1,0 +1,441 @@
+{
+  "_comment": "POST /api/clips/process payload (ExtractRequest, drift source: internal/capabilities/youtube/dto/types.go). Source: Bob Marley - Interview New Zealand 1979 (https://www.youtube.com/watch?v=7INHO_tssOw). Destination: the Clips/HipHop child folder for Bob Marley (see check.py FOLDERS), create_subfolder=false. Windows picked BY HAND from the timed transcript printed by ops/jobs/hiphop_36/tx.py; no LLM selection. Clip ids are deterministic (yt_<videoID>_<startSec>_<endSec>_v1) so a re-submit is an UPSERT. topics/summary/hook are keyword-dense on purpose: composeYouTubeClipSearchText feeds search_text -> 768d pgvector embedding, texts[] lands in asset_text_tracks in the same atomic commit.",
+  "url": "https://www.youtube.com/watch?v=7INHO_tssOw",
+  "strategy": "verify",
+  "concurrency": 3,
+  "force_keyframes": true,
+  "keep_audio": true,
+  "write_summary": true,
+  "destination": {
+    "folder_id": "15cyx1VsJ428eEuw4k7a6ruWwpvuSE359",
+    "create_subfolder": false
+  },
+  "segments": [
+    {
+      "start": "00:04",
+      "end": "00:49",
+      "name": "Bob Marley — intervista momento 1: like many rter Bob Marley talks in ",
+      "category": "celebrity_interview",
+      "source_title": "Bob Marley - Interview New Zealand 1979",
+      "source_channel": "YouTube Interview",
+      "summary": "Bob Marley in Bob Marley - Interview New Zealand 1979: like many rter Bob Marley talks in a thick Jamaican pwa which at times is thick Jamaican pwa which at times is difficult to difficult to understand he starts ou",
+      "topics": [
+        "Bob Marley Bob Marley - Interview New Zealand 1979 interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo bob marley like many rter Bob Marley talks in a thick Jamaican pwa which at times is thick  7INHO_tssOw 4-49 b"
+      ],
+      "tags": [
+        "Bob Marley",
+        "interview",
+        "celebrity_interview",
+        "interview",
+        "talk show"
+      ],
+      "speakers": [
+        "Bob Marley",
+        "Interviewer"
+      ],
+      "mentioned_people": [
+        "Bob Marley"
+      ],
+      "hook": "reggae music yeah Jamaican people play it yeah is like musician from Jamaica",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Bob Marley — intervista momento 1: like many rter Bob Marl",
+          "summary": "Bob Marley in Bob Marley - Interview New Zealand 1979: like many rter Bob Marley talks in a thick Jamaican pwa which at times is thick Jamaican pwa which at times is diff",
+          "description": "Bob Marley in Bob Marley - Interview New Zealand 1979: like many rter Bob Marley talks in a thick Jamaican pwa which at times is thick Jamaican pwa which at times is difficult to difficult to understand he starts ou Contesto: Bob Marley Bob Marley - Interview New Zealand 1979 interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo bob marley like many rter Bob Marley talks in a thick Jamaican pwa which at times is thick  7INHO_tssOw 4-49 b"
+        }
+      ]
+    },
+    {
+      "start": "00:12",
+      "end": "00:24",
+      "name": "Hook: reggae music yeah jamaican people p",
+      "category": "celebrity_interview",
+      "source_title": "Bob Marley - Interview New Zealand 1979",
+      "source_channel": "YouTube Interview",
+      "summary": "Apertura secca (12s): apertura secca dal colloquio Bob Marley",
+      "topics": [
+        "Bob Marley Bob Marley - Interview New Zealand 1979 interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo bob marley like many rter Bob Marley talks in a thick Jamaican pwa which at times is thick  7INHO_tssOw 4-49 b hook apertura short opening-short"
+      ],
+      "tags": [
+        "Bob Marley",
+        "interview",
+        "celebrity_interview",
+        "interview",
+        "talk show",
+        "hook"
+      ],
+      "speakers": [
+        "Bob Marley",
+        "Interviewer"
+      ],
+      "mentioned_people": [
+        "Bob Marley"
+      ],
+      "hook": "reggae music yeah Jamaican people play it yeah is like musician from Jamaica",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Bob Marley — intervista momento 1: like many rter Bob Marl",
+          "summary": "Bob Marley in Bob Marley - Interview New Zealand 1979: like many rter Bob Marley talks in a thick Jamaican pwa which at times is thick Jamaican pwa which at times is diff",
+          "description": "Apertura secca (12s): apertura secca dal colloquio Bob Marley Contesto: Bob Marley Bob Marley - Interview New Zealand 1979 interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo bob marley like many rter Bob Marley talks in a thick Jamaican pwa which at times is thick  7INHO_tssOw 4-49 b hook apertura short opening-short"
+        }
+      ]
+    },
+    {
+      "start": "01:41",
+      "end": "02:26",
+      "name": "Bob Marley — intervista momento 2: and anything the radio play is that",
+      "category": "celebrity_interview",
+      "source_title": "Bob Marley - Interview New Zealand 1979",
+      "source_channel": "YouTube Interview",
+      "summary": "Bob Marley in Bob Marley - Interview New Zealand 1979: and anything the radio play is that we hear so I wasn't really into them thing hear so I wasn't really into them thing I was really into I was really into like",
+      "topics": [
+        "Bob Marley Bob Marley - Interview New Zealand 1979 interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo bob marley and anything the radio play is that we hear so I wasn't really into them thing h 7INHO_tssOw 101-14"
+      ],
+      "tags": [
+        "Bob Marley",
+        "interview",
+        "celebrity_interview",
+        "interview",
+        "talk show"
+      ],
+      "speakers": [
+        "Bob Marley",
+        "Interviewer"
+      ],
+      "mentioned_people": [
+        "Bob Marley"
+      ],
+      "hook": "music you know till it get more revolutionized you",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Bob Marley — intervista momento 2: and anything the radio ",
+          "summary": "Bob Marley in Bob Marley - Interview New Zealand 1979: and anything the radio play is that we hear so I wasn't really into them thing hear so I wasn't really into them th",
+          "description": "Bob Marley in Bob Marley - Interview New Zealand 1979: and anything the radio play is that we hear so I wasn't really into them thing hear so I wasn't really into them thing I was really into I was really into like Contesto: Bob Marley Bob Marley - Interview New Zealand 1979 interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo bob marley and anything the radio play is that we hear so I wasn't really into them thing h 7INHO_tssOw 101-14"
+        }
+      ]
+    },
+    {
+      "start": "01:49",
+      "end": "02:01",
+      "name": "Hook: music you know till it get more rev",
+      "category": "celebrity_interview",
+      "source_title": "Bob Marley - Interview New Zealand 1979",
+      "source_channel": "YouTube Interview",
+      "summary": "Apertura secca (12s): apertura secca dal colloquio Bob Marley",
+      "topics": [
+        "Bob Marley Bob Marley - Interview New Zealand 1979 interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo bob marley and anything the radio play is that we hear so I wasn't really into them thing h 7INHO_tssOw 101-14 hook apertura short opening-short"
+      ],
+      "tags": [
+        "Bob Marley",
+        "interview",
+        "celebrity_interview",
+        "interview",
+        "talk show",
+        "hook"
+      ],
+      "speakers": [
+        "Bob Marley",
+        "Interviewer"
+      ],
+      "mentioned_people": [
+        "Bob Marley"
+      ],
+      "hook": "music you know till it get more revolutionized you",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Bob Marley — intervista momento 2: and anything the radio ",
+          "summary": "Bob Marley in Bob Marley - Interview New Zealand 1979: and anything the radio play is that we hear so I wasn't really into them thing hear so I wasn't really into them th",
+          "description": "Apertura secca (12s): apertura secca dal colloquio Bob Marley Contesto: Bob Marley Bob Marley - Interview New Zealand 1979 interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo bob marley and anything the radio play is that we hear so I wasn't really into them thing h 7INHO_tssOw 101-14 hook apertura short opening-short"
+        }
+      ]
+    },
+    {
+      "start": "03:18",
+      "end": "04:03",
+      "name": "Bob Marley — intervista momento 3: shouldn't have it because then you ",
+      "category": "celebrity_interview",
+      "source_title": "Bob Marley - Interview New Zealand 1979",
+      "source_channel": "YouTube Interview",
+      "summary": "Bob Marley in Bob Marley - Interview New Zealand 1979: shouldn't have it because then you know freedom is freedom and you don't have to freedom is freedom and you don't have to bow you do whatever you like but it's",
+      "topics": [
+        "Bob Marley Bob Marley - Interview New Zealand 1979 interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo bob marley shouldn't have it because then you know freedom is freedom and you don't have to 7INHO_tssOw 198-24"
+      ],
+      "tags": [
+        "Bob Marley",
+        "interview",
+        "celebrity_interview",
+        "interview",
+        "talk show"
+      ],
+      "speakers": [
+        "Bob Marley",
+        "Interviewer"
+      ],
+      "mentioned_people": [
+        "Bob Marley"
+      ],
+      "hook": "you yourself know that it's God creator and I don't no life no",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Bob Marley — intervista momento 3: shouldn't have it becau",
+          "summary": "Bob Marley in Bob Marley - Interview New Zealand 1979: shouldn't have it because then you know freedom is freedom and you don't have to freedom is freedom and you don't h",
+          "description": "Bob Marley in Bob Marley - Interview New Zealand 1979: shouldn't have it because then you know freedom is freedom and you don't have to freedom is freedom and you don't have to bow you do whatever you like but it's Contesto: Bob Marley Bob Marley - Interview New Zealand 1979 interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo bob marley shouldn't have it because then you know freedom is freedom and you don't have to 7INHO_tssOw 198-24"
+        }
+      ]
+    },
+    {
+      "start": "03:26",
+      "end": "03:38",
+      "name": "Hook: you yourself know that it's god cre",
+      "category": "celebrity_interview",
+      "source_title": "Bob Marley - Interview New Zealand 1979",
+      "source_channel": "YouTube Interview",
+      "summary": "Apertura secca (12s): apertura secca dal colloquio Bob Marley",
+      "topics": [
+        "Bob Marley Bob Marley - Interview New Zealand 1979 interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo bob marley shouldn't have it because then you know freedom is freedom and you don't have to 7INHO_tssOw 198-24 hook apertura short opening-short"
+      ],
+      "tags": [
+        "Bob Marley",
+        "interview",
+        "celebrity_interview",
+        "interview",
+        "talk show",
+        "hook"
+      ],
+      "speakers": [
+        "Bob Marley",
+        "Interviewer"
+      ],
+      "mentioned_people": [
+        "Bob Marley"
+      ],
+      "hook": "you yourself know that it's God creator and I don't no life no",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Bob Marley — intervista momento 3: shouldn't have it becau",
+          "summary": "Bob Marley in Bob Marley - Interview New Zealand 1979: shouldn't have it because then you know freedom is freedom and you don't have to freedom is freedom and you don't h",
+          "description": "Apertura secca (12s): apertura secca dal colloquio Bob Marley Contesto: Bob Marley Bob Marley - Interview New Zealand 1979 interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo bob marley shouldn't have it because then you know freedom is freedom and you don't have to 7INHO_tssOw 198-24 hook apertura short opening-short"
+        }
+      ]
+    },
+    {
+      "start": "04:55",
+      "end": "05:40",
+      "name": "Bob Marley — intervista momento 4: everything why why these people who",
+      "category": "celebrity_interview",
+      "source_title": "Bob Marley - Interview New Zealand 1979",
+      "source_channel": "YouTube Interview",
+      "summary": "Bob Marley in Bob Marley - Interview New Zealand 1979: everything why why these people who want to do so much to do so much good for everyone who call themel good for everyone who call themel governments and this an",
+      "topics": [
+        "Bob Marley Bob Marley - Interview New Zealand 1979 interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo bob marley everything why why these people who want to do so much to do so much good for ev 7INHO_tssOw 295-34"
+      ],
+      "tags": [
+        "Bob Marley",
+        "interview",
+        "celebrity_interview",
+        "interview",
+        "talk show"
+      ],
+      "speakers": [
+        "Bob Marley",
+        "Interviewer"
+      ],
+      "mentioned_people": [
+        "Bob Marley"
+      ],
+      "hook": "we see them just say no you must use it you must use it",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Bob Marley — intervista momento 4: everything why why thes",
+          "summary": "Bob Marley in Bob Marley - Interview New Zealand 1979: everything why why these people who want to do so much to do so much good for everyone who call themel good for eve",
+          "description": "Bob Marley in Bob Marley - Interview New Zealand 1979: everything why why these people who want to do so much to do so much good for everyone who call themel good for everyone who call themel governments and this an Contesto: Bob Marley Bob Marley - Interview New Zealand 1979 interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo bob marley everything why why these people who want to do so much to do so much good for ev 7INHO_tssOw 295-34"
+        }
+      ]
+    },
+    {
+      "start": "05:03",
+      "end": "05:15",
+      "name": "Hook: we see them just say no you must us",
+      "category": "celebrity_interview",
+      "source_title": "Bob Marley - Interview New Zealand 1979",
+      "source_channel": "YouTube Interview",
+      "summary": "Apertura secca (12s): apertura secca dal colloquio Bob Marley",
+      "topics": [
+        "Bob Marley Bob Marley - Interview New Zealand 1979 interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo bob marley everything why why these people who want to do so much to do so much good for ev 7INHO_tssOw 295-34 hook apertura short opening-short"
+      ],
+      "tags": [
+        "Bob Marley",
+        "interview",
+        "celebrity_interview",
+        "interview",
+        "talk show",
+        "hook"
+      ],
+      "speakers": [
+        "Bob Marley",
+        "Interviewer"
+      ],
+      "mentioned_people": [
+        "Bob Marley"
+      ],
+      "hook": "we see them just say no you must use it you must use it",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Bob Marley — intervista momento 4: everything why why thes",
+          "summary": "Bob Marley in Bob Marley - Interview New Zealand 1979: everything why why these people who want to do so much to do so much good for everyone who call themel good for eve",
+          "description": "Apertura secca (12s): apertura secca dal colloquio Bob Marley Contesto: Bob Marley Bob Marley - Interview New Zealand 1979 interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo bob marley everything why why these people who want to do so much to do so much good for ev 7INHO_tssOw 295-34 hook apertura short opening-short"
+        }
+      ]
+    },
+    {
+      "start": "06:32",
+      "end": "07:17",
+      "name": "Bob Marley — intervista momento 5: no time to think and her herb is a ",
+      "category": "celebrity_interview",
+      "source_title": "Bob Marley - Interview New Zealand 1979",
+      "source_channel": "YouTube Interview",
+      "summary": "Bob Marley in Bob Marley - Interview New Zealand 1979: no time to think and her herb is a thing give you a little time for yourself so give you a little time for yourself so you can live you can live if you use it w",
+      "topics": [
+        "Bob Marley Bob Marley - Interview New Zealand 1979 interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo bob marley no time to think and her herb is a thing give you a little time for yourself so  7INHO_tssOw 392-43"
+      ],
+      "tags": [
+        "Bob Marley",
+        "interview",
+        "celebrity_interview",
+        "interview",
+        "talk show"
+      ],
+      "speakers": [
+        "Bob Marley",
+        "Interviewer"
+      ],
+      "mentioned_people": [
+        "Bob Marley"
+      ],
+      "hook": "meditate you're more get headed herb is more a",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Bob Marley — intervista momento 5: no time to think and he",
+          "summary": "Bob Marley in Bob Marley - Interview New Zealand 1979: no time to think and her herb is a thing give you a little time for yourself so give you a little time for yourself",
+          "description": "Bob Marley in Bob Marley - Interview New Zealand 1979: no time to think and her herb is a thing give you a little time for yourself so give you a little time for yourself so you can live you can live if you use it w Contesto: Bob Marley Bob Marley - Interview New Zealand 1979 interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo bob marley no time to think and her herb is a thing give you a little time for yourself so  7INHO_tssOw 392-43"
+        }
+      ]
+    },
+    {
+      "start": "06:40",
+      "end": "06:52",
+      "name": "Hook: meditate you're more get headed her",
+      "category": "celebrity_interview",
+      "source_title": "Bob Marley - Interview New Zealand 1979",
+      "source_channel": "YouTube Interview",
+      "summary": "Apertura secca (12s): apertura secca dal colloquio Bob Marley",
+      "topics": [
+        "Bob Marley Bob Marley - Interview New Zealand 1979 interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo bob marley no time to think and her herb is a thing give you a little time for yourself so  7INHO_tssOw 392-43 hook apertura short opening-short"
+      ],
+      "tags": [
+        "Bob Marley",
+        "interview",
+        "celebrity_interview",
+        "interview",
+        "talk show",
+        "hook"
+      ],
+      "speakers": [
+        "Bob Marley",
+        "Interviewer"
+      ],
+      "mentioned_people": [
+        "Bob Marley"
+      ],
+      "hook": "meditate you're more get headed herb is more a",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Bob Marley — intervista momento 5: no time to think and he",
+          "summary": "Bob Marley in Bob Marley - Interview New Zealand 1979: no time to think and her herb is a thing give you a little time for yourself so give you a little time for yourself",
+          "description": "Apertura secca (12s): apertura secca dal colloquio Bob Marley Contesto: Bob Marley Bob Marley - Interview New Zealand 1979 interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo bob marley no time to think and her herb is a thing give you a little time for yourself so  7INHO_tssOw 392-43 hook apertura short opening-short"
+        }
+      ]
+    },
+    {
+      "start": "08:09",
+      "end": "08:54",
+      "name": "Bob Marley — intervista momento 6: cross but when I talk to someone wh",
+      "category": "celebrity_interview",
+      "source_title": "Bob Marley - Interview New Zealand 1979",
+      "source_channel": "YouTube Interview",
+      "summary": "Bob Marley in Bob Marley - Interview New Zealand 1979: cross but when I talk to someone who have to go to someone and then I'm have to go to someone and then I'm headit it to fit up their business and headit it to f",
+      "topics": [
+        "Bob Marley Bob Marley - Interview New Zealand 1979 interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo bob marley cross but when I talk to someone who have to go to someone and then I'm have to  7INHO_tssOw 489-53"
+      ],
+      "tags": [
+        "Bob Marley",
+        "interview",
+        "celebrity_interview",
+        "interview",
+        "talk show"
+      ],
+      "speakers": [
+        "Bob Marley",
+        "Interviewer"
+      ],
+      "mentioned_people": [
+        "Bob Marley"
+      ],
+      "hook": "different game media is a media control you were badly hurt once because",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Bob Marley — intervista momento 6: cross but when I talk t",
+          "summary": "Bob Marley in Bob Marley - Interview New Zealand 1979: cross but when I talk to someone who have to go to someone and then I'm have to go to someone and then I'm headit i",
+          "description": "Bob Marley in Bob Marley - Interview New Zealand 1979: cross but when I talk to someone who have to go to someone and then I'm have to go to someone and then I'm headit it to fit up their business and headit it to f Contesto: Bob Marley Bob Marley - Interview New Zealand 1979 interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo bob marley cross but when I talk to someone who have to go to someone and then I'm have to  7INHO_tssOw 489-53"
+        }
+      ]
+    },
+    {
+      "start": "08:17",
+      "end": "08:29",
+      "name": "Hook: different game media is a media con",
+      "category": "celebrity_interview",
+      "source_title": "Bob Marley - Interview New Zealand 1979",
+      "source_channel": "YouTube Interview",
+      "summary": "Apertura secca (12s): apertura secca dal colloquio Bob Marley",
+      "topics": [
+        "Bob Marley Bob Marley - Interview New Zealand 1979 interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo bob marley cross but when I talk to someone who have to go to someone and then I'm have to  7INHO_tssOw 489-53 hook apertura short opening-short"
+      ],
+      "tags": [
+        "Bob Marley",
+        "interview",
+        "celebrity_interview",
+        "interview",
+        "talk show",
+        "hook"
+      ],
+      "speakers": [
+        "Bob Marley",
+        "Interviewer"
+      ],
+      "mentioned_people": [
+        "Bob Marley"
+      ],
+      "hook": "different game media is a media control you were badly hurt once because",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Bob Marley — intervista momento 6: cross but when I talk t",
+          "summary": "Bob Marley in Bob Marley - Interview New Zealand 1979: cross but when I talk to someone who have to go to someone and then I'm have to go to someone and then I'm headit i",
+          "description": "Apertura secca (12s): apertura secca dal colloquio Bob Marley Contesto: Bob Marley Bob Marley - Interview New Zealand 1979 interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo bob marley cross but when I talk to someone who have to go to someone and then I'm have to  7INHO_tssOw 489-53 hook apertura short opening-short"
+        }
+      ]
+    }
+  ]
+}

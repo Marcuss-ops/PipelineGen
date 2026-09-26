@@ -1,0 +1,441 @@
+{
+  "_comment": "POST /api/clips/process payload (ExtractRequest, drift source: internal/capabilities/youtube/dto/types.go). Source: Paul McCartney & John Lennon 1968 Full Interview (https://www.youtube.com/watch?v=Qp0i90n0BP8). Destination: the Clips/HipHop child folder for John Lennon (see check.py FOLDERS), create_subfolder=false. Windows picked BY HAND from the timed transcript printed by ops/jobs/hiphop_36/tx.py; no LLM selection. Clip ids are deterministic (yt_<videoID>_<startSec>_<endSec>_v1) so a re-submit is an UPSERT. topics/summary/hook are keyword-dense on purpose: composeYouTubeClipSearchText feeds search_text -> 768d pgvector embedding, texts[] lands in asset_text_tracks in the same atomic commit.",
+  "url": "https://www.youtube.com/watch?v=Qp0i90n0BP8",
+  "strategy": "verify",
+  "concurrency": 3,
+  "force_keyframes": true,
+  "keep_audio": true,
+  "write_summary": true,
+  "destination": {
+    "folder_id": "1AgzygU5-XqS4Z_pHHfgEVoTWKbfCGySL",
+    "create_subfolder": false
+  },
+  "segments": [
+    {
+      "start": "00:04",
+      "end": "00:49",
+      "name": "John Lennon — intervista momento 1: gentleman it's good to see you aga",
+      "category": "celebrity_interview",
+      "source_title": "Paul McCartney & John Lennon 1968 Full Interview",
+      "source_channel": "YouTube Interview",
+      "summary": "John Lennon in Paul McCartney & John Lennon 1968 Full Interview: gentleman it's good to see you again nice to see you lar nice to see you nice to see you lar nice to see you lar uh what is Apple John it's uh it's a lar u",
+      "topics": [
+        "John Lennon Paul McCartney & John Lennon 1968 Full Interview interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo john lennon gentleman it's good to see you again nice to see you lar nice to see you nice to Qp0i90n"
+      ],
+      "tags": [
+        "John Lennon",
+        "interview",
+        "celebrity_interview",
+        "interview",
+        "talk show"
+      ],
+      "speakers": [
+        "John Lennon",
+        "Paul McCartney"
+      ],
+      "mentioned_people": [
+        "John Lennon"
+      ],
+      "hook": "records and films work and uh what's it called manufacturing yeah it does a few",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "John Lennon — intervista momento 1: gentleman it's good to",
+          "summary": "John Lennon in Paul McCartney & John Lennon 1968 Full Interview: gentleman it's good to see you again nice to see you lar nice to see you nice to see you lar nice to see ",
+          "description": "John Lennon in Paul McCartney & John Lennon 1968 Full Interview: gentleman it's good to see you again nice to see you lar nice to see you nice to see you lar nice to see you lar uh what is Apple John it's uh it's a lar u Contesto: John Lennon Paul McCartney & John Lennon 1968 Full Interview interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo john lennon gentleman it's good to see you again nice to see you lar nice to see you nice to Qp0i90n"
+        }
+      ]
+    },
+    {
+      "start": "00:12",
+      "end": "00:24",
+      "name": "Hook: records and films work and uh what'",
+      "category": "celebrity_interview",
+      "source_title": "Paul McCartney & John Lennon 1968 Full Interview",
+      "source_channel": "YouTube Interview",
+      "summary": "Apertura secca (12s): apertura secca dal colloquio John Lennon",
+      "topics": [
+        "John Lennon Paul McCartney & John Lennon 1968 Full Interview interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo john lennon gentleman it's good to see you again nice to see you lar nice to see you nice to Qp0i90n hook apertura short opening-short"
+      ],
+      "tags": [
+        "John Lennon",
+        "interview",
+        "celebrity_interview",
+        "interview",
+        "talk show",
+        "hook"
+      ],
+      "speakers": [
+        "John Lennon",
+        "Paul McCartney"
+      ],
+      "mentioned_people": [
+        "John Lennon"
+      ],
+      "hook": "records and films work and uh what's it called manufacturing yeah it does a few",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "John Lennon — intervista momento 1: gentleman it's good to",
+          "summary": "John Lennon in Paul McCartney & John Lennon 1968 Full Interview: gentleman it's good to see you again nice to see you lar nice to see you nice to see you lar nice to see ",
+          "description": "Apertura secca (12s): apertura secca dal colloquio John Lennon Contesto: John Lennon Paul McCartney & John Lennon 1968 Full Interview interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo john lennon gentleman it's good to see you again nice to see you lar nice to see you nice to Qp0i90n hook apertura short opening-short"
+        }
+      ]
+    },
+    {
+      "start": "01:39",
+      "end": "02:24",
+      "name": "John Lennon — intervista momento 2: he's invented incredible things yo",
+      "category": "celebrity_interview",
+      "source_title": "Paul McCartney & John Lennon 1968 Full Interview",
+      "source_channel": "YouTube Interview",
+      "summary": "John Lennon in Paul McCartney & John Lennon 1968 Full Interview: he's invented incredible things you see so uh that'll be big well are the days so uh that'll be big well are the days of the are the days of the Beatles on",
+      "topics": [
+        "John Lennon Paul McCartney & John Lennon 1968 Full Interview interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo john lennon he's invented incredible things you see so uh that'll be big well are the days s Qp0i90n"
+      ],
+      "tags": [
+        "John Lennon",
+        "interview",
+        "celebrity_interview",
+        "interview",
+        "talk show"
+      ],
+      "speakers": [
+        "John Lennon",
+        "Paul McCartney"
+      ],
+      "mentioned_people": [
+        "John Lennon"
+      ],
+      "hook": "Electronics we might come flying over New York playing one day do you uh did",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "John Lennon — intervista momento 2: he's invented incredib",
+          "summary": "John Lennon in Paul McCartney & John Lennon 1968 Full Interview: he's invented incredible things you see so uh that'll be big well are the days so uh that'll be big well ",
+          "description": "John Lennon in Paul McCartney & John Lennon 1968 Full Interview: he's invented incredible things you see so uh that'll be big well are the days so uh that'll be big well are the days of the are the days of the Beatles on Contesto: John Lennon Paul McCartney & John Lennon 1968 Full Interview interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo john lennon he's invented incredible things you see so uh that'll be big well are the days s Qp0i90n"
+        }
+      ]
+    },
+    {
+      "start": "01:47",
+      "end": "01:59",
+      "name": "Hook: electronics we might come flying ov",
+      "category": "celebrity_interview",
+      "source_title": "Paul McCartney & John Lennon 1968 Full Interview",
+      "source_channel": "YouTube Interview",
+      "summary": "Apertura secca (12s): apertura secca dal colloquio John Lennon",
+      "topics": [
+        "John Lennon Paul McCartney & John Lennon 1968 Full Interview interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo john lennon he's invented incredible things you see so uh that'll be big well are the days s Qp0i90n hook apertura short opening-short"
+      ],
+      "tags": [
+        "John Lennon",
+        "interview",
+        "celebrity_interview",
+        "interview",
+        "talk show",
+        "hook"
+      ],
+      "speakers": [
+        "John Lennon",
+        "Paul McCartney"
+      ],
+      "mentioned_people": [
+        "John Lennon"
+      ],
+      "hook": "Electronics we might come flying over New York playing one day do you uh did",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "John Lennon — intervista momento 2: he's invented incredib",
+          "summary": "John Lennon in Paul McCartney & John Lennon 1968 Full Interview: he's invented incredible things you see so uh that'll be big well are the days so uh that'll be big well ",
+          "description": "Apertura secca (12s): apertura secca dal colloquio John Lennon Contesto: John Lennon Paul McCartney & John Lennon 1968 Full Interview interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo john lennon he's invented incredible things you see so uh that'll be big well are the days s Qp0i90n hook apertura short opening-short"
+        }
+      ]
+    },
+    {
+      "start": "03:15",
+      "end": "04:00",
+      "name": "John Lennon — intervista momento 3: so I thought well I'll either be k",
+      "category": "celebrity_interview",
+      "source_title": "Paul McCartney & John Lennon 1968 Full Interview",
+      "source_channel": "YouTube Interview",
+      "summary": "John Lennon in Paul McCartney & John Lennon 1968 Full Interview: so I thought well I'll either be kg here or I'll be honest so I said yes and it or I'll be honest so I said yes and it was his responsibility reporting it ",
+      "topics": [
+        "John Lennon Paul McCartney & John Lennon 1968 Full Interview interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo john lennon so I thought well I'll either be kg here or I'll be honest so I said yes and it  Qp0i90n"
+      ],
+      "tags": [
+        "John Lennon",
+        "interview",
+        "celebrity_interview",
+        "interview",
+        "talk show"
+      ],
+      "speakers": [
+        "John Lennon",
+        "Paul McCartney"
+      ],
+      "mentioned_people": [
+        "John Lennon"
+      ],
+      "hook": "film man I mean I don't want to tell anybody ever almost like a situation",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "John Lennon — intervista momento 3: so I thought well I'll",
+          "summary": "John Lennon in Paul McCartney & John Lennon 1968 Full Interview: so I thought well I'll either be kg here or I'll be honest so I said yes and it or I'll be honest so I sa",
+          "description": "John Lennon in Paul McCartney & John Lennon 1968 Full Interview: so I thought well I'll either be kg here or I'll be honest so I said yes and it or I'll be honest so I said yes and it was his responsibility reporting it  Contesto: John Lennon Paul McCartney & John Lennon 1968 Full Interview interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo john lennon so I thought well I'll either be kg here or I'll be honest so I said yes and it  Qp0i90n"
+        }
+      ]
+    },
+    {
+      "start": "03:23",
+      "end": "03:35",
+      "name": "Hook: film man i mean i don't want to tel",
+      "category": "celebrity_interview",
+      "source_title": "Paul McCartney & John Lennon 1968 Full Interview",
+      "source_channel": "YouTube Interview",
+      "summary": "Apertura secca (12s): apertura secca dal colloquio John Lennon",
+      "topics": [
+        "John Lennon Paul McCartney & John Lennon 1968 Full Interview interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo john lennon so I thought well I'll either be kg here or I'll be honest so I said yes and it  Qp0i90n hook apertura short opening-short"
+      ],
+      "tags": [
+        "John Lennon",
+        "interview",
+        "celebrity_interview",
+        "interview",
+        "talk show",
+        "hook"
+      ],
+      "speakers": [
+        "John Lennon",
+        "Paul McCartney"
+      ],
+      "mentioned_people": [
+        "John Lennon"
+      ],
+      "hook": "film man I mean I don't want to tell anybody ever almost like a situation",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "John Lennon — intervista momento 3: so I thought well I'll",
+          "summary": "John Lennon in Paul McCartney & John Lennon 1968 Full Interview: so I thought well I'll either be kg here or I'll be honest so I said yes and it or I'll be honest so I sa",
+          "description": "Apertura secca (12s): apertura secca dal colloquio John Lennon Contesto: John Lennon Paul McCartney & John Lennon 1968 Full Interview interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo john lennon so I thought well I'll either be kg here or I'll be honest so I said yes and it  Qp0i90n hook apertura short opening-short"
+        }
+      ]
+    },
+    {
+      "start": "04:51",
+      "end": "05:36",
+      "name": "John Lennon — intervista momento 4: you happy used to be nice Larry us",
+      "category": "celebrity_interview",
+      "source_title": "Paul McCartney & John Lennon 1968 Full Interview",
+      "source_channel": "YouTube Interview",
+      "summary": "John Lennon in Paul McCartney & John Lennon 1968 Full Interview: you happy used to be nice Larry used to be very charm I'm not completely happy be very charm I'm not completely happy I'd be a fool to say I was now it var",
+      "topics": [
+        "John Lennon Paul McCartney & John Lennon 1968 Full Interview interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo john lennon you happy used to be nice Larry used to be very charm I'm not completely happy b Qp0i90n"
+      ],
+      "tags": [
+        "John Lennon",
+        "interview",
+        "celebrity_interview",
+        "interview",
+        "talk show"
+      ],
+      "speakers": [
+        "John Lennon",
+        "Paul McCartney"
+      ],
+      "mentioned_people": [
+        "John Lennon"
+      ],
+      "hook": "it's all person now well we don't know five looks quite big to me these",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "John Lennon — intervista momento 4: you happy used to be n",
+          "summary": "John Lennon in Paul McCartney & John Lennon 1968 Full Interview: you happy used to be nice Larry used to be very charm I'm not completely happy be very charm I'm not comp",
+          "description": "John Lennon in Paul McCartney & John Lennon 1968 Full Interview: you happy used to be nice Larry used to be very charm I'm not completely happy be very charm I'm not completely happy I'd be a fool to say I was now it var Contesto: John Lennon Paul McCartney & John Lennon 1968 Full Interview interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo john lennon you happy used to be nice Larry used to be very charm I'm not completely happy b Qp0i90n"
+        }
+      ]
+    },
+    {
+      "start": "04:59",
+      "end": "05:11",
+      "name": "Hook: it's all person now well we don't k",
+      "category": "celebrity_interview",
+      "source_title": "Paul McCartney & John Lennon 1968 Full Interview",
+      "source_channel": "YouTube Interview",
+      "summary": "Apertura secca (12s): apertura secca dal colloquio John Lennon",
+      "topics": [
+        "John Lennon Paul McCartney & John Lennon 1968 Full Interview interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo john lennon you happy used to be nice Larry used to be very charm I'm not completely happy b Qp0i90n hook apertura short opening-short"
+      ],
+      "tags": [
+        "John Lennon",
+        "interview",
+        "celebrity_interview",
+        "interview",
+        "talk show",
+        "hook"
+      ],
+      "speakers": [
+        "John Lennon",
+        "Paul McCartney"
+      ],
+      "mentioned_people": [
+        "John Lennon"
+      ],
+      "hook": "it's all person now well we don't know five looks quite big to me these",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "John Lennon — intervista momento 4: you happy used to be n",
+          "summary": "John Lennon in Paul McCartney & John Lennon 1968 Full Interview: you happy used to be nice Larry used to be very charm I'm not completely happy be very charm I'm not comp",
+          "description": "Apertura secca (12s): apertura secca dal colloquio John Lennon Contesto: John Lennon Paul McCartney & John Lennon 1968 Full Interview interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo john lennon you happy used to be nice Larry used to be very charm I'm not completely happy b Qp0i90n hook apertura short opening-short"
+        }
+      ]
+    },
+    {
+      "start": "06:27",
+      "end": "07:12",
+      "name": "John Lennon — intervista momento 5: one over in England you know the u",
+      "category": "celebrity_interview",
+      "source_title": "Paul McCartney & John Lennon 1968 Full Interview",
+      "source_channel": "YouTube Interview",
+      "summary": "John Lennon in Paul McCartney & John Lennon 1968 Full Interview: one over in England you know the uh the leader of the party talking about laws leader of the party talking about laws against immigration yeah oh you know ",
+      "topics": [
+        "John Lennon Paul McCartney & John Lennon 1968 Full Interview interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo john lennon one over in England you know the uh the leader of the party talking about laws l Qp0i90n"
+      ],
+      "tags": [
+        "John Lennon",
+        "interview",
+        "celebrity_interview",
+        "interview",
+        "talk show"
+      ],
+      "speakers": [
+        "John Lennon",
+        "Paul McCartney"
+      ],
+      "mentioned_people": [
+        "John Lennon"
+      ],
+      "hook": "the same question everywhere you know there's no different in England it's a",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "John Lennon — intervista momento 5: one over in England yo",
+          "summary": "John Lennon in Paul McCartney & John Lennon 1968 Full Interview: one over in England you know the uh the leader of the party talking about laws leader of the party talkin",
+          "description": "John Lennon in Paul McCartney & John Lennon 1968 Full Interview: one over in England you know the uh the leader of the party talking about laws leader of the party talking about laws against immigration yeah oh you know  Contesto: John Lennon Paul McCartney & John Lennon 1968 Full Interview interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo john lennon one over in England you know the uh the leader of the party talking about laws l Qp0i90n"
+        }
+      ]
+    },
+    {
+      "start": "06:35",
+      "end": "06:47",
+      "name": "Hook: the same question everywhere you kn",
+      "category": "celebrity_interview",
+      "source_title": "Paul McCartney & John Lennon 1968 Full Interview",
+      "source_channel": "YouTube Interview",
+      "summary": "Apertura secca (12s): apertura secca dal colloquio John Lennon",
+      "topics": [
+        "John Lennon Paul McCartney & John Lennon 1968 Full Interview interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo john lennon one over in England you know the uh the leader of the party talking about laws l Qp0i90n hook apertura short opening-short"
+      ],
+      "tags": [
+        "John Lennon",
+        "interview",
+        "celebrity_interview",
+        "interview",
+        "talk show",
+        "hook"
+      ],
+      "speakers": [
+        "John Lennon",
+        "Paul McCartney"
+      ],
+      "mentioned_people": [
+        "John Lennon"
+      ],
+      "hook": "the same question everywhere you know there's no different in England it's a",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "John Lennon — intervista momento 5: one over in England yo",
+          "summary": "John Lennon in Paul McCartney & John Lennon 1968 Full Interview: one over in England you know the uh the leader of the party talking about laws leader of the party talkin",
+          "description": "Apertura secca (12s): apertura secca dal colloquio John Lennon Contesto: John Lennon Paul McCartney & John Lennon 1968 Full Interview interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo john lennon one over in England you know the uh the leader of the party talking about laws l Qp0i90n hook apertura short opening-short"
+        }
+      ]
+    },
+    {
+      "start": "08:03",
+      "end": "08:48",
+      "name": "John Lennon — intervista momento 6: uh it was always a question that s",
+      "category": "celebrity_interview",
+      "source_title": "Paul McCartney & John Lennon 1968 Full Interview",
+      "source_channel": "YouTube Interview",
+      "summary": "John Lennon in Paul McCartney & John Lennon 1968 Full Interview: uh it was always a question that somebody asked you well when's going to somebody asked you well when's going to the bubble going to burst remember that th",
+      "topics": [
+        "John Lennon Paul McCartney & John Lennon 1968 Full Interview interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo john lennon uh it was always a question that somebody asked you well when's going to somebod Qp0i90n"
+      ],
+      "tags": [
+        "John Lennon",
+        "interview",
+        "celebrity_interview",
+        "interview",
+        "talk show"
+      ],
+      "speakers": [
+        "John Lennon",
+        "Paul McCartney"
+      ],
+      "mentioned_people": [
+        "John Lennon"
+      ],
+      "hook": "even working together just we do work on our own anyway now you never can be",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "John Lennon — intervista momento 6: uh it was always a que",
+          "summary": "John Lennon in Paul McCartney & John Lennon 1968 Full Interview: uh it was always a question that somebody asked you well when's going to somebody asked you well when's g",
+          "description": "John Lennon in Paul McCartney & John Lennon 1968 Full Interview: uh it was always a question that somebody asked you well when's going to somebody asked you well when's going to the bubble going to burst remember that th Contesto: John Lennon Paul McCartney & John Lennon 1968 Full Interview interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo john lennon uh it was always a question that somebody asked you well when's going to somebod Qp0i90n"
+        }
+      ]
+    },
+    {
+      "start": "08:11",
+      "end": "08:23",
+      "name": "Hook: even working together just we do wo",
+      "category": "celebrity_interview",
+      "source_title": "Paul McCartney & John Lennon 1968 Full Interview",
+      "source_channel": "YouTube Interview",
+      "summary": "Apertura secca (12s): apertura secca dal colloquio John Lennon",
+      "topics": [
+        "John Lennon Paul McCartney & John Lennon 1968 Full Interview interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo john lennon uh it was always a question that somebody asked you well when's going to somebod Qp0i90n hook apertura short opening-short"
+      ],
+      "tags": [
+        "John Lennon",
+        "interview",
+        "celebrity_interview",
+        "interview",
+        "talk show",
+        "hook"
+      ],
+      "speakers": [
+        "John Lennon",
+        "Paul McCartney"
+      ],
+      "mentioned_people": [
+        "John Lennon"
+      ],
+      "hook": "even working together just we do work on our own anyway now you never can be",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "John Lennon — intervista momento 6: uh it was always a que",
+          "summary": "John Lennon in Paul McCartney & John Lennon 1968 Full Interview: uh it was always a question that somebody asked you well when's going to somebody asked you well when's g",
+          "description": "Apertura secca (12s): apertura secca dal colloquio John Lennon Contesto: John Lennon Paul McCartney & John Lennon 1968 Full Interview interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo john lennon uh it was always a question that somebody asked you well when's going to somebod Qp0i90n hook apertura short opening-short"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,441 @@
+{
+  "_comment": "POST /api/clips/process payload (ExtractRequest, drift source: internal/capabilities/youtube/dto/types.go). Source: Alanis Morissette Full Interview With Kelly Clarkson | Songs & Stories (https://www.youtube.com/watch?v=BDWuml8OX4c). Destination: the Clips/HipHop child folder for Alanis Morissette (see check.py FOLDERS), create_subfolder=false. Windows picked BY HAND from the timed transcript printed by ops/jobs/hiphop_36/tx.py; no LLM selection. Clip ids are deterministic (yt_<videoID>_<startSec>_<endSec>_v1) so a re-submit is an UPSERT. topics/summary/hook are keyword-dense on purpose: composeYouTubeClipSearchText feeds search_text -> 768d pgvector embedding, texts[] lands in asset_text_tracks in the same atomic commit.",
+  "url": "https://www.youtube.com/watch?v=BDWuml8OX4c",
+  "strategy": "verify",
+  "concurrency": 3,
+  "force_keyframes": true,
+  "keep_audio": true,
+  "write_summary": true,
+  "destination": {
+    "folder_id": "1caCIxFhn24q1MJySB1Dzybq71-0wBsGA",
+    "create_subfolder": false
+  },
+  "segments": [
+    {
+      "start": "00:04",
+      "end": "00:49",
+      "name": "Alanis Morissette — intervista momento 1: - That just happened. (audie",
+      "category": "celebrity_interview",
+      "source_title": "Alanis Morissette Full Interview With Kelly Clarkson | Songs & Stories",
+      "source_channel": "YouTube Interview",
+      "summary": "Alanis Morissette in Alanis Morissette Full Interview With Kelly Clarkson | Songs: - That just happened. (audience cheers) I'm not sitting until you sit. - One, two, three. - Okay, good, good. Okay, okay. I was like, you",
+      "topics": [
+        "Alanis Morissette Alanis Morissette Full Interview With Kelly Clarkson | Songs & Stories interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo alanis morissette - That just happened. (audience cheers) I'm not sittin"
+      ],
+      "tags": [
+        "Alanis Morissette",
+        "interview",
+        "celebrity_interview",
+        "interview",
+        "talk show"
+      ],
+      "speakers": [
+        "Alanis Morissette",
+        "Kelly Clarkson"
+      ],
+      "mentioned_people": [
+        "Alanis Morissette"
+      ],
+      "hook": "I'm gonna have to start with this,",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Alanis Morissette — intervista momento 1: - That just happ",
+          "summary": "Alanis Morissette in Alanis Morissette Full Interview With Kelly Clarkson | Songs: - That just happened. (audience cheers) I'm not sitting until you sit. - One, two, thre",
+          "description": "Alanis Morissette in Alanis Morissette Full Interview With Kelly Clarkson | Songs: - That just happened. (audience cheers) I'm not sitting until you sit. - One, two, three. - Okay, good, good. Okay, okay. I was like, you Contesto: Alanis Morissette Alanis Morissette Full Interview With Kelly Clarkson | Songs & Stories interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo alanis morissette - That just happened. (audience cheers) I'm not sittin"
+        }
+      ]
+    },
+    {
+      "start": "00:12",
+      "end": "00:24",
+      "name": "Hook: i'm gonna have to start with this,",
+      "category": "celebrity_interview",
+      "source_title": "Alanis Morissette Full Interview With Kelly Clarkson | Songs & Stories",
+      "source_channel": "YouTube Interview",
+      "summary": "Apertura secca (12s): apertura secca dal colloquio Alanis Morissette",
+      "topics": [
+        "Alanis Morissette Alanis Morissette Full Interview With Kelly Clarkson | Songs & Stories interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo alanis morissette - That just happened. (audience cheers) I'm not sittin hook apertura short opening-short"
+      ],
+      "tags": [
+        "Alanis Morissette",
+        "interview",
+        "celebrity_interview",
+        "interview",
+        "talk show",
+        "hook"
+      ],
+      "speakers": [
+        "Alanis Morissette",
+        "Kelly Clarkson"
+      ],
+      "mentioned_people": [
+        "Alanis Morissette"
+      ],
+      "hook": "I'm gonna have to start with this,",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Alanis Morissette — intervista momento 1: - That just happ",
+          "summary": "Alanis Morissette in Alanis Morissette Full Interview With Kelly Clarkson | Songs: - That just happened. (audience cheers) I'm not sitting until you sit. - One, two, thre",
+          "description": "Apertura secca (12s): apertura secca dal colloquio Alanis Morissette Contesto: Alanis Morissette Alanis Morissette Full Interview With Kelly Clarkson | Songs & Stories interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo alanis morissette - That just happened. (audience cheers) I'm not sittin hook apertura short opening-short"
+        }
+      ]
+    },
+    {
+      "start": "03:19",
+      "end": "04:04",
+      "name": "Alanis Morissette — intervista momento 2: and it was written in eight ",
+      "category": "celebrity_interview",
+      "source_title": "Alanis Morissette Full Interview With Kelly Clarkson | Songs & Stories",
+      "source_channel": "YouTube Interview",
+      "summary": "Alanis Morissette in Alanis Morissette Full Interview With Kelly Clarkson | Songs: and it was written in eight minutes, it was really fast. - Those are the best, when they come that fast. - [Alanis] Yeah, they channel th",
+      "topics": [
+        "Alanis Morissette Alanis Morissette Full Interview With Kelly Clarkson | Songs & Stories interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo alanis morissette and it was written in eight minutes, it was really fas"
+      ],
+      "tags": [
+        "Alanis Morissette",
+        "interview",
+        "celebrity_interview",
+        "interview",
+        "talk show"
+      ],
+      "speakers": [
+        "Alanis Morissette",
+        "Kelly Clarkson"
+      ],
+      "mentioned_people": [
+        "Alanis Morissette"
+      ],
+      "hook": "oh, why is she so angry?",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Alanis Morissette — intervista momento 2: and it was writt",
+          "summary": "Alanis Morissette in Alanis Morissette Full Interview With Kelly Clarkson | Songs: and it was written in eight minutes, it was really fast. - Those are the best, when the",
+          "description": "Alanis Morissette in Alanis Morissette Full Interview With Kelly Clarkson | Songs: and it was written in eight minutes, it was really fast. - Those are the best, when they come that fast. - [Alanis] Yeah, they channel th Contesto: Alanis Morissette Alanis Morissette Full Interview With Kelly Clarkson | Songs & Stories interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo alanis morissette and it was written in eight minutes, it was really fas"
+        }
+      ]
+    },
+    {
+      "start": "03:27",
+      "end": "03:39",
+      "name": "Hook: oh, why is she so angry?",
+      "category": "celebrity_interview",
+      "source_title": "Alanis Morissette Full Interview With Kelly Clarkson | Songs & Stories",
+      "source_channel": "YouTube Interview",
+      "summary": "Apertura secca (12s): apertura secca dal colloquio Alanis Morissette",
+      "topics": [
+        "Alanis Morissette Alanis Morissette Full Interview With Kelly Clarkson | Songs & Stories interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo alanis morissette and it was written in eight minutes, it was really fas hook apertura short opening-short"
+      ],
+      "tags": [
+        "Alanis Morissette",
+        "interview",
+        "celebrity_interview",
+        "interview",
+        "talk show",
+        "hook"
+      ],
+      "speakers": [
+        "Alanis Morissette",
+        "Kelly Clarkson"
+      ],
+      "mentioned_people": [
+        "Alanis Morissette"
+      ],
+      "hook": "oh, why is she so angry?",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Alanis Morissette — intervista momento 2: and it was writt",
+          "summary": "Alanis Morissette in Alanis Morissette Full Interview With Kelly Clarkson | Songs: and it was written in eight minutes, it was really fast. - Those are the best, when the",
+          "description": "Apertura secca (12s): apertura secca dal colloquio Alanis Morissette Contesto: Alanis Morissette Alanis Morissette Full Interview With Kelly Clarkson | Songs & Stories interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo alanis morissette and it was written in eight minutes, it was really fas hook apertura short opening-short"
+        }
+      ]
+    },
+    {
+      "start": "06:35",
+      "end": "07:20",
+      "name": "Alanis Morissette — intervista momento 3: (audience cheers and applaud",
+      "category": "celebrity_interview",
+      "source_title": "Alanis Morissette Full Interview With Kelly Clarkson | Songs & Stories",
+      "source_channel": "YouTube Interview",
+      "summary": "Alanis Morissette in Alanis Morissette Full Interview With Kelly Clarkson | Songs: (audience cheers and applauds) So I can't imagine, actually, not even with an imagination I can imagine how overwhelming \"Jagged Little P",
+      "topics": [
+        "Alanis Morissette Alanis Morissette Full Interview With Kelly Clarkson | Songs & Stories interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo alanis morissette (audience cheers and applauds) So I can't imagine, act"
+      ],
+      "tags": [
+        "Alanis Morissette",
+        "interview",
+        "celebrity_interview",
+        "interview",
+        "talk show"
+      ],
+      "speakers": [
+        "Alanis Morissette",
+        "Kelly Clarkson"
+      ],
+      "mentioned_people": [
+        "Alanis Morissette"
+      ],
+      "hook": "- I did, and I thought I could get away",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Alanis Morissette — intervista momento 3: (audience cheers",
+          "summary": "Alanis Morissette in Alanis Morissette Full Interview With Kelly Clarkson | Songs: (audience cheers and applauds) So I can't imagine, actually, not even with an imaginati",
+          "description": "Alanis Morissette in Alanis Morissette Full Interview With Kelly Clarkson | Songs: (audience cheers and applauds) So I can't imagine, actually, not even with an imagination I can imagine how overwhelming \"Jagged Little P Contesto: Alanis Morissette Alanis Morissette Full Interview With Kelly Clarkson | Songs & Stories interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo alanis morissette (audience cheers and applauds) So I can't imagine, act"
+        }
+      ]
+    },
+    {
+      "start": "06:43",
+      "end": "06:55",
+      "name": "Hook: - i did, and i thought i could get ",
+      "category": "celebrity_interview",
+      "source_title": "Alanis Morissette Full Interview With Kelly Clarkson | Songs & Stories",
+      "source_channel": "YouTube Interview",
+      "summary": "Apertura secca (12s): apertura secca dal colloquio Alanis Morissette",
+      "topics": [
+        "Alanis Morissette Alanis Morissette Full Interview With Kelly Clarkson | Songs & Stories interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo alanis morissette (audience cheers and applauds) So I can't imagine, act hook apertura short opening-short"
+      ],
+      "tags": [
+        "Alanis Morissette",
+        "interview",
+        "celebrity_interview",
+        "interview",
+        "talk show",
+        "hook"
+      ],
+      "speakers": [
+        "Alanis Morissette",
+        "Kelly Clarkson"
+      ],
+      "mentioned_people": [
+        "Alanis Morissette"
+      ],
+      "hook": "- I did, and I thought I could get away",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Alanis Morissette — intervista momento 3: (audience cheers",
+          "summary": "Alanis Morissette in Alanis Morissette Full Interview With Kelly Clarkson | Songs: (audience cheers and applauds) So I can't imagine, actually, not even with an imaginati",
+          "description": "Apertura secca (12s): apertura secca dal colloquio Alanis Morissette Contesto: Alanis Morissette Alanis Morissette Full Interview With Kelly Clarkson | Songs & Stories interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo alanis morissette (audience cheers and applauds) So I can't imagine, act hook apertura short opening-short"
+        }
+      ]
+    },
+    {
+      "start": "09:50",
+      "end": "10:35",
+      "name": "Alanis Morissette — intervista momento 4: - Have you ever thought of r",
+      "category": "celebrity_interview",
+      "source_title": "Alanis Morissette Full Interview With Kelly Clarkson | Songs & Stories",
+      "source_channel": "YouTube Interview",
+      "summary": "Alanis Morissette in Alanis Morissette Full Interview With Kelly Clarkson | Songs: - Have you ever thought of running for office? (audience laughs and cheers) I'm like that's- - For seven seconds. - I know, because somet",
+      "topics": [
+        "Alanis Morissette Alanis Morissette Full Interview With Kelly Clarkson | Songs & Stories interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo alanis morissette - Have you ever thought of running for office? (audien"
+      ],
+      "tags": [
+        "Alanis Morissette",
+        "interview",
+        "celebrity_interview",
+        "interview",
+        "talk show"
+      ],
+      "speakers": [
+        "Alanis Morissette",
+        "Kelly Clarkson"
+      ],
+      "mentioned_people": [
+        "Alanis Morissette"
+      ],
+      "hook": "- But be discerning, right?",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Alanis Morissette — intervista momento 4: - Have you ever ",
+          "summary": "Alanis Morissette in Alanis Morissette Full Interview With Kelly Clarkson | Songs: - Have you ever thought of running for office? (audience laughs and cheers) I'm like th",
+          "description": "Alanis Morissette in Alanis Morissette Full Interview With Kelly Clarkson | Songs: - Have you ever thought of running for office? (audience laughs and cheers) I'm like that's- - For seven seconds. - I know, because somet Contesto: Alanis Morissette Alanis Morissette Full Interview With Kelly Clarkson | Songs & Stories interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo alanis morissette - Have you ever thought of running for office? (audien"
+        }
+      ]
+    },
+    {
+      "start": "09:58",
+      "end": "10:10",
+      "name": "Hook: - but be discerning, right?",
+      "category": "celebrity_interview",
+      "source_title": "Alanis Morissette Full Interview With Kelly Clarkson | Songs & Stories",
+      "source_channel": "YouTube Interview",
+      "summary": "Apertura secca (12s): apertura secca dal colloquio Alanis Morissette",
+      "topics": [
+        "Alanis Morissette Alanis Morissette Full Interview With Kelly Clarkson | Songs & Stories interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo alanis morissette - Have you ever thought of running for office? (audien hook apertura short opening-short"
+      ],
+      "tags": [
+        "Alanis Morissette",
+        "interview",
+        "celebrity_interview",
+        "interview",
+        "talk show",
+        "hook"
+      ],
+      "speakers": [
+        "Alanis Morissette",
+        "Kelly Clarkson"
+      ],
+      "mentioned_people": [
+        "Alanis Morissette"
+      ],
+      "hook": "- But be discerning, right?",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Alanis Morissette — intervista momento 4: - Have you ever ",
+          "summary": "Alanis Morissette in Alanis Morissette Full Interview With Kelly Clarkson | Songs: - Have you ever thought of running for office? (audience laughs and cheers) I'm like th",
+          "description": "Apertura secca (12s): apertura secca dal colloquio Alanis Morissette Contesto: Alanis Morissette Alanis Morissette Full Interview With Kelly Clarkson | Songs & Stories interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo alanis morissette - Have you ever thought of running for office? (audien hook apertura short opening-short"
+        }
+      ]
+    },
+    {
+      "start": "13:06",
+      "end": "13:51",
+      "name": "Alanis Morissette — intervista momento 5: but inside I'm a terrified p",
+      "category": "celebrity_interview",
+      "source_title": "Alanis Morissette Full Interview With Kelly Clarkson | Songs & Stories",
+      "source_channel": "YouTube Interview",
+      "summary": "Alanis Morissette in Alanis Morissette Full Interview With Kelly Clarkson | Songs: but inside I'm a terrified poodle. - Oh my God, the imagery, that was amazing. (audience laughs) - It's just terrifying. The nervous syst",
+      "topics": [
+        "Alanis Morissette Alanis Morissette Full Interview With Kelly Clarkson | Songs & Stories interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo alanis morissette but inside I'm a terrified poodle. - Oh my God, the im"
+      ],
+      "tags": [
+        "Alanis Morissette",
+        "interview",
+        "celebrity_interview",
+        "interview",
+        "talk show"
+      ],
+      "speakers": [
+        "Alanis Morissette",
+        "Kelly Clarkson"
+      ],
+      "mentioned_people": [
+        "Alanis Morissette"
+      ],
+      "hook": "transition mode, rest mode,",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Alanis Morissette — intervista momento 5: but inside I'm a",
+          "summary": "Alanis Morissette in Alanis Morissette Full Interview With Kelly Clarkson | Songs: but inside I'm a terrified poodle. - Oh my God, the imagery, that was amazing. (audienc",
+          "description": "Alanis Morissette in Alanis Morissette Full Interview With Kelly Clarkson | Songs: but inside I'm a terrified poodle. - Oh my God, the imagery, that was amazing. (audience laughs) - It's just terrifying. The nervous syst Contesto: Alanis Morissette Alanis Morissette Full Interview With Kelly Clarkson | Songs & Stories interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo alanis morissette but inside I'm a terrified poodle. - Oh my God, the im"
+        }
+      ]
+    },
+    {
+      "start": "13:14",
+      "end": "13:26",
+      "name": "Hook: transition mode, rest mode,",
+      "category": "celebrity_interview",
+      "source_title": "Alanis Morissette Full Interview With Kelly Clarkson | Songs & Stories",
+      "source_channel": "YouTube Interview",
+      "summary": "Apertura secca (12s): apertura secca dal colloquio Alanis Morissette",
+      "topics": [
+        "Alanis Morissette Alanis Morissette Full Interview With Kelly Clarkson | Songs & Stories interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo alanis morissette but inside I'm a terrified poodle. - Oh my God, the im hook apertura short opening-short"
+      ],
+      "tags": [
+        "Alanis Morissette",
+        "interview",
+        "celebrity_interview",
+        "interview",
+        "talk show",
+        "hook"
+      ],
+      "speakers": [
+        "Alanis Morissette",
+        "Kelly Clarkson"
+      ],
+      "mentioned_people": [
+        "Alanis Morissette"
+      ],
+      "hook": "transition mode, rest mode,",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Alanis Morissette — intervista momento 5: but inside I'm a",
+          "summary": "Alanis Morissette in Alanis Morissette Full Interview With Kelly Clarkson | Songs: but inside I'm a terrified poodle. - Oh my God, the imagery, that was amazing. (audienc",
+          "description": "Apertura secca (12s): apertura secca dal colloquio Alanis Morissette Contesto: Alanis Morissette Alanis Morissette Full Interview With Kelly Clarkson | Songs & Stories interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo alanis morissette but inside I'm a terrified poodle. - Oh my God, the im hook apertura short opening-short"
+        }
+      ]
+    },
+    {
+      "start": "16:21",
+      "end": "17:06",
+      "name": "Alanis Morissette — intervista momento 6: and it was just more kind of",
+      "category": "celebrity_interview",
+      "source_title": "Alanis Morissette Full Interview With Kelly Clarkson | Songs & Stories",
+      "source_channel": "YouTube Interview",
+      "summary": "Alanis Morissette in Alanis Morissette Full Interview With Kelly Clarkson | Songs: and it was just more kind of, you know, browsing, getting to know each other. And then right after \"Ironic,\" I started writing from the s",
+      "topics": [
+        "Alanis Morissette Alanis Morissette Full Interview With Kelly Clarkson | Songs & Stories interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo alanis morissette and it was just more kind of, you know, browsing, gett"
+      ],
+      "tags": [
+        "Alanis Morissette",
+        "interview",
+        "celebrity_interview",
+        "interview",
+        "talk show"
+      ],
+      "speakers": [
+        "Alanis Morissette",
+        "Kelly Clarkson"
+      ],
+      "mentioned_people": [
+        "Alanis Morissette"
+      ],
+      "hook": "I live for storytelling, but it's less, you know,",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Alanis Morissette — intervista momento 6: and it was just ",
+          "summary": "Alanis Morissette in Alanis Morissette Full Interview With Kelly Clarkson | Songs: and it was just more kind of, you know, browsing, getting to know each other. And then ",
+          "description": "Alanis Morissette in Alanis Morissette Full Interview With Kelly Clarkson | Songs: and it was just more kind of, you know, browsing, getting to know each other. And then right after \"Ironic,\" I started writing from the s Contesto: Alanis Morissette Alanis Morissette Full Interview With Kelly Clarkson | Songs & Stories interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo alanis morissette and it was just more kind of, you know, browsing, gett"
+        }
+      ]
+    },
+    {
+      "start": "16:29",
+      "end": "16:41",
+      "name": "Hook: i live for storytelling, but it's l",
+      "category": "celebrity_interview",
+      "source_title": "Alanis Morissette Full Interview With Kelly Clarkson | Songs & Stories",
+      "source_channel": "YouTube Interview",
+      "summary": "Apertura secca (12s): apertura secca dal colloquio Alanis Morissette",
+      "topics": [
+        "Alanis Morissette Alanis Morissette Full Interview With Kelly Clarkson | Songs & Stories interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo alanis morissette and it was just more kind of, you know, browsing, gett hook apertura short opening-short"
+      ],
+      "tags": [
+        "Alanis Morissette",
+        "interview",
+        "celebrity_interview",
+        "interview",
+        "talk show",
+        "hook"
+      ],
+      "speakers": [
+        "Alanis Morissette",
+        "Kelly Clarkson"
+      ],
+      "mentioned_people": [
+        "Alanis Morissette"
+      ],
+      "hook": "I live for storytelling, but it's less, you know,",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Alanis Morissette — intervista momento 6: and it was just ",
+          "summary": "Alanis Morissette in Alanis Morissette Full Interview With Kelly Clarkson | Songs: and it was just more kind of, you know, browsing, getting to know each other. And then ",
+          "description": "Apertura secca (12s): apertura secca dal colloquio Alanis Morissette Contesto: Alanis Morissette Alanis Morissette Full Interview With Kelly Clarkson | Songs & Stories interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo alanis morissette and it was just more kind of, you know, browsing, gett hook apertura short opening-short"
+        }
+      ]
+    }
+  ]
+}

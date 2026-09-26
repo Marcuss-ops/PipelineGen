@@ -1,0 +1,441 @@
+{
+  "_comment": "POST /api/clips/process payload (ExtractRequest, drift source: internal/capabilities/youtube/dto/types.go). Source: Mariah Carey: How She Created More #1 Hits Than Any Other American (Exclusive Interview) (https://www.youtube.com/watch?v=AeVxTyMX5cE). Destination: the Clips/HipHop child folder for Mariah Carey (see check.py FOLDERS), create_subfolder=false. Windows picked BY HAND from the timed transcript printed by ops/jobs/hiphop_36/tx.py; no LLM selection. Clip ids are deterministic (yt_<videoID>_<startSec>_<endSec>_v1) so a re-submit is an UPSERT. topics/summary/hook are keyword-dense on purpose: composeYouTubeClipSearchText feeds search_text -> 768d pgvector embedding, texts[] lands in asset_text_tracks in the same atomic commit.",
+  "url": "https://www.youtube.com/watch?v=AeVxTyMX5cE",
+  "strategy": "verify",
+  "concurrency": 3,
+  "force_keyframes": true,
+  "keep_audio": true,
+  "write_summary": true,
+  "destination": {
+    "folder_id": "1p4D-unVJeK4NdSTdGjEnWvpF9trze-xM",
+    "create_subfolder": false
+  },
+  "segments": [
+    {
+      "start": "00:04",
+      "end": "00:49",
+      "name": "Mariah Carey — intervista momento 1: Fantasy? No, I knew it was big. L",
+      "category": "celebrity_interview",
+      "source_title": "Mariah Carey: How She Created More #1 Hits Than Any Other American (Exclusive Interview)",
+      "source_channel": "YouTube Interview",
+      "summary": "Mariah Carey in Mariah Carey: How She Created More #1 Hits Than Any Other Am: Fantasy? No, I knew it was big. Like I was No, I knew it was big. Like I was driving around in the car listening to driving around in the car ",
+      "topics": [
+        "Mariah Carey Mariah Carey: How She Created More #1 Hits Than Any Other American (Exclusive Interview) interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo mariah carey Fantasy? No, I knew it was big. Like I was No,"
+      ],
+      "tags": [
+        "Mariah Carey",
+        "interview",
+        "celebrity_interview",
+        "interview",
+        "talk show"
+      ],
+      "speakers": [
+        "Mariah Carey",
+        "Interviewer"
+      ],
+      "mentioned_people": [
+        "Mariah Carey"
+      ],
+      "hook": "Like that was just one of those things that I",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Mariah Carey — intervista momento 1: Fantasy? No, I knew i",
+          "summary": "Mariah Carey in Mariah Carey: How She Created More #1 Hits Than Any Other Am: Fantasy? No, I knew it was big. Like I was No, I knew it was big. Like I was driving around ",
+          "description": "Mariah Carey in Mariah Carey: How She Created More #1 Hits Than Any Other Am: Fantasy? No, I knew it was big. Like I was No, I knew it was big. Like I was driving around in the car listening to driving around in the car  Contesto: Mariah Carey Mariah Carey: How She Created More #1 Hits Than Any Other American (Exclusive Interview) interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo mariah carey Fantasy? No, I knew it was big. Like I was No,"
+        }
+      ]
+    },
+    {
+      "start": "00:12",
+      "end": "00:24",
+      "name": "Hook: like that was just one of those thi",
+      "category": "celebrity_interview",
+      "source_title": "Mariah Carey: How She Created More #1 Hits Than Any Other American (Exclusive Interview)",
+      "source_channel": "YouTube Interview",
+      "summary": "Apertura secca (12s): apertura secca dal colloquio Mariah Carey",
+      "topics": [
+        "Mariah Carey Mariah Carey: How She Created More #1 Hits Than Any Other American (Exclusive Interview) interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo mariah carey Fantasy? No, I knew it was big. Like I was No, hook apertura short opening-short"
+      ],
+      "tags": [
+        "Mariah Carey",
+        "interview",
+        "celebrity_interview",
+        "interview",
+        "talk show",
+        "hook"
+      ],
+      "speakers": [
+        "Mariah Carey",
+        "Interviewer"
+      ],
+      "mentioned_people": [
+        "Mariah Carey"
+      ],
+      "hook": "Like that was just one of those things that I",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Mariah Carey — intervista momento 1: Fantasy? No, I knew i",
+          "summary": "Mariah Carey in Mariah Carey: How She Created More #1 Hits Than Any Other Am: Fantasy? No, I knew it was big. Like I was No, I knew it was big. Like I was driving around ",
+          "description": "Apertura secca (12s): apertura secca dal colloquio Mariah Carey Contesto: Mariah Carey Mariah Carey: How She Created More #1 Hits Than Any Other American (Exclusive Interview) interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo mariah carey Fantasy? No, I knew it was big. Like I was No, hook apertura short opening-short"
+        }
+      ]
+    },
+    {
+      "start": "01:53",
+      "end": "02:38",
+      "name": "Mariah Carey — intervista momento 2: \"Don't say if I make it, say when",
+      "category": "celebrity_interview",
+      "source_title": "Mariah Carey: How She Created More #1 Hits Than Any Other American (Exclusive Interview)",
+      "source_channel": "YouTube Interview",
+      "summary": "Mariah Carey in Mariah Carey: How She Created More #1 Hits Than Any Other Am: \"Don't say if I make it, say when I make it.\" it.\" And And I heard her say that. I heard her say that. I'm not capable of being an opera singe",
+      "topics": [
+        "Mariah Carey Mariah Carey: How She Created More #1 Hits Than Any Other American (Exclusive Interview) interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo mariah carey \"Don't say if I make it, say when I make it.\" "
+      ],
+      "tags": [
+        "Mariah Carey",
+        "interview",
+        "celebrity_interview",
+        "interview",
+        "talk show"
+      ],
+      "speakers": [
+        "Mariah Carey",
+        "Interviewer"
+      ],
+      "mentioned_people": [
+        "Mariah Carey"
+      ],
+      "hook": "mind-blowing. Like",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Mariah Carey — intervista momento 2: \"Don't say if I make ",
+          "summary": "Mariah Carey in Mariah Carey: How She Created More #1 Hits Than Any Other Am: \"Don't say if I make it, say when I make it.\" it.\" And And I heard her say that. I heard her",
+          "description": "Mariah Carey in Mariah Carey: How She Created More #1 Hits Than Any Other Am: \"Don't say if I make it, say when I make it.\" it.\" And And I heard her say that. I heard her say that. I'm not capable of being an opera singe Contesto: Mariah Carey Mariah Carey: How She Created More #1 Hits Than Any Other American (Exclusive Interview) interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo mariah carey \"Don't say if I make it, say when I make it.\" "
+        }
+      ]
+    },
+    {
+      "start": "02:01",
+      "end": "02:13",
+      "name": "Hook: mind-blowing. like",
+      "category": "celebrity_interview",
+      "source_title": "Mariah Carey: How She Created More #1 Hits Than Any Other American (Exclusive Interview)",
+      "source_channel": "YouTube Interview",
+      "summary": "Apertura secca (12s): apertura secca dal colloquio Mariah Carey",
+      "topics": [
+        "Mariah Carey Mariah Carey: How She Created More #1 Hits Than Any Other American (Exclusive Interview) interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo mariah carey \"Don't say if I make it, say when I make it.\"  hook apertura short opening-short"
+      ],
+      "tags": [
+        "Mariah Carey",
+        "interview",
+        "celebrity_interview",
+        "interview",
+        "talk show",
+        "hook"
+      ],
+      "speakers": [
+        "Mariah Carey",
+        "Interviewer"
+      ],
+      "mentioned_people": [
+        "Mariah Carey"
+      ],
+      "hook": "mind-blowing. Like",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Mariah Carey — intervista momento 2: \"Don't say if I make ",
+          "summary": "Mariah Carey in Mariah Carey: How She Created More #1 Hits Than Any Other Am: \"Don't say if I make it, say when I make it.\" it.\" And And I heard her say that. I heard her",
+          "description": "Apertura secca (12s): apertura secca dal colloquio Mariah Carey Contesto: Mariah Carey Mariah Carey: How She Created More #1 Hits Than Any Other American (Exclusive Interview) interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo mariah carey \"Don't say if I make it, say when I make it.\"  hook apertura short opening-short"
+        }
+      ]
+    },
+    {
+      "start": "03:42",
+      "end": "04:27",
+      "name": "Mariah Carey — intervista momento 3: one right behind there, but I won",
+      "category": "celebrity_interview",
+      "source_title": "Mariah Carey: How She Created More #1 Hits Than Any Other American (Exclusive Interview)",
+      "source_channel": "YouTube Interview",
+      "summary": "Mariah Carey in Mariah Carey: How She Created More #1 Hits Than Any Other Am: one right behind there, but I won't bother you with that. bother you with that. Um Um there's a pen involved. there's a pen involved. There's ",
+      "topics": [
+        "Mariah Carey Mariah Carey: How She Created More #1 Hits Than Any Other American (Exclusive Interview) interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo mariah carey one right behind there, but I won't bother you"
+      ],
+      "tags": [
+        "Mariah Carey",
+        "interview",
+        "celebrity_interview",
+        "interview",
+        "talk show"
+      ],
+      "speakers": [
+        "Mariah Carey",
+        "Interviewer"
+      ],
+      "mentioned_people": [
+        "Mariah Carey"
+      ],
+      "hook": "when I'm writing cuz I'm kind of like channeling and in my own way. There was",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Mariah Carey — intervista momento 3: one right behind ther",
+          "summary": "Mariah Carey in Mariah Carey: How She Created More #1 Hits Than Any Other Am: one right behind there, but I won't bother you with that. bother you with that. Um Um there'",
+          "description": "Mariah Carey in Mariah Carey: How She Created More #1 Hits Than Any Other Am: one right behind there, but I won't bother you with that. bother you with that. Um Um there's a pen involved. there's a pen involved. There's  Contesto: Mariah Carey Mariah Carey: How She Created More #1 Hits Than Any Other American (Exclusive Interview) interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo mariah carey one right behind there, but I won't bother you"
+        }
+      ]
+    },
+    {
+      "start": "03:50",
+      "end": "04:02",
+      "name": "Hook: when i'm writing cuz i'm kind of li",
+      "category": "celebrity_interview",
+      "source_title": "Mariah Carey: How She Created More #1 Hits Than Any Other American (Exclusive Interview)",
+      "source_channel": "YouTube Interview",
+      "summary": "Apertura secca (12s): apertura secca dal colloquio Mariah Carey",
+      "topics": [
+        "Mariah Carey Mariah Carey: How She Created More #1 Hits Than Any Other American (Exclusive Interview) interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo mariah carey one right behind there, but I won't bother you hook apertura short opening-short"
+      ],
+      "tags": [
+        "Mariah Carey",
+        "interview",
+        "celebrity_interview",
+        "interview",
+        "talk show",
+        "hook"
+      ],
+      "speakers": [
+        "Mariah Carey",
+        "Interviewer"
+      ],
+      "mentioned_people": [
+        "Mariah Carey"
+      ],
+      "hook": "when I'm writing cuz I'm kind of like channeling and in my own way. There was",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Mariah Carey — intervista momento 3: one right behind ther",
+          "summary": "Mariah Carey in Mariah Carey: How She Created More #1 Hits Than Any Other Am: one right behind there, but I won't bother you with that. bother you with that. Um Um there'",
+          "description": "Apertura secca (12s): apertura secca dal colloquio Mariah Carey Contesto: Mariah Carey Mariah Carey: How She Created More #1 Hits Than Any Other American (Exclusive Interview) interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo mariah carey one right behind there, but I won't bother you hook apertura short opening-short"
+        }
+      ]
+    },
+    {
+      "start": "05:32",
+      "end": "06:17",
+      "name": "Mariah Carey — intervista momento 4: studio writing and I mean that be",
+      "category": "celebrity_interview",
+      "source_title": "Mariah Carey: How She Created More #1 Hits Than Any Other American (Exclusive Interview)",
+      "source_channel": "YouTube Interview",
+      "summary": "Mariah Carey in Mariah Carey: How She Created More #1 Hits Than Any Other Am: studio writing and I mean that because I say that because it's fun. I because I say that because it's fun. I love working with JD and he loves",
+      "topics": [
+        "Mariah Carey Mariah Carey: How She Created More #1 Hits Than Any Other American (Exclusive Interview) interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo mariah carey studio writing and I mean that because I say t"
+      ],
+      "tags": [
+        "Mariah Carey",
+        "interview",
+        "celebrity_interview",
+        "interview",
+        "talk show"
+      ],
+      "speakers": [
+        "Mariah Carey",
+        "Interviewer"
+      ],
+      "mentioned_people": [
+        "Mariah Carey"
+      ],
+      "hook": "And then we were talking about We Belong Together and you know, there's other",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Mariah Carey — intervista momento 4: studio writing and I ",
+          "summary": "Mariah Carey in Mariah Carey: How She Created More #1 Hits Than Any Other Am: studio writing and I mean that because I say that because it's fun. I because I say that bec",
+          "description": "Mariah Carey in Mariah Carey: How She Created More #1 Hits Than Any Other Am: studio writing and I mean that because I say that because it's fun. I because I say that because it's fun. I love working with JD and he loves Contesto: Mariah Carey Mariah Carey: How She Created More #1 Hits Than Any Other American (Exclusive Interview) interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo mariah carey studio writing and I mean that because I say t"
+        }
+      ]
+    },
+    {
+      "start": "05:40",
+      "end": "05:52",
+      "name": "Hook: and then we were talking about we b",
+      "category": "celebrity_interview",
+      "source_title": "Mariah Carey: How She Created More #1 Hits Than Any Other American (Exclusive Interview)",
+      "source_channel": "YouTube Interview",
+      "summary": "Apertura secca (12s): apertura secca dal colloquio Mariah Carey",
+      "topics": [
+        "Mariah Carey Mariah Carey: How She Created More #1 Hits Than Any Other American (Exclusive Interview) interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo mariah carey studio writing and I mean that because I say t hook apertura short opening-short"
+      ],
+      "tags": [
+        "Mariah Carey",
+        "interview",
+        "celebrity_interview",
+        "interview",
+        "talk show",
+        "hook"
+      ],
+      "speakers": [
+        "Mariah Carey",
+        "Interviewer"
+      ],
+      "mentioned_people": [
+        "Mariah Carey"
+      ],
+      "hook": "And then we were talking about We Belong Together and you know, there's other",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Mariah Carey — intervista momento 4: studio writing and I ",
+          "summary": "Mariah Carey in Mariah Carey: How She Created More #1 Hits Than Any Other Am: studio writing and I mean that because I say that because it's fun. I because I say that bec",
+          "description": "Apertura secca (12s): apertura secca dal colloquio Mariah Carey Contesto: Mariah Carey Mariah Carey: How She Created More #1 Hits Than Any Other American (Exclusive Interview) interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo mariah carey studio writing and I mean that because I say t hook apertura short opening-short"
+        }
+      ]
+    },
+    {
+      "start": "07:21",
+      "end": "08:06",
+      "name": "Mariah Carey — intervista momento 5: I don't know that I'm the subject",
+      "category": "celebrity_interview",
+      "source_title": "Mariah Carey: How She Created More #1 Hits Than Any Other American (Exclusive Interview)",
+      "source_channel": "YouTube Interview",
+      "summary": "Mariah Carey in Mariah Carey: How She Created More #1 Hits Than Any Other Am: I don't know that I'm the subject of them. them. It's a lot more It's a lot more things I've been through. things I've been through. Different",
+      "topics": [
+        "Mariah Carey Mariah Carey: How She Created More #1 Hits Than Any Other American (Exclusive Interview) interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo mariah carey I don't know that I'm the subject of them. the"
+      ],
+      "tags": [
+        "Mariah Carey",
+        "interview",
+        "celebrity_interview",
+        "interview",
+        "talk show"
+      ],
+      "speakers": [
+        "Mariah Carey",
+        "Interviewer"
+      ],
+      "mentioned_people": [
+        "Mariah Carey"
+      ],
+      "hook": "is one of them. &gt;&gt; [music]",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Mariah Carey — intervista momento 5: I don't know that I'm",
+          "summary": "Mariah Carey in Mariah Carey: How She Created More #1 Hits Than Any Other Am: I don't know that I'm the subject of them. them. It's a lot more It's a lot more things I've",
+          "description": "Mariah Carey in Mariah Carey: How She Created More #1 Hits Than Any Other Am: I don't know that I'm the subject of them. them. It's a lot more It's a lot more things I've been through. things I've been through. Different Contesto: Mariah Carey Mariah Carey: How She Created More #1 Hits Than Any Other American (Exclusive Interview) interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo mariah carey I don't know that I'm the subject of them. the"
+        }
+      ]
+    },
+    {
+      "start": "07:29",
+      "end": "07:41",
+      "name": "Hook: is one of them. &gt;&gt; [music]",
+      "category": "celebrity_interview",
+      "source_title": "Mariah Carey: How She Created More #1 Hits Than Any Other American (Exclusive Interview)",
+      "source_channel": "YouTube Interview",
+      "summary": "Apertura secca (12s): apertura secca dal colloquio Mariah Carey",
+      "topics": [
+        "Mariah Carey Mariah Carey: How She Created More #1 Hits Than Any Other American (Exclusive Interview) interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo mariah carey I don't know that I'm the subject of them. the hook apertura short opening-short"
+      ],
+      "tags": [
+        "Mariah Carey",
+        "interview",
+        "celebrity_interview",
+        "interview",
+        "talk show",
+        "hook"
+      ],
+      "speakers": [
+        "Mariah Carey",
+        "Interviewer"
+      ],
+      "mentioned_people": [
+        "Mariah Carey"
+      ],
+      "hook": "is one of them. &gt;&gt; [music]",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Mariah Carey — intervista momento 5: I don't know that I'm",
+          "summary": "Mariah Carey in Mariah Carey: How She Created More #1 Hits Than Any Other Am: I don't know that I'm the subject of them. them. It's a lot more It's a lot more things I've",
+          "description": "Apertura secca (12s): apertura secca dal colloquio Mariah Carey Contesto: Mariah Carey Mariah Carey: How She Created More #1 Hits Than Any Other American (Exclusive Interview) interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo mariah carey I don't know that I'm the subject of them. the hook apertura short opening-short"
+        }
+      ]
+    },
+    {
+      "start": "09:10",
+      "end": "09:55",
+      "name": "Mariah Carey — intervista momento 6: the powers that be and so I just ",
+      "category": "celebrity_interview",
+      "source_title": "Mariah Carey: How She Created More #1 Hits Than Any Other American (Exclusive Interview)",
+      "source_channel": "YouTube Interview",
+      "summary": "Mariah Carey in Mariah Carey: How She Created More #1 Hits Than Any Other Am: the powers that be and so I just even when we were sitting in our chairs at when we were sitting in our chairs at the Grammys like we all kind",
+      "topics": [
+        "Mariah Carey Mariah Carey: How She Created More #1 Hits Than Any Other American (Exclusive Interview) interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo mariah carey the powers that be and so I just even when we "
+      ],
+      "tags": [
+        "Mariah Carey",
+        "interview",
+        "celebrity_interview",
+        "interview",
+        "talk show"
+      ],
+      "speakers": [
+        "Mariah Carey",
+        "Interviewer"
+      ],
+      "mentioned_people": [
+        "Mariah Carey"
+      ],
+      "hook": "didn't even acknowledge me as a songwriter.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Mariah Carey — intervista momento 6: the powers that be an",
+          "summary": "Mariah Carey in Mariah Carey: How She Created More #1 Hits Than Any Other Am: the powers that be and so I just even when we were sitting in our chairs at when we were sit",
+          "description": "Mariah Carey in Mariah Carey: How She Created More #1 Hits Than Any Other Am: the powers that be and so I just even when we were sitting in our chairs at when we were sitting in our chairs at the Grammys like we all kind Contesto: Mariah Carey Mariah Carey: How She Created More #1 Hits Than Any Other American (Exclusive Interview) interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo mariah carey the powers that be and so I just even when we "
+        }
+      ]
+    },
+    {
+      "start": "09:18",
+      "end": "09:30",
+      "name": "Hook: didn't even acknowledge me as a son",
+      "category": "celebrity_interview",
+      "source_title": "Mariah Carey: How She Created More #1 Hits Than Any Other American (Exclusive Interview)",
+      "source_channel": "YouTube Interview",
+      "summary": "Apertura secca (12s): apertura secca dal colloquio Mariah Carey",
+      "topics": [
+        "Mariah Carey Mariah Carey: How She Created More #1 Hits Than Any Other American (Exclusive Interview) interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo mariah carey the powers that be and so I just even when we  hook apertura short opening-short"
+      ],
+      "tags": [
+        "Mariah Carey",
+        "interview",
+        "celebrity_interview",
+        "interview",
+        "talk show",
+        "hook"
+      ],
+      "speakers": [
+        "Mariah Carey",
+        "Interviewer"
+      ],
+      "mentioned_people": [
+        "Mariah Carey"
+      ],
+      "hook": "didn't even acknowledge me as a songwriter.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Mariah Carey — intervista momento 6: the powers that be an",
+          "summary": "Mariah Carey in Mariah Carey: How She Created More #1 Hits Than Any Other Am: the powers that be and so I just even when we were sitting in our chairs at when we were sit",
+          "description": "Apertura secca (12s): apertura secca dal colloquio Mariah Carey Contesto: Mariah Carey Mariah Carey: How She Created More #1 Hits Than Any Other American (Exclusive Interview) interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo mariah carey the powers that be and so I just even when we  hook apertura short opening-short"
+        }
+      ]
+    }
+  ]
+}

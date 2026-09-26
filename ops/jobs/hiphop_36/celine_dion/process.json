@@ -1,0 +1,441 @@
+{
+  "_comment": "POST /api/clips/process payload (ExtractRequest, drift source: internal/capabilities/youtube/dto/types.go). Source: Céline Dion’s interview at L’heure juste, 1992 (English Subtitles) (https://www.youtube.com/watch?v=cT7z2nyt4eY). Destination: the Clips/HipHop child folder for Celine Dion (see check.py FOLDERS), create_subfolder=false. Windows picked BY HAND from the timed transcript printed by ops/jobs/hiphop_36/tx.py; no LLM selection. Clip ids are deterministic (yt_<videoID>_<startSec>_<endSec>_v1) so a re-submit is an UPSERT. topics/summary/hook are keyword-dense on purpose: composeYouTubeClipSearchText feeds search_text -> 768d pgvector embedding, texts[] lands in asset_text_tracks in the same atomic commit.",
+  "url": "https://www.youtube.com/watch?v=cT7z2nyt4eY",
+  "strategy": "verify",
+  "concurrency": 3,
+  "force_keyframes": true,
+  "keep_audio": true,
+  "write_summary": true,
+  "destination": {
+    "folder_id": "187yn6YywuATzzHBikHV_QVtXK61D9W1Y",
+    "create_subfolder": false
+  },
+  "segments": [
+    {
+      "start": "00:04",
+      "end": "00:49",
+      "name": "Celine Dion — intervista momento 1: The only thing I tell myself is th",
+      "category": "celebrity_interview",
+      "source_title": "Céline Dion’s interview at L’heure juste, 1992 (English Subtitles)",
+      "source_channel": "YouTube Interview",
+      "summary": "Celine Dion in Céline Dion’s interview at L’heure juste, 1992 (English Subt: The only thing I tell myself is that you can't have everything in life. everything in life. It's true that I've gone through some It's true tha",
+      "topics": [
+        "Celine Dion Céline Dion’s interview at L’heure juste, 1992 (English Subtitles) interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo celine dion The only thing I tell myself is that you can't have everything in life"
+      ],
+      "tags": [
+        "Celine Dion",
+        "interview",
+        "celebrity_interview",
+        "interview",
+        "talk show"
+      ],
+      "speakers": [
+        "Celine Dion",
+        "Interviewer"
+      ],
+      "mentioned_people": [
+        "Celine Dion"
+      ],
+      "hook": "the chance to, and to continue to, experience things that I want to",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Celine Dion — intervista momento 1: The only thing I tell ",
+          "summary": "Celine Dion in Céline Dion’s interview at L’heure juste, 1992 (English Subt: The only thing I tell myself is that you can't have everything in life. everything in life. I",
+          "description": "Celine Dion in Céline Dion’s interview at L’heure juste, 1992 (English Subt: The only thing I tell myself is that you can't have everything in life. everything in life. It's true that I've gone through some It's true tha Contesto: Celine Dion Céline Dion’s interview at L’heure juste, 1992 (English Subtitles) interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo celine dion The only thing I tell myself is that you can't have everything in life"
+        }
+      ]
+    },
+    {
+      "start": "00:12",
+      "end": "00:24",
+      "name": "Hook: the chance to, and to continue to, ",
+      "category": "celebrity_interview",
+      "source_title": "Céline Dion’s interview at L’heure juste, 1992 (English Subtitles)",
+      "source_channel": "YouTube Interview",
+      "summary": "Apertura secca (12s): apertura secca dal colloquio Celine Dion",
+      "topics": [
+        "Celine Dion Céline Dion’s interview at L’heure juste, 1992 (English Subtitles) interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo celine dion The only thing I tell myself is that you can't have everything in life hook apertura short opening-short"
+      ],
+      "tags": [
+        "Celine Dion",
+        "interview",
+        "celebrity_interview",
+        "interview",
+        "talk show",
+        "hook"
+      ],
+      "speakers": [
+        "Celine Dion",
+        "Interviewer"
+      ],
+      "mentioned_people": [
+        "Celine Dion"
+      ],
+      "hook": "the chance to, and to continue to, experience things that I want to",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Celine Dion — intervista momento 1: The only thing I tell ",
+          "summary": "Celine Dion in Céline Dion’s interview at L’heure juste, 1992 (English Subt: The only thing I tell myself is that you can't have everything in life. everything in life. I",
+          "description": "Apertura secca (12s): apertura secca dal colloquio Celine Dion Contesto: Celine Dion Céline Dion’s interview at L’heure juste, 1992 (English Subtitles) interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo celine dion The only thing I tell myself is that you can't have everything in life hook apertura short opening-short"
+        }
+      ]
+    },
+    {
+      "start": "03:32",
+      "end": "04:17",
+      "name": "Celine Dion — intervista momento 2: ah, I see myself at such and such ",
+      "category": "celebrity_interview",
+      "source_title": "Céline Dion’s interview at L’heure juste, 1992 (English Subtitles)",
+      "source_channel": "YouTube Interview",
+      "summary": "Celine Dion in Céline Dion’s interview at L’heure juste, 1992 (English Subt: ah, I see myself at such and such an age doing this, uh, I'm going to get there, I'm going to go that far doing this, uh, I'm going to get ther",
+      "topics": [
+        "Celine Dion Céline Dion’s interview at L’heure juste, 1992 (English Subtitles) interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo celine dion ah, I see myself at such and such an age doing this, uh, I'm going to "
+      ],
+      "tags": [
+        "Celine Dion",
+        "interview",
+        "celebrity_interview",
+        "interview",
+        "talk show"
+      ],
+      "speakers": [
+        "Celine Dion",
+        "Interviewer"
+      ],
+      "mentioned_people": [
+        "Celine Dion"
+      ],
+      "hook": "fully. When people devote themselves entirely",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Celine Dion — intervista momento 2: ah, I see myself at su",
+          "summary": "Celine Dion in Céline Dion’s interview at L’heure juste, 1992 (English Subt: ah, I see myself at such and such an age doing this, uh, I'm going to get there, I'm going to",
+          "description": "Celine Dion in Céline Dion’s interview at L’heure juste, 1992 (English Subt: ah, I see myself at such and such an age doing this, uh, I'm going to get there, I'm going to go that far doing this, uh, I'm going to get ther Contesto: Celine Dion Céline Dion’s interview at L’heure juste, 1992 (English Subtitles) interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo celine dion ah, I see myself at such and such an age doing this, uh, I'm going to "
+        }
+      ]
+    },
+    {
+      "start": "03:40",
+      "end": "03:52",
+      "name": "Hook: fully. when people devote themselve",
+      "category": "celebrity_interview",
+      "source_title": "Céline Dion’s interview at L’heure juste, 1992 (English Subtitles)",
+      "source_channel": "YouTube Interview",
+      "summary": "Apertura secca (12s): apertura secca dal colloquio Celine Dion",
+      "topics": [
+        "Celine Dion Céline Dion’s interview at L’heure juste, 1992 (English Subtitles) interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo celine dion ah, I see myself at such and such an age doing this, uh, I'm going to  hook apertura short opening-short"
+      ],
+      "tags": [
+        "Celine Dion",
+        "interview",
+        "celebrity_interview",
+        "interview",
+        "talk show",
+        "hook"
+      ],
+      "speakers": [
+        "Celine Dion",
+        "Interviewer"
+      ],
+      "mentioned_people": [
+        "Celine Dion"
+      ],
+      "hook": "fully. When people devote themselves entirely",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Celine Dion — intervista momento 2: ah, I see myself at su",
+          "summary": "Celine Dion in Céline Dion’s interview at L’heure juste, 1992 (English Subt: ah, I see myself at such and such an age doing this, uh, I'm going to get there, I'm going to",
+          "description": "Apertura secca (12s): apertura secca dal colloquio Celine Dion Contesto: Celine Dion Céline Dion’s interview at L’heure juste, 1992 (English Subtitles) interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo celine dion ah, I see myself at such and such an age doing this, uh, I'm going to  hook apertura short opening-short"
+        }
+      ]
+    },
+    {
+      "start": "07:00",
+      "end": "07:45",
+      "name": "Celine Dion — intervista momento 3: Oh yes, and I'm very happy. And on",
+      "category": "celebrity_interview",
+      "source_title": "Céline Dion’s interview at L’heure juste, 1992 (English Subtitles)",
+      "source_channel": "YouTube Interview",
+      "summary": "Celine Dion in Céline Dion’s interview at L’heure juste, 1992 (English Subt: Oh yes, and I'm very happy. And one day, day, well, I'm glad that you're happy well, I'm glad that you're happy . . Thank you for being happy f",
+      "topics": [
+        "Celine Dion Céline Dion’s interview at L’heure juste, 1992 (English Subtitles) interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo celine dion Oh yes, and I'm very happy. And one day, day, well, I'm glad that you'"
+      ],
+      "tags": [
+        "Celine Dion",
+        "interview",
+        "celebrity_interview",
+        "interview",
+        "talk show"
+      ],
+      "speakers": [
+        "Celine Dion",
+        "Interviewer"
+      ],
+      "mentioned_people": [
+        "Celine Dion"
+      ],
+      "hook": "So there's no question of marriage yet.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Celine Dion — intervista momento 3: Oh yes, and I'm very h",
+          "summary": "Celine Dion in Céline Dion’s interview at L’heure juste, 1992 (English Subt: Oh yes, and I'm very happy. And one day, day, well, I'm glad that you're happy well, I'm glad",
+          "description": "Celine Dion in Céline Dion’s interview at L’heure juste, 1992 (English Subt: Oh yes, and I'm very happy. And one day, day, well, I'm glad that you're happy well, I'm glad that you're happy . . Thank you for being happy f Contesto: Celine Dion Céline Dion’s interview at L’heure juste, 1992 (English Subtitles) interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo celine dion Oh yes, and I'm very happy. And one day, day, well, I'm glad that you'"
+        }
+      ]
+    },
+    {
+      "start": "07:08",
+      "end": "07:20",
+      "name": "Hook: so there's no question of marriage ",
+      "category": "celebrity_interview",
+      "source_title": "Céline Dion’s interview at L’heure juste, 1992 (English Subtitles)",
+      "source_channel": "YouTube Interview",
+      "summary": "Apertura secca (12s): apertura secca dal colloquio Celine Dion",
+      "topics": [
+        "Celine Dion Céline Dion’s interview at L’heure juste, 1992 (English Subtitles) interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo celine dion Oh yes, and I'm very happy. And one day, day, well, I'm glad that you' hook apertura short opening-short"
+      ],
+      "tags": [
+        "Celine Dion",
+        "interview",
+        "celebrity_interview",
+        "interview",
+        "talk show",
+        "hook"
+      ],
+      "speakers": [
+        "Celine Dion",
+        "Interviewer"
+      ],
+      "mentioned_people": [
+        "Celine Dion"
+      ],
+      "hook": "So there's no question of marriage yet.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Celine Dion — intervista momento 3: Oh yes, and I'm very h",
+          "summary": "Celine Dion in Céline Dion’s interview at L’heure juste, 1992 (English Subt: Oh yes, and I'm very happy. And one day, day, well, I'm glad that you're happy well, I'm glad",
+          "description": "Apertura secca (12s): apertura secca dal colloquio Celine Dion Contesto: Celine Dion Céline Dion’s interview at L’heure juste, 1992 (English Subtitles) interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo celine dion Oh yes, and I'm very happy. And one day, day, well, I'm glad that you' hook apertura short opening-short"
+        }
+      ]
+    },
+    {
+      "start": "10:29",
+      "end": "11:14",
+      "name": "Celine Dion — intervista momento 4: sore throat, I think, your hair, h",
+      "category": "celebrity_interview",
+      "source_title": "Céline Dion’s interview at L’heure juste, 1992 (English Subtitles)",
+      "source_channel": "YouTube Interview",
+      "summary": "Celine Dion in Céline Dion’s interview at L’heure juste, 1992 (English Subt: sore throat, I think, your hair, huh, or I don't know, my mother, everything hair, huh, or I don't know, my mother, everything is important to ",
+      "topics": [
+        "Celine Dion Céline Dion’s interview at L’heure juste, 1992 (English Subtitles) interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo celine dion sore throat, I think, your hair, huh, or I don't know, my mother, ever"
+      ],
+      "tags": [
+        "Celine Dion",
+        "interview",
+        "celebrity_interview",
+        "interview",
+        "talk show"
+      ],
+      "speakers": [
+        "Celine Dion",
+        "Interviewer"
+      ],
+      "mentioned_people": [
+        "Celine Dion"
+      ],
+      "hook": "the same family, than your brothers, your sisters, because you are Céline Dion, the",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Celine Dion — intervista momento 4: sore throat, I think, ",
+          "summary": "Celine Dion in Céline Dion’s interview at L’heure juste, 1992 (English Subt: sore throat, I think, your hair, huh, or I don't know, my mother, everything hair, huh, or I ",
+          "description": "Celine Dion in Céline Dion’s interview at L’heure juste, 1992 (English Subt: sore throat, I think, your hair, huh, or I don't know, my mother, everything hair, huh, or I don't know, my mother, everything is important to  Contesto: Celine Dion Céline Dion’s interview at L’heure juste, 1992 (English Subtitles) interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo celine dion sore throat, I think, your hair, huh, or I don't know, my mother, ever"
+        }
+      ]
+    },
+    {
+      "start": "10:37",
+      "end": "10:49",
+      "name": "Hook: the same family, than your brothers",
+      "category": "celebrity_interview",
+      "source_title": "Céline Dion’s interview at L’heure juste, 1992 (English Subtitles)",
+      "source_channel": "YouTube Interview",
+      "summary": "Apertura secca (12s): apertura secca dal colloquio Celine Dion",
+      "topics": [
+        "Celine Dion Céline Dion’s interview at L’heure juste, 1992 (English Subtitles) interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo celine dion sore throat, I think, your hair, huh, or I don't know, my mother, ever hook apertura short opening-short"
+      ],
+      "tags": [
+        "Celine Dion",
+        "interview",
+        "celebrity_interview",
+        "interview",
+        "talk show",
+        "hook"
+      ],
+      "speakers": [
+        "Celine Dion",
+        "Interviewer"
+      ],
+      "mentioned_people": [
+        "Celine Dion"
+      ],
+      "hook": "the same family, than your brothers, your sisters, because you are Céline Dion, the",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Celine Dion — intervista momento 4: sore throat, I think, ",
+          "summary": "Celine Dion in Céline Dion’s interview at L’heure juste, 1992 (English Subt: sore throat, I think, your hair, huh, or I don't know, my mother, everything hair, huh, or I ",
+          "description": "Apertura secca (12s): apertura secca dal colloquio Celine Dion Contesto: Celine Dion Céline Dion’s interview at L’heure juste, 1992 (English Subtitles) interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo celine dion sore throat, I think, your hair, huh, or I don't know, my mother, ever hook apertura short opening-short"
+        }
+      ]
+    },
+    {
+      "start": "13:57",
+      "end": "14:42",
+      "name": "Celine Dion — intervista momento 5: you like? I don't like myself. I d",
+      "category": "celebrity_interview",
+      "source_title": "Céline Dion’s interview at L’heure juste, 1992 (English Subtitles)",
+      "source_channel": "YouTube Interview",
+      "summary": "Celine Dion in Céline Dion’s interview at L’heure juste, 1992 (English Subt: you like? I don't like myself. I don't like myself. I don't like myself. I don't like myself. You're not moving well You're not moving well I d",
+      "topics": [
+        "Celine Dion Céline Dion’s interview at L’heure juste, 1992 (English Subtitles) interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo celine dion you like? I don't like myself. I don't like myself. I don't like mysel"
+      ],
+      "tags": [
+        "Celine Dion",
+        "interview",
+        "celebrity_interview",
+        "interview",
+        "talk show"
+      ],
+      "speakers": [
+        "Celine Dion",
+        "Interviewer"
+      ],
+      "mentioned_people": [
+        "Celine Dion"
+      ],
+      "hook": "Yes, it's me. But I'm trying to correct myself. There are things I want,",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Celine Dion — intervista momento 5: you like? I don't like",
+          "summary": "Celine Dion in Céline Dion’s interview at L’heure juste, 1992 (English Subt: you like? I don't like myself. I don't like myself. I don't like myself. I don't like myself.",
+          "description": "Celine Dion in Céline Dion’s interview at L’heure juste, 1992 (English Subt: you like? I don't like myself. I don't like myself. I don't like myself. I don't like myself. You're not moving well You're not moving well I d Contesto: Celine Dion Céline Dion’s interview at L’heure juste, 1992 (English Subtitles) interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo celine dion you like? I don't like myself. I don't like myself. I don't like mysel"
+        }
+      ]
+    },
+    {
+      "start": "14:05",
+      "end": "14:17",
+      "name": "Hook: yes, it's me. but i'm trying to cor",
+      "category": "celebrity_interview",
+      "source_title": "Céline Dion’s interview at L’heure juste, 1992 (English Subtitles)",
+      "source_channel": "YouTube Interview",
+      "summary": "Apertura secca (12s): apertura secca dal colloquio Celine Dion",
+      "topics": [
+        "Celine Dion Céline Dion’s interview at L’heure juste, 1992 (English Subtitles) interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo celine dion you like? I don't like myself. I don't like myself. I don't like mysel hook apertura short opening-short"
+      ],
+      "tags": [
+        "Celine Dion",
+        "interview",
+        "celebrity_interview",
+        "interview",
+        "talk show",
+        "hook"
+      ],
+      "speakers": [
+        "Celine Dion",
+        "Interviewer"
+      ],
+      "mentioned_people": [
+        "Celine Dion"
+      ],
+      "hook": "Yes, it's me. But I'm trying to correct myself. There are things I want,",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Celine Dion — intervista momento 5: you like? I don't like",
+          "summary": "Celine Dion in Céline Dion’s interview at L’heure juste, 1992 (English Subt: you like? I don't like myself. I don't like myself. I don't like myself. I don't like myself.",
+          "description": "Apertura secca (12s): apertura secca dal colloquio Celine Dion Contesto: Celine Dion Céline Dion’s interview at L’heure juste, 1992 (English Subtitles) interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo celine dion you like? I don't like myself. I don't like myself. I don't like mysel hook apertura short opening-short"
+        }
+      ]
+    },
+    {
+      "start": "17:25",
+      "end": "18:10",
+      "name": "Celine Dion — intervista momento 6: I want it so much.",
+      "category": "celebrity_interview",
+      "source_title": "Céline Dion’s interview at L’heure juste, 1992 (English Subtitles)",
+      "source_channel": "YouTube Interview",
+      "summary": "Celine Dion in Céline Dion’s interview at L’heure juste, 1992 (English Subt: I want it so much. so much. Where do you want to sing Where do you want to sing everywhere? I want to sing everywhere I have everywhere? I want",
+      "topics": [
+        "Celine Dion Céline Dion’s interview at L’heure juste, 1992 (English Subtitles) interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo celine dion I want it so much. so much. Where do you want to sing Where do you wan"
+      ],
+      "tags": [
+        "Celine Dion",
+        "interview",
+        "celebrity_interview",
+        "interview",
+        "talk show"
+      ],
+      "speakers": [
+        "Celine Dion",
+        "Interviewer"
+      ],
+      "mentioned_people": [
+        "Celine Dion"
+      ],
+      "hook": "yes, [laughs] it's done.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Celine Dion — intervista momento 6: I want it so much.",
+          "summary": "Celine Dion in Céline Dion’s interview at L’heure juste, 1992 (English Subt: I want it so much. so much. Where do you want to sing Where do you want to sing everywhere? I",
+          "description": "Celine Dion in Céline Dion’s interview at L’heure juste, 1992 (English Subt: I want it so much. so much. Where do you want to sing Where do you want to sing everywhere? I want to sing everywhere I have everywhere? I want Contesto: Celine Dion Céline Dion’s interview at L’heure juste, 1992 (English Subtitles) interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo celine dion I want it so much. so much. Where do you want to sing Where do you wan"
+        }
+      ]
+    },
+    {
+      "start": "17:33",
+      "end": "17:45",
+      "name": "Hook: yes, [laughs] it's done.",
+      "category": "celebrity_interview",
+      "source_title": "Céline Dion’s interview at L’heure juste, 1992 (English Subtitles)",
+      "source_channel": "YouTube Interview",
+      "summary": "Apertura secca (12s): apertura secca dal colloquio Celine Dion",
+      "topics": [
+        "Celine Dion Céline Dion’s interview at L’heure juste, 1992 (English Subtitles) interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo celine dion I want it so much. so much. Where do you want to sing Where do you wan hook apertura short opening-short"
+      ],
+      "tags": [
+        "Celine Dion",
+        "interview",
+        "celebrity_interview",
+        "interview",
+        "talk show",
+        "hook"
+      ],
+      "speakers": [
+        "Celine Dion",
+        "Interviewer"
+      ],
+      "mentioned_people": [
+        "Celine Dion"
+      ],
+      "hook": "yes, [laughs] it's done.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Celine Dion — intervista momento 6: I want it so much.",
+          "summary": "Celine Dion in Céline Dion’s interview at L’heure juste, 1992 (English Subt: I want it so much. so much. Where do you want to sing Where do you want to sing everywhere? I",
+          "description": "Apertura secca (12s): apertura secca dal colloquio Celine Dion Contesto: Celine Dion Céline Dion’s interview at L’heure juste, 1992 (English Subtitles) interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo celine dion I want it so much. so much. Where do you want to sing Where do you wan hook apertura short opening-short"
+        }
+      ]
+    }
+  ]
+}

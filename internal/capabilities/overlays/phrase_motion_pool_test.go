@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
+	"strings"
 	"testing"
 )
 
@@ -118,12 +120,12 @@ func TestBuildPlanRotatesWithinTheChannelPool(t *testing.T) {
 	}
 }
 
-func TestModernAppleFamilyIncludesCertifiedMotionsOutsideSoftDefault(t *testing.T) {
+func TestModernAppleFamilyExposesAllCatalogMotions(t *testing.T) {
 	family := certifiedPhraseFamily("modern_apple")
-	if len(family) != len(generatedPhraseMotions) {
-		t.Fatalf("modern_apple family has %d motions, want all %d generated motions", len(family), len(generatedPhraseMotions))
+	if len(family) != 60 {
+		t.Fatalf("modern_apple family has %d motions, want all 60 registered modern Apple motions", len(family))
 	}
-	for _, id := range generatedPhraseMotions {
+	for _, id := range modernAppleMotionCandidates {
 		if !containsString(family, id) {
 			t.Fatalf("modern_apple family omitted default motion %q", id)
 		}
@@ -136,8 +138,37 @@ func TestModernAppleFamilyIncludesCertifiedMotionsOutsideSoftDefault(t *testing.
 }
 
 func TestGeneratedPhraseRotationCoversFifteenAndFits24FPSTiming(t *testing.T) {
-	if len(generatedPhraseMotions) != 30 {
-		t.Fatalf("generated phrase pool has %d entries, want all 30 certified Apple motions", len(generatedPhraseMotions))
+	if len(generatedPhraseMotions) != 107 {
+		t.Fatalf("generated phrase pool has %d entries, want all 107 registered phrase motions", len(generatedPhraseMotions))
+	}
+	sequence := defaultPhraseMotionSequence("rotation-107", "run")
+	seenAll := make(map[string]bool, 107)
+	familyCounts := map[string]int{}
+	for i, id := range sequence {
+		if seenAll[id] {
+			t.Fatalf("default phrase sequence repeats %q before all catalog motions are covered", id)
+		}
+		seenAll[id] = true
+		if i < 15 {
+			switch {
+			case containsString(classicAppleMotionCandidates, id):
+				familyCounts["classic_apple"]++
+			case containsString(modernAppleMotionCandidates, id):
+				familyCounts["modern_apple"]++
+			case containsString(typewriterMotionCandidates, id):
+				familyCounts["typewriter"]++
+			default:
+				t.Fatalf("default phrase sequence selected unregistered motion %q", id)
+			}
+		}
+	}
+	if len(sequence) != 107 || len(seenAll) != 107 {
+		t.Fatalf("default phrase sequence covers %d motions, want all 107", len(seenAll))
+	}
+	for family, want := range map[string]int{"classic_apple": 5, "modern_apple": 5, "typewriter": 5} {
+		if familyCounts[family] != want {
+			t.Fatalf("first 15 phrase motions contain %d %s entries, want %d", familyCounts[family], family, want)
+		}
 	}
 	phrases := make([]TimedAnnotation, 15)
 	for i := range phrases {
@@ -171,8 +202,8 @@ func TestGeneratedPhraseRotationCoversFifteenAndFits24FPSTiming(t *testing.T) {
 			t.Fatalf("motion %q repeated before the 15th phrase", item.MotionID)
 		}
 		seen[item.MotionID] = true
-		if got := item.MotionParams["enter_frames"]; got != 16 {
-			t.Fatalf("phrase %q enter_frames = %v, want 16 frames (about 650 ms at 24 fps)", item.Text, got)
+		if got := item.MotionParams["enter_frames"]; got != 24 {
+			t.Fatalf("phrase %q enter_frames = %v, want 24 frames (half of 2 seconds at 24 fps)", item.Text, got)
 		}
 	}
 	if count != 15 {
@@ -180,10 +211,10 @@ func TestGeneratedPhraseRotationCoversFifteenAndFits24FPSTiming(t *testing.T) {
 	}
 }
 
-func TestPhraseMotionEntranceScalesDownForShortPhrase(t *testing.T) {
+func TestPhraseMotionEntranceUsesHalfPhraseDuration(t *testing.T) {
 	params := phraseMotionParams(TimedAnnotation{StartMs: 0, EndMs: 800, DurationUS: 800_000}, 24, 1)
-	if got := params["enter_frames"]; got != 8 {
-		t.Fatalf("short phrase enter_frames = %v, want 8 frames (40%% of 800 ms at 24 fps)", got)
+	if got := params["enter_frames"]; got != 10 {
+		t.Fatalf("short phrase enter_frames = %v, want 10 frames (half of 800 ms at 24 fps)", got)
 	}
 }
 
@@ -197,7 +228,7 @@ func containsString(haystack []string, needle string) bool {
 }
 
 func TestCertifiedImageMotionPoolAndPlannerAssignment(t *testing.T) {
-	want := []string{"image_25d_depth_float_in", "image_25d_yaw_flip_in", "image_25d_pitch_lift", "image_25d_pop_z_bounce", "image_25d_swipe_3d", "image_25d_card_swing", "image_25d_blur_focus_in", "image_25d_blur_scale_in"}
+	want := renderSafeImageMotions
 	got := CertifiedImageMotions()
 	if len(got) != len(want) {
 		t.Fatalf("CertifiedImageMotions has %d entries, want %d", len(got), len(want))
@@ -206,6 +237,14 @@ func TestCertifiedImageMotionPoolAndPlannerAssignment(t *testing.T) {
 		if got[i] != want[i] || imageMotionCandidates[i] != want[i] {
 			t.Fatalf("image motion %d = %q / %q, want catalog contract %q", i, got[i], imageMotionCandidates[i], want[i])
 		}
+	}
+	selected := make(map[string]bool, 18)
+	for ordinal := range got {
+		id := selectImageMotion("image-catalog-18", "run", ordinal, nil)
+		if !containsString(got, id) || selected[id] {
+			t.Fatalf("image selector repeated or emitted an unknown motion at %d: %q", ordinal, id)
+		}
+		selected[id] = true
 	}
 	input := PlanInput{PlanID: "image-motion-pool", VideoID: "v", Width: 1280, Height: 720, FPSNum: 30, FPSDen: 1,
 		Scenes: []SceneInput{{ID: "s", Images: []ImageCandidate{
@@ -249,7 +288,7 @@ func TestImageMotionPoolMatchesCanonicalChrononCatalog(t *testing.T) {
 	}
 	var catalogPath string
 	for dir := root; ; dir = filepath.Dir(dir) {
-		candidate := filepath.Join(dir, "ChrononTemplate", "catalog", "motion_catalog.v1.json")
+		candidate := filepath.Join(dir, "RenderingGen", "renderinggen", "internal", "motion", "catalog", "chronontemplate_catalog.v1.json")
 		if _, err := os.Stat(candidate); err == nil {
 			catalogPath = candidate
 			break
@@ -275,18 +314,33 @@ func TestImageMotionPoolMatchesCanonicalChrononCatalog(t *testing.T) {
 	if err := json.Unmarshal(data, &document); err != nil {
 		t.Fatal(err)
 	}
-	var catalogIDs []string
+	var catalogIDs, catalogPhraseIDs []string
 	for _, definition := range document.Motions {
-		if definition.Category == "image_25d_clean_v1" {
+		if definition.Category == "image_25d_clean_v1" || definition.Category == "overlay_v3_image" {
 			catalogIDs = append(catalogIDs, definition.ID)
 		}
+		if definition.Category == "apple_v2" || definition.Category == "apple_v3" || definition.Category == "phrase_apple_clean_v1" || definition.Category == "apple_phrase_v1" || strings.HasPrefix(definition.ID, "typewriter_") {
+			catalogPhraseIDs = append(catalogPhraseIDs, definition.ID)
+		}
 	}
-	if len(catalogIDs) != len(imageMotionCandidates) {
-		t.Fatalf("catalog has %d clean image motions, pool has %d", len(catalogIDs), len(imageMotionCandidates))
+	sort.Strings(catalogIDs)
+	sort.Strings(catalogPhraseIDs)
+	if len(catalogIDs) != 18 || len(catalogIDs) != len(imageMotionCandidates) {
+		t.Fatalf("catalog has %d image motions, pool has %d; want all 18", len(catalogIDs), len(imageMotionCandidates))
 	}
 	for i := range catalogIDs {
 		if catalogIDs[i] != imageMotionCandidates[i] {
 			t.Fatalf("catalog motion %d=%q, pool=%q", i, catalogIDs[i], imageMotionCandidates[i])
+		}
+	}
+	if len(catalogPhraseIDs) != 107 || len(phraseMotionCandidates) != len(catalogPhraseIDs) {
+		t.Fatalf("catalog has %d phrase motions, callable pool has %d; want all 107", len(catalogPhraseIDs), len(phraseMotionCandidates))
+	}
+	callable := append([]string(nil), phraseMotionCandidates...)
+	sort.Strings(callable)
+	for i := range catalogPhraseIDs {
+		if catalogPhraseIDs[i] != callable[i] {
+			t.Fatalf("catalog phrase motion %d=%q, callable pool=%q", i, catalogPhraseIDs[i], callable[i])
 		}
 	}
 }

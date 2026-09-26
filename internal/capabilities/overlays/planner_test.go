@@ -270,20 +270,18 @@ func TestBuildPlanSharesPayloadSelectedPhraseFamilyMotion(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	chosen := ""
+	seen := map[string]bool{}
 	for i, item := range first.Items {
 		if item.Kind != "text_phrase" {
 			continue
 		}
-		if chosen == "" {
-			chosen = item.MotionID
+		if !containsString(modernAppleMotionCandidates, item.MotionID) || seen[item.MotionID] || item.MotionID != second.Items[i].MotionID {
+			t.Fatalf("family motion must be distinct, modern Apple, and deterministic: item=%q retry=%q", item.MotionID, second.Items[i].MotionID)
 		}
-		if item.MotionID != chosen || item.MotionID != second.Items[i].MotionID {
-			t.Fatalf("phrase motions differ within/reacross payload: first=%q item=%q retry=%q", chosen, item.MotionID, second.Items[i].MotionID)
-		}
+		seen[item.MotionID] = true
 	}
-	if chosen == "" || !strings.HasPrefix(chosen, "phrase_apple_clean_") {
-		t.Fatalf("family selected motion %q, want modern_apple", chosen)
+	if len(seen) != 3 {
+		t.Fatalf("modern_apple family selected %d distinct motions, want 3", len(seen))
 	}
 }
 

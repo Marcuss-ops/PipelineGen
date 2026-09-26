@@ -1,0 +1,441 @@
+{
+  "_comment": "POST /api/clips/process payload (ExtractRequest, drift source: internal/capabilities/youtube/dto/types.go). Source: Mick Jagger (Rolling Stones) - Interview/\"Gimme Shelter\" 1973 [Reelin' In The Years Archives] (https://www.youtube.com/watch?v=GzcIPJ8tmsI). Destination: the Clips/HipHop child folder for The Rolling Stones (see check.py FOLDERS), create_subfolder=false. Windows picked BY HAND from the timed transcript printed by ops/jobs/hiphop_36/tx.py; no LLM selection. Clip ids are deterministic (yt_<videoID>_<startSec>_<endSec>_v1) so a re-submit is an UPSERT. topics/summary/hook are keyword-dense on purpose: composeYouTubeClipSearchText feeds search_text -> 768d pgvector embedding, texts[] lands in asset_text_tracks in the same atomic commit.",
+  "url": "https://www.youtube.com/watch?v=GzcIPJ8tmsI",
+  "strategy": "verify",
+  "concurrency": 3,
+  "force_keyframes": true,
+  "keep_audio": true,
+  "write_summary": true,
+  "destination": {
+    "folder_id": "1DQE0gBxuEUX2cBzY982pMdXtFUE5D8ri",
+    "create_subfolder": false
+  },
+  "segments": [
+    {
+      "start": "00:04",
+      "end": "00:49",
+      "name": "The Rolling Stones — intervista momento 1: [Music] most pop singers co",
+      "category": "celebrity_interview",
+      "source_title": "Mick Jagger (Rolling Stones) - Interview/\"Gimme Shelter\" 1973 [Reelin' In The Years Archives]",
+      "source_channel": "YouTube Interview",
+      "summary": "The Rolling Stones in Mick Jagger (Rolling Stones) - Interview/\"Gimme Shelter\" 197: [Music] most pop singers come from English most pop singers come from English middle-class magnet I don't know with my middle-class magn",
+      "topics": [
+        "The Rolling Stones Mick Jagger (Rolling Stones) - Interview/\"Gimme Shelter\" 1973 [Reelin' In The Years Archives] interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo the rolling stones [Music] most pop singers come"
+      ],
+      "tags": [
+        "The Rolling Stones",
+        "interview",
+        "celebrity_interview",
+        "interview",
+        "talk show"
+      ],
+      "speakers": [
+        "Mick Jagger",
+        "Interviewer"
+      ],
+      "mentioned_people": [
+        "The Rolling Stones"
+      ],
+      "hook": "[Music] most pop singers come from English",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "The Rolling Stones — intervista momento 1: [Music] most po",
+          "summary": "The Rolling Stones in Mick Jagger (Rolling Stones) - Interview/\"Gimme Shelter\" 197: [Music] most pop singers come from English most pop singers come from English middle-c",
+          "description": "The Rolling Stones in Mick Jagger (Rolling Stones) - Interview/\"Gimme Shelter\" 197: [Music] most pop singers come from English most pop singers come from English middle-class magnet I don't know with my middle-class magn Contesto: The Rolling Stones Mick Jagger (Rolling Stones) - Interview/\"Gimme Shelter\" 1973 [Reelin' In The Years Archives] interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo the rolling stones [Music] most pop singers come"
+        }
+      ]
+    },
+    {
+      "start": "00:12",
+      "end": "00:24",
+      "name": "Hook: [music] most pop singers come from ",
+      "category": "celebrity_interview",
+      "source_title": "Mick Jagger (Rolling Stones) - Interview/\"Gimme Shelter\" 1973 [Reelin' In The Years Archives]",
+      "source_channel": "YouTube Interview",
+      "summary": "Apertura secca (12s): apertura secca dal colloquio The Rolling Stones",
+      "topics": [
+        "The Rolling Stones Mick Jagger (Rolling Stones) - Interview/\"Gimme Shelter\" 1973 [Reelin' In The Years Archives] interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo the rolling stones [Music] most pop singers come hook apertura short opening-short"
+      ],
+      "tags": [
+        "The Rolling Stones",
+        "interview",
+        "celebrity_interview",
+        "interview",
+        "talk show",
+        "hook"
+      ],
+      "speakers": [
+        "Mick Jagger",
+        "Interviewer"
+      ],
+      "mentioned_people": [
+        "The Rolling Stones"
+      ],
+      "hook": "[Music] most pop singers come from English",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "The Rolling Stones — intervista momento 1: [Music] most po",
+          "summary": "The Rolling Stones in Mick Jagger (Rolling Stones) - Interview/\"Gimme Shelter\" 197: [Music] most pop singers come from English most pop singers come from English middle-c",
+          "description": "Apertura secca (12s): apertura secca dal colloquio The Rolling Stones Contesto: The Rolling Stones Mick Jagger (Rolling Stones) - Interview/\"Gimme Shelter\" 1973 [Reelin' In The Years Archives] interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo the rolling stones [Music] most pop singers come hook apertura short opening-short"
+        }
+      ]
+    },
+    {
+      "start": "02:27",
+      "end": "03:12",
+      "name": "The Rolling Stones — intervista momento 2: for images reflections and ",
+      "category": "celebrity_interview",
+      "source_title": "Mick Jagger (Rolling Stones) - Interview/\"Gimme Shelter\" 1973 [Reelin' In The Years Archives]",
+      "source_channel": "YouTube Interview",
+      "summary": "The Rolling Stones in Mick Jagger (Rolling Stones) - Interview/\"Gimme Shelter\" 197: for images reflections and I don't want to be one well how do you see it to be one well how do you see it something Oh less noise diffic",
+      "topics": [
+        "The Rolling Stones Mick Jagger (Rolling Stones) - Interview/\"Gimme Shelter\" 1973 [Reelin' In The Years Archives] interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo the rolling stones for images reflections and I "
+      ],
+      "tags": [
+        "The Rolling Stones",
+        "interview",
+        "celebrity_interview",
+        "interview",
+        "talk show"
+      ],
+      "speakers": [
+        "Mick Jagger",
+        "Interviewer"
+      ],
+      "mentioned_people": [
+        "The Rolling Stones"
+      ],
+      "hook": "is well it's a lot of things you know it you got to make one person's personality",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "The Rolling Stones — intervista momento 2: for images refl",
+          "summary": "The Rolling Stones in Mick Jagger (Rolling Stones) - Interview/\"Gimme Shelter\" 197: for images reflections and I don't want to be one well how do you see it to be one wel",
+          "description": "The Rolling Stones in Mick Jagger (Rolling Stones) - Interview/\"Gimme Shelter\" 197: for images reflections and I don't want to be one well how do you see it to be one well how do you see it something Oh less noise diffic Contesto: The Rolling Stones Mick Jagger (Rolling Stones) - Interview/\"Gimme Shelter\" 1973 [Reelin' In The Years Archives] interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo the rolling stones for images reflections and I "
+        }
+      ]
+    },
+    {
+      "start": "02:35",
+      "end": "02:47",
+      "name": "Hook: is well it's a lot of things you kn",
+      "category": "celebrity_interview",
+      "source_title": "Mick Jagger (Rolling Stones) - Interview/\"Gimme Shelter\" 1973 [Reelin' In The Years Archives]",
+      "source_channel": "YouTube Interview",
+      "summary": "Apertura secca (12s): apertura secca dal colloquio The Rolling Stones",
+      "topics": [
+        "The Rolling Stones Mick Jagger (Rolling Stones) - Interview/\"Gimme Shelter\" 1973 [Reelin' In The Years Archives] interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo the rolling stones for images reflections and I  hook apertura short opening-short"
+      ],
+      "tags": [
+        "The Rolling Stones",
+        "interview",
+        "celebrity_interview",
+        "interview",
+        "talk show",
+        "hook"
+      ],
+      "speakers": [
+        "Mick Jagger",
+        "Interviewer"
+      ],
+      "mentioned_people": [
+        "The Rolling Stones"
+      ],
+      "hook": "is well it's a lot of things you know it you got to make one person's personality",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "The Rolling Stones — intervista momento 2: for images refl",
+          "summary": "The Rolling Stones in Mick Jagger (Rolling Stones) - Interview/\"Gimme Shelter\" 197: for images reflections and I don't want to be one well how do you see it to be one wel",
+          "description": "Apertura secca (12s): apertura secca dal colloquio The Rolling Stones Contesto: The Rolling Stones Mick Jagger (Rolling Stones) - Interview/\"Gimme Shelter\" 1973 [Reelin' In The Years Archives] interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo the rolling stones for images reflections and I  hook apertura short opening-short"
+        }
+      ]
+    },
+    {
+      "start": "04:50",
+      "end": "05:35",
+      "name": "The Rolling Stones — intervista momento 3: like you know what do you k",
+      "category": "celebrity_interview",
+      "source_title": "Mick Jagger (Rolling Stones) - Interview/\"Gimme Shelter\" 1973 [Reelin' In The Years Archives]",
+      "source_channel": "YouTube Interview",
+      "summary": "The Rolling Stones in Mick Jagger (Rolling Stones) - Interview/\"Gimme Shelter\" 197: like you know what do you know about on how you feel you're you're right just how you feel you're you're right just emotionally really w",
+      "topics": [
+        "The Rolling Stones Mick Jagger (Rolling Stones) - Interview/\"Gimme Shelter\" 1973 [Reelin' In The Years Archives] interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo the rolling stones like you know what do you kno"
+      ],
+      "tags": [
+        "The Rolling Stones",
+        "interview",
+        "celebrity_interview",
+        "interview",
+        "talk show"
+      ],
+      "speakers": [
+        "Mick Jagger",
+        "Interviewer"
+      ],
+      "mentioned_people": [
+        "The Rolling Stones"
+      ],
+      "hook": "consternation and debate as to whether in fact you've been ripped looking back",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "The Rolling Stones — intervista momento 3: like you know w",
+          "summary": "The Rolling Stones in Mick Jagger (Rolling Stones) - Interview/\"Gimme Shelter\" 197: like you know what do you know about on how you feel you're you're right just how you ",
+          "description": "The Rolling Stones in Mick Jagger (Rolling Stones) - Interview/\"Gimme Shelter\" 197: like you know what do you know about on how you feel you're you're right just how you feel you're you're right just emotionally really w Contesto: The Rolling Stones Mick Jagger (Rolling Stones) - Interview/\"Gimme Shelter\" 1973 [Reelin' In The Years Archives] interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo the rolling stones like you know what do you kno"
+        }
+      ]
+    },
+    {
+      "start": "04:58",
+      "end": "05:10",
+      "name": "Hook: consternation and debate as to whet",
+      "category": "celebrity_interview",
+      "source_title": "Mick Jagger (Rolling Stones) - Interview/\"Gimme Shelter\" 1973 [Reelin' In The Years Archives]",
+      "source_channel": "YouTube Interview",
+      "summary": "Apertura secca (12s): apertura secca dal colloquio The Rolling Stones",
+      "topics": [
+        "The Rolling Stones Mick Jagger (Rolling Stones) - Interview/\"Gimme Shelter\" 1973 [Reelin' In The Years Archives] interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo the rolling stones like you know what do you kno hook apertura short opening-short"
+      ],
+      "tags": [
+        "The Rolling Stones",
+        "interview",
+        "celebrity_interview",
+        "interview",
+        "talk show",
+        "hook"
+      ],
+      "speakers": [
+        "Mick Jagger",
+        "Interviewer"
+      ],
+      "mentioned_people": [
+        "The Rolling Stones"
+      ],
+      "hook": "consternation and debate as to whether in fact you've been ripped looking back",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "The Rolling Stones — intervista momento 3: like you know w",
+          "summary": "The Rolling Stones in Mick Jagger (Rolling Stones) - Interview/\"Gimme Shelter\" 197: like you know what do you know about on how you feel you're you're right just how you ",
+          "description": "Apertura secca (12s): apertura secca dal colloquio The Rolling Stones Contesto: The Rolling Stones Mick Jagger (Rolling Stones) - Interview/\"Gimme Shelter\" 1973 [Reelin' In The Years Archives] interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo the rolling stones like you know what do you kno hook apertura short opening-short"
+        }
+      ]
+    },
+    {
+      "start": "07:14",
+      "end": "07:59",
+      "name": "The Rolling Stones — intervista momento 4: applies to your friends too",
+      "category": "celebrity_interview",
+      "source_title": "Mick Jagger (Rolling Stones) - Interview/\"Gimme Shelter\" 1973 [Reelin' In The Years Archives]",
+      "source_channel": "YouTube Interview",
+      "summary": "The Rolling Stones in Mick Jagger (Rolling Stones) - Interview/\"Gimme Shelter\" 197: applies to your friends too what do you think people should be able what do you think people should be able to use drugs if they want it",
+      "topics": [
+        "The Rolling Stones Mick Jagger (Rolling Stones) - Interview/\"Gimme Shelter\" 1973 [Reelin' In The Years Archives] interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo the rolling stones applies to your friends too w"
+      ],
+      "tags": [
+        "The Rolling Stones",
+        "interview",
+        "celebrity_interview",
+        "interview",
+        "talk show"
+      ],
+      "speakers": [
+        "Mick Jagger",
+        "Interviewer"
+      ],
+      "mentioned_people": [
+        "The Rolling Stones"
+      ],
+      "hook": "should they be allowed to use sex yes what do you know what do you want to say",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "The Rolling Stones — intervista momento 4: applies to your",
+          "summary": "The Rolling Stones in Mick Jagger (Rolling Stones) - Interview/\"Gimme Shelter\" 197: applies to your friends too what do you think people should be able what do you think ",
+          "description": "The Rolling Stones in Mick Jagger (Rolling Stones) - Interview/\"Gimme Shelter\" 197: applies to your friends too what do you think people should be able what do you think people should be able to use drugs if they want it Contesto: The Rolling Stones Mick Jagger (Rolling Stones) - Interview/\"Gimme Shelter\" 1973 [Reelin' In The Years Archives] interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo the rolling stones applies to your friends too w"
+        }
+      ]
+    },
+    {
+      "start": "07:22",
+      "end": "07:34",
+      "name": "Hook: should they be allowed to use sex y",
+      "category": "celebrity_interview",
+      "source_title": "Mick Jagger (Rolling Stones) - Interview/\"Gimme Shelter\" 1973 [Reelin' In The Years Archives]",
+      "source_channel": "YouTube Interview",
+      "summary": "Apertura secca (12s): apertura secca dal colloquio The Rolling Stones",
+      "topics": [
+        "The Rolling Stones Mick Jagger (Rolling Stones) - Interview/\"Gimme Shelter\" 1973 [Reelin' In The Years Archives] interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo the rolling stones applies to your friends too w hook apertura short opening-short"
+      ],
+      "tags": [
+        "The Rolling Stones",
+        "interview",
+        "celebrity_interview",
+        "interview",
+        "talk show",
+        "hook"
+      ],
+      "speakers": [
+        "Mick Jagger",
+        "Interviewer"
+      ],
+      "mentioned_people": [
+        "The Rolling Stones"
+      ],
+      "hook": "should they be allowed to use sex yes what do you know what do you want to say",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "The Rolling Stones — intervista momento 4: applies to your",
+          "summary": "The Rolling Stones in Mick Jagger (Rolling Stones) - Interview/\"Gimme Shelter\" 197: applies to your friends too what do you think people should be able what do you think ",
+          "description": "Apertura secca (12s): apertura secca dal colloquio The Rolling Stones Contesto: The Rolling Stones Mick Jagger (Rolling Stones) - Interview/\"Gimme Shelter\" 1973 [Reelin' In The Years Archives] interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo the rolling stones applies to your friends too w hook apertura short opening-short"
+        }
+      ]
+    },
+    {
+      "start": "09:37",
+      "end": "10:22",
+      "name": "The Rolling Stones — intervista momento 5: they don't need so you have",
+      "category": "celebrity_interview",
+      "source_title": "Mick Jagger (Rolling Stones) - Interview/\"Gimme Shelter\" 1973 [Reelin' In The Years Archives]",
+      "source_channel": "YouTube Interview",
+      "summary": "The Rolling Stones in Mick Jagger (Rolling Stones) - Interview/\"Gimme Shelter\" 197: they don't need so you have to sort of stand up yourself and you know it makes stand up yourself and you know it makes good for good son",
+      "topics": [
+        "The Rolling Stones Mick Jagger (Rolling Stones) - Interview/\"Gimme Shelter\" 1973 [Reelin' In The Years Archives] interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo the rolling stones they don't need so you have t"
+      ],
+      "tags": [
+        "The Rolling Stones",
+        "interview",
+        "celebrity_interview",
+        "interview",
+        "talk show"
+      ],
+      "speakers": [
+        "Mick Jagger",
+        "Interviewer"
+      ],
+      "mentioned_people": [
+        "The Rolling Stones"
+      ],
+      "hook": "would you write about I mean you know owls in your trousers another thing",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "The Rolling Stones — intervista momento 5: they don't need",
+          "summary": "The Rolling Stones in Mick Jagger (Rolling Stones) - Interview/\"Gimme Shelter\" 197: they don't need so you have to sort of stand up yourself and you know it makes stand u",
+          "description": "The Rolling Stones in Mick Jagger (Rolling Stones) - Interview/\"Gimme Shelter\" 197: they don't need so you have to sort of stand up yourself and you know it makes stand up yourself and you know it makes good for good son Contesto: The Rolling Stones Mick Jagger (Rolling Stones) - Interview/\"Gimme Shelter\" 1973 [Reelin' In The Years Archives] interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo the rolling stones they don't need so you have t"
+        }
+      ]
+    },
+    {
+      "start": "09:45",
+      "end": "09:57",
+      "name": "Hook: would you write about i mean you kn",
+      "category": "celebrity_interview",
+      "source_title": "Mick Jagger (Rolling Stones) - Interview/\"Gimme Shelter\" 1973 [Reelin' In The Years Archives]",
+      "source_channel": "YouTube Interview",
+      "summary": "Apertura secca (12s): apertura secca dal colloquio The Rolling Stones",
+      "topics": [
+        "The Rolling Stones Mick Jagger (Rolling Stones) - Interview/\"Gimme Shelter\" 1973 [Reelin' In The Years Archives] interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo the rolling stones they don't need so you have t hook apertura short opening-short"
+      ],
+      "tags": [
+        "The Rolling Stones",
+        "interview",
+        "celebrity_interview",
+        "interview",
+        "talk show",
+        "hook"
+      ],
+      "speakers": [
+        "Mick Jagger",
+        "Interviewer"
+      ],
+      "mentioned_people": [
+        "The Rolling Stones"
+      ],
+      "hook": "would you write about I mean you know owls in your trousers another thing",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "The Rolling Stones — intervista momento 5: they don't need",
+          "summary": "The Rolling Stones in Mick Jagger (Rolling Stones) - Interview/\"Gimme Shelter\" 197: they don't need so you have to sort of stand up yourself and you know it makes stand u",
+          "description": "Apertura secca (12s): apertura secca dal colloquio The Rolling Stones Contesto: The Rolling Stones Mick Jagger (Rolling Stones) - Interview/\"Gimme Shelter\" 1973 [Reelin' In The Years Archives] interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo the rolling stones they don't need so you have t hook apertura short opening-short"
+        }
+      ]
+    },
+    {
+      "start": "12:00",
+      "end": "12:45",
+      "name": "The Rolling Stones — intervista momento 6: they're not to be part of i",
+      "category": "celebrity_interview",
+      "source_title": "Mick Jagger (Rolling Stones) - Interview/\"Gimme Shelter\" 1973 [Reelin' In The Years Archives]",
+      "source_channel": "YouTube Interview",
+      "summary": "The Rolling Stones in Mick Jagger (Rolling Stones) - Interview/\"Gimme Shelter\" 197: they're not to be part of it you know they like to be on the road and if they like to be on the road and if they're not on the road with",
+      "topics": [
+        "The Rolling Stones Mick Jagger (Rolling Stones) - Interview/\"Gimme Shelter\" 1973 [Reelin' In The Years Archives] interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo the rolling stones they're not to be part of it "
+      ],
+      "tags": [
+        "The Rolling Stones",
+        "interview",
+        "celebrity_interview",
+        "interview",
+        "talk show"
+      ],
+      "speakers": [
+        "Mick Jagger",
+        "Interviewer"
+      ],
+      "mentioned_people": [
+        "The Rolling Stones"
+      ],
+      "hook": "balling everyone can I say that is that a word that can be used on TV that's",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "The Rolling Stones — intervista momento 6: they're not to ",
+          "summary": "The Rolling Stones in Mick Jagger (Rolling Stones) - Interview/\"Gimme Shelter\" 197: they're not to be part of it you know they like to be on the road and if they like to ",
+          "description": "The Rolling Stones in Mick Jagger (Rolling Stones) - Interview/\"Gimme Shelter\" 197: they're not to be part of it you know they like to be on the road and if they like to be on the road and if they're not on the road with Contesto: The Rolling Stones Mick Jagger (Rolling Stones) - Interview/\"Gimme Shelter\" 1973 [Reelin' In The Years Archives] interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo the rolling stones they're not to be part of it "
+        }
+      ]
+    },
+    {
+      "start": "12:08",
+      "end": "12:20",
+      "name": "Hook: balling everyone can i say that is ",
+      "category": "celebrity_interview",
+      "source_title": "Mick Jagger (Rolling Stones) - Interview/\"Gimme Shelter\" 1973 [Reelin' In The Years Archives]",
+      "source_channel": "YouTube Interview",
+      "summary": "Apertura secca (12s): apertura secca dal colloquio The Rolling Stones",
+      "topics": [
+        "The Rolling Stones Mick Jagger (Rolling Stones) - Interview/\"Gimme Shelter\" 1973 [Reelin' In The Years Archives] interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo the rolling stones they're not to be part of it  hook apertura short opening-short"
+      ],
+      "tags": [
+        "The Rolling Stones",
+        "interview",
+        "celebrity_interview",
+        "interview",
+        "talk show",
+        "hook"
+      ],
+      "speakers": [
+        "Mick Jagger",
+        "Interviewer"
+      ],
+      "mentioned_people": [
+        "The Rolling Stones"
+      ],
+      "hook": "balling everyone can I say that is that a word that can be used on TV that's",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "The Rolling Stones — intervista momento 6: they're not to ",
+          "summary": "The Rolling Stones in Mick Jagger (Rolling Stones) - Interview/\"Gimme Shelter\" 197: they're not to be part of it you know they like to be on the road and if they like to ",
+          "description": "Apertura secca (12s): apertura secca dal colloquio The Rolling Stones Contesto: The Rolling Stones Mick Jagger (Rolling Stones) - Interview/\"Gimme Shelter\" 1973 [Reelin' In The Years Archives] interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo the rolling stones they're not to be part of it  hook apertura short opening-short"
+        }
+      ]
+    }
+  ]
+}

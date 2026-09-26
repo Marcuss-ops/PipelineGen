@@ -65,6 +65,13 @@ FOLDERS = {
     "the_beatles": "1vkUb0FRz8mK-6cNpoNQ0wtKABeNLS_46",
     "the_rolling_stones": "1DQE0gBxuEUX2cBzY982pMdXtFUE5D8ri",
     "tina_turner": "1oPqpaj15gF_e0GjmacWWUEsi-ZLinwMw",
+    "whitney_houston": "1JNHiylD-yLrYQiu_gs87tQB8bElI3h6m",
+    "prince": "1jfB96z8Mcgx1R8f6MyDN4A9AqypEdVMi",
+    "beyonce": "1x0iBNB6jmfGCTO36zBnlyFBeqLM_eBk_",
+    "rihanna": "1u1rYpWeTkcedezM2f-lX6FTrq2hiIZJL",
+    "the_weeknd": "19rnS2EiF9RfSFRaFXDfuJhlMvFgSiRtl",
+    "justin_timberlake": "1EBVkSLSLDeoVZTDRybsJ14wsHTTDHHse",
+    "michael_jackson": "1QMbexs6jFky-NjgVNgq_muMm9CixB_YC",
 }
 
 

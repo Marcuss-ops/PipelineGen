@@ -1,0 +1,441 @@
+{
+  "_comment": "POST /api/clips/process payload (ExtractRequest, drift source: internal/capabilities/youtube/dto/types.go). Source: Gloria Gaynor Interview with The Tony Holley Show (https://www.youtube.com/watch?v=SkOvmWP_NUo). Destination: the Clips/HipHop child folder for Gloria Gaynor (see check.py FOLDERS), create_subfolder=false. Windows picked BY HAND from the timed transcript printed by ops/jobs/hiphop_36/tx.py; no LLM selection. Clip ids are deterministic (yt_<videoID>_<startSec>_<endSec>_v1) so a re-submit is an UPSERT. topics/summary/hook are keyword-dense on purpose: composeYouTubeClipSearchText feeds search_text -> 768d pgvector embedding, texts[] lands in asset_text_tracks in the same atomic commit.",
+  "url": "https://www.youtube.com/watch?v=SkOvmWP_NUo",
+  "strategy": "verify",
+  "concurrency": 3,
+  "force_keyframes": true,
+  "keep_audio": true,
+  "write_summary": true,
+  "destination": {
+    "folder_id": "1Z3Z-Jx49VlOLOQUoL0MD-1j_1zRAmzeZ",
+    "create_subfolder": false
+  },
+  "segments": [
+    {
+      "start": "00:04",
+      "end": "00:49",
+      "name": "Gloria Gaynor — intervista momento 1: hey everybody this is Tony and I",
+      "category": "celebrity_interview",
+      "source_title": "Gloria Gaynor Interview with The Tony Holley Show",
+      "source_channel": "YouTube Interview",
+      "summary": "Gloria Gaynor in Gloria Gaynor Interview with The Tony Holley Show: hey everybody this is Tony and I'm here today with a special guest Miss Gloria today with a special guest Miss Gloria gayner how are you today I'm doing",
+      "topics": [
+        "Gloria Gaynor Gloria Gaynor Interview with The Tony Holley Show interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo gloria gaynor hey everybody this is Tony and I'm here today with a special guest Miss Gloria t Sk"
+      ],
+      "tags": [
+        "Gloria Gaynor",
+        "interview",
+        "celebrity_interview",
+        "interview",
+        "talk show"
+      ],
+      "speakers": [
+        "Gloria Gaynor",
+        "Tony Holley"
+      ],
+      "mentioned_people": [
+        "Gloria Gaynor"
+      ],
+      "hook": "now it's been over 40 years since you first started your career in the music",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Gloria Gaynor — intervista momento 1: hey everybody this i",
+          "summary": "Gloria Gaynor in Gloria Gaynor Interview with The Tony Holley Show: hey everybody this is Tony and I'm here today with a special guest Miss Gloria today with a special gu",
+          "description": "Gloria Gaynor in Gloria Gaynor Interview with The Tony Holley Show: hey everybody this is Tony and I'm here today with a special guest Miss Gloria today with a special guest Miss Gloria gayner how are you today I'm doing Contesto: Gloria Gaynor Gloria Gaynor Interview with The Tony Holley Show interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo gloria gaynor hey everybody this is Tony and I'm here today with a special guest Miss Gloria t Sk"
+        }
+      ]
+    },
+    {
+      "start": "00:12",
+      "end": "00:24",
+      "name": "Hook: now it's been over 40 years since y",
+      "category": "celebrity_interview",
+      "source_title": "Gloria Gaynor Interview with The Tony Holley Show",
+      "source_channel": "YouTube Interview",
+      "summary": "Apertura secca (12s): apertura secca dal colloquio Gloria Gaynor",
+      "topics": [
+        "Gloria Gaynor Gloria Gaynor Interview with The Tony Holley Show interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo gloria gaynor hey everybody this is Tony and I'm here today with a special guest Miss Gloria t Sk hook apertura short opening-short"
+      ],
+      "tags": [
+        "Gloria Gaynor",
+        "interview",
+        "celebrity_interview",
+        "interview",
+        "talk show",
+        "hook"
+      ],
+      "speakers": [
+        "Gloria Gaynor",
+        "Tony Holley"
+      ],
+      "mentioned_people": [
+        "Gloria Gaynor"
+      ],
+      "hook": "now it's been over 40 years since you first started your career in the music",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Gloria Gaynor — intervista momento 1: hey everybody this i",
+          "summary": "Gloria Gaynor in Gloria Gaynor Interview with The Tony Holley Show: hey everybody this is Tony and I'm here today with a special guest Miss Gloria today with a special gu",
+          "description": "Apertura secca (12s): apertura secca dal colloquio Gloria Gaynor Contesto: Gloria Gaynor Gloria Gaynor Interview with The Tony Holley Show interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo gloria gaynor hey everybody this is Tony and I'm here today with a special guest Miss Gloria t Sk hook apertura short opening-short"
+        }
+      ]
+    },
+    {
+      "start": "02:35",
+      "end": "03:20",
+      "name": "Gloria Gaynor — intervista momento 2: to people or contact other conta",
+      "category": "celebrity_interview",
+      "source_title": "Gloria Gaynor Interview with The Tony Holley Show",
+      "source_channel": "YouTube Interview",
+      "summary": "Gloria Gaynor in Gloria Gaynor Interview with The Tony Holley Show: to people or contact other contact writers writers to bring these songs but instead the to bring these songs but instead the record company did all that",
+      "topics": [
+        "Gloria Gaynor Gloria Gaynor Interview with The Tony Holley Show interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo gloria gaynor to people or contact other contact writers writers to bring these songs but inst Sk"
+      ],
+      "tags": [
+        "Gloria Gaynor",
+        "interview",
+        "celebrity_interview",
+        "interview",
+        "talk show"
+      ],
+      "speakers": [
+        "Gloria Gaynor",
+        "Tony Holley"
+      ],
+      "mentioned_people": [
+        "Gloria Gaynor"
+      ],
+      "hook": "with the songs on my own okay so do you feel like the songs that you did sing do",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Gloria Gaynor — intervista momento 2: to people or contact",
+          "summary": "Gloria Gaynor in Gloria Gaynor Interview with The Tony Holley Show: to people or contact other contact writers writers to bring these songs but instead the to bring these",
+          "description": "Gloria Gaynor in Gloria Gaynor Interview with The Tony Holley Show: to people or contact other contact writers writers to bring these songs but instead the to bring these songs but instead the record company did all that Contesto: Gloria Gaynor Gloria Gaynor Interview with The Tony Holley Show interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo gloria gaynor to people or contact other contact writers writers to bring these songs but inst Sk"
+        }
+      ]
+    },
+    {
+      "start": "02:43",
+      "end": "02:55",
+      "name": "Hook: with the songs on my own okay so do",
+      "category": "celebrity_interview",
+      "source_title": "Gloria Gaynor Interview with The Tony Holley Show",
+      "source_channel": "YouTube Interview",
+      "summary": "Apertura secca (12s): apertura secca dal colloquio Gloria Gaynor",
+      "topics": [
+        "Gloria Gaynor Gloria Gaynor Interview with The Tony Holley Show interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo gloria gaynor to people or contact other contact writers writers to bring these songs but inst Sk hook apertura short opening-short"
+      ],
+      "tags": [
+        "Gloria Gaynor",
+        "interview",
+        "celebrity_interview",
+        "interview",
+        "talk show",
+        "hook"
+      ],
+      "speakers": [
+        "Gloria Gaynor",
+        "Tony Holley"
+      ],
+      "mentioned_people": [
+        "Gloria Gaynor"
+      ],
+      "hook": "with the songs on my own okay so do you feel like the songs that you did sing do",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Gloria Gaynor — intervista momento 2: to people or contact",
+          "summary": "Gloria Gaynor in Gloria Gaynor Interview with The Tony Holley Show: to people or contact other contact writers writers to bring these songs but instead the to bring these",
+          "description": "Apertura secca (12s): apertura secca dal colloquio Gloria Gaynor Contesto: Gloria Gaynor Gloria Gaynor Interview with The Tony Holley Show interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo gloria gaynor to people or contact other contact writers writers to bring these songs but inst Sk hook apertura short opening-short"
+        }
+      ]
+    },
+    {
+      "start": "05:06",
+      "end": "05:51",
+      "name": "Gloria Gaynor — intervista momento 3: record company to come come down",
+      "category": "celebrity_interview",
+      "source_title": "Gloria Gaynor Interview with The Tony Holley Show",
+      "source_channel": "YouTube Interview",
+      "summary": "Gloria Gaynor in Gloria Gaynor Interview with The Tony Holley Show: record company to come come down and listen to it my my group's version of it listen to it my my group's version of it and see the audience response cuz",
+      "topics": [
+        "Gloria Gaynor Gloria Gaynor Interview with The Tony Holley Show interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo gloria gaynor record company to come come down and listen to it my my group's version of it li Sk"
+      ],
+      "tags": [
+        "Gloria Gaynor",
+        "interview",
+        "celebrity_interview",
+        "interview",
+        "talk show"
+      ],
+      "speakers": [
+        "Gloria Gaynor",
+        "Tony Holley"
+      ],
+      "mentioned_people": [
+        "Gloria Gaynor"
+      ],
+      "hook": "said you take the the music home with it and you practice and you come back with",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Gloria Gaynor — intervista momento 3: record company to co",
+          "summary": "Gloria Gaynor in Gloria Gaynor Interview with The Tony Holley Show: record company to come come down and listen to it my my group's version of it listen to it my my group",
+          "description": "Gloria Gaynor in Gloria Gaynor Interview with The Tony Holley Show: record company to come come down and listen to it my my group's version of it listen to it my my group's version of it and see the audience response cuz Contesto: Gloria Gaynor Gloria Gaynor Interview with The Tony Holley Show interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo gloria gaynor record company to come come down and listen to it my my group's version of it li Sk"
+        }
+      ]
+    },
+    {
+      "start": "05:14",
+      "end": "05:26",
+      "name": "Hook: said you take the the music home wi",
+      "category": "celebrity_interview",
+      "source_title": "Gloria Gaynor Interview with The Tony Holley Show",
+      "source_channel": "YouTube Interview",
+      "summary": "Apertura secca (12s): apertura secca dal colloquio Gloria Gaynor",
+      "topics": [
+        "Gloria Gaynor Gloria Gaynor Interview with The Tony Holley Show interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo gloria gaynor record company to come come down and listen to it my my group's version of it li Sk hook apertura short opening-short"
+      ],
+      "tags": [
+        "Gloria Gaynor",
+        "interview",
+        "celebrity_interview",
+        "interview",
+        "talk show",
+        "hook"
+      ],
+      "speakers": [
+        "Gloria Gaynor",
+        "Tony Holley"
+      ],
+      "mentioned_people": [
+        "Gloria Gaynor"
+      ],
+      "hook": "said you take the the music home with it and you practice and you come back with",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Gloria Gaynor — intervista momento 3: record company to co",
+          "summary": "Gloria Gaynor in Gloria Gaynor Interview with The Tony Holley Show: record company to come come down and listen to it my my group's version of it listen to it my my group",
+          "description": "Apertura secca (12s): apertura secca dal colloquio Gloria Gaynor Contesto: Gloria Gaynor Gloria Gaynor Interview with The Tony Holley Show interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo gloria gaynor record company to come come down and listen to it my my group's version of it li Sk hook apertura short opening-short"
+        }
+      ]
+    },
+    {
+      "start": "07:37",
+      "end": "08:22",
+      "name": "Gloria Gaynor — intervista momento 4: you think you put on what um tel",
+      "category": "celebrity_interview",
+      "source_title": "Gloria Gaynor Interview with The Tony Holley Show",
+      "source_channel": "YouTube Interview",
+      "summary": "Gloria Gaynor in Gloria Gaynor Interview with The Tony Holley Show: you think you put on what um televised um televised performance um the one at the Michael performance um the one at the Michael Jackson 30th Anniversary",
+      "topics": [
+        "Gloria Gaynor Gloria Gaynor Interview with The Tony Holley Show interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo gloria gaynor you think you put on what um televised um televised performance um the one at th Sk"
+      ],
+      "tags": [
+        "Gloria Gaynor",
+        "interview",
+        "celebrity_interview",
+        "interview",
+        "talk show"
+      ],
+      "speakers": [
+        "Gloria Gaynor",
+        "Tony Holley"
+      ],
+      "mentioned_people": [
+        "Gloria Gaynor"
+      ],
+      "hook": "before the the day we know is 911 right right um that was an awesome",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Gloria Gaynor — intervista momento 4: you think you put on",
+          "summary": "Gloria Gaynor in Gloria Gaynor Interview with The Tony Holley Show: you think you put on what um televised um televised performance um the one at the Michael performance ",
+          "description": "Gloria Gaynor in Gloria Gaynor Interview with The Tony Holley Show: you think you put on what um televised um televised performance um the one at the Michael performance um the one at the Michael Jackson 30th Anniversary Contesto: Gloria Gaynor Gloria Gaynor Interview with The Tony Holley Show interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo gloria gaynor you think you put on what um televised um televised performance um the one at th Sk"
+        }
+      ]
+    },
+    {
+      "start": "07:45",
+      "end": "07:57",
+      "name": "Hook: before the the day we know is 911 r",
+      "category": "celebrity_interview",
+      "source_title": "Gloria Gaynor Interview with The Tony Holley Show",
+      "source_channel": "YouTube Interview",
+      "summary": "Apertura secca (12s): apertura secca dal colloquio Gloria Gaynor",
+      "topics": [
+        "Gloria Gaynor Gloria Gaynor Interview with The Tony Holley Show interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo gloria gaynor you think you put on what um televised um televised performance um the one at th Sk hook apertura short opening-short"
+      ],
+      "tags": [
+        "Gloria Gaynor",
+        "interview",
+        "celebrity_interview",
+        "interview",
+        "talk show",
+        "hook"
+      ],
+      "speakers": [
+        "Gloria Gaynor",
+        "Tony Holley"
+      ],
+      "mentioned_people": [
+        "Gloria Gaynor"
+      ],
+      "hook": "before the the day we know is 911 right right um that was an awesome",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Gloria Gaynor — intervista momento 4: you think you put on",
+          "summary": "Gloria Gaynor in Gloria Gaynor Interview with The Tony Holley Show: you think you put on what um televised um televised performance um the one at the Michael performance ",
+          "description": "Apertura secca (12s): apertura secca dal colloquio Gloria Gaynor Contesto: Gloria Gaynor Gloria Gaynor Interview with The Tony Holley Show interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo gloria gaynor you think you put on what um televised um televised performance um the one at th Sk hook apertura short opening-short"
+        }
+      ]
+    },
+    {
+      "start": "10:08",
+      "end": "10:53",
+      "name": "Gloria Gaynor — intervista momento 5: the other stuff that they have t",
+      "category": "celebrity_interview",
+      "source_title": "Gloria Gaynor Interview with The Tony Holley Show",
+      "source_channel": "YouTube Interview",
+      "summary": "Gloria Gaynor in Gloria Gaynor Interview with The Tony Holley Show: the other stuff that they have to offer okay to recognize that that is really okay to recognize that that is really beneath beneath them and they don't ",
+      "topics": [
+        "Gloria Gaynor Gloria Gaynor Interview with The Tony Holley Show interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo gloria gaynor the other stuff that they have to offer okay to recognize that that is really ok Sk"
+      ],
+      "tags": [
+        "Gloria Gaynor",
+        "interview",
+        "celebrity_interview",
+        "interview",
+        "talk show"
+      ],
+      "speakers": [
+        "Gloria Gaynor",
+        "Tony Holley"
+      ],
+      "mentioned_people": [
+        "Gloria Gaynor"
+      ],
+      "hook": "now that's absolutely true excuse me now what is your goal in life today I know",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Gloria Gaynor — intervista momento 5: the other stuff that",
+          "summary": "Gloria Gaynor in Gloria Gaynor Interview with The Tony Holley Show: the other stuff that they have to offer okay to recognize that that is really okay to recognize that t",
+          "description": "Gloria Gaynor in Gloria Gaynor Interview with The Tony Holley Show: the other stuff that they have to offer okay to recognize that that is really okay to recognize that that is really beneath beneath them and they don't  Contesto: Gloria Gaynor Gloria Gaynor Interview with The Tony Holley Show interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo gloria gaynor the other stuff that they have to offer okay to recognize that that is really ok Sk"
+        }
+      ]
+    },
+    {
+      "start": "10:16",
+      "end": "10:28",
+      "name": "Hook: now that's absolutely true excuse m",
+      "category": "celebrity_interview",
+      "source_title": "Gloria Gaynor Interview with The Tony Holley Show",
+      "source_channel": "YouTube Interview",
+      "summary": "Apertura secca (12s): apertura secca dal colloquio Gloria Gaynor",
+      "topics": [
+        "Gloria Gaynor Gloria Gaynor Interview with The Tony Holley Show interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo gloria gaynor the other stuff that they have to offer okay to recognize that that is really ok Sk hook apertura short opening-short"
+      ],
+      "tags": [
+        "Gloria Gaynor",
+        "interview",
+        "celebrity_interview",
+        "interview",
+        "talk show",
+        "hook"
+      ],
+      "speakers": [
+        "Gloria Gaynor",
+        "Tony Holley"
+      ],
+      "mentioned_people": [
+        "Gloria Gaynor"
+      ],
+      "hook": "now that's absolutely true excuse me now what is your goal in life today I know",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Gloria Gaynor — intervista momento 5: the other stuff that",
+          "summary": "Gloria Gaynor in Gloria Gaynor Interview with The Tony Holley Show: the other stuff that they have to offer okay to recognize that that is really okay to recognize that t",
+          "description": "Apertura secca (12s): apertura secca dal colloquio Gloria Gaynor Contesto: Gloria Gaynor Gloria Gaynor Interview with The Tony Holley Show interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo gloria gaynor the other stuff that they have to offer okay to recognize that that is really ok Sk hook apertura short opening-short"
+        }
+      ]
+    },
+    {
+      "start": "12:39",
+      "end": "13:24",
+      "name": "Gloria Gaynor — intervista momento 6: in the work because I'm I'm only",
+      "category": "celebrity_interview",
+      "source_title": "Gloria Gaynor Interview with The Tony Holley Show",
+      "source_channel": "YouTube Interview",
+      "summary": "Gloria Gaynor in Gloria Gaynor Interview with The Tony Holley Show: in the work because I'm I'm only 18 years old a young male and um and I know years old a young male and um and I know most of your songs so you definite",
+      "topics": [
+        "Gloria Gaynor Gloria Gaynor Interview with The Tony Holley Show interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo gloria gaynor in the work because I'm I'm only 18 years old a young male and um and I know yea Sk"
+      ],
+      "tags": [
+        "Gloria Gaynor",
+        "interview",
+        "celebrity_interview",
+        "interview",
+        "talk show"
+      ],
+      "speakers": [
+        "Gloria Gaynor",
+        "Tony Holley"
+      ],
+      "mentioned_people": [
+        "Gloria Gaynor"
+      ],
+      "hook": "specific I would love to work with um if I were doing a secular music I would",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Gloria Gaynor — intervista momento 6: in the work because ",
+          "summary": "Gloria Gaynor in Gloria Gaynor Interview with The Tony Holley Show: in the work because I'm I'm only 18 years old a young male and um and I know years old a young male an",
+          "description": "Gloria Gaynor in Gloria Gaynor Interview with The Tony Holley Show: in the work because I'm I'm only 18 years old a young male and um and I know years old a young male and um and I know most of your songs so you definite Contesto: Gloria Gaynor Gloria Gaynor Interview with The Tony Holley Show interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo gloria gaynor in the work because I'm I'm only 18 years old a young male and um and I know yea Sk"
+        }
+      ]
+    },
+    {
+      "start": "12:47",
+      "end": "12:59",
+      "name": "Hook: specific i would love to work with ",
+      "category": "celebrity_interview",
+      "source_title": "Gloria Gaynor Interview with The Tony Holley Show",
+      "source_channel": "YouTube Interview",
+      "summary": "Apertura secca (12s): apertura secca dal colloquio Gloria Gaynor",
+      "topics": [
+        "Gloria Gaynor Gloria Gaynor Interview with The Tony Holley Show interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo gloria gaynor in the work because I'm I'm only 18 years old a young male and um and I know yea Sk hook apertura short opening-short"
+      ],
+      "tags": [
+        "Gloria Gaynor",
+        "interview",
+        "celebrity_interview",
+        "interview",
+        "talk show",
+        "hook"
+      ],
+      "speakers": [
+        "Gloria Gaynor",
+        "Tony Holley"
+      ],
+      "mentioned_people": [
+        "Gloria Gaynor"
+      ],
+      "hook": "specific I would love to work with um if I were doing a secular music I would",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Gloria Gaynor — intervista momento 6: in the work because ",
+          "summary": "Gloria Gaynor in Gloria Gaynor Interview with The Tony Holley Show: in the work because I'm I'm only 18 years old a young male and um and I know years old a young male an",
+          "description": "Apertura secca (12s): apertura secca dal colloquio Gloria Gaynor Contesto: Gloria Gaynor Gloria Gaynor Interview with The Tony Holley Show interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo gloria gaynor in the work because I'm I'm only 18 years old a young male and um and I know yea Sk hook apertura short opening-short"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,441 @@
+{
+  "_comment": "POST /api/clips/process payload (ExtractRequest, drift source: internal/capabilities/youtube/dto/types.go). Source: Spice Girls Interview Before They EXPLODED (1996) (https://www.youtube.com/watch?v=FdrZm7NRqzg). Destination: the Clips/HipHop child folder for Spice Girls (see check.py FOLDERS), create_subfolder=false. Windows picked BY HAND from the timed transcript printed by ops/jobs/hiphop_36/tx.py; no LLM selection. Clip ids are deterministic (yt_<videoID>_<startSec>_<endSec>_v1) so a re-submit is an UPSERT. topics/summary/hook are keyword-dense on purpose: composeYouTubeClipSearchText feeds search_text -> 768d pgvector embedding, texts[] lands in asset_text_tracks in the same atomic commit.",
+  "url": "https://www.youtube.com/watch?v=FdrZm7NRqzg",
+  "strategy": "verify",
+  "concurrency": 3,
+  "force_keyframes": true,
+  "keep_audio": true,
+  "write_summary": true,
+  "destination": {
+    "folder_id": "1XO81gpUrzyxllKLGIcKiXClNCwbn1Xu3",
+    "create_subfolder": false
+  },
+  "segments": [
+    {
+      "start": "00:04",
+      "end": "00:49",
+      "name": "Spice Girls — intervista momento 1: So, you've just got back from Japa",
+      "category": "celebrity_interview",
+      "source_title": "Spice Girls Interview Before They EXPLODED (1996)",
+      "source_channel": "YouTube Interview",
+      "summary": "Spice Girls in Spice Girls Interview Before They EXPLODED (1996): So, you've just got back from Japan &gt;&gt; and a rumor has it that they've gone a &gt;&gt; and a rumor has it that they've gone a bit nuts for you out t",
+      "topics": [
+        "Spice Girls Spice Girls Interview Before They EXPLODED (1996) interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo spice girls So, you've just got back from Japan &gt;&gt; and a rumor has it that they've gon FdrZm7"
+      ],
+      "tags": [
+        "Spice Girls",
+        "interview",
+        "celebrity_interview",
+        "interview",
+        "talk show"
+      ],
+      "speakers": [
+        "Spice Girls",
+        "Interviewer"
+      ],
+      "mentioned_people": [
+        "Spice Girls"
+      ],
+      "hook": "&gt;&gt; I don't know. No. Um, we're number five over there at the moment. It wasn't, you",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Spice Girls — intervista momento 1: So, you've just got ba",
+          "summary": "Spice Girls in Spice Girls Interview Before They EXPLODED (1996): So, you've just got back from Japan &gt;&gt; and a rumor has it that they've gone a &gt;&gt; and a rumor",
+          "description": "Spice Girls in Spice Girls Interview Before They EXPLODED (1996): So, you've just got back from Japan &gt;&gt; and a rumor has it that they've gone a &gt;&gt; and a rumor has it that they've gone a bit nuts for you out t Contesto: Spice Girls Spice Girls Interview Before They EXPLODED (1996) interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo spice girls So, you've just got back from Japan &gt;&gt; and a rumor has it that they've gon FdrZm7"
+        }
+      ]
+    },
+    {
+      "start": "00:12",
+      "end": "00:24",
+      "name": "Hook: &gt;&gt; i don't know. no. um, we'r",
+      "category": "celebrity_interview",
+      "source_title": "Spice Girls Interview Before They EXPLODED (1996)",
+      "source_channel": "YouTube Interview",
+      "summary": "Apertura secca (12s): apertura secca dal colloquio Spice Girls",
+      "topics": [
+        "Spice Girls Spice Girls Interview Before They EXPLODED (1996) interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo spice girls So, you've just got back from Japan &gt;&gt; and a rumor has it that they've gon FdrZm7 hook apertura short opening-short"
+      ],
+      "tags": [
+        "Spice Girls",
+        "interview",
+        "celebrity_interview",
+        "interview",
+        "talk show",
+        "hook"
+      ],
+      "speakers": [
+        "Spice Girls",
+        "Interviewer"
+      ],
+      "mentioned_people": [
+        "Spice Girls"
+      ],
+      "hook": "&gt;&gt; I don't know. No. Um, we're number five over there at the moment. It wasn't, you",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Spice Girls — intervista momento 1: So, you've just got ba",
+          "summary": "Spice Girls in Spice Girls Interview Before They EXPLODED (1996): So, you've just got back from Japan &gt;&gt; and a rumor has it that they've gone a &gt;&gt; and a rumor",
+          "description": "Apertura secca (12s): apertura secca dal colloquio Spice Girls Contesto: Spice Girls Spice Girls Interview Before They EXPLODED (1996) interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo spice girls So, you've just got back from Japan &gt;&gt; and a rumor has it that they've gon FdrZm7 hook apertura short opening-short"
+        }
+      ]
+    },
+    {
+      "start": "02:56",
+      "end": "03:41",
+      "name": "Spice Girls — intervista momento 2: have you had time to take in what'",
+      "category": "celebrity_interview",
+      "source_title": "Spice Girls Interview Before They EXPLODED (1996)",
+      "source_channel": "YouTube Interview",
+      "summary": "Spice Girls in Spice Girls Interview Before They EXPLODED (1996): have you had time to take in what's what's happened in the last month or what's happened in the last month or two? Uh, as Melanie said before, I two? Uh, ",
+      "topics": [
+        "Spice Girls Spice Girls Interview Before They EXPLODED (1996) interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo spice girls have you had time to take in what's what's happened in the last month or what's  FdrZm7"
+      ],
+      "tags": [
+        "Spice Girls",
+        "interview",
+        "celebrity_interview",
+        "interview",
+        "talk show"
+      ],
+      "speakers": [
+        "Spice Girls",
+        "Interviewer"
+      ],
+      "mentioned_people": [
+        "Spice Girls"
+      ],
+      "hook": "age. I think we're all we've all kind of been born into that kind of way of",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Spice Girls — intervista momento 2: have you had time to t",
+          "summary": "Spice Girls in Spice Girls Interview Before They EXPLODED (1996): have you had time to take in what's what's happened in the last month or what's happened in the last mon",
+          "description": "Spice Girls in Spice Girls Interview Before They EXPLODED (1996): have you had time to take in what's what's happened in the last month or what's happened in the last month or two? Uh, as Melanie said before, I two? Uh,  Contesto: Spice Girls Spice Girls Interview Before They EXPLODED (1996) interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo spice girls have you had time to take in what's what's happened in the last month or what's  FdrZm7"
+        }
+      ]
+    },
+    {
+      "start": "03:04",
+      "end": "03:16",
+      "name": "Hook: age. i think we're all we've all ki",
+      "category": "celebrity_interview",
+      "source_title": "Spice Girls Interview Before They EXPLODED (1996)",
+      "source_channel": "YouTube Interview",
+      "summary": "Apertura secca (12s): apertura secca dal colloquio Spice Girls",
+      "topics": [
+        "Spice Girls Spice Girls Interview Before They EXPLODED (1996) interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo spice girls have you had time to take in what's what's happened in the last month or what's  FdrZm7 hook apertura short opening-short"
+      ],
+      "tags": [
+        "Spice Girls",
+        "interview",
+        "celebrity_interview",
+        "interview",
+        "talk show",
+        "hook"
+      ],
+      "speakers": [
+        "Spice Girls",
+        "Interviewer"
+      ],
+      "mentioned_people": [
+        "Spice Girls"
+      ],
+      "hook": "age. I think we're all we've all kind of been born into that kind of way of",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Spice Girls — intervista momento 2: have you had time to t",
+          "summary": "Spice Girls in Spice Girls Interview Before They EXPLODED (1996): have you had time to take in what's what's happened in the last month or what's happened in the last mon",
+          "description": "Apertura secca (12s): apertura secca dal colloquio Spice Girls Contesto: Spice Girls Spice Girls Interview Before They EXPLODED (1996) interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo spice girls have you had time to take in what's what's happened in the last month or what's  FdrZm7 hook apertura short opening-short"
+        }
+      ]
+    },
+    {
+      "start": "05:48",
+      "end": "06:33",
+      "name": "Spice Girls — intervista momento 3: the single, we have just been at o",
+      "category": "celebrity_interview",
+      "source_title": "Spice Girls Interview Before They EXPLODED (1996)",
+      "source_channel": "YouTube Interview",
+      "summary": "Spice Girls in Spice Girls Interview Before They EXPLODED (1996): the single, we have just been at one point or another even like daytoday point or another even like daytoday we've been in feats of laughter cuz we we've ",
+      "topics": [
+        "Spice Girls Spice Girls Interview Before They EXPLODED (1996) interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo spice girls the single, we have just been at one point or another even like daytoday point o FdrZm7"
+      ],
+      "tags": [
+        "Spice Girls",
+        "interview",
+        "celebrity_interview",
+        "interview",
+        "talk show"
+      ],
+      "speakers": [
+        "Spice Girls",
+        "Interviewer"
+      ],
+      "mentioned_people": [
+        "Spice Girls"
+      ],
+      "hook": "&gt;&gt; I know. I think I think you can't you can't think that about yourself. If you",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Spice Girls — intervista momento 3: the single, we have ju",
+          "summary": "Spice Girls in Spice Girls Interview Before They EXPLODED (1996): the single, we have just been at one point or another even like daytoday point or another even like dayt",
+          "description": "Spice Girls in Spice Girls Interview Before They EXPLODED (1996): the single, we have just been at one point or another even like daytoday point or another even like daytoday we've been in feats of laughter cuz we we've  Contesto: Spice Girls Spice Girls Interview Before They EXPLODED (1996) interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo spice girls the single, we have just been at one point or another even like daytoday point o FdrZm7"
+        }
+      ]
+    },
+    {
+      "start": "05:56",
+      "end": "06:08",
+      "name": "Hook: &gt;&gt; i know. i think i think yo",
+      "category": "celebrity_interview",
+      "source_title": "Spice Girls Interview Before They EXPLODED (1996)",
+      "source_channel": "YouTube Interview",
+      "summary": "Apertura secca (12s): apertura secca dal colloquio Spice Girls",
+      "topics": [
+        "Spice Girls Spice Girls Interview Before They EXPLODED (1996) interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo spice girls the single, we have just been at one point or another even like daytoday point o FdrZm7 hook apertura short opening-short"
+      ],
+      "tags": [
+        "Spice Girls",
+        "interview",
+        "celebrity_interview",
+        "interview",
+        "talk show",
+        "hook"
+      ],
+      "speakers": [
+        "Spice Girls",
+        "Interviewer"
+      ],
+      "mentioned_people": [
+        "Spice Girls"
+      ],
+      "hook": "&gt;&gt; I know. I think I think you can't you can't think that about yourself. If you",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Spice Girls — intervista momento 3: the single, we have ju",
+          "summary": "Spice Girls in Spice Girls Interview Before They EXPLODED (1996): the single, we have just been at one point or another even like daytoday point or another even like dayt",
+          "description": "Apertura secca (12s): apertura secca dal colloquio Spice Girls Contesto: Spice Girls Spice Girls Interview Before They EXPLODED (1996) interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo spice girls the single, we have just been at one point or another even like daytoday point o FdrZm7 hook apertura short opening-short"
+        }
+      ]
+    },
+    {
+      "start": "08:41",
+      "end": "09:26",
+      "name": "Spice Girls — intervista momento 4: cakes and donuts. Cakes, too. &gt;",
+      "category": "celebrity_interview",
+      "source_title": "Spice Girls Interview Before They EXPLODED (1996)",
+      "source_channel": "YouTube Interview",
+      "summary": "Spice Girls in Spice Girls Interview Before They EXPLODED (1996): cakes and donuts. Cakes, too. &gt;&gt; And Victoria, do do you eat cakes as &gt;&gt; And Victoria, do do you eat cakes as well? well? &gt;&gt; I don't rea",
+      "topics": [
+        "Spice Girls Spice Girls Interview Before They EXPLODED (1996) interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo spice girls cakes and donuts. Cakes, too. &gt;&gt; And Victoria, do do you eat cakes as &gt; FdrZm7"
+      ],
+      "tags": [
+        "Spice Girls",
+        "interview",
+        "celebrity_interview",
+        "interview",
+        "talk show"
+      ],
+      "speakers": [
+        "Spice Girls",
+        "Interviewer"
+      ],
+      "mentioned_people": [
+        "Spice Girls"
+      ],
+      "hook": "&gt;&gt; Oh, that's not really I don't eat red meat.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Spice Girls — intervista momento 4: cakes and donuts. Cake",
+          "summary": "Spice Girls in Spice Girls Interview Before They EXPLODED (1996): cakes and donuts. Cakes, too. &gt;&gt; And Victoria, do do you eat cakes as &gt;&gt; And Victoria, do do",
+          "description": "Spice Girls in Spice Girls Interview Before They EXPLODED (1996): cakes and donuts. Cakes, too. &gt;&gt; And Victoria, do do you eat cakes as &gt;&gt; And Victoria, do do you eat cakes as well? well? &gt;&gt; I don't rea Contesto: Spice Girls Spice Girls Interview Before They EXPLODED (1996) interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo spice girls cakes and donuts. Cakes, too. &gt;&gt; And Victoria, do do you eat cakes as &gt; FdrZm7"
+        }
+      ]
+    },
+    {
+      "start": "08:49",
+      "end": "09:01",
+      "name": "Hook: &gt;&gt; oh, that's not really i do",
+      "category": "celebrity_interview",
+      "source_title": "Spice Girls Interview Before They EXPLODED (1996)",
+      "source_channel": "YouTube Interview",
+      "summary": "Apertura secca (12s): apertura secca dal colloquio Spice Girls",
+      "topics": [
+        "Spice Girls Spice Girls Interview Before They EXPLODED (1996) interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo spice girls cakes and donuts. Cakes, too. &gt;&gt; And Victoria, do do you eat cakes as &gt; FdrZm7 hook apertura short opening-short"
+      ],
+      "tags": [
+        "Spice Girls",
+        "interview",
+        "celebrity_interview",
+        "interview",
+        "talk show",
+        "hook"
+      ],
+      "speakers": [
+        "Spice Girls",
+        "Interviewer"
+      ],
+      "mentioned_people": [
+        "Spice Girls"
+      ],
+      "hook": "&gt;&gt; Oh, that's not really I don't eat red meat.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Spice Girls — intervista momento 4: cakes and donuts. Cake",
+          "summary": "Spice Girls in Spice Girls Interview Before They EXPLODED (1996): cakes and donuts. Cakes, too. &gt;&gt; And Victoria, do do you eat cakes as &gt;&gt; And Victoria, do do",
+          "description": "Apertura secca (12s): apertura secca dal colloquio Spice Girls Contesto: Spice Girls Spice Girls Interview Before They EXPLODED (1996) interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo spice girls cakes and donuts. Cakes, too. &gt;&gt; And Victoria, do do you eat cakes as &gt; FdrZm7 hook apertura short opening-short"
+        }
+      ]
+    },
+    {
+      "start": "11:33",
+      "end": "12:18",
+      "name": "Spice Girls — intervista momento 5: &gt;&gt; No, I like I like a lot o",
+      "category": "celebrity_interview",
+      "source_title": "Spice Girls Interview Before They EXPLODED (1996)",
+      "source_channel": "YouTube Interview",
+      "summary": "Spice Girls in Spice Girls Interview Before They EXPLODED (1996): &gt;&gt; No, I like I like a lot of smart clothes. I've did me I'm a bit of a clothes. I've did me I'm a bit of a sucker for designer stuff as well when s",
+      "topics": [
+        "Spice Girls Spice Girls Interview Before They EXPLODED (1996) interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo spice girls &gt;&gt; No, I like I like a lot of smart clothes. I've did me I'm a bit of a cl FdrZm7"
+      ],
+      "tags": [
+        "Spice Girls",
+        "interview",
+        "celebrity_interview",
+        "interview",
+        "talk show"
+      ],
+      "speakers": [
+        "Spice Girls",
+        "Interviewer"
+      ],
+      "mentioned_people": [
+        "Spice Girls"
+      ],
+      "hook": "boggy. No has to be tailored. I like tailored stuff.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Spice Girls — intervista momento 5: &gt;&gt; No, I like I ",
+          "summary": "Spice Girls in Spice Girls Interview Before They EXPLODED (1996): &gt;&gt; No, I like I like a lot of smart clothes. I've did me I'm a bit of a clothes. I've did me I'm a",
+          "description": "Spice Girls in Spice Girls Interview Before They EXPLODED (1996): &gt;&gt; No, I like I like a lot of smart clothes. I've did me I'm a bit of a clothes. I've did me I'm a bit of a sucker for designer stuff as well when s Contesto: Spice Girls Spice Girls Interview Before They EXPLODED (1996) interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo spice girls &gt;&gt; No, I like I like a lot of smart clothes. I've did me I'm a bit of a cl FdrZm7"
+        }
+      ]
+    },
+    {
+      "start": "11:41",
+      "end": "11:53",
+      "name": "Hook: boggy. no has to be tailored. i lik",
+      "category": "celebrity_interview",
+      "source_title": "Spice Girls Interview Before They EXPLODED (1996)",
+      "source_channel": "YouTube Interview",
+      "summary": "Apertura secca (12s): apertura secca dal colloquio Spice Girls",
+      "topics": [
+        "Spice Girls Spice Girls Interview Before They EXPLODED (1996) interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo spice girls &gt;&gt; No, I like I like a lot of smart clothes. I've did me I'm a bit of a cl FdrZm7 hook apertura short opening-short"
+      ],
+      "tags": [
+        "Spice Girls",
+        "interview",
+        "celebrity_interview",
+        "interview",
+        "talk show",
+        "hook"
+      ],
+      "speakers": [
+        "Spice Girls",
+        "Interviewer"
+      ],
+      "mentioned_people": [
+        "Spice Girls"
+      ],
+      "hook": "boggy. No has to be tailored. I like tailored stuff.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Spice Girls — intervista momento 5: &gt;&gt; No, I like I ",
+          "summary": "Spice Girls in Spice Girls Interview Before They EXPLODED (1996): &gt;&gt; No, I like I like a lot of smart clothes. I've did me I'm a bit of a clothes. I've did me I'm a",
+          "description": "Apertura secca (12s): apertura secca dal colloquio Spice Girls Contesto: Spice Girls Spice Girls Interview Before They EXPLODED (1996) interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo spice girls &gt;&gt; No, I like I like a lot of smart clothes. I've did me I'm a bit of a cl FdrZm7 hook apertura short opening-short"
+        }
+      ]
+    },
+    {
+      "start": "14:25",
+      "end": "15:10",
+      "name": "Spice Girls — intervista momento 6: &gt;&gt; I like him. &gt;&gt; I li",
+      "category": "celebrity_interview",
+      "source_title": "Spice Girls Interview Before They EXPLODED (1996)",
+      "source_channel": "YouTube Interview",
+      "summary": "Spice Girls in Spice Girls Interview Before They EXPLODED (1996): &gt;&gt; I like him. &gt;&gt; I like Trevor. &gt;&gt; I like Trevor. &gt;&gt; Yeah, &gt;&gt; Yeah, &gt;&gt; but the only thing is is his name. &gt;&gt; bu",
+      "topics": [
+        "Spice Girls Spice Girls Interview Before They EXPLODED (1996) interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo spice girls &gt;&gt; I like him. &gt;&gt; I like Trevor. &gt;&gt; I like Trevor. &gt;&gt; Ye FdrZm7"
+      ],
+      "tags": [
+        "Spice Girls",
+        "interview",
+        "celebrity_interview",
+        "interview",
+        "talk show"
+      ],
+      "speakers": [
+        "Spice Girls",
+        "Interviewer"
+      ],
+      "mentioned_people": [
+        "Spice Girls"
+      ],
+      "hook": "&gt;&gt; or princess guy. Remember them on the dice? Very nice.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Spice Girls — intervista momento 6: &gt;&gt; I like him. &",
+          "summary": "Spice Girls in Spice Girls Interview Before They EXPLODED (1996): &gt;&gt; I like him. &gt;&gt; I like Trevor. &gt;&gt; I like Trevor. &gt;&gt; Yeah, &gt;&gt; Yeah, &gt;&",
+          "description": "Spice Girls in Spice Girls Interview Before They EXPLODED (1996): &gt;&gt; I like him. &gt;&gt; I like Trevor. &gt;&gt; I like Trevor. &gt;&gt; Yeah, &gt;&gt; Yeah, &gt;&gt; but the only thing is is his name. &gt;&gt; bu Contesto: Spice Girls Spice Girls Interview Before They EXPLODED (1996) interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo spice girls &gt;&gt; I like him. &gt;&gt; I like Trevor. &gt;&gt; I like Trevor. &gt;&gt; Ye FdrZm7"
+        }
+      ]
+    },
+    {
+      "start": "14:33",
+      "end": "14:45",
+      "name": "Hook: &gt;&gt; or princess guy. remember ",
+      "category": "celebrity_interview",
+      "source_title": "Spice Girls Interview Before They EXPLODED (1996)",
+      "source_channel": "YouTube Interview",
+      "summary": "Apertura secca (12s): apertura secca dal colloquio Spice Girls",
+      "topics": [
+        "Spice Girls Spice Girls Interview Before They EXPLODED (1996) interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo spice girls &gt;&gt; I like him. &gt;&gt; I like Trevor. &gt;&gt; I like Trevor. &gt;&gt; Ye FdrZm7 hook apertura short opening-short"
+      ],
+      "tags": [
+        "Spice Girls",
+        "interview",
+        "celebrity_interview",
+        "interview",
+        "talk show",
+        "hook"
+      ],
+      "speakers": [
+        "Spice Girls",
+        "Interviewer"
+      ],
+      "mentioned_people": [
+        "Spice Girls"
+      ],
+      "hook": "&gt;&gt; or princess guy. Remember them on the dice? Very nice.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Spice Girls — intervista momento 6: &gt;&gt; I like him. &",
+          "summary": "Spice Girls in Spice Girls Interview Before They EXPLODED (1996): &gt;&gt; I like him. &gt;&gt; I like Trevor. &gt;&gt; I like Trevor. &gt;&gt; Yeah, &gt;&gt; Yeah, &gt;&",
+          "description": "Apertura secca (12s): apertura secca dal colloquio Spice Girls Contesto: Spice Girls Spice Girls Interview Before They EXPLODED (1996) interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo spice girls &gt;&gt; I like him. &gt;&gt; I like Trevor. &gt;&gt; I like Trevor. &gt;&gt; Ye FdrZm7 hook apertura short opening-short"
+        }
+      ]
+    }
+  ]
+}
