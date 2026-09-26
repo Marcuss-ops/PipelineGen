@@ -1,0 +1,337 @@
+{
+  "_comment": "Canonical POST /api/clips/process payload (ExtractRequest, drift source of truth: internal/capabilities/youtube/dto/types.go). Michael Jackson 'EBONY/JET FULL INTERVIEW (1987)' (video 73UJ20c73Hg, 915s) — 10 curated moments. Destination: the explicit child folder 1QMbexs6jFky-NjgVNgq_muMm9CixB_YC ('Michael Jackson', created under the operator parent 1wES95cH_RVYxl5I3kxnppbv-AlymCRqG via `admin drive-create-folder`); create_subfolder=false so clips upload straight into it. Clip identity is deterministic yt_<videoID>_<startSec>_<endSec>_v1, so re-submitting this exact payload UPSERTs the same media_assets rows instead of minting duplicates. Duration gate: all segments are 36-59s, inside the deployed VELOX_YOUTUBE_MAX_SEGMENT_DURATION_SECONDS=240 (the canonical SegmentPolicy default of 60s also accepts them).",
+  "url": "https://www.youtube.com/watch?v=73UJ20c73Hg",
+  "strategy": "verify",
+  "concurrency": 3,
+  "force_keyframes": true,
+  "keep_audio": true,
+  "write_summary": true,
+  "destination": {
+    "folder_id": "1QMbexs6jFky-NjgVNgq_muMm9CixB_YC",
+    "create_subfolder": false
+  },
+  "segments": [
+    {
+      "start": "01:23",
+      "end": "02:18",
+      "name": "Processo creativo divino e peso della fama",
+      "category": "celebrity_interview",
+      "source_title": "MICHAEL JACKSON | EBONY/JET FULL INTERVIEW (1987) | HD RESTORED 1080P",
+      "source_channel": "peach restores",
+      "summary": "Jackson descrive la composizione musicale come un processo divino incontrollabile e riflette sulla difficoltà di non poter mai uscire in pubblico in totale solitudine.",
+      "topics": [
+        "Michael Jackson processo creativo ispirazione divina dono Dio composizione solitudine celebrità fan perdita privacy Ebony Jet 1987"
+      ],
+      "tags": [
+        "Michael Jackson",
+        "Ebony Jet",
+        "celebrity_interview"
+      ],
+      "mentioned_people": [
+        "Michael Jackson"
+      ],
+      "hook": "Jackson descrive la composizione musicale come un processo divino incontrollabile e riflette sulla difficoltà di non poter mai uscire in pubblico in totale soli",
+      "speakers": [
+        "Michael Jackson"
+      ],
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Processo creativo divino e peso della fama",
+          "summary": "Jackson descrive la composizione musicale come un processo divino incontrollabile e riflette sulla difficoltà di non poter mai uscire in pubblico in totale solitudine.",
+          "description": "Jackson descrive la composizione musicale come un processo divino incontrollabile e riflette sulla difficoltà di non poter mai uscire in pubblico in totale solitudine."
+        }
+      ]
+    },
+    {
+      "start": "02:28",
+      "end": "03:17",
+      "name": "Il significato del brano e del termine 'Bad'",
+      "category": "celebrity_interview",
+      "source_title": "MICHAEL JACKSON | EBONY/JET FULL INTERVIEW (1987) | HD RESTORED 1080P",
+      "source_channel": "peach restores",
+      "summary": "Michael spiega che il titolo 'Bad' indica sicurezza di sé, grinta ed essere 'cool', chiarendo di non riferirsi ad alcun tipo di criminalità.",
+      "topics": [
+        "Bad singolo significato titolo slang cool tosto record industry Michael Jackson Quincy Jones dichiarazione audace 1987 celebrity interview artist career music pop culture stage television talk show intervista carriera musica artista successo pubblico memoria spettacolo"
+      ],
+      "tags": [
+        "Michael Jackson",
+        "Ebony Jet",
+        "celebrity_interview"
+      ],
+      "mentioned_people": [
+        "Michael Jackson",
+        "Quincy Jones"
+      ],
+      "hook": "Michael spiega che il titolo 'Bad' indica sicurezza di sé, grinta ed essere 'cool', chiarendo di non riferirsi ad alcun tipo di criminalità.",
+      "speakers": [
+        "Michael Jackson"
+      ],
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Il significato del brano e del termine 'Bad'",
+          "summary": "Michael spiega che il titolo 'Bad' indica sicurezza di sé, grinta ed essere 'cool', chiarendo di non riferirsi ad alcun tipo di criminalità.",
+          "description": "Michael spiega che il titolo 'Bad' indica sicurezza di sé, grinta ed essere 'cool', chiarendo di non riferirsi ad alcun tipo di criminalità."
+        }
+      ]
+    },
+    {
+      "start": "04:05",
+      "end": "04:56",
+      "name": "La tragica storia reale dietro il video di 'Bad'",
+      "category": "celebrity_interview",
+      "source_title": "MICHAEL JACKSON | EBONY/JET FULL INTERVIEW (1987) | HD RESTORED 1080P",
+      "source_channel": "peach restores",
+      "summary": "Racconta la vicenda reale appresa dai giornali che ha ispirato il video: uno studente del ghetto ucciso per invidia dagli amici dopo aver cercato di istruirsi ed emergere.",
+      "topics": [
+        "Bad videoclip storia vera cronaca Time Newsweek ghetto scuola privata invidia omicidio Daryl Harlem South Bronx celebrity interview artist career music pop culture stage television talk show intervista carriera musica artista successo pubblico memoria spettacolo"
+      ],
+      "tags": [
+        "Michael Jackson",
+        "Ebony Jet",
+        "celebrity_interview"
+      ],
+      "mentioned_people": [
+        "Michael Jackson"
+      ],
+      "hook": "Racconta la vicenda reale appresa dai giornali che ha ispirato il video: uno studente del ghetto ucciso per invidia dagli amici dopo aver cercato di istruirsi e",
+      "speakers": [
+        "Michael Jackson"
+      ],
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "La tragica storia reale dietro il video di 'Bad'",
+          "summary": "Racconta la vicenda reale appresa dai giornali che ha ispirato il video: uno studente del ghetto ucciso per invidia dagli amici dopo aver cercato di istruirsi ed emergere.",
+          "description": "Racconta la vicenda reale appresa dai giornali che ha ispirato il video: uno studente del ghetto ucciso per invidia dagli amici dopo aver cercato di istruirsi ed emergere."
+        }
+      ]
+    },
+    {
+      "start": "05:26",
+      "end": "06:15",
+      "name": "La filosofia sociale di 'Man in the Mirror'",
+      "category": "celebrity_interview",
+      "source_title": "MICHAEL JACKSON | EBONY/JET FULL INTERVIEW (1987) | HD RESTORED 1080P",
+      "source_channel": "peach restores",
+      "summary": "Jackson illustra la filosofia di 'Man in the Mirror', sostenendo che il cambiamento del mondo debba iniziare guardando se stessi senza puntare il dito contro gli altri.",
+      "topics": [
+        "Man in the Mirror autoanalisi cambiamento personale responsabilita individuale filosofia sociale pace miglioramento interiore specchio"
+      ],
+      "tags": [
+        "Michael Jackson",
+        "Ebony Jet",
+        "celebrity_interview"
+      ],
+      "mentioned_people": [
+        "Michael Jackson"
+      ],
+      "hook": "Jackson illustra la filosofia di 'Man in the Mirror', sostenendo che il cambiamento del mondo debba iniziare guardando se stessi senza puntare il dito contro gl",
+      "speakers": [
+        "Michael Jackson"
+      ],
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "La filosofia sociale di 'Man in the Mirror'",
+          "summary": "Jackson illustra la filosofia di 'Man in the Mirror', sostenendo che il cambiamento del mondo debba iniziare guardando se stessi senza puntare il dito contro gli altri.",
+          "description": "Jackson illustra la filosofia di 'Man in the Mirror', sostenendo che il cambiamento del mondo debba iniziare guardando se stessi senza puntare il dito contro gli altri."
+        }
+      ]
+    },
+    {
+      "start": "06:40",
+      "end": "07:35",
+      "name": "Registrazione al buio di 'I Just Can't Stop Loving You' e gossip dei tabloid",
+      "category": "celebrity_interview",
+      "source_title": "MICHAEL JACKSON | EBONY/JET FULL INTERVIEW (1987) | HD RESTORED 1080P",
+      "source_channel": "peach restores",
+      "summary": "Spiega di aver inciso il parlato introduttivo del singolo steso sotto le coperte al buio e commenta la sofferenza provocata dalle false notizie diffuse dalla stampa scandalistica.",
+      "topics": [
+        "I Just Can't Stop Loving You intro recitato registrazione letto buio tabloid falsita media gossip dolore incomprensione celebrity interview artist career music pop culture stage television talk show intervista carriera musica artista successo pubblico memoria spettacolo"
+      ],
+      "tags": [
+        "Michael Jackson",
+        "Ebony Jet",
+        "celebrity_interview"
+      ],
+      "mentioned_people": [
+        "Michael Jackson"
+      ],
+      "hook": "Spiega di aver inciso il parlato introduttivo del singolo steso sotto le coperte al buio e commenta la sofferenza provocata dalle false notizie diffuse dalla st",
+      "speakers": [
+        "Michael Jackson"
+      ],
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Registrazione al buio di 'I Just Can't Stop Loving You' e go",
+          "summary": "Spiega di aver inciso il parlato introduttivo del singolo steso sotto le coperte al buio e commenta la sofferenza provocata dalle false notizie diffuse dalla stampa scandalistica.",
+          "description": "Spiega di aver inciso il parlato introduttivo del singolo steso sotto le coperte al buio e commenta la sofferenza provocata dalle false notizie diffuse dalla stampa scandalistica."
+        }
+      ]
+    },
+    {
+      "start": "07:44",
+      "end": "08:22",
+      "name": "Nascita casuale di 'Liberian Girl' e 'We Are the World'",
+      "category": "celebrity_interview",
+      "source_title": "MICHAEL JACKSON | EBONY/JET FULL INTERVIEW (1987) | HD RESTORED 1080P",
+      "source_channel": "peach restores",
+      "summary": "Descrive come 'Liberian Girl' e 'We Are the World' siano nate all'improvviso nella sua sala giochi o senza premeditazione, registrate al volo su nastro.",
+      "topics": [
+        "Liberian Girl We Are the World flipper game room ispirazione immediata testo musica composizione spontanea celebrity interview artist career music pop culture stage television talk show intervista carriera musica artista successo pubblico memoria spettacolo"
+      ],
+      "tags": [
+        "Michael Jackson",
+        "Ebony Jet",
+        "celebrity_interview"
+      ],
+      "mentioned_people": [
+        "Michael Jackson"
+      ],
+      "hook": "Descrive come 'Liberian Girl' e 'We Are the World' siano nate all'improvviso nella sua sala giochi o senza premeditazione, registrate al volo su nastro.",
+      "speakers": [
+        "Michael Jackson"
+      ],
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Nascita casuale di 'Liberian Girl' e 'We Are the World'",
+          "summary": "Descrive come 'Liberian Girl' e 'We Are the World' siano nate all'improvviso nella sua sala giochi o senza premeditazione, registrate al volo su nastro.",
+          "description": "Descrive come 'Liberian Girl' e 'We Are the World' siano nate all'improvviso nella sua sala giochi o senza premeditazione, registrate al volo su nastro."
+        }
+      ]
+    },
+    {
+      "start": "08:34",
+      "end": "09:30",
+      "name": "L'ispirazione autobiografica di 'Dirty Diana' e la vita da tournée",
+      "category": "celebrity_interview",
+      "source_title": "MICHAEL JACKSON | EBONY/JET FULL INTERVIEW (1987) | HD RESTORED 1080P",
+      "source_channel": "peach restores",
+      "summary": "Definisce 'Dirty Diana' come la storia vissuta delle groupie incontrate in tour fin dall'infanzia, riflettendo su cosa significhi essere cresciuto costantemente sul palcoscenico.",
+      "topics": [
+        "Dirty Diana rock groupie tour tournee infanzia palco concerti sacrificio isolamento The Jacksons celebrity interview artist career music pop culture stage television talk show intervista carriera musica artista successo pubblico memoria spettacolo"
+      ],
+      "tags": [
+        "Michael Jackson",
+        "Ebony Jet",
+        "celebrity_interview"
+      ],
+      "mentioned_people": [
+        "Michael Jackson"
+      ],
+      "hook": "Definisce 'Dirty Diana' come la storia vissuta delle groupie incontrate in tour fin dall'infanzia, riflettendo su cosa significhi essere cresciuto costantemente",
+      "speakers": [
+        "Michael Jackson"
+      ],
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "L'ispirazione autobiografica di 'Dirty Diana' e la vita da t",
+          "summary": "Definisce 'Dirty Diana' come la storia vissuta delle groupie incontrate in tour fin dall'infanzia, riflettendo su cosa significhi essere cresciuto costantemente sul palcoscenico.",
+          "description": "Definisce 'Dirty Diana' come la storia vissuta delle groupie incontrate in tour fin dall'infanzia, riflettendo su cosa significhi essere cresciuto costantemente sul palcoscenico."
+        }
+      ]
+    },
+    {
+      "start": "10:14",
+      "end": "11:12",
+      "name": "Interesse anatomico per l'Elephant Man e disumanità verso i diversi",
+      "category": "celebrity_interview",
+      "source_title": "MICHAEL JACKSON | EBONY/JET FULL INTERVIEW (1987) | HD RESTORED 1080P",
+      "source_channel": "peach restores",
+      "summary": "Chiarisce la sua visita ai resti di John Merrick legata all'interesse anatomico e alla profonda empatia per un uomo emarginato e trattato ingiustamente come un animale.",
+      "topics": [
+        "The Elephant Man John Merrick scheletro ossa London School of Doctors anatomia diversita emarginazione David Lynch celebrity interview artist career music pop culture stage television talk show intervista carriera musica artista successo pubblico memoria spettacolo"
+      ],
+      "tags": [
+        "Michael Jackson",
+        "Ebony Jet",
+        "celebrity_interview"
+      ],
+      "mentioned_people": [
+        "Michael Jackson",
+        "Joseph Merrick"
+      ],
+      "hook": "Chiarisce la sua visita ai resti di John Merrick legata all'interesse anatomico e alla profonda empatia per un uomo emarginato e trattato ingiustamente come un ",
+      "speakers": [
+        "Michael Jackson"
+      ],
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Interesse anatomico per l'Elephant Man e disumanità verso i ",
+          "summary": "Chiarisce la sua visita ai resti di John Merrick legata all'interesse anatomico e alla profonda empatia per un uomo emarginato e trattato ingiustamente come un animale.",
+          "description": "Chiarisce la sua visita ai resti di John Merrick legata all'interesse anatomico e alla profonda empatia per un uomo emarginato e trattato ingiustamente come un animale."
+        }
+      ]
+    },
+    {
+      "start": "11:42",
+      "end": "12:18",
+      "name": "La musica come ambasciatrice universale senza barriere",
+      "category": "celebrity_interview",
+      "source_title": "MICHAEL JACKSON | EBONY/JET FULL INTERVIEW (1987) | HD RESTORED 1080P",
+      "source_channel": "peach restores",
+      "summary": "Afferma di sentirsi già un ambasciatore globale grazie al linguaggio universale della musica, in grado di superare qualsiasi confine politico, razziale e linguistico.",
+      "topics": [
+        "ambasciatore pace diplomazia musica barriere linguistiche unita globale messaggio pace razzismo bambini mondo celebrity interview artist career music pop culture stage television talk show intervista carriera musica artista successo pubblico memoria spettacolo"
+      ],
+      "tags": [
+        "Michael Jackson",
+        "Ebony Jet",
+        "celebrity_interview"
+      ],
+      "mentioned_people": [
+        "Michael Jackson"
+      ],
+      "hook": "Afferma di sentirsi già un ambasciatore globale grazie al linguaggio universale della musica, in grado di superare qualsiasi confine politico, razziale e lingui",
+      "speakers": [
+        "Michael Jackson"
+      ],
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "La musica come ambasciatrice universale senza barriere",
+          "summary": "Afferma di sentirsi già un ambasciatore globale grazie al linguaggio universale della musica, in grado di superare qualsiasi confine politico, razziale e linguistico.",
+          "description": "Afferma di sentirsi già un ambasciatore globale grazie al linguaggio universale della musica, in grado di superare qualsiasi confine politico, razziale e linguistico."
+        }
+      ]
+    },
+    {
+      "start": "12:39",
+      "end": "13:38",
+      "name": "Partenza del tour in Giappone e prime sensazioni da solista",
+      "category": "celebrity_interview",
+      "source_title": "MICHAEL JACKSON | EBONY/JET FULL INTERVIEW (1987) | HD RESTORED 1080P",
+      "source_channel": "peach restores",
+      "summary": "Spiega la scelta di avviare il 'Bad Tour' in Giappone per garantire equità ai fan internazionali e confessa l'effetto emotivo di salire sul palco senza i fratelli accanto.",
+      "topics": [
+        "Bad World Tour Giappone Tokyo debutto solista fratelli The Jacksons Victory Tour concerti live rodaggio celebrity interview artist career music pop culture stage television talk show intervista carriera musica artista successo pubblico memoria spettacolo"
+      ],
+      "tags": [
+        "Michael Jackson",
+        "Ebony Jet",
+        "celebrity_interview"
+      ],
+      "mentioned_people": [
+        "Michael Jackson"
+      ],
+      "hook": "Spiega la scelta di avviare il 'Bad Tour' in Giappone per garantire equità ai fan internazionali e confessa l'effetto emotivo di salire sul palco senza i fratel",
+      "speakers": [
+        "Michael Jackson"
+      ],
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Partenza del tour in Giappone e prime sensazioni da solista",
+          "summary": "Spiega la scelta di avviare il 'Bad Tour' in Giappone per garantire equità ai fan internazionali e confessa l'effetto emotivo di salire sul palco senza i fratelli accanto.",
+          "description": "Spiega la scelta di avviare il 'Bad Tour' in Giappone per garantire equità ai fan internazionali e confessa l'effetto emotivo di salire sul palco senza i fratelli accanto."
+        }
+      ]
+    }
+  ]
+}

@@ -2,6 +2,7 @@ package usecase
 
 import (
 	"context"
+	"sync/atomic"
 	"testing"
 
 	"go.uber.org/zap"
@@ -66,8 +67,8 @@ func TestTopicSearchPropagatesCaptionProbe(t *testing.T) {
 	if byID["vid-no-subs"].hasCaptions {
 		t.Error("has_captions=true for a candidate without any caption dictionary")
 	}
-	if meta.calls != 2 {
-		t.Errorf("metadata probe made %d calls, want exactly 2 (one per candidate, same call the scorers use)", meta.calls)
+	if got := int(meta.calls.Load()); got != 2 {
+		t.Errorf("metadata probe made %d calls, want exactly 2 (one per candidate, same call the scorers use)", got)
 	}
 }
 
@@ -79,13 +80,15 @@ type metaCaps struct {
 
 // captionMetaFetcher returns per-video caption flags and counts calls so
 // the test can assert the probe rides the existing enrichment call.
+// TopicSearch enriches candidates concurrently (semaphore 4), so the counter
+// must be race-safe.
 type captionMetaFetcher struct {
 	byID  map[string]metaCaps
-	calls int
+	calls atomic.Int64
 }
 
 func (f *captionMetaFetcher) GetVideoMetadata(_ context.Context, videoURL string) (*youtubeports.DownloaderMetadata, error) {
-	f.calls++
+	f.calls.Add(1)
 	id := topicVideoID(videoURL)
 	caps := f.byID[id]
 	return &youtubeports.DownloaderMetadata{

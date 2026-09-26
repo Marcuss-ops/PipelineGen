@@ -1,0 +1,441 @@
+{
+  "_comment": "POST /api/clips/process payload (ExtractRequest, drift source: internal/capabilities/youtube/dto/types.go). Source: Rare: Jimi Hendrix Opens Up About Nervous Breakdowns & Woodstock (1969) | The Dick Cavett Show (https://www.youtube.com/watch?v=Ix06B4fI19M). Destination: the Clips/HipHop child folder for Jimi Hendrix (see check.py FOLDERS), create_subfolder=false. Windows picked BY HAND from the timed transcript printed by ops/jobs/hiphop_36/tx.py; no LLM selection. Clip ids are deterministic (yt_<videoID>_<startSec>_<endSec>_v1) so a re-submit is an UPSERT. topics/summary/hook are keyword-dense on purpose: composeYouTubeClipSearchText feeds search_text -> 768d pgvector embedding, texts[] lands in asset_text_tracks in the same atomic commit.",
+  "url": "https://www.youtube.com/watch?v=Ix06B4fI19M",
+  "strategy": "verify",
+  "concurrency": 3,
+  "force_keyframes": true,
+  "keep_audio": true,
+  "write_summary": true,
+  "destination": {
+    "folder_id": "1Jh3nViXfIXIbKNNJ7TTERPUM14M7nLyK",
+    "create_subfolder": false
+  },
+  "segments": [
+    {
+      "start": "00:04",
+      "end": "00:49",
+      "name": "Jimi Hendrix — intervista momento 1: [applause] &gt;&gt; So, it's real",
+      "category": "celebrity_interview",
+      "source_title": "Rare: Jimi Hendrix Opens Up About Nervous Breakdowns & Woodstock (1969) | The Dick Cavett Show",
+      "source_channel": "YouTube Interview",
+      "summary": "Jimi Hendrix in Rare: Jimi Hendrix Opens Up About Nervous Breakdowns & Woods: [applause] &gt;&gt; So, it's really you at last. How are &gt;&gt; So, it's really you at last. How are you? you? I'm pretty tired. I was being",
+      "topics": [
+        "Jimi Hendrix Rare: Jimi Hendrix Opens Up About Nervous Breakdowns & Woodstock (1969) | The Dick Cavett Show interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo jimi hendrix [applause] &gt;&gt; So, it's really you "
+      ],
+      "tags": [
+        "Jimi Hendrix",
+        "interview",
+        "celebrity_interview",
+        "interview",
+        "talk show"
+      ],
+      "speakers": [
+        "Jimi Hendrix",
+        "Dick Cavett"
+      ],
+      "mentioned_people": [
+        "Jimi Hendrix"
+      ],
+      "hook": "much sleep do you need to be alert? Alert? I guess about eight. Eight hours?",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Jimi Hendrix — intervista momento 1: [applause] &gt;&gt; S",
+          "summary": "Jimi Hendrix in Rare: Jimi Hendrix Opens Up About Nervous Breakdowns & Woods: [applause] &gt;&gt; So, it's really you at last. How are &gt;&gt; So, it's really you at las",
+          "description": "Jimi Hendrix in Rare: Jimi Hendrix Opens Up About Nervous Breakdowns & Woods: [applause] &gt;&gt; So, it's really you at last. How are &gt;&gt; So, it's really you at last. How are you? you? I'm pretty tired. I was being Contesto: Jimi Hendrix Rare: Jimi Hendrix Opens Up About Nervous Breakdowns & Woodstock (1969) | The Dick Cavett Show interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo jimi hendrix [applause] &gt;&gt; So, it's really you "
+        }
+      ]
+    },
+    {
+      "start": "00:12",
+      "end": "00:24",
+      "name": "Hook: much sleep do you need to be alert?",
+      "category": "celebrity_interview",
+      "source_title": "Rare: Jimi Hendrix Opens Up About Nervous Breakdowns & Woodstock (1969) | The Dick Cavett Show",
+      "source_channel": "YouTube Interview",
+      "summary": "Apertura secca (12s): apertura secca dal colloquio Jimi Hendrix",
+      "topics": [
+        "Jimi Hendrix Rare: Jimi Hendrix Opens Up About Nervous Breakdowns & Woodstock (1969) | The Dick Cavett Show interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo jimi hendrix [applause] &gt;&gt; So, it's really you  hook apertura short opening-short"
+      ],
+      "tags": [
+        "Jimi Hendrix",
+        "interview",
+        "celebrity_interview",
+        "interview",
+        "talk show",
+        "hook"
+      ],
+      "speakers": [
+        "Jimi Hendrix",
+        "Dick Cavett"
+      ],
+      "mentioned_people": [
+        "Jimi Hendrix"
+      ],
+      "hook": "much sleep do you need to be alert? Alert? I guess about eight. Eight hours?",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Jimi Hendrix — intervista momento 1: [applause] &gt;&gt; S",
+          "summary": "Jimi Hendrix in Rare: Jimi Hendrix Opens Up About Nervous Breakdowns & Woods: [applause] &gt;&gt; So, it's really you at last. How are &gt;&gt; So, it's really you at las",
+          "description": "Apertura secca (12s): apertura secca dal colloquio Jimi Hendrix Contesto: Jimi Hendrix Rare: Jimi Hendrix Opens Up About Nervous Breakdowns & Woodstock (1969) | The Dick Cavett Show interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo jimi hendrix [applause] &gt;&gt; So, it's really you  hook apertura short opening-short"
+        }
+      ]
+    },
+    {
+      "start": "01:02",
+      "end": "01:47",
+      "name": "Jimi Hendrix — intervista momento 2: static in the air today and all. ",
+      "category": "celebrity_interview",
+      "source_title": "Rare: Jimi Hendrix Opens Up About Nervous Breakdowns & Woodstock (1969) | The Dick Cavett Show",
+      "source_channel": "YouTube Interview",
+      "summary": "Jimi Hendrix in Rare: Jimi Hendrix Opens Up About Nervous Breakdowns & Woods: static in the air today and all. Yeah, well, I was just trying to get a point well, I was just trying to get a point across before we all, you",
+      "topics": [
+        "Jimi Hendrix Rare: Jimi Hendrix Opens Up About Nervous Breakdowns & Woodstock (1969) | The Dick Cavett Show interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo jimi hendrix static in the air today and all. Yeah, w"
+      ],
+      "tags": [
+        "Jimi Hendrix",
+        "interview",
+        "celebrity_interview",
+        "interview",
+        "talk show"
+      ],
+      "speakers": [
+        "Jimi Hendrix",
+        "Dick Cavett"
+      ],
+      "mentioned_people": [
+        "Jimi Hendrix"
+      ],
+      "hook": "at Woodstock? Did you stay on so long you just",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Jimi Hendrix — intervista momento 2: static in the air tod",
+          "summary": "Jimi Hendrix in Rare: Jimi Hendrix Opens Up About Nervous Breakdowns & Woods: static in the air today and all. Yeah, well, I was just trying to get a point well, I was ju",
+          "description": "Jimi Hendrix in Rare: Jimi Hendrix Opens Up About Nervous Breakdowns & Woods: static in the air today and all. Yeah, well, I was just trying to get a point well, I was just trying to get a point across before we all, you Contesto: Jimi Hendrix Rare: Jimi Hendrix Opens Up About Nervous Breakdowns & Woodstock (1969) | The Dick Cavett Show interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo jimi hendrix static in the air today and all. Yeah, w"
+        }
+      ]
+    },
+    {
+      "start": "01:10",
+      "end": "01:22",
+      "name": "Hook: at woodstock? did you stay on so lo",
+      "category": "celebrity_interview",
+      "source_title": "Rare: Jimi Hendrix Opens Up About Nervous Breakdowns & Woodstock (1969) | The Dick Cavett Show",
+      "source_channel": "YouTube Interview",
+      "summary": "Apertura secca (12s): apertura secca dal colloquio Jimi Hendrix",
+      "topics": [
+        "Jimi Hendrix Rare: Jimi Hendrix Opens Up About Nervous Breakdowns & Woodstock (1969) | The Dick Cavett Show interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo jimi hendrix static in the air today and all. Yeah, w hook apertura short opening-short"
+      ],
+      "tags": [
+        "Jimi Hendrix",
+        "interview",
+        "celebrity_interview",
+        "interview",
+        "talk show",
+        "hook"
+      ],
+      "speakers": [
+        "Jimi Hendrix",
+        "Dick Cavett"
+      ],
+      "mentioned_people": [
+        "Jimi Hendrix"
+      ],
+      "hook": "at Woodstock? Did you stay on so long you just",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Jimi Hendrix — intervista momento 2: static in the air tod",
+          "summary": "Jimi Hendrix in Rare: Jimi Hendrix Opens Up About Nervous Breakdowns & Woods: static in the air today and all. Yeah, well, I was just trying to get a point well, I was ju",
+          "description": "Apertura secca (12s): apertura secca dal colloquio Jimi Hendrix Contesto: Jimi Hendrix Rare: Jimi Hendrix Opens Up About Nervous Breakdowns & Woodstock (1969) | The Dick Cavett Show interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo jimi hendrix static in the air today and all. Yeah, w hook apertura short opening-short"
+        }
+      ]
+    },
+    {
+      "start": "02:01",
+      "end": "02:46",
+      "name": "Jimi Hendrix — intervista momento 3: &gt;&gt; glad. I was glad. That's",
+      "category": "celebrity_interview",
+      "source_title": "Rare: Jimi Hendrix Opens Up About Nervous Breakdowns & Woodstock (1969) | The Dick Cavett Show",
+      "source_channel": "YouTube Interview",
+      "summary": "Jimi Hendrix in Rare: Jimi Hendrix Opens Up About Nervous Breakdowns & Woods: &gt;&gt; glad. I was glad. That's what it's all about, you know. about, you know. Yeah. Yeah. &gt;&gt; That's right. &gt;&gt; That's right. Tr",
+      "topics": [
+        "Jimi Hendrix Rare: Jimi Hendrix Opens Up About Nervous Breakdowns & Woodstock (1969) | The Dick Cavett Show interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo jimi hendrix &gt;&gt; glad. I was glad. That's what i"
+      ],
+      "tags": [
+        "Jimi Hendrix",
+        "interview",
+        "celebrity_interview",
+        "interview",
+        "talk show"
+      ],
+      "speakers": [
+        "Jimi Hendrix",
+        "Dick Cavett"
+      ],
+      "mentioned_people": [
+        "Jimi Hendrix"
+      ],
+      "hook": "What was the controversy about the national anthem and the way you I don't",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Jimi Hendrix — intervista momento 3: &gt;&gt; glad. I was ",
+          "summary": "Jimi Hendrix in Rare: Jimi Hendrix Opens Up About Nervous Breakdowns & Woods: &gt;&gt; glad. I was glad. That's what it's all about, you know. about, you know. Yeah. Yeah",
+          "description": "Jimi Hendrix in Rare: Jimi Hendrix Opens Up About Nervous Breakdowns & Woods: &gt;&gt; glad. I was glad. That's what it's all about, you know. about, you know. Yeah. Yeah. &gt;&gt; That's right. &gt;&gt; That's right. Tr Contesto: Jimi Hendrix Rare: Jimi Hendrix Opens Up About Nervous Breakdowns & Woodstock (1969) | The Dick Cavett Show interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo jimi hendrix &gt;&gt; glad. I was glad. That's what i"
+        }
+      ]
+    },
+    {
+      "start": "02:09",
+      "end": "02:21",
+      "name": "Hook: what was the controversy about the ",
+      "category": "celebrity_interview",
+      "source_title": "Rare: Jimi Hendrix Opens Up About Nervous Breakdowns & Woodstock (1969) | The Dick Cavett Show",
+      "source_channel": "YouTube Interview",
+      "summary": "Apertura secca (12s): apertura secca dal colloquio Jimi Hendrix",
+      "topics": [
+        "Jimi Hendrix Rare: Jimi Hendrix Opens Up About Nervous Breakdowns & Woodstock (1969) | The Dick Cavett Show interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo jimi hendrix &gt;&gt; glad. I was glad. That's what i hook apertura short opening-short"
+      ],
+      "tags": [
+        "Jimi Hendrix",
+        "interview",
+        "celebrity_interview",
+        "interview",
+        "talk show",
+        "hook"
+      ],
+      "speakers": [
+        "Jimi Hendrix",
+        "Dick Cavett"
+      ],
+      "mentioned_people": [
+        "Jimi Hendrix"
+      ],
+      "hook": "What was the controversy about the national anthem and the way you I don't",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Jimi Hendrix — intervista momento 3: &gt;&gt; glad. I was ",
+          "summary": "Jimi Hendrix in Rare: Jimi Hendrix Opens Up About Nervous Breakdowns & Woods: &gt;&gt; glad. I was glad. That's what it's all about, you know. about, you know. Yeah. Yeah",
+          "description": "Apertura secca (12s): apertura secca dal colloquio Jimi Hendrix Contesto: Jimi Hendrix Rare: Jimi Hendrix Opens Up About Nervous Breakdowns & Woodstock (1969) | The Dick Cavett Show interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo jimi hendrix &gt;&gt; glad. I was glad. That's what i hook apertura short opening-short"
+        }
+      ]
+    },
+    {
+      "start": "03:00",
+      "end": "03:45",
+      "name": "Jimi Hendrix — intervista momento 4: &gt;&gt; Don't you find that ther",
+      "category": "celebrity_interview",
+      "source_title": "Rare: Jimi Hendrix Opens Up About Nervous Breakdowns & Woodstock (1969) | The Dick Cavett Show",
+      "source_channel": "YouTube Interview",
+      "summary": "Jimi Hendrix in Rare: Jimi Hendrix Opens Up About Nervous Breakdowns & Woods: &gt;&gt; Don't you find that there's a certain mad beauty in an orthodoxy? Yeah. mad beauty in an orthodoxy? Yeah. [snorts] [snorts] &gt;&gt; ",
+      "topics": [
+        "Jimi Hendrix Rare: Jimi Hendrix Opens Up About Nervous Breakdowns & Woodstock (1969) | The Dick Cavett Show interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo jimi hendrix &gt;&gt; Don't you find that there's a c"
+      ],
+      "tags": [
+        "Jimi Hendrix",
+        "interview",
+        "celebrity_interview",
+        "interview",
+        "talk show"
+      ],
+      "speakers": [
+        "Jimi Hendrix",
+        "Dick Cavett"
+      ],
+      "mentioned_people": [
+        "Jimi Hendrix"
+      ],
+      "hook": "&gt;&gt; [laughter] &gt;&gt; I don't know. I don't know, man. I don't",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Jimi Hendrix — intervista momento 4: &gt;&gt; Don't you fi",
+          "summary": "Jimi Hendrix in Rare: Jimi Hendrix Opens Up About Nervous Breakdowns & Woods: &gt;&gt; Don't you find that there's a certain mad beauty in an orthodoxy? Yeah. mad beauty ",
+          "description": "Jimi Hendrix in Rare: Jimi Hendrix Opens Up About Nervous Breakdowns & Woods: &gt;&gt; Don't you find that there's a certain mad beauty in an orthodoxy? Yeah. mad beauty in an orthodoxy? Yeah. [snorts] [snorts] &gt;&gt;  Contesto: Jimi Hendrix Rare: Jimi Hendrix Opens Up About Nervous Breakdowns & Woodstock (1969) | The Dick Cavett Show interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo jimi hendrix &gt;&gt; Don't you find that there's a c"
+        }
+      ]
+    },
+    {
+      "start": "03:08",
+      "end": "03:20",
+      "name": "Hook: &gt;&gt; [laughter] &gt;&gt; i don'",
+      "category": "celebrity_interview",
+      "source_title": "Rare: Jimi Hendrix Opens Up About Nervous Breakdowns & Woodstock (1969) | The Dick Cavett Show",
+      "source_channel": "YouTube Interview",
+      "summary": "Apertura secca (12s): apertura secca dal colloquio Jimi Hendrix",
+      "topics": [
+        "Jimi Hendrix Rare: Jimi Hendrix Opens Up About Nervous Breakdowns & Woodstock (1969) | The Dick Cavett Show interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo jimi hendrix &gt;&gt; Don't you find that there's a c hook apertura short opening-short"
+      ],
+      "tags": [
+        "Jimi Hendrix",
+        "interview",
+        "celebrity_interview",
+        "interview",
+        "talk show",
+        "hook"
+      ],
+      "speakers": [
+        "Jimi Hendrix",
+        "Dick Cavett"
+      ],
+      "mentioned_people": [
+        "Jimi Hendrix"
+      ],
+      "hook": "&gt;&gt; [laughter] &gt;&gt; I don't know. I don't know, man. I don't",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Jimi Hendrix — intervista momento 4: &gt;&gt; Don't you fi",
+          "summary": "Jimi Hendrix in Rare: Jimi Hendrix Opens Up About Nervous Breakdowns & Woods: &gt;&gt; Don't you find that there's a certain mad beauty in an orthodoxy? Yeah. mad beauty ",
+          "description": "Apertura secca (12s): apertura secca dal colloquio Jimi Hendrix Contesto: Jimi Hendrix Rare: Jimi Hendrix Opens Up About Nervous Breakdowns & Woodstock (1969) | The Dick Cavett Show interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo jimi hendrix &gt;&gt; Don't you find that there's a c hook apertura short opening-short"
+        }
+      ]
+    },
+    {
+      "start": "03:58",
+      "end": "04:43",
+      "name": "Jimi Hendrix — intervista momento 5: Who's this? Noel Redding in &gt;&",
+      "category": "celebrity_interview",
+      "source_title": "Rare: Jimi Hendrix Opens Up About Nervous Breakdowns & Woodstock (1969) | The Dick Cavett Show",
+      "source_channel": "YouTube Interview",
+      "summary": "Jimi Hendrix in Rare: Jimi Hendrix Opens Up About Nervous Breakdowns & Woods: Who's this? Noel Redding in &gt;&gt; Yeah. Yeah, Billy Cox is playing bass &gt;&gt; Yeah. Yeah, Billy Cox is playing bass this time. Mhm. this",
+      "topics": [
+        "Jimi Hendrix Rare: Jimi Hendrix Opens Up About Nervous Breakdowns & Woodstock (1969) | The Dick Cavett Show interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo jimi hendrix Who's this? Noel Redding in &gt;&gt; Yea"
+      ],
+      "tags": [
+        "Jimi Hendrix",
+        "interview",
+        "celebrity_interview",
+        "interview",
+        "talk show"
+      ],
+      "speakers": [
+        "Jimi Hendrix",
+        "Dick Cavett"
+      ],
+      "mentioned_people": [
+        "Jimi Hendrix"
+      ],
+      "hook": "&gt;&gt; That's why I hate compliments, you know, compliments are so embarrassing",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Jimi Hendrix — intervista momento 5: Who's this? Noel Redd",
+          "summary": "Jimi Hendrix in Rare: Jimi Hendrix Opens Up About Nervous Breakdowns & Woods: Who's this? Noel Redding in &gt;&gt; Yeah. Yeah, Billy Cox is playing bass &gt;&gt; Yeah. Ye",
+          "description": "Jimi Hendrix in Rare: Jimi Hendrix Opens Up About Nervous Breakdowns & Woods: Who's this? Noel Redding in &gt;&gt; Yeah. Yeah, Billy Cox is playing bass &gt;&gt; Yeah. Yeah, Billy Cox is playing bass this time. Mhm. this Contesto: Jimi Hendrix Rare: Jimi Hendrix Opens Up About Nervous Breakdowns & Woodstock (1969) | The Dick Cavett Show interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo jimi hendrix Who's this? Noel Redding in &gt;&gt; Yea"
+        }
+      ]
+    },
+    {
+      "start": "04:06",
+      "end": "04:18",
+      "name": "Hook: &gt;&gt; that's why i hate complime",
+      "category": "celebrity_interview",
+      "source_title": "Rare: Jimi Hendrix Opens Up About Nervous Breakdowns & Woodstock (1969) | The Dick Cavett Show",
+      "source_channel": "YouTube Interview",
+      "summary": "Apertura secca (12s): apertura secca dal colloquio Jimi Hendrix",
+      "topics": [
+        "Jimi Hendrix Rare: Jimi Hendrix Opens Up About Nervous Breakdowns & Woodstock (1969) | The Dick Cavett Show interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo jimi hendrix Who's this? Noel Redding in &gt;&gt; Yea hook apertura short opening-short"
+      ],
+      "tags": [
+        "Jimi Hendrix",
+        "interview",
+        "celebrity_interview",
+        "interview",
+        "talk show",
+        "hook"
+      ],
+      "speakers": [
+        "Jimi Hendrix",
+        "Dick Cavett"
+      ],
+      "mentioned_people": [
+        "Jimi Hendrix"
+      ],
+      "hook": "&gt;&gt; That's why I hate compliments, you know, compliments are so embarrassing",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Jimi Hendrix — intervista momento 5: Who's this? Noel Redd",
+          "summary": "Jimi Hendrix in Rare: Jimi Hendrix Opens Up About Nervous Breakdowns & Woods: Who's this? Noel Redding in &gt;&gt; Yeah. Yeah, Billy Cox is playing bass &gt;&gt; Yeah. Ye",
+          "description": "Apertura secca (12s): apertura secca dal colloquio Jimi Hendrix Contesto: Jimi Hendrix Rare: Jimi Hendrix Opens Up About Nervous Breakdowns & Woodstock (1969) | The Dick Cavett Show interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo jimi hendrix Who's this? Noel Redding in &gt;&gt; Yea hook apertura short opening-short"
+        }
+      ]
+    },
+    {
+      "start": "04:57",
+      "end": "05:42",
+      "name": "Jimi Hendrix — intervista momento 6: England and you're just playing I",
+      "category": "celebrity_interview",
+      "source_title": "Rare: Jimi Hendrix Opens Up About Nervous Breakdowns & Woodstock (1969) | The Dick Cavett Show",
+      "source_channel": "YouTube Interview",
+      "summary": "Jimi Hendrix in Rare: Jimi Hendrix Opens Up About Nervous Breakdowns & Woods: England and you're just playing I like to play like that. You have to keep to play like that. You have to keep shape every day. Yeah, well, I ",
+      "topics": [
+        "Jimi Hendrix Rare: Jimi Hendrix Opens Up About Nervous Breakdowns & Woodstock (1969) | The Dick Cavett Show interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo jimi hendrix England and you're just playing I like t"
+      ],
+      "tags": [
+        "Jimi Hendrix",
+        "interview",
+        "celebrity_interview",
+        "interview",
+        "talk show"
+      ],
+      "speakers": [
+        "Jimi Hendrix",
+        "Dick Cavett"
+      ],
+      "mentioned_people": [
+        "Jimi Hendrix"
+      ],
+      "hook": "call it, like a jam, you know. It's hard for me to remember any notes cuz I'm",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Jimi Hendrix — intervista momento 6: England and you're ju",
+          "summary": "Jimi Hendrix in Rare: Jimi Hendrix Opens Up About Nervous Breakdowns & Woods: England and you're just playing I like to play like that. You have to keep to play like that",
+          "description": "Jimi Hendrix in Rare: Jimi Hendrix Opens Up About Nervous Breakdowns & Woods: England and you're just playing I like to play like that. You have to keep to play like that. You have to keep shape every day. Yeah, well, I  Contesto: Jimi Hendrix Rare: Jimi Hendrix Opens Up About Nervous Breakdowns & Woodstock (1969) | The Dick Cavett Show interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo jimi hendrix England and you're just playing I like t"
+        }
+      ]
+    },
+    {
+      "start": "05:05",
+      "end": "05:17",
+      "name": "Hook: call it, like a jam, you know. it's",
+      "category": "celebrity_interview",
+      "source_title": "Rare: Jimi Hendrix Opens Up About Nervous Breakdowns & Woodstock (1969) | The Dick Cavett Show",
+      "source_channel": "YouTube Interview",
+      "summary": "Apertura secca (12s): apertura secca dal colloquio Jimi Hendrix",
+      "topics": [
+        "Jimi Hendrix Rare: Jimi Hendrix Opens Up About Nervous Breakdowns & Woodstock (1969) | The Dick Cavett Show interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo jimi hendrix England and you're just playing I like t hook apertura short opening-short"
+      ],
+      "tags": [
+        "Jimi Hendrix",
+        "interview",
+        "celebrity_interview",
+        "interview",
+        "talk show",
+        "hook"
+      ],
+      "speakers": [
+        "Jimi Hendrix",
+        "Dick Cavett"
+      ],
+      "mentioned_people": [
+        "Jimi Hendrix"
+      ],
+      "hook": "call it, like a jam, you know. It's hard for me to remember any notes cuz I'm",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Jimi Hendrix — intervista momento 6: England and you're ju",
+          "summary": "Jimi Hendrix in Rare: Jimi Hendrix Opens Up About Nervous Breakdowns & Woods: England and you're just playing I like to play like that. You have to keep to play like that",
+          "description": "Apertura secca (12s): apertura secca dal colloquio Jimi Hendrix Contesto: Jimi Hendrix Rare: Jimi Hendrix Opens Up About Nervous Breakdowns & Woodstock (1969) | The Dick Cavett Show interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo jimi hendrix England and you're just playing I like t hook apertura short opening-short"
+        }
+      ]
+    }
+  ]
+}

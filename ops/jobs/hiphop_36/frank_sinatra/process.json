@@ -1,0 +1,441 @@
+{
+  "_comment": "POST /api/clips/process payload (ExtractRequest, drift source: internal/capabilities/youtube/dto/types.go). Source: Lost Interview Reveals Why Ava Gardner Truly Hated Frank Sinatra (https://www.youtube.com/watch?v=Ce_yvMlgYI4). Destination: the Clips/HipHop child folder for Frank Sinatra (see check.py FOLDERS), create_subfolder=false. Windows picked BY HAND from the timed transcript printed by ops/jobs/hiphop_36/tx.py; no LLM selection. Clip ids are deterministic (yt_<videoID>_<startSec>_<endSec>_v1) so a re-submit is an UPSERT. topics/summary/hook are keyword-dense on purpose: composeYouTubeClipSearchText feeds search_text -> 768d pgvector embedding, texts[] lands in asset_text_tracks in the same atomic commit.",
+  "url": "https://www.youtube.com/watch?v=Ce_yvMlgYI4",
+  "strategy": "verify",
+  "concurrency": 3,
+  "force_keyframes": true,
+  "keep_audio": true,
+  "write_summary": true,
+  "destination": {
+    "folder_id": "1SOlfDdT26lefbrUIrDZOZvgdEGjVBVZ9",
+    "create_subfolder": false
+  },
+  "segments": [
+    {
+      "start": "00:04",
+      "end": "00:49",
+      "name": "Frank Sinatra — intervista momento 1: celebrating Hollywood royalty No",
+      "category": "celebrity_interview",
+      "source_title": "Lost Interview Reveals Why Ava Gardner Truly Hated Frank Sinatra",
+      "source_channel": "YouTube Interview",
+      "summary": "Frank Sinatra in Lost Interview Reveals Why Ava Gardner Truly Hated Frank Sin: celebrating Hollywood royalty North Carolina native Ava Gardner the iconic Carolina native Ava Gardner the iconic actress would have turned 1",
+      "topics": [
+        "Frank Sinatra Lost Interview Reveals Why Ava Gardner Truly Hated Frank Sinatra interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo frank sinatra celebrating Hollywood royalty North Carolina native Ava Gardner the "
+      ],
+      "tags": [
+        "Frank Sinatra",
+        "interview",
+        "celebrity_interview",
+        "interview",
+        "talk show"
+      ],
+      "speakers": [
+        "Frank Sinatra",
+        "Narrator"
+      ],
+      "mentioned_people": [
+        "Frank Sinatra"
+      ],
+      "hook": "said Frank Sinatra was the love of my life but the truth wasn't so simple",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Frank Sinatra — intervista momento 1: celebrating Hollywoo",
+          "summary": "Frank Sinatra in Lost Interview Reveals Why Ava Gardner Truly Hated Frank Sin: celebrating Hollywood royalty North Carolina native Ava Gardner the iconic Carolina native ",
+          "description": "Frank Sinatra in Lost Interview Reveals Why Ava Gardner Truly Hated Frank Sin: celebrating Hollywood royalty North Carolina native Ava Gardner the iconic Carolina native Ava Gardner the iconic actress would have turned 1 Contesto: Frank Sinatra Lost Interview Reveals Why Ava Gardner Truly Hated Frank Sinatra interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo frank sinatra celebrating Hollywood royalty North Carolina native Ava Gardner the "
+        }
+      ]
+    },
+    {
+      "start": "00:12",
+      "end": "00:24",
+      "name": "Hook: said frank sinatra was the love of ",
+      "category": "celebrity_interview",
+      "source_title": "Lost Interview Reveals Why Ava Gardner Truly Hated Frank Sinatra",
+      "source_channel": "YouTube Interview",
+      "summary": "Apertura secca (12s): apertura secca dal colloquio Frank Sinatra",
+      "topics": [
+        "Frank Sinatra Lost Interview Reveals Why Ava Gardner Truly Hated Frank Sinatra interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo frank sinatra celebrating Hollywood royalty North Carolina native Ava Gardner the  hook apertura short opening-short"
+      ],
+      "tags": [
+        "Frank Sinatra",
+        "interview",
+        "celebrity_interview",
+        "interview",
+        "talk show",
+        "hook"
+      ],
+      "speakers": [
+        "Frank Sinatra",
+        "Narrator"
+      ],
+      "mentioned_people": [
+        "Frank Sinatra"
+      ],
+      "hook": "said Frank Sinatra was the love of my life but the truth wasn't so simple",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Frank Sinatra — intervista momento 1: celebrating Hollywoo",
+          "summary": "Frank Sinatra in Lost Interview Reveals Why Ava Gardner Truly Hated Frank Sin: celebrating Hollywood royalty North Carolina native Ava Gardner the iconic Carolina native ",
+          "description": "Apertura secca (12s): apertura secca dal colloquio Frank Sinatra Contesto: Frank Sinatra Lost Interview Reveals Why Ava Gardner Truly Hated Frank Sinatra interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo frank sinatra celebrating Hollywood royalty North Carolina native Ava Gardner the  hook apertura short opening-short"
+        }
+      ]
+    },
+    {
+      "start": "03:46",
+      "end": "04:31",
+      "name": "Frank Sinatra — intervista momento 2: but they married on January 10th",
+      "category": "celebrity_interview",
+      "source_title": "Lost Interview Reveals Why Ava Gardner Truly Hated Frank Sinatra",
+      "source_channel": "YouTube Interview",
+      "summary": "Frank Sinatra in Lost Interview Reveals Why Ava Gardner Truly Hated Frank Sin: but they married on January 10th 1942 in a small a small ceremony Ava wore a blue suit instead of ceremony Ava wore a blue suit instead of th",
+      "topics": [
+        "Frank Sinatra Lost Interview Reveals Why Ava Gardner Truly Hated Frank Sinatra interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo frank sinatra but they married on January 10th 1942 in a small a small ceremony Av"
+      ],
+      "tags": [
+        "Frank Sinatra",
+        "interview",
+        "celebrity_interview",
+        "interview",
+        "talk show"
+      ],
+      "speakers": [
+        "Frank Sinatra",
+        "Narrator"
+      ],
+      "mentioned_people": [
+        "Frank Sinatra"
+      ],
+      "hook": "marriage lasted only 17 months Mickey's lifestyle and multiple marriages he had",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Frank Sinatra — intervista momento 2: but they married on ",
+          "summary": "Frank Sinatra in Lost Interview Reveals Why Ava Gardner Truly Hated Frank Sin: but they married on January 10th 1942 in a small a small ceremony Ava wore a blue suit inst",
+          "description": "Frank Sinatra in Lost Interview Reveals Why Ava Gardner Truly Hated Frank Sin: but they married on January 10th 1942 in a small a small ceremony Ava wore a blue suit instead of ceremony Ava wore a blue suit instead of th Contesto: Frank Sinatra Lost Interview Reveals Why Ava Gardner Truly Hated Frank Sinatra interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo frank sinatra but they married on January 10th 1942 in a small a small ceremony Av"
+        }
+      ]
+    },
+    {
+      "start": "03:54",
+      "end": "04:06",
+      "name": "Hook: marriage lasted only 17 months mick",
+      "category": "celebrity_interview",
+      "source_title": "Lost Interview Reveals Why Ava Gardner Truly Hated Frank Sinatra",
+      "source_channel": "YouTube Interview",
+      "summary": "Apertura secca (12s): apertura secca dal colloquio Frank Sinatra",
+      "topics": [
+        "Frank Sinatra Lost Interview Reveals Why Ava Gardner Truly Hated Frank Sinatra interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo frank sinatra but they married on January 10th 1942 in a small a small ceremony Av hook apertura short opening-short"
+      ],
+      "tags": [
+        "Frank Sinatra",
+        "interview",
+        "celebrity_interview",
+        "interview",
+        "talk show",
+        "hook"
+      ],
+      "speakers": [
+        "Frank Sinatra",
+        "Narrator"
+      ],
+      "mentioned_people": [
+        "Frank Sinatra"
+      ],
+      "hook": "marriage lasted only 17 months Mickey's lifestyle and multiple marriages he had",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Frank Sinatra — intervista momento 2: but they married on ",
+          "summary": "Frank Sinatra in Lost Interview Reveals Why Ava Gardner Truly Hated Frank Sin: but they married on January 10th 1942 in a small a small ceremony Ava wore a blue suit inst",
+          "description": "Apertura secca (12s): apertura secca dal colloquio Frank Sinatra Contesto: Frank Sinatra Lost Interview Reveals Why Ava Gardner Truly Hated Frank Sinatra interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo frank sinatra but they married on January 10th 1942 in a small a small ceremony Av hook apertura short opening-short"
+        }
+      ]
+    },
+    {
+      "start": "07:29",
+      "end": "08:14",
+      "name": "Frank Sinatra — intervista momento 3: they had three children Nancy in",
+      "category": "celebrity_interview",
+      "source_title": "Lost Interview Reveals Why Ava Gardner Truly Hated Frank Sinatra",
+      "source_channel": "YouTube Interview",
+      "summary": "Frank Sinatra in Lost Interview Reveals Why Ava Gardner Truly Hated Frank Sin: they had three children Nancy in 1940 Frank Junior in Frank Junior in 1944 and Tina in 1944 and Tina in 1948 Nancy supported Sinatra in every",
+      "topics": [
+        "Frank Sinatra Lost Interview Reveals Why Ava Gardner Truly Hated Frank Sinatra interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo frank sinatra they had three children Nancy in 1940 Frank Junior in Frank Junior i"
+      ],
+      "tags": [
+        "Frank Sinatra",
+        "interview",
+        "celebrity_interview",
+        "interview",
+        "talk show"
+      ],
+      "speakers": [
+        "Frank Sinatra",
+        "Narrator"
+      ],
+      "mentioned_people": [
+        "Frank Sinatra"
+      ],
+      "hook": "meals however as Sinatra's Fame grew so did The Strain on their marriage his",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Frank Sinatra — intervista momento 3: they had three child",
+          "summary": "Frank Sinatra in Lost Interview Reveals Why Ava Gardner Truly Hated Frank Sin: they had three children Nancy in 1940 Frank Junior in Frank Junior in 1944 and Tina in 1944",
+          "description": "Frank Sinatra in Lost Interview Reveals Why Ava Gardner Truly Hated Frank Sin: they had three children Nancy in 1940 Frank Junior in Frank Junior in 1944 and Tina in 1944 and Tina in 1948 Nancy supported Sinatra in every Contesto: Frank Sinatra Lost Interview Reveals Why Ava Gardner Truly Hated Frank Sinatra interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo frank sinatra they had three children Nancy in 1940 Frank Junior in Frank Junior i"
+        }
+      ]
+    },
+    {
+      "start": "07:37",
+      "end": "07:49",
+      "name": "Hook: meals however as sinatra's fame gre",
+      "category": "celebrity_interview",
+      "source_title": "Lost Interview Reveals Why Ava Gardner Truly Hated Frank Sinatra",
+      "source_channel": "YouTube Interview",
+      "summary": "Apertura secca (12s): apertura secca dal colloquio Frank Sinatra",
+      "topics": [
+        "Frank Sinatra Lost Interview Reveals Why Ava Gardner Truly Hated Frank Sinatra interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo frank sinatra they had three children Nancy in 1940 Frank Junior in Frank Junior i hook apertura short opening-short"
+      ],
+      "tags": [
+        "Frank Sinatra",
+        "interview",
+        "celebrity_interview",
+        "interview",
+        "talk show",
+        "hook"
+      ],
+      "speakers": [
+        "Frank Sinatra",
+        "Narrator"
+      ],
+      "mentioned_people": [
+        "Frank Sinatra"
+      ],
+      "hook": "meals however as Sinatra's Fame grew so did The Strain on their marriage his",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Frank Sinatra — intervista momento 3: they had three child",
+          "summary": "Frank Sinatra in Lost Interview Reveals Why Ava Gardner Truly Hated Frank Sin: they had three children Nancy in 1940 Frank Junior in Frank Junior in 1944 and Tina in 1944",
+          "description": "Apertura secca (12s): apertura secca dal colloquio Frank Sinatra Contesto: Frank Sinatra Lost Interview Reveals Why Ava Gardner Truly Hated Frank Sinatra interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo frank sinatra they had three children Nancy in 1940 Frank Junior in Frank Junior i hook apertura short opening-short"
+        }
+      ]
+    },
+    {
+      "start": "11:11",
+      "end": "11:56",
+      "name": "Frank Sinatra — intervista momento 4: shattered and his career took a ",
+      "category": "celebrity_interview",
+      "source_title": "Lost Interview Reveals Why Ava Gardner Truly Hated Frank Sinatra",
+      "source_channel": "YouTube Interview",
+      "summary": "Frank Sinatra in Lost Interview Reveals Why Ava Gardner Truly Hated Frank Sin: shattered and his career took a nose dive he lost his contracts with MGM and dive he lost his contracts with MGM and Colombia records and the",
+      "topics": [
+        "Frank Sinatra Lost Interview Reveals Why Ava Gardner Truly Hated Frank Sinatra interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo frank sinatra shattered and his career took a nose dive he lost his contracts with"
+      ],
+      "tags": [
+        "Frank Sinatra",
+        "interview",
+        "celebrity_interview",
+        "interview",
+        "talk show"
+      ],
+      "speakers": [
+        "Frank Sinatra",
+        "Narrator"
+      ],
+      "mentioned_people": [
+        "Frank Sinatra"
+      ],
+      "hook": "only added to her Legend stories of her Antics like allegedly urinating in the",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Frank Sinatra — intervista momento 4: shattered and his ca",
+          "summary": "Frank Sinatra in Lost Interview Reveals Why Ava Gardner Truly Hated Frank Sin: shattered and his career took a nose dive he lost his contracts with MGM and dive he lost h",
+          "description": "Frank Sinatra in Lost Interview Reveals Why Ava Gardner Truly Hated Frank Sin: shattered and his career took a nose dive he lost his contracts with MGM and dive he lost his contracts with MGM and Colombia records and the Contesto: Frank Sinatra Lost Interview Reveals Why Ava Gardner Truly Hated Frank Sinatra interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo frank sinatra shattered and his career took a nose dive he lost his contracts with"
+        }
+      ]
+    },
+    {
+      "start": "11:19",
+      "end": "11:31",
+      "name": "Hook: only added to her legend stories of",
+      "category": "celebrity_interview",
+      "source_title": "Lost Interview Reveals Why Ava Gardner Truly Hated Frank Sinatra",
+      "source_channel": "YouTube Interview",
+      "summary": "Apertura secca (12s): apertura secca dal colloquio Frank Sinatra",
+      "topics": [
+        "Frank Sinatra Lost Interview Reveals Why Ava Gardner Truly Hated Frank Sinatra interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo frank sinatra shattered and his career took a nose dive he lost his contracts with hook apertura short opening-short"
+      ],
+      "tags": [
+        "Frank Sinatra",
+        "interview",
+        "celebrity_interview",
+        "interview",
+        "talk show",
+        "hook"
+      ],
+      "speakers": [
+        "Frank Sinatra",
+        "Narrator"
+      ],
+      "mentioned_people": [
+        "Frank Sinatra"
+      ],
+      "hook": "only added to her Legend stories of her Antics like allegedly urinating in the",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Frank Sinatra — intervista momento 4: shattered and his ca",
+          "summary": "Frank Sinatra in Lost Interview Reveals Why Ava Gardner Truly Hated Frank Sin: shattered and his career took a nose dive he lost his contracts with MGM and dive he lost h",
+          "description": "Apertura secca (12s): apertura secca dal colloquio Frank Sinatra Contesto: Frank Sinatra Lost Interview Reveals Why Ava Gardner Truly Hated Frank Sinatra interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo frank sinatra shattered and his career took a nose dive he lost his contracts with hook apertura short opening-short"
+        }
+      ]
+    },
+    {
+      "start": "14:54",
+      "end": "15:39",
+      "name": "Frank Sinatra — intervista momento 5: and even attempted suicide sever",
+      "category": "celebrity_interview",
+      "source_title": "Lost Interview Reveals Why Ava Gardner Truly Hated Frank Sinatra",
+      "source_channel": "YouTube Interview",
+      "summary": "Frank Sinatra in Lost Interview Reveals Why Ava Gardner Truly Hated Frank Sin: and even attempted suicide several times Garder became the main bread winner Garder became the main bread winner which hurt Sinatra's Pride t",
+      "topics": [
+        "Frank Sinatra Lost Interview Reveals Why Ava Gardner Truly Hated Frank Sinatra interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo frank sinatra and even attempted suicide several times Garder became the main brea"
+      ],
+      "tags": [
+        "Frank Sinatra",
+        "interview",
+        "celebrity_interview",
+        "interview",
+        "talk show"
+      ],
+      "speakers": [
+        "Frank Sinatra",
+        "Narrator"
+      ],
+      "mentioned_people": [
+        "Frank Sinatra"
+      ],
+      "hook": "was filming trying to keep her attention in one dramatic moment in",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Frank Sinatra — intervista momento 5: and even attempted s",
+          "summary": "Frank Sinatra in Lost Interview Reveals Why Ava Gardner Truly Hated Frank Sin: and even attempted suicide several times Garder became the main bread winner Garder became ",
+          "description": "Frank Sinatra in Lost Interview Reveals Why Ava Gardner Truly Hated Frank Sin: and even attempted suicide several times Garder became the main bread winner Garder became the main bread winner which hurt Sinatra's Pride t Contesto: Frank Sinatra Lost Interview Reveals Why Ava Gardner Truly Hated Frank Sinatra interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo frank sinatra and even attempted suicide several times Garder became the main brea"
+        }
+      ]
+    },
+    {
+      "start": "15:02",
+      "end": "15:14",
+      "name": "Hook: was filming trying to keep her atte",
+      "category": "celebrity_interview",
+      "source_title": "Lost Interview Reveals Why Ava Gardner Truly Hated Frank Sinatra",
+      "source_channel": "YouTube Interview",
+      "summary": "Apertura secca (12s): apertura secca dal colloquio Frank Sinatra",
+      "topics": [
+        "Frank Sinatra Lost Interview Reveals Why Ava Gardner Truly Hated Frank Sinatra interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo frank sinatra and even attempted suicide several times Garder became the main brea hook apertura short opening-short"
+      ],
+      "tags": [
+        "Frank Sinatra",
+        "interview",
+        "celebrity_interview",
+        "interview",
+        "talk show",
+        "hook"
+      ],
+      "speakers": [
+        "Frank Sinatra",
+        "Narrator"
+      ],
+      "mentioned_people": [
+        "Frank Sinatra"
+      ],
+      "hook": "was filming trying to keep her attention in one dramatic moment in",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Frank Sinatra — intervista momento 5: and even attempted s",
+          "summary": "Frank Sinatra in Lost Interview Reveals Why Ava Gardner Truly Hated Frank Sin: and even attempted suicide several times Garder became the main bread winner Garder became ",
+          "description": "Apertura secca (12s): apertura secca dal colloquio Frank Sinatra Contesto: Frank Sinatra Lost Interview Reveals Why Ava Gardner Truly Hated Frank Sinatra interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo frank sinatra and even attempted suicide several times Garder became the main brea hook apertura short opening-short"
+        }
+      ]
+    },
+    {
+      "start": "18:36",
+      "end": "19:21",
+      "name": "Frank Sinatra — intervista momento 6: into flames while mine Burns ins",
+      "category": "celebrity_interview",
+      "source_title": "Lost Interview Reveals Why Ava Gardner Truly Hated Frank Sinatra",
+      "source_channel": "YouTube Interview",
+      "summary": "Frank Sinatra in Lost Interview Reveals Why Ava Gardner Truly Hated Frank Sin: into flames while mine Burns inside for hours their neighbors often heard the hours their neighbors often heard the chaos from their home wit",
+      "topics": [
+        "Frank Sinatra Lost Interview Reveals Why Ava Gardner Truly Hated Frank Sinatra interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo frank sinatra into flames while mine Burns inside for hours their neighbors often "
+      ],
+      "tags": [
+        "Frank Sinatra",
+        "interview",
+        "celebrity_interview",
+        "interview",
+        "talk show"
+      ],
+      "speakers": [
+        "Frank Sinatra",
+        "Narrator"
+      ],
+      "mentioned_people": [
+        "Frank Sinatra"
+      ],
+      "hook": "whirlwind of passion and even when things reached their Breaking Point Ava",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Frank Sinatra — intervista momento 6: into flames while mi",
+          "summary": "Frank Sinatra in Lost Interview Reveals Why Ava Gardner Truly Hated Frank Sin: into flames while mine Burns inside for hours their neighbors often heard the hours their n",
+          "description": "Frank Sinatra in Lost Interview Reveals Why Ava Gardner Truly Hated Frank Sin: into flames while mine Burns inside for hours their neighbors often heard the hours their neighbors often heard the chaos from their home wit Contesto: Frank Sinatra Lost Interview Reveals Why Ava Gardner Truly Hated Frank Sinatra interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo frank sinatra into flames while mine Burns inside for hours their neighbors often "
+        }
+      ]
+    },
+    {
+      "start": "18:44",
+      "end": "18:56",
+      "name": "Hook: whirlwind of passion and even when ",
+      "category": "celebrity_interview",
+      "source_title": "Lost Interview Reveals Why Ava Gardner Truly Hated Frank Sinatra",
+      "source_channel": "YouTube Interview",
+      "summary": "Apertura secca (12s): apertura secca dal colloquio Frank Sinatra",
+      "topics": [
+        "Frank Sinatra Lost Interview Reveals Why Ava Gardner Truly Hated Frank Sinatra interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo frank sinatra into flames while mine Burns inside for hours their neighbors often  hook apertura short opening-short"
+      ],
+      "tags": [
+        "Frank Sinatra",
+        "interview",
+        "celebrity_interview",
+        "interview",
+        "talk show",
+        "hook"
+      ],
+      "speakers": [
+        "Frank Sinatra",
+        "Narrator"
+      ],
+      "mentioned_people": [
+        "Frank Sinatra"
+      ],
+      "hook": "whirlwind of passion and even when things reached their Breaking Point Ava",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Frank Sinatra — intervista momento 6: into flames while mi",
+          "summary": "Frank Sinatra in Lost Interview Reveals Why Ava Gardner Truly Hated Frank Sin: into flames while mine Burns inside for hours their neighbors often heard the hours their n",
+          "description": "Apertura secca (12s): apertura secca dal colloquio Frank Sinatra Contesto: Frank Sinatra Lost Interview Reveals Why Ava Gardner Truly Hated Frank Sinatra interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo frank sinatra into flames while mine Burns inside for hours their neighbors often  hook apertura short opening-short"
+        }
+      ]
+    }
+  ]
+}

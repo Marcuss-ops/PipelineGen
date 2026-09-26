@@ -1,0 +1,441 @@
+{
+  "_comment": "POST /api/clips/process payload (ExtractRequest, drift source: internal/capabilities/youtube/dto/types.go). Source: Stevie Wonder - rare London interview (1974) (https://www.youtube.com/watch?v=RIBsNuKQkr8). Destination: the Clips/HipHop child folder for Stevie Wonder (see check.py FOLDERS), create_subfolder=false. Windows picked BY HAND from the timed transcript printed by ops/jobs/hiphop_36/tx.py; no LLM selection. Clip ids are deterministic (yt_<videoID>_<startSec>_<endSec>_v1) so a re-submit is an UPSERT. topics/summary/hook are keyword-dense on purpose: composeYouTubeClipSearchText feeds search_text -> 768d pgvector embedding, texts[] lands in asset_text_tracks in the same atomic commit.",
+  "url": "https://www.youtube.com/watch?v=RIBsNuKQkr8",
+  "strategy": "verify",
+  "concurrency": 3,
+  "force_keyframes": true,
+  "keep_audio": true,
+  "write_summary": true,
+  "destination": {
+    "folder_id": "1gWBXP4xjRerl2au_HKjlszwOFkldq_Ls",
+    "create_subfolder": false
+  },
+  "segments": [
+    {
+      "start": "00:04",
+      "end": "00:49",
+      "name": "Stevie Wonder — intervista momento 1: Stevie welcome to London it's re",
+      "category": "celebrity_interview",
+      "source_title": "Stevie Wonder - rare London interview (1974)",
+      "source_channel": "YouTube Interview",
+      "summary": "Stevie Wonder in Stevie Wonder - rare London interview (1974): Stevie welcome to London it's really a pleasure to see you uh the first concert pleasure to see you uh the first concert too last night that you've done in t",
+      "topics": [
+        "Stevie Wonder Stevie Wonder - rare London interview (1974) interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo stevie wonder Stevie welcome to London it's really a pleasure to see you uh the first concert  RIBsNuK"
+      ],
+      "tags": [
+        "Stevie Wonder",
+        "interview",
+        "celebrity_interview",
+        "interview",
+        "talk show"
+      ],
+      "speakers": [
+        "Stevie Wonder",
+        "Interviewer"
+      ],
+      "mentioned_people": [
+        "Stevie Wonder"
+      ],
+      "hook": "a pleasure being in London and Edis house sincerity right um we",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Stevie Wonder — intervista momento 1: Stevie welcome to Lo",
+          "summary": "Stevie Wonder in Stevie Wonder - rare London interview (1974): Stevie welcome to London it's really a pleasure to see you uh the first concert pleasure to see you uh the ",
+          "description": "Stevie Wonder in Stevie Wonder - rare London interview (1974): Stevie welcome to London it's really a pleasure to see you uh the first concert pleasure to see you uh the first concert too last night that you've done in t Contesto: Stevie Wonder Stevie Wonder - rare London interview (1974) interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo stevie wonder Stevie welcome to London it's really a pleasure to see you uh the first concert  RIBsNuK"
+        }
+      ]
+    },
+    {
+      "start": "00:12",
+      "end": "00:24",
+      "name": "Hook: a pleasure being in london and edis",
+      "category": "celebrity_interview",
+      "source_title": "Stevie Wonder - rare London interview (1974)",
+      "source_channel": "YouTube Interview",
+      "summary": "Apertura secca (12s): apertura secca dal colloquio Stevie Wonder",
+      "topics": [
+        "Stevie Wonder Stevie Wonder - rare London interview (1974) interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo stevie wonder Stevie welcome to London it's really a pleasure to see you uh the first concert  RIBsNuK hook apertura short opening-short"
+      ],
+      "tags": [
+        "Stevie Wonder",
+        "interview",
+        "celebrity_interview",
+        "interview",
+        "talk show",
+        "hook"
+      ],
+      "speakers": [
+        "Stevie Wonder",
+        "Interviewer"
+      ],
+      "mentioned_people": [
+        "Stevie Wonder"
+      ],
+      "hook": "a pleasure being in London and Edis house sincerity right um we",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Stevie Wonder — intervista momento 1: Stevie welcome to Lo",
+          "summary": "Stevie Wonder in Stevie Wonder - rare London interview (1974): Stevie welcome to London it's really a pleasure to see you uh the first concert pleasure to see you uh the ",
+          "description": "Apertura secca (12s): apertura secca dal colloquio Stevie Wonder Contesto: Stevie Wonder Stevie Wonder - rare London interview (1974) interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo stevie wonder Stevie welcome to London it's really a pleasure to see you uh the first concert  RIBsNuK hook apertura short opening-short"
+        }
+      ]
+    },
+    {
+      "start": "01:38",
+      "end": "02:23",
+      "name": "Stevie Wonder — intervista momento 2: um you're close you're somewhat ",
+      "category": "celebrity_interview",
+      "source_title": "Stevie Wonder - rare London interview (1974)",
+      "source_channel": "YouTube Interview",
+      "summary": "Stevie Wonder in Stevie Wonder - rare London interview (1974): um you're close you're somewhat close together and you can just you can you together and you can just you can you can feel when you have like a big big can f",
+      "topics": [
+        "Stevie Wonder Stevie Wonder - rare London interview (1974) interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo stevie wonder um you're close you're somewhat close together and you can just you can you toge RIBsNuK"
+      ],
+      "tags": [
+        "Stevie Wonder",
+        "interview",
+        "celebrity_interview",
+        "interview",
+        "talk show"
+      ],
+      "speakers": [
+        "Stevie Wonder",
+        "Interviewer"
+      ],
+      "mentioned_people": [
+        "Stevie Wonder"
+      ],
+      "hook": "really really to close to you you know the band that you were playing with last",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Stevie Wonder — intervista momento 2: um you're close you'",
+          "summary": "Stevie Wonder in Stevie Wonder - rare London interview (1974): um you're close you're somewhat close together and you can just you can you together and you can just you c",
+          "description": "Stevie Wonder in Stevie Wonder - rare London interview (1974): um you're close you're somewhat close together and you can just you can you together and you can just you can you can feel when you have like a big big can f Contesto: Stevie Wonder Stevie Wonder - rare London interview (1974) interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo stevie wonder um you're close you're somewhat close together and you can just you can you toge RIBsNuK"
+        }
+      ]
+    },
+    {
+      "start": "01:46",
+      "end": "01:58",
+      "name": "Hook: really really to close to you you k",
+      "category": "celebrity_interview",
+      "source_title": "Stevie Wonder - rare London interview (1974)",
+      "source_channel": "YouTube Interview",
+      "summary": "Apertura secca (12s): apertura secca dal colloquio Stevie Wonder",
+      "topics": [
+        "Stevie Wonder Stevie Wonder - rare London interview (1974) interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo stevie wonder um you're close you're somewhat close together and you can just you can you toge RIBsNuK hook apertura short opening-short"
+      ],
+      "tags": [
+        "Stevie Wonder",
+        "interview",
+        "celebrity_interview",
+        "interview",
+        "talk show",
+        "hook"
+      ],
+      "speakers": [
+        "Stevie Wonder",
+        "Interviewer"
+      ],
+      "mentioned_people": [
+        "Stevie Wonder"
+      ],
+      "hook": "really really to close to you you know the band that you were playing with last",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Stevie Wonder — intervista momento 2: um you're close you'",
+          "summary": "Stevie Wonder in Stevie Wonder - rare London interview (1974): um you're close you're somewhat close together and you can just you can you together and you can just you c",
+          "description": "Apertura secca (12s): apertura secca dal colloquio Stevie Wonder Contesto: Stevie Wonder Stevie Wonder - rare London interview (1974) interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo stevie wonder um you're close you're somewhat close together and you can just you can you toge RIBsNuK hook apertura short opening-short"
+        }
+      ]
+    },
+    {
+      "start": "03:12",
+      "end": "03:57",
+      "name": "Stevie Wonder — intervista momento 3: more with you know the players t",
+      "category": "celebrity_interview",
+      "source_title": "Stevie Wonder - rare London interview (1974)",
+      "source_channel": "YouTube Interview",
+      "summary": "Stevie Wonder in Stevie Wonder - rare London interview (1974): more with you know the players than ever before cuz the last time that we were before cuz the last time that we were speaking when you came in and did my spe",
+      "topics": [
+        "Stevie Wonder Stevie Wonder - rare London interview (1974) interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo stevie wonder more with you know the players than ever before cuz the last time that we were b RIBsNuK"
+      ],
+      "tags": [
+        "Stevie Wonder",
+        "interview",
+        "celebrity_interview",
+        "interview",
+        "talk show"
+      ],
+      "speakers": [
+        "Stevie Wonder",
+        "Interviewer"
+      ],
+      "mentioned_people": [
+        "Stevie Wonder"
+      ],
+      "hook": "were talking then about a possible live album for this year I mean is that still",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Stevie Wonder — intervista momento 3: more with you know t",
+          "summary": "Stevie Wonder in Stevie Wonder - rare London interview (1974): more with you know the players than ever before cuz the last time that we were before cuz the last time tha",
+          "description": "Stevie Wonder in Stevie Wonder - rare London interview (1974): more with you know the players than ever before cuz the last time that we were before cuz the last time that we were speaking when you came in and did my spe Contesto: Stevie Wonder Stevie Wonder - rare London interview (1974) interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo stevie wonder more with you know the players than ever before cuz the last time that we were b RIBsNuK"
+        }
+      ]
+    },
+    {
+      "start": "03:20",
+      "end": "03:32",
+      "name": "Hook: were talking then about a possible ",
+      "category": "celebrity_interview",
+      "source_title": "Stevie Wonder - rare London interview (1974)",
+      "source_channel": "YouTube Interview",
+      "summary": "Apertura secca (12s): apertura secca dal colloquio Stevie Wonder",
+      "topics": [
+        "Stevie Wonder Stevie Wonder - rare London interview (1974) interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo stevie wonder more with you know the players than ever before cuz the last time that we were b RIBsNuK hook apertura short opening-short"
+      ],
+      "tags": [
+        "Stevie Wonder",
+        "interview",
+        "celebrity_interview",
+        "interview",
+        "talk show",
+        "hook"
+      ],
+      "speakers": [
+        "Stevie Wonder",
+        "Interviewer"
+      ],
+      "mentioned_people": [
+        "Stevie Wonder"
+      ],
+      "hook": "were talking then about a possible live album for this year I mean is that still",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Stevie Wonder — intervista momento 3: more with you know t",
+          "summary": "Stevie Wonder in Stevie Wonder - rare London interview (1974): more with you know the players than ever before cuz the last time that we were before cuz the last time tha",
+          "description": "Apertura secca (12s): apertura secca dal colloquio Stevie Wonder Contesto: Stevie Wonder Stevie Wonder - rare London interview (1974) interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo stevie wonder more with you know the players than ever before cuz the last time that we were b RIBsNuK hook apertura short opening-short"
+        }
+      ]
+    },
+    {
+      "start": "04:46",
+      "end": "05:31",
+      "name": "Stevie Wonder — intervista momento 4: happening so it's uh it's a more",
+      "category": "celebrity_interview",
+      "source_title": "Stevie Wonder - rare London interview (1974)",
+      "source_channel": "YouTube Interview",
+      "summary": "Stevie Wonder in Stevie Wonder - rare London interview (1974): happening so it's uh it's a more it's a lot more visual than anything you lot more visual than anything you know cuz since this was the first know cuz since ",
+      "topics": [
+        "Stevie Wonder Stevie Wonder - rare London interview (1974) interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo stevie wonder happening so it's uh it's a more it's a lot more visual than anything you lot mo RIBsNuK"
+      ],
+      "tags": [
+        "Stevie Wonder",
+        "interview",
+        "celebrity_interview",
+        "interview",
+        "talk show"
+      ],
+      "speakers": [
+        "Stevie Wonder",
+        "Interviewer"
+      ],
+      "mentioned_people": [
+        "Stevie Wonder"
+      ],
+      "hook": "last time you were here did you feel a change in the feeling that you got from",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Stevie Wonder — intervista momento 4: happening so it's uh",
+          "summary": "Stevie Wonder in Stevie Wonder - rare London interview (1974): happening so it's uh it's a more it's a lot more visual than anything you lot more visual than anything you",
+          "description": "Stevie Wonder in Stevie Wonder - rare London interview (1974): happening so it's uh it's a more it's a lot more visual than anything you lot more visual than anything you know cuz since this was the first know cuz since  Contesto: Stevie Wonder Stevie Wonder - rare London interview (1974) interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo stevie wonder happening so it's uh it's a more it's a lot more visual than anything you lot mo RIBsNuK"
+        }
+      ]
+    },
+    {
+      "start": "04:54",
+      "end": "05:06",
+      "name": "Hook: last time you were here did you fee",
+      "category": "celebrity_interview",
+      "source_title": "Stevie Wonder - rare London interview (1974)",
+      "source_channel": "YouTube Interview",
+      "summary": "Apertura secca (12s): apertura secca dal colloquio Stevie Wonder",
+      "topics": [
+        "Stevie Wonder Stevie Wonder - rare London interview (1974) interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo stevie wonder happening so it's uh it's a more it's a lot more visual than anything you lot mo RIBsNuK hook apertura short opening-short"
+      ],
+      "tags": [
+        "Stevie Wonder",
+        "interview",
+        "celebrity_interview",
+        "interview",
+        "talk show",
+        "hook"
+      ],
+      "speakers": [
+        "Stevie Wonder",
+        "Interviewer"
+      ],
+      "mentioned_people": [
+        "Stevie Wonder"
+      ],
+      "hook": "last time you were here did you feel a change in the feeling that you got from",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Stevie Wonder — intervista momento 4: happening so it's uh",
+          "summary": "Stevie Wonder in Stevie Wonder - rare London interview (1974): happening so it's uh it's a more it's a lot more visual than anything you lot more visual than anything you",
+          "description": "Apertura secca (12s): apertura secca dal colloquio Stevie Wonder Contesto: Stevie Wonder Stevie Wonder - rare London interview (1974) interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo stevie wonder happening so it's uh it's a more it's a lot more visual than anything you lot mo RIBsNuK hook apertura short opening-short"
+        }
+      ]
+    },
+    {
+      "start": "06:20",
+      "end": "07:05",
+      "name": "Stevie Wonder — intervista momento 5: friend so uh the the um the day ",
+      "category": "celebrity_interview",
+      "source_title": "Stevie Wonder - rare London interview (1974)",
+      "source_channel": "YouTube Interview",
+      "summary": "Stevie Wonder in Stevie Wonder - rare London interview (1974): friend so uh the the um the day I met you that the uh the um the day I met you that the uh the title or the first um title or the first um line would make yo",
+      "topics": [
+        "Stevie Wonder Stevie Wonder - rare London interview (1974) interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo stevie wonder friend so uh the the um the day I met you that the uh the um the day I met you t RIBsNuK"
+      ],
+      "tags": [
+        "Stevie Wonder",
+        "interview",
+        "celebrity_interview",
+        "interview",
+        "talk show"
+      ],
+      "speakers": [
+        "Stevie Wonder",
+        "Interviewer"
+      ],
+      "mentioned_people": [
+        "Stevie Wonder"
+      ],
+      "hook": "people just you they just met you know are talking about the time they did meet",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Stevie Wonder — intervista momento 5: friend so uh the the",
+          "summary": "Stevie Wonder in Stevie Wonder - rare London interview (1974): friend so uh the the um the day I met you that the uh the um the day I met you that the uh the title or the",
+          "description": "Stevie Wonder in Stevie Wonder - rare London interview (1974): friend so uh the the um the day I met you that the uh the um the day I met you that the uh the title or the first um title or the first um line would make yo Contesto: Stevie Wonder Stevie Wonder - rare London interview (1974) interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo stevie wonder friend so uh the the um the day I met you that the uh the um the day I met you t RIBsNuK"
+        }
+      ]
+    },
+    {
+      "start": "06:28",
+      "end": "06:40",
+      "name": "Hook: people just you they just met you k",
+      "category": "celebrity_interview",
+      "source_title": "Stevie Wonder - rare London interview (1974)",
+      "source_channel": "YouTube Interview",
+      "summary": "Apertura secca (12s): apertura secca dal colloquio Stevie Wonder",
+      "topics": [
+        "Stevie Wonder Stevie Wonder - rare London interview (1974) interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo stevie wonder friend so uh the the um the day I met you that the uh the um the day I met you t RIBsNuK hook apertura short opening-short"
+      ],
+      "tags": [
+        "Stevie Wonder",
+        "interview",
+        "celebrity_interview",
+        "interview",
+        "talk show",
+        "hook"
+      ],
+      "speakers": [
+        "Stevie Wonder",
+        "Interviewer"
+      ],
+      "mentioned_people": [
+        "Stevie Wonder"
+      ],
+      "hook": "people just you they just met you know are talking about the time they did meet",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Stevie Wonder — intervista momento 5: friend so uh the the",
+          "summary": "Stevie Wonder in Stevie Wonder - rare London interview (1974): friend so uh the the um the day I met you that the uh the um the day I met you that the uh the title or the",
+          "description": "Apertura secca (12s): apertura secca dal colloquio Stevie Wonder Contesto: Stevie Wonder Stevie Wonder - rare London interview (1974) interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo stevie wonder friend so uh the the um the day I met you that the uh the um the day I met you t RIBsNuK hook apertura short opening-short"
+        }
+      ]
+    },
+    {
+      "start": "07:54",
+      "end": "08:39",
+      "name": "Stevie Wonder — intervista momento 6: kinds of things because I um I f",
+      "category": "celebrity_interview",
+      "source_title": "Stevie Wonder - rare London interview (1974)",
+      "source_channel": "YouTube Interview",
+      "summary": "Stevie Wonder in Stevie Wonder - rare London interview (1974): kinds of things because I um I feel that um not only is is U my world or a lot of um not only is is U my world or a lot of My Life music but um it is uh also",
+      "topics": [
+        "Stevie Wonder Stevie Wonder - rare London interview (1974) interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo stevie wonder kinds of things because I um I feel that um not only is is U my world or a lot o RIBsNuK"
+      ],
+      "tags": [
+        "Stevie Wonder",
+        "interview",
+        "celebrity_interview",
+        "interview",
+        "talk show"
+      ],
+      "speakers": [
+        "Stevie Wonder",
+        "Interviewer"
+      ],
+      "mentioned_people": [
+        "Stevie Wonder"
+      ],
+      "hook": "people do influence your ideas musically you know it's like again feeding off of",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Stevie Wonder — intervista momento 6: kinds of things beca",
+          "summary": "Stevie Wonder in Stevie Wonder - rare London interview (1974): kinds of things because I um I feel that um not only is is U my world or a lot of um not only is is U my wo",
+          "description": "Stevie Wonder in Stevie Wonder - rare London interview (1974): kinds of things because I um I feel that um not only is is U my world or a lot of um not only is is U my world or a lot of My Life music but um it is uh also Contesto: Stevie Wonder Stevie Wonder - rare London interview (1974) interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo stevie wonder kinds of things because I um I feel that um not only is is U my world or a lot o RIBsNuK"
+        }
+      ]
+    },
+    {
+      "start": "08:02",
+      "end": "08:14",
+      "name": "Hook: people do influence your ideas musi",
+      "category": "celebrity_interview",
+      "source_title": "Stevie Wonder - rare London interview (1974)",
+      "source_channel": "YouTube Interview",
+      "summary": "Apertura secca (12s): apertura secca dal colloquio Stevie Wonder",
+      "topics": [
+        "Stevie Wonder Stevie Wonder - rare London interview (1974) interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo stevie wonder kinds of things because I um I feel that um not only is is U my world or a lot o RIBsNuK hook apertura short opening-short"
+      ],
+      "tags": [
+        "Stevie Wonder",
+        "interview",
+        "celebrity_interview",
+        "interview",
+        "talk show",
+        "hook"
+      ],
+      "speakers": [
+        "Stevie Wonder",
+        "Interviewer"
+      ],
+      "mentioned_people": [
+        "Stevie Wonder"
+      ],
+      "hook": "people do influence your ideas musically you know it's like again feeding off of",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Stevie Wonder — intervista momento 6: kinds of things beca",
+          "summary": "Stevie Wonder in Stevie Wonder - rare London interview (1974): kinds of things because I um I feel that um not only is is U my world or a lot of um not only is is U my wo",
+          "description": "Apertura secca (12s): apertura secca dal colloquio Stevie Wonder Contesto: Stevie Wonder Stevie Wonder - rare London interview (1974) interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo stevie wonder kinds of things because I um I feel that um not only is is U my world or a lot o RIBsNuK hook apertura short opening-short"
+        }
+      ]
+    }
+  ]
+}

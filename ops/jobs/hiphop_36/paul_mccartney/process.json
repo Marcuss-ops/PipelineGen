@@ -1,0 +1,441 @@
+{
+  "_comment": "POST /api/clips/process payload (ExtractRequest, drift source: internal/capabilities/youtube/dto/types.go). Source: Extended interview: Paul McCartney on his passion for photography and more (https://www.youtube.com/watch?v=8uhwxmPEeoA). Destination: the Clips/HipHop child folder for Paul McCartney (see check.py FOLDERS), create_subfolder=false. Windows picked BY HAND from the timed transcript printed by ops/jobs/hiphop_36/tx.py; no LLM selection. Clip ids are deterministic (yt_<videoID>_<startSec>_<endSec>_v1) so a re-submit is an UPSERT. topics/summary/hook are keyword-dense on purpose: composeYouTubeClipSearchText feeds search_text -> 768d pgvector embedding, texts[] lands in asset_text_tracks in the same atomic commit.",
+  "url": "https://www.youtube.com/watch?v=8uhwxmPEeoA",
+  "strategy": "verify",
+  "concurrency": 3,
+  "force_keyframes": true,
+  "keep_audio": true,
+  "write_summary": true,
+  "destination": {
+    "folder_id": "1eLLHXrb7g89zwDt9YQdgpDdkAyvnlBGO",
+    "create_subfolder": false
+  },
+  "segments": [
+    {
+      "start": "00:04",
+      "end": "00:49",
+      "name": "Paul McCartney — intervista momento 1: [Music] thank you",
+      "category": "celebrity_interview",
+      "source_title": "Extended interview: Paul McCartney on his passion for photography and more",
+      "source_channel": "YouTube Interview",
+      "summary": "Paul McCartney in Extended interview: Paul McCartney on his passion for photog: [Music] thank you welcome I'm Lee Cowan and this is Here Comes the Sun a closer look at some of Comes the Sun a closer look at some of the p",
+      "topics": [
+        "Paul McCartney Extended interview: Paul McCartney on his passion for photography and more interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo paul mccartney [Music] thank you welcome I'm Lee Cowan and this is Here"
+      ],
+      "tags": [
+        "Paul McCartney",
+        "interview",
+        "celebrity_interview",
+        "interview",
+        "talk show"
+      ],
+      "speakers": [
+        "Paul McCartney",
+        "Interviewer"
+      ],
+      "mentioned_people": [
+        "Paul McCartney"
+      ],
+      "hook": "welcome I'm Lee Cowan and this is Here Comes the Sun a closer look at some of",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Paul McCartney — intervista momento 1: [Music] thank you",
+          "summary": "Paul McCartney in Extended interview: Paul McCartney on his passion for photog: [Music] thank you welcome I'm Lee Cowan and this is Here Comes the Sun a closer look at so",
+          "description": "Paul McCartney in Extended interview: Paul McCartney on his passion for photog: [Music] thank you welcome I'm Lee Cowan and this is Here Comes the Sun a closer look at some of Comes the Sun a closer look at some of the p Contesto: Paul McCartney Extended interview: Paul McCartney on his passion for photography and more interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo paul mccartney [Music] thank you welcome I'm Lee Cowan and this is Here"
+        }
+      ]
+    },
+    {
+      "start": "00:12",
+      "end": "00:24",
+      "name": "Hook: welcome i'm lee cowan and this is h",
+      "category": "celebrity_interview",
+      "source_title": "Extended interview: Paul McCartney on his passion for photography and more",
+      "source_channel": "YouTube Interview",
+      "summary": "Apertura secca (12s): apertura secca dal colloquio Paul McCartney",
+      "topics": [
+        "Paul McCartney Extended interview: Paul McCartney on his passion for photography and more interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo paul mccartney [Music] thank you welcome I'm Lee Cowan and this is Here hook apertura short opening-short"
+      ],
+      "tags": [
+        "Paul McCartney",
+        "interview",
+        "celebrity_interview",
+        "interview",
+        "talk show",
+        "hook"
+      ],
+      "speakers": [
+        "Paul McCartney",
+        "Interviewer"
+      ],
+      "mentioned_people": [
+        "Paul McCartney"
+      ],
+      "hook": "welcome I'm Lee Cowan and this is Here Comes the Sun a closer look at some of",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Paul McCartney — intervista momento 1: [Music] thank you",
+          "summary": "Paul McCartney in Extended interview: Paul McCartney on his passion for photog: [Music] thank you welcome I'm Lee Cowan and this is Here Comes the Sun a closer look at so",
+          "description": "Apertura secca (12s): apertura secca dal colloquio Paul McCartney Contesto: Paul McCartney Extended interview: Paul McCartney on his passion for photography and more interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo paul mccartney [Music] thank you welcome I'm Lee Cowan and this is Here hook apertura short opening-short"
+        }
+      ]
+    },
+    {
+      "start": "03:34",
+      "end": "04:19",
+      "name": "Paul McCartney — intervista momento 2: and just sort of see where I li",
+      "category": "celebrity_interview",
+      "source_title": "Extended interview: Paul McCartney on his passion for photography and more",
+      "source_channel": "YouTube Interview",
+      "summary": "Paul McCartney in Extended interview: Paul McCartney on his passion for photog: and just sort of see where I like to you know oh that's it yeah and invariably know oh that's it yeah and invariably you pretty much take on",
+      "topics": [
+        "Paul McCartney Extended interview: Paul McCartney on his passion for photography and more interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo paul mccartney and just sort of see where I like to you know oh that's "
+      ],
+      "tags": [
+        "Paul McCartney",
+        "interview",
+        "celebrity_interview",
+        "interview",
+        "talk show"
+      ],
+      "speakers": [
+        "Paul McCartney",
+        "Interviewer"
+      ],
+      "mentioned_people": [
+        "Paul McCartney"
+      ],
+      "hook": "his new camera on perhaps the most momentous musical journey of the 20th",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Paul McCartney — intervista momento 2: and just sort of se",
+          "summary": "Paul McCartney in Extended interview: Paul McCartney on his passion for photog: and just sort of see where I like to you know oh that's it yeah and invariably know oh tha",
+          "description": "Paul McCartney in Extended interview: Paul McCartney on his passion for photog: and just sort of see where I like to you know oh that's it yeah and invariably know oh that's it yeah and invariably you pretty much take on Contesto: Paul McCartney Extended interview: Paul McCartney on his passion for photography and more interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo paul mccartney and just sort of see where I like to you know oh that's "
+        }
+      ]
+    },
+    {
+      "start": "03:42",
+      "end": "03:54",
+      "name": "Hook: his new camera on perhaps the most ",
+      "category": "celebrity_interview",
+      "source_title": "Extended interview: Paul McCartney on his passion for photography and more",
+      "source_channel": "YouTube Interview",
+      "summary": "Apertura secca (12s): apertura secca dal colloquio Paul McCartney",
+      "topics": [
+        "Paul McCartney Extended interview: Paul McCartney on his passion for photography and more interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo paul mccartney and just sort of see where I like to you know oh that's  hook apertura short opening-short"
+      ],
+      "tags": [
+        "Paul McCartney",
+        "interview",
+        "celebrity_interview",
+        "interview",
+        "talk show",
+        "hook"
+      ],
+      "speakers": [
+        "Paul McCartney",
+        "Interviewer"
+      ],
+      "mentioned_people": [
+        "Paul McCartney"
+      ],
+      "hook": "his new camera on perhaps the most momentous musical journey of the 20th",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Paul McCartney — intervista momento 2: and just sort of se",
+          "summary": "Paul McCartney in Extended interview: Paul McCartney on his passion for photog: and just sort of see where I like to you know oh that's it yeah and invariably know oh tha",
+          "description": "Apertura secca (12s): apertura secca dal colloquio Paul McCartney Contesto: Paul McCartney Extended interview: Paul McCartney on his passion for photography and more interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo paul mccartney and just sort of see where I like to you know oh that's  hook apertura short opening-short"
+        }
+      ]
+    },
+    {
+      "start": "07:04",
+      "end": "07:49",
+      "name": "Paul McCartney — intervista momento 3: room service you know we never ",
+      "category": "celebrity_interview",
+      "source_title": "Extended interview: Paul McCartney on his passion for photography and more",
+      "source_channel": "YouTube Interview",
+      "summary": "Paul McCartney in Extended interview: Paul McCartney on his passion for photog: room service you know we never had it before from New you know we never had it before from New York The Beatles traveled by train to York Th",
+      "topics": [
+        "Paul McCartney Extended interview: Paul McCartney on his passion for photography and more interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo paul mccartney room service you know we never had it before from New yo"
+      ],
+      "tags": [
+        "Paul McCartney",
+        "interview",
+        "celebrity_interview",
+        "interview",
+        "talk show"
+      ],
+      "speakers": [
+        "Paul McCartney",
+        "Interviewer"
+      ],
+      "mentioned_people": [
+        "Paul McCartney"
+      ],
+      "hook": "guy he's like from where I'm from he looked great",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Paul McCartney — intervista momento 3: room service you kn",
+          "summary": "Paul McCartney in Extended interview: Paul McCartney on his passion for photog: room service you know we never had it before from New you know we never had it before from",
+          "description": "Paul McCartney in Extended interview: Paul McCartney on his passion for photog: room service you know we never had it before from New you know we never had it before from New York The Beatles traveled by train to York Th Contesto: Paul McCartney Extended interview: Paul McCartney on his passion for photography and more interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo paul mccartney room service you know we never had it before from New yo"
+        }
+      ]
+    },
+    {
+      "start": "07:12",
+      "end": "07:24",
+      "name": "Hook: guy he's like from where i'm from h",
+      "category": "celebrity_interview",
+      "source_title": "Extended interview: Paul McCartney on his passion for photography and more",
+      "source_channel": "YouTube Interview",
+      "summary": "Apertura secca (12s): apertura secca dal colloquio Paul McCartney",
+      "topics": [
+        "Paul McCartney Extended interview: Paul McCartney on his passion for photography and more interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo paul mccartney room service you know we never had it before from New yo hook apertura short opening-short"
+      ],
+      "tags": [
+        "Paul McCartney",
+        "interview",
+        "celebrity_interview",
+        "interview",
+        "talk show",
+        "hook"
+      ],
+      "speakers": [
+        "Paul McCartney",
+        "Interviewer"
+      ],
+      "mentioned_people": [
+        "Paul McCartney"
+      ],
+      "hook": "guy he's like from where I'm from he looked great",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Paul McCartney — intervista momento 3: room service you kn",
+          "summary": "Paul McCartney in Extended interview: Paul McCartney on his passion for photog: room service you know we never had it before from New you know we never had it before from",
+          "description": "Apertura secca (12s): apertura secca dal colloquio Paul McCartney Contesto: Paul McCartney Extended interview: Paul McCartney on his passion for photography and more interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo paul mccartney room service you know we never had it before from New yo hook apertura short opening-short"
+        }
+      ]
+    },
+    {
+      "start": "10:34",
+      "end": "11:19",
+      "name": "Paul McCartney — intervista momento 4: as promised here's more from An",
+      "category": "celebrity_interview",
+      "source_title": "Extended interview: Paul McCartney on his passion for photography and more",
+      "source_channel": "YouTube Interview",
+      "summary": "Paul McCartney in Extended interview: Paul McCartney on his passion for photog: as promised here's more from Anthony Mason sit down with Paul McCartney about Mason sit down with Paul McCartney about the photos that he to",
+      "topics": [
+        "Paul McCartney Extended interview: Paul McCartney on his passion for photography and more interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo paul mccartney as promised here's more from Anthony Mason sit down with"
+      ],
+      "tags": [
+        "Paul McCartney",
+        "interview",
+        "celebrity_interview",
+        "interview",
+        "talk show"
+      ],
+      "speakers": [
+        "Paul McCartney",
+        "Interviewer"
+      ],
+      "mentioned_people": [
+        "Paul McCartney"
+      ],
+      "hook": "camera yeah well I had an old books brownie a family had one of those to",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Paul McCartney — intervista momento 4: as promised here's ",
+          "summary": "Paul McCartney in Extended interview: Paul McCartney on his passion for photog: as promised here's more from Anthony Mason sit down with Paul McCartney about Mason sit do",
+          "description": "Paul McCartney in Extended interview: Paul McCartney on his passion for photog: as promised here's more from Anthony Mason sit down with Paul McCartney about Mason sit down with Paul McCartney about the photos that he to Contesto: Paul McCartney Extended interview: Paul McCartney on his passion for photography and more interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo paul mccartney as promised here's more from Anthony Mason sit down with"
+        }
+      ]
+    },
+    {
+      "start": "10:42",
+      "end": "10:54",
+      "name": "Hook: camera yeah well i had an old books",
+      "category": "celebrity_interview",
+      "source_title": "Extended interview: Paul McCartney on his passion for photography and more",
+      "source_channel": "YouTube Interview",
+      "summary": "Apertura secca (12s): apertura secca dal colloquio Paul McCartney",
+      "topics": [
+        "Paul McCartney Extended interview: Paul McCartney on his passion for photography and more interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo paul mccartney as promised here's more from Anthony Mason sit down with hook apertura short opening-short"
+      ],
+      "tags": [
+        "Paul McCartney",
+        "interview",
+        "celebrity_interview",
+        "interview",
+        "talk show",
+        "hook"
+      ],
+      "speakers": [
+        "Paul McCartney",
+        "Interviewer"
+      ],
+      "mentioned_people": [
+        "Paul McCartney"
+      ],
+      "hook": "camera yeah well I had an old books brownie a family had one of those to",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Paul McCartney — intervista momento 4: as promised here's ",
+          "summary": "Paul McCartney in Extended interview: Paul McCartney on his passion for photog: as promised here's more from Anthony Mason sit down with Paul McCartney about Mason sit do",
+          "description": "Apertura secca (12s): apertura secca dal colloquio Paul McCartney Contesto: Paul McCartney Extended interview: Paul McCartney on his passion for photography and more interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo paul mccartney as promised here's more from Anthony Mason sit down with hook apertura short opening-short"
+        }
+      ]
+    },
+    {
+      "start": "14:04",
+      "end": "14:49",
+      "name": "Paul McCartney — intervista momento 5: spirit of it and they goofed ba",
+      "category": "celebrity_interview",
+      "source_title": "Extended interview: Paul McCartney on his passion for photography and more",
+      "source_channel": "YouTube Interview",
+      "summary": "Paul McCartney in Extended interview: Paul McCartney on his passion for photog: spirit of it and they goofed back you know know the dude is stuff you know so there were the dude is stuff you know so there were good subje",
+      "topics": [
+        "Paul McCartney Extended interview: Paul McCartney on his passion for photography and more interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo paul mccartney spirit of it and they goofed back you know know the dude"
+      ],
+      "tags": [
+        "Paul McCartney",
+        "interview",
+        "celebrity_interview",
+        "interview",
+        "talk show"
+      ],
+      "speakers": [
+        "Paul McCartney",
+        "Interviewer"
+      ],
+      "mentioned_people": [
+        "Paul McCartney"
+      ],
+      "hook": "time like a professional to sort of really be careful about uh focusing up",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Paul McCartney — intervista momento 5: spirit of it and th",
+          "summary": "Paul McCartney in Extended interview: Paul McCartney on his passion for photog: spirit of it and they goofed back you know know the dude is stuff you know so there were t",
+          "description": "Paul McCartney in Extended interview: Paul McCartney on his passion for photog: spirit of it and they goofed back you know know the dude is stuff you know so there were the dude is stuff you know so there were good subje Contesto: Paul McCartney Extended interview: Paul McCartney on his passion for photography and more interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo paul mccartney spirit of it and they goofed back you know know the dude"
+        }
+      ]
+    },
+    {
+      "start": "14:12",
+      "end": "14:24",
+      "name": "Hook: time like a professional to sort of",
+      "category": "celebrity_interview",
+      "source_title": "Extended interview: Paul McCartney on his passion for photography and more",
+      "source_channel": "YouTube Interview",
+      "summary": "Apertura secca (12s): apertura secca dal colloquio Paul McCartney",
+      "topics": [
+        "Paul McCartney Extended interview: Paul McCartney on his passion for photography and more interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo paul mccartney spirit of it and they goofed back you know know the dude hook apertura short opening-short"
+      ],
+      "tags": [
+        "Paul McCartney",
+        "interview",
+        "celebrity_interview",
+        "interview",
+        "talk show",
+        "hook"
+      ],
+      "speakers": [
+        "Paul McCartney",
+        "Interviewer"
+      ],
+      "mentioned_people": [
+        "Paul McCartney"
+      ],
+      "hook": "time like a professional to sort of really be careful about uh focusing up",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Paul McCartney — intervista momento 5: spirit of it and th",
+          "summary": "Paul McCartney in Extended interview: Paul McCartney on his passion for photog: spirit of it and they goofed back you know know the dude is stuff you know so there were t",
+          "description": "Apertura secca (12s): apertura secca dal colloquio Paul McCartney Contesto: Paul McCartney Extended interview: Paul McCartney on his passion for photography and more interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo paul mccartney spirit of it and they goofed back you know know the dude hook apertura short opening-short"
+        }
+      ]
+    },
+    {
+      "start": "17:34",
+      "end": "18:19",
+      "name": "Paul McCartney — intervista momento 6: so weird his handwriting right ",
+      "category": "celebrity_interview",
+      "source_title": "Extended interview: Paul McCartney on his passion for photography and more",
+      "source_channel": "YouTube Interview",
+      "summary": "Paul McCartney in Extended interview: Paul McCartney on his passion for photog: so weird his handwriting right it's not easy it's not easy to read easy it's not easy to read what she's sifted through the last six what sh",
+      "topics": [
+        "Paul McCartney Extended interview: Paul McCartney on his passion for photography and more interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo paul mccartney so weird his handwriting right it's not easy it's not ea"
+      ],
+      "tags": [
+        "Paul McCartney",
+        "interview",
+        "celebrity_interview",
+        "interview",
+        "talk show"
+      ],
+      "speakers": [
+        "Paul McCartney",
+        "Interviewer"
+      ],
+      "mentioned_people": [
+        "Paul McCartney"
+      ],
+      "hook": "he'd only had a chance to try six when he was killed what do you think the",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Paul McCartney — intervista momento 6: so weird his handwr",
+          "summary": "Paul McCartney in Extended interview: Paul McCartney on his passion for photog: so weird his handwriting right it's not easy it's not easy to read easy it's not easy to r",
+          "description": "Paul McCartney in Extended interview: Paul McCartney on his passion for photog: so weird his handwriting right it's not easy it's not easy to read easy it's not easy to read what she's sifted through the last six what sh Contesto: Paul McCartney Extended interview: Paul McCartney on his passion for photography and more interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo paul mccartney so weird his handwriting right it's not easy it's not ea"
+        }
+      ]
+    },
+    {
+      "start": "17:42",
+      "end": "17:54",
+      "name": "Hook: he'd only had a chance to try six w",
+      "category": "celebrity_interview",
+      "source_title": "Extended interview: Paul McCartney on his passion for photography and more",
+      "source_channel": "YouTube Interview",
+      "summary": "Apertura secca (12s): apertura secca dal colloquio Paul McCartney",
+      "topics": [
+        "Paul McCartney Extended interview: Paul McCartney on his passion for photography and more interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo paul mccartney so weird his handwriting right it's not easy it's not ea hook apertura short opening-short"
+      ],
+      "tags": [
+        "Paul McCartney",
+        "interview",
+        "celebrity_interview",
+        "interview",
+        "talk show",
+        "hook"
+      ],
+      "speakers": [
+        "Paul McCartney",
+        "Interviewer"
+      ],
+      "mentioned_people": [
+        "Paul McCartney"
+      ],
+      "hook": "he'd only had a chance to try six when he was killed what do you think the",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Paul McCartney — intervista momento 6: so weird his handwr",
+          "summary": "Paul McCartney in Extended interview: Paul McCartney on his passion for photog: so weird his handwriting right it's not easy it's not easy to read easy it's not easy to r",
+          "description": "Apertura secca (12s): apertura secca dal colloquio Paul McCartney Contesto: Paul McCartney Extended interview: Paul McCartney on his passion for photography and more interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo paul mccartney so weird his handwriting right it's not easy it's not ea hook apertura short opening-short"
+        }
+      ]
+    }
+  ]
+}

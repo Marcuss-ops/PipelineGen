@@ -383,11 +383,7 @@ func BuildPlan(input PlanInput, config PlannerConfig) (OverlayPlan, error) {
 	for i := range plan.Items {
 		switch plan.Items[i].Kind {
 		case "text_phrase":
-			ordinal := phraseOrdinal
-			if input.PhraseMotionFamily != "" {
-				ordinal = 0
-			}
-			plan.Items[i].MotionID = selectPhraseMotion(input.PlanID, "run", ordinal, input.PhraseMotions)
+			plan.Items[i].MotionID = selectPhraseMotion(input.PlanID, "run", phraseOrdinal, input.PhraseMotions)
 			phraseOrdinal++
 		case "image", "entity_image", "product", "logo":
 			plan.Items[i].MotionID = selectImageMotion(input.PlanID, "run", imageOrdinal, input.ImageMotions)
@@ -400,27 +396,19 @@ func BuildPlan(input PlanInput, config PlannerConfig) (OverlayPlan, error) {
 	return plan, nil
 }
 
-// phraseMotionParams bounds the entrance to the smaller of 650 ms or 40% of
-// the spoken phrase. Motion catalog windows are frame counts, so convert the
-// desired wall-clock duration using the output FPS before sending the plan.
-// This leaves a readable settled interval for typical 1.8–2.8 s phrases and
-// keeps short phrases from spending their entire lifetime in motion.
-func phraseMotionParams(candidate TimedAnnotation, fpsNum, fpsDen int) map[string]any {
+// phraseMotionParams gives the entrance half of the phrase's on-screen
+// duration. Motion catalog windows are frame counts, so convert that duration
+// at the output frame rate before sending the plan.
+func phraseMotionParams(phrase TimedAnnotation, fpsNum, fpsDen int) map[string]any {
 	if fpsNum <= 0 || fpsDen <= 0 {
 		return nil
 	}
-	durationUS := candidate.DurationUS
-	if durationUS <= 0 {
-		durationUS = (candidate.EndMs - candidate.StartMs) * 1000
+	phraseDurationUS := phrase.DurationUS
+	if phraseDurationUS <= 0 && phrase.EndMs > phrase.StartMs {
+		phraseDurationUS = (phrase.EndMs - phrase.StartMs) * 1_000
 	}
-	if durationUS <= 0 {
-		return nil
-	}
-	enterUS := durationUS * 2 / 5
-	if enterUS > 650_000 {
-		enterUS = 650_000
-	}
-	framesNumerator := enterUS * int64(fpsNum)
+	entranceDurationUS := phraseDurationUS / 2
+	framesNumerator := entranceDurationUS * int64(fpsNum)
 	framesDenominator := 1_000_000 * int64(fpsDen)
 	frames := (framesNumerator + framesDenominator - 1) / framesDenominator
 	if frames < 1 {

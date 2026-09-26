@@ -31,6 +31,7 @@ func TestApplyChannelProfileFillsBlankSurfaces(t *testing.T) {
 		SoundEffects:  []channelprofile.SoundEffectProfile{{AssetID: "whoosh1", GainDB: &gain}},
 		MixPolicy:     "VOICEOVER_DUCKED_CLIP",
 		PhraseMotions: []string{"phrase_apple_clean_07_slide_up_soft"},
+		ImageMotions:  []string{"image_card_push", "image_25d_depth_float_in"},
 	}
 	req := renderRequest()
 	if err := ApplyChannelProfile(&req, profile); err != nil {
@@ -68,6 +69,9 @@ func TestApplyChannelProfileFillsBlankSurfaces(t *testing.T) {
 	}
 	if len(req.PhraseMotions) != 1 || req.PhraseMotions[0] != "phrase_apple_clean_07_slide_up_soft" {
 		t.Fatalf("phrase motions not filled: %+v", req.PhraseMotions)
+	}
+	if len(req.ImageMotions) != 2 || req.ImageMotions[0] != "image_card_push" || req.ImageMotions[1] != "image_25d_depth_float_in" {
+		t.Fatalf("image motions not filled: %+v", req.ImageMotions)
 	}
 }
 
@@ -182,6 +186,7 @@ func TestBuildGenerateRequestAppliesTheChannelProfile(t *testing.T) {
 		Subtitles:     &channelprofile.SubtitlesProfile{Preset: "impact"},
 		Watermark:     &channelprofile.WatermarkProfile{Text: "CRIME FILES", Position: "top_right", MarginPX: 48},
 		PhraseMotions: []string{"phrase_apple_clean_07_slide_up_soft"},
+		ImageMotions:  []string{"image_card_push", "image_25d_depth_float_in"},
 	}})
 	defer channelprofile.Reset()
 
@@ -220,6 +225,9 @@ func TestBuildGenerateRequestAppliesTheChannelProfile(t *testing.T) {
 		if len(got.PhraseMotions) != 1 || got.PhraseMotions[0] != "phrase_apple_clean_07_slide_up_soft" {
 			t.Fatalf("channel motion pool not applied: %+v", got.PhraseMotions)
 		}
+		if len(got.ImageMotions) != 2 || got.ImageMotions[0] != "image_card_push" || got.ImageMotions[1] != "image_25d_depth_float_in" {
+			t.Fatalf("channel image motion pool not applied: %+v", got.ImageMotions)
+		}
 	})
 
 	t.Run("an undeclared channel is untouched", func(t *testing.T) {
@@ -227,7 +235,7 @@ func TestBuildGenerateRequestAppliesTheChannelProfile(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if got.ChannelID != "" || got.Render.Subtitles != nil || got.Render.Watermark != nil || len(got.PhraseMotions) != 0 {
+		if got.ChannelID != "" || got.Render.Subtitles != nil || got.Render.Watermark != nil || len(got.PhraseMotions) != 0 || len(got.ImageMotions) != 0 {
 			t.Fatalf("a profile leaked onto a request that declared no channel: %+v", got)
 		}
 	})

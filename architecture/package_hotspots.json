@@ -14,7 +14,7 @@
         "files": 63,
         "max_loc": 589
       },
-      "note": "Re-merged 2026-08-26 (50 + 13 support → 63): the temporary support sub-package split was reverted in f6126dba7; the planner/orchestrator/steps/query/run/rounds/ports surface now lives flat in stockpipeline. Baseline ratcheted to the committed 63-file count; owner/deadline/targets unchanged.",
+      "note": "Re-merged 2026-08-26 (50 + 13 support \u2192 63): the temporary support sub-package split was reverted in f6126dba7; the planner/orchestrator/steps/query/run/rounds/ports surface now lives flat in stockpipeline. Baseline ratcheted to the committed 63-file count; owner/deadline/targets unchanged.",
       "target_packages": [
         "internal/capabilities/assets/stock/ingest",
         "internal/capabilities/assets/stock/finalize",
@@ -36,7 +36,7 @@
         "files": 39,
         "max_loc": 0
       },
-      "note": "Split 2026-08-26 (71 Ã¢â€ â€™ 39): leaf domains (texttrack, render, image, clip, search, store, taxonomy, source-catalog, artifact-stages) extracted to internal/kernel/asset/detail; core keeps the Asset model + state machine. Ratchet enforces non-increasing debt from this committed count.",
+      "note": "Split 2026-08-26 (71 \u00c3\u00a2\u00e2\u20ac\u00a0\u00e2\u20ac\u2122 39): leaf domains (texttrack, render, image, clip, search, store, taxonomy, source-catalog, artifact-stages) extracted to internal/kernel/asset/detail; core keeps the Asset model + state machine. Ratchet enforces non-increasing debt from this committed count.",
       "target_packages": [
         "internal/kernel/asset/metadata",
         "internal/kernel/asset/render",
@@ -56,7 +56,7 @@
         "files": 12,
         "max_loc": 0
       },
-      "note": "Migrated from internal/infrastructure/delivery as part of the August 2026 infrastructureÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢platform consolidation. 12 production files; canonical owner for asset-delivery URL signing + destination registry. Re-baselined 2026-08-26 (9 ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ 12) when the P0-LEGACY-RATCHET gate was activated.",
+      "note": "Migrated from internal/infrastructure/delivery as part of the August 2026 infrastructure\u00c3\u0192\u00c2\u00a2\u00c3\u00a2\u00e2\u201a\u00ac\u00c2\u00a0\u00c3\u00a2\u00e2\u201a\u00ac\u00e2\u201e\u00a2platform consolidation. 12 production files; canonical owner for asset-delivery URL signing + destination registry. Re-baselined 2026-08-26 (9 \u00c3\u0192\u00c2\u00a2\u00c3\u00a2\u00e2\u201a\u00ac\u00c2\u00a0\u00c3\u00a2\u00e2\u201a\u00ac\u00e2\u201e\u00a2 12) when the P0-LEGACY-RATCHET gate was activated.",
       "target_packages": [
         "internal/platform/delivery/signing",
         "internal/platform/delivery/registry"
@@ -75,7 +75,7 @@
         "files": 5,
         "max_loc": 0
       },
-      "note": "Migrated from internal/infrastructure/embeddings as part of the August 2026 infrastructureÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢platform consolidation. 5 production files (HTTP sidecar, Ollama adapter, Python subprocess, SigLIP cross-modal + contract probe).",
+      "note": "Migrated from internal/infrastructure/embeddings as part of the August 2026 infrastructure\u00c3\u0192\u00c2\u00a2\u00c3\u00a2\u00e2\u201a\u00ac\u00c2\u00a0\u00c3\u00a2\u00e2\u201a\u00ac\u00e2\u201e\u00a2platform consolidation. 5 production files (HTTP sidecar, Ollama adapter, Python subprocess, SigLIP cross-modal + contract probe).",
       "target_packages": [
         "internal/platform/embeddings/http",
         "internal/platform/embeddings/ollama"
@@ -94,7 +94,7 @@
         "files": 34,
         "max_loc": 0
       },
-      "note": "New package created 2026-08-26 by the kernel/asset hard cutover (71 Ã¢â€ â€™ 39 core + 34 detail). Registered so the ratchet tracks its growth from day one.",
+      "note": "New package created 2026-08-26 by the kernel/asset hard cutover (71 \u00c3\u00a2\u00e2\u20ac\u00a0\u00e2\u20ac\u2122 39 core + 34 detail). Registered so the ratchet tracks its growth from day one.",
       "target_packages": [
         "internal/kernel/asset/detail"
       ]
@@ -112,7 +112,7 @@
         "files": 150,
         "max_loc": 0
       },
-      "note": "Registered 2026-08-29: composition-root adapter surface accumulated beyond max_files_per_package=65 during capability migration waves. Deadline aligns with the internal/app hotspot (2026-09-30). SPLIT STARTED 2026-09-04 (181->158 measured, ratcheted down): chronon domain extracted to internal/app/wiring/chronon (11 files incl. semantic_asset_wiring.go + its tests, per the 2026-09-01/02 ratchet notes), voiceover TTS/adapter layer to internal/app/wiring/voiceover (19 files incl. rate limits + chunked TTS + their tests, constructors exported New*), vidrush materialization to internal/app/wiring/vidrush (dependency inversion via VidRushMaterializationDeps; the root keeps nil-safe call-site helpers vidrushCachePort/vidrushInternetImageSearcher). Sub-packages never import the root package; cross-domain types (ScriptVoiceoverGenerator, ChrononMeasuredPhases, VidRushMaterializationDeps) are exported from the leaf and referenced as vowiring./vidrushwiring. Artlist/stock orchestration (build_bundles_artlist_*, build_bundles_stock*, wire_stock_pipeline, artlist/stock types + bundle errors) remains in the root: its ServiceDeps/DeliveryDeps/registerArtlist/registry coupling is the registered 2026-09-30 resolution and moving it risks destabilizing the composition graph. RATCHETED 2026-09-05 158->150: search backends extracted to internal/app/wiring/search (composition bridge Build/BuildSearchBackends, provider/local/semantic backends, media-read + pgvector + qdrant-transport adapters, search.Build freeze gate + their tests; the root keeps the ComposeRoot-shaped WireMediasearchReadiness readiness probe) and the delivery signer adapter extracted to adapters_delivery_signer.go (strict 600-LOC cap on registry_internal_modules.go). Sub-packages never import the root package; leaf surfaces are exported (search.Build, search.RerankerClient, search.NewSearchReadAdapter, search.SelectMediaVectorStore/PGVectorStoreFrom, search.NewQdrantEndpointAdapter). Artlist/stock orchestration remains in the root: its ServiceDeps/DeliveryDeps/registerArtlist/registry coupling is the registered 2026-09-30 resolution and moving it risks destabilizing the composition graph. REVERSED 2026-09-19: the chronon wiring leaf (internal/app/wiring/chronon) was DELETED — zero production importers (MUDA audit D1); the surviving granular-phase wiring helper is internal/app/wiring/rendering/metrics.go::NewChrononMetricsAdapter.",
+      "note": "Registered 2026-08-29: composition-root adapter surface accumulated beyond max_files_per_package=65 during capability migration waves. Deadline aligns with the internal/app hotspot (2026-09-30). SPLIT STARTED 2026-09-04 (181->158 measured, ratcheted down): chronon domain extracted to internal/app/wiring/chronon (11 files incl. semantic_asset_wiring.go + its tests, per the 2026-09-01/02 ratchet notes), voiceover TTS/adapter layer to internal/app/wiring/voiceover (19 files incl. rate limits + chunked TTS + their tests, constructors exported New*), vidrush materialization to internal/app/wiring/vidrush (dependency inversion via VidRushMaterializationDeps; the root keeps nil-safe call-site helpers vidrushCachePort/vidrushInternetImageSearcher). Sub-packages never import the root package; cross-domain types (ScriptVoiceoverGenerator, ChrononMeasuredPhases, VidRushMaterializationDeps) are exported from the leaf and referenced as vowiring./vidrushwiring. Artlist/stock orchestration (build_bundles_artlist_*, build_bundles_stock*, wire_stock_pipeline, artlist/stock types + bundle errors) remains in the root: its ServiceDeps/DeliveryDeps/registerArtlist/registry coupling is the registered 2026-09-30 resolution and moving it risks destabilizing the composition graph. RATCHETED 2026-09-05 158->150: search backends extracted to internal/app/wiring/search (composition bridge Build/BuildSearchBackends, provider/local/semantic backends, media-read + pgvector + qdrant-transport adapters, search.Build freeze gate + their tests; the root keeps the ComposeRoot-shaped WireMediasearchReadiness readiness probe) and the delivery signer adapter extracted to adapters_delivery_signer.go (strict 600-LOC cap on registry_internal_modules.go). Sub-packages never import the root package; leaf surfaces are exported (search.Build, search.RerankerClient, search.NewSearchReadAdapter, search.SelectMediaVectorStore/PGVectorStoreFrom, search.NewQdrantEndpointAdapter). Artlist/stock orchestration remains in the root: its ServiceDeps/DeliveryDeps/registerArtlist/registry coupling is the registered 2026-09-30 resolution and moving it risks destabilizing the composition graph. REVERSED 2026-09-19: the chronon wiring leaf (internal/app/wiring/chronon) was DELETED \u2014 zero production importers (MUDA audit D1); the surviving granular-phase wiring helper is internal/app/wiring/rendering/metrics.go::NewChrononMetricsAdapter.",
       "target_packages": [
         "internal/app/wiring/voiceover",
         "internal/app/wiring/vidrush",
@@ -132,7 +132,7 @@
         "files": 75,
         "max_loc": 0
       },
-      "note": "Registered 2026-08-29: image capability surface beyond max_files_per_package=65. Baseline ratcheted to measured count; target split into subpackages (generation/search/validation/persist). RE-RATCHETED 2026-09-13: baseline_files 98->75 locked to the measured production-file count — the ceiling had 23 files of slack, so the ratchet no longer bound. Owner/deadline/targets unchanged.",
+      "note": "Registered 2026-08-29: image capability surface beyond max_files_per_package=65. Baseline ratcheted to measured count; target split into subpackages (generation/search/validation/persist). RE-RATCHETED 2026-09-13: baseline_files 98->75 locked to the measured production-file count \u2014 the ceiling had 23 files of slack, so the ratchet no longer bound. Owner/deadline/targets unchanged.",
       "target_packages": [
         "internal/capabilities/images/generation",
         "internal/capabilities/images/search",
@@ -152,7 +152,7 @@
         "files": 77,
         "max_loc": 0
       },
-      "note": "Registered 2026-08-29: jobs capability surface beyond max_files_per_package=65. Baseline ratcheted to measured count; target split into subpackages (queue/scheduling/finalize). RATCHETED 2026-08-31 81->95: +14 pre-existing files landed with the speculative-preparation wave (2026-08-29/30: preparation coordinator/registry/planners/estimator/lease-router/fingerprint/metrics, future_reader, speculation_scheduler, m2m_module). The preparation registry/planning/speculation family is now materialised under internal/capabilities/jobs/scheduling, which is the current owner of polling/backoff, retry timing, preparation planning, and resource speculation. Debt stays under the same owner/deadline; any further split must preserve scheduling as the policy owner and keep the root jobs package as a compatibility facade. RE-RATCHETED 2026-09-13: baseline_files 95->77 locked to the measured production-file count — the scheduling/ extraction shrank the root by 18 files and the ceiling never followed, so 18 files of drift were unenforced. Owner/deadline/targets unchanged.",
+      "note": "Registered 2026-08-29: jobs capability surface beyond max_files_per_package=65. Baseline ratcheted to measured count; target split into subpackages (queue/scheduling/finalize). RATCHETED 2026-08-31 81->95: +14 pre-existing files landed with the speculative-preparation wave (2026-08-29/30: preparation coordinator/registry/planners/estimator/lease-router/fingerprint/metrics, future_reader, speculation_scheduler, m2m_module). The preparation registry/planning/speculation family is now materialised under internal/capabilities/jobs/scheduling, which is the current owner of polling/backoff, retry timing, preparation planning, and resource speculation. Debt stays under the same owner/deadline; any further split must preserve scheduling as the policy owner and keep the root jobs package as a compatibility facade. RE-RATCHETED 2026-09-13: baseline_files 95->77 locked to the measured production-file count \u2014 the scheduling/ extraction shrank the root by 18 files and the ceiling never followed, so 18 files of drift were unenforced. Owner/deadline/targets unchanged.",
       "target_packages": [
         "internal/capabilities/jobs/queue",
         "internal/capabilities/jobs/scheduling",
@@ -163,7 +163,7 @@
       "path": "internal/capabilities/scripts",
       "owner": "scripts capability (research/generation/runner surface)",
       "deadline": "2026-12-31",
-      "baseline_files": 91,
+      "baseline_files": 93,
       "baseline": {
         "files": 91,
         "max_loc": 0
@@ -172,7 +172,7 @@
         "files": 91,
         "max_loc": 0
       },
-      "note": "Registered 2026-09-12: scripts capability surface beyond max_files_per_package=65. Baseline ratcheted to the measured count. The package carries the whole script.run orchestration surface (runner phases, audio timeline compile/prefetch, overlay plan/publication, document projections, vidrush pipeline, execution model). The 600-LOC split wave (document_audio_blocks/document_links, model_render/model_values, ports_document/ports_execution, incremental_coordinator_stages/incremental_coordinator_timing) reduced per-file size by materialising cohesive siblings in the SAME directory, which is why the file count rose rather than fell. Re-ratcheted 2026-09-13 (84→87) to the committed-tree count after the registry 'current' counts were found stale for four hotspots (scripts, scripts/adapters, app/wiring, capabilities/jobs); the ceiling now equals the measured count again, so any FURTHER growth still hard-fails. Debt stays under the same owner/deadline; the split must keep the root scripts package as the compatibility facade and move each family into its target subpackage (overlay_background/overlay_entity_cards/overlay_publication are the overlay subpackage candidates). RE-RATCHETED 2026-09-13 (87->89): the render_queue.go 600-LOC split (commit 0852addae) materialised two cohesive siblings in the same directory to get the file back under the strict cap, which raised the count by exactly two. Same trade as the earlier split waves — per-file size down, file count up — so the ceiling is re-locked to the measured committed count; any FURTHER growth still hard-fails. RE-RATCHETED 2026-09-22 (89->90): channel_profile_apply.go landed as one cohesive request-policy file — ApplyChannelProfile, the channel-profile default-fill sibling of the builder.go ApplyEditingAssetPolicy ingress gate (per-channel subtitle/watermark/overlay/SFX defaults resolved at request build). Per-file LOC caps respected. Owner/deadline/targets unchanged; further growth still hard-fails. RE-RATCHETED 2026-09-22 (90->91): runner_execution.go had crossed the strict 600-LOC cap (616) with the run-correlation work, so its scene-text coordination helpers (processFixedDisplayText + sceneTextPathReason) moved verbatim into the cohesive sibling runner_scene_text_coordination.go (528 + 108 lines, behaviour unchanged) — exactly the trade the earlier split waves made: per-file size down, file count up by one, ceiling re-locked to the measured count. Owner/deadline/targets unchanged; further growth still hard-fails.",
+      "note": "Registered 2026-09-12: scripts capability surface beyond max_files_per_package=65. Baseline ratcheted to the measured count. The package carries the whole script.run orchestration surface (runner phases, audio timeline compile/prefetch, overlay plan/publication, document projections, vidrush pipeline, execution model). The 600-LOC split wave (document_audio_blocks/document_links, model_render/model_values, ports_document/ports_execution, incremental_coordinator_stages/incremental_coordinator_timing) reduced per-file size by materialising cohesive siblings in the SAME directory, which is why the file count rose rather than fell. Re-ratcheted 2026-09-13 (84\u219287) to the committed-tree count after the registry 'current' counts were found stale for four hotspots (scripts, scripts/adapters, app/wiring, capabilities/jobs); the ceiling now equals the measured count again, so any FURTHER growth still hard-fails. Debt stays under the same owner/deadline; the split must keep the root scripts package as the compatibility facade and move each family into its target subpackage (overlay_background/overlay_entity_cards/overlay_publication are the overlay subpackage candidates). RE-RATCHETED 2026-09-13 (87->89): the render_queue.go 600-LOC split (commit 0852addae) materialised two cohesive siblings in the same directory to get the file back under the strict cap, which raised the count by exactly two. Same trade as the earlier split waves \u2014 per-file size down, file count up \u2014 so the ceiling is re-locked to the measured committed count; any FURTHER growth still hard-fails. RE-RATCHETED 2026-09-22 (89->90): channel_profile_apply.go landed as one cohesive request-policy file \u2014 ApplyChannelProfile, the channel-profile default-fill sibling of the builder.go ApplyEditingAssetPolicy ingress gate (per-channel subtitle/watermark/overlay/SFX defaults resolved at request build). Per-file LOC caps respected. Owner/deadline/targets unchanged; further growth still hard-fails. RE-RATCHETED 2026-09-22 (90->91): runner_execution.go had crossed the strict 600-LOC cap (616) with the run-correlation work, so its scene-text coordination helpers (processFixedDisplayText + sceneTextPathReason) moved verbatim into the cohesive sibling runner_scene_text_coordination.go (528 + 108 lines, behaviour unchanged) \u2014 exactly the trade the earlier split waves made: per-file size down, file count up by one, ceiling re-locked to the measured count. Owner/deadline/targets unchanged; further growth still hard-fails. RE-RATCHETED 2026-09-26 (91->93): overlay_plan.go (625) and runner_phase_script.go (604) each crossed the strict 600-LOC cap; cohesive canvas/style helpers and scene-text binding helpers moved verbatim into sibling files overlay_canvas.go (163) and runner_phase_script_helpers.go (168) \u2014 same trade as prior splits: per-file size down, file count up by two, ceiling re-locked to measured count. Owner/deadline/targets unchanged; further growth still hard-fails.",
       "target_packages": [
         "internal/capabilities/scripts/runner",
         "internal/capabilities/scripts/audio",
@@ -291,7 +291,7 @@
       "owner": "jobs migration owner",
       "completed_at": "2026-08-24",
       "status": "COMPLETED",
-      "resolution": "Fully migrated to internal/capabilities/jobs/{queue,worker,policy,outbox} (44 production files ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ 0); policy/orchestration in capabilities, persistence mechanics in platform/sqlite. Zero production imports remain.",
+      "resolution": "Fully migrated to internal/capabilities/jobs/{queue,worker,policy,outbox} (44 production files \u00c3\u0192\u00c2\u00a2\u00c3\u00a2\u00e2\u201a\u00ac\u00c2\u00a0\u00c3\u00a2\u00e2\u201a\u00ac\u00e2\u201e\u00a2 0); policy/orchestration in capabilities, persistence mechanics in platform/sqlite. Zero production imports remain.",
       "targets": [
         "internal/capabilities/jobs/queue",
         "internal/capabilities/jobs/worker",
@@ -304,7 +304,7 @@
       "owner": "images migration owner",
       "completed_at": "2026-08-24",
       "status": "COMPLETED",
-      "resolution": "Fully migrated to internal/capabilities/images/{workflow,generation,delivery,persistence} (54 production files ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ 0). Zero production imports remain.",
+      "resolution": "Fully migrated to internal/capabilities/images/{workflow,generation,delivery,persistence} (54 production files \u00c3\u0192\u00c2\u00a2\u00c3\u00a2\u00e2\u201a\u00ac\u00c2\u00a0\u00c3\u00a2\u00e2\u201a\u00ac\u00e2\u201e\u00a2 0). Zero production imports remain.",
       "targets": [
         "internal/capabilities/images/workflow",
         "internal/capabilities/images/generation",
@@ -359,7 +359,7 @@
       "owner": "application use-case migration owner",
       "completed_at": "2026-08-25",
       "status": "COMPLETED",
-      "resolution": "Root deleted from filesystem (2026-08-25). All use-case orchestration migrated to internal/capabilities (jobsÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢capabilities/jobs, imagesÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢capabilities/images, mediamemoryÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢capabilities/mediamemory, searchÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢capabilities/assets/search, qdrantÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢capabilities/reconciliation+platform/qdrant, scriptsÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢capabilities/scripts). Zero production Go files remain; legacy import path banned via percheck_legacy_root_ban. Last deadline was 2026-12-31.",
+      "resolution": "Root deleted from filesystem (2026-08-25). All use-case orchestration migrated to internal/capabilities (jobs\u00c3\u0192\u00c2\u00a2\u00c3\u00a2\u00e2\u201a\u00ac\u00c2\u00a0\u00c3\u00a2\u00e2\u201a\u00ac\u00e2\u201e\u00a2capabilities/jobs, images\u00c3\u0192\u00c2\u00a2\u00c3\u00a2\u00e2\u201a\u00ac\u00c2\u00a0\u00c3\u00a2\u00e2\u201a\u00ac\u00e2\u201e\u00a2capabilities/images, mediamemory\u00c3\u0192\u00c2\u00a2\u00c3\u00a2\u00e2\u201a\u00ac\u00c2\u00a0\u00c3\u00a2\u00e2\u201a\u00ac\u00e2\u201e\u00a2capabilities/mediamemory, search\u00c3\u0192\u00c2\u00a2\u00c3\u00a2\u00e2\u201a\u00ac\u00c2\u00a0\u00c3\u00a2\u00e2\u201a\u00ac\u00e2\u201e\u00a2capabilities/assets/search, qdrant\u00c3\u0192\u00c2\u00a2\u00c3\u00a2\u00e2\u201a\u00ac\u00c2\u00a0\u00c3\u00a2\u00e2\u201a\u00ac\u00e2\u201e\u00a2capabilities/reconciliation+platform/qdrant, scripts\u00c3\u0192\u00c2\u00a2\u00c3\u00a2\u00e2\u201a\u00ac\u00c2\u00a0\u00c3\u00a2\u00e2\u201a\u00ac\u00e2\u201e\u00a2capabilities/scripts). Zero production Go files remain; legacy import path banned via percheck_legacy_root_ban. Last deadline was 2026-12-31.",
       "targets": [
         "internal/capabilities"
       ]

@@ -1,0 +1,441 @@
+{
+  "_comment": "POST /api/clips/process payload (ExtractRequest, drift source: internal/capabilities/youtube/dto/types.go). Source: Rod Stewart - Full Interview 1973 (HD) (https://www.youtube.com/watch?v=IuAEZiKopoU). Destination: the Clips/HipHop child folder for Rod Stewart (see check.py FOLDERS), create_subfolder=false. Windows picked BY HAND from the timed transcript printed by ops/jobs/hiphop_36/tx.py; no LLM selection. Clip ids are deterministic (yt_<videoID>_<startSec>_<endSec>_v1) so a re-submit is an UPSERT. topics/summary/hook are keyword-dense on purpose: composeYouTubeClipSearchText feeds search_text -> 768d pgvector embedding, texts[] lands in asset_text_tracks in the same atomic commit.",
+  "url": "https://www.youtube.com/watch?v=IuAEZiKopoU",
+  "strategy": "verify",
+  "concurrency": 3,
+  "force_keyframes": true,
+  "keep_audio": true,
+  "write_summary": true,
+  "destination": {
+    "folder_id": "1GNjncBBkOhTX2vQ7txu7NDrR3jFJNFOk",
+    "create_subfolder": false
+  },
+  "segments": [
+    {
+      "start": "00:04",
+      "end": "00:49",
+      "name": "Rod Stewart — intervista momento 1: you may not have seen him Opera op",
+      "category": "celebrity_interview",
+      "source_title": "Rod Stewart - Full Interview 1973 (HD)",
+      "source_channel": "YouTube Interview",
+      "summary": "Rod Stewart in Rod Stewart - Full Interview 1973 (HD): you may not have seen him Opera operating quite like that before that operating quite like that before that there are still no prizes for guessing there are sti",
+      "topics": [
+        "Rod Stewart Rod Stewart - Full Interview 1973 (HD) interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo rod stewart you may not have seen him Opera operating quite like that before that operating  IuAEZiKopoU 4-49 "
+      ],
+      "tags": [
+        "Rod Stewart",
+        "interview",
+        "celebrity_interview",
+        "interview",
+        "talk show"
+      ],
+      "speakers": [
+        "Rod Stewart",
+        "Interviewer"
+      ],
+      "mentioned_people": [
+        "Rod Stewart"
+      ],
+      "hook": "Stewart come around here well come around this",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Rod Stewart — intervista momento 1: you may not have seen ",
+          "summary": "Rod Stewart in Rod Stewart - Full Interview 1973 (HD): you may not have seen him Opera operating quite like that before that operating quite like that before that there a",
+          "description": "Rod Stewart in Rod Stewart - Full Interview 1973 (HD): you may not have seen him Opera operating quite like that before that operating quite like that before that there are still no prizes for guessing there are sti Contesto: Rod Stewart Rod Stewart - Full Interview 1973 (HD) interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo rod stewart you may not have seen him Opera operating quite like that before that operating  IuAEZiKopoU 4-49 "
+        }
+      ]
+    },
+    {
+      "start": "00:12",
+      "end": "00:24",
+      "name": "Hook: stewart come around here well come ",
+      "category": "celebrity_interview",
+      "source_title": "Rod Stewart - Full Interview 1973 (HD)",
+      "source_channel": "YouTube Interview",
+      "summary": "Apertura secca (12s): apertura secca dal colloquio Rod Stewart",
+      "topics": [
+        "Rod Stewart Rod Stewart - Full Interview 1973 (HD) interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo rod stewart you may not have seen him Opera operating quite like that before that operating  IuAEZiKopoU 4-49  hook apertura short opening-short"
+      ],
+      "tags": [
+        "Rod Stewart",
+        "interview",
+        "celebrity_interview",
+        "interview",
+        "talk show",
+        "hook"
+      ],
+      "speakers": [
+        "Rod Stewart",
+        "Interviewer"
+      ],
+      "mentioned_people": [
+        "Rod Stewart"
+      ],
+      "hook": "Stewart come around here well come around this",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Rod Stewart — intervista momento 1: you may not have seen ",
+          "summary": "Rod Stewart in Rod Stewart - Full Interview 1973 (HD): you may not have seen him Opera operating quite like that before that operating quite like that before that there a",
+          "description": "Apertura secca (12s): apertura secca dal colloquio Rod Stewart Contesto: Rod Stewart Rod Stewart - Full Interview 1973 (HD) interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo rod stewart you may not have seen him Opera operating quite like that before that operating  IuAEZiKopoU 4-49  hook apertura short opening-short"
+        }
+      ]
+    },
+    {
+      "start": "01:54",
+      "end": "02:39",
+      "name": "Rod Stewart — intervista momento 2: food baller nothing else you would",
+      "category": "celebrity_interview",
+      "source_title": "Rod Stewart - Full Interview 1973 (HD)",
+      "source_channel": "YouTube Interview",
+      "summary": "Rod Stewart in Rod Stewart - Full Interview 1973 (HD): food baller nothing else you would have been a footballer I had the chance but I been a footballer I had the chance but I was uh I got him in the wrong crowd fe",
+      "topics": [
+        "Rod Stewart Rod Stewart - Full Interview 1973 (HD) interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo rod stewart food baller nothing else you would have been a footballer I had the chance but I IuAEZiKopoU 114-1"
+      ],
+      "tags": [
+        "Rod Stewart",
+        "interview",
+        "celebrity_interview",
+        "interview",
+        "talk show"
+      ],
+      "speakers": [
+        "Rod Stewart",
+        "Interviewer"
+      ],
+      "mentioned_people": [
+        "Rod Stewart"
+      ],
+      "hook": "of the skill but not the enthusiasm do you play for charity performances quite",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Rod Stewart — intervista momento 2: food baller nothing el",
+          "summary": "Rod Stewart in Rod Stewart - Full Interview 1973 (HD): food baller nothing else you would have been a footballer I had the chance but I been a footballer I had the chance",
+          "description": "Rod Stewart in Rod Stewart - Full Interview 1973 (HD): food baller nothing else you would have been a footballer I had the chance but I been a footballer I had the chance but I was uh I got him in the wrong crowd fe Contesto: Rod Stewart Rod Stewart - Full Interview 1973 (HD) interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo rod stewart food baller nothing else you would have been a footballer I had the chance but I IuAEZiKopoU 114-1"
+        }
+      ]
+    },
+    {
+      "start": "02:02",
+      "end": "02:14",
+      "name": "Hook: of the skill but not the enthusiasm",
+      "category": "celebrity_interview",
+      "source_title": "Rod Stewart - Full Interview 1973 (HD)",
+      "source_channel": "YouTube Interview",
+      "summary": "Apertura secca (12s): apertura secca dal colloquio Rod Stewart",
+      "topics": [
+        "Rod Stewart Rod Stewart - Full Interview 1973 (HD) interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo rod stewart food baller nothing else you would have been a footballer I had the chance but I IuAEZiKopoU 114-1 hook apertura short opening-short"
+      ],
+      "tags": [
+        "Rod Stewart",
+        "interview",
+        "celebrity_interview",
+        "interview",
+        "talk show",
+        "hook"
+      ],
+      "speakers": [
+        "Rod Stewart",
+        "Interviewer"
+      ],
+      "mentioned_people": [
+        "Rod Stewart"
+      ],
+      "hook": "of the skill but not the enthusiasm do you play for charity performances quite",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Rod Stewart — intervista momento 2: food baller nothing el",
+          "summary": "Rod Stewart in Rod Stewart - Full Interview 1973 (HD): food baller nothing else you would have been a footballer I had the chance but I been a footballer I had the chance",
+          "description": "Apertura secca (12s): apertura secca dal colloquio Rod Stewart Contesto: Rod Stewart Rod Stewart - Full Interview 1973 (HD) interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo rod stewart food baller nothing else you would have been a footballer I had the chance but I IuAEZiKopoU 114-1 hook apertura short opening-short"
+        }
+      ]
+    },
+    {
+      "start": "03:45",
+      "end": "04:30",
+      "name": "Rod Stewart — intervista momento 3: coming take everybody for a ride a",
+      "category": "celebrity_interview",
+      "source_title": "Rod Stewart - Full Interview 1973 (HD)",
+      "source_channel": "YouTube Interview",
+      "summary": "Rod Stewart in Rod Stewart - Full Interview 1973 (HD): coming take everybody for a ride and that's where they're going to go back to that's where they're going to go back to tomorrow morning I supect right now once",
+      "topics": [
+        "Rod Stewart Rod Stewart - Full Interview 1973 (HD) interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo rod stewart coming take everybody for a ride and that's where they're going to go back to th IuAEZiKopoU 225-2"
+      ],
+      "tags": [
+        "Rod Stewart",
+        "interview",
+        "celebrity_interview",
+        "interview",
+        "talk show"
+      ],
+      "speakers": [
+        "Rod Stewart",
+        "Interviewer"
+      ],
+      "mentioned_people": [
+        "Rod Stewart"
+      ],
+      "hook": "got I can do it without that while I thr no you got it all wrong there's a lot of",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Rod Stewart — intervista momento 3: coming take everybody ",
+          "summary": "Rod Stewart in Rod Stewart - Full Interview 1973 (HD): coming take everybody for a ride and that's where they're going to go back to that's where they're going to go back",
+          "description": "Rod Stewart in Rod Stewart - Full Interview 1973 (HD): coming take everybody for a ride and that's where they're going to go back to that's where they're going to go back to tomorrow morning I supect right now once Contesto: Rod Stewart Rod Stewart - Full Interview 1973 (HD) interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo rod stewart coming take everybody for a ride and that's where they're going to go back to th IuAEZiKopoU 225-2"
+        }
+      ]
+    },
+    {
+      "start": "03:53",
+      "end": "04:05",
+      "name": "Hook: got i can do it without that while ",
+      "category": "celebrity_interview",
+      "source_title": "Rod Stewart - Full Interview 1973 (HD)",
+      "source_channel": "YouTube Interview",
+      "summary": "Apertura secca (12s): apertura secca dal colloquio Rod Stewart",
+      "topics": [
+        "Rod Stewart Rod Stewart - Full Interview 1973 (HD) interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo rod stewart coming take everybody for a ride and that's where they're going to go back to th IuAEZiKopoU 225-2 hook apertura short opening-short"
+      ],
+      "tags": [
+        "Rod Stewart",
+        "interview",
+        "celebrity_interview",
+        "interview",
+        "talk show",
+        "hook"
+      ],
+      "speakers": [
+        "Rod Stewart",
+        "Interviewer"
+      ],
+      "mentioned_people": [
+        "Rod Stewart"
+      ],
+      "hook": "got I can do it without that while I thr no you got it all wrong there's a lot of",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Rod Stewart — intervista momento 3: coming take everybody ",
+          "summary": "Rod Stewart in Rod Stewart - Full Interview 1973 (HD): coming take everybody for a ride and that's where they're going to go back to that's where they're going to go back",
+          "description": "Apertura secca (12s): apertura secca dal colloquio Rod Stewart Contesto: Rod Stewart Rod Stewart - Full Interview 1973 (HD) interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo rod stewart coming take everybody for a ride and that's where they're going to go back to th IuAEZiKopoU 225-2 hook apertura short opening-short"
+        }
+      ]
+    },
+    {
+      "start": "05:36",
+      "end": "06:21",
+      "name": "Rod Stewart — intervista momento 4: approach an informal approach got ",
+      "category": "celebrity_interview",
+      "source_title": "Rod Stewart - Full Interview 1973 (HD)",
+      "source_channel": "YouTube Interview",
+      "summary": "Rod Stewart in Rod Stewart - Full Interview 1973 (HD): approach an informal approach got that in my neck swap seats no please you're doing remarkably you got your best side on I remarkably you got your best side on",
+      "topics": [
+        "Rod Stewart Rod Stewart - Full Interview 1973 (HD) interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo rod stewart approach an informal approach got that in my neck swap seats no please you're do IuAEZiKopoU 336-3"
+      ],
+      "tags": [
+        "Rod Stewart",
+        "interview",
+        "celebrity_interview",
+        "interview",
+        "talk show"
+      ],
+      "speakers": [
+        "Rod Stewart",
+        "Interviewer"
+      ],
+      "mentioned_people": [
+        "Rod Stewart"
+      ],
+      "hook": "[Music] swap and he made an informal approach to",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Rod Stewart — intervista momento 4: approach an informal a",
+          "summary": "Rod Stewart in Rod Stewart - Full Interview 1973 (HD): approach an informal approach got that in my neck swap seats no please you're doing remarkably you got your best si",
+          "description": "Rod Stewart in Rod Stewart - Full Interview 1973 (HD): approach an informal approach got that in my neck swap seats no please you're doing remarkably you got your best side on I remarkably you got your best side on Contesto: Rod Stewart Rod Stewart - Full Interview 1973 (HD) interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo rod stewart approach an informal approach got that in my neck swap seats no please you're do IuAEZiKopoU 336-3"
+        }
+      ]
+    },
+    {
+      "start": "05:44",
+      "end": "05:56",
+      "name": "Hook: [music] swap and he made an informa",
+      "category": "celebrity_interview",
+      "source_title": "Rod Stewart - Full Interview 1973 (HD)",
+      "source_channel": "YouTube Interview",
+      "summary": "Apertura secca (12s): apertura secca dal colloquio Rod Stewart",
+      "topics": [
+        "Rod Stewart Rod Stewart - Full Interview 1973 (HD) interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo rod stewart approach an informal approach got that in my neck swap seats no please you're do IuAEZiKopoU 336-3 hook apertura short opening-short"
+      ],
+      "tags": [
+        "Rod Stewart",
+        "interview",
+        "celebrity_interview",
+        "interview",
+        "talk show",
+        "hook"
+      ],
+      "speakers": [
+        "Rod Stewart",
+        "Interviewer"
+      ],
+      "mentioned_people": [
+        "Rod Stewart"
+      ],
+      "hook": "[Music] swap and he made an informal approach to",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Rod Stewart — intervista momento 4: approach an informal a",
+          "summary": "Rod Stewart in Rod Stewart - Full Interview 1973 (HD): approach an informal approach got that in my neck swap seats no please you're doing remarkably you got your best si",
+          "description": "Apertura secca (12s): apertura secca dal colloquio Rod Stewart Contesto: Rod Stewart Rod Stewart - Full Interview 1973 (HD) interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo rod stewart approach an informal approach got that in my neck swap seats no please you're do IuAEZiKopoU 336-3 hook apertura short opening-short"
+        }
+      ]
+    },
+    {
+      "start": "07:26",
+      "end": "08:11",
+      "name": "Rod Stewart — intervista momento 5: extraordinary number of women don'",
+      "category": "celebrity_interview",
+      "source_title": "Rod Stewart - Full Interview 1973 (HD)",
+      "source_channel": "YouTube Interview",
+      "summary": "Rod Stewart in Rod Stewart - Full Interview 1973 (HD): extraordinary number of women don't you to read no you're Slimmer than ol of you to read no you're Slimmer than ol of thank you no I I you know I like to sort t",
+      "topics": [
+        "Rod Stewart Rod Stewart - Full Interview 1973 (HD) interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo rod stewart extraordinary number of women don't you to read no you're Slimmer than ol of you IuAEZiKopoU 446-4"
+      ],
+      "tags": [
+        "Rod Stewart",
+        "interview",
+        "celebrity_interview",
+        "interview",
+        "talk show"
+      ],
+      "speakers": [
+        "Rod Stewart",
+        "Interviewer"
+      ],
+      "mentioned_people": [
+        "Rod Stewart"
+      ],
+      "hook": "I'm 35 40 I'll be dead something I Living For after you're dead how much",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Rod Stewart — intervista momento 5: extraordinary number o",
+          "summary": "Rod Stewart in Rod Stewart - Full Interview 1973 (HD): extraordinary number of women don't you to read no you're Slimmer than ol of you to read no you're Slimmer than ol ",
+          "description": "Rod Stewart in Rod Stewart - Full Interview 1973 (HD): extraordinary number of women don't you to read no you're Slimmer than ol of you to read no you're Slimmer than ol of thank you no I I you know I like to sort t Contesto: Rod Stewart Rod Stewart - Full Interview 1973 (HD) interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo rod stewart extraordinary number of women don't you to read no you're Slimmer than ol of you IuAEZiKopoU 446-4"
+        }
+      ]
+    },
+    {
+      "start": "07:34",
+      "end": "07:46",
+      "name": "Hook: i'm 35 40 i'll be dead something i ",
+      "category": "celebrity_interview",
+      "source_title": "Rod Stewart - Full Interview 1973 (HD)",
+      "source_channel": "YouTube Interview",
+      "summary": "Apertura secca (12s): apertura secca dal colloquio Rod Stewart",
+      "topics": [
+        "Rod Stewart Rod Stewart - Full Interview 1973 (HD) interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo rod stewart extraordinary number of women don't you to read no you're Slimmer than ol of you IuAEZiKopoU 446-4 hook apertura short opening-short"
+      ],
+      "tags": [
+        "Rod Stewart",
+        "interview",
+        "celebrity_interview",
+        "interview",
+        "talk show",
+        "hook"
+      ],
+      "speakers": [
+        "Rod Stewart",
+        "Interviewer"
+      ],
+      "mentioned_people": [
+        "Rod Stewart"
+      ],
+      "hook": "I'm 35 40 I'll be dead something I Living For after you're dead how much",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Rod Stewart — intervista momento 5: extraordinary number o",
+          "summary": "Rod Stewart in Rod Stewart - Full Interview 1973 (HD): extraordinary number of women don't you to read no you're Slimmer than ol of you to read no you're Slimmer than ol ",
+          "description": "Apertura secca (12s): apertura secca dal colloquio Rod Stewart Contesto: Rod Stewart Rod Stewart - Full Interview 1973 (HD) interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo rod stewart extraordinary number of women don't you to read no you're Slimmer than ol of you IuAEZiKopoU 446-4 hook apertura short opening-short"
+        }
+      ]
+    },
+    {
+      "start": "09:17",
+      "end": "10:02",
+      "name": "Rod Stewart — intervista momento 6: La any one person any one person i",
+      "category": "celebrity_interview",
+      "source_title": "Rod Stewart - Full Interview 1973 (HD)",
+      "source_channel": "YouTube Interview",
+      "summary": "Rod Stewart in Rod Stewart - Full Interview 1973 (HD): La any one person any one person in the world I could be it would be Dennis Law world I could be it would be Dennis Law and that's really owning up it takes a a",
+      "topics": [
+        "Rod Stewart Rod Stewart - Full Interview 1973 (HD) interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo rod stewart La any one person any one person in the world I could be it would be Dennis Law  IuAEZiKopoU 557-6"
+      ],
+      "tags": [
+        "Rod Stewart",
+        "interview",
+        "celebrity_interview",
+        "interview",
+        "talk show"
+      ],
+      "speakers": [
+        "Rod Stewart",
+        "Interviewer"
+      ],
+      "mentioned_people": [
+        "Rod Stewart"
+      ],
+      "hook": "out of the yeah I had to pay for it though you did you said to me you said",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Rod Stewart — intervista momento 6: La any one person any ",
+          "summary": "Rod Stewart in Rod Stewart - Full Interview 1973 (HD): La any one person any one person in the world I could be it would be Dennis Law world I could be it would be Dennis",
+          "description": "Rod Stewart in Rod Stewart - Full Interview 1973 (HD): La any one person any one person in the world I could be it would be Dennis Law world I could be it would be Dennis Law and that's really owning up it takes a a Contesto: Rod Stewart Rod Stewart - Full Interview 1973 (HD) interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo rod stewart La any one person any one person in the world I could be it would be Dennis Law  IuAEZiKopoU 557-6"
+        }
+      ]
+    },
+    {
+      "start": "09:25",
+      "end": "09:37",
+      "name": "Hook: out of the yeah i had to pay for it",
+      "category": "celebrity_interview",
+      "source_title": "Rod Stewart - Full Interview 1973 (HD)",
+      "source_channel": "YouTube Interview",
+      "summary": "Apertura secca (12s): apertura secca dal colloquio Rod Stewart",
+      "topics": [
+        "Rod Stewart Rod Stewart - Full Interview 1973 (HD) interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo rod stewart La any one person any one person in the world I could be it would be Dennis Law  IuAEZiKopoU 557-6 hook apertura short opening-short"
+      ],
+      "tags": [
+        "Rod Stewart",
+        "interview",
+        "celebrity_interview",
+        "interview",
+        "talk show",
+        "hook"
+      ],
+      "speakers": [
+        "Rod Stewart",
+        "Interviewer"
+      ],
+      "mentioned_people": [
+        "Rod Stewart"
+      ],
+      "hook": "out of the yeah I had to pay for it though you did you said to me you said",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Rod Stewart — intervista momento 6: La any one person any ",
+          "summary": "Rod Stewart in Rod Stewart - Full Interview 1973 (HD): La any one person any one person in the world I could be it would be Dennis Law world I could be it would be Dennis",
+          "description": "Apertura secca (12s): apertura secca dal colloquio Rod Stewart Contesto: Rod Stewart Rod Stewart - Full Interview 1973 (HD) interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo rod stewart La any one person any one person in the world I could be it would be Dennis Law  IuAEZiKopoU 557-6 hook apertura short opening-short"
+        }
+      ]
+    }
+  ]
+}

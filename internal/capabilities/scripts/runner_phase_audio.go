@@ -7,6 +7,7 @@ import (
 
 	capabilityaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
 	capcheckpoint "github.com/Marcuss-ops/PipelineGen/internal/capabilities/checkpoint"
+	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/observability"
 	"go.uber.org/zap"
@@ -25,6 +26,40 @@ type audioCompileState struct {
 	// AudioSkipped reports that the compile phase had no audio work to do for
 	// this attempt (resumed past the stage, or no timeline requested).
 	AudioSkipped bool
+}
+
+// logPhraseMotionSelections records the phrase animation that was actually
+// assigned to each phrase in the compiled plan, making repeated selections
+// visible when comparing generated jobs.
+func (r *Runner) logPhraseMotionSelections(runID string, plan *capabilityoverlay.OverlayPlan) {
+	if r == nil || r.log == nil || plan == nil {
+		return
+	}
+	counts := make(map[string]int)
+	phraseOrdinal := 0
+	for _, item := range plan.Items {
+		if item.Kind != "text_phrase" {
+			continue
+		}
+		counts[item.MotionID]++
+		r.log.Info("phrase animation selected",
+			zap.String("run_id", runID),
+			zap.String("plan_id", plan.PlanID),
+			zap.Int("phrase_ordinal", phraseOrdinal),
+			zap.String("scene_id", item.SceneID),
+			zap.String("item_id", item.ID),
+			zap.String("phrase", item.Text),
+			zap.String("motion_id", item.MotionID),
+			zap.String("preset_id", item.PresetID),
+		)
+		phraseOrdinal++
+	}
+	r.log.Info("phrase animation selection summary",
+		zap.String("run_id", runID),
+		zap.String("plan_id", plan.PlanID),
+		zap.Int("phrase_count", phraseOrdinal),
+		zap.Any("motion_counts", counts),
+	)
 }
 
 // runAudioCompilePhase compiles the canonical timeline and the semantic
@@ -439,6 +474,7 @@ func (r *Runner) runAudioCompilePhase(ctx context.Context, runID string, req Gen
 			r.failRunWithRetry(ctx, runID, StageCompilingAudio, cause)
 			return false
 		}
+		r.logPhraseMotionSelections(runID, result.OverlayPlan)
 		// runID is the semantic/idempotent plan identity. exec.JobID is the
 		// externally returned broker job identity and must own the Drive tree.
 		setOverlayDriveJobID(result, exec.JobID)

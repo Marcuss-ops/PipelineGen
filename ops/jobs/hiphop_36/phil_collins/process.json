@@ -1,0 +1,441 @@
+{
+  "_comment": "POST /api/clips/process payload (ExtractRequest, drift source: internal/capabilities/youtube/dto/types.go). Source: Phil Collins Interview With Charlotte BBC Brekkie Fri 22 May 26 (https://www.youtube.com/watch?v=iLk8_aQawNU). Destination: the Clips/HipHop child folder for Phil Collins (see check.py FOLDERS), create_subfolder=false. Windows picked BY HAND from the timed transcript printed by ops/jobs/hiphop_36/tx.py; no LLM selection. Clip ids are deterministic (yt_<videoID>_<startSec>_<endSec>_v1) so a re-submit is an UPSERT. topics/summary/hook are keyword-dense on purpose: composeYouTubeClipSearchText feeds search_text -> 768d pgvector embedding, texts[] lands in asset_text_tracks in the same atomic commit.",
+  "url": "https://www.youtube.com/watch?v=iLk8_aQawNU",
+  "strategy": "verify",
+  "concurrency": 3,
+  "force_keyframes": true,
+  "keep_audio": true,
+  "write_summary": true,
+  "destination": {
+    "folder_id": "1WPYx1_VF10rCfodVdazDYGsriJeu0ebB",
+    "create_subfolder": false
+  },
+  "segments": [
+    {
+      "start": "00:04",
+      "end": "00:49",
+      "name": "Phil Collins — intervista momento 1: It's &gt;&gt; [music]",
+      "category": "celebrity_interview",
+      "source_title": "Phil Collins Interview With Charlotte BBC Brekkie Fri 22 May 26",
+      "source_channel": "YouTube Interview",
+      "summary": "Phil Collins in Phil Collins Interview With Charlotte BBC Brekkie Fri 22 May: It's &gt;&gt; [music] &gt;&gt; [music] &gt;&gt; Hundreds have helped here and have been &gt;&gt; Hundreds have helped here and have been helpe",
+      "topics": [
+        "Phil Collins Phil Collins Interview With Charlotte BBC Brekkie Fri 22 May 26 interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo phil collins It's &gt;&gt; [music] &gt;&gt; [music] &gt;&gt; Hundreds have helped he"
+      ],
+      "tags": [
+        "Phil Collins",
+        "interview",
+        "celebrity_interview",
+        "interview",
+        "talk show"
+      ],
+      "speakers": [
+        "Phil Collins",
+        "Charlotte"
+      ],
+      "mentioned_people": [
+        "Phil Collins"
+      ],
+      "hook": "It's &gt;&gt; [music]",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Phil Collins — intervista momento 1: It's &gt;&gt; [music]",
+          "summary": "Phil Collins in Phil Collins Interview With Charlotte BBC Brekkie Fri 22 May: It's &gt;&gt; [music] &gt;&gt; [music] &gt;&gt; Hundreds have helped here and have been &gt;",
+          "description": "Phil Collins in Phil Collins Interview With Charlotte BBC Brekkie Fri 22 May: It's &gt;&gt; [music] &gt;&gt; [music] &gt;&gt; Hundreds have helped here and have been &gt;&gt; Hundreds have helped here and have been helpe Contesto: Phil Collins Phil Collins Interview With Charlotte BBC Brekkie Fri 22 May 26 interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo phil collins It's &gt;&gt; [music] &gt;&gt; [music] &gt;&gt; Hundreds have helped he"
+        }
+      ]
+    },
+    {
+      "start": "00:12",
+      "end": "00:24",
+      "name": "Hook: it's &gt;&gt; [music]",
+      "category": "celebrity_interview",
+      "source_title": "Phil Collins Interview With Charlotte BBC Brekkie Fri 22 May 26",
+      "source_channel": "YouTube Interview",
+      "summary": "Apertura secca (12s): apertura secca dal colloquio Phil Collins",
+      "topics": [
+        "Phil Collins Phil Collins Interview With Charlotte BBC Brekkie Fri 22 May 26 interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo phil collins It's &gt;&gt; [music] &gt;&gt; [music] &gt;&gt; Hundreds have helped he hook apertura short opening-short"
+      ],
+      "tags": [
+        "Phil Collins",
+        "interview",
+        "celebrity_interview",
+        "interview",
+        "talk show",
+        "hook"
+      ],
+      "speakers": [
+        "Phil Collins",
+        "Charlotte"
+      ],
+      "mentioned_people": [
+        "Phil Collins"
+      ],
+      "hook": "It's &gt;&gt; [music]",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Phil Collins — intervista momento 1: It's &gt;&gt; [music]",
+          "summary": "Phil Collins in Phil Collins Interview With Charlotte BBC Brekkie Fri 22 May: It's &gt;&gt; [music] &gt;&gt; [music] &gt;&gt; Hundreds have helped here and have been &gt;",
+          "description": "Apertura secca (12s): apertura secca dal colloquio Phil Collins Contesto: Phil Collins Phil Collins Interview With Charlotte BBC Brekkie Fri 22 May 26 interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo phil collins It's &gt;&gt; [music] &gt;&gt; [music] &gt;&gt; Hundreds have helped he hook apertura short opening-short"
+        }
+      ]
+    },
+    {
+      "start": "01:18",
+      "end": "02:03",
+      "name": "Phil Collins — intervista momento 2: 10 minutes to 7:00 is the time. N",
+      "category": "celebrity_interview",
+      "source_title": "Phil Collins Interview With Charlotte BBC Brekkie Fri 22 May 26",
+      "source_channel": "YouTube Interview",
+      "summary": "Phil Collins in Phil Collins Interview With Charlotte BBC Brekkie Fri 22 May: 10 minutes to 7:00 is the time. Now, Phil Collins has sold more than 100 Phil Collins has sold more than 100 million records worldwide and is ",
+      "topics": [
+        "Phil Collins Phil Collins Interview With Charlotte BBC Brekkie Fri 22 May 26 interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo phil collins 10 minutes to 7:00 is the time. Now, Phil Collins has sold more than 10"
+      ],
+      "tags": [
+        "Phil Collins",
+        "interview",
+        "celebrity_interview",
+        "interview",
+        "talk show"
+      ],
+      "speakers": [
+        "Phil Collins",
+        "Charlotte"
+      ],
+      "mentioned_people": [
+        "Phil Collins"
+      ],
+      "hook": "about his career highlights and plans for the future.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Phil Collins — intervista momento 2: 10 minutes to 7:00 is",
+          "summary": "Phil Collins in Phil Collins Interview With Charlotte BBC Brekkie Fri 22 May: 10 minutes to 7:00 is the time. Now, Phil Collins has sold more than 100 Phil Collins has so",
+          "description": "Phil Collins in Phil Collins Interview With Charlotte BBC Brekkie Fri 22 May: 10 minutes to 7:00 is the time. Now, Phil Collins has sold more than 100 Phil Collins has sold more than 100 million records worldwide and is  Contesto: Phil Collins Phil Collins Interview With Charlotte BBC Brekkie Fri 22 May 26 interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo phil collins 10 minutes to 7:00 is the time. Now, Phil Collins has sold more than 10"
+        }
+      ]
+    },
+    {
+      "start": "01:26",
+      "end": "01:38",
+      "name": "Hook: about his career highlights and pla",
+      "category": "celebrity_interview",
+      "source_title": "Phil Collins Interview With Charlotte BBC Brekkie Fri 22 May 26",
+      "source_channel": "YouTube Interview",
+      "summary": "Apertura secca (12s): apertura secca dal colloquio Phil Collins",
+      "topics": [
+        "Phil Collins Phil Collins Interview With Charlotte BBC Brekkie Fri 22 May 26 interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo phil collins 10 minutes to 7:00 is the time. Now, Phil Collins has sold more than 10 hook apertura short opening-short"
+      ],
+      "tags": [
+        "Phil Collins",
+        "interview",
+        "celebrity_interview",
+        "interview",
+        "talk show",
+        "hook"
+      ],
+      "speakers": [
+        "Phil Collins",
+        "Charlotte"
+      ],
+      "mentioned_people": [
+        "Phil Collins"
+      ],
+      "hook": "about his career highlights and plans for the future.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Phil Collins — intervista momento 2: 10 minutes to 7:00 is",
+          "summary": "Phil Collins in Phil Collins Interview With Charlotte BBC Brekkie Fri 22 May: 10 minutes to 7:00 is the time. Now, Phil Collins has sold more than 100 Phil Collins has so",
+          "description": "Apertura secca (12s): apertura secca dal colloquio Phil Collins Contesto: Phil Collins Phil Collins Interview With Charlotte BBC Brekkie Fri 22 May 26 interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo phil collins 10 minutes to 7:00 is the time. Now, Phil Collins has sold more than 10 hook apertura short opening-short"
+        }
+      ]
+    },
+    {
+      "start": "02:33",
+      "end": "03:18",
+      "name": "Phil Collins — intervista momento 3: very um stern Australian lady.",
+      "category": "celebrity_interview",
+      "source_title": "Phil Collins Interview With Charlotte BBC Brekkie Fri 22 May 26",
+      "source_channel": "YouTube Interview",
+      "summary": "Phil Collins in Phil Collins Interview With Charlotte BBC Brekkie Fri 22 May: very um stern Australian lady. um stern Australian lady. You got to have [laughter] You got to You got to have [laughter] You got to have some",
+      "topics": [
+        "Phil Collins Phil Collins Interview With Charlotte BBC Brekkie Fri 22 May 26 interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo phil collins very um stern Australian lady. um stern Australian lady. You got to hav"
+      ],
+      "tags": [
+        "Phil Collins",
+        "interview",
+        "celebrity_interview",
+        "interview",
+        "talk show"
+      ],
+      "speakers": [
+        "Phil Collins",
+        "Charlotte"
+      ],
+      "mentioned_people": [
+        "Phil Collins"
+      ],
+      "hook": "\"Save a Prayer\" and do you I'm over it now? Are you over",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Phil Collins — intervista momento 3: very um stern Austral",
+          "summary": "Phil Collins in Phil Collins Interview With Charlotte BBC Brekkie Fri 22 May: very um stern Australian lady. um stern Australian lady. You got to have [laughter] You got ",
+          "description": "Phil Collins in Phil Collins Interview With Charlotte BBC Brekkie Fri 22 May: very um stern Australian lady. um stern Australian lady. You got to have [laughter] You got to You got to have [laughter] You got to have some Contesto: Phil Collins Phil Collins Interview With Charlotte BBC Brekkie Fri 22 May 26 interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo phil collins very um stern Australian lady. um stern Australian lady. You got to hav"
+        }
+      ]
+    },
+    {
+      "start": "02:41",
+      "end": "02:53",
+      "name": "Hook: \"save a prayer\" and do you i'm over",
+      "category": "celebrity_interview",
+      "source_title": "Phil Collins Interview With Charlotte BBC Brekkie Fri 22 May 26",
+      "source_channel": "YouTube Interview",
+      "summary": "Apertura secca (12s): apertura secca dal colloquio Phil Collins",
+      "topics": [
+        "Phil Collins Phil Collins Interview With Charlotte BBC Brekkie Fri 22 May 26 interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo phil collins very um stern Australian lady. um stern Australian lady. You got to hav hook apertura short opening-short"
+      ],
+      "tags": [
+        "Phil Collins",
+        "interview",
+        "celebrity_interview",
+        "interview",
+        "talk show",
+        "hook"
+      ],
+      "speakers": [
+        "Phil Collins",
+        "Charlotte"
+      ],
+      "mentioned_people": [
+        "Phil Collins"
+      ],
+      "hook": "\"Save a Prayer\" and do you I'm over it now? Are you over",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Phil Collins — intervista momento 3: very um stern Austral",
+          "summary": "Phil Collins in Phil Collins Interview With Charlotte BBC Brekkie Fri 22 May: very um stern Australian lady. um stern Australian lady. You got to have [laughter] You got ",
+          "description": "Apertura secca (12s): apertura secca dal colloquio Phil Collins Contesto: Phil Collins Phil Collins Interview With Charlotte BBC Brekkie Fri 22 May 26 interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo phil collins very um stern Australian lady. um stern Australian lady. You got to hav hook apertura short opening-short"
+        }
+      ]
+    },
+    {
+      "start": "03:47",
+      "end": "04:32",
+      "name": "Phil Collins — intervista momento 4: look at it and say it bonded the ",
+      "category": "celebrity_interview",
+      "source_title": "Phil Collins Interview With Charlotte BBC Brekkie Fri 22 May 26",
+      "source_channel": "YouTube Interview",
+      "summary": "Phil Collins in Phil Collins Interview With Charlotte BBC Brekkie Fri 22 May: look at it and say it bonded the two events. I played the same two songs in events. I played the same two songs in both places. And history wa",
+      "topics": [
+        "Phil Collins Phil Collins Interview With Charlotte BBC Brekkie Fri 22 May 26 interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo phil collins look at it and say it bonded the two events. I played the same two song"
+      ],
+      "tags": [
+        "Phil Collins",
+        "interview",
+        "celebrity_interview",
+        "interview",
+        "talk show"
+      ],
+      "speakers": [
+        "Phil Collins",
+        "Charlotte"
+      ],
+      "mentioned_people": [
+        "Phil Collins"
+      ],
+      "hook": "&gt;&gt; [music and singing] &gt;&gt; You had the most amazing career. And I",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Phil Collins — intervista momento 4: look at it and say it",
+          "summary": "Phil Collins in Phil Collins Interview With Charlotte BBC Brekkie Fri 22 May: look at it and say it bonded the two events. I played the same two songs in events. I played",
+          "description": "Phil Collins in Phil Collins Interview With Charlotte BBC Brekkie Fri 22 May: look at it and say it bonded the two events. I played the same two songs in events. I played the same two songs in both places. And history wa Contesto: Phil Collins Phil Collins Interview With Charlotte BBC Brekkie Fri 22 May 26 interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo phil collins look at it and say it bonded the two events. I played the same two song"
+        }
+      ]
+    },
+    {
+      "start": "03:55",
+      "end": "04:07",
+      "name": "Hook: &gt;&gt; [music and singing] &gt;&g",
+      "category": "celebrity_interview",
+      "source_title": "Phil Collins Interview With Charlotte BBC Brekkie Fri 22 May 26",
+      "source_channel": "YouTube Interview",
+      "summary": "Apertura secca (12s): apertura secca dal colloquio Phil Collins",
+      "topics": [
+        "Phil Collins Phil Collins Interview With Charlotte BBC Brekkie Fri 22 May 26 interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo phil collins look at it and say it bonded the two events. I played the same two song hook apertura short opening-short"
+      ],
+      "tags": [
+        "Phil Collins",
+        "interview",
+        "celebrity_interview",
+        "interview",
+        "talk show",
+        "hook"
+      ],
+      "speakers": [
+        "Phil Collins",
+        "Charlotte"
+      ],
+      "mentioned_people": [
+        "Phil Collins"
+      ],
+      "hook": "&gt;&gt; [music and singing] &gt;&gt; You had the most amazing career. And I",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Phil Collins — intervista momento 4: look at it and say it",
+          "summary": "Phil Collins in Phil Collins Interview With Charlotte BBC Brekkie Fri 22 May: look at it and say it bonded the two events. I played the same two songs in events. I played",
+          "description": "Apertura secca (12s): apertura secca dal colloquio Phil Collins Contesto: Phil Collins Phil Collins Interview With Charlotte BBC Brekkie Fri 22 May 26 interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo phil collins look at it and say it bonded the two events. I played the same two song hook apertura short opening-short"
+        }
+      ]
+    },
+    {
+      "start": "05:02",
+      "end": "05:47",
+      "name": "Phil Collins — intervista momento 5: like teenagers, discovering your ",
+      "category": "celebrity_interview",
+      "source_title": "Phil Collins Interview With Charlotte BBC Brekkie Fri 22 May 26",
+      "source_channel": "YouTube Interview",
+      "summary": "Phil Collins in Phil Collins Interview With Charlotte BBC Brekkie Fri 22 May: like teenagers, discovering your music for the first time, and they're for the first time, and they're listening to one of your songs. listeni",
+      "topics": [
+        "Phil Collins Phil Collins Interview With Charlotte BBC Brekkie Fri 22 May 26 interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo phil collins like teenagers, discovering your music for the first time, and they're "
+      ],
+      "tags": [
+        "Phil Collins",
+        "interview",
+        "celebrity_interview",
+        "interview",
+        "talk show"
+      ],
+      "speakers": [
+        "Phil Collins",
+        "Charlotte"
+      ],
+      "mentioned_people": [
+        "Phil Collins"
+      ],
+      "hook": "because it's to see that there's things, some things that's got a little bit of",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Phil Collins — intervista momento 5: like teenagers, disco",
+          "summary": "Phil Collins in Phil Collins Interview With Charlotte BBC Brekkie Fri 22 May: like teenagers, discovering your music for the first time, and they're for the first time, a",
+          "description": "Phil Collins in Phil Collins Interview With Charlotte BBC Brekkie Fri 22 May: like teenagers, discovering your music for the first time, and they're for the first time, and they're listening to one of your songs. listeni Contesto: Phil Collins Phil Collins Interview With Charlotte BBC Brekkie Fri 22 May 26 interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo phil collins like teenagers, discovering your music for the first time, and they're "
+        }
+      ]
+    },
+    {
+      "start": "05:10",
+      "end": "05:22",
+      "name": "Hook: because it's to see that there's th",
+      "category": "celebrity_interview",
+      "source_title": "Phil Collins Interview With Charlotte BBC Brekkie Fri 22 May 26",
+      "source_channel": "YouTube Interview",
+      "summary": "Apertura secca (12s): apertura secca dal colloquio Phil Collins",
+      "topics": [
+        "Phil Collins Phil Collins Interview With Charlotte BBC Brekkie Fri 22 May 26 interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo phil collins like teenagers, discovering your music for the first time, and they're  hook apertura short opening-short"
+      ],
+      "tags": [
+        "Phil Collins",
+        "interview",
+        "celebrity_interview",
+        "interview",
+        "talk show",
+        "hook"
+      ],
+      "speakers": [
+        "Phil Collins",
+        "Charlotte"
+      ],
+      "mentioned_people": [
+        "Phil Collins"
+      ],
+      "hook": "because it's to see that there's things, some things that's got a little bit of",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Phil Collins — intervista momento 5: like teenagers, disco",
+          "summary": "Phil Collins in Phil Collins Interview With Charlotte BBC Brekkie Fri 22 May: like teenagers, discovering your music for the first time, and they're for the first time, a",
+          "description": "Apertura secca (12s): apertura secca dal colloquio Phil Collins Contesto: Phil Collins Phil Collins Interview With Charlotte BBC Brekkie Fri 22 May 26 interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo phil collins like teenagers, discovering your music for the first time, and they're  hook apertura short opening-short"
+        }
+      ]
+    },
+    {
+      "start": "06:16",
+      "end": "07:01",
+      "name": "Phil Collins — intervista momento 6: songs in your head that you haven",
+      "category": "celebrity_interview",
+      "source_title": "Phil Collins Interview With Charlotte BBC Brekkie Fri 22 May 26",
+      "source_channel": "YouTube Interview",
+      "summary": "Phil Collins in Phil Collins Interview With Charlotte BBC Brekkie Fri 22 May: songs in your head that you haven't put down yet and stuff? down yet and stuff? &gt;&gt; of &gt;&gt; of lots of lyrical ideas. Mhm. I'll write",
+      "topics": [
+        "Phil Collins Phil Collins Interview With Charlotte BBC Brekkie Fri 22 May 26 interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo phil collins songs in your head that you haven't put down yet and stuff? down yet an"
+      ],
+      "tags": [
+        "Phil Collins",
+        "interview",
+        "celebrity_interview",
+        "interview",
+        "talk show"
+      ],
+      "speakers": [
+        "Phil Collins",
+        "Charlotte"
+      ],
+      "mentioned_people": [
+        "Phil Collins"
+      ],
+      "hook": "I can get my teeth into to start working with.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Phil Collins — intervista momento 6: songs in your head th",
+          "summary": "Phil Collins in Phil Collins Interview With Charlotte BBC Brekkie Fri 22 May: songs in your head that you haven't put down yet and stuff? down yet and stuff? &gt;&gt; of ",
+          "description": "Phil Collins in Phil Collins Interview With Charlotte BBC Brekkie Fri 22 May: songs in your head that you haven't put down yet and stuff? down yet and stuff? &gt;&gt; of &gt;&gt; of lots of lyrical ideas. Mhm. I'll write Contesto: Phil Collins Phil Collins Interview With Charlotte BBC Brekkie Fri 22 May 26 interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo phil collins songs in your head that you haven't put down yet and stuff? down yet an"
+        }
+      ]
+    },
+    {
+      "start": "06:24",
+      "end": "06:36",
+      "name": "Hook: i can get my teeth into to start wo",
+      "category": "celebrity_interview",
+      "source_title": "Phil Collins Interview With Charlotte BBC Brekkie Fri 22 May 26",
+      "source_channel": "YouTube Interview",
+      "summary": "Apertura secca (12s): apertura secca dal colloquio Phil Collins",
+      "topics": [
+        "Phil Collins Phil Collins Interview With Charlotte BBC Brekkie Fri 22 May 26 interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo phil collins songs in your head that you haven't put down yet and stuff? down yet an hook apertura short opening-short"
+      ],
+      "tags": [
+        "Phil Collins",
+        "interview",
+        "celebrity_interview",
+        "interview",
+        "talk show",
+        "hook"
+      ],
+      "speakers": [
+        "Phil Collins",
+        "Charlotte"
+      ],
+      "mentioned_people": [
+        "Phil Collins"
+      ],
+      "hook": "I can get my teeth into to start working with.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Phil Collins — intervista momento 6: songs in your head th",
+          "summary": "Phil Collins in Phil Collins Interview With Charlotte BBC Brekkie Fri 22 May: songs in your head that you haven't put down yet and stuff? down yet and stuff? &gt;&gt; of ",
+          "description": "Apertura secca (12s): apertura secca dal colloquio Phil Collins Contesto: Phil Collins Phil Collins Interview With Charlotte BBC Brekkie Fri 22 May 26 interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo phil collins songs in your head that you haven't put down yet and stuff? down yet an hook apertura short opening-short"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,441 @@
+{
+  "_comment": "POST /api/clips/process payload (ExtractRequest, drift source: internal/capabilities/youtube/dto/types.go). Source: Donna Summer - Interview at Johnny Carson Show (https://www.youtube.com/watch?v=6muiJVxMzwU). Destination: the Clips/HipHop child folder for Donna Summer (see check.py FOLDERS), create_subfolder=false. Windows picked BY HAND from the timed transcript printed by ops/jobs/hiphop_36/tx.py; no LLM selection. Clip ids are deterministic (yt_<videoID>_<startSec>_<endSec>_v1) so a re-submit is an UPSERT. topics/summary/hook are keyword-dense on purpose: composeYouTubeClipSearchText feeds search_text -> 768d pgvector embedding, texts[] lands in asset_text_tracks in the same atomic commit.",
+  "url": "https://www.youtube.com/watch?v=6muiJVxMzwU",
+  "strategy": "verify",
+  "concurrency": 3,
+  "force_keyframes": true,
+  "keep_audio": true,
+  "write_summary": true,
+  "destination": {
+    "folder_id": "1KWie6iy4_G0n9z5EQhbqJ4czkP-cLxc0",
+    "create_subfolder": false
+  },
+  "segments": [
+    {
+      "start": "00:04",
+      "end": "00:49",
+      "name": "Donna Summer — intervista momento 1: [Applause] thank you",
+      "category": "celebrity_interview",
+      "source_title": "Donna Summer - Interview at Johnny Carson Show",
+      "source_channel": "YouTube Interview",
+      "summary": "Donna Summer in Donna Summer - Interview at Johnny Carson Show: [Applause] thank you DC Donna Summer is currently one of the uh hottest performers right now at the uh hottest performers right now at the entertainment bus",
+      "topics": [
+        "Donna Summer Donna Summer - Interview at Johnny Carson Show interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo donna summer [Applause] thank you DC Donna Summer is currently one of the uh hottest performe 6muiJVx"
+      ],
+      "tags": [
+        "Donna Summer",
+        "interview",
+        "celebrity_interview",
+        "interview",
+        "talk show"
+      ],
+      "speakers": [
+        "Donna Summer",
+        "Johnny Carson"
+      ],
+      "mentioned_people": [
+        "Donna Summer"
+      ],
+      "hook": "show but uh she's known practically already almost throughout the world for",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Donna Summer — intervista momento 1: [Applause] thank you",
+          "summary": "Donna Summer in Donna Summer - Interview at Johnny Carson Show: [Applause] thank you DC Donna Summer is currently one of the uh hottest performers right now at the uh hot",
+          "description": "Donna Summer in Donna Summer - Interview at Johnny Carson Show: [Applause] thank you DC Donna Summer is currently one of the uh hottest performers right now at the uh hottest performers right now at the entertainment bus Contesto: Donna Summer Donna Summer - Interview at Johnny Carson Show interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo donna summer [Applause] thank you DC Donna Summer is currently one of the uh hottest performe 6muiJVx"
+        }
+      ]
+    },
+    {
+      "start": "00:12",
+      "end": "00:24",
+      "name": "Hook: show but uh she's known practically",
+      "category": "celebrity_interview",
+      "source_title": "Donna Summer - Interview at Johnny Carson Show",
+      "source_channel": "YouTube Interview",
+      "summary": "Apertura secca (12s): apertura secca dal colloquio Donna Summer",
+      "topics": [
+        "Donna Summer Donna Summer - Interview at Johnny Carson Show interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo donna summer [Applause] thank you DC Donna Summer is currently one of the uh hottest performe 6muiJVx hook apertura short opening-short"
+      ],
+      "tags": [
+        "Donna Summer",
+        "interview",
+        "celebrity_interview",
+        "interview",
+        "talk show",
+        "hook"
+      ],
+      "speakers": [
+        "Donna Summer",
+        "Johnny Carson"
+      ],
+      "mentioned_people": [
+        "Donna Summer"
+      ],
+      "hook": "show but uh she's known practically already almost throughout the world for",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Donna Summer — intervista momento 1: [Applause] thank you",
+          "summary": "Donna Summer in Donna Summer - Interview at Johnny Carson Show: [Applause] thank you DC Donna Summer is currently one of the uh hottest performers right now at the uh hot",
+          "description": "Apertura secca (12s): apertura secca dal colloquio Donna Summer Contesto: Donna Summer Donna Summer - Interview at Johnny Carson Show interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo donna summer [Applause] thank you DC Donna Summer is currently one of the uh hottest performe 6muiJVx hook apertura short opening-short"
+        }
+      ]
+    },
+    {
+      "start": "00:56",
+      "end": "01:41",
+      "name": "Donna Summer — intervista momento 2: yeah I was watching the audience ",
+      "category": "celebrity_interview",
+      "source_title": "Donna Summer - Interview at Johnny Carson Show",
+      "source_channel": "YouTube Interview",
+      "summary": "Donna Summer in Donna Summer - Interview at Johnny Carson Show: yeah I was watching the audience while you were singing I think half of them you were singing I think half of them want to get up and and to start moving wa",
+      "topics": [
+        "Donna Summer Donna Summer - Interview at Johnny Carson Show interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo donna summer yeah I was watching the audience while you were singing I think half of them you 6muiJVx"
+      ],
+      "tags": [
+        "Donna Summer",
+        "interview",
+        "celebrity_interview",
+        "interview",
+        "talk show"
+      ],
+      "speakers": [
+        "Donna Summer",
+        "Johnny Carson"
+      ],
+      "mentioned_people": [
+        "Donna Summer"
+      ],
+      "hook": "child well maybe I shouldn't no that's all right go ahead we've been here so",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Donna Summer — intervista momento 2: yeah I was watching t",
+          "summary": "Donna Summer in Donna Summer - Interview at Johnny Carson Show: yeah I was watching the audience while you were singing I think half of them you were singing I think half",
+          "description": "Donna Summer in Donna Summer - Interview at Johnny Carson Show: yeah I was watching the audience while you were singing I think half of them you were singing I think half of them want to get up and and to start moving wa Contesto: Donna Summer Donna Summer - Interview at Johnny Carson Show interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo donna summer yeah I was watching the audience while you were singing I think half of them you 6muiJVx"
+        }
+      ]
+    },
+    {
+      "start": "01:04",
+      "end": "01:16",
+      "name": "Hook: child well maybe i shouldn't no tha",
+      "category": "celebrity_interview",
+      "source_title": "Donna Summer - Interview at Johnny Carson Show",
+      "source_channel": "YouTube Interview",
+      "summary": "Apertura secca (12s): apertura secca dal colloquio Donna Summer",
+      "topics": [
+        "Donna Summer Donna Summer - Interview at Johnny Carson Show interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo donna summer yeah I was watching the audience while you were singing I think half of them you 6muiJVx hook apertura short opening-short"
+      ],
+      "tags": [
+        "Donna Summer",
+        "interview",
+        "celebrity_interview",
+        "interview",
+        "talk show",
+        "hook"
+      ],
+      "speakers": [
+        "Donna Summer",
+        "Johnny Carson"
+      ],
+      "mentioned_people": [
+        "Donna Summer"
+      ],
+      "hook": "child well maybe I shouldn't no that's all right go ahead we've been here so",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Donna Summer — intervista momento 2: yeah I was watching t",
+          "summary": "Donna Summer in Donna Summer - Interview at Johnny Carson Show: yeah I was watching the audience while you were singing I think half of them you were singing I think half",
+          "description": "Apertura secca (12s): apertura secca dal colloquio Donna Summer Contesto: Donna Summer Donna Summer - Interview at Johnny Carson Show interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo donna summer yeah I was watching the audience while you were singing I think half of them you 6muiJVx hook apertura short opening-short"
+        }
+      ]
+    },
+    {
+      "start": "01:48",
+      "end": "02:33",
+      "name": "Donna Summer — intervista momento 3: well we've been on we're in our 1",
+      "category": "celebrity_interview",
+      "source_title": "Donna Summer - Interview at Johnny Carson Show",
+      "source_channel": "YouTube Interview",
+      "summary": "Donna Summer in Donna Summer - Interview at Johnny Carson Show: well we've been on we're in our 16th we're in our 16th year well maybe I shouldn't ask that um let me see now maybe I don't that um let me see now maybe I d",
+      "topics": [
+        "Donna Summer Donna Summer - Interview at Johnny Carson Show interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo donna summer well we've been on we're in our 16th we're in our 16th year well maybe I shouldn 6muiJVx"
+      ],
+      "tags": [
+        "Donna Summer",
+        "interview",
+        "celebrity_interview",
+        "interview",
+        "talk show"
+      ],
+      "speakers": [
+        "Donna Summer",
+        "Johnny Carson"
+      ],
+      "mentioned_people": [
+        "Donna Summer"
+      ],
+      "hook": "set a goal you have any idea 5 years ago six years ago that you you would have",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Donna Summer — intervista momento 3: well we've been on we",
+          "summary": "Donna Summer in Donna Summer - Interview at Johnny Carson Show: well we've been on we're in our 16th we're in our 16th year well maybe I shouldn't ask that um let me see ",
+          "description": "Donna Summer in Donna Summer - Interview at Johnny Carson Show: well we've been on we're in our 16th we're in our 16th year well maybe I shouldn't ask that um let me see now maybe I don't that um let me see now maybe I d Contesto: Donna Summer Donna Summer - Interview at Johnny Carson Show interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo donna summer well we've been on we're in our 16th we're in our 16th year well maybe I shouldn 6muiJVx"
+        }
+      ]
+    },
+    {
+      "start": "01:56",
+      "end": "02:08",
+      "name": "Hook: set a goal you have any idea 5 year",
+      "category": "celebrity_interview",
+      "source_title": "Donna Summer - Interview at Johnny Carson Show",
+      "source_channel": "YouTube Interview",
+      "summary": "Apertura secca (12s): apertura secca dal colloquio Donna Summer",
+      "topics": [
+        "Donna Summer Donna Summer - Interview at Johnny Carson Show interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo donna summer well we've been on we're in our 16th we're in our 16th year well maybe I shouldn 6muiJVx hook apertura short opening-short"
+      ],
+      "tags": [
+        "Donna Summer",
+        "interview",
+        "celebrity_interview",
+        "interview",
+        "talk show",
+        "hook"
+      ],
+      "speakers": [
+        "Donna Summer",
+        "Johnny Carson"
+      ],
+      "mentioned_people": [
+        "Donna Summer"
+      ],
+      "hook": "set a goal you have any idea 5 years ago six years ago that you you would have",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Donna Summer — intervista momento 3: well we've been on we",
+          "summary": "Donna Summer in Donna Summer - Interview at Johnny Carson Show: well we've been on we're in our 16th we're in our 16th year well maybe I shouldn't ask that um let me see ",
+          "description": "Apertura secca (12s): apertura secca dal colloquio Donna Summer Contesto: Donna Summer Donna Summer - Interview at Johnny Carson Show interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo donna summer well we've been on we're in our 16th we're in our 16th year well maybe I shouldn 6muiJVx hook apertura short opening-short"
+        }
+      ]
+    },
+    {
+      "start": "02:40",
+      "end": "03:25",
+      "name": "Donna Summer — intervista momento 4: special I know that sounds and th",
+      "category": "celebrity_interview",
+      "source_title": "Donna Summer - Interview at Johnny Carson Show",
+      "source_channel": "YouTube Interview",
+      "summary": "Donna Summer in Donna Summer - Interview at Johnny Carson Show: special I know that sounds and this isn't this doesn't bold or anything I isn't this doesn't bold or anything I mean you really have a feeling that you mean",
+      "topics": [
+        "Donna Summer Donna Summer - Interview at Johnny Carson Show interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo donna summer special I know that sounds and this isn't this doesn't bold or anything I isn't  6muiJVx"
+      ],
+      "tags": [
+        "Donna Summer",
+        "interview",
+        "celebrity_interview",
+        "interview",
+        "talk show"
+      ],
+      "speakers": [
+        "Donna Summer",
+        "Johnny Carson"
+      ],
+      "mentioned_people": [
+        "Donna Summer"
+      ],
+      "hook": "it wasn't it was it was too early as far as I was concerned I'm not ready yet",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Donna Summer — intervista momento 4: special I know that s",
+          "summary": "Donna Summer in Donna Summer - Interview at Johnny Carson Show: special I know that sounds and this isn't this doesn't bold or anything I isn't this doesn't bold or anyth",
+          "description": "Donna Summer in Donna Summer - Interview at Johnny Carson Show: special I know that sounds and this isn't this doesn't bold or anything I isn't this doesn't bold or anything I mean you really have a feeling that you mean Contesto: Donna Summer Donna Summer - Interview at Johnny Carson Show interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo donna summer special I know that sounds and this isn't this doesn't bold or anything I isn't  6muiJVx"
+        }
+      ]
+    },
+    {
+      "start": "02:48",
+      "end": "03:00",
+      "name": "Hook: it wasn't it was it was too early a",
+      "category": "celebrity_interview",
+      "source_title": "Donna Summer - Interview at Johnny Carson Show",
+      "source_channel": "YouTube Interview",
+      "summary": "Apertura secca (12s): apertura secca dal colloquio Donna Summer",
+      "topics": [
+        "Donna Summer Donna Summer - Interview at Johnny Carson Show interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo donna summer special I know that sounds and this isn't this doesn't bold or anything I isn't  6muiJVx hook apertura short opening-short"
+      ],
+      "tags": [
+        "Donna Summer",
+        "interview",
+        "celebrity_interview",
+        "interview",
+        "talk show",
+        "hook"
+      ],
+      "speakers": [
+        "Donna Summer",
+        "Johnny Carson"
+      ],
+      "mentioned_people": [
+        "Donna Summer"
+      ],
+      "hook": "it wasn't it was it was too early as far as I was concerned I'm not ready yet",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Donna Summer — intervista momento 4: special I know that s",
+          "summary": "Donna Summer in Donna Summer - Interview at Johnny Carson Show: special I know that sounds and this isn't this doesn't bold or anything I isn't this doesn't bold or anyth",
+          "description": "Apertura secca (12s): apertura secca dal colloquio Donna Summer Contesto: Donna Summer Donna Summer - Interview at Johnny Carson Show interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo donna summer special I know that sounds and this isn't this doesn't bold or anything I isn't  6muiJVx hook apertura short opening-short"
+        }
+      ]
+    },
+    {
+      "start": "03:32",
+      "end": "04:17",
+      "name": "Donna Summer — intervista momento 5: way we're talking with Donna Summ",
+      "category": "celebrity_interview",
+      "source_title": "Donna Summer - Interview at Johnny Carson Show",
+      "source_channel": "YouTube Interview",
+      "summary": "Donna Summer in Donna Summer - Interview at Johnny Carson Show: way we're talking with Donna Summer somebody told me I didn't know this somebody told me I didn't know this since you lived in Germany for a long since you ",
+      "topics": [
+        "Donna Summer Donna Summer - Interview at Johnny Carson Show interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo donna summer way we're talking with Donna Summer somebody told me I didn't know this somebody 6muiJVx"
+      ],
+      "tags": [
+        "Donna Summer",
+        "interview",
+        "celebrity_interview",
+        "interview",
+        "talk show"
+      ],
+      "speakers": [
+        "Donna Summer",
+        "Johnny Carson"
+      ],
+      "mentioned_people": [
+        "Donna Summer"
+      ],
+      "hook": "and speak German with my mother and so when I was older and I had the",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Donna Summer — intervista momento 5: way we're talking wit",
+          "summary": "Donna Summer in Donna Summer - Interview at Johnny Carson Show: way we're talking with Donna Summer somebody told me I didn't know this somebody told me I didn't know thi",
+          "description": "Donna Summer in Donna Summer - Interview at Johnny Carson Show: way we're talking with Donna Summer somebody told me I didn't know this somebody told me I didn't know this since you lived in Germany for a long since you  Contesto: Donna Summer Donna Summer - Interview at Johnny Carson Show interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo donna summer way we're talking with Donna Summer somebody told me I didn't know this somebody 6muiJVx"
+        }
+      ]
+    },
+    {
+      "start": "03:40",
+      "end": "03:52",
+      "name": "Hook: and speak german with my mother and",
+      "category": "celebrity_interview",
+      "source_title": "Donna Summer - Interview at Johnny Carson Show",
+      "source_channel": "YouTube Interview",
+      "summary": "Apertura secca (12s): apertura secca dal colloquio Donna Summer",
+      "topics": [
+        "Donna Summer Donna Summer - Interview at Johnny Carson Show interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo donna summer way we're talking with Donna Summer somebody told me I didn't know this somebody 6muiJVx hook apertura short opening-short"
+      ],
+      "tags": [
+        "Donna Summer",
+        "interview",
+        "celebrity_interview",
+        "interview",
+        "talk show",
+        "hook"
+      ],
+      "speakers": [
+        "Donna Summer",
+        "Johnny Carson"
+      ],
+      "mentioned_people": [
+        "Donna Summer"
+      ],
+      "hook": "and speak German with my mother and so when I was older and I had the",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Donna Summer — intervista momento 5: way we're talking wit",
+          "summary": "Donna Summer in Donna Summer - Interview at Johnny Carson Show: way we're talking with Donna Summer somebody told me I didn't know this somebody told me I didn't know thi",
+          "description": "Apertura secca (12s): apertura secca dal colloquio Donna Summer Contesto: Donna Summer Donna Summer - Interview at Johnny Carson Show interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo donna summer way we're talking with Donna Summer somebody told me I didn't know this somebody 6muiJVx hook apertura short opening-short"
+        }
+      ]
+    },
+    {
+      "start": "04:24",
+      "end": "05:09",
+      "name": "Donna Summer — intervista momento 6: concerts a lot of personal appear",
+      "category": "celebrity_interview",
+      "source_title": "Donna Summer - Interview at Johnny Carson Show",
+      "source_channel": "YouTube Interview",
+      "summary": "Donna Summer in Donna Summer - Interview at Johnny Carson Show: concerts a lot of personal appearances and uh probably some film work I hope and uh probably some film work I hope yeah and uh developing you know I'm I'm y",
+      "topics": [
+        "Donna Summer Donna Summer - Interview at Johnny Carson Show interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo donna summer concerts a lot of personal appearances and uh probably some film work I hope and 6muiJVx"
+      ],
+      "tags": [
+        "Donna Summer",
+        "interview",
+        "celebrity_interview",
+        "interview",
+        "talk show"
+      ],
+      "speakers": [
+        "Donna Summer",
+        "Johnny Carson"
+      ],
+      "mentioned_people": [
+        "Donna Summer"
+      ],
+      "hook": "somebody said mechanically you know they always put women down saying that women",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Donna Summer — intervista momento 6: concerts a lot of per",
+          "summary": "Donna Summer in Donna Summer - Interview at Johnny Carson Show: concerts a lot of personal appearances and uh probably some film work I hope and uh probably some film wor",
+          "description": "Donna Summer in Donna Summer - Interview at Johnny Carson Show: concerts a lot of personal appearances and uh probably some film work I hope and uh probably some film work I hope yeah and uh developing you know I'm I'm y Contesto: Donna Summer Donna Summer - Interview at Johnny Carson Show interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo donna summer concerts a lot of personal appearances and uh probably some film work I hope and 6muiJVx"
+        }
+      ]
+    },
+    {
+      "start": "04:32",
+      "end": "04:44",
+      "name": "Hook: somebody said mechanically you know",
+      "category": "celebrity_interview",
+      "source_title": "Donna Summer - Interview at Johnny Carson Show",
+      "source_channel": "YouTube Interview",
+      "summary": "Apertura secca (12s): apertura secca dal colloquio Donna Summer",
+      "topics": [
+        "Donna Summer Donna Summer - Interview at Johnny Carson Show interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo donna summer concerts a lot of personal appearances and uh probably some film work I hope and 6muiJVx hook apertura short opening-short"
+      ],
+      "tags": [
+        "Donna Summer",
+        "interview",
+        "celebrity_interview",
+        "interview",
+        "talk show",
+        "hook"
+      ],
+      "speakers": [
+        "Donna Summer",
+        "Johnny Carson"
+      ],
+      "mentioned_people": [
+        "Donna Summer"
+      ],
+      "hook": "somebody said mechanically you know they always put women down saying that women",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Donna Summer — intervista momento 6: concerts a lot of per",
+          "summary": "Donna Summer in Donna Summer - Interview at Johnny Carson Show: concerts a lot of personal appearances and uh probably some film work I hope and uh probably some film wor",
+          "description": "Apertura secca (12s): apertura secca dal colloquio Donna Summer Contesto: Donna Summer Donna Summer - Interview at Johnny Carson Show interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo donna summer concerts a lot of personal appearances and uh probably some film work I hope and 6muiJVx hook apertura short opening-short"
+        }
+      ]
+    }
+  ]
+}

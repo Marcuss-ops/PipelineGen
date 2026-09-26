@@ -1,0 +1,441 @@
+{
+  "_comment": "POST /api/clips/process payload (ExtractRequest, drift source: internal/capabilities/youtube/dto/types.go). Source: Lionel Richie Full Interview With Kelly Clarkson (https://www.youtube.com/watch?v=Sg6nX_XCeq4). Destination: the Clips/HipHop child folder for Lionel Richie (see check.py FOLDERS), create_subfolder=false. Windows picked BY HAND from the timed transcript printed by ops/jobs/hiphop_36/tx.py; no LLM selection. Clip ids are deterministic (yt_<videoID>_<startSec>_<endSec>_v1) so a re-submit is an UPSERT. topics/summary/hook are keyword-dense on purpose: composeYouTubeClipSearchText feeds search_text -> 768d pgvector embedding, texts[] lands in asset_text_tracks in the same atomic commit.",
+  "url": "https://www.youtube.com/watch?v=Sg6nX_XCeq4",
+  "strategy": "verify",
+  "concurrency": 3,
+  "force_keyframes": true,
+  "keep_audio": true,
+  "write_summary": true,
+  "destination": {
+    "folder_id": "1sQbmZhinwUP92jPlouwvEpqCQzkqdjU0",
+    "create_subfolder": false
+  },
+  "segments": [
+    {
+      "start": "00:04",
+      "end": "00:49",
+      "name": "Lionel Richie — intervista momento 1: (audience cheering)",
+      "category": "celebrity_interview",
+      "source_title": "Lionel Richie Full Interview With Kelly Clarkson",
+      "source_channel": "YouTube Interview",
+      "summary": "Lionel Richie in Lionel Richie Full Interview With Kelly Clarkson: (audience cheering) - Go ahead, go ahead. (audience applauding) (audience cheering) (Kelly laughing) That doesn't happen for everyone. - I accept that. T",
+      "topics": [
+        "Lionel Richie Lionel Richie Full Interview With Kelly Clarkson interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo lionel richie (audience cheering) - Go ahead, go ahead. (audience applauding) (audience cheeri Sg6"
+      ],
+      "tags": [
+        "Lionel Richie",
+        "interview",
+        "celebrity_interview",
+        "interview",
+        "talk show"
+      ],
+      "speakers": [
+        "Lionel Richie",
+        "Kelly Clarkson"
+      ],
+      "mentioned_people": [
+        "Lionel Richie"
+      ],
+      "hook": "- I accept that.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Lionel Richie — intervista momento 1: (audience cheering)",
+          "summary": "Lionel Richie in Lionel Richie Full Interview With Kelly Clarkson: (audience cheering) - Go ahead, go ahead. (audience applauding) (audience cheering) (Kelly laughing) Th",
+          "description": "Lionel Richie in Lionel Richie Full Interview With Kelly Clarkson: (audience cheering) - Go ahead, go ahead. (audience applauding) (audience cheering) (Kelly laughing) That doesn't happen for everyone. - I accept that. T Contesto: Lionel Richie Lionel Richie Full Interview With Kelly Clarkson interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo lionel richie (audience cheering) - Go ahead, go ahead. (audience applauding) (audience cheeri Sg6"
+        }
+      ]
+    },
+    {
+      "start": "00:12",
+      "end": "00:24",
+      "name": "Hook: - i accept that.",
+      "category": "celebrity_interview",
+      "source_title": "Lionel Richie Full Interview With Kelly Clarkson",
+      "source_channel": "YouTube Interview",
+      "summary": "Apertura secca (12s): apertura secca dal colloquio Lionel Richie",
+      "topics": [
+        "Lionel Richie Lionel Richie Full Interview With Kelly Clarkson interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo lionel richie (audience cheering) - Go ahead, go ahead. (audience applauding) (audience cheeri Sg6 hook apertura short opening-short"
+      ],
+      "tags": [
+        "Lionel Richie",
+        "interview",
+        "celebrity_interview",
+        "interview",
+        "talk show",
+        "hook"
+      ],
+      "speakers": [
+        "Lionel Richie",
+        "Kelly Clarkson"
+      ],
+      "mentioned_people": [
+        "Lionel Richie"
+      ],
+      "hook": "- I accept that.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Lionel Richie — intervista momento 1: (audience cheering)",
+          "summary": "Lionel Richie in Lionel Richie Full Interview With Kelly Clarkson: (audience cheering) - Go ahead, go ahead. (audience applauding) (audience cheering) (Kelly laughing) Th",
+          "description": "Apertura secca (12s): apertura secca dal colloquio Lionel Richie Contesto: Lionel Richie Lionel Richie Full Interview With Kelly Clarkson interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo lionel richie (audience cheering) - Go ahead, go ahead. (audience applauding) (audience cheeri Sg6 hook apertura short opening-short"
+        }
+      ]
+    },
+    {
+      "start": "01:51",
+      "end": "02:36",
+      "name": "Lionel Richie — intervista momento 2: And then I think the thing that ",
+      "category": "celebrity_interview",
+      "source_title": "Lionel Richie Full Interview With Kelly Clarkson",
+      "source_channel": "YouTube Interview",
+      "summary": "Lionel Richie in Lionel Richie Full Interview With Kelly Clarkson: And then I think the thing that happened to me was, at the end of all this, the word is, how did I survive this? - Oh my, that's my twenties, man. - I me",
+      "topics": [
+        "Lionel Richie Lionel Richie Full Interview With Kelly Clarkson interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo lionel richie And then I think the thing that happened to me was, at the end of all this, the  Sg6"
+      ],
+      "tags": [
+        "Lionel Richie",
+        "interview",
+        "celebrity_interview",
+        "interview",
+        "talk show"
+      ],
+      "speakers": [
+        "Lionel Richie",
+        "Kelly Clarkson"
+      ],
+      "mentioned_people": [
+        "Lionel Richie"
+      ],
+      "hook": "And people don't,",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Lionel Richie — intervista momento 2: And then I think the",
+          "summary": "Lionel Richie in Lionel Richie Full Interview With Kelly Clarkson: And then I think the thing that happened to me was, at the end of all this, the word is, how did I surv",
+          "description": "Lionel Richie in Lionel Richie Full Interview With Kelly Clarkson: And then I think the thing that happened to me was, at the end of all this, the word is, how did I survive this? - Oh my, that's my twenties, man. - I me Contesto: Lionel Richie Lionel Richie Full Interview With Kelly Clarkson interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo lionel richie And then I think the thing that happened to me was, at the end of all this, the  Sg6"
+        }
+      ]
+    },
+    {
+      "start": "01:59",
+      "end": "02:11",
+      "name": "Hook: and people don't,",
+      "category": "celebrity_interview",
+      "source_title": "Lionel Richie Full Interview With Kelly Clarkson",
+      "source_channel": "YouTube Interview",
+      "summary": "Apertura secca (12s): apertura secca dal colloquio Lionel Richie",
+      "topics": [
+        "Lionel Richie Lionel Richie Full Interview With Kelly Clarkson interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo lionel richie And then I think the thing that happened to me was, at the end of all this, the  Sg6 hook apertura short opening-short"
+      ],
+      "tags": [
+        "Lionel Richie",
+        "interview",
+        "celebrity_interview",
+        "interview",
+        "talk show",
+        "hook"
+      ],
+      "speakers": [
+        "Lionel Richie",
+        "Kelly Clarkson"
+      ],
+      "mentioned_people": [
+        "Lionel Richie"
+      ],
+      "hook": "And people don't,",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Lionel Richie — intervista momento 2: And then I think the",
+          "summary": "Lionel Richie in Lionel Richie Full Interview With Kelly Clarkson: And then I think the thing that happened to me was, at the end of all this, the word is, how did I surv",
+          "description": "Apertura secca (12s): apertura secca dal colloquio Lionel Richie Contesto: Lionel Richie Lionel Richie Full Interview With Kelly Clarkson interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo lionel richie And then I think the thing that happened to me was, at the end of all this, the  Sg6 hook apertura short opening-short"
+        }
+      ]
+    },
+    {
+      "start": "03:38",
+      "end": "04:23",
+      "name": "Lionel Richie — intervista momento 3: a lot of rejections.",
+      "category": "celebrity_interview",
+      "source_title": "Lionel Richie Full Interview With Kelly Clarkson",
+      "source_channel": "YouTube Interview",
+      "summary": "Lionel Richie in Lionel Richie Full Interview With Kelly Clarkson: a lot of rejections. Don't take it personal. - Which is hard for an artist to do. - It's very hard. But I mean, I'm saying it to you now, but I take ever",
+      "topics": [
+        "Lionel Richie Lionel Richie Full Interview With Kelly Clarkson interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo lionel richie a lot of rejections. Don't take it personal. - Which is hard for an artist to do Sg6"
+      ],
+      "tags": [
+        "Lionel Richie",
+        "interview",
+        "celebrity_interview",
+        "interview",
+        "talk show"
+      ],
+      "speakers": [
+        "Lionel Richie",
+        "Kelly Clarkson"
+      ],
+      "mentioned_people": [
+        "Lionel Richie"
+      ],
+      "hook": "and says, you know, \"I don't really like what you just did.\"",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Lionel Richie — intervista momento 3: a lot of rejections.",
+          "summary": "Lionel Richie in Lionel Richie Full Interview With Kelly Clarkson: a lot of rejections. Don't take it personal. - Which is hard for an artist to do. - It's very hard. But",
+          "description": "Lionel Richie in Lionel Richie Full Interview With Kelly Clarkson: a lot of rejections. Don't take it personal. - Which is hard for an artist to do. - It's very hard. But I mean, I'm saying it to you now, but I take ever Contesto: Lionel Richie Lionel Richie Full Interview With Kelly Clarkson interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo lionel richie a lot of rejections. Don't take it personal. - Which is hard for an artist to do Sg6"
+        }
+      ]
+    },
+    {
+      "start": "03:46",
+      "end": "03:58",
+      "name": "Hook: and says, you know, \"i don't really",
+      "category": "celebrity_interview",
+      "source_title": "Lionel Richie Full Interview With Kelly Clarkson",
+      "source_channel": "YouTube Interview",
+      "summary": "Apertura secca (12s): apertura secca dal colloquio Lionel Richie",
+      "topics": [
+        "Lionel Richie Lionel Richie Full Interview With Kelly Clarkson interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo lionel richie a lot of rejections. Don't take it personal. - Which is hard for an artist to do Sg6 hook apertura short opening-short"
+      ],
+      "tags": [
+        "Lionel Richie",
+        "interview",
+        "celebrity_interview",
+        "interview",
+        "talk show",
+        "hook"
+      ],
+      "speakers": [
+        "Lionel Richie",
+        "Kelly Clarkson"
+      ],
+      "mentioned_people": [
+        "Lionel Richie"
+      ],
+      "hook": "and says, you know, \"I don't really like what you just did.\"",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Lionel Richie — intervista momento 3: a lot of rejections.",
+          "summary": "Lionel Richie in Lionel Richie Full Interview With Kelly Clarkson: a lot of rejections. Don't take it personal. - Which is hard for an artist to do. - It's very hard. But",
+          "description": "Apertura secca (12s): apertura secca dal colloquio Lionel Richie Contesto: Lionel Richie Lionel Richie Full Interview With Kelly Clarkson interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo lionel richie a lot of rejections. Don't take it personal. - Which is hard for an artist to do Sg6 hook apertura short opening-short"
+        }
+      ]
+    },
+    {
+      "start": "05:25",
+      "end": "06:10",
+      "name": "Lionel Richie — intervista momento 4: - No, no, no.",
+      "category": "celebrity_interview",
+      "source_title": "Lionel Richie Full Interview With Kelly Clarkson",
+      "source_channel": "YouTube Interview",
+      "summary": "Lionel Richie in Lionel Richie Full Interview With Kelly Clarkson: - No, no, no. There's some days when you- - Some days you reach for it and you go, \"Oh, not today? \"Cool, cool, cool.\" And so you get humbled real quick.",
+      "topics": [
+        "Lionel Richie Lionel Richie Full Interview With Kelly Clarkson interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo lionel richie - No, no, no. There's some days when you- - Some days you reach for it and you g Sg6"
+      ],
+      "tags": [
+        "Lionel Richie",
+        "interview",
+        "celebrity_interview",
+        "interview",
+        "talk show"
+      ],
+      "speakers": [
+        "Lionel Richie",
+        "Kelly Clarkson"
+      ],
+      "mentioned_people": [
+        "Lionel Richie"
+      ],
+      "hook": "People are so excited they dropped their phones.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Lionel Richie — intervista momento 4: - No, no, no.",
+          "summary": "Lionel Richie in Lionel Richie Full Interview With Kelly Clarkson: - No, no, no. There's some days when you- - Some days you reach for it and you go, \"Oh, not today? \"Coo",
+          "description": "Lionel Richie in Lionel Richie Full Interview With Kelly Clarkson: - No, no, no. There's some days when you- - Some days you reach for it and you go, \"Oh, not today? \"Cool, cool, cool.\" And so you get humbled real quick. Contesto: Lionel Richie Lionel Richie Full Interview With Kelly Clarkson interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo lionel richie - No, no, no. There's some days when you- - Some days you reach for it and you g Sg6"
+        }
+      ]
+    },
+    {
+      "start": "05:33",
+      "end": "05:45",
+      "name": "Hook: people are so excited they dropped ",
+      "category": "celebrity_interview",
+      "source_title": "Lionel Richie Full Interview With Kelly Clarkson",
+      "source_channel": "YouTube Interview",
+      "summary": "Apertura secca (12s): apertura secca dal colloquio Lionel Richie",
+      "topics": [
+        "Lionel Richie Lionel Richie Full Interview With Kelly Clarkson interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo lionel richie - No, no, no. There's some days when you- - Some days you reach for it and you g Sg6 hook apertura short opening-short"
+      ],
+      "tags": [
+        "Lionel Richie",
+        "interview",
+        "celebrity_interview",
+        "interview",
+        "talk show",
+        "hook"
+      ],
+      "speakers": [
+        "Lionel Richie",
+        "Kelly Clarkson"
+      ],
+      "mentioned_people": [
+        "Lionel Richie"
+      ],
+      "hook": "People are so excited they dropped their phones.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Lionel Richie — intervista momento 4: - No, no, no.",
+          "summary": "Lionel Richie in Lionel Richie Full Interview With Kelly Clarkson: - No, no, no. There's some days when you- - Some days you reach for it and you go, \"Oh, not today? \"Coo",
+          "description": "Apertura secca (12s): apertura secca dal colloquio Lionel Richie Contesto: Lionel Richie Lionel Richie Full Interview With Kelly Clarkson interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo lionel richie - No, no, no. There's some days when you- - Some days you reach for it and you g Sg6 hook apertura short opening-short"
+        }
+      ]
+    },
+    {
+      "start": "07:12",
+      "end": "07:57",
+      "name": "Lionel Richie — intervista momento 5: \"'cause I know my happiness",
+      "category": "celebrity_interview",
+      "source_title": "Lionel Richie Full Interview With Kelly Clarkson",
+      "source_channel": "YouTube Interview",
+      "summary": "Lionel Richie in Lionel Richie Full Interview With Kelly Clarkson: \"'cause I know my happiness \"is waiting out there, somewhere.\" Okay, explain where that's from. - That's from the song \"Zoom.\" I was this kid in college ",
+      "topics": [
+        "Lionel Richie Lionel Richie Full Interview With Kelly Clarkson interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo lionel richie \"'cause I know my happiness \"is waiting out there, somewhere.\" Okay, explain whe Sg6"
+      ],
+      "tags": [
+        "Lionel Richie",
+        "interview",
+        "celebrity_interview",
+        "interview",
+        "talk show"
+      ],
+      "speakers": [
+        "Lionel Richie",
+        "Kelly Clarkson"
+      ],
+      "mentioned_people": [
+        "Lionel Richie"
+      ],
+      "hook": "I have no blessed idea.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Lionel Richie — intervista momento 5: \"'cause I know my ha",
+          "summary": "Lionel Richie in Lionel Richie Full Interview With Kelly Clarkson: \"'cause I know my happiness \"is waiting out there, somewhere.\" Okay, explain where that's from. - That'",
+          "description": "Lionel Richie in Lionel Richie Full Interview With Kelly Clarkson: \"'cause I know my happiness \"is waiting out there, somewhere.\" Okay, explain where that's from. - That's from the song \"Zoom.\" I was this kid in college  Contesto: Lionel Richie Lionel Richie Full Interview With Kelly Clarkson interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo lionel richie \"'cause I know my happiness \"is waiting out there, somewhere.\" Okay, explain whe Sg6"
+        }
+      ]
+    },
+    {
+      "start": "07:20",
+      "end": "07:32",
+      "name": "Hook: i have no blessed idea.",
+      "category": "celebrity_interview",
+      "source_title": "Lionel Richie Full Interview With Kelly Clarkson",
+      "source_channel": "YouTube Interview",
+      "summary": "Apertura secca (12s): apertura secca dal colloquio Lionel Richie",
+      "topics": [
+        "Lionel Richie Lionel Richie Full Interview With Kelly Clarkson interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo lionel richie \"'cause I know my happiness \"is waiting out there, somewhere.\" Okay, explain whe Sg6 hook apertura short opening-short"
+      ],
+      "tags": [
+        "Lionel Richie",
+        "interview",
+        "celebrity_interview",
+        "interview",
+        "talk show",
+        "hook"
+      ],
+      "speakers": [
+        "Lionel Richie",
+        "Kelly Clarkson"
+      ],
+      "mentioned_people": [
+        "Lionel Richie"
+      ],
+      "hook": "I have no blessed idea.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Lionel Richie — intervista momento 5: \"'cause I know my ha",
+          "summary": "Lionel Richie in Lionel Richie Full Interview With Kelly Clarkson: \"'cause I know my happiness \"is waiting out there, somewhere.\" Okay, explain where that's from. - That'",
+          "description": "Apertura secca (12s): apertura secca dal colloquio Lionel Richie Contesto: Lionel Richie Lionel Richie Full Interview With Kelly Clarkson interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo lionel richie \"'cause I know my happiness \"is waiting out there, somewhere.\" Okay, explain whe Sg6 hook apertura short opening-short"
+        }
+      ]
+    },
+    {
+      "start": "08:59",
+      "end": "09:44",
+      "name": "Lionel Richie — intervista momento 6: you realize that I'm not the guy",
+      "category": "celebrity_interview",
+      "source_title": "Lionel Richie Full Interview With Kelly Clarkson",
+      "source_channel": "YouTube Interview",
+      "summary": "Lionel Richie in Lionel Richie Full Interview With Kelly Clarkson: you realize that I'm not the guy who says, \"Give me that part in that movie. \"Give me that, I want that.\" No, no, no. - Yeah. - And these records came th",
+      "topics": [
+        "Lionel Richie Lionel Richie Full Interview With Kelly Clarkson interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo lionel richie you realize that I'm not the guy who says, \"Give me that part in that movie. \"Gi Sg6"
+      ],
+      "tags": [
+        "Lionel Richie",
+        "interview",
+        "celebrity_interview",
+        "interview",
+        "talk show"
+      ],
+      "speakers": [
+        "Lionel Richie",
+        "Kelly Clarkson"
+      ],
+      "mentioned_people": [
+        "Lionel Richie"
+      ],
+      "hook": "is this important to me?",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Lionel Richie — intervista momento 6: you realize that I'm",
+          "summary": "Lionel Richie in Lionel Richie Full Interview With Kelly Clarkson: you realize that I'm not the guy who says, \"Give me that part in that movie. \"Give me that, I want that",
+          "description": "Lionel Richie in Lionel Richie Full Interview With Kelly Clarkson: you realize that I'm not the guy who says, \"Give me that part in that movie. \"Give me that, I want that.\" No, no, no. - Yeah. - And these records came th Contesto: Lionel Richie Lionel Richie Full Interview With Kelly Clarkson interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo lionel richie you realize that I'm not the guy who says, \"Give me that part in that movie. \"Gi Sg6"
+        }
+      ]
+    },
+    {
+      "start": "09:07",
+      "end": "09:19",
+      "name": "Hook: is this important to me?",
+      "category": "celebrity_interview",
+      "source_title": "Lionel Richie Full Interview With Kelly Clarkson",
+      "source_channel": "YouTube Interview",
+      "summary": "Apertura secca (12s): apertura secca dal colloquio Lionel Richie",
+      "topics": [
+        "Lionel Richie Lionel Richie Full Interview With Kelly Clarkson interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo lionel richie you realize that I'm not the guy who says, \"Give me that part in that movie. \"Gi Sg6 hook apertura short opening-short"
+      ],
+      "tags": [
+        "Lionel Richie",
+        "interview",
+        "celebrity_interview",
+        "interview",
+        "talk show",
+        "hook"
+      ],
+      "speakers": [
+        "Lionel Richie",
+        "Kelly Clarkson"
+      ],
+      "mentioned_people": [
+        "Lionel Richie"
+      ],
+      "hook": "is this important to me?",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Lionel Richie — intervista momento 6: you realize that I'm",
+          "summary": "Lionel Richie in Lionel Richie Full Interview With Kelly Clarkson: you realize that I'm not the guy who says, \"Give me that part in that movie. \"Give me that, I want that",
+          "description": "Apertura secca (12s): apertura secca dal colloquio Lionel Richie Contesto: Lionel Richie Lionel Richie Full Interview With Kelly Clarkson interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo lionel richie you realize that I'm not the guy who says, \"Give me that part in that movie. \"Gi Sg6 hook apertura short opening-short"
+        }
+      ]
+    }
+  ]
+}

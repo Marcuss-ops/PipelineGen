@@ -216,7 +216,9 @@ func TestYouTubeGate_ReleaseOnError_AllowsNextAcquire(t *testing.T) {
 	writeDummyOutputFile(t, out2)
 
 	done := make(chan error, 1)
-	go func() { done <- d.Download(context.Background(), &DownloadRequest{URL: youTubeWatchURL, OutputPath: out2}) }()
+	go func() {
+		done <- d.Download(context.Background(), &DownloadRequest{URL: youTubeWatchURL, OutputPath: out2})
+	}()
 
 	select {
 	case err := <-done:

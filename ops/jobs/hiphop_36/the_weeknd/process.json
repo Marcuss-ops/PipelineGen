@@ -1,0 +1,667 @@
+{
+  "_comment": "Canonical POST /api/clips/process payload (ExtractRequest, drift source of truth: internal/capabilities/youtube/dto/types.go). 'Sally ft. The Weeknd : relations toxiques, santé mentale et dépression. L'interview.' (video lQ66h_B5f00, 947s, channel 'SALLY') — 7 hook_clips + 13 clips merged into one segment list (the canonical DTO has ONE segments array; hooks are simply the shortest segments). Destination: the Weeknd subfolder 19rnS2EiF9RfSFRaFXDfuJhlMvFgSiRtl in the CLIP tree; create_subfolder=false. Clip identity is deterministic yt_<videoID>_<startSec>_<endSec>_v1. NOTE: hook segments intentionally overlap the longer clips (a hook is a sub-range) — they are distinct assets by range, not duplicates. Some hooks ARE sub-ranges of a clip (e.g. hook_3 318-328 inside clip_4 277-338): both are requested because the hook is the social-length cut and the clip the full moment.",
+  "url": "https://www.youtube.com/watch?v=lQ66h_B5f00",
+  "strategy": "verify",
+  "concurrency": 3,
+  "force_keyframes": true,
+  "keep_audio": true,
+  "write_summary": true,
+  "destination": {
+    "folder_id": "19rnS2EiF9RfSFRaFXDfuJhlMvFgSiRtl",
+    "create_subfolder": false
+  },
+  "segments": [
+    {
+      "start": "01:30",
+      "end": "01:42",
+      "name": "L'industria musicale e la dipendenza dal dolore",
+      "category": "celebrity_interview",
+      "source_title": "Sally ft. The Weeknd : relations toxiques, santé mentale et dépression. L'interview.",
+      "source_channel": "SALLY",
+      "summary": "Abel descrive cinicamente come l'industria discografica richieda sofferenza reale per produrre canzoni tristi di successo.",
+      "topics": [
+        "The Weeknd Abel Tesfaye music industry sadness depression songwriting darkness hit hook celebrity interview artist career music pop culture stage television talk show intervista carriera musica artista successo pubblico memoria spettacolo"
+      ],
+      "tags": [
+        "The Weeknd",
+        "SALLY",
+        "hook",
+        "celebrity_interview"
+      ],
+      "mentioned_people": [
+        "Abel Tesfaye"
+      ],
+      "hook": "Abel descrive cinicamente come l'industria discografica richieda sofferenza reale per produrre canzoni tristi di successo.",
+      "speakers": [
+        "The Weeknd"
+      ],
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "L'industria musicale e la dipendenza dal dolore",
+          "summary": "Abel descrive cinicamente come l'industria discografica richieda sofferenza reale per produrre canzoni tristi di successo.",
+          "description": "Abel descrive cinicamente come l'industria discografica richieda sofferenza reale per produrre canzoni tristi di successo."
+        }
+      ]
+    },
+    {
+      "start": "01:43",
+      "end": "01:55",
+      "name": "La volontà di abbandonare l'oscurità",
+      "category": "celebrity_interview",
+      "source_title": "Sally ft. The Weeknd : relations toxiques, santé mentale et dépression. L'interview.",
+      "source_channel": "SALLY",
+      "summary": "The Weeknd ammette di non voler più immergersi in dinamiche tossiche solo per alimentare la propria arte.",
+      "topics": [
+        "The Weeknd oscurita salute mentale sentimenti rottura fine personaggio burnout hook celebrity interview artist career music pop culture stage television talk show intervista carriera musica artista successo pubblico memoria spettacolo"
+      ],
+      "tags": [
+        "The Weeknd",
+        "SALLY",
+        "hook",
+        "celebrity_interview"
+      ],
+      "mentioned_people": [
+        "Abel Tesfaye"
+      ],
+      "hook": "The Weeknd ammette di non voler più immergersi in dinamiche tossiche solo per alimentare la propria arte.",
+      "speakers": [
+        "The Weeknd"
+      ],
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "La volontà di abbandonare l'oscurità",
+          "summary": "The Weeknd ammette di non voler più immergersi in dinamiche tossiche solo per alimentare la propria arte.",
+          "description": "The Weeknd ammette di non voler più immergersi in dinamiche tossiche solo per alimentare la propria arte."
+        }
+      ]
+    },
+    {
+      "start": "05:18",
+      "end": "05:28",
+      "name": "Il fallimento come miglior scuola di vita",
+      "category": "celebrity_interview",
+      "source_title": "Sally ft. The Weeknd : relations toxiques, santé mentale et dépression. L'interview.",
+      "source_channel": "SALLY",
+      "summary": "Abel sintetizza la propria filosofia evidenziando che fallire ed accettare la sconfitta rappresenta la forma più alta di apprendimento.",
+      "topics": [
+        "Abel Tesfaye fallimento scuola apprendimento resilienza crescita mantra hook celebrity interview artist career music pop culture stage television talk show intervista carriera musica artista successo pubblico memoria spettacolo"
+      ],
+      "tags": [
+        "The Weeknd",
+        "SALLY",
+        "hook",
+        "celebrity_interview"
+      ],
+      "mentioned_people": [
+        "Abel Tesfaye"
+      ],
+      "hook": "Abel sintetizza la propria filosofia evidenziando che fallire ed accettare la sconfitta rappresenta la forma più alta di apprendimento.",
+      "speakers": [
+        "The Weeknd"
+      ],
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Il fallimento come miglior scuola di vita",
+          "summary": "Abel sintetizza la propria filosofia evidenziando che fallire ed accettare la sconfitta rappresenta la forma più alta di apprendimento.",
+          "description": "Abel sintetizza la propria filosofia evidenziando che fallire ed accettare la sconfitta rappresenta la forma più alta di apprendimento."
+        }
+      ]
+    },
+    {
+      "start": "09:09",
+      "end": "09:23",
+      "name": "Il paradosso del dover soffrire per fare musica",
+      "category": "celebrity_interview",
+      "source_title": "Sally ft. The Weeknd : relations toxiques, santé mentale et dépression. L'interview.",
+      "source_channel": "SALLY",
+      "summary": "Una riflessione cruda su come per scrivere una grande canzone triste sia preteso il logoramento emotivo dell'artista.",
+      "topics": [
+        "music industry demand sadness authentic pain sad songs hook The Weeknd celebrity interview artist career music pop culture stage television talk show intervista carriera musica artista successo pubblico memoria spettacolo"
+      ],
+      "tags": [
+        "The Weeknd",
+        "SALLY",
+        "hook",
+        "celebrity_interview"
+      ],
+      "mentioned_people": [
+        "Abel Tesfaye"
+      ],
+      "hook": "Una riflessione cruda su come per scrivere una grande canzone triste sia preteso il logoramento emotivo dell'artista.",
+      "speakers": [
+        "The Weeknd"
+      ],
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Il paradosso del dover soffrire per fare musica",
+          "summary": "Una riflessione cruda su come per scrivere una grande canzone triste sia preteso il logoramento emotivo dell'artista.",
+          "description": "Una riflessione cruda su come per scrivere una grande canzone triste sia preteso il logoramento emotivo dell'artista."
+        }
+      ]
+    },
+    {
+      "start": "10:14",
+      "end": "10:27",
+      "name": "Il rifiuto di restare intrappolato in un alter ego",
+      "category": "celebrity_interview",
+      "source_title": "Sally ft. The Weeknd : relations toxiques, santé mentale et dépression. L'interview.",
+      "source_channel": "SALLY",
+      "summary": "L'artista rivendica la necessità di reinventarsi per non rimanere per sempre incatenato a un personaggio mediatico.",
+      "topics": [
+        "handcuffed persona alter ego taglio capelli identita liberta artistica hook celebrity interview artist career music pop culture stage television talk show intervista carriera musica artista successo pubblico memoria spettacolo"
+      ],
+      "tags": [
+        "The Weeknd",
+        "SALLY",
+        "hook",
+        "celebrity_interview"
+      ],
+      "mentioned_people": [
+        "Abel Tesfaye"
+      ],
+      "hook": "L'artista rivendica la necessità di reinventarsi per non rimanere per sempre incatenato a un personaggio mediatico.",
+      "speakers": [
+        "The Weeknd"
+      ],
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Il rifiuto di restare intrappolato in un alter ego",
+          "summary": "L'artista rivendica la necessità di reinventarsi per non rimanere per sempre incatenato a un personaggio mediatico.",
+          "description": "L'artista rivendica la necessità di reinventarsi per non rimanere per sempre incatenato a un personaggio mediatico."
+        }
+      ]
+    },
+    {
+      "start": "11:04",
+      "end": "11:18",
+      "name": "La perdita della voce come crollo del superpotere",
+      "category": "celebrity_interview",
+      "source_title": "Sally ft. The Weeknd : relations toxiques, santé mentale et dépression. L'interview.",
+      "source_channel": "SALLY",
+      "summary": "Trey Shults descrive l'impatto devastante del blocco vocale di Abel davanti a un intero stadio come la perdita del proprio superpotere.",
+      "topics": [
+        "SoFi Stadium perdita voce 80000 persone crollo psicologico vulnerabilita hook celebrity interview artist career music pop culture stage television talk show intervista carriera musica artista successo pubblico memoria spettacolo"
+      ],
+      "tags": [
+        "The Weeknd",
+        "SALLY",
+        "hook",
+        "celebrity_interview"
+      ],
+      "mentioned_people": [
+        "Trey Edward Shults"
+      ],
+      "hook": "Trey Shults descrive l'impatto devastante del blocco vocale di Abel davanti a un intero stadio come la perdita del proprio superpotere.",
+      "speakers": [
+        "The Weeknd"
+      ],
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "La perdita della voce come crollo del superpotere",
+          "summary": "Trey Shults descrive l'impatto devastante del blocco vocale di Abel davanti a un intero stadio come la perdita del proprio superpotere.",
+          "description": "Trey Shults descrive l'impatto devastante del blocco vocale di Abel davanti a un intero stadio come la perdita del proprio superpotere."
+        }
+      ]
+    },
+    {
+      "start": "14:38",
+      "end": "14:51",
+      "name": "Il coraggio di rischiare fuori dalla comfort zone",
+      "category": "celebrity_interview",
+      "source_title": "Sally ft. The Weeknd : relations toxiques, santé mentale et dépression. L'interview.",
+      "source_channel": "SALLY",
+      "summary": "Trey esorta a spingersi costantemente oltre i propri limiti senza paura di sbagliare, per non vivere di rimpianti.",
+      "topics": [
+        "Trey Shults comfort zone rischio arte crescita rimpianti ambizione hook celebrity interview artist career music pop culture stage television talk show intervista carriera musica artista successo pubblico memoria spettacolo"
+      ],
+      "tags": [
+        "The Weeknd",
+        "SALLY",
+        "hook",
+        "celebrity_interview"
+      ],
+      "mentioned_people": [
+        "Trey Edward Shults"
+      ],
+      "hook": "Trey esorta a spingersi costantemente oltre i propri limiti senza paura di sbagliare, per non vivere di rimpianti.",
+      "speakers": [
+        "The Weeknd"
+      ],
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Il coraggio di rischiare fuori dalla comfort zone",
+          "summary": "Trey esorta a spingersi costantemente oltre i propri limiti senza paura di sbagliare, per non vivere di rimpianti.",
+          "description": "Trey esorta a spingersi costantemente oltre i propri limiti senza paura di sbagliare, per non vivere di rimpianti."
+        }
+      ]
+    },
+    {
+      "start": "01:23",
+      "end": "02:10",
+      "name": "Hurry Up Tomorrow e il processo catartico del film",
+      "category": "celebrity_interview",
+      "source_title": "Sally ft. The Weeknd : relations toxiques, santé mentale et dépression. L'interview.",
+      "source_channel": "SALLY",
+      "summary": "Abel racconta la natura catartica del film Hurry Up Tomorrow, realizzato circondandosi di persone fidate per chiudere un doloroso capitolo personale.",
+      "topics": [
+        "Abel Tesfaye The Weeknd Trey Edward Shults Sally Hurry Up Tomorrow salute mentale catarsi vulnerabilita primo montaggio cinema"
+      ],
+      "tags": [
+        "The Weeknd",
+        "SALLY",
+        "celebrity_interview"
+      ],
+      "mentioned_people": [
+        "Abel Tesfaye",
+        "Trey Edward Shults"
+      ],
+      "hook": "Abel racconta la natura catartica del film Hurry Up Tomorrow, realizzato circondandosi di persone fidate per chiudere un doloroso capitolo personale.",
+      "speakers": [
+        "The Weeknd"
+      ],
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Hurry Up Tomorrow e il processo catartico del film",
+          "summary": "Abel racconta la natura catartica del film Hurry Up Tomorrow, realizzato circondandosi di persone fidate per chiudere un doloroso capitolo personale.",
+          "description": "Abel racconta la natura catartica del film Hurry Up Tomorrow, realizzato circondandosi di persone fidate per chiudere un doloroso capitolo personale."
+        }
+      ]
+    },
+    {
+      "start": "02:10",
+      "end": "03:03",
+      "name": "La depressione di Trey Shults e l'incontro creativo",
+      "category": "celebrity_interview",
+      "source_title": "Sally ft. The Weeknd : relations toxiques, santé mentale et dépression. L'interview.",
+      "source_channel": "SALLY",
+      "summary": "Il regista confessa il grave stato depressivo vissuto durante la pandemia e come la connessione immediata con Abel abbia riacceso la sua passione per il cinema.",
+      "topics": [
+        "Trey Edward Shults Waves depressione lutto cancro padre ansia pandemia incontro Abel regia cinema celebrity interview artist career music pop culture stage television talk show intervista carriera musica artista successo pubblico memoria spettacolo"
+      ],
+      "tags": [
+        "The Weeknd",
+        "SALLY",
+        "celebrity_interview"
+      ],
+      "mentioned_people": [
+        "Trey Edward Shults",
+        "Abel Tesfaye"
+      ],
+      "hook": "Il regista confessa il grave stato depressivo vissuto durante la pandemia e come la connessione immediata con Abel abbia riacceso la sua passione per il cinema.",
+      "speakers": [
+        "The Weeknd"
+      ],
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "La depressione di Trey Shults e l'incontro creativo",
+          "summary": "Il regista confessa il grave stato depressivo vissuto durante la pandemia e come la connessione immediata con Abel abbia riacceso la sua passione per il cinema.",
+          "description": "Il regista confessa il grave stato depressivo vissuto durante la pandemia e come la connessione immediata con Abel abbia riacceso la sua passione per il cinema."
+        }
+      ]
+    },
+    {
+      "start": "03:18",
+      "end": "04:08",
+      "name": "L'alienazione e la manipolazione dei social media",
+      "category": "celebrity_interview",
+      "source_title": "Sally ft. The Weeknd : relations toxiques, santé mentale et dépression. L'interview.",
+      "source_channel": "SALLY",
+      "summary": "The Weeknd spiega perché cerca di tenersi alla larga dai social network, descrivendoli come ambienti manipolati che svuotano l'onestà delle relazioni.",
+      "topics": [
+        "social media molestie online disconnessione manipolazione Instagram Twitter celebrità alienazione distacco celebrity interview artist career music pop culture stage television talk show intervista carriera musica artista successo pubblico memoria spettacolo"
+      ],
+      "tags": [
+        "The Weeknd",
+        "SALLY",
+        "celebrity_interview"
+      ],
+      "mentioned_people": [
+        "Abel Tesfaye"
+      ],
+      "hook": "The Weeknd spiega perché cerca di tenersi alla larga dai social network, descrivendoli come ambienti manipolati che svuotano l'onestà delle relazioni.",
+      "speakers": [
+        "The Weeknd"
+      ],
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "L'alienazione e la manipolazione dei social media",
+          "summary": "The Weeknd spiega perché cerca di tenersi alla larga dai social network, descrivendoli come ambienti manipolati che svuotano l'onestà delle relazioni.",
+          "description": "The Weeknd spiega perché cerca di tenersi alla larga dai social network, descrivendoli come ambienti manipolati che svuotano l'onestà delle relazioni."
+        }
+      ]
+    },
+    {
+      "start": "04:37",
+      "end": "05:37",
+      "name": "La gestione del fallimento come scuola di crescita",
+      "category": "celebrity_interview",
+      "source_title": "Sally ft. The Weeknd : relations toxiques, santé mentale et dépression. L'interview.",
+      "source_channel": "SALLY",
+      "summary": "Abel approfondisce il suo approccio all'insuccesso, definendolo una tappa obbligata e la miglior palestra sia dal punto di vista umano che artistico.",
+      "topics": [
+        "fallimento sconfitta mantra crescita personale apprendimento resilienza scuola vita The Weeknd celebrity interview artist career music pop culture stage television talk show intervista carriera musica artista successo pubblico memoria spettacolo"
+      ],
+      "tags": [
+        "The Weeknd",
+        "SALLY",
+        "celebrity_interview"
+      ],
+      "mentioned_people": [
+        "Abel Tesfaye"
+      ],
+      "hook": "Abel approfondisce il suo approccio all'insuccesso, definendolo una tappa obbligata e la miglior palestra sia dal punto di vista umano che artistico.",
+      "speakers": [
+        "The Weeknd"
+      ],
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "La gestione del fallimento come scuola di crescita",
+          "summary": "Abel approfondisce il suo approccio all'insuccesso, definendolo una tappa obbligata e la miglior palestra sia dal punto di vista umano che artistico.",
+          "description": "Abel approfondisce il suo approccio all'insuccesso, definendolo una tappa obbligata e la miglior palestra sia dal punto di vista umano che artistico."
+        }
+      ]
+    },
+    {
+      "start": "05:38",
+      "end": "06:22",
+      "name": "Trasparenza emotiva e l'importanza della terapia",
+      "category": "celebrity_interview",
+      "source_title": "Sally ft. The Weeknd : relations toxiques, santé mentale et dépression. L'interview.",
+      "source_channel": "SALLY",
+      "summary": "Trey Shults evidenzia l'importanza di non reprimere le proprie fragilità, sostenuto dal confronto aperto con la moglie e dall'educazione ricevuta da genitori terapeuti.",
+      "topics": [
+        "salute mentale genitori terapeuti comunicazione matrimonio vulnerabilita gestione emozioni trasparenza celebrity interview artist career music pop culture stage television talk show intervista carriera musica artista successo pubblico memoria spettacolo"
+      ],
+      "tags": [
+        "The Weeknd",
+        "SALLY",
+        "celebrity_interview"
+      ],
+      "mentioned_people": [
+        "Trey Edward Shults"
+      ],
+      "hook": "Trey Shults evidenzia l'importanza di non reprimere le proprie fragilità, sostenuto dal confronto aperto con la moglie e dall'educazione ricevuta da genitori te",
+      "speakers": [
+        "The Weeknd"
+      ],
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Trasparenza emotiva e l'importanza della terapia",
+          "summary": "Trey Shults evidenzia l'importanza di non reprimere le proprie fragilità, sostenuto dal confronto aperto con la moglie e dall'educazione ricevuta da genitori terapeuti.",
+          "description": "Trey Shults evidenzia l'importanza di non reprimere le proprie fragilità, sostenuto dal confronto aperto con la moglie e dall'educazione ricevuta da genitori terapeuti."
+        }
+      ]
+    },
+    {
+      "start": "06:26",
+      "end": "07:12",
+      "name": "ADHD giovanile e la lotta interiore nei film di Trey Shults",
+      "category": "celebrity_interview",
+      "source_title": "Sally ft. The Weeknd : relations toxiques, santé mentale et dépression. L'interview.",
+      "source_channel": "SALLY",
+      "summary": "Il regista ripercorre il suo percorso con l'ADHD e come la continua lotta contro i propri demoni sia diventata il fulcro narrativo dei suoi progetti cinematografici.",
+      "topics": [
+        "ADHD rabbia lavoro interiore demoni personali guerra dell anima regia concerti Elliot celebrity interview artist career music pop culture stage television talk show intervista carriera musica artista successo pubblico memoria spettacolo"
+      ],
+      "tags": [
+        "The Weeknd",
+        "SALLY",
+        "celebrity_interview"
+      ],
+      "mentioned_people": [
+        "Trey Edward Shults"
+      ],
+      "hook": "Il regista ripercorre il suo percorso con l'ADHD e come la continua lotta contro i propri demoni sia diventata il fulcro narrativo dei suoi progetti cinematogra",
+      "speakers": [
+        "The Weeknd"
+      ],
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "ADHD giovanile e la lotta interiore nei film di Trey Shults",
+          "summary": "Il regista ripercorre il suo percorso con l'ADHD e come la continua lotta contro i propri demoni sia diventata il fulcro narrativo dei suoi progetti cinematografici.",
+          "description": "Il regista ripercorre il suo percorso con l'ADHD e come la continua lotta contro i propri demoni sia diventata il fulcro narrativo dei suoi progetti cinematografici."
+        }
+      ]
+    },
+    {
+      "start": "07:32",
+      "end": "08:28",
+      "name": "Attrazione per la musica cupa e l'esigenza di cambiamento",
+      "category": "celebrity_interview",
+      "source_title": "Sally ft. The Weeknd : relations toxiques, santé mentale et dépression. L'interview.",
+      "source_channel": "SALLY",
+      "summary": "Abel riflette sulla fascinazione per i brani malinconici, ammettendo però di voler smettere di farsi del male nella vita reale per alimentare la propria arte.",
+      "topics": [
+        "musica triste relazioni tossiche sofferenza DNA canzoni tristi addio personaggio rottura celebrity interview artist career music pop culture stage television talk show intervista carriera musica artista successo pubblico memoria spettacolo"
+      ],
+      "tags": [
+        "The Weeknd",
+        "SALLY",
+        "celebrity_interview"
+      ],
+      "mentioned_people": [
+        "Abel Tesfaye"
+      ],
+      "hook": "Abel riflette sulla fascinazione per i brani malinconici, ammettendo però di voler smettere di farsi del male nella vita reale per alimentare la propria arte.",
+      "speakers": [
+        "The Weeknd"
+      ],
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Attrazione per la musica cupa e l'esigenza di cambiamento",
+          "summary": "Abel riflette sulla fascinazione per i brani malinconici, ammettendo però di voler smettere di farsi del male nella vita reale per alimentare la propria arte.",
+          "description": "Abel riflette sulla fascinazione per i brani malinconici, ammettendo però di voler smettere di farsi del male nella vita reale per alimentare la propria arte."
+        }
+      ]
+    },
+    {
+      "start": "08:28",
+      "end": "09:27",
+      "name": "La trappola dell'industria discografica e la rinascita",
+      "category": "celebrity_interview",
+      "source_title": "Sally ft. The Weeknd : relations toxiques, santé mentale et dépression. L'interview.",
+      "source_channel": "SALLY",
+      "summary": "Viene criticata la costante richiesta di tristezza da parte del mercato discografico e descritto il film come rito di passaggio per rinascere oltre l'alter ego.",
+      "topics": [
+        "industria musicale mercificazione tristezza rinascita 40 anni 50 anni evoluzione artistica distacco celebrity interview artist career music pop culture stage television talk show intervista carriera musica artista successo pubblico memoria spettacolo"
+      ],
+      "tags": [
+        "The Weeknd",
+        "SALLY",
+        "celebrity_interview"
+      ],
+      "mentioned_people": [
+        "Abel Tesfaye"
+      ],
+      "hook": "Viene criticata la costante richiesta di tristezza da parte del mercato discografico e descritto il film come rito di passaggio per rinascere oltre l'alter ego.",
+      "speakers": [
+        "The Weeknd"
+      ],
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "La trappola dell'industria discografica e la rinascita",
+          "summary": "Viene criticata la costante richiesta di tristezza da parte del mercato discografico e descritto il film come rito di passaggio per rinascere oltre l'alter ego.",
+          "description": "Viene criticata la costante richiesta di tristezza da parte del mercato discografico e descritto il film come rito di passaggio per rinascere oltre l'alter ego."
+        }
+      ]
+    },
+    {
+      "start": "09:55",
+      "end": "10:46",
+      "name": "Dalla rasatura dei capelli alla distruzione della persona",
+      "category": "celebrity_interview",
+      "source_title": "Sally ft. The Weeknd : relations toxiques, santé mentale et dépression. L'interview.",
+      "source_channel": "SALLY",
+      "summary": "The Weeknd paragona la fine del suo attuale personaggio al celebre taglio dei capelli del passato, rifiutando categoricamente di farsi imprigionare da un'icona.",
+      "topics": [
+        "Basquiat capelli taglio identita manette persona liberazione tour rigenerazione pausa celebrity interview artist career music pop culture stage television talk show intervista carriera musica artista successo pubblico memoria spettacolo"
+      ],
+      "tags": [
+        "The Weeknd",
+        "SALLY",
+        "celebrity_interview"
+      ],
+      "mentioned_people": [
+        "Abel Tesfaye"
+      ],
+      "hook": "The Weeknd paragona la fine del suo attuale personaggio al celebre taglio dei capelli del passato, rifiutando categoricamente di farsi imprigionare da un'icona.",
+      "speakers": [
+        "The Weeknd"
+      ],
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Dalla rasatura dei capelli alla distruzione della persona",
+          "summary": "The Weeknd paragona la fine del suo attuale personaggio al celebre taglio dei capelli del passato, rifiutando categoricamente di farsi imprigionare da un'icona.",
+          "description": "The Weeknd paragona la fine del suo attuale personaggio al celebre taglio dei capelli del passato, rifiutando categoricamente di farsi imprigionare da un'icona."
+        }
+      ]
+    },
+    {
+      "start": "11:04",
+      "end": "12:01",
+      "name": "Il trauma vocale al SoFi Stadium e le cause psicologiche",
+      "category": "celebrity_interview",
+      "source_title": "Sally ft. The Weeknd : relations toxiques, santé mentale et dépression. L'interview.",
+      "source_channel": "SALLY",
+      "summary": "L'analisi del blocco vocale subito sul palco rivela un'origine profondamente psicologica legata a stress e saturazione, trasformata nel cardine del lungometraggio.",
+      "topics": [
+        "perdita voce concerto 80000 persone blocco psicosomatico fragilita superpotere palco celebrity interview artist career music pop culture stage television talk show intervista carriera musica artista successo pubblico memoria spettacolo"
+      ],
+      "tags": [
+        "The Weeknd",
+        "SALLY",
+        "celebrity_interview"
+      ],
+      "mentioned_people": [
+        "Abel Tesfaye",
+        "Trey Edward Shults"
+      ],
+      "hook": "L'analisi del blocco vocale subito sul palco rivela un'origine profondamente psicologica legata a stress e saturazione, trasformata nel cardine del lungometragg",
+      "speakers": [
+        "The Weeknd"
+      ],
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Il trauma vocale al SoFi Stadium e le cause psicologiche",
+          "summary": "L'analisi del blocco vocale subito sul palco rivela un'origine profondamente psicologica legata a stress e saturazione, trasformata nel cardine del lungometraggio.",
+          "description": "L'analisi del blocco vocale subito sul palco rivela un'origine profondamente psicologica legata a stress e saturazione, trasformata nel cardine del lungometraggio."
+        }
+      ]
+    },
+    {
+      "start": "12:12",
+      "end": "13:00",
+      "name": "Un ritratto universale della vulnerabilità umana",
+      "category": "celebrity_interview",
+      "source_title": "Sally ft. The Weeknd : relations toxiques, santé mentale et dépression. L'interview.",
+      "source_channel": "SALLY",
+      "summary": "Regista e protagonista chiariscono di aver voluto evitare i cliché sulle celebrità per raccontare la pressione, il burnout e la fallibilità comune a ogni essere umano.",
+      "topics": [
+        "rifiuto celebrity culture pressione sociale burnout imperfezione umana cinema empatia celebrity interview artist career music pop culture stage television talk show intervista carriera musica artista successo pubblico memoria spettacolo"
+      ],
+      "tags": [
+        "The Weeknd",
+        "SALLY",
+        "celebrity_interview"
+      ],
+      "mentioned_people": [
+        "Abel Tesfaye",
+        "Trey Edward Shults"
+      ],
+      "hook": "Regista e protagonista chiariscono di aver voluto evitare i cliché sulle celebrità per raccontare la pressione, il burnout e la fallibilità comune a ogni essere",
+      "speakers": [
+        "The Weeknd"
+      ],
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Un ritratto universale della vulnerabilità umana",
+          "summary": "Regista e protagonista chiariscono di aver voluto evitare i cliché sulle celebrità per raccontare la pressione, il burnout e la fallibilità comune a ogni essere umano.",
+          "description": "Regista e protagonista chiariscono di aver voluto evitare i cliché sulle celebrità per raccontare la pressione, il burnout e la fallibilità comune a ogni essere umano."
+        }
+      ]
+    },
+    {
+      "start": "13:40",
+      "end": "14:34",
+      "name": "Debutto attoriale e buttarsi nel fuoco del rischio",
+      "category": "celebrity_interview",
+      "source_title": "Sally ft. The Weeknd : relations toxiques, santé mentale et dépression. L'interview.",
+      "source_channel": "SALLY",
+      "summary": "Abel consiglia a chi vuole intraprendere nuove sfide di buttarsi senza riserve, accettando il rischio del fallimento pubblico come parte integrante del percorso.",
+      "topics": [
+        "debutto attore recitazione critica paura fallimento fuoco coraggio comfort zone celebrity interview artist career music pop culture stage television talk show intervista carriera musica artista successo pubblico memoria spettacolo"
+      ],
+      "tags": [
+        "The Weeknd",
+        "SALLY",
+        "celebrity_interview"
+      ],
+      "mentioned_people": [
+        "Abel Tesfaye"
+      ],
+      "hook": "Abel consiglia a chi vuole intraprendere nuove sfide di buttarsi senza riserve, accettando il rischio del fallimento pubblico come parte integrante del percorso",
+      "speakers": [
+        "The Weeknd"
+      ],
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Debutto attoriale e buttarsi nel fuoco del rischio",
+          "summary": "Abel consiglia a chi vuole intraprendere nuove sfide di buttarsi senza riserve, accettando il rischio del fallimento pubblico come parte integrante del percorso.",
+          "description": "Abel consiglia a chi vuole intraprendere nuove sfide di buttarsi senza riserve, accettando il rischio del fallimento pubblico come parte integrante del percorso."
+        }
+      ]
+    },
+    {
+      "start": "14:34",
+      "end": "15:20",
+      "name": "Il valore del rischio e l'ansia pre-concerto",
+      "category": "celebrity_interview",
+      "source_title": "Sally ft. The Weeknd : relations toxiques, santé mentale et dépression. L'interview.",
+      "source_channel": "SALLY",
+      "summary": "Trey ed Abel concludono sottolineando come l'ansia prima di salire sul palco sia il segno vitale che si ha ancora a cuore ciò che si fa, invitando a non avere rimpianti.",
+      "topics": [
+        "comfort zone rischio artistico adrenalina palco nervosismo passione rimpianti celebrity interview artist career music pop culture stage television talk show intervista carriera musica artista successo pubblico memoria spettacolo"
+      ],
+      "tags": [
+        "The Weeknd",
+        "SALLY",
+        "celebrity_interview"
+      ],
+      "mentioned_people": [
+        "Abel Tesfaye",
+        "Trey Edward Shults"
+      ],
+      "hook": "Trey ed Abel concludono sottolineando come l'ansia prima di salire sul palco sia il segno vitale che si ha ancora a cuore ciò che si fa, invitando a non avere r",
+      "speakers": [
+        "The Weeknd"
+      ],
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Il valore del rischio e l'ansia pre-concerto",
+          "summary": "Trey ed Abel concludono sottolineando come l'ansia prima di salire sul palco sia il segno vitale che si ha ancora a cuore ciò che si fa, invitando a non avere rimpianti.",
+          "description": "Trey ed Abel concludono sottolineando come l'ansia prima di salire sul palco sia il segno vitale che si ha ancora a cuore ciò che si fa, invitando a non avere rimpianti."
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,441 @@
+{
+  "_comment": "POST /api/clips/process payload (ExtractRequest, drift source: internal/capabilities/youtube/dto/types.go). Source: Ringo Starr & George Harrison • Interview • 1988 [Reelin' In The Years Archive] (https://www.youtube.com/watch?v=IOTyhPZbvU4). Destination: the Clips/HipHop child folder for The Beatles (see check.py FOLDERS), create_subfolder=false. Windows picked BY HAND from the timed transcript printed by ops/jobs/hiphop_36/tx.py; no LLM selection. Clip ids are deterministic (yt_<videoID>_<startSec>_<endSec>_v1) so a re-submit is an UPSERT. topics/summary/hook are keyword-dense on purpose: composeYouTubeClipSearchText feeds search_text -> 768d pgvector embedding, texts[] lands in asset_text_tracks in the same atomic commit.",
+  "url": "https://www.youtube.com/watch?v=IOTyhPZbvU4",
+  "strategy": "verify",
+  "concurrency": 3,
+  "force_keyframes": true,
+  "keep_audio": true,
+  "write_summary": true,
+  "destination": {
+    "folder_id": "1vkUb0FRz8mK-6cNpoNQ0wtKABeNLS_46",
+    "create_subfolder": false
+  },
+  "segments": [
+    {
+      "start": "00:04",
+      "end": "00:49",
+      "name": "The Beatles — intervista momento 1: Well, that was made with a little ",
+      "category": "celebrity_interview",
+      "source_title": "Ringo Starr & George Harrison • Interview • 1988 [Reelin' In The Years Archive]",
+      "source_channel": "YouTube Interview",
+      "summary": "The Beatles in Ringo Starr & George Harrison • Interview • 1988 [Reelin' In: Well, that was made with a little help from your friends, of course, including from your friends, of course, including the one, the only Ringo ",
+      "topics": [
+        "The Beatles Ringo Starr & George Harrison • Interview • 1988 [Reelin' In The Years Archive] interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo the beatles Well, that was made with a little help from your friends,"
+      ],
+      "tags": [
+        "The Beatles",
+        "interview",
+        "celebrity_interview",
+        "interview",
+        "talk show"
+      ],
+      "speakers": [
+        "Ringo Starr",
+        "George Harrison"
+      ],
+      "mentioned_people": [
+        "The Beatles"
+      ],
+      "hook": "from your friends, of course, including the one, the only Ringo Star.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "The Beatles — intervista momento 1: Well, that was made wi",
+          "summary": "The Beatles in Ringo Starr & George Harrison • Interview • 1988 [Reelin' In: Well, that was made with a little help from your friends, of course, including from your frie",
+          "description": "The Beatles in Ringo Starr & George Harrison • Interview • 1988 [Reelin' In: Well, that was made with a little help from your friends, of course, including from your friends, of course, including the one, the only Ringo  Contesto: The Beatles Ringo Starr & George Harrison • Interview • 1988 [Reelin' In The Years Archive] interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo the beatles Well, that was made with a little help from your friends,"
+        }
+      ]
+    },
+    {
+      "start": "00:12",
+      "end": "00:24",
+      "name": "Hook: from your friends, of course, inclu",
+      "category": "celebrity_interview",
+      "source_title": "Ringo Starr & George Harrison • Interview • 1988 [Reelin' In The Years Archive]",
+      "source_channel": "YouTube Interview",
+      "summary": "Apertura secca (12s): apertura secca dal colloquio The Beatles",
+      "topics": [
+        "The Beatles Ringo Starr & George Harrison • Interview • 1988 [Reelin' In The Years Archive] interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo the beatles Well, that was made with a little help from your friends, hook apertura short opening-short"
+      ],
+      "tags": [
+        "The Beatles",
+        "interview",
+        "celebrity_interview",
+        "interview",
+        "talk show",
+        "hook"
+      ],
+      "speakers": [
+        "Ringo Starr",
+        "George Harrison"
+      ],
+      "mentioned_people": [
+        "The Beatles"
+      ],
+      "hook": "from your friends, of course, including the one, the only Ringo Star.",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "The Beatles — intervista momento 1: Well, that was made wi",
+          "summary": "The Beatles in Ringo Starr & George Harrison • Interview • 1988 [Reelin' In: Well, that was made with a little help from your friends, of course, including from your frie",
+          "description": "Apertura secca (12s): apertura secca dal colloquio The Beatles Contesto: The Beatles Ringo Starr & George Harrison • Interview • 1988 [Reelin' In The Years Archive] interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo the beatles Well, that was made with a little help from your friends, hook apertura short opening-short"
+        }
+      ]
+    },
+    {
+      "start": "03:21",
+      "end": "04:06",
+      "name": "The Beatles — intervista momento 2: &gt;&gt; You've all four of course",
+      "category": "celebrity_interview",
+      "source_title": "Ringo Starr & George Harrison • Interview • 1988 [Reelin' In The Years Archive]",
+      "source_channel": "YouTube Interview",
+      "summary": "The Beatles in Ringo Starr & George Harrison • Interview • 1988 [Reelin' In: &gt;&gt; You've all four of course had your own special followers. How different was a special followers. How different was a Ringo fan from a ",
+      "topics": [
+        "The Beatles Ringo Starr & George Harrison • Interview • 1988 [Reelin' In The Years Archive] interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo the beatles &gt;&gt; You've all four of course had your own special f"
+      ],
+      "tags": [
+        "The Beatles",
+        "interview",
+        "celebrity_interview",
+        "interview",
+        "talk show"
+      ],
+      "speakers": [
+        "Ringo Starr",
+        "George Harrison"
+      ],
+      "mentioned_people": [
+        "The Beatles"
+      ],
+      "hook": "attitude. and Paul had the teenies &gt;&gt; that shared out the human race quite",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "The Beatles — intervista momento 2: &gt;&gt; You've all fo",
+          "summary": "The Beatles in Ringo Starr & George Harrison • Interview • 1988 [Reelin' In: &gt;&gt; You've all four of course had your own special followers. How different was a specia",
+          "description": "The Beatles in Ringo Starr & George Harrison • Interview • 1988 [Reelin' In: &gt;&gt; You've all four of course had your own special followers. How different was a special followers. How different was a Ringo fan from a  Contesto: The Beatles Ringo Starr & George Harrison • Interview • 1988 [Reelin' In The Years Archive] interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo the beatles &gt;&gt; You've all four of course had your own special f"
+        }
+      ]
+    },
+    {
+      "start": "03:29",
+      "end": "03:41",
+      "name": "Hook: attitude. and paul had the teenies ",
+      "category": "celebrity_interview",
+      "source_title": "Ringo Starr & George Harrison • Interview • 1988 [Reelin' In The Years Archive]",
+      "source_channel": "YouTube Interview",
+      "summary": "Apertura secca (12s): apertura secca dal colloquio The Beatles",
+      "topics": [
+        "The Beatles Ringo Starr & George Harrison • Interview • 1988 [Reelin' In The Years Archive] interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo the beatles &gt;&gt; You've all four of course had your own special f hook apertura short opening-short"
+      ],
+      "tags": [
+        "The Beatles",
+        "interview",
+        "celebrity_interview",
+        "interview",
+        "talk show",
+        "hook"
+      ],
+      "speakers": [
+        "Ringo Starr",
+        "George Harrison"
+      ],
+      "mentioned_people": [
+        "The Beatles"
+      ],
+      "hook": "attitude. and Paul had the teenies &gt;&gt; that shared out the human race quite",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "The Beatles — intervista momento 2: &gt;&gt; You've all fo",
+          "summary": "The Beatles in Ringo Starr & George Harrison • Interview • 1988 [Reelin' In: &gt;&gt; You've all four of course had your own special followers. How different was a specia",
+          "description": "Apertura secca (12s): apertura secca dal colloquio The Beatles Contesto: The Beatles Ringo Starr & George Harrison • Interview • 1988 [Reelin' In The Years Archive] interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo the beatles &gt;&gt; You've all four of course had your own special f hook apertura short opening-short"
+        }
+      ]
+    },
+    {
+      "start": "06:39",
+      "end": "07:24",
+      "name": "The Beatles — intervista momento 3: house. &gt;&gt; Yeah, I had to get",
+      "category": "celebrity_interview",
+      "source_title": "Ringo Starr & George Harrison • Interview • 1988 [Reelin' In The Years Archive]",
+      "source_channel": "YouTube Interview",
+      "summary": "The Beatles in Ringo Starr & George Harrison • Interview • 1988 [Reelin' In: house. &gt;&gt; Yeah, I had to get the jack out and &gt;&gt; Yeah, I had to get the jack out and &gt;&gt; Yeah, it was fabulous sharing. Well, ",
+      "topics": [
+        "The Beatles Ringo Starr & George Harrison • Interview • 1988 [Reelin' In The Years Archive] interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo the beatles house. &gt;&gt; Yeah, I had to get the jack out and &gt;&"
+      ],
+      "tags": [
+        "The Beatles",
+        "interview",
+        "celebrity_interview",
+        "interview",
+        "talk show"
+      ],
+      "speakers": [
+        "Ringo Starr",
+        "George Harrison"
+      ],
+      "mentioned_people": [
+        "The Beatles"
+      ],
+      "hook": "the tea and iron your shirts? &gt;&gt; What was he like to live with?",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "The Beatles — intervista momento 3: house. &gt;&gt; Yeah, ",
+          "summary": "The Beatles in Ringo Starr & George Harrison • Interview • 1988 [Reelin' In: house. &gt;&gt; Yeah, I had to get the jack out and &gt;&gt; Yeah, I had to get the jack out ",
+          "description": "The Beatles in Ringo Starr & George Harrison • Interview • 1988 [Reelin' In: house. &gt;&gt; Yeah, I had to get the jack out and &gt;&gt; Yeah, I had to get the jack out and &gt;&gt; Yeah, it was fabulous sharing. Well,  Contesto: The Beatles Ringo Starr & George Harrison • Interview • 1988 [Reelin' In The Years Archive] interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo the beatles house. &gt;&gt; Yeah, I had to get the jack out and &gt;&"
+        }
+      ]
+    },
+    {
+      "start": "06:47",
+      "end": "06:59",
+      "name": "Hook: the tea and iron your shirts? &gt;&",
+      "category": "celebrity_interview",
+      "source_title": "Ringo Starr & George Harrison • Interview • 1988 [Reelin' In The Years Archive]",
+      "source_channel": "YouTube Interview",
+      "summary": "Apertura secca (12s): apertura secca dal colloquio The Beatles",
+      "topics": [
+        "The Beatles Ringo Starr & George Harrison • Interview • 1988 [Reelin' In The Years Archive] interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo the beatles house. &gt;&gt; Yeah, I had to get the jack out and &gt;& hook apertura short opening-short"
+      ],
+      "tags": [
+        "The Beatles",
+        "interview",
+        "celebrity_interview",
+        "interview",
+        "talk show",
+        "hook"
+      ],
+      "speakers": [
+        "Ringo Starr",
+        "George Harrison"
+      ],
+      "mentioned_people": [
+        "The Beatles"
+      ],
+      "hook": "the tea and iron your shirts? &gt;&gt; What was he like to live with?",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "The Beatles — intervista momento 3: house. &gt;&gt; Yeah, ",
+          "summary": "The Beatles in Ringo Starr & George Harrison • Interview • 1988 [Reelin' In: house. &gt;&gt; Yeah, I had to get the jack out and &gt;&gt; Yeah, I had to get the jack out ",
+          "description": "Apertura secca (12s): apertura secca dal colloquio The Beatles Contesto: The Beatles Ringo Starr & George Harrison • Interview • 1988 [Reelin' In The Years Archive] interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo the beatles house. &gt;&gt; Yeah, I had to get the jack out and &gt;& hook apertura short opening-short"
+        }
+      ]
+    },
+    {
+      "start": "09:57",
+      "end": "10:42",
+      "name": "The Beatles — intervista momento 4: &gt;&gt; and fine. Yeah, everythin",
+      "category": "celebrity_interview",
+      "source_title": "Ringo Starr & George Harrison • Interview • 1988 [Reelin' In The Years Archive]",
+      "source_channel": "YouTube Interview",
+      "summary": "The Beatles in Ringo Starr & George Harrison • Interview • 1988 [Reelin' In: &gt;&gt; and fine. Yeah, everything's fine. &gt;&gt; When I and the rest of us here hear &gt;&gt; When I and the rest of us here hear Lenon Rec",
+      "topics": [
+        "The Beatles Ringo Starr & George Harrison • Interview • 1988 [Reelin' In The Years Archive] interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo the beatles &gt;&gt; and fine. Yeah, everything's fine. &gt;&gt; When"
+      ],
+      "tags": [
+        "The Beatles",
+        "interview",
+        "celebrity_interview",
+        "interview",
+        "talk show"
+      ],
+      "speakers": [
+        "Ringo Starr",
+        "George Harrison"
+      ],
+      "mentioned_people": [
+        "The Beatles"
+      ],
+      "hook": "&gt;&gt; It is. You know, &gt;&gt; I was stunned on the day and I still",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "The Beatles — intervista momento 4: &gt;&gt; and fine. Yea",
+          "summary": "The Beatles in Ringo Starr & George Harrison • Interview • 1988 [Reelin' In: &gt;&gt; and fine. Yeah, everything's fine. &gt;&gt; When I and the rest of us here hear &gt;",
+          "description": "The Beatles in Ringo Starr & George Harrison • Interview • 1988 [Reelin' In: &gt;&gt; and fine. Yeah, everything's fine. &gt;&gt; When I and the rest of us here hear &gt;&gt; When I and the rest of us here hear Lenon Rec Contesto: The Beatles Ringo Starr & George Harrison • Interview • 1988 [Reelin' In The Years Archive] interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo the beatles &gt;&gt; and fine. Yeah, everything's fine. &gt;&gt; When"
+        }
+      ]
+    },
+    {
+      "start": "10:05",
+      "end": "10:17",
+      "name": "Hook: &gt;&gt; it is. you know, &gt;&gt; ",
+      "category": "celebrity_interview",
+      "source_title": "Ringo Starr & George Harrison • Interview • 1988 [Reelin' In The Years Archive]",
+      "source_channel": "YouTube Interview",
+      "summary": "Apertura secca (12s): apertura secca dal colloquio The Beatles",
+      "topics": [
+        "The Beatles Ringo Starr & George Harrison • Interview • 1988 [Reelin' In The Years Archive] interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo the beatles &gt;&gt; and fine. Yeah, everything's fine. &gt;&gt; When hook apertura short opening-short"
+      ],
+      "tags": [
+        "The Beatles",
+        "interview",
+        "celebrity_interview",
+        "interview",
+        "talk show",
+        "hook"
+      ],
+      "speakers": [
+        "Ringo Starr",
+        "George Harrison"
+      ],
+      "mentioned_people": [
+        "The Beatles"
+      ],
+      "hook": "&gt;&gt; It is. You know, &gt;&gt; I was stunned on the day and I still",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "The Beatles — intervista momento 4: &gt;&gt; and fine. Yea",
+          "summary": "The Beatles in Ringo Starr & George Harrison • Interview • 1988 [Reelin' In: &gt;&gt; and fine. Yeah, everything's fine. &gt;&gt; When I and the rest of us here hear &gt;",
+          "description": "Apertura secca (12s): apertura secca dal colloquio The Beatles Contesto: The Beatles Ringo Starr & George Harrison • Interview • 1988 [Reelin' In The Years Archive] interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo the beatles &gt;&gt; and fine. Yeah, everything's fine. &gt;&gt; When hook apertura short opening-short"
+        }
+      ]
+    },
+    {
+      "start": "13:14",
+      "end": "13:59",
+      "name": "The Beatles — intervista momento 5: three bodies and one body falls of",
+      "category": "celebrity_interview",
+      "source_title": "Ringo Starr & George Harrison • Interview • 1988 [Reelin' In The Years Archive]",
+      "source_channel": "YouTube Interview",
+      "summary": "The Beatles in Ringo Starr & George Harrison • Interview • 1988 [Reelin' In: three bodies and one body falls off and uh I feel like that I can feel him uh I feel like that I can feel him around here twice. Do around here",
+      "topics": [
+        "The Beatles Ringo Starr & George Harrison • Interview • 1988 [Reelin' In The Years Archive] interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo the beatles three bodies and one body falls off and uh I feel like th"
+      ],
+      "tags": [
+        "The Beatles",
+        "interview",
+        "celebrity_interview",
+        "interview",
+        "talk show"
+      ],
+      "speakers": [
+        "Ringo Starr",
+        "George Harrison"
+      ],
+      "mentioned_people": [
+        "The Beatles"
+      ],
+      "hook": "was going on. He was in the con. What do you do being miserable? So, come on, get",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "The Beatles — intervista momento 5: three bodies and one b",
+          "summary": "The Beatles in Ringo Starr & George Harrison • Interview • 1988 [Reelin' In: three bodies and one body falls off and uh I feel like that I can feel him uh I feel like tha",
+          "description": "The Beatles in Ringo Starr & George Harrison • Interview • 1988 [Reelin' In: three bodies and one body falls off and uh I feel like that I can feel him uh I feel like that I can feel him around here twice. Do around here Contesto: The Beatles Ringo Starr & George Harrison • Interview • 1988 [Reelin' In The Years Archive] interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo the beatles three bodies and one body falls off and uh I feel like th"
+        }
+      ]
+    },
+    {
+      "start": "13:22",
+      "end": "13:34",
+      "name": "Hook: was going on. he was in the con. wh",
+      "category": "celebrity_interview",
+      "source_title": "Ringo Starr & George Harrison • Interview • 1988 [Reelin' In The Years Archive]",
+      "source_channel": "YouTube Interview",
+      "summary": "Apertura secca (12s): apertura secca dal colloquio The Beatles",
+      "topics": [
+        "The Beatles Ringo Starr & George Harrison • Interview • 1988 [Reelin' In The Years Archive] interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo the beatles three bodies and one body falls off and uh I feel like th hook apertura short opening-short"
+      ],
+      "tags": [
+        "The Beatles",
+        "interview",
+        "celebrity_interview",
+        "interview",
+        "talk show",
+        "hook"
+      ],
+      "speakers": [
+        "Ringo Starr",
+        "George Harrison"
+      ],
+      "mentioned_people": [
+        "The Beatles"
+      ],
+      "hook": "was going on. He was in the con. What do you do being miserable? So, come on, get",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "The Beatles — intervista momento 5: three bodies and one b",
+          "summary": "The Beatles in Ringo Starr & George Harrison • Interview • 1988 [Reelin' In: three bodies and one body falls off and uh I feel like that I can feel him uh I feel like tha",
+          "description": "Apertura secca (12s): apertura secca dal colloquio The Beatles Contesto: The Beatles Ringo Starr & George Harrison • Interview • 1988 [Reelin' In The Years Archive] interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo the beatles three bodies and one body falls off and uh I feel like th hook apertura short opening-short"
+        }
+      ]
+    },
+    {
+      "start": "16:32",
+      "end": "17:17",
+      "name": "The Beatles — intervista momento 6: you may see three old guys called ",
+      "category": "celebrity_interview",
+      "source_title": "Ringo Starr & George Harrison • Interview • 1988 [Reelin' In The Years Archive]",
+      "source_channel": "YouTube Interview",
+      "summary": "The Beatles in Ringo Starr & George Harrison • Interview • 1988 [Reelin' In: you may see three old guys called John, Paul, and Ringo who someday may sing a Paul, and Ringo who someday may sing a song together. song toget",
+      "topics": [
+        "The Beatles Ringo Starr & George Harrison • Interview • 1988 [Reelin' In The Years Archive] interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo the beatles you may see three old guys called John, Paul, and Ringo w"
+      ],
+      "tags": [
+        "The Beatles",
+        "interview",
+        "celebrity_interview",
+        "interview",
+        "talk show"
+      ],
+      "speakers": [
+        "Ringo Starr",
+        "George Harrison"
+      ],
+      "mentioned_people": [
+        "The Beatles"
+      ],
+      "hook": "&gt;&gt; What about acting now? You've &gt;&gt; acting. You've done",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "The Beatles — intervista momento 6: you may see three old ",
+          "summary": "The Beatles in Ringo Starr & George Harrison • Interview • 1988 [Reelin' In: you may see three old guys called John, Paul, and Ringo who someday may sing a Paul, and Ring",
+          "description": "The Beatles in Ringo Starr & George Harrison • Interview • 1988 [Reelin' In: you may see three old guys called John, Paul, and Ringo who someday may sing a Paul, and Ringo who someday may sing a song together. song toget Contesto: The Beatles Ringo Starr & George Harrison • Interview • 1988 [Reelin' In The Years Archive] interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo the beatles you may see three old guys called John, Paul, and Ringo w"
+        }
+      ]
+    },
+    {
+      "start": "16:40",
+      "end": "16:52",
+      "name": "Hook: &gt;&gt; what about acting now? you",
+      "category": "celebrity_interview",
+      "source_title": "Ringo Starr & George Harrison • Interview • 1988 [Reelin' In The Years Archive]",
+      "source_channel": "YouTube Interview",
+      "summary": "Apertura secca (12s): apertura secca dal colloquio The Beatles",
+      "topics": [
+        "The Beatles Ringo Starr & George Harrison • Interview • 1988 [Reelin' In The Years Archive] interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo the beatles you may see three old guys called John, Paul, and Ringo w hook apertura short opening-short"
+      ],
+      "tags": [
+        "The Beatles",
+        "interview",
+        "celebrity_interview",
+        "interview",
+        "talk show",
+        "hook"
+      ],
+      "speakers": [
+        "Ringo Starr",
+        "George Harrison"
+      ],
+      "mentioned_people": [
+        "The Beatles"
+      ],
+      "hook": "&gt;&gt; What about acting now? You've &gt;&gt; acting. You've done",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "The Beatles — intervista momento 6: you may see three old ",
+          "summary": "The Beatles in Ringo Starr & George Harrison • Interview • 1988 [Reelin' In: you may see three old guys called John, Paul, and Ringo who someday may sing a Paul, and Ring",
+          "description": "Apertura secca (12s): apertura secca dal colloquio The Beatles Contesto: The Beatles Ringo Starr & George Harrison • Interview • 1988 [Reelin' In The Years Archive] interview intervista celebrity career music carriera musica pop cultura stage television talk show anni conversazione ricordo aneddoto pubblico successo hit album tour spettacolo the beatles you may see three old guys called John, Paul, and Ringo w hook apertura short opening-short"
+        }
+      ]
+    }
+  ]
+}
