@@ -49,6 +49,7 @@ type M2MJobsModule struct {
 const (
 	ScopeJobsSubmit = "jobs.submit"
 	ScopeJobsRead   = "jobs.read"
+	ScopeJobsCancel = "jobs.cancel"
 )
 
 // NewM2MJobsModule constructs the M2M job surface from the canonical
@@ -93,7 +94,8 @@ func (m *M2MJobsModule) RegisterRoutes(rg *gin.RouterGroup) {
 	}
 	rg.POST("", apimw.RequireScope(ScopeJobsSubmit), m.handler.Enqueue)
 	rg.GET("/types", apimw.RequireScope(ScopeJobsRead), m.handler.M2MTypes)
-	rg.GET("/:id", apimw.RequireScope(ScopeJobsRead), m.handler.Get)
+	rg.GET("/:id", apimw.RequireScope(ScopeJobsRead), m.handler.M2MGet)
+	rg.POST("/:id/cancel", apimw.RequireScope(ScopeJobsCancel), m.handler.M2MCancel)
 }
 
 // Compile-time assertion: M2MJobsModule satisfies the minimal

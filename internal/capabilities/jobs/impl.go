@@ -196,6 +196,46 @@ func (h *JobsHandler) Get(c *gin.Context) {
 	apiutil.OK(c, h.buildJobResponse(j, events))
 }
 
+// M2MGet limits status polling to jobs created by the authenticated M2M client.
+func (h *JobsHandler) M2MGet(c *gin.Context) {
+	raw, exists := c.Get("m2m_client")
+	client, ok := raw.(*mwm2m.M2MClient)
+	if !exists || !ok || client == nil || client.ClientID == "" {
+		apiutil.Error(c, http.StatusUnauthorized, "M2M client identity is required")
+		return
+	}
+	id := c.Param("id")
+	j, err := h.service.Get(c.Request.Context(), id)
+	if err != nil || j == nil || j.ClientID != client.ClientID {
+		apiutil.NotFound(c, "job not found")
+		return
+	}
+	events, _ := h.service.ListEvents(c.Request.Context(), id)
+	apiutil.OK(c, h.buildJobResponse(j, events))
+}
+
+// M2MCancel permits a submitter to stop only a job created by the same M2M client.
+func (h *JobsHandler) M2MCancel(c *gin.Context) {
+	raw, exists := c.Get("m2m_client")
+	client, ok := raw.(*mwm2m.M2MClient)
+	if !exists || !ok || client == nil || client.ClientID == "" {
+		apiutil.Error(c, http.StatusUnauthorized, "M2M client identity is required")
+		return
+	}
+	id := c.Param("id")
+	j, err := h.service.Get(c.Request.Context(), id)
+	if err != nil || j == nil || j.ClientID != client.ClientID {
+		apiutil.NotFound(c, "job not found")
+		return
+	}
+	if err := h.service.Cancel(c.Request.Context(), id); err != nil {
+		h.log.Error("failed to cancel M2M-owned job", zap.String("job_id", id), zap.Error(err))
+		apiutil.InternalError(c, err)
+		return
+	}
+	apiutil.OK(c, gin.H{"job_id": id, "status": "CANCELLED"})
+}
+
 func (h *JobsHandler) List(c *gin.Context) {
 	var filter job.Filter
 
@@ -403,6 +443,8 @@ func (h *JobsHandler) buildJobResponse(j *job.Job, events []job.Event) gin.H {
 		"error":          j.Error,
 		"created_at":     j.CreatedAt,
 		"started_at":     j.StartedAt,
+		"lease_expiry":   j.LeaseExpiry,
+		"worker_id":      j.WorkerID,
 		"updated_at":     j.UpdatedAt,
 		"timeline":       events,
 		"events":         events,

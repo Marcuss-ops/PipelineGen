@@ -95,7 +95,8 @@ type renewLeaseLoopOpts struct {
 	// renewCount, when non-nil, is incremented once per successful
 	// lease renewal (LeaseStateContinue) so the caller can emit
 	// lease_renew_count observability at finalization.
-	renewCount *atomic.Int64
+	renewCount  *atomic.Int64
+	onHeartbeat func()
 }
 
 // renewLeaseLoopWith drives the heartbeat ticker. The for-select
@@ -132,8 +133,13 @@ func (w *Worker) renewLeaseLoopWith(ctx context.Context, jobID string, stop <-ch
 		case <-ticker.C:
 			result, shouldExit := w.attemptLeaseRenewal(ctx, jobID)
 
-			if result.State == jobs.LeaseStateContinue && opts.renewCount != nil {
-				opts.renewCount.Add(1)
+			if result.State == jobs.LeaseStateContinue {
+				if opts.renewCount != nil {
+					opts.renewCount.Add(1)
+				}
+				if opts.onHeartbeat != nil {
+					opts.onHeartbeat()
+				}
 			}
 
 			if shouldExit {

@@ -39,3 +39,15 @@ go run ./cmd/instaedit-scheduling create-batch examples/dolly-parton-20.json
 Edit the Calendar title or scheduled time: `PATCH /api/v1/agent/calendar/events/{event_key}`. For example, provide `{"title":"New title","scheduled_at":"2026-10-02T16:00:00Z"}` to `edit-event`. Delete a worker-created draft with `delete-event`. Deleting the Calendar card does not cancel an already submitted execution-plane job; cancel that job through its Job Master control surface.
 
 An event may include the remote `job_id`; it is stored with the Calendar metadata so the worker can correlate the card and execution job.
+
+
+`Reporter.EnqueueJobProgress(jobID, update)` fsyncs reports into a mode-0700
+local outbox and returns without network I/O. `Reporter.Run(ctx)` retries the
+oldest records in the background; failed records survive a process restart.
+The Job Master worker pool wires this reporter when the protected InstaEdit
+`.env` is present. Lease-renewal ticks produce heartbeat reports, terminal
+outcomes include structured errors, and the video.create delivery stage reads
+the current Calendar schedule immediately before upload, polling again while a
+future date is pending. `GET /api/v1/agent/calendar/events/by-job/{jobID}`
+returns the latest linked event. `POST .../{eventKey}/cancel` signals the Job
+Master; its cancellation travels through the existing lease-renewal context.

@@ -4,10 +4,12 @@ package wiring
 import (
 	"context"
 	"os"
+	"path/filepath"
 	"time"
 
 	cliprender "github.com/Marcuss-ops/PipelineGen/internal/capabilities/cliprender"
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
+	instaeditcalendar "github.com/Marcuss-ops/PipelineGen/internal/instaeditcalendar"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
@@ -156,6 +158,26 @@ func buildJobRunnerResourceSampler(deps jobRunnerDeps) (kernobs.RunResourceSampl
 // completion classification is injected at the platform boundary.
 func newJobRunnerPool(deps jobRunnerDeps, name string, cfg appjobs.RunnerConfig) *appjobs.Runner {
 	runner := appjobs.NewRunner(deps.root.Jobs.Repo, deps.root.Jobs.Dispatcher, deps.log, cfg)
+	calendarURL, calendarKey := instaeditcalendar.LoadConfig()
+	if calendarURL != "" && calendarKey != "" {
+		client, err := instaeditcalendar.NewClient(calendarURL, calendarKey)
+		if err != nil {
+			deps.log.Warn("InstaEdit calendar reporter disabled: invalid configuration", zap.Error(err))
+		} else {
+			outboxDir := os.Getenv("INSTAEDIT_CALENDAR_OUTBOX")
+			if outboxDir == "" {
+				outboxDir = filepath.Join(os.Getenv("HOME"), ".local", "state", "pipelinegen", "instaedit-calendar", name)
+			}
+			reporter, err := instaeditcalendar.NewReporter(client, outboxDir, 2*time.Second)
+			if err != nil {
+				deps.log.Warn("InstaEdit calendar reporter disabled: outbox unavailable", zap.Error(err))
+			} else {
+				runner.WithCalendarReporter(reporter)
+			}
+		}
+	} else if calendarURL != "" || calendarKey != "" {
+		deps.log.Warn("InstaEdit calendar reporter disabled: both URL and API key are required")
+	}
 	runner.WithRegistry(appjobs.Compose())
 	runner.WithClaimSnapshotter(deps.root.Jobs.Repo)
 	if deps.root.Jobs.Broker != nil {

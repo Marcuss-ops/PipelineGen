@@ -29,7 +29,7 @@ returns the same post. Reusing a key with different event data returns `409`.
 Each item becomes a draft post with no publication targets, so creating a
 worker event cannot enqueue a social upload.
 
-`job_id` is optional and is retained in the event metadata for correlation. Worker IDs are stored in `worker_remote_job_id` and echoed in every Calendar diagnostic snapshot.
+`job_id` is optional and is retained in the event metadata for correlation. Replaying an event key uses a PostgreSQL `ON CONFLICT DO UPDATE` and returns the existing post ID; if the linked job changes, the progress state restarts at `QUEUED`. Worker IDs are stored in `worker_remote_job_id` and echoed in every Calendar diagnostic snapshot.
 
 ## Edit or delete a draft event
 

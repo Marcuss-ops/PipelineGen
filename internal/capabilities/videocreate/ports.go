@@ -247,6 +247,10 @@ type PublishedArtifact struct {
 // ArtifactPublisher is the artifact-publishing seam (the existing
 // delivery publisher + media identity resolution). The workflow stores
 // only what this returns — never a local path — in its result.
+type PublicationSchedule interface {
+	WaitUntilDue(context.Context, string) error
+}
+
 type ArtifactPublisher interface {
 	Publish(ctx context.Context, req PublishRequest) (PublishedArtifact, error)
 }
@@ -265,6 +269,7 @@ type Deps struct {
 	Probe     MediaProber
 	Assembler Assembler
 	Publish   ArtifactPublisher
+	Schedule  PublicationSchedule
 	// Texts sequences 07_render behind the requested-language transcript
 	// readiness (async translation materialization). Wired in production;
 	// nil skips the wait (the render child stays the fail-closed gate).

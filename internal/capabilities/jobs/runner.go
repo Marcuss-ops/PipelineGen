@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	capjobregistry "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobregistry"
+	instaeditcalendar "github.com/Marcuss-ops/PipelineGen/internal/instaeditcalendar"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
@@ -37,7 +38,8 @@ type Runner struct {
 	// to every Worker by buildWorkers. nil = polling-only parent finalisation
 	// (correct, but every fan-out pays the sweeper's interval as completion
 	// latency).
-	parentNotifier ParentCompletionNotifier
+	parentNotifier   ParentCompletionNotifier
+	calendarReporter *instaeditcalendar.Reporter
 }
 
 func NewRunner(repo job.Store, dispatcher *Dispatcher, log *zap.Logger, cfg RunnerConfig) *Runner {
@@ -98,6 +100,11 @@ func (r *Runner) WithClaimSnapshotter(snapshotter ClaimSnapshotter) *Runner {
 // reports each child that commits terminal. Nil-tolerant: without a notifier
 // the aggregator's recovery sweep is the only finalisation path, which is
 // correct but pays the sweep interval as latency on every fan-out.
+func (r *Runner) WithCalendarReporter(reporter *instaeditcalendar.Reporter) *Runner {
+	r.calendarReporter = reporter
+	return r
+}
+
 func (r *Runner) WithParentCompletionNotifier(n ParentCompletionNotifier) *Runner {
 	r.parentNotifier = n
 	return r
@@ -112,17 +119,18 @@ func (r *Runner) buildWorkers() []*Worker {
 	for i := 0; i < r.cfg.Workers; i++ {
 		workerID := fmt.Sprintf("%s_%d", workerIDPrefix, i+1)
 		w := NewWorker(WorkerDeps{
-			ID:              workerID,
-			Repo:            r.repo,
-			Dispatcher:      r.dispatcher,
-			Notifier:        r.cfg.Notifier,
-			Log:             r.log,
-			LeaseTTL:        r.cfg.LeaseTTL,
-			PollEvery:       r.cfg.PollEvery,
-			Backoff:         r.cfg.Backoff,
-			Types:           r.cfg.JobTypes,
-			PayloadMatch:    r.cfg.PayloadMatch,
-			PayloadNotMatch: r.cfg.PayloadNotMatch,
+			ID:               workerID,
+			Repo:             r.repo,
+			Dispatcher:       r.dispatcher,
+			Notifier:         r.cfg.Notifier,
+			Log:              r.log,
+			LeaseTTL:         r.cfg.LeaseTTL,
+			PollEvery:        r.cfg.PollEvery,
+			Backoff:          r.cfg.Backoff,
+			Types:            r.cfg.JobTypes,
+			PayloadMatch:     r.cfg.PayloadMatch,
+			PayloadNotMatch:  r.cfg.PayloadNotMatch,
+			CalendarReporter: r.calendarReporter,
 		})
 		if r.reg != nil {
 			w.WithRegistry(r.reg)
@@ -151,6 +159,9 @@ func (r *Runner) buildWorkers() []*Worker {
 }
 
 func (r *Runner) Start(ctx context.Context) {
+	if r.calendarReporter != nil {
+		concurrent.SafeGo("calendar-event-outbox", func() { _ = r.calendarReporter.Run(ctx) })
+	}
 	for _, w := range r.buildWorkers() {
 		concurrent.SafeGo(fmt.Sprintf("worker-%s", w.id), func() {
 			w.Start(ctx)
