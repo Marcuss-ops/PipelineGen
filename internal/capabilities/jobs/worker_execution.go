@@ -75,6 +75,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	instaeditcalendar "github.com/Marcuss-ops/PipelineGen/internal/instaeditcalendar"
+	"strings"
 	"sync/atomic"
 	"time"
 
@@ -246,12 +248,14 @@ func (w *Worker) runJob(parent context.Context, j *job.Job) {
 	leaseDone := make(chan struct{})
 	var renewCount atomic.Int64
 	go w.renewLeaseLoopWith(jobCtx, j.ID, stopLease, leaseDone,
-		renewLeaseLoopOpts{jobCancel: jobCancel, renewCount: &renewCount})
+		renewLeaseLoopOpts{jobCancel: jobCancel, renewCount: &renewCount, onHeartbeat: func() { w.reportCalendar(j.ID, j.Type, "RUNNING", "lease_heartbeat", nil, nil) }})
 	defer func() {
 		close(stopLease)
 		<-leaseDone
 	}()
 
+	initialProgress := 0
+	w.reportCalendar(j.ID, j.Type, "RUNNING", "worker_started", &initialProgress, nil)
 	tools := &JobTools{
 		Progress: func(progress int, message string) {
 			// FASE 0.2 (July 4 2026) silent-drop rewrite per
@@ -274,6 +278,8 @@ func (w *Worker) runJob(parent context.Context, j *job.Job) {
 				return
 			}
 			observability.WorkerProgressEmittedTotal.WithLabelValues(j.Type, "success").Inc()
+			value := progress
+			w.reportCalendar(j.ID, j.Type, "RUNNING", message, &value, nil)
 		},
 		Event: func(eventType string, message string, data map[string]any) {
 			// FASE 0.2 silent-drop rewrite: same reasoning as Progress
@@ -374,6 +380,24 @@ func (w *Worker) runJob(parent context.Context, j *job.Job) {
 			run.Finish()
 		}
 		report = run.Report()
+	}
+	calendarStatus := strings.ToUpper(finalStatus)
+	if calendarStatus == "SUCCEEDED" {
+		complete := 100
+		w.reportCalendar(j.ID, j.Type, "COMPLETED", "completed", &complete, nil)
+	} else if calendarStatus == "CANCELLED" || calendarStatus == "CANCELED" {
+		w.reportCalendar(j.ID, j.Type, "CANCELLED", "cancelled", nil, nil)
+	} else if calendarStatus == "FAILED" || dispatchErr != nil {
+		reason := "remote job failed"
+		tail := ""
+		if dispatchErr != nil {
+			reason = dispatchErr.Error()
+			tail = reason
+		}
+		if len(tail) > 12000 {
+			tail = tail[len(tail)-12000:]
+		}
+		w.reportCalendar(j.ID, j.Type, "FAILED", "failed", nil, &instaeditcalendar.WorkerError{ErrorCode: "REMOTE_JOB_FAILED", Reason: reason, OutputTail: tail})
 	}
 	ledger.Finish(finalizationCtx, j, stepID, w.id, attemptID, finalStatus, finalResult, dispatchErr, report)
 	ledger.RecordCanonicalOutputs(finalizationCtx, j.ID, OutputRelationForJobType(j.Type), canonicalAssetIDs)

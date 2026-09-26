@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"math/rand"
@@ -13,6 +14,17 @@ import (
 	"strings"
 	"time"
 )
+
+type HTTPError struct {
+	StatusCode int
+	Message    string
+}
+
+func (e *HTTPError) Error() string {
+	return fmt.Sprintf("InstaEdit returned HTTP %d: %s", e.StatusCode, e.Message)
+}
+
+var ErrEventNotFound = errors.New("linked Calendar event not found")
 
 type Client struct {
 	baseURL, apiKey string
@@ -69,6 +81,34 @@ func (c *Client) UpdateProgress(ctx context.Context, eventKey string, update Pro
 	return c.doJSON(ctx, http.MethodPatch, "/api/v1/agent/calendar/events/"+url.PathEscape(eventKey)+"/progress", update)
 }
 
+// GetEvent reads the latest cancellation and scheduling fields before upload.
+func (c *Client) GetEvent(ctx context.Context, eventKey string) (json.RawMessage, error) {
+	if strings.TrimSpace(eventKey) == "" {
+		return nil, fmt.Errorf("event key is required")
+	}
+	return c.do(ctx, http.MethodGet, "/api/v1/agent/calendar/events/"+url.PathEscape(eventKey), nil)
+}
+
+// GetEventByJobID returns the card linked to this worker job, including the latest schedule.
+func (c *Client) GetEventByJobID(ctx context.Context, jobID string) (json.RawMessage, error) {
+	if strings.TrimSpace(jobID) == "" {
+		return nil, fmt.Errorf("job id is required")
+	}
+	raw, err := c.do(ctx, http.MethodGet, "/api/v1/agent/calendar/events/by-job/"+url.PathEscape(jobID), nil)
+	if errors.Is(err, ErrEventNotFound) {
+		return nil, ErrEventNotFound
+	}
+	return raw, err
+}
+
+// CancelEvent requests cancellation of the Calendar event and its linked Job Master job.
+func (c *Client) CancelEvent(ctx context.Context, eventKey string) (json.RawMessage, error) {
+	if strings.TrimSpace(eventKey) == "" {
+		return nil, fmt.Errorf("event key is required")
+	}
+	return c.doJSON(ctx, http.MethodPost, "/api/v1/agent/calendar/events/"+url.PathEscape(eventKey)+"/cancel", map[string]any{})
+}
+
 type EventUpdate struct {
 	Title       *string `json:"title,omitempty"`
 	ScheduledAt *string `json:"scheduled_at,omitempty"`
@@ -121,8 +161,11 @@ func (c *Client) do(ctx context.Context, method, path string, data []byte) (json
 			} else if resp.StatusCode >= 200 && resp.StatusCode < 300 {
 				return json.RawMessage(out), nil
 			} else {
-				lastErr = fmt.Errorf("InstaEdit returned HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(out)))
+				lastErr = &HTTPError{StatusCode: resp.StatusCode, Message: strings.TrimSpace(string(out))}
 				if resp.StatusCode < 500 && resp.StatusCode != http.StatusTooManyRequests {
+					if resp.StatusCode == http.StatusNotFound && strings.Contains(path, "/events/by-job/") {
+						return nil, ErrEventNotFound
+					}
 					return nil, lastErr
 				}
 			}

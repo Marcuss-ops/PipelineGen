@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"time"
 
 	search "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/search"
 	delivery "github.com/Marcuss-ops/PipelineGen/internal/capabilities/delivery"
@@ -20,6 +21,7 @@ import (
 	mediasearchapi "github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediasearch"
 	outboxapi "github.com/Marcuss-ops/PipelineGen/internal/capabilities/outbox"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/videocreate"
+	instaeditcalendar "github.com/Marcuss-ops/PipelineGen/internal/instaeditcalendar"
 	module "github.com/Marcuss-ops/PipelineGen/internal/platform/httpserver"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/media/rustexec"
 	executionsteps "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/executionsteps"
@@ -114,6 +116,14 @@ func registerVideoCreate(root *ComposeRoot, log *zap.Logger, rustMusclesPath, ff
 	if root.Repos == nil || root.Repos.TextTrackRepo == nil {
 		return fmt.Errorf("registerVideoCreate: text track repository is not wired")
 	}
+	var schedule videocreate.PublicationSchedule
+	if calendarURL, calendarKey := instaeditcalendar.LoadConfig(); calendarURL != "" && calendarKey != "" {
+		calendarClient, clientErr := instaeditcalendar.NewClient(calendarURL, calendarKey)
+		if clientErr != nil {
+			return fmt.Errorf("registerVideoCreate: build InstaEdit calendar client: %w", clientErr)
+		}
+		schedule = instaeditcalendar.ScheduleGate{Client: calendarClient, PollInterval: 15 * time.Second}
+	}
 	handler, err := videocreate.NewHandler(videocreate.Deps{
 		Steps:     executionsteps.NewSQLiteStore(root.DB.DB),
 		Children:  children,
@@ -122,6 +132,7 @@ func registerVideoCreate(root *ComposeRoot, log *zap.Logger, rustMusclesPath, ff
 		Probe:     prober,
 		Assembler: assembler,
 		Publish:   videocreate.NewDeliveryPublisher(root.Drive.Publisher, delivery.DestinationRenderedClip),
+		Schedule:  schedule,
 		Texts:     videocreate.NewTranscriptReadiness(root.Repos.TextTrackRepo),
 		Workspace: workspace,
 		Log:       log,

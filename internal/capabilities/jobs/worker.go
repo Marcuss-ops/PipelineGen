@@ -63,6 +63,7 @@ import (
 
 	capjobregistry "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobregistry"
 	jobscheduling "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/scheduling"
+	instaeditcalendar "github.com/Marcuss-ops/PipelineGen/internal/instaeditcalendar"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 	metrics "github.com/Marcuss-ops/PipelineGen/internal/platform/observability"
@@ -168,7 +169,8 @@ type Worker struct {
 	// correct (the sweep is the durability net) but pays the sweep's
 	// interval as user-visible latency on every fan-out. See
 	// WithParentCompletionNotifier().
-	parentNotifier ParentCompletionNotifier
+	parentNotifier   ParentCompletionNotifier
+	calendarReporter *instaeditcalendar.Reporter
 }
 
 // WorkerDeps carries the dependencies for NewWorker. Grouping them
@@ -189,7 +191,8 @@ type WorkerDeps struct {
 	PayloadMatch job.PayloadMatch
 	// PayloadNotMatch optionally excludes a phase from this worker
 	// (kernel/job.PayloadNotMatch). Empty = no exclusion.
-	PayloadNotMatch job.PayloadNotMatch
+	PayloadNotMatch  job.PayloadNotMatch
+	CalendarReporter *instaeditcalendar.Reporter
 }
 
 // NewWorker constructs a Worker.
@@ -216,17 +219,18 @@ type WorkerDeps struct {
 // is the seam marker for a future adapter).
 func NewWorker(deps WorkerDeps) *Worker {
 	return &Worker{
-		id:         deps.ID,
-		repo:       deps.Repo,
-		dispatcher: deps.Dispatcher,
-		log:        deps.Log,
-		leaseTTL:   deps.LeaseTTL,
-		pollEvery:  deps.PollEvery,
-		backoff:    deps.Backoff,
-		types:      deps.Types,
-		match:      deps.PayloadMatch,
-		notMatch:   deps.PayloadNotMatch,
-		notifier:   deps.Notifier,
+		id:               deps.ID,
+		repo:             deps.Repo,
+		dispatcher:       deps.Dispatcher,
+		log:              deps.Log,
+		leaseTTL:         deps.LeaseTTL,
+		pollEvery:        deps.PollEvery,
+		backoff:          deps.Backoff,
+		types:            deps.Types,
+		match:            deps.PayloadMatch,
+		notMatch:         deps.PayloadNotMatch,
+		notifier:         deps.Notifier,
+		calendarReporter: deps.CalendarReporter,
 	}
 }
 
@@ -358,6 +362,21 @@ func (w *Worker) WithResourceSampler(s kernobs.RunResourceSampler, host string) 
 // recovery sweep finalises the parent — it never fails the completed job.
 //
 // Returns the receiver to allow builder-style chaining at the composition site.
+func (w *Worker) reportCalendar(jobID, kind, status, phase string, progress *int, failure *instaeditcalendar.WorkerError) {
+	if w.calendarReporter == nil || jobID == "" {
+		return
+	}
+	update := instaeditcalendar.Progress{Kind: kind, Status: status, Phase: phase, Progress: progress, Error: failure}
+	if err := w.calendarReporter.EnqueueJobProgress(jobID, update); err != nil {
+		w.log.Warn("calendar progress spool failed", zap.String("job_id", jobID), zap.Error(err))
+	}
+}
+
+func (w *Worker) WithCalendarReporter(reporter *instaeditcalendar.Reporter) *Worker {
+	w.calendarReporter = reporter
+	return w
+}
+
 func (w *Worker) WithParentCompletionNotifier(n ParentCompletionNotifier) *Worker {
 	w.parentNotifier = n
 	return w
