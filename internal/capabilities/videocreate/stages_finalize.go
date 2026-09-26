@@ -150,12 +150,8 @@ func runPublishStage(ctx context.Context, run *Run, spec StepSpec) (StageOutput,
 	if err != nil {
 		return out, fmt.Errorf("%w: asset identity: %v", ErrPublishFailed, err)
 	}
-	if run.Deps.Schedule != nil {
-		if err := run.Deps.Schedule.WaitUntilDue(ctx, run.Job.ID); err != nil {
-			return out, fmt.Errorf("%w: calendar scheduling gate: %v", ErrPublishFailed, err)
-		}
-	}
 	published, err := run.Deps.Publish.Publish(ctx, PublishRequest{
+		JobID:                 run.Job.ID,
 		LocalRef:              LocalRef{LocalPath: finalPath},
 		Filename:              "final_video.mp4",
 		MIMEType:              "video/mp4",

@@ -5,9 +5,9 @@ import (
 	"fmt"
 
 	capjobregistry "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobregistry"
-	instaeditcalendar "github.com/Marcuss-ops/PipelineGen/internal/instaeditcalendar"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
+	instaeditcalendar "github.com/Marcuss-ops/PipelineGen/internal/platform/instaeditcalendar"
 	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
 	"go.uber.org/zap"
 )

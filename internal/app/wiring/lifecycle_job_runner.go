@@ -9,10 +9,10 @@ import (
 
 	cliprender "github.com/Marcuss-ops/PipelineGen/internal/capabilities/cliprender"
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
-	instaeditcalendar "github.com/Marcuss-ops/PipelineGen/internal/instaeditcalendar"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
+	instaeditcalendar "github.com/Marcuss-ops/PipelineGen/internal/platform/instaeditcalendar"
 	localbroker "github.com/Marcuss-ops/PipelineGen/internal/platform/jobs/local"
 	obsmetrics "github.com/Marcuss-ops/PipelineGen/internal/platform/observability"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/procmetrics"

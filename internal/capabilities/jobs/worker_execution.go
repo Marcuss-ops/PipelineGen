@@ -75,7 +75,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	instaeditcalendar "github.com/Marcuss-ops/PipelineGen/internal/instaeditcalendar"
+	instaeditcalendar "github.com/Marcuss-ops/PipelineGen/internal/platform/instaeditcalendar"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -401,4 +401,33 @@ func (w *Worker) runJob(parent context.Context, j *job.Job) {
 	}
 	ledger.Finish(finalizationCtx, j, stepID, w.id, attemptID, finalStatus, finalResult, dispatchErr, report)
 	ledger.RecordCanonicalOutputs(finalizationCtx, j.ID, OutputRelationForJobType(j.Type), canonicalAssetIDs)
+}
+
+func (w *Worker) jobTimeoutFor(jobType string) time.Duration {
+	if w.timeouts != nil {
+		if d, ok := w.timeouts[jobType]; ok && d > 0 {
+			return d
+		}
+	}
+	return 10 * time.Minute
+}
+
+// maxRetriesFor returns the default max-retry count for a job type,
+// sourced from the attached Registry. Falls back to the canonical
+// 3-retry default when the worker has no attached Registry or the
+// job type is not registered. Mirrors the timeout lookup pattern
+// (jobTimeoutFor).
+//
+// Issue 2 / P0 (June 2026): locks the Worker-side retry lookup so
+// the future Issue 4 (P1, Enqueue path) integration into runJob is
+// a one-line swap — pass effectiveRetries := w.maxRetriesFor(j.Type)
+// when j.MaxRetries == 0. The companion regression test
+// TestWorker_HonorsRegistryRetries (in registry_wiring_test.go)
+// pins this contract today so Issue 4 cannot accidentally regress
+// the lookup surface.
+func (w *Worker) maxRetriesFor(jobType string) int {
+	if w.reg != nil {
+		return w.reg.DefaultMaxRetries(jobType)
+	}
+	return 3
 }
