@@ -17,8 +17,10 @@ type ExternalConfig struct {
 	OllamaWarmTimeoutSeconds    int      `yaml:"ollama_warm_timeout_seconds" env:"VELOX_OLLAMA_WARM_TIMEOUT" default:"600"`
 	YtdlpPath                   string   `yaml:"ytdlp_path" env:"YTDLP_PATH" default:"yt-dlp"`
 	YoutubePlayerClientFallback []string `yaml:"youtube_player_client_fallback" env:"VELOX_YOUTUBE_PLAYER_CLIENT_FALLBACK" default:"[]"`
-	YoutubeMinSleepSeconds      int      `yaml:"youtube_min_sleep_seconds" env:"YTDLP_MIN_SLEEP_SECONDS" default:"0"`
-	YoutubeMaxSleepSeconds      int      `yaml:"youtube_max_sleep_seconds" env:"YTDLP_MAX_SLEEP_SECONDS" default:"0"`
+	YoutubeMinSleepSeconds      int      `yaml:"youtube_min_sleep_seconds" env:"YTDLP_MIN_SLEEP_SECONDS" default:"2"`
+	YoutubeMaxSleepSeconds      int      `yaml:"youtube_max_sleep_seconds" env:"YTDLP_MAX_SLEEP_SECONDS" default:"5"`
+	YoutubeGlobalConcurrency    int      `yaml:"youtube_global_concurrency" env:"VELOX_YOUTUBE_GLOBAL_YTDLP_CONCURRENCY" default:"3"`
+	Youtube429CooldownSeconds   int      `yaml:"youtube_429_cooldown_seconds" env:"VELOX_YOUTUBE_429_COOLDOWN_SECONDS" default:"60"`
 	FfmpegPath                  string   `yaml:"ffmpeg_path" env:"FFMPEG_PATH" default:"ffmpeg"`
 	RustMusclesPath             string   `yaml:"rust_muscles_path" env:"VELOX_RUST_MUSCLES_PATH" default:"bin/pipelinegen-muscles"`
 	RustVisualNERPath           string   `yaml:"rust_visualner_path" env:"VELOX_RUST_VISUALNER_PATH" default:"bin/visualner"`

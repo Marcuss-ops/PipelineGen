@@ -73,12 +73,12 @@ func TestExternalConfigResolveYouTubeCookiesPath(t *testing.T) {
 }
 
 func TestExternalConfigYoutubeSleepBinding(t *testing.T) {
-	t.Run("defaultsDisablePacing", func(t *testing.T) {
+	t.Run("defaultsEnableProductionPacing", func(t *testing.T) {
 		cfg := &Config{}
 		applyDefaults(cfg)
-		assert.Equal(t, 0, cfg.External.YoutubeMinSleepSeconds)
-		assert.Equal(t, 0, cfg.External.YoutubeMaxSleepSeconds)
-		assert.Equal(t, 0, func() int { min, _ := cfg.External.ResolvedYouTubeSleepSeconds(); return min }())
+		assert.Equal(t, 2, cfg.External.YoutubeMinSleepSeconds)
+		assert.Equal(t, 5, cfg.External.YoutubeMaxSleepSeconds)
+		assert.Equal(t, 2, func() int { min, _ := cfg.External.ResolvedYouTubeSleepSeconds(); return min }())
 	})
 
 	t.Run("yamlBindsAndClampsRange", func(t *testing.T) {
@@ -324,4 +324,39 @@ func TestConfigOverride_ArtlistSkipTranscription_True(t *testing.T) {
 	applyEnvVars(cfg)
 	assert.True(t, cfg.External.ArtlistSkipTranscription,
 		"operator opt-in via ARTLIST_SKIP_TRANSCRIPTION=true MUST bind (escape hatch for non-whisper environments)")
+}
+
+// ---------- YouTube gate + 429 pacing (YT-GATE) ----------
+
+func TestExternalConfigYouTubeGateBinding(t *testing.T) {
+	t.Run("gateDefaultsAreProductionShaped", func(t *testing.T) {
+		cfg := &Config{}
+		applyDefaults(cfg)
+		assert.Equal(t, 3, cfg.External.YoutubeGlobalConcurrency)
+		assert.Equal(t, 60, cfg.External.Youtube429CooldownSeconds)
+	})
+
+	t.Run("yamlBindsGateFields", func(t *testing.T) {
+		cfg := &Config{}
+		applyDefaults(cfg)
+		raw := []byte(`external:
+  youtube_global_concurrency: 7
+  youtube_429_cooldown_seconds: 120
+`)
+		if err := yaml.Unmarshal(raw, cfg); err != nil {
+			t.Fatalf("yaml unmarshal failed: %v", err)
+		}
+		assert.Equal(t, 7, cfg.External.YoutubeGlobalConcurrency)
+		assert.Equal(t, 120, cfg.External.Youtube429CooldownSeconds)
+	})
+
+	t.Run("envBindsGateFields", func(t *testing.T) {
+		t.Setenv("VELOX_YOUTUBE_GLOBAL_YTDLP_CONCURRENCY", "5")
+		t.Setenv("VELOX_YOUTUBE_429_COOLDOWN_SECONDS", "90")
+		cfg := &Config{}
+		applyDefaults(cfg)
+		applyEnvVars(cfg)
+		assert.Equal(t, 5, cfg.External.YoutubeGlobalConcurrency)
+		assert.Equal(t, 90, cfg.External.Youtube429CooldownSeconds)
+	})
 }
