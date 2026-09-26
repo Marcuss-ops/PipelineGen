@@ -47,6 +47,13 @@ type Progress struct {
 	Progress *int           `json:"progress,omitempty"`
 	Phase    string         `json:"phase,omitempty"`
 	Snapshot map[string]any `json:"snapshot,omitempty"`
+	Error    *WorkerError   `json:"error,omitempty"`
+}
+
+type WorkerError struct {
+	ErrorCode  string `json:"error_code"`
+	Reason     string `json:"reason"`
+	OutputTail string `json:"output_tail,omitempty"`
 }
 
 func (c *Client) CreateEvents(ctx context.Context, req BatchRequest) (json.RawMessage, error) {
