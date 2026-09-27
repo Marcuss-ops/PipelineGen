@@ -730,8 +730,10 @@ func TestCompileOverlayPlan_ChosenEntityImageCarriesResolvedAsset(t *testing.T) 
 	require.True(t, ok, "the chosen entity (Tim Cook) must become the entity card")
 	require.Equal(t, "entity_image", card.Kind)
 	require.Equal(t, "image_popup", card.TemplateID)
-	require.Empty(t, card.MotionID,
-		"entity portraits use the certified 2D image preset so their photo geometry is not perspective-warped")
+	require.Contains(t, capabilityoverlay.CertifiedImageMotions(), card.MotionID,
+		"entity portraits use a motion from the certified image catalog")
+	require.Equal(t, 345, card.Params["box_width"], "entity portraits should render larger on the 1280x720 test canvas")
+	require.Equal(t, 345, card.Params["box_height"], "entity portraits should render larger on the 1280x720 test canvas")
 	require.Empty(t, card.Text, "the entity image must not carry a rendered name")
 	require.NotEmpty(t, card.PresetID, "the entity image must use an official image preset")
 	require.Empty(t, card.ImagePresetID)

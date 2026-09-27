@@ -4,7 +4,7 @@
 // It proves, over the 24-script / 12-category ground-truth corpus, that the
 // system keeps recognising entities on different topics, different arguments
 // and different linguistic structures. Final overlays follow the production
-// contract: up to five grounded phrases and five materialized images per run.
+// contract: up to fifteen grounded phrases and eighteen materialized images per run.
 //
 //	LEVEL 1 — SEMANTIC
 //	  generate endpoint accepts every topic

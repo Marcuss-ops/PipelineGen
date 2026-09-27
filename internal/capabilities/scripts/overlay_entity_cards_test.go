@@ -43,7 +43,7 @@ func TestAttachEntityCardAssetCarriesVerifiedLocalPathWithoutSerializingIt(t *te
 		t.Fatalf("entity image = %#v, want resolved image card", item)
 	}
 	if item.MotionID != "" || item.MotionParams != nil {
-		t.Fatalf("entity image motion = %q params=%v, want the image preset's 2D entrance without stale text params", item.MotionID, item.MotionParams)
+		t.Fatalf("entity image motion = %q params=%v, want run-level selection without stale text params", item.MotionID, item.MotionParams)
 	}
 	if item.AssetRefs[0].LocalPath != localPath {
 		t.Fatalf("local path = %q, want verified producer path", item.AssetRefs[0].LocalPath)

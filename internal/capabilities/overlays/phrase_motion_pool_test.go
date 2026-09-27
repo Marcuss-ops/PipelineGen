@@ -238,11 +238,19 @@ func TestCertifiedImageMotionPoolAndPlannerAssignment(t *testing.T) {
 			t.Fatalf("image motion %d = %q / %q, want catalog contract %q", i, got[i], imageMotionCandidates[i], want[i])
 		}
 	}
-	selected := make(map[string]bool, 18)
+	selected := make(map[string]bool, len(got))
 	for ordinal := range got {
 		id := selectImageMotion("image-catalog-18", "run", ordinal, nil)
 		if !containsString(got, id) || selected[id] {
 			t.Fatalf("image selector repeated or emitted an unknown motion at %d: %q", ordinal, id)
+		}
+		selected[id] = true
+	}
+	selected = make(map[string]bool, len(got))
+	for ordinal := range got {
+		id := SelectImageMotionAt("image-catalog-18", "run", ordinal)
+		if !containsString(got, id) || selected[id] {
+			t.Fatalf("public image selector repeated or emitted an unknown motion at %d: %q", ordinal, id)
 		}
 		selected[id] = true
 	}
@@ -262,7 +270,7 @@ func TestCertifiedImageMotionPoolAndPlannerAssignment(t *testing.T) {
 			continue
 		}
 		if !containsString(got, item.MotionID) || item.PresetID == "" {
-			t.Fatalf("image item %q must use a certified 2.5D motion and image preset, preset=%q motion=%q", item.ID, item.PresetID, item.MotionID)
+			t.Fatalf("image item %q must use a certified image motion and image preset, preset=%q motion=%q", item.ID, item.PresetID, item.MotionID)
 		}
 		imageCount++
 	}
@@ -309,28 +317,51 @@ func TestImageMotionPoolMatchesCanonicalChrononCatalog(t *testing.T) {
 		Motions []struct {
 			ID       string `json:"id"`
 			Category string `json:"category"`
+			Tracks   []struct {
+				Property string `json:"property"`
+			} `json:"tracks"`
 		} `json:"motions"`
 	}
 	if err := json.Unmarshal(data, &document); err != nil {
 		t.Fatal(err)
 	}
-	var catalogIDs, catalogPhraseIDs []string
+	var catalogIDs, selectedIDs, catalogPhraseIDs []string
+	safeSet := make(map[string]bool, len(imageMotionCandidates))
+	for _, id := range imageMotionCandidates {
+		safeSet[id] = true
+	}
 	for _, definition := range document.Motions {
 		if definition.Category == "image_25d_clean_v1" || definition.Category == "overlay_v3_image" {
 			catalogIDs = append(catalogIDs, definition.ID)
+			if safeSet[definition.ID] {
+				selectedIDs = append(selectedIDs, definition.ID)
+				for _, track := range definition.Tracks {
+					switch track.Property {
+					case "opacity", "scale", "position_x", "position_y", "position_z", "rotation_x", "rotation_y", "blur":
+					default:
+						t.Fatalf("certified image motion %q uses unsupported transform %q", definition.ID, track.Property)
+					}
+				}
+			}
 		}
 		if definition.Category == "apple_v2" || definition.Category == "apple_v3" || definition.Category == "phrase_apple_clean_v1" || definition.Category == "apple_phrase_v1" || strings.HasPrefix(definition.ID, "typewriter_") {
 			catalogPhraseIDs = append(catalogPhraseIDs, definition.ID)
 		}
 	}
 	sort.Strings(catalogIDs)
+	sort.Strings(selectedIDs)
 	sort.Strings(catalogPhraseIDs)
-	if len(catalogIDs) != 18 || len(catalogIDs) != len(imageMotionCandidates) {
-		t.Fatalf("catalog has %d image motions, pool has %d; want all 18", len(catalogIDs), len(imageMotionCandidates))
+	if len(catalogIDs) != 18 {
+		t.Fatalf("catalog has %d image motions; want all 18", len(catalogIDs))
 	}
-	for i := range catalogIDs {
-		if catalogIDs[i] != imageMotionCandidates[i] {
-			t.Fatalf("catalog motion %d=%q, pool=%q", i, catalogIDs[i], imageMotionCandidates[i])
+	wantSelected := append([]string(nil), imageMotionCandidates...)
+	sort.Strings(wantSelected)
+	if len(selectedIDs) != len(wantSelected) {
+		t.Fatalf("catalog matches %d selected motions, pool has %d", len(selectedIDs), len(wantSelected))
+	}
+	for i := range selectedIDs {
+		if selectedIDs[i] != wantSelected[i] {
+			t.Fatalf("selected image motion %d=%q, catalog=%q", i, selectedIDs[i], wantSelected[i])
 		}
 	}
 	if len(catalogPhraseIDs) != 107 || len(phraseMotionCandidates) != len(catalogPhraseIDs) {

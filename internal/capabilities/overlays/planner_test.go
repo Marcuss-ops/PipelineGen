@@ -148,9 +148,9 @@ func TestApplyPhraseOverlayBudgetReportsShortfallWithoutInventingItems(t *testin
 	}
 }
 
-func TestApplyEditorialOverlayBudgetEnforcesRunLevelFiveImagesAndFifteenPhrases(t *testing.T) {
-	items := make([]OverlayItem, 0, 30)
-	for i := 0; i < 7; i++ {
+func TestApplyEditorialOverlayBudgetEnforcesRunLevelEighteenImagesAndFifteenPhrases(t *testing.T) {
+	items := make([]OverlayItem, 0, 40)
+	for i := 0; i < 20; i++ {
 		items = append(items, OverlayItem{
 			ID:        fmt.Sprintf("image-%d", i),
 			Kind:      "entity_image",
@@ -180,13 +180,13 @@ func TestApplyEditorialOverlayBudgetEnforcesRunLevelFiveImagesAndFifteenPhrases(
 			t.Fatalf("non-editorial overlay survived: %+v", item)
 		}
 	}
-	if images != MaxImageOverlaysPerRun || phrases != MaxPhraseOverlaysPerRun || len(got) != 20 {
-		t.Fatalf("image/phrase/total counts = %d/%d/%d, want 5/15/20", images, phrases, len(got))
+	if images != MaxImageOverlaysPerRun || phrases != MaxPhraseOverlaysPerRun || len(got) != 33 {
+		t.Fatalf("image/phrase/total counts = %d/%d/%d, want 18/15/33", images, phrases, len(got))
 	}
 	if budget != (PhraseOverlayBudget{Requested: 15, Materialized: 15, Shortfall: 0}) {
 		t.Fatalf("phrase budget = %+v, want 15 requested and materialized", budget)
 	}
-	if got[0].ID != "image-2" || got[4].ID != "image-6" || got[5].ID != "phrase-2" || got[19].ID != "phrase-16" {
+	if got[0].ID != "image-2" || got[17].ID != "image-19" || got[18].ID != "phrase-2" || got[32].ID != "phrase-16" {
 		t.Fatalf("run-level ranking chose wrong survivors: %+v", got)
 	}
 }

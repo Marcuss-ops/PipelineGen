@@ -198,10 +198,8 @@ func attachEntityCardAsset(item capabilityoverlay.OverlayItem, media *capability
 	item.Kind = string(capabilityoverlay.KindEntityImage)
 	item.TemplateID = "image_popup"
 	item.PresetID = capabilityoverlay.SelectEntityImagePreset(planID, item.SceneID, item.ID)
-	// The selected image preset already carries a certified 2D entrance. Do not
-	// attach an image_25d MotionID here: it replaces that entrance and applies
-	// perspective transforms to ordinary portrait photos, which visibly bends
-	// their edges.
+	// The run-level pass assigns a non-repeating catalog motion after image
+	// overlays have been capped.
 	item.MotionID = ""
 	item.MotionParams = nil
 	item.ImagePresetID = ""

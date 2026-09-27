@@ -308,6 +308,13 @@ First real two-stage job driven from this host with `pre-job.creator-77.json`
 | artifact | 47 839 864 B, `sha`-addressed download on the master |
 | `ffprobe` | h264 1920×1080 24 fps 95.0 s + AAC stereo 95.0 s |
 
+`FINALIZE` queues the worker runtime-asset prefetch as part of the finalize
+request (`dispatch_status=prefetch_refresh_queued`). Callers do not issue a
+separate prefetch request. Every MP4/image needed by the worker must be declared
+in the finalize payload (`overlays[]` or `runtime_assets[]`) so it is included
+in that automatic refresh. Prefetch downloads and caches assets; it does not
+convert an MP4 into a Chronon-prepared composite fragment.
+
 Second run, this time entirely through the kit (`./run-flow.sh --yes --all
 --timeout 240`), 2026-09-20 13:10 UTC:
 

@@ -73,6 +73,8 @@ func (p *DriveOverlayArtifactPublisher) PublishOverlay(ctx context.Context, spec
 	if p == nil || p.publisher == nil {
 		return fmt.Errorf("overlay Drive publisher is not configured")
 	}
+	// A folder explicitly selected for this script/run takes precedence. The
+	// configured root remains the fallback for callers without a job folder.
 	rootFolderID := firstNonEmpty(spec.DriveFolderID, p.rootFolderID)
 	if rootFolderID == "" {
 		return fmt.Errorf("overlay Drive publisher requires configured root folder or job drive folder")

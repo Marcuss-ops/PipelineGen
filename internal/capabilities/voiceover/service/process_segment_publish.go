@@ -262,6 +262,23 @@ func (u *ProcessSegmentUseCase) publishTimingBundle(
 		words = remapped
 		durationUS = post.DurationUS
 	}
+	// Some speech providers report the final word boundary a few hundred
+	// milliseconds beyond the encoded audio duration. Keep the canonical
+	// artifact bound to the actual audio: tolerate only a small trailing
+	// overrun on the final word and clamp that boundary to the measured
+	// duration. Larger overruns still fail closed in BuildSpeechTimingArtifact.
+	const maxFinalWordOverrunUS = int64(750_000)
+	if len(words) > 0 && durationUS > 0 {
+		last := &words[len(words)-1]
+		if last.EndUS > durationUS && last.EndUS-durationUS <= maxFinalWordOverrunUS && last.StartUS < durationUS {
+			log.Warn("clamping small TTS final-word timing overrun to encoded audio duration",
+				zap.String("voiceover_id", cmd.ID),
+				zap.Int64("overrun_us", last.EndUS-durationUS),
+				zap.Int64("audio_duration_us", durationUS),
+			)
+			last.EndUS = durationUS
+		}
+	}
 	audioSHA, _, err := digest.SHA256File(uploadPath)
 	if err != nil {
 		return u.timingBuildFailure(cmd, log, policy, fmt.Errorf("hash final audio %q: %w", uploadPath, err))

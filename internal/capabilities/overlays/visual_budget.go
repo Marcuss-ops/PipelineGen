@@ -22,9 +22,9 @@ import (
 )
 
 // MaxImageOverlaysPerRun is the hard run-level ceiling for image overlays.
-// Per-scene budgets are useful for local density, but they must not allow a
-// long script to expand into dozens of image renders.
-const MaxImageOverlaysPerRun = 5
+// It matches the certified image-motion catalog so a focused run can exercise
+// every registered image motion once while still bounding render fan-out.
+const MaxImageOverlaysPerRun = 18
 
 // MaxEntityImageOverlaysPerRun is retained as the entity-image-specific name
 // used by existing callers; its value is the common image overlay ceiling.
@@ -36,7 +36,7 @@ const MaxEntityImageOverlaysPerRun = MaxImageOverlaysPerRun
 const MaxPhraseOverlaysPerRun = 15
 
 // ApplyEditorialOverlayBudget enforces the production run-level visual
-// contract: up to five unique images plus fifteen unique grounded phrases. Other
+// contract: up to eighteen unique images plus fifteen unique grounded phrases. Other
 // content overlay kinds are excluded; structural background layers are not
 // represented as OverlayItems and remain intact. When there are fewer valid
 // candidates, it returns fewer items rather than inventing content.
@@ -141,15 +141,15 @@ type VisualBudget struct {
 	MaxOverlaysTotal int `json:"max_overlays_total"`
 }
 
-// DefaultVisualBudget returns the canonical per-scene budget: at most 2 entity
-// images, 2 text callouts, 1 number card and 4 overlays in total.
+// DefaultVisualBudget returns the canonical per-scene budget: at most 4 entity
+// images, 2 text callouts, 1 number card and 7 overlays in total.
 func DefaultVisualBudget(sceneID string) VisualBudget {
 	return VisualBudget{
 		SceneID:          sceneID,
-		MaxEntityImages:  2,
+		MaxEntityImages:  4,
 		MaxTextCallouts:  2,
 		MaxNumberCards:   1,
-		MaxOverlaysTotal: 4,
+		MaxOverlaysTotal: 7,
 	}
 }
 
