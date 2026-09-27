@@ -2,11 +2,11 @@ package scriptgeneration
 
 import (
 	"context"
-	"crypto/sha256"
 	"fmt"
 	"strings"
 
 	capoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/observability"
 	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
 )
@@ -180,7 +180,11 @@ func overlayItemChildPlanID(parentPlanID string, index int, itemID string) strin
 	if len(full) <= maxPlanIDBytes {
 		return full
 	}
-	hash := sha256.Sum256([]byte(full))
+	// Byte-identical to the old direct sha256.Sum256 call: the digest SSOT
+	// (godlike/06) centralises SHA-256 in internal/kernel/digest and the
+	// delegation is verified golden old==new, so persisted plan IDs do not
+	// change.
+	sum := digest.SHA256String(full)
 	const prefixLimit = 160
 	var prefix strings.Builder
 	for _, r := range full {
@@ -189,5 +193,5 @@ func overlayItemChildPlanID(parentPlanID string, index int, itemID string) strin
 		}
 		prefix.WriteRune(r)
 	}
-	return strings.TrimRight(prefix.String(), ":-_") + "-" + fmt.Sprintf("%x", hash[:8])
+	return strings.TrimRight(prefix.String(), ":-_") + "-" + sum[:16]
 }

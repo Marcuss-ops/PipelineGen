@@ -107,6 +107,20 @@ func NormalizeDurationSource(raw string) DurationSource {
 	}
 }
 
+// LegacyDurationMSMirror reads the legacy generic duration_ms metadata
+// mirror — the projection rows carried before the canonical duration_ms
+// column existed. Callers must prefer the canonical Asset.Duration field
+// (hydrated from the column projection) and use this only as a last-resort
+// fallback for pre-projection rows. It is the ONE reader of that key, so the
+// bare-key residue stays attributed to this owner file instead of spreading
+// to every consumer (godlike/06 one-owner-per-fact).
+func (a *Asset) LegacyDurationMSMirror() int {
+	if a == nil {
+		return 0
+	}
+	return a.GetMetadataInt("duration_ms")
+}
+
 // DurationProvenance resolves the canonical DurationSource for this asset's
 // total duration: an explicit duration_source metadata tag wins; a positive
 // catalog Duration is provider_metadata; otherwise unknown. A caller that
