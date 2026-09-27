@@ -1,0 +1,90 @@
+{
+ "_comment": "Clip 'Aj Vs Tyson Fury' — video ytZhWmz813M (Sky Sports Boxing). Segmenti curati 10-45s, destinazione esplicita folder 1nib6O6sgAoy3M_hfWAkPsvGwjNDcMl36 (Clips/Boxe/Anthony Joshua/Aj Vs Tyson Fury) con create_subfolder=false. Clip ID deterministico yt_<videoID>_<startSec>_<endSec>_v1: reinviare fa UPSERT, non duplica.",
+ "url": "https://www.youtube.com/watch?v=ytZhWmz813M",
+ "strategy": "verify",
+ "concurrency": 3,
+ "force_keyframes": true,
+ "keep_audio": true,
+ "write_summary": true,
+ "destination": {
+  "folder_id": "1nib6O6sgAoy3M_hfWAkPsvGwjNDcMl36",
+  "create_subfolder": false
+ },
+ "segments": [
+  {
+   "start": "11:35",
+   "end": "12:16",
+   "name": "Hearn: entrambi hanno firmato, resta solo il 25 luglio",
+   "category": "boxing_interview",
+   "source_title": "Eddie Hearn gives UPDATE on Anthony Joshua vs Tyson Fury fight 👀",
+   "source_channel": "Sky Sports Boxing",
+   "summary": "Eddie Hearn conferma che entrambi i pugili hanno firmato: Fury ha firmato per combattere Joshua e l'unica cosa che si frappone e il match del 25 luglio, poi si andra verso il grande evento.",
+   "topics": [
+    "Eddie Hearn Tyson Fury Anthony Joshua firmato contratto \"only thing that stands in the way is July 25th\" trattativa Sky Sports pesi massimi boxe"
+   ],
+   "tags": [
+    "Eddie Hearn",
+    "Tyson Fury",
+    "Anthony Joshua",
+    "Boxe",
+    "Contratto"
+   ],
+   "mentioned_people": [
+    "Eddie Hearn",
+    "Tyson Fury"
+   ],
+   "hook": "Hearn: \"Hanno firmato entrambi, resta solo il 25 luglio\"",
+   "quality_score": 0.9
+  },
+  {
+   "start": "15:27",
+   "end": "15:57",
+   "name": "Novembre in mente: programmazione e concentrazione",
+   "category": "boxing_interview",
+   "source_title": "Eddie Hearn gives UPDATE on Anthony Joshua vs Tyson Fury fight 👀",
+   "source_channel": "Sky Sports Boxing",
+   "summary": "Hearn spiega che ogni decisione ora viene presa pensando a novembre, quando il fight si dovrebbe svolgere: entrambi i pugili sono concentrati sul superare i prossimi due mesi per consegnare al mondo il mega evento.",
+   "topics": [
+    "Eddie Hearn novembre data fight Anthony Joshua Tyson Fury concentrazione prossimi mesi mega evento programmazione pesi massimi boxe Sky Sports"
+   ],
+   "tags": [
+    "Eddie Hearn",
+    "Anthony Joshua",
+    "Tyson Fury",
+    "Boxe",
+    "Promozione"
+   ],
+   "mentioned_people": [
+    "Eddie Hearn",
+    "Anthony Joshua"
+   ],
+   "hook": "Hearn: \"Ogni decisione ora si prende pensando a novembre\"",
+   "quality_score": 0.9
+  },
+  {
+   "start": "17:12",
+   "end": "17:37",
+   "name": "Cardiff con il tetto chiuso: l'ipotesi Principality",
+   "category": "boxing_interview",
+   "source_title": "Eddie Hearn gives UPDATE on Anthony Joshua vs Tyson Fury fight 👀",
+   "source_channel": "Sky Sports Boxing",
+   "summary": "Alla domanda su Cardiff e il Principality Stadium con il tetto chiuso, Hearn risponde che sarebbe la preferenza di tutti fare il fight nel Regno Unito: si gioca un po' alla roulette con il meteo, ma l'ipotesi e concreta.",
+   "topics": [
+    "Eddie Hearn Cardiff Principality Stadium tetto chiuso Millennium Stadium fight Regno Unito preferenza roulette meteo Joshua Fury pesi massimi boxe Sky Sports"
+   ],
+   "tags": [
+    "Eddie Hearn",
+    "Anthony Joshua",
+    "Tyson Fury",
+    "Boxe",
+    "Logistica"
+   ],
+   "mentioned_people": [
+    "Eddie Hearn",
+    "Anthony Joshua"
+   ],
+   "hook": "Hearn: \"Tutti preferirebbero il fight nel Regno Unito, Cardiff e un'ipotesi\"",
+   "quality_score": 0.9
+  }
+ ]
+}

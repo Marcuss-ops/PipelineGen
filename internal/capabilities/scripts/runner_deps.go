@@ -430,6 +430,13 @@ func (r *Runner) SetFinalAudioPublisher(publisher FinalAudioPublisher) {
 	}
 }
 
+// SetFinalJobSubmitter wires the optional two-stage remote render handoff.
+func (r *Runner) SetFinalJobSubmitter(submitter FinalJobSubmitter) {
+	if r != nil {
+		r.finalJobSubmitter = submitter
+	}
+}
+
 // SetScriptPersistence wires the canonical SQLite script-row writer. The
 // runner invokes it only when GenerateRequest.SaveToDB is true.
 func (r *Runner) SetScriptPersistence(persistence ScriptPersistence) {

@@ -1,0 +1,247 @@
+{
+  "_comment": "POST /api/clips/process payload (ExtractRequest, drift source: internal/capabilities/youtube/dto/types.go). Source: Snoop Dogg talks Son Leaving Football, Song with Michael Jackson, Trump & New Album (https://www.youtube.com/watch?v=oe4ajTqlTYE, 1897s) — Breakfast Club Power 105.1 interview 2016-08-11. Destination: the explicit HipHop child folder 1QMbexs6jFky-NjgVNgq_muMm9CixB_YC (Michael Jackson under Clips/HipHop, see drive-ls on 1wES95cH_RVYxl5I3kxnppbv-AlymCRqG); create_subfolder=false so clips land straight in it. Windows BY HAND from timed transcript via /api/clips/transcript (rolling-cue dedup, see tx.py); no LLM selection. Clip ids deterministic yt_<videoID>_<startSec>_<endSec>_v1 so re-submit is UPSERT. topics/summary/hook dense on purpose: composeYouTubeClipSearchText -> search_text -> 768d pgvector embedding, texts[] -> asset_text_tracks in same atomic commit. All texts language_code=en per operator request (American English).",
+  "url": "https://www.youtube.com/watch?v=oe4ajTqlTYE",
+  "strategy": "verify",
+  "concurrency": 3,
+  "force_keyframes": true,
+  "keep_audio": true,
+  "write_summary": true,
+  "destination": {
+    "folder_id": "1QMbexs6jFky-NjgVNgq_muMm9CixB_YC",
+    "create_subfolder": false
+  },
+  "segments": [
+    {
+      "start": "22:44",
+      "end": "23:15",
+      "name": "Snoop Dogg — the phone call from Michael Jackson about an unreleased rap collaboration",
+      "category": "celebrity_interview",
+      "source_title": "Snoop Dogg talks Son Leaving Football, Song with Michael Jackson, Trump & New Album",
+      "source_channel": "The Breakfast Club",
+      "summary": "Snoop Dogg reveals Michael Jackson called him personally about an unreleased track, opening with the family resemblance line and offering him to rap freely on the beat.",
+      "topics": [
+        "Snoop Dogg Michael Jackson unreleased collaboration phone call breakfast club 2016 hip hop pop family related rap track personal call interview 22:44-23:15 oe4ajTqlTYE"
+      ],
+      "tags": [
+        "Snoop Dogg",
+        "Michael Jackson",
+        "celebrity_interview",
+        "interview",
+        "hip hop"
+      ],
+      "speakers": [
+        "Snoop Dogg",
+        "Charlamagne Tha God",
+        "DJ Envy",
+        "Angela Yee"
+      ],
+      "mentioned_people": [
+        "Snoop Dogg",
+        "Michael Jackson"
+      ],
+      "hook": "Hi, this is Michael — maybe we are related, rap on my track however you want.",
+      "texts": [
+        {
+          "language_code": "en",
+          "title": "The phone call from Michael Jackson",
+          "summary": "Snoop Dogg reveals Michael Jackson called him personally about an unreleased track, opening with the family resemblance line and offering him to rap freely on the beat.",
+          "description": "Breakfast Club 2016: Snoop Dogg recounts the 2008 phone call where Michael Jackson personally invited him to rap on an unreleased collaboration, saying his mother thought Snoop looked like family and he could do whatever he wanted on the track. Context: hip hop pop interview celebrity career music collaboration unreleased song phone call oe4ajTqlTYE 1364-1395 snoop michael jackson"
+        }
+      ]
+    },
+    {
+      "start": "23:02",
+      "end": "23:14",
+      "name": "Hook: hi this is michael — maybe we are related",
+      "category": "celebrity_interview",
+      "source_title": "Snoop Dogg talks Son Leaving Football, Song with Michael Jackson, Trump & New Album",
+      "source_channel": "The Breakfast Club",
+      "summary": "Hook opener (12s): the exact on-air line where Michael says hello and invites Snoop as family.",
+      "topics": [
+        "Snoop Dogg Michael Jackson phone voice hi this is michael family related hook opening short 23:02-23:14 oe4ajTqlTYE hook apertura short opening-short"
+      ],
+      "tags": [
+        "Snoop Dogg",
+        "Michael Jackson",
+        "celebrity_interview",
+        "interview",
+        "hip hop",
+        "hook"
+      ],
+      "speakers": [
+        "Snoop Dogg",
+        "Charlamagne Tha God",
+        "DJ Envy",
+        "Angela Yee"
+      ],
+      "mentioned_people": [
+        "Snoop Dogg",
+        "Michael Jackson"
+      ],
+      "hook": "Hi, this is Michael — maybe we are related.",
+      "texts": [
+        {
+          "language_code": "en",
+          "title": "The phone call from Michael Jackson",
+          "summary": "Snoop Dogg reveals Michael Jackson called him personally about an unreleased track, opening with the family resemblance line and offering him to rap freely on the beat.",
+          "description": "Hook opener (12s): the exact on-air line where Michael says hello and invites Snoop as family. Context: hip hop pop interview celebrity career music collaboration unreleased song phone call oe4ajTqlTYE 1364-1395 snoop michael jackson hook apertura short opening-short"
+        }
+      ]
+    },
+    {
+      "start": "23:15",
+      "end": "23:48",
+      "name": "Snoop Dogg — the offer and the shock after hanging up",
+      "category": "celebrity_interview",
+      "source_title": "Snoop Dogg talks Son Leaving Football, Song with Michael Jackson, Trump & New Album",
+      "source_channel": "The Breakfast Club",
+      "summary": "Snoop describes the open-ended creative offer and the disbelief after hanging up, repeating to himself it was Michael not Jermaine or Tito.",
+      "topics": [
+        "Snoop Dogg Michael Jackson track offer rap however you want shock disbelief not Jermaine not Joe family identity breakfast club interview 23:15-23:48 oe4ajTqlTYE"
+      ],
+      "tags": [
+        "Snoop Dogg",
+        "Michael Jackson",
+        "celebrity_interview",
+        "interview",
+        "hip hop"
+      ],
+      "speakers": [
+        "Snoop Dogg",
+        "Charlamagne Tha God",
+        "DJ Envy",
+        "Angela Yee"
+      ],
+      "mentioned_people": [
+        "Snoop Dogg",
+        "Michael Jackson"
+      ],
+      "hook": "Do whatever you want with the track — entire conversation was just that.",
+      "texts": [
+        {
+          "language_code": "en",
+          "title": "The offer and the shock",
+          "summary": "Snoop describes the open-ended creative offer and the disbelief after hanging up, repeating to himself it was Michael not Jermaine or Tito.",
+          "description": "Snoop recounts Michael's instruction to do whatever he wanted on the track and the short call ending with I'll get back to you buddy, then the stunned aftermath where he tells friends it was Michael Jackson himself. Context: hip hop pop interview celebrity career music collaboration shock oe4ajTqlTYE 1395-1428 snoop michael jackson"
+        }
+      ]
+    },
+    {
+      "start": "23:30",
+      "end": "23:42",
+      "name": "Hook: that was the entire conversation with Michael Jackson",
+      "category": "celebrity_interview",
+      "source_title": "Snoop Dogg talks Son Leaving Football, Song with Michael Jackson, Trump & New Album",
+      "source_channel": "The Breakfast Club",
+      "summary": "Hook opener (12s): Snoop's punchline that the whole Michael Jackson call lasted one sentence.",
+      "topics": [
+        "Snoop Dogg Michael Jackson entire conversation buddy went to work shock hook opening short 23:30-23:42 oe4ajTqlTYE hook apertura short opening-short"
+      ],
+      "tags": [
+        "Snoop Dogg",
+        "Michael Jackson",
+        "celebrity_interview",
+        "interview",
+        "hip hop",
+        "hook"
+      ],
+      "speakers": [
+        "Snoop Dogg",
+        "Charlamagne Tha God",
+        "DJ Envy",
+        "Angela Yee"
+      ],
+      "mentioned_people": [
+        "Snoop Dogg",
+        "Michael Jackson"
+      ],
+      "hook": "That was the entire conversation between Snoop Dogg and Michael Jackson.",
+      "texts": [
+        {
+          "language_code": "en",
+          "title": "The offer and the shock",
+          "summary": "Snoop describes the open-ended creative offer and the disbelief after hanging up, repeating to himself it was Michael not Jermaine or Tito.",
+          "description": "Hook opener (12s): Snoop's punchline that the whole Michael Jackson call lasted one sentence. Context: hip hop pop interview celebrity career music collaboration shock oe4ajTqlTYE 1395-1428 snoop michael jackson hook apertura short opening-short"
+        }
+      ]
+    },
+    {
+      "start": "23:48",
+      "end": "24:32",
+      "name": "Snoop Dogg — Vegas trailers: Christian Audigier, $400k show and Michael's polite no",
+      "category": "celebrity_interview",
+      "source_title": "Snoop Dogg talks Son Leaving Football, Song with Michael Jackson, Trump & New Album",
+      "source_channel": "The Breakfast Club",
+      "summary": "Snoop tells the Las Vegas story: Christian Audigier paid $400k for three songs with him and Michael, trailers parked side by side, smoking like a broken stove, Michael peeks out and politely declines.",
+      "topics": [
+        "Snoop Dogg Michael Jackson Christian Audigier Las Vegas $400k three songs trailers smoking broken stove Hey Snoop No thank you polite decline breakfast club 23:48-24:32 oe4ajTqlTYE"
+      ],
+      "tags": [
+        "Snoop Dogg",
+        "Michael Jackson",
+        "celebrity_interview",
+        "interview",
+        "hip hop"
+      ],
+      "speakers": [
+        "Snoop Dogg",
+        "Charlamagne Tha God",
+        "DJ Envy",
+        "Angela Yee"
+      ],
+      "mentioned_people": [
+        "Snoop Dogg",
+        "Michael Jackson",
+        "Christian Audigier"
+      ],
+      "hook": "Hey Snoop — Want to hear something Mike? No thank you.",
+      "texts": [
+        {
+          "language_code": "en",
+          "title": "Vegas trailers and the polite no",
+          "summary": "Snoop tells the Las Vegas story: Christian Audigier paid $400k for three songs with him and Michael, trailers parked side by side, smoking like a broken stove, Michael peeks out and politely declines.",
+          "description": "Las Vegas 2008: fashion promoter Christian Audigier books Snoop and Michael for $400k, trailers side by side, heavy smoking, Michael opens the curtain Hey Snoop and declines a smoke with No thank you. Context: hip hop pop interview celebrity career music Las Vegas residency anecdote oe4ajTqlTYE 1428-1472 snoop michael jackson christian audigier"
+        }
+      ]
+    },
+    {
+      "start": "24:18",
+      "end": "24:30",
+      "name": "Hook: trailers side by side — hey snoop no thank you",
+      "category": "celebrity_interview",
+      "source_title": "Snoop Dogg talks Son Leaving Football, Song with Michael Jackson, Trump & New Album",
+      "source_channel": "The Breakfast Club",
+      "summary": "Hook opener (12s): the curtain moment — Michael peeks from his trailer and declines.",
+      "topics": [
+        "Snoop Dogg Michael Jackson trailer next to mine smoking broken stove curtain Hey Snoop No thank you hook opening short 24:18-24:30 oe4ajTqlTYE hook apertura short opening-short"
+      ],
+      "tags": [
+        "Snoop Dogg",
+        "Michael Jackson",
+        "celebrity_interview",
+        "interview",
+        "hip hop",
+        "hook"
+      ],
+      "speakers": [
+        "Snoop Dogg",
+        "Charlamagne Tha God",
+        "DJ Envy",
+        "Angela Yee"
+      ],
+      "mentioned_people": [
+        "Snoop Dogg",
+        "Michael Jackson"
+      ],
+      "hook": "Hey Snoop — No thank you.",
+      "texts": [
+        {
+          "language_code": "en",
+          "title": "Vegas trailers and the polite no",
+          "summary": "Snoop tells the Las Vegas story: Christian Audigier paid $400k for three songs with him and Michael, trailers parked side by side, smoking like a broken stove, Michael peeks out and politely declines.",
+          "description": "Hook opener (12s): the curtain moment — Michael peeks from his trailer and declines. Context: hip hop pop interview celebrity career music Las Vegas residency anecdote oe4ajTqlTYE 1428-1472 snoop michael jackson hook apertura short opening-short"
+        }
+      ]
+    }
+  ]
+}

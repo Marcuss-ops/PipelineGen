@@ -201,14 +201,44 @@ func metricMillis(m map[string]float64, key string) int64 {
 // worker reports materialize/render/hash/upload phases in microseconds and
 // the drive phase in milliseconds). Absent keys yield 0 (unreported).
 func metricMillisEither(m map[string]float64, msKey, usKey string) int64 {
+	return metricMillisEitherPrecise(m, msKey, usKey, "")
+}
+
+// metricMillisEitherPrecise rounds sub-millisecond values to 1 ms instead of
+// truncating them to zero, so phases like probe_ms=0.001 are not lost. It
+// prefers msKey, then usKey (us/1000), then altMSKey if provided.
+func metricMillisEitherPrecise(m map[string]float64, msKey, usKey, altMSKey string) int64 {
 	if m == nil {
 		return 0
 	}
-	if v := int64(m[msKey]); v > 0 {
-		return v
+	if v, ok := m[msKey]; ok && v > 0 {
+		if int64(v) > 0 {
+			return int64(v + 0.5)
+		}
+		if v >= 0.0005 {
+			return 1
+		}
 	}
-	if v := int64(m[usKey]); v > 0 {
-		return v / 1000
+	if usKey != "" {
+		if v, ok := m[usKey]; ok && v > 0 {
+			ms := v / 1000
+			if ms >= 0.5 {
+				return int64(ms + 0.5)
+			}
+			if v >= 0.5 {
+				return 1
+			}
+		}
+	}
+	if altMSKey != "" {
+		if v, ok := m[altMSKey]; ok && v > 0 {
+			if int64(v) > 0 {
+				return int64(v + 0.5)
+			}
+			if v >= 0.0005 {
+				return 1
+			}
+		}
 	}
 	return 0
 }

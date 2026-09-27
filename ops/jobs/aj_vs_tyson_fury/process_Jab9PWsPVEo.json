@@ -1,0 +1,111 @@
+{
+ "_comment": "Clip 'Aj Vs Tyson Fury' — video Jab9PWsPVEo (The BRIGHT SHOW PODCAST Boxing). Segmenti curati 10-45s, destinazione esplicita folder 1nib6O6sgAoy3M_hfWAkPsvGwjNDcMl36 (Clips/Boxe/Anthony Joshua/Aj Vs Tyson Fury) con create_subfolder=false. Clip ID deterministico yt_<videoID>_<startSec>_<endSec>_v1: reinviare fa UPSERT, non duplica.",
+ "url": "https://www.youtube.com/watch?v=Jab9PWsPVEo",
+ "strategy": "verify",
+ "concurrency": 3,
+ "force_keyframes": true,
+ "keep_audio": true,
+ "write_summary": true,
+ "destination": {
+  "folder_id": "1nib6O6sgAoy3M_hfWAkPsvGwjNDcMl36",
+  "create_subfolder": false
+ },
+ "segments": [
+  {
+   "start": "00:00",
+   "end": "00:23",
+   "name": "Ufficiale: Fury vs Joshua l'11 dicembre",
+   "category": "boxing_interview",
+   "source_title": "Tyson Fury vs Anthony Joshua CONFIRMED — But There’s ONE BIG Problem!",
+   "source_channel": "The BRIGHT SHOW PODCAST Boxing",
+   "summary": "Il podcast apre con la notizia: Tyson Fury contro Anthony Joshua e confermato ufficialmente per l'11 dicembre dopo anni di trattative, e il fight e finalmente in programma.",
+   "topics": [
+    "Tyson Fury Anthony Joshua confermato ufficiale 11 dicembre fight finalmente annuncio Netflix Riyadh pesi massimi boxe podcast"
+   ],
+   "tags": [
+    "Tyson Fury",
+    "Anthony Joshua",
+    "Boxe",
+    "Annuncio"
+   ],
+   "mentioned_people": [
+    "Tyson Fury",
+    "Anthony Joshua"
+   ],
+   "hook": "E' ufficiale: Fury vs Joshua si fara l'11 dicembre",
+   "quality_score": 0.9
+  },
+  {
+   "start": "00:48",
+   "end": "01:29",
+   "name": "Reazioni opposte: \"troppo tardi\" ma telefono impazzito",
+   "category": "boxing_interview",
+   "source_title": "Tyson Fury vs Anthony Joshua CONFIRMED — But There’s ONE BIG Problem!",
+   "source_channel": "The BRIGHT SHOW PODCAST Boxing",
+   "summary": "I conduttori raccontano il proprio cambio di umore: prima scettici perche entrambi sono sulla via del tramonto, poi eccitati quando l'annuncio ha fatto esplodere i telefoni di amici, tifosi e social media.",
+   "topics": [
+    "Tyson Fury Anthony Joshua annuncio reazioni tifosi social media eccitazione scetticismo \"washed up\" 11 anni pesi massimi boxe podcast"
+   ],
+   "tags": [
+    "Tyson Fury",
+    "Anthony Joshua",
+    "Boxe",
+    "Reazioni"
+   ],
+   "mentioned_people": [
+    "Tyson Fury",
+    "Anthony Joshua"
+   ],
+   "hook": "\"Troppo tardi\"? Poi l'annuncio ha fatto impazzire i social",
+   "quality_score": 0.9
+  },
+  {
+   "start": "07:08",
+   "end": "07:37",
+   "name": "Il grande problema: i tifosi non sono eccitati",
+   "category": "boxing_interview",
+   "source_title": "Tyson Fury vs Anthony Joshua CONFIRMED — But There’s ONE BIG Problem!",
+   "source_channel": "The BRIGHT SHOW PODCAST Boxing",
+   "summary": "Il podcast mette sul tavolo il vero problema del fight: gran parte dei tifosi sostiene che dopo 11 anni non significhi piu nulla, anche se bragging rights e incassi restano enormi per entrambi.",
+   "topics": [
+    "Tyson Fury Anthony Joshua \"big problem\" tifosi disincantati 11 anni attesa bragging rights soldi interesse pesi massimi boxe podcast"
+   ],
+   "tags": [
+    "Tyson Fury",
+    "Anthony Joshua",
+    "Boxe",
+    "Analisi"
+   ],
+   "mentioned_people": [
+    "Tyson Fury",
+    "Anthony Joshua"
+   ],
+   "hook": "Il problema del fight: 11 anni di attesa e tifosi disincantati",
+   "quality_score": 0.9
+  },
+  {
+   "start": "18:52",
+   "end": "19:19",
+   "name": "Promozione in arrivo: press conference a Londra",
+   "category": "boxing_interview",
+   "source_title": "Tyson Fury vs Anthony Joshua CONFIRMED — But There’s ONE BIG Problem!",
+   "source_channel": "The BRIGHT SHOW PODCAST Boxing",
+   "summary": "I conduttori prevedono il piano promozionale: conferenze stampa a Londra e negli Stati Uniti, con l'eccitazione che crescera man mano che il fight si avvicina, fino a numeri record per Netflix.",
+   "topics": [
+    "Tyson Fury Anthony Joshua promozione press conference Londra Stati Uniti eccitazione record Netflix incassi pesi massimi boxe podcast"
+   ],
+   "tags": [
+    "Tyson Fury",
+    "Anthony Joshua",
+    "Boxe",
+    "Promozione"
+   ],
+   "mentioned_people": [
+    "Tyson Fury",
+    "Anthony Joshua"
+   ],
+   "hook": "Verso numeri record per Netflix: la promozione parte da Londra",
+   "quality_score": 0.9
+  }
+ ]
+}

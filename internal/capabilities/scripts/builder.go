@@ -235,6 +235,7 @@ func BuildGenerateRequest(env *scriptpkg.GenerationEnvelopeV2, idempotencyKey st
 		PhraseMotionFamily:  item.PhraseMotionFamily,
 		IdempotencyKey:      idempotencyKey,
 		ForceRefresh:        env.ForceRefresh,
+		FinalJob:            env.FinalJob,
 		Source:              source,
 		MediaMode:           item.MediaMode,
 		StockBindings:       append([]scriptpkg.StockBindingInput(nil), item.Output.StockBindings...),

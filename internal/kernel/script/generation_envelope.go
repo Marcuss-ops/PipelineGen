@@ -44,6 +44,10 @@ type GenerationEnvelopeV2 struct {
 	// an active or completed record.
 	ForceRefresh bool `json:"force_refresh,omitempty"`
 
+	// FinalJob marks this generation as requesting the remote final-render
+	// handoff. False preserves the existing local-only workflow.
+	FinalJob bool `json:"final_job,omitempty"`
+
 	// Items is the list of generation items. Must contain at least
 	// one entry. For single-item generation, use one item. For
 	// batch generation, use multiple items — each is independently

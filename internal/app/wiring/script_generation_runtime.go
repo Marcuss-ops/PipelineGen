@@ -203,6 +203,12 @@ func BuildScriptGenerationRuntime(cfg *config.Config, root *ComposeRoot, runRepo
 	}
 	runner.SetCombinedAudioRenderer(audioRenderer)
 	runner.SetFinalAudioPublisher(newFinalAudioPublisher(root, committer, log))
+	if remoteFinalJob, remoteErr := newRemoteFinalJobAdapter(root); remoteErr != nil {
+		log.Warn("remote final-job handoff unavailable; final_job=true requests will fail closed", zap.Error(remoteErr))
+	} else {
+		runner.SetFinalJobSubmitter(remoteFinalJob)
+		log.Info("remote final-job handoff wired", zap.String("master_url", remoteFinalJob.client.BaseURL))
+	}
 	// Durable per-unit checkpoint resume (the audio unit today). The resolver
 	// gates reuse on (input fingerprint + recorded artifact still present +
 	// processor version), so a crash-restart SKIPs a certified audio render

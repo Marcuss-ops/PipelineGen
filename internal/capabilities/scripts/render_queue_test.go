@@ -485,6 +485,47 @@ func TestSeparateOverlayItemPlanUsesTTSWindowPlusPaddingAndFiveSecondCap(t *test
 	if child.DurationMS != 5000 || child.Items[0].DurationUS != 5_000_000 || meta.TargetDurationUS != 5_000_000 {
 		t.Fatalf("five-second cap not applied: child=%+v meta=%+v", child, meta)
 	}
+
+	composite := parent.Items[0]
+	composite.ID = "person-a+person-b"
+	composite.Kind = string(capoverlay.KindEntityImage)
+	composite.StartUS, composite.DurationUS = 0, 8_000_000
+	composite.StartMs, composite.EndMs = 0, 8000
+	composite.AssetRefs = append(composite.AssetRefs, capoverlay.OverlayAssetRef{AssetID: "grace", SHA256: "def"})
+	composite.ImageLayers = []capoverlay.OverlayImageLayer{
+		{ID: "person-a", AssetID: "dolly", StartMS: 0, EndMS: 5000, PresetID: "image_focus_in"},
+		{ID: "person-b", AssetID: "grace", StartMS: 3000, EndMS: 8000, PresetID: "image_scale_in"},
+	}
+	child, meta, err = separateOverlayItemPlan(parent, composite, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if child.DurationMS != 8000 || child.Items[0].DurationUS != 8_000_000 || child.Items[0].ImageLayers[1].StartMS != 3000 || child.Items[0].ImageLayers[1].EndMS != 8000 || meta.TargetDurationUS != 8_000_000 {
+		t.Fatalf("composite stagger was truncated: child=%+v meta=%+v", child, meta)
+	}
+
+	longLocalizedID := strings.Repeat("frase-pública-investigação-", 20)
+	longItem := parent.Items[0]
+	longItem.ID = longLocalizedID
+	child, _, err = separateOverlayItemPlan(parent, longItem, 3)
+	if err != nil {
+		t.Fatalf("separate long localized phrase: %v", err)
+	}
+	if len(child.PlanID) > 180 {
+		t.Fatalf("child plan ID is %d bytes, want <=180", len(child.PlanID))
+	}
+	if child.Items[0].ID != longLocalizedID {
+		t.Fatal("shortening the filesystem-facing plan ID changed the semantic overlay item ID")
+	}
+	otherLongItem := longItem
+	otherLongItem.ID += "diferente"
+	other, _, err := separateOverlayItemPlan(parent, otherLongItem, 3)
+	if err != nil {
+		t.Fatalf("separate distinct long localized phrase: %v", err)
+	}
+	if child.PlanID == other.PlanID {
+		t.Fatal("different long overlay item IDs produced the same child plan ID")
+	}
 }
 
 // TestQueueRenderEnqueuerChrononPlan pins the production path that makes

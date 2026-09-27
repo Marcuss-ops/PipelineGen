@@ -1,0 +1,360 @@
+{
+  "_comment": "POST /api/clips/process payload (ExtractRequest, drift source: internal/capabilities/youtube/dto/types.go). Source: Rapper Ksoo sentenced to life for 2020 Jacksonville murder alongside cousin (https://www.youtube.com/watch?v=rBe17T-viFI, 151s) — First Coast News Duval County courthouse. Destination: explicit Rap child folder 1IiRjfyFmaGvDLdAtxxpv2eGACDhrP1In (Ksoo under Clips/Rap, see drive-ls on 1CsceU2THbcXuZ0w4wz7pveHtBPbT7Gyx); create_subfolder=false. Windows BY HAND from timed transcript via /api/clips/transcript (dedupe rolling cues); no LLM selection. Clip ids deterministic yt_<videoID>_<startSec>_<endSec>_v1 so re-submit is UPSERT. topics/summary/hook dense on purpose: composeYouTubeClipSearchText -> search_text -> 768d pgvector embedding, texts[] -> asset_text_tracks in same atomic commit.",
+  "url": "https://www.youtube.com/watch?v=rBe17T-viFI",
+  "strategy": "verify",
+  "concurrency": 3,
+  "force_keyframes": true,
+  "keep_audio": true,
+  "write_summary": true,
+  "destination": {
+    "folder_id": "1IiRjfyFmaGvDLdAtxxpv2eGACDhrP1In",
+    "create_subfolder": false
+  },
+  "segments": [
+    {
+      "start": "00:00",
+      "end": "00:23",
+      "name": "Ksoo — breaking news: rapper and cousin sentenced to life for Jacksonville murder",
+      "category": "crime_news",
+      "source_title": "Rapper Ksoo sentenced to life for 2020 Jacksonville murder alongside cousin",
+      "source_channel": "First Coast News",
+      "summary": "News anchor breaks the life sentence for Jacksonville rapper Hakeem Robinson aka Ksoo and cousin Leroy Whitaker Jr for the 2020 killing of Charles McCormack Jr outside Duval County Courthouse.",
+      "topics": [
+        "Ksoo Hakeem Robinson Leroy Whitaker life sentence Jacksonville 2020 murder Charles McCormack Duval County courthouse First Coast News breaking crime news rap hip hop trial 00:00-00:23 rBe17T-viFI"
+      ],
+      "tags": [
+        "Ksoo",
+        "Hakeem Robinson",
+        "Leroy Whitaker",
+        "Jacksonville",
+        "crime_news"
+      ],
+      "speakers": [
+        "News Anchor",
+        "Haja Bosage"
+      ],
+      "mentioned_people": [
+        "Hakeem Robinson",
+        "Leroy Whitaker Jr",
+        "Charles McCormack Jr"
+      ],
+      "hook": "rapper and his cousin will spend the rest of their lives in prison",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Ksoo condannato all'ergastolo per omicidio Jacksonville",
+          "summary": "Il notiziario annuncia l'ergastolo per il rapper di Jacksonville Hakeem Robinson aka Ksoo e il cugino Leroy Whitaker per l'omicidio del 2020 di Charles McCormack Jr.",
+          "description": "First Coast News: il rapper di Jacksonville Ksoo e il cugino Leroy Whitaker condannati al carcere a vita per l'omicidio di Charles McCormack Jr del 15 gennaio 2020. Contesto: crime news hip hop rap Jacksonville Duval County rBe17T-viFI 0-23"
+        }
+      ]
+    },
+    {
+      "start": "00:02",
+      "end": "00:12",
+      "name": "Hook: rapper and his cousin will spend the rest of their lives in prison",
+      "category": "crime_news",
+      "source_title": "Rapper Ksoo sentenced to life for 2020 Jacksonville murder alongside cousin",
+      "source_channel": "First Coast News",
+      "summary": "Hook opener (10s): the anchor's headline sentence that frames the whole case.",
+      "topics": [
+        "Ksoo life sentence headline rapper cousin rest of lives in prison hook opening short 00:02-00:12 rBe17T-viFI hook apertura short opening-short"
+      ],
+      "tags": [
+        "Ksoo",
+        "Hakeem Robinson",
+        "crime_news",
+        "hook"
+      ],
+      "speakers": [
+        "News Anchor"
+      ],
+      "mentioned_people": [
+        "Hakeem Robinson",
+        "Leroy Whitaker Jr"
+      ],
+      "hook": "rapper and his cousin will spend the rest of their lives in prison",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Ksoo condannato all'ergastolo per omicidio Jacksonville",
+          "summary": "Il notiziario annuncia l'ergastolo per il rapper di Jacksonville Hakeem Robinson aka Ksoo e il cugino Leroy Whitaker per l'omicidio del 2020 di Charles McCormack Jr.",
+          "description": "Hook opener (10s): la frase headline del telegiornale che incornicia il caso. Contesto: crime news Jacksonville Duval County rBe17T-viFI 0-23 hook apertura short opening-short"
+        }
+      ]
+    },
+    {
+      "start": "00:24",
+      "end": "00:51",
+      "name": "Ksoo — courtroom reaction and victim impact statement",
+      "category": "crime_news",
+      "source_title": "Rapper Ksoo sentenced to life for 2020 Jacksonville murder alongside cousin",
+      "source_channel": "First Coast News",
+      "summary": "Reporter inside Duval County courtroom describes defendants' silent reaction as they learn life without parole and reads the impact statement about the ripple effect on family and community.",
+      "topics": [
+        "Ksoo courtroom reaction Duval County impact statement family community ripple effect life without parole judge silent defendants news 00:24-00:51 rBe17T-viFI"
+      ],
+      "tags": [
+        "Ksoo",
+        "Duval County",
+        "courtroom",
+        "impact statement",
+        "crime_news"
+      ],
+      "speakers": [
+        "Haja Bosage",
+        "Court Reporter"
+      ],
+      "mentioned_people": [
+        "Hakeem Robinson",
+        "Leroy Whitaker Jr"
+      ],
+      "hook": "they'll be spending the rest of their lives behind bars without parole",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Reazione in aula e dichiarazione d'impatto",
+          "summary": "L'inviata descrive la reazione silenziosa degli imputati e legge la dichiarazione sull'impatto devastante del delitto sulla famiglia e sulla comunità.",
+          "description": "Inside Duval County courtroom: reporter recounts Robinson and Whitaker learning life without parole, both declined to speak, and the impact statement about unjust taking of life. Contesto: crime news Jacksonville rBe17T-viFI 24-51"
+        }
+      ]
+    },
+    {
+      "start": "00:34",
+      "end": "00:45",
+      "name": "Hook: ripple effect forever changed his family and community",
+      "category": "crime_news",
+      "source_title": "Rapper Ksoo sentenced to life for 2020 Jacksonville murder alongside cousin",
+      "source_channel": "First Coast News",
+      "summary": "Hook opener (11s): the impact statement line that carries the emotional core.",
+      "topics": [
+        "Ksoo impact statement ripple effect forever changed family friends community relief hook opening short 00:34-00:45 rBe17T-viFI hook apertura short opening-short"
+      ],
+      "tags": [
+        "Ksoo",
+        "impact statement",
+        "crime_news",
+        "hook"
+      ],
+      "speakers": [
+        "Court Reporter"
+      ],
+      "mentioned_people": [
+        "Charles McCormack Jr"
+      ],
+      "hook": "ripple effect forever changed his family friends and community",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Reazione in aula e dichiarazione d'impatto",
+          "summary": "L'inviata descrive la reazione silenziosa degli imputati e legge la dichiarazione sull'impatto devastante del delitto sulla famiglia e sulla comunità.",
+          "description": "Hook opener (11s): la frase dell'impact statement sull'effetto a catena sulla famiglia. Contesto: crime news Jacksonville rBe17T-viFI 24-51 hook apertura short opening-short"
+        }
+      ]
+    },
+    {
+      "start": "00:51",
+      "end": "01:20",
+      "name": "Ksoo — judge pronounces mandatory life without parole for 2020 murder",
+      "category": "crime_news",
+      "source_title": "Rapper Ksoo sentenced to life for 2020 Jacksonville murder alongside cousin",
+      "source_channel": "First Coast News",
+      "summary": "Judge adjudicates guilt by unanimous verdict and imposes the only lawful sentence: mandatory life in prison without parole for first-degree murder of 23-year-old Charles McCormack Jr.",
+      "topics": [
+        "Ksoo judge mandatory life without parole unanimous verdict first-degree murder Charles McCormack 23-year-old 2020 Jacksonville sentencing courtroom 00:51-01:20 rBe17T-viFI"
+      ],
+      "tags": [
+        "Ksoo",
+        "judge",
+        "mandatory life",
+        "first-degree murder",
+        "crime_news"
+      ],
+      "speakers": [
+        "Judge",
+        "News Anchor"
+      ],
+      "mentioned_people": [
+        "Hakeem Robinson",
+        "Charles McCormack Jr"
+      ],
+      "hook": "mandatory life in prison without the eligibility for parole",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Il giudice pronuncia l'ergastolo senza condizionale",
+          "summary": "Il giudice dichiara la colpevolezza per verdetto unanime e infligge l'ergastolo obbligatorio senza possibilità di libertà condizionale per omicidio di primo grado.",
+          "description": "Judge pronounces mandatory life without parole: by unanimous verdict Hakeem Robinson guilty of first-degree murder, only lawful sentence is life in prison without eligibility for parole. Contesto: crime news Jacksonville rBe17T-viFI 51-80"
+        }
+      ]
+    },
+    {
+      "start": "00:58",
+      "end": "01:08",
+      "name": "Hook: mandatory life in prison without eligibility for parole",
+      "category": "crime_news",
+      "source_title": "Rapper Ksoo sentenced to life for 2020 Jacksonville murder alongside cousin",
+      "source_channel": "First Coast News",
+      "summary": "Hook opener (10s): the exact sentencing formula that defines the punishment.",
+      "topics": [
+        "Ksoo mandatory life in prison without eligibility for parole hook opening short 00:58-01:08 rBe17T-viFI hook apertura short opening-short"
+      ],
+      "tags": [
+        "Ksoo",
+        "judge",
+        "crime_news",
+        "hook"
+      ],
+      "speakers": [
+        "Judge"
+      ],
+      "mentioned_people": [
+        "Hakeem Robinson"
+      ],
+      "hook": "mandatory life in prison without the eligibility for parole",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Il giudice pronuncia l'ergastolo senza condizionale",
+          "summary": "Il giudice dichiara la colpevolezza per verdetto unanime e infligge l'ergastolo obbligatorio senza possibilità di libertà condizionale per omicidio di primo grado.",
+          "description": "Hook opener (10s): la formula esatta dell'ergastolo obbligatorio. Contesto: crime news Jacksonville rBe17T-viFI 51-80 hook apertura short opening-short"
+        }
+      ]
+    },
+    {
+      "start": "01:20",
+      "end": "01:54",
+      "name": "Ksoo — police reconstruction: Dames Point Plaza rifle execution and Nissan chase crash",
+      "category": "crime_news",
+      "source_title": "Rapper Ksoo sentenced to life for 2020 Jacksonville murder alongside cousin",
+      "source_channel": "First Coast News",
+      "summary": "Police reconstruct January 15 2020 shooting at Dames Point Plaza Arlington: off-duty officer saw gunman stand over McCormack and fire rifle, then flee in Nissan Ultima pursued until crash with three runners.",
+      "topics": [
+        "Ksoo Dames Point Plaza Arlington January 15 2020 rifle execution off-duty officer Nissan Ultima chase crash police reconstruction Jacksonville murder 01:20-01:54 rBe17T-viFI"
+      ],
+      "tags": [
+        "Ksoo",
+        "Dames Point Plaza",
+        "police",
+        "rifle",
+        "crime_news"
+      ],
+      "speakers": [
+        "News Anchor",
+        "Police Spokesperson"
+      ],
+      "mentioned_people": [
+        "Charles McCormack Jr",
+        "Hakeem Robinson"
+      ],
+      "hook": "gunman stood over McCormack and fired a rifle before fleeing in a Nissan",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Ricostruzione dell'agguato a Dames Point Plaza",
+          "summary": "La polizia ricostruisce la sparatoria del 15 gennaio 2020 a Dames Point Plaza: l'agente fuori servizio vede il sicario sparare col fucile e fuggire su Nissan inseguita fino allo schianto.",
+          "description": "Police details: McCormack shot at Dames Point Plaza Arlington, gunman stood over victim fired rifle, fled in Nissan Ultima, officer pursued until crash. Contesto: crime news Jacksonville rBe17T-viFI 80-114"
+        }
+      ]
+    },
+    {
+      "start": "01:27",
+      "end": "01:37",
+      "name": "Hook: gunman stood over McCormack and fired a rifle",
+      "category": "crime_news",
+      "source_title": "Rapper Ksoo sentenced to life for 2020 Jacksonville murder alongside cousin",
+      "source_channel": "First Coast News",
+      "summary": "Hook opener (10s): the most visual forensic detail — execution style shooting.",
+      "topics": [
+        "Ksoo gunman stood over McCormack fired rifle Nissan execution hook opening short 01:27-01:37 rBe17T-viFI hook apertura short opening-short"
+      ],
+      "tags": [
+        "Ksoo",
+        "Dames Point Plaza",
+        "crime_news",
+        "hook"
+      ],
+      "speakers": [
+        "News Anchor"
+      ],
+      "mentioned_people": [
+        "Charles McCormack Jr"
+      ],
+      "hook": "gunman stood over McCormack and fired a rifle",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Ricostruzione dell'agguato a Dames Point Plaza",
+          "summary": "La polizia ricostruisce la sparatoria del 15 gennaio 2020 a Dames Point Plaza: l'agente fuori servizio vede il sicario sparare col fucile e fuggire su Nissan inseguita fino allo schianto.",
+          "description": "Hook opener (10s): dettaglio visivo dell'esecuzione con fucile. Contesto: crime news Jacksonville rBe17T-viFI 80-114 hook apertura short opening-short"
+        }
+      ]
+    },
+    {
+      "start": "01:54",
+      "end": "02:18",
+      "name": "Ksoo — family message: one reckless decision destroys many lives, stand against glorified violence",
+      "category": "crime_news",
+      "source_title": "Rapper Ksoo sentenced to life for 2020 Jacksonville murder alongside cousin",
+      "source_channel": "First Coast News",
+      "summary": "Family of Charles McCormack in courtroom delivers community warning: one reckless moment destroys many lives including your own, and urges to take a stand against music glorifying real violence.",
+      "topics": [
+        "Ksoo family message one reckless decision destroys many lives stand against music glorifying violence community warning Jacksonville 01:54-02:18 rBe17T-viFI"
+      ],
+      "tags": [
+        "Ksoo",
+        "family",
+        "community",
+        "violence",
+        "crime_news"
+      ],
+      "speakers": [
+        "Family Spokesperson"
+      ],
+      "mentioned_people": [
+        "Charles McCormack Jr"
+      ],
+      "hook": "one reckless moment one decision can destroy many lives",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Il messaggio della famiglia contro la violenza glorificata",
+          "summary": "La famiglia della vittima lancia un monito alla comunità: una singola decisione sconsiderata distrugge molte vite e invita a rigettare la musica che glorifica la violenza.",
+          "description": "Family statement: we pray this moment causes reflection, one reckless moment can destroy many lives including your own, take a stand against music glorifying real violence. Contesto: crime news Jacksonville rBe17T-viFI 114-138"
+        }
+      ]
+    },
+    {
+      "start": "02:02",
+      "end": "02:13",
+      "name": "Hook: one reckless moment can destroy many lives",
+      "category": "crime_news",
+      "source_title": "Rapper Ksoo sentenced to life for 2020 Jacksonville murder alongside cousin",
+      "source_channel": "First Coast News",
+      "summary": "Hook opener (11s): the family's universal warning — perfect cold open.",
+      "topics": [
+        "Ksoo one reckless decision destroys many lives including your own hook opening short 02:02-02:13 rBe17T-viFI hook apertura short opening-short"
+      ],
+      "tags": [
+        "Ksoo",
+        "family",
+        "crime_news",
+        "hook"
+      ],
+      "speakers": [
+        "Family Spokesperson"
+      ],
+      "mentioned_people": [
+        "Charles McCormack Jr"
+      ],
+      "hook": "one reckless moment one decision can destroy many lives",
+      "texts": [
+        {
+          "language_code": "it",
+          "title": "Il messaggio della famiglia contro la violenza glorificata",
+          "summary": "La famiglia della vittima lancia un monito alla comunità: una singola decisione sconsiderata distrugge molte vite e invita a rigettare la musica che glorifica la violenza.",
+          "description": "Hook opener (11s): il monito universale della famiglia perfetto come cold open. Contesto: crime news Jacksonville rBe17T-viFI 114-138 hook apertura short opening-short"
+        }
+      ]
+    }
+  ]
+}

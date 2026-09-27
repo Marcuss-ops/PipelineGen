@@ -158,12 +158,16 @@ func (r *Runner) runAudioCompilePhase(ctx context.Context, runID string, req Gen
 			} else if candidate, ok := r.audioAssetSource.(ClipAudioAssetSource); ok {
 				clipAudioSource = candidate
 			}
-			clipPrepareMS, prepareErr := prepareClipAudioAssets(ctx, result, clipAudioSource, policy)
-			if prepareErr != nil {
-				cause := fmt.Errorf("prepare original clip audio failed: %w", prepareErr)
-				r.failExecutionStep(ctx, exec, audioStep, cause)
-				r.failRunWithRetry(ctx, runID, StageCompilingAudio, cause)
-				return false
+			var clipPrepareMS int64
+			if !req.FinalJob {
+				var prepareErr error
+				clipPrepareMS, prepareErr = prepareClipAudioAssets(ctx, result, clipAudioSource, policy)
+				if prepareErr != nil {
+					cause := fmt.Errorf("prepare original clip audio failed: %w", prepareErr)
+					r.failExecutionStep(ctx, exec, audioStep, cause)
+					r.failRunWithRetry(ctx, runID, StageCompilingAudio, cause)
+					return false
+				}
 			}
 			compileTimings.ClipAudioPrepareMS = clipPrepareMS
 			// The audio intent block (BGM/SFX) is layered onto the same
@@ -183,9 +187,17 @@ func (r *Runner) runAudioCompilePhase(ctx context.Context, runID string, req Gen
 					r.failRunWithRetry(ctx, runID, StageCompilingAudio, cause)
 					return false
 				}
-				canonicalTimeline, compiledAudioPlan, audioAssets, compileTimings, err = CompileCanonicalAudioPlanAudioOnlyWithIntents(ctx, *result, req.SourceLanguage, capabilityaudio.DefaultAudioProfile(), audioSource, policy, req.BackgroundMusic, req.SoundEffects)
+				audioInput := *result
+				if req.FinalJob {
+					audioInput = finalJobAudioInput(*result, req.SourceLanguage)
+				}
+				canonicalTimeline, compiledAudioPlan, audioAssets, compileTimings, err = CompileCanonicalAudioPlanAudioOnlyWithIntents(ctx, audioInput, req.SourceLanguage, capabilityaudio.DefaultAudioProfile(), audioSource, policy, req.BackgroundMusic, req.SoundEffects)
 			} else {
-				canonicalTimeline, compiledAudioPlan, audioAssets, compileTimings, err = CompileCanonicalAudioPlanAudioOnly(*result, req.SourceLanguage, capabilityaudio.DefaultAudioProfile())
+				audioInput := *result
+				if req.FinalJob {
+					audioInput = finalJobAudioInput(*result, req.SourceLanguage)
+				}
+				canonicalTimeline, compiledAudioPlan, audioAssets, compileTimings, err = CompileCanonicalAudioPlanAudioOnly(audioInput, req.SourceLanguage, capabilityaudio.DefaultAudioProfile())
 			}
 			if err != nil {
 				cause := fmt.Errorf("compile canonical audio plan failed: %w", err)
@@ -400,7 +412,11 @@ func (r *Runner) runAudioCompilePhase(ctx context.Context, runID string, req Gen
 			}
 		}
 		if len(result.ResolvedScenes) == 0 {
-			result.ResolvedScenes, err = ResolveScenes(result.Scenes, req.SourceLanguage, mode, false)
+			scenesForPersistence := result.Scenes
+			if req.FinalJob {
+				scenesForPersistence = finalJobAudioInput(*result, req.SourceLanguage).Scenes
+			}
+			result.ResolvedScenes, err = ResolveScenes(scenesForPersistence, req.SourceLanguage, mode, false)
 			if err != nil {
 				cause := fmt.Errorf("resolve scenes for persistence failed: %w", err)
 				r.failExecutionStep(ctx, exec, payloadStep, cause)

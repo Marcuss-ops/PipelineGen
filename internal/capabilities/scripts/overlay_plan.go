@@ -21,6 +21,7 @@
 package scriptgeneration
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 
@@ -48,6 +49,13 @@ import (
 // The returned plan is sealed (render keys + fingerprint) and ready to
 // enqueue through QueueRenderEnqueuer.EnqueueChrononPlan.
 func CompileOverlayPlan(result *GenerateResult, language Language, canvas OverlayCanvasSpec, planID, videoID, projectID string) (*capabilityoverlay.OverlayPlan, error) {
+	return compileOverlayPlanWithMotionOffset(result, language, canvas, planID, videoID, projectID, capabilityoverlay.RandomImageMotionOffset)
+}
+
+// compileOverlayPlanWithMotionOffset keeps the per-attempt motion entropy at
+// the plan-compilation boundary. A queued plan is immutable across worker
+// retries, while compiling a fresh generation attempt samples a new offset.
+func compileOverlayPlanWithMotionOffset(result *GenerateResult, language Language, canvas OverlayCanvasSpec, planID, videoID, projectID string, chooseOffset func() (int, error)) (*capabilityoverlay.OverlayPlan, error) {
 	if result == nil {
 		return nil, nil
 	}
@@ -214,15 +222,15 @@ func CompileOverlayPlan(result *GenerateResult, language Language, canvas Overla
 	// prevents a long script with many scenes from producing one image render
 	// for every extracted person.
 	items = capEntityImageOverlays(items, capabilityoverlay.MaxEntityImageOverlaysPerRun)
-	imageOrdinal := 0
-	for i := range items {
-		if items[i].Kind != string(capabilityoverlay.KindEntityImage) {
-			continue
-		}
-		items[i].MotionID = capabilityoverlay.SelectImageMotionAt(planID, "run", imageOrdinal)
-		items[i].Params = capabilityoverlay.EntityImageParams(canvas.Width, canvas.Height)
-		imageOrdinal++
+	items = composeNearbyEntityImages(items, canvas.Width, canvas.Height)
+	if chooseOffset == nil {
+		return nil, fmt.Errorf("overlay plan: image motion offset chooser is required")
 	}
+	imageMotionOffset, err := chooseOffset()
+	if err != nil {
+		return nil, fmt.Errorf("overlay plan: choose random image motion offset: %w", err)
+	}
+	assignEntityImageMotions(items, imageMotionOffset, canvas.Width, canvas.Height)
 	items, _ = capabilityoverlay.ApplyEditorialOverlayBudget(items)
 	if len(items) == 0 {
 		return nil, nil
@@ -367,11 +375,7 @@ func overlaySceneInput(scene Scene, language, sourceLanguage Language, timing ca
 	}
 	out := capabilityoverlay.SceneInput{ID: scene.ID}
 	locate := func(phrase string) (*capabilityaudio.PhraseTiming, error) {
-		located, err := capabilityaudio.LocatePhraseTimings(scene.Index, timelineStartUS, timing, []string{phrase})
-		if err != nil {
-			return nil, err
-		}
-		return &located[0], nil
+		return locatePhraseTimingWithEndpointFallback(scene.Index, timelineStartUS, timing, phrase)
 	}
 	timed := func(p *capabilityaudio.PhraseTiming, score float64) capabilityoverlay.TimedAnnotation {
 		return capabilityoverlay.TimedAnnotation{
@@ -452,6 +456,65 @@ func overlaySceneInput(scene Scene, language, sourceLanguage Language, timing ca
 		return nil, nil
 	}
 	return &out, nil
+}
+
+// locatePhraseTimingWithEndpointFallback first requires a complete exact phrase
+// match. If certified timing omitted or regrouped interior words, it may still
+// use the exact first/last word boundaries, but only when both are present and
+// ordered in the same timing artifact. Invalid artifacts and absent endpoints
+// remain failures; no time is interpolated.
+func locatePhraseTimingWithEndpointFallback(sceneIndex int, timelineStartUS int64, timing capabilityaudio.SpeechTimingArtifact, phrase string) (*capabilityaudio.PhraseTiming, error) {
+	located, err := capabilityaudio.LocatePhraseTimings(sceneIndex, timelineStartUS, timing, []string{phrase})
+	if err == nil {
+		return &located[0], nil
+	}
+	if !errors.Is(err, capabilityaudio.ErrPhraseNotFound) {
+		return nil, err
+	}
+	words := strings.Fields(phrase)
+	if len(words) < 2 {
+		return nil, err
+	}
+	firstMatches, firstErr := capabilityaudio.LocatePhrase(timing, words[0])
+	if firstErr != nil {
+		return nil, firstErr
+	}
+	lastMatches, lastErr := capabilityaudio.LocatePhrase(timing, words[len(words)-1])
+	if lastErr != nil {
+		return nil, lastErr
+	}
+
+	// Repeated endpoint words can produce several possible spans. Choose the
+	// ordered pair whose number of certified timing words most closely matches
+	// the source phrase length; stable iteration makes ties source-order wins.
+	var first, last capabilityaudio.LocatedPhrase
+	bestDelta := int(^uint(0) >> 1)
+	for _, start := range firstMatches {
+		for _, end := range lastMatches {
+			if end.WordEnd <= start.WordStart {
+				continue
+			}
+			spanWords := end.WordEnd - start.WordStart + 1
+			delta := spanWords - len(words)
+			if delta < 0 {
+				delta = -delta
+			}
+			if delta < bestDelta {
+				first, last, bestDelta = start, end, delta
+			}
+		}
+	}
+	if bestDelta == int(^uint(0)>>1) {
+		return nil, err
+	}
+	return &capabilityaudio.PhraseTiming{
+		SceneIndex: sceneIndex, PhraseIndex: 0, Text: strings.TrimSpace(phrase),
+		WordStart: first.WordStart, WordEnd: last.WordEnd,
+		LocalStartUS: first.StartUS, LocalEndUS: last.EndUS,
+		TimelineStartUS: timelineStartUS,
+		GlobalStartUS:   timelineStartUS + first.StartUS,
+		GlobalEndUS:     timelineStartUS + last.EndUS,
+	}, nil
 }
 
 // plannerOwnedEntityIDs collects the StableEntityID of every annotation entity

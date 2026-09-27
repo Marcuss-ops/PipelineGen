@@ -387,7 +387,14 @@ func TestSceneIRSegmentEnricherUsesAllPersonsForImageSearch(t *testing.T) {
 	require.Len(t, result.Insights.Entities, 3)
 	require.Equal(t, "Ada Lovelace", result.Insights.Entities[1].Value)
 	require.Equal(t, string(scriptpkg.EntityTypePerson), result.Insights.Entities[1].Type)
-	require.Contains(t, result.Insights.ImportantPhrases, "historic meeting")
+	containsHistoricMeeting := false
+	for _, phrase := range result.Insights.ImportantPhrases {
+		if strings.Contains(strings.ToLower(phrase), "historic meeting") {
+			containsHistoricMeeting = true
+			break
+		}
+	}
+	require.True(t, containsHistoricMeeting, "expected at least one phrase to contain historic meeting, got %#v", result.Insights.ImportantPhrases)
 	require.Equal(t, []string{"Ada Lovelace", "Charles Babbage"}, result.Insights.ImageQueries)
 
 	plan.MediaPlan.Extraction.Include = []string{mediadomain.ExtractionIncludeEntities}

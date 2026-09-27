@@ -316,8 +316,10 @@ func (e *executionRun) parallelFanOut() bool {
 				sfxIDs[i] = s.AssetID
 			}
 			var clipIDs []string
-			for _, s := range e.snapshot {
-				clipIDs = append(clipIDs, s.ClipIDs...)
+			if !e.req.FinalJob {
+				for _, s := range e.snapshot {
+					clipIDs = append(clipIDs, s.ClipIDs...)
+				}
 			}
 			var clipAudioSource ClipAudioAssetSource
 			if candidate, ok := e.r.audioAssetSource.(ClipAudioAssetSource); ok {
@@ -430,14 +432,25 @@ func (e *executionRun) audioCompile() bool {
 	}) {
 		return false
 	}
-	return e.measure(StageAudioPublish, func(c context.Context) bool {
+	if !e.measure(StageAudioPublish, func(c context.Context) bool {
 		return e.r.publishFinalAudio(c, e.runID, e.req, e.routing, e.exec, e.result)
+	}) {
+		return false
+	}
+	return true
+}
+
+func (e *executionRun) finalJob() bool {
+	if !e.req.FinalJob {
+		return true
+	}
+	return e.measure(kernobs.StageRunFinalJob, func(c context.Context) bool {
+		return e.r.submitFinalJob(c, e.runID, e.req, e.result)
 	})
 }
 
-// persist stores the canonical script only. The script-generation runtime
-// produces localized clip artifacts; complete-video assembly is outside this
-// capability and is not part of the script.generate contract.
+// persist stores the canonical script. An explicitly requested remote final
+// render runs after persistence and before document publication.
 func (e *executionRun) persist() bool {
 	if !e.measure(kernobs.StageName(stagePersistence), func(c context.Context) bool {
 		e.checkpoint()

@@ -551,6 +551,51 @@ func TestCompileOverlayPlan_UnspokenPhraseSkipped(t *testing.T) {
 	require.Nil(t, plan, "unspoken phrase and non-contract word overlay produce no plan")
 }
 
+func TestLocatePhraseTimingFallsBackToCertifiedEndpoints(t *testing.T) {
+	timing := speechTimingForWords([]string{"O", "arrependimento", "vida"})
+	// The full six-word phrase misses the word stream because TTS omitted the
+	// interior words, but both phrase endpoints have exact certified bounds.
+	got, err := locatePhraseTimingWithEndpointFallback(2, 5_000_000, timing, "O maior arrependimento da minha vida")
+	require.NoError(t, err)
+	require.Equal(t, 0, got.WordStart)
+	require.Equal(t, 2, got.WordEnd)
+	require.Equal(t, int64(0), got.LocalStartUS)
+	require.Equal(t, int64(300_000), got.LocalEndUS)
+	require.Equal(t, int64(5_000_000), got.GlobalStartUS)
+	require.Equal(t, int64(5_300_000), got.GlobalEndUS)
+	require.Equal(t, "O maior arrependimento da minha vida", got.Text)
+}
+
+func TestOverlaySceneInputUsesPhraseEndpointTimingFallback(t *testing.T) {
+	timing := speechTimingForWords([]string{"O", "arrependimento", "vida"})
+	scene := Scene{
+		ID: "ptbr-scene", Index: 0,
+		Text: map[Language]string{"pt-BR": "O maior arrependimento da minha vida."},
+		Annotations: &scriptpkg.SceneAnnotations{
+			Version: 1, Language: "pt-BR", Status: "completed",
+			ImportantPhrases: []scriptpkg.AnnotationSpan{{Text: "O maior arrependimento da minha vida", Score: 0.95}},
+		},
+	}
+	got, err := overlaySceneInput(scene, "pt-BR", "pt-BR", timing, 0, nil)
+	require.NoError(t, err)
+	require.NotNil(t, got)
+	require.Len(t, got.Phrases, 1)
+	require.Equal(t, "O maior arrependimento da minha vida", got.Phrases[0].Text)
+	require.Equal(t, int64(0), got.Phrases[0].StartUS)
+	require.Equal(t, int64(300_000), got.Phrases[0].DurationUS)
+}
+
+func TestLocatePhraseTimingEndpointFallbackRemainsFailClosed(t *testing.T) {
+	timing := speechTimingForWords([]string{"O", "arrependimento", "vida"})
+	_, err := locatePhraseTimingWithEndpointFallback(0, 0, timing, "O maior arrependimento da minha história")
+	require.ErrorIs(t, err, capabilityaudio.ErrPhraseNotFound, "an absent endpoint must not get an invented timestamp")
+
+	invalid := timing
+	invalid.BoundaryMode = capabilityaudio.BoundaryMode("sentence")
+	_, err = locatePhraseTimingWithEndpointFallback(0, 0, invalid, "O maior arrependimento da minha vida")
+	require.Error(t, err, "invalid timing artifacts must not be converted into endpoint fallback spans")
+}
+
 func TestCompileOverlayPlanUsesTranslatedPhraseAndVoiceoverTiming(t *testing.T) {
 	englishTiming := speechTimingForWords([]string{"Discipline", "creates", "power."})
 	spanishTiming := speechTimingForWords([]string{"La", "velocidad", "abre", "la", "distancia", "con", "control."})

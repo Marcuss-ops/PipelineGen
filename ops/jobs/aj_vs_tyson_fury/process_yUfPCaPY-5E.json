@@ -1,0 +1,114 @@
+{
+ "_comment": "Clip 'Aj Vs Tyson Fury' — video yUfPCaPY-5E (Ring Magazine). Segmenti curati 10-45s, destinazione esplicita folder 1nib6O6sgAoy3M_hfWAkPsvGwjNDcMl36 (Clips/Boxe/Anthony Joshua/Aj Vs Tyson Fury) con create_subfolder=false. Clip ID deterministico yt_<videoID>_<startSec>_<endSec>_v1: reinviare fa UPSERT, non duplica.",
+ "url": "https://www.youtube.com/watch?v=yUfPCaPY-5E",
+ "strategy": "verify",
+ "concurrency": 3,
+ "force_keyframes": true,
+ "keep_audio": true,
+ "write_summary": true,
+ "destination": {
+  "folder_id": "1nib6O6sgAoy3M_hfWAkPsvGwjNDcMl36",
+  "create_subfolder": false
+ },
+ "segments": [
+  {
+   "start": "01:57",
+   "end": "02:20",
+   "name": "AJ risponde a Fury: \"That's rubbish\"",
+   "category": "boxing_interview",
+   "source_title": "\"THAT'S RUBBISH!\" Anthony Joshua EXCLUSIVE Interview: Hits Back at Tyson Fury Mentality",
+   "source_channel": "Ring Magazine",
+   "summary": "Joshua commenta la dichiarazione di Fury che vuole solo il fight con lui definendola senza senso, spiega che per lui conta affrontare chiunque e non scegliere gli avversari.",
+   "topics": [
+    "Anthony Joshua Tyson Fury clash intervista esclusiva \"that's rubbish\" avversari Pulev corrida titolo mondiale pesi massimi boxe 2020"
+   ],
+   "tags": [
+    "Anthony Joshua",
+    "Tyson Fury",
+    "Boxe",
+    "Pesi massimi",
+    "Intervista"
+   ],
+   "mentioned_people": [
+    "Anthony Joshua",
+    "Tyson Fury"
+   ],
+   "hook": "AJ smonta le parole di Fury sull'unico avversario che vuole",
+   "quality_score": 0.9
+  },
+  {
+   "start": "02:53",
+   "end": "03:20",
+   "name": "AJ: \"Non sono una marionetta\" - controllo e disciplina",
+   "category": "boxing_interview",
+   "source_title": "\"THAT'S RUBBISH!\" Anthony Joshua EXCLUSIVE Interview: Hits Back at Tyson Fury Mentality",
+   "source_channel": "Ring Magazine",
+   "summary": "Joshua racconta di aver rifiutato di salire sul ring con Fury dopo il match perche nulla era firmato, spiegando che non si fa manipolare dalle provocazioni e che controlla le proprie decisioni.",
+   "topics": [
+    "Anthony Joshua Tyson Fury faccia a faccia provocazioni controllo emotivo disciplina \"non sono una marionetta\" fake narratives hype pesi massimi"
+   ],
+   "tags": [
+    "Anthony Joshua",
+    "Tyson Fury",
+    "Boxe",
+    "Mentalita",
+    "Intervista"
+   ],
+   "mentioned_people": [
+    "Anthony Joshua",
+    "Tyson Fury"
+   ],
+   "hook": "AJ spiega perche non e salito sul ring con Fury: nulla era firmato",
+   "quality_score": 0.9
+  },
+  {
+   "start": "03:32",
+   "end": "04:01",
+   "name": "Accordo a due fight firmato: la strada verso Fury",
+   "category": "boxing_interview",
+   "source_title": "\"THAT'S RUBBISH!\" Anthony Joshua EXCLUSIVE Interview: Hits Back at Tyson Fury Mentality",
+   "source_channel": "Ring Magazine",
+   "summary": "Joshua conferma che dopo l'incontro con Fury e stato messo nero su bianco un accordo a due match: se batte Kristian Prenga arriva il tanto atteso Anthony Joshua vs Tyson Fury.",
+   "topics": [
+    "Anthony Joshua Tyson Fury two fight deal contratto accordo Prenga match firma pesi massimi boxe accordo economico"
+   ],
+   "tags": [
+    "Anthony Joshua",
+    "Tyson Fury",
+    "Eddie Hearn",
+    "Boxe",
+    "Contratto"
+   ],
+   "mentioned_people": [
+    "Anthony Joshua",
+    "Tyson Fury"
+   ],
+   "hook": "Il two-fight deal che porta AJ dritto al fight con Fury",
+   "quality_score": 0.9
+  },
+  {
+   "start": "07:01",
+   "end": "07:13",
+   "name": "\"Ho cambiato numero\": niente chiacchiere con Fury",
+   "category": "boxing_interview",
+   "source_title": "\"THAT'S RUBBISH!\" Anthony Joshua EXCLUSIVE Interview: Hits Back at Tyson Fury Mentality",
+   "source_channel": "Ring Magazine",
+   "summary": "Alla domanda se Fury lo abbia chiamato dopo la firma del contratto, Joshua risponde di aver cambiato numero e di non avere intenzione di parlare con lui prima del fight.",
+   "topics": [
+    "Anthony Joshua Tyson Fury telefono chiamate numero cambiato silenzio stampa fight ruggine rivalita boxe pesi massimi"
+   ],
+   "tags": [
+    "Anthony Joshua",
+    "Tyson Fury",
+    "Boxe",
+    "Rivalita"
+   ],
+   "mentioned_people": [
+    "Anthony Joshua",
+    "Tyson Fury"
+   ],
+   "hook": "AJ taglia corto: \"ho cambiato numero, non devo parlargli\"",
+   "quality_score": 0.9
+  }
+ ]
+}

@@ -1,0 +1,88 @@
+{
+ "_comment": "RIPARAZIONE confini (tagli a meta parola) — video sI2KQltCDHk: solo i segmenti cambiati, stesso folder, UPSERT su nuovi ID.",
+ "url": "https://www.youtube.com/watch?v=sI2KQltCDHk",
+ "strategy": "verify",
+ "concurrency": 3,
+ "force_keyframes": true,
+ "keep_audio": true,
+ "write_summary": true,
+ "destination": {
+  "folder_id": "1nib6O6sgAoy3M_hfWAkPsvGwjNDcMl36",
+  "create_subfolder": false
+ },
+ "segments": [
+  {
+   "start": "00:41",
+   "end": "00:58",
+   "name": "\"Non voleva il fight\": la notte del faccia a faccia mancato",
+   "category": "boxing_interview",
+   "source_title": "Anthony Joshua is 'defining fight for British boxing' - Tyson Fury | BBC Sport",
+   "source_channel": "BBC Sport",
+   "summary": "Fury racconta la serata in cui Joshua era a bordo ring: secondo lui AJ non ha dato risposte definitive, appariva frastornato e non ha voluto salire sul ring per fare il faccia a faccia.",
+   "topics": [
+    "Tyson Fury Anthony Joshua faccia a faccia ringside \"didn't want no smoke\" shell shocked risposte elusive pesi massimi boxe intervista"
+   ],
+   "tags": [
+    "Tyson Fury",
+    "Anthony Joshua",
+    "Boxe",
+    "Rivalita"
+   ],
+   "mentioned_people": [
+    "Tyson Fury",
+    "Anthony Joshua"
+   ],
+   "hook": "Fury: \"Non ha dato risposte, sembrava scioccato\"",
+   "quality_score": 0.9
+  },
+  {
+   "start": "01:13",
+   "end": "01:28",
+   "name": "\"Ho firmato mesi fa, lui non ha firmato\"",
+   "category": "boxing_interview",
+   "source_title": "Anthony Joshua is 'defining fight for British boxing' - Tyson Fury | BBC Sport",
+   "source_channel": "BBC Sport",
+   "summary": "Fury afferma di aver firmato l'accordo per il fight mesi prima e che, dai segnali, Joshua non ha ancora apposto la firma: un altro ostacolo sull'ennesima trattativa infinita.",
+   "topics": [
+    "Tyson Fury firma contratto Anthony Joshua trattativa ostacolo \"I signed months ago\" ritardi pesi massimi boxe intervista BBC"
+   ],
+   "tags": [
+    "Tyson Fury",
+    "Anthony Joshua",
+    "Boxe",
+    "Trattativa"
+   ],
+   "mentioned_people": [
+    "Tyson Fury",
+    "Anthony Joshua"
+   ],
+   "hook": "Fury: \"Ho firmato, lui no. Ecco cosa blocca tutto\"",
+   "quality_score": 0.9
+  },
+  {
+   "start": "02:28",
+   "end": "02:53",
+   "name": "\"Voglio combattere Anthony Joshua\": l'ultimatum",
+   "category": "boxing_interview",
+   "source_title": "Anthony Joshua is 'defining fight for British boxing' - Tyson Fury | BBC Sport",
+   "source_channel": "BBC Sport",
+   "summary": "Fury dice che non gli interessano avversari come Daniel Dubois o Moses Itauma: vuole AJ perche resta il fight piu grande della boxe, in grado di riempire qualsiasi stadio al mondo; altrimenti chiedera la trilogia con Usyk.",
+   "topics": [
+    "Tyson Fury Anthony Joshua fight piu grande boxe stadio sold out Daniel Dubois Moses Itauma Usyk trilogia ultimatum pesi massimi"
+   ],
+   "tags": [
+    "Tyson Fury",
+    "Anthony Joshua",
+    "Daniel Dubois",
+    "Oleksandr Usyk",
+    "Boxe"
+   ],
+   "mentioned_people": [
+    "Tyson Fury",
+    "Anthony Joshua"
+   ],
+   "hook": "Fury: \"Non voglio Dubois, voglio AJ: il fight piu grande\"",
+   "quality_score": 0.9
+  }
+ ]
+}

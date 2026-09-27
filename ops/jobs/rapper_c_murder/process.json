@@ -1,0 +1,393 @@
+{
+  "_comment": "POST /api/clips/process payload (ExtractRequest, drift source: internal/capabilities/youtube/dto/types.go). Source: C-Murder: The Night That Got Him a Life Sentence (https://www.youtube.com/watch?v=o-Wuodj8wA0, 964s) — AHumbleSoul documentary on Corey Miller (C-Murder) / No Limit, Platinum Club Harvey Jan 12 2002 killing of 16-year-old Steve Thomas, 2003 conviction vacated, 2009 retrial life without parole. Sister video RItNQa-iWrc 982s + xAtTccU5fY0 422s. Destination: explicit Rap child folder 1jRI3Pc3_e7bcPzRqiaQYqm19nvLPaPG1 (C-Murder under Clips/Rap); create_subfolder=false. Windows BY HAND from timed transcript (15s chunk dedup); no LLM. Clip ids deterministic yt_<videoID>_<startSec>_<endSec>_v1 so re-submit is UPSERT. Every main 13-51s ≤60s with hooks 9-13s INSIDE matching main (hiphop_36 gate). topics/summary/hook dense: composeYouTubeClipSearchText -> search_text -> 768d pgvector embedding, texts[] -> asset_text_tracks same atomic commit. language_code=it + source_language_code=en.",
+  "url": "https://www.youtube.com/watch?v=o-Wuodj8wA0",
+  "strategy": "verify",
+  "concurrency": 3,
+  "force_keyframes": true,
+  "keep_audio": true,
+  "write_summary": true,
+  "destination": {
+    "folder_id": "1jRI3Pc3_e7bcPzRqiaQYqm19nvLPaPG1",
+    "create_subfolder": false
+  },
+  "segments": [
+    {
+      "start": "00:00:40",
+      "end": "00:01:21",
+      "name": "C-Murder — chi è: Corey Miller, No Limit TRU, da Calio a life sentence",
+      "category": "crime_news",
+      "source_title": "C-Murder: The Night That Got Him a Life Sentence",
+      "source_channel": "AHumbleSoul",
+      "summary": "Ritratto: Cory Miller aka C-Murder, NOLA Calio projects, No Limit/TRU, dal debutto anni 90 alla condanna per l'omicidio del 2002 al Platinum Club.",
+      "topics": [
+        "C-Murder Corey Miller No Limit TRU Calio projects New Orleans life sentence Platinum Club 2002 00:40-01:21 o-Wuodj8wA0 rap crime news biografia Calio projects"
+      ],
+      "tags": ["C-Murder", "Corey Miller", "No Limit", "crime_news"],
+      "speakers": ["Narrator", "AHumbleSoul"],
+      "mentioned_people": ["Corey Miller", "Master P", "Silk"],
+      "hook": "Corey Miller, USC murder, has spent more than a decade in prison — second-degree murder at a Jefferson Parish nightclub.",
+      "texts": [
+        {
+          "language_code": "it",
+          "source_language_code": "en",
+          "title": "Chi è C-Murder: da Calio a life sentence",
+          "summary": "Ritratto di Cory Miller aka C-Murder: No Limit, TRU, Calio e l'omicidio del 2002 al Platinum Club.",
+          "description": "AHumbleSoul 00:40-01:21 o-Wuodj8wA0: Corey Miller (C-Murder), NOLA Calio, No Limit/TRU, dall'esordio anni 90 alla condanna 2002 Platinum Club. Contesto: rap crime news NOLA.",
+          "source_type": "provided",
+          "is_original": true
+        }
+      ]
+    },
+    {
+      "start": "00:00:52",
+      "end": "00:01:04",
+      "name": "Hook: more than a decade in prison — second-degree murder",
+      "category": "crime_news",
+      "source_title": "C-Murder: The Night That Got Him a Life Sentence",
+      "source_channel": "AHumbleSoul",
+      "summary": "Hook opener (12s): la frase che incornicia il caso.",
+      "topics": [
+        "C-Murder hook apertura short more than a decade in prison second-degree murder 00:52-01:04 o-Wuodj8wA0 opening short"
+      ],
+      "tags": ["C-Murder", "crime_news", "hook"],
+      "speakers": ["Narrator"],
+      "mentioned_people": ["Corey Miller"],
+      "hook": "Cory Miller has spent more than a decade in prison — second-degree murder.",
+      "texts": [
+        {
+          "language_code": "it",
+          "source_language_code": "en",
+          "title": "Hook: più di un decennio in carcere",
+          "summary": "Hook 12s che incornicia C-Murder.",
+          "description": "Hook 00:52-01:04 o-Wuodj8wA0.",
+          "source_type": "provided",
+          "is_original": true
+        }
+      ]
+    },
+    {
+      "start": "00:03:20",
+      "end": "00:04:02",
+      "name": "C-Murder — Club Rags Baton Rouge 2001: pistola inceppata contro buttafuori",
+      "category": "crime_news",
+      "source_title": "C-Murder: The Night That Got Him a Life Sentence",
+      "source_channel": "AHumbleSoul",
+      "summary": "Episodio preliminare: Club Rags Baton Rouge agosto 2001, C-Murder tenta di entrare armato senza perquisizione, pistola inceppata sul buttafuori, mandato per tentato omicidio e cauzione.",
+      "topics": [
+        "C-Murder Club Rags Baton Rouge agosto 2001 pistola inceppata buttafuori tentato omicidio mandato cauzione 03:20-04:02 o-Wuodj8wA0"
+      ],
+      "tags": ["C-Murder", "crime_news", "Club Rags"],
+      "speakers": ["Narrator"],
+      "mentioned_people": ["Corey Miller"],
+      "hook": "He pulled out his pistol and tried to shoot — the gun jammed, no one was shot, then a warrant for attempted murder.",
+      "texts": [
+        {
+          "language_code": "it",
+          "source_language_code": "en",
+          "title": "Club Rags 2001: la pistola inceppata",
+          "summary": "Baton Rouge Club Rags 2001: C-Murder tenta di sparare ma la pistola si inceppa, mandato per tentato omicidio.",
+          "description": "Baton Rouge 03:20-04:02 o-Wuodj8wA0: Club Rags agosto 2001, rifiuto perquisizione, pistola inceppata, mandato tentato omicidio e cauzione a 6 cifre. Contesto: crime news NOLA.",
+          "source_type": "provided",
+          "is_original": true
+        }
+      ]
+    },
+    {
+      "start": "00:03:35",
+      "end": "00:03:47",
+      "name": "Hook: gun jammed at Club Rags — attempted murder warrant",
+      "category": "crime_news",
+      "source_title": "C-Murder: The Night That Got Him a Life Sentence",
+      "source_channel": "AHumbleSoul",
+      "summary": "Hook opener (12s): la pistola inceppata.",
+      "topics": [
+        "C-Murder hook apertura short gun jammed Club Rags attempted murder 03:35-03:47 o-Wuodj8wA0 opening short"
+      ],
+      "tags": ["C-Murder", "crime_news", "hook"],
+      "speakers": ["Narrator"],
+      "mentioned_people": ["Corey Miller"],
+      "hook": "Gun jammed at Club Rags — warrant for attempted murder.",
+      "texts": [
+        {
+          "language_code": "it",
+          "source_language_code": "en",
+          "title": "Hook: pistola inceppata",
+          "summary": "Hook 12s Club Rags.",
+          "description": "Hook 03:35-03:47 o-Wuodj8wA0.",
+          "source_type": "provided",
+          "is_original": true
+        }
+      ]
+    },
+    {
+      "start": "00:04:21",
+      "end": "00:05:08",
+      "name": "C-Murder — Platinum Club Harvey 12 gen 2002: rissa e sparo a Steve Thomas 16 anni",
+      "category": "crime_news",
+      "source_title": "C-Murder: The Night That Got Him a Life Sentence",
+      "source_channel": "AHumbleSoul",
+      "summary": "Notte fatale: Platinum Club Harvey, contest rap, 16enne Steve Thomas urtato dall'entourage, rissa, sparo al petto, 150-200 persone fuggono, morto al West Jefferson.",
+      "topics": [
+        "C-Murder Platinum Club Harvey 12 gennaio 2002 Steve Thomas 16 anni contest rap rissa sparo petto 150 persone fuga 04:21-05:08 o-Wuodj8wA0"
+      ],
+      "tags": ["C-Murder", "Platinum Club", "Steve Thomas", "crime_news"],
+      "speakers": ["Narrator"],
+      "mentioned_people": ["Steve Thomas", "Corey Miller"],
+      "hook": "16-year-old Steve Thomas bumped the entourage — shots fired, 150 people scattered, he was left on the floor with a gunshot to the chest.",
+      "texts": [
+        {
+          "language_code": "it",
+          "source_language_code": "en",
+          "title": "Platinum Club 2002: la notte dello sparo",
+          "summary": "Harvey Platinum Club 12 gennaio 2002: rissa dopo contest rap, sparo a Steve Thomas 16 anni, fuga di 150 persone.",
+          "description": "Harvey 04:21-05:08 o-Wuodj8wA0: Platinum Club, 16enne Steve Thomas urta entourage, rissa, sparo al petto, 150-200 in fuga, morto al West Jefferson Medical Center. Contesto: crime news C-Murder.",
+          "source_type": "provided",
+          "is_original": true
+        }
+      ]
+    },
+    {
+      "start": "00:04:42",
+      "end": "00:04:54",
+      "name": "Hook: shots fired — 16-year-old left on the floor",
+      "category": "crime_news",
+      "source_title": "C-Murder: The Night That Got Him a Life Sentence",
+      "source_channel": "AHumbleSoul",
+      "summary": "Hook opener (12s): lo sparo al Platinum.",
+      "topics": [
+        "C-Murder hook apertura short shots fired 16-year-old left on floor 04:42-04:54 o-Wuodj8wA0 opening short"
+      ],
+      "tags": ["C-Murder", "crime_news", "hook"],
+      "speakers": ["Narrator"],
+      "mentioned_people": ["Steve Thomas"],
+      "hook": "Shots fired — 16-year-old left on the floor with a gunshot to the chest.",
+      "texts": [
+        {
+          "language_code": "it",
+          "source_language_code": "en",
+          "title": "Hook: sparo al Platinum",
+          "summary": "Hook 12s Platinum Club.",
+          "description": "Hook 04:42-04:54 o-Wuodj8wA0.",
+          "source_type": "provided",
+          "is_original": true
+        }
+      ]
+    },
+    {
+      "start": "00:06:40",
+      "end": "00:07:20",
+      "name": "C-Murder — la voce dal carcere: innocente incastrato per il nome",
+      "category": "crime_news",
+      "source_title": "C-Murder: The Night That Got Him a Life Sentence",
+      "source_channel": "AHumbleSoul",
+      "summary": "Intercettazione dal carcere: C-Murder si dice innocente, vittima del nome e dello status, corruzione a Jefferson Parish, lotta per uscire.",
+      "topics": [
+        "C-Murder voce carcere innocente nome status corruzione Jefferson Parish lotta per uscire 06:40-07:20 o-Wuodj8wA0 rap crime news"
+      ],
+      "tags": ["C-Murder", "crime_news", "innocence claim"],
+      "speakers": ["Corey Miller"],
+      "mentioned_people": ["Corey Miller"],
+      "hook": "They got me for second-degree murder — something I ain't doing, they want to send a message.",
+      "texts": [
+        {
+          "language_code": "it",
+          "source_language_code": "en",
+          "title": "C-Murder dal carcere: innocente",
+          "summary": "C-Murder dal carcere si dice innocente e parla di complotto per il suo nome a Jefferson Parish.",
+          "description": "Carcere 06:40-07:20 o-Wuodj8wA0: Corey Miller rivendica innocenza, parla di corruzione Jefferson Parish e lotta per uscire. Contesto: crime news.",
+          "source_type": "provided",
+          "is_original": true
+        }
+      ]
+    },
+    {
+      "start": "00:06:52",
+      "end": "00:07:04",
+      "name": "Hook: second-degree murder — something I ain't doing",
+      "category": "crime_news",
+      "source_title": "C-Murder: The Night That Got Him a Life Sentence",
+      "source_channel": "AHumbleSoul",
+      "summary": "Hook opener (12s): la rivendicazione di innocenza.",
+      "topics": [
+        "C-Murder hook apertura short second-degree murder something I ain't doing 06:52-07:04 o-Wuodj8wA0 opening short"
+      ],
+      "tags": ["C-Murder", "crime_news", "hook"],
+      "speakers": ["Corey Miller"],
+      "mentioned_people": ["Corey Miller"],
+      "hook": "Second-degree murder — something I ain't doing.",
+      "texts": [
+        {
+          "language_code": "it",
+          "source_language_code": "en",
+          "title": "Hook: innocente",
+          "summary": "Hook 12s innocenza.",
+          "description": "Hook 06:52-07:04 o-Wuodj8wA0.",
+          "source_type": "provided",
+          "is_original": true
+        }
+      ]
+    },
+    {
+      "start": "00:07:41",
+      "end": "00:08:21",
+      "name": "C-Murder — condanna annullata, nuova chance: prove occultate e testi manipolati",
+      "category": "crime_news",
+      "source_title": "C-Murder: The Night That Got Him a Life Sentence",
+      "source_channel": "AHumbleSoul",
+      "summary": "Tre anni dopo: condanna 2003 annullata per prove occultate e testi manipolati, arresti domiciliari 2006, libro e musica in attesa del nuovo processo.",
+      "topics": [
+        "C-Murder condanna annullata 2006 prove occultate testimoni manipolati arresti domiciliari Death Around the Corner nuovo processo 07:41-08:21 o-Wuodj8wA0"
+      ],
+      "tags": ["C-Murder", "crime_news", "retrial"],
+      "speakers": ["Narrator", "Corey Miller"],
+      "mentioned_people": ["Corey Miller"],
+      "hook": "Conviction overturned — prosecutors withheld evidence and tampered with witnesses, house arrest 2006.",
+      "texts": [
+        {
+          "language_code": "it",
+          "source_language_code": "en",
+          "title": "Condanna annullata: prove occultate",
+          "summary": "Dopo 3 anni la condanna 2003 viene annullata per prove occultate, C-Murder agli arresti domiciliari in attesa del nuovo processo.",
+          "description": "2006 07:41-08:21 o-Wuodj8wA0: condanna annullata per occultamento prove e manipolazione testi, domiciliari 2006, libro Death Around the Corner, musica dal carcere. Contesto: crime news.",
+          "source_type": "provided",
+          "is_original": true
+        }
+      ]
+    },
+    {
+      "start": "00:07:55",
+      "end": "00:08:07",
+      "name": "Hook: withheld evidence and tampered witnesses — new trial",
+      "category": "crime_news",
+      "source_title": "C-Murder: The Night That Got Him a Life Sentence",
+      "source_channel": "AHumbleSoul",
+      "summary": "Hook opener (12s): il ribaltone processuale.",
+      "topics": [
+        "C-Murder hook apertura short withheld evidence tampered witnesses new trial 07:55-08:07 o-Wuodj8wA0 opening short"
+      ],
+      "tags": ["C-Murder", "crime_news", "hook"],
+      "speakers": ["Narrator"],
+      "mentioned_people": ["Corey Miller"],
+      "hook": "Withheld evidence, tampered witnesses — new trial granted.",
+      "texts": [
+        {
+          "language_code": "it",
+          "source_language_code": "en",
+          "title": "Hook: prove occultate",
+          "summary": "Hook 12s nuovo processo.",
+          "description": "Hook 07:55-08:07 o-Wuodj8wA0.",
+          "source_type": "provided",
+          "is_original": true
+        }
+      ]
+    },
+    {
+      "start": "00:09:40",
+      "end": "00:10:21",
+      "name": "C-Murder — retrial 2009: giuria 10-2, condanna all'ergastolo e 10 anni per Baton Rouge",
+      "category": "crime_news",
+      "source_title": "C-Murder: The Night That Got Him a Life Sentence",
+      "source_channel": "AHumbleSoul",
+      "summary": "Due settimane di testimonianze, verdetto 10-2, C-Murder condannato di nuovo per omicidio di secondo grado all'ergastolo agosto 2009 più 10 anni per Club Rags, dubbi sul giusto processo.",
+      "topics": [
+        "C-Murder retrial 2009 giuria 10-2 ergastolo agosto 2009 10 anni Baton Rouge Club Rags giusto processo 09:40-10:21 o-Wuodj8wA0 rap crime news"
+      ],
+      "tags": ["C-Murder", "crime_news", "life sentence", "retrial"],
+      "speakers": ["Narrator", "Reporter"],
+      "mentioned_people": ["Corey Miller", "Steve Thomas"],
+      "hook": "10-to-2 guilty — life in prison August 2009, plus 10 years for Baton Rouge attempted murder.",
+      "texts": [
+        {
+          "language_code": "it",
+          "source_language_code": "en",
+          "title": "Retrial 2009: 10-2 e ergastolo",
+          "summary": "Retrial 2009: giuria 10-2 condanna C-Murder di nuovo all'ergastolo, più 10 anni per Baton Rouge.",
+          "description": "Agosto 2009 09:40-10:21 o-Wuodj8wA0: retrial due settimane, giuria 10-2, ergastolo per omicidio secondo grado, più 10 anni per Club Rags Baton Rouge. Contesto: crime news C-Murder life sentence.",
+          "source_type": "provided",
+          "is_original": true
+        }
+      ]
+    },
+    {
+      "start": "00:09:50",
+      "end": "00:10:02",
+      "name": "Hook: 10-to-2 — life in prison August 2009",
+      "category": "crime_news",
+      "source_title": "C-Murder: The Night That Got Him a Life Sentence",
+      "source_channel": "AHumbleSoul",
+      "summary": "Hook opener (12s): il verdetto 10-2.",
+      "topics": [
+        "C-Murder hook apertura short 10-to-2 life in prison August 2009 09:50-10:02 o-Wuodj8wA0 opening short"
+      ],
+      "tags": ["C-Murder", "crime_news", "hook"],
+      "speakers": ["Narrator"],
+      "mentioned_people": ["Corey Miller"],
+      "hook": "10-to-2 — life in prison, August 2009.",
+      "texts": [
+        {
+          "language_code": "it",
+          "source_language_code": "en",
+          "title": "Hook: 10-2 ergastolo",
+          "summary": "Hook 12s verdetto.",
+          "description": "Hook 09:50-10:02 o-Wuodj8wA0.",
+          "source_type": "provided",
+          "is_original": true
+        }
+      ]
+    },
+    {
+      "start": "00:11:01",
+      "end": "00:11:41",
+      "name": "C-Murder — testimoni ritrattano: pressione della polizia, prove inconsistenti",
+      "category": "crime_news",
+      "source_title": "C-Murder: The Night That Got Him a Life Sentence",
+      "source_channel": "AHumbleSoul",
+      "summary": "Decine di testimoni ritrattano: dicono di essere stati pressati dalla polizia, nessuna prova scientifica (DNA, video, confessione), solo testimonianze, giudice federale conferma comunque l'ergastolo.",
+      "topics": [
+        "C-Murder testimoni ritrattano pressione polizia nessuna prova DNA video confessione solo testimonianze giudice conferma ergastolo 11:01-11:41 o-Wuodj8wA0 rap crime news"
+      ],
+      "tags": ["C-Murder", "crime_news", "witness recantation"],
+      "speakers": ["Narrator", "Legal Analyst"],
+      "mentioned_people": ["Corey Miller"],
+      "hook": "No DNA, no video, no confession — only witnesses who recanted saying police pressured them, yet federal judge upheld life.",
+      "texts": [
+        {
+          "language_code": "it",
+          "source_language_code": "en",
+          "title": "Testimoni ritrattano ma l'ergastolo resta",
+          "summary": "Testimoni ritrattano parlando di pressioni, nessuna prova scientifica, solo testimonianze, giudice federale conferma l'ergastolo.",
+          "description": "11:01-11:41 o-Wuodj8wA0: testimoni ritrattano (pressione polizia), nessuna prova DNA/video/confessione, solo testimonianze, giudice federale conferma life. Contesto: crime news C-Murder.",
+          "source_type": "provided",
+          "is_original": true
+        }
+      ]
+    },
+    {
+      "start": "00:11:12",
+      "end": "00:11:24",
+      "name": "Hook: no DNA no video — witnesses recanted, life upheld",
+      "category": "crime_news",
+      "source_title": "C-Murder: The Night That Got Him a Life Sentence",
+      "source_channel": "AHumbleSoul",
+      "summary": "Hook opener (12s): prove inconsistenti.",
+      "topics": [
+        "C-Murder hook apertura short no DNA no video witnesses recanted life upheld 11:12-11:24 o-Wuodj8wA0 opening short"
+      ],
+      "tags": ["C-Murder", "crime_news", "hook"],
+      "speakers": ["Narrator"],
+      "mentioned_people": ["Corey Miller"],
+      "hook": "No DNA, no video — witnesses recanted, life sentence upheld.",
+      "texts": [
+        {
+          "language_code": "it",
+          "source_language_code": "en",
+          "title": "Hook: nessuna prova, testimoni ritrattano",
+          "summary": "Hook 12s prove inconsistenti.",
+          "description": "Hook 11:12-11:24 o-Wuodj8wA0.",
+          "source_type": "provided",
+          "is_original": true
+        }
+      ]
+    }
+  ]
+}

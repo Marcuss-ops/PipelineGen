@@ -1,0 +1,276 @@
+{
+  "version": 2,
+  "preset": "custom",
+  "correlation_id": "dolly-parton-13clips-funny-intro3-20260927T00Z",
+  "force_refresh": true,
+  "final_job": true,
+  "items": [
+    {
+      "id": "dolly-parton-13clips-funny-intro3",
+      "project": "dolly-parton-funny-13",
+      "title": "Dolly Parton — Funniest Moments (3 jokes to open, then 10 clips)",
+      "language": "en",
+      "tone": "playful, warm and cheeky; a friend retelling the wildest Dolly stories with a grin",
+      "style": "One scene per provided clip, in the given order. Every scene is a self-contained joke or anecdote: set it up, land the concrete detail, stop. Never open two scenes with the same words: no two scenes may both start with 'When asked about', 'When she', 'When he', 'The', or the same clause shape, and a scene must never open with the previous scene's wording. Forbidden filler and meta-commentary: 'This description highlights', 'This moment underscored', 'The song explores', 'demonstrating her', 'showing how', 'reflecting her', 'the importance of', 'the memory surfaced', 'the speaker recounted', 'recounted that', 'leading to'. Always name the person ('Dolly') — never 'the speaker', 'the subject' or 'she' as an opening subject. Every scene must open with a concrete image, a place, or the first thing that happened ('While wandering through 42nd Street...', 'Her hometown put up a bronze statue...'); never open with 'Dolly mentioned', 'Dolly revealed', 'Dolly shared', 'Dolly explained', 'Dolly stated' or any 'Dolly + reporting verb' opening. Never use markdown, asterisks, italics or brackets. Never put invented words in quotation marks: a quoted phrase is allowed only when it appears word-for-word in the clip transcript, and a made-up label or catchphrase is forbidden. Never guess dates or years: if the clip does not state a year, do not mention one. Never invent quotes, names or facts: if the clip transcript does not say it, do not write it. Never translate or reuse the brief wording verbatim.",
+      "model": "gemma4:e4b",
+      "source": {
+        "type": "clips",
+        "topic": "Dolly Parton — Funniest Moments",
+        "source_text": "Thirteen funny Dolly Parton moments from four interviews: 60 Minutes Australia, the WIRED autocomplete interview, Conan, and Dan Rather at Dollywood. The first three clips are the opening jokes of the compilation.",
+        "clip_ids": [
+          "yt_vLRjqTIiMjc_39_90_v1",
+          "yt_tnoMGevqWAM_603_668_v1",
+          "yt_vLRjqTIiMjc_270_355_v1",
+          "yt_tnoMGevqWAM_2370_2421_v1",
+          "yt_vLRjqTIiMjc_100_184_v1",
+          "yt_vLRjqTIiMjc_211_256_v1",
+          "yt_tnoMGevqWAM_319_375_v1",
+          "yt_tnoMGevqWAM_769_814_v1",
+          "yt_Bc9gTqiljLA_232_272_v1",
+          "yt_Bc9gTqiljLA_272_307_v1",
+          "yt_tnoMGevqWAM_96_124_v1",
+          "yt_pfaIAdqvlig_1026_1067_v1",
+          "yt_tnoMGevqWAM_124_156_v1"
+        ],
+        "num_clips": 13,
+        "ordering_strategy": "input_order",
+        "grounding_policy": "clips_primary",
+        "fallback_policy": "strict",
+        "force_refresh": true
+      },
+      "script_params": {
+        "target_words": 420,
+        "min_words": 280,
+        "segment_words": 34,
+        "concurrency": 1,
+        "force_refresh": true,
+        "segments": [
+          {
+            "id": "scene-00",
+            "kind": "intro",
+            "topic": "Thrown out of a hotel and mistaken for a prostitute",
+            "source_text": "On her first trip to New York, Dolly and her friend were mistaken for prostitutes because of the wigs and the flashy outfits, and the hotel threw them out. Conan gets the whole story.",
+            "clip_ids": ["yt_vLRjqTIiMjc_39_90_v1"],
+            "target_words": 26,
+            "min_words": 16,
+            "max_words": 40
+          },
+          {
+            "id": "scene-01",
+            "kind": "intro",
+            "topic": "The town tramp who taught her how to look like Dolly",
+            "source_text": "Every town had one woman with the piled-up hair and the painted face, and the neighbours called her trashy. Five-year-old Dolly looked at her and decided that was the look she wanted.",
+            "clip_ids": ["yt_tnoMGevqWAM_603_668_v1"],
+            "target_words": 26,
+            "min_words": 16,
+            "max_words": 40
+          },
+          {
+            "id": "scene-02",
+            "kind": "intro",
+            "topic": "What the tabloids wrote about her bust, and the line she gave back",
+            "source_text": "The tabloids wrote that Dolly's chest was so heavy she could not even get out of bed. Her deadpan answer, verbatim from the clip: they are heavy, that is why she does so many Led Zeppelin songs. Reuse that joke as it stands; invent no label and no other quotation.",
+            "clip_ids": ["yt_vLRjqTIiMjc_270_355_v1"],
+            "target_words": 26,
+            "min_words": 16,
+            "max_words": 40
+          },
+          {
+            "id": "scene-03",
+            "kind": "clip",
+            "topic": "The promise she made to Whitney Houston, funeral joke included",
+            "source_text": "When Whitney Houston died, Dolly had a promise to keep, and she tells it with a joke only Dolly could land.",
+            "clip_ids": ["yt_tnoMGevqWAM_2370_2421_v1"],
+            "target_words": 34,
+            "min_words": 22,
+            "max_words": 52
+          },
+          {
+            "id": "scene-04",
+            "kind": "clip",
+            "topic": "The pistol in her purse and the man on 42nd Street",
+            "source_text": "A man who followed her on 42nd Street backed off the moment Dolly told him what she was carrying in her purse.",
+            "clip_ids": ["yt_vLRjqTIiMjc_100_184_v1"],
+            "target_words": 34,
+            "min_words": 22,
+            "max_words": 52
+          },
+          {
+            "id": "scene-05",
+            "kind": "clip",
+            "topic": "The bronze statue and what her daddy said about pigeons",
+            "source_text": "Her hometown put up a bronze statue of her, and her father's reaction kept her feet on the ground: to the pigeons you are just another outdoor restroom.",
+            "clip_ids": ["yt_vLRjqTIiMjc_211_256_v1"],
+            "target_words": 34,
+            "min_words": 22,
+            "max_words": 52
+          },
+          {
+            "id": "scene-06",
+            "kind": "clip",
+            "topic": "Lipstick made from wild poke berries, and the price she paid for it",
+            "source_text": "The first make-up she ever wore was made from wild poke berries, and it ended with a whipping from her daddy.",
+            "clip_ids": ["yt_tnoMGevqWAM_319_375_v1"],
+            "target_words": 34,
+            "min_words": 22,
+            "max_words": 52
+          },
+          {
+            "id": "scene-07",
+            "kind": "clip",
+            "topic": "The apple box that hid how tiny she was on her TV debut",
+            "source_text": "The first time she ever stood in front of an audience was at the Cass Walker Show, where she sang with her uncle Bill. There was an apple crate to reach the microphone so nobody would notice how small she was, and the crowd wanted her to do it again and again. The clip never says how old she was: state no age.",
+            "clip_ids": ["yt_tnoMGevqWAM_769_814_v1"],
+            "target_words": 34,
+            "min_words": 22,
+            "max_words": 52
+          },
+          {
+            "id": "scene-08",
+            "kind": "clip",
+            "topic": "Why she wears white on stage, and the potatoes",
+            "source_text": "WIRED asks about the white outfits and Dolly somehow ends up defending her love of potatoes.",
+            "clip_ids": ["yt_Bc9gTqiljLA_232_272_v1"],
+            "target_words": 34,
+            "min_words": 22,
+            "max_words": 52
+          },
+          {
+            "id": "scene-09",
+            "kind": "clip",
+            "topic": "The truth about the colour of her hair",
+            "source_text": "Dolly answers the question everybody asks and admits what is really under the wigs.",
+            "clip_ids": ["yt_Bc9gTqiljLA_272_307_v1"],
+            "target_words": 34,
+            "min_words": 22,
+            "max_words": 52
+          },
+          {
+            "id": "scene-10",
+            "kind": "clip",
+            "topic": "The wig as stage equipment, not vanity",
+            "source_text": "The hair looks like vanity, but Dolly explains why a wig is stage equipment she can swap in seconds.",
+            "clip_ids": ["yt_tnoMGevqWAM_96_124_v1"],
+            "target_words": 34,
+            "min_words": 22,
+            "max_words": 52
+          },
+          {
+            "id": "scene-11",
+            "kind": "clip",
+            "topic": "The 'Jolene' record and the offers that came with it",
+            "source_text": "Dolly and Dan Rather talk about 'Jolene' becoming one of the most recorded songs in history and the offers that followed it.",
+            "clip_ids": ["yt_pfaIAdqvlig_1026_1067_v1"],
+            "target_words": 34,
+            "min_words": 22,
+            "max_words": 52
+          },
+          {
+            "id": "scene-12",
+            "kind": "clip",
+            "topic": "Why the high heels stay on at home",
+            "source_text": "Dolly explains the routine she keeps for her husband Carl, and why the heels do not come off at home either.",
+            "clip_ids": ["yt_tnoMGevqWAM_124_156_v1"],
+            "target_words": 34,
+            "min_words": 22,
+            "max_words": 52
+          }
+        ]
+      },
+      "docs": {
+        "enabled": true,
+        "languages": ["en"],
+        "folder_id": "1ST6FxPuRaxwBOIz39MAN8Jj4gDv509-K"
+      },
+      "audio": {
+        "mode": "COMBINED_TIMELINE",
+        "mix_policy": "VOICEOVER_DUCKED_CLIP",
+        "timing": {
+          "mode": "required",
+          "boundary": "word",
+          "formats": ["json", "srt", "vtt"]
+        }
+      },
+      "output": {
+        "save_to_db": true,
+        "extract_entities": "disabled",
+        "generate_metadata": false,
+        "generate_timeline": true,
+        "voiceover_enabled": true,
+        "languages": ["en"],
+        "render": {
+          "enabled": true,
+          "drive_folder_id": "1ST6FxPuRaxwBOIz39MAN8Jj4gDv509-K",
+          "drive_subfolder_name": "dolly-parton-funny-13clips-20260927",
+          "render_concurrency": 5,
+          "foreground_scale_percent": 85,
+          "output_dir": "",
+          "require_gpu": false,
+          "background": {
+            "mode": "blur_source"
+          },
+          "watermark": {
+            "enabled": true,
+            "text": "VELOX EDITING",
+            "position": "top_right",
+            "opacity": 0.85,
+            "style": {
+              "font": "Impact",
+              "scale_percent": 100,
+              "shadow": {
+                "color": "#000000",
+                "opacity": 0.6,
+                "blur_px": 12,
+                "offset_x": 0,
+                "offset_y": 4
+              }
+            }
+          },
+          "subtitles": {
+            "enabled": true,
+            "mode": "burn",
+            "preset": "subs-young",
+            "style": {
+              "color": "#FFFFFF",
+              "position": "bottom_center",
+              "shadow": {
+                "color": "#000000",
+                "opacity": 0.8,
+                "blur_px": 8,
+                "offset_x": 0,
+                "offset_y": 4
+              }
+            }
+          }
+        },
+        "drive_folder_id": "1ST6FxPuRaxwBOIz39MAN8Jj4gDv509-K"
+      },
+      "overlay_background": {
+        "kind": "color",
+        "color": [0.9333333333333333, 0.9450980392156862, 0.9058823529411765, 1],
+        "fit": "cover",
+        "opacity": 1,
+        "loop": false
+      },
+      "media_plan": {
+        "mode": "clip_only",
+        "cache": {
+          "read": true,
+          "write": true
+        },
+        "provider_policy": {
+          "internet_images": "disabled",
+          "artlist": "disabled",
+          "image_generation": "disabled",
+          "youtube": "disabled"
+        },
+        "materialization": {
+          "mode": "selected",
+          "upload_to_drive": true,
+          "wait_for_ready": true
+        },
+        "include_trace": true
+      }
+    }
+  ]
+}

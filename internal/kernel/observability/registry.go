@@ -58,6 +58,7 @@ const (
 	StageRunVoiceover      StageName = "voiceover"
 	StageRunAudioCompile   StageName = "audio_compile"
 	StageRunPersistence    StageName = "persistence"
+	StageRunFinalJob       StageName = "remote_final_job"
 	StageRunDocument       StageName = "document"
 
 	// StageRunCoreReady is the CORE_READY milestone: a milestone, NOT a work
@@ -169,7 +170,7 @@ var allStageRegistry = []StageName{
 	StageRunTranslation, StageOverlayPrepare, StageRunVoiceover,
 	StageTTS, StageAudioPost, StageOverlayRender, StageRunAudioCompile,
 	StageAudioPipeline, StageAudioFinalize, StageAudioPublish,
-	StageRunPersistence, StagePersistenceSQLite, StageFinalize,
+	StageRunPersistence, StageRunFinalJob, StagePersistenceSQLite, StageFinalize,
 	StageDocumentPrepare, StageDocumentPublish, StageRunDocument,
 	StagePostWriterFinalize,
 	// clip timeline

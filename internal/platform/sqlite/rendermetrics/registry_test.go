@@ -28,6 +28,7 @@ const schema = `
 CREATE TABLE render_attempt_analytics (
     attempt_id      TEXT PRIMARY KEY,
     job_id          TEXT NOT NULL DEFAULT '',
+    item_id         TEXT NOT NULL DEFAULT '',
     phrase_count    INTEGER NOT NULL DEFAULT 0,
     word_count      INTEGER NOT NULL DEFAULT 0,
     image_count     INTEGER NOT NULL DEFAULT 0,
@@ -48,6 +49,26 @@ CREATE TABLE render_attempt_analytics (
     sha256          TEXT NOT NULL DEFAULT '',
     drive_file_id   TEXT NOT NULL DEFAULT '',
     drive_link      TEXT NOT NULL DEFAULT '',
+    backend         TEXT NOT NULL DEFAULT '',
+    chronon_version TEXT NOT NULL DEFAULT '',
+    profile_id      TEXT NOT NULL DEFAULT '',
+    codec           TEXT NOT NULL DEFAULT '',
+    codec_profile   TEXT NOT NULL DEFAULT '',
+    container       TEXT NOT NULL DEFAULT '',
+    pixel_format    TEXT NOT NULL DEFAULT '',
+    materialize_ms  INTEGER NOT NULL DEFAULT 0,
+    plan_ms         INTEGER NOT NULL DEFAULT 0,
+    probe_ms        INTEGER NOT NULL DEFAULT 0,
+    hash_ms         INTEGER NOT NULL DEFAULT 0,
+    upload_ms       INTEGER NOT NULL DEFAULT 0,
+    drive_publish_ms INTEGER NOT NULL DEFAULT 0,
+    metrics_json    TEXT NOT NULL DEFAULT '',
+    chronon_telemetry TEXT NOT NULL DEFAULT '',
+    chronon_timing_storage_key TEXT NOT NULL DEFAULT '',
+    chronon_timing_url TEXT NOT NULL DEFAULT '',
+    chronon_timing_sha256 TEXT NOT NULL DEFAULT '',
+    chronon_timing_size_bytes INTEGER NOT NULL DEFAULT 0,
+    chronon_timing_content_type TEXT NOT NULL DEFAULT '',
     recorded_at     TEXT NOT NULL
 );`
 
@@ -65,6 +86,7 @@ func TestRecordAttemptUpsertsIdempotently(t *testing.T) {
 	a := scriptgen.RenderAttemptAnalytics{
 		AttemptID:         "attempt-1",
 		JobID:             "job-1",
+		ItemID:            "phrase-hello",
 		Content:           capoverlay.ContentCounts{Phrases: 1, Words: 2, Images: 3, Leaks: 4},
 		RenderMS:          100,
 		EncodeMS:          50,
@@ -72,13 +94,23 @@ func TestRecordAttemptUpsertsIdempotently(t *testing.T) {
 		PollingSleepMS:    2000,
 		PollingIntervalMS: 2000,
 		PollCount:         2,
+		Width:             1920,
+		Height:            1080,
+		Backend:           "vulkan",
+		ChrononVersion:    "chronon-0.9.1",
+		MaterializeMS:     420,
+		PlanMS:            12,
 		SHA256:            "sha-1",
+		MetricsJSON:       `{"gpu_lane_wait_ms":820}`,
+		ChrononTelemetryJSON: `{"job":{"plan_compile_ms":4.1}}`,
+		ChrononTimingStorageKey: "chronon/timing/abc.json",
 	}
 	if err := reg.RecordAttempt(ctx, a); err != nil {
 		t.Fatal(err)
 	}
 	// Re-record with updated facts: same attempt_id, different sha256.
 	a.SHA256 = "sha-2"
+	a.MetricsJSON = `{"gpu_lane_wait_ms":900}`
 	if err := reg.RecordAttempt(ctx, a); err != nil {
 		t.Fatal(err)
 	}
@@ -90,14 +122,17 @@ func TestRecordAttemptUpsertsIdempotently(t *testing.T) {
 	if count != 1 {
 		t.Fatalf("rows = %d, want 1 (upsert keyed by attempt_id)", count)
 	}
-	var gotSHA string
+	var gotSHA, gotItemID, gotBackend, gotChrononVersion, gotMetrics, gotTelemetry, gotTimingKey string
 	var phrases, words, images, leaks, renderMS, encodeMS, completionWaitMS, pollingSleepMS, pollingIntervalMS, pollCount int
-	if err := db.QueryRow(`SELECT sha256, phrase_count, word_count, image_count, leak_count, render_ms, encode_ms, completion_wait_ms, polling_sleep_ms, polling_interval_ms, poll_count FROM render_attempt_analytics WHERE attempt_id='attempt-1'`).
-		Scan(&gotSHA, &phrases, &words, &images, &leaks, &renderMS, &encodeMS, &completionWaitMS, &pollingSleepMS, &pollingIntervalMS, &pollCount); err != nil {
+	var width, height, matMS, planMS int
+	if err := db.QueryRow(`SELECT sha256, item_id, backend, chronon_version, metrics_json, chronon_telemetry, chronon_timing_storage_key, phrase_count, word_count, image_count, leak_count, render_ms, encode_ms, completion_wait_ms, polling_sleep_ms, polling_interval_ms, poll_count, width, height, materialize_ms, plan_ms FROM render_attempt_analytics WHERE attempt_id='attempt-1'`).
+		Scan(&gotSHA, &gotItemID, &gotBackend, &gotChrononVersion, &gotMetrics, &gotTelemetry, &gotTimingKey, &phrases, &words, &images, &leaks, &renderMS, &encodeMS, &completionWaitMS, &pollingSleepMS, &pollingIntervalMS, &pollCount, &width, &height, &matMS, &planMS); err != nil {
 		t.Fatal(err)
 	}
-	if gotSHA != "sha-2" || phrases != 1 || words != 2 || images != 3 || leaks != 4 || renderMS != 100 || encodeMS != 50 || completionWaitMS != 2100 || pollingSleepMS != 2000 || pollingIntervalMS != 2000 || pollCount != 2 {
-		t.Fatalf("row = sha=%s counts=%d/%d/%d/%d render=%d encode=%d completion_wait=%d polling_sleep=%d interval=%d polls=%d", gotSHA, phrases, words, images, leaks, renderMS, encodeMS, completionWaitMS, pollingSleepMS, pollingIntervalMS, pollCount)
+	if gotSHA != "sha-2" || gotItemID != "phrase-hello" || gotBackend != "vulkan" || gotChrononVersion != "chronon-0.9.1" || gotMetrics != `{"gpu_lane_wait_ms":900}` || gotTelemetry != `{"job":{"plan_compile_ms":4.1}}` || gotTimingKey != "chronon/timing/abc.json" ||
+		phrases != 1 || words != 2 || images != 3 || leaks != 4 || renderMS != 100 || encodeMS != 50 || completionWaitMS != 2100 || pollingSleepMS != 2000 || pollingIntervalMS != 2000 || pollCount != 2 ||
+		width != 1920 || height != 1080 || matMS != 420 || planMS != 12 {
+		t.Fatalf("row = sha=%s item=%s backend=%s chronon=%s metrics=%s telemetry=%s timing=%s counts=%d/%d/%d/%d render=%d encode=%d completion_wait=%d polling_sleep=%d interval=%d polls=%d wh=%d/%d mat=%d plan=%d", gotSHA, gotItemID, gotBackend, gotChrononVersion, gotMetrics, gotTelemetry, gotTimingKey, phrases, words, images, leaks, renderMS, encodeMS, completionWaitMS, pollingSleepMS, pollingIntervalMS, pollCount, width, height, matMS, planMS)
 	}
 }
 

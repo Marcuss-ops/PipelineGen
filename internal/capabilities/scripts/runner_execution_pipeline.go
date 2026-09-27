@@ -58,6 +58,9 @@ func (r *Runner) runExecutionPhases(ctx context.Context, runID string, req Gener
 	if !e.persist() {
 		return
 	}
+	if !e.finalJob() {
+		return
+	}
 	if !e.documents() {
 		return
 	}
@@ -94,6 +97,7 @@ func RunnerPhaseSequence() []kernobs.StageName {
 		kernobs.StageRunVoiceover,
 		kernobs.StageRunAudioCompile,
 		kernobs.StageRunPersistence,
+		kernobs.StageRunFinalJob,
 		kernobs.StageRunDocument,
 	}
 }

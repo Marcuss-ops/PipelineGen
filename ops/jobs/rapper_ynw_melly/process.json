@@ -1,0 +1,393 @@
+{
+  "_comment": "POST /api/clips/process payload (ExtractRequest, drift source: internal/capabilities/youtube/dto/types.go). Source: 6 Key Moments from YNW Melly's Double Murder Trial Day One (https://www.youtube.com/watch?v=26yp8Fsbcns, 1355s) — Law&Crime Network Sidebar podcast (Anjanette Levy) on Jamell Demons (YNW Melly), Broward County FL, 26 Oct 2018 shooting of Christopher Thomas (YNW Juvy) and Anthony Williams (YNW Sakchaser) in Cortland Henry's SUV, 'I did that' Instagram message, Miramar PD sloppy-investigation defense, Robert Colbert 'LOL we killed two of your neighbors'. Sister videos: L8LXIZWnezo 1420s, g46uWQnzg6A 804s, TwNc06_4PBM 674s, 2TWXWRIegaM 324s mistrial, HWkalRYjHss 1126s. Destination: explicit Rap child folder 1H_7jp5Ecke_tuhzE470s5z46kooI-ovR (YNW Melly under Clips/Rap); create_subfolder=false. Windows BY HAND from 20s chunk transcript; no LLM. Clip ids deterministic yt_<videoID>_<startSec>_<endSec>_v1 so re-submit is UPSERT. Every main 36-59s <=60s with hooks 10-11s INSIDE the matching main (hiphop_36 gate). topics/summary/hook dense: composeYouTubeClipSearchText -> search_text -> 768d pgvector embedding, texts[] -> asset_text_tracks same atomic commit. language_code=it + source_language_code=en.",
+  "url": "https://www.youtube.com/watch?v=26yp8Fsbcns",
+  "strategy": "verify",
+  "concurrency": 3,
+  "force_keyframes": true,
+  "keep_audio": true,
+  "write_summary": true,
+  "destination": {
+    "folder_id": "1H_7jp5Ecke_tuhzE470s5z46kooI-ovR",
+    "create_subfolder": false
+  },
+  "segments": [
+    {
+      "start": "00:00:01",
+      "end": "00:00:41",
+      "name": "YNW Melly — accusato di aver ucciso i due migliori amici: \"I did that\"",
+      "category": "crime_news",
+      "source_title": "6 Key Moments from YNW Melly's Double Murder Trial Day One",
+      "source_channel": "Law&Crime Network",
+      "summary": "Apertura: quattro anni dopo la morte dei rapper YNW Juvy e YNW Sakchaser, Melly va a processo per aver ucciso i suoi due migliori amici; il messaggio \"I did that\" e la difesa che parla di indagine sciatta.",
+      "topics": [
+        "YNW Melly Jamell Demons doppio omicidio due migliori amici I did that Instagram four years later processo Broward County 00:01-00:41 26yp8Fsbcns rap crime news trial"
+      ],
+      "tags": ["YNW Melly", "Jamell Demons", "crime_news", "double murder"],
+      "speakers": ["Anjanette Levy"],
+      "mentioned_people": ["Jamell Demons", "Christopher Thomas", "Anthony Williams"],
+      "hook": "Why do you commit such a heinous crime against his own two best friends for no reason — Melly responds very succinctly: I did that.",
+      "texts": [
+        {
+          "language_code": "it",
+          "source_language_code": "en",
+          "title": "YNW Melly accusato di aver ucciso i due migliori amici",
+          "summary": "Apertura del processo: Melly accusato del doppio omicidio di YNW Juvy e Sakchaser, il messaggio I did that e la tesi dell'indagine sciatta.",
+          "description": "Law&Crime Sidebar 00:01-00:41 26yp8Fsbcns: quatro anni dopo, YNW Melly a processo per l'uccisione dei due migliori amici YNW Juvy e YNW Sakchaser, il claim I did that, la difesa punta sull'indagine sciatta della Miramar PD. Contesto: rap crime news trial.",
+          "source_type": "provided",
+          "is_original": true
+        }
+      ]
+    },
+    {
+      "start": "00:00:06",
+      "end": "00:00:17",
+      "name": "Hook: two best friends shot — Melly says I did that",
+      "category": "crime_news",
+      "source_title": "6 Key Moments from YNW Melly's Double Murder Trial Day One",
+      "source_channel": "Law&Crime Network",
+      "summary": "Hook opener (11s): il messaggio che apre il caso.",
+      "topics": [
+        "YNW Melly hook apertura short two best friends shot I did that 00:06-00:17 26yp8Fsbcns opening short"
+      ],
+      "tags": ["YNW Melly", "crime_news", "hook"],
+      "speakers": ["Anjanette Levy"],
+      "mentioned_people": ["Jamell Demons"],
+      "hook": "Two best friends shot dead — Melly responds: I did that.",
+      "texts": [
+        {
+          "language_code": "it",
+          "source_language_code": "en",
+          "title": "Hook: I did that",
+          "summary": "Hook 11s sul messaggio I did that.",
+          "description": "Hook 00:06-00:17 26yp8Fsbcns.",
+          "source_type": "provided",
+          "is_original": true
+        }
+      ]
+    },
+    {
+      "start": "00:02:44",
+      "end": "00:03:20",
+      "name": "YNW Melly — dichiarazione d'apertura: sparò e uccise due suoi amici",
+      "category": "crime_news",
+      "source_title": "6 Key Moments from YNW Melly's Double Murder Trial Day One",
+      "source_channel": "Law&Crime Network",
+      "summary": "La procuratrice Christine Bradley apre: questo imputato ha sparato e ucciso due suoi amici, Christopher Thomas e Anthony Williams, ricostruendo la notte del 26 ottobre 2018.",
+      "topics": [
+        "YNW Melly opening statement Christine Bradley shot and killed two of his friends Christopher Thomas Anthony Williams 26 ottobre 2018 02:44-03:20 26yp8Fsbcns"
+      ],
+      "tags": ["YNW Melly", "crime_news", "opening statement", "prosecution"],
+      "speakers": ["Christine Bradley"],
+      "mentioned_people": ["Jamell Demons", "Christopher Thomas", "Anthony Williams"],
+      "hook": "This defendant shot and killed two of his friends — Christopher Thomas and Anthony Williams.",
+      "texts": [
+        {
+          "language_code": "it",
+          "source_language_code": "en",
+          "title": "Apertura dell'accusa: sparò a due suoi amici",
+          "summary": "La procuratrice Bradley accusa Melly di aver ucciso i due amici e ricostruisce la notte del 26 ottobre 2018.",
+          "description": "Aula Broward 02:44-03:20 26yp8Fsbcns: opening statement di Christine Bradley, questo imputato ha sparato e ucciso Christopher Thomas e Anthony Williams. Contesto: rap crime news trial YNW Melly.",
+          "source_type": "provided",
+          "is_original": true
+        }
+      ]
+    },
+    {
+      "start": "00:02:50",
+      "end": "00:03:01",
+      "name": "Hook: this defendant shot and killed two of his friends",
+      "category": "crime_news",
+      "source_title": "6 Key Moments from YNW Melly's Double Murder Trial Day One",
+      "source_channel": "Law&Crime Network",
+      "summary": "Hook opener (11s): l'accusa in una frase.",
+      "topics": [
+        "YNW Melly hook apertura short this defendant shot and killed two friends 02:50-03:01 26yp8Fsbcns opening short"
+      ],
+      "tags": ["YNW Melly", "crime_news", "hook"],
+      "speakers": ["Christine Bradley"],
+      "mentioned_people": ["Jamell Demons"],
+      "hook": "This defendant shot and killed two of his friends.",
+      "texts": [
+        {
+          "language_code": "it",
+          "source_language_code": "en",
+          "title": "Hook: sparò a due suoi amici",
+          "summary": "Hook 11s apertura dell'accusa.",
+          "description": "Hook 02:50-03:01 26yp8Fsbcns.",
+          "source_type": "provided",
+          "is_original": true
+        }
+      ]
+    },
+    {
+      "start": "00:03:20",
+      "end": "00:04:02",
+      "name": "YNW Melly — 4:35 del mattino: due corpi crivellati di proiettili nell'ospedale",
+      "category": "crime_news",
+      "source_title": "6 Key Moments from YNW Melly's Double Murder Trial Day One",
+      "source_channel": "Law&Crime Network",
+      "summary": "Ricostruzione: alle 4:35 del 26 ottobre 2018 Cortland Henry arriva al Memorial Miramar Hospital con due corpi senza vita nell'auto, Thomas e Williams crivellati di proiettili, auto piena di sangue.",
+      "topics": [
+        "YNW Melly 4:35 am 26 ottobre 2018 Cortland Henry Memorial Miramar Hospital due corpi senza vita crivellati proiettili auto piena di sangue rear seat 03:20-04:02 26yp8Fsbcns"
+      ],
+      "tags": ["YNW Melly", "Cortland Henry", "crime_news", "crime scene"],
+      "speakers": ["Christine Bradley"],
+      "mentioned_people": ["Cortland Henry", "Christopher Thomas", "Anthony Williams"],
+      "hook": "4:35 a.m.: Cortland Henry shows up at Memorial Miramar Hospital with two dead bodies — riddled with bullets, car full of blood.",
+      "texts": [
+        {
+          "language_code": "it",
+          "source_language_code": "en",
+          "title": "4:35 del mattino: due corpi crivellati in ospedale",
+          "summary": "Alle 4:35 Cortland Henry arriva al Memorial Miramar Hospital con due corpi crivellati di proiettili, auto piena di sangue.",
+          "description": "03:20-04:02 26yp8Fsbcns: 4:35 am 26 ottobre 2018 Henry arriva al Memorial Miramar Hospital, Thomas nel sedile posteriore e Williams nel anteriore crivellati di proiettili, macchina piena di sangue. Contesto: crime news YNW Melly.",
+          "source_type": "provided",
+          "is_original": true
+        }
+      ]
+    },
+    {
+      "start": "00:03:30",
+      "end": "00:03:41",
+      "name": "Hook: two dead bodies riddled with bullets — car full of blood",
+      "category": "crime_news",
+      "source_title": "6 Key Moments from YNW Melly's Double Murder Trial Day One",
+      "source_channel": "Law&Crime Network",
+      "summary": "Hook opener (11s): la scena all'ospedale.",
+      "topics": [
+        "YNW Melly hook apertura short two dead bodies riddled bullets car full of blood 03:30-03:41 26yp8Fsbcns opening short"
+      ],
+      "tags": ["YNW Melly", "crime_news", "hook"],
+      "speakers": ["Christine Bradley"],
+      "mentioned_people": ["Christopher Thomas", "Anthony Williams"],
+      "hook": "Two dead bodies riddled with bullets — the car is full of blood.",
+      "texts": [
+        {
+          "language_code": "it",
+          "source_language_code": "en",
+          "title": "Hook: corpi crivellati e auto piena di sangue",
+          "summary": "Hook 11s scena ospedale.",
+          "description": "Hook 00:03:30-00:03:41 26yp8Fsbcns.",
+          "source_type": "provided",
+          "is_original": true
+        }
+      ]
+    },
+    {
+      "start": "00:05:20",
+      "end": "00:06:01",
+      "name": "YNW Melly — il messaggio Instagram: \"yo homie you good\" e la risposta I did that",
+      "category": "crime_news",
+      "source_title": "6 Key Moments from YNW Melly's Double Murder Trial Day One",
+      "source_channel": "Law&Crime Network",
+      "summary": "Analisi del messaggio social: dopo le notizie della sparatoria gli scrivono \"yo homie you good\", Melly risponde \"I did that\"; l'accusa lo usa come confessione, la difesa sottolinea il contesto.",
+      "topics": [
+        "YNW Melly messaggio Instagram yo homie you good I did that confessione social media prosecution context Broward 05:20-06:01 26yp8Fsbcns"
+      ],
+      "tags": ["YNW Melly", "crime_news", "social media evidence"],
+      "speakers": ["Anjanette Levy", "Mina Lona"],
+      "mentioned_people": ["Jamell Demons"],
+      "hook": "Prosecutors say he has a very incriminating Instagram message: yo homie you good — and Mr Demons responds, I did that.",
+      "texts": [
+        {
+          "language_code": "it",
+          "source_language_code": "en",
+          "title": "Il messaggio Instagram: I did that",
+          "summary": "Il messaggio Instagram \"I did that\" come presunta confessione e l'analisi del contesto secondo la difesa.",
+          "description": "05:20-06:01 26yp8Fsbcns: analisi del messaggio social di Melly dopo la sparatoria, I did that come presunta ammissione di colpa contestualizzata dall'accusa, i limiti evidenziati dalla difesa. Contesto: crime news YNW Melly social media evidence.",
+          "source_type": "provided",
+          "is_original": true
+        }
+      ]
+    },
+    {
+      "start": "00:05:35",
+      "end": "00:05:46",
+      "name": "Hook: the incriminating Instagram message — I did that",
+      "category": "crime_news",
+      "source_title": "6 Key Moments from YNW Melly's Double Murder Trial Day One",
+      "source_channel": "Law&Crime Network",
+      "summary": "Hook opener (11s): il messaggio chiave.",
+      "topics": [
+        "YNW Melly hook apertura short incriminating Instagram message I did that 05:35-05:46 26yp8Fsbcns opening short"
+      ],
+      "tags": ["YNW Melly", "crime_news", "hook"],
+      "speakers": ["Anjanette Levy"],
+      "mentioned_people": ["Jamell Demons"],
+      "hook": "The incriminating Instagram message — I did that.",
+      "texts": [
+        {
+          "language_code": "it",
+          "source_language_code": "en",
+          "title": "Hook: il messaggio chiave",
+          "summary": "Hook 11s messaggio Instagram.",
+          "description": "Hook 05:35-05:46 26yp8Fsbcns.",
+          "source_type": "provided",
+          "is_original": true
+        }
+      ]
+    },
+    {
+      "start": "00:08:40",
+      "end": "00:09:23",
+      "name": "YNW Melly — la difesa: indagine sciatta della Miramar PD, si riparte da zero",
+      "category": "crime_news",
+      "source_title": "6 Key Moments from YNW Melly's Double Murder Trial Day One",
+      "source_channel": "Law&Crime Network",
+      "summary": "Avvocato David A. Howard: il cliente è a processo per un'indagine sciatta della Miramar Police, il Broward Sheriff's Office giudica il lavoro il peggiore mai visto e ricomincia da zero.",
+      "topics": [
+        "YNW Melly difesa David Howard indagine sciatta Miramar Police Broward Sheriff Office worst thing start from scratch 08:40-09:23 26yp8Fsbcns"
+      ],
+      "tags": ["YNW Melly", "defense", "crime_news", "sloppy investigation"],
+      "speakers": ["David A. Howard"],
+      "mentioned_people": ["Jamell Demons"],
+      "hook": "Take a listen: sloppy Miramar police investigation — the Broward sheriff's office said it was the worst thing I had seen in my life.",
+      "texts": [
+        {
+          "language_code": "it",
+          "source_language_code": "en",
+          "title": "La difesa: indagine sciatta, si riparte da zero",
+          "summary": "La difesa di Howard sostiene che l'indagine della Miramar PD è stata sciatta e che il Broward Sheriff's Office ha dovuto ricominciare da zero.",
+          "description": "08:40-09:23 26yp8Fsbcns: David A. Howard attacca la Miramar Police, il Broward Sheriff's Office definisce il lavoro il peggiore mai visto e riparte da zero. Contesto: crime news YNW Melly defense.",
+          "source_type": "provided",
+          "is_original": true
+        }
+      ]
+    },
+    {
+      "start": "00:08:50",
+      "end": "00:09:01",
+      "name": "Hook: sloppy investigation — worst thing I had seen in my life",
+      "category": "crime_news",
+      "source_title": "6 Key Moments from YNW Melly's Double Murder Trial Day One",
+      "source_channel": "Law&Crime Network",
+      "summary": "Hook opener (11s): l'attacco all'indagine.",
+      "topics": [
+        "YNW Melly hook apertura short sloppy investigation worst thing seen in my life 08:50-09:01 26yp8Fsbcns opening short"
+      ],
+      "tags": ["YNW Melly", "crime_news", "hook"],
+      "speakers": ["David A. Howard"],
+      "mentioned_people": ["Jamell Demons"],
+      "hook": "Sloppy investigation — the worst thing I had seen in my life.",
+      "texts": [
+        {
+          "language_code": "it",
+          "source_language_code": "en",
+          "title": "Hook: indagine sciatta",
+          "summary": "Hook 11s sulla difesa.",
+          "description": "Hook 08:50-09:01 26yp8Fsbcns.",
+          "source_type": "provided",
+          "is_original": true
+        }
+      ]
+    },
+    {
+      "start": "00:12:21",
+      "end": "00:13:20",
+      "name": "YNW Melly — Robert Colbert: \"LOL we killed two of your neighbors\" ignorato 7 mesi",
+      "category": "crime_news",
+      "source_title": "6 Key Moments from YNW Melly's Double Murder Trial Day One",
+      "source_channel": "Law&Crime Network",
+      "summary": "La difesa porta i post social ignorati: l'account di Robert Colbert scrive \"LOL we killed two of your neighbors\", la polizia lo contatta solo 7 mesi dopo e lui dice di aver venduto l'account per 20 dollari.",
+      "topics": [
+        "YNW Melly Robert Colbert LOL we killed two of your neighbors account venduto 20 dollari sette mesi ignorato altre piste difesa 12:21-13:20 26yp8Fsbcns"
+      ],
+      "tags": ["YNW Melly", "Robert Colbert", "crime_news", "missed leads"],
+      "speakers": ["Anjanette Levy", "Mina Lona"],
+      "mentioned_people": ["Robert Colbert", "Jamell Demons"],
+      "hook": "LOL we killed two of your neighbors — it took them seven months to go talk to the owner of that account.",
+      "texts": [
+        {
+          "language_code": "it",
+          "source_language_code": "en",
+          "title": "Il post social ignorato: we killed two of your neighbors",
+          "summary": "La difesa evidenzia l'account di Robert Colbert che rivendica l'omicidio e i 7 mesi di silenzio della polizia.",
+          "description": "12:21-13:20 26yp8Fsbcns: Robert Colbert posta LOL we killed two of your neighbors, la Miramar PD lo contatta solo 7 mesi dopo e lui dice di aver venduto l'account per 20 dollari. Contesto: crime news YNW Melly piste ignorate.",
+          "source_type": "provided",
+          "is_original": true
+        }
+      ]
+    },
+    {
+      "start": "00:12:43",
+      "end": "00:12:54",
+      "name": "Hook: LOL we killed two of your neighbors — ignored for seven months",
+      "category": "crime_news",
+      "source_title": "6 Key Moments from YNW Melly's Double Murder Trial Day One",
+      "source_channel": "Law&Crime Network",
+      "summary": "Hook opener (11s): la confessione social ignorata.",
+      "topics": [
+        "YNW Melly hook apertura short LOL we killed two neighbors ignored seven months 12:43-12:54 26yp8Fsbcns opening short"
+      ],
+      "tags": ["YNW Melly", "crime_news", "hook"],
+      "speakers": ["Anjanette Levy"],
+      "mentioned_people": ["Robert Colbert"],
+      "hook": "LOL we killed two of your neighbors — ignored for seven months.",
+      "texts": [
+        {
+          "language_code": "it",
+          "source_language_code": "en",
+          "title": "Hook: we killed two of your neighbors",
+          "summary": "Hook 11s sulla pista ignorata.",
+          "description": "Hook 12:43-12:54 26yp8Fsbcns.",
+          "source_type": "provided",
+          "is_original": true
+        }
+      ]
+    },
+    {
+      "start": "00:15:21",
+      "end": "00:16:01",
+      "name": "YNW Melly — ER chiuso come scena del crimine ma nessun registro: 16 fori di proiettile",
+      "category": "crime_news",
+      "source_title": "6 Key Moments from YNW Melly's Double Murder Trial Day One",
+      "source_channel": "Law&Crime Network",
+      "summary": "Testimonianza dell'agente Jessica Amangor: il SUV arriva al pronto soccorso con 16 fori di proiettile, l'ER viene chiuso come scena del crimine ma non c'è registro di chi entra ed esce, possibile contaminazione.",
+      "topics": [
+        "YNW Melly agente Jessica Amangor ER pronto soccorso 16 fori proiettile scena del crimine nessun registro contaminazione cross examination 15:21-16:01 26yp8Fsbcns"
+      ],
+      "tags": ["YNW Melly", "crime scene", "crime_news", "cross examination"],
+      "speakers": ["Jessica Amangor", "David A. Howard"],
+      "mentioned_people": ["Cortland Henry"],
+      "hook": "16 bullet holes in the vehicle — the ER was a crime scene but there was no log of who was coming and going.",
+      "texts": [
+        {
+          "language_code": "it",
+          "source_language_code": "en",
+          "title": "ER scena del crimine senza registro: 16 fori di proiettile",
+          "summary": "L'agente Amangor descrive il SUV con 16 fori, l'ER chiuso come scena del crimine e il cross della difesa sull'assenza di registro.",
+          "description": "15:21-16:01 26yp8Fsbcns: agente Jessica Amangor, 16 fori di proiettile sul SUV, ER chiuso come scena del crimine senza registro ingressi, cross examination sulla possibile contaminazione. Contesto: crime news YNW Melly.",
+          "source_type": "provided",
+          "is_original": true
+        }
+      ]
+    },
+    {
+      "start": "00:15:30",
+      "end": "00:15:41",
+      "name": "Hook: 16 bullet holes — no log of who came and went",
+      "category": "crime_news",
+      "source_title": "6 Key Moments from YNW Melly's Double Murder Trial Day One",
+      "source_channel": "Law&Crime Network",
+      "summary": "Hook opener (11s): la scena contaminata.",
+      "topics": [
+        "YNW Melly hook apertura short 16 bullet holes no log who came and went 15:30-15:41 26yp8Fsbcns opening short"
+      ],
+      "tags": ["YNW Melly", "crime_news", "hook"],
+      "speakers": ["Jessica Amangor"],
+      "mentioned_people": ["Cortland Henry"],
+      "hook": "16 bullet holes — no log of who was coming and going at the crime scene.",
+      "texts": [
+        {
+          "language_code": "it",
+          "source_language_code": "en",
+          "title": "Hook: 16 fori di proiettile",
+          "summary": "Hook 11s scena contaminata.",
+          "description": "Hook 15:30-15:41 26yp8Fsbcns.",
+          "source_type": "provided",
+          "is_original": true
+        }
+      ]
+    }
+  ]
+}

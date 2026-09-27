@@ -1,0 +1,115 @@
+{
+ "_comment": "Clip 'Aj Vs Tyson Fury' — video 5qVIN36xZg4 (Fight Your Corner). Segmenti curati 10-45s, destinazione esplicita folder 1nib6O6sgAoy3M_hfWAkPsvGwjNDcMl36 (Clips/Boxe/Anthony Joshua/Aj Vs Tyson Fury) con create_subfolder=false. Clip ID deterministico yt_<videoID>_<startSec>_<endSec>_v1: reinviare fa UPSERT, non duplica.",
+ "url": "https://www.youtube.com/watch?v=5qVIN36xZg4",
+ "strategy": "verify",
+ "concurrency": 3,
+ "force_keyframes": true,
+ "keep_audio": true,
+ "write_summary": true,
+ "destination": {
+  "folder_id": "1nib6O6sgAoy3M_hfWAkPsvGwjNDcMl36",
+  "create_subfolder": false
+ },
+ "segments": [
+  {
+   "start": "01:52",
+   "end": "02:30",
+   "name": "Hearn: contratto firmato, il fight non puo saltare",
+   "category": "boxing_interview",
+   "source_title": "“TYSON FURY IS SCARED OF ANTHONY JOSHUA!” - Eddie Hearn And Tony Bellew BELITTLE Dana White",
+   "source_channel": "Fight Your Corner",
+   "summary": "Eddie Hearn racconta che il contratto per Fury vs Joshua e gia stato firmato da mesi e che l'unico modo per non farlo e una violazione degli accordi: resta solo da decidere dove si combattera.",
+   "topics": [
+    "Eddie Hearn Tony Bellew Tyson Fury Anthony Joshua contratto firmato luogo fight Inghilterra America annuncio pesi massimi boxe podcast"
+   ],
+   "tags": [
+    "Eddie Hearn",
+    "Tony Bellew",
+    "Anthony Joshua",
+    "Tyson Fury",
+    "Contratto"
+   ],
+   "mentioned_people": [
+    "Eddie Hearn",
+    "Tony Bellew"
+   ],
+   "hook": "Hearn: \"il contratto c'e, e solo questione di tempo\"",
+   "quality_score": 0.9
+  },
+  {
+   "start": "02:38",
+   "end": "03:19",
+   "name": "AJ sceglie l'Inghilterra e rifiuta piu soldi dall'America",
+   "category": "boxing_interview",
+   "source_title": "“TYSON FURY IS SCARED OF ANTHONY JOSHUA!” - Eddie Hearn And Tony Bellew BELITTLE Dana White",
+   "source_channel": "Fight Your Corner",
+   "summary": "Hearn racconta il dialogo con Joshua: offerta piu ricca per combattere in America contro la volonta di lottare in Inghilterra davanti ai propri tifosi. AJ ha scelto casa, anche se questo ha fatto arrabbiare qualcuno.",
+   "topics": [
+    "Anthony Joshua Inghilterra America soldi offerta tifosi Eddie Hearn decisione contratto Fury Wembley Cardiff pesi massimi boxe"
+   ],
+   "tags": [
+    "Anthony Joshua",
+    "Eddie Hearn",
+    "Tyson Fury",
+    "Boxe",
+    "Trattativa"
+   ],
+   "mentioned_people": [
+    "Anthony Joshua",
+    "Eddie Hearn"
+   ],
+   "hook": "AJ rifiuta piu soldi per combattere davanti ai tifosi inglesi",
+   "quality_score": 0.9
+  },
+  {
+   "start": "03:19",
+   "end": "04:01",
+   "name": "La risposta a Fury: \"I own it, vieni tu da me\"",
+   "category": "boxing_interview",
+   "source_title": "“TYSON FURY IS SCARED OF ANTHONY JOSHUA!” - Eddie Hearn And Tony Bellew BELITTLE Dana White",
+   "source_channel": "Fight Your Corner",
+   "summary": "Bellew e Hearn ricostruiscono il gioco psicologico: Fury cerca di portare il fight in America con un barbecue alla Casa Bianca, ma AJ ha rivendicato la propria posizione dicendo che il luogo lo decide lui.",
+   "topics": [
+    "Anthony Joshua Tyson Fury Casa Bianca Trump visto America luogo fight \"I own it\" psicologia negoziazione regno unito boxe"
+   ],
+   "tags": [
+    "Anthony Joshua",
+    "Tyson Fury",
+    "Tony Bellew",
+    "Donald Trump",
+    "Boxe"
+   ],
+   "mentioned_people": [
+    "Anthony Joshua",
+    "Tyson Fury"
+   ],
+   "hook": "\"I own it\": AJ rivendica la scelta del luogo del fight",
+   "quality_score": 0.9
+  },
+  {
+   "start": "09:28",
+   "end": "10:03",
+   "name": "\"Fury ha paura di Joshua\": l'analisi di Bellew",
+   "category": "boxing_interview",
+   "source_title": "“TYSON FURY IS SCARED OF ANTHONY JOSHUA!” - Eddie Hearn And Tony Bellew BELITTLE Dana White",
+   "source_channel": "Fight Your Corner",
+   "summary": "Tony Bellew analizza la psicologia di Fury: ogni fighter ha paura, ma a suo avviso Fury teme la presenza fisica di Joshua e la durezza di un fight che puo essere il piu duro della sua carriera.",
+   "topics": [
+    "Tyson Fury paura Anthony Joshua presenza fisica analisi Tony Bellew psicologia fighter paura di perdere pesi massimi boxe podcast"
+   ],
+   "tags": [
+    "Tyson Fury",
+    "Anthony Joshua",
+    "Tony Bellew",
+    "Boxe",
+    "Analisi"
+   ],
+   "mentioned_people": [
+    "Tyson Fury",
+    "Anthony Joshua"
+   ],
+   "hook": "Bellew: \"Fury e spaventato da Joshua, non solo di perdere\"",
+   "quality_score": 0.9
+  }
+ ]
+}

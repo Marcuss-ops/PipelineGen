@@ -14,6 +14,7 @@ package scriptgeneration
 
 import (
 	"context"
+	"encoding/json"
 
 	capoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
 )
@@ -24,6 +25,11 @@ import (
 type RenderAttemptAnalytics struct {
 	AttemptID string `json:"attempt_id"`
 	JobID     string `json:"job_id"`
+	// ItemID is the per-overlay correlation key: the semantic OverlayItem.ID
+	// that this short video renders. Empty for the legacy full-timeline path
+	// (multiple items in one job) and non-empty for the production per-item
+	// path (one child plan per item, each with a fresh queue id).
+	ItemID string `json:"item_id,omitempty"`
 
 	// Content census (from the semantic OverlayPlan, never the item list).
 	Content capoverlay.ContentCounts `json:"content"`
@@ -58,6 +64,47 @@ type RenderAttemptAnalytics struct {
 	// Google Drive publication identity (empty when not published).
 	DriveFileID string `json:"drive_file_id,omitempty"`
 	DriveLink   string `json:"drive_link,omitempty"`
+
+	// Per-overlay identity and artifact profile. Preserved verbatim from the
+	// certified artifact so a per-item trace can answer "which backend/version
+	// produced this item, what profile/codec/container it certified, and what
+	// resolution it carried" without re-probing bytes.
+	Backend        string `json:"backend,omitempty"`
+	ChrononVersion string `json:"chronon_version,omitempty"`
+	ProfileID      string `json:"profile_id,omitempty"`
+	Codec          string `json:"codec,omitempty"`
+	CodecProfile   string `json:"codec_profile,omitempty"`
+	Container      string `json:"container,omitempty"`
+	PixelFormat    string `json:"pixel_format,omitempty"`
+
+	// Worker-measured per-phase durations (ms) from the queue artifact's
+	// metrics map. Zero means the worker did not report the phase; a missing
+	// measurement is never fabricated as zero in the phase breakdown (the run
+	// projection skips it, the analytics row stores 0).
+	MaterializeMS  int64 `json:"materialize_ms,omitempty"`
+	PlanMS         int64 `json:"plan_ms,omitempty"`
+	ProbeMS        int64 `json:"probe_ms,omitempty"`
+	HashMS         int64 `json:"hash_ms,omitempty"`
+	UploadMS       int64 `json:"objectstore_upload_ms,omitempty"`
+	DrivePublishMS int64 `json:"drive_publish_ms,omitempty"`
+
+	// Full Chronon telemetry: the bounded telemetry summary (chronon_telemetry,
+	// schema chronon3d.render-telemetry-summary.v1) plus the numeric metrics
+	// projection. Stored verbatim (no re-derivation) so per-overlay analysis
+	// can separate queue wait, GPU lane wait, decode/composite/encode, GPU/
+	// NVENC utilization and VRAM from the worker's own phase walls.
+	MetricsJSON          string `json:"metrics_json,omitempty"`
+	ChrononTelemetryJSON string `json:"chronon_telemetry,omitempty"`
+
+	// Raw deep-profile sidecar reference (content-addressed preservation).
+	// Only the small reference rides the artifact — the per-frame array is
+	// never inlined. Empty when the worker could not preserve the sidecar
+	// (fail-open).
+	ChrononTimingStorageKey  string `json:"chronon_timing_storage_key,omitempty"`
+	ChrononTimingURL         string `json:"chronon_timing_url,omitempty"`
+	ChrononTimingSHA256      string `json:"chronon_timing_sha256,omitempty"`
+	ChrononTimingSizeBytes   int64  `json:"chronon_timing_size_bytes,omitempty"`
+	ChrononTimingContentType string `json:"chronon_timing_content_type,omitempty"`
 }
 
 // RenderAttemptRecorder persists one render-attempt analytics record. The
@@ -91,9 +138,21 @@ func BuildRenderAttemptAnalyticsWithWait(attemptID string, plan capoverlay.Overl
 		PollingIntervalMS: wait.PollInterval.Milliseconds(),
 		PollCount:         wait.PollCount,
 	}
+	// Per-overlay correlation: when the plan carries exactly one item (the
+	// production separate-item path builds one child plan per semantic item),
+	// that item's ID is the correlation key that lets a trace distinguish
+	// parallel renders of the same run. For the legacy full-timeline path
+	// (multiple items in one plan) the row remains unattributed to a single
+	// item.
+	if len(plan.Items) == 1 {
+		rec.ItemID = plan.Items[0].ID
+	}
 	if artifact == nil {
 		return rec
 	}
+	// Preserve the item identity the caller may have attributed via the
+	// fresh-render path (the job's own artifact is still the authority for
+	// output metrics, but the plan's single-item derivation is the correlation).
 	rec.RenderMS = artifact.RenderMS
 	rec.EncodeMS = artifact.EncodeMS
 	rec.Width = artifact.Width
@@ -106,5 +165,31 @@ func BuildRenderAttemptAnalyticsWithWait(attemptID string, plan capoverlay.Overl
 	rec.SHA256 = artifact.SHA256
 	rec.DriveFileID = artifact.DriveFileID
 	rec.DriveLink = artifact.DriveLink
+	rec.Backend = artifact.Backend
+	rec.ChrononVersion = artifact.ChrononVersion
+	rec.ProfileID = artifact.ProfileID
+	rec.Codec = artifact.Codec
+	rec.CodecProfile = artifact.CodecProfile
+	rec.Container = artifact.Container
+	rec.PixelFormat = artifact.PixelFormat
+	rec.MaterializeMS = artifact.MaterializeMS
+	rec.PlanMS = artifact.PlanMS
+	rec.ProbeMS = artifact.ProbeMS
+	rec.HashMS = artifact.HashMS
+	rec.UploadMS = artifact.UploadMS
+	rec.DrivePublishMS = artifact.DrivePublishMS
+	if len(artifact.Metrics) > 0 {
+		if b, err := json.Marshal(artifact.Metrics); err == nil {
+			rec.MetricsJSON = string(b)
+		}
+	}
+	if len(artifact.ChrononTelemetry) > 0 {
+		rec.ChrononTelemetryJSON = string(artifact.ChrononTelemetry)
+	}
+	rec.ChrononTimingStorageKey = artifact.ChrononTimingStorageKey
+	rec.ChrononTimingURL = artifact.ChrononTimingURL
+	rec.ChrononTimingSHA256 = artifact.ChrononTimingSHA256
+	rec.ChrononTimingSizeBytes = artifact.ChrononTimingSizeBytes
+	rec.ChrononTimingContentType = artifact.ChrononTimingContentType
 	return rec
 }

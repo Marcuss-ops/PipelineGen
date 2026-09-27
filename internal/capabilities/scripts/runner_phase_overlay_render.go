@@ -158,6 +158,9 @@ func pendingOverlayPlans(result *GenerateResult, req GenerateRequest) []language
 	pending := make([]languageOverlayPlan, 0, len(plans))
 	sourceLanguage := result.overlayPlanLanguage()
 	for _, item := range plans {
+		if req.FinalJob && item.plan != nil {
+			item.plan.RequireDriveBeforeReturn = true
+		}
 		if item.language == sourceLanguage && result.OverlayRender != nil {
 			continue
 		}

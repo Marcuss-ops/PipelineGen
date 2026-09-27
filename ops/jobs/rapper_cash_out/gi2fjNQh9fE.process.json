@@ -1,0 +1,339 @@
+{
+  "_comment": "POST /api/clips/process payload (ExtractRequest, drift source: internal/capabilities/youtube/dto/types.go). Source: Went From Hit Rapper To Life In Prison... Rapper Ca$h Out Sentenced Alongside His Mother In Court (https://www.youtube.com/watch?v=gi2fjNQh9fE, 977s) — Millionaire Morning Show commentary on John Michael Gibson (Ca$h Out) + mother Linda Smith + cousin sentenced in Fulton County RICO trafficking case July 2025. Destination: explicit Rap child folder 1ekTwupu3-oist5QUGvX-weR_pquLQmbG (Ca$h Out under Clips/Rap); create_subfolder=false so clips land straight in it. Also covers sister video WiqVHft7hMQ Law&Crime 2129s. Windows BY HAND from timed transcript via /api/clips/transcript (15s chunk rolling dedup, see tclip subs); no LLM selection. Clip ids deterministic yt_<videoID>_<startSec>_<endSec>_v1 so re-submit is UPSERT. Every main 22-45s ≤60s with hooks 9-13s INSIDE the matching main (hiphop_36/check gate). topics/summary/hook dense on purpose: composeYouTubeClipSearchText -> search_text -> 768d pgvector embedding, texts[] -> asset_text_tracks in same atomic commit. language_code=it (editor style hiphop_36) + source_language_code=en so Argos/Ollama translation is indexed.",
+  "url": "https://www.youtube.com/watch?v=gi2fjNQh9fE",
+  "strategy": "verify",
+  "concurrency": 3,
+  "force_keyframes": true,
+  "keep_audio": true,
+  "write_summary": true,
+  "destination": {
+    "folder_id": "1ekTwupu3-oist5QUGvX-weR_pquLQmbG",
+    "create_subfolder": false
+  },
+  "segments": [
+    {
+      "start": "00:00:01",
+      "end": "00:00:31",
+      "name": "Ca$h Out — apertura: da hit rapper a ergastolo, giuria condanna RICO e tratta",
+      "category": "crime_news",
+      "source_title": "Went From Hit Rapper To Life In Prison... Rapper Ca$h Out Sentenced Alongside His Mother In Court",
+      "source_channel": "Millionaire Morning Show",
+      "summary": "Apertura secca: il narratore annuncia l'ergastolo per Ca$h Out dopo la condanna per stupro, tratta e RICO, e lancia il commento dall'aula con Grace King.",
+      "topics": [
+        "Ca$h Out John Michael Gibson ergastolo life sentence RICO stupro tratta prostitute Fulton County Millionaire Morning Show 00:01-00:31 gi2fjNQh9fE rap crime news trap victim"
+      ],
+      "tags": ["Ca$h Out", "crime_news", "life sentence", "RICO", "trial"],
+      "speakers": ["Anton Daniels", "Grace King"],
+      "mentioned_people": ["John Michael Gibson", "Grace King"],
+      "hook": "Atlanta rapper known as Cash Out will spend the rest of his life in prison — guilty on a dozen charges including RICO, rape, sex trafficking.",
+      "texts": [
+        {
+          "language_code": "it",
+          "source_language_code": "en",
+          "title": "Ca$h Out condannato all'ergastolo: da hit rapper a RICO",
+          "summary": "Il canale annuncia l'ergastolo per Ca$h Out dopo la condanna per stupro, tratta e RICO, aprendo il commento dall'aula con Grace King.",
+          "description": "Millionaire Morning Show 00:01-00:31 gi2fjNQh9fE: John Michael Gibson aka Ca$h Out condannato da giuria per stupro, tratta, prostituzione e RICO a Fulton County, ora rischia l'ergastolo. Contesto: rap crime news trap victim tiplife 2025.",
+          "source_type": "provided",
+          "is_original": true
+        }
+      ]
+    },
+    {
+      "start": "00:00:03",
+      "end": "00:00:14",
+      "name": "Hook: Atlanta rapper will spend the rest of his life in prison",
+      "category": "crime_news",
+      "source_title": "Went From Hit Rapper To Life In Prison... Rapper Ca$h Out Sentenced Alongside His Mother In Court",
+      "source_channel": "Millionaire Morning Show",
+      "summary": "Hook opener (11s): la headline che apre ogni cold open.",
+      "topics": [
+        "Ca$h Out hook apertura short Atlanta rapper will spend the rest of his life in prison ergastolo opening short gi2fjNQh9fE 00:03-00:14"
+      ],
+      "tags": ["Ca$h Out", "crime_news", "hook"],
+      "speakers": ["Anton Daniels"],
+      "mentioned_people": ["John Michael Gibson"],
+      "hook": "Atlanta rapper known as Cash Out will spend the rest of his life in prison.",
+      "texts": [
+        {
+          "language_code": "it",
+          "source_language_code": "en",
+          "title": "Hook: ergastolo per Ca$h Out",
+          "summary": "Headline di 11 secondi che incornicia il caso Ca$h Out.",
+          "description": "Hook 00:03-00:14 gi2fjNQh9fE: la frase che apre il video.",
+          "source_type": "provided",
+          "is_original": true
+        }
+      ]
+    },
+    {
+      "start": "00:00:45",
+      "end": "00:01:00",
+      "name": "Ca$h Out — l'ultima parola in aula: Gesù fu accusato falsamente",
+      "category": "crime_news",
+      "source_title": "Went From Hit Rapper To Life In Prison... Rapper Ca$h Out Sentenced Alongside His Mother In Court",
+      "source_channel": "Millionaire Morning Show",
+      "summary": "Ca$h Out prende il microfono e invoca l'accusa falsa: Gesù fu accusato falsamente, la verità verrà fuori, non ha fatto quelle cose.",
+      "topics": [
+        "Ca$h Out ultima parola tribunale Gesù accusato falsamente Jesus falsely accused verità verrà fuori sentenza Fulton County 00:45-01:00 gi2fjNQh9fE"
+      ],
+      "tags": ["Ca$h Out", "crime_news", "court statement"],
+      "speakers": ["John Michael Gibson"],
+      "mentioned_people": ["John Michael Gibson"],
+      "hook": "You can be falsely accused — Jesus was falsely accused, one day the truth will come out.",
+      "texts": [
+        {
+          "language_code": "it",
+          "source_language_code": "en",
+          "title": "Ca$h Out in aula: Gesù fu accusato falsamente",
+          "summary": "Ca$h Out invoca il parallelo con Gesù e si dice falsamente accusato davanti al giudice.",
+          "description": "Aula Fulton County 00:45-01:00 gi2fjNQh9fE: John Michael Gibson prende la parola e sostiene di essere falsamente accusato, citando Gesù. Contesto: crime news rap trial.",
+          "source_type": "provided",
+          "is_original": true
+        }
+      ]
+    },
+    {
+      "start": "00:00:47",
+      "end": "00:00:57",
+      "name": "Hook: Jesus was falsely accused — the truth will come out",
+      "category": "crime_news",
+      "source_title": "Went From Hit Rapper To Life In Prison... Rapper Ca$h Out Sentenced Alongside His Mother In Court",
+      "source_channel": "Millionaire Morning Show",
+      "summary": "Hook opener (10s): la citazione che useremo come cold open.",
+      "topics": [
+        "Ca$h Out hook apertura short Jesus falsely accused truth will come out 00:47-00:57 gi2fjNQh9fE opening short"
+      ],
+      "tags": ["Ca$h Out", "crime_news", "hook"],
+      "speakers": ["John Michael Gibson"],
+      "mentioned_people": ["John Michael Gibson"],
+      "hook": "Jesus was falsely accused — one day the truth will come out.",
+      "texts": [
+        {
+          "language_code": "it",
+          "source_language_code": "en",
+          "title": "Hook: Gesù fu accusato falsamente",
+          "summary": "Citazione di 10 secondi di Ca$h Out in aula.",
+          "description": "Hook 00:47-00:57 gi2fjNQh9fE.",
+          "source_type": "provided",
+          "is_original": true
+        }
+      ]
+    },
+    {
+      "start": "00:02:46",
+      "end": "00:03:30",
+      "name": "Ca$h Out — verdetto giuria: colpevole di una dozzina di capi, RICO stupro tratta",
+      "category": "crime_news",
+      "source_title": "Went From Hit Rapper To Life In Prison... Rapper Ca$h Out Sentenced Alongside His Mother In Court",
+      "source_channel": "Millionaire Morning Show",
+      "summary": "Servizio in aula: la giuria lo dichiara colpevole su circa dodici capi tra RICO, stupro e tratta; le vittime raccontano il trauma che le ha cambiate per sempre.",
+      "topics": [
+        "Ca$h Out giuria colpevole una dozzina capi RICO stupro tratta vittime trauma oltre ragionevole dubbio 02:46-03:30 gi2fjNQh9fE Fulton County crime news"
+      ],
+      "tags": ["Ca$h Out", "crime_news", "jury verdict", "RICO"],
+      "speakers": ["News Anchor", "Victim Advocate"],
+      "mentioned_people": ["John Michael Gibson"],
+      "hook": "Jury found him guilty on roughly a dozen charges including RICO, rape and sex trafficking.",
+      "texts": [
+        {
+          "language_code": "it",
+          "source_language_code": "en",
+          "title": "Giuria colpevole: RICO stupro e tratta",
+          "summary": "La giuria dichiara Ca$h Out colpevole su circa dodici capi, tra cui RICO, stupro e tratta; le vittime descrivono il trauma.",
+          "description": "Fulton County 02:46-03:30 gi2fjNQh9fE: giuria colpevole su dozzine di capi (RICO, stupro, tratta), testimonianze vittime su trauma persistente. Contesto: crime news Ca$h Out.",
+          "source_type": "provided",
+          "is_original": true
+        }
+      ]
+    },
+    {
+      "start": "00:02:52",
+      "end": "00:03:03",
+      "name": "Hook: guilty on roughly a dozen charges — RICO rape trafficking",
+      "category": "crime_news",
+      "source_title": "Went From Hit Rapper To Life In Prison... Rapper Ca$h Out Sentenced Alongside His Mother In Court",
+      "source_channel": "Millionaire Morning Show",
+      "summary": "Hook opener (11s): il verdetto in una frase.",
+      "topics": [
+        "Ca$h Out hook apertura short guilty dozen charges RICO rape trafficking 02:52-03:03 gi2fjNQh9fE opening short"
+      ],
+      "tags": ["Ca$h Out", "crime_news", "hook"],
+      "speakers": ["News Anchor"],
+      "mentioned_people": ["John Michael Gibson"],
+      "hook": "Guilty on roughly a dozen charges — RICO, rape, sex trafficking.",
+      "texts": [
+        {
+          "language_code": "it",
+          "source_language_code": "en",
+          "title": "Hook: colpevole su una dozzina di capi",
+          "summary": "Hook verdetto di 11 secondi.",
+          "description": "Hook 02:52-03:03 gi2fjNQh9fE.",
+          "source_type": "provided",
+          "is_original": true
+        }
+      ]
+    },
+    {
+      "start": "00:03:30",
+      "end": "00:03:59",
+      "name": "Ca$h Out — giudice senza clemenza: condanna madre cugino decenni",
+      "category": "crime_news",
+      "source_title": "Went From Hit Rapper To Life In Prison... Rapper Ca$h Out Sentenced Alongside His Mother In Court",
+      "source_channel": "Millionaire Morning Show",
+      "summary": "Giudice conferma prove oltre ragionevole dubbio, nessuna clemenza: Ca$h Out, madre Linda Smith e cugino condannati a decenni; cugino deluso, madre accetta il destino.",
+      "topics": [
+        "Ca$h Out giudice nessuna clemenza madre Linda Smith cugino decenni prigione oltre ragionevole dubbio 03:30-03:59 gi2fjNQh9fE Fulton sentencing"
+      ],
+      "tags": ["Ca$h Out", "Linda Smith", "crime_news", "sentencing"],
+      "speakers": ["Judge", "Court Reporter"],
+      "mentioned_people": ["John Michael Gibson", "Linda Smith"],
+      "hook": "The judge showed no leniency — Cash Out, his mother and cousin sentenced to decades.",
+      "texts": [
+        {
+          "language_code": "it",
+          "source_language_code": "en",
+          "title": "Giudice senza clemenza: decenni a tutti e tre",
+          "summary": "Il giudice condanna Ca$h Out, la madre e il cugino a decenni senza clemenza, provata ogni accusa oltre ragionevole dubbio.",
+          "description": "Aula 03:30-03:59 gi2fjNQh9fE: giudice Fulton County senza clemenza per condotta disumana, condanna Ca$h Out madre e cugino a decenni. Contesto: crime news rap.",
+          "source_type": "provided",
+          "is_original": true
+        }
+      ]
+    },
+    {
+      "start": "00:03:35",
+      "end": "00:03:45",
+      "name": "Hook: no leniency — decades for Cash Out mother and cousin",
+      "category": "crime_news",
+      "source_title": "Went From Hit Rapper To Life In Prison... Rapper Ca$h Out Sentenced Alongside His Mother In Court",
+      "source_channel": "Millionaire Morning Show",
+      "summary": "Hook opener (10s): la frase del giudice senza clemenza.",
+      "topics": [
+        "Ca$h Out hook apertura short no leniency decades mother cousin 03:35-03:45 gi2fjNQh9fE opening short"
+      ],
+      "tags": ["Ca$h Out", "crime_news", "hook"],
+      "speakers": ["Judge"],
+      "mentioned_people": ["John Michael Gibson", "Linda Smith"],
+      "hook": "No leniency — Cash Out, his mother and cousin sentenced to decades.",
+      "texts": [
+        {
+          "language_code": "it",
+          "source_language_code": "en",
+          "title": "Hook: nessuna clemenza",
+          "summary": "Hook 10s sulla condanna.",
+          "description": "Hook 03:35-03:45 gi2fjNQh9fE.",
+          "source_type": "provided",
+          "is_original": true
+        }
+      ]
+    },
+    {
+      "start": "00:05:17",
+      "end": "00:06:03",
+      "name": "Ca$h Out — lettura sentenza: RICO 20 anni consecutivo a stupro life",
+      "category": "crime_news",
+      "source_title": "Went From Hit Rapper To Life In Prison... Rapper Ca$h Out Sentenced Alongside His Mother In Court",
+      "source_channel": "Millionaire Morning Show",
+      "summary": "Giudice legge i capi: RICO Georgia 20 anni consecutivi a stupro count 10, poi life in confinement — numeri da football, consecutivi non concorrenti.",
+      "topics": [
+        "Ca$h Out lettura sentenza Georgia RICO 20 anni consecutivo stupro life in confinement consecutivi non concorrenti football numbers 05:17-06:03 gi2fjNQh9fE Fulton judge sentencing"
+      ],
+      "tags": ["Ca$h Out", "crime_news", "sentencing", "Georgia RICO"],
+      "speakers": ["Judge", "Anton Daniels"],
+      "mentioned_people": ["John Michael Gibson"],
+      "hook": "Violation of Georgia RICO Act 20 years — consecutive with count 10 rape, life in confinement.",
+      "texts": [
+        {
+          "language_code": "it",
+          "source_language_code": "en",
+          "title": "Sentenza letta: RICO 20 anni più life per stupro",
+          "summary": "Il giudice legge la sentenza: 20 anni per RICO Georgia consecutivi a life per stupro, pene consecutive.",
+          "description": "Aula 05:17-06:03 gi2fjNQh9fE: judge count 1 RICO Georgia 20 anni consecutivi con count 10 stupro life in confinement, pene consecutive (non concorrenti). Contesto: crime news Ca$h Out.",
+          "source_type": "provided",
+          "is_original": true
+        }
+      ]
+    },
+    {
+      "start": "00:05:52",
+      "end": "00:06:02",
+      "name": "Hook: life in confinement",
+      "category": "crime_news",
+      "source_title": "Went From Hit Rapper To Life In Prison... Rapper Ca$h Out Sentenced Alongside His Mother In Court",
+      "source_channel": "Millionaire Morning Show",
+      "summary": "Hook opener (10s): la parola che congela l'aula — life.",
+      "topics": [
+        "Ca$h Out hook apertura short life in confinement 05:55-06:05 gi2fjNQh9fE opening short ergastolo"
+      ],
+      "tags": ["Ca$h Out", "crime_news", "hook"],
+      "speakers": ["Judge"],
+      "mentioned_people": ["John Michael Gibson"],
+      "hook": "Life in confinement.",
+      "texts": [
+        {
+          "language_code": "it",
+          "source_language_code": "en",
+          "title": "Hook: life in confinement",
+          "summary": "Hook di 10 secondi sulla parola life.",
+          "description": "Hook 05:55-06:05 gi2fjNQh9fE.",
+          "source_type": "provided",
+          "is_original": true
+        }
+      ]
+    },
+    {
+      "start": "00:06:16",
+      "end": "00:06:46",
+      "name": "Ca$h Out — reazione shock: football numbers, come Life di Eddie Murphy",
+      "category": "crime_news",
+      "source_title": "Went From Hit Rapper To Life In Prison... Rapper Ca$h Out Sentenced Alongside His Mother In Court",
+      "source_channel": "Millionaire Morning Show",
+      "summary": "Commentator in shock: life come nel film Life di Eddie Murphy, numeri da football, ogni capo consecutivo così anche appellando uno restano 70 anni.",
+      "topics": [
+        "Ca$h Out shock reaction football numbers Eddie Murphy Life film life dopo life anche appellando uno restano 70 anni 06:16-06:46 gi2fjNQh9fE commentator shock"
+      ],
+      "tags": ["Ca$h Out", "crime_news", "reaction"],
+      "speakers": ["Anton Daniels"],
+      "mentioned_people": ["John Michael Gibson"],
+      "hook": "She said life — Life like Eddie Murphy, football numbers, even if you appeal one you still have 70 years.",
+      "texts": [
+        {
+          "language_code": "it",
+          "source_language_code": "en",
+          "title": "Shock in studio: football numbers e life",
+          "summary": "Il commentator reagisce allo shock: life come nel film di Eddie Murphy, numeri da football, anche appellando un capo restano 70 anni.",
+          "description": "Studio 06:16-06:46 gi2fjNQh9fE: reazione shock a life in confinement, paragone con film Life, pene consecutive così anche vincendo un appello restano 70 anni. Contesto: crime news Ca$h Out commentary.",
+          "source_type": "provided",
+          "is_original": true
+        }
+      ]
+    },
+    {
+      "start": "00:06:22",
+      "end": "00:06:32",
+      "name": "Hook: she said life — football numbers",
+      "category": "crime_news",
+      "source_title": "Went From Hit Rapper To Life In Prison... Rapper Ca$h Out Sentenced Alongside His Mother In Court",
+      "source_channel": "Millionaire Morning Show",
+      "summary": "Hook opener (10s): lo shock del life.",
+      "topics": [
+        "Ca$h Out hook apertura short she said life football numbers 06:22-06:32 gi2fjNQh9fE opening short"
+      ],
+      "tags": ["Ca$h Out", "crime_news", "hook"],
+      "speakers": ["Anton Daniels"],
+      "mentioned_people": ["John Michael Gibson"],
+      "hook": "She said life — football numbers.",
+      "texts": [
+        {
+          "language_code": "it",
+          "source_language_code": "en",
+          "title": "Hook: she said life",
+          "summary": "Hook shock di 10 secondi.",
+          "description": "Hook 06:22-06:32 gi2fjNQh9fE.",
+          "source_type": "provided",
+          "is_original": true
+        }
+      ]
+    }
+  ]
+}

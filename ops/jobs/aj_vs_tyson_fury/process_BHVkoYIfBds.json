@@ -1,0 +1,88 @@
+{
+ "_comment": "Clip 'Aj Vs Tyson Fury' — video BHVkoYIfBds (Matchroom Boxing). Segmenti curati 10-45s, destinazione esplicita folder 1nib6O6sgAoy3M_hfWAkPsvGwjNDcMl36 (Clips/Boxe/Anthony Joshua/Aj Vs Tyson Fury) con create_subfolder=false. Clip ID deterministico yt_<videoID>_<startSec>_<endSec>_v1: reinviare fa UPSERT, non duplica.",
+ "url": "https://www.youtube.com/watch?v=BHVkoYIfBds",
+ "strategy": "verify",
+ "concurrency": 3,
+ "force_keyframes": true,
+ "keep_audio": true,
+ "write_summary": true,
+ "destination": {
+  "folder_id": "1nib6O6sgAoy3M_hfWAkPsvGwjNDcMl36",
+  "create_subfolder": false
+ },
+ "segments": [
+  {
+   "start": "08:33",
+   "end": "08:56",
+   "name": "\"Gli strappero il cuore\": il messaggio a Fury",
+   "category": "boxing_interview",
+   "source_title": "Anthony Joshua Climbs Off Canvas, KO’s Prenga | Tyson Fury Fight Is On | Matchroom Boxing",
+   "source_channel": "Matchroom Boxing",
+   "summary": "Joshua, dopo il KO su Prenga, chiede notizie di Fury a bordo ring e gli manda un messaggio feroce: gli strappera il cuore e nessuno puo fermarlo, pur riconoscendo il rispetto per quanto Fury ha fatto nella boxe.",
+   "topics": [
+    "Anthony Joshua Tyson Fury messaggio \"rip his heart out\" rispetto campione feroce spietato KO Prenga Matchroom pesi massimi boxe"
+   ],
+   "tags": [
+    "Anthony Joshua",
+    "Tyson Fury",
+    "Boxe",
+    "Callout"
+   ],
+   "mentioned_people": [
+    "Anthony Joshua",
+    "Tyson Fury"
+   ],
+   "hook": "AJ a Fury: \"Ti strapper'. il cuore, nessuno puo fermarmi\"",
+   "quality_score": 0.9
+  },
+  {
+   "start": "09:41",
+   "end": "10:04",
+   "name": "\"Ci rialziamo e continuiamo\": la lezione di AJ",
+   "category": "boxing_interview",
+   "source_title": "Anthony Joshua Climbs Off Canvas, KO’s Prenga | Tyson Fury Fight Is On | Matchroom Boxing",
+   "source_channel": "Matchroom Boxing",
+   "summary": "Joshua spiega il significato della rimonta: ogni campione cade, si rialza e va avanti, e il secondo round contro Prenga e stato questione di spirito, grinta, determinazione e famiglia.",
+   "topics": [
+    "Anthony Joshua Prenga rimonta knockdown resilienza \"we get up\" spirito grinta determinazione famiglia motto campione pesi massimi boxe"
+   ],
+   "tags": [
+    "Anthony Joshua",
+    "Kristian Prenga",
+    "Boxe",
+    "Intervista"
+   ],
+   "mentioned_people": [
+    "Anthony Joshua",
+    "Kristian Prenga"
+   ],
+   "hook": "AJ: \"Cadiamo, ci rialziamo e andiamo avanti: e la vita\"",
+   "quality_score": 0.9
+  },
+  {
+   "start": "10:44",
+   "end": "11:05",
+   "name": "Verso l'autunno: il fight con Fury e il prossimo passo",
+   "category": "boxing_interview",
+   "source_title": "Anthony Joshua Climbs Off Canvas, KO’s Prenga | Tyson Fury Fight Is On | Matchroom Boxing",
+   "source_channel": "Matchroom Boxing",
+   "summary": "Joshua dedica la rimonta ai fratelli scomparsi e poi Hearn conferma che il contratto con Fury e firmato: si passa ai discorsi d'autunno, con il fight che e ormai l'unico orizzonte possibile.",
+   "topics": [
+    "Anthony Joshua Tyson Fury Eddie Hearn contratto firmato autunno prossimo fight fratelli scomparsi dedica matchroom pesi massimi boxe"
+   ],
+   "tags": [
+    "Anthony Joshua",
+    "Tyson Fury",
+    "Eddie Hearn",
+    "Boxe",
+    "Contratto"
+   ],
+   "mentioned_people": [
+    "Anthony Joshua",
+    "Tyson Fury"
+   ],
+   "hook": "Hearn: \"Il contratto con Fury e firmato, ora pensiamo all'autunno\"",
+   "quality_score": 0.9
+  }
+ ]
+}

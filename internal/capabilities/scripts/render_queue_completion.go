@@ -19,7 +19,7 @@ import (
 )
 
 // recordRenderingGenPhases projects the worker-reported RenderingGen phase
-// durations (materialize/plan/render/probe/hash/objectstore_upload/
+// durations (materialize/plan/render/encode/probe/hash/objectstore_upload/
 // drive_publish) into canonical run operations bound to ctx. Phases the
 // worker did not report (zero) are skipped — a missing measurement is never
 // recorded as zero. The queue wait is already a canonical WaitCompletion
@@ -43,6 +43,7 @@ func recordRenderingGenPhases(ctx context.Context, artifact *RenderArtifact) {
 		{kernobs.OperationMaterialize, artifact.MaterializeMS},
 		{kernobs.OperationPlan, artifact.PlanMS},
 		{kernobs.OperationRender, artifact.RenderMS},
+		{kernobs.OperationEncode, artifact.EncodeMS},
 		{kernobs.OperationProbe, artifact.ProbeMS},
 		{kernobs.OperationHash, artifact.HashMS},
 		{kernobs.OperationObjectStoreUpload, artifact.UploadMS},
