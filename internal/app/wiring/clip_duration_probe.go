@@ -59,3 +59,20 @@ func (g *SceneTextGenerator) renderAssetDurationSeconds(ctx context.Context, a *
 	}
 	return info.Duration.Seconds(), nil
 }
+
+// resolveClipDurationSource resolves the canonical provenance for a resolved
+// clip duration. renderAssetDurationSeconds already probed the local binary
+// when the catalog had no duration, so an unknown provenance here means a
+// fresh probe measurement (never a fabricated 0).
+//
+// Merged from the former clip_duration_source.go to respect the
+// percheck_legacy_hotspot_growth 150-production-file cap on internal/app/wiring.
+func resolveClipDurationSource(canonical *asset.Asset) asset.DurationSource {
+	source := canonical.DurationProvenance()
+	if source == asset.DurationUnknown {
+		// The catalog had no duration, so renderAssetDurationSeconds probed
+		// the local binary — an authoritative measurement.
+		return asset.DurationProbe
+	}
+	return source
+}

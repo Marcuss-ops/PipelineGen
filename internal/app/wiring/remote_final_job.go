@@ -135,7 +135,7 @@ func (a *remoteFinalJobAdapter) assetRef(ctx context.Context, id string) (map[st
 	}
 	durationMS := asset.Duration.Milliseconds()
 	if durationMS <= 0 {
-		durationMS = int64(asset.GetMetadataInt("duration_ms"))
+		durationMS = int64(asset.LegacyDurationMSMirror())
 	}
 	if durationMS <= 0 {
 		return nil, 0, fmt.Errorf("asset %q has no known duration", id)

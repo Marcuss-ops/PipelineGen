@@ -13,8 +13,13 @@ package scriptgeneration
 import (
 	"context"
 	"fmt"
+	"net/url"
+	"path/filepath"
+	"regexp"
+	"strings"
 	"time"
 
+	capoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 )
 
@@ -149,4 +154,72 @@ func WaitRenderQueueTerminal(ctx context.Context, client RenderQueueClient, id s
 			metrics.PollingSleep += time.Since(sleepStarted)
 		}
 	}
+}
+
+// RearmFailedRenderJob re-arms the render job that a submission COLLIDED with
+// (Submit answered ErrJobExists) when that job is already in FAILED state.
+//
+// It owns ONE decision, shared by the two callers that can collide with a
+// pre-existing job — the overlay enqueuer (QueueRenderEnqueuer) and the
+// clip.render executor (renderinggen.ClipRenderExecutor.Submit). An ErrJobExists
+// replay of a FAILED job is NOT an idempotent success: the job can never produce
+// an artifact, so a caller that moves on waits for something that cannot happen
+// and finally reports an unexplained render failure. Before this helper existed,
+// each caller carried its own copy of the rule — one swallowed the retry error,
+// one used an anonymous interface — so the same fact had three answers.
+//
+// Semantics:
+//   - the job is not in FAILED state, or cannot be read: no-op, nil. Waiting on
+//     an existing job stays the right move here; the recovery is deliberately
+//     best-effort and must not turn a transient read error into a submit failure.
+//   - the job is FAILED and the client exposes RenderQueueRetrier: the retry
+//     error is returned, never swallowed.
+//   - the job is FAILED and the client has no retrier capability: fail closed
+//     with an error naming the missing capability (the caller has no other way
+//     to make progress, and pretending otherwise only hides the fault).
+func RearmFailedRenderJob(ctx context.Context, client RenderQueueClient, id string) error {
+	if client == nil {
+		return fmt.Errorf("render queue re-arm: client is not configured")
+	}
+	existing, getErr := client.Get(ctx, id)
+	if getErr != nil || existing.State != RenderQueueStateFailed {
+		return nil
+	}
+	retrier, ok := client.(RenderQueueRetrier)
+	if !ok {
+		return fmt.Errorf("render queue job %s exists in failed state but the queue client cannot retry it (RenderQueueRetrier is not implemented)", id)
+	}
+	if retryErr := retrier.Retry(ctx, id); retryErr != nil {
+		return fmt.Errorf("render queue retry failed for %s: %w", id, retryErr)
+	}
+	return nil
+}
+
+var semanticAssetIDSanitizer = regexp.MustCompile(`[^A-Za-z0-9._-]+`)
+
+func semanticAssetLogicalPath(ref capoverlay.OverlayAssetRef) string {
+	if strings.HasPrefix(strings.TrimSpace(ref.URL), "assets/") {
+		return filepath.ToSlash(strings.TrimSpace(ref.URL))
+	}
+	id := semanticAssetIDSanitizer.ReplaceAllString(strings.TrimSpace(ref.AssetID), "_")
+	if id == "" {
+		id = "asset"
+	}
+	ext := filepath.Ext(ref.URL)
+	if parsed, err := url.Parse(ref.URL); err == nil && parsed.Path != "" {
+		ext = filepath.Ext(parsed.Path)
+	}
+	if ext == "" {
+		switch strings.ToLower(strings.TrimSpace(strings.SplitN(ref.MediaType, ";", 2)[0])) {
+		case "image/png", "image":
+			ext = ".png"
+		case "image/jpeg", "image/jpg":
+			ext = ".jpg"
+		case "video/mp4", "video/quicktime", "video":
+			ext = ".mp4"
+		case "font/ttf", "font":
+			ext = ".ttf"
+		}
+	}
+	return "assets/semantic/" + id + ext
 }
