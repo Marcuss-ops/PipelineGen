@@ -238,7 +238,7 @@ func finalJobOverlayAssets(result *GenerateResult) ([]any, error) {
 		}
 		out = append(out, map[string]any{
 			"id": item.ID, "asset_id": firstFinalJobValue(artifact.ID, driveID),
-			"drive_file_id": driveID, "url": "velox-drive://" + driveID,
+			"drive_file_id": driveID, "url": driveFileWebLink(driveID),
 			"sha256": sha, "size_bytes": artifact.SizeBytes,
 			"start_frame": startFrame, "end_frame": endFrame, "frame_count": endFrame - startFrame,
 			"mode": "replace", "z_index": index + 1, "audio_mode": "preserve_final_audio",
@@ -263,6 +263,9 @@ func compositeStockScene(id string, index int, asset map[string]any, durationMS 
 			continue
 		}
 		ref[k] = v
+	}
+	if driveID := strings.TrimSpace(fmt.Sprint(ref["drive_file_id"])); driveID != "" {
+		ref["url"] = driveFileWebLink(driveID)
 	}
 	return map[string]any{"scene_id": id, "index": index, "kind": "clip", "text": text, "duration_seconds": float64(durationMS) / 1000, "stock": ref}
 }
@@ -408,7 +411,7 @@ func renderedClipAssetRef(ctx context.Context, resolver FinalJobAssetResolver, r
 		assetID = driveID
 	}
 	return map[string]any{
-		"asset_id": assetID, "drive_file_id": driveID, "url": "velox-drive://" + driveID,
+		"asset_id": assetID, "drive_file_id": driveID, "url": driveFileWebLink(driveID),
 		"sha256": sha, "size_bytes": size, "duration_ms": rendered.DurationMS,
 	}, rendered.DurationMS, nil
 }
@@ -442,6 +445,9 @@ func appendFinalJobRuntimeAsset(dst *[]any, seen map[string]bool, role string, r
 		}
 		item[key] = value
 	}
+	if driveID := strings.TrimSpace(fmt.Sprint(ref["drive_file_id"])); driveID != "" {
+		item["url"] = driveFileWebLink(driveID)
+	}
 	item["role"] = role
 	*dst = append(*dst, item)
 }
@@ -456,7 +462,7 @@ func finalJobAudioAsset(audio FinalAudioReference) (map[string]any, error) {
 	}
 	return map[string]any{
 		"asset_id": audio.AssetID, "drive_file_id": driveID,
-		"url": "velox-drive://" + driveID, "sha256": strings.TrimSpace(audio.FinalAudioSHA256),
+		"url": driveFileWebLink(driveID), "sha256": strings.TrimSpace(audio.FinalAudioSHA256),
 		"size_bytes": audio.SizeBytes, "duration_ms": audio.DurationMS,
 		"codec": audio.Codec, "profile": audio.Profile, "sample_rate": audio.SampleRate,
 		"channels": audio.Channels, "channel_layout": audio.ChannelLayout,
@@ -464,6 +470,10 @@ func finalJobAudioAsset(audio FinalAudioReference) (map[string]any, error) {
 		"audio_contract_version": audio.AudioContractVersion, "audio_plan_version": audio.AudioPlanVersion,
 		"audio_plan_sha256": audio.PlanSHA256, "final_mix": audio.FinalMix,
 	}, nil
+}
+
+func driveFileWebLink(driveID string) string {
+	return "https://drive.google.com/file/d/" + strings.TrimSpace(driveID) + "/view?usp=drive_link"
 }
 
 func driveFileIDFromLink(raw string) string {

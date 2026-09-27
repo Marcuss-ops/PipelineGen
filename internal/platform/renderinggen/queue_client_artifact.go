@@ -43,7 +43,7 @@ func toScriptArtifact(in *queueclient.Artifact) *scriptgen.RenderArtifact {
 		ClosedGOP:          in.ClosedGOP,
 		FirstFrameKeyframe: in.FirstFrameKeyframe,
 		RenderMS:           metricMillis(in.Metrics, "render_ms"),
-		EncodeMS:           metricMillisEitherPrecise(in.Metrics, "encode_ms", "chronon_job_encoder_finalize_ms", "chronon_exclusive_wall_timeline_encoder_drain_finalize_ms"),
+		EncodeMS:           metricMillisEitherMSPrecise(in.Metrics, "encode_ms", "chronon_job_encoder_finalize_ms", "chronon_exclusive_wall_timeline_encoder_drain_finalize_ms"),
 		MaterializeMS:      metricMillisEitherPrecise(in.Metrics, "materialize_ms", "materialize_us", "asset_materialize_ms"),
 		PlanMS:             metricMillisEitherPrecise(in.Metrics, "overlay_compile_ms", "overlay_compile_us", "plan_ms"),
 		ProbeMS:            metricMillisEitherPrecise(in.Metrics, "probe_ms", "probe_us", "chronon_job_ffprobe_ms"),
