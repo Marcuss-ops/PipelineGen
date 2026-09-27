@@ -114,8 +114,8 @@ func verifyElonMuskPropertyResult(t *testing.T, result map[string]any) {
 				if !strings.Contains(text, phrase) {
 					t.Fatalf("%s/%s phrase %q is not grounded in its scene text", language, stringAt(scene, "id"), phrase)
 				}
-				if words := len(strings.Fields(phrase)); words < 2 || words > 4 {
-					t.Fatalf("%s/%s phrase %q has %d words, want 2..4", language, stringAt(scene, "id"), phrase, words)
+				if words := len(strings.Fields(phrase)); words < 2 || words > 6 {
+					t.Fatalf("%s/%s phrase %q has %d words, want 2..6", language, stringAt(scene, "id"), phrase, words)
 				}
 				for _, entity := range entities {
 					if phraseOverlapsSurface(text, phrase, entity) {

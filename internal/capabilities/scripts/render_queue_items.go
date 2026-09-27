@@ -2,6 +2,7 @@ package scriptgeneration
 
 import (
 	"context"
+	"crypto/sha256"
 	"fmt"
 	"strings"
 
@@ -37,7 +38,9 @@ type overlayItemRenderResult struct {
 }
 
 // enqueueSeparateOverlayItems renders and publishes each semantic overlay as
-// an independent short video. The returned reference is the first artifact
+// an independent short video. A composite entity image remains one semantic
+// item and therefore produces one artifact with multiple image layers. The
+// returned reference is the first artifact
 // for backwards-compatible callers; every artifact is published by the same
 // application-owned publisher and receives its own receipt.
 //
@@ -120,8 +123,9 @@ type overlayItemPublicationMetadata struct {
 }
 
 const (
-	overlayItemPaddingUS     int64 = 2_000_000
-	maxOverlayItemDurationUS int64 = 5_000_000
+	overlayItemPaddingUS          int64 = 2_000_000
+	maxOverlayItemDurationUS      int64 = 5_000_000
+	maxCompositeOverlayDurationUS int64 = 8_000_000
 )
 
 func separateOverlayItemPlan(parent capoverlay.OverlayPlan, source capoverlay.OverlayItem, index int) (capoverlay.OverlayPlan, *overlayItemPublicationMetadata, error) {
@@ -134,14 +138,22 @@ func separateOverlayItemPlan(parent capoverlay.OverlayPlan, source capoverlay.Ov
 		return capoverlay.OverlayPlan{}, nil, fmt.Errorf("overlay item %q has no positive certified duration", source.ID)
 	}
 	targetUS := durationUS + overlayItemPaddingUS
-	if targetUS > maxOverlayItemDurationUS {
-		targetUS = maxOverlayItemDurationUS
+	maxDurationUS := maxOverlayItemDurationUS
+	if len(source.ImageLayers) > 0 {
+		// A composite's children carry staggered windows relative to the
+		// parent. Preserve the entire (up to 5s + 3s mention gap) composition
+		// instead of applying the ordinary 5s single-item cap.
+		targetUS = durationUS
+		maxDurationUS = maxCompositeOverlayDurationUS
+	}
+	if targetUS > maxDurationUS {
+		targetUS = maxDurationUS
 	}
 	if targetUS <= 0 {
 		return capoverlay.OverlayPlan{}, nil, fmt.Errorf("overlay item %q has invalid target duration", source.ID)
 	}
 	child := parent
-	child.PlanID = fmt.Sprintf("%s:item:%03d:%s", parent.PlanID, index, source.ID)
+	child.PlanID = overlayItemChildPlanID(parent.PlanID, index, source.ID)
 	child.VideoID = child.PlanID
 	child.DurationMS = (targetUS + 999) / 1000
 	child.Fingerprint = ""
@@ -160,4 +172,22 @@ func separateOverlayItemPlan(parent capoverlay.OverlayPlan, source capoverlay.Ov
 		Text: source.Text, SourceStartUS: startUS, SourceEndUS: startUS + durationUS,
 		TargetDurationUS: targetUS,
 	}, nil
+}
+
+func overlayItemChildPlanID(parentPlanID string, index int, itemID string) string {
+	full := fmt.Sprintf("%s:item:%03d:%s", parentPlanID, index, itemID)
+	const maxPlanIDBytes = 180
+	if len(full) <= maxPlanIDBytes {
+		return full
+	}
+	hash := sha256.Sum256([]byte(full))
+	const prefixLimit = 160
+	var prefix strings.Builder
+	for _, r := range full {
+		if prefix.Len()+len(string(r)) > prefixLimit {
+			break
+		}
+		prefix.WriteRune(r)
+	}
+	return strings.TrimRight(prefix.String(), ":-_") + "-" + fmt.Sprintf("%x", hash[:8])
 }

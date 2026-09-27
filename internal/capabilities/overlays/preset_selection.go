@@ -1,6 +1,10 @@
 package overlays
 
-import "strings"
+import (
+	"crypto/rand"
+	"math/big"
+	"strings"
+)
 
 // Generated phrases use RenderingGen's canonical phrase_default visual style
 // and an independently selected catalog motion. PipelineGen transports IDs.
@@ -458,6 +462,30 @@ func SelectImageMotion(jobID, sceneID, itemID string) string {
 // a different motion while allowing later jobs to start at a different point.
 func SelectImageMotionAt(jobID, sceneID string, ordinal int) string {
 	return selectImageMotion(jobID, sceneID, ordinal, nil)
+}
+
+// RandomImageMotionOffset chooses a fresh cryptographically random starting
+// offset for one render plan. The caller samples it once, then rotates through
+// the full pool so no two images in the same run repeat before all 18 are used.
+func RandomImageMotionOffset() (int, error) {
+	if len(imageMotionCandidates) == 0 {
+		return 0, nil
+	}
+	start, err := rand.Int(rand.Reader, big.NewInt(int64(len(imageMotionCandidates))))
+	if err != nil {
+		return 0, err
+	}
+	return int(start.Int64()), nil
+}
+
+// ImageMotionAtOffset returns the image motion at a position in the randomly
+// rotated catalog pool.
+func ImageMotionAtOffset(offset, ordinal int) string {
+	if len(imageMotionCandidates) == 0 {
+		return ""
+	}
+	index := ((offset % len(imageMotionCandidates)) + ordinal) % len(imageMotionCandidates)
+	return imageMotionCandidates[index]
 }
 
 // EntityImageParams returns the larger square portrait geometry, scaled to

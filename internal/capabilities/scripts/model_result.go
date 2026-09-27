@@ -115,6 +115,9 @@ type GenerateResult struct {
 	// OverlayRender is populated after the timing-frozen Chronon render has
 	// completed and its media contract has been certified.
 	OverlayRender *RenderReference `json:"overlay_render,omitempty"`
+	// RemoteFinalJob is the durable receipt for an explicitly requested remote
+	// final render, recorded by the publishing stage after successful handoff.
+	RemoteFinalJob *RemoteFinalJobResult `json:"remote_final_job,omitempty"`
 	// LocalizedOverlayRenders contains certified Chronon outputs for the
 	// translated plans above. OverlayRender remains the source-language
 	// compatibility projection.

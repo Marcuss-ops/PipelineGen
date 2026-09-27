@@ -213,13 +213,20 @@ func TestLexiconRegistry_PhrasePolicy(t *testing.T) {
 		t.Errorf("MinWords = %d, want 2", pp.MinWords)
 	}
 	if pp.MaxWords != 4 {
-		t.Errorf("MaxWords = %d, want 4", pp.MaxWords)
+		t.Errorf("MaxWords = %d, want configured override 4", pp.MaxWords)
 	}
 	if pp.MaxResults != 10 {
 		t.Errorf("MaxResults = %d, want 10", pp.MaxResults)
 	}
 	if !pp.RejectVerbsWhenAll {
 		t.Error("expected RejectVerbsWhenAll = true (default)")
+	}
+}
+
+func TestDefaultPhraseExtractionPolicySupportsSixWordPhrases(t *testing.T) {
+	policy := DefaultPhraseExtractionPolicy()
+	if policy.MinWords != 2 || policy.MaxWords != 6 {
+		t.Fatalf("default phrase word range = %d..%d, want 2..6", policy.MinWords, policy.MaxWords)
 	}
 }
 

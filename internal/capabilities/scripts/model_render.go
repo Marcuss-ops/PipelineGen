@@ -119,6 +119,13 @@ type RenderArtifact struct {
 	// Metrics is the numeric projection of Chronon's timing sidecar returned
 	// by RenderingGen and correlated with this artifact.
 	Metrics map[string]float64 `json:"metrics,omitempty"`
+	// ChrononTelemetry is the BOUNDED telemetry summary ingested from
+	// Chronon's timing sidecar (schema chronon3d.render-telemetry-summary.v1)
+	// preserved verbatim from RenderingGen. It is the ledger telemetry: the
+	// bounded JSON document with exclusive-wall + GPU summary, without the
+	// unbounded per-frame array. Nil when the worker produced only the flat
+	// summary or predated the field (fail-open, legacy worker).
+	ChrononTelemetry json.RawMessage `json:"chronon_telemetry,omitempty"`
 	// ChrononTiming* reference the RAW deep-profile timing sidecar
 	// (`<output>.timing.json`, including the unbounded per-frame
 	// frame_times_ms array) preserved verbatim in the RenderingGen object

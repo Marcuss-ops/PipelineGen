@@ -44,10 +44,14 @@ type OverlayPlan struct {
 	// the RenderingGen wire contract and from the semantic fingerprint: the
 	// queue renders the plan content, while PipelineGen owns Drive routing.
 	DriveJobID string `json:"-"`
-	Width      int    `json:"width"`
-	Height     int    `json:"height"`
-	FPSNum     int    `json:"fps_num"`
-	FPSDen     int    `json:"fps_den"`
+	// RequireDriveBeforeReturn is an application-only delivery constraint for
+	// final-job overlays: their Drive identities are embedded in PREPARE and
+	// must be available before that request is sent. It is not render content.
+	RequireDriveBeforeReturn bool `json:"-"`
+	Width                    int  `json:"width"`
+	Height                   int  `json:"height"`
+	FPSNum                   int  `json:"fps_num"`
+	FPSDen                   int  `json:"fps_den"`
 	// DurationMS is the canonical master-audio/timeline duration projected
 	// onto the overlay plan. It is a floor for the Chronon canvas duration:
 	// overlay items may extend it, but they can never truncate the master
@@ -63,12 +67,22 @@ type OverlayPlan struct {
 	// ResolveMediaContract; the compiled chronon output derives its
 	// container/codec/pixel format from the resolved contract.
 	MediaContract string `json:"media_contract,omitempty"`
+	// Source is the concrete video layer for opaque final-job compositions.
+	// LocalPath is producer-only; Path is the RenderingGen workspace path.
+	Source *OverlaySource `json:"source,omitempty"`
 	// Background is an optional full-canvas layer rendered below every
 	// semantic overlay. When omitted, the source video remains visible below
 	// the overlays (the legacy behaviour).
 	Background  *OverlayBackground `json:"background,omitempty"`
 	Items       []OverlayItem      `json:"items"`
 	Fingerprint string             `json:"fingerprint,omitempty"`
+}
+
+type OverlaySource struct {
+	AssetID   string `json:"asset_id"`
+	Path      string `json:"path,omitempty"`
+	SHA256    string `json:"sha256"`
+	LocalPath string `json:"-"`
 }
 
 // OverlayBackground is the payload contract for an optional full-canvas
@@ -132,14 +146,29 @@ type OverlayItem struct {
 	// kind/template_id/preset_id/text, so the ref is never serialized onto the
 	// overlay-plan.v1 wire (`json:"-"`). The document/editing projections that
 	// need WHO an overlay is about read it from the in-memory plan.
-	EntityRef *OverlayEntityRef `json:"-"`
-	Text      string            `json:"text,omitempty"`
-	AssetRefs []OverlayAssetRef `json:"asset_refs,omitempty"`
-	Params    map[string]any    `json:"params,omitempty"`
-	RenderKey string            `json:"render_key,omitempty"`
+	EntityRef   *OverlayEntityRef   `json:"-"`
+	Text        string              `json:"text,omitempty"`
+	AssetRefs   []OverlayAssetRef   `json:"asset_refs,omitempty"`
+	ImageLayers []OverlayImageLayer `json:"image_layers,omitempty"`
+	Params      map[string]any      `json:"params,omitempty"`
+	RenderKey   string              `json:"render_key,omitempty"`
 }
 
-// OverlayEntityRef is the content-addressed entity identity of an overlay
+// OverlayImageLayer is one independently timed and animated image within a
+// composite entity-image overlay. Times are relative to the parent item so a
+// single queued render can reveal nearby entities at their own spoken anchors.
+type OverlayImageLayer struct {
+	ID           string         `json:"id"`
+	AssetID      string         `json:"asset_id"`
+	StartMS      int64          `json:"start_ms"`
+	EndMS        int64          `json:"end_ms"`
+	PresetID     string         `json:"preset_id,omitempty"`
+	MotionID     string         `json:"motion_id,omitempty"`
+	MotionParams map[string]any `json:"motion_params,omitempty"`
+	Params       map[string]any `json:"params,omitempty"`
+}
+
+// OverlayEntityRef is the content-addressed entity identity of an overlay item:
 // item: the stable entity id, the canonical type, the canonical name and the
 // surface text actually spoken. It is pure identity metadata — the visual
 // rendering is driven by TemplateID/PresetID/Text/AssetRefs, never by this
@@ -315,6 +344,11 @@ func (p *OverlayPlan) Validate() error {
 			return fmt.Errorf("overlay plan: %w", err)
 		}
 	}
+	if source := p.Source; source != nil {
+		if strings.TrimSpace(source.AssetID) == "" || strings.TrimSpace(source.SHA256) == "" || (strings.TrimSpace(source.Path) == "" && strings.TrimSpace(source.LocalPath) == "") {
+			return fmt.Errorf("overlay plan: source requires asset_id, sha256 and a path")
+		}
+	}
 	if bg := p.Background; bg != nil {
 		switch strings.ToLower(strings.TrimSpace(bg.Kind)) {
 		case "color":
@@ -380,14 +414,32 @@ func (p *OverlayPlan) Validate() error {
 				return fmt.Errorf("overlay plan: item %q entity_ref requires entity_id, type and name", item.ID)
 			}
 		}
+		assetIDs := make(map[string]bool, len(item.AssetRefs))
 		for assetIndex, ref := range item.AssetRefs {
 			if strings.TrimSpace(ref.AssetID) == "" {
 				return fmt.Errorf("overlay plan: item %q asset[%d] requires asset_id", item.ID, assetIndex)
 			}
+			assetIDs[ref.AssetID] = true
+		}
+		imageLayerIDs := make(map[string]struct{}, len(item.ImageLayers))
+		for layerIndex, layer := range item.ImageLayers {
+			if strings.TrimSpace(layer.ID) == "" || !assetIDs[layer.AssetID] {
+				return fmt.Errorf("overlay plan: item %q image_layers[%d] requires id and an asset_id declared by the item", item.ID, layerIndex)
+			}
+			if _, exists := imageLayerIDs[layer.ID]; exists {
+				return fmt.Errorf("overlay plan: item %q has duplicate image layer id %q", item.ID, layer.ID)
+			}
+			imageLayerIDs[layer.ID] = struct{}{}
+			if layer.StartMS < 0 || layer.EndMS <= layer.StartMS || layer.EndMS > item.EndMs-item.StartMs {
+				return fmt.Errorf("overlay plan: item %q image_layers[%d] has invalid relative time range", item.ID, layerIndex)
+			}
+		}
+		if len(item.ImageLayers) > 0 && (item.Kind != string(KindEntityImage) || len(item.ImageLayers) < 2 || len(item.AssetRefs) < 2) {
+			return fmt.Errorf("overlay plan: item %q composite images require an entity_image item with at least two image layers and assets", item.ID)
 		}
 		if item.RenderKey == "" {
 			key := ComputeRenderKey(*p, item)
-			p.Items[i] = OverlayItem{ID: item.ID, SceneID: item.SceneID, EntityID: item.EntityID, Kind: item.Kind, StartMs: item.StartMs, EndMs: item.EndMs, StartUS: item.StartUS, DurationUS: item.DurationUS, TemplateID: item.TemplateID, PresetID: item.PresetID, ImagePresetID: item.ImagePresetID, MotionID: item.MotionID, MotionParams: item.MotionParams, EntityRef: item.EntityRef, Text: item.Text, AssetRefs: item.AssetRefs, Params: item.Params, RenderKey: key}
+			p.Items[i] = OverlayItem{ID: item.ID, SceneID: item.SceneID, EntityID: item.EntityID, Kind: item.Kind, StartMs: item.StartMs, EndMs: item.EndMs, StartUS: item.StartUS, DurationUS: item.DurationUS, TemplateID: item.TemplateID, PresetID: item.PresetID, ImagePresetID: item.ImagePresetID, MotionID: item.MotionID, MotionParams: item.MotionParams, EntityRef: item.EntityRef, Text: item.Text, AssetRefs: item.AssetRefs, ImageLayers: item.ImageLayers, Params: item.Params, RenderKey: key}
 		}
 	}
 	if p.Fingerprint == "" {
@@ -433,9 +485,10 @@ func ComputeRenderKey(p OverlayPlan, item OverlayItem) string {
 		ImagePresetID                    string `json:"image_preset_id,omitempty"`
 		MotionID                         string `json:"motion_id,omitempty"`
 		MotionParams                     string `json:"motion_params,omitempty"`
+		ImageLayers                      string `json:"image_layers,omitempty"`
 	}{
 		item.TemplateID, item.Text, string(params), renderer, assetHashes, p.Width, p.Height, p.FPSNum, p.FPSDen, item.StartMs, item.EndMs, item.StartUS, item.DurationUS,
-		item.PresetID, item.ImagePresetID, item.MotionID, motionParamsJSON(item.MotionParams),
+		item.PresetID, item.ImagePresetID, item.MotionID, motionParamsJSON(item.MotionParams), imageLayersJSON(item.ImageLayers),
 	}
 	b, _ := json.Marshal(input)
 	h := digest.SHA256Bytes(b)
@@ -447,6 +500,14 @@ func motionParamsJSON(params map[string]any) string {
 		return ""
 	}
 	b, _ := json.Marshal(params)
+	return string(b)
+}
+
+func imageLayersJSON(layers []OverlayImageLayer) string {
+	if len(layers) == 0 {
+		return ""
+	}
+	b, _ := json.Marshal(layers)
 	return string(b)
 }
 

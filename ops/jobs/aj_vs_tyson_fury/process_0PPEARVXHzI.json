@@ -1,0 +1,112 @@
+{
+ "_comment": "Clip 'Aj Vs Tyson Fury' — video 0PPEARVXHzI (Ring Magazine). Segmenti curati 10-45s, destinazione esplicita folder 1nib6O6sgAoy3M_hfWAkPsvGwjNDcMl36 (Clips/Boxe/Anthony Joshua/Aj Vs Tyson Fury) con create_subfolder=false. Clip ID deterministico yt_<videoID>_<startSec>_<endSec>_v1: reinviare fa UPSERT, non duplica.",
+ "url": "https://www.youtube.com/watch?v=0PPEARVXHzI",
+ "strategy": "verify",
+ "concurrency": 3,
+ "force_keyframes": true,
+ "keep_audio": true,
+ "write_summary": true,
+ "destination": {
+  "folder_id": "1nib6O6sgAoy3M_hfWAkPsvGwjNDcMl36",
+  "create_subfolder": false
+ },
+ "segments": [
+  {
+   "start": "00:12",
+   "end": "00:44",
+   "name": "AJ: \"Nel mio cuore combatterei Fury domani\"",
+   "category": "boxing_interview",
+   "source_title": "Anthony Joshua PUMPS BRAKES On Potential Tyson Fury Fight!",
+   "source_channel": "Ring Magazine",
+   "summary": "Joshua dice che combatterebbe Fury subito, che non ha problemi a salire sul ring e che non e li per cercare visibilita: i contratti verranno inviati e molto probabilmente il fight sara il prossimo.",
+   "topics": [
+    "Anthony Joshua Tyson Fury \"in my heart I'll fight Tyson Fury tomorrow\" contratti ring clout intervista ringside Riyadh pesi massimi boxe"
+   ],
+   "tags": [
+    "Anthony Joshua",
+    "Tyson Fury",
+    "Boxe",
+    "Intervista"
+   ],
+   "mentioned_people": [
+    "Anthony Joshua",
+    "Tyson Fury"
+   ],
+   "hook": "AJ: \"Nel mio cuore combatto Fury domani, ma non sono qui per il clout\"",
+   "quality_score": 0.9
+  },
+  {
+   "start": "01:12",
+   "end": "01:47",
+   "name": "\"Lui si e ritirato, io sono sempre stato qui\"",
+   "category": "boxing_interview",
+   "source_title": "Anthony Joshua PUMPS BRAKES On Potential Tyson Fury Fight!",
+   "source_channel": "Ring Magazine",
+   "summary": "Joshua ribalta la narrativa: Fury e quello che si e ritirato e tornato piu volte, mentre lui e rimasto al top per 13 anni. Per questo non insegue fama o hype, combatte chiunque gli mettano davanti.",
+   "topics": [
+    "Anthony Joshua Tyson Fury ritiro carriera 13 anni standing strong fame hype \"he works for me\" intervista ringside pesi massimi boxe"
+   ],
+   "tags": [
+    "Anthony Joshua",
+    "Tyson Fury",
+    "Boxe",
+    "Intervista"
+   ],
+   "mentioned_people": [
+    "Anthony Joshua",
+    "Tyson Fury"
+   ],
+   "hook": "AJ ribalta la narrazione: \"e lui che si e ritirato, non io\"",
+   "quality_score": 0.9
+  },
+  {
+   "start": "02:42",
+   "end": "03:27",
+   "name": "Il colpo che puo far male a Fury e le priorita personali",
+   "category": "boxing_interview",
+   "source_title": "Anthony Joshua PUMPS BRAKES On Potential Tyson Fury Fight!",
+   "source_channel": "Ring Magazine",
+   "summary": "Joshua promette che quando colpira Fury lo fara male, ma chiarisce che prima di tutto ci sono le vicende personali e familiari da sistemare: senza essere al 100% non ha senso parlare del fight.",
+   "topics": [
+    "Anthony Joshua Tyson Fury potenza colpo duro priorita vita privata fratelli genitori lutto preparazione mentale 100% ritorno ring"
+   ],
+   "tags": [
+    "Anthony Joshua",
+    "Tyson Fury",
+    "Boxe",
+    "Vita personale"
+   ],
+   "mentioned_people": [
+    "Anthony Joshua",
+    "Tyson Fury"
+   ],
+   "hook": "AJ: \"Quando colpisco Fury lo faccio male, ma prima contano i miei fratelli\"",
+   "quality_score": 0.9
+  },
+  {
+   "start": "03:23",
+   "end": "03:49",
+   "name": "Nessuna firma, nessun fight: la verita sul momento",
+   "category": "boxing_interview",
+   "source_title": "Anthony Joshua PUMPS BRAKES On Potential Tyson Fury Fight!",
+   "source_channel": "Ring Magazine",
+   "summary": "Joshua chiarisce che al momento non esiste nessun fight: fino a quando i nomi non saranno sulla linea tratteggiata e non suonera la prima campana, per lui tutto il resto e solo rumore e noia da tre o quattro trattative vissute.",
+   "topics": [
+    "Anthony Joshua Tyson Fury nessun contratto firmato \"no fight right now\" prima campana Wilder trattative noia intervista pesi massimi boxe"
+   ],
+   "tags": [
+    "Anthony Joshua",
+    "Tyson Fury",
+    "Deontay Wilder",
+    "Boxe",
+    "Trattativa"
+   ],
+   "mentioned_people": [
+    "Anthony Joshua",
+    "Tyson Fury"
+   ],
+   "hook": "AJ senza filtri: \"fino alle firme non c'e nessun fight\"",
+   "quality_score": 0.9
+  }
+ ]
+}

@@ -820,8 +820,8 @@ func TestRun_ConcurrentCounters(t *testing.T) {
 // ── registry ─────────────────────────────────────────────────────────
 
 func TestRegistry_CanonicalNames(t *testing.T) {
-	if len(AllStages()) != 66 {
-		t.Fatalf("stages = %d, want 66", len(AllStages()))
+	if len(AllStages()) != 67 {
+		t.Fatalf("stages = %d, want 67", len(AllStages()))
 	}
 	if len(AllComponents()) != 15 {
 		t.Fatalf("components = %d, want 15", len(AllComponents()))

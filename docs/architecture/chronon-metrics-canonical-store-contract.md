@@ -1,7 +1,7 @@
 # PipelineGen — Chronon metrics canonical-store contract
 
 **Status:** architectural contract
-**Authority:** `internal/capabilities/cliprender` owns the sidecar contract (parser `chronon_sidecar.go` + `ChrononMetricsAdapter`); `internal/platform/sqlite/performance` owns the canonical granular store (`performance_operations`, migration 217); `internal/capabilities/scripts` + `internal/platform/sqlite/rendermetrics` own the canonical per-attempt row (`render_attempt_analytics`, migrations 215 + 227). The `cmd/admin` `performance-cold-warm` verifier is a read projection.
+**Authority:** `internal/capabilities/cliprender` owns the sidecar contract (parser `chronon_sidecar.go` + `ChrononMetricsAdapter`); `internal/platform/sqlite/performance` owns the canonical granular store (`performance_operations`, migration 217); `internal/capabilities/scripts` + `internal/platform/sqlite/rendermetrics` own the canonical per-attempt row (`render_attempt_analytics`, migrations 215 + 227 + 271). The `cmd/admin` `performance-cold-warm` verifier is a read projection.
 **Scope:** the rule that the Chronon sidecar JSON is a **transport/debug payload** and **SQLite is the canonical history of metrics** — where Chronon's measured phases live, how they get there, and what is forbidden.
 
 This document is the normative contract for every Chronon metric surface. It complements the Job–Attempt–Run observability contract ([`job-attempt-run-observability-contract.md`](job-attempt-run-observability-contract.md)): that contract governs the kernel run model; this one governs the Chronon render-measurement boundary and its durable history. The current implementation surface is recorded in [`architecture/observability-measurement-matrix.yaml`](../../architecture/observability-measurement-matrix.yaml).
@@ -15,7 +15,7 @@ SIDECAR JSON        = payload di trasporto/debug   (debugging approfondito, opzi
 SQLite              = storia canonica delle metriche
 
 CANONICAL GRANULAR STORE  = performance_operations        (migration 217)
-CANONICAL PER-ATTEMPT ROW = render_attempt_analytics      (migrations 215 + 227)
+CANONICAL PER-ATTEMPT ROW = render_attempt_analytics      (migrations 215 + 227 + 271)
 ```
 
 The rule has three consequences:
@@ -78,7 +78,7 @@ The direct path writes the granular exclusive-wall phases (`chronon.startup`, `c
 | Layer | Surface | Role |
 |---|---|---|
 | **Canonical** | `performance_operations` (migration 217) | Granular phase history: one row per measured phase per run, with run/job identity resolved from the canonical run, certified output facts (source SHA/duration, WxH, fps, bytes) and `metadata_json`. |
-| **Canonical** | `render_attempt_analytics` (migrations 215 + 227) | Coarse per-attempt row: `render_ms` / `encode_ms` from the certified artifact, content census, queue observation metrics, output facts, Drive identity. Upsert keyed by `attempt_id`. |
+| **Canonical** | `render_attempt_analytics` (migrations 215 + 227 + 271) | Durable per-overlay row: one row per item attempt (attempt_id = real queue job id, item_id = OverlayItem.ID when the plan carries one item), certified profile (backend/chronon_version/profile_id/codec/container/pixel_format), output facts (WxH, fps, frame_count, duration_us, size_bytes, sha256), Drive identity, queue observation (completion_wait_ms/polling_*), worker phase walls (materialize_ms/plan_ms/render_ms/encode_ms/probe_ms/hash_ms/upload_ms/drive_publish_ms), numeric metrics map (metrics_json) and bounded telemetry summary (chronon_telemetry, schema chronon3d.render-telemetry-summary.v1) preserved verbatim plus content-addressed deep-profile refs (chronon_timing_*). Upsert keyed by `attempt_id`. |
 | **Transport/debug** | `*.timing.json` sidecar | The engine's own exclusive-wall measurements at their origin. Transport between Chronon and PipelineGen; kept on disk for deep debugging. Never queried as the metrics database. |
 | **Transport/debug** | `/tmp/*.profile.json` + manual `jq` | Ad-hoc certification artifacts. Useful for one-off GPU certification; forbidden as the permanent workflow (see §4). |
 | **Derived** | `cmd/admin performance-cold-warm` verifier | Read projection: `GROUP BY operation` (AVG/MIN/MAX `elapsed_ms`) over `performance_operations`, split cold #1 vs warm #2-N. Reads SQLite only. |

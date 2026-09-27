@@ -419,8 +419,8 @@ func verifyMikeTysonLocalizedPhraseBindings(t *testing.T, language string, planP
 				t.Fatalf("%s scene %q phrase %q is not contained in localized text %q", language, sceneID, phrase, text)
 			}
 			words := strings.Fields(phrase)
-			if len(words) < 2 || len(words) > 4 {
-				t.Fatalf("%s scene %q phrase %q has %d words, want 2..4", language, sceneID, phrase, len(words))
+			if len(words) < 2 || len(words) > 6 {
+				t.Fatalf("%s scene %q phrase %q has %d words, want 2..6", language, sceneID, phrase, len(words))
 			}
 			for _, entity := range append(stringValues(valueAt(localized, "primary_entities"), "text"), stringValues(valueAt(localized, "secondary_entities"), "text")...) {
 				if phraseOverlapsSurface(text, phrase, entity) {

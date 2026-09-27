@@ -33,6 +33,7 @@ func buildRemoteJobPayload(req GenerateRequest, result *GenerateResult) json.Raw
 	}
 
 	remote := map[string]any{
+		"final_job":                req.FinalJob,
 		"audio_mode":               "FINAL_AUDIO_COPY",
 		"audio_source":             "certified_final_audio",
 		"scenes":                   remoteClipTimingScenes(result),

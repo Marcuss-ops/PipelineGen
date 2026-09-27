@@ -23,12 +23,12 @@ import (
 )
 
 // renderAttemptAnalyticsWiringSchema is the canonical render_attempt_analytics
-// DDL (migration 215 + the completion-wait columns from migration 227) needed
-// by the SQLite recorder.
+// DDL (migrations 215 + 227 + 271) needed by the SQLite recorder.
 const renderAttemptAnalyticsWiringSchema = `
 CREATE TABLE render_attempt_analytics (
     attempt_id      TEXT PRIMARY KEY,
     job_id          TEXT NOT NULL DEFAULT '',
+    item_id         TEXT NOT NULL DEFAULT '',
     phrase_count    INTEGER NOT NULL DEFAULT 0,
     word_count      INTEGER NOT NULL DEFAULT 0,
     image_count     INTEGER NOT NULL DEFAULT 0,
@@ -49,6 +49,26 @@ CREATE TABLE render_attempt_analytics (
     sha256          TEXT NOT NULL DEFAULT '',
     drive_file_id   TEXT NOT NULL DEFAULT '',
     drive_link      TEXT NOT NULL DEFAULT '',
+    backend         TEXT NOT NULL DEFAULT '',
+    chronon_version TEXT NOT NULL DEFAULT '',
+    profile_id      TEXT NOT NULL DEFAULT '',
+    codec           TEXT NOT NULL DEFAULT '',
+    codec_profile   TEXT NOT NULL DEFAULT '',
+    container       TEXT NOT NULL DEFAULT '',
+    pixel_format    TEXT NOT NULL DEFAULT '',
+    materialize_ms  INTEGER NOT NULL DEFAULT 0,
+    plan_ms         INTEGER NOT NULL DEFAULT 0,
+    probe_ms        INTEGER NOT NULL DEFAULT 0,
+    hash_ms         INTEGER NOT NULL DEFAULT 0,
+    upload_ms       INTEGER NOT NULL DEFAULT 0,
+    drive_publish_ms INTEGER NOT NULL DEFAULT 0,
+    metrics_json    TEXT NOT NULL DEFAULT '',
+    chronon_telemetry TEXT NOT NULL DEFAULT '',
+    chronon_timing_storage_key TEXT NOT NULL DEFAULT '',
+    chronon_timing_url TEXT NOT NULL DEFAULT '',
+    chronon_timing_sha256 TEXT NOT NULL DEFAULT '',
+    chronon_timing_size_bytes INTEGER NOT NULL DEFAULT 0,
+    chronon_timing_content_type TEXT NOT NULL DEFAULT '',
     recorded_at     TEXT NOT NULL
 );`
 

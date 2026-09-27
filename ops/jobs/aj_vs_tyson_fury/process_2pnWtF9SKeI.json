@@ -1,0 +1,114 @@
+{
+ "_comment": "Clip 'Aj Vs Tyson Fury' — video 2pnWtF9SKeI (talkSPORT Boxing). Segmenti curati 10-45s, destinazione esplicita folder 1nib6O6sgAoy3M_hfWAkPsvGwjNDcMl36 (Clips/Boxe/Anthony Joshua/Aj Vs Tyson Fury) con create_subfolder=false. Clip ID deterministico yt_<videoID>_<startSec>_<endSec>_v1: reinviare fa UPSERT, non duplica.",
+ "url": "https://www.youtube.com/watch?v=2pnWtF9SKeI",
+ "strategy": "verify",
+ "concurrency": 3,
+ "force_keyframes": true,
+ "keep_audio": true,
+ "write_summary": true,
+ "destination": {
+  "folder_id": "1nib6O6sgAoy3M_hfWAkPsvGwjNDcMl36",
+  "create_subfolder": false
+ },
+ "segments": [
+  {
+   "start": "02:48",
+   "end": "03:18",
+   "name": "\"Bring Prenga, bring Fury\": nessuna pressione per AJ",
+   "category": "boxing_interview",
+   "source_title": "\"BRING ON FURY!\" Anthony Joshua HITS BACK At Tyson Fury Comments Pre Kristian Prenga Fight",
+   "source_channel": "talkSPORT Boxing",
+   "summary": "Joshua spiega che dopo le esperienze con Deontay Wilder ha imparato a non sprecare energie bloccando i pensieri sul fight futuro: accetta tutto quello che arriva, Prenga come Fury.",
+   "topics": [
+    "Anthony Joshua Deontay Wilder blocco mentalita pressione Prenga Fury contratto \"bring it\" intervista talkSPORT pesi massimi boxe"
+   ],
+   "tags": [
+    "Anthony Joshua",
+    "Tyson Fury",
+    "Deontay Wilder",
+    "Boxe",
+    "Intervista"
+   ],
+   "mentioned_people": [
+    "Anthony Joshua",
+    "Tyson Fury"
+   ],
+   "hook": "AJ non blocca piu l'energia: \"bring it\" per chiunque",
+   "quality_score": 0.9
+  },
+  {
+   "start": "03:18",
+   "end": "03:48",
+   "name": "Contratto a due fight firmato con entusiasmo",
+   "category": "boxing_interview",
+   "source_title": "\"BRING ON FURY!\" Anthony Joshua HITS BACK At Tyson Fury Comments Pre Kristian Prenga Fight",
+   "source_channel": "talkSPORT Boxing",
+   "summary": "Joshua racconta di aver firmato con convinzione l'accordo a due fight che prevede il match con Tyson Fury, dicendo di aver chiesto subito quella opportunita e di aver accettato la pressione dell'anno.",
+   "topics": [
+    "Anthony Joshua two fight deal contratto firmato Fury opportunita pressione Prenga Riyadh Season boxe pesi massimi accordo"
+   ],
+   "tags": [
+    "Anthony Joshua",
+    "Tyson Fury",
+    "Kristian Prenga",
+    "Boxe",
+    "Contratto"
+   ],
+   "mentioned_people": [
+    "Anthony Joshua",
+    "Tyson Fury"
+   ],
+   "hook": "AJ: \"Mi hanno detto batte Prenga e ti diamo Fury. Ho firmato subito\"",
+   "quality_score": 0.9
+  },
+  {
+   "start": "04:54",
+   "end": "05:21",
+   "name": "Il ritorno continua: \"We're back\"",
+   "category": "boxing_interview",
+   "source_title": "\"BRING ON FURY!\" Anthony Joshua HITS BACK At Tyson Fury Comments Pre Kristian Prenga Fight",
+   "source_channel": "talkSPORT Boxing",
+   "summary": "Joshua inquadra il suo ritorno sportivo come una continuazione della carriera, con la vita privata che si e intrecciata al professionismo, e si dichiara pronto: sparring, forma fisica e lucidita mentale.",
+   "topics": [
+    "Anthony Joshua ritorno comeback sparring allenamento forma fisica preparazione 15 round Fury Prenga mentalita resilienza"
+   ],
+   "tags": [
+    "Anthony Joshua",
+    "Boxe",
+    "Comeback",
+    "Intervista"
+   ],
+   "mentioned_people": [
+    "Anthony Joshua",
+    "Boxe"
+   ],
+   "hook": "AJ: \"Mentalmente sono gia forte, mi preparo per 15 round\"",
+   "quality_score": 0.9
+  },
+  {
+   "start": "06:04",
+   "end": "06:27",
+   "name": "Legacy: il vincitore tra i piu grandi pesi massimi britannici",
+   "category": "boxing_interview",
+   "source_title": "\"BRING ON FURY!\" Anthony Joshua HITS BACK At Tyson Fury Comments Pre Kristian Prenga Fight",
+   "source_channel": "talkSPORT Boxing",
+   "summary": "Alla domanda se il vincitore tra Joshua e Fury diventera il miglior peso massimo britannico di sempre, AJ risponde con misura: sicuramente uno dei piu grandi della storia del Regno Unito.",
+   "topics": [
+    "Anthony Joshua Tyson Fury legacy storia pesi massimi britannici Lennox Lewis Frank Bruno migliori di sempre eredita sportiva"
+   ],
+   "tags": [
+    "Anthony Joshua",
+    "Tyson Fury",
+    "Lennox Lewis",
+    "Boxe",
+    "Legacy"
+   ],
+   "mentioned_people": [
+    "Anthony Joshua",
+    "Tyson Fury"
+   ],
+   "hook": "AJ sul peso della legacy: \"uno dei piu grandi di sempre in Gran Bretagna\"",
+   "quality_score": 0.9
+  }
+ ]
+}

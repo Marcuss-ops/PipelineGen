@@ -29,6 +29,20 @@ func (p *durableOverlayArtifactPublisher) PublishOverlay(ctx context.Context, sp
 	if artifact == nil || strings.TrimSpace(artifact.SHA256) == "" || artifact.SizeBytes <= 0 || strings.TrimSpace(artifact.URL) == "" {
 		return fmt.Errorf("overlay Drive outbox requires a certified locator artifact")
 	}
+	// Final-job scene composites are immediately referenced by the PREPARE
+	// payload, so their Drive identity must be available before this method
+	// returns. Publish these few scene assets synchronously, then retain the
+	// outbox event for the normal idempotent result projection and audit trail.
+	// Ordinary per-item overlays remain on the asynchronous path.
+	if spec.RequireDriveBeforeReturn || strings.Contains(spec.PlanID, ":final-composite:") {
+		if err := p.direct.PublishOverlay(ctx, spec, artifact); err != nil {
+			return fmt.Errorf("publish final-job composite to Drive: %w", err)
+		}
+		// The caller needs the Drive identity on this same artifact instance
+		// before it builds the single final_job request. Do not enqueue a second
+		// publication whose renderer job ID is not the parent script job ID.
+		return nil
+	}
 	payload, err := json.Marshal(renderinggen.OverlayDrivePublicationRequest{Spec: spec, Artifact: *artifact})
 	if err != nil {
 		return fmt.Errorf("encode overlay Drive publication: %w", err)

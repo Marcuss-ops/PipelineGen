@@ -1,0 +1,65 @@
+{
+ "_comment": "RIPARAZIONE confini (tagli a meta parola) — video ytZhWmz813M: solo i segmenti cambiati, stesso folder, UPSERT su nuovi ID.",
+ "url": "https://www.youtube.com/watch?v=ytZhWmz813M",
+ "strategy": "verify",
+ "concurrency": 3,
+ "force_keyframes": true,
+ "keep_audio": true,
+ "write_summary": true,
+ "destination": {
+  "folder_id": "1nib6O6sgAoy3M_hfWAkPsvGwjNDcMl36",
+  "create_subfolder": false
+ },
+ "segments": [
+  {
+   "start": "11:35",
+   "end": "12:16",
+   "name": "Hearn: entrambi hanno firmato, resta solo il 25 luglio",
+   "category": "boxing_interview",
+   "source_title": "Eddie Hearn gives UPDATE on Anthony Joshua vs Tyson Fury fight 👀",
+   "source_channel": "Sky Sports Boxing",
+   "summary": "Eddie Hearn conferma che entrambi i pugili hanno firmato: Fury ha firmato per combattere Joshua e l'unica cosa che si frappone e il match del 25 luglio, poi si andra verso il grande evento.",
+   "topics": [
+    "Eddie Hearn Tyson Fury Anthony Joshua firmato contratto \"only thing that stands in the way is July 25th\" trattativa Sky Sports pesi massimi boxe"
+   ],
+   "tags": [
+    "Eddie Hearn",
+    "Tyson Fury",
+    "Anthony Joshua",
+    "Boxe",
+    "Contratto"
+   ],
+   "mentioned_people": [
+    "Eddie Hearn",
+    "Tyson Fury"
+   ],
+   "hook": "Hearn: \"Hanno firmato entrambi, resta solo il 25 luglio\"",
+   "quality_score": 0.9
+  },
+  {
+   "start": "15:27",
+   "end": "15:57",
+   "name": "Novembre in mente: programmazione e concentrazione",
+   "category": "boxing_interview",
+   "source_title": "Eddie Hearn gives UPDATE on Anthony Joshua vs Tyson Fury fight 👀",
+   "source_channel": "Sky Sports Boxing",
+   "summary": "Hearn spiega che ogni decisione ora viene presa pensando a novembre, quando il fight si dovrebbe svolgere: entrambi i pugili sono concentrati sul superare i prossimi due mesi per consegnare al mondo il mega evento.",
+   "topics": [
+    "Eddie Hearn novembre data fight Anthony Joshua Tyson Fury concentrazione prossimi mesi mega evento programmazione pesi massimi boxe Sky Sports"
+   ],
+   "tags": [
+    "Eddie Hearn",
+    "Anthony Joshua",
+    "Tyson Fury",
+    "Boxe",
+    "Promozione"
+   ],
+   "mentioned_people": [
+    "Eddie Hearn",
+    "Anthony Joshua"
+   ],
+   "hook": "Hearn: \"Ogni decisione ora si prende pensando a novembre\"",
+   "quality_score": 0.9
+  }
+ ]
+}

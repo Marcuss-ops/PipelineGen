@@ -1,0 +1,65 @@
+{
+ "_comment": "RIPARAZIONE confini (tagli a meta parola) — video HRy2OBrBsSA: solo i segmenti cambiati, stesso folder, UPSERT su nuovi ID.",
+ "url": "https://www.youtube.com/watch?v=HRy2OBrBsSA",
+ "strategy": "verify",
+ "concurrency": 3,
+ "force_keyframes": true,
+ "keep_audio": true,
+ "write_summary": true,
+ "destination": {
+  "folder_id": "1nib6O6sgAoy3M_hfWAkPsvGwjNDcMl36",
+  "create_subfolder": false
+ },
+ "segments": [
+  {
+   "start": "00:05",
+   "end": "00:43",
+   "name": "\"Il fight che tutti aspettavamo e stato finalizzato\"",
+   "category": "boxing_interview",
+   "source_title": "🚨 HUGE NEWS: Fury vs Joshua Set for Netflix… But Aj’s Comeback Fight Could DERAIL Everything!",
+   "source_channel": "PUNSH DRUNK BOXING",
+   "summary": "Il commentatore urla la notizia: Anthony Joshua contro Tyson Fury e firmato, annunciato via social da Turki Alalshikh con i soprannomi dei due campioni, il black terminator contro il Gypsy King.",
+   "topics": [
+    "Tyson Fury Anthony Joshua finalizzato firmato Turki Alalshikh black terminator Gypsy King annuncio social Netflix pesi massimi boxe"
+   ],
+   "tags": [
+    "Tyson Fury",
+    "Anthony Joshua",
+    "Turki Alalshikh",
+    "Boxe",
+    "Annuncio"
+   ],
+   "mentioned_people": [
+    "Tyson Fury",
+    "Anthony Joshua"
+   ],
+   "hook": "Fury vs Joshua firmato: black terminator contro Gypsy King",
+   "quality_score": 0.9
+  },
+  {
+   "start": "01:02",
+   "end": "01:32",
+   "name": "\"Dateci il fight ora\": il timore del monkey wrench",
+   "category": "boxing_interview",
+   "source_title": "🚨 HUGE NEWS: Fury vs Joshua Set for Netflix… But Aj’s Comeback Fight Could DERAIL Everything!",
+   "source_channel": "PUNSH DRUNK BOXING",
+   "summary": "Il commentatore contesta il fight intermedio di Joshua: per anni un match di mezzo ha fatto saltare i grandi incontri, come Joshua-Wilder dopo la sconfitta con Parker, e per questo chiede di non rovinare tutto di nuovo.",
+   "topics": [
+    "Anthony Joshua fight intermedio monkey wrench Joshua Wilder Parker Riad ritardi grandi fight storia boxe pesi massimi annullati"
+   ],
+   "tags": [
+    "Anthony Joshua",
+    "Deontay Wilder",
+    "Joseph Parker",
+    "Boxe",
+    "Critica"
+   ],
+   "mentioned_people": [
+    "Anthony Joshua",
+    "Deontay Wilder"
+   ],
+   "hook": "Il fantasma del \"monkey wrench\": il match di mezzo che fa saltare tutto",
+   "quality_score": 0.9
+  }
+ ]
+}

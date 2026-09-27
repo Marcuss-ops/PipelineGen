@@ -217,6 +217,39 @@ func (e *QueueRenderEnqueuer) EnqueueChrononPlan(ctx context.Context, plan capov
 	return e.enqueueChrononPlan(ctx, plan, nil)
 }
 
+// EnqueueFinalJobCompositePlan renders a complete opaque scene composition in
+// one Chronon job even when ordinary overlay production is split per item.
+// These artifacts are finished scene footage consumed by the Master worker.
+func (e *QueueRenderEnqueuer) EnqueueFinalJobCompositePlan(ctx context.Context, plan capoverlay.OverlayPlan) (RenderReference, error) {
+	if len(plan.Items) == 0 {
+		return RenderReference{}, fmt.Errorf("final-job composite plan has no overlay items")
+	}
+	return e.enqueueChrononPlan(ctx, plan, nil)
+}
+
+// RenderFinalJobComposite waits for both Chronon and the run-scoped Drive
+// publication, so callers receive an asset the Master can resolve immediately.
+func (e *QueueRenderEnqueuer) RenderFinalJobComposite(ctx context.Context, plan capoverlay.OverlayPlan) (RenderArtifact, error) {
+	normalizedPlan, cleanup, err := normalizeFinalJobVideoBackground(ctx, plan)
+	if err != nil {
+		return RenderArtifact{}, fmt.Errorf("normalize final-job video background: %w", err)
+	}
+	if cleanup != nil {
+		defer cleanup()
+	}
+	ref, err := e.EnqueueFinalJobCompositePlan(ctx, normalizedPlan)
+	if err != nil {
+		return RenderArtifact{}, err
+	}
+	if err := e.Wait(ctx); err != nil {
+		return RenderArtifact{}, fmt.Errorf("publish final-job composite: %w", err)
+	}
+	if ref.Artifact == nil {
+		return RenderArtifact{}, fmt.Errorf("final-job composite render returned no artifact")
+	}
+	return *ref.Artifact, nil
+}
+
 func (e *QueueRenderEnqueuer) enqueueChrononPlan(ctx context.Context, plan capoverlay.OverlayPlan, metadata *overlayItemPublicationMetadata) (RenderReference, error) {
 	if e == nil || e.client == nil {
 		return RenderReference{}, fmt.Errorf("queue render enqueuer is not configured")
@@ -269,6 +302,13 @@ func (e *QueueRenderEnqueuer) enqueueChrononPlan(ctx context.Context, plan capov
 		for _, ref := range semanticPlan.Background.AssetRefs {
 			addAsset(ref)
 		}
+	}
+	if semanticPlan.Source != nil {
+		addAsset(capoverlay.OverlayAssetRef{
+			AssetID: semanticPlan.Source.AssetID, URL: semanticPlan.Source.Path,
+			LocalPath: semanticPlan.Source.LocalPath, SHA256: semanticPlan.Source.SHA256,
+			MediaType: "video/mp4",
+		})
 	}
 	for _, item := range semanticPlan.Items {
 		for _, ref := range item.AssetRefs {
@@ -348,16 +388,17 @@ func (e *QueueRenderEnqueuer) enqueueChrononPlan(ctx context.Context, plan capov
 				return fmt.Errorf("render job %s completed without certified artifact", jobID)
 			}
 			publication := OverlayPublicationSpec{
-				ScriptName:      plan.ScriptName,
-				Language:        plan.Language,
-				ProjectID:       plan.ProjectID,
-				JobID:           firstNonEmpty(plan.DriveJobID, plan.PlanID),
-				PlanID:          plan.PlanID,
-				DriveFolderID:   plan.DriveFolderID,
-				CompletionWait:  wait.CompletionWait,
-				PollingSleep:    wait.PollingSleep,
-				PollingInterval: wait.PollInterval,
-				PollCount:       wait.PollCount,
+				ScriptName:               plan.ScriptName,
+				Language:                 plan.Language,
+				ProjectID:                plan.ProjectID,
+				JobID:                    firstNonEmpty(plan.DriveJobID, plan.PlanID),
+				PlanID:                   plan.PlanID,
+				DriveFolderID:            plan.DriveFolderID,
+				RequireDriveBeforeReturn: plan.RequireDriveBeforeReturn,
+				CompletionWait:           wait.CompletionWait,
+				PollingSleep:             wait.PollingSleep,
+				PollingInterval:          wait.PollInterval,
+				PollCount:                wait.PollCount,
 			}
 			if metadata != nil {
 				if metadata.JobID != "" {
@@ -380,14 +421,21 @@ func (e *QueueRenderEnqueuer) enqueueChrononPlan(ctx context.Context, plan capov
 			// queue job id. In fresh mode that is the unique per-attempt identity,
 			// so two renders of the same plan record two rows instead of upsert-
 			// colliding on the plan id.
+			// For the production per-item pool the item correlation is the child
+			// plan's single item: overwrite that field with the item-aware
+			// metadata so the analytics row answers "which overlay" rather than
+			// "which plan carried one item".
 			attempt := BuildRenderAttemptAnalyticsWithWait(jobID, plan, done.Artifact, wait)
+			if metadata != nil && metadata.ItemID != "" {
+				attempt.ItemID = metadata.ItemID
+			}
 			if err := e.recorder.RecordAttempt(postCtx, attempt); err != nil {
 				return fmt.Errorf("record render attempt analytics: %w", err)
 			}
 		}
 		return nil
 	}
-	if e.asyncPublication && (e.publisher != nil || e.recorder != nil) {
+	if e.asyncPublication && !plan.RequireDriveBeforeReturn && (e.publisher != nil || e.recorder != nil) {
 		// The batch is resolved on the SUBMITTING goroutine: the publication
 		// must land in the batch of the run that asked for the render, not in
 		// whatever context happens to still be alive when it finishes.

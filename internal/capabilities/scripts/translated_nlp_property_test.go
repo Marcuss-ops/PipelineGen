@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"strings"
 	"testing"
+	"unicode"
 	"unicode/utf8"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/linguistics"
@@ -108,17 +109,22 @@ func assertTranslatedPropertyPhrases(t *testing.T, caseIndex int, language Langu
 			t.Fatalf("case %d/%s phrase %q is not contained in localized text", caseIndex, language, phrase)
 		}
 		words := strings.Fields(phrase)
-		if len(words) < 2 || len(words) > 4 {
-			t.Fatalf("case %d/%s phrase %q has %d words, want 2..4", caseIndex, language, phrase, len(words))
+		if len(words) < 2 || len(words) > 6 {
+			t.Fatalf("case %d/%s phrase %q has %d words, want 2..6", caseIndex, language, phrase, len(words))
 		}
 		first := strings.ToLower(words[0])
 		last := strings.ToLower(strings.Trim(words[len(words)-1], ".,!?;:"))
+		phraseStart := strings.Index(text, phrase)
+		leadingFunctionWord := false
 		if profile != nil {
-			if _, ok := profile.StopWords[first]; ok {
-				t.Fatalf("case %d/%s phrase %q starts with stop word", caseIndex, language, phrase)
-			}
-			if _, ok := profile.FunctionWords[first]; ok {
-				t.Fatalf("case %d/%s phrase %q starts with function word", caseIndex, language, phrase)
+			_, firstStop := profile.StopWords[first]
+			_, firstFunction := profile.FunctionWords[first]
+			leadingFunctionWord = firstStop || firstFunction
+			if leadingFunctionWord && phraseStart > 0 {
+				prefix := strings.TrimRightFunc(text[:phraseStart], unicode.IsSpace)
+				if prefix != "" && !strings.ContainsRune(".!?;,:—–\n\r", []rune(prefix)[len([]rune(prefix))-1]) {
+					t.Fatalf("case %d/%s phrase %q starts with an interior function word", caseIndex, language, phrase)
+				}
 			}
 			if _, ok := profile.StopWords[last]; ok {
 				t.Fatalf("case %d/%s phrase %q ends with stop word", caseIndex, language, phrase)
@@ -127,7 +133,6 @@ func assertTranslatedPropertyPhrases(t *testing.T, caseIndex int, language Langu
 				t.Fatalf("case %d/%s phrase %q ends with function word", caseIndex, language, phrase)
 			}
 		}
-		phraseStart := strings.Index(text, phrase)
 		phraseSpan := [2]int{utf8.RuneCountInString(text[:phraseStart]), utf8.RuneCountInString(text[:phraseStart+len(phrase)])}
 		for _, entitySpan := range blocked {
 			if phraseSpan[0] < entitySpan[1] && entitySpan[0] < phraseSpan[1] {

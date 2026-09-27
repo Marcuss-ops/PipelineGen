@@ -157,6 +157,7 @@ type Runner struct {
 	vidRushTiming           VidRushTimingRecorder
 	nlpGenerationGate       *GenerationGate
 	vidRushPipeline         *VidRushPipeline
+	finalJobSubmitter       FinalJobSubmitter
 
 	// ttsConcurrency bounds the TTS voiceover worker pool: the voiceover
 	// phase fans out scene×language synthesis to at most this many concurrent

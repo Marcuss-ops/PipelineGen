@@ -1,0 +1,113 @@
+{
+ "_comment": "Clip 'Aj Vs Tyson Fury' — video GwutL2B8EQM (talkSPORT Boxing). Segmenti curati 10-45s, destinazione esplicita folder 1nib6O6sgAoy3M_hfWAkPsvGwjNDcMl36 (Clips/Boxe/Anthony Joshua/Aj Vs Tyson Fury) con create_subfolder=false. Clip ID deterministico yt_<videoID>_<startSec>_<endSec>_v1: reinviare fa UPSERT, non duplica.",
+ "url": "https://www.youtube.com/watch?v=GwutL2B8EQM",
+ "strategy": "verify",
+ "concurrency": 3,
+ "force_keyframes": true,
+ "keep_audio": true,
+ "write_summary": true,
+ "destination": {
+  "folder_id": "1nib6O6sgAoy3M_hfWAkPsvGwjNDcMl36",
+  "create_subfolder": false
+ },
+ "segments": [
+  {
+   "start": "00:18",
+   "end": "00:48",
+   "name": "AJ post-fight: mentalita, cicatrici e rimonta",
+   "category": "boxing_interview",
+   "source_title": "\"The Chin Has Gone!\" talkSPORT Boxing & Nick Peet EXPLAIN Anthony Joshua's chances vs Tyson Fury",
+   "source_channel": "talkSPORT Boxing",
+   "summary": "Joshua commenta la serata difficile: riconosce il valore di Prenga, dice che quando si e vicini a qualcosa di grande c'e sempre una buccia di banana e che le cicatrici mentali non vanno usate come scusa.",
+   "topics": [
+    "Anthony Joshua Kristian Prenga intervista post fight cicatrici mentali rimonta mentalita resilienza Riyadh banane peel pesi massimi boxe"
+   ],
+   "tags": [
+    "Anthony Joshua",
+    "Kristian Prenga",
+    "Boxe",
+    "Intervista"
+   ],
+   "mentioned_people": [
+    "Anthony Joshua",
+    "Kristian Prenga"
+   ],
+   "hook": "AJ: \"Le cicatrici mentali ci sono, ma non sono una scusa\"",
+   "quality_score": 0.9
+  },
+  {
+   "start": "01:19",
+   "end": "01:30",
+   "name": "La profezia di Usyk e il fight con Fury",
+   "category": "boxing_interview",
+   "source_title": "\"The Chin Has Gone!\" talkSPORT Boxing & Nick Peet EXPLAIN Anthony Joshua's chances vs Tyson Fury",
+   "source_channel": "talkSPORT Boxing",
+   "summary": "Spencer Oliver riferisce che Oleksandr Usyk gli ha detto che Joshua mettera KO Fury. AJ risponde che succedera piu avanti, confermando implicitamente che il fight e nei piani.",
+   "topics": [
+    "Oleksandr Usyk previsione knockout Tyson Fury Anthony Joshua \"it will happen later\" intervista talkSPORT pesi massimi boxe"
+   ],
+   "tags": [
+    "Oleksandr Usyk",
+    "Anthony Joshua",
+    "Tyson Fury",
+    "Boxe"
+   ],
+   "mentioned_people": [
+    "Oleksandr Usyk",
+    "Anthony Joshua"
+   ],
+   "hook": "Usyk prevede il KO di AJ su Fury: \"Succedera piu avanti\"",
+   "quality_score": 0.9
+  },
+  {
+   "start": "02:00",
+   "end": "02:20",
+   "name": "\"Il mento non c'e piu\": l'allarme per il fight con Fury",
+   "category": "boxing_interview",
+   "source_title": "\"The Chin Has Gone!\" talkSPORT Boxing & Nick Peet EXPLAIN Anthony Joshua's chances vs Tyson Fury",
+   "source_channel": "talkSPORT Boxing",
+   "summary": "Nick Peet analizza il primo round contro Prenga: per un peso massimo la prima cosa che si perde e il mento e quei due atterramenti fanno temere il peggio in vista dello scontro con Fury.",
+   "topics": [
+    "Anthony Joshua mento \"the chin has gone\" Nick Peet analisi Prenga atterramenti Fury rischio KO pesi massimi talkSPORT boxe"
+   ],
+   "tags": [
+    "Anthony Joshua",
+    "Tyson Fury",
+    "Nick Peet",
+    "Boxe",
+    "Analisi"
+   ],
+   "mentioned_people": [
+    "Anthony Joshua",
+    "Tyson Fury"
+   ],
+   "hook": "Peet: \"Il primo colpo che perdi e il mento, e quello di AJ e sparito\"",
+   "quality_score": 0.9
+  },
+  {
+   "start": "09:34",
+   "end": "09:54",
+   "name": "Non piu 12 round: ora e uno scontro a due round",
+   "category": "boxing_interview",
+   "source_title": "\"The Chin Has Gone!\" talkSPORT Boxing & Nick Peet EXPLAIN Anthony Joshua's chances vs Tyson Fury",
+   "source_channel": "talkSPORT Boxing",
+   "summary": "Nick Peet conclude che il fight tra Fury e Joshua non e piu una sfida sulla distanza ma uno scontro a due round perche entrambi sono a fine carriera, con Fury favorito: se Breazeale ha fatto quel danno, figurarsi Fury motivato.",
+   "topics": [
+    "Anthony Joshua Tyson Fury fine carriera non 12 round due round shootout favorito analisi Nick Peet resilienza rischio pesi massimi boxe"
+   ],
+   "tags": [
+    "Anthony Joshua",
+    "Tyson Fury",
+    "Nick Peet",
+    "Boxe",
+    "Analisi"
+   ],
+   "mentioned_people": [
+    "Anthony Joshua",
+    "Tyson Fury"
+   ],
+   "hook": "Peet: \"Non e piu un fight da 12 round, e uno shootout da due\"",
+   "quality_score": 0.9
+  }
+ ]
+}

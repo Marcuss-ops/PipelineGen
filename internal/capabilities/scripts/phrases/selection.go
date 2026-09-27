@@ -36,16 +36,26 @@ type importantPhraseToken struct {
 }
 
 type importantPhraseCandidate struct {
-	text       string
-	start      int
-	tokenStart int
-	tokenEnd   int
-	score      int
+	text          string
+	start         int
+	tokenStart    int
+	tokenEnd      int
+	score         int
+	sentenceCount int
 }
 
-// ImportantPhrases returns short, source-grounded fragments in
-// editorial-strength order. It uses only configured stop/function words and
-// visual verbs; it makes no model or network calls and never rewrites text.
+type importantPhraseSentence struct {
+	byteStart  int
+	byteEnd    int
+	tokenStart int
+	tokenEnd   int
+}
+
+// ImportantPhrases returns source-grounded phrase cards in editorial-strength
+// order. Arbitrary fragments stay short, while complete sentences and adjacent
+// sentence pairs may retain their full surface. It uses only configured
+// stop/function words and visual verbs; it makes no model or network calls and
+// never rewrites text.
 //
 // blockedSpans are the RUNE ranges the selection must not overlap — the caller
 // passes the entity surfaces it already grounded so a phrase can never cover a
@@ -93,10 +103,10 @@ func selectPhrases(text string, blockedSpans [][2]int, limit int, profile *lingu
 	if policy.MaxWords < policy.MinWords {
 		policy.MaxWords = policy.MinWords
 	}
-	// Phrase overlays are short editorial headlines. Keep the selection within
-	// four words even if a future lexicon policy allows longer retrieval phrases.
-	if policy.MaxWords > 4 {
-		policy.MaxWords = 4
+	// Arbitrary phrase windows are editorial fragments with a hard six-word
+	// ceiling; complete sentence candidates are added separately below.
+	if policy.MaxWords > 6 {
+		policy.MaxWords = 6
 	}
 	if limit <= 0 {
 		limit = policy.MaxResults
@@ -121,21 +131,22 @@ func selectPhrases(text string, blockedSpans [][2]int, limit int, profile *lingu
 				break
 			}
 			first, last := strings.ToLower(tokens[start].text), strings.ToLower(tokens[end].text)
-			if isImportantPhraseFunctionWord(first, profile) || isImportantPhraseFunctionWord(last, profile) {
+			leadingFunctionWord := isImportantPhraseFunctionWord(first, profile)
+			// Permit a leading article only at a sentence/clause boundary
+			// ("O maior arrependimento..."); arbitrary windows beginning
+			// with articles remain invalid.
+			if isImportantPhraseFunctionWord(last, profile) ||
+				(leadingFunctionWord && !startsAtPhraseBoundary(text, tokens[start].start)) {
 				continue
 			}
 			contentWords, visualVerbs := 0, 0
+			functionWords := 0
 			allVisualVerbs := true
-			hasFunctionWord := false
 			for i := start; i <= end; i++ {
 				word := strings.ToLower(tokens[i].text)
 				if isImportantPhraseFunctionWord(word, profile) {
-					// A phrase overlay is an editorial headline, not an arbitrary
-					// window cut out of a sentence. Internal articles, auxiliaries,
-					// prepositions and pronouns are therefore rejected as well as
-					// endpoint function words. This prevents surfaces such as
-					// "felt like", "ambition often" and "vida vivida dentro".
-					hasFunctionWord = true
+					functionWords++
+					continue
 				}
 				if len([]rune(word)) < 3 {
 					continue
@@ -147,7 +158,11 @@ func selectPhrases(text string, blockedSpans [][2]int, limit int, profile *lingu
 					allVisualVerbs = false
 				}
 			}
-			if hasFunctionWord || contentWords < 2 || (policy.RejectVerbsWhenAll && allVisualVerbs) {
+			// Natural phrases may contain a small number of articles,
+			// auxiliaries, prepositions or pronouns. A leading article is allowed
+			// only at a phrase boundary; trailing function words remain invalid.
+			// Reject candidates only when function words exceed one third total.
+			if functionWords*3 > wordCount || contentWords < 2 || (policy.RejectVerbsWhenAll && allVisualVerbs) {
 				continue
 			}
 			// A capitalised token after a comma/colon is usually a proper name
@@ -175,11 +190,10 @@ func selectPhrases(text string, blockedSpans [][2]int, limit int, profile *lingu
 			// tie.
 			score := contentWords*4 + visualVerbs*5 - wordCount
 			if profile != nil {
-				// With a lexicon the function-word guard above already
-				// rejects window cuts, so prefer complete three/four-word noun
-				// or action chunks over tiny two-word fragments carrying the
-				// same editorial signal. Without a profile that guard cannot
-				// fire, so length must not be rewarded blindly.
+				// With a lexicon, prefer complete three-to-six-word noun or
+				// action chunks over tiny two-word fragments carrying the same
+				// editorial signal. Without a profile, length must not be
+				// rewarded blindly.
 				score += wordCount * 2
 			}
 			score += documentTermBoost(documentCounts[normalizedPhraseKey(candidateText)])
@@ -189,12 +203,41 @@ func selectPhrases(text string, blockedSpans [][2]int, limit int, profile *lingu
 			})
 		}
 	}
+	// Natural complete sentences and neighboring sentence pairs are editorial
+	// candidates outside the six-word cap used for arbitrary fragments. Their
+	// token intervals are still disjoint-selected below, so one card cannot
+	// step on words already assigned to an earlier card.
+	sentences := sentenceTokenSpans(text, tokens)
+	for i := range sentences {
+		for width := 1; width <= 2 && i+width <= len(sentences); width++ {
+			first, last := sentences[i], sentences[i+width-1]
+			wordCount := last.tokenEnd - first.tokenStart + 1
+			if width == 2 && wordCount <= policy.MaxWords {
+				continue
+			}
+			span := importantPhraseCandidate{
+				text:  strings.TrimSpace(text[first.byteStart:last.byteEnd]),
+				start: first.byteStart, tokenStart: first.tokenStart, tokenEnd: last.tokenEnd,
+				sentenceCount: width,
+			}
+			if !isTerminatedSentenceText(span.text) {
+				continue
+			}
+			if sentenceCandidateAllowed(span, profile, blockedSpans, text) {
+				span.score = phraseCandidateScore(span.text, profile, documentCounts)
+				candidates = append(candidates, span)
+			}
+		}
+	}
 	if len(candidates) == 0 {
 		return nil
 	}
 	sort.SliceStable(candidates, func(i, j int) bool {
 		if candidates[i].score != candidates[j].score {
 			return candidates[i].score > candidates[j].score
+		}
+		if candidates[i].sentenceCount != candidates[j].sentenceCount {
+			return candidates[i].sentenceCount > candidates[j].sentenceCount
 		}
 		if candidates[i].start != candidates[j].start {
 			return candidates[i].start < candidates[j].start
@@ -345,6 +388,181 @@ func tokenizeImportantPhrases(text string) []importantPhraseToken {
 
 func phraseBoundaryBetween(gap string) bool {
 	return strings.ContainsAny(gap, ".!?;,:—–\n\r")
+}
+
+func sentenceBoundaryBetween(gap string) bool {
+	return strings.ContainsAny(gap, ".!?\n\r")
+}
+
+func sentenceTokenSpans(text string, tokens []importantPhraseToken) []importantPhraseSentence {
+	if len(tokens) == 0 {
+		return nil
+	}
+	var sentences []importantPhraseSentence
+	start := 0
+	for next := 1; next < len(tokens); next++ {
+		gapStart := tokens[next-1].end
+		gap := text[gapStart:tokens[next].start]
+		if !sentenceBoundaryBetween(gap) {
+			continue
+		}
+		sentences = append(sentences, importantPhraseSentence{
+			byteStart: tokens[start].start, byteEnd: sentenceBoundaryEndByte(gap, gapStart),
+			tokenStart: start, tokenEnd: next - 1,
+		})
+		start = next
+	}
+	endByte := len(text)
+	for endByte > tokens[len(tokens)-1].end {
+		r, size := utf8.DecodeLastRuneInString(text[:endByte])
+		if !unicode.IsSpace(r) {
+			break
+		}
+		endByte -= size
+	}
+	sentences = append(sentences, importantPhraseSentence{
+		byteStart: tokens[start].start, byteEnd: endByte,
+		tokenStart: start, tokenEnd: len(tokens) - 1,
+	})
+	return sentences
+}
+
+// sentenceBoundaryEndByte includes punctuation and closing quotes, but not
+// whitespace before the next sentence.
+func sentenceBoundaryEndByte(gap string, absoluteGapStart int) int {
+	for offset, r := range gap {
+		if !strings.ContainsRune(".!?\n\r", r) {
+			continue
+		}
+		end := offset + utf8.RuneLen(r)
+		for end < len(gap) {
+			next, size := utf8.DecodeRuneInString(gap[end:])
+			if strings.ContainsRune(`"'’”)]}»`, next) {
+				end += size
+				continue
+			}
+			break
+		}
+		return absoluteGapStart + end
+	}
+	return absoluteGapStart + len(gap)
+}
+
+func isTerminatedSentenceText(value string) bool {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return false
+	}
+	for len(value) > 0 {
+		r, size := utf8.DecodeLastRuneInString(value)
+		if strings.ContainsRune(`"'’”)]}»`, r) {
+			value = strings.TrimSpace(value[:len(value)-size])
+			continue
+		}
+		break
+	}
+	if value == "" {
+		return false
+	}
+	r, _ := utf8.DecodeLastRuneInString(value)
+	return r == '.' || r == '!' || r == '?'
+}
+
+func sentenceCandidateAllowed(candidate importantPhraseCandidate, profile *linguistics.LexiconProfile, blockedSpans [][2]int, text string) bool {
+	wordCount := candidate.tokenEnd - candidate.tokenStart + 1
+	if wordCount < 2 || strings.TrimSpace(candidate.text) == "" || ContainsProperNamePair(candidate.text) {
+		return false
+	}
+	tokens := importantPhraseWord.FindAllString(candidate.text, -1)
+	if len(tokens) == 0 {
+		return false
+	}
+	first := strings.ToLower(tokens[0])
+	last := strings.ToLower(tokens[len(tokens)-1])
+	leadingFunctionWord := isImportantPhraseFunctionWord(first, profile)
+	if isImportantPhraseFunctionWord(last, profile) || (leadingFunctionWord && !startsAtPhraseBoundary(text, candidate.start)) {
+		return false
+	}
+	contentWords, visualVerbs, functionWords := 0, 0, 0
+	allVisualVerbs := true
+	for _, token := range tokens {
+		word := strings.ToLower(token)
+		if isImportantPhraseFunctionWord(word, profile) {
+			functionWords++
+			continue
+		}
+		if len([]rune(word)) < 3 {
+			continue
+		}
+		contentWords++
+		if isConfiguredVisualVerb(word, profile) {
+			visualVerbs++
+		} else {
+			allVisualVerbs = false
+		}
+	}
+	_ = visualVerbs
+	if functionWords*3 > wordCount || contentWords < 2 {
+		return false
+	}
+	// Reject verb-only surfaces when the profile opts in.
+	policy := linguistics.DefaultPhraseExtractionPolicy()
+	if profile != nil {
+		policy = profile.PhrasePolicy
+	}
+	if policy.RejectVerbsWhenAll && allVisualVerbs && contentWords > 0 {
+		return false
+	}
+	if startsWithInteriorCapital(text, candidate.start) {
+		return false
+	}
+	runeStart := utf8.RuneCountInString(text[:candidate.start])
+	runeEnd := runeStart + utf8.RuneCountInString(candidate.text)
+	return !overlapsAnyRuneSpan(runeStart, runeEnd, blockedSpans)
+}
+
+func phraseCandidateScore(text string, profile *linguistics.LexiconProfile, documentCounts map[string]int) int {
+	contentWords, visualVerbs := 0, 0
+	for _, token := range importantPhraseWord.FindAllString(text, -1) {
+		word := strings.ToLower(token)
+		if isImportantPhraseFunctionWord(word, profile) || len([]rune(word)) < 3 {
+			continue
+		}
+		contentWords++
+		if isConfiguredVisualVerb(word, profile) {
+			visualVerbs++
+		}
+	}
+	wordCount := len(importantPhraseWord.FindAllString(text, -1))
+	score := contentWords*4 + visualVerbs*5 - wordCount
+	if profile != nil {
+		score += wordCount * 2
+	}
+	normalized := normalizedPhraseKey(text)
+	trimmed := strings.Trim(normalized, ".,!?;:\"'’”)]}» ")
+	if trimmed == "" {
+		trimmed = normalized
+	}
+	boost := documentTermBoost(documentCounts[normalized])
+	if trimmed != normalized {
+		if tb := documentTermBoost(documentCounts[trimmed]); tb > boost {
+			boost = tb
+		}
+	}
+	score += boost
+	return score
+}
+
+func startsAtPhraseBoundary(text string, byteStart int) bool {
+	if byteStart <= 0 || byteStart > len(text) {
+		return true
+	}
+	prefix := strings.TrimRightFunc(text[:byteStart], unicode.IsSpace)
+	if prefix == "" {
+		return true
+	}
+	last, _ := utf8.DecodeLastRuneInString(prefix)
+	return strings.ContainsRune(".!?;,:—–\n\r", last)
 }
 
 func startsWithInteriorCapital(text string, byteStart int) bool {

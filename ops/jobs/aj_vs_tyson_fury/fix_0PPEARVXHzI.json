@@ -1,0 +1,63 @@
+{
+ "_comment": "RIPARAZIONE confini (tagli a meta parola) — video 0PPEARVXHzI: solo i segmenti cambiati, stesso folder, UPSERT su nuovi ID.",
+ "url": "https://www.youtube.com/watch?v=0PPEARVXHzI",
+ "strategy": "verify",
+ "concurrency": 3,
+ "force_keyframes": true,
+ "keep_audio": true,
+ "write_summary": true,
+ "destination": {
+  "folder_id": "1nib6O6sgAoy3M_hfWAkPsvGwjNDcMl36",
+  "create_subfolder": false
+ },
+ "segments": [
+  {
+   "start": "00:12",
+   "end": "00:44",
+   "name": "AJ: \"Nel mio cuore combatterei Fury domani\"",
+   "category": "boxing_interview",
+   "source_title": "Anthony Joshua PUMPS BRAKES On Potential Tyson Fury Fight!",
+   "source_channel": "Ring Magazine",
+   "summary": "Joshua dice che combatterebbe Fury subito, che non ha problemi a salire sul ring e che non e li per cercare visibilita: i contratti verranno inviati e molto probabilmente il fight sara il prossimo.",
+   "topics": [
+    "Anthony Joshua Tyson Fury \"in my heart I'll fight Tyson Fury tomorrow\" contratti ring clout intervista ringside Riyadh pesi massimi boxe"
+   ],
+   "tags": [
+    "Anthony Joshua",
+    "Tyson Fury",
+    "Boxe",
+    "Intervista"
+   ],
+   "mentioned_people": [
+    "Anthony Joshua",
+    "Tyson Fury"
+   ],
+   "hook": "AJ: \"Nel mio cuore combatto Fury domani, ma non sono qui per il clout\"",
+   "quality_score": 0.9
+  },
+  {
+   "start": "02:42",
+   "end": "03:27",
+   "name": "Il colpo che puo far male a Fury e le priorita personali",
+   "category": "boxing_interview",
+   "source_title": "Anthony Joshua PUMPS BRAKES On Potential Tyson Fury Fight!",
+   "source_channel": "Ring Magazine",
+   "summary": "Joshua promette che quando colpira Fury lo fara male, ma chiarisce che prima di tutto ci sono le vicende personali e familiari da sistemare: senza essere al 100% non ha senso parlare del fight.",
+   "topics": [
+    "Anthony Joshua Tyson Fury potenza colpo duro priorita vita privata fratelli genitori lutto preparazione mentale 100% ritorno ring"
+   ],
+   "tags": [
+    "Anthony Joshua",
+    "Tyson Fury",
+    "Boxe",
+    "Vita personale"
+   ],
+   "mentioned_people": [
+    "Anthony Joshua",
+    "Tyson Fury"
+   ],
+   "hook": "AJ: \"Quando colpisco Fury lo faccio male, ma prima contano i miei fratelli\"",
+   "quality_score": 0.9
+  }
+ ]
+}

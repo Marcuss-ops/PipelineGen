@@ -25,6 +25,9 @@ type OverlayPublicationSpec struct {
 	// creates/reuses its deterministic overlay child and only falls back to
 	// its configured root when this is empty.
 	DriveFolderID string
+	// RequireDriveBeforeReturn marks artifacts whose Drive identity is needed
+	// immediately by a downstream handoff payload.
+	RequireDriveBeforeReturn bool
 
 	// Completion metrics are captured by PipelineGen while waiting for the
 	// RenderingGen queue. They are copied into the Drive receipt so the

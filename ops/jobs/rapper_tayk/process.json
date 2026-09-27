@@ -1,0 +1,339 @@
+{
+  "_comment": "POST /api/clips/process payload (ExtractRequest, drift source: internal/capabilities/youtube/dto/types.go). Source: Tay-K: 55 years prison sentence at 17 (documentary) (https://www.youtube.com/watch?v=CgdjLIADp4s, 515s) — Gatty Documentary on Taymor McIntyre (Tay-K), from Baby Insane Crips childhood to The Race viral while fleeing murder charge, 55 years at 17 July 2019. Sister videos Bt42fuH5qlA 287s JuuH3ON8UFM 256s T2MUQMO1CLQ 452s WlYXVyxHGaM 184s. Destination: explicit Rap child folder 1JbKGGsIveAVI545QtM_wXrEzzGOlJ47U (Tay-K under Clips/Rap); create_subfolder=false. Windows BY HAND from 15s chunk transcript; no LLM. Clip ids deterministic yt_<videoID>_<startSec>_<endSec>_v1 so re-submit is UPSERT. Every main 21-41s ≤60s with hooks 9-11s INSIDE matching main (hiphop_36 gate). topics/summary/hook dense: composeYouTubeClipSearchText -> search_text -> 768d pgvector embedding, texts[] -> asset_text_tracks same atomic commit. language_code=it + source_language_code=en.",
+  "url": "https://www.youtube.com/watch?v=CgdjLIADp4s",
+  "strategy": "verify",
+  "concurrency": 3,
+  "force_keyframes": true,
+  "keep_audio": true,
+  "write_summary": true,
+  "destination": {
+    "folder_id": "1JbKGGsIveAVI545QtM_wXrEzzGOlJ47U",
+    "create_subfolder": false
+  },
+  "segments": [
+    {
+      "start": "00:00:11",
+      "end": "00:00:47",
+      "name": "Tay-K — chi è: Tamour McIntyre, Baby Insane Crips e Daytona Boys",
+      "category": "crime_news",
+      "source_title": "Tay-K: 55 years prison sentence at 17 (documentary)",
+      "source_channel": "Gatty Documentary",
+      "summary": "Ritratto: Tamour McIntyre aka Tay-K nato 16 giugno 2000 Long Beach, figlio di Baby Insane Crips, infanzia tra Nevada e Texas, gruppo Daytona Boys con Chief Keef come modello.",
+      "topics": [
+        "Tay-K Tamour McIntyre Baby Insane Crips Long Beach Nevada Texas Daytona Boys Chief Keef 00:11-00:47 CgdjLIADp4s rap crime news biografia"
+      ],
+      "tags": ["Tay-K", "Tamour McIntyre", "crime_news"],
+      "speakers": ["Narrator"],
+      "mentioned_people": ["Taymor McIntyre", "Kevin Beverly"],
+      "hook": "Tamour McIntyre, 16 when accused of killing Salivar — born into Baby Insane Crips.",
+      "texts": [
+        {
+          "language_code": "it",
+          "source_language_code": "en",
+          "title": "Chi è Tay-K: dai Crips a Daytona Boys",
+          "summary": "Ritratto di Tamour McIntyre aka Tay-K: infanzia tra gang, Texas e primo gruppo rap Daytona Boys.",
+          "description": "Gatty Documentary 00:11-00:47 CgdjLIADp4s: Tamour McIntyre (Tay-K) nato 16 giugno 2000 Long Beach, padre Baby Insane Crips, infanzia Nevada poi Texas, gruppo Daytona Boys ispirato a Chief Keef. Contesto: rap crime news.",
+          "source_type": "provided",
+          "is_original": true
+        }
+      ]
+    },
+    {
+      "start": "00:00:22",
+      "end": "00:00:32",
+      "name": "Hook: 16 when accused of killing Salivar — born into Crips",
+      "category": "crime_news",
+      "source_title": "Tay-K: 55 years prison sentence at 17 (documentary)",
+      "source_channel": "Gatty Documentary",
+      "summary": "Hook opener (10s): la nascita dentro la gang.",
+      "topics": [
+        "Tay-K hook apertura short 16 accused killing Baby Insane Crips 00:22-00:32 CgdjLIADp4s opening short"
+      ],
+      "tags": ["Tay-K", "crime_news", "hook"],
+      "speakers": ["Narrator"],
+      "mentioned_people": ["Tamour McIntyre"],
+      "hook": "16 when accused — born into Baby Insane Crips.",
+      "texts": [
+        {
+          "language_code": "it",
+          "source_language_code": "en",
+          "title": "Hook: 16 anni accusato, nato nei Crips",
+          "summary": "Hook 10s nascita nei Crips.",
+          "description": "Hook 00:22-00:32 CgdjLIADp4s.",
+          "source_type": "provided",
+          "is_original": true
+        }
+      ]
+    },
+    {
+      "start": "00:01:46",
+      "end": "00:02:30",
+      "name": "Tay-K — primo omicidio 2015: Sarah M al semaforo, Santana spara",
+      "category": "crime_news",
+      "source_title": "Tay-K: 55 years prison sentence at 17 (documentary)",
+      "source_channel": "Gatty Documentary",
+      "summary": "Capodanno 2014/15: Daytona Boys al semaforo flirt con Sarah M 20 anni, minaccia, Santana spara due colpi, Sarah muore, Santana 44 anni, Tay-K minore scampato.",
+      "topics": [
+        "Tay-K primo omicidio 2015 Sarah M 20 anni semaforo flirt Santana spara due colpi morta Santana 44 anni Tay-K minore 01:46-02:30 CgdjLIADp4s"
+      ],
+      "tags": ["Tay-K", "crime_news", "Sarah M"],
+      "speakers": ["Narrator"],
+      "mentioned_people": ["Sarah M", "Santana Sage"],
+      "hook": "One bullet hit Sarah in the head, killing her instantly — Santana 44 years, Tay-K walked because he was a minor.",
+      "texts": [
+        {
+          "language_code": "it",
+          "source_language_code": "en",
+          "title": "Primo omicidio 2015: Sarah al semaforo",
+          "summary": "Capodanno 2014/15: al semaforo il flirt diventa sparatoria, Santana uccide Sarah M 20 anni, 44 anni di carcere, Tay-K minore scampato.",
+          "description": "01:46-02:30 CgdjLIADp4s: Daytona Boys al semaforo, flirt con Sarah M 20 anni, minaccia, Santana spara due colpi, Sarah morta, Santana 44 anni, Tay-K minore scampa. Contesto: crime news Tay-K.",
+          "source_type": "provided",
+          "is_original": true
+        }
+      ]
+    },
+    {
+      "start": "00:02:16",
+      "end": "00:02:28",
+      "name": "Hook: one bullet hit Sarah in the head — killing her instantly",
+      "category": "crime_news",
+      "source_title": "Tay-K: 55 years prison sentence at 17 (documentary)",
+      "source_channel": "Gatty Documentary",
+      "summary": "Hook opener (12s): il colpo al semaforo.",
+      "topics": [
+        "Tay-K hook apertura short one bullet hit Sarah killing instantly Santana 02:16-02:28 CgdjLIADp4s opening short"
+      ],
+      "tags": ["Tay-K", "crime_news", "hook"],
+      "speakers": ["Narrator"],
+      "mentioned_people": ["Sarah M"],
+      "hook": "One bullet hit Sarah in the head — killing her instantly.",
+      "texts": [
+        {
+          "language_code": "it",
+          "source_language_code": "en",
+          "title": "Hook: un colpo alla testa",
+          "summary": "Hook 12s semaforo.",
+          "description": "Hook 02:16-02:28 CgdjLIADp4s.",
+          "source_type": "provided",
+          "is_original": true
+        }
+      ]
+    },
+    {
+      "start": "00:02:47",
+      "end": "00:03:30",
+      "name": "Tay-K — rapina da Ziguri 26 giugno 2016: fucile e fuga",
+      "category": "crime_news",
+      "source_title": "Tay-K: 55 years prison sentence at 17 (documentary)",
+      "source_channel": "Gatty Documentary",
+      "summary": "26 giugno 2016: 7 persone assaltano il covo di Ziguri il pusher, non trovano nulla, uno spara e uccide Ziguri davanti alla fidanzata, tutti ai domiciliari con braccialetto.",
+      "topics": [
+        "Tay-K rapina Ziguri 26 giugno 2016 pusher 7 persone assalto sparatoria fidanzata braccialetto domiciliari 02:47-03:30 CgdjLIADp4s"
+      ],
+      "tags": ["Tay-K", "Ziguri", "crime_news"],
+      "speakers": ["Narrator"],
+      "mentioned_people": ["Ziguri", "Tamour McIntyre"],
+      "hook": "One shot fatally wounds Ziguri while his girlfriend is sitting next to him — then ankle monitors for seven suspects.",
+      "texts": [
+        {
+          "language_code": "it",
+          "source_language_code": "en",
+          "title": "Rapina Ziguri: morto davanti alla fidanzata",
+          "summary": "26 giugno 2016: assalto al covo di Ziguri, sparatoria mortale davanti alla fidanzata, 7 ai domiciliari.",
+          "description": "02:47-03:30 CgdjLIADp4s: 7 persone assaltano Ziguri il pusher 26 giugno 2016, sparatoria, Ziguri morto davanti alla fidanzata, 7 ai domiciliari con braccialetto. Contesto: crime news Tay-K.",
+          "source_type": "provided",
+          "is_original": true
+        }
+      ]
+    },
+    {
+      "start": "00:03:15",
+      "end": "00:03:26",
+      "name": "Hook: fatally wounds Ziguri while girlfriend sits next to him",
+      "category": "crime_news",
+      "source_title": "Tay-K: 55 years prison sentence at 17 (documentary)",
+      "source_channel": "Gatty Documentary",
+      "summary": "Hook opener (11s): Ziguri ucciso davanti alla fidanzata.",
+      "topics": [
+        "Tay-K hook apertura short fatally wounds Ziguri girlfriend sitting 03:15-03:26 CgdjLIADp4s opening short"
+      ],
+      "tags": ["Tay-K", "crime_news", "hook"],
+      "speakers": ["Narrator"],
+      "mentioned_people": ["Ziguri"],
+      "hook": "Fatally wounds Ziguri while his girlfriend is sitting next to him.",
+      "texts": [
+        {
+          "language_code": "it",
+          "source_language_code": "en",
+          "title": "Hook: Ziguri davanti alla fidanzata",
+          "summary": "Hook 11s Ziguri.",
+          "description": "Hook 03:15-03:26 CgdjLIADp4s.",
+          "source_type": "provided",
+          "is_original": true
+        }
+      ]
+    },
+    {
+      "start": "00:03:45",
+      "end": "00:04:15",
+      "name": "Tay-K — fuga: taglia il braccialetto 27 mar 2017 e posta \"catch me on hood\"",
+      "category": "crime_news",
+      "source_title": "Tay-K: 55 years prison sentence at 17 (documentary)",
+      "source_channel": "Gatty Documentary",
+      "summary": "Dopo 8 mesi di domiciliari Tay-K taglia il braccialetto 27 marzo 2017, tweetta Fuck house arrest catch me on hood e scappa a San Antonio, subito nuova rapina SUV.",
+      "topics": [
+        "Tay-K fuga taglia braccialetto 27 marzo 2017 Fuck house arrest catch me on hood San Antonio 03:45-04:15 CgdjLIADp4s"
+      ],
+      "tags": ["Tay-K", "crime_news", "house arrest"],
+      "speakers": ["Narrator"],
+      "mentioned_people": ["Tamour McIntyre"],
+      "hook": "Cut off his ankle monitor March 27 2017 — Fuck this house arrest, they're gonna have to catch me on hood.",
+      "texts": [
+        {
+          "language_code": "it",
+          "source_language_code": "en",
+          "title": "Fuga: taglia il braccialetto",
+          "summary": "27 marzo 2017 Tay-K taglia il braccialetto e scappa, tweetta catch me on hood.",
+          "description": "03:45-04:15 CgdjLIADp4s: dopo 8 mesi di domiciliari Tay-K taglia il braccialetto 27 marzo 2017, tweet Fuck house arrest, fuga a San Antonio. Contesto: crime news.",
+          "source_type": "provided",
+          "is_original": true
+        }
+      ]
+    },
+    {
+      "start": "00:03:55",
+      "end": "00:04:06",
+      "name": "Hook: cut off ankle monitor — catch me on hood",
+      "category": "crime_news",
+      "source_title": "Tay-K: 55 years prison sentence at 17 (documentary)",
+      "source_channel": "Gatty Documentary",
+      "summary": "Hook opener (11s): la fuga con tweet.",
+      "topics": [
+        "Tay-K hook apertura short cut off ankle monitor catch me on hood 03:55-04:06 CgdjLIADp4s opening short"
+      ],
+      "tags": ["Tay-K", "crime_news", "hook"],
+      "speakers": ["Narrator"],
+      "mentioned_people": ["Tamour McIntyre"],
+      "hook": "Cut off ankle monitor — catch me on hood.",
+      "texts": [
+        {
+          "language_code": "it",
+          "source_language_code": "en",
+          "title": "Hook: catch me on hood",
+          "summary": "Hook 11s fuga.",
+          "description": "Hook 03:55-04:06 CgdjLIADp4s.",
+          "source_type": "provided",
+          "is_original": true
+        }
+      ]
+    },
+    {
+      "start": "00:05:00",
+      "end": "00:05:30",
+      "name": "Tay-K — The Race: registra il video in fuga e diventa virale in carcere",
+      "category": "crime_news",
+      "source_title": "Tay-K: 55 years prison sentence at 17 (documentary)",
+      "source_channel": "Gatty Documentary",
+      "summary": "In fuga tra New Jersey e Texas registra The Race: police pubblica foto segnaletica 26 giugno 2017, catturato 4 giorni dopo, il video esce lo stesso giorno e va virale fino alla Billboard.",
+      "topics": [
+        "Tay-K The Race video fuga New Jersey viral Billboard 70 poi 44 platino 05:00-05:30 CgdjLIADp4s rap crime news"
+      ],
+      "tags": ["Tay-K", "The Race", "crime_news"],
+      "speakers": ["Narrator"],
+      "mentioned_people": ["Tamour McIntyre"],
+      "hook": "Recorded The Race while on the run — mugshot June 26 2017, caught 4 days later, video drops and goes platinum on Billboard.",
+      "texts": [
+        {
+          "language_code": "it",
+          "source_language_code": "en",
+          "title": "The Race virale mentre è in fuga",
+          "summary": "Tay-K registra The Race in fuga, foto segnaletica 26 giugno 2017, catturato 4 giorni dopo, video virale Billboard 44 platino.",
+          "description": "05:00-05:30 CgdjLIADp4s: in fuga registra The Race New Jersey/Texas, police 26 giugno 2017 pubblica mugshot, catturato 4 giorni dopo, video esce lo stesso giorno e va virale Billboard 70 poi 44 platino. Contesto: rap crime news.",
+          "source_type": "provided",
+          "is_original": true
+        }
+      ]
+    },
+    {
+      "start": "00:05:10",
+      "end": "00:05:21",
+      "name": "Hook: The Race — viral while on the run",
+      "category": "crime_news",
+      "source_title": "Tay-K: 55 years prison sentence at 17 (documentary)",
+      "source_channel": "Gatty Documentary",
+      "summary": "Hook opener (11s): The Race virale in fuga.",
+      "topics": [
+        "Tay-K hook apertura short The Race viral while on the run 05:10-05:21 CgdjLIADp4s opening short"
+      ],
+      "tags": ["Tay-K", "crime_news", "hook"],
+      "speakers": ["Narrator"],
+      "mentioned_people": ["Tamour McIntyre"],
+      "hook": "The Race — viral while on the run, Billboard and platinum from jail.",
+      "texts": [
+        {
+          "language_code": "it",
+          "source_language_code": "en",
+          "title": "Hook: The Race virale in fuga",
+          "summary": "Hook 11s The Race.",
+          "description": "Hook 05:10-05:21 CgdjLIADp4s.",
+          "source_type": "provided",
+          "is_original": true
+        }
+      ]
+    },
+    {
+      "start": "00:07:15",
+      "end": "00:07:46",
+      "name": "Tay-K — verdetto e sentenza: 55 anni a 17 anni, 30 con buona condotta",
+      "category": "crime_news",
+      "source_title": "Tay-K: 55 years prison sentence at 17 (documentary)",
+      "source_channel": "Gatty Documentary",
+      "summary": "15 luglio 2019 colpevole di rapina, 19 luglio di omicidio, 23 luglio condanna a 55 anni, con buona condotta circa 30, ma il narratore lo dà per ergastolano vista la condotta in carcere.",
+      "topics": [
+        "Tay-K verdetto 15 luglio 2019 rapina 19 luglio omicidio 23 luglio 55 anni 30 con buona condotta ergastolano 07:15-07:46 CgdjLIADp4s"
+      ],
+      "tags": ["Tay-K", "crime_news", "55 years", "life sentence"],
+      "speakers": ["Narrator", "Judge"],
+      "mentioned_people": ["Tamour McIntyre"],
+      "hook": "July 23 2019 sentenced to 55 years — at 17, with good behavior out in 30, but from what we've seen he'll be in jail for life.",
+      "texts": [
+        {
+          "language_code": "it",
+          "source_language_code": "en",
+          "title": "Condanna: 55 anni a 17 anni",
+          "summary": "23 luglio 2019 Tay-K condannato a 55 anni a 17 anni, con buona condotta 30, considerato ergastolo per la condotta.",
+          "description": "07:15-07:46 CgdjLIADp4s: 15 luglio colpevole rapina, 19 luglio omicidio, 23 luglio 55 anni, con buona condotta 30 ma condotta in carcere fa prevedere ergastolo. Contesto: crime news Tay-K 55 years.",
+          "source_type": "provided",
+          "is_original": true
+        }
+      ]
+    },
+    {
+      "start": "00:07:22",
+      "end": "00:07:33",
+      "name": "Hook: 55 years at 17 — sentenced July 23 2019",
+      "category": "crime_news",
+      "source_title": "Tay-K: 55 years prison sentence at 17 (documentary)",
+      "source_channel": "Gatty Documentary",
+      "summary": "Hook opener (11s): la condanna.",
+      "topics": [
+        "Tay-K hook apertura short 55 years at 17 sentenced July 23 2019 07:22-07:33 CgdjLIADp4s opening short"
+      ],
+      "tags": ["Tay-K", "crime_news", "hook"],
+      "speakers": ["Narrator"],
+      "mentioned_people": ["Tamour McIntyre"],
+      "hook": "55 years at 17 — sentenced July 23 2019.",
+      "texts": [
+        {
+          "language_code": "it",
+          "source_language_code": "en",
+          "title": "Hook: 55 anni a 17",
+          "summary": "Hook 11s condanna Tay-K.",
+          "description": "Hook 07:22-07:33 CgdjLIADp4s.",
+          "source_type": "provided",
+          "is_original": true
+        }
+      ]
+    }
+  ]
+}

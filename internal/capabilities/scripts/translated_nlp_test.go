@@ -86,8 +86,8 @@ func assertGroundedScenePhrases(t *testing.T, result *GenerateResult, sceneIndex
 		if !strings.Contains(text, strings.ToLower(phrase.Text)) {
 			t.Errorf("scene %d/%s phrase %q is not grounded in its translated text", sceneIndex, lang, phrase.Text)
 		}
-		if len(strings.Fields(phrase.Text)) > 4 {
-			t.Errorf("scene %d/%s phrase %q exceeds the short-overlay word bound", sceneIndex, lang, phrase.Text)
+		if len(strings.Fields(phrase.Text)) > 6 {
+			t.Errorf("scene %d/%s phrase %q exceeds the six-word overlay bound", sceneIndex, lang, phrase.Text)
 		}
 	}
 }

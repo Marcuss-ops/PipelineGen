@@ -1065,17 +1065,17 @@ measurements:
     canonical_operation: "chronon.startup / chronon.input_open / chronon.prepare / chronon.render_loop / chronon.encoder_drain / chronon.ffprobe / chronon.sha256"
     migration_adapter: "DONE — the sidecar JSON is a transport/debug payload, never the metrics database: one parse → one canonical write; absent phase = absent row (no fake zeros); publish is best-effort (parse/record failure logs and never fails the render)"
     removal_condition: "MET — no consumer queries the sidecar as the metrics source; every dashboard/benchmark/cold-warm-verifier/Preparation-Fabric read goes through performance_operations (see docs/architecture/chronon-metrics-canonical-store-contract.md)"
-  - current_symbol: "render_attempt_analytics per-attempt row (render_ms / encode_ms)"
-    current_owner: "internal/capabilities/scripts/render_attempt_analytics.go (RenderAttemptAnalytics + RenderAttemptRecorder port) + internal/platform/sqlite/rendermetrics/registry.go (Registry); write path: internal/capabilities/scripts/render_queue.go EnqueueChrononPlan + internal/app/wiring/script_generation_runtime.go wireRenderAttemptRecorder"
-    current_writer: "BuildRenderAttemptAnalyticsWithWait (render_ms/encode_ms + content census + queue observation metrics + certified output facts from the RenderingGen worker artifact) → RenderAttemptRecorder.RecordAttempt → rendermetrics.Registry upsert keyed by attempt_id"
-    current_storage: "canonical: render_attempt_analytics (migrations 215 + 227), one row per attempt, idempotent ON CONFLICT(attempt_id) upsert"
-    current_metric: "none directly; durable per-attempt render_ms / encode_ms columns"
+  - current_symbol: "render_attempt_analytics per-overlay row (full tracing, 215+227+271)"
+    current_owner: "internal/capabilities/scripts/render_attempt_analytics.go (RenderAttemptAnalytics + BuildRenderAttemptAnalyticsWithWait, pure deterministic projection) + internal/platform/sqlite/rendermetrics/registry.go (Registry.RecordAttempt); wire: internal/capabilities/scripts/render_queue.go EnqueueChrononPlan + internal/app/wiring/script_generation_runtime.go wireRenderAttemptRecorder"
+    current_writer: "BuildRenderAttemptAnalyticsWithWait (item_id from single-item OverlayPlan + certified profile/backend/version/codec/container/pixel_format + output facts WxH/fps/frame_count/duration + all 8 worker phase walls materialize/plan/render/encode/probe/hash/upload/drive_publish + queue observation completion_wait/polling + metrics_json + chronon_telemetry verbatim + chronon_timing_* refs) → RenderAttemptRecorder.RecordAttempt → rendermetrics.Registry upsert keyed by attempt_id (real queue job id); rendering path threads publish metadata item_id when available"
+    current_storage: "canonical: render_attempt_analytics (migrations 215 + 227 + 271), one row per item attempt, 44 columns, idempotent ON CONFLICT(attempt_id) upsert; item_id empty for legacy full-timeline, non-empty for per-item pool (defaultSeparateItemRenderWorkers=4)"
+    current_metric: "none directly; durable per-overlay row: profile, output facts, 8 phase walls, queue wait, metrics_json, chronon_telemetry (chronon3d.render-telemetry-summary.v1), deep-profile refs"
     canonical_type: run
     canonical_stage: "clip.render"
     canonical_component: "renderinggen"
-    canonical_operation: "render/encode"
-    migration_adapter: "DONE — the coarse per-attempt row is written in parallel with the granular chronon.* phases in performance_operations (dual write, no new table); both existing canonical tables receive rows for the same render"
-    removal_condition: "MET — render_attempt_analytics keeps recording render_ms/encode_ms alongside performance_operations and no chronon_metrics_v2-style table was created (see docs/architecture/chronon-metrics-canonical-store-contract.md)"
+    canonical_operation: "materialize/plan/render/encode/probe/hash/objectstore_upload/drive_publish"
+    migration_adapter: "DONE — 271 adds 21 columns with DEFAULTs onto the existing row (item_id, backend/chronon_version/profile_id/codec/container/pixel_format, materialize/plan/probe/hash/upload/drive_publish, metrics_json/chronon_telemetry, chronon_timing_*); builder relays artifact verbatim without re-derivation; phases missing stay absent (run) / 0 (row) and recordRenderingGenPhases includes all 8 including EncodeMS"
+    removal_condition: "MET — render_attempt_analytics carries the full per-overlay trace alongside performance_operations granular chronon.* phases and no new table was created (NO_NEW_TABLES); dual write via artifact path + ChrononMetricsAdapter both land for the same render"
 
 coverage_notes:
   current_code_searches:

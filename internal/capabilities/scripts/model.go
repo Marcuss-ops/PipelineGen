@@ -102,6 +102,9 @@ type GenerateRequest struct {
 	// has an associated run. It mirrors the submission-layer intent so
 	// the run ledger does not create duplicates on replay.
 	ForceRefresh bool `json:"force_refresh,omitempty"`
+	// FinalJob opts this run into the remote final-render handoff after the
+	// canonical media plan is available.
+	FinalJob bool `json:"final_job,omitempty"`
 
 	// Source describes the generation input source.
 	Source Source `json:"source"`

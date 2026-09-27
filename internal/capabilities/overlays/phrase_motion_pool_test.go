@@ -289,6 +289,33 @@ func TestCertifiedImageMotionPoolAndPlannerAssignment(t *testing.T) {
 	}
 }
 
+func TestRandomImageMotionOffsetRotatesThroughAllCertifiedIDs(t *testing.T) {
+	count := len(CertifiedImageMotions())
+	if count != 18 {
+		t.Fatalf("certified image motions = %d, want 18", count)
+	}
+	for attempt := 0; attempt < 4; attempt++ {
+		offset, err := RandomImageMotionOffset()
+		if err != nil {
+			t.Fatalf("random image motion offset: %v", err)
+		}
+		if offset < 0 || offset >= count {
+			t.Fatalf("random offset = %d, outside [0,%d)", offset, count)
+		}
+		seen := make(map[string]bool, count)
+		for ordinal := 0; ordinal < count; ordinal++ {
+			id := ImageMotionAtOffset(offset, ordinal)
+			if !containsString(CertifiedImageMotions(), id) || seen[id] {
+				t.Fatalf("offset %d ordinal %d emitted unknown/repeated motion %q", offset, ordinal, id)
+			}
+			seen[id] = true
+		}
+		if len(seen) != count {
+			t.Fatalf("offset %d covered %d motions, want %d", offset, len(seen), count)
+		}
+	}
+}
+
 func TestImageMotionPoolMatchesCanonicalChrononCatalog(t *testing.T) {
 	root, err := os.Getwd()
 	if err != nil {

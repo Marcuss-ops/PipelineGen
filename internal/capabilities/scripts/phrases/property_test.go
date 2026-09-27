@@ -76,8 +76,8 @@ func assertPhraseProperties(t *testing.T, text, phrase string, blocked [][2]int,
 		t.Fatalf("phrase %q is not grounded in %q", phrase, text)
 	}
 	words := strings.Fields(phrase)
-	if len(words) < 2 || len(words) > 4 {
-		t.Fatalf("phrase %q has %d words, want 2..4", phrase, len(words))
+	if len(words) < 2 || len(words) > 6 {
+		t.Fatalf("phrase %q has %d words, want 2..6", phrase, len(words))
 	}
 	if profile != nil {
 		first := strings.ToLower(words[0])
