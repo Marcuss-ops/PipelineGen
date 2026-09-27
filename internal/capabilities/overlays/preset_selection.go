@@ -27,27 +27,27 @@ var (
 	imageAnimationCandidates = []string{
 		"fade_in", "reveal_from_bottom", "scale_drop", "fade_shift_vertical",
 	}
-	// RenderingGen catalog inventories: all 18 image motions and the full
+	// RenderingGen catalog inventories: all 18 certified image motions and the full
 	// phrase families (42 classic Apple, 60 modern Apple and 5 typewriter).
 	renderSafeImageMotions = []string{
-		"image_25d_blur_focus_in",
-		"image_25d_blur_scale_in",
-		"image_25d_card_swing",
-		"image_25d_depth_float_in",
-		"image_25d_pitch_lift",
-		"image_25d_pop_z_bounce",
-		"image_25d_swipe_3d",
-		"image_25d_yaw_flip_in",
-		"image_card_push",
-		"image_diagonal_sweep",
 		"image_fade_reveal",
 		"image_focus_reveal",
-		"image_parallax_depth_reveal",
 		"image_scale_reveal",
 		"image_slide_left_reveal",
 		"image_slide_right_reveal",
-		"image_soft_focus_reveal",
+		"image_parallax_depth_reveal",
 		"image_tilt_settle",
+		"image_card_push",
+		"image_diagonal_sweep",
+		"image_soft_focus_reveal",
+		"image_25d_depth_float_in",
+		"image_25d_yaw_flip_in",
+		"image_25d_pitch_lift",
+		"image_25d_pop_z_bounce",
+		"image_25d_swipe_3d",
+		"image_25d_card_swing",
+		"image_25d_blur_focus_in",
+		"image_25d_blur_scale_in",
 	}
 	imageMotionCandidates        = renderSafeImageMotions
 	classicAppleMotionCandidates = []string{
@@ -441,8 +441,8 @@ func SelectImageAnimation(jobID, sceneID, itemID string) string {
 	return SelectEntityImageAnimation(jobID, sceneID, itemID)
 }
 
-// CertifiedImageMotions returns the image 2.5D motions admitted by the
-// catalog parity contract. Callers receive a copy.
+// CertifiedImageMotions returns the complete certified image motion pool.
+// Callers receive a copy.
 func CertifiedImageMotions() []string {
 	return append([]string(nil), imageMotionCandidates...)
 }
@@ -451,6 +451,29 @@ func CertifiedImageMotions() []string {
 // overlay. Retries of the same job, scene and item resolve identically.
 func SelectImageMotion(jobID, sceneID, itemID string) string {
 	return selectPreset(jobID, sceneID, itemID, "image_motion", imageMotionCandidates)
+}
+
+// SelectImageMotionAt rotates through the complete certified image pool
+// from a deterministic per-job starting point. This gives each image in a run
+// a different motion while allowing later jobs to start at a different point.
+func SelectImageMotionAt(jobID, sceneID string, ordinal int) string {
+	return selectImageMotion(jobID, sceneID, ordinal, nil)
+}
+
+// EntityImageParams returns the larger square portrait geometry, scaled to
+// the output canvas while keeping enough margin for image motion.
+func EntityImageParams(width, height int) map[string]any {
+	if width <= 0 || height <= 0 {
+		return map[string]any{"box_width": 480, "box_height": 480}
+	}
+	size := width * 28 / 100
+	if maxHeight := height * 48 / 100; maxHeight < size {
+		size = maxHeight
+	}
+	if size < 1 {
+		size = 1
+	}
+	return map[string]any{"box_width": size, "box_height": size}
 }
 
 func selectImageMotion(jobID, sceneID string, ordinal int, pool []string) string {

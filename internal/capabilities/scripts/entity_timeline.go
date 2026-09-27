@@ -265,6 +265,23 @@ func annotationSpokenSurface(text, canonical string, mentions []scriptpkg.Annota
 // verbatim. No transliteration or semantic translation is invented here.
 func findLocalizedEntitySpan(text, candidate string) (scriptpkg.AnnotationSpan, bool) {
 	want := make([]rune, 0, len([]rune(candidate)))
+	parts := make([][]rune, 0, len(strings.Fields(candidate)))
+	hasSingleRunePart := false
+	for _, rawPart := range strings.Fields(strings.ToLower(strings.TrimSpace(candidate))) {
+		part := make([]rune, 0, len([]rune(rawPart)))
+		for _, r := range []rune(rawPart) {
+			if unicode.IsLetter(r) || unicode.IsNumber(r) {
+				part = append(part, r)
+			}
+		}
+		if len(part) == 0 {
+			continue
+		}
+		if len(part) == 1 {
+			hasSingleRunePart = true
+		}
+		parts = append(parts, part)
+	}
 	for _, r := range []rune(strings.ToLower(strings.TrimSpace(candidate))) {
 		if unicode.IsLetter(r) || unicode.IsNumber(r) {
 			want = append(want, r)
@@ -274,6 +291,17 @@ func findLocalizedEntitySpan(text, candidate string) (scriptpkg.AnnotationSpan, 
 		return scriptpkg.AnnotationSpan{}, false
 	}
 	runes := []rune(text)
+	if len(parts) > 1 {
+		if span, ok := findSegmentedEntitySpan(runes, parts); ok {
+			return span, true
+		}
+		// A one-character token is meaningful in names such as "Model S" and
+		// "Falcon 9". Flattened matching would also accept the ordinary word
+		// "models" as "Model S", so require the actual token boundary.
+		if hasSingleRunePart {
+			return scriptpkg.AnnotationSpan{}, false
+		}
+	}
 	for start, r := range runes {
 		if !unicode.IsLetter(r) && !unicode.IsNumber(r) {
 			continue
@@ -291,6 +319,45 @@ func findLocalizedEntitySpan(text, candidate string) (scriptpkg.AnnotationSpan, 
 		return scriptpkg.AnnotationSpan{
 			Text: string(runes[start:end]), StartRune: start, EndRune: end,
 		}, true
+	}
+	return scriptpkg.AnnotationSpan{}, false
+}
+
+func findSegmentedEntitySpan(runes []rune, parts [][]rune) (scriptpkg.AnnotationSpan, bool) {
+	for start, r := range runes {
+		if !unicode.IsLetter(r) && !unicode.IsNumber(r) {
+			continue
+		}
+		cursor := start
+		matched := true
+		for partIndex, part := range parts {
+			for _, want := range part {
+				for cursor < len(runes) && !unicode.IsLetter(runes[cursor]) && !unicode.IsNumber(runes[cursor]) {
+					cursor++
+				}
+				if cursor >= len(runes) || unicode.ToLower(runes[cursor]) != want {
+					matched = false
+					break
+				}
+				cursor++
+			}
+			if !matched {
+				break
+			}
+			if partIndex < len(parts)-1 {
+				separatorStart := cursor
+				for cursor < len(runes) && !unicode.IsLetter(runes[cursor]) && !unicode.IsNumber(runes[cursor]) {
+					cursor++
+				}
+				if cursor == separatorStart {
+					matched = false
+					break
+				}
+			}
+		}
+		if matched && (cursor == len(runes) || (!unicode.IsLetter(runes[cursor]) && !unicode.IsNumber(runes[cursor]))) {
+			return scriptpkg.AnnotationSpan{Text: string(runes[start:cursor]), StartRune: start, EndRune: cursor}, true
+		}
 	}
 	return scriptpkg.AnnotationSpan{}, false
 }

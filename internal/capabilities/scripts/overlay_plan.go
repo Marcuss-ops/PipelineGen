@@ -4,7 +4,7 @@
 // certified timing surfaces (phrase timings, entity timeline, word timing)
 // of an actual run into the overlay planner and resolver, so every candidate
 // carries real timestamps — never estimates. The final production budget
-// keeps only five grounded phrases and five materialized images per run.
+// keeps only fifteen grounded phrases and eighteen materialized images per run.
 //
 // Ownership split (single owner per surface):
 //
@@ -12,7 +12,7 @@
 //	annotations and certified word timing.
 //	Entity-bound image candidates → entities.ResolveEntityOverlayPlan, from
 //	the certified EntityTimeline.
-//	Other candidate types are discarded by the final editorial 5+5 budget.
+//	Other candidate types are discarded by the final editorial image+phrase budget.
 //
 // Every template terminates in one of the four canonical primitives
 // (Text / Image / Video / Shape). The returned plan is the SEMANTIC
@@ -214,6 +214,15 @@ func CompileOverlayPlan(result *GenerateResult, language Language, canvas Overla
 	// prevents a long script with many scenes from producing one image render
 	// for every extracted person.
 	items = capEntityImageOverlays(items, capabilityoverlay.MaxEntityImageOverlaysPerRun)
+	imageOrdinal := 0
+	for i := range items {
+		if items[i].Kind != string(capabilityoverlay.KindEntityImage) {
+			continue
+		}
+		items[i].MotionID = capabilityoverlay.SelectImageMotionAt(planID, "run", imageOrdinal)
+		items[i].Params = capabilityoverlay.EntityImageParams(canvas.Width, canvas.Height)
+		imageOrdinal++
+	}
 	items, _ = capabilityoverlay.ApplyEditorialOverlayBudget(items)
 	if len(items) == 0 {
 		return nil, nil

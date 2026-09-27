@@ -388,6 +388,15 @@ func BuildPlan(input PlanInput, config PlannerConfig) (OverlayPlan, error) {
 		case "image", "entity_image", "product", "logo":
 			plan.Items[i].MotionID = selectImageMotion(input.PlanID, "run", imageOrdinal, input.ImageMotions)
 			imageOrdinal++
+			if plan.Items[i].Kind == "image" {
+				params := EntityImageParams(plan.Width, plan.Height)
+				if plan.Items[i].Params == nil {
+					plan.Items[i].Params = map[string]any{}
+				}
+				for key, value := range params {
+					plan.Items[i].Params[key] = value
+				}
+			}
 		}
 	}
 	if err := plan.Validate(); err != nil {

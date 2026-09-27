@@ -9,10 +9,10 @@ import (
 func TestDefaultVisualBudget(t *testing.T) {
 	b := DefaultVisualBudget("scene_04")
 	require.Equal(t, "scene_04", b.SceneID)
-	require.Equal(t, 2, b.MaxEntityImages)
+	require.Equal(t, 4, b.MaxEntityImages)
 	require.Equal(t, 2, b.MaxTextCallouts)
 	require.Equal(t, 1, b.MaxNumberCards)
-	require.Equal(t, 4, b.MaxOverlaysTotal)
+	require.Equal(t, 7, b.MaxOverlaysTotal)
 }
 
 // TestVisualBudget_ApplyEnforcesPerKindAndTotal pins the canonical drop: a
@@ -26,7 +26,10 @@ func TestVisualBudget_ApplyEnforcesPerKindAndTotal(t *testing.T) {
 		{IntentID: "d", Kind: IntentKindImportantText, Priority: 100},
 		{IntentID: "e", Kind: IntentKindImportantNumber, Priority: 90},
 	}
-	got := DefaultVisualBudget("scene_04").Apply(intents)
+	budget := DefaultVisualBudget("scene_04")
+	budget.MaxEntityImages = 2
+	budget.MaxOverlaysTotal = 4
+	got := budget.Apply(intents)
 
 	ids := intentIDs(got)
 	// c (the third entity image) is dropped; survivors keep original order.

@@ -14,6 +14,16 @@ import (
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
+func TestFindLocalizedEntitySpanRequiresBoundaryForSingleLetterNameToken(t *testing.T) {
+	text := "Automotive models evolved before the Model S sedan arrived."
+	span, ok := findLocalizedEntitySpan(text, "Model S")
+	require.True(t, ok)
+	require.Equal(t, "Model S", span.Text)
+
+	_, ok = findLocalizedEntitySpan("Automotive models evolved rapidly.", "Model S")
+	require.False(t, ok, "ordinary plural 'models' must not be mistaken for the product name")
+}
+
 // entityTimelineVoiceoverGenerator returns a voiceover whose AudioReference
 // carries the canonical word-level timing artifact (100ms per
 // whitespace-delimited word) so the runner can project the entity timeline

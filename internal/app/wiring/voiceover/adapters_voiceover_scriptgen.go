@@ -36,6 +36,7 @@ import (
 	capabilityaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
 	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
 	voiceover "github.com/Marcuss-ops/PipelineGen/internal/capabilities/voiceover/service"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 
 	"go.uber.org/zap"
@@ -134,6 +135,14 @@ func (g *ScriptVoiceoverGenerator) Generate(
 	// deterministic for retries AND unique per job. Empty Project keeps the
 	// legacy scene+language shape (back-compat for direct callers).
 	safeSceneID := sanitizeFilename(input.SceneID)
+	// Scene IDs commonly contain the full project slug and exceed the
+	// 50-character sanitizer limit. Truncating them directly collapsed
+	// scene-1..scene-5 to the same output filename, so concurrent Edge TTS
+	// requests overwrote one another's .part files. Keep a readable prefix
+	// and append a stable digest of the complete ID to preserve uniqueness.
+	if len(safeSceneID) > 32 {
+		safeSceneID = safeSceneID[:32] + "_" + digest.SHA256Bytes([]byte(input.SceneID))[:12]
+	}
 	stem := safeSceneID
 	if project := strings.TrimSpace(input.Project); project != "" {
 		stem = sanitizeFilename(project) + "_" + safeSceneID

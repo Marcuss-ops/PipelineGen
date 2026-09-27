@@ -264,11 +264,10 @@ func BuildOverlayPlan(b SemanticRenderBundleV1, videoID, projectID string, width
 			item.PresetID = SelectEntityImagePreset(b.RunID, b.Scene.SegmentID, e.EntityID)
 			item.EndMs = item.StartMs + MaxImageOverlayDurationMS
 			item.Text = ""
-			// Entity portraits use the image preset's 2D entrance; a generic
-			// 2.5D motion would perspective-warp the photo itself.
-			item.MotionID = ""
+			// Keep image overlays varied with the certified image-motion catalog.
+			item.MotionID = SelectImageMotionAt(b.RunID, b.Scene.SegmentID, len(items))
 			item.MotionParams = nil
-			item.Params = nil
+			item.Params = EntityImageParams(width, height)
 			item.AssetRefs = []OverlayAssetRef{NewOverlayAssetRef(
 				asset.New(a.AssetID, a.ContentHash, "image/jpeg", 0), a.SourceURL, "")}
 		}

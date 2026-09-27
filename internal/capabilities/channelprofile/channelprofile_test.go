@@ -29,7 +29,7 @@ func validProfile() Profile {
 		PhraseMotions: []string{
 			"phrase_apple_clean_01_blur_soft_reveal", "phrase_apple_clean_02_blur_focus_snap",
 		},
-		ImageMotions: []string{"image_card_push", "image_25d_depth_float_in"},
+		ImageMotions: []string{"image_card_push", "image_fade_reveal"},
 	}
 }
 

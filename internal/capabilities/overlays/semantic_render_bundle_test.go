@@ -116,13 +116,13 @@ func TestBuildOverlayPlanUsesCanonicalImageCapability(t *testing.T) {
 	if item.Kind != string(KindEntityImage) || item.TemplateID != "image_popup" || item.PresetID != SelectEntityImagePreset(bundle.RunID, scene.SegmentID, entityID) {
 		t.Fatalf("image item = %+v", item)
 	}
-	if item.MotionID != "" {
-		t.Fatalf("entity portrait motion = %q, want the official 2D image preset without perspective warp", item.MotionID)
+	if !containsMotion(CertifiedImageMotions(), item.MotionID) {
+		t.Fatalf("entity portrait motion = %q, want a certified image catalog motion", item.MotionID)
 	}
 	if item.EndMs-item.StartMs != MaxImageOverlayDurationMS {
 		t.Fatalf("entity image duration = %dms, want %dms", item.EndMs-item.StartMs, MaxImageOverlayDurationMS)
 	}
-	if len(item.Params) != 0 {
-		t.Fatalf("image item carries obsolete 2D animation params: %#v", item.Params)
+	if item.Params["box_width"] != 518 || item.Params["box_height"] != 518 {
+		t.Fatalf("image item size = %#v, want 518x518 on 1920x1080 canvas", item.Params)
 	}
 }
