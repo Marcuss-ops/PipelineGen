@@ -480,7 +480,12 @@ func buildRuntimeMediaCertSpec(plan *scriptpkg.ResolvedGenerationPlan) mediacert
 	// scenes, so do not invent a synthetic scene-0 expectation here.
 	spec.Segments = len(plan.Segments)
 	spec.EntitiesPerSegment = plan.MediaPlan.Extraction.MaxEntitiesPerSegment
-	spec.ImagesPerSegment = plan.ImagesPerScene
+	// Stock-only final jobs use Drive video references and do not require the
+	// local image-selection lane. Keep image fanout certification for modes
+	// whose scene plan actually depends on selected/generated images.
+	if plan.MediaMode != scriptpkg.MediaModeStockOnly {
+		spec.ImagesPerSegment = plan.ImagesPerScene
+	}
 	// Entity image assets are canonical by entity identity and are expected to
 	// be reused when the same person/place is mentioned in multiple scenes.
 	// Use the same generic extraction surface that enables entity-image
