@@ -2,6 +2,7 @@ package scriptgeneration
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -87,19 +88,25 @@ func TestAttachEntityCardAssetResolvesLocalizedStableIdentity(t *testing.T) {
 	}
 }
 
-func TestCapEntityImageOverlaysKeepsFiveDistinctIdentities(t *testing.T) {
-	items := make([]capabilityoverlay.OverlayItem, 0, 8)
-	for i, entityID := range []string{"a", "b", "a", "c", "d", "e", "f", "g"} {
+func TestCapEntityImageOverlaysKeepsDistinctIdentitiesUpToRunCeiling(t *testing.T) {
+	maxImages := capabilityoverlay.MaxEntityImageOverlaysPerRun
+	items := make([]capabilityoverlay.OverlayItem, 0, maxImages+4)
+	for i := 0; i < maxImages+3; i++ {
+		entityID := fmt.Sprintf("entity-%d", i)
 		items = append(items, capabilityoverlay.OverlayItem{
-			ID:   "image-" + entityID + "-" + string(rune('0'+i)),
+			ID:   "image-" + entityID,
 			Kind: string(capabilityoverlay.KindEntityImage), EntityID: entityID,
 		})
 	}
+	// A repeated occurrence must not consume a second slot.
+	items = append(items, capabilityoverlay.OverlayItem{
+		ID: "image-entity-0-repeat", Kind: string(capabilityoverlay.KindEntityImage), EntityID: "entity-0",
+	})
 	items = append(items, capabilityoverlay.OverlayItem{ID: "phrase", Kind: "text_phrase"})
 
 	got := capEntityImageOverlays(items, capabilityoverlay.MaxEntityImageOverlaysPerRun)
-	if len(got) != 6 {
-		t.Fatalf("items=%d, want five image items plus phrase", len(got))
+	if len(got) != maxImages+1 {
+		t.Fatalf("items=%d, want %d image items plus phrase", len(got), maxImages)
 	}
 	seen := map[string]bool{}
 	for _, item := range got {
