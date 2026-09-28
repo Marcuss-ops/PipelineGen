@@ -6,8 +6,6 @@ import (
 	"net/url"
 	"sort"
 	"strings"
-
-	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
 )
 
 type FinalJobStockFile struct{ ID, Name string }
@@ -284,78 +282,6 @@ func finalJobOverlayAssets(result *GenerateResult) ([]any, error) {
 		})
 	}
 	return out, nil
-}
-
-// scheduleFinalJobSceneImage moves a contextual scene image to the first
-// available interval after its planned start. The Master rejects intersecting
-// replacement windows, while local semantic cards can occupy the same opening
-// beat. Preserve every certified overlay and move only the generic scene image
-// within its own scene window.
-func scheduleFinalJobSceneImage(result *GenerateResult, image capabilityoverlay.OverlayItem, frameGuardUS int64) (int64, int64, error) {
-	start := image.StartUSValue()
-	end := image.EndUSValue()
-	duration := end - start
-	if duration <= 0 {
-		return 0, 0, fmt.Errorf("final_job scene image %q has an empty timing window", image.ID)
-	}
-	sceneStart, sceneEnd := int64(0), int64(0)
-	if result != nil {
-		if result.CanonicalTimeline != nil {
-			for _, scene := range result.CanonicalTimeline.Segments {
-				if scene.ID == image.SceneID {
-					sceneStart, sceneEnd = scene.TimelineStartUS, scene.TimelineStartUS+scene.DurationUS
-					break
-				}
-			}
-		}
-		for _, scene := range result.ResolvedScenes {
-			if scene.ID == image.SceneID {
-				sceneStart, sceneEnd = scene.TimelineStartUS, scene.TimelineStartUS+scene.DurationUS
-				break
-			}
-		}
-	}
-	if sceneEnd > sceneStart {
-		if start < sceneStart {
-			start = sceneStart
-		}
-		if end > sceneEnd {
-			end = sceneEnd
-			duration = end - start
-		}
-	}
-	if result == nil || result.OverlayPlan == nil {
-		return start, start + duration, nil
-	}
-	occupied := make([][2]int64, 0)
-	for _, other := range result.OverlayPlan.Items {
-		if other.ID == image.ID || other.SceneID != image.SceneID {
-			continue
-		}
-		otherStart, otherEnd := other.StartUSValue(), other.EndUSValue()
-		if otherEnd > otherStart {
-			occupied = append(occupied, [2]int64{otherStart, otherEnd})
-		}
-	}
-	sort.Slice(occupied, func(i, j int) bool { return occupied[i][0] < occupied[j][0] })
-	candidate := start
-	for {
-		moved := false
-		for _, window := range occupied {
-			if candidate < window[1] && window[0] < candidate+duration {
-				candidate = window[1] + frameGuardUS
-				moved = true
-				break
-			}
-		}
-		if !moved {
-			break
-		}
-	}
-	if sceneEnd > sceneStart && candidate+duration > sceneEnd {
-		return 0, 0, fmt.Errorf("final_job scene image %q cannot fit a non-overlapping %dµs window in scene %q", image.ID, duration, image.SceneID)
-	}
-	return candidate, candidate + duration, nil
 }
 
 // compositeStockScene emits one remote scene. The video reference stays in the
