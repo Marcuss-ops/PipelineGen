@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	capabilityaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
@@ -99,9 +100,17 @@ func restoreFinalJobFixedMedia(result *GenerateResult, timeline *capabilityaudio
 // Chronon's native frame-zero decoder. Drive clips can have their first video
 // sample at a small positive PTS (for example 21 ms); a composite starts at
 // zero and the native decoder correctly rejects a request before that sample.
-// Re-encode a silent, timestamp-zero copy for the intermediate composite only.
 // The remote final job still receives the certified composite and its original
 // separately compiled final audio.
+//
+// The timestamp fix is done with a stream-copy remux first: `-copyts
+// -start_at_zero` shifts the first timestamp to 0 without decoding or
+// re-encoding, so a 3-minute 1080p source costs seconds instead of the 30-60s a
+// full libx264 pass costs on the critical path. The copy is only
+// attempted when the source video is already H.264/yuv420p (the intermediate
+// composite's expected format) AND the remuxed first packet actually lands on
+// zero; every other case falls back to the pre-existing re-encode, so the
+// correctness contract is unchanged.
 func normalizeFinalJobVideoBackground(ctx context.Context, plan capoverlay.OverlayPlan) (capoverlay.OverlayPlan, func(), error) {
 	if plan.Source == nil {
 		return plan, nil, nil
@@ -122,6 +131,23 @@ func normalizeFinalJobVideoBackground(ctx context.Context, plan capoverlay.Overl
 		return plan, nil, fmt.Errorf("source asset %q has no materialized local path", source.AssetID)
 	}
 	output := filepath.Join(workDir, "source.mp4")
+	// Fast path: stream-copy remux. It is taken only when the source video is
+	// already H.264/yuv420p (so the copy stays byte-compatible with the
+	// intermediate composite) and the remuxed first packet lands on zero; any
+	// doubt falls through to the re-encode below.
+	if ffprobe, probeErr := exec.LookPath("ffprobe"); probeErr == nil {
+		if sourceVideoIsH264YUV420P(ctx, ffprobe, input) {
+			if copyErr := remuxFinalJobSourceTimestamps(ctx, ffmpeg, input, output); copyErr == nil {
+				if firstVideoPTSIsZero(ctx, ffprobe, output) {
+					return commitNormalizedFinalJobSource(plan, source.AssetID, output, cleanup)
+				}
+			}
+			_ = os.Remove(output)
+		}
+	}
+	// Fallback: full re-encode (pre-existing behaviour) for a source that is
+	// not already H.264/yuv420p, or whose stream-copied first timestamp did not
+	// land on zero.
 	cmd := exec.CommandContext(ctx, ffmpeg,
 		"-hide_banner", "-loglevel", "error", "-y", "-fflags", "+genpts",
 		"-i", input, "-map", "0:v:0", "-an", "-vf", "setpts=PTS-STARTPTS",
@@ -132,14 +158,21 @@ func normalizeFinalJobVideoBackground(ctx context.Context, plan capoverlay.Overl
 		cleanup()
 		return plan, nil, fmt.Errorf("normalize source asset %q: %w: %s", source.AssetID, runErr, strings.TrimSpace(string(combined)))
 	}
+	return commitNormalizedFinalJobSource(plan, source.AssetID, output, cleanup)
+}
+
+// commitNormalizedFinalJobSource hashes the normalized artifact, rejects an
+// empty result, and rewrites the plan's source to point at it. Both the remux
+// fast path and the re-encode fallback end here so the two cannot drift.
+func commitNormalizedFinalJobSource(plan capoverlay.OverlayPlan, sourceAssetID, output string, cleanup func()) (capoverlay.OverlayPlan, func(), error) {
 	hash, size, hashErr := digest.SHA256File(output)
 	if hashErr != nil {
 		cleanup()
-		return plan, nil, fmt.Errorf("hash normalized source asset %q: %w", source.AssetID, hashErr)
+		return plan, nil, fmt.Errorf("hash normalized source asset %q: %w", sourceAssetID, hashErr)
 	}
 	if size == 0 {
 		cleanup()
-		return plan, nil, fmt.Errorf("normalized source asset %q is empty", source.AssetID)
+		return plan, nil, fmt.Errorf("normalized source asset %q is empty", sourceAssetID)
 	}
 	plan.Source = &capoverlay.OverlaySource{
 		AssetID:   "finaljob-video-" + hash[:16],
@@ -147,6 +180,79 @@ func normalizeFinalJobVideoBackground(ctx context.Context, plan capoverlay.Overl
 		LocalPath: output, SHA256: hash,
 	}
 	return plan, cleanup, nil
+}
+
+// remuxFinalJobSourceTimestamps stream-copies the source video into a
+// faststart MP4 whose first timestamp is shifted to zero. `-copyts` preserves
+// the input timestamps and `-start_at_zero` shifts the output so the first one
+// lands on zero — the only stream-copy combination that zeroes a POSITIVE first
+// PTS (`-avoid_negative_ts make_zero` fixes negative timestamps only and leaves
+// a positive start untouched). No frame is decoded or re-encoded.
+func remuxFinalJobSourceTimestamps(ctx context.Context, ffmpeg, input, output string) error {
+	cmd := exec.CommandContext(ctx, ffmpeg,
+		"-hide_banner", "-loglevel", "error", "-y", "-fflags", "+genpts",
+		"-i", input, "-map", "0:v:0", "-an",
+		"-c", "copy", "-copyts", "-start_at_zero", "-movflags", "+faststart", output,
+	)
+	if combined, err := cmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("%w: %s", err, strings.TrimSpace(string(combined)))
+	}
+	return nil
+}
+
+// sourceVideoIsH264YUV420P reports whether the source's first video stream is
+// already the format the intermediate composite expects, so a stream copy is
+// byte-compatible and no re-encode is needed.
+func sourceVideoIsH264YUV420P(ctx context.Context, ffprobe, input string) bool {
+	fields := ffprobeKeyValues(ctx, ffprobe,
+		"-select_streams", "v:0", "-show_entries", "stream=codec_name,pix_fmt", "-of", "default=noprint_wrappers=1", input)
+	return strings.EqualFold(fields["codec_name"], "h264") &&
+		strings.HasPrefix(strings.ToLower(fields["pix_fmt"]), "yuv420p")
+}
+
+// firstVideoPTSIsZero reports whether the output's first video packet starts at
+// (or essentially at) timestamp zero. A non-zero first PTS is exactly the bug
+// this normalization exists to prevent, so the remux is rejected when it does
+// not hold and the caller falls back to the re-encode.
+func firstVideoPTSIsZero(ctx context.Context, ffprobe, path string) bool {
+	cmd := exec.CommandContext(ctx, ffprobe, "-v", "error", "-select_streams", "v:0",
+		"-show_entries", "packet=pts_time", "-of", "csv=p=0", "-read_intervals", "%+#1", path)
+	out, err := cmd.Output()
+	if err != nil {
+		return false
+	}
+	for _, line := range strings.Split(string(out), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || line == "N/A" {
+			continue
+		}
+		value, convErr := strconv.ParseFloat(line, 64)
+		if convErr != nil {
+			continue
+		}
+		return value >= -0.001 && value <= 0.001
+	}
+	return false
+}
+
+// ffprobeKeyValues runs ffprobe with the given arguments and returns its
+// `<key>=<value>` output lines as a map. A probe failure yields an empty map,
+// which every caller treats as "cannot prove the copy is safe".
+func ffprobeKeyValues(ctx context.Context, ffprobe string, args ...string) map[string]string {
+	cmd := exec.CommandContext(ctx, ffprobe, append([]string{"-v", "error"}, args...)...)
+	out, err := cmd.Output()
+	if err != nil {
+		return map[string]string{}
+	}
+	fields := make(map[string]string)
+	for _, line := range strings.Split(string(out), "\n") {
+		key, value, ok := strings.Cut(strings.TrimSpace(line), "=")
+		if !ok {
+			continue
+		}
+		fields[strings.TrimSpace(key)] = strings.TrimSpace(value)
+	}
+	return fields
 }
 
 func (r *Runner) submitFinalJob(ctx context.Context, runID string, req GenerateRequest, result *GenerateResult) bool {

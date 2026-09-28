@@ -140,3 +140,131 @@ func TestBuildVoiceoverWork_ExplicitLanguagesDoNotLimitTranslationInputs(t *test
 	require.Equal(t, Language("en"), work[0].lang)
 	require.Equal(t, "hello", work[0].text)
 }
+
+// countingVoiceoverGenerator records every synthesis request under a
+// (scene_id, language) key so a test can prove the runner never asks the
+// provider for the same pair twice.
+type countingVoiceoverGenerator struct {
+	mu   sync.Mutex
+	seen map[string]int
+}
+
+func newCountingVoiceoverGenerator() *countingVoiceoverGenerator {
+	return &countingVoiceoverGenerator{seen: map[string]int{}}
+}
+
+func (g *countingVoiceoverGenerator) Generate(_ context.Context, in VoiceoverInput) (AudioReference, error) {
+	g.mu.Lock()
+	g.seen[in.SceneID+"|"+string(in.Language)]++
+	g.mu.Unlock()
+	return AudioReference{ID: "vo-" + in.SceneID + "-" + string(in.Language), FilePath: "/tmp/vo.mp3", Duration: 1}, nil
+}
+
+func (g *countingVoiceoverGenerator) counts() map[string]int {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	out := make(map[string]int, len(g.seen))
+	for k, v := range g.seen {
+		out[k] = v
+	}
+	return out
+}
+
+// eagerStreamingTextGenerator implements TextGenerator and SceneTextStreamer
+// and emits every scene immediately (no gate), so a full streaming run
+// completes without a test-side release. It is the minimum surface required to
+// make the runner take the SceneTextReady streaming branch.
+type eagerStreamingTextGenerator struct{ scenes []Scene }
+
+func (g *eagerStreamingTextGenerator) GenerateSceneText(_ context.Context, _ GenerateRequest) ([]Scene, error) {
+	return g.scenes, nil
+}
+
+func (g *eagerStreamingTextGenerator) GenerateSceneTextStream(ctx context.Context, _ GenerateRequest, emit func(Scene) error) error {
+	for _, s := range g.scenes {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		if err := emit(s); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// TestVoiceover_SynthesizesEachSceneLanguageExactlyOnce pins the fan-out
+// contract that a "TTS is 2× the scene count" regression would violate: one
+// (scene, language) pair is synthesized EXACTLY ONCE per attempt, even when the
+// streaming SceneTextReady coordinator synthesizes it first and the batch
+// voiceover phase then re-walks the very same scene×language grid. The batch
+// phase owns the reuse contract (buildVoiceoverWork skips a non-empty ref.ID),
+// so a second provider call here is a real cost/latency duplication, never an
+// accepted retry (which is observable separately as an error message).
+func TestVoiceover_SynthesizesEachSceneLanguageExactlyOnce(t *testing.T) {
+	runner, repo, _, _, _, _, _ := newTestRunner()
+	runner.textGen = &eagerStreamingTextGenerator{scenes: defaultTestScenes()}
+	counter := newCountingVoiceoverGenerator()
+	runner.voiceoverGen = counter
+
+	// Source "en" + target "es" → one voiceover language per scene beyond the
+	// source, so 3 scenes × 2 languages = 6 distinct pairs and 6 syntheses.
+	req := defaultTestRequest()
+	runID := "run-tts-no-double-001"
+	require.NoError(t, repo.Create(context.Background(), &GenerationRun{
+		ID: runID, Request: req, Status: RunStatusPending, CurrentStage: StageNormalizing,
+	}))
+
+	runner.Execute(context.Background(), runID, req)
+
+	final := awaitCompletion(t, repo, runID, 5*time.Second)
+	require.NotNil(t, final)
+	require.Equal(t, RunStatusCompleted, final.Status)
+	require.NotNil(t, final.Result)
+
+	counts := counter.counts()
+	for key, n := range counts {
+		require.Equal(t, 1, n, "scene|language %q must be synthesized exactly once, got %d", key, n)
+	}
+	require.Len(t, counts, 6, "every scene×language pair must be synthesized once (3 scenes × 2 languages)")
+	require.Equal(t, 6, final.Result.AudioMetrics.TTSCalls, "TTSCalls must count one synthesis per scene×language pair, not two")
+}
+
+// TestVoiceover_DoesNotDuplicateFanOutForSingleLanguage is the direct guard for
+// the "TTS is 2× the scene count" report: with a single voiceover language, the
+// number of provider syntheses must equal the number of scenes exactly. The
+// streaming SceneTextReady coordinator synthesizes each scene once, and the
+// batch voiceover phase that runs afterwards must REUSE those references
+// (len(work)==0) rather than re-dispatch them. It also pins that a fully-reused
+// streaming run still reports its real TTSCalls — the batch phase owns only the
+// work it dispatched, so it must add to, never overwrite, the coordinator's
+// count.
+func TestVoiceover_DoesNotDuplicateFanOutForSingleLanguage(t *testing.T) {
+	runner, repo, _, _, _, _, _ := newTestRunner()
+	scenes := defaultTestScenes()
+	runner.textGen = &eagerStreamingTextGenerator{scenes: scenes}
+	counter := newCountingVoiceoverGenerator()
+	runner.voiceoverGen = counter
+
+	req := defaultTestRequest()
+	req.Languages = []Language{"en"} // source language only → exactly len(scenes) syntheses
+	req.Docs.Languages = []Language{"en"}
+	runID := "run-tts-no-double-002"
+	require.NoError(t, repo.Create(context.Background(), &GenerationRun{
+		ID: runID, Request: req, Status: RunStatusPending, CurrentStage: StageNormalizing,
+	}))
+
+	runner.Execute(context.Background(), runID, req)
+
+	final := awaitCompletion(t, repo, runID, 5*time.Second)
+	require.NotNil(t, final)
+	require.Equal(t, RunStatusCompleted, final.Status)
+	require.NotNil(t, final.Result)
+
+	total := 0
+	for key, n := range counter.counts() {
+		require.Equal(t, 1, n, "scene|language %q must be synthesized exactly once, got %d", key, n)
+		total += n
+	}
+	require.Equal(t, len(scenes), total, "a single voiceover language must cost exactly one synthesis per scene, never 2×")
+	require.Equal(t, len(scenes), final.Result.AudioMetrics.TTSCalls, "TTSCalls must equal the scene count for one language, not 2×")
+}

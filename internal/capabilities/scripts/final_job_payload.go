@@ -3,6 +3,7 @@ package scriptgeneration
 import (
 	"context"
 	"fmt"
+	"math"
 	"net/url"
 	"sort"
 	"strings"
@@ -163,6 +164,9 @@ func BuildFinalJobPayloads(ctx context.Context, runID string, req GenerateReques
 	if clipOrdinal == 0 {
 		return nil, nil, fmt.Errorf("final_job produced no remote scenes")
 	}
+	if err := enforceFinalJobMinimumSceneDuration(remoteScenes, 100); err != nil {
+		return nil, nil, err
+	}
 	if delta := plannedDurationMS - result.FinalAudio.DurationMS; delta < -40 || delta > 40 {
 		return nil, nil, fmt.Errorf("final_job scene duration %dms does not match certified final audio %dms (tolerance 40ms)", plannedDurationMS, result.FinalAudio.DurationMS)
 	}
@@ -206,7 +210,7 @@ func BuildFinalJobPayloads(ctx context.Context, runID string, req GenerateReques
 		"idempotency_key": key,
 		"job_type":        "scene.composite.v1",
 		"copy_only":       true,
-		"video_name":      firstFinalJobValue(req.OutputName, req.Title, runID),
+		"video_name":      finalJobVideoName(req, runID),
 		"script_text":     strings.TrimSpace(scriptText.String()),
 		"scenes":          remoteScenes,
 		"output":          map[string]any{"width": 1920, "height": 1080, "fps": 24, "format": "mp4"},
@@ -305,6 +309,46 @@ func compositeStockScene(id string, index int, asset map[string]any, durationMS 
 		ref["url"] = driveFileWebLink(driveID)
 	}
 	return map[string]any{"scene_id": id, "index": index, "kind": "clip", "text": text, "duration_seconds": float64(durationMS) / 1000, "stock": ref}
+}
+
+// The remote renderer requires each scene to be at least 100 ms. Audio and
+// source timing can leave a short final remainder (for example, 16 ms) after
+// millisecond rounding. Borrow that remainder from preceding scenes while
+// keeping every scene above the limit and preserving the total runtime.
+func enforceFinalJobMinimumSceneDuration(scenes []map[string]any, minimumMS int64) error {
+	if minimumMS <= 0 {
+		return fmt.Errorf("final_job minimum scene duration must be positive")
+	}
+	for i, scene := range scenes {
+		seconds, ok := scene["duration_seconds"].(float64)
+		if !ok || math.IsNaN(seconds) || math.IsInf(seconds, 0) || seconds < 0 {
+			return fmt.Errorf("final_job scene %d has an invalid duration", i)
+		}
+		durationMS := int64(math.Round(seconds * 1000))
+		if durationMS >= minimumMS {
+			continue
+		}
+		deficit := minimumMS - durationMS
+		for previous := i - 1; previous >= 0 && deficit > 0; previous-- {
+			previousSeconds, valid := scenes[previous]["duration_seconds"].(float64)
+			if !valid || math.IsNaN(previousSeconds) || math.IsInf(previousSeconds, 0) {
+				return fmt.Errorf("final_job scene %d has an invalid duration", previous)
+			}
+			previousMS := int64(math.Round(previousSeconds * 1000))
+			available := previousMS - minimumMS
+			if available <= 0 {
+				continue
+			}
+			take := min(available, deficit)
+			scenes[previous]["duration_seconds"] = float64(previousMS-take) / 1000
+			deficit -= take
+		}
+		if deficit > 0 {
+			return fmt.Errorf("final_job scene %d is shorter than %dms with no preceding duration to borrow", i, minimumMS)
+		}
+		scene["duration_seconds"] = float64(minimumMS) / 1000
+	}
+	return nil
 }
 
 // ── Certified rendered-clip handoff ───────────────────────────────────
@@ -451,6 +495,46 @@ func renderedClipAssetRef(ctx context.Context, resolver FinalJobAssetResolver, r
 		"asset_id": assetID, "drive_file_id": driveID, "url": driveFileWebLink(driveID),
 		"sha256": sha, "size_bytes": size, "duration_ms": rendered.DurationMS,
 	}, rendered.DurationMS, nil
+}
+
+// finalJobVideoName derives the Master submission identity from the run, never
+// from the caller's title/project. Two runs of the same topic share a title
+// (OutputName defaults to the title), and an identical video_name made the
+// second submission collide on the Master's replace_overlap guard (HTTP 422).
+// A run-scoped suffix keeps the readable title prefix while guaranteeing the
+// identity is unique per run and stable across retries of the same run.
+func finalJobVideoName(req GenerateRequest, runID string) string {
+	base := firstFinalJobValue(req.OutputName, req.Title, "final-job")
+	suffix := finalJobIdentitySuffix(runID)
+	if suffix == "" {
+		return base
+	}
+	return base + " [" + suffix + "]"
+}
+
+// finalJobIdentitySuffix reduces the run id to a deterministic, filesystem- and
+// URL-safe token. It keeps the trailing segment (the run's unique uuid tail)
+// and drops anything that would need escaping in an identity field.
+func finalJobIdentitySuffix(runID string) string {
+	id := strings.TrimSpace(runID)
+	if id == "" {
+		return ""
+	}
+	var b strings.Builder
+	b.Grow(len(id))
+	for _, r := range id {
+		switch {
+		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9', r == '-', r == '_':
+			b.WriteRune(r)
+		default:
+			b.WriteByte('-')
+		}
+	}
+	suffix := strings.Trim(b.String(), "-")
+	if len(suffix) > 16 {
+		suffix = suffix[len(suffix)-16:]
+	}
+	return suffix
 }
 
 func firstFinalJobValue(values ...string) string {

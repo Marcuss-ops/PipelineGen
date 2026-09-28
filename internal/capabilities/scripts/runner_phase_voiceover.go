@@ -435,22 +435,30 @@ func (r *Runner) runVoiceoverPhase(ctx context.Context, runID string, req Genera
 		// never a local timer. Cache-hit acquisitions still emit a synthesize
 		// observation (the MeasureOperation wraps the whole Generate call),
 		// but they never reach the TTS provider: subtract them so TTSCalls
-		// counts real provider synthesis calls. Without a bound Run
-		// (test / dry-run) the fresh-work count is the fallback; the
-		// authoritative wall time stays zero.
+		// counts real provider synthesis calls.
+		//
+		// One owner per fact: this phase ADDS only the syntheses IT
+		// dispatched. The streaming SceneTextReady coordinator may already have
+		// synthesized every voiceover and published its own count onto the
+		// result, in which case len(work) is 0 (buildVoiceoverWork skips a
+		// scene×language that already carries a voiceover). Assigning instead
+		// of adding would overwrite the real run total with zero and make a
+		// fully-voiced streaming run look like it paid no TTS cost at all —
+		// the exact misread behind a "TTS count is wrong" investigation.
+		// Without a bound Run (test / dry-run) this phase's dispatched work is
+		// its whole contribution; the authoritative wall time stays zero.
+		// TTSMS is a run-level total (the same fact the coordinator assigned),
+		// so it is projected, never summed, from the bound Run report.
+		phaseCalls := int64(len(work) - dbCacheHits)
+		if phaseCalls < 0 {
+			phaseCalls = 0
+		}
 		var tts kernobs.OperationSummary
 		if run := kernobs.FromContext(ctx); run != nil {
 			tts = kernobs.SummarizeOperations(run.Report(), "voiceover", "synthesize")
-			if fresh := tts.Calls - int64(dbCacheHits); fresh > 0 {
-				tts.Calls = fresh
-			} else {
-				tts.Calls = int64(len(work) - dbCacheHits)
-			}
-		} else {
-			tts.Calls = int64(len(work) - dbCacheHits)
 		}
 		result.AudioMetrics.TTSMS = tts.TotalMs
-		result.AudioMetrics.TTSCalls = int(tts.Calls)
+		result.AudioMetrics.TTSCalls += int(phaseCalls)
 		if run := kernobs.FromContext(ctx); run != nil {
 			kernobs.RecordOperation(ctx, kernobs.OperationInfo{
 				Stage: kernobs.StageName(voiceoverStage), Component: kernobs.ComponentTTS,
