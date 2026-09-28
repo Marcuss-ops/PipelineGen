@@ -2,9 +2,6 @@ package wiring
 
 import (
 	"context"
-	"crypto/md5"
-	"crypto/sha256"
-	"encoding/hex"
 	"fmt"
 	"io"
 	"os"
@@ -14,6 +11,8 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaregistry"
 	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/checksum"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/drive"
 	pgmedia "github.com/Marcuss-ops/PipelineGen/internal/platform/postgres/media"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/remotejob"
@@ -101,10 +100,20 @@ func (a *remoteFinalJobAdapter) resolveEditorialMusicAsset(ctx context.Context, 
 		if err != nil {
 			return nil, true, fmt.Errorf("stat curated BGM %s: %w", editorial.Alias, err)
 		}
-		sha := sha256.New()
-		md5sum := md5.New()
-		if _, err := io.Copy(io.MultiWriter(sha, md5sum), file); err != nil {
+		// Content identity streams through the digest SSOT (kernel/digest
+		// SHA-256); the MD5 exists ONLY to equal the Drive object's
+		// md5Checksum provider token and therefore streams through the md5
+		// SSOT (platform/checksum) — the only package allowed to hash MD5.
+		sha256Hex, err := digest.SHA256Reader(file)
+		if err != nil {
 			return nil, true, fmt.Errorf("hash curated BGM %s: %w", editorial.Alias, err)
+		}
+		if _, err := file.Seek(0, io.SeekStart); err != nil {
+			return nil, true, fmt.Errorf("rewind curated BGM %s: %w", editorial.Alias, err)
+		}
+		md5Hex, err := checksum.LegacyMD5Reader(file)
+		if err != nil {
+			return nil, true, fmt.Errorf("md5 curated BGM %s: %w", editorial.Alias, err)
 		}
 		meta, err := a.drive.GetFileMeta(ctx, editorial.DriveFileID)
 		if err != nil {
@@ -114,13 +123,13 @@ func (a *remoteFinalJobAdapter) resolveEditorialMusicAsset(ctx context.Context, 
 		if err != nil {
 			return nil, true, err
 		}
-		if meta == nil || meta.Size <= 0 || meta.Size != info.Size() || !strings.EqualFold(remoteMD5, hex.EncodeToString(md5sum.Sum(nil))) {
+		if meta == nil || meta.Size <= 0 || meta.Size != info.Size() || !strings.EqualFold(remoteMD5, md5Hex) {
 			return nil, true, fmt.Errorf("curated BGM %s local bytes do not match its Drive file", editorial.Alias)
 		}
 		return map[string]any{
 			"asset_id": editorial.Alias, "drive_file_id": editorial.DriveFileID,
 			"url":    "velox-drive://" + editorial.DriveFileID,
-			"sha256": hex.EncodeToString(sha.Sum(nil)), "size_bytes": info.Size(),
+			"sha256": sha256Hex, "size_bytes": info.Size(),
 		}, true, nil
 	}
 	return nil, false, nil
