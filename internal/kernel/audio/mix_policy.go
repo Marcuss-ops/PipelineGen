@@ -23,9 +23,15 @@ const (
 )
 
 const (
-	// BackgroundMusicGainDB is the bed level relative to unity voice. Curated
-	// BGM sources have low native loudness; -28 dB produced about -65 dB RMS in
-	// the delivered mix, so keep the base music clearly audible under narration.
+	// BackgroundMusicGainDB is the bed level relative to unity voiceover. It
+	// is SOURCE-INDEPENDENT: the renderer (pipelinegen-muscles
+	// BGM_SOURCE_LOUDNESS_TARGET_DB) measures each BGM source once per render
+	// and trims it to the canonical loudness BEFORE this gain and the duck
+	// automation apply, so quiet curated beds and loud sources alike land at
+	// the same audible level under narration. History: before that
+	// normalization, the natively quiet curated BGM played ~30 dB below the
+	// loudness this bed was tuned for (-28 dB produced about -65 dB RMS in the
+	// delivered mix) — hence the near-unity bed for an audible music bed.
 	BackgroundMusicGainDB = -1.0
 	// SoundEffectGainDB remains a canonical absolute level relative to unity.
 	SoundEffectGainDB = -10.0
