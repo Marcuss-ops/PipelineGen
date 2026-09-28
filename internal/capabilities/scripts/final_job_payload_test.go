@@ -18,6 +18,26 @@ func (finalJobPayloadResolver) ResolveFinalJobAsset(context.Context, string) (ma
 	return map[string]any{"asset_id": "drive-asset", "drive_file_id": "drive-asset", "url": "velox-drive://drive-asset", "sha256": strings.Repeat("b", 64), "size_bytes": int64(20), "duration_ms": int64(2000)}, nil
 }
 
+func TestScheduleFinalJobSceneImageMovesAfterReplaceOverlays(t *testing.T) {
+	image := capabilityoverlay.OverlayItem{ID: "scene-image", SceneID: "scene-1", Kind: "image", StartUS: 5_000_000, DurationUS: 5_000_000}
+	result := &GenerateResult{
+		CanonicalTimeline: &capabilityaudio.CanonicalTimeline{Segments: []capabilityaudio.TimelineSegment{{ID: "scene-1", TimelineStartUS: 0, DurationUS: 20_000_000}}},
+		OverlayPlan: &capabilityoverlay.OverlayPlan{Items: []capabilityoverlay.OverlayItem{
+			image,
+			{ID: "entity-card", SceneID: "scene-1", Kind: "entity_image", StartUS: 6_000_000, DurationUS: 4_000_000},
+			{ID: "phrase", SceneID: "scene-1", Kind: "text_phrase", StartUS: 12_000_000, DurationUS: 2_000_000},
+		}},
+	}
+	frameGuardUS := int64((1_000_000 + 24 - 1) / 24)
+	start, end, err := scheduleFinalJobSceneImage(result, image, frameGuardUS)
+	if err != nil {
+		t.Fatalf("scheduleFinalJobSceneImage: %v", err)
+	}
+	if start != 14_000_000+frameGuardUS || end != 19_000_000+frameGuardUS {
+		t.Fatalf("scheduled image window = %d-%d, want 14s-19s with frame guard %d", start, end, frameGuardUS)
+	}
+}
+
 func TestBuildFinalJobPayloadsRequiresPublishedOverlayAssets(t *testing.T) {
 	result := &GenerateResult{
 		CanonicalTimeline: &capabilityaudio.CanonicalTimeline{DurationUS: 1_000_000, Segments: []capabilityaudio.TimelineSegment{{ID: "scene-1", DurationUS: 1_000_000}}},
