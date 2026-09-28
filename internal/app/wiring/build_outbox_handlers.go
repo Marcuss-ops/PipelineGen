@@ -544,10 +544,14 @@ func (a jobCompletedPerformanceAdapter) Handle(ctx context.Context, evt outboxev
 		return fmt.Errorf("job.completed performance handler: missing job id (aggregate_id=%q)", evt.AggregateID)
 	}
 	if err := a.projection.ProjectCompletedJob(ctx, jobID); err != nil {
-		// Retryable: the run report may not be finalized yet, or the
-		// projection hit a transient DB failure. A permanently missing
-		// run surfaces via dead-letter after max attempts (fail closed).
-		return fmt.Errorf("job.completed performance projection for %q: %w", jobID, err)
+		// Fire-and-forget: the job is already committed with its artifacts, so
+		// retrying only the DERIVED performance projection would hold a worker
+		// slot with jittered backoff to re-read telemetry that has no effect on
+		// the run. Log and return success; the `performance-backfill` admin
+		// command is the recovery path for a projection that was skipped here.
+		a.log.Warn("job.completed performance projection failed (fire-and-forget; recover via performance backfill)",
+			zap.String("job_id", jobID), zap.Error(err))
+		return nil
 	}
 	a.log.Debug("job.completed performance projected", zap.String("job_id", jobID))
 	return nil

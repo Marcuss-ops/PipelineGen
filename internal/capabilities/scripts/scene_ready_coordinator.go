@@ -523,6 +523,20 @@ func (c *sceneReadyCoordinator) wait(ctx context.Context, scenes []Scene) ([]Sce
 		// acquisitions so a fully-served warm stream reports 0.
 		voiceover.Calls = int64(c.ttsCalls - dbCacheHits)
 	}
+	// Make the streamed fan-out legible: a run's TTS count is
+	// (scenes that requested TTS × voiceover languages), NOT a duplicated
+	// fan-out. The batch voiceover phase logs its own grid; the streaming path
+	// owns the runs that actually overlap the LLM, so it must state the same
+	// fact — otherwise "N scenes but 2N syntheses" reads as a phantom double
+	// dispatch during a cost investigation instead of the languages the caller
+	// requested.
+	c.runner.log.Info("voiceover dispatch audit (streaming scene-ready)",
+		zap.String("run_id", c.runID),
+		zap.Int("scenes", len(ordered)),
+		zap.Int("accepted_voiceovers", c.ttsCalls),
+		zap.Int("tts_calls", int(voiceover.Calls)),
+		zap.Int("voiceover_db_cache_hits", dbCacheHits),
+	)
 	return ordered, &TranslationPipelineMetrics{Calls: int(translation.Calls), Concurrency: c.runner.translationConcurrency, WallMS: translation.WallMs}, &AudioPipelineMetrics{TTSCalls: int(voiceover.Calls), TTSMS: voiceover.TotalMs, VoiceoverDBCacheHits: dbCacheHits}, nil
 }
 

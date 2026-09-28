@@ -59,10 +59,19 @@ func TestJobCompletedPerformanceAdapter_MissingJobID(t *testing.T) {
 	}
 }
 
-func TestJobCompletedPerformanceAdapter_PropagatesProjectionError(t *testing.T) {
+// TestJobCompletedPerformanceAdapter_IsFireAndForget pins the contract that
+// the derived performance projection NEVER retries: the job is already
+// committed with its artifacts, so a projection failure must be logged and
+// swallowed (recovery is the `performance-backfill` admin command), not
+// returned as a retryable handler error that holds a worker slot with jittered
+// backoff for telemetry alone.
+func TestJobCompletedPerformanceAdapter_IsFireAndForget(t *testing.T) {
 	stub := &stubProjectionService{err: errors.New("run not finalized yet")}
 	a := jobCompletedPerformanceAdapter{projection: stub, log: zap.NewNop()}
-	if err := a.Handle(context.Background(), outboxevents.Event{AggregateID: "job-1"}); err == nil {
-		t.Fatal("expected projection error to propagate (retryable)")
+	if err := a.Handle(context.Background(), outboxevents.Event{AggregateID: "job-1"}); err != nil {
+		t.Fatalf("projection failure must be swallowed (fire-and-forget), got %v", err)
+	}
+	if len(stub.projected) != 1 || stub.projected[0] != "job-1" {
+		t.Fatalf("projected = %v, want [job-1]", stub.projected)
 	}
 }

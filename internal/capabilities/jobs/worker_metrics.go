@@ -210,15 +210,52 @@ func (r *JobRegistryRecorder) Finish(ctx context.Context, j *kernjob.Job, stepID
 		r.warn("record worker step terminal state", j.ID, err)
 	}
 	if report != nil {
-		r.recordReport(ctx, j.ID, stepID, report)
+		r.recordReport(ctx, j.ID, j.Type, stepID, report)
 	}
 	r.RecordOutputs(ctx, j.ID, result)
 	r.event(ctx, j.ID, terminalEvent(status), map[string]any{"job_type": j.Type, "worker_id": workerID, "attempt_id": attemptID, "status": status, "duration_ms": duration, "result": json.RawMessage(resultJSON)})
 }
-func (r *JobRegistryRecorder) recordReport(ctx context.Context, jobID, stepID string, report *kernobs.RunReport) {
+// scriptRunPhaseStages names the run-level pipeline phases of a
+// script-generation job. Each one is ALREADY recorded as an execution step by
+// the scripts runner (ExecutionRecorder → job_steps: NORMALIZE, SCRIPT,
+// TRANSLATION, VOICEOVER, AUDIO_COMPILE, PERSISTENCE, DOCUMENT), so writing the
+// matching RunReport stage as a SECOND job_steps row duplicates the same
+// business phase in every step metric and audit. The execution step is the
+// single owner (it is the outer, end-to-end business phase); the stage remains
+// in the RunReport for the critical-path breakdown. Nested technical stages
+// (tts, scene_analysis, overlay_render, ...) have no execution step and are
+// still recorded.
+var scriptRunPhaseStages = map[string]struct{}{
+	"normalize":     {},
+	"generate":      {}, // SCRIPT execution step
+	"translation":   {},
+	"voiceover":     {},
+	"audio_compile": {},
+	"persistence":   {},
+	"document":      {},
+}
+
+// scriptStageOwnedByExecutionStep reports whether a RunReport stage is a
+// run-level script phase whose step row is already owned by the runner's
+// execution recorder. It is gated on the job type so the same stage name in an
+// unrelated job never loses its only step row.
+func scriptStageOwnedByExecutionStep(jobType, stageName string) bool {
+	if jobType != kernjob.TypeScriptGenerate && jobType != kernjob.TypeScriptGenerateItem {
+		return false
+	}
+	_, ok := scriptRunPhaseStages[strings.ToLower(strings.TrimSpace(stageName))]
+	return ok
+}
+
+func (r *JobRegistryRecorder) recordReport(ctx context.Context, jobID, jobType, stepID string, report *kernobs.RunReport) {
 	ctx, cancel := r.projectionContext(ctx)
 	defer cancel()
 	for i, stage := range report.Stages {
+		// One owner per step: the run-level phase is already an execution step,
+		// so the duplicate stage row is skipped (see scriptRunPhaseStages).
+		if scriptStageOwnedByExecutionStep(jobType, stage.Name) {
+			continue
+		}
 		stageID := fmt.Sprintf("%s:stage:%d", stepID, i)
 		if err := r.registry.RecordStep(ctx, capregistry.Step{StepID: stageID, JobID: jobID, StepName: stage.Name, StepType: "stage", Status: statusForStep(stage.Status), StartedAt: formatTime(stage.StartedAt), CompletedAt: formatTime(stage.FinishedAt), DurationMS: stage.DurationMs, InputCount: stage.ItemsInput, OutputCount: stage.ItemsCompleted, InputBytes: stage.BytesProcessed, MetricsJSON: reportJSON(stage), CreatedAt: formatTime(stage.StartedAt), ErrorCode: stage.ErrorCode}); err != nil {
 			r.warn("record runtime stage", jobID, err)
