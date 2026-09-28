@@ -437,6 +437,11 @@ func BuildScriptGenerationRuntime(cfg *config.Config, root *ComposeRoot, runRepo
 	// onto the runner as well existed solely for the retired compatibility
 	// fallback in beginVidRush.
 	runner.SetNLPGenerationGate(ollamaNLPGate)
+	// The gate bounds the provider calls; the coordinator's own fan-out is
+	// sized separately, so the configured value must reach BOTH. Without this
+	// the extraction pools stayed pinned to the certified default and lowering
+	// nlp_concurrency could not protect the TTS/LLM inference budget.
+	runner.SetNLPConcurrency(nlpConcurrency)
 	if root.AI != nil && root.AI.SceneTextGenerator != nil {
 		root.AI.SceneTextGenerator.SetSegmentConcurrency(scriptGenerationConcurrency)
 		root.AI.SceneTextGenerator.Engine.SetGenerationGate(ollamaScriptGate)
@@ -448,6 +453,15 @@ func BuildScriptGenerationRuntime(cfg *config.Config, root *ComposeRoot, runRepo
 	}
 	if ttsConcurrency <= 0 {
 		ttsConcurrency = scriptgen.DefaultTTSConcurrency
+	}
+	// The provider semaphore is the hard ceiling on synthesis: a TTS pool wider
+	// than it only over-schedules (the comment on scripts.tts_concurrency calls
+	// this out), so surface the mismatch instead of letting the operator
+	// believe the wider pool took effect.
+	if ceiling := cfg.Voiceover.MaxConcurrentTTS; ceiling > 0 && ttsConcurrency > ceiling {
+		log.Warn("script generation: tts_concurrency exceeds the voiceover provider ceiling; the effective synthesis pool is the provider bound",
+			zap.Int("tts_concurrency", ttsConcurrency),
+			zap.Int("voiceover_max_concurrent_tts", ceiling))
 	}
 	translationConcurrency := cfg.Scripts.TranslationConcurrency
 	if translationConcurrency <= 0 {
@@ -462,6 +476,7 @@ func BuildScriptGenerationRuntime(cfg *config.Config, root *ComposeRoot, runRepo
 		zap.Int("nlp_concurrency", nlpConcurrency),
 		zap.Int("script_generation_concurrency", scriptGenerationConcurrency),
 		zap.Int("tts_concurrency", ttsConcurrency),
+		zap.Int("voiceover_max_concurrent_tts", cfg.Voiceover.MaxConcurrentTTS),
 		zap.Int("translation_concurrency", translationConcurrency))
 
 	return runner, nil

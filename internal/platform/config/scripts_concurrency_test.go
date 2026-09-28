@@ -53,14 +53,15 @@ func TestScriptsConcurrencyEnvResolution(t *testing.T) {
 }
 
 // TestScriptsSeparateItemRenderWorkersResolution pins the per-item overlay
-// render pool as an operator surface: it defaults to the certified 4, it is
+// render pool as an operator surface: it defaults to the certified 2 (was 4;
+// retuned 2026-09-27 after queue-wait dominated wall at width 4), it is
 // overridable from the environment, and it can never resolve to 0 — a
 // zero-slot pool would render no per-item overlay at all instead of failing.
 func TestScriptsSeparateItemRenderWorkersResolution(t *testing.T) {
 	cfg := &Config{}
 	applyDefaults(cfg)
-	if got := cfg.Scripts.SeparateItemRenderWorkers; got != 4 {
-		t.Fatalf("SeparateItemRenderWorkers default = %d, want 4 (certified)", got)
+	if got := cfg.Scripts.SeparateItemRenderWorkers; got != 2 {
+		t.Fatalf("SeparateItemRenderWorkers default = %d, want 2 (certified, retuned 2026-09-27)", got)
 	}
 
 	t.Setenv("VELOX_SCRIPTS_SEPARATE_ITEM_RENDER_WORKERS", "6")
@@ -71,8 +72,8 @@ func TestScriptsSeparateItemRenderWorkersResolution(t *testing.T) {
 
 	// A zero value is not a documented "disable" — it is clamped to the
 	// default so the pool is never the reason no overlay is rendered.
-	if got := (ScriptsConfig{}).WithDefaults().SeparateItemRenderWorkers; got != 4 {
-		t.Fatalf("WithDefaults SeparateItemRenderWorkers = %d, want 4", got)
+	if got := (ScriptsConfig{}).WithDefaults().SeparateItemRenderWorkers; got != 2 {
+		t.Fatalf("WithDefaults SeparateItemRenderWorkers = %d, want 2", got)
 	}
 	if got := (ScriptsConfig{SeparateItemRenderWorkers: 7}).WithDefaults().SeparateItemRenderWorkers; got != 7 {
 		t.Fatalf("WithDefaults must preserve an explicit pool of 7, got %d", got)

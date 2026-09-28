@@ -107,7 +107,7 @@ func newSceneReadyCoordinator(ctx context.Context, runner *Runner, runID string,
 		exec:      exec,
 		results:   make(map[int]Scene),
 		localized: make(map[int]map[Language]*scriptpkg.SceneAnnotations),
-		nlpSlots:  concurrent.NewSemaphore(DefaultNLPConcurrency),
+		nlpSlots:  concurrent.NewSemaphore(poolSize(runner.nlpConcurrency, DefaultNLPConcurrency)),
 		started:   time.Now(),
 
 		translationSlots: concurrent.NewSemaphore(poolSize(runner.translationConcurrency, DefaultTranslationConcurrency)),

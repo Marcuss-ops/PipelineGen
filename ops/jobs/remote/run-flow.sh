@@ -24,7 +24,10 @@
 #   --surface auto|pre|enqueue   submit surface (auto = /pre when mounted,
 #                                otherwise enqueue on POST /api/v1/jobs)
 #   --pre-payload FILE           PREPARE payload (default: pre-job.creator-77.json).
-#                                The file MUST carry copy_only=true.
+#                                The file MUST carry copy_only=true. A selection
+#                                manifest (scenes[].asset_id) is resolved from the
+#                                media SSOT by resolve-pre-payload.sh; an already
+#                                resolved payload passes through unchanged.
 #   --finalize-payload FILE      FINALIZE payload (default: finalize-job.creator-77.json)
 #   --run-id ID                  idempotency-key prefix (default: UTC timestamp)
 #   --timeout SEC                poll budget per phase (default 1800)
@@ -156,11 +159,25 @@ if [[ "$PF_STATUS" != "0" && "$PF_STATUS" != "4" ]]; then exit "$PF_STATUS"; fi
 echo
 
 pre_payload="$TMP/pre.json"
+pre_source="$TMP/pre.source.json"
 [[ -r "$PRE_PAYLOAD" ]] || { echo "run-flow: FAIL — PRE payload not readable: $PRE_PAYLOAD" >&2; exit 1; }
-jq --arg k "$RUN_ID-pre" '.idempotency_key = $k' "$PRE_PAYLOAD" >"$pre_payload"
+# The PREPARE decoder on the target is strict: a documentation key is a 400, and
+# a selection manifest (scenes[].asset_id + duration_seconds) is NOT a PREPARE
+# payload — it lacks the resolved scenes[].clip{drive_file_id,sha256,duration_ms}
+# block. Strip the comment always, and resolve the selection form from the media
+# SSOT before the idempotency key is stamped. A fully resolved payload passes
+# through untouched. See resolve-pre-payload.sh.
+jq 'del(._comment)' "$PRE_PAYLOAD" >"$pre_source"
+pre_resolved="$pre_source"
+if [[ "$(jq -r '[.scenes[] | select(((.clip.asset_id // .stock.asset_id // "") == "") and ((.asset_id // "") != ""))] | length' "$pre_source")" != "0" ]]; then
+  echo "run-flow: PRE payload is a selection manifest — resolving scenes[].clip from the media SSOT" >&2
+  pre_resolved="$TMP/pre.resolved.json"
+  "$SCRIPT_DIR/resolve-pre-payload.sh" "$pre_source" >"$pre_resolved" || exit $?
+fi
+jq --arg k "$RUN_ID-pre" '.idempotency_key = $k' "$pre_resolved" >"$pre_payload"
 fin_payload="$TMP/finalize.json"
 [[ -r "$FINALIZE_PAYLOAD" ]] || { echo "run-flow: FAIL — FINALIZE payload not readable: $FINALIZE_PAYLOAD" >&2; exit 1; }
-jq --arg k "$RUN_ID-finalize" '.idempotency_key = $k' "$FINALIZE_PAYLOAD" >"$fin_payload"
+jq --arg k "$RUN_ID-finalize" 'del(._comment) | .idempotency_key = $k' "$FINALIZE_PAYLOAD" >"$fin_payload"
 if [[ "$(jq -r '.copy_only // false' "$pre_payload")" != "true" ]]; then
   echo "run-flow: FAIL — PRE payload must carry copy_only=true" >&2
   exit 2

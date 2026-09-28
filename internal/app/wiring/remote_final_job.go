@@ -2,12 +2,17 @@ package wiring
 
 import (
 	"context"
+	"crypto/md5"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaregistry"
 	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/drive"
 	pgmedia "github.com/Marcuss-ops/PipelineGen/internal/platform/postgres/media"
@@ -66,8 +71,59 @@ func (a *remoteFinalJobAdapter) SubmitFinalJob(ctx context.Context, runID string
 }
 
 func (a *remoteFinalJobAdapter) ResolveFinalJobAsset(ctx context.Context, id string) (map[string]any, error) {
+	if asset, ok, err := a.resolveEditorialMusicAsset(ctx, id); ok || err != nil {
+		return asset, err
+	}
 	ref, _, err := a.assetRef(ctx, id)
 	return ref, err
+}
+
+// resolveEditorialMusicAsset projects a curated BGM alias directly to its
+// canonical Drive file. Editorial audio aliases intentionally live outside
+// media_assets; the local BGM file is already required by audio compilation,
+// so hash it here and verify it matches the Drive object's MD5 before asking
+// the Master worker to prefetch it.
+func (a *remoteFinalJobAdapter) resolveEditorialMusicAsset(ctx context.Context, alias string) (map[string]any, bool, error) {
+	for _, editorial := range mediaregistry.EditorialAudioAssets() {
+		if editorial.Alias != strings.TrimSpace(alias) || editorial.Family != "music" {
+			continue
+		}
+		if a == nil || a.drive == nil {
+			return nil, true, fmt.Errorf("remote final-job adapter has no Drive reader")
+		}
+		path := filepath.Join("data", "media", "sound_effects", editorial.Filename)
+		file, err := os.Open(path)
+		if err != nil {
+			return nil, true, fmt.Errorf("open curated BGM %s: %w", editorial.Alias, err)
+		}
+		defer file.Close()
+		info, err := file.Stat()
+		if err != nil {
+			return nil, true, fmt.Errorf("stat curated BGM %s: %w", editorial.Alias, err)
+		}
+		sha := sha256.New()
+		md5sum := md5.New()
+		if _, err := io.Copy(io.MultiWriter(sha, md5sum), file); err != nil {
+			return nil, true, fmt.Errorf("hash curated BGM %s: %w", editorial.Alias, err)
+		}
+		meta, err := a.drive.GetFileMeta(ctx, editorial.DriveFileID)
+		if err != nil {
+			return nil, true, err
+		}
+		remoteMD5, err := a.drive.GetFileMD5(ctx, editorial.DriveFileID)
+		if err != nil {
+			return nil, true, err
+		}
+		if meta == nil || meta.Size <= 0 || meta.Size != info.Size() || !strings.EqualFold(remoteMD5, hex.EncodeToString(md5sum.Sum(nil))) {
+			return nil, true, fmt.Errorf("curated BGM %s local bytes do not match its Drive file", editorial.Alias)
+		}
+		return map[string]any{
+			"asset_id": editorial.Alias, "drive_file_id": editorial.DriveFileID,
+			"url":    "velox-drive://" + editorial.DriveFileID,
+			"sha256": hex.EncodeToString(sha.Sum(nil)), "size_bytes": info.Size(),
+		}, true, nil
+	}
+	return nil, false, nil
 }
 
 // FinalJobPublishedFileSize reports the published size of a certified localized

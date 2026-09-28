@@ -12,13 +12,43 @@ import (
 )
 
 // defaultSeparateItemRenderWorkers is how many per-item overlay renders may be
-// in flight at once when the caller does not tune the pool. It matches the
-// canonical render-call concurrency this codebase already uses elsewhere
-// (localization.DefaultRenderConcurrency), and it is deliberately the same
-// order of magnitude as the measured worker ceiling rather than a large fan-out:
-// the point is to stop serialising the per-item pre/post chain, not to flood the
-// queue with GPU work the host cannot run.
-const defaultSeparateItemRenderWorkers = 4
+// in flight at once when the caller does not tune the pool. Tuned 4→2 after
+// live queue-wait audit (2026-09-27): with 5-14 overlays, queue wait was 62%
+// of wall (7484 ms avg, 18435 max) vs 38% render, driven by 4 concurrent
+// GPU jobs queuing behind gpu_lanes=2. Width 2 retains pipelining of the
+// per-item pre/post chain while halving queue contention; Depth>4 back-pressure
+// below further throttles when the queue is already saturated. The worker's
+// gpu_lanes (now 3) remains the sole GPU authority.
+const defaultSeparateItemRenderWorkers = 2
+
+// Overlay-batch back-pressure (retuned 2026-09-27). The queue-wait audit showed
+// wall time dominated by admission wait (62% of wall at pool width 4 behind
+// gpu_lanes=2), so a DEEP batch is clamped below the configured width: an
+// operator may temporarily widen the pool, but a large overlay batch must not
+// widen the queue behind the worker's fixed gpu_lanes. The rule is a pure
+// function of (requested width, batch depth) so it is testable without a queue
+// and cannot drift from what the enqueue path actually applies.
+const (
+	overlayItemBackPressureDepth = 4
+	overlayItemBackPressureWidth = 2
+	overlayItemDeepDepth         = 8
+	overlayItemDeepWidth         = 1
+)
+
+// resolveOverlayItemWorkers applies the certified back-pressure rule: a batch
+// deeper than overlayItemBackPressureDepth is clamped to
+// overlayItemBackPressureWidth, and a batch deeper than overlayItemDeepDepth to
+// overlayItemDeepWidth. A requested width already at or below the clamp is left
+// alone — the clamp only ever narrows, never widens.
+func resolveOverlayItemWorkers(requested, candidates int) int {
+	if candidates > overlayItemDeepDepth && requested > overlayItemDeepWidth {
+		return overlayItemDeepWidth
+	}
+	if candidates > overlayItemBackPressureDepth && requested > overlayItemBackPressureWidth {
+		return overlayItemBackPressureWidth
+	}
+	return requested
+}
 
 // overlayItemCandidate is one renderable overlay item together with its
 // position in the parent plan. The position is preserved because it is part of
@@ -76,7 +106,10 @@ func (e *QueueRenderEnqueuer) enqueueSeparateOverlayItems(ctx context.Context, p
 	// The bound is published before the work starts, so the pool an operator
 	// reads is the one this batch actually ran under (and not a later edit of
 	// the config).
-	workers := e.itemRenderWorkers()
+	// Back-pressure on queue depth (see resolveOverlayItemWorkers): this is
+	// pipelining back-pressure, not GPU admission — gpu_lanes stays the sole
+	// GPU authority.
+	workers := resolveOverlayItemWorkers(e.itemRenderWorkers(), len(candidates))
 	observability.OverlayItemRenderPoolSize.Set(float64(workers))
 	results, err := concurrent.Map(ctx, candidates, workers, func(opCtx context.Context, _ int, candidate overlayItemCandidate) (overlayItemRenderResult, error) {
 		// Measured concurrency, not assumed: the gauge rises exactly while a

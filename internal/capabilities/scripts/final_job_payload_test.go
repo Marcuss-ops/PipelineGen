@@ -120,7 +120,7 @@ func TestBuildFinalJobPayloadsClipOnlyScenesSendTheCertifiedRenderedClip(t *test
 	if !ok {
 		t.Fatalf("scene video ref = %#v, want the silent-video reference block", scenes[0]["stock"])
 	}
-	if ref["drive_file_id"] != "render-drive-1" || ref["url"] != "https://drive.google.com/file/d/render-drive-1/view?usp=drive_link" || ref["sha256"] != strings.Repeat("d", 64) || ref["size_bytes"] != int64(7_000_000) || ref["duration_ms"] != int64(12_000) {
+	if ref["drive_file_id"] != "render-drive-1" || ref["url"] != "velox-drive://render-drive-1" || ref["sha256"] != strings.Repeat("d", 64) || ref["size_bytes"] != int64(7_000_000) || ref["duration_ms"] != int64(12_000) {
 		t.Fatalf("scene video ref = %#v, want the certified rendered clip identity", ref)
 	}
 	if ref["asset_id"] != "derived-render-1" {
@@ -324,7 +324,7 @@ func TestBuildFinalJobPayloadsSendsDriveStockAndPublishedOverlaysToWorker(t *tes
 		t.Fatalf("finalize overlays = %d, want one Drive overlay reference", len(overlays))
 	}
 	overlay := overlays[0].(map[string]any)
-	if overlay["drive_file_id"] != "overlay-drive-1" || overlay["url"] != "https://drive.google.com/file/d/overlay-drive-1/view?usp=drive_link" || overlay["size_bytes"] != int64(50) || overlay["start_frame"] != int64(2) || overlay["end_frame"] != int64(108) {
+	if overlay["drive_file_id"] != "overlay-drive-1" || overlay["url"] != "velox-drive://overlay-drive-1" || overlay["size_bytes"] != int64(50) || overlay["start_frame"] != int64(2) || overlay["end_frame"] != int64(108) {
 		t.Fatalf("overlay payload = %#v, want remote Drive overlay and timeline window", overlay)
 	}
 	for _, raw := range finalize["runtime_assets"].([]any) {
@@ -345,7 +345,7 @@ func TestFinalJobRemoteAssetReferencesOmitWorkerLocalPaths(t *testing.T) {
 	if _, ok := stock["local_path"]; ok {
 		t.Fatalf("remote scene stock contains worker-local path: %#v", stock)
 	}
-	if stock["url"] != "https://drive.google.com/file/d/drive-1/view?usp=drive_link" {
+	if stock["url"] != "velox-drive://drive-1" {
 		t.Fatalf("remote scene stock URL = %v, want its direct Drive link", stock["url"])
 	}
 	var runtimeAssets []any
@@ -354,7 +354,7 @@ func TestFinalJobRemoteAssetReferencesOmitWorkerLocalPaths(t *testing.T) {
 	if _, ok := asset["local_path"]; ok {
 		t.Fatalf("remote runtime asset contains worker-local path: %#v", asset)
 	}
-	if asset["url"] != "https://drive.google.com/file/d/drive-1/view?usp=drive_link" {
+	if asset["url"] != "velox-drive://drive-1" {
 		t.Fatalf("remote runtime asset URL = %v, want its direct Drive link", asset["url"])
 	}
 }

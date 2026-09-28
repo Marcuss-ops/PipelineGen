@@ -19,27 +19,25 @@ import (
 	"go.uber.org/zap"
 )
 
-// DefaultGPUGateSlots is the measured overlay GPU concurrency: two
-// concurrent holders, i.e. the ceiling validated on the reference host.
+// DefaultGPUGateSlots is the measured overlay GPU concurrency: three
+// concurrent holders, i.e. the ceiling after retuning 2026-09-27.
 //
-// 2 is the defensible value together with the GPU peers:
+// 3 is the new certified value together with the GPU peers:
 //
-//   - RenderingGen's worker `gpu_lanes: 2` is the measured ceiling (see
-//     RenderingGen/renderinggen/config.yaml and
-//     RenderingGen/infra/native/renderinggen-native.yaml, which records that
-//     extra lanes add queue wait, VRAM pressure and text-path lock contention
-//     without increasing the render-loop rate);
+//   - RenderingGen's worker `gpu_lanes: 3` (was 2) after queue-wait audit
+//     showed 62% wall at width 4 behind 2 lanes; throttling overlay pool
+//     4→2 + raising lanes 2→3 keeps pipelining while cutting queue wait;
 //   - a Chronon video job is itself mutex-serialized by the daemon
 //     execution-domain contract
 //     (Chronon3d/apps/chronon3d_cli/daemon/daemon_render_concurrency.hpp),
 //     so the gain is admission concurrency (less queue wait), not overlapping
-//     Chronon execution.
+//     Chronon execution. RTX A4000 VMA peak 451 MB @ 16 GB leaves headroom.
 //
 // Every process sharing the GPU must therefore be given the SAME
 // RENDERINGGEN_GPU_SLOTS value (see overlays.GPUGate). The shipped
 // systemd drop-in `scripts/systemd/pipelinegen.service.d/gpu-slots.conf`
-// pins RENDERINGGEN_GPU_SLOTS=2 to keep the contract byte-identical.
-const DefaultGPUGateSlots = 2
+// pins RENDERINGGEN_GPU_SLOTS=3 to keep the contract byte-identical.
+const DefaultGPUGateSlots = 3
 
 // resolveGPUGateSlots parses RENDERINGGEN_GPU_SLOTS. `explicit` reports whether
 // an operator actually configured a value, so the caller can distinguish "the

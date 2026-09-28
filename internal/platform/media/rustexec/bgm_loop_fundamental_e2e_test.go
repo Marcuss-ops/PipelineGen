@@ -249,7 +249,7 @@ func TestFundamental75sBGMLoopRealRenderCertification(t *testing.T) {
 	wantDuckWindows := [][2]int64{{0, 20_000_000}, {25_000_000, 47_000_000}, {50_000_000, 68_000_000}}
 	for i, w := range wantDuckWindows {
 		d := plan.Automation[i+1]
-		if d.TargetTrackID != "bgm" || d.TriggerTrackID != "voiceover" || d.StartUS != w[0] || d.EndUS != w[1] || d.GainDB != audio.BackgroundMusicGainDB {
+		if d.TargetTrackID != "bgm" || d.TriggerTrackID != "voiceover" || d.StartUS != w[0] || d.EndUS != w[1] || d.GainDB != scripts.CanonicalBGMDuckFloorDB {
 			t.Fatalf("duck automation[%d] = %+v, want window [%d,%d) at canonical BGM level", i, d, w[0], w[1])
 		}
 	}

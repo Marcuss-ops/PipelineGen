@@ -34,6 +34,7 @@ func BuildFinalJobPayloads(ctx context.Context, runID string, req GenerateReques
 	}
 	stockFiles := make(map[string][]FinalJobStockFile)
 	stockAssetCache := make(map[string]map[string]any)
+	stockFolderCursors := make(map[string]int)
 	remoteScenes := make([]map[string]any, 0, len(result.CanonicalTimeline.Segments))
 	clipOrdinal := 0
 	var plannedDurationMS int64
@@ -122,10 +123,12 @@ func BuildFinalJobPayloads(ctx context.Context, runID string, req GenerateReques
 			stockFiles[folderID] = files
 		}
 		remainingMS := (segment.DurationUS + 999) / 1000
-		folderIndex := 0
+		folderIndex := stockFolderCursors[folderID]
 		sceneText := firstFinalJobValue(localScene.Text[req.SourceLanguage], req.Title, localScene.ID)
 		for remainingMS > 0 {
 			file := files[folderIndex%len(files)]
+			folderIndex++
+			stockFolderCursors[folderID] = folderIndex
 			asset, ok := stockAssetCache[file.ID]
 			if !ok {
 				var err error
@@ -168,6 +171,32 @@ func BuildFinalJobPayloads(ctx context.Context, runID string, req GenerateReques
 		return nil, nil, err
 	}
 	appendFinalJobRuntimeAsset(&runtimeAssets, seenRuntimeAssets, "final_audio", audioRef)
+	for _, bgm := range req.BackgroundMusic {
+		asset, err := resolver.ResolveFinalJobAsset(ctx, bgm.AssetID)
+		if err != nil {
+			return nil, nil, fmt.Errorf("resolve background music %q for remote prefetch: %w", bgm.AssetID, err)
+		}
+		music := make(map[string]any, len(asset)+1)
+		for key, value := range asset {
+			music[key] = value
+		}
+		music["kind"] = "audio"
+		for _, track := range result.AudioPlan.Tracks {
+			if string(track.Role) != "BGM" {
+				continue
+			}
+			for _, event := range track.Events {
+				if event.AssetID == bgm.AssetID && event.SourceDurationUS > 0 {
+					music["duration_ms"] = event.SourceDurationUS / 1000
+					break
+				}
+			}
+		}
+		if music["duration_ms"] == nil {
+			return nil, nil, fmt.Errorf("final_job background music %q has no canonical source duration", bgm.AssetID)
+		}
+		appendFinalJobRuntimeAsset(&runtimeAssets, seenRuntimeAssets, "music", music)
+	}
 	remoteOverlays, err := finalJobOverlayAssets(result)
 	if err != nil {
 		return nil, nil, err
@@ -473,7 +502,9 @@ func finalJobAudioAsset(audio FinalAudioReference) (map[string]any, error) {
 }
 
 func driveFileWebLink(driveID string) string {
-	return "https://drive.google.com/file/d/" + strings.TrimSpace(driveID) + "/view?usp=drive_link"
+	// The Master resolver accepts the canonical deferred-Drive locator, which
+	// carries the exact Drive file ID without making the 77 fetch the asset.
+	return "velox-drive://" + strings.TrimSpace(driveID)
 }
 
 func driveFileIDFromLink(raw string) string {

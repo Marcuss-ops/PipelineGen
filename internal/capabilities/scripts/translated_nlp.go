@@ -228,7 +228,7 @@ func (r *Runner) computeLocalizedAnnotations(ctx context.Context, req GenerateRe
 	if wordLimit <= 0 {
 		wordLimit = 3
 	}
-	workers := DefaultNLPConcurrency
+	workers := poolSize(r.nlpConcurrency, DefaultNLPConcurrency)
 	if limit := r.vidRushPipeline.Backpressure.ExtractionLimit; limit > 0 && limit < workers {
 		workers = limit
 	}
