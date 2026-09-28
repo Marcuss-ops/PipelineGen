@@ -175,8 +175,8 @@ func TestListenGateFullMix30s(t *testing.T) {
 	wantDuckWindows := [][2]int64{{0, 8_000_000}, {10_000_000, 18_000_000}, {20_000_000, 28_000_000}}
 	for i, w := range wantDuckWindows {
 		d := plan.Automation[i+1]
-		if d.TargetTrackID != "bgm" || d.TriggerTrackID != "voiceover" || d.StartUS != w[0] || d.EndUS != w[1] || d.GainDB != audio.BackgroundMusicGainDB {
-			t.Fatalf("duck automation[%d] = %+v, want window [%d,%d) at %.1fdB", i, d, w[0], w[1], audio.BackgroundMusicGainDB)
+		if d.TargetTrackID != "bgm" || d.TriggerTrackID != "voiceover" || d.StartUS != w[0] || d.EndUS != w[1] || d.GainDB != scripts.CanonicalBGMDuckFloorDB {
+			t.Fatalf("duck automation[%d] = %+v, want window [%d,%d) at %.1fdB", i, d, w[0], w[1], scripts.CanonicalBGMDuckFloorDB)
 		}
 	}
 	if plan.DurationUS != 30_000_000 || plan.MixPolicy != audio.MixVoiceoverWithDuckedClip || plan.PlanSHA256 == "" {

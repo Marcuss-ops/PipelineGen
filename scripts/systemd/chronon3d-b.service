@@ -1,0 +1,53 @@
+# chronon3d-b.service — SECOND Chromon3d render daemon (scale-out instance).
+#
+# WHY A SECOND DAEMON RATHER THAN A BIGGER FIRST ONE
+# --------------------------------------------------
+# The daemon owns exactly ONE execution domain: one VideoDeviceRuntime per
+# device (the single CUDA context + FFmpeg hwdevice), and the RENDER_JOB path
+# holds an exclusive lock for the whole job
+# (`Chronon3d/apps/chronon3d_cli/daemon/daemon_service.hpp::m_render_job_mutex`,
+# policy in `daemon_render_concurrency.hpp`). `gpu_lanes` on the worker therefore
+# only queues: it cannot produce two concurrent renders against one daemon.
+# Measured consequence: 50-74% of the overlay render wall is `gpu_lane_wait`.
+#
+# A second daemon is a second execution domain, and the certified evidence says
+# two runtime instances coexist safely for the overlay shape:
+# `RenderingGen/multilingual_overlays_v1/evidence/vram_two_runtime_pool_2026-09-16.json`
+# (two owned warm daemons, one concurrent job each, BYTE-IDENTICAL artifacts,
+# ~1.8 GiB attributed to two renders on the 16 GB reference device).
+# On the RTX A4000 the live overlay footprint is ~441-462 MiB, so two daemons
+# leave the device almost entirely free.
+#
+# The socket is deliberately in its OWN runtime directory (`chronon3d-b`), not
+# the shared `chronon3d`: systemd removes the RuntimeDirectory when its owning
+# unit stops, so two units declaring the same directory would let stopping
+# instance A unlink instance B's live socket.
+#
+# This is the deployment half of RenderingGen P1 ("activate/verify the second
+# worker only after an independent Chronon daemon exists"); the worker half is
+# `renderinggen-worker-b.service` + `renderinggen-b.yaml` (socket_path below).
+
+[Unit]
+Description=Chronon3d warm Direct-YUV render daemon (instance B)
+After=local-fs.target
+Before=pipelinegen.service
+
+[Service]
+Type=simple
+User=pierone
+# Same effective env as the primary unit's 10-commit-pinned.conf drop-in: the
+# NVIDIA ICD must be pinned or a headless service can resolve the loader to a
+# different (or absent) Vulkan implementation.
+Environment=VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/nvidia_icd.json
+WorkingDirectory=/home/pierone/src/go-master/projects/Pyt/VeloxEditing/Chronon3d
+RuntimeDirectory=chronon3d-b
+RuntimeDirectoryMode=0755
+# Same binary, same device (0), DIFFERENT socket: one execution domain each.
+ExecStart=/usr/local/bin/chronon3d_cli daemon -s /run/chronon3d-b/chronon.sock -a /home/pierone/src/go-master/projects/Pyt/VeloxEditing/RenderingGen/testdata/golden --backend vulkan --gpu-device 0
+Restart=always
+RestartSec=2
+KillSignal=SIGTERM
+TimeoutStopSec=15
+
+[Install]
+WantedBy=multi-user.target

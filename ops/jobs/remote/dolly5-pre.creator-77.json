@@ -1,5 +1,5 @@
 {
-  "_comment": "Selection manifest only: each asset_id is a curated Dolly Parton clip that must be resolved and validated against the live Creator 77 M2M media API before a PREPARE payload is produced. Hashes, Drive IDs, durations, names, and availability are never trusted from this file.",
+  "_comment": "Selection manifest: each scene names a curated Dolly Parton clip by asset_id plus the duration_seconds window to use. It is NOT a PREPARE payload — resolve-pre-payload.sh reads the drive_file_id / content_sha256 / duration_ms from the media SSOT and builds the resolved scenes[].clip{} block, and run-flow.sh does it automatically before submitting. Hashes, Drive IDs, durations and availability are never trusted from this file, and this _comment is stripped before the request is sent (the master's decoder rejects unknown fields).",
   "job_type": "scene.composite.v1",
   "copy_only": true,
   "video_name": "Dolly Parton Best Moments preview — 5 clips (remote render handoff)",

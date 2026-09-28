@@ -164,6 +164,15 @@ type Runner struct {
 	// calls. It defaults to DefaultTTSConcurrency; SetTTSConcurrency overrides
 	// it. Docs publishing and Rust final-audio render stay single-threaded.
 	ttsConcurrency int
+	// nlpConcurrency bounds the NLP/entity-extraction fan-out: how many
+	// scene enrichments the SceneReadyCoordinator and the translated-NLP pass
+	// may run at once. It defaults to DefaultNLPConcurrency; SetNLPConcurrency
+	// overrides it. It MUST be the authoritative bound on this fan-out: the
+	// configured scripts.nlp_concurrency already governs the Ollama gate, so
+	// hard-coding the constant here would silently ignore an operator lowering
+	// the pool to stop extraction from competing with TTS/LLM inference on the
+	// same host.
+	nlpConcurrency int
 	// translationConcurrency bounds concurrent scene×language translation calls.
 	translationConcurrency int
 	// overlayRenderConcurrency bounds the multilingual overlay render fan-out:
@@ -310,6 +319,7 @@ func NewRunner(
 		recorder:                 noopExecutionRecorder{},
 		vidRushRuns:              make(map[string]vidRushWiring),
 		ttsConcurrency:           DefaultTTSConcurrency,
+		nlpConcurrency:           DefaultNLPConcurrency,
 		translationConcurrency:   DefaultTranslationConcurrency,
 		overlayRenderConcurrency: DefaultOverlayRenderConcurrency,
 		log:                      zap.NewNop(),

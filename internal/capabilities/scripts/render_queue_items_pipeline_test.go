@@ -128,8 +128,13 @@ func overlayPlanWithPhrases(extra int) capoverlay.OverlayPlan {
 // The fixture makes the difference visible rather than assumed: with the pool
 // disabled the SAME plan and the SAME client cannot finish at all.
 func TestSeparateOverlayItemsPipelineMultipleRendersInFlight(t *testing.T) {
-	const inFlightGoal = 4
 	plan := overlayPlanWithPhrases(2) // 5 renderable items, 1 background skipped
+	// The goal is the width this batch actually runs at, resolved by the SAME
+	// authority the enqueue path uses. It is deliberately not a literal: a
+	// 5-item batch is deeper than the back-pressure depth, so the certified
+	// width is the narrow one and a literal 4 would pin a contract the retune
+	// (2026-09-27) deliberately retired.
+	const inFlightGoal = overlayItemBackPressureWidth
 
 	t.Run("pooled enqueue reaches the in-flight goal", func(t *testing.T) {
 		client := newPipeliningRenderClient(inFlightGoal)
@@ -154,6 +159,9 @@ func TestSeparateOverlayItemsPipelineMultipleRendersInFlight(t *testing.T) {
 		}
 		if peak < inFlightGoal {
 			t.Fatalf("peak concurrent renders = %d, want >= %d: the enqueue is still serialising", peak, inFlightGoal)
+		}
+		if want := resolveOverlayItemWorkers(defaultSeparateItemRenderWorkers, 5); inFlightGoal != want {
+			t.Fatalf("fixture goal = %d, want the resolved width %d (the fixture must track the certified policy)", inFlightGoal, want)
 		}
 		t.Logf("measured peak concurrent overlay renders = %d (sequential ceiling is 1)", peak)
 	})
@@ -268,7 +276,9 @@ func TestSeparateOverlayItemsFailureNamesTheItem(t *testing.T) {
 // gauge must return to zero — a gauge that only increments is a leak, not a
 // measurement.
 func TestSeparateOverlayItemsExposeMeasuredPipeliningDepth(t *testing.T) {
-	const goal = 4
+	// Same derivation as the pipeline test: the measured depth must be the width
+	// the batch really ran at (back-pressure included), not the configured one.
+	const goal = overlayItemBackPressureWidth
 	plan := overlayPlanWithPhrases(2)
 	client := newPipeliningRenderClient(goal)
 	enqueuer, err := NewQueueRenderEnqueuer(client)
@@ -294,6 +304,36 @@ func TestSeparateOverlayItemsExposeMeasuredPipeliningDepth(t *testing.T) {
 	}
 	if got := testutil.ToFloat64(observability.OverlayItemRenderPoolSize); got != float64(defaultSeparateItemRenderWorkers) {
 		t.Fatalf("pool-size gauge = %v, want the resolved default %d", got, defaultSeparateItemRenderWorkers)
+	}
+}
+
+// TestOverlayItemBackPressureNarrowsDeepBatches pins the retuned back-pressure
+// policy itself, independently of any queue: a deep batch is clamped below the
+// configured width (the queue-wait audit measured 62% of wall in admission wait
+// at width 4 behind gpu_lanes=2), a shallow one is left alone, and the clamp
+// only ever narrows — it can never widen a pool the operator set below it.
+func TestOverlayItemBackPressureNarrowsDeepBatches(t *testing.T) {
+	cases := []struct{ requested, candidates, want int }{
+		{4, 1, 4},
+		{4, 4, 4},
+		{4, 5, 2},
+		{4, 8, 2},
+		{4, 9, 1},
+		{3, 5, 2},
+		{2, 5, 2},
+		{1, 9, 1},
+		{2, 9, 1},
+		{8, 9, 1},
+	}
+	for _, tc := range cases {
+		if got := resolveOverlayItemWorkers(tc.requested, tc.candidates); got != tc.want {
+			t.Errorf("resolveOverlayItemWorkers(%d, %d) = %d, want %d", tc.requested, tc.candidates, got, tc.want)
+		}
+	}
+	// The production shape the audit measured: the configured default on a
+	// 5-item batch must resolve to the narrow, certified width.
+	if got := resolveOverlayItemWorkers(defaultSeparateItemRenderWorkers, 5); got != overlayItemBackPressureWidth {
+		t.Fatalf("default pool on a 5-item batch = %d, want the back-pressure width %d", got, overlayItemBackPressureWidth)
 	}
 }
 

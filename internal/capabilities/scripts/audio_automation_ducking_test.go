@@ -52,8 +52,9 @@ func compileDucking(t *testing.T, timeline audio.CanonicalTimeline, bgm []audio.
 
 // TestCompileBGMDucking_PlanExample pins the plan's ducking contract: BGM
 // covering the whole video, voiceover speaking 0-8s → one entry lowering
-// the bgm track to -30 dB (120ms attack, 350ms release) while the speech
-// is present.
+// the bgm track to the canonical duck floor (bed − 6 dB = −7 dB; 120ms
+// attack, 350ms release) while the speech is present. The explicit
+// DuckGainDB of −30 is a legacy value clamped up to that floor.
 func TestCompileBGMDucking_PlanExample(t *testing.T) {
 	out := compileDucking(t, duckTimeline(), []audio.ResolvedBGM{{
 		AssetID:            "bgm_01",
@@ -70,7 +71,7 @@ func TestCompileBGMDucking_PlanExample(t *testing.T) {
 		TriggerTrackID: "voiceover",
 		StartUS:        0,
 		EndUS:          8_000_000, // speech ends at min(window 10s, certified 8s)
-		GainDB:         audio.BackgroundMusicGainDB,
+		GainDB:         CanonicalBGMDuckFloorDB,
 		AttackUS:       120_000,
 		ReleaseUS:      350_000,
 	}}
@@ -80,7 +81,7 @@ func TestCompileBGMDucking_PlanExample(t *testing.T) {
 }
 
 // TestCompileBGMDucking_PlanDefaults certifies that duck_under_voiceover
-// without explicit values uses the plan defaults (-30 dB / 120 ms / 350 ms).
+// without explicit values uses the plan defaults (−7 dB / 120 ms / 350 ms).
 func TestCompileBGMDucking_PlanDefaults(t *testing.T) {
 	out := compileDucking(t, duckTimeline(), []audio.ResolvedBGM{{
 		AssetID:            "bgm_01",
@@ -92,8 +93,8 @@ func TestCompileBGMDucking_PlanDefaults(t *testing.T) {
 		t.Fatalf("automation = %+v, want exactly one entry", out)
 	}
 	a := out[0]
-	if a.GainDB != audio.BackgroundMusicGainDB || a.AttackUS != DefaultBGMDuckAttackUS || a.ReleaseUS != DefaultBGMDuckReleaseUS {
-		t.Fatalf("canonical defaults not applied: %+v (want gain=%.1f attack=%d release=%d)", a, audio.BackgroundMusicGainDB, DefaultBGMDuckAttackUS, DefaultBGMDuckReleaseUS)
+	if a.GainDB != CanonicalBGMDuckFloorDB || a.AttackUS != DefaultBGMDuckAttackUS || a.ReleaseUS != DefaultBGMDuckReleaseUS {
+		t.Fatalf("canonical defaults not applied: %+v (want gain=%.1f attack=%d release=%d)", a, CanonicalBGMDuckFloorDB, DefaultBGMDuckAttackUS, DefaultBGMDuckReleaseUS)
 	}
 }
 

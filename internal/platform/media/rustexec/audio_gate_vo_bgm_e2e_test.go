@@ -115,8 +115,8 @@ func TestListenGateVOPlusBGM25s(t *testing.T) {
 		t.Fatalf("fade automation = %+v", fade)
 	}
 	duck := plan.Automation[1]
-	if duck.TargetTrackID != "bgm" || duck.TriggerTrackID != "voiceover" || duck.StartUS != 0 || duck.EndUS != 15_000_000 || duck.GainDB != audio.BackgroundMusicGainDB {
-		t.Fatalf("duck automation = %+v, want [0,15s) at canonical BGM level", duck)
+	if duck.TargetTrackID != "bgm" || duck.TriggerTrackID != "voiceover" || duck.StartUS != 0 || duck.EndUS != 15_000_000 || duck.GainDB != scripts.CanonicalBGMDuckFloorDB {
+		t.Fatalf("duck automation = %+v, want [0,15s) at the canonical duck floor (%.1fdB)", duck, scripts.CanonicalBGMDuckFloorDB)
 	}
 	if plan.DurationUS != 25_000_000 || plan.MixPolicy != audio.MixVoiceoverWithDuckedClip || plan.PlanSHA256 == "" {
 		t.Fatalf("plan contract broken: duration=%d policy=%q sealed=%v", plan.DurationUS, plan.MixPolicy, plan.PlanSHA256 != "")

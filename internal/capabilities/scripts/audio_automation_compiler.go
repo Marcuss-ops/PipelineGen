@@ -35,10 +35,17 @@ type AudioAutomationCompiler struct{}
 // duck_under_voiceover is set without explicit values (mirror of the
 // DuckClip* ducking constants in capabilities/audio/mix_policy.go).
 const (
-	DefaultBGMDuckGainDB    = -30.0
+	DefaultBGMDuckGainDB    = -7.0
 	DefaultBGMDuckAttackUS  = int64(120_000)
 	DefaultBGMDuckReleaseUS = int64(350_000)
 )
+
+// CanonicalBGMDuckFloorDB is the quietest ducked level CompileBGMDucking
+// will ever emit: six dB below the canonical BGM bed, so a duck always
+// reads as a duck without driving a quiet bed into inaudibility. Legacy
+// payloads ship DuckGainDB values of -28/-30 dB, which used to collapse
+// onto the old -50 dB bed; they are now clamped up to this floor instead.
+const CanonicalBGMDuckFloorDB = audio.BackgroundMusicGainDB - 6
 
 // NewAudioAutomationCompiler builds the canonical compiler. No
 // dependencies.
@@ -95,7 +102,7 @@ func (r *AudioAutomationCompiler) CompileBGMFades(bgm []audio.ResolvedBGM) ([]au
 // the clip ducking), with the intent's attack/release ramps.
 //
 // Zero DuckGainDB / DuckAttackUS / DuckReleaseUS use the plan defaults
-// (-30 dB / 120 ms / 350 ms); negative values fail closed. Layers without
+// (-7 dB / 120 ms / 350 ms); negative values fail closed. Layers without
 // duck_under_voiceover produce no entries.
 func (r *AudioAutomationCompiler) CompileBGMDucking(timeline audio.CanonicalTimeline, bgm []audio.ResolvedBGM) ([]audio.AudioAutomation, error) {
 	if err := timeline.Validate(); err != nil {
@@ -120,11 +127,14 @@ func (r *AudioAutomationCompiler) CompileBGMDucking(timeline audio.CanonicalTime
 		if gain == 0 {
 			gain = DefaultBGMDuckGainDB
 		}
-		// Ducking must never make BGM louder than the canonical -50 dB
-		// policy level. The old default (-30 dB) is retained only as a
-		// legacy input, then clamped at the canonical audio boundary.
+		// Keep the ducked track no louder than its base level, but prevent
+		// quiet source files from being ducked into inaudibility. The canonical
+		// floor leaves a six-dB duck while preserving a useful background bed.
 		if gain > audio.BackgroundMusicGainDB {
 			gain = audio.BackgroundMusicGainDB
+		}
+		if gain < CanonicalBGMDuckFloorDB {
+			gain = CanonicalBGMDuckFloorDB
 		}
 		attack := layer.DuckAttackUS
 		if attack == 0 {

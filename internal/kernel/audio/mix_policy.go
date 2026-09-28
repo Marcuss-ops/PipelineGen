@@ -23,11 +23,12 @@ const (
 )
 
 const (
-	// BackgroundMusicGainDB and SoundEffectGainDB are canonical absolute
-	// levels relative to the unity voiceover track. They are enforced by the
-	// canonical audio compiler; payload gain_db values cannot override them.
-	BackgroundMusicGainDB = -50.0
-	SoundEffectGainDB     = -10.0
+	// BackgroundMusicGainDB is the bed level relative to unity voice. Curated
+	// BGM sources have low native loudness; -28 dB produced about -65 dB RMS in
+	// the delivered mix, so keep the base music clearly audible under narration.
+	BackgroundMusicGainDB = -1.0
+	// SoundEffectGainDB remains a canonical absolute level relative to unity.
+	SoundEffectGainDB = -10.0
 
 	// DuckClipBaseGainDB is the static clip-audio gain applied under the
 	// VOICEOVER_DUCKED_CLIP policy when no explicit gain is set.

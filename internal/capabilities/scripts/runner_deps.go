@@ -498,6 +498,25 @@ func (r *Runner) SetTTSConcurrency(concurrency int) {
 	r.ttsConcurrency = concurrency
 }
 
+// SetNLPConcurrency sets the NLP/entity-extraction fan-out width used by the
+// SceneReadyCoordinator and the translated-NLP pass. Values <= 0 fall back to
+// the certified default (DefaultNLPConcurrency).
+//
+// It must mirror the Ollama NLP gate capacity: the gate bounds the provider
+// calls while this bound sizes the coordinator's own slot pool. Wiring only the
+// gate (the pre-existing behaviour) left the coordinator hard-coded at the
+// certified default, so lowering scripts.nlp_concurrency to protect the TTS/LLM
+// inference budget had no effect on the fan-out that actually issues the work.
+func (r *Runner) SetNLPConcurrency(concurrency int) {
+	if r == nil {
+		return
+	}
+	if concurrency <= 0 {
+		concurrency = DefaultNLPConcurrency
+	}
+	r.nlpConcurrency = concurrency
+}
+
 // SetOverlayRenderConcurrency sets the multilingual overlay render fan-out
 // width: how many per-language OverlayPlans the overlay_render phase may have
 // in flight against RenderingGen at once. Values <= 0 fall back to the

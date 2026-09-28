@@ -96,9 +96,10 @@ type ScriptsConfig struct {
 	// owns worker.gpu_lanes and stays the only authority on concurrent GPU
 	// work, so raising this overlaps the per-item pre/post chain (materialize,
 	// upload, ffprobe contract, Drive publish) without touching GPU load.
-	// Default 4, matching scriptgeneration.defaultSeparateItemRenderWorkers;
-	// 0 falls back to that same const at the capability boundary.
-	SeparateItemRenderWorkers int `yaml:"separate_item_render_workers" env:"VELOX_SCRIPTS_SEPARATE_ITEM_RENDER_WORKERS" default:"4"`
+	// Default 2 (was 4): tuned 2026-09-27 after queue-wait was 62% of wall at
+	// width 4 behind gpu_lanes=2; width 2 + gpu_lanes=3 is the new certified
+	// balance. 0 falls back to that same const at the capability boundary.
+	SeparateItemRenderWorkers int `yaml:"separate_item_render_workers" env:"VELOX_SCRIPTS_SEPARATE_ITEM_RENDER_WORKERS" default:"2"`
 
 	// OverlayPublicationWorkers bounds concurrent Drive/analytics publication
 	// after a certified overlay render. This is an API-I/O budget, not a GPU
@@ -289,7 +290,7 @@ func (s ScriptsConfig) WithDefaults() ScriptsConfig {
 	// render nothing, so an unset/invalid value is clamped to the certified
 	// default rather than silently disabling per-item overlay output.
 	if s.SeparateItemRenderWorkers <= 0 {
-		s.SeparateItemRenderWorkers = 4
+		s.SeparateItemRenderWorkers = 2
 	}
 	if s.OverlayPublicationWorkers <= 0 {
 		s.OverlayPublicationWorkers = 6

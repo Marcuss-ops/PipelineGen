@@ -14,9 +14,10 @@ Everything here was verified on 2026-09-20 from **creator-77 (this host,
 | `preflight.sh` | Read-only connection check: liveness, readiness, M2M key, route inventory. Never enqueues work. |
 | `inventory.sh` | Read-only inventory of the media SSOT (`pipelinegen_media`) — what material a pre-job can reference. |
 | `pre-job.creator-77.json` | First PREPARE payload, built from real DB assets. |
-| `dolly5-pre.creator-77.json` | Dolly Parton 5-clip preview PREPARE payload (the 5 canonical clips, 10 s window each). Run it with `run-flow.sh --pre-payload`; see §8. |
+| `dolly5-pre.creator-77.json` | Dolly Parton 5-clip preview **selection manifest** (the 5 canonical clips, 10 s window each). Names each clip by `asset_id`; `run-flow.sh --pre-payload` resolves it from the media SSOT automatically; see §8. |
 | `finalize-job.creator-77.json` | First FINALIZE payload (overlay + runtime audio), built from real Drive identities. |
-| `run-flow.sh` | Submitter/poller for `pre → finalize`. Submits only with `--yes`. `--pre-payload` / `--finalize-payload` select a payload other than the two defaults; `--phases` prints the canonical phase table below. |
+| `resolve-pre-payload.sh` | Turns a selection manifest into the PREPARE shape the master's strict decoder accepts (`scenes[].clip{asset_id,drive_file_id,url,sha256,size_bytes,duration_ms}`), reading the identities from the media SSOT and failing closed on an unresolved asset. Run standalone or let `run-flow.sh` call it; see §8.4. |
+| `run-flow.sh` | Submitter/poller for `pre → finalize`. Submits only with `--yes`. `--pre-payload` / `--finalize-payload` select a payload other than the two defaults; `--phases` prints the canonical phase table below. It strips `_comment` from every payload (the master rejects unknown fields) and resolves a selection-manifest `--pre-payload` from the media SSOT before submitting. |
 | `sync-payload-hashes.sh` | Fills each payload's `sha256` from the media SSOT `content_sha256` (read-only on the DB; `--write` patches the JSON). |
 | `mux-final-audio.sh` | Builds the canonical audio of the scene list and copy-muxes it onto the worker's video-only composite; fails closed when the audio is absent or not canonical. See §8.1. |
 | `verify-delivery.sh` | Proves the render reached Drive: streams the master artifact, hashes it, looks the file up on Drive by content address — and gates it on the canonical audio identity (exit 6 when silent). |
@@ -270,6 +271,7 @@ cd refactored/ops/jobs/remote
 
 ./sync-payload-hashes.sh            # payload hashes vs the media SSOT (exit 1 if stale)
 ./sync-payload-hashes.sh --write    # pin them into the JSON files
+./resolve-pre-payload.sh ./dolly5-pre.creator-77.json /tmp/dolly5-pre.resolved.json  # selection manifest → PREPARE payload (§8.4)
 ./verify-delivery.sh JOB             # prove the render reached Drive
 
 ./run-flow.sh --yes --pre            # submit only the pre-job (stays PENDING by design)
@@ -278,9 +280,10 @@ cd refactored/ops/jobs/remote
 ./run-flow.sh --yes --all --surface=enqueue   # force the legacy submit surface
 
 ./run-flow.sh --yes --all --pre-payload ./dolly5-pre.creator-77.json   # Dolly 5-clip preview lane (see §8)
+#   → the selection manifest is resolved from the media SSOT automatically (§8.4)
 
 # the worker returns video only: close the audio leg on the artifact it produced
-./mux-final-audio.sh --video /tmp/dolly5_final.mp4 --pre-payload ./dolly5-pre.creator-77.json \
+./mux-final-audio.sh --video /tmp/dolly5_final.mp4 --pre-payload /tmp/dolly5-pre.resolved.json \
   --clips-dir <repo>/data/tmp/localization --out /tmp/dolly5_final_av.mp4   # see §8.1
 ```
 
@@ -568,3 +571,71 @@ bind-address fix for `/metrics`, and turn `opsalerts` on.
    `6fa6cc79…`, which is not in this repository (`git cat-file -t 6fa6cc79` →
    *not a valid object name*), while §7 recorded `1.4.39` / `bddf00b4` two days
    earlier. Nobody can diff what is running; tag the release next to the commit.
+
+## 8.4 Selection manifest → PREPARE payload (resolved 2026-09-27)
+
+A selection manifest names a scene's clip and the window to use
+(`scenes[].asset_id` + `duration_seconds`). That is the editorial choice, not a
+wire payload: the master's PREPARE decoder is strict and rejected the tracked
+`dolly5-pre.creator-77.json` **three times** on 2026-09-27 against `1.4.48`: `400
+unknown field "_comment"`, then `400 unknown field "asset_id"` once the comment
+was stripped. The canonical accepted shape — the one `pre-job.creator-77.json`
+already used — nests the identity:
+
+```json
+"scenes": [{
+  "scene_id": "scene-0", "index": 0, "kind": "clip",
+  "text": "…", "duration_seconds": 10,
+  "clip": { "asset_id": "yt_…", "drive_file_id": "1…",
+            "url": "velox-drive://1…", "sha256": "<64 hex>",
+            "size_bytes": 0, "duration_ms": 62000 }
+}]
+```
+
+`resolve-pre-payload.sh` builds it, and it is the only step that knows how:
+
+```bash
+ops/jobs/remote/resolve-pre-payload.sh SELECTION.json            # → stdout
+ops/jobs/remote/resolve-pre-payload.sh SELECTION.json OUT.json   # → file
+```
+
+Contract:
+
+- `drive_file_id` / `content_sha256` / `duration_ms` are read from the media
+  SSOT (`media_assets`), never from the selection file — the same rule as
+  `sync-payload-hashes.sh`;
+- **fail-closed**: a scene with no `asset_id`, an asset id outside the canonical
+  alphabet, or an asset with no row / no Drive id / no content hash is exit 2 and
+  no payload — the worker never receives an unverified identity;
+- the envelope (`job_type`, `copy_only`, `video_name`, `script_text`, `output`,
+  `delivery_plan`) passes through untouched, and `_comment` is dropped because
+  the target rejects unknown fields;
+- it is idempotent: re-running it over its own output only refreshes the SSOT
+  facts.
+
+`run-flow.sh` calls it automatically when `--pre-payload` is a selection manifest
+(any scene with a top-level `asset_id` and no `clip.asset_id`), and strips
+`_comment` from the PRE and FINALIZE payloads unconditionally. A fully resolved
+payload is used unchanged, so the run is one command again:
+
+```bash
+ops/jobs/remote/run-flow.sh --yes --all --pre-payload ops/jobs/remote/dolly5-pre.creator-77.json
+```
+
+**Verified 2026-09-27** the same way §7/§8 were, one command end-to-end:
+
+| Field | Value |
+|---|---|
+| job | `job_21ce03ae41031256` |
+| phases | `PREPARE` 202 `waiting_runtime_assets` → `FINALIZE` 202 `prefetch_refresh_queued` / `future_asset_plan=refresh` |
+| worker / lease | `host_57_129_132_133` (remote) / `l-host_57_129_132_133-3f2e2e73` |
+| outcome | `SUCCEEDED` in ~35 s (16:48:13Z → 16:48:48Z) |
+| artifact | 24 189 095 B, sha256 `b4d4bfc7…8487aa`, h264 1920×1080 24 fps, **50.000 s** = 5 × 10 s |
+| audio | remote composite video-only (0 audio streams): closed here with `mux-final-audio.sh` → 1 video + 1 audio `aac/LC/48000/2/stereo`, gate **PASS**, video MD5 unchanged (see §8.1) |
+
+Read-model note: this build (`1.4.48` / `404ca71b`) is ahead of the one §8.2 was
+written against (`1.4.39`) and **does** echo `dispatch_status`, `future_asset_plan`,
+`artifact_size_bytes` and `artifact_url` on `GET /api/v1/jobs/{id}` — so point 5 of
+the §8.2 list is fixed on the remote and can be dropped when that build is rolled
+back-and-forth. The strict decoder is the part that got stricter, which is exactly
+what §8.4 addresses.
