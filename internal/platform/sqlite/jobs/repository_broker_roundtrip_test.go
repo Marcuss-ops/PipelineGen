@@ -125,7 +125,8 @@ CREATE TABLE jobs (
     root_job_id TEXT NOT NULL DEFAULT '',
     revision INTEGER NOT NULL DEFAULT 1,
     client_id TEXT NOT NULL DEFAULT '',
-    idempotency_key TEXT NOT NULL DEFAULT ''
+    idempotency_key TEXT NOT NULL DEFAULT '',
+    deferred_until TEXT
 );
 
 CREATE TABLE job_events (

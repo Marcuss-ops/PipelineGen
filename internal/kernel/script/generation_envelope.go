@@ -122,6 +122,13 @@ type GenerationItemV2 struct {
 	// PhraseMotionFamily selects the certified motion family used by phrase
 	// overlays. One motion is sampled per payload and shared by every phrase.
 	PhraseMotionFamily string `json:"phrase_motion_family,omitempty"`
+	// MaxPhraseOverlays sets the run-level ceiling for grounded phrase
+	// overlays. A positive value is honoured verbatim, so a caller may lower
+	// or raise it; zero (or omitted) keeps the certified default
+	// (overlay.MaxPhraseOverlaysPerRun). Dedup and semantic ranking still run
+	// first, so a ceiling above the number of grounded candidates simply
+	// admits them all.
+	MaxPhraseOverlays int `json:"max_phrase_overlays,omitempty"`
 
 	// Audio configures the audio execution mode (audio.mode) plus the
 	// editorial audio intent block (mix_policy, background_music,

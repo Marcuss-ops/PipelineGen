@@ -43,6 +43,15 @@ import (
 type Status string
 
 const (
+	// StatusScheduled is the pre-QUEUED state of a job submitted with a
+	// future start time (EnqueueRequest.ScheduledAt). A SCHEDULED row is
+	// persisted but NOT claimable: ClaimNext only ever selects QUEUED rows,
+	// so no worker can lease it. The canonical scheduler promotes it to
+	// QUEUED (SCHEDULED → QUEUED) once it is due AND the admission policy
+	// (daily quota + concurrency cap) grants it a slot. It is neither
+	// terminal nor active, and it participates in active-key idempotency
+	// (a resubmission with the same active_key returns the scheduled job).
+	StatusScheduled          Status = "SCHEDULED"
 	StatusQueued             Status = "QUEUED"
 	StatusLeased             Status = "LEASED"
 	StatusRunning            Status = "RUNNING"
@@ -57,6 +66,7 @@ const (
 )
 
 // IsTerminal returns true if the status is a final state.
+// SCHEDULED is NOT terminal: the job is waiting for its start time.
 // PARTIALLY_SUCCEEDED is terminal: the job finished, some artifacts
 // succeeded and some failed. No further worker action is expected.
 func (s Status) IsTerminal() bool {
@@ -78,7 +88,7 @@ func (s Status) IsActive() bool {
 // Valid returns true if s is a known job status.
 func (s Status) Valid() bool {
 	switch s {
-	case StatusQueued, StatusLeased, StatusRunning, StatusWaitingChildren, StatusFinalizing, StatusRetryWait,
+	case StatusScheduled, StatusQueued, StatusLeased, StatusRunning, StatusWaitingChildren, StatusFinalizing, StatusRetryWait,
 		StatusSucceeded, StatusPartiallySucceeded, StatusIndexPending, StatusFailed, StatusCancelled:
 		return true
 	}
@@ -129,6 +139,17 @@ type Job struct {
 	StartedAt      *time.Time      `json:"started_at,omitempty"`
 	CompletedAt    *time.Time      `json:"completed_at,omitempty"`
 	CancelledAt    *time.Time      `json:"cancelled_at,omitempty"`
+	// DeferredUntil is the earliest instant a DEFERRED job may be
+	// re-dispatched (job.OutcomeDeferred / job.DeferredAfter). Nil means the
+	// row is not waiting on a stated delay — a RETRY_WAIT row then follows the
+	// scheduler's retry_count-derived backoff, exactly as before this column
+	// existed. It is deliberately separate from RetryCount: a deferral is a
+	// WAIT (the work has not failed), so it must not consume the retry budget,
+	// and an operator reading the row can tell which of the two is happening.
+	//
+	// It is cleared whenever the row leaves RETRY_WAIT (requeue), so a stale
+	// hint can never delay a later, unrelated attempt.
+	DeferredUntil *time.Time `json:"deferred_until,omitempty"`
 	// ParentJobID is the canonical job-broker ID of the parent that fanned
 	// this job out. Empty for root jobs. Persisted in the jobs table and
 	// carried in the payload for remote claimers.

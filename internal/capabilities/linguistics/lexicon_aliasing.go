@@ -28,7 +28,7 @@ type PhraseExtractionPolicy struct {
 func DefaultPhraseExtractionPolicy() PhraseExtractionPolicy {
 	return PhraseExtractionPolicy{
 		MinWords:           2,
-		MaxWords:           6,
+		MaxWords:           16,
 		MaxResults:         5,
 		RejectVerbsWhenAll: true,
 	}

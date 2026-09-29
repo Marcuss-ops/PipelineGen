@@ -112,7 +112,7 @@ func (r *SQLiteStore) Cancel(ctx context.Context, id string) error {
 	res, err := r.db.ExecContext(ctx,
 		`UPDATE jobs SET status = 'CANCELLED', cancelled_at = ?, worker_id = '',
 		 lease_id = '', lease_expiry = NULL, revision = revision + 1, updated_at = ?
-		 WHERE id = ? AND status IN ('QUEUED', 'LEASED', 'RUNNING', 'FINALIZING', 'RETRY_WAIT')`,
+		 WHERE id = ? AND status IN ('SCHEDULED', 'QUEUED', 'LEASED', 'RUNNING', 'FINALIZING', 'RETRY_WAIT')`,
 		nowStr, nowStr, id)
 	if err != nil {
 		return fmt.Errorf("cancel: %w", err)
@@ -187,9 +187,13 @@ func (r *SQLiteStore) Retry(ctx context.Context, id string) (*job.Job, error) {
 	}
 
 	now := timeutil.FormatRFC3339(time.Now())
+	// deferred_until is cleared on the way out of RETRY_WAIT: the wait it
+	// recorded has ended, and a stale hint would otherwise sit on a QUEUED row
+	// and mis-report the job's state to an operator.
 	res, err := r.db.ExecContext(ctx,
 		`UPDATE jobs SET status = 'QUEUED', progress = 0, error = '',
 		 worker_id = '', lease_id = '', lease_expiry = NULL,
+		 deferred_until = NULL,
 		 revision = revision + 1, updated_at = ?
 		 WHERE id = ? AND status IN ('RETRY_WAIT', 'FAILED') AND revision = ?`,
 		now, id, j.Revision)

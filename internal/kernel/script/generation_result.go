@@ -195,12 +195,26 @@ type DocumentAudioRef struct {
 // only the public artifact URL, its integrity hash and the copy-only
 // certification VeloxEditing uses to assemble the overlay without re-encoding.
 type DocumentOverlayRef struct {
-	ArtifactID   string `json:"artifact_id"`
+	ArtifactID   string                   `json:"artifact_id"`
+	JobID        string                   `json:"job_id"`
+	URL          string                   `json:"url,omitempty"`
+	SHA256       string                   `json:"sha256,omitempty"`
+	DurationUS   int64                    `json:"duration_us,omitempty"`
+	ProfileID    string                   `json:"profile_id,omitempty"`
+	CopyEligible bool                     `json:"copy_eligible"`
+	Items        []DocumentOverlayItemRef `json:"items,omitempty"`
+}
+
+// DocumentOverlayItemRef is one independently rendered semantic overlay.
+// Most runs render a plan as one artifact; phrase-heavy runs can return one
+// video per phrase, so the document must preserve every published reference.
+type DocumentOverlayItemRef struct {
+	ItemID       string `json:"item_id"`
 	JobID        string `json:"job_id"`
+	ArtifactID   string `json:"artifact_id"`
 	URL          string `json:"url,omitempty"`
 	SHA256       string `json:"sha256,omitempty"`
 	DurationUS   int64  `json:"duration_us,omitempty"`
-	ProfileID    string `json:"profile_id,omitempty"`
 	CopyEligible bool   `json:"copy_eligible"`
 }
 

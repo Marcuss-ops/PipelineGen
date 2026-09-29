@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	mediasub "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/media"
+	vowiring "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/voiceover"
 	texttracks "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/texttracks"
 	jobsoutbox "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
 	systemhealth "github.com/Marcuss-ops/PipelineGen/internal/capabilities/system/health"
@@ -117,7 +118,13 @@ func NewComposition(ctx context.Context, cfg *config.Config, dbs *Databases, log
 		process.ClipIndexerService.SetMediaEligibilityReader(pgmedia.NewMediaEligibilityReader(mediaPG))
 	}
 
-	domains, err := BuildDomainBundle(ctx, cfg, dbs, log, driveBundle, repos, search, process, ai, outbox, mediaConfig)
+	// The shared Drive-upload gate is built ONCE here, before the two publisher
+	// sites that need it: BuildDomainBundle (voiceover per-item uploads) and
+	// BuildScriptGenerationRuntime (certified final-audio upload). One owner,
+	// one capacity (see ComposeRoot.DriveUploadGate).
+	driveUploadGate := vowiring.NewDriveUploadGate(cfg.Voiceover)
+
+	domains, err := BuildDomainBundle(ctx, cfg, dbs, log, driveBundle, repos, search, process, ai, outbox, mediaConfig, driveUploadGate)
 	if err != nil {
 		return nil, fmt.Errorf("compose domains: %w", err)
 	}
@@ -205,6 +212,7 @@ func NewComposition(ctx context.Context, cfg *config.Config, dbs *Databases, log
 	root := &ComposeRoot{
 		CanonicalAssetWriter: outbox.CanonicalWriter,
 		MediaExec:            mediaConfig,
+		DriveUploadGate:      driveUploadGate,
 		DB:                   dbs.Main,
 		ObservabilityDB:      dbs.Logs,
 		CacheDB:              dbs.Cache,

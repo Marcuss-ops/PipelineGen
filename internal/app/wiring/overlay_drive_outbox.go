@@ -77,25 +77,37 @@ func (h *overlayDrivePublicationHandler) IdempotencyKey() string {
 }
 
 func (h *overlayDrivePublicationHandler) Handle(ctx context.Context, evt outboxevents.Event) error {
-	if h == nil || h.direct == nil {
+	if h == nil || h.direct == nil || h.results == nil {
 		return fmt.Errorf("overlay Drive handler is not configured")
 	}
 	var req renderinggen.OverlayDrivePublicationRequest
 	if err := json.Unmarshal([]byte(evt.PayloadJSON), &req); err != nil {
 		return fmt.Errorf("decode overlay Drive publication: %w", err)
 	}
-	if err := h.direct.PublishOverlay(ctx, req.Spec, &req.Artifact); err != nil {
-		return fmt.Errorf("publish overlay Drive artifact: %w", err)
-	}
-	if h.results == nil {
-		return fmt.Errorf("overlay Drive result projection is not configured")
-	}
 	jobID := firstNonEmptyOverlay(evt.AggregateID, req.Spec.JobID)
-	if err := h.results.RecordOverlayDriveLink(ctx, jobID, sqljobs.OverlayDriveLink{
+	link := sqljobs.OverlayDriveLink{
 		ItemID: req.Spec.OverlayItemID, Language: req.Spec.Language, PlanID: req.Spec.PlanID,
 		DriveFileID: req.Artifact.DriveFileID, DriveLink: req.Artifact.DriveLink,
 		FolderID: req.Artifact.DriveFolderID,
-	}); err != nil {
+	}
+	current, err := h.results.OverlayDriveLinkIsCurrent(ctx, jobID, link)
+	if err != nil {
+		// The outbox retries while the parent job is running. Wait before the
+		// external upload so every retry does not create another Drive file.
+		return fmt.Errorf("check overlay Drive result target: %w", err)
+	}
+	if !current {
+		// A render from a failed attempt can finish after the retry has already
+		// committed a newer plan. Acknowledge this stale event without publishing.
+		return nil
+	}
+	if err := h.direct.PublishOverlay(ctx, req.Spec, &req.Artifact); err != nil {
+		return fmt.Errorf("publish overlay Drive artifact: %w", err)
+	}
+	link.DriveFileID = req.Artifact.DriveFileID
+	link.DriveLink = req.Artifact.DriveLink
+	link.FolderID = req.Artifact.DriveFolderID
+	if err := h.results.RecordOverlayDriveLink(ctx, jobID, link); err != nil {
 		return fmt.Errorf("project overlay Drive link into job result: %w", err)
 	}
 	return nil

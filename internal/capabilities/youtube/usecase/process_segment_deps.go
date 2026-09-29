@@ -57,7 +57,6 @@ import (
 	youtubetypes "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/dto"
 	ytmetadata "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/metadata"
 	youtubeports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/ports"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 )
 
 // ProcessSegmentPolicyVersion is the canonical "v1" policy version
@@ -124,19 +123,21 @@ type ProcessSegmentCoreDeps struct {
 //
 // The production concrete is *texttracks.MaterializeFanOut (satisfied
 // structurally — this package does NOT import the materializer).
+//
+// godlike/06 SSOT: the port is ONE method because the materialize-vs-acquire
+// decision, the "und" language fallback and the source-text hash computation
+// all live with the concrete (texttracks.MaterializeFanOut.EnqueueCommittedClip
+// — capabilities/assets/texttracks/fanout_commit.go), which is the same
+// mapping the Register commit route calls. A second producer-side
+// implementation of that decision is exactly the drift that left registered
+// clips without translations or subtitle artifacts (September 2026).
 type MaterializeFanOutPort interface {
-	// EnqueueMaterializeOne schedules translation of an already persisted
-	// source track. sourceTextHash MUST be the persisted READY track's
-	// TextHash (the materializer re-reads the row and fails closed on a
-	// mismatch).
-	EnqueueMaterializeOne(ctx context.Context, assetID, sourceLanguage, sourceTextHash string, kinds []detail.TextTrackKind) error
-	// EnqueueAcquireOne schedules the canonical acquisition chain
-	// (payload → DB → YouTube manual → YouTube auto → Whisper) followed by
-	// materialization, for clips committed without a source transcript.
-	EnqueueAcquireOne(ctx context.Context, assetID, sourceLanguage string, kinds []detail.TextTrackKind) error
-	// DefaultSourceLanguage is the configured translation source language,
-	// used when the committed clip carries no resolvable language code.
-	DefaultSourceLanguage() string
+	// EnqueueCommittedClip schedules the canonical multilingual
+	// materialization for a clip whose commit just succeeded. An empty
+	// plainText means the clip was committed WITHOUT a transcript, so the
+	// acquisition chain is scheduled instead of translation. Failures are
+	// logged, never returned: the clip is already durable.
+	EnqueueCommittedClip(ctx context.Context, clipID, sourceLanguage, plainText string)
 }
 
 // ProcessSegmentMediaDeps bundles the external I/O + stager ports.

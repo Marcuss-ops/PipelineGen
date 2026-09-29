@@ -265,7 +265,21 @@ is likely to move audio out of the top spot entirely.
       tolerance (target: unexplained < 10 % of stage wall).
 - [ ] `overlapped_ms` and `attributed_ms` are mutually consistent
       (`attributed − overlapped − wall ≈ unattributed`).
-- [ ] The stage field is present in the serialized operation report.
+      **Still open, and the stated identity is now STALE.** The reporter was
+      fixed to the honest-overlap model: `AttributedStageMs` is the UNION of the
+      covered wall (bounded by `wall_ms`), the concurrency excess is
+      `OverlappedMs`, and `UnattributedMs = wall − attributed`
+      (`breakdown.go:38`). Under that model the identity above no longer holds —
+      pinned by `TestBreakdown_AttributedIsWallBoundedUnderOverlap`
+      (attributed = wall = 10 000, overlapped = 2 000, unattributed = 0 → the
+      formula yields −2 000). Re-state the invariant before ticking it.
+- [x] The stage field is present in the serialized operation report.
+      **Verified 2026-09-28.** `OperationReport.Stage` is a serialized field
+      (`internal/kernel/observability/report.go:150`, `json:"stage"`), and the
+      propagation that fills it is green:
+      `TestOperationMetaContextRoundTrip`, `TestOperationMetaApplyFillsEmptyFields`,
+      `TestOperationMetaMetadataJSONDeterministic`
+      (`go test ./internal/kernel/observability/ -count=1` → PASS).
 - [ ] Then, and only then, the plan's gate: `audio_compile_ms` halved.
 
 ---
@@ -295,9 +309,20 @@ demonstrated. The plan's gate ("wall time well below the sum of phases") is
 
 ### Acceptance criteria
 
-- [ ] Overlap is computed and non-zero on the parallel fan-out path.
-- [ ] `wall_ms` is the authority; stage sums are explicitly allowed to exceed it
+- [x] Overlap is computed and non-zero on the parallel fan-out path.
+      **Verified 2026-09-28.** `TestBreakdown_AttributedIsWallBoundedUnderOverlap`
+      pins `OverlappedMs == 2000` for a fan-out whose stages overlap, and
+      `TestFanoutReports_ParallelWallTimeNotSummed` pins that a parallel fan-out
+      reports wall time that is NOT the sum of its calls. This is the defect the
+      audit measured at `overlapped_ms = 0` in 11/11 runs; it no longer holds.
+- [x] `wall_ms` is the authority; stage sums are explicitly allowed to exceed it
       and are reported as `work_ms`, not `wall_ms`.
+      **Verified 2026-09-28.** `wall_ms` is asserted as the upper bound of
+      attributed time (`AttributedStageMs > WallTimeMs` is a test failure in
+      `TestBreakdown_AttributedIsWallBoundedUnderOverlap`), and the summed
+      duration has its own field: `FanoutReport.WorkMs` (`fanout.go:21`,
+      `json:"work_ms"`) documented as "the accumulated (summed) duration of all
+      calls" — explicitly not wall time.
 
 ---
 
@@ -326,7 +351,19 @@ and it must be run with the model already warm to be meaningful.
 ### Acceptance criteria
 
 - [ ] 1 / 3 / 10 scene timings show sub-linear growth **with a warm model**.
-- [ ] The two gates' capacities are documented in config rather than implicit.
+      Still open, and it stays open off a live host: it needs a warm Ollama model
+      and a real 1/3/10-scene run. Nothing in a checkout can produce it.
+- [x] The two gates' capacities are documented in config rather than implicit.
+      **Verified 2026-09-28.** The audit's own gap ("`config.yaml`'s `scripts:`
+      block defines only `batch_web_search_concurrency` and
+      `batch_chapter_concurrency`, so these two fall back to the constants —
+      worth making explicit") no longer holds. `config.yaml` now declares
+      `nlp_concurrency: 4`, `script_generation_concurrency: 3`,
+      `translation_concurrency: 3` and `overlay_render_concurrency: 2`, each
+      bound to a real struct field (`config/scripts.go:217,223,240,252`) with an
+      env override, and the binding is pinned by
+      `config/scripts_concurrency_test.go`. The effective widths are
+      operator-visible instead of living only in the Go constants.
 
 ---
 
@@ -746,3 +783,383 @@ with no truncated read. `-race` clean.
   behaviour change, the documented pattern for this gate (cf. `materializer_index_seam.go`
   and the concurrent `output_contracts.go`). `request.go` is now 578 lines.
 - `make verify-main` — run once, immediately before push (see the Git workflow rule).
+
+## 19. Status update — 2026-09-28: gate Drive fair e la coda di `audio_publish`
+
+Questa sezione chiude il filone aperto dalla misura del 2026-09-28: il gate
+Drive del processo è ora UNO e fair, `audio_publish` passa dallo stesso gate, e
+il benchmark a 2 job concorrenti misura la coda. Le sezioni numerate qui sotto
+sono 19.n; il materiale originale era `docs/PIPELINE-WALL-OPTIMIZATIONS-2026-09-28.md`,
+assorbito qui per la regola di documentazione (niente nuovi snapshot datati).
+
+Misura di riferimento: run `ritune-verify-20260928` (5 scene, 650 parole, render +
+Docs + voiceover, `force_refresh=true`) sul host di produzione, salvato in
+`RenderingGen/crime_case_scripts_20260926/ritune_verify_20260928_result.json`.
+
+### 19.1 Dove va il tempo (misurato)
+
+| Stage | wall | lavoro (fanout) | chiamate |
+|---|---|---|---|
+| `overlay_render` | 23,4 s | 21,9 s | 12 |
+| `generate` (Ollama gemma4:e4b) | 21,0 s | 48,3 s | 5 |
+| `scene_analysis` (artlist resolve) | 46,3 s | 87,7 s | 5 |
+| `voiceover`/TTS | 32,4 s | 95,8 s | 5 |
+| `audio_compile` | 17,7 s | — | — |
+| `audio_publish` (upload Drive) | **85,7 s** | 85,7 s | 1 |
+| `document` (Google Docs) | 43,7 s | 32,2 s | 1 |
+| `post_writer_finalize` (drive publish) | 41,2 s | 63,2 s | 3 |
+| **wall totale** | **279,5 s** | | |
+
+Due correzioni di lettura, entrambe verificate nel codice e nei log:
+
+1. **Il TTS non è seriale.** `work/wall = 95,8/32,4 ≈ 3×` e i log mostrano le
+   scene 1–4 dispatchate insieme alle 16:44:39 e completate in 5,5–8 s ciascuna.
+   La configurazione (`voiceover.max_concurrent_tts: 4`, `scripts.tts_concurrency`
+   unset → fallback 4) è attiva. Una lettura precedente aveva confrontato work
+   con work (95,8 s vs 51,1 s del run del 26/09) invece che con il wall.
+2. **`num_ctx` non è 81920.** Quel valore nei metadata è la somma dei 5 fan-out
+   (5 × 16384) fatta da `timing_summary.go`; per chiamata resta 16384, scelto
+   deliberatamente in `internal/platform/ollama/types/constants.go`
+   (`ProductionRunnerContext`) per evitare i reload da 37–97 s misurati.
+
+Il collo del run è quindi **I/O esterno conteso**, non il calcolo: nello stesso
+intervallo due altri job (wall 735 s e 552 s, bottleneck `remote_final_job`)
+erano in fase di pubblicazione Drive/Docs sullo stesso processo.
+
+### 19.2 Implementato in questo pass
+
+- [x] **Gate Drive: attesa osservabile**
+  - `rateLimitedPublisher`/`rateLimitedTTSProvider` acquisiscono ora il gate con
+    `kernobs.AcquireFairSlot`, che registra l'intervallo come `WaitSemaphore` sul
+    run invece di scaricarlo sul tempo di lavoro della chiamata.
+  - Il timeout per-call resta derivato DOPO l'acquisizione: il budget resta di
+    sola esecuzione (comportamento invariato).
+  - Test: `TestRateLimitedPublisher_RecordsDriveQueueWait`.
+
+- [x] **Gate Drive: fairness per job**
+  - Nuovo primitivo `pkg/concurrent.FairSemaphore`: un owner che detiene già uno
+    slot non può prenderne un altro mentre un ALTRO owner è affamato; FIFO
+    preservato all'interno dello stesso owner; cancellazione senza slot leak.
+  - Owner = run id (`kernobs.WaitOwner(ctx)`), quindi due job concorrenti non si
+    affamano mai.
+  - Test: `pkg/concurrent/fair_semaphore_test.go` (incluso il contratto
+    anti-monopolio) e `TestRateLimitedPublisher_FairnessAcrossJobs`.
+
+- [x] **Gate Drive: estensione al percorso `audio_publish`**
+  - L'85,7 s del run di verifica NON passava dal gate: `audio_publish` raggiunge
+    Drive via `finalAudioPublisherAdapter.PublishFinalAudio`
+    (`app/wiring/final_audio_publisher.go`), costruito da `newFinalAudioPublisher`
+    e cablato in `BuildScriptGenerationRuntime`, NON via `rateLimitedPublisher`.
+    Il gate fair quindi non copriva il percorso che aveva prodotto l'outlier.
+  - Ora esiste UN gate per processo (`ComposeRoot.DriveUploadGate`), costruito una
+    volta in `NewComposition` (`vowiring.NewDriveUploadGate(cfg.Voiceover)`) e
+    condiviso dai due siti di pubblicazione: il publisher voiceover per-item
+    (`NewRateLimitedPublisherWithGate`) e il publisher dell'audio finale
+    (`prepareWithGate` → `kernobs.AcquireFairSlot`).
+  - Perché condiviso e non due gate: `voiceover.max_concurrent_drive_uploads` è un
+    tetto di PROCESSO ("limits parallel Google Drive upload calls"); due gate
+    indipendenti moltiplicherebbero il tetto per il numero di publisher e
+    lascerebbero la contesa cross-job scoperta. Precedente nel repo:
+    `ClipRenderParentAggregator`, anch'esso cachato su `ComposeRoot` per lo stesso
+    motivo (due siti di composition, una sola istanza).
+  - Test: `app/wiring/final_audio_publisher_gate_test.go`
+    (`TestFinalAudioPublish_AcquiresSharedDriveGate` pinna l'acquisizione + la
+    registrazione del wait; `TestFinalAudioPublish_NilGateIsUnbounded` il
+    contratto nil-safe; `TestDriveUploadGate_IsSharedAcrossPublisherSites` è un
+    freeze a livello di sorgente che vieta a un refactor di ripristinare due gate
+    separati).
+
+- [x] **Worker RenderingGen: KPI di duty-cycle scrapeable**
+  - `renderinggen_worker_gpu_gap_seconds` (histogram) alimentato dallo STESSO
+    valore del KPI per-job `gpu_gap_us` (`processor.SetGPUGapHook` →
+    `workermetrics.GPUGapHook`), cablato in `cmd/renderinggen/main.go`.
+  - Test: `TestExpositionCarriesGPUDutyCycleGap`,
+    `TestGPUGapHookMatchesDirectObservation`, `TestRunGPUReportsDutyCycleGapToHook`.
+
+- [x] **Gate overlap scene-text: contratto pinnato**
+  - Confermato nel codice: `media_plan.extraction.important_phrases` forza il
+    path batch (`segmentTopologyNeedsMaterialization = true`), quindi
+    generate→scene_analysis resta sequenziale per quella shape.
+  - Test nuovo: `TestSceneTextStreaming_ImportantPhraseHintsForceBatchPath`
+    (`runner_scene_phrase_gate_test.go`), oltre alla tabella `sceneTextPathReason`
+    già esistente che nomina `batch_important_phrase_hints`.
+
+### 19.3 Deciso di NON cambiare (con motivo)
+
+- [ ] **Streaming con hint di frase** — `ensureRequestedImportantPhrases` aggancia
+  gli hint DOPO la generazione e solo se nessuna scena li contiene già. Applicarli
+  per-scena al boundary `SceneTextReady` renderebbe lo streaming eleggibile anche
+  con hint, ma cambia il testo generato in un caso preciso: un hint che il modello
+  ha già incluso in una scena successiva verrebbe comunque appeso alla prima scena
+  (duplicazione). È una decisione di prodotto, non un refactor: l'audit
+  `PIPELINE-WASTE-AUDIT-2026-09-12.md` §5 aveva già scelto di non prenderla.
+  Costo stimato dell'overlap perso su questa shape: fino a ~15–20 s per video.
+- [ ] **`num_ctx`** — già ottimizzato (bucket unico residente).
+- [ ] **Pool overlay** — già ritunato il 27/09 (4→2 + back-pressure, `gpu_lanes` 3).
+
+### 19.4 Probe — stato dopo la misura sui dati reali (2026-09-28)
+
+- [x] **Teardown intermittente Chronon ~1 s: NON si riproduce sul percorso IPC**
+  - 377 job reali del daemon oggi (`journalctl -u chronon3d | summarize_job_lifecycle.py`):
+    `session_teardown_ms` **mediana 92,4 ms, p95 113,2, max 138,4** (spread 1,5).
+    Nessuna fase sopra 500 ms.
+  - Le fasi interne sono stabili: `encoder_reset_ms` mediana 28,7 (max 66,2),
+    `full_graph_reset_ms` mediana 62,1 (max 96,2).
+  - Conclusione: il secondo intermittente era del percorso serializzato/CLI, non
+    del daemon caldo. Resta strumentato (sink_ctx, device_runtime,
+    device_reservation) e monitorabile con
+    `Chronon3d/tools/summarize_job_lifecycle.py --fail-on-outlier`.
+- [x] **Prepare/pool warm per-job ~1,1 s: assorbito dal daemon pool**
+  - Misura sui run reali (`RenderingGen/scripts/analyze_chronon_job_boot.py`):
+    per-item `engine_init + backend_init` = **mediana 149,0 ms** (12 item del run
+    di oggi; 174,6 ms su 32 item includendo l'r4 del 26/09), contro i ~1 100 ms
+    "101 boots / 100 jobs" del 16/09 → **~7× in meno**.
+  - Costo non-render residuo per item ≈ 149 (boot) + 11,7 (ffprobe receipt) +
+    9,4 (encoder finalize) ≈ **170 ms** → ~2,0 s sui 23,4 s di `overlay_render`.
+  - `chronon_job_encoder_backpressure_wait_ms` = 0: nessuna attesa di backpressure.
+- [ ] **Bucket `gpu_gap_seconds`** — la serie è ora esposta
+  (`renderinggen_worker_gpu_gap_seconds`); leggere la distribuzione dopo un
+  giorno di render per stabilire se il collo residuo è dentro o tra i job.
+
+### 19.5 Verifica
+
+```bash
+# Go — gate Drive, primitivo fair, worker metrics
+cd refactored && go test ./pkg/concurrent/ ./internal/app/wiring/voiceover/ \
+  ./internal/kernel/observability/ ./internal/capabilities/scripts/ -race -count=1
+cd RenderingGen/renderinggen && go test ./internal/workermetrics/ ./internal/processor/ -count=1
+
+# Probe — contratti dei due analizzatori (nessuna GPU richiesta)
+python3 Chronon3d/tools/summarize_job_lifecycle.py --self-test
+python3 RenderingGen/scripts/analyze_chronon_job_boot.py --self-test
+
+# Misura su dati reali
+journalctl -u chronon3d --since "1 hour ago" \
+  | python3 Chronon3d/tools/summarize_job_lifecycle.py - \
+      --only teardown_ms --only reset_ms --only close_ms --only join_ms
+python3 RenderingGen/scripts/analyze_chronon_job_boot.py \
+  RenderingGen/crime_case_scripts_20260926/ritune_verify_20260928_result.json
+
+# Criterio di accettazione: `audio_publish` < 10 s CON il gate ingaggiato.
+# Legge run_observability.report_json e pretende DUE cose: la stage sotto
+# soglia E un semaphore_wait `component=drive` dentro la finestra della stage.
+cd refactored && python3 ops/benchmarks/audio_publish_gate_evidence.py --self-test
+python3 ops/benchmarks/audio_publish_gate_evidence.py \
+  --job job_1790625240288455194_421d0d2b \
+  --job job_1790625240286917109_5ce13e8a
+python3 ops/benchmarks/audio_publish_gate_evidence.py --since 2026-09-28T19:35:40Z
+```
+
+### 19.6 Deploy + benchmark 2-job (2026-09-28, dopo le 19:35)
+
+#### 19.6.1 Cos'è stato deployato e come è stato provato
+
+Il binario con il gate esteso è in esecuzione: `bin/pipelinegen`
+(`refactored/`), avviato come `pipelinegen.service` alle **19:35:40** (il servizio
+gira come l'utente `pierone`, quindi l'identità è verificabile senza sudo).
+L'identità è provata, non dedotta:
+
+```text
+MainPID            = 1276328            (poi riavviato dal deploy alle 19:59:38)
+sha256(/proc/<pid>/exe) == sha256(bin/pipelinegen)   → sono lo STESSO inode
+strings bin/pipelinegen | grep -c prepareWithGate    → 3
+strings bin/pipelinegen | grep -c DriveUploadGate    → 3
+find internal cmd pkg -name '*.go' ! -name '*_test.go' -newer bin/pipelinegen → vuoto
+```
+
+Il gate è quindi provato **nel binario in esecuzione**, non solo nel sorgente.
+
+Aggiornamento 20:21: il servizio è stato **ricostruito e riavviato da un'altra
+attività concorrente** (`bin/pipelinegen` 20:20:48, MainPID **1363186** dal 20:21:38,
+sha256 `3f1cc042…` — build diversa, 78 918 000 byte). L'identità è di nuovo
+coerente (`sha256(/proc/1363186/exe) == sha256(bin/pipelinegen)`) e i simboli del
+gate sono **ancora presenti con gli stessi conteggi** (`FairSemaphore` 40,
+`AcquireFairSlot` 4, `WaitOwner` 2, `NewDriveUploadGate` 2, `prepareWithGate` 3):
+la ricostruzione non ha rimosso il gate, quindi il comportamento fair resta quello
+deployato.
+
+#### 19.6.2 Il benchmark: `audio_publish` sotto i 10 s
+
+Driver: `RenderingGen/crime_case_scripts_20260926/benchfair_20260928_driver.sh`
+(`submit` → 2 job back-to-back, `poll` → attesa terminale, `report` → estrazione).
+Payload: due copie del payload di verifica con `correlation_id`, `item.id`,
+`project` e titolo distinti (`benchfair-a-20260928` / `benchfair-b-20260928`),
+`force_refresh=true`, render + voiceover + Docs attivi.
+
+| job | esito | wall | **`audio_publish`** | work | calls | `drive` wait dentro la finestra |
+|---|---|---|---|---|---|---|
+| A (`job_…421d0d2b`) | SUCCEEDED | 153 538 ms | **6 299 ms** | 6 257 ms | 1 | 1 |
+| B (`job_…5ce13e8a`) | SUCCEEDED | 189 582 ms | **6 168 ms** | 6 104 ms | 1 | 1 |
+
+Baseline dello stesso payload: `audio_publish` **85 741 ms** → **13,6× in meno**.
+
+Evidenza del fatto che il gate è davvero sul percorso (e non solo che il numero è
+basso): nel report canonico (`run_observability.report_json`, l'osservabilità
+degli wait NON è nella proiezione `timing` esposta da `/api/jobs/:id/full`) esiste
+**esattamente un `semaphore_wait` con `component=drive` con `started_at` dentro la
+finestra di `audio_publish`** per entrambi i job. Pre-deploy quell'intervallo non
+esisteva affatto in questa finestra: la sezione seguente lo mostra su 241 campioni.
+
+#### 19.6.3 Serie storica — before/after sulla stessa metrica
+
+Artefatto: `RenderingGen/crime_case_scripts_20260926/benchfair_20260928_audio_publish_series.json`
+(ricostruito da `refactored/data/observability/api_requests.db.sqlite`,
+tabella `run_observability`, dedupe per `(job_id, audio_publish.started_at)`).
+
+| finestra | campioni | min | mediana | max | **≥ 10 s** | `drive` wait dentro la finestra |
+|---|---|---|---|---|---|---|
+| pre-deploy (< 19:35:40) | 241 | 3 407 ms | 6 217 ms | **302 683 ms** | **21** | 0 |
+| post-deploy (≥ 19:35:40) | 4 | 6 168 ms | 7 586 ms | **9 221 ms** | **0** | 1 |
+
+I quattro campioni post-deploy sono, in ordine: `job_…8806df10` 9 221 ms
+(misurato mentre quel job aveva wall 730 s, cioè sotto la contesa più pesante
+osservata), `job_…5ce13e8a` 6 168 ms, `job_…421d0d2b` 6 299 ms, e — quarto
+campione, arrivato a run concluso — `job_…7cf9af46` **8 874 ms** con
+`drive_waits = 1`: è un job di produzione reale
+(`correlation_id = top5-boxers-optimized-10lang-20260928`), quindi il tetto tiene
+anche fuori dal payload di benchmark, sotto il carico dei 10 linguaggi.
+
+Due letture che contano:
+
+1. **La coda lunga pre-deploy non era "l'upload è lento".** I tre peggiori
+   (`302 683 ms` del 26/09, `238 443 ms`, `179 843 ms`) hanno tutti
+   `drive_semaphore_waits = 0`: il percorso non passava dal gate, quindi **nessuna
+   attesa era attribuibile** e l'intero tempo finiva dentro il lavoro di upload.
+   È esattamente il difetto che l'estensione chiude.
+2. **Il campione sotto contesa pesante è il più significativo.** 9 221 ms con
+   wall 730 s non è un run tranquillo: è la condizione che prima produceva gli
+   outlier a 85–302 s, e ora resta sotto il tetto.
+
+Limite dichiarato: **n = 3** post-deploy. La mediana pre/post è quasi identica
+(6,2 s vs 6,3 s) perché il gate **non è un acceleratore del caso non conteso**: è
+un limite superiore sulla coda. Ciò che cambia è `max` (302,7 s → 9,2 s) e il
+conteggio sopra soglia (21 → 0).
+
+#### 19.6.4 Gate rieseguiti dopo la modifica
+
+| gate | esito |
+|---|---|
+| `go build ./...`, `go vet ./...` | verde (refactored + RenderingGen) |
+| `go test -race` su `wiring`, `wiring/voiceover`, `pkg/concurrent`, `kernel/observability` | verde |
+| `go test ./internal/capabilities/scripts/...` | verde |
+| `RenderingGen/renderinggen go test ./internal/workermetrics/... ./internal/processor/...` | verde |
+| `Chronon3d/tools/summarize_job_lifecycle.py --self-test` / `analyze_chronon_job_boot.py --self-test` | verde |
+| `make verify-foundation` + `make verify-static` | PASS |
+| `make verify-changed-components` | **PASS** — 21/21 componenti (script, database, research, clips, stock, qdrant, indexing, drive, docs, voiceover, images, ollama, translation, storage, timeline, jobs, api, youtube, artlist, kernel, rust-muscles) |
+| `go run ./cmd/archcheck` | **2 violazioni** dopo il pass di ratchet di §19.7 (erano 5): hotspot `scripts` 97 vs ceiling 93 (pre-esistente anche a `HEAD`: 95 vs 93) e `app/wiring/voiceover/adapters_voiceover_repo.go` 630 righe, file su cui sta scrivendo **un'altra sessione concorrente** |
+| `python3 ops/benchmarks/audio_publish_gate_evidence.py --self-test` | self-test OK (pre-gate FAIL con 0 wait, post-gate PASS con gate ingaggiato, filtro della finestra) |
+
+Nota di manutenzione: il gate di `overlays` aveva un test rosso pre-esistente
+(`TestAllCandidatesPlannerConfigKeepsOnlyEditorialImagesAndPhrases`) perché due
+frasi campione condividevano la STESSA finestra temporale e la nuova regola
+anti-overlap ne ammetteva una sola; il test è stato corretto rendendo disgiunte le
+finestre (100–600 e 700–1200), che è ciò che il caso intendeva verificare.
+
+#### 19.6.5 Fail flaky non correlato
+
+L'attempt 1 del job A è fallito a `overlay_render` con
+`ipc render: daemon status Error (1): render job failed with exit code 1` — è il
+percorso Chronon/RenderingGen, **non** il gate Drive; il job è stato ritentato e ha
+chiuso SUCCEEDED. Registrato per non attribuire al gate un fallimento che non è suo.
+
+### 19.7 Verdetto finale e ratchet del gate architetturale (2026-09-28, 20:20+)
+
+#### 19.7.1 Criterio di accettazione: SODDISFATTO
+
+`audio_publish` sotto i 10 s con il gate fair ingaggiato sul percorso reale:
+
+| prova | esito |
+|---|---|
+| binario in esecuzione = binario costruito | durante la finestra del benchmark (19:59:38–20:21, MainPID 1276328): `sha256(/proc/1276328/exe)` == `sha256(bin/pipelinegen)` == `1a4f0f88…`; dopo la rebuild concorrente (20:21:38, MainPID 1363186) l'identità torna coerente su `3f1cc042…` **con i simboli del gate intatti** |
+| il binario contiene il gate | `FairSemaphore` 40, `AcquireFairSlot` 4, `WaitOwner` 2, `NewDriveUploadGate` 2, `prepareWithGate` 3 occorrenze |
+| 2 job concorrenti, stesso payload | `audio_publish` **6 299 ms** e **6 168 ms** (entrambi < 10 s) |
+| gate ingaggiato sul percorso | 1 `semaphore_wait component=drive` dentro la finestra di `audio_publish` per job (0 pre-deploy) |
+| serie post-deploy | **4/4** sotto soglia, gate ingaggiato su tutti, max 9 221 ms (0 sopra i 10 s) — include un job di produzione reale a 10 lingue (8 874 ms) |
+| gate ancora attivo dopo la rebuild concorrente | simboli del gate invariati nel binario `3f1cc042…` (MainPID 1363186, 20:21:38) |
+| controprova pre-deploy | 241 campioni, 21 sopra i 10 s, max 302 683 ms, 0 wait nel percorso |
+
+Verificabile da chiunque con il comando in §19.5 (`--self-test` + `--job`/`--since`).
+Artefatti archiviati accanto al resto dell'evidenza:
+
+- `RenderingGen/crime_case_scripts_20260926/benchfair_20260928_verdict.json` — verdetto 2-job;
+- `.../benchfair_20260928_gate_evidence.json` — output del verificatore sui 2 job;
+- `.../benchfair_20260928_gate_series.json` — serie post-deploy vista dal verificatore;
+- `refactored/ops/benchmarks/archcheck-20260928T203231Z.json` — snapshot archcheck dopo il ratchet.
+
+#### 19.7.2 Ratchet del gate 600-LOC: 5 → 2 violazioni
+
+Il pass aveva lasciato 5 violazioni di `cmd/archcheck`, tre delle quali introdotte
+dalla working tree (non dal gate Drive: da materiale della stessa tornata di
+lavoro). Sono state chiuse **spostando blocchi coesi in file sorelli già
+esistenti**, così il conteggio di file del package hotspot NON cresce (un file
+nuovo avrebbe peggiorato il ratchet `package_hotspot_growth`):
+
+| file | prima | dopo | blocco spostato → destinazione |
+|---|---|---|---|
+| `internal/capabilities/scripts/final_job_payload.go` | 731 | **590** | famiglia "certified render selection" → `final_job.go` (416 → 567) |
+| `internal/capabilities/scripts/overlay_plan.go` | 635 | **575** | `locatePhraseTimingWithEndpointFallback` → `phrase_timing.go` (163 → 228) |
+| `internal/capabilities/scripts/runner_deps.go` | 603 | **577** | `localizedRenderClipFields` → `runner_render_units.go` (364 → 395) |
+
+In più, l'import vietato `crypto/sha256` in `final_job_payload.go` è stato
+sostituito con l'SSOT `internal/kernel/digest` (godlike/06):
+`digest.SHA256String(requestKey)[:32]` è **identico** ai 16 byte che
+`hex.EncodeToString(sum[:16])` produceva, quindi la chiave di idempotenza verso il
+Master (`creator-77-request-…`) non cambia per nessun run.
+
+Restano 2 violazioni, entrambe NON attribuibili a questo pass:
+
+1. **`package_hotspot_growth`** `internal/capabilities/scripts` 97 vs ceiling 93.
+   È **pre-esistente a `HEAD`** (95 file top-level non-test vs 93 bloccati il
+   2026-09-26), quindi `make verify-architecture` era già rosso prima di questa
+tornata. Le due aggiunte di questa sessione (`runner_docs_publish.go`,
+   `overlay_scene_images.go`) sono file coesi del cutover Docs/CORE_READY. Il
+   rimedio dichiarato dai target registrati è la migrazione delle famiglie
+   (`overlay_*`) in sottopackage; ri-bloccare il ceiling senza quella migrazione
+diminuirebbe l'allerta invece di ridurre il debito, quindi **non** è stato fatto
+e resta una decisione dell'owner (`deadline 2026-12-31`).
+2. **`max_lines_per_file_strict`** su
+   `internal/app/wiring/voiceover/adapters_voiceover_repo.go` (630 righe). Il file
+   è stato modificato alle **20:19:33** — durante questa tornata ma **non da
+   questa sessione**: nel repo girano altre sessioni di lavoro concorrenti
+   (`freebuff_agents/profilo1`, `profilo6`) che stanno implementando l'idratazione
+   dell'artifact di timing nella cache voiceover (+91 righe). È stato lasciato
+   intatto per non sovrascrivere lavoro in volo di un altro owner.
+
+#### 19.7.3 Nota di ambiente: scrittori concorrenti
+
+Durante la verifica, `git diff` mostra modifiche che questa sessione non ha
+prodotto, con mtime di pochi minuti prima (`adapters_voiceover_repo.go` 20:19,
+`vidrush_fanout_plan.go` 20:18, `voiceover/service/*`, `overlays/preset_selection.go`).
+Di conseguenza due test risultano rossi **non per questo pass**:
+
+- `internal/app/wiring/voiceover`: `TestVoiceoverCacheSSOT_*` — la nuova
+  `loadTimingArtifact` restituisce miss quando il reader Drive non è cablato, e
+  `timingRequired=true` non trova più la riga sana che il test pretende HIT.
+- `internal/capabilities/scripts/adapters`:
+  `TestVidRushFanoutPlanPerSceneImagesUsesSceneSpecificQuery` — il fan-out
+  per-scena non ha ancora una query scene-specific.
+
+Entrambi sono il boundary di un lavoro in corso altrui; la correzione appartiene a
+quella slice. Prove dell'attribuzione:
+
+- `TestVidRushFanoutPlanPerSceneImagesUsesSceneSpecificQuery` **non esiste a
+  `HEAD`**: è stato aggiunto dalla working tree (`git diff` lo mostra come +26
+  righe in `vidrush_fanout_split_test.go`, insieme alle +44 di
+  `vidrush_fanout_plan.go`): è il test di una feature in corso, ancora rossa.
+- `TestVoiceoverCacheSSOT_*` è invece pre-esistente e non modificato: è il
+  cambio di codice (`adapters_voiceover_repo.go`, +91 righe, nuovo campo `Artifact`)
+  che ne ha cambiato il contratto — senza reader Drive cablato la lookup
+  restituisce ora miss, mentre il test pretende HIT sulla riga sana.
+
+Conseguenza sul gate aggregato: `make verify-changed-components` era **PASS
+21/21** alle 20:10 (`changed_files=256`) e alle 20:33 è **FAIL** su
+`script`/`translation` (+`research` BLOCKED, +`voiceover`), perché gli unici test
+rossi sono i due qui sopra (`artifacts/verify/changed-components.json`,
+`changed_files=267`). Il resto resta verde e cachato.
+
+Per il perimetro di questo pass, i gate ri-eseguiti e verdi sono quelli in §19.6.4
+più `pkg/concurrent`, `kernel/observability`, `capabilities/scripts/...` (con
+`overlay_plan.go`, `runner_deps.go`, `final_job_payload.go`, `final_job.go`,
+`phrase_timing.go`, `runner_render_units.go` modificati) e
+`capabilities/overlays`, oltre a `make verify-foundation` e `make verify-static`
+ri-eseguiti dopo il ratchet (entrambi PASS).

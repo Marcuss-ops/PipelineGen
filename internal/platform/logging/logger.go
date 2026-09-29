@@ -14,6 +14,8 @@ import (
 
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
+
+	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
 )
 
 var (
@@ -34,7 +36,40 @@ func Init(level string, format string) {
 		)
 		instance.Store(inst)
 		zap.ReplaceGlobals(inst)
+		// Recovered goroutine panics are invisible to their caller (the
+		// fire-and-forget helper swallows them), so a process that owns a
+		// structured logger MUST install a sink
+		// (pkg/concurrent.SetPanicReporter) or the anomaly degrades to an
+		// unstructured stderr line with no stack. Installing it here — once,
+		// for every binary that initializes logging — is what makes that
+		// contract hold without each composition root remembering to do it.
+		// The independent counter keeps working either way
+		// (pkg/concurrent.PanicsRecovered).
+		concurrent.SetPanicReporter(PanicReporter(inst))
 	})
+}
+
+// PanicReporter builds the canonical structured sink for recovered goroutine
+// panics: ONE error entry carrying the goroutine that died, the panic value,
+// the process-wide recovered-panic count and the full stack of the failing
+// goroutine.
+//
+// It is installed automatically by Init. It stays exported so an embedding
+// process (or a test) can install the same shape on its own logger instead of
+// re-deriving the field names.
+func PanicReporter(log *zap.Logger) concurrent.PanicReporter {
+	if log == nil {
+		log = zap.NewNop()
+	}
+	sink := log.Named("panic")
+	return func(goroutine string, recovered any, stack []byte) {
+		sink.Error("recovered goroutine panic",
+			zap.String("goroutine", goroutine),
+			zap.Any("panic", recovered),
+			zap.Int64("panics_recovered_total", concurrent.PanicsRecovered()),
+			zap.ByteString("stack", stack),
+		)
+	}
 }
 
 // parseLevel converts a string log level to zapcore.Level

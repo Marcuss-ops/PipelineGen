@@ -162,7 +162,23 @@ func (w *Worker) reportCalendar(jobID, kind, status, phase string, progress *int
 	if w.calendarReporter == nil || jobID == "" {
 		return
 	}
-	update := instaeditcalendar.Progress{Kind: kind, Status: status, Phase: phase, Progress: progress, Error: failure}
+	snapshot := map[string]any{
+		"job_id":    jobID,
+		"worker_id": w.id,
+		"kind":      kind,
+		"status":    status,
+		"phase":     phase,
+	}
+	if progress != nil {
+		snapshot["progress"] = *progress
+	}
+	if failure != nil {
+		snapshot["error"] = failure
+	}
+	update := instaeditcalendar.Progress{
+		Kind: kind, Status: status, Phase: phase, Progress: progress,
+		Snapshot: snapshot, Error: failure,
+	}
 	if err := w.calendarReporter.EnqueueJobProgress(jobID, update); err != nil {
 		w.log.Warn("calendar progress spool failed", zap.String("job_id", jobID), zap.Error(err))
 	}

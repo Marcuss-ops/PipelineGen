@@ -227,7 +227,8 @@ func TestBuildGenerateRequest_PropagatesOverlayStyle(t *testing.T) {
 				"shadow":{"enabled":true,"color":"#000000","opacity":0.7,"blur":12,"offset":[0,6]},
 				"transition_in":{"preset":"fade_in","duration_frames":12}
 			},
-			"phrase_motion_family":"modern_apple"
+			"phrase_motion_family":"modern_apple",
+			"max_phrase_overlays":12
 		}]
 	}`), &env)
 	if err != nil {
@@ -245,6 +246,9 @@ func TestBuildGenerateRequest_PropagatesOverlayStyle(t *testing.T) {
 	}
 	if got.PhraseMotionFamily != "modern_apple" {
 		t.Fatalf("phrase motion family = %q, want modern_apple", got.PhraseMotionFamily)
+	}
+	if got.MaxPhraseOverlays != 12 {
+		t.Fatalf("max phrase overlays = %d, want the caller value 12", got.MaxPhraseOverlays)
 	}
 }
 

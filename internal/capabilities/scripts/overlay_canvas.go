@@ -37,6 +37,10 @@ type OverlayCanvasSpec struct {
 	PhraseMotions      []string
 	PhraseMotionFamily string
 	ImageMotions       []string
+	// MaxPhraseOverlays overrides the run-level grounded-phrase ceiling for
+	// this render. It is caller-supplied (request max_phrase_overlays); zero
+	// keeps the certified default (capabilityoverlay.MaxPhraseOverlaysPerRun).
+	MaxPhraseOverlays int
 }
 
 // GoldenOverlayCanvas is the validated golden canary canvas (1280×720,

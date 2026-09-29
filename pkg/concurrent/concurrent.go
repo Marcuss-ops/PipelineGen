@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"runtime"
 	"sync"
 	"sync/atomic"
 )
@@ -21,12 +22,20 @@ import (
 // install theirs via SetPanicReporter so the anomaly reaches zap/metrics
 // instead of degrading to an unstructured stderr line.
 
-// PanicReporter receives every recovered goroutine panic. goroutine is the
-// caller-supplied name (or a synthesized worker name); recovered is the
-// panic value.
+// PanicReporter receives every recovered goroutine panic.
 //
-// Implementations MUST be safe for concurrent use.
-type PanicReporter func(goroutine string, recovered any)
+//   - goroutine is the caller-supplied name (or a synthesized worker name).
+//   - recovered is the panic value.
+//   - stack is the PANICKING GOROUTINE's stack, captured inside the recovering
+//     deferred function. A recovered panic whose stack is lost is nearly
+//     undiagnosable — the caller never sees the panic, so the stack is the
+//     only record of which frames actually failed. It always contains the
+//     goroutine's frames (and the panic's own frames, because unwinding has
+//     not finished yet at capture time).
+//
+// Implementations MUST be safe for concurrent use: SafeGo and Group can recover
+// in parallel goroutines.
+type PanicReporter func(goroutine string, recovered any, stack []byte)
 
 var (
 	panicReporter   atomic.Pointer[PanicReporter]
@@ -34,21 +43,48 @@ var (
 )
 
 // SetPanicReporter installs the canonical structured sink for recovered
-// goroutine panics. Passing nil restores the default stdlib logger. The
-// recovered-panic counter is maintained independently and is unaffected.
+// goroutine panics. Passing nil restores the default stdlib logger.
+//
+// The recovered-panic counter is maintained independently and is unaffected:
+// PanicsRecovered keeps counting whether or not a reporter is installed.
+//
+// Safe to call concurrently with a running process (the pointer swap is
+// atomic), so a composition root can install its sink at boot and a test can
+// install and then remove one.
+func SetPanicReporter(reporter PanicReporter) {
+	if reporter == nil {
+		panicReporter.Store(nil)
+		return
+	}
+	panicReporter.Store(&reporter)
+}
 
 // PanicsRecovered returns the process-wide count of recovered goroutine
 // panics since start. It is exported so a metrics exporter can surface the
 // anomaly even when no reporter is installed.
+func PanicsRecovered() int64 { return panicsRecovered.Load() }
+
+// panicStack captures the stack of the goroutine that panicked.
+//
+// It MUST be called from the recovering (deferred) function: at that point the
+// panicking frames are still live on the stack, so the trace shows where the
+// failure came from. run=false keeps the capture to THIS goroutine (the one
+// that died) instead of dumping every goroutine in the process.
+func panicStack() []byte {
+	buf := make([]byte, 64<<10)
+	n := runtime.Stack(buf, false)
+	return buf[:n]
+}
 
 // reportPanic is the SINGLE sink for every recovered panic in this package.
 func reportPanic(goroutine string, recovered any) {
 	panicsRecovered.Add(1)
+	stack := panicStack()
 	if reporter := panicReporter.Load(); reporter != nil {
-		(*reporter)(goroutine, recovered)
+		(*reporter)(goroutine, recovered, stack)
 		return
 	}
-	log.Printf("[panic recovery] goroutine %q panicked: %v", goroutine, recovered)
+	log.Printf("[panic recovery] goroutine %q panicked: %v\n%s", goroutine, recovered, stack)
 }
 
 // ── SafeGo — fire-and-forget goroutines with panic recovery ─────────────

@@ -170,6 +170,12 @@ type Runner struct {
 	// non-nil is fail-closed (an enqueue error fails the run).
 	overlayPrepareEnqueuer OverlayPrepareEnqueuer
 	overlayRenderEnqueuer  OverlayRenderEnqueuer
+	// docsPublishEnqueuer submits the deferred `script.docs_publish` child at
+	// CORE_READY. Nil means the deferred Docs leg is not wired, so the run
+	// keeps publishing documents inline exactly as before; non-nil is
+	// fail-closed, because a parent that defers its terminal flip to a child
+	// that was never submitted is a hung run, not a degraded one.
+	docsPublishEnqueuer DocsPublishEnqueuer
 	// localizedRenderEnqueuer is the per-(scene, language) localized render
 	// fan-out. Nil means render is not registered (no-op); non-nil is
 	// fail-closed. It is the seam the SceneTextReady fan-out fires the moment

@@ -64,16 +64,37 @@ Read the tail as a block: `document.publish` + `post_writer_finalize` + `finaliz
 - **Evidence of loss:** 4 calls, 6,227 ms of work, **11,160 ms of wall**, max single call
   5,312 ms → roughly 5 s that is not render work.
 - **Two candidate causes, kept separate:**
-  1. `platform/overlays/gpu_gate.go:34` is a single host-wide
-     `flock(LOCK_EX|LOCK_NB)`. It serializes the *local* overlay handler path
-     (`app/wiring/overlay_handlers.go`, `rendering_runtime.go`); confirm whether it is on
-     this run's path before touching it.
+  1. ~~`platform/overlays/gpu_gate.go:34` is a single host-wide
+     `flock(LOCK_EX|LOCK_NB)`.~~ **STALE as of 2026-09-28 — corrected below.** The gate
+     now owns N lock files and admits up to N holders (`NewGPUGateWithSlots`, same file);
+     `slots == 1` reproduces the historical exclusive behaviour and the built-in default
+     is `DefaultGPUGateSlots = 3` (`app/wiring/rendering_runtime.go`), pinned explicitly
+     by `scripts/systemd/pipelinegen.service.d/gpu-slots.conf`. The knob is therefore
+     `RENDERINGGEN_GPU_SLOTS`, not an edit to the gate. It still serializes the *local*
+     overlay handler path (`app/wiring/overlay_handlers.go`, `rendering_runtime.go`).
   2. The RenderingGen queue wait (`render_queue.go`, event-driven long poll with a 250 ms
      polling fallback). This is remote and cannot be fixed from this repo.
-- **Measurement that decides it:** `capabilities/scripts/render_concurrency_benchmark_test.go`
-  at concurrency 1/2/3/4 with the gate relaxed, recording wall, accumulated work, NVENC
-  contention and VRAM. If >1 does not win, the gate stays and this closes as
-  "rejected with evidence".
+- **Contract divergence found 2026-09-28 (open):** the drop-in pins
+  `RENDERINGGEN_GPU_SLOTS=3` and its own comment states the peer value is RenderingGen's
+  `worker.gpu_lanes` from `RenderingGen/renderinggen/config.yaml`, "pinned by
+  `infra/native/renderinggen-native.yaml`". Both files actually say `gpu_lanes: 2`; only
+  `infra/native/renderinggen-b.yaml` says 3. The two processes sharing the RTX A4000
+  therefore declare **different** admission contracts (3 vs 2). The drop-in is explicit
+  that they must be equal and changed in the same commit, so this is a live defect and a
+  precondition for trusting any D2 number. Reproduce: `make gpu-admission-preflight`.
+- **Measurement that decides it:** `tests/operational/measure_gpu_admission.sh`
+  (`make gate-gpu-admission`). It runs the shipped
+  `capabilities/scripts/render_concurrency_benchmark_test.go` in real-stack mode at the
+  levels the benchmark itself declares — `renderBenchConcurrencyLevels = {1, 2, 3, 5}`,
+  **not** 1/2/3/4 — recording wall, accumulated work, per-render wall, peak RSS and NVENC
+  contention, and reports `speedup = work / wall` per level. It needs a real mp4
+  (`CLIP_PATH`); without one it refuses to report a number. If >1 does not win, the gate
+  stays and this closes as "rejected with evidence".
+- **Note on what "concurrency > 1" can mean here:** a Chronon video job is itself
+  mutex-serialized by the daemon execution-domain contract
+  (`Chronon3d/apps/chronon3d_cli/daemon/daemon_render_concurrency.hpp`), so the gain the
+  gate is measuring is *admission* concurrency (less queue wait), **not** two Chronon
+  renders executing simultaneously.
 
 ### D3 — Chronon warm daemon on the production path (audit §9)
 

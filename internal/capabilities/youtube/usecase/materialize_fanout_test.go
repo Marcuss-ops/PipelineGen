@@ -40,38 +40,29 @@ func (w *fanoutRecordingWriter) CommitClipTextAndIndexEvent(_ context.Context, c
 	return nil
 }
 
-type materializeCall struct {
-	assetID        string
+// committedClipCall records one EnqueueCommittedClip hand-off. The
+// materialize-vs-acquire decision, the "und" fallback and the source-text
+// hash derivation are NOT asserted here: they belong to the canonical helper
+// (texttracks/fanout_commit.go) and are pinned in that package's suite. What
+// this suite locks is that the per-segment pipeline hands over exactly the
+// language + transcript the super-tx persisted.
+type committedClipCall struct {
+	clipID         string
 	sourceLanguage string
-	sourceTextHash string
-}
-
-type acquireCall struct {
-	assetID        string
-	sourceLanguage string
+	plainText      string
 }
 
 type fakeMaterializeFanOut struct {
-	materialize []materializeCall
-	acquire     []acquireCall
-	defaultLang string
+	calls []committedClipCall
 }
 
-func (f *fakeMaterializeFanOut) EnqueueMaterializeOne(_ context.Context, assetID, sourceLanguage, sourceTextHash string, _ []detail.TextTrackKind) error {
-	f.materialize = append(f.materialize, materializeCall{
-		assetID:        assetID,
+func (f *fakeMaterializeFanOut) EnqueueCommittedClip(_ context.Context, clipID, sourceLanguage, plainText string) {
+	f.calls = append(f.calls, committedClipCall{
+		clipID:         clipID,
 		sourceLanguage: sourceLanguage,
-		sourceTextHash: sourceTextHash,
+		plainText:      plainText,
 	})
-	return nil
 }
-
-func (f *fakeMaterializeFanOut) EnqueueAcquireOne(_ context.Context, assetID, sourceLanguage string, _ []detail.TextTrackKind) error {
-	f.acquire = append(f.acquire, acquireCall{assetID: assetID, sourceLanguage: sourceLanguage})
-	return nil
-}
-
-func (f *fakeMaterializeFanOut) DefaultSourceLanguage() string { return f.defaultLang }
 
 // compile-time assertion: the fake satisfies the port the pipeline consumes,
 // and — separately — the real helper must satisfy it too. The latter is
@@ -79,18 +70,18 @@ func (f *fakeMaterializeFanOut) DefaultSourceLanguage() string { return f.defaul
 // use-case-side contract.
 var _ MaterializeFanOutPort = (*fakeMaterializeFanOut)(nil)
 
-// TestExecute_SchedulesMaterializeAfterCommitWithPersistedHash pins the
-// happy path: a committed clip with a resolved transcript schedules the
-// canonical materialize job carrying EXACTLY the language and text hash the
-// super-tx persisted (the materializer re-reads that row and fails closed on
-// any mismatch).
-func TestExecute_SchedulesMaterializeAfterCommitWithPersistedHash(t *testing.T) {
+// TestExecute_SchedulesMaterializeAfterCommitWithPersistedText pins the happy
+// path: a committed clip with a resolved transcript hands the canonical
+// fan-out EXACTLY the language and transcript text the super-tx persisted (the
+// helper derives the hash from them; the materializer re-reads the row and
+// fails closed on any mismatch).
+func TestExecute_SchedulesMaterializeAfterCommitWithPersistedText(t *testing.T) {
 	realPath := filepath.Join(t.TempDir(), "yt_fanout_0_10_v1.mp4")
 	require.NoError(t, os.WriteFile(realPath, []byte("fake audio bytes"), 0o644))
 
 	transcriber := &countingTranscriber{text: "the canonical transcript"}
 	writer := &fanoutRecordingWriter{}
-	fanout := &fakeMaterializeFanOut{defaultLang: "en"}
+	fanout := &fakeMaterializeFanOut{}
 
 	core, media, metadata, observability := validProcessSegmentDeps()
 	metadata.LocalizedWriter = writer
@@ -119,8 +110,7 @@ func TestExecute_SchedulesMaterializeAfterCommitWithPersistedHash(t *testing.T) 
 	require.Equal(t, "processed", out.Status)
 	require.Equal(t, 1, writer.calls, "the canonical super-tx must run exactly once")
 
-	require.Empty(t, fanout.acquire, "a resolved transcript must NOT take the acquire path")
-	require.Len(t, fanout.materialize, 1, "a committed clip must schedule exactly one materialize job")
+	require.Len(t, fanout.calls, 1, "a committed clip must schedule exactly one materialize job")
 
 	var committed *detail.TextTrack
 	for i := range writer.tracks {
@@ -131,12 +121,14 @@ func TestExecute_SchedulesMaterializeAfterCommitWithPersistedHash(t *testing.T) 
 	}
 	require.NotNil(t, committed, "the commit must carry a READY transcript track")
 
-	got := fanout.materialize[0]
-	require.Equal(t, committed.AssetID, got.assetID)
+	got := fanout.calls[0]
+	require.Equal(t, committed.AssetID, got.clipID)
 	require.Equal(t, committed.LanguageCode, got.sourceLanguage,
 		"the fan-out must use the persisted track's language")
-	require.Equal(t, string(committed.TextHash), got.sourceTextHash,
-		"the fan-out must carry the persisted track's TextHash (the materializer fails closed on a mismatch)")
+	require.Equal(t, committed.TextContent, got.plainText,
+		"the fan-out must carry the persisted transcript (the canonical helper derives the TextHash the materializer checks)")
+	require.NotEmpty(t, got.plainText,
+		"a non-empty transcript is what routes the clip to the materialize branch, not the acquire branch")
 }
 
 // TestExecute_SchedulesAcquireWithoutTranscript pins the fallback: a clip
@@ -148,7 +140,7 @@ func TestExecute_SchedulesAcquireWithoutTranscript(t *testing.T) {
 	require.NoError(t, os.WriteFile(realPath, []byte("fake audio bytes"), 0o644))
 
 	writer := &fanoutRecordingWriter{}
-	fanout := &fakeMaterializeFanOut{defaultLang: "en"}
+	fanout := &fakeMaterializeFanOut{}
 
 	core, media, metadata, observability := validProcessSegmentDeps()
 	metadata.LocalizedWriter = writer
@@ -172,9 +164,9 @@ func TestExecute_SchedulesAcquireWithoutTranscript(t *testing.T) {
 	require.Equal(t, "processed", out.Status)
 	require.Equal(t, 1, writer.calls)
 
-	require.Empty(t, fanout.materialize, "no transcript → no materialize job")
-	require.Len(t, fanout.acquire, 1, "no transcript → the canonical acquire chain is scheduled")
-	require.Equal(t, "en", fanout.acquire[0].sourceLanguage)
+	require.Len(t, fanout.calls, 1, "a clip committed without a transcript must still schedule the canonical fan-out")
+	require.Empty(t, fanout.calls[0].plainText,
+		"an empty transcript is what routes the clip to the acquire branch (chain runs before translation)")
 }
 
 // TestExecute_NoFanOutPortIsANoOp pins the back-compatible posture: every
@@ -209,7 +201,7 @@ func TestExecute_NoFanOutPortIsANoOp(t *testing.T) {
 // seam the composition root uses: after WithMaterializeFanOut, the
 // per-segment pipeline carries the port.
 func TestService_WithMaterializeFanOut_WiresThePipeline(t *testing.T) {
-	fanout := &fakeMaterializeFanOut{defaultLang: "en"}
+	fanout := &fakeMaterializeFanOut{}
 	uc := NewProcessYouTubeSegmentFromSubBundles(validProcessSegmentDeps())
 
 	svc := &Service{processSeg: uc}

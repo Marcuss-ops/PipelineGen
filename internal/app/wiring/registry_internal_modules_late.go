@@ -137,6 +137,11 @@ func registerVideoCreate(root *ComposeRoot, log *zap.Logger, rustMusclesPath, ff
 		Assembler: assembler,
 		Publish:   publisher,
 		Texts:     videocreate.NewTranscriptReadiness(root.Repos.TextTrackRepo),
+		// NOTE: the durable per-stage sink is intentionally NOT passed here.
+		// The workflow receives it through the execution tools
+		// (kernel JobExecutionTools.StageStatus, derived by the worker from
+		// the wired jobs broker), so the stage table needs no extra wiring
+		// and Deps keeps only the mandatory ports of the work.
 		Workspace: workspace,
 		Log:       log,
 	})

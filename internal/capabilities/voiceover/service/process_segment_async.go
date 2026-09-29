@@ -16,10 +16,8 @@ import (
 //
 // When the metadata column carries timing links, a VoiceoverTimingResult
 // is reconstructed so downstream consumers (script binding, docs render)
-// receive the same shape as a cold-run result. Word-level timing data
-// (the SpeechTimingArtifact) is NOT reconstructed — only the summary
-// fields and links are hydrated; consumers that need per-word timing
-// must download the timing.json artifact from Drive.
+// receive the same shape as a cold-run result. Timing-bearing cache hits carry
+// a separately downloaded and validated SpeechTimingArtifact.
 func buildCachedResult(cmd *ProcessSegmentCommand, hit *VoiceoverCacheHit, timingPolicy audio.TimingRequest, log *zap.Logger) *VoiceoverItemResult {
 	out := &VoiceoverItemResult{
 		Language:      cmd.Language,
@@ -37,15 +35,15 @@ func buildCachedResult(cmd *ProcessSegmentCommand, hit *VoiceoverCacheHit, timin
 		LegacyFileMD5: hit.LegacyFileMD5,
 	}
 
-	// Reconstruct the timing result from the persisted metadata when
-	// timing was requested. The full word-level artifact is not stored
-	// in the metadata column (only the SSOT timing.json on Drive has
-	// it), so the summary fields are hydrated from metadata.
+	// Reconstruct the timing result from persisted metadata when timing was
+	// requested, and attach the validated word-level artifact hydrated by the
+	// cache adapter.
 	if timingPolicy.Mode != audio.TimingDisabled && len(hit.MetaJSON) > 0 {
 		var meta map[string]any
 		if err := json.Unmarshal(hit.MetaJSON, &meta); err == nil {
 			if jsonLink, ok := meta["timing_json_link"].(string); ok && jsonLink != "" {
 				timingRes := &VoiceoverTimingResult{Status: TimingStatusCompleted}
+				timingRes.Artifact = hit.Artifact
 				timingRes.JSONLink = jsonLink
 				if srtLink, _ := meta["timing_srt_link"].(string); srtLink != "" {
 					timingRes.SRTLink = srtLink

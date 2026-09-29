@@ -247,6 +247,15 @@ func (e *ClipRenderExecutor) RenderJobID(plan cliprender.ClipRenderPlanV1) strin
 	return plan.RunID
 }
 
+// ClipRenderExecutor implements cliprender.RenderExecutor +
+// RenderExecutorWithJobID + the OPTIONAL RenderExecutorDeferring, which is what
+// lets the settle continuation be re-dispatched instead of pinned.
+var (
+	_ cliprender.RenderExecutor          = (*ClipRenderExecutor)(nil)
+	_ cliprender.RenderExecutorWithJobID = (*ClipRenderExecutor)(nil)
+	_ cliprender.RenderExecutorDeferring = (*ClipRenderExecutor)(nil)
+)
+
 // Submit is the PRE-RENDER half of the boundary (Wave B): validate the plan,
 // map it onto the renderinggen.overlay-plan.v1 contract, resolve + prefetch its
 // content-addressed assets and enqueue the remote render. It returns as soon as
@@ -445,9 +454,28 @@ func (e *ClipRenderExecutor) Settle(ctx context.Context, plan cliprender.ClipRen
 	return e.SettleWithJobID(ctx, plan, plan.RunID)
 }
 
+// SettleWithin is the BOUNDED settle: the deferrable form of SettleWithJobID.
+//
+// It exists so the settle continuation stops parking a worker lane on the whole
+// remote render. A render that finishes inside the budget behaves exactly like
+// the blocking form; one that does not is reported as cliprender.ErrRenderPending
+// WITH nothing else changed, so the caller can hand its attempt back (a
+// deferral, which spends no retry budget) and ask again later. budget <= 0 is
+// the historical blocking wait.
+func (e *ClipRenderExecutor) SettleWithin(ctx context.Context, plan cliprender.ClipRenderPlanV1, renderJobID string, budget time.Duration) (*cliprender.RenderOutcome, error) {
+	return e.settle(ctx, plan, renderJobID, budget)
+}
+
 // SettleWithJobID is the restart-safe settle path for chunk families whose
 // assembly anchor is derived from the sealed plan digest rather than RunID.
 func (e *ClipRenderExecutor) SettleWithJobID(ctx context.Context, plan cliprender.ClipRenderPlanV1, renderJobID string) (*cliprender.RenderOutcome, error) {
+	return e.settle(ctx, plan, renderJobID, 0)
+}
+
+// settle is the ONE settle implementation: the blocking and the bounded entries
+// differ only by the wait budget, so they cannot disagree about what a certified
+// terminal render means.
+func (e *ClipRenderExecutor) settle(ctx context.Context, plan cliprender.ClipRenderPlanV1, renderJobID string, waitBudget time.Duration) (*cliprender.RenderOutcome, error) {
 	if e == nil || e.queue == nil {
 		return nil, fmt.Errorf("%w: RenderingGen queue is not configured", cliprender.ErrBackendUnavailable)
 	}
@@ -458,10 +486,16 @@ func (e *ClipRenderExecutor) SettleWithJobID(ctx context.Context, plan cliprende
 		return nil, fmt.Errorf("renderinggen clip executor: remote render job id is required")
 	}
 	// The wait is the canonical capability wait (scriptgen.
-	// WaitRenderQueueTerminal), not a local copy: the settle continuation and
-	// the overlay enqueue path must agree on what "terminal" means.
-	completed, _, err := scriptgen.WaitRenderQueueTerminal(ctx, e.queue, renderJobID, e.interval)
+	// WaitRenderQueueTerminalBounded, which delegates to WaitRenderQueueTerminal
+	// for budget <= 0), not a local copy: the settle continuation and the
+	// overlay enqueue path must agree on what "terminal" means. A budget expiry
+	// is translated into the capability-owned pending sentinel — the transport's
+	// signal must never leak into the capability's error vocabulary.
+	completed, _, err := scriptgen.WaitRenderQueueTerminalBounded(ctx, e.queue, renderJobID, e.interval, waitBudget)
 	if err != nil {
+		if errors.Is(err, scriptgen.ErrRenderQueuePending) {
+			return nil, fmt.Errorf("%w: job %s: %v", cliprender.ErrRenderPending, renderJobID, err)
+		}
 		return nil, fmt.Errorf("renderinggen clip executor: wait: %w", err)
 	}
 	if completed.State != string(queueclient.StateCompleted) || completed.Artifact == nil {

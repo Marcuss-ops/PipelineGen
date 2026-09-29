@@ -184,12 +184,39 @@ None of these are satisfied today. Each names its closing artifact.
       `isSHA256Hex` predicate the sealed plan digest uses). Each test was
       mutation-probed: dropping the range from `chunkJobID` makes
       `…IsTheRangeKey` fail with the offending window pair.
-- [ ] **Admission** — two chunk footprints that fit ⇒ `ParallelDisjoint` with
-      `admitted_slots ≥ 2`; one that does not fit ⇒ `Serial` with the arithmetic
-      in `reason`. Extend the existing `decide_render_admission` cases.
+- [x] **Admission** — SATISFIED, verified 2026-09-28 by running the gate, not
+      by reading it: `chronon3d_daemon_render_concurrency_tests` reports
+      **25/25 cases, 163/163 assertions passed**. The two required cases are
+      present and green — `"concurrency policy: measured DirectYUV chunks
+      overlap on the reference device"` (`ParallelDisjoint` with
+      `admitted_slots ≥ 2` and `peak_footprints_that_fit ≥ 2`) and
+      `"concurrency policy: the reference device refuses overlap for every
+      class, with the reason"` (`Serial`, `peak_footprints_that_fit == 1`, and a
+      `reason` that names VRAM for the non-monolithic classes). The verdict is
+      derived from the numbers rather than hardcoded: a device with room flips
+      it, and a monolithic render stays exclusive on that same device.
+      This entry was stale, not unimplemented — `decide_render_admission`,
+      `RenderJobClass`/`RenderAdmission`, `kRenderJobExecutionSerialized` and the
+      derivation of the flag from `reference_device_policy_input()` all landed
+      with the cases. Nothing was added to close it.
 - [ ] **Overlap (VRAM-gated, live)** — two disjoint chunks of one plan render
       concurrently with wall `w` strictly less than the sum of their solo walls.
-      Requires §5 step 1. Names its host.
+      Requires §5 step 1 **and a chunk producer** — corrected 2026-09-28, see
+      below. Gate: `make gate-chunk-overlap`
+      (`tests/operational/measure_gpu_admission.sh i1`).
+      **The host is necessary but NOT sufficient.** No producer declares chunk
+      membership today: RenderingGen submits whole clips (clip lane) and whole
+      plans (overlay lane), so every job charges as
+      `kDefaultRenderJobClass = MonolithicSamePlan`, for which
+      `decide_render_admission` returns `Serial` **by construction** regardless of
+      free device memory. The device half is measurable today and measured — the
+      shipped `chronon3d_daemon_render_concurrency_tests` binary reports **25/25
+      cases, 163/163 assertions passed** on the reference host (RTX A4000, 16 GB)
+      and its verdict for `ChunkedDisjointSamePlan` is `ParallelDisjoint`. What is
+      missing is the producer, so the gate reports `BLOCKED-ON-PRODUCER` (exit 3)
+      rather than a pass or a failure. Declaring the class while the producer
+      still submits monolithic jobs remains the no-op §7 forbids reporting as
+      progress.
 - [ ] **Assembly parity** — decoding the concatenated chunk artifact reproduces
       the monolithic artifact's frame sequence (GOP boundary respected per C5).
       This is the correctness gate for C5.
@@ -203,6 +230,10 @@ None of these are satisfied today. Each names its closing artifact.
 - **The VRAM reduction** (§5 step 1) is a Chronon residency change with a host
   measurement; it is out of scope for this ticket and is the real gate.
 - **Live overlap numbers** cannot be produced from a checkout: they need the
-  Vulkan/CUDA/NVENC host with a working daemon.
+  Vulkan/CUDA/NVENC host with a working daemon **and a producer that declares
+  chunk membership**. The daemon-side policy verdict is decidable on the host,
+  but with no chunk-declaring producer every job is monolithic and therefore
+  Serial by construction, so the wall-vs-solo-wall number has no configuration
+  that can produce it.
 - Declaring chunks while leaving the serialization on is a **no-op** by
   construction and must not be reported as progress.

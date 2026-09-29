@@ -68,7 +68,14 @@ func (a *SubtitleFetcherAdapter) FetchFullVTT(ctx context.Context, videoURL stri
 	}
 	id := extractIDFromURL(videoURL)
 
-	if cachedPath, ok := a.resolveCachedVTT(id); ok {
+	// The gate is the CONFIGURED-language lookup, not the plain lookup: a
+	// leftover VTT in a language outside media.multilingual (an older run
+	// with a different CSV, a hand-placed file) must not convince the
+	// adapter that the requested language is already on disk — otherwise
+	// the configured language is never downloaded and the clip ships
+	// whatever happened to be cached, labelled as if it were the
+	// configured one.
+	if cachedPath, ok := a.resolveCachedConfiguredVTT(id); ok {
 		return ParseVTTEntries(cachedPath, 0, 0)
 	}
 	if err := os.MkdirAll(a.cacheDir, 0o755); err != nil {
@@ -87,7 +94,11 @@ func (a *SubtitleFetcherAdapter) FetchFullVTT(ctx context.Context, videoURL stri
 	args = append(args, "-o", filepath.Join(a.cacheDir, "%(id)s.%(ext)s"))
 	// best-effort: no error if yt-dlp can't fetch subs.
 	_, _, _ = a.runner.Run(ctx, a.ytdlpPath, args)
-	if cachedPath, ok := a.resolveCachedVTT(id); ok {
+	// Post-run resolution uses the FULL preference (configured languages
+	// first, then the <id>.*.vtt fallback) so an out-of-config track is
+	// still surfaced — honestly labelled by its own filename language
+	// rather than dropped.
+	if cachedPath, _, ok := a.resolveCachedVTT(id); ok {
 		return ParseVTTEntries(cachedPath, 0, 0)
 	}
 	return nil, nil
@@ -109,7 +120,9 @@ func splitLangs(langs string) []string {
 	return out
 }
 
-// resolveCachedVTT locates the VTT file yt-dlp ACTUALLY wrote for videoID.
+// resolveCachedVTT locates the VTT file yt-dlp ACTUALLY wrote for videoID
+// and returns the language token embedded in its filename ("" for the bare
+// legacy <id>.vtt).
 //
 // yt-dlp always inserts the track language into a subtitle filename, so the
 // canonical `-o %(id)s.%(ext)s` invocation produces `<id>.<lang>.vtt`
@@ -122,8 +135,33 @@ func splitLangs(langs string) []string {
 // Preference order: the bare `<id>.vtt` (legacy / hand-placed), then one file
 // per configured language including its `-orig` variant, then any
 // `<id>.*.vtt` (deterministic alphabetical choice) so a track whose language
-// is outside the configured CSV is still surfaced rather than dropped.
-func (a *SubtitleFetcherAdapter) resolveCachedVTT(videoID string) (string, bool) {
+// is outside the configured CSV is still surfaced rather than dropped — and
+// NOW its OWN filename language is reported with it, never the configured
+// one (the facade labels the bundle from this token: see subtitleLanguageFor).
+//
+// The returned token is raw ("it", "pt-BR", "zh-Hans", "it-orig"); mapping
+// it to BCP-47 is the facade's job, not this leaf's.
+func (a *SubtitleFetcherAdapter) resolveCachedVTT(videoID string) (string, string, bool) {
+	if videoID == "" || a.cacheDir == "" {
+		return "", "", false
+	}
+	if p, ok := a.resolveCachedConfiguredVTT(videoID); ok {
+		return p, vttLanguageToken(videoID, p), true
+	}
+	matches, _ := filepath.Glob(filepath.Join(a.cacheDir, videoID+".*.vtt"))
+	if len(matches) > 0 {
+		sort.Strings(matches)
+		return matches[0], vttLanguageToken(videoID, matches[0]), true
+	}
+	return "", "", false
+}
+
+// resolveCachedConfiguredVTT is the CONFIGURED-language lookup: the bare
+// legacy <id>.vtt or a language-suffixed file matching the media.multilingual
+// CSV (in order, including the -orig variant). It gates the yt-dlp run in
+// FetchFullVTT: an out-of-config leftover must never look like "the
+// requested language is already cached".
+func (a *SubtitleFetcherAdapter) resolveCachedConfiguredVTT(videoID string) (string, bool) {
 	if videoID == "" || a.cacheDir == "" {
 		return "", false
 	}
@@ -140,12 +178,18 @@ func (a *SubtitleFetcherAdapter) resolveCachedVTT(videoID string) (string, bool)
 			}
 		}
 	}
-	matches, _ := filepath.Glob(filepath.Join(a.cacheDir, videoID+".*.vtt"))
-	if len(matches) > 0 {
-		sort.Strings(matches)
-		return matches[0], true
-	}
 	return "", false
+}
+
+// vttLanguageToken extracts the language token yt-dlp inserted into
+// `<id>.<lang>.vtt` (dropping the optional `-orig` suffix). Returns "" for
+// the bare <id>.vtt, whose name carries no language at all.
+func vttLanguageToken(videoID, path string) string {
+	base := strings.TrimSuffix(filepath.Base(path), ".vtt")
+	if base == videoID {
+		return ""
+	}
+	return strings.TrimSuffix(strings.TrimPrefix(base, videoID+"."), "-orig")
 }
 
 // fileExists reports whether path is an existing regular file.
@@ -165,7 +209,7 @@ func (a *SubtitleFetcherAdapter) SliceSubtitles(_ context.Context, videoID strin
 	if outputPath == "" {
 		return fmt.Errorf("subtitles: outputPath is required")
 	}
-	vttPath, found := a.resolveCachedVTT(videoID)
+	vttPath, _, found := a.resolveCachedVTT(videoID)
 	if !found {
 		if writeErr := os.WriteFile(outputPath, []byte{}, 0o644); writeErr != nil {
 			return fmt.Errorf("subtitles: write empty transcript at %s: %w", outputPath, writeErr)

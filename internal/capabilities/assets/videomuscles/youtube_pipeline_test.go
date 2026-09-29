@@ -1,10 +1,12 @@
 package videomuscles
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"testing"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaexec"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	fileutil "github.com/Marcuss-ops/PipelineGen/internal/platform/filesystem"
 	"github.com/stretchr/testify/require"
@@ -115,4 +117,141 @@ func TestRandomStringSuffixLength(t *testing.T) {
 	suffix := fileutil.RandomString(8)
 	require.Len(t, suffix, 8, "RandomString(8) must produce exactly 8 chars")
 	require.Regexp(t, `^[0-9a-f]+$`, suffix, "RandomString must be hex")
+}
+
+// recordingClipProcessor captures the media operation the pipeline asks for and
+// the exact seek window it computed. No ffmpeg is spawned.
+type recordingClipProcessor struct {
+	called     string
+	start, end string
+	sourcePath string
+	noAudio    bool
+}
+
+func (p *recordingClipProcessor) CutCopy(_ context.Context, sourcePath, _, start, end string, noAudio bool) error {
+	p.called = "copy"
+	p.sourcePath = sourcePath
+	p.start, p.end, p.noAudio = start, end, noAudio
+	return nil
+}
+
+func (p *recordingClipProcessor) CutAndNormalize(
+	_ context.Context, sourcePath, _, start, end string, opts mediaexec.CutAndNormalizeOptions,
+) error {
+	p.called = "normalize"
+	p.sourcePath = sourcePath
+	p.start, p.end = start, end
+	p.noAudio = opts.NoAudio
+	return nil
+}
+
+// TestDownloadAndCutYouTubeVideo_AppliesSourceOffsetToLocalSeek pins the seek
+// arithmetic of the merged-window path: the segment timestamps are ABSOLUTE in
+// the source, while the staged file holds a SECTION of it, so the local cut must
+// seek at (start - SourceOffsetSec). Getting this wrong publishes the wrong
+// seconds with no visible failure.
+func TestDownloadAndCutYouTubeVideo_AppliesSourceOffsetToLocalSeek(t *testing.T) {
+	cases := []struct {
+		name       string
+		cutMode    mediaexec.CutMode
+		start      float64
+		duration   float64
+		offset     float64
+		wantCalled string
+		wantStart  string
+		wantEnd    string
+	}{
+		{
+			name:       "normalize seeks inside the staged section",
+			cutMode:    mediaexec.CutModeNormalize,
+			start:      610,
+			duration:   20,
+			offset:     600,
+			wantCalled: "normalize",
+			wantStart:  "00:00:10.000",
+			wantEnd:    "00:00:30.000",
+		},
+		{
+			name:       "copy seeks inside the staged section",
+			cutMode:    mediaexec.CutModeCopy,
+			start:      610,
+			duration:   20,
+			offset:     600,
+			wantCalled: "copy",
+			wantStart:  "00:00:10.000",
+			wantEnd:    "00:00:30.000",
+		},
+		{
+			name:       "whole-source stage keeps absolute timestamps",
+			cutMode:    mediaexec.CutModeNormalize,
+			start:      90,
+			duration:   15,
+			offset:     0,
+			wantCalled: "normalize",
+			wantStart:  "00:01:30.000",
+			wantEnd:    "00:01:45.000",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			proc := &recordingClipProcessor{}
+			p := NewPipeline(&config.Config{}, zap.NewNop(), proc)
+			outDir := t.TempDir()
+			staged := filepath.Join(outDir, "section.mp4")
+
+			result, err := p.DownloadAndCutYouTubeVideo(context.Background(), YouTubeCutRequest{
+				URL:               "https://www.youtube.com/watch?v=vid",
+				VideoID:           "vid",
+				Start:             tc.start,
+				Duration:          tc.duration,
+				OutputName:        "clip",
+				OutputDir:         outDir,
+				PreDownloadedPath: staged,
+				SourceOffsetSec:   tc.offset,
+				CutMode:           tc.cutMode,
+				SkipMetadataFetch: true,
+			})
+			require.NoError(t, err)
+			require.Equal(t, tc.wantCalled, proc.called)
+			require.Equal(t, staged, proc.sourcePath, "the cut must read the staged section")
+			require.Equal(t, tc.wantStart, proc.start)
+			require.Equal(t, tc.wantEnd, proc.end)
+			require.NotNil(t, result)
+		})
+	}
+}
+
+// TestDownloadAndCutYouTubeVideo_FailsClosedOnInconsistentOffset pins the two
+// caller-bug guards: an offset without a staged file, and a segment that starts
+// before its own section. Both would silently publish the wrong seconds if
+// clamped or ignored instead of refused.
+func TestDownloadAndCutYouTubeVideo_FailsClosedOnInconsistentOffset(t *testing.T) {
+	p := NewPipeline(&config.Config{}, zap.NewNop(), &recordingClipProcessor{})
+	outDir := t.TempDir()
+
+	_, err := p.DownloadAndCutYouTubeVideo(context.Background(), YouTubeCutRequest{
+		URL:             "https://www.youtube.com/watch?v=vid",
+		VideoID:         "vid",
+		Start:           30,
+		Duration:        10,
+		OutputName:      "clip",
+		OutputDir:       outDir,
+		SourceOffsetSec: 100,
+		CutMode:         mediaexec.CutModeNormalize,
+	})
+	require.Error(t, err, "an offset with no pre-downloaded path must fail closed")
+
+	_, err = p.DownloadAndCutYouTubeVideo(context.Background(), YouTubeCutRequest{
+		URL:               "https://www.youtube.com/watch?v=vid",
+		VideoID:           "vid",
+		Start:             30,
+		Duration:          10,
+		OutputName:        "clip",
+		OutputDir:         outDir,
+		PreDownloadedPath: filepath.Join(outDir, "section.mp4"),
+		SourceOffsetSec:   100,
+		CutMode:           mediaexec.CutModeNormalize,
+	})
+	require.Error(t, err, "a segment starting before its staged section must fail closed")
 }

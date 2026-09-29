@@ -90,6 +90,78 @@ func materializeGeneratedScenes(req GenerateRequest, scenes []Scene) []Scene {
 	return out
 }
 
+// importantPhraseHintOwnersAvailable reports whether every explicit phrase
+// hint has exactly one segment brief that owns it. That owner lets the
+// streaming path finalize the scene text before any translation or TTS sees it.
+func importantPhraseHintOwnersAvailable(req GenerateRequest) bool {
+	if len(req.MediaPlan.Extraction.ImportantPhrases) == 0 {
+		return true
+	}
+	segments := req.ScriptParams.Segments
+	if len(segments) == 0 {
+		return false
+	}
+	for _, raw := range req.MediaPlan.Extraction.ImportantPhrases {
+		hint := strings.TrimSpace(raw)
+		if hint == "" {
+			continue
+		}
+		owners := 0
+		for _, segment := range segments {
+			if strings.Contains(strings.ToLower(segment.SourceText), strings.ToLower(hint)) ||
+				strings.Contains(strings.ToLower(segment.Topic), strings.ToLower(hint)) {
+				owners++
+			}
+		}
+		if owners != 1 {
+			return false
+		}
+	}
+	return true
+}
+
+// applyOwnedImportantPhraseHints finalizes this scene's caller-owned phrase
+// hints before SceneTextReady. It mirrors the batch materializer's punctuation
+// behavior and only touches hints whose unique brief owner is this scene.
+func applyOwnedImportantPhraseHints(req GenerateRequest, scene Scene) Scene {
+	if len(req.MediaPlan.Extraction.ImportantPhrases) == 0 || len(req.ScriptParams.Segments) == 0 {
+		return scene
+	}
+	segmentIndex := scene.Index
+	for i, segment := range req.ScriptParams.Segments {
+		if segment.ID != "" && segment.ID == scene.ID {
+			segmentIndex = i
+			break
+		}
+	}
+	if segmentIndex < 0 || segmentIndex >= len(req.ScriptParams.Segments) {
+		return scene
+	}
+	owner := req.ScriptParams.Segments[segmentIndex]
+	if scene.Text == nil {
+		scene.Text = make(map[Language]string)
+	}
+	text := strings.TrimSpace(scene.Text[req.SourceLanguage])
+	for _, raw := range req.MediaPlan.Extraction.ImportantPhrases {
+		hint := strings.TrimSpace(raw)
+		if hint == "" ||
+			(!strings.Contains(strings.ToLower(owner.SourceText), strings.ToLower(hint)) &&
+				!strings.Contains(strings.ToLower(owner.Topic), strings.ToLower(hint))) ||
+			strings.Contains(strings.ToLower(text), strings.ToLower(hint)) {
+			continue
+		}
+		if text != "" {
+			text += " "
+		}
+		text += hint
+		if !strings.HasSuffix(text, ".") && !strings.HasSuffix(text, "!") && !strings.HasSuffix(text, "?") {
+			text += "."
+		}
+	}
+	scene.Text[req.SourceLanguage] = text
+	return scene
+}
+
 // materializeVerbatimSourceTextScenes builds the source-language scene list
 // directly from caller-provided segment text. This path is used when a caller
 // is translating or processing an already-authored script and must preserve
@@ -475,6 +547,7 @@ func (r *Runner) generateSceneTextStreamingWithTrace(ctx context.Context, runID 
 	var sceneMu sync.Mutex
 	sceneByIndex := make(map[int]Scene)
 	emit := func(scene Scene) error {
+		scene = applyOwnedImportantPhraseHints(req, scene)
 		// The SceneTextReady boundary: pin when this scene's text became
 		// final so the streaming overlap is durable and provable (scene N's
 		// translation/TTS must start before scene N+1's text is ready).

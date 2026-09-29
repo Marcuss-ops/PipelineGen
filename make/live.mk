@@ -115,4 +115,42 @@ gate-core-ready-tail:
 	 MAX_TAIL_MS="$(MAX_TAIL_MS)" \
 	 bash tests/operational/measure_core_ready_tail.sh --gate $(RESULTS_DIRS)
 
+# ─── GPU admission gates (September 2026) ───────────────────────────────
+#
+# The two GPU-bound acceptance criteria that a checkout cannot decide:
+#   D2  render serialization / GPU admission
+#       (TICKET-PIPELINE-CRITICAL-PATH-DEPLOYMENT section D2)
+#   I1  chunk overlap, VRAM-gated, live
+#       (TICKET-I1-CHUNK-PRODUCER-CONTRACT section 6)
+#
+# Both are decided by the same contract: how many holders the overlay GPU
+# admission admits (RENDERINGGEN_GPU_SLOTS), what one job peaks at in VRAM, and
+# whether N concurrent jobs beat the serial wall. One script owns both so the
+# two halves cannot disagree about the contract.
+#
+# preflight is safe and cheap: it resolves the contract, the device and the
+# tooling, and FAILS (exit 2) when PipelineGen and RenderingGen declare
+# DIFFERENT admission contracts, because every number measured afterwards would
+# be measured against an undeclared contract.
+#
+# gate-gpu-admission runs the D2 render-concurrency benchmark in real-stack
+# mode. It needs a real mp4: set CLIP_PATH (or drop one in
+# tests/operational/payloads). Without it nothing is measured and the gate
+# exits 1 rather than reporting a number it did not take.
+.PHONY: gpu-admission-preflight gate-gpu-admission gate-chunk-overlap
+# audit-repro: D2 = wall vs accumulated work per concurrency level; see
+# docs/tickets/TICKET-PIPELINE-CRITICAL-PATH-DEPLOYMENT-2026-09-13.md D2.
+gpu-admission-preflight:
+	@bash tests/operational/measure_gpu_admission.sh preflight
+
+# audit-repro: I1 = two disjoint chunks, wall w < sum of solo walls; see
+# docs/tickets/TICKET-I1-CHUNK-PRODUCER-CONTRACT.md section 6.
+gate-gpu-admission:
+	@CLIP_PATH="$(CLIP_PATH)" \
+	 CLIP_COUNT="$(CLIP_COUNT)" \
+	 bash tests/operational/measure_gpu_admission.sh --gate d2
+
+gate-chunk-overlap:
+	@bash tests/operational/measure_gpu_admission.sh --gate i1
+
 # verify-images — quick verification dedicated to the Images module.

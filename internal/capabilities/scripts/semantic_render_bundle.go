@@ -12,7 +12,7 @@ import (
 // surfaces into the single cross-stage bundle. It intentionally consumes the
 // existing EntityTimeline, OverlayIntents and OverlayPlan; it never reruns
 // extraction, asset search or timing.
-func BuildSemanticRenderBundleFromResult(result *GenerateResult, language Language, runID, videoID string) (*capabilityoverlay.SemanticRenderBundleV1, error) {
+func BuildSemanticRenderBundleFromResult(result *GenerateResult, language Language, runID, videoID string, perSceneImages ...bool) (*capabilityoverlay.SemanticRenderBundleV1, error) {
 	if result == nil || result.EntityTimeline == nil {
 		return nil, nil
 	}
@@ -42,6 +42,7 @@ func BuildSemanticRenderBundleFromResult(result *GenerateResult, language Langua
 		Scene:          scene,
 		OverlayIntents: append([]capabilityoverlay.OverlayIntent(nil), result.OverlayIntents...),
 	}
+	sceneScopedImages := len(perSceneImages) > 0 && perSceneImages[0]
 	for _, timelineScene := range result.EntityTimeline.Scenes {
 		for _, occurrence := range timelineScene.Entities {
 			text := strings.TrimSpace(occurrence.Name)
@@ -68,14 +69,18 @@ func BuildSemanticRenderBundleFromResult(result *GenerateResult, language Langua
 			if start < 0 {
 				continue
 			}
+			occurrenceID := ""
+			if sceneScopedImages {
+				occurrenceID = sceneScopedEntityOccurrenceID(occurrence.SceneID, entityID)
+			}
 			bundle.Entities = append(bundle.Entities, capabilityoverlay.ResolvedEntity{
-				EntityID: entityID, Type: occurrence.Type, Text: text, CanonicalText: text,
+				EntityID: entityID, OccurrenceID: occurrenceID, Type: occurrence.Type, Text: text, CanonicalText: text,
 				Evidence: text, Start: start, End: start + len(text), Confidence: occurrence.Confidence,
 				SceneID: occurrence.SceneID,
 			})
 			preset := bundlePresetForType(occurrence.Type)
 			bundle.Timeline = append(bundle.Timeline, capabilityoverlay.TimelineEvent{
-				EntityID: entityID, StartMs: occurrence.AudioStartUS / 1000,
+				EntityID: entityID, OccurrenceID: occurrenceID, StartMs: occurrence.AudioStartUS / 1000,
 				EndMs: (occurrence.AudioEndUS + 999) / 1000, PresetID: preset,
 			})
 		}
@@ -92,7 +97,11 @@ func BuildSemanticRenderBundleFromResult(result *GenerateResult, language Langua
 	// spelling, a localized name) and downgraded the card to text-only.
 	bundleEntityIDs := make(map[string]struct{}, len(bundle.Entities))
 	for _, resolved := range bundle.Entities {
-		bundleEntityIDs[resolved.EntityID] = struct{}{}
+		key := resolved.EntityID
+		if resolved.OccurrenceID != "" {
+			key = resolved.OccurrenceID
+		}
+		bundleEntityIDs[key] = struct{}{}
 	}
 	for _, s := range result.Scenes {
 		if s.Annotations == nil {
@@ -127,15 +136,23 @@ func BuildSemanticRenderBundleFromResult(result *GenerateResult, language Langua
 			// StableEntityID space ("ent_<hex>"), and Validate fails closed on a
 			// dangling asset join.
 			entityID := annotationStableEntityID(entity)
-			if _, ok := bundleEntityIDs[entityID]; !ok {
+			occurrenceID := ""
+			if sceneScopedImages {
+				occurrenceID = sceneScopedEntityOccurrenceID(s.ID, entityID)
+			}
+			joinKey := entityID
+			if occurrenceID != "" {
+				joinKey = occurrenceID
+			}
+			if _, ok := bundleEntityIDs[joinKey]; !ok {
 				// The entity has no certified timeline occurrence (not
 				// grounded or not spoken verbatim), so no bundle entity can
 				// claim this asset — it cannot be part of the render contract.
 				continue
 			}
 			bundle.Assets = append(bundle.Assets, capabilityoverlay.BoundAsset{
-				EntityID: entityID,
-				AssetID:  identity.AssetID, ContentHash: identity.SHA256,
+				EntityID: entityID, OccurrenceID: occurrenceID,
+				AssetID: identity.AssetID, ContentHash: identity.SHA256,
 				DriveFileID: entity.Image.DriveFileID, SourceURL: url,
 				Verified: url != "" || entity.Image.DriveFileID != "",
 			})
@@ -149,6 +166,10 @@ func BuildSemanticRenderBundleFromResult(result *GenerateResult, language Langua
 	}
 	_ = videoID // retained in the caller's OverlayPlan identity.
 	return bundle, nil
+}
+
+func sceneScopedEntityOccurrenceID(sceneID, entityID string) string {
+	return strings.TrimSpace(sceneID) + "::" + strings.TrimSpace(entityID)
 }
 
 // runeSpanBytes converts the entity contract's Unicode-rune span into the

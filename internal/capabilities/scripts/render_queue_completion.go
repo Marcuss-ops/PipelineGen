@@ -12,6 +12,7 @@ package scriptgeneration
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/url"
 	"path/filepath"
@@ -154,6 +155,58 @@ func WaitRenderQueueTerminal(ctx context.Context, client RenderQueueClient, id s
 			metrics.PollingSleep += time.Since(sleepStarted)
 		}
 	}
+}
+
+// ErrRenderQueuePending marks a bounded wait that ended because its BUDGET ran
+// out while the remote render is still running. It is a WAIT, not a failure:
+// the caller can hand its attempt back (job.DeferredAfter — a deferral spends no
+// retry budget) and ask again later, which is what keeps a worker lane from
+// being parked on a render that may take minutes or hours. A terminal failure or
+// a genuine transport fault is NOT this sentinel: those still propagate.
+//
+// The render handle is returned with it (RenderQueueJob), so the caller never
+// has to reconstruct the remote address.
+var ErrRenderQueuePending = errors.New("render queue job is not terminal yet")
+
+// WaitRenderQueueTerminalBounded is the deferrable form of
+// WaitRenderQueueTerminal: it waits at most budget for the terminal state and
+// reports ErrRenderQueuePending when the render outlives it.
+//
+// budget <= 0 is the historical blocking wait (one call parks until the render
+// finishes), which is why every existing caller keeps its exact behaviour by
+// passing 0. The bounded form exists so ONE settle path can be re-dispatched
+// instead of pinned: the caller defers, and the retry asks again.
+func WaitRenderQueueTerminalBounded(ctx context.Context, client RenderQueueClient, id string, interval, budget time.Duration) (RenderQueueJob, RenderCompletionMetrics, error) {
+	if client == nil {
+		return RenderQueueJob{}, RenderCompletionMetrics{}, fmt.Errorf("render queue wait: client is not configured")
+	}
+	if budget <= 0 {
+		return WaitRenderQueueTerminal(ctx, client, id, interval)
+	}
+	waitCtx, cancel := context.WithTimeout(ctx, budget)
+	defer cancel()
+	job, metrics, err := WaitRenderQueueTerminal(waitCtx, client, id, interval)
+	if err == nil {
+		return job, metrics, nil
+	}
+	// A budget expiry is the deferral signal. It is detected from the WAIT's own
+	// context rather than from the error text: the waiter may surface it as a
+	// context error, a transport error or a wrapped client error depending on
+	// which path (event-driven or polling fallback) was taken, and the fact that
+	// matters is "my window closed, the render did not". The CALLER's context is
+	// checked too, so a caller-side cancellation is never mistaken for a wait.
+	if ctx.Err() == nil && (waitCtx.Err() != nil || errors.Is(err, context.DeadlineExceeded)) {
+		metrics.CompletionWait = budget
+		// The polling fallback cannot report the job it was watching (a context
+		// end has no job to return), so the address is normalized from the
+		// caller's own id: the pending result must ALWAYS carry the remote
+		// address, because that address is what the next attempt resumes from.
+		if strings.TrimSpace(job.ID) == "" {
+			job.ID = id
+		}
+		return job, metrics, fmt.Errorf("render queue job %s still %s after %s: %w", id, job.State, budget, ErrRenderQueuePending)
+	}
+	return job, metrics, err
 }
 
 // RearmFailedRenderJob re-arms the render job that a submission COLLIDED with

@@ -84,6 +84,37 @@ func RenderUnitCount(scenes []Scene) int {
 	return total
 }
 
+// localizedRenderClipFields resolves the source-clip reference a localized
+// render needs from a scene's clip bindings. It prefers the primary Clip and
+// falls back to the first multi-clip binding; both are empty for audio-only
+// scenes. The clip ID doubles as the media asset id (ClipReference.ID is the
+// canonical asset identity) and DurationUS is converted to milliseconds.
+//
+// Moved verbatim from runner_deps.go (2026-09-28, 603 → 577) to satisfy the
+// strict 600-LOC forward-prevention gate (godlike/08) without changing
+// behaviour: the scene-level helper and its unit-level sibling
+// (localizedRenderUnitClipFields, below) are one cohesive render-unit family.
+func localizedRenderClipFields(scene Scene) (clipID, assetID, sha256 string, durationMS int64) {
+	clip := scene.Clip
+	if clip == nil && len(scene.Clips) > 0 {
+		clip = scene.Clips[0]
+	}
+	if clip == nil {
+		return "", "", "", 0
+	}
+	durationMS = clip.DurationUS / 1000
+	if durationMS <= 0 && clip.Duration > 0 {
+		durationMS = int64(clip.Duration * 1000)
+	}
+	if durationMS <= 0 && clip.SourceOutMS > clip.SourceInMS {
+		durationMS = clip.SourceOutMS - clip.SourceInMS
+	}
+	if durationMS <= 0 && scene.DurationMS > 0 {
+		durationMS = scene.DurationMS
+	}
+	return clip.ID, clip.ID, clip.SHA256, durationMS
+}
+
 // localizedRenderUnitClipFields resolves the source-clip reference a localized
 // render needs from one render unit. It mirrors localizedRenderClipFields but
 // works on the unit's exact clip so every fixed-section clip fans out with its

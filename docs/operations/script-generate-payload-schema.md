@@ -63,7 +63,7 @@ keep their image style.
   items map to batch generation.
 - Every per-item block (`source`, `script_params`, `output`, `docs`,
   `audio`, `media_plan`, `overlay_background`, `overlay_style`,
-  `phrase_motion_family`,
+  `phrase_motion_family`, `max_phrase_overlays`,
   `video_metadata`, `intro`, `outro`) is optional unless its own
   validator says otherwise (`source` is required).
 
@@ -72,6 +72,21 @@ one certified modern Apple motion for the payload and reuse it for every
 phrase. Retries with the same job identity keep the same selection. Omit the
 field to retain the default run-wide phrase motion rotation. Image motions are
 sampled independently per image item.
+
+`max_phrase_overlays` sets the **run-level ceiling** for grounded phrase
+overlays, i.e. how many phrases the payload may choose to render. A positive
+value is honoured verbatim and may raise or lower the certified default (five);
+zero or omitted keeps that default. Deduplication and semantic ranking still run
+first, so a ceiling larger than the number of grounded candidates simply admits
+them all. The image ceiling is unaffected. `video.create` exposes the same key at
+the top level and forwards it to its script-generate child.
+
+```json
+{
+  "version": 2,
+  "items": [{ "source": { "type": "text", "topic": "..." }, "max_phrase_overlays": 12 }]
+}
+```
 
 ```json
 {
@@ -135,5 +150,7 @@ silently ignored field:
 - `docs/operations/network-exposure.md` §3 — the `curl` invocation for
   `POST /api/script/generate` and the `202 Accepted` + polling contract.
 - `docs/operations/job-debug-runbook.md` — diagnosing the resulting job
-  row when generation fails after acceptance.
+  row when generation fails after acceptance, including §10 for the
+  `final_job=true` remote handoff (`REMOTE_RENDER_PENDING`, the attach-aware
+  retry, and the `VELOX_FINAL_JOB_ATTACH_SECONDS` wait budget).
 - `docs/api/ACTIVE_API_GENERATED.md` — the generated route manifest.

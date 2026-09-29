@@ -24,10 +24,15 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"io"
+	"net/url"
+	"strings"
 	"time"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
 	voiceover "github.com/Marcuss-ops/PipelineGen/internal/capabilities/voiceover/service"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/voiceover/service/persistence"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/drive"
 	sqassets "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/channels"
 	timeutil "github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
 	"go.uber.org/zap"
@@ -329,8 +334,9 @@ func (a *UseCaseRepoAdapter) findVoiceoverMediaAsset(ctx context.Context, assetI
 // carries a timing_json_link so the cached result includes the timing
 // bundle references.
 type VoiceoverCacheAdapter struct {
-	repo *UseCaseRepoAdapter
-	log  *zap.Logger
+	repo         *UseCaseRepoAdapter
+	log          *zap.Logger
+	timingReader drive.Reader
 }
 
 var _ voiceover.VoiceoverCacheLookup = (*VoiceoverCacheAdapter)(nil)
@@ -343,6 +349,15 @@ func NewVoiceoverCacheAdapter(repo *UseCaseRepoAdapter, log *zap.Logger) *Voiceo
 		log = zap.NewNop()
 	}
 	return &VoiceoverCacheAdapter{repo: repo, log: log}
+}
+
+// SetTimingArtifactReader installs the Drive read port used to hydrate the
+// canonical per-word artifact on timing-bearing cache hits. Without it, lookup
+// remains fail-closed and returns a miss for requests that require timing.
+func (a *VoiceoverCacheAdapter) SetTimingArtifactReader(reader drive.Reader) {
+	if a != nil {
+		a.timingReader = reader
+	}
 }
 
 // Lookup checks the voiceovers table for an existing row with the same
@@ -404,9 +419,8 @@ func (a *VoiceoverCacheAdapter) Lookup(ctx context.Context, fingerprint string, 
 		return nil, nil
 	}
 
-	// When timing is required, verify the metadata carries timing links.
+	var meta map[string]any
 	if timingRequired {
-		var meta map[string]any
 		if err := json.Unmarshal([]byte(rec.Metadata), &meta); err != nil || meta["timing_json_link"] == nil || meta["timing_json_link"] == "" {
 			a.log.Debug("voiceover cache: fingerprint match but timing not hydrated",
 				zap.String("fingerprint", fingerprint),
@@ -414,6 +428,19 @@ func (a *VoiceoverCacheAdapter) Lookup(ctx context.Context, fingerprint string, 
 				zap.Bool("meta_parse_ok", err == nil))
 			return nil, nil
 		}
+	}
+	var timingArtifact *audio.SpeechTimingArtifact
+	if timingRequired {
+		artifact, loadErr := a.loadTimingArtifact(ctx, rec, meta)
+		if loadErr != nil {
+			a.log.Warn("voiceover cache: failed to hydrate timing artifact; falling through to synthesis",
+				zap.String("fingerprint", fingerprint), zap.String("id", rec.ID), zap.Error(loadErr))
+			return nil, loadErr
+		}
+		if artifact == nil {
+			return nil, nil
+		}
+		timingArtifact = artifact
 	}
 
 	durationMs := int64(rec.DurationSeconds * 1000)
@@ -455,7 +482,67 @@ func (a *VoiceoverCacheAdapter) Lookup(ctx context.Context, fingerprint string, 
 		DurationMs:    durationMs,
 		LegacyFileMD5: rec.LegacyFileMD5,
 		MetaJSON:      []byte(rec.Metadata),
+		Artifact:      timingArtifact,
 	}, nil
+}
+
+func (a *VoiceoverCacheAdapter) loadTimingArtifact(ctx context.Context, rec *persistence.VoiceoverRecord, meta map[string]any) (*audio.SpeechTimingArtifact, error) {
+	if a == nil || a.timingReader == nil || rec == nil {
+		return nil, nil
+	}
+	link, _ := meta["timing_json_link"].(string)
+	fileID, err := driveFileIDFromLink(link)
+	if err != nil {
+		return nil, err
+	}
+	reader, _, err := a.timingReader.DownloadFile(ctx, fileID)
+	if err != nil {
+		return nil, fmt.Errorf("download timing artifact %s: %w", fileID, err)
+	}
+	defer reader.Close()
+	var artifact audio.SpeechTimingArtifact
+	if err := json.NewDecoder(io.LimitReader(reader, 8<<20)).Decode(&artifact); err != nil {
+		return nil, fmt.Errorf("decode timing artifact %s: %w", fileID, err)
+	}
+	if err := artifact.Validate(); err != nil {
+		a.log.Warn("voiceover cache: cached timing artifact failed validation", zap.String("id", rec.ID), zap.Error(err))
+		return nil, nil
+	}
+	if artifact.TextSHA256 != strings.TrimSpace(rec.TextHash) ||
+		artifact.Language != strings.TrimSpace(rec.Language) || artifact.Voice != strings.TrimSpace(rec.Voice) {
+		a.log.Warn("voiceover cache: cached timing artifact identity mismatch", zap.String("id", rec.ID))
+		return nil, nil
+	}
+	if audioSHA, _ := meta["audio_sha256"].(string); audioSHA == "" || artifact.AudioSHA256 != audioSHA {
+		a.log.Warn("voiceover cache: cached timing artifact audio hash mismatch", zap.String("id", rec.ID))
+		return nil, nil
+	}
+	if durationUS, ok := meta["timing_duration_us"].(float64); !ok || int64(durationUS) != artifact.DurationUS {
+		a.log.Warn("voiceover cache: cached timing artifact duration mismatch", zap.String("id", rec.ID))
+		return nil, nil
+	}
+	if wordCount, ok := meta["timing_word_count"].(float64); !ok || int(wordCount) != len(artifact.Words) {
+		a.log.Warn("voiceover cache: cached timing artifact word-count mismatch", zap.String("id", rec.ID))
+		return nil, nil
+	}
+	return &artifact, nil
+}
+
+func driveFileIDFromLink(raw string) (string, error) {
+	parsed, err := url.Parse(strings.TrimSpace(raw))
+	if err != nil {
+		return "", fmt.Errorf("parse timing artifact link: %w", err)
+	}
+	if id := strings.TrimSpace(parsed.Query().Get("id")); id != "" {
+		return id, nil
+	}
+	parts := strings.Split(strings.Trim(parsed.Path, "/"), "/")
+	for i := 0; i+1 < len(parts); i++ {
+		if parts[i] == "d" && strings.TrimSpace(parts[i+1]) != "" {
+			return strings.TrimSpace(parts[i+1]), nil
+		}
+	}
+	return "", fmt.Errorf("timing artifact link has no Drive file ID")
 }
 
 // parseRFC3339OrNow parses an RFC3339 timestamp string into time.Time,

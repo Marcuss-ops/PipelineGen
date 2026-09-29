@@ -93,6 +93,12 @@ type Run struct {
 	// Events reports typed workflow events to the broker timeline
 	// (nil-safe; wired from JobExecutionTools.Event).
 	Events func(eventType, message string, data map[string]any)
+	// stageStatus writes the DURABLE per-stage sub-status projection
+	// (stage_status.go). It travels with the execution tools
+	// (JobExecutionTools.StageStatus), so it is nil whenever the wired broker
+	// has no stage store — every emission is then a no-op and the workflow
+	// still runs and reports progress, it just does not populate the table.
+	stageStatus *stageStatusReporter
 }
 
 // newRun assembles one run from the handler inputs. tools may be nil
@@ -110,6 +116,11 @@ func newRun(j *job.Job, req appjobs.VideoCreatePayload, deps Deps, state Workflo
 	if tools != nil {
 		run.Progress = tools.Progress
 		run.Events = tools.Event
+		// The durable per-stage sink travels with the execution tools, so the
+		// workflow becomes a PRODUCER of the stage table without adding a
+		// mandatory port to Deps (observability is not a dependency of the
+		// work). Derived ONCE here so the transition helpers stay nil-safe.
+		run.stageStatus = newStageStatusReporter(tools.StageStatus, j.ID, deps.Log)
 	}
 	return run
 }

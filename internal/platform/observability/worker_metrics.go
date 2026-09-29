@@ -199,6 +199,21 @@ var WorkerFinalizationDBLockedTotal = promauto.NewCounterVec(prometheus.CounterO
 	Help: "Total artifact-finalization attempts hitting SQLITE_BUSY/SQLITE_LOCKED, by job_type and outcome (retried|terminal).",
 }, []string{"job_type", "outcome"})
 
+// WorkerJobDeferredTotal counts deferrals: a handler handed its attempt back
+// because it is WAITING on work outside the jobs plane (a remote render, a
+// provider window), so the row returned to RETRY_WAIT WITHOUT spending a retry
+// (kernel/job.OutcomeDeferred), by job_type and the final status the store
+// reported (normally RETRY_WAIT).
+//
+// It is deliberately not a retry: a rising retry rate means work is FAILING,
+// while a rising deferral rate means work is WAITING. Alerting on the deferral
+// rate is how an operator sees "lots of renders in flight" instead of "the
+// clip pipeline is broken".
+var WorkerJobDeferredTotal = promauto.NewCounterVec(prometheus.CounterOpts{
+	Name: "worker_job_deferred_total",
+	Help: "Total job deferrals (a wait, not a retry) by job_type and resulting status.",
+}, []string{"job_type", "status"})
+
 // WorkerFallbackTotal counts production fallback activations by
 // kind ("downgraded_path", "stale_cache_return", "skip_optimization").
 // The certification gate (worker-certification-checklist.md §3) bans

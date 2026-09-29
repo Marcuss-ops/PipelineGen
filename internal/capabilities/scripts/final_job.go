@@ -2,10 +2,12 @@ package scriptgeneration
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -14,15 +16,38 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 	"go.uber.org/zap"
-
-	"sort"
 )
 
 // FinalJobSubmitter hands a completed local media plan to the configured
 // remote render master. It is intentionally absent from runs with
 // final_job=false.
+//
+// The handoff is a three-phase job (PREPARE → FINALIZE → poll). The submitter
+// owns the first two phases and the FIRST bounded wait; a wait that outlives
+// that budget is reported with ErrFinalJobPending, and the durable receipt it
+// returns carries the Master's job id so a later attempt resumes from it (see
+// FinalJobAttacher) instead of asking the Master for a second render.
 type FinalJobSubmitter interface {
 	SubmitFinalJob(context.Context, string, GenerateRequest, *GenerateResult) (RemoteFinalJobResult, error)
+}
+
+// ErrFinalJobPending is the capability-owned sentinel for a remote render that
+// EXISTS on the Master and is still running. It is a sentinel so the runner can
+// branch on it without importing the transport package, and it always travels
+// with the receipt that carries the job id — the handle an attempt must persist
+// before handing the wait back.
+var ErrFinalJobPending = errors.New("remote final job is still rendering")
+
+// FinalJobAttacher is the OPTIONAL half of the final-job contract: waiting on a
+// job that a PREVIOUS attempt already submitted, with no second PREPARE. A
+// submitter that cannot resume one is still valid (it is what every non-final
+// run wires), but a run that already has a pending receipt fails closed rather
+// than submit a duplicate render.
+type FinalJobAttacher interface {
+	// waitToCompletion=false waits only up to the submitter's attach budget and
+	// reports ErrFinalJobPending when it expires; true waits with the
+	// submitter's full poll timeout, which is the pre-split blocking contract.
+	AttachFinalJob(ctx context.Context, jobID string, waitToCompletion bool) (RemoteFinalJobResult, error)
 }
 
 // RemoteFinalJobResult is the durable receipt for the two-stage remote job.
@@ -32,6 +57,13 @@ type RemoteFinalJobResult struct {
 	WorkerID    string `json:"worker_id,omitempty"`
 	ArtifactURL string `json:"artifact_url,omitempty"`
 	SHA256      string `json:"sha256,omitempty"`
+	// Yields counts how many attempts have already handed this job's wait back
+	// to a later attempt. It is persisted with the receipt because it is what
+	// bounds the churn: the FIRST wait is bounded (the worker is freed), and
+	// every wait after it runs to completion, so a render longer than the whole
+	// retry window still finishes instead of dying on an exhausted attempt
+	// budget. Only meaningful while the job is pending.
+	Yields int `json:"yields,omitempty"`
 }
 
 // finalJobAudioInput keeps the generated voice track but removes source-video
@@ -255,18 +287,125 @@ func ffprobeKeyValues(ctx context.Context, ffprobe string, args ...string) map[s
 	return fields
 }
 
+// finalJobReceiptSucceeded reports whether the durable receipt already records
+// a COMPLETED remote render.
+func finalJobReceiptSucceeded(receipt *RemoteFinalJobResult) bool {
+	return receipt != nil && strings.EqualFold(strings.TrimSpace(receipt.Status), "SUCCEEDED")
+}
+
+// finalJobPendingID returns the Master job id a previous attempt left in
+// flight, or "" when there is nothing to resume.
+func finalJobPendingID(receipt *RemoteFinalJobResult) string {
+	if receipt == nil || finalJobReceiptSucceeded(receipt) {
+		return ""
+	}
+	return strings.TrimSpace(receipt.JobID)
+}
+
+// finalJobDurableReceipt reads the receipt the RUN has persisted, which is the
+// authoritative record of a remote render this run already started. The
+// in-memory result only carries it when the attempt ADOPTED the checkpoint (see
+// executionRun.start); a replay that rebuilt the result — or a fresh process
+// resuming the run — must not lose the handle, because losing it means asking
+// the Master for a second render of work it is already doing.
+func (r *Runner) finalJobDurableReceipt(ctx context.Context, runID string) *RemoteFinalJobResult {
+	if r.repo == nil {
+		return nil
+	}
+	run, err := r.repo.Get(ctx, runID)
+	if err != nil || run == nil || run.Result == nil {
+		return nil
+	}
+	return run.Result.RemoteFinalJob
+}
+
+// submitFinalJob drives the optional remote render handoff. It is attach-first
+// on purpose: an attempt that finds a pending receipt resumes THAT job, because
+// a second PREPARE asks the Master for a second render of work it is already
+// doing. Only a run with no receipt submits, and a run whose receipt is already
+// SUCCEEDED is skipped entirely (a later phase failed the run after the render
+// finished).
 func (r *Runner) submitFinalJob(ctx context.Context, runID string, req GenerateRequest, result *GenerateResult) bool {
 	if r.finalJobSubmitter == nil {
 		r.failRunWithRetry(ctx, runID, StagePublishingDocuments, fmt.Errorf("final_job=true but remote final-job submitter is not configured"))
 		return false
 	}
+	receipt := (*RemoteFinalJobResult)(nil)
+	if result != nil {
+		receipt = result.RemoteFinalJob
+	}
+	if receipt == nil {
+		receipt = r.finalJobDurableReceipt(ctx, runID)
+		if receipt != nil && result != nil {
+			result.RemoteFinalJob = receipt
+		}
+	}
+	if finalJobReceiptSucceeded(receipt) {
+		if r.log != nil {
+			r.log.Info("remote final job already completed by an earlier attempt; reusing its receipt",
+				zap.String("run_id", runID), zap.String("remote_job_id", receipt.JobID))
+		}
+		return true
+	}
+	if jobID := finalJobPendingID(receipt); jobID != "" {
+		attacher, ok := r.finalJobSubmitter.(FinalJobAttacher)
+		if !ok {
+			// Fail closed: the wired submitter cannot wait on the job this run
+			// already started, and submitting again would duplicate a render the
+			// Master is already performing.
+			r.failRunWithRetry(ctx, runID, StagePublishingDocuments, fmt.Errorf(
+				"remote final job %s is still in flight but the wired submitter cannot resume it (%T does not implement FinalJobAttacher)", jobID, r.finalJobSubmitter))
+			return false
+		}
+		if r.log != nil {
+			r.log.Info("resuming remote final job",
+				zap.String("run_id", runID), zap.String("remote_job_id", jobID),
+				zap.Int("yields", receipt.Yields), zap.Bool("wait_to_completion", receipt.Yields > 0))
+		}
+		remote, err := attacher.AttachFinalJob(ctx, jobID, receipt.Yields > 0)
+		return r.settleFinalJob(ctx, runID, result, remote, receipt.Yields, err)
+	}
 	remote, err := r.finalJobSubmitter.SubmitFinalJob(ctx, runID, req, result)
+	return r.settleFinalJob(ctx, runID, result, remote, 0, err)
+}
+
+// settleFinalJob is the SINGLE interpretation of a remote final-job outcome.
+// Both entries (submit and attach) end here so they cannot disagree about what
+// a pending wait, a terminal failure or a completed render means.
+//
+// yields is how many attempts already handed the wait back before this one.
+func (r *Runner) settleFinalJob(ctx context.Context, runID string, result *GenerateResult, remote RemoteFinalJobResult, yields int, err error) bool {
 	if err != nil {
+		if errors.Is(err, ErrFinalJobPending) && result != nil {
+			receipt := remote
+			if strings.TrimSpace(receipt.JobID) == "" && result.RemoteFinalJob != nil {
+				receipt.JobID = strings.TrimSpace(result.RemoteFinalJob.JobID)
+			}
+			receipt.Yields = yields + 1
+			result.RemoteFinalJob = &receipt
+			// Persist the handle BEFORE ending the attempt: the Master keeps
+			// rendering, and this receipt is the only address of that work. The
+			// checkpoint is the same durable partial-result write the success path
+			// uses (not the debounced one), so the next attempt cannot miss it.
+			r.checkpoint(ctx, runID, result)
+			if r.log != nil {
+				r.log.Info("remote final job still rendering; handing the wait back to a later attempt",
+					zap.String("run_id", runID), zap.String("remote_job_id", receipt.JobID),
+					zap.String("remote_status", receipt.Status), zap.Int("yields", receipt.Yields))
+			}
+			r.failRunWithRetry(ctx, runID, StagePublishingDocuments, fmt.Errorf(
+				"remote final job %s is still %s: %w", receipt.JobID, receipt.Status, ErrFinalJobPending))
+			return false
+		}
 		r.failRunWithRetry(ctx, runID, StagePublishingDocuments, fmt.Errorf("remote final job: %w", err))
 		return false
 	}
-	if strings.TrimSpace(remote.JobID) == "" || !strings.EqualFold(strings.TrimSpace(remote.Status), "SUCCEEDED") {
+	if strings.TrimSpace(remote.JobID) == "" || !finalJobReceiptSucceeded(&remote) {
 		r.failRunWithRetry(ctx, runID, StagePublishingDocuments, fmt.Errorf("remote final job returned incomplete/non-success result (job_id=%q status=%q)", remote.JobID, remote.Status))
+		return false
+	}
+	if result == nil {
+		r.failRunWithRetry(ctx, runID, StagePublishingDocuments, fmt.Errorf("remote final job %s succeeded but the run has no result to record it in", remote.JobID))
 		return false
 	}
 	result.RemoteFinalJob = &remote
@@ -277,74 +416,152 @@ func (r *Runner) submitFinalJob(ctx context.Context, runID string, req GenerateR
 	return true
 }
 
-// scheduleFinalJobSceneImage moves a contextual scene image to the first
-// available interval after its planned start. The Master rejects intersecting
-// replacement windows, while local semantic cards can occupy the same opening
-// beat. Preserve every certified overlay and move only the generic scene image
-// within its own scene window.
-func scheduleFinalJobSceneImage(result *GenerateResult, image capoverlay.OverlayItem, frameGuardUS int64) (int64, int64, error) {
-	start := image.StartUSValue()
-	end := image.EndUSValue()
-	duration := end - start
-	if duration <= 0 {
-		return 0, 0, fmt.Errorf("final_job scene image %q has an empty timing window", image.ID)
+// A clip-only run has no stock folder to chunk: its video IS the certified
+// localized render of each scene. These helpers select that render and project
+// it into the runtime asset reference. The source clip in the media library is
+// never sent: it still carries the unmodified picture that this pipeline
+// replaces (background, watermark, burnt subtitles).
+//
+// Moved verbatim from final_job_payload.go (2026-09-28, 731 → 581) to satisfy
+// the strict 600-LOC forward-prevention gate (godlike/08) without changing
+// behaviour. The payload BUILDER stays in final_job_payload.go; the certified
+// render-selection family is one cohesive unit and lives next to the remote
+// final-job lifecycle that consumes it.
+
+// finalJobRenderLanguage resolves the single language whose certified renders
+// feed the remote video. An empty language means the run produced no certified
+// render at all (a stock-only run), which is not an error by itself. A run with
+// renders in several languages and none in the source language is ambiguous and
+// reports an error instead of picking one.
+func finalJobRenderLanguage(req GenerateRequest, result *GenerateResult) (string, error) {
+	if result == nil || len(result.LocalizedRenders) == 0 {
+		return "", nil
 	}
-	sceneStart, sceneEnd := int64(0), int64(0)
-	if result != nil {
-		if result.CanonicalTimeline != nil {
-			for _, scene := range result.CanonicalTimeline.Segments {
-				if scene.ID == image.SceneID {
-					sceneStart, sceneEnd = scene.TimelineStartUS, scene.TimelineStartUS+scene.DurationUS
-					break
-				}
+	preferred := strings.TrimSpace(string(req.SourceLanguage))
+	if preferred != "" {
+		for _, rendered := range result.LocalizedRenders {
+			if strings.EqualFold(strings.TrimSpace(string(rendered.Language)), preferred) {
+				return strings.TrimSpace(string(rendered.Language)), nil
 			}
 		}
-		for _, scene := range result.ResolvedScenes {
-			if scene.ID == image.SceneID {
-				sceneStart, sceneEnd = scene.TimelineStartUS, scene.TimelineStartUS+scene.DurationUS
-				break
-			}
+	}
+	languages := make(map[string]struct{}, len(result.LocalizedRenders))
+	for _, rendered := range result.LocalizedRenders {
+		if language := strings.TrimSpace(string(rendered.Language)); language != "" {
+			languages[language] = struct{}{}
 		}
 	}
-	if sceneEnd > sceneStart {
-		if start < sceneStart {
-			start = sceneStart
-		}
-		if end > sceneEnd {
-			end = sceneEnd
-			duration = end - start
+	if len(languages) == 1 {
+		for language := range languages {
+			return language, nil
 		}
 	}
-	if result == nil || result.OverlayPlan == nil {
-		return start, start + duration, nil
+	available := make([]string, 0, len(languages))
+	for language := range languages {
+		available = append(available, language)
 	}
-	occupied := make([][2]int64, 0)
-	for _, other := range result.OverlayPlan.Items {
-		if other.ID == image.ID || other.SceneID != image.SceneID {
+	sort.Strings(available)
+	return "", fmt.Errorf("no certified render for source language %q and the run produced %d render languages (%s)", preferred, len(available), strings.Join(available, ", "))
+}
+
+// certifiedLocalizedRendersForScene returns the certified renders of one scene
+// for one language. A render is certified only when its published MP4 identity
+// is complete (drive file id + 64-char sha256 + positive duration): the runtime
+// copies those bytes by identity and never re-renders them here.
+func certifiedLocalizedRendersForScene(result *GenerateResult, sceneID, language string) []LocalizedRenderResult {
+	if result == nil {
+		return nil
+	}
+	var out []LocalizedRenderResult
+	for _, rendered := range result.LocalizedRenders {
+		if !strings.EqualFold(strings.TrimSpace(rendered.SceneID), sceneID) {
 			continue
 		}
-		otherStart, otherEnd := other.StartUSValue(), other.EndUSValue()
-		if otherEnd > otherStart {
-			occupied = append(occupied, [2]int64{otherStart, otherEnd})
+		if language != "" && !strings.EqualFold(strings.TrimSpace(string(rendered.Language)), language) {
+			continue
+		}
+		if !localizedRenderIsCertifiedClip(rendered) {
+			continue
+		}
+		out = append(out, rendered)
+	}
+	return out
+}
+
+// certifiedLocalizedRenderForClip is the fixed-media projection: one certified
+// render for the exact (scene, clip, language) unit, or none.
+func certifiedLocalizedRenderForClip(result *GenerateResult, sceneID, clipID, language string) (LocalizedRenderResult, bool) {
+	if result == nil || strings.TrimSpace(clipID) == "" {
+		return LocalizedRenderResult{}, false
+	}
+	for _, rendered := range certifiedLocalizedRendersForScene(result, sceneID, language) {
+		if strings.EqualFold(strings.TrimSpace(rendered.ClipID), strings.TrimSpace(clipID)) {
+			return rendered, true
 		}
 	}
-	sort.Slice(occupied, func(i, j int) bool { return occupied[i][0] < occupied[j][0] })
-	candidate := start
-	for {
-		moved := false
-		for _, window := range occupied {
-			if candidate < window[1] && window[0] < candidate+duration {
-				candidate = window[1] + frameGuardUS
-				moved = true
-				break
-			}
-		}
-		if !moved {
-			break
+	return LocalizedRenderResult{}, false
+}
+
+func localizedRenderIsCertifiedClip(rendered LocalizedRenderResult) bool {
+	return strings.TrimSpace(rendered.DriveFileID) != "" && len(strings.TrimSpace(rendered.SHA256)) == 64 && rendered.DurationMS > 0
+}
+
+// clipSceneRuntimeAsset builds the runtime asset reference of a clip-only scene
+// from its certified localized render. A scene without a certified render — or
+// a scene that produced more than one — fails closed: the clip-only contract is
+// "send the clip this pipeline produced", so there is no fallback to the
+// unmodified source clip.
+func clipSceneRuntimeAsset(ctx context.Context, resolver FinalJobAssetResolver, result *GenerateResult, renderLanguage string, renderLanguageErr error, sceneID string) (map[string]any, int64, error) {
+	if renderLanguageErr != nil {
+		return nil, 0, fmt.Errorf("final_job clip-only scene %q: %w", sceneID, renderLanguageErr)
+	}
+	rendered := certifiedLocalizedRendersForScene(result, sceneID, renderLanguage)
+	if len(rendered) == 0 {
+		return nil, 0, fmt.Errorf("final_job clip-only scene %q has no certified rendered clip for language %q: refusing to hand the unmodified source clip to the runtime", sceneID, renderLanguage)
+	}
+	if len(rendered) > 1 {
+		return nil, 0, fmt.Errorf("final_job clip-only scene %q has %d certified rendered clips for language %q: a clip-only final job sends exactly one rendered clip per scene", sceneID, len(rendered), renderLanguage)
+	}
+	return renderedClipAssetRef(ctx, resolver, rendered[0], sceneID)
+}
+
+// resolveFinalJobFixedMediaAsset prefers the certified render of one fixed
+// (intro/outro) clip over the unmodified library clip, and keeps the library
+// asset as the fallback: a fixed section may legitimately be declared without a
+// render lane, which is the pre-existing behaviour for protected intros.
+func resolveFinalJobFixedMediaAsset(ctx context.Context, resolver FinalJobAssetResolver, result *GenerateResult, sceneID, clipID, renderLanguage string) (map[string]any, error) {
+	if renderLanguage != "" {
+		if rendered, ok := certifiedLocalizedRenderForClip(result, sceneID, clipID, renderLanguage); ok {
+			asset, _, err := renderedClipAssetRef(ctx, resolver, rendered, sceneID)
+			return asset, err
 		}
 	}
-	if sceneEnd > sceneStart && candidate+duration > sceneEnd {
-		return 0, 0, fmt.Errorf("final_job scene image %q cannot fit a non-overlapping %dµs window in scene %q", image.ID, duration, image.SceneID)
+	return resolver.ResolveFinalJobAsset(ctx, clipID)
+}
+
+// renderedClipAssetRef projects a certified localized render into the runtime
+// asset reference the remote scene copies. The key set matches the reference
+// ResolveFinalJobAsset produces, so the remote sees one asset shape regardless
+// of whether the bytes came from the media library or from this render lane.
+func renderedClipAssetRef(ctx context.Context, resolver FinalJobAssetResolver, rendered LocalizedRenderResult, sceneID string) (map[string]any, int64, error) {
+	driveID := strings.TrimSpace(rendered.DriveFileID)
+	sha := strings.TrimSpace(rendered.SHA256)
+	if driveID == "" || len(sha) != 64 || rendered.DurationMS <= 0 {
+		return nil, 0, fmt.Errorf("final_job scene %q rendered clip %q is not a certified published MP4 (drive_file_id, 64-char sha256 and positive duration required)", sceneID, rendered.AssetID)
 	}
-	return candidate, candidate + duration, nil
+	size, err := resolver.FinalJobPublishedFileSize(ctx, driveID)
+	if err != nil {
+		return nil, 0, fmt.Errorf("final_job scene %q rendered clip %s: %w", sceneID, driveID, err)
+	}
+	if size <= 0 {
+		return nil, 0, fmt.Errorf("final_job scene %q rendered clip %s has no published byte size", sceneID, driveID)
+	}
+	assetID := strings.TrimSpace(rendered.AssetID)
+	if assetID == "" {
+		assetID = driveID
+	}
+	return map[string]any{
+		"asset_id": assetID, "drive_file_id": driveID, "url": driveFileWebLink(driveID),
+		"sha256": sha, "size_bytes": size, "duration_ms": rendered.DurationMS,
+	}, rendered.DurationMS, nil
 }

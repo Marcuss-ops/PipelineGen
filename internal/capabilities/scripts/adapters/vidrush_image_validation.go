@@ -164,6 +164,27 @@ func downloadVidRushImage(ctx context.Context, client *http.Client, rawURL, sour
 		}
 		return validateVidRushResolvedHost(req.Context(), req.URL.String())
 	}
+	// Reject a known non-image response before reading its body. A number of
+	// search providers return hotlink/interstitial HTML at URLs that end in
+	// .jpg; extension checks alone therefore cannot protect the acquisition
+	// budget. HEAD is advisory for hosts that do not implement it.
+	headRequest, err := newVidRushImageRequestMethod(ctx, http.MethodHead, rawURL, sourcePageURL)
+	if err != nil {
+		return nil, "", err
+	}
+	headResponse, headErr := copyClient.Do(headRequest)
+	if headErr == nil {
+		status := headResponse.StatusCode
+		preflightErr := validateVidRushImageHead(status, headResponse.Header.Get("Content-Type"), headResponse.ContentLength, policy)
+		_ = headResponse.Body.Close()
+		if preflightErr != nil {
+			if status != http.StatusMethodNotAllowed && status != http.StatusNotImplemented {
+				return nil, strings.TrimSpace(strings.Split(headResponse.Header.Get("Content-Type"), ";")[0]), preflightErr
+			}
+		}
+	} else if ctx.Err() != nil {
+		return nil, "", ctx.Err()
+	}
 	request, err := newVidRushImageRequest(ctx, rawURL, sourcePageURL)
 	if err != nil {
 		return nil, "", err
@@ -198,8 +219,30 @@ func downloadVidRushImage(ctx context.Context, client *http.Client, rawURL, sour
 	return data, mime, nil
 }
 
+func validateVidRushImageHead(status int, contentType string, contentLength int64, policy VidRushImagePolicy) error {
+	policy = normalizeVidRushImagePolicy(policy)
+	if status == http.StatusMethodNotAllowed || status == http.StatusNotImplemented {
+		return nil // host does not support HEAD; the guarded GET remains authoritative.
+	}
+	if status < http.StatusOK || status >= http.StatusMultipleChoices {
+		return fmt.Errorf("vidrush image: upstream HEAD status %d", status)
+	}
+	declared := strings.TrimSpace(strings.Split(contentType, ";")[0])
+	if declared != "" && !strings.EqualFold(declared, "application/octet-stream") && !allowedVidRushImageMIME(declared) {
+		return ErrVidRushImageInvalid
+	}
+	if contentLength > policy.MaxBytes {
+		return ErrVidRushImageTooLarge
+	}
+	return nil
+}
+
 func newVidRushImageRequest(ctx context.Context, rawURL, sourcePageURL string) (*http.Request, error) {
-	request, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
+	return newVidRushImageRequestMethod(ctx, http.MethodGet, rawURL, sourcePageURL)
+}
+
+func newVidRushImageRequestMethod(ctx context.Context, method, rawURL, sourcePageURL string) (*http.Request, error) {
+	request, err := http.NewRequestWithContext(ctx, method, rawURL, nil)
 	if err != nil {
 		return nil, err
 	}

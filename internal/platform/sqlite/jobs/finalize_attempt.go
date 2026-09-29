@@ -109,6 +109,9 @@ var (
 	ErrFinalizeAttemptArtifactStale      = domjob.ErrFinalizeAttemptArtifactStale
 	ErrFinalizeAttemptOutboxEventMissing = domjob.ErrFinalizeAttemptOutboxEventMissing
 	ErrFinalizeAttemptDLQIncompatible    = domjob.ErrFinalizeAttemptDLQIncompatible
+	// ErrFinalizeAttemptDeferralDelayMissing — OutcomeDeferred without a
+	// positive Backoff (a deferral must state when it may come back).
+	ErrFinalizeAttemptDeferralDelayMissing = domjob.ErrFinalizeAttemptDeferralDelayMissing
 )
 
 // FinalizeAttempt is the canonical consolidated terminal-decision primitive.
@@ -205,6 +208,33 @@ func (r *SQLiteStore) FinalizeAttempt(ctx context.Context, cmd domjob.FinalizeAt
 	//   - Succeeded   : + result_json, + progress=100
 	//   - ScheduleRetry + retry allowed: + retry_count += 1
 	//   - FailedPermanent, ScheduleRetry-downgraded-to-Failed : (no extra)
+	// deferredUntil is the re-dispatch hint written for OutcomeDeferred and
+	// NULL for every other outcome — a row that starts a retry (or reaches a
+	// terminal state) must not inherit a stale wait, so the column is SET on
+	// every finalize rather than only when it changes.
+	// The precondition already rejected a deferral without a delay, so this
+	// branch always writes a concrete instant.
+	var deferredUntil any
+	if cmd.Outcome == domjob.OutcomeDeferred {
+		// `deferred_until` is persisted at SECOND precision: the column is
+		// written with timeutil.FormatRFC3339 (time.RFC3339) and read back
+		// with timeutil.ParseRFC3339, which parses with the same layout — a
+		// fractional-second value would not round-trip, because Go's
+		// time.Parse REJECTS fractional seconds when the layout omits them.
+		//
+		// The instant must therefore be rounded UP, never down. Truncating
+		// toward the second floor puts a sub-second delay in the PAST, so the
+		// row is deferred to an instant that has already elapsed: the requeue
+		// sweep may re-dispatch immediately and the wait the handler asked for
+		// silently becomes zero. Rounding up bounds that error at one second
+		// in the conservative direction (the job comes back at or after the
+		// instant it asked for).
+		due := now.Add(cmd.Backoff)
+		if truncated := due.Truncate(time.Second); !truncated.Equal(due) {
+			due = truncated.Add(time.Second)
+		}
+		deferredUntil = timeutil.FormatRFC3339(due)
+	}
 	setClauses := []string{
 		"status = ?",
 		"updated_at = ?",
@@ -214,8 +244,9 @@ func (r *SQLiteStore) FinalizeAttempt(ctx context.Context, cmd domjob.FinalizeAt
 		"worker_id = ''",
 		"lease_id = ''",
 		"lease_expiry = NULL",
+		"deferred_until = ?",
 	}
-	args := []any{targetStatus, nowStr, nowStr, errorMessage}
+	args := []any{targetStatus, nowStr, nowStr, errorMessage, deferredUntil}
 	resultJSON := "{}"
 
 	if cmd.Outcome == domjob.OutcomeSucceeded {

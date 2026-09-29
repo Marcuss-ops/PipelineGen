@@ -34,7 +34,10 @@ type SegmentSemanticProfile struct {
 // ResolvedEntity is source-grounded typed entity identity. Text is never
 // replaced by a normalized spelling in the evidence fields.
 type ResolvedEntity struct {
-	EntityID      string  `json:"entity_id"`
+	EntityID string `json:"entity_id"`
+	// OccurrenceID is scene-scoped identity for a repeated canonical entity.
+	// Empty preserves the legacy one-card-per-canonical-entity projection.
+	OccurrenceID  string  `json:"occurrence_id,omitempty"`
 	Type          string  `json:"type"`
 	Text          string  `json:"text"`
 	CanonicalText string  `json:"canonical_text"`
@@ -47,22 +50,24 @@ type ResolvedEntity struct {
 
 // BoundAsset is the only asset shape allowed to cross into rendering.
 type BoundAsset struct {
-	EntityID    string `json:"entity_id"`
-	AssetID     string `json:"asset_id"`
-	ContentHash string `json:"content_hash"`
-	LocalPath   string `json:"local_path,omitempty"`
-	DriveFileID string `json:"drive_file_id,omitempty"`
-	Width       int    `json:"width,omitempty"`
-	Height      int    `json:"height,omitempty"`
-	SourceURL   string `json:"source_url,omitempty"`
-	Verified    bool   `json:"verified"`
+	EntityID     string `json:"entity_id"`
+	OccurrenceID string `json:"occurrence_id,omitempty"`
+	AssetID      string `json:"asset_id"`
+	ContentHash  string `json:"content_hash"`
+	LocalPath    string `json:"local_path,omitempty"`
+	DriveFileID  string `json:"drive_file_id,omitempty"`
+	Width        int    `json:"width,omitempty"`
+	Height       int    `json:"height,omitempty"`
+	SourceURL    string `json:"source_url,omitempty"`
+	Verified     bool   `json:"verified"`
 }
 
 type TimelineEvent struct {
-	EntityID string `json:"entity_id"`
-	StartMs  int64  `json:"start_ms"`
-	EndMs    int64  `json:"end_ms"`
-	PresetID string `json:"preset_id"`
+	EntityID     string `json:"entity_id"`
+	OccurrenceID string `json:"occurrence_id,omitempty"`
+	StartMs      int64  `json:"start_ms"`
+	EndMs        int64  `json:"end_ms"`
+	PresetID     string `json:"preset_id"`
 }
 
 type SemanticRenderBundleV1 struct {
@@ -106,7 +111,7 @@ func (b SemanticRenderBundleV1) Validate() error {
 		if e.Evidence != e.Text || e.Start >= len(b.Scene.SourceText) || e.End > len(b.Scene.SourceText) || b.Scene.SourceText[e.Start:e.End] != e.Text {
 			return fmt.Errorf("semantic render bundle: entity %q is not source-grounded", e.EntityID)
 		}
-		entities[e.EntityID] = e
+		entities[semanticOccurrenceKey(e.EntityID, e.OccurrenceID)] = e
 	}
 	assets := make(map[string]BoundAsset, len(b.Assets))
 	for _, a := range b.Assets {
@@ -116,10 +121,10 @@ func (b SemanticRenderBundleV1) Validate() error {
 		if _, err := hex.DecodeString(a.ContentHash); err != nil {
 			return fmt.Errorf("semantic render bundle: asset %q has invalid content hash", a.AssetID)
 		}
-		assets[a.EntityID] = a
+		assets[semanticOccurrenceKey(a.EntityID, a.OccurrenceID)] = a
 	}
 	for _, ev := range b.Timeline {
-		if _, ok := entities[ev.EntityID]; !ok || ev.StartMs < 0 || ev.EndMs <= ev.StartMs || ev.PresetID == "" {
+		if _, ok := entities[semanticOccurrenceKey(ev.EntityID, ev.OccurrenceID)]; !ok || ev.StartMs < 0 || ev.EndMs <= ev.StartMs || ev.PresetID == "" {
 			return fmt.Errorf("semantic render bundle: invalid timeline event for %q", ev.EntityID)
 		}
 	}
@@ -130,12 +135,19 @@ func (b SemanticRenderBundleV1) Validate() error {
 	// entity. Asset-less text overlays remain valid (image selection is
 	// explicit), but an asset with a dangling entity id is a contract break.
 	for _, a := range b.Assets {
-		if _, exists := entities[a.EntityID]; !exists {
+		if _, exists := entities[semanticOccurrenceKey(a.EntityID, a.OccurrenceID)]; !exists {
 			return fmt.Errorf("semantic render bundle: asset %q joins entity %q which is not in the bundle", a.AssetID, a.EntityID)
 		}
 	}
 	_ = assets
 	return nil
+}
+
+func semanticOccurrenceKey(entityID, occurrenceID string) string {
+	if strings.TrimSpace(occurrenceID) != "" {
+		return occurrenceID
+	}
+	return entityID
 }
 
 // EntityTiming is the minimal timing input accepted by TimelinePlanner.
@@ -221,15 +233,16 @@ func BuildOverlayPlan(b SemanticRenderBundleV1, videoID, projectID string, width
 	}
 	assets := make(map[string]BoundAsset, len(b.Assets))
 	for _, a := range b.Assets {
-		assets[a.EntityID] = a
+		assets[semanticOccurrenceKey(a.EntityID, a.OccurrenceID)] = a
 	}
 	events := make(map[string]TimelineEvent, len(b.Timeline))
 	for _, e := range b.Timeline {
-		events[e.EntityID] = e
+		events[semanticOccurrenceKey(e.EntityID, e.OccurrenceID)] = e
 	}
 	items := make([]OverlayItem, 0, len(b.Entities))
 	for _, e := range b.Entities {
-		ev, ok := events[e.EntityID]
+		key := semanticOccurrenceKey(e.EntityID, e.OccurrenceID)
+		ev, ok := events[key]
 		if !ok {
 			return OverlayPlan{}, fmt.Errorf("bundle: missing timeline for %q", e.EntityID)
 		}
@@ -250,12 +263,18 @@ func BuildOverlayPlan(b SemanticRenderBundleV1, videoID, projectID string, width
 		if displayText == "" {
 			displayText = strings.TrimSpace(e.CanonicalText)
 		}
-		item := OverlayItem{ID: e.EntityID, SceneID: b.Scene.SegmentID, EntityID: e.EntityID, Kind: kind, StartMs: ev.StartMs, EndMs: ev.EndMs, TemplateID: templateID, PresetID: ev.PresetID, Text: displayText,
+		itemID := key
+		sceneID := b.Scene.SegmentID
+		if e.OccurrenceID != "" {
+			itemID = e.OccurrenceID
+			sceneID = e.SceneID
+		}
+		item := OverlayItem{ID: itemID, SceneID: sceneID, EntityID: e.EntityID, Kind: kind, StartMs: ev.StartMs, EndMs: ev.EndMs, TemplateID: templateID, PresetID: ev.PresetID, Text: displayText,
 			// Text cards carry an explicit render-safe entrance motion; image
 			// cards replace it below with their official image preset animation.
 			MotionID:  SelectTextMotion(b.RunID, b.Scene.SegmentID, e.EntityID),
 			EntityRef: &OverlayEntityRef{EntityID: e.EntityID, Type: e.Type, Name: e.CanonicalText, SurfaceText: displayText}}
-		if a, ok := assets[e.EntityID]; ok {
+		if a, ok := assets[key]; ok {
 			// An image is a capability choice, not merely an extra field on a
 			// text card. The canonical image_popup template/preset owns the
 			// geometry and keeps the entity asset on the direct-YUV path.

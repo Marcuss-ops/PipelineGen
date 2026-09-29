@@ -355,6 +355,14 @@ func (s *Service) commitClipAtomically(
 		if errors.Is(wErr, youtubeports.ErrOutboxTerminalConflict) {
 			s.log.Warn("clip + transcript committed but index blocked by a terminal outbox row (BLOCKER #4)",
 				"clip_id", clipID)
+			// BLOCKER #4 leaves clip + tracks DURABLE — only the index event
+			// was suppressed — so the multilingual fan-out is still owed.
+			// Without this the re-register of an already-published window
+			// (force=true) returned here and left the clip without the nine
+			// translations and their `.ass` artifacts, exactly like the
+			// gap this seam closed. Mirrors step6to9's
+			// `processed_but_index_blocked` branch.
+			s.scheduleMaterializeFanOut(ctx, clipID, track)
 			return fmt.Errorf("save clip atomically (index blocked by terminal outbox row): %w", wErr)
 		}
 		return fmt.Errorf("save clip atomically: %w", wErr)

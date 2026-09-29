@@ -16,6 +16,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/localized"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/sourcing"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/texttracks"
 )
 
 // AtomicClipWriterPort is the OPTIONAL atomic terminal-write surface for the
@@ -37,6 +38,25 @@ import (
 // path (youtube/usecase.process_segment) consumes. A second, structurally
 // identical interface would be free to drift from the canonical one.
 type AtomicClipWriterPort = localized.LocalizedClipWriter
+
+// MaterializeFanOutPort is the OPTIONAL post-commit multilingual fan-out for
+// the Register pipeline: after the clip + transcript are durably committed it
+// schedules `asset.text.materialize`, which creates the nine configured
+// translation tracks AND the per-language `.ass` subtitle artifacts.
+//
+// Why this port exists (September 2026): the fan-out used to be reachable
+// ONLY from the per-segment extraction path, so a clip registered through
+// POST /api/media/register-batch committed exactly ONE text track (whatever
+// Whisper produced) — no translations, no subtitle files, invisible to
+// multilingual search — with no error anywhere. The mapping (materialize vs.
+// acquire, "und" fallback, source-text hash) is owned by the concrete, NOT by
+// either producer.
+//
+// godlike/06 SSOT (one canonical owner per fact): this is a type ALIAS of
+// texttracks.CommittedClipEnqueuer — the same seam the canonical extraction
+// path consumes. A second, structurally identical interface would be free to
+// drift from the canonical one.
+type MaterializeFanOutPort = texttracks.CommittedClipEnqueuer
 
 // IndexDispatcherPort merges the historical IndexDispatcher + AssetTree surface.
 //

@@ -96,6 +96,21 @@ func (r *Runner) OverlayRenderEnqueuer() OverlayRenderEnqueuer {
 	return r.overlayRenderEnqueuer
 }
 
+// SetDocsPublishEnqueuer wires the deferred `script.docs_publish` child that
+// performs the post-CORE_READY Docs leg.
+//
+// A nil enqueuer means the child leg is not wired and the run keeps publishing
+// documents inline at the end of its own wall clock — the pre-cutover
+// behaviour, unchanged. A non-nil enqueuer moves the Docs leg off that wall
+// clock, and is fail-closed: if the child cannot be submitted, the run fails
+// rather than leaving a parent whose terminal flip was deferred to a child that
+// never existed.
+func (r *Runner) SetDocsPublishEnqueuer(enqueuer DocsPublishEnqueuer) {
+	if r != nil {
+		r.docsPublishEnqueuer = enqueuer
+	}
+}
+
 // SetLocalizedRenderEnqueuer wires the per-(scene, language) localized render
 // fan-out. A nil enqueuer disables the fan-out (render not registered); a
 // non-nil enqueuer is fail-closed (an enqueue error fails the run).
@@ -351,32 +366,6 @@ func applyLocalizedRenderLinkLocked(result *GenerateResult, rendered LocalizedRe
 			}
 		}
 	}
-}
-
-// localizedRenderClipFields resolves the source-clip reference a localized
-// render needs from a scene's clip bindings. It prefers the primary Clip and
-// falls back to the first multi-clip binding; both are empty for audio-only
-// scenes. The clip ID doubles as the media asset id (ClipReference.ID is the
-// canonical asset identity) and DurationUS is converted to milliseconds.
-func localizedRenderClipFields(scene Scene) (clipID, assetID, sha256 string, durationMS int64) {
-	clip := scene.Clip
-	if clip == nil && len(scene.Clips) > 0 {
-		clip = scene.Clips[0]
-	}
-	if clip == nil {
-		return "", "", "", 0
-	}
-	durationMS = clip.DurationUS / 1000
-	if durationMS <= 0 && clip.Duration > 0 {
-		durationMS = int64(clip.Duration * 1000)
-	}
-	if durationMS <= 0 && clip.SourceOutMS > clip.SourceInMS {
-		durationMS = clip.SourceOutMS - clip.SourceInMS
-	}
-	if durationMS <= 0 && scene.DurationMS > 0 {
-		durationMS = scene.DurationMS
-	}
-	return clip.ID, clip.ID, clip.SHA256, durationMS
 }
 
 func (r *Runner) SetCombinedAudioRenderer(renderer CombinedAudioRenderer) {

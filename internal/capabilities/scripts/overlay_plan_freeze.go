@@ -101,8 +101,8 @@ func entityTimelineLanguage(timeline *capabilityentities.EntityTimeline) string 
 // boundary shared by the source-language compatibility plan and translated
 // plans. Drive routing stays in the application-only plan field and never
 // crosses the RenderingGen queue contract.
-func compileOverlayPlanForLanguage(result *GenerateResult, language Language, planID, projectID, driveFolderID string, canvas OverlayCanvasSpec) (*capabilityoverlay.OverlayPlan, error) {
-	plan, err := CompileOverlayPlan(result, language, canvas, planID, planID, projectID)
+func compileOverlayPlanForLanguage(result *GenerateResult, language Language, planID, projectID, driveFolderID string, canvas OverlayCanvasSpec, perSceneImages ...bool) (*capabilityoverlay.OverlayPlan, error) {
+	plan, err := CompileOverlayPlan(result, language, canvas, planID, planID, projectID, perSceneImages...)
 	if err != nil {
 		return nil, err
 	}
@@ -116,7 +116,7 @@ func compileOverlayPlanForLanguage(result *GenerateResult, language Language, pl
 // have translated voiceover timing. It never substitutes the source plan for
 // a missing translation: a language without its own annotations/timing has no
 // localized overlay artifact to publish.
-func buildLocalizedOverlayPlans(result *GenerateResult, sourceLanguage Language, planID, projectID, driveFolderID string, canvas OverlayCanvasSpec) error {
+func buildLocalizedOverlayPlans(result *GenerateResult, sourceLanguage Language, planID, projectID, driveFolderID string, canvas OverlayCanvasSpec, perSceneImages ...bool) error {
 	if result == nil {
 		return nil
 	}
@@ -139,7 +139,7 @@ func buildLocalizedOverlayPlans(result *GenerateResult, sourceLanguage Language,
 			continue
 		}
 		localizedPlanID := planID + "-" + strings.ToLower(string(language))
-		plan, err := compileOverlayPlanForLanguage(result, language, localizedPlanID, projectID, driveFolderID, canvas)
+		plan, err := compileOverlayPlanForLanguage(result, language, localizedPlanID, projectID, driveFolderID, canvas, perSceneImages...)
 		if err != nil {
 			return fmt.Errorf("compile %s overlay plan: %w", language, err)
 		}

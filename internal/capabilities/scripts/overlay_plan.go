@@ -4,7 +4,8 @@
 // certified timing surfaces (phrase timings, entity timeline, word timing)
 // of an actual run into the overlay planner and resolver, so every candidate
 // carries real timestamps — never estimates. The final production budget
-// keeps only fifteen grounded phrases and eighteen materialized images per run.
+// keeps the certified run-level ceiling of grounded phrases (overridable per
+// request through max_phrase_overlays) and eighteen materialized images per run.
 //
 // Ownership split (single owner per surface):
 //
@@ -21,7 +22,6 @@
 package scriptgeneration
 
 import (
-	"errors"
 	"fmt"
 	"strings"
 
@@ -48,14 +48,14 @@ import (
 //
 // The returned plan is sealed (render keys + fingerprint) and ready to
 // enqueue through QueueRenderEnqueuer.EnqueueChrononPlan.
-func CompileOverlayPlan(result *GenerateResult, language Language, canvas OverlayCanvasSpec, planID, videoID, projectID string) (*capabilityoverlay.OverlayPlan, error) {
-	return compileOverlayPlanWithMotionOffset(result, language, canvas, planID, videoID, projectID, capabilityoverlay.RandomImageMotionOffset)
+func CompileOverlayPlan(result *GenerateResult, language Language, canvas OverlayCanvasSpec, planID, videoID, projectID string, perSceneImages ...bool) (*capabilityoverlay.OverlayPlan, error) {
+	return compileOverlayPlanWithMotionOffset(result, language, canvas, planID, videoID, projectID, capabilityoverlay.RandomImageMotionOffset, perSceneImages...)
 }
 
 // compileOverlayPlanWithMotionOffset keeps the per-attempt motion entropy at
 // the plan-compilation boundary. A queued plan is immutable across worker
 // retries, while compiling a fresh generation attempt samples a new offset.
-func compileOverlayPlanWithMotionOffset(result *GenerateResult, language Language, canvas OverlayCanvasSpec, planID, videoID, projectID string, chooseOffset func() (int, error)) (*capabilityoverlay.OverlayPlan, error) {
+func compileOverlayPlanWithMotionOffset(result *GenerateResult, language Language, canvas OverlayCanvasSpec, planID, videoID, projectID string, chooseOffset func() (int, error), perSceneImages ...bool) (*capabilityoverlay.OverlayPlan, error) {
 	if result == nil {
 		return nil, nil
 	}
@@ -94,6 +94,7 @@ func compileOverlayPlanWithMotionOffset(result *GenerateResult, language Languag
 	// resolved lazily — a surfaceless result must never fail resolution.
 	var scenes []capabilityoverlay.SceneInput
 	var timedScenes []Scene
+	var perSceneImageHashes map[string]struct{}
 	for i := range result.Scenes {
 		scene := result.Scenes[i]
 		ref, ok := scene.Voiceover[language]
@@ -126,18 +127,36 @@ func compileOverlayPlanWithMotionOffset(result *GenerateResult, language Languag
 		if err != nil {
 			return nil, err
 		}
+		if len(perSceneImages) > 0 && perSceneImages[0] {
+			if sceneInput == nil {
+				sceneInput = &capabilityoverlay.SceneInput{ID: scene.ID}
+			}
+			if perSceneImageHashes == nil {
+				perSceneImageHashes = make(map[string]struct{})
+			}
+			if image, ok := sceneImageCandidate(result, scene.ID, startUS, perSceneImageHashes); ok {
+				sceneInput.Images = append(sceneInput.Images, image)
+				perSceneImageHashes[strings.ToLower(image.SHA256)] = struct{}{}
+			}
+		}
 		if sceneInput != nil {
 			scenes = append(scenes, *sceneInput)
 		}
 	}
 
+	plannerConfig := capabilityoverlay.AllCandidatesPlannerConfig(scenes)
+	// The run-level grounded-phrase ceiling is caller-selected (request
+	// max_phrase_overlays); zero keeps the certified default. It rides the
+	// canvas because that is the run-level render context this function
+	// already receives.
+	plannerConfig.RunLevelPhraseOverlayLimit = canvas.MaxPhraseOverlays
 	plannerPlan, err := capabilityoverlay.BuildPlan(capabilityoverlay.PlanInput{
 		PlanID: planID, VideoID: videoID, ProjectID: projectID,
 		Width: canvas.Width, Height: canvas.Height, FPSNum: canvas.FPSNum, FPSDen: canvas.FPSDen,
 		Scenes:        scenes,
 		Background:    canvas.Background,
 		PhraseMotions: canvas.PhraseMotions, PhraseMotionFamily: canvas.PhraseMotionFamily, ImageMotions: canvas.ImageMotions,
-	}, capabilityoverlay.AllCandidatesPlannerConfig(scenes))
+	}, plannerConfig)
 	if err != nil {
 		return nil, fmt.Errorf("overlay plan: plan: %w", err)
 	}
@@ -231,7 +250,7 @@ func compileOverlayPlanWithMotionOffset(result *GenerateResult, language Languag
 		return nil, fmt.Errorf("overlay plan: choose random image motion offset: %w", err)
 	}
 	assignEntityImageMotions(items, imageMotionOffset, canvas.Width, canvas.Height)
-	items, _ = capabilityoverlay.ApplyEditorialOverlayBudget(items)
+	items, _ = capabilityoverlay.ApplyEditorialOverlayBudgetWithLimit(items, canvas.MaxPhraseOverlays)
 	if len(items) == 0 {
 		return nil, nil
 	}
@@ -308,11 +327,11 @@ func isTextOverlayKind(kind string) bool {
 // overlay plan for the run (plan id = run id, so the queue job id is the
 // run's idempotency key) and attaches it to the durable result. Nil when the
 // run carried no derivable overlay surface.
-func compileResultOverlayPlan(result *GenerateResult, language Language, planID, projectID, driveFolderID string, canvas OverlayCanvasSpec) error {
+func compileResultOverlayPlan(result *GenerateResult, language Language, planID, projectID, driveFolderID string, canvas OverlayCanvasSpec, perSceneImages ...bool) error {
 	if result == nil {
 		return nil
 	}
-	plan, err := compileOverlayPlanForLanguage(result, language, planID, projectID, driveFolderID, canvas)
+	plan, err := compileOverlayPlanForLanguage(result, language, planID, projectID, driveFolderID, canvas, perSceneImages...)
 	if err != nil {
 		return err
 	}
@@ -321,9 +340,9 @@ func compileResultOverlayPlan(result *GenerateResult, language Language, planID,
 	if plan != nil {
 		phraseItems = plan.Items
 	}
-	phraseBudget := capabilityoverlay.MeasurePhraseOverlayBudget(phraseItems)
+	phraseBudget := capabilityoverlay.MeasurePhraseOverlayBudgetWithLimit(phraseItems, canvas.MaxPhraseOverlays)
 	result.PhraseOverlayBudget = &phraseBudget
-	if err := buildLocalizedOverlayPlans(result, language, planID, projectID, driveFolderID, canvas); err != nil {
+	if err := buildLocalizedOverlayPlans(result, language, planID, projectID, driveFolderID, canvas, perSceneImages...); err != nil {
 		return err
 	}
 	if plan == nil {
@@ -458,63 +477,66 @@ func overlaySceneInput(scene Scene, language, sourceLanguage Language, timing ca
 	return &out, nil
 }
 
-// locatePhraseTimingWithEndpointFallback first requires a complete exact phrase
-// match. If certified timing omitted or regrouped interior words, it may still
-// use the exact first/last word boundaries, but only when both are present and
-// ordered in the same timing artifact. Invalid artifacts and absent endpoints
-// remain failures; no time is interpolated.
-func locatePhraseTimingWithEndpointFallback(sceneIndex int, timelineStartUS int64, timing capabilityaudio.SpeechTimingArtifact, phrase string) (*capabilityaudio.PhraseTiming, error) {
-	located, err := capabilityaudio.LocatePhraseTimings(sceneIndex, timelineStartUS, timing, []string{phrase})
-	if err == nil {
-		return &located[0], nil
-	}
-	if !errors.Is(err, capabilityaudio.ErrPhraseNotFound) {
-		return nil, err
-	}
-	words := strings.Fields(phrase)
-	if len(words) < 2 {
-		return nil, err
-	}
-	firstMatches, firstErr := capabilityaudio.LocatePhrase(timing, words[0])
-	if firstErr != nil {
-		return nil, firstErr
-	}
-	lastMatches, lastErr := capabilityaudio.LocatePhrase(timing, words[len(words)-1])
-	if lastErr != nil {
-		return nil, lastErr
-	}
+// PhraseAnchoringDiagnostic reports one important-phrase candidate considered
+// by the overlay planner together with whether it anchored to the certified
+// speech timing. It exists purely for observability: a phrase that fails to
+// anchor is dropped silently, which makes "the phrases are not taken"
+// impossible to diagnose from logs alone.
+type PhraseAnchoringDiagnostic struct {
+	SceneID  string
+	Text     string
+	Words    int
+	Anchored bool
+	Reason   string
+}
 
-	// Repeated endpoint words can produce several possible spans. Choose the
-	// ordered pair whose number of certified timing words most closely matches
-	// the source phrase length; stable iteration makes ties source-order wins.
-	var first, last capabilityaudio.LocatedPhrase
-	bestDelta := int(^uint(0) >> 1)
-	for _, start := range firstMatches {
-		for _, end := range lastMatches {
-			if end.WordEnd <= start.WordStart {
+// DiagnosePhraseAnchoring is a read-only projection of the anchoring the
+// overlay planner performs on every important-phrase candidate. It never
+// mutates the result and never fails the run; a candidate that does not occur
+// verbatim in the certified timing is reported as a skip with its reason.
+func DiagnosePhraseAnchoring(result *GenerateResult, language Language) []PhraseAnchoringDiagnostic {
+	if result == nil {
+		return nil
+	}
+	resolved, err := overlayResolvedScenesFor(*result, language)
+	if err != nil {
+		return nil
+	}
+	timelineStartUS := make(map[string]int64, len(resolved))
+	for _, scene := range resolved {
+		timelineStartUS[scene.ID] = scene.TimelineStartUS
+	}
+	var out []PhraseAnchoringDiagnostic
+	for _, scene := range result.Scenes {
+		ref, ok := scene.Voiceover[language]
+		if !ok || ref.Timing == nil {
+			continue
+		}
+		startUS, ok := timelineStartUS[scene.ID]
+		if !ok {
+			continue
+		}
+		ann := annotationsForLanguage(scene, language, result.SourceLanguage)
+		if ann == nil {
+			continue
+		}
+		for _, span := range ann.ImportantPhrases {
+			text := strings.TrimSpace(span.Text)
+			diag := PhraseAnchoringDiagnostic{SceneID: scene.ID, Text: text, Words: len(strings.Fields(text))}
+			if text == "" {
+				diag.Reason = "empty phrase"
+				out = append(out, diag)
 				continue
 			}
-			spanWords := end.WordEnd - start.WordStart + 1
-			delta := spanWords - len(words)
-			if delta < 0 {
-				delta = -delta
+			if _, err := locatePhraseTimingWithEndpointFallback(scene.Index, startUS, *ref.Timing, text); err != nil {
+				diag.Reason = err.Error()
+			} else {
+				diag.Anchored = true
 			}
-			if delta < bestDelta {
-				first, last, bestDelta = start, end, delta
-			}
+			out = append(out, diag)
 		}
 	}
-	if bestDelta == int(^uint(0)>>1) {
-		return nil, err
-	}
-	return &capabilityaudio.PhraseTiming{
-		SceneIndex: sceneIndex, PhraseIndex: 0, Text: strings.TrimSpace(phrase),
-		WordStart: first.WordStart, WordEnd: last.WordEnd,
-		LocalStartUS: first.StartUS, LocalEndUS: last.EndUS,
-		TimelineStartUS: timelineStartUS,
-		GlobalStartUS:   timelineStartUS + first.StartUS,
-		GlobalEndUS:     timelineStartUS + last.EndUS,
-	}, nil
+	return out
 }
 
 // plannerOwnedEntityIDs collects the StableEntityID of every annotation entity

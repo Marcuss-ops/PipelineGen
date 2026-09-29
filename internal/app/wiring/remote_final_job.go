@@ -2,12 +2,15 @@ package wiring
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaregistry"
 	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
@@ -20,10 +23,37 @@ import (
 
 const defaultFinalJobMasterURL = "http://51.91.11.36:8000"
 
+// defaultFinalJobAttachBudget keeps script.generate attached through the usual
+// remote composite render. The old 60s default marked the local job FAILED while
+// the Master was still rendering for 6-14 minutes; those renders continued, but
+// their completed result was never joined back to the parent job. Leave enough
+// room for the observed render times while remaining below the 60m script job
+// timeout. Operators can still override this with
+// VELOX_FINAL_JOB_ATTACH_SECONDS.
+const defaultFinalJobAttachBudget = 50 * time.Minute
+
+// finalJobAttachBudget reads VELOX_FINAL_JOB_ATTACH_SECONDS. 0 disables the
+// hand-off (every wait runs to completion: the pre-split blocking contract).
+// A malformed value is a configuration error, not a silent default.
+func finalJobAttachBudget() (time.Duration, error) {
+	raw := strings.TrimSpace(os.Getenv("VELOX_FINAL_JOB_ATTACH_SECONDS"))
+	if raw == "" {
+		return defaultFinalJobAttachBudget, nil
+	}
+	seconds, err := strconv.Atoi(raw)
+	if err != nil || seconds < 0 {
+		return 0, fmt.Errorf("VELOX_FINAL_JOB_ATTACH_SECONDS must be a non-negative integer number of seconds, got %q", raw)
+	}
+	return time.Duration(seconds) * time.Second, nil
+}
+
 type remoteFinalJobAdapter struct {
 	drive  drive.Reader
 	media  *pgmedia.MediaSearcher
 	client *remotejob.Client
+	// attachBudget bounds a single attempt's wait on the Master render; see
+	// defaultFinalJobAttachBudget and finalJobAttachBudget.
+	attachBudget time.Duration
 }
 
 func newRemoteFinalJobAdapter(root *ComposeRoot) (*remoteFinalJobAdapter, error) {
@@ -50,8 +80,12 @@ func newRemoteFinalJobAdapter(root *ComposeRoot) (*remoteFinalJobAdapter, error)
 	if base == "" {
 		base = defaultFinalJobMasterURL
 	}
+	budget, err := finalJobAttachBudget()
+	if err != nil {
+		return nil, err
+	}
 	client := remotejob.New(base, token)
-	return &remoteFinalJobAdapter{drive: root.Drive.Reader, media: pgmedia.NewMediaSearcher(root.MediaPostgres), client: client}, nil
+	return &remoteFinalJobAdapter{drive: root.Drive.Reader, media: pgmedia.NewMediaSearcher(root.MediaPostgres), client: client, attachBudget: budget}, nil
 }
 
 func (a *remoteFinalJobAdapter) SubmitFinalJob(ctx context.Context, runID string, req scriptgen.GenerateRequest, result *scriptgen.GenerateResult) (scriptgen.RemoteFinalJobResult, error) {
@@ -64,9 +98,69 @@ func (a *remoteFinalJobAdapter) SubmitFinalJob(ctx context.Context, runID string
 	}
 	// final_job=true on the local script request triggers this Master handoff.
 	// PREPARE carries the scene plan; FINALIZE attaches runtime assets and
-	// overlays so the Master refreshes prefetch before the worker starts.
-	remote, err := a.client.Submit(ctx, pre, finalize)
-	return scriptgen.RemoteFinalJobResult{JobID: remote.JobID, Status: remote.Status, WorkerID: remote.WorkerID, ArtifactURL: remote.ArtifactURL, SHA256: remote.SHA256}, err
+	// overlays so the Master refreshes prefetch before the worker starts. The id
+	// is kept between the two phases and through the wait, so a bounded wait that
+	// expires still reports a handle the next attempt can resume from — the job
+	// exists on the Master either way.
+	jobID, err := a.client.Prepare(ctx, pre)
+	if err != nil {
+		return scriptgen.RemoteFinalJobResult{}, err
+	}
+	if err := a.client.Finalize(ctx, jobID, finalize); err != nil {
+		return scriptgen.RemoteFinalJobResult{JobID: jobID}, err
+	}
+	remote, waitErr := a.client.Attach(ctx, jobID, a.attachBudget)
+	return finalJobResult(jobID, remote), finalJobWaitError(waitErr)
+}
+
+// AttachFinalJob waits on a job a previous attempt already submitted: the poll
+// phase of the split, with no PREPARE and no FINALIZE, so resuming cannot ask
+// the Master for a second render.
+func (a *remoteFinalJobAdapter) AttachFinalJob(ctx context.Context, jobID string, waitToCompletion bool) (scriptgen.RemoteFinalJobResult, error) {
+	if a == nil || a.client == nil {
+		return scriptgen.RemoteFinalJobResult{}, fmt.Errorf("remote final-job adapter is not configured")
+	}
+	id := strings.TrimSpace(jobID)
+	if id == "" {
+		return scriptgen.RemoteFinalJobResult{}, fmt.Errorf("remote final-job attach requires a job id")
+	}
+	// waitToCompletion is the capability's decision ("the wait was already
+	// handed back once; run it to completion now"); the DURATION stays here,
+	// where deployment config lives. Budget 0 means the client's full poll
+	// timeout, i.e. exactly the pre-split blocking contract.
+	budget := a.attachBudget
+	if waitToCompletion {
+		budget = 0
+	}
+	remote, err := a.client.Attach(ctx, id, budget)
+	return finalJobResult(id, remote), finalJobWaitError(err)
+}
+
+// finalJobResult projects the client's Result onto the capability's durable
+// receipt. The id is carried even on a failed wait: the Master job exists, and
+// losing its address is what turns a resumable render into a duplicate one.
+func finalJobResult(jobID string, remote remotejob.Result) scriptgen.RemoteFinalJobResult {
+	id := strings.TrimSpace(remote.JobID)
+	if id == "" {
+		id = strings.TrimSpace(jobID)
+	}
+	return scriptgen.RemoteFinalJobResult{JobID: id, Status: remote.Status, WorkerID: remote.WorkerID, ArtifactURL: remote.ArtifactURL, SHA256: remote.SHA256}
+}
+
+// finalJobWaitError maps the transport's "not terminal yet" sentinel onto the
+// capability-owned one, so the runner branches on a typed error it owns without
+// importing the transport package. Both sentinels stay in the chain (`%w`
+// twice): the capability matches the one it owns, the wiring keeps the
+// transport's for logs. A terminal Master failure or a transport fault passes
+// through unchanged.
+func finalJobWaitError(err error) error {
+	if err == nil {
+		return nil
+	}
+	if errors.Is(err, remotejob.ErrRemotePending) {
+		return fmt.Errorf("%w: %w", scriptgen.ErrFinalJobPending, err)
+	}
+	return err
 }
 
 func (a *remoteFinalJobAdapter) ResolveFinalJobAsset(ctx context.Context, id string) (map[string]any, error) {
@@ -212,4 +306,7 @@ func (a *remoteFinalJobAdapter) assetRef(ctx context.Context, id string) (map[st
 	return ref, durationMS, nil
 }
 
-var _ scriptgen.FinalJobSubmitter = (*remoteFinalJobAdapter)(nil)
+var (
+	_ scriptgen.FinalJobSubmitter = (*remoteFinalJobAdapter)(nil)
+	_ scriptgen.FinalJobAttacher  = (*remoteFinalJobAdapter)(nil)
+)

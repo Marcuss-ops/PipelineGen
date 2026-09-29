@@ -110,6 +110,57 @@ func TestMigrations_SchemaContract_AllTables(t *testing.T) {
 	}
 }
 
+// TestMigrations_SchemaContract_JobsPlane is the same contract for the
+// SPLIT-PLANE history: `migrations/sqlite_jobs/` applied with scope `jobs`.
+//
+// It exists because the jobs plane is a separate migration directory with its
+// own target DB, so the primary-plane contract test above cannot see it: a
+// migration there (e.g. a new column on `jobs`) would ship with ZERO proof that
+// the runner produces the declared schema. Concretely, this is what pins
+// `006_job_deferral.sql`: `jobs.deferred_until` must exist as the LAST column
+// (ALTER TABLE appends) and with the exact declared type — the deferral's
+// requeue sweep reads it, so a type/name drift here is a runtime failure on
+// every deferred job, not a cosmetic one.
+func TestMigrations_SchemaContract_JobsPlane(t *testing.T) {
+	const migrationsRelPath = "../../../migrations/sqlite_jobs"
+	migrationsDir, err := filepath.Abs(migrationsRelPath)
+	require.NoError(t, err, "resolve jobs migrations dir")
+	migrationsDir = filepath.Clean(migrationsDir)
+
+	expected := extractExpectedSchema(t, migrationsDir, "jobs")
+	require.NotEmpty(t, expected,
+		"parser must yield at least one expected table for the jobs plane — "+
+			"if this fires, migrations/sqlite_jobs is empty or the parser is broken")
+
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "jobs-contract.sqlite")
+	err = RunMigrationsOnDB(dbPath, zaptest.NewLogger(t), migrationsDir, "jobs")
+	require.NoError(t, err, "RunMigrationsOnDB must succeed on a fresh jobs DB")
+
+	db, err := sql.Open("sqlite3", dbPath+"?_mode=ro")
+	require.NoError(t, err)
+	defer db.Close()
+
+	names := make([]string, 0, len(expected))
+	for k := range expected {
+		names = append(names, k)
+	}
+	sort.Strings(names)
+	for _, tbl := range names {
+		tbl := tbl
+		exp := expected[tbl]
+		if exp.DroppedInFile != "" {
+			t.Run("table="+tbl+"_dropped_by_"+exp.DroppedInFile, func(t *testing.T) {
+				t.Skipf("table %q was correctly dropped by %s; no contract check needed", tbl, exp.DroppedInFile)
+			})
+			continue
+		}
+		t.Run("table="+tbl, func(t *testing.T) {
+			assertTableContract(t, db, tbl, exp)
+		})
+	}
+}
+
 // assertTableContract verifies that `tbl` exists in sqlite_master and that
 // its PRAGMA table_info matches the migration-declared schema for `exp`.
 // See the file-level comment for the column-order rule.

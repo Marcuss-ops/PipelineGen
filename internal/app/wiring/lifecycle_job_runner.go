@@ -9,6 +9,7 @@ import (
 
 	cliprender "github.com/Marcuss-ops/PipelineGen/internal/capabilities/cliprender"
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
+	jobscheduling "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/scheduling"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
@@ -156,8 +157,16 @@ func buildJobRunnerResourceSampler(deps jobRunnerDeps) (kernobs.RunResourceSampl
 // newJobRunnerPool constructs one pool from an explicit config. Registry,
 // dispatcher and service orchestration remain root-owned; persistence-specific
 // completion classification is injected at the platform boundary.
-func newJobRunnerPool(deps jobRunnerDeps, name string, cfg appjobs.RunnerConfig) *appjobs.Runner {
+//
+// It returns the pool's InstaEdit calendar Reporter alongside the runner, or a
+// nil reporter when the calendar is unconfigured. The reporter is returned
+// because attaching it to the workers only SPOOLS reports: somebody has to run
+// its drain loop, and that is the job-runner startup step. Dropping the return
+// value silently reproduces the defect this signature exists to prevent — a
+// spool that fills up forever while the calendar shows nothing.
+func newJobRunnerPool(deps jobRunnerDeps, name string, cfg appjobs.RunnerConfig) (*appjobs.Runner, *instaeditcalendar.Reporter) {
 	runner := appjobs.NewRunner(deps.root.Jobs.Repo, deps.root.Jobs.Dispatcher, deps.log, cfg)
+	var reporter *instaeditcalendar.Reporter
 	calendarURL, calendarKey := instaeditcalendar.LoadConfig()
 	if calendarURL != "" && calendarKey != "" {
 		client, err := instaeditcalendar.NewClient(calendarURL, calendarKey)
@@ -168,9 +177,10 @@ func newJobRunnerPool(deps jobRunnerDeps, name string, cfg appjobs.RunnerConfig)
 			if outboxDir == "" {
 				outboxDir = filepath.Join(os.Getenv("HOME"), ".local", "state", "pipelinegen", "instaedit-calendar", name)
 			}
-			reporter, err := instaeditcalendar.NewReporter(client, outboxDir, 2*time.Second)
+			reporter, err = instaeditcalendar.NewReporter(client, outboxDir, 2*time.Second)
 			if err != nil {
 				deps.log.Warn("InstaEdit calendar reporter disabled: outbox unavailable", zap.Error(err))
+				reporter = nil
 			} else {
 				runner.WithCalendarReporter(reporter)
 			}
@@ -199,7 +209,59 @@ func newJobRunnerPool(deps jobRunnerDeps, name string, cfg appjobs.RunnerConfig)
 			runner.WithParentCompletionNotifier(&clipRenderParentNotifier{agg: clipAgg})
 		}
 	}
-	return runner
+	return runner, reporter
+}
+
+// buildJobSchedulerStep constructs the deferred-job scheduler step, or nil
+// when scheduling is unavailable (partial deploy, or a broker that does not
+// implement job.ScheduleStore).
+//
+// The scheduler is the ONLY writer of the SCHEDULED → QUEUED promotion, so it
+// runs as its own background step rather than inside a worker pool. The
+// admission policy comes from config (daily quota + concurrency cap); the
+// zero-value policy is unlimited.
+func buildJobSchedulerStep(deps jobRunnerDeps) *StartupStep {
+	if deps.root == nil || deps.root.Jobs == nil || deps.root.Jobs.Repo == nil {
+		return nil
+	}
+	store, ok := any(deps.root.Jobs.Repo).(job.ScheduleStore)
+	if !ok {
+		deps.log.Warn("job scheduler disabled: wired broker does not support deferred scheduling")
+		return nil
+	}
+	interval := 30 * time.Second
+	if raw := deps.cfg.Jobs.SchedulerInterval; raw != "" {
+		if parsed, err := time.ParseDuration(raw); err == nil && parsed > 0 {
+			interval = parsed
+		} else if err != nil {
+			deps.log.Warn("invalid VELOX_SCHEDULER_INTERVAL; using default 30s", zap.String("raw", raw), zap.Error(err))
+		}
+	}
+	scheduler, err := jobscheduling.NewScheduler(jobscheduling.SchedulerDeps{
+		Store: store,
+		Policy: jobscheduling.AdmissionPolicy{
+			MaxConcurrent: deps.cfg.Jobs.SchedulerMaxConcurrent,
+			DailyQuota:    deps.cfg.Jobs.SchedulerDailyQuota,
+		},
+		Interval: interval,
+		Log:      deps.log,
+	})
+	if err != nil {
+		deps.log.Warn("job scheduler disabled: invalid policy", zap.Error(err))
+		return nil
+	}
+	return &StartupStep{
+		Name: "job-scheduler", Required: false,
+		Start: func(startCtx context.Context) error {
+			concurrent.SafeGo("job-scheduler", func() { _ = scheduler.Run(startCtx) })
+			deps.log.Info("Job scheduler started",
+				zap.Int("daily_quota", deps.cfg.Jobs.SchedulerDailyQuota),
+				zap.Int("max_concurrent", deps.cfg.Jobs.SchedulerMaxConcurrent),
+				zap.Duration("interval", interval))
+			return nil
+		},
+		Stop: func(_ context.Context) error { return nil },
+	}
 }
 
 func jobRunnerRootReady(deps jobRunnerDeps) bool {
@@ -214,9 +276,9 @@ func jobRunnerRootReady(deps jobRunnerDeps) bool {
 // the load-bearing half of the guardrail: without it the general pool would
 // still claim the settle continuations it exists to avoid and a slow GPU
 // backlog would keep starving unrelated jobs.
-func buildJobRunner(deps jobRunnerDeps) *appjobs.Runner {
+func buildJobRunner(deps jobRunnerDeps) (*appjobs.Runner, *instaeditcalendar.Reporter) {
 	if !jobRunnerRootReady(deps) {
-		return nil
+		return nil, nil
 	}
 	cfg := jobRunnerBaseConfig(deps)
 	deps.log.Info("Job runner created",
@@ -236,13 +298,13 @@ func buildJobRunner(deps jobRunnerDeps) *appjobs.Runner {
 // or nil when the split is disabled. It claims only clip.render jobs whose
 // payload carries render_phase=settle, so a remote render waiting on
 // RenderingGen can never occupy a general worker slot.
-func buildClipRenderSettleRunner(deps jobRunnerDeps) *appjobs.Runner {
+func buildClipRenderSettleRunner(deps jobRunnerDeps) (*appjobs.Runner, *instaeditcalendar.Reporter) {
 	if !jobRunnerRootReady(deps) {
-		return nil
+		return nil, nil
 	}
 	budget := settleWorkerBudget(deps.cfg)
 	if budget <= 0 {
-		return nil
+		return nil, nil
 	}
 	cfg := jobRunnerBaseConfig(deps)
 	cfg.Workers = budget
@@ -261,23 +323,50 @@ type jobRunnerPool struct {
 	name    string
 	runner  *appjobs.Runner
 	workers int
+	// reporter is the pool's InstaEdit calendar spool, nil when the calendar is
+	// unconfigured. The step DRAINS it: attaching it to the workers only spools.
+	reporter *instaeditcalendar.Reporter
+}
+
+// startCalendarDrains launches the drain loop of every pool that carries an
+// InstaEdit calendar reporter.
+//
+// The split matters: the workers SPOOL reports durably and this loop is what
+// DELIVERS them. A reporter wired to the workers but never drained leaves every
+// report in ~/.local/state/pipelinegen/instaedit-calendar/<pool> and the
+// calendar dark forever, so the drain is started by the same step that starts
+// the runner instead of by a separate opt-in step an operator cannot verify.
+func startCalendarDrains(pools []jobRunnerPool, ctx context.Context, log *zap.Logger) {
+	if log == nil {
+		log = zap.NewNop()
+	}
+	for _, pool := range pools {
+		if pool.reporter == nil {
+			continue
+		}
+		pool := pool
+		concurrent.SafeGo("calendar-reporter-"+pool.name, func() { _ = pool.reporter.Run(ctx) })
+		log.Info("InstaEdit calendar reporter draining spooled reports", zap.String("pool", pool.name))
+	}
 }
 
 func buildJobRunnerStep(deps jobRunnerDeps) *StartupStep {
-	general := buildJobRunner(deps)
+	general, generalReporter := buildJobRunner(deps)
 	if general == nil {
 		return nil
 	}
 	pools := []jobRunnerPool{{
-		name:    jobRunnerPoolGeneral,
-		runner:  general,
-		workers: workerDefault(deps.cfg),
+		name:     jobRunnerPoolGeneral,
+		runner:   general,
+		workers:  workerDefault(deps.cfg),
+		reporter: generalReporter,
 	}}
-	if settle := buildClipRenderSettleRunner(deps); settle != nil {
+	if settle, settleReporter := buildClipRenderSettleRunner(deps); settle != nil {
 		pools = append(pools, jobRunnerPool{
-			name:    jobRunnerPoolSettle,
-			runner:  settle,
-			workers: settleWorkerBudget(deps.cfg),
+			name:     jobRunnerPoolSettle,
+			runner:   settle,
+			workers:  settleWorkerBudget(deps.cfg),
+			reporter: settleReporter,
 		})
 	}
 	disp := deps.root.Jobs.Dispatcher
@@ -289,6 +378,7 @@ func buildJobRunnerStep(deps jobRunnerDeps) *StartupStep {
 				pool := pool
 				concurrent.SafeGo("job-runner-"+pool.name, func() { pool.runner.Start(startCtx) })
 			}
+			startCalendarDrains(pools, startCtx, deps.log)
 			for _, pool := range pools {
 				deps.log.Info("Job runner pool started after full wiring",
 					zap.String("pool", pool.name), zap.Int("workers", pool.workers))

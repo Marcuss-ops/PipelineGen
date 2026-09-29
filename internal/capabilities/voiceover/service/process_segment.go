@@ -103,12 +103,11 @@ func (u *ProcessSegmentUseCase) Execute(ctx context.Context, cmd *ProcessSegment
 	if cmd.Timing != nil {
 		timingPolicy = cmd.Timing.Normalized()
 	}
-	// A cache hit contains durable audio metadata and timing links, but not
-	// the word-level SpeechTimingArtifact required by the in-memory script
-	// overlay compiler.  Until the cache port can hydrate that artifact,
-	// timing-bearing requests must execute the canonical synthesis/publish
-	// path so the exact artifact is returned with the audio result.
-	if u.deps.Cache.VoiceoverCache != nil && timingPolicy.Mode == audio.TimingDisabled {
+	// Timing-bearing cache hits are reusable only when the cache port has
+	// downloaded and validated the canonical word-level artifact. The script
+	// overlay compiler consumes that exact artifact, so a timing link or summary
+	// alone is not sufficient to skip synthesis.
+	if u.deps.Cache.VoiceoverCache != nil {
 		fingerprint := BuildVoiceoverContentFingerprint(cmd.TextHash, cmd.Language, cmd.Voice, cmd.Dest.FolderID, cmd.Timing, cmd.RemoveSilence)
 		hit, lookupErr := u.deps.Cache.VoiceoverCache.Lookup(ctx, fingerprint, timingPolicy.Mode != audio.TimingDisabled)
 		if lookupErr != nil {
@@ -116,7 +115,7 @@ func (u *ProcessSegmentUseCase) Execute(ctx context.Context, cmd *ProcessSegment
 				zap.String("fingerprint", fingerprint),
 				zap.String("language", string(cmd.Language)),
 				zap.Error(lookupErr))
-		} else if hit != nil {
+		} else if hit != nil && (timingPolicy.Mode == audio.TimingDisabled || hit.Artifact != nil) {
 			log.Info("voiceover cache HIT — reusing existing audio, skipping TTS + upload + finalize",
 				zap.String("fingerprint", fingerprint),
 				zap.String("cached_id", hit.ID),
@@ -124,6 +123,10 @@ func (u *ProcessSegmentUseCase) Execute(ctx context.Context, cmd *ProcessSegment
 				zap.String("language", string(cmd.Language)))
 			observability.VoiceoverJobsTotal.WithLabelValues("completed").Inc()
 			return buildCachedResult(cmd, hit, timingPolicy, log), nil
+		} else if hit != nil {
+			log.Warn("voiceover cache candidate lacks validated word timing; falling through to synthesis",
+				zap.String("fingerprint", fingerprint),
+				zap.String("language", string(cmd.Language)))
 		}
 		log.Info("voiceover cache MISS — full pipeline will run",
 			zap.String("fingerprint", fingerprint),

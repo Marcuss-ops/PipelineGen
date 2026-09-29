@@ -94,6 +94,28 @@ const (
 	// layer enforces the limit at the FENCE so a stale pre-check
 	// (an extra retry tick) cannot corrupt the contract.
 	OutcomeScheduleRetry FinalizeAttemptOutcome = "SCHEDULE_RETRY"
+
+	// OutcomeDeferred — non-terminal WAIT, NOT a retry.
+	//
+	// job.status → RETRY_WAIT (the canonical non-terminal "waiting to be
+	// re-dispatched" state, so cancellation, aggregation and the existing
+	// RETRY_WAIT operator views keep working unchanged), retry_count
+	// UNCHANGED, deferred_until = now + Backoff, lease cleared.
+	//
+	// It exists because a handler that is waiting on work outside the jobs
+	// plane (a remote render, a provider window) must be able to hand its
+	// attempt back WITHOUT spending a retry: retries are the budget for
+	// "the work failed", and a wait is not a failure. Charging waits to that
+	// budget is exactly how a long external wait becomes a terminal FAILED
+	// job. The typed request a handler returns is job.DeferredAfter (see
+	// kernel/job/deferral.go); the worker translates it into this outcome.
+	//
+	// The retry-exhaustion downgrade does NOT apply: a deferral can never
+	// exhaust a budget it does not spend, so this outcome always lands in
+	// RETRY_WAIT. A handler that would wait forever owns that bound itself
+	// (it must stop deferring and wait it out, or fail), because the jobs
+	// plane has no opinion about how long external work takes.
+	OutcomeDeferred FinalizeAttemptOutcome = "DEFERRED"
 )
 
 // ArtifactStatePatch is the typed-in-kernel surface for an in-tx
@@ -231,15 +253,22 @@ type FinalizeAttemptCommand struct {
 	// with an empty message is a hostile defence-in-depth trap).
 	ErrorMessage string
 
-	// Backoff is the post-OutcomeScheduleRetry re-claim delay.
+	// Backoff is the post-OutcomeScheduleRetry / post-OutcomeDeferred
+	// re-claim delay.
 	//
-	// The SQL layer writes the backoff hint into the row's
-	// completed_at column as a far-future timestamp IF AND ONLY
-	// IF Outcome == OutcomeScheduleRetry (matches the pre-Fase-4
-	// implicit backoff pattern via lease_expiry at
-	// lifecycle_aggregation.go). Zero backoff = "no delay"
-	// (re-claim Eligible immediately); non-zero backoff =
-	// "postpone re-claim until Backoff has elapsed since now".
+	// For OutcomeDeferred it is authoritative and explicit: the SQL layer
+	// writes `deferred_until = now + Backoff` and the requeue sweep
+	// re-enqueues the job exactly when that instant passes, which is what
+	// makes a wait's cadence a property of the row instead of a constant
+	// spread across workers. Backoff <= 0 for a deferral means "use the
+	// scheduler's deferral delay" (the deployment knob), written as a NULL
+	// hint so the store cannot silently invent a value.
+	//
+	// For OutcomeScheduleRetry the backoff is advisory: the re-claim delay is
+	// derived from retry_count by the scheduler (RetryDue), and the row keeps
+	// its historical completed_at stamp. Zero backoff = "no delay" (re-claim
+	// eligible immediately); non-zero backoff = "postpone re-claim until
+	// Backoff has elapsed since now".
 	//
 	// Ignored for OutcomeSucceeded and OutcomeFailedPermanent.
 	Backoff time.Duration
@@ -386,7 +415,7 @@ type FinalizeAttemptFn func(ctx context.Context, cmd FinalizeAttemptCommand) (Fi
 // round-trip through the SQL adapter required for callers and tests).
 func (o FinalizeAttemptOutcome) IsValid() bool {
 	switch o {
-	case OutcomeSucceeded, OutcomeFailedPermanent, OutcomeScheduleRetry:
+	case OutcomeSucceeded, OutcomeFailedPermanent, OutcomeScheduleRetry, OutcomeDeferred:
 		return true
 	}
 	return false

@@ -41,9 +41,16 @@ type YouTubeCutRequest struct {
 	OutputDir string
 	// PreDownloadedPath is optional. When set, yt-dlp download is SKIPPED and
 	// the clip is cut locally from this file (stream-copy when CutModeCopy,
-	// one canonical render when CutModeNormalize). This enables the
-	// "download once, cut N times" optimization.
+	// one canonical render when CutModeNormalize). The file is a SECTION of the
+	// source in the merged-window path, so it is only meaningful together with
+	// SourceOffsetSec: it enables "stage only the requested windows, cut N
+	// locally" (see youtube/usecase/extraction_staging.go).
 	PreDownloadedPath string
+	// SourceOffsetSec is the absolute SOURCE second that maps to t=0 of
+	// PreDownloadedPath (the staged section's start). Start is an absolute
+	// timestamp, so the local seek is (Start - SourceOffsetSec). MUST be 0 when
+	// PreDownloadedPath is empty.
+	SourceOffsetSec   float64
 	SkipMetadataFetch bool
 }
 
@@ -164,18 +171,35 @@ func (p *Pipeline) DownloadAndCutYouTubeVideo(ctx context.Context, req YouTubeCu
 	// below performs EXACTLY ONE media operation per segment — never a
 	// copy-then-render chain. This removes the old CutCopy→temp→
 	// CutAndNormalize double pass that cost 1 extra temp file, 1 remux and
-	// 1 extra full decode/encode per segment on the download-once path.
+	// 1 extra full decode/encode per segment on the staged-source path.
 	if p.clipProcess == nil {
 		return nil, fmt.Errorf("ffmpeg clip processor not configured")
+	}
+	// A source offset without a staged file is a caller bug, not a degraded
+	// mode: the offset is only applied when cutting locally, so honouring it
+	// here is impossible and ignoring it would publish the wrong seconds
+	// silently. Fail closed instead.
+	if req.PreDownloadedPath == "" && req.SourceOffsetSec != 0 {
+		return nil, fmt.Errorf("source offset %.3fs set without a pre-downloaded path", req.SourceOffsetSec)
 	}
 
 	if req.PreDownloadedPath != "" {
 		p.log.Info("using pre-downloaded video, cutting locally",
 			zap.String("source", req.PreDownloadedPath),
+			zap.Float64("source_offset_sec", req.SourceOffsetSec),
 			zap.String("cut_mode", string(req.CutMode)))
 
-		startStr := p.formatTime(req.Start)
-		endStr := p.formatTime(req.Start + req.Duration)
+		// The staged file starts at req.SourceOffsetSec (0 for a whole-source
+		// stage), so the absolute segment start becomes a seek inside the file.
+		// A negative seek would silently publish different seconds than the
+		// caller asked for; blocks cover their segments by construction, so this
+		// only fires on a caller bug or a stale/mismatched receipt.
+		cutStart := req.Start - req.SourceOffsetSec
+		if cutStart < 0 {
+			return nil, fmt.Errorf("segment start %.3fs precedes the staged section start %.3fs", req.Start, req.SourceOffsetSec)
+		}
+		startStr := p.formatTime(cutStart)
+		endStr := p.formatTime(cutStart + req.Duration)
 
 		renderTimer := time.Now()
 		var cutErr error
@@ -185,7 +209,7 @@ func (p *Pipeline) DownloadAndCutYouTubeVideo(ctx context.Context, req YouTubeCu
 			// so no re-encode is needed.
 			cutErr = p.clipProcess.CutCopy(ctx, req.PreDownloadedPath, outputPath, startStr, endStr, !req.KeepAudio)
 		} else {
-			// Single canonical render DIRECTLY from the full source (never
+			// Single canonical render DIRECTLY from the staged file (never
 			// through a temp copy). The source interval is exact; encoder
 			// selection is delegated to clipProcess (central VideoConfig
 			// policy).
@@ -237,7 +261,7 @@ func (p *Pipeline) DownloadAndCutYouTubeVideo(ctx context.Context, req YouTubeCu
 		// bound the canonical render to the requested duration so the
 		// persisted artifact, Drive object, and SQLite metadata agree
 		// physically. Exactly ONE render — no copy chain. (The per-segment
-		// download path is the fallback when download-once staging is
+		// download path is the fallback when section staging is
 		// unavailable; the segment is always normalized here.)
 		renderTimer := time.Now()
 		normalizeErr := p.clipProcess.CutAndNormalize(ctx, rawFile, outputPath, "0", p.formatTime(req.Duration), canonicalYouTubeCutOptions(req.KeepAudio))

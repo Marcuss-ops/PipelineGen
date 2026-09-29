@@ -46,9 +46,12 @@ import (
 // `u.fail` has already populated out.Item.Status="failed" +
 // out.Item.Error + out.Error.
 //
-// YouTube segments intentionally use the section-aware video pipeline
-// directly. Full-source staging is not used here: it would download an
-// entire video merely to cut a short requested interval.
+// YouTube segments are cut from the staged SECTION that contains them when the
+// fanout staged one (cmd.PreDownloadedPath + cmd.PreDownloadedOffsetSec, one
+// yt-dlp --download-sections call per merged block of requested windows), and
+// fall back to a per-segment sectioned download when it did not. Either way the
+// pipeline downloads only the seconds the run publishes — never the full source
+// (see extraction_staging.go).
 func (u *ProcessYouTubeSegmentUseCase) step3to5_CutRetryHash(
 	ctx context.Context,
 	cmd youtubetypes.ProcessSegmentCommand,
@@ -102,6 +105,7 @@ func (u *ProcessYouTubeSegmentUseCase) step3to5_CutRetryHash(
 		Strategy:          string(cmd.Strategy),
 		OutputDir:         cmd.OutDir,
 		PreDownloadedPath: cmd.PreDownloadedPath,
+		SourceOffsetSec:   cmd.PreDownloadedOffsetSec,
 		// Explicit segment requests already carry the authoritative summary,
 		// topics and speakers. Do not spawn a best-effort yt-dlp metadata
 		// subprocess before every clip download.

@@ -115,6 +115,7 @@ var canonicalJobTypes = []string{
 	TypeScriptGenerateItem,     // domain/job/job.go
 	TypeScriptImageSibling,     // domain/job/job.go
 	TypeScriptVoiceoverSibling, // domain/job/job.go
+	TypeScriptDocsPublish,      // kernel/script/job_types.go (deferred CORE_READY Docs leg, TICKET-CORE-READY-DURABLE-DAG step 2)
 	TypeYouTubeStock,           // domain/youtube/job_types.go (YouTube stock vertical slice)
 	TypeAssetTextMaterialize,   // application/jobs/registry_types.go (FASE texttracks / July 2026)
 	TypeYouTubeExtract,         // application/jobs/registry_types.go (July 2026)

@@ -7,9 +7,25 @@ import (
 	"net/url"
 	"sort"
 	"strings"
+
+	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 )
 
 type FinalJobStockFile struct{ ID, Name string }
+
+// finalJobRejectedStockDriveIDs contains stock files proven incompatible with
+// the remote copy-only packet mux. Keep these exclusions on the 77 side: the
+// 51 worker must reject an unsafe source window instead of snapping its cut.
+var finalJobRejectedStockDriveIDs = map[string]struct{}{
+	"1xvvjxin09xbwy7qqignzlmpjftckql_o": {},
+}
+
+func finalJobStockFileAllowed(file FinalJobStockFile) bool {
+	_, rejected := finalJobRejectedStockDriveIDs[strings.ToLower(strings.TrimSpace(file.ID))]
+	return !rejected
+}
+
 type FinalJobAssetResolver interface {
 	ResolveFinalJobAsset(context.Context, string) (map[string]any, error)
 	ListFinalJobStockFolder(context.Context, string) ([]FinalJobStockFile, error)
@@ -118,8 +134,20 @@ func BuildFinalJobPayloads(ctx context.Context, runID string, req GenerateReques
 				return nil, nil, fmt.Errorf("list selected stock folder %s: %w", folderID, err)
 			}
 			files = listed
+			// Do not put a source whose required copy-only cut is known to fall
+			// between keyframes into the remote timeline. The next eligible file
+			// in this folder is selected in its place; if none remain, fail here
+			// on 77 instead of spending a remote worker attempt on a guaranteed
+			// mux rejection.
+			eligible := make([]FinalJobStockFile, 0, len(files))
+			for _, file := range files {
+				if finalJobStockFileAllowed(file) {
+					eligible = append(eligible, file)
+				}
+			}
+			files = eligible
 			if len(files) == 0 {
-				return nil, nil, fmt.Errorf("selected stock folder %s contains no video files", folderID)
+				return nil, nil, fmt.Errorf("selected stock folder %s contains no copy-compatible video files after excluding known keyframe-incompatible sources", folderID)
 			}
 			stockFiles[folderID] = files
 		}
@@ -205,7 +233,7 @@ func BuildFinalJobPayloads(ctx context.Context, runID string, req GenerateReques
 	if err != nil {
 		return nil, nil, err
 	}
-	key := "creator-77-" + strings.TrimSpace(runID)
+	key := finalJobIdempotencyKey(req.IdempotencyKey, runID)
 	pre := map[string]any{
 		"idempotency_key": key,
 		"job_type":        "scene.composite.v1",
@@ -230,6 +258,23 @@ func BuildFinalJobPayloads(ctx context.Context, runID string, req GenerateReques
 		"runtime_payload": map[string]any{"runtime_audio": runtimeAudio},
 	}
 	return pre, finalize, nil
+}
+
+// finalJobIdempotencyKey stays stable when the same submitted request is
+// retried under a new local run id. The remote Master uses this key to return
+// the already-prepared render instead of starting a duplicate video job.
+// Older/internal callers without a request key retain the run-id behavior.
+func finalJobIdempotencyKey(requestKey, runID string) string {
+	requestKey = strings.TrimSpace(requestKey)
+	if requestKey == "" {
+		return "creator-77-" + strings.TrimSpace(runID)
+	}
+	// 2026-09-28: the digest SSOT (godlike/06) owns the algorithm. This call
+	// used to import crypto/sha256 directly, which the archcheck
+	// digest_sha256_import_outside_ssot gate rejects; SHA256String returns the
+	// same lowercase hex, so the first 32 characters are the exact 16 bytes the
+	// previous hex.EncodeToString(sum[:16]) produced.
+	return "creator-77-request-" + digest.SHA256String(requestKey)[:32]
 }
 
 // finalJobOverlayAssets projects the already-rendered semantic overlay items
@@ -286,6 +331,78 @@ func finalJobOverlayAssets(result *GenerateResult) ([]any, error) {
 		})
 	}
 	return out, nil
+}
+
+// scheduleFinalJobSceneImage moves a contextual scene image to the first
+// available interval after its planned start. The Master currently accepts
+// only mode=replace and rejects intersecting overlay windows, while local
+// semantic cards can occupy the same opening beat. Preserve every certified
+// overlay and move only the generic scene image within its own scene window.
+func scheduleFinalJobSceneImage(result *GenerateResult, image capabilityoverlay.OverlayItem, frameGuardUS int64) (int64, int64, error) {
+	start := image.StartUSValue()
+	end := image.EndUSValue()
+	duration := end - start
+	if duration <= 0 {
+		return 0, 0, fmt.Errorf("final_job scene image %q has an empty timing window", image.ID)
+	}
+	sceneStart, sceneEnd := int64(0), int64(0)
+	if result != nil {
+		if result.CanonicalTimeline != nil {
+			for _, scene := range result.CanonicalTimeline.Segments {
+				if scene.ID == image.SceneID {
+					sceneStart, sceneEnd = scene.TimelineStartUS, scene.TimelineStartUS+scene.DurationUS
+					break
+				}
+			}
+		}
+		for _, scene := range result.ResolvedScenes {
+			if scene.ID == image.SceneID {
+				sceneStart, sceneEnd = scene.TimelineStartUS, scene.TimelineStartUS+scene.DurationUS
+				break
+			}
+		}
+	}
+	if sceneEnd > sceneStart {
+		if start < sceneStart {
+			start = sceneStart
+		}
+		if end > sceneEnd {
+			end = sceneEnd
+			duration = end - start
+		}
+	}
+	if result == nil || result.OverlayPlan == nil {
+		return start, start + duration, nil
+	}
+	occupied := make([][2]int64, 0)
+	for _, other := range result.OverlayPlan.Items {
+		if other.ID == image.ID || other.SceneID != image.SceneID {
+			continue
+		}
+		otherStart, otherEnd := other.StartUSValue(), other.EndUSValue()
+		if otherEnd > otherStart {
+			occupied = append(occupied, [2]int64{otherStart, otherEnd})
+		}
+	}
+	sort.Slice(occupied, func(i, j int) bool { return occupied[i][0] < occupied[j][0] })
+	candidate := start
+	for {
+		moved := false
+		for _, window := range occupied {
+			if candidate < window[1] && window[0] < candidate+duration {
+				candidate = window[1] + frameGuardUS
+				moved = true
+				break
+			}
+		}
+		if !moved {
+			break
+		}
+	}
+	if sceneEnd > sceneStart && candidate+duration > sceneEnd {
+		return 0, 0, fmt.Errorf("final_job scene image %q cannot fit a non-overlapping %dµs window in scene %q", image.ID, duration, image.SceneID)
+	}
+	return candidate, candidate + duration, nil
 }
 
 // compositeStockScene emits one remote scene. The video reference stays in the
@@ -353,150 +470,6 @@ func enforceFinalJobMinimumSceneDuration(scenes []map[string]any, minimumMS int6
 
 // ── Certified rendered-clip handoff ───────────────────────────────────
 //
-// A clip-only run has no stock folder to chunk: its video IS the certified
-// localized render of each scene. These helpers select that render and project
-// it into the runtime asset reference. The source clip in the media library is
-// never sent: it still carries the unmodified picture that this pipeline
-// replaces (background, watermark, burnt subtitles).
-
-// finalJobRenderLanguage resolves the single language whose certified renders
-// feed the remote video. An empty language means the run produced no certified
-// render at all (a stock-only run), which is not an error by itself. A run with
-// renders in several languages and none in the source language is ambiguous and
-// reports an error instead of picking one.
-func finalJobRenderLanguage(req GenerateRequest, result *GenerateResult) (string, error) {
-	if result == nil || len(result.LocalizedRenders) == 0 {
-		return "", nil
-	}
-	preferred := strings.TrimSpace(string(req.SourceLanguage))
-	if preferred != "" {
-		for _, rendered := range result.LocalizedRenders {
-			if strings.EqualFold(strings.TrimSpace(string(rendered.Language)), preferred) {
-				return strings.TrimSpace(string(rendered.Language)), nil
-			}
-		}
-	}
-	languages := make(map[string]struct{}, len(result.LocalizedRenders))
-	for _, rendered := range result.LocalizedRenders {
-		if language := strings.TrimSpace(string(rendered.Language)); language != "" {
-			languages[language] = struct{}{}
-		}
-	}
-	if len(languages) == 1 {
-		for language := range languages {
-			return language, nil
-		}
-	}
-	available := make([]string, 0, len(languages))
-	for language := range languages {
-		available = append(available, language)
-	}
-	sort.Strings(available)
-	return "", fmt.Errorf("no certified render for source language %q and the run produced %d render languages (%s)", preferred, len(available), strings.Join(available, ", "))
-}
-
-// certifiedLocalizedRendersForScene returns the certified renders of one scene
-// for one language. A render is certified only when its published MP4 identity
-// is complete (drive file id + 64-char sha256 + positive duration): the runtime
-// copies those bytes by identity and never re-renders them here.
-func certifiedLocalizedRendersForScene(result *GenerateResult, sceneID, language string) []LocalizedRenderResult {
-	if result == nil {
-		return nil
-	}
-	var out []LocalizedRenderResult
-	for _, rendered := range result.LocalizedRenders {
-		if !strings.EqualFold(strings.TrimSpace(rendered.SceneID), sceneID) {
-			continue
-		}
-		if language != "" && !strings.EqualFold(strings.TrimSpace(string(rendered.Language)), language) {
-			continue
-		}
-		if !localizedRenderIsCertifiedClip(rendered) {
-			continue
-		}
-		out = append(out, rendered)
-	}
-	return out
-}
-
-// certifiedLocalizedRenderForClip is the fixed-media projection: one certified
-// render for the exact (scene, clip, language) unit, or none.
-func certifiedLocalizedRenderForClip(result *GenerateResult, sceneID, clipID, language string) (LocalizedRenderResult, bool) {
-	if result == nil || strings.TrimSpace(clipID) == "" {
-		return LocalizedRenderResult{}, false
-	}
-	for _, rendered := range certifiedLocalizedRendersForScene(result, sceneID, language) {
-		if strings.EqualFold(strings.TrimSpace(rendered.ClipID), strings.TrimSpace(clipID)) {
-			return rendered, true
-		}
-	}
-	return LocalizedRenderResult{}, false
-}
-
-func localizedRenderIsCertifiedClip(rendered LocalizedRenderResult) bool {
-	return strings.TrimSpace(rendered.DriveFileID) != "" && len(strings.TrimSpace(rendered.SHA256)) == 64 && rendered.DurationMS > 0
-}
-
-// clipSceneRuntimeAsset builds the runtime asset reference of a clip-only scene
-// from its certified localized render. A scene without a certified render — or
-// a scene that produced more than one — fails closed: the clip-only contract is
-// "send the clip this pipeline produced", so there is no fallback to the
-// unmodified source clip.
-func clipSceneRuntimeAsset(ctx context.Context, resolver FinalJobAssetResolver, result *GenerateResult, renderLanguage string, renderLanguageErr error, sceneID string) (map[string]any, int64, error) {
-	if renderLanguageErr != nil {
-		return nil, 0, fmt.Errorf("final_job clip-only scene %q: %w", sceneID, renderLanguageErr)
-	}
-	rendered := certifiedLocalizedRendersForScene(result, sceneID, renderLanguage)
-	if len(rendered) == 0 {
-		return nil, 0, fmt.Errorf("final_job clip-only scene %q has no certified rendered clip for language %q: refusing to hand the unmodified source clip to the runtime", sceneID, renderLanguage)
-	}
-	if len(rendered) > 1 {
-		return nil, 0, fmt.Errorf("final_job clip-only scene %q has %d certified rendered clips for language %q: a clip-only final job sends exactly one rendered clip per scene", sceneID, len(rendered), renderLanguage)
-	}
-	return renderedClipAssetRef(ctx, resolver, rendered[0], sceneID)
-}
-
-// resolveFinalJobFixedMediaAsset prefers the certified render of one fixed
-// (intro/outro) clip over the unmodified library clip, and keeps the library
-// asset as the fallback: a fixed section may legitimately be declared without a
-// render lane, which is the pre-existing behaviour for protected intros.
-func resolveFinalJobFixedMediaAsset(ctx context.Context, resolver FinalJobAssetResolver, result *GenerateResult, sceneID, clipID, renderLanguage string) (map[string]any, error) {
-	if renderLanguage != "" {
-		if rendered, ok := certifiedLocalizedRenderForClip(result, sceneID, clipID, renderLanguage); ok {
-			asset, _, err := renderedClipAssetRef(ctx, resolver, rendered, sceneID)
-			return asset, err
-		}
-	}
-	return resolver.ResolveFinalJobAsset(ctx, clipID)
-}
-
-// renderedClipAssetRef projects a certified localized render into the runtime
-// asset reference the remote scene copies. The key set matches the reference
-// ResolveFinalJobAsset produces, so the remote sees one asset shape regardless
-// of whether the bytes came from the media library or from this render lane.
-func renderedClipAssetRef(ctx context.Context, resolver FinalJobAssetResolver, rendered LocalizedRenderResult, sceneID string) (map[string]any, int64, error) {
-	driveID := strings.TrimSpace(rendered.DriveFileID)
-	sha := strings.TrimSpace(rendered.SHA256)
-	if driveID == "" || len(sha) != 64 || rendered.DurationMS <= 0 {
-		return nil, 0, fmt.Errorf("final_job scene %q rendered clip %q is not a certified published MP4 (drive_file_id, 64-char sha256 and positive duration required)", sceneID, rendered.AssetID)
-	}
-	size, err := resolver.FinalJobPublishedFileSize(ctx, driveID)
-	if err != nil {
-		return nil, 0, fmt.Errorf("final_job scene %q rendered clip %s: %w", sceneID, driveID, err)
-	}
-	if size <= 0 {
-		return nil, 0, fmt.Errorf("final_job scene %q rendered clip %s has no published byte size", sceneID, driveID)
-	}
-	assetID := strings.TrimSpace(rendered.AssetID)
-	if assetID == "" {
-		assetID = driveID
-	}
-	return map[string]any{
-		"asset_id": assetID, "drive_file_id": driveID, "url": driveFileWebLink(driveID),
-		"sha256": sha, "size_bytes": size, "duration_ms": rendered.DurationMS,
-	}, rendered.DurationMS, nil
-}
-
 // finalJobVideoName derives the Master submission identity from the run, never
 // from the caller's title/project. Two runs of the same topic share a title
 // (OutputName defaults to the title), and an identical video_name made the

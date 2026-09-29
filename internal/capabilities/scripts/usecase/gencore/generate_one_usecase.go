@@ -394,9 +394,11 @@ func (uc *GenerateOneUseCase) Execute(
 			}
 			background = resolvedBackground
 		}
-		overlayPlan, overlayErr := scriptgen.CompileOverlayPlanFromGenerationResultWithStyle(
+		// The run-level grounded-phrase ceiling is caller-selected
+		// (item.max_phrase_overlays); zero keeps the certified default.
+		overlayPlan, overlayErr := scriptgen.CompileOverlayPlanFromGenerationResultWithStyleAndLimit(
 			result, scriptgen.Language(plan.Language), timingArtifacts,
-			background, item.OverlayStyle, planID, plan.Project,
+			background, item.OverlayStyle, item.MaxPhraseOverlays, planID, plan.Project,
 		)
 		if overlayErr != nil {
 			return nil, uc.logPhaseError(item, "overlay_render", scriptpkg.ErrGenerationFailed, overlayErr, tracker)

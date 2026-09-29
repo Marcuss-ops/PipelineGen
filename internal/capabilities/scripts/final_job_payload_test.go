@@ -18,6 +18,26 @@ func (finalJobPayloadResolver) ResolveFinalJobAsset(context.Context, string) (ma
 	return map[string]any{"asset_id": "drive-asset", "drive_file_id": "drive-asset", "url": "velox-drive://drive-asset", "sha256": strings.Repeat("b", 64), "size_bytes": int64(20), "duration_ms": int64(2000)}, nil
 }
 
+func TestEnforceFinalJobMinimumSceneDurationBorrowsFromEarlierScene(t *testing.T) {
+	scenes := []map[string]any{
+		{"duration_seconds": 2.0},
+		{"duration_seconds": 0.016},
+	}
+
+	if err := enforceFinalJobMinimumSceneDuration(scenes, 100); err != nil {
+		t.Fatalf("enforceFinalJobMinimumSceneDuration: %v", err)
+	}
+	if got := scenes[0]["duration_seconds"]; got != 1.916 {
+		t.Fatalf("preceding scene duration = %v, want 1.916", got)
+	}
+	if got := scenes[1]["duration_seconds"]; got != 0.1 {
+		t.Fatalf("short scene duration = %v, want 0.1", got)
+	}
+	if got := scenes[0]["duration_seconds"].(float64) + scenes[1]["duration_seconds"].(float64); got != 2.016 {
+		t.Fatalf("adjusted total duration = %v, want 2.016", got)
+	}
+}
+
 func TestScheduleFinalJobSceneImageMovesAfterReplaceOverlays(t *testing.T) {
 	image := capabilityoverlay.OverlayItem{ID: "scene-image", SceneID: "scene-1", Kind: "image", StartUS: 5_000_000, DurationUS: 5_000_000}
 	result := &GenerateResult{
@@ -35,6 +55,13 @@ func TestScheduleFinalJobSceneImageMovesAfterReplaceOverlays(t *testing.T) {
 	}
 	if start != 14_000_000+frameGuardUS || end != 19_000_000+frameGuardUS {
 		t.Fatalf("scheduled image window = %d-%d, want 14s-19s with frame guard %d", start, end, frameGuardUS)
+	}
+}
+
+func TestEnforceFinalJobMinimumSceneDurationFailsWhenNoTimeCanBeBorrowed(t *testing.T) {
+	scenes := []map[string]any{{"duration_seconds": 0.016}}
+	if err := enforceFinalJobMinimumSceneDuration(scenes, 100); err == nil {
+		t.Fatal("expected a short single-scene timeline to be rejected")
 	}
 }
 
@@ -344,13 +371,30 @@ func TestBuildFinalJobPayloadsSendsDriveStockAndPublishedOverlaysToWorker(t *tes
 		t.Fatalf("finalize overlays = %d, want one Drive overlay reference", len(overlays))
 	}
 	overlay := overlays[0].(map[string]any)
-	if overlay["drive_file_id"] != "overlay-drive-1" || overlay["url"] != "velox-drive://overlay-drive-1" || overlay["size_bytes"] != int64(50) || overlay["start_frame"] != int64(2) || overlay["end_frame"] != int64(108) {
+	if overlay["drive_file_id"] != "overlay-drive-1" || overlay["url"] != "velox-drive://overlay-drive-1" || overlay["size_bytes"] != int64(50) || overlay["start_frame"] != int64(2) || overlay["end_frame"] != int64(108) || overlay["mode"] != "replace" {
 		t.Fatalf("overlay payload = %#v, want remote Drive overlay and timeline window", overlay)
 	}
 	for _, raw := range finalize["runtime_assets"].([]any) {
 		if raw.(map[string]any)["role"] == "final_composite" {
 			t.Fatal("payload contains locally precomposed stock media")
 		}
+	}
+}
+
+func TestFinalJobIdempotencyKeyStableAcrossLocalRunRetries(t *testing.T) {
+	first := finalJobIdempotencyKey("milton-r8-request", "run-attempt-1")
+	retry := finalJobIdempotencyKey("milton-r8-request", "run-attempt-2")
+	if first != retry {
+		t.Fatalf("retry idempotency key changed: first=%q retry=%q", first, retry)
+	}
+	if !strings.HasPrefix(first, "creator-77-request-") {
+		t.Fatalf("request idempotency key = %q, want creator-77-request- prefix", first)
+	}
+	if other := finalJobIdempotencyKey("milton-r9-request", "run-attempt-2"); other == first {
+		t.Fatalf("different request keys collided: %q", other)
+	}
+	if fallback := finalJobIdempotencyKey("", "run-attempt-2"); fallback != "creator-77-run-attempt-2" {
+		t.Fatalf("empty request-key fallback = %q", fallback)
 	}
 }
 

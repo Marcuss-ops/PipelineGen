@@ -53,6 +53,13 @@ type Service struct {
 	dispatcher *Dispatcher
 	log        *zap.Logger
 	registry   *Registry
+	// scheduleStore/stageStatusStore are the OPTIONAL deferred-scheduling
+	// ports. They are derived from the broker at construction time when the
+	// adapter implements them (the SQLite jobs plane does). A broker that
+	// does not implement them leaves both nil, and a scheduled Enqueue
+	// fails closed rather than running the job early.
+	scheduleStore    job.ScheduleStore
+	stageStatusStore job.JobStageStatusStore
 }
 
 // NewService constructs the Service from the canonical job.JobBroker port.
@@ -88,12 +95,40 @@ func NewService(repo job.JobBroker, dispatcher *Dispatcher, log *zap.Logger, reg
 	if log == nil {
 		return nil, ErrLogRequired
 	}
-	return &Service{
+	svc := &Service{
 		repo:       repo,
 		dispatcher: dispatcher,
 		log:        log,
 		registry:   reg,
-	}, nil
+	}
+	// Narrow optional ports: present only when the injected broker
+	// implements them. Deriving here keeps the composition root unchanged
+	// and keeps capability code free of any concrete adapter import.
+	if schedule, ok := repo.(job.ScheduleStore); ok {
+		svc.scheduleStore = schedule
+	}
+	if stages, ok := repo.(job.JobStageStatusStore); ok {
+		svc.stageStatusStore = stages
+	}
+	return svc, nil
+}
+
+// ScheduleStore returns the deferred-scheduling port, or nil when the wired
+// broker does not support scheduling.
+func (s *Service) ScheduleStore() job.ScheduleStore {
+	if s == nil {
+		return nil
+	}
+	return s.scheduleStore
+}
+
+// StageStatusStore returns the per-stage status port, or nil when the wired
+// broker does not support it.
+func (s *Service) StageStatusStore() job.JobStageStatusStore {
+	if s == nil {
+		return nil
+	}
+	return s.stageStatusStore
 }
 
 // WithRegistry attaches the canonical job-type *Registry to this Service.

@@ -48,6 +48,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assetindex"
 	assets "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/channels"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outbox"
+	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
 )
 
 // voiceoverMediaReaderAdapter maps the platform media reader onto the
@@ -141,6 +142,7 @@ func buildVoiceoverPipeline(
 	outboxDispatcher *outbox.Dispatcher,
 	committer assetspersistence.AssetCommitter,
 	mediaConfig mediaexec.ExecutionConfig,
+	driveUploadGate *concurrent.FairSemaphore,
 ) (*assets.VoiceoversRepository, voiceover.VoiceoverItemExecutor, *audioasset.Processor, voiceover.AsyncPublishPool, error) {
 	voDir := cfg.Storage.VoiceoversPath()
 	voRepo := imagesregistry.NewVoiceoversRepository(dbs.DualPool.Writer)
@@ -163,6 +165,7 @@ func buildVoiceoverPipeline(
 	// TTS + upload + finalize when a previous run already produced
 	// the same voiceover for the same content fingerprint.
 	voCacheAdapter := vowiring.NewVoiceoverCacheAdapter(voRepoAdapter, log)
+	voCacheAdapter.SetTimingArtifactReader(driveUploader)
 
 	// P0.4 async publish pool: Drive uploads + timing publishes +
 	// SQLite commits run in a bounded background pool so TTS slots
@@ -243,7 +246,15 @@ func buildVoiceoverPipeline(
 	// synthesizeStage/destinationStage/finalizeStage inline.
 	//
 	// FASE 8: Publisher wrapped with rate-limiting + retry.
-	voPublisher := vowiring.NewRateLimitedPublisher(vowiring.NewUseCasePublisherAdapter(publisher, log), cfg.Voiceover, log)
+	//
+	// 2026-09-28: the gate is the process-wide one owned by ComposeRoot, NOT
+	// a publisher-owned one. One Drive-upload ceiling must be enforced across
+	// every Drive publisher in the process (this voiceover publisher AND the
+	// certified final-audio publisher in BuildScriptGenerationRuntime); two
+	// independently built gates would double the configured capacity and
+	// leave cross-job contention (a starving job's upload queued behind
+	// another job's pipelined uploads) unfixed.
+	voPublisher := vowiring.NewRateLimitedPublisherWithGate(vowiring.NewUseCasePublisherAdapter(publisher, log), driveUploadGate, cfg.Voiceover, log)
 	// (June 2026 BLOC5.4 cutover — Step 8/12): the canonical per-item
 	// voiceover pipeline ProcessVoiceoverItemUseCase is constructed on
 	// top of the same adapter surface the legacy service consumes.

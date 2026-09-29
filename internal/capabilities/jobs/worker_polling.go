@@ -62,9 +62,25 @@ func (w *Worker) sleepBackoff(ctx context.Context, d time.Duration) bool {
 	if d <= 0 {
 		d = w.pollEvery
 	}
-	wakeCh := w.notifier.Subscribe()
 	timer := time.NewTimer(d)
 	defer timer.Stop()
+
+	// The wake-on-enqueue notifier is OPTIONAL: a worker wired without one
+	// (a partial deploy, an embedding harness) falls back to fixed-interval
+	// polling. Without this guard the loop dereferences a nil notifier and
+	// the panic is swallowed by the fire-and-forget goroutine that runs the
+	// poll loop — so the worker would silently never claim anything, which is
+	// the worst possible failure mode for a queue.
+	if w.notifier == nil {
+		select {
+		case <-ctx.Done():
+			return false
+		case <-timer.C:
+			return true
+		}
+	}
+
+	wakeCh := w.notifier.Subscribe()
 	select {
 	case <-ctx.Done():
 		return false

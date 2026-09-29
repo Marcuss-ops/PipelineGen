@@ -23,6 +23,71 @@ type OverlayDriveLink struct {
 	FolderID    string `json:"drive_folder_id,omitempty"`
 }
 
+// OverlayDriveLinkIsCurrent reports whether link belongs to the plan retained
+// in the terminal job result. Overlay renders may finish after a failed run
+// attempt has already been replaced by a retry; those old publication events
+// must not create Drive files or pollute the current result.
+func (r *SQLiteStore) OverlayDriveLinkIsCurrent(ctx context.Context, jobID string, link OverlayDriveLink) (bool, error) {
+	if r == nil || r.db == nil || strings.TrimSpace(jobID) == "" {
+		return false, fmt.Errorf("check overlay Drive link: job id is required")
+	}
+	var status string
+	if err := r.db.QueryRowContext(ctx, `SELECT status FROM jobs WHERE id = ?`, jobID).Scan(&status); err != nil {
+		return false, fmt.Errorf("check overlay Drive link: read job status: %w", err)
+	}
+	if !job.Status(status).IsTerminal() {
+		return false, fmt.Errorf("check overlay Drive link: job %s is not terminal (status %s)", jobID, status)
+	}
+	var payload string
+	if err := r.db.QueryRowContext(ctx, `SELECT result_payload FROM job_results WHERE job_id = ? ORDER BY attempt DESC, id DESC LIMIT 1`, jobID).Scan(&payload); err != nil {
+		return false, fmt.Errorf("check overlay Drive link: read job result: %w", err)
+	}
+	var envelope map[string]json.RawMessage
+	if err := json.Unmarshal([]byte(payload), &envelope); err != nil {
+		return false, fmt.Errorf("check overlay Drive link: decode job result: %w", err)
+	}
+	projection := envelope
+	if nested := envelope["result"]; len(nested) > 0 {
+		var decoded map[string]json.RawMessage
+		if err := json.Unmarshal(nested, &decoded); err != nil {
+			return false, fmt.Errorf("check overlay Drive link: decode nested result: %w", err)
+		}
+		if decoded != nil {
+			projection = decoded
+		}
+	}
+	if expected := overlayPlanIDForLanguage(projection, link.Language); expected != "" {
+		return overlayPlanIDMatches(expected, link.PlanID), nil
+	}
+	// Older result shapes do not persist plan ids. Keep their existing
+	// idempotent publication behavior instead of rejecting valid receipts.
+	return true, nil
+}
+
+func overlayPlanIDMatches(expected, actual string) bool {
+	return strings.TrimSpace(actual) == expected || strings.HasPrefix(strings.TrimSpace(actual), expected+":item:")
+}
+
+func overlayPlanIDForLanguage(result map[string]json.RawMessage, language string) string {
+	var localized map[string]json.RawMessage
+	if err := json.Unmarshal(result["localized_overlay_plans"], &localized); err == nil {
+		var plan struct {
+			PlanID string `json:"plan_id"`
+		}
+		if err := json.Unmarshal(localized[language], &plan); err == nil && strings.TrimSpace(plan.PlanID) != "" {
+			return strings.TrimSpace(plan.PlanID)
+		}
+	}
+	var plan struct {
+		PlanID   string `json:"plan_id"`
+		Language string `json:"language"`
+	}
+	if err := json.Unmarshal(result["overlay_plan"], &plan); err == nil && (plan.Language == "" || plan.Language == language) {
+		return strings.TrimSpace(plan.PlanID)
+	}
+	return ""
+}
+
 // RecordOverlayDriveLink merges one completed overlay publication into the
 // terminal job result. Outbox handlers can run before the parent job commits;
 // returning an error in that case lets the outbox retry instead of writing a
@@ -73,6 +138,20 @@ func (r *SQLiteStore) RecordOverlayDriveLink(ctx context.Context, jobID string, 
 			if err := json.Unmarshal(raw, &links); err != nil {
 				return fmt.Errorf("record overlay Drive link: decode existing links: %w", err)
 			}
+		}
+		if expected := overlayPlanIDForLanguage(projection, link.Language); expected != "" {
+			if !overlayPlanIDMatches(expected, link.PlanID) {
+				// A delayed event from a failed attempt must not be attached to
+				// the successful retry's result.
+				return nil
+			}
+			kept := links[:0]
+			for _, existing := range links {
+				if existing.Language != link.Language || overlayPlanIDMatches(expected, existing.PlanID) {
+					kept = append(kept, existing)
+				}
+			}
+			links = kept
 		}
 		updated := false
 		for i := range links {

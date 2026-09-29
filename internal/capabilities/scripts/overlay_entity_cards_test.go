@@ -119,6 +119,19 @@ func TestCapEntityImageOverlaysKeepsDistinctIdentitiesUpToRunCeiling(t *testing.
 	}
 }
 
+func TestCapEntityImageOverlaysPerSceneKeepsRepeatedEntityInEachScene(t *testing.T) {
+	items := []capabilityoverlay.OverlayItem{
+		{ID: "scene-1-milton", SceneID: "scene-1", EntityID: "milton", Kind: string(capabilityoverlay.KindEntityImage), EntityRef: &capabilityoverlay.OverlayEntityRef{CanonicalEntityID: "person:milton-leite"}},
+		{ID: "scene-2-milton", SceneID: "scene-2", EntityID: "milton", Kind: string(capabilityoverlay.KindEntityImage), EntityRef: &capabilityoverlay.OverlayEntityRef{CanonicalEntityID: "person:milton-leite"}},
+		{ID: "scene-2-other", SceneID: "scene-2", EntityID: "other", Kind: string(capabilityoverlay.KindEntityImage), EntityRef: &capabilityoverlay.OverlayEntityRef{CanonicalEntityID: "person:other"}},
+		{ID: "phrase", SceneID: "scene-2", Kind: "text_phrase"},
+	}
+	got := capEntityImageOverlays(items, capabilityoverlay.MaxEntityImageOverlaysPerRun, true)
+	if len(got) != 3 || got[0].ID != "scene-1-milton" || got[1].ID != "scene-2-milton" || got[2].Kind != "text_phrase" {
+		t.Fatalf("per-scene image cap = %+v; want one image per scene and preserve phrase", got)
+	}
+}
+
 func TestComposeNearbyEntityImagesCreatesOneStaggeredComposite(t *testing.T) {
 	items := []capabilityoverlay.OverlayItem{
 		{ID: "second", SceneID: "scene-1", EntityID: "stable-second", Kind: string(capabilityoverlay.KindEntityImage), TemplateID: "image_popup", PresetID: "image_focus_in", StartMs: 2500, EndMs: 7500,

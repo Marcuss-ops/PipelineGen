@@ -75,13 +75,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	instaeditcalendar "github.com/Marcuss-ops/PipelineGen/internal/platform/instaeditcalendar"
 	"strings"
 	"sync/atomic"
 	"time"
 
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
+	instaeditcalendar "github.com/Marcuss-ops/PipelineGen/internal/platform/instaeditcalendar"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/observability"
 	corid "github.com/Marcuss-ops/PipelineGen/pkg/corid"
 	"go.uber.org/zap"
@@ -257,29 +257,15 @@ func (w *Worker) runJob(parent context.Context, j *job.Job) {
 	initialProgress := 0
 	w.reportCalendar(j.ID, j.Type, "RUNNING", "worker_started", &initialProgress, nil)
 	tools := &JobTools{
+		// Durable per-stage sub-status: derived from the wired store, so a
+		// running handler populates the stage table that
+		// GET /api/jobs/{id}/stages reads back. Fail-soft by contract (the
+		// handler logs and continues) and nil when the store has no such
+		// port. Same derivation as the standalone worker subpackage, so the
+		// two runtimes cannot disagree about whether stages are reported.
+		StageStatus: stageStatusSink(w.repo),
 		Progress: func(progress int, message string) {
-			// FASE 0.2 (July 4 2026) silent-drop rewrite per
-			// PR-GODOBJ-14-WORKER-REGISTRY godlike/07 no-fake-availability:
-			// pre-PR the log.Warn was the only observable signal; a DB
-			// hiccup would log but the operator dashboard could not
-			// quantify it. Post-PR we increment both
-			// WorkerProgressEmittedTotal{outcome="error"} and
-			// WorkerProgressErrorsTotal{reason="broker_emit_failed"}
-			// so dashboards can alert on the failure rate. The log
-			// is preserved for diagnostic-context value (job_id +
-			// progress value + error chain).
-			if err := w.repo.SetProgress(jobCtx, j.ID, progress, message); err != nil {
-				w.log.Warn("failed to report progress",
-					zap.String("job_id", j.ID),
-					zap.Int("progress", progress),
-					zap.Error(err))
-				observability.WorkerProgressEmittedTotal.WithLabelValues(j.Type, "error").Inc()
-				observability.WorkerProgressErrorsTotal.WithLabelValues(j.Type, "broker_emit_failed").Inc()
-				return
-			}
-			observability.WorkerProgressEmittedTotal.WithLabelValues(j.Type, "success").Inc()
-			value := progress
-			w.reportCalendar(j.ID, j.Type, "RUNNING", message, &value, nil)
+			w.reportJobProgress(jobCtx, j, progress, message)
 		},
 		Event: func(eventType string, message string, data map[string]any) {
 			// FASE 0.2 silent-drop rewrite: same reasoning as Progress
@@ -401,6 +387,24 @@ func (w *Worker) runJob(parent context.Context, j *job.Job) {
 	}
 	ledger.Finish(finalizationCtx, j, stepID, w.id, attemptID, finalStatus, finalResult, dispatchErr, report)
 	ledger.RecordCanonicalOutputs(finalizationCtx, j.ID, OutputRelationForJobType(j.Type), canonicalAssetIDs)
+}
+
+// reportJobProgress sends progress to the job store and Calendar's durable
+// spool independently. A broker write failure must not hide a stage update
+// from the Calendar operator view.
+func (w *Worker) reportJobProgress(ctx context.Context, j *job.Job, progress int, message string) {
+	if err := w.repo.SetProgress(ctx, j.ID, progress, message); err != nil {
+		w.log.Warn("failed to report progress",
+			zap.String("job_id", j.ID),
+			zap.Int("progress", progress),
+			zap.Error(err))
+		observability.WorkerProgressEmittedTotal.WithLabelValues(j.Type, "error").Inc()
+		observability.WorkerProgressErrorsTotal.WithLabelValues(j.Type, "broker_emit_failed").Inc()
+	} else {
+		observability.WorkerProgressEmittedTotal.WithLabelValues(j.Type, "success").Inc()
+	}
+	value := progress
+	w.reportCalendar(j.ID, j.Type, "RUNNING", message, &value, nil)
 }
 
 func (w *Worker) jobTimeoutFor(jobType string) time.Duration {

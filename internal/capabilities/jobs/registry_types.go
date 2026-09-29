@@ -50,11 +50,33 @@ const (
 
 // FinalizationStrategy identifies the terminal completion API that the worker
 // must use after a handler succeeds.
+//
+// The two one-phase strategies are TERMINAL choices: the worker's own
+// finalization is the last write the job ever makes. The third strategy is
+// STAGED, and exists because a job can be both an artifact producer and a
+// parent of children (TICKET-CORE-READY-DURABLE-DAG section 3, blocker B1).
 type FinalizationStrategy string
 
 const (
 	FinalizationStrategyLegacyComplete        FinalizationStrategy = "complete"
 	FinalizationStrategyCompleteWithArtifacts FinalizationStrategy = "complete_with_artifacts"
+	// FinalizationStrategyCompleteWithArtifactsThenDefer publishes the worker's
+	// OWN spine artifacts now, exactly as CompleteWithArtifacts does, and then
+	// defers the terminal flip to the parent aggregator instead of taking it.
+	//
+	// The deferred legs are the ones that must not chain behind the worker's
+	// own finalization (the Google Docs publication leg, today). The job leaves
+	// the worker in a non-terminal post-processing state; the aggregator that
+	// already exists for the batch path (scripts/jobs/parent_aggregator.go,
+	// FinalizeAggregateParent) becomes the single authority on the terminal
+	// state and flips it only once every required child artifact is durable.
+	//
+	// This strategy is NOT a second way to produce artifacts: the production
+	// projection stays ownership-derived (Registry.ProducesArtifacts reads
+	// ArtifactOwnership == WorkerSpine, so every strategy under that ownership
+	// still produces artifacts and the ownership of the job does not move.
+	// The pair exists so the terminal flip has exactly one owner.
+	FinalizationStrategyCompleteWithArtifactsThenDefer FinalizationStrategy = "complete_with_artifacts_then_defer"
 )
 
 // ErrInvalidCompletionDeclaration is returned when the unified declaration
@@ -83,8 +105,16 @@ func (d CompletionDeclaration) Validate() error {
 			return fmt.Errorf("%w: ownership=%q requires strategy=%q, got %q", ErrInvalidCompletionDeclaration, d.ArtifactOwnership, FinalizationStrategyLegacyComplete, d.FinalizationStrategy)
 		}
 	case ArtifactOwnershipWorkerSpine:
-		if d.FinalizationStrategy != FinalizationStrategyCompleteWithArtifacts {
-			return fmt.Errorf("%w: ownership=%q requires strategy=%q, got %q", ErrInvalidCompletionDeclaration, d.ArtifactOwnership, FinalizationStrategyCompleteWithArtifacts, d.FinalizationStrategy)
+		// A worker-spine job always publishes its own artifacts. Whether it ALSO
+		// takes the terminal flip, or defers it to the aggregator, is the whole
+		// distinction between the two accepted strategies — so both are valid
+		// and every other strategy (including the legacy complete, which would
+		// let the worker take a terminal it does not own) is not.
+		switch d.FinalizationStrategy {
+		case FinalizationStrategyCompleteWithArtifacts, FinalizationStrategyCompleteWithArtifactsThenDefer:
+			// accepted
+		default:
+			return fmt.Errorf("%w: ownership=%q requires strategy=%q or %q, got %q", ErrInvalidCompletionDeclaration, d.ArtifactOwnership, FinalizationStrategyCompleteWithArtifacts, FinalizationStrategyCompleteWithArtifactsThenDefer, d.FinalizationStrategy)
 		}
 	default:
 		return fmt.Errorf("%w: unknown artifact ownership %q", ErrInvalidCompletionDeclaration, d.ArtifactOwnership)
@@ -237,6 +267,13 @@ const (
 	// with target_status=FAILED when aggregate=failed_terminal per
 	// godlike/07 (no fake availability), otherwise SUCCEEDED.
 	TypeScriptGenerateItem = script.TypeGenerateItem
+
+	// ── Durable-DAG deferred Docs leg (TICKET-CORE-READY-DURABLE-DAG step 2) ──
+	// The `script.docs_publish` child that script.generate enqueues once its
+	// CORE_READY snapshot is durable. Re-exported here so registry_script.go
+	// names it as a bare identifier, like every other script child type; the
+	// canonical string ("script.docs_publish") stays in kernel/script.
+	TypeScriptDocsPublish = script.TypeDocsPublish
 
 	// PR-BATCH-REGISTER-ASYNC (July 2026): async clip registration via
 	// the /api/media/register-batch endpoint. Each clip becomes an

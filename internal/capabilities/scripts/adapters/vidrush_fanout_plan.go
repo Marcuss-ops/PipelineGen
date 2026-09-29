@@ -37,12 +37,25 @@ func buildVidRushFanoutPlan(plan *scriptpkg.ResolvedGenerationPlan, segment scri
 	}
 	artlistQueries := scriptpkg.QueriesForArtlist(profile, 5)
 	imageQueries := append([]string(nil), segment.Insights.ImageQueries...)
+	perSceneImages := plan.MediaPlan.Extraction.EntityImages.PerScene()
+	if perSceneImages {
+		// Entity-only searches are cached and reused by canonical identity. In
+		// per-scene mode, anchor the query to the scene's own opening sentence
+		// (with its lead entity as context) so repeated people can receive a
+		// scene-specific image candidate rather than the same catalog portrait.
+		if query := sceneScopedImageQuery(segment); query != "" {
+			imageQueries = []string{query}
+		}
+	}
 	// Entity-image mode is an explicit narrow surface: preserve only the
 	// entity queries emitted by VisualNER. The broad semantic profile ladder
 	// is useful for generic scene imagery, but must not leak into an
 	// entity-only run because it bypasses entity cache identity and creates
 	// dozens of unrelated provider downloads.
-	if !plan.MediaPlan.Extraction.EntityImageSurfaceEnabled() {
+	if perSceneImages {
+		// The source-grounded scene query above is the complete retrieval scope;
+		// do not collapse it back to an entity-only canonical query.
+	} else if !plan.MediaPlan.Extraction.EntityImageSurfaceEnabled() {
 		for _, query := range scriptpkg.QueriesForImages(profile, 7) {
 			duplicate := false
 			for _, existing := range imageQueries {
@@ -149,6 +162,58 @@ func buildVidRushFanoutPlan(plan *scriptpkg.ResolvedGenerationPlan, segment scri
 		imagesEnabled:  effectiveProviderEnabled(plan, decision, scriptpkg.VidRushProviderInternetImages) && images != nil && len(imageQueries) > 0,
 		youtubeEnabled: effectiveProviderEnabled(plan, decision, scriptpkg.VidRushProviderYouTube) && youtube != nil,
 	}
+}
+
+func sceneScopedImageQuery(segment scriptpkg.VidRushSegmentResult) string {
+	entity := ""
+	for _, candidate := range segment.Insights.Entities {
+		if normalizeAnnotationType(candidate.Type) == "PERSON" && strings.TrimSpace(candidate.Value) != "" {
+			entity = strings.TrimSpace(candidate.Value)
+			break
+		}
+	}
+	if entity == "" {
+		entity = sourceLeadEntity(segment.SourceText)
+	}
+	// A named subject is a stronger image-search anchor than generic prose
+	// from the narration. Keep the query short so providers do not rank an
+	// incidental noun (for example a fighter jet) above the named boxer.
+	if entity != "" {
+		return entity + " boxing"
+	}
+	text := strings.TrimSpace(segment.Text)
+	if text == "" {
+		return ""
+	}
+	// A scene's first sentence is concise source evidence and normally names
+	// the concrete event, proceeding, or setting. Keep the query bounded; long
+	// narration blocks are poor image-search queries and risk being rejected by
+	// providers.
+	for _, sentence := range strings.FieldsFunc(text, func(r rune) bool { return r == '.' || r == '!' || r == '?' || r == '\n' }) {
+		text = strings.Join(strings.Fields(sentence), " ")
+		if text != "" {
+			break
+		}
+	}
+	words := strings.Fields(text)
+	if len(words) > 14 {
+		text = strings.Join(words[:14], " ")
+	}
+	return strings.Join(strings.Fields(text), " ")
+}
+
+func sourceLeadEntity(source string) string {
+	const marker = "about "
+	lower := strings.ToLower(source)
+	start := strings.Index(lower, marker)
+	if start < 0 {
+		return ""
+	}
+	value := strings.TrimSpace(source[start+len(marker):])
+	if end := strings.IndexAny(value, ",.!?\n"); end >= 0 {
+		value = value[:end]
+	}
+	return strings.TrimSpace(value)
 }
 
 func trimEnglishPossessive(value string) string {

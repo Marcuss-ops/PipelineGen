@@ -3,6 +3,7 @@ package scriptgeneration
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	capabilityaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
@@ -49,6 +50,9 @@ func (r *Runner) logPhraseMotionSelections(runID string, plan *capabilityoverlay
 			zap.String("scene_id", item.SceneID),
 			zap.String("item_id", item.ID),
 			zap.String("phrase", item.Text),
+			zap.Int("words", len(strings.Fields(item.Text))),
+			zap.Int64("start_us", item.StartUS),
+			zap.Int64("duration_us", item.DurationUS),
 			zap.String("motion_id", item.MotionID),
 			zap.String("preset_id", item.PresetID),
 		)
@@ -59,6 +63,47 @@ func (r *Runner) logPhraseMotionSelections(runID string, plan *capabilityoverlay
 		zap.String("plan_id", plan.PlanID),
 		zap.Int("phrase_count", phraseOrdinal),
 		zap.Any("motion_counts", counts),
+	)
+}
+
+// logPhraseAnchoringDiagnostics records, for every important-phrase candidate
+// the overlay planner considered, whether it anchored to the certified speech
+// timing, its word count and the skip reason. A phrase that does not anchor is
+// dropped from the render, so this is the only place that shows how many long
+// phrases were taken versus silently discarded.
+func (r *Runner) logPhraseAnchoringDiagnostics(runID string, result *GenerateResult, language Language) {
+	if r == nil || r.log == nil || result == nil {
+		return
+	}
+	diagnostics := DiagnosePhraseAnchoring(result, language)
+	if len(diagnostics) == 0 {
+		return
+	}
+	anchored, skipped := 0, 0
+	maxWords := 0
+	for _, diag := range diagnostics {
+		if diag.Words > maxWords {
+			maxWords = diag.Words
+		}
+		if diag.Anchored {
+			anchored++
+			continue
+		}
+		skipped++
+		r.log.Warn("phrase overlay candidate skipped",
+			zap.String("run_id", runID),
+			zap.String("scene_id", diag.SceneID),
+			zap.Int("words", diag.Words),
+			zap.String("phrase", diag.Text),
+			zap.String("reason", diag.Reason),
+		)
+	}
+	r.log.Info("phrase overlay anchoring summary",
+		zap.String("run_id", runID),
+		zap.Int("candidates", len(diagnostics)),
+		zap.Int("anchored", anchored),
+		zap.Int("skipped", skipped),
+		zap.Int("max_words", maxWords),
 	)
 }
 
@@ -480,20 +525,37 @@ func (r *Runner) runAudioCompilePhase(ctx context.Context, runID string, req Gen
 		canvas.PhraseMotions = req.PhraseMotions
 		canvas.PhraseMotionFamily = req.PhraseMotionFamily
 		canvas.ImageMotions = req.ImageMotions
+		// The caller-selected run-level phrase ceiling (0 = certified default)
+		// rides the canvas into CompileOverlayPlan, which forwards it to the
+		// editorial budget.
+		canvas.MaxPhraseOverlays = req.MaxPhraseOverlays
 		if canvas.Style == nil && background != nil {
 			canvas.Style = background.Style
 		}
 		driveFolderID := firstNonEmpty(req.Render.DriveFolderID, req.DriveFolderID, req.Docs.FolderID)
-		if err := compileResultOverlayPlan(result, req.SourceLanguage, runID, req.Project, driveFolderID, canvas); err != nil {
+		if err := compileResultOverlayPlan(result, req.SourceLanguage, runID, req.Project, driveFolderID, canvas, req.MediaPlan.Extraction.EntityImages.PerScene()); err != nil {
 			cause := fmt.Errorf("overlay plan compilation failed: %w", err)
 			r.failExecutionStep(ctx, exec, payloadStep, cause)
 			r.failRunWithRetry(ctx, runID, StageCompilingAudio, cause)
 			return false
 		}
 		r.logPhraseMotionSelections(runID, result.OverlayPlan)
+		r.logPhraseAnchoringDiagnostics(runID, result, req.SourceLanguage)
 		// runID is the semantic/idempotent plan identity. exec.JobID is the
 		// externally returned broker job identity and must own the Drive tree.
 		setOverlayDriveJobID(result, exec.JobID)
+		// Validate planned overlay spans before starting the expensive,
+		// per-language render fan-out. The finalized EditingTimeline is rebuilt
+		// after rendering so it can include certified artifact references, but
+		// its timing constraints are already knowable here. Deferring this check
+		// until after rendering can waste several minutes and publish overlays
+		// for a timeline that will then be rejected.
+		if _, err := BuildEditingTimeline(result); err != nil {
+			cause := fmt.Errorf("editing timeline preflight failed: %w", err)
+			r.failExecutionStep(ctx, exec, payloadStep, cause)
+			r.failRunWithRetry(ctx, runID, StageCompilingAudio, cause)
+			return false
+		}
 		// END OF THE MEASURED AUDIO COMPILE STAGE. The blocking overlay render
 		// (runOverlayRenderPhase), the editing-timeline projection and the step
 		// completion (runAudioFinalizePhase) are separate boundaries with their

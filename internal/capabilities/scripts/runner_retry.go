@@ -22,6 +22,13 @@ func deriveErrorCode(err error, stage Stage) string {
 	if errors.Is(err, ErrMediaPreflight) {
 		return "MEDIA_PREFLIGHT_FAILED"
 	}
+	// A remote render that is still running is a DEFERRAL, not an incident: the
+	// code is stable so a retry bot can tell "come back later" apart from a real
+	// failure. It must precede the message heuristics below, which would
+	// otherwise classify the wrapped transport timeout as PROVIDER_TIMEOUT.
+	if errors.Is(err, ErrFinalJobPending) {
+		return "REMOTE_RENDER_PENDING"
+	}
 
 	// Check for known error patterns in the error message.
 	// This is a lightweight heuristic; a future improvement could

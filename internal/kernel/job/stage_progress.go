@@ -53,6 +53,19 @@ var canonicalStageOrder = []StageName{
 	StagePersistence,
 }
 
+// Valid reports whether s is one of the canonical workflow stages declared
+// above. It is the validation seam for the durable per-stage status
+// projection (schedule.go::JobStageStatus) and for any external caller that
+// accepts a stage name from a request.
+func (s StageName) Valid() bool {
+	for _, stage := range canonicalStageOrder {
+		if s == stage {
+			return true
+		}
+	}
+	return false
+}
+
 // CanonicalStageOrder returns the workflow stages in canonical order. The
 // returned slice is a copy: callers cannot reorder the declaration.
 func CanonicalStageOrder() []StageName {
@@ -70,6 +83,17 @@ const (
 	StageFailed    StageStatus = "failed"
 	StageSkipped   StageStatus = "skipped"
 )
+
+// Valid reports whether s is one of the canonical stage status values. It is
+// the validation seam for the durable per-stage status projection
+// (schedule.go::JobStageStatus).
+func (s StageStatus) Valid() bool {
+	switch s {
+	case StageQueued, StageRunning, StageCompleted, StageFailed, StageSkipped:
+		return true
+	}
+	return false
+}
 
 // StageLanguageStatus is the durable observation emitted by one child job.
 type StageLanguageStatus struct {

@@ -83,8 +83,9 @@ func durableVidRushImages(candidates []scriptpkg.SegmentAssetCandidate) []script
 	return out
 }
 
-// vidRushImageGroup is the identity used by image-only selection: one durable
-// image per entity/query, rather than several catalog rows for the same name.
+// vidRushImageGroup is the identity used by image-only selection. The entity
+// image policy may permit multiple distinct images for one query; otherwise
+// the default remains one image per entity/query.
 func vidRushImageGroup(candidate scriptpkg.SegmentAssetCandidate) string {
 	group := strings.ToLower(strings.TrimSpace(candidate.Query))
 	if group == "" {
@@ -117,14 +118,18 @@ func selectExactVidRushImages(candidates []scriptpkg.SegmentAssetCandidate, targ
 	}
 
 	selected := make([]scriptpkg.SegmentAssetCandidate, 0, min(target, len(images)))
-	seenGroups := make(map[string]int, target)
+	perGroupLimit := 1
+	if plan.MediaPlan.Extraction.EntityImageSurfaceEnabled() && plan.MediaPlan.Extraction.EntityImages.MaxPerEntity > 1 {
+		perGroupLimit = plan.MediaPlan.Extraction.EntityImages.MaxPerEntity
+	}
+	groupCounts := make(map[string]int, target)
 	seenAssets := make(map[string]struct{}, target)
 	for _, candidate := range images {
 		if !strings.EqualFold(strings.TrimSpace(candidate.Provider), scriptpkg.VidRushProviderInternetImages) {
 			continue
 		}
 		group := vidRushImageGroup(candidate)
-		if _, exists := seenGroups[group]; exists {
+		if groupCounts[group] >= perGroupLimit {
 			// Candidate order is discovery order. Semantic selection belongs to
 			// MediaSampler and must not be reconstructed in this boundary.
 			continue
@@ -133,7 +138,7 @@ func selectExactVidRushImages(candidates []scriptpkg.SegmentAssetCandidate, targ
 		if _, exists := seenAssets[assetID]; exists {
 			continue
 		}
-		seenGroups[group] = len(selected)
+		groupCounts[group]++
 		seenAssets[assetID] = struct{}{}
 		selected = append(selected, candidate)
 	}

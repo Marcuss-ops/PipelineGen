@@ -65,6 +65,15 @@ type Service struct {
 	// fixture/test composition sites keep working unchanged.
 	atomicWriter AtomicClipWriterPort
 
+	// materializeFanOut, when wired, is the OPTIONAL post-commit
+	// multilingual fan-out: it schedules `asset.text.materialize` right
+	// after the clip + transcript commit, which creates the nine configured
+	// translation tracks AND the per-language `.ass` subtitle artifacts.
+	// When nil, Register behaves exactly as before the seam existed
+	// (fixture/minimal composition sites) — a clip keeps the single Whisper
+	// transcript.
+	materializeFanOut MaterializeFanOutPort
+
 	// requireDrive, when true, causes Register to return an error if the
 	// Drive Publisher fails (P0.2, July 2026). Set at construction via
 	// NewService (not post-construction mutation per godlike/06 SSOT).
@@ -128,6 +137,45 @@ func (s *Service) WithRequireDrive(v bool) *Service {
 func (s *Service) WithAtomicClipWriter(w AtomicClipWriterPort) *Service {
 	s.atomicWriter = w
 	return s
+}
+
+// WithMaterializeFanOut wires the optional post-commit multilingual fan-out
+// (September 2026, register-path gap closure).
+//
+// WHY IT IS REQUIRED IN PRODUCTION: this route commits through the SAME
+// PostgreSQL media committer as the extraction path but never scheduled the
+// materialization job, so every register-batch clip landed with exactly ONE
+// text track — no translations, no `.ass` artifacts, invisible to
+// multilingual search — and nothing logged an error. Composition wires the
+// canonical *texttracks.MaterializeFanOut late (the jobs broker exists after
+// the domain bundle), which is why this is a fluent setter rather than a
+// ServiceDeps field — same convention as WithAtomicClipWriter above.
+//
+// nil-safe: a nil port keeps the historical behaviour.
+func (s *Service) WithMaterializeFanOut(port MaterializeFanOutPort) *Service {
+	s.materializeFanOut = port
+	return s
+}
+
+// scheduleMaterializeFanOut hands the committed transcript to the canonical
+// post-commit fan-out (materialize vs. acquire decision, "und" fallback and
+// source-text hash all live with the concrete:
+// texttracks.MaterializeFanOut.EnqueueCommittedClip — texttracks/fanout_commit.go).
+//
+// It is called on EVERY commit outcome that leaves clip + transcript durable:
+// the clean commit (step 8.6 above) AND BLOCKER #4, where the asset + tracks
+// are committed but the index event was suppressed by a terminal outbox row
+// (see commitClipAtomically). Mirrors step6to9's `processed_but_index_blocked`
+// path, which schedules the fan-out for exactly the same reason: a suppressed
+// index event does not make the translations or the `.ass` files less owed.
+//
+// Never fails the registration: the helper logs and the operator recovers via
+// `admin text-tracks-backfill --all --apply`.
+func (s *Service) scheduleMaterializeFanOut(ctx context.Context, clipID string, track detail.TextTrack) {
+	if s == nil || s.materializeFanOut == nil || clipID == "" {
+		return
+	}
+	s.materializeFanOut.EnqueueCommittedClip(ctx, clipID, track.LanguageCode, track.TextContent)
 }
 
 // Register downloads a YouTube clip, uploads to Drive, saves to DB, and
@@ -296,6 +344,13 @@ func (s *Service) Register(ctx context.Context, cmd sourcing.RegisterClipCommand
 			return nil, fmt.Errorf("failed to save transcript to DB: %w", err)
 		}
 	}
+
+	// ── 8.6 Post-commit multilingual fan-out ────────────────────────
+	// The clip + transcript are durable at this point, so scheduling the
+	// fan-out can never hand work to an unpersisted asset — and a scheduling
+	// failure must never fail the registration (the helper logs and the
+	// operator recovers via `admin text-tracks-backfill --all --apply`).
+	s.scheduleMaterializeFanOut(ctx, clipID, track)
 
 	// ── 9. Enrichment + related clips ───────────────────────────────
 	indexed := s.dispatchEnrichment(ctx, clipID, md.Source, fetched.LocalPath)

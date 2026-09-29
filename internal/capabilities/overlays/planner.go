@@ -26,10 +26,15 @@ type PlannerConfig struct {
 	// moment; beyond it the planner drops the lowest-priority overlapping
 	// items (see DegradeOverlaps). Default: DefaultOverlapBudget (3).
 	MaxOverlap int
-	// RunLevelEditorialBudget applies the production 5-image + 5-grounded-
-	// phrase contract and drops other content overlay kinds. Structural
-	// background layers are not represented as OverlayItems and are unaffected.
+	// RunLevelEditorialBudget applies the production image + grounded-phrase
+	// contract and drops other content overlay kinds. Structural background
+	// layers are not represented as OverlayItems and are unaffected.
 	RunLevelEditorialBudget bool
+	// RunLevelPhraseOverlayLimit overrides the run-level grounded-phrase
+	// ceiling used by the editorial budget. Zero keeps the certified default
+	// (MaxPhraseOverlaysPerRun); a positive value is honoured verbatim, so a
+	// caller may lower or raise it per run.
+	RunLevelPhraseOverlayLimit int
 }
 
 // AllCandidatesPlannerConfig is the production generation policy: every
@@ -94,7 +99,7 @@ func (c PlannerConfig) withDefaults() PlannerConfig {
 		c.MaxImages = 1
 	}
 	if c.MaxPhraseWords <= 0 {
-		c.MaxPhraseWords = 8
+		c.MaxPhraseWords = 20
 	}
 	if c.MaxNumbers <= 0 {
 		c.MaxNumbers = 1
@@ -350,7 +355,7 @@ func BuildPlan(input PlanInput, config PlannerConfig) (OverlayPlan, error) {
 			})
 		}
 
-		phrases := rankedValid(scene.Phrases, config.MaxPhraseWords)
+		phrases := rankedPhraseValid(scene.Phrases, config.MaxPhraseWords)
 		if len(phrases) > config.MaxPhrases {
 			phrases = phrases[:config.MaxPhrases]
 		}
@@ -370,9 +375,9 @@ func BuildPlan(input PlanInput, config PlannerConfig) (OverlayPlan, error) {
 	// structural layers are never counted nor dropped).
 	plan.Items = DegradeOverlaps(plan.Items, config.MaxOverlap)
 	if config.RunLevelEditorialBudget {
-		plan.Items, _ = ApplyEditorialOverlayBudget(plan.Items)
+		plan.Items, _ = ApplyEditorialOverlayBudgetWithLimit(plan.Items, config.RunLevelPhraseOverlayLimit)
 	} else {
-		plan.Items, _ = ApplyPhraseOverlayBudget(plan.Items)
+		plan.Items, _ = ApplyPhraseOverlayBudgetWithLimit(plan.Items, config.RunLevelPhraseOverlayLimit)
 	}
 	// Assign the phrase motion sequence AFTER run-level ranking and dedupe.
 	// Every admitted phrase gets a distinct, visible catalog motion, even when
@@ -383,7 +388,11 @@ func BuildPlan(input PlanInput, config PlannerConfig) (OverlayPlan, error) {
 	for i := range plan.Items {
 		switch plan.Items[i].Kind {
 		case "text_phrase":
-			plan.Items[i].MotionID = selectPhraseMotion(input.PlanID, "run", phraseOrdinal, input.PhraseMotions)
+			if len(strings.Fields(plan.Items[i].Text)) >= 8 {
+				plan.Items[i].MotionID = selectLongPhraseMotion(input.PlanID, "run", phraseOrdinal, input.PhraseMotions)
+			} else {
+				plan.Items[i].MotionID = selectPhraseMotion(input.PlanID, "run", phraseOrdinal, input.PhraseMotions)
+			}
 			phraseOrdinal++
 		case "image", "entity_image", "product", "logo":
 			plan.Items[i].MotionID = selectImageMotion(input.PlanID, "run", imageOrdinal, input.ImageMotions)
@@ -504,6 +513,22 @@ func rankedValid(in []TimedAnnotation, maxWords int) []TimedAnnotation {
 		out = append(out, candidate)
 	}
 	return out
+}
+
+// rankedPhraseValid favors complete, useful headlines when the source text
+// offers them. Within the configured word limit, longer grounded phrases are
+// ranked first; editorial score breaks ties. This keeps fragment candidates
+// from crowding every long sentence out of the bounded render budget.
+func rankedPhraseValid(in []TimedAnnotation, maxWords int) []TimedAnnotation {
+	valid := rankedValid(in, maxWords)
+	sort.SliceStable(valid, func(i, j int) bool {
+		wi, wj := len(strings.Fields(valid[i].Text)), len(strings.Fields(valid[j].Text))
+		if wi != wj {
+			return wi > wj
+		}
+		return valid[i].Score > valid[j].Score
+	})
+	return valid
 }
 
 func rankedImages(in []ImageCandidate) []ImageCandidate {

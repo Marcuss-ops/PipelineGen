@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	capabilityentities "github.com/Marcuss-ops/PipelineGen/internal/capabilities/entities"
+	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
@@ -154,5 +155,29 @@ func TestBuildSemanticRenderBundleRefusesNonContentAddressedBinding(t *testing.T
 				t.Errorf("an asset-less bundle must still satisfy its contract: %v", err)
 			}
 		})
+	}
+}
+
+func TestBuildSemanticRenderBundleKeepsRepeatedEntityImageOccurrencesPerScene(t *testing.T) {
+	first := bundleBuilderResult(&scriptpkg.EntityImageBinding{Status: "bound", AssetID: "asset-first", SHA256: bundleTestDigest, MediaType: "image/jpeg", PreviewURL: "https://cdn.example/first.jpg"})
+	second := &GenerateResult{
+		Scenes:         []Scene{{ID: "scene-2", Text: map[Language]string{"en": "Michael Jordan spoke."}, Annotations: &scriptpkg.SceneAnnotations{Language: "en", PrimaryEntities: []scriptpkg.AnnotatedEntity{{Text: "Michael Jordan", CanonicalName: "Michael Jordan", Type: "person", Image: &scriptpkg.EntityImageBinding{Status: "bound", AssetID: "asset-second", SHA256: strings.Repeat("b", 64), MediaType: "image/jpeg", PreviewURL: "https://cdn.example/second.jpg"}}}}}},
+		EntityTimeline: &capabilityentities.EntityTimeline{Version: 1, Scenes: []capabilityentities.SceneEntityTimeline{{SceneID: "scene-2", Entities: []capabilityentities.EntityOccurrence{{EntityID: bundleTestEntityID, Name: "Michael Jordan", Type: "person", SceneID: "scene-2", TextStart: 0, TextEnd: len("Michael Jordan"), AudioStartUS: 3_000_000, AudioEndUS: 4_000_000}}}}},
+	}
+	first.Scenes = append(first.Scenes, second.Scenes...)
+	first.EntityTimeline.Scenes = append(first.EntityTimeline.Scenes, second.EntityTimeline.Scenes...)
+	bundle, err := BuildSemanticRenderBundleFromResult(first, "en", "run-scenes", "video-scenes", true)
+	if err != nil {
+		t.Fatalf("build scene-scoped bundle: %v", err)
+	}
+	if len(bundle.Entities) != 2 || len(bundle.Assets) != 2 || len(bundle.Timeline) != 2 {
+		t.Fatalf("scene-scoped rows = entities:%d assets:%d timeline:%d", len(bundle.Entities), len(bundle.Assets), len(bundle.Timeline))
+	}
+	plan, err := capabilityoverlay.BuildOverlayPlan(*bundle, "video-scenes", "project", 1920, 1080, 24, 1)
+	if err != nil {
+		t.Fatalf("build overlay plan: %v", err)
+	}
+	if len(plan.Items) != 2 || plan.Items[0].ID == plan.Items[1].ID || plan.Items[0].SceneID == plan.Items[1].SceneID {
+		t.Fatalf("repeated entity occurrences collapsed: %+v", plan.Items)
 	}
 }

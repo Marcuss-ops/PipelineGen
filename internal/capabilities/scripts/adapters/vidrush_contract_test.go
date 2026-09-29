@@ -39,6 +39,22 @@ func TestVidRushImageValidationRejectsSSRFAndHTML(t *testing.T) {
 	}
 }
 
+func TestVidRushImageHeadPreflightRejectsNonImageBeforeBodyDownload(t *testing.T) {
+	policy := DefaultVidRushImagePolicy()
+	if err := validateVidRushImageHead(http.StatusOK, "text/html; charset=utf-8", 1024, policy); !errors.Is(err, ErrVidRushImageInvalid) {
+		t.Fatalf("HTML HEAD response error = %v, want invalid image", err)
+	}
+	if err := validateVidRushImageHead(http.StatusOK, "image/jpeg", policy.MaxBytes+1, policy); !errors.Is(err, ErrVidRushImageTooLarge) {
+		t.Fatalf("oversized HEAD response error = %v, want too large", err)
+	}
+	if err := validateVidRushImageHead(http.StatusMethodNotAllowed, "", -1, policy); err != nil {
+		t.Fatalf("unsupported HEAD should fall back to guarded GET: %v", err)
+	}
+	if err := validateVidRushImageHead(http.StatusOK, "image/jpeg", 1024, policy); err != nil {
+		t.Fatalf("valid image HEAD response rejected: %v", err)
+	}
+}
+
 func TestVidRushImageRequestUsesBrowserHeadersAndOptionalSourcePage(t *testing.T) {
 	req, err := newVidRushImageRequest(context.Background(), "https://cdn.example/image.jpg", "https://example.com/gallery")
 	if err != nil {

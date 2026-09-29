@@ -284,6 +284,7 @@ func (g *SceneTextGenerator) buildPlan(ctx context.Context, req scriptgen.Genera
 		Mode:                scriptpkg.ModeForSource(scriptpkg.SourceType(req.Source.Type)),
 		SaveToDB:            req.SaveToDB,
 		SourceKind:          string(req.Source.Type),
+		MediaMode:           req.MediaMode,
 		TargetWords:         req.ScriptParams.TargetWords,
 		SingleScene:         req.ScriptParams.SingleScene,
 		Duration:            req.ScriptParams.Duration,

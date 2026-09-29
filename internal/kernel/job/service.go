@@ -10,7 +10,10 @@
 // internal/kernel/job/ to satisfy this interface.
 package job
 
-import "context"
+import (
+	"context"
+	"time"
+)
 
 // Service is the canonical job-system contract presented to every
 // consumer in PipelineGen. It is a Go interface — consumers declare
@@ -72,4 +75,12 @@ type EnqueueRequest struct {
 	// (PG-M2M, Aug 2026). Distinct from CorrelationID (request-context
 	// derived, not per-client controlled).
 	IdempotencyKey string
+
+	// ScheduledAt, when non-nil and strictly in the future, defers the
+	// job: it is persisted in StatusScheduled with a job_schedules row
+	// and is promoted to QUEUED only when it becomes due AND the
+	// scheduler's admission policy grants a slot. nil or a past time
+	// enqueues immediately (StatusQueued), preserving the historical
+	// behaviour for every existing caller.
+	ScheduledAt *time.Time
 }

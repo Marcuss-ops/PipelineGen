@@ -9,7 +9,15 @@ import "time"
 // LONG-FILES-SPLIT-2026-07-06 Band A #7: extracted from registry.go's
 // Compose() function per AGENTS.md Pattern 5.
 func registerScriptEntries(r *Registry) {
-	r.Register(JobPolicy{Completion: CompletionDeclaration{JobType: TypeScriptGenerate, ArtifactOwnership: ArtifactOwnershipWorkerSpine, FinalizationStrategy: FinalizationStrategyCompleteWithArtifacts}, Description: "Script generation", Timeout: 60 * time.Minute, DefaultMaxRetries: 2})
+	// TypeScriptGenerate is the ONE job type that is both a worker-spine
+	// artifact producer and a parent of children. It publishes its own spine
+	// artifacts (the durable CORE_READY snapshot) and then defers the terminal
+	// flip to the script parent aggregator, which owns it until the deferred
+	// `script.docs_publish` child has published every requested document.
+	// ArtifactOwnership is unchanged, so ProducesArtifacts (ownership-derived)
+	// and the spine publication path are unaffected — only the terminal
+	// ownership moves (TICKET-CORE-READY-DURABLE-DAG steps 2-4).
+	r.Register(JobPolicy{Completion: CompletionDeclaration{JobType: TypeScriptGenerate, ArtifactOwnership: ArtifactOwnershipWorkerSpine, FinalizationStrategy: FinalizationStrategyCompleteWithArtifactsThenDefer}, Description: "Script generation", Timeout: 60 * time.Minute, DefaultMaxRetries: 2})
 	r.Register(JobPolicy{Completion: CompletionDeclaration{JobType: TypeMediaCurate, ArtifactOwnership: ArtifactOwnershipNone, FinalizationStrategy: FinalizationStrategyLegacyComplete}, Description: "Media curation", Timeout: 30 * time.Minute, DefaultMaxRetries: 1})
 
 	// Step 11B sibling types (script.generate -> voiceover / image fan-out).
@@ -28,6 +36,23 @@ func registerScriptEntries(r *Registry) {
 	// Per-item retry via broker-emitted child jobs. The parent aggregator
 	// reads child outcomes and finalizes the parent.
 	r.Register(JobPolicy{Completion: CompletionDeclaration{JobType: TypeScriptGenerateItem, ArtifactOwnership: ArtifactOwnershipNone, FinalizationStrategy: FinalizationStrategyLegacyComplete}, Description: "Script generate per-item child", Timeout: 30 * time.Minute, DefaultMaxRetries: 2, Concurrency: 4})
+
+	// ── Durable-DAG deferred Docs leg (TICKET-CORE-READY-DURABLE-DAG step 2) ──
+	// One `script.docs_publish` child per script.generate run that has documents
+	// enabled. It is the deferred post-core leg: the parent publishes its spine
+	// and hands the terminal flip to the aggregator, which owns it until this
+	// child has published every requested document.
+	//
+	// ArtifactOwnershipApplication (not WorkerSpine): the child persists its own
+	// document references to the durable run, exactly like the voiceover child
+	// that also uploads to Drive — it does NOT stage manifest artifacts for the
+	// worker spine, so ProducesArtifacts stays false and the broker's legacy
+	// Complete remains the canonical mark-SUCCEEDED seam.
+	//
+	// DefaultMaxRetries=2: the leg is a bounded number of Drive/Docs round
+	// trips, and a transient Drive failure must not fail a run whose core is
+	// already durable. It fails typed rather than silently succeeding.
+	r.Register(JobPolicy{Completion: CompletionDeclaration{JobType: TypeScriptDocsPublish, ArtifactOwnership: ArtifactOwnershipApplication, FinalizationStrategy: FinalizationStrategyLegacyComplete}, Description: "Script document publication (deferred CORE_READY post-core leg: run_id + durable snapshot reference, never a copy of the result)", Timeout: 30 * time.Minute, DefaultMaxRetries: 2, Concurrency: 4})
 
 	// ── Spina Dorsale Fase 2 (July 2026): downstream artifact jobs ──
 	// These are spawned by the script.generate pipeline cutover

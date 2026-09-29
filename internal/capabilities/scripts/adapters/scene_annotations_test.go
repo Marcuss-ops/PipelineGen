@@ -6,6 +6,35 @@ import (
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
+func TestClassifyDiscoveredEntityPortuguesePlacesAndOperations(t *testing.T) {
+	for _, tc := range []struct{ name, want string }{
+		{"São Paulo", "GPE"},
+		{"Brasília", "GPE"},
+		{"Operação Vectura Corrupta", "EVENT"},
+		{"Operacao Decurio", "EVENT"},
+		{"Milton Leite", "PERSON"},
+	} {
+		if got := classifyDiscoveredEntity(tc.name); got != tc.want {
+			t.Errorf("classifyDiscoveredEntity(%q) = %q, want %q", tc.name, got, tc.want)
+		}
+	}
+}
+
+func TestSceneAnnotationsCorrectsKnownPortugueseEntityTypesFromNLP(t *testing.T) {
+	text := "São Paulo recebeu a Operação Vectura Corrupta."
+	ann := sceneAnnotations(text, "pt", scriptpkg.VidRushSegmentResult{SegmentID: "scene-1", Insights: scriptpkg.SegmentInsights{Entities: []scriptpkg.ExtractedEntity{
+		{Value: "São Paulo", Type: "PERSON", Confidence: .9},
+		{Value: "Operação Vectura Corrupta", Type: "PERSON", Confidence: .9},
+	}}})
+	kinds := map[string]string{}
+	for _, entity := range append(append([]scriptpkg.AnnotatedEntity(nil), ann.PrimaryEntities...), ann.SecondaryEntities...) {
+		kinds[entity.CanonicalName] = entity.Type
+	}
+	if kinds["São Paulo"] != "GPE" || kinds["Operação Vectura Corrupta"] != "EVENT" {
+		t.Fatalf("corrected NLP entity types = %#v", kinds)
+	}
+}
+
 func TestSceneAnnotationsOnePhraseAndRuneOffsets(t *testing.T) {
 	text := "L’ascesa di Muhammad Ali cambiò il pugilato."
 	seg := scriptpkg.VidRushSegmentResult{

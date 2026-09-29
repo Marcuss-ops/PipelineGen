@@ -119,6 +119,9 @@ func ScriptChildPayload(req appjobs.VideoCreatePayload, project, videoName, item
 			Topic: req.Topic,
 		},
 		ScriptParams: scriptpkg.ScriptSpec{TargetWords: targetWords},
+		// The run-level grounded-phrase ceiling is a caller editorial
+		// choice; forward it verbatim (zero = the script-generate default).
+		MaxPhraseOverlays: req.MaxPhraseOverlays,
 		Output: scriptpkg.OutputSpec{
 			SaveToDB:         true,
 			GenerateTimeline: true,

@@ -31,11 +31,13 @@ import (
 // aggregates across shards) without touching the orchestrator's
 // mutation surface.
 type JobsHandler struct {
-	service job.Service
-	stats   JobStatsReader
-	history HistoryReader
-	replay  *replayConfig
-	log     *zap.Logger
+	service  job.Service
+	stats    JobStatsReader
+	history  HistoryReader
+	replay   *replayConfig
+	log      *zap.Logger
+	schedule job.ScheduleStore
+	stages   job.JobStageStatusStore
 }
 
 // NewJobsHandler creates a new jobs HTTP handler.
@@ -52,6 +54,15 @@ func NewJobsHandler(service job.Service, stats JobStatsReader, log *zap.Logger) 
 
 func (h *JobsHandler) SetHistoryReader(reader HistoryReader) { h.history = reader }
 
+// SetScheduling attaches the optional deferred-scheduling and per-stage
+// status ports. Both are nil-tolerant: when a port is absent the
+// corresponding route answers 503 instead of panicking, so a deployment
+// without a scheduling-capable broker degrades explicitly.
+func (h *JobsHandler) SetScheduling(schedule job.ScheduleStore, stages job.JobStageStatusStore) {
+	h.schedule = schedule
+	h.stages = stages
+}
+
 // RegisterRoutes mounts the job endpoints under the given router group.
 func (h *JobsHandler) RegisterRoutes(r *gin.RouterGroup) {
 	r.POST("", h.Enqueue)
@@ -63,6 +74,11 @@ func (h *JobsHandler) RegisterRoutes(r *gin.RouterGroup) {
 	r.POST("/:id/retry", h.Retry)
 	r.GET("/:id/events", h.Events)
 	r.POST("/:id/replay", h.Replay)
+	// Deferred scheduling + per-stage status (migration 005).
+	r.GET("/scheduled", h.ListScheduled)
+	r.POST("/schedule", h.ScheduleBatch)
+	r.GET("/:id/stages", h.ListStages)
+	r.PATCH("/:id/stages/:stage", h.UpdateStage)
 }
 
 func (h *JobsHandler) History(c *gin.Context) {
@@ -134,21 +150,7 @@ func (h *JobsHandler) Enqueue(c *gin.Context) {
 		}
 	}
 
-	// Map HTTP DTO to domain request
-	req := job.EnqueueRequest{
-		Type:           dto.Type,
-		Project:        dto.Project,
-		VideoName:      dto.VideoName,
-		Payload:        dto.Payload,
-		Priority:       dto.Priority,
-		MaxRetries:     dto.MaxRetries,
-		ActiveKey:      dto.ActiveKey,
-		CorrelationID:  dto.CorrelationID,
-		ClientID:       clientID,
-		IdempotencyKey: dto.IdempotencyKey,
-	}
-
-	j, err := h.service.Enqueue(c.Request.Context(), &req)
+	j, err := h.service.Enqueue(c.Request.Context(), h.domainEnqueueRequest(dto, clientID))
 	if err != nil {
 		h.log.Error("failed to enqueue job", zap.Error(err))
 		apiutil.InternalError(c, err)
