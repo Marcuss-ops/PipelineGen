@@ -350,14 +350,13 @@ func TestExecute_CacheHit_TranscriberNotInvoked(t *testing.T) {
 // priority 2 and NEVER reaches priority 5 (Whisper). The
 // total Transcriber invocations must be 0.
 //
-// This test exercises the TextTrackResolver directly (not the
-// full Execute pipeline) because wiring PreferredLanguages from
-// config into the orchestrator's TextTrackAcquireRequest is a
-// PR-PY-CLIPS-CORRETTE-TRADOTTE Fase 5 concern (the current
-// TODO in step6to9.go: "TODO Fase 5 wires the policy once
-// media.multilingual.* is read from cfg"). At the resolver
-// level, PreferredLanguages is a first-class field on
-// TextTrackAcquireRequest and the test exercises it directly.
+// This test exercises the TextTrackResolver directly (not the full
+// Execute pipeline) so the priority-2 short-circuit is observable in
+// isolation. PreferredLanguages is a first-class field on
+// TextTrackAcquireRequest; the extraction pipeline now forwards the
+// configured list into it (step6to9 → u.observability.PreferredLanguages,
+// PR-SUBS-CLIP-WINDOW), which is what makes the production chain probe
+// the DB at priority 2 the same way this test does.
 //
 // This is the companion to Test 3: Test 3 covers the cache
 // short-circuit (Step 2 of Execute), Test 4 covers the resolver

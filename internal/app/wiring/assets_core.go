@@ -50,6 +50,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/assettree"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/catalogsync"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/search"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/texttracks"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/middleware"
 	detail "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/delivery"
@@ -190,4 +191,12 @@ type AssetsModuleDeps struct {
 	// so dedupe reads the same engine the producers write. Nil keeps the
 	// documented graceful-degrade SQLite store.
 	MediaPostgres *sql.DB
+	// MaterializeFanOut is the canonical post-commit multilingual fan-out
+	// (root.TextTracks.FanOut, built by WireTextTracksFanOut). The Register
+	// path consumes it to schedule `asset.text.materialize` after a clip's
+	// atomic commit — without it a register-batch clip keeps exactly the one
+	// Whisper transcript: no translations, no `.ass` artifacts, no
+	// multilingual search (September 2026 gap). Nil keeps the historical
+	// behaviour for composition sites without a jobs broker.
+	MaterializeFanOut *texttracks.MaterializeFanOut
 }

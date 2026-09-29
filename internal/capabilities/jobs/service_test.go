@@ -52,7 +52,11 @@ func setupTestDB(t *testing.T) *sql.DB {
 		parent_job_id TEXT NOT NULL DEFAULT '',
 		root_job_id TEXT NOT NULL DEFAULT '',
 		client_id TEXT NOT NULL DEFAULT '',
-		idempotency_key TEXT NOT NULL DEFAULT ''
+		idempotency_key TEXT NOT NULL DEFAULT '',
+		-- Kernel deferral hint (migration 006): the instant a WAITING job must
+		-- not be re-claimed before. NULL = no deferral pending (nullable, so it
+		-- mirrors the migrated column exactly instead of inventing a sentinel).
+		deferred_until TEXT
 	);
 	CREATE INDEX IF NOT EXISTS idx_jobs_status_priority ON jobs(status, priority DESC, created_at ASC);
 	CREATE UNIQUE INDEX IF NOT EXISTS idx_jobs_active_key ON jobs(active_key) WHERE active_key != '';

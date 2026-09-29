@@ -542,7 +542,7 @@ func documentOverlayRef(result *GenerateResult, language Language) *DocumentOver
 	if link == "" {
 		link = strings.TrimSpace(artifact.URL)
 	}
-	return &DocumentOverlayRef{
+	docRef := &DocumentOverlayRef{
 		ArtifactID:   artifact.ID,
 		JobID:        render.JobID,
 		URL:          link,
@@ -551,6 +551,22 @@ func documentOverlayRef(result *GenerateResult, language Language) *DocumentOver
 		ProfileID:    artifact.ProfileID,
 		CopyEligible: artifact.CopyEligible,
 	}
+	for _, item := range render.Items {
+		if item.Artifact == nil {
+			continue
+		}
+		itemArtifact := item.Artifact
+		itemURL := strings.TrimSpace(itemArtifact.DriveLink)
+		if itemURL == "" {
+			itemURL = strings.TrimSpace(itemArtifact.URL)
+		}
+		docRef.Items = append(docRef.Items, DocumentOverlayItemRef{
+			ItemID: item.ItemID, JobID: item.JobID, ArtifactID: itemArtifact.ID,
+			URL: itemURL, SHA256: itemArtifact.SHA256,
+			DurationUS: itemArtifact.DurationUS, CopyEligible: itemArtifact.CopyEligible,
+		})
+	}
+	return docRef
 }
 
 func documentOverlayPlan(result *GenerateResult, language Language) *capabilityoverlay.OverlayPlan {

@@ -127,11 +127,12 @@ func NewSubtitleFetcherAdapter(cfg SubtitleCacheConfig, runner ProcessRunnerPort
 //     download + cache lookup,
 //   - subtitles_parse.go::ParseVTTFile + ParseVTTEntries — rolling-cue
 //     dedup + per-cue window filter,
-//   - subtitles_normalize.go::normalizeSubtitleLanguage — BCP-47 of
-//     the configured langs CSV (strict; rejects underscore separators
-//     like "pt_BR"),
 //   - subtitles_fetch.go::resolveCachedVTT (locates the
-//     language-suffixed `<id>.<lang>.vtt` yt-dlp actually writes);
+//     language-suffixed `<id>.<lang>.vtt` yt-dlp actually writes and
+//     reports its filename language token),
+//   - subtitles_normalize.go::subtitleLanguageFor — BCP-47 of the
+//     RESOLVED file's language (configured CSV only as the fallback
+//     for a bare <id>.vtt),
 //     subtitles_fallback.go::isContentEmpty +
 //     triggerWhisperFallback — sentinel (nil, nil) pattern that the
 //     application-layer orchestrator interprets as "fall through to
@@ -164,7 +165,7 @@ func (a *SubtitleFetcherAdapter) FetchSegmentSubtitles(ctx context.Context, vide
 		return nil, fmt.Errorf("subtitles.FetchSegmentSubtitles: fetch: %w", fetchErr)
 	}
 
-	vttPath, found := a.resolveCachedVTT(videoID)
+	vttPath, fileLang, found := a.resolveCachedVTT(videoID)
 	if !found {
 		// No VTT landed (e.g. yt-dlp succeeded but wrote nothing).
 		// The fallback sentinel (nil, nil) lets the application-layer
@@ -198,7 +199,15 @@ func (a *SubtitleFetcherAdapter) FetchSegmentSubtitles(ctx context.Context, vide
 		})
 	}
 
-	lang := normalizeSubtitleLanguage(a.langs)
+	// The bundle's language is the language of the FILE THAT WAS READ,
+	// not the configured preference: yt-dlp only writes the tracks the
+	// video actually has, so a clip whose Italian preference fell back to
+	// English auto-captions used to be labelled "it" — poisoning
+	// asset_text_tracks, the translation fan-out and the burned captions
+	// with a wrong source language (the "wrong subs although the language
+	// is configured correctly" symptom). godlike/07: an unparseable
+	// filename token collapses to "und", never to a configured guess.
+	lang := subtitleLanguageFor(fileLang, a.langs)
 
 	if isContentEmpty(len(cues), plain) {
 		// No usable content for the requested window — the fallback

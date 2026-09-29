@@ -174,6 +174,12 @@ type VideoCreatePayload struct {
 	Voiceover       bool     `json:"voiceover"`
 	Overlays        bool     `json:"overlays"`
 	AspectRatio     string   `json:"aspect_ratio,omitempty"`
+	// MaxPhraseOverlays optionally sets the run-level ceiling for grounded
+	// phrase overlays on the workflow's script child. A positive value is
+	// forwarded verbatim to the script-generate item
+	// (GenerationItemV2.max_phrase_overlays); zero keeps the certified
+	// default. Ignored when Overlays is false.
+	MaxPhraseOverlays int `json:"max_phrase_overlays,omitempty"`
 	// DeliveryDestinationID is the optional publication destination
 	// identity (the 51's delivery registry entry). Empty = the
 	// workflow's canonical project destination.

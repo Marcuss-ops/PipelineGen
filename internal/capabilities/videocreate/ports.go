@@ -270,6 +270,13 @@ type Deps struct {
 	// readiness (async translation materialization). Wired in production;
 	// nil skips the wait (the render child stays the fail-closed gate).
 	Texts TranscriptReady
+	// NOTE (stage sub-status): the durable per-stage sink is NOT a Deps port.
+	// It arrives with the execution tools (JobExecutionTools.StageStatus) and
+	// is consumed by stage_status.go. Keeping it off this struct is deliberate:
+	// Deps holds the MANDATORY ports of the work (and is capped at 8 of them by
+	// the struct_deps gate), while the stage table is observability that must
+	// degrade to "no rows" rather than to an unwirable workflow.
+	//
 	// Workspace is the PERSISTENT per-job workspace root. Media-plane
 	// materializations live under <Workspace>/<jobID>/ so a restart
 	// finds the completed mux/assembly again (/tmp would silently

@@ -44,6 +44,10 @@ func TestRegistry_CompletionDeclarationAcceptsCanonicalPolicies(t *testing.T) {
 		{"artifact free", ArtifactOwnershipNone, FinalizationStrategyLegacyComplete},
 		{"application transaction", ArtifactOwnershipApplication, FinalizationStrategyLegacyComplete},
 		{"worker spine", ArtifactOwnershipWorkerSpine, FinalizationStrategyCompleteWithArtifacts},
+		// The staged pair is deliberate, not a synonym: the worker still
+		// publishes its own spine artifacts, but the terminal flip is deferred
+		// to the parent aggregator (TICKET-CORE-READY-DURABLE-DAG blocker B1).
+		{"worker spine then defer", ArtifactOwnershipWorkerSpine, FinalizationStrategyCompleteWithArtifactsThenDefer},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			entry := RegistryEntry{Completion: CompletionDeclaration{JobType: "test." + tc.name, ArtifactOwnership: tc.owner, FinalizationStrategy: tc.final}}
@@ -64,10 +68,18 @@ func TestCompose_CompletionPolicyHasOneCanonicalProjection(t *testing.T) {
 	reg := Compose()
 	artifactTypes := reg.ProducesArtifactsMap()
 	for _, jobType := range reg.AllTypes() {
-		want := reg.FinalizationStrategy(jobType) == FinalizationStrategyCompleteWithArtifacts
+		// The projection is OWNERSHIP-derived, because that is what the
+		// production path reads: finalizeJob branches on
+		// reg.ProducesArtifacts(j.Type) and JobTypeRegistry.ProducesArtifacts
+		// keys on ArtifactOwnership == WorkerSpine. Asserting the strategy
+		// itself would have made every WorkerSpine job whose strategy is not
+		// EXACTLY CompleteWithArtifacts read as a regression, even though its
+		// ownership — and therefore the whole production projection — is
+		// unchanged. The staged strategy exists precisely to be such a job.
+		want := reg.ArtifactOwnership(jobType) == ArtifactOwnershipWorkerSpine
 		_, got := artifactTypes[jobType]
 		if want != got {
-			t.Fatalf("completion policy drift for %q: strategy=%q, map membership=%t", jobType, reg.FinalizationStrategy(jobType), got)
+			t.Fatalf("completion policy drift for %q: ownership=%q (produces artifacts=%t), map membership=%t", jobType, reg.ArtifactOwnership(jobType), want, got)
 		}
 		entry, ok := reg.Get(jobType)
 		if !ok {
@@ -90,7 +102,9 @@ func TestCompose_CompletionPolicyPinsCanonicalOwners(t *testing.T) {
 		final FinalizationStrategy
 	}{
 		{name: "stock uses JobFinalizer spine", typ: TypeMediaStock, owner: ArtifactOwnershipWorkerSpine, final: FinalizationStrategyCompleteWithArtifacts},
-		{name: "script parent uses JobFinalizer spine", typ: TypeScriptGenerate, owner: ArtifactOwnershipWorkerSpine, final: FinalizationStrategyCompleteWithArtifacts},
+		// The script parent publishes its own spine AND defers the terminal flip
+		// to the aggregator (the only job type with both roles).
+		{name: "script parent uses JobFinalizer spine", typ: TypeScriptGenerate, owner: ArtifactOwnershipWorkerSpine, final: FinalizationStrategyCompleteWithArtifactsThenDefer},
 		{name: "voiceover batch uses application finalizer", typ: TypeVoiceoverBatch, owner: ArtifactOwnershipApplication, final: FinalizationStrategyLegacyComplete},
 		{name: "voiceover child uses application finalizer", typ: TypeVoiceoverGenerateItem, owner: ArtifactOwnershipApplication, final: FinalizationStrategyLegacyComplete},
 		{name: "youtube clip uses application finalizer", typ: TypeYouTubeClipExtract, owner: ArtifactOwnershipApplication, final: FinalizationStrategyLegacyComplete},

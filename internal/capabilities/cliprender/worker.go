@@ -63,6 +63,14 @@ type Worker struct {
 	chrononMetrics       *ChrononMetricsAdapter    // optional: Chronon phase projection (performance_operations)
 	chrononTimingFetcher ChrononTimingFetcher      // optional: fetches the raw timing sidecar by content address
 	log                  *zap.Logger
+	// settleWait is the per-attempt bounded wait on the remote render
+	// (DefaultSettleWait), and settleWindow bounds how long the settle
+	// continuation may keep deferring before it waits the render out
+	// (DefaultSettleWindow). Both are owned by this worker because they are
+	// POLICY (how long a lane may be held, how often to ask); the executor owns
+	// only the transport. See settleWaitBudget.
+	settleWait   time.Duration
+	settleWindow time.Duration
 }
 
 // NewWorker constructs the canonical worker. Fail-closed: preparer and log
@@ -75,7 +83,65 @@ func NewWorker(preparer *Preparer, workspaceDir string, log *zap.Logger) (*Worke
 	if log == nil {
 		log = zap.NewNop()
 	}
-	return &Worker{preparer: preparer, workspaceDir: workspaceDir, log: log}, nil
+	return &Worker{
+		preparer:     preparer,
+		workspaceDir: workspaceDir,
+		log:          log,
+		settleWait:   DefaultSettleWait,
+		settleWindow: DefaultSettleWindow,
+	}, nil
+}
+
+// DefaultSettleWait is how long ONE settle attempt holds its worker lane on a
+// running remote render before handing the attempt back. It is set above the
+// observed short-clip render so the common case still completes inside a single
+// attempt (no added latency, no extra dispatch), while a render that outlives it
+// no longer pins a lane for minutes or hours.
+const DefaultSettleWait = 60 * time.Second
+
+// DefaultSettleWindow is how long the settle continuation may keep ASKING (one
+// bounded attempt per dispatch) before it stops deferring and waits the render
+// out to completion in a single attempt. Without this bound a render that never
+// reports terminal would be re-dispatched forever; with it, the settle degrades
+// to the historical blocking behaviour instead of looping.
+const DefaultSettleWindow = 20 * time.Minute
+
+// WithSettleWait sets the per-attempt bounded wait. 0 (or negative) disables
+// the deferral entirely: every settle waits the render out, exactly the
+// pre-deferral behaviour.
+func (w *Worker) WithSettleWait(wait time.Duration) *Worker {
+	if w != nil {
+		w.settleWait = wait
+	}
+	return w
+}
+
+// WithSettleWindow sets how long the settle continuation may keep deferring.
+func (w *Worker) WithSettleWindow(window time.Duration) *Worker {
+	if w != nil {
+		w.settleWindow = window
+	}
+	return w
+}
+
+// settleWaitBudget decides how long THIS attempt may wait on the remote render:
+// the bounded wait inside the deferral window, or 0 (wait to completion) once
+// the window has closed. The window is measured from the settle child's own
+// creation, so it is durable — a restart resumes the same budget instead of
+// restarting the clock.
+func (w *Worker) settleWaitBudget(j *job.Job) time.Duration {
+	if w == nil || w.settleWait <= 0 || w.settleWindow <= 0 {
+		return 0
+	}
+	if j == nil || j.CreatedAt.IsZero() {
+		// No durable age to reason about: hold the bounded wait (the render is
+		// tracked by its own handle, and the caller can always ask again).
+		return w.settleWait
+	}
+	if time.Since(j.CreatedAt) >= w.settleWindow {
+		return 0
+	}
+	return w.settleWait
 }
 
 func (w *Worker) Handle(ctx context.Context, j *job.Job, tools *job.JobExecutionTools) (job.Result, error) {
@@ -388,6 +454,11 @@ func (w *Worker) Handle(ctx context.Context, j *job.Job, tools *job.JobExecution
 		zap.String("plan_sha256", plan.PlanSHA256),
 		zap.String("output_path", plan.OutputPath),
 	)
+	// How long THIS attempt may hold its lane on the render. The settle
+	// continuation is the only phase that reaches here, so the budget is the
+	// settle policy (see settleWaitBudget): zero means "wait the render out",
+	// which is the historical blocking behaviour.
+	waitBudget := w.settleWaitBudget(j)
 	// The render boundary is both a stage (wall, owner-measured anchors) and
 	// an operation (chronon.render_clip accumulated work) on the RunReport, so
 	// the benchmark can compare render WALL against render WORK exactly like
@@ -401,9 +472,12 @@ func (w *Worker) Handle(ctx context.Context, j *job.Job, tools *job.JobExecution
 			// Submit returned above with its result, so the only phase that
 			// reaches the render boundary here is the settle continuation.
 			var rErr error
-			if settle, ok := w.renderer.(RenderExecutorWithJobID); ok {
-				o, rErr = settle.SettleWithJobID(opCtx, plan, continuation.Submission.RenderJobID)
-			} else {
+			switch renderer := w.renderer.(type) {
+			case RenderExecutorDeferring:
+				o, rErr = renderer.SettleWithin(opCtx, plan, continuation.Submission.RenderJobID, waitBudget)
+			case RenderExecutorWithJobID:
+				o, rErr = renderer.SettleWithJobID(opCtx, plan, continuation.Submission.RenderJobID)
+			default:
 				o, rErr = w.renderer.Settle(opCtx, plan)
 			}
 			return rErr
@@ -412,6 +486,26 @@ func (w *Worker) Handle(ctx context.Context, j *job.Job, tools *job.JobExecution
 	}()
 	renderEnd := time.Now()
 	renderMS := renderEnd.Sub(renderStart).Milliseconds()
+	// A bounded settle that ran out of budget is a WAIT, not a render failure.
+	// It is classified BEFORE any failure recording so the render slot, the
+	// clip phases and the run report do not report a working render as broken —
+	// and, most importantly, so the attempt is handed back as a deferral (which
+	// spends no retry budget) instead of ending as clip.render: FAILED.
+	if errors.Is(err, ErrRenderPending) {
+		kernobs.RecordClipPhase(ctx, kernobs.ClipPhaseRenderSlot, renderSlotStart, renderEnd, kernobs.StageStatusCompleted, nil)
+		w.log.Info("clip.render.job.settle_deferred",
+			zap.String("subsystem", "clip_render_worker"),
+			zap.String("job_id", j.ID),
+			zap.String("render_job_id", continuation.Submission.RenderJobID),
+			zap.Duration("wait_budget", waitBudget),
+			zap.Int64("elapsed_ms", renderMS),
+		)
+		// The deferral delay IS the budget this attempt was willing to wait:
+		// one poll cadence, one owner. A zero budget cannot reach here (a
+		// budget of zero waits to completion), so the delay is always positive.
+		return nil, job.DeferredAfter(waitBudget, fmt.Sprintf(
+			"remote render %s is still running after %s", continuation.Submission.RenderJobID, waitBudget))
+	}
 	renderStatus := kernobs.StageStatusCompleted
 	if err != nil {
 		renderStatus = kernobs.StageStatusFailed

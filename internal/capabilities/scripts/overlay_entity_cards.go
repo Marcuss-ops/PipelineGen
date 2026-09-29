@@ -57,7 +57,8 @@ func entityCardKind(kind capabilityoverlay.OverlayKind) bool {
 // The second return maps each annotated entity's StableEntityID to its
 // canonical id, so a resolver card item (keyed by the same StableEntityID)
 // can look up the identity to resolve.
-func entityCardMediaIndex(result *GenerateResult) (*capabilityentities.EntityMediaResolver, map[string]string) {
+func entityCardMediaIndex(result *GenerateResult, perSceneImages ...bool) (*capabilityentities.EntityMediaResolver, map[string]string) {
+	sceneScoped := len(perSceneImages) > 0 && perSceneImages[0]
 	index := capabilityentities.NewEntityMediaIndex()
 	media := capabilityentities.NewEntityMediaResolver()
 	canonicalByStable := map[string]string{}
@@ -88,7 +89,21 @@ func entityCardMediaIndex(result *GenerateResult) (*capabilityentities.EntityMed
 					continue
 				}
 				stable := annotationStableEntityID(entity)
-				canonicalByStable[stable] = canonical
+				lookupID := canonical
+				if sceneScoped {
+					lookupID = strings.TrimSpace(result.Scenes[i].ID) + "::" + canonical
+					name := strings.TrimSpace(entity.CanonicalName)
+					if name == "" {
+						name = strings.TrimSpace(entity.Text)
+					}
+					overlayEntityID := capabilityentities.SafeEntityID(name)
+					if overlayEntityID == "" {
+						overlayEntityID = stable
+					}
+					canonicalByStable["overlay-"+strings.TrimSpace(result.Scenes[i].ID)+"-"+overlayEntityID] = lookupID
+				} else {
+					canonicalByStable[stable] = lookupID
+				}
 				url := entityImageURL(binding)
 				if url == "" || strings.TrimSpace(binding.SHA256) == "" {
 					continue
@@ -105,7 +120,7 @@ func entityCardMediaIndex(result *GenerateResult) (*capabilityentities.EntityMed
 				// than failing the whole overlay plan over one unverifiable asset.
 				// Fail-open must still be visible: a registry rejecting every
 				// binding would silently degrade every card to text-only.
-				if err := index.IndexForCanonicalID(canonical, capabilityentities.EntityAsset{
+				if err := index.IndexForCanonicalID(lookupID, capabilityentities.EntityAsset{
 					AssetID: binding.AssetID, AssetType: entityImageAssetType(binding),
 					SHA256: binding.SHA256, StorageURL: url,
 					LocalPath:    localPath,
@@ -113,7 +128,7 @@ func entityCardMediaIndex(result *GenerateResult) (*capabilityentities.EntityMed
 				}); err != nil {
 					logger.Warn("overlay plan: entity card asset not indexed (card stays text-only)",
 						zap.String("entity", entity.CanonicalName),
-						zap.String("canonical_entity_id", canonical),
+						zap.String("canonical_entity_id", lookupID),
 						zap.Error(err),
 					)
 				}
@@ -175,11 +190,14 @@ func entityImageAssetType(binding *scriptpkg.EntityImageBinding) string {
 // third below the portrait. An entity without an indexed asset is returned
 // unchanged (text-only card).
 func attachEntityCardAsset(item capabilityoverlay.OverlayItem, media *capabilityentities.EntityMediaResolver, canonicalByStable map[string]string, planID string) capabilityoverlay.OverlayItem {
-	canonical := canonicalByStable[item.EntityID]
-	if canonical == "" {
+	lookupID := canonicalByStable[item.ID]
+	if lookupID == "" {
+		lookupID = canonicalByStable[item.EntityID]
+	}
+	if lookupID == "" {
 		return item
 	}
-	ref, err := media.ResolveBest(canonical)
+	ref, err := media.ResolveBest(lookupID)
 	if err != nil {
 		return item
 	}
@@ -208,7 +226,11 @@ func attachEntityCardAsset(item capabilityoverlay.OverlayItem, media *capability
 	if item.EntityRef == nil {
 		item.EntityRef = &capabilityoverlay.OverlayEntityRef{}
 	}
-	item.EntityRef.CanonicalEntityID = canonical
+	canonicalID := lookupID
+	if separator := strings.Index(canonicalID, "::"); separator >= 0 {
+		canonicalID = canonicalID[separator+2:]
+	}
+	item.EntityRef.CanonicalEntityID = canonicalID
 	return item
 }
 
@@ -217,14 +239,34 @@ func attachEntityCardAsset(item capabilityoverlay.OverlayItem, media *capability
 // first occurrence is deterministic and preserves the earliest spoken
 // identities. Later occurrences of a retained identity do not consume a
 // second image slot.
-func capEntityImageOverlays(items []capabilityoverlay.OverlayItem, max int) []capabilityoverlay.OverlayItem {
+func capEntityImageOverlays(items []capabilityoverlay.OverlayItem, max int, perScene ...bool) []capabilityoverlay.OverlayItem {
 	if max <= 0 || len(items) == 0 {
 		return items
 	}
 	seen := make(map[string]struct{}, max)
+	sceneCounts := make(map[string]int)
 	out := make([]capabilityoverlay.OverlayItem, 0, len(items))
 	for _, item := range items {
 		if item.Kind != string(capabilityoverlay.KindEntityImage) {
+			out = append(out, item)
+			continue
+		}
+		if len(perScene) > 0 && perScene[0] && strings.TrimSpace(item.SceneID) != "" {
+			sceneID := strings.TrimSpace(item.SceneID)
+			if sceneCounts[sceneID] >= 1 {
+				continue // per_scene mode's contract is exactly one image per scene.
+			}
+			identity := sceneID
+			if item.EntityRef != nil && strings.TrimSpace(item.EntityRef.CanonicalEntityID) != "" {
+				identity += "::" + strings.TrimSpace(item.EntityRef.CanonicalEntityID)
+			} else {
+				identity += "::" + strings.TrimSpace(item.EntityID)
+			}
+			if _, exists := seen[identity]; exists || len(seen) >= max {
+				continue
+			}
+			seen[identity] = struct{}{}
+			sceneCounts[sceneID]++
 			out = append(out, item)
 			continue
 		}

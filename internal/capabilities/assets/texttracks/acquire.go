@@ -232,9 +232,14 @@ func (s *AcquireService) Acquire(ctx context.Context, cmd AcquireCommand) (*Acqu
 				zap.String("language", bundle.LanguageCode),
 				zap.Int("cues", len(bundle.Cues)))
 			return &AcquireResult{
-				AssetID:      cmd.AssetID,
-				PlainText:    bundle.PlainText,
-				Cues:         bundle.Cues,
+				AssetID:   cmd.AssetID,
+				PlainText: bundle.PlainText,
+				// The VTT is the FULL source video's: its cues carry source
+				// timestamps while priorities 2/2.5/5 (local sidecar, Drive
+				// copy, Whisper) all produce CLIP-local cues for the same
+				// asset. Rebase here so one asset never mixes two timelines
+				// (godlike/06 SSOT: formula lives in detail.RebaseCuesForClip).
+				Cues:         detail.RebaseCuesForClip(bundle.Cues, cmd.StartSec, cmd.EndSec),
 				LanguageCode: bundle.LanguageCode,
 				SourceType:   bundle.SourceType,
 				Priority:     3,

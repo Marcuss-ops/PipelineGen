@@ -94,7 +94,31 @@ func writeDocumentOverlay(b *strings.Builder, opts DocumentRenderOptions) {
 		return
 	}
 	b.WriteString("<section><h2>Rendered Overlay</h2>")
-	if link := strings.TrimSpace(opts.Overlay.URL); link != "" {
+	if len(opts.Overlay.Items) > 0 {
+		b.WriteString("<h3>Rendered overlay items</h3><ul>")
+		for _, item := range opts.Overlay.Items {
+			b.WriteString("<li>")
+			label := strings.TrimSpace(item.ItemID)
+			if label == "" {
+				label = strings.TrimSpace(item.JobID)
+			}
+			if label == "" {
+				label = strings.TrimSpace(item.ArtifactID)
+			}
+			b.WriteString(html.EscapeString(label))
+			if link := strings.TrimSpace(item.URL); link != "" {
+				b.WriteString(" — ")
+				b.WriteString(renderDocumentLink(link, "Apri render", link))
+			}
+			if item.DurationUS > 0 {
+				b.WriteString(" (")
+				b.WriteString(html.EscapeString(formatTimelineTimestamp(item.DurationUS)))
+				b.WriteString(")")
+			}
+			b.WriteString("</li>")
+		}
+		b.WriteString("</ul>")
+	} else if link := strings.TrimSpace(opts.Overlay.URL); link != "" {
 		b.WriteString("<p><strong>Artifact:</strong> ")
 		b.WriteString(renderDocumentLink(link, link, link))
 		b.WriteString("</p>")

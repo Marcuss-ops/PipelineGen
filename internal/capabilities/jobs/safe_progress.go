@@ -1,5 +1,31 @@
 package jobs
 
+import (
+	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
+)
+
+// stageStatusSink projects the OPTIONAL durable per-stage sink off the wired
+// job store, for the JobTools a running handler receives.
+//
+// It lives beside the other JobTools accessors because it answers the same
+// question: what may a running handler report through? The SQLite jobs plane
+// implements job.JobStageStatusStore (the job_stage_status projection behind
+// GET /api/jobs/{id}/stages), so production gets the stage table for free;
+// a store without the port leaves the sink nil and handlers report no rows
+// (godlike/07 no-fake-availability: the worker does not invent a store it was
+// not given). Deriving it here — instead of wiring it in the composition
+// root — is what keeps the stage table a property of the storage plane
+// rather than something every call site must remember to pass.
+func stageStatusSink(store job.Store) job.JobStageStatusStore {
+	if store == nil {
+		return nil
+	}
+	if sink, ok := store.(job.JobStageStatusStore); ok {
+		return sink
+	}
+	return nil
+}
+
 // SafeProgressFn returns a nil-safe progress callback function.
 //
 // Creator-runtime wrap (internal/app/creator_runtime.go::worker.Handler)

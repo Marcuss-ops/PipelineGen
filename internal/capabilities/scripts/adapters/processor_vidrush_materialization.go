@@ -297,6 +297,7 @@ func (p *VidRushMaterializationProcessor) materializeOne(ctx context.Context, pl
 	}
 	var warnings []string
 	newInternetImageUploads := 0
+	perSceneImageScope := plan != nil && plan.MediaPlan.Extraction.EntityImages.PerScene()
 	materialize := func(candidates []scriptpkg.SegmentAssetCandidate, targetImages int) ([]scriptpkg.SegmentAssetCandidate, error) {
 		materialized := make([]scriptpkg.SegmentAssetCandidate, 0, len(candidates))
 		attempts := make(map[string]int, 3)
@@ -305,7 +306,14 @@ func (p *VidRushMaterializationProcessor) materializeOne(ctx context.Context, pl
 			if candidate.Provider != scriptpkg.VidRushProviderInternetImages && candidate.Provider != scriptpkg.VidRushProviderImageGeneration {
 				return
 			}
-			if group := vidRushImageGroup(candidate); group != "" {
+			group := vidRushImageGroup(candidate)
+			if perSceneImageScope {
+				group = strings.ToLower(strings.TrimSpace(candidate.LegacyFileMD5))
+				if group == "" {
+					group = strings.ToLower(strings.TrimSpace(candidate.AssetID))
+				}
+			}
+			if group != "" {
 				readyImageGroups[group] = struct{}{}
 			}
 		}
@@ -505,9 +513,17 @@ func (p *VidRushMaterializationProcessor) materializeOne(ctx context.Context, pl
 	// true fallback instead of a parallel source that duplicates valid web
 	// assets.
 	imageTarget := vidRushImageTargetForSegment(plan, segment)
+	materializationImageTarget := imageTarget
+	if perSceneImageScope && imageTarget > 0 {
+		// Keep one extra verified per-scene candidate as a uniqueness fallback.
+		// Independent searches can return the same syndicated photo in two
+		// scenes; the overlay planner chooses the next materialized image by
+		// content hash so the final five images are genuinely distinct.
+		materializationImageTarget++
+	}
 	discoveredCandidates := prioritizeExactVidRushImageCandidates(updated.Assets.Candidates, imageTarget, plan)
 	var materializeErr error
-	updated.Assets.Candidates, materializeErr = materialize(discoveredCandidates, imageTarget)
+	updated.Assets.Candidates, materializeErr = materialize(discoveredCandidates, materializationImageTarget)
 	if materializeErr != nil {
 		return vidRushMaterializedSegment{}, materializeErr
 	}

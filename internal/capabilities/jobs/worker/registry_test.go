@@ -2,11 +2,78 @@
 //
 // Pins the SetProducesArtifacts → ProducesArtifacts round-trip and the nil-safe
 // boundary contracts (nil receiver, unknown job type, overwrite).
+//
+// Also pins the per-stage reporting derivation (stageStatusFromBroker +
+// translateToolsToExecutionTools): the durable stage table is enabled by the
+// WIRED BROKER's capabilities, so a deployment upgrades by upgrading the
+// broker, not by remembering to wire a new port.
 package worker
 
 import (
+	"context"
 	"testing"
+
+	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
+	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 )
+
+// stageAwareBroker is the workers' view of the production SQLite jobs plane:
+// a full jobs.Broker that ALSO implements the optional durable per-stage sink.
+type stageAwareBroker struct {
+	*stubLeaseBroker
+	upserts int
+}
+
+func (b *stageAwareBroker) UpsertJobStageStatus(context.Context, job.JobStageStatus) error {
+	b.upserts++
+	return nil
+}
+
+func (b *stageAwareBroker) ListJobStageStatuses(context.Context, string) ([]job.JobStageStatus, error) {
+	return nil, nil
+}
+
+var (
+	_ appjobs.Broker          = (*stageAwareBroker)(nil)
+	_ job.JobStageStatusStore = (*stageAwareBroker)(nil)
+)
+
+// TestStageStatusIsDerivedFromTheWiredBroker pins the derivation that makes the
+// stage table work in production without any new wiring: a broker WITHOUT the
+// port reports no sink (godlike/07 no-fake-availability — the worker must not
+// invent a store it was not given), and a broker WITH it exposes the sink to
+// handlers through JobExecutionTools.
+func TestStageStatusIsDerivedFromTheWiredBroker(t *testing.T) {
+	if got := stageStatusFromBroker(nil); got != nil {
+		t.Fatal("a nil broker must not produce a stage sink")
+	}
+
+	plain := &stubLeaseBroker{}
+	if got := stageStatusFromBroker(plain); got != nil {
+		t.Fatal("a broker without the stage port must not report a sink")
+	}
+
+	aware := &stageAwareBroker{stubLeaseBroker: &stubLeaseBroker{}}
+	if got := stageStatusFromBroker(aware); got == nil {
+		t.Fatal("a stage-aware broker must expose its sink")
+	}
+
+	tools := translateToolsToExecutionTools(context.Background(), &Tools{broker: aware}, appjobs.TypeVideoCreate)
+	if tools == nil || tools.StageStatus == nil {
+		t.Fatal("JobExecutionTools must expose the stage sink to handlers")
+	}
+
+	notAware := translateToolsToExecutionTools(context.Background(), &Tools{broker: plain}, appjobs.TypeVideoCreate)
+	if notAware == nil || notAware.StageStatus != nil {
+		t.Fatal("handlers on a broker without the port must get a nil sink, not a broken one")
+	}
+
+	// The nil-Tools branch (no broker at all) must stay nil-safe.
+	noTools := translateToolsToExecutionTools(context.Background(), nil, "")
+	if noTools == nil || noTools.StageStatus != nil || noTools.Progress == nil || noTools.Event == nil {
+		t.Fatalf("nil Tools translation = %+v, want noop callbacks and a nil stage sink", noTools)
+	}
+}
 
 // TestRegistry_ProducesArtifacts_TrueAfterSet pins the canonical
 // AZIONE 7 contract: SetProducesArtifacts(jobType, true) → ProducesArtifacts

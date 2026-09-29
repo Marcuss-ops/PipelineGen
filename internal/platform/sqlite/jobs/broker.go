@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/mattn/go-sqlite3"
 
@@ -17,7 +18,10 @@ type Broker struct {
 	*SQLiteStore
 }
 
-var _ job.JobBroker = (*Broker)(nil)
+var (
+	_ job.JobBroker     = (*Broker)(nil)
+	_ job.ScheduleStore = (*Broker)(nil)
+)
 
 func NewBroker(store *SQLiteStore) *Broker {
 	if store == nil {
@@ -31,6 +35,16 @@ func (b *Broker) Create(ctx context.Context, j *job.Job) error {
 		return fmt.Errorf("sqlite jobs broker: store is nil")
 	}
 	return mapWriteError(b.SQLiteStore.Create(ctx, j))
+}
+
+// CreateScheduled is the deferred-enqueue write. It mirrors Create's error
+// classification so a duplicate (active_key / client_idempotency) surfaces as
+// the kernel sentinel and the queue idempotency rescue works unchanged.
+func (b *Broker) CreateScheduled(ctx context.Context, j *job.Job, runAt time.Time) error {
+	if b == nil || b.SQLiteStore == nil {
+		return fmt.Errorf("sqlite jobs broker: store is nil")
+	}
+	return mapWriteError(b.SQLiteStore.CreateScheduled(ctx, j, runAt))
 }
 
 // mapWriteError is the single SQLite-driver classification boundary for job

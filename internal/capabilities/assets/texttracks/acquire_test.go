@@ -29,11 +29,101 @@ type stubSubtitles struct {
 	bundle *detail.ResolvedTextBundle
 	err    error
 	calls  int
+	// gotStart/gotEnd record the source-video window the caller asked for,
+	// so the clip-window contract (StartSec/EndSec plumbing) is assertable.
+	gotStart int
+	gotEnd   int
 }
 
-func (s *stubSubtitles) FetchSegmentSubtitles(_ context.Context, _ string, _, _ int) (*detail.ResolvedTextBundle, error) {
+func (s *stubSubtitles) FetchSegmentSubtitles(_ context.Context, _ string, startSec, endSec int) (*detail.ResolvedTextBundle, error) {
 	s.calls++
+	s.gotStart = startSec
+	s.gotEnd = endSec
 	return s.bundle, s.err
+}
+
+// TestAcquireService_Priority3Plus4_CuesRebasedOntoClipTimeline pins the
+// timeline contract of the YouTube-subtitle leg: the source VTT's cues
+// arrive on the SOURCE VIDEO timeline (146s for a clip cut at 146s) while
+// priorities 2/2.5/5 all produce CLIP-local cues for the same asset. The
+// result must be uniformly clip-local and clamped to the clip duration,
+// otherwise the .ass validation and the clip render disagree with the
+// stored segments (the "downloaded clip has no correct subs" bug).
+func TestAcquireService_Priority3Plus4_CuesRebasedOntoClipTimeline(t *testing.T) {
+	dir := t.TempDir()
+	clipPath := filepath.Join(dir, "clip.mp4")
+	require.NoError(t, os.WriteFile(clipPath, []byte("fake"), 0o644))
+
+	subs := &stubSubtitles{
+		bundle: &detail.ResolvedTextBundle{
+			LanguageCode: "it",
+			PlainText:    "subs della clip",
+			Cues: []detail.TimedCue{
+				{StartMs: 145_000, EndMs: 150_000, Text: "straddles the clip start"},
+				{StartMs: 175_000, EndMs: 179_000, Text: "straddles the clip end"},
+				{StartMs: 400_000, EndMs: 402_000, Text: "far outside the clip"},
+			},
+			SourceType: detail.TextSourceYouTubeSubtitle,
+			IsOriginal: true,
+			Provider:   "youtube",
+		},
+	}
+	svc, err := NewAcquireService(subs, &stubWhisper{}, zap.NewNop())
+	require.NoError(t, err)
+
+	result, err := svc.Acquire(context.Background(), AcquireCommand{
+		AssetID:   "yt_window_001",
+		VideoID:   "vid-window-001",
+		LocalPath: clipPath,
+		Language:  "it",
+		StartSec:  146,
+		EndSec:    176, // 30s clip cut out of a longer source video
+	})
+	require.NoError(t, err)
+	require.NotNil(t, result)
+
+	// The window must reach the port verbatim (it is the port's slice
+	// contract) and the returned cues must be clip-local.
+	assert.Equal(t, 146, subs.gotStart)
+	assert.Equal(t, 176, subs.gotEnd)
+
+	require.Len(t, result.Cues, 2, "the far-outside cue must be dropped")
+	assert.Equal(t, int64(0), result.Cues[0].StartMs, "first cue must start at the clip start (0ms)")
+	assert.Equal(t, int64(4_000), result.Cues[0].EndMs, "start-straddling cue must clamp to 0")
+	assert.LessOrEqual(t, result.Cues[1].EndMs, int64(30_000), "no cue may end after the 30s clip duration")
+	for _, c := range result.Cues {
+		assert.GreaterOrEqual(t, c.StartMs, int64(0))
+		assert.Greater(t, c.EndMs, c.StartMs)
+	}
+}
+
+// The whole-video window (0/0) is the no-window contract: cues keep their
+// source timings (that is what GET /api/clips/transcript serves).
+func TestAcquireService_Priority3Plus4_WholeVideoWindowKeepsSourceTimings(t *testing.T) {
+	dir := t.TempDir()
+	clipPath := filepath.Join(dir, "clip.mp4")
+	require.NoError(t, os.WriteFile(clipPath, []byte("fake"), 0o644))
+
+	subs := &stubSubtitles{bundle: &detail.ResolvedTextBundle{
+		LanguageCode: "it",
+		PlainText:    "intero video",
+		Cues:         []detail.TimedCue{{StartMs: 146_000, EndMs: 148_000, Text: "sorgente"}},
+		SourceType:   detail.TextSourceYouTubeSubtitle,
+		IsOriginal:   true,
+	}}
+	svc, err := NewAcquireService(subs, &stubWhisper{}, zap.NewNop())
+	require.NoError(t, err)
+
+	result, err := svc.Acquire(context.Background(), AcquireCommand{
+		AssetID:   "yt_window_002",
+		VideoID:   "vid-window-002",
+		LocalPath: clipPath,
+		Language:  "it",
+	})
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Len(t, result.Cues, 1)
+	assert.Equal(t, int64(146_000), result.Cues[0].StartMs, "0/0 must keep source-video timings untouched")
 }
 
 // stubWhisper is a minimal youtubeports.WhisperTranscriberPort stub.

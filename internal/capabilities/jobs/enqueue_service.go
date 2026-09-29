@@ -20,5 +20,13 @@ func (s *Service) Enqueue(ctx context.Context, req *job.EnqueueRequest) (*job.Jo
 	if s.dispatcher != nil {
 		consumers = s
 	}
-	return jobqueue.NewService(s.repo, s.registry, consumers, s.log).Enqueue(ctx, req)
+	q := jobqueue.NewService(s.repo, s.registry, consumers, s.log)
+	// Deferred scheduling: when the broker supports it, a future-dated
+	// request is persisted as SCHEDULED and promoted by the job scheduler.
+	// Without the port, queue.Service.Enqueue fails closed on a future
+	// ScheduledAt instead of running the job immediately.
+	if s.scheduleStore != nil {
+		q = q.WithScheduler(s.scheduleStore)
+	}
+	return q.Enqueue(ctx, req)
 }

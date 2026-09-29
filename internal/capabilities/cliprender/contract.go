@@ -62,27 +62,14 @@ type contractCheck struct {
 // videoProfileCompatible decides whether a certified video profile satisfies the
 // contract's canonical profile.
 //
-// The contract declares the assembly profile as "high" (VeloxEditing vocabulary,
-// kernel/media/assembly_contract.go — the SSOT), while the native NVENC lane
-// certifies "Main". H.264 Main and High are both valid inputs for the copy-only
-// assembler: it copies packets and only depends on the stream's structural
-// identity (codec, GOP, timebase, pixel format), not on the profile level's
-// coding tools. Both spellings of the SAME profile are compared after
-// normalization (normalizeVideoProfile lowercases ffprobe casing), and the pair
-// high/main is the ONLY equivalence: every other profile (Baseline, Constrained
-// Baseline, High 10, …) is a real mismatch and fails the gate.
-//
-// RenderingGen mirrors this finite equivalence in its output profile registry
-// (media.OutputProfile.AcceptedCodecProfiles), so the worker's finalize gate and
-// this consumer gate can never disagree about which artifacts are legal.
+// The assembly contract requires one exact H.264 profile across generated
+// clips and phrase overlays. Treating Main as equivalent to High allowed
+// differing stream configurations into the copy-only lane. Case is
+// normalized, but profile identity is exact; any mismatch fails closed.
 func videoProfileCompatible(contractProfile, certifiedProfile string) bool {
 	canonical := normalizeVideoProfile(contractProfile)
 	certified := normalizeVideoProfile(certifiedProfile)
-	if canonical == certified {
-		return true
-	}
-	return (canonical == "high" && certified == "main") ||
-		(canonical == "main" && certified == "high")
+	return canonical != "" && canonical == certified
 }
 
 var contractChecks = []contractCheck{

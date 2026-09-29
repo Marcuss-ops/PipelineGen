@@ -25,6 +25,22 @@ type Service struct {
 	retries   MaxRetriesResolver
 	consumers ConsumerBindings
 	log       *zap.Logger
+	// scheduler is the OPTIONAL deferred-scheduling port. It is wired only
+	// when the composition root provides a job.ScheduleStore (the SQLite
+	// jobs plane implements it). It is nil for callers/tests that never
+	// schedule a job; an Enqueue with a future ScheduledAt on a Service
+	// without this port fails closed rather than silently running early.
+	scheduler job.ScheduleStore
+}
+
+// WithScheduler attaches the deferred-scheduling port. Chainable; returns
+// the receiver so composition can write
+// queue.NewService(...).WithScheduler(store).
+func (s *Service) WithScheduler(store job.ScheduleStore) *Service {
+	if s != nil {
+		s.scheduler = store
+	}
+	return s
 }
 
 func NewService(repo job.JobBroker, retries MaxRetriesResolver, consumers ConsumerBindings, log *zap.Logger) *Service {
@@ -112,10 +128,21 @@ func (s *Service) Enqueue(ctx context.Context, req *job.EnqueueRequest) (ret *jo
 	}
 
 	now := time.Now()
+	scheduled := req.ScheduledAt != nil && req.ScheduledAt.After(now)
+	if scheduled && s.scheduler == nil {
+		// Fail closed: running a future-dated job immediately would violate
+		// the caller's request. The composition root must wire the
+		// schedule store (queue.Service.WithScheduler).
+		return nil, fmt.Errorf("job %q requested scheduled_at=%s but the schedule store is not wired", req.Type, req.ScheduledAt.UTC().Format(time.RFC3339))
+	}
+	initialStatus := job.StatusQueued
+	if scheduled {
+		initialStatus = job.StatusScheduled
+	}
 	j := &job.Job{
 		ID:             GenerateJobID(),
 		Type:           req.Type,
-		Status:         job.StatusQueued,
+		Status:         initialStatus,
 		Priority:       req.Priority,
 		Project:        req.Project,
 		VideoName:      req.VideoName,
@@ -156,7 +183,13 @@ func (s *Service) Enqueue(ctx context.Context, req *job.EnqueueRequest) (ret *jo
 		}
 	}
 
-	if err := s.repo.Create(ctx, j); err != nil {
+	var createErr error
+	if scheduled {
+		createErr = s.scheduler.CreateScheduled(ctx, j, *req.ScheduledAt)
+	} else {
+		createErr = s.repo.Create(ctx, j)
+	}
+	if err := createErr; err != nil {
 		if errors.Is(err, job.ErrDuplicate) && (correlationID != "" || req.ActiveKey != "" || (req.ClientID != "" && req.IdempotencyKey != "")) {
 			if correlationID != "" {
 				if existing, findErr := s.findExistingByCorrelation(ctx, j.Type, correlationID); findErr == nil && existing != nil {

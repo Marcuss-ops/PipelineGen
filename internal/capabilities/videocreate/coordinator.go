@@ -39,6 +39,17 @@ func (c *Coordinator) Run(ctx context.Context, run *Run) error {
 	}
 	for _, spec := range WorkflowSteps {
 		if run.State.Completed(spec.StepKey) {
+			run.reportProgress(CurrentStageProgress(run.State), "resumed: "+run.State.Describe())
+			break
+		}
+	}
+	for _, spec := range WorkflowSteps {
+		if run.State.Completed(spec.StepKey) {
+			// Durable-complete from an earlier attempt: re-emit its canonical
+			// stage row so a RESUMED job's stage table is complete instead of
+			// starting empty (see Run.stageAlreadyCompleted). The transient
+			// progress bar is deliberately untouched here.
+			run.stageAlreadyCompleted(ctx, spec)
 			continue
 		}
 		if err := c.runStep(ctx, run, spec); err != nil {
@@ -63,36 +74,76 @@ func (c *Coordinator) runStep(ctx context.Context, run *Run, spec StepSpec) erro
 	if err := c.Store.MarkStarted(ctx, key); err != nil {
 		if errors.Is(err, steps.ErrStepAlreadyCompleted) {
 			// Terminal-immutability: a concurrent attempt already
-			// finished this step. Treat as done and move on.
+			// finished this step. Reload its durable output before moving
+			// on so later stages use the winner's facts, not stale state.
+			if err := c.restoreConcurrentCompletion(ctx, run, spec); err != nil {
+				return err
+			}
 			return nil
 		}
 		return fmt.Errorf("%w: mark %s started: %v", ErrWorkflowFailed, spec.StepKey, err)
 	}
-	run.stageStarted(spec)
+	run.stageStarted(ctx, spec)
 	out, err := fn(ctx, run, spec)
 	if err != nil {
 		// Record the failure durably FIRST: the error text is what a
-		// resumed operator sees.
-		_ = c.Store.MarkFailed(ctx, key, err.Error())
-		run.stageFailed(spec, err.Error())
+		// resumed operator sees. A terminal completion by another attempt
+		// wins over this late failure and must restore its projection.
+		if markErr := c.Store.MarkFailed(ctx, key, err.Error()); errors.Is(markErr, steps.ErrStepAlreadyCompleted) {
+			return c.restoreConcurrentCompletion(ctx, run, spec)
+		}
+		run.stageFailed(ctx, spec, err.Error())
 		return err
 	}
 	raw, marshalErr := json.Marshal(out)
 	if marshalErr != nil {
 		markErr := fmt.Errorf("%w: encode %s output: %v", ErrWorkflowFailed, spec.StepKey, marshalErr)
-		_ = c.Store.MarkFailed(ctx, key, markErr.Error())
-		run.stageFailed(spec, markErr.Error())
+		if storeErr := c.Store.MarkFailed(ctx, key, markErr.Error()); errors.Is(storeErr, steps.ErrStepAlreadyCompleted) {
+			return c.restoreConcurrentCompletion(ctx, run, spec)
+		}
+		run.stageFailed(ctx, spec, markErr.Error())
 		return markErr
 	}
-	if err := c.Store.MarkCompleted(ctx, key, raw, nil); err != nil && !errors.Is(err, steps.ErrStepAlreadyCompleted) {
-		return fmt.Errorf("%w: mark %s completed: %v", ErrWorkflowFailed, spec.StepKey, err)
+	if err := c.Store.MarkCompleted(ctx, key, raw, nil); err != nil {
+		if !errors.Is(err, steps.ErrStepAlreadyCompleted) {
+			return fmt.Errorf("%w: mark %s completed: %v", ErrWorkflowFailed, spec.StepKey, err)
+		}
+		// A concurrent attempt won the terminal transition. Reload its
+		// output rather than projecting this attempt's potentially different
+		// result into the live run.
+		return c.restoreConcurrentCompletion(ctx, run, spec)
 	}
 	run.applyOutput(spec, out)
 	if out.Skipped {
-		run.stageSkipped(spec)
+		run.stageSkipped(ctx, spec)
 	} else {
-		run.stageSucceeded(spec)
+		run.stageSucceeded(ctx, spec)
 	}
+	return nil
+}
+
+// restoreConcurrentCompletion reloads the durable winner after a second
+// worker discovers that MarkStarted raced with a terminal completion. The
+// local state snapshot predates that completion, so carrying it forward would
+// make the next step operate on missing or stale facts.
+func (c *Coordinator) restoreConcurrentCompletion(ctx context.Context, run *Run, spec StepSpec) error {
+	rows, err := c.Store.ListByJob(ctx, run.Job.ID)
+	if err != nil {
+		return fmt.Errorf("%w: reload %s after concurrent completion: %v", ErrWorkflowFailed, spec.StepKey, err)
+	}
+	state, err := StateFromSteps(rows)
+	if err != nil {
+		return err
+	}
+	if !state.Completed(spec.StepKey) {
+		return fmt.Errorf("%w: store reported %s completed but no terminal row was found", ErrStateCorrupt, spec.StepKey)
+	}
+	run.State = state
+	run.Facts = Facts{}
+	if err := RehydrateFacts(ctx, run); err != nil {
+		return err
+	}
+	run.stageAlreadyCompleted(ctx, spec)
 	return nil
 }
 

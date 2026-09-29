@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	renderingwiring "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/rendering"
 	assetspersistence "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
@@ -92,6 +93,13 @@ func registerClipRender(registry *module.Registry, log *zap.Logger, cfg *config.
 	if err != nil {
 		return fmt.Errorf("registerClipRender: build worker: %w", err)
 	}
+	// Deferrable settle: one attempt waits at most the configured budget, then
+	// hands the attempt back as a deferral (a WAIT that spends no retry) and the
+	// settle child is re-dispatched. This is what keeps the dedicated settle
+	// lane pool tracking renders that are READY instead of pinning a lane per
+	// render in flight. 0 on either knob restores the blocking settle.
+	worker.WithSettleWait(time.Duration(cfg.Jobs.ClipRenderSettleWaitSeconds) * time.Second).
+		WithSettleWindow(time.Duration(cfg.Jobs.ClipRenderSettleWindowSeconds) * time.Second)
 	// Deterministic ASS compiler (canonical texttracks content generator —
 	// single owner). Subtitles.enabled=true without a wired compiler fails
 	// closed in the worker; this wiring makes burn+sidecar always available.

@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 	"time"
 
@@ -12,7 +14,88 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/remote"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
+	instaeditcalendar "github.com/Marcuss-ops/PipelineGen/internal/platform/instaeditcalendar"
+	"go.uber.org/zap"
 )
+
+type failingProgressBroker struct {
+	*mockCancelBroker
+	err error
+}
+
+func (b *failingProgressBroker) SetProgress(context.Context, string, int, string) error {
+	return b.err
+}
+
+func TestWorkerProgressCalendarReportsIndependentlyAndIncludesSnapshot(t *testing.T) {
+	received := make(chan instaeditcalendar.Progress, 1)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/v1/agent/calendar/events/by-job/job-progress":
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"event_key":"event-progress"}`))
+		case "/api/v1/agent/calendar/events/event-progress/progress":
+			var update instaeditcalendar.Progress
+			if err := json.NewDecoder(r.Body).Decode(&update); err != nil {
+				t.Errorf("decode Calendar progress: %v", err)
+			}
+			received <- update
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"ok":true}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	client, err := instaeditcalendar.NewClient(server.URL, "test-key")
+	if err != nil {
+		t.Fatal(err)
+	}
+	reporter, err := instaeditcalendar.NewReporter(client, t.TempDir(), time.Millisecond)
+	if err != nil {
+		t.Fatal(err)
+	}
+	worker := &Worker{
+		id: "worker-calendar", repo: &failingProgressBroker{
+			mockCancelBroker: newMockCancelBroker(), err: errors.New("broker unavailable"),
+		},
+		calendarReporter: reporter, log: zap.NewNop(),
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	reporterDone := make(chan struct{})
+	go func() {
+		defer close(reporterDone)
+		_ = reporter.Run(ctx)
+	}()
+	defer func() {
+		cancel()
+		<-reporterDone
+	}()
+
+	phase := "RENDERING: render (RenderingGen → Chronon): completed"
+	worker.reportJobProgress(context.Background(), &job.Job{ID: "job-progress", Type: job.TypeVideoCreate}, 87, phase)
+
+	var update instaeditcalendar.Progress
+	select {
+	case update = <-received:
+	case <-time.After(2 * time.Second):
+		t.Fatal("Calendar did not receive progress while the broker progress write failed")
+	}
+	if update.Kind != job.TypeVideoCreate || update.Status != "RUNNING" {
+		t.Fatalf("Calendar kind/status = %q/%q, want %q/RUNNING", update.Kind, update.Status, job.TypeVideoCreate)
+	}
+	if update.Phase != phase || update.Progress == nil || *update.Progress != 87 {
+		t.Fatalf("Calendar phase/progress = %q/%v, want %q/87", update.Phase, update.Progress, phase)
+	}
+	if update.Snapshot["job_id"] != "job-progress" || update.Snapshot["worker_id"] != "worker-calendar" || update.Snapshot["phase"] != phase {
+		t.Fatalf("Calendar snapshot lacks workflow context: %#v", update.Snapshot)
+	}
+	if got := update.Snapshot["progress"]; got != float64(87) {
+		t.Fatalf("snapshot progress = %#v, want 87", got)
+	}
+}
 
 func TestExtractStagedArtifacts_HappyPath(t *testing.T) {
 	// FASE 1 close-out: the happy-path fixture now sets Path on

@@ -86,19 +86,13 @@ func TestAudioTimebaseRejectsNonContractSampleRate(t *testing.T) {
 	}
 }
 
-// TestVideoProfileCompatibilityIsTheHighMainPair pins the ONLY profile
-// equivalence the contract gate accepts. The contract declares "high" (the
-// VeloxEditing SSOT vocabulary) while the native NVENC lane certifies "Main";
-// both spellings are the same legal input for the copy-only assembler, and the
-// RenderingGen worker mirrors the same finite pair in its output profile
-// registry. Everything outside the pair is a real mismatch.
-func TestVideoProfileCompatibilityIsTheHighMainPair(t *testing.T) {
+// TestVideoProfileCompatibilityRequiresOneExactProfile prevents differing
+// H.264 profiles from entering the copy-only assembly lane.
+func TestVideoProfileCompatibilityRequiresOneExactProfile(t *testing.T) {
 	compatible := []struct{ contract, certified string }{
 		{"high", "high"},
 		{"high", "High"},
-		{"high", "main"},
-		{"main", "high"},
-		{"Main", "HIGH"},
+		{"Main", "MAIN"},
 	}
 	for _, tc := range compatible {
 		if !videoProfileCompatible(tc.contract, tc.certified) {
@@ -106,6 +100,8 @@ func TestVideoProfileCompatibilityIsTheHighMainPair(t *testing.T) {
 		}
 	}
 	incompatible := []struct{ contract, certified string }{
+		{"high", "main"},
+		{"main", "high"},
 		{"high", "baseline"},
 		{"high", "constrained baseline"},
 		{"high", "high 10"},

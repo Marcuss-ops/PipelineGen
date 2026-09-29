@@ -123,6 +123,16 @@ func (u *ProcessYouTubeSegmentUseCase) step6to9_SubtitlesDriveWriter(
 			EndSec:       endSec,
 			PayloadTexts: cmd.Segment.Texts,
 			LocalPath:    localPath,
+			// Fase 5 policy wiring (was the documented step6to9 TODO): the
+			// configured multilingual language list IS the acquisition
+			// policy. Without it the chain skipped the priority-2 DB
+			// fan-out entirely (empty list = no probe) and accepted ANY
+			// subtitle language the fetcher surfaced — so the operator's
+			// correctly configured language never reached the chain that
+			// picks the clip's subs. Same list the writer's
+			// RequireAllLanguagesBeforeVideo gate uses (godlike/06 SSOT:
+			// one PreferredLanguages per composition).
+			PreferredLanguages: u.observability.PreferredLanguages,
 		})
 		if acqErr != nil {
 			// Non-fatal — a Whisper failure must NOT kill the pipeline.

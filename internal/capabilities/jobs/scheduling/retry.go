@@ -52,14 +52,36 @@ func DecideRetry(j *job.Job) RetryDecision {
 	return RetryScheduled
 }
 
-// RetryDue reports whether a retry-wait job has reached its next retry slot.
+// DefaultDeferralDelay is the re-dispatch delay applied when a handler deferral
+// did not state one (job.Deferred(reason) instead of job.DeferredAfter). It is
+// short on purpose: a deferral is the wait a handler requests when it is polling
+// something external, so the cadence is "how often may I look again", not a
+// retry backoff. The worker supplies it (see Worker.finalizeJobDeferral) so the
+// row ALWAYS carries a hint: the store rejects a deferral without a delay, which
+// is what keeps "RETRY_WAIT with no stated instant" from being a silent hole.
+const DefaultDeferralDelay = 15 * time.Second
+
+// RetryDue reports whether a RETRY_WAIT job has reached its next dispatch slot,
+// covering BOTH waits that share that state:
+//
+//   - a DEFERRAL (job.OutcomeDeferred): a wait that spends no retry budget. The
+//     row states its own instant in DeferredUntil; when the handler did not
+//     state one, DefaultDeferralDelay applies from the row's last update. A
+//     deferral may legitimately sit at retry_count == 0, so the retry_count
+//     rule below must not gate it.
+//   - a RETRY (ScheduleRetry): ScheduleRetry increments RetryCount when it moves
+//     a running job to RETRY_WAIT. That increment represents the retry attempt
+//     that is now due, so the final allowed retry has retry_count ==
+//     max_retries and must still be re-enqueued once. The next failure is
+//     terminal because DecideRetry sees retry_count == max_retries.
 func RetryDue(j *job.Job, now time.Time) bool {
-	// ScheduleRetry increments RetryCount when it moves a running job to
-	// RETRY_WAIT. That increment represents the retry attempt that is now
-	// due, so the final allowed retry has retry_count == max_retries and
-	// must still be re-enqueued once. The next failure is terminal because
-	// DecideRetry sees retry_count == max_retries.
-	if j == nil || j.RetryCount <= 0 || j.RetryCount > j.MaxRetries {
+	if j == nil {
+		return false
+	}
+	if j.DeferredUntil != nil && !j.DeferredUntil.IsZero() {
+		return !now.UTC().Before(j.DeferredUntil.UTC())
+	}
+	if j.RetryCount <= 0 || j.RetryCount > j.MaxRetries {
 		return false
 	}
 	backoff := RetryBackoff(j.RetryCount-1, DefaultRetryPolicy)

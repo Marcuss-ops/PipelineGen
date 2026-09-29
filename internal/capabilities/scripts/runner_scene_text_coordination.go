@@ -92,7 +92,7 @@ func sceneTextPathReason(req GenerateRequest, streamed, topologyNeedsMaterializa
 		return "streamed"
 	case req.ScriptParams.SourceTextVerbatim:
 		return "batch_source_text_verbatim"
-	case len(req.MediaPlan.Extraction.ImportantPhrases) > 0:
+	case len(req.MediaPlan.Extraction.ImportantPhrases) > 0 && !importantPhraseHintOwnersAvailable(req):
 		return "batch_important_phrase_hints"
 	case req.Intro != nil || req.Outro != nil:
 		return "batch_intro_outro"

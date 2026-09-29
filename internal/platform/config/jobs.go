@@ -13,10 +13,26 @@ type JobsConfig struct {
 	// (see kernel/job.PayloadNotMatch), so a slow GPU backlog can no longer
 	// starve script/voiceover/upload jobs. 0 disables the split (everything
 	// returns to one unscoped pool, the pre-guardrail behaviour).
-	ClipRenderSettleWorkers int    `yaml:"clip_render_settle_workers" env:"VELOX_CLIP_RENDER_SETTLE_WORKERS" default:"16"`
-	AutoCleanupHours        int    `yaml:"auto_cleanup_hours" default:"24"`
-	CatalogSyncInterval     string `yaml:"catalog_sync_interval" env:"VELOX_CATALOG_SYNC_INTERVAL" default:"6h"`
-	YouTubeExtractTimeout   int    `yaml:"youtube_extract_timeout_seconds" env:"VELOX_YOUTUBE_EXTRACT_TIMEOUT" default:"1200"`
+	ClipRenderSettleWorkers int `yaml:"clip_render_settle_workers" env:"VELOX_CLIP_RENDER_SETTLE_WORKERS" default:"16"`
+	// ClipRenderSettleWaitSeconds is how long ONE clip.render settle attempt
+	// holds its lane on a running remote render before handing the attempt
+	// back. The settle child is deferred (job.OutcomeDeferred — a WAIT that
+	// spends no retry budget) and re-dispatched, so the lane pool tracks the
+	// renders that are actually READY, not every render that is in flight.
+	// Set it above the observed render so the common case still completes in a
+	// single attempt (no added dispatch, no added latency); 0 disables the
+	// deferral entirely and every settle waits the render out (the
+	// pre-deferral behaviour).
+	ClipRenderSettleWaitSeconds int `yaml:"clip_render_settle_wait_seconds" env:"VELOX_CLIP_RENDER_SETTLE_WAIT_SECONDS" default:"60"`
+	// ClipRenderSettleWindowSeconds bounds how long a settle continuation may
+	// keep re-polling before it stops deferring and waits the render out in a
+	// SINGLE attempt. It is the loop guard: without it, a render that never
+	// reports terminal would be re-dispatched forever. 0 disables the
+	// deferral entirely (same effect as the wait knob).
+	ClipRenderSettleWindowSeconds int    `yaml:"clip_render_settle_window_seconds" env:"VELOX_CLIP_RENDER_SETTLE_WINDOW_SECONDS" default:"1200"`
+	AutoCleanupHours              int    `yaml:"auto_cleanup_hours" default:"24"`
+	CatalogSyncInterval           string `yaml:"catalog_sync_interval" env:"VELOX_CATALOG_SYNC_INTERVAL" default:"6h"`
+	YouTubeExtractTimeout         int    `yaml:"youtube_extract_timeout_seconds" env:"VELOX_YOUTUBE_EXTRACT_TIMEOUT" default:"1200"`
 	// YoutubeMaxSegmentDurationSeconds caps the per-clip duration the
 	// YouTube segment pipeline accepts (SegmentPolicy.MaxDuration). The
 	// canonical default is 60s (DefaultSegmentPolicy); production may
@@ -105,6 +121,25 @@ type JobsConfig struct {
 	// who need the jobs DB on a different volume set the path explicitly.
 	SplitDBEnabled bool   `yaml:"split_db_enabled" env:"VELOX_SPLIT_DB_ENABLED" default:"true"`
 	JobsDBPath     string `yaml:"jobs_db_path" env:"VELOX_JOBS_DB_PATH" default:""`
+
+	// ── Deferred job scheduling (scheduler capability) ────────────────
+	//
+	// A job enqueued with a future scheduled_at is persisted as SCHEDULED and
+	// promoted to QUEUED by the job scheduler. These three knobs bound that
+	// promotion:
+	//
+	//   - SchedulerDailyQuota caps promotions per UTC day (0 = unlimited).
+	//     Default 5000 matches the "5000 jobs/day" operational target; the
+	//     5001st due job stays SCHEDULED and rolls into the next day.
+	//   - SchedulerMaxConcurrent caps how many jobs may be in flight
+	//     (LEASED/RUNNING/FINALIZING) when a scheduled job is admitted
+	//     (0 = unlimited). The worker pool budget already bounds real
+	//     parallelism; this is the scheduling-side headroom guard.
+	//   - SchedulerInterval is the base cadence of the promotion loop; when no
+	//     work is due the loop sleeps until the next scheduled run_at.
+	SchedulerDailyQuota    int    `yaml:"scheduler_daily_quota" env:"VELOX_SCHEDULER_DAILY_QUOTA" default:"5000"`
+	SchedulerMaxConcurrent int    `yaml:"scheduler_max_concurrent" env:"VELOX_SCHEDULER_MAX_CONCURRENT" default:"0"`
+	SchedulerInterval      string `yaml:"scheduler_interval" env:"VELOX_SCHEDULER_INTERVAL" default:"30s"`
 
 	// EnableBackgroundJobs controls whether background workers/schedulers run.
 	// Default true; set to false via env VELOX_ENABLE_BACKGROUND_JOBS=false for dev mode.

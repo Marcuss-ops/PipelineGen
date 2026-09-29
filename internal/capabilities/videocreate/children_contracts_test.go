@@ -29,6 +29,7 @@ func TestScriptChildPayload_RealEnvelopeContract(t *testing.T) {
 	req := appjobs.VideoCreatePayload{
 		Topic: "Mike Tyson", DurationSeconds: 60,
 		Language: "en", Voiceover: true, MediaSources: []string{"youtube"},
+		MaxPhraseOverlays: 7,
 	}
 	payload, err := ScriptChildPayload(req, "proj", "vid", "root:script")
 	if err != nil {
@@ -57,6 +58,9 @@ func TestScriptChildPayload_RealEnvelopeContract(t *testing.T) {
 	}
 	if item.ScriptParams.TargetWords < 40 {
 		t.Errorf("target_words = %d, want >= 40", item.ScriptParams.TargetWords)
+	}
+	if item.MaxPhraseOverlays != 7 {
+		t.Errorf("max_phrase_overlays = %d, want the workflow request value 7", item.MaxPhraseOverlays)
 	}
 }
 

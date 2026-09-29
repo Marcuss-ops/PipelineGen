@@ -100,6 +100,11 @@ type VideoCutRequest struct {
 	Strategy          string
 	OutputDir         string
 	PreDownloadedPath string
+	// SourceOffsetSec is the absolute SOURCE second that maps to t=0 of
+	// PreDownloadedPath (the staged block's start). The executor cuts the
+	// segment at (Start - SourceOffsetSec) inside that file. Meaningful only
+	// together with PreDownloadedPath; 0 means "the file is the whole source".
+	SourceOffsetSec float64
 	// SkipMetadataFetch avoids a best-effort yt-dlp metadata subprocess on the
 	// critical extraction path when the caller already supplied clip metadata.
 	SkipMetadataFetch bool

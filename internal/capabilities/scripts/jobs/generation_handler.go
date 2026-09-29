@@ -24,6 +24,7 @@ package jobs
 import (
 	"context"
 	"fmt"
+	"time"
 
 	processor "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters/processor"
 
@@ -235,10 +236,29 @@ func (h *GenerateJobHandler) Handle(
 			return nil, fmt.Errorf("generate job handler: read durable run result: %w", getErr)
 		}
 		if updated == nil || updated.Status != scriptgen.RunStatusCompleted {
-			if updated != nil && updated.ErrorMessage != "" {
-				return nil, fmt.Errorf("generate job handler: durable run failed: %s", updated.ErrorMessage)
+			// A failed run that still has its OWN retry budget left is WAITING,
+			// not dead. The run scheduled its next attempt (NextRetryAt) before
+			// ending this one — the same shape as any other external wait — so the
+			// handler hands the JOB's attempt back as a deferral instead of failing
+			// it. Failing here is what orphaned the run's schedule: the job went
+			// FAILED + dead-lettered while `next_retry_at` pointed at a retry nobody
+			// would ever run (ShouldRetry has no production caller; the job attempt
+			// IS the driver), and a live `video.create`/generate died with work
+			// still in flight.
+			//
+			// The deferral spends none of the job's retry budget (kernel/job
+			// OutcomeDeferred) and the next attempt re-enters ExecuteWithContext,
+			// which resumes the run from its checkpoint. The loop is bounded by the
+			// RUN's budget, not the job's: once the run has no retry left
+			// (NextRetryAt == nil) the failure below is terminal for both.
+			if delay, pending := pendingRunRetry(updated); pending && h.log != nil {
+				h.log.Info("durable run failed with a retry scheduled — deferring the job instead of failing it",
+					zap.String("job_id", j.ID),
+					zap.String("run_id", updated.ID),
+					zap.Int("run_attempt", updated.AttemptCount),
+					zap.Duration("delay", delay))
 			}
-			return nil, fmt.Errorf("generate job handler: durable run did not complete")
+			return nil, incompleteRunError(updated)
 		}
 		// The durable runner owns generation/render execution, but the broker
 		// still requires the same canonical artifact manifest as the legacy
@@ -292,4 +312,52 @@ func (h *GenerateJobHandler) Handle(
 		}
 	}
 	return result, dispatchErr
+}
+
+// incompleteRunError decides what a durable run that did NOT reach COMPLETED
+// means for the JOB: a deferred wait, or a real failure.
+//
+// It is the ONE owner of that translation, so the handler body stays a straight
+// line and the decision is unit-testable without a Runner.
+func incompleteRunError(updated *scriptgen.GenerationRun) error {
+	if delay, pending := pendingRunRetry(updated); pending {
+		return job.DeferredAfter(delay, fmt.Sprintf(
+			"durable run %s failed at %s and retries at %s (run attempt %d/%d): %s",
+			updated.ID, updated.FailedStage, updated.NextRetryAt.UTC().Format(time.RFC3339),
+			updated.AttemptCount, scriptgen.MaxRetries, updated.ErrorMessage))
+	}
+	if updated != nil && updated.ErrorMessage != "" {
+		return fmt.Errorf("generate job handler: durable run failed: %s", updated.ErrorMessage)
+	}
+	return fmt.Errorf("generate job handler: durable run did not complete")
+}
+
+// pendingRunRetry reports whether a durable run that did NOT complete is still
+// waiting on its own retry, and for how long.
+//
+// It is the single predicate behind "this failure is a WAIT, not an ending",
+// and it is deliberately narrow:
+//
+//   - only a FAILED run qualifies (a run in any other state has not decided),
+//   - only while the RUN still has budget (AttemptCount < MaxRetries) and the
+//     runner actually wrote an instant (NextRetryAt != nil) — the runner clears
+//     that pointer exactly when the budget is exhausted, which is what makes
+//     the deferral loop terminate,
+//   - a schedule already due yields a zero delay, and the worker fills the
+//     deployment default; the wait is never negative.
+//
+// The run owns the cadence (RetryDelay in the runner), the job owns the wait
+// accounting (kernel/job deferral: no retry consumed); keeping the predicate
+// here means the two policies cannot disagree about what "still waiting" means.
+func pendingRunRetry(run *scriptgen.GenerationRun) (time.Duration, bool) {
+	if run == nil || run.Status != scriptgen.RunStatusFailed {
+		return 0, false
+	}
+	if run.AttemptCount >= scriptgen.MaxRetries || run.NextRetryAt == nil {
+		return 0, false
+	}
+	if delay := time.Until(*run.NextRetryAt); delay > 0 {
+		return delay, true
+	}
+	return 0, true
 }

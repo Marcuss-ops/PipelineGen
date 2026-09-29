@@ -8,6 +8,7 @@ import (
 	"strings"
 	"sync"
 
+	jobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/observability"
 )
@@ -240,6 +241,21 @@ func (r *Registry) Dispatch(ctx context.Context, j *job.Job, tools *Tools) (map[
 // signal is the counter (godlike/06 SSOT) + the upstream
 // worker-package log to r.log.Warn at the Runner.runJob entry site
 // (see runner.go:210).
+// stageStatusFromBroker projects the OPTIONAL durable per-stage sink off the
+// wired broker. The SQLite jobs plane implements JobStageStatusStore
+// (job_scheduling_store.go), so production gets the stage table for free;
+// a broker without the port leaves the sink nil (godlike/07 no-fake-
+// availability: the worker does not invent a store it was not given).
+func stageStatusFromBroker(b jobs.Broker) job.JobStageStatusStore {
+	if b == nil {
+		return nil
+	}
+	if store, ok := b.(job.JobStageStatusStore); ok {
+		return store
+	}
+	return nil
+}
+
 func translateToolsToExecutionTools(ctx context.Context, t *Tools, jobType string) *job.JobExecutionTools {
 	if t == nil {
 		return &job.JobExecutionTools{
@@ -248,6 +264,12 @@ func translateToolsToExecutionTools(ctx context.Context, t *Tools, jobType strin
 		}
 	}
 	return &job.JobExecutionTools{
+		// Durable per-stage reporting: derived from the wired broker rather
+		// than passed in, so enabling the stage table requires no new
+		// wiring anywhere. A broker that does not implement the store (the
+		// in-process local broker, every test fake) yields nil and handlers
+		// report no stage rows.
+		StageStatus: stageStatusFromBroker(t.broker),
 		// FASE 4(b) (July 2026): the IsCancelled closure is REMOVED.
 		// The pre-Fase-4 2-second IsCancelled-poll goroutine
 		// (startCancelWatcher at worker_execution.go) is gone; cancel

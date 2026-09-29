@@ -9,6 +9,7 @@
 package scriptgeneration
 
 import (
+	"sort"
 	"strings"
 
 	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
@@ -205,7 +206,7 @@ func computeSegmentEntityAnnotations(snapshot []sceneTextSnapshot, language Lang
 }
 
 func supplementSourceImportantPhrases(ann *scriptpkg.SceneAnnotations, text, language string, limit int, corpus []string) {
-	if ann == nil || limit <= len(ann.ImportantPhrases) {
+	if ann == nil || limit <= 0 {
 		return
 	}
 	blocked := make([][2]int, 0, len(ann.PrimaryEntities)+len(ann.SecondaryEntities))
@@ -226,29 +227,56 @@ func supplementSourceImportantPhrases(ann *scriptpkg.SceneAnnotations, text, lan
 			}
 		}
 	}
-	candidates := phrasepkg.ImportantPhrasesWithCorpus(text, blocked, limit, language, corpus)
-	existing := make(map[string]struct{}, len(ann.ImportantPhrases))
-	for _, phrase := range ann.ImportantPhrases {
-		existing[phraseKey(phrase.Text)] = struct{}{}
+	type candidate struct {
+		span  scriptpkg.AnnotationSpan
+		words int
 	}
-	for rank, candidate := range candidates {
-		if len(ann.ImportantPhrases) >= limit {
-			break
-		}
-		key := phraseKey(candidate)
-		if key == "" {
-			continue
-		}
-		if _, ok := existing[key]; ok {
-			continue
-		}
-		span, ok := findEntitySpan(text, candidate)
+	byText := make(map[string]candidate, len(ann.ImportantPhrases)+limit)
+	for _, phrase := range ann.ImportantPhrases {
+		span, ok := findEntitySpan(text, phrase.Text)
 		if !ok {
 			continue
 		}
+		phrase.Text, phrase.StartRune, phrase.EndRune = span.Text, span.StartRune, span.EndRune
+		byText[phraseKey(phrase.Text)] = candidate{span: phrase, words: len(strings.Fields(phrase.Text))}
+	}
+	// Ask for a full selector window even when the NLP source already filled
+	// its per-scene quota. The long-first selector output can replace overlapping
+	// fragments, while exact grounding and entity blocking remain mandatory.
+	selectorLimit := max(limit*3, limit)
+	for rank, phrase := range phrasepkg.ImportantPhrasesWithCorpus(text, blocked, selectorLimit, language, corpus) {
+		span, ok := findEntitySpan(text, phrase)
+		if !ok {
+			continue
+		}
+		phrase = span.Text
+		words := len(strings.Fields(phrase))
+		if words < 8 || words > 16 {
+			continue
+		}
+		key := phraseKey(phrase)
+		byText[key] = candidate{span: scriptpkg.AnnotationSpan{
+			Text: phrase, StartRune: span.StartRune, EndRune: span.EndRune,
+			Score: max(0.90-float64(rank)*0.01, 0.05), Kind: "key_statement",
+		}, words: words}
+	}
+	all := make([]candidate, 0, len(byText))
+	for _, item := range byText {
+		if item.words >= 2 && item.words <= 16 {
+			all = append(all, item)
+		}
+	}
+	sort.SliceStable(all, func(i, j int) bool {
+		if all[i].words != all[j].words {
+			return all[i].words > all[j].words
+		}
+		return all[i].span.Score > all[j].span.Score
+	})
+	selected := make([]scriptpkg.AnnotationSpan, 0, limit)
+	for _, item := range all {
 		overlaps := false
-		for _, prior := range ann.ImportantPhrases {
-			if span.StartRune < prior.EndRune && prior.StartRune < span.EndRune {
+		for _, prior := range selected {
+			if item.span.StartRune < prior.EndRune && prior.StartRune < item.span.EndRune {
 				overlaps = true
 				break
 			}
@@ -256,12 +284,12 @@ func supplementSourceImportantPhrases(ann *scriptpkg.SceneAnnotations, text, lan
 		if overlaps {
 			continue
 		}
-		ann.ImportantPhrases = append(ann.ImportantPhrases, scriptpkg.AnnotationSpan{
-			Text: span.Text, StartRune: span.StartRune, EndRune: span.EndRune,
-			Score: max(0.80-float64(rank)*0.01, 0.05), Kind: "key_statement",
-		})
-		existing[key] = struct{}{}
+		selected = append(selected, item.span)
+		if len(selected) == limit {
+			break
+		}
 	}
+	ann.ImportantPhrases = selected
 }
 
 func phraseKey(value string) string {

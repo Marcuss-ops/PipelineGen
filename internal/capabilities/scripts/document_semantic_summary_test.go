@@ -82,7 +82,13 @@ func TestRenderDocumentSemanticOverlayUsesExactPlanAndPublishesArtifact(t *testi
 
 	out, err := RenderDocument(model, DocumentRenderOptions{
 		Title: "Ada", OverlayPlan: &plan,
-		Overlay: &scriptpkg.DocumentOverlayRef{JobID: "chronon-ada", URL: "https://drive.google.com/file/d/render/view", DurationUS: 5_100_000},
+		Overlay: &scriptpkg.DocumentOverlayRef{
+			JobID: "chronon-ada", URL: "https://drive.google.com/file/d/render/view", DurationUS: 5_100_000,
+			Items: []scriptpkg.DocumentOverlayItemRef{
+				{ItemID: "scene-0-phrase-one", JobID: "render-one", URL: "https://drive.google.com/file/d/render-one/view", DurationUS: 2_000_000},
+				{ItemID: "scene-1-phrase-two", JobID: "render-two", URL: "https://drive.google.com/file/d/render-two/view", DurationUS: 3_000_000},
+			},
+		},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -91,7 +97,9 @@ func TestRenderDocumentSemanticOverlayUsesExactPlanAndPublishesArtifact(t *testi
 		"<h2>Semantic Overlay</h2>", "Ada Lovelace", "PERSON",
 		"person:ada-lovelace", "00:00.100", "00:05.100", "ada-image",
 		"<h2>Semantic Overlay JSON</h2>", "plan-ada", "entity_card",
-		"<h2>Rendered Overlay</h2>", "chronon-ada",
+		"<h2>Rendered Overlay</h2>", "chronon-ada", "Rendered overlay items",
+		"scene-0-phrase-one", "scene-1-phrase-two", "render-one", "render-two",
+		"https://drive.google.com/file/d/render-one/view", "https://drive.google.com/file/d/render-two/view",
 	} {
 		if !strings.Contains(out, want) {
 			t.Fatalf("document missing %q: %s", want, out)

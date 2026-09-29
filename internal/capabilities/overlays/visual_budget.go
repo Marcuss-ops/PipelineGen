@@ -30,19 +30,44 @@ const MaxImageOverlaysPerRun = 18
 // used by existing callers; its value is the common image overlay ceiling.
 const MaxEntityImageOverlaysPerRun = MaxImageOverlaysPerRun
 
-// MaxPhraseOverlaysPerRun is the hard run-level ceiling for grounded phrase
-// overlays. Phrase candidates are deduplicated across scenes, ranked by their
-// certified semantic score, and only then admitted to the render plan.
-const MaxPhraseOverlaysPerRun = 15
+// MaxPhraseOverlaysPerRun is the DEFAULT run-level ceiling for grounded
+// phrase overlays. Phrase candidates are deduplicated across scenes, ranked
+// by their certified semantic score, and only then admitted to the render
+// plan. A caller may override it per run through EffectivePhraseOverlayLimit
+// (the request's max_phrase_overlays); the constant is the fallback, not a
+// hard maximum.
+const MaxPhraseOverlaysPerRun = 5
+
+// EffectivePhraseOverlayLimit resolves the run-level phrase ceiling. A
+// caller-provided positive limit wins verbatim — it may raise or lower the
+// certified default; a zero (or negative) value keeps
+// MaxPhraseOverlaysPerRun. Keeping the fallback here, and not at every call
+// site, is what makes "absent in the payload" and "0 in the payload" mean
+// the same thing.
+func EffectivePhraseOverlayLimit(requested int) int {
+	if requested > 0 {
+		return requested
+	}
+	return MaxPhraseOverlaysPerRun
+}
 
 // ApplyEditorialOverlayBudget enforces the production run-level visual
-// contract: up to eighteen unique images plus fifteen unique grounded phrases. Other
-// content overlay kinds are excluded; structural background layers are not
-// represented as OverlayItems and remain intact. When there are fewer valid
-// candidates, it returns fewer items rather than inventing content.
+// contract with the default phrase ceiling: up to eighteen unique images plus
+// the default number of unique grounded phrases. Other content overlay kinds
+// are excluded; structural background layers are not represented as
+// OverlayItems and remain intact. When there are fewer valid candidates, it
+// returns fewer items rather than inventing content.
 func ApplyEditorialOverlayBudget(items []OverlayItem) ([]OverlayItem, PhraseOverlayBudget) {
-	imageIndices := rankedUniqueOverlayIndices(items, true)
-	phraseIndices := rankedUniqueOverlayIndices(items, false)
+	return ApplyEditorialOverlayBudgetWithLimit(items, MaxPhraseOverlaysPerRun)
+}
+
+// ApplyEditorialOverlayBudgetWithLimit is ApplyEditorialOverlayBudget with a
+// caller-selected phrase ceiling (the request's max_phrase_overlays). The
+// image ceiling stays fixed; phraseLimit <= 0 keeps the default ceiling.
+func ApplyEditorialOverlayBudgetWithLimit(items []OverlayItem, phraseLimit int) ([]OverlayItem, PhraseOverlayBudget) {
+	limit := EffectivePhraseOverlayLimit(phraseLimit)
+	imageIndices := rankedUniqueOverlayIndices(items, true, limit)
+	phraseIndices := rankedUniqueOverlayIndices(items, false, limit)
 	keep := make(map[int]struct{}, len(imageIndices)+len(phraseIndices))
 	for _, index := range imageIndices {
 		keep[index] = struct{}{}
@@ -57,10 +82,10 @@ func ApplyEditorialOverlayBudget(items []OverlayItem) ([]OverlayItem, PhraseOver
 			out = append(out, item)
 		}
 	}
-	return out, MeasurePhraseOverlayBudget(out)
+	return out, MeasurePhraseOverlayBudgetWithLimit(out, limit)
 }
 
-func rankedUniqueOverlayIndices(items []OverlayItem, images bool) []int {
+func rankedUniqueOverlayIndices(items []OverlayItem, images bool, phraseLimit int) []int {
 	indices := make([]int, 0)
 	seen := make(map[string]int)
 	for i, item := range items {
@@ -70,6 +95,12 @@ func rankedUniqueOverlayIndices(items []OverlayItem, images bool) []int {
 				continue
 			}
 			key = imageOverlayIdentity(item)
+			// Context images belong to scenes. The same content-addressed hit
+			// returned by two independent scene searches must not silently erase
+			// one of those scene occurrences from a per-scene render plan.
+			if item.Kind == "image" && strings.TrimSpace(item.SceneID) != "" {
+				key = strings.TrimSpace(item.SceneID) + ":" + key
+			}
 		} else {
 			if item.Kind != "text_phrase" {
 				continue
@@ -92,19 +123,119 @@ func rankedUniqueOverlayIndices(items []OverlayItem, images bool) []int {
 	}
 	sort.SliceStable(indices, func(i, j int) bool {
 		left, right := indices[i], indices[j]
+		if !images {
+			leftLong := len(strings.Fields(items[left].Text)) >= 8
+			rightLong := len(strings.Fields(items[right].Text)) >= 8
+			if leftLong != rightLong {
+				return leftLong
+			}
+		}
 		if lp, rp := overlayItemPriority(items[left]), overlayItemPriority(items[right]); lp != rp {
 			return lp > rp
 		}
 		return left < right
 	})
-	limit := MaxPhraseOverlaysPerRun
+	limit := phraseLimit
 	if images {
 		limit = MaxImageOverlaysPerRun
+	} else {
+		// Reserve roughly half of the phrase budget for complete headline
+		// candidates (8+ words) when they exist. Remaining slots are filled
+		// from the same deterministic priority ranking, so short phrases still
+		// fill the budget when long grounded phrases are unavailable.
+		longLimit := (limit + 1) / 2
+		long := make([]int, 0, len(indices))
+		short := make([]int, 0, len(indices))
+		for _, index := range indices {
+			if len(strings.Fields(items[index].Text)) >= 8 {
+				long = append(long, index)
+			} else {
+				short = append(short, index)
+			}
+		}
+		if len(long) >= longLimit {
+			// The reserved slice is a NEW backing array on purpose. Writing
+			// into long[:longLimit]'s spare capacity (the natural
+			// append(long[:longLimit], short...)) overwrites long[longLimit:],
+			// which the very next statement still reads: the long phrases that
+			// did not fit the reservation were clobbered before being
+			// re-appended, so which candidates were admitted depended on
+			// slice capacity rather than on the ranking.
+			reserved := make([]int, 0, len(long)+len(short))
+			reserved = append(reserved, long[:longLimit]...)
+			reserved = append(reserved, short...)
+			// Keep the full ranked reserve pool until overlap screening. A short
+			// phrase can be rejected because a selected long phrase already
+			// covers its timing; the next long candidate must remain available to
+			// fill that freed slot.
+			reserved = append(reserved, long[longLimit:]...)
+			indices = reserved
+		} else {
+			indices = append(long, short...)
+		}
+		// Spend the run-level budget across scenes before taking a second
+		// phrase from any one scene. Keep the existing long-phrase/priority
+		// ranking within each pass, and leave the full reserve pool available
+		// for overlap screening to backfill rejected candidates.
+		if phraseLimit > 0 && len(indices) > phraseLimit {
+			seenScenes := make(map[string]struct{}, phraseLimit)
+			diverse := make([]int, 0, len(indices))
+			remaining := make([]int, 0, len(indices))
+			for _, index := range indices {
+				sceneID := strings.TrimSpace(items[index].SceneID)
+				if sceneID == "" {
+					remaining = append(remaining, index)
+					continue
+				}
+				if _, ok := seenScenes[sceneID]; ok {
+					remaining = append(remaining, index)
+					continue
+				}
+				seenScenes[sceneID] = struct{}{}
+				diverse = append(diverse, index)
+			}
+			indices = append(diverse, remaining...)
+		}
+	}
+	// The remote final-job lane accepts replace overlays only, so two phrase
+	// cards cannot occupy intersecting frame ranges. Keep the editor's ranking
+	// (long phrases first, then priority), but skip an overlapping phrase and
+	// continue down the ranked candidate pool to fill the run-level budget.
+	// Compare only within a scene: scene-local speech timings are authoritative
+	// and one scene must never evict a phrase from another scene.
+	if !images && len(indices) > 1 {
+		selected := make([]int, 0, len(indices))
+		for _, candidate := range indices {
+			overlaps := false
+			for _, prior := range selected {
+				if items[candidate].SceneID == items[prior].SceneID && overlayWindowsOverlap(items[candidate], items[prior]) {
+					overlaps = true
+					break
+				}
+			}
+			if !overlaps {
+				selected = append(selected, candidate)
+			}
+		}
+		indices = selected
 	}
 	if len(indices) > limit {
 		indices = indices[:limit]
 	}
 	return indices
+}
+
+func overlayWindowsOverlap(a, b OverlayItem) bool {
+	aStart, aEnd := overlayItemWindowUS(a)
+	bStart, bEnd := overlayItemWindowUS(b)
+	return aStart < bEnd && bStart < aEnd
+}
+
+func overlayItemWindowUS(item OverlayItem) (int64, int64) {
+	if item.DurationUS > 0 {
+		return item.StartUS, item.StartUS + item.DurationUS
+	}
+	return item.StartMs * 1_000, item.EndMs * 1_000
 }
 
 func imageOverlayIdentity(item OverlayItem) string {
@@ -262,11 +393,18 @@ type PhraseOverlayBudget struct {
 }
 
 // ApplyPhraseOverlayBudget deduplicates phrase items across the entire run,
-// chooses the highest-priority unique phrases up to the hard cap, and retains
-// the input ordering among admitted items. Ties preserve the original order.
-// Non-phrase items are copied through unchanged.
+// chooses the highest-priority unique phrases up to the default cap, and
+// retains the input ordering among admitted items. Ties preserve the original
+// order. Non-phrase items are copied through unchanged.
 func ApplyPhraseOverlayBudget(items []OverlayItem) ([]OverlayItem, PhraseOverlayBudget) {
-	phraseIndices := make([]int, 0, MaxPhraseOverlaysPerRun)
+	return ApplyPhraseOverlayBudgetWithLimit(items, MaxPhraseOverlaysPerRun)
+}
+
+// ApplyPhraseOverlayBudgetWithLimit is ApplyPhraseOverlayBudget with a
+// caller-selected phrase ceiling. phraseLimit <= 0 keeps the default ceiling.
+func ApplyPhraseOverlayBudgetWithLimit(items []OverlayItem, phraseLimit int) ([]OverlayItem, PhraseOverlayBudget) {
+	limit := EffectivePhraseOverlayLimit(phraseLimit)
+	phraseIndices := make([]int, 0, len(items))
 	bestByText := make(map[string]int)
 	for i, item := range items {
 		if item.Kind != "text_phrase" {
@@ -294,8 +432,8 @@ func ApplyPhraseOverlayBudget(items []OverlayItem) ([]OverlayItem, PhraseOverlay
 		}
 		return left < right
 	})
-	if len(phraseIndices) > MaxPhraseOverlaysPerRun {
-		phraseIndices = phraseIndices[:MaxPhraseOverlaysPerRun]
+	if len(phraseIndices) > limit {
+		phraseIndices = phraseIndices[:limit]
 	}
 	keep := make(map[int]struct{}, len(phraseIndices))
 	for _, index := range phraseIndices {
@@ -318,13 +456,20 @@ func ApplyPhraseOverlayBudget(items []OverlayItem) ([]OverlayItem, PhraseOverlay
 		seenPhraseText[key] = struct{}{}
 		out = append(out, item)
 	}
-	return out, MeasurePhraseOverlayBudget(out)
+	return out, MeasurePhraseOverlayBudgetWithLimit(out, limit)
 }
 
 // MeasurePhraseOverlayBudget reports how many unique grounded phrase items
-// are present in an already compiled plan. It does not change the plan.
+// are present in an already compiled plan against the default ceiling. It
+// does not change the plan.
 func MeasurePhraseOverlayBudget(items []OverlayItem) PhraseOverlayBudget {
-	budget := PhraseOverlayBudget{Requested: MaxPhraseOverlaysPerRun}
+	return MeasurePhraseOverlayBudgetWithLimit(items, MaxPhraseOverlaysPerRun)
+}
+
+// MeasurePhraseOverlayBudgetWithLimit is MeasurePhraseOverlayBudget with a
+// caller-selected ceiling. requested <= 0 keeps the default ceiling.
+func MeasurePhraseOverlayBudgetWithLimit(items []OverlayItem, requested int) PhraseOverlayBudget {
+	budget := PhraseOverlayBudget{Requested: EffectivePhraseOverlayLimit(requested)}
 	seen := make(map[string]struct{})
 	for _, item := range items {
 		if item.Kind != "text_phrase" {

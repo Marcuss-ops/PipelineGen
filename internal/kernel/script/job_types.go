@@ -21,4 +21,17 @@ const (
 
 	// TypeGenerateItem is the per-item child job type for script.generate batches.
 	TypeGenerateItem = job.TypeScriptGenerateItem
+
+	// TypeDocsPublish is the deferred document-publication child job type.
+	//
+	// script.generate publishes its CORE_READY snapshot and then enqueues ONE
+	// child of this type instead of publishing Google Docs inline at the end of
+	// its own wall clock. The child receives a run reference — never a copy of
+	// the result — and re-enters the post-core path against the DURABLE
+	// checkpoint, which is what lets the Docs leg run beside the worker's own
+	// finalization instead of chaining behind it, and what makes a crash
+	// between CORE_READY and publish lose nothing.
+	//
+	// Single declaration site (the shared wire strings stay in kernel/job).
+	TypeDocsPublish = "script.docs_publish"
 )

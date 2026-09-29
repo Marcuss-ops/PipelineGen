@@ -263,6 +263,34 @@ jobs:
   # render waiting on RenderingGen cannot occupy general worker slots.
   # 0 disables the split (single unscoped pool). Default 16.
   clip_render_settle_workers: 16
+  # Bounded settle hand-off (see docs/operations/job-debug-runbook.md §11).
+  # A settle attempt that runs out of its budget hands the attempt back as a
+  # DEFERRAL instead of holding the lane for the whole remote render: the row
+  # returns to RETRY_WAIT with retry_count UNCHANGED and comes back on
+  # clip_render_settle_wait_seconds. Set the wait above the observed render so
+  # the common case still completes in a single attempt with no added latency;
+  # 0 disables the hand-off entirely (every settle waits the render out).
+  # clip_render_settle_window_seconds bounds how long a settle continuation
+  # may keep asking before it waits the render out in one attempt (loop guard).
+  clip_render_settle_wait_seconds: 60
+  clip_render_settle_window_seconds: 1200
+  # ── Deferred job scheduling ───────────────────────────────────────
+  # A job submitted with a future scheduled_at (POST /api/jobs or the
+  # batch POST /api/jobs/schedule) is persisted as SCHEDULED and promoted
+  # to QUEUED by the job scheduler once due. These knobs bound promotion:
+  #   scheduler_daily_quota     cap of promotions per UTC day (0 = no cap).
+  #                             The 5001st due job stays SCHEDULED and rolls
+  #                             into the next day. Default 5000.
+  #   scheduler_max_concurrent  cap of in-flight jobs (LEASED/RUNNING/
+  #                             FINALIZING) at admission time. 0 = unlimited.
+  #                             Set 1 for a strictly serial 'one behind the
+  #                             other' lane. Default 0.
+  #   scheduler_interval        base cadence of the promotion loop; when
+  #                             nothing is due the loop sleeps until the next
+  #                             run_at (bounded). Default 30s.
+  scheduler_daily_quota: 5000
+  scheduler_max_concurrent: 0
+  scheduler_interval: "30s"
 
 scripts:
   # ScriptFlow capability gate. In production a missing required

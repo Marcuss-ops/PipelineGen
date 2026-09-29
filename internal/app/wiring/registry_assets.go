@@ -51,6 +51,19 @@ func registerAssets(registry *module.Registry, log *zap.Logger, cfg *config.Conf
 		MediaPostgres: root.MediaPostgres,
 	}
 
+	// POSTGRES-MEDIA-CUTOVER follow-up (September 2026): the Register path
+	// commits through the SAME PostgreSQL media committer as the extraction
+	// path, so it must schedule the SAME post-commit multilingual fan-out.
+	// Without it a register-batch clip keeps exactly the one Whisper
+	// transcript: no translations, no `.ass` subtitle artifacts, no
+	// multilingual search — silently, with no error anywhere. Built by
+	// WireTextTracksFanOut during composition (NewComposition →
+	// wireLateBindings), so it is populated by registry time; nil-guarded for
+	// composition sites without a jobs broker.
+	if root.TextTracks != nil {
+		assetsDeps.MaterializeFanOut = root.TextTracks.FanOut
+	}
+
 	aw, err := WireAssets(
 		cfg,
 		log,

@@ -248,6 +248,11 @@ var routeDescriptions = map[string]string{
 	"GET /api/jobs/:id/events":  "Get job event stream",
 	"POST /api/jobs/:id/cancel": "Cancel a job",
 	"POST /api/jobs/:id/retry":  "Retry a failed job",
+	// Deferred scheduling + per-stage status (migration 005).
+	"GET /api/jobs/scheduled":           "List jobs waiting for their scheduled start time",
+	"POST /api/jobs/schedule":           "Enqueue a batch of deferred jobs (up to 500)",
+	"GET /api/jobs/:id/stages":          "Get the per-stage status projection of a job",
+	"PATCH /api/jobs/:id/stages/:stage": "Report a pipeline stage status/progress for a job",
 
 	// ── Clips ─────────────────────────────────────────────────
 	"POST /api/clips/process":      "Download and process clips",

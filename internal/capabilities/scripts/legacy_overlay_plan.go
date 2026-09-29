@@ -29,6 +29,24 @@ func CompileOverlayPlanFromGenerationResultWithStyle(
 	planID string,
 	projectID string,
 ) (*capabilityoverlay.OverlayPlan, error) {
+	return CompileOverlayPlanFromGenerationResultWithStyleAndLimit(
+		result, language, timingArtifacts, background, style, 0, planID, projectID)
+}
+
+// CompileOverlayPlanFromGenerationResultWithStyleAndLimit is
+// CompileOverlayPlanFromGenerationResultWithStyle with the caller-selected
+// run-level grounded-phrase ceiling (item max_phrase_overlays). A
+// maxPhraseOverlays of zero keeps the certified default ceiling.
+func CompileOverlayPlanFromGenerationResultWithStyleAndLimit(
+	result *scriptpkg.GenerationResult,
+	language Language,
+	timingArtifacts map[string]*capabilityaudio.SpeechTimingArtifact,
+	background *scriptpkg.OverlayBackgroundSpec,
+	style *scriptpkg.OverlayStyleSpec,
+	maxPhraseOverlays int,
+	planID string,
+	projectID string,
+) (*capabilityoverlay.OverlayPlan, error) {
 	if result == nil {
 		return nil, nil
 	}
@@ -118,8 +136,9 @@ func CompileOverlayPlanFromGenerationResultWithStyle(
 		return nil, fmt.Errorf("legacy overlay plan: compile entity timeline: %w", err)
 	}
 	canvas := OverlayCanvasSpec{
-		Background: overlayBackgroundFromPayload(background),
-		Style:      style,
+		Background:        overlayBackgroundFromPayload(background),
+		Style:             style,
+		MaxPhraseOverlays: maxPhraseOverlays,
 	}
 	return CompileOverlayPlan(capResult, language, canvas, planID, planID, projectID)
 }

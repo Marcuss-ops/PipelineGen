@@ -460,6 +460,17 @@ func migrateAll(db queryable, log *zap.Logger, targetDir, targetDB string) error
 		}
 	}
 
+	// Declared-vs-live verification: the ledger proves a file ran, not that its
+	// schema survived. A table that an APPLIED migration declares but the
+	// database does not contain is drift (an operator restore, a rebuilt file,
+	// a dropped table) and the only correct repair is a NEW numbered migration —
+	// editing the applied file can never work, because the ledger skips it.
+	// Reported at error level and deliberately non-fatal: a drifted production
+	// database must still boot so the forward migration can be applied.
+	if err := verifyDeclaredTables(db, targetDir, targetDB, log); err != nil {
+		log.Warn("migration schema verification could not run", zap.String("target_db", targetDB), zap.Error(err))
+	}
+
 	log.Info("migrations complete",
 		zap.Int("total", len(migrations)),
 		zap.Int("newly_applied", appliedCount),

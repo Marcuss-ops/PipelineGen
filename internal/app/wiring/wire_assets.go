@@ -11,6 +11,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers"
 	assetregister "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/register"
 	assetsfx "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/soundeffect"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/texttracks"
 	appclips "github.com/Marcuss-ops/PipelineGen/internal/capabilities/clips"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
@@ -194,7 +195,7 @@ func WireAssets(
 		return nil, fmt.Errorf("WireAssets: soundeffect: %w", err)
 	}
 
-	rd, err := buildRegisterBundle(cfg, log, deps, textTrackRepo, lifecycle, driveUploader, providerRegistry, clipEnricher, idemHandler, dispatcher, jobs)
+	rd, err := buildRegisterBundle(cfg, log, deps, textTrackRepo, lifecycle, driveUploader, providerRegistry, clipEnricher, idemHandler, dispatcher, jobs, deps.MaterializeFanOut)
 	if err != nil {
 		return nil, fmt.Errorf("WireAssets: register: %w", err)
 	}
@@ -294,6 +295,7 @@ func buildRegisterBundle(
 	idemHandler gin.HandlerFunc,
 	dispatcher *outbox.Dispatcher,
 	jobs *JobsBundle,
+	materializeFanOut *texttracks.MaterializeFanOut,
 ) (*assetregister.RegisterDescriptor, error) {
 	sourcingClipStore := newSourcingClipStore(deps.MediaPostgres)
 	// 2026-09-17: the canonical atomic terminal write for the register path is
@@ -301,7 +303,7 @@ func buildRegisterBundle(
 	// media SSOT handle; nil (media PostgreSQL disabled) leaves the legacy split
 	// path in place, which the register service already treats as its fallback.
 	registerAtomicWriter := canonicalRegisterAtomicWriter(deps.MediaPostgres, log)
-	registerSvc := newAssetRegisterService(cfg, log, sourcingClipStore, textTrackRepo, driveUploader, lifecycle, deps.Core.Services.AssetTreeService, providerRegistry, clipEnricher, dispatcher, deps.Delivery.Publisher, jobs.Service, registerAtomicWriter)
+	registerSvc := newAssetRegisterService(cfg, log, sourcingClipStore, textTrackRepo, driveUploader, lifecycle, deps.Core.Services.AssetTreeService, providerRegistry, clipEnricher, dispatcher, deps.Delivery.Publisher, jobs.Service, registerAtomicWriter, materializeFanOut)
 
 	driveChecker := func() error {
 		if driveUploader == nil {

@@ -73,10 +73,10 @@ type ExtractionService struct {
 	// means only the explicit mode is supported (selection.mode=
 	// "important" fails closed at resolve time, godlike/07).
 	resolver *SegmentSelectionResolver
-	// NOTE: the download-once staged source receipt is deliberately NOT
-	// stored on this shared service (see extraction_staging.go
-	// concurrency contract) — stageFullSourceOnce returns the receipt
-	// and each Extract() call keeps it on its own stack.
+	// NOTE: the staged-section receipts are deliberately NOT stored on this
+	// shared service (see extraction_staging.go concurrency contract) —
+	// stageSectionBlocks returns them and each Extract() call keeps them on its
+	// own stack, releasing them after fanout.
 }
 
 // NewExtractionService constructs the canonical extraction orchestrator.

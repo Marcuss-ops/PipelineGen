@@ -81,7 +81,8 @@ func setupFinalizeTestDB(t *testing.T) (*SQLiteStore, string) {
 			result_json TEXT,
 			error TEXT,
 			client_id TEXT NOT NULL DEFAULT '',
-			idempotency_key TEXT NOT NULL DEFAULT ''
+			idempotency_key TEXT NOT NULL DEFAULT '',
+			deferred_until TEXT
 		)`,
 		`CREATE TABLE job_events (
 			id TEXT PRIMARY KEY,
@@ -616,5 +617,168 @@ func TestFinalizeAttempt_OutboxEvent_MissingEventKey(t *testing.T) {
 	}
 	if !errors.Is(err, ErrFinalizeAttemptOutboxEventMissing) {
 		t.Errorf("FinalizeAttempt with missing EventKey: err = %v, want ErrFinalizeAttemptOutboxEventMissing chain", err)
+	}
+}
+
+// ── Test: OutcomeDeferred — a WAIT that spends no retry budget ────────────
+//
+// These four tests pin the deferral contract end to end at the store: the row
+// keeps a non-terminal status, retry_count does NOT move (that is the whole
+// point — a wait is not a failure), the delay is written where the requeue
+// sweep reads it, and the hint never leaks into a later attempt.
+
+// readDeferredUntil reads the deferral hint straight from the column. It is a
+// direct SELECT on purpose: this fixture's schema is the SCOPED surface
+// FinalizeAttempt touches (no priority/project/... columns), so the canonical
+// Get projection cannot run against it. The canonical projection of the same
+// column is covered by the round-trip fixtures.
+func readDeferredUntil(t *testing.T, db *sql.DB, jobID string) *time.Time {
+	t.Helper()
+	var raw sql.NullString
+	if err := db.QueryRow(`SELECT deferred_until FROM jobs WHERE id = ?`, jobID).Scan(&raw); err != nil {
+		t.Fatalf("read deferred_until (id=%s): %v", jobID, err)
+	}
+	if !raw.Valid || raw.String == "" {
+		return nil
+	}
+	parsed, err := time.Parse(time.RFC3339, raw.String)
+	if err != nil {
+		t.Fatalf("deferred_until %q is not RFC3339: %v", raw.String, err)
+	}
+	return &parsed
+}
+
+func TestFinalizeAttempt_OutcomeDeferredKeepsRetryBudget(t *testing.T) {
+	store, jobID := setupFinalizeTestDB(t)
+	ctx := context.Background()
+
+	res, err := store.FinalizeAttempt(ctx, jobs.FinalizeAttemptCommand{
+		JobID:            jobID,
+		Outcome:          jobs.OutcomeDeferred,
+		WorkerID:         "worker-A",
+		LeaseID:          "lease-1",
+		ExpectedRevision: 1,
+		ErrorMessage:     "waiting on the remote render",
+		Backoff:          90 * time.Second,
+		EventType:        "job_deferred",
+	})
+	if err != nil {
+		t.Fatalf("FinalizeAttempt Deferred: unexpected error: %v", err)
+	}
+	if res.FinalStatus != jobs.StatusRetryWait {
+		t.Errorf("FinalStatus = %q, want RETRY_WAIT (a wait is non-terminal)", res.FinalStatus)
+	}
+	row := readFinalJob(t, store.db, jobID)
+	if row.status != string(jobs.StatusRetryWait) {
+		t.Errorf("status = %q, want RETRY_WAIT", row.status)
+	}
+	if row.retryCount != 0 {
+		t.Errorf("retryCount = %d, want 0 — a deferral must not spend the retry budget", row.retryCount)
+	}
+	if row.workerID != "" || row.leaseID != "" {
+		t.Errorf("lease not released on deferral: worker=%q lease=%q", row.workerID, row.leaseID)
+	}
+	deferredUntil := readDeferredUntil(t, store.db, jobID)
+	if deferredUntil == nil {
+		t.Fatal("deferred_until is NULL, want the re-dispatch instant")
+	}
+	want := time.Now().UTC().Add(90 * time.Second)
+	if diff := deferredUntil.UTC().Sub(want); diff > 5*time.Second || diff < -5*time.Second {
+		t.Errorf("deferred_until = %v, want ~%v", deferredUntil.UTC(), want)
+	}
+	if row.errorMessage != "waiting on the remote render" {
+		t.Errorf("error = %q, want the stated reason", row.errorMessage)
+	}
+
+	// A deferral cannot exhaust a budget it does not spend: even with the
+	// retry budget already at its limit the row stays waiting. The budget is
+	// aged to max_retries and the row is re-claimed, exactly as the requeue
+	// sweep + worker would.
+	revision := reclaimAs(t, store.db, jobID, "worker-B", "lease-2", 3)
+	res, err = store.FinalizeAttempt(ctx, jobs.FinalizeAttemptCommand{
+		JobID: jobID, Outcome: jobs.OutcomeDeferred, WorkerID: "worker-B", LeaseID: "lease-2",
+		ExpectedRevision: revision, ErrorMessage: "still waiting", Backoff: time.Minute,
+	})
+	if err != nil {
+		t.Fatalf("FinalizeAttempt Deferred at max_retries: unexpected error: %v", err)
+	}
+	if res.FinalStatus != jobs.StatusRetryWait {
+		t.Errorf("FinalStatus at max_retries = %q, want RETRY_WAIT (never downgraded to FAILED)", res.FinalStatus)
+	}
+}
+
+// reclaimAs simulates the next attempt of a deferred job: the requeue sweep
+// moves the row back to QUEUED and a worker claims it, so the CAS fence has a
+// fresh (worker, lease, revision) to check. It returns the new revision.
+func reclaimAs(t *testing.T, db *sql.DB, jobID, workerID, leaseID string, retryCount int) int {
+	t.Helper()
+	if _, err := db.Exec(`UPDATE jobs SET status = 'RUNNING', worker_id = ?, lease_id = ?, retry_count = ?, revision = revision + 1 WHERE id = ?`,
+		workerID, leaseID, retryCount, jobID); err != nil {
+		t.Fatalf("reclaim %s: %v", jobID, err)
+	}
+	var revision int
+	if err := db.QueryRow(`SELECT revision FROM jobs WHERE id = ?`, jobID).Scan(&revision); err != nil {
+		t.Fatalf("read revision: %v", err)
+	}
+	return revision
+}
+
+// TestFinalizeAttempt_OutcomeDeferredWithoutDelayIsRejected pins the fail-closed
+// guard: a deferred row MUST state when it may come back, because that instant is
+// the only thing the requeue sweep can compare against. A silent NULL hint would
+// park the row in RETRY_WAIT forever — the exact "waiting forever" hole the
+// deferral contract exists to avoid.
+func TestFinalizeAttempt_OutcomeDeferredWithoutDelayIsRejected(t *testing.T) {
+	store, jobID := setupFinalizeTestDB(t)
+
+	_, err := store.FinalizeAttempt(context.Background(), jobs.FinalizeAttemptCommand{
+		JobID: jobID, Outcome: jobs.OutcomeDeferred, WorkerID: "worker-A", LeaseID: "lease-1",
+		ExpectedRevision: 1, ErrorMessage: "waiting without a stated delay",
+	})
+	if !errors.Is(err, ErrFinalizeAttemptDeferralDelayMissing) {
+		t.Fatalf("err = %v, want ErrFinalizeAttemptDeferralDelayMissing", err)
+	}
+	// The rejection is pre-TX: the row keeps its lease and status, so the job
+	// is not left half-finalized.
+	row := readFinalJob(t, store.db, jobID)
+	if row.status != string(jobs.StatusRunning) {
+		t.Fatalf("status = %q, want RUNNING (the rejected command changed nothing)", row.status)
+	}
+}
+
+func TestFinalizeAttempt_RetryClearsAStaleDeferralHint(t *testing.T) {
+	store, jobID := setupFinalizeTestDB(t)
+	ctx := context.Background()
+
+	if _, err := store.FinalizeAttempt(ctx, jobs.FinalizeAttemptCommand{
+		JobID: jobID, Outcome: jobs.OutcomeDeferred, WorkerID: "worker-A", LeaseID: "lease-1",
+		ExpectedRevision: 1, ErrorMessage: "waiting", Backoff: time.Minute,
+	}); err != nil {
+		t.Fatalf("defer: %v", err)
+	}
+	// The job comes back and this time it FAILS (a real failure, not a wait).
+	revision := reclaimAs(t, store.db, jobID, "worker-B", "lease-2", 0)
+	if _, err := store.FinalizeAttempt(ctx, jobs.FinalizeAttemptCommand{
+		JobID: jobID, Outcome: jobs.OutcomeScheduleRetry, WorkerID: "worker-B", LeaseID: "lease-2",
+		ExpectedRevision: revision, ErrorMessage: "render failed",
+	}); err != nil {
+		t.Fatalf("retry: %v", err)
+	}
+	deferredUntil := readDeferredUntil(t, store.db, jobID)
+	if deferredUntil != nil {
+		t.Fatalf("deferred_until = %v survived a retry, want NULL", deferredUntil)
+	}
+	if row := readFinalJob(t, store.db, jobID); row.retryCount != 1 {
+		t.Fatalf("retry_count = %d, want 1 (the retry spent the budget)", row.retryCount)
+	}
+}
+
+func TestFinalizeAttempt_DeferredRejectsUnknownOutcome(t *testing.T) {
+	store, jobID := setupFinalizeTestDB(t)
+	if _, err := store.FinalizeAttempt(context.Background(), jobs.FinalizeAttemptCommand{
+		JobID: jobID, Outcome: jobs.FinalizeAttemptOutcome("WAITING_FOREVER"), WorkerID: "worker-A",
+		LeaseID: "lease-1", ExpectedRevision: 1, ErrorMessage: "nope",
+	}); !errors.Is(err, ErrFinalizeAttemptOutcomeInvalid) {
+		t.Fatalf("err = %v, want ErrFinalizeAttemptOutcomeInvalid", err)
 	}
 }

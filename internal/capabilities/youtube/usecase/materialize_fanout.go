@@ -30,81 +30,47 @@ package usecase
 import (
 	"context"
 
-	"go.uber.org/zap"
-
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 )
 
 // enqueueMaterializeFanOut schedules multilingual materialization for a clip
 // whose atomic commit just succeeded.
 //
+// godlike/06 SSOT: the enqueue decision (materialize vs. acquire), the "und"
+// language fallback and the source-text hash computation live in
+// texttracks.MaterializeFanOut.EnqueueCommittedClip
+// (capabilities/assets/texttracks/fanout_commit.go) — the SAME mapping the
+// Register commit route uses, so the two producers cannot drift. This file
+// only maps the committed bundle onto that seam.
+//
 // Contract:
 //   - nil fan-out port (test fixtures, minimal compositions, media-disabled
 //     deployments) → silent no-op, exactly the pre-change behaviour.
-//   - a committed source transcript → EnqueueMaterializeOne with the SAME
-//     hash the persistence layer wrote onto the READY track
-//     (detail.TextHash(plainText, lang, kind)); the materializer re-reads
-//     that row and fails closed on any mismatch, so recomputing the hash
-//     here with the same canonical function is the contract, not a
-//     duplication.
-//   - a clip committed WITHOUT a transcript → EnqueueAcquireOne, so the
-//     canonical acquisition chain (payload → DB → YouTube manual → YouTube
-//     auto → Whisper) still runs before translation.
+//   - a committed source transcript → materialize job carrying the persisted
+//     track's language + text (the helper recomputes the canonical
+//     detail.TextHash the persistence layer wrote, which the materializer
+//     re-reads and fails closed on).
+//   - a clip committed WITHOUT a transcript → the canonical acquisition
+//     chain (payload → DB → YouTube manual → YouTube auto → Whisper) is
+//     scheduled before translation.
 //
-// Scheduling failures are logged, never propagated: the clip is already
-// durably committed, and turning a broker hiccup into an extraction failure
-// would report a successful commit as failed. The fan-out is recoverable via
-// the backfill CLI.
+// Scheduling failures are logged by the helper, never propagated: the clip is
+// already durably committed, and turning a broker hiccup into an extraction
+// failure would report a successful commit as failed. The fan-out is
+// recoverable via the backfill CLI.
 func (u *ProcessYouTubeSegmentUseCase) enqueueMaterializeFanOut(
 	ctx context.Context,
 	clipID string,
 	bundle *detail.ResolvedTextBundle,
 ) {
-	if u == nil || u.media.MaterializeFanOut == nil {
+	if u == nil || u.media.MaterializeFanOut == nil || clipID == "" {
 		return
 	}
-	if clipID == "" {
-		return
+	sourceLanguage, plainText := "", ""
+	if bundle != nil && !bundle.IsEmpty() {
+		sourceLanguage, plainText = bundle.LanguageCode, bundle.PlainText
 	}
-	fanout := u.media.MaterializeFanOut
-
-	kinds := []detail.TextTrackKind{detail.TextTrackTranscript}
-
-	if bundle == nil || bundle.IsEmpty() || bundle.PlainText == "" {
-		sourceLanguage := fanout.DefaultSourceLanguage()
-		if sourceLanguage == "" {
-			u.core.Log.Warn("texttracks.materialize fan-out skipped: no source language resolvable and no default configured",
-				zap.String("clip_id", clipID))
-			return
-		}
-		if err := fanout.EnqueueAcquireOne(ctx, clipID, sourceLanguage, kinds); err != nil {
-			u.core.Log.Warn("texttracks.materialize acquire fan-out failed (clip is committed; recover via backfill)",
-				zap.String("clip_id", clipID),
-				zap.String("source_language", sourceLanguage),
-				zap.Error(err))
-		}
-		return
-	}
-
-	sourceLanguage := bundle.LanguageCode
-	if sourceLanguage == "" {
-		// Mirrors bundleToTextTracks: an unknown language is persisted as
-		// "und", so the hash must be computed on the same value or the
-		// materializer's source-track hash check would reject the job.
-		sourceLanguage = "und"
-	}
-	sourceTextHash := string(detail.TextHash(bundle.PlainText, sourceLanguage, detail.TextTrackTranscript))
-
-	if err := fanout.EnqueueMaterializeOne(ctx, clipID, sourceLanguage, sourceTextHash, kinds); err != nil {
-		u.core.Log.Warn("texttracks.materialize fan-out failed (clip is committed; recover via backfill)",
-			zap.String("clip_id", clipID),
-			zap.String("source_language", sourceLanguage),
-			zap.Error(err))
-		return
-	}
-	u.core.Log.Info("texttracks.materialize scheduled after YouTube clip commit",
-		zap.String("clip_id", clipID),
-		zap.String("source_language", sourceLanguage))
+	u.media.MaterializeFanOut.EnqueueCommittedClip(ctx, clipID, sourceLanguage, plainText)
 }
 
 // WithMaterializeFanOut late-binds the canonical post-commit fan-out onto

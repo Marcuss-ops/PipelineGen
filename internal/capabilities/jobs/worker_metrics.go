@@ -215,6 +215,7 @@ func (r *JobRegistryRecorder) Finish(ctx context.Context, j *kernjob.Job, stepID
 	r.RecordOutputs(ctx, j.ID, result)
 	r.event(ctx, j.ID, terminalEvent(status), map[string]any{"job_type": j.Type, "worker_id": workerID, "attempt_id": attemptID, "status": status, "duration_ms": duration, "result": json.RawMessage(resultJSON)})
 }
+
 // scriptRunPhaseStages names the run-level pipeline phases of a
 // script-generation job. Each one is ALREADY recorded as an execution step by
 // the scripts runner (ExecutionRecorder → job_steps: NORMALIZE, SCRIPT,

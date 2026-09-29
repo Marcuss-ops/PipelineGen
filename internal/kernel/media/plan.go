@@ -209,10 +209,18 @@ func (p MediaExtractionPolicy) EntityImageSurfaceEnabled() bool {
 }
 
 type EntityImagePolicy struct {
-	Enabled       bool     `json:"enabled,omitempty"`
-	EntityTypes   []string `json:"entity_types,omitempty"`
-	MaxPerEntity  int      `json:"max_per_entity,omitempty"`
-	UploadToDrive bool     `json:"upload_to_drive,omitempty"`
+	Enabled      bool     `json:"enabled,omitempty"`
+	EntityTypes  []string `json:"entity_types,omitempty"`
+	MaxPerEntity int      `json:"max_per_entity,omitempty"`
+	// Scope selects the identity surface used to retrieve and render images.
+	// "entity" preserves canonical cross-scene reuse; "per_scene" gives each
+	// scene its own query, asset selection, and overlay occurrence.
+	Scope         string `json:"scope,omitempty"`
+	UploadToDrive bool   `json:"upload_to_drive,omitempty"`
+}
+
+func (p EntityImagePolicy) PerScene() bool {
+	return strings.EqualFold(strings.TrimSpace(p.Scope), "per_scene")
 }
 
 // MediaToggle is the local tri-state wire type used by MediaPlanSpec

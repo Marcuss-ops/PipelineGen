@@ -52,6 +52,37 @@ var timeRegex = regexp.MustCompile(`(\d{1,2}:\d{2}:\d{2}\.\d{3}|\d{2}:\d{2}\.\d{
 // TextTrackResolver.AcquireSegmentText → languageInList to call
 // Normalize (which now rejects underscores) → silently discard
 // the valid subtitle track and fall through to Whisper.
+// subtitleLanguageFor maps the language token parsed from the RESOLVED
+// VTT filename onto the BCP-47 code the bundle must carry.
+//
+// godlike/07 no-fake-availability: the file that was actually READ wins
+// over the configured preference. Labelling an English fallback track
+// with the first configured language ("it") is exactly the bug class
+// this guards — the mislabeled bundle propagates to asset_text_tracks,
+// to the translation fan-out (which would "translate" text that is
+// already in the target language) and to the burned captions.
+//
+//   - fileLang "" (bare <id>.vtt: no language in the name) → the
+//     configured CSV first entry is the only signal available;
+//   - fileLang parses via asset.Normalize ("it", "pt-BR", "en") →
+//     that language verbatim (the `-orig` suffix is already stripped
+//     by vttLanguageToken);
+//   - fileLang does not parse ("zh-Hans", "eng", garbage) → the
+//     literal "und" marker. The caller's PreferredLanguages filter
+//     then treats it as non-matching and the chain falls through to
+//     Whisper instead of adopting a track it cannot name.
+func subtitleLanguageFor(fileLang, configuredLangs string) string {
+	fileLang = strings.TrimSpace(fileLang)
+	if fileLang == "" {
+		return normalizeSubtitleLanguage(configuredLangs)
+	}
+	norm, err := asset.Normalize(fileLang)
+	if err != nil || norm == "und" {
+		return "und"
+	}
+	return norm
+}
+
 func normalizeSubtitleLanguage(langs string) string {
 	lang := ""
 	if langs != "" {

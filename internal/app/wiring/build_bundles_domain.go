@@ -11,6 +11,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaexec"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	pgmedia "github.com/Marcuss-ops/PipelineGen/internal/platform/postgres/media"
+	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
 
 	"go.uber.org/zap"
 )
@@ -23,7 +24,12 @@ import (
 // deps (mutations dispatcher) and the bundle assembly.
 //
 // Requires outbox.Dispatcher (injected via OutboxBundle, last arg).
-func BuildDomainBundle(ctx context.Context, cfg *config.Config, dbs *Databases, log *zap.Logger, drive *DriveBundle, repos *RepoBundle, search *SearchBundle, process *ProcessBundle, ai *AIBundle, outbox *OutboxBundle, mediaConfig mediaexec.ExecutionConfig) (*DomainBundle, error) {
+//
+// driveUploadGate is the process-wide fair Drive-upload gate owned by
+// ComposeRoot (see ComposeRoot.DriveUploadGate). It is threaded in rather than
+// rebuilt here so the voiceover publisher shares ONE capacity with the
+// certified final-audio publisher instead of each enforcing its own ceiling.
+func BuildDomainBundle(ctx context.Context, cfg *config.Config, dbs *Databases, log *zap.Logger, drive *DriveBundle, repos *RepoBundle, search *SearchBundle, process *ProcessBundle, ai *AIBundle, outbox *OutboxBundle, mediaConfig mediaexec.ExecutionConfig, driveUploadGate *concurrent.FairSemaphore) (*DomainBundle, error) {
 	// ── Shared deps ──────────────────────────────────────────
 	var mutationsDisp mutations.AssetMutationDispatcher
 	var canonicalCommitter persistence.AssetCommitter
@@ -95,6 +101,7 @@ func BuildDomainBundle(ctx context.Context, cfg *config.Config, dbs *Databases, 
 		voMetaWriter:       voMetaWriter,
 		bundle:             bundle,
 		mediaConfig:        mediaConfig,
+		driveUploadGate:    driveUploadGate,
 	}); err != nil {
 		return nil, fmt.Errorf("compose domains (assets): %w", err)
 	}

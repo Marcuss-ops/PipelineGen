@@ -199,6 +199,27 @@ var (
 		"phrase_apple_clean_29_opacity_hero_settle",
 		"phrase_apple_clean_30_opacity_clean_apple",
 	}
+	// Long grounded phrases need a single readable entrance for the full text
+	// block. Avoid per-word, per-glyph and typewriter motions for these items;
+	// the planner intersects this list with the caller's selected family so an
+	// explicit family remains authoritative.
+	longPhraseMotionCandidates = []string{
+		"apple_expand_from_center",
+		"apple_focus_rise",
+		"apple_hero_statement",
+		"apple_scale_settle",
+		"apple_soft_scale",
+		"cinematic_camera_push",
+		"glass_morphism_fade",
+		"hero_scale_focus",
+		"phrase_apple_clean_01_blur_soft_reveal",
+		"phrase_apple_clean_07_slide_up_soft",
+		"phrase_apple_clean_10_slide_from_right_apple",
+		"phrase_apple_clean_25_opacity_soft_reveal",
+		"phrase_apple_clean_28_opacity_cinematic",
+		"phrase_apple_clean_29_opacity_hero_settle",
+		"phrase_apple_clean_30_opacity_clean_apple",
+	}
 	phraseMotionCandidates      = combineMotionPools(classicAppleMotionCandidates, modernAppleMotionCandidates, typewriterMotionCandidates)
 	renderSafeTextMotions       = phraseAppleCleanMotionCandidates
 	generatedPhraseMotions      = phraseMotionCandidates
@@ -252,6 +273,31 @@ func selectPhraseMotion(jobID, sceneID string, ordinal int, pool []string) strin
 		return ""
 	}
 	return sequence[ordinal%len(sequence)]
+}
+
+// selectLongPhraseMotion keeps longer cards on block-level entrances such as
+// a soft reveal, line slide, or restrained scale. It intersects with pool so
+// caller-selected motion families remain authoritative. When an explicit
+// family has no compatible motion, retain its regular deterministic choice.
+func selectLongPhraseMotion(jobID, sceneID string, ordinal int, pool []string) string {
+	compatible := make([]string, 0, len(longPhraseMotionCandidates))
+	allowed := make(map[string]struct{}, len(pool))
+	for _, id := range pool {
+		allowed[id] = struct{}{}
+	}
+	for _, id := range longPhraseMotionCandidates {
+		if len(pool) == 0 {
+			compatible = append(compatible, id)
+			continue
+		}
+		if _, ok := allowed[id]; ok {
+			compatible = append(compatible, id)
+		}
+	}
+	if len(compatible) == 0 {
+		return selectPhraseMotion(jobID, sceneID, ordinal, pool)
+	}
+	return selectPhraseMotion(jobID, sceneID, ordinal, compatible)
 }
 
 // visiblePhraseEntrancePool limits the guaranteed entrance slot to certified

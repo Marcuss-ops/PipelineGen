@@ -25,6 +25,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/sourcing/drivesync"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/sourcing/localimport"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/sourcing/youtube"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/texttracks"
 	appclips "github.com/Marcuss-ops/PipelineGen/internal/capabilities/clips"
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
 	ytadapters "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/adapters"
@@ -69,6 +70,7 @@ func newAssetRegisterService(
 	publisher delivery.Publisher,
 	jobsSvc *appjobs.Service,
 	atomicWriter localized.LocalizedClipWriter,
+	materializeFanOut *texttracks.MaterializeFanOut,
 ) *sourcing.Service {
 	// Build the YouTube sub-service with v2 adapters (June 2026, P0-1 / commit 1).
 	// The 2 v2 adapters absorb 6 legacy ports (IndexDispatcher + AssetTree +
@@ -120,6 +122,16 @@ func newAssetRegisterService(
 		// transcript upsert. A nil writer keeps the legacy split path for
 		// composition sites with no media PostgreSQL handle.
 		WithAtomicClipWriter(atomicWriter)
+
+	// September 2026 (register-path gap): the Register pipeline commits through
+	// the same PostgreSQL media committer as the extraction path, so it must
+	// schedule the same post-commit multilingual fan-out — otherwise every
+	// register-batch clip keeps exactly ONE text track (no translations, no
+	// `.ass` subtitle artifacts) with no error anywhere. nil-guarded so a
+	// composition without a jobs broker keeps the historical behaviour.
+	if materializeFanOut != nil {
+		ytSvc = ytSvc.WithMaterializeFanOut(materializeFanOut)
+	}
 
 	// P0-1 / commit 2: BatchRegistrar sub-service (PR-BATCH-REGISTER-ASYNC).
 	// The synchronous YouTubeRegistrar loop is replaced with an async

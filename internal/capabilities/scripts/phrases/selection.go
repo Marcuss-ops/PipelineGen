@@ -103,10 +103,10 @@ func selectPhrases(text string, blockedSpans [][2]int, limit int, profile *lingu
 	if policy.MaxWords < policy.MinWords {
 		policy.MaxWords = policy.MinWords
 	}
-	// Arbitrary phrase windows are editorial fragments with a hard six-word
-	// ceiling; complete sentence candidates are added separately below.
-	if policy.MaxWords > 6 {
-		policy.MaxWords = 6
+	// Keep phrase fragments headline-sized while allowing complete ideas to
+	// survive extraction. The overlay planner applies its own word ceiling.
+	if policy.MaxWords > 16 {
+		policy.MaxWords = 16
 	}
 	if limit <= 0 {
 		limit = policy.MaxResults
@@ -204,7 +204,7 @@ func selectPhrases(text string, blockedSpans [][2]int, limit int, profile *lingu
 		}
 	}
 	// Natural complete sentences and neighboring sentence pairs are editorial
-	// candidates outside the six-word cap used for arbitrary fragments. Their
+	// candidates outside the sixteen-word cap used for arbitrary fragments. Their
 	// token intervals are still disjoint-selected below, so one card cannot
 	// step on words already assigned to an earlier card.
 	sentences := sentenceTokenSpans(text, tokens)
@@ -220,7 +220,11 @@ func selectPhrases(text string, blockedSpans [][2]int, limit int, profile *lingu
 				start: first.byteStart, tokenStart: first.tokenStart, tokenEnd: last.tokenEnd,
 				sentenceCount: width,
 			}
-			if !isTerminatedSentenceText(span.text) {
+			atSceneEnd := width == 1 && i == len(sentences)-1
+			if !isTerminatedSentenceText(span.text) && !atSceneEnd {
+				continue
+			}
+			if wordCount > 16 {
 				continue
 			}
 			if sentenceCandidateAllowed(span, profile, blockedSpans, text) {
@@ -233,6 +237,11 @@ func selectPhrases(text string, blockedSpans [][2]int, limit int, profile *lingu
 		return nil
 	}
 	sort.SliceStable(candidates, func(i, j int) bool {
+		longI := candidates[i].tokenEnd-candidates[i].tokenStart+1 >= 8
+		longJ := candidates[j].tokenEnd-candidates[j].tokenStart+1 >= 8
+		if longI != longJ {
+			return longI
+		}
 		if candidates[i].score != candidates[j].score {
 			return candidates[i].score > candidates[j].score
 		}

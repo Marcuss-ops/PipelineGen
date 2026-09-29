@@ -1,6 +1,7 @@
 package scriptgeneration
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 
@@ -160,4 +161,68 @@ func compileResultPhraseTimings(result *GenerateResult, language Language, repor
 	result.PhraseTimings = timings
 	result.SceneSpeechTimings = speechTimings
 	return nil
+}
+
+// locatePhraseTimingWithEndpointFallback first requires a complete exact phrase
+// match. If certified timing omitted or regrouped interior words, it may still
+// use the exact first/last word boundaries, but only when both are present and
+// ordered in the same timing artifact. Invalid artifacts and absent endpoints
+// remain failures; no time is interpolated.
+//
+// Moved verbatim from overlay_plan.go (2026-09-28, 635 → 577) to satisfy the
+// strict 600-LOC forward-prevention gate (godlike/08) without changing
+// behaviour: the helper is a phrase-timing projection, not an overlay-plan
+// concern, so its cohesive owner is this file. No new package is introduced.
+func locatePhraseTimingWithEndpointFallback(sceneIndex int, timelineStartUS int64, timing capabilityaudio.SpeechTimingArtifact, phrase string) (*capabilityaudio.PhraseTiming, error) {
+	located, err := capabilityaudio.LocatePhraseTimings(sceneIndex, timelineStartUS, timing, []string{phrase})
+	if err == nil {
+		return &located[0], nil
+	}
+	if !errors.Is(err, capabilityaudio.ErrPhraseNotFound) {
+		return nil, err
+	}
+	words := strings.Fields(phrase)
+	if len(words) < 2 {
+		return nil, err
+	}
+	firstMatches, firstErr := capabilityaudio.LocatePhrase(timing, words[0])
+	if firstErr != nil {
+		return nil, firstErr
+	}
+	lastMatches, lastErr := capabilityaudio.LocatePhrase(timing, words[len(words)-1])
+	if lastErr != nil {
+		return nil, lastErr
+	}
+
+	// Repeated endpoint words can produce several possible spans. Choose the
+	// ordered pair whose number of certified timing words most closely matches
+	// the source phrase length; stable iteration makes ties source-order wins.
+	var first, last capabilityaudio.LocatedPhrase
+	bestDelta := int(^uint(0) >> 1)
+	for _, start := range firstMatches {
+		for _, end := range lastMatches {
+			if end.WordEnd <= start.WordStart {
+				continue
+			}
+			spanWords := end.WordEnd - start.WordStart + 1
+			delta := spanWords - len(words)
+			if delta < 0 {
+				delta = -delta
+			}
+			if delta < bestDelta {
+				first, last, bestDelta = start, end, delta
+			}
+		}
+	}
+	if bestDelta == int(^uint(0)>>1) {
+		return nil, err
+	}
+	return &capabilityaudio.PhraseTiming{
+		SceneIndex: sceneIndex, PhraseIndex: 0, Text: strings.TrimSpace(phrase),
+		WordStart: first.WordStart, WordEnd: last.WordEnd,
+		LocalStartUS: first.StartUS, LocalEndUS: last.EndUS,
+		TimelineStartUS: timelineStartUS,
+		GlobalStartUS:   timelineStartUS + first.StartUS,
+		GlobalEndUS:     timelineStartUS + last.EndUS,
+	}, nil
 }

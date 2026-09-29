@@ -197,6 +197,14 @@ func startBackgroundJobs(ctx context.Context, cfg *config.Config, dbs *Databases
 	if step := buildPreparationCoordinatorStep(jobRunnerDeps{root: root, cfg: cfg, log: log}); step != nil {
 		steps = append(steps, *step)
 	}
+	// Deferred-job scheduler: promotes due SCHEDULED jobs to QUEUED under the
+	// admission policy. Scheduler-mode work (runScheduler), so it is omitted
+	// in worker-only mode.
+	if runScheduler {
+		if step := buildJobSchedulerStep(jobRunnerDeps{root: root, cfg: cfg, log: log}); step != nil {
+			steps = append(steps, *step)
+		}
+	}
 
 	// Job runner: REQUIRED, always LAST in the plan.
 	// Construction + step closure extracted to buildJobRunnerStep

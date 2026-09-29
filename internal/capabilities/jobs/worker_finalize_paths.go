@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	jobscheduling "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/scheduling"
@@ -16,6 +17,19 @@ import (
 )
 
 func (w *Worker) finalizeJobDispatchError(ctx context.Context, j *job.Job, workerID, leaseID string, finalRevision int, dispatchErr error) {
+	// A DEFERRAL is checked FIRST, before any failure logging or retry
+	// classification: the handler is not reporting a failure, it is reporting a
+	// WAIT (job.DeferredAfter — a remote render still running, a provider
+	// window not open). Classifying it as a failure is what turns a long
+	// external wait into a terminal FAILED job, and what spends a retry on work
+	// that never failed. The canonical finalize outcome keeps the row
+	// non-terminal and leaves retry_count untouched; the row's deferred_until
+	// carries when it may come back (honoured by the requeue sweep).
+	if deferral, ok := job.AsDeferral(dispatchErr); ok {
+		w.finalizeJobDeferral(ctx, j, workerID, leaseID, finalRevision, deferral)
+		return
+	}
+
 	w.log.Error("job failed", zap.String("job_id", j.ID), zap.Error(dispatchErr))
 
 	if retry.IsTransient(dispatchErr) && jobscheduling.DecideRetry(j) == jobscheduling.RetryScheduled {
@@ -43,6 +57,69 @@ func (w *Worker) finalizeJobDispatchError(ctx context.Context, j *job.Job, worke
 	} else {
 		w.log.Warn("job moved to dead letter queue", zap.String("job_id", j.ID), zap.Int("retry_count", j.RetryCount), zap.Error(dispatchErr))
 	}
+}
+
+// finalizeJobDeferral persists a WAIT as the canonical deferred outcome: the
+// row returns to RETRY_WAIT with retry_count UNCHANGED and deferred_until set,
+// so the requeue sweep re-dispatches it when the wait is over. It is a single
+// place by construction — every deferral the worker ever persists goes through
+// here, so the outcome, the delay and the audit event cannot drift apart.
+//
+// Failure to persist is LOUD and terminal-by-omission-free: the job keeps its
+// lease until it expires, the reaper requeues it, and the next attempt re-runs
+// the handler (for a settle that re-reads the same durable render handle, that
+// is a harmless re-poll). It is never silently reported as completed.
+func (w *Worker) finalizeJobDeferral(ctx context.Context, j *job.Job, workerID, leaseID string, finalRevision int, deferral *job.Deferral) {
+	// The row MUST carry the instant it may come back (the store rejects a
+	// deferral without one), so the deployment default lives here where the
+	// scheduling policy already lives — a handler states the FACT (I am
+	// waiting), never the cadence.
+	delay := jobscheduling.DefaultDeferralDelay
+	reason := "handler deferred its attempt"
+	if deferral != nil {
+		if deferral.Delay > 0 {
+			delay = deferral.Delay
+		}
+		if strings.TrimSpace(deferral.Reason) != "" {
+			reason = deferral.Reason
+		}
+	}
+	w.log.Info("job deferred — handing the attempt back without spending a retry",
+		zap.String("job_id", j.ID), zap.String("job_type", j.Type),
+		zap.Duration("delay", delay), zap.String("reason", reason))
+
+	result, err := w.repo.FinalizeAttempt(ctx, job.FinalizeAttemptCommand{
+		JobID:            j.ID,
+		Outcome:          job.OutcomeDeferred,
+		WorkerID:         workerID,
+		LeaseID:          leaseID,
+		ExpectedRevision: finalRevision,
+		ErrorMessage:     reason,
+		Backoff:          delay,
+		EventType:        "job_deferred",
+		EventData: map[string]any{
+			"reason":      reason,
+			"delay_ms":    delay.Milliseconds(),
+			"retry_count": j.RetryCount,
+		},
+	})
+	if err != nil {
+		if errors.Is(err, job.ErrLeaseLost) || errors.Is(err, job.ErrTransitionConflict) {
+			w.log.Warn("lease lost while deferring — another worker owns this job",
+				zap.String("job_id", j.ID), zap.Error(err))
+			return
+		}
+		w.log.Error("failed to persist job deferral — the job stays leased until the reaper requeues it",
+			zap.String("job_id", j.ID), zap.Error(err))
+		return
+	}
+	// A deferred job is still RUNNING from the operator's point of view (it is
+	// non-terminal and the Master keeps working on the remote side), so the
+	// calendar card keeps its RUNNING status and only the phase changes. The
+	// deferral is deliberately NOT reported as a failure: a wait that looks like
+	// an incident is how real incidents get ignored.
+	w.reportCalendar(j.ID, j.Type, "RUNNING", "deferred", nil, nil)
+	observability.WorkerJobDeferredTotal.WithLabelValues(j.Type, string(result.FinalStatus)).Inc()
 }
 
 func (w *Worker) finalizeJobArtifactPath(ctx context.Context, j *job.Job, workerID, leaseID string, finalRevision int, result map[string]any) []string {

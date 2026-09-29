@@ -199,6 +199,27 @@ func TestSelectExactVidRushImagesImagesOnlyKeepsOnePerEntity(t *testing.T) {
 	}
 }
 
+func TestSelectExactVidRushImagesHonorsEntityImageLimit(t *testing.T) {
+	plan := &scriptpkg.ResolvedGenerationPlan{ImagesPerScene: 2, MediaPlan: media.MediaPlanSpec{
+		ProviderPolicy: media.MediaProviderPolicy{InternetImages: media.MediaToggleEnabled},
+		Extraction: media.MediaExtractionPolicy{EntityImages: media.EntityImagePolicy{
+			Enabled: true, EntityTypes: []string{"PERSON"}, MaxPerEntity: 2,
+		}},
+	}}
+	candidates := []scriptpkg.SegmentAssetCandidate{
+		readyImageCandidateForSelection("portrait-a", "Milton Leite", .9),
+		readyImageCandidateForSelection("portrait-b", "Milton Leite", .8),
+		readyImageCandidateForSelection("portrait-c", "Milton Leite", .7),
+	}
+	selected := selectExactVidRushImages(candidates, 2, plan)
+	if len(selected) != 2 {
+		t.Fatalf("selected image count = %d, want two distinct images for the permitted entity limit", len(selected))
+	}
+	if selected[0].AssetID != "portrait-a" || selected[1].AssetID != "portrait-b" {
+		t.Fatalf("selected images = %q, %q; want highest-ranked distinct assets in discovery order", selected[0].AssetID, selected[1].AssetID)
+	}
+}
+
 func readyImageCandidateForSelection(assetID, query string, score float64) scriptpkg.SegmentAssetCandidate {
 	return scriptpkg.SegmentAssetCandidate{
 		AssetID: assetID, Provider: scriptpkg.VidRushProviderInternetImages, Query: query, Score: score,

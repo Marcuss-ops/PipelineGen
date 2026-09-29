@@ -48,8 +48,8 @@ func TestPayloadHash_CanonicalizesKeys(t *testing.T) {
 // step and must still be recorded, and a non-script job keeps every stage row.
 func TestJobRegistryRecorder_DedupsRunLevelStageSteps(t *testing.T) {
 	report := &kernobs.RunReport{
-		RunID: "run-dedup",
-		JobID: "job-dedup",
+		RunID:  "run-dedup",
+		JobID:  "job-dedup",
 		Status: kernobs.StatusSucceeded,
 		Stages: []kernobs.StageReport{
 			{Name: "normalize", Status: kernobs.StageStatusCompleted, DurationMs: 100},

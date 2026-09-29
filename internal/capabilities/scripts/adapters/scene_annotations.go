@@ -62,6 +62,7 @@ func sceneAnnotations(text, language string, seg scriptpkg.VidRushSegmentResult)
 	for _, entity := range seg.Insights.Entities {
 		value := strings.TrimSpace(entity.Value)
 		kind := normalizeAnnotationType(entity.Type)
+		kind = correctKnownPortugueseEntityType(value, kind)
 		if kind == "KEYWORD" || kind == "VISUAL_SUBJECT" {
 			// KEYWORD / VISUAL_SUBJECT are search/index surfaces, never
 			// spoken entities (mirror of the runner projection).
@@ -410,10 +411,29 @@ func discoverGroundedEntities(text string) []scriptpkg.AnnotatedEntity {
 
 func classifyDiscoveredEntity(value string) string {
 	lower := strings.ToLower(strings.TrimSpace(value))
-	if lower == "las vegas" || lower == "new york" || lower == "los angeles" || lower == "roma" || lower == "parigi" || lower == "londra" {
+	return correctKnownPortugueseEntityType(value, func() string {
+		if strings.HasPrefix(lower, "oper") {
+			return "EVENT"
+		}
+		return "PERSON"
+	}())
+}
+
+func correctKnownPortugueseEntityType(value, current string) string {
+	lower := strings.ToLower(strings.TrimSpace(value))
+	if strings.HasPrefix(lower, "operação ") || strings.HasPrefix(lower, "operacao ") ||
+		strings.HasPrefix(lower, "operación ") || strings.HasPrefix(lower, "operacion ") ||
+		strings.HasPrefix(lower, "operation ") {
+		return "EVENT"
+	}
+	switch lower {
+	case "las vegas", "new york", "los angeles", "roma", "parigi", "londra",
+		"são paulo", "sao paulo", "brasília", "brasilia", "rio de janeiro",
+		"belo horizonte", "curitiba", "porto alegre", "salvador", "recife",
+		"fortaleza", "manaus", "belém", "belem", "goiânia", "goiania":
 		return "GPE"
 	}
-	return "PERSON"
+	return current
 }
 
 func fallbackDistinctKeywords(text string, phrases, entities []scriptpkg.AnnotationSpan, language string) []scriptpkg.AnnotationSpan {

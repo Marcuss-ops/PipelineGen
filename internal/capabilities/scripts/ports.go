@@ -14,6 +14,7 @@ package scriptgeneration
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
@@ -199,6 +200,18 @@ type FailRunInput struct {
 
 // RunRepository persists and retrieves GenerationRun aggregates.
 // Used by the runner for checkpoint persistence after each stage.
+// ErrRunNotFound is the canonical sentinel for "the durable repository has no
+// run with that id".
+//
+// It is declared here, in the package that owns the RunRepository port, rather
+// than at every call site: the repository is the only component that can
+// decide a run is missing, and callers that must classify that outcome (the
+// `script.docs_publish` child, which cannot re-enter the post-core path
+// without the snapshot) re-export this one value instead of defining a second
+// one. Two sentinels for one fact is how a deterministic failure ends up
+// looking transient.
+var ErrRunNotFound = errors.New("scriptgeneration: run not found")
+
 type RunRepository interface {
 	// Create persists a new GenerationRun.
 	Create(ctx context.Context, run *GenerationRun) error

@@ -259,7 +259,11 @@ func TestRunner_OverlayPlanAppliesRunLevelEditorialBudget(t *testing.T) {
 	require.Equal(t, 1, images)
 	require.Equal(t, 2, phrases)
 	require.Len(t, res.OverlayPlan.Items, 3)
-	require.Equal(t, capabilityoverlay.PhraseOverlayBudget{Requested: 15, Materialized: 2, Shortfall: 13}, *res.PhraseOverlayBudget)
+	require.Equal(t, capabilityoverlay.PhraseOverlayBudget{
+		Requested:    capabilityoverlay.MaxPhraseOverlaysPerRun,
+		Materialized: 2,
+		Shortfall:    capabilityoverlay.MaxPhraseOverlaysPerRun - 2,
+	}, *res.PhraseOverlayBudget)
 
 	phrase := byID["scene-0-phrase-changed-everything"]
 	require.Equal(t, "IMPORTANT_PHRASE", phrase.TemplateID)

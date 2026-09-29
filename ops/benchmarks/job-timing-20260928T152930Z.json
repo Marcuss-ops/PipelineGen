@@ -1,0 +1,3060 @@
+{
+  "schema": "job-timing-snapshot/v1",
+  "generated_at": "2026-09-28T15:29:29Z",
+  "refactored_root": "/home/pierone/src/go-master/projects/Pyt/VeloxEditing/refactored",
+  "sources": [
+    {
+      "label": "jobs",
+      "path": "/home/pierone/src/go-master/projects/Pyt/VeloxEditing/refactored/data/jobs/jobs.db.sqlite",
+      "present": true,
+      "size_bytes": 204685312,
+      "tables": {
+        "jobs": 934,
+        "job_steps": 13277,
+        "job_registry_metrics": 72579,
+        "job_events": 4860
+      }
+    },
+    {
+      "label": "media",
+      "path": "/home/pierone/src/go-master/projects/Pyt/VeloxEditing/refactored/data/media/media.db.sqlite",
+      "present": true,
+      "size_bytes": 547897344,
+      "tables": {
+        "performance_runs": 4373,
+        "performance_steps": 3781,
+        "performance_operations": 70
+      }
+    },
+    {
+      "label": "observability",
+      "path": "/home/pierone/src/go-master/projects/Pyt/VeloxEditing/refactored/data/observability/api_requests.db.sqlite",
+      "present": true,
+      "size_bytes": 306122752,
+      "tables": {
+        "run_observability": 5543,
+        "run_stage_observations": 50432,
+        "run_operation_observations": 64530,
+        "job_attempts": 5543,
+        "api_requests": 0
+      }
+    }
+  ],
+  "jobs_window": {
+    "first": "2026-09-21T11:33:41Z",
+    "last": "2026-09-28T15:23:32Z"
+  },
+  "job_types": [
+    {
+      "job_type": "asset.text.materialize",
+      "jobs": 167,
+      "queue_hours": 44.26,
+      "work_hours": 3.34,
+      "avg_queue_s": 954.1,
+      "max_queue_s": 4995.0,
+      "wait_amplification": 13.26
+    },
+    {
+      "job_type": "youtube_clip.extract",
+      "jobs": 187,
+      "queue_hours": 30.03,
+      "work_hours": 20.2,
+      "avg_queue_s": 578.1,
+      "max_queue_s": 4927.0,
+      "wait_amplification": 1.49
+    },
+    {
+      "job_type": "script.generate",
+      "jobs": 233,
+      "queue_hours": 8.62,
+      "work_hours": 8.82,
+      "avg_queue_s": 134.3,
+      "max_queue_s": 12926.0,
+      "wait_amplification": 0.98
+    },
+    {
+      "job_type": "media.clip",
+      "jobs": 34,
+      "queue_hours": 0.48,
+      "work_hours": 0.6,
+      "avg_queue_s": 50.4,
+      "max_queue_s": 155.0,
+      "wait_amplification": 0.79
+    },
+    {
+      "job_type": "system.cleanup",
+      "jobs": 286,
+      "queue_hours": 0.25,
+      "work_hours": 0.01,
+      "avg_queue_s": 3.1,
+      "max_queue_s": 237.0,
+      "wait_amplification": 38.59
+    },
+    {
+      "job_type": "media.stock",
+      "jobs": 3,
+      "queue_hours": 0.1,
+      "work_hours": 0.43,
+      "avg_queue_s": 115.3,
+      "max_queue_s": 346.0,
+      "wait_amplification": 0.23
+    },
+    {
+      "job_type": "video.create",
+      "jobs": 5,
+      "queue_hours": 0.0,
+      "work_hours": 0.1,
+      "avg_queue_s": 0.0,
+      "max_queue_s": 0.0,
+      "wait_amplification": 0.0
+    },
+    {
+      "job_type": "clip.render",
+      "jobs": 9,
+      "queue_hours": 0.0,
+      "work_hours": 0.01,
+      "avg_queue_s": 0.0,
+      "max_queue_s": 0.0,
+      "wait_amplification": 0.0
+    }
+  ],
+  "steps": [
+    {
+      "step": "worker.execution",
+      "status": "COMPLETED",
+      "count": 776,
+      "total_hours": 26.068,
+      "avg_s": 120.932,
+      "max_s": 1018.9
+    },
+    {
+      "step": "worker.execution",
+      "status": "FAILED",
+      "count": 210,
+      "total_hours": 10.748,
+      "avg_s": 184.246,
+      "max_s": 1511.0
+    },
+    {
+      "step": "tts",
+      "status": "COMPLETED",
+      "count": 1076,
+      "total_hours": 3.397,
+      "avg_s": 11.364,
+      "max_s": 153.0
+    },
+    {
+      "step": "generate",
+      "status": "COMPLETED",
+      "count": 224,
+      "total_hours": 2.621,
+      "avg_s": 42.118,
+      "max_s": 599.9
+    },
+    {
+      "step": "SCRIPT",
+      "status": "COMPLETED",
+      "count": 203,
+      "total_hours": 2.321,
+      "avg_s": 41.153,
+      "max_s": 599.9
+    },
+    {
+      "step": "AUDIO_COMPILE",
+      "status": "COMPLETED",
+      "count": 130,
+      "total_hours": 2.174,
+      "avg_s": 60.216,
+      "max_s": 273.9
+    },
+    {
+      "step": "overlay_render",
+      "status": "COMPLETED",
+      "count": 178,
+      "total_hours": 1.499,
+      "avg_s": 30.324,
+      "max_s": 210.8
+    },
+    {
+      "step": "audio_compile",
+      "status": "COMPLETED",
+      "count": 195,
+      "total_hours": 1.424,
+      "avg_s": 26.282,
+      "max_s": 107.4
+    },
+    {
+      "step": "scene_analysis",
+      "status": "COMPLETED",
+      "count": 161,
+      "total_hours": 1.142,
+      "avg_s": 25.534,
+      "max_s": 577.1
+    },
+    {
+      "step": "voiceover",
+      "status": "COMPLETED",
+      "count": 216,
+      "total_hours": 0.899,
+      "avg_s": 14.989,
+      "max_s": 469.0
+    },
+    {
+      "step": "remote_final_job",
+      "status": "FAILED",
+      "count": 46,
+      "total_hours": 0.776,
+      "avg_s": 60.767,
+      "max_s": 762.0
+    },
+    {
+      "step": "VOICEOVER",
+      "status": "COMPLETED",
+      "count": 159,
+      "total_hours": 0.775,
+      "avg_s": 17.546,
+      "max_s": 469.0
+    },
+    {
+      "step": "remote_final_job",
+      "status": "COMPLETED",
+      "count": 8,
+      "total_hours": 0.727,
+      "avg_s": 327.032,
+      "max_s": 664.9
+    },
+    {
+      "step": "generate",
+      "status": "FAILED",
+      "count": 30,
+      "total_hours": 0.708,
+      "avg_s": 84.993,
+      "max_s": 600.1
+    },
+    {
+      "step": "publish",
+      "status": "COMPLETED",
+      "count": 1064,
+      "total_hours": 0.546,
+      "avg_s": 1.848,
+      "max_s": 67.5
+    },
+    {
+      "step": "SCRIPT",
+      "status": "FAILED",
+      "count": 22,
+      "total_hours": 0.519,
+      "avg_s": 84.928,
+      "max_s": 600.1
+    },
+    {
+      "step": "prepare_join",
+      "status": "COMPLETED",
+      "count": 214,
+      "total_hours": 0.45,
+      "avg_s": 7.571,
+      "max_s": 91.2
+    },
+    {
+      "step": "post_writer_finalize",
+      "status": "COMPLETED",
+      "count": 776,
+      "total_hours": 0.419,
+      "avg_s": 1.946,
+      "max_s": 372.6
+    },
+    {
+      "step": "audio_publish",
+      "status": "COMPLETED",
+      "count": 177,
+      "total_hours": 0.402,
+      "avg_s": 8.169,
+      "max_s": 302.7
+    },
+    {
+      "step": "stock.youtube_download",
+      "status": "COMPLETED",
+      "count": 32,
+      "total_hours": 0.253,
+      "avg_s": 28.504,
+      "max_s": 324.3
+    },
+    {
+      "step": "AUDIO_COMPILE",
+      "status": "FAILED",
+      "count": 31,
+      "total_hours": 0.228,
+      "avg_s": 26.461,
+      "max_s": 82.2
+    },
+    {
+      "step": "document",
+      "status": "COMPLETED",
+      "count": 131,
+      "total_hours": 0.227,
+      "avg_s": 6.23,
+      "max_s": 25.8
+    },
+    {
+      "step": "DOCUMENT",
+      "status": "COMPLETED",
+      "count": 63,
+      "total_hours": 0.227,
+      "avg_s": 12.953,
+      "max_s": 25.8
+    },
+    {
+      "step": "document.publish",
+      "status": "COMPLETED",
+      "count": 63,
+      "total_hours": 0.226,
+      "avg_s": 12.909,
+      "max_s": 25.7
+    },
+    {
+      "step": "stock.stage_sources",
+      "status": "COMPLETED",
+      "count": 2,
+      "total_hours": 0.17,
+      "avg_s": 306.458,
+      "max_s": 326.1
+    },
+    {
+      "step": "stock.extract",
+      "status": "COMPLETED",
+      "count": 20,
+      "total_hours": 0.143,
+      "avg_s": 25.663,
+      "max_s": 36.6
+    },
+    {
+      "step": "tts",
+      "status": "FAILED",
+      "count": 18,
+      "total_hours": 0.095,
+      "avg_s": 18.965,
+      "max_s": 124.3
+    },
+    {
+      "step": "audio_compile",
+      "status": "FAILED",
+      "count": 13,
+      "total_hours": 0.071,
+      "avg_s": 19.659,
+      "max_s": 76.0
+    },
+    {
+      "step": "stock.compose",
+      "status": "COMPLETED",
+      "count": 1,
+      "total_hours": 0.071,
+      "avg_s": 254.621,
+      "max_s": 254.6
+    },
+    {
+      "step": "audio_publish",
+      "status": "FAILED",
+      "count": 1,
+      "total_hours": 0.066,
+      "avg_s": 238.443,
+      "max_s": 238.4
+    },
+    {
+      "step": "stock.duration_probe",
+      "status": "COMPLETED",
+      "count": 3,
+      "total_hours": 0.044,
+      "avg_s": 52.782,
+      "max_s": 93.5
+    },
+    {
+      "step": "prepare_join",
+      "status": "FAILED",
+      "count": 8,
+      "total_hours": 0.042,
+      "avg_s": 18.687,
+      "max_s": 81.5
+    },
+    {
+      "step": "scene_analysis",
+      "status": "FAILED",
+      "count": 1,
+      "total_hours": 0.033,
+      "avg_s": 120.392,
+      "max_s": 120.4
+    },
+    {
+      "step": "stock.youtube_download",
+      "status": "FAILED",
+      "count": 3,
+      "total_hours": 0.028,
+      "avg_s": 33.628,
+      "max_s": 34.5
+    },
+    {
+      "step": "overlay_render",
+      "status": "FAILED",
+      "count": 23,
+      "total_hours": 0.026,
+      "avg_s": 4.077,
+      "max_s": 17.0
+    },
+    {
+      "step": "stock.stage_sources",
+      "status": "FAILED",
+      "count": 1,
+      "total_hours": 0.026,
+      "avg_s": 91.806,
+      "max_s": 91.8
+    },
+    {
+      "step": "overlay.prepare",
+      "status": "COMPLETED",
+      "count": 112,
+      "total_hours": 0.016,
+      "avg_s": 0.503,
+      "max_s": 3.9
+    },
+    {
+      "step": "voiceover",
+      "status": "FAILED",
+      "count": 8,
+      "total_hours": 0.015,
+      "avg_s": 6.952,
+      "max_s": 11.2
+    },
+    {
+      "step": "VOICEOVER",
+      "status": "FAILED",
+      "count": 8,
+      "total_hours": 0.015,
+      "avg_s": 6.94,
+      "max_s": 11.2
+    },
+    {
+      "step": "checkpoint",
+      "status": "COMPLETED",
+      "count": 2528,
+      "total_hours": 0.01,
+      "avg_s": 0.014,
+      "max_s": 1.4
+    },
+    {
+      "step": "translation",
+      "status": "COMPLETED",
+      "count": 224,
+      "total_hours": 0.009,
+      "avg_s": 0.143,
+      "max_s": 30.0
+    },
+    {
+      "step": "TRANSLATION",
+      "status": "COMPLETED",
+      "count": 140,
+      "total_hours": 0.009,
+      "avg_s": 0.227,
+      "max_s": 30.0
+    },
+    {
+      "step": "finalize",
+      "status": "COMPLETED",
+      "count": 1064,
+      "total_hours": 0.006,
+      "avg_s": 0.021,
+      "max_s": 0.5
+    },
+    {
+      "step": "clip.render",
+      "status": "FAILED",
+      "count": 4,
+      "total_hours": 0.006,
+      "avg_s": 4.992,
+      "max_s": 7.1
+    },
+    {
+      "step": "persistence",
+      "status": "COMPLETED",
+      "count": 171,
+      "total_hours": 0.002,
+      "avg_s": 0.046,
+      "max_s": 0.3
+    },
+    {
+      "step": "publish",
+      "status": "FAILED",
+      "count": 11,
+      "total_hours": 0.002,
+      "avg_s": 0.556,
+      "max_s": 2.8
+    },
+    {
+      "step": "complete_finalize",
+      "status": "COMPLETED",
+      "count": 129,
+      "total_hours": 0.001,
+      "avg_s": 0.039,
+      "max_s": 0.5
+    },
+    {
+      "step": "audio_finalize",
+      "status": "COMPLETED",
+      "count": 178,
+      "total_hours": 0.001,
+      "avg_s": 0.023,
+      "max_s": 0.1
+    },
+    {
+      "step": "PERSISTENCE",
+      "status": "COMPLETED",
+      "count": 125,
+      "total_hours": 0.001,
+      "avg_s": 0.03,
+      "max_s": 0.2
+    },
+    {
+      "step": "stock.database_save",
+      "status": "COMPLETED",
+      "count": 240,
+      "total_hours": 0.001,
+      "avg_s": 0.013,
+      "max_s": 0.1
+    },
+    {
+      "step": "stock.finalize",
+      "status": "COMPLETED",
+      "count": 2,
+      "total_hours": 0.001,
+      "avg_s": 1.21,
+      "max_s": 1.3
+    },
+    {
+      "step": "post_writer_finalize",
+      "status": "FAILED",
+      "count": 209,
+      "total_hours": 0.001,
+      "avg_s": 0.011,
+      "max_s": 0.3
+    },
+    {
+      "step": "begin_vidrush",
+      "status": "COMPLETED",
+      "count": 261,
+      "total_hours": 0.0,
+      "avg_s": 0.007,
+      "max_s": 0.5
+    },
+    {
+      "step": "document.prepare",
+      "status": "COMPLETED",
+      "count": 63,
+      "total_hours": 0.0,
+      "avg_s": 0.005,
+      "max_s": 0.0
+    },
+    {
+      "step": "clip.prepare",
+      "status": "COMPLETED",
+      "count": 4,
+      "total_hours": 0.0,
+      "avg_s": 0.073,
+      "max_s": 0.2
+    },
+    {
+      "step": "emit_scene_commits",
+      "status": "COMPLETED",
+      "count": 152,
+      "total_hours": 0.0,
+      "avg_s": 0.001,
+      "max_s": 0.0
+    },
+    {
+      "step": "normalize",
+      "status": "COMPLETED",
+      "count": 255,
+      "total_hours": 0.0,
+      "avg_s": 0.001,
+      "max_s": 0.0
+    },
+    {
+      "step": "clip.prepare",
+      "status": "FAILED",
+      "count": 1,
+      "total_hours": 0.0,
+      "avg_s": 0.116,
+      "max_s": 0.1
+    },
+    {
+      "step": "persistence.sqlite",
+      "status": "COMPLETED",
+      "count": 16,
+      "total_hours": 0.0,
+      "avg_s": 0.003,
+      "max_s": 0.0
+    },
+    {
+      "step": "NORMALIZE",
+      "status": "SKIPPED",
+      "count": 231,
+      "total_hours": 0.0,
+      "avg_s": 0.0,
+      "max_s": 0.0
+    },
+    {
+      "step": "AUDIO_COMPILE",
+      "status": "SKIPPED",
+      "count": 26,
+      "total_hours": 0.0,
+      "avg_s": 0.002,
+      "max_s": 0.0
+    },
+    {
+      "step": "TRANSLATION",
+      "status": "SKIPPED",
+      "count": 64,
+      "total_hours": 0.0,
+      "avg_s": 0.001,
+      "max_s": 0.0
+    },
+    {
+      "step": "stock.publish",
+      "status": "COMPLETED",
+      "count": 2,
+      "total_hours": 0.0,
+      "avg_s": 0.005,
+      "max_s": 0.0
+    },
+    {
+      "step": "DOCUMENT",
+      "status": "SKIPPED",
+      "count": 68,
+      "total_hours": 0.0,
+      "avg_s": 0.0,
+      "max_s": 0.0
+    },
+    {
+      "step": "PERSISTENCE",
+      "status": "SKIPPED",
+      "count": 30,
+      "total_hours": 0.0,
+      "avg_s": 0.0,
+      "max_s": 0.0
+    },
+    {
+      "step": "publish_pool_drain",
+      "status": "COMPLETED",
+      "count": 63,
+      "total_hours": 0.0,
+      "avg_s": 0.0,
+      "max_s": 0.0
+    },
+    {
+      "step": "VOICEOVER",
+      "status": "SKIPPED",
+      "count": 37,
+      "total_hours": 0.0,
+      "avg_s": 0.0,
+      "max_s": 0.0
+    },
+    {
+      "step": "AUDIO_COMPILE",
+      "status": "RUNNING",
+      "count": 1,
+      "total_hours": 0.0,
+      "avg_s": 0.0,
+      "max_s": 0.0
+    },
+    {
+      "step": "CORE_READY",
+      "status": "COMPLETED",
+      "count": 50,
+      "total_hours": 0.0,
+      "avg_s": 0.0,
+      "max_s": 0.0
+    },
+    {
+      "step": "MEDIA_PREFLIGHT",
+      "status": "COMPLETED",
+      "count": 261,
+      "total_hours": 0.0,
+      "avg_s": 0.0,
+      "max_s": 0.0
+    },
+    {
+      "step": "SCRIPT",
+      "status": "RUNNING",
+      "count": 6,
+      "total_hours": 0.0,
+      "avg_s": 0.0,
+      "max_s": 0.0
+    },
+    {
+      "step": "stock.index",
+      "status": "COMPLETED",
+      "count": 240,
+      "total_hours": 0.0,
+      "avg_s": 0.0,
+      "max_s": 0.0
+    },
+    {
+      "step": "stock.search",
+      "status": "COMPLETED",
+      "count": 3,
+      "total_hours": 0.0,
+      "avg_s": 0.0,
+      "max_s": 0.0
+    },
+    {
+      "step": "worker.execution",
+      "status": "RUNNING",
+      "count": 11,
+      "total_hours": 0.0,
+      "avg_s": 0.0,
+      "max_s": 0.0
+    }
+  ],
+  "metrics": [
+    {
+      "metric": "artifact_hash.bytes",
+      "unit": "bytes",
+      "count": 1076,
+      "total_hours": null,
+      "avg": 3065277.9,
+      "max": 26094596.0
+    },
+    {
+      "metric": "artifact_prepare.bytes",
+      "unit": "bytes",
+      "count": 1076,
+      "total_hours": null,
+      "avg": 3065277.9,
+      "max": 26094596.0
+    },
+    {
+      "metric": "drive_publish.bytes",
+      "unit": "bytes",
+      "count": 1072,
+      "total_hours": null,
+      "avg": 3075065.6,
+      "max": 26094596.0
+    },
+    {
+      "metric": "upload.bytes",
+      "unit": "bytes",
+      "count": 370,
+      "total_hours": null,
+      "avg": 1938452.3,
+      "max": 8970235.0
+    },
+    {
+      "metric": "queue_wait_ms",
+      "unit": "ms",
+      "count": 984,
+      "total_hours": 122.89,
+      "avg": 449612.8,
+      "max": 12926000.0
+    },
+    {
+      "metric": "wall_time_ms",
+      "unit": "ms",
+      "count": 984,
+      "total_hours": 36.69,
+      "avg": 134225.1,
+      "max": 1511023.0
+    },
+    {
+      "metric": "audio_duration_ms",
+      "unit": "ms",
+      "count": 134,
+      "total_hours": 17.37,
+      "avg": 466583.3,
+      "max": 1073832.0
+    },
+    {
+      "metric": "duration_ms",
+      "unit": "ms",
+      "count": 10935,
+      "total_hours": 16.6,
+      "avg": 5465.4,
+      "max": 762024.0
+    },
+    {
+      "metric": "generate.duration_ms",
+      "unit": "ms",
+      "count": 1215,
+      "total_hours": 4.45,
+      "avg": 13180.3,
+      "max": 80052.0
+    },
+    {
+      "metric": "synthesize.duration_ms",
+      "unit": "ms",
+      "count": 1088,
+      "total_hours": 4.04,
+      "avg": 13368.3,
+      "max": 153335.0
+    },
+    {
+      "metric": "render.duration_ms",
+      "unit": "ms",
+      "count": 1866,
+      "total_hours": 2.16,
+      "avg": 4160.2,
+      "max": 242142.0
+    },
+    {
+      "metric": "drive_publish.duration_ms",
+      "unit": "ms",
+      "count": 1072,
+      "total_hours": 1.65,
+      "avg": 5546.0,
+      "max": 372216.0
+    },
+    {
+      "metric": "audio_render.duration_ms",
+      "unit": "ms",
+      "count": 160,
+      "total_hours": 1.49,
+      "avg": 33628.8,
+      "max": 81714.0
+    },
+    {
+      "metric": "aac_encode.duration_ms",
+      "unit": "ms",
+      "count": 160,
+      "total_hours": 1.35,
+      "avg": 30402.6,
+      "max": 74197.0
+    },
+    {
+      "metric": "resolve.duration_ms",
+      "unit": "ms",
+      "count": 873,
+      "total_hours": 1.21,
+      "avg": 5009.1,
+      "max": 113018.0
+    },
+    {
+      "metric": "finalize.duration_ms",
+      "unit": "ms",
+      "count": 360,
+      "total_hours": 0.68,
+      "avg": 6841.7,
+      "max": 50646.0
+    },
+    {
+      "metric": "upload.duration_ms",
+      "unit": "ms",
+      "count": 370,
+      "total_hours": 0.64,
+      "avg": 6238.6,
+      "max": 302623.0
+    },
+    {
+      "metric": "warm.duration_ms",
+      "unit": "ms",
+      "count": 47,
+      "total_hours": 0.51,
+      "avg": 38786.9,
+      "max": 600005.0
+    },
+    {
+      "metric": "translate.duration_ms",
+      "unit": "ms",
+      "count": 91,
+      "total_hours": 0.26,
+      "avg": 10170.2,
+      "max": 31793.0
+    },
+    {
+      "metric": "publish.duration_ms",
+      "unit": "ms",
+      "count": 64,
+      "total_hours": 0.2,
+      "avg": 11504.5,
+      "max": 25674.0
+    },
+    {
+      "metric": "acquire.duration_ms",
+      "unit": "ms",
+      "count": 2208,
+      "total_hours": 0.19,
+      "avg": 315.1,
+      "max": 15001.0
+    },
+    {
+      "metric": "verify.duration_ms",
+      "unit": "ms",
+      "count": 1417,
+      "total_hours": 0.04,
+      "avg": 105.5,
+      "max": 6240.0
+    },
+    {
+      "metric": "clip_audio_prepare.duration_ms",
+      "unit": "ms",
+      "count": 27,
+      "total_hours": 0.03,
+      "avg": 3389.7,
+      "max": 83622.0
+    },
+    {
+      "metric": "probe.duration_ms",
+      "unit": "ms",
+      "count": 611,
+      "total_hours": 0.01,
+      "avg": 73.4,
+      "max": 739.0
+    },
+    {
+      "metric": "objectstore_upload.duration_ms",
+      "unit": "ms",
+      "count": 1866,
+      "total_hours": 0.01,
+      "avg": 22.7,
+      "max": 501.0
+    },
+    {
+      "metric": "artifact_prepare.duration_ms",
+      "unit": "ms",
+      "count": 1076,
+      "total_hours": 0.01,
+      "avg": 36.7,
+      "max": 357.0
+    },
+    {
+      "metric": "artifact_hash.duration_ms",
+      "unit": "ms",
+      "count": 1076,
+      "total_hours": 0.01,
+      "avg": 35.3,
+      "max": 357.0
+    },
+    {
+      "metric": "render_clip.duration_ms",
+      "unit": "ms",
+      "count": 4,
+      "total_hours": 0.01,
+      "avg": 4989.8,
+      "max": 7089.0
+    },
+    {
+      "metric": "hash.duration_ms",
+      "unit": "ms",
+      "count": 623,
+      "total_hours": 0.0,
+      "avg": 24.9,
+      "max": 615.0
+    },
+    {
+      "metric": "completion_tx.duration_ms",
+      "unit": "ms",
+      "count": 129,
+      "total_hours": 0.0,
+      "avg": 83.5,
+      "max": 1060.0
+    },
+    {
+      "metric": "extract.duration_ms",
+      "unit": "ms",
+      "count": 988,
+      "total_hours": 0.0,
+      "avg": 7.8,
+      "max": 161.0
+    },
+    {
+      "metric": "encode.duration_ms",
+      "unit": "ms",
+      "count": 451,
+      "total_hours": 0.0,
+      "avg": 11.1,
+      "max": 67.0
+    },
+    {
+      "metric": "audio_plan_compile.duration_ms",
+      "unit": "ms",
+      "count": 18,
+      "total_hours": 0.0,
+      "avg": 83.6,
+      "max": 305.0
+    },
+    {
+      "metric": "audio_asset_resolve.duration_ms",
+      "unit": "ms",
+      "count": 13,
+      "total_hours": 0.0,
+      "avg": 114.6,
+      "max": 304.0
+    },
+    {
+      "metric": "generate.items",
+      "unit": "count",
+      "count": 1215,
+      "total_hours": null,
+      "avg": 1.0,
+      "max": 1.0
+    },
+    {
+      "metric": "artifact_hash.items",
+      "unit": "count",
+      "count": 1076,
+      "total_hours": null,
+      "avg": 1.0,
+      "max": 1.0
+    },
+    {
+      "metric": "artifact_prepare.items",
+      "unit": "count",
+      "count": 1076,
+      "total_hours": null,
+      "avg": 1.0,
+      "max": 1.0
+    },
+    {
+      "metric": "drive_publish.items",
+      "unit": "count",
+      "count": 1072,
+      "total_hours": null,
+      "avg": 1.0,
+      "max": 1.0
+    },
+    {
+      "metric": "plan.duration_ms",
+      "unit": "ms",
+      "count": 679,
+      "total_hours": 0.0,
+      "avg": 1.5,
+      "max": 19.0
+    },
+    {
+      "metric": "tts_publish_drain.items",
+      "unit": "count",
+      "count": 185,
+      "total_hours": null,
+      "avg": 4.0,
+      "max": 10.0
+    },
+    {
+      "metric": "materialize.duration_ms",
+      "unit": "ms",
+      "count": 451,
+      "total_hours": 0.0,
+      "avg": 1.1,
+      "max": 21.0
+    },
+    {
+      "metric": "completion_tx.items",
+      "unit": "count",
+      "count": 129,
+      "total_hours": null,
+      "avg": 2.6,
+      "max": 3.0
+    },
+    {
+      "metric": "upload.items",
+      "unit": "count",
+      "count": 370,
+      "total_hours": null,
+      "avg": 0.6,
+      "max": 1.0
+    },
+    {
+      "metric": "clip_identity_mismatches",
+      "unit": "count",
+      "count": 7,
+      "total_hours": null,
+      "avg": 14.6,
+      "max": 23.0
+    },
+    {
+      "metric": "warm.items",
+      "unit": "count",
+      "count": 47,
+      "total_hours": null,
+      "avg": 1.0,
+      "max": 1.0
+    },
+    {
+      "metric": "timeline_compile.duration_ms",
+      "unit": "ms",
+      "count": 1,
+      "total_hours": 0.0,
+      "avg": 1.0,
+      "max": 1.0
+    },
+    {
+      "metric": "aac_encode.bytes",
+      "unit": "bytes",
+      "count": 160,
+      "total_hours": null,
+      "avg": 0.0,
+      "max": 0.0
+    },
+    {
+      "metric": "aac_encode.items",
+      "unit": "count",
+      "count": 160,
+      "total_hours": null,
+      "avg": 0.0,
+      "max": 0.0
+    },
+    {
+      "metric": "acquire.bytes",
+      "unit": "bytes",
+      "count": 2208,
+      "total_hours": null,
+      "avg": 0.0,
+      "max": 0.0
+    },
+    {
+      "metric": "acquire.items",
+      "unit": "count",
+      "count": 2208,
+      "total_hours": null,
+      "avg": 0.0,
+      "max": 0.0
+    },
+    {
+      "metric": "audio_asset_resolve.bytes",
+      "unit": "bytes",
+      "count": 13,
+      "total_hours": null,
+      "avg": 0.0,
+      "max": 0.0
+    },
+    {
+      "metric": "audio_asset_resolve.items",
+      "unit": "count",
+      "count": 13,
+      "total_hours": null,
+      "avg": 0.0,
+      "max": 0.0
+    },
+    {
+      "metric": "audio_plan_compile.bytes",
+      "unit": "bytes",
+      "count": 18,
+      "total_hours": null,
+      "avg": 0.0,
+      "max": 0.0
+    },
+    {
+      "metric": "audio_plan_compile.items",
+      "unit": "count",
+      "count": 18,
+      "total_hours": null,
+      "avg": 0.0,
+      "max": 0.0
+    },
+    {
+      "metric": "audio_render.bytes",
+      "unit": "bytes",
+      "count": 160,
+      "total_hours": null,
+      "avg": 0.0,
+      "max": 0.0
+    },
+    {
+      "metric": "audio_render.items",
+      "unit": "count",
+      "count": 160,
+      "total_hours": null,
+      "avg": 0.0,
+      "max": 0.0
+    },
+    {
+      "metric": "cache_hits",
+      "unit": "count",
+      "count": 984,
+      "total_hours": null,
+      "avg": 0.0,
+      "max": 0.0
+    },
+    {
+      "metric": "cache_misses",
+      "unit": "count",
+      "count": 984,
+      "total_hours": null,
+      "avg": 0.0,
+      "max": 0.0
+    },
+    {
+      "metric": "clip_audio_prepare.bytes",
+      "unit": "bytes",
+      "count": 27,
+      "total_hours": null,
+      "avg": 0.0,
+      "max": 0.0
+    },
+    {
+      "metric": "clip_audio_prepare.items",
+      "unit": "count",
+      "count": 27,
+      "total_hours": null,
+      "avg": 0.0,
+      "max": 0.0
+    },
+    {
+      "metric": "completion_tx.bytes",
+      "unit": "bytes",
+      "count": 129,
+      "total_hours": null,
+      "avg": 0.0,
+      "max": 0.0
+    },
+    {
+      "metric": "encode.bytes",
+      "unit": "bytes",
+      "count": 451,
+      "total_hours": null,
+      "avg": 0.0,
+      "max": 0.0
+    },
+    {
+      "metric": "encode.items",
+      "unit": "count",
+      "count": 451,
+      "total_hours": null,
+      "avg": 0.0,
+      "max": 0.0
+    },
+    {
+      "metric": "extract.bytes",
+      "unit": "bytes",
+      "count": 988,
+      "total_hours": null,
+      "avg": 0.0,
+      "max": 0.0
+    },
+    {
+      "metric": "extract.items",
+      "unit": "count",
+      "count": 988,
+      "total_hours": null,
+      "avg": 0.0,
+      "max": 0.0
+    },
+    {
+      "metric": "finalize.bytes",
+      "unit": "bytes",
+      "count": 360,
+      "total_hours": null,
+      "avg": 0.0,
+      "max": 0.0
+    },
+    {
+      "metric": "finalize.items",
+      "unit": "count",
+      "count": 360,
+      "total_hours": null,
+      "avg": 0.0,
+      "max": 0.0
+    },
+    {
+      "metric": "generate.bytes",
+      "unit": "bytes",
+      "count": 1215,
+      "total_hours": null,
+      "avg": 0.0,
+      "max": 0.0
+    },
+    {
+      "metric": "hash.bytes",
+      "unit": "bytes",
+      "count": 623,
+      "total_hours": null,
+      "avg": 0.0,
+      "max": 0.0
+    },
+    {
+      "metric": "hash.items",
+      "unit": "count",
+      "count": 623,
+      "total_hours": null,
+      "avg": 0.0,
+      "max": 0.0
+    },
+    {
+      "metric": "materialize.bytes",
+      "unit": "bytes",
+      "count": 451,
+      "total_hours": null,
+      "avg": 0.0,
+      "max": 0.0
+    },
+    {
+      "metric": "materialize.items",
+      "unit": "count",
+      "count": 451,
+      "total_hours": null,
+      "avg": 0.0,
+      "max": 0.0
+    },
+    {
+      "metric": "objectstore_upload.bytes",
+      "unit": "bytes",
+      "count": 1866,
+      "total_hours": null,
+      "avg": 0.0,
+      "max": 0.0
+    },
+    {
+      "metric": "objectstore_upload.items",
+      "unit": "count",
+      "count": 1866,
+      "total_hours": null,
+      "avg": 0.0,
+      "max": 0.0
+    },
+    {
+      "metric": "plan.bytes",
+      "unit": "bytes",
+      "count": 679,
+      "total_hours": null,
+      "avg": 0.0,
+      "max": 0.0
+    },
+    {
+      "metric": "plan.items",
+      "unit": "count",
+      "count": 679,
+      "total_hours": null,
+      "avg": 0.0,
+      "max": 0.0
+    },
+    {
+      "metric": "probe.bytes",
+      "unit": "bytes",
+      "count": 611,
+      "total_hours": null,
+      "avg": 0.0,
+      "max": 0.0
+    },
+    {
+      "metric": "probe.items",
+      "unit": "count",
+      "count": 611,
+      "total_hours": null,
+      "avg": 0.0,
+      "max": 0.0
+    },
+    {
+      "metric": "publish.bytes",
+      "unit": "bytes",
+      "count": 64,
+      "total_hours": null,
+      "avg": 0.0,
+      "max": 0.0
+    },
+    {
+      "metric": "publish.items",
+      "unit": "count",
+      "count": 64,
+      "total_hours": null,
+      "avg": 0.0,
+      "max": 0.0
+    },
+    {
+      "metric": "render.bytes",
+      "unit": "bytes",
+      "count": 1866,
+      "total_hours": null,
+      "avg": 0.0,
+      "max": 0.0
+    },
+    {
+      "metric": "render.items",
+      "unit": "count",
+      "count": 1866,
+      "total_hours": null,
+      "avg": 0.0,
+      "max": 0.0
+    },
+    {
+      "metric": "render_clip.bytes",
+      "unit": "bytes",
+      "count": 4,
+      "total_hours": null,
+      "avg": 0.0,
+      "max": 0.0
+    },
+    {
+      "metric": "render_clip.items",
+      "unit": "count",
+      "count": 4,
+      "total_hours": null,
+      "avg": 0.0,
+      "max": 0.0
+    },
+    {
+      "metric": "resolve.bytes",
+      "unit": "bytes",
+      "count": 873,
+      "total_hours": null,
+      "avg": 0.0,
+      "max": 0.0
+    },
+    {
+      "metric": "resolve.items",
+      "unit": "count",
+      "count": 873,
+      "total_hours": null,
+      "avg": 0.0,
+      "max": 0.0
+    },
+    {
+      "metric": "synthesize.bytes",
+      "unit": "bytes",
+      "count": 1088,
+      "total_hours": null,
+      "avg": 0.0,
+      "max": 0.0
+    },
+    {
+      "metric": "synthesize.items",
+      "unit": "count",
+      "count": 1088,
+      "total_hours": null,
+      "avg": 0.0,
+      "max": 0.0
+    },
+    {
+      "metric": "timeline_compile.bytes",
+      "unit": "bytes",
+      "count": 1,
+      "total_hours": null,
+      "avg": 0.0,
+      "max": 0.0
+    },
+    {
+      "metric": "timeline_compile.items",
+      "unit": "count",
+      "count": 1,
+      "total_hours": null,
+      "avg": 0.0,
+      "max": 0.0
+    },
+    {
+      "metric": "translate.bytes",
+      "unit": "bytes",
+      "count": 91,
+      "total_hours": null,
+      "avg": 0.0,
+      "max": 0.0
+    },
+    {
+      "metric": "translate.items",
+      "unit": "count",
+      "count": 91,
+      "total_hours": null,
+      "avg": 0.0,
+      "max": 0.0
+    },
+    {
+      "metric": "tts_publish_drain.bytes",
+      "unit": "bytes",
+      "count": 185,
+      "total_hours": null,
+      "avg": 0.0,
+      "max": 0.0
+    },
+    {
+      "metric": "tts_publish_drain.duration_ms",
+      "unit": "ms",
+      "count": 185,
+      "total_hours": 0.0,
+      "avg": 0.0,
+      "max": 0.0
+    },
+    {
+      "metric": "verify.bytes",
+      "unit": "bytes",
+      "count": 1417,
+      "total_hours": null,
+      "avg": 0.0,
+      "max": 0.0
+    },
+    {
+      "metric": "verify.items",
+      "unit": "count",
+      "count": 1417,
+      "total_hours": null,
+      "avg": 0.0,
+      "max": 0.0
+    },
+    {
+      "metric": "warm.bytes",
+      "unit": "bytes",
+      "count": 47,
+      "total_hours": null,
+      "avg": 0.0,
+      "max": 0.0
+    }
+  ],
+  "failures": [
+    {
+      "job_type": "script.generate",
+      "jobs": 94,
+      "wasted_hours": 2.59
+    },
+    {
+      "job_type": "youtube_clip.extract",
+      "jobs": 24,
+      "wasted_hours": 2.37
+    },
+    {
+      "job_type": "video.create",
+      "jobs": 5,
+      "wasted_hours": 0.1
+    },
+    {
+      "job_type": "media.stock",
+      "jobs": 1,
+      "wasted_hours": 0.05
+    },
+    {
+      "job_type": "media.clip",
+      "jobs": 2,
+      "wasted_hours": 0.03
+    },
+    {
+      "job_type": "asset.text.materialize",
+      "jobs": 3,
+      "wasted_hours": 0.01
+    },
+    {
+      "job_type": "clip.render",
+      "jobs": 5,
+      "wasted_hours": 0.01
+    }
+  ],
+  "durable_registry": {
+    "runs": 4373,
+    "wall_hours": 80.5,
+    "window": {
+      "first": "2026-09-01T18:50:31.848585063Z",
+      "last": "2026-09-28T15:23:32.722493545Z"
+    },
+    "waits": {
+      "queue_ms": {
+        "hours": 107.2,
+        "runs_with_value": 880
+      },
+      "blocked_ms": {
+        "hours": 7.0,
+        "runs_with_value": 419
+      },
+      "completion_ms": {
+        "hours": 9.8,
+        "runs_with_value": 387
+      },
+      "outbox_delivery_ms": {
+        "hours": 0.0,
+        "runs_with_value": 0
+      }
+    },
+    "steps": [
+      {
+        "step": "edge_tts",
+        "status": "SUCCEEDED",
+        "count": 694,
+        "total_hours": 16.01,
+        "avg_s": 83.04
+      },
+      {
+        "step": "script_gemma",
+        "status": "SUCCEEDED",
+        "count": 1001,
+        "total_hours": 8.21,
+        "avg_s": 29.54
+      },
+      {
+        "step": "rust_encode",
+        "status": "SUCCEEDED",
+        "count": 456,
+        "total_hours": 1.71,
+        "avg_s": 13.51
+      },
+      {
+        "step": "google_doc",
+        "status": "SUCCEEDED",
+        "count": 290,
+        "total_hours": 0.77,
+        "avg_s": 9.57
+      },
+      {
+        "step": "upload",
+        "status": "SUCCEEDED",
+        "count": 113,
+        "total_hours": 0.24,
+        "avg_s": 7.68
+      },
+      {
+        "step": "probe",
+        "status": "SUCCEEDED",
+        "count": 601,
+        "total_hours": 0.12,
+        "avg_s": 0.7
+      },
+      {
+        "step": "audio_prepare",
+        "status": "SUCCEEDED",
+        "count": 81,
+        "total_hours": 0.03,
+        "avg_s": 1.22
+      },
+      {
+        "step": "hash",
+        "status": "SUCCEEDED",
+        "count": 470,
+        "total_hours": 0.01,
+        "avg_s": 0.04
+      },
+      {
+        "step": "audio_plan_compile",
+        "status": "SUCCEEDED",
+        "count": 75,
+        "total_hours": 0.0,
+        "avg_s": 0.13
+      }
+    ],
+    "by_status": {
+      "FAILED": {
+        "runs": 961,
+        "wall_hours": 24.9
+      },
+      "SUCCEEDED": {
+        "runs": 3412,
+        "wall_hours": 55.5
+      }
+    }
+  },
+  "run_observability": {
+    "runs": 5543,
+    "totals": {
+      "queue_wait_ms_hours": 161.0,
+      "active_ms_hours": 0.0,
+      "blocked_ms_hours": 8.8,
+      "wall_time_ms_hours": 94.3,
+      "accumulated_operation_ms_hours": 76.9
+    },
+    "by_job_type": [
+      {
+        "job_type": "script.generate",
+        "runs": 2056,
+        "degraded_runs": 62,
+        "queue_wait_ms_hours": 62.1,
+        "active_ms_hours": 0.0,
+        "blocked_ms_hours": 8.8,
+        "wall_time_ms_hours": 39.2,
+        "accumulated_operation_ms_hours": 62.4,
+        "wait_amplification": 1.58
+      },
+      {
+        "job_type": "asset.text.materialize",
+        "runs": 212,
+        "degraded_runs": 8,
+        "queue_wait_ms_hours": 51.7,
+        "active_ms_hours": 0.0,
+        "blocked_ms_hours": 0.0,
+        "wall_time_ms_hours": 4.8,
+        "accumulated_operation_ms_hours": 0.0,
+        "wait_amplification": 10.68
+      },
+      {
+        "job_type": "youtube_clip.extract",
+        "runs": 303,
+        "degraded_runs": 53,
+        "queue_wait_ms_hours": 36.6,
+        "active_ms_hours": 0.0,
+        "blocked_ms_hours": 0.0,
+        "wall_time_ms_hours": 28.6,
+        "accumulated_operation_ms_hours": 0.0,
+        "wait_amplification": 1.28
+      },
+      {
+        "job_type": "media.clip",
+        "runs": 214,
+        "degraded_runs": 0,
+        "queue_wait_ms_hours": 4.7,
+        "active_ms_hours": 0.0,
+        "blocked_ms_hours": 0.0,
+        "wall_time_ms_hours": 2.9,
+        "accumulated_operation_ms_hours": 0.0,
+        "wait_amplification": 1.64
+      },
+      {
+        "job_type": "system.cleanup",
+        "runs": 1437,
+        "degraded_runs": 2,
+        "queue_wait_ms_hours": 2.5,
+        "active_ms_hours": 0.0,
+        "blocked_ms_hours": 0.0,
+        "wall_time_ms_hours": 0.1,
+        "accumulated_operation_ms_hours": 0.0,
+        "wait_amplification": 20.37
+      },
+      {
+        "job_type": "media.stock",
+        "runs": 99,
+        "degraded_runs": 4,
+        "queue_wait_ms_hours": 2.2,
+        "active_ms_hours": 0.0,
+        "blocked_ms_hours": 0.0,
+        "wall_time_ms_hours": 9.7,
+        "accumulated_operation_ms_hours": 6.1,
+        "wait_amplification": 0.22
+      },
+      {
+        "job_type": "clip.render",
+        "runs": 1153,
+        "degraded_runs": 15,
+        "queue_wait_ms_hours": 1.2,
+        "active_ms_hours": 0.0,
+        "blocked_ms_hours": 0.0,
+        "wall_time_ms_hours": 8.5,
+        "accumulated_operation_ms_hours": 8.1,
+        "wait_amplification": 0.14
+      },
+      {
+        "job_type": "script.generate_item",
+        "runs": 63,
+        "degraded_runs": 0,
+        "queue_wait_ms_hours": 0.0,
+        "active_ms_hours": 0.0,
+        "blocked_ms_hours": 0.0,
+        "wall_time_ms_hours": 0.4,
+        "accumulated_operation_ms_hours": 0.3,
+        "wait_amplification": 0.0
+      },
+      {
+        "job_type": "youtube.stock",
+        "runs": 1,
+        "degraded_runs": 0,
+        "queue_wait_ms_hours": 0.0,
+        "active_ms_hours": 0.0,
+        "blocked_ms_hours": 0.0,
+        "wall_time_ms_hours": 0.0,
+        "accumulated_operation_ms_hours": 0.0,
+        "wait_amplification": 0.0
+      },
+      {
+        "job_type": "video.create",
+        "runs": 5,
+        "degraded_runs": 0,
+        "queue_wait_ms_hours": 0.0,
+        "active_ms_hours": 0.0,
+        "blocked_ms_hours": 0.0,
+        "wall_time_ms_hours": 0.1,
+        "accumulated_operation_ms_hours": 0.0,
+        "wait_amplification": 0.0
+      }
+    ],
+    "degraded_runs": 144,
+    "window": {
+      "first": "2026-09-01T17:04:27Z",
+      "last": "2026-09-28T15:23:32Z"
+    }
+  },
+  "stage_observations": [
+    {
+      "stage": "tts",
+      "status": "completed",
+      "count": 5030,
+      "total_hours": 15.84,
+      "avg_s": 11.34,
+      "max_s": 153.0
+    },
+    {
+      "stage": "generate",
+      "status": "completed",
+      "count": 858,
+      "total_hours": 10.42,
+      "avg_s": 43.71,
+      "max_s": 1026.6
+    },
+    {
+      "stage": "scene_analysis",
+      "status": "completed",
+      "count": 617,
+      "total_hours": 6.3,
+      "avg_s": 36.77,
+      "max_s": 577.1
+    },
+    {
+      "stage": "stock.youtube_download",
+      "status": "completed",
+      "count": 572,
+      "total_hours": 5.49,
+      "avg_s": 34.57,
+      "max_s": 595.9
+    },
+    {
+      "stage": "clip.render",
+      "status": "completed",
+      "count": 494,
+      "total_hours": 5.18,
+      "avg_s": 37.76,
+      "max_s": 818.1
+    },
+    {
+      "stage": "stock.stage_sources",
+      "status": "completed",
+      "count": 85,
+      "total_hours": 4.08,
+      "avg_s": 172.6,
+      "max_s": 967.2
+    },
+    {
+      "stage": "audio_compile",
+      "status": "completed",
+      "count": 591,
+      "total_hours": 3.98,
+      "avg_s": 24.25,
+      "max_s": 585.7
+    },
+    {
+      "stage": "generate",
+      "status": "failed",
+      "count": 166,
+      "total_hours": 3.86,
+      "avg_s": 83.71,
+      "max_s": 730.0
+    },
+    {
+      "stage": "voiceover",
+      "status": "completed",
+      "count": 842,
+      "total_hours": 3.45,
+      "avg_s": 14.77,
+      "max_s": 1307.6
+    },
+    {
+      "stage": "overlay_render",
+      "status": "completed",
+      "count": 353,
+      "total_hours": 2.72,
+      "avg_s": 27.75,
+      "max_s": 210.8
+    },
+    {
+      "stage": "stock.extract",
+      "status": "completed",
+      "count": 488,
+      "total_hours": 2.46,
+      "avg_s": 18.16,
+      "max_s": 59.6
+    },
+    {
+      "stage": "publish",
+      "status": "completed",
+      "count": 4973,
+      "total_hours": 2.19,
+      "avg_s": 1.59,
+      "max_s": 135.5
+    },
+    {
+      "stage": "stock.compose",
+      "status": "completed",
+      "count": 61,
+      "total_hours": 2.16,
+      "avg_s": 127.26,
+      "max_s": 571.8
+    },
+    {
+      "stage": "clip.render",
+      "status": "failed",
+      "count": 159,
+      "total_hours": 2.14,
+      "avg_s": 48.39,
+      "max_s": 607.1
+    },
+    {
+      "stage": "prepare_join",
+      "status": "completed",
+      "count": 751,
+      "total_hours": 1.63,
+      "avg_s": 7.82,
+      "max_s": 91.2
+    },
+    {
+      "stage": "audio_compile",
+      "status": "failed",
+      "count": 135,
+      "total_hours": 1.47,
+      "avg_s": 39.12,
+      "max_s": 1821.6
+    },
+    {
+      "stage": "overlay_render",
+      "status": "failed",
+      "count": 69,
+      "total_hours": 1.16,
+      "avg_s": 60.32,
+      "max_s": 2271.0
+    },
+    {
+      "stage": "post_writer_finalize",
+      "status": "completed",
+      "count": 3470,
+      "total_hours": 0.94,
+      "avg_s": 0.98,
+      "max_s": 372.6
+    },
+    {
+      "stage": "document",
+      "status": "completed",
+      "count": 495,
+      "total_hours": 0.82,
+      "avg_s": 5.97,
+      "max_s": 43.4
+    },
+    {
+      "stage": "document.publish",
+      "status": "completed",
+      "count": 329,
+      "total_hours": 0.82,
+      "avg_s": 8.96,
+      "max_s": 43.3
+    },
+    {
+      "stage": "remote_final_job",
+      "status": "completed",
+      "count": 8,
+      "total_hours": 0.73,
+      "avg_s": 327.03,
+      "max_s": 664.9
+    },
+    {
+      "stage": "audio_publish",
+      "status": "completed",
+      "count": 351,
+      "total_hours": 0.65,
+      "avg_s": 6.62,
+      "max_s": 302.7
+    },
+    {
+      "stage": "clip.publish",
+      "status": "completed",
+      "count": 468,
+      "total_hours": 0.55,
+      "avg_s": 4.26,
+      "max_s": 264.1
+    },
+    {
+      "stage": "prepare_join",
+      "status": "failed",
+      "count": 66,
+      "total_hours": 0.54,
+      "avg_s": 29.45,
+      "max_s": 120.0
+    },
+    {
+      "stage": "stock.stage_sources",
+      "status": "failed",
+      "count": 7,
+      "total_hours": 0.5,
+      "avg_s": 258.46,
+      "max_s": 496.9
+    },
+    {
+      "stage": "remote_final_job",
+      "status": "failed",
+      "count": 40,
+      "total_hours": 0.45,
+      "avg_s": 40.49,
+      "max_s": 277.8
+    },
+    {
+      "stage": "scene_analysis",
+      "status": "failed",
+      "count": 14,
+      "total_hours": 0.45,
+      "avg_s": 115.59,
+      "max_s": 376.4
+    },
+    {
+      "stage": "tts",
+      "status": "failed",
+      "count": 81,
+      "total_hours": 0.24,
+      "avg_s": 10.67,
+      "max_s": 124.3
+    },
+    {
+      "stage": "script.engine",
+      "status": "completed",
+      "count": 57,
+      "total_hours": 0.23,
+      "avg_s": 14.76,
+      "max_s": 42.1
+    },
+    {
+      "stage": "translation",
+      "status": "completed",
+      "count": 857,
+      "total_hours": 0.18,
+      "avg_s": 0.77,
+      "max_s": 116.5
+    },
+    {
+      "stage": "clip.prepare",
+      "status": "completed",
+      "count": 711,
+      "total_hours": 0.15,
+      "avg_s": 0.78,
+      "max_s": 47.0
+    },
+    {
+      "stage": "stock.duration_probe",
+      "status": "completed",
+      "count": 14,
+      "total_hours": 0.1,
+      "avg_s": 25.71,
+      "max_s": 93.5
+    },
+    {
+      "stage": "voiceover",
+      "status": "failed",
+      "count": 42,
+      "total_hours": 0.09,
+      "avg_s": 8.1,
+      "max_s": 59.8
+    },
+    {
+      "stage": "audio_publish",
+      "status": "failed",
+      "count": 1,
+      "total_hours": 0.07,
+      "avg_s": 238.44,
+      "max_s": 238.4
+    },
+    {
+      "stage": "script.postprocess",
+      "status": "completed",
+      "count": 27,
+      "total_hours": 0.06,
+      "avg_s": 8.08,
+      "max_s": 16.3
+    },
+    {
+      "stage": "stock.search",
+      "status": "completed",
+      "count": 98,
+      "total_hours": 0.05,
+      "avg_s": 1.92,
+      "max_s": 4.1
+    },
+    {
+      "stage": "clip.publish",
+      "status": "failed",
+      "count": 8,
+      "total_hours": 0.05,
+      "avg_s": 20.32,
+      "max_s": 158.3
+    },
+    {
+      "stage": "script.postprocess",
+      "status": "failed",
+      "count": 30,
+      "total_hours": 0.04,
+      "avg_s": 4.21,
+      "max_s": 21.7
+    },
+    {
+      "stage": "stock.youtube_download",
+      "status": "failed",
+      "count": 26,
+      "total_hours": 0.02,
+      "avg_s": 3.2,
+      "max_s": 23.6
+    },
+    {
+      "stage": "finalize",
+      "status": "completed",
+      "count": 4929,
+      "total_hours": 0.02,
+      "avg_s": 0.02,
+      "max_s": 1.2
+    },
+    {
+      "stage": "checkpoint",
+      "status": "completed",
+      "count": 7801,
+      "total_hours": 0.02,
+      "avg_s": 0.01,
+      "max_s": 1.4
+    },
+    {
+      "stage": "overlay.prepare",
+      "status": "completed",
+      "count": 505,
+      "total_hours": 0.02,
+      "avg_s": 0.14,
+      "max_s": 3.9
+    },
+    {
+      "stage": "clip.destination_resolve",
+      "status": "completed",
+      "count": 259,
+      "total_hours": 0.02,
+      "avg_s": 0.24,
+      "max_s": 3.0
+    },
+    {
+      "stage": "vidrush_materialization",
+      "status": "completed",
+      "count": 57,
+      "total_hours": 0.02,
+      "avg_s": 1.04,
+      "max_s": 6.8
+    },
+    {
+      "stage": "begin_vidrush",
+      "status": "completed",
+      "count": 1047,
+      "total_hours": 0.01,
+      "avg_s": 0.05,
+      "max_s": 35.2
+    },
+    {
+      "stage": "stock.database_save",
+      "status": "completed",
+      "count": 2454,
+      "total_hours": 0.01,
+      "avg_s": 0.02,
+      "max_s": 0.7
+    },
+    {
+      "stage": "document",
+      "status": "failed",
+      "count": 4,
+      "total_hours": 0.01,
+      "avg_s": 8.38,
+      "max_s": 26.8
+    },
+    {
+      "stage": "document.publish",
+      "status": "failed",
+      "count": 3,
+      "total_hours": 0.01,
+      "avg_s": 11.1,
+      "max_s": 26.8
+    },
+    {
+      "stage": "metadata",
+      "status": "completed",
+      "count": 3,
+      "total_hours": 0.01,
+      "avg_s": 10.87,
+      "max_s": 15.7
+    },
+    {
+      "stage": "publish",
+      "status": "failed",
+      "count": 35,
+      "total_hours": 0.01,
+      "avg_s": 0.77,
+      "max_s": 3.1
+    },
+    {
+      "stage": "clip.prepare",
+      "status": "failed",
+      "count": 38,
+      "total_hours": 0.01,
+      "avg_s": 0.64,
+      "max_s": 7.6
+    },
+    {
+      "stage": "audio_post",
+      "status": "completed",
+      "count": 24,
+      "total_hours": 0.01,
+      "avg_s": 1.0,
+      "max_s": 1.3
+    },
+    {
+      "stage": "audio.pipeline",
+      "status": "completed",
+      "count": 12,
+      "total_hours": 0.01,
+      "avg_s": 1.77,
+      "max_s": 2.1
+    },
+    {
+      "stage": "persistence",
+      "status": "completed",
+      "count": 572,
+      "total_hours": 0.01,
+      "avg_s": 0.03,
+      "max_s": 0.9
+    },
+    {
+      "stage": "stock.finalize",
+      "status": "completed",
+      "count": 12,
+      "total_hours": 0.0,
+      "avg_s": 1.31,
+      "max_s": 1.7
+    },
+    {
+      "stage": "internet_images",
+      "status": "completed",
+      "count": 48,
+      "total_hours": 0.0,
+      "avg_s": 0.29,
+      "max_s": 1.0
+    },
+    {
+      "stage": "complete_finalize",
+      "status": "completed",
+      "count": 427,
+      "total_hours": 0.0,
+      "avg_s": 0.03,
+      "max_s": 0.5
+    },
+    {
+      "stage": "audio_finalize",
+      "status": "completed",
+      "count": 353,
+      "total_hours": 0.0,
+      "avg_s": 0.02,
+      "max_s": 0.1
+    },
+    {
+      "stage": "post_writer_finalize",
+      "status": "failed",
+      "count": 945,
+      "total_hours": 0.0,
+      "avg_s": 0.01,
+      "max_s": 0.3
+    },
+    {
+      "stage": "stock.extract",
+      "status": "failed",
+      "count": 4,
+      "total_hours": 0.0,
+      "avg_s": 1.38,
+      "max_s": 1.6
+    },
+    {
+      "stage": "normalize",
+      "status": "completed",
+      "count": 1047,
+      "total_hours": 0.0,
+      "avg_s": 0.0,
+      "max_s": 1.1
+    },
+    {
+      "stage": "finalize",
+      "status": "failed",
+      "count": 42,
+      "total_hours": 0.0,
+      "avg_s": 0.04,
+      "max_s": 0.5
+    },
+    {
+      "stage": "document.prepare",
+      "status": "completed",
+      "count": 302,
+      "total_hours": 0.0,
+      "avg_s": 0.0,
+      "max_s": 0.1
+    },
+    {
+      "stage": "persistence.sqlite",
+      "status": "completed",
+      "count": 104,
+      "total_hours": 0.0,
+      "avg_s": 0.0,
+      "max_s": 0.3
+    },
+    {
+      "stage": "clip.subtitles",
+      "status": "completed",
+      "count": 571,
+      "total_hours": 0.0,
+      "avg_s": 0.0,
+      "max_s": 0.0
+    },
+    {
+      "stage": "script.prepare",
+      "status": "completed",
+      "count": 63,
+      "total_hours": 0.0,
+      "avg_s": 0.0,
+      "max_s": 0.0
+    },
+    {
+      "stage": "emit_scene_commits",
+      "status": "completed",
+      "count": 504,
+      "total_hours": 0.0,
+      "avg_s": 0.0,
+      "max_s": 0.0
+    },
+    {
+      "stage": "stock.publish",
+      "status": "completed",
+      "count": 12,
+      "total_hours": 0.0,
+      "avg_s": 0.0,
+      "max_s": 0.0
+    },
+    {
+      "stage": "script.engine",
+      "status": "failed",
+      "count": 6,
+      "total_hours": 0.0,
+      "avg_s": 0.01,
+      "max_s": 0.0
+    },
+    {
+      "stage": "publish_pool_drain",
+      "status": "completed",
+      "count": 302,
+      "total_hours": 0.0,
+      "avg_s": 0.0,
+      "max_s": 0.0
+    },
+    {
+      "stage": "clip.subtitles",
+      "status": "failed",
+      "count": 18,
+      "total_hours": 0.0,
+      "avg_s": 0.0,
+      "max_s": 0.0
+    },
+    {
+      "stage": "stock.database_save",
+      "status": "failed",
+      "count": 1,
+      "total_hours": 0.0,
+      "avg_s": 0.0,
+      "max_s": 0.0
+    },
+    {
+      "stage": "stock.compose",
+      "status": "failed",
+      "count": 1,
+      "total_hours": 0.0,
+      "avg_s": 0.0,
+      "max_s": 0.0
+    },
+    {
+      "stage": "script.plan",
+      "status": "completed",
+      "count": 63,
+      "total_hours": 0.0,
+      "avg_s": 0.0,
+      "max_s": 0.0
+    },
+    {
+      "stage": "CORE_READY",
+      "status": "completed",
+      "count": 147,
+      "total_hours": 0.0,
+      "avg_s": 0.0,
+      "max_s": 0.0
+    },
+    {
+      "stage": "MEDIA_PREFLIGHT",
+      "status": "completed",
+      "count": 1047,
+      "total_hours": 0.0,
+      "avg_s": 0.0,
+      "max_s": 0.0
+    },
+    {
+      "stage": "asset_location_reconciliation",
+      "status": "completed",
+      "count": 57,
+      "total_hours": 0.0,
+      "avg_s": 0.0,
+      "max_s": 0.0
+    },
+    {
+      "stage": "audio.pipeline",
+      "status": "failed",
+      "count": 6,
+      "total_hours": 0.0,
+      "avg_s": 0.0,
+      "max_s": 0.0
+    },
+    {
+      "stage": "clip.probe",
+      "status": "completed",
+      "count": 306,
+      "total_hours": 0.0,
+      "avg_s": 0.0,
+      "max_s": 0.0
+    },
+    {
+      "stage": "clip_bindings",
+      "status": "completed",
+      "count": 57,
+      "total_hours": 0.0,
+      "avg_s": 0.0,
+      "max_s": 0.0
+    },
+    {
+      "stage": "clip_search",
+      "status": "completed",
+      "count": 57,
+      "total_hours": 0.0,
+      "avg_s": 0.0,
+      "max_s": 0.0
+    },
+    {
+      "stage": "script.normalize",
+      "status": "completed",
+      "count": 63,
+      "total_hours": 0.0,
+      "avg_s": 0.0,
+      "max_s": 0.0
+    },
+    {
+      "stage": "script.validate",
+      "status": "completed",
+      "count": 63,
+      "total_hours": 0.0,
+      "avg_s": 0.0,
+      "max_s": 0.0
+    },
+    {
+      "stage": "source.resolve",
+      "status": "completed",
+      "count": 63,
+      "total_hours": 0.0,
+      "avg_s": 0.0,
+      "max_s": 0.0
+    },
+    {
+      "stage": "stock.index",
+      "status": "completed",
+      "count": 2454,
+      "total_hours": 0.0,
+      "avg_s": 0.0,
+      "max_s": 0.0
+    },
+    {
+      "stage": "stock.index",
+      "status": "failed",
+      "count": 1,
+      "total_hours": 0.0,
+      "avg_s": 0.0,
+      "max_s": 0.0
+    },
+    {
+      "stage": "visual_planning",
+      "status": "completed",
+      "count": 48,
+      "total_hours": 0.0,
+      "avg_s": 0.0,
+      "max_s": 0.0
+    },
+    {
+      "stage": "visual_slots",
+      "status": "completed",
+      "count": 51,
+      "total_hours": 0.0,
+      "avg_s": 0.0,
+      "max_s": 0.0
+    }
+  ],
+  "operation_observations": [
+    {
+      "stage": "voiceover",
+      "component": "tts",
+      "operation": "synthesize",
+      "status": "completed",
+      "count": 4925,
+      "total_hours": 17.83,
+      "queue_hours": 0.0,
+      "avg_s": 13.035,
+      "max_s": 153.3,
+      "cache_hits": 0
+    },
+    {
+      "stage": "generate",
+      "component": "ollama",
+      "operation": "generate",
+      "status": "completed",
+      "count": 3232,
+      "total_hours": 9.37,
+      "queue_hours": 2.69,
+      "avg_s": 10.432,
+      "max_s": 80.1,
+      "cache_hits": 0
+    },
+    {
+      "stage": "translation",
+      "component": "translator",
+      "operation": "translate",
+      "status": "completed",
+      "count": 4079,
+      "total_hours": 7.87,
+      "queue_hours": 0.0,
+      "avg_s": 6.948,
+      "max_s": 155.2,
+      "cache_hits": 0
+    },
+    {
+      "stage": "clip.render",
+      "component": "chronon",
+      "operation": "render_clip",
+      "status": "completed",
+      "count": 494,
+      "total_hours": 5.18,
+      "queue_hours": 0.0,
+      "avg_s": 37.756,
+      "max_s": 818.1,
+      "cache_hits": 0
+    },
+    {
+      "stage": "scene_analysis",
+      "component": "nlp",
+      "operation": "extract",
+      "status": "completed",
+      "count": 4785,
+      "total_hours": 4.91,
+      "queue_hours": 0.0,
+      "avg_s": 3.696,
+      "max_s": 339.4,
+      "cache_hits": 0
+    },
+    {
+      "stage": "publish",
+      "component": "finalize",
+      "operation": "drive_publish",
+      "status": "completed",
+      "count": 4127,
+      "total_hours": 4.69,
+      "queue_hours": 0.0,
+      "avg_s": 4.092,
+      "max_s": 302.4,
+      "cache_hits": 0
+    },
+    {
+      "stage": "overlay_render",
+      "component": "renderinggen",
+      "operation": "render",
+      "status": "completed",
+      "count": 3404,
+      "total_hours": 3.41,
+      "queue_hours": 0.0,
+      "avg_s": 3.603,
+      "max_s": 242.1,
+      "cache_hits": 0
+    },
+    {
+      "stage": "publish",
+      "component": "drive",
+      "operation": "upload",
+      "status": "completed",
+      "count": 2483,
+      "total_hours": 2.93,
+      "queue_hours": 0.0,
+      "avg_s": 4.247,
+      "max_s": 251.7,
+      "cache_hits": 0
+    },
+    {
+      "stage": "audio_compile",
+      "component": "rust",
+      "operation": "audio_render",
+      "status": "completed",
+      "count": 514,
+      "total_hours": 2.51,
+      "queue_hours": 0.0,
+      "avg_s": 17.552,
+      "max_s": 81.7,
+      "cache_hits": 0
+    },
+    {
+      "stage": "persist",
+      "component": "vidrush",
+      "operation": "finalize",
+      "status": "completed",
+      "count": 1274,
+      "total_hours": 2.33,
+      "queue_hours": 0.0,
+      "avg_s": 6.597,
+      "max_s": 50.6,
+      "cache_hits": 0
+    },
+    {
+      "stage": "audio_compile",
+      "component": "audio",
+      "operation": "aac_encode",
+      "status": "completed",
+      "count": 514,
+      "total_hours": 2.21,
+      "queue_hours": 0.0,
+      "avg_s": 15.51,
+      "max_s": 74.2,
+      "cache_hits": 0
+    },
+    {
+      "stage": "clip.render",
+      "component": "chronon",
+      "operation": "render_clip",
+      "status": "failed",
+      "count": 147,
+      "total_hours": 1.98,
+      "queue_hours": 0.0,
+      "avg_s": 48.542,
+      "max_s": 607.1,
+      "cache_hits": 0
+    },
+    {
+      "stage": "scene_analysis",
+      "component": "artlist",
+      "operation": "resolve",
+      "status": "completed",
+      "count": 2183,
+      "total_hours": 1.86,
+      "queue_hours": 0.0,
+      "avg_s": 3.065,
+      "max_s": 113.0,
+      "cache_hits": 0
+    },
+    {
+      "stage": "post_writer_finalize",
+      "component": "finalize",
+      "operation": "drive_publish",
+      "status": "completed",
+      "count": 1121,
+      "total_hours": 1.7,
+      "queue_hours": 0.0,
+      "avg_s": 5.459,
+      "max_s": 372.2,
+      "cache_hits": 0
+    },
+    {
+      "stage": "process",
+      "component": "renderinggen",
+      "operation": "render",
+      "status": "completed",
+      "count": 48,
+      "total_hours": 1.29,
+      "queue_hours": 0.0,
+      "avg_s": 96.672,
+      "max_s": 574.1,
+      "cache_hits": 0
+    },
+    {
+      "stage": "document.publish",
+      "component": "google_docs",
+      "operation": "publish",
+      "status": "completed",
+      "count": 520,
+      "total_hours": 1.11,
+      "queue_hours": 0.0,
+      "avg_s": 7.686,
+      "max_s": 42.7,
+      "cache_hits": 0
+    },
+    {
+      "stage": "generate",
+      "component": "ollama",
+      "operation": "warm",
+      "status": "completed",
+      "count": 129,
+      "total_hours": 0.98,
+      "queue_hours": 0.0,
+      "avg_s": 27.258,
+      "max_s": 84.4,
+      "cache_hits": 0
+    },
+    {
+      "stage": "audio_publish",
+      "component": "drive",
+      "operation": "upload",
+      "status": "completed",
+      "count": 230,
+      "total_hours": 0.64,
+      "queue_hours": 0.0,
+      "avg_s": 10.064,
+      "max_s": 302.6,
+      "cache_hits": 0
+    },
+    {
+      "stage": "translation",
+      "component": "translator",
+      "operation": "translate",
+      "status": "failed",
+      "count": 39,
+      "total_hours": 0.5,
+      "queue_hours": 0.0,
+      "avg_s": 46.389,
+      "max_s": 600.0,
+      "cache_hits": 0
+    },
+    {
+      "stage": "voiceover",
+      "component": "tts",
+      "operation": "synthesize",
+      "status": "failed",
+      "count": 155,
+      "total_hours": 0.45,
+      "queue_hours": 0.0,
+      "avg_s": 10.532,
+      "max_s": 124.3,
+      "cache_hits": 0
+    },
+    {
+      "stage": "generate",
+      "component": "ollama",
+      "operation": "warm",
+      "status": "failed",
+      "count": 13,
+      "total_hours": 0.42,
+      "queue_hours": 0.0,
+      "avg_s": 115.405,
+      "max_s": 600.0,
+      "cache_hits": 0
+    },
+    {
+      "stage": "generate",
+      "component": "ollama",
+      "operation": "generate",
+      "status": "failed",
+      "count": 2,
+      "total_hours": 0.26,
+      "queue_hours": 0.0,
+      "avg_s": 468.625,
+      "max_s": 600.0,
+      "cache_hits": 0
+    },
+    {
+      "stage": "audio_compile",
+      "component": "drive",
+      "operation": "upload",
+      "status": "completed",
+      "count": 117,
+      "total_hours": 0.25,
+      "queue_hours": 0.0,
+      "avg_s": 7.546,
+      "max_s": 80.9,
+      "cache_hits": 0
+    },
+    {
+      "stage": "acquire",
+      "component": "vidrush",
+      "operation": "acquire",
+      "status": "completed",
+      "count": 3302,
+      "total_hours": 0.2,
+      "queue_hours": 0.0,
+      "avg_s": 0.216,
+      "max_s": 5.8,
+      "cache_hits": 0
+    },
+    {
+      "stage": "publish",
+      "component": "finalize",
+      "operation": "drive_publish",
+      "status": "failed",
+      "count": 19,
+      "total_hours": 0.19,
+      "queue_hours": 0.0,
+      "avg_s": 36.779,
+      "max_s": 238.4,
+      "cache_hits": 0
+    },
+    {
+      "stage": "clip.render",
+      "component": "chronon",
+      "operation": "decode",
+      "status": "completed",
+      "count": 103,
+      "total_hours": 0.18,
+      "queue_hours": 0.0,
+      "avg_s": 6.205,
+      "max_s": 258.2,
+      "cache_hits": 0
+    },
+    {
+      "stage": "clip.render",
+      "component": "chronon",
+      "operation": "renderer_startup",
+      "status": "completed",
+      "count": 103,
+      "total_hours": 0.17,
+      "queue_hours": 0.0,
+      "avg_s": 5.871,
+      "max_s": 148.4,
+      "cache_hits": 0
+    },
+    {
+      "stage": "clip.render",
+      "component": "rust",
+      "operation": "render_clip",
+      "status": "failed",
+      "count": 12,
+      "total_hours": 0.16,
+      "queue_hours": 0.0,
+      "avg_s": 46.526,
+      "max_s": 136.0,
+      "cache_hits": 0
+    },
+    {
+      "stage": "scene_analysis",
+      "component": "nlp",
+      "operation": "extract",
+      "status": "failed",
+      "count": 24,
+      "total_hours": 0.15,
+      "queue_hours": 0.0,
+      "avg_s": 23.216,
+      "max_s": 120.0,
+      "cache_hits": 0
+    },
+    {
+      "stage": "acquire",
+      "component": "vidrush",
+      "operation": "acquire",
+      "status": "failed",
+      "count": 1586,
+      "total_hours": 0.14,
+      "queue_hours": 0.0,
+      "avg_s": 0.309,
+      "max_s": 15.0,
+      "cache_hits": 0
+    },
+    {
+      "stage": "verify",
+      "component": "vidrush",
+      "operation": "verify",
+      "status": "completed",
+      "count": 1311,
+      "total_hours": 0.1,
+      "queue_hours": 0.0,
+      "avg_s": 0.281,
+      "max_s": 6.2,
+      "cache_hits": 0
+    },
+    {
+      "stage": "publish",
+      "component": "drive",
+      "operation": "upload",
+      "status": "failed",
+      "count": 3,
+      "total_hours": 0.1,
+      "queue_hours": 0.0,
+      "avg_s": 119.568,
+      "max_s": 216.3,
+      "cache_hits": 0
+    },
+    {
+      "stage": "audio_publish",
+      "component": "drive",
+      "operation": "upload",
+      "status": "failed",
+      "count": 1,
+      "total_hours": 0.07,
+      "queue_hours": 0.0,
+      "avg_s": 238.443,
+      "max_s": 238.4,
+      "cache_hits": 0
+    },
+    {
+      "stage": "overlay_render",
+      "component": "renderinggen",
+      "operation": "probe",
+      "status": "completed",
+      "count": 811,
+      "total_hours": 0.07,
+      "queue_hours": 0.0,
+      "avg_s": 0.289,
+      "max_s": 1.5,
+      "cache_hits": 0
+    },
+    {
+      "stage": "publish",
+      "component": "finalize",
+      "operation": "artifact_prepare",
+      "status": "completed",
+      "count": 4162,
+      "total_hours": 0.06,
+      "queue_hours": 0.0,
+      "avg_s": 0.052,
+      "max_s": 1.1,
+      "cache_hits": 0
+    },
+    {
+      "stage": "publish",
+      "component": "finalize",
+      "operation": "artifact_hash",
+      "status": "completed",
+      "count": 4162,
+      "total_hours": 0.06,
+      "queue_hours": 0.0,
+      "avg_s": 0.051,
+      "max_s": 1.1,
+      "cache_hits": 0
+    },
+    {
+      "stage": "audio_compile",
+      "component": "audio",
+      "operation": "probe",
+      "status": "completed",
+      "count": 514,
+      "total_hours": 0.04,
+      "queue_hours": 0.0,
+      "avg_s": 0.277,
+      "max_s": 0.8,
+      "cache_hits": 0
+    },
+    {
+      "stage": "clip.render",
+      "component": "chronon",
+      "operation": "encode",
+      "status": "completed",
+      "count": 471,
+      "total_hours": 0.04,
+      "queue_hours": 0.0,
+      "avg_s": 0.296,
+      "max_s": 0.8,
+      "cache_hits": 0
+    },
+    {
+      "stage": "persist",
+      "component": "vidrush",
+      "operation": "finalize",
+      "status": "failed",
+      "count": 16,
+      "total_hours": 0.03,
+      "queue_hours": 0.0,
+      "avg_s": 6.694,
+      "max_s": 82.8,
+      "cache_hits": 0
+    },
+    {
+      "stage": "audio_compile",
+      "component": "audio",
+      "operation": "clip_audio_prepare",
+      "status": "completed",
+      "count": 27,
+      "total_hours": 0.03,
+      "queue_hours": 0.0,
+      "avg_s": 3.39,
+      "max_s": 83.6,
+      "cache_hits": 0
+    }
+  ],
+  "api_requests": {
+    "requests": 0,
+    "present": true,
+    "window": {
+      "first": null,
+      "last": null
+    }
+  },
+  "findings": [
+    {
+      "kind": "queue_dominates",
+      "detail": "durable run observability: queue wait exceeds measured wall time",
+      "window": {
+        "first": "2026-09-01T17:04:27Z",
+        "last": "2026-09-28T15:23:32Z"
+      },
+      "queue_hours": 161.0,
+      "wall_hours": 94.3,
+      "blocked_hours": 8.8,
+      "queue_share_pct": 63.1
+    },
+    {
+      "kind": "starvation",
+      "detail": "asset.text.materialize waits 10.68x its own wall time",
+      "job_type": "asset.text.materialize",
+      "queue_hours": 51.7,
+      "wall_hours": 4.8
+    },
+    {
+      "kind": "observability_degraded",
+      "detail": "runs report partial observability",
+      "runs": 144
+    },
+    {
+      "kind": "instrumentation_gap",
+      "detail": "run_observability.active_ms is never populated",
+      "field": "run_observability.active_ms"
+    },
+    {
+      "kind": "queue_dominates_jobs_table",
+      "detail": "jobs tables (rolling window): queue wait exceeds measured execution work",
+      "queue_hours": 83.7,
+      "work_hours": 33.5,
+      "queue_share_pct": 71.4
+    },
+    {
+      "kind": "starvation",
+      "detail": "asset.text.materialize waits 13.26x its own execution time",
+      "job_type": "asset.text.materialize",
+      "queue_hours": 44.26,
+      "work_hours": 3.34,
+      "avg_queue_s": 954.1
+    },
+    {
+      "kind": "head_of_line_blocking",
+      "detail": "script.generate sat in queue for 12926.0s",
+      "job_type": "script.generate",
+      "max_queue_s": 12926.0
+    },
+    {
+      "kind": "failure_cost",
+      "detail": "terminal failures burned measured execution time",
+      "wasted_hours": 5.2,
+      "by_type": [
+        {
+          "job_type": "script.generate",
+          "jobs": 94,
+          "wasted_hours": 2.59
+        },
+        {
+          "job_type": "youtube_clip.extract",
+          "jobs": 24,
+          "wasted_hours": 2.37
+        },
+        {
+          "job_type": "video.create",
+          "jobs": 5,
+          "wasted_hours": 0.1
+        },
+        {
+          "job_type": "media.stock",
+          "jobs": 1,
+          "wasted_hours": 0.05
+        },
+        {
+          "job_type": "media.clip",
+          "jobs": 2,
+          "wasted_hours": 0.03
+        },
+        {
+          "job_type": "asset.text.materialize",
+          "jobs": 3,
+          "wasted_hours": 0.01
+        },
+        {
+          "job_type": "clip.render",
+          "jobs": 5,
+          "wasted_hours": 0.01
+        }
+      ]
+    },
+    {
+      "kind": "instrumentation_gap",
+      "detail": "declared wait is never populated in the durable registry",
+      "field": "performance_runs.metadata_json.waits.outbox_delivery_ms",
+      "runs_with_value": 0
+    },
+    {
+      "kind": "queue_dominates_durable",
+      "detail": "durable registry agrees: aggregated queue wait exceeds aggregated wall",
+      "queue_hours": 107.2,
+      "wall_hours": 80.5
+    }
+  ]
+}

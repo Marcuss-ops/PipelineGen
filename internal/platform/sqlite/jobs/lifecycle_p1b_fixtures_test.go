@@ -157,7 +157,8 @@ func setupLifecycleTestDB(t *testing.T) (*SQLiteStore, *sql.DB) {
 			parent_job_id TEXT NOT NULL DEFAULT '',
 			root_job_id TEXT NOT NULL DEFAULT '',
 			client_id TEXT NOT NULL DEFAULT '',
-			idempotency_key TEXT NOT NULL DEFAULT ''
+			idempotency_key TEXT NOT NULL DEFAULT '',
+			deferred_until TEXT
 		)`,
 		`CREATE TABLE job_events (
 			id TEXT PRIMARY KEY,

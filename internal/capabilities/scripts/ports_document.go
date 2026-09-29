@@ -170,6 +170,7 @@ type DocumentAudioRef = scriptpkg.DocumentAudioRef
 // DocumentOverlayRef is the published render-overlay reference projected into
 // a document. See scriptpkg.DocumentOverlayRef for the field contract.
 type DocumentOverlayRef = scriptpkg.DocumentOverlayRef
+type DocumentOverlayItemRef = scriptpkg.DocumentOverlayItemRef
 
 // DocumentRenderer is the single rendering seam used by every document
 // producer. The composition root wires the canonical implementation, while

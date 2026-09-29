@@ -54,6 +54,11 @@ type EnqueueRequest struct {
 	// VELOX_M2M_SECRET by JobClientAuthMiddleware and injected into
 	// the domain EnqueueRequest from the gin context.
 	IdempotencyKey string `json:"idempotency_key,omitempty"`
+	// ScheduledAt defers execution: when set to a future RFC3339 time the
+	// job is persisted as SCHEDULED and promoted to QUEUED by the job
+	// scheduler once due and admitted (daily quota + concurrency). Omitted
+	// or past enqueues immediately, preserving existing behaviour.
+	ScheduledAt *time.Time `json:"scheduled_at,omitempty"`
 }
 
 // Canonical Handler / JobExecutionTools / Result types live in

@@ -121,8 +121,10 @@ func TestSelectUsesCheckedInPortuguesePhrasePolicyAndFunctionWords(t *testing.T)
 		t.Fatalf("load checked-in lexicons: %v", err)
 	}
 	profile := registry.Resolve("pt-BR")
-	if profile.PhrasePolicy.MaxWords != 6 {
-		t.Fatalf("checked-in PT-BR max words = %d, want default six-word policy", profile.PhrasePolicy.MaxWords)
+	// pt-BR has no dedicated phrase policy, so it resolves the checked-in
+	// fallback policy, which now allows complete ideas up to sixteen words.
+	if profile.PhrasePolicy.MaxWords != 16 {
+		t.Fatalf("checked-in PT-BR max words = %d, want the checked-in fallback policy of 16", profile.PhrasePolicy.MaxWords)
 	}
 	const phrase = "O maior arrependimento da minha vida"
 	got := Select(phrase, nil, 5, profile)
@@ -141,18 +143,20 @@ func TestSelectUsesCheckedInPortuguesePhrasePolicyAndFunctionWords(t *testing.T)
 	}
 }
 
-func TestSelectHardCapsPhraseCandidatesAtSixWords(t *testing.T) {
+func TestSelectHardCapsPhraseCandidatesAtPolicyCeiling(t *testing.T) {
 	profile := &linguistics.LexiconProfile{
-		PhrasePolicy: linguistics.PhraseExtractionPolicy{MinWords: 2, MaxWords: 9, MaxResults: 5},
+		PhrasePolicy: linguistics.PhraseExtractionPolicy{MinWords: 2, MaxWords: 24, MaxResults: 5},
 	}
-	selected := Select("alpha beta gamma delta epsilon zeta eta theta", nil, 5, profile)
+	// Nineteen content words: no arbitrary fragment may exceed the hard
+	// sixteen-word ceiling even though the policy asks for twenty-four.
+	selected := Select("alpha beta gamma delta epsilon zeta eta theta iota kappa lambda mu nu xi omicron pi rho sigma tau", nil, 5, profile)
 	for _, phrase := range selected {
-		if words := len(strings.Fields(phrase)); words > 6 {
+		if words := len(strings.Fields(phrase)); words > 16 {
 			t.Fatalf("hard-capped selection returned %d-word phrase %q", words, phrase)
 		}
 	}
 	if len(selected) == 0 {
-		t.Fatal("expected at least one phrase under the six-word cap")
+		t.Fatal("expected at least one phrase under the sixteen-word ceiling")
 	}
 }
 

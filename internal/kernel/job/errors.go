@@ -21,6 +21,15 @@ var ErrFinalizeAttemptArtifactStale = errors.New("FinalizeAttempt: artifact-stat
 var ErrFinalizeAttemptOutboxEventMissing = errors.New("FinalizeAttempt: outbox event missing required Type or EventKey (uniqueness invariant)")
 var ErrFinalizeAttemptDLQIncompatible = errors.New("FinalizeAttempt: DLQPayload is only valid with FAILED_PERMANENT or SCHEDULE_RETRY outcomes (terminal-failure invariant)")
 
+// ErrFinalizeAttemptDeferralDelayMissing rejects OutcomeDeferred without a
+// positive Backoff. A deferred row is REQUIRED to state when it may come back
+// (jobs.deferred_until): without the instant the requeue sweep has nothing to
+// compare against, so the row would sit in RETRY_WAIT forever — the silent hole
+// this guard closes. The worker fills the deployment's default delay
+// (scheduling.DefaultDeferralDelay) before calling the store, so a handler that
+// only knows it is waiting never has to invent a cadence.
+var ErrFinalizeAttemptDeferralDelayMissing = errors.New("FinalizeAttempt: DEFERRED outcome requires a positive Backoff (the instant the job may be re-dispatched)")
+
 // ErrRetryExhausted is returned by Store.Retry when the job's retry budget is
 // spent (RetryCount >= MaxRetries). It is a TERMINAL classification, not a
 // transient one: the SQLite adapter moves an exhausted RETRY_WAIT row to

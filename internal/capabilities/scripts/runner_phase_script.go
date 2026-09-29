@@ -55,18 +55,12 @@ func (r *Runner) runSceneTextPhase(ctx context.Context, runID string, req Genera
 		// are streamable (no post-gen rebinding).
 		streamable := SceneStreamingEligibility(req)
 		segmentTopologyNeedsMaterialization := req.ScriptParams.SegmentWords > 0 && !req.ScriptParams.SingleScene && len(req.ScriptParams.Segments) == 0
-		// Explicit important-phrase hints are part of the final overlay
-		// contract. They must be applied before any SceneTextReady consumer
-		// (NLP/TTS/render) observes the scene, so keep this narrow path batch-
-		// materialized and let ensureRequestedImportantPhrases run first.
-		// The gate must hold for EVERY source type, not only SourceClips:
-		// ensureRequestedImportantPhrases appends unspoken hints to the scene
-		// text after generation, so a streaming TTS dispatch on the batch text
-		// would synthesize audio for a prefix of the final narration and the
-		// phrase-timing projection would reject the mismatched narration
-		// (observed: 116 script tokens vs 95 TTS word boundaries; the artifact's
-		// text_sha256 matched the hint-less prefix).
-		if len(req.MediaPlan.Extraction.ImportantPhrases) > 0 {
+		// Explicit phrase hints can stream only when each hint is grounded in
+		// exactly one explicit segment brief. In that case emit appends any
+		// missing hint to that scene BEFORE SceneTextReady starts NLP/TTS. Other
+		// hint requests retain the batch materialization path because their scene
+		// owner cannot be determined safely before all generated scenes exist.
+		if len(req.MediaPlan.Extraction.ImportantPhrases) > 0 && !importantPhraseHintOwnersAvailable(req) {
 			streamable = false
 			segmentTopologyNeedsMaterialization = true
 		}

@@ -294,10 +294,10 @@ type ProcessSegmentCommand struct {
 	VideoURL        string
 	ForceKeyframes  bool
 	KeepAudio       *bool
-	// SourceFacts carries the immutable facts of the staged FULL source,
-	// probed ONCE before fan-out (cut_mode_resolver.go). nil means either
-	// no staging happened (per-segment yt-dlp path) or the probe was
-	// unavailable/failed — the pipeline then degrades to
+	// SourceFacts carries the immutable facts of the staged block this segment
+	// is cut from, probed ONCE per block before fan-out (cut_mode_resolver.go).
+	// nil means either no staging happened (per-segment yt-dlp path) or the
+	// probe was unavailable/failed — the pipeline then degrades to
 	// CutModeNormalize (fail-closed, no unproven stream-copy).
 	SourceFacts *mediaexec.MediaFacts
 	// Strategy is the typed ExtractionStrategy (Commit 2/6 #2).
@@ -315,12 +315,24 @@ type ProcessSegmentCommand struct {
 	// straight into it without any per-segment GetOrCreateFolder call.
 	// Empty string means no subtitle destination — Step 6-9 skips upload.
 	SubtitleFolderID string
-	// PreDownloadedPath is the optional full-source file staged BEFORE fanout.
-	// When non-empty, VideoPipelineDownloadAndCut MUST cut locally via ffmpeg -c copy
-	// instead of spawning a per-segment yt-dlp --download-sections subprocess.
-	// Speed audit (Sept 2026): enables "download once, cut N with ffmpeg -c copy"
-	// for multi-segment extracts; idle when the orchestrator opts out of staging.
+	// PreDownloadedPath is the optional STAGED SECTION file (one merged block of
+	// requested segment windows, downloaded BEFORE fanout) that this segment is
+	// cut from locally instead of spawning its own yt-dlp --download-sections
+	// subprocess. Empty means "no staged section" — the segment takes the
+	// per-segment yt-dlp path.
+	//
+	// Sept 2026: staging downloads ONLY the requested windows (merged into
+	// contiguous blocks, one yt-dlp call each) rather than the full source; see
+	// usecase/extraction_staging.go.
 	PreDownloadedPath string
+	// PreDownloadedOffsetSec is the absolute SOURCE second that maps to t=0 of
+	// PreDownloadedPath — i.e. the staged block's start. The pipeline seeks at
+	// (segment absolute start - PreDownloadedOffsetSec) inside that file, so the
+	// value is only meaningful together with PreDownloadedPath and MUST be 0
+	// when it is empty. It is exact because every staged block is downloaded
+	// with ForceKeyframes=true (the file starts at the requested timestamp, not
+	// at the keyframe before it).
+	PreDownloadedOffsetSec float64
 	// RequireAllLanguagesBeforeVideo is the per-job override propagated from
 	// ExtractRequest. nil preserves the process-wide policy.
 	RequireAllLanguagesBeforeVideo *bool

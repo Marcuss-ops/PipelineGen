@@ -60,6 +60,32 @@ func TestVidRushFanoutPlanEntityImagesExcludeVisualConceptQueries(t *testing.T) 
 	}
 }
 
+func TestVidRushFanoutPlanPerSceneImagesUsesSceneSpecificQuery(t *testing.T) {
+	if !(mediadomain.EntityImagePolicy{Scope: "per_scene"}).PerScene() {
+		t.Fatal("per_scene scope was not recognized")
+	}
+	plan := &scriptpkg.ResolvedGenerationPlan{
+		MediaPlan: mediadomain.MediaPlanSpec{
+			Extraction:     mediadomain.MediaExtractionPolicy{EntityImages: mediadomain.EntityImagePolicy{Enabled: true, Scope: "per_scene"}},
+			ProviderPolicy: mediadomain.MediaProviderPolicy{InternetImages: mediadomain.MediaToggleEnabled},
+		},
+	}
+	base := scriptpkg.VidRushSegmentResult{
+		SegmentID: "scene-2", TextHash: "hash-2", Text: "Milton Leite compareceu ao tribunal para a audiência de custódia.",
+		Insights: scriptpkg.SegmentInsights{Entities: []scriptpkg.ExtractedEntity{{Value: "Milton Leite", Type: "PERSON"}}, ImageQueries: []string{"Milton Leite"}},
+	}
+	first := buildVidRushFanoutPlan(plan, base, nil, &gatedImageSearcher{}, nil)
+	base.SegmentID, base.TextHash = "scene-3", "hash-3"
+	base.Text = "Milton Leite contestou a decisão do Superior Tribunal de Justiça."
+	second := buildVidRushFanoutPlan(plan, base, nil, &gatedImageSearcher{}, nil)
+	if len(first.imageQueries) == 0 || len(second.imageQueries) == 0 || first.imageQueries[0] == second.imageQueries[0] {
+		t.Fatalf("per-scene image queries are not scene-specific: first=%q second=%q", first.imageQueries, second.imageQueries)
+	}
+	if len(first.imageQueries) != 1 || len(second.imageQueries) != 1 {
+		t.Fatalf("per-scene image fanout must stay bounded to one query: first=%q second=%q", first.imageQueries, second.imageQueries)
+	}
+}
+
 func TestVidRushFanoutMergeKeepsCandidatesWithoutSelectingWinner(t *testing.T) {
 	plan := &scriptpkg.ResolvedGenerationPlan{}
 	updated := scriptpkg.VidRushSegmentResult{SegmentID: "segment-1"}

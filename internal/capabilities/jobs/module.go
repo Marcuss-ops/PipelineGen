@@ -221,6 +221,9 @@ func Build(deps Dependencies) (api.Descriptor, error) {
 		log,
 	)
 	handler.SetHistoryReader(deps.History)
+	// Deferred scheduling + per-stage status are optional ports derived from
+	// the wired broker; when absent the routes answer 503 (explicit degrade).
+	handler.SetScheduling(deps.Service.ScheduleStore(), deps.Service.StageStatusStore())
 
 	// Construct the route Module. The closure inside
 	// api.NewRouteModule calls handler.RegisterRoutes(r) — the

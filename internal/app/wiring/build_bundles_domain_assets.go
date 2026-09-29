@@ -25,6 +25,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/media/rustexec"
 	pgmedia "github.com/Marcuss-ops/PipelineGen/internal/platform/postgres/media"
 	qdrantsearch "github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/search"
+	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
 
 	mediamemoryindexing "github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/indexing/mediamemory"
 )
@@ -51,6 +52,10 @@ type buildDomainAssetServicesParams struct {
 	voMetaWriter       semantic.MetadataWriterPort
 	bundle             *DomainBundle
 	mediaConfig        mediaexec.ExecutionConfig
+	// driveUploadGate is the process-wide fair Drive-upload gate owned by
+	// ComposeRoot, forwarded to the voiceover publisher so its uploads share
+	// one capacity with the certified final-audio publisher.
+	driveUploadGate *concurrent.FairSemaphore
 }
 
 // buildDomainAssetServices constructs the voiceover, ingest, images,
@@ -99,6 +104,7 @@ func buildDomainAssetServices(params buildDomainAssetServicesParams) error {
 		params.outbox.Dispatcher,
 		voCommitter,
 		params.mediaConfig,
+		params.driveUploadGate,
 	)
 	if err != nil {
 		return fmt.Errorf("compose domains: voiceover service: %w", err)

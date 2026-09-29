@@ -206,7 +206,7 @@ func TestGeneratedPhraseRotationCoversFifteenAndFits24FPSTiming(t *testing.T) {
 			t.Fatalf("phrase %q enter_frames = %v, want 24 frames (half of 2 seconds at 24 fps)", item.Text, got)
 		}
 	}
-	if count != 15 {
+	if count != MaxPhraseOverlaysPerRun {
 		t.Fatalf("planned %d phrase items, want 15", count)
 	}
 }

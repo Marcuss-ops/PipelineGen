@@ -54,6 +54,20 @@ import (
 type JobExecutionTools struct {
 	Progress func(progress int, message string)
 	Event    func(eventType string, message string, data map[string]any)
+	// StageStatus is the OPTIONAL durable per-stage sub-status sink
+	// (job.JobStageStatusStore: the job_stage_status projection behind
+	// GET /api/jobs/{id}/stages). It lives here — beside Progress and
+	// Event — because it is the same KIND of thing: a reporting sink a
+	// RUNNING handler uses to tell the operator what it is doing. The
+	// difference is durability: Progress is the transient bar, StageStatus
+	// is the row an operator can still read after the process restarted.
+	//
+	// It is derived from the wired broker by the worker (a broker that
+	// implements the store enables it; one that does not leaves it nil,
+	// and handlers simply report no stage rows). It is deliberately NOT
+	// part of a handler's Deps struct: Deps carries the mandatory ports
+	// of the work, and observability must never be one of them.
+	StageStatus JobStageStatusStore
 }
 
 // ── Result (canonical typed return envelope, today a typed alias of map[string]any) ────

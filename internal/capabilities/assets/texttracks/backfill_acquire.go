@@ -28,7 +28,9 @@ import (
 	"context"
 	"fmt"
 	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"math"
 	"net/url"
+	"strconv"
 	"strings"
 
 	"go.uber.org/zap"
@@ -69,12 +71,21 @@ func (s *BackfillService) tryAcquire(
 		if localPath == "" && videoID == "" {
 			return nil, fmt.Errorf("backfill: cannot acquire — no local_path or video_id on asset %s", assetItem.ID)
 		}
+		// The clip's window WITHIN THE SOURCE VIDEO. Priority 3+4 (YouTube
+		// subtitles) reads the FULL video's VTT, so without this window it
+		// attached WHOLE-VIDEO cues to a 30s clip: the artifact validation
+		// then rejected them (last cue end ≫ clip duration) or the render
+		// trimmed every cue away — the "clip has no correct subs" symptom.
+		// Priorities 2/2.5/5 read the CLIP file itself and need no window.
+		startSec, endSec := clipSourceWindow(assetItem)
 		acqResult, err = s.acquirer.Acquire(ctx, AcquireCommand{
 			AssetID:     assetItem.ID,
 			VideoID:     videoID,
 			LocalPath:   localPath,
 			DriveFileID: extractDriveFileID(assetItem),
 			Language:    opts.SourceLanguage,
+			StartSec:    startSec,
+			EndSec:      endSec,
 		})
 		if err != nil {
 			return nil, err
@@ -134,6 +145,71 @@ func extractDriveFileID(a *asset.Asset) string {
 		return ""
 	}
 	return a.DriveFileID()
+}
+
+// clipSourceWindow returns the clip's [start, end] window WITHIN THE
+// SOURCE VIDEO (seconds) — the window priorities 3+4 (YouTube
+// subtitles) must slice the source VTT to.
+//
+// Sources, in priority order:
+//  1. the canonical metadata accessors (start_sec written by the
+//     extraction commit) + the asset Duration (the clip's own length);
+//  2. the deterministic asset id `yt_<videoID>_<start>_<end>_<policy>`
+//     (detail.YouTubeClipAssetID) parsed from the RIGHT so a video id
+//     containing '_' cannot shift the fields.
+//
+// Returns (0, 0) when the window is unknown: that is the legacy
+// whole-video contract, never a degenerate start==end window (the VTT
+// window filter would drop every cue and silently destroy a perfectly
+// good subtitle source).
+//
+// godlike/06 SSOT: this is the ONLY place the backfill derives the
+// source-video window; AcquireCommand.StartSec/EndSec are otherwise
+// left at their zero value by every caller that reads the clip file
+// itself (priorities 2/2.5/5 need no window).
+func clipSourceWindow(a *asset.Asset) (int, int) {
+	if a == nil {
+		return 0, 0
+	}
+	start := int(math.Round(a.StartSec()))
+	if start < 0 {
+		start = 0
+	}
+	end := 0
+	if durSec := int(math.Round(a.Duration.Seconds())); durSec > 0 {
+		end = start + durSec
+	}
+	if end <= start {
+		if idStart, idEnd := parseYouTubeClipWindow(a.ID); idEnd > idStart && (start == 0 || idStart == start) {
+			return idStart, idEnd
+		}
+		return 0, 0
+	}
+	return start, end
+}
+
+// parseYouTubeClipWindow splits the canonical YouTube clip id
+// `yt_<videoID>_<startSec>_<endSec>_<policy>` from the RIGHT (the
+// policy and the two timestamps are underscore-free by construction),
+// so a video id containing '_' stays intact. Returns (0, 0) for any
+// id that does not match the format.
+func parseYouTubeClipWindow(id string) (int, int) {
+	if !strings.HasPrefix(id, "yt_") {
+		return 0, 0
+	}
+	parts := strings.Split(id, "_")
+	if len(parts) < 4 {
+		return 0, 0
+	}
+	// Parsed from the RIGHT: parts[len-1] = policy version,
+	// parts[len-2] = endSec, parts[len-3] = startSec; everything before
+	// those three belongs to the video id (which may contain '_').
+	start, errS := strconv.Atoi(parts[len(parts)-3])
+	end, errE := strconv.Atoi(parts[len(parts)-2])
+	if errS != nil || errE != nil || end <= start {
+		return 0, 0
+	}
+	return start, end
 }
 
 // extractLocalPath reads the canonical local_path accessor from the

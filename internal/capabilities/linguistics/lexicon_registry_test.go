@@ -225,8 +225,8 @@ func TestLexiconRegistry_PhrasePolicy(t *testing.T) {
 
 func TestDefaultPhraseExtractionPolicySupportsSixWordPhrases(t *testing.T) {
 	policy := DefaultPhraseExtractionPolicy()
-	if policy.MinWords != 2 || policy.MaxWords != 6 {
-		t.Fatalf("default phrase word range = %d..%d, want 2..6", policy.MinWords, policy.MaxWords)
+	if policy.MinWords != 2 || policy.MaxWords != 16 {
+		t.Fatalf("default phrase word range = %d..%d, want 2..16", policy.MinWords, policy.MaxWords)
 	}
 }
 

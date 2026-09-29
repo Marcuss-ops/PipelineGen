@@ -10,7 +10,9 @@ import (
 	assetspersistence "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/finalization"
 	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
+	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/drive"
+	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
 
 	"go.uber.org/zap"
 )
@@ -19,6 +21,14 @@ type finalAudioPublisherAdapter struct {
 	db          *sql.DB
 	preparation finalization.ArtifactPreparationService
 	assetTx     finalization.AssetFinalizerTx
+	// gate is the process-wide fair Drive-upload gate owned by ComposeRoot,
+	// shared with the voiceover per-item publisher. audio_publish used to reach
+	// Drive through this adapter WITHOUT passing the rate-limited publisher, so
+	// the 85.7 s queue wait measured on 2026-09-28 was outside the shared gate
+	// entirely and could not be bounded or attributed. nil means the Drive
+	// plane is closed for this composition: AcquireFairSlot treats it as an
+	// unbounded slot, exactly as the voiceover adapter does.
+	gate *concurrent.FairSemaphore
 }
 
 func newFinalAudioPublisher(root *ComposeRoot, committer assetspersistence.AssetCommitter, log *zap.Logger) scriptgen.FinalAudioPublisher {
@@ -39,6 +49,7 @@ func newFinalAudioPublisher(root *ComposeRoot, committer assetspersistence.Asset
 			drive.NewArtifactPublisherAdapter(root.Drive.Publisher, log), log,
 		),
 		assetTx: assetfinalizer.NewAssetTxFinalizer(log, committer),
+		gate:    root.DriveUploadGate,
 	}
 }
 
@@ -54,13 +65,25 @@ func (p *finalAudioPublisherAdapter) PublishFinalAudio(ctx context.Context, runI
 		return scriptgen.FinalAudioPublishResult{}, fmt.Errorf("final audio language is empty")
 	}
 
+	// Acquire the shared, per-owner-fair Drive gate BEFORE the upload. Two
+	// effects (both required by the 2026-09-28 measurement):
+	//
+	//  1. a starving owner (a job publishing its single final audio) is served
+	//     ahead of another job's own pipelined voiceover uploads, so one job
+	//     can no longer monopolize the process-wide capacity;
+	//  2. the time spent waiting is recorded as a typed WaitSemaphore interval
+	//     on the bound run, so it is visible instead of masquerading as a slow
+	//     upload.
+	//
+	// Acquired around the Drive upload only (not the DB commit below), because
+	// the shared ceiling is a Drive-upload ceiling, not a database one.
 	artifactID := assetfinalizer.ComputeAssetID(finalization.KindVoiceover, fmt.Sprintf("%s:%s", runID, lang), 1)
 	resolvedFolderID := strings.TrimSpace(voiceoverFolderID)
 	filename := strings.TrimSpace(ref.Filename)
 	if filename == "" {
 		filename = fmt.Sprintf("voiceover [%s].m4a", lang)
 	}
-	published, err := p.preparation.Prepare(ctx, finalization.VerifiedArtifact{
+	published, err := p.prepareWithGate(ctx, finalization.VerifiedArtifact{
 		ArtifactID: artifactID, Kind: finalization.KindVoiceover, Filename: filename,
 		LocalPath: ref.Path, MIMEType: "audio/mp4", SizeBytes: ref.SizeBytes,
 		SHA256: ref.FinalAudioSHA256, SourceVersion: 1,
@@ -115,4 +138,17 @@ func (p *finalAudioPublisherAdapter) PublishFinalAudio(ctx context.Context, runI
 		return scriptgen.FinalAudioPublishResult{}, fmt.Errorf("published final audio has no canonical Drive link")
 	}
 	return scriptgen.FinalAudioPublishResult{AssetID: artifactID, DriveLink: link}, nil
+}
+
+// prepareWithGate runs the Drive-upload half of PublishFinalAudio behind the
+// shared fair gate. The gate is acquired here (not around the whole
+// PublishFinalAudio) so the DB commit that follows is never blocked on Drive
+// upload capacity, and the recorded wait interval maps exactly to the upload.
+func (p *finalAudioPublisherAdapter) prepareWithGate(ctx context.Context, artifact finalization.VerifiedArtifact) (finalization.PublishedArtifact, error) {
+	release, err := kernobs.AcquireFairSlot(ctx, p.gate, kernobs.WaitOwner(ctx), kernobs.ComponentDrive, kernobs.WaitSemaphore)
+	if err != nil {
+		return finalization.PublishedArtifact{}, err
+	}
+	defer release()
+	return p.preparation.Prepare(ctx, artifact)
 }

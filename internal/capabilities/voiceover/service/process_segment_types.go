@@ -46,6 +46,7 @@ type VoiceoverCacheHit struct {
 	DurationMs              int64
 	LegacyFileMD5           string
 	MetaJSON                []byte
+	Artifact                *audio.SpeechTimingArtifact
 }
 
 type ProcessSegmentCacheDeps struct {

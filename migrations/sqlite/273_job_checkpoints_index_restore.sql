@@ -1,0 +1,32 @@
+-- database: primary
+-- Migration 273: give the restored job_checkpoints its canonical index back.
+--
+-- Why this file exists (observed in production, 2026-09-28, minutes after 272):
+-- 272 recreated `job_checkpoints` with the canonical `CREATE INDEX IF NOT EXISTS
+-- idx_job_checkpoints_job ON job_checkpoints(job_id, completed_at)`, and the
+-- index was NOT created. SQLite keeps index names unique per DATABASE, and
+-- `idx_job_checkpoints_job` already existed — on the QUARANTINED copy of the
+-- old table, `legacy_job_checkpoints`, which the data-plane archival script
+-- produced by renaming the table (SQLite keeps an index attached to a renamed
+-- table, and keeps its name). `IF NOT EXISTS` then made the statement a silent
+-- no-op: the table came back without the access path every resume lookup wants,
+-- and nothing in the runner noticed.
+--
+-- The canonical name wins. A quarantined table is frozen archival data — 265's
+-- own header states the runtime never opens these tables for job execution once
+-- JobsDBPath is configured — so its copy of a canonical index name is the defect,
+-- and leaving it in place would keep the silent-skip trap armed for the next
+-- restored table.
+--
+-- Both statements are idempotent and unconditional on purpose. Recreating the
+-- legacy index under a legacy-qualified name cannot be expressed safely: the
+-- runner executes each statement inside the migration transaction and ABORTS on
+-- failure, and `CREATE INDEX ... ON legacy_job_checkpoints` fails with "no such
+-- table" on every database where the archival never ran (the overwhelmingly
+-- common case). So the name is freed, then re-taken by its canonical owner.
+--
+-- The boot-time verification in `migrations_verify.go` now reports the shape
+-- this file repairs: a declared index that is missing, OR present under the
+-- right name while owned by a different table.
+DROP INDEX IF EXISTS idx_job_checkpoints_job;
+CREATE INDEX IF NOT EXISTS idx_job_checkpoints_job ON job_checkpoints(job_id, completed_at);

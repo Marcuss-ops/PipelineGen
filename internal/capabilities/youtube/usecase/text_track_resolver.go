@@ -441,11 +441,25 @@ func (r *TextTrackResolver) acquireFromSubtitles(ctx context.Context, req TextTr
 		}
 		return nil
 	}
+	// The VTT is parsed against the FULL source video and only
+	// WINDOW-filtered to [startSec, endSec], so its cues still carry
+	// SOURCE timestamps while every consumer of a clip's cues (ASS
+	// validation, cliprender's duration trim, the clip-local Whisper
+	// cues) expects the CLIP timeline. Rebase HERE, in the clip chain's
+	// acquisition step — godlike/06 SSOT: the formula lives in
+	// detail.RebaseCuesForClip and is never subtracted inline. The
+	// video-level GET /api/clips/transcript port keeps source-video
+	// times on purpose (operators pick clip windows from them).
+	sub.Cues = detail.RebaseCuesForClip(sub.Cues, req.StartSec, req.EndSec)
+
 	if r.Log != nil {
 		r.Log.Info("text track acquired from YouTube subtitles",
 			zap.String("clip_id", req.ClipID),
 			zap.String("video_id", req.VideoID),
-			zap.String("language", sub.LanguageCode))
+			zap.String("language", sub.LanguageCode),
+			zap.Int("clip_start_sec", req.StartSec),
+			zap.Int("clip_end_sec", req.EndSec),
+			zap.Int("cues", len(sub.Cues)))
 	}
 	return sub
 }

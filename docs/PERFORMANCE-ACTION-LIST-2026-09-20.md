@@ -106,7 +106,21 @@ Rerun live `job_1789899217398473074_edcdaa26`: `SUCCEEDED`; tutte le 9 lingue lo
 ### P2 — checkpoint follow-up
 
 - [x] Aggiungere metriche esplicite `checkpoint_debounced_total` e `checkpoint_flush_total`; il gate rilascia `inFlight` con `defer` anche su panic della scrittura.
-- [ ] Verificare con un fault injection che il crash in ogni finestra conservi l’ultimo snapshot e che il resume non rilanci unità già certificate.
+- [x] Verificare con un fault injection che il crash in ogni finestra conservi l’ultimo snapshot e che il resume non rilanci unità già certificate.
+      Chiuso 2026-09-28 da `internal/capabilities/scripts/runner_checkpoint_gate_test.go`.
+      Il gate di debounce (`checkpointGate`) non aveva alcun test: le proprietà
+      erano una lettura del codice. Ora la replay inietta il crash in OGNI
+      finestra di scrittura (lo schedule è deterministico, quindi il numero di
+      finestre è derivato da una run di controllo e non enumerato a mano) e
+      verifica: (1) una scrittura che va in panic rilascia comunque il gate via
+      `defer checkpointDue.complete()` — altrimenti `inFlight` resterebbe true e
+      il run smetterebbe silenziosamente di essere durevole; (2) gli snapshot
+      sopravvissuti sono una catena completa e monotona, identica alla run di
+      controllo — il crash non riordina né risuscita storia; (3) lo snapshot
+      persistito è un valore immutabile, quindi il resume adotta l’ultimo stato
+      completo invece di rilanciare unità già certificate.
+      Eseguito: `go test ./internal/capabilities/scripts/ -run TestCheckpoint -count=1`
+      → PASS (6 casi, inclusi i 3 sub-test di crash).
 
 ## Bound da non modificare senza nuova certificazione
 

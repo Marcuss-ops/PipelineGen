@@ -350,11 +350,13 @@ func buildDomainMediaServices(
 		SegmentPolicy: segmentPolicy,
 		Log:           log,
 	}
-	// P0.1 download-once: wire acquisition SourceStager; the stager is always wired but
-	// fanout only stages the full source when VELOX_YOUTUBE_DOWNLOAD_ONCE=true|1 or when
-	// the batch has >=2 segments and a valid URL (otherwise stageFullSourceOnce no-ops) and each segment cuts locally via
-	// PreDownloadedPath (ffmpeg -c copy). Fail-soft: if wiring fails the fanout
-	// falls back to per-segment yt-dlp (backwards compatible).
+	// Sections-only staging: wire the acquisition SourceStager. The fanout merges
+	// the requested segment windows into contiguous blocks and stages each block
+	// with ONE yt-dlp --download-sections call, so an extraction downloads only
+	// the seconds it publishes instead of the whole source; every segment then
+	// cuts locally from its block (PreDownloadedPath + PreDownloadedOffsetSec).
+	// Fail-soft: a block that fails to stage leaves its segments on the
+	// per-segment yt-dlp path (backwards compatible).
 	var youtubeSourceStager acquisition.SourceStager
 	{
 		ytdlpDL := downloader.NewYTDLP(cfg)
@@ -390,10 +392,10 @@ func buildDomainMediaServices(
 			return nil
 		}
 		if s, sErr := WireAcquisitionStager(cfg, log, fetch); sErr != nil {
-			log.Warn("youtube download-once stager unavailable; fanout will use per-segment yt-dlp", zap.Error(sErr))
+			log.Warn("youtube section stager unavailable; fanout will use per-segment yt-dlp", zap.Error(sErr))
 		} else {
 			youtubeSourceStager = s
-			log.Info("youtube download-once SourceStager wired", zap.String("staging_root", filepath.Join(cfg.Storage.TempPath(), "stock_pipeline_staging")))
+			log.Info("youtube section SourceStager wired", zap.String("staging_root", filepath.Join(cfg.Storage.TempPath(), "stock_pipeline_staging")))
 		}
 	}
 

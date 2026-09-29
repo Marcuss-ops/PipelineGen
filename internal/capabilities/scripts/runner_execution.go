@@ -507,6 +507,38 @@ func (e *executionRun) markCoreReady() {
 		zap.String("current_stage", string(StageCoreReady)),
 		zap.Int("pending_document_languages", len(docsLangs)),
 	)
+
+	// ── Deferred Docs leg (step 3) ────────────────────────────────────────
+	// Submit the child that publishes the documents, so the Docs work starts
+	// beside the worker's own finalization instead of chaining behind it.
+	//
+	// ORDERING IS LOAD-BEARING: the CORE_READY projection above is written
+	// FIRST. The child re-reads the durable snapshot rather than receiving a
+	// copy of it, so submitting it before the stage write would race the very
+	// reference it depends on — the child could load a run whose Result is not
+	// yet the core the boundary just advertised.
+	//
+	// A nil enqueuer means the deferred leg is not wired: the run keeps
+	// publishing documents inline, which is the pre-cutover behaviour. A
+	// non-nil enqueuer is FAIL-CLOSED — the alternative to failing here is a
+	// parent that deferred its terminal flip to a child nobody ever submitted,
+	// i.e. a run that hangs instead of a run that fails.
+	if e.r.docsPublishEnqueuer != nil {
+		enqueueErr := e.r.docsPublishEnqueuer.EnqueueDocsPublish(e.ctx, DocsPublishEnqueue{
+			ParentJobID:   e.exec.JobID,
+			RunID:         e.runID,
+			CorrelationID: e.exec.CorrelationID,
+		})
+		if enqueueErr != nil {
+			e.log("scriptgeneration: docs publish child enqueue failed",
+				zap.String("error", enqueueErr.Error()))
+			e.fail(StagePublishingDocuments,
+				fmt.Errorf("enqueue docs publish child for run %s: %w", e.runID, enqueueErr))
+			return
+		}
+		e.log("scriptgeneration: docs publish child enqueued",
+			zap.String("parent_job_id", e.exec.JobID))
+	}
 }
 
 // documents runs the document (Docs) publishing phase with the pre-rendered

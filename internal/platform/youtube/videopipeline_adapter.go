@@ -44,6 +44,7 @@ func (a *VideoPipelineAdapter) DownloadAndCutYouTubeVideo(ctx context.Context, r
 		Strategy:          req.Strategy,
 		OutputDir:         req.OutputDir,
 		PreDownloadedPath: req.PreDownloadedPath,
+		SourceOffsetSec:   req.SourceOffsetSec,
 		SkipMetadataFetch: req.SkipMetadataFetch,
 	}
 

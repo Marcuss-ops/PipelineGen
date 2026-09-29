@@ -49,7 +49,7 @@ import (
 const jobColumns = `id, type, status, priority, project, video_name, active_key,
 	correlation_id, '' AS payload_json, '' AS result_json, progress, error, retry_count, max_retries,
 	worker_id, lease_id, lease_expiry, created_at, updated_at, started_at, completed_at, cancelled_at, revision, ` + parentStateTypedColumn + `,
-	parent_job_id, root_job_id, client_id, idempotency_key`
+	parent_job_id, root_job_id, client_id, idempotency_key, deferred_until`
 
 // scanner is the minimum surface of *sql.Row and *sql.Rows that scanJobColumns
 // needs. Defined here so we can share the same code between single-row and
@@ -64,6 +64,7 @@ type scanner interface {
 func scanJobColumns(s scanner, j *job.Job) error {
 	var payloadJSON, resultJSON string
 	var leaseExpiry, createdAt, updatedAt, startedAt, completedAt, cancelledAt *string
+	var deferredUntil *string
 	if err := s.Scan(
 		&j.ID, &j.Type, &j.Status, &j.Priority, &j.Project, &j.VideoName, &j.ActiveKey,
 		&j.CorrelationID,
@@ -73,10 +74,12 @@ func scanJobColumns(s scanner, j *job.Job) error {
 		&j.ParentStateTyped,
 		&j.ParentJobID, &j.RootJobID,
 		&j.ClientID, &j.IdempotencyKey,
+		&deferredUntil,
 	); err != nil {
 		return err
 	}
 	unmarshalJobFields(j, payloadJSON, resultJSON, leaseExpiry, createdAt, updatedAt, startedAt, completedAt, cancelledAt)
+	j.DeferredUntil = timeutil.ParseRFC3339PtrString(deferredUntil)
 	return nil
 }
 
@@ -438,7 +441,7 @@ LIMIT ?`
 // FindActiveByKey returns the most recent non-terminal job matching
 // the active_key (used for idempotency probes).
 func (r *SQLiteStore) FindActiveByKey(ctx context.Context, activeKey string) (*job.Job, error) {
-	query := `SELECT ` + jobColumns + ` FROM jobs WHERE active_key = ? AND active_key != '' AND status IN ('QUEUED', 'LEASED', 'RUNNING', 'FINALIZING') ORDER BY started_at DESC LIMIT 1`
+	query := `SELECT ` + jobColumns + ` FROM jobs WHERE active_key = ? AND active_key != '' AND status IN ('SCHEDULED', 'QUEUED', 'LEASED', 'RUNNING', 'FINALIZING') ORDER BY started_at DESC LIMIT 1`
 	j := &job.Job{}
 	if err := scanJobColumns(r.db.QueryRowContext(ctx, query, activeKey), j); err != nil {
 		if err == sql.ErrNoRows {

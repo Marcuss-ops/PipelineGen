@@ -36,6 +36,28 @@ func TestProjectEntityImageBindings_StripsPromptPrefixFromEntity(t *testing.T) {
 	}
 }
 
+func TestProjectEntityImageBindingsPerSceneKeepsRepeatedPersonAssetsDistinct(t *testing.T) {
+	person := func() *scriptpkg.SceneAnnotations {
+		return &scriptpkg.SceneAnnotations{PrimaryEntities: []scriptpkg.AnnotatedEntity{{Text: "Milton Leite", CanonicalName: "Milton Leite", Type: "PERSON"}}}
+	}
+	spec := scriptpkg.SpecSceneOutput{Version: 1, Scenes: []scriptpkg.SpecScene{
+		{ID: "scene-2", SegmentID: "segment-2", Index: 2, Annotations: person()},
+		{ID: "scene-3", SegmentID: "segment-3", Index: 3, Annotations: person()},
+	}}
+	segments := []scriptpkg.VidRushSegmentResult{
+		{SegmentID: "segment-2", SceneID: "scene-2", Assets: scriptpkg.SegmentAssetSelection{SecondaryImages: []scriptpkg.SegmentAssetCandidate{readyEntityImageCandidate("milton-court", "Milton Leite tribunal audiência cena 2", "Milton Leite tribunal audiência cena 2")}}},
+		{SegmentID: "segment-3", SceneID: "scene-3", Assets: scriptpkg.SegmentAssetSelection{SecondaryImages: []scriptpkg.SegmentAssetCandidate{readyEntityImageCandidate("milton-stj", "Milton Leite decisão STJ cena 3", "Milton Leite decisão STJ cena 3")}}},
+	}
+	policy := entityImagePolicyForTest()
+	policy.Scope = "per_scene"
+	got := projectEntityImageBindings(spec, segments, policy)
+	first := got.Scenes[0].Annotations.PrimaryEntities[0].Image
+	second := got.Scenes[1].Annotations.PrimaryEntities[0].Image
+	if first == nil || first.AssetID != "milton-court" || second == nil || second.AssetID != "milton-stj" {
+		t.Fatalf("per-scene repeated entity bindings = first:%+v second:%+v", first, second)
+	}
+}
+
 func TestFindEntityImageCandidate_PrefersDurableCandidate(t *testing.T) {
 	entity := scriptpkg.AnnotatedEntity{CanonicalName: "Describe John Cena", Type: "PERSON"}
 	seg := scriptpkg.VidRushSegmentResult{Assets: scriptpkg.SegmentAssetSelection{Candidates: []scriptpkg.SegmentAssetCandidate{

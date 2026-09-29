@@ -11,6 +11,8 @@ package cliprender
 
 import (
 	"context"
+	"errors"
+	"time"
 )
 
 // AssetResolver resolves a canonical asset_id to its registry identity.
@@ -187,6 +189,33 @@ type RenderJobIDResolver interface {
 // executor's durable remote address when it differs from plan.RunID.
 type RenderExecutorWithJobID interface {
 	SettleWithJobID(ctx context.Context, plan ClipRenderPlanV1, renderJobID string) (*RenderOutcome, error)
+}
+
+// ErrRenderPending marks a settle attempt that ran out of its WAIT BUDGET while
+// the remote render is still running. It is a WAIT, not a failure: the settle
+// continuation hands its attempt back with job.DeferredAfter (a deferral spends
+// no retry budget) and asks again, so a lane is not parked on a render that may
+// take minutes or hours.
+//
+// It is deliberately distinct from every render failure: a render that FAILED,
+// a queue that is unreachable, and an artifact that failed certification all
+// still propagate as errors. Only "not terminal yet" is this sentinel.
+var ErrRenderPending = errors.New("clip.render: remote render is not terminal yet")
+
+// RenderExecutorDeferring is the OPTIONAL capability a render boundary
+// implements when its settle can be BOUNDED instead of blocking.
+//
+// The caller states the budget, because the caller owns the policy (how long one
+// attempt may hold a lane, and whether it may keep asking at all); the executor
+// owns the transport and reports ErrRenderPending when the budget expires.
+//
+//   - budget <= 0 waits with the executor's full timeout: exactly the blocking
+//     contract of SettleWithJobID, which is why a boundary that does not
+//     implement this interface keeps working unchanged.
+//   - the returned outcome is non-nil only for a CERTIFIED terminal render; a
+//     pending wait returns (nil, ErrRenderPending) and the caller defers.
+type RenderExecutorDeferring interface {
+	SettleWithin(ctx context.Context, plan ClipRenderPlanV1, renderJobID string, budget time.Duration) (*RenderOutcome, error)
 }
 
 // RenderArtifactMaterializer is the OPTIONAL capability a render boundary

@@ -124,11 +124,15 @@
 | GET | `/api/jobs/:id` | Get job by ID |
 | GET | `/api/jobs/:id/events` | Get job event stream |
 | GET | `/api/jobs/:id/full` | Get full job details |
+| GET | `/api/jobs/:id/stages` | Get the per-stage status projection of a job |
+| GET | `/api/jobs/scheduled` | List jobs waiting for their scheduled start time |
 | GET | `/api/jobs/stats` | Get job statistics |
+| PATCH | `/api/jobs/:id/stages/:stage` | Report a pipeline stage status/progress for a job |
 | POST | `/api/jobs` | Enqueue a new job |
 | POST | `/api/jobs/:id/cancel` | Cancel a job |
 | POST | `/api/jobs/:id/replay` | ⚠️ MISSING DESCRIPTION |
 | POST | `/api/jobs/:id/retry` | Retry a failed job |
+| POST | `/api/jobs/schedule` | Enqueue a batch of deferred jobs (up to 500) |
 
 ## /api/media
 

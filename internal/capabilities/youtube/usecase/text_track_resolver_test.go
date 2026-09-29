@@ -656,6 +656,79 @@ func TestAcquireSegmentText_SubtitleLanguageNotInPreferredFallsThrough(t *testin
 	}
 }
 
+// ── Clip-window cue rebase (PR-SUBS-CLIP-WINDOW) ────────────────────────
+
+// TestAcquireSegmentText_SubtitleCuesRebasedOntoClipTimeline pins the
+// timeline contract that made downloaded clips ship wrong/absent subs:
+// the VTT is parsed against the FULL source video, so its cues carry
+// SOURCE timestamps (146s for a clip cut at 146s). Every clip consumer
+// (validateASSFile's clipDurationMs bound, trimClipRenderCues's
+// StartMs >= duration drop, the clip-local Whisper cues) expects the
+// CLIP timeline. The resolver MUST rebase + clamp before returning.
+func TestAcquireSegmentText_SubtitleCuesRebasedOntoClipTimeline(t *testing.T) {
+	subs := &stubSubtitles{bundle: &detail.ResolvedTextBundle{
+		LanguageCode: "it",
+		PlainText:    "subs per la clip",
+		Cues: []detail.TimedCue{
+			{StartMs: 145_500, EndMs: 148_000, Text: "straddles clip start"},
+			{StartMs: 148_000, EndMs: 160_000, Text: "inside"},
+			{StartMs: 176_500, EndMs: 178_000, Text: "beyond clip end"},
+		},
+		SourceType: detail.TextSourceYouTubeSubtitle,
+		IsOriginal: true,
+	}}
+	resolver := newTestResolver(&stubRepo{}, subs, &stubTranscriber{text: "must not run"})
+
+	bundle, err := resolver.AcquireSegmentText(context.Background(), usecase.TextTrackAcquireRequest{
+		ClipID:   "yt_rebase_001",
+		VideoID:  "v_rebase_001",
+		StartSec: 146,
+		EndSec:   176, // 30s clip
+	})
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	if bundle == nil || len(bundle.Cues) != 2 {
+		t.Fatalf("expected 2 in-window cues (the beyond-end cue must be clamped away), got %+v", bundle)
+	}
+	if bundle.Cues[0].StartMs != 0 {
+		t.Fatalf("first cue StartMs = %d, want 0 (clip timeline starts at the clip start)", bundle.Cues[0].StartMs)
+	}
+	if bundle.Cues[1].EndMs > 30_000 {
+		t.Fatalf("last cue EndMs = %d, must not exceed the 30000ms clip duration", bundle.Cues[1].EndMs)
+	}
+	for _, c := range bundle.Cues {
+		if c.StartMs < 0 || c.EndMs <= c.StartMs {
+			t.Fatalf("rebase must yield a valid window, got %+v", c)
+		}
+	}
+}
+
+// The video-level window (0/0 = whole video) must NOT be rebased: the
+// transcript endpoint serves source-video timings so operators can pick
+// clip boundaries from them.
+func TestAcquireSegmentText_WholeVideoWindowKeepsSourceTimings(t *testing.T) {
+	subs := &stubSubtitles{bundle: &detail.ResolvedTextBundle{
+		LanguageCode: "it",
+		PlainText:    "intero video",
+		Cues:         []detail.TimedCue{{StartMs: 146_000, EndMs: 148_000, Text: "sorgente"}},
+		SourceType:   detail.TextSourceYouTubeSubtitle,
+		IsOriginal:   true,
+	}}
+	resolver := newTestResolver(&stubRepo{}, subs, nil)
+
+	bundle, err := resolver.AcquireSegmentText(context.Background(), usecase.TextTrackAcquireRequest{
+		ClipID:  "yt_rebase_002",
+		VideoID: "v_rebase_002",
+	})
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	if bundle == nil || len(bundle.Cues) != 1 || bundle.Cues[0].StartMs != 146_000 {
+		t.Fatalf("whole-video window must keep source timings, got %+v", bundle)
+	}
+}
+
 // ── Fase 1.b: ResolveOriginal/ResolveLanguage/ResolveBestAvailable ─────
 
 func TestResolveOriginal_PayloadWins(t *testing.T) {

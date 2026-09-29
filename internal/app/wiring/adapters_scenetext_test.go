@@ -76,6 +76,7 @@ func TestSceneTextGeneratorResolveVidRushPlanCarriesMediaPlan(t *testing.T) {
 		SourceLanguage: "en",
 		Source:         scriptgen.Source{Type: scriptgen.SourceText, Topic: "topic"},
 		Title:          "media-plan-title",
+		MediaMode:      scriptpkg.MediaModeStockOnly,
 		MediaPlan: mediadomain.MediaPlanSpec{
 			ProviderPolicy: mediadomain.MediaProviderPolicy{Artlist: mediadomain.MediaToggleEnabled},
 			Extraction:     mediadomain.MediaExtractionPolicy{Enabled: true, MaxEntitiesPerSegment: 9},
@@ -94,6 +95,9 @@ func TestSceneTextGeneratorResolveVidRushPlanCarriesMediaPlan(t *testing.T) {
 	}
 	if plan.MediaPlan.Extraction.MaxEntitiesPerSegment != 9 {
 		t.Fatalf("extraction limits = %+v, want max entities 9", plan.MediaPlan.Extraction)
+	}
+	if plan.MediaMode != scriptpkg.MediaModeStockOnly {
+		t.Fatalf("media mode = %q, want %q", plan.MediaMode, scriptpkg.MediaModeStockOnly)
 	}
 }
 

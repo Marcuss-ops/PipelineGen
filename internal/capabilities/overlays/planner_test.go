@@ -12,7 +12,9 @@ func TestBuildPlanAppliesConservativeLimitsAndRanks(t *testing.T) {
 		Scenes: []SceneInput{{
 			ID: "scene-1",
 			Phrases: []TimedAnnotation{
-				{Text: "too many words for this phrase to be eligible", StartMs: 1, EndMs: 2, Score: 10},
+				// 22 words > the 20-word default → dropped by the word budget even
+				// though it carries the highest score.
+				{Text: "too many words for this phrase to be eligible because it keeps running past the conservative headline ceiling for a rendered overlay", StartMs: 1, EndMs: 2, Score: 10},
 				{Text: "This changes everything", StartMs: 100, EndMs: 900, Score: 2},
 				{Text: "Lower priority", StartMs: 1000, EndMs: 1200, Score: 1},
 			},
@@ -62,7 +64,7 @@ func TestAllCandidatesPlannerConfigKeepsOnlyEditorialImagesAndPhrases(t *testing
 			ID: "scene-1",
 			Phrases: []TimedAnnotation{
 				{Text: "a very long phrase that is still spoken and must be rendered", StartMs: 100, EndMs: 600, Score: 1},
-				{Text: "second phrase", StartMs: 100, EndMs: 600, Score: 0.9},
+				{Text: "second phrase", StartMs: 700, EndMs: 1200, Score: 0.9},
 			},
 			Keywords: []TimedAnnotation{{Text: "KEYWORD", StartMs: 100, EndMs: 600}},
 			Images:   []ImageCandidate{{AssetID: "image-1", SHA256: "hash", StartMs: 100, EndMs: 600}},
@@ -71,7 +73,7 @@ func TestAllCandidatesPlannerConfigKeepsOnlyEditorialImagesAndPhrases(t *testing
 		ID: "scene-1",
 		Phrases: []TimedAnnotation{
 			{Text: "a very long phrase that is still spoken and must be rendered", StartMs: 100, EndMs: 600},
-			{Text: "second phrase", StartMs: 100, EndMs: 600},
+			{Text: "second phrase", StartMs: 700, EndMs: 1200},
 		},
 		Keywords: []TimedAnnotation{{Text: "KEYWORD", StartMs: 100, EndMs: 600}},
 		Images:   []ImageCandidate{{AssetID: "image-1", SHA256: "hash", StartMs: 100, EndMs: 600}},
@@ -128,8 +130,17 @@ func TestBuildPlanAppliesRunLevelPhraseBudgetAcrossScenes(t *testing.T) {
 		}
 		seen[key] = true
 	}
-	if !seen["shared phrase"] || !seen["alpha phrase"] || !seen["bravo phrase"] || !seen["charlie phrase"] || !seen["delta phrase"] || !seen["echo phrase"] || seen["additional phrase 12"] {
-		t.Fatalf("run-level rank/dedupe chose wrong phrases: %+v", phrases)
+	// The production cap keeps exactly the MaxPhraseOverlaysPerRun
+	// highest-scored unique grounded phrases; the lower-ranked "Echo phrase"
+	// and every "Additional phrase" stay out. The cross-scene duplicate is
+	// emitted once (its highest-scoring variant wins).
+	for _, want := range []string{"shared phrase", "alpha phrase", "bravo phrase", "charlie phrase", "delta phrase"} {
+		if !seen[want] {
+			t.Fatalf("run-level rank/dedupe dropped %q: %+v", want, phrases)
+		}
+	}
+	if seen["echo phrase"] || seen["additional phrase 12"] {
+		t.Fatalf("run-level cap admitted a phrase beyond the ceiling: %+v", phrases)
 	}
 }
 
@@ -143,12 +154,12 @@ func TestApplyPhraseOverlayBudgetReportsShortfallWithoutInventingItems(t *testin
 	if len(got) != 2 || got[0].ID != "phrase-1" || got[1].ID != "keyword-1" {
 		t.Fatalf("budgeted items = %+v, want one grounded phrase and the non-phrase item", got)
 	}
-	if budget.Requested != 15 || budget.Materialized != 1 || budget.Shortfall != 14 {
-		t.Fatalf("phrase budget = %+v, want requested=15 materialized=1 shortfall=14", budget)
+	if budget.Requested != MaxPhraseOverlaysPerRun || budget.Materialized != 1 || budget.Shortfall != MaxPhraseOverlaysPerRun-1 {
+		t.Fatalf("phrase budget = %+v, want the configured cap, one materialized, and the rest shortfall", budget)
 	}
 }
 
-func TestApplyEditorialOverlayBudgetEnforcesRunLevelEighteenImagesAndFifteenPhrases(t *testing.T) {
+func TestApplyEditorialOverlayBudgetEnforcesRunLevelEighteenImagesAndFivePhrases(t *testing.T) {
 	items := make([]OverlayItem, 0, 40)
 	for i := 0; i < 20; i++ {
 		items = append(items, OverlayItem{
@@ -180,13 +191,18 @@ func TestApplyEditorialOverlayBudgetEnforcesRunLevelEighteenImagesAndFifteenPhra
 			t.Fatalf("non-editorial overlay survived: %+v", item)
 		}
 	}
-	if images != MaxImageOverlaysPerRun || phrases != MaxPhraseOverlaysPerRun || len(got) != 33 {
-		t.Fatalf("image/phrase/total counts = %d/%d/%d, want 18/15/33", images, phrases, len(got))
+	if images != MaxImageOverlaysPerRun || phrases != MaxPhraseOverlaysPerRun || len(got) != 18+MaxPhraseOverlaysPerRun {
+		t.Fatalf("image/phrase/total counts = %d/%d/%d, want 18 images and the configured five phrases", images, phrases, len(got))
 	}
-	if budget != (PhraseOverlayBudget{Requested: 15, Materialized: 15, Shortfall: 0}) {
-		t.Fatalf("phrase budget = %+v, want 15 requested and materialized", budget)
+	if budget != (PhraseOverlayBudget{Requested: MaxPhraseOverlaysPerRun, Materialized: MaxPhraseOverlaysPerRun, Shortfall: 0}) {
+		t.Fatalf("phrase budget = %+v, want the configured phrase cap requested and materialized", budget)
 	}
-	if got[0].ID != "image-2" || got[17].ID != "image-19" || got[18].ID != "phrase-2" || got[32].ID != "phrase-16" {
+	// Images keep their input order; the admitted phrases are the
+	// MaxPhraseOverlaysPerRun highest-priority ones — phrase-12..phrase-16 for
+	// the certified default of five — re-emitted in input order.
+	if got[0].ID != "image-2" || got[17].ID != "image-19" ||
+		got[18].ID != fmt.Sprintf("phrase-%d", 17-MaxPhraseOverlaysPerRun) ||
+		got[18+MaxPhraseOverlaysPerRun-1].ID != "phrase-16" {
 		t.Fatalf("run-level ranking chose wrong survivors: %+v", got)
 	}
 }
@@ -200,8 +216,8 @@ func TestApplyEditorialOverlayBudgetDoesNotInventPhraseShortfall(t *testing.T) {
 	if len(got) != 2 || got[0].ID != "phrase-1" || got[1].ID != "image-1" {
 		t.Fatalf("budgeted items = %+v, want only the provided phrase and image", got)
 	}
-	if budget != (PhraseOverlayBudget{Requested: 15, Materialized: 1, Shortfall: 14}) {
-		t.Fatalf("phrase budget = %+v, want requested=15 materialized=1 shortfall=14", budget)
+	if budget != (PhraseOverlayBudget{Requested: MaxPhraseOverlaysPerRun, Materialized: 1, Shortfall: MaxPhraseOverlaysPerRun - 1}) {
+		t.Fatalf("phrase budget = %+v, want the configured cap, one materialized, and the rest shortfall", budget)
 	}
 }
 
@@ -387,11 +403,14 @@ func TestBuildPlanRejectsInvalidImageIdentity(t *testing.T) {
 // TestBuildPlanGolden01ImportantPhrase certifies the GOLDEN 01 editorial
 // rules for important phrases, all in one deterministic scenario:
 //
-//   - concept captured: a short important phrase is selected verbatim with
-//     its certified timing preserved;
+//   - concept captured: an important phrase is selected verbatim with its
+//     certified timing preserved;
 //   - no paragraph copying: a 14-word sentence is dropped (over the word
 //     budget), never emitted as a headline;
-//   - max 2 per scene: MaxPhrases=2 keeps the top-2 by score;
+//   - complete phrases win: within the word budget, the 4-word
+//     "THIS COULD CHANGE EVERYTHING" ranks above the 3-word
+//     "A MAJOR CHANGE" (editorial score breaks word-count ties);
+//   - max 2 per scene: MaxPhrases=2 keeps the top-2;
 //   - no duplicates: an identical phrase text is emitted exactly once;
 //   - in-scene timing only: empty text and negative/zero timing are dropped,
 //     never given guessed timing.
@@ -420,17 +439,17 @@ func TestBuildPlanGolden01ImportantPhrase(t *testing.T) {
 		t.Fatalf("items = %d, want exactly 2 distinct phrases\n%+v", len(plan.Items), plan.Items)
 	}
 	first, second := plan.Items[0], plan.Items[1]
-	if first.TemplateID != "IMPORTANT_PHRASE" || first.Text != "A MAJOR CHANGE" {
-		t.Fatalf("first phrase = %+v, want the short concept (not the paragraph)", first)
+	if first.TemplateID != "IMPORTANT_PHRASE" || first.Text != "THIS COULD CHANGE EVERYTHING" {
+		t.Fatalf("first phrase = %+v, want the more complete 4-word concept", first)
 	}
-	if first.StartMs != 800 || first.EndMs != 2600 {
-		t.Fatalf("first phrase timing = [%d,%d], want certified [800,2600]", first.StartMs, first.EndMs)
+	if first.StartMs != 3200 || first.EndMs != 5000 {
+		t.Fatalf("first phrase timing = [%d,%d], want certified [3200,5000]", first.StartMs, first.EndMs)
 	}
-	if second.TemplateID != "IMPORTANT_PHRASE" || second.Text != "THIS COULD CHANGE EVERYTHING" {
-		t.Fatalf("second phrase = %+v", second)
+	if second.TemplateID != "IMPORTANT_PHRASE" || second.Text != "A MAJOR CHANGE" {
+		t.Fatalf("second phrase = %+v, want the shorter 3-word concept", second)
 	}
-	if second.StartMs != 3200 || second.EndMs != 5000 {
-		t.Fatalf("second phrase timing = [%d,%d], want certified [3200,5000]", second.StartMs, second.EndMs)
+	if second.StartMs != 800 || second.EndMs != 2600 {
+		t.Fatalf("second phrase timing = [%d,%d], want certified [800,2600]", second.StartMs, second.EndMs)
 	}
 	// No duplicates: "A MAJOR CHANGE" appears exactly once.
 	count := 0

@@ -8,8 +8,8 @@
 
 | Surface | Directory | Files | Highest version prefix |
 |---------|-----------|-------|------------------------|
-| SQLite primary + observability + cache (canonical SSOT for non-media) | `migrations/sqlite/` | **218** `*.sql` files | `267` (`267_observability_business_quarantine.sql`) |
-| SQLite jobs plane (isolated `jobs/jobs.db.sqlite`) | `migrations/sqlite_jobs/` | **4** files | `004` (`004_jobs_payload_columns.sql`) |
+| SQLite primary + observability + cache (canonical SSOT for non-media) | `migrations/sqlite/` | **224** `*.sql` files (**218** at the freeze; `268`–`272` added after) | `272` (`272_job_checkpoints_restore.sql`) |
+| SQLite jobs plane (isolated `jobs/jobs.db.sqlite`) | `migrations/sqlite_jobs/` | **6** files | `006` (`006_job_deferral.sql`) |
 | PostgreSQL + pgvector media SSOT (`pipelinegen_media`) | `migrations/postgres/` | **3** files (+ 1 `embed_ddl.go` bridge) | `003` (`003_media_hnsw_indexes.sql`) |
 
 Total distinct version prefixes across SQLite: `218` (see raw list below).
@@ -30,8 +30,11 @@ version integers.
 194 195 196 197 198 199 200 201 202 203 204 205 206 207 208 209 210 211 212
 213 214 215 216 217 218 219 220 221 222 223 224 225 226 227 228 229 230 231
 232 233 234 235 236 237 238 239 240 241 242 243 244 245 246 247 248 249 250
-251 252 260 262 263 264 265 266 267
+251 252 260 262 263 264 265 266 267 268 269 270 271 272 273
 ```
+
+`268`–`273` are the post-freeze additions (the museum manifest above stops at
+`267`); `272` and `273` are the drift repairs described below.
 
 ## Gaps (version integers absent from `migrations/sqlite/`)
 
@@ -95,15 +98,73 @@ following this contract.
 
 ## SQLite jobs-plane state
 
-`migrations/sqlite_jobs/` intentionally contains only 4 files:
+`migrations/sqlite_jobs/` intentionally contains only 6 files:
 
 * `001_jobs_plane.sql` — `jobs` table + `idx_jobs_outbox_claim`.
 * `002_operations_plane.sql` — `operations`-plane tables.
 * `003_outbox_priority.sql` — `idx_outbox_events_status_priority_claim`.
 * `004_jobs_payload_columns.sql` — payload column additions.
+* `005_job_scheduling.sql` — deferred scheduling (`job_schedules`, `job_scheduler_counters`) + per-stage status (`job_stage_status`).
+* `006_job_deferral.sql` — `jobs.deferred_until` + `idx_jobs_deferred_until`:
+  the non-consuming deferral hint (`job.OutcomeDeferred`), i.e. a wait that does
+  not spend the retry budget.
 
 This surface is live but small; it is excluded from the primary 218-count and
 from the freeze.
+
+## Post-baseline drift repair (`272`)
+
+Applied migrations are skipped by version, and their checksum is compared —
+that guards the FILE, never the live schema. Observed on 2026-09-28:
+`data/media/media.db.sqlite` carried a `schema_migrations` row for `216`
+(`216_job_checkpoints.sql`) whose checksum matched the file byte-for-byte, while
+`job_checkpoints` was absent from the database. Nothing noticed, so every durable
+checkpoint write failed with `no such table` and resume silently fell back to the
+best-effort path.
+
+Two halves close it:
+
+* `272_job_checkpoints_restore.sql` — forward repair (primary scope, idempotent
+  `CREATE TABLE IF NOT EXISTS` + index), schema-identical to what `216` declares.
+  Editing `216` cannot work: the ledger skips an applied file.
+* `273_job_checkpoints_index_restore.sql` — the same session's second repair.
+  `272` recreated the table with the canonical
+  `CREATE INDEX IF NOT EXISTS idx_job_checkpoints_job`, and SQLite silently
+  skipped it: index names are unique per DATABASE and that name belonged to
+  `legacy_job_checkpoints`, the quarantined copy left by the out-of-band
+  archival. `273` frees the name and re-creates the canonical index. The legacy
+  copy cannot be re-indexed under a legacy-qualified name in SQL — the runner
+  aborts on a failed statement, and `CREATE INDEX … ON legacy_job_checkpoints`
+  fails wherever the archival never ran.
+* `internal/platform/sqlite/migrations_verify.go` — boot-time check
+  (`verifyDeclaredTables`) that every table AND index declared by an in-scope
+  APPLIED migration exists in the live schema, and that a declared index is
+  owned by the table that declares it (an index that exists under the right name
+  on the wrong table is the silent-skip shape above). Gaps are logged at error
+  level with the declaring file (the newest numbered declarer), its version, the
+  target DB and the remedy. Deliberately non-fatal: a drifted database must still
+  boot so the operator can apply the forward migration.
+
+Only four things are ever excluded, and each is a stated reason rather than a
+heuristic:
+
+1. some in-scope migration removes the object LATER than it last declares it
+   (order-aware, so a rebuild or a re-created table is not written off);
+2. the object is on `executionPlaneArchivedTables` — the finite set of
+   execution-plane tables the data-plane archival documented by `265` may have
+   moved to the jobs database (every one of them is declared by
+   `migrations/sqlite_jobs/`). `job_checkpoints` is deliberately NOT on that list;
+   the primary runtime still opens its primary copy, so its absence is drift;
+3. an APPLIED ledger row whose file is no longer in the corpus names a drop of
+   the object (`253_drop_assembly_sessions.sql` is the live example: the ledger
+   is the only surviving statement of intent);
+4. the live schema has the object (trivially).
+
+Contract tests: `internal/platform/sqlite/migrations_declared_tables_test.go`
+(reported on both planes, silent on a clean DB, dropped-for-good tables not
+reported) and `internal/platform/sqlite/migrations_verify_rules_test.go` (one
+test per exclusion rule, each with its positive control, plus the stolen-index
+shape reproduced end to end).
 
 ## Why this file exists
 

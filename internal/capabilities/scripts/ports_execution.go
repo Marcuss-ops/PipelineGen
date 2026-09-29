@@ -27,6 +27,36 @@ import (
 // The future Chronon overlay path submits through
 // QueueRenderEnqueuer.EnqueueChrononPlan, which does not need this port.
 
+// DocsPublishEnqueuer submits the deferred `script.docs_publish` child that
+// performs the post-CORE_READY Docs leg (TICKET-CORE-READY-DURABLE-DAG step 3).
+//
+// It carries a run REFERENCE, never a copy of the result: the child re-reads
+// the durable snapshot. That is what lets the run be published from after a
+// restart, and what keeps a single version of the plan.
+//
+// Semantics follow the OverlayPrepareEnqueuer precedent: a nil enqueuer means
+// the child leg is NOT wired (the run keeps publishing documents inline, exactly
+// as before), and a non-nil enqueuer is FAIL-CLOSED — an enqueue error fails the
+// run rather than silently leaving a parent that deferred its terminal flip to
+// a child that was never submitted.
+type DocsPublishEnqueuer interface {
+	EnqueueDocsPublish(ctx context.Context, req DocsPublishEnqueue) error
+}
+
+// DocsPublishEnqueue is the enqueue request for the deferred Docs child.
+type DocsPublishEnqueue struct {
+	// ParentJobID is the script.generate job that owns the run. The child
+	// carries it so the parent aggregator can find the parent still awaiting
+	// aggregation without a second lookup.
+	ParentJobID string
+	// RunID is the durable run whose CORE_READY snapshot the child publishes
+	// from.
+	RunID string
+	// CorrelationID is passed through so the child's events join the parent's
+	// trace.
+	CorrelationID string
+}
+
 // OverlayPrepareEnqueuer enqueues the overlay.prepare job for the run's
 // pre-timing OverlayIntents. It is fire-and-forget: prepare resolves
 // templates and prefetches entity assets independently of the timing-frozen

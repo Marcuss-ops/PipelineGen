@@ -191,3 +191,197 @@ transcript *without* cues does re-acquire, and that re-acquire is deliberately f
   stages the full source exactly once and falls back to per-segment `yt-dlp` whenever the
   optimization cannot hold.
 
+## Live certificate: subtitle clip-window contract (captions → clip timeline → `.ass`)
+
+`tests/e2e/youtube_subtitles_clip_window_live_test.go` is the opt-in certificate for
+PR-SUBS-CLIP-WINDOW. It exists because this deployment runs the acquisition chain with
+`media.multilingual.source_priority=whisper_first`, so the live
+`POST /api/clips/process` certificate above proves the **Whisper** leg and never the
+**YouTube-caption** leg — and the caption leg is the one that broke.
+
+The defect: the full video's VTT is read and only WINDOW-filtered, so its cues kept
+SOURCE-video timestamps (e.g. 65000–80000 ms for a clip cut at 65s) while every consumer of a
+clip's cues expects the CLIP timeline:
+
+- `texttracks.ValidateASSFile` rejects an artifact whose last cue end exceeds
+  `clipDurationMs + 250ms` → the artifact is `FAILED` and nothing is published;
+- `cliprender.trimClipRenderCues` drops every cue with `StartMs >= duration` → the render ships
+  with no subtitles at all.
+
+The fix lives in `detail.RebaseCuesForClip` (`internal/kernel/asset/detail/timed_cues_clip_window.go`),
+applied by `TextTrackResolver.acquireFromSubtitles` and by the backfill's `AcquireCommand`; the
+video-level `GET /api/clips/transcript` port deliberately keeps source-video times (operators pick
+clip windows from them).
+
+### Prerequisites
+
+- `yt-dlp` on `PATH`, or `VELOX_E2E_YTDLP` set to the command — same rule as the certificate above,
+  including the multi-word wrapper (`VELOX_E2E_YTDLP='bash scripts/yt-dlp-pipeline'`). The test
+  splits the value into argv and resolves a cwd-relative wrapper path against the module root (the
+  test binary runs from `tests/e2e/`).
+- **No** PostgreSQL, **no** Ollama, **no** embedding sidecar: the resolver is wired with the real
+  `SubtitleFetcherAdapter` only, with `Repo` and `Transcriber` nil on purpose, because this
+  certificate is about the caption leg alone.
+
+### Run
+
+```bash
+VELOX_E2E_LIVE=1 \
+VELOX_E2E_YTDLP='bash scripts/yt-dlp-pipeline' \
+go test ./tests/e2e/ -run TestLiveYouTube_SubtitleCuesAreClipLocalAndASSValidates -count=1 -v
+```
+
+Expected: `--- PASS ... (8s)` with an `INFO text track acquired from YouTube subtitles` line
+reporting a non-zero `cues` count.
+
+### What it asserts
+
+1. Real captions are downloaded (`yt-dlp --write-subs/--write-auto-subs --skip-download` into a
+   throwaway cache) and parsed through the canonical VTT parser — no fakes on the critical path.
+2. The bundle's language is honestly one of the configured ones, i.e. it is the language of the
+   file that was actually read, not the first entry of the configured CSV.
+3. Every cue is CLIP-local: `0 <= start < end <= durationMs`. Source-absolute cues (the pre-fix
+   behaviour) start near `startSec*1000` and end near `endSec*1000`, both far outside that range —
+   the default window (65→80s, 15s long) is chosen so the two timelines can never overlap
+   accidentally.
+4. The `.ass` compiled from those real cues passes `texttracks.ValidateASSFile` with the real clip
+   duration — the exact gate the subtitle materializer and `clip.render` run.
+
+If no bundle is acquired, the failure message carries the resolved yt-dlp command, its last error
+and its last output: `FetchFullVTT` ignores the subprocess result on purpose ("best-effort: no
+error if yt-dlp can't fetch subs" is the production contract), so without that record a failing
+live download would surface only as `text track acquisition exhausted all 5 priorities`.
+
+### Environment knobs
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `VELOX_E2E_LIVE` | unset | Gate: must be `1` to run this test |
+| `VELOX_E2E_YOUTUBE_URL` | `https://www.youtube.com/watch?v=iHaK0M-207o` | Source video; must expose captions |
+| `VELOX_E2E_YTDLP` | `yt-dlp` | May be a multi-word command |
+| `VELOX_E2E_SUBTITLE_LANGS` | `en,it` | Configured languages CSV handed to `--sub-langs` |
+| `VELOX_E2E_CLIP_START_SEC` | `65` | Window start in the SOURCE video; must be `> 0` |
+| `VELOX_E2E_CLIP_END_SEC` | `80` | Window end; `end-start` must be `< start` |
+
+### Troubleshooting
+
+- `real captions must be acquired` with `last yt-dlp err` — the download itself failed; read the
+  recorded output. The usual causes are the bare `yt-dlp` resolving against the wrong `HOME`
+  (use the wrapper) and a video whose captions track disappeared.
+- `the cue is still on the SOURCE timeline` — the rebase regression is back: `acquireFromSubtitles`
+  or `backfill_acquire.go` no longer passes `StartSec`/`EndSec` through
+  `detail.RebaseCuesForClip`.
+- `cue N ends after the ... clip` inside `ValidateASSFile` — same root cause, seen from the
+  validator instead of the cue loop.
+
+## Register-path clips: post-commit fan-out (translations + `.ass`)
+
+Two commit routes write a clip into the PostgreSQL media SSOT:
+
+| Route | Entry point | Fan-out |
+| --- | --- | --- |
+| `POST /api/clips/process` (extraction) | `ProcessYouTubeSegmentUseCase.step6to9_SubtitlesDriveWriter` | ✅ `enqueueMaterializeFanOut` |
+| `POST /api/media/register-batch` (register) | `youtube.Service.Register → commitClipAtomically` | ✅ since Sept 2026 |
+
+Before the fix the mapping (materialize vs. acquire, `und` language fallback, source-text hash)
+lived inline in the extraction use case, so the Register route committed clip + ONE Whisper
+transcript and stopped: **no translations, no `.ass` artifacts, invisible to multilingual search —
+with no error anywhere** (the job succeeded, the clip was `INDEXED`, everything looked healthy).
+
+The mapping now has ONE owner: `MaterializeFanOut.EnqueueCommittedClip`
+(`internal/capabilities/assets/texttracks/fanout_commit.go`). Both routes call it through their
+own single-method port, so a third commit route cannot ship without it again.
+
+TWO COMMIT OUTCOMES OWE THE FAN-OUT, and both are handled:
+
+- the clean commit — step 8.6 of `sourcing/youtube/service.go`;
+- **BLOCKER #4** — the writer returns `ErrOutboxTerminalConflict` when the asset + transcript ARE
+  committed and only the index event collides with a terminal outbox row. That is the normal
+  outcome of re-sending an ALREADY PUBLISHED window with `force: true`, so the first live attempt
+  at this seam missed it: `commitClipAtomically` returned before scheduling anything and the clip
+  kept its single source transcript. The fan-out is now scheduled on that branch too, mirroring
+  the extraction path's `processed_but_index_blocked` branch. A job reported FAILED by BLOCKER #4
+  still leaves a durable, fully translated clip — only the re-index event is suppressed.
+
+Live certificate of the seam (2026-09-28): force re-registration of
+`yt_9Q6T-bzF4Vs_122_151_v1` produced, in one journal window,
+`canonical clip writer: returning ErrOutboxTerminalConflict` → `texttracks.fanout.enqueue` →
+`caller":"texttracks/fanout_commit.go:107","msg":"texttracks.materialize scheduled after YouTube
+clip commit"` → `texttracks.materialize.done` with `retranslated=9, failed=0`, and the 10 `.ass`
+came back `READY` with Drive references.
+
+### Deploy note
+
+The seam is Go source: it only takes effect after a rebuild + restart of the service.
+
+```bash
+make -o build-muscles build-server        # skip the Rust step when its toolchain is absent
+sudo -n /usr/bin/systemctl restart pipelinegen.service
+```
+
+### Diagnose a clip that never materialized
+
+```bash
+# tracks per clip — a healthy clip has 10 (en + 9 targets), all READY
+docker exec -i pipelinegen-postgres-test psql -U pipelinegen -d pipelinegen_media -c \
+  "SELECT a.id, count(t.id) FROM media_assets a
+   JOIN asset_text_tracks t ON t.asset_id=a.id AND t.is_current=1 AND t.status='READY'
+   WHERE a.id LIKE 'yt_<VIDEOID>%' GROUP BY a.id HAVING count(t.id) < 10;"
+
+# subtitle artifacts — READY + drive_file_id present
+docker exec -i pipelinegen-postgres-test psql -U pipelinegen -d pipelinegen_media -tA -c \
+  "SELECT count(*) FROM asset_subtitle_artifacts
+   WHERE asset_id LIKE 'yt_<VIDEOID>%' AND is_current=1 AND status='READY';"
+```
+
+### Repair (idempotent, scoped)
+
+```bash
+cd refactored && set -a && source .env && set +a
+go run ./cmd/admin text-tracks-backfill \
+    --source youtube \
+    --languages en,it,de,es,pt-BR,fr,pl,ru,tr,id \
+    --asset-ids 'yt_9Q6T-bzF4Vs_122_151_v1,yt_9Q6T-bzF4Vs_137_151_v1' \
+    --all --apply --progress=4
+```
+
+`--asset-ids` scopes the run to specific `media_assets.id` values (drop it, or use `--all`, to walk
+the whole `--source` catalog). Read the counters at the end: `Languages created` (new translation
+tracks), `Subtitles delivered` (`.ass` written + uploaded to `youtube_subtitles/<videoId>`),
+`Index repaired` / `reindex requested`. `EXIT=0` with `Languages failed: 0` is success.
+
+A clip whose artifacts are all `status=FAILED` needs one more step: its stored cues are still on the
+SOURCE timeline (it predates `RebaseCuesForClip`), and priority 1 of the acquisition chain trusts
+READY cues and never re-acquires — so the backfill happily rebuilds the same rejected `.ass`. The
+repair is to drop the cue rows and let the chain re-acquire through the fixed code:
+
+```bash
+docker exec -i pipelinegen-postgres-test psql -U pipelinegen -d pipelinegen_media -c \
+  "DELETE FROM asset_text_track_segments s USING asset_text_tracks t
+   WHERE t.id = s.track_id AND t.asset_id = 'yt_<VIDEOID>_<start>_<end>_v1';"
+# then re-run the scoped backfill above for that asset
+```
+
+(The text and its hash are untouched — only the timing rows go — so no translation is invalidated.)
+
+## Local certificate: every `.ass` in the catalog validates
+
+`tests/e2e/subtitle_artifacts_catalog_validate_test.go` is the hermetic counterpart of the live
+certificate: it walks `asset_subtitle_artifacts` in `data/media/media.db.sqlite` and runs the
+canonical `texttracks.ValidateASSFile` against every current `status=READY` file on disk, with each
+clip's own `clip_duration_ms`. No network, no server; it skips when the catalog is absent.
+
+```bash
+# default: every READY .ass on disk must validate
+go test ./tests/e2e/ -run TestSubtitleArtifacts_CatalogCurrentFilesValidate -count=1 -v
+
+# strict: also require the full 10-language set for the listed asset-id prefixes
+VELOX_ASS_CATALOG_PREFIXES=yt_9Q6T-bzF4Vs,yt_Lsv8jps7H9k,yt_vVCFbOn77Co,yt_Kq7Kqku3GO0 \
+  go test ./tests/e2e/ -run TestSubtitleArtifacts_CatalogCurrentFilesValidate -count=1 -v
+```
+
+The default run fails only on real defects — a READY file the validator rejects, or an asset whose
+every current row is `FAILED` (a clip that ships no subtitles at all). Language-set completeness is
+env-scoped because the historical catalog legitimately holds partially materialized legacy assets;
+a freshly delivered batch is held to the full contract by the strict run.
+
