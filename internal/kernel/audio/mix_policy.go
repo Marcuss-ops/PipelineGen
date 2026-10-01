@@ -29,7 +29,7 @@ const (
 	// and trims it to the canonical loudness BEFORE this gain and the duck
 	// automation apply. Keep normalized music clearly below narration; the
 	// previous near-unity setting made the bed too prominent.
-	BackgroundMusicGainDB = -18.0
+	BackgroundMusicGainDB = -24.0
 	// SoundEffectGainDB remains a canonical absolute level relative to unity.
 	SoundEffectGainDB = -10.0
 

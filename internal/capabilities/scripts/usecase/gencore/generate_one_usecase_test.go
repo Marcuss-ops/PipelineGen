@@ -463,7 +463,7 @@ func TestGenerateOneUseCase_EmitsCanonicalEvents(t *testing.T) {
 	ppReg.Freeze()
 
 	uc := NewGenerateOneUseCase(
-		processor.NormalizationConfig{},
+		processor.NormalizationConfig{ScriptDocsFolderID: "TEST_DOCS_FOLDER"},
 		nil, e, ppReg, zap.NewNop(),
 	)
 
@@ -476,8 +476,12 @@ func TestGenerateOneUseCase_EmitsCanonicalEvents(t *testing.T) {
 			SourceText: "This is a generated script with multiple sentences and narrative depth for event testing.",
 		},
 		ScriptParams: scriptpkg.ScriptSpec{TargetWords: 12},
+		// Docs default on and validation fails closed without a folder; the
+		// audio stage is skipped because this engine has no audio processor.
+		Docs: scriptpkg.DocumentsSpec{FolderID: "TEST_DOCS_FOLDER"},
 		Output: scriptpkg.OutputSpec{
-			SaveToDB: false,
+			SaveToDB:         false,
+			VoiceoverEnabled: scriptpkg.ToggleDisabled,
 		},
 	}
 
@@ -652,8 +656,10 @@ func umbrellaCoverageVoiceoverResolve(t *testing.T) {
 	})
 	ppReg.Freeze()
 
+	// Docs default on and validation fails closed without a folder; a
+	// resolvable folder lets the failure land on the intended phase.
 	uc := NewGenerateOneUseCase(
-		processor.NormalizationConfig{},
+		processor.NormalizationConfig{ScriptDocsFolderID: "TEST_DOCS_FOLDER"},
 		nil, e, ppReg, log,
 	)
 	// Wire a voGroupResolver that errors. Set VoiceoverGroup
@@ -715,8 +721,10 @@ func umbrellaCoverageEngine(t *testing.T) {
 	})
 	ppReg.Freeze()
 
+	// Docs default on and validation fails closed without a folder; a
+	// resolvable folder lets the failure land on the intended phase.
 	uc := NewGenerateOneUseCase(
-		processor.NormalizationConfig{},
+		processor.NormalizationConfig{ScriptDocsFolderID: "TEST_DOCS_FOLDER"},
 		nil, e, ppReg, log,
 	)
 
@@ -783,8 +791,10 @@ func umbrellaCoveragePostprocess(t *testing.T) {
 	})
 	ppReg.Freeze()
 
+	// Docs default on and validation fails closed without a folder; a
+	// resolvable folder lets the failure land on the intended phase.
 	uc := NewGenerateOneUseCase(
-		processor.NormalizationConfig{},
+		processor.NormalizationConfig{ScriptDocsFolderID: "TEST_DOCS_FOLDER"},
 		nil, e, ppReg, log,
 	)
 

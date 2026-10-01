@@ -99,7 +99,7 @@ func mapPlateFromManifest(plate maps.Plate) capabilityoverlay.MapPlate {
 	return capabilityoverlay.MapPlate{
 		ID: plate.ID, License: plate.License, Attribution: plate.Attribution,
 		Center: capabilityoverlay.MapCenter{Latitude: plate.Center.Latitude, Longitude: plate.Center.Longitude},
-		Zoom: plate.Zoom, Width: plate.Width, Height: plate.Height, Window: plate.Window(),
+		Zoom:   plate.Zoom, Width: plate.Width, Height: plate.Height, Window: plate.Window(),
 		Asset: capabilityoverlay.NewOverlayAssetRef(
 			asset.New(plate.ID, plate.SHA256(), mapPlateMediaType, 0), "", plate.Path(),
 		),

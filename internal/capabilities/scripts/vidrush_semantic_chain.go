@@ -506,6 +506,18 @@ func NewSemanticAndFanoutResolver(semantic, fanout SegmentProviderResolver) (Seg
 }
 
 func (r *SemanticAndFanoutResolver) ResolveProviders(ctx context.Context, plan *scriptpkg.ResolvedGenerationPlan, segment scriptpkg.VidRushSegmentResult) (scriptpkg.VidRushSegmentResult, error) {
+	if _, stockBound := scriptpkg.StockBindingForSegment(plan, nil, segment); stockBound {
+		// A direct stock binding is the scene's authoritative visual source.
+		// Neither the local-first semantic probe nor the provider fanout may
+		// search for it. The gate only rewrites Cache strings (struct values),
+		// so a shallow struct copy is a sufficient isolated result here.
+		cloned := segment
+		cloned.Cache.Artlist = "BYPASSED"
+		cloned.Cache.InternetImages = "BYPASSED"
+		cloned.Cache.YouTube = "BYPASSED"
+		cloned.Cache.Binding = "STOCK_BOUND"
+		return cloned, nil
+	}
 	updated, err := r.semantic.ResolveProviders(ctx, plan, segment)
 	if err != nil {
 		return segment, err

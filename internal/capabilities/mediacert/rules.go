@@ -20,8 +20,8 @@
 //   - ruleAssetOwnership        — a selected asset's provenance segment
 //     matches the segment it is bound to.
 //   - ruleCrossSceneReuse       — when the spec forbids reuse, no asset
-//     is bound to two segments.
-//   - ruleProviderPolicy        — only spec-allowed video providers used.
+//     is bound to two segments.//	  - ruleProviderPolicy        — only spec-allowed video providers used.
+//   - ruleStockIsolation          — stock-folder scenes receive NO provider media.
 //   - ruleCrossContamination    — umbrella check: 0 query/asset drift.
 package mediacert
 
@@ -53,6 +53,7 @@ func AllRules() []Rule {
 		ruleAssetOwnership,
 		ruleCrossSceneReuse,
 		ruleProviderPolicy,
+		ruleStockIsolation,
 		ruleCrossContamination,
 	}
 }
@@ -396,6 +397,7 @@ func entityHasEvidence(ent script.ExtractedEntity, seg ResultSegment) bool {
 // maximum image count per segment. It never requires fabricated queries for
 // entities that the extractor did not find.
 func ruleImageFanout(spec Spec, result MediaResult) CheckResult {
+	expected := segmentByID(spec)
 	pass, total := 0, len(result.Segments)
 	var violations []Violation
 	for _, seg := range result.Segments {
@@ -420,12 +422,16 @@ func ruleImageFanout(spec Spec, result MediaResult) CheckResult {
 				Detail:    fmt.Sprintf("image queries = %d but entities = %d (fanout mismatch)", nQueries, nEnts),
 			})
 		}
-		nImgs := len(seg.Assets.SecondaryImages) + len(seg.Assets.GeneratedImages)
-		// VidRush surfaces provider candidates here; MediaSampler selects the
-		// requested budget downstream. More candidates than the budget are
-		// valid and give the sampler alternatives, while fewer cannot satisfy
-		// the image requirement.
-		if spec.ImagesPerSegment > 0 && nImgs < spec.ImagesPerSegment {
+		// A stock-bound scene takes its visuals from the caller's direct
+		// stock binding, so the image budget certifies nothing there: the
+		// STOCK ISOLATION rule owns that scene's zero-provider contract.
+		if expected[seg.SegmentID].StockBound {
+			if allForSegment(violations, seg.SegmentID) == 0 {
+				pass++
+			}
+			continue
+		}
+		if nImgs := len(seg.Assets.SecondaryImages) + len(seg.Assets.GeneratedImages); spec.ImagesPerSegment > 0 && nImgs < spec.ImagesPerSegment {
 			violations = append(violations, Violation{
 				SegmentID: seg.SegmentID,
 				Rule:      string(CheckImageFanout),
@@ -437,6 +443,45 @@ func ruleImageFanout(spec Spec, result MediaResult) CheckResult {
 		}
 	}
 	return passCount(CheckImageFanout, pass, total, violations...)
+}
+
+// ruleStockIsolation certifies the clip/stock separation positively: a
+// segment declared stock_bound in the spec (a caller stock folder binding)
+// must carry NO provider video winner and NO provider image candidates.
+// Its media comes from the binding, never from discovery. Segments not
+// declared stock_bound are not constrained by this rule.
+func ruleStockIsolation(spec Spec, result MediaResult) CheckResult {
+	expected := segmentByID(spec)
+	total, pass := 0, 0
+	var violations []Violation
+	for _, seg := range result.Segments {
+		exp, ok := expected[seg.SegmentID]
+		if !ok || !exp.StockBound {
+			continue
+		}
+		total++
+		if winner := winnerOf(seg.Assets); winner != nil {
+			violations = append(violations, Violation{
+				SegmentID: seg.SegmentID,
+				Rule:      string(CheckStockIsolation),
+				Detail:    fmt.Sprintf("stock-bound segment carries provider winner asset %q (provider %q)", winner.AssetID, winner.Provider),
+			})
+		}
+		if n := len(seg.Assets.SecondaryImages) + len(seg.Assets.GeneratedImages); n > 0 {
+			violations = append(violations, Violation{
+				SegmentID: seg.SegmentID,
+				Rule:      string(CheckStockIsolation),
+				Detail:    fmt.Sprintf("stock-bound segment carries %d provider image candidate(s)", n),
+			})
+		}
+		if allForSegment(violations, seg.SegmentID) == 0 {
+			pass++
+		}
+	}
+	if total == 0 {
+		return passBool(CheckStockIsolation, true)
+	}
+	return passCount(CheckStockIsolation, pass, total, violations...)
 }
 
 // allForSegment counts how many violations already belong to a segment.

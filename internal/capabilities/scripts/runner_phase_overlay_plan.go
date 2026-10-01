@@ -3,6 +3,7 @@ package scriptgeneration
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	mediadomain "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/observability"
@@ -49,7 +50,7 @@ func (r *Runner) compileAudioOverlayPlan(ctx context.Context, runID string, req 
 	if canvas.Style == nil && background != nil {
 		canvas.Style = background.Style
 	}
-	driveFolderID := firstNonEmpty(req.Render.DriveFolderID, req.DriveFolderID, req.Docs.FolderID)
+	driveFolderID := strings.TrimSpace(req.Render.DriveFolderID)
 	plates := r.mapPlates
 	if req.MediaPlan.ProviderPolicy.Geocoding != mediadomain.MediaToggleEnabled {
 		plates = nil

@@ -27,6 +27,12 @@ type SpecSegment struct {
 	// used. Used by the ARTLIST RELEVANCE check to reject a boxing clip
 	// bound to a Greek Salad segment.
 	WinnerSubjectMatch string `json:"winner_subject_match,omitempty"`
+	// StockBound marks a segment whose visual source is a caller-supplied
+	// direct stock binding (stock_bindings or the per-segment stock_folder
+	// shorthand). Such a segment must receive NO provider media: the
+	// STOCK ISOLATION check certifies that absence positively, and IMAGE
+	// FANOUT skips its image budget.
+	StockBound bool `json:"stock_bound,omitempty"`
 }
 
 // Spec is the top-level certification specification. It declares the
@@ -117,6 +123,7 @@ const (
 	CheckAssetOwnership     CheckName = "ASSET OWNERSHIP"
 	CheckCrossSceneReuse    CheckName = "CROSS-SCENE REUSE"
 	CheckProviderPolicy     CheckName = "PROVIDER POLICY"
+	CheckStockIsolation     CheckName = "STOCK ISOLATION"
 	CheckCrossContamination CheckName = "CROSS CONTAMINATION"
 )
 

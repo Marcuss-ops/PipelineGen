@@ -246,11 +246,13 @@ func TestCertifiedImageMotionPoolAndPlannerAssignment(t *testing.T) {
 		}
 		selected[id] = true
 	}
-	selected = make(map[string]bool, len(got))
-	for ordinal := range got {
+	// The PUBLIC selector is the generated-overlay authority: it rotates only
+	// the centered subset, never the cross-canvas motions of the full catalog.
+	selected = make(map[string]bool, len(centeredImageMotionCandidates))
+	for ordinal := range centeredImageMotionCandidates {
 		id := SelectImageMotionAt("image-catalog-18", "run", ordinal)
-		if !containsString(got, id) || selected[id] {
-			t.Fatalf("public image selector repeated or emitted an unknown motion at %d: %q", ordinal, id)
+		if !containsString(centeredImageMotionCandidates, id) || selected[id] {
+			t.Fatalf("public image selector escaped the centered pool at %d: %q", ordinal, id)
 		}
 		selected[id] = true
 	}
@@ -289,10 +291,16 @@ func TestCertifiedImageMotionPoolAndPlannerAssignment(t *testing.T) {
 	}
 }
 
+// TestRandomImageMotionOffsetRotatesThroughAllCertifiedIDs pins the rotation
+// over the CENTERED pool: generated image overlays rotate only motions that
+// keep the raster pinned to the canvas center (the map rule). The full 18-id
+// certified catalog stays authoritative via CertifiedImageMotions for explicit
+// editorial plans; the rotation the planner emits must never pick a motion
+// that carries the card across the canvas.
 func TestRandomImageMotionOffsetRotatesThroughAllCertifiedIDs(t *testing.T) {
-	count := len(CertifiedImageMotions())
-	if count != 18 {
-		t.Fatalf("certified image motions = %d, want 18", count)
+	count := len(centeredImageMotionCandidates)
+	if count != 3 {
+		t.Fatalf("centered image motions = %d, want 3", count)
 	}
 	for attempt := 0; attempt < 4; attempt++ {
 		offset, err := RandomImageMotionOffset()
@@ -305,8 +313,8 @@ func TestRandomImageMotionOffsetRotatesThroughAllCertifiedIDs(t *testing.T) {
 		seen := make(map[string]bool, count)
 		for ordinal := 0; ordinal < count; ordinal++ {
 			id := ImageMotionAtOffset(offset, ordinal)
-			if !containsString(CertifiedImageMotions(), id) || seen[id] {
-				t.Fatalf("offset %d ordinal %d emitted unknown/repeated motion %q", offset, ordinal, id)
+			if !containsString(centeredImageMotionCandidates, id) || seen[id] {
+				t.Fatalf("offset %d ordinal %d emitted motion outside the centered pool %q", offset, ordinal, id)
 			}
 			seen[id] = true
 		}

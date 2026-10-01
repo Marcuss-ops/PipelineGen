@@ -163,6 +163,9 @@ func TestComposeNearbyEntityImagesCreatesOneStaggeredComposite(t *testing.T) {
 	if len(composite.AssetRefs) != 2 || len(composite.ImageLayers) != 2 {
 		t.Fatalf("composite assets/layers = %d/%d, want 2/2", len(composite.AssetRefs), len(composite.ImageLayers))
 	}
+	if composite.ImageLayers[0].Caption != "First Person" || composite.ImageLayers[1].Caption != "Second Person" {
+		t.Fatalf("composite captions = %q / %q, want both entity names", composite.ImageLayers[0].Caption, composite.ImageLayers[1].Caption)
+	}
 	first, second := composite.ImageLayers[0], composite.ImageLayers[1]
 	if first.AssetID != "asset-a" || first.StartMS != 0 || first.EndMS != 5000 || first.PresetID != "image_scale_in" {
 		t.Fatalf("first portrait layer = %+v", first)
@@ -172,6 +175,9 @@ func TestComposeNearbyEntityImagesCreatesOneStaggeredComposite(t *testing.T) {
 	}
 	if first.Params["position_x"] != float64(-1920)*0.24 || second.Params["position_x"] != float64(1920)*0.24 {
 		t.Fatalf("portrait positions = %v / %v", first.Params["position_x"], second.Params["position_x"])
+	}
+	if first.EntityID != "stable-first" || second.EntityID != "stable-second" {
+		t.Fatalf("composite child entity ids = %q / %q", first.EntityID, second.EntityID)
 	}
 
 	assignEntityImageMotions(got, 7, 1920, 1080)
@@ -206,19 +212,202 @@ func TestComposeNearbyEntityImagesCreatesOneStaggeredComposite(t *testing.T) {
 	}
 }
 
-func TestComposeNearbyEntityImagesHonorsThreeSecondMentionGap(t *testing.T) {
-	makeItem := func(id string, start int64) capabilityoverlay.OverlayItem {
-		return capabilityoverlay.OverlayItem{ID: id, SceneID: "scene", Kind: string(capabilityoverlay.KindEntityImage),
+func TestComposeNearbyEntityImagesHonorsFiveSecondMentionGap(t *testing.T) {
+	makeItem := func(id, scene string, start int64) capabilityoverlay.OverlayItem {
+		return capabilityoverlay.OverlayItem{ID: id, SceneID: scene, EntityID: "ent-" + id, Kind: string(capabilityoverlay.KindEntityImage),
 			StartMs: start, EndMs: start + 5000, PresetID: "image_focus_in",
 			AssetRefs: []capabilityoverlay.OverlayAssetRef{{AssetID: id, SHA256: id}}}
 	}
-	within := composeNearbyEntityImages([]capabilityoverlay.OverlayItem{makeItem("a", 0), makeItem("b", 3000)}, 1280, 720)
+	within := composeNearbyEntityImages([]capabilityoverlay.OverlayItem{makeItem("a", "scene", 0), makeItem("b", "scene", 5000)}, 1280, 720)
 	if len(within) != 1 || len(within[0].ImageLayers) != 2 {
-		t.Fatalf("3s gap should compose to one item, got %+v", within)
+		t.Fatalf("5s gap should compose to one item, got %+v", within)
 	}
-	outside := composeNearbyEntityImages([]capabilityoverlay.OverlayItem{makeItem("a", 0), makeItem("b", 3001)}, 1280, 720)
+	outside := composeNearbyEntityImages([]capabilityoverlay.OverlayItem{makeItem("a", "scene", 0), makeItem("b", "scene", 5001)}, 1280, 720)
 	if len(outside) != 2 || len(outside[0].ImageLayers) != 0 || len(outside[1].ImageLayers) != 0 {
-		t.Fatalf("gap over 3s must remain separate, got %+v", outside)
+		t.Fatalf("gap over 5s must remain separate, got %+v", outside)
+	}
+	crossScene := composeNearbyEntityImages([]capabilityoverlay.OverlayItem{makeItem("a", "scene-1", 0), makeItem("b", "scene-2", 1000)}, 1280, 720)
+	if len(crossScene) != 2 || len(crossScene[0].ImageLayers) != 0 || len(crossScene[1].ImageLayers) != 0 {
+		t.Fatalf("entities from different scenes must remain separate, got %+v", crossScene)
+	}
+}
+
+func TestComposeNearbyEntityImagesGroupsTwoThroughFiveWithDeterministicRemainders(t *testing.T) {
+	for _, count := range []int{2, 3, 4, 5, 6, 10, 11} {
+		t.Run(fmt.Sprintf("images-%d", count), func(t *testing.T) {
+			items := make([]capabilityoverlay.OverlayItem, count)
+			for index := range items {
+				id := fmt.Sprintf("image-%02d", index)
+				items[index] = capabilityoverlay.OverlayItem{
+					ID: id, SceneID: "scene", EntityID: "entity-" + id,
+					Kind: string(capabilityoverlay.KindEntityImage), PresetID: "image_focus_in",
+					StartMs: int64(index * 100), EndMs: int64(index*100 + 5000),
+					EntityRef: &capabilityoverlay.OverlayEntityRef{EntityID: "entity-" + id, Type: "PERSON", Name: "Person " + id},
+					AssetRefs: []capabilityoverlay.OverlayAssetRef{{AssetID: "asset-" + id, SHA256: "hash-" + id}},
+				}
+			}
+			got := composeNearbyEntityImages(items, 1920, 1080)
+			wantGroups := (count + maxEntityImageGroup - 1) / maxEntityImageGroup
+			if len(got) != wantGroups {
+				t.Fatalf("render groups = %d, want %d: %+v", len(got), wantGroups, got)
+			}
+			layersSeen := 0
+			for _, item := range got {
+				if len(item.ImageLayers) < 2 || len(item.ImageLayers) > maxEntityImageGroup {
+					t.Fatalf("group %q has %d layers; expected 2..5", item.ID, len(item.ImageLayers))
+				}
+				layersSeen += len(item.ImageLayers)
+				for index, layer := range item.ImageLayers {
+					if layer.EntityID != items[layersSeen-len(item.ImageLayers)+index].EntityID {
+						t.Fatalf("group child %d lost entity identity: %+v", index, layer)
+					}
+					if layer.Caption == "" || layer.AssetID == "" || layer.PresetID == "" {
+						t.Fatalf("group child lost caption, asset or preset: %+v", layer)
+					}
+				}
+			}
+			if layersSeen != count {
+				t.Fatalf("composed %d images, want all %d", layersSeen, count)
+			}
+		})
+	}
+}
+
+func TestComposeNearbyEntityImagesPreservesMoreThanFiveInSameScene(t *testing.T) {
+	items := make([]capabilityoverlay.OverlayItem, 7)
+	for index := range items {
+		id := fmt.Sprintf("entity-%d", index)
+		items[index] = capabilityoverlay.OverlayItem{
+			ID: id, SceneID: "same-scene", EntityID: id, Kind: string(capabilityoverlay.KindEntityImage),
+			StartMs: int64(index * 400), EndMs: int64(index*400 + 5000),
+			AssetRefs: []capabilityoverlay.OverlayAssetRef{{AssetID: id, SHA256: id}},
+		}
+	}
+	got := composeNearbyEntityImages(items, 1920, 1080)
+	if len(got) != 2 || len(got[0].ImageLayers) != 5 || len(got[1].ImageLayers) != 2 {
+		t.Fatalf("seven nearby images must partition into 5+2, got %+v", got)
+	}
+}
+
+func TestCompositeChildIdentityRemainsProducerOnlyAndNotRenderKeyInput(t *testing.T) {
+	plan := capabilityoverlay.OverlayPlan{
+		SchemaVersion: capabilityoverlay.SchemaVersionPlan, PlanID: "identity-wire", VideoID: "video",
+		Width: 1280, Height: 720, FPSNum: 24, FPSDen: 1,
+		Items: []capabilityoverlay.OverlayItem{{
+			ID: "pair", Kind: string(capabilityoverlay.KindEntityImage), TemplateID: "image_popup",
+			StartMs: 0, EndMs: 5000, AssetRefs: []capabilityoverlay.OverlayAssetRef{{AssetID: "a"}, {AssetID: "b"}},
+			ImageLayers: []capabilityoverlay.OverlayImageLayer{
+				{ID: "a", EntityID: "stable-a", AssetID: "a", StartMS: 0, EndMS: 5000},
+				{ID: "b", EntityID: "stable-b", AssetID: "b", StartMS: 0, EndMS: 5000},
+			},
+		}},
+	}
+	if err := plan.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	key := plan.Items[0].RenderKey
+	plan.Items[0].ImageLayers[0].EntityID = "different-producer-identity"
+	if got := capabilityoverlay.ComputeRenderKey(plan, plan.Items[0]); got != key {
+		t.Fatalf("producer-only child identity changed render key %q to %q", key, got)
+	}
+	wire, err := json.Marshal(plan)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(wire), "stable-a") || strings.Contains(string(wire), "different-producer-identity") || strings.Contains(string(wire), "entity_id") {
+		t.Fatalf("producer-only child identity leaked into worker wire: %s", wire)
+	}
+}
+
+func TestComposeNearbyEntityImagesKeepsNonEntityImagesUntouched(t *testing.T) {
+	items := []capabilityoverlay.OverlayItem{
+		{ID: "a", SceneID: "scene", Kind: string(capabilityoverlay.KindEntityImage), StartMs: 0, EndMs: 5000, AssetRefs: []capabilityoverlay.OverlayAssetRef{{AssetID: "a"}}},
+		{ID: "b", SceneID: "scene", Kind: string(capabilityoverlay.KindEntityImage), StartMs: 1000, EndMs: 6000, AssetRefs: []capabilityoverlay.OverlayAssetRef{{AssetID: "b"}}},
+		{ID: "photo", SceneID: "scene", Kind: "image", StartMs: 500, EndMs: 2000, AssetRefs: []capabilityoverlay.OverlayAssetRef{{AssetID: "photo"}}},
+	}
+	got := composeNearbyEntityImages(items, 1920, 1080)
+	if len(got) != 2 {
+		t.Fatalf("expected entity composite and standalone photo, got %+v", got)
+	}
+	for _, item := range got {
+		if item.ID == "photo" && len(item.ImageLayers) != 0 {
+			t.Fatalf("unrelated scene image was grouped: %+v", item)
+		}
+	}
+}
+
+func TestEditorialImageBudgetRunsBeforeCompositionAndKeepsUniqueChildren(t *testing.T) {
+	items := make([]capabilityoverlay.OverlayItem, 0, capabilityoverlay.MaxEntityImageOverlaysPerRun+4)
+	for index := 0; index < capabilityoverlay.MaxEntityImageOverlaysPerRun; index++ {
+		id := fmt.Sprintf("entity-%02d", index)
+		items = append(items, capabilityoverlay.OverlayItem{
+			ID: id, SceneID: "scene", EntityID: id,
+			Kind: string(capabilityoverlay.KindEntityImage), StartMs: int64(index * 100), EndMs: int64(index*100 + 5000),
+			AssetRefs: []capabilityoverlay.OverlayAssetRef{{AssetID: "asset-" + id, SHA256: id}},
+		})
+	}
+	// A context hit for one child must be deduped before composition, not cause
+	// the whole composite to be discarded after its asset list is merged.
+	items = append(items, capabilityoverlay.OverlayItem{
+		ID: "duplicate-context", SceneID: "other", Kind: "image",
+		AssetRefs: []capabilityoverlay.OverlayAssetRef{{AssetID: "asset-entity-00", SHA256: "entity-00"}},
+	})
+	capped := capEntityImageOverlays(items, capabilityoverlay.MaxEntityImageOverlaysPerRun)
+	budgeted, _ := capabilityoverlay.ApplyEditorialOverlayBudgetWithImageLimit(capped, 0, capabilityoverlay.MaxImageOverlaysPerRun, capabilityoverlay.MaxMapOverlaysPerRun)
+	grouped := composeNearbyEntityImages(budgeted, 1920, 1080)
+	children := 0
+	duplicateContextSurvived := false
+	for _, item := range grouped {
+		if len(item.ImageLayers) > 0 {
+			children += len(item.ImageLayers)
+		} else if item.Kind == string(capabilityoverlay.KindEntityImage) {
+			children++
+		} else if item.ID == "duplicate-context" {
+			duplicateContextSurvived = true
+		}
+	}
+	if children != capabilityoverlay.MaxEntityImageOverlaysPerRun || duplicateContextSurvived {
+		t.Fatalf("budget/composition children=%d duplicate-context=%v; want %d unique entity images and no duplicate context item: %+v", children, duplicateContextSurvived, capabilityoverlay.MaxEntityImageOverlaysPerRun, grouped)
+	}
+}
+
+func TestNamedEntityCardCeilingDoesNotLimitImageCompositeChildren(t *testing.T) {
+	items := make([]capabilityoverlay.OverlayItem, 0, 8)
+	for index := 0; index < 5; index++ {
+		id := fmt.Sprintf("image-%d", index)
+		items = append(items, capabilityoverlay.OverlayItem{
+			ID: id, SceneID: "scene", EntityID: id, Kind: string(capabilityoverlay.KindEntityImage),
+			StartMs: int64(index * 100), EndMs: int64(index*100 + 5000),
+			EntityRef: &capabilityoverlay.OverlayEntityRef{EntityID: id, Type: "PERSON", Name: id},
+			AssetRefs: []capabilityoverlay.OverlayAssetRef{{AssetID: "asset-" + id, SHA256: "sha-" + id}},
+		})
+	}
+	for index := 0; index < 3; index++ {
+		items = append(items, capabilityoverlay.OverlayItem{
+			ID: fmt.Sprintf("card-%d", index), SceneID: "scene", EntityID: fmt.Sprintf("card-ent-%d", index),
+			Kind: string(capabilityoverlay.KindEntityCard), Text: fmt.Sprintf("Named entity %d", index),
+		})
+	}
+	items = capNamedEntityCardsPerScene(items, maxNamedEntityCardsPerScene)
+	cards := 0
+	images := 0
+	for _, item := range items {
+		if item.Kind == string(capabilityoverlay.KindEntityCard) {
+			cards++
+		} else if item.Kind == string(capabilityoverlay.KindEntityImage) {
+			images++
+		}
+	}
+	if cards != maxNamedEntityCardsPerScene || images != 5 {
+		t.Fatalf("per-scene cap retained %d named cards and %d image entities; want 2 and 5", cards, images)
+	}
+	grouped := composeNearbyEntityImages(items, 1920, 1080)
+	groupSize := 0
+	for _, item := range grouped {
+		groupSize += len(item.ImageLayers)
+	}
+	if groupSize != 5 {
+		t.Fatalf("named entity cap reduced composite image children to %d, want 5", groupSize)
 	}
 }
 

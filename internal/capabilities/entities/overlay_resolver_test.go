@@ -11,11 +11,12 @@ import (
 )
 
 // entityTimelineFixture returns a two-scene EntityTimeline with known global
-// audio positions:
+// audio positions. Every mention is spoken for 120–200ms, so each dynamic card
+// window floors to the one-second readability floor:
 //
-//	scene-0 (offset 0s):       "Tom Hanks"   0.000–0.200s   → card at 0–200ms
-//	scene-3 (offset 45.000s):  "Tom Hanks"   48.240–48.360s → card at 48240–48360ms
-//	scene-3 (offset 45.000s):  "Los Angeles" 48.460–48.660s → card at 48460–48660ms
+//	scene-0 (offset 0s):       "Tom Hanks"   0.000–0.200s   → card 0–1000ms
+//	scene-3 (offset 45.000s):  "Tom Hanks"   48.240–48.360s → card 48240–49240ms
+//	scene-3 (offset 45.000s):  "Los Angeles" 48.460–48.660s → card 48460–49460ms
 func entityTimelineFixture(t *testing.T) EntityTimeline {
 	t.Helper()
 	scene0 := "Tom Hanks is an actor"
@@ -72,7 +73,8 @@ func TestResolveEntityOverlayPlan_EveryOccurrenceBecomesAnEntityCard(t *testing.
 		byID[item.ID] = item
 	}
 
-	// scene-0 Tom Hanks starts at 0 and uses the minimum five-second duration.
+	// scene-0 Tom Hanks starts at 0; the short spoken mention floors to the
+	// one-second readability floor of the dynamic window.
 	first := byID["overlay-scene-0-tom-hanks"]
 	require.Equal(t, "scene-0", first.SceneID)
 	require.Equal(t, StableEntityID("PERSON", "Tom Hanks"), first.EntityID)
@@ -80,29 +82,29 @@ func TestResolveEntityOverlayPlan_EveryOccurrenceBecomesAnEntityCard(t *testing.
 	require.Equal(t, "person_default", first.TemplateID)
 	require.Equal(t, "Tom Hanks", first.Text)
 	require.Equal(t, int64(0), first.StartMs)
-	require.Equal(t, int64(5_000), first.EndMs)
+	require.Equal(t, int64(1_000), first.EndMs)
 
-	// scene-3 Tom Hanks starts at the certified global position and uses the
-	// minimum five-second duration.
+	// scene-3 Tom Hanks starts at the certified global position and floors to
+	// the one-second readability floor of the dynamic window.
 	second := byID["overlay-scene-3-tom-hanks"]
 	require.Equal(t, "person_default", second.TemplateID)
 	require.Equal(t, int64(48_240), second.StartMs)
-	require.Equal(t, int64(53_240), second.EndMs)
+	require.Equal(t, int64(49_240), second.EndMs)
 
 	// scene-3 Los Angeles → location kind / GPE template; global
-	// 48.460s and uses the minimum five-second duration.
+	// 48.460s and floors to the one-second readability floor.
 	third := byID["overlay-scene-3-los-angeles"]
 	require.Equal(t, "gpe_default", third.TemplateID)
 	require.Equal(t, string(capabilityoverlay.KindLocation), third.Kind)
 	require.Equal(t, "Los Angeles", third.Text)
 	require.Equal(t, int64(48_460), third.StartMs)
-	require.Equal(t, int64(53_460), third.EndMs)
+	require.Equal(t, int64(49_460), third.EndMs)
 }
 
 // TestResolveEntityOverlayPlan_SemanticCardWindow certifies the chain the spec
 // asks for BEFORE Chronon: EntityTimeline → OverlayPlan. PipelineGen owns the
-// semantic window (the entity card appears exactly while the entity is
-// spoken); RenderingGen owns the frame lowering and asserts it separately.
+// semantic timing window derived from certified speech plus readability hold;
+// RenderingGen owns the frame lowering and asserts it separately.
 func TestResolveEntityOverlayPlan_SemanticCardWindow(t *testing.T) {
 	timeline := entityTimelineFixture(t)
 	plan, err := ResolveEntityOverlayPlan(timeline, "plan-entity-002", "video-002", "", 1280, 720, 30, 1)
@@ -111,12 +113,13 @@ func TestResolveEntityOverlayPlan_SemanticCardWindow(t *testing.T) {
 	require.Equal(t, "plan-entity-002", plan.PlanID)
 	require.Len(t, plan.Items, 3)
 
-	// scene-3 Tom Hanks is spoken at 48.240s for five seconds.
+	// scene-3 Tom Hanks is spoken at 48.240s for 120ms; the dynamic window
+	// floors to the one-second readability floor.
 	tom := findItem(t, plan, "overlay-scene-3-tom-hanks")
 	require.Equal(t, "Tom Hanks", tom.Text)
 	require.NotEmpty(t, tom.PresetID)
 	require.Equal(t, int64(48240), tom.StartMs)
-	require.Equal(t, int64(5000), tom.EndMs-tom.StartMs)
+	require.Equal(t, int64(1000), tom.EndMs-tom.StartMs)
 
 	// scene-0 Tom Hanks starts at 0.
 	first := findItem(t, plan, "overlay-scene-0-tom-hanks")
@@ -354,4 +357,65 @@ func TestResolveEntityOverlayPlanKeepsDistinctCyrillicEntities(t *testing.T) {
 	require.NotEqual(t, plan.Items[0].ID, plan.Items[1].ID)
 	require.Contains(t, plan.Items[0].ID, "ent-")
 	require.Contains(t, plan.Items[1].ID, "ent-")
+}
+
+// TestEntitySpokenWindowDurationDynamicClamps pins the dynamic duration
+// contract: the display window derives from the certified spoken mention
+// plus the readability hold, clamped into [1s, 5s]. It is never a fixed
+// five-second reset, and it never estimates from text length.
+func TestEntitySpokenWindowDurationDynamicClamps(t *testing.T) {
+	require.Equal(t, MinEntityOverlayDurationUS, EntitySpokenWindowDuration(0, 200_000),
+		"a short spoken mention floors to the readability floor")
+	require.Equal(t, int64(1_500_000), EntitySpokenWindowDuration(2_000_000, 3_000_000),
+		"a 1s mention gets its own second plus the half-second hold")
+	require.Equal(t, MaxEntityOverlayDurationUS, EntitySpokenWindowDuration(0, 9_000_000),
+		"a long narration caps at the editorial ceiling")
+	require.Equal(t, MinEntityOverlayDurationUS, EntitySpokenWindowDuration(5_000_000, 5_000_000),
+		"a degenerate empty window still floors to a readable card")
+	require.Equal(t, int64(1_763_000), EntitySpokenWindowDuration(0, 1_262_500),
+		"a sub-millisecond mention quantizes UP to whole milliseconds so end_ms stays consistent with start_us+duration_us")
+}
+
+// TestResolveEntityOverlayPlan_DurationFollowsSpokenWindow pins that resolver
+// cards carry DYNAMIC windows: a long spoken mention keeps the card up while
+// it is spoken (bounded by the ceiling), a short one floors to readability.
+func TestResolveEntityOverlayPlan_DurationFollowsSpokenWindow(t *testing.T) {
+	occurrence := func(name string, startUS, endUS int64) EntityOccurrence {
+		return EntityOccurrence{
+			EntityID: StableEntityID("PERSON", name), Name: name, Type: "PERSON", SceneID: "scene-0", SceneIndex: 0,
+			TextStart: 0, TextEnd: len(name), WordStart: 0, WordEnd: 2,
+			LocalStartUS: startUS, LocalEndUS: endUS,
+			AudioStartUS: startUS, AudioEndUS: endUS, Confidence: 0.9,
+		}
+	}
+	timeline := EntityTimeline{
+		Version: EntityTimelineVersion, DurationUS: 30_000_000,
+		Scenes: []SceneEntityTimeline{{
+			SceneID: "scene-0", SceneIndex: 0, TimelineStartUS: 0,
+			Entities: []EntityOccurrence{
+				occurrence("Quick Name", 1_000_000, 1_200_000),
+				occurrence("Long Narrated Person", 5_000_000, 12_000_000),
+			},
+		}},
+	}
+
+	plan, err := ResolveEntityOverlayPlan(timeline, "plan-dynamic", "video-dynamic", "", 1920, 1080, 30, 1)
+	require.NoError(t, err)
+	require.NoError(t, plan.Validate())
+	require.Len(t, plan.Items, 2)
+
+	byID := map[string]capabilityoverlay.OverlayItem{}
+	for _, item := range plan.Items {
+		byID[item.ID] = item
+	}
+	quick := byID["overlay-scene-0-quick-name"]
+	require.Equal(t, int64(1000), quick.StartMs)
+	require.Equal(t, MinEntityOverlayDurationUS/1000, quick.EndMs-quick.StartMs,
+		"short mention floors to the readability floor")
+	long := byID["overlay-scene-0-long-narrated-person"]
+	require.Equal(t, int64(5000), long.StartMs)
+	require.Equal(t, MaxEntityOverlayDurationUS/1000, long.EndMs-long.StartMs,
+		"7s spoken mention + hold caps at the editorial ceiling")
+	require.NotEqual(t, quick.EndMs-quick.StartMs, long.EndMs-long.StartMs,
+		"durations must differ with the spoken window")
 }

@@ -6,6 +6,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/linguistics"
+	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )
 
@@ -29,6 +30,10 @@ func InitLinguistics(cfg *config.Config, log *zap.Logger) error {
 	if err := linguistics.SetDefaultLexicon(reg); err != nil {
 		return fmt.Errorf("init linguistics: install default registry: %w", err)
 	}
+	// internal/kernel cannot import internal/capabilities, so the kernel-side
+	// progress sub-kind filter receives the stop words by injection instead of
+	// mirroring the lexicon as a hardcoded map.
+	job.SetProgressStopWords(linguistics.DefaultStopWords())
 	if log != nil {
 		log.Info("linguistics: lexicon registry loaded",
 			zap.String("root", root),

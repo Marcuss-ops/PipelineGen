@@ -47,6 +47,35 @@ func sceneAllowsMediaSearch(spec scriptpkg.SpecSceneOutput, sceneID, segmentID s
 	return !ok || scene.AllowsMediaSearch()
 }
 
+// sceneHasDirectStockBinding delegates to the kernel gate: one owner for the
+// direct stock-binding contract, shared with the incremental resolver chain
+// in the parent scriptgeneration package.
+func sceneHasDirectStockBinding(spec scriptpkg.SpecSceneOutput, bindings []scriptpkg.StockBindingInput, sceneID, segmentID string, index int) bool {
+	return scriptpkg.SceneHasDirectStockBinding(spec, bindings, sceneID, segmentID, index)
+}
+
+// sceneAllowsMediaSearchForPlan extends sceneAllowsMediaSearch with the
+// direct stock-binding contract. Without it, a scene whose stock folder was
+// expanded into plan/input stock bindings still looked "generated" to the
+// search stages and leaked into provider image/clip discovery.
+func sceneAllowsMediaSearchForPlan(spec scriptpkg.SpecSceneOutput, bindings []scriptpkg.StockBindingInput, sceneID, segmentID string, index int) bool {
+	if scriptpkg.SceneHasDirectStockBinding(spec, bindings, sceneID, segmentID, index) {
+		return false
+	}
+	return sceneAllowsMediaSearch(spec, sceneID, segmentID, index)
+}
+
+func stockBindingForSegment(plan *scriptpkg.ResolvedGenerationPlan, inputBindings []scriptpkg.StockBindingInput, segment scriptpkg.VidRushSegmentResult) (scriptpkg.StockBindingInput, bool) {
+	return scriptpkg.StockBindingForSegment(plan, inputBindings, segment)
+}
+
+func planBindings(plan *scriptpkg.ResolvedGenerationPlan) []scriptpkg.StockBindingInput {
+	if plan == nil {
+		return nil
+	}
+	return plan.StockBindings
+}
+
 func sceneAllowsMediaResolution(scene scriptpkg.SpecScene) bool {
 	return scene.AllowsVisualIntent() && scene.AllowsMediaResolution() && scene.AllowsMediaReplacement()
 }
@@ -85,7 +114,7 @@ func hasMediaSearchSegments(input ProcessInput) bool {
 		if segment.ExecutionMode.IsFixedMedia() {
 			continue
 		}
-		if sceneAllowsMediaSearch(input.SpecScene, segment.SceneID, segment.SegmentID, segment.Position) {
+		if sceneAllowsMediaSearchForPlan(input.SpecScene, input.StockBindings, segment.SceneID, segment.SegmentID, segment.Position) {
 			return true
 		}
 	}

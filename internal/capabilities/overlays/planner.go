@@ -135,6 +135,7 @@ func (c PlannerConfig) withDefaults() PlannerConfig {
 // are their millisecond projection.
 type TimedAnnotation struct {
 	Text       string
+	Type       string
 	StartMs    int64
 	EndMs      int64
 	StartUS    int64
@@ -337,10 +338,16 @@ func BuildPlan(input PlanInput, config PlannerConfig) (OverlayPlan, error) {
 		}
 		for _, number := range numbers {
 			id := itemID(scene.ID, "number", number.Text)
+			templateID, motionID := "NUMBER", SelectTextMotion(input.PlanID, scene.ID, id)
+			if numberType := strings.TrimSpace(number.Type); numberType != "" {
+				if presentationTemplate, presentationMotion := NumberPresentationForEntityType(input.PlanID, scene.ID, id, numberType); presentationTemplate != "" {
+					templateID, motionID = presentationTemplate, presentationMotion
+				}
+			}
 			plan.Items = append(plan.Items, OverlayItem{
 				ID: id, SceneID: scene.ID, PresetID: selectWordPreset(input.PlanID, scene.ID, id),
-				MotionID: SelectTextMotion(input.PlanID, scene.ID, id),
-				Kind:     "number", TemplateID: "NUMBER", Text: number.Text,
+				MotionID: motionID,
+				Kind:     "number", TemplateID: templateID, Text: number.Text,
 				StartMs: number.StartMs, EndMs: number.EndMs, StartUS: number.StartUS, DurationUS: number.DurationUS,
 				Params: map[string]any{"position": "center", "style": "stat", "priority": number.Score},
 			})
@@ -355,7 +362,7 @@ func BuildPlan(input PlanInput, config PlannerConfig) (OverlayPlan, error) {
 			plan.Items = append(plan.Items, OverlayItem{
 				ID: id, SceneID: scene.ID, PresetID: selectWordPreset(input.PlanID, scene.ID, id),
 				MotionID: SelectTextMotion(input.PlanID, scene.ID, id),
-				Kind: "brand_text", TemplateID: "logo_default", Text: brand.Text,
+				Kind:     "brand_text", TemplateID: "logo_default", Text: brand.Text,
 				StartMs: brand.StartMs, EndMs: brand.EndMs, StartUS: brand.StartUS, DurationUS: brand.DurationUS,
 				Params: map[string]any{"position": "corner", "style": "logo", "priority": brand.Score},
 			})

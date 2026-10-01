@@ -229,6 +229,7 @@ func compileOverlayPlanWithMotionOffset(result *GenerateResult, language Languag
 		if err != nil {
 			return nil, fmt.Errorf("overlay plan: resolve entity overlays: %w", err)
 		}
+		namedCardItems := make([]capabilityoverlay.OverlayItem, 0, len(entityPlan.Items))
 		for _, item := range entityPlan.Items {
 			if !entityCardTemplate(item.TemplateID) {
 				continue
@@ -243,15 +244,15 @@ func compileOverlayPlanWithMotionOffset(result *GenerateResult, language Languag
 					break
 				}
 			}
-			items = append(items, item)
+			namedCardItems = append(namedCardItems, item)
 		}
+		items = append(items, capNamedEntityCardsPerScene(namedCardItems, maxNamedEntityCardsPerScene)...)
 	}
 	// The scene budget is intentionally local, so enforce the separate
 	// run-level identity-image ceiling before sealing the render plan. This
 	// prevents a long script with many scenes from producing one image render
 	// for every extracted person.
 	items = capEntityImageOverlays(items, capabilityoverlay.MaxEntityImageOverlaysPerRun)
-	items = composeNearbyEntityImages(items, canvas.Width, canvas.Height)
 	if chooseOffset == nil {
 		return nil, fmt.Errorf("overlay plan: image motion offset chooser is required")
 	}
@@ -259,13 +260,16 @@ func compileOverlayPlanWithMotionOffset(result *GenerateResult, language Languag
 	if err != nil {
 		return nil, fmt.Errorf("overlay plan: choose random image motion offset: %w", err)
 	}
-	assignEntityImageMotions(items, imageMotionOffset, canvas.Width, canvas.Height)
 	// The map-aware editorial budget keeps the certified run ceilings: images,
 	// grounded phrases and at most one map (a map is a full-canvas visual).
+	// It runs on individual assets before composition so dedupe and counts do
+	// not treat a 2–5-image group as one indivisible image.
 	items, _ = capabilityoverlay.ApplyEditorialOverlayBudgetWithImageLimit(items, canvas.MaxPhraseOverlays, canvas.MaxImageOverlays, capabilityoverlay.MaxMapOverlaysPerRun)
 	if len(items) == 0 {
 		return nil, nil
 	}
+	items = composeNearbyEntityImages(items, canvas.Width, canvas.Height)
+	assignEntityImageMotions(items, imageMotionOffset, canvas.Width, canvas.Height)
 
 	// The master audio/timeline is authoritative for the render extent. The
 	// last semantic item is often shorter than the voiceover (for example a
@@ -458,6 +462,7 @@ func overlaySceneInput(scene Scene, language, sourceLanguage Language, timing ca
 		case capabilityoverlay.KindNumber:
 			out.Numbers = append(out.Numbers, capabilityoverlay.TimedAnnotation{
 				Text:       entity.CanonicalName,
+				Type:       entity.Type,
 				StartMs:    occ.AudioStartUS / 1000,
 				EndMs:      (occ.AudioEndUS + 999) / 1000,
 				StartUS:    occ.AudioStartUS,
@@ -467,6 +472,7 @@ func overlaySceneInput(scene Scene, language, sourceLanguage Language, timing ca
 		case capabilityoverlay.KindQuote:
 			out.Quotes = append(out.Quotes, capabilityoverlay.TimedAnnotation{
 				Text:       entity.CanonicalName,
+				Type:       entity.Type,
 				StartMs:    occ.AudioStartUS / 1000,
 				EndMs:      (occ.AudioEndUS + 999) / 1000,
 				StartUS:    occ.AudioStartUS,

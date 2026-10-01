@@ -151,7 +151,7 @@ func (p *MediaResolverImageStage) processInternetImageSegments(ctx context.Conte
 	var warnings []string
 	for _, seg := range input.VidRushSegments {
 		updated := CloneVidRushSegmentResult(seg)
-		if !sceneAllowsMediaSearch(input.SpecScene, seg.SceneID, seg.SegmentID, seg.Position) {
+		if !sceneAllowsMediaSearchForPlan(input.SpecScene, input.StockBindings, seg.SceneID, seg.SegmentID, seg.Position) {
 			updated.Cache.InternetImages = "BYPASSED"
 			updatedSegments = append(updatedSegments, updated)
 			continue

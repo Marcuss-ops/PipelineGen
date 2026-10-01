@@ -7,13 +7,45 @@ import (
 	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
 )
 
-// MaxEntityOverlayDurationUS is the hard duration ceiling for entity image
+// MaxEntityOverlayDurationUS is the hard editorial ceiling for entity image
 // overlays. A long spoken mention cannot make the image layer run indefinitely.
 const MaxEntityOverlayDurationUS int64 = 5_000_000
 
-// MinEntityOverlayDurationUS is retained as the historical five-second
-// display floor for text entity cards.
-const MinEntityOverlayDurationUS int64 = MaxEntityOverlayDurationUS
+// MinEntityOverlayDurationUS is the readability floor of the dynamic entity
+// window: a very short spoken mention still stays on screen a full second so
+// the card never collapses into a sub-second flash.
+const MinEntityOverlayDurationUS int64 = 1_000_000
+
+// EntityOverlayHoldoutUS is the tail hold added after the last spoken word of
+// a mention so the card remains readable once the narration moves on.
+const EntityOverlayHoldoutUS int64 = 500_000
+
+// EntitySpokenWindowDuration derives the DYNAMIC entity-overlay duration from
+// the certified spoken window of one mention: the audio the entity actually
+// occupies plus a half-second readability hold, clamped into
+// [MinEntityOverlayDurationUS, MaxEntityOverlayDurationUS]. The duration is
+// never estimated from text length or scene duration — only the certified
+// audio positions count. A short name gets a readable second; a longer
+// narration keeps the card up while it is spoken (bounded by the ceiling).
+//
+// The result is quantized UP to whole milliseconds: the overlay wire contract
+// derives end_ms from start_us+duration_us by ceiling division, so a duration
+// that is not a millisecond multiple would make the millisecond and
+// microsecond projections diverge and the sealed plan would fail validation.
+func EntitySpokenWindowDuration(audioStartUS, audioEndUS int64) int64 {
+	spoken := audioEndUS - audioStartUS
+	if spoken < 0 {
+		spoken = 0
+	}
+	duration := spoken + EntityOverlayHoldoutUS
+	if duration < MinEntityOverlayDurationUS {
+		duration = MinEntityOverlayDurationUS
+	}
+	if duration > MaxEntityOverlayDurationUS {
+		duration = MaxEntityOverlayDurationUS
+	}
+	return ((duration + 999) / 1000) * 1000
+}
 
 // ResolveEntityOverlayPlan is the OverlayResolver: it turns the canonical
 // EntityTimeline into the semantic OverlayPlan the rendering layer consumes.
@@ -92,17 +124,14 @@ func ResolveRankedEntityOverlayPlan(timeline EntityTimeline, planID, videoID, pr
 				break
 			}
 			seenOverlayIdentities[identity] = struct{}{}
-			durationUS := occurrence.AudioEndUS - occurrence.AudioStartUS
-			if durationUS < MinEntityOverlayDurationUS {
-				durationUS = MinEntityOverlayDurationUS
-			}
-			if durationUS > MaxEntityOverlayDurationUS {
-				durationUS = MaxEntityOverlayDurationUS
-			}
+			// Dynamic duration: the card lasts as long as the certified mention
+			// plus the readability hold, clamped to the editorial window. No
+			// fixed five-second reset: the display follows the spoken timing.
+			durationUS := EntitySpokenWindowDuration(occurrence.AudioStartUS, occurrence.AudioEndUS)
 			startMS := occurrence.AudioStartUS / 1000
 			// Overlay transport is millisecond-based. Quantize the optional
-			// microsecond projection to that same boundary so the exact
-			// five-second editorial window remains internally consistent.
+			// microsecond projection to that same boundary so the dynamic
+			// editorial window remains internally consistent.
 			startUS := startMS * 1000
 			kind := capabilityoverlay.EntityTypeToKind(occurrence.Type)
 			entry, err := capabilityoverlay.DefaultChrononOverlayRegistry.Resolve(string(kind))
@@ -115,11 +144,13 @@ func ResolveRankedEntityOverlayPlan(timeline EntityTimeline, planID, videoID, pr
 				EntityID: occurrence.EntityID,
 				Kind:     string(kind),
 				StartMs:  startMS,
-				// Entity image/card windows are an editorial five-second
-				// contract. Derive the millisecond end from the same floored
-				// start so sub-millisecond source timing cannot turn 5s into
-				// 5001ms on the wire.
-				EndMs:         startMS + durationUS/1000,
+				// Entity image/card windows are DYNAMIC: they follow the certified
+				// spoken window of the mention (clamped into the editorial bounds).
+				// The millisecond end must be the CEILING of start_us+duration_us
+				// — the exact projection the overlay plan validator enforces
+				// (floor start, ceil end) — so a 500 µs remainder cannot fail the
+				// run at COMPILING_AUDIO with a 1 ms divergence.
+				EndMs:         overlayEndMs(startUS, durationUS),
 				StartUS:       startUS,
 				DurationUS:    durationUS,
 				TemplateID:    entry.Template,
@@ -167,6 +198,12 @@ func ResolveRankedEntityOverlayPlan(timeline EntityTimeline, planID, videoID, pr
 // specialNamePreset is the single PipelineGen editorial choice for entity
 // name treatments. The ids are owned by Chronon's VisualPresetRegistry and
 // are transported opaquely through the overlay contract to RenderingGen.
+
+// overlayEndMs projects a canonical microsecond endpoint onto the millisecond
+// wire interval without truncating its final partial millisecond.
+func overlayEndMs(startUS, durationUS int64) int64 {
+	return (startUS + durationUS + 999) / 1000
+}
 
 // allOccurrences flattens every scene's occurrences into one slice, in scene
 // order, for the run-level ranking context.

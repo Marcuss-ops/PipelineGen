@@ -68,9 +68,12 @@ func TestListenGateVOPlusBGM25s(t *testing.T) {
 		FadeInMS:           800,
 		FadeOutMS:          1000,
 		DuckUnderVoiceover: true,
-		DuckGainDB:         -28,
-		DuckAttackMS:       120,
-		DuckReleaseMS:      350,
+		// The canonical duck floor (BackgroundMusicGainDB − 6 = −30 dB) is
+		// the resolved level: an explicit duck gain AT the floor is honoured,
+		// anything quieter is clamped up to it by CompileBGMDucking.
+		DuckGainDB:    -30,
+		DuckAttackMS:  120,
+		DuckReleaseMS: 350,
 	}}
 	source := mapAudioAssetSource{assets: map[string]audio.ResolvedAudioAsset{
 		"bgm-a": {AssetID: "bgm-a", Path: bgmPath, DurationUS: bgmDur},

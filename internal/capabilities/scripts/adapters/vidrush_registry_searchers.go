@@ -199,6 +199,16 @@ func (f *VidRushProviderFanout) ResolveProviders(ctx context.Context, plan *scri
 		updated.Cache.YouTube = "BYPASSED"
 		return updated, nil
 	}
+	if _, stockBound := stockBindingForSegment(plan, nil, segment); stockBound {
+		// The incremental fanout resolves providers per segment with the plan
+		// as the only binding surface. A direct stock binding is the scene's
+		// authoritative visual source: no provider search may run for it.
+		updated.Cache.Artlist = "BYPASSED"
+		updated.Cache.InternetImages = "BYPASSED"
+		updated.Cache.YouTube = "BYPASSED"
+		updated.Cache.Binding = "STOCK_BOUND"
+		return updated, nil
+	}
 	// Provider work is represented by a small outcome value and merged only
 	// by the caller, keeping concurrent providers away from shared state.
 

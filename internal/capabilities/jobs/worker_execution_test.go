@@ -189,12 +189,11 @@ func TestExtractStagedArtifacts_HappyPath(t *testing.T) {
 	}
 }
 
-// TestExtractStagedArtifacts_OverlayManifestPreservesDriveRouting pins the
-// manifest→bridge step of the probe→SHA256→manifest→publisher flow: an
-// overlay.render manifest must project to the script destination AND
-// carry source=chronon + drive_subpath=[overlay] + probe sha256/size_bytes
-// through to the staged reference the Sender-side publisher consumes.
-func TestExtractStagedArtifacts_OverlayManifestPreservesDriveRouting(t *testing.T) {
+// TestExtractStagedArtifacts_OverlayManifestHasSinglePublicationOwner pins
+// that the certified worker manifest remains available for audit while the
+// generic job finalizer does not upload a duplicate into the script tree.
+// PipelineGen's dedicated overlay publisher owns the Drive upload.
+func TestExtractStagedArtifacts_OverlayManifestHasSinglePublicationOwner(t *testing.T) {
 	manifest := &job.ArtifactManifest{
 		SchemaVersion: job.SchemaVersionArtifactManifestV1,
 		WorkflowID:    "wf-overlay",
@@ -226,22 +225,8 @@ func TestExtractStagedArtifacts_OverlayManifestPreservesDriveRouting(t *testing.
 	if err := json.Unmarshal(raw, &artifacts); err != nil {
 		t.Fatalf("unmarshal staged artifacts: %v", err)
 	}
-	if len(artifacts) != 1 {
-		t.Fatalf("expected 1 artifact, got %d", len(artifacts))
-	}
-	a := artifacts[0]
-	if a.Destination != "script" {
-		t.Fatalf("Destination = %q, want script", a.Destination)
-	}
-	if a.SHA256 != "deadbeef" || a.SizeBytes != 1234567 {
-		t.Fatalf("probe fields lost: sha256=%q size=%d", a.SHA256, a.SizeBytes)
-	}
-	if a.ArtifactMetadata["source"] != "chronon" {
-		t.Fatalf("source = %v, want chronon", a.ArtifactMetadata["source"])
-	}
-	sub, ok := a.ArtifactMetadata["drive_subpath"].([]any)
-	if !ok || len(sub) != 1 || sub[0] != "overlay" {
-		t.Fatalf("drive_subpath = %#v, want [overlay]", a.ArtifactMetadata["drive_subpath"])
+	if len(artifacts) != 0 {
+		t.Fatalf("generic finalizer staged %d overlay artifacts, want none", len(artifacts))
 	}
 }
 

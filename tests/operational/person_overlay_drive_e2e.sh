@@ -18,6 +18,11 @@ DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 # Preserve an explicit caller override, but give this E2E enough time to
 # observe a valid GPU job instead of reporting a false polling failure.
 PERSON_OVERLAY_POLL_TIMEOUT_SECONDS="${SMOKE_POLL_TIMEOUT_SECONDS:-300}"
+# A completed script job can precede its asynchronous Drive outbox receipts.
+# Give the complete smoke (render + eventual publication + Docs checks) room to
+# finish even when the renderer uses the full poll window.
+SMOKE_TIMEOUT_SECONDS="${SMOKE_TIMEOUT_SECONDS:-600}"
+OVERLAY_DRIVE_LINK_TIMEOUT_SECONDS="${OVERLAY_DRIVE_LINK_TIMEOUT_SECONDS:-120}"
 # Warm leg by default. The certification corpus was previously cold by
 # construction because this flag was hard-coded to true, which made the
 # cross-run cache unauditable: a run could never show a cache hit, and every
@@ -220,39 +225,99 @@ TIMED_ITEMS=$(jq -r '
 (( TIMED_ITEMS > 0 )) || fail "OverlayPlan senza timing canonico in microsecondi"
 
 RENDER_STATUS=$(jq -r '.overlay_render?.status // empty' <<<"$RESULT")
-OVERLAY_DRIVE_LINK=$(jq -r '.overlay_render?.artifact?.drive_link // empty' <<<"$RESULT")
-OVERLAY_DRIVE_FOLDER=$(jq -r '.overlay_render?.artifact?.drive_folder_id // empty' <<<"$RESULT")
+[[ "$RENDER_STATUS" == "COMPLETED" || "$RENDER_STATUS" == "completed" || "$RENDER_STATUS" == "ready" ]] || fail "overlay_render non completato (status=$RENDER_STATUS)"
+
+# Drive publication is deliberately asynchronous. The artifact's embedded
+# drive_link is only populated by synchronous publication; the durable outbox
+# records ordinary per-item receipts in result.overlay_links after the job
+# result commits. Wait for every rendered item and validate those canonical
+# receipts instead of treating the intentionally empty artifact field as a
+# publication failure.
+SOURCE_LANGUAGE=$(jq -r '.source_language // .overlay_plan?.language // "en"' <<<"$RESULT")
+OVERLAY_ITEM_IDS=$(jq -c '
+  (.overlay_render?.items // [] | map(.item_id // empty) | map(select(type == "string" and length > 0))) as $rendered
+  | if ($rendered | length) > 0 then $rendered
+    else [.overlay_plan?.items[]? |
+      select((.template_id // "" | ascii_upcase) != "BACKGROUND" and
+             (.template_id // "" | ascii_upcase) != "VIDEO_BACKGROUND") |
+      .id | select(type == "string" and length > 0)]
+    end
+' <<<"$RESULT")
+OVERLAY_ITEM_COUNT=$(jq -r 'length' <<<"$OVERLAY_ITEM_IDS")
+(( OVERLAY_ITEM_COUNT > 0 )) || fail "overlay render senza item pubblicabili"
+# Folder routing is owned by the application and may create/reuse a
+# per-project folder. Only pin an ID when the caller explicitly requests it.
+EXPECTED_OVERLAY_DRIVE_FOLDER="${EXPECTED_OVERLAY_DRIVE_FOLDER:-}"
+OVERLAY_LINK_DEADLINE=$(( $(date +%s) + OVERLAY_DRIVE_LINK_TIMEOUT_SECONDS ))
+OVERLAY_LINKS_READY=0
+while (( $(date +%s) < OVERLAY_LINK_DEADLINE )); do
+    OVERLAY_LINKS=$(jq -c '.overlay_links // []' <<<"$RESULT")
+    if jq -e --arg language "$SOURCE_LANGUAGE" --arg folder "$EXPECTED_OVERLAY_DRIVE_FOLDER" --argjson item_ids "$OVERLAY_ITEM_IDS" '
+      . as $links
+      | all($item_ids[];
+          . as $item_id
+          | any($links[]?;
+              .item_id == $item_id and .language == $language and
+              ((.drive_link // "") | startswith("http")) and
+              ((.drive_folder_id // "") | length > 0) and
+              ($folder == "" or .drive_folder_id == $folder)))
+      and ([ $links[]? | select(.language == $language and (.item_id as $id | ($item_ids | index($id)) != null)) | .drive_folder_id ] | unique | length) == 1
+    ' <<<"$OVERLAY_LINKS" >/dev/null; then
+        OVERLAY_LINKS_READY=1
+        break
+    fi
+    smoke_wallclock_check
+    sleep "${SMOKE_POLL_INTERVAL_SECONDS:-2}"
+    smoke_curl GET "/api/jobs/${JOB_ID}/full" >/dev/null
+    [[ "$SMOKE_LAST_HTTP" == "200" ]] || fail "GET /full durante attesa link Drive HTTP $SMOKE_LAST_HTTP"
+    cp "$SMOKE_LAST_BODY" "$FULL"
+    RESULT=$(jq -c '.result.data.result // .result.result // .result.data.items[0].result // .result.items[0].result // .result // empty' "$FULL")
+    [[ -n "$RESULT" && "$RESULT" != "null" ]] || fail "risultato generazione scomparso durante attesa link Drive"
+done
+(( OVERLAY_LINKS_READY == 1 )) || fail "link Drive overlay asincroni incompleti entro ${OVERLAY_DRIVE_LINK_TIMEOUT_SECONDS}s (attesi $OVERLAY_ITEM_COUNT item)"
+OVERLAY_LINKS=$(jq -c '.overlay_links // []' <<<"$RESULT")
+FIRST_OVERLAY_ITEM_ID=$(jq -r '.[0]' <<<"$OVERLAY_ITEM_IDS")
+OVERLAY_DRIVE_LINK=$(jq -r --arg language "$SOURCE_LANGUAGE" --arg item_id "$FIRST_OVERLAY_ITEM_ID" '
+  (.overlay_render?.artifact?.drive_link // "") as $artifact_link
+  | if ($artifact_link | startswith("http")) then $artifact_link
+    else ([.overlay_links[]? | select(.language == $language and .item_id == $item_id) | .drive_link] | .[0] // "") end
+' <<<"$RESULT")
+OVERLAY_DRIVE_FOLDER=$(jq -r --arg language "$SOURCE_LANGUAGE" --arg item_id "$FIRST_OVERLAY_ITEM_ID" '
+  (.overlay_render?.artifact?.drive_folder_id // "") as $artifact_folder
+  | if $artifact_folder != "" then $artifact_folder
+    else ([.overlay_links[]? | select(.language == $language and .item_id == $item_id) | .drive_folder_id] | .[0] // "") end
+' <<<"$RESULT")
 CHRONON_VERSION=$(jq -r '.overlay_render?.artifact?.chronon_version // empty' <<<"$RESULT")
 OVERLAY_SHA=$(jq -r '.overlay_render?.artifact?.sha256 // empty' <<<"$RESULT")
 OVERLAY_DURATION_US=$(jq -r '.overlay_render?.artifact?.duration_us // 0' <<<"$RESULT")
-[[ "$RENDER_STATUS" == "COMPLETED" || "$RENDER_STATUS" == "completed" || "$RENDER_STATUS" == "ready" ]] || fail "overlay_render non completato (status=$RENDER_STATUS)"
-[[ "$OVERLAY_DRIVE_LINK" == http* ]] || fail "overlay render senza drive_link"
-# The application owns this routing.  The configured root is
-# 1rN6sWwPuX5xxw1wFCv8Djmp5l8kfgdYE and the publisher creates/reuses its
-# deterministic `overlay` child (currently 1B-wBGbez9rozoR9TnzViPUGHV42MjfTN).
-# Keep the ID overrideable so the smoke test remains valid if the Drive
-# account is bootstrapped again; do not require a caller-side folder ID.
-EXPECTED_OVERLAY_DRIVE_FOLDER="${EXPECTED_OVERLAY_DRIVE_FOLDER:-1B-wBGbez9rozoR9TnzViPUGHV42MjfTN}"
-[[ "$OVERLAY_DRIVE_FOLDER" == "$EXPECTED_OVERLAY_DRIVE_FOLDER" ]] || fail "overlay render pubblicato nella cartella errata (folder=$OVERLAY_DRIVE_FOLDER expected=$EXPECTED_OVERLAY_DRIVE_FOLDER)"
+[[ "$OVERLAY_DRIVE_LINK" == http* ]] || fail "nessun link Drive valido nell'overlay artifact o nella ricevuta outbox"
+[[ -n "$OVERLAY_DRIVE_FOLDER" ]] || fail "ricevuta overlay senza drive_folder_id"
+if [[ -n "$EXPECTED_OVERLAY_DRIVE_FOLDER" && "$OVERLAY_DRIVE_FOLDER" != "$EXPECTED_OVERLAY_DRIVE_FOLDER" ]]; then
+    fail "overlay render pubblicato nella cartella errata (folder=$OVERLAY_DRIVE_FOLDER expected=$EXPECTED_OVERLAY_DRIVE_FOLDER)"
+fi
 [[ -n "$CHRONON_VERSION" ]] || fail "artifact overlay senza chronon_version"
 [[ -n "$OVERLAY_SHA" ]] || fail "artifact overlay senza sha256"
 (( OVERLAY_DURATION_US > 0 )) || fail "artifact overlay senza duration_us"
 
-# The semantic tail may end well before the voiceover. The rendered artifact
-# must nevertheless cover the canonical master audio/editing timeline; allow
-# only a small probe/frame/mux quantization delta. Chronon reports the
-# certified container duration after frame-group muxing; on this 24-fps
-# backend the observed bounded delta is below half a second.
-AUDIO_DURATION_US=$(jq -r '(.final_audio?.duration_us // ((.final_audio?.duration_ms // 0) * 1000))' <<<"$RESULT")
-TIMELINE_DURATION_US=$(jq -r '.editing_timeline?.duration_us // 0' <<<"$RESULT")
-CANONICAL_DURATION_US="$AUDIO_DURATION_US"
-if (( TIMELINE_DURATION_US > CANONICAL_DURATION_US )); then
-    CANONICAL_DURATION_US="$TIMELINE_DURATION_US"
+# Production lowers the semantic timeline into one short transparent video
+# per overlay item; these clips are composited over the master audio/video by
+# the downstream editor and are NOT full-length master renders. Certify every
+# child artifact is present with a positive duration bounded by the maximum
+# eight-second composite window plus frame/mux quantization slack.
+OVERLAY_RENDERED_ARTIFACTS=$(jq -c '
+  if (.overlay_render?.items // [] | length) > 0 then
+    [.overlay_render.items[]?.artifact? | select(type == "object")]
+  elif (.overlay_render?.artifact? | type) == "object" then
+    [.overlay_render.artifact]
+  else [] end
+' <<<"$RESULT")
+OVERLAY_RENDERED_ARTIFACT_COUNT=$(jq -r 'length' <<<"$OVERLAY_RENDERED_ARTIFACTS")
+(( OVERLAY_RENDERED_ARTIFACT_COUNT == OVERLAY_ITEM_COUNT )) || fail "artifact overlay certificati=$OVERLAY_RENDERED_ARTIFACT_COUNT, item renderizzati=$OVERLAY_ITEM_COUNT"
+if ! jq -e 'all(.[]; (.duration_us // 0) > 0 and (.duration_us // 0) <= 8500000)' <<<"$OVERLAY_RENDERED_ARTIFACTS" >/dev/null; then
+    fail "uno o più overlay artifact hanno durata nulla o superano gli 8s del composito"
 fi
-(( CANONICAL_DURATION_US > 0 )) || fail "risultato senza durata audio/timeline canonica"
-DURATION_DELTA_US=$(( OVERLAY_DURATION_US - CANONICAL_DURATION_US ))
-(( DURATION_DELTA_US < 0 )) && DURATION_DELTA_US=$(( -DURATION_DELTA_US ))
-(( DURATION_DELTA_US <= 500000 )) || fail "overlay troncato rispetto ad audio/timeline (overlay_us=$OVERLAY_DURATION_US canonical_us=$CANONICAL_DURATION_US delta_us=$DURATION_DELTA_US)"
+AUDIO_DURATION_US=$(jq -r '(.final_audio?.duration_us // ((.final_audio?.duration_ms // 0) * 1000))' <<<"$RESULT")
+(( AUDIO_DURATION_US > 0 )) || fail "risultato senza durata audio canonica"
 
 GPU_VULKAN_FRAMES=$(jq -r '.overlay_render?.artifact?.metrics?.chronon_job_gpu_vulkan_frames // 0' <<<"$RESULT")
 GPU_NVENC_FRAMES=$(jq -r '.overlay_render?.artifact?.metrics?.chronon_job_gpu_nvenc_frames // 0' <<<"$RESULT")
@@ -296,11 +361,13 @@ printf '  important_phrases: %s\n' "$PHRASE_COUNT"
 printf '  entity image Drive links: %s\n' "$ENTITY_IMAGE_DRIVE_COUNT"
 printf '  background: %s\n' "$BACKGROUND_KIND"
 printf '  overlay items/timed: %s/%s\n' "$OVERLAY_ITEMS" "$TIMED_ITEMS"
+printf '  overlay Drive receipts: %s/%s\n' "$OVERLAY_ITEM_COUNT" "$(jq -r --arg language "$SOURCE_LANGUAGE" '[.[] | select(.language == $language and ((.drive_link // "") | startswith("http")))] | length' <<<"$OVERLAY_LINKS")"
 printf '  phrase preset items: %s\n' "$PHRASE_OVERLAY_ITEMS"
 printf '  GPU Vulkan/NVENC/software/readback: %s/%s/%s/%s\n' "$GPU_VULKAN_FRAMES" "$GPU_NVENC_FRAMES" "$GPU_SOFTWARE_FRAMES" "$GPU_READBACK_BYTES"
 printf '  Chronon: %s\n' "$CHRONON_VERSION"
 printf '  overlay Drive: %s\n' "$OVERLAY_DRIVE_LINK"
 printf '  overlay Drive folder: %s\n' "$OVERLAY_DRIVE_FOLDER"
+printf '  short overlay artifacts: %s (first duration: %s us)\n' "$OVERLAY_RENDERED_ARTIFACT_COUNT" "$OVERLAY_DURATION_US"
 printf '  final audio Drive: %s\n' "$FINAL_AUDIO_DRIVE_LINK"
 printf '  Docs: %s\n' "$DOC_LINK"
 printf '  full result: %s\n' "$FULL"

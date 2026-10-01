@@ -39,7 +39,11 @@ type jobEnvelope struct {
 	WorkerID string          `json:"worker_id"`
 	Artifact json.RawMessage `json:"artifact"`
 	Result   json.RawMessage `json:"result"`
-	Error    string          `json:"error"`
+	// The Master status API currently exposes these fields at the top level;
+	// older deployments wrapped the same values in artifact/result.
+	ArtifactURL    string `json:"artifact_url"`
+	ArtifactSHA256 string `json:"sha256"`
+	Error          string `json:"error"`
 }
 
 func New(baseURL, token string) *Client {
@@ -276,6 +280,12 @@ func resultFrom(jobID string, state jobEnvelope) Result {
 	_ = json.Unmarshal(state.Artifact, &artifact)
 	if artifact.URL == "" {
 		_ = json.Unmarshal(state.Result, &artifact)
+	}
+	if artifact.URL == "" {
+		artifact.URL = state.ArtifactURL
+	}
+	if artifact.SHA256 == "" {
+		artifact.SHA256 = state.ArtifactSHA256
 	}
 	return Result{JobID: jobID, Status: state.Status, WorkerID: state.WorkerID, ArtifactURL: artifact.URL, SHA256: artifact.SHA256}
 }

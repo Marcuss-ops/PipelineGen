@@ -81,6 +81,13 @@ first, so a ceiling larger than the number of grounded candidates simply admits
 them all. The image ceiling is unaffected. `video.create` exposes the same key at
 the top level and forwards it to its script-generate child.
 
+Entity image cards are grouped and timed automatically; there is no payload
+switch to opt out. Cards whose certified spoken anchors are five seconds or
+closer (same scene) render as ONE composite overlay with independent per-portrait
+motions, and every entity card's duration follows the spoken mention dynamically
+(mention + 0.5 s hold, clamped to 1–5 s). See
+`docs/operations/entity-overlay-composition.md` for the full contract.
+
 ```json
 {
   "version": 2,

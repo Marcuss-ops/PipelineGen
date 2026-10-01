@@ -31,6 +31,7 @@ CREATE TABLE render_attempt_analytics (
     item_id         TEXT NOT NULL DEFAULT '',
     phrase_count    INTEGER NOT NULL DEFAULT 0,
     word_count      INTEGER NOT NULL DEFAULT 0,
+    number_count    INTEGER NOT NULL DEFAULT 0,
     image_count     INTEGER NOT NULL DEFAULT 0,
     leak_count      INTEGER NOT NULL DEFAULT 0,
     render_ms       INTEGER NOT NULL DEFAULT 0,

@@ -35,7 +35,7 @@ type AudioAutomationCompiler struct{}
 // duck_under_voiceover is set without explicit values (mirror of the
 // DuckClip* ducking constants in capabilities/audio/mix_policy.go).
 const (
-	DefaultBGMDuckGainDB    = -7.0
+	DefaultBGMDuckGainDB    = audio.BackgroundMusicGainDB - 6
 	DefaultBGMDuckAttackUS  = int64(120_000)
 	DefaultBGMDuckReleaseUS = int64(350_000)
 )
@@ -102,8 +102,8 @@ func (r *AudioAutomationCompiler) CompileBGMFades(bgm []audio.ResolvedBGM) ([]au
 // the clip ducking), with the intent's attack/release ramps.
 //
 // Zero DuckGainDB / DuckAttackUS / DuckReleaseUS use the plan defaults
-// (-7 dB / 120 ms / 350 ms); negative values fail closed. Layers without
-// duck_under_voiceover produce no entries.
+// (six dB below the BGM bed / 120 ms / 350 ms); negative values fail closed.
+// Layers without duck_under_voiceover produce no entries.
 func (r *AudioAutomationCompiler) CompileBGMDucking(timeline audio.CanonicalTimeline, bgm []audio.ResolvedBGM) ([]audio.AudioAutomation, error) {
 	if err := timeline.Validate(); err != nil {
 		return nil, fmt.Errorf("compile bgm ducking: %w", err)

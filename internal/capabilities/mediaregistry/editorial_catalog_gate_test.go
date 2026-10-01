@@ -77,6 +77,21 @@ var (
 	}
 )
 
+// catalogScanSkipPaths is the path-scoped form of catalogScanSkipDirs: it names
+// whole run-output trees without going blind to an ordinary directory that
+// happens to share a name with them. Every entry must be a directory whose
+// files ECHO editorial identities (Drive ids of the assets a run processed)
+// rather than own a catalog.
+var catalogScanSkipPaths = map[string]bool{
+	// tests/operational/results is RUN OUTPUT: one directory per e2e run,
+	// named after its timestamp, holding the payloads/status/summary the run
+	// wrote. A person-overlay-drive run legitimately echoes the Drive identity
+	// of the asset it processed — echoing an identity is not owning a catalog
+	// — so a fresh run would otherwise be a fresh false positive here, the
+	// exact noise failure mode documented for benchmarks/remote above.
+	"refactored/tests/operational/results": true,
+}
+
 // editorialIdentityMarkers are the keys that turn "mentions an alias" into
 // "declares an editorial asset identity / policy".
 var editorialIdentityMarkers = []string{"drive_file_id", "source_drive_file_id", "editing_assets"}
@@ -176,6 +191,9 @@ func scanUngatedEditorialCatalogs(root string, pattern *regexp.Regexp) ([]string
 			}
 			if rel, relErr := filepath.Rel(root, path); relErr == nil {
 				slashRel := filepath.ToSlash(rel)
+				if catalogScanSkipPaths[slashRel] {
+					return fs.SkipDir
+				}
 				if !canonical[slashRel] && isNestedCheckout(path) {
 					return fs.SkipDir
 				}

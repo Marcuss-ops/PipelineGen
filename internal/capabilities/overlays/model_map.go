@@ -66,6 +66,7 @@ type MapCameraMove struct {
 }
 
 const maxCameraMapZoom = 18
+
 func (m *MapOverlay) validateCameraMove(canvasWidth, canvasHeight int, assets []OverlayAssetRef) error {
 	if m.CameraMove == nil {
 		if len(m.LODs) != 0 {
@@ -238,13 +239,17 @@ func mapLODActiveZoomRange(index int, lods []MapOverlayLOD, move *MapCameraMove)
 		low = move.StartZoom
 	} else {
 		low = (float64(lods[index-1].Zoom)+float64(lods[index].Zoom))/2 - 0.25
-		if low < move.StartZoom { low = move.StartZoom }
+		if low < move.StartZoom {
+			low = move.StartZoom
+		}
 	}
 	if index == len(lods)-1 {
 		high = move.EndZoom
 	} else {
 		high = (float64(lods[index].Zoom)+float64(lods[index+1].Zoom))/2 + 0.25
-		if high > move.EndZoom { high = move.EndZoom }
+		if high > move.EndZoom {
+			high = move.EndZoom
+		}
 	}
 	return low, high
 }

@@ -407,3 +407,6 @@ artifacts/verify/
 !testdata/golden/*.json
 
 token.json.backup-*
+
+# Local build artifact of cmd/driveupload (ELF binary, never source)
+/driveupload

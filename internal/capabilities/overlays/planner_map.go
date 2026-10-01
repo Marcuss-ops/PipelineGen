@@ -245,8 +245,8 @@ func mapItemsForScene(sceneID string, plans []MapPlan, canvasWidth, canvasHeight
 			StartMs: startUS / 1000, EndMs: (startUS + durationUS + 999) / 1000,
 			StartUS: startUS, DurationUS: durationUS,
 			AssetRefs: mapAssets,
-			Map: mapOverlay,
-			Params: map[string]any{"priority": score},
+			Map:       mapOverlay,
+			Params:    map[string]any{"priority": score},
 		})
 		ordinal++
 	}
@@ -263,7 +263,9 @@ func routeEndpoints(places []MapCandidate, fallback MapCenter) (MapCenter, MapCe
 	}
 	ordered := append([]MapCandidate(nil), places...)
 	sort.SliceStable(ordered, func(i, j int) bool {
-		if ordered[i].StartUS != ordered[j].StartUS { return ordered[i].StartUS < ordered[j].StartUS }
+		if ordered[i].StartUS != ordered[j].StartUS {
+			return ordered[i].StartUS < ordered[j].StartUS
+		}
 		return ordered[i].EntityID < ordered[j].EntityID
 	})
 	return MapCenter{Latitude: ordered[0].Latitude, Longitude: ordered[0].Longitude},

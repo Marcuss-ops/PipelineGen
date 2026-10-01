@@ -154,7 +154,6 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters"
-	processor "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters/processor"
 	scriptports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/usecase/gencore"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/usecase/testsupport"
@@ -281,13 +280,7 @@ func buildP2BUsecase(t *testing.T, gen *testsupport.FakeOllamaGen) (*gencore.Gen
 	})
 	ppReg.Freeze()
 
-	uc := gencore.NewGenerateOneUseCase(
-		processor.NormalizationConfig{},
-		nil, // SourceRegistry nil → text-only path
-		e,
-		ppReg,
-		zap.NewNop(),
-	)
+	uc := buildTestUseCase(e, nil, ppReg)
 	return uc, ppReg
 }
 

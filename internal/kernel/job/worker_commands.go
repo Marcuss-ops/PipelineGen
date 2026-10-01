@@ -95,14 +95,14 @@ type RenewCommand struct {
 
 // ProgressCommand reports partial progress on a held lease.
 type ProgressCommand struct {
-	WorkerID         string          `json:"worker_id"`
-	WorkerSessionID  string          `json:"worker_session_id"`
-	JobID            string          `json:"job_id"`
-	LeaseID          string          `json:"lease_id"`
-	ExpectedRevision int             `json:"expected_revision"`
-	CorrelationID    string          `json:"correlation_id,omitempty"`
-	Progress         int             `json:"progress"`
-	Message          string          `json:"message,omitempty"`
+	WorkerID         string `json:"worker_id"`
+	WorkerSessionID  string `json:"worker_session_id"`
+	JobID            string `json:"job_id"`
+	LeaseID          string `json:"lease_id"`
+	ExpectedRevision int    `json:"expected_revision"`
+	CorrelationID    string `json:"correlation_id,omitempty"`
+	Progress         int    `json:"progress"`
+	Message          string `json:"message,omitempty"`
 	// Data is the structured activity envelope (kind, sub_kind, status,
 	// detail, payload) persisted alongside this progress update.
 	Data json.RawMessage `json:"data,omitempty"`

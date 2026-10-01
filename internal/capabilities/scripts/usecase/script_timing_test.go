@@ -26,7 +26,6 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters"
-	processor "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters/processor"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/usecase/gencore"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/usecase/testsupport"
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
@@ -54,7 +53,7 @@ func buildTextTimingUseCase(t *testing.T) *gencore.GenerateOneUseCase {
 	require.True(t, ppReg.Register(&testsupport.StubPostProcessor{ProcessorName: "metadata", Result: &adapters.PostProcessResult{Metadata: []scriptpkg.VideoMetadata{{Language: "en", Title: "Anchor"}}}}))
 	require.True(t, ppReg.Register(&testsupport.StubPostProcessor{ProcessorName: "persistence", Result: &adapters.PostProcessResult{Changed: true}}))
 	ppReg.Freeze()
-	return gencore.NewGenerateOneUseCase(processor.NormalizationConfig{}, nil, e, ppReg, zap.NewNop())
+	return buildTestUseCase(e, nil, ppReg)
 }
 
 // newSearchTimingResolver builds a SearchSourceResolver backed by a fake
@@ -146,7 +145,7 @@ func TestScriptTiming_TotalUsesCanonicalRunClock(t *testing.T) {
 	require.True(t, ppReg.Register(&testsupport.StubPostProcessor{ProcessorName: "metadata", Result: &adapters.PostProcessResult{Metadata: []scriptpkg.VideoMetadata{{Language: "en", Title: "Anchor"}}}}))
 	require.True(t, ppReg.Register(&testsupport.StubPostProcessor{ProcessorName: "persistence", Result: &adapters.PostProcessResult{Changed: true}}))
 	ppReg.Freeze()
-	uc := gencore.NewGenerateOneUseCase(processor.NormalizationConfig{}, nil, buildTestEngine(&testsupport.FakeOllamaGen{}), ppReg, zap.NewNop())
+	uc := buildTestUseCase(buildTestEngine(&testsupport.FakeOllamaGen{}), nil, ppReg)
 
 	result, err := uc.Execute(ctx, testsupport.ItemForTimings(), scriptpkg.Preset(""), nil)
 	require.NoError(t, err)
@@ -401,7 +400,7 @@ func TestScriptTiming_LegacyProjectionMatchesCanonical(t *testing.T) {
 	require.True(t, ppReg.Register(&testsupport.StubPostProcessor{ProcessorName: "persistence", Result: &adapters.PostProcessResult{Changed: true}}))
 	ppReg.Freeze()
 
-	uc := gencore.NewGenerateOneUseCase(processor.NormalizationConfig{}, nil, e, ppReg, zap.NewNop())
+	uc := buildTestUseCase(e, nil, ppReg)
 	result, err := uc.Execute(ctx, testsupport.ItemForTimings(), scriptpkg.Preset(""), nil)
 	require.NoError(t, err)
 

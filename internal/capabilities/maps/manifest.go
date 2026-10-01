@@ -241,12 +241,16 @@ func windowCoversRouteAtZoom(window geodesy.Window, from, to geodesy.Point, targ
 	tx, ty := geodesy.LatLonToGlobalPixel(to.Latitude, to.Longitude, window.Zoom)
 	deltaX := tx - fx
 	worldSize := geodesy.MercatorTileSize * math.Pow(2, float64(window.Zoom))
-	if deltaX > worldSize/2 { deltaX -= worldSize }
-	if deltaX < -worldSize/2 { deltaX += worldSize }
+	if deltaX > worldSize/2 {
+		deltaX -= worldSize
+	}
+	if deltaX < -worldSize/2 {
+		deltaX += worldSize
+	}
 	zoomFactor := math.Pow(2, float64(targetZoom-window.Zoom))
 	viewportRadius := math.Hypot(float64(canvasWidth)/2, float64(canvasHeight)/2)
 	for step := 0; step <= 64; step++ {
-		t := float64(step)/64
+		t := float64(step) / 64
 		zoom := float64(window.Zoom) + math.Log2(1+(zoomFactor-1)*t)
 		x := fx + deltaX*t - window.TopLeftX
 		y := fy + (ty-fy)*t - window.TopLeftY
