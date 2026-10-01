@@ -126,9 +126,9 @@ func TestDegradeOverlapsDeterministic(t *testing.T) {
 }
 
 // TestCountContentCensus pins the per-attempt content census: items are
-// tallied into the four canonical buckets by priority class, and structural
-// layers (background/shape) plus unknown templates are never counted as
-// content.
+// tallied into semantic buckets, NUMBER is distinct from IMPORTANT_WORD, and
+// structural layers (background/shape) plus unknown templates are never
+// counted as content.
 func TestCountContentCensus(t *testing.T) {
 	plan := OverlayPlan{Items: []OverlayItem{
 		{ID: "bg", TemplateID: "BACKGROUND"},
@@ -143,8 +143,8 @@ func TestCountContentCensus(t *testing.T) {
 		{ID: "unknown", TemplateID: "FUTURE_TEMPLATE"},
 	}}
 	got := CountContent(plan)
-	if got.Phrases != 2 || got.Words != 2 || got.Images != 1 || got.Leaks != 2 {
-		t.Fatalf("CountContent = %+v, want phrases=2 words=2 images=1 leaks=2", got)
+	if got.Phrases != 2 || got.Words != 1 || got.Numbers != 1 || got.Images != 1 || got.Leaks != 2 {
+		t.Fatalf("CountContent = %+v, want phrases=2 words=1 numbers=1 images=1 leaks=2", got)
 	}
 }
 

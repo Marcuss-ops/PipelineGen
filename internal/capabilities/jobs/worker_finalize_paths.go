@@ -98,6 +98,8 @@ func (w *Worker) finalizeJobDeferral(ctx context.Context, j *job.Job, workerID, 
 		Backoff:          delay,
 		EventType:        "job_deferred",
 		EventData: map[string]any{
+			"kind":        j.Type,
+			"sub_kind":    "job.defer",
 			"reason":      reason,
 			"delay_ms":    delay.Milliseconds(),
 			"retry_count": j.RetryCount,

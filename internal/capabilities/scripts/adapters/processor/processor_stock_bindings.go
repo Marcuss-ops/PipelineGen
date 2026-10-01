@@ -153,7 +153,12 @@ func normalizeScenesForExplicitSegments(existing []scriptpkg.SpecScene, segments
 				scenes[i].Text = strings.TrimSpace(segment.Topic)
 			}
 		}
-		if kind := scriptpkg.SceneKind(strings.TrimSpace(segment.Kind)); kind.Valid() {
+		// A segment-level Drive folder is the visual source of record. Do not
+		// let a stale `kind: clip` label route it through clip rendering; the
+		// explicit stock binding owns this scene's video source.
+		if strings.TrimSpace(segment.StockFolderID) != "" || strings.TrimSpace(segment.StockFolderLink) != "" {
+			scenes[i].Kind = scriptpkg.SceneStock
+		} else if kind := scriptpkg.SceneKind(strings.TrimSpace(segment.Kind)); kind.Valid() {
 			scenes[i].Kind = kind
 		} else if len(segments) > 1 && i == 0 {
 			scenes[i].Kind = scriptpkg.SceneIntro

@@ -409,18 +409,121 @@ func (h *JobsHandler) readTimingBreakdown(ctx context.Context, id string) any {
 	return report.TimingSummary()
 }
 
+func stringValue(value any) string {
+	result, _ := value.(string)
+	return result
+}
+
+func activitySequenceValue(value any) uint64 {
+	switch sequence := value.(type) {
+	case float64:
+		if sequence > 0 {
+			return uint64(sequence)
+		}
+	case uint64:
+		return sequence
+	case uint:
+		return uint64(sequence)
+	case int:
+		if sequence > 0 {
+			return uint64(sequence)
+		}
+	case int64:
+		if sequence > 0 {
+			return uint64(sequence)
+		}
+	case json.Number:
+		parsed, _ := strconv.ParseUint(string(sequence), 10, 64)
+		return parsed
+	}
+	return 0
+}
+
+func activityTraceProjection(data map[string]any) map[string]any {
+	trace := make(map[string]any)
+	for _, key := range []string{"run_id", "attempt_id", "parent_run_id", "correlation_id", "sequence"} {
+		if value, exists := data[key]; exists {
+			trace[key] = value
+		}
+	}
+	if nested, ok := data["trace"].(map[string]any); ok {
+		for key, value := range nested {
+			if _, exists := trace[key]; !exists {
+				trace[key] = value
+			}
+		}
+	}
+	if len(trace) == 0 {
+		return nil
+	}
+	return trace
+}
+
 // buildJobResponse assembles the canonical enriched job status shape
 // shared by GET /api/jobs/{id} and GET /api/jobs/{id}/full.
 // It derives current_stage from the most recent timeline event and
 // surfaces any events whose type is "warning".
 func (h *JobsHandler) buildJobResponse(j *job.Job, events []job.Event) gin.H {
 	currentStage := string(j.Status)
+	currentKind := j.Type
+	currentSubKind := ""
+	currentMicroKind := ""
+	currentStatus := string(j.Status)
+	currentDetail := ""
+	var currentPayload map[string]any
+	var currentTrace map[string]any
+	currentSequence := uint64(0)
+	currentRunID, currentAttemptID, currentParentRunID, currentCorrelationID := "", "", "", ""
 	warnings := make([]gin.H, 0)
 	for i := len(events) - 1; i >= 0; i-- {
-		if events[i].Type != "" && events[i].Type != "warning" {
-			currentStage = events[i].Type
-			break
+		if events[i].Type == "" || events[i].Type == "warning" {
+			continue
 		}
+		currentStage = events[i].Type
+		if events[i].Data == nil {
+			currentSubKind = events[i].Type
+			currentMicroKind = events[i].Type
+			currentDetail = events[i].Message
+		} else {
+			if value, ok := events[i].Data["kind"].(string); ok && value != "" {
+				currentKind = value
+			}
+			if value, ok := events[i].Data["sub_kind"].(string); ok {
+				currentSubKind = value
+			}
+			if value, ok := events[i].Data["micro_kind"].(string); ok && value != "" {
+				currentMicroKind = value
+			} else {
+				currentMicroKind = currentSubKind
+			}
+			if value, ok := events[i].Data["status"].(string); ok && value != "" {
+				currentStatus = value
+			}
+			if value, ok := events[i].Data["detail"].(string); ok {
+				currentDetail = value
+			}
+			if value, ok := events[i].Data["payload"].(map[string]any); ok {
+				currentPayload = value
+			} else {
+				currentPayload = events[i].Data
+			}
+			currentTrace = activityTraceProjection(events[i].Data)
+			currentSequence = activitySequenceValue(currentTrace["sequence"])
+			currentRunID = stringValue(currentTrace["run_id"])
+			currentAttemptID = stringValue(currentTrace["attempt_id"])
+			currentParentRunID = stringValue(currentTrace["parent_run_id"])
+			currentCorrelationID = stringValue(currentTrace["correlation_id"])
+		}
+		if currentSubKind == "" {
+			currentSubKind = events[i].Type
+		}
+		if currentMicroKind == "" {
+			currentMicroKind = currentSubKind
+		}
+		if currentDetail == "" {
+			currentDetail = events[i].Message
+		}
+		break
 	}
 	for _, e := range events {
 		if e.Type == "warning" {
@@ -433,24 +536,36 @@ func (h *JobsHandler) buildJobResponse(j *job.Job, events []job.Event) gin.H {
 	}
 
 	return gin.H{
-		"id":             j.ID,
-		"type":           j.Type,
-		"status":         j.Status,
-		"correlation_id": j.CorrelationID,
-		"current_stage":  currentStage,
-		"current_step":   j.Status,
-		"progress":       j.Progress,
-		"warnings":       warnings,
-		"result":         j.Result,
-		"error":          j.Error,
-		"created_at":     j.CreatedAt,
-		"started_at":     j.StartedAt,
-		"lease_expiry":   j.LeaseExpiry,
-		"worker_id":      j.WorkerID,
-		"updated_at":     j.UpdatedAt,
-		"timeline":       events,
-		"events":         events,
-		"retryable":      j.CanRetry(),
-		"job":            j,
+		"id":                     j.ID,
+		"type":                   j.Type,
+		"status":                 j.Status,
+		"correlation_id":         j.CorrelationID,
+		"current_stage":          currentStage,
+		"current_step":           j.Status,
+		"current_kind":           currentKind,
+		"current_sub_kind":       currentSubKind,
+		"current_micro_kind":     currentMicroKind,
+		"current_status":         currentStatus,
+		"current_detail":         currentDetail,
+		"current_payload":        currentPayload,
+		"current_trace":          currentTrace,
+		"current_sequence":       currentSequence,
+		"current_run_id":         currentRunID,
+		"current_attempt_id":     currentAttemptID,
+		"current_parent_run_id":  currentParentRunID,
+		"current_correlation_id": currentCorrelationID,
+		"progress":               j.Progress,
+		"warnings":               warnings,
+		"result":                 j.Result,
+		"error":                  j.Error,
+		"created_at":             j.CreatedAt,
+		"started_at":             j.StartedAt,
+		"lease_expiry":           j.LeaseExpiry,
+		"worker_id":              j.WorkerID,
+		"updated_at":             j.UpdatedAt,
+		"timeline":               events,
+		"events":                 events,
+		"retryable":              j.CanRetry(),
+		"job":                    j,
 	}
 }

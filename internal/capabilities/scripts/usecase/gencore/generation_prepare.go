@@ -357,6 +357,7 @@ func (p *GenerationPreparer) logPhaseError(
 			zap.Error(err))
 	}
 	if tracker != nil {
+		tracker.FailActivity(err)
 		tracker.TrackEvent("stage.failed", "Pipeline stage failed", map[string]any{
 			"item_id": item.ID,
 			"phase":   phase,

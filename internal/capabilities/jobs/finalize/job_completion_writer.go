@@ -37,6 +37,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/finalization"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
+	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	timeutil "github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
 )
 
@@ -125,15 +126,12 @@ func (f *Finalizer) markSucceeded(
 		)
 	}
 
-	// Insert job event — propagate the error (previously silently ignored).
-	evtID := fmt.Sprintf("evt_%d_%s", now.UnixNano(), randomHex(6))
-	_, err = tx.ExecContext(ctx,
-		`INSERT INTO job_events (id, job_id, type, message, data_json, created_at)
-		 VALUES (?, ?, ?, ?, ?, ?)`,
-		evtID, req.Result.JobID, "job_completed",
-		"job completed with artifacts via JobFinalizer", "{}", nowStr,
-	)
-	if err != nil {
+	// Insert a normalized lifecycle event atomically with the successful flip.
+	trace := job.ActivityTraceFromContext(ctx)
+	if trace.AttemptID == "" {
+		trace.AttemptID = fmt.Sprintf("%d", req.Lease.Attempt)
+	}
+	if err := insertFinalizerActivityEvent(ctx, tx, req.Result.JobID, "job_completed", "job completed with artifacts via JobFinalizer", "job.complete", "completed", nil, trace, now); err != nil {
 		return fmt.Errorf("finalizer: insert job event: %w", err)
 	}
 
@@ -156,19 +154,52 @@ func (f *Finalizer) markSucceeded(
 		if marshalErr != nil {
 			return fmt.Errorf("finalizer: marshal optional_artifact_report: %w", marshalErr)
 		}
-		reportEvtID := fmt.Sprintf("evt_%d_%s_opt", now.UnixNano(), randomHex(6))
-		_, err = tx.ExecContext(ctx,
-			`INSERT INTO job_events (id, job_id, type, message, data_json, created_at)
-			 VALUES (?, ?, ?, ?, ?, ?)`,
-			reportEvtID, req.Result.JobID, "optional_artifact_report",
-			fmt.Sprintf("optional artifact audit report (%d records)", len(optionalReport)),
-			string(payload), nowStr,
-		)
-		if err != nil {
+		var auditPayload map[string]any
+		if err := json.Unmarshal(payload, &auditPayload); err != nil {
+			return fmt.Errorf("finalizer: decode optional_artifact_report: %w", err)
+		}
+		reportTrace := job.ActivityTraceFromContext(ctx)
+		if reportTrace.AttemptID == "" {
+			reportTrace.AttemptID = fmt.Sprintf("%d", req.Lease.Attempt)
+		}
+		if err := insertFinalizerActivityEvent(ctx, tx, req.Result.JobID, "optional_artifact_report",
+			fmt.Sprintf("optional artifact audit report (%d records)", len(optionalReport)), "artifact.optional.report", "completed", auditPayload, reportTrace, now); err != nil {
 			return fmt.Errorf("finalizer: insert optional_artifact_report job event: %w", err)
 		}
 	}
 
+	return nil
+}
+
+func insertFinalizerActivityEvent(ctx context.Context, tx *sql.Tx, jobID, eventType, message, microKind, status string, payload map[string]any, trace job.ActivityTrace, at time.Time) error {
+	var kind, correlationID string
+	err := tx.QueryRowContext(ctx, `SELECT type FROM jobs WHERE id = ?`, jobID).Scan(&kind)
+	if err != nil && err != sql.ErrNoRows && !strings.Contains(err.Error(), "no such column: type") {
+		return fmt.Errorf("load activity job type: %w", err)
+	}
+	if kind == "" {
+		kind = "job"
+	}
+	if err := tx.QueryRowContext(ctx, `SELECT COALESCE(correlation_id, '') FROM jobs WHERE id = ?`, jobID).Scan(&correlationID); err != nil {
+		if trace.CorrelationID == "" && err != sql.ErrNoRows && !strings.Contains(err.Error(), "no such column: correlation_id") {
+			return fmt.Errorf("load activity correlation: %w", err)
+		}
+	}
+	if trace.CorrelationID == "" {
+		trace.CorrelationID = correlationID
+	}
+	data := job.ActivityDataWithTrace(kind, microKind, status, message, payload, trace)
+	dataJSON, err := json.Marshal(data)
+	if err != nil {
+		return fmt.Errorf("marshal activity envelope: %w", err)
+	}
+	eventID := fmt.Sprintf("evt_%d_%s", at.UnixNano(), randomHex(6))
+	_, err = tx.ExecContext(ctx,
+		`INSERT INTO job_events (id, job_id, type, message, data_json, created_at) VALUES (?, ?, ?, ?, ?, ?)`,
+		eventID, jobID, eventType, message, string(dataJSON), timeutil.FormatRFC3339(at))
+	if err != nil {
+		return fmt.Errorf("insert activity row: %w", err)
+	}
 	return nil
 }
 

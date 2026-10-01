@@ -163,7 +163,8 @@ func insertProcessorAfterClipBindings(processors []adapters.ProcessorName, proc 
 
 func buildPostprocessorListForItem(item scriptpkg.GenerationItemV2) []adapters.ProcessorName {
 	out := item.Output
-	if !out.ExtractEntities.AsBool() && item.MediaPlan.Extraction.Enabled {
+	if out.ExtractEntities != scriptpkg.ToggleDisabled && !out.ExtractEntities.AsBool() &&
+		(item.MediaPlan.Extraction.Enabled || item.MediaPlan.Extraction.EntityExtractionExplicitlyRequested()) {
 		out.ExtractEntities = scriptpkg.ToggleEnabled
 	}
 	if item.VideoMetadata != nil && item.VideoMetadata.HasContent() {

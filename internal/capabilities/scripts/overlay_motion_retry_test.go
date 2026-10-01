@@ -71,7 +71,7 @@ func TestCompileOverlayPlanRetrySamplesFreshIndependentImageMotions(t *testing.T
 		plan, err := compileOverlayPlanWithMotionOffset(result, "en", GoldenOverlayCanvas, "retry-job", "retry-video", "retry-project", func() (int, error) {
 			calls++
 			return offset, nil
-		})
+		}, nil)
 		if err != nil {
 			t.Fatalf("compile attempt with offset %d: %v", offset, err)
 		}

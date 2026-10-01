@@ -69,10 +69,40 @@ func TestSceneAnnotationsDropsMissingPhrase(t *testing.T) {
 	}
 }
 
+func TestSceneAnnotations_BrandUsesTextFallbackUntilVerifiedAsset(t *testing.T) {
+	segment := scriptpkg.VidRushSegmentResult{
+		SegmentID: "brand-scene",
+		Insights:  scriptpkg.SegmentInsights{Entities: []scriptpkg.ExtractedEntity{{Value: "OpenAI", Type: "BRAND", Confidence: 0.94}}},
+	}
+	withoutAsset := sceneAnnotations("OpenAI announced the research result.", "en", segment)
+	if withoutAsset == nil || len(withoutAsset.PrimaryEntities) != 0 || len(withoutAsset.SecondaryEntities) != 1 {
+		t.Fatalf("unverified brand classification = %+v, want secondary text fallback", withoutAsset)
+	}
+	if got := withoutAsset.SecondaryEntities[0].Type; got != "BRAND" {
+		t.Fatalf("unverified brand type = %q, want BRAND", got)
+	}
+
+	segment.Assets.Candidates = []scriptpkg.SegmentAssetCandidate{{
+		AssetID: "openai-logo", Provider: scriptpkg.VidRushProviderInternetImages,
+		Entity: "OpenAI", DriveLink: "https://drive.google.com/file/d/logo/view", LegacyFileMD5: "logo-md5",
+		AcquisitionStatus:  scriptpkg.VidRushStatusAcquired,
+		VerificationStatus: scriptpkg.VidRushStatusVerified,
+		PersistenceStatus:  scriptpkg.VidRushStatusPersisted,
+		RightsStatus:       "unknown_allowed",
+	}}
+	withAsset := sceneAnnotations("OpenAI announced the research result.", "en", segment)
+	if withAsset == nil || len(withAsset.PrimaryEntities) != 1 || withAsset.PrimaryEntities[0].Type != "LOGO" {
+		t.Fatalf("verified brand classification = %+v, want primary LOGO", withAsset)
+	}
+	if withAsset.PrimaryEntities[0].CanonicalEntityID != "logo:openai" {
+		t.Fatalf("verified logo id = %q", withAsset.PrimaryEntities[0].CanonicalEntityID)
+	}
+}
+
 func TestSceneAnnotations_ProductAndLogoSurviveTaxonomy(t *testing.T) {
 	// PRODUCT / LOGO must never collapse to CONCEPT: the batch merger keeps
-	// them typed, places them in the primary imageable set (the registry's
-	// primary/media kinds), and stamps the resolver's canonical id.
+	// them typed, places products in the primary imageable set, and stamps the
+	// resolver's canonical id. An unverified logo is intentionally a BRAND text fallback.
 	seg := scriptpkg.VidRushSegmentResult{
 		SegmentID: "scene-1",
 		Insights: scriptpkg.SegmentInsights{
@@ -106,12 +136,12 @@ func TestSceneAnnotations_ProductAndLogoSurviveTaxonomy(t *testing.T) {
 	if product.CanonicalEntityID != "product:apple-vision-pro" {
 		t.Fatalf("PRODUCT canonical id = %q", product.CanonicalEntityID)
 	}
-	logo, ok := byType["LOGO"]
+	brand, ok := byType["BRAND"]
 	if !ok {
-		t.Fatalf("LOGO entity missing: %+v", ann.PrimaryEntities)
+		t.Fatalf("BRAND text fallback missing: %+v", ann.SecondaryEntities)
 	}
-	if logo.CanonicalEntityID != "logo:apple" {
-		t.Fatalf("LOGO canonical id = %q", logo.CanonicalEntityID)
+	if brand.CanonicalEntityID != "logo:apple" {
+		t.Fatalf("brand canonical id = %q", brand.CanonicalEntityID)
 	}
 	foundProduct := false
 	for _, e := range ann.PrimaryEntities {

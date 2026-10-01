@@ -2,6 +2,7 @@ package scriptgeneration
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"sync"
@@ -116,6 +117,49 @@ func overlayPlanWithPhrases(extra int) capoverlay.OverlayPlan {
 		})
 	}
 	return plan
+}
+
+func TestMarshalRenderingGenOverlayPlanProjectsMicrosecondTiming(t *testing.T) {
+	plan := capoverlay.GoldenOverlayPlanV1()
+	plan.Items = append(plan.Items, capoverlay.OverlayItem{
+		ID: "canonical-timing", TemplateID: "IMPORTANT_PHRASE",
+		StartMs: 101, EndMs: 207, StartUS: 100_500, DurationUS: 105_500,
+		Text: "CERTIFIED TIMING",
+	})
+	raw, err := marshalRenderingGenOverlayPlan(plan)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var wire struct {
+		Items []map[string]json.RawMessage `json:"items"`
+	}
+	if err := json.Unmarshal(raw, &wire); err != nil {
+		t.Fatal(err)
+	}
+	for _, item := range wire.Items {
+		var id string
+		if err := json.Unmarshal(item["id"], &id); err != nil {
+			t.Fatal(err)
+		}
+		if id != "canonical-timing" {
+			continue
+		}
+		if _, ok := item["start_us"]; ok {
+			t.Fatal("wire item contains non-contract start_us")
+		}
+		if _, ok := item["duration_us"]; ok {
+			t.Fatal("wire item contains non-contract duration_us")
+		}
+		var durationMS int64
+		if err := json.Unmarshal(item["duration_ms"], &durationMS); err != nil {
+			t.Fatalf("duration_ms missing or invalid: %v", err)
+		}
+		if durationMS != 106 {
+			t.Fatalf("duration_ms = %d, want ceil(end_ms-start_ms) = 106", durationMS)
+		}
+		return
+	}
+	t.Fatal("wire plan lost canonical-timing item")
 }
 
 // TestSeparateOverlayItemsPipelineMultipleRendersInFlight pins the measured

@@ -2,6 +2,7 @@ package local
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"sync"
 	"time"
@@ -17,6 +18,7 @@ type ProgressSink interface {
 type progressUpdate struct {
 	pct     int
 	message string
+	data    json.RawMessage
 }
 
 // ProgressCoalesceConfig controls the in-memory coalescing window.
@@ -69,7 +71,7 @@ func (c *ProgressCoalescer) Start(ctx context.Context) {
 	flushAll := func() {
 		batch := c.popAll()
 		for jobID, update := range batch {
-			if err := c.sink.SetProgress(context.Background(), jobID, update.pct, update.message); err != nil && c.log != nil {
+			if err := c.setProgress(context.Background(), jobID, update); err != nil && c.log != nil {
 				c.log.Warn("progress coalescer flush failed", zap.String("job_id", jobID), zap.Error(err))
 			}
 		}
@@ -102,17 +104,37 @@ func (c *ProgressCoalescer) Stop() {
 }
 
 func (c *ProgressCoalescer) Take(ctx context.Context, jobID string, progress int, message string) error {
+	return c.TakeData(ctx, jobID, progress, message, nil)
+}
+
+// TakeData coalesces progress while retaining the structured activity payload.
+func (c *ProgressCoalescer) TakeData(ctx context.Context, jobID string, progress int, message string, data json.RawMessage) error {
 	if c == nil {
 		return fmt.Errorf("progress coalescer is nil")
 	}
+	update := progressUpdate{pct: progress, message: message, data: append(json.RawMessage(nil), data...)}
 	if c.window == 0 {
-		return c.sink.SetProgress(ctx, jobID, progress, message)
+		return c.setProgress(ctx, jobID, update)
 	}
 
 	c.mu.Lock()
-	c.pending[jobID] = progressUpdate{pct: progress, message: message}
+	c.pending[jobID] = update
 	c.mu.Unlock()
 	return nil
+}
+
+func (c *ProgressCoalescer) setProgress(ctx context.Context, jobID string, update progressUpdate) error {
+	if len(update.data) > 0 {
+		var payload map[string]any
+		if json.Unmarshal(update.data, &payload) == nil {
+			if sink, ok := c.sink.(interface {
+				SetProgressData(context.Context, string, int, string, map[string]any) error
+			}); ok {
+				return sink.SetProgressData(ctx, jobID, update.pct, update.message, payload)
+			}
+		}
+	}
+	return c.sink.SetProgress(ctx, jobID, update.pct, update.message)
 }
 
 func (c *ProgressCoalescer) FlushJob(jobID string) (*progressUpdate, error) {

@@ -326,36 +326,42 @@ func requiredConceptsFor(seg ResultSegment) []string {
 	return nil
 }
 
-// ruleEntityGrounding verifies that no segment exceeds the requested entity
-// limit and every entity actually returned has source evidence. The extraction
-// limit is a maximum, not an exact count: deterministic NLP may legitimately
-// find fewer grounded entities in a scene.
+// ruleEntityGrounding verifies that no segment exceeds the requested
+// imageable-identity limit and every returned identity/value annotation has
+// source evidence. Value annotations do not consume identity/image fanout.
+// The extraction limit is a maximum, not an exact count: deterministic NLP may
+// legitimately find fewer grounded entities in a scene.
 func ruleEntityGrounding(spec Spec, result MediaResult) CheckResult {
 	pass, total := 0, len(result.Segments)
 	var violations []Violation
 	for _, seg := range result.Segments {
 		ents := seg.Insights.Entities
-		if spec.EntitiesPerSegment > 0 && len(ents) > spec.EntitiesPerSegment {
+		identityCount := 0
+		for _, ent := range ents {
+			if script.IsAnnotationEntityKind(script.NormalizeAnnotationType(ent.Type)) {
+				identityCount++
+			}
+		}
+		segmentPassed := true
+		if spec.EntitiesPerSegment > 0 && identityCount > spec.EntitiesPerSegment {
 			violations = append(violations, Violation{
 				SegmentID: seg.SegmentID,
 				Rule:      string(CheckEntityGrounding),
-				Detail:    fmt.Sprintf("entity count = %d, maximum %d", len(ents), spec.EntitiesPerSegment),
+				Detail:    fmt.Sprintf("identity entity count = %d, maximum %d", identityCount, spec.EntitiesPerSegment),
 			})
-			continue
+			segmentPassed = false
 		}
-		grounded := 0
 		for _, ent := range ents {
-			if entityHasEvidence(ent, seg) {
-				grounded++
-			} else {
+			if !entityHasEvidence(ent, seg) {
 				violations = append(violations, Violation{
 					SegmentID: seg.SegmentID,
 					Rule:      string(CheckEntityGrounding),
 					Detail:    fmt.Sprintf("entity %q has no source evidence (NO EVIDENCE → NO ENTITY)", ent.Value),
 				})
+				segmentPassed = false
 			}
 		}
-		if grounded == len(ents) {
+		if segmentPassed {
 			pass++
 		}
 	}
@@ -394,7 +400,12 @@ func ruleImageFanout(spec Spec, result MediaResult) CheckResult {
 	var violations []Violation
 	for _, seg := range result.Segments {
 		nQueries := len(seg.Insights.ImageQueries)
-		nEnts := len(seg.Insights.Entities)
+		nEnts := 0
+		for _, entity := range seg.Insights.Entities {
+			if script.IsAnnotationEntityKind(script.NormalizeAnnotationType(entity.Type)) {
+				nEnts++
+			}
+		}
 		if spec.EntitiesPerSegment > 0 && nQueries > spec.EntitiesPerSegment {
 			violations = append(violations, Violation{
 				SegmentID: seg.SegmentID,
@@ -410,11 +421,15 @@ func ruleImageFanout(spec Spec, result MediaResult) CheckResult {
 			})
 		}
 		nImgs := len(seg.Assets.SecondaryImages) + len(seg.Assets.GeneratedImages)
-		if spec.ImagesPerSegment > 0 && nImgs != spec.ImagesPerSegment {
+		// VidRush surfaces provider candidates here; MediaSampler selects the
+		// requested budget downstream. More candidates than the budget are
+		// valid and give the sampler alternatives, while fewer cannot satisfy
+		// the image requirement.
+		if spec.ImagesPerSegment > 0 && nImgs < spec.ImagesPerSegment {
 			violations = append(violations, Violation{
 				SegmentID: seg.SegmentID,
 				Rule:      string(CheckImageFanout),
-				Detail:    fmt.Sprintf("images selected = %d, expected %d", nImgs, spec.ImagesPerSegment),
+				Detail:    fmt.Sprintf("images available = %d, expected at least %d", nImgs, spec.ImagesPerSegment),
 			})
 		}
 		if allForSegment(violations, seg.SegmentID) == 0 {

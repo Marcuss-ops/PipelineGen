@@ -121,7 +121,9 @@ func (req GenerateRequest) NeedsSemanticEnrichment() bool {
 	if req.ExtractEntities == scriptpkg.ToggleEnabled || req.GenerateSceneImages == scriptpkg.ToggleEnabled {
 		return true
 	}
-	if req.MediaPlan.Extraction.Enabled || req.MediaPlan.Extraction.EntityImageSurfaceEnabled() {
+	if req.MediaPlan.Extraction.EntityImageSurfaceEnabled() ||
+		(req.MediaPlan.Extraction.Enabled && !req.MediaPlan.Extraction.HasCategoryOnlyIncludes()) ||
+		req.MediaPlan.Extraction.EntityExtractionExplicitlyRequested() {
 		return true
 	}
 	return mediadomain.IsActiveMediaPlanMode(req.MediaPlan.Mode)
@@ -296,6 +298,14 @@ func ResumeFrom(run *GenerationRun) Stage {
 	case RunStatusCompleted:
 		return StageCompleted
 	case RunStatusFailed:
+		// A worker can be canceled at the CORE_READY boundary before the
+		// final-job receipt is checkpointed. In that case the result is still
+		// durable and CORE_READY is the strongest resume marker available.
+		// Preserve it instead of falling back to NORMALIZING, which would
+		// regenerate voiceovers and overlays before retrying the final render.
+		if run.CurrentStage == StageCoreReady {
+			return StagePublishingDocuments
+		}
 		// Resume from the failed stage (will retry).
 		if run.FailedStage != "" && StageIndex(run.FailedStage) >= 0 {
 			return run.FailedStage

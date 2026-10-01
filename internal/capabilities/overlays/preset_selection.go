@@ -54,6 +54,15 @@ var (
 		"image_25d_blur_scale_in",
 	}
 	imageMotionCandidates        = renderSafeImageMotions
+	// centeredImageMotionCandidates is the certified CENTERED image-motion
+	// pool: the subset of motions that keep the raster pinned to the canvas
+	// center, so a map's geography never drifts away from the pins projected
+	// over it. MapOverlay.Validate accepts exactly these three ids.
+	centeredImageMotionCandidates = []string{
+		"image_fade_reveal",
+		"image_focus_reveal",
+		"image_scale_reveal",
+	}
 	classicAppleMotionCandidates = []string{
 		"air_rise_type_on",
 		"apple_phrase_v2",

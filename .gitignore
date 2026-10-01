@@ -88,6 +88,9 @@ web-admin/dist/
 # Runtime output directories (test fixtures, worker downloads)
 # ============================================
 /out/
+# Pipeline render outputs (final mp4s — e.g. output/Milton_Leite_FINAL.mp4 at
+# 1.1 GB, over GitHub's 100 MB file limit): regenerated on demand, never in git.
+/output/
 /researchlive
 /yt-clip-tests/
 **/completed_videos/

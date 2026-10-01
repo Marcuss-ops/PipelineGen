@@ -2,6 +2,7 @@ package local
 
 import (
 	"context"
+	"encoding/json"
 
 	"go.uber.org/zap"
 
@@ -25,7 +26,17 @@ func (b *Broker) Progress(ctx context.Context, cmd appjobs.ProgressCommand) erro
 		return err
 	}
 	if b.coalesceOn {
-		return b.coalescer.Take(ctx, cmd.JobID, cmd.Progress, cmd.Message)
+		return b.coalescer.TakeData(ctx, cmd.JobID, cmd.Progress, cmd.Message, cmd.Data)
+	}
+	if len(cmd.Data) > 0 {
+		var payload map[string]any
+		if json.Unmarshal(cmd.Data, &payload) == nil {
+			if sink, ok := b.progress.(interface {
+				SetProgressData(context.Context, string, int, string, map[string]any) error
+			}); ok {
+				return sink.SetProgressData(ctx, cmd.JobID, cmd.Progress, cmd.Message, payload)
+			}
+		}
 	}
 	// Disabled coalescing: write directly to the canonical sink.
 	// (Coincidentally: b.progress == b.jobs today, since *SQLiteStore
@@ -80,7 +91,7 @@ func (b *Broker) flushPendingProgress(ctx context.Context, jobID string) {
 	if p == nil {
 		return // tick loop already popped it; nothing to do
 	}
-	if err := b.progress.SetProgress(ctx, jobID, p.pct, p.message); err != nil {
+	if err := b.coalescer.setProgress(ctx, jobID, *p); err != nil {
 		b.log.Warn("progress coalescer terminal-flush write failed (non-fatal)",
 			zap.String("job_id", jobID), zap.Int("pct", p.pct), zap.Error(err))
 		return

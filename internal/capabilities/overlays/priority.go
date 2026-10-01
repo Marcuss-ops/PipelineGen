@@ -127,23 +127,31 @@ func DegradeOverlaps(items []OverlayItem, budget int) []OverlayItem {
 }
 
 // ContentCounts is the per-attempt content census of a plan: how many
-// phrases / words / images / effects it carries. It is the deterministic
-// summary the render-attempt analytics record stores (never the item list).
+// phrases, words, numbers, images, and effects it carries. It is the
+// deterministic summary the render-attempt analytics record stores (never the
+// item list).
 type ContentCounts struct {
 	Phrases int `json:"phrases"`
 	Words   int `json:"words"`
+	Numbers int `json:"numbers"`
 	Images  int `json:"images"`
 	Leaks   int `json:"leaks"`
 }
 
-// CountContent tallies an OverlayPlan's items into the four content buckets
-// by canonical priority class (phrase / word / image / effect). Structural
-// layers (background / video background / shape) are excluded: they are not
-// content. Unknown templates are excluded too — the census reports what it
-// understands, never a fabricated class.
+// CountContent tallies an OverlayPlan's items into semantic content buckets.
+// NUMBER shares editorial priority with text emphasis for overlap degradation,
+// but has its own census field so value cards are not misreported as words.
+// Structural layers (background / video background / shape) are excluded:
+// they are not content. Unknown templates are excluded too — the census
+// reports what it understands, never a fabricated class.
 func CountContent(plan OverlayPlan) ContentCounts {
 	var c ContentCounts
 	for _, item := range plan.Items {
+		switch item.TemplateID {
+		case "NUMBER":
+			c.Numbers++
+			continue
+		}
 		switch ContentPriority(item.TemplateID) {
 		case PriorityPhrase:
 			c.Phrases++

@@ -1,6 +1,7 @@
 package adapters
 
 import (
+	"strings"
 	"testing"
 
 	mediadomain "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
@@ -60,6 +61,24 @@ func TestVidRushFanoutPlanEntityImagesExcludeVisualConceptQueries(t *testing.T) 
 	}
 }
 
+func TestVidRushFanoutPlanIncludesBrandImageQueries(t *testing.T) {
+	plan := &scriptpkg.ResolvedGenerationPlan{MediaPlan: mediadomain.MediaPlanSpec{
+		Extraction:     mediadomain.MediaExtractionPolicy{Include: []string{mediadomain.ExtractionIncludeBrands}},
+		ProviderPolicy: mediadomain.MediaProviderPolicy{InternetImages: mediadomain.MediaToggleEnabled},
+	}}
+	segment := scriptpkg.VidRushSegmentResult{
+		SegmentID: "brand-scene", Text: "Apple released a new product.",
+		Insights: scriptpkg.SegmentInsights{
+			Entities:     []scriptpkg.ExtractedEntity{{Value: "Apple", Type: "LOGO"}, {Value: "25%", Type: "PERCENT"}},
+			ImageQueries: []string{"Apple", "25%"},
+		},
+	}
+	fanout := buildVidRushFanoutPlan(plan, segment, nil, &gatedImageSearcher{}, nil)
+	if len(fanout.imageQueries) != 1 || fanout.imageQueries[0] != "Apple" {
+		t.Fatalf("brand image queries = %#v, want only Apple", fanout.imageQueries)
+	}
+}
+
 func TestVidRushFanoutPlanPerSceneImagesUsesSceneSpecificQuery(t *testing.T) {
 	if !(mediadomain.EntityImagePolicy{Scope: "per_scene"}).PerScene() {
 		t.Fatal("per_scene scope was not recognized")
@@ -72,17 +91,22 @@ func TestVidRushFanoutPlanPerSceneImagesUsesSceneSpecificQuery(t *testing.T) {
 	}
 	base := scriptpkg.VidRushSegmentResult{
 		SegmentID: "scene-2", TextHash: "hash-2", Text: "Milton Leite compareceu ao tribunal para a audiência de custódia.",
-		Insights: scriptpkg.SegmentInsights{Entities: []scriptpkg.ExtractedEntity{{Value: "Milton Leite", Type: "PERSON"}}, ImageQueries: []string{"Milton Leite"}},
+		SourceText: "A operação Vectura Corrupta cumpriu dezesseis mandados e prendeu Milton Leite.",
+		Insights:   scriptpkg.SegmentInsights{Entities: []scriptpkg.ExtractedEntity{{Value: "Milton Leite", Type: "PERSON"}}, ImageQueries: []string{"Milton Leite"}},
 	}
 	first := buildVidRushFanoutPlan(plan, base, nil, &gatedImageSearcher{}, nil)
 	base.SegmentID, base.TextHash = "scene-3", "hash-3"
 	base.Text = "Milton Leite contestou a decisão do Superior Tribunal de Justiça."
+	base.SourceText = "A defesa questionou a prisão temporária e contestou os fundamentos da decisão."
 	second := buildVidRushFanoutPlan(plan, base, nil, &gatedImageSearcher{}, nil)
 	if len(first.imageQueries) == 0 || len(second.imageQueries) == 0 || first.imageQueries[0] == second.imageQueries[0] {
 		t.Fatalf("per-scene image queries are not scene-specific: first=%q second=%q", first.imageQueries, second.imageQueries)
 	}
 	if len(first.imageQueries) != 1 || len(second.imageQueries) != 1 {
 		t.Fatalf("per-scene image fanout must stay bounded to one query: first=%q second=%q", first.imageQueries, second.imageQueries)
+	}
+	if strings.Contains(strings.ToLower(first.imageQueries[0]), "boxing") || strings.Contains(strings.ToLower(second.imageQueries[0]), "boxing") {
+		t.Fatalf("scene image queries contain unrelated boxing suffix: first=%q second=%q", first.imageQueries, second.imageQueries)
 	}
 }
 

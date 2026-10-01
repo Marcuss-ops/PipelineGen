@@ -65,13 +65,11 @@ package jobs
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
 
 	domjob "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
-	hashutil "github.com/Marcuss-ops/PipelineGen/internal/platform/filesystem"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/observability"
 	timeutil "github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
 )
@@ -361,18 +359,8 @@ func (r *SQLiteStore) FinalizeAttempt(ctx context.Context, cmd domjob.FinalizeAt
 	// the {complete, fail, schedule_retry} trio. EventData is encoded
 	// as JSON; nil becomes "{}". EventType empty short-circuits (no row).
 	if cmd.EventType != "" {
-		dataJSON := "{}"
-		if cmd.EventData != nil {
-			if b, jmErr := json.Marshal(cmd.EventData); jmErr == nil {
-				dataJSON = string(b)
-			}
-		}
-		evtID := fmt.Sprintf("evt_%d_%s", now.UnixNano(), hashutil.RandomString(6))
-		if _, evErr := tx.ExecContext(ctx,
-			`INSERT INTO job_events (id, job_id, type, message, data_json, created_at) VALUES (?, ?, ?, ?, ?, ?)`,
-			evtID, cmd.JobID, cmd.EventType, errorMessage, dataJSON, nowStr,
-		); evErr != nil {
-			return domjob.FinalizeAttemptResult{}, fmt.Errorf("finalizeAttempt: job_events insert (id=%s type=%s): %w", cmd.JobID, cmd.EventType, evErr)
+		if err := insertJobTimelineEvent(ctx, tx, cmd.JobID, cmd.EventType, errorMessage, cmd.EventData, now); err != nil {
+			return domjob.FinalizeAttemptResult{}, fmt.Errorf("finalizeAttempt: job_events insert (id=%s type=%s): %w", cmd.JobID, cmd.EventType, err)
 		}
 	}
 

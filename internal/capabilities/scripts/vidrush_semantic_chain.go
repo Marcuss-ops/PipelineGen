@@ -103,10 +103,11 @@ func (e *SceneIRSegmentEnricher) Enrich(ctx context.Context, plan *scriptpkg.Res
 	if plan != nil {
 		extraction = plan.MediaPlan.Extraction
 	}
-	includeEntities := extraction.Includes(mediadomain.ExtractionIncludeEntities) || extraction.Includes(mediadomain.ExtractionIncludeSpecialNames)
+	includeEntities := extraction.EntityExtractionRequested()
 	includeImportantPhrases := extraction.Includes(mediadomain.ExtractionIncludeImportantPhrases)
 	includeImportantWords := extraction.Includes(mediadomain.ExtractionIncludeImportantWords)
-	includeSpecialNames := extraction.Includes(mediadomain.ExtractionIncludeSpecialNames)
+	includeSpecialNames := extraction.Includes(mediadomain.ExtractionIncludeSpecialNames) ||
+		(extraction.Includes(mediadomain.ExtractionIncludeEntities) && !hasAdditionalEntityCategory(extraction))
 	entityCount := extraction.MaxEntitiesPerSegment
 	if entityCount <= 0 {
 		entityCount = 3
@@ -114,13 +115,26 @@ func (e *SceneIRSegmentEnricher) Enrich(ctx context.Context, plan *scriptpkg.Res
 	var entities []VisualEntity
 	var err error
 	if includeEntities {
-		entities, err = e.nerPort.Extract(ctx, sourceForExtraction, entityCount)
+		nerLimit := entityCount
+		if extraction.HasCategoryOnlyIncludes() || hasAdditionalEntityCategory(extraction) {
+			// Typed requests need a wider candidate window because VisualNER
+			// ranks imageable names before values and applies top-N internally.
+			// Broad entities+category selections keep every type, while the
+			// configured final cap still applies to imageable identities.
+			nerLimit = min(max(entityCount*8, 12), 100)
+		}
+		entities, err = e.nerPort.Extract(ctx, sourceForExtraction, nerLimit)
 		if err != nil {
 			return scriptpkg.VidRushSegmentResult{}, fmt.Errorf("visualner extract: %w", err)
 		}
 	}
 	if !includeEntities {
 		entities = nil
+	}
+	if !includeEntities {
+		// Editorial phrase/word selection is deterministic over narration and
+		// remains independently selectable without running VisualNER.
+		includeSpecialNames = false
 	}
 	entityLimit := extraction.MaxEntitiesPerSegment
 	if entityLimit <= 0 {
@@ -137,10 +151,42 @@ func (e *SceneIRSegmentEnricher) Enrich(ctx context.Context, plan *scriptpkg.Res
 	if err := validateVisualEntities(sourceForExtraction, entities); err != nil {
 		return scriptpkg.VidRushSegmentResult{}, fmt.Errorf("visualner contract: %w", err)
 	}
+	if extraction.HasCategoryOnlyIncludes() {
+		filtered := make([]VisualEntity, 0, len(entities))
+		for _, entity := range entities {
+			if extraction.IncludesEntityType(string(entity.Type)) {
+				filtered = append(filtered, entity)
+			}
+		}
+		entities = filtered
+	}
+	if extraction.HasCategoryOnlyIncludes() || extraction.EntityExtractionExplicitlyRequested() {
+		// Type aliases (METRIC/STATISTIC/QUANTITY) are allowed by the
+		// selection policy but must be canonical before projection/fanout.
+		for i := range entities {
+			entities[i].Type = scriptpkg.EntityType(scriptpkg.NormalizeAnnotationType(string(entities[i].Type)))
+		}
+	}
+	if !extraction.Includes(mediadomain.ExtractionIncludeImportantPhrases) &&
+		!extraction.Includes(mediadomain.ExtractionIncludeImportantWords) {
+		entities = filterOverlayCategoryEntities(entities)
+	}
 	entities = deduplicateVisualEntities(entities)
-	// Enforce the caller's per-scene limit before image-query fanout and
-	// certification consume the VisualNER identities.
-	entities = limitTranslatedVisualEntities(entities, entityLimit)
+	// Category-only requests cap the selected category's result count.
+	// Broad entity requests cap imageable identities separately and keep
+	// grounded value annotations (money, metrics, dates) without allowing
+	// them to consume identity-image slots.
+	if extraction.HasCategoryOnlyIncludes() {
+		entities = limitTranslatedVisualEntities(entities, entityLimit)
+	} else if extraction.Includes(mediadomain.ExtractionIncludeEntities) && hasAdditionalEntityCategory(extraction) {
+		// When typed value lanes are added to broad entity extraction, keep
+		// all grounded values while limiting only imageable identities.
+		entities = limitVisualIdentityEntities(entities, entityLimit)
+	} else {
+		// Preserve the established broad entities cap when no value category
+		// has explicitly requested the expanded non-image surface.
+		entities = limitTranslatedVisualEntities(entities, entityLimit)
+	}
 
 	extractedEntities := make([]scriptpkg.ExtractedEntity, 0, len(entities))
 	for _, ve := range entities {
@@ -164,7 +210,7 @@ func (e *SceneIRSegmentEnricher) Enrich(ctx context.Context, plan *scriptpkg.Res
 			Confidence: float64(ve.Score),
 		})
 	}
-	imageEntities := imageSearchEntities(entities)
+	imageEntities := imageSearchEntities(entities, extraction.HasCategoryOnlyIncludes() || hasAdditionalEntityCategory(extraction))
 	imageQueries := make([]string, 0, len(imageEntities))
 	imageAnchor := visualImageAnchor(sourceForExtraction)
 	for _, ve := range imageEntities {
@@ -173,6 +219,9 @@ func (e *SceneIRSegmentEnricher) Enrich(ctx context.Context, plan *scriptpkg.Res
 			query = imageAnchor + " " + query
 		}
 		imageQueries = append(imageQueries, query)
+	}
+	if extraction.HasCategoryOnlyIncludes() && !categoryIncludesImageableIdentity(extraction) {
+		imageQueries = nil
 	}
 	var phraseCandidates []string
 	if includeImportantPhrases || includeImportantWords {
@@ -223,7 +272,9 @@ func (e *SceneIRSegmentEnricher) Enrich(ctx context.Context, plan *scriptpkg.Res
 	// Entity extraction is the source for identity-image queries. PERSON
 	// identities are queried independently; the broader visual-profile query
 	// builder is not used because it defeats entity-level caching.
-	if !includeEntities {
+	if !includeEntities || (!categoryIncludesImageableIdentity(extraction) &&
+		(extraction.HasCategoryOnlyIncludes() || hasAdditionalEntityCategory(extraction))) ||
+		(extraction.HasCategoryOnlyIncludes() && !extraction.Includes(mediadomain.ExtractionIncludeBrands) && !extraction.Includes(mediadomain.ExtractionIncludePersons)) {
 		imageQueries = nil
 	}
 	result := scriptpkg.VidRushSegmentResult{
@@ -270,6 +321,62 @@ func (e *SceneIRSegmentEnricher) Enrich(ctx context.Context, plan *scriptpkg.Res
 // before the entity/image fanout. VisualNER may return both a canonical name
 // and a sentence surface such as "While Dolly Parton's"; those are one
 // person, hence one image query and one overlay.
+func categoryIncludesImageableIdentity(policy mediadomain.MediaExtractionPolicy) bool {
+	// Broad entities includes named identities; a value selector added beside
+	// it must not suppress their image lane. Category-only value requests stay
+	// non-imageable unless persons or brands were explicitly selected too.
+	return policy.Includes(mediadomain.ExtractionIncludeEntities) ||
+		policy.Includes(mediadomain.ExtractionIncludePersons) ||
+		policy.Includes(mediadomain.ExtractionIncludeBrands)
+}
+
+func hasAdditionalEntityCategory(policy mediadomain.MediaExtractionPolicy) bool {
+	for _, requested := range policy.Include {
+		requested = strings.TrimSpace(requested)
+		if strings.EqualFold(requested, mediadomain.ExtractionIncludeEntities) ||
+			strings.EqualFold(requested, mediadomain.ExtractionIncludeSpecialNames) {
+			continue
+		}
+		for _, category := range mediadomain.ExtractionIncludeValueCategories {
+			if strings.EqualFold(requested, category) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// limitVisualIdentityEntities caps only imageable named identities while
+// preserving value annotations that have their own non-image editorial path.
+func limitVisualIdentityEntities(entities []VisualEntity, limit int) []VisualEntity {
+	if limit <= 0 {
+		return entities
+	}
+	out := make([]VisualEntity, 0, len(entities))
+	identities := 0
+	for _, entity := range entities {
+		if scriptpkg.IsAnnotationEntityKind(scriptpkg.NormalizeAnnotationType(string(entity.Type))) {
+			if identities >= limit {
+				continue
+			}
+			identities++
+		}
+		out = append(out, entity)
+	}
+	return out
+}
+
+func filterOverlayCategoryEntities(entities []VisualEntity) []VisualEntity {
+	out := entities[:0]
+	for _, entity := range entities {
+		switch scriptpkg.NormalizeAnnotationType(string(entity.Type)) {
+		case "PERSON", "ORG", "GPE", "PRODUCT", "LOGO", "DATE", "TIME", "CARDINAL", "NUMBER", "ORDINAL", "MONEY", "PERCENT":
+			out = append(out, entity)
+		}
+	}
+	return out
+}
+
 func deduplicateVisualEntities(entities []VisualEntity) []VisualEntity {
 	if len(entities) < 2 {
 		return entities

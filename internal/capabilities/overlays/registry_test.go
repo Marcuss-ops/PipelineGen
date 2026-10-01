@@ -8,16 +8,16 @@ import (
 )
 
 // TestChrononOverlayRegistry_CanonicalTable pins the frozen canonical
-// capability table: exactly ten kinds, each resolving to its declared
-// renderer + template with a positive version. A drift that adds/removes a
+// capability table: each kind resolves to its declared renderer + template
+// with a positive version. A drift that adds/removes a
 // kind without updating canonicalOverlayEntries is a loud test failure.
 func TestChrononOverlayRegistry_CanonicalTable(t *testing.T) {
 	reg := NewChrononOverlayRegistry()
 	if reg == nil {
 		t.Fatal("NewChrononOverlayRegistry returned nil")
 	}
-	if reg.Len() != 13 {
-		t.Fatalf("registry kind count = %d, want 13", reg.Len())
+	if reg.Len() != 14 {
+		t.Fatalf("registry kind count = %d, want 14", reg.Len())
 	}
 
 	want := map[OverlayKind]struct {
@@ -34,14 +34,15 @@ func TestChrononOverlayRegistry_CanonicalTable(t *testing.T) {
 		KindNumber:          {"NUMBER", "NumberRenderer"},
 		KindProduct:         {"PRODUCT", "ProductRenderer"},
 		KindLogo:            {"LOGO", "LogoRenderer"},
+		KindBrandText:       {"logo_default", "BrandTextRenderer"},
 		KindImportantPhrase: {"IMPORTANT_PHRASE", "ImportantPhraseRenderer"},
 		KindImportantWord:   {"IMPORTANT_WORD", "ImportantWordRenderer"},
 		KindEntityImage:     {"IMAGE_OVERLAY", "EntityImageRenderer"},
 	}
 
 	kinds := reg.Kinds()
-	if len(kinds) != 13 {
-		t.Fatalf("Kinds() returned %d kinds, want 13", len(kinds))
+	if len(kinds) != 14 {
+		t.Fatalf("Kinds() returned %d kinds, want 14", len(kinds))
 	}
 	for i := 1; i < len(kinds); i++ {
 		if kinds[i-1] >= kinds[i] {
@@ -217,6 +218,7 @@ func TestChrononOverlayRegistry_CanonicalPolicies(t *testing.T) {
 		KindNumber:       {DurationCertified, PositionCentered},
 		KindProduct:      {DurationBounded, PositionPopup},
 		KindLogo:         {DurationBounded, PositionCorner},
+		KindBrandText:    {DurationCertified, PositionCorner},
 	}
 	for kind, w := range want {
 		e, err := reg.Resolve(string(kind))

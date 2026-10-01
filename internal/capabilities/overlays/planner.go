@@ -17,11 +17,12 @@ type PlannerConfig struct {
 	MaxKeywords    int
 	MaxImages      int
 	MaxPhraseWords int
-	// Extended semantic entity limits (NUMBER / QUOTE / PRODUCT / LOGO).
-	MaxNumbers  int
-	MaxQuotes   int
-	MaxProducts int
-	MaxLogos    int
+	// Extended semantic entity limits (NUMBER / BRAND TEXT / QUOTE / PRODUCT / LOGO).
+	MaxNumbers    int
+	MaxBrandTexts int
+	MaxQuotes     int
+	MaxProducts   int
+	MaxLogos      int
 	// MaxOverlap caps how many content items may overlap at any single
 	// moment; beyond it the planner drops the lowest-priority overlapping
 	// items (see DegradeOverlaps). Default: DefaultOverlapBudget (3).
@@ -35,6 +36,10 @@ type PlannerConfig struct {
 	// (MaxPhraseOverlaysPerRun); a positive value is honoured verbatim, so a
 	// caller may lower or raise it per run.
 	RunLevelPhraseOverlayLimit int
+	// RunLevelMapOverlayLimit is the per-scene map ceiling used by the
+	// map-aware editorial budget. Zero keeps the certified default
+	// (MaxMapOverlaysPerScene); a positive value raises it per run.
+	RunLevelMapOverlayLimit int
 }
 
 // AllCandidatesPlannerConfig is the production generation policy: every
@@ -63,7 +68,7 @@ func AllCandidatesPlannerConfig(scenes []SceneInput) PlannerConfig {
 			}
 		}
 		totalCandidates += len(scene.Phrases) + len(scene.Keywords) + len(scene.Images) +
-			len(scene.Numbers) + len(scene.Quotes) + len(scene.Products) + len(scene.Logos)
+			len(scene.Numbers) + len(scene.BrandTexts) + len(scene.Quotes) + len(scene.Products) + len(scene.Logos) + len(scene.Maps)
 	}
 	// A positive value is required to avoid withDefaults restoring a cap. The
 	// extra slot makes the overlap budget strictly larger than every possible
@@ -80,6 +85,7 @@ func AllCandidatesPlannerConfig(scenes []SceneInput) PlannerConfig {
 		MaxImages:               maxPerScene(func(s SceneInput) int { return len(s.Images) }),
 		MaxPhraseWords:          maxPhraseWords,
 		MaxNumbers:              maxPerScene(func(s SceneInput) int { return len(s.Numbers) }),
+		MaxBrandTexts:           maxPerScene(func(s SceneInput) int { return len(s.BrandTexts) }),
 		MaxQuotes:               maxPerScene(func(s SceneInput) int { return len(s.Quotes) }),
 		MaxProducts:             maxPerScene(func(s SceneInput) int { return len(s.Products) }),
 		MaxLogos:                maxPerScene(func(s SceneInput) int { return len(s.Logos) }),
@@ -103,6 +109,9 @@ func (c PlannerConfig) withDefaults() PlannerConfig {
 	}
 	if c.MaxNumbers <= 0 {
 		c.MaxNumbers = 1
+	}
+	if c.MaxBrandTexts <= 0 {
+		c.MaxBrandTexts = 1
 	}
 	if c.MaxQuotes <= 0 {
 		c.MaxQuotes = 1
@@ -172,10 +181,16 @@ type SceneInput struct {
 	// Extended semantic entity annotations: numbers (stat highlights),
 	// quotes, product images and logos. They terminate in the same
 	// canonical primitives as the base set (Text / Image).
-	Numbers  []TimedAnnotation
-	Quotes   []TimedAnnotation
-	Products []ImageCandidate
-	Logos    []ImageCandidate
+	Numbers    []TimedAnnotation
+	BrandTexts []TimedAnnotation
+	Quotes     []TimedAnnotation
+	Products   []ImageCandidate
+	Logos      []ImageCandidate
+	// Maps carries the scene's grounded place candidates. Each one must be
+	// covered by a certified plate from PlanInput.PlateResolver before it can
+	// become a map item; anything uncovered is silently skipped (never
+	// guessed at).
+	Maps []MapCandidate
 }
 
 // PlanInput is the minimal upstream projection required by the overlay
@@ -209,7 +224,11 @@ type PlanInput struct {
 	PhraseMotionFamily string
 	// ImageMotions optionally narrows the certified layer-only image motion pool.
 	ImageMotions []string
-	Scenes       []SceneInput
+	// PlateResolver resolves a grounded WGS84 point to the certified basemap
+	// plate covering it. Nil (or an uncovered point) means the scene emits no
+	// map: the planner never fabricates geography.
+	PlateResolver PlateResolver
+	Scenes        []SceneInput
 }
 
 // BuildPlan selects bounded overlays from scene annotations. Candidates with
@@ -255,9 +274,11 @@ func BuildPlan(input PlanInput, config PlannerConfig) (OverlayPlan, error) {
 	// never dependent on map/array iteration order:
 	//
 	//	images / products / logos  z=20
+	//	maps                       z=60
 	//	numbers / quotes           z=50
 	//	important words            z=80
 	//	important phrases          z=100
+	mapOrdinal := 0
 	for _, scene := range input.Scenes {
 		if strings.TrimSpace(scene.ID) == "" {
 			return OverlayPlan{}, fmt.Errorf("overlay planner: scene id is required")
@@ -274,7 +295,7 @@ func BuildPlan(input PlanInput, config PlannerConfig) (OverlayPlan, error) {
 				Kind: "image", TemplateID: "IMAGE_OVERLAY",
 				StartMs: image.StartMs, EndMs: image.EndMs, StartUS: image.StartUS, DurationUS: image.DurationUS,
 				AssetRefs: []OverlayAssetRef{NewOverlayAssetRef(asset.New(image.AssetID, image.SHA256, image.MediaType, 0), image.URL, image.LocalPath)},
-				Params:    map[string]any{"position": "right", "style": "popup", "priority": image.Score},
+				Params:    map[string]any{"position": "center", "style": "popup", "priority": image.Score},
 			})
 		}
 
@@ -325,6 +346,21 @@ func BuildPlan(input PlanInput, config PlannerConfig) (OverlayPlan, error) {
 			})
 		}
 
+		brandTexts := rankedValid(scene.BrandTexts, 0)
+		if len(brandTexts) > config.MaxBrandTexts {
+			brandTexts = brandTexts[:config.MaxBrandTexts]
+		}
+		for _, brand := range brandTexts {
+			id := itemID(scene.ID, "brand-text", brand.Text)
+			plan.Items = append(plan.Items, OverlayItem{
+				ID: id, SceneID: scene.ID, PresetID: selectWordPreset(input.PlanID, scene.ID, id),
+				MotionID: SelectTextMotion(input.PlanID, scene.ID, id),
+				Kind: "brand_text", TemplateID: "logo_default", Text: brand.Text,
+				StartMs: brand.StartMs, EndMs: brand.EndMs, StartUS: brand.StartUS, DurationUS: brand.DurationUS,
+				Params: map[string]any{"position": "corner", "style": "logo", "priority": brand.Score},
+			})
+		}
+
 		quotes := rankedValid(scene.Quotes, 0)
 		if len(quotes) > config.MaxQuotes {
 			quotes = quotes[:config.MaxQuotes]
@@ -369,13 +405,20 @@ func BuildPlan(input PlanInput, config PlannerConfig) (OverlayPlan, error) {
 				Params:       map[string]any{"position": "center", "style": "headline", "priority": candidate.Score},
 			})
 		}
+
+		// Maps: grounded places covered by a certified plate become one map
+		// item per plate, carrying the plate's georeference and provenance.
+		for _, mapItem := range mapItemsForScene(scene.ID, mapPlansForScene(input.PlateResolver, scene.Maps, input.Width, input.Height), input.Width, input.Height, mapOrdinal) {
+			plan.Items = append(plan.Items, mapItem)
+			mapOrdinal++
+		}
 	}
 	// Degrade overlaps deterministically: no more than MaxOverlap content
 	// items may pile up at any moment (lowest editorial priority drops first;
 	// structural layers are never counted nor dropped).
 	plan.Items = DegradeOverlaps(plan.Items, config.MaxOverlap)
 	if config.RunLevelEditorialBudget {
-		plan.Items, _ = ApplyEditorialOverlayBudgetWithLimit(plan.Items, config.RunLevelPhraseOverlayLimit)
+		plan.Items, _ = ApplyEditorialOverlayBudgetWithLimits(plan.Items, config.RunLevelPhraseOverlayLimit, config.RunLevelMapOverlayLimit)
 	} else {
 		plan.Items, _ = ApplyPhraseOverlayBudgetWithLimit(plan.Items, config.RunLevelPhraseOverlayLimit)
 	}

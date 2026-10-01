@@ -21,10 +21,20 @@ type AssetDetailsLookup interface {
 // script-generation MediaPreflight port. The policy remains owned by
 // capabilities/scripts; this package owns composition only.
 func NewPreflight(assets AssetDetailsLookup, audioAssetSource scriptgen.AudioAssetSource, clipAudioAssetSource scriptgen.ClipAudioAssetSource) scriptgen.MediaPreflight {
+	return NewPreflightWithImageProviderHealth(assets, audioAssetSource, clipAudioAssetSource, nil)
+}
+
+// NewPreflightWithImageProviderHealth is NewPreflight with the image-provider
+// health probe wired. The probe runs only for requests that actually depend on
+// internet image retrieval (internet_images enabled or the entity-image
+// surface requested), so a clip-only run is never failed by a degraded image
+// provider it would never have used.
+func NewPreflightWithImageProviderHealth(assets AssetDetailsLookup, audioAssetSource scriptgen.AudioAssetSource, clipAudioAssetSource scriptgen.ClipAudioAssetSource, imageProviderHealth scriptgen.ImageProviderHealthProbe) scriptgen.MediaPreflight {
 	return &preflightAdapter{
 		clipProber:           &assetServiceClipProber{assets: assets},
 		audioAssetSource:     audioAssetSource,
 		clipAudioAssetSource: clipAudioAssetSource,
+		imageProviderHealth:  imageProviderHealth,
 	}
 }
 
@@ -32,6 +42,37 @@ type preflightAdapter struct {
 	clipProber           scriptgen.ClipPreflighter
 	audioAssetSource     scriptgen.AudioAssetSource
 	clipAudioAssetSource scriptgen.ClipAudioAssetSource
+	imageProviderHealth  scriptgen.ImageProviderHealthProbe
+}
+
+// ImageProviderHealthSurface is the narrow image-capability surface the
+// preflight needs: it reports whether at least one retrieval provider is
+// healthy. *images.Service satisfies it.
+type ImageProviderHealthSurface interface {
+	ProbeImageProviderHealth(ctx context.Context) error
+}
+
+// NewImageProviderHealthProbe adapts an image-provider health surface to the
+// script-generation media-preflight port. A nil surface returns nil so the
+// preflight stays a no-op for compositions without the images capability.
+func NewImageProviderHealthProbe(surface ImageProviderHealthSurface) scriptgen.ImageProviderHealthProbe {
+	if surface == nil {
+		return nil
+	}
+	return imageProviderHealthProbe{surface: surface}
+}
+
+type imageProviderHealthProbe struct {
+	surface ImageProviderHealthSurface
+}
+
+var _ scriptgen.ImageProviderHealthProbe = imageProviderHealthProbe{}
+
+func (p imageProviderHealthProbe) ProbeImageProviderHealth(ctx context.Context) error {
+	if p.surface == nil {
+		return fmt.Errorf("image provider health probe not wired")
+	}
+	return p.surface.ProbeImageProviderHealth(ctx)
 }
 
 var _ scriptgen.MediaPreflight = (*preflightAdapter)(nil)
@@ -96,7 +137,7 @@ func (a *preflightAdapter) Run(ctx context.Context, req scriptgen.GenerateReques
 		backgroundID = req.Render.Background.AssetID
 	}
 
-	return scriptgen.RunMediaPreflight(ctx, scriptgen.MediaPreflightInput{
+	in := scriptgen.MediaPreflightInput{
 		ClipIDs:            clipIDs,
 		FixedClips:         fixedClips,
 		FixedSections:      fixedSections,
@@ -111,7 +152,20 @@ func (a *preflightAdapter) Run(ctx context.Context, req scriptgen.GenerateReques
 		WatermarkResolver:  a.clipProber,
 		BackgroundAssetID:  backgroundID,
 		BackgroundResolver: a.clipProber,
-	})
+	}
+	if a.imageProviderHealth != nil && requestNeedsImageProviders(req) {
+		in.ImageProviderHealth = a.imageProviderHealth
+	}
+	return scriptgen.RunMediaPreflight(ctx, in)
+}
+
+// requestNeedsImageProviders reports whether the request's media plan depends
+// on external image retrieval, so the health probe is only meaningful then.
+func requestNeedsImageProviders(req scriptgen.GenerateRequest) bool {
+	if req.MediaPlan.ProviderPolicy.InternetImages.AsBool() {
+		return true
+	}
+	return req.MediaPlan.Extraction.EntityImageSurfaceEnabled()
 }
 
 type assetServiceClipProber struct {

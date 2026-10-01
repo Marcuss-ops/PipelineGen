@@ -93,6 +93,14 @@ func TestResumeFrom_CoreReadyResumesAtDocumentPublish(t *testing.T) {
 		"CORE_READY is a milestone, not a work phase of stageOrder")
 	require.False(t, StageCoreReady.IsTerminal(),
 		"CORE_READY must not be terminal: SUCCEEDED keeps its existing meaning")
+
+	failedAtBoundary := &GenerationRun{
+		ID:           "run-core-ready-canceled",
+		Status:       RunStatusFailed,
+		CurrentStage: StageCoreReady,
+	}
+	require.Equal(t, StagePublishingDocuments, ResumeFrom(failedAtBoundary),
+		"a canceled CORE_READY run without a persisted FailedStage must preserve its completed core")
 }
 
 // TestExecutionRun_StartAdoptsDurableResultOnResume pins the prerequisite the

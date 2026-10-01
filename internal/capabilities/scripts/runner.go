@@ -11,6 +11,7 @@ import (
 	"time"
 
 	capcheckpoint "github.com/Marcuss-ops/PipelineGen/internal/capabilities/checkpoint"
+	capabilitygeocoding "github.com/Marcuss-ops/PipelineGen/internal/capabilities/geocoding"
 	capabilityimagesearch "github.com/Marcuss-ops/PipelineGen/internal/capabilities/imagesearch"
 	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
 	scriptports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
@@ -38,6 +39,34 @@ func (r *Runner) runVidRushJoinAndPrepare(ctx context.Context, runID string, req
 	phraseLimit := req.MediaPlan.Extraction.MaxImportantPhrasesPerSegment
 	includePhrases := req.MediaPlan.Extraction.Includes(mediadomain.ExtractionIncludeImportantPhrases)
 	annotations := computeSegmentEntityAnnotations(snapshot, req.SourceLanguage, segments, phraseLimit, includePhrases, req.MediaPlan.Extraction.ImportantPhrases)
+	// Geocoding is an explicit opt-in (provider_policy.geocoding=enabled): a
+	// run without the flag never performs lookups, and an enabled policy
+	// without a wired adapter fails closed rather than degrading silently.
+	// The enrichment projects onto CLONED annotations: the snapshot's entity
+	// structs are shared read-only state and must never be mutated in place.
+	if req.MediaPlan.ProviderPolicy.Geocoding == mediadomain.MediaToggleEnabled {
+		geocoded := make(map[int]*scriptpkg.SceneAnnotations, len(annotations))
+		for index, annotation := range annotations {
+			if annotation == nil {
+				geocoded[index] = nil
+				continue
+			}
+			clone := *annotation
+			clone.PrimaryEntities = append([]scriptpkg.AnnotatedEntity(nil), annotation.PrimaryEntities...)
+			clone.SecondaryEntities = append([]scriptpkg.AnnotatedEntity(nil), annotation.SecondaryEntities...)
+			for i := range clone.PrimaryEntities {
+				clone.PrimaryEntities[i].Geo = annotation.PrimaryEntities[i].Geo
+			}
+			for i := range clone.SecondaryEntities {
+				clone.SecondaryEntities[i].Geo = annotation.SecondaryEntities[i].Geo
+			}
+			geocoded[index] = &clone
+		}
+		if err := r.geocodePlaceAnnotations(ctx, geocoded, string(req.SourceLanguage)); err != nil {
+			return vidRushPrepareResult{}, err
+		}
+		annotations = geocoded
+	}
 	var intents []capabilityoverlay.OverlayIntent
 	if r.overlayRegistry != nil {
 		intents = planOverlayIntentsForAnnotations(snapshot, annotations, r.overlayRegistry)
@@ -194,6 +223,16 @@ type Runner struct {
 	// outside the per-phase apply lock, so the result slice needs its own
 	// fence (a data race on LocalizedRenders would corrupt the run record).
 	localizedRenderMu sync.Mutex
+
+	// geocoder resolves grounded place annotations to WGS84 when the request
+	// explicitly enables provider_policy.geocoding. Nil with an enabled
+	// policy fails closed (geocoding.go); nil with the policy absent is the
+	// default offline deployment — no enrichment, no maps.
+	geocoder capabilitygeocoding.Geocoder
+	// mapPlates is the run's ONLY map source: the certified basemap plate
+	// resolver wired from the operator manifest. Nil means no map overlay is
+	// ever emitted (the planner's fail-closed default).
+	mapPlates capabilityoverlay.PlateResolver
 	// recorderMu serializes calls into the execution recorder. Production
 	// recorders are expected to be durable, but the port is not required to
 	// implement internal concurrency; serialization also keeps the lineage

@@ -578,6 +578,57 @@ func TestTranslatedNLPSkipsRedundantNERWhenSourceCoversTheLimit(t *testing.T) {
 	}
 }
 
+func TestTranslatedNLPFiltersCategorySelectorsWithoutDroppingValuesFromBroadMode(t *testing.T) {
+	text := "OpenAI reported 25% growth and $2 million revenue for the year 2025."
+	span := func(value string, kind scriptpkg.EntityType) VisualEntity {
+		start := strings.Index(text, value)
+		return VisualEntity{Text: value, Type: kind, Score: 0.9, Start: start, End: start + len(value), Evidence: value}
+	}
+	ner := &recordingVisualNER{entities: []VisualEntity{
+		span("OpenAI", "BRAND"), span("25%", "PERCENT"), span("$2 million", "MONEY"), span("2025", "DATE"),
+	}}
+	runner := &Runner{vidRushPipeline: &VidRushPipeline{NERPort: ner}}
+	result := &GenerateResult{Scenes: []Scene{{ID: "scene-0", Index: 0, Text: map[Language]string{"en": "source", "it": text}}}}
+	req := GenerateRequest{SourceLanguage: "en", Languages: []Language{"it"}, MediaPlan: mediadomain.MediaPlanSpec{Extraction: mediadomain.MediaExtractionPolicy{
+		Include: []string{mediadomain.ExtractionIncludeMoney}, MaxEntitiesPerSegment: 1,
+	}}}
+	if err := runner.runTranslatedNLP(context.Background(), req, result); err != nil {
+		t.Fatal(err)
+	}
+	localized := result.Scenes[0].LocalizedAnnotations["it"]
+	if localized == nil || len(localized.SecondaryEntities) != 1 || localized.SecondaryEntities[0].Type != "MONEY" {
+		t.Fatalf("money-only localized annotations = %+v", localized)
+	}
+
+	ner.calls = 0
+	result = &GenerateResult{Scenes: []Scene{{ID: "scene-1", Index: 0, Text: map[Language]string{"en": "source", "it": text}}}}
+	req.MediaPlan.Extraction.Include = []string{mediadomain.ExtractionIncludeEntities, mediadomain.ExtractionIncludeMoney}
+	if err := runner.runTranslatedNLP(context.Background(), req, result); err != nil {
+		t.Fatal(err)
+	}
+	localized = result.Scenes[0].LocalizedAnnotations["it"]
+	if localized == nil || len(localized.PrimaryEntities) != 0 || len(localized.SecondaryEntities) != 4 {
+		t.Fatalf("broad entities+money localized annotations = %+v", localized)
+	}
+}
+
+func TestTranslatedNLPDisabledSelectorSkipsNERAndAnnotations(t *testing.T) {
+	ner := &countingTranslatedNER{}
+	runner := &Runner{vidRushPipeline: &VidRushPipeline{NERPort: ner}}
+	req := translatedNERCoverageRequest()
+	req.ExtractEntities = scriptpkg.ToggleDisabled
+	result := translatedNERCoverageResult([]scriptpkg.AnnotatedEntity{personEntity("Mike Tyson")})
+	if err := runner.runTranslatedNLP(context.Background(), req, result); err != nil {
+		t.Fatal(err)
+	}
+	if ner.callCount() != 0 {
+		t.Fatalf("translated NER calls = %d, want 0 when extraction is explicitly disabled", ner.callCount())
+	}
+	if got := result.Scenes[0].LocalizedAnnotations; len(got) != 0 {
+		t.Fatalf("disabled entity extraction created localized annotations: %+v", got)
+	}
+}
+
 // TestTranslatedNLPCallsNERWhenSourceDoesNotCoverTheLimit is the negative
 // control: two grounded persons leave a slot the model may legitimately fill.
 func TestTranslatedNLPCallsNERWhenSourceDoesNotCoverTheLimit(t *testing.T) {

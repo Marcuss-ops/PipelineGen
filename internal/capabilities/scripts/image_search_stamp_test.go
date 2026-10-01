@@ -130,6 +130,13 @@ func TestProjectEntityAnnotations_LogoIsPrimary(t *testing.T) {
 				"apple": "logo:apple",
 			},
 		},
+		Assets: scriptpkg.SegmentAssetSelection{Candidates: []scriptpkg.SegmentAssetCandidate{{
+			AssetID: "apple-logo", Provider: scriptpkg.VidRushProviderInternetImages, Entity: "Apple",
+			DriveLink: "https://drive.google.com/file/d/apple-logo/view", LegacyFileMD5: "apple-md5",
+			AcquisitionStatus: scriptpkg.VidRushStatusAcquired, VerificationStatus: scriptpkg.VidRushStatusVerified,
+			PersistenceStatus: scriptpkg.VidRushStatusPersisted,
+			RightsStatus:      "unknown_allowed",
+		}}},
 	}
 	ann := projectEntityAnnotations("Apple changed everything.", "en", seg)
 	require.NotNil(t, ann)
@@ -205,7 +212,7 @@ func TestOverlaySceneInput_ProductWithSHA256ProducesContentAddressedItem(t *test
 		TimelineStartUS: 0, AudioStartUS: 250_000, AudioEndUS: 300_000,
 		Confidence: 0.95,
 	}
-	input, err := overlaySceneInput(scene, "en", "en", timing, 0, []capabilityentities.EntityOccurrence{occ})
+	input, err := overlaySceneInput(scene, "en", "en", timing, 0, []capabilityentities.EntityOccurrence{occ}, nil)
 	require.NoError(t, err)
 	require.NotNil(t, input)
 	require.Len(t, input.Products, 1, "the spoken PRODUCT entity must produce a product candidate")

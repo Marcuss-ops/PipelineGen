@@ -49,13 +49,21 @@ import (
 // The returned plan is sealed (render keys + fingerprint) and ready to
 // enqueue through QueueRenderEnqueuer.EnqueueChrononPlan.
 func CompileOverlayPlan(result *GenerateResult, language Language, canvas OverlayCanvasSpec, planID, videoID, projectID string, perSceneImages ...bool) (*capabilityoverlay.OverlayPlan, error) {
-	return compileOverlayPlanWithMotionOffset(result, language, canvas, planID, videoID, projectID, capabilityoverlay.RandomImageMotionOffset, perSceneImages...)
+	return compileOverlayPlanWithMotionOffset(result, language, canvas, planID, videoID, projectID, capabilityoverlay.RandomImageMotionOffset, nil, perSceneImages...)
+}
+
+// CompileOverlayPlanWithPlates is CompileOverlayPlan with the run's certified
+// basemap plate resolver wired: grounded place annotations covered by a plate
+// become map overlay items. A nil resolver behaves exactly like
+// CompileOverlayPlan (no maps — the fail-closed default deployment).
+func CompileOverlayPlanWithPlates(result *GenerateResult, language Language, canvas OverlayCanvasSpec, planID, videoID, projectID string, resolver capabilityoverlay.PlateResolver, perSceneImages ...bool) (*capabilityoverlay.OverlayPlan, error) {
+	return compileOverlayPlanWithMotionOffset(result, language, canvas, planID, videoID, projectID, capabilityoverlay.RandomImageMotionOffset, resolver, perSceneImages...)
 }
 
 // compileOverlayPlanWithMotionOffset keeps the per-attempt motion entropy at
 // the plan-compilation boundary. A queued plan is immutable across worker
 // retries, while compiling a fresh generation attempt samples a new offset.
-func compileOverlayPlanWithMotionOffset(result *GenerateResult, language Language, canvas OverlayCanvasSpec, planID, videoID, projectID string, chooseOffset func() (int, error), perSceneImages ...bool) (*capabilityoverlay.OverlayPlan, error) {
+func compileOverlayPlanWithMotionOffset(result *GenerateResult, language Language, canvas OverlayCanvasSpec, planID, videoID, projectID string, chooseOffset func() (int, error), plates capabilityoverlay.PlateResolver, perSceneImages ...bool) (*capabilityoverlay.OverlayPlan, error) {
 	if result == nil {
 		return nil, nil
 	}
@@ -123,7 +131,7 @@ func compileOverlayPlanWithMotionOffset(result *GenerateResult, language Languag
 		if !ok {
 			return nil, fmt.Errorf("overlay plan: scene %q missing canonical timeline offset", scene.ID)
 		}
-		sceneInput, err := overlaySceneInput(scene, language, result.SourceLanguage, *ref.Timing, startUS, occByScene[scene.ID])
+		sceneInput, err := overlaySceneInput(scene, language, result.SourceLanguage, *ref.Timing, startUS, occByScene[scene.ID], plates)
 		if err != nil {
 			return nil, err
 		}
@@ -150,12 +158,14 @@ func compileOverlayPlanWithMotionOffset(result *GenerateResult, language Languag
 	// canvas because that is the run-level render context this function
 	// already receives.
 	plannerConfig.RunLevelPhraseOverlayLimit = canvas.MaxPhraseOverlays
+	plannerConfig.RunLevelMapOverlayLimit = capabilityoverlay.MaxMapOverlaysPerRun
 	plannerPlan, err := capabilityoverlay.BuildPlan(capabilityoverlay.PlanInput{
 		PlanID: planID, VideoID: videoID, ProjectID: projectID,
 		Width: canvas.Width, Height: canvas.Height, FPSNum: canvas.FPSNum, FPSDen: canvas.FPSDen,
 		Scenes:        scenes,
 		Background:    canvas.Background,
 		PhraseMotions: canvas.PhraseMotions, PhraseMotionFamily: canvas.PhraseMotionFamily, ImageMotions: canvas.ImageMotions,
+		PlateResolver: plates,
 	}, plannerConfig)
 	if err != nil {
 		return nil, fmt.Errorf("overlay plan: plan: %w", err)
@@ -250,7 +260,9 @@ func compileOverlayPlanWithMotionOffset(result *GenerateResult, language Languag
 		return nil, fmt.Errorf("overlay plan: choose random image motion offset: %w", err)
 	}
 	assignEntityImageMotions(items, imageMotionOffset, canvas.Width, canvas.Height)
-	items, _ = capabilityoverlay.ApplyEditorialOverlayBudgetWithLimit(items, canvas.MaxPhraseOverlays)
+	// The map-aware editorial budget keeps the certified run ceilings: images,
+	// grounded phrases and at most one map (a map is a full-canvas visual).
+	items, _ = capabilityoverlay.ApplyEditorialOverlayBudgetWithImageLimit(items, canvas.MaxPhraseOverlays, canvas.MaxImageOverlays, capabilityoverlay.MaxMapOverlaysPerRun)
 	if len(items) == 0 {
 		return nil, nil
 	}
@@ -320,18 +332,19 @@ func isRuntimeTextStyleParam(key string) bool {
 func isTextOverlayKind(kind string) bool {
 	// BuildPlan lowers semantic overlay kinds to render kinds such as
 	// text_phrase. Keep runtime typography controls off image/video layers.
-	return strings.HasPrefix(kind, "text_") || kind == "number" || kind == "quote"
+	return strings.HasPrefix(kind, "text_") || kind == "number" || kind == "quote" || kind == "brand_text"
 }
 
 // compileResultOverlayPlan is the runner-facing projection: it derives the
 // overlay plan for the run (plan id = run id, so the queue job id is the
-// run's idempotency key) and attaches it to the durable result. Nil when the
-// run carried no derivable overlay surface.
-func compileResultOverlayPlan(result *GenerateResult, language Language, planID, projectID, driveFolderID string, canvas OverlayCanvasSpec, perSceneImages ...bool) error {
+// run's idempotency key) and attaches it to the durable result. plates is the
+// run's certified basemap resolver (nil = no maps). Nil plan when the run
+// carried no derivable overlay surface.
+func compileResultOverlayPlan(result *GenerateResult, language Language, planID, projectID, driveFolderID string, canvas OverlayCanvasSpec, plates capabilityoverlay.PlateResolver, perSceneImages ...bool) error {
 	if result == nil {
 		return nil
 	}
-	plan, err := compileOverlayPlanForLanguage(result, language, planID, projectID, driveFolderID, canvas, perSceneImages...)
+	plan, err := compileOverlayPlanForLanguage(result, language, planID, projectID, driveFolderID, canvas, plates, perSceneImages...)
 	if err != nil {
 		return err
 	}
@@ -342,7 +355,7 @@ func compileResultOverlayPlan(result *GenerateResult, language Language, planID,
 	}
 	phraseBudget := capabilityoverlay.MeasurePhraseOverlayBudgetWithLimit(phraseItems, canvas.MaxPhraseOverlays)
 	result.PhraseOverlayBudget = &phraseBudget
-	if err := buildLocalizedOverlayPlans(result, language, planID, projectID, driveFolderID, canvas, perSceneImages...); err != nil {
+	if err := buildLocalizedOverlayPlans(result, language, planID, projectID, driveFolderID, canvas, plates, perSceneImages...); err != nil {
 		return err
 	}
 	if plan == nil {
@@ -387,7 +400,7 @@ func setOverlayDriveJobID(result *GenerateResult, jobID string) {
 // the certified entity occurrence; anything not spoken verbatim is skipped
 // (a hint is never timestamped). Returns nil when the scene contributes
 // nothing.
-func overlaySceneInput(scene Scene, language, sourceLanguage Language, timing capabilityaudio.SpeechTimingArtifact, timelineStartUS int64, occurrences []capabilityentities.EntityOccurrence) (*capabilityoverlay.SceneInput, error) {
+func overlaySceneInput(scene Scene, language, sourceLanguage Language, timing capabilityaudio.SpeechTimingArtifact, timelineStartUS int64, occurrences []capabilityentities.EntityOccurrence, plates capabilityoverlay.PlateResolver) (*capabilityoverlay.SceneInput, error) {
 	ann := annotationsForLanguage(scene, language, sourceLanguage)
 	if ann == nil {
 		return nil, nil
@@ -414,17 +427,25 @@ func overlaySceneInput(scene Scene, language, sourceLanguage Language, timing ca
 		}
 		out.Phrases = append(out.Phrases, timed(p, span.Score))
 	}
-	for _, span := range ann.ImportantWords {
-		p, err := locate(strings.TrimSpace(span.Text))
-		if err != nil {
-			continue
-		}
-		out.Keywords = append(out.Keywords, timed(p, span.Score))
-	}
+	// ImportantWords remain annotations for ranking/search. Only explicit
+	// word-overlay selection is allowed to materialize keyword cards; the
+	// production editorial plan currently has no such output kind.
+
 	// Entity-driven overlays: timing always comes from the certified
 	// occurrence window (the entity timeline already certified the entity is
 	// spoken verbatim). An entity without an occurrence is skipped.
 	for _, entity := range append(append([]scriptpkg.AnnotatedEntity(nil), ann.PrimaryEntities...), ann.SecondaryEntities...) {
+		kind := capabilityoverlay.EntityTypeToKind(entity.Type)
+		if kind == capabilityoverlay.KindBrandText {
+			if p, err := locate(entity.CanonicalName); err == nil {
+				score := entity.Confidence
+				if score <= 0 {
+					score = 0.9
+				}
+				out.BrandTexts = append(out.BrandTexts, timed(p, score))
+			}
+			continue
+		}
 		occ := occurrenceFor(occurrences, entity)
 		if occ == nil {
 			continue
@@ -459,9 +480,37 @@ func overlaySceneInput(scene Scene, language, sourceLanguage Language, timing ca
 			out.Products = append(out.Products, imageCandidate(entity.Image, occ, score))
 		case capabilityoverlay.KindLogo:
 			if entity.Image == nil {
+				// Legacy annotations may encode an unverified brand as LOGO;
+				// use its exact certified word timing rather than requiring a
+				// fabricated imageable timeline occurrence.
+				if p, err := locate(entity.CanonicalName); err == nil {
+					out.BrandTexts = append(out.BrandTexts, timed(p, score))
+				}
 				continue
 			}
 			out.Logos = append(out.Logos, imageCandidate(entity.Image, occ, score))
+		case capabilityoverlay.KindLocation:
+			// A grounded place: coordinates must come from the geocoder's
+			// validated WGS84 enrichment (never guessed) and the timing
+			// from the certified occurrence window. The candidate joins on
+			// the same content-addressed stable id every other overlay arm
+			// uses. The PLANNER resolves it against the certified plate
+			// manifest — a deployment without plates (nil resolver) or a
+			// place no plate covers emits no map, never a fabricated one.
+			if entity.Geo == nil {
+				continue
+			}
+			candidate, ok := capabilityoverlay.NewMapCandidate(
+				occ.EntityID, entity.CanonicalName,
+				entity.Geo.Latitude, entity.Geo.Longitude,
+				occ.AudioStartUS, occ.AudioEndUS-occ.AudioStartUS, score,
+			)
+			if !ok {
+				// A coordinate pair outside WGS84 is corrupted data, never
+				// clamped or re-projected into validity.
+				continue
+			}
+			out.Maps = append(out.Maps, candidate)
 		default:
 			// Entity-card kinds (PERSON / ORGANIZATION / LOCATION / CONCEPT):
 			// the card IS the image asset — the resolver path above attaches
@@ -471,7 +520,7 @@ func overlaySceneInput(scene Scene, language, sourceLanguage Language, timing ca
 			continue
 		}
 	}
-	if len(out.Phrases)+len(out.Keywords)+len(out.Images)+len(out.Numbers)+len(out.Quotes)+len(out.Products)+len(out.Logos) == 0 {
+	if len(out.Phrases)+len(out.Keywords)+len(out.Images)+len(out.Numbers)+len(out.BrandTexts)+len(out.Quotes)+len(out.Products)+len(out.Logos)+len(out.Maps) == 0 {
 		return nil, nil
 	}
 	return &out, nil
@@ -553,7 +602,7 @@ func plannerOwnedEntityIDs(result *GenerateResult, language Language) map[string
 		}
 		for _, entity := range append(ann.PrimaryEntities, ann.SecondaryEntities...) {
 			switch capabilityoverlay.EntityTypeToKind(entity.Type) {
-			case capabilityoverlay.KindNumber, capabilityoverlay.KindQuote, capabilityoverlay.KindProduct, capabilityoverlay.KindLogo:
+			case capabilityoverlay.KindNumber, capabilityoverlay.KindQuote, capabilityoverlay.KindProduct, capabilityoverlay.KindLogo, capabilityoverlay.KindBrandText:
 				owned[capabilityentities.StableEntityID(entity.Type, entity.CanonicalName)] = true
 			}
 		}

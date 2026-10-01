@@ -87,20 +87,28 @@ func filterEntityRenderSurface(segments []scriptpkg.VidRushSegmentResult) []scri
 	for i, seg := range segments {
 		out[i] = seg
 		entities := make([]scriptpkg.ExtractedEntity, 0, len(seg.Insights.Entities))
+		values := make([]scriptpkg.ExtractedEntity, 0, len(seg.Insights.Entities))
 		for _, entity := range seg.Insights.Entities {
 			kind := scriptpkg.NormalizeAnnotationType(entity.Type)
-			if !scriptpkg.IsAnnotationEntityKind(kind) {
-				continue
-			}
 			entity.Type = kind
 			entity.Value = strings.TrimSpace(entity.Value)
 			if entity.Value == "" {
 				continue
 			}
-			entities = append(entities, entity)
+			if scriptpkg.IsAnnotationEntityKind(kind) {
+				entities = append(entities, entity)
+				continue
+			}
+			switch kind {
+			case "DATE", "TIME", "NUMBER", "CARDINAL", "ORDINAL", "MONEY", "PERCENT":
+				values = append(values, entity)
+			}
 		}
 		out[i].Insights.Entities = entities
 		out[i].Insights.ImportantWords = nil
+		// Preserve value annotations for the certified number-overlay path;
+		// they are not image queries and do not count against identity fanout.
+		out[i].Insights.Entities = append(out[i].Insights.Entities, values...)
 		// This render surface is intentionally narrower than the full media
 		// retrieval surface: no stock-video or YouTube query may leak into an
 		// entity-only run. The caller can run those providers in a separate
@@ -114,6 +122,9 @@ func filterEntityRenderSurface(segments []scriptpkg.VidRushSegmentResult) []scri
 		queries := make([]string, 0, len(entities))
 		seenQueries := make(map[string]struct{}, len(entities))
 		for _, entity := range entities {
+			if !scriptpkg.IsAnnotationEntityKind(entity.Type) {
+				continue
+			}
 			q := strings.TrimSpace(entity.Value)
 			key := strings.ToLower(q)
 			if q == "" || key == "" {

@@ -131,7 +131,7 @@ func (p *VidRushMaterializationProcessor) Process(ctx context.Context, plan *scr
 		return &PostProcessResult{}, nil
 	}
 
-	processed, err := concurrent.Map(ctx, input.VidRushSegments, 2, func(ctx context.Context, _ int, segment scriptpkg.VidRushSegmentResult) (vidRushMaterializedSegment, error) {
+	processed, err := concurrent.Map(ctx, input.VidRushSegments, materializationWorkers(plan), func(ctx context.Context, _ int, segment scriptpkg.VidRushSegmentResult) (vidRushMaterializedSegment, error) {
 		return p.materializeOne(ctx, plan, segment)
 	})
 	if err != nil {
@@ -541,6 +541,7 @@ func (p *VidRushMaterializationProcessor) materializeOne(ctx context.Context, pl
 	}
 	materialized := updated.Assets.Candidates
 	updated.Assets.SecondaryImages = selectExactVidRushImages(materialized, imageTarget, plan)
+	logVidRushSelectedImages(p.log, segment.SegmentID, updated.Assets.SecondaryImages)
 	updated.Assets.GeneratedImages = filterVidRushGeneratedImages(updated.Assets.SecondaryImages)
 	if imageTarget > 0 && len(updated.Assets.SecondaryImages) != imageTarget {
 		warnings = append(warnings, fmt.Sprintf(

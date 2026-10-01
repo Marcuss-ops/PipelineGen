@@ -29,6 +29,13 @@ const EditingTimelineVersion = "v1"
 // timeline. All timestamps are integer microseconds.
 const EditingTimebase = "us"
 
+// editingAudioPacketDurationToleranceUS permits the final AAC packet to
+// extend a few milliseconds beyond the frame-aligned video timeline. AAC is
+// encoded in 1024-sample packets; at 48 kHz one packet is 21,334 µs. The
+// timeline keeps the certified asset duration while validating this bounded
+// mux padding separately from actual scene drift.
+const editingAudioPacketDurationToleranceUS int64 = 21_334
+
 // EditingTimelineV1 is the canonical editing projection. One JSON, one
 // timebase, built from frozen facts. Downstream editing consumes this
 // document and nothing else for timing decisions.
@@ -121,7 +128,7 @@ func (t EditingTimelineV1) Validate() error {
 	if strings.TrimSpace(t.Audio.SHA256) == "" {
 		return fmt.Errorf("editing timeline: audio sha256 is required")
 	}
-	if t.Audio.DurationUS != t.DurationUS {
+	if delta := t.Audio.DurationUS - t.DurationUS; delta > editingAudioPacketDurationToleranceUS || delta < -editingAudioPacketDurationToleranceUS {
 		return fmt.Errorf("editing timeline: audio duration %d does not match timeline duration %d",
 			t.Audio.DurationUS, t.DurationUS)
 	}

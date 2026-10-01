@@ -29,8 +29,15 @@ func TestGenerationEngineRunner_Generate_Success(t *testing.T) {
 	plan := scriptpkg.ResolvedGenerationPlan{ID: "runner-success", Title: "Runner Success"}
 
 	var events []string
+	activityCount := 0
 	tracker := gencore.NewProgressTracker(nil, item.ID)
 	tracker.SetEventFn(func(eventType, _ string, _ map[string]any) {
+		// Phase activity records are additive telemetry, never part of the
+		// canonical typed sequence (see TestGenerateOneUseCase_EmitsCanonicalEvents).
+		if eventType == "activity" {
+			activityCount++
+			return
+		}
 		events = append(events, eventType)
 	})
 
@@ -43,6 +50,7 @@ func TestGenerationEngineRunner_Generate_Success(t *testing.T) {
 
 	wantEvents := []string{"script.generated", "scenes.created"}
 	assert.Equal(t, wantEvents, events)
+	assert.Greater(t, activityCount, 0, "phase activity records must be additive to the typed event sequence")
 }
 
 // TestGenerationEngineRunner_Generate_Error verifies that the runner

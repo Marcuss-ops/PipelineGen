@@ -118,7 +118,12 @@ func projectEntityAnnotations(text, language string, seg scriptpkg.VidRushSegmen
 		if scriptpkg.IsAnnotationEntityKind(kind) {
 			item.Image = entityImageBindingFor(canonical, seg)
 		}
-		if scriptpkg.IsAnnotationEntityKind(kind) {
+		if kind == "LOGO" && item.Image == nil {
+			item.Type = "BRAND"
+		} else if kind == "BRAND" && item.Image != nil {
+			item.Type = "LOGO"
+		}
+		if scriptpkg.IsAnnotationEntityKind(item.Type) {
 			ann.PrimaryEntities = append(ann.PrimaryEntities, item)
 		} else {
 			ann.SecondaryEntities = append(ann.SecondaryEntities, item)

@@ -61,6 +61,201 @@ func ApplyEditorialOverlayBudget(items []OverlayItem) ([]OverlayItem, PhraseOver
 	return ApplyEditorialOverlayBudgetWithLimit(items, MaxPhraseOverlaysPerRun)
 }
 
+// MaxMapOverlaysPerScene is the hard per-scene ceiling for map overlays. A
+// scene rarely narrates more than a couple of places; the cap stops a wide
+// plate manifest from turning every grounded mention into a rendered map.
+const MaxMapOverlaysPerScene = 2
+
+// MaxMapOverlaysPerRun is the certified RUN-level map ceiling: a map is a
+// full-canvas visual, so a run renders at most one. A caller that wants more
+// raises the ceiling explicitly through PlannerConfig.RunLevelMapOverlayLimit.
+const MaxMapOverlaysPerRun = 1
+
+// MaxNumberOverlaysPerRun bounds value callouts independently so metrics,
+// money and dates can survive the editorial budget without displacing the
+// established image, phrase or map allowances.
+const MaxNumberOverlaysPerRun = 5
+
+// MaxBrandTextOverlaysPerRun independently bounds grounded brand-name cards
+// used when no verified logo asset is available.
+const MaxBrandTextOverlaysPerRun = 5
+
+// ApplyEditorialOverlayBudgetWithLimits is the map-aware editorial budget:
+// unique maps, value cards, images and grounded phrases each have an
+// independent bounded allowance. Categories do not evict one another.
+func ApplyEditorialOverlayBudgetWithLimits(items []OverlayItem, phraseLimit, mapLimit int) ([]OverlayItem, PhraseOverlayBudget) {
+	return ApplyEditorialOverlayBudgetWithImageLimit(items, phraseLimit, 0, mapLimit)
+}
+
+// ApplyEditorialOverlayBudgetWithImageLimit applies independent run-level
+// ceilings for phrases, combined image kinds, and maps. A nonpositive image
+// limit keeps the certified default.
+func ApplyEditorialOverlayBudgetWithImageLimit(items []OverlayItem, phraseLimit, imageLimit, mapLimit int) ([]OverlayItem, PhraseOverlayBudget) {
+	limit := EffectivePhraseOverlayLimit(phraseLimit)
+	imageIndices := rankedUniqueOverlayIndices(items, true, limit)
+	// 2026-09-30 Milton incident: the same downloaded portrait surfaced BOTH
+	// as an entity_image card and as a context "image" hit of a second scene
+	// query, and each image arm deduplicates on a DIFFERENT key (entity
+	// identity vs scene+sha), so the run rendered the same bytes again as 5–10
+	// extra overlays. One image per content identity per RUN, regardless of
+	// which arm produced it: the highest-ranked occurrence wins, and freed
+	// slots go to genuinely different images.
+	imageIndices = dedupeImageIndicesByContent(items, imageIndices)
+	if imageLimit <= 0 {
+		imageLimit = MaxImageOverlaysPerRun
+	}
+	if len(imageIndices) > imageLimit {
+		imageIndices = imageIndices[:imageLimit]
+	}
+	phraseIndices := rankedUniqueOverlayIndices(items, false, limit)
+	mapCeiling := mapLimit
+	if mapCeiling <= 0 {
+		mapCeiling = MaxMapOverlaysPerRun
+	}
+	mapIndices := rankedUniqueMapIndices(items, mapCeiling)
+	numberIndices := rankedUniqueValueIndices(items, MaxNumberOverlaysPerRun)
+	brandIndices := rankedUniqueKindIndices(items, "brand_text", MaxBrandTextOverlaysPerRun)
+	keep := make(map[int]struct{}, len(imageIndices)+len(phraseIndices)+len(mapIndices)+len(numberIndices)+len(brandIndices))
+	for _, index := range imageIndices {
+		keep[index] = struct{}{}
+	}
+	for _, index := range phraseIndices {
+		keep[index] = struct{}{}
+	}
+	for _, index := range mapIndices {
+		keep[index] = struct{}{}
+	}
+	for _, index := range numberIndices {
+		keep[index] = struct{}{}
+	}
+	for _, index := range brandIndices {
+		keep[index] = struct{}{}
+	}
+
+	out := make([]OverlayItem, 0, len(keep))
+	for i, item := range items {
+		if _, ok := keep[i]; ok {
+			out = append(out, item)
+		}
+	}
+	return out, MeasurePhraseOverlayBudgetWithLimit(out, limit)
+}
+
+// rankedUniqueValueIndices ranks and deduplicates numeric/stat overlays by
+// normalized spoken text. Their cap is independent of the other overlay arms.
+func rankedUniqueValueIndices(items []OverlayItem, cap int) []int {
+	if cap <= 0 {
+		return nil
+	}
+	seen := make(map[string]int)
+	for i, item := range items {
+		if item.Kind != "number" {
+			continue
+		}
+		key := strings.ToLower(strings.Join(strings.Fields(item.Text), " "))
+		if key == "" {
+			continue
+		}
+		if current, ok := seen[key]; !ok || overlayItemPriority(item) > overlayItemPriority(items[current]) {
+			seen[key] = i
+		}
+	}
+	indices := make([]int, 0, len(seen))
+	for _, index := range seen {
+		indices = append(indices, index)
+	}
+	sort.SliceStable(indices, func(i, j int) bool {
+		left, right := indices[i], indices[j]
+		if lp, rp := overlayItemPriority(items[left]), overlayItemPriority(items[right]); lp != rp {
+			return lp > rp
+		}
+		return left < right
+	})
+	if len(indices) > cap {
+		indices = indices[:cap]
+	}
+	return indices
+}
+
+func rankedUniqueKindIndices(items []OverlayItem, kind string, cap int) []int {
+	if cap <= 0 {
+		return nil
+	}
+	seen := make(map[string]int)
+	for i, item := range items {
+		if item.Kind != kind {
+			continue
+		}
+		key := strings.ToLower(strings.Join(strings.Fields(item.Text), " "))
+		if key == "" {
+			continue
+		}
+		if current, ok := seen[key]; !ok || overlayItemPriority(item) > overlayItemPriority(items[current]) {
+			seen[key] = i
+		}
+	}
+	indices := make([]int, 0, len(seen))
+	for _, index := range seen {
+		indices = append(indices, index)
+	}
+	sort.SliceStable(indices, func(i, j int) bool {
+		left, right := indices[i], indices[j]
+		if lp, rp := overlayItemPriority(items[left]), overlayItemPriority(items[right]); lp != rp {
+			return lp > rp
+		}
+		return left < right
+	})
+	if len(indices) > cap {
+		indices = indices[:cap]
+	}
+	return indices
+}
+
+// rankedUniqueMapIndices ranks map items for the run: the same plate inside
+// one scene is ONE map (the highest-priority occurrence wins), the same plate
+// in another scene is a distinct map, and the cap bounds the total unique
+// count. The returned indices are deterministic: descending priority, ties
+// broken by ascending original index.
+func rankedUniqueMapIndices(items []OverlayItem, cap int) []int {
+	if cap <= 0 {
+		return nil
+	}
+	type sceneKey struct{ scene, plate string }
+	seen := make(map[sceneKey]int)
+	for i, item := range items {
+		if item.Kind != "map" || item.Map == nil {
+			continue
+		}
+		plate := strings.TrimSpace(item.Map.SourceID)
+		if plate == "" {
+			continue
+		}
+		key := sceneKey{scene: strings.TrimSpace(item.SceneID), plate: plate}
+		if current, ok := seen[key]; ok {
+			if overlayItemPriority(item) > overlayItemPriority(items[current]) {
+				seen[key] = i
+			}
+			continue
+		}
+		seen[key] = i
+	}
+	indices := make([]int, 0, len(seen))
+	for _, index := range seen {
+		indices = append(indices, index)
+	}
+	sort.SliceStable(indices, func(i, j int) bool {
+		left, right := indices[i], indices[j]
+		if lp, rp := overlayItemPriority(items[left]), overlayItemPriority(items[right]); lp != rp {
+			return lp > rp
+		}
+		return left < right
+	})
+	if len(indices) > cap {
+		indices = indices[:cap]
+	}
+	return indices
+}
+
 // ApplyEditorialOverlayBudgetWithLimit is ApplyEditorialOverlayBudget with a
 // caller-selected phrase ceiling (the request's max_phrase_overlays). The
 // image ceiling stays fixed; phraseLimit <= 0 keeps the default ceiling.
@@ -68,11 +263,19 @@ func ApplyEditorialOverlayBudgetWithLimit(items []OverlayItem, phraseLimit int) 
 	limit := EffectivePhraseOverlayLimit(phraseLimit)
 	imageIndices := rankedUniqueOverlayIndices(items, true, limit)
 	phraseIndices := rankedUniqueOverlayIndices(items, false, limit)
-	keep := make(map[int]struct{}, len(imageIndices)+len(phraseIndices))
+	numberIndices := rankedUniqueValueIndices(items, MaxNumberOverlaysPerRun)
+	brandIndices := rankedUniqueKindIndices(items, "brand_text", MaxBrandTextOverlaysPerRun)
+	keep := make(map[int]struct{}, len(imageIndices)+len(phraseIndices)+len(numberIndices)+len(brandIndices))
 	for _, index := range imageIndices {
 		keep[index] = struct{}{}
 	}
 	for _, index := range phraseIndices {
+		keep[index] = struct{}{}
+	}
+	for _, index := range numberIndices {
+		keep[index] = struct{}{}
+	}
+	for _, index := range brandIndices {
 		keep[index] = struct{}{}
 	}
 
@@ -256,6 +459,61 @@ func imageOverlayIdentity(item OverlayItem) string {
 		}
 	}
 	return strings.TrimSpace(item.ID)
+}
+
+// dedupeImageIndicesByContent keeps one image overlay per content identity for
+// the whole run. rankedUniqueOverlayIndices scopes its image dedup to what
+// each producing arm knows — entity identity for entity cards, scene+sha for
+// context hits — so the SAME downloaded bytes entering through two arms (an
+// entity portrait that also answered a later scene's query) survived twice
+// and rendered again. The content key here is the strongest available:
+// sha256 first (bytes, never wrong), then asset id, and only then the
+// arm-local identity so a keyless item cannot erase its peers. Highest-ranked
+// (earliest in imageIndices) wins; the function never reorders survivors.
+func dedupeImageIndicesByContent(items []OverlayItem, imageIndices []int) []int {
+	if len(imageIndices) <= 1 {
+		return imageIndices
+	}
+	seen := make(map[string]struct{}, len(imageIndices))
+	out := make([]int, 0, len(imageIndices))
+	for _, index := range imageIndices {
+		item := items[index]
+		keys := make([]string, 0, 3)
+		for _, ref := range item.AssetRefs {
+			if hash := strings.ToLower(strings.TrimSpace(ref.SHA256)); hash != "" {
+				keys = append(keys, "sha256:"+hash)
+			}
+			if id := strings.TrimSpace(ref.AssetID); id != "" {
+				keys = append(keys, "asset:"+id)
+			}
+		}
+		if len(keys) == 0 {
+			if identity := strings.TrimSpace(imageOverlayIdentity(item)); identity != "" {
+				keys = append(keys, identity)
+			}
+		}
+		if len(keys) == 0 {
+			// A completely unidentifiable image cannot collide with anything;
+			// keep it so the budget still admits countable content.
+			out = append(out, index)
+			continue
+		}
+		duplicate := false
+		for _, key := range keys {
+			if _, exists := seen[key]; exists {
+				duplicate = true
+				break
+			}
+		}
+		if duplicate {
+			continue
+		}
+		for _, key := range keys {
+			seen[key] = struct{}{}
+		}
+		out = append(out, index)
+	}
+	return out
 }
 
 // VisualBudget caps how many visual overlays a scene may carry. A cap of 0

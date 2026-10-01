@@ -120,9 +120,17 @@ func TestRenderUnitsForSceneFansTwoClipFixedSections(t *testing.T) {
 	if len(genUnits) != 1 || genUnits[0].Clip.ID != "clip-a" {
 		t.Fatalf("generated units = %+v, want single primary-clip unit", genUnits)
 	}
+	stock := Scene{
+		ID: "scene-stock", Index: 1, ExecutionMode: scriptpkg.SceneExecutionGenerated,
+		Clip:  &ClipReference{ID: "yt_source_audio_0_10_v1"},
+		Stock: &scriptpkg.StockBinding{FolderID: "stock-folder"},
+	}
+	if units := RenderUnitsForScene(stock); len(units) != 0 {
+		t.Fatalf("stock scene produced %d local render units; its Drive visual is sent directly to the remote Master", len(units))
+	}
 
-	if count := RenderUnitCount([]Scene{fixed, generated}); count != 3 {
-		t.Fatalf("RenderUnitCount = %d, want 3 (2 fixed + 1 generated)", count)
+	if count := RenderUnitCount([]Scene{fixed, generated, stock}); count != 3 {
+		t.Fatalf("RenderUnitCount = %d, want 3 (2 fixed + 1 generated; stock has no local render)", count)
 	}
 }
 

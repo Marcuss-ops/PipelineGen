@@ -345,6 +345,38 @@ func TestSceneIRSegmentEnricherKeepsBriefIdentityWhileExtractingFromNarration(t 
 	require.Equal(t, "Mike Tyson", result.Insights.Entities[0].Value)
 }
 
+func TestSceneIRSegmentEnricherFiltersSelectedEntityCategory(t *testing.T) {
+	source := "OpenAI reported 25% growth and $2 million revenue for the year 2025."
+	span := func(value string, kind scriptpkg.EntityType) VisualEntity {
+		start := strings.Index(source, value)
+		return VisualEntity{Text: value, Type: kind, Score: 0.9, Start: start, End: start + len(value), Evidence: value}
+	}
+	ner := &recordingVisualNER{entities: []VisualEntity{
+		span("OpenAI", "BRAND"), span("25%", "PERCENT"), span("$2 million", "MONEY"), span("2025", "DATE"),
+	}}
+	enricher, err := NewSceneIRSegmentEnricher(ner)
+	require.NoError(t, err)
+	plan := &scriptpkg.ResolvedGenerationPlan{MediaPlan: mediadomain.MediaPlanSpec{Extraction: mediadomain.MediaExtractionPolicy{
+		Include: []string{mediadomain.ExtractionIncludeMoney}, MaxEntitiesPerSegment: 1,
+	}}}
+	result, err := enricher.Enrich(context.Background(), plan, scriptpkg.SpecScene{ID: "money", Text: source})
+	require.NoError(t, err)
+	require.Equal(t, 12, ner.limit, "category extraction asks VisualNER for a wider pre-filter window")
+	require.Len(t, result.Insights.Entities, 1)
+	require.Equal(t, "$2 million", result.Insights.Entities[0].Value)
+	require.Equal(t, "MONEY", result.Insights.Entities[0].Type)
+	require.InDelta(t, 0.9, result.Insights.Entities[0].Confidence, 1e-6)
+	// Adding money to broad entities preserves money in the semantic surface
+	// without turning it into an image query or consuming the identity limit.
+	plan.MediaPlan.Extraction.Include = []string{mediadomain.ExtractionIncludeEntities, mediadomain.ExtractionIncludeMoney}
+	plan.MediaPlan.Extraction.MaxEntitiesPerSegment = 1
+	broad, err := enricher.Enrich(context.Background(), plan, scriptpkg.SpecScene{ID: "broad", Text: source})
+	require.NoError(t, err)
+	require.Len(t, broad.Insights.Entities, 4, "typed values must survive independently from the identity cap")
+	require.Equal(t, []string{"OpenAI"}, broad.Insights.ImageQueries,
+		"broad entity mode may search the extracted brand, but must never fan out values")
+}
+
 func TestSceneIRSegmentEnricherUsesAllPersonsForImageSearch(t *testing.T) {
 	entities := []VisualEntity{
 		{Text: "the documentary", Type: scriptpkg.EntityTypeVisualConcept, Score: 0.99, Start: 0, End: 14, Evidence: "The documentary"},
@@ -471,8 +503,8 @@ func TestFilterEntityRenderSurfaceKeepsOnlyImageableEntitiesAndPhrases(t *testin
 	if len(got) != 1 {
 		t.Fatalf("segments = %d, want 1", len(got))
 	}
-	if len(got[0].Insights.Entities) != 1 || got[0].Insights.Entities[0].Value != "Michael Jordan" {
-		t.Fatalf("entities = %+v, want only Michael Jordan", got[0].Insights.Entities)
+	if len(got[0].Insights.Entities) != 2 || got[0].Insights.Entities[0].Value != "Michael Jordan" || got[0].Insights.Entities[1].Value != "2025" {
+		t.Fatalf("entities = %+v, want Michael Jordan plus the preserved DATE value", got[0].Insights.Entities)
 	}
 	if len(got[0].Insights.ImportantPhrases) != 1 || len(got[0].Insights.ImportantWords) != 0 {
 		t.Fatalf("phrase/word surface = %+v/%+v, want phrase only", got[0].Insights.ImportantPhrases, got[0].Insights.ImportantWords)

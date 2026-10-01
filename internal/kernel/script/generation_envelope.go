@@ -129,6 +129,9 @@ type GenerationItemV2 struct {
 	// first, so a ceiling above the number of grounded candidates simply
 	// admits them all.
 	MaxPhraseOverlays int `json:"max_phrase_overlays,omitempty"`
+	// MaxImageOverlays sets the run-level ceiling for image overlays. A
+	// positive value is honored; zero keeps the certified default.
+	MaxImageOverlays int `json:"max_image_overlays,omitempty"`
 
 	// Audio configures the audio execution mode (audio.mode) plus the
 	// editorial audio intent block (mix_policy, background_music,

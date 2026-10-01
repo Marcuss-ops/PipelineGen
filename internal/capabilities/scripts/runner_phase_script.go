@@ -247,7 +247,7 @@ func (r *Runner) runSceneTextPhase(ctx context.Context, runID string, req Genera
 									Language: lang, Text: text,
 									SourceLanguage: req.SourceLanguage, SourceText: sourceText,
 									ClipID: clipID, ClipAssetID: clipAssetID, ClipSHA256: clipSHA256,
-									ClipDurationMS: clipDurationMS, Render: req.Render,
+									ClipDurationMS: clipDurationMS, Render: sceneRenderSpec(req, scene),
 									ResumeFrom: r.stagedLocalizedRender(result, scene.ID, lang, clipID),
 									OnRenderReady: func(rendered LocalizedRenderResult) error {
 										return r.recordLocalizedRenderReady(ctx, exec, result, rendered)
@@ -313,7 +313,7 @@ func (r *Runner) runSceneTextPhase(ctx context.Context, runID string, req Genera
 								Language: lang, Text: text,
 								SourceLanguage: req.SourceLanguage, SourceText: text,
 								ClipID: clipID, ClipAssetID: clipAssetID, ClipSHA256: clipSHA256,
-								ClipDurationMS: clipDurationMS, Render: req.Render,
+								ClipDurationMS: clipDurationMS, Render: sceneRenderSpec(req, scene),
 								ResumeFrom: r.stagedLocalizedRender(result, scene.ID, lang, clipID),
 								OnRenderReady: func(rendered LocalizedRenderResult) error {
 									return r.recordLocalizedRenderReady(ctx, exec, result, rendered)

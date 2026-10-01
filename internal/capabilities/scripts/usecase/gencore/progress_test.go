@@ -134,7 +134,7 @@ func TestProgressTracker_PhaseHelper(t *testing.T) {
 	tracker := NewProgressTracker(rec.record, "item-xyz")
 
 	// Direct call to the phase helper with a format that takes no args.
-	tracker.phase(42, "custom message")
+	tracker.phase(42, "custom", "custom message")
 
 	gotPercent, gotMessage, gotCalled := rec.snapshot()
 	assert.Equal(t, 1, gotCalled, "phase helper must call underlying ProgressFn exactly once")
@@ -153,7 +153,7 @@ func TestProgressTracker_PhaseHelper_VariadicArgs(t *testing.T) {
 	rec := &recordingProgressFn{}
 	tracker := NewProgressTracker(rec.record, "v-1")
 
-	tracker.phase(95, "Running postprocessor: %s...", "clip_bindings")
+	tracker.phase(95, "script.postprocess.clip_bindings", "Running postprocessor: %s...", "clip_bindings")
 
 	_, gotMessage, _ := rec.snapshot()
 	assert.Equal(t, "[v-1] Running postprocessor: clip_bindings...", gotMessage,
@@ -168,7 +168,7 @@ func TestProgressTracker_PhaseHelper_NilSafe(t *testing.T) {
 	t.Parallel()
 
 	var p *ProgressTracker
-	assert.NotPanics(t, func() { p.phase(99, "ignored") },
+	assert.NotPanics(t, func() { p.phase(99, "ignored", "ignored") },
 		"phase helper on nil receiver must not panic")
 }
 
@@ -201,6 +201,13 @@ func TestProgressTracker_EventForwarding(t *testing.T) {
 	assert.Equal(t, "narrative.planned", got.et)
 	assert.Equal(t, "plan built", got.m)
 	assert.Equal(t, 120, got.d["words"])
+	assert.Equal(t, "event-item", got.d["kind"])
+	assert.Equal(t, "narrative.planned", got.d["sub_kind"])
+	assert.Equal(t, "completed", got.d["status"])
+	assert.Equal(t, "plan built", got.d["detail"])
+	payload, ok := got.d["payload"].(map[string]any)
+	assert.True(t, ok)
+	assert.Equal(t, 120, payload["words"])
 }
 
 // TestProgressTracker_EventNilSafe confirms that TrackEvent on a nil

@@ -234,6 +234,7 @@ func BuildGenerateRequest(env *scriptpkg.GenerationEnvelopeV2, idempotencyKey st
 		OverlayStyle:        item.OverlayStyle,
 		PhraseMotionFamily:  item.PhraseMotionFamily,
 		MaxPhraseOverlays:   item.MaxPhraseOverlays,
+		MaxImageOverlays:    item.MaxImageOverlays,
 		IdempotencyKey:      idempotencyKey,
 		ForceRefresh:        env.ForceRefresh,
 		FinalJob:            env.FinalJob,

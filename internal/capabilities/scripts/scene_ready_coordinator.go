@@ -350,52 +350,54 @@ func (c *sceneReadyCoordinator) process(scene Scene) (Scene, error) {
 			renderSourceText = c.req.Source.SourceText
 			renderText = renderSourceText
 		}
-		clipID, clipAssetID, clipSHA256, clipDurationMS := localizedRenderClipFields(out)
-		c.renderWg.Add(1)
-		go func() {
-			defer c.renderWg.Done()
-			if err := c.runner.enqueueLocalizedRender(c.ctx, LocalizedRenderInput{
-				RunID:          c.runID,
-				ParentJobID:    c.exec.JobID,
-				DocsFolderID:   c.routing.DocsFolderID,
-				JobID:          c.exec.JobID,
-				SceneID:        out.ID,
-				SceneIndex:     out.Index,
-				Language:       lang,
-				Text:           renderText,
-				Voiceover:      audioRef,
-				SourceLanguage: c.req.SourceLanguage,
-				SourceText:     renderSourceText,
-				ClipID:         clipID,
-				ClipAssetID:    clipAssetID,
-				ClipSHA256:     clipSHA256,
-				ClipDurationMS: clipDurationMS,
-				Render:         c.req.Render,
-				OnRendered: func(rendered LocalizedRenderResult) error {
+		if out.Stock == nil {
+			clipID, clipAssetID, clipSHA256, clipDurationMS := localizedRenderClipFields(out)
+			c.renderWg.Add(1)
+			go func() {
+				defer c.renderWg.Done()
+				if err := c.runner.enqueueLocalizedRender(c.ctx, LocalizedRenderInput{
+					RunID:          c.runID,
+					ParentJobID:    c.exec.JobID,
+					DocsFolderID:   c.routing.DocsFolderID,
+					JobID:          c.exec.JobID,
+					SceneID:        out.ID,
+					SceneIndex:     out.Index,
+					Language:       lang,
+					Text:           renderText,
+					Voiceover:      audioRef,
+					SourceLanguage: c.req.SourceLanguage,
+					SourceText:     renderSourceText,
+					ClipID:         clipID,
+					ClipAssetID:    clipAssetID,
+					ClipSHA256:     clipSHA256,
+					ClipDurationMS: clipDurationMS,
+					Render:         sceneRenderSpec(c.req, out),
+					OnRendered: func(rendered LocalizedRenderResult) error {
+						c.mu.Lock()
+						c.rendered = append(c.rendered, rendered)
+						c.mu.Unlock()
+						return c.runner.recordLocalizedRender(c.ctx, c.exec, nil, rendered)
+					},
+					OnFailed: func(failure LocalizedRenderFailure) error {
+						c.mu.Lock()
+						c.failures = append(c.failures, failure)
+						c.mu.Unlock()
+						return nil
+					},
+				}); err != nil {
+					c.runner.log.Error("streaming localized render enqueue failed",
+						zap.String("scene_id", out.ID),
+						zap.String("clip_id", clipID),
+						zap.Error(err))
 					c.mu.Lock()
-					c.rendered = append(c.rendered, rendered)
+					c.failures = append(c.failures, LocalizedRenderFailure{
+						SceneID: out.ID, Language: lang, ClipID: clipID,
+						ErrorCode: "LOCALIZED_RENDER_ENQUEUE_FAILED", Error: err.Error(),
+					})
 					c.mu.Unlock()
-					return c.runner.recordLocalizedRender(c.ctx, c.exec, nil, rendered)
-				},
-				OnFailed: func(failure LocalizedRenderFailure) error {
-					c.mu.Lock()
-					c.failures = append(c.failures, failure)
-					c.mu.Unlock()
-					return nil
-				},
-			}); err != nil {
-				c.runner.log.Error("streaming localized render enqueue failed",
-					zap.String("scene_id", out.ID),
-					zap.String("clip_id", clipID),
-					zap.Error(err))
-				c.mu.Lock()
-				c.failures = append(c.failures, LocalizedRenderFailure{
-					SceneID: out.ID, Language: lang, ClipID: clipID,
-					ErrorCode: "LOCALIZED_RENDER_ENQUEUE_FAILED", Error: err.Error(),
-				})
-				c.mu.Unlock()
-			}
-		}()
+				}
+			}()
+		}
 		// TTS lineage record, deliberately AFTER the dispatch above: this write
 		// is durable bookkeeping, never an input to the render, so it must not
 		// sit in front of the render start (2026-09-21 tail audit).

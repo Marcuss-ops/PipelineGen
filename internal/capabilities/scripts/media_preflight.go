@@ -105,6 +105,16 @@ type ClipPreflighter interface {
 	ProbeClip(ctx context.Context, clipID string) error
 }
 
+// ImageProviderHealthProbe verifies that at least one image-retrieval provider
+// is healthy BEFORE the run spends generation work. The per-provider
+// Diagnostics() surface (/api/system/doctor) already reported this state, but
+// nothing consulted it at job start: a degraded provider was discovered only
+// by burning a complete durable run. A probe failure is a media-preflight
+// failure, so no LLM/TTS work is wasted on a run that cannot retrieve images.
+type ImageProviderHealthProbe interface {
+	ProbeImageProviderHealth(ctx context.Context) error
+}
+
 // MediaPreflightInput carries everything needed to verify media
 // requirements for one run.
 type FixedClipPreflight struct {
@@ -141,6 +151,10 @@ type MediaPreflightInput struct {
 	// watermark, so a missing asset fails the run before any LLM/TTS work.
 	BackgroundAssetID  string
 	BackgroundResolver ClipPreflighter
+	// ImageProviderHealth is optional: nil means the run does not depend on
+	// internet image retrieval (clip-only / fixed-media runs) and no probe is
+	// issued. A non-nil probe MUST pass for the preflight to succeed.
+	ImageProviderHealth ImageProviderHealthProbe
 }
 
 // RunMediaPreflight executes all independent asset checks concurrently and
@@ -407,6 +421,25 @@ func RunMediaPreflight(ctx context.Context, in MediaPreflightInput) PreflightRes
 				}
 			}()
 		}
+	}
+
+	// ── Image provider health ──────────────────────────────────
+	// Run the foreign probe on the same concurrent fan-out as every other
+	// check so a slow provider probe cannot serialise the preflight. Only a
+	// probe error becomes a failure; one healthy provider is enough.
+	if in.ImageProviderHealth != nil {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if err := in.ImageProviderHealth.ProbeImageProviderHealth(ctx); err != nil {
+				mu.Lock()
+				failures = append(failures, PreflightFailure{
+					Category: "image_providers",
+					Detail:   fmt.Sprintf("no usable image retrieval provider: %v", err),
+				})
+				mu.Unlock()
+			}
+		}()
 	}
 
 	wg.Wait()

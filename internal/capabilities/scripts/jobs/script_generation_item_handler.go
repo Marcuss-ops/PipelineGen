@@ -35,9 +35,7 @@ type ScriptGenerateItemPayload struct {
 // matches the canonical GenerateOneUseCase.Execute signature — the
 // canonical tracker is *gencore.ProgressTracker (constructed from
 // NewProgressTracker(progressFn, id)); nil is acceptable when the
-// caller does not need progress reporting (the canonical child
-// handler emits progress via tools.Progress, not via the per-item
-// tracker).
+// caller does not need progress reporting.
 type GenerateOneExecutor interface {
 	Execute(ctx context.Context, item domainScript.GenerationItemV2, preset domainScript.Preset, tracker *gencore.ProgressTracker) (*domainScript.GenerationResult, error)
 }
@@ -126,6 +124,7 @@ func (h *ScriptGenerateItemJobHandler) HandleJob(
 	// the envelope.
 	var childPayload ScriptGenerateItemPayload
 	if err := json.Unmarshal(j.Payload, &childPayload); err != nil {
+		ef("job.failed", "Script item payload decode failed", map[string]any{"error": err.Error()})
 		pf(100, "script.generate_item unmarshal failed")
 		return nil, fmt.Errorf("script.generate_item: unmarshal ScriptGenerateItemPayload: %w", err)
 	}
@@ -148,7 +147,9 @@ func (h *ScriptGenerateItemJobHandler) HandleJob(
 		// child_job_ids index. The fan-out's id defaulting logic
 		// (GenerateManyFanoutUseCase.setItemID) should always set
 		// this, but the child must reject a bare payload.
-		return nil, fmt.Errorf("script.generate_item: item.ID is empty (fan-out id defaulting required)")
+		err := fmt.Errorf("script.generate_item: item.ID is empty (fan-out id defaulting required)")
+		ef("job.failed", err.Error(), map[string]any{"error": err.Error(), "item_id": item.ID})
+		return nil, err
 	}
 
 	if parentJobID == "" {
@@ -159,11 +160,13 @@ func (h *ScriptGenerateItemJobHandler) HandleJob(
 		preset = domainScript.PresetCustom
 	}
 
-	// Per-item tracker is discarded — the child's progress is reflected
-	// in tools.Progress (above) only. The parent's GenerateManyFanoutUseCase
-	// is responsible for the aggregate progress reporting. A nil
-	// tracker is canonically accepted by GenerateOneUseCase.Execute.
-	tracker := (*gencore.ProgressTracker)(nil)
+	// Track this child independently so its own /jobs/:id/full timeline
+	// exposes each prepare/generation/postprocessor sub-kind. The parent
+	// still owns aggregation through the durable stage_progress events.
+	tracker := gencore.NewProgressTracker(pf, item.ID)
+	tracker.SetContext(ctx)
+	tracker.SetEventFn(ef)
+	tracker.SetKind(domainScript.TypeGenerateItem)
 
 	execCtx := ctx
 	if parentJobID != "" && parentJobID != "unknown" {
@@ -182,6 +185,7 @@ func (h *ScriptGenerateItemJobHandler) HandleJob(
 			zap.String("job_id", j.ID),
 			zap.String("item_id", item.ID),
 			zap.Error(err))
+		tracker.FailActivity(err)
 		pf(100, "script.generate_item execution failed")
 		return toScriptItemResultMap(item.ID, item.Language, j.ID, parentJobID, false, err.Error(), nil), fmt.Errorf("script.generate_item: execute: %w", err)
 	}
@@ -195,6 +199,7 @@ func (h *ScriptGenerateItemJobHandler) HandleJob(
 			zap.String("job_id", j.ID),
 			zap.String("item_id", item.ID),
 			zap.String("result_text_len", fmt.Sprintf("%d", len(res.Output.Text))))
+		tracker.FailActivity(fmt.Errorf("%s", errMsg))
 		pf(100, "script.generate_item semantic failure: ok=false")
 		return toScriptItemResultMap(item.ID, item.Language, j.ID, parentJobID, false, errMsg, res),
 			fmt.Errorf("%s", errMsg)
@@ -213,6 +218,7 @@ func (h *ScriptGenerateItemJobHandler) HandleJob(
 			})
 		}
 	}
+	tracker.PhaseComplete()
 	pf(100, "script.generate_item execution complete")
 	return toScriptItemResultMap(item.ID, item.Language, j.ID, parentJobID, true, "", res), nil
 }

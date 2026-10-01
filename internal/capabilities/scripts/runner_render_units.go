@@ -62,6 +62,13 @@ func RenderUnitsForScene(scene Scene) []SceneRenderUnit {
 		}
 		return units
 	}
+	// Explicit stock bindings are the final visual source for this scene. The
+	// final-job payload sends those Drive files directly to the remote Master,
+	// so a local render of the scene's source clip would be unused work and
+	// could burn subtitles into footage that is not in the final timeline.
+	if scene.Stock != nil {
+		return nil
+	}
 	clip := scene.Clip
 	if clip == nil && len(scene.Clips) > 0 {
 		clip = scene.Clips[0]
@@ -70,6 +77,40 @@ func RenderUnitsForScene(scene Scene) []SceneRenderUnit {
 		return nil
 	}
 	return []SceneRenderUnit{{Scene: scene, Clip: clip}}
+}
+
+// sceneRenderSpec applies the subtitle policy at the per-scene render seam.
+// Only source footage (YouTube clips and fixed media) inherits the request's
+// subtitle setting; stock and image visuals never burn narration or source
+// track subtitles. Empty fixed-media captions also disable subtitles to
+// prevent transcript-track fallback.
+func sceneRenderSpec(req GenerateRequest, scene Scene) kernelscript.VideoRenderSpec {
+	spec := req.Render
+	// A selected stock binding owns the visual even when the scene also keeps
+	// its source YouTube clip for audio/timing. That clip must never make the
+	// stock render inherit local subtitles or source-track transcription.
+	// Fixed-media sections (notably the opening clips) remain source footage
+	// even when the body is stock-only. They carry their own display caption,
+	// which must be burned into the localized intro render. The stock-only mode
+	// suppresses subtitles for generated body scenes; it must not suppress the
+	// fixed intro's title.
+	sourceFootage := scene.Stock == nil && (scene.ExecutionMode.IsFixedMedia() || (req.MediaMode != kernelscript.MediaModeStockOnly && sceneHasYouTubeSourceClip(scene)))
+	if !sourceFootage || (scene.ExecutionMode.IsFixedMedia() && localizedRenderCaptionText(req, scene) == "") {
+		if spec.Subtitles != nil {
+			subtitles := *spec.Subtitles
+			subtitles.Enabled = false
+			spec.Subtitles = &subtitles
+		}
+	}
+	return spec
+}
+
+func sceneHasYouTubeSourceClip(scene Scene) bool {
+	clip := scene.Clip
+	if clip == nil && len(scene.Clips) > 0 {
+		clip = scene.Clips[0]
+	}
+	return clip != nil && strings.HasPrefix(strings.ToLower(strings.TrimSpace(clip.ID)), "yt_")
 }
 
 // RenderUnitCount returns the total number of localized render units across
@@ -281,7 +322,7 @@ func (r *Runner) launchFixedMediaRenders(
 					Language: lang, Text: text,
 					SourceLanguage: req.SourceLanguage, SourceText: sourceText,
 					ClipID: clipID, ClipAssetID: clipAssetID, ClipSHA256: clipSHA256,
-					ClipDurationMS: clipDurationMS, Render: req.Render,
+					ClipDurationMS: clipDurationMS, Render: sceneRenderSpec(req, unit.Scene),
 					OnRendered: sink.OnRendered,
 					OnFailed:   sink.OnFailed,
 				}); err != nil {

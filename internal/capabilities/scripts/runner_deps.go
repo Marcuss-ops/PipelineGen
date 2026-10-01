@@ -25,6 +25,7 @@ import (
 	"strings"
 
 	capcheckpoint "github.com/Marcuss-ops/PipelineGen/internal/capabilities/checkpoint"
+	capabilitygeocoding "github.com/Marcuss-ops/PipelineGen/internal/capabilities/geocoding"
 	capabilityimagesearch "github.com/Marcuss-ops/PipelineGen/internal/capabilities/imagesearch"
 	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
 	"go.uber.org/zap"
@@ -127,6 +128,24 @@ func (r *Runner) SetLocalizedRenderEnqueuer(enqueuer LocalizedRenderEnqueuer) {
 func (r *Runner) SetDocumentFolderResolver(resolver DocumentFolderResolver) {
 	if r != nil {
 		r.documentFolderResolver = resolver
+	}
+}
+
+// SetGeocoder wires the provider-neutral geocoder used to enrich grounded
+// place annotations when the request enables provider_policy.geocoding. A nil
+// adapter with an enabled policy fails closed at enrichment time.
+func (r *Runner) SetGeocoder(geocoder capabilitygeocoding.Geocoder) {
+	if r != nil {
+		r.geocoder = geocoder
+	}
+}
+
+// SetMapPlateResolver wires the run's ONLY map source: the certified basemap
+// plate resolver loaded from the operator manifest. A nil resolver (or an
+// uncovered place) emits no map overlay — never a fabricated one.
+func (r *Runner) SetMapPlateResolver(resolver capabilityoverlay.PlateResolver) {
+	if r != nil {
+		r.mapPlates = resolver
 	}
 }
 

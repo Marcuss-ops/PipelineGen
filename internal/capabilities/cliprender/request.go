@@ -246,6 +246,10 @@ type OutputSpec struct {
 	// ForegroundScalePercent scales the source over the canvas while keeping
 	// the resolved background visible. Zero means the contract default (100).
 	ForegroundScalePercent int `json:"foreground_scale_percent,omitempty"`
+	// SourceFrame is the optional card treatment of the rendered clip (border
+	// frame behind the clip + drop shadow). It is transported verbatim into the
+	// overlay contract; the renderer owns the geometry.
+	SourceFrame *PlanSourceFrame `json:"source_frame,omitempty"`
 }
 
 // AudioSpec selects the audio copy policy. copy_if_compatible never
@@ -543,6 +547,11 @@ func (r *RenderRequest) Validate() error {
 	}
 	if r.Output.ForegroundScalePercent < 0 || r.Output.ForegroundScalePercent > 100 {
 		return fmt.Errorf("%w: output.foreground_scale_percent must be within [1,100] when set (got %d)", ErrInvalidRequest, r.Output.ForegroundScalePercent)
+	}
+	// One validator for the card block, shared with the sealed plan, so the
+	// request and the plan cannot accept different source_frame shapes.
+	if err := ValidatePlanSourceFrame(r.Output.SourceFrame, r.Output.ForegroundScalePercent); err != nil {
+		return fmt.Errorf("%w: output.%w", ErrInvalidRequest, err)
 	}
 
 	switch r.Audio.Mode {

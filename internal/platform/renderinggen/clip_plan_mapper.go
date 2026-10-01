@@ -54,6 +54,7 @@ type overlayPlan struct {
 	OutputProfileID string             `json:"output_profile_id,omitempty"`
 	Source          *overlaySource     `json:"source,omitempty"`
 	ForegroundScale int                `json:"foreground_scale_percent,omitempty"`
+	SourceFrame     *sourceFrameBlock  `json:"source_frame,omitempty"`
 	Background      *overlayBackground `json:"background,omitempty"`
 	Subtitles       *overlaySubtitles  `json:"subtitles,omitempty"`
 	Watermark       *overlayWatermark  `json:"watermark,omitempty"`
@@ -65,6 +66,57 @@ type overlaySource struct {
 	AssetID string `json:"asset_id"`
 	Path    string `json:"path"`
 	SHA256  string `json:"sha256"`
+}
+
+// sourceFrameBlock is the wire projection of the plan's card treatment. It
+// mirrors RenderingGen's overlay contract field-for-field (border width/colour/
+// radius + shadow), so a declared frame is transported verbatim and never
+// re-interpreted here.
+type sourceFrameBlock struct {
+	Border *sourceFrameBorder `json:"border,omitempty"`
+	Shadow *sourceFrameShadow `json:"shadow,omitempty"`
+}
+
+type sourceFrameBorder struct {
+	WidthPX  float64 `json:"width_px"`
+	Color    string  `json:"color"`
+	RadiusPX float64 `json:"radius_px,omitempty"`
+}
+
+type sourceFrameShadow struct {
+	Color    string  `json:"color"`
+	Opacity  float64 `json:"opacity,omitempty"`
+	BlurPX   float64 `json:"blur_px,omitempty"`
+	OffsetXP float64 `json:"offset_x_px,omitempty"`
+	OffsetYP float64 `json:"offset_y_px,omitempty"`
+}
+
+// mapSourceFrame projects the sealed plan's source_frame verbatim. The
+// producer has already validated it (cliprender.ValidatePlanSourceFrame), so a
+// value that reaches here has already been range- and colour-checked at the
+// request AND at the sealed-plan boundary.
+func mapSourceFrame(frame *cliprender.PlanSourceFrame) *sourceFrameBlock {
+	if frame == nil {
+		return nil
+	}
+	out := &sourceFrameBlock{}
+	if frame.Border != nil {
+		out.Border = &sourceFrameBorder{
+			WidthPX:  frame.Border.WidthPX,
+			Color:    frame.Border.Color,
+			RadiusPX: frame.Border.RadiusPX,
+		}
+	}
+	if frame.Shadow != nil {
+		out.Shadow = &sourceFrameShadow{
+			Color:    frame.Shadow.Color,
+			Opacity:  frame.Shadow.Opacity,
+			BlurPX:   frame.Shadow.BlurPX,
+			OffsetXP: frame.Shadow.OffsetXP,
+			OffsetYP: frame.Shadow.OffsetYP,
+		}
+	}
+	return out
 }
 
 type overlayBackground struct {
@@ -314,6 +366,10 @@ func MapClipPlanToOverlayPlan(plan cliprender.ClipRenderPlanV1) ([]byte, error) 
 			Path:    hashAddressedPath(plan.Source.AssetID, "source.mp4"),
 			SHA256:  plan.Source.SHA256,
 		},
+		// The declared card treatment of the clip travels verbatim: dropping it
+		// would make the worker render a bare clip while the producer believes
+		// the frame was requested.
+		SourceFrame: mapSourceFrame(plan.Output.SourceFrame),
 		// items is always emitted as an explicit empty array, never null,
 		// so the RenderingGen schema validator sees a valid JSON array.
 		Items: []json.RawMessage{},

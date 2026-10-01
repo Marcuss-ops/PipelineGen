@@ -150,15 +150,22 @@ type MediaMaterializationPolicy struct {
 	UploadToDrive bool   `json:"upload_to_drive,omitempty"`
 	EnrichVLM     bool   `json:"enrich_vlm,omitempty"`
 	WaitForReady  bool   `json:"wait_for_ready,omitempty"`
+	// Workers bounds how many segments are materialized concurrently. Zero
+	// means "use the built-in default"; a positive value is clamped to the
+	// supported range so one plan cannot open an unbounded number of provider
+	// sessions, temp files and Drive uploads at once.
+	Workers int `json:"workers,omitempty"`
 }
 
 // MediaExtractionPolicy controls per-segment semantic extraction.
 type MediaExtractionPolicy struct {
 	Enabled bool `json:"enabled,omitempty"`
 	// Include selects the semantic surfaces produced for each segment.
-	// Supported values are "entities", "special_names" and
-	// "important_phrases". "special_names" is the named-entity alias used by
-	// the NLP payload; an omitted list preserves legacy unrestricted behavior.
+	// Supported values are "entities", "special_names", "important_phrases",
+	// "important_words", "persons", "brands", "metrics", "money", "dates"
+	// and "locations". Category selectors can be combined with "entities";
+	// without it they request only the named categories. An omitted list
+	// preserves legacy unrestricted behavior.
 	Include []string `json:"include,omitempty"`
 	// Device selects local semantic extraction hardware: auto, cpu, or gpu.
 	// Auto falls back to CPU only when the optional GPU backend is unavailable.
@@ -181,7 +188,91 @@ const (
 	ExtractionIncludeSpecialNames     = "special_names"
 	ExtractionIncludeImportantPhrases = "important_phrases"
 	ExtractionIncludeImportantWords   = "important_words"
+	ExtractionIncludePersons          = "persons"
+	ExtractionIncludeBrands           = "brands"
+	ExtractionIncludeMetrics          = "metrics"
+	ExtractionIncludeMoney            = "money"
+	ExtractionIncludeDates            = "dates"
+	ExtractionIncludeLocations        = "locations"
 )
+
+// ExtractionIncludeValueCategories are the selector values mapped onto the
+// VisualNER type vocabulary. Include without a type selector keeps all types.
+var ExtractionIncludeValueCategories = []string{
+	ExtractionIncludePersons, ExtractionIncludeBrands, ExtractionIncludeMetrics,
+	ExtractionIncludeMoney, ExtractionIncludeDates, ExtractionIncludeLocations,
+}
+
+// EntityExtractionRequested reports whether Include requests the broad entity
+// surface or at least one typed entity category. An omitted Include retains its
+// legacy unrestricted meaning for callers that already enabled extraction.
+func (p MediaExtractionPolicy) EntityExtractionRequested() bool {
+	return len(p.Include) == 0 || p.EntityExtractionExplicitlyRequested()
+}
+
+// EntityExtractionExplicitlyRequested reports whether the caller opted into
+// entity extraction through a selector. Unlike EntityExtractionRequested, an
+// omitted Include is not an opt-in; use this at request-planning boundaries.
+func (p MediaExtractionPolicy) EntityExtractionExplicitlyRequested() bool {
+	// Includes deliberately treats an omitted list as unrestricted for legacy
+	// extraction callers. At a request-planning boundary, omission is not an
+	// explicit opt-in and must not start semantic work by itself.
+	if len(p.Include) == 0 {
+		return false
+	}
+	if p.Includes(ExtractionIncludeEntities) || p.Includes(ExtractionIncludeSpecialNames) {
+		return true
+	}
+	for _, selector := range ExtractionIncludeValueCategories {
+		if p.Includes(selector) {
+			return true
+		}
+	}
+	return false
+}
+
+// IncludesEntityType reports whether an entity type is enabled by Include.
+// Broad "entities" requests retain all historical entity types; category-only
+// requests filter to the corresponding canonical type set.
+func (p MediaExtractionPolicy) IncludesEntityType(entityType string) bool {
+	if p.Includes(ExtractionIncludeEntities) || p.Includes(ExtractionIncludeSpecialNames) {
+		return true
+	}
+	if len(p.Include) == 0 {
+		return true
+	}
+	kind := strings.ToUpper(strings.TrimSpace(entityType))
+	switch kind {
+	case "PERSON":
+		return p.Includes(ExtractionIncludePersons)
+	case "BRAND", "LOGO":
+		return p.Includes(ExtractionIncludeBrands)
+	case "DATE", "TIME":
+		return p.Includes(ExtractionIncludeDates)
+	case "MONEY":
+		return p.Includes(ExtractionIncludeMoney)
+	case "NUMBER", "CARDINAL", "ORDINAL", "PERCENT", "PERCENTAGE", "METRIC", "METRICS", "STATISTIC", "STATISTICS", "QUANTITY":
+		return p.Includes(ExtractionIncludeMetrics)
+	case "GPE", "LOCATION", "PLACE", "CITY", "COUNTRY", "LANDMARK":
+		return p.Includes(ExtractionIncludeLocations)
+	default:
+		return false
+	}
+}
+
+// HasCategoryOnlyIncludes distinguishes targeted category selection from
+// broad legacy entity extraction.
+func (p MediaExtractionPolicy) HasCategoryOnlyIncludes() bool {
+	if len(p.Include) == 0 || p.Includes(ExtractionIncludeEntities) || p.Includes(ExtractionIncludeSpecialNames) {
+		return false
+	}
+	for _, selector := range ExtractionIncludeValueCategories {
+		if p.Includes(selector) {
+			return true
+		}
+	}
+	return false
+}
 
 // Includes reports whether a semantic surface was explicitly requested. An
 // empty Include is intentionally treated as unrestricted for compatibility
@@ -205,7 +296,8 @@ func (p MediaExtractionPolicy) Includes(surface string) bool {
 // toggle.
 func (p MediaExtractionPolicy) EntityImageSurfaceEnabled() bool {
 	return p.EntityImages.Enabled || (len(p.Include) > 0 &&
-		(p.Includes(ExtractionIncludeEntities) || p.Includes(ExtractionIncludeSpecialNames)))
+		(p.Includes(ExtractionIncludeEntities) || p.Includes(ExtractionIncludeSpecialNames) ||
+			p.Includes(ExtractionIncludePersons) || p.Includes(ExtractionIncludeBrands)))
 }
 
 type EntityImagePolicy struct {
@@ -281,6 +373,10 @@ type MediaProviderPolicy struct {
 	YouTube         MediaToggle `json:"youtube,omitempty"`
 	InternetImages  MediaToggle `json:"internet_images,omitempty"`
 	ImageGeneration MediaToggle `json:"image_generation,omitempty"`
+	// Geocoding enables the provider-side geocoding of grounded place
+	// annotations (GPE/LOCATION). It is off by default: a run without the
+	// explicit opt-in never performs lookups and can never emit map overlays.
+	Geocoding MediaToggle `json:"geocoding,omitempty"`
 }
 
 // Clone returns a deep copy of MediaPlanSpec. Slice fields are

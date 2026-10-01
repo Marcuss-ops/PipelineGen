@@ -22,7 +22,6 @@ import (
 	"time"
 
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
-	hashutil "github.com/Marcuss-ops/PipelineGen/internal/platform/filesystem"
 	timeutil "github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
 )
 
@@ -97,6 +96,11 @@ func (r *SQLiteStore) CreateScheduled(ctx context.Context, j *job.Job, runAt tim
 		`INSERT INTO job_schedules (job_id, run_at, created_at) VALUES (?, ?, ?)`,
 		j.ID, timeutil.FormatRFC3339(runAt), timeutil.FormatRFC3339(j.CreatedAt)); err != nil {
 		return fmt.Errorf("jobs.CreateScheduled: schedule: %w", err)
+	}
+	if err := insertJobTimelineEvent(ctx, tx, j.ID, "job_queued", "job scheduled", map[string]any{
+		"status": string(j.Status), "scheduled_at": runAt.UTC().Format(time.RFC3339Nano),
+	}, j.CreatedAt); err != nil {
+		return fmt.Errorf("jobs.CreateScheduled: queued event: %w", err)
 	}
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("jobs.CreateScheduled: commit: %w", err)
@@ -271,11 +275,9 @@ func (r *SQLiteStore) PromoteScheduled(ctx context.Context, jobID string, now ti
 	if _, err := tx.ExecContext(ctx, `DELETE FROM job_schedules WHERE job_id = ?`, jobID); err != nil {
 		return false, fmt.Errorf("PromoteScheduled: delete schedule: %w", err)
 	}
-	evtID := fmt.Sprintf("evt_%d_%s", now.UnixNano(), hashutil.RandomString(6))
-	if _, err := tx.ExecContext(ctx,
-		`INSERT INTO job_events (id, job_id, type, message, data_json, created_at)
-		 VALUES (?, ?, ?, ?, ?, ?)`,
-		evtID, jobID, "job_queued", "scheduled job due: promoted to QUEUED", "{}", nowStr); err != nil {
+	if err := insertJobTimelineEvent(ctx, tx, jobID, "job_queued", "scheduled job promoted to queue", map[string]any{
+		"status": string(job.StatusQueued), "scheduled_at": "due",
+	}, now); err != nil {
 		return false, fmt.Errorf("PromoteScheduled: insert event: %w", err)
 	}
 	if err := tx.Commit(); err != nil {

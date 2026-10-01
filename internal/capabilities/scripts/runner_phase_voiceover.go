@@ -315,56 +315,58 @@ func (r *Runner) runVoiceoverPhase(ctx context.Context, runID string, req Genera
 					}()
 				}
 
-				// Localized render fan-out: fire the render in a separate
-				// goroutine the moment this language's TTS is final, so the
-				// TTS worker slot is freed immediately instead of being held
-				// for the entire render duration. The renderGate inside the
-				// adapter already bounds render concurrency; OnRendered /
-				// OnFailed capture the certified result asynchronously.
-				// ── Pipeline KPI: first render enqueue ───────────
-				renderStartedOnce.Do(func() {
-					if run := kernobs.FromContext(ctx); run != nil {
-						kernobs.RecordKPIMilestone(ctx, "render_first_started_ms", run.ElapsedMs())
-					}
-				})
-				renderWg.Add(1)
-				go func(item voiceoverWork, audioRef AudioReference) {
-					defer renderWg.Done()
-					if err := r.enqueueLocalizedRender(ctx, LocalizedRenderInput{
-						RunID:          runID,
-						ParentJobID:    exec.JobID,
-						DocsFolderID:   routing.DocsFolderID,
-						JobID:          exec.JobID,
-						SceneID:        item.sceneID,
-						SceneIndex:     item.scene.Index,
-						Language:       item.lang,
-						Text:           renderText,
-						Voiceover:      audioRef,
-						SourceLanguage: req.SourceLanguage,
-						SourceText:     sourceText,
-						ClipID:         clipID,
-						ClipAssetID:    clipAssetID,
-						ClipSHA256:     clipSHA256,
-						ClipDurationMS: clipDurationMS,
-						Render:         req.Render,
-						ResumeFrom:     r.stagedLocalizedRender(result, item.sceneID, item.lang, clipID),
-						OnRenderReady: func(rendered LocalizedRenderResult) error {
-							return r.recordLocalizedRenderReady(ctx, exec, result, rendered)
-						},
-						OnRendered: func(rendered LocalizedRenderResult) error {
-							return r.recordLocalizedRender(ctx, exec, result, rendered)
-						},
-						OnFailed: func(failure LocalizedRenderFailure) error {
-							r.localizedRenderMu.Lock()
-							result.LocalizedRenderFailures = append(result.LocalizedRenderFailures, failure)
-							r.localizedRenderMu.Unlock()
-							return nil
-						},
-					}); err != nil {
-						renderErrors <- fmt.Errorf("localized render scene %s language %s failed: %w", item.sceneID, item.lang, err)
-					}
+				if item.scene.Stock == nil {
+					// Localized render fan-out: fire the render in a separate
+					// goroutine the moment this language's TTS is final, so the
+					// TTS worker slot is freed immediately instead of being held
+					// for the entire render duration. The renderGate inside the
+					// adapter already bounds render concurrency; OnRendered /
+					// OnFailed capture the certified result asynchronously.
+					// ── Pipeline KPI: first render enqueue ───────────
+					renderStartedOnce.Do(func() {
+						if run := kernobs.FromContext(ctx); run != nil {
+							kernobs.RecordKPIMilestone(ctx, "render_first_started_ms", run.ElapsedMs())
+						}
+					})
+					renderWg.Add(1)
+					go func(item voiceoverWork, audioRef AudioReference) {
+						defer renderWg.Done()
+						if err := r.enqueueLocalizedRender(ctx, LocalizedRenderInput{
+							RunID:          runID,
+							ParentJobID:    exec.JobID,
+							DocsFolderID:   routing.DocsFolderID,
+							JobID:          exec.JobID,
+							SceneID:        item.sceneID,
+							SceneIndex:     item.scene.Index,
+							Language:       item.lang,
+							Text:           renderText,
+							Voiceover:      audioRef,
+							SourceLanguage: req.SourceLanguage,
+							SourceText:     sourceText,
+							ClipID:         clipID,
+							ClipAssetID:    clipAssetID,
+							ClipSHA256:     clipSHA256,
+							ClipDurationMS: clipDurationMS,
+							Render:         sceneRenderSpec(req, *item.scene),
+							ResumeFrom:     r.stagedLocalizedRender(result, item.sceneID, item.lang, clipID),
+							OnRenderReady: func(rendered LocalizedRenderResult) error {
+								return r.recordLocalizedRenderReady(ctx, exec, result, rendered)
+							},
+							OnRendered: func(rendered LocalizedRenderResult) error {
+								return r.recordLocalizedRender(ctx, exec, result, rendered)
+							},
+							OnFailed: func(failure LocalizedRenderFailure) error {
+								r.localizedRenderMu.Lock()
+								result.LocalizedRenderFailures = append(result.LocalizedRenderFailures, failure)
+								r.localizedRenderMu.Unlock()
+								return nil
+							},
+						}); err != nil {
+							renderErrors <- fmt.Errorf("localized render scene %s language %s failed: %w", item.sceneID, item.lang, err)
+						}
 
-				}(item, audioRef)
+					}(item, audioRef)
+				}
 				return voiceoverResult{audioRef: audioRef, metric: metric}, nil
 			})
 			if err != nil {
