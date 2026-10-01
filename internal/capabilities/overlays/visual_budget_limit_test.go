@@ -107,6 +107,122 @@ func TestApplyEditorialOverlayBudgetHonoursCallerPhraseLimit(t *testing.T) {
 	}
 }
 
+func TestApplyEditorialOverlayBudgetHonoursCallerImageLimit(t *testing.T) {
+	items := limitTestItems(17)
+	got, budget := ApplyEditorialOverlayBudgetWithImageLimit(items, 15, 10, 0)
+	images := 0
+	for _, item := range got {
+		if item.Kind == "image" || item.Kind == "entity_image" {
+			images++
+		}
+	}
+	if images != 10 {
+		t.Fatalf("image overlays = %d, want caller ceiling 10", images)
+	}
+	if phrases := countPhraseItems(got); phrases != 15 {
+		t.Fatalf("phrase overlays = %d, want caller ceiling 15", phrases)
+	}
+	if len(got) != 25 {
+		t.Fatalf("total overlays = %d, want exactly 25", len(got))
+	}
+	if budget != (PhraseOverlayBudget{Requested: 15, Materialized: 15}) {
+		t.Fatalf("phrase budget = %+v, want 15 requested/materialized", budget)
+	}
+}
+
+func TestApplyEditorialOverlayBudgetCombinesContextAndEntityImageKinds(t *testing.T) {
+	items := make([]OverlayItem, 0, 30)
+	for i := 0; i < 8; i++ {
+		items = append(items, OverlayItem{
+			ID: fmt.Sprintf("context-%d", i), Kind: "image", SceneID: fmt.Sprintf("scene-%d", i),
+			AssetRefs: []OverlayAssetRef{{SHA256: fmt.Sprintf("context-hash-%d", i)}},
+			Params:    map[string]any{"priority": float64(20 - i)},
+		})
+	}
+	for i := 0; i < 8; i++ {
+		items = append(items, OverlayItem{
+			ID: fmt.Sprintf("entity-%d", i), Kind: "entity_image", SceneID: fmt.Sprintf("scene-%d", i),
+			AssetRefs: []OverlayAssetRef{{SHA256: fmt.Sprintf("entity-hash-%d", i)}},
+			Params:    map[string]any{"priority": float64(10 - i)},
+		})
+	}
+	for i := 0; i < 15; i++ {
+		items = append(items, OverlayItem{
+			ID: fmt.Sprintf("phrase-%d", i), Kind: "text_phrase", Text: fmt.Sprintf("Grounded phrase %d", i),
+			Params: map[string]any{"priority": float64(i)},
+		})
+	}
+
+	got, _ := ApplyEditorialOverlayBudgetWithImageLimit(items, 15, 10, 0)
+	images := 0
+	phrases := 0
+	for _, item := range got {
+		switch item.Kind {
+		case "image", "entity_image":
+			images++
+		case "text_phrase":
+			phrases++
+		}
+	}
+	if images != 10 || phrases != 15 || len(got) != 25 {
+		t.Fatalf("combined overlay plan has %d context/entity images + %d phrases (%d total); want 10 + 15 (25 total)", images, phrases, len(got))
+	}
+}
+
+// TestImageBudgetDedupesSameBytesAcrossEntityAndContextArms pins the
+// 2026-09-30 Milton incident: one downloaded portrait reached the plan BOTH
+// as an entity_image card and as a context "image" hit of another scene's
+// query. Each arm's own dedup key (entity identity vs scene+sha) saw nothing
+// wrong, so the same bytes rendered again as 5–10 extra image overlays. The
+// run-level budget must admit one overlay per content identity: the sha256
+// collision is dropped even across kinds, and the freed slot goes to a
+// genuinely different image.
+func TestImageBudgetDedupesSameBytesAcrossEntityAndContextArms(t *testing.T) {
+	sameBytes := "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+	items := []OverlayItem{
+		// The entity card carries the portrait first (canonical timeline order).
+		{ID: "entity-card", Kind: "entity_image", SceneID: "scene-0",
+			EntityRef: &OverlayEntityRef{CanonicalEntityID: "person:milton-leite"},
+			AssetRefs: []OverlayAssetRef{{AssetID: "asset-milton", SHA256: sameBytes}},
+			Params:    map[string]any{"priority": float64(90)}},
+		// A second scene's context query answered with the SAME bytes.
+		{ID: "context-dup-1", Kind: "image", SceneID: "scene-1",
+			AssetRefs: []OverlayAssetRef{{AssetID: "asset-milton", SHA256: sameBytes}},
+			Params:    map[string]any{"priority": float64(85)}},
+		{ID: "context-dup-2", Kind: "image", SceneID: "scene-2",
+			AssetRefs: []OverlayAssetRef{{AssetID: "asset-milton-copy", SHA256: sameBytes}},
+			Params:    map[string]any{"priority": float64(80)}},
+		// Distinct images must survive and fill the freed slots.
+		{ID: "context-other-1", Kind: "image", SceneID: "scene-3",
+			AssetRefs: []OverlayAssetRef{{AssetID: "asset-bus", SHA256: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"}},
+			Params:    map[string]any{"priority": float64(60)}},
+		{ID: "context-other-2", Kind: "image", SceneID: "scene-4",
+			AssetRefs: []OverlayAssetRef{{AssetID: "asset-office", SHA256: "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"}},
+			Params:    map[string]any{"priority": float64(50)}},
+	}
+	got, _ := ApplyEditorialOverlayBudgetWithImageLimit(items, 15, 10, 0)
+	images := 0
+	ids := make(map[string]bool)
+	for _, item := range got {
+		if item.Kind == "image" || item.Kind == "entity_image" {
+			images++
+			ids[item.ID] = true
+		}
+	}
+	if images != 3 {
+		t.Fatalf("image overlays = %d, want 3 (one per distinct content): %v", images, ids)
+	}
+	if !ids["entity-card"] {
+		t.Fatalf("highest-ranked occurrence of the shared bytes was not retained: %v", ids)
+	}
+	if ids["context-dup-1"] || ids["context-dup-2"] {
+		t.Fatalf("same-bytes duplicates rendered again as extra overlays: %v", ids)
+	}
+	if !ids["context-other-1"] || !ids["context-other-2"] {
+		t.Fatalf("distinct images were displaced by duplicates: %v", ids)
+	}
+}
+
 // TestPhraseReservationNeverClobbersTheLongCandidatesItDidNotReserve pins the
 // long/short reservation against slice-aliasing: admission must follow from the
 // ranking alone, never from whether the reservation happened to reuse the
@@ -227,6 +343,25 @@ func TestRunLevelImageBudgetKeepsPerSceneOccurrences(t *testing.T) {
 	}
 	if len(ids) != 2 || ids[0] != "scene-1-image" || ids[1] != "scene-2-image" {
 		t.Fatalf("per-scene image selection = %v, want one occurrence in each scene", ids)
+	}
+}
+
+func TestEditorialOverlayBudgetRetainsValueCalloutsWithoutCrowdingExistingArms(t *testing.T) {
+	items := []OverlayItem{
+		{ID: "image", SceneID: "scene-1", Kind: "entity_image", EntityRef: &OverlayEntityRef{CanonicalEntityID: "person:ada"}},
+		{ID: "phrase", SceneID: "scene-1", Kind: "text_phrase", Text: "A grounded editorial phrase"},
+		{ID: "map", SceneID: "scene-1", Kind: "map", Map: &MapOverlay{SourceID: "plate-rome"}},
+	}
+	for i := 0; i < MaxNumberOverlaysPerRun+2; i++ {
+		items = append(items, OverlayItem{ID: fmt.Sprintf("number-%d", i), Kind: "number", Text: fmt.Sprintf("%d percent", i), Params: map[string]any{"priority": float64(i)}})
+	}
+	got, _ := ApplyEditorialOverlayBudgetWithLimits(items, 1, 1)
+	counts := map[string]int{}
+	for _, item := range got {
+		counts[item.Kind]++
+	}
+	if counts["entity_image"] != 1 || counts["text_phrase"] != 1 || counts["map"] != 1 || counts["number"] != MaxNumberOverlaysPerRun {
+		t.Fatalf("budget counts = %v, want image/phrase/map plus bounded values", counts)
 	}
 }
 

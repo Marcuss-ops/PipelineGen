@@ -9,7 +9,6 @@ import (
 
 	domainremote "github.com/Marcuss-ops/PipelineGen/internal/capabilities/remote"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
-	hashutil "github.com/Marcuss-ops/PipelineGen/internal/platform/filesystem"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/observability"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
 	timeutil "github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
@@ -107,10 +106,7 @@ func (r *SQLiteStore) Complete(ctx context.Context, id string, workerID, leaseID
 		return fmt.Errorf("complete: %w", err)
 	}
 
-	// Insert event
-	evtID := fmt.Sprintf("evt_%d_%s", now.UnixNano(), hashutil.RandomString(6))
-	if _, err := tx.ExecContext(ctx, `INSERT INTO job_events (id, job_id, type, message, data_json, created_at) VALUES (?, ?, ?, ?, ?, ?)`,
-		evtID, id, "job_completed", "job.Job completed successfully", "{}", nowStr); err != nil {
+	if err := insertJobTimelineEvent(ctx, tx, id, "job_completed", "job completed successfully", nil, now); err != nil {
 		return fmt.Errorf("complete: insert job event: %w", err)
 	}
 
@@ -176,10 +172,7 @@ func (r *SQLiteStore) Fail(ctx context.Context, id string, workerID, leaseID str
 		return job.ErrTransitionConflict
 	}
 
-	evtID := fmt.Sprintf("evt_%d_%s", now.UnixNano(), hashutil.RandomString(6))
-	evtData, _ := json.Marshal(map[string]string{"error": errMsg})
-	if _, err := tx.ExecContext(ctx, `INSERT INTO job_events (id, job_id, type, message, data_json, created_at) VALUES (?, ?, ?, ?, ?, ?)`,
-		evtID, id, "job_failed", errMsg, string(evtData), nowStr); err != nil {
+	if err := insertJobTimelineEvent(ctx, tx, id, "job_failed", errMsg, map[string]any{"error": errMsg}, now); err != nil {
 		return fmt.Errorf("fail: insert job event: %w", err)
 	}
 

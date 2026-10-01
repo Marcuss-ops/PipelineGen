@@ -187,7 +187,12 @@ func (r *SQLiteStore) claimCandidate(ctx context.Context, j *job.Job, workerID s
 func (r *SQLiteStore) Start(ctx context.Context, cmd StartJob) (*job.Job, error) {
 	now := time.Now().UTC()
 	leaseExpiry := now.Add(cmd.LeaseTTL)
-	res, err := r.db.ExecContext(ctx,
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, fmt.Errorf("start: begin tx: %w", err)
+	}
+	defer tx.Rollback()
+	res, err := tx.ExecContext(ctx,
 		`UPDATE jobs SET status = 'RUNNING', started_at = ?,
 		 lease_expiry = ?, lease_id = ?, worker_id = ?,
 		 revision = revision + 1, updated_at = ?
@@ -205,13 +210,14 @@ func (r *SQLiteStore) Start(ctx context.Context, cmd StartJob) (*job.Job, error)
 	if affected == 0 {
 		return nil, job.ErrTransitionConflict
 	}
-	evtID := fmt.Sprintf("evt_%d_%s", now.UnixNano(), hashutil.RandomString(6))
-	if _, err := r.db.ExecContext(ctx,
-		`INSERT INTO job_events (id, job_id, type, message, data_json, created_at)
-		 VALUES (?, ?, ?, ?, ?, ?)`,
-		evtID, cmd.JobID, "job_running", "job.Job started", "{}", timeutil.FormatRFC3339(now),
-	); err != nil {
+	if err := insertJobTimelineEvent(ctx, tx, cmd.JobID, "job_running", "job started", map[string]any{
+		"status": string(job.StatusRunning), "worker_id": cmd.WorkerID, "lease_id": cmd.LeaseID,
+		"revision": cmd.Revision + 1,
+	}, now); err != nil {
 		return nil, fmt.Errorf("start: insert job event: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("start: commit: %w", err)
 	}
 	return r.Get(ctx, cmd.JobID)
 }
@@ -391,8 +397,6 @@ func (r *SQLiteStore) requeueSingle(ctx context.Context, jobID string, retryCoun
 	if err != nil {
 		return RequeueResult{JobID: jobID, Error: fmt.Sprintf("select status: %v", err)}
 	}
-
-	evtID := fmt.Sprintf("evt_%d_%s", now.UnixNano(), hashutil.RandomString(6))
 	if retryCount < maxRetries {
 		// leased → queued (claimed but never started), running → retry_wait (was executing)
 		targetStatus := job.StatusRetryWait
@@ -422,8 +426,7 @@ func (r *SQLiteStore) requeueSingle(ctx context.Context, jobID string, retryCoun
 		if mustRowsAffected(res) == 0 {
 			return RequeueResult{JobID: jobID, Error: "rows affected 0 (CAS fence: status/lease_expiry/revision mismatch)"}
 		}
-		if _, err := tx.ExecContext(ctx, `INSERT INTO job_events (id, job_id, type, message, data_json, created_at) VALUES (?, ?, ?, ?, ?, ?)`,
-			evtID, jobID, eventType, eventMsg, "{}", nowStr); err != nil {
+		if err := insertJobTimelineEvent(ctx, tx, jobID, eventType, eventMsg, map[string]any{"status": string(targetStatus)}, now); err != nil {
 			return RequeueResult{JobID: jobID, Error: fmt.Sprintf("insert job event: %v", err)}
 		}
 		if err := tx.Commit(); err != nil {
@@ -446,8 +449,9 @@ func (r *SQLiteStore) requeueSingle(ctx context.Context, jobID string, retryCoun
 	if mustRowsAffected(res) == 0 {
 		return RequeueResult{JobID: jobID, Error: "rows affected 0 (CAS fence: status/lease_expiry/revision mismatch)"}
 	}
-	if _, err := tx.ExecContext(ctx, `INSERT INTO job_events (id, job_id, type, message, data_json, created_at) VALUES (?, ?, ?, ?, ?, ?)`,
-		evtID, jobID, "job_failed", "Max retries exhausted", "{}", nowStr); err != nil {
+	if err := insertJobTimelineEvent(ctx, tx, jobID, "job_failed", "max retries exhausted", map[string]any{
+		"status": string(job.StatusFailed), "error": "max retries exhausted (reaper)",
+	}, now); err != nil {
 		return RequeueResult{JobID: jobID, Error: fmt.Sprintf("insert job event: %v", err)}
 	}
 	if err := tx.Commit(); err != nil {

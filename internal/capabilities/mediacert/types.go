@@ -38,7 +38,7 @@ type Spec struct {
 	Segments int `json:"segments"`
 	// EntitiesPerSegment is the expected number of entities per segment.
 	EntitiesPerSegment int `json:"entities_per_segment"`
-	// ImagesPerSegment is the expected number of images per segment.
+	// ImagesPerSegment is the minimum number of image candidates required per segment.
 	ImagesPerSegment int `json:"images_per_segment"`
 	// VideoProvider is the only video provider the run may use.
 	VideoProvider string `json:"video_provider"`

@@ -29,6 +29,38 @@ func TestMediaExtractionPolicyIncludes(t *testing.T) {
 	}
 }
 
+func TestMediaExtractionPolicyCategorySelectors(t *testing.T) {
+	for _, tc := range []struct {
+		selector string
+		kind     string
+	}{
+		{ExtractionIncludePersons, "PERSON"},
+		{ExtractionIncludeBrands, "LOGO"},
+		{ExtractionIncludeBrands, "BRAND"},
+		{ExtractionIncludeMetrics, "NUMBER"},
+		{ExtractionIncludeMetrics, "PERCENT"},
+		{ExtractionIncludeMoney, "MONEY"},
+		{ExtractionIncludeDates, "DATE"},
+		{ExtractionIncludeLocations, "GPE"},
+	} {
+		policy := MediaExtractionPolicy{Include: []string{tc.selector}}
+		if !policy.EntityExtractionRequested() || !policy.HasCategoryOnlyIncludes() || !policy.IncludesEntityType(tc.kind) {
+			t.Errorf("selector %q should enable entity type %q", tc.selector, tc.kind)
+		}
+		for _, other := range []string{ExtractionIncludePersons, ExtractionIncludeBrands, ExtractionIncludeMetrics, ExtractionIncludeMoney, ExtractionIncludeDates, ExtractionIncludeLocations} {
+			if other != tc.selector && policy.Includes(other) {
+				t.Errorf("selector %q unexpectedly enabled %q", tc.selector, other)
+			}
+		}
+	}
+	if (MediaExtractionPolicy{Include: []string{ExtractionIncludeImportantPhrases}}).EntityExtractionRequested() {
+		t.Fatal("phrase-only selection must not invoke entity extraction")
+	}
+	if !(MediaExtractionPolicy{Include: []string{ExtractionIncludeEntities}}).IncludesEntityType("BRAND") {
+		t.Fatal("broad entities selection must retain legacy unrestricted types")
+	}
+}
+
 func TestMediaExtractionPolicyWireContract(t *testing.T) {
 	payload := []byte(`{"media_plan":{"extraction":{"enabled":true,"include":["entities","important_phrases"],"max_entities_per_segment":4}}}`)
 	var envelope struct {

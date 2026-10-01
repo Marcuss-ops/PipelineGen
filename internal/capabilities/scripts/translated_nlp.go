@@ -35,12 +35,14 @@ type translatedNLPOutcome struct {
 // post-join barrier (see localizedNLPForScene).
 
 func (c *sceneReadyCoordinator) translatedNLPRequested() bool {
-	if c.runner == nil || c.runner.vidRushPipeline == nil {
+	if c.runner == nil {
 		return false
 	}
 	extraction := c.req.MediaPlan.Extraction
-	return extraction.Includes(mediadomain.ExtractionIncludeEntities) ||
-		extraction.Includes(mediadomain.ExtractionIncludeSpecialNames) ||
+	if c.req.EntityExtractionDisabled() {
+		return false
+	}
+	return extraction.EntityExtractionRequested() ||
 		extraction.Includes(mediadomain.ExtractionIncludeImportantPhrases) ||
 		extraction.Includes(mediadomain.ExtractionIncludeImportantWords)
 }
@@ -161,7 +163,7 @@ func (r *Runner) runTranslatedNLPWithSourceAnnotations(ctx context.Context, req 
 // being written. Computing into a detached value and applying it on the owning
 // goroutine keeps the overlap without a shared write.
 func (r *Runner) computeLocalizedAnnotations(ctx context.Context, req GenerateRequest, result *GenerateResult, sourceAnnotations map[int]*scriptpkg.SceneAnnotations) (map[int]map[Language]*scriptpkg.SceneAnnotations, error) {
-	if r == nil || result == nil || r.vidRushPipeline == nil {
+	if r == nil || result == nil {
 		return nil, nil
 	}
 	sourceAnnotationsFor := func(sceneIndex int) *scriptpkg.SceneAnnotations {
@@ -171,13 +173,13 @@ func (r *Runner) computeLocalizedAnnotations(ctx context.Context, req GenerateRe
 		return sourceAnnotations[sceneIndex]
 	}
 	extraction := req.MediaPlan.Extraction
-	includeEntities := extraction.Includes(mediadomain.ExtractionIncludeEntities) || extraction.Includes(mediadomain.ExtractionIncludeSpecialNames)
+	includeEntities := extraction.EntityExtractionRequested()
 	if req.EntityExtractionDisabled() {
 		includeEntities = false
 	}
 	includePhrases := extraction.Includes(mediadomain.ExtractionIncludeImportantPhrases)
 	includeWords := extraction.Includes(mediadomain.ExtractionIncludeImportantWords)
-	if !includeEntities && !includePhrases && !includeWords {
+	if req.EntityExtractionDisabled() || (!includeEntities && !includePhrases && !includeWords) {
 		return nil, nil
 	}
 
@@ -220,6 +222,17 @@ func (r *Runner) computeLocalizedAnnotations(ctx context.Context, req GenerateRe
 	if entityLimit <= 0 {
 		entityLimit = 3
 	}
+	// EntityImages.Enabled is also an explicit entity-surface opt-in for
+	// legacy payloads; don't discard a candidate window when that policy is
+	// combined with a phrase selector.
+	categoryOnly := extraction.HasCategoryOnlyIncludes()
+	nerLimit := entityLimit
+	if categoryOnly || hasAdditionalEntityCategory(extraction) {
+		// As on the source-language path, scan beyond the final per-segment
+		// result limit before filtering to a selected category. Otherwise
+		// unrelated high-ranked names can crowd out translated values/places.
+		nerLimit = min(max(entityLimit*8, 12), 100)
+	}
 	phraseLimit := extraction.MaxImportantPhrasesPerSegment
 	if phraseLimit <= 0 {
 		phraseLimit = 3
@@ -229,8 +242,10 @@ func (r *Runner) computeLocalizedAnnotations(ctx context.Context, req GenerateRe
 		wordLimit = 3
 	}
 	workers := poolSize(r.nlpConcurrency, DefaultNLPConcurrency)
-	if limit := r.vidRushPipeline.Backpressure.ExtractionLimit; limit > 0 && limit < workers {
-		workers = limit
+	if r.vidRushPipeline != nil {
+		if limit := r.vidRushPipeline.Backpressure.ExtractionLimit; limit > 0 && limit < workers {
+			workers = limit
+		}
 	}
 
 	// Ground every SOURCE annotation entity in its translation BEFORE the NER
@@ -259,13 +274,14 @@ func (r *Runner) computeLocalizedAnnotations(ctx context.Context, req GenerateRe
 		// `entityLimit` grounded PERSON matches every model entity falls outside
 		// the window anyway. ``sourceMatchesCoverEntityLimit`` encodes exactly
 		// that precondition (and refuses to skip for any other entity kind).
-		if includeEntities && r.vidRushPipeline.NERPort != nil && !sourceMatchesCoverEntityLimit(sourceMatches[idx], entityLimit) {
+		if includeEntities && r.vidRushPipeline != nil && r.vidRushPipeline.NERPort != nil &&
+			(categoryOnly || hasAdditionalEntityCategory(extraction) || !sourceMatchesCoverEntityLimit(sourceMatches[idx], entityLimit)) {
 			err := kernobs.MeasureOperation(opCtx, kernobs.OperationInfo{
 				Stage: kernobs.StageSceneAnalysis, Component: kernobs.ComponentNLP, Operation: kernobs.OperationExtract,
 				Provider: string(item.lang), MetadataJSON: fmt.Sprintf("{\"scene_id\":%q,\"language\":%q,\"surface\":\"translation\"}", result.Scenes[item.sceneIndex].ID, item.lang),
 			}, func(measureCtx context.Context) error {
 				var extractErr error
-				outcome.entities, extractErr = r.vidRushPipeline.NERPort.Extract(measureCtx, item.text, entityLimit)
+				outcome.entities, extractErr = r.vidRushPipeline.NERPort.Extract(measureCtx, item.text, nerLimit)
 				return extractErr
 			})
 			if err != nil {
@@ -301,7 +317,25 @@ func (r *Runner) computeLocalizedAnnotations(ctx context.Context, req GenerateRe
 		// annotation inherits below instead of re-minting one from the
 		// translated surface.
 		outcomes[index].entities = mergeTranslatedNamedEntities(outcomes[index].entities, localizedSourceVisualEntities(sourceMatches[index]))
-		outcomes[index].entities = limitTranslatedVisualEntities(outcomes[index].entities, entityLimit)
+		if categoryOnly {
+			filtered := make([]VisualEntity, 0, len(outcomes[index].entities))
+			for _, entity := range outcomes[index].entities {
+				if extraction.IncludesEntityType(string(entity.Type)) {
+					filtered = append(filtered, entity)
+				}
+			}
+			outcomes[index].entities = limitTranslatedVisualEntities(filtered, entityLimit)
+		} else if includeEntities && extraction.Includes(mediadomain.ExtractionIncludeEntities) {
+			if hasAdditionalEntityCategory(extraction) {
+				outcomes[index].entities = limitVisualIdentityEntities(outcomes[index].entities, entityLimit)
+			} else {
+				outcomes[index].entities = limitTranslatedVisualEntities(outcomes[index].entities, entityLimit)
+			}
+		} else if includeEntities {
+			outcomes[index].entities = limitTranslatedVisualEntities(outcomes[index].entities, entityLimit)
+		} else {
+			outcomes[index].entities = nil
+		}
 		phraseCandidates := phrasepkg.ImportantPhrasesWithCorpus(item.text, entityRuneSpans(item.text, outcomes[index].entities), phraseLimit, string(item.lang), documentCorpus[item.lang])
 		var groundedPhrases []string
 		if includePhrases {
@@ -311,12 +345,18 @@ func (r *Runner) computeLocalizedAnnotations(ctx context.Context, req GenerateRe
 		if includeWords {
 			importantWords = phrasepkg.ImportantWords(phraseCandidates, wordLimit, string(item.lang))
 		}
+		var specialNames []string
+		if includeEntities && extraction.Includes(mediadomain.ExtractionIncludeEntities) && !hasAdditionalEntityCategory(extraction) {
+			specialNames = translatedSpecialNames(item.text, nil, outcomes[index].entities, entityLimit)
+		} else if includeEntities && extraction.Includes(mediadomain.ExtractionIncludeSpecialNames) {
+			specialNames = translatedSpecialNames(item.text, nil, outcomes[index].entities, entityLimit)
+		}
 		insights := scriptpkg.SegmentInsights{
 			SegmentID:        result.Scenes[item.sceneIndex].ID,
 			TextHash:         SceneTextHash(item.text),
 			ImportantPhrases: groundedPhrases,
 			ImportantWords:   importantWords,
-			SpecialNames:     translatedSpecialNames(item.text, nil, outcomes[index].entities, entityLimit),
+			SpecialNames:     specialNames,
 		}
 		for _, entity := range outcomes[index].entities {
 			entityType := entity.Type
@@ -389,7 +429,7 @@ func translatedSpecialNames(text string, candidates []string, entities []VisualE
 	// complete localized entity and rejects German common nouns that were
 	// surfaced by capitalization-only fallback.
 	for _, entity := range entities {
-		if !isNamedVisualEntity(entity.Type) {
+		if !isNamedVisualEntity(entity.Type) && entity.Type != scriptpkg.EntityTypeProduct && !strings.EqualFold(string(entity.Type), "BRAND") && !strings.EqualFold(string(entity.Type), "LOGO") {
 			continue
 		}
 		if span, ok := findEntitySpan(text, entity.Text); ok {
@@ -404,7 +444,7 @@ func translatedSpecialNames(text string, candidates []string, entities []VisualE
 			continue
 		}
 		for _, entity := range entities {
-			if !isNamedVisualEntity(entity.Type) {
+			if !isNamedVisualEntity(entity.Type) && entity.Type != scriptpkg.EntityTypeProduct && !strings.EqualFold(string(entity.Type), "BRAND") && !strings.EqualFold(string(entity.Type), "LOGO") {
 				continue
 			}
 			entitySpan, entityOK := findEntitySpan(text, entity.Text)
@@ -435,6 +475,8 @@ func localizedSourceEntityType(raw string) scriptpkg.EntityType {
 		return scriptpkg.EntityTypeLocation
 	case "ORG", "ORGANIZATION":
 		return scriptpkg.EntityTypeOrganization
+	case "BRAND", "LOGO":
+		return scriptpkg.EntityType("BRAND")
 	case "EVENT":
 		return scriptpkg.EntityTypeEvent
 	case "WORK":
@@ -484,11 +526,26 @@ func mergeTranslatedNamedEntities(visual, named []VisualEntity) []VisualEntity {
 	if len(named) == 0 {
 		return visual
 	}
+	hasTypedNamed := false
+	for _, entity := range visual {
+		switch scriptpkg.NormalizeAnnotationType(string(entity.Type)) {
+		case "PERSON", "ORG", "EVENT", "WORK_OF_ART", "PRODUCT", "LOGO":
+			hasTypedNamed = true
+		}
+	}
+	if !hasTypedNamed {
+		return append(append([]VisualEntity(nil), visual...), named...)
+	}
 	out := make([]VisualEntity, 0, len(visual)+len(named))
 	for _, entity := range visual {
-		switch entity.Type {
-		case scriptpkg.EntityTypePerson, scriptpkg.EntityTypeOrganization,
-			scriptpkg.EntityTypeEvent, scriptpkg.EntityTypeWork, scriptpkg.EntityTypeProduct:
+		// Preserve brand candidates in the text-fallback lane even when a
+		// localized source annotation was matched for another identity.
+		if strings.EqualFold(strings.TrimSpace(string(entity.Type)), "BRAND") {
+			out = append(out, entity)
+			continue
+		}
+		switch scriptpkg.NormalizeAnnotationType(string(entity.Type)) {
+		case "PERSON", "ORG", "EVENT", "WORK_OF_ART", "PRODUCT", "LOGO":
 			// Typed model names are the language-aware identity source. Drop
 			// heuristic title-case labels when a typed extraction is available.
 			// Keep deterministic location hits from VisualNER: structured model

@@ -307,6 +307,12 @@ func VerifyVidRushImageBytes(candidate scriptpkg.SegmentAssetCandidate, data []b
 	candidate.MIMEType = mime
 	candidate.Width = config.Width
 	candidate.Height = config.Height
+	// The perceptual hash is best-effort: it powers near-duplicate detection
+	// across providers, but a decoder that cannot produce one must not fail
+	// technical verification.
+	if perceptualHash, hashErr := digest.PerceptualHashBytes(data); hashErr == nil {
+		candidate.PerceptualHash = perceptualHash
+	}
 	candidate.AcquisitionStatus = scriptpkg.VidRushStatusAcquired
 	candidate.VerificationStatus = scriptpkg.VidRushStatusVerified
 	return scriptports.VerifiedArtifact{

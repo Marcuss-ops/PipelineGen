@@ -95,6 +95,30 @@ func NormalizeItem(item *scriptpkg.GenerationItemV2, preset scriptpkg.Preset, cf
 
 	// ── Step 3: safety defaults ────────────────────────────────────
 	applySafetyDefaults(item, cfg)
+	applyPublicationDefaults(item)
+}
+
+// applyPublicationDefaults keeps the standard generation contract complete
+// when callers omit optional publication settings. Explicit voiceover disable
+// remains authoritative; DocsSpec.Enabled is a plain bool, so Docs are enabled
+// by default for normalized generation requests.
+func applyPublicationDefaults(item *scriptpkg.GenerationItemV2) {
+	if item == nil {
+		return
+	}
+	item.Docs.Enabled = true
+	if item.Output.VoiceoverEnabled != scriptpkg.ToggleDisabled {
+		item.Output.VoiceoverEnabled = scriptpkg.ToggleEnabled
+		mode := strings.TrimSpace(item.Audio.Mode)
+		if mode == "" {
+			mode = strings.TrimSpace(item.Output.Audio.Mode)
+		}
+		if mode == "" || mode == "NONE" {
+			mode = "COMBINED_TIMELINE"
+		}
+		item.Audio.Mode = mode
+		item.Output.Audio.Mode = mode
+	}
 }
 
 // applyMediaDensity expands the operator-facing cadence preset into the

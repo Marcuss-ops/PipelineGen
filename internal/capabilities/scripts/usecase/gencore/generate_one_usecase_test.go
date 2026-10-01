@@ -499,7 +499,12 @@ func TestGenerateOneUseCase_EmitsCanonicalEvents(t *testing.T) {
 	require.NoError(t, err)
 
 	var eventTypes []string
+	activityCount := 0
 	for _, e := range events {
+		if e.Type == "activity" {
+			activityCount++
+			continue
+		}
 		eventTypes = append(eventTypes, e.Type)
 	}
 	want := []string{
@@ -511,7 +516,22 @@ func TestGenerateOneUseCase_EmitsCanonicalEvents(t *testing.T) {
 		"quality.checked",
 		"job.completed",
 	}
-	require.Equal(t, want, eventTypes, "canonical event sequence must match")
+	require.Equal(t, want, eventTypes, "legacy typed event sequence must remain unchanged")
+	require.Greater(t, activityCount, 0, "phase activity records must be additive to the typed event sequence")
+	var sawStarted, sawCompleted bool
+	for _, e := range events {
+		if e.Type != "activity" {
+			continue
+		}
+		switch e.Data["status"] {
+		case "running":
+			sawStarted = true
+		case "completed":
+			sawCompleted = true
+		}
+	}
+	require.True(t, sawStarted, "phase timeline must contain a running activity")
+	require.True(t, sawCompleted, "phase timeline must contain a completed activity")
 
 	// Every event must carry the item_id so downstream observability can
 	// correlate timeline entries with the generation item.

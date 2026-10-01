@@ -195,6 +195,8 @@ func bundlePresetForType(entityType string) string {
 		role = "ORGANIZATION"
 	case "LOGO", "PRODUCT":
 		role = "IMAGE_ENTITY"
+	case "BRAND":
+		role = "logo_default"
 	case "CONCEPT", "VISUAL_CONCEPT":
 		role = "IMPORTANT_PHRASE"
 	}

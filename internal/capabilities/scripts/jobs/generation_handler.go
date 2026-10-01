@@ -183,9 +183,13 @@ func (h *GenerateJobHandler) Handle(
 				}
 			}
 		}
-		if run != nil {
+		if run != nil && run.Status == scriptgen.RunStatusPending {
 			// The HTTP starter creates the run before the job is committed;
 			// the worker is the owner of the execution lifecycle thereafter.
+			// Only a fresh run starts at scene generation. On retries, preserve
+			// the durable stage: replacing CORE_READY (or a failed-stage
+			// checkpoint) here makes ExecuteWithContext replay completed work,
+			// including voiceover and overlay rendering.
 			noteRunLedgerFailure(h.log, "stage_running", run.ID,
 				h.runRepo.UpdateStage(ctx, run.ID, scriptgen.RunStatusRunning, scriptgen.StageGeneratingSceneText))
 		}

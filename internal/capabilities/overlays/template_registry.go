@@ -32,11 +32,12 @@ const (
 // preset-less primitives, the bare layer type and geometry. Preset-driven
 // templates declare only their Primitive — RenderingGen derives the rest.
 type TemplateSpec struct {
-	LayerType string
-	Fit       string
-	BoxWidth  int
-	BoxHeight int
-	Position  []float64
+	LayerType      string
+	Fit            string
+	BoxWidth       int
+	BoxHeight      int
+	Position       []float64
+	RequiredInputs []string
 	// Primitive is the canonical primitive (Text/Image/Video/Shape) this
 	// template terminates in. Every template MUST declare one; the semantic
 	// contract validator fails closed on an empty value.
@@ -81,6 +82,7 @@ var templateRegistry = map[string]TemplateSpec{
 	"org_default":     {Primitive: PrimitiveText},
 	"gpe_default":     {Primitive: PrimitiveText},
 	"concept_default": {Primitive: PrimitiveText},
+	"logo_default":    {Primitive: PrimitiveText},
 	"lower_third":     {Primitive: PrimitiveText},
 	"image_popup":     {Primitive: PrimitiveImage},
 	"quote":           {Primitive: PrimitiveText},

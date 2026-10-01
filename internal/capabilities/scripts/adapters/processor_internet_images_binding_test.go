@@ -58,6 +58,131 @@ func TestProjectEntityImageBindingsPerSceneKeepsRepeatedPersonAssetsDistinct(t *
 	}
 }
 
+// TestProjectEntityImageBindings_RepeatedEntityGetsDistinctCandidates certifies
+// the cross-scene distribution contract: when the same entity appears in two
+// scenes of ONE run and its candidate pool holds two usable images, the second
+// scene must bind a DIFFERENT candidate — the warm shared library must not
+// rebind the same image twice within a single run.
+func TestProjectEntityImageBindings_RepeatedEntityGetsDistinctCandidates(t *testing.T) {
+	person := func() *scriptpkg.SceneAnnotations {
+		return &scriptpkg.SceneAnnotations{PrimaryEntities: []scriptpkg.AnnotatedEntity{{Text: "Milton Leite", CanonicalName: "Milton Leite", Type: "PERSON"}}}
+	}
+	spec := scriptpkg.SpecSceneOutput{Version: 1, Scenes: []scriptpkg.SpecScene{
+		{ID: "scene-0", SegmentID: "scene-0", Index: 0, Annotations: person()},
+		{ID: "scene-1", SegmentID: "scene-1", Index: 1, Annotations: person()},
+	}}
+	// Both scenes carry the SAME two-candidate pool for the entity (the shape a
+	// shared catalog produces).
+	pool := []scriptpkg.SegmentAssetCandidate{
+		readyEntityImageCandidate("milton-a", "Milton Leite", "Milton Leite"),
+		readyEntityImageCandidate("milton-b", "Milton Leite", "Milton Leite"),
+	}
+	segments := []scriptpkg.VidRushSegmentResult{
+		{SegmentID: "scene-0", SceneID: "scene-0", Assets: scriptpkg.SegmentAssetSelection{SecondaryImages: append([]scriptpkg.SegmentAssetCandidate(nil), pool...)}},
+		{SegmentID: "scene-1", SceneID: "scene-1", Assets: scriptpkg.SegmentAssetSelection{SecondaryImages: append([]scriptpkg.SegmentAssetCandidate(nil), pool...)}},
+	}
+
+	out := projectEntityImageBindings(spec, segments, entityImagePolicyForTest())
+	first := out.Scenes[0].Annotations.PrimaryEntities[0].Image
+	second := out.Scenes[1].Annotations.PrimaryEntities[0].Image
+	if first == nil || second == nil || first.Status != "resolved" || second.Status != "resolved" {
+		t.Fatalf("bindings = first:%+v second:%+v, want both resolved", first, second)
+	}
+	if first.AssetID == second.AssetID {
+		t.Fatalf("same candidate %q rebound across scenes; want distinct candidates", first.AssetID)
+	}
+}
+
+// TestProjectEntityImageBindings_SingleCandidatePoolStillBinds certifies the
+// availability fallback: a pool with only one usable image still binds it to
+// every occurrence rather than degrading a later scene to text-only.
+func TestProjectEntityImageBindings_SingleCandidatePoolStillBinds(t *testing.T) {
+	person := func() *scriptpkg.SceneAnnotations {
+		return &scriptpkg.SceneAnnotations{PrimaryEntities: []scriptpkg.AnnotatedEntity{{Text: "Milton Leite", CanonicalName: "Milton Leite", Type: "PERSON"}}}
+	}
+	spec := scriptpkg.SpecSceneOutput{Version: 1, Scenes: []scriptpkg.SpecScene{
+		{ID: "scene-0", SegmentID: "scene-0", Index: 0, Annotations: person()},
+		{ID: "scene-1", SegmentID: "scene-1", Index: 1, Annotations: person()},
+	}}
+	pool := []scriptpkg.SegmentAssetCandidate{readyEntityImageCandidate("only-image", "Milton Leite", "Milton Leite")}
+	segments := []scriptpkg.VidRushSegmentResult{
+		{SegmentID: "scene-0", SceneID: "scene-0", Assets: scriptpkg.SegmentAssetSelection{SecondaryImages: append([]scriptpkg.SegmentAssetCandidate(nil), pool...)}},
+		{SegmentID: "scene-1", SceneID: "scene-1", Assets: scriptpkg.SegmentAssetSelection{SecondaryImages: append([]scriptpkg.SegmentAssetCandidate(nil), pool...)}},
+	}
+
+	out := projectEntityImageBindings(spec, segments, entityImagePolicyForTest())
+	first := out.Scenes[0].Annotations.PrimaryEntities[0].Image
+	second := out.Scenes[1].Annotations.PrimaryEntities[0].Image
+	if first == nil || second == nil || first.AssetID != "only-image" || second.AssetID != "only-image" {
+		t.Fatalf("single-candidate bindings = first:%+v second:%+v, want both only-image", first, second)
+	}
+}
+
+func TestEntityVariantOffset_DeterministicAndInRange(t *testing.T) {
+	for _, seed := range []string{"scene-0|PERSON|MILTON LEITE", "scene-1|PERSON|MILTON LEITE", "scene-9|PERSON|ANNA", ""} {
+		first := entityVariantOffset(seed, 4)
+		second := entityVariantOffset(seed, 4)
+		if first != second {
+			t.Fatalf("offset for seed %q changed between calls: %d vs %d", seed, first, second)
+		}
+		if first < 0 || first >= 4 {
+			t.Fatalf("offset for seed %q = %d, want in [0,4)", seed, first)
+		}
+	}
+	if got := entityVariantOffset("any", 1); got != 0 {
+		t.Fatalf("single-candidate offset = %d, want 0", got)
+	}
+	if got := entityVariantOffset("any", 0); got != 0 {
+		t.Fatalf("empty-pool offset = %d, want 0", got)
+	}
+}
+
+func TestFindEntityImageCandidateFrom_RotatesPoolDeterministically(t *testing.T) {
+	entity := scriptpkg.AnnotatedEntity{CanonicalName: "Milton Leite", Text: "Milton Leite", Type: "PERSON"}
+	seg := scriptpkg.VidRushSegmentResult{Assets: scriptpkg.SegmentAssetSelection{Candidates: []scriptpkg.SegmentAssetCandidate{
+		readyEntityImageCandidate("milton-a", "Milton Leite", "Milton Leite"),
+		readyEntityImageCandidate("milton-b", "Milton Leite", "Milton Leite"),
+		readyEntityImageCandidate("milton-c", "Milton Leite", "Milton Leite"),
+	}}}
+	seed := "scene-x|PERSON|MILTON LEITE"
+	wantOffset := entityVariantOffset(seed, 3)
+
+	got, ok := findEntityImageCandidateFrom(entity, seg, seed)
+	if !ok {
+		t.Fatal("expected a candidate")
+	}
+	want := []string{"milton-a", "milton-b", "milton-c"}[wantOffset]
+	if got.AssetID != want {
+		t.Fatalf("rotated pick = %q, want pool[%d]=%q", got.AssetID, wantOffset, want)
+	}
+	again, _ := findEntityImageCandidateFrom(entity, seg, seed)
+	if again.AssetID != got.AssetID {
+		t.Fatalf("variant selection not deterministic: %q then %q", got.AssetID, again.AssetID)
+	}
+}
+
+func TestFindEntityImageCandidateFrom_SkipsUsedFromRotatedStart(t *testing.T) {
+	entity := scriptpkg.AnnotatedEntity{CanonicalName: "Milton Leite", Text: "Milton Leite", Type: "PERSON"}
+	pool := []scriptpkg.SegmentAssetCandidate{
+		readyEntityImageCandidate("milton-a", "Milton Leite", "Milton Leite"),
+		readyEntityImageCandidate("milton-b", "Milton Leite", "Milton Leite"),
+		readyEntityImageCandidate("milton-c", "Milton Leite", "Milton Leite"),
+	}
+	seg := scriptpkg.VidRushSegmentResult{Assets: scriptpkg.SegmentAssetSelection{Candidates: pool}}
+	seed := "scene-y|PERSON|MILTON LEITE"
+	offset := entityVariantOffset(seed, len(pool))
+	// Mark the rotated first match as already used elsewhere in the run.
+	used := map[string]struct{}{vidRushCandidateIdentity(pool[offset]): {}}
+
+	got, ok := findEntityImageCandidateFrom(entity, seg, seed, used)
+	if !ok {
+		t.Fatal("expected a fallback candidate")
+	}
+	if got.AssetID == pool[offset].AssetID {
+		t.Fatalf("picked already-used candidate %q from the rotated start", got.AssetID)
+	}
+}
+
 func TestFindEntityImageCandidate_PrefersDurableCandidate(t *testing.T) {
 	entity := scriptpkg.AnnotatedEntity{CanonicalName: "Describe John Cena", Type: "PERSON"}
 	seg := scriptpkg.VidRushSegmentResult{Assets: scriptpkg.SegmentAssetSelection{Candidates: []scriptpkg.SegmentAssetCandidate{

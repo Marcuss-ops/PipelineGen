@@ -9,7 +9,6 @@ import (
 
 	domainremote "github.com/Marcuss-ops/PipelineGen/internal/capabilities/remote"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
-	hashutil "github.com/Marcuss-ops/PipelineGen/internal/platform/filesystem"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/observability"
 	timeutil "github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
 )
@@ -190,14 +189,13 @@ func (r *SQLiteStore) FinalizeAggregateParent(ctx context.Context, id string, ta
 		return fmt.Errorf("terminalFlip: persist result: %w", err)
 	}
 
-	evtID := fmt.Sprintf("evt_%d_%s", now.UnixNano(), hashutil.RandomString(6))
 	eventType := "job.aggregate_completed"
 	if targetStatus == job.StatusFailed {
 		eventType = "job.aggregate_failed"
 	}
-	if _, err := tx.ExecContext(ctx, `INSERT INTO job_events (id, job_id, type, message, data_json, created_at) VALUES (?, ?, ?, ?, ?, ?)`,
-		evtID, id, eventType, "parent aggregator terminal-flip (audit 2026-07-03 P0 #1 closure)",
-		fmt.Sprintf(`{"target_status":%q}`, string(targetStatus)), nowStr); err != nil {
+	if err := insertJobTimelineEvent(ctx, tx, id, eventType, "parent aggregator terminal flip", map[string]any{
+		"target_status": string(targetStatus), "status": string(targetStatus),
+	}, now); err != nil {
 		return fmt.Errorf("terminalFlip: insert job event: %w", err)
 	}
 

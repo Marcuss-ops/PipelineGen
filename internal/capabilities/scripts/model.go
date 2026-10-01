@@ -67,6 +67,9 @@ type GenerateRequest struct {
 	// phrase overlays, carried verbatim from the envelope item. Zero keeps the
 	// certified default; a positive value is honoured as-is.
 	MaxPhraseOverlays int `json:"max_phrase_overlays,omitempty"`
+	// MaxImageOverlays is the caller-selected run-level ceiling for all image
+	// overlays, including scene-context and entity-bound imagery.
+	MaxImageOverlays int `json:"max_image_overlays,omitempty"`
 	// OverlayBackground is the visual background selected by script.generate;
 	// it is transported into the sealed OverlayPlan at render time.
 	OverlayBackground *scriptpkg.OverlayBackgroundSpec `json:"overlay_background,omitempty"`

@@ -244,7 +244,7 @@ func TestRunner_OverlayPlanAppliesRunLevelEditorialBudget(t *testing.T) {
 	require.NoError(t, res.OverlayPlan.Validate())
 
 	byID := map[string]capabilityoverlay.OverlayItem{}
-	images, phrases := 0, 0
+	images, phrases, numbers, brands := 0, 0, 0, 0
 	for _, item := range res.OverlayPlan.Items {
 		byID[item.ID] = item
 		switch item.Kind {
@@ -252,13 +252,19 @@ func TestRunner_OverlayPlanAppliesRunLevelEditorialBudget(t *testing.T) {
 			images++
 		case "text_phrase":
 			phrases++
+		case "number":
+			numbers++
+		case "brand_text":
+			brands++
 		default:
 			t.Fatalf("non-editorial overlay survived editorial budget: %+v", item)
 		}
 	}
 	require.Equal(t, 1, images)
 	require.Equal(t, 2, phrases)
-	require.Len(t, res.OverlayPlan.Items, 3)
+	require.Equal(t, 1, numbers, "spoken value cards survive on their independent bounded lane")
+	require.Equal(t, 0, brands, "verified Apple logo asset suppresses the brand-text fallback")
+	require.Len(t, res.OverlayPlan.Items, 4)
 	require.Equal(t, capabilityoverlay.PhraseOverlayBudget{
 		Requested:    capabilityoverlay.MaxPhraseOverlaysPerRun,
 		Materialized: 2,
@@ -511,7 +517,7 @@ func TestCompileResultOverlayPlanPersistsPhraseBudgetEvenWhenNoPhraseIsGrounded(
 	result := &GenerateResult{Scenes: []Scene{
 		{ID: "scene-0", Index: 0, Text: map[Language]string{"en": "A scene without certified timing."}},
 	}}
-	require.NoError(t, compileResultOverlayPlan(result, "en", "plan-1", "project-1", "", GoldenOverlayCanvas))
+	require.NoError(t, compileResultOverlayPlan(result, "en", "plan-1", "project-1", "", GoldenOverlayCanvas, nil))
 	require.Nil(t, result.OverlayPlan)
 	require.NotNil(t, result.PhraseOverlayBudget)
 	require.Equal(t, capabilityoverlay.PhraseOverlayBudget{
@@ -580,7 +586,7 @@ func TestOverlaySceneInputUsesPhraseEndpointTimingFallback(t *testing.T) {
 			ImportantPhrases: []scriptpkg.AnnotationSpan{{Text: "O maior arrependimento da minha vida", Score: 0.95}},
 		},
 	}
-	got, err := overlaySceneInput(scene, "pt-BR", "pt-BR", timing, 0, nil)
+	got, err := overlaySceneInput(scene, "pt-BR", "pt-BR", timing, 0, nil, nil)
 	require.NoError(t, err)
 	require.NotNil(t, got)
 	require.Len(t, got.Phrases, 1)

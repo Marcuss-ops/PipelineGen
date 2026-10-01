@@ -112,7 +112,7 @@ func TestCompileResultOverlayPlanBudgetEchoesCallerCeiling(t *testing.T) {
 	}}
 	canvas := GoldenOverlayCanvas
 	canvas.MaxPhraseOverlays = 9
-	require.NoError(t, compileResultOverlayPlan(result, "en", "plan-budget", "project-budget", "", canvas))
+	require.NoError(t, compileResultOverlayPlan(result, "en", "plan-budget", "project-budget", "", canvas, nil))
 	require.Nil(t, result.OverlayPlan)
 	require.NotNil(t, result.PhraseOverlayBudget)
 	require.Equal(t, capabilityoverlay.PhraseOverlayBudget{Requested: 9, Shortfall: 9}, *result.PhraseOverlayBudget)

@@ -244,9 +244,8 @@ func validateAudioMode(item GenerationItemV2, ref string) []string {
 	}
 	switch mode {
 	case "":
-		if item.Output.VoiceoverEnabled.AsBool() {
-			return []string{ref + ": voiceover_enabled requires explicit audio.mode (CHUNKED_VOICEOVER or COMBINED_TIMELINE)"}
-		}
+		// The generation normalizer supplies COMBINED_TIMELINE when
+		// voiceover is enabled and the caller omitted an audio mode.
 		return nil
 	case "NONE", "CHUNKED_VOICEOVER":
 		return nil

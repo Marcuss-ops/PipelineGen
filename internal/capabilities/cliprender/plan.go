@@ -14,6 +14,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"strings"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
@@ -152,6 +153,114 @@ type PlanOutput struct {
 	FPSNum                 int    `json:"fps_num"`
 	FPSDen                 int    `json:"fps_den"`
 	ForegroundScalePercent int    `json:"foreground_scale_percent,omitempty"`
+	// SourceFrame is the optional card treatment of the rendered clip: a
+	// border frame behind the clip plus its drop shadow. The mapper transports
+	// it verbatim into renderinggen.overlay-plan.v1's source_frame block; the
+	// renderer owns the geometry, the producer owns the intent.
+	SourceFrame *PlanSourceFrame `json:"source_frame,omitempty"`
+}
+
+// PlanSourceFrame is the card treatment of the clip (and, per overlay segment,
+// the same declaration travels as the item's frame). Border and shadow are both
+// optional; a declaration with neither is a contradiction and is rejected.
+type PlanSourceFrame struct {
+	Border *PlanFrameBorder `json:"border,omitempty"`
+	Shadow *PlanFrameShadow `json:"shadow,omitempty"`
+}
+
+// PlanFrameBorder is the visible frame around the clip. WidthPX is the visible
+// thickness in output pixels, Color is the #RRGGBB fill, RadiusPX is the
+// frame's outer corner radius (the clip's concentric inner radius is derived by
+// the renderer as radius_px - width_px).
+type PlanFrameBorder struct {
+	WidthPX  float64 `json:"width_px"`
+	Color    string  `json:"color"`
+	RadiusPX float64 `json:"radius_px,omitempty"`
+}
+
+// PlanFrameShadow is the drop shadow of the card: the frame when a border is
+// declared, the clip itself otherwise.
+type PlanFrameShadow struct {
+	Color    string  `json:"color"`
+	Opacity  float64 `json:"opacity,omitempty"`
+	BlurPX   float64 `json:"blur_px,omitempty"`
+	OffsetXP float64 `json:"offset_x_px,omitempty"`
+	OffsetYP float64 `json:"offset_y_px,omitempty"`
+}
+
+// Frame contract bounds. They are the SAME numbers the RenderingGen overlay
+// contract publishes, so a value this boundary admits is never rejected by the
+// worker and vice versa.
+const (
+	MaxFrameBorderWidth  = 512.0
+	MaxFrameRadius       = 512.0
+	MaxFrameShadowBlur   = 256.0
+	MaxFrameShadowOffset = 256.0
+)
+
+// ValidatePlanSourceFrame is the single validator for a card declaration, shared
+// by the request boundary and the sealed plan so the two cannot disagree.
+//
+// foregroundScalePercent is the resolved clip inset: a BORDER is only visible
+// when the clip is inset (at 100% the frame sits entirely outside the canvas),
+// so declaring one without an inset is rejected instead of rendered blind.
+func ValidatePlanSourceFrame(frame *PlanSourceFrame, foregroundScalePercent int) error {
+	if frame == nil {
+		return nil
+	}
+	if frame.Border == nil && frame.Shadow == nil {
+		return fmt.Errorf("source_frame requires border or shadow")
+	}
+	if frame.Border != nil {
+		border := frame.Border
+		if border.WidthPX < 0 || border.WidthPX > MaxFrameBorderWidth || math.IsNaN(border.WidthPX) || math.IsInf(border.WidthPX, 0) {
+			return fmt.Errorf("source_frame.border.width_px must be within [0,%g]", MaxFrameBorderWidth)
+		}
+		if border.RadiusPX < 0 || border.RadiusPX > MaxFrameRadius || math.IsNaN(border.RadiusPX) || math.IsInf(border.RadiusPX, 0) {
+			return fmt.Errorf("source_frame.border.radius_px must be within [0,%g]", MaxFrameRadius)
+		}
+		if !isFrameHexColor(border.Color) {
+			return fmt.Errorf("source_frame.border.color %q must be #RRGGBB", border.Color)
+		}
+		if border.WidthPX > 0 && (foregroundScalePercent <= 0 || foregroundScalePercent >= 100) {
+			return fmt.Errorf("source_frame.border requires an inset clip: set foreground_scale_percent within [1,99] (got %d)", foregroundScalePercent)
+		}
+	}
+	if frame.Shadow != nil {
+		shadow := frame.Shadow
+		if !isFrameHexColor(shadow.Color) {
+			return fmt.Errorf("source_frame.shadow.color %q must be #RRGGBB", shadow.Color)
+		}
+		if shadow.Opacity < 0 || shadow.Opacity > 1 || math.IsNaN(shadow.Opacity) {
+			return fmt.Errorf("source_frame.shadow.opacity must be within [0,1]")
+		}
+		if shadow.BlurPX < 0 || shadow.BlurPX > MaxFrameShadowBlur || math.IsNaN(shadow.BlurPX) {
+			return fmt.Errorf("source_frame.shadow.blur_px must be within [0,%g]", MaxFrameShadowBlur)
+		}
+		if math.Abs(shadow.OffsetXP) > MaxFrameShadowOffset || math.Abs(shadow.OffsetYP) > MaxFrameShadowOffset ||
+			math.IsNaN(shadow.OffsetXP) || math.IsNaN(shadow.OffsetYP) {
+			return fmt.Errorf("source_frame.shadow offsets must be within ±%g", MaxFrameShadowOffset)
+		}
+	}
+	return nil
+}
+
+// isFrameHexColor accepts exactly the #RRGGBB spelling the render plan's colour
+// properties declare (the engine parses no other form).
+func isFrameHexColor(value string) bool {
+	if len(value) != 7 || value[0] != '#' {
+		return false
+	}
+	for _, digit := range value[1:] {
+		switch {
+		case digit >= '0' && digit <= '9':
+		case digit >= 'a' && digit <= 'f':
+		case digit >= 'A' && digit <= 'F':
+		default:
+			return false
+		}
+	}
+	return true
 }
 
 // PlanAudio is the resolved audio policy. Mode copy_if_compatible means the
@@ -233,6 +342,9 @@ type CompileInput struct {
 	Overlay                *PlanOverlayInput
 	OutputPath             string
 	ForegroundScalePercent int
+	// SourceFrame is the caller's card treatment of the clip (border frame +
+	// drop shadow). It travels verbatim into the sealed plan's output block.
+	SourceFrame *PlanSourceFrame
 }
 
 // Compile builds the sealed plan from the resolved inputs. Fail-closed: any
@@ -277,6 +389,7 @@ func Compile(in CompileInput) (ClipRenderPlanV1, error) {
 			FPSNum:                 in.Contract.FPSNum,
 			FPSDen:                 in.Contract.FPSDen,
 			ForegroundScalePercent: normalizeForegroundScale(in.ForegroundScalePercent),
+			SourceFrame:            in.SourceFrame,
 		},
 		Audio: PlanAudio{
 			Mode:       in.AudioMode,
@@ -495,6 +608,9 @@ func (p ClipRenderPlanV1) Validate() error {
 	}
 	if p.Output.ForegroundScalePercent != 0 && (p.Output.ForegroundScalePercent < 1 || p.Output.ForegroundScalePercent > 100) {
 		return fmt.Errorf("%w: foreground_scale_percent must be within [1,100]", ErrInvalidClipPlan)
+	}
+	if err := ValidatePlanSourceFrame(p.Output.SourceFrame, p.Output.ForegroundScalePercent); err != nil {
+		return fmt.Errorf("%w: %w", ErrInvalidClipPlan, err)
 	}
 	switch p.Audio.Mode {
 	case AudioModeCopyIfCompatible, AudioModeTranscode:

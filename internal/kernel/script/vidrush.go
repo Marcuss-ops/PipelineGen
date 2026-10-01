@@ -146,12 +146,18 @@ func NormalizeAnnotationType(raw string) string {
 	switch strings.ToUpper(strings.TrimSpace(raw)) {
 	case "PERSON":
 		return "PERSON"
+	case "BRAND":
+		return "LOGO"
+	case "LOGO":
+		return "LOGO"
 	case "ORG", "ORGANIZATION", "COMPANY", "CORP", "CORPORATION", "BUSINESS":
 		return "ORG"
 	case "GPE", "PLACE", "LOCATION", "CITY", "COUNTRY":
 		return "GPE"
-	case "DATE":
+	case "DATE", "DATETIME", "CALENDAR_DATE":
 		return "DATE"
+	case "METRIC", "METRICS", "STATISTIC", "STATISTICS", "QUANTITY":
+		return "NUMBER"
 	case "TIME":
 		return "TIME"
 	case "CARDINAL":
@@ -162,14 +168,12 @@ func NormalizeAnnotationType(raw string) string {
 		return "ORDINAL"
 	case "MONEY":
 		return "MONEY"
-	case "PERCENT":
+	case "PERCENT", "PERCENTAGE":
 		return "PERCENT"
 	case "QUOTE":
 		return "QUOTE"
 	case "PRODUCT":
 		return "PRODUCT"
-	case "LOGO":
-		return "LOGO"
 	case "EVENT":
 		return "EVENT"
 	case "WORK_OF_ART", "WORK":
@@ -352,6 +356,11 @@ type SegmentAssetCandidate struct {
 	PersistenceStatus     string  `json:"persistence_status,omitempty"`
 	IndexStatus           string  `json:"index_status,omitempty"`
 	RightsBasis           string  `json:"rights_basis,omitempty"`
+	// PerceptualHash is the algorithm-prefixed visual identity of the
+	// acquired bytes (digest.PerceptualHashBytes). It is empty until the
+	// candidate has been acquired and verified. It is a dedup aid only: it
+	// never replaces the content SHA-256 and is never used for identity.
+	PerceptualHash string `json:"perceptual_hash,omitempty"`
 }
 
 // SegmentAssetSelection is the winning asset bundle for a segment.

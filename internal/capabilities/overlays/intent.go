@@ -303,8 +303,8 @@ func PlanOverlayIntents(scenes []SceneEntityInput, registry *ChrononOverlayRegis
 //
 //	PERSON → entity_card, ORG/ORGANIZATION → organization,
 //	GPE/PLACE/LOCATION/CITY/COUNTRY → location,
-//	NUMBER/NUM/CARDINAL/ORDINAL/MONEY/PERCENT → number,
-//	QUOTE → quote, PRODUCT → product, LOGO → logo, everything else → concept.
+//	NUMBER/NUM/CARDINAL/ORDINAL/MONEY/PERCENT/DATE/TIME → number,
+//	QUOTE → quote, PRODUCT → product, LOGO/BRAND → logo, everything else → concept.
 func EntityTypeToKind(entityType string) OverlayKind {
 	switch strings.ToUpper(strings.TrimSpace(entityType)) {
 	case "PERSON":
@@ -313,7 +313,7 @@ func EntityTypeToKind(entityType string) OverlayKind {
 		return KindOrganization
 	case "GPE", "PLACE", "LOCATION", "CITY", "COUNTRY":
 		return KindLocation
-	case "NUMBER", "NUM", "CARDINAL", "ORDINAL", "MONEY", "PERCENT":
+	case "NUMBER", "NUM", "CARDINAL", "ORDINAL", "MONEY", "PERCENT", "PERCENTAGE", "METRIC", "METRICS", "STATISTIC", "STATISTICS", "QUANTITY", "DATE", "TIME":
 		return KindNumber
 	case "QUOTE":
 		return KindQuote
@@ -321,6 +321,8 @@ func EntityTypeToKind(entityType string) OverlayKind {
 		return KindProduct
 	case "LOGO":
 		return KindLogo
+	case "BRAND":
+		return KindBrandText
 	default:
 		return KindConcept
 	}

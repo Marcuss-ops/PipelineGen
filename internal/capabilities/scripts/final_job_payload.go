@@ -10,6 +10,7 @@ import (
 
 	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
 type FinalJobStockFile struct{ ID, Name string }
@@ -71,35 +72,96 @@ func BuildFinalJobPayloads(ctx context.Context, runID string, req GenerateReques
 			return nil, nil, fmt.Errorf("final_job scene %q has no generated scene", segment.ID)
 		}
 		if fixedMedia {
-			ids := []string{}
-			for _, clip := range localScene.Clips {
-				if clip != nil && strings.TrimSpace(clip.ID) != "" {
-					ids = append(ids, strings.TrimSpace(clip.ID))
+			type fixedClip struct {
+				assetID    string
+				durationUS int64
+				offsetUS   int64
+			}
+			fixedClips := make([]fixedClip, 0)
+			// The protected timeline intents define the exact cut duration and
+			// order. The Drive asset's full duration may be longer (for example,
+			// 15/19/13s source files used for three 5s intro cuts).
+			for _, intent := range segment.EffectiveAudioIntents() {
+				assetID := strings.TrimSpace(intent.ClipAssetID)
+				if assetID == "" {
+					continue
 				}
+				durationUS := intent.TimelineDurationUS
+				fixedClips = append(fixedClips, fixedClip{assetID: assetID, durationUS: durationUS, offsetUS: intent.TimelineOffsetUS})
 			}
-			if len(ids) == 0 && localScene.Clip != nil && strings.TrimSpace(localScene.Clip.ID) != "" {
-				ids = append(ids, strings.TrimSpace(localScene.Clip.ID))
-			}
-			if len(ids) == 0 {
-				for _, intent := range segment.EffectiveAudioIntents() {
-					if intent.ClipAssetID != "" {
-						ids = append(ids, intent.ClipAssetID)
+			// SourceDurationUS describes the complete source file, not the cut
+			// placed on the timeline. When a cut has no explicit timeline duration,
+			// derive it from the next cut's offset or the fixed segment boundary.
+			if len(fixedClips) > 1 {
+				allAtSameOffset := true
+				for _, clip := range fixedClips {
+					if clip.offsetUS != 0 {
+						allAtSameOffset = false
+						break
+					}
+				}
+				if allAtSameOffset {
+					for i := range fixedClips {
+						if fixedClips[i].durationUS <= 0 {
+							fixedClips[i].durationUS = segment.DurationUS / int64(len(fixedClips))
+						}
+					}
+				} else {
+					for i := range fixedClips {
+						if fixedClips[i].durationUS > 0 {
+							continue
+						}
+						startUS := fixedClips[i].offsetUS
+						endUS := segment.DurationUS
+						if i+1 < len(fixedClips) && fixedClips[i+1].offsetUS > startUS {
+							endUS = fixedClips[i+1].offsetUS
+						}
+						if endUS > startUS {
+							fixedClips[i].durationUS = endUS - startUS
+						}
 					}
 				}
 			}
-			if len(ids) == 0 {
+			if len(fixedClips) == 0 {
+				for _, clip := range localScene.Clips {
+					if clip != nil && strings.TrimSpace(clip.ID) != "" {
+						var durationUS int64
+						if clip.SourceOutMS > clip.SourceInMS {
+							durationUS = (clip.SourceOutMS - clip.SourceInMS) * 1000
+						}
+						fixedClips = append(fixedClips, fixedClip{assetID: strings.TrimSpace(clip.ID), durationUS: durationUS})
+					}
+				}
+			}
+			if len(fixedClips) == 0 && localScene.Clip != nil && strings.TrimSpace(localScene.Clip.ID) != "" {
+				var durationUS int64
+				if localScene.Clip.SourceOutMS > localScene.Clip.SourceInMS {
+					durationUS = (localScene.Clip.SourceOutMS - localScene.Clip.SourceInMS) * 1000
+				}
+				fixedClips = append(fixedClips, fixedClip{assetID: strings.TrimSpace(localScene.Clip.ID), durationUS: durationUS})
+			}
+			if len(fixedClips) == 0 {
 				return nil, nil, fmt.Errorf("fixed scene %q has no clip assets", segment.ID)
 			}
-			for _, assetID := range ids {
-				asset, err := resolveFinalJobFixedMediaAsset(ctx, resolver, result, segment.ID, assetID, renderLanguage)
+			for _, fixed := range fixedClips {
+				asset, err := resolveFinalJobFixedMediaAsset(ctx, resolver, result, segment.ID, fixed.assetID, renderLanguage)
 				if err != nil {
-					return nil, nil, fmt.Errorf("resolve intro clip %s: %w", assetID, err)
+					return nil, nil, fmt.Errorf("resolve intro clip %s: %w", fixed.assetID, err)
 				}
 				durationMS, _ := asset["duration_ms"].(int64)
+				if fixed.durationUS > 0 {
+					durationMS = (fixed.durationUS + 999) / 1000
+				}
+				if durationMS <= 0 {
+					remainingMS := (segment.DurationUS + 999) / 1000
+					if remainingMS > 0 {
+						durationMS = remainingMS / int64(len(fixedClips))
+					}
+				}
 				if durationMS <= 0 {
 					durationMS = 5000
 				}
-				remoteScenes = append(remoteScenes, compositeStockScene(fmt.Sprintf("scene-%04d", clipOrdinal), clipOrdinal, asset, durationMS, "Protected intro clip"))
+				remoteScenes = append(remoteScenes, compositeVideoScene(fmt.Sprintf("scene-%04d", clipOrdinal), clipOrdinal, "clip", asset, durationMS, "Protected intro clip"))
 				appendFinalJobRuntimeAsset(&runtimeAssets, seenRuntimeAssets, "clip", asset)
 				plannedDurationMS += durationMS
 				clipOrdinal++
@@ -109,6 +171,9 @@ func BuildFinalJobPayloads(ctx context.Context, runID string, req GenerateReques
 		if !sceneExists {
 			return nil, nil, fmt.Errorf("final_job scene %q has no generated scene", segment.ID)
 		}
+		if req.MediaMode == scriptpkg.MediaModeStockOnly && (localScene.Stock == nil || strings.TrimSpace(localScene.Stock.FolderID) == "") {
+			return nil, nil, fmt.Errorf("final_job stock_only scene %q has no stock folder binding; refusing to route it through the clip path", segment.ID)
+		}
 		if localScene.Stock == nil || strings.TrimSpace(localScene.Stock.FolderID) == "" {
 			// Clip-only scene: the runtime receives the clip THIS pipeline
 			// produced, never the unmodified source clip from the library.
@@ -116,10 +181,23 @@ func BuildFinalJobPayloads(ctx context.Context, runID string, req GenerateReques
 			if err != nil {
 				return nil, nil, err
 			}
-			remoteScenes = append(remoteScenes, compositeStockScene(fmt.Sprintf("scene-%04d", clipOrdinal), clipOrdinal, asset, durationMS, firstFinalJobValue(localScene.Text[req.SourceLanguage], req.Title, localScene.ID)))
+			// A certified scene render often contains only the selected source
+			// clip's original duration, while its narration can be much longer.
+			// Repeat that same pipeline-produced visual in bounded chunks to fill
+			// the canonical scene duration; otherwise the final video ends before
+			// the certified audio and later overlays are lost.
+			remainingMS := (segment.DurationUS + 999) / 1000
+			if remainingMS <= 0 {
+				return nil, nil, fmt.Errorf("final_job clip-only scene %q has no positive canonical duration", segment.ID)
+			}
+			for remainingMS > 0 {
+				chunkMS := min(durationMS, remainingMS)
+				remoteScenes = append(remoteScenes, compositeVideoScene(fmt.Sprintf("scene-%04d", clipOrdinal), clipOrdinal, "clip", asset, chunkMS, firstFinalJobValue(localScene.Text[req.SourceLanguage], req.Title, localScene.ID)))
+				plannedDurationMS += chunkMS
+				clipOrdinal++
+				remainingMS -= chunkMS
+			}
 			appendFinalJobRuntimeAsset(&runtimeAssets, seenRuntimeAssets, "clip", asset)
-			plannedDurationMS += durationMS
-			clipOrdinal++
 			if text := localScene.Text[req.SourceLanguage]; text != "" {
 				scriptText.WriteString(text)
 				scriptText.WriteByte('\n')
@@ -178,7 +256,7 @@ func BuildFinalJobPayloads(ctx context.Context, runID string, req GenerateReques
 			// Keep the stock video on Drive. The remote worker receives this
 			// immutable reference and owns materialization/prefetch on its host.
 			appendFinalJobRuntimeAsset(&runtimeAssets, seenRuntimeAssets, "stock", asset)
-			remoteScenes = append(remoteScenes, compositeStockScene(fmt.Sprintf("scene-%04d", clipOrdinal), clipOrdinal, asset, chunkMS, sceneText))
+			remoteScenes = append(remoteScenes, compositeVideoScene(fmt.Sprintf("scene-%04d", clipOrdinal), clipOrdinal, "stock", asset, chunkMS, sceneText))
 			plannedDurationMS += chunkMS
 			clipOrdinal++
 			remainingMS -= chunkMS
@@ -195,6 +273,7 @@ func BuildFinalJobPayloads(ctx context.Context, runID string, req GenerateReques
 	if err := enforceFinalJobMinimumSceneDuration(remoteScenes, 100); err != nil {
 		return nil, nil, err
 	}
+	plannedDurationMS = finalJobSceneDurationMS(remoteScenes)
 	if delta := plannedDurationMS - result.FinalAudio.DurationMS; delta < -40 || delta > 40 {
 		return nil, nil, fmt.Errorf("final_job scene duration %dms does not match certified final audio %dms (tolerance 40ms)", plannedDurationMS, result.FinalAudio.DurationMS)
 	}
@@ -260,6 +339,44 @@ func BuildFinalJobPayloads(ctx context.Context, runID string, req GenerateReques
 	return pre, finalize, nil
 }
 
+func finalJobSceneDurationMS(scenes []map[string]any) int64 {
+	var total int64
+	for _, scene := range scenes {
+		seconds, ok := scene["duration_seconds"].(float64)
+		if ok && !math.IsNaN(seconds) && !math.IsInf(seconds, 0) && seconds > 0 {
+			total += int64(math.Round(seconds * 1000))
+		}
+	}
+	return total
+}
+
+// trimFinalJobSceneTail removes a small rounding surplus from the end of the
+// video timeline while preserving the minimum duration of every scene. The
+// packet-copy renderer requires its video timeline not to exceed final audio.
+func trimFinalJobSceneTail(scenes []map[string]any, surplusMS, minimumMS int64) error {
+	if surplusMS <= 0 {
+		return nil
+	}
+	for i := len(scenes) - 1; i >= 0 && surplusMS > 0; i-- {
+		seconds, ok := scenes[i]["duration_seconds"].(float64)
+		if !ok || math.IsNaN(seconds) || math.IsInf(seconds, 0) {
+			return fmt.Errorf("final_job scene %d has an invalid duration while aligning audio", i)
+		}
+		durationMS := int64(math.Round(seconds * 1000))
+		available := durationMS - minimumMS
+		if available <= 0 {
+			continue
+		}
+		trim := min(available, surplusMS)
+		scenes[i]["duration_seconds"] = float64(durationMS-trim) / 1000
+		surplusMS -= trim
+	}
+	if surplusMS > 0 {
+		return fmt.Errorf("final_job cannot trim %dms to fit the certified audio without violating minimum scene duration", surplusMS)
+	}
+	return nil
+}
+
 // finalJobIdempotencyKey stays stable when the same submitted request is
 // retried under a new local run id. The remote Master uses this key to return
 // the already-prepared render instead of starting a duplicate video job.
@@ -299,6 +416,18 @@ func finalJobOverlayAssets(result *GenerateResult) ([]any, error) {
 	}
 	out := make([]any, 0, len(result.OverlayPlan.Items))
 	frameGuardUS := (1_000_000*int64(fpsDen) + int64(fpsNum) - 1) / int64(fpsNum)
+	// One SSOT admission gate for the finalize handoff. Every duplicate
+	// surface upstream (entity/context image arms, planner+resolver copies,
+	// compose composites) has its own key and its own blind spot; THIS is the
+	// last gate before the Master and it sees the exact wire facts: content
+	// identity (one overlay per rendered asset) and the FRAME window the
+	// Master's mode=replace decoder will enforce (one overlay per frame
+	// interval). Both are fail-closed: a payload that violates either never
+	// reaches the remote and can never burn a worker attempt on a guaranteed
+	// rejection.
+	admittedContent := make(map[string]string, len(result.OverlayPlan.Items))
+	type frameWindow struct{ start, end int64 }
+	admittedFrames := make(map[string]frameWindow, len(result.OverlayPlan.Items))
 	for index, item := range result.OverlayPlan.Items {
 		artifact, ok := byID[strings.TrimSpace(item.ID)]
 		if !ok {
@@ -317,11 +446,38 @@ func finalJobOverlayAssets(result *GenerateResult) ([]any, error) {
 			}
 			startUS, endUS = scheduledStartUS, scheduledEndUS
 		}
-		startFrame := startUS * int64(fpsNum) / (1_000_000 * int64(fpsDen))
+		// Map both endpoints onto the same frame grid. Flooring the start and
+		// ceiling the end can turn an exact 120-frame (5 s at 24 fps) asset
+		// into a 121-frame window whenever the start falls between frames.
+		// The Master then has to extend a packet-copied overlay past its
+		// certified tail, which can corrupt the following GOP.
+		frameDenominator := int64(1_000_000 * fpsDen)
+		startFrame := (startUS*int64(fpsNum) + frameDenominator - 1) / frameDenominator
 		endFrame := (endUS*int64(fpsNum) + 1_000_000*int64(fpsDen) - 1) / (1_000_000 * int64(fpsDen))
+		if artifact.FrameCount > 0 && endFrame-startFrame > int64(artifact.FrameCount) {
+			endFrame = startFrame + int64(artifact.FrameCount)
+		}
 		if endFrame <= startFrame {
 			return nil, fmt.Errorf("final_job overlay %q has an empty frame interval", item.ID)
 		}
+		// Gate 1 — content identity: the same rendered overlay artifact (same
+		// Drive bytes) admitted twice would render the same visual again. The
+		// upstream arms dedup on their own keys, which is exactly how the
+		// 2026-09-30 duplicate-image incident slipped through.
+		if prior, exists := admittedContent[sha]; exists {
+			return nil, fmt.Errorf("final_job overlays %q and %q render the same Drive artifact %s; one image one overlay", prior, item.ID, driveID)
+		}
+		admittedContent[sha] = item.ID // Gate 2 — frame window: the Master replaces the frames of an overlay
+		// window, so two admitted overlays sharing even one frame is a
+		// guaranteed remote rejection (or a corrupted composite). Project both
+		// endpoints onto the exact frame grid the payload carries, matching
+		// what the Master will compare.
+		for priorID, prior := range admittedFrames {
+			if startFrame < prior.end && prior.start < endFrame {
+				return nil, fmt.Errorf("final_job overlay %q frame window [%d,%d) intersects overlay %q [%d,%d); the Master rejects intersecting replace overlays", item.ID, startFrame, endFrame, priorID, prior.start, prior.end)
+			}
+		}
+		admittedFrames[item.ID] = frameWindow{start: startFrame, end: endFrame}
 		out = append(out, map[string]any{
 			"id": item.ID, "asset_id": firstFinalJobValue(artifact.ID, driveID),
 			"drive_file_id": driveID, "url": driveFileWebLink(driveID),
@@ -405,14 +561,11 @@ func scheduleFinalJobSceneImage(result *GenerateResult, image capabilityoverlay.
 	return candidate, candidate + duration, nil
 }
 
-// compositeStockScene emits one remote scene. The video reference stays in the
-// `stock` slot for BOTH cases, because the slot describes a SILENT video: the
-// remote `scene.composite.v1` worker renders video only and the certified final
-// voiceover/BGM mix is supplied separately through runtime_audio. A clip-only
-// scene's ref is a certified localized render, whose own voiceover track is
-// deliberately not the mix — putting it in `clip` would add a second
-// scene_clip_audio track and mix the render's audio into the final video.
-func compositeStockScene(id string, index int, asset map[string]any, durationMS int64, text string) map[string]any {
+// compositeVideoScene preserves source identity in the remote contract. Stock
+// footage and caller-provided clips both carry silent video in the `stock`
+// media slot, but `kind` determines which pipeline policy owns that video.
+// Keep it explicit so stock can never inherit clip subtitle/transcript work.
+func compositeVideoScene(id string, index int, kind string, asset map[string]any, durationMS int64, text string) map[string]any {
 	ref := make(map[string]any, len(asset))
 	for k, v := range asset {
 		// Materialized local paths are only for the 77-side compositor. The 51
@@ -425,7 +578,7 @@ func compositeStockScene(id string, index int, asset map[string]any, durationMS 
 	if driveID := strings.TrimSpace(fmt.Sprint(ref["drive_file_id"])); driveID != "" {
 		ref["url"] = driveFileWebLink(driveID)
 	}
-	return map[string]any{"scene_id": id, "index": index, "kind": "clip", "text": text, "duration_seconds": float64(durationMS) / 1000, "stock": ref}
+	return map[string]any{"scene_id": id, "index": index, "kind": kind, "text": text, "duration_seconds": float64(durationMS) / 1000, "stock": ref}
 }
 
 // The remote renderer requires each scene to be at least 100 ms. Audio and

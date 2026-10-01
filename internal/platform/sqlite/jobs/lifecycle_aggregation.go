@@ -2,12 +2,10 @@ package jobs
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"time"
 
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
-	hashutil "github.com/Marcuss-ops/PipelineGen/internal/platform/filesystem"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/observability"
 	timeutil "github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
 )
@@ -59,10 +57,7 @@ func (r *SQLiteStore) ScheduleRetry(ctx context.Context, id string, workerID, le
 		return job.ErrTransitionConflict
 	}
 
-	evtID := fmt.Sprintf("evt_%d_%s", now.UnixNano(), hashutil.RandomString(6))
-	evtData, _ := json.Marshal(map[string]string{"error": errMsg})
-	if _, err := tx.ExecContext(ctx, `INSERT INTO job_events (id, job_id, type, message, data_json, created_at) VALUES (?, ?, ?, ?, ?, ?)`,
-		evtID, id, "job_retry_wait", "job.Job scheduled for retry", string(evtData), nowStr); err != nil {
+	if err := insertJobTimelineEvent(ctx, tx, id, "job_retry_wait", "job scheduled for retry", map[string]any{"error": errMsg, "status": string(job.StatusRetryWait)}, now); err != nil {
 		return fmt.Errorf("scheduleRetry: insert job event: %w", err)
 	}
 
@@ -78,9 +73,15 @@ func (r *SQLiteStore) ScheduleRetry(ctx context.Context, id string, workerID, le
 // lost the CAS race (rows affected == 0) archives nothing, because the winner
 // already did.
 func (r *SQLiteStore) exhaustRetry(ctx context.Context, j *job.Job) error {
-	nowStr := timeutil.FormatRFC3339(time.Now())
+	now := time.Now().UTC()
+	nowStr := timeutil.FormatRFC3339(now)
 	msg := fmt.Sprintf("retry exhausted (%d/%d)", j.RetryCount, j.MaxRetries)
-	res, err := r.db.ExecContext(ctx,
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("retry: exhaust begin: %w", err)
+	}
+	defer tx.Rollback()
+	res, err := tx.ExecContext(ctx,
 		`UPDATE jobs SET status = 'FAILED', error = ?, worker_id = '', lease_id = '',
 		 lease_expiry = NULL, revision = revision + 1, updated_at = ?
 		 WHERE id = ? AND status = 'RETRY_WAIT' AND revision = ?`,
@@ -91,14 +92,21 @@ func (r *SQLiteStore) exhaustRetry(ctx context.Context, j *job.Job) error {
 	if mustRowsAffected(res) == 0 {
 		return nil
 	}
-	evtID := fmt.Sprintf("evt_%d_%s", time.Now().UnixNano(), hashutil.RandomString(6))
-	evtData, _ := json.Marshal(map[string]string{"error": msg})
-	if _, err := r.db.ExecContext(ctx, `INSERT INTO job_events (id, job_id, type, message, data_json, created_at) VALUES (?, ?, ?, ?, ?, ?)`,
-		evtID, j.ID, "job_failed", msg, string(evtData), nowStr); err != nil {
+	if err := insertJobTimelineEvent(ctx, tx, j.ID, "job_failed", msg, map[string]any{"error": msg}, now); err != nil {
 		return fmt.Errorf("retry: exhaust event: %w", err)
 	}
-	if err := r.DeadLetter(ctx, j.ID, msg); err != nil {
+	payload := string(j.Payload)
+	if payload == "" {
+		payload = "{}"
+	}
+	if _, err := tx.ExecContext(ctx,
+		`INSERT INTO dead_letter_jobs (job_id, job_type, correlation_id, error, payload_json, retry_count, failed_at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?)`,
+		j.ID, j.Type, j.CorrelationID, msg, payload, j.RetryCount, nowStr); err != nil {
 		return fmt.Errorf("retry: exhaust dead-letter: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("retry: exhaust commit: %w", err)
 	}
 	return nil
 }
@@ -109,7 +117,12 @@ func (r *SQLiteStore) exhaustRetry(ctx context.Context, j *job.Job) error {
 func (r *SQLiteStore) Cancel(ctx context.Context, id string) error {
 	now := time.Now().UTC()
 	nowStr := timeutil.FormatRFC3339(now)
-	res, err := r.db.ExecContext(ctx,
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("cancel: begin tx: %w", err)
+	}
+	defer tx.Rollback()
+	res, err := tx.ExecContext(ctx,
 		`UPDATE jobs SET status = 'CANCELLED', cancelled_at = ?, worker_id = '',
 		 lease_id = '', lease_expiry = NULL, revision = revision + 1, updated_at = ?
 		 WHERE id = ? AND status IN ('SCHEDULED', 'QUEUED', 'LEASED', 'RUNNING', 'FINALIZING', 'RETRY_WAIT')`,
@@ -120,6 +133,7 @@ func (r *SQLiteStore) Cancel(ctx context.Context, id string) error {
 	affected, _ := res.RowsAffected()
 	if affected == 0 {
 		// Idempotent: check if already cancelled/completed/failed.
+		_ = tx.Rollback()
 		j, _ := r.Get(ctx, id)
 		if j != nil && j.IsTerminal() {
 			return nil
@@ -132,10 +146,11 @@ func (r *SQLiteStore) Cancel(ctx context.Context, id string) error {
 		return job.ErrTransitionConflict
 	}
 
-	evtID := fmt.Sprintf("evt_%d_%s", now.UnixNano(), hashutil.RandomString(6))
-	if _, err := r.db.ExecContext(ctx, `INSERT INTO job_events (id, job_id, type, message, data_json, created_at) VALUES (?, ?, ?, ?, ?, ?)`,
-		evtID, id, "job_cancelled", "job.Job cancelled", "{}", nowStr); err != nil {
+	if err := insertJobTimelineEvent(ctx, tx, id, "job_cancelled", "job cancelled", map[string]any{"status": string(job.StatusCancelled)}, now); err != nil {
 		return fmt.Errorf("cancel: insert job event: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("cancel: commit: %w", err)
 	}
 	return nil
 }
@@ -174,7 +189,14 @@ func (r *SQLiteStore) Retry(ctx context.Context, id string) (*job.Job, error) {
 	if err != nil || j == nil {
 		return nil, fmt.Errorf("retry: job %s not found", id)
 	}
-	if j.Status != job.StatusRetryWait && j.Status != job.StatusFailed {
+	// CANCELLED is a retryable source alongside RETRY_WAIT/FAILED: a service
+	// restart (deploy, operator systemd action) cancels every RUNNING job mid-
+	// flight without spending its retry budget, and the durable run keeps its
+	// checkpoint — the retry must re-enter the queue instead of forcing a
+	// brand-new submission (new idempotency key, full TTS/overlay replay).
+	// An explicit operator cancel keeps the same exit: Retry is always a
+	// deliberate call, never an automatic sweep.
+	if j.Status != job.StatusRetryWait && j.Status != job.StatusFailed && j.Status != job.StatusCancelled {
 		return nil, fmt.Errorf("retry: invalid status %q", j.Status)
 	}
 	if j.RetryCount >= j.MaxRetries {
@@ -186,21 +208,27 @@ func (r *SQLiteStore) Retry(ctx context.Context, id string) (*job.Job, error) {
 		return nil, fmt.Errorf("retry: %w (%d/%d)", job.ErrRetryExhausted, j.RetryCount, j.MaxRetries)
 	}
 
-	now := timeutil.FormatRFC3339(time.Now())
+	now := time.Now().UTC()
+	nowStr := timeutil.FormatRFC3339(now)
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, fmt.Errorf("retry: begin tx: %w", err)
+	}
+	defer tx.Rollback()
 	// deferred_until is cleared on the way out of RETRY_WAIT: the wait it
 	// recorded has ended, and a stale hint would otherwise sit on a QUEUED row
 	// and mis-report the job's state to an operator.
-	res, err := r.db.ExecContext(ctx,
+	res, err := tx.ExecContext(ctx,
 		`UPDATE jobs SET status = 'QUEUED', progress = 0, error = '',
 		 worker_id = '', lease_id = '', lease_expiry = NULL,
-		 deferred_until = NULL,
-		 revision = revision + 1, updated_at = ?
-		 WHERE id = ? AND status IN ('RETRY_WAIT', 'FAILED') AND revision = ?`,
-		now, id, j.Revision)
+		 deferred_until = NULL, revision = revision + 1, updated_at = ?
+		 WHERE id = ? AND status IN ('RETRY_WAIT', 'FAILED', 'CANCELLED') AND revision = ?`,
+		nowStr, id, j.Revision)
 	if err != nil {
 		return nil, fmt.Errorf("retry: %w", err)
 	}
 	if mustRowsAffected(res) == 0 {
+		_ = tx.Rollback()
 		// PR-F: Retry does not route through validateOwnership; bump
 		// here before returning job.ErrTransitionConflict. Distinct from
 		// the inner c.ErrPath branches (retries-exhausted / invalid
@@ -209,10 +237,11 @@ func (r *SQLiteStore) Retry(ctx context.Context, id string) (*job.Job, error) {
 		return nil, job.ErrTransitionConflict
 	}
 
-	evtID := fmt.Sprintf("evt_%d_%s", time.Now().UnixNano(), hashutil.RandomString(6))
-	if _, err := r.db.ExecContext(ctx, `INSERT INTO job_events (id, job_id, type, message, data_json, created_at) VALUES (?, ?, ?, ?, ?, ?)`,
-		evtID, id, "job_queued", "job.Job retry activated", "{}", now); err != nil {
+	if err := insertJobTimelineEvent(ctx, tx, id, "job_queued", "job retry activated", map[string]any{"status": string(job.StatusQueued)}, now); err != nil {
 		return nil, fmt.Errorf("retry: insert job event: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("retry: commit: %w", err)
 	}
 
 	// PR-Polling / ADR-0002 §D6.5 (June 2026): the requeued job

@@ -27,12 +27,9 @@ const (
 	// is SOURCE-INDEPENDENT: the renderer (pipelinegen-muscles
 	// BGM_SOURCE_LOUDNESS_TARGET_DB) measures each BGM source once per render
 	// and trims it to the canonical loudness BEFORE this gain and the duck
-	// automation apply, so quiet curated beds and loud sources alike land at
-	// the same audible level under narration. History: before that
-	// normalization, the natively quiet curated BGM played ~30 dB below the
-	// loudness this bed was tuned for (-28 dB produced about -65 dB RMS in the
-	// delivered mix) — hence the near-unity bed for an audible music bed.
-	BackgroundMusicGainDB = -1.0
+	// automation apply. Keep normalized music clearly below narration; the
+	// previous near-unity setting made the bed too prominent.
+	BackgroundMusicGainDB = -18.0
 	// SoundEffectGainDB remains a canonical absolute level relative to unity.
 	SoundEffectGainDB = -10.0
 
@@ -43,6 +40,14 @@ const (
 	// DuckClipActiveGainDB is the deeper gain applied to the clip track while
 	// the voiceover is actually speaking (the ducking automation target).
 	DuckClipActiveGainDB = -24.0
+
+	// FinalJobRestoredClipGainDB is the clip-audio level of the remote
+	// final-job master. The 2026-09-30 incident: the finalJobAudioInput
+	// projection dropped every AudioClip intent, so delivered videos carried
+	// narration + music with the source clip audio silent. Restored clips mix
+	// at -10 dB (8 dB above the local-lane duck base) so they stay clearly
+	// audible under narration and beside the near-unity BGM bed.
+	FinalJobRestoredClipGainDB = -10.0
 
 	// DuckAttackUS and DuckReleaseUS are the automation ramp times applied at
 	// the start and end of a ducking window.

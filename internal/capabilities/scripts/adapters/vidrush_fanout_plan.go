@@ -69,59 +69,56 @@ func buildVidRushFanoutPlan(plan *scriptpkg.ResolvedGenerationPlan, segment scri
 			}
 		}
 	} else {
-		// The image-search resolver also emits visual-concept queries. In an
-		// entity-image run those concepts are outside the requested contract:
-		// retain only queries that resolve to a PERSON extracted from this
-		// segment, so generic imagery cannot consume the bounded materialization
-		// budget before the requested person has a durable image.
-		personQueries := make(map[string]struct{})
+		// Identity-image mode only materializes explicit person/brand/org
+		// queries; numeric/value overlays and generic concepts cannot consume
+		// the verified image budget.
+		identityQueries := make(map[string]struct{})
 		for _, entity := range segment.Insights.Entities {
-			if normalizeAnnotationType(entity.Type) != "PERSON" {
+			kind := normalizeAnnotationType(entity.Type)
+			if kind != "PERSON" && kind != "LOGO" && kind != "ORG" {
 				continue
 			}
 			name := normalizeEntityMatch(trimEnglishPossessive(entity.Value))
 			if name != "" {
-				personQueries[name] = struct{}{}
+				identityQueries[name] = struct{}{}
 			}
 		}
 		for query, canonicalID := range segment.Insights.ImageEntityCanonicalIDs {
-			if strings.HasPrefix(strings.ToLower(strings.TrimSpace(canonicalID)), "person:") {
+			canonical := strings.ToLower(strings.TrimSpace(canonicalID))
+			if strings.HasPrefix(canonical, "person:") || strings.HasPrefix(canonical, "brand:") || strings.HasPrefix(canonical, "org:") {
 				if name := normalizeEntityMatch(trimEnglishPossessive(query)); name != "" {
-					personQueries[name] = struct{}{}
+					identityQueries[name] = struct{}{}
 				}
 			}
 		}
 		filtered := make([]string, 0, len(imageQueries))
-		seenPersonQueries := make(map[string]struct{})
+		seenQueries := make(map[string]struct{})
 		for _, query := range imageQueries {
-			if _, ok := personQueries[normalizeEntityMatch(trimEnglishPossessive(query))]; ok {
+			key := normalizeEntityMatch(trimEnglishPossessive(query))
+			if _, ok := identityQueries[key]; ok {
 				filtered = append(filtered, query)
-				seenPersonQueries[strings.ToLower(strings.TrimSpace(query))] = struct{}{}
+				seenQueries[strings.ToLower(strings.TrimSpace(query))] = struct{}{}
 			}
 		}
-		// Preserve distinct source surfaces (straight and curly apostrophe,
-		// for example) because semantic certification counts extracted PERSON
-		// surfaces and expects one image query per surface.
 		for _, entity := range segment.Insights.Entities {
-			if normalizeAnnotationType(entity.Type) != "PERSON" {
+			kind := normalizeAnnotationType(entity.Type)
+			if kind != "PERSON" && kind != "LOGO" && kind != "ORG" {
 				continue
 			}
 			query := strings.TrimSpace(entity.Value)
+			key := strings.ToLower(query)
 			if query == "" {
 				continue
 			}
-			key := strings.ToLower(strings.TrimSpace(query))
-			if _, ok := seenPersonQueries[key]; ok {
+			if _, ok := seenQueries[key]; ok {
 				continue
 			}
-			if _, ok := personQueries[normalizeEntityMatch(trimEnglishPossessive(query))]; ok {
+			if _, ok := identityQueries[normalizeEntityMatch(trimEnglishPossessive(query))]; ok {
 				filtered = append(filtered, query)
-				seenPersonQueries[key] = struct{}{}
+				seenQueries[key] = struct{}{}
 			}
 		}
-		if len(filtered) > 0 {
-			imageQueries = filtered
-		}
+		imageQueries = filtered
 	}
 	// A complete source sentence is a final provider fallback for scenes whose
 	// extracted entity terms are too generic (for example "wide pan"). It is
@@ -175,31 +172,29 @@ func sceneScopedImageQuery(segment scriptpkg.VidRushSegmentResult) string {
 	if entity == "" {
 		entity = sourceLeadEntity(segment.SourceText)
 	}
-	// A named subject is a stronger image-search anchor than generic prose
-	// from the narration. Keep the query short so providers do not rank an
-	// incidental noun (for example a fighter jet) above the named boxer.
-	if entity != "" {
-		return entity + " boxing"
-	}
-	text := strings.TrimSpace(segment.Text)
+	// Keep the query grounded in this scene's immutable editorial source. A
+	// generic suffix made every person query identical (and could be entirely
+	// unrelated to the story), causing the image provider to reuse one asset
+	// across scenes.
+	text := strings.TrimSpace(segment.SourceText)
 	if text == "" {
-		return ""
+		text = strings.TrimSpace(segment.Text)
 	}
-	// A scene's first sentence is concise source evidence and normally names
-	// the concrete event, proceeding, or setting. Keep the query bounded; long
-	// narration blocks are poor image-search queries and risk being rejected by
-	// providers.
+	if text == "" {
+		return entity
+	}
 	for _, sentence := range strings.FieldsFunc(text, func(r rune) bool { return r == '.' || r == '!' || r == '?' || r == '\n' }) {
 		text = strings.Join(strings.Fields(sentence), " ")
 		if text != "" {
 			break
 		}
 	}
-	words := strings.Fields(text)
+	query := strings.TrimSpace(strings.Join([]string{entity, text}, " "))
+	words := strings.Fields(query)
 	if len(words) > 14 {
-		text = strings.Join(words[:14], " ")
+		query = strings.Join(words[:14], " ")
 	}
-	return strings.Join(strings.Fields(text), " ")
+	return strings.Join(strings.Fields(query), " ")
 }
 
 func sourceLeadEntity(source string) string {

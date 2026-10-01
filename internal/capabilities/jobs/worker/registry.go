@@ -10,6 +10,7 @@ import (
 
 	jobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
+	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/observability"
 )
 
@@ -263,6 +264,16 @@ func translateToolsToExecutionTools(ctx context.Context, t *Tools, jobType strin
 			Event:    func(string, string, map[string]any) {},
 		}
 	}
+	trace := job.ActivityTrace{}
+	if run := kernobs.FromContext(ctx); run != nil {
+		if snapshot := run.Report(); snapshot != nil {
+			trace.RunID = snapshot.RunID
+			trace.AttemptID = snapshot.AttemptID
+			trace.ParentRunID = snapshot.ParentRunID
+		}
+	}
+	traceCtx := job.WithActivityTraceIfAbsent(ctx, trace)
+	t.traceCtx = traceCtx
 	return &job.JobExecutionTools{
 		// Durable per-stage reporting: derived from the wired broker rather
 		// than passed in, so enabling the stage table requires no new
@@ -281,11 +292,9 @@ func translateToolsToExecutionTools(ctx context.Context, t *Tools, jobType strin
 		// Progress and Event. Handlers observe cancellation natively
 		// via ctx.Err() at their next phase boundary.
 		Progress: func(progress int, message string) {
-			// FASE 0.2 silent-drop rewrite: error-checked emit with
-			// counter telemetry (NOT log emit because the closure
-			// has no logger access — domain/job.JobExecutionTools
-			// signature deliberately excludes logger per Pattern 0).
-			if err := t.Progress(ctx, progress, message); err != nil {
+			// Tools owns the compatibility command and ledger write; the
+			// shared trace context gives it the attempt-wide sequence.
+			if err := t.Progress(traceCtx, progress, message); err != nil {
 				observability.WorkerProgressEmittedTotal.WithLabelValues(jobType, "error").Inc()
 				observability.WorkerProgressErrorsTotal.WithLabelValues(jobType, "broker_emit_failed").Inc()
 				return
@@ -296,7 +305,22 @@ func translateToolsToExecutionTools(ctx context.Context, t *Tools, jobType strin
 		// broker facade's typed event port. Errors are counted but
 		// not propagated — event emission must never fail the job.
 		Event: func(eventType, message string, data map[string]any) {
-			if err := t.Event(ctx, eventType, message, data); err != nil {
+			if data == nil {
+				data = map[string]any{}
+			}
+			subKind := eventType
+			if value, ok := data["sub_kind"].(string); ok && value != "" {
+				subKind = value
+			} else if value, ok := data["stage"].(string); ok && value != "" {
+				subKind = value
+			} else if value, ok := data["phase"].(string); ok && value != "" {
+				subKind = value
+			}
+			data = job.ActivityDataWithTrace(jobType, subKind, job.ActivityStatus(eventType, data), message, data, job.ActivityTraceFromData(data, traceCtx))
+			if trace, ok := data["trace"].(map[string]any); ok {
+				data["sequence"] = trace["sequence"]
+			}
+			if err := t.Event(traceCtx, eventType, message, data); err != nil {
 				observability.WorkerEventDropsTotal.WithLabelValues(jobType).Inc()
 			}
 		},

@@ -31,6 +31,9 @@ func TestProgressTrackerTrackStageAggregatesByLanguage(t *testing.T) {
 	if !ok || last[string(job.StageTranslation)].Completed != 2 {
 		t.Fatalf("last event aggregate = %#v, want completed=2", events[len(events)-1]["stage_progress"])
 	}
+	if events[len(events)-1]["kind"] != "item-1" || events[len(events)-1]["sub_kind"] != string(job.StageTranslation) || events[len(events)-1]["micro_kind"] != string(job.StageTranslation) || events[len(events)-1]["status"] != string(job.StageCompleted) {
+		t.Fatalf("stage activity envelope = %#v", events[len(events)-1])
+	}
 }
 
 func TestProgressTrackerPostprocessUsesDynamicPercent(t *testing.T) {

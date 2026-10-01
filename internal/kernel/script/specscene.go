@@ -237,6 +237,7 @@ type SceneAnnotations struct {
 	PrimaryEntities   []AnnotatedEntity `json:"primary_entities,omitempty"`
 	SecondaryEntities []AnnotatedEntity `json:"secondary_entities,omitempty"`
 	ImportantWords    []AnnotationSpan  `json:"important_words,omitempty"`
+	NumericValues     []AnnotationSpan  `json:"numeric_values,omitempty"`
 	Status            string            `json:"status,omitempty"`
 	Warnings          []string          `json:"warnings,omitempty"`
 }
@@ -267,6 +268,19 @@ type AnnotatedEntity struct {
 	// when the resolver was not wired or the entity was not part of its
 	// decision (the overlay compile then derives the id deterministically).
 	CanonicalEntityID string `json:"canonical_entity_id,omitempty"`
+	// Geo is the geocoder-validated WGS84 enrichment of a grounded place
+	// (GPE/LOCATION) annotation. It is present only when the request enabled
+	// provider_policy.geocoding AND the lookup succeeded; a place without it
+	// can never become a map overlay (no guessed coordinates).
+	Geo *GeoCoordinate `json:"geo,omitempty"`
+}
+
+// GeoCoordinate is the canonical WGS84 point the geocoder resolved for a
+// grounded place annotation, with the provider's display name for provenance.
+type GeoCoordinate struct {
+	Latitude    float64 `json:"latitude"`
+	Longitude   float64 `json:"longitude"`
+	DisplayName string  `json:"display_name,omitempty"`
 }
 
 type EntityImageBinding struct {

@@ -43,7 +43,7 @@ func (r *Registry) RecordAttempt(ctx context.Context, attempt scriptgen.RenderAt
 	_, err := r.db.ExecContext(ctx, `
 		INSERT INTO render_attempt_analytics (
 			attempt_id, job_id, item_id,
-			phrase_count, word_count, image_count, leak_count,
+			phrase_count, word_count, number_count, image_count, leak_count,
 			render_ms, encode_ms,
 			completion_wait_ms, polling_sleep_ms, polling_interval_ms, poll_count,
 			width, height, fps_num, fps_den, frame_count, duration_us, size_bytes,
@@ -53,12 +53,13 @@ func (r *Registry) RecordAttempt(ctx context.Context, attempt scriptgen.RenderAt
 			metrics_json, chronon_telemetry,
 			chronon_timing_storage_key, chronon_timing_url, chronon_timing_sha256, chronon_timing_size_bytes, chronon_timing_content_type,
 			recorded_at
-		) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+		) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
 		ON CONFLICT(attempt_id) DO UPDATE SET
 			job_id = excluded.job_id,
 			item_id = excluded.item_id,
 			phrase_count = excluded.phrase_count,
 			word_count = excluded.word_count,
+			number_count = excluded.number_count,
 			image_count = excluded.image_count,
 			leak_count = excluded.leak_count,
 			render_ms = excluded.render_ms,
@@ -103,6 +104,7 @@ func (r *Registry) RecordAttempt(ctx context.Context, attempt scriptgen.RenderAt
 		attempt.ItemID,
 		attempt.Content.Phrases,
 		attempt.Content.Words,
+		attempt.Content.Numbers,
 		attempt.Content.Images,
 		attempt.Content.Leaks,
 		attempt.RenderMS,

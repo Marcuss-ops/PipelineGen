@@ -158,6 +158,22 @@ func (r *Runner) runLease(parent context.Context, lease *jobs.Lease) (retErr err
 	if run == nil {
 		defer func() { finishLedger(nil) }()
 	}
+	trace := kerneljob.ActivityTrace{CorrelationID: job.CorrelationID}
+	if link := kerneljob.ParentLinkFromPayload(job.Payload); link.ParentRunID != "" {
+		trace.ParentRunID = link.ParentRunID
+	}
+	if run != nil {
+		if report := run.Report(); report != nil {
+			trace.RunID = report.RunID
+			trace.AttemptID = report.AttemptID
+			trace.ParentRunID = report.ParentRunID
+			attemptID = report.AttemptID
+		}
+	}
+	if trace.AttemptID == "" {
+		trace.AttemptID = attemptID
+	}
+	jobCtx = kerneljob.WithActivityTraceIfAbsent(jobCtx, trace)
 
 	jobDir, err := r.workspace.Prepare(lease.Job.ID)
 	if err != nil {

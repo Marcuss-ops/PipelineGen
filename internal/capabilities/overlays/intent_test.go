@@ -324,8 +324,19 @@ func TestTemplateResolver_ResolvesEntityTypeToTemplateID(t *testing.T) {
 		"QUOTE":     "quote",
 		"PRODUCT":   "PRODUCT",
 		"LOGO":      "LOGO",
+		"BRAND":     "logo_default",
+		"DATE":      "NUMBER",
+		"TIME":      "NUMBER",
+		"MONEY":     "NUMBER",
+		"METRIC":    "NUMBER",
 		"EVENT":     "concept_default",
 		"something": "concept_default",
+	}
+	if got, err := resolver.Resolve("BRAND"); err != nil || got != "logo_default" {
+		t.Fatalf("brand fallback template = %q, %v; want logo_default", got, err)
+	}
+	if got, err := resolver.Resolve("LOGO"); err != nil || got != "LOGO" {
+		t.Fatalf("verified logo template = %q, %v; want LOGO", got, err)
 	}
 	for entityType, want := range cases {
 		got, err := resolver.Resolve(entityType)

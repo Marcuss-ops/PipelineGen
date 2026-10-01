@@ -7,10 +7,17 @@ package adapters
 import (
 	"strings"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
 const vidRushDefaultImagesPerScene = 2
+
+// vidRushPerceptualDuplicateDistance is the maximum dHash Hamming distance at
+// which two materialized images are treated as the same visual. 5 of 64 bits
+// absorbs re-encoding, watermarking and small crops while keeping distinct
+// photographs apart.
+const vidRushPerceptualDuplicateDistance = 5
 
 func vidRushImageTarget(plan *scriptpkg.ResolvedGenerationPlan) int {
 	if plan == nil {
@@ -38,7 +45,7 @@ func vidRushImageTargetForSegment(plan *scriptpkg.ResolvedGenerationPlan, segmen
 	if maxPerEntity <= 0 {
 		maxPerEntity = 1
 	}
-	allowed := map[string]struct{}{"PERSON": {}}
+	allowed := map[string]struct{}{"PERSON": {}, "LOGO": {}, "ORG": {}, "ORGANIZATION": {}}
 	if len(plan.MediaPlan.Extraction.EntityImages.EntityTypes) > 0 {
 		allowed = make(map[string]struct{}, len(plan.MediaPlan.Extraction.EntityImages.EntityTypes))
 		for _, raw := range plan.MediaPlan.Extraction.EntityImages.EntityTypes {
@@ -58,7 +65,8 @@ func vidRushImageTargetForSegment(plan *scriptpkg.ResolvedGenerationPlan, segmen
 	}
 	if len(seen) == 0 {
 		for name, canonicalID := range segment.Insights.ImageEntityCanonicalIDs {
-			if strings.HasPrefix(strings.ToLower(strings.TrimSpace(canonicalID)), "person:") && strings.TrimSpace(name) != "" {
+			canonical := strings.ToLower(strings.TrimSpace(canonicalID))
+			if (strings.HasPrefix(canonical, "person:") || strings.HasPrefix(canonical, "brand:") || strings.HasPrefix(canonical, "org:")) && strings.TrimSpace(name) != "" {
 				seen[strings.ToLower(strings.Join(strings.Fields(strings.TrimSpace(name)), " "))] = struct{}{}
 			}
 		}
@@ -68,6 +76,36 @@ func vidRushImageTargetForSegment(plan *scriptpkg.ResolvedGenerationPlan, segmen
 		return entityTarget
 	}
 	return target
+}
+
+// dropPerceptualDuplicates removes candidates whose perceptual hash is within
+// vidRushPerceptualDuplicateDistance of an earlier, already-kept candidate.
+// Two providers frequently return the same syndicated photo under different
+// URLs; the identity-keyed dedup upstream cannot see that because the bytes
+// only exist after materialization. Candidates without a perceptual hash (for
+// example catalog-hydrated or cache-replayed rows) pass through untouched, so
+// the filter is fail-open.
+func dropPerceptualDuplicates(candidates []scriptpkg.SegmentAssetCandidate) []scriptpkg.SegmentAssetCandidate {
+	out := make([]scriptpkg.SegmentAssetCandidate, 0, len(candidates))
+	kept := make([]string, 0, len(candidates))
+	for _, candidate := range candidates {
+		hash := strings.TrimSpace(candidate.PerceptualHash)
+		if hash != "" {
+			duplicate := false
+			for _, seen := range kept {
+				if distance, ok := digest.PerceptualHashDistance(hash, seen); ok && distance <= vidRushPerceptualDuplicateDistance {
+					duplicate = true
+					break
+				}
+			}
+			if duplicate {
+				continue
+			}
+			kept = append(kept, hash)
+		}
+		out = append(out, candidate)
+	}
+	return out
 }
 
 func durableVidRushImages(candidates []scriptpkg.SegmentAssetCandidate) []scriptpkg.SegmentAssetCandidate {
@@ -107,7 +145,7 @@ func selectExactVidRushImages(candidates []scriptpkg.SegmentAssetCandidate, targ
 	if target <= 0 {
 		return nil
 	}
-	images := durableVidRushImages(candidates)
+	images := dropPerceptualDuplicates(durableVidRushImages(candidates))
 	imagesOnly := plan != nil &&
 		providerEnabledForVidRush(plan, scriptpkg.VidRushProviderInternetImages) &&
 		!providerEnabledForVidRush(plan, scriptpkg.VidRushProviderArtlist) &&

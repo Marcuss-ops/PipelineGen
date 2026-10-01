@@ -47,3 +47,17 @@ func TestBuildRuntimeMediaCertSpecAllowsEntityImageReuseFromGenericExtractionSur
 		t.Fatal("entity extraction surface must allow canonical identity-image reuse across scenes")
 	}
 }
+
+func TestBuildRuntimeMediaCertSpecDoesNotRequireSecondaryImagesForClipOnly(t *testing.T) {
+	plan := &scriptpkg.ResolvedGenerationPlan{
+		MediaMode:      scriptpkg.MediaModeClipOnly,
+		ImagesPerScene: 1,
+	}
+	spec := buildRuntimeMediaCertSpec(plan)
+	if spec.ImagesPerSegment != 0 {
+		t.Fatalf("images_per_segment = %d, want 0 for clip-only video scenes", spec.ImagesPerSegment)
+	}
+	if spec.VideoProvider != "" {
+		t.Fatalf("video_provider = %q, want none for caller-selected clip-only scenes", spec.VideoProvider)
+	}
+}

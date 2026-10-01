@@ -262,7 +262,7 @@ func (e *QueueRenderEnqueuer) enqueueChrononPlan(ctx context.Context, plan capov
 	// Background block. The legacy "item with template BACKGROUND" spelling
 	// was removed — producers must set Background explicitly; the enqueue
 	// boundary no longer rewrites the plan's items.
-	spec, err := json.Marshal(wirePlan)
+	spec, err := marshalRenderingGenOverlayPlan(wirePlan)
 	if err != nil {
 		return RenderReference{}, fmt.Errorf("marshal semantic chronon plan: %w", err)
 	}
@@ -461,6 +461,58 @@ func (e *QueueRenderEnqueuer) enqueueChrononPlan(ctx context.Context, plan capov
 	// never re-times a phase the worker already measured).
 	recordRenderingGenPhases(ctx, done.Artifact)
 	return RenderReference{JobID: jobID, Status: "COMPLETED", Artifact: done.Artifact}, nil
+}
+
+// marshalRenderingGenOverlayPlan projects PipelineGen's canonical microsecond
+// timing onto RenderingGen's strict overlay-plan.v1 wire contract. The two
+// runtimes share start_ms/end_ms on the wire; start_us/duration_us remain
+// internal to PipelineGen's frozen plan and must not cross this boundary.
+func marshalRenderingGenOverlayPlan(plan capoverlay.OverlayPlan) ([]byte, error) {
+	raw, err := json.Marshal(plan)
+	if err != nil {
+		return nil, err
+	}
+	var wire map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &wire); err != nil {
+		return nil, err
+	}
+	var items []map[string]json.RawMessage
+	if err := json.Unmarshal(wire["items"], &items); err != nil {
+		return nil, err
+	}
+	for i, item := range items {
+		var durationUS int64
+		if encoded := item["duration_us"]; len(encoded) > 0 {
+			if err := json.Unmarshal(encoded, &durationUS); err != nil {
+				return nil, fmt.Errorf("decode item %d duration_us: %w", i, err)
+			}
+		}
+		delete(item, "start_us")
+		delete(item, "duration_us")
+		if durationUS > 0 {
+			var startMS, endMS int64
+			if err := json.Unmarshal(item["start_ms"], &startMS); err != nil {
+				return nil, fmt.Errorf("decode item %d start_ms: %w", i, err)
+			}
+			if err := json.Unmarshal(item["end_ms"], &endMS); err != nil {
+				return nil, fmt.Errorf("decode item %d end_ms: %w", i, err)
+			}
+			if endMS <= startMS {
+				return nil, fmt.Errorf("item %d has invalid millisecond timing %d-%d", i, startMS, endMS)
+			}
+			encoded, err := json.Marshal(endMS - startMS)
+			if err != nil {
+				return nil, err
+			}
+			item["duration_ms"] = encoded
+		}
+	}
+	wireItems, err := json.Marshal(items)
+	if err != nil {
+		return nil, err
+	}
+	wire["items"] = wireItems
+	return json.Marshal(wire)
 }
 
 func runtimeFontAssets(plan capoverlay.OverlayPlan) []RenderQueueAsset {

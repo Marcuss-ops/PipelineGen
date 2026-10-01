@@ -51,12 +51,19 @@ const (
 	KindProduct OverlayKind = "product"
 	// KindLogo renders a corner logo overlay (asset-driven).
 	KindLogo OverlayKind = "logo"
+	// KindBrandText renders a brand-name fallback when a verified logo is unavailable.
+	KindBrandText OverlayKind = "brand_text"
 	// KindImportantPhrase renders a scene-local highlighted phrase.
 	KindImportantPhrase OverlayKind = "important_phrase"
 	// KindImportantWord renders a scene-local kinetic keyword.
 	KindImportantWord OverlayKind = "important_word"
 	// KindEntityImage renders an entity-bound image asset.
 	KindEntityImage OverlayKind = "entity_image"
+	// KindMap renders a georeferenced basemap with source-grounded pins. The
+	// item carries one validated MapOverlay declaration over a single
+	// content-addressed basemap asset; only centered motions are allowed so
+	// the geography never drifts from the canvas.
+	KindMap OverlayKind = "map"
 )
 
 // DurationPolicy declares how an overlay's on-screen duration is derived.
@@ -198,6 +205,14 @@ var canonicalOverlayEntries = []OverlayEntry{
 		Template:          "LOGO",
 		RequiredInputs:    []string{"asset_refs"},
 		DurationPolicy:    DurationBounded,
+		PositioningPolicy: PositionCorner,
+		Version:           1,
+	},
+	{
+		Kind:              KindBrandText,
+		Template:          "logo_default",
+		RequiredInputs:    []string{"text"},
+		DurationPolicy:    DurationCertified,
 		PositioningPolicy: PositionCorner,
 		Version:           1,
 	},

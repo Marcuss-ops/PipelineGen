@@ -81,9 +81,16 @@ func RetryDue(j *job.Job, now time.Time) bool {
 	if j.DeferredUntil != nil && !j.DeferredUntil.IsZero() {
 		return !now.UTC().Before(j.DeferredUntil.UTC())
 	}
-	if j.RetryCount <= 0 || j.RetryCount > j.MaxRetries {
+	if j.RetryCount > j.MaxRetries {
 		return false
 	}
-	backoff := RetryBackoff(j.RetryCount-1, DefaultRetryPolicy)
+	// retry_count == 0 is a REAL wait state, not a dead one: the lease reaper
+	// (requeueSingle) moves RUNNING/FINALIZING rows to RETRY_WAIT WITHOUT
+	// bumping retry_count — a reclaim is not a failure. Requiring retry_count
+	// > 0 stranded every restart-reclaimed job in RETRY_WAIT forever (the
+	// 2026-09-30 Milton stall: RUNNING 20+ minutes with no error and no
+	// retry). RetryCount 0 uses the initial backoff, exactly like the first
+	// ScheduleRetry leg would.
+	backoff := RetryBackoff(max(j.RetryCount-1, 0), DefaultRetryPolicy)
 	return now.UTC().Sub(j.UpdatedAt.UTC()) >= backoff
 }

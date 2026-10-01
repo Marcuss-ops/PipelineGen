@@ -130,6 +130,11 @@ func TestMediaCertCertifiesACorrectMediterraneanRun(t *testing.T) {
 			correctMediterraneanSegment("mediterranean-05-paella", 4, "seafood paella", "paella", []string{"shrimp", "mussels", "rice"}),
 		},
 	}
+	// Provider fanout may offer more candidates than the planned image budget;
+	// MediaSampler applies the exact budget after certification.
+	result.Segments[0].Assets.SecondaryImages = append(result.Segments[0].Assets.SecondaryImages,
+		script.SegmentAssetCandidate{SegmentID: result.Segments[0].SegmentID, AssetID: "img-greek-salad-extra", Provider: script.VidRushProviderInternetImages, Query: "greek salad"},
+	)
 	report := Certify(spec, result)
 	require.True(t, report.Certified, "a fully correct Mediterranean run must be certified")
 }

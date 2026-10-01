@@ -11,6 +11,7 @@
 package adapters
 
 import (
+	"hash/fnv"
 	"strings"
 	"unicode"
 
@@ -60,6 +61,14 @@ func projectEntityImageBindings(spec scriptpkg.SpecSceneOutput, segments []scrip
 		}
 	}
 	resolvedEntityImages := make(map[string]struct{}, capabilityoverlay.MaxEntityImageOverlaysPerRun)
+	// usedCandidates is the run-scoped distribution ledger. The canonical
+	// entity image library is SHARED across runs on purpose (published once per
+	// entity, reused for cost), but within ONE run the same candidate must not
+	// be rebound to every scene that mentions the entity: each occurrence
+	// prefers a DISTINCT candidate from the same entity pool. When the pool has
+	// only one usable candidate the fallback still binds it (availability beats
+	// strict distinctness), so a cold catalog never loses the image entirely.
+	usedCandidates := make(map[string]struct{})
 	for i := range out.Scenes {
 		if out.Scenes[i].Annotations == nil {
 			continue
@@ -74,7 +83,11 @@ func projectEntityImageBindings(spec scriptpkg.SpecSceneOutput, segments []scrip
 			if seg == nil {
 				continue
 			}
-			if candidate, ok := findEntityImageCandidate(*entity, *seg); ok {
+			variantSeed := strings.TrimSpace(out.Scenes[i].ID) + "|" + entityImageIdentity(*entity)
+			if candidate, ok := findEntityImageCandidateFrom(*entity, *seg, variantSeed, usedCandidates); ok {
+				if key := vidRushCandidateIdentity(candidate); key != "" {
+					usedCandidates[key] = struct{}{}
+				}
 				identity := entityImageIdentity(*entity)
 				if _, alreadyBound := resolvedEntityImages[identity]; !alreadyBound {
 					if len(resolvedEntityImages) >= capabilityoverlay.MaxEntityImageOverlaysPerRun {
@@ -247,7 +260,19 @@ func findSegmentForScene(scene scriptpkg.SpecScene, segments []scriptpkg.VidRush
 	return &segments[best]
 }
 
-func findEntityImageCandidate(entity scriptpkg.AnnotatedEntity, seg scriptpkg.VidRushSegmentResult) (scriptpkg.SegmentAssetCandidate, bool) {
+func findEntityImageCandidate(entity scriptpkg.AnnotatedEntity, seg scriptpkg.VidRushSegmentResult, used ...map[string]struct{}) (scriptpkg.SegmentAssetCandidate, bool) {
+	return findEntityImageCandidateFrom(entity, seg, "", used...)
+}
+
+// findEntityImageCandidateFrom is findEntityImageCandidate plus deterministic
+// N-variant selection. seed is the per-scene identity (scene id + entity
+// identity): it selects a stable STARTING VARIANT inside the entity's ranked
+// candidate pool, so a shared library holding several variants of one entity
+// gives different scenes different images instead of every scene fronting the
+// same portrait. The used ledger still wins — an already-distributed candidate
+// is skipped to its next unused sibling — and the rotated first match is the
+// last-resort fallback so a single-candidate pool still binds.
+func findEntityImageCandidateFrom(entity scriptpkg.AnnotatedEntity, seg scriptpkg.VidRushSegmentResult, seed string, used ...map[string]struct{}) (scriptpkg.SegmentAssetCandidate, bool) {
 	want := normalizeEntityMatch(entity.CanonicalName)
 	if want == "" {
 		want = normalizeEntityMatch(entity.Text)
@@ -258,7 +283,46 @@ func findEntityImageCandidate(entity scriptpkg.AnnotatedEntity, seg scriptpkg.Vi
 	// "John Cena", so remove that non-semantic instruction prefix before
 	// comparing the entity with a retrieved candidate.
 	want = strings.TrimSpace(strings.TrimPrefix(want, "describe "))
+	var excluded map[string]struct{}
+	if len(used) > 0 {
+		excluded = used[0]
+	}
+	matches := entityImageMatches(want, seg)
+	if len(matches) == 0 {
+		return scriptpkg.SegmentAssetCandidate{}, false
+	}
+	// Deterministic variant rotation: the scene+entity seed starts the scan at
+	// a stable offset, so two scenes sharing the entity anchor on different
+	// variants when the pool has them.
+	start := entityVariantOffset(seed, len(matches))
+	var firstMatch *scriptpkg.SegmentAssetCandidate
+	for step := 0; step < len(matches); step++ {
+		candidate := matches[(start+step)%len(matches)]
+		key := vidRushCandidateIdentity(candidate)
+		if excluded != nil && key != "" {
+			if _, taken := excluded[key]; taken {
+				if firstMatch == nil {
+					match := candidate
+					firstMatch = &match
+				}
+				continue
+			}
+		}
+		return candidate, true
+	}
+	if firstMatch != nil {
+		return *firstMatch, true
+	}
+	return scriptpkg.SegmentAssetCandidate{}, false
+}
+
+// entityImageMatches returns the identity-matching, ready, internet-images-only
+// candidates for an entity, de-duplicated by candidate identity and preserving
+// their upstream order.
+func entityImageMatches(want string, seg scriptpkg.VidRushSegmentResult) []scriptpkg.SegmentAssetCandidate {
 	all := append(append([]scriptpkg.SegmentAssetCandidate(nil), seg.Assets.Candidates...), seg.Assets.SecondaryImages...)
+	out := make([]scriptpkg.SegmentAssetCandidate, 0, len(all))
+	seen := make(map[string]struct{}, len(all))
 	for _, candidate := range all {
 		if !validVidRushCandidate(candidate) || strings.TrimSpace(candidate.AssetID) == "" {
 			continue
@@ -269,21 +333,40 @@ func findEntityImageCandidate(entity scriptpkg.AnnotatedEntity, seg scriptpkg.Vi
 		if !strings.EqualFold(strings.TrimSpace(candidate.Provider), scriptpkg.VidRushProviderInternetImages) {
 			continue
 		}
-		entityText := normalizeEntityMatch(candidate.Entity)
-		query := normalizeEntityMatch(candidate.Query)
-		candidateQuery := strings.TrimSpace(strings.TrimPrefix(query, "describe "))
-		candidateEntity := strings.TrimSpace(strings.TrimPrefix(entityText, "describe "))
-		if candidateQuery == want || candidateEntity == want || strings.Contains(candidateQuery, want) || strings.Contains(candidateEntity, want) {
-			// Search results are projected once before acquisition and again
-			// after Drive/SQLite/Qdrant materialization. Prefer the durable
-			// candidate on the second pass; otherwise an early discovered hit
-			// can leave the document with an asset_id but no drive_link.
-			if readyVidRushCandidate(candidate) {
-				return candidate, true
-			}
+		candidateQuery := strings.TrimSpace(strings.TrimPrefix(normalizeEntityMatch(candidate.Query), "describe "))
+		candidateEntity := strings.TrimSpace(strings.TrimPrefix(normalizeEntityMatch(candidate.Entity), "describe "))
+		if candidateQuery != want && candidateEntity != want && !strings.Contains(candidateQuery, want) && !strings.Contains(candidateEntity, want) {
+			continue
 		}
+		// Search results are projected once before acquisition and again after
+		// Drive/SQLite/Qdrant materialization. Prefer the durable candidate on
+		// the second pass; otherwise an early discovered hit can leave the
+		// document with an asset_id but no drive_link.
+		if !readyVidRushCandidate(candidate) {
+			continue
+		}
+		if key := vidRushCandidateIdentity(candidate); key != "" {
+			if _, duplicate := seen[key]; duplicate {
+				continue
+			}
+			seen[key] = struct{}{}
+		}
+		out = append(out, candidate)
 	}
-	return scriptpkg.SegmentAssetCandidate{}, false
+	return out
+}
+
+// entityVariantOffset maps a scene+entity seed deterministically onto an offset
+// in [0, poolSize). The same (scene, entity, pool) always yields the same
+// variant, so replays are stable, while different scenes spread across the
+// pool. A pool of one (or an empty seed) always starts at zero.
+func entityVariantOffset(seed string, poolSize int) int {
+	if poolSize <= 1 || strings.TrimSpace(seed) == "" {
+		return 0
+	}
+	hasher := fnv.New32a()
+	_, _ = hasher.Write([]byte(seed))
+	return int(hasher.Sum32() % uint32(poolSize))
 }
 
 // entityImagePreviewURL returns the direct image URL used for inline rendering:

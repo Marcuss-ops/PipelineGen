@@ -173,23 +173,31 @@ func entityRuneSpans(source string, entities []VisualEntity) [][2]int {
 }
 
 // imageSearchEntities derives the identity surface from the normal NLP
-// entities. PERSON is the canonical named-identity surface for image search;
-// every grounded PERSON is sent to the image provider so each identity can be
-// indexed independently. If no PERSON exists, the historical entity fan-out
-// is preserved.
-func imageSearchEntities(entities []VisualEntity) []VisualEntity {
+// entities. People and brands are prioritized for verified identity imagery;
+// when neither category exists, the historical entity fan-out is preserved.
+func imageSearchEntities(entities []VisualEntity, categoryOnly ...bool) []VisualEntity {
 	if len(entities) == 0 {
 		return nil
 	}
-	persons := make([]VisualEntity, 0, len(entities))
+	identities := make([]VisualEntity, 0, len(entities))
 	for _, entity := range entities {
-		if !strings.EqualFold(string(entity.Type), string(scriptpkg.EntityTypePerson)) {
+		if !strings.EqualFold(string(entity.Type), string(scriptpkg.EntityTypePerson)) &&
+			!strings.EqualFold(string(entity.Type), "BRAND") &&
+			!strings.EqualFold(string(entity.Type), "LOGO") &&
+			!strings.EqualFold(string(entity.Type), string(scriptpkg.EntityTypeOrganization)) &&
+			!strings.EqualFold(string(entity.Type), "ORG") {
 			continue
 		}
-		persons = append(persons, entity)
+		identities = append(identities, entity)
 	}
-	if len(persons) > 0 {
-		return persons
+	if len(identities) > 0 {
+		return identities
+	}
+	// Category/value selectors do not fan numeric/date/location values into
+	// image search. Preserve the legacy fallback only for truly broad entity
+	// requests with no selected typed category.
+	if len(categoryOnly) > 0 && categoryOnly[0] {
+		return nil
 	}
 	return append([]VisualEntity(nil), entities...)
 }

@@ -150,8 +150,14 @@ type OverlayItem struct {
 	Text        string              `json:"text,omitempty"`
 	AssetRefs   []OverlayAssetRef   `json:"asset_refs,omitempty"`
 	ImageLayers []OverlayImageLayer `json:"image_layers,omitempty"`
-	Params      map[string]any      `json:"params,omitempty"`
-	RenderKey   string              `json:"render_key,omitempty"`
+	// Map is the validated geospatial declaration of a kind="map" item: the
+	// georeference, pins, motion and provider attribution drawn over the
+	// content-addressed basemap in AssetRefs. It rides the overlay-plan.v1
+	// wire (the worker's schema owns the map block) and participates in the
+	// plan fingerprint; nil on every non-map kind.
+	Map        *MapOverlay        `json:"map,omitempty"`
+	Params     map[string]any     `json:"params,omitempty"`
+	RenderKey  string             `json:"render_key,omitempty"`
 }
 
 // OverlayImageLayer is one independently timed and animated image within a
@@ -437,9 +443,23 @@ func (p *OverlayPlan) Validate() error {
 		if len(item.ImageLayers) > 0 && (item.Kind != string(KindEntityImage) || len(item.ImageLayers) < 2 || len(item.AssetRefs) < 2) {
 			return fmt.Errorf("overlay plan: item %q composite images require an entity_image item with at least two image layers and assets", item.ID)
 		}
+		// Map contract: a map item MUST carry exactly one validated geospatial
+		// declaration over its single basemap asset, and no other kind may
+		// carry one. The declaration validates against the plan canvas so a
+		// plate authored for another size can never enter the wire.
+		if item.Kind == string(KindMap) {
+			if item.Map == nil {
+				return fmt.Errorf("overlay plan: map item %q requires a map declaration", item.ID)
+			}
+			if err := item.Map.Validate(p.Width, p.Height, item.AssetRefs); err != nil {
+				return fmt.Errorf("overlay plan: map item %q: %w", item.ID, err)
+			}
+		} else if item.Map != nil {
+			return fmt.Errorf("overlay plan: item %q must not carry a map declaration", item.ID)
+		}
 		if item.RenderKey == "" {
 			key := ComputeRenderKey(*p, item)
-			p.Items[i] = OverlayItem{ID: item.ID, SceneID: item.SceneID, EntityID: item.EntityID, Kind: item.Kind, StartMs: item.StartMs, EndMs: item.EndMs, StartUS: item.StartUS, DurationUS: item.DurationUS, TemplateID: item.TemplateID, PresetID: item.PresetID, ImagePresetID: item.ImagePresetID, MotionID: item.MotionID, MotionParams: item.MotionParams, EntityRef: item.EntityRef, Text: item.Text, AssetRefs: item.AssetRefs, ImageLayers: item.ImageLayers, Params: item.Params, RenderKey: key}
+			p.Items[i] = OverlayItem{ID: item.ID, SceneID: item.SceneID, EntityID: item.EntityID, Kind: item.Kind, StartMs: item.StartMs, EndMs: item.EndMs, StartUS: item.StartUS, DurationUS: item.DurationUS, TemplateID: item.TemplateID, PresetID: item.PresetID, ImagePresetID: item.ImagePresetID, MotionID: item.MotionID, MotionParams: item.MotionParams, EntityRef: item.EntityRef, Text: item.Text, AssetRefs: item.AssetRefs, ImageLayers: item.ImageLayers, Map: item.Map, Params: item.Params, RenderKey: key}
 		}
 	}
 	if p.Fingerprint == "" {
@@ -475,6 +495,15 @@ func ComputeRenderKey(p OverlayPlan, item OverlayItem) string {
 	if renderer == "" {
 		renderer = "chronon"
 	}
+	mapJSON := ""
+	if item.Map != nil {
+		raw, err := json.Marshal(item.Map)
+		if err != nil {
+			mapJSON = ""
+		} else {
+			mapJSON = string(raw)
+		}
+	}
 	input := struct {
 		Template, Text, Params, Renderer string
 		Assets                           []string
@@ -486,9 +515,10 @@ func ComputeRenderKey(p OverlayPlan, item OverlayItem) string {
 		MotionID                         string `json:"motion_id,omitempty"`
 		MotionParams                     string `json:"motion_params,omitempty"`
 		ImageLayers                      string `json:"image_layers,omitempty"`
+		Map                              string `json:"map,omitempty"`
 	}{
 		item.TemplateID, item.Text, string(params), renderer, assetHashes, p.Width, p.Height, p.FPSNum, p.FPSDen, item.StartMs, item.EndMs, item.StartUS, item.DurationUS,
-		item.PresetID, item.ImagePresetID, item.MotionID, motionParamsJSON(item.MotionParams), imageLayersJSON(item.ImageLayers),
+		item.PresetID, item.ImagePresetID, item.MotionID, motionParamsJSON(item.MotionParams), imageLayersJSON(item.ImageLayers), mapJSON,
 	}
 	b, _ := json.Marshal(input)
 	h := digest.SHA256Bytes(b)

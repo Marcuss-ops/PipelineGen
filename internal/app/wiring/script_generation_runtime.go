@@ -251,7 +251,15 @@ func BuildScriptGenerationRuntime(cfg *config.Config, root *ComposeRoot, runRepo
 		}
 		runner.SetAudioAssetSource(audioAdapter)
 		runner.SetOverlayBackgroundSource(audioAdapter)
-		runner.SetMediaPreflight(mediasub.NewPreflight(assetLookup, audioAdapter, audioAdapter))
+		// Wire the image-provider health probe when the images capability is
+		// composed. The probe runs ONLY for requests that depend on internet
+		// image retrieval, so a degraded provider is caught before generation
+		// instead of by burning a complete durable run.
+		var imageProviderHealth scriptgen.ImageProviderHealthProbe
+		if root.Domains != nil && root.Domains.ImageService != nil {
+			imageProviderHealth = mediasub.NewImageProviderHealthProbe(root.Domains.ImageService)
+		}
+		runner.SetMediaPreflight(mediasub.NewPreflightWithImageProviderHealth(assetLookup, audioAdapter, audioAdapter, imageProviderHealth))
 		log.Info("audio asset resolver wired (BGM/SFX asset_id → local path) including P0.5 media preflight adapter")
 	} else {
 		log.Warn("audio asset resolver not wired: asset registry missing (BGM/SFX intents will fail closed)")
@@ -487,7 +495,10 @@ func buildRuntimeMediaCertSpec(plan *scriptpkg.ResolvedGenerationPlan) mediacert
 	if plan == nil {
 		return spec
 	}
-	if plan.MediaMode == scriptpkg.MediaModeClipOnly || plan.MediaMode == scriptpkg.MediaModeMixed {
+	// Clip-only plans carry caller-selected clips and therefore have no
+	// Artlist winner contract. Mixed plans still resolve stock video through
+	// Artlist for segments that do not have a locked clip.
+	if plan.MediaMode == scriptpkg.MediaModeMixed {
 		spec.VideoProvider = scriptpkg.VidRushProviderArtlist
 	}
 	// Only authored plan segments define an external scene-identity contract.
@@ -495,10 +506,11 @@ func buildRuntimeMediaCertSpec(plan *scriptpkg.ResolvedGenerationPlan) mediacert
 	// scenes, so do not invent a synthetic scene-0 expectation here.
 	spec.Segments = len(plan.Segments)
 	spec.EntitiesPerSegment = plan.MediaPlan.Extraction.MaxEntitiesPerSegment
-	// Stock-only final jobs use Drive video references and do not require the
-	// local image-selection lane. Keep image fanout certification for modes
-	// whose scene plan actually depends on selected/generated images.
-	if plan.MediaMode != scriptpkg.MediaModeStockOnly {
+	// Stock-only and clip-only plans use their video references for scene
+	// visuals and do not depend on the secondary-image selection lane. Keep
+	// image fanout certification for modes whose scene plan actually depends
+	// on selected/generated images.
+	if plan.MediaMode != scriptpkg.MediaModeStockOnly && plan.MediaMode != scriptpkg.MediaModeClipOnly {
 		spec.ImagesPerSegment = plan.ImagesPerScene
 	}
 	// Canonical entity scope keeps a person/place visually consistent across

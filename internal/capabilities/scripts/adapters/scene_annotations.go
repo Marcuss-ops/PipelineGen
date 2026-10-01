@@ -111,18 +111,59 @@ func sceneAnnotations(text, language string, seg scriptpkg.VidRushSegmentResult)
 			CanonicalName: canonical, Type: kind, Confidence: entity.Confidence,
 			Mentions: mentions,
 		}
+		if kind == "LOGO" {
+			if hasVerifiedBrandImage(canonical, seg) {
+				item.Type = "LOGO"
+			} else {
+				item.Type = "BRAND"
+			}
+		} else if kind == "BRAND" && hasVerifiedBrandImage(canonical, seg) {
+			item.Type = "LOGO"
+		}
 		// Stamp the canonical_entity_id the Image Search Intent resolver
 		// chose for this entity (the join key of the overlay media index), so
 		// the overlay compile resolves the card asset under the SAME identity
 		// — never a re-derivation from a possibly-different surface.
 		item.CanonicalEntityID = seg.ResolverCanonicalID(canonical, value)
-		if scriptpkg.IsAnnotationEntityKind(kind) {
+		if item.CanonicalEntityID == "" && scriptpkg.NormalizeAnnotationType(kind) == "LOGO" {
+			item.CanonicalEntityID = "logo:" + normalizeBrandAssetName(canonical)
+		}
+		if scriptpkg.IsAnnotationEntityKind(item.Type) {
 			ann.PrimaryEntities = append(ann.PrimaryEntities, item)
 		} else {
 			ann.SecondaryEntities = append(ann.SecondaryEntities, item)
 		}
 	}
 	return rebaseSceneAnnotations(ann, text)
+}
+
+func hasVerifiedBrandImage(name string, seg scriptpkg.VidRushSegmentResult) bool {
+	want := normalizeBrandAssetName(name)
+	if want == "" {
+		return false
+	}
+	candidates := append(append([]scriptpkg.SegmentAssetCandidate(nil), seg.Assets.Candidates...), seg.Assets.SecondaryImages...)
+	for _, candidate := range candidates {
+		if !strings.EqualFold(strings.TrimSpace(candidate.Provider), scriptpkg.VidRushProviderInternetImages) ||
+			candidate.AcquisitionStatus != scriptpkg.VidRushStatusAcquired ||
+			candidate.VerificationStatus != scriptpkg.VidRushStatusVerified ||
+			candidate.PersistenceStatus != scriptpkg.VidRushStatusPersisted ||
+			strings.TrimSpace(candidate.DriveLink) == "" || strings.TrimSpace(candidate.LegacyFileMD5) == "" ||
+			strings.EqualFold(strings.TrimSpace(candidate.IndexStatus), "failed") ||
+			strings.EqualFold(strings.TrimSpace(candidate.RightsStatus), "rejected") {
+			continue
+		}
+		for _, surface := range []string{candidate.Entity, candidate.Query} {
+			if normalizeBrandAssetName(surface) == want {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func normalizeBrandAssetName(name string) string {
+	return strings.ToLower(strings.Join(strings.Fields(strings.TrimSpace(name)), " "))
 }
 
 // RebaseSceneAnnotations is the final output-boundary normalization. It is
@@ -255,6 +296,14 @@ func rebaseSceneAnnotations(in *scriptpkg.SceneAnnotations, text string) *script
 		duplicate := false
 		for _, existing := range append(out.PrimaryEntities, out.SecondaryEntities...) {
 			if strings.EqualFold(existing.CanonicalName, canonical) && existing.Type == entity.Type {
+				duplicate = true
+				break
+			}
+			// An explicit brand/logo annotation owns its grounded span. Do
+			// not reclassify the same surface as an acronym ORG or a generic
+			// title-case PERSON during the final discovery pass.
+			if (existing.Type == "BRAND" || existing.Type == "LOGO") &&
+				annotationSpansOverlap(existing.Mentions, entity.Mentions) {
 				duplicate = true
 				break
 			}

@@ -317,34 +317,8 @@ func (p *stockScriptPrefetcher) Prefetch(ctx context.Context, bindings []scriptp
 		report.Skipped = len(bindings)
 		return report
 	}
-	seen := make(map[string]struct{}, len(bindings))
-	urls := make([]string, 0, len(bindings))
-	for _, binding := range bindings {
-		if len(urls) >= maxScriptStockPrefetchBindings {
-			report.Skipped++
-			continue
-		}
-		url := strings.TrimSpace(binding.DriveLink)
-		if url == "" {
-			url = strings.TrimSpace(binding.FolderLink)
-		}
-		if url == "" && strings.TrimSpace(binding.FolderID) != "" {
-			url = "https://drive.google.com/drive/folders/" + strings.TrimSpace(binding.FolderID)
-		}
-		if url == "" && strings.EqualFold(strings.TrimSpace(binding.Source), "youtube") && strings.TrimSpace(binding.AssetID) != "" {
-			url = "https://drive.google.com/file/d/" + strings.TrimSpace(binding.AssetID) + "/view"
-		}
-		if url == "" {
-			report.Skipped++
-			continue
-		}
-		if _, ok := seen[url]; ok {
-			report.Skipped++
-			continue
-		}
-		seen[url] = struct{}{}
-		urls = append(urls, url)
-	}
+	urls, skipped := scriptStockPrefetchURLs(bindings)
+	report.Skipped = skipped
 	report.Requested = len(urls)
 	if len(urls) == 0 {
 		return report
@@ -362,4 +336,38 @@ func (p *stockScriptPrefetcher) Prefetch(ctx context.Context, bindings []scriptp
 			zap.Int("skipped", report.Skipped))
 	}
 	return report
+}
+
+// scriptStockPrefetchURLs only prewarms individual files. A folder binding is
+// a remote stock selection contract for the final renderer; opening or
+// caching its contents on the script worker would process the stock locally.
+func scriptStockPrefetchURLs(bindings []scriptpkg.StockBindingInput) ([]string, int) {
+	seen := make(map[string]struct{}, len(bindings))
+	urls := make([]string, 0, len(bindings))
+	skipped := 0
+	for _, binding := range bindings {
+		if strings.TrimSpace(binding.FolderID) != "" || strings.TrimSpace(binding.FolderLink) != "" {
+			skipped++
+			continue
+		}
+		if len(urls) >= maxScriptStockPrefetchBindings {
+			skipped++
+			continue
+		}
+		url := strings.TrimSpace(binding.DriveLink)
+		if url == "" && strings.EqualFold(strings.TrimSpace(binding.Source), "youtube") && strings.TrimSpace(binding.AssetID) != "" {
+			url = "https://drive.google.com/file/d/" + strings.TrimSpace(binding.AssetID) + "/view"
+		}
+		if url == "" {
+			skipped++
+			continue
+		}
+		if _, ok := seen[url]; ok {
+			skipped++
+			continue
+		}
+		seen[url] = struct{}{}
+		urls = append(urls, url)
+	}
+	return urls, skipped
 }

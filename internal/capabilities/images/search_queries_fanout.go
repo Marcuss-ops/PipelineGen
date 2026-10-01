@@ -120,61 +120,93 @@ func (s *ImageStorageService) runRetrievalFallbackForProvider(ctx context.Contex
 		return hit.PreviewURL, string(p.Name()), pageURL
 	}
 
-	var backends []retrievalBackend
-	if s.retrievalRegistry == nil {
-		backends = []retrievalBackend{
-			{name: "wikipedia", fn: func(c context.Context) (string, string) {
-				img, title := s.searchWikipedia(c, query, lang)
-				if img == "" {
-					return "", ""
-				}
-				pURL := ""
-				if title != "" {
-					pURL = fmt.Sprintf("https://%s.wikipedia.org/wiki/%s", lang, strings.ReplaceAll(title, " ", "_"))
-				}
-				return img, pURL
-			}},
-			{name: "searxng", fn: func(c context.Context) (string, string) {
-				img := s.searchSearXNGImages(c, query)
-				if img == "" {
-					return "", ""
-				}
-				return img, img
-			}},
-			{name: "duckduckgo", fn: func(c context.Context) (string, string) {
-				img := s.searchDDGWide(c, query)
-				if img == "" {
-					return "", ""
-				}
-				return img, img
-			}},
+	// Query recession (fanout=0 fix): a provider can answer empty for a flaky,
+	// rate-limited or over-narrow primary query. Before declaring the scene
+	// imageless, recede through deterministically relaxed variants of the same
+	// query. The ladder is bounded so a genuinely imageless subject does not
+	// multiply provider calls without limit.
+	rungs := retrieved.RelaxImageQuery(query)
+	if len(rungs) == 0 {
+		return "", "", ""
+	}
+	if len(rungs) > maxImageQueryRecessionRungs {
+		rungs = rungs[:maxImageQueryRecessionRungs]
+	}
+	for i, rung := range rungs {
+		imgURL, source, pageURL := s.runRetrievalRung(ctx, rung, lang)
+		if imgURL != "" {
+			if i > 0 {
+				s.log.Info("retrieval receded to a relaxed query",
+					zap.String("original_query", query), zap.String("relaxed_query", rung))
+			}
+			return imgURL, source, pageURL
 		}
-	} else {
-		for _, p := range s.retrievalRegistry.Providers() {
-			p := p
-			backends = append(backends, retrievalBackend{
-				name: string(p.Name()),
-				fn: func(c context.Context) (string, string) {
-					if c.Err() != nil {
-						return "", ""
-					}
-					res, err := p.Search(c, query, retrieved.RetrievalSearchOptions{Lang: lang})
-					if err != nil {
-						s.log.Warn("retrieved provider search failed", zap.String("provider", string(p.Name())), zap.String("query", query), zap.Error(err))
-						return "", ""
-					}
-					if len(res) == 0 {
-						return "", ""
-					}
-					hit := res[0]
-					pURL := hit.PageURL
-					if pURL == "" {
-						pURL = hit.PreviewURL
-					}
-					return hit.PreviewURL, pURL
-				},
-			})
+	}
+	return "", "", ""
+}
+
+// maxImageQueryRecessionRungs bounds how many relaxed query variants a single
+// retrieval attempt may try. Three covers the useful cases (instruction
+// prefix, clause strip, one truncation) without turning a miss into a burst.
+const maxImageQueryRecessionRungs = 3
+
+// runRetrievalRung executes ONE query against the shared retrieval surface,
+// preferring the concurrent quality-ranked selection (SearchBest) over the
+// legacy first-hit-wins fan-out. The registry path uses SearchBest; the legacy
+// no-registry path keeps the parallel engine fan-out.
+func (s *ImageStorageService) runRetrievalRung(ctx context.Context, query, lang string) (string, string, string) {
+	if s.retrievalRegistry != nil {
+		results, err := s.retrievalRegistry.SearchBest(ctx, query, retrieved.RetrievalSearchOptions{Lang: lang})
+		if err != nil {
+			s.log.Warn("retrieval best search failed", zap.String("query", query), zap.Error(err))
+			return "", "", ""
 		}
+		if len(results) == 0 {
+			return "", "", ""
+		}
+		hit := results[0]
+		if hit.PreviewURL == "" {
+			return "", "", ""
+		}
+		pageURL := hit.PageURL
+		if pageURL == "" {
+			pageURL = hit.PreviewURL
+		}
+		return hit.PreviewURL, string(hit.Provider), pageURL
+	}
+	return s.legacyRetrievalFanOut(ctx, query, lang)
+}
+
+// legacyRetrievalFanOut is the no-registry engine cascade (Wikipedia →
+// SearXNG → DuckDuckGo). It is only reached when the canonical provider
+// registry is unwired; the registry path runs through SearchBest instead.
+func (s *ImageStorageService) legacyRetrievalFanOut(ctx context.Context, query, lang string) (string, string, string) {
+	backends := []retrievalBackend{
+		{name: "wikipedia", fn: func(c context.Context) (string, string) {
+			img, title := s.searchWikipedia(c, query, lang)
+			if img == "" {
+				return "", ""
+			}
+			pURL := ""
+			if title != "" {
+				pURL = fmt.Sprintf("https://%s.wikipedia.org/wiki/%s", lang, strings.ReplaceAll(title, " ", "_"))
+			}
+			return img, pURL
+		}},
+		{name: "searxng", fn: func(c context.Context) (string, string) {
+			img := s.searchSearXNGImages(c, query)
+			if img == "" {
+				return "", ""
+			}
+			return img, img
+		}},
+		{name: "duckduckgo", fn: func(c context.Context) (string, string) {
+			img := s.searchDDGWide(c, query)
+			if img == "" {
+				return "", ""
+			}
+			return img, img
+		}},
 	}
 	return fanOutRetrieval(ctx, s.log, backends)
 }

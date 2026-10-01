@@ -41,6 +41,9 @@ type OverlayCanvasSpec struct {
 	// this render. It is caller-supplied (request max_phrase_overlays); zero
 	// keeps the certified default (capabilityoverlay.MaxPhraseOverlaysPerRun).
 	MaxPhraseOverlays int
+	// MaxImageOverlays overrides the run-level image ceiling; zero keeps the
+	// certified default (capabilityoverlay.MaxImageOverlaysPerRun).
+	MaxImageOverlays int
 }
 
 // GoldenOverlayCanvas is the validated golden canary canvas (1280×720,

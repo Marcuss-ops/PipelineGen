@@ -6,8 +6,38 @@ import (
 	"testing"
 	"time"
 
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 	"github.com/stretchr/testify/require"
 )
+
+func TestSceneRenderSpecSubtitlePolicy(t *testing.T) {
+	req := GenerateRequest{SourceLanguage: "pt", Render: scriptpkg.VideoRenderSpec{Enabled: true, Subtitles: &scriptpkg.VideoSubtitlesSpec{Enabled: true, Mode: "burn"}}}
+	tests := []struct {
+		name  string
+		mode  scriptpkg.MediaMode
+		scene Scene
+		want  bool
+	}{
+		{name: "stock without clip", scene: Scene{ID: "stock-image"}, want: false},
+		{name: "stock binding takes precedence over source audio clip", scene: Scene{ID: "stock-scene", Clip: &ClipReference{ID: "yt_source_audio_0_10_v1"}, Stock: &scriptpkg.StockBinding{FolderID: "1Sr15dwjKquNn9yaPBav8TwNS_lfEzd-"}}, want: false},
+		{name: "source clip", scene: Scene{Clip: &ClipReference{ID: "yt_abc_0_10_v1"}}, want: true},
+		{name: "stock-only never inherits clip subtitles", mode: scriptpkg.MediaModeStockOnly, scene: Scene{Clip: &ClipReference{ID: "yt_abc_0_10_v1"}}, want: false},
+		{name: "artlist clip", scene: Scene{Clip: &ClipReference{ID: "artlist_asset_42"}}, want: false},
+		{name: "fixed media with caption", scene: Scene{ExecutionMode: scriptpkg.SceneExecutionFixedMedia, Text: map[Language]string{"pt": "Abertura"}}, want: true},
+		{name: "fixed media without caption", scene: Scene{ExecutionMode: scriptpkg.SceneExecutionFixedMedia}, want: false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			testReq := req
+			testReq.MediaMode = tt.mode
+			got := sceneRenderSpec(testReq, tt.scene)
+			require.NotNil(t, got.Subtitles)
+			require.Equal(t, tt.want, got.Subtitles.Enabled)
+			require.True(t, got.Enabled, "localized clipping/normalization render remains enabled")
+			require.True(t, req.Render.Subtitles.Enabled, "per-scene projection must not mutate request")
+		})
+	}
+}
 
 // recordingLocalizedRenderEnqueuer records every enqueued localized render in
 // submission order. err makes EnqueueLocalizedRender fail closed. When

@@ -127,6 +127,8 @@ type Tools struct {
 	workerID    string
 	sessionID   string
 	jobID       string
+	jobType     string
+	traceCtx    context.Context
 	leaseID     string
 	revision    atomic.Int64
 	workspace   string
@@ -146,6 +148,7 @@ func NewTools(broker jobs.Broker, store eventStore, workerID, sessionID string, 
 		workerID:    workerID,
 		sessionID:   sessionID,
 		jobID:       j.ID,
+		jobType:     j.Type,
 		leaseID:     j.LeaseID,
 		workspace:   workspace,
 		assetClient: assetClient,
@@ -160,6 +163,11 @@ func (t *Tools) WithJobRegistry(ledger *jobs.JobRegistryRecorder) *Tools {
 }
 
 func (t *Tools) Progress(ctx context.Context, progress int, message string) error {
+	if t.traceCtx != nil {
+		ctx = t.traceCtx
+	}
+	activity := job.ProgressActivityDataWithTrace(t.jobType, progress, message, job.ActivityTraceFromContext(ctx))
+	data, _ := json.Marshal(activity)
 	err := t.broker.Progress(ctx, jobs.ProgressCommand{
 		WorkerID:         t.workerID,
 		WorkerSessionID:  t.sessionID,
@@ -168,6 +176,7 @@ func (t *Tools) Progress(ctx context.Context, progress int, message string) erro
 		ExpectedRevision: int(t.revision.Load()),
 		Progress:         progress,
 		Message:          message,
+		Data:             data,
 	})
 	if t.ledger != nil {
 		t.ledger.RecordProgress(ctx, t.jobID, progress, message)
@@ -181,6 +190,24 @@ func (t *Tools) Progress(ctx context.Context, progress int, message string) erro
 // directly. Errors are logged but not propagated — event emission
 // must never fail the job.
 func (t *Tools) Event(ctx context.Context, eventType, message string, data map[string]any) error {
+	if t.traceCtx != nil {
+		ctx = t.traceCtx
+	}
+	if data == nil {
+		data = map[string]any{}
+	}
+	subKind := eventType
+	if value, ok := data["sub_kind"].(string); ok && value != "" {
+		subKind = value
+	} else if value, ok := data["stage"].(string); ok && value != "" {
+		subKind = value
+	} else if value, ok := data["phase"].(string); ok && value != "" {
+		subKind = value
+	}
+	data = job.ActivityDataWithTrace(t.jobType, subKind, job.ActivityStatus(eventType, data), message, data, job.ActivityTraceFromData(data, ctx))
+	if trace, ok := data["trace"].(map[string]any); ok {
+		data["sequence"] = trace["sequence"]
+	}
 	var err error
 	if t.store != nil {
 		err = t.store.AddEvent(ctx, t.jobID, eventType, message, data)

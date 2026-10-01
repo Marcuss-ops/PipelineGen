@@ -118,10 +118,10 @@ func TestGolden06FullScriptScene(t *testing.T) {
 	require.NoError(t, plan.Validate())
 	require.NotEmpty(t, plan.Items)
 
-	// 2. Final content selection admits only grounded phrases and materialized
-	//    images, each anchored to certified timing (never estimated).
+	// 2. Final content selection admits grounded phrases, bounded value cards
+	//    and materialized images, each anchored to certified timing.
 	templates := map[string]bool{}
-	phrases, images := 0, 0
+	phrases, images, numbers := 0, 0, 0
 	for _, item := range plan.Items {
 		templates[item.TemplateID] = true
 		switch item.Kind {
@@ -129,6 +129,8 @@ func TestGolden06FullScriptScene(t *testing.T) {
 			phrases++
 		case "image", "entity_image":
 			images++
+		case "number":
+			numbers++
 		default:
 			t.Fatalf("editorial plan must exclude overlay kind %q", item.Kind)
 		}
@@ -137,7 +139,8 @@ func TestGolden06FullScriptScene(t *testing.T) {
 	require.True(t, templates["image_popup"], "materialized images must survive the budget (got %v)", templates)
 	require.LessOrEqual(t, phrases, capabilityoverlay.MaxPhraseOverlaysPerRun)
 	require.LessOrEqual(t, images, capabilityoverlay.MaxImageOverlaysPerRun)
-	require.LessOrEqual(t, len(plan.Items), capabilityoverlay.MaxPhraseOverlaysPerRun+capabilityoverlay.MaxImageOverlaysPerRun)
+	require.Equal(t, 1, numbers, "the spoken ten-million metric survives the independent value budget")
+	require.LessOrEqual(t, len(plan.Items), capabilityoverlay.MaxPhraseOverlaysPerRun+capabilityoverlay.MaxImageOverlaysPerRun+capabilityoverlay.MaxNumberOverlaysPerRun)
 
 	// 3. RenderingGen queue: submit the SEMANTIC OverlayPlan + completed
 	//    artifact (the worker's reply). RenderingGen owns the v2 lowering.
@@ -190,7 +193,8 @@ func TestGolden06FullScriptScene(t *testing.T) {
 	require.Equal(t, 1280, analytics.Width)
 	require.Equal(t, 720, analytics.Height)
 	require.NotZero(t, analytics.Content.Phrases, "content census must count phrases")
-	require.Zero(t, analytics.Content.Words, "word overlays are outside the final editorial plan")
+	require.Zero(t, analytics.Content.Words, "keyword overlays are outside the final editorial plan")
+	// The content census is extended to include numbers by the queue contract.
 	require.NotZero(t, analytics.Content.Images, "content census must count images")
 
 	// The submitted queue job carries the semantic renderinggen.overlay-plan.v1

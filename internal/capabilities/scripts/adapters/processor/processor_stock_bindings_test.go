@@ -59,6 +59,16 @@ func TestStockBindingsProcessorDoesNotReplaceShortGeneratedNarrationWithBrief(t 
 	}
 }
 
+func TestNormalizeExplicitStockFolderOverridesClipKind(t *testing.T) {
+	got := normalizeScenesForExplicitSegments(
+		[]scriptpkg.SpecScene{{ID: "scene-0", Index: 0, Kind: scriptpkg.SceneClip}},
+		[]scriptpkg.ScriptSegment{{ID: "segment-1", Topic: "stock scene", Kind: "clip", StockFolderID: "folder-1"}},
+	)
+	if len(got) != 1 || got[0].Kind != scriptpkg.SceneStock {
+		t.Fatalf("normalized scene = %#v, want SceneStock despite stale segment kind=clip", got)
+	}
+}
+
 func TestStockBindingsProcessorRejectsBindingForFixedMedia(t *testing.T) {
 	_, err := NewStockBindingsProcessor().Process(context.Background(), nil, adapters.ProcessInput{
 		StockEnabled:  scriptpkg.ToggleEnabled,

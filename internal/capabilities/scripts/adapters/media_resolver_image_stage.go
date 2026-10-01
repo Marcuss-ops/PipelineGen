@@ -52,6 +52,9 @@ type MediaResolverImageStage struct {
 	metrics  VidRushMetrics
 	cache    scriptports.VidRushCachePort
 	catalog  entitycatalog.Repository
+	// semanticScorer is optional. When nil, discovery stays fail-open and the
+	// semantic gate in filterInternetImageCandidates is inert.
+	semanticScorer SemanticCandidateScorer
 }
 
 func NewMediaResolverImageStage(searcher InternetImageSearcher, metrics ...VidRushMetrics) *MediaResolverImageStage {
@@ -68,6 +71,15 @@ func NewMediaResolverImageStageWithCatalog(searcher InternetImageSearcher, cache
 		m = metrics[0]
 	}
 	return &MediaResolverImageStage{searcher: searcher, metrics: m, cache: cache, catalog: catalog}
+}
+
+// WithSemanticScorer attaches the optional semantic candidate scorer. A nil
+// scorer keeps the stage fail-open (discovery behavior is unchanged).
+func (p *MediaResolverImageStage) WithSemanticScorer(scorer SemanticCandidateScorer) *MediaResolverImageStage {
+	if p != nil {
+		p.semanticScorer = scorer
+	}
+	return p
 }
 
 func (p *MediaResolverImageStage) Name() ProcessorName { return ProcessorInternetImages }
@@ -383,6 +395,11 @@ func (p *MediaResolverImageStage) processInternetImageSegments(ctx context.Conte
 			warnings = append(warnings, fmt.Sprintf("internet_images: bounded query fan-out failed for segment %s: %v", updated.SegmentID, mapErr))
 		}
 		for _, queryResult := range queryResults {
+			if scored, scoreErr := scoreInternetImageCandidates(ctx, p.semanticScorer, queryResult.query, queryResult.candidates); scoreErr != nil {
+				warnings = append(warnings, fmt.Sprintf("internet_images: semantic scoring unavailable for segment %s: %v", updated.SegmentID, scoreErr))
+			} else {
+				queryResult.candidates = scored
+			}
 			queryResult.candidates = filterInternetImageCandidates(deduplicateInternetImageCandidates(normalizeInternetImageCandidates(queryResult.candidates, queryResult.query)))
 			if queryResult.err != nil {
 				if p.metrics != nil {

@@ -9,6 +9,7 @@ import (
 	capabilityaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
 	capcheckpoint "github.com/Marcuss-ops/PipelineGen/internal/capabilities/checkpoint"
 	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
+	mediadomain "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/observability"
 	"go.uber.org/zap"
@@ -203,16 +204,18 @@ func (r *Runner) runAudioCompilePhase(ctx context.Context, runID string, req Gen
 			} else if candidate, ok := r.audioAssetSource.(ClipAudioAssetSource); ok {
 				clipAudioSource = candidate
 			}
+			// Clip audio is materialized in EVERY lane since the 2026-09-30
+			// final-job fix: the remote master mixes the restored clip track, so
+			// the compiled plan must carry verified local clip audio paths. The
+			// old skip left AudioClip intents unresolvable here; the compile then
+			// failed (or the projection dropped the track entirely).
 			var clipPrepareMS int64
-			if !req.FinalJob {
-				var prepareErr error
-				clipPrepareMS, prepareErr = prepareClipAudioAssets(ctx, result, clipAudioSource, policy)
-				if prepareErr != nil {
-					cause := fmt.Errorf("prepare original clip audio failed: %w", prepareErr)
-					r.failExecutionStep(ctx, exec, audioStep, cause)
-					r.failRunWithRetry(ctx, runID, StageCompilingAudio, cause)
-					return false
-				}
+			clipPrepareMS, prepareErr := prepareClipAudioAssets(ctx, result, clipAudioSource, policy)
+			if prepareErr != nil {
+				cause := fmt.Errorf("prepare original clip audio failed: %w", prepareErr)
+				r.failExecutionStep(ctx, exec, audioStep, cause)
+				r.failRunWithRetry(ctx, runID, StageCompilingAudio, cause)
+				return false
 			}
 			compileTimings.ClipAudioPrepareMS = clipPrepareMS
 			// The audio intent block (BGM/SFX) is layered onto the same
@@ -249,6 +252,26 @@ func (r *Runner) runAudioCompilePhase(ctx context.Context, runID string, req Gen
 				r.failExecutionStep(ctx, exec, audioStep, cause)
 				r.failRunWithRetry(ctx, runID, StageCompilingAudio, cause)
 				return false
+			}
+			if req.FinalJob {
+				// clips.v1 emits video on the 24 fps frame grid. The narration
+				// duration can end between frames, so master the final audio to
+				// the same rounded frame boundary. The renderer adds silence after
+				// the last audio event; this preserves every spoken sample while
+				// making the AAC stream long enough for copy-only packet mux.
+				frameResolver, frameErr := capabilityaudio.NewFrameResolver(capabilityaudio.IntegerFrameRate(24))
+				if frameErr == nil {
+					compiledAudioPlan.MasterDurationUS, frameErr = frameResolver.FrameAlignedDurationUS(canonicalTimeline.DurationUS)
+				}
+				if frameErr == nil {
+					frameErr = compiledAudioPlan.Seal()
+				}
+				if frameErr != nil {
+					cause := fmt.Errorf("align final-job audio master to video frames: %w", frameErr)
+					r.failExecutionStep(ctx, exec, audioStep, cause)
+					r.failRunWithRetry(ctx, runID, StageCompilingAudio, cause)
+					return false
+				}
 			}
 			// The compile returns its own subtimings; the clip-audio preparation
 			// measured above is the owner of ClipAudioPrepareMS, so it is
@@ -529,11 +552,20 @@ func (r *Runner) runAudioCompilePhase(ctx context.Context, runID string, req Gen
 		// rides the canvas into CompileOverlayPlan, which forwards it to the
 		// editorial budget.
 		canvas.MaxPhraseOverlays = req.MaxPhraseOverlays
+		// Scene-context and entity-bound images share one run-level allowance.
+		// This is the production audio-compile path that freezes the plan; keep
+		// the request's image cap here as well as in the dedicated overlay-plan
+		// helper so entity cards cannot escape the requested budget.
+		canvas.MaxImageOverlays = req.MaxImageOverlays
 		if canvas.Style == nil && background != nil {
 			canvas.Style = background.Style
 		}
 		driveFolderID := firstNonEmpty(req.Render.DriveFolderID, req.DriveFolderID, req.Docs.FolderID)
-		if err := compileResultOverlayPlan(result, req.SourceLanguage, runID, req.Project, driveFolderID, canvas, req.MediaPlan.Extraction.EntityImages.PerScene()); err != nil {
+		plates := r.mapPlates
+		if req.MediaPlan.ProviderPolicy.Geocoding != mediadomain.MediaToggleEnabled {
+			plates = nil
+		}
+		if err := compileResultOverlayPlan(result, req.SourceLanguage, runID, req.Project, driveFolderID, canvas, plates, req.MediaPlan.Extraction.EntityImages.PerScene()); err != nil {
 			cause := fmt.Errorf("overlay plan compilation failed: %w", err)
 			r.failExecutionStep(ctx, exec, payloadStep, cause)
 			r.failRunWithRetry(ctx, runID, StageCompilingAudio, cause)

@@ -70,7 +70,13 @@ func TestGet_EnrichedResponseShape(t *testing.T) {
 	}
 	events := []job.Event{
 		{ID: "evt-1", JobID: j.ID, Type: "request.validated", Message: "validated"},
-		{ID: "evt-2", JobID: j.ID, Type: "clips.hydrated", Message: "clips ok"},
+		{ID: "evt-2", JobID: j.ID, Type: "activity", Message: "Resolving source material", Data: map[string]any{
+			"kind": "script.generate", "sub_kind": "script.prepare.resolve_source", "status": "running",
+			"detail": "Resolving source material", "payload": map[string]any{"item_id": "item-1", "progress": 25},
+			"micro_kind": "script.prepare.resolve_source", "run_id": "run-1", "attempt_id": "attempt-1",
+			"parent_run_id": "run-parent", "correlation_id": "corr-abc-123", "sequence": float64(8),
+			"trace": map[string]any{"run_id": "run-1", "attempt_id": "attempt-1", "parent_run_id": "run-parent", "correlation_id": "corr-abc-123", "sequence": float64(8)},
+		}},
 		{ID: "evt-3", JobID: j.ID, Type: "warning", Message: "slow clip"},
 	}
 	stub := &observabilityStub{job: j, events: events}
@@ -91,7 +97,27 @@ func TestGet_EnrichedResponseShape(t *testing.T) {
 	assert.Equal(t, "job-obs-1", body["id"])
 	assert.Equal(t, string(job.StatusRunning), body["status"])
 	assert.Equal(t, "corr-abc-123", body["correlation_id"])
-	assert.Equal(t, "clips.hydrated", body["current_stage"])
+	assert.Equal(t, "activity", body["current_stage"], "legacy current_stage must remain the event type")
+	assert.Equal(t, "script.generate", body["current_kind"])
+	assert.Equal(t, "script.prepare.resolve_source", body["current_sub_kind"])
+	assert.Equal(t, "script.prepare.resolve_source", body["current_micro_kind"])
+	assert.Equal(t, float64(8), body["current_sequence"])
+	assert.Equal(t, "run-1", body["current_run_id"])
+	assert.Equal(t, "attempt-1", body["current_attempt_id"])
+	assert.Equal(t, "run-parent", body["current_parent_run_id"])
+	assert.Equal(t, "corr-abc-123", body["current_correlation_id"])
+	currentTrace, ok := body["current_trace"].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, "run-1", currentTrace["run_id"])
+	assert.Equal(t, "attempt-1", currentTrace["attempt_id"])
+	assert.Equal(t, "run-parent", currentTrace["parent_run_id"])
+	assert.Equal(t, "corr-abc-123", currentTrace["correlation_id"])
+	assert.Equal(t, float64(8), currentTrace["sequence"])
+	assert.Equal(t, "running", body["current_status"])
+	assert.Equal(t, "Resolving source material", body["current_detail"])
+	currentPayload, ok := body["current_payload"].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, "item-1", currentPayload["item_id"])
 	assert.Equal(t, float64(42), body["progress"])
 
 	timeline, ok := body["timeline"].([]any)

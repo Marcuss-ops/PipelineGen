@@ -17,6 +17,7 @@ func TestBuildRenderAttemptAnalyticsProjectsContentAndArtifact(t *testing.T) {
 	plan := capoverlay.OverlayPlan{PlanID: "plan-1", Items: []capoverlay.OverlayItem{
 		{ID: "p", TemplateID: "IMPORTANT_PHRASE"},
 		{ID: "w", TemplateID: "IMPORTANT_WORD"},
+		{ID: "n", TemplateID: "NUMBER"},
 		{ID: "i", TemplateID: "IMAGE_OVERLAY"},
 		{ID: "l", TemplateID: "LIGHT_LEAK"},
 	}}
@@ -44,8 +45,8 @@ func TestBuildRenderAttemptAnalyticsProjectsContentAndArtifact(t *testing.T) {
 	if got.AttemptID != "attempt-1" || got.JobID != "plan-1" {
 		t.Fatalf("identity = %q/%q, want attempt-1/plan-1", got.AttemptID, got.JobID)
 	}
-	if got.Content.Phrases != 1 || got.Content.Words != 1 || got.Content.Images != 1 || got.Content.Leaks != 1 {
-		t.Fatalf("content = %+v, want one of each", got.Content)
+	if got.Content.Phrases != 1 || got.Content.Words != 1 || got.Content.Numbers != 1 || got.Content.Images != 1 || got.Content.Leaks != 1 {
+		t.Fatalf("content = %+v, want one phrase, word, number, image, and leak", got.Content)
 	}
 	if got.SHA256 != "abc" || got.RenderMS != 900 || got.EncodeMS != 300 ||
 		got.CompletionWaitMS != 2100 || got.PollingSleepMS != 2000 || got.PollingIntervalMS != 2000 || got.PollCount != 2 ||
@@ -57,7 +58,7 @@ func TestBuildRenderAttemptAnalyticsProjectsContentAndArtifact(t *testing.T) {
 
 	// Nil artifact: census still recorded, output metrics stay zero/empty.
 	empty := BuildRenderAttemptAnalytics("attempt-2", plan, nil)
-	if empty.AttemptID != "attempt-2" || empty.Content.Phrases != 1 || empty.SHA256 != "" || empty.RenderMS != 0 || empty.CompletionWaitMS != 0 {
+	if empty.AttemptID != "attempt-2" || empty.Content.Phrases != 1 || empty.Content.Numbers != 1 || empty.SHA256 != "" || empty.RenderMS != 0 || empty.CompletionWaitMS != 0 {
 		t.Fatalf("nil-artifact record = %+v, want census + empty output", empty)
 	}
 }

@@ -13,6 +13,7 @@ import (
 
 	capabilityaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
 	capoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
+	kernelaudio "github.com/Marcuss-ops/PipelineGen/internal/kernel/audio"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 	"go.uber.org/zap"
@@ -66,9 +67,15 @@ type RemoteFinalJobResult struct {
 	Yields int `json:"yields,omitempty"`
 }
 
-// finalJobAudioInput keeps the generated voice track but removes source-video
-// audio from the 77-side mix. The remote worker owns stock-video downloads;
-// this host only compiles the published TTS, BGM and SFX assets for handoff.
+// finalJobAudioInput projects the canonical mix onto the remote final-job
+// handoff: TTS, BGM and SFX pass through, and the original clip audio is
+// restored at FinalJobRestoredClipGainDB instead of being dropped. History:
+// this projection used to remove every AudioClip intent, which delivered
+// videos with silent clip audio (2026-09-30 Milton incident) — the source
+// speech was audible only in the local lane while the remote master mixed
+// narration + music alone. The restored track ducks like any clip track:
+// applyMixPolicy only deepens non-protected events toward the active duck
+// gain while speech plays.
 func finalJobAudioInput(result GenerateResult, language Language) GenerateResult {
 	result.Scenes = append([]Scene(nil), result.Scenes...)
 	for i := range result.Scenes {
@@ -88,6 +95,13 @@ func finalJobAudioInput(result GenerateResult, language Language) GenerateResult
 		hasVoiceover := false
 		for _, intent := range intents {
 			if intent.Mode == capabilityaudio.AudioClip {
+				// The clip's original audio reaches the remote master: keep the
+				// intent and stamp the restored-mix gain. The mix policy still
+				// ducks it under speech; the compiler never touches an explicit
+				// non-zero GainDB.
+				restored := intent
+				restored.GainDB = kernelaudio.FinalJobRestoredClipGainDB
+				filtered = append(filtered, restored)
 				continue
 			}
 			if intent.Mode == capabilityaudio.AudioVoiceover {
@@ -510,7 +524,8 @@ func localizedRenderIsCertifiedClip(rendered LocalizedRenderResult) bool {
 // from its certified localized render. A scene without a certified render — or
 // a scene that produced more than one — fails closed: the clip-only contract is
 // "send the clip this pipeline produced", so there is no fallback to the
-// unmodified source clip.
+// unmodified source clip. The payload builder may repeat this certified visual
+// to fill the longer canonical narration duration.
 func clipSceneRuntimeAsset(ctx context.Context, resolver FinalJobAssetResolver, result *GenerateResult, renderLanguage string, renderLanguageErr error, sceneID string) (map[string]any, int64, error) {
 	if renderLanguageErr != nil {
 		return nil, 0, fmt.Errorf("final_job clip-only scene %q: %w", sceneID, renderLanguageErr)

@@ -53,5 +53,7 @@ func filterInternetImageCandidates(in []scriptpkg.SegmentAssetCandidate) []scrip
 		}
 		out = append(out, candidate)
 	}
-	return out
+	// The semantic gate runs last: a candidate must first be a well-formed
+	// internet image before its (optional) relevance verdict is consulted.
+	return applyInternetImageSemanticGate(out)
 }

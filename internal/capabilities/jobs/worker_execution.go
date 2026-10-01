@@ -106,6 +106,14 @@ func (w *Worker) runJob(parent context.Context, j *job.Job) {
 	if j.CorrelationID != "" {
 		ctx = corid.WithCorrelationID(ctx, j.CorrelationID)
 	}
+	attemptTrace := job.ActivityTrace{CorrelationID: j.CorrelationID}
+
+	if link := job.ParentLinkFromPayload(j.Payload); link.ParentRunID != "" {
+		attemptTrace.ParentRunID = link.ParentRunID
+	}
+	if attemptTrace.CorrelationID == "" {
+		attemptTrace.CorrelationID = corid.FromContext(ctx)
+	}
 
 	// FASE 2 observability (kernel/observability): every claim is one
 	// Run (= one attempt). queue_wait_ms = claim-time started_at −
@@ -146,6 +154,11 @@ func (w *Worker) runJob(parent context.Context, j *job.Job) {
 			RetryCount:     j.RetryCount,
 		})
 		ctx = kernobs.WithRun(ctx, run)
+		if report := run.Report(); report != nil {
+			attemptTrace.RunID = report.RunID
+			attemptTrace.AttemptID = report.AttemptID
+			attemptTrace.ParentRunID = report.ParentRunID
+		}
 		claimedAt := time.Now().UTC()
 		kernobs.RecordClipPhase(ctx, kernobs.ClipPhaseClaimed, claimedAt, claimedAt, kernobs.StageStatusCompleted, nil)
 		defer func() {
@@ -194,6 +207,7 @@ func (w *Worker) runJob(parent context.Context, j *job.Job) {
 		zap.Time("lease_acquired_at", claimAt),
 	)
 
+	ctx = job.WithActivityTraceIfAbsent(ctx, attemptTrace)
 	ledger := NewJobRegistryRecorder(w.jobLedger, w.log)
 	attemptID := ""
 	if run != nil {
@@ -204,6 +218,7 @@ func (w *Worker) runJob(parent context.Context, j *job.Job) {
 	if attemptID == "" {
 		attemptID = fmt.Sprintf("%s:%d", j.ID, j.Revision)
 	}
+	ctx = job.WithActivityTraceIfAbsent(ctx, job.ActivityTrace{AttemptID: attemptID})
 	stepID := ledger.Start(ctx, j, w.id, attemptID)
 	defer func() {
 		if rec := recover(); rec != nil {
@@ -212,25 +227,22 @@ func (w *Worker) runJob(parent context.Context, j *job.Job) {
 		}
 	}()
 
-	// Step 8 (July 2026): emit "leased" event so the operator can
-	// trace the full job lifecycle: queued → leased → ... → completed.
-	// The enqueuer emits "queued"; this is the "leased" bookend.
+	// Step 8 (July 2026): emit "leased" as the first per-attempt event.
 	if err := w.repo.AddEvent(ctx, j.ID, "leased",
 		fmt.Sprintf("job claimed by worker %s", w.id),
-		map[string]any{
+		job.ActivityDataWithTrace(j.Type, "worker.claim", "running", "job lease acquired", map[string]any{
 			"worker_id": w.id,
 			"lease_id":  j.LeaseID,
 			"revision":  j.Revision,
-		}); err != nil {
+		}, job.ActivityTraceFromContext(ctx)),
+	); err != nil {
 		w.log.Warn("failed to record leased event",
 			zap.String("job_id", j.ID),
 			zap.Error(err))
 	}
 
 	// HC-1 (June 2026): per-job-type timeout resolves through the
-	// typed Registry attached via WithRegistry(). Replaces the
-	// pre-HC-1 `context.WithTimeout(ctx, jobTimeout(j.Type))` call
-	// which read from a package-level `var jobTimeoutRegistry` map.
+	// typed Registry attached via WithRegistry().
 	jobCtx, jobCancel := context.WithTimeout(ctx, w.jobTimeoutFor(j.Type))
 	defer jobCancel()
 
@@ -268,6 +280,29 @@ func (w *Worker) runJob(parent context.Context, j *job.Job) {
 			w.reportJobProgress(jobCtx, j, progress, message)
 		},
 		Event: func(eventType string, message string, data map[string]any) {
+			// Normalize all handler events at the worker boundary so even
+			// legacy producers expose the same kind/sub_kind/detail/payload
+			// contract as ProgressTracker-generated activities.
+			subKind := eventType
+			if data == nil {
+				data = map[string]any{}
+			}
+			if value, ok := data["sub_kind"].(string); ok && value != "" {
+				subKind = value
+			} else if value, ok := data["stage"].(string); ok && value != "" {
+				subKind = value
+			} else if value, ok := data["phase"].(string); ok && value != "" {
+				subKind = value
+			}
+			status := job.ActivityStatus(eventType, data)
+			detail := message
+			if value, ok := data["detail"].(string); ok && value != "" {
+				detail = value
+			}
+			data = job.ActivityDataWithTrace(j.Type, subKind, status, detail, data, job.ActivityTraceFromData(data, jobCtx))
+			if trace, ok := data["trace"].(map[string]any); ok {
+				data["sequence"] = trace["sequence"]
+			}
 			// FASE 0.2 silent-drop rewrite: same reasoning as Progress
 			// above; on AddEvent failure bump WorkerEventDropsTotal
 			// with the canonical job_type label so dashboards can
@@ -320,6 +355,7 @@ func (w *Worker) runJob(parent context.Context, j *job.Job) {
 	if run != nil {
 		finalizationCtx = kernobs.WithRun(finalizationCtx, run)
 	}
+	finalizationCtx = job.WithActivityTraceFrom(finalizationCtx, jobCtx)
 
 	postWriterFinalizeStarted := time.Now().UTC()
 	finalizeStartedAt := time.Now().UTC()
@@ -393,7 +429,20 @@ func (w *Worker) runJob(parent context.Context, j *job.Job) {
 // spool independently. A broker write failure must not hide a stage update
 // from the Calendar operator view.
 func (w *Worker) reportJobProgress(ctx context.Context, j *job.Job, progress int, message string) {
-	if err := w.repo.SetProgress(ctx, j.ID, progress, message); err != nil {
+	trace := job.ActivityTraceFromContext(ctx)
+	activity := job.ProgressActivityDataWithTrace(j.Type, progress, message, trace)
+	if sink, ok := w.repo.(interface {
+		SetProgressData(context.Context, string, int, string, map[string]any) error
+	}); ok {
+		if err := sink.SetProgressData(ctx, j.ID, progress, message, activity); err != nil {
+			w.log.Warn("failed to report structured progress",
+				zap.String("job_id", j.ID), zap.Int("progress", progress), zap.Error(err))
+			observability.WorkerProgressEmittedTotal.WithLabelValues(j.Type, "error").Inc()
+			observability.WorkerProgressErrorsTotal.WithLabelValues(j.Type, "broker_emit_failed").Inc()
+		} else {
+			observability.WorkerProgressEmittedTotal.WithLabelValues(j.Type, "success").Inc()
+		}
+	} else if err := w.repo.SetProgress(ctx, j.ID, progress, message); err != nil {
 		w.log.Warn("failed to report progress",
 			zap.String("job_id", j.ID),
 			zap.Int("progress", progress),

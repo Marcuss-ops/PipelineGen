@@ -143,6 +143,9 @@ func (r *SQLiteStore) CreateInTx(ctx context.Context, tx *sql.Tx, j *job.Job) er
 	if err := persistJobPayload(ctx, tx, j.ID, payloadJSON); err != nil {
 		return err
 	}
+	if err := insertJobTimelineEvent(ctx, tx, j.ID, "job_queued", "job queued", map[string]any{"status": string(j.Status)}, j.CreatedAt); err != nil {
+		return fmt.Errorf("jobs.CreateInTx: queued event: %w", err)
+	}
 	if len(j.Result) > 0 {
 		if err := persistJobResult(ctx, tx, j.ID, j.RetryCount, string(j.Result)); err != nil {
 			return err
@@ -201,6 +204,9 @@ func (r *SQLiteStore) Create(ctx context.Context, j *job.Job) error {
 	}
 	if err := persistJobPayload(ctx, tx, j.ID, payloadJSON); err != nil {
 		return fmt.Errorf("failed to create job payload: %w", err)
+	}
+	if err := insertJobTimelineEvent(ctx, tx, j.ID, "job_queued", "job queued", map[string]any{"status": string(j.Status)}, j.CreatedAt); err != nil {
+		return fmt.Errorf("failed to create queued event: %w", err)
 	}
 	if len(j.Result) > 0 {
 		if err := persistJobResult(ctx, tx, j.ID, j.RetryCount, string(j.Result)); err != nil {

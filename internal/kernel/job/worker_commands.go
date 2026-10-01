@@ -103,7 +103,9 @@ type ProgressCommand struct {
 	CorrelationID    string          `json:"correlation_id,omitempty"`
 	Progress         int             `json:"progress"`
 	Message          string          `json:"message,omitempty"`
-	Data             json.RawMessage `json:"data,omitempty"`
+	// Data is the structured activity envelope (kind, sub_kind, status,
+	// detail, payload) persisted alongside this progress update.
+	Data json.RawMessage `json:"data,omitempty"`
 }
 
 // CompleteCommand marks a held job as successfully finished.

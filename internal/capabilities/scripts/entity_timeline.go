@@ -213,6 +213,12 @@ func entitySourcesFromAnnotations(ann *scriptpkg.SceneAnnotations, sceneText str
 		appendEntity(entity)
 	}
 	for _, entity := range ann.SecondaryEntities {
+		// Brand fallback cards are editorial text, not spoken entity
+		// occurrences. Keep them out of EntityTimeline; the planner owns
+		// their certified mention spans from SceneAnnotations directly.
+		if scriptpkg.NormalizeAnnotationType(entity.Type) == "LOGO" && entity.Image == nil {
+			continue
+		}
 		appendEntity(entity)
 	}
 	return out

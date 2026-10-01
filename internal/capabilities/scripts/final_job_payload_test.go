@@ -9,6 +9,7 @@ import (
 
 	capabilityaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
 	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
+	kernelaudio "github.com/Marcuss-ops/PipelineGen/internal/kernel/audio"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
@@ -35,6 +36,19 @@ func TestEnforceFinalJobMinimumSceneDurationBorrowsFromEarlierScene(t *testing.T
 	}
 	if got := scenes[0]["duration_seconds"].(float64) + scenes[1]["duration_seconds"].(float64); got != 2.016 {
 		t.Fatalf("adjusted total duration = %v, want 2.016", got)
+	}
+}
+
+func TestTrimFinalJobSceneTailFitsVideoWithinFinalAudio(t *testing.T) {
+	scenes := []map[string]any{{"duration_seconds": 1.0}, {"duration_seconds": 0.5}}
+	if err := trimFinalJobSceneTail(scenes, 8, 100); err != nil {
+		t.Fatalf("trimFinalJobSceneTail: %v", err)
+	}
+	if got := finalJobSceneDurationMS(scenes); got != 1492 {
+		t.Fatalf("video duration = %dms, want 1492ms after trimming the 8ms surplus", got)
+	}
+	if got := scenes[1]["duration_seconds"]; got != 0.492 {
+		t.Fatalf("last scene duration = %v, want 0.492s", got)
 	}
 }
 
@@ -82,6 +96,18 @@ func TestBuildFinalJobPayloadsRequiresPublishedOverlayAssets(t *testing.T) {
 	}
 }
 
+func TestBuildFinalJobPayloadsStockOnlyNeverFallsBackToClip(t *testing.T) {
+	result := &GenerateResult{
+		CanonicalTimeline: &capabilityaudio.CanonicalTimeline{DurationUS: 1000_000, Segments: []capabilityaudio.TimelineSegment{{ID: "scene-1", DurationUS: 1000_000}}},
+		FinalAudio:        certifiedFinalAudio(1000),
+		Scenes:            []Scene{{ID: "scene-1", Clip: &ClipReference{ID: "yt_wrong_clip"}}},
+	}
+	_, _, err := BuildFinalJobPayloads(context.Background(), "run-1", GenerateRequest{Title: "A story", SourceLanguage: "pt", MediaMode: scriptpkg.MediaModeStockOnly}, result, finalJobPayloadResolver{})
+	if err == nil || !strings.Contains(err.Error(), "stock_only scene") {
+		t.Fatalf("BuildFinalJobPayloads error = %v, want fail-closed stock-only routing", err)
+	}
+}
+
 func (finalJobPayloadResolver) ListFinalJobStockFolder(context.Context, string) ([]FinalJobStockFile, error) {
 	return []FinalJobStockFile{{ID: "drive-asset", Name: "stock.mp4"}}, nil
 }
@@ -90,18 +116,47 @@ func (finalJobPayloadResolver) FinalJobPublishedFileSize(context.Context, string
 	return 7_000_000, nil
 }
 
-func TestFinalJobAudioInputKeepsVoiceoverAndDropsClipAudio(t *testing.T) {
+// TestFinalJobAudioInputRestoresClipAudioAtFinalJobGain pins the 2026-09-30
+// clip-audio fix: the remote final-job projection keeps AudioClip intents and
+// stamps the restored-mix gain instead of dropping them. The delivered video
+// therefore mixes the clip's original audio under narration, and the original
+// GenerateResult stays untouched.
+func TestFinalJobAudioInputRestoresClipAudioAtFinalJobGain(t *testing.T) {
 	result := GenerateResult{Scenes: []Scene{{
 		ID: "scene-1", Audio: capabilityaudio.AudioIntent{Mode: capabilityaudio.AudioClip, ClipAssetID: "stock-clip"},
-		AudioIntents: []capabilityaudio.AudioIntent{{Mode: capabilityaudio.AudioClip, ClipAssetID: "stock-clip"}},
-		Voiceover:    map[Language]AudioReference{"pt": {ID: "vo-pt", FilePath: "/tmp/vo.mp3"}},
+		AudioIntents: []capabilityaudio.AudioIntent{
+			{Mode: capabilityaudio.AudioClip, ClipAssetID: "stock-clip"},
+		},
+		Voiceover: map[Language]AudioReference{"pt": {ID: "vo-pt", FilePath: "/tmp/vo.mp3"}},
 	}}}
 	compiled := finalJobAudioInput(result, "pt")
 	intents := compiled.Scenes[0].AudioIntents
-	if len(intents) != 1 || intents[0].Mode != capabilityaudio.AudioVoiceover || intents[0].VoiceoverAssetID != "vo-pt" {
-		t.Fatalf("final-job audio intents = %#v, want only the source-language voiceover", intents)
+	if len(intents) != 2 {
+		t.Fatalf("final-job audio intents = %#v, want the restored clip plus the voiceover", intents)
 	}
-	if result.Scenes[0].Audio.Mode != capabilityaudio.AudioClip {
+	var clipIntent *capabilityaudio.AudioIntent
+	var voIntent *capabilityaudio.AudioIntent
+	for i := range intents {
+		switch intents[i].Mode {
+		case capabilityaudio.AudioClip:
+			clipIntent = &intents[i]
+		case capabilityaudio.AudioVoiceover:
+			voIntent = &intents[i]
+		}
+	}
+	if clipIntent == nil || clipIntent.ClipAssetID != "stock-clip" {
+		t.Fatalf("clip intent was dropped: %#v", intents)
+	}
+	if clipIntent.GainDB != kernelaudio.FinalJobRestoredClipGainDB {
+		t.Fatalf("restored clip gain = %v, want %v", clipIntent.GainDB, kernelaudio.FinalJobRestoredClipGainDB)
+	}
+	if voIntent == nil || voIntent.VoiceoverAssetID != "vo-pt" {
+		t.Fatalf("voiceover intent missing or wrong: %#v", intents)
+	}
+	if result.Scenes[0].AudioIntents[0].GainDB != 0 {
+		t.Fatal("finalJobAudioInput mutated the original scene intents")
+	}
+	if result.Scenes[0].Audio.Mode != capabilityaudio.AudioClip || result.Scenes[0].Audio.GainDB != 0 {
 		t.Fatal("finalJobAudioInput mutated the original scene")
 	}
 }
@@ -137,14 +192,14 @@ func certifiedFinalAudio(durationMS int64) *FinalAudioReference {
 func TestBuildFinalJobPayloadsClipOnlyScenesSendTheCertifiedRenderedClip(t *testing.T) {
 	result := &GenerateResult{
 		CanonicalTimeline: &capabilityaudio.CanonicalTimeline{
-			DurationUS: 12_000_000,
+			DurationUS: 30_000_000,
 			Segments: []capabilityaudio.TimelineSegment{{
-				ID: "scene-1", DurationUS: 12_000_000,
+				ID: "scene-1", DurationUS: 30_000_000,
 				Video:        capabilityaudio.VideoSegment{AssetID: "yt_source_clip"},
 				AudioIntents: []capabilityaudio.AudioIntent{{Mode: capabilityaudio.AudioClip, ClipAssetID: "yt_source_clip", SourceDurationUS: 12_000_000, UseOriginalAudio: true}},
 			}},
 		},
-		FinalAudio: certifiedFinalAudio(12_000),
+		FinalAudio: certifiedFinalAudio(30_000),
 		Scenes:     []Scene{{ID: "scene-1", Clip: &ClipReference{ID: "yt_source_clip"}, Text: map[Language]string{"en": "Dolly lands the hotel joke."}}},
 		LocalizedRenders: []LocalizedRenderResult{{
 			SceneID: "scene-1", Language: "en", ClipID: "yt_source_clip", Status: "UPLOADED",
@@ -157,11 +212,17 @@ func TestBuildFinalJobPayloadsClipOnlyScenesSendTheCertifiedRenderedClip(t *test
 		t.Fatalf("BuildFinalJobPayloads: %v", err)
 	}
 	scenes, ok := pre["scenes"].([]map[string]any)
-	if !ok || len(scenes) != 1 {
-		t.Fatalf("scenes = %#v, want one clip-only scene", pre["scenes"])
+	if !ok || len(scenes) != 3 {
+		t.Fatalf("scenes = %#v, want three chunks filling the 30s scene", pre["scenes"])
 	}
 	if scenes[0]["text"] != "Dolly lands the hotel joke." {
 		t.Errorf("scene text = %v, want the generated scene text", scenes[0]["text"])
+	}
+	if scenes[0]["kind"] != "clip" {
+		t.Errorf("clip-only scene kind = %v, want clip", scenes[0]["kind"])
+	}
+	if scenes[0]["duration_seconds"] != 12.0 || scenes[1]["duration_seconds"] != 12.0 || scenes[2]["duration_seconds"] != 6.0 {
+		t.Fatalf("scene durations = %v, %v, %v; want 12s, 12s, 6s", scenes[0]["duration_seconds"], scenes[1]["duration_seconds"], scenes[2]["duration_seconds"])
 	}
 	ref, ok := scenes[0]["stock"].(map[string]any)
 	if !ok {
@@ -224,32 +285,45 @@ func TestBuildFinalJobPayloadsClipOnlySceneWithoutRenderFailsClosed(t *testing.T
 func TestBuildFinalJobPayloadsFixedMediaPrefersTheCertifiedRenderedClip(t *testing.T) {
 	result := &GenerateResult{
 		CanonicalTimeline: &capabilityaudio.CanonicalTimeline{
-			DurationUS: 5_000_000,
+			DurationUS: 15_000_000,
 			Segments: []capabilityaudio.TimelineSegment{{
-				ID: "scene-intro", DurationUS: 5_000_000, FixedMedia: true,
-				AudioIntents: []capabilityaudio.AudioIntent{{Mode: capabilityaudio.AudioClip, ClipAssetID: "intro-source-clip", SourceDurationUS: 5_000_000, UseOriginalAudio: true, ProtectedOriginalAudio: true}},
+				ID: "scene-intro", DurationUS: 15_000_000, FixedMedia: true,
 			}},
 		},
-		FinalAudio: certifiedFinalAudio(5_000),
+		FinalAudio: certifiedFinalAudio(15_000),
 		// The fixed section carries no generated scene of its own; the guard
 		// only requires the run to have produced scenes at all.
-		Scenes: []Scene{{ID: "scene-body", Stock: &scriptpkg.StockBinding{FolderID: "folder-1"}}},
-		LocalizedRenders: []LocalizedRenderResult{{
-			SceneID: "scene-intro", Language: "en", ClipID: "intro-source-clip", Status: "UPLOADED",
-			AssetID: "derived-intro-render", DriveFileID: "intro-render-drive", SHA256: strings.Repeat("e", 64), DurationMS: 5_000,
-		}},
+		Scenes: []Scene{
+			{ID: "scene-intro", ExecutionMode: scriptpkg.SceneExecutionFixedMedia, Clips: []*ClipReference{
+				{ID: "intro-source-clip-1", SourceInMS: 0, SourceOutMS: 5000},
+				{ID: "intro-source-clip-2", SourceInMS: 0, SourceOutMS: 5000},
+				{ID: "intro-source-clip-3", SourceInMS: 0, SourceOutMS: 5000},
+			}},
+			{ID: "scene-body", Stock: &scriptpkg.StockBinding{FolderID: "folder-1"}},
+		},
+		LocalizedRenders: []LocalizedRenderResult{
+			{SceneID: "scene-intro", Language: "en", ClipID: "intro-source-clip-1", Status: "UPLOADED", AssetID: "derived-intro-render-1", DriveFileID: "intro-render-drive-1", SHA256: strings.Repeat("e", 64), DurationMS: 15_000},
+			{SceneID: "scene-intro", Language: "en", ClipID: "intro-source-clip-2", Status: "UPLOADED", AssetID: "derived-intro-render-2", DriveFileID: "intro-render-drive-2", SHA256: strings.Repeat("f", 64), DurationMS: 19_000},
+			{SceneID: "scene-intro", Language: "en", ClipID: "intro-source-clip-3", Status: "UPLOADED", AssetID: "derived-intro-render-3", DriveFileID: "intro-render-drive-3", SHA256: strings.Repeat("c", 64), DurationMS: 13_000},
+		},
 	}
 	pre, _, err := BuildFinalJobPayloads(context.Background(), "run-1", GenerateRequest{Title: "Dolly", SourceLanguage: "en"}, result, finalJobPayloadResolver{})
 	if err != nil {
 		t.Fatalf("BuildFinalJobPayloads: %v", err)
 	}
 	scenes := pre["scenes"].([]map[string]any)
-	if len(scenes) != 1 {
-		t.Fatalf("scenes = %d, want the single fixed-media scene", len(scenes))
+	if len(scenes) != 3 {
+		t.Fatalf("scenes = %d, want three fixed-media clip cuts", len(scenes))
 	}
 	ref := scenes[0]["stock"].(map[string]any)
-	if ref["drive_file_id"] != "intro-render-drive" {
+	if ref["drive_file_id"] != "intro-render-drive-1" {
 		t.Fatalf("fixed-media ref = %#v, want the certified rendered intro clip", ref)
+	}
+	if scenes[0]["duration_seconds"] != 5.0 {
+		t.Fatalf("fixed-media scene duration = %v, want the 5s canonical timeline cut, not the 15s file duration", scenes[0]["duration_seconds"])
+	}
+	if scenes[1]["duration_seconds"] != 5.0 || scenes[2]["duration_seconds"] != 5.0 {
+		t.Fatalf("fixed-media clip durations = %v, %v, %v; want 5s each", scenes[0]["duration_seconds"], scenes[1]["duration_seconds"], scenes[2]["duration_seconds"])
 	}
 }
 
@@ -303,6 +377,9 @@ func TestBuildFinalJobPayloadsProvidesTextForEveryStockChunk(t *testing.T) {
 		t.Fatalf("scenes = %d, want 3 stock chunks", len(scenes))
 	}
 	for i, scene := range scenes {
+		if scene["kind"] != "stock" {
+			t.Errorf("scene %d kind = %v, want stock", i, scene["kind"])
+		}
 		if scene["text"] == "" {
 			t.Errorf("scene %d has empty text", i)
 		}
@@ -371,8 +448,8 @@ func TestBuildFinalJobPayloadsSendsDriveStockAndPublishedOverlaysToWorker(t *tes
 		t.Fatalf("finalize overlays = %d, want one Drive overlay reference", len(overlays))
 	}
 	overlay := overlays[0].(map[string]any)
-	if overlay["drive_file_id"] != "overlay-drive-1" || overlay["url"] != "velox-drive://overlay-drive-1" || overlay["size_bytes"] != int64(50) || overlay["start_frame"] != int64(2) || overlay["end_frame"] != int64(108) || overlay["mode"] != "replace" {
-		t.Fatalf("overlay payload = %#v, want remote Drive overlay and timeline window", overlay)
+	if overlay["drive_file_id"] != "overlay-drive-1" || overlay["url"] != "velox-drive://overlay-drive-1" || overlay["size_bytes"] != int64(50) || overlay["start_frame"] != int64(3) || overlay["end_frame"] != int64(108) || overlay["frame_count"] != int64(105) || overlay["mode"] != "replace" {
+		t.Fatalf("overlay payload = %#v, want remote Drive overlay on the frame grid", overlay)
 	}
 	for _, raw := range finalize["runtime_assets"].([]any) {
 		if raw.(map[string]any)["role"] == "final_composite" {
@@ -404,7 +481,7 @@ func TestFinalJobRemoteAssetReferencesOmitWorkerLocalPaths(t *testing.T) {
 		"url": "velox-drive://drive-1", "sha256": strings.Repeat("b", 64),
 		"local_path": "/tmp/worker-only.mp4",
 	}
-	scene := compositeStockScene("scene-1", 0, ref, 5000, "scene")
+	scene := compositeVideoScene("scene-1", 0, "stock", ref, 5000, "scene")
 	stock := scene["stock"].(map[string]any)
 	if _, ok := stock["local_path"]; ok {
 		t.Fatalf("remote scene stock contains worker-local path: %#v", stock)

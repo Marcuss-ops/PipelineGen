@@ -47,6 +47,47 @@ func TestProjectEntityAnnotations_GroundsAndClassifies(t *testing.T) {
 	}
 }
 
+func TestProjectEntityAnnotations_ProjectsBrandAsTextFallback(t *testing.T) {
+	text := "Apple announced its revenue growth."
+	seg := scriptpkg.VidRushSegmentResult{Insights: scriptpkg.SegmentInsights{
+		Entities: []scriptpkg.ExtractedEntity{{Value: "Apple", Type: "BRAND", Confidence: 0.97}},
+	}}
+	ann := projectEntityAnnotations(text, "en", seg)
+	require.NotNil(t, ann)
+	require.Empty(t, ann.PrimaryEntities, "unverified brand text is not an imageable logo entity")
+	require.Len(t, ann.SecondaryEntities, 1)
+	require.Equal(t, "BRAND", ann.SecondaryEntities[0].Type)
+	require.Nil(t, ann.SecondaryEntities[0].Image)
+}
+
+func TestProjectEntityAnnotations_BrandFallbackAndVerifiedLogo(t *testing.T) {
+	text := "OpenAI announced the research result."
+	segment := scriptpkg.VidRushSegmentResult{Insights: scriptpkg.SegmentInsights{
+		Entities: []scriptpkg.ExtractedEntity{{Value: "OpenAI", Type: "LOGO", Confidence: 0.94}},
+	}}
+	fallback := projectEntityAnnotations(text, "en", segment)
+	require.NotNil(t, fallback)
+	require.Empty(t, fallback.PrimaryEntities)
+	require.Len(t, fallback.SecondaryEntities, 1)
+	require.Equal(t, "BRAND", fallback.SecondaryEntities[0].Type)
+	require.Nil(t, fallback.SecondaryEntities[0].Image)
+
+	segment.Assets.Candidates = []scriptpkg.SegmentAssetCandidate{{
+		AssetID: "openai-logo", Provider: scriptpkg.VidRushProviderInternetImages,
+		Entity: "OpenAI", DriveLink: "https://drive.google.com/file/d/logo/view", LegacyFileMD5: "logo-md5",
+		AcquisitionStatus:  scriptpkg.VidRushStatusAcquired,
+		VerificationStatus: scriptpkg.VidRushStatusVerified,
+		PersistenceStatus:  scriptpkg.VidRushStatusPersisted,
+		RightsStatus:       "unknown_allowed",
+	}}
+	verified := projectEntityAnnotations(text, "en", segment)
+	require.NotNil(t, verified)
+	require.Len(t, verified.PrimaryEntities, 1)
+	require.Equal(t, "LOGO", verified.PrimaryEntities[0].Type)
+	require.NotNil(t, verified.PrimaryEntities[0].Image)
+	require.Equal(t, "openai-logo", verified.PrimaryEntities[0].Image.AssetID)
+}
+
 func TestProjectEntityAnnotations_BindsImageFromEntityIdentityWhenQueryIsGeneric(t *testing.T) {
 	seg := scriptpkg.VidRushSegmentResult{
 		SegmentID: "seg-0",
