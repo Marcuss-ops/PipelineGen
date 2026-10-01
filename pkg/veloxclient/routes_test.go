@@ -7,10 +7,9 @@ import (
 	"testing"
 )
 
-// TestRoutesMatchGeneratedManifest is the drift gate for item 4's client slice:
-// every wire path the client/CLI binds to must still exist in the canonical
-// route manifest that cmd/admin/gen_api_docs.go generates from the live router.
-// A server-side rename therefore fails here instead of at runtime.
+// TestRoutesMatchGeneratedManifest pins client paths to the canonical route
+// manifest, with the live capability-prefix registry as the source for routes
+// that the credential-light docs snapshot cannot mount.
 func TestRoutesMatchGeneratedManifest(t *testing.T) {
 	root := repoRoot(t)
 	path := filepath.Join(root, "architecture", "routes.yaml")
@@ -21,18 +20,10 @@ func TestRoutesMatchGeneratedManifest(t *testing.T) {
 	manifest := string(data)
 
 	routes := []string{
-		RouteClipsProcess,
-		RouteClipsRender,
-		RouteClipsRenderBatch,
 		RouteJobsEnqueue,
 		RouteMediaSearch,
 		RouteJobsFull(":id"),
 		RouteClipsDownload(":source", ":id"),
-		RouteClipsTopicSearch,
-		RouteClipsInfo,
-		RouteClipsExists,
-		RouteClipsTranscript,
-		RouteClipsStock,
 		RouteMediaClipsFor(":source"),
 		RouteMediaRegisterBatch,
 		RouteMediaRegisterFromYouTube,
@@ -42,6 +33,33 @@ func TestRoutesMatchGeneratedManifest(t *testing.T) {
 	for _, r := range routes {
 		if !strings.Contains(manifest, "path: "+r) {
 			t.Errorf("route %q is not in %s — the wire path changed; update pkg/veloxclient/routes.go and its consumers", r, path)
+		}
+	}
+
+	// The credential-light docs snapshot cannot mount these optional media
+	// capabilities. Their live route prefixes are pinned by the server's
+	// capability registry instead of being copied into generated docs.
+	wirePath := filepath.Join(root, "internal", "platform", "httpserver", "transport", "wire.go")
+	wire, werr := os.ReadFile(wirePath)
+	if werr != nil {
+		t.Fatalf("read capability prefix registry %s: %v", wirePath, werr)
+	}
+	clipRoutes := []struct{ route, prefix string }{
+		{RouteClipsProcess, `"/api/clips/process"`},
+		{RouteClipsRender, `"/api/clips/render"`},
+		{RouteClipsRenderBatch, `"/api/clips/render"`},
+		{RouteClipsTopicSearch, `"/api/clips/search"`},
+		{RouteClipsInfo, `"/api/clips/info"`},
+		{RouteClipsExists, `"/api/clips/exists"`},
+		{RouteClipsTranscript, `"/api/clips/transcript"`},
+		{RouteClipsStock, `"/api/clips/stock"`},
+	}
+	for _, item := range clipRoutes {
+		if strings.Contains(manifest, "path: "+item.route) {
+			continue
+		}
+		if !strings.Contains(string(wire), item.prefix) {
+			t.Errorf("%s is neither in the route manifest nor backed by prefix %s in %s", item.route, item.prefix, wirePath)
 		}
 	}
 

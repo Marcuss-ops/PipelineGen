@@ -5,10 +5,8 @@ import (
 	"fmt"
 	"math"
 	"net/url"
-	"sort"
 	"strings"
 
-	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
@@ -42,6 +40,12 @@ type FinalJobAssetResolver interface {
 func BuildFinalJobPayloads(ctx context.Context, runID string, req GenerateRequest, result *GenerateResult, resolver FinalJobAssetResolver) (map[string]any, map[string]any, error) {
 	if result == nil || result.CanonicalTimeline == nil || result.FinalAudio == nil || result.FinalAudio.DurationMS <= 0 {
 		return nil, nil, fmt.Errorf("final_job requires a canonical timeline and published final audio")
+	}
+	// The finalizer muxes this single canonical mix at video time zero. A
+	// non-zero encoded PTS would shift the voiceover against every scene even
+	// when the reported duration matches, so reject it before handing off to 51.
+	if result.FinalAudio.StartPTS != 0 {
+		return nil, nil, fmt.Errorf("final_job final audio start_pts is %d, want 0 for voiceover alignment", result.FinalAudio.StartPTS)
 	}
 	if len(result.Scenes) == 0 {
 		return nil, nil, fmt.Errorf("final_job has no generated scenes")
@@ -394,173 +398,6 @@ func finalJobIdempotencyKey(requestKey, runID string) string {
 	return "creator-77-request-" + digest.SHA256String(requestKey)[:32]
 }
 
-// finalJobOverlayAssets projects the already-rendered semantic overlay items
-// to the Master finalizer. Their bytes live on Drive; only the remote worker
-// fetches them and applies them over the stock timeline.
-func finalJobOverlayAssets(result *GenerateResult) ([]any, error) {
-	if result == nil || result.OverlayPlan == nil || len(result.OverlayPlan.Items) == 0 {
-		return []any{}, nil
-	}
-	if result.OverlayRender == nil || len(result.OverlayRender.Items) == 0 {
-		return nil, fmt.Errorf("final_job has semantic overlays but no published overlay render artifacts")
-	}
-	byID := make(map[string]RenderArtifact, len(result.OverlayRender.Items))
-	for _, rendered := range result.OverlayRender.Items {
-		if rendered.Artifact != nil {
-			byID[strings.TrimSpace(rendered.ItemID)] = *rendered.Artifact
-		}
-	}
-	fpsNum, fpsDen := result.OverlayPlan.FPSNum, result.OverlayPlan.FPSDen
-	if fpsNum <= 0 || fpsDen <= 0 {
-		return nil, fmt.Errorf("final_job overlay plan has invalid frame rate %d/%d", fpsNum, fpsDen)
-	}
-	out := make([]any, 0, len(result.OverlayPlan.Items))
-	frameGuardUS := (1_000_000*int64(fpsDen) + int64(fpsNum) - 1) / int64(fpsNum)
-	// One SSOT admission gate for the finalize handoff. Every duplicate
-	// surface upstream (entity/context image arms, planner+resolver copies,
-	// compose composites) has its own key and its own blind spot; THIS is the
-	// last gate before the Master and it sees the exact wire facts: content
-	// identity (one overlay per rendered asset) and the FRAME window the
-	// Master's mode=replace decoder will enforce (one overlay per frame
-	// interval). Both are fail-closed: a payload that violates either never
-	// reaches the remote and can never burn a worker attempt on a guaranteed
-	// rejection.
-	admittedContent := make(map[string]string, len(result.OverlayPlan.Items))
-	type frameWindow struct{ start, end int64 }
-	admittedFrames := make(map[string]frameWindow, len(result.OverlayPlan.Items))
-	for index, item := range result.OverlayPlan.Items {
-		artifact, ok := byID[strings.TrimSpace(item.ID)]
-		if !ok {
-			return nil, fmt.Errorf("final_job overlay %q has no published render artifact", item.ID)
-		}
-		driveID := strings.TrimSpace(artifact.DriveFileID)
-		sha := strings.TrimSpace(artifact.SHA256)
-		if driveID == "" || len(sha) != 64 || artifact.SizeBytes <= 0 {
-			return nil, fmt.Errorf("final_job overlay %q is not a certified published Drive artifact", item.ID)
-		}
-		startUS, endUS := item.StartUSValue(), item.EndUSValue()
-		if item.Kind == "image" {
-			scheduledStartUS, scheduledEndUS, scheduleErr := scheduleFinalJobSceneImage(result, item, frameGuardUS)
-			if scheduleErr != nil {
-				return nil, scheduleErr
-			}
-			startUS, endUS = scheduledStartUS, scheduledEndUS
-		}
-		// Map both endpoints onto the same frame grid. Flooring the start and
-		// ceiling the end can turn an exact 120-frame (5 s at 24 fps) asset
-		// into a 121-frame window whenever the start falls between frames.
-		// The Master then has to extend a packet-copied overlay past its
-		// certified tail, which can corrupt the following GOP.
-		frameDenominator := int64(1_000_000 * fpsDen)
-		startFrame := (startUS*int64(fpsNum) + frameDenominator - 1) / frameDenominator
-		endFrame := (endUS*int64(fpsNum) + 1_000_000*int64(fpsDen) - 1) / (1_000_000 * int64(fpsDen))
-		if artifact.FrameCount > 0 && endFrame-startFrame > int64(artifact.FrameCount) {
-			endFrame = startFrame + int64(artifact.FrameCount)
-		}
-		if endFrame <= startFrame {
-			return nil, fmt.Errorf("final_job overlay %q has an empty frame interval", item.ID)
-		}
-		// Gate 1 — content identity: the same rendered overlay artifact (same
-		// Drive bytes) admitted twice would render the same visual again. The
-		// upstream arms dedup on their own keys, which is exactly how the
-		// 2026-09-30 duplicate-image incident slipped through.
-		if prior, exists := admittedContent[sha]; exists {
-			return nil, fmt.Errorf("final_job overlays %q and %q render the same Drive artifact %s; one image one overlay", prior, item.ID, driveID)
-		}
-		admittedContent[sha] = item.ID // Gate 2 — frame window: the Master replaces the frames of an overlay
-		// window, so two admitted overlays sharing even one frame is a
-		// guaranteed remote rejection (or a corrupted composite). Project both
-		// endpoints onto the exact frame grid the payload carries, matching
-		// what the Master will compare.
-		for priorID, prior := range admittedFrames {
-			if startFrame < prior.end && prior.start < endFrame {
-				return nil, fmt.Errorf("final_job overlay %q frame window [%d,%d) intersects overlay %q [%d,%d); the Master rejects intersecting replace overlays", item.ID, startFrame, endFrame, priorID, prior.start, prior.end)
-			}
-		}
-		admittedFrames[item.ID] = frameWindow{start: startFrame, end: endFrame}
-		out = append(out, map[string]any{
-			"id": item.ID, "asset_id": firstFinalJobValue(artifact.ID, driveID),
-			"drive_file_id": driveID, "url": driveFileWebLink(driveID),
-			"sha256": sha, "size_bytes": artifact.SizeBytes,
-			"start_frame": startFrame, "end_frame": endFrame, "frame_count": endFrame - startFrame,
-			"mode": "replace", "z_index": index + 1, "audio_mode": "preserve_final_audio",
-		})
-	}
-	return out, nil
-}
-
-// scheduleFinalJobSceneImage moves a contextual scene image to the first
-// available interval after its planned start. The Master currently accepts
-// only mode=replace and rejects intersecting overlay windows, while local
-// semantic cards can occupy the same opening beat. Preserve every certified
-// overlay and move only the generic scene image within its own scene window.
-func scheduleFinalJobSceneImage(result *GenerateResult, image capabilityoverlay.OverlayItem, frameGuardUS int64) (int64, int64, error) {
-	start := image.StartUSValue()
-	end := image.EndUSValue()
-	duration := end - start
-	if duration <= 0 {
-		return 0, 0, fmt.Errorf("final_job scene image %q has an empty timing window", image.ID)
-	}
-	sceneStart, sceneEnd := int64(0), int64(0)
-	if result != nil {
-		if result.CanonicalTimeline != nil {
-			for _, scene := range result.CanonicalTimeline.Segments {
-				if scene.ID == image.SceneID {
-					sceneStart, sceneEnd = scene.TimelineStartUS, scene.TimelineStartUS+scene.DurationUS
-					break
-				}
-			}
-		}
-		for _, scene := range result.ResolvedScenes {
-			if scene.ID == image.SceneID {
-				sceneStart, sceneEnd = scene.TimelineStartUS, scene.TimelineStartUS+scene.DurationUS
-				break
-			}
-		}
-	}
-	if sceneEnd > sceneStart {
-		if start < sceneStart {
-			start = sceneStart
-		}
-		if end > sceneEnd {
-			end = sceneEnd
-			duration = end - start
-		}
-	}
-	if result == nil || result.OverlayPlan == nil {
-		return start, start + duration, nil
-	}
-	occupied := make([][2]int64, 0)
-	for _, other := range result.OverlayPlan.Items {
-		if other.ID == image.ID || other.SceneID != image.SceneID {
-			continue
-		}
-		otherStart, otherEnd := other.StartUSValue(), other.EndUSValue()
-		if otherEnd > otherStart {
-			occupied = append(occupied, [2]int64{otherStart, otherEnd})
-		}
-	}
-	sort.Slice(occupied, func(i, j int) bool { return occupied[i][0] < occupied[j][0] })
-	candidate := start
-	for {
-		moved := false
-		for _, window := range occupied {
-			if candidate < window[1] && window[0] < candidate+duration {
-				candidate = window[1] + frameGuardUS
-				moved = true
-				break
-			}
-		}
-		if !moved {
-			break
-		}
-	}
-	if sceneEnd > sceneStart && candidate+duration > sceneEnd {
-		return 0, 0, fmt.Errorf("final_job scene image %q cannot fit a non-overlapping %dµs window in scene %q", image.ID, duration, image.SceneID)
-	}
-	return candidate, candidate + duration, nil
-}
-
 // compositeVideoScene preserves source identity in the remote contract. Stock
 // footage and caller-provided clips both carry silent video in the `stock`
 // media slot, but `kind` determines which pipeline policy owns that video.
@@ -578,7 +415,15 @@ func compositeVideoScene(id string, index int, kind string, asset map[string]any
 	if driveID := strings.TrimSpace(fmt.Sprint(ref["drive_file_id"])); driveID != "" {
 		ref["url"] = driveFileWebLink(driveID)
 	}
-	return map[string]any{"scene_id": id, "index": index, "kind": kind, "text": text, "duration_seconds": float64(durationMS) / 1000, "stock": ref}
+	scene := map[string]any{"scene_id": id, "index": index, "kind": kind, "duration_seconds": float64(durationMS) / 1000, "stock": ref}
+	// Stock footage is only a visual source. Sending narration text on a stock
+	// scene makes the remote renderer treat it as subtitle content; clip scenes
+	// retain text for the clip contract (their subtitle timing is already baked
+	// into the certified localized render when one is available).
+	if kind == "clip" && strings.TrimSpace(text) != "" {
+		scene["text"] = text
+	}
+	return scene
 }
 
 // The remote renderer requires each scene to be at least 100 ms. Audio and

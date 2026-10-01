@@ -18,12 +18,30 @@ func (languageMatchChecker) Name() string { return "language_match" }
 
 func (languageMatchChecker) Check(in qualityGateInput) []string {
 	requestedLang := strings.ToLower(strings.TrimSpace(in.plan.Language))
-	if in.q.LanguageDetected != "" && requestedLang != "" && in.q.LanguageDetected != requestedLang {
-		return []string{
-			"detected language " + in.q.LanguageDetected + " does not match requested language " + requestedLang,
+	if requestedLang == "" {
+		return nil
+	}
+	var reasons []string
+	if in.q.LanguageDetected != "" && in.q.LanguageDetected != requestedLang {
+		reasons = append(reasons, "detected language "+in.q.LanguageDetected+" does not match requested language "+requestedLang)
+	}
+	// Whole-script detection can hide a scene written in another language when
+	// most of the script is in the requested language. Check each substantial
+	// narration scene independently so a mixed-language script cannot pass and
+	// later produce overlays in the wrong language.
+	if in.result != nil {
+		for _, scene := range in.result.Output.SpecScene.Scenes {
+			text := strings.TrimSpace(scene.Text)
+			if len(Tokenize(text)) < 30 {
+				continue
+			}
+			detected := detectLanguage(text)
+			if detected != "" && detected != requestedLang {
+				reasons = append(reasons, "scene "+strings.TrimSpace(scene.ID)+" detected language "+detected+" does not match requested language "+requestedLang)
+			}
 		}
 	}
-	return nil
+	return reasons
 }
 
 // detectLanguage returns the ISO-639-1 language code with the highest

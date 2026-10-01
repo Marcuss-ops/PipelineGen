@@ -17,65 +17,13 @@
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/api/admin/entities` | ⚠️ MISSING DESCRIPTION |
-| GET | `/api/admin/entities/:entity` | ⚠️ MISSING DESCRIPTION |
-| GET | `/api/admin/entities/:entity/:id` | ⚠️ MISSING DESCRIPTION |
-| GET | `/api/admin/entities/:entity/schema` | ⚠️ MISSING DESCRIPTION |
-| PATCH | `/api/admin/entities/:entity/:id` | ⚠️ MISSING DESCRIPTION |
-| POST | `/api/admin/entities/:entity/:id/actions/:action` | ⚠️ MISSING DESCRIPTION |
 | POST | `/api/admin/research/cache/invalidate` | ⚠️ MISSING DESCRIPTION |
-
-## /api/artlist
-
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/api/artlist/diagnostics` | Artlist diagnostics |
-| GET | `/api/artlist/job-consumer` | ⚠️ MISSING DESCRIPTION |
-| GET | `/api/artlist/runs/:run_id` | Get Artlist pipeline run status |
-| GET | `/api/artlist/search/live` | Search Artlist catalog (live, no cache) |
-| GET | `/api/artlist/stats` | Get Artlist statistics |
-| POST | `/api/artlist/import` | ⚠️ MISSING DESCRIPTION |
-| POST | `/api/artlist/recommend` | Get Artlist recommendations for a term |
-| POST | `/api/artlist/run` | Start Artlist pipeline for a term |
-| POST | `/api/artlist/search` | Search Artlist catalog (cached) |
-| POST | `/api/artlist/sync-catalogs` | Sync Artlist catalogs to media DB |
-
-## /api/assets
-
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/api/assets/operator/assets` | ⚠️ MISSING DESCRIPTION |
-| GET | `/api/assets/operator/assets/:id` | ⚠️ MISSING DESCRIPTION |
-| GET | `/api/assets/operator/assets/:id/preview` | ⚠️ MISSING DESCRIPTION |
-| GET | `/api/assets/operator/facets` | ⚠️ MISSING DESCRIPTION |
-| GET | `/api/assets/operator/index-health` | ⚠️ MISSING DESCRIPTION |
-| GET | `/api/assets/operator/operations/errors` | ⚠️ MISSING DESCRIPTION |
-| GET | `/api/assets/operator/outbox/events` | ⚠️ MISSING DESCRIPTION |
-| GET | `/api/assets/operator/outbox/status` | ⚠️ MISSING DESCRIPTION |
-| GET | `/api/assets/operator/summary` | ⚠️ MISSING DESCRIPTION |
-| POST | `/api/assets/operator/assets/:id/reindex` | ⚠️ MISSING DESCRIPTION |
-| POST | `/api/assets/operator/assets/:id/verify-index` | ⚠️ MISSING DESCRIPTION |
-| POST | `/api/assets/operator/bulk` | ⚠️ MISSING DESCRIPTION |
 
 ## /api/capabilities
 
 | Method | Path | Description |
 |--------|------|-------------|
 | GET | `/api/capabilities` | ⚠️ MISSING DESCRIPTION |
-
-## /api/clips
-
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/api/clips/diagnostics` | Clips diagnostics |
-| GET | `/api/clips/exists` | Pre-extraction dedup probe: answers {exists, clip_id} for a YouTube URL so callers skip /api/clips/process for known candidates |
-| GET | `/api/clips/info` | Get YouTube video metadata |
-| GET | `/api/clips/search` | Search and rank YouTube videos by topic |
-| GET | `/api/clips/transcript` | Transcript-as-a-service: readable text + per-cue timings for a YouTube URL without downloading the video (yt-dlp --skip-download + canonical VTT parser) |
-| POST | `/api/clips/process` | Download and process clips |
-| POST | `/api/clips/render` | Render a canonical clip into a VeloxEditing-compatible derived clip (background/watermark/subtitles, async clip.render job) |
-| POST | `/api/clips/render/batch` | Render up to 50 canonical clips with fingerprint deduplication and async clip.render jobs |
-| POST | `/api/clips/stock` | ⚠️ MISSING DESCRIPTION |
 
 ## /api/drive
 
@@ -192,20 +140,6 @@
 |--------|------|-------------|
 | GET | `/api/scripts` | List scripts |
 | GET | `/api/scripts/:id` | Get script by ID |
-
-## /api/stock-batches
-
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/api/stock-batches/:id` | Get stock batch status |
-| POST | `/api/stock-batches/run` | Run a stock batch (source_url + destination + sampling + groups) |
-
-## /api/stock-pipeline
-
-| Method | Path | Description |
-|--------|------|-------------|
-| POST | `/api/stock-pipeline/run` | Run the stock pipeline (search_queries / direct_urls / drive_urls / clips) |
-| POST | `/api/stock-pipeline/search-and-run` | Search-and-run the stock pipeline (queries: [{q, limit}]) |
 
 ## /api/system
 

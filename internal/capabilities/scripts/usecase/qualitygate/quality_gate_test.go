@@ -117,6 +117,24 @@ func TestEvaluateQualityGate_FailsLanguageMismatch(t *testing.T) {
 	}
 }
 
+func TestLanguageMatchCheckerRejectsMixedLanguageScene(t *testing.T) {
+	englishScene := "The late afternoon sun casts long shadows as Isabelle arrives at the condominium entrance. The visual evidence captured by the cameras documents this arrival and fixes a precise point in time. However, viewers must understand the limitations inherent in any recorded sequence, because it cannot answer what happened after she entered."
+	portugueseScript := "Isabelle era uma jovem estudante de Direito. O caso segue em investigação, e os fatos confirmados precisam ser separados das hipóteses. As autoridades continuam analisando depoimentos, perícias e imagens para esclarecer o que ocorreu."
+	result := &scriptpkg.GenerationResult{Output: scriptpkg.ScriptOutput{
+		Text:      portugueseScript + " " + englishScene,
+		SpecScene: scriptpkg.SpecSceneOutput{Scenes: []scriptpkg.SpecScene{{ID: "scene-1", Text: portugueseScript}, {ID: "scene-2", Text: englishScene}}},
+	}}
+	quality := &scriptpkg.GenerationQuality{LanguageDetected: "pt"}
+	reasons := (languageMatchChecker{}).Check(qualityGateInput{
+		result: result,
+		q:      quality,
+		plan:   scriptpkg.ResolvedGenerationPlan{Language: "pt"},
+	})
+	if len(reasons) == 0 || !strings.Contains(strings.Join(reasons, " "), "scene scene-2 detected language en") {
+		t.Fatalf("mixed-language scene should fail independently of the script majority: %v", reasons)
+	}
+}
+
 func TestEvaluateQualityGate_FailsSourceTextCoverage(t *testing.T) {
 	result := &scriptpkg.GenerationResult{
 		Output: scriptpkg.ScriptOutput{

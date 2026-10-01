@@ -8,7 +8,6 @@ import (
 
 	capabilityaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
 	capcheckpoint "github.com/Marcuss-ops/PipelineGen/internal/capabilities/checkpoint"
-	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
 	mediadomain "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/observability"
@@ -28,84 +27,6 @@ type audioCompileState struct {
 	// AudioSkipped reports that the compile phase had no audio work to do for
 	// this attempt (resumed past the stage, or no timeline requested).
 	AudioSkipped bool
-}
-
-// logPhraseMotionSelections records the phrase animation that was actually
-// assigned to each phrase in the compiled plan, making repeated selections
-// visible when comparing generated jobs.
-func (r *Runner) logPhraseMotionSelections(runID string, plan *capabilityoverlay.OverlayPlan) {
-	if r == nil || r.log == nil || plan == nil {
-		return
-	}
-	counts := make(map[string]int)
-	phraseOrdinal := 0
-	for _, item := range plan.Items {
-		if item.Kind != "text_phrase" {
-			continue
-		}
-		counts[item.MotionID]++
-		r.log.Info("phrase animation selected",
-			zap.String("run_id", runID),
-			zap.String("plan_id", plan.PlanID),
-			zap.Int("phrase_ordinal", phraseOrdinal),
-			zap.String("scene_id", item.SceneID),
-			zap.String("item_id", item.ID),
-			zap.String("phrase", item.Text),
-			zap.Int("words", len(strings.Fields(item.Text))),
-			zap.Int64("start_us", item.StartUS),
-			zap.Int64("duration_us", item.DurationUS),
-			zap.String("motion_id", item.MotionID),
-			zap.String("preset_id", item.PresetID),
-		)
-		phraseOrdinal++
-	}
-	r.log.Info("phrase animation selection summary",
-		zap.String("run_id", runID),
-		zap.String("plan_id", plan.PlanID),
-		zap.Int("phrase_count", phraseOrdinal),
-		zap.Any("motion_counts", counts),
-	)
-}
-
-// logPhraseAnchoringDiagnostics records, for every important-phrase candidate
-// the overlay planner considered, whether it anchored to the certified speech
-// timing, its word count and the skip reason. A phrase that does not anchor is
-// dropped from the render, so this is the only place that shows how many long
-// phrases were taken versus silently discarded.
-func (r *Runner) logPhraseAnchoringDiagnostics(runID string, result *GenerateResult, language Language) {
-	if r == nil || r.log == nil || result == nil {
-		return
-	}
-	diagnostics := DiagnosePhraseAnchoring(result, language)
-	if len(diagnostics) == 0 {
-		return
-	}
-	anchored, skipped := 0, 0
-	maxWords := 0
-	for _, diag := range diagnostics {
-		if diag.Words > maxWords {
-			maxWords = diag.Words
-		}
-		if diag.Anchored {
-			anchored++
-			continue
-		}
-		skipped++
-		r.log.Warn("phrase overlay candidate skipped",
-			zap.String("run_id", runID),
-			zap.String("scene_id", diag.SceneID),
-			zap.Int("words", diag.Words),
-			zap.String("phrase", diag.Text),
-			zap.String("reason", diag.Reason),
-		)
-	}
-	r.log.Info("phrase overlay anchoring summary",
-		zap.String("run_id", runID),
-		zap.Int("candidates", len(diagnostics)),
-		zap.Int("anchored", anchored),
-		zap.Int("skipped", skipped),
-		zap.Int("max_words", maxWords),
-	)
 }
 
 // runAudioCompilePhase compiles the canonical timeline and the semantic

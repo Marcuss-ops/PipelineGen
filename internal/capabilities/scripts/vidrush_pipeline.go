@@ -10,10 +10,13 @@ package scriptgeneration
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediacert"
 	scriptports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/stockintelligence"
+	mediadomain "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
@@ -147,4 +150,146 @@ type VidRushTimingRecorder interface {
 	// populated once both the generation window and the first enrichment start
 	// are known.
 	RunTimings() VidRushRunTimings
+}
+
+func (r *SemanticAndFanoutResolver) ResolveProviders(ctx context.Context, plan *scriptpkg.ResolvedGenerationPlan, segment scriptpkg.VidRushSegmentResult) (scriptpkg.VidRushSegmentResult, error) {
+	if _, stockBound := scriptpkg.StockBindingForSegment(plan, nil, segment); stockBound {
+		// A direct stock binding is the scene's authoritative visual source.
+		// Neither the local-first semantic probe nor the provider fanout may
+		// search for it. The gate only rewrites Cache strings (struct values),
+		// so a shallow struct copy is a sufficient isolated result here.
+		cloned := segment
+		cloned.Cache.Artlist = "BYPASSED"
+		cloned.Cache.InternetImages = "BYPASSED"
+		cloned.Cache.YouTube = "BYPASSED"
+		cloned.Cache.Binding = "STOCK_BOUND"
+		return cloned, nil
+	}
+	updated, err := r.semantic.ResolveProviders(ctx, plan, segment)
+	if err != nil {
+		return segment, err
+	}
+	if plan == nil {
+		return updated, nil
+	}
+	fanoutPlan := *plan
+	fanoutPlan.MediaPlan = plan.MediaPlan.Clone()
+	// Artlist was already handled by the semantic resolver. Prevent a second
+	// live search while preserving the caller's image/generation policy.
+	fanoutPlan.MediaPlan.ProviderPolicy.Artlist = mediadomain.MediaToggleDisabled
+	return r.fanout.ResolveProviders(ctx, &fanoutPlan, updated)
+}
+
+// NewSemanticProviderResolver wires the new resolver. Both ports must be non-nil.
+func NewSemanticProviderResolver(stockResolver LocalStockResolverPort, samplerPort scriptports.MediaSamplerPort) (*SemanticProviderResolver, error) {
+	if stockResolver == nil {
+		return nil, fmt.Errorf("scriptgeneration: LocalStockResolverPort is required for SemanticProviderResolver")
+	}
+	if samplerPort == nil {
+		return nil, fmt.Errorf("scriptgeneration: MediaSamplerPort is required for SemanticProviderResolver")
+	}
+	return &SemanticProviderResolver{stockResolver: stockResolver, samplerPort: samplerPort}, nil
+}
+
+// ResolveProviders resolves candidates LOCAL FIRST and ranks them via the
+// MediaSampler. It is the Fase 4 + Fase 5 replacement for the legacy chooser.
+func (r *SemanticProviderResolver) ResolveProviders(ctx context.Context, plan *scriptpkg.ResolvedGenerationPlan, segment scriptpkg.VidRushSegmentResult) (scriptpkg.VidRushSegmentResult, error) {
+	// The stock resolver owns video discovery and must never bypass the plan's
+	// provider policy. Image-only/generation-only plans still use the later
+	// image materialization stages, but must not probe local video stock or
+	// fall back to Artlist.
+	if plan == nil || !plan.MediaPlan.ProviderPolicy.Artlist.AsBool() {
+		segment.Cache.InternetImagesProviderSearches = 0
+		return segment, nil
+	}
+	subject := ""
+	terms := []string{}
+	if segment.Insights.VisualProfile != nil {
+		subject = segment.Insights.VisualProfile.Subject
+		terms = segment.Insights.VisualProfile.Terms
+	}
+	query := subject
+	if query == "" && len(terms) > 0 {
+		query = terms[0]
+	}
+
+	stockReq := stockintelligence.ResolveRequest{
+		SegmentID:   segment.SegmentID,
+		Subject:     subject,
+		VisualTerms: terms,
+		Query:       query,
+	}
+	stockRes, err := r.stockResolver.Resolve(ctx, stockReq)
+	if err != nil {
+		return segment, fmt.Errorf("stockintelligence resolve: %w", err)
+	}
+
+	samplerCands := make([]scriptpkg.SegmentAssetCandidate, 0, len(stockRes.Candidates))
+	for _, c := range stockRes.Candidates {
+		samplerCands = append(samplerCands, scriptpkg.SegmentAssetCandidate{
+			AssetID: c.AssetID, Entity: c.Label, RelevanceScore: float64(c.GenericSimilarity), SegmentID: c.OwnerSegmentID,
+		})
+	}
+	winnerID, err := r.samplerPort.Sample(ctx, segment.SegmentID, subject, terms, samplerCands, false)
+	if err != nil {
+		return segment, fmt.Errorf("mediasampler sample: %w", err)
+	}
+
+	if winnerID != "" {
+		primary := scriptpkg.SegmentAssetCandidate{
+			SegmentID: segment.SegmentID,
+			AssetID:   winnerID,
+			Provider:  scriptpkg.VidRushProviderArtlist,
+			Score:     0.9,
+		}
+		for _, c := range stockRes.Candidates {
+			if c.AssetID == winnerID {
+				primary.Entity = c.Label
+				primary.Query = query
+				primary.RelevanceScore = float64(c.GenericSimilarity)
+				break
+			}
+		}
+		segment.Assets.PrimaryVideo = &primary
+	}
+	// Record the provider live request count on the segment's cache state so
+	// MediaCert can assert the LOCAL FIRST PROVIDER SECOND invariant.
+	segment.Cache.InternetImagesProviderSearches = stockRes.ProviderLiveRequests
+	return segment, nil
+}
+
+// SegmentMaterializer acquires, verifies and finalizes the candidate assets
+// of one enriched segment through the shared provider registry and common
+// finalizer. It runs after provider search and returns the segment with its
+// candidates persisted. Implementations must return an immutable result and
+// must never mutate shared scene state.
+type SegmentResearcher interface {
+	ResearchSegment(context.Context, *scriptpkg.ResolvedGenerationPlan, scriptpkg.VidRushSegmentResult) (*scriptpkg.ResearchReport, error)
+}
+
+type SegmentMaterializer interface {
+	Materialize(ctx context.Context, plan *scriptpkg.ResolvedGenerationPlan, segment scriptpkg.VidRushSegmentResult) (scriptpkg.VidRushSegmentResult, error)
+}
+
+// SegmentEnricher enriches one stable scene into a VidRushSegmentResult. It is
+// the single reusable owner of per-segment VidRush work: entity extraction,
+// important words/phrases, Artlist and image query construction, cache lookup
+// and metrics. Implementations must return an immutable result and must never
+// mutate shared scene state.
+type SegmentEnricher interface {
+	// Enrich processes a single committed scene. plan carries the resolved
+	// generation context (language, model, media plan); scene is the stable
+	// scene text to enrich. The returned VidRushSegmentResult is immutable and
+	// keyed by the scene's content hash so stale results can be fenced out by
+	// the caller.
+	Enrich(ctx context.Context, plan *scriptpkg.ResolvedGenerationPlan, scene scriptpkg.SpecScene) (scriptpkg.VidRushSegmentResult, error)
+}
+
+// SegmentProviderResolver fans out a single enriched segment's visual provider
+// searches. It receives the segment with entities and retrieval queries already
+// resolved and returns the segment with candidate assets merged. Implementations
+// must dispatch through the shared provider registry and must not duplicate
+// per-provider orchestration (search, rate limiting, retry).
+type SegmentProviderResolver interface {
+	ResolveProviders(ctx context.Context, plan *scriptpkg.ResolvedGenerationPlan, segment scriptpkg.VidRushSegmentResult) (scriptpkg.VidRushSegmentResult, error)
 }

@@ -3,12 +3,12 @@ current:
 - id: WAVE-24-CLEANUP-DAY-ARCHITECTURE
   status: in_progress
   owner: architecture-cleanup
-  deadline: '2026-09-30T00:00:00Z'
+  deadline: '2026-12-31T00:00:00Z'
   rationale: >-
     Converge PipelineGen on one owner per concept. Legacy roots may shrink but
     must not gain new production code; target architecture is app/kernel/
     capabilities/platform. This checklist is the ordered Cleanup Day backlog,
-    not a claim that all listed migrations are complete.
+    not a claim that all listed migrations are complete. RE-BASELINE 2026-10-01: the root cleanup is complete, while the registered capability package-size debt remains open; the remaining package decomposition is due 2026-12-31.
   follow_up_tickets:
     - id: P0-GOVERNANCE-SNAPSHOT
       note: "DONE 2026-08-24: Strict baseline regenerated from HEAD 90233a7c1, stale hotspot removed (infrastructure/database/sqlite/assets), package_hotspots counts realigned."
@@ -80,7 +80,7 @@ current:
 - id: SSOT-JOBS-CONTRACTION
   status: in_progress
   owner: internal/capabilities/jobs
-  deadline: '2026-09-30T00:00:00Z'
+  deadline: '2026-12-31T00:00:00Z'
   rationale: >-
     Materialise the job layer per capabilities_jobs.target_subdirs. The root
     jobs package stays a thin compatibility facade/orchestration boundary;
@@ -91,9 +91,9 @@ current:
     + workflow-step handlers) into jobs/finalize. Each increment is compile +
     test verified. RE-BASELINE 2026-09-16: the 2026-09-15 deadline was reached
     with JOBS-QUEUE, JOBS-SCHEDULING and JOBS-FINALIZE landed and
-    JOBS-POLICY-ORDER still open, so the deadline moves to 2026-09-30 to align
-    with the registered internal/capabilities/jobs hotspot deadline rather than
-    claim the contraction is finished.
+    JOBS-POLICY-ORDER still open. RE-BASELINE 2026-10-01: the policy-order
+    work remains open; its new deadline is 2026-12-31 rather than claiming
+    the contraction is finished.
   follow_up_tickets:
     - id: JOBS-QUEUE
       note: "DONE 2026-08-31: jobs/queue owns GenerateJobID + ValidateEnqueueRequest + MaxPayloadSize; root enqueue_id.go + enqueue_validate.go are thin adapters. go test ./internal/capabilities/jobs/queue/ green."
