@@ -34,6 +34,9 @@ import (
 // legacy plan item with no entity id falls back to the canonical-name
 // comparison.
 func intentMatchesEntityItem(intent capabilityoverlay.OverlayIntent, item capabilityoverlay.OverlayItem) bool {
+	if _, ok := entityImageLayerForIntent(intent, item); ok {
+		return true
+	}
 	if item.EntityID != "" {
 		stable := capabilityentities.StableEntityID(intent.Entity.Type, intent.Entity.CanonicalName)
 		return stable != "" && stable == item.EntityID
@@ -43,6 +46,31 @@ func intentMatchesEntityItem(intent capabilityoverlay.OverlayIntent, item capabi
 		entityName = item.EntityRef.Name
 	}
 	return intent.Entity.CanonicalName == entityName
+}
+
+func entityImageLayerForIntent(intent capabilityoverlay.OverlayIntent, item capabilityoverlay.OverlayItem) (*capabilityoverlay.OverlayImageLayer, bool) {
+	stable := capabilityentities.StableEntityID(intent.Entity.Type, intent.Entity.CanonicalName)
+	if stable == "" {
+		return nil, false
+	}
+	for index := range item.ImageLayers {
+		if item.ImageLayers[index].EntityID == stable {
+			return &item.ImageLayers[index], true
+		}
+	}
+	return nil, false
+}
+
+func assetRefForImageLayer(item capabilityoverlay.OverlayItem, layer *capabilityoverlay.OverlayImageLayer) []capabilityoverlay.OverlayAssetRef {
+	if layer == nil {
+		return nil
+	}
+	for _, asset := range item.AssetRefs {
+		if asset.AssetID == layer.AssetID {
+			return []capabilityoverlay.OverlayAssetRef{asset}
+		}
+	}
+	return nil
 }
 
 // freezeOverlayIntents promotes the pre-timing authoring bindings to the
@@ -55,7 +83,34 @@ func freezeOverlayIntents(intents []capabilityoverlay.OverlayIntent, items []cap
 		for _, item := range items {
 			matches := intent.SceneID == item.SceneID
 			if intent.Source == capabilityoverlay.IntentSourceEntity {
-				matches = matches && intentMatchesEntityItem(*intent, item)
+				if layer, ok := entityImageLayerForIntent(*intent, item); ok && intent.SceneID == item.SceneID {
+					// A composite is one render artifact but can represent several
+					// entity intents. Freeze each intent against its own child asset,
+					// preset and certified relative timing.
+					intent.Kind = item.Kind
+					intent.TemplateID = item.TemplateID
+					intent.PresetID = layer.PresetID
+					intent.AssetRefs = assetRefForImageLayer(item, layer)
+					intent.Payload.AssetRefs = append([]capabilityoverlay.OverlayAssetRef(nil), intent.AssetRefs...)
+					caption := strings.TrimSpace(layer.Caption)
+					if caption == "" {
+						caption = intent.Entity.CanonicalName
+					}
+					intent.Payload.Name = caption
+					intent.Payload.Text = caption
+					intent.StartMs = item.StartMs + layer.StartMS
+					intent.EndMs = item.StartMs + layer.EndMS
+					intent.TimingState = capabilityoverlay.TimingStateFrozen
+					break
+				}
+				if len(item.ImageLayers) > 0 {
+					matches = false
+				} else {
+					matches = matches && intentMatchesEntityItem(*intent, item)
+				}
+				if matches && intent.TimingState == capabilityoverlay.TimingStateFrozen {
+					break
+				}
 			} else {
 				matches = matches && intent.SourceText == item.Text
 			}

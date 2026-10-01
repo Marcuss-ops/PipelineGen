@@ -53,7 +53,7 @@ var (
 		"image_25d_blur_focus_in",
 		"image_25d_blur_scale_in",
 	}
-	imageMotionCandidates        = renderSafeImageMotions
+	imageMotionCandidates = renderSafeImageMotions
 	// centeredImageMotionCandidates is the certified CENTERED image-motion
 	// pool: the subset of motions that keep the raster pinned to the canvas
 	// center, so a map's geography never drifts away from the pins projected
@@ -62,6 +62,16 @@ var (
 		"image_fade_reveal",
 		"image_focus_reveal",
 		"image_scale_reveal",
+	}
+	// Dedicated DATE and metric motions are emitted only on their registered
+	// ChrononTemplate presentation templates. Keep this small production pool
+	// intentionally explicit; RenderingGen's catalog wiring test certifies the
+	// IDs against the canonical motion registry.
+	datePresentationMotionCandidates = []string{
+		"date_fade_rise", "date_year_count", "date_calendar_flip", "date_timeline_tick",
+	}
+	metricPresentationMotionCandidates = []string{
+		"metric_counter_rise", "metric_counter_scale_settle", "metric_odometer_vertical", "metric_count_flip",
 	}
 	classicAppleMotionCandidates = []string{
 		"air_rise_type_on",
@@ -259,6 +269,46 @@ func selectPreset(jobID, sceneID, itemID, family string, candidates []string) st
 // while retries of the same job remain bit-identical.
 func SelectEntityNamePreset(jobID, sceneID, itemID, entityType string) string {
 	return selectPreset(jobID, sceneID, itemID, "entity_name:"+entityType, namePresetRenderSafeCandidates)
+}
+
+// NumberPresentationTemplateForEntityType maps an extracted date/time or
+// numeric value type to its registered ChrononTemplate presentation template.
+// Unrecognized types return empty so callers can retain their existing
+// fallback mapping.
+func NumberPresentationTemplateForEntityType(entityType string) string {
+	switch strings.ToUpper(strings.TrimSpace(entityType)) {
+	case "DATE", "TIME":
+		return "TIMELINE_DATE_CARD"
+	case "NUMBER", "NUM", "CARDINAL", "ORDINAL", "MONEY", "PERCENT", "PERCENTAGE", "METRIC", "METRICS", "STATISTIC", "STATISTICS", "QUANTITY":
+		return "METRIC_STAT_CARD"
+	default:
+		return ""
+	}
+}
+
+// NumberPresentationForEntityType maps extracted date/time and numeric-value
+// entity types to the registered ChrononTemplate presentation family. The
+// catalog-owned motion ids are selected deterministically; callers never
+// synthesize a preset or timing window.
+func NumberPresentationForEntityType(jobID, sceneID, itemID, entityType string) (templateID, motionID string) {
+	switch NumberPresentationTemplateForEntityType(entityType) {
+	case "TIMELINE_DATE_CARD":
+		return "TIMELINE_DATE_CARD", selectPreset(jobID, sceneID, itemID, "date_presentation", datePresentationMotionCandidates)
+	case "METRIC_STAT_CARD":
+		return "METRIC_STAT_CARD", selectPreset(jobID, sceneID, itemID, "metric_presentation", metricPresentationMotionCandidates)
+	default:
+		return "", ""
+	}
+}
+
+// DatePresentationMotionCandidates and MetricPresentationMotionCandidates
+// expose read-only catalog-id projections for contract tests and diagnostics.
+func DatePresentationMotionCandidates() []string {
+	return append([]string(nil), datePresentationMotionCandidates...)
+}
+
+func MetricPresentationMotionCandidates() []string {
+	return append([]string(nil), metricPresentationMotionCandidates...)
 }
 
 func selectPhrasePreset(jobID, sceneID, itemID string) string {
@@ -508,25 +558,30 @@ func CertifiedImageMotions() []string {
 
 // SelectImageMotion chooses a stable catalog image motion for one image
 // overlay. Retries of the same job, scene and item resolve identically.
+// Generated overlays rotate ONLY the centered subset: a portrait or scene
+// image must stay pinned to the canvas center while it reveals (the same
+// editorial rule maps already follow); slide/25d motions that carry the card
+// across the canvas remain certified for explicit editorial plans but are
+// never selected here.
 func SelectImageMotion(jobID, sceneID, itemID string) string {
-	return selectPreset(jobID, sceneID, itemID, "image_motion", imageMotionCandidates)
+	return selectPreset(jobID, sceneID, itemID, "image_motion", centeredImageMotionCandidates)
 }
 
-// SelectImageMotionAt rotates through the complete certified image pool
+// SelectImageMotionAt rotates through the certified CENTERED image pool
 // from a deterministic per-job starting point. This gives each image in a run
 // a different motion while allowing later jobs to start at a different point.
 func SelectImageMotionAt(jobID, sceneID string, ordinal int) string {
-	return selectImageMotion(jobID, sceneID, ordinal, nil)
+	return selectImageMotion(jobID, sceneID, ordinal, centeredImageMotionCandidates)
 }
 
 // RandomImageMotionOffset chooses a fresh cryptographically random starting
 // offset for one render plan. The caller samples it once, then rotates through
-// the full pool so no two images in the same run repeat before all 18 are used.
+// the centered pool so no two images in the same run repeat before all are used.
 func RandomImageMotionOffset() (int, error) {
-	if len(imageMotionCandidates) == 0 {
+	if len(centeredImageMotionCandidates) == 0 {
 		return 0, nil
 	}
-	start, err := rand.Int(rand.Reader, big.NewInt(int64(len(imageMotionCandidates))))
+	start, err := rand.Int(rand.Reader, big.NewInt(int64(len(centeredImageMotionCandidates))))
 	if err != nil {
 		return 0, err
 	}
@@ -534,29 +589,33 @@ func RandomImageMotionOffset() (int, error) {
 }
 
 // ImageMotionAtOffset returns the image motion at a position in the randomly
-// rotated catalog pool.
+// rotated CENTERED pool — the pool generated image overlays rotate over.
 func ImageMotionAtOffset(offset, ordinal int) string {
-	if len(imageMotionCandidates) == 0 {
+	if len(centeredImageMotionCandidates) == 0 {
 		return ""
 	}
-	index := ((offset % len(imageMotionCandidates)) + ordinal) % len(imageMotionCandidates)
-	return imageMotionCandidates[index]
+	index := ((offset % len(centeredImageMotionCandidates)) + ordinal) % len(centeredImageMotionCandidates)
+	return centeredImageMotionCandidates[index]
 }
 
-// EntityImageParams returns the larger square portrait geometry, scaled to
-// the output canvas while keeping enough margin for image motion.
+// EntityImageParams returns the entity-image card geometry, scaled to the
+// output canvas while keeping enough margin for image motion. On 1920×1080 the
+// card is 960×864 (50% width, capped at 80% height): a readable portrait, not
+// a corner stamp.
 func EntityImageParams(width, height int) map[string]any {
 	if width <= 0 || height <= 0 {
 		return map[string]any{"box_width": 480, "box_height": 480}
 	}
-	size := width * 28 / 100
-	if maxHeight := height * 48 / 100; maxHeight < size {
+	size := width * 50 / 100
+	if maxHeight := height * 80 / 100; maxHeight < size {
 		size = maxHeight
 	}
 	if size < 1 {
 		size = 1
 	}
-	return map[string]any{"box_width": size, "box_height": size}
+	// "width"/"height" are the keys RenderingGen's imageLayer() reads;
+	// "box_width"/"box_height" stay for consumers of the legacy spelling.
+	return map[string]any{"box_width": size, "box_height": size, "width": size, "height": size}
 }
 
 func selectImageMotion(jobID, sceneID string, ordinal int, pool []string) string {

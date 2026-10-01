@@ -410,7 +410,7 @@ func TestBuildPlanEmitsNativeFlyToFromCertifiedOfflineLODs(t *testing.T) {
 	}}
 	resolver := flyoverPlateResolver{
 		stubPlateResolver: stubPlateResolver{plates: []MapPlate{coarse}},
-		flyover: coarse, ok: true,
+		flyover:           coarse, ok: true,
 	}
 	plan, err := BuildPlan(PlanInput{
 		PlanID: "flyover-plan", VideoID: "flyover-video",
@@ -450,7 +450,7 @@ func TestBuildPlanFallsBackToStaticMapWhenFlyoverCoverageIsUnavailable(t *testin
 	}}
 	resolver := flyoverPlateResolver{
 		stubPlateResolver: stubPlateResolver{plates: []MapPlate{plate}},
-		ok: false,
+		ok:                false,
 	}
 	plan, err := BuildPlan(PlanInput{
 		PlanID: "static-fallback-plan", VideoID: "static-fallback-video",

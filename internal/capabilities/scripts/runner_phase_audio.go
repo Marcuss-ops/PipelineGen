@@ -560,7 +560,7 @@ func (r *Runner) runAudioCompilePhase(ctx context.Context, runID string, req Gen
 		if canvas.Style == nil && background != nil {
 			canvas.Style = background.Style
 		}
-		driveFolderID := firstNonEmpty(req.Render.DriveFolderID, req.DriveFolderID, req.Docs.FolderID)
+		driveFolderID := strings.TrimSpace(req.Render.DriveFolderID)
 		plates := r.mapPlates
 		if req.MediaPlan.ProviderPolicy.Geocoding != mediadomain.MediaToggleEnabled {
 			plates = nil

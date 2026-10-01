@@ -19,12 +19,15 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
+	"strings"
 	"testing"
 
 	_ "github.com/mattn/go-sqlite3"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/drive"
 	sqassets "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/imagesregistry"
 )
 
@@ -65,6 +68,60 @@ CREATE TABLE voiceovers (
 `)
 	require.NoError(t, err)
 	return db
+}
+
+// fakeTimingDriveReader satisfies drive.Reader for the timing-hydration
+// path only: DownloadFile serves the encoded SpeechTimingArtifact for the
+// file id the fixture's timing_json_link carries; every other method fails
+// loudly because these tests never exercise them.
+type fakeTimingDriveReader struct{ timingJSON []byte }
+
+func (f fakeTimingDriveReader) DownloadFile(_ context.Context, _ string) (io.ReadCloser, string, error) {
+	return io.NopCloser(strings.NewReader(string(f.timingJSON))), "", nil
+}
+func (f fakeTimingDriveReader) GetFileMD5(context.Context, string) (string, error) {
+	return "", errors.New("fakeTimingDriveReader: GetFileMD5 not wired")
+}
+func (f fakeTimingDriveReader) GetFileMeta(context.Context, string) (*drive.FileMeta, error) {
+	return nil, errors.New("fakeTimingDriveReader: GetFileMeta not wired")
+}
+func (f fakeTimingDriveReader) ListFiles(context.Context, string) ([]drive.DriveFileInfo, error) {
+	return nil, errors.New("fakeTimingDriveReader: ListFiles not wired")
+}
+func (f fakeTimingDriveReader) FindFileByName(context.Context, string, string) (drive.ExistingFileLookup, error) {
+	return drive.ExistingFileLookup{}, errors.New("fakeTimingDriveReader: FindFileByName not wired")
+}
+func (f fakeTimingDriveReader) FileIsNotTrashed(context.Context, string) (bool, error) {
+	return false, errors.New("fakeTimingDriveReader: FileIsNotTrashed not wired")
+}
+func (f fakeTimingDriveReader) FileExists(context.Context, string) (bool, error) {
+	return false, errors.New("fakeTimingDriveReader: FileExists not wired")
+}
+func (f fakeTimingDriveReader) SearchFiles(context.Context, string) ([]drive.DriveFileInfo, error) {
+	return nil, errors.New("fakeTimingDriveReader: SearchFiles not wired")
+}
+
+// validTimingArtifactJSON builds a canonical timing artifact whose identity
+// fields match the fixture voiceovers row (vo-3/vo-6): text hash, language,
+// voice and the metadata hashes the hydration gate cross-checks.
+func validTimingArtifactJSON(t *testing.T) []byte {
+	t.Helper()
+	artifact := map[string]any{
+		"version":       1,
+		"provider":      "edge_tts",
+		"boundary_mode": "word",
+		"language":      "",
+		"voice":         "alloy",
+		"text_sha256":   "",
+		"audio_sha256":  "audio-hash-1",
+		"duration_us":   5000000,
+		"words": []map[string]any{
+			{"index": 0, "text": "hello", "start_us": 0, "end_us": 5000000},
+		},
+	}
+	raw, err := json.Marshal(artifact)
+	require.NoError(t, err)
+	return raw
 }
 
 func insertVoiceoverRow(t *testing.T, db *sql.DB, id, fingerprint, status, metadata string) {
@@ -128,8 +185,11 @@ func TestVoiceoverCacheSSOT_HealthyRowReturnsHitWithSSOTData(t *testing.T) {
 	adapter := NewUseCaseRepoAdapter(repo, db, sqliteVoiceoverMediaReader{db: db})
 	cache := NewVoiceoverCacheAdapter(adapter, zap.NewNop())
 
-	insertVoiceoverRow(t, db, "vo-3", "fp-3", "completed", `{"timing_json_link":"https://drive/timing.json"}`)
+	insertVoiceoverRow(t, db, "vo-3", "fp-3", "completed", `{"timing_json_link":"https://drive.google.com/file/d/timing-drive-id/view","audio_sha256":"audio-hash-1","timing_duration_us":5000000,"timing_word_count":1}`)
 	insertMediaAssetRow(t, db, "vo-3", "drive-file-123", "canonical-name")
+	// The hydration gate is fail-closed: without a timing reader wired the
+	// lookup returns a MISS for any timingRequired request (MEDIA-SSOT P2-9).
+	cache.SetTimingArtifactReader(fakeTimingDriveReader{timingJSON: validTimingArtifactJSON(t)})
 
 	hit, err := cache.Lookup(context.Background(), "fp-3", true)
 	require.NoError(t, err)
@@ -200,9 +260,10 @@ func TestVoiceoverCacheSSOT_MetadataFromMediaAssetsNotCacheRow(t *testing.T) {
 	adapter := NewUseCaseRepoAdapter(repo, db, sqliteVoiceoverMediaReader{db: db})
 	cache := NewVoiceoverCacheAdapter(adapter, zap.NewNop())
 
-	metaJSON := `{"timing_json_link":"https://drive/timing.json","cleaned_path":"/tmp/cleaned.wav"}`
+	metaJSON := `{"timing_json_link":"https://drive.google.com/file/d/timing-drive-id/view","cleaned_path":"/tmp/cleaned.wav","audio_sha256":"audio-hash-1","timing_duration_us":5000000,"timing_word_count":1}`
 	insertVoiceoverRow(t, db, "vo-6", "fp-6", "uploaded", metaJSON)
 	insertMediaAssetRow(t, db, "vo-6", "drive-ssot-id", "ssot-name")
+	cache.SetTimingArtifactReader(fakeTimingDriveReader{timingJSON: validTimingArtifactJSON(t)})
 
 	hit, err := cache.Lookup(context.Background(), "fp-6", true)
 	require.NoError(t, err)
@@ -212,10 +273,11 @@ func TestVoiceoverCacheSSOT_MetadataFromMediaAssetsNotCacheRow(t *testing.T) {
 	require.Equal(t, "drive-ssot-id", hit.DriveFileID)
 	require.Equal(t, "ssot-name", hit.Filename)
 
-	// Metadata from voiceovers (provenance, not location)
+	// Metadata from voiceovers (provenance, not location). The link is the
+	// parseable Drive URL the hydration gate requires.
 	var meta map[string]any
 	require.NoError(t, json.Unmarshal(hit.MetaJSON, &meta))
-	require.Equal(t, "https://drive/timing.json", meta["timing_json_link"])
+	require.Equal(t, "https://drive.google.com/file/d/timing-drive-id/view", meta["timing_json_link"])
 	require.Equal(t, "/tmp/cleaned.wav", meta["cleaned_path"], "cleaned_path from voiceovers metadata")
 }
 

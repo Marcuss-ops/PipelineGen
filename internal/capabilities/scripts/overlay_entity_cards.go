@@ -303,19 +303,20 @@ func capEntityImageOverlays(items []capabilityoverlay.OverlayItem, max int, perS
 }
 
 // imageCandidate projects an entity image binding onto the planner's
-// ImageCandidate, anchored at the certified occurrence start. Entity images
-// use the same fixed five-second display window as PERSON/ORG/GPE image cards;
-// the spoken occurrence remains the timing authority for when the animation
-// enters, but a short spoken name must not collapse the image to a sub-second
-// flash. The direct
-// PreviewURL (when present) is preferred over the Drive view-page link so
-// the compiled layer references a fetchable image. The binding's verified
-// content address (SHA256) is carried through so the planner's asset ref and
-// the queue manifest stay content-addressed (a missing hash would silently
-// drop the asset from the render manifest).
+// ImageCandidate, anchored at the certified occurrence start. The display
+// window is DYNAMIC: it derives from the certified spoken window of the
+// mention (EntitySpokenWindowDuration: spoken audio + readability hold,
+// clamped into [1s, 5s]), so a short spoken name still reads for a full
+// second while a longer narration keeps the image up without a fixed reset.
+// The spoken occurrence remains the timing authority for when the animation
+// enters. The direct PreviewURL (when present) is preferred over the Drive
+// view-page link so the compiled layer references a fetchable image. The
+// binding's verified content address (SHA256) is carried through so the
+// planner's asset ref and the queue manifest stay content-addressed (a
+// missing hash would silently drop the asset from the render manifest).
 func imageCandidate(binding *scriptpkg.EntityImageBinding, occ *capabilityentities.EntityOccurrence, score float64) capabilityoverlay.ImageCandidate {
 	startUS := (occ.AudioStartUS / 1000) * 1000
-	durationUS := capabilityentities.MinEntityOverlayDurationUS
+	durationUS := capabilityentities.EntitySpokenWindowDuration(occ.AudioStartUS, occ.AudioEndUS)
 	return capabilityoverlay.ImageCandidate{
 		AssetID:    binding.SHA256,
 		URL:        entityImageURL(binding),

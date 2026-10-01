@@ -64,7 +64,9 @@ func (p *VisualPlanningProcessor) Process(ctx context.Context, plan *scriptpkg.R
 
 	open := make([]mediamemory.SceneSpec, 0, len(input.SpecScene.Scenes))
 	for i, scene := range input.SpecScene.Scenes {
-		if !sceneAllowsMediaResolution(scene) {
+		if !sceneAllowsMediaResolution(scene) || sceneHasDirectStockBinding(input.SpecScene, input.StockBindings, scene.ID, scene.SegmentID, i) {
+			// A direct stock binding is the scene's authoritative visual
+			// source: the memory catalog must never fill its slots.
 			continue
 		}
 		segmentID := visualSegmentID(plan, scene, i)
@@ -82,10 +84,11 @@ func (p *VisualPlanningProcessor) Process(ctx context.Context, plan *scriptpkg.R
 
 	plans := make([]mediamemory.SceneVisualPlan, 0, len(locked)+len(open))
 	for _, scene := range input.SpecScene.Scenes {
-		if !sceneAllowsMediaResolution(scene) {
+		idx := sceneIndex(input.SpecScene.Scenes, scene.ID)
+		if !sceneAllowsMediaResolution(scene) || sceneHasDirectStockBinding(input.SpecScene, input.StockBindings, scene.ID, scene.SegmentID, idx) {
 			continue
 		}
-		segmentID := visualSegmentID(plan, scene, sceneIndex(input.SpecScene.Scenes, scene.ID))
+		segmentID := visualSegmentID(plan, scene, idx)
 		if v, ok := locked[segmentID+"/primary_video"]; ok {
 			v.SceneID, v.SegmentID, v.Text = scene.ID, segmentID, scene.Text
 			plans = append(plans, v)

@@ -1,5 +1,5 @@
-// Package adapters contains canonical document-rendering invariants for translated SpecScene input.
-package adapters
+// Package adapters_test contains canonical document-rendering invariants for translated SpecScene input.
+package adapters_test
 
 import (
 	"strings"

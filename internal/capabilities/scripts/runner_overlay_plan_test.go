@@ -12,6 +12,7 @@ package scriptgeneration
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -69,6 +70,54 @@ var frozenTestEntityID = capabilityentities.StableEntityID("PERSON", "Michael Jo
 // surface), and the intent is still frozen onto it. Under the previous
 // canonical-name comparison this join silently failed and the persisted intent
 // kept PENDING timing next to a rendered image layer.
+func TestFreezeOverlayIntentsFreezesEveryCompositeEntityChild(t *testing.T) {
+	adaID := capabilityentities.StableEntityID("PERSON", "Ada Lovelace")
+	graceID := capabilityentities.StableEntityID("PERSON", "Grace Hopper")
+	assetA := capabilityoverlay.OverlayAssetRef{AssetID: "ada", SHA256: strings.Repeat("a", 64)}
+	assetB := capabilityoverlay.OverlayAssetRef{AssetID: "grace", SHA256: strings.Repeat("b", 64)}
+	intents := []capabilityoverlay.OverlayIntent{
+		{Version: capabilityoverlay.OverlayIntentVersion, IntentID: "ada-intent", SceneID: "scene-0",
+			Entity: capabilityoverlay.EntityBinding{Type: "PERSON", CanonicalName: "Ada Lovelace"},
+			Source: capabilityoverlay.IntentSourceEntity, Kind: "entity_card", TemplateID: "person_default",
+			Payload: capabilityoverlay.IntentPayload{Name: "Ada Lovelace"}, TimingState: capabilityoverlay.TimingStatePending},
+		{Version: capabilityoverlay.OverlayIntentVersion, IntentID: "grace-intent", SceneID: "scene-0",
+			Entity: capabilityoverlay.EntityBinding{Type: "PERSON", CanonicalName: "Grace Hopper"},
+			Source: capabilityoverlay.IntentSourceEntity, Kind: "entity_card", TemplateID: "person_default",
+			Payload: capabilityoverlay.IntentPayload{Name: "Grace Hopper"}, TimingState: capabilityoverlay.TimingStatePending},
+	}
+	items := []capabilityoverlay.OverlayItem{{
+		ID: "ada+grace", SceneID: "scene-0", Kind: string(capabilityoverlay.KindEntityImage),
+		TemplateID: "image_popup", PresetID: "image_focus_in", StartMs: 1000, EndMs: 6500,
+		AssetRefs: []capabilityoverlay.OverlayAssetRef{assetA, assetB},
+		ImageLayers: []capabilityoverlay.OverlayImageLayer{
+			{ID: "ada", EntityID: adaID, AssetID: "ada", StartMS: 0, EndMS: 5000, PresetID: "image_scale_in", Caption: "Ada Lovelace"},
+			{ID: "grace", EntityID: graceID, AssetID: "grace", StartMS: 1500, EndMS: 5500, PresetID: "image_focus_in", Caption: "Grace Hopper"},
+		},
+	}}
+
+	freezeOverlayIntents(intents, items)
+	for index, want := range []struct {
+		name       string
+		preset     string
+		assetID    string
+		start, end int64
+	}{
+		{name: "Ada Lovelace", preset: "image_scale_in", assetID: "ada", start: 1000, end: 6000},
+		{name: "Grace Hopper", preset: "image_focus_in", assetID: "grace", start: 2500, end: 6500},
+	} {
+		got := intents[index]
+		if got.TimingState != capabilityoverlay.TimingStateFrozen || got.StartMs != want.start || got.EndMs != want.end {
+			t.Errorf("%s intent timing/state = [%d,%d)/%s, want [%d,%d)/FROZEN", want.name, got.StartMs, got.EndMs, got.TimingState, want.start, want.end)
+		}
+		if got.PresetID != want.preset || len(got.AssetRefs) != 1 || got.AssetRefs[0].AssetID != want.assetID {
+			t.Errorf("%s intent child preset/assets = %q/%+v, want %q/%s", want.name, got.PresetID, got.AssetRefs, want.preset, want.assetID)
+		}
+		if got.Payload.Name != want.name || got.Payload.Text != want.name {
+			t.Errorf("%s intent lost its entity label: %+v", want.name, got.Payload)
+		}
+	}
+}
+
 func TestFreezeOverlayIntentsJoinsByEntityIdentity(t *testing.T) {
 	intents := []capabilityoverlay.OverlayIntent{{
 		Version:  capabilityoverlay.OverlayIntentVersion,
@@ -290,6 +339,9 @@ func TestRunner_OverlayPlanAppliesRunLevelEditorialBudget(t *testing.T) {
 	require.Len(t, person.AssetRefs, 1)
 	require.Equal(t, "person:tim-cook", person.EntityRef.CanonicalEntityID)
 	require.Contains(t, capabilityoverlay.ImagePresetCandidates(), person.PresetID)
+	value := byID["scene-0-number-ten-million"]
+	require.Equal(t, "METRIC_STAT_CARD", value.TemplateID)
+	require.Contains(t, capabilityoverlay.MetricPresentationMotionCandidates(), value.MotionID)
 
 }
 
@@ -787,8 +839,15 @@ func TestCompileOverlayPlan_ChosenEntityImageCarriesResolvedAsset(t *testing.T) 
 	require.Equal(t, "image_popup", card.TemplateID)
 	require.Contains(t, capabilityoverlay.CertifiedImageMotions(), card.MotionID,
 		"entity portraits use a motion from the certified image catalog")
-	require.Equal(t, 345, card.Params["box_width"], "entity portraits should render larger on the 1280x720 test canvas")
-	require.Equal(t, 345, card.Params["box_height"], "entity portraits should render larger on the 1280x720 test canvas")
+	// EntityImageParams (50% width capped at 80% height): on 1280x720 the card
+	// is 640 wide but the height cap keeps it 576 square — a readable portrait,
+	// not the pre-2026-10 corner stamp (28%/48% → 345px).
+	wantSize := 1280 * 50 / 100
+	if maxHeight := 720 * 80 / 100; maxHeight < wantSize {
+		wantSize = maxHeight
+	}
+	require.Equal(t, wantSize, card.Params["box_width"], "entity portraits should render larger on the 1280x720 test canvas")
+	require.Equal(t, wantSize, card.Params["box_height"], "entity portraits should render larger on the 1280x720 test canvas")
 	require.Empty(t, card.Text, "the entity image must not carry a rendered name")
 	require.NotEmpty(t, card.PresetID, "the entity image must use an official image preset")
 	require.Empty(t, card.ImagePresetID)

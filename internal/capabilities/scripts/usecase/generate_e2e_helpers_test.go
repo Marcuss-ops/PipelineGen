@@ -118,8 +118,17 @@ func makeTextOnlyItem(id, sourceText string) scriptpkg.GenerationItemV2 {
 			SourceText: sourceText,
 		},
 		ScriptParams: scriptpkg.ScriptSpec{TargetWords: 10},
+		// Docs are enabled by applyPublicationDefaults during normalization
+		// and validation fails closed without a resolvable folder, so every
+		// e2e fixture carries the caller override a real deployment has.
+		Docs: scriptpkg.DocumentsSpec{FolderID: "TEST_DOCS_FOLDER"},
 		Output: scriptpkg.OutputSpec{
 			SaveToDB: false,
+			// These engines produce narration-free scenes with no certified
+			// durations, so the fixtures explicitly opt out of the normalized
+			// voiceover/COMBINED_TIMELINE default: an explicit disable is the
+			// authoritative contract in applyPublicationDefaults.
+			VoiceoverEnabled: scriptpkg.ToggleDisabled,
 		},
 	}
 }

@@ -281,7 +281,16 @@ func BuildOverlayPlan(b SemanticRenderBundleV1, videoID, projectID string, width
 			item.Kind = string(KindEntityImage)
 			item.TemplateID = "image_popup"
 			item.PresetID = SelectEntityImagePreset(b.RunID, b.Scene.SegmentID, e.EntityID)
-			item.EndMs = item.StartMs + MaxImageOverlayDurationMS
+			// DYNAMIC display window: the timeline event already bounds the
+			// certified spoken mention into the certified display bounds, so
+			// the image card keeps that window instead of resetting to a flat
+			// five-second block. The hard editorial image ceiling still applies
+			// to any window that reaches it.
+			if window := ev.EndMs - ev.StartMs; window > 0 && window < MaxImageOverlayDurationMS {
+				item.EndMs = item.StartMs + window
+			} else {
+				item.EndMs = item.StartMs + MaxImageOverlayDurationMS
+			}
 			item.Text = ""
 			// Keep image overlays varied with the certified image-motion catalog.
 			item.MotionID = SelectImageMotionAt(b.RunID, b.Scene.SegmentID, len(items))

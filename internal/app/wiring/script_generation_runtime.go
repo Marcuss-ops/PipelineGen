@@ -495,10 +495,12 @@ func buildRuntimeMediaCertSpec(plan *scriptpkg.ResolvedGenerationPlan) mediacert
 	if plan == nil {
 		return spec
 	}
-	// Clip-only plans carry caller-selected clips and therefore have no
-	// Artlist winner contract. Mixed plans still resolve stock video through
-	// Artlist for segments that do not have a locked clip.
-	if plan.MediaMode == scriptpkg.MediaModeMixed {
+	// Certify Artlist relevance only when the resolved media plan actually
+	// enables Artlist. Mixed mode means the item combines caller-selected
+	// clips and stock bindings; it does not imply an Artlist search. In
+	// particular, folder-backed stock bindings must not be mis-certified as
+	// Artlist winners when the provider is disabled.
+	if plan.MediaMode == scriptpkg.MediaModeMixed && plan.MediaPlan.ProviderPolicy.Artlist.AsBool() {
 		spec.VideoProvider = scriptpkg.VidRushProviderArtlist
 	}
 	// Only authored plan segments define an external scene-identity contract.
@@ -525,6 +527,10 @@ func buildRuntimeMediaCertSpec(plan *scriptpkg.ResolvedGenerationPlan) mediacert
 		subject := strings.TrimSpace(segment.Topic)
 		spec.SegmentsExpected = append(spec.SegmentsExpected, mediacert.SpecSegment{
 			ID: id, Subject: subject, WinnerSubjectMatch: subject,
+			// A per-segment stock folder is the visual source of record for
+			// the scene: the certifier must demand NO provider media for it
+			// (STOCK ISOLATION) instead of an image budget it can never meet.
+			StockBound: strings.TrimSpace(segment.StockFolderID) != "" || strings.TrimSpace(segment.StockFolderLink) != "",
 		})
 	}
 	return spec

@@ -89,7 +89,7 @@ func (p *ClipSearchProcessor) Process(ctx context.Context, plan *scriptpkg.Resol
 
 	for _, seg := range input.VidRushSegments {
 		updated := CloneVidRushSegmentResult(seg)
-		if !sceneAllowsMediaSearch(input.SpecScene, seg.SceneID, seg.SegmentID, seg.Position) {
+		if !sceneAllowsMediaSearchForPlan(input.SpecScene, input.StockBindings, seg.SceneID, seg.SegmentID, seg.Position) {
 			updated.Cache.Artlist = "BYPASSED"
 			segments = append(segments, updated)
 			continue

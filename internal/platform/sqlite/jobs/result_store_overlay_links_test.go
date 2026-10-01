@@ -71,6 +71,50 @@ func TestRecordOverlayDriveLinkMergesCompletedLinks(t *testing.T) {
 	}
 }
 
+func TestRecordOverlayDriveLinkKeepsAsyncReceiptBesideRenderArtifact(t *testing.T) {
+	db, err := sql.Open("sqlite3", ":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	db.SetMaxOpenConns(1)
+	ctx := context.Background()
+	if _, err := db.Exec(`CREATE TABLE jobs (id TEXT PRIMARY KEY, status TEXT NOT NULL); INSERT INTO jobs(id,status) VALUES('job-overlay-render','SUCCEEDED'); CREATE TABLE job_results (id INTEGER PRIMARY KEY, job_id TEXT, attempt INTEGER, result_hash TEXT, codec_id TEXT, result_payload TEXT, created_at TEXT); INSERT INTO job_results VALUES(1,'job-overlay-render',0,'h','json','{"run_id":"run-overlay","result":{"overlay_plan":{"plan_id":"plan-en","language":"en"},"overlay_render":{"status":"COMPLETED","artifact":{"sha256":"render-sha"}}}}','now')`); err != nil {
+		t.Fatal(err)
+	}
+	link := OverlayDriveLink{
+		ItemID: "phrase-1", Language: "en", PlanID: "plan-en",
+		DriveFileID: "drive-file-1", DriveLink: "https://drive.example/file-1", FolderID: "overlay-folder",
+	}
+	if err := NewSQLiteStore(db, zap.NewNop()).RecordOverlayDriveLink(ctx, "job-overlay-render", link); err != nil {
+		t.Fatal(err)
+	}
+	var payload string
+	if err := db.QueryRowContext(ctx, `SELECT result_payload FROM job_results WHERE id=1`).Scan(&payload); err != nil {
+		t.Fatal(err)
+	}
+	var got struct {
+		Result struct {
+			OverlayRender struct {
+				Artifact struct {
+					DriveLink string `json:"drive_link"`
+					SHA256    string `json:"sha256"`
+				} `json:"artifact"`
+			} `json:"overlay_render"`
+			OverlayLinks []OverlayDriveLink `json:"overlay_links"`
+		} `json:"result"`
+	}
+	if err := json.Unmarshal([]byte(payload), &got); err != nil {
+		t.Fatal(err)
+	}
+	if got.Result.OverlayRender.Artifact.DriveLink != "" || got.Result.OverlayRender.Artifact.SHA256 != "render-sha" {
+		t.Fatalf("async publication unexpectedly rewrote render artifact: %+v", got.Result.OverlayRender.Artifact)
+	}
+	if len(got.Result.OverlayLinks) != 1 || got.Result.OverlayLinks[0] != link {
+		t.Fatalf("canonical overlay publication receipts = %+v, want %+v", got.Result.OverlayLinks, link)
+	}
+}
+
 func TestRecordOverlayDriveLinkWaitsForSuccessfulJob(t *testing.T) {
 	db, err := sql.Open("sqlite3", ":memory:")
 	if err != nil {

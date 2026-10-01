@@ -58,7 +58,7 @@ func buildUsecaseWithDocuments(gen *testsupport.FakeOllamaGen, docs scriptgen.Do
 	})
 	ppReg.Freeze()
 
-	return gencore.NewGenerateOneUseCase(processor.NormalizationConfig{}, reg, e, ppReg, zap.NewNop())
+	return buildTestUseCase(e, reg, ppReg)
 }
 
 // documentHumanSurface returns the human-facing part of a rendered document

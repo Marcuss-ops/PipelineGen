@@ -70,6 +70,32 @@ func TestSceneTextGeneratorResolveVidRushPlanPreservesResearchPolicy(t *testing.
 	}
 }
 
+func TestSceneTextGeneratorResolveVidRushPlanCarriesStockBindings(t *testing.T) {
+	// The direct stock-binding gate (search + materialization) runs inside the
+	// incremental VidRush coordinator against the resolved plan. A mixed
+	// Milton-style payload whose stock folders were expanded at ingress must
+	// reach that plan: without this projection every stock scene leaked into
+	// provider image discovery and materialization.
+	generator := &SceneTextGenerator{}
+	req := scriptgen.GenerateRequest{
+		SourceLanguage: "pt",
+		Source:         scriptgen.Source{Type: scriptgen.SourceText, Topic: "topic"},
+		StockBindings: []scriptpkg.StockBindingInput{
+			{Index: 1, SceneID: "scene-1", SegmentID: "scene-1", FolderID: "folder-1", Source: "drive"},
+		},
+	}
+	plan, err := generator.ResolveVidRushPlan(context.Background(), req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(plan.StockBindings) != 1 || plan.StockBindings[0].FolderID != "folder-1" {
+		t.Fatalf("plan stock bindings = %+v, want the caller binding carried verbatim", plan.StockBindings)
+	}
+	if _, bound := scriptpkg.StockBindingForSegment(plan, nil, scriptpkg.VidRushSegmentResult{SegmentID: "scene-1", SceneID: "scene-1"}); !bound {
+		t.Fatal("the gate helper must resolve scene-1 as stock-bound from the plan alone")
+	}
+}
+
 func TestSceneTextGeneratorResolveVidRushPlanCarriesMediaPlan(t *testing.T) {
 	generator := &SceneTextGenerator{}
 	req := scriptgen.GenerateRequest{
@@ -102,17 +128,19 @@ func TestSceneTextGeneratorResolveVidRushPlanCarriesMediaPlan(t *testing.T) {
 }
 
 func TestSceneTextGeneratorResolveVidRushPlanResolvesCanonicalDriveFolderPrecedence(t *testing.T) {
-	// The run-scoped artifact root (plan.DriveFolderID) follows the canonical
-	// order already owned by the runner (runner.go) and the voiceover phase
-	// (runner_phase_audio.go):
+	// The run-scoped artifact root (plan.DriveFolderID) is the explicit
+	// render/artifact root and NOTHING else:
 	//
-	//	Render.DriveFolderID → DriveFolderID → Docs.FolderID
+	//	plan.DriveFolderID = req.Render.DriveFolderID (trimmed)
 	//
-	// Docs.FolderID is deliberately the LAST resort: it owns the DOCUMENT
-	// destination (routing_context.go), not the generated-media bundle that
-	// entity-image materialization and overlay publication are routed into.
-	// This adapter previously resolved Docs-first, which silently disagreed with
-	// the runner for any request that supplied an explicit render root.
+	// The Docs.FolderID is deliberately NOT consulted here: it owns the
+	// DOCUMENT destination (routing_context.go), not the generated-media
+	// bundle that entity-image materialization and overlay publication are
+	// routed into. Letting docs.folder_id select the media root routed
+	// overlays into the documents tree (the 2026-09-30 Milton incident).
+	// The VidRush coordinator (runner.go) owns the legacy fallback chain
+	// for callers that still carry the flat DriveFolderID; this adapter
+	// never invents a media root.
 	base := func() scriptgen.GenerateRequest {
 		return scriptgen.GenerateRequest{
 			SourceLanguage: "en",
@@ -126,7 +154,7 @@ func TestSceneTextGeneratorResolveVidRushPlanResolvesCanonicalDriveFolderPrecede
 		want string
 	}{
 		{
-			name: "explicit render root wins over the flat field and the docs folder",
+			name: "explicit render root is the plan root",
 			with: func(req *scriptgen.GenerateRequest) {
 				req.Render = scriptpkg.VideoRenderSpec{DriveFolderID: "render-root"}
 				req.DriveFolderID = "artifact-root"
@@ -135,19 +163,19 @@ func TestSceneTextGeneratorResolveVidRushPlanResolvesCanonicalDriveFolderPrecede
 			want: "render-root",
 		},
 		{
-			name: "flat drive folder wins over the docs folder",
+			name: "flat drive folder and docs folder never select the media root",
 			with: func(req *scriptgen.GenerateRequest) {
 				req.DriveFolderID = "artifact-root"
 				req.Docs = scriptgen.DocumentsConfig{FolderID: "docs-root"}
 			},
-			want: "artifact-root",
+			want: "",
 		},
 		{
-			name: "docs folder is the last resort",
+			name: "docs folder alone selects nothing",
 			with: func(req *scriptgen.GenerateRequest) {
 				req.Docs = scriptgen.DocumentsConfig{FolderID: "docs-root"}
 			},
-			want: "docs-root",
+			want: "",
 		},
 	}
 	for _, tc := range cases {

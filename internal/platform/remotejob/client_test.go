@@ -189,3 +189,23 @@ func TestSubmitPerformsCompleteMasterHandoff(t *testing.T) {
 		t.Fatalf("request counts: PREPARE=%d FINALIZE=%d GET=%d, want one complete handoff and at least one poll", prepares, finalizes, gets)
 	}
 }
+
+func TestPollReadsFlatMasterArtifactFields(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet || r.URL.Path != "/api/v1/jobs/master-job-1" {
+			t.Errorf("unexpected request %s %s", r.Method, r.URL.Path)
+			http.NotFound(w, r)
+			return
+		}
+		_, _ = w.Write([]byte(`{"job_id":"master-job-1","status":"SUCCEEDED","artifact_url":"http://master/artifacts/final.mp4","sha256":"deadbeef"}`))
+	}))
+	defer server.Close()
+
+	got, err := New(server.URL, "test-token").Poll(context.Background(), "master-job-1")
+	if err != nil {
+		t.Fatalf("Poll: %v", err)
+	}
+	if got.ArtifactURL != "http://master/artifacts/final.mp4" || got.SHA256 != "deadbeef" {
+		t.Fatalf("Poll receipt = %#v, want the flat artifact URL and checksum", got)
+	}
+}

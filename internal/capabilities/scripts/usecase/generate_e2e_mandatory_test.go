@@ -61,7 +61,7 @@ func buildUsecaseWithClipBuilder(gen *testsupport.FakeOllamaGen, builder *ClipSo
 	})
 	ppReg.Freeze()
 
-	return gencore.NewGenerateOneUseCase(processor.NormalizationConfig{}, reg, e, ppReg, zap.NewNop())
+	return buildTestUseCase(e, reg, ppReg)
 }
 
 // TestGenerateE2E_OneClipWithoutSourceText verifies that a single clip

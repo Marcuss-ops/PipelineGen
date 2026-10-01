@@ -334,7 +334,7 @@ func TestLaunchFixedMediaRendersDispatchesEveryUnitAndLanguage(t *testing.T) {
 	runner.SetLocalizedRenderEnqueuer(rec)
 
 	req := defaultTestRequest()
-	req.Source.Type = SourceClips
+	req.Source.Type = SourceText
 	req.SourceLanguage = "en"
 	req.Languages = []Language{"it"}
 	req.Render.Enabled = true
@@ -346,6 +346,7 @@ func TestLaunchFixedMediaRendersDispatchesEveryUnitAndLanguage(t *testing.T) {
 		Clips: []*ClipReference{
 			{ID: "intro-a", DurationUS: 5_000_000},
 			{ID: "intro-b", DurationUS: 5_000_000},
+			{ID: "intro-c", DurationUS: 5_000_000},
 		},
 	}
 	scene.Clip = scene.Clips[0]

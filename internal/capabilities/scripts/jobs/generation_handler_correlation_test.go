@@ -45,7 +45,10 @@ func (r *correlationRunRepo) SavePartialResult(context.Context, string, *scriptg
 }
 
 func TestGenerateJobHandlerCorrelatesRunWhenJobIDBindingRacesWorker(t *testing.T) {
-	runRepo := &correlationRunRepo{run: &scriptgen.GenerationRun{ID: "run-1"}}
+	// A run created by the submission service is persisted as PENDING; the
+	// repository never returns a zero-value status, and the handler's stage
+	// transition fires only for PENDING runs.
+	runRepo := &correlationRunRepo{run: &scriptgen.GenerationRun{ID: "run-1", Status: scriptgen.RunStatusPending}}
 	handler := NewGenerateJobHandler(nil, nil, zap.NewNop())
 	handler.SetRunRepository(runRepo)
 

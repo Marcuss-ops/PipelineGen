@@ -52,7 +52,7 @@ func compileDucking(t *testing.T, timeline audio.CanonicalTimeline, bgm []audio.
 
 // TestCompileBGMDucking_PlanExample pins the plan's ducking contract: BGM
 // covering the whole video, voiceover speaking 0-8s → one entry lowering
-// the bgm track to the canonical duck floor (bed − 6 dB = −7 dB; 120ms
+// the bgm track to the canonical duck floor (bed − 6 dB; 120ms
 // attack, 350ms release) while the speech is present. The explicit
 // DuckGainDB of −30 is a legacy value clamped up to that floor.
 func TestCompileBGMDucking_PlanExample(t *testing.T) {
@@ -81,7 +81,7 @@ func TestCompileBGMDucking_PlanExample(t *testing.T) {
 }
 
 // TestCompileBGMDucking_PlanDefaults certifies that duck_under_voiceover
-// without explicit values uses the plan defaults (−7 dB / 120 ms / 350 ms).
+// without explicit values ducks six dB below the canonical music bed.
 func TestCompileBGMDucking_PlanDefaults(t *testing.T) {
 	out := compileDucking(t, duckTimeline(), []audio.ResolvedBGM{{
 		AssetID:            "bgm_01",

@@ -110,6 +110,19 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_jobs_client_idempotency
     ON jobs(client_id, idempotency_key)
     WHERE client_id != '' AND idempotency_key != '';
 
+-- Canonical job timeline table (migrations/sqlite/001_velox_core.sql):
+-- jobs.CreateInTx writes the "queued" lifecycle event inside the same
+-- transaction, so the fixture must carry it alongside jobs.
+CREATE TABLE job_events (
+    id TEXT PRIMARY KEY,
+    job_id TEXT NOT NULL,
+    type TEXT NOT NULL,
+    message TEXT NOT NULL DEFAULT '',
+    data_json TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    FOREIGN KEY (job_id) REFERENCES jobs(id) ON DELETE CASCADE
+);
+
 CREATE TABLE outbox_events (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     event_type TEXT NOT NULL,

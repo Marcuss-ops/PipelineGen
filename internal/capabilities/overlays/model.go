@@ -155,9 +155,9 @@ type OverlayItem struct {
 	// content-addressed basemap in AssetRefs. It rides the overlay-plan.v1
 	// wire (the worker's schema owns the map block) and participates in the
 	// plan fingerprint; nil on every non-map kind.
-	Map        *MapOverlay        `json:"map,omitempty"`
-	Params     map[string]any     `json:"params,omitempty"`
-	RenderKey  string             `json:"render_key,omitempty"`
+	Map       *MapOverlay    `json:"map,omitempty"`
+	Params    map[string]any `json:"params,omitempty"`
+	RenderKey string         `json:"render_key,omitempty"`
 }
 
 // OverlayImageLayer is one independently timed and animated image within a
@@ -171,7 +171,11 @@ type OverlayImageLayer struct {
 	PresetID     string         `json:"preset_id,omitempty"`
 	MotionID     string         `json:"motion_id,omitempty"`
 	MotionParams map[string]any `json:"motion_params,omitempty"`
+	Caption      string         `json:"caption,omitempty"`
 	Params       map[string]any `json:"params,omitempty"`
+	// EntityID remains producer-only so a composite's child identities can
+	// still join to their pre-timing intents without changing the worker wire.
+	EntityID string `json:"-"`
 }
 
 // OverlayEntityRef is the content-addressed entity identity of an overlay item:
@@ -537,7 +541,14 @@ func imageLayersJSON(layers []OverlayImageLayer) string {
 	if len(layers) == 0 {
 		return ""
 	}
-	b, _ := json.Marshal(layers)
+	// EntityID is producer-only correlation data, deliberately excluded from
+	// the worker's image_layers schema. Hash only the renderer-owned fields.
+	wireLayers := make([]OverlayImageLayer, len(layers))
+	copy(wireLayers, layers)
+	for index := range wireLayers {
+		wireLayers[index].EntityID = ""
+	}
+	b, _ := json.Marshal(wireLayers)
 	return string(b)
 }
 

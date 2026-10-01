@@ -132,6 +132,19 @@ func (p *VidRushMaterializationProcessor) Process(ctx context.Context, plan *scr
 	}
 
 	processed, err := concurrent.Map(ctx, input.VidRushSegments, materializationWorkers(plan), func(ctx context.Context, _ int, segment scriptpkg.VidRushSegmentResult) (vidRushMaterializedSegment, error) {
+		if _, ok := stockBindingForSegment(plan, input.StockBindings, segment); ok {
+			// A direct stock binding is this scene's authoritative visual
+			// source: acquiring, verifying or persisting provider media for it
+			// would leak the stock scene into provider search/materialization.
+			// Mark the provider delta and keep the scene out of the workers.
+			cloned := CloneVidRushSegmentResult(segment)
+			cloned.Cache.Artlist = "BYPASSED"
+			cloned.Cache.InternetImages = "BYPASSED"
+			cloned.Cache.ImageGeneration = "BYPASSED"
+			cloned.Cache.YouTube = "BYPASSED"
+			cloned.Cache.Binding = "STOCK_BOUND"
+			return vidRushMaterializedSegment{result: cloned}, nil
+		}
 		return p.materializeOne(ctx, plan, segment)
 	})
 	if err != nil {
@@ -177,6 +190,19 @@ func (p *VidRushMaterializationProcessor) Materialize(ctx context.Context, plan 
 	if segment.ExecutionMode.IsFixedMedia() {
 		cloned := CloneVidRushSegmentResult(segment)
 		cloned.ExecutionMode = scriptpkg.SceneExecutionFixedMedia
+		return cloned, nil
+	}
+	if _, stockBound := stockBindingForSegment(plan, nil, segment); stockBound {
+		// The incremental coordinator materializes one segment at a time and
+		// carries no ProcessInput bindings surface, so the plan is the only
+		// stock-binding source here. A stock-bound segment must leave this
+		// processor untouched exactly like the batch path.
+		cloned := CloneVidRushSegmentResult(segment)
+		cloned.Cache.Artlist = "BYPASSED"
+		cloned.Cache.InternetImages = "BYPASSED"
+		cloned.Cache.ImageGeneration = "BYPASSED"
+		cloned.Cache.YouTube = "BYPASSED"
+		cloned.Cache.Binding = "STOCK_BOUND"
 		return cloned, nil
 	}
 	if err := materializationDependenciesError(plan, ProcessInput{VidRushSegments: []scriptpkg.VidRushSegmentResult{segment}}, p.providers, p.finalizer); err != nil {

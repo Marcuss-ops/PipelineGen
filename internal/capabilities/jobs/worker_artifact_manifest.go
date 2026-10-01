@@ -164,6 +164,15 @@ func extractStagedArtifacts(result map[string]any, jobType string) (json.RawMess
 		src = jobType[:idx]
 	}
 	for _, a := range manifest.Artifacts {
+		// RenderingGen overlay.render artifacts are published by PipelineGen's
+		// DriveOverlayArtifactPublisher, which owns the dedicated Overlay Chronon
+		// root and the <job>/<language>/overlay layout. Sending these through the
+		// generic script destination creates a second Drive copy in a competing
+		// tree. Keep the certified worker manifest for audit, but let the single
+		// overlay publication owner upload it.
+		if a.Kind == job.ArtifactKindOverlay {
+			continue
+		}
 		staged = append(staged, &domainremote.StagedArtifactReference{
 			ArtifactID:       a.ID,
 			Destination:      destinationForArtifactKind(a.Kind, src),
@@ -208,12 +217,6 @@ func destinationForArtifactKind(kind, source string) string {
 		return "image"
 	case job.ArtifactKindPDF, job.ArtifactKindMarkdown:
 		return "document"
-	case job.ArtifactKindOverlay:
-		// Overlay videos are script-owned sidecars. The manifest metadata
-		// carries script_name/language, so the canonical script destination
-		// creates <script>/<language>/overlay instead of routing through the
-		// legacy VidRush/youtube_clip tree.
-		return "script"
 	default:
 		if source == "youtube" {
 			return "youtube_clip"

@@ -346,6 +346,42 @@ func normalizeActivityStatus(status string) string {
 	}
 }
 
+// progressLexiconStopWords is the linguistic stop-word set installed by the
+// composition root. internal/kernel must not import internal/capabilities
+// (percheck_kernel_boundary), so the LexiconRegistry data reaches this filter
+// by injection at bootstrap — see wiring/script.InitLinguistics — rather than
+// being mirrored as a hardcoded map here (godlike/06 SSOT).
+var progressLexiconStopWords atomic.Pointer[map[string]struct{}]
+
+// SetProgressStopWords installs the lexicon stop-word set once, at bootstrap.
+// The map is owned by the linguistics registry and treated as read-only here.
+func SetProgressStopWords(words map[string]struct{}) {
+	progressLexiconStopWords.Store(&words)
+}
+
+// progressStatusNoise is the JOB vocabulary stripped from a progress message:
+// the lifecycle words a status message already carries in its own kind/status
+// fields. This is job-domain vocabulary owned by this package, not linguistic
+// data — the stop-word lexicon itself lives in config/lexicons/** behind the
+// registry and is injected through SetProgressStopWords.
+var progressStatusNoise = map[string]struct{}{
+	"completed": {}, "completion": {}, "failed": {},
+	"generating": {}, "generation": {}, "running": {},
+	"starting": {}, "start": {}, "updating": {},
+}
+
+// progressNoiseWord reports whether word must not contribute to a sub-kind.
+func progressNoiseWord(word string) bool {
+	if _, ok := progressStatusNoise[word]; ok {
+		return true
+	}
+	if stop := progressLexiconStopWords.Load(); stop != nil {
+		_, ok := (*stop)[word]
+		return ok
+	}
+	return false
+}
+
 func progressSubKind(message string) string {
 	value := strings.TrimSpace(message)
 	if value == "" {
@@ -363,15 +399,10 @@ func progressSubKind(message string) string {
 		}
 	}
 	words := strings.FieldsFunc(value, func(r rune) bool { return !unicode.IsLetter(r) && !unicode.IsDigit(r) })
-	ignored := map[string]struct{}{
-		"a": {}, "an": {}, "and": {}, "completed": {}, "completion": {}, "failed": {},
-		"for": {}, "from": {}, "generating": {}, "generation": {}, "of": {}, "running": {},
-		"starting": {}, "start": {}, "the": {}, "to": {}, "updating": {},
-	}
 	selected := make([]string, 0, 2)
 	for _, word := range words {
 		word = strings.ToLower(word)
-		if _, skip := ignored[word]; skip {
+		if progressNoiseWord(word) {
 			continue
 		}
 		selected = append(selected, word)

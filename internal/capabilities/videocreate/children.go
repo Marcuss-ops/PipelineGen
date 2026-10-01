@@ -304,8 +304,17 @@ func RenderChildPayload(sourceAssetID, language, aspectRatio string, overlays bo
 
 // aspectDimensions maps the requested aspect ratio onto the canonical
 // render dimensions. An empty ratio is the canonical 16:9 YouTube
-// output; a vertical request fails closed here because the clip.render
-// output contract is horizontal-only (the worker rejects it too).
+// output; a vertical request fails closed here because the whole render
+// chain is horizontal-only by frozen user spec: RenderRequest.Validate
+// rejects width <= height ("YouTube clips must be horizontal"), the
+// assembly media contract pins 1920x1080 exactly (ValidateExact), the
+// worker protocol gate mirrors it, and step9_youtube_layout_test.go
+// asserts the SSOT verbatim. Unblocking 9:16/1:1 is a coordinated
+// contract change across those four systems (plus a vertical contract
+// variant), NOT a mapping change here. The 3D camera side already
+// produces per-format reframed trajectories (ChrononMotion3D
+// AspectReframe/DeliveryFormat); they feed a future vertical contract,
+// not this gate.
 func aspectDimensions(aspectRatio string) (int, int, error) {
 	switch strings.TrimSpace(aspectRatio) {
 	case "", "16:9", "16x9":

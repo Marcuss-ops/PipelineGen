@@ -122,6 +122,12 @@ func ItemForTimings() scriptpkg.GenerationItemV2 {
 		Tone:     "neutral",
 		Style:    "standard",
 		Model:    "llama3:8b",
+		// Docs are enabled by applyPublicationDefaults during normalization;
+		// validation fails closed without a resolvable docs folder, so the
+		// fixture carries the caller override a real deployment always has.
+		Docs: scriptpkg.DocumentsSpec{
+			FolderID: "TEST_DOCS_FOLDER",
+		},
 		Source: scriptpkg.SourceSpec{
 			Type:  scriptpkg.SourceText,
 			Topic: "Stage durations plumbing",
@@ -141,6 +147,10 @@ func ItemForTimings() scriptpkg.GenerationItemV2 {
 			// persistence stages, but only the registered-and-planned stubs
 			// (clip_search, metadata, persistence) execute.
 			SaveToDB: false,
+			// Explicit opt-out honored by applyPublicationDefaults: the test
+			// engines configure no audio processor, so a normalized
+			// COMBINED_TIMELINE default would fail the engine.
+			VoiceoverEnabled: scriptpkg.ToggleDisabled,
 		},
 	}
 }

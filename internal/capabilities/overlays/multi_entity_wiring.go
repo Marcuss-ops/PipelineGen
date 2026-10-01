@@ -54,15 +54,15 @@ var (
 
 // MultiEntityCandidate is a prospective item (image or phrase) eligible for multi-entity grouping.
 type MultiEntityCandidate struct {
-	ID        string
-	SceneID   string
-	Kind      MultiEntityKind
-	Name      string
-	Text      string
-	AssetRef  *OverlayAssetRef
-	StartMS   int64
-	EndMS     int64
-	Priority  int
+	ID       string
+	SceneID  string
+	Kind     MultiEntityKind
+	Name     string
+	Text     string
+	AssetRef *OverlayAssetRef
+	StartMS  int64
+	EndMS    int64
+	Priority int
 }
 
 // MultiEntityGroup represents a cluster of 2..5 entities to be presented simultaneously.

@@ -299,7 +299,7 @@ func (r *Runner) launchFixedMediaRenders(
 	enqueueErrs chan<- error,
 	sink fixedMediaRenderSink,
 ) {
-	if r == nil || wg == nil || !req.Render.Enabled || req.Source.Type != SourceClips {
+	if r == nil || wg == nil || !req.Render.Enabled {
 		return
 	}
 	if !scene.ExecutionMode.IsFixedMedia() {

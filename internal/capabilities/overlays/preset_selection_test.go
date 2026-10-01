@@ -107,6 +107,70 @@ func TestGeneratedTextOverlaysStayOnTheRenderSafeTextContract(t *testing.T) {
 	}
 }
 
+func TestDateAndMetricEntityTypesRouteToCertifiedPresentationTemplates(t *testing.T) {
+	cases := []struct {
+		typeName, template string
+		motions            []string
+	}{
+		{"DATE", "TIMELINE_DATE_CARD", DatePresentationMotionCandidates()},
+		{"TIME", "TIMELINE_DATE_CARD", DatePresentationMotionCandidates()},
+		{"METRIC", "METRIC_STAT_CARD", MetricPresentationMotionCandidates()},
+		{"STATISTIC", "METRIC_STAT_CARD", MetricPresentationMotionCandidates()},
+		{"NUMBER", "METRIC_STAT_CARD", MetricPresentationMotionCandidates()},
+	}
+	items := make([]TimedAnnotation, len(cases))
+	for index, tc := range cases {
+		items[index] = TimedAnnotation{
+			Text: fmt.Sprintf("value-%d", index), Type: tc.typeName,
+			StartMs: int64(index * 3000), EndMs: int64(index*3000 + 3000),
+			StartUS: int64(index) * 3_000_000, DurationUS: 3_000_000, Score: 1,
+		}
+	}
+	scenes := []SceneInput{{ID: "scene", Numbers: items}}
+	plan, err := BuildPlan(PlanInput{
+		PlanID: "presentation-routing", VideoID: "video", Width: 1920, Height: 1080, FPSNum: 24, FPSDen: 1,
+		Scenes: scenes,
+	}, AllCandidatesPlannerConfig(scenes))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(plan.Items) != len(cases) {
+		t.Fatalf("routed value items=%d, want %d: %+v", len(plan.Items), len(cases), plan.Items)
+	}
+	byText := make(map[string]OverlayItem, len(plan.Items))
+	for _, item := range plan.Items {
+		byText[item.Text] = item
+	}
+	for index, tc := range cases {
+		item := byText[fmt.Sprintf("value-%d", index)]
+		if item.TemplateID != tc.template {
+			t.Errorf("%s template=%q, want %q", tc.typeName, item.TemplateID, tc.template)
+		}
+		if item.Kind != "number" {
+			t.Errorf("%s kind=%q, want the established number budget kind", tc.typeName, item.Kind)
+		}
+		if !containsString(tc.motions, item.MotionID) {
+			t.Errorf("%s motion=%q is outside its certified catalog pool %v", tc.typeName, item.MotionID, tc.motions)
+		}
+		if item.StartUS != int64(index)*3_000_000 || item.DurationUS != 3_000_000 {
+			t.Errorf("%s lost certified timing: start_us=%d duration_us=%d", tc.typeName, item.StartUS, item.DurationUS)
+		}
+	}
+}
+
+func TestPresentationTemplateRoutingCoversTypedValueClasses(t *testing.T) {
+	for _, tc := range []struct{ entityType, want string }{
+		{"DATE", "TIMELINE_DATE_CARD"}, {"TIME", "TIMELINE_DATE_CARD"},
+		{"NUMBER", "METRIC_STAT_CARD"}, {"MONEY", "METRIC_STAT_CARD"},
+		{"PERCENTAGE", "METRIC_STAT_CARD"}, {"METRIC", "METRIC_STAT_CARD"},
+		{"STATISTIC", "METRIC_STAT_CARD"}, {"CONCEPT", ""},
+	} {
+		if got := NumberPresentationTemplateForEntityType(tc.entityType); got != tc.want {
+			t.Errorf("presentation template for %s=%q, want %q", tc.entityType, got, tc.want)
+		}
+	}
+}
+
 func TestPresetSelectionIsDeterministicAndUsesKnownFamilies(t *testing.T) {
 	first := SelectEntityNamePreset("job-1", "scene-1", "entity-1", "PERSON")
 	second := SelectEntityNamePreset("job-1", "scene-1", "entity-1", "PERSON")

@@ -107,6 +107,14 @@ func TestNormalizeItemDocsFolderCallerOverrideWins(t *testing.T) {
 	}
 }
 
+func TestNormalizeItemDefaultsGoogleDocsEnabledWhenOmitted(t *testing.T) {
+	item := textItem()
+	processor.NormalizeItem(&item, scriptpkg.PresetCustom, defaultCfg())
+	if !item.Docs.Enabled {
+		t.Fatal("normalized text item without docs config must enable Google Docs")
+	}
+}
+
 func TestNormalizeItemDocsFolderConfiguredDefault(t *testing.T) {
 	cfg := defaultCfg()
 	cfg.ScriptDocsFolderID = "CONFIG_FOLDER"
@@ -360,7 +368,12 @@ func TestNormalizeItemLegacyVoiceoverRoutingEnablesCapability(t *testing.T) {
 
 func TestValidateItemValidText(t *testing.T) {
 	item := textItem()
-	processor.NormalizeItem(&item, scriptpkg.PresetCustom, defaultCfg())
+	cfg := defaultCfg()
+	// Docs are enabled by default since applyPublicationDefaults; a valid
+	// deployment always carries a resolvable script docs folder (fail-closed
+	// otherwise, per routing_context.go).
+	cfg.ScriptDocsFolderID = "TEST_DOCS_FOLDER"
+	processor.NormalizeItem(&item, scriptpkg.PresetCustom, cfg)
 
 	if err := gencore.ValidateItem(item); err != nil {
 		t.Errorf("valid text item should not error: %v", err)
@@ -369,7 +382,9 @@ func TestValidateItemValidText(t *testing.T) {
 
 func TestValidateItemValidClips(t *testing.T) {
 	item := clipsItem()
-	processor.NormalizeItem(&item, scriptpkg.PresetCustom, defaultCfg())
+	cfg := defaultCfg()
+	cfg.ScriptDocsFolderID = "TEST_DOCS_FOLDER"
+	processor.NormalizeItem(&item, scriptpkg.PresetCustom, cfg)
 
 	if err := gencore.ValidateItem(item); err != nil {
 		t.Errorf("valid clips item should not error: %v", err)

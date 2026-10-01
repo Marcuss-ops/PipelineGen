@@ -450,6 +450,10 @@ func TestPlaintextOutput_P0F_Orchestrator_FakeOllamaCleanProse(t *testing.T) {
 			// so the load-bearing assertion stays the plaintext contract.
 			SkipQualityGate: true,
 		},
+		// The empty-scene prose fixture has no canonical timeline; the
+		// normalized COMBINED_TIMELINE default would fail the engine, so the
+		// fixture explicitly opts out (the authoritative contract).
+		Output: scriptpkg.OutputSpec{VoiceoverEnabled: scriptpkg.ToggleDisabled},
 	}
 
 	// No-op ProgressFn avoids nil-call hazard in tracker.TrackEvent /
