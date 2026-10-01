@@ -109,7 +109,6 @@ def main() -> None:
         raise SystemExit(f"Missing audio inputs: {missing}")
 
     audio_cmd = ["ffmpeg", "-hide_banner", "-y", "-loglevel", "warning"]
-    audio_cmd.extend(["-i", str(path)] for path in [])
     # Add the intro source clips and ten ready-made narration stems.
     for path in audio_inputs:
         audio_cmd.extend(["-i", str(path)])
@@ -131,12 +130,12 @@ def main() -> None:
         label = f"voice{i}"
         audio_filters.append(f"[{input_index}:a]atrim=duration={sec(dur)},asetpts=PTS-STARTPTS,adelay={delay}|{delay}[{label}]")
         voice_labels.append(f"[{label}]")
-    audio_filters.append(f"{''.join(voice_labels)}amix=inputs={len(voice_labels)}:duration=longest:normalize=0[voice]")
+    audio_filters.append(f"{''.join(voice_labels)}amix=inputs={len(voice_labels)}:duration=longest:normalize=0,asplit=2[voice_mix][voice_sidechain]")
     music_input = len(audio_inputs)
     music_duration = max(0.0, duration - 15.0)
     audio_filters.append(f"[{music_input}:a]atrim=duration={sec(music_duration)},asetpts=PTS-STARTPTS,volume=-26dB,adelay=15000|15000,apad,atrim=duration={sec(duration)}[music]")
-    audio_filters.append("[music][voice]sidechaincompress=threshold=0.025:ratio=8:attack=15:release=600[ducked]")
-    audio_filters.append("[voice][ducked]amix=inputs=2:duration=longest:normalize=0,alimiter=limit=0.95[aout]")
+    audio_filters.append("[music][voice_sidechain]sidechaincompress=threshold=0.025:ratio=8:attack=15:release=600[ducked]")
+    audio_filters.append("[voice_mix][ducked]amix=inputs=2:duration=longest:normalize=0,alimiter=limit=0.95[aout]")
     audio_cmd.extend([
         "-filter_complex", ";".join(audio_filters), "-map", "[aout]",
         "-c:a", "aac", "-b:a", "192k", "-ar", "48000", "-ac", "2",
