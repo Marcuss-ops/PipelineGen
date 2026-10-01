@@ -1,8 +1,11 @@
 package scriptgeneration
 
 import (
+	"context"
 	"fmt"
 	"strings"
+
+	"go.uber.org/zap"
 )
 
 // Clip-backed narrator intros are intentionally short-form. Keep a small
@@ -163,4 +166,53 @@ func contaminatedClipNarration(text string) bool {
 		}
 	}
 	return false
+}
+
+func (r *Runner) runNormalizePhase(ctx context.Context, runID string, exec ExecutionContext, resumeIdx int) bool {
+	// ── Stage 1: Normalize ──────────────────────────────────────
+	normalizeStep, startErr := r.startExecutionStep(ctx, exec, "NORMALIZE", "script")
+	if startErr != nil {
+		r.failRunWithRetry(ctx, runID, StageNormalizing, startErr)
+		return false
+	}
+	if stageSkipped(resumeIdx, StageNormalizing) {
+		r.log.Info("skipping completed stage", zap.String("stage", string(StageNormalizing)))
+	} else {
+		r.log.Info("stage complete", zap.String("run_id", runID), zap.String("stage", string(StageNormalizing)))
+	}
+	if stageSkipped(resumeIdx, StageNormalizing) {
+		if err := r.skipExecutionStep(ctx, exec, normalizeStep); err != nil {
+			r.failRunWithRetry(ctx, runID, StageNormalizing, err)
+			return false
+		}
+	} else if err := r.completeExecutionStep(ctx, exec, normalizeStep); err != nil {
+		r.failExecutionStep(ctx, exec, normalizeStep, err)
+		r.failRunWithRetry(ctx, runID, StageNormalizing, err)
+		return false
+	}
+
+	return true
+}
+
+// validateClipSceneOutput contains the source-specific safety checks for
+// clip-backed narration. It keeps runSceneTextPhase focused on generation and
+// leaves failure persistence at the same execution-step boundary.
+func (r *Runner) validateClipSceneOutput(ctx context.Context, runID string, req GenerateRequest, exec ExecutionContext, scriptStep ExecutionStep, scenes []Scene) bool {
+	for i, scene := range scenes {
+		text := strings.TrimSpace(scene.Text[req.SourceLanguage])
+		words := len(strings.Fields(text))
+		lower := strings.ToLower(text)
+		placeholder := text == "" || words < minimumClipSceneWords || lower == fmt.Sprintf("scene %d", i+1) || lower == "the"
+		if placeholder || contaminatedClipNarration(text) {
+			code := "SCRIPT_SCENE_TEXT_INVALID"
+			if contaminatedClipNarration(text) {
+				code = "SCRIPT_SCENE_TEXT_CONTAMINATED"
+			}
+			cause := fmt.Errorf("%s: scene=%d words=%d minimum=%d placeholder=%t", code, i, words, minimumClipSceneWords, lower == fmt.Sprintf("scene %d", i+1) || lower == "the")
+			r.failExecutionStep(ctx, exec, scriptStep, cause)
+			r.failRunWithRetry(ctx, runID, StageGeneratingSceneText, cause)
+			return false
+		}
+	}
+	return true
 }

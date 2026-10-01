@@ -161,6 +161,60 @@ func TestFinalJobAudioInputRestoresClipAudioAtFinalJobGain(t *testing.T) {
 	}
 }
 
+func TestFinalJobAudioInputAddsIntermediateClipAudioBesideVoiceover(t *testing.T) {
+	result := GenerateResult{Scenes: []Scene{{
+		ID: "scene-middle", Clip: &ClipReference{
+			ID: "middle-clip", DurationUS: 12_000_000, AudioPath: "/tmp/middle.mp4",
+			SourceInMS: 2_000, SourceOutMS: 8_000,
+		},
+		Voiceover: map[Language]AudioReference{"pt": {ID: "vo-pt", FilePath: "/tmp/vo.m4a", Duration: 6}},
+	}}}
+	projected := finalJobAudioInput(result, "pt")
+	intents := projected.Scenes[0].AudioIntents
+	if len(intents) != 2 {
+		t.Fatalf("intermediate clip audio intents = %#v, want clip audio and voiceover", intents)
+	}
+	var clip, voiceover *capabilityaudio.AudioIntent
+	for i := range intents {
+		switch intents[i].Mode {
+		case capabilityaudio.AudioClip:
+			clip = &intents[i]
+		case capabilityaudio.AudioVoiceover:
+			voiceover = &intents[i]
+		}
+	}
+	if clip == nil || clip.ClipAssetID != "middle-clip" || clip.SourceInUS != 2_000_000 || clip.SourceDurationUS != 6_000_000 || !clip.UseOriginalAudio {
+		t.Fatalf("intermediate clip audio window = %#v", clip)
+	}
+	if clip.GainDB != kernelaudio.FinalJobRestoredClipGainDB {
+		t.Fatalf("intermediate clip gain = %v, want %v", clip.GainDB, kernelaudio.FinalJobRestoredClipGainDB)
+	}
+	if voiceover == nil || voiceover.VoiceoverAssetID != "vo-pt" {
+		t.Fatalf("intermediate scene voiceover missing: %#v", intents)
+	}
+	_, plan, _, _, err := CompileCanonicalAudioPlanAudioOnly(projected, "pt", capabilityaudio.DefaultAudioProfile())
+	if err != nil {
+		t.Fatalf("compile final-job audio master: %v", err)
+	}
+	if len(eventsForRole(plan, capabilityaudio.TrackClipAudio)) != 1 || len(eventsForRole(plan, capabilityaudio.TrackVoiceover)) != 1 {
+		t.Fatalf("compiled intermediate mix must contain both source clip and voiceover tracks: %#v", plan.Tracks)
+	}
+}
+
+func TestFinalJobAudioInputLeavesStockScenesVisualOnly(t *testing.T) {
+	result := GenerateResult{Scenes: []Scene{{
+		ID: "scene-stock", Clip: &ClipReference{ID: "source-clip", DurationUS: 10_000_000},
+		Stock:     &scriptpkg.StockBinding{AssetID: "stock-video"},
+		Voiceover: map[Language]AudioReference{"pt": {ID: "vo-pt", FilePath: "/tmp/vo.m4a"}},
+	}}}
+	projected := finalJobAudioInput(result, "pt")
+	for _, intent := range projected.Scenes[0].AudioIntents {
+		if intent.Mode == capabilityaudio.AudioClip {
+			t.Fatalf("stock-selected scene inherited source clip audio: %#v", intent)
+		}
+	}
+}
+
 func TestRestoreFinalJobFixedMediaAfterAudioProjection(t *testing.T) {
 	result := &GenerateResult{Scenes: []Scene{{ID: "scene-intro", ExecutionMode: scriptpkg.SceneExecutionFixedMedia}}}
 	projected := finalJobAudioInput(*result, "pt")
@@ -356,7 +410,7 @@ func TestBuildFinalJobPayloadsFixedMediaWithoutRenderKeepsTheLibraryClip(t *test
 	}
 }
 
-func TestBuildFinalJobPayloadsProvidesTextForEveryStockChunk(t *testing.T) {
+func TestBuildFinalJobPayloadsDoesNotSendSubtitlesWithStockChunks(t *testing.T) {
 	result := &GenerateResult{
 		CanonicalTimeline: &capabilityaudio.CanonicalTimeline{
 			DurationUS: 5_000_000,
@@ -380,8 +434,8 @@ func TestBuildFinalJobPayloadsProvidesTextForEveryStockChunk(t *testing.T) {
 		if scene["kind"] != "stock" {
 			t.Errorf("scene %d kind = %v, want stock", i, scene["kind"])
 		}
-		if scene["text"] == "" {
-			t.Errorf("scene %d has empty text", i)
+		if _, hasText := scene["text"]; hasText {
+			t.Errorf("stock scene %d carries text that the remote renderer could burn as subtitles: %#v", i, scene["text"])
 		}
 		if _, duplicated := scene["clip"]; duplicated {
 			t.Errorf("scene %d sends video with source audio as a clip", i)
@@ -411,6 +465,22 @@ func TestBuildFinalJobPayloadsProvidesTextForEveryStockChunk(t *testing.T) {
 		if !foundAudio {
 			t.Fatalf("runtime_assets = %#v, missing the certified Drive final audio asset", assets)
 		}
+	}
+}
+
+func TestBuildFinalJobPayloadsRejectsShiftedFinalAudio(t *testing.T) {
+	result := &GenerateResult{
+		CanonicalTimeline: &capabilityaudio.CanonicalTimeline{
+			DurationUS: 1_000_000,
+			Segments:   []capabilityaudio.TimelineSegment{{ID: "scene-1", DurationUS: 1_000_000}},
+		},
+		FinalAudio: certifiedFinalAudio(1000),
+		Scenes:     []Scene{{ID: "scene-1", Stock: &scriptpkg.StockBinding{FolderID: "folder-1"}}},
+	}
+	result.FinalAudio.StartPTS = 1
+	_, _, err := BuildFinalJobPayloads(context.Background(), "run-1", GenerateRequest{SourceLanguage: "en"}, result, finalJobPayloadResolver{})
+	if err == nil || !strings.Contains(err.Error(), "start_pts is 1, want 0") {
+		t.Fatalf("BuildFinalJobPayloads error = %v, want non-zero final-audio PTS rejection", err)
 	}
 }
 

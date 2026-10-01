@@ -10,6 +10,15 @@
 //   - The HTTP handler calls Start and returns 202 Accepted with the
 //     status_url pointing to the run.
 //   - No network, no database, no Google Drive inside the builder.
+//
+// The implementation preserves the existing scriptgeneration package API so
+// transport, composition, and infrastructure callers can migrate by import
+// path without changing workflow behavior. This package owns the pure
+// generation model, ports, durable runner, and run starter; SQLite persistence
+// is backed by the canonical observability run tables.
+//
+// The former application-layer facade has been removed after all production
+// and test references were moved to this capability package.
 package scriptgeneration
 
 import (

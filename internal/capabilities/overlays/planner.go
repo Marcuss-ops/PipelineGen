@@ -547,11 +547,6 @@ func rankedValid(in []TimedAnnotation, maxWords int) []TimedAnnotation {
 		valid = append(valid, candidate)
 	}
 	sort.SliceStable(valid, func(i, j int) bool { return valid[i].Score > valid[j].Score })
-	// Dedupe identical text (case/whitespace-insensitive): the same spoken
-	// phrase/word/number/quote must never become two overlay items — item
-	// IDs derive from the text, so a duplicate would otherwise collide and
-	// fail plan sealing. The first occurrence after the score sort wins, so
-	// the highest-scoring candidate is the one kept.
 	seen := make(map[string]struct{}, len(valid))
 	out := make([]TimedAnnotation, 0, len(valid))
 	for _, candidate := range valid {
@@ -565,10 +560,6 @@ func rankedValid(in []TimedAnnotation, maxWords int) []TimedAnnotation {
 	return out
 }
 
-// rankedPhraseValid favors complete, useful headlines when the source text
-// offers them. Within the configured word limit, longer grounded phrases are
-// ranked first; editorial score breaks ties. This keeps fragment candidates
-// from crowding every long sentence out of the bounded render budget.
 func rankedPhraseValid(in []TimedAnnotation, maxWords int) []TimedAnnotation {
 	valid := rankedValid(in, maxWords)
 	sort.SliceStable(valid, func(i, j int) bool {

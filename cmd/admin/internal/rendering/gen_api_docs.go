@@ -485,6 +485,15 @@ var routeDescriptionsGated = map[string]bool{
 	"GET /api/script/clips/search": true,
 	"GET /api/script/jobs/:id":     true,
 	"POST /api/script/generate":    true,
+	// The legacy YouTube acquisition routes are wired by the live composition
+	// under /api/clips, but the minimal docs snapshot has no media PostgreSQL
+	// plane and cannot mount that capability. Their absence here is gating.
+	"POST /api/clips/process":    true,
+	"GET /api/clips/info":        true,
+	"GET /api/clips/search":      true,
+	"GET /api/clips/exists":      true,
+	"GET /api/clips/transcript":  true,
+	"GET /api/clips/diagnostics": true,
 	// Artlist (see the ArtlistEnabled note in the cfg above): the routes
 	// are live in production, but the docs snapshot cannot wire the
 	// capability without a media PostgreSQL committer, so their absence

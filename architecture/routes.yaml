@@ -12,76 +12,7 @@ routes:
       path: /
       source: cmd/admin/gen_api_docs.go
     - method: GET
-      path: /api/admin/entities
-      source: cmd/admin/gen_api_docs.go
-    - method: GET
-      path: /api/admin/entities/:entity
-      source: cmd/admin/gen_api_docs.go
-    - method: GET
-      path: /api/admin/entities/:entity/:id
-      source: cmd/admin/gen_api_docs.go
-    - method: GET
-      path: /api/admin/entities/:entity/schema
-      source: cmd/admin/gen_api_docs.go
-    - method: GET
-      path: /api/artlist/diagnostics
-      source: cmd/admin/gen_api_docs.go
-    - method: GET
-      path: /api/artlist/job-consumer
-      source: cmd/admin/gen_api_docs.go
-    - method: GET
-      path: /api/artlist/runs/:run_id
-      source: cmd/admin/gen_api_docs.go
-    - method: GET
-      path: /api/artlist/search/live
-      source: cmd/admin/gen_api_docs.go
-    - method: GET
-      path: /api/artlist/stats
-      source: cmd/admin/gen_api_docs.go
-    - method: GET
-      path: /api/assets/operator/assets
-      source: cmd/admin/gen_api_docs.go
-    - method: GET
-      path: /api/assets/operator/assets/:id
-      source: cmd/admin/gen_api_docs.go
-    - method: GET
-      path: /api/assets/operator/assets/:id/preview
-      source: cmd/admin/gen_api_docs.go
-    - method: GET
-      path: /api/assets/operator/facets
-      source: cmd/admin/gen_api_docs.go
-    - method: GET
-      path: /api/assets/operator/index-health
-      source: cmd/admin/gen_api_docs.go
-    - method: GET
-      path: /api/assets/operator/operations/errors
-      source: cmd/admin/gen_api_docs.go
-    - method: GET
-      path: /api/assets/operator/outbox/events
-      source: cmd/admin/gen_api_docs.go
-    - method: GET
-      path: /api/assets/operator/outbox/status
-      source: cmd/admin/gen_api_docs.go
-    - method: GET
-      path: /api/assets/operator/summary
-      source: cmd/admin/gen_api_docs.go
-    - method: GET
       path: /api/capabilities
-      source: cmd/admin/gen_api_docs.go
-    - method: GET
-      path: /api/clips/diagnostics
-      source: cmd/admin/gen_api_docs.go
-    - method: GET
-      path: /api/clips/exists
-      source: cmd/admin/gen_api_docs.go
-    - method: GET
-      path: /api/clips/info
-      source: cmd/admin/gen_api_docs.go
-    - method: GET
-      path: /api/clips/search
-      source: cmd/admin/gen_api_docs.go
-    - method: GET
-      path: /api/clips/transcript
       source: cmd/admin/gen_api_docs.go
     - method: GET
       path: /api/drive/files
@@ -118,6 +49,12 @@ routes:
       source: cmd/admin/gen_api_docs.go
     - method: GET
       path: /api/jobs/:id/full
+      source: cmd/admin/gen_api_docs.go
+    - method: GET
+      path: /api/jobs/:id/stages
+      source: cmd/admin/gen_api_docs.go
+    - method: GET
+      path: /api/jobs/scheduled
       source: cmd/admin/gen_api_docs.go
     - method: GET
       path: /api/jobs/stats
@@ -159,9 +96,6 @@ routes:
       path: /api/scripts/:id
       source: cmd/admin/gen_api_docs.go
     - method: GET
-      path: /api/stock-batches/:id
-      source: cmd/admin/gen_api_docs.go
-    - method: GET
       path: /api/system/doctor
       source: cmd/admin/gen_api_docs.go
     - method: GET
@@ -189,52 +123,13 @@ routes:
       path: /media/google-accounting/*filepath
       source: cmd/admin/gen_api_docs.go
     - method: PATCH
-      path: /api/admin/entities/:entity/:id
+      path: /api/jobs/:id/stages/:stage
       source: cmd/admin/gen_api_docs.go
     - method: PATCH
       path: /api/media/clips/:source/clips/:id
       source: cmd/admin/gen_api_docs.go
     - method: POST
-      path: /api/admin/entities/:entity/:id/actions/:action
-      source: cmd/admin/gen_api_docs.go
-    - method: POST
       path: /api/admin/research/cache/invalidate
-      source: cmd/admin/gen_api_docs.go
-    - method: POST
-      path: /api/artlist/import
-      source: cmd/admin/gen_api_docs.go
-    - method: POST
-      path: /api/artlist/recommend
-      source: cmd/admin/gen_api_docs.go
-    - method: POST
-      path: /api/artlist/run
-      source: cmd/admin/gen_api_docs.go
-    - method: POST
-      path: /api/artlist/search
-      source: cmd/admin/gen_api_docs.go
-    - method: POST
-      path: /api/artlist/sync-catalogs
-      source: cmd/admin/gen_api_docs.go
-    - method: POST
-      path: /api/assets/operator/assets/:id/reindex
-      source: cmd/admin/gen_api_docs.go
-    - method: POST
-      path: /api/assets/operator/assets/:id/verify-index
-      source: cmd/admin/gen_api_docs.go
-    - method: POST
-      path: /api/assets/operator/bulk
-      source: cmd/admin/gen_api_docs.go
-    - method: POST
-      path: /api/clips/process
-      source: cmd/admin/gen_api_docs.go
-    - method: POST
-      path: /api/clips/render
-      source: cmd/admin/gen_api_docs.go
-    - method: POST
-      path: /api/clips/render/batch
-      source: cmd/admin/gen_api_docs.go
-    - method: POST
-      path: /api/clips/stock
       source: cmd/admin/gen_api_docs.go
     - method: POST
       path: /api/drive/canary-upload
@@ -280,6 +175,9 @@ routes:
       source: cmd/admin/gen_api_docs.go
     - method: POST
       path: /api/jobs/:id/retry
+      source: cmd/admin/gen_api_docs.go
+    - method: POST
+      path: /api/jobs/schedule
       source: cmd/admin/gen_api_docs.go
     - method: POST
       path: /api/media-memory/bindings
@@ -364,15 +262,6 @@ routes:
       source: cmd/admin/gen_api_docs.go
     - method: POST
       path: /api/media/voiceover/generate
-      source: cmd/admin/gen_api_docs.go
-    - method: POST
-      path: /api/stock-batches/run
-      source: cmd/admin/gen_api_docs.go
-    - method: POST
-      path: /api/stock-pipeline/run
-      source: cmd/admin/gen_api_docs.go
-    - method: POST
-      path: /api/stock-pipeline/search-and-run
       source: cmd/admin/gen_api_docs.go
     - method: POST
       path: /vlm/autotag/analyze-file

@@ -1,6 +1,10 @@
 package scriptgeneration
 
-import "sort"
+import (
+	"sort"
+
+	kernelscript "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
+)
 
 // runner_dispatch.go owns the deterministic dispatch priority for scene×
 // language work units. Concurrency may be free — the worker pool can run units
@@ -49,4 +53,24 @@ func orderedSceneLanguages(text map[Language]string, source Language, targets []
 		return langs[a] < langs[b]
 	})
 	return langs
+}
+
+// resolveArtifactRoutingContext resolves the canonical artifact routing
+// context from the generation input. It is the single derivation point for
+// Project / Language / folder routing; downstream phases consume the resolved
+// value and never read req.Project or invent a namespace.
+//
+// The script documents destination is resolved through the single canonical
+// resolver: explicit docs.folder_id > configured default (the runner's
+// PIPELINEGEN_SCRIPT_DOCS_FOLDER_ID) > fail closed when docs.enabled=true.
+// A docs-enabled request with no resolvable folder returns an error so the
+// runner fails the run BEFORE any Google Docs write.
+func (req GenerateRequest) resolveArtifactRoutingContext(defaultDocsFolderID string) (kernelscript.ArtifactRoutingContext, error) {
+	callerFolderID := req.Docs.FolderID
+	enabled, _, _ := req.ResolveDocsConfig()
+	docsFolderID, err := kernelscript.ResolveScriptDocsFolderID(enabled, callerFolderID, defaultDocsFolderID)
+	if err != nil {
+		return kernelscript.ArtifactRoutingContext{}, err
+	}
+	return kernelscript.ResolveArtifactRoutingContext(req.Project, string(req.SourceLanguage), req.VoiceoverFolderID, docsFolderID), nil
 }

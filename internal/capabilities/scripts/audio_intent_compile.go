@@ -20,9 +20,12 @@ package scriptgeneration
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
+	capabilityaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
+	kernelaudio "github.com/Marcuss-ops/PipelineGen/internal/kernel/audio"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
@@ -226,4 +229,98 @@ func mergeResolvedAudioAssets(primary, layers audio.ResolvedAudioAssets) audio.R
 		out = append(out, asset)
 	}
 	return out
+}
+
+// finalJobAudioInput projects the canonical mix onto the remote final-job
+// handoff: TTS, BGM and SFX pass through, and the original clip audio is
+// restored at FinalJobRestoredClipGainDB instead of being dropped. History:
+// this projection used to remove every AudioClip intent, which delivered
+// videos with silent clip audio (2026-09-30 Milton incident) — the source
+// speech was audible only in the local lane while the remote master mixed
+// narration + music alone. The restored track ducks like any clip track:
+// applyMixPolicy only deepens non-protected events toward the active duck
+// gain while speech plays.
+func finalJobAudioInput(result GenerateResult, language Language) GenerateResult {
+	result.Scenes = append([]Scene(nil), result.Scenes...)
+	for i := range result.Scenes {
+		scene := &result.Scenes[i]
+		// Fixed-media scenes normally require their source clip's original
+		// audio. The remote final-job path deliberately hands that clip to 51,
+		// so the local audio projection treats the slot as generated silence
+		// or narration while retaining its explicit duration.
+		if scene.ExecutionMode.IsFixedMedia() {
+			scene.ExecutionMode = scriptpkg.SceneExecutionGenerated
+		}
+		intents := scene.AudioIntents
+		if len(intents) == 0 && scene.Audio.Mode != "" {
+			intents = []capabilityaudio.AudioIntent{scene.Audio}
+		}
+		// Ordinary scenes bound to an editorial clip must contribute that
+		// clip's source audio to the same canonical master as their narration.
+		// Historically only fixed intro/outro sections carried an AudioClip
+		// intent, so intermediate clip scenes could reach 51 with narration
+		// alone (or with an inconsistent source track inherited downstream).
+		// Stock-selected scenes remain visual-only.
+		if !scene.ExecutionMode.IsFixedMedia() && scene.Stock == nil && scene.Clip != nil && !hasClipAudioIntent(intents, scene.Clip.ID) {
+			if sourceInUS, sourceDurationUS, ok := finalJobClipAudioWindow(scene.Clip); ok {
+				intents = append(intents, capabilityaudio.AudioIntent{
+					Mode: capabilityaudio.AudioClip, ClipAssetID: scene.Clip.ID,
+					SourceInUS: sourceInUS, SourceDurationUS: sourceDurationUS,
+					TimelineOffsetUS: 0, TimelineDurationUS: sourceDurationUS,
+					UseOriginalAudio: true, GainDB: kernelaudio.FinalJobRestoredClipGainDB,
+				})
+			}
+		}
+		filtered := make([]capabilityaudio.AudioIntent, 0, len(intents)+1)
+		hasVoiceover := false
+		for _, intent := range intents {
+			if intent.Mode == capabilityaudio.AudioClip {
+				// The clip's original audio reaches the remote master: keep the
+				// intent and stamp the restored-mix gain. The mix policy still
+				// ducks it under speech; the compiler never touches an explicit
+				// non-zero GainDB.
+				restored := intent
+				restored.GainDB = kernelaudio.FinalJobRestoredClipGainDB
+				filtered = append(filtered, restored)
+				continue
+			}
+			if intent.Mode == capabilityaudio.AudioVoiceover {
+				hasVoiceover = true
+			}
+			filtered = append(filtered, intent)
+		}
+		if !hasVoiceover {
+			if voiceover, ok := scene.Voiceover[language]; ok && voiceover.ID != "" {
+				filtered = append(filtered, capabilityaudio.AudioIntent{Mode: capabilityaudio.AudioVoiceover, VoiceoverAssetID: voiceover.ID})
+			}
+		}
+		if len(filtered) == 0 {
+			filtered = append(filtered, capabilityaudio.AudioIntent{Mode: capabilityaudio.AudioSilence})
+		}
+		scene.AudioIntents = filtered
+		scene.Audio = filtered[0]
+	}
+	return result
+}
+
+func hasClipAudioIntent(intents []capabilityaudio.AudioIntent, clipID string) bool {
+	for _, intent := range intents {
+		if intent.Mode == capabilityaudio.AudioClip && intent.ClipAssetID == clipID {
+			return true
+		}
+	}
+	return false
+}
+
+func finalJobClipAudioWindow(clip *ClipReference) (sourceInUS, durationUS int64, ok bool) {
+	if clip == nil || strings.TrimSpace(clip.ID) == "" || clip.SourceInMS < 0 {
+		return 0, 0, false
+	}
+	sourceInUS = clip.SourceInMS * 1000
+	if clip.SourceOutMS > clip.SourceInMS {
+		durationUS = (clip.SourceOutMS - clip.SourceInMS) * 1000
+	} else if total := clip.AssetDuration().DurationUS; total > sourceInUS {
+		durationUS = total - sourceInUS
+	}
+	return sourceInUS, durationUS, durationUS > 0
 }
