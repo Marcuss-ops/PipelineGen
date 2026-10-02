@@ -416,13 +416,14 @@ func compositeVideoScene(id string, index int, kind string, asset map[string]any
 		ref["url"] = driveFileWebLink(driveID)
 	}
 	scene := map[string]any{"scene_id": id, "index": index, "kind": kind, "duration_seconds": float64(durationMS) / 1000, "stock": ref}
-	// Stock footage is only a visual source. Sending narration text on a stock
-	// scene makes the remote renderer treat it as subtitle content; clip scenes
-	// retain text for the clip contract (their subtitle timing is already baked
-	// into the certified localized render when one is available).
-	if kind == "clip" && strings.TrimSpace(text) != "" {
-		scene["text"] = text
+	// The Master PREPARE schema currently requires non-empty text for every
+	// scene, including stock-only scenes. Stock text is rendered as subtitles,
+	// so use an invisible separator when there is no real clip caption rather
+	// than leaking narration onto stock footage.
+	if strings.TrimSpace(text) == "" {
+		text = "\u200b"
 	}
+	scene["text"] = text
 	return scene
 }
 

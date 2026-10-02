@@ -248,6 +248,7 @@ func (a *UseCaseRepoAdapter) fromInfraRecord(r *sqassets.Record) *persistence.Vo
 		DriveLink:     r.DriveLink,
 		DownloadLink:  r.DownloadLink,
 		LegacyFileMD5: r.LegacyFileMD5,
+		DurationSeconds: r.DurationSeconds,
 		Status:        r.Status,
 		Error:         r.Error,
 		Strategy:      r.Strategy,
@@ -396,6 +397,19 @@ func (a *VoiceoverCacheAdapter) Lookup(ctx context.Context, fingerprint string, 
 			zap.String("id", rec.ID))
 		return nil, nil
 	}
+	durationMs := int64(rec.DurationSeconds * 1000)
+	if durationMs <= 0 {
+		// Older or interrupted TTS runs can leave a reusable status with a
+		// zero-duration projection. Returning that row makes script generation
+		// fail after a cache hit (and retry the same bad row forever); treat it
+		// as a miss so synthesis can replace the incomplete projection.
+		a.log.Warn("voiceover cache: ignoring reusable row with non-positive duration",
+			zap.String("fingerprint", fingerprint),
+			zap.String("id", rec.ID),
+			zap.String("status", rec.Status),
+			zap.Float64("duration_seconds", rec.DurationSeconds))
+		return nil, nil
+	}
 
 	// PR-VO-ASSET-ID (August 2026): after migration 232 dropped location
 	// columns from voiceovers, the canonical Drive and local-path facts
@@ -442,8 +456,6 @@ func (a *VoiceoverCacheAdapter) Lookup(ctx context.Context, fingerprint string, 
 		}
 		timingArtifact = artifact
 	}
-
-	durationMs := int64(rec.DurationSeconds * 1000)
 
 	// Extract cleaned_path from voiceovers metadata (not in media_assets).
 	cleanedPath := loc.LocalPath
