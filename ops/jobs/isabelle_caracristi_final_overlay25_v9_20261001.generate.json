@@ -1,0 +1,440 @@
+{
+  "version": 2,
+  "preset": "custom",
+  "correlation_id": "isabelle-caracristi-final-overlay25-v9-20261001",
+  "final_job": true,
+  "items": [
+    {
+      "id": "isabelle-caracristi-final-overlay25-v9-20261001",
+      "title": "Isabelle Caracristi: fatos, perícia e perguntas em aberto",
+      "project": "isabelle-caracristi-final-overlay25-v9-20261001",
+      "channel_id": "crime",
+      "language": "pt",
+      "tone": "investigativo, respeitoso e factual",
+      "style": "Roteiro em português do Brasil, entre 3.000 e 3.500 palavras no total, desenvolvido em 12 cenas com cerca de 267 palavras cada. Trate a morte de Isabelle Caracristi com respeito, sem sensacionalismo nem descrição gráfica. Use apenas os fatos fornecidos nos briefs; atribua cada informação à fonte e à data quando disponível. Diferencie fatos confirmados, conclusão preliminar, alegações da investigação e resposta da defesa. A prisão preventiva não significa condenação. Não invente motivos, falas, mensagens ou detalhes privados. Inclua uma vez, literalmente, a frase de overlay indicada em cada cena e também a pronuncie no texto narrado. Desenvolva cada cena com contexto e transição, sem repetição ou enchimento. Não use algarismos nem valores numéricos no texto; não crie callouts, cartões, contadores ou animações numéricas. O plano visual deste trabalho deve conter somente imagens contextuais e frases editoriais. Evite quantidades, datas numéricas e cartões de estatística: mantenha apenas os quinze callouts de frase e as imagens contextuais. Requisito de idioma sem exceções: todo o roteiro narrado, título visível, rótulo e callout deve estar exclusivamente em português brasileiro. Não use inglês nem misture idiomas em nenhum texto exibido. As imagens devem ser puramente fotográficas/contextuais, sem letras, palavras, placas legíveis, legendas ou texto embutido. As quinze frases de overlay já estão fornecidas literalmente em português; use somente essas frases, sem traduzi-las para inglês ou reescrevê-las.",
+      "source": {
+        "type": "clips",
+        "topic": "Caso Isabelle Caracristi: morte em Fortaleza, laudo preliminar e investigação ainda em curso",
+        "clip_ids": [
+          "yt_X77G2ATvizU_25_39_v1",
+          "yt_X77G2ATvizU_57_70_v1",
+          "yt_X77G2ATvizU_0_15_v1"
+        ],
+        "num_clips": 3,
+        "transcript_policy": "strict",
+        "ordering_strategy": "input_order",
+        "grounding_policy": "clips_primary",
+        "fallback_policy": "strict",
+        "cache": {},
+        "research": {}
+      },
+      "script_params": {
+        "target_words": 3204,
+        "segment_words": 267,
+        "segments": [
+          {
+            "id": "scene-0",
+            "kind": "stock",
+            "topic": "Aldeota: uma morte, muitas perguntas",
+            "source_text": "Apresente Isabelle Caracristi, estudante de Direito de jovem, e a morte em em setembro no bairro Aldeota, em Fortaleza. Contextualize o que já foi confirmado e o que segue sob apuração, sem descrição gráfica. Inclua literalmente a frase de locução “O caso ainda está em investigação”. Explique por que separar fato confirmado de hipótese é essencial. Use também, exatamente uma vez, a frase “Perguntas ainda abertas” e pronuncie-a no texto.",
+            "target_words": 267,
+            "stock_folder_id": "1xNW9IfTtDxaMg_FcANrcxYBSX_dnJxUS",
+            "stock_folder_link": "https://drive.google.com/drive/folders/1xNW9IfTtDxaMg_FcANrcxYBSX_dnJxUS"
+          },
+          {
+            "id": "scene-1",
+            "kind": "stock",
+            "topic": "A chegada ao condomínio",
+            "source_text": "Reconstrua apenas a sequência documentada pelas câmeras: Isabelle chega ao condomínio às no fim da tarde com uma mala de mão. Explique o valor e os limites desse registro: ele fixa um momento, mas não responde sozinho ao que ocorreu depois. Inclua exatamente “Uma imagem registra um instante”. Não invente falas ou comportamento. Use também, exatamente uma vez, a frase “O registro tem limites” e pronuncie-a no texto.",
+            "target_words": 267,
+            "stock_folder_id": "1xNW9IfTtDxaMg_FcANrcxYBSX_dnJxUS",
+            "stock_folder_link": "https://drive.google.com/drive/folders/1xNW9IfTtDxaMg_FcANrcxYBSX_dnJxUS"
+          },
+          {
+            "id": "scene-2",
+            "kind": "clip",
+            "topic": "O que as câmeras mostram — e o que não mostram",
+            "source_text": "Explique que imagens externas registraram parte da trajetória, sem capturar o momento da queda. Mostre como investigadores cruzam horários, ângulos e outros registros. Inclua literalmente “Ver não é o mesmo que explicar”. Esclareça que lacunas visuais não provam uma versão. Use também, exatamente uma vez, a frase “A imagem não prova uma causa” e pronuncie-a no texto.",
+            "target_words": 267,
+            "clip_ids": [
+              "yt_X77G2ATvizU_25_39_v1"
+            ]
+          },
+          {
+            "id": "scene-3",
+            "kind": "stock",
+            "topic": "A perícia e a trajetória",
+            "source_text": "Apresente com atribuição o laudo preliminar da Pefoce divulgado em setembro, que descreveu a trajetória como compatível com precipitação voluntária. Deixe claro que uma conclusão sobre trajetória não determina, sozinha, responsabilidade criminal nem encerra a investigação. Inclua exatamente “A perícia responde perguntas específicas”.",
+            "target_words": 267,
+            "stock_folder_id": "1xNW9IfTtDxaMg_FcANrcxYBSX_dnJxUS",
+            "stock_folder_link": "https://drive.google.com/drive/folders/1xNW9IfTtDxaMg_FcANrcxYBSX_dnJxUS"
+          },
+          {
+            "id": "scene-4",
+            "kind": "stock",
+            "topic": "Uma investigação ainda aberta",
+            "source_text": "Atualize o estado divulgado pela Polícia Civil: no balanço mais recente, dezenas de pessoas tinham sido ouvidas e diversos laudos estavam concluídos; aparelhos eletrônicos e imagens continuavam em análise. Inclua “Cada dado precisa de contexto”. Explique por que volume das diligências medem trabalho, não culpa.",
+            "target_words": 267,
+            "stock_folder_id": "1xNW9IfTtDxaMg_FcANrcxYBSX_dnJxUS",
+            "stock_folder_link": "https://drive.google.com/drive/folders/1xNW9IfTtDxaMg_FcANrcxYBSX_dnJxUS"
+          },
+          {
+            "id": "scene-5",
+            "kind": "stock",
+            "topic": "O namorado investigado e a presunção de inocência",
+            "source_text": "Informe que João Munhoz Neto estava em prisão preventiva e era investigado; a defesa negava envolvimento e dizia que ele não estava no local. Atribua cada alegação, sem tratar suspeita como condenação. Inclua literalmente “Investigação não é condenação”. Explique a diferença entre medida cautelar e julgamento.",
+            "target_words": 267,
+            "stock_folder_id": "1xNW9IfTtDxaMg_FcANrcxYBSX_dnJxUS",
+            "stock_folder_link": "https://drive.google.com/drive/folders/1xNW9IfTtDxaMg_FcANrcxYBSX_dnJxUS"
+          },
+          {
+            "id": "scene-6",
+            "kind": "clip",
+            "topic": "Relatos sob verificação",
+            "source_text": "Apresente com cautela relatos publicados sobre interações no condomínio e acesso a aparelhos, sempre como informações atribuídas que a polícia ainda avaliava. Não reproduza mensagens privadas nem converta alegações em fatos estabelecidos. Inclua “Uma alegação precisa ser verificada”. Mostre como depoimentos são comparados com documentos e imagens.",
+            "target_words": 267,
+            "clip_ids": [
+              "yt_X77G2ATvizU_57_70_v1"
+            ]
+          },
+          {
+            "id": "scene-7",
+            "kind": "stock",
+            "topic": "O trabalho da Polícia Civil",
+            "source_text": "Explique o papel do GEI e das equipes técnicas na coleta de depoimentos, perícias e registros digitais. Mostre como linhas investigativas podem ser testadas e revistas à medida que surgem evidências. Inclua “A investigação cruza versões e evidências”. Não atribua conclusão que não tenha sido anunciada.",
+            "target_words": 267,
+            "stock_folder_id": "1xNW9IfTtDxaMg_FcANrcxYBSX_dnJxUS",
+            "stock_folder_link": "https://drive.google.com/drive/folders/1xNW9IfTtDxaMg_FcANrcxYBSX_dnJxUS"
+          },
+          {
+            "id": "scene-8",
+            "kind": "stock",
+            "topic": "O que um laudo pode estabelecer",
+            "source_text": "Descreva o alcance de um exame pericial e seus limites: ele pode examinar vestígios e trajetória, mas não substitui o conjunto probatório. Inclua literalmente “Um laudo não conta a história inteira”. Diferencie achados técnicos, interpretação policial e decisão judicial.",
+            "target_words": 267,
+            "stock_folder_id": "1xNW9IfTtDxaMg_FcANrcxYBSX_dnJxUS",
+            "stock_folder_link": "https://drive.google.com/drive/folders/1xNW9IfTtDxaMg_FcANrcxYBSX_dnJxUS"
+          },
+          {
+            "id": "scene-9",
+            "kind": "stock",
+            "topic": "A família e o pedido por respostas",
+            "source_text": "Aborde o impacto público do caso e as manifestações que pedem esclarecimento, sem explorar sofrimento ou atribuir intenções aos familiares. Inclua “A busca por respostas continua”. Enquadre o debate em torno de transparência, cuidado com informações não confirmadas e respeito à memória de Isabelle.",
+            "target_words": 267,
+            "stock_folder_id": "1xNW9IfTtDxaMg_FcANrcxYBSX_dnJxUS",
+            "stock_folder_link": "https://drive.google.com/drive/folders/1xNW9IfTtDxaMg_FcANrcxYBSX_dnJxUS"
+          },
+          {
+            "id": "scene-10",
+            "kind": "clip",
+            "topic": "As próximas etapas",
+            "source_text": "Explique o que ainda estava em análise no último balanço: dispositivos, imagens e diligências complementares. Não preveja resultados nem invente prazo. Inclua literalmente “Ainda há pontos sem resposta”. Mostre como novas conclusões precisam ser comunicadas com fonte e contexto.",
+            "target_words": 267,
+            "clip_ids": [
+              "yt_X77G2ATvizU_0_15_v1"
+            ]
+          },
+          {
+            "id": "scene-11",
+            "kind": "stock",
+            "topic": "O que se sabe hoje",
+            "source_text": "Feche recapitulando os fatos públicos: contexto e local da morte, laudo preliminar, diligências e investigação em andamento; destaque separadamente as posições atribuídas à polícia e à defesa. Inclua “Fatos confirmados, perguntas abertas”. Termine pedindo ao público que acompanhe atualizações verificadas sem especular sobre pessoas envolvidas.",
+            "target_words": 267,
+            "stock_folder_id": "1xNW9IfTtDxaMg_FcANrcxYBSX_dnJxUS",
+            "stock_folder_link": "https://drive.google.com/drive/folders/1xNW9IfTtDxaMg_FcANrcxYBSX_dnJxUS"
+          }
+        ],
+        "images_per_scene": 4
+      },
+      "output": {
+        "render": {
+          "enabled": true,
+          "background": {
+            "mode": "asset",
+            "asset_id": "drive-background-01"
+          },
+          "subtitles": {
+            "enabled": true,
+            "mode": "burn",
+            "preset": "impact",
+            "style": {
+              "font": "Impact",
+              "font_size_px": 58,
+              "color": "#F5F5F5",
+              "position": "bottom_center",
+              "stroke": {
+                "color": "#000000",
+                "width": 4.5
+              }
+            }
+          },
+          "render_concurrency": 2,
+          "foreground_scale_percent": 85,
+          "drive_folder_id": "1J_xUGo_bchzXDIGqSX04CU44c_Dm3SxS",
+          "drive_subfolder_name": "isabelle-caracristi-final-overlay25-v9-20261001"
+        },
+        "audio": {},
+        "extract_entities": "enabled",
+        "generate_scene_images": "enabled",
+        "save_to_db": true,
+        "generate_timeline": true,
+        "voiceover_enabled": "enabled"
+      },
+      "max_phrase_overlays": 15,
+      "audio": {
+        "mode": "COMBINED_TIMELINE",
+        "timing": {
+          "mode": "required",
+          "boundary": "word",
+          "formats": [
+            "json",
+            "srt",
+            "vtt"
+          ]
+        },
+        "mix_policy": "VOICEOVER_DUCKED_CLIP",
+        "background_music": [
+          {
+            "asset_id": "bgm1",
+            "loop": true,
+            "gain_db": -24,
+            "duck_under_voiceover": true,
+            "duck_gain_db": -30
+          }
+        ]
+      },
+      "media_plan": {
+        "mode": "hybrid",
+        "provider_policy": {
+          "youtube": "disabled",
+          "internet_images": "enabled",
+          "image_generation": "disabled",
+          "artlist": "disabled"
+        },
+        "cache": {
+          "read": true,
+          "write": true
+        },
+        "extraction": {
+          "enabled": true,
+          "include": [
+            "entities",
+            "special_names",
+            "important_phrases"
+          ],
+          "important_phrases": [
+            "O caso ainda está em investigação",
+            "Uma imagem registra um instante",
+            "Ver não é o mesmo que explicar",
+            "A perícia responde perguntas específicas",
+            "Cada dado precisa de contexto",
+            "Investigação não é condenação",
+            "Uma alegação precisa ser verificada",
+            "A investigação cruza versões e evidências",
+            "Um laudo não conta a história inteira",
+            "A busca por respostas continua",
+            "Ainda há pontos sem resposta",
+            "Fatos confirmados, perguntas abertas",
+            "Perguntas ainda abertas",
+            "O registro tem limites",
+            "A imagem não prova uma causa"
+          ],
+          "max_entities_per_segment": 4,
+          "max_important_phrases_per_segment": 2,
+          "max_image_queries_per_segment": 4,
+          "entity_images": {
+            "entity_types": [
+              "PERSON",
+              "LOCATION",
+              "ORGANIZATION"
+            ],
+            "max_per_entity": 1,
+            "scope": "per_scene",
+            "upload_to_drive": true
+          }
+        },
+        "force_refresh_assets": true,
+        "planner": {
+          "candidate_limit": 50
+        },
+        "materialization": {
+          "mode": "selected",
+          "upload_to_drive": true,
+          "wait_for_ready": true
+        },
+        "include_trace": true,
+        "force_refresh_bindings": false,
+        "searches": [
+          {
+            "segment_id": "scene-2",
+            "slot": "secondary_image",
+            "query": "Fortaleza Aldeota condomínio fachada prédio",
+            "providers": [
+              "internet_images"
+            ],
+            "media_types": [
+              "image"
+            ],
+            "limit": 10
+          },
+          {
+            "segment_id": "scene-2",
+            "slot": "secondary_image",
+            "query": "câmera de segurança condomínio corredor Fortaleza",
+            "providers": [
+              "internet_images"
+            ],
+            "media_types": [
+              "image"
+            ],
+            "limit": 10
+          },
+          {
+            "segment_id": "scene-2",
+            "slot": "secondary_image",
+            "query": "Fortaleza perícia policial investigação edifício",
+            "providers": [
+              "internet_images"
+            ],
+            "media_types": [
+              "image"
+            ],
+            "limit": 10
+          },
+          {
+            "segment_id": "scene-2",
+            "slot": "secondary_image",
+            "query": "câmera de segurança prédio condomínio Brasil",
+            "providers": [
+              "internet_images"
+            ],
+            "media_types": [
+              "image"
+            ],
+            "limit": 10
+          },
+          {
+            "segment_id": "scene-6",
+            "slot": "secondary_image",
+            "query": "polícia civil Ceará investigadores perícia",
+            "providers": [
+              "internet_images"
+            ],
+            "media_types": [
+              "image"
+            ],
+            "limit": 10
+          },
+          {
+            "segment_id": "scene-6",
+            "slot": "secondary_image",
+            "query": "laboratório forense análise digital computador",
+            "providers": [
+              "internet_images"
+            ],
+            "media_types": [
+              "image"
+            ],
+            "limit": 10
+          },
+          {
+            "segment_id": "scene-6",
+            "slot": "secondary_image",
+            "query": "perícia celular evidências digitais laboratório Brasil",
+            "providers": [
+              "internet_images"
+            ],
+            "media_types": [
+              "image"
+            ],
+            "limit": 10
+          },
+          {
+            "segment_id": "scene-6",
+            "slot": "secondary_image",
+            "query": "investigação policial análise de documentos",
+            "providers": [
+              "internet_images"
+            ],
+            "media_types": [
+              "image"
+            ],
+            "limit": 10
+          },
+          {
+            "segment_id": "scene-10",
+            "slot": "secondary_image",
+            "query": "perícia criminal laboratório Ceará",
+            "providers": [
+              "internet_images"
+            ],
+            "media_types": [
+              "image"
+            ],
+            "limit": 10
+          },
+          {
+            "segment_id": "scene-10",
+            "slot": "secondary_image",
+            "query": "polícia civil Ceará investigação coletiva",
+            "providers": [
+              "internet_images"
+            ],
+            "media_types": [
+              "image"
+            ],
+            "limit": 10
+          },
+          {
+            "segment_id": "scene-10",
+            "slot": "secondary_image",
+            "query": "análise de imagens investigação forense",
+            "providers": [
+              "internet_images"
+            ],
+            "media_types": [
+              "image"
+            ],
+            "limit": 10
+          },
+          {
+            "segment_id": "scene-10",
+            "slot": "secondary_image",
+            "query": "equipamentos eletrônicos perícia criminal laboratório",
+            "providers": [
+              "internet_images"
+            ],
+            "media_types": [
+              "image"
+            ],
+            "limit": 10
+          }
+        ]
+      },
+      "intro": {
+        "clip_ids": [
+          "yt_QN7DrhOfj1w_0_15_v1",
+          "yt_R2b5Qx1hVdw_57_106_v1"
+        ],
+        "title": "Isabelle Caracristi: o que se sabe",
+        "display_text": "ISABELLE CARACRISTI: O QUE SE SABE",
+        "playback": {
+          "audio_mode": "original_clip"
+        }
+      },
+      "max_image_overlays": 10,
+      "media_mode": "mixed",
+      "outro": {
+        "clip_ids": [
+          "yt_R2b5Qx1hVdw_116_167_v1",
+          "yt_R2b5Qx1hVdw_818_877_v1"
+        ],
+        "title": "Investigação em andamento",
+        "display_text": "FATOS CONFIRMADOS. PERGUNTAS ABERTAS.",
+        "playback": {
+          "audio_mode": "original_clip"
+        }
+      }
+    }
+  ]
+}
