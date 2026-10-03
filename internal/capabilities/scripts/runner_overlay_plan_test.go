@@ -289,8 +289,8 @@ func TestRunner_OverlayPlanAppliesRunLevelEditorialBudget(t *testing.T) {
 	require.NotNil(t, res)
 	require.NotNil(t, res.OverlayPlan, "overlay plan must be projected on a real timed run")
 	require.NotNil(t, res.FinalAudio, "the overlay plan must have a certified master-audio extent")
-	require.Equal(t, res.FinalAudio.DurationMS, res.OverlayPlan.DurationMS,
-		"overlay plan duration must follow the certified final audio")
+	require.GreaterOrEqual(t, res.OverlayPlan.DurationMS, res.FinalAudio.DurationMS,
+		"overlay plan duration must cover audio and any longer Date overlay")
 	require.NoError(t, res.OverlayPlan.Validate())
 
 	byID := map[string]capabilityoverlay.OverlayItem{}
@@ -348,8 +348,8 @@ func TestRunner_OverlayPlanAppliesRunLevelEditorialBudget(t *testing.T) {
 		motionPool     []string
 		start, end     int64
 	}{
-		{"2025", "TIMELINE_DATE_CARD", capabilityoverlay.DatePresentationMotionCandidates(), 1700, 1800},
-		{"March 5, 2026", "TIMELINE_DATE_CARD", capabilityoverlay.DatePresentationMotionCandidates(), 1900, 2200},
+		{"2025", "TIMELINE_DATE_CARD", capabilityoverlay.DatePresentationMotionCandidates(), 1700, 6700},
+		{"March 5, 2026", "TIMELINE_DATE_CARD", capabilityoverlay.DatePresentationMotionCandidates(), 1900, 6900},
 		{"25%", "METRIC_STAT_CARD", capabilityoverlay.MetricPresentationMotionCandidates(), 2300, 2400},
 		{"$2 million", "METRIC_STAT_CARD", capabilityoverlay.MetricPresentationMotionCandidates(), 2500, 2700},
 	} {
@@ -364,8 +364,13 @@ func TestRunner_OverlayPlanAppliesRunLevelEditorialBudget(t *testing.T) {
 		require.Equal(t, tc.template, item.TemplateID)
 		require.Contains(t, tc.motionPool, item.MotionID)
 		require.Equal(t, tc.start, item.StartMs, "typed value must start at its certified spoken word boundary")
-		require.Equal(t, tc.end, item.EndMs, "typed value must end at its certified spoken word boundary")
+		require.Equal(t, tc.end, item.EndMs, "typed value must retain its full planned display window")
+		if tc.template == "TIMELINE_DATE_CARD" || tc.template == "METRIC_STAT_CARD" {
+			require.Equal(t, 132.0, item.Params["font_size_px"], "Date and Metric use the shared text size +20px")
+		}
 	}
+	require.LessOrEqual(t, res.FinalAudio.DurationMS, res.OverlayPlan.DurationMS,
+		"Date overlay tail extends the video payload without padding audio")
 
 }
 

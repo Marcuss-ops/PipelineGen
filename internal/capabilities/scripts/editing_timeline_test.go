@@ -456,10 +456,21 @@ func TestEditingTimeline_ValidateRejectsMismatchedDuration(t *testing.T) {
 		Version:    EditingTimelineVersion,
 		Timebase:   EditingTimebase,
 		DurationUS: 10000000,
-		Audio:      EditingAudioRef{AssetID: "a", SHA256: "b", DurationUS: 5000000},
+		Audio:      EditingAudioRef{AssetID: "a", SHA256: "b", DurationUS: 15000000},
 	}
 	if err := et.Validate(); err == nil {
-		t.Error("mismatched audio/timeline duration should fail validation")
+		t.Error("audio extending beyond the visual timeline should fail validation")
+	}
+}
+
+func TestEditingTimeline_AllowsVisualOverlayTailAfterAudio(t *testing.T) {
+	et := EditingTimelineV1{
+		Version: EditingTimelineVersion, Timebase: EditingTimebase,
+		DurationUS: 10000000,
+		Audio:      EditingAudioRef{AssetID: "a", SHA256: "b", DurationUS: 5000000},
+	}
+	if err := et.Validate(); err != nil {
+		t.Fatalf("silent visual tail after audio should be valid: %v", err)
 	}
 }
 
