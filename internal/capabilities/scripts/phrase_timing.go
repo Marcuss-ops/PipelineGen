@@ -319,5 +319,22 @@ func occurrenceFor(occurrences []capabilityentities.EntityOccurrence, entity scr
 			return &occurrences[i]
 		}
 	}
+	// NLP can classify the same geographic name as GPE in the source
+	// annotation and LOCATION in the localized entity timeline (or vice
+	// versa). Those aliases have different stable IDs, so match an exact
+	// canonical name across the two place types after the strict ID lookup.
+	if isPlaceEntityType(entity.Type) {
+		wantName := strings.ToLower(strings.Join(strings.Fields(strings.TrimSpace(entity.CanonicalName)), " "))
+		for i := range occurrences {
+			occurrence := &occurrences[i]
+			if !isPlaceEntityType(occurrence.Type) {
+				continue
+			}
+			gotName := strings.ToLower(strings.Join(strings.Fields(strings.TrimSpace(occurrence.Name)), " "))
+			if gotName == wantName {
+				return occurrence
+			}
+		}
+	}
 	return nil
 }

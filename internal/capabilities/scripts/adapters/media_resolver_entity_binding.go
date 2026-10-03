@@ -89,13 +89,21 @@ func projectEntityImageBindings(spec scriptpkg.SpecSceneOutput, segments []scrip
 					usedCandidates[key] = struct{}{}
 				}
 				identity := entityImageIdentity(*entity)
-				if _, alreadyBound := resolvedEntityImages[identity]; !alreadyBound {
+				bindingKey := identity
+				if policy.PerScene() {
+					// Per-scene scope deliberately lets the same person receive a
+					// separately selected image in each scene. Keep the one-image-per-
+					// scene guard here; run-scoped identity dedup belongs only to the
+					// canonical shared-entity mode.
+					bindingKey = strings.TrimSpace(out.Scenes[i].ID)
+				}
+				if _, alreadyBound := resolvedEntityImages[bindingKey]; !alreadyBound {
 					if len(resolvedEntityImages) >= capabilityoverlay.MaxEntityImageOverlaysPerRun {
 						// Keep the entity in the semantic result, but do not bind
 						// another image once the run-level render budget is full.
 						continue
 					}
-					resolvedEntityImages[identity] = struct{}{}
+					resolvedEntityImages[bindingKey] = struct{}{}
 				}
 				entity.Image = &scriptpkg.EntityImageBinding{
 					Status: "resolved", AssetID: candidate.AssetID,

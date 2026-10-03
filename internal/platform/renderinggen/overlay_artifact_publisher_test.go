@@ -123,6 +123,38 @@ func TestDriveOverlayArtifactPublisherPublishesVerifiedArtifactToConfiguredRoot(
 	}
 }
 
+func TestDriveOverlayMapArtifactNamesAndMetadataExposeGroundedPlaces(t *testing.T) {
+	payload := []byte("certified map overlay bytes")
+	sum := sha256.Sum256(payload)
+	hash := hex.EncodeToString(sum[:])
+	store := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write(payload)
+	}))
+	defer store.Close()
+	capture := &captureOverlayPublisher{}
+	publisher := &DriveOverlayArtifactPublisher{publisher: capture, client: store.Client()}
+	publisher.SetRootFolderID("overlay-root")
+	artifact := &scriptgen.RenderArtifact{URL: store.URL + "/map.mp4", SHA256: hash, SizeBytes: int64(len(payload)), MimeType: "video/mp4"}
+	err := publisher.PublishOverlay(context.Background(), scriptgen.OverlayPublicationSpec{
+		ScriptName: "Isabelle Caracristi", Language: "pt", PlanID: "map-plan",
+		OverlayItemID: "scene-0-map-places", OverlayItemKind: "map",
+		OverlayEntityIDs:    []string{"location:aldeota", "location:fortaleza"},
+		OverlayEntityLabels: []string{"Aldeota", "Fortaleza"},
+	}, artifact)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := capture.artifacts[0].Filename; !strings.Contains(got, "-map-Aldeota-Fortaleza-") {
+		t.Fatalf("map filename = %q, want its entity labels", got)
+	}
+	if got := capture.artifacts[0].ArtifactMetadata["overlay_entity_ids"]; got == nil {
+		t.Fatalf("map publication metadata lacks its entity IDs: %#v", capture.artifacts[0].ArtifactMetadata)
+	}
+	if got := capture.artifacts[0].ArtifactMetadata["overlay_entity_labels"]; got == nil {
+		t.Fatalf("map publication metadata lacks its labels: %#v", capture.artifacts[0].ArtifactMetadata)
+	}
+}
+
 func TestDriveOverlayArtifactPublisherSurvivesCallerCancellation(t *testing.T) {
 	payload := []byte("certified overlay bytes")
 	sum := sha256.Sum256(payload)

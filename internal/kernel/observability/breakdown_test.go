@@ -64,6 +64,17 @@ func TestBreakdown_TopLevelStagesExcludeNested(t *testing.T) {
 	}
 }
 
+func TestBreakdown_IndependentContainedSiblingIsNotNested(t *testing.T) {
+	audio := stageAt("audio_compile", 0, 100)
+	overlay := stageAt("overlay_render", 10, 40)
+	overlay.Independent = true
+	report := &RunReport{WallTimeMs: 100, Stages: []StageReport{audio, overlay, stageAt("nested_probe", 20, 25)}}
+	bd := report.Breakdown()
+	if len(bd.CriticalPath) != 2 || bd.AttributedStageMs != 100 || bd.OverlappedMs != 30 {
+		t.Fatalf("independent sibling lost or double-counted: %+v", bd)
+	}
+}
+
 // TestBreakdown_UnattributedTime pins unattributed_ms = wall - top-level.
 func TestBreakdown_UnattributedTime(t *testing.T) {
 	report := &RunReport{

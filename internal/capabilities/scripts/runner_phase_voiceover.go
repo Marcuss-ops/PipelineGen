@@ -296,6 +296,9 @@ func (r *Runner) runVoiceoverPhase(ctx context.Context, runID string, req Genera
 				// held; the render goroutine must receive a value snapshot, never
 				// dereference the mutable scene after this lock is released.
 				clipID, clipAssetID, clipSHA256, clipDurationMS := localizedRenderClipFields(*item.scene)
+				renderSpec := sceneRenderSpec(req, *item.scene)
+				sceneIndex := item.scene.Index
+				needsRender := item.scene.Stock == nil && (item.lang == req.SourceLanguage || (req.Render.Subtitles != nil && req.Render.Subtitles.Enabled))
 				if checkpointDue.due(time.Now()) {
 					var snapshotErr error
 					snapshot, snapshotErr = snapshotGenerateResult(result)
@@ -315,7 +318,7 @@ func (r *Runner) runVoiceoverPhase(ctx context.Context, runID string, req Genera
 					}()
 				}
 
-				if item.scene.Stock == nil {
+				if needsRender {
 					// Localized render fan-out: fire the render in a separate
 					// goroutine the moment this language's TTS is final, so the
 					// TTS worker slot is freed immediately instead of being held
@@ -337,7 +340,7 @@ func (r *Runner) runVoiceoverPhase(ctx context.Context, runID string, req Genera
 							DocsFolderID:   routing.DocsFolderID,
 							JobID:          exec.JobID,
 							SceneID:        item.sceneID,
-							SceneIndex:     item.scene.Index,
+							SceneIndex:     sceneIndex,
 							Language:       item.lang,
 							Text:           renderText,
 							Voiceover:      audioRef,
@@ -347,7 +350,7 @@ func (r *Runner) runVoiceoverPhase(ctx context.Context, runID string, req Genera
 							ClipAssetID:    clipAssetID,
 							ClipSHA256:     clipSHA256,
 							ClipDurationMS: clipDurationMS,
-							Render:         sceneRenderSpec(req, *item.scene),
+							Render:         renderSpec,
 							ResumeFrom:     r.stagedLocalizedRender(result, item.sceneID, item.lang, clipID),
 							OnRenderReady: func(rendered LocalizedRenderResult) error {
 								return r.recordLocalizedRenderReady(ctx, exec, result, rendered)

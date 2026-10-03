@@ -169,8 +169,12 @@ func (m *MapOverlay) validateCameraMove(canvasWidth, canvasHeight int, assets []
 				if err != nil {
 					return fmt.Errorf("map LOD[%d] raster integrity: %w", index, err)
 				}
-				if width != lod.Width || height != lod.Height {
-					return fmt.Errorf("map LOD[%d] declares %dx%d but raster is %dx%d", index, lod.Width, lod.Height, width, height)
+				// The map's declared dimensions describe its projected world
+				// plane. A 2:1 raster is also valid: it keeps camera bleed and
+				// georeferencing while limiting the source image to 1920x1080.
+				if (width != lod.Width || height != lod.Height) &&
+					(width*2 != lod.Width || height*2 != lod.Height) {
+					return fmt.Errorf("map LOD[%d] declares projected size %dx%d but raster is %dx%d (expected full or half resolution)", index, lod.Width, lod.Height, width, height)
 				}
 				break
 			}
@@ -266,15 +270,18 @@ func mapLODWindowCoversMove(window geodesy.Window, move *MapCameraMove, lowZoom,
 		return math.Max(0, math.Min(1, (math.Pow(2, zoom-move.StartZoom)-1)/(zoomFactor-1)))
 	}
 	startT, endT := toTime(lowZoom), toTime(highZoom)
-	viewportRadius := math.Hypot(float64(canvasWidth)/2, float64(canvasHeight)/2) /
-		math.Max(0.17, math.Cos(math.Pi/180*math.Max(math.Abs(move.StartTiltDeg), math.Abs(move.EndTiltDeg))))
+	viewportScale := 1 / math.Max(0.17, math.Cos(math.Pi/180*math.Max(math.Abs(move.StartTiltDeg), math.Abs(move.EndTiltDeg))))
+	viewportHalfWidth := float64(canvasWidth) / 2 * viewportScale
+	viewportHalfHeight := float64(canvasHeight) / 2 * viewportScale
 	for step := 0; step <= 64; step++ {
 		t := startT + (endT-startT)*float64(step)/64
 		zoom := move.StartZoom + math.Log2(1+(zoomFactor-1)*t)
 		x := fromX + deltaX*t - window.TopLeftX
 		y := fromY + (toY-fromY)*t - window.TopLeftY
-		margin := viewportRadius * math.Pow(2, float64(window.Zoom)-zoom)
-		if x < margin || y < margin || x > window.Width-margin || y > window.Height-margin {
+		zoomScale := math.Pow(2, float64(window.Zoom)-zoom)
+		marginX := viewportHalfWidth * zoomScale
+		marginY := viewportHalfHeight * zoomScale
+		if x < marginX || y < marginY || x > window.Width-marginX || y > window.Height-marginY {
 			return false
 		}
 	}

@@ -132,6 +132,12 @@ func (t EditingTimelineV1) Validate() error {
 		return fmt.Errorf("editing timeline: audio duration %d does not match timeline duration %d",
 			t.Audio.DurationUS, t.DurationUS)
 	}
+	return t.validateSpans()
+}
+
+// validateSpans also serves pre-encode validation without inventing a certified
+// audio reference; identity and duration certification remain finalize gates.
+func (t EditingTimelineV1) validateSpans() error {
 	// Scene spans must be non-overlapping and within duration.
 	seenScenes := make(map[string]struct{}, len(t.Scenes))
 	var prevEnd int64
@@ -169,6 +175,38 @@ func (t EditingTimelineV1) Validate() error {
 		if overlay.EndUS > t.DurationUS {
 			return fmt.Errorf("editing timeline: overlay %q end %d past duration %d",
 				overlay.ArtifactID, overlay.EndUS, t.DurationUS)
+		}
+	}
+	return nil
+}
+
+// validatePlannedEditingSpans rejects invalid timing before either expensive
+// sibling starts. It uses the canonical timeline, never a synthetic audio asset.
+func validatePlannedEditingSpans(result *GenerateResult) error {
+	if result == nil || result.CanonicalTimeline == nil {
+		return nil
+	}
+	t := EditingTimelineV1{DurationUS: result.CanonicalTimeline.DurationUS}
+	for _, segment := range result.CanonicalTimeline.Segments {
+		t.Scenes = append(t.Scenes, EditingSceneSpan{SceneID: segment.ID, StartUS: segment.TimelineStartUS, EndUS: segment.TimelineStartUS + segment.DurationUS})
+	}
+	if result.OverlayPlan != nil {
+		t.Overlays = overlaysFromPlan(result)
+	}
+	if err := t.validateSpans(); err != nil {
+		return err
+	}
+	for language, plan := range result.LocalizedOverlayPlans {
+		if plan == nil {
+			continue
+		}
+		localized := *result
+		localized.OverlayPlan = plan
+		t.DurationUS = plan.DurationMS * 1000
+		t.Scenes = nil
+		t.Overlays = overlaysFromPlan(&localized)
+		if err := t.validateSpans(); err != nil {
+			return fmt.Errorf("localized %s: %w", language, err)
 		}
 	}
 	return nil

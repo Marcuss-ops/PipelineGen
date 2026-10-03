@@ -4,12 +4,19 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
+	"time"
 
 	finalization "github.com/Marcuss-ops/PipelineGen/internal/capabilities/finalization"
 	capoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/geodesy"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/overlays"
@@ -298,3 +305,165 @@ func safeName(v string) string {
 	}
 	return b.String()
 }
+
+// ── Chronon template map plate resolver (merged from
+// chronon_template_map_plates.go: same overlay-wiring domain, and the merge
+// keeps the wiring package at its registered hotspot file baseline while the
+// digest identity migrates to the kernel SSOT) ──────────────────────────────
+
+const (
+	chrononMapLicense     = "Esri World Imagery service; terms: https://goto.arcgisonline.com/maps/World_Imagery"
+	chrononMapAttribution = "Source: Esri, Vantor, Earthstar Geographics, and the GIS User Community"
+)
+
+// chrononTemplateMapPlateResolver adapts ChrononTemplate's georeferenced tile
+// sampler to PipelineGen's static-plate contract. It renders each requested
+// zoom once into a durable local cache; the ordinary map compiler then checks
+// the raster window, draws pins/labels/attribution, and renders the camera move.
+type chrononTemplateMapPlateResolver struct {
+	generator string
+	cacheDir  string
+	mu        sync.Mutex
+}
+
+func newChrononTemplateMapPlateResolver(generator, cacheDir string) *chrononTemplateMapPlateResolver {
+	return &chrononTemplateMapPlateResolver{
+		generator: strings.TrimSpace(generator),
+		cacheDir:  strings.TrimSpace(cacheDir),
+	}
+}
+
+func (r *chrononTemplateMapPlateResolver) ResolvePlate(latitude, longitude float64) (capoverlay.MapPlate, bool) {
+	plate, ok := r.ResolveFlyover(
+		capoverlay.MapCenter{Latitude: latitude, Longitude: longitude},
+		capoverlay.MapCenter{Latitude: latitude, Longitude: longitude},
+		1920, 1080,
+	)
+	return plate, ok
+}
+
+func (r *chrononTemplateMapPlateResolver) ResolveFlyover(from, to capoverlay.MapCenter, width, height int) (capoverlay.MapPlate, bool) {
+	if r == nil || r.generator == "" || r.cacheDir == "" || width <= 0 || height <= 0 {
+		return capoverlay.MapPlate{}, false
+	}
+	if (geodesy.Point{Latitude: from.Latitude, Longitude: from.Longitude}).Validate() != nil ||
+		(geodesy.Point{Latitude: to.Latitude, Longitude: to.Longitude}).Validate() != nil {
+		return capoverlay.MapPlate{}, false
+	}
+	// Preserve geographic bleed for the camera move, while rasterizing each
+	// LOD at the composition's native 1920x1080 resolution. The raster is
+	// projected over this larger logical map plane by the overlay compiler.
+	plateWidth := width * 2
+	plateHeight := height * 2
+	center := routeMapCenter(from, to)
+	// Adjacent zoom levels keep each raster active only across a narrow
+	// cross-fade interval, so its geographic window can contain the complete
+	// camera viewport throughout that interval.
+	// Keep the maximum zoom at 9 for the 2x logical map plane. The planner
+	// validates the full camera viewport during each LOD cross-fade; zooms
+	// above 9 can crop a route that includes both a city and its country-level
+	// entity even when both pins fit inside the source raster.
+	zooms := []int{5, 6, 7, 8, 9}
+	covered := make([]int, 0, len(zooms))
+	for _, zoom := range zooms {
+		window := geodesy.CenteredOn(center.Latitude, center.Longitude, zoom, plateWidth, plateHeight)
+		if window.Contains(from.Latitude, from.Longitude) && window.Contains(to.Latitude, to.Longitude) {
+			covered = append(covered, zoom)
+		}
+	}
+	if len(covered) == 0 {
+		log.Printf("chronontemplate map resolver: no zoom covers route from=(%.6f,%.6f) to=(%.6f,%.6f) size=%dx%d", from.Latitude, from.Longitude, to.Latitude, to.Longitude, width, height)
+		return capoverlay.MapPlate{}, false
+	}
+
+	plates := make([]capoverlay.MapPlate, 0, len(covered))
+	for _, zoom := range covered {
+		plate, ok := r.generate(center, zoom, plateWidth, plateHeight)
+		if !ok {
+			log.Printf("chronontemplate map resolver: plate generation failed center=(%.6f,%.6f) zoom=%d size=%dx%d", center.Latitude, center.Longitude, zoom, width, height)
+			return capoverlay.MapPlate{}, false
+		}
+		plates = append(plates, plate)
+	}
+	base := plates[0]
+	if len(plates) > 1 {
+		base.LODs = append([]capoverlay.MapPlate(nil), plates[1:]...)
+	}
+	return base, true
+}
+
+func routeMapCenter(from, to capoverlay.MapCenter) capoverlay.MapCenter {
+	lonTo := to.Longitude
+	delta := lonTo - from.Longitude
+	if delta > 180 {
+		lonTo -= 360
+	} else if delta < -180 {
+		lonTo += 360
+	}
+	lon := (from.Longitude + lonTo) / 2
+	for lon > 180 {
+		lon -= 360
+	}
+	for lon < -180 {
+		lon += 360
+	}
+	return capoverlay.MapCenter{Latitude: (from.Latitude + to.Latitude) / 2, Longitude: lon}
+}
+
+func (r *chrononTemplateMapPlateResolver) generate(center capoverlay.MapCenter, zoom, width, height int) (capoverlay.MapPlate, bool) {
+	// Serialize identical jobs so concurrent script runs cannot write the same
+	// cache entry while the Python renderer is creating it.
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	rasterWidth, rasterHeight := width/2, height/2
+	key := fmt.Sprintf("%.6f_%.6f_z%d_%dx%d_r%dx%d", center.Latitude, center.Longitude, zoom, width, height, rasterWidth, rasterHeight)
+	key = strings.NewReplacer("-", "m", ".", "p").Replace(key)
+	path := filepath.Join(r.cacheDir, "esri-world-imagery", key+".png")
+	if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
+		return capoverlay.MapPlate{}, false
+	}
+	if info, err := os.Stat(path); err != nil || info.Size() == 0 {
+		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+		defer cancel()
+		// The service prepends its Whisper venv to PATH. That venv has
+		// faster-whisper but not OpenCV, while the system Python has cv2 (a
+		// required dependency of ChrononTemplate's tile compositor). Resolve
+		// this helper with the system interpreter so runtime PATH cannot select
+		// an incompatible environment.
+		cmd := exec.CommandContext(ctx, "/usr/bin/python3", r.generator,
+			"--latitude", fmt.Sprintf("%.8f", center.Latitude),
+			"--longitude", fmt.Sprintf("%.8f", center.Longitude),
+			"--zoom", fmt.Sprint(zoom),
+			"--width", fmt.Sprint(rasterWidth), "--height", fmt.Sprint(rasterHeight),
+			"--output", path,
+		)
+		if output, err := cmd.CombinedOutput(); err != nil {
+			log.Printf("chronontemplate map resolver: generator failed zoom=%d: %v: %s", zoom, err, strings.TrimSpace(string(output)))
+			_ = os.Remove(path)
+			return capoverlay.MapPlate{}, false
+		} else if !strings.Contains(string(output), "MAP_PLATE_PASS") {
+			log.Printf("chronontemplate map resolver: generator did not certify zoom=%d: %s", zoom, strings.TrimSpace(string(output)))
+			_ = os.Remove(path)
+			return capoverlay.MapPlate{}, false
+		}
+	}
+	raw, err := os.ReadFile(path)
+	if err != nil || len(raw) == 0 {
+		return capoverlay.MapPlate{}, false
+	}
+	// godlike/06 digest SSOT: content identity goes through kernel/digest,
+	// never a direct crypto/sha256 import.
+	assetDigest := digest.SHA256Bytes(raw)
+	id := fmt.Sprintf("chronontemplate-esri-%s-z%d", key, zoom)
+	return capoverlay.MapPlate{
+		ID: id, License: chrononMapLicense, Attribution: chrononMapAttribution,
+		Center: center, Zoom: zoom, Width: width, Height: height,
+		Window: geodesy.CenteredOn(center.Latitude, center.Longitude, zoom, width, height),
+		Asset: capoverlay.NewOverlayAssetRef(
+			asset.New(id, assetDigest, "image/png", 0), "", path,
+		),
+	}, true
+}
+
+var _ capoverlay.PlateResolver = (*chrononTemplateMapPlateResolver)(nil)
+var _ capoverlay.FlyoverPlateResolver = (*chrononTemplateMapPlateResolver)(nil)

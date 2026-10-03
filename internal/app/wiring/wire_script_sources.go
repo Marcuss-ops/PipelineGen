@@ -7,9 +7,12 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 
 	appsearch "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/search"
+	capgeocoding "github.com/Marcuss-ops/PipelineGen/internal/capabilities/geocoding"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/maps"
 	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
 	scriptapi "github.com/Marcuss-ops/PipelineGen/internal/capabilities/script"
@@ -17,6 +20,8 @@ import (
 	usecase "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/usecase"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	coreasset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
+	platformgeocoding "github.com/Marcuss-ops/PipelineGen/internal/platform/geocoding"
 	pgmedia "github.com/Marcuss-ops/PipelineGen/internal/platform/postgres/media"
 	"go.uber.org/zap"
 )
@@ -358,6 +363,65 @@ func mapPlateFromManifest(plate maps.Plate) capabilityoverlay.MapPlate {
 // fully populated Runner.
 type mapPlateWiringTarget interface {
 	SetMapPlateResolver(capabilityoverlay.PlateResolver)
+}
+
+type scriptLocationSourcesTarget interface {
+	mapPlateWiringTarget
+	SetGeocoder(capgeocoding.Geocoder)
+}
+
+// wireScriptLocationSources attaches the real geocoding adapter and certified
+// offline plate resolver to the production runner. Network geocoding remains
+// request-opt-in in the capability layer; empty endpoint/manifest preserves a
+// valid deployment with no map overlays.
+func wireScriptLocationSources(runner scriptLocationSourcesTarget, cfg *config.Config, log *zap.Logger) error {
+	if runner == nil || cfg == nil {
+		return fmt.Errorf("wire script location sources: runner and config are required")
+	}
+	if endpoint := strings.TrimSpace(cfg.External.GeocodingBaseURL); endpoint != "" {
+		cacheDir := strings.TrimSpace(cfg.External.GeocodingCacheDir)
+		if cacheDir == "" {
+			cacheDir = filepath.Join(cfg.Storage.AbsDataDir(), "geocoding-cache")
+		} else if !filepath.IsAbs(cacheDir) {
+			cacheDir = cfg.Storage.FullPath(cacheDir)
+		}
+		adapter, err := platformgeocoding.NewNominatim(platformgeocoding.NominatimConfig{
+			BaseURL: endpoint, UserAgent: cfg.External.GeocodingUserAgent, CacheDir: cacheDir,
+		})
+		if err != nil {
+			return fmt.Errorf("wire script geocoder: %w", err)
+		}
+		runner.SetGeocoder(adapter)
+		log.Info("script geocoder wired (network lookups require per-request media_plan.provider_policy.geocoding opt-in)",
+			zap.String("cache_dir", cacheDir))
+	} else {
+		log.Info("script geocoder not wired: external.geocoding_base_url is empty (geocoding-enabled requests fail closed)")
+	}
+	manifestPath := strings.TrimSpace(cfg.External.MapPlateManifestPath)
+	if generatorPath := strings.TrimSpace(cfg.External.GeoMapPlateGeneratorPath); generatorPath != "" {
+		if !filepath.IsAbs(generatorPath) {
+			absolute, err := filepath.Abs(generatorPath)
+			if err != nil {
+				return fmt.Errorf("resolve ChrononTemplate map plate generator: %w", err)
+			}
+			generatorPath = absolute
+		}
+		if _, err := os.Stat(generatorPath); err != nil {
+			return fmt.Errorf("ChrononTemplate map plate generator %q is unavailable: %w", generatorPath, err)
+		}
+		cacheDir := filepath.Join(cfg.Storage.AbsDataDir(), "chronontemplate-map-plates")
+		runner.SetMapPlateResolver(newChrononTemplateMapPlateResolver(generatorPath, cacheDir))
+		log.Info("ChrononTemplate Web Mercator map plate generator wired",
+			zap.String("generator", generatorPath), zap.String("cache_dir", cacheDir))
+		return nil
+	}
+	if manifestPath != "" && !filepath.IsAbs(manifestPath) {
+		manifestPath = cfg.Storage.FullPath(manifestPath)
+	}
+	if err := wireMapPlates(runner, manifestPath, log); err != nil {
+		return fmt.Errorf("wire script map plates: %w", err)
+	}
+	return nil
 }
 
 // wireMapPlates loads the operator basemap manifest when one is configured and

@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"testing"
+
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
 type semanticRunner struct {
@@ -19,17 +21,39 @@ func executorForSemantic(r *semanticRunner) *Executor {
 	return &Executor{runner: r, outputLimit: 64 * 1024}
 }
 
+func TestVisualNERAdapterRequiresLanguage(t *testing.T) {
+	r := &semanticRunner{output: []byte(`{"entities":[]}`)}
+	a, _ := NewVisualNERAdapter(executorForSemantic(r))
+	if _, err := a.Extract(context.Background(), " ", "Greek salad", 3); err == nil {
+		t.Fatal("expected missing-language error")
+	}
+	if len(r.input) != 0 {
+		t.Fatal("executor must not run when language is missing")
+	}
+}
+
 func TestVisualNERAdapterRejectsUngroundedEntity(t *testing.T) {
 	r := &semanticRunner{output: []byte(`{"entities":[{"text":"boxing","start":0,"end":6,"score":0.9}]}`)}
 	a, _ := NewVisualNERAdapter(executorForSemantic(r))
-	if _, err := a.Extract(context.Background(), "Greek salad", 3); err == nil {
+	if _, err := a.Extract(context.Background(), "en", "Greek salad", 3); err == nil {
 		t.Fatal("expected grounding error")
 	}
 }
+func TestVisualNERAdapterExtractEntitiesRequiresLanguage(t *testing.T) {
+	r := &semanticRunner{output: []byte(`{"entities":[]}`)}
+	a, _ := NewVisualNERAdapter(executorForSemantic(r))
+	if _, err := a.ExtractEntities(context.Background(), scriptpkg.EntityExtractionRequest{Text: "Greek salad"}); err == nil {
+		t.Fatal("expected missing-language error")
+	}
+	if len(r.input) != 0 {
+		t.Fatal("executor must not run when language is missing")
+	}
+}
+
 func TestVisualNERAdapterSendsV1AndAcceptsGroundedEntities(t *testing.T) {
 	r := &semanticRunner{output: []byte(`{"entities":[{"text":"salad","start":6,"end":11,"score":0.9}]}`)}
 	a, _ := NewVisualNERAdapter(executorForSemantic(r))
-	entities, err := a.Extract(context.Background(), "Greek salad", 3)
+	entities, err := a.Extract(context.Background(), "en", "Greek salad", 3)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -45,6 +69,9 @@ func TestVisualNERAdapterSendsV1AndAcceptsGroundedEntities(t *testing.T) {
 	}
 	if req.EntityCount != 3 {
 		t.Fatalf("entity_count=%d, want 3", req.EntityCount)
+	}
+	if req.Language != "en" {
+		t.Fatalf("language=%q, want en", req.Language)
 	}
 }
 func TestMediaSamplerAdapterSendsV1AndReturnsWinner(t *testing.T) {

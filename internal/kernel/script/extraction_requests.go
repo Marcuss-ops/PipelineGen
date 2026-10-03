@@ -55,8 +55,8 @@ type EntityExtractionRequest struct {
 	Text string `json:"text"`
 	// Title is the resolved document/video title.
 	Title string `json:"title,omitempty"`
-	// Language is the canonical target language (ISO 639-1).
-	Language string `json:"language,omitempty"`
+	// Language is the required BCP-47 language tag for locale-aware extraction.
+	Language string `json:"language"`
 	// Device selects the local inference backend: "auto", "cpu", or "gpu".
 	// GPU is optional and must never be represented by a silent CPU no-op.
 	Device string `json:"device,omitempty"`

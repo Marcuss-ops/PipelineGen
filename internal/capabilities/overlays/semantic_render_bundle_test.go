@@ -116,19 +116,16 @@ func TestBuildOverlayPlanUsesCanonicalImageCapability(t *testing.T) {
 	if item.Kind != string(KindEntityImage) || item.TemplateID != "image_popup" || item.PresetID != SelectEntityImagePreset(bundle.RunID, scene.SegmentID, entityID) {
 		t.Fatalf("image item = %+v", item)
 	}
-	if !containsMotion(centeredImageMotionCandidates, item.MotionID) {
-		t.Fatalf("entity portrait motion = %q, want a centered image catalog motion", item.MotionID)
+	if !containsMotion(generatedEntityImageMotionCandidates, item.MotionID) {
+		t.Fatalf("entity portrait motion = %q, want a generated-overlay image catalog motion", item.MotionID)
 	}
 	// DYNAMIC window: the image card keeps the certified timeline-event span
 	// (2500ms) instead of a flat five-second block.
 	if item.EndMs-item.StartMs != 2500 {
 		t.Fatalf("entity image duration = %dms, want the certified 2500ms window", item.EndMs-item.StartMs)
 	}
-	wantSize := 1920 * 50 / 100
-	if maxHeight := 1080 * 80 / 100; maxHeight < wantSize {
-		wantSize = maxHeight
-	}
-	if item.Params["box_width"] != wantSize || item.Params["box_height"] != wantSize {
-		t.Fatalf("image item size = %#v, want %dx%d on 1920x1080 canvas", item.Params, wantSize, wantSize)
+	wantWidth, wantHeight := 1920*68/100, 1080*70/100
+	if item.Params["box_width"] != wantWidth || item.Params["box_height"] != wantHeight {
+		t.Fatalf("image item size = %#v, want %dx%d on 1920x1080 canvas", item.Params, wantWidth, wantHeight)
 	}
 }

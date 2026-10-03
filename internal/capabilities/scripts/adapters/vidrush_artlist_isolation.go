@@ -1,13 +1,95 @@
 package adapters
 
 import (
+	"context"
 	"fmt"
+	"os"
 	"sort"
+	"strconv"
 	"strings"
+	"sync"
 
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 	"github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
+
+// ── Artlist search gate (moved here from vidrush_registry_searchers.go —
+// same Artlist provider family; the searchers file sat past the godlike/08
+// strict line cap with the gate inline) ─────────────────────────────────
+
+// EnvArtlistSearchConcurrency is the optional operator override for the
+// Artlist search gate width (PIPELINEGEN_ARTLIST_SEARCH_CONCURRENCY).
+const EnvArtlistSearchConcurrency = "PIPELINEGEN_ARTLIST_SEARCH_CONCURRENCY"
+
+// defaultArtlistSearchConcurrency is the gate width for Artlist queries.
+//
+// The historical width was 1 — a single process-global slot — which
+// serialized every provider query behind every other scene's query: with the
+// per-scene fan-out running 3 phrases wide and many scenes landing together,
+// the later queries paid pure gate queueing. The timing snapshot charges
+// artlist.resolve 2,183 operations averaging 3.1s (1.9h total), a wall that
+// is dominated by that serialization when the underlying registry search is
+// local-first. 4 matches the other production pools (translation 3, NLP 4,
+// materializer 4) while the retry engine below still protects the live
+// provider: 3 attempts with 1s→2s backoff on 429 rate limits.
+const defaultArtlistSearchConcurrency = 4
+
+var (
+	artlistSearchGateOnce sync.Once
+	artlistSearchGateChan chan struct{}
+)
+
+// artlistSearchGate resolves the gate channel once per process: width 4 by
+// default, the env override when it parses to a sane positive width. The
+// clamp keeps an operator typo from disabling the provider protection (0/neg)
+// or opening an unbounded hammer (huge).
+func artlistSearchGate() chan struct{} {
+	artlistSearchGateOnce.Do(func() {
+		artlistSearchGateChan = make(chan struct{}, artlistSearchGateWidthForTest())
+	})
+	return artlistSearchGateChan
+}
+
+// artlistSearchGateWidthForTest resolves the gate width from the current
+// environment without creating the channel: the Once guard is process-wide,
+// so tests validate the width LOGIC through this helper and the behavioral
+// concurrency through the shared channel.
+func artlistSearchGateWidthForTest() int {
+	width := defaultArtlistSearchConcurrency
+	if raw := strings.TrimSpace(os.Getenv(EnvArtlistSearchConcurrency)); raw != "" {
+		if parsed, err := strconv.Atoi(raw); err == nil {
+			width = parsed
+		}
+	}
+	if width < 1 {
+		width = 1
+	}
+	if width > 8 {
+		width = 8
+	}
+	return width
+}
+
+func acquireVidRushArtlistSearch(ctx context.Context) error {
+	select {
+	case artlistSearchGate() <- struct{}{}:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+
+func releaseVidRushArtlistSearch() { <-artlistSearchGate() }
+
+func isArtlistRateLimited(err error) bool {
+	return err != nil && strings.Contains(strings.ToLower(err.Error()), "429")
+}
+
+func isM3U8URL(raw string) bool {
+	return strings.Contains(strings.ToLower(strings.TrimSpace(raw)), ".m3u8")
+}
+
+// ── Artlist query isolation ───────────────────────────────────────────────
 
 // artlistIsolationContext records ownership of explicit Artlist queries and
 // distinctive lexical terms. Query ownership is checked exactly; lexical

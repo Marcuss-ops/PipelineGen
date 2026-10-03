@@ -17,8 +17,10 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"sync"
+	"time"
 )
 
 // uploadSource is the byte source for one upload: sequential read for the
@@ -98,6 +100,32 @@ func (s *httpObjectSource) Close() error {
 	return err
 }
 
+// objectStoreHTTPClient is the tuned client for object-store Range GETs.
+// The previous http.DefaultClient had the Go-default MaxIdleConnsPerHost=2
+// and no explicit dial tuning, and every ReadAt chunk of the disk-free
+// resumable path opened a fresh connection (the short body read prevents
+// keep-alive reuse at the default pool size). For a ~500MB master at the
+// 16MB SDK chunk that was ~32 connections per upload; the tuned pool keeps
+// the sequential chunk GETs on warm connections instead.
+var objectStoreHTTPClient = &http.Client{Transport: newObjectStoreTransport()}
+
+// newObjectStoreTransport builds the object-store transport: bounded idle
+// pool sized for the resumable chunk cadence, explicit dial keep-alive, and
+// a response-header deadline so a hung store surfaces fast (the request
+// body/stream itself is never timed out — only the headers are).
+func newObjectStoreTransport() *http.Transport {
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	transport.MaxIdleConns = 32
+	transport.MaxIdleConnsPerHost = 8
+	transport.IdleConnTimeout = 90 * time.Second
+	transport.DialContext = (&net.Dialer{
+		Timeout:   10 * time.Second,
+		KeepAlive: 30 * time.Second,
+	}).DialContext
+	transport.ResponseHeaderTimeout = 60 * time.Second
+	return transport
+}
+
 func (s *httpObjectSource) get(rangeHeader string) (*http.Response, error) {
 	req, err := http.NewRequestWithContext(s.ctx, http.MethodGet, s.url, nil)
 	if err != nil {
@@ -106,7 +134,7 @@ func (s *httpObjectSource) get(rangeHeader string) (*http.Response, error) {
 	if rangeHeader != "" {
 		req.Header.Set("Range", rangeHeader)
 	}
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := objectStoreHTTPClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("object store GET: %w", err)
 	}

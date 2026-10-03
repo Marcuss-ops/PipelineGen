@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/observability"
 	"go.uber.org/zap"
@@ -112,7 +113,41 @@ func snapshotGenerateResult(result *GenerateResult) (*GenerateResult, error) {
 	if err := json.Unmarshal(raw, &snapshot); err != nil {
 		return nil, fmt.Errorf("unmarshal checkpoint snapshot: %w", err)
 	}
+	// LocalPath is deliberately producer-only (`json:"-"`): it must never
+	// enter the durable result, but the parallel render branch still needs the
+	// verified local files while validating and staging the semantic plan.
+	// Restore those transient locations onto the detached JSON snapshot.
+	restoreOverlayPlanRuntimeAssetLocations(result.OverlayPlan, snapshot.OverlayPlan)
+	for language, sourcePlan := range result.LocalizedOverlayPlans {
+		restoreOverlayPlanRuntimeAssetLocations(sourcePlan, snapshot.LocalizedOverlayPlans[language])
+	}
 	return &snapshot, nil
+}
+
+func restoreOverlayPlanRuntimeAssetLocations(source, target *capabilityoverlay.OverlayPlan) {
+	if source == nil || target == nil {
+		return
+	}
+	if source.Source != nil && target.Source != nil {
+		target.Source.LocalPath = source.Source.LocalPath
+	}
+	if source.Background != nil && target.Background != nil {
+		for i := range source.Background.AssetRefs {
+			if i < len(target.Background.AssetRefs) && source.Background.AssetRefs[i].AssetID == target.Background.AssetRefs[i].AssetID {
+				target.Background.AssetRefs[i].LocalPath = source.Background.AssetRefs[i].LocalPath
+			}
+		}
+	}
+	for i := range source.Items {
+		if i >= len(target.Items) || source.Items[i].ID != target.Items[i].ID {
+			continue
+		}
+		for j := range source.Items[i].AssetRefs {
+			if j < len(target.Items[i].AssetRefs) && source.Items[i].AssetRefs[j].AssetID == target.Items[i].AssetRefs[j].AssetID {
+				target.Items[i].AssetRefs[j].LocalPath = source.Items[i].AssetRefs[j].LocalPath
+			}
+		}
+	}
 }
 
 // observeCheckpointWait records how long a worker waited for the per-unit apply
@@ -172,6 +207,10 @@ func persistSemanticBundleSidecar(runID string, bundle any) error {
 //   - attempt_count — incremented retry count
 //   - next_retry_at — exponential backoff window (nil when exhausted)
 func (r *Runner) failRunWithRetry(ctx context.Context, runID string, failedStage Stage, err error) {
+	if pending, ok := ctx.Value(deferredAudioFailureKey{}).(*deferredAudioFailure); ok {
+		pending.cause = err
+		return
+	}
 	r.log.Error("scriptgeneration: stage failed",
 		zap.String("run_id", runID),
 		zap.String("failed_stage", string(failedStage)),

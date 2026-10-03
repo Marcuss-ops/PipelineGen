@@ -38,31 +38,36 @@ func CertifiedImageMotions() []string {
 }
 
 // SelectImageMotion chooses a stable catalog image motion for one image
-// overlay. Retries of the same job, scene and item resolve identically.
-// Generated overlays rotate ONLY the centered subset: a portrait or scene
-// image must stay pinned to the canvas center while it reveals (the same
-// editorial rule maps already follow); slide/25d motions that carry the card
-// across the canvas remain certified for explicit editorial plans but are
-// never selected here.
+// overlay. Retries of the same job, scene and item resolve identically. It
+// stays on the CENTERED subset for map-compatible callers (MapOverlay.Validate
+// accepts exactly those ids). Generated overlay images use
+// EntityImageMotionAtOffset instead.
 func SelectImageMotion(jobID, sceneID, itemID string) string {
 	return selectPreset(jobID, sceneID, itemID, "image_motion", centeredImageMotionCandidates)
 }
 
 // SelectImageMotionAt rotates through the certified CENTERED image pool
-// from a deterministic per-job starting point. This gives each image in a run
-// a different motion while allowing later jobs to start at a different point.
+// from a deterministic per-job starting point. It is reserved for
+// map-compatible callers; generated overlays rotate the wider image catalog.
 func SelectImageMotionAt(jobID, sceneID string, ordinal int) string {
 	return selectImageMotion(jobID, sceneID, ordinal, centeredImageMotionCandidates)
 }
 
 // RandomImageMotionOffset chooses a fresh cryptographically random starting
-// offset for one render plan. The caller samples it once, then rotates through
-// the centered pool so no two images in the same run repeat before all are used.
+// offset for one render plan. The caller samples it ONCE per plan and each
+// image rotation reduces it modulo its own pool size: the centered map pool
+// and the complete generated-overlay image catalog. Each run starts its
+// rotation at a different point, and images do not repeat before each pool is
+// exhausted.
 func RandomImageMotionOffset() (int, error) {
-	if len(centeredImageMotionCandidates) == 0 {
+	span := len(generatedEntityImageMotionCandidates)
+	if span < len(centeredImageMotionCandidates) {
+		span = len(centeredImageMotionCandidates)
+	}
+	if span == 0 {
 		return 0, nil
 	}
-	start, err := rand.Int(rand.Reader, big.NewInt(int64(len(centeredImageMotionCandidates))))
+	start, err := rand.Int(rand.Reader, big.NewInt(int64(span)))
 	if err != nil {
 		return 0, err
 	}
@@ -70,33 +75,71 @@ func RandomImageMotionOffset() (int, error) {
 }
 
 // ImageMotionAtOffset returns the image motion at a position in the randomly
-// rotated CENTERED pool — the pool generated image overlays rotate over.
+// rotated CENTERED pool, reserved for basemap-compatible callers.
 func ImageMotionAtOffset(offset, ordinal int) string {
-	if len(centeredImageMotionCandidates) == 0 {
-		return ""
-	}
-	index := ((offset % len(centeredImageMotionCandidates)) + ordinal) % len(centeredImageMotionCandidates)
-	return centeredImageMotionCandidates[index]
+	return rotateMotionAtOffset(offset, ordinal, centeredImageMotionCandidates)
 }
 
-// EntityImageParams returns the entity-image card geometry, scaled to the
-// output canvas while keeping enough margin for image motion. On 1920×1080 the
-// card is 960×864 (50% width, capped at 80% height): a readable portrait, not
-// a corner stamp.
+// EntityImageMotionAtOffset returns the image motion at a position in the
+// randomly rotated restrained catalog for generated overlays. The
+// offset is the plan-level entropy value sampled by RandomImageMotionOffset;
+// the pool reduces it modulo its own size.
+func EntityImageMotionAtOffset(offset, ordinal int) string {
+	return rotateMotionAtOffset(offset, ordinal, generatedEntityImageMotionCandidates)
+}
+
+// SelectEntityImageMotionAt rotates generated-image motions from a
+// deterministic per-job starting point. It is for stable semantic bundle
+// projections that cannot carry the compilation-time random offset.
+func SelectEntityImageMotionAt(jobID, sceneID string, ordinal int) string {
+	if len(generatedEntityImageMotionCandidates) == 0 {
+		return ""
+	}
+	seeded := selectPreset(jobID, sceneID, "run", "entity_image_motion", generatedEntityImageMotionCandidates)
+	start := 0
+	for i, candidate := range generatedEntityImageMotionCandidates {
+		if candidate == seeded {
+			start = i
+			break
+		}
+	}
+	return generatedEntityImageMotionCandidates[(start+ordinal)%len(generatedEntityImageMotionCandidates)]
+}
+
+// rotateMotionAtOffset is the shared modular rotation of one pool from a
+// per-plan random starting offset.
+func rotateMotionAtOffset(offset, ordinal int, pool []string) string {
+	if len(pool) == 0 {
+		return ""
+	}
+	index := ((offset % len(pool)) + ordinal) % len(pool)
+	return pool[index]
+}
+
+// CertifiedEntityImageMotions returns the rotation pool GENERATED entity-image
+// overlays rotate over: the restrained certified image-motion subset. Callers
+// receive a copy.
+func CertifiedEntityImageMotions() []string {
+	return append([]string(nil), generatedEntityImageMotionCandidates...)
+}
+
+// EntityImageParams returns a larger, slightly raised hero image. The
+// caption renderer anchors the name below it; shifting the image up keeps
+// both pieces together in the center-safe area.
 func EntityImageParams(width, height int) map[string]any {
 	if width <= 0 || height <= 0 {
-		return map[string]any{"box_width": 480, "box_height": 480}
+		return map[string]any{"box_width": 800, "box_height": 650, "width": 800, "height": 650, "position_y": -60}
 	}
-	size := width * 50 / 100
-	if maxHeight := height * 80 / 100; maxHeight < size {
-		size = maxHeight
+	boxWidth, boxHeight := width*68/100, height*70/100
+	if boxWidth < 1 {
+		boxWidth = 1
 	}
-	if size < 1 {
-		size = 1
+	if boxHeight < 1 {
+		boxHeight = 1
 	}
 	// "width"/"height" are the keys RenderingGen's imageLayer() reads;
 	// "box_width"/"box_height" stay for consumers of the legacy spelling.
-	return map[string]any{"box_width": size, "box_height": size, "width": size, "height": size}
+	return map[string]any{"box_width": boxWidth, "box_height": boxHeight, "width": boxWidth, "height": boxHeight, "position_y": -float64(height) * 0.10}
 }
 
 func selectImageMotion(jobID, sceneID string, ordinal int, pool []string) string {

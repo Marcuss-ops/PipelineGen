@@ -130,6 +130,9 @@ type RunReport struct {
 }
 
 type StageReport struct {
+	// Independent is explicit sibling ownership, not temporal nesting. False
+	// preserves interpretation of historical reports without this field.
+	Independent    bool      `json:"independent,omitempty"`
 	ObservationID  string    `json:"observation_id"`
 	Name           string    `json:"name"`
 	Status         string    `json:"status"`

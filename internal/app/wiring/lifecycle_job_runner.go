@@ -5,6 +5,9 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"sort"
+	"strconv"
+	"strings"
 	"time"
 
 	cliprender "github.com/Marcuss-ops/PipelineGen/internal/capabilities/cliprender"
@@ -12,6 +15,7 @@ import (
 	jobscheduling "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/scheduling"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	instaeditcalendar "github.com/Marcuss-ops/PipelineGen/internal/platform/instaeditcalendar"
 	localbroker "github.com/Marcuss-ops/PipelineGen/internal/platform/jobs/local"
@@ -47,9 +51,81 @@ func clipRenderPhaseScope() (job.PayloadMatch, job.PayloadNotMatch) {
 }
 
 const (
-	jobRunnerPoolGeneral = "general"
-	jobRunnerPoolSettle  = "clip-render-settle"
+	jobRunnerPoolGeneral     = "general"
+	jobRunnerPoolSettle      = "clip-render-settle"
+	jobRunnerPoolInteractive = "interactive"
 )
+
+// EnvInteractiveWorkers is the operator override for the dedicated interactive
+// lane width (PIPELINEGEN_INTERACTIVE_WORKERS). "0" disables the lane and
+// restores the pre-lane single-pool behaviour.
+const EnvInteractiveWorkers = "PIPELINEGEN_INTERACTIVE_WORKERS"
+
+// defaultInteractiveWorkers is the interactive lane width: the latency-critical
+// script family claims from its own workers so a queue full of
+// asset.text.materialize / youtube_clip.extract / cleanup work can never delay
+// a user-waiting generation job. The timing snapshot measured exactly that
+// head-of-line failure: one script.generate sat 12,926s (3.6h) in the queue.
+const defaultInteractiveWorkers = 2
+
+// interactiveJobTypes returns the latency-critical family the interactive lane
+// owns: the generation parent and its per-item children. Batch work stays in
+// the general pool.
+func interactiveJobTypes() []string {
+	return []string{scriptpkg.TypeGenerate, scriptpkg.TypeGenerateItem}
+}
+
+// interactiveWorkerBudget resolves the lane width from the env override:
+// default 2, clamped to 0..8, where 0 disables the lane entirely (the
+// documented rollback switch, mirroring settleWorkerBudget's operator exit).
+func interactiveWorkerBudget() int {
+	budget := defaultInteractiveWorkers
+	if raw := strings.TrimSpace(os.Getenv(EnvInteractiveWorkers)); raw != "" {
+		if parsed, err := strconv.Atoi(raw); err == nil {
+			budget = parsed
+		}
+	}
+	if budget < 0 {
+		budget = 0
+	}
+	if budget > 8 {
+		budget = 8
+	}
+	return budget
+}
+
+// generalPoolJobTypes returns the POSITIVE type list the general pool claims
+// once the interactive lane exists: every registered type EXCEPT the
+// interactive family. The kernel claim contract is a positive `types IN`
+// filter (no type NOT-IN), so the exclusion must be materialized as the
+// complement. The list comes from the canonical registry (appjobs.Compose()),
+// so a newly registered batch job type is automatically claimed by the general
+// pool without touching this file.
+//
+// A nil return keeps the historical unfiltered claim: an empty registry (test
+// fakes) or a degenerate complement must fail OPEN to the pre-lane behaviour,
+// never silently stop claiming work.
+func generalPoolJobTypes() []string {
+	all := appjobs.Compose().AllTypes()
+	if len(all) == 0 {
+		return nil
+	}
+	interactive := make(map[string]bool, 2)
+	for _, t := range interactiveJobTypes() {
+		interactive[t] = true
+	}
+	out := make([]string, 0, len(all))
+	for _, t := range all {
+		if !interactive[t] {
+			out = append(out, t)
+		}
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	sort.Strings(out)
+	return out
+}
 
 func workerDefault(cfg *config.Config) int {
 	if cfg == nil || cfg.Jobs.MaxParallelPerProject < 4 {
@@ -272,15 +348,25 @@ func jobRunnerRootReady(deps jobRunnerDeps) bool {
 }
 
 // buildJobRunner constructs the GENERAL pool: every job type, but — when the
-// settle budget is enabled — NOT the clip.render settle phase. The exclusion is
-// the load-bearing half of the guardrail: without it the general pool would
-// still claim the settle continuations it exists to avoid and a slow GPU
-// backlog would keep starving unrelated jobs.
+// settle budget is enabled — NOT the clip.render settle phase, and — when the
+// interactive lane is enabled — NOT the interactive generation family (which
+// gets its own workers so batch work cannot delay it). The exclusions are the
+// load-bearing half of the guardrail: without them the general pool would
+// still claim the jobs the dedicated pools exist to own and a slow batch
+// backlog would keep starving the latency-critical family.
 func buildJobRunner(deps jobRunnerDeps) (*appjobs.Runner, *instaeditcalendar.Reporter) {
 	if !jobRunnerRootReady(deps) {
 		return nil, nil
 	}
 	cfg := jobRunnerBaseConfig(deps)
+	if interactiveWorkerBudget() > 0 {
+		if scoped := generalPoolJobTypes(); scoped != nil {
+			cfg.JobTypes = scoped
+			deps.log.Info("general pool scoped away from the interactive family",
+				zap.String("pool", jobRunnerPoolGeneral),
+				zap.Int("claimed_types", len(scoped)))
+		}
+	}
 	deps.log.Info("Job runner created",
 		zap.String("pool", jobRunnerPoolGeneral),
 		zap.Int("workers", cfg.Workers),
@@ -292,6 +378,28 @@ func buildJobRunner(deps jobRunnerDeps) (*appjobs.Runner, *instaeditcalendar.Rep
 		cfg.PayloadNotMatch = exclude
 	}
 	return newJobRunnerPool(deps, jobRunnerPoolGeneral, cfg)
+}
+
+// buildInteractiveRunner constructs the DEDICATED interactive lane for the
+// script generation family (script.generate + script.generate_item), or nil
+// when the lane is disabled (budget 0 — the documented rollback switch). It
+// claims ONLY its family, so a user-waiting generation job never queues behind
+// asset.text.materialize / youtube_clip.extract / cleanup work in the general
+// pool — the measured 3.6h head-of-line blocking this lane exists to prevent.
+func buildInteractiveRunner(deps jobRunnerDeps) (*appjobs.Runner, *instaeditcalendar.Reporter) {
+	budget := interactiveWorkerBudget()
+	if budget <= 0 || !jobRunnerRootReady(deps) {
+		return nil, nil
+	}
+	cfg := jobRunnerBaseConfig(deps)
+	cfg.Workers = budget
+	cfg.JobTypes = interactiveJobTypes()
+	deps.log.Info("interactive pool created",
+		zap.String("pool", jobRunnerPoolInteractive),
+		zap.Int("workers", budget),
+		zap.Strings("job_types", cfg.JobTypes),
+		zap.String("excluded_from", jobRunnerPoolGeneral))
+	return newJobRunnerPool(deps, jobRunnerPoolInteractive, cfg)
 }
 
 // buildClipRenderSettleRunner constructs the DEDICATED clip.render settle pool,
@@ -361,6 +469,14 @@ func buildJobRunnerStep(deps jobRunnerDeps) *StartupStep {
 		workers:  workerDefault(deps.cfg),
 		reporter: generalReporter,
 	}}
+	if interactive, interactiveReporter := buildInteractiveRunner(deps); interactive != nil {
+		pools = append(pools, jobRunnerPool{
+			name:     jobRunnerPoolInteractive,
+			runner:   interactive,
+			workers:  interactiveWorkerBudget(),
+			reporter: interactiveReporter,
+		})
+	}
 	if settle, settleReporter := buildClipRenderSettleRunner(deps); settle != nil {
 		pools = append(pools, jobRunnerPool{
 			name:     jobRunnerPoolSettle,

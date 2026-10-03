@@ -40,6 +40,33 @@ func TestSelectEntityImagePresetUsesOnlyRenderSafeCandidates(t *testing.T) {
 
 // TestGeneratedTextOverlaysStayOnTheRenderSafeTextContract pins official
 // RenderingGen preset ids and the explicit native motion contract.
+func TestGeneratedImageAnimationSelectorUsesTheFullCertifiedPool(t *testing.T) {
+	pool := CertifiedImageMotions()
+	if len(pool) != 32 {
+		t.Fatalf("certified generated-image pool has %d motions, want 32", len(pool))
+	}
+	allowed := make(map[string]bool, len(pool))
+	for _, id := range pool {
+		allowed[id] = true
+	}
+	selected := make(map[string]bool, len(pool))
+	for i := 0; i < 256; i++ {
+		jobID := fmt.Sprintf("image-job-%d", i)
+		itemID := fmt.Sprintf("image-item-%d", i)
+		motion := SelectImageAnimation(jobID, "scene", itemID)
+		if !allowed[motion] {
+			t.Fatalf("image animation selector emitted uncertified motion %q", motion)
+		}
+		if again := SelectImageAnimation(jobID, "scene", itemID); again != motion {
+			t.Fatalf("image animation is not deterministic for the same item: %q vs %q", motion, again)
+		}
+		selected[motion] = true
+	}
+	if len(selected) < 2 {
+		t.Fatalf("image animation selector never varies across identities: %v", selected)
+	}
+}
+
 func TestGeneratedTextOverlaysStayOnTheRenderSafeTextContract(t *testing.T) {
 	officialTextPreset := map[string]bool{"static_text_smoke": true, "phrase_default": true}
 	for _, id := range append(append([]string{}, namePresetRenderSafeCandidates...),

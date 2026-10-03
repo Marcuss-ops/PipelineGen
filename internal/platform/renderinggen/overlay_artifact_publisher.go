@@ -125,9 +125,17 @@ func (p *DriveOverlayArtifactPublisher) PublishOverlay(ctx context.Context, spec
 	if language == "" {
 		return fmt.Errorf("overlay publication requires language")
 	}
-	filename := fmt.Sprintf("%s-%s-overlay-%s.mp4",
+	filenameKind := "overlay"
+	if strings.EqualFold(strings.TrimSpace(spec.OverlayItemKind), "map") {
+		filenameKind = "map"
+		if labels := safeMapLabels(spec.OverlayEntityLabels); labels != "" {
+			filenameKind += "-" + labels
+		}
+	}
+	filename := fmt.Sprintf("%s-%s-%s-%s.mp4",
 		pathutil.SafeFolderName(scriptName),
 		pathutil.SafeFolderName(language),
+		filenameKind,
 		strings.ToLower(artifact.SHA256[:min(len(artifact.SHA256), 12)]))
 	// Drive identity is content-based for overlays. Keep script and language in
 	// the logical identity so the same bytes are reused for the same semantic
@@ -181,6 +189,12 @@ func (p *DriveOverlayArtifactPublisher) PublishOverlay(ctx context.Context, spec
 	}
 	verified.ArtifactMetadata["overlay_item_id"] = spec.OverlayItemID
 	verified.ArtifactMetadata["overlay_item_kind"] = spec.OverlayItemKind
+	if len(spec.OverlayEntityIDs) > 0 {
+		verified.ArtifactMetadata["overlay_entity_ids"] = append([]string(nil), spec.OverlayEntityIDs...)
+	}
+	if len(spec.OverlayEntityLabels) > 0 {
+		verified.ArtifactMetadata["overlay_entity_labels"] = append([]string(nil), spec.OverlayEntityLabels...)
+	}
 	verified.ArtifactMetadata["source_start_us"] = spec.SourceStartUS
 	verified.ArtifactMetadata["source_end_us"] = spec.SourceEndUS
 	verified.ArtifactMetadata["target_duration_us"] = spec.TargetDurationUS
@@ -192,6 +206,31 @@ func (p *DriveOverlayArtifactPublisher) PublishOverlay(ctx context.Context, spec
 	artifact.DriveLink = loc.WebViewLink
 	artifact.DriveFolderID = loc.FolderID
 	return nil
+}
+
+func safeMapLabels(labels []string) string {
+	clean := make([]string, 0, len(labels))
+	seen := make(map[string]struct{}, len(labels))
+	for _, label := range labels {
+		label = strings.TrimSpace(label)
+		if label == "" {
+			continue
+		}
+		key := strings.ToLower(label)
+		if _, exists := seen[key]; exists {
+			continue
+		}
+		seen[key] = struct{}{}
+		clean = append(clean, label)
+	}
+	if len(clean) == 0 {
+		return ""
+	}
+	joined := pathutil.SafeFolderName(strings.Join(clean, "-"))
+	if len(joined) > 72 {
+		joined = strings.TrimRight(joined[:72], "-_")
+	}
+	return joined
 }
 
 func downloadCertifiedArtifact(ctx context.Context, client *http.Client, rawURL string, file *os.File, expectedSize int64, expectedSHA string) error {

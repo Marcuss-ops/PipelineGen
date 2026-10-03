@@ -235,24 +235,24 @@ func (a *UseCaseRepoAdapter) fromInfraRecord(r *sqassets.Record) *persistence.Vo
 		// persistence sub-package cannot import the parent voiceover
 		// package). The raw strings from the DB are forwarded verbatim
 		// — the persistence layer IS the canonical source of truth.
-		TextHash:      r.TextHash,
-		TextPreview:   r.TextPreview,
-		Language:      r.Language,
-		Voice:         r.Voice,
-		Filename:      r.Filename,
-		LocalPath:     r.LocalPath,
-		CleanedPath:   r.CleanedPath,
-		FolderID:      r.FolderID,
-		FolderPath:    r.FolderPath,
-		DriveFileID:   r.DriveFileID,
-		DriveLink:     r.DriveLink,
-		DownloadLink:  r.DownloadLink,
-		LegacyFileMD5: r.LegacyFileMD5,
+		TextHash:        r.TextHash,
+		TextPreview:     r.TextPreview,
+		Language:        r.Language,
+		Voice:           r.Voice,
+		Filename:        r.Filename,
+		LocalPath:       r.LocalPath,
+		CleanedPath:     r.CleanedPath,
+		FolderID:        r.FolderID,
+		FolderPath:      r.FolderPath,
+		DriveFileID:     r.DriveFileID,
+		DriveLink:       r.DriveLink,
+		DownloadLink:    r.DownloadLink,
+		LegacyFileMD5:   r.LegacyFileMD5,
 		DurationSeconds: r.DurationSeconds,
-		Status:        r.Status,
-		Error:         r.Error,
-		Strategy:      r.Strategy,
-		Metadata:      r.Metadata,
+		Status:          r.Status,
+		Error:           r.Error,
+		Strategy:        r.Strategy,
+		Metadata:        r.Metadata,
 		// FASE 3 (July 2026): round-trip through the infra layer.
 		IdempotencyKey: r.IdempotencyKey,
 		JobID:          r.JobID,
@@ -410,7 +410,6 @@ func (a *VoiceoverCacheAdapter) Lookup(ctx context.Context, fingerprint string, 
 			zap.Float64("duration_seconds", rec.DurationSeconds))
 		return nil, nil
 	}
-
 	// PR-VO-ASSET-ID (August 2026): after migration 232 dropped location
 	// columns from voiceovers, the canonical Drive and local-path facts
 	// live in media_assets (same id). Query media_assets for the location

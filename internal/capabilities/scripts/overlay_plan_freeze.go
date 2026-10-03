@@ -26,6 +26,57 @@ import (
 	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
 )
 
+// compileResultOverlayPlan attaches the sealed source/localized plans and
+// freezes their semantic intent lineage without mutating the prepare input.
+func compileResultOverlayPlan(result *GenerateResult, language Language, planID, projectID, driveFolderID string, canvas OverlayCanvasSpec, plates capabilityoverlay.PlateResolver, perSceneImages ...bool) error {
+	if result == nil {
+		return nil
+	}
+	plan, err := compileOverlayPlanForLanguage(result, language, planID, projectID, driveFolderID, canvas, plates, perSceneImages...)
+	if err != nil {
+		return err
+	}
+	result.OverlayPlan = plan
+	var phraseItems []capabilityoverlay.OverlayItem
+	if plan != nil {
+		phraseItems = plan.Items
+	}
+	phraseBudget := capabilityoverlay.MeasurePhraseOverlayBudgetWithLimit(phraseItems, canvas.MaxPhraseOverlays)
+	result.PhraseOverlayBudget = &phraseBudget
+	if err := buildLocalizedOverlayPlans(result, language, planID, projectID, driveFolderID, canvas, plates, perSceneImages...); err != nil {
+		return err
+	}
+	if plan == nil {
+		return nil
+	}
+	if bundle, bundleErr := BuildSemanticRenderBundleFromResult(result, language, planID, plan.VideoID); bundleErr != nil {
+		return fmt.Errorf("overlay plan: build semantic render bundle: %w", bundleErr)
+	} else {
+		result.SemanticRenderBundle = bundle
+	}
+	resolved := append([]capabilityoverlay.OverlayIntent(nil), result.OverlayIntents...)
+	freezeOverlayIntents(resolved, plan.Items)
+	result.ResolvedOverlayIntents = resolved
+	return nil
+}
+
+// setOverlayDriveJobID keeps public broker identity separate from semantic
+// idempotent plan identity; only the broker job owns the Drive tree.
+func setOverlayDriveJobID(result *GenerateResult, jobID string) {
+	if result == nil {
+		return
+	}
+	jobID = strings.TrimSpace(jobID)
+	if result.OverlayPlan != nil {
+		result.OverlayPlan.DriveJobID = jobID
+	}
+	for _, plan := range result.LocalizedOverlayPlans {
+		if plan != nil {
+			plan.DriveJobID = jobID
+		}
+	}
+}
+
 // intentMatchesEntityItem joins a pre-timing entity intent to the plan item it
 // materialized from. When the item carries an entity id (the content-addressed
 // stable identity the canonical entity timeline stamped), the join is the id

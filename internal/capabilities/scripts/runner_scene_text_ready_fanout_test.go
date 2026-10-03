@@ -193,7 +193,7 @@ func newSignalingTranslatedNER() *signalingTranslatedNER {
 	return &signalingTranslatedNER{translatedCalled: make(chan struct{})}
 }
 
-func (n *signalingTranslatedNER) Extract(_ context.Context, text string, _ int) ([]VisualEntity, error) {
+func (n *signalingTranslatedNER) Extract(_ context.Context, _ string, text string, _ int) ([]VisualEntity, error) {
 	if strings.Contains(text, "[TRANSLATED]") {
 		n.once.Do(func() { close(n.translatedCalled) })
 	}

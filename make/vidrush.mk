@@ -18,7 +18,8 @@ VIDRUSH_LEASE_TESTS := TestRunLease_RenewalError_NoCompleteCall|TestPostRenewFai
 # → feta cheese/tomatoes/olives, hummus → chickpeas/tahini/lemon juice/
 # olive oil, all source-grounded, and determinism (same winner 100/100).
 verify-visualner:
-	@CARGO_HOME="$${CARGO_HOME:-$$HOME/.cargo}" $(RUST_CARGO) test --manifest-path rust/Cargo.toml -p visualner
+	@test -n "$(ICU_MAJOR)" || (echo "ICU4C development libraries are required (pkg-config icu-i18n)" >&2; exit 1)
+	@CARGO_HOME="$${CARGO_HOME:-$$HOME/.cargo}" $(RUST_ICU_ENV) $(RUST_CARGO) test --manifest-path rust/Cargo.toml -p visualner
 	@echo "✅ verify-visualner passed"
 
 # MEDIACERT_BIN is the mediacert CLI binary built on demand from

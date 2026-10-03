@@ -15,9 +15,32 @@ import (
 
 // ── ClaimNext ───────────────────────────────────────────────────────────
 
-// ClaimNext atomically claims the oldest queued job, transitioning it to
-// running (via Start). Returns (nil, nil) on empty queue.
-// Implements Store.ClaimNext.
+// claimAgingExpression is the anti-starvation aging term of the canonical
+// claim ordering: every FULL queued hour adds +1 to a job's effective
+// priority, so a long-waiting low-priority job eventually overtakes a fresh
+// higher-priority one. Strict (priority DESC, created_at ASC) ordering starved
+// exactly this way in production — the timing snapshot measured
+// `asset.text.materialize` waiting 13.26x its own execution time (44.3h of
+// queue wait for 3.3h of work) and one `script.generate` sitting 12,926s
+// (3.6h) behind a stream of higher-priority claims. Within the first queued
+// hour the aging term is 0 and the historical strict ordering holds exactly.
+//
+// created_at is the canonical RFC3339 UTC column written by CreateJob, which
+// julianday() parses natively (the same pair already drives the queue-age
+// statistic in repository_stats.go). COALESCE keeps an unparseable legacy
+// timestamp ordering as aging 0 instead of demoting the row below every
+// parseable one (NULL sorts last on DESC).
+const claimAgingExpression = `priority + COALESCE(CAST((julianday('now') - julianday(created_at)) * 24.0 AS INTEGER), 0)`
+
+// claimOrderClause is the canonical claim ordering shared by ClaimNext,
+// claimNextScoped and PeekQueued. PeekQueued MUST keep using this exact
+// clause: the future-reader contract promises preparation a mirror of what
+// the claim path will pick next.
+const claimOrderClause = `ORDER BY ` + claimAgingExpression + ` DESC, created_at ASC`
+
+// ClaimNext atomically claims the best queued job under the canonical aging
+// ordering (see claimAgingExpression), transitioning it to running (via
+// Start). Returns (nil, nil) on empty queue. Implements Store.ClaimNext.
 //
 // Concurrency (post-PR-Polling design, ADR-0003 §Implementation-status #6
 // supersession by PR-Queue-Split-claimMu cleanup, June 2026): the previous
@@ -33,7 +56,7 @@ func (r *SQLiteStore) ClaimNext(ctx context.Context, workerID string, leaseTTL t
 	// Find the best candidate (queued only — ClaimNext in the domain interface
 	// is the atomic claim + start, so we select from queued).
 	query := `SELECT ` + jobColumns + ` FROM jobs
-		WHERE status = 'QUEUED' ORDER BY priority DESC, created_at ASC LIMIT 1`
+		WHERE status = 'QUEUED' ` + claimOrderClause + ` LIMIT 1`
 	var args []any
 	if len(types) > 0 {
 		placeholders := make([]string, len(types))
@@ -43,7 +66,7 @@ func (r *SQLiteStore) ClaimNext(ctx context.Context, workerID string, leaseTTL t
 		}
 		query = `SELECT ` + jobColumns + ` FROM jobs
 			WHERE status = 'QUEUED' AND type IN (` + strings.Join(placeholders, ",") + `)
-			ORDER BY priority DESC, created_at ASC LIMIT 1`
+			` + claimOrderClause + ` LIMIT 1`
 	}
 	row := r.db.QueryRowContext(ctx, query, args...)
 	j := &job.Job{}
@@ -119,7 +142,7 @@ func (r *SQLiteStore) claimNextScoped(ctx context.Context, workerID string, leas
 		}
 		query += ` AND type IN (` + strings.Join(placeholders, ", ") + `)`
 	}
-	query += ` ORDER BY priority DESC, created_at ASC, id ASC LIMIT ?`
+	query += ` ` + claimOrderClause + `, id ASC LIMIT ?`
 	args = append(args, claimPayloadMatchScan)
 
 	// Buffer the bounded candidate window and CLOSE the cursor BEFORE hydrating

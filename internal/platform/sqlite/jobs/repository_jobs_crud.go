@@ -223,8 +223,9 @@ func (r *SQLiteStore) Create(ctx context.Context, j *job.Job) error {
 }
 
 // PeekQueued returns up to limit currently queued jobs without acquiring a
-// lease or changing any job state. Results use the same priority/creation
-// ordering as ClaimNext so preparation can inspect the likely future jobs.
+// lease or changing any job state. Results use the canonical claim ordering
+// (claimOrderClause, priority with per-queued-hour aging) as ClaimNext so
+// preparation can inspect the likely future jobs.
 // A non-positive limit is treated as an empty request.
 func (r *SQLiteStore) PeekQueued(ctx context.Context, limit int) ([]job.Job, error) {
 	if limit <= 0 {
@@ -234,7 +235,7 @@ func (r *SQLiteStore) PeekQueued(ctx context.Context, limit int) ([]job.Job, err
 	rows, err := r.db.QueryContext(ctx,
 		`SELECT `+jobColumns+` FROM jobs
 		 WHERE status = ?
-		 ORDER BY priority DESC, created_at ASC
+		 `+claimOrderClause+`
 		 LIMIT ?`, job.StatusQueued, limit)
 	if err != nil {
 		return nil, fmt.Errorf("PeekQueued: query: %w", err)

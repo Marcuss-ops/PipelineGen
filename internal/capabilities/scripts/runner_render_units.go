@@ -200,6 +200,15 @@ func localizedRenderCaptionText(req GenerateRequest, scene Scene) string {
 // expected count and the actual fan-out cannot drift.
 func renderLanguages(req GenerateRequest, scene Scene) []Language {
 	_ = scene
+	// Localized clip renders are subtitle-track variants. When subtitles are
+	// disabled, only render the source clip; localized voiceover and overlay
+	// plans are still generated independently for every requested language.
+	if req.Render.Subtitles == nil || !req.Render.Subtitles.Enabled {
+		if req.SourceLanguage == "" {
+			return nil
+		}
+		return []Language{req.SourceLanguage}
+	}
 	langs := make([]Language, 0, len(req.Languages)+1)
 	seen := make(map[Language]bool, len(req.Languages)+1)
 	if req.SourceLanguage != "" {

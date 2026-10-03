@@ -352,6 +352,8 @@ func (c *sceneReadyCoordinator) process(scene Scene) (Scene, error) {
 		}
 		if out.Stock == nil {
 			clipID, clipAssetID, clipSHA256, clipDurationMS := localizedRenderClipFields(out)
+			renderSpec := sceneRenderSpec(c.req, out)
+			sceneID, sceneIndex := out.ID, out.Index
 			c.renderWg.Add(1)
 			go func() {
 				defer c.renderWg.Done()
@@ -360,8 +362,8 @@ func (c *sceneReadyCoordinator) process(scene Scene) (Scene, error) {
 					ParentJobID:    c.exec.JobID,
 					DocsFolderID:   c.routing.DocsFolderID,
 					JobID:          c.exec.JobID,
-					SceneID:        out.ID,
-					SceneIndex:     out.Index,
+					SceneID:        sceneID,
+					SceneIndex:     sceneIndex,
 					Language:       lang,
 					Text:           renderText,
 					Voiceover:      audioRef,
@@ -371,7 +373,7 @@ func (c *sceneReadyCoordinator) process(scene Scene) (Scene, error) {
 					ClipAssetID:    clipAssetID,
 					ClipSHA256:     clipSHA256,
 					ClipDurationMS: clipDurationMS,
-					Render:         sceneRenderSpec(c.req, out),
+					Render:         renderSpec,
 					OnRendered: func(rendered LocalizedRenderResult) error {
 						c.mu.Lock()
 						c.rendered = append(c.rendered, rendered)
@@ -386,12 +388,12 @@ func (c *sceneReadyCoordinator) process(scene Scene) (Scene, error) {
 					},
 				}); err != nil {
 					c.runner.log.Error("streaming localized render enqueue failed",
-						zap.String("scene_id", out.ID),
+						zap.String("scene_id", sceneID),
 						zap.String("clip_id", clipID),
 						zap.Error(err))
 					c.mu.Lock()
 					c.failures = append(c.failures, LocalizedRenderFailure{
-						SceneID: out.ID, Language: lang, ClipID: clipID,
+						SceneID: sceneID, Language: lang, ClipID: clipID,
 						ErrorCode: "LOCALIZED_RENDER_ENQUEUE_FAILED", Error: err.Error(),
 					})
 					c.mu.Unlock()

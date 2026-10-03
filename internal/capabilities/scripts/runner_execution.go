@@ -400,46 +400,6 @@ func (e *executionRun) parallelFanOut() bool {
 	return true
 }
 
-// audioCompile runs the audio-compile + final-audio publish phases.
-// audioCompile runs the four boundaries that used to share ONE stage label.
-//
-// They are separate stages because they are separate facts, owned by different
-// systems: compiling audio, waiting for the video overlay render, projecting the
-// editing timeline from the certified result, and uploading the artifact to
-// Drive. Measuring them as one made `audio_compile` report a wall time dominated
-// by a render it does not own, hid the render from the critical path, and
-// reported drive.upload as the audio stage's dominant operation.
-//
-// The split is into SIBLINGS, not into a wrapper: the breakdown attributes a
-// stage nested inside another stage to its enclosure, so a wrapper would change
-// nothing. The order is the pre-split order — render before the editing-timeline
-// projection (the projection carries the certified render artifact), and publish
-// last.
-func (e *executionRun) audioCompile() bool {
-	var state audioCompileState
-	if !e.measure(kernobs.StageName(audioCompileStage), func(c context.Context) bool {
-		return e.r.runAudioCompilePhase(c, e.runID, e.req, e.exec, e.resumeIdx, e.result, &state)
-	}) {
-		return false
-	}
-	if !e.measure(StageOverlayRender, func(c context.Context) bool {
-		return e.r.runOverlayRenderPhase(c, e.runID, e.req, e.exec, e.resumeIdx, state, e.result)
-	}) {
-		return false
-	}
-	if !e.measure(StageAudioFinalize, func(c context.Context) bool {
-		return e.r.runAudioFinalizePhase(c, e.runID, e.exec, state, e.result)
-	}) {
-		return false
-	}
-	if !e.measure(StageAudioPublish, func(c context.Context) bool {
-		return e.r.publishFinalAudio(c, e.runID, e.req, e.routing, e.exec, e.result)
-	}) {
-		return false
-	}
-	return true
-}
-
 func (e *executionRun) finalJob() bool {
 	if !e.req.FinalJob {
 		return true

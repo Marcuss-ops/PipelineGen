@@ -2,6 +2,9 @@ package scriptgeneration
 
 import (
 	"context"
+	"errors"
+	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -9,6 +12,7 @@ import (
 
 	"go.uber.org/zap"
 
+	capabilityaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
 	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 )
@@ -49,9 +53,8 @@ func (e *sleepingRenderEnqueuer) EnqueueChrononPlan(ctx context.Context, plan ca
 // structural requirement, not a naming preference — hence the assertion that the
 // render's stage wall is real AND that nothing is recorded under audio_compile.
 //
-// The end-to-end geometry (audio_compile ending where the render starts) is
-// asserted by TestCertification_ThreeSceneVerticalSlice, which runs the real
-// pipeline; this test pins the boundary's own contract.
+// The end-to-end join geometry is asserted by the vertical slice and the
+// barrier tests below; this test pins the boundary's own attribution.
 func TestOverlayRenderPhaseOwnsItsStageAndNotTheAudioStage(t *testing.T) {
 	run := kernobs.NewRunObserver(nil).StartRun(context.Background(), kernobs.RunInfo{JobID: "job-render", AttemptID: "attempt-1"})
 	ctx := kernobs.WithRun(context.Background(), run)
@@ -132,5 +135,178 @@ func TestAudioStageNamesAreDistinct(t *testing.T) {
 		require.NotEmpty(t, string(st), "every audio boundary stage needs a name")
 		require.False(t, seen[st], "stage %q is declared twice", st)
 		seen[st] = true
+	}
+}
+
+type barrierAudioRenderer struct {
+	started, release, drained chan struct{}
+	err                       error
+	calls                     atomic.Int32
+}
+
+func (r *barrierAudioRenderer) Render(ctx context.Context, plan capabilityaudio.CompiledAudioPlan, assets capabilityaudio.ResolvedAudioAssets) (FinalAudioReference, AudioPipelineMetrics, error) {
+	r.calls.Add(1)
+	close(r.started)
+	defer close(r.drained)
+	select {
+	case <-ctx.Done():
+		return FinalAudioReference{}, AudioPipelineMetrics{}, ctx.Err()
+	case <-r.release:
+	}
+	if r.err != nil {
+		return FinalAudioReference{}, AudioPipelineMetrics{}, r.err
+	}
+	ref, metrics, err := (&stubCombinedAudioRenderer{}).Render(ctx, plan, assets)
+	ref.DurationUS = plan.DurationUS
+	return ref, metrics, err
+}
+
+type barrierOverlayRenderer struct {
+	started, release, drained chan struct{}
+	err                       error
+	calls                     atomic.Int32
+}
+
+func (r *barrierOverlayRenderer) EnqueueChrononPlan(ctx context.Context, plan capabilityoverlay.OverlayPlan) (RenderReference, error) {
+	r.calls.Add(1)
+	// Mutate the private transport snapshot to prove no alias to the
+	// caller's result survives the launch boundary.
+	plan.Items[0].Text = "private worker mutation"
+	close(r.started)
+	defer close(r.drained)
+	select {
+	case <-ctx.Done():
+		return RenderReference{}, ctx.Err()
+	case <-r.release:
+	}
+	if r.err != nil {
+		return RenderReference{}, r.err
+	}
+	return RenderReference{JobID: plan.PlanID, Status: "COMPLETED"}, nil
+}
+
+type audioJoinRepository struct {
+	*inMemRunRepository
+	checkpoints atomic.Int32
+}
+
+func (r *audioJoinRepository) SavePartialResult(ctx context.Context, id string, result *GenerateResult) error {
+	r.checkpoints.Add(1)
+	return r.inMemRunRepository.SavePartialResult(ctx, id, result)
+}
+
+func newAudioOverlapFixture(t *testing.T) (*executionRun, *audioJoinRepository, *barrierAudioRenderer, *barrierOverlayRenderer, *kernobs.Run) {
+	t.Helper()
+	repo := &audioJoinRepository{inMemRunRepository: newInMemRunRepository()}
+	runner := NewRunner(repo, newStubTextGenerator(nil), newStubTranslator(), &entityTimelineVoiceoverGenerator{}, newStubDocumentPublisher(), canonicalTestDocumentRenderer{})
+	runner.SetLogger(zap.NewNop())
+	audio := &barrierAudioRenderer{started: make(chan struct{}), release: make(chan struct{}), drained: make(chan struct{})}
+	overlay := &barrierOverlayRenderer{started: make(chan struct{}), release: make(chan struct{}), drained: make(chan struct{})}
+	runner.SetCombinedAudioRenderer(audio)
+	runner.SetOverlayRenderEnqueuer(overlay)
+	runner.SetOverlayCanvas(GoldenOverlayCanvas)
+	req := defaultTestRequest()
+	req.Audio = capabilityaudio.AudioModeCombinedTimeline
+	req.Languages = []Language{"en"}
+	req.Render.Enabled = true
+	req.Docs.Enabled = false
+	scene := Scene{ID: "scene-0", Index: 0, Text: map[Language]string{"en": "Growth matters more than ever."}, Annotations: overlayScene1Annotations(), Audio: capabilityaudio.AudioIntent{Mode: capabilityaudio.AudioVoiceover}}
+	vo, err := (&entityTimelineVoiceoverGenerator{}).Generate(context.Background(), VoiceoverInput{SceneID: scene.ID, Text: scene.Text["en"], Language: "en"})
+	require.NoError(t, err)
+	scene.Voiceover = map[Language]AudioReference{"en": vo}
+	result := &GenerateResult{SourceLanguage: "en", Scenes: []Scene{scene}}
+	const id = "run-audio-overlap"
+	require.NoError(t, repo.Create(context.Background(), &GenerationRun{ID: id, Request: req, Status: RunStatusRunning, CurrentStage: StageCompilingAudio}))
+	run := kernobs.NewRunObserver(nil).StartRun(context.Background(), kernobs.RunInfo{JobID: id, AttemptID: "attempt-1"})
+	ctx := kernobs.WithRun(context.Background(), run)
+	return &executionRun{r: runner, ctx: ctx, runID: id, req: req, exec: ExecutionContext{JobID: id}, result: result}, repo, audio, overlay, run
+}
+
+func awaitAudioBarrier(t *testing.T, done <-chan struct{}) {
+	t.Helper()
+	select {
+	case <-done:
+	case <-time.After(3 * time.Second):
+		t.Fatal("audio/overlay branch did not reach barrier")
+	}
+}
+
+func TestAudioOverlayOverlapJoinsBeforeCheckpointAndResumes(t *testing.T) {
+	e, repo, audio, overlay, run := newAudioOverlapFixture(t)
+	finished := make(chan bool, 1)
+	go func() { finished <- e.audioCompile() }()
+	awaitAudioBarrier(t, audio.started)
+	awaitAudioBarrier(t, overlay.started) // encode is still held: overlap proven
+	require.Zero(t, repo.checkpoints.Load())
+	close(audio.release)
+	awaitAudioBarrier(t, audio.drained)
+	select {
+	case <-finished:
+		t.Fatal("finalized before the overlay sibling joined")
+	default:
+	}
+	require.Zero(t, repo.checkpoints.Load())
+	close(overlay.release)
+	require.True(t, <-finished)
+	awaitAudioBarrier(t, overlay.drained)
+	require.Equal(t, int32(1), repo.checkpoints.Load())
+	require.NotNil(t, e.result.EditingTimeline)
+	require.NotNil(t, e.result.OverlayRender)
+	require.NotEqual(t, "private worker mutation", e.result.OverlayPlan.Items[0].Text)
+	// Certified references are reused: retries cannot duplicate either render.
+	require.True(t, e.audioCompile())
+	require.Equal(t, int32(1), audio.calls.Load())
+	require.Equal(t, int32(1), overlay.calls.Load())
+	run.Finish()
+	for _, stage := range run.Report().Stages {
+		if stage.Name == string(StageOverlayRender) {
+			require.True(t, stage.Independent)
+		}
+	}
+}
+
+func TestAudioOverlayFailureAndCancellationDrainBothBranches(t *testing.T) {
+	for _, failure := range []string{"audio", "overlay", "cancel"} {
+		t.Run(failure, func(t *testing.T) {
+			e, repo, audio, overlay, _ := newAudioOverlapFixture(t)
+			if failure == "audio" {
+				audio.err = errors.New("primary audio failure")
+			} else if failure == "overlay" {
+				overlay.err = errors.New("primary overlay failure")
+			}
+			ctx, cancel := context.WithCancel(e.ctx)
+			defer cancel()
+			e.ctx = ctx
+			finished := make(chan bool, 1)
+			go func() { finished <- e.audioCompile() }()
+			awaitAudioBarrier(t, audio.started)
+			awaitAudioBarrier(t, overlay.started)
+			switch failure {
+			case "audio":
+				close(audio.release)
+			case "overlay":
+				close(overlay.release)
+			default:
+				cancel()
+			}
+			select {
+			case ok := <-finished:
+				require.False(t, ok)
+			case <-time.After(3 * time.Second):
+				t.Fatal("failed siblings were not cancelled and joined")
+			}
+			awaitAudioBarrier(t, audio.drained)
+			awaitAudioBarrier(t, overlay.drained)
+			require.Zero(t, repo.checkpoints.Load(), "failure must not checkpoint unfinished siblings")
+			require.Nil(t, e.result.EditingTimeline)
+			require.Nil(t, e.result.OverlayRender)
+			persisted, err := repo.Get(context.Background(), e.runID)
+			require.NoError(t, err)
+			require.Equal(t, RunStatusFailed, persisted.Status)
+			require.Equal(t, 1, persisted.AttemptCount, "one attempt must record exactly one failure")
+			if failure != "cancel" {
+				require.True(t, strings.Contains(persisted.ErrorMessage, "primary "+failure+" failure"), persisted.ErrorMessage)
+			}
+		})
 	}
 }

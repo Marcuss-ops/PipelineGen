@@ -271,6 +271,7 @@ func TestResolveScenesFixedMediaDropsGeneratedAudioAndProtectsOriginalClip(t *te
 // fan-out language list: source first, then caller targets, deduplicated.
 func TestFixedRenderLanguagesPinsSourceFirstDedupedOrder(t *testing.T) {
 	req := GenerateRequest{SourceLanguage: "en", Languages: []Language{"it", "en", "it", "", "es"}}
+	req.Render.Subtitles = &scriptpkg.VideoSubtitlesSpec{Enabled: true}
 	scene := Scene{ID: "scene-intro", ExecutionMode: scriptpkg.SceneExecutionFixedMedia}
 	got := fixedRenderLanguages(req, scene)
 	want := []Language{"en", "it", "es"}
@@ -308,6 +309,7 @@ func TestFixedCaptionTextFallsBackToSourceNeverBody(t *testing.T) {
 // of the matrix, and it counts exactly what the fixed fan-out can spawn.
 func TestFixedMediaRenderUnitsSizesTheFailureChannel(t *testing.T) {
 	req := GenerateRequest{SourceLanguage: "en", Languages: []Language{"it", "es"}}
+	req.Render.Subtitles = &scriptpkg.VideoSubtitlesSpec{Enabled: true}
 	fixed := Scene{ID: "scene-intro", ExecutionMode: scriptpkg.SceneExecutionFixedMedia,
 		Clips: []*ClipReference{{ID: "intro-1"}, {ID: "intro-2"}}}
 	generated := Scene{ID: "scene-0", ExecutionMode: scriptpkg.SceneExecutionGenerated,
@@ -338,6 +340,7 @@ func TestLaunchFixedMediaRendersDispatchesEveryUnitAndLanguage(t *testing.T) {
 	req.SourceLanguage = "en"
 	req.Languages = []Language{"it"}
 	req.Render.Enabled = true
+	req.Render.Subtitles = &scriptpkg.VideoSubtitlesSpec{Enabled: true}
 
 	scene := Scene{
 		ID: "scene-intro", Index: 0, Role: scriptpkg.SceneRoleOpening,
@@ -403,6 +406,7 @@ func TestLaunchFixedMediaRendersDispatchesEveryUnitAndLanguage(t *testing.T) {
 // counts 6, a generated scene still counts 1.
 func TestExpectedRenderUnitsCountsFixedMultilingualFanout(t *testing.T) {
 	req := GenerateRequest{SourceLanguage: "en", Languages: []Language{"it", "es"}}
+	req.Render.Subtitles = &scriptpkg.VideoSubtitlesSpec{Enabled: true}
 	fixed := Scene{ID: "scene-intro", ExecutionMode: scriptpkg.SceneExecutionFixedMedia,
 		Clips: []*ClipReference{{ID: "intro-1"}, {ID: "intro-2"}}}
 	generated := Scene{ID: "scene-0", ExecutionMode: scriptpkg.SceneExecutionGenerated,

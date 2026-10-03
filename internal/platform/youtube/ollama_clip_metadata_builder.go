@@ -131,19 +131,25 @@ func (b *OllamaClipMetadataBuilder) Build(
 	}
 	prompt := b.renderPrompt(in)
 
+	// Constrained decoding (B2, TODO-pipeline-100x-velocita): the contract of
+	// this call is a JSON object, so the wire request pins Ollama's native
+	// JSON-mode. A malformed answer can no longer spend the retry budget: the
+	// only remaining failure modes are transport and schema mismatch, both of
+	// which fall through to the deterministic fallback unchanged.
+	genOptions := map[string]any{"format": "json"}
 	var response string
 	_, err := retry.DoWithValue(ctx, func() (struct{}, error) {
 		if b.timeout > 0 {
 			callCtx, cancel := context.WithTimeout(ctx, b.timeout)
 			defer cancel()
-			out, callErr := b.client.SimpleGenerate(callCtx, model, prompt, b.timeout, nil)
+			out, callErr := b.client.SimpleGenerate(callCtx, model, prompt, b.timeout, genOptions)
 			if callErr != nil {
 				return struct{}{}, callErr
 			}
 			response = out
 			return struct{}{}, nil
 		}
-		out, callErr := b.client.SimpleGenerate(ctx, model, prompt, 0, nil)
+		out, callErr := b.client.SimpleGenerate(ctx, model, prompt, 0, genOptions)
 		if callErr != nil {
 			return struct{}{}, callErr
 		}

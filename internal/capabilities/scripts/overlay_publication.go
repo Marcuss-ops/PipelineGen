@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	capabilityaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
 	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 )
@@ -44,13 +45,15 @@ type OverlayPublicationSpec struct {
 	// OverlayItem* identify the single semantic item rendered into this
 	// artifact. They make every Drive video/receipt auditable without forcing
 	// downstream consumers to reconstruct the source plan.
-	OverlayItemID    string
-	OverlayItemKind  string
-	OverlayEntityID  string
-	OverlayText      string
-	SourceStartUS    int64
-	SourceEndUS      int64
-	TargetDurationUS int64
+	OverlayItemID       string
+	OverlayItemKind     string
+	OverlayEntityID     string
+	OverlayEntityIDs    []string
+	OverlayEntityLabels []string
+	OverlayText         string
+	SourceStartUS       int64
+	SourceEndUS         int64
+	TargetDurationUS    int64
 }
 
 // OverlayArtifactPublisher publishes a certified RenderingGen artifact after
@@ -208,6 +211,7 @@ func finalJobOverlayAssets(result *GenerateResult) ([]any, error) {
 	}
 	out := make([]any, 0, len(result.OverlayPlan.Items))
 	frameGuardUS := (1_000_000*int64(fpsDen) + int64(fpsNum) - 1) / int64(fpsNum)
+	clipWindows := finalJobIntermediateClipWindows(result)
 	// One SSOT admission gate for the finalize handoff. Every duplicate
 	// surface upstream (entity/context image arms, planner+resolver copies,
 	// compose composites) has its own key and its own blind spot; THIS is the
@@ -221,6 +225,32 @@ func finalJobOverlayAssets(result *GenerateResult) ([]any, error) {
 	type frameWindow struct{ start, end int64 }
 	admittedFrames := make(map[string]frameWindow, len(result.OverlayPlan.Items))
 	for index, item := range result.OverlayPlan.Items {
+		if clipWindow, isIntermediateClip := clipWindows[item.SceneID]; isIntermediateClip {
+			// The Master only supports mode=replace. Full-frame phrase/image
+			// renders therefore cover the source clip instead of compositing on
+			// top of it. Keep the phrase callout, move it just before the clip,
+			// and omit the contextual still for these short clip scenes so the
+			// entire source video remains visible and its original audio stays
+			// aligned with the mixed narration.
+			if item.Kind == "image" {
+				continue
+			}
+			if item.Kind == "text_phrase" {
+				durationUS := item.EndUSValue() - item.StartUSValue()
+				if durationUS <= 0 {
+					return nil, fmt.Errorf("final_job clip-scene phrase %q has an empty timing window", item.ID)
+				}
+				endUS := clipWindow.startUS - frameGuardUS
+				startUS := endUS - durationUS
+				if startUS < clipWindow.previousStartUS {
+					return nil, fmt.Errorf("final_job clip-scene phrase %q cannot fit before clip scene %q", item.ID, item.SceneID)
+				}
+				item.StartUS = startUS
+				item.DurationUS = durationUS
+				item.StartMs = startUS / 1000
+				item.EndMs = (endUS + 999) / 1000
+			}
+		}
 		artifact, ok := byID[strings.TrimSpace(item.ID)]
 		if !ok {
 			return nil, fmt.Errorf("final_job overlay %q has no published render artifact", item.ID)
@@ -279,6 +309,56 @@ func finalJobOverlayAssets(result *GenerateResult) ([]any, error) {
 		})
 	}
 	return out, nil
+}
+
+type finalJobClipWindow struct {
+	startUS         int64
+	previousStartUS int64
+}
+
+// finalJobIntermediateClipWindows identifies short clip scenes that combine
+// original clip audio with generated narration. Replace-mode overlays on
+// those windows hide the clip, so their phrase callouts are scheduled just
+// before the clip instead.
+func finalJobIntermediateClipWindows(result *GenerateResult) map[string]finalJobClipWindow {
+	out := make(map[string]finalJobClipWindow)
+	if result == nil || result.CanonicalTimeline == nil {
+		return out
+	}
+	segments := result.CanonicalTimeline.Segments
+	for i, segment := range segments {
+		if segment.FixedMedia {
+			continue
+		}
+		clipAudio := false
+		for _, intent := range segment.EffectiveAudioIntents() {
+			if intent.Mode == capabilityaudio.AudioClip && !intent.ProtectedOriginalAudio {
+				clipAudio = true
+				break
+			}
+		}
+		if !clipAudio || segment.TimelineStartUS <= 0 {
+			continue
+		}
+		for previous := i - 1; previous >= 0; previous-- {
+			prior := segments[previous]
+			if prior.TimelineStartUS+prior.DurationUS != segment.TimelineStartUS || prior.FixedMedia {
+				continue
+			}
+			priorHasClipAudio := false
+			for _, intent := range prior.EffectiveAudioIntents() {
+				if intent.Mode == capabilityaudio.AudioClip {
+					priorHasClipAudio = true
+					break
+				}
+			}
+			if !priorHasClipAudio {
+				out[segment.ID] = finalJobClipWindow{startUS: segment.TimelineStartUS, previousStartUS: prior.TimelineStartUS}
+			}
+			break
+		}
+	}
+	return out
 }
 
 // scheduleFinalJobSceneImage moves a contextual scene image to the first

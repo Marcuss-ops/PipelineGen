@@ -8,6 +8,7 @@ import (
 // StageInfo describes one canonical pipeline stage execution.
 type StageInfo struct {
 	Stage          StageName
+	Independent    bool
 	CacheStatus    string
 	ItemsInput     int64
 	ItemsCompleted int64
@@ -49,6 +50,7 @@ func (r *Run) StageWithReport(ctx context.Context, info StageInfo, fn func(conte
 	start := r.now()
 	st := StageReport{
 		ObservationID:  NewObservationID(),
+		Independent:    info.Independent,
 		Name:           string(info.Stage),
 		Status:         StageStatusRunning,
 		StartedAt:      start,
@@ -101,6 +103,18 @@ func MeasureStageReport(ctx context.Context, stage StageName, fn func(context.Co
 	return run.StageWithReport(ctx, StageInfo{Stage: stage}, fn)
 }
 
+// MeasureIndependentStageReport marks a concurrent sibling explicitly, so
+// interval containment never misclassifies it as nested work in Breakdown.
+func MeasureIndependentStageReport(ctx context.Context, stage StageName, fn func(context.Context) error) (StageReport, error) {
+	if run := FromContext(ctx); run != nil {
+		return run.StageWithReport(ctx, StageInfo{Stage: stage, Independent: true}, fn)
+	}
+	if fn == nil {
+		return StageReport{}, nil
+	}
+	return StageReport{}, fn(ctx)
+}
+
 // MeasureStage records a stage on the run bound to ctx. When no run is bound
 // it degrades to a plain pass-through call (instrumentation must never change
 // behaviour).
@@ -128,6 +142,7 @@ func (r *Run) RecordStage(info StageInfo, startedAt, finishedAt time.Time, err e
 	}
 	st := StageReport{
 		ObservationID:  NewObservationID(),
+		Independent:    info.Independent,
 		Name:           string(info.Stage),
 		Status:         StageStatusCompleted,
 		StartedAt:      startedAt,

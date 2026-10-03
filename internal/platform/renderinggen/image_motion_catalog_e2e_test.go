@@ -13,9 +13,9 @@ import (
 	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
 )
 
-// TestImageMotionCatalogRuntimeE2E renders every image motion through the
-// local RenderingGen queue, sequentially over one fixed portrait. It is a
-// visual canary only: it never submits a Velox Master/video-final job.
+// TestImageMotionCatalogRuntimeE2E renders every generated-overlay image motion
+// (including Editorial Image V1) through the local RenderingGen queue,
+// sequentially over one fixed portrait. It never submits a Master/video-final job.
 func TestImageMotionCatalogRuntimeE2E(t *testing.T) {
 	if os.Getenv("PIPELINEGEN_RENDERINGGEN_E2E") != "1" {
 		t.Skip("set PIPELINEGEN_RENDERINGGEN_E2E=1 to render all image catalog motions")
@@ -27,8 +27,8 @@ func TestImageMotionCatalogRuntimeE2E(t *testing.T) {
 		t.Fatal("RENDERINGGEN_GOLDEN_DIR must point at RenderingGen/testdata/golden")
 	}
 	motions := imageCatalogMotionIDs(t)
-	if len(motions) != 18 {
-		t.Fatalf("catalog contains %d image motions, want 18", len(motions))
+	if len(motions) != 32 {
+		t.Fatalf("catalog contains %d certified layer-only image motions, want 32", len(motions))
 	}
 	// Use the native 1920x1080 video fixture. The 1280x720 background.mp4
 	// fixture makes Chronon encode a 1920x1080 file with a 1280x720 image
@@ -82,12 +82,12 @@ func TestImageMotionCatalogRuntimeE2E(t *testing.T) {
 	}
 	ref, err := enqueuer.EnqueueChrononPlan(ctx, plan)
 	if err != nil {
-		t.Fatalf("render all 18 image motions: %v", err)
+		t.Fatalf("render all %d generated-overlay image motions: %v", len(motions), err)
 	}
 	if ref.Artifact == nil || ref.Artifact.SHA256 == "" || ref.Artifact.SizeBytes <= 0 {
 		t.Fatalf("image motion render did not return a certified artifact: status=%s artifact=%+v", ref.Status, ref.Artifact)
 	}
-	t.Logf("rendered all %d image motions locally: job=%s status=%s artifact=%s sha256=%s size=%d duration_us=%d; no Master final job submitted",
+	t.Logf("rendered all %d generated-overlay image motions locally: job=%s status=%s artifact=%s sha256=%s size=%d duration_us=%d; no Master final job submitted",
 		len(motions), ref.JobID, ref.Status, ref.Artifact.URL, ref.Artifact.SHA256, ref.Artifact.SizeBytes, ref.Artifact.DurationUS)
 }
 
@@ -127,7 +127,7 @@ func imageCatalogMotionIDs(t *testing.T) []string {
 	}
 	var ids []string
 	for _, motion := range catalog.Motions {
-		if motion.Category == "image_25d_clean_v1" || motion.Category == "overlay_v3_image" {
+		if motion.Category == "image_25d_clean_v1" || motion.Category == "overlay_v3_image" || motion.Category == "editorial_image_v1" {
 			ids = append(ids, motion.ID)
 		}
 	}

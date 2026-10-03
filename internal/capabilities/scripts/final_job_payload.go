@@ -416,11 +416,11 @@ func compositeVideoScene(id string, index int, kind string, asset map[string]any
 		ref["url"] = driveFileWebLink(driveID)
 	}
 	scene := map[string]any{"scene_id": id, "index": index, "kind": kind, "duration_seconds": float64(durationMS) / 1000, "stock": ref}
-	// The Master PREPARE schema currently requires non-empty text for every
-	// scene, including stock-only scenes. Stock text is rendered as subtitles,
-	// so use an invisible separator when there is no real clip caption rather
-	// than leaking narration onto stock footage.
-	if strings.TrimSpace(text) == "" {
+	// PREPARE requires non-empty text on every scene, but stock scene text is
+	// rendered as subtitles. Stock footage is intentionally caption-free, so
+	// discard any narration/title and satisfy the schema with an invisible
+	// separator. Clip scenes retain their real caption when provided.
+	if kind == "stock" || strings.TrimSpace(text) == "" {
 		text = "\u200b"
 	}
 	scene["text"] = text

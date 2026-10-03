@@ -70,6 +70,9 @@ func (d *YTDLPDownloader) Download(ctx context.Context, req *DownloadRequest) er
 		} else {
 			args = append(args, d.cmdBuilder.FormatArg(true)...)
 		}
+		// Native fragment concurrency: inert when aria2c takes over below,
+		// decisive when the native downloader handles a DASH source.
+		args = append(args, d.cmdBuilder.ConcurrentFragmentsArg()...)
 
 		// aria2c is intentionally limited to full-source downloads. Section
 		// downloads must remain under yt-dlp/ffmpeg control so the time window
@@ -203,6 +206,9 @@ func (d *YTDLPDownloader) DownloadRange(ctx context.Context, req *DownloadReques
 		}
 		args = append(args, d.cmdBuilder.BaseArgsForClient(req.URL, req.UseCookies, playerClient)...)
 		args = append(args, d.cmdBuilder.SectionFormatArg(true)...)
+		// Native fragment concurrency for sectioned DASH sources; the section
+		// cut stays under yt-dlp/ffmpeg control (no external downloader here).
+		args = append(args, d.cmdBuilder.ConcurrentFragmentsArg()...)
 		// Do not add aria2c here. yt-dlp must retain control of the
 		// sectioned download and ffmpeg cut; an external downloader can
 		// bypass or interfere with the requested time range.

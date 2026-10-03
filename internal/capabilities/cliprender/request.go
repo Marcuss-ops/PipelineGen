@@ -247,8 +247,9 @@ type OutputSpec struct {
 	// the resolved background visible. Zero means the contract default (100).
 	ForegroundScalePercent int `json:"foreground_scale_percent,omitempty"`
 	// SourceFrame is the optional card treatment of the rendered clip (border
-	// frame behind the clip + drop shadow). It is transported verbatim into the
-	// overlay contract; the renderer owns the geometry.
+	// frame behind the clip, drop shadow, clip radius, and/or perimeter stroke).
+	// It is transported verbatim into the overlay contract; the renderer owns
+	// the geometry.
 	SourceFrame *PlanSourceFrame `json:"source_frame,omitempty"`
 }
 

@@ -130,4 +130,32 @@ type MultilingualConfig struct {
 	// run first, so a clip that already has a transcript is never
 	// re-transcribed.
 	SourcePriority string `yaml:"source_priority" env:"VELOX_MEDIA_SOURCE_PRIORITY" default:"captions_first"`
+
+	// TextTracksFanout bounds the per-language translation fan-out inside ONE
+	// asset.text.materialize job (A2, October 2026). Default 10 = full
+	// expansion: every target language of the canonical 10-language fan-out
+	// is one in-flight translation, so the job pays ~1 translation latency
+	// instead of ~10 serial ones. All shipped translators are
+	// concurrency-safe (Argos spawns a subprocess per call,
+	// ArgosServerTranslator owns an in-flight semaphore, Ollama is HTTP), so
+	// the only real bound is translator capacity. Values <1 clamp to 1 (the
+	// documented sequential rollback — FanoutConcurrency); the composition
+	// root clamps the upper bound at 16.
+	TextTracksFanout int `yaml:"texttracks_fanout" env:"PIPELINEGEN_TEXTTRACKS_FANOUT" default:"10"`
+}
+
+// FanoutConcurrency returns the clamped translation fan-out: values <1
+// collapse to 1 (the documented sequential rollback) and values >16 clamp to
+// 16 (a single materialize job must never monopolise the whole translator —
+// other jobs and the settle path share it). Garbage env values never reach
+// this method: applyEnvVars silently skips unparseable strings, so the
+// struct keeps the default 10.
+func (m MultilingualConfig) FanoutConcurrency() int {
+	if m.TextTracksFanout < 1 {
+		return 1
+	}
+	if m.TextTracksFanout > 16 {
+		return 16
+	}
+	return m.TextTracksFanout
 }

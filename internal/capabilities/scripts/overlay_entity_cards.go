@@ -14,6 +14,7 @@ import (
 
 	logger "github.com/Marcuss-ops/PipelineGen/internal/platform/logging"
 
+	capabilityaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
 	capabilityentities "github.com/Marcuss-ops/PipelineGen/internal/capabilities/entities"
 	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
@@ -216,6 +217,9 @@ func attachEntityCardAsset(item capabilityoverlay.OverlayItem, media *capability
 	item.Kind = string(capabilityoverlay.KindEntityImage)
 	item.TemplateID = "image_popup"
 	item.PresetID = capabilityoverlay.SelectEntityImagePreset(planID, item.SceneID, item.ID)
+	// Preserve the entity name as a real caption layer. Text is cleared below
+	// because image items do not render the generic text field.
+	item.EntityCaption = entityImageCaption(item)
 	// The run-level pass assigns a non-repeating catalog motion after image
 	// overlays have been capped.
 	item.MotionID = ""
@@ -329,6 +333,85 @@ func imageCandidate(binding *scriptpkg.EntityImageBinding, occ *capabilityentiti
 		DurationUS: durationUS,
 		Score:      score,
 	}
+}
+
+// overlaySceneInput projects grounded annotations and certified occurrences
+// into planner candidates. Optional unspoken annotations never receive timing.
+func overlaySceneInput(scene Scene, language, sourceLanguage Language, timing capabilityaudio.SpeechTimingArtifact, timelineStartUS int64, occurrences []capabilityentities.EntityOccurrence, plates capabilityoverlay.PlateResolver) (*capabilityoverlay.SceneInput, error) {
+	ann := annotationsForLanguage(scene, language, sourceLanguage)
+	if ann == nil {
+		return nil, nil
+	}
+	out := capabilityoverlay.SceneInput{ID: scene.ID}
+	locate := func(phrase string) (*capabilityaudio.PhraseTiming, error) {
+		return locatePhraseTimingWithEndpointFallback(scene.Index, timelineStartUS, timing, phrase)
+	}
+	timed := func(p *capabilityaudio.PhraseTiming, score float64) capabilityoverlay.TimedAnnotation {
+		return capabilityoverlay.TimedAnnotation{Text: p.Text, StartMs: p.GlobalStartUS / 1000, EndMs: (p.GlobalEndUS + 999) / 1000, StartUS: p.GlobalStartUS, DurationUS: p.GlobalEndUS - p.GlobalStartUS, Score: score}
+	}
+	for _, span := range ann.ImportantPhrases {
+		if p, err := locate(strings.TrimSpace(span.Text)); err == nil {
+			out.Phrases = append(out.Phrases, timed(p, span.Score))
+		}
+	}
+	for _, entity := range append(append([]scriptpkg.AnnotatedEntity(nil), ann.PrimaryEntities...), ann.SecondaryEntities...) {
+		kind := capabilityoverlay.EntityTypeToKind(entity.Type)
+		if kind == capabilityoverlay.KindBrandText {
+			if p, err := locate(entity.CanonicalName); err == nil {
+				score := entity.Confidence
+				if score <= 0 {
+					score = 0.9
+				}
+				out.BrandTexts = append(out.BrandTexts, timed(p, score))
+			}
+			continue
+		}
+		occ := occurrenceFor(occurrences, entity)
+		if occ == nil {
+			continue
+		}
+		score := entity.Confidence
+		if score <= 0 {
+			score = 0.9
+		}
+		switch kind {
+		case capabilityoverlay.KindNumber:
+			if !isNumericOverlayValue(entity.CanonicalName) || !numericEntityGroundedForLanguage(scene, language, sourceLanguage, entity.CanonicalName) {
+				continue
+			}
+			out.Numbers = append(out.Numbers, capabilityoverlay.TimedAnnotation{Text: entity.CanonicalName, Type: entity.Type, StartMs: occ.AudioStartUS / 1000, EndMs: (occ.AudioEndUS + 999) / 1000, StartUS: occ.AudioStartUS, DurationUS: occ.AudioEndUS - occ.AudioStartUS, Score: score})
+		case capabilityoverlay.KindQuote:
+			out.Quotes = append(out.Quotes, capabilityoverlay.TimedAnnotation{Text: entity.CanonicalName, Type: entity.Type, StartMs: occ.AudioStartUS / 1000, EndMs: (occ.AudioEndUS + 999) / 1000, StartUS: occ.AudioStartUS, DurationUS: occ.AudioEndUS - occ.AudioStartUS, Score: score})
+		case capabilityoverlay.KindProduct:
+			if entity.Image != nil {
+				out.Products = append(out.Products, imageCandidate(entity.Image, occ, score))
+			}
+		case capabilityoverlay.KindLogo:
+			if entity.Image == nil {
+				if p, err := locate(entity.CanonicalName); err == nil {
+					out.BrandTexts = append(out.BrandTexts, timed(p, score))
+				}
+				continue
+			}
+			out.Logos = append(out.Logos, imageCandidate(entity.Image, occ, score))
+		case capabilityoverlay.KindLocation:
+			if entity.Geo == nil {
+				continue
+			}
+			candidate, ok := capabilityoverlay.NewMapCandidate(occ.EntityID, entity.CanonicalName, entity.Geo.Latitude, entity.Geo.Longitude, occ.AudioStartUS, occ.AudioEndUS-occ.AudioStartUS, score)
+			if ok {
+				out.Maps = append(out.Maps, candidate)
+			}
+		default:
+			// Entity cards are resolved independently through their media
+			// index; adding the same image here would duplicate rendering.
+			continue
+		}
+	}
+	if len(out.Phrases)+len(out.Keywords)+len(out.Images)+len(out.Numbers)+len(out.BrandTexts)+len(out.Quotes)+len(out.Products)+len(out.Logos)+len(out.Maps) == 0 {
+		return nil, nil
+	}
+	return &out, nil
 }
 
 func entityImageURL(binding *scriptpkg.EntityImageBinding) string {

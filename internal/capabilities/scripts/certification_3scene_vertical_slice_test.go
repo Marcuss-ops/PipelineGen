@@ -333,14 +333,14 @@ func TestCertification_ThreeSceneVerticalSlice(t *testing.T) {
 	require.True(t, stageByName[string(StageAudioFinalize)].Name != "",
 		"audio_finalize must be its own measured stage, got %+v", report.Stages)
 
-	// Sibling geometry: the compile stage ends where the render starts, so
-	// neither interval contains the other. A containment here means the render
-	// went back inside the audio stage.
+	// Sibling ownership is explicit: overlap can legitimately contain a
+	// short render inside the audio interval. Finalize must join both.
 	require.False(t, compileStage.StartedAt.After(renderStage.StartedAt),
 		"audio_compile must start before the render (compile=%v render=%v)", compileStage.StartedAt, renderStage.StartedAt)
-	require.False(t, compileStage.FinishedAt.After(renderStage.StartedAt),
-		"audio_compile must END before the render starts, otherwise the render is nested and re-charged to it (compile_end=%v render_start=%v)",
-		compileStage.FinishedAt, renderStage.StartedAt)
+	require.True(t, renderStage.Independent, "overlay render must keep independent sibling attribution")
+	finalizeStage := stageByName[string(StageAudioFinalize)]
+	require.False(t, finalizeStage.StartedAt.Before(compileStage.FinishedAt), "finalize must join audio")
+	require.False(t, finalizeStage.StartedAt.Before(renderStage.FinishedAt), "finalize must join overlay")
 
 	// The split is only real if the report reads the render as the dominant
 	// boundary of the audio/render block rather than the audio stage absorbing

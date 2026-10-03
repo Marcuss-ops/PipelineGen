@@ -114,6 +114,10 @@ func (e *SceneIRSegmentEnricher) Enrich(ctx context.Context, plan *scriptpkg.Res
 	var entities []VisualEntity
 	var err error
 	if includeEntities {
+		language := strings.TrimSpace(generationPlanLanguage(plan))
+		if language == "" {
+			return scriptpkg.VidRushSegmentResult{}, fmt.Errorf("visualner extract: source language is required")
+		}
 		nerLimit := entityCount
 		if extraction.HasCategoryOnlyIncludes() || hasAdditionalEntityCategory(extraction) {
 			// Typed requests need a wider candidate window because VisualNER
@@ -122,7 +126,7 @@ func (e *SceneIRSegmentEnricher) Enrich(ctx context.Context, plan *scriptpkg.Res
 			// configured final cap still applies to imageable identities.
 			nerLimit = min(max(entityCount*8, 12), 100)
 		}
-		entities, err = e.nerPort.Extract(ctx, sourceForExtraction, nerLimit)
+		entities, err = e.nerPort.Extract(ctx, language, sourceForExtraction, nerLimit)
 		if err != nil {
 			return scriptpkg.VidRushSegmentResult{}, fmt.Errorf("visualner extract: %w", err)
 		}

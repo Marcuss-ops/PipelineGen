@@ -146,10 +146,17 @@ type OverlayItem struct {
 	// kind/template_id/preset_id/text, so the ref is never serialized onto the
 	// overlay-plan.v1 wire (`json:"-"`). The document/editing projections that
 	// need WHO an overlay is about read it from the in-memory plan.
-	EntityRef   *OverlayEntityRef   `json:"-"`
-	Text        string              `json:"text,omitempty"`
-	AssetRefs   []OverlayAssetRef   `json:"asset_refs,omitempty"`
-	ImageLayers []OverlayImageLayer `json:"image_layers,omitempty"`
+	EntityRef *OverlayEntityRef `json:"-"`
+	Text      string            `json:"text,omitempty"`
+	// EntityCaption is the visible name label for a single entity image.
+	// Composite image items keep their labels on ImageLayers instead.
+	EntityCaption   string              `json:"entity_caption,omitempty"`
+	CaptionMotionID string              `json:"caption_motion_id,omitempty"`
+	AssetRefs       []OverlayAssetRef   `json:"asset_refs,omitempty"`
+	ImageLayers     []OverlayImageLayer `json:"image_layers,omitempty"`
+	// Frame carries image-card border, shadow, stroke and clipping radius to
+	// RenderingGen. It is empty for text and structural items.
+	Frame *OverlayItemFrame `json:"frame,omitempty"`
 	// Map is the validated geospatial declaration of a kind="map" item: the
 	// georeference, pins, motion and provider attribution drawn over the
 	// content-addressed basemap in AssetRefs. It rides the overlay-plan.v1
@@ -160,19 +167,46 @@ type OverlayItem struct {
 	RenderKey string         `json:"render_key,omitempty"`
 }
 
+type OverlayItemFrame struct {
+	Border       *OverlayItemFrameBorder `json:"border,omitempty"`
+	Shadow       *OverlayItemFrameShadow `json:"shadow,omitempty"`
+	Stroke       *OverlayItemFrameStroke `json:"stroke,omitempty"`
+	ClipRadiusPX float64                 `json:"clip_radius_px,omitempty"`
+}
+
+type OverlayItemFrameBorder struct {
+	WidthPX  float64 `json:"width_px"`
+	Color    string  `json:"color"`
+	RadiusPX float64 `json:"radius_px,omitempty"`
+}
+
+type OverlayItemFrameShadow struct {
+	Color    string  `json:"color"`
+	Opacity  float64 `json:"opacity,omitempty"`
+	BlurPX   float64 `json:"blur_px,omitempty"`
+	OffsetXP float64 `json:"offset_x_px,omitempty"`
+	OffsetYP float64 `json:"offset_y_px,omitempty"`
+}
+
+type OverlayItemFrameStroke struct {
+	WidthPX float64 `json:"width_px"`
+	Color   string  `json:"color"`
+}
+
 // OverlayImageLayer is one independently timed and animated image within a
 // composite entity-image overlay. Times are relative to the parent item so a
 // single queued render can reveal nearby entities at their own spoken anchors.
 type OverlayImageLayer struct {
-	ID           string         `json:"id"`
-	AssetID      string         `json:"asset_id"`
-	StartMS      int64          `json:"start_ms"`
-	EndMS        int64          `json:"end_ms"`
-	PresetID     string         `json:"preset_id,omitempty"`
-	MotionID     string         `json:"motion_id,omitempty"`
-	MotionParams map[string]any `json:"motion_params,omitempty"`
-	Caption      string         `json:"caption,omitempty"`
-	Params       map[string]any `json:"params,omitempty"`
+	ID           string            `json:"id"`
+	AssetID      string            `json:"asset_id"`
+	StartMS      int64             `json:"start_ms"`
+	EndMS        int64             `json:"end_ms"`
+	PresetID     string            `json:"preset_id,omitempty"`
+	MotionID     string            `json:"motion_id,omitempty"`
+	MotionParams map[string]any    `json:"motion_params,omitempty"`
+	Caption      string            `json:"caption,omitempty"`
+	Params       map[string]any    `json:"params,omitempty"`
+	Frame        *OverlayItemFrame `json:"frame,omitempty"`
 	// EntityID remains producer-only so a composite's child identities can
 	// still join to their pre-timing intents without changing the worker wire.
 	EntityID string `json:"-"`
@@ -463,7 +497,7 @@ func (p *OverlayPlan) Validate() error {
 		}
 		if item.RenderKey == "" {
 			key := ComputeRenderKey(*p, item)
-			p.Items[i] = OverlayItem{ID: item.ID, SceneID: item.SceneID, EntityID: item.EntityID, Kind: item.Kind, StartMs: item.StartMs, EndMs: item.EndMs, StartUS: item.StartUS, DurationUS: item.DurationUS, TemplateID: item.TemplateID, PresetID: item.PresetID, ImagePresetID: item.ImagePresetID, MotionID: item.MotionID, MotionParams: item.MotionParams, EntityRef: item.EntityRef, Text: item.Text, AssetRefs: item.AssetRefs, ImageLayers: item.ImageLayers, Map: item.Map, Params: item.Params, RenderKey: key}
+			p.Items[i] = OverlayItem{ID: item.ID, SceneID: item.SceneID, EntityID: item.EntityID, Kind: item.Kind, StartMs: item.StartMs, EndMs: item.EndMs, StartUS: item.StartUS, DurationUS: item.DurationUS, TemplateID: item.TemplateID, PresetID: item.PresetID, ImagePresetID: item.ImagePresetID, MotionID: item.MotionID, MotionParams: item.MotionParams, EntityRef: item.EntityRef, Text: item.Text, EntityCaption: item.EntityCaption, CaptionMotionID: item.CaptionMotionID, AssetRefs: item.AssetRefs, ImageLayers: item.ImageLayers, Frame: item.Frame, Map: item.Map, Params: item.Params, RenderKey: key}
 		}
 	}
 	if p.Fingerprint == "" {
@@ -508,6 +542,12 @@ func ComputeRenderKey(p OverlayPlan, item OverlayItem) string {
 			mapJSON = string(raw)
 		}
 	}
+	frameJSON := ""
+	if item.Frame != nil {
+		if raw, err := json.Marshal(item.Frame); err == nil {
+			frameJSON = string(raw)
+		}
+	}
 	input := struct {
 		Template, Text, Params, Renderer string
 		Assets                           []string
@@ -519,10 +559,13 @@ func ComputeRenderKey(p OverlayPlan, item OverlayItem) string {
 		MotionID                         string `json:"motion_id,omitempty"`
 		MotionParams                     string `json:"motion_params,omitempty"`
 		ImageLayers                      string `json:"image_layers,omitempty"`
+		EntityCaption                    string `json:"entity_caption,omitempty"`
+		CaptionMotionID                  string `json:"caption_motion_id,omitempty"`
+		Frame                            string `json:"frame,omitempty"`
 		Map                              string `json:"map,omitempty"`
 	}{
 		item.TemplateID, item.Text, string(params), renderer, assetHashes, p.Width, p.Height, p.FPSNum, p.FPSDen, item.StartMs, item.EndMs, item.StartUS, item.DurationUS,
-		item.PresetID, item.ImagePresetID, item.MotionID, motionParamsJSON(item.MotionParams), imageLayersJSON(item.ImageLayers), mapJSON,
+		item.PresetID, item.ImagePresetID, item.MotionID, motionParamsJSON(item.MotionParams), imageLayersJSON(item.ImageLayers), item.EntityCaption, item.CaptionMotionID, frameJSON, mapJSON,
 	}
 	b, _ := json.Marshal(input)
 	h := digest.SHA256Bytes(b)

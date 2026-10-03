@@ -54,7 +54,12 @@ You must respond ONLY with a raw JSON object matching the following structure:
 	if effectiveModel := g.resolveModel(model); effectiveModel != "" {
 		opts["model"] = effectiveModel
 	}
-	result, err := g.client.Chat(ctx, messages, opts, nil)
+	// Constrained decoding (B2, TODO-pipeline-100x-velocita): the caller
+	// contract is a raw JSON object, so the wire request carries the
+	// top-level `format` constraint. The tolerant brace-slicing parser below
+	// stays as defence in depth, but the decoder can no longer spend the
+	// call on prose-wrapped JSON.
+	result, err := g.client.Chat(ctx, messages, opts, json.RawMessage(`"json"`))
 	if err != nil {
 		return "", nil, fmt.Errorf("metadata generation failed: %w", err)
 	}

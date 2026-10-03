@@ -183,15 +183,12 @@ func TestOverlayCanvasDefaultsPreserveBackgroundAndStyle(t *testing.T) {
 }
 
 // overlayScene0Annotations returns the semantic surface of scene-0, whose
-// text (16 words, 100ms each) is:
+// text is:
 //
-//	"Tim Cook said that Apple changed everything in Cupertino and sold ten million Vision Pro units."
+//	"Tim Cook said that Apple changed everything in Cupertino and sold ten million Vision Pro units in 2025 on March 5, 2026, growing 25% with $2 million in revenue."
 //
-// word index: Tim(0) Cook(1) said(2) that(3) Apple(4) changed(5) everything(6)
-// in(7) Cupertino(8) and(9) sold(10) ten(11) million(12) Vision(13) Pro(14)
-// units(15)  →  global spans: Tim Cook 0.0–0.2s, Apple 0.4–0.5s,
-// changed everything 0.5–0.7s, Cupertino 0.8–0.9s, ten million 1.1–1.3s,
-// Vision Pro 1.3–1.5s.
+// The fixture's word timing is generated from that narration; entity anchors
+// below pin the number/date/money/percent values to those real word windows.
 func overlayScene0Annotations() *scriptpkg.SceneAnnotations {
 	return &scriptpkg.SceneAnnotations{
 		Version:  1,
@@ -224,6 +221,10 @@ func overlayScene0Annotations() *scriptpkg.SceneAnnotations {
 		SecondaryEntities: []scriptpkg.AnnotatedEntity{
 			{ID: "entity-change-everything", CanonicalName: "changed everything", Type: "QUOTE", Confidence: 0.85},
 			{ID: "entity-ten-million", CanonicalName: "ten million", Type: "CARDINAL", Confidence: 0.9},
+			{ID: "entity-date", CanonicalName: "2025", Type: "DATE", Confidence: 0.92},
+			{ID: "entity-calendar-date", CanonicalName: "March 5, 2026", Type: "DATE", Confidence: 0.92},
+			{ID: "entity-percent", CanonicalName: "25%", Type: "PERCENT", Confidence: 0.91},
+			{ID: "entity-money", CanonicalName: "$2 million", Type: "MONEY", Confidence: 0.9},
 			{
 				ID: "entity-vision-pro", CanonicalName: "Vision Pro", Type: "PRODUCT", Confidence: 0.95,
 				Image: &scriptpkg.EntityImageBinding{Status: "bound", AssetID: "vision-pro", PreviewURL: "https://cdn.example.com/vision-pro.png", SHA256: "ee55ff66778899aabbccddeeff00112233445566778899aabbccddeeff001122"},
@@ -254,7 +255,7 @@ func TestRunner_OverlayPlanAppliesRunLevelEditorialBudget(t *testing.T) {
 	textGen := newStubTextGenerator([]Scene{
 		{
 			ID: "scene-0", Index: 0,
-			Text:        map[Language]string{"en": "Tim Cook said that Apple changed everything in Cupertino and sold ten million Vision Pro units."},
+			Text:        map[Language]string{"en": "Tim Cook said that Apple changed everything in Cupertino and sold ten million Vision Pro units in 2025 on March 5, 2026, growing 25% with $2 million in revenue."},
 			Annotations: overlayScene0Annotations(),
 			Audio:       capabilityaudio.AudioIntent{Mode: capabilityaudio.AudioVoiceover},
 		},
@@ -311,9 +312,9 @@ func TestRunner_OverlayPlanAppliesRunLevelEditorialBudget(t *testing.T) {
 	}
 	require.Equal(t, 1, images)
 	require.Equal(t, 2, phrases)
-	require.Equal(t, 1, numbers, "spoken value cards survive on their independent bounded lane")
+	require.Equal(t, 5, numbers, "spoken value cards survive on their independent bounded lane")
 	require.Equal(t, 0, brands, "verified Apple logo asset suppresses the brand-text fallback")
-	require.Len(t, res.OverlayPlan.Items, 4)
+	require.Len(t, res.OverlayPlan.Items, 8)
 	require.Equal(t, capabilityoverlay.PhraseOverlayBudget{
 		Requested:    capabilityoverlay.MaxPhraseOverlaysPerRun,
 		Materialized: 2,
@@ -328,8 +329,8 @@ func TestRunner_OverlayPlanAppliesRunLevelEditorialBudget(t *testing.T) {
 	require.NotEmpty(t, phrase.MotionID)
 
 	scene1Phrase := byID["scene-1-phrase-growth-matters"]
-	require.Equal(t, int64(1600), scene1Phrase.StartMs)
-	require.Equal(t, int64(1800), scene1Phrase.EndMs)
+	require.Equal(t, int64(2900), scene1Phrase.StartMs)
+	require.Equal(t, int64(3100), scene1Phrase.EndMs)
 
 	person := byID["overlay-scene-0-tim-cook"]
 	require.Equal(t, "entity_image", person.Kind)
@@ -342,6 +343,29 @@ func TestRunner_OverlayPlanAppliesRunLevelEditorialBudget(t *testing.T) {
 	value := byID["scene-0-number-ten-million"]
 	require.Equal(t, "METRIC_STAT_CARD", value.TemplateID)
 	require.Contains(t, capabilityoverlay.MetricPresentationMotionCandidates(), value.MotionID)
+	for _, tc := range []struct {
+		text, template string
+		motionPool     []string
+		start, end     int64
+	}{
+		{"2025", "TIMELINE_DATE_CARD", capabilityoverlay.DatePresentationMotionCandidates(), 1700, 1800},
+		{"March 5, 2026", "TIMELINE_DATE_CARD", capabilityoverlay.DatePresentationMotionCandidates(), 1900, 2200},
+		{"25%", "METRIC_STAT_CARD", capabilityoverlay.MetricPresentationMotionCandidates(), 2300, 2400},
+		{"$2 million", "METRIC_STAT_CARD", capabilityoverlay.MetricPresentationMotionCandidates(), 2500, 2700},
+	} {
+		var item capabilityoverlay.OverlayItem
+		for _, candidate := range res.OverlayPlan.Items {
+			if candidate.Text == tc.text {
+				item = candidate
+				break
+			}
+		}
+		require.Equal(t, tc.text, item.Text, "typed value must reach the runtime overlay plan")
+		require.Equal(t, tc.template, item.TemplateID)
+		require.Contains(t, tc.motionPool, item.MotionID)
+		require.Equal(t, tc.start, item.StartMs, "typed value must start at its certified spoken word boundary")
+		require.Equal(t, tc.end, item.EndMs, "typed value must end at its certified spoken word boundary")
+	}
 
 }
 
@@ -358,7 +382,7 @@ func TestRunner_OverlayIntents_PersistedBeforePlanEnqueue(t *testing.T) {
 	textGen := newStubTextGenerator([]Scene{
 		{
 			ID: "scene-0", Index: 0,
-			Text:        map[Language]string{"en": "Tim Cook said that Apple changed everything in Cupertino and sold ten million Vision Pro units."},
+			Text:        map[Language]string{"en": "Tim Cook said that Apple changed everything in Cupertino and sold ten million Vision Pro units in 2025 on March 5, 2026, growing 25% with $2 million in revenue."},
 			Annotations: overlayScene0Annotations(),
 			Audio:       capabilityaudio.AudioIntent{Mode: capabilityaudio.AudioVoiceover},
 		},
@@ -451,7 +475,7 @@ func TestRunner_OverlayPrepare_EnqueuedBeforeTTS(t *testing.T) {
 	textGen := newStubTextGenerator([]Scene{
 		{
 			ID: "scene-0", Index: 0,
-			Text:        map[Language]string{"en": "Tim Cook said that Apple changed everything in Cupertino and sold ten million Vision Pro units."},
+			Text:        map[Language]string{"en": "Tim Cook said that Apple changed everything in Cupertino and sold ten million Vision Pro units in 2025 on March 5, 2026, growing 25% with $2 million in revenue."},
 			Annotations: overlayScene0Annotations(),
 			Audio:       capabilityaudio.AudioIntent{Mode: capabilityaudio.AudioVoiceover},
 		},
@@ -520,7 +544,7 @@ func TestRunner_OverlayPrepare_EnqueueErrorFailsClosed(t *testing.T) {
 	textGen := newStubTextGenerator([]Scene{
 		{
 			ID: "scene-0", Index: 0,
-			Text:        map[Language]string{"en": "Tim Cook said that Apple changed everything in Cupertino and sold ten million Vision Pro units."},
+			Text:        map[Language]string{"en": "Tim Cook said that Apple changed everything in Cupertino and sold ten million Vision Pro units in 2025 on March 5, 2026, growing 25% with $2 million in revenue."},
 			Annotations: overlayScene0Annotations(),
 			Audio:       capabilityaudio.AudioIntent{Mode: capabilityaudio.AudioVoiceover},
 		},
@@ -839,15 +863,11 @@ func TestCompileOverlayPlan_ChosenEntityImageCarriesResolvedAsset(t *testing.T) 
 	require.Equal(t, "image_popup", card.TemplateID)
 	require.Contains(t, capabilityoverlay.CertifiedImageMotions(), card.MotionID,
 		"entity portraits use a motion from the certified image catalog")
-	// EntityImageParams (50% width capped at 80% height): on 1280x720 the card
-	// is 640 wide but the height cap keeps it 576 square — a readable portrait,
-	// not the pre-2026-10 corner stamp (28%/48% → 345px).
-	wantSize := 1280 * 50 / 100
-	if maxHeight := 720 * 80 / 100; maxHeight < wantSize {
-		wantSize = maxHeight
-	}
-	require.Equal(t, wantSize, card.Params["box_width"], "entity portraits should render larger on the 1280x720 test canvas")
-	require.Equal(t, wantSize, card.Params["box_height"], "entity portraits should render larger on the 1280x720 test canvas")
+	// Entity images use a wide hero box on the 1280x720 canvas and stay slightly
+	// above center so the anchored name remains part of the card.
+	require.Equal(t, 1280*68/100, card.Params["box_width"])
+	require.Equal(t, 720*70/100, card.Params["box_height"])
+	require.Equal(t, -72.0, card.Params["position_y"])
 	require.Empty(t, card.Text, "the entity image must not carry a rendered name")
 	require.NotEmpty(t, card.PresetID, "the entity image must use an official image preset")
 	require.Empty(t, card.ImagePresetID)

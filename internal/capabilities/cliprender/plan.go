@@ -159,11 +159,25 @@ type PlanOutput struct {
 }
 
 // PlanSourceFrame is the card treatment of the clip (and, per overlay segment,
-// the same declaration travels as the item's frame). Border and shadow are both
-// optional; a declaration with neither is a contradiction and is rejected.
+// the same declaration travels as the item's frame). Border, shadow, stroke and
+// clip_radius_px are all optional; a declaration with none of them is a
+// contradiction and is rejected.
+//
+// ClipRadiusPX is the standalone bounding-box corner radius of the clip video
+// itself (the media box). It is independent of the border frame: when a border
+// IS present, the clip's inner radius is max(radius_px - width_px, clip_radius_px);
+// when no border is declared, ClipRadiusPX directly rounds the clip's corners
+// without painting any visible frame behind it. Zero means no standalone
+// rounding (the historical default).
+//
+// Stroke is a thin outline drawn ON the clip edges (following the bounding box,
+// including rounded corners). It differs from the border: the border is a padded
+// plate BEHIND the clip, while the stroke is an overlay line ON the clip perimeter.
 type PlanSourceFrame struct {
-	Border *PlanFrameBorder `json:"border,omitempty"`
-	Shadow *PlanFrameShadow `json:"shadow,omitempty"`
+	Border       *PlanFrameBorder `json:"border,omitempty"`
+	Shadow       *PlanFrameShadow `json:"shadow,omitempty"`
+	Stroke       *PlanFrameStroke `json:"stroke,omitempty"`
+	ClipRadiusPX float64          `json:"clip_radius_px,omitempty"`
 }
 
 // PlanFrameBorder is the visible frame around the clip. WidthPX is the visible
@@ -186,12 +200,22 @@ type PlanFrameShadow struct {
 	OffsetYP float64 `json:"offset_y_px,omitempty"`
 }
 
+// PlanFrameStroke is a visible outline drawn on the clip edges. Unlike the
+// border (which creates a padded plate behind the clip), the stroke is a thin
+// line overlaid on the clip perimeter, following the bounding box (including
+// rounded corners when clip_radius_px or border.radius_px is set).
+type PlanFrameStroke struct {
+	WidthPX float64 `json:"width_px"`
+	Color   string  `json:"color"`
+}
+
 // Frame contract bounds. They are the SAME numbers the RenderingGen overlay
 // contract publishes, so a value this boundary admits is never rejected by the
 // worker and vice versa.
 const (
 	MaxFrameBorderWidth  = 512.0
 	MaxFrameRadius       = 512.0
+	MaxFrameStrokeWidth  = 64.0
 	MaxFrameShadowBlur   = 256.0
 	MaxFrameShadowOffset = 256.0
 )
@@ -206,8 +230,23 @@ func ValidatePlanSourceFrame(frame *PlanSourceFrame, foregroundScalePercent int)
 	if frame == nil {
 		return nil
 	}
-	if frame.Border == nil && frame.Shadow == nil {
-		return fmt.Errorf("source_frame requires border or shadow")
+	if frame.Border == nil && frame.Shadow == nil && frame.Stroke == nil && frame.ClipRadiusPX == 0 {
+		return fmt.Errorf("source_frame requires border, shadow, stroke, or clip_radius_px")
+	}
+	if frame.Stroke != nil {
+		stroke := frame.Stroke
+		if stroke.WidthPX < 0 || stroke.WidthPX > MaxFrameStrokeWidth || math.IsNaN(stroke.WidthPX) || math.IsInf(stroke.WidthPX, 0) {
+			return fmt.Errorf("source_frame.stroke.width_px must be within [0,%g]", MaxFrameStrokeWidth)
+		}
+		if !isFrameHexColor(stroke.Color) {
+			return fmt.Errorf("source_frame.stroke.color %q must be #RRGGBB", stroke.Color)
+		}
+	}
+
+	// clip_radius_px range check: it shares the same ceiling as border.radius_px
+	// so the two rounding controls are interchangeable on the renderer side.
+	if frame.ClipRadiusPX < 0 || frame.ClipRadiusPX > MaxFrameRadius || math.IsNaN(frame.ClipRadiusPX) || math.IsInf(frame.ClipRadiusPX, 0) {
+		return fmt.Errorf("source_frame.clip_radius_px must be within [0,%g]", MaxFrameRadius)
 	}
 	if frame.Border != nil {
 		border := frame.Border

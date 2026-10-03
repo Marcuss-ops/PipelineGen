@@ -66,10 +66,9 @@ func ApplyEditorialOverlayBudget(items []OverlayItem) ([]OverlayItem, PhraseOver
 // plate manifest from turning every grounded mention into a rendered map.
 const MaxMapOverlaysPerScene = 2
 
-// MaxMapOverlaysPerRun is the certified RUN-level map ceiling: a map is a
-// full-canvas visual, so a run renders at most one. A caller that wants more
-// raises the ceiling explicitly through PlannerConfig.RunLevelMapOverlayLimit.
-const MaxMapOverlaysPerRun = 1
+// MaxMapOverlaysPerRun is the certified run-level map ceiling. It supports
+// short multi-stop scripts while bounding full-canvas map rendering.
+const MaxMapOverlaysPerRun = 3
 
 // MaxNumberOverlaysPerRun bounds value callouts independently so metrics,
 // money and dates can survive the editorial budget without displacing the
@@ -90,9 +89,10 @@ func ApplyEditorialOverlayBudgetWithLimits(items []OverlayItem, phraseLimit, map
 // ApplyEditorialOverlayBudgetWithImageLimit applies independent run-level
 // ceilings for phrases, combined image kinds, and maps. A nonpositive image
 // limit keeps the certified default.
-func ApplyEditorialOverlayBudgetWithImageLimit(items []OverlayItem, phraseLimit, imageLimit, mapLimit int) ([]OverlayItem, PhraseOverlayBudget) {
+func ApplyEditorialOverlayBudgetWithImageLimit(items []OverlayItem, phraseLimit, imageLimit, mapLimit int, allowRepeatedEntityImagesPerScene ...bool) ([]OverlayItem, PhraseOverlayBudget) {
 	limit := EffectivePhraseOverlayLimit(phraseLimit)
-	imageIndices := rankedUniqueOverlayIndices(items, true, limit)
+	perSceneEntityImages := len(allowRepeatedEntityImagesPerScene) > 0 && allowRepeatedEntityImagesPerScene[0]
+	imageIndices := rankedUniqueOverlayIndices(items, true, limit, perSceneEntityImages)
 	// 2026-09-30 Milton incident: the same downloaded portrait surfaced BOTH
 	// as an entity_image card and as a context "image" hit of a second scene
 	// query, and each image arm deduplicates on a DIFFERENT key (entity
@@ -100,7 +100,7 @@ func ApplyEditorialOverlayBudgetWithImageLimit(items []OverlayItem, phraseLimit,
 	// extra overlays. One image per content identity per RUN, regardless of
 	// which arm produced it: the highest-ranked occurrence wins, and freed
 	// slots go to genuinely different images.
-	imageIndices = dedupeImageIndicesByContent(items, imageIndices)
+	imageIndices = dedupeImageIndicesByContent(items, imageIndices, perSceneEntityImages)
 	if imageLimit <= 0 {
 		imageLimit = MaxImageOverlaysPerRun
 	}

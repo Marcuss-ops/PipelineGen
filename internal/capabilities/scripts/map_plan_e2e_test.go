@@ -188,8 +188,9 @@ func TestCompileOverlayPlanWithPlatesEmitsGroundedMapItem(t *testing.T) {
 	require.Equal(t, plate.Asset.SHA256, item.AssetRefs[0].SHA256)
 	require.Equal(t, plate.Asset.LocalPath, item.AssetRefs[0].LocalPath)
 	require.Empty(t, item.AssetRefs[0].URL, "a local plate must never carry a network reference")
-	require.Equal(t, capabilityoverlay.MaxMapOverlaysPerRun, countKind(plan.Items, "map"),
-		"the certified run-level map ceiling is one")
+	require.Equal(t, 1, countKind(plan.Items, "map"), "one grounded place should produce one map")
+	require.LessOrEqual(t, countKind(plan.Items, "map"), capabilityoverlay.MaxMapOverlaysPerRun,
+		"the plan must respect the certified run-level map ceiling")
 	require.NotEmpty(t, item.RenderKey, "the sealed plan must carry a render key for the map")
 }
 

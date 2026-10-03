@@ -88,7 +88,7 @@ func TestCompileOverlayPlanRetrySamplesFreshIndependentImageMotions(t *testing.T
 			t.Fatalf("attempt with offset %d should produce one two-image composite, got %+v", offset, plan.Items)
 		}
 		item := plan.Items[0]
-		if item.StartMs != 0 || item.EndMs != 2000 || item.ImageLayers[1].StartMS != 1000 || item.ImageLayers[0].EndMS != 1000 || item.ImageLayers[1].EndMS != 2000 {
+		if item.StartMs != 0 || item.EndMs != 2000 || item.ImageLayers[1].StartMS != 1000 || item.ImageLayers[0].EndMS != 2000 || item.ImageLayers[1].EndMS != 2000 {
 			t.Fatalf("attempt with offset %d lost the staggered mention timing: %+v", offset, item)
 		}
 		got := []string{item.ImageLayers[0].MotionID, item.ImageLayers[1].MotionID}

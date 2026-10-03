@@ -231,7 +231,7 @@ func (c *Client) doChatRequest(ctx context.Context, model string, messages []typ
 			requestOptions[key] = value
 		}
 	}
-	keepAlive := "30m"
+	keepAlive := residentKeepAlive()
 	if value, ok := options["keep_alive"].(string); ok && strings.TrimSpace(value) != "" {
 		keepAlive = value
 	}

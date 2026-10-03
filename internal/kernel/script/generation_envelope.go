@@ -11,6 +11,7 @@
 package script
 
 import (
+	"encoding/hex"
 	"fmt"
 	"math"
 	"strings"
@@ -129,9 +130,13 @@ type GenerationItemV2 struct {
 	// first, so a ceiling above the number of grounded candidates simply
 	// admits them all.
 	MaxPhraseOverlays int `json:"max_phrase_overlays,omitempty"`
+	// MapsOnly keeps runtime-resolved map overlays and removes all image,
+	// phrase, number, and other editorial overlay items from the render plan.
+	MapsOnly bool `json:"maps_only,omitempty"`
 	// MaxImageOverlays sets the run-level ceiling for image overlays. A
 	// positive value is honored; zero keeps the certified default.
-	MaxImageOverlays int `json:"max_image_overlays,omitempty"`
+	MaxImageOverlays      int  `json:"max_image_overlays,omitempty"`
+	DisableNumberOverlays bool `json:"disable_number_overlays,omitempty"`
 
 	// Audio configures the audio execution mode (audio.mode) plus the
 	// editorial audio intent block (mix_policy, background_music,
@@ -199,6 +204,33 @@ type OverlayStyleSpec struct {
 	// corresponding effect; nil preserves the preset's value.
 	GlowSize   *float64 `json:"glow_size,omitempty"`
 	StrokeSize *float64 `json:"stroke_size,omitempty"`
+	// Image controls apply to generated image overlays and entity portraits.
+	// They stay separate from text styling so one script can tune both layers.
+	Image *OverlayImageStyleSpec `json:"image,omitempty"`
+}
+
+// OverlayImageStyleSpec controls image-card geometry and its visible frame.
+// Geometry uses output pixels; position is relative to the canvas center.
+type OverlayImageStyleSpec struct {
+	Width     *int                `json:"width,omitempty"`
+	Height    *int                `json:"height,omitempty"`
+	PositionX *float64            `json:"position_x,omitempty"`
+	PositionY *float64            `json:"position_y,omitempty"`
+	Radius    *float64            `json:"radius,omitempty"`
+	Border    *OverlayImageBorder `json:"border,omitempty"`
+	Stroke    *OverlayImageStroke `json:"stroke,omitempty"`
+	Shadow    *OverlayShadowSpec  `json:"shadow,omitempty"`
+}
+
+type OverlayImageBorder struct {
+	Width  float64  `json:"width"`
+	Color  string   `json:"color"`
+	Radius *float64 `json:"radius,omitempty"`
+}
+
+type OverlayImageStroke struct {
+	Width float64 `json:"width"`
+	Color string  `json:"color"`
 }
 
 // Validate checks caller-controlled text runtime overrides before they reach
@@ -222,7 +254,65 @@ func (s *OverlayStyleSpec) Validate() error {
 	if s.Size != nil && s.Size.FontSize != nil && (math.IsNaN(*s.Size.FontSize) || math.IsInf(*s.Size.FontSize, 0) || *s.Size.FontSize <= 0 || *s.Size.FontSize > 512) {
 		return fmt.Errorf("overlay_style.size.font_size must be greater than 0 and at most 512 pixels")
 	}
+	if image := s.Image; image != nil {
+		for name, value := range map[string]*int{"width": image.Width, "height": image.Height} {
+			if value != nil && (*value <= 0 || *value > 8192) {
+				return fmt.Errorf("overlay_style.image.%s must be between 1 and 8192 pixels", name)
+			}
+		}
+		for name, value := range map[string]*float64{"position_x": image.PositionX, "position_y": image.PositionY} {
+			if value != nil && (math.IsNaN(*value) || math.IsInf(*value, 0) || math.Abs(*value) > 8192) {
+				return fmt.Errorf("overlay_style.image.%s must be within ±8192 pixels", name)
+			}
+		}
+		if image.Radius != nil && (math.IsNaN(*image.Radius) || math.IsInf(*image.Radius, 0) || *image.Radius < 0 || *image.Radius > 512) {
+			return fmt.Errorf("overlay_style.image.radius must be between 0 and 512 pixels")
+		}
+		if image.Border != nil {
+			if math.IsNaN(image.Border.Width) || math.IsInf(image.Border.Width, 0) || image.Border.Width < 0 || image.Border.Width > 512 {
+				return fmt.Errorf("overlay_style.image.border.width must be between 0 and 512 pixels")
+			}
+			if image.Border.Width > 0 && !isStyleHexColor(image.Border.Color) {
+				return fmt.Errorf("overlay_style.image.border.color must be #RRGGBB when border width is positive")
+			}
+			if image.Border.Radius != nil && (math.IsNaN(*image.Border.Radius) || math.IsInf(*image.Border.Radius, 0) || *image.Border.Radius < 0 || *image.Border.Radius > 512) {
+				return fmt.Errorf("overlay_style.image.border.radius must be between 0 and 512 pixels")
+			}
+		}
+		if image.Stroke != nil {
+			if math.IsNaN(image.Stroke.Width) || math.IsInf(image.Stroke.Width, 0) || image.Stroke.Width < 0 || image.Stroke.Width > 64 {
+				return fmt.Errorf("overlay_style.image.stroke.width must be between 0 and 64 pixels")
+			}
+			if image.Stroke.Width > 0 && !isStyleHexColor(image.Stroke.Color) {
+				return fmt.Errorf("overlay_style.image.stroke.color must be #RRGGBB when stroke width is positive")
+			}
+		}
+		if image.Shadow != nil {
+			if image.Shadow.Opacity != nil && (math.IsNaN(*image.Shadow.Opacity) || math.IsInf(*image.Shadow.Opacity, 0) || *image.Shadow.Opacity < 0 || *image.Shadow.Opacity > 1) {
+				return fmt.Errorf("overlay_style.image.shadow.opacity must be between 0 and 1")
+			}
+			if image.Shadow.Blur != nil && (math.IsNaN(*image.Shadow.Blur) || math.IsInf(*image.Shadow.Blur, 0) || *image.Shadow.Blur < 0 || *image.Shadow.Blur > 256) {
+				return fmt.Errorf("overlay_style.image.shadow.blur must be between 0 and 256 pixels")
+			}
+			if len(image.Shadow.Offset) > 2 {
+				return fmt.Errorf("overlay_style.image.shadow.offset accepts at most [x,y]")
+			}
+			for _, offset := range image.Shadow.Offset {
+				if math.IsNaN(offset) || math.IsInf(offset, 0) || math.Abs(offset) > 256 {
+					return fmt.Errorf("overlay_style.image.shadow.offset values must be within ±256 pixels")
+				}
+			}
+		}
+	}
 	return nil
+}
+
+func isStyleHexColor(value string) bool {
+	if len(value) != 7 || value[0] != '#' {
+		return false
+	}
+	_, err := hex.DecodeString(value[1:])
+	return err == nil
 }
 
 type OverlayShadowSpec struct {

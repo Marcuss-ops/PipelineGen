@@ -81,21 +81,27 @@ type overlayRenderOutcome struct {
 // audio stage (the render used to be part of that stage's work, so a resumed run
 // must not re-wait on it).
 func (r *Runner) runOverlayRenderPhase(ctx context.Context, runID string, req GenerateRequest, exec ExecutionContext, resumeIdx int, state audioCompileState, result *GenerateResult) bool {
-	if result == nil {
-		return true
+	outcomes, fanOutErr := r.renderOverlayPlans(ctx, req, resumeIdx, result)
+	if fanOutErr != nil {
+		r.failExecutionStep(ctx, exec, state.Step, fanOutErr)
+		r.failRunWithRetry(ctx, runID, StageCompilingAudio, fanOutErr)
+		return false
 	}
-	if !req.Render.Enabled || r.overlayRenderEnqueuer == nil {
-		return true
-	}
-	if stageSkipped(resumeIdx, StageCompilingAudio) {
-		return true
+	r.applyOverlayRenderOutcomes(runID, result, outcomes)
+	return true
+}
+
+// renderOverlayPlans computes against a private snapshot. It never writes the
+// durable run or execution step; the joined caller owns failures and results.
+func (r *Runner) renderOverlayPlans(ctx context.Context, req GenerateRequest, resumeIdx int, result *GenerateResult) ([]overlayRenderOutcome, error) {
+	if result == nil || !req.Render.Enabled || r.overlayRenderEnqueuer == nil || stageSkipped(resumeIdx, StageCompilingAudio) {
+		return nil, nil
 	}
 	pending := pendingOverlayPlans(result, req)
 	if len(pending) == 0 {
-		return true
+		return nil, nil
 	}
-
-	outcomes, fanOutErr := concurrent.Map(ctx, pending, r.overlayRenderWorkers(),
+	return concurrent.Map(ctx, pending, r.overlayRenderWorkers(),
 		func(renderCtx context.Context, _ int, item languageOverlayPlan) (overlayRenderOutcome, error) {
 			// The plan size and boundary wall time are measured HERE, at the only
 			// place that performs the blocking hand-off, so no consumer has to
@@ -113,15 +119,9 @@ func (r *Runner) runOverlayRenderPhase(ctx context.Context, runID string, req Ge
 			recordChrononArtifactMetrics(ref)
 			return overlayRenderOutcome{language: item.language, ref: ref, boundaryWall: boundaryWall, planItems: len(item.plan.Items)}, nil
 		})
-	if fanOutErr != nil {
-		// The AUDIO_COMPILE step stays open across the render precisely so a
-		// render failure is still reported against the work that produced the
-		// plan (its pre-split behaviour).
-		r.failExecutionStep(ctx, exec, state.Step, fanOutErr)
-		r.failRunWithRetry(ctx, runID, StageCompilingAudio, fanOutErr)
-		return false
-	}
+}
 
+func (r *Runner) applyOverlayRenderOutcomes(runID string, result *GenerateResult, outcomes []overlayRenderOutcome) {
 	// Apply in PLAN ORDER on the caller goroutine. The result is keyed by
 	// language, so this is deterministic by construction rather than by
 	// accident of which render returned first.
@@ -145,7 +145,6 @@ func (r *Runner) runOverlayRenderPhase(ctx context.Context, runID string, req Ge
 			zap.Int("plan_items", outcome.planItems),
 		)
 	}
-	return true
 }
 
 // pendingOverlayPlans filters the deterministic dispatch list down to the plans

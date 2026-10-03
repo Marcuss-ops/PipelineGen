@@ -70,11 +70,13 @@ type overlaySource struct {
 
 // sourceFrameBlock is the wire projection of the plan's card treatment. It
 // mirrors RenderingGen's overlay contract field-for-field (border width/colour/
-// radius + shadow), so a declared frame is transported verbatim and never
-// re-interpreted here.
+// radius + shadow + stroke), so a declared frame is transported verbatim and
+// never re-interpreted here.
 type sourceFrameBlock struct {
-	Border *sourceFrameBorder `json:"border,omitempty"`
-	Shadow *sourceFrameShadow `json:"shadow,omitempty"`
+	Border       *sourceFrameBorder `json:"border,omitempty"`
+	Shadow       *sourceFrameShadow `json:"shadow,omitempty"`
+	Stroke       *sourceFrameStroke `json:"stroke,omitempty"`
+	ClipRadiusPX float64            `json:"clip_radius_px,omitempty"`
 }
 
 type sourceFrameBorder struct {
@@ -91,6 +93,11 @@ type sourceFrameShadow struct {
 	OffsetYP float64 `json:"offset_y_px,omitempty"`
 }
 
+type sourceFrameStroke struct {
+	WidthPX float64 `json:"width_px"`
+	Color   string  `json:"color"`
+}
+
 // mapSourceFrame projects the sealed plan's source_frame verbatim. The
 // producer has already validated it (cliprender.ValidatePlanSourceFrame), so a
 // value that reaches here has already been range- and colour-checked at the
@@ -99,7 +106,9 @@ func mapSourceFrame(frame *cliprender.PlanSourceFrame) *sourceFrameBlock {
 	if frame == nil {
 		return nil
 	}
-	out := &sourceFrameBlock{}
+	out := &sourceFrameBlock{
+		ClipRadiusPX: frame.ClipRadiusPX,
+	}
 	if frame.Border != nil {
 		out.Border = &sourceFrameBorder{
 			WidthPX:  frame.Border.WidthPX,
@@ -114,6 +123,12 @@ func mapSourceFrame(frame *cliprender.PlanSourceFrame) *sourceFrameBlock {
 			BlurPX:   frame.Shadow.BlurPX,
 			OffsetXP: frame.Shadow.OffsetXP,
 			OffsetYP: frame.Shadow.OffsetYP,
+		}
+	}
+	if frame.Stroke != nil {
+		out.Stroke = &sourceFrameStroke{
+			WidthPX: frame.Stroke.WidthPX,
+			Color:   frame.Stroke.Color,
 		}
 	}
 	return out

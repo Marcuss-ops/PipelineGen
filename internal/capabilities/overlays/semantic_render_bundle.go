@@ -292,8 +292,9 @@ func BuildOverlayPlan(b SemanticRenderBundleV1, videoID, projectID string, width
 				item.EndMs = item.StartMs + MaxImageOverlayDurationMS
 			}
 			item.Text = ""
-			// Keep image overlays varied with the certified image-motion catalog.
-			item.MotionID = SelectImageMotionAt(b.RunID, b.Scene.SegmentID, len(items))
+			// Keep generated-image overlays varied across the complete certified
+			// layer-only catalog; the centered selector is reserved for maps.
+			item.MotionID = SelectEntityImageMotionAt(b.RunID, b.Scene.SegmentID, len(items))
 			item.MotionParams = nil
 			item.Params = EntityImageParams(width, height)
 			item.AssetRefs = []OverlayAssetRef{NewOverlayAssetRef(

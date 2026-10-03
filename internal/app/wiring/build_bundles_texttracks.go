@@ -251,11 +251,14 @@ func BuildTextTrackBundle(
 	if err != nil {
 		return nil, fmt.Errorf("compose texttracks: materializer: %w", err)
 	}
-	// Parallel per-language translation fan-out. The upstream translator
-	// (Ollama) is the dominant per-language cost; overlapping the calls
-	// hides its latency. Keep a modest bound so a single materialize run
-	// never saturates the LLM/GPU.
-	materializer.SetConcurrency(4)
+	// Parallel per-language translation fan-out (A2, October 2026). The
+	// upstream translator is the dominant per-language cost; overlapping the
+	// calls hides its latency. DEFAULT = full expansion (10, one in-flight
+	// call per target language), configured via
+	// media.multilingual.texttracks_fanout / PIPELINEGEN_TEXTTRACKS_FANOUT;
+	// 1 is the documented sequential rollback. The knob and its clamp live on
+	// config.MultilingualConfig (godlike/06 SSOT for operator knobs).
+	materializer.SetConcurrency(mlCfg.FanoutConcurrency())
 
 	// POSTGRES-MEDIA-CUTOVER (September 2026): route the post-translation
 	// reindex through the PostgreSQL media index plane and recompose

@@ -244,6 +244,13 @@ func stampLocalizedSourceIdentity(ann *scriptpkg.SceneAnnotations, matches []loc
 				binding := *match.Source.Image
 				entity.Image = &binding
 			}
+			// Geocoding belongs to the source place identity. Preserve its
+			// validated point on the localized surface so map planning can use
+			// the localized spoken mention without issuing a second lookup.
+			if entity.Geo == nil && match.Source.Geo != nil {
+				coordinate := *match.Source.Geo
+				entity.Geo = &coordinate
+			}
 		}
 	}
 }

@@ -71,6 +71,17 @@ external:
   ytdlp_path: "yt-dlp"
   ffmpeg_path: "ffmpeg"
   rust_muscles_path: "bin/pipelinegen-muscles"
+  # Location maps need an explicitly configured geocoder and either a static
+  # certified plate manifest or ChrononTemplate's dynamic Web Mercator plate
+  # generator. Location extraction requests use the map path automatically.
+  # Public Nominatim is paced to one request/second; keep use low-volume and
+  # provide an identifying monitored User-Agent.
+  # geocoding_base_url: "https://nominatim.openstreetmap.org/search"
+  # geocoding_user_agent: "PipelineGen/1.0 (https://example.org/contact)"
+  # geocoding_cache_dir: "geocoding-cache"  # relative to storage.data_dir
+  # map_plate_manifest_path: "maps/manifest.json"  # relative to storage.data_dir
+  # geo_map_plate_generator_path: "../ChrononTemplate/tools/generate_map_plate.py"
+  # See docs/operations/location-map-overlays.md for schema and setup.
   nvidia_api_key: ""
   nvidia_model: "stabilityai/sdxl-turbo"
   nvidia_local_nim_url: "http://localhost:8000/v1/infer"
@@ -100,7 +111,13 @@ external:
   # deployment that lacks the wait route (0 = built-in 250ms). See
   # types_external.go::RenderingGenPollIntervalMS.
   # renderinggen_poll_interval_ms: 250
-
+  # Locality maps require a configured geocoder and certified local PNG plates;
+  # requests must separately set media_plan.provider_policy.geocoding=enabled.
+  # See docs/operations/location-map-overlays.md for manifest schema and setup.
+  # geocoding_base_url: "https://nominatim.openstreetmap.org/search"
+  # geocoding_user_agent: "PipelineGen/1.0 (https://example.org/contact)"
+  # geocoding_cache_dir: "geocoding-cache"  # relative to storage.data_dir
+  # map_plate_manifest_path: "maps/manifest.json"  # relative to storage.data_dir
 paths:
   python_scripts_dir: "scripts"
   credentials_file: "credentials.json"

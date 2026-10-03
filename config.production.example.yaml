@@ -108,6 +108,16 @@ external:
   # deployment that lacks the wait route (0 = built-in 250ms). See
   # types_external.go::RenderingGenPollIntervalMS.
   # renderinggen_poll_interval_ms: 250
+  # Location maps require an operator-configured geocoder and either a
+  # certified local PNG plate manifest or ChrononTemplate's dynamic plate
+  # generator. Location extraction requests use map generation automatically.
+  # See
+  # docs/operations/location-map-overlays.md for setup and certification.
+  # geocoding_base_url: "https://nominatim.openstreetmap.org/search"
+  # geocoding_user_agent: "PipelineGen/1.0 (https://example.org/contact)"
+  # geocoding_cache_dir: "geocoding-cache"  # relative to storage.data_dir
+  # map_plate_manifest_path: "maps/manifest.json"  # relative to storage.data_dir
+  # geo_map_plate_generator_path: "../ChrononTemplate/tools/generate_map_plate.py"
 
 paths:
   python_scripts_dir: "scripts"

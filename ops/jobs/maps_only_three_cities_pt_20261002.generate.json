@@ -1,0 +1,137 @@
+{
+  "version": 2,
+  "preset": "custom",
+  "correlation_id": "maps-only-three-cities-pt-20261002T195000Z",
+  "items": [
+    {
+      "id": "maps-only-three-cities-pt-20261002T195000Z",
+      "title": "Três cidades distantes: Reykjavík, Cidade do Cabo e Tóquio",
+      "project": "maps-only-three-cities-pt-20261002T195000Z",
+      "channel_id": "crime",
+      "language": "pt",
+      "tone": "documentary",
+      "style": "cinematic",
+      "source": {
+        "type": "text",
+        "topic": "Viagem fictícia por três cidades distantes",
+        "source_text": "Roteiro de teste em português com Reykjavík, Cidade do Cabo e Tóquio, números ilustrativos e três cenas."
+      },
+      "script_params": {
+        "target_words": 300,
+        "segment_words": 100,
+        "source_text_verbatim": true,
+        "segments": [
+          {
+            "id": "scene-0",
+            "kind": "narration",
+            "topic": "Reykjavík Iceland city harbor",
+            "source_text": "Este roteiro de teste começa em Reykjavík, capital da Islândia, onde o vento frio atravessa as ruas entre casas coloridas e o porto. Pela manhã, a caminhada segue por três pontos próximos: a igreja Hallgrímskirkja, a praça central e a orla voltada para o Atlântico Norte. O narrador registra 8 graus no termômetro e conta que percorreu 4 quilômetros antes do almoço. Em uma cafeteria, observa mapas de estradas que levam para fora da cidade, em direção a campos de lava e fontes termais. A cena identifica Reykjavík como primeira localização e combina uma fotografia urbana com outra imagem ampla da costa.",
+            "target_words": 100
+          },
+          {
+            "id": "scene-1",
+            "kind": "narration",
+            "topic": "Cape Town Cidade do Cabo Table Mountain South Africa harbor",
+            "source_text": "Depois, a viagem cruza o equador e chega a Cape Town, conhecida como Cidade do Cabo, no sul da África do Sul. A Table Mountain domina o horizonte, enquanto barcos deixam o porto e nuvens baixas passam sobre as encostas. O roteiro reserva duas horas para observar a paisagem e percorre 12 quilômetros entre o centro, o V&A Waterfront e um mirante. No caminho, placas, fachadas e jardins dão escala à cidade Uma imagem mostra a montanha vista da baía; outra acompanha as ruas próximas ao mar. A mudança de Reykjavík para a Cidade do Cabo deve produzir uma nova localização no mapa, claramente distante da primeira.",
+            "target_words": 100
+          },
+          {
+            "id": "scene-2",
+            "kind": "narration",
+            "topic": "Tokyo Shibuya city street",
+            "source_text": "A terceira parada fica em Tóquio, muito distante das duas cidades anteriores. Ao anoitecer, o trem chega a Shibuya, onde faixas de pedestres, letreiros luminosos e pequenos restaurantes formam uma paisagem movimentada. O passeio atravessa cinco quarteirões e termina junto a um jardim silencioso, criando contraste entre ruas cheias e caminhos tranquilos. O narrador anota 18 minutos de caminhada e escolhe duas imagens: uma vista ampla do cruzamento e um detalhe de lanternas em uma rua lateral. Tóquio deve aparecer como terceiro ponto independente, sem reutilizar a posição das outras cidades.",
+            "target_words": 100
+          }
+        ]
+      },
+      "output": {
+        "render": {
+          "enabled": true,
+          "background": {
+            "mode": "asset",
+            "asset_id": "drive-background-01"
+          },
+          "subtitles": {
+            "mode": "none",
+            "enabled": false
+          },
+          "render_concurrency": 2,
+          "foreground_scale_percent": 85
+        },
+        "audio": {},
+        "extract_entities": "enabled",
+        "generate_scene_images": "disabled",
+        "save_to_db": true,
+        "generate_timeline": true,
+        "voiceover_enabled": "enabled",
+        "languages": []
+      },
+      "max_phrase_overlays": 0,
+      "audio": {
+        "mode": "COMBINED_TIMELINE",
+        "timing": {
+          "mode": "required",
+          "boundary": "word",
+          "formats": [
+            "json"
+          ]
+        },
+        "mix_policy": "VOICEOVER_DUCKED_CLIP",
+        "background_music": [
+          {
+            "asset_id": "bgm1",
+            "loop": true,
+            "gain_db": -24,
+            "duck_under_voiceover": true,
+            "duck_gain_db": -30
+          }
+        ]
+      },
+      "media_plan": {
+        "mode": "hybrid",
+        "provider_policy": {
+          "youtube": "disabled",
+          "internet_images": "disabled",
+          "image_generation": "disabled",
+          "artlist": "disabled",
+          "geocoding": "enabled"
+        },
+        "cache": {
+          "read": true,
+          "write": true
+        },
+        "extraction": {
+          "enabled": true,
+          "include": [
+            "locations"
+          ],
+          "important_phrases": [],
+          "max_entities_per_segment": 8,
+          "max_important_phrases_per_segment": 0,
+          "max_image_queries_per_segment": 4,
+          "entity_images": {
+            "entity_types": [],
+            "max_per_entity": 0,
+            "scope": "per_scene",
+            "upload_to_drive": false
+          }
+        },
+        "force_refresh_assets": false,
+        "planner": {
+          "candidate_limit": 50
+        },
+        "materialization": {
+          "mode": "selected",
+          "upload_to_drive": false,
+          "wait_for_ready": true
+        },
+        "include_trace": true,
+        "force_refresh_bindings": false,
+        "searches": []
+      },
+      "max_image_overlays": 0,
+      "media_mode": "",
+      "maps_only": true
+    }
+  ]
+}

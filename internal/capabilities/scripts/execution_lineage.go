@@ -52,6 +52,10 @@ func (r *Runner) completeExecutionStep(ctx context.Context, exec ExecutionContex
 }
 
 func (r *Runner) failExecutionStep(ctx context.Context, exec ExecutionContext, step ExecutionStep, cause error) error {
+	if pending, ok := ctx.Value(deferredAudioFailureKey{}).(*deferredAudioFailure); ok {
+		pending.cause, pending.step = cause, step
+		return nil
+	}
 	step.Status = "FAILED"
 	step.CompletedAt = time.Now().UTC()
 	step.DurationMS = step.CompletedAt.Sub(step.StartedAt).Milliseconds()
