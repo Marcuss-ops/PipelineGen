@@ -11,6 +11,7 @@ package scriptgeneration
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"strings"
 	"testing"
@@ -291,6 +292,36 @@ func TestRunner_OverlayPlanAppliesRunLevelEditorialBudget(t *testing.T) {
 	require.NotNil(t, res.FinalAudio, "the overlay plan must have a certified master-audio extent")
 	require.GreaterOrEqual(t, res.OverlayPlan.DurationMS, res.FinalAudio.DurationMS,
 		"overlay plan duration must cover audio and any longer Date overlay")
+	datePayload, err := marshalRenderingGenOverlayPlan(*res.OverlayPlan)
+	require.NoError(t, err)
+	var wire struct {
+		DurationMS int64 `json:"duration_ms"`
+		Items      []struct {
+			Text       string `json:"text"`
+			DurationMS int64  `json:"duration_ms"`
+		} `json:"items"`
+	}
+	require.NoError(t, json.Unmarshal(datePayload, &wire))
+	require.GreaterOrEqual(t, wire.DurationMS, int64(6900), "overlay payload must cover the full Date display tail")
+	for _, item := range wire.Items {
+		if item.Text == "2025" || item.Text == "March 5, 2026" {
+			require.Equal(t, int64(5000), item.DurationMS, "Date item payload duration must be five seconds")
+		}
+	}
+	finalAudioDurationUS := res.FinalAudio.DurationUS
+	if finalAudioDurationUS <= 0 {
+		finalAudioDurationUS = res.FinalAudio.DurationMS * 1000
+	}
+	dateTailResult := *res
+	dateTailAudio := *res.FinalAudio
+	dateTailAudio.DurationUS = finalAudioDurationUS
+	dateTailResult.FinalAudio = &dateTailAudio
+	dateTailResult.CanonicalTimeline = &capabilityaudio.CanonicalTimeline{DurationUS: finalAudioDurationUS}
+	editingTimeline, err := BuildEditingTimeline(&dateTailResult)
+	require.NoError(t, err)
+	require.NotNil(t, editingTimeline)
+	require.GreaterOrEqual(t, editingTimeline.DurationUS, int64(6_900_000), "video timeline must include Date display tail")
+	require.Equal(t, finalAudioDurationUS, editingTimeline.Audio.DurationUS, "visual tail must not pad audio")
 	require.NoError(t, res.OverlayPlan.Validate())
 
 	byID := map[string]capabilityoverlay.OverlayItem{}
@@ -365,6 +396,9 @@ func TestRunner_OverlayPlanAppliesRunLevelEditorialBudget(t *testing.T) {
 		require.Contains(t, tc.motionPool, item.MotionID)
 		require.Equal(t, tc.start, item.StartMs, "typed value must start at its certified spoken word boundary")
 		require.Equal(t, tc.end, item.EndMs, "typed value must retain its full planned display window")
+		if tc.template == "TIMELINE_DATE_CARD" {
+			require.GreaterOrEqual(t, item.DurationUS, int64(5_000_000), "each Date item must carry a five-second duration")
+		}
 		if tc.template == "TIMELINE_DATE_CARD" || tc.template == "METRIC_STAT_CARD" {
 			require.Equal(t, 132.0, item.Params["font_size_px"], "Date and Metric use the shared text size +20px")
 		}
