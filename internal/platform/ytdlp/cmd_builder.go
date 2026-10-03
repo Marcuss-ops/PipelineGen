@@ -10,6 +10,7 @@ package ytdlp
 
 import (
 	"os"
+	"strconv"
 	"strings"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
@@ -182,6 +183,39 @@ func (b *CommandBuilder) BaseArgsForClient(url string, useCookies bool, playerCl
 	}
 
 	return args
+}
+
+// EnvConcurrentFragments is the optional operator override for the yt-dlp
+// native fragment concurrency (PIPELINEGEN_YTDLP_CONCURRENT_FRAGMENTS).
+const EnvConcurrentFragments = "PIPELINEGEN_YTDLP_CONCURRENT_FRAGMENTS"
+
+// defaultConcurrentFragments parallelizes the native fragment downloader
+// (--concurrent-fragments, alias -N): the canonical selectors pick DASH
+// (bv*+ba) segmented formats, and yt-dlp's native downloader fetches those
+// fragments serially without -N. The stock path measured ~7.7h/week of
+// YouTube download wall; fragment concurrency is the documented 2-4x lever
+// for segmented sources. When aria2c takes over the full-source download
+// (downloader.addExternalDownloaderArgs) the flag is inert — it only governs
+// the NATIVE downloader — so it is safe to always append.
+const defaultConcurrentFragments = 4
+
+// ConcurrentFragmentsArg returns the --concurrent-fragments pair. Width 4 by
+// default; the env override is clamped to 1..16 so a typo can neither disable
+// the concurrency (0/negative) nor open an abusive hammer.
+func (b *CommandBuilder) ConcurrentFragmentsArg() []string {
+	width := defaultConcurrentFragments
+	if raw := strings.TrimSpace(os.Getenv(EnvConcurrentFragments)); raw != "" {
+		if parsed, err := strconv.Atoi(raw); err == nil {
+			width = parsed
+		}
+	}
+	if width < 1 {
+		width = 1
+	}
+	if width > 16 {
+		width = 16
+	}
+	return []string{"--concurrent-fragments", strconv.Itoa(width)}
 }
 
 // FormatArg returns the -f format string for YouTube downloads when addFormat

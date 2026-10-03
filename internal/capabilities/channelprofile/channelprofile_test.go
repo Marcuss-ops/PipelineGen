@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
 )
 
 func validProfile() Profile {
@@ -168,6 +170,30 @@ func TestShippedChannelProfilesDocumentParses(t *testing.T) {
 	}
 	if len(Snapshot()) == 0 {
 		t.Fatal("shipped document installs zero profiles")
+	}
+}
+
+// TestShippedChannelProfilesUseTheFullDefaultPhraseRotation ensures shipped
+// profiles do not accidentally narrow the available catalog to a handful of
+// repeated animations. Custom motion pools remain an explicit operator choice.
+func TestShippedChannelProfilesUseTheFullDefaultPhraseRotation(t *testing.T) {
+	Reset()
+	defer Reset()
+	found, err := LoadOptional(filepath.Join("..", "..", "..", "config", "channel_profiles.yaml"))
+	if err != nil {
+		t.Fatalf("shipped config/channel_profiles.yaml does not parse: %v", err)
+	}
+	if !found {
+		t.Skip("config/channel_profiles.yaml not present in this checkout")
+	}
+	profiles := Snapshot()
+	if len(profiles) == 0 {
+		t.Fatal("shipped document installs zero profiles")
+	}
+	for _, profile := range profiles {
+		if len(profile.PhraseMotions) != 0 {
+			t.Errorf("channel %q narrows the phrase catalog to %d motions; leave the override empty to rotate through all %d certified motions", profile.ChannelID, len(profile.PhraseMotions), len(overlays.CertifiedPhraseMotions()))
+		}
 	}
 }
 

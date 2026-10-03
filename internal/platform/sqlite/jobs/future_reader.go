@@ -10,8 +10,9 @@ import job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 // retry_count, so the job formally keeps waiting and the claim path
 // (ClaimNext / Start / RenewLease in repository_claims.go) stays the only
 // mutation surface. The ordering matches ClaimNext
-// (priority DESC, created_at ASC) so preparation sees the jobs the worker
-// will actually pick next.
+// (priority DESC, created_at ASC with the per-queued-hour anti-starvation
+// aging term — claimOrderClause in repository_claims.go) so preparation sees
+// the jobs the worker will actually pick next.
 //
 // Compile-time assertion (defence-in-depth; the twin assertion lives at
 // internal/capabilities/jobs/future_reader.go, per the QueueNotifier

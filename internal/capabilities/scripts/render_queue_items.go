@@ -149,6 +149,8 @@ type overlayItemPublicationMetadata struct {
 	ItemID           string
 	ItemKind         string
 	EntityID         string
+	EntityIDs        []string
+	EntityLabels     []string
 	Text             string
 	SourceStartUS    int64
 	SourceEndUS      int64
@@ -199,12 +201,38 @@ func separateOverlayItemPlan(parent capoverlay.OverlayPlan, source capoverlay.Ov
 	if err := child.Validate(); err != nil {
 		return capoverlay.OverlayPlan{}, nil, fmt.Errorf("build child plan for %q: %w", source.ID, err)
 	}
-	return child, &overlayItemPublicationMetadata{
+	metadata := &overlayItemPublicationMetadata{
 		JobID:  firstNonEmpty(parent.DriveJobID, parent.PlanID),
 		ItemID: source.ID, ItemKind: source.Kind, EntityID: source.EntityID,
 		Text: source.Text, SourceStartUS: startUS, SourceEndUS: startUS + durationUS,
 		TargetDurationUS: targetUS,
-	}, nil
+	}
+	if source.Map != nil {
+		metadata.EntityIDs, metadata.EntityLabels = mapEntityLineage(source.Map)
+	}
+	return child, metadata, nil
+}
+
+func mapEntityLineage(mapOverlay *capoverlay.MapOverlay) ([]string, []string) {
+	if mapOverlay == nil {
+		return nil, nil
+	}
+	ids := make([]string, 0, len(mapOverlay.Pins))
+	labels := make([]string, 0, len(mapOverlay.Pins))
+	seen := make(map[string]struct{}, len(mapOverlay.Pins))
+	for _, pin := range mapOverlay.Pins {
+		id, label := strings.TrimSpace(pin.ID), strings.TrimSpace(pin.Label)
+		if id != "" {
+			if _, exists := seen[id]; !exists {
+				seen[id] = struct{}{}
+				ids = append(ids, id)
+			}
+		}
+		if label != "" {
+			labels = append(labels, label)
+		}
+	}
+	return ids, labels
 }
 
 func overlayItemChildPlanID(parentPlanID string, index int, itemID string) string {

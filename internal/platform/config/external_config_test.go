@@ -7,6 +7,49 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+func TestExternalConfigLocationOverlayBindings(t *testing.T) {
+	t.Run("defaultsKeepGeocodingAndMapsDisabled", func(t *testing.T) {
+		cfg := &Config{}
+		applyDefaults(cfg)
+		assert.Empty(t, cfg.External.GeocodingBaseURL)
+		assert.Empty(t, cfg.External.GeocodingCacheDir)
+		assert.Empty(t, cfg.External.MapPlateManifestPath)
+		assert.Empty(t, cfg.External.GeocodingUserAgent)
+	})
+
+	t.Run("yamlBindsLocationSources", func(t *testing.T) {
+		cfg := &Config{}
+		applyDefaults(cfg)
+		raw := []byte(`external:
+  geocoding_base_url: "https://geo.example/search"
+  geocoding_user_agent: "PipelineGen test (https://example.org/contact)"
+  geocoding_cache_dir: "cache/geocoding"
+  map_plate_manifest_path: "maps/plates.json"
+`)
+		if err := yaml.Unmarshal(raw, cfg); err != nil {
+			t.Fatalf("yaml unmarshal failed: %v", err)
+		}
+		assert.Equal(t, "https://geo.example/search", cfg.External.GeocodingBaseURL)
+		assert.Equal(t, "PipelineGen test (https://example.org/contact)", cfg.External.GeocodingUserAgent)
+		assert.Equal(t, "cache/geocoding", cfg.External.GeocodingCacheDir)
+		assert.Equal(t, "maps/plates.json", cfg.External.MapPlateManifestPath)
+	})
+
+	t.Run("environmentBindsLocationSources", func(t *testing.T) {
+		t.Setenv("VELOX_GEOCODING_BASE_URL", "https://geo-env.example/search")
+		t.Setenv("VELOX_GEOCODING_USER_AGENT", "PipelineGen env test")
+		t.Setenv("VELOX_GEOCODING_CACHE_DIR", "/var/cache/pipelinegen/geo")
+		t.Setenv("VELOX_MAP_PLATE_MANIFEST_PATH", "/etc/pipelinegen/plates.json")
+		cfg := &Config{}
+		applyDefaults(cfg)
+		applyEnvVars(cfg)
+		assert.Equal(t, "https://geo-env.example/search", cfg.External.GeocodingBaseURL)
+		assert.Equal(t, "PipelineGen env test", cfg.External.GeocodingUserAgent)
+		assert.Equal(t, "/var/cache/pipelinegen/geo", cfg.External.GeocodingCacheDir)
+		assert.Equal(t, "/etc/pipelinegen/plates.json", cfg.External.MapPlateManifestPath)
+	})
+}
+
 func TestConfigUnmarshalReadsFallbackProviderKeysAndStockPipelineFlag(t *testing.T) {
 	raw := []byte(`
 external:

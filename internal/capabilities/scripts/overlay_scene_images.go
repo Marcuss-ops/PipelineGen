@@ -13,7 +13,7 @@ import (
 // can keep their canonical portrait while each scene gets its own contextual
 // visual. Timing is anchored at the certified scene start, never estimated
 // from the narration text.
-func sceneImageCandidate(result *GenerateResult, sceneID string, startUS int64, excludedHashes ...map[string]struct{}) (capabilityoverlay.ImageCandidate, bool) {
+func sceneImageCandidate(result *GenerateResult, sceneID string, startUS int64, excludedHashes map[string]struct{}, sceneEndUS int64) (capabilityoverlay.ImageCandidate, bool) {
 	if result == nil || strings.TrimSpace(sceneID) == "" || startUS < 0 {
 		return capabilityoverlay.ImageCandidate{}, false
 	}
@@ -33,10 +33,8 @@ func sceneImageCandidate(result *GenerateResult, sceneID string, startUS int64, 
 			if !sceneImageCandidateReady(candidate, digest) {
 				continue
 			}
-			if len(excludedHashes) > 0 {
-				if _, duplicate := excludedHashes[0][strings.ToLower(digest)]; duplicate {
-					continue
-				}
+			if _, duplicate := excludedHashes[strings.ToLower(digest)]; duplicate {
+				continue
 			}
 			url := strings.TrimSpace(candidate.SourceURL)
 			if url == "" {
@@ -47,11 +45,22 @@ func sceneImageCandidate(result *GenerateResult, sceneID string, startUS int64, 
 			// window so the remote replace-only timeline can carry both without an
 			// invalid overlapping range.
 			startUS = ((startUS / 1000) * 1000) + capabilityoverlay.MaxImageOverlayDurationMS*1000
+			durationUS := int64(capabilityoverlay.MaxImageOverlayDurationMS * 1000)
+			// A scene image starts after the opening entity-card window. Short
+			// scenes may not have a full image interval left, so end it exactly
+			// at the owning scene boundary instead of failing timeline preflight.
+			if sceneEndUS > 0 {
+				if remainingUS := sceneEndUS - startUS; remainingUS <= 0 {
+					return capabilityoverlay.ImageCandidate{}, false
+				} else if remainingUS < durationUS {
+					durationUS = remainingUS
+				}
+			}
 			return capabilityoverlay.ImageCandidate{
 				AssetID: digest, URL: url, LocalPath: strings.TrimSpace(candidate.LocalPath),
 				SHA256: digest, MediaType: strings.TrimSpace(candidate.MIMEType),
-				StartMs: startUS / 1000, EndMs: startUS/1000 + capabilityoverlay.MaxImageOverlayDurationMS,
-				StartUS: startUS, DurationUS: capabilityoverlay.MaxImageOverlayDurationMS * 1000,
+				StartMs: startUS / 1000, EndMs: (startUS + durationUS + 999) / 1000,
+				StartUS: startUS, DurationUS: durationUS,
 				Score: 1,
 			}, true
 		}

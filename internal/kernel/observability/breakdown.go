@@ -300,7 +300,7 @@ func topLevelStages(stages []StageReport) []StageReport {
 	out := make([]StageReport, 0, len(stages))
 	for i := range stages {
 		st := stages[i]
-		if st.StartedAt.IsZero() || st.FinishedAt.IsZero() {
+		if st.Independent || st.StartedAt.IsZero() || st.FinishedAt.IsZero() {
 			out = append(out, st)
 			continue
 		}

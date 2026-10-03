@@ -131,7 +131,21 @@ const DefaultSampleInterval = 500 * time.Millisecond
 
 // samplePersistTimeout bounds a single collect+persist step so a hung store
 // can never stall a run (instrumentation must never change behaviour).
-const samplePersistTimeout = 3 * time.Second
+//
+// It MUST stay comfortably above the canonical SQLite busy_timeout (5s,
+// platform/sqlite/pool.go): a persist that hits a busy writer legitimately
+// waits up to 5s for the lock. The historical 3s deadline was SHORTER than
+// that wait, so under job write pressure the sampler failed with "context
+// deadline exceeded" every few seconds (measured in the 2026-09-22 chain
+// debug: a persist failure every ~14s for the whole run) — the 12s deadline
+// absorbs the legitimate 5s busy-wait while a genuinely hung store still
+// cannot stall a run for longer than one sample period.
+const samplePersistTimeout = 12 * time.Second
+
+// sqliteBusyTimeoutReference documents the invariant the deadline above
+// depends on: the production pool's busy_timeout pragma (5s). Keep the two
+// numbers in view together.
+const sqliteBusyTimeoutReference = 5 * time.Second
 
 func (s *Sampler) Sample(ctx context.Context, identity capperformance.SampleIdentity) (capperformance.ResourceObservation, error) {
 	if s == nil || s.provider == nil || s.store == nil {

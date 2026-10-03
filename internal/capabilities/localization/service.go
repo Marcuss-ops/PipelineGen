@@ -22,6 +22,7 @@ package localization
 import (
 	"context"
 	"fmt"
+	"sort"
 	"sync"
 	"time"
 
@@ -193,8 +194,17 @@ func (s *Service) Localize(ctx context.Context, in LocalizeInput) (*LocalizeResu
 	}
 	var pipelineWG sync.WaitGroup
 	var resultsMu sync.Mutex
-	for i, plan := range in.Plans {
-		idx := i
+	// Launch longest-first (LPT): the plans' DurationMS is the render window,
+	// so starting the longest renders first lets the short ones fill the tail
+	// instead of waiting behind them. The 2026-09-21 chain-debug measured
+	// chronon_queue_wait up to 17.2s inside a 5-scene fan-out whose similar-
+	// length scenes landed on the GPU lanes in arbitrary order; LPT cannot
+	// change the lanes, but it removes the avoidable component of the tail
+	// wait when durations differ. Results stay keyed by the ORIGINAL index,
+	// so the published manifest keeps the editorial priority order — only
+	// the submission order changes.
+	for _, idx := range longestFirstLaunchOrder(in.Plans) {
+		plan := in.Plans[idx]
 		pipelineWG.Add(1)
 		go func() {
 			defer pipelineWG.Done()
@@ -298,4 +308,21 @@ func (s *Service) Localize(ctx context.Context, in LocalizeInput) (*LocalizeResu
 		return &LocalizeResult{Ref: ref, Artifacts: artifacts, Failures: failures}, fmt.Errorf("localization: localize: assemble doc: %w", err)
 	}
 	return &LocalizeResult{Ref: ref, Artifacts: artifacts, Failures: failures}, nil
+}
+
+// longestFirstLaunchOrder returns the plan indices ordered by estimated render
+// weight (DurationMS, the render window) descending, with ties stable so the
+// editorial priority order inside a duration band is preserved. It decides
+// only the goroutine SUBMISSION order of the Localize fan-out: results are
+// written by original index, so the manifest, artifacts and failures keep the
+// editorial ordering the correctness contracts pin.
+func longestFirstLaunchOrder(plans []LocalizedClipPlan) []int {
+	order := make([]int, len(plans))
+	for i := range order {
+		order[i] = i
+	}
+	sort.SliceStable(order, func(a, b int) bool {
+		return plans[order[a]].DurationMS > plans[order[b]].DurationMS
+	})
+	return order
 }

@@ -185,8 +185,36 @@ func entitySourcesFromAnnotations(ann *scriptpkg.SceneAnnotations, sceneText str
 		// carried by the annotation itself.
 		spokenName := annotationSpokenSurface(sceneText, name, entity.Mentions)
 		groundedName := name
-		if _, ok := findLocalizedEntitySpan(sceneText, groundedName); !ok && strings.TrimSpace(spokenName) != "" {
-			if _, mentionOK := findLocalizedEntitySpan(sceneText, spokenName); mentionOK {
+		// Value surfaces are not identities: their punctuation is semantically
+		// significant ($2 vs 2, 25% vs 25). Keep the exact extracted surface as
+		// the identity/timing key whenever it appears verbatim, rather than
+		// allowing the localization matcher to normalize it away.
+		isValueEntity := false
+		switch scriptpkg.NormalizeAnnotationType(entity.Type) {
+		case "DATE", "TIME", "NUMBER", "CARDINAL", "ORDINAL", "MONEY", "PERCENT":
+			isValueEntity = true
+			if exact, ok := findEntitySpan(sceneText, name); ok {
+				spokenName = exact.Text
+				groundedName = exact.Text
+			} else if len(entity.Mentions) > 0 {
+				// For localized values, only the annotation's verbatim mention
+				// may substitute for its canonical surface. Do not reuse the
+				// punctuation-insensitive name matcher result here.
+				if exact, ok := findEntitySpan(sceneText, entity.Mentions[0].Text); ok {
+					spokenName = exact.Text
+					groundedName = exact.Text
+				}
+			}
+		}
+		// Prefer an exact source surface before the localization-tolerant
+		// matcher. That matcher intentionally ignores punctuation for names,
+		// but value entities such as "25%" and "$2" must keep punctuation
+		// in the certified text span used by the entity timeline.
+		_, exactNameFound := findEntitySpan(sceneText, groundedName)
+		if !exactNameFound && !isValueEntity && strings.TrimSpace(spokenName) != "" {
+			if _, exactSpokenFound := findEntitySpan(sceneText, spokenName); exactSpokenFound {
+				groundedName = spokenName
+			} else if _, mentionOK := findLocalizedEntitySpan(sceneText, spokenName); mentionOK {
 				groundedName = spokenName
 			}
 		}
@@ -203,7 +231,11 @@ func entitySourcesFromAnnotations(ann *scriptpkg.SceneAnnotations, sceneText str
 		// (and a joined form such as "Sudafrica" changes the rune width),
 		// so forwarding the old offsets would make a correctly grounded
 		// entity fail the builder's explicit text gate.
-		if span, ok := findLocalizedEntitySpan(sceneText, groundedName); ok {
+		span, ok := findEntitySpan(sceneText, groundedName)
+		if !ok && !isValueEntity {
+			span, ok = findLocalizedEntitySpan(sceneText, groundedName)
+		}
+		if ok {
 			source.TextStart = span.StartRune
 			source.TextEnd = span.EndRune
 		}

@@ -39,12 +39,12 @@ func (r *Runner) runVidRushJoinAndPrepare(ctx context.Context, runID string, req
 	phraseLimit := req.MediaPlan.Extraction.MaxImportantPhrasesPerSegment
 	includePhrases := req.MediaPlan.Extraction.Includes(mediadomain.ExtractionIncludeImportantPhrases)
 	annotations := computeSegmentEntityAnnotations(snapshot, req.SourceLanguage, segments, phraseLimit, includePhrases, req.MediaPlan.Extraction.ImportantPhrases)
-	// Geocoding is an explicit opt-in (provider_policy.geocoding=enabled): a
-	// run without the flag never performs lookups, and an enabled policy
-	// without a wired adapter fails closed rather than degrading silently.
+	// Geocoding is explicitly enabled by provider policy or automatically for
+	// grounded location extraction when both production adapters are configured.
+	// An explicit policy without a wired adapter fails closed.
 	// The enrichment projects onto CLONED annotations: the snapshot's entity
 	// structs are shared read-only state and must never be mutated in place.
-	if req.MediaPlan.ProviderPolicy.Geocoding == mediadomain.MediaToggleEnabled {
+	if r.shouldGeocodeScriptLocations(req) {
 		geocoded := make(map[int]*scriptpkg.SceneAnnotations, len(annotations))
 		for index, annotation := range annotations {
 			if annotation == nil {
@@ -225,7 +225,7 @@ type Runner struct {
 	localizedRenderMu sync.Mutex
 
 	// geocoder resolves grounded place annotations to WGS84 when the request
-	// explicitly enables provider_policy.geocoding. Nil with an enabled
+	// explicitly enables media_plan.provider_policy.geocoding. Nil with an enabled
 	// policy fails closed (geocoding.go); nil with the policy absent is the
 	// default offline deployment — no enrichment, no maps.
 	geocoder capabilitygeocoding.Geocoder

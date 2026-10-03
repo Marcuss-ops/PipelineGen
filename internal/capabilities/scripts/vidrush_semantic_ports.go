@@ -52,7 +52,7 @@ type VisualEntity struct {
 // source text. The deterministic Rust crate (rust/visualner) is the
 // production implementation; the rule it enforces is NO EVIDENCE → NO ENTITY.
 type VisualNERPort interface {
-	Extract(ctx context.Context, sourceText string, entityCount int) ([]VisualEntity, error)
+	Extract(ctx context.Context, language string, sourceText string, entityCount int) ([]VisualEntity, error)
 }
 
 // LocalStockResolverPort is the LOCAL FIRST PROVIDER SECOND resolver. The

@@ -23,7 +23,7 @@ type stubVisualNER struct {
 	err      error
 }
 
-func (s stubVisualNER) Extract(_ context.Context, _ string, _ int) ([]VisualEntity, error) {
+func (s stubVisualNER) Extract(_ context.Context, _ string, _ string, _ int) ([]VisualEntity, error) {
 	if s.err != nil {
 		return nil, s.err
 	}
@@ -38,10 +38,12 @@ type recordingVisualNER struct {
 	calls    int
 	source   string
 	limit    int
+	language string
 }
 
-func (s *recordingVisualNER) Extract(_ context.Context, source string, limit int) ([]VisualEntity, error) {
+func (s *recordingVisualNER) Extract(_ context.Context, language, source string, limit int) ([]VisualEntity, error) {
 	s.calls++
+	s.language = language
 	s.source = source
 	s.limit = limit
 	return s.entities, nil
@@ -69,7 +71,7 @@ func TestSceneIRSegmentEnricherExtractsFromNarrationNotEditorialBrief(t *testing
 	enricher, err := NewSceneIRSegmentEnricher(ner)
 	require.NoError(t, err)
 
-	result, err := enricher.Enrich(context.Background(), nil, scriptpkg.SpecScene{
+	result, err := enricher.Enrich(context.Background(), &scriptpkg.ResolvedGenerationPlan{Language: "en"}, scriptpkg.SpecScene{
 		ID:    "mediterranean-01-greek-salad",
 		Index: 0,
 		// The brief arrives padded — it must be trimmed for identity only.
@@ -79,6 +81,7 @@ func TestSceneIRSegmentEnricherExtractsFromNarrationNotEditorialBrief(t *testing
 	require.NoError(t, err)
 
 	require.Equal(t, 1, ner.calls, "VisualNER must be called exactly once per scene")
+	require.Equal(t, "en", ner.language)
 	require.Equal(t, narration, ner.source,
 		"VisualNER must extract from the committed narration, never the editorial brief")
 	require.Equal(t, brief, result.SourceText,
@@ -105,7 +108,7 @@ func TestSceneIRSegmentEnricherFallsBackToSourceWithoutNarration(t *testing.T) {
 	enricher, err := NewSceneIRSegmentEnricher(ner)
 	require.NoError(t, err)
 
-	result, err := enricher.Enrich(context.Background(), nil, scriptpkg.SpecScene{
+	result, err := enricher.Enrich(context.Background(), &scriptpkg.ResolvedGenerationPlan{Language: "en"}, scriptpkg.SpecScene{
 		ID: "brooklyn-origins", Index: 0, Text: "",
 		Metadata: &scriptpkg.SceneMetadata{SourceText: brief},
 	})
@@ -123,12 +126,23 @@ func TestSceneIRSegmentEnricherFallsBackToSourceWithoutNarration(t *testing.T) {
 // rejected with the same sceneir.ErrCompileInputInvalid surface Compile used to
 // produce, and VisualNER is never invoked, so no extraction work is spent on a
 // segment whose identity was already refused.
+func TestSceneIRSegmentEnricherRequiresLanguageBeforeVisualNER(t *testing.T) {
+	ner := &recordingVisualNER{}
+	enricher, err := NewSceneIRSegmentEnricher(ner)
+	require.NoError(t, err)
+	_, err = enricher.Enrich(context.Background(), nil, scriptpkg.SpecScene{
+		ID: "language-required", Text: "A valid narration surface.",
+	})
+	require.ErrorContains(t, err, "source language is required")
+	require.Zero(t, ner.calls, "VisualNER must not run without a language")
+}
+
 func TestSceneIRSegmentEnricherFailsClosedBeforeVisualNER(t *testing.T) {
 	ner := &recordingVisualNER{entities: greekSaladEntities()}
 	enricher, err := NewSceneIRSegmentEnricher(ner)
 	require.NoError(t, err)
 
-	_, err = enricher.Enrich(context.Background(), nil, scriptpkg.SpecScene{
+	_, err = enricher.Enrich(context.Background(), &scriptpkg.ResolvedGenerationPlan{Language: "en"}, scriptpkg.SpecScene{
 		ID:    "mediterranean-01-greek-salad",
 		Index: 0,
 		Text:  "   ",
@@ -238,7 +252,7 @@ func TestSceneIRSegmentEnricherCompilesIdentityAndExtractsEntities(t *testing.T)
 		Index: 0,
 		Text:  "Greek salad contains tomatoes, feta cheese and olives.",
 	}
-	result, err := enricher.Enrich(context.Background(), nil, scene)
+	result, err := enricher.Enrich(context.Background(), &scriptpkg.ResolvedGenerationPlan{Language: "en"}, scene)
 	require.NoError(t, err)
 
 	// Immutable identity preserved (Fase 1).
@@ -265,7 +279,7 @@ func TestSceneIRSegmentEnricherPrefersCanonicalSegmentID(t *testing.T) {
 	enricher, err := NewSceneIRSegmentEnricher(stubVisualNER{entities: greekSaladEntities()})
 	require.NoError(t, err)
 
-	result, err := enricher.Enrich(context.Background(), nil, scriptpkg.SpecScene{
+	result, err := enricher.Enrich(context.Background(), &scriptpkg.ResolvedGenerationPlan{Language: "en"}, scriptpkg.SpecScene{
 		ID:        "scene-1",
 		SegmentID: "mediterranean-01-greek-salad",
 		Index:     0,
@@ -282,7 +296,7 @@ func TestSceneIRSegmentEnricherFencesNarrationWhileKeepingSourceEvidence(t *test
 	enricher, err := NewSceneIRSegmentEnricher(stubVisualNER{})
 	require.NoError(t, err)
 
-	plan := &scriptpkg.ResolvedGenerationPlan{Segments: []scriptpkg.ScriptSegment{{
+	plan := &scriptpkg.ResolvedGenerationPlan{Language: "en", Segments: []scriptpkg.ScriptSegment{{
 		ID: "brooklyn-origins", SourceText: brief,
 	}}}
 	scene := scriptpkg.SpecScene{ID: "brooklyn-origins", Index: 0, Text: narration}
@@ -331,7 +345,7 @@ func TestSceneIRSegmentEnricherKeepsBriefIdentityWhileExtractingFromNarration(t 
 	}}})
 	require.NoError(t, err)
 
-	plan := &scriptpkg.ResolvedGenerationPlan{MediaPlan: mediadomain.MediaPlanSpec{Extraction: mediadomain.MediaExtractionPolicy{
+	plan := &scriptpkg.ResolvedGenerationPlan{Language: "en", MediaPlan: mediadomain.MediaPlanSpec{Extraction: mediadomain.MediaExtractionPolicy{
 		Include: []string{mediadomain.ExtractionIncludeEntities},
 	}}}
 	result, err := enricher.Enrich(context.Background(), plan, scriptpkg.SpecScene{
@@ -346,17 +360,17 @@ func TestSceneIRSegmentEnricherKeepsBriefIdentityWhileExtractingFromNarration(t 
 }
 
 func TestSceneIRSegmentEnricherFiltersSelectedEntityCategory(t *testing.T) {
-	source := "OpenAI reported 25% growth and $2 million revenue for the year 2025."
+	source := "OpenAI reported 25% growth and 42 orders, $2 million revenue for the year 2025."
 	span := func(value string, kind scriptpkg.EntityType) VisualEntity {
 		start := strings.Index(source, value)
 		return VisualEntity{Text: value, Type: kind, Score: 0.9, Start: start, End: start + len(value), Evidence: value}
 	}
 	ner := &recordingVisualNER{entities: []VisualEntity{
-		span("OpenAI", "BRAND"), span("25%", "PERCENT"), span("$2 million", "MONEY"), span("2025", "DATE"),
+		span("OpenAI", "BRAND"), span("25%", "PERCENT"), span("42 orders", "NUMBER"), span("$2 million", "MONEY"), span("2025", "DATE"),
 	}}
 	enricher, err := NewSceneIRSegmentEnricher(ner)
 	require.NoError(t, err)
-	plan := &scriptpkg.ResolvedGenerationPlan{MediaPlan: mediadomain.MediaPlanSpec{Extraction: mediadomain.MediaExtractionPolicy{
+	plan := &scriptpkg.ResolvedGenerationPlan{Language: "en", MediaPlan: mediadomain.MediaPlanSpec{Extraction: mediadomain.MediaExtractionPolicy{
 		Include: []string{mediadomain.ExtractionIncludeMoney}, MaxEntitiesPerSegment: 1,
 	}}}
 	result, err := enricher.Enrich(context.Background(), plan, scriptpkg.SpecScene{ID: "money", Text: source})
@@ -372,9 +386,28 @@ func TestSceneIRSegmentEnricherFiltersSelectedEntityCategory(t *testing.T) {
 	plan.MediaPlan.Extraction.MaxEntitiesPerSegment = 1
 	broad, err := enricher.Enrich(context.Background(), plan, scriptpkg.SpecScene{ID: "broad", Text: source})
 	require.NoError(t, err)
-	require.Len(t, broad.Insights.Entities, 4, "typed values must survive independently from the identity cap")
+	require.Len(t, broad.Insights.Entities, 5, "typed values must survive independently from the identity cap")
 	require.Equal(t, []string{"OpenAI"}, broad.Insights.ImageQueries,
 		"broad entity mode may search the extracted brand, but must never fan out values")
+
+	plan.MediaPlan.Extraction.MaxEntitiesPerSegment = 3
+	for _, tc := range []struct {
+		selector string
+		want     []struct{ kind, text string }
+	}{
+		{mediadomain.ExtractionIncludeDates, []struct{ kind, text string }{{"DATE", "2025"}}},
+		{mediadomain.ExtractionIncludeMetrics, []struct{ kind, text string }{{"PERCENT", "25%"}, {"NUMBER", "42 orders"}}},
+	} {
+		plan.MediaPlan.Extraction.Include = []string{tc.selector}
+		selected, err := enricher.Enrich(context.Background(), plan, scriptpkg.SpecScene{ID: tc.selector, Text: source})
+		require.NoError(t, err)
+		require.Len(t, selected.Insights.Entities, len(tc.want), "%s selector returns only its typed surfaces", tc.selector)
+		for index, expected := range tc.want {
+			require.Equal(t, expected.kind, selected.Insights.Entities[index].Type)
+			require.Equal(t, expected.text, selected.Insights.Entities[index].Value)
+		}
+		require.Empty(t, selected.Insights.ImageQueries, "numeric/date category selectors must not fan values into image search")
+	}
 }
 
 func TestSceneIRSegmentEnricherUsesAllPersonsForImageSearch(t *testing.T) {
@@ -395,6 +428,7 @@ func TestSceneIRSegmentEnricherUsesAllPersonsForImageSearch(t *testing.T) {
 	require.NoError(t, err)
 
 	plan := &scriptpkg.ResolvedGenerationPlan{
+		Language: "en",
 		MediaPlan: mediadomain.MediaPlanSpec{
 			Extraction: mediadomain.MediaExtractionPolicy{
 				Enabled: true,
@@ -473,7 +507,7 @@ func TestSceneIRSegmentEnricherGroundsExplicitImportantPhraseHint(t *testing.T) 
 	source := "Mike Tyson unisce velocità e pressione. Potenza e disciplina."
 	enricher, err := NewSceneIRSegmentEnricher(stubVisualNER{})
 	require.NoError(t, err)
-	plan := &scriptpkg.ResolvedGenerationPlan{MediaPlan: mediadomain.MediaPlanSpec{
+	plan := &scriptpkg.ResolvedGenerationPlan{Language: "it", MediaPlan: mediadomain.MediaPlanSpec{
 		Extraction: mediadomain.MediaExtractionPolicy{
 			Include:                       []string{mediadomain.ExtractionIncludeEntities, mediadomain.ExtractionIncludeImportantPhrases},
 			MaxImportantPhrasesPerSegment: 1,

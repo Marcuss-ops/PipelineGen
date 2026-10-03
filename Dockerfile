@@ -37,6 +37,11 @@ RUN apt-get update \
 
 WORKDIR /src
 
+# PipelineGen's go.mod replaces the published queue version with the sibling
+# RenderingGen checkout. Supply that checkout as a named BuildKit context so
+# container builds use the same queue contract as local Go builds.
+COPY --from=renderinggen-queue / /RenderingGen/queue/
+
 # Layer-cache friendly: copy go.mod/go.sum first, download deps, then copy
 # the rest of the source.
 COPY go.mod go.sum ./
@@ -50,7 +55,7 @@ COPY . .
 # shipped with no embedded identity.
 ENV BUILDINFO_PKG=github.com/Marcuss-ops/PipelineGen/internal/platform/buildinfo
 
-# Compile the three canonical binaries.
+# Compile the three canonical Go binaries.
 ENV CGO_ENABLED=1
 RUN mkdir -p /out \
  && go build -trimpath \
@@ -63,6 +68,30 @@ RUN mkdir -p /out \
       -ldflags "-s -w -X ${BUILDINFO_PKG}.Version=${VERSION} -X ${BUILDINFO_PKG}.GitCommit=${COMMIT} -X ${BUILDINFO_PKG}.BuildTime=${BUILD_TIME}" \
       -o /out/admin ./cmd/admin
 
+# ─── rust-builder ────────────────────────────────────────────────
+# Keep ICU4C in its own build stage: VisualNER must be linked against the
+# exact Bookworm ICU ABI shipped in the runtime images.
+FROM debian:bookworm-slim AS rust-builder
+ARG RUST_ICU_MAJOR_VERSION_NUMBER=72
+ENV RUSTUP_HOME=/usr/local/rustup \
+    CARGO_HOME=/usr/local/cargo \
+    PATH=/usr/local/cargo/bin:${PATH}
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends \
+      build-essential \
+      ca-certificates \
+      curl \
+      libicu-dev \
+ && rm -rf /var/lib/apt/lists/* \
+ && curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs -o /tmp/rustup-init.sh \
+ && sh /tmp/rustup-init.sh -y --no-modify-path --profile minimal --default-toolchain stable \
+ && rm -f /tmp/rustup-init.sh
+WORKDIR /src
+COPY rust/ ./rust/
+RUN RUST_ICU_MAJOR_VERSION_NUMBER=${RUST_ICU_MAJOR_VERSION_NUMBER} cargo build --release --locked --manifest-path rust/Cargo.toml \
+ && mkdir -p /out \
+ && cp rust/target/release/pipelinegen-muscles rust/target/release/visualner rust/target/release/mediasampler /out/
+
 # ─── server-runtime ───────────────────────────────────────────────
 FROM debian:bookworm-slim AS server-runtime
 
@@ -70,10 +99,19 @@ RUN apt-get update \
  && apt-get install -y --no-install-recommends \
       ca-certificates \
       curl \
+      libicu72 \
       python3 \
  && rm -rf /var/lib/apt/lists/*
 
+ENV VELOX_RUST_VISUALNER_PATH="/app/bin/visualner" \
+    VELOX_RUST_MUSCLES_PATH="/app/bin/pipelinegen-muscles" \
+    VELOX_RUST_MEDIASAMPLER_PATH="/app/bin/mediasampler"
+
+RUN mkdir -p /app/bin
 COPY --from=builder /out/pipelinegen /usr/local/bin/pipelinegen
+COPY --from=rust-builder /out/pipelinegen-muscles /app/bin/pipelinegen-muscles
+COPY --from=rust-builder /out/visualner /app/bin/visualner
+COPY --from=rust-builder /out/mediasampler /app/bin/mediasampler
 
 # Copy migrations and config so the server can run DB migrations at startup.
 COPY migrations/ /app/migrations/
@@ -102,9 +140,15 @@ RUN apt-get update \
       ca-certificates \
       curl \
       ffmpeg \
+      libicu72 \
       python3 \
       python3-venv \
  && rm -rf /var/lib/apt/lists/*
+
+ENV VELOX_RUST_VISUALNER_PATH="/app/bin/visualner" \
+    VELOX_RUST_MUSCLES_PATH="/app/bin/pipelinegen-muscles" \
+    VELOX_RUST_MEDIASAMPLER_PATH="/app/bin/mediasampler"
+RUN mkdir -p /app/bin
 
 # Keep the Python ML runtime isolated from Debian's externally-managed
 # system interpreter (PEP 668). The manifest pins the Whisper inference
@@ -140,6 +184,9 @@ RUN curl -fsSL "https://github.com/yt-dlp/yt-dlp/releases/download/${YTDLP_VERSI
  && chmod a+rx /usr/local/bin/yt-dlp
 
 COPY --from=builder /out/worker /usr/local/bin/pipelinegen-worker
+COPY --from=rust-builder /out/pipelinegen-muscles /app/bin/pipelinegen-muscles
+COPY --from=rust-builder /out/visualner /app/bin/visualner
+COPY --from=rust-builder /out/mediasampler /app/bin/mediasampler
 
 # Copy Python scripts and config needed by the worker at runtime.
 COPY scripts/ /app/scripts/

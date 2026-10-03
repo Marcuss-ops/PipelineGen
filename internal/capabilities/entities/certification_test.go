@@ -84,7 +84,7 @@ func newRustVisualNERExtractor(t *testing.T) *rustVisualNERExtractor {
 }
 
 func (e *rustVisualNERExtractor) ExtractEntities(ctx context.Context, req scriptpkg.EntityExtractionRequest) (*scriptpkg.EntityResult, error) {
-	payload, err := json.Marshal(map[string]any{"version": "visualner.v1", "operation": "extract", "source_text": req.Text, "limit": req.EntityCount, "entity_count": req.EntityCount})
+	payload, err := json.Marshal(map[string]any{"version": "visualner.v1", "operation": "extract", "source_text": req.Text, "language": req.Language, "limit": req.EntityCount, "entity_count": req.EntityCount})
 	if err != nil {
 		return nil, err
 	}

@@ -152,6 +152,7 @@ func TestIntroV2_FixedMediaDoesNotRetranslateExistingCaptions(t *testing.T) {
 func TestIntroV2_EveryRenderLanguageResolvesATranslatedCaption(t *testing.T) {
 	const bodyNarration = "BODY NARRATION MUST NEVER BE A CAPTION"
 	req := GenerateRequest{SourceLanguage: "en", Languages: []Language{"it", "es"}}
+	req.Render.Subtitles = &scriptpkg.VideoSubtitlesSpec{Enabled: true}
 	scene := fixedIntroScene(map[Language]string{"en": "Welcome to the show"})
 	scene.Text["it"] = "[it] Welcome to the show"
 

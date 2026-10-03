@@ -28,6 +28,7 @@ import (
 	"testing"
 	"time"
 
+	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/stretchr/testify/require"
 
@@ -265,6 +266,14 @@ func TestCheckpointCrashInEveryWindowKeepsTheLastCompleteSnapshot(t *testing.T) 
 // concurrent workers mutating the live result cannot reach a queued snapshot.
 func TestCheckpointSnapshotIsADeepCopy(t *testing.T) {
 	live := newCheckpointResult(2)
+	live.OverlayPlan = &capabilityoverlay.OverlayPlan{Items: []capabilityoverlay.OverlayItem{{
+		ID: "map-item", AssetRefs: []capabilityoverlay.OverlayAssetRef{{AssetID: "lod-0", LocalPath: "/cache/lod-0.png"}},
+	}}}
+	live.LocalizedOverlayPlans = map[Language]*capabilityoverlay.OverlayPlan{
+		"es": {Items: []capabilityoverlay.OverlayItem{{
+			ID: "map-item-es", AssetRefs: []capabilityoverlay.OverlayAssetRef{{AssetID: "lod-0-es", LocalPath: "/cache/lod-0-es.png"}},
+		}}},
+	}
 	snapshot, err := snapshotGenerateResult(live)
 	require.NoError(t, err)
 	require.NotSame(t, live, snapshot)
@@ -276,6 +285,10 @@ func TestCheckpointSnapshotIsADeepCopy(t *testing.T) {
 	require.NotContains(t, snapshot.Scenes[0].Text, Language("it"),
 		"a snapshot must not observe a mutation applied after it was taken")
 	require.Len(t, snapshot.Scenes, 2, "a snapshot must not observe later appended scenes")
+	require.Equal(t, "/cache/lod-0.png", snapshot.OverlayPlan.Items[0].AssetRefs[0].LocalPath,
+		"transient map asset paths must remain available to the detached render snapshot")
+	require.Equal(t, "/cache/lod-0-es.png", snapshot.LocalizedOverlayPlans["es"].Items[0].AssetRefs[0].LocalPath,
+		"localized render snapshots must retain transient asset paths too")
 
 	require.Nil(t, mustSnapshotNil(t), "a nil result must snapshot to nil rather than an empty result")
 }

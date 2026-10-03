@@ -115,6 +115,7 @@ func TestRunner_LocalizedRenderFanout_EnqueuesPerSceneLanguage(t *testing.T) {
 	runner.SetTranslationConcurrency(1)
 
 	req := defaultTestRequest() // en + es, 3 scenes, CHUNKED_VOICEOVER + docs
+	req.Render.Subtitles = &scriptpkg.VideoSubtitlesSpec{Enabled: true}
 
 	runID := "run-localized-render-fanout"
 	require.NoError(t, repo.Create(context.Background(), &GenerationRun{
@@ -157,6 +158,7 @@ func TestRunner_SourceClipsAudioNone_LocalizedRenderFanout(t *testing.T) {
 	}}
 	runner.SetLocalizedRenderEnqueuer(enq)
 	req := defaultTestRequest()
+	req.Render.Subtitles = &scriptpkg.VideoSubtitlesSpec{Enabled: true}
 	req.Source.Type = SourceClips
 	req.Source.ClipIDs = []string{"clip-0", "clip-1", "clip-2"}
 	req.Source.SourceText = "source clips"
@@ -201,6 +203,7 @@ func TestRunner_LocalizedRenderFanout_RenderStartsBeforeNextSceneReady(t *testin
 	runner.SetLocalizedRenderEnqueuer(enq)
 
 	req := defaultTestRequest()
+	req.Render.Subtitles = &scriptpkg.VideoSubtitlesSpec{Enabled: true}
 	runID := "run-localized-render-stream"
 	require.NoError(t, repo.Create(context.Background(), &GenerationRun{
 		ID:           runID,
@@ -286,6 +289,7 @@ func TestRunner_LocalizedRenderFanout_CarriesSourceClip(t *testing.T) {
 	}
 
 	req := defaultTestRequest()
+	req.Render.Subtitles = &scriptpkg.VideoSubtitlesSpec{Enabled: true}
 	runID := "run-localized-render-clip"
 	require.NoError(t, repo.Create(context.Background(), &GenerationRun{
 		ID: runID, Request: req, Status: RunStatusPending, CurrentStage: StageNormalizing,
@@ -343,6 +347,7 @@ func TestRunner_LocalizedRenderFanout_RecordsProducedVideo(t *testing.T) {
 	runner.SetTranslationConcurrency(1)
 
 	req := defaultTestRequest()
+	req.Render.Subtitles = &scriptpkg.VideoSubtitlesSpec{Enabled: true}
 	runID := "run-localized-render-recorded-video"
 	require.NoError(t, repo.Create(context.Background(), &GenerationRun{
 		ID: runID, Request: req, Status: RunStatusPending, CurrentStage: StageNormalizing,

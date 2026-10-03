@@ -3,6 +3,7 @@ package scriptgeneration
 import (
 	"context"
 	"fmt"
+	"sort"
 	"strings"
 	"sync"
 	"testing"
@@ -11,17 +12,24 @@ import (
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
-type translatedNLPTestNER struct{}
+type translatedNLPTestNER struct {
+	languages *[]string
+	mu        *sync.Mutex
+}
 
-func (translatedNLPTestNER) Extract(_ context.Context, text string, _ int) ([]VisualEntity, error) {
+func (n translatedNLPTestNER) Extract(_ context.Context, language, text string, _ int) ([]VisualEntity, error) {
+	appendTranslatedNLPTestLanguage(n.mu, n.languages, language)
 	return []VisualEntity{{Text: "Dolly Parton", Type: scriptpkg.EntityTypePerson, Score: 0.99}, {Text: "Tennessee", Type: scriptpkg.EntityTypeLocation, Score: 0.95}, {Text: "Imagination Library", Type: scriptpkg.EntityTypeWork, Score: 0.90}}, nil
 }
 
 type translatedNLPNameNER struct {
-	always []VisualEntity
+	always    []VisualEntity
+	languages *[]string
+	mu        *sync.Mutex
 }
 
-func (n translatedNLPNameNER) Extract(_ context.Context, text string, _ int) ([]VisualEntity, error) {
+func (n translatedNLPNameNER) Extract(_ context.Context, language, text string, _ int) ([]VisualEntity, error) {
+	appendTranslatedNLPTestLanguage(n.mu, n.languages, language)
 	entities := append([]VisualEntity(nil), n.always...)
 	for _, name := range []string{"Mike Tyson", "Muhammad Ali"} {
 		if strings.Contains(text, name) {
@@ -37,9 +45,20 @@ func (n translatedNLPNameNER) Extract(_ context.Context, text string, _ int) ([]
 // translatedNLPLocalizedSurfaceNER reports the entity surface exactly as it
 // appears in the TRANSLATED text — the shape a language-aware NER produces in
 // production, where the model never sees the English canonical name.
+func appendTranslatedNLPTestLanguage(mu *sync.Mutex, languages *[]string, language string) {
+	if languages == nil {
+		return
+	}
+	if mu != nil {
+		mu.Lock()
+		defer mu.Unlock()
+	}
+	*languages = append(*languages, language)
+}
+
 type translatedNLPLocalizedSurfaceNER struct{ surfaces []VisualEntity }
 
-func (n translatedNLPLocalizedSurfaceNER) Extract(_ context.Context, text string, _ int) ([]VisualEntity, error) {
+func (n translatedNLPLocalizedSurfaceNER) Extract(_ context.Context, _ string, text string, _ int) ([]VisualEntity, error) {
 	out := make([]VisualEntity, 0, len(n.surfaces))
 	for _, entity := range n.surfaces {
 		if strings.Contains(text, entity.Text) {
@@ -97,7 +116,9 @@ func assertGroundedScenePhrases(t *testing.T, result *GenerateResult, sceneIndex
 // model-owned phrase surface left to call), while VisualNER still extracts
 // translated names for every scene.
 func TestRunTranslatedNLPUsesDeterministicPhrasesAndKeepsNER(t *testing.T) {
-	runner := &Runner{vidRushPipeline: &VidRushPipeline{NERPort: translatedNLPTestNER{}}}
+	var extractedLanguages []string
+	languagesMu := &sync.Mutex{}
+	runner := &Runner{vidRushPipeline: &VidRushPipeline{NERPort: translatedNLPTestNER{languages: &extractedLanguages, mu: languagesMu}}}
 	req := GenerateRequest{SourceLanguage: "en", Languages: []Language{"it", "de"}, Model: "test-model", MediaPlan: translatedNLPMediaPlan()}
 	result := translatedNLPMultiSceneResult([]Language{"it", "de"}, 6)
 
@@ -105,6 +126,16 @@ func TestRunTranslatedNLPUsesDeterministicPhrasesAndKeepsNER(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	languageCounts := map[string]int{}
+	for index, language := range extractedLanguages {
+		if language != "it" && language != "de" {
+			t.Fatalf("NER call %d used unexpected locale %q", index, language)
+		}
+		languageCounts[language]++
+	}
+	if languageCounts["it"] != 6 || languageCounts["de"] != 6 {
+		t.Fatalf("NER language distribution = %v, want six calls for each target language", languageCounts)
+	}
 	for i := range result.Scenes {
 		assertGroundedScenePhrases(t, result, i, "it")
 		assertGroundedScenePhrases(t, result, i, "de")
@@ -115,7 +146,9 @@ func TestRunTranslatedNLPUsesDeterministicPhrasesAndKeepsNER(t *testing.T) {
 }
 
 func TestRunTranslatedNLPProjectsGroundedWordsAndSpecialNamesPerLanguage(t *testing.T) {
-	runner := &Runner{vidRushPipeline: &VidRushPipeline{NERPort: translatedNLPNameNER{}}}
+	var extractedLanguages []string
+	languagesMu := &sync.Mutex{}
+	runner := &Runner{vidRushPipeline: &VidRushPipeline{NERPort: translatedNLPNameNER{languages: &extractedLanguages, mu: languagesMu}}}
 	req := GenerateRequest{
 		SourceLanguage: "en",
 		Languages:      []Language{"it", "de"},
@@ -141,6 +174,10 @@ func TestRunTranslatedNLPProjectsGroundedWordsAndSpecialNamesPerLanguage(t *test
 
 	if err := runner.runTranslatedNLP(context.Background(), req, result); err != nil {
 		t.Fatal(err)
+	}
+	sort.Strings(extractedLanguages)
+	if len(extractedLanguages) != 2 || extractedLanguages[0] != "de" || extractedLanguages[1] != "it" {
+		t.Fatalf("NER language calls = %v, want one call each for [de it]", extractedLanguages)
 	}
 	for _, lang := range []Language{"it", "de"} {
 		annotations := result.Scenes[0].LocalizedAnnotations[lang]
@@ -421,6 +458,20 @@ func TestRunTranslatedNLPLocalizedAnnotationsInheritSourceIdentity(t *testing.T)
 	}
 }
 
+func TestStampLocalizedSourceIdentityPreservesGeocodedPlace(t *testing.T) {
+	geo := &scriptpkg.GeoCoordinate{Latitude: -3.7341528, Longitude: -38.5096997, DisplayName: "Aldeota, Fortaleza, Brasil"}
+	source := scriptpkg.AnnotatedEntity{CanonicalName: "Aldeota", Type: "GPE", Confidence: .9, Geo: geo}
+	span := scriptpkg.AnnotationSpan{Text: "Aldeota", StartRune: 10, EndRune: 17}
+	localized := &scriptpkg.SceneAnnotations{PrimaryEntities: []scriptpkg.AnnotatedEntity{{
+		Text: "Aldeota", CanonicalName: "Aldeota", Type: "GPE", Confidence: .9, Mentions: []scriptpkg.AnnotationSpan{span},
+	}}}
+	stampLocalizedSourceIdentity(localized, []localizedSourceMatch{{Source: source, Kind: scriptpkg.EntityTypeLocation, Span: span, Surface: "Aldeota"}})
+	got := localized.PrimaryEntities[0].Geo
+	if got == nil || got.Latitude != geo.Latitude || got.Longitude != geo.Longitude || got.DisplayName != geo.DisplayName {
+		t.Fatalf("localized geocoded place = %+v, want source coordinates %+v", got, geo)
+	}
+}
+
 // TestRunTranslatedNLPSelectsPhrasesWithoutAnyModelSurface keeps the phrase
 // contract honest after the demolition: with NO phrase port wired at all, every
 // scene still gets grounded, short, verbatim phrases per language.
@@ -511,7 +562,7 @@ type countingTranslatedNER struct {
 	calls int
 }
 
-func (n *countingTranslatedNER) Extract(_ context.Context, _ string, _ int) ([]VisualEntity, error) {
+func (n *countingTranslatedNER) Extract(_ context.Context, _ string, _ string, _ int) ([]VisualEntity, error) {
 	n.mu.Lock()
 	n.calls++
 	n.mu.Unlock()

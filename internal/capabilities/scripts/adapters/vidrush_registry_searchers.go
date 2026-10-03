@@ -15,26 +15,9 @@ import (
 	"go.uber.org/zap"
 )
 
-var vidRushArtlistSearchGate = make(chan struct{}, 1)
-
-func acquireVidRushArtlistSearch(ctx context.Context) error {
-	select {
-	case vidRushArtlistSearchGate <- struct{}{}:
-		return nil
-	case <-ctx.Done():
-		return ctx.Err()
-	}
-}
-
-func releaseVidRushArtlistSearch() { <-vidRushArtlistSearchGate }
-
-func isArtlistRateLimited(err error) bool {
-	return err != nil && strings.Contains(strings.ToLower(err.Error()), "429")
-}
-
-func isM3U8URL(raw string) bool {
-	return strings.Contains(strings.ToLower(strings.TrimSpace(raw)), ".m3u8")
-}
+// The Artlist search gate (env override, process-wide gate channel, retry
+// helpers) lives in vidrush_artlist_isolation.go — same provider family, and
+// this file sat past the godlike/08 strict line cap with the gate inline.
 
 // VidRushRegistryMediaResolver is the single provider-registry discovery
 // adapter. It implements both discovery ports consumed by the fan-out; it

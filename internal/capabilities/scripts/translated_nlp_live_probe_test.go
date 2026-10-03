@@ -134,11 +134,14 @@ type mikeTysonProbeNER struct {
 	calls *atomic.Int64
 }
 
-func (n mikeTysonProbeNER) Extract(ctx context.Context, text string, limit int) ([]VisualEntity, error) {
+func (n mikeTysonProbeNER) Extract(ctx context.Context, language string, text string, limit int) ([]VisualEntity, error) {
+	if strings.TrimSpace(language) == "" {
+		return nil, fmt.Errorf("visualner language is required")
+	}
 	if n.calls != nil {
 		n.calls.Add(1)
 	}
-	request, err := json.Marshal(map[string]any{"source_text": text, "entity_count": limit})
+	request, err := json.Marshal(map[string]any{"source_text": text, "language": language, "entity_count": limit})
 	if err != nil {
 		return nil, err
 	}
@@ -378,7 +381,7 @@ func TestLiveMikeTyson500WordMultilingualNLPNoRendering(t *testing.T) {
 	// deterministic selector for phrases and words.
 	sourceAnalysisStart := time.Now()
 	for i, text := range sceneTexts {
-		entities, extractErr := ner.Extract(context.Background(), text, 5)
+		entities, extractErr := ner.Extract(context.Background(), "en", text, 5)
 		if extractErr != nil {
 			t.Fatalf("source VisualNER scene %d: %v", i, extractErr)
 		}

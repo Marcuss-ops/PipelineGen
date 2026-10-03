@@ -278,8 +278,7 @@ func TestBuildPlanMapMotionsAreCertifiedAndDeterministic(t *testing.T) {
 		{ID: "scene-2", Maps: []MapCandidate{groundedCandidate(t, "city:paris", "Paris", parisLat, parisLon, 0, 1_000_000)}},
 	}
 	build := func() OverlayPlan {
-		// The certified run-level map ceiling is ONE (a map is a full-canvas
-		// visual); a caller that wants a map per scene raises it explicitly.
+		// Exercise a caller-selected ceiling below the default three-map budget.
 		config := AllCandidatesPlannerConfig(scenes)
 		config.RunLevelMapOverlayLimit = 2
 		plan, err := BuildPlan(PlanInput{

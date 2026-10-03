@@ -347,6 +347,11 @@ func TestLocalizedRenderEnqueuer_RejectsMissingRequestedSubtitleLanguage(t *test
 
 	in := testEnqueuerInput()
 	in.Language = "es"
+	// The subtitle opt-out contract (render.subtitles.enabled=false) skips the
+	// translated-track requirement entirely — a render without subtitles does
+	// not need the language's track. The rejection only applies when the
+	// caller REQUESTS subtitles, so the fixture must enable them.
+	in.Render.Subtitles = &scriptpkg.VideoSubtitlesSpec{Enabled: true, Mode: "burn"}
 	if err := a.EnqueueLocalizedRender(context.Background(), in); err == nil {
 		t.Fatal("missing requested subtitles must fail closed instead of rendering the source-language track")
 	} else if !strings.Contains(err.Error(), "refusing source-language fallback") {

@@ -54,14 +54,14 @@ type segmentEnricherNER struct {
 	enricher SegmentEnricher
 }
 
-func (n segmentEnricherNER) Extract(ctx context.Context, sourceText string, _ int) ([]VisualEntity, error) {
+func (n segmentEnricherNER) Extract(ctx context.Context, language, sourceText string, _ int) ([]VisualEntity, error) {
 	if strings.HasPrefix(sourceText, "[TRANSLATED]") {
 		return nil, nil
 	}
 	if n.enricher == nil {
 		return nil, nil
 	}
-	result, err := n.enricher.Enrich(ctx, nil, scriptpkg.SpecScene{
+	result, err := n.enricher.Enrich(ctx, &scriptpkg.ResolvedGenerationPlan{Language: language}, scriptpkg.SpecScene{
 		ID:        sourceText,
 		SegmentID: sourceText,
 		Text:      sourceText,

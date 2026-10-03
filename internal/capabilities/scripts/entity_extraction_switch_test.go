@@ -79,7 +79,7 @@ type entitySwitchEnricher struct {
 	translatedCalls int
 }
 
-func (e *entitySwitchEnricher) Extract(_ context.Context, text string, _ int) ([]VisualEntity, error) {
+func (e *entitySwitchEnricher) Extract(_ context.Context, _ string, text string, _ int) ([]VisualEntity, error) {
 	e.mu.Lock()
 	if strings.HasPrefix(text, "[TRANSLATED]") {
 		e.translatedCalls++
@@ -126,7 +126,7 @@ func entitySwitchPipeline(enricher VisualNERPort) *VidRushPipeline {
 	return &VidRushPipeline{
 		NERPort: enricher,
 		PlanResolver: VidRushPlanResolverFunc(func(_ context.Context, _ GenerateRequest) (*scriptpkg.ResolvedGenerationPlan, error) {
-			return &scriptpkg.ResolvedGenerationPlan{}, nil
+			return &scriptpkg.ResolvedGenerationPlan{Language: "en"}, nil
 		}),
 	}
 }

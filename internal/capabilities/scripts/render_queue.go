@@ -404,6 +404,8 @@ func (e *QueueRenderEnqueuer) enqueueChrononPlan(ctx context.Context, plan capov
 				publication.OverlayItemID = metadata.ItemID
 				publication.OverlayItemKind = metadata.ItemKind
 				publication.OverlayEntityID = metadata.EntityID
+				publication.OverlayEntityIDs = append([]string(nil), metadata.EntityIDs...)
+				publication.OverlayEntityLabels = append([]string(nil), metadata.EntityLabels...)
 				publication.OverlayText = metadata.Text
 				publication.SourceStartUS = metadata.SourceStartUS
 				publication.SourceEndUS = metadata.SourceEndUS

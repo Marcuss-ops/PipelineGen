@@ -45,13 +45,14 @@ func sourceFramePlan(t *testing.T, frame *cliprender.PlanSourceFrame, foreground
 }
 
 // TestMapClipPlanToOverlayPlan_SourceFrame pins the producer half of the card
-// contract: a declared frame must cross the queue verbatim (border + shadow),
-// because the renderer owns the geometry and cannot invent a declaration the
-// producer never made.
+// contract: a declared frame must cross the queue verbatim (border + shadow +
+// stroke), because the renderer owns the geometry and cannot invent a declaration
+// the producer never made.
 func TestMapClipPlanToOverlayPlan_SourceFrame(t *testing.T) {
 	plan := sourceFramePlan(t, &cliprender.PlanSourceFrame{
 		Border: &cliprender.PlanFrameBorder{WidthPX: 8, Color: "#FFFFFF", RadiusPX: 24},
 		Shadow: &cliprender.PlanFrameShadow{Color: "#000000", Opacity: 0.5, BlurPX: 24, OffsetYP: 12},
+		Stroke: &cliprender.PlanFrameStroke{WidthPX: 4, Color: "#00FF80"},
 	}, 70)
 
 	raw, err := MapClipPlanToOverlayPlan(plan)
@@ -68,8 +69,8 @@ func TestMapClipPlanToOverlayPlan_SourceFrame(t *testing.T) {
 	if doc.ForegroundScale != 70 {
 		t.Errorf("foreground_scale_percent = %d, want 70", doc.ForegroundScale)
 	}
-	if doc.SourceFrame == nil || doc.SourceFrame.Border == nil || doc.SourceFrame.Shadow == nil {
-		t.Fatalf("source_frame block = %+v, want border and shadow", doc.SourceFrame)
+	if doc.SourceFrame == nil || doc.SourceFrame.Border == nil || doc.SourceFrame.Shadow == nil || doc.SourceFrame.Stroke == nil {
+		t.Fatalf("source_frame block = %+v, want border, shadow and stroke", doc.SourceFrame)
 	}
 	border := doc.SourceFrame.Border
 	if border.WidthPX != 8 || border.Color != "#FFFFFF" || border.RadiusPX != 24 {
@@ -78,6 +79,9 @@ func TestMapClipPlanToOverlayPlan_SourceFrame(t *testing.T) {
 	shadow := doc.SourceFrame.Shadow
 	if shadow.Color != "#000000" || shadow.Opacity != 0.5 || shadow.BlurPX != 24 || shadow.OffsetYP != 12 {
 		t.Errorf("shadow = %+v, want the declared values", shadow)
+	}
+	if stroke := doc.SourceFrame.Stroke; stroke.WidthPX != 4 || stroke.Color != "#00FF80" {
+		t.Errorf("stroke = %+v, want the declared 4px #00FF80 outline", stroke)
 	}
 }
 
@@ -141,6 +145,18 @@ func TestPlanSourceFrameValidationIsFailClosed(t *testing.T) {
 			scale:  70,
 			reason: "blur is bounded by the published contract",
 		},
+		{
+			name:   "stroke width out of range",
+			frame:  &cliprender.PlanSourceFrame{Stroke: &cliprender.PlanFrameStroke{WidthPX: cliprender.MaxFrameStrokeWidth + 1, Color: "#FFFFFF"}},
+			scale:  70,
+			reason: "stroke width is bounded by the published contract",
+		},
+		{
+			name:   "stroke malformed colour",
+			frame:  &cliprender.PlanSourceFrame{Stroke: &cliprender.PlanFrameStroke{WidthPX: 4, Color: "white"}},
+			scale:  70,
+			reason: "stroke colour must use the renderer's #RRGGBB format",
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -160,6 +176,15 @@ func TestPlanSourceFrameAcceptsAShadowWithoutAnInset(t *testing.T) {
 	}, 100)
 	if err := plan.Validate(); err != nil {
 		t.Fatalf("shadow-only frame at full canvas must validate: %v", err)
+	}
+}
+
+func TestPlanSourceFrameAcceptsAStrokeWithoutAnInset(t *testing.T) {
+	plan := sourceFramePlan(t, &cliprender.PlanSourceFrame{
+		Stroke: &cliprender.PlanFrameStroke{WidthPX: 4, Color: "#FFFFFF"},
+	}, 100)
+	if err := plan.Validate(); err != nil {
+		t.Fatalf("stroke-only frame at full canvas must validate: %v", err)
 	}
 }
 

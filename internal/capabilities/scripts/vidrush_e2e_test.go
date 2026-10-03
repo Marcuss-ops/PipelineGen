@@ -84,7 +84,7 @@ func (e *e2eBlockingEnricher) Enrich(ctx context.Context, _ *scriptpkg.ResolvedG
 // is wired through Runner. The coordinator-only tests above still use Enrich
 // directly, so the fixture covers both seams without restoring a pipeline
 // Enricher field.
-func (e *e2eBlockingEnricher) Extract(ctx context.Context, text string, _ int) ([]VisualEntity, error) {
+func (e *e2eBlockingEnricher) Extract(ctx context.Context, language string, text string, _ int) ([]VisualEntity, error) {
 	if strings.HasPrefix(text, "[TRANSLATED]") {
 		return nil, nil
 	}
@@ -95,7 +95,7 @@ func (e *e2eBlockingEnricher) Extract(ctx context.Context, text string, _ int) (
 	case strings.Contains(text, "Third scene"):
 		sceneID = "scene-2"
 	}
-	_, err := e.Enrich(ctx, nil, scriptpkg.SpecScene{ID: sceneID, SegmentID: sceneID, Text: text})
+	_, err := e.Enrich(ctx, &scriptpkg.ResolvedGenerationPlan{Language: language}, scriptpkg.SpecScene{ID: sceneID, SegmentID: sceneID, Text: text})
 	return nil, err
 }
 

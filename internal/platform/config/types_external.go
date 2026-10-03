@@ -289,6 +289,26 @@ type ExternalConfig struct {
 	// 0 (default) keeps the built-in 250 ms fallback cadence. See
 	// waitClipQueue and waitForCompletion for the two fallback loops.
 	RenderingGenPollIntervalMS int `yaml:"renderinggen_poll_interval_ms" env:"RENDERINGGEN_POLL_INTERVAL_MS" default:"0"`
+
+	// GeocodingBaseURL wires a Nominatim-compatible geocoder for grounded
+	// location overlays. Empty leaves location map generation unavailable.
+	GeocodingBaseURL string `yaml:"geocoding_base_url" env:"VELOX_GEOCODING_BASE_URL" default:""`
+	// GeocodingUserAgent identifies this application to the geocoding service.
+	// It is required by the adapter when a geocoder endpoint is configured;
+	// public Nominatim users must include a monitored contact URL or address.
+	GeocodingUserAgent string `yaml:"geocoding_user_agent" env:"VELOX_GEOCODING_USER_AGENT" default:""`
+	// GeocodingCacheDir overrides the durable positive-result cache. A relative
+	// path is rooted under storage.data_dir; empty uses <data_dir>/geocoding-cache.
+	GeocodingCacheDir string `yaml:"geocoding_cache_dir" env:"VELOX_GEOCODING_CACHE_DIR" default:""`
+	// MapPlateManifestPath points to the operator-certified local raster
+	// manifest. Empty disables map overlays; configured manifests are validated
+	// at runtime construction and invalid manifests fail startup.
+	MapPlateManifestPath string `yaml:"map_plate_manifest_path" env:"VELOX_MAP_PLATE_MANIFEST_PATH" default:""`
+	// GeoMapPlateGeneratorPath is ChrononTemplate's Web Mercator tile-to-PNG
+	// bridge. When configured, PipelineGen generates content-addressed local
+	// basemap plates at the script locations instead of requiring a static map
+	// manifest. Empty preserves the static-manifest path above.
+	GeoMapPlateGeneratorPath string `yaml:"geo_map_plate_generator_path" env:"VELOX_GEO_MAP_PLATE_GENERATOR_PATH" default:""`
 }
 
 // ArtlistConfig groups Artlist-related configuration under a single

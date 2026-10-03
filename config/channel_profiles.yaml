@@ -27,7 +27,9 @@
 #   overlay_style   phrase/word overlay color, size, shadow, entry animation
 #   sound_effects   SFX intents (absolute at_ms, or scene_id+anchor+offset)
 #   mix_policy      VOICEOVER_ONLY | VOICEOVER_DUCKED_CLIP
-#   phrase_motions  rotation pool for animated IMPORTANT_PHRASE overlays
+#   phrase_motions  optional override for the run-wide IMPORTANT_PHRASE
+#                   rotation. Leave it empty to use all 107 certified motions;
+#                   a short custom pool intentionally narrows visual variety.
 #
 # GATES (mirroring ApplyEditingAssetPolicy): the visual blocks only fill a
 # request that already enabled the render (output.render.enabled); SFX and
@@ -36,11 +38,11 @@
 # Vocabularies (validated at boot, fail-closed):
 #   subtitles.preset  → canonical subtitle presets (kernel/output_spec.go)
 #   phrase_motions    → render-safe motions (overlays.CertifiedPhraseMotions):
-#                       the native text lane renders only motions that lower
-#                       to composition tracks (no glow, no glyph/word text
-#                       animators) — see overlays.RenderSafeTextMotions()
-#   image_motions     → deprecated; non-empty values are rejected because
-#                       generated images use certified 2D image presets.
+#                       empty = all 107 certified phrase motions; a non-empty
+#                       list is an explicit rotation override.
+#   image_motions     → certified layer-only image motions; empty = all 32
+#                       compatible image motions (18 Overlay V3/2.5D + 14
+#                       Editorial Image V1). Recipe/stack motions remain opt-in.
 #   sound_effects[].gain_db must be <= 0 dB (the master mix owns the level)
 #   font: only Montserrat-Bold and Poppins-Bold ship as files; any other
 #         family name projects onto one of those two (same rule as
@@ -89,10 +91,6 @@ profiles:
         preset: fade_in
         duration_frames: 8
     mix_policy: VOICEOVER_DUCKED_CLIP
-    phrase_motions:
-      - phrase_apple_clean_07_slide_up_soft
-      - phrase_apple_clean_08_slide_up_spring
-      - phrase_apple_clean_11_slide_left_ease
     # sound_effects:
     #   - asset_id: whoosh1      # must exist in this deployment's catalog
     #     at_ms: 0               # absolute placement (mutually exclusive with scene_id)
@@ -115,11 +113,6 @@ profiles:
         font: "Montserrat"
         color: "#FFFFFF"
         font_size_px: 40
-    phrase_motions:
-      - phrase_apple_clean_01_blur_soft_reveal
-      - phrase_apple_clean_05_blur_apple_fade
-      - phrase_apple_clean_25_opacity_soft_reveal
-
   - channel_id: "young"
     description: "Short-form line for the younger audience: rounder, larger captions, Poppins wordmark, livelier phrase motion."
     subtitles:
@@ -136,10 +129,6 @@ profiles:
         font: "Poppins"
         color: "#FFFFFF"
         font_size_px: 36
-    phrase_motions:
-      - phrase_apple_clean_14_scale_bounce_clean
-      - phrase_apple_clean_10_slide_from_right_apple
-      - phrase_apple_clean_25_opacity_soft_reveal
     # sound_effects:
     #   - asset_id: whoosh3
     #     scene_id: "scene-1"    # scene ids vary per run: prefer at_ms unless the run pins them

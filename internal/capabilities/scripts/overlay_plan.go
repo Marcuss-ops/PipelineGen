@@ -23,9 +23,10 @@ package scriptgeneration
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
+	"unicode"
 
-	capabilityaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
 	capabilityentities "github.com/Marcuss-ops/PipelineGen/internal/capabilities/entities"
 	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
@@ -122,8 +123,10 @@ func compileOverlayPlanWithMotionOffset(result *GenerateResult, language Languag
 		return nil, fmt.Errorf("overlay plan: resolve scenes: %w", err)
 	}
 	timelineStartUS := make(map[string]int64, len(resolved))
+	timelineEndUS := make(map[string]int64, len(resolved))
 	for _, scene := range resolved {
 		timelineStartUS[scene.ID] = scene.TimelineStartUS
+		timelineEndUS[scene.ID] = scene.TimelineStartUS + scene.DurationUS
 	}
 	for _, scene := range timedScenes {
 		ref := scene.Voiceover[language]
@@ -135,14 +138,21 @@ func compileOverlayPlanWithMotionOffset(result *GenerateResult, language Languag
 		if err != nil {
 			return nil, err
 		}
-		if len(perSceneImages) > 0 && perSceneImages[0] {
+		if canvas.DisableNumberOverlays && sceneInput != nil {
+			sceneInput.Numbers = nil
+		}
+		// The first flag controls entity-image scope. The optional second flag
+		// controls generic scene stills; explicit images_per_scene=0 must keep
+		// those disabled even when entity cards use per-scene scope.
+		sceneImagesEnabled := len(perSceneImages) < 2 || perSceneImages[1]
+		if len(perSceneImages) > 0 && perSceneImages[0] && sceneImagesEnabled {
 			if sceneInput == nil {
 				sceneInput = &capabilityoverlay.SceneInput{ID: scene.ID}
 			}
 			if perSceneImageHashes == nil {
 				perSceneImageHashes = make(map[string]struct{})
 			}
-			if image, ok := sceneImageCandidate(result, scene.ID, startUS, perSceneImageHashes); ok {
+			if image, ok := sceneImageCandidate(result, scene.ID, startUS, perSceneImageHashes, timelineEndUS[scene.ID]); ok {
 				sceneInput.Images = append(sceneInput.Images, image)
 				perSceneImageHashes[strings.ToLower(image.SHA256)] = struct{}{}
 			}
@@ -171,6 +181,15 @@ func compileOverlayPlanWithMotionOffset(result *GenerateResult, language Languag
 		return nil, fmt.Errorf("overlay plan: plan: %w", err)
 	}
 	items := plannerPlan.Items
+	if canvas.MapsOnly {
+		kept := items[:0]
+		for _, item := range items {
+			if item.Kind == "map" && item.Map != nil {
+				kept = append(kept, item)
+			}
+		}
+		items = kept
+	}
 	// A semantic catalog reference is only a database identity until its bytes
 	// have been staged into the RenderingGen object store. Never enqueue that
 	// placeholder as a render asset: Chronon would resolve it to a nonexistent
@@ -200,6 +219,14 @@ func compileOverlayPlanWithMotionOffset(result *GenerateResult, language Languag
 				if isRuntimeTextStyleParam(k) && !isTextOverlayKind(items[i].Kind) {
 					continue
 				}
+				if strings.HasPrefix(k, "image_") {
+					if !isImageOverlayItem(items[i]) {
+						continue
+					}
+					key := strings.TrimPrefix(k, "image_")
+					merged[key] = v
+					continue
+				}
 				if k == "style" {
 					merged[k] = mergeStyleParam(merged[k], v.(map[string]any))
 				} else if _, exists := merged[k]; !exists {
@@ -207,6 +234,24 @@ func compileOverlayPlanWithMotionOffset(result *GenerateResult, language Languag
 				}
 			}
 			items[i].Params = merged
+			items[i].RenderKey = ""
+			if isImageOverlayItem(items[i]) && canvas.Style != nil {
+				items[i].Frame = overlayImageFrame(canvas.Style.Image)
+				for childIndex := range items[i].ImageLayers {
+					child := &items[i].ImageLayers[childIndex]
+					childParams := map[string]any{}
+					for key, value := range child.Params {
+						childParams[key] = value
+					}
+					for key, value := range styleParams {
+						if strings.HasPrefix(key, "image_") {
+							name := strings.TrimPrefix(key, "image_")
+							childParams[name] = value
+						}
+					}
+					child.Params = childParams
+				}
+			}
 		}
 	}
 
@@ -224,13 +269,33 @@ func compileOverlayPlanWithMotionOffset(result *GenerateResult, language Languag
 	// budget admits image cards only when they have materialized media.
 	if entityTimeline != nil && len(entityTimeline.Scenes) > 0 {
 		owned := plannerOwnedEntityIDs(result, language)
-		media, canonicalByStable := entityCardMediaIndex(result)
-		entityPlan, err := capabilityentities.ResolveEntityOverlayPlan(*entityTimeline, planID, videoID, projectID, canvas.Width, canvas.Height, canvas.FPSNum, canvas.FPSDen)
-		if err != nil {
-			return nil, fmt.Errorf("overlay plan: resolve entity overlays: %w", err)
+		media, canonicalByStable := entityCardMediaIndex(result, len(perSceneImages) > 0 && perSceneImages[0])
+		perSceneEntityImages := len(perSceneImages) > 0 && perSceneImages[0]
+		var entityPlanItems []capabilityoverlay.OverlayItem
+		if perSceneEntityImages {
+			// The resolver's run-level novelty context intentionally collapses
+			// repeated canonical identities. Per-scene imagery has a different
+			// contract: each spoken scene gets its own independently bound card.
+			// Resolve one certified scene at a time so repeated names retain their
+			// own timing and scene-scoped media key.
+			for _, scene := range entityTimeline.Scenes {
+				sceneTimeline := *entityTimeline
+				sceneTimeline.Scenes = []capabilityentities.SceneEntityTimeline{scene}
+				entityPlan, err := capabilityentities.ResolveEntityOverlayPlan(sceneTimeline, planID, videoID, projectID, canvas.Width, canvas.Height, canvas.FPSNum, canvas.FPSDen)
+				if err != nil {
+					return nil, fmt.Errorf("overlay plan: resolve entity overlays for scene %q: %w", scene.SceneID, err)
+				}
+				entityPlanItems = append(entityPlanItems, entityPlan.Items...)
+			}
+		} else {
+			entityPlan, err := capabilityentities.ResolveEntityOverlayPlan(*entityTimeline, planID, videoID, projectID, canvas.Width, canvas.Height, canvas.FPSNum, canvas.FPSDen)
+			if err != nil {
+				return nil, fmt.Errorf("overlay plan: resolve entity overlays: %w", err)
+			}
+			entityPlanItems = entityPlan.Items
 		}
-		namedCardItems := make([]capabilityoverlay.OverlayItem, 0, len(entityPlan.Items))
-		for _, item := range entityPlan.Items {
+		namedCardItems := make([]capabilityoverlay.OverlayItem, 0, len(entityPlanItems))
+		for _, item := range entityPlanItems {
 			if !entityCardTemplate(item.TemplateID) {
 				continue
 			}
@@ -252,7 +317,7 @@ func compileOverlayPlanWithMotionOffset(result *GenerateResult, language Languag
 	// run-level identity-image ceiling before sealing the render plan. This
 	// prevents a long script with many scenes from producing one image render
 	// for every extracted person.
-	items = capEntityImageOverlays(items, capabilityoverlay.MaxEntityImageOverlaysPerRun)
+	items = capEntityImageOverlays(items, capabilityoverlay.MaxEntityImageOverlaysPerRun, len(perSceneImages) > 0 && perSceneImages[0])
 	if chooseOffset == nil {
 		return nil, fmt.Errorf("overlay plan: image motion offset chooser is required")
 	}
@@ -261,15 +326,22 @@ func compileOverlayPlanWithMotionOffset(result *GenerateResult, language Languag
 		return nil, fmt.Errorf("overlay plan: choose random image motion offset: %w", err)
 	}
 	// The map-aware editorial budget keeps the certified run ceilings: images,
-	// grounded phrases and at most one map (a map is a full-canvas visual).
+	// grounded phrases and up to three distinct location maps.
 	// It runs on individual assets before composition so dedupe and counts do
 	// not treat a 2–5-image group as one indivisible image.
-	items, _ = capabilityoverlay.ApplyEditorialOverlayBudgetWithImageLimit(items, canvas.MaxPhraseOverlays, canvas.MaxImageOverlays, capabilityoverlay.MaxMapOverlaysPerRun)
+	items, _ = capabilityoverlay.ApplyEditorialOverlayBudgetWithImageLimit(items, canvas.MaxPhraseOverlays, canvas.MaxImageOverlays, capabilityoverlay.MaxMapOverlaysPerRun, len(perSceneImages) > 0 && perSceneImages[0])
 	if len(items) == 0 {
 		return nil, nil
 	}
 	items = composeNearbyEntityImages(items, canvas.Width, canvas.Height)
 	assignEntityImageMotions(items, imageMotionOffset, canvas.Width, canvas.Height)
+	if canvas.Style != nil && canvas.Style.Image != nil {
+		for i := range items {
+			if isImageOverlayItem(items[i]) {
+				applyOverlayImageStyle(&items[i], canvas.Style.Image)
+			}
+		}
+	}
 
 	// The master audio/timeline is authoritative for the render extent. The
 	// last semantic item is often shorter than the voiceover (for example a
@@ -278,9 +350,17 @@ func compileOverlayPlanWithMotionOffset(result *GenerateResult, language Languag
 	// Preserve the scene extent as a defensive lower bound when a malformed or
 	// legacy result has no final-audio reference.
 	var durationUS int64
-	if result.FinalAudio != nil && result.FinalAudio.DurationMS > 0 &&
-		(result.SourceLanguage == "" || result.SourceLanguage == language) {
-		durationUS = result.FinalAudio.DurationMS * 1000
+	if result.SourceLanguage == "" || result.SourceLanguage == language {
+		if result.AudioPlan != nil {
+			// A sealed plan exists before encoding. Its master extent, not
+			// encoder packet padding, freezes identical serial/parallel plans.
+			durationUS = result.AudioPlan.DurationUS
+			if result.AudioPlan.MasterDurationUS > durationUS {
+				durationUS = result.AudioPlan.MasterDurationUS
+			}
+		} else if result.FinalAudio != nil && result.FinalAudio.DurationMS > 0 {
+			durationUS = result.FinalAudio.DurationMS * 1000
+		}
 	}
 	for _, scene := range resolved {
 		if scene.TimelineStartUS < 0 || scene.DurationUS <= 0 {
@@ -324,212 +404,137 @@ func compileOverlayPlanWithMotionOffset(result *GenerateResult, language Languag
 	return &plan, nil
 }
 
-func isRuntimeTextStyleParam(key string) bool {
-	switch key {
-	case "font_family", "font_size_px", "glow_size", "stroke_size":
+// isNumericOverlayValue rejects prose that the annotation model occasionally
+// mislabels as NUMBER in translated scenes. Digits cover normalized facts and
+// dates; the word set preserves common spoken number forms in the supported
+// output languages.
+func isNumericOverlayValue(value string) bool {
+	words := map[string]struct{}{
+		"zero": {}, "one": {}, "two": {}, "three": {}, "four": {}, "five": {}, "six": {}, "seven": {}, "eight": {}, "nine": {}, "ten": {},
+		"eleven": {}, "twelve": {}, "thirteen": {}, "fourteen": {}, "fifteen": {}, "sixteen": {}, "seventeen": {}, "eighteen": {}, "nineteen": {}, "twenty": {}, "thirty": {}, "forty": {}, "fifty": {}, "sixty": {}, "seventy": {}, "eighty": {}, "ninety": {}, "hundred": {}, "thousand": {}, "million": {}, "billion": {}, "first": {}, "second": {}, "third": {}, "fourth": {}, "fifth": {}, "sixth": {}, "seventh": {}, "eighth": {}, "ninth": {}, "tenth": {},
+		"cero": {}, "uno": {}, "una": {}, "dos": {}, "tres": {}, "cuatro": {}, "cinco": {}, "seis": {}, "siete": {}, "ocho": {}, "nueve": {}, "diez": {}, "once": {}, "doce": {}, "trece": {}, "catorce": {}, "quince": {}, "dieciséis": {}, "veinte": {}, "treinta": {}, "cuarenta": {}, "cincuenta": {}, "sesenta": {}, "setenta": {}, "ochenta": {}, "noventa": {}, "cien": {}, "ciento": {}, "mil": {}, "millón": {}, "millones": {}, "primero": {}, "segunda": {}, "tercero": {}, "tercera": {},
+		"due": {}, "tre": {}, "quattro": {}, "cinque": {}, "undici": {}, "dodici": {}, "tredici": {}, "quattordici": {}, "quindici": {}, "sedici": {}, "diciassette": {}, "diciotto": {}, "diciannove": {}, "venti": {}, "trenta": {}, "quaranta": {}, "cinquanta": {}, "sessanta": {}, "settanta": {}, "ottanta": {}, "novanta": {}, "cento": {}, "mille": {}, "mila": {}, "milione": {}, "milioni": {}, "primo": {}, "prima": {}, "secondo": {}, "terzo": {}, "terza": {},
+		"um": {}, "uma": {}, "dois": {}, "duas": {}, "três": {}, "quatro": {}, "sete": {}, "oito": {}, "dez": {}, "onze": {}, "doze": {}, "treze": {}, "quatorze": {}, "quinze": {}, "dezesseis": {}, "vinte": {}, "trinta": {}, "quarenta": {}, "cinquenta": {}, "sessenta": {}, "oitenta": {}, "cem": {}, "milhão": {}, "milhões": {}, "primeiro": {}, "primeira": {}, "segundo": {}, "terceiro": {}, "terceira": {},
+	}
+	var token strings.Builder
+	flush := func() bool {
+		if token.Len() == 0 {
+			return false
+		}
+		_, ok := words[strings.ToLower(token.String())]
+		token.Reset()
+		return ok
+	}
+	for _, r := range value {
+		if unicode.IsDigit(r) {
+			return true
+		}
+		if unicode.IsLetter(r) {
+			token.WriteRune(r)
+		} else if flush() {
+			return true
+		}
+	}
+	return flush()
+}
+
+func numericEntityGroundedForLanguage(scene Scene, language, sourceLanguage Language, value string) bool {
+	if language == sourceLanguage {
 		return true
-	default:
+	}
+	source := annotationsForLanguage(scene, sourceLanguage, sourceLanguage)
+	if source == nil {
 		return false
 	}
-}
-
-func isTextOverlayKind(kind string) bool {
-	// BuildPlan lowers semantic overlay kinds to render kinds such as
-	// text_phrase. Keep runtime typography controls off image/video layers.
-	return strings.HasPrefix(kind, "text_") || kind == "number" || kind == "quote" || kind == "brand_text"
-}
-
-// compileResultOverlayPlan is the runner-facing projection: it derives the
-// overlay plan for the run (plan id = run id, so the queue job id is the
-// run's idempotency key) and attaches it to the durable result. plates is the
-// run's certified basemap resolver (nil = no maps). Nil plan when the run
-// carried no derivable overlay surface.
-func compileResultOverlayPlan(result *GenerateResult, language Language, planID, projectID, driveFolderID string, canvas OverlayCanvasSpec, plates capabilityoverlay.PlateResolver, perSceneImages ...bool) error {
-	if result == nil {
-		return nil
-	}
-	plan, err := compileOverlayPlanForLanguage(result, language, planID, projectID, driveFolderID, canvas, plates, perSceneImages...)
-	if err != nil {
-		return err
-	}
-	result.OverlayPlan = plan
-	var phraseItems []capabilityoverlay.OverlayItem
-	if plan != nil {
-		phraseItems = plan.Items
-	}
-	phraseBudget := capabilityoverlay.MeasurePhraseOverlayBudgetWithLimit(phraseItems, canvas.MaxPhraseOverlays)
-	result.PhraseOverlayBudget = &phraseBudget
-	if err := buildLocalizedOverlayPlans(result, language, planID, projectID, driveFolderID, canvas, plates, perSceneImages...); err != nil {
-		return err
-	}
-	if plan == nil {
-		return nil
-	}
-	if bundle, bundleErr := BuildSemanticRenderBundleFromResult(result, language, planID, plan.VideoID); bundleErr != nil {
-		// Once a render plan exists, the semantic bundle is part of the
-		// canonical contract, not optional telemetry. Never enqueue a render
-		// whose entity/timing/asset provenance cannot be audited.
-		return fmt.Errorf("overlay plan: build semantic render bundle: %w", bundleErr)
-	} else {
-		result.SemanticRenderBundle = bundle
-	}
-	// Keep the prepare input immutable: it may already be in flight while
-	// this final timing projection is being built.
-	resolved := append([]capabilityoverlay.OverlayIntent(nil), result.OverlayIntents...)
-	freezeOverlayIntents(resolved, plan.Items)
-	result.ResolvedOverlayIntents = resolved
-	return nil
-}
-
-// setOverlayDriveJobID separates semantic render identity from the public
-// broker job identity. The former is deliberately stable for queue
-// idempotency; the latter is the only valid first segment of the Drive tree.
-func setOverlayDriveJobID(result *GenerateResult, jobID string) {
-	if result == nil {
-		return
-	}
-	jobID = strings.TrimSpace(jobID)
-	if result.OverlayPlan != nil {
-		result.OverlayPlan.DriveJobID = jobID
-	}
-	for _, plan := range result.LocalizedOverlayPlans {
-		if plan != nil {
-			plan.DriveJobID = jobID
-		}
-	}
-}
-
-// overlaySceneInput projects ONE real scene onto the planner's neutral
-// SceneInput. Every candidate is anchored to the certified word timing or
-// the certified entity occurrence; anything not spoken verbatim is skipped
-// (a hint is never timestamped). Returns nil when the scene contributes
-// nothing.
-func overlaySceneInput(scene Scene, language, sourceLanguage Language, timing capabilityaudio.SpeechTimingArtifact, timelineStartUS int64, occurrences []capabilityentities.EntityOccurrence, plates capabilityoverlay.PlateResolver) (*capabilityoverlay.SceneInput, error) {
-	ann := annotationsForLanguage(scene, language, sourceLanguage)
-	if ann == nil {
-		return nil, nil
-	}
-	out := capabilityoverlay.SceneInput{ID: scene.ID}
-	locate := func(phrase string) (*capabilityaudio.PhraseTiming, error) {
-		return locatePhraseTimingWithEndpointFallback(scene.Index, timelineStartUS, timing, phrase)
-	}
-	timed := func(p *capabilityaudio.PhraseTiming, score float64) capabilityoverlay.TimedAnnotation {
-		return capabilityoverlay.TimedAnnotation{
-			Text:       p.Text,
-			StartMs:    p.GlobalStartUS / 1000,
-			EndMs:      (p.GlobalEndUS + 999) / 1000,
-			StartUS:    p.GlobalStartUS,
-			DurationUS: p.GlobalEndUS - p.GlobalStartUS,
-			Score:      score,
-		}
-	}
-	// IMPORTANT_PHRASE / IMPORTANT_WORD: verbatim in the real word timing.
-	for _, span := range ann.ImportantPhrases {
-		p, err := locate(strings.TrimSpace(span.Text))
-		if err != nil {
+	allowed := make(map[int64]struct{})
+	for _, entity := range append(append([]scriptpkg.AnnotatedEntity(nil), source.PrimaryEntities...), source.SecondaryEntities...) {
+		if capabilityoverlay.EntityTypeToKind(entity.Type) != capabilityoverlay.KindNumber {
 			continue
 		}
-		out.Phrases = append(out.Phrases, timed(p, span.Score))
+		for _, number := range numericValues(entity.CanonicalName) {
+			allowed[number] = struct{}{}
+		}
 	}
-	// ImportantWords remain annotations for ranking/search. Only explicit
-	// word-overlay selection is allowed to materialize keyword cards; the
-	// production editorial plan currently has no such output kind.
+	values := numericValues(value)
+	if len(values) == 0 {
+		return false
+	}
+	for _, number := range values {
+		if _, ok := allowed[number]; !ok {
+			return false
+		}
+	}
+	return true
+}
 
-	// Entity-driven overlays: timing always comes from the certified
-	// occurrence window (the entity timeline already certified the entity is
-	// spoken verbatim). An entity without an occurrence is skipped.
-	for _, entity := range append(append([]scriptpkg.AnnotatedEntity(nil), ann.PrimaryEntities...), ann.SecondaryEntities...) {
-		kind := capabilityoverlay.EntityTypeToKind(entity.Type)
-		if kind == capabilityoverlay.KindBrandText {
-			if p, err := locate(entity.CanonicalName); err == nil {
-				score := entity.Confidence
-				if score <= 0 {
-					score = 0.9
-				}
-				out.BrandTexts = append(out.BrandTexts, timed(p, score))
-			}
-			continue
-		}
-		occ := occurrenceFor(occurrences, entity)
-		if occ == nil {
-			continue
-		}
-		score := entity.Confidence
-		if score <= 0 {
-			score = 0.9
-		}
-		switch capabilityoverlay.EntityTypeToKind(entity.Type) {
-		case capabilityoverlay.KindNumber:
-			out.Numbers = append(out.Numbers, capabilityoverlay.TimedAnnotation{
-				Text:       entity.CanonicalName,
-				Type:       entity.Type,
-				StartMs:    occ.AudioStartUS / 1000,
-				EndMs:      (occ.AudioEndUS + 999) / 1000,
-				StartUS:    occ.AudioStartUS,
-				DurationUS: occ.AudioEndUS - occ.AudioStartUS,
-				Score:      score,
-			})
-		case capabilityoverlay.KindQuote:
-			out.Quotes = append(out.Quotes, capabilityoverlay.TimedAnnotation{
-				Text:       entity.CanonicalName,
-				Type:       entity.Type,
-				StartMs:    occ.AudioStartUS / 1000,
-				EndMs:      (occ.AudioEndUS + 999) / 1000,
-				StartUS:    occ.AudioStartUS,
-				DurationUS: occ.AudioEndUS - occ.AudioStartUS,
-				Score:      score,
-			})
-		case capabilityoverlay.KindProduct:
-			if entity.Image == nil {
-				continue
-			}
-			out.Products = append(out.Products, imageCandidate(entity.Image, occ, score))
-		case capabilityoverlay.KindLogo:
-			if entity.Image == nil {
-				// Legacy annotations may encode an unverified brand as LOGO;
-				// use its exact certified word timing rather than requiring a
-				// fabricated imageable timeline occurrence.
-				if p, err := locate(entity.CanonicalName); err == nil {
-					out.BrandTexts = append(out.BrandTexts, timed(p, score))
-				}
-				continue
-			}
-			out.Logos = append(out.Logos, imageCandidate(entity.Image, occ, score))
-		case capabilityoverlay.KindLocation:
-			// A grounded place: coordinates must come from the geocoder's
-			// validated WGS84 enrichment (never guessed) and the timing
-			// from the certified occurrence window. The candidate joins on
-			// the same content-addressed stable id every other overlay arm
-			// uses. The PLANNER resolves it against the certified plate
-			// manifest — a deployment without plates (nil resolver) or a
-			// place no plate covers emits no map, never a fabricated one.
-			if entity.Geo == nil {
-				continue
-			}
-			candidate, ok := capabilityoverlay.NewMapCandidate(
-				occ.EntityID, entity.CanonicalName,
-				entity.Geo.Latitude, entity.Geo.Longitude,
-				occ.AudioStartUS, occ.AudioEndUS-occ.AudioStartUS, score,
-			)
-			if !ok {
-				// A coordinate pair outside WGS84 is corrupted data, never
-				// clamped or re-projected into validity.
-				continue
-			}
-			out.Maps = append(out.Maps, candidate)
-		default:
-			// Entity-card kinds (PERSON / ORGANIZATION / LOCATION / CONCEPT):
-			// the card IS the image asset — the resolver path above attaches
-			// the entity's resolved media to the card item, so pushing the
-			// same image here as a generic IMAGE_OVERLAY would render it twice.
-			// An entity image without an indexed asset stays text-only.
-			continue
+func numericValues(value string) []int64 {
+	words := map[string]int64{
+		"zero": 0, "cero": 0, "uno": 1, "una": 1, "one": 1, "um": 1, "uma": 1, "un": 1,
+		"two": 2, "dos": 2, "due": 2, "dois": 2, "duas": 2,
+		"three": 3, "tres": 3, "tre": 3, "três": 3,
+		"four": 4, "cuatro": 4, "quattro": 4, "quatro": 4,
+		"five": 5, "cinco": 5, "cinque": 5,
+		"six": 6, "seis": 6, "sei": 6,
+		"seven": 7, "siete": 7, "sette": 7,
+		"eight": 8, "ocho": 8, "otto": 8, "oito": 8,
+		"nine": 9, "nueve": 9, "nove": 9,
+		"ten": 10, "diez": 10, "dieci": 10, "dez": 10,
+		"eleven": 11, "once": 11, "undici": 11, "onze": 11,
+		"twelve": 12, "doce": 12, "dodici": 12, "doze": 12,
+		"thirteen": 13, "trece": 13, "tredici": 13, "treze": 13,
+		"fourteen": 14, "catorce": 14, "quattordici": 14, "quatorze": 14,
+		"fifteen": 15, "quince": 15, "quindici": 15, "quinze": 15,
+		"sixteen": 16, "dieciséis": 16, "sedici": 16, "dezesseis": 16,
+		"seventeen": 17, "diciassette": 17,
+		"eighteen": 18, "diciotto": 18,
+		"nineteen": 19, "diciannove": 19,
+		"twenty": 20, "veinte": 20, "venti": 20, "vinte": 20,
+		"thirty": 30, "treinta": 30, "trenta": 30, "trinta": 30,
+		"forty": 40, "cuarenta": 40, "quaranta": 40,
+		"fifty": 50, "cincuenta": 50, "cinquanta": 50,
+		"sixty": 60, "sesenta": 60, "sessanta": 60,
+		"seventy": 70, "setenta": 70, "settanta": 70,
+		"eighty": 80, "ochenta": 80, "ottanta": 80,
+		"ninety": 90, "noventa": 90, "novanta": 90,
+		"hundred": 100, "cien": 100, "ciento": 100, "cento": 100, "cem": 100,
+	}
+	tokens := strings.FieldsFunc(strings.ToLower(value), func(r rune) bool { return !unicode.IsLetter(r) && !unicode.IsDigit(r) })
+	var values []int64
+	current := int64(0)
+	flush := func() {
+		if current != 0 {
+			values = append(values, current)
+			current = 0
 		}
 	}
-	if len(out.Phrases)+len(out.Keywords)+len(out.Images)+len(out.Numbers)+len(out.BrandTexts)+len(out.Quotes)+len(out.Products)+len(out.Logos)+len(out.Maps) == 0 {
-		return nil, nil
+	for _, token := range tokens {
+		if number, err := strconv.ParseInt(token, 10, 64); err == nil {
+			flush()
+			values = append(values, number)
+			continue
+		}
+		if token == "and" || token == "e" || token == "y" || token == "de" || token == "del" {
+			continue
+		}
+		number, ok := words[token]
+		if !ok {
+			flush()
+			continue
+		}
+		if number >= 20 && number%10 == 0 {
+			current += number
+		} else if number == 100 {
+			if current == 0 {
+				current = 100
+			} else {
+				current *= 100
+			}
+		} else {
+			current += number
+		}
 	}
-	return &out, nil
+	flush()
+	return values
 }
 
 // PhraseAnchoringDiagnostic reports one important-phrase candidate considered

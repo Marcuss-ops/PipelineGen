@@ -528,6 +528,20 @@ func TestSeparateOverlayItemPlanUsesTTSWindowPlusPaddingAndFiveSecondCap(t *test
 	}
 }
 
+func TestMapEntityLineagePreservesEveryPinIdentityAndLabel(t *testing.T) {
+	ids, labels := mapEntityLineage(&capoverlay.MapOverlay{Pins: []capoverlay.MapOverlayPin{
+		{ID: "location:aldeota", Label: "Aldeota"},
+		{ID: "location:fortaleza", Label: "Fortaleza"},
+		{ID: "location:aldeota", Label: "Aldeota"},
+	}})
+	if strings.Join(ids, ",") != "location:aldeota,location:fortaleza" {
+		t.Fatalf("map entity IDs = %v, want both unique grounded locations", ids)
+	}
+	if strings.Join(labels, ",") != "Aldeota,Fortaleza,Aldeota" {
+		t.Fatalf("map labels = %v, want pin labels in authored order", labels)
+	}
+}
+
 // TestQueueRenderEnqueuerChrononPlan pins the production path that makes
 // PipelineGen submit semantic visual instructions to RenderingGen. RenderingGen
 // owns the final semantic→Chronon v2 compilation and submits the certified

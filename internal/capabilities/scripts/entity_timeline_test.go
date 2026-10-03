@@ -219,6 +219,42 @@ func TestEntitySourcesUseLocalizedMentionForGrounding(t *testing.T) {
 	}
 }
 
+func TestEntityValueSourcesPreserveExactPunctuationAndRejectApproximateMatches(t *testing.T) {
+	annotations := &scriptpkg.SceneAnnotations{
+		Language: "en",
+		SecondaryEntities: []scriptpkg.AnnotatedEntity{
+			{CanonicalName: "25%", Type: "PERCENT"},
+			{CanonicalName: "$2 million", Type: "MONEY"},
+		},
+	}
+
+	sources := entitySourcesFromAnnotations(annotations, "Growth was 25% and revenue was $2 million.")
+	if len(sources) != 2 {
+		t.Fatalf("value sources = %+v, want percent and money", sources)
+	}
+	for i, want := range []string{"25%", "$2 million"} {
+		if sources[i].Name != want || sources[i].SpokenName != want {
+			t.Errorf("value source %d = %+v, want exact surface %q", i, sources[i], want)
+		}
+		if sources[i].TextStart < 0 || sources[i].TextEnd <= sources[i].TextStart {
+			t.Errorf("value source %q has no exact text span: %+v", want, sources[i])
+		}
+	}
+
+	// Punctuation-insensitive localization matching is appropriate for names,
+	// but must never turn an unspoken value into a grounded one.
+	approximate := &scriptpkg.SceneAnnotations{
+		Language: "en",
+		SecondaryEntities: []scriptpkg.AnnotatedEntity{{
+			CanonicalName: "$2", Type: "MONEY",
+		}},
+	}
+	unmatched := entitySourcesFromAnnotations(approximate, "We saw 2 items.")
+	if len(unmatched) != 1 || unmatched[0].TextStart != -1 || unmatched[0].TextEnd != -1 {
+		t.Fatalf("punctuation-mismatched value must remain ungrounded: %+v", unmatched)
+	}
+}
+
 func TestEntitySourcesRejectUnrelatedStaleMentionSpan(t *testing.T) {
 	text := "Elon Musk moved from Canada to North America."
 	annotations := &scriptpkg.SceneAnnotations{

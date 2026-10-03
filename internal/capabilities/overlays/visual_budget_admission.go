@@ -5,7 +5,7 @@ import (
 	"strings"
 )
 
-func rankedUniqueOverlayIndices(items []OverlayItem, images bool, phraseLimit int) []int {
+func rankedUniqueOverlayIndices(items []OverlayItem, images bool, phraseLimit int, perSceneEntityImages ...bool) []int {
 	indices := make([]int, 0)
 	seen := make(map[string]int)
 	for i, item := range items {
@@ -19,6 +19,9 @@ func rankedUniqueOverlayIndices(items []OverlayItem, images bool, phraseLimit in
 			// returned by two independent scene searches must not silently erase
 			// one of those scene occurrences from a per-scene render plan.
 			if item.Kind == "image" && strings.TrimSpace(item.SceneID) != "" {
+				key = strings.TrimSpace(item.SceneID) + ":" + key
+			}
+			if item.Kind == string(KindEntityImage) && len(perSceneEntityImages) > 0 && perSceneEntityImages[0] && strings.TrimSpace(item.SceneID) != "" {
 				key = strings.TrimSpace(item.SceneID) + ":" + key
 			}
 		} else {
@@ -187,11 +190,12 @@ func imageOverlayIdentity(item OverlayItem) string {
 // sha256 first (bytes, never wrong), then asset id, and only then the
 // arm-local identity so a keyless item cannot erase its peers. Highest-ranked
 // (earliest in imageIndices) wins; the function never reorders survivors.
-func dedupeImageIndicesByContent(items []OverlayItem, imageIndices []int) []int {
+func dedupeImageIndicesByContent(items []OverlayItem, imageIndices []int, allowRepeatedEntityImagesPerScene ...bool) []int {
 	if len(imageIndices) <= 1 {
 		return imageIndices
 	}
 	seen := make(map[string]struct{}, len(imageIndices))
+	entityScenes := make(map[string]map[string]struct{}, len(imageIndices))
 	out := make([]int, 0, len(imageIndices))
 	for _, index := range imageIndices {
 		item := items[index]
@@ -218,6 +222,14 @@ func dedupeImageIndicesByContent(items []OverlayItem, imageIndices []int) []int 
 		duplicate := false
 		for _, key := range keys {
 			if _, exists := seen[key]; exists {
+				if len(allowRepeatedEntityImagesPerScene) > 0 && allowRepeatedEntityImagesPerScene[0] && item.Kind == string(KindEntityImage) && strings.TrimSpace(item.SceneID) != "" {
+					if entityScenes[key] == nil {
+						entityScenes[key] = make(map[string]struct{})
+					}
+					if _, sameScene := entityScenes[key][strings.TrimSpace(item.SceneID)]; !sameScene {
+						continue
+					}
+				}
 				duplicate = true
 				break
 			}
@@ -227,6 +239,12 @@ func dedupeImageIndicesByContent(items []OverlayItem, imageIndices []int) []int 
 		}
 		for _, key := range keys {
 			seen[key] = struct{}{}
+			if item.Kind == string(KindEntityImage) && strings.TrimSpace(item.SceneID) != "" {
+				if entityScenes[key] == nil {
+					entityScenes[key] = make(map[string]struct{})
+				}
+				entityScenes[key][strings.TrimSpace(item.SceneID)] = struct{}{}
+			}
 		}
 		out = append(out, index)
 	}

@@ -26,11 +26,8 @@ var (
 		// select it for generated overlays until the native mask path lands.
 		"bottom_card_rise",
 	}
-	imageAnimationCandidates = []string{
-		"fade_in", "reveal_from_bottom", "scale_drop", "fade_shift_vertical",
-	}
-	// RenderingGen catalog inventories: all 18 certified image motions and the full
-	// phrase families (42 classic Apple, 60 modern Apple and 5 typewriter).
+	// RenderingGen catalog inventories: all 32 certified layer-only image motions
+	// and the full phrase families (42 classic Apple, 60 modern Apple and 5 typewriter).
 	renderSafeImageMotions = []string{
 		"image_fade_reveal",
 		"image_focus_reveal",
@@ -50,13 +47,38 @@ var (
 		"image_25d_card_swing",
 		"image_25d_blur_focus_in",
 		"image_25d_blur_scale_in",
+		// Editorial Image V1 uses the same independently compiled image-layer
+		// motion path; recipe/stack/premium families are deliberately excluded.
+		"image_collage_scatter",
+		"image_card_flip",
+		"image_depth_cascade",
+		"image_depth_dolly",
+		"image_document_push",
+		"image_evidence_focus",
+		"image_float_settle",
+		"image_focus_push",
+		"image_orbit_enter",
+		"image_perspective_stack",
+		"image_photo_drop",
+		"image_roll_in",
+		"image_tilt_parallax",
+		"image_yaw_reveal",
 	}
-	imageMotionCandidates = renderSafeImageMotions
+	imageAnimationCandidates = renderSafeImageMotions
+	imageMotionCandidates    = renderSafeImageMotions
 	// centeredImageMotionCandidates is the certified CENTERED image-motion
 	// pool: the subset of motions that keep the raster pinned to the canvas
 	// center, so a map's geography never drifts away from the pins projected
 	// over it. MapOverlay.Validate accepts exactly these three ids.
 	centeredImageMotionCandidates = []string{
+		"image_fade_reveal",
+		"image_focus_reveal",
+		"image_scale_reveal",
+	}
+	// Generated entity portraits share a restrained 2D entrance language. The
+	// wider catalog remains available to explicit editorial plans, while
+	// automatic entity cards avoid abrupt rotations and 3D flips on real people.
+	generatedEntityImageMotionCandidates = []string{
 		"image_fade_reveal",
 		"image_focus_reveal",
 		"image_scale_reveal",
@@ -127,6 +149,7 @@ var (
 		"apple_scale_push",
 		"apple_scale_settle",
 		"apple_soft_scale",
+		"apple_spread_rise",
 		"apple_tracking_reveal",
 		"apple_vertical_glyph_lift",
 		"apple_word_cascade",
@@ -314,17 +337,18 @@ func selectPhrasePreset(jobID, sceneID, itemID string) string {
 }
 
 func selectPhraseMotion(jobID, sceneID string, ordinal int, pool []string) string {
-	// Make the entrance visible often enough in normal generated scripts: each
-	// group of three phrase overlays starts with a motion whose name and design
-	// explicitly reveal text through movement, scale, blur or typing. Keep the
-	// remaining slots on the wider rotation for visual variety.
-	visibleEntrances := visiblePhraseEntrancePool(pool)
-	if len(visibleEntrances) > 0 && ordinal%3 == 0 {
-		return selectMotionFromPool(jobID, sceneID, "visible_entrance", ordinal/3, visibleEntrances)
-	}
 	if len(pool) > 0 {
+		// Explicit channel pools retain their editorial entrance preference,
+		// while remaining strictly inside the caller's certified vocabulary.
+		visibleEntrances := visiblePhraseEntrancePool(pool)
+		if len(visibleEntrances) > 0 && ordinal%3 == 0 {
+			return selectMotionFromPool(jobID, sceneID, "visible_entrance", ordinal/3, visibleEntrances)
+		}
 		return selectMotionFromPool(jobID, sceneID, "explicit", ordinal, pool)
 	}
+	// The default is a full deterministic no-repeat walk of the 108-motion
+	// catalog. Do not siphon every third phrase into a smaller "visible"
+	// subset: that makes the large catalog repeat much earlier than necessary.
 	sequence := defaultPhraseMotionSequence(jobID, sceneID)
 	if len(sequence) == 0 {
 		return ""
@@ -333,9 +357,18 @@ func selectPhraseMotion(jobID, sceneID string, ordinal int, pool []string) strin
 }
 
 // selectLongPhraseMotion keeps longer cards on block-level entrances such as
-// a soft reveal, line slide, or restrained scale. It intersects with pool so
-// caller-selected motion families remain authoritative. When an explicit
-// family has no compatible motion, retain its regular deterministic choice.
+// a soft reveal, line slide, or restrained scale — but the rotation the caller
+// asked for always survives. The editorial preference is the intersection of
+// the long-phrase list with pool; when that intersection is degenerate (empty,
+// or a SINGLE motion) it cannot rotate, and every long phrase would render the
+// identical animation. That is the defect this guard closes: a narrow channel
+// pool can intersect the long-phrase list in only one id, collapsing every
+// long phrase onto that single animation.
+//
+// Precedence: a rotating intersection (>= 2 motions) > the caller's pool (a
+// channel profile's explicit, already-certified vocabulary) > the long-phrase
+// list (only when the caller supplied no pool at all). A single-motion pool is
+// honoured verbatim — an operator who names one motion asked for one motion.
 func selectLongPhraseMotion(jobID, sceneID string, ordinal int, pool []string) string {
 	compatible := make([]string, 0, len(longPhraseMotionCandidates))
 	allowed := make(map[string]struct{}, len(pool))
@@ -351,10 +384,19 @@ func selectLongPhraseMotion(jobID, sceneID string, ordinal int, pool []string) s
 			compatible = append(compatible, id)
 		}
 	}
-	if len(compatible) == 0 {
+	switch {
+	case len(compatible) >= 2 && len(pool) == 0:
+		// Keep the default long-card lane a simple no-repeat walk too; routing
+		// it through selectPhraseMotion would apply a smaller explicit-pool
+		// entrance subset and reintroduce repeats before the pool is exhausted.
+		return selectMotionFromPool(jobID, sceneID, "long_phrase_default", ordinal, compatible)
+	case len(compatible) >= 2:
+		return selectPhraseMotion(jobID, sceneID, ordinal, compatible)
+	case len(pool) > 0:
 		return selectPhraseMotion(jobID, sceneID, ordinal, pool)
+	default:
+		return selectPhraseMotion(jobID, sceneID, ordinal, compatible)
 	}
-	return selectPhraseMotion(jobID, sceneID, ordinal, compatible)
 }
 
 // visiblePhraseEntrancePool limits the guaranteed entrance slot to certified
@@ -362,13 +404,9 @@ func selectLongPhraseMotion(jobID, sceneID string, ordinal int, pool []string) s
 // available in the other slots, including calmer fades and settles.
 //
 // When a caller supplies an explicit rotation pool, the pool is honoured
-// verbatim: a calmer pool with no visible entrances stays calmer, because
-// the caller explicitly asked for it (channel profile). The visibility floor
-// applies only to the default (empty) rotation, where sourcing a guaranteed
-// entrance from the global certified pool is safe and does not break a
-// user-supplied contract. Falling back to the global pool for an explicit
-// calmer rotation would make "phrase motion outside channel pool" test
-// failures and breaks the profile-as-override promise.
+// verbatim: a calmer pool with no visible entrances stays calmer because the
+// caller asked for it. The default rotation bypasses this filtering and walks
+// the complete catalog without repeats.
 func visiblePhraseEntrancePool(pool []string) []string {
 	if len(pool) == 0 {
 		pool = phraseMotionCandidates
@@ -460,6 +498,15 @@ func selectMotionFromPool(jobID, sceneID, family string, ordinal int, candidates
 // package's own storage.
 func CertifiedPhraseMotions() []string {
 	return append([]string(nil), phraseMotionCandidates...)
+}
+
+// LongPhraseMotionCandidates exposes the read-only block-level entrance list
+// the planner prefers for cards of 8+ words. selectLongPhraseMotion intersects
+// a caller pool with it and falls back to the pool itself when that
+// intersection cannot rotate, so operators and contract tests can check a
+// channel profile's pool actually rotates its long cards.
+func LongPhraseMotionCandidates() []string {
+	return append([]string(nil), longPhraseMotionCandidates...)
 }
 
 // certifiedPhraseFamily returns the subset of the production-safe phrase

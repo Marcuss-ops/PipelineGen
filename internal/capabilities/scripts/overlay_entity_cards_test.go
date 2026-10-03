@@ -37,6 +37,7 @@ func TestAttachEntityCardAssetCarriesVerifiedLocalPathWithoutSerializingIt(t *te
 	stableID := capabilityentities.StableEntityID("PERSON", "Ada Lovelace")
 	item := attachEntityCardAsset(capabilityoverlay.OverlayItem{
 		ID: "ada-card", EntityID: stableID, Kind: string(capabilityoverlay.KindEntityCard),
+		EntityRef:    &capabilityoverlay.OverlayEntityRef{EntityID: stableID, Type: "PERSON", Name: "Ada Lovelace"},
 		MotionID:     "phrase_apple_clean_01_blur_soft_reveal",
 		MotionParams: map[string]any{"stagger": 3},
 	}, media, canonicalByStable, "plan-1")
@@ -49,12 +50,18 @@ func TestAttachEntityCardAssetCarriesVerifiedLocalPathWithoutSerializingIt(t *te
 	if item.AssetRefs[0].LocalPath != localPath {
 		t.Fatalf("local path = %q, want verified producer path", item.AssetRefs[0].LocalPath)
 	}
+	if item.EntityCaption != "Ada Lovelace" || item.Text != "" {
+		t.Fatalf("single-image caption/text = %q/%q, want visible entity caption and no generic image text", item.EntityCaption, item.Text)
+	}
 	wire, err := json.Marshal(item)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if strings.Contains(string(wire), localPath) {
 		t.Fatal("producer-local filesystem path leaked into the semantic overlay plan")
+	}
+	if !strings.Contains(string(wire), `"entity_caption":"Ada Lovelace"`) {
+		t.Fatalf("single-image caption missing from semantic plan wire: %s", wire)
 	}
 }
 
@@ -167,14 +174,20 @@ func TestComposeNearbyEntityImagesCreatesOneStaggeredComposite(t *testing.T) {
 		t.Fatalf("composite captions = %q / %q, want both entity names", composite.ImageLayers[0].Caption, composite.ImageLayers[1].Caption)
 	}
 	first, second := composite.ImageLayers[0], composite.ImageLayers[1]
-	if first.AssetID != "asset-a" || first.StartMS != 0 || first.EndMS != 5000 || first.PresetID != "image_scale_in" {
+	if first.AssetID != "asset-a" || first.StartMS != 0 || first.EndMS != 6500 || first.PresetID != "image_scale_in" {
 		t.Fatalf("first portrait layer = %+v", first)
 	}
 	if second.AssetID != "asset-b" || second.StartMS != 1500 || second.EndMS != 6500 || second.PresetID != "image_focus_in" {
 		t.Fatalf("second portrait layer = %+v", second)
 	}
-	if first.Params["position_x"] != float64(-1920)*0.24 || second.Params["position_x"] != float64(1920)*0.24 {
+	if first.EndMS != 6500 {
+		t.Fatalf("first portrait should stay visible to the group end, got %d ms", first.EndMS)
+	}
+	if first.Params["position_x"] != float64(-1920)*0.18 || second.Params["position_x"] != float64(1920)*0.18 {
 		t.Fatalf("portrait positions = %v / %v", first.Params["position_x"], second.Params["position_x"])
+	}
+	if first.Params["width"] != 1920*34/100 || second.Params["width"] != 1920*34/100 {
+		t.Fatalf("portrait widths = %v / %v, want larger 34%% cards", first.Params["width"], second.Params["width"])
 	}
 	if first.EntityID != "stable-first" || second.EntityID != "stable-second" {
 		t.Fatalf("composite child entity ids = %q / %q", first.EntityID, second.EntityID)
@@ -430,5 +443,22 @@ func TestCapEntityImageOverlaysDeduplicatesSameCanonicalEntity(t *testing.T) {
 	}
 	if got[0].EntityRef == nil || got[0].EntityRef.CanonicalEntityID != "person:mike-tyson" {
 		t.Fatalf("first retained image = %#v, want Mike Tyson", got[0])
+	}
+}
+
+func TestCapEntityImageOverlaysKeepsRepeatedIdentityInPerSceneScope(t *testing.T) {
+	items := []capabilityoverlay.OverlayItem{
+		{ID: "scene-1", SceneID: "scene-1", EntityID: "occurrence-1", Kind: string(capabilityoverlay.KindEntityImage),
+			EntityRef: &capabilityoverlay.OverlayEntityRef{CanonicalEntityID: "person:isabelle-caracristi"}},
+		{ID: "scene-2", SceneID: "scene-2", EntityID: "occurrence-2", Kind: string(capabilityoverlay.KindEntityImage),
+			EntityRef: &capabilityoverlay.OverlayEntityRef{CanonicalEntityID: "person:isabelle-caracristi"}},
+	}
+
+	got := capEntityImageOverlays(items, capabilityoverlay.MaxEntityImageOverlaysPerRun, true)
+	if len(got) != 2 {
+		t.Fatalf("per-scene image count = %d, want repeated identity retained once in each scene", len(got))
+	}
+	if got[0].SceneID != "scene-1" || got[1].SceneID != "scene-2" {
+		t.Fatalf("retained scenes = %q, %q; want scene-1 and scene-2", got[0].SceneID, got[1].SceneID)
 	}
 }

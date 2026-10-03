@@ -19,6 +19,7 @@ type visualNERRequest struct {
 	SegmentID  string `json:"segment_id"`
 	TextHash   string `json:"text_hash"`
 	SourceText string `json:"source_text"`
+	Language   string `json:"language"`
 	Limit      int    `json:"limit"`
 	// EntityCount is the canonical VisualNER v1 field. Limit is retained for
 	// compatibility with older runners; sending both lets the dedicated
@@ -37,11 +38,15 @@ func NewVisualNERAdapter(executor *Executor) (*VisualNERAdapter, error) {
 	}
 	return &VisualNERAdapter{executor: executor}, nil
 }
-func (a *VisualNERAdapter) Extract(ctx context.Context, sourceText string, limit int) ([]scriptgen.VisualEntity, error) {
+func (a *VisualNERAdapter) Extract(ctx context.Context, language, sourceText string, limit int) ([]scriptgen.VisualEntity, error) {
 	if a == nil || a.executor == nil {
 		return nil, fmt.Errorf("visualner: executor is not configured")
 	}
-	req := visualNERRequest{Version: "visualner.v1", Operation: "extract", TextHash: digest.SHA256String(sourceText), SourceText: sourceText, Limit: limit, EntityCount: limit}
+	language = strings.TrimSpace(language)
+	if language == "" {
+		return nil, fmt.Errorf("visualner: language is required")
+	}
+	req := visualNERRequest{Version: "visualner.v1", Operation: "extract", TextHash: digest.SHA256String(sourceText), SourceText: sourceText, Language: language, Limit: limit, EntityCount: limit}
 	payload, err := json.Marshal(req)
 	if err != nil {
 		return nil, err
@@ -67,11 +72,14 @@ func (a *VisualNERAdapter) Extract(ctx context.Context, sourceText string, limit
 // canonical entity port used by the legacy batch boundary. The source spans
 // are validated by Extract before this projection is returned.
 func (a *VisualNERAdapter) ExtractEntities(ctx context.Context, req scriptpkg.EntityExtractionRequest) (*scriptpkg.EntityResult, error) {
+	if strings.TrimSpace(req.Language) == "" {
+		return nil, fmt.Errorf("visualner: language is required")
+	}
 	limit := req.EntityCount
 	if limit <= 0 {
 		limit = 3
 	}
-	entities, err := a.Extract(ctx, req.Text, limit)
+	entities, err := a.Extract(ctx, req.Language, req.Text, limit)
 	if err != nil {
 		return nil, err
 	}

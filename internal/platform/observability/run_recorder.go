@@ -200,7 +200,18 @@ func (r *SQLiteRecorder) SaveReport(ctx context.Context, p *kernobs.RunReport) e
 	}
 	defer tx.Rollback()
 	now := time.Now().UTC()
-	res, err := tx.ExecContext(ctx, `UPDATE run_observability SET status=?,finished_at=?,queue_wait_ms=?,wall_time_ms=?,blocked_ms=?,accumulated_operation_ms=?,error_code=?,error=?,counters_json=?,children_json=?,report_json=?,observability_degraded=?,updated_at=? WHERE run_id=?`, p.Status, nullableTime(p.FinishedAt), p.QueueWaitMs, p.WallTimeMs, p.BlockedMs, p.AccumulatedOperationMs, nullable(p.ErrorCode), nullable(p.Error), jsonValue(p.Counters), jsonValue(p.Children), string(body), boolInt(p.ObservabilityDegraded), timeValue(now), p.RunID)
+	// active_ms closes the measured instrumentation gap (the timing snapshot
+	// reported "run_observability.active_ms is never populated"). By the
+	// kernel contract the run's wall clock is the complement of the union of
+	// the typed blocked (wait) intervals — queue_wait sits OUTSIDE the wall
+	// (wall starts at claim), so active = wall − blocked, clamped at zero.
+	// The kernel report JSON still omits the field (its union-based omission
+	// is pinned by the kernel suite); this is the durable projection.
+	activeMS := p.WallTimeMs - p.BlockedMs
+	if activeMS < 0 {
+		activeMS = 0
+	}
+	res, err := tx.ExecContext(ctx, `UPDATE run_observability SET status=?,finished_at=?,queue_wait_ms=?,wall_time_ms=?,active_ms=?,blocked_ms=?,accumulated_operation_ms=?,error_code=?,error=?,counters_json=?,children_json=?,report_json=?,observability_degraded=?,updated_at=? WHERE run_id=?`, p.Status, nullableTime(p.FinishedAt), p.QueueWaitMs, p.WallTimeMs, activeMS, p.BlockedMs, p.AccumulatedOperationMs, nullable(p.ErrorCode), nullable(p.Error), jsonValue(p.Counters), jsonValue(p.Children), string(body), boolInt(p.ObservabilityDegraded), timeValue(now), p.RunID)
 	if err != nil {
 		return r.fail(p.RunID, "finish_run", err)
 	}

@@ -162,7 +162,7 @@ func (n *Nominatim) Geocode(ctx context.Context, request capgeocoding.Request) (
 		return capgeocoding.Result{}, fmt.Errorf("nominatim: decode response: %w", err)
 	}
 	if len(hits) == 0 {
-		return capgeocoding.Result{}, fmt.Errorf("nominatim: no result for grounded place %q", req.Query)
+		return capgeocoding.Result{}, fmt.Errorf("nominatim: no result for grounded place %q: %w", req.Query, capgeocoding.ErrNoResult)
 	}
 	var result capgeocoding.Result
 	if _, err := fmt.Sscan(hits[0].Latitude, &result.Latitude); err != nil {

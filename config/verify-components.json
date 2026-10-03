@@ -166,6 +166,7 @@
       "AGENTS.md",
       "CONTRIBUTING.md",
       "CANONICAL.md",
+      "TODO-pipeline-100x-velocita.md",
       "scripts/README.md",
       "ops/benchmarks/",
       "testdata/workflows/"

@@ -198,6 +198,12 @@ func BuildScriptGenerationRuntime(cfg *config.Config, root *ComposeRoot, runRepo
 	// reuse) was invisible in production logs while the same code logged
 	// normally in tests. Nil-safe.
 	runner.SetLogger(log)
+	// Location overlays use the real Nominatim adapter and the only accepted
+	// basemap source: operator-certified local plates. The capability layer
+	// still gates all lookups and map planning on request-level geocoding opt-in.
+	if err := wireScriptLocationSources(runner, cfg, log); err != nil {
+		return nil, err
+	}
 	if cfg != nil && cfg.Scripts.LocalizedRenderConcurrency > 0 {
 		runner.SetTTSConcurrency(cfg.Scripts.LocalizedRenderConcurrency)
 	}

@@ -3,14 +3,14 @@ package scriptgeneration
 import (
 	"context"
 	"fmt"
-	"strings"
 	"time"
 
 	capabilityaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
 	capcheckpoint "github.com/Marcuss-ops/PipelineGen/internal/capabilities/checkpoint"
-	mediadomain "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
+	capabilityentities "github.com/Marcuss-ops/PipelineGen/internal/capabilities/entities"
+	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/observability"
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 	"go.uber.org/zap"
 )
 
@@ -27,6 +27,9 @@ type audioCompileState struct {
 	// AudioSkipped reports that the compile phase had no audio work to do for
 	// this attempt (resumed past the stage, or no timeline requested).
 	AudioSkipped bool
+	// OnPlanReady starts an independent render against an immutable snapshot.
+	// The caller joins it before finalization; nil preserves serial callers.
+	OnPlanReady func(*GenerateResult) bool
 }
 
 // runAudioCompilePhase compiles the canonical timeline and the semantic
@@ -40,9 +43,13 @@ func (r *Runner) runAudioCompilePhase(ctx context.Context, runID string, req Gen
 		r.failRunWithRetry(ctx, runID, StageCompilingAudio, startErr)
 		return false
 	}
+	if out != nil {
+		out.Step = payloadStep
+	}
 	var err error
 	var canonicalTimeline capabilityaudio.CanonicalTimeline
 	var compiledAudioPlan capabilityaudio.CompiledAudioPlan
+	overlayPrepared := false
 	// Audio mode is an explicit request-level choice. The presence of
 	// generated scenes (or voiceover assets) is never a mode selector.
 	mode, modeErr := capabilityaudio.ResolveAudioMode(req.Audio, false)
@@ -205,6 +212,14 @@ func (r *Runner) runAudioCompilePhase(ctx context.Context, runID string, req Gen
 				r.failExecutionStep(ctx, exec, audioStep, cause)
 				r.failRunWithRetry(ctx, runID, StageCompilingAudio, cause)
 				return false
+			}
+			if out != nil && out.OnPlanReady != nil {
+				result.CanonicalTimeline = &canonicalTimeline
+				result.AudioPlan = &compiledAudioPlan
+				if !r.compileAudioOverlayPlan(ctx, runID, req, exec, payloadStep, result) || !out.OnPlanReady(result) {
+					return false
+				}
+				overlayPrepared = true
 			}
 			var finalAudio FinalAudioReference
 			var metrics AudioPipelineMetrics
@@ -376,7 +391,7 @@ func (r *Runner) runAudioCompilePhase(ctx context.Context, runID string, req Gen
 			result.AudioMetrics = &metrics
 			result.CanonicalTimeline = &canonicalTimeline
 			result.AudioPlan = &compiledAudioPlan
-			r.checkpoint(ctx, runID, result)
+			// The joined finalize boundary checkpoints both certified siblings.
 		} else if mode == capabilityaudio.AudioModeChunkedVoiceover {
 			canonicalTimeline, err = CompileCanonicalTimeline(*result)
 			if err != nil {
@@ -414,112 +429,100 @@ func (r *Runner) runAudioCompilePhase(ctx context.Context, runID string, req Gen
 			}
 		}
 		result.CanonicalTimeline = &canonicalTimeline
-		// ── PHRASE TIMING PROJECTION ──────────────────────────────
-		// Derive the phrase→timestamp projection from the per-scene voiceover
-		// timing artifacts captured with the audio. Mismatched optional
-		// anchors are skipped and reported; they never fail the generation job.
-		reportTimingSkip := func(skip timingProjectionSkip) {
-			observability.ScriptTimingProjectionSkipTotal.WithLabelValues(skip.SceneID, skip.Surface).Inc()
-			r.log.Warn("voiceover timing projection skipped an unanchored surface",
-				zap.String("scene_id", skip.SceneID),
-				zap.String("surface", skip.Surface),
-				zap.Error(skip.Cause),
-			)
-		}
-		if err := compileResultPhraseTimings(result, req.SourceLanguage, reportTimingSkip); err != nil {
-			cause := fmt.Errorf("phrase timing compilation failed: %w", err)
-			r.failExecutionStep(ctx, exec, payloadStep, cause)
-			r.failRunWithRetry(ctx, runID, StageCompilingAudio, cause)
+		if !overlayPrepared && !r.compileAudioOverlayPlan(ctx, runID, req, exec, payloadStep, result) {
 			return false
 		}
-		// ── ENTITY TIMELINE PROJECTION ───────────────────────────
-		// Derive the entity→timestamp projection from the same canonical
-		// word timing: every entity occurrence is anchored to the REAL
-		// voiceover (first spoken word start → last spoken word end) and
-		// mapped onto the final timeline via the scene's canonical offset.
-		// Unspoken entity candidates are omitted and reported like unmatched
-		// narration anchors; the remaining spoken entities still project.
-		if err := compileResultEntityTimeline(result, req.SourceLanguage, reportTimingSkip); err != nil {
-			cause := fmt.Errorf("entity timeline compilation failed: %w", err)
-			r.failExecutionStep(ctx, exec, payloadStep, cause)
-			r.failRunWithRetry(ctx, runID, StageCompilingAudio, cause)
-			return false
-		}
-		// ── OVERLAY PLAN PROJECTION ──────────────────────────────
-		// Derive the semantic OverlayPlan from the SAME certified surfaces
-		// (phrase timings, entity timeline, word timing, annotations): every
-		// overlay item is anchored to real timestamps, never estimates. The
-		// plan id is the run id so the RenderingGen queue job is idempotent
-		// on replay. Fail-closed like the phrase/entity projections: a scene
-		// that carried timing surfaces must project, or the run fails.
-		background, bgErr := r.resolveOverlayBackground(ctx, req.OverlayBackground)
-		if bgErr != nil {
-			cause := fmt.Errorf("resolve overlay background failed: %w", bgErr)
-			r.failExecutionStep(ctx, exec, payloadStep, cause)
-			r.failRunWithRetry(ctx, runID, StageCompilingAudio, cause)
-			return false
-		}
-		canvas := r.overlayCanvas
-		canvas.ForegroundScalePercent = req.Render.ForegroundScalePercent
-		canvas.Background = overlayBackgroundFromPayload(background)
-		canvas.Style = req.OverlayStyle
-		// The channel profile's phrase-motion rotation pool rides the canvas
-		// into the planner (empty = the certified default pool). Same fill-only
-		// provenance as Style: resolved once at ingress, never re-derived here.
-		canvas.PhraseMotions = req.PhraseMotions
-		canvas.PhraseMotionFamily = req.PhraseMotionFamily
-		canvas.ImageMotions = req.ImageMotions
-		// The caller-selected run-level phrase ceiling (0 = certified default)
-		// rides the canvas into CompileOverlayPlan, which forwards it to the
-		// editorial budget.
-		canvas.MaxPhraseOverlays = req.MaxPhraseOverlays
-		// Scene-context and entity-bound images share one run-level allowance.
-		// This is the production audio-compile path that freezes the plan; keep
-		// the request's image cap here as well as in the dedicated overlay-plan
-		// helper so entity cards cannot escape the requested budget.
-		canvas.MaxImageOverlays = req.MaxImageOverlays
-		if canvas.Style == nil && background != nil {
-			canvas.Style = background.Style
-		}
-		driveFolderID := strings.TrimSpace(req.Render.DriveFolderID)
-		plates := r.mapPlates
-		if req.MediaPlan.ProviderPolicy.Geocoding != mediadomain.MediaToggleEnabled {
-			plates = nil
-		}
-		if err := compileResultOverlayPlan(result, req.SourceLanguage, runID, req.Project, driveFolderID, canvas, plates, req.MediaPlan.Extraction.EntityImages.PerScene()); err != nil {
-			cause := fmt.Errorf("overlay plan compilation failed: %w", err)
-			r.failExecutionStep(ctx, exec, payloadStep, cause)
-			r.failRunWithRetry(ctx, runID, StageCompilingAudio, cause)
-			return false
-		}
-		r.logPhraseMotionSelections(runID, result.OverlayPlan)
-		r.logPhraseAnchoringDiagnostics(runID, result, req.SourceLanguage)
-		// runID is the semantic/idempotent plan identity. exec.JobID is the
-		// externally returned broker job identity and must own the Drive tree.
-		setOverlayDriveJobID(result, exec.JobID)
-		// Validate planned overlay spans before starting the expensive,
-		// per-language render fan-out. The finalized EditingTimeline is rebuilt
-		// after rendering so it can include certified artifact references, but
-		// its timing constraints are already knowable here. Deferring this check
-		// until after rendering can waste several minutes and publish overlays
-		// for a timeline that will then be rejected.
-		if _, err := BuildEditingTimeline(result); err != nil {
-			cause := fmt.Errorf("editing timeline preflight failed: %w", err)
-			r.failExecutionStep(ctx, exec, payloadStep, cause)
-			r.failRunWithRetry(ctx, runID, StageCompilingAudio, cause)
-			return false
-		}
-		// END OF THE MEASURED AUDIO COMPILE STAGE. The blocking overlay render
-		// (runOverlayRenderPhase), the editing-timeline projection and the step
-		// completion (runAudioFinalizePhase) are separate boundaries with their
-		// own stages; keeping them here is what made audio_compile report a wall
-		// time dominated by a video render it does not own.
+		r.logLocationOverlayPlan(req, result)
 	}
 	if out != nil {
 		out.Step = payloadStep
 		out.AudioSkipped = audioSkipped
 	}
 	return true
+}
+
+// logLocationOverlayPlan preserves producer-boundary diagnostics for both the
+// serial and overlapping paths without compiling the immutable plan twice.
+func (r *Runner) logLocationOverlayPlan(req GenerateRequest, result *GenerateResult) {
+	// Keep the location path observable at the producer boundary. A place
+	// may be extracted and geocoded successfully yet still disappear before
+	// the worker sees its immutable render plan; recording the two counts
+	// makes that boundary auditable from the run log.
+	geocodedPlaces := 0
+	for i := range result.Scenes {
+		if ann := annotationsForLanguage(result.Scenes[i], req.SourceLanguage, result.SourceLanguage); ann != nil {
+			for _, entity := range append(append([]scriptpkg.AnnotatedEntity(nil), ann.PrimaryEntities...), ann.SecondaryEntities...) {
+				if isPlaceEntityType(entity.Type) && entity.Geo != nil {
+					geocodedPlaces++
+				}
+			}
+		}
+	}
+	mapItems := 0
+	if result.OverlayPlan != nil {
+		for _, item := range result.OverlayPlan.Items {
+			if item.Kind == "map" {
+				mapItems++
+			}
+		}
+	}
+	spokenPlaceOccurrences := 0
+	if result.EntityTimeline != nil {
+		for _, scene := range result.EntityTimeline.Scenes {
+			for _, entity := range scene.Entities {
+				if isPlaceEntityType(entity.Type) {
+					spokenPlaceOccurrences++
+				}
+			}
+		}
+	}
+	matchedMapCandidates := 0
+	validMapCandidates := 0
+	placeMatchDebug := make([]string, 0, geocodedPlaces)
+	if result.EntityTimeline != nil {
+		for sceneIndex := range result.Scenes {
+			scene := result.Scenes[sceneIndex]
+			ann := annotationsForLanguage(scene, req.SourceLanguage, req.SourceLanguage)
+			if ann == nil {
+				continue
+			}
+			var timelineScene *capabilityentities.SceneEntityTimeline
+			for i := range result.EntityTimeline.Scenes {
+				if result.EntityTimeline.Scenes[i].SceneID == scene.ID {
+					timelineScene = &result.EntityTimeline.Scenes[i]
+					break
+				}
+			}
+			for _, entity := range append(append([]scriptpkg.AnnotatedEntity(nil), ann.PrimaryEntities...), ann.SecondaryEntities...) {
+				if !isPlaceEntityType(entity.Type) || entity.Geo == nil {
+					continue
+				}
+				matched := false
+				if timelineScene != nil {
+					matched = occurrenceFor(timelineScene.Entities, entity) != nil
+				}
+				if matched {
+					matchedMapCandidates++
+					occurrence := occurrenceFor(timelineScene.Entities, entity)
+					if _, ok := capabilityoverlay.NewMapCandidate(occurrence.EntityID, entity.CanonicalName,
+						entity.Geo.Latitude, entity.Geo.Longitude, occurrence.AudioStartUS,
+						occurrence.AudioEndUS-occurrence.AudioStartUS, entity.Confidence); ok {
+						validMapCandidates++
+					}
+				}
+				placeMatchDebug = append(placeMatchDebug, fmt.Sprintf("%s:%s/%s=%t", scene.ID, entity.Type, entity.CanonicalName, matched))
+			}
+		}
+	}
+	r.log.Info("location overlay plan compiled",
+		zap.Int("geocoded_places", geocodedPlaces),
+		zap.Int("spoken_place_occurrences", spokenPlaceOccurrences),
+		zap.Int("matched_map_candidates", matchedMapCandidates),
+		zap.Int("valid_map_candidates", validMapCandidates),
+		zap.Strings("place_match_debug", placeMatchDebug),
+		zap.Int("map_items", mapItems),
+		zap.Bool("map_plate_resolver_wired", r.mapPlates != nil && r.shouldGeocodeScriptLocations(req)),
+	)
 }
 
 // failAudioCompileStep records both the execution-step failure and the

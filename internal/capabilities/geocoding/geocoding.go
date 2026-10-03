@@ -6,10 +6,15 @@ package geocoding
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math"
 	"strings"
 )
+
+// ErrNoResult means a grounded name is not specific enough for the configured
+// provider to locate. Callers may safely leave that entity unlocated.
+var ErrNoResult = errors.New("geocoding: no result")
 
 // Request is one grounded place-name lookup. Query must be a location entity
 // from script annotations, never arbitrary narration or personal data.

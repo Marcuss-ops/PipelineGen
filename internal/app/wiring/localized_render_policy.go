@@ -45,7 +45,7 @@ func (a *localizedRenderEnqueuerAdapter) resolveRenderIdentity(ctx context.Conte
 	if resolved != "" {
 		sourceLang = resolved
 	}
-	if sourceLang != targetLang {
+	if sourceLang != targetLang && localizedRenderSubtitlesEnabled(in) {
 		track, cues, findErr := a.tracks.FindReady(ctx, assetID, targetLang, detail.TextTrackTranscript)
 		if findErr != nil {
 			return localizedRenderIdentity{}, fmt.Errorf("localized render: find translated subtitles for %q/%q: %w", assetID, targetLang, findErr)
@@ -55,6 +55,10 @@ func (a *localizedRenderEnqueuerAdapter) resolveRenderIdentity(ctx context.Conte
 		}
 	}
 	return localizedRenderIdentity{assetID: assetID, clipID: clipID, clipIDChild: clipID, sourceLang: sourceLang, targetLang: targetLang}, nil
+}
+
+func localizedRenderSubtitlesEnabled(in scriptgeneration.LocalizedRenderInput) bool {
+	return in.Render.Subtitles != nil && in.Render.Subtitles.Enabled
 }
 
 var _ texttracks.TimedCueWriter = (*localizedRenderEnqueuerAdapter)(nil)

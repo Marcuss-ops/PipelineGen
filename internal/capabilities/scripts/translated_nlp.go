@@ -281,7 +281,7 @@ func (r *Runner) computeLocalizedAnnotations(ctx context.Context, req GenerateRe
 				Provider: string(item.lang), MetadataJSON: fmt.Sprintf("{\"scene_id\":%q,\"language\":%q,\"surface\":\"translation\"}", result.Scenes[item.sceneIndex].ID, item.lang),
 			}, func(measureCtx context.Context) error {
 				var extractErr error
-				outcome.entities, extractErr = r.vidRushPipeline.NERPort.Extract(measureCtx, item.text, nerLimit)
+				outcome.entities, extractErr = r.vidRushPipeline.NERPort.Extract(measureCtx, string(item.lang), item.text, nerLimit)
 				return extractErr
 			})
 			if err != nil {

@@ -288,6 +288,14 @@ func (m *Materializer) Materialize(
 		}
 	}
 
+	// Deterministic report order (A2, October 2026): the parallel fan-out
+	// appends to the report slices in goroutine-COMPLETION order, which
+	// varies run to run with translator latency. Consumers aggregate these
+	// lists into job results, so the same input must always produce the
+	// same report content. Reorder to the canonical candidate order — a
+	// no-op for the sequential path, which already appends in this order.
+	normalizeReportOrder(candidates, report)
+
 	// (e) Make the translations indexable, then request the reindex.
 	//
 	// This runs even when the invocation created nothing. A backfill over

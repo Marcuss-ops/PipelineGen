@@ -192,7 +192,7 @@ func TestApplyEditorialOverlayBudgetEnforcesRunLevelEighteenImagesAndFivePhrases
 		}
 	}
 	if images != MaxImageOverlaysPerRun || phrases != MaxPhraseOverlaysPerRun || len(got) != 18+MaxPhraseOverlaysPerRun {
-		t.Fatalf("image/phrase/total counts = %d/%d/%d, want 18 images and the configured five phrases", images, phrases, len(got))
+		t.Fatalf("image/phrase/total counts = %d/%d/%d, want %d images and the configured five phrases", images, phrases, len(got), MaxImageOverlaysPerRun)
 	}
 	if budget != (PhraseOverlayBudget{Requested: MaxPhraseOverlaysPerRun, Materialized: MaxPhraseOverlaysPerRun, Shortfall: 0}) {
 		t.Fatalf("phrase budget = %+v, want the configured phrase cap requested and materialized", budget)

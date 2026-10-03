@@ -434,8 +434,9 @@ func TestBuildFinalJobPayloadsDoesNotSendSubtitlesWithStockChunks(t *testing.T) 
 		if scene["kind"] != "stock" {
 			t.Errorf("scene %d kind = %v, want stock", i, scene["kind"])
 		}
-		if _, hasText := scene["text"]; hasText {
-			t.Errorf("stock scene %d carries text that the remote renderer could burn as subtitles: %#v", i, scene["text"])
+		text, ok := scene["text"].(string)
+		if !ok || text != "\u200b" {
+			t.Errorf("stock scene %d text = %#v, want the schema-required invisible separator (no visible subtitles)", i, scene["text"])
 		}
 		if _, duplicated := scene["clip"]; duplicated {
 			t.Errorf("scene %d sends video with source audio as a clip", i)

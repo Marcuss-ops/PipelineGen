@@ -18,12 +18,11 @@ import "time"
 // event in a single transaction. It is a package-level var so tests
 // can temporarily shorten it without rebuilding the binary.
 //
-// SCRIPTCONTRACT contract: a short timeout prevents POST /generate
-// from blocking if the broker / database is congested. The 10s
-// ceiling is the canonical ScriptFlow throughput window; a future
-// instrumentation PR can surface actual observed commit durations
-// (operations repository metrics) to right-size this constant.
-var enqueueTimeout = 10 * time.Second
+// SCRIPTCONTRACT contract: a bounded timeout prevents POST /generate
+// from blocking indefinitely if the broker / database is congested.
+// Payloads that start durable script runs may need longer than the old
+// 10s ceiling while the submission transaction commits under load.
+var enqueueTimeout = 60 * time.Second
 
 // isValidIdempotencyKey mirrors the printable-ASCII + max-255 rule
 // applied to the Idempotency-Key HTTP header. Returns false on

@@ -301,7 +301,13 @@ func WireStockPipeline(cfg *config.Config, log *zap.Logger, root *ComposeRoot) (
 	// Source duration validation and manifest projection are production
 	// capabilities, not optional test conveniences. Both are built from
 	// concrete infrastructure already owned by the composition root.
-	stockProbe := render.NewFFProbeSourceDurationProbe(rustexec.NewConfiguredVideoProcessorWithExecutor(rustExecutor, mediaConfig.Policy, mediaConfig.Profile, log))
+	// The probe is identity-cached (path+size+mtime): retries and multi-step
+	// fan-outs re-probe the same staged source within a job, and the timing
+	// snapshot charges stock.duration_probe 4.1h/week at a 25.7s average per
+	// ffprobe on multi-GB sources. Only successes are cached; failures stay
+	// transient at the underlying ffprobe.
+	stockProbe := render.NewCachedSourceDurationProbe(
+		render.NewFFProbeSourceDurationProbe(rustexec.NewConfiguredVideoProcessorWithExecutor(rustExecutor, mediaConfig.Policy, mediaConfig.Profile, log)))
 	stockProjection := newStockProjection()
 
 	return BuildStockBundle(StockBundleDeps{

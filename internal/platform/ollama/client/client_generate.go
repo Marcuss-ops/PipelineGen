@@ -147,12 +147,12 @@ func (c *Client) GenerateDetailed(ctx context.Context, model, prompt string, opt
 // Ollama API ignores format when it is nested inside options.
 func extractGenerateControls(options map[string]any) (any, *bool, string, map[string]any) {
 	if len(options) == 0 {
-		return nil, nil, "30m", residentRunnerOptions(nil)
+		return nil, nil, residentKeepAlive(), residentRunnerOptions(nil)
 	}
 	copyOptions := make(map[string]any, len(options))
 	var format any
 	var think *bool
-	keepAlive := "30m"
+	keepAlive := residentKeepAlive()
 	for key, value := range options {
 		if key == "format" {
 			format = value

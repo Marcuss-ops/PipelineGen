@@ -132,7 +132,7 @@ func (r *Runner) SetDocumentFolderResolver(resolver DocumentFolderResolver) {
 }
 
 // SetGeocoder wires the provider-neutral geocoder used to enrich grounded
-// place annotations when the request enables provider_policy.geocoding. A nil
+// place annotations when the request enables media_plan.provider_policy.geocoding. A nil
 // adapter with an enabled policy fails closed at enrichment time.
 func (r *Runner) SetGeocoder(geocoder capabilitygeocoding.Geocoder) {
 	if r != nil {

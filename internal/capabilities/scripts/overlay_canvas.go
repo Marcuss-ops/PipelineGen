@@ -41,9 +41,11 @@ type OverlayCanvasSpec struct {
 	// this render. It is caller-supplied (request max_phrase_overlays); zero
 	// keeps the certified default (capabilityoverlay.MaxPhraseOverlaysPerRun).
 	MaxPhraseOverlays int
+	MapsOnly          bool
 	// MaxImageOverlays overrides the run-level image ceiling; zero keeps the
 	// certified default (capabilityoverlay.MaxImageOverlaysPerRun).
-	MaxImageOverlays int
+	MaxImageOverlays      int
+	DisableNumberOverlays bool
 }
 
 // GoldenOverlayCanvas is the validated golden canary canvas (1280×720,
@@ -121,6 +123,23 @@ func overlayStyleParams(style *scriptpkg.OverlayStyleSpec) map[string]any {
 		}
 		p["animation"] = anim
 	}
+	if image := style.Image; image != nil {
+		if image.Width != nil {
+			p["image_width"] = *image.Width
+		}
+		if image.Height != nil {
+			p["image_height"] = *image.Height
+		}
+		if image.PositionX != nil {
+			p["image_position_x"] = *image.PositionX
+		}
+		if image.PositionY != nil {
+			p["image_position_y"] = *image.PositionY
+		}
+		if image.Radius != nil {
+			p["image_radius"] = *image.Radius
+		}
+	}
 	if style.Shadow != nil && style.Shadow.Enabled {
 		shadow := map[string]any{}
 		if style.Shadow.Color != "" {
@@ -140,6 +159,49 @@ func overlayStyleParams(style *scriptpkg.OverlayStyleSpec) map[string]any {
 	return p
 }
 
+func overlayImageFrame(style *scriptpkg.OverlayImageStyleSpec) *capabilityoverlay.OverlayItemFrame {
+	if style == nil {
+		return nil
+	}
+	frame := &capabilityoverlay.OverlayItemFrame{}
+	if style.Border != nil && style.Border.Width > 0 {
+		frame.Border = &capabilityoverlay.OverlayItemFrameBorder{WidthPX: style.Border.Width, Color: style.Border.Color}
+		if style.Border.Radius != nil {
+			frame.Border.RadiusPX = *style.Border.Radius
+		}
+	}
+	if style.Stroke != nil && style.Stroke.Width > 0 {
+		frame.Stroke = &capabilityoverlay.OverlayItemFrameStroke{WidthPX: style.Stroke.Width, Color: style.Stroke.Color}
+	}
+	if style.Shadow != nil && style.Shadow.Enabled {
+		color := style.Shadow.Color
+		if color == "" {
+			color = "#000000"
+		}
+		shadow := &capabilityoverlay.OverlayItemFrameShadow{Color: color, Opacity: 0.7, BlurPX: 12, OffsetYP: 6}
+		if style.Shadow.Opacity != nil {
+			shadow.Opacity = *style.Shadow.Opacity
+		}
+		if style.Shadow.Blur != nil {
+			shadow.BlurPX = *style.Shadow.Blur
+		}
+		if len(style.Shadow.Offset) > 0 {
+			shadow.OffsetXP = style.Shadow.Offset[0]
+		}
+		if len(style.Shadow.Offset) > 1 {
+			shadow.OffsetYP = style.Shadow.Offset[1]
+		}
+		frame.Shadow = shadow
+	}
+	if style.Radius != nil {
+		frame.ClipRadiusPX = *style.Radius
+	}
+	if frame.Border == nil && frame.Shadow == nil && frame.Stroke == nil && frame.ClipRadiusPX == 0 {
+		return nil
+	}
+	return frame
+}
+
 func rgbaHex(color []float64) string {
 	if len(color) < 3 {
 		return ""
@@ -154,6 +216,61 @@ func rgbaHex(color []float64) string {
 		return int(v*255 + 0.5)
 	}
 	return fmt.Sprintf("#%02X%02X%02X", clamp(color[0]), clamp(color[1]), clamp(color[2]))
+}
+
+func isImageOverlayItem(item capabilityoverlay.OverlayItem) bool {
+	if item.Map != nil || len(item.AssetRefs) == 0 {
+		return false
+	}
+	switch item.Kind {
+	case string(capabilityoverlay.KindEntityImage), string(capabilityoverlay.KindEntityCard), string(capabilityoverlay.KindImagePopup), string(capabilityoverlay.KindProduct), string(capabilityoverlay.KindLogo):
+		return true
+	default:
+		return false
+	}
+}
+
+func applyOverlayImageStyle(item *capabilityoverlay.OverlayItem, style *scriptpkg.OverlayImageStyleSpec) {
+	if item == nil || style == nil {
+		return
+	}
+	params := overlayStyleParams(&scriptpkg.OverlayStyleSpec{Image: style})
+	if len(params) > 0 {
+		if item.Params == nil {
+			item.Params = map[string]any{}
+		}
+		for key, value := range params {
+			if strings.HasPrefix(key, "image_") {
+				item.Params[strings.TrimPrefix(key, "image_")] = value
+			}
+		}
+	}
+	item.Frame = overlayImageFrame(style)
+	for i := range item.ImageLayers {
+		if item.ImageLayers[i].Params == nil {
+			item.ImageLayers[i].Params = map[string]any{}
+		}
+		for key, value := range params {
+			if strings.HasPrefix(key, "image_") {
+				item.ImageLayers[i].Params[strings.TrimPrefix(key, "image_")] = value
+			}
+		}
+		item.ImageLayers[i].Frame = overlayImageFrame(style)
+	}
+	item.RenderKey = ""
+}
+
+func isRuntimeTextStyleParam(key string) bool {
+	switch key {
+	case "font_family", "font_size_px", "glow_size", "stroke_size":
+		return true
+	default:
+		return false
+	}
+}
+
+func isTextOverlayKind(kind string) bool {
+	return strings.HasPrefix(kind, "text_") || kind == "number" || kind == "quote" || kind == "brand_text"
 }
 
 func mergeStyleParam(existing any, add map[string]any) map[string]any {

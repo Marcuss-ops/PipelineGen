@@ -144,7 +144,9 @@ func assertTranslatedPropertyPhrases(t *testing.T, caseIndex int, language Langu
 
 type propertyNER struct{}
 
-func (propertyNER) Extract(context.Context, string, int) ([]VisualEntity, error) { return nil, nil }
+func (propertyNER) Extract(context.Context, string, string, int) ([]VisualEntity, error) {
+	return nil, nil
+}
 
 func propertyEntitiesForCase(index int, text string) []string {
 	all := [][]string{{"Mike Tyson", "Brooklyn"}, {"NASA", "Cape Canaveral"}, {"Christopher Wray", "Washington"}}

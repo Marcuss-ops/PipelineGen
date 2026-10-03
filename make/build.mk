@@ -37,9 +37,11 @@ GO_BUILD_GOFLAGS ?= -p=$(GO_PARALLEL) $(GOFLAGS_EXTRA)
 GO_LINKER ?= mold
 GO_LINKER_FLAGS := $(shell if command -v $(GO_LINKER) >/dev/null 2>&1; then printf '%s' '-linkmode external -extldflags -fuse-ld=$(GO_LINKER)'; fi)
 
-# Rust execution-plane build. Keep the toolchain explicit so rustup does not
-# silently select a host default while the migration is being rolled out.
+# Rust execution-plane build. VisualNER uses rust_icu against system ICU4C;
+# keep the bindgen-free build mode and ICU ABI major explicit at build time.
 RUST_CARGO ?= rustup run stable cargo
+ICU_MAJOR ?= $(shell pkg-config --modversion icu-i18n 2>/dev/null | cut -d. -f1)
+RUST_ICU_ENV = RUST_ICU_MAJOR_VERSION_NUMBER=$(ICU_MAJOR)
 
 # Canonical token-file SSOT (AGENTS.md "Authentication SSOT (Velox admin token)").
 # Agents normally load via scripts/with-velox-auth; exporting TOKEN_FILE here is a
@@ -86,8 +88,9 @@ go-version-check:
 #                       against an HTTP broker via VELOX_BROKER_URL for
 #                       users running the long-running worker on a
 build-muscles:
+	@test -n "$(ICU_MAJOR)" || (echo "ICU4C development libraries are required (pkg-config icu-i18n)" >&2; exit 1)
 	@mkdir -p bin
-	$(RUST_CARGO) build --release --manifest-path rust/Cargo.toml
+	$(RUST_ICU_ENV) $(RUST_CARGO) build --release --manifest-path rust/Cargo.toml
 	install -m 0755 rust/target/release/pipelinegen-muscles bin/pipelinegen-muscles
 	install -m 0755 rust/target/release/visualner bin/visualner
 	install -m 0755 rust/target/release/mediasampler bin/mediasampler

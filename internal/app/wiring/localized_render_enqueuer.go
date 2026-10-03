@@ -376,6 +376,12 @@ func (a *localizedRenderEnqueuerAdapter) resolveExistingSubtitleLanguage(ctx con
 }
 
 func (a *localizedRenderEnqueuerAdapter) ensureDatabaseSubtitles(ctx context.Context, assetID, sourceLang, targetLang string, in scriptgeneration.LocalizedRenderInput) (bool, error) {
+	// Numeric/location overlays are rendered as separate, timed Chronon layers.
+	// A clip localization with subtitles disabled does not need a transcript
+	// track, and requiring one would block otherwise valid language variants.
+	if !localizedRenderSubtitlesEnabled(in) {
+		return false, nil
+	}
 	if a.tracks == nil {
 		return false, fmt.Errorf("localized render: text track repository not wired")
 	}

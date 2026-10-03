@@ -246,17 +246,19 @@ func composeEntityImageGroup(items []capabilityoverlay.OverlayItem, group []int,
 	parent := first
 	assetRefs := make([]capabilityoverlay.OverlayAssetRef, 0, len(group))
 	layers := make([]capabilityoverlay.OverlayImageLayer, 0, len(group))
+	for _, itemIndex := range group {
+		if items[itemIndex].EndMs > parentEnd {
+			parentEnd = items[itemIndex].EndMs
+		}
+	}
+	groupDuration := parentEnd - parentStart
 	for slot, itemIndex := range group {
 		child := items[itemIndex]
 		offset := child.StartMs - parentStart
-		childEnd := offset + child.EndMs - child.StartMs
-		if child.EndMs > parentEnd {
-			parentEnd = child.EndMs
-		}
 		assetRefs = append(assetRefs, child.AssetRefs[0])
 		layers = append(layers, capabilityoverlay.OverlayImageLayer{
 			ID: child.ID, AssetID: child.AssetRefs[0].AssetID, EntityID: stableIDForOverlayItem(child),
-			StartMS: offset, EndMS: childEnd, PresetID: child.PresetID,
+			StartMS: offset, EndMS: groupDuration, PresetID: child.PresetID,
 			Caption: entityImageCaption(child),
 			Params:  entityImageLayerParams(width, height, len(group), slot),
 		})
@@ -274,6 +276,10 @@ func composeEntityImageGroup(items []capabilityoverlay.OverlayItem, group []int,
 	parent.Params = nil
 	parent.RenderKey = ""
 	parent.ImageLayers = layers
+	// Composite names are rendered from each child layer. A parent caption
+	// would duplicate the first entity's name over the whole group.
+	parent.EntityCaption = ""
+	parent.CaptionMotionID = ""
 	captions := make([]string, 0, len(layers))
 	for _, layer := range layers {
 		if layer.Caption != "" {
@@ -316,25 +322,29 @@ func entityImageLayerParams(width, height, count, slot int) map[string]any {
 		width, height = 1920, 1080
 	}
 	boxWidth, boxHeight := width*22/100, height*42/100
-	positionX, positionY := 0.0, 0.0
+	// Lift entity groups into the visual center. The caption renderer places
+	// each name below its image, so a small upward bias keeps the whole card
+	// (portrait + name) centered instead of pinning the name to the bottom.
+	positionX, positionY := 0.0, -float64(height)*0.10
 	switch count {
 	case 3:
-		boxWidth, boxHeight = width*25/100, height*40/100
-		positionX = float64(slot-1) * float64(width) * 0.31
+		boxWidth, boxHeight = width*29/100, height*48/100
+		positionX = float64(slot-1) * float64(width) * 0.29
 	case 4:
-		boxWidth, boxHeight = width*25/100, height*33/100
-		positionX = []float64{-0.25, 0.25, -0.25, 0.25}[slot] * float64(width)
-		positionY = []float64{-0.18, -0.18, 0.10, 0.10}[slot] * float64(height)
+		boxWidth, boxHeight = width*29/100, height*39/100
+		positionX = []float64{-0.17, 0.17, -0.17, 0.17}[slot] * float64(width)
+		positionY += []float64{-0.10, -0.10, 0.14, 0.14}[slot] * float64(height)
 	case 5:
-		boxWidth, boxHeight = width*21/100, height*28/100
-		positions := [][2]float64{{-0.30, -0.18}, {0, -0.18}, {0.30, -0.18}, {-0.20, 0.10}, {0.20, 0.10}}
+		boxWidth, boxHeight = width*24/100, height*34/100
+		positions := [][2]float64{{-0.25, -0.10}, {0, -0.10}, {0.25, -0.10}, {-0.16, 0.16}, {0.16, 0.16}}
 		positionX = positions[slot][0] * float64(width)
-		positionY = positions[slot][1] * float64(height)
+		positionY += positions[slot][1] * float64(height)
 	default:
+		boxWidth, boxHeight = width*34/100, height*56/100
 		if slot == 0 {
-			positionX = -float64(width) * 0.24
+			positionX = -float64(width) * 0.18
 		} else {
-			positionX = float64(width) * 0.24
+			positionX = float64(width) * 0.18
 		}
 	}
 	if boxWidth < 1 {
@@ -351,8 +361,12 @@ func entityImageLayerParams(width, height, count, slot int) map[string]any {
 }
 
 // assignEntityImageMotions samples a fresh pool offset once per newly compiled
-// plan, then rotates through the 18 certified motion IDs. In a composite each
-// portrait consumes its own ordinal, so the animations remain independent.
+// plan, then rotates through the curated generated-portrait motions. In a
+// composite each portrait consumes its own ordinal, so entrances stay subtle
+// while retaining a small amount of variation.
+//
+// The broader image catalog remains callable for explicit editorial plans;
+// this automatic path avoids abrupt flips and strong perspective effects.
 func assignEntityImageMotions(items []capabilityoverlay.OverlayItem, offset, width, height int) {
 	ordinal := 0
 	for itemIndex := range items {
@@ -362,12 +376,14 @@ func assignEntityImageMotions(items []capabilityoverlay.OverlayItem, offset, wid
 		}
 		if len(item.ImageLayers) > 0 {
 			for layerIndex := range item.ImageLayers {
-				item.ImageLayers[layerIndex].MotionID = capabilityoverlay.ImageMotionAtOffset(offset, ordinal)
+				item.ImageLayers[layerIndex].MotionID = capabilityoverlay.EntityImageMotionAtOffset(offset, ordinal)
+				item.ImageLayers[layerIndex].MotionParams = map[string]any{"enter_frames": 8}
 				ordinal++
 			}
 			continue
 		}
-		item.MotionID = capabilityoverlay.ImageMotionAtOffset(offset, ordinal)
+		item.MotionID = capabilityoverlay.EntityImageMotionAtOffset(offset, ordinal)
+		item.MotionParams = map[string]any{"enter_frames": 8}
 		item.Params = capabilityoverlay.EntityImageParams(width, height)
 		ordinal++
 	}

@@ -223,6 +223,20 @@ func TestImageBudgetDedupesSameBytesAcrossEntityAndContextArms(t *testing.T) {
 	}
 }
 
+func TestImageBudgetAllowsRepeatedEntityImageAcrossPerSceneScope(t *testing.T) {
+	hash := strings.Repeat("d", 64)
+	items := []OverlayItem{
+		{ID: "entity-scene-1", SceneID: "scene-1", Kind: string(KindEntityImage), AssetRefs: []OverlayAssetRef{{SHA256: hash}}},
+		{ID: "entity-scene-2", SceneID: "scene-2", Kind: string(KindEntityImage), AssetRefs: []OverlayAssetRef{{SHA256: hash}}},
+		{ID: "context-duplicate", SceneID: "scene-3", Kind: "image", AssetRefs: []OverlayAssetRef{{SHA256: hash}}},
+	}
+
+	got, _ := ApplyEditorialOverlayBudgetWithImageLimit(items, 5, 10, 0, true)
+	if len(got) != 2 || got[0].ID != "entity-scene-1" || got[1].ID != "entity-scene-2" {
+		t.Fatalf("per-scene repeated entity images = %#v, want one in each scene and no duplicate context image", got)
+	}
+}
+
 // TestPhraseReservationNeverClobbersTheLongCandidatesItDidNotReserve pins the
 // long/short reservation against slice-aliasing: admission must follow from the
 // ranking alone, never from whether the reservation happened to reuse the
