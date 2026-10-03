@@ -36,9 +36,9 @@ const EditingTimebase = "us"
 // mux padding separately from actual scene drift.
 const editingAudioPacketDurationToleranceUS int64 = 21_334
 
-// EditingTimelineV1 is the canonical editing projection. One JSON, one
-// timebase, built from frozen facts. Downstream editing consumes this
-// document and nothing else for timing decisions.
+// EditingTimelineV1 is the canonical editing projection. Its video duration
+// covers the canonical timeline and any longer overlay tail; audio keeps its
+// independently certified duration and may end before that visual tail.
 type EditingTimelineV1 struct {
 	Version    string               `json:"version"`
 	Timebase   string               `json:"timebase"`
@@ -128,8 +128,8 @@ func (t EditingTimelineV1) Validate() error {
 	if strings.TrimSpace(t.Audio.SHA256) == "" {
 		return fmt.Errorf("editing timeline: audio sha256 is required")
 	}
-	if delta := t.Audio.DurationUS - t.DurationUS; delta > editingAudioPacketDurationToleranceUS || delta < -editingAudioPacketDurationToleranceUS {
-		return fmt.Errorf("editing timeline: audio duration %d does not match timeline duration %d",
+	if t.Audio.DurationUS-t.DurationUS > editingAudioPacketDurationToleranceUS {
+		return fmt.Errorf("editing timeline: audio duration %d exceeds timeline duration %d",
 			t.Audio.DurationUS, t.DurationUS)
 	}
 	return t.validateSpans()
@@ -187,6 +187,9 @@ func validatePlannedEditingSpans(result *GenerateResult) error {
 		return nil
 	}
 	t := EditingTimelineV1{DurationUS: result.CanonicalTimeline.DurationUS}
+	if result.OverlayPlan != nil && result.OverlayPlan.DurationMS*1000 > t.DurationUS {
+		t.DurationUS = result.OverlayPlan.DurationMS * 1000
+	}
 	for _, segment := range result.CanonicalTimeline.Segments {
 		t.Scenes = append(t.Scenes, EditingSceneSpan{SceneID: segment.ID, StartUS: segment.TimelineStartUS, EndUS: segment.TimelineStartUS + segment.DurationUS})
 	}
@@ -250,10 +253,16 @@ func BuildEditingTimeline(result *GenerateResult) (*EditingTimelineV1, error) {
 		overlays = overlaysFromPlan(result)
 	}
 
+	durationUS := tl.DurationUS
+	for _, overlay := range overlays {
+		if overlay.EndUS > durationUS {
+			durationUS = overlay.EndUS
+		}
+	}
 	et := &EditingTimelineV1{
 		Version:    EditingTimelineVersion,
 		Timebase:   EditingTimebase,
-		DurationUS: tl.DurationUS,
+		DurationUS: durationUS,
 		Audio: EditingAudioRef{
 			AssetID:    audio.AssetID,
 			DriveLink:  audio.DriveLink,

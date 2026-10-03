@@ -234,6 +234,15 @@ func compileOverlayPlanWithMotionOffset(result *GenerateResult, language Languag
 				}
 			}
 			items[i].Params = merged
+			if items[i].TemplateID == "TIMELINE_DATE_CARD" || items[i].TemplateID == "METRIC_STAT_CARD" {
+				// Match the selected shared text style and raise presentation
+				// values by 20px; do not add a separate preset/font family.
+				baseFontSize := float64(capabilityoverlay.SharedTextFontSizePX)
+				if configured, ok := styleParams["font_size_px"].(float64); ok && configured > 0 {
+					baseFontSize = configured
+				}
+				items[i].Params["font_size_px"] = baseFontSize + float64(capabilityoverlay.PresentationTextFontIncreasePX)
+			}
 			items[i].RenderKey = ""
 			if isImageOverlayItem(items[i]) && canvas.Style != nil {
 				items[i].Frame = overlayImageFrame(canvas.Style.Image)
@@ -367,6 +376,14 @@ func compileOverlayPlanWithMotionOffset(result *GenerateResult, language Languag
 			continue
 		}
 		if endUS := scene.TimelineStartUS + scene.DurationUS; endUS > durationUS {
+			durationUS = endUS
+		}
+	}
+	// Date cards intentionally outlive their spoken word timing. Their render
+	// plan canvas must include the full item interval; this affects video/overlay
+	// duration only and does not pad or rewrite the canonical audio plan.
+	for _, item := range items {
+		if endUS := item.EndUSValue(); endUS > durationUS {
 			durationUS = endUS
 		}
 	}

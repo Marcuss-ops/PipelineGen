@@ -179,9 +179,28 @@ func TestDateAndMetricEntityTypesRouteToCertifiedPresentationTemplates(t *testin
 		if !containsString(tc.motions, item.MotionID) {
 			t.Errorf("%s motion=%q is outside its certified catalog pool %v", tc.typeName, item.MotionID, tc.motions)
 		}
-		if item.StartUS != int64(index)*3_000_000 || item.DurationUS != 3_000_000 {
+		wantDurationUS := int64(3_000_000)
+		if tc.typeName == "DATE" || tc.typeName == "TIME" {
+			wantDurationUS = 5_000_000
+		}
+		if item.StartUS != int64(index)*3_000_000 || item.DurationUS != wantDurationUS {
 			t.Errorf("%s lost certified timing: start_us=%d duration_us=%d", tc.typeName, item.StartUS, item.DurationUS)
 		}
+		if tc.template == "TIMELINE_DATE_CARD" && item.Params["font_size_px"] != 132.0 {
+			t.Errorf("%s font_size_px=%v, want shared text size +20px", tc.typeName, item.Params["font_size_px"])
+		}
+		if tc.template == "METRIC_STAT_CARD" && item.Params["font_size_px"] != 132.0 {
+			t.Errorf("%s font_size_px=%v, want shared text size +20px", tc.typeName, item.Params["font_size_px"])
+		}
+	}
+}
+
+func TestDateAndMetricPresentationPoolsCoverCanonicalInventories(t *testing.T) {
+	if got := len(DatePresentationMotionCandidates()); got != 20 {
+		t.Errorf("Date presentation motion count=%d, want all 20 catalog motions", got)
+	}
+	if got := len(MetricPresentationMotionCandidates()); got != 20 {
+		t.Errorf("Metric presentation motion count=%d, want all 20 catalog motions", got)
 	}
 }
 

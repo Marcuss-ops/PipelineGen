@@ -4,6 +4,14 @@ import (
 	"strings"
 )
 
+const (
+	// SharedTextFontSizePX is phrase_default's canonical 1080p text size.
+	SharedTextFontSizePX = 112
+	// PresentationTextFontIncreasePX keeps Date and Metric values legible while
+	// retaining the same font and appearance family as the other text overlays.
+	PresentationTextFontIncreasePX = 20
+)
+
 // Generated phrases use RenderingGen's canonical phrase_default visual style
 // and an independently selected catalog motion. PipelineGen transports IDs.
 // Ids are owned by ChrononTemplate/catalog. PipelineGen only selects
@@ -84,14 +92,21 @@ var (
 		"image_scale_reveal",
 	}
 	// Dedicated DATE and metric motions are emitted only on their registered
-	// ChrononTemplate presentation templates. Keep this small production pool
-	// intentionally explicit; RenderingGen's catalog wiring test certifies the
-	// IDs against the canonical motion registry.
+	// ChrononTemplate presentation templates. These pools mirror the canonical
+	// catalog inventories, which RenderingGen certifies through its registry.
 	datePresentationMotionCandidates = []string{
-		"date_fade_rise", "date_year_count", "date_calendar_flip", "date_timeline_tick",
+		"date_fade_rise", "date_year_count", "date_calendar_flip", "date_segment_stagger",
+		"date_timeline_tick", "date_range_draw", "date_marker_drop", "date_underline_focus",
+		"date_history_stack", "date_chronology_focus", "date_page_turn", "date_calendar_drop",
+		"date_month_wipe", "date_timeline_sweep", "date_marker_pop", "date_split_year",
+		"date_bracket_draw", "date_stamp_reveal", "date_era_zoom", "date_digit_flip",
 	}
 	metricPresentationMotionCandidates = []string{
-		"metric_counter_rise", "metric_counter_scale_settle", "metric_odometer_vertical", "metric_count_flip",
+		"metric_counter_rise", "metric_counter_scale_settle", "metric_odometer_vertical", "metric_digits_stagger",
+		"metric_bar_grow", "metric_ring_draw", "metric_delta_reveal", "metric_focus_punch",
+		"metric_before_after", "metric_multi_stat_focus", "metric_count_flip", "metric_slide_left",
+		"metric_ribbon_unfold", "metric_split_odometer", "metric_bounce_settle", "metric_arc_sweep",
+		"metric_digit_cascade", "metric_compare_wipe", "metric_pulse_hold", "metric_debt_flip",
 	}
 	classicAppleMotionCandidates = []string{
 		"air_rise_type_on",
