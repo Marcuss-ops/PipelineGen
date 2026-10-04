@@ -44,6 +44,7 @@ func (a *ScriptGeneratorAdapter) GenerateScript(ctx context.Context, req scriptp
 		DisableWebSearch: req.DisableWebSearch, GroundingPolicy: req.GroundingPolicy,
 		OutputMode: ollamatypes.OutputMode(req.OutputMode), Format: req.Format,
 		Temperature: req.Temperature, TopP: req.TopP, Seed: req.Seed, NoSeed: req.NoSeed,
+		SharedPrefix: req.SharedPrefix, SegmentAssignment: req.SegmentAssignment,
 	})
 	if err != nil {
 		return nil, err

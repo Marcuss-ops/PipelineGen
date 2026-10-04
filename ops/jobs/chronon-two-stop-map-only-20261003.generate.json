@@ -1,0 +1,119 @@
+{
+  "version": 2,
+  "preset": "custom",
+  "correlation_id": "chronon-two-stop-map-only-20261003",
+  "force_refresh": true,
+  "items": [
+    {
+      "id": "campagna-lupia-venezia-two-stop-map-only-20261003",
+      "project": "chronon-two-stop-map-only-20261003",
+      "title": "Campagna Lupia to Venezia Two Stop Map Test",
+      "language": "en",
+      "tone": "documentario informativo, sobrio e verificabile",
+      "style": "Write an English documentary script of about 1,000 words in five balanced scenes. Use only the supplied factual briefs. Do not invent quotations, private thoughts, financial figures, dates, or unsupported claims. Keep the scenes separate and preserve their order. Write natural narration rather than lists or slogans.",
+      "model": "gemma4:e4b",
+      "source": {
+        "type": "text",
+        "topic": "Two nearby places in Veneto",
+        "source_text": "Create a concise two-scene English narration about travelling from Campagna Lupia to Venice. Mention the names Campagna Lupia and Venice clearly in the corresponding scene, with grounded factual wording and no invented personal experience."
+      },
+      "script_params": {
+        "target_words": 120,
+        "min_words": 80,
+        "segment_words": 60,
+        "single_scene": false,
+        "skip_quality_gate": false,
+        "segments": [
+          {
+            "id": "campagna-lupia",
+            "kind": "narration",
+            "topic": "Campagna Lupia",
+            "source_text": "Introduce Campagna Lupia, a town in the Veneto region of Italy, and describe it as the starting point of this short journey.",
+            "target_words": 60,
+            "min_words": 35
+          },
+          {
+            "id": "venezia",
+            "kind": "narration",
+            "topic": "Venezia",
+            "source_text": "Continue from Campagna Lupia to nearby Venice, also known as Venezia, and close on the city as the destination.",
+            "target_words": 60,
+            "min_words": 35
+          }
+        ]
+      },
+      "output": {
+        "save_to_db": true,
+        "extract_entities": true,
+        "generate_metadata": true,
+        "generate_timeline": true,
+        "voiceover_enabled": true,
+        "languages": [
+          "en"
+        ],
+        "drive_folder_id": "1J_xUGo_bchzXDIGqSX04CU44c_Dm3SxS",
+        "render": {
+          "enabled": true,
+          "drive_folder_id": "1faj34ESpSZMD32rFBAnDpmhRqQ1TqWUK",
+          "drive_subfolder_name": "chronon-two-stop-map-20261003",
+          "require_gpu": true,
+          "subtitles": {
+            "enabled": false
+          }
+        }
+      },
+      "audio": {
+        "mode": "COMBINED_TIMELINE",
+        "timing": {
+          "mode": "required",
+          "boundary": "word",
+          "formats": [
+            "json",
+            "srt",
+            "vtt"
+          ]
+        }
+      },
+      "media_plan": {
+        "mode": "hybrid",
+        "cache": {
+          "read": true,
+          "write": true
+        },
+        "provider_policy": {
+          "internet_images": "disabled",
+          "artlist": "disabled",
+          "image_generation": "disabled",
+          "youtube": "disabled",
+          "geocoding": "enabled"
+        },
+        "extraction": {
+          "enabled": true,
+          "include": [
+            "entities",
+            "important_phrases"
+          ],
+          "max_entities_per_segment": 8,
+          "max_important_phrases_per_segment": 5,
+          "max_image_queries_per_segment": 0
+        },
+        "materialization": {
+          "mode": "selected",
+          "upload_to_drive": false,
+          "wait_for_ready": false
+        },
+        "planner": {
+          "candidate_limit": 1
+        },
+        "include_trace": true
+      },
+      "docs": {
+        "enabled": false,
+        "languages": [
+          "en"
+        ]
+      },
+      "maps_only": true
+    }
+  ]
+}

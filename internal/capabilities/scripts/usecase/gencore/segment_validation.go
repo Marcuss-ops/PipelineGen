@@ -155,7 +155,20 @@ func (e *Engine) generateSegments(
 			segmentPlan.ClipEvidence.SegmentEvidence = []scriptpkg.SegmentClipEvidence{plan.ClipEvidence.SegmentEvidence[index]}
 		}
 		segmentReq := req
-		segmentReq.Prompt = buildSegmentInstructions(&segmentPlan) + "\n\n" + plainTextInstruction
+		if SegmentPromptLayout() == SegmentPromptLayoutSharedPrefix {
+			// Shared-prefix layout (B3, TODO-pipeline-100x-velocita): the shared
+			// instructions (editorial header + plain-text output contract) are
+			// rendered FIRST and stay KV-cache resident across the fan-out; the
+			// per-segment assignment (SEGMENT block + DoD footer with this
+			// segment's target words) is rendered LAST as the absolute-priority
+			// instruction. Byte semantics of the two blocks are identical to the
+			// legacy brief: header + body == buildSegmentInstructions.
+			segmentReq.Prompt = ""
+			segmentReq.SharedPrefix = buildSegmentHeader(&segmentPlan) + plainTextInstruction
+			segmentReq.SegmentAssignment = buildSegmentBody(&segmentPlan)
+		} else {
+			segmentReq.Prompt = buildSegmentInstructions(&segmentPlan) + "\n\n" + plainTextInstruction
+		}
 		// Clip jobs use the editorial description of the assigned clip as the
 		// primary source text for Gemma. This is the historical, stable
 		// contract: rewrite the supplied description in a funny YouTube voice.

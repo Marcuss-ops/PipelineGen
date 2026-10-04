@@ -42,6 +42,24 @@ func (d *YTDLPDownloader) Download(ctx context.Context, req *DownloadRequest) er
 		return d.downloadLocalFile(req, parsed)
 	}
 
+	// Local per-video-ID mirror (F1, TODO-pipeline-100x-velocita): a full-source
+	// YouTube download is served from the content-addressed mirror when the
+	// same source+format was already fetched, and every fresh download is
+	// recorded for the next caller. Same-key requests are single-flighted, so
+	// concurrent jobs share one download instead of racing YouTube. Sectioned
+	// requests keep the network path: their output is a cut, not the source.
+	videoID := youtubeVideoID(req.URL)
+	mirrorRootDir, mirroring := d.mirrorRoot()
+	mirrorKeyStr := ""
+	if mirroring && videoID != "" && len(req.DownloadSections) == 0 {
+		mirrorKeyStr = mirrorKey(videoID, d.mirrorFormatSignature(req))
+		lockMirrorKey(mirrorKeyStr).Lock()
+		defer lockMirrorKey(mirrorKeyStr).Unlock()
+		if _, ok := d.mirrorLookup(mirrorRootDir, mirrorKeyStr, req.OutputPath); ok {
+			return nil
+		}
+	}
+
 	// buildArgs is called once per player-client attempt so the fallback
 	// loop can re-run a bot-checked download with an alternate client
 	// without duplicating the command construction.
@@ -160,6 +178,9 @@ func (d *YTDLPDownloader) Download(ctx context.Context, req *DownloadRequest) er
 	}
 	if verifyErr := d.verifier.VerifyFile(resolvedPath); verifyErr != nil {
 		return verifyErr
+	}
+	if mirrorKeyStr != "" {
+		mirrorStore(mirrorRootDir, mirrorKeyStr, videoID, resolvedPath)
 	}
 	return nil
 }

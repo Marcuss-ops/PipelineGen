@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -63,6 +64,41 @@ type RemoteFinalJobResult struct {
 	// retry window still finishes instead of dying on an exhausted attempt
 	// budget. Only meaningful while the job is pending.
 	Yields int `json:"yields,omitempty"`
+}
+
+// enforceFinalJobPreflight is the deterministic pre-enqueue gate: predictable
+// remote scene rejection classes fail locally before the Master PREPARE exists.
+func enforceFinalJobPreflight(scenes []map[string]any, certifiedAudioMS int64) error {
+	if certifiedAudioMS <= 0 {
+		return fmt.Errorf("final_job preflight: certified audio duration must be positive")
+	}
+	for i, scene := range scenes {
+		seconds, ok := scene["duration_seconds"].(float64)
+		if !ok || math.IsNaN(seconds) || math.IsInf(seconds, 0) || seconds <= 0 {
+			return fmt.Errorf("final_job preflight: scene %d has an invalid duration %v", i, seconds)
+		}
+		if finalJobSceneMediaLocator(scene) == "" {
+			id, _ := scene["scene_id"].(string)
+			return fmt.Errorf("final_job preflight: scene %q carries no resolvable media locator (predicted remote prefetch rejection)", id)
+		}
+	}
+	return nil
+}
+
+// finalJobSceneMediaLocator extracts the resolvable Drive locator from a
+// remote scene's media slot ("stock" for both stock and caller-clip kinds).
+func finalJobSceneMediaLocator(scene map[string]any) string {
+	slot, ok := scene["stock"].(map[string]any)
+	if !ok {
+		return ""
+	}
+	if link := strings.TrimSpace(fmt.Sprint(slot["url"])); link != "" && link != "<nil>" {
+		return link
+	}
+	if driveID := strings.TrimSpace(fmt.Sprint(slot["drive_file_id"])); driveID != "" && driveID != "<nil>" {
+		return driveID
+	}
+	return ""
 }
 
 // restoreFinalJobFixedMedia keeps the canonical media-kind marker from the

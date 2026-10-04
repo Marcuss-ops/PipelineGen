@@ -22,6 +22,8 @@ type MapCandidate struct {
 	EntityID string
 	// Label is the place's canonical name, rendered as the pin label.
 	Label string
+	// Scope is the geocoder-classified level: continent, country, region or city.
+	Scope string
 	// Latitude/Longitude are the geocoder-validated WGS84 degrees.
 	Latitude  float64
 	Longitude float64
@@ -38,7 +40,7 @@ type MapCandidate struct {
 // closed — ok is false — for a blank stable id, a blank label, a non-finite or
 // out-of-WGS84 coordinate, or an empty audio span, so ungrounded or non-WGS84
 // data can never become a map.
-func NewMapCandidate(entityID, label string, latitude, longitude float64, startUS, durationUS int64, score float64) (MapCandidate, bool) {
+func NewMapCandidate(entityID, label string, latitude, longitude float64, startUS, durationUS int64, score float64, scope ...string) (MapCandidate, bool) {
 	if strings.TrimSpace(entityID) == "" || strings.TrimSpace(label) == "" {
 		return MapCandidate{}, false
 	}
@@ -48,9 +50,14 @@ func NewMapCandidate(entityID, label string, latitude, longitude float64, startU
 	if startUS < 0 || durationUS <= 0 {
 		return MapCandidate{}, false
 	}
+	level := ""
+	if len(scope) > 0 {
+		level = strings.ToLower(strings.TrimSpace(scope[0]))
+	}
 	return MapCandidate{
 		EntityID: entityID,
 		Label:    strings.Join(strings.Fields(label), " "),
+		Scope:    level,
 		// The millisecond projection mirrors the plan contract's floor
 		// start / ceil end so the two representations never drift.
 		Latitude:   latitude,

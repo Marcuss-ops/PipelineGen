@@ -198,6 +198,11 @@ func TestComposeNearbyEntityImagesCreatesOneStaggeredComposite(t *testing.T) {
 	if firstMotion == "" || secondMotion == "" || firstMotion == secondMotion {
 		t.Fatalf("composite child motions must be independently assigned: %q / %q", firstMotion, secondMotion)
 	}
+	captionPool := capabilityoverlay.CertifiedEntityCaptionMotions()
+	firstCaptionMotion, secondCaptionMotion := got[0].ImageLayers[0].CaptionMotionID, got[0].ImageLayers[1].CaptionMotionID
+	if !containsString(captionPool, firstCaptionMotion) || !containsString(captionPool, secondCaptionMotion) || firstCaptionMotion == secondCaptionMotion {
+		t.Fatalf("composite captions need distinct certified motions: %q / %q", firstCaptionMotion, secondCaptionMotion)
+	}
 	if !containsString(capabilityoverlay.CertifiedImageMotions(), firstMotion) || !containsString(capabilityoverlay.CertifiedImageMotions(), secondMotion) {
 		t.Fatalf("composite motions are not certified: %q / %q", firstMotion, secondMotion)
 	}
@@ -222,6 +227,9 @@ func TestComposeNearbyEntityImagesCreatesOneStaggeredComposite(t *testing.T) {
 	}
 	if len(document.Items) != 1 || len(document.Items[0].ImageLayers) != 2 || document.Items[0].ImageLayers[1].MotionID != secondMotion {
 		t.Fatalf("composite semantic wire lost independently assigned image layers: %+v", document.Items)
+	}
+	if document.Items[0].ImageLayers[0].CaptionMotionID != firstCaptionMotion || document.Items[0].ImageLayers[1].CaptionMotionID != secondCaptionMotion {
+		t.Fatalf("composite semantic wire lost caption motions: %+v", document.Items[0].ImageLayers)
 	}
 }
 

@@ -99,7 +99,7 @@
         ]
       },
       "docs": {
-        "enabled": true,
+        "enabled": false,
         "languages": [
           "en"
         ],

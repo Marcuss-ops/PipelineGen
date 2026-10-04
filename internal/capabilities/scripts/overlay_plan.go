@@ -235,8 +235,8 @@ func compileOverlayPlanWithMotionOffset(result *GenerateResult, language Languag
 			}
 			items[i].Params = merged
 			if items[i].TemplateID == "TIMELINE_DATE_CARD" || items[i].TemplateID == "METRIC_STAT_CARD" {
-				// Match the selected shared text style and raise presentation
-				// values by 20px; do not add a separate preset/font family.
+				// Match the selected shared text style and apply the presentation
+				// size increase without adding a separate preset or font family.
 				baseFontSize := float64(capabilityoverlay.SharedTextFontSizePX)
 				if configured, ok := styleParams["font_size_px"].(float64); ok && configured > 0 {
 					baseFontSize = configured

@@ -110,6 +110,16 @@ func (e *QueueRenderEnqueuer) enqueueSeparateOverlayItems(ctx context.Context, p
 	// pipelining back-pressure, not GPU admission — gpu_lanes stays the sole
 	// GPU authority.
 	workers := resolveOverlayItemWorkers(e.itemRenderWorkers(), len(candidates))
+	// A georeferenced map can stage a full offline LOD pyramid (several large
+	// rasters) into one GPU render. Keep those map jobs serial within the plan;
+	// the ordinary image/text items remain pipelined at the configured width.
+	// This avoids multiple map pyramids competing for Vulkan resources at once.
+	for _, candidate := range candidates {
+		if candidate.source.Map != nil {
+			workers = 1
+			break
+		}
+	}
 	observability.OverlayItemRenderPoolSize.Set(float64(workers))
 	results, err := concurrent.Map(ctx, candidates, workers, func(opCtx context.Context, _ int, candidate overlayItemCandidate) (overlayItemRenderResult, error) {
 		// Measured concurrency, not assumed: the gauge rises exactly while a
@@ -146,6 +156,7 @@ func (e *QueueRenderEnqueuer) enqueueSeparateOverlayItems(ctx context.Context, p
 
 type overlayItemPublicationMetadata struct {
 	JobID            string
+	ResultJobID      string
 	ItemID           string
 	ItemKind         string
 	EntityID         string
@@ -174,6 +185,12 @@ func separateOverlayItemPlan(parent capoverlay.OverlayPlan, source capoverlay.Ov
 	}
 	targetUS := durationUS + overlayItemPaddingUS
 	maxDurationUS := maxOverlayItemDurationUS
+	if source.Map != nil {
+		// Map fly-throughs are a five-second production shot. The enclosing
+		// spoken interval can be much shorter, but must not truncate the camera
+		// animation to a sub-second map flash.
+		targetUS = maxOverlayItemDurationUS
+	}
 	if len(source.ImageLayers) > 0 {
 		// A composite's children carry staggered windows relative to the
 		// parent. Preserve the entire (up to 5s + 3s mention gap) composition
@@ -202,8 +219,9 @@ func separateOverlayItemPlan(parent capoverlay.OverlayPlan, source capoverlay.Ov
 		return capoverlay.OverlayPlan{}, nil, fmt.Errorf("build child plan for %q: %w", source.ID, err)
 	}
 	metadata := &overlayItemPublicationMetadata{
-		JobID:  firstNonEmpty(parent.DriveJobID, parent.PlanID),
-		ItemID: source.ID, ItemKind: source.Kind, EntityID: source.EntityID,
+		JobID:       firstNonEmpty(parent.DriveJobID, parent.PlanID),
+		ResultJobID: firstNonEmpty(parent.ResultJobID, parent.DriveJobID),
+		ItemID:      source.ID, ItemKind: source.Kind, EntityID: source.EntityID,
 		Text: source.Text, SourceStartUS: startUS, SourceEndUS: startUS + durationUS,
 		TargetDurationUS: targetUS,
 	}

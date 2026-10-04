@@ -9,11 +9,13 @@
 package scriptgeneration
 
 import (
+	"context"
 	"sort"
 	"strings"
 
 	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
 	phrasepkg "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/phrases"
+	mediadomain "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
@@ -81,6 +83,81 @@ type vidRushPrepareOutcome struct {
 	// worker writes onto result.Scenes while TTS is running.
 	localizedAnnotations map[int]map[Language]*scriptpkg.SceneAnnotations
 	nlpErr               error
+}
+
+// runVidRushJoinAndPrepare is the background branch of the SceneTextReady
+// fan-out: it awaits the VidRush barrier, computes grounded annotations and
+// pre-timing OverlayIntents from the read-only scene snapshot, and enqueues
+// overlay.prepare. It never reads the mutable result while TTS is running.
+func (r *Runner) runVidRushJoinAndPrepare(ctx context.Context, runID string, req GenerateRequest, snapshot []sceneTextSnapshot) (vidRushPrepareResult, error) {
+	segments, err := r.waitForVidRush(ctx, runID)
+	if err != nil {
+		return vidRushPrepareResult{}, err
+	}
+	phraseLimit := req.MediaPlan.Extraction.MaxImportantPhrasesPerSegment
+	includePhrases := req.MediaPlan.Extraction.Includes(mediadomain.ExtractionIncludeImportantPhrases)
+	annotations := computeSegmentEntityAnnotations(snapshot, req.SourceLanguage, segments, phraseLimit, includePhrases, req.MediaPlan.Extraction.ImportantPhrases)
+	if r.shouldGeocodeScriptLocations(req) {
+		geocoded := make(map[int]*scriptpkg.SceneAnnotations, len(annotations))
+		for index, annotation := range annotations {
+			if annotation == nil {
+				geocoded[index] = nil
+				continue
+			}
+			clone := *annotation
+			clone.PrimaryEntities = append([]scriptpkg.AnnotatedEntity(nil), annotation.PrimaryEntities...)
+			clone.SecondaryEntities = append([]scriptpkg.AnnotatedEntity(nil), annotation.SecondaryEntities...)
+			for i := range clone.PrimaryEntities {
+				clone.PrimaryEntities[i].Geo = annotation.PrimaryEntities[i].Geo
+			}
+			for i := range clone.SecondaryEntities {
+				clone.SecondaryEntities[i].Geo = annotation.SecondaryEntities[i].Geo
+			}
+			geocoded[index] = &clone
+		}
+		sceneTexts := make(map[int]string, len(snapshot))
+		for index, scene := range snapshot {
+			sceneTexts[index] = scene.Text
+		}
+		if err := r.geocodePlaceAnnotations(ctx, geocoded, string(req.SourceLanguage), geocodeOptions{sceneTexts: sceneTexts, mapsOnly: req.MapsOnly}); err != nil {
+			return vidRushPrepareResult{}, err
+		}
+		annotations = geocoded
+	}
+	var intents []capabilityoverlay.OverlayIntent
+	if r.overlayRegistry != nil {
+		intents = planOverlayIntentsForAnnotations(snapshot, annotations, r.overlayRegistry)
+		if err := r.enqueueOverlayPrepare(ctx, runID, req, intents); err != nil {
+			return vidRushPrepareResult{}, err
+		}
+	}
+	return vidRushPrepareResult{segments: segments, annotations: annotations, intents: intents}, nil
+}
+
+func sourceTraceFromResult(result *GenerateResult) scriptpkg.SourceTrace {
+	trace := scriptpkg.SourceTrace{}
+	if result == nil {
+		return trace
+	}
+	trace = result.SourceTrace
+	seen := make(map[string]struct{})
+	for _, scene := range result.Scenes {
+		refs := scene.Clips
+		if len(refs) == 0 && scene.Clip != nil {
+			refs = []*ClipReference{scene.Clip}
+		}
+		for _, ref := range refs {
+			if ref == nil || ref.ID == "" {
+				continue
+			}
+			if _, ok := seen[ref.ID]; ok {
+				continue
+			}
+			seen[ref.ID] = struct{}{}
+			trace.AcceptedClipIDs = append(trace.AcceptedClipIDs, ref.ID)
+		}
+	}
+	return trace
 }
 
 // applyVidRushPrepareProjections projects the prepare branch's outputs onto

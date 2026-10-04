@@ -506,7 +506,7 @@ func (r *Runner) logLocationOverlayPlan(req GenerateRequest, result *GenerateRes
 					occurrence := occurrenceFor(timelineScene.Entities, entity)
 					if _, ok := capabilityoverlay.NewMapCandidate(occurrence.EntityID, entity.CanonicalName,
 						entity.Geo.Latitude, entity.Geo.Longitude, occurrence.AudioStartUS,
-						occurrence.AudioEndUS-occurrence.AudioStartUS, entity.Confidence); ok {
+						occurrence.AudioEndUS-occurrence.AudioStartUS, entity.Confidence, entity.Geo.Scope); ok {
 						validMapCandidates++
 					}
 				}

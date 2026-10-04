@@ -24,8 +24,10 @@ type OverlayPublicationSpec struct {
 	// routing. PlanID may be a per-item child plan (for example
 	// job:item:003:phrase), so it must not be used as the Drive job folder
 	// when separate item renders are enabled.
-	JobID  string
-	PlanID string
+	JobID string
+	// ResultJobID identifies the API job whose result receives the Drive link.
+	ResultJobID string
+	PlanID      string
 	// DriveFolderID is the job-selected Drive parent. The platform publisher
 	// creates/reuses its deterministic overlay child and only falls back to
 	// its configured root when this is empty.

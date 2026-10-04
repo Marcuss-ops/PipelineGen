@@ -37,6 +37,17 @@ type TextGenerationRequest struct {
 	TopP             float64
 	Seed             int
 	NoSeed           bool
+
+	// SharedPrefix and SegmentAssignment implement the shared-prefix prompt
+	// layout (B3, TODO-pipeline-100x-velocita). When SharedPrefix is set the
+	// provider renders it FIRST in the user message (before the task
+	// template) and renders SegmentAssignment LAST, so every per-segment
+	// call in one job shares one KV-cacheable prefix and only the assignment
+	// suffix differs. When SharedPrefix is empty the legacy layout applies:
+	// Prompt alone is prepended above the template and the other two fields
+	// are ignored.
+	SharedPrefix      string
+	SegmentAssignment string
 }
 
 // ScriptGenerator is the application port for model-backed script generation.

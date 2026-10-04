@@ -28,6 +28,7 @@ type Result struct {
 	Latitude    float64 `json:"latitude"`
 	Longitude   float64 `json:"longitude"`
 	DisplayName string  `json:"display_name,omitempty"`
+	Scope       string  `json:"scope,omitempty"`
 }
 
 // Validate rejects coordinates that cannot describe a WGS84 point. This is

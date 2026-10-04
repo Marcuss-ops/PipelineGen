@@ -20,8 +20,9 @@ func mapMotionIDs() []string {
 // One certified marker treatment for every grounded place, so a map's pins are
 // deterministic and never invented per item.
 const (
-	mapPinColor    = "#FF3B30"
-	mapPinRadiusPX = 10.0
+	mapPinColor               = "#FF3B30"
+	mapPinRadiusPX            = 10.0
+	mapCameraDurationUS int64 = 5_000_000
 )
 
 // MapPlate is the certified plate a map item is drawn from: the operator
@@ -64,6 +65,35 @@ type PlateResolver interface {
 	ResolvePlate(latitude, longitude float64) (MapPlate, bool)
 }
 
+// mapFadeHalfBandZoom is the planner's half-width (in zoom stops) of every LOD
+// cross-fade — the exact mirror of the worker's mapLODFadeHalfBandZoom. The
+// viewport coverage below certifies each LOD over precisely the interval where
+// the worker will render it visible.
+const mapFadeHalfBandZoom = 0.5
+
+// flyoverActiveZoomRange mirrors the worker's mapLODActiveZoomRange: the zoom
+// interval where LOD[index] is visible over the move.
+func flyoverActiveZoomRange(index int, zooms []int, startZoom, endZoom float64) (float64, float64) {
+	low, high := float64(zooms[index]), float64(zooms[index])
+	if index == 0 {
+		low = startZoom
+	} else {
+		low = (float64(zooms[index-1])+float64(zooms[index]))/2 - mapFadeHalfBandZoom
+		if low < startZoom {
+			low = startZoom
+		}
+	}
+	if index == len(zooms)-1 {
+		high = endZoom
+	} else {
+		high = (float64(zooms[index])+float64(zooms[index+1]))/2 + mapFadeHalfBandZoom
+		if high > endZoom {
+			high = endZoom
+		}
+	}
+	return low, high
+}
+
 // mapPlansForScene resolves a scene's grounded place candidates against the
 // run's certified plates. It fails closed at each step: a nil resolver, a
 // candidate that no longer validates as grounded WGS84 with a real audio span,
@@ -87,7 +117,7 @@ func mapPlansForScene(resolver PlateResolver, candidates []MapCandidate, canvasW
 		place, ok := NewMapCandidate(
 			candidate.EntityID, candidate.Label,
 			candidate.Latitude, candidate.Longitude,
-			candidate.StartUS, candidate.DurationUS, candidate.Score,
+			candidate.StartUS, candidate.DurationUS, candidate.Score, candidate.Scope,
 		)
 		if !ok {
 			continue
@@ -120,6 +150,29 @@ func mapPlansForScene(resolver PlateResolver, candidates []MapCandidate, canvasW
 				}
 				if !allCovered {
 					break
+				}
+			}
+			// Mirror the worker's viewport contract per LOD: the route must
+			// keep the full camera viewport inside every raster across the
+			// zoom interval where that raster is visible. A route that fails
+			// this here would fail the worker's fail-closed compile below and
+			// void the whole plan — fall back to per-place plates instead.
+			if allCovered {
+				moveStartZoom := float64(plate.Zoom)
+				moveEndZoom := float64(plate.LODs[len(plate.LODs)-1].Zoom)
+				lodZooms := make([]int, 0, len(plate.LODs)+1)
+				lodZooms = append(lodZooms, plate.Zoom)
+				for _, lod := range plate.LODs {
+					lodZooms = append(lodZooms, lod.Zoom)
+				}
+				for i, window := range lodWindows {
+					low, high := flyoverActiveZoomRange(i, lodZooms, moveStartZoom, moveEndZoom)
+					if !window.CoversMove(geodesy.Point{Latitude: from.Latitude, Longitude: from.Longitude},
+						geodesy.Point{Latitude: to.Latitude, Longitude: to.Longitude},
+						moveStartZoom, moveEndZoom, low, high, canvasWidth, canvasHeight) {
+						allCovered = false
+						break
+					}
 				}
 			}
 			if allCovered {
@@ -230,6 +283,7 @@ func mapItemsForScene(sceneID string, plans []MapPlan, canvasWidth, canvasHeight
 			Center: entry.plate.Center, Zoom: entry.plate.Zoom,
 			Width: entry.plate.Width, Height: entry.plate.Height,
 			Attribution: entry.plate.Attribution, MotionID: mapMotionAt(ordinal), Pins: pins,
+			AreaGlowRadiusKM: mapAreaGlowRadiusKM(pins),
 		}
 		if len(lods) >= 2 {
 			mapOverlay.LODs = lods
@@ -238,6 +292,11 @@ func mapItemsForScene(sceneID string, plans []MapPlan, canvasWidth, canvasHeight
 				From: from, To: to,
 				StartZoom: float64(entry.plate.Zoom), EndZoom: float64(lods[len(lods)-1].Zoom),
 			}
+			// Give the camera route a full five seconds on screen. A map tied
+			// only to the short spoken duration of one place rendered as a
+			// brief flash, even though its camera move was designed as an
+			// animation.
+			durationUS = mapCameraDurationUS
 		}
 		items = append(items, OverlayItem{
 			ID: itemID(sceneID, "map", entry.plate.ID), SceneID: sceneID,
@@ -286,7 +345,34 @@ func plateFitsCanvas(plate MapPlate, canvasWidth, canvasHeight int) bool {
 // mapPinsFor projects the grounded places that fall inside the plate's window
 // into deterministic pins plus the item's audio window. ok is false when no
 // place lands inside the plate or no place carries a usable span.
+func mapAreaGlowRadiusKM(pins []MapOverlayPin) float64 {
+	if len(pins) == 0 {
+		return 0
+	}
+	switch strings.ToLower(strings.TrimSpace(pins[0].Scope)) {
+	case "city":
+		return 3.5
+	case "region":
+		return 30
+	case "country", "nation":
+		return 150
+	case "continent":
+		return 500
+	default:
+		return 3.5
+	}
+}
+
 func mapPinsFor(plate MapPlate, places []MapCandidate) (pins []MapOverlayPin, startUS, durationUS int64, score float64, ok bool) {
+	// A multi-stop map is a journey, so its camera order follows the first
+	// spoken occurrence rather than provider/entity extraction order.
+	places = append([]MapCandidate(nil), places...)
+	sort.SliceStable(places, func(i, j int) bool {
+		if places[i].StartUS != places[j].StartUS {
+			return places[i].StartUS < places[j].StartUS
+		}
+		return places[i].EntityID < places[j].EntityID
+	})
 	seen := make(map[string]struct{}, len(places))
 	var firstStart, lastEnd int64
 	haveSpan := false
@@ -308,6 +394,7 @@ func mapPinsFor(plate MapPlate, places []MapCandidate) (pins []MapOverlayPin, st
 		pins = append(pins, MapOverlayPin{
 			ID: id, Label: place.Label,
 			Latitude: place.Latitude, Longitude: place.Longitude,
+			Scope: place.Scope,
 			Color: mapPinColor, RadiusPX: mapPinRadiusPX,
 		})
 		placeEnd := place.StartUS + place.DurationUS

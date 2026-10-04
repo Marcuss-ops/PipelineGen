@@ -82,7 +82,118 @@ Il job `asset.text.materialize` espande ora le 10 lingue IN PARALLELO dentro il 
 - **Prove:** test a barriera (6 chiamate simultanee o fallimento), cap in-flight,
   rollback=picco 1, ordine deterministico, `-race`, env override via loader config.
 
----
+### 0.3 Ondata 2026-10-03 — B2, B3, A3, F1, I1 (tutte con test verdi, build+vet+gofmt puliti)
+
+**ATTIVAZIONE IN PRODUZIONE (2026-10-03 08:45-08:50 UTC, finestra senza job in volo):**
+
+- `bin/pipelinegen` ricostruito (`make build-server`) e servizio riavviato;
+  `scripts/systemd/pipelinegenctl restart-verify` → **PASS**; il PID registra
+  `PIPELINEGEN_DRIVE_UPLOAD_CHUNK_MB=256` (A3 attiva) e
+  `PIPELINEGEN_YTDLP_MIRROR_ROOT=/var/cache/pipelinegen/ytdlp-mirror` (F1 attiva);
+  env file `/etc/pipelinegen/pipelinegen.env` aggiornato con backup
+  (`.bak-20261003T0845Z`). B2 e I1 sono codice attivo del nuovo binario.
+- Ollama riavviato con `OLLAMA_NUM_PARALLEL=1` (drop-in deployato + repo
+  `scripts/systemd/ollama.service.d/gpu.conf` allineati, backup `.bak-20261003T0845Z`).
+  **Misurazione post-restart (gemma4:e2b, ~960 token prompt): il KV prefix cache
+  FUNZIONA** — stessa `prompt_eval_count` ma `prompt_eval_duration` 226ms (layout
+  legacy) → **49ms (4,6×)** sulla seconda chiamata con prefisso condiviso (il layout
+  B3). Era zero riuso con `NUM_PARALLEL=3` (6/6 richieste identiche re-evalutate).
+  Trade-off registrato: 1 slot serializza i fan-out a prefisso condiviso piccolo
+  (traduzioni); il dominante script-generate (66% del wall, prefisso ~90% nel layout
+  B3) ci guadagna.
+
+**ATTIVAZIONE IN PRODUZIONE #2 (2026-10-03 09:35 UTC, dopo SUCCEEDED del job
+`job_1791019997722245926_8677626d`):** deploy del fix K2 (drain publish pool
+incondizionato, sezione K). `make build-server` (09:34:16Z) →
+`pipelinegenctl restart-verify` → **PASS**; nuovo PID 717995 (09:35:11Z).
+Evidenza: `runner_document_drain_test.go` RED→GREEN; verify-agent PASS.
+**VERIFICA IN PRODUZIONE (journal 10-03 09:36→10:00, PID 717995/758532):**
+`voiceover publish pool drained` (runner_phase_document.go:227) appare ANCHE su
+run con `DOCUMENT=SKIPPED` (es. run_1791020540094845725, generated=7) — drain
+incondizionato attivo. VERIFICA K1 (job_steps + payload 10-01→10-03): 102 run
+pt-BR — 22 `DOCUMENT=SKIPPED` + 80 senza step (cancellate/fallite prima del
+phase) — ZERO con docs attivo; le uniche 19 con `DOCUMENT=COMPLETED`
+(207,2s in 3 giorni) sono collaudi EN mappe/overlay con docs esplicito.
+**VERIFICA ORFANI K2 (script `scripts/verify_ptbr_orphans.py`,
+`watch_ptbr_orphans.sh`):** sulle prime run post-fix (10-03 10:27/10:32) →
+drain `publish_pool_drain` presente DENTRO la run, **0 upload voiceover dopo
+il termine**, 0 righe Google Docs, tutti gli step publish COMPLETED;
+run pt 10-02 (pre-fix): 0 orfani anche lì (drain sincrono). L'unico publish
+post-run osservato è un upload overlay del contratto remote-render (downstream
+del final job), non un orfano voiceover.
+- **Layout `PIPELINEGEN_OLLAMA_SEGMENT_PROMPT_LAYOUT=shared-prefix` resta OFF**:
+  cambia la semantica del prompt e la regola repo esige un canary editoriale
+  (budget parole + QA) prima del flip; il knob è pronto e il suo gain misurato.
+
+- **B2 COMPLETA — constrained decoding sugli ultimi due caller JSON scoperti**: `platform/youtube/ollama_clip_metadata_builder.go` (era `SimpleGenerate(..., nil)` e poi parse JSON → retry/fallback spesi su prosa) e `platform/ollama/generate_metadata.go` (era `Chat(..., nil)` + parser tollerante). Ora entrambi portano il vincolo top-level `format: "json"`; il parser tollerante resta come difesa in profondità. I caller JSON già coperti prima: ranker research, analyzer semantici, batch translation, visual planner, enrichment stock. Il path script genera PROSA per contratto (OutputModePlainText) → nessun JSON da vincolare. *Prove:* `TestGenerateVideoMetadataPinsTopLevelJSONFormat`, `TestOllamaClipMetadataBuilderPinsJSONFormat` (fissano il campo wire top-level).
+- **B3 CODICE COMPLETA, GAIN GATED SU CONFIG SERVER**: layout shared-prefix env-gated
+  (`PIPELINEGEN_OLLAMA_SEGMENT_PROMPT_LAYOUT=shared-prefix`, default `legacy`):
+  lo split `buildSegmentHeader`/`buildSegmentBody` è byte-identico al brief legacy
+  (testato), l'header condiviso + plainTextInstruction vengono renderizzati PRIMA del
+  task template e l'assegnazione per-segmento ULTIMA come istruzione assoluta
+  (`segmentAssignmentBlock`), così il run condiviso è KV-cacheabile tra le chiamate
+  del fan-out (proprietà pinnata da test: il prefisso comune tra due assegnazioni
+  diverse copre l'intero blocco condiviso). **Misurazione live su gemma4:e2b locale
+  (2026-10-03): il deployment Ollama 0.30.4 con `OLLAMA_NUM_PARALLEL=3` NON riusa
+  MAI il prefisso KV — nemmeno per richieste IDENTICHE (6 ripetizioni: prompt_eval
+  identico ogni volta; anche `/api/generate`).** Quindi il riordino da solo non
+  produce guadagno su QUESTA deployment: l'azione è operator, non codice —
+  `OLLAMA_NUM_PARALLEL=1` (+ restart Ollama, finestra senza job in volo) abilita il
+  riuso del prefisso e il layout diventa attivo con lo stesso default. Il batching
+  per-cue traduzioni esiste già (`TranslateBatchWithModel`, 12 segmenti/chunk); il
+  batching N-scene-per-chiamata resta escluso per contratto editoriale (perde la
+  QA per-segmento con retry mirato).
+- **A3 COMPLETA — chunk size resumable configurabile**: il TODO assumeva il chunk
+  16MB non raggiungibile senza fork dell'SDK; NON è vero per google-api v0.274.0:
+  `Media(r, googleapi.ChunkSize(n), googleapi.ContentType(t))` fa upload RESUMABLE
+  con chunk a scelta (gensupport: non-singleChunk → ResumableUpload). Knob
+  `PIPELINEGEN_DRIVE_UPLOAD_CHUNK_MB` (default 256, clamp 1..1024, multipli 256KiB).
+  File > 1 chunk → path Media+ChunkSize (un master ~500MB: ~32 PUT → 2); file ≤ 1
+  chunk → path storico `ResumableMedia` (16MB SDK, un PUT riconosciuto) byte-per-byte
+  — gli artefatti audio 6–7MiB mantengono le semantica resumable. Il protocollo
+  resta resumable (sessione + Content-Range + resume su offset riconosciuto). Il
+  chunk parallelo su UNA sessione NON è supportato dal protocollo Drive (PUT
+  sequenziali sull'offset): "4–8 chunk concorrenti" è irraggiungibile per protocollo,
+  non per SDK. *Prove:* `TestPutFile_BigChunkResumableWire` (5.5MiB @ 1MiB → 6 PUT
+  sequenziali, byte tutti consegnati, verifica post-upload verde),
+  `TestPutFile_SmallFileKeepsHistoricalResumableRoute`, `TestResumableChunkBytes_EnvContract`.
+- **F1 COMPLETA — mirror locale per video-ID**: cache content-addressed nel path
+  full-source, **OPT-IN** (`PIPELINEGEN_YTDLP_MIRROR_ROOT` a un path persistente nel
+  service environment; unset/empty = disabilitato — una cache condivisa cambia il
+  comportamento osservabile di ogni Download e non può essere un default silenzioso;
+  il test suite esistente resta ermetico senza env). Chiave = videoID+signature formato (format arg canonico +
+  override + merge) → formati diversi non condividono entry. Hit = hard-link (fallback
+  copia) + stesso gate `VerifyFile` di un download fresco; entry corrotta = evict +
+  redownload. Same-key in volo = singleflight (job concorrenti NON gareggiano su
+  YouTube). Solo YouTube full-source: Artlist/generici e le sezioni restano sul path
+  rete. *Prove:* `TestMirror_SecondDownloadOfSameVideoServedFromCache` (2 chiamate →
+  1 download di rete), `TestMirror_FormatSignatureIsolatesEntries`,
+  `TestMirror_NonYouTubeURLNeverMirrored`, `TestMirror_CorruptedEntryEvictedAndRedownloaded`,
+  `TestMirror_ConcurrentSameKeySingleFlight`.
+- **I1 COMPLETA (quota raggiungibile) — preflight pre-enqueue**: la tassonomia dei
+  fallimenti prevedibili era già in gran parte gateata inline durante la
+  certificazione Milton (budget audio ±40ms vs audio certificato, durata minima
+  scena 100ms con borrowing, codec/shape audio AAC-LC 48kHz stereo + copy_eligible,
+  stock reject-list, SSOT gate overlay con frame grid). Aggiunto il gate UNICO
+  tipizzato `enforceFinalJobPreflight` in coda a `BuildFinalJobPayloads`: durate
+  scena valide (fail-closed su NaN/Inf/zero) e **media locator risolvibile per ogni
+  scena** — la classe `images selected = 0, expected 1` che al Milton è costata un
+  intero attempt remoto ora fallisce in locale prima della PREPARE. *Prove:*
+  `TestFinalJobPreflight_MissingMediaLocatorFailsClosed`, `..._DriveFileIDLocatorIsAccepted`,
+  `..._InvalidDurationFailsClosed`, `..._CertifiedAudioMustBePositive`, `..._ValidPayloadAdmitted`.
+- **B4 NON RAGGIUNGIBILE via API Ollama (documentato)**: l'API Ollama 0.30.4 non
+  espone speculative decoding (nessun draft-model/verify parameter su /api/generate
+  o /api/chat; unica API wire in uso). Serve una migrazione inference server
+  (llama.cpp server con `--model-draft`, o vLLM). Non implementabile senza cambiare
+  il server: la voce resta aperta su quel perno.
+- **G1 NON RAGGIUNGIBILE in sicurezza (documentato)**: il concat copy-only di chunk
+  AAC codificati indipendentemente porta il priming encoder (~2048 campioni) più
+  l'arrotondamento a frame AAC (21,33ms @48kHz) PER OGNI confine: 8 chunk ≈
+  170–340ms di drift sulla durata certificata — esattamente la classe di bug dei
+  92-scene/frame-alignment già fixata a peso oro. Il guadagno stimato (15,5s → ~3s)
+  non giustifica il rischio sul contratto di durata certificata; `-threads:a 0`
+  (già applicato, ~0,35s campione) resta l'unico gain sicuro. Da rivisitare solo con
+  un concat sample-accurate verificato su QA audio completo.
 
 ## 1. Come funziona oggi (catena)
 
@@ -179,8 +290,12 @@ Tre gap di strumentazione dallo snapshot:
       SIMULTANEE o il test fallisce; cap in-flight ≤ limite; rollback 1 = picco 1;
       ordine report deterministico con latenze inverse; `-race` verde) +
       `multilingual_fanout_test.go` (env override end-to-end via loader canonico).
-- [ ] **A3. Drive uploader parallelo chunked** — resumable, 4–8 chunk concorrenti,
-      connessione persistente. *Guadagno:* 4–6s avg → <1,5s; max 372s sparisce.
+- [x] **A3. Drive uploader chunked** (COMPLETA 2026-10-03, vedi §0.3: chunk size
+      configurabile via `PIPELINEGEN_DRIVE_UPLOAD_CHUNK_MB`, default 256MB; il path
+      resumable è invariato, i file ≤ 1 chunk tengono il percorso storico). Il chunk
+      PARALLELO su una sessione non è supportato dal protocollo Drive (PUT sequenziali
+      sull'offset): voce chiusa come raggiungibile. *Guadagno:* un master ~500MB
+      passa da ~32 PUT a 2; max 372s di coda PUT sparisce.
 - [~] **A4. Scheduler anti-contesa GPU** (PARZIALE: launch order longest-first nel
       fan-out di localizzazione; l'ordinamento nel per-item path resta aperto).
 
@@ -190,13 +305,21 @@ Tre gap di strumentazione dallo snapshot:
       tantum al boot. *Dove:* `internal/platform/ollama/client` (keep_alive/warm).
       *Guadagno:* −38s a freddo/job; 129 warm/sett spariscono. → IMPLEMENTATO: env
       `PIPELINEGEN_OLLAMA_KEEP_ALIVE` + warm multi-modello (`PIPELINEGEN_WARM_MODELS`).
-- [ ] **B2. Constrained decoding (GBNF/JSON schema)** — decoder non può produrre
-      JSON malformato → niente retry. *Guadagno:* elimina quota dei 166 generate
-      falliti (83s medi).
-- [ ] **B3. Prefix caching + batch segmenti** — prompt editoriale condiviso (~90%
-      del prompt) in KV-cache; N segmenti per chiamata o continuous batching.
-      *Guadagno:* 3–10× inferenza.
-- [ ] **B4. Speculative decoding** (e2b draft → e4b verify). *Guadagno:* 2–3×.
+- [x] **B2. Constrained decoding (JSON mode)** (COMPLETA 2026-10-03, vedi §0.3:
+      `format: "json"` top-level su tutti i caller JSON-emitting; il path script è
+      prosa per contratto). *Guadagno:* elimina la quota dei 166 generate falliti
+      dovuta a JSON malformato (83s medi).
+- [~] **B3. Prefix caching + batch segmenti** (CODICE COMPLETA 2026-10-03, §0.3:
+      layout shared-prefix env-gated con split byte-identico e proprietà KV pinnata
+      da test; **gain attivo solo dopo** `OLLAMA_NUM_PARALLEL=1` + restart Ollama —
+      misurato: la deployment attuale non riusa MAI il prefisso, nemmeno per
+      richieste identiche). Il batching per-cue traduzioni esiste già (12/chunk);
+      N-scene-per-chiamata escluso per contratto editoriale. *Guadagno:* 3–10×
+      inferenza sul prompt eval, post-config-operator.
+- [ ] **B4. Speculative decoding** (e2b draft → e4b verify). NON raggiungibile via
+      API Ollama 0.30.4 (nessun draft-model/verify parameter): richiede migrazione
+      inference server (llama.cpp `--model-draft` o vLLM). *Guadagno:* 2–3× (bloccato
+      sul cambio server).
 
 ### C. Voce — 17,8h/settimana (voce singola più grossa di calcolo)
 
@@ -238,8 +361,11 @@ Tre gap di strumentazione dallo snapshot:
 
 ### G. Audio — 2,2h AAC
 
-- [ ] **G1. AAC chunked-parallel** — 8 chunk in parallelo + concat copy-only
-      (il contratto `copy_eligible` già esiste). *Guadagno:* 15,5s → ~3s (5×).
+- [ ] **G1. AAC chunked-parallel** — NON raggiungibile in sicurezza: il concat
+      copy-only di chunk AAC indipendenti aggiunge priming encoder + arrotondamento
+      a frame AAC per ogni confine (~170–340ms su 8 chunk) contro la durata
+      certificata e il gate A/V 40ms (vedi §0.3). `-threads:a 0` già applicato.
+      *Guadagno potenziale:* 15,5s → ~3s, bloccato sulla QA sample-accurate.
 - [ ] **G2. Mix Rust + encode in un pass** — bassa priorità (già 22× realtime).
 
 ### H. Publishing — ~10h
@@ -252,12 +378,85 @@ Tre gap di strumentazione dallo snapshot:
 
 ### I. Fallimenti — 10,7h di worker.execution fallite
 
-- [ ] **I1. Gate preflight deterministico pre-enqueue** — font coverage,
-      frame-alignment finestre clip, budget audio vs scene (quanto risolto a mano per
-      Milton → automatico), probe codec prima del submit. *Guadagno:* taglia la quota
-      prevedibile dei 210 falliti (184s medi a retry).
+- [x] **I1. Gate preflight deterministico pre-enqueue** (COMPLETA la quota
+      raggiungibile, §0.3: gate unico `enforceFinalJobPreflight` in coda a
+      `BuildFinalJobPayloads` — locator media per scena (classe `images selected = 0`)
+      + durate valide; budget audio ±40ms, durata minima, codec/shape audio e SSOT
+      overlay frame-grid esistevano già come gate inline dalla certificazione Milton.
+      Font coverage resta RenderingGen-side, fuori dal perimetro 77). *Guadagno:*
+      taglia la quota prevedibile dei 210 falliti (184s medi a retry).
 - [ ] **I2. Retry per-checkpoint di stage** — rieseguire solo lo step fallito.
       *Guadagno:* −50% costo residuo falliti.
+
+### K. Sprechi / tagli (verificati a codice, 2026-10-03)
+
+- [x] **K1. `docs.enabled=false` nei payload** — VERIFICATO SICURO per il final job:
+  il phase document è già gateato (`runDocumentPhase`: `documentSkipped = ... ||
+  !docsEnabled` → zero render HTML, zero publish Google Docs, zero child
+  `script.docs_publish`); il parent completa normalmente senza il child. La catena
+  overlay→Drive→payload worker 51 è INDIPENDENTE da Docs: gli overlay sono
+  pubblicati dal pool `overlayPublicationDrainer` in `complete()` (fuori dal ramo
+  docs) e `finalJobOverlayAssets` legge `result.OverlayRender` — nessun riferimento
+  ai documenti; `buildRemoteJobPayload`/`BuildFinalJobPayloads` non toccano docs.
+  Nessun gate di certificazione richiede il documento (i gate certificati sono
+  audio + overlay + preflight). *Costo attuale:* 17,1s inline sul final job Milton
+  (2,6% del wall 5m48s), 520 publish × 7,7s = 1,1h/sett, più un giro
+  parent→waiting_children→child→aggregator per nulla. *Azione:* zero codice —
+  `"docs": {"enabled": false}` nei prossimi payload (i 9 video brasiliani). I
+  documenti restano disponibili on-demand rilanciando la singola run con docs
+  abilitato (il re-entry è idempotente per run terminal). STATO 2026-10-03:
+  **il DEFAULT del codice È GIÀ `false` (opt-in)** — `builder.go` copia
+  `item.Docs.Enabled` verbatim dal payload (zero-value = OFF) e
+  `ResolveDocsConfig` è `req.Docs.Enabled || req.DocsEnabled`: un payload SENZA
+  blocco `docs` non publica documenti, e le `output.languages` restano per la
+  traduzione (non sono un trigger docs). VERIFICATO sui file: i payload pt-BR
+  10-01/10-02 (isabelle v7-v11, maps_only) GIÀ omettono il blocco → girano
+  senza Docs; solo i payload più vecchi (milton 09-29, mike tyson) lo
+  portavano esplicito. CONTRATTO PINNATO: `builder_docs_default_test.go`
+  (omesso→off, esplicito false→off, esplicito true→opt-in on-demand);
+  pin fixture esistente: manifest mike_tyson_1000w ("publishes no Docs
+  artifacts"). *Azione residua:* continuare a OMITTERE il blocco `docs` nei
+  prossimi payload — nessun codice da cambiare, nessun env da impostare.
+  AZIONE COLLAUDI EN (10-03): `docs.enabled` true→false nei payload collaudo EN
+  non-docs-dipendenti (celebrity ×2, dolly 13clips/preview/prefetch,
+  five_boxers, matt_damon_20clips, chronon-two-stop-map) — 8 file, fixture-test
+  intatti, verify-agent PASS. RESTANO con docs (asseriti): matt_damon_5_clips
+  (pin `Docs.Enabled` nel manifest test), elon_property (documents asserted),
+  elon_overlay_docs_entities + matt_damon_docs_true + dolly_docs_audio_en
+  (docs-dedicati), verify_1clip_10lang (pin docs+lingue),
+  person_overlay_drive_e2e.sh (e2e del percorso Docs: fallisce senza link
+  documento). I payload mappe paris/france/veneto/map-lod NON sono nel repo
+  (inviati inline): per i prossimi, omettere il blocco docs.
+- [x] **K2. Drain del pool publish voiceover reso INCONDIZIONATO (IMPLEMENTATO 2026-10-03)** —
+  CORREZIONE dell'ipotesi iniziale: i link Drive dei voiceover NON hanno il
+  documento Google come unico consumatore — sono consumati anche dalla
+  cross-run voiceover cache (metadata `timing_json_link` ecc.) e dal commit nel
+  registry (voiceoverLifecycle Publisher + AssetIndex). Tagliare gli upload
+  avrebbe rotto C3 e il registry: gli upload RESTANO per costruzione. Il difetto
+  reale era di CORRETTEZZA: `voiceoverPublishDrainer.Wait()` stava DENTRO il
+  ramo `!documentSkipped` di `runDocumentPhase`, quindi con docs off la run
+  completava con upload ancora in flight (orfani oltre il proprio ciclo di
+  vita, link non idratati). *Fix:* drain sollevato PRIMA del gate
+  `documentSkipped` (incondizionato, ultimo phase prima di `complete()`), stage
+  `publish_pool_drain` mantenuto. *Test:* `runner_document_drain_test.go` (2
+  test: drain anche con docs off; la run NON può completare con un upload in
+  flight) — RED sul codice vecchio ("run reached COMPLETED while a voiceover
+  publish was still in flight"), GREEN dopo il fix; suite package +
+  verify-agent PASS. *Nota sull'ipotesi di risparmio:* le ~7.700 chiamate
+  Drive/sett dei voiceover NON sono recuperabili da questo item (servono a
+  cache/registry); il guadagno è correttezza (zero upload orfani/ri-lavorazione)
+  e la quota Drive si taglia via K1.
+- [x] **K3. post_writer_finalize 3× Drive publish — CHIUSO: nulla da tagliare.**
+  Verificato a codice: `post_writer_finalize` = `finalizeJob` → spine
+  `CompleteWithArtifacts` (ownership `worker_spine`): artifact prepare/hash →
+  publish Drive → completion TX unica. I 3 publish sono gli artifact STAGIATI
+  DEL JOB (manifest `__artifact_manifest`: script/scenes/final audio…),
+  indipendenti da Docs; con K1 non sparisce nulla lì dentro. Nessun publish
+  docs-dipendente nel spine.
+- [x] **K4. H2 (Docs append-mode) CHIUSA come moot** — con K1 come default
+  operativo sui payload (`docs.enabled=false`) il publisher Docs non è più sul
+  percorso dei video payload; append-mode (7,7s→2s) non va implementata. Resta
+  valida solo per run on-demand con docs abilitato, dove il costo è accettato.
 
 ### J. Observability (affinché i numeri restino veri)
 

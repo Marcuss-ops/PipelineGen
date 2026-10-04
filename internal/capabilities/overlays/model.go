@@ -1,13 +1,10 @@
 package overlays
 
 import (
-	"encoding/json"
 	"fmt"
-	"sort"
 	"strings"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 )
 
 const (
@@ -44,6 +41,9 @@ type OverlayPlan struct {
 	// the RenderingGen wire contract and from the semantic fingerprint: the
 	// queue renders the plan content, while PipelineGen owns Drive routing.
 	DriveJobID string `json:"-"`
+	// ResultJobID is the broker job that owns the persisted job result.
+	// It is carried only across PipelineGen's publication boundary.
+	ResultJobID string `json:"-"`
 	// RequireDriveBeforeReturn is an application-only delivery constraint for
 	// final-job overlays: their Drive identities are embedded in PREPARE and
 	// must be available before that request is sent. It is not render content.
@@ -197,16 +197,17 @@ type OverlayItemFrameStroke struct {
 // composite entity-image overlay. Times are relative to the parent item so a
 // single queued render can reveal nearby entities at their own spoken anchors.
 type OverlayImageLayer struct {
-	ID           string            `json:"id"`
-	AssetID      string            `json:"asset_id"`
-	StartMS      int64             `json:"start_ms"`
-	EndMS        int64             `json:"end_ms"`
-	PresetID     string            `json:"preset_id,omitempty"`
-	MotionID     string            `json:"motion_id,omitempty"`
-	MotionParams map[string]any    `json:"motion_params,omitempty"`
-	Caption      string            `json:"caption,omitempty"`
-	Params       map[string]any    `json:"params,omitempty"`
-	Frame        *OverlayItemFrame `json:"frame,omitempty"`
+	ID              string            `json:"id"`
+	AssetID         string            `json:"asset_id"`
+	StartMS         int64             `json:"start_ms"`
+	EndMS           int64             `json:"end_ms"`
+	PresetID        string            `json:"preset_id,omitempty"`
+	MotionID        string            `json:"motion_id,omitempty"`
+	MotionParams    map[string]any    `json:"motion_params,omitempty"`
+	Caption         string            `json:"caption,omitempty"`
+	CaptionMotionID string            `json:"caption_motion_id,omitempty"`
+	Params          map[string]any    `json:"params,omitempty"`
+	Frame           *OverlayItemFrame `json:"frame,omitempty"`
 	// EntityID remains producer-only so a composite's child identities can
 	// still join to their pre-timing intents without changing the worker wire.
 	EntityID string `json:"-"`
@@ -507,93 +508,3 @@ func (p *OverlayPlan) Validate() error {
 	}
 	return nil
 }
-
-func (p OverlayPlan) FingerprintValue() string {
-	copyPlan := p
-	copyPlan.Items = append([]OverlayItem(nil), p.Items...)
-	copyPlan.Fingerprint = ""
-	// Destination routing must not invalidate a content/render fingerprint.
-	copyPlan.DriveFolderID = ""
-	for i := range copyPlan.Items {
-		copyPlan.Items[i].RenderKey = ""
-	}
-	b, _ := json.Marshal(copyPlan)
-	h := digest.SHA256Bytes(b)
-	return h
-}
-
-func ComputeRenderKey(p OverlayPlan, item OverlayItem) string {
-	assetHashes := make([]string, 0, len(item.AssetRefs))
-	for _, ref := range item.AssetRefs {
-		assetHashes = append(assetHashes, strings.ToLower(strings.TrimSpace(ref.SHA256)))
-	}
-	sort.Strings(assetHashes)
-	params, _ := json.Marshal(item.Params)
-	renderer := p.RendererVersion
-	if renderer == "" {
-		renderer = "chronon"
-	}
-	mapJSON := ""
-	if item.Map != nil {
-		raw, err := json.Marshal(item.Map)
-		if err != nil {
-			mapJSON = ""
-		} else {
-			mapJSON = string(raw)
-		}
-	}
-	frameJSON := ""
-	if item.Frame != nil {
-		if raw, err := json.Marshal(item.Frame); err == nil {
-			frameJSON = string(raw)
-		}
-	}
-	input := struct {
-		Template, Text, Params, Renderer string
-		Assets                           []string
-		Width, Height, FPSNum, FPSDen    int
-		StartMs, EndMs                   int64
-		StartUS, DurationUS              int64
-		PresetID                         string `json:"preset_id,omitempty"`
-		ImagePresetID                    string `json:"image_preset_id,omitempty"`
-		MotionID                         string `json:"motion_id,omitempty"`
-		MotionParams                     string `json:"motion_params,omitempty"`
-		ImageLayers                      string `json:"image_layers,omitempty"`
-		EntityCaption                    string `json:"entity_caption,omitempty"`
-		CaptionMotionID                  string `json:"caption_motion_id,omitempty"`
-		Frame                            string `json:"frame,omitempty"`
-		Map                              string `json:"map,omitempty"`
-	}{
-		item.TemplateID, item.Text, string(params), renderer, assetHashes, p.Width, p.Height, p.FPSNum, p.FPSDen, item.StartMs, item.EndMs, item.StartUS, item.DurationUS,
-		item.PresetID, item.ImagePresetID, item.MotionID, motionParamsJSON(item.MotionParams), imageLayersJSON(item.ImageLayers), item.EntityCaption, item.CaptionMotionID, frameJSON, mapJSON,
-	}
-	b, _ := json.Marshal(input)
-	h := digest.SHA256Bytes(b)
-	return h
-}
-
-func motionParamsJSON(params map[string]any) string {
-	if len(params) == 0 {
-		return ""
-	}
-	b, _ := json.Marshal(params)
-	return string(b)
-}
-
-func imageLayersJSON(layers []OverlayImageLayer) string {
-	if len(layers) == 0 {
-		return ""
-	}
-	// EntityID is producer-only correlation data, deliberately excluded from
-	// the worker's image_layers schema. Hash only the renderer-owned fields.
-	wireLayers := make([]OverlayImageLayer, len(layers))
-	copy(wireLayers, layers)
-	for index := range wireLayers {
-		wireLayers[index].EntityID = ""
-	}
-	b, _ := json.Marshal(wireLayers)
-	return string(b)
-}
-
-// RenderKey is kept as the concise public spelling used by planners.
-func RenderKey(p OverlayPlan, item OverlayItem) string { return ComputeRenderKey(p, item) }

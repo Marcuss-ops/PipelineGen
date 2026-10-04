@@ -500,3 +500,69 @@ func TestRankedUniqueMapIndicesDeduplicatesPerScene(t *testing.T) {
 		}
 	}
 }
+
+// TestBuildPlanMergesCrossSceneRouteIntoOneMapItem certifies the run-level
+// route contract: grounded places mentioned across DIFFERENT scenes resolve
+// against ONE certified flyover plate and lower to exactly ONE map item —
+// a three-city script renders one map animation, never one render job per
+// scene. The item anchors to the first mentioning scene and carries every
+// pin with the run-wide chronological camera route.
+func TestBuildPlanMergesCrossSceneRouteIntoOneMapItem(t *testing.T) {
+	// One route plate big enough to hold the whole Paris→London→Rome
+	// viewport across both LODs (zoom 5 base, zoom 7 fine).
+	routeLat, routeLon := 45.4, 6.2
+	base := testMapPlate(t, "route-base", routeLat, routeLon, 7680, 4320)
+	base.Zoom = 5
+	base.Window = geodesy.CenteredOn(routeLat, routeLon, 5, 7680, 4320)
+	base.Asset.AssetID = "route-base-asset"
+	fine := testMapPlate(t, "route-fine", routeLat, routeLon, 7680, 4320)
+	fine.Zoom = 7
+	fine.Window = geodesy.CenteredOn(routeLat, routeLon, 7, 7680, 4320)
+	fine.Asset.AssetID = "route-fine-asset"
+	base.LODs = []MapPlate{fine}
+
+	scenes := []SceneInput{
+		{ID: "scene-1", Maps: []MapCandidate{groundedCandidate(t, "city:paris", "Paris", parisLat, parisLon, 0, 1_000_000)}},
+		{ID: "scene-2", Maps: []MapCandidate{groundedCandidate(t, "city:london", "London", 51.5074, -0.1278, 10_000_000, 1_000_000)}},
+		{ID: "scene-3", Maps: []MapCandidate{groundedCandidate(t, "city:rome", "Rome", romeLat, romeLon, 20_000_000, 1_000_000)}},
+	}
+	plan, err := BuildPlan(PlanInput{
+		PlanID: "map-plan", VideoID: "map-video",
+		Width: mapTestWidth, Height: mapTestHeight, FPSNum: 30, FPSDen: 1,
+		PlateResolver: flyoverPlateResolver{stubPlateResolver: stubPlateResolver{plates: []MapPlate{base}}, flyover: base, ok: true},
+		Scenes:        scenes,
+	}, AllCandidatesPlannerConfig(scenes))
+	if err != nil {
+		t.Fatalf("build plan: %v", err)
+	}
+	mapCount := 0
+	var route *OverlayItem
+	for i := range plan.Items {
+		if plan.Items[i].Kind != "map" {
+			continue
+		}
+		mapCount++
+		route = &plan.Items[i]
+	}
+	if mapCount != 1 || route == nil {
+		t.Fatalf("expected ONE run-level map item, got %d", mapCount)
+	}
+	if route.SceneID != "scene-1" {
+		t.Fatalf("route map anchored to %q, want the first mentioning scene", route.SceneID)
+	}
+	if len(route.Map.Pins) != 3 {
+		t.Fatalf("route map pins = %d, want all three cities", len(route.Map.Pins))
+	}
+	if route.Map.CameraMove == nil {
+		t.Fatal("run-level route map carries no camera move")
+	}
+	if route.Map.CameraMove.From.Latitude != parisLat || route.Map.CameraMove.To.Latitude != romeLat {
+		t.Fatalf("camera route = %v→%v, want the run-wide chronological endpoints", route.Map.CameraMove.From, route.Map.CameraMove.To)
+	}
+	if len(route.AssetRefs) != 2 {
+		t.Fatalf("route assets = %d, want base + fine LOD", len(route.AssetRefs))
+	}
+	if err := plan.Validate(); err != nil {
+		t.Fatalf("merged route plan does not seal: %v", err)
+	}
+}

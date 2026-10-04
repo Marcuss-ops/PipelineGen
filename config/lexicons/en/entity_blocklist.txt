@@ -120,9 +120,9 @@ upon
 within
 without
 
-# Sentence-initial temporal/transitional adverbs and connectives. The
-# capitalization heuristic cannot tell "During the dawn…" / "Shortly the
-# probe…" apart from a proper name, so these are blocked explicitly.
+# Sentence-initial temporal/transitional adverbs, connectives, and common
+# pronouns/conjunctions ignored by the maps-only named-place candidate filter.
+# Keep this list in the canonical lexicon rather than duplicating it in Go.
 shortly
 soon
 meanwhile
@@ -163,3 +163,13 @@ besides
 unlike
 regarding
 concerning
+our
+we
+it
+as
+journey
+tracing
+continuing
+journey
+tracing
+continuing

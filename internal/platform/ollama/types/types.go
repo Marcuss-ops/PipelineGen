@@ -103,6 +103,17 @@ type TextGenerationRequest struct {
 	TopP        float64
 	Seed        int  // 0 = randomize per call
 	NoSeed      bool // when true, do NOT send a seed to Ollama (model handles its own sampling)
+
+	// SharedPrefix and SegmentAssignment implement the shared-prefix prompt
+	// layout (B3, TODO-pipeline-100x-velocita). When SharedPrefix is set the
+	// user message renders it FIRST (before the task template) and renders
+	// SegmentAssignment LAST, so every per-segment call in one job shares a
+	// long common prompt prefix and Ollama's automatic KV prefix cache
+	// reuses it across the fan-out. When SharedPrefix is empty the legacy
+	// layout applies: Prompt alone is prepended above the template and these
+	// two fields are ignored.
+	SharedPrefix      string
+	SegmentAssignment string
 }
 
 type RegenerationRequest struct {

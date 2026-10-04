@@ -77,6 +77,7 @@ NAMED ENTITY CONTRACT (MANDATORY FOR EVERY LANGUAGE):
 - Scan the entire source segment for explicit people, places, organizations, events, works, and products.
 - Copy each entity's exact contiguous surface form from the source text, including its script, spelling, accents, and grammatical inflection. Never translate an entity or substitute its English name.
 - Classify a person as PERSON only when the span names a person. Classify a city, region, or country as PLACE, even when the localized name has a grammatical case ending.
+- A named place remains PLACE when used as a journey's start or destination. For example, in "Campagna Lupia is a town; Venezia is a city", extract Campagna Lupia and Venezia as PLACE, never PERSON. Do not replace either with the broader country mentioned nearby.
 - Do not emit sentence fragments, titles, roles, sentence-initial words, or descriptive phrases as named entities.
 - Omit uncertain entities rather than assigning a guessed name or type.
 `, language)

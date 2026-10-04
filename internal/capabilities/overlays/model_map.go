@@ -32,6 +32,9 @@ type MapOverlay struct {
 	Attribution   string          `json:"attribution"`
 	MotionID      string          `json:"motion_id"`
 	Pins          []MapOverlayPin `json:"pins"`
+	// AreaGlowRadiusKM optionally draws a soft geographic ring around each
+	// active pin in the dynamic-map renderer. Zero disables the area ring.
+	AreaGlowRadiusKM float64 `json:"area_glow_radius_km,omitempty"`
 	// LODs and CameraMove are optional together. With them, the worker places
 	// each certified raster on the same projected world plane and flies the
 	// native Chronon camera between the declared WGS84 endpoints.
@@ -204,6 +207,7 @@ type MapOverlayPin struct {
 	Label     string  `json:"label"`
 	Latitude  float64 `json:"latitude"`
 	Longitude float64 `json:"longitude"`
+	Scope     string  `json:"scope,omitempty"`
 	Color     string  `json:"color"`
 	RadiusPX  float64 `json:"radius_px"`
 }
@@ -291,6 +295,9 @@ func mapLODWindowCoversMove(window geodesy.Window, move *MapCameraMove, lowZoom,
 func (m *MapOverlay) Validate(canvasWidth, canvasHeight int, assets []OverlayAssetRef) error {
 	if m == nil {
 		return fmt.Errorf("map declaration is required")
+	}
+	if math.IsNaN(m.AreaGlowRadiusKM) || math.IsInf(m.AreaGlowRadiusKM, 0) || m.AreaGlowRadiusKM < 0 || m.AreaGlowRadiusKM > 1000 {
+		return fmt.Errorf("map area_glow_radius_km must be finite and in [0,1000]")
 	}
 	provider := strings.ToLower(strings.TrimSpace(m.Provider))
 	if provider != "local" {

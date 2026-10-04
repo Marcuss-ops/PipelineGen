@@ -398,7 +398,7 @@ func overlaySceneInput(scene Scene, language, sourceLanguage Language, timing ca
 			if entity.Geo == nil {
 				continue
 			}
-			candidate, ok := capabilityoverlay.NewMapCandidate(occ.EntityID, entity.CanonicalName, entity.Geo.Latitude, entity.Geo.Longitude, occ.AudioStartUS, occ.AudioEndUS-occ.AudioStartUS, score)
+			candidate, ok := capabilityoverlay.NewMapCandidate(occ.EntityID, entity.CanonicalName, entity.Geo.Latitude, entity.Geo.Longitude, occ.AudioStartUS, occ.AudioEndUS-occ.AudioStartUS, score, entity.Geo.Scope)
 			if ok {
 				out.Maps = append(out.Maps, candidate)
 			}

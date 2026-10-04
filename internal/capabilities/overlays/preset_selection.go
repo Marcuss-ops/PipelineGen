@@ -7,9 +7,9 @@ import (
 const (
 	// SharedTextFontSizePX is phrase_default's canonical 1080p text size.
 	SharedTextFontSizePX = 112
-	// PresentationTextFontIncreasePX keeps Date and Metric values legible while
-	// retaining the same font and appearance family as the other text overlays.
-	PresentationTextFontIncreasePX = 20
+	// PresentationTextFontIncreasePX keeps Date and Metric callouts readable
+	// while retaining the shared text font and appearance family.
+	PresentationTextFontIncreasePX = 28
 )
 
 // Generated phrases use RenderingGen's canonical phrase_default visual style
@@ -35,7 +35,7 @@ var (
 		"bottom_card_rise",
 	}
 	// RenderingGen catalog inventories: all 32 certified layer-only image motions
-	// and the full phrase families (42 classic Apple, 60 modern Apple and 5 typewriter).
+	// and the full phrase families (42 classic Apple, 60 modern Apple and 10 typewriter).
 	renderSafeImageMotions = []string{
 		"image_fade_reveal",
 		"image_focus_reveal",
@@ -91,22 +91,30 @@ var (
 		"image_focus_reveal",
 		"image_scale_reveal",
 	}
-	// Dedicated DATE and metric motions are emitted only on their registered
-	// ChrononTemplate presentation templates. These pools mirror the canonical
-	// catalog inventories, which RenderingGen certifies through its registry.
+	// Entity-name captions use the four certified 2D caption motions. The
+	// catalog's depth/yaw variants are intentionally omitted so a portrait's
+	// label stays restrained and does not force the camera-backed 3D path.
+	generatedEntityCaptionMotionCandidates = []string{
+		"text_fade_up",
+		"text_scale_punch",
+		"text_word_rise",
+		"text_word_stagger",
+	}
+	// Dates and metrics are text overlays: use the renderer-certified typewriter
+	// motions instead of the image-like date-card and stat-card motion families.
+	// Keeping both pools on the same typography treatment also prevents numeric
+	// values from inheriting image transitions.
 	datePresentationMotionCandidates = []string{
-		"date_fade_rise", "date_year_count", "date_calendar_flip", "date_segment_stagger",
-		"date_timeline_tick", "date_range_draw", "date_marker_drop", "date_underline_focus",
-		"date_history_stack", "date_chronology_focus", "date_page_turn", "date_calendar_drop",
-		"date_month_wipe", "date_timeline_sweep", "date_marker_pop", "date_split_year",
-		"date_bracket_draw", "date_stamp_reveal", "date_era_zoom", "date_digit_flip",
+		"typewriter_clean", "typewriter_pop", "typewriter_tracking",
+		"typewriter_glitch", "typewriter_neon",
+		"typewriter_lift", "typewriter_slide_in", "typewriter_scale_up",
+		"typewriter_blur_focus", "typewriter_soft_lift",
 	}
 	metricPresentationMotionCandidates = []string{
-		"metric_counter_rise", "metric_counter_scale_settle", "metric_odometer_vertical", "metric_digits_stagger",
-		"metric_bar_grow", "metric_ring_draw", "metric_delta_reveal", "metric_focus_punch",
-		"metric_before_after", "metric_multi_stat_focus", "metric_count_flip", "metric_slide_left",
-		"metric_ribbon_unfold", "metric_split_odometer", "metric_bounce_settle", "metric_arc_sweep",
-		"metric_digit_cascade", "metric_compare_wipe", "metric_pulse_hold", "metric_debt_flip",
+		"typewriter_clean", "typewriter_pop", "typewriter_tracking",
+		"typewriter_glitch", "typewriter_neon",
+		"typewriter_lift", "typewriter_slide_in", "typewriter_scale_up",
+		"typewriter_blur_focus", "typewriter_soft_lift",
 	}
 	classicAppleMotionCandidates = []string{
 		"air_rise_type_on",
@@ -221,6 +229,11 @@ var (
 		"typewriter_neon",
 		"typewriter_pop",
 		"typewriter_tracking",
+		"typewriter_lift",
+		"typewriter_slide_in",
+		"typewriter_scale_up",
+		"typewriter_blur_focus",
+		"typewriter_soft_lift",
 	}
 	phraseAppleCleanMotionCandidates = []string{
 		"phrase_apple_clean_01_blur_soft_reveal",
@@ -361,7 +374,7 @@ func selectPhraseMotion(jobID, sceneID string, ordinal int, pool []string) strin
 		}
 		return selectMotionFromPool(jobID, sceneID, "explicit", ordinal, pool)
 	}
-	// The default is a full deterministic no-repeat walk of the 108-motion
+	// The default is a full deterministic no-repeat walk of the 113-motion
 	// catalog. Do not siphon every third phrase into a smaller "visible"
 	// subset: that makes the large catalog repeat much earlier than necessary.
 	sequence := defaultPhraseMotionSequence(jobID, sceneID)

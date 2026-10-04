@@ -128,6 +128,12 @@ func restoreOverlayPlanRuntimeAssetLocations(source, target *capabilityoverlay.O
 	if source == nil || target == nil {
 		return
 	}
+	// These application-only fields are excluded from the RenderingGen JSON
+	// contract, but the detached PipelineGen render snapshot still needs them
+	// to publish the finished artifact under its owning broker job.
+	target.DriveJobID = source.DriveJobID
+	target.ResultJobID = source.ResultJobID
+	target.RequireDriveBeforeReturn = source.RequireDriveBeforeReturn
 	if source.Source != nil && target.Source != nil {
 		target.Source.LocalPath = source.Source.LocalPath
 	}
