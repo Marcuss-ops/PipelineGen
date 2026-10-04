@@ -368,7 +368,12 @@ func entityImageLayerParams(width, height, count, slot int) map[string]any {
 // The broader image catalog remains callable for explicit editorial plans;
 // this automatic path avoids abrupt flips and strong perspective effects.
 func assignEntityImageMotions(items []capabilityoverlay.OverlayItem, offset, width, height int) {
-	ordinal := 0
+	imageOrdinal, captionOrdinal := 0, 0
+	captionMotion := func() string {
+		motion := capabilityoverlay.EntityCaptionMotionAtOffset(offset, captionOrdinal)
+		captionOrdinal++
+		return motion
+	}
 	for itemIndex := range items {
 		item := &items[itemIndex]
 		if item.Kind != string(capabilityoverlay.KindEntityImage) {
@@ -376,16 +381,19 @@ func assignEntityImageMotions(items []capabilityoverlay.OverlayItem, offset, wid
 		}
 		if len(item.ImageLayers) > 0 {
 			for layerIndex := range item.ImageLayers {
-				item.ImageLayers[layerIndex].MotionID = capabilityoverlay.EntityImageMotionAtOffset(offset, ordinal)
-				item.ImageLayers[layerIndex].MotionParams = map[string]any{"enter_frames": 8}
-				ordinal++
+				layer := &item.ImageLayers[layerIndex]
+				layer.MotionID = capabilityoverlay.EntityImageMotionAtOffset(offset, imageOrdinal)
+				layer.MotionParams = map[string]any{"enter_frames": 8}
+				layer.CaptionMotionID = captionMotion()
+				imageOrdinal++
 			}
 			continue
 		}
-		item.MotionID = capabilityoverlay.EntityImageMotionAtOffset(offset, ordinal)
+		item.MotionID = capabilityoverlay.EntityImageMotionAtOffset(offset, imageOrdinal)
 		item.MotionParams = map[string]any{"enter_frames": 8}
+		item.CaptionMotionID = captionMotion()
 		item.Params = capabilityoverlay.EntityImageParams(width, height)
-		ordinal++
+		imageOrdinal++
 	}
 }
 

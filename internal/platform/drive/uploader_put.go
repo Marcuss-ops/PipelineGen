@@ -548,8 +548,6 @@ func (u *Uploader) doPutFile(ctx context.Context, req PutFileRequest, existing *
 // every retry then restarted the entire upload from byte zero. Resumable
 // uploads preserve the session and let Drive continue from the acknowledged
 // offset after a transient 502/timeout.
-const resumableUploadThreshold = 5 * 1024 * 1024
-
 // openUploadSource resolves the upload bytes and their length. A local path is
 // opened and stat'd; otherwise the remote SourceURL is streamed with the
 // caller's ExpectedSize (the resumable path needs a length).
@@ -573,20 +571,6 @@ func (u *Uploader) openUploadSource(ctx context.Context, req PutFileRequest) (up
 		return nil, 0, fmt.Errorf("putFile: a remote source requires the expected size")
 	}
 	return &httpObjectSource{ctx: ctx, url: req.SourceURL, size: req.ExpectedSize}, req.ExpectedSize, nil
-}
-
-func withCreateMedia(call *driveapi.FilesCreateCall, ctx context.Context, src uploadSource, size int64, mediaType string) *driveapi.FilesCreateCall {
-	if size >= resumableUploadThreshold {
-		return call.ResumableMedia(ctx, src, size, mediaType)
-	}
-	return call.Media(src).Context(ctx)
-}
-
-func withUpdateMedia(call *driveapi.FilesUpdateCall, ctx context.Context, src uploadSource, size int64, mediaType string) *driveapi.FilesUpdateCall {
-	if size >= resumableUploadThreshold {
-		return call.ResumableMedia(ctx, src, size, mediaType)
-	}
-	return call.Media(src).Context(ctx)
 }
 
 // renameWithTimestamp, setAppProperties, and truncate16 have moved

@@ -110,6 +110,19 @@ Rules:
 		userContent = prependOverriding(req.Prompt) + userContent
 	}
 
+	// Shared-prefix layout (B3, TODO-pipeline-100x-velocita): when the caller
+	// carries a SharedPrefix, it replaces the Prompt prepend as the FIRST
+	// user-message block (all per-segment calls of one job share it, so
+	// Ollama's KV prefix cache stays warm across the fan-out), and the
+	// per-segment assignment is appended LAST as the absolute-priority
+	// instruction. An empty SharedPrefix keeps the legacy layout untouched.
+	if req.SharedPrefix != "" {
+		userContent = prependOverriding(req.SharedPrefix) + userContent
+		if assignment := strings.TrimSpace(req.SegmentAssignment); assignment != "" {
+			userContent += "\n\n" + segmentAssignmentBlock(assignment)
+		}
+	}
+
 	if req.WebContext != "" {
 		userContent = req.WebContext + "\n" + userContent
 	}
@@ -222,6 +235,19 @@ func prependOverriding(rawPrompt string) string {
 		"IMPORTANT: The task below is a FORMATTING TEMPLATE only. " +
 		"Follow the OVERRIDING INSTRUCTIONS above for CONTENT, STYLE, STRUCTURE, and LENGTH. " +
 		"Do NOT write a video script. Write according to the instructions above.\n\n"
+}
+
+// segmentAssignmentBlock frames the per-segment assignment of the
+// shared-prefix layout. It is the LAST block of the user message, so the
+// framing must re-anchor the model: the task template above is boilerplate,
+// and THIS assignment is the actual request (priority follows position for
+// small models). Pure function so the framing is pinnable without a client.
+func segmentAssignmentBlock(assignment string) string {
+	return "## CURRENT SEGMENT ASSIGNMENT — THESE INSTRUCTIONS TAKE ABSOLUTE PRIORITY OVER EVERYTHING ABOVE ##\n" +
+		assignment +
+		"\n\n## END OF CURRENT SEGMENT ASSIGNMENT ##\n\n" +
+		"Write ONLY the single segment described by the CURRENT SEGMENT ASSIGNMENT above. " +
+		"Ignore any other segment count or multi-paragraph requirement stated in the template."
 }
 
 // unused import guard

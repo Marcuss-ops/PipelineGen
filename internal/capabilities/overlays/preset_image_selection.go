@@ -37,6 +37,36 @@ func CertifiedImageMotions() []string {
 	return append([]string(nil), imageMotionCandidates...)
 }
 
+// CertifiedEntityCaptionMotions returns the curated non-3D caption motion pool.
+// Callers receive a copy so the producer's vocabulary cannot be mutated.
+func CertifiedEntityCaptionMotions() []string {
+	return append([]string(nil), generatedEntityCaptionMotionCandidates...)
+}
+
+// EntityCaptionMotionAtOffset rotates captions deterministically without
+// repeating a motion until the curated pool has been exhausted.
+func EntityCaptionMotionAtOffset(offset, ordinal int) string {
+	return rotateMotionAtOffset(offset, ordinal, generatedEntityCaptionMotionCandidates)
+}
+
+// SelectEntityCaptionMotionAt provides a stable per-job selector for semantic
+// render bundles that do not carry the full plan's sampled motion offset.
+func SelectEntityCaptionMotionAt(jobID, sceneID string, ordinal int) string {
+	pool := generatedEntityCaptionMotionCandidates
+	if len(pool) == 0 {
+		return ""
+	}
+	seeded := selectPreset(jobID, sceneID, "run", "entity_caption_motion", pool)
+	start := 0
+	for index, candidate := range pool {
+		if candidate == seeded {
+			start = index
+			break
+		}
+	}
+	return pool[(start+ordinal)%len(pool)]
+}
+
 // SelectImageMotion chooses a stable catalog image motion for one image
 // overlay. Retries of the same job, scene and item resolve identically. It
 // stays on the CENTERED subset for map-compatible callers (MapOverlay.Validate
@@ -55,15 +85,10 @@ func SelectImageMotionAt(jobID, sceneID string, ordinal int) string {
 
 // RandomImageMotionOffset chooses a fresh cryptographically random starting
 // offset for one render plan. The caller samples it ONCE per plan and each
-// image rotation reduces it modulo its own pool size: the centered map pool
-// and the complete generated-overlay image catalog. Each run starts its
-// rotation at a different point, and images do not repeat before each pool is
-// exhausted.
+// visual lane reduces it modulo its own pool size, keeping image and caption
+// rotations independent but stable for the compiled plan.
 func RandomImageMotionOffset() (int, error) {
-	span := len(generatedEntityImageMotionCandidates)
-	if span < len(centeredImageMotionCandidates) {
-		span = len(centeredImageMotionCandidates)
-	}
+	span := max(len(generatedEntityImageMotionCandidates), len(generatedEntityCaptionMotionCandidates), len(centeredImageMotionCandidates))
 	if span == 0 {
 		return 0, nil
 	}

@@ -2,6 +2,7 @@ package overlays
 
 import (
 	"fmt"
+	"strings"
 	"testing"
 )
 
@@ -186,21 +187,26 @@ func TestDateAndMetricEntityTypesRouteToCertifiedPresentationTemplates(t *testin
 		if item.StartUS != int64(index)*3_000_000 || item.DurationUS != wantDurationUS {
 			t.Errorf("%s lost certified timing: start_us=%d duration_us=%d", tc.typeName, item.StartUS, item.DurationUS)
 		}
-		if tc.template == "TIMELINE_DATE_CARD" && item.Params["font_size_px"] != 132.0 {
-			t.Errorf("%s font_size_px=%v, want shared text size +20px", tc.typeName, item.Params["font_size_px"])
+		if tc.template == "TIMELINE_DATE_CARD" && item.Params["font_size_px"] != 140.0 {
+			t.Errorf("%s font_size_px=%v, want shared text size +28px", tc.typeName, item.Params["font_size_px"])
 		}
-		if tc.template == "METRIC_STAT_CARD" && item.Params["font_size_px"] != 132.0 {
-			t.Errorf("%s font_size_px=%v, want shared text size +20px", tc.typeName, item.Params["font_size_px"])
+		if tc.template == "METRIC_STAT_CARD" && item.Params["font_size_px"] != 140.0 {
+			t.Errorf("%s font_size_px=%v, want shared text size +28px", tc.typeName, item.Params["font_size_px"])
 		}
 	}
 }
 
 func TestDateAndMetricPresentationPoolsCoverCanonicalInventories(t *testing.T) {
-	if got := len(DatePresentationMotionCandidates()); got != 20 {
-		t.Errorf("Date presentation motion count=%d, want all 20 catalog motions", got)
+	if got := len(DatePresentationMotionCandidates()); got != 10 {
+		t.Errorf("Date presentation motion count=%d, want 10 certified typewriter motions", got)
 	}
-	if got := len(MetricPresentationMotionCandidates()); got != 20 {
-		t.Errorf("Metric presentation motion count=%d, want all 20 catalog motions", got)
+	if got := len(MetricPresentationMotionCandidates()); got != 10 {
+		t.Errorf("Metric presentation motion count=%d, want 10 certified typewriter motions", got)
+	}
+	for _, id := range append(DatePresentationMotionCandidates(), MetricPresentationMotionCandidates()...) {
+		if !strings.HasPrefix(id, "typewriter_") {
+			t.Errorf("date/metric motion %q is not a typewriter motion", id)
+		}
 	}
 }
 

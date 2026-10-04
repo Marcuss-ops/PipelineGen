@@ -2,9 +2,15 @@ package scriptgeneration
 
 import (
 	"context"
+	"crypto/rand"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
+	"math/big"
+	"os"
+	"os/exec"
+	"path/filepath"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -12,6 +18,7 @@ import (
 
 	capoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
 	kernelasset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 	"github.com/Marcuss-ops/PipelineGen/pkg/background"
 	"github.com/Marcuss-ops/PipelineGen/pkg/corid"
@@ -77,130 +84,157 @@ type QueueRenderEnqueuer struct {
 	publicationUnbound *publicationBatch
 }
 
+// renderDynamicMapVideo delegates map motion to the same ChrononTemplate
+// camera/tile-pyramid renderer used by approved dynamic-map overlays. The
+// resulting MP4 enters normal content-addressed staging and publication.
+func renderDynamicMapVideo(ctx context.Context, plan capoverlay.OverlayPlan) (string, error) {
+	if len(plan.Items) != 1 || plan.Items[0].Map == nil {
+		return "", fmt.Errorf("expected exactly one map item")
+	}
+	plateGenerator := strings.TrimSpace(os.Getenv("VELOX_GEO_MAP_PLATE_GENERATOR_PATH"))
+	if plateGenerator == "" {
+		return "", fmt.Errorf("VELOX_GEO_MAP_PLATE_GENERATOR_PATH is not configured")
+	}
+	scriptPath := filepath.Join(filepath.Dir(plateGenerator), "render_dynamic_map_overlay.py")
+	if _, err := os.Stat(scriptPath); err != nil {
+		return "", fmt.Errorf("find Chronon map renderer %s: %w", scriptPath, err)
+	}
+	tmpDir, err := os.MkdirTemp("", "pipelinegen-dynamic-map-")
+	if err != nil {
+		return "", fmt.Errorf("create map render workspace: %w", err)
+	}
+	inputPath := filepath.Join(tmpDir, "map.json")
+	outputPath := filepath.Join(tmpDir, "map.mp4")
+	pins := make([]map[string]any, 0, len(plan.Items[0].Map.Pins))
+	for _, pin := range plan.Items[0].Map.Pins {
+		pins = append(pins, map[string]any{"id": pin.ID, "label": pin.Label, "latitude": pin.Latitude, "longitude": pin.Longitude, "scope": pin.Scope})
+	}
+	cameraAnimation, err := randomMapAnimation([]string{
+		"signature_dive", "tilt_reveal", "orbit_arrival", "slow_approach", "wide_context",
+	})
+	if err != nil {
+		_ = os.RemoveAll(tmpDir)
+		return "", fmt.Errorf("choose dynamic map camera animation: %w", err)
+	}
+	labelAnimation, err := randomMapAnimation([]string{
+		"gentle_fade", "soft_glow", "clean_fade", "word_soft_fade", "slow_fade",
+		"quiet_bloom", "quick_fade", "silky_fade", "subtle_halo", "cinematic_fade",
+	})
+	if err != nil {
+		_ = os.RemoveAll(tmpDir)
+		return "", fmt.Errorf("choose dynamic map label animation: %w", err)
+	}
+	log.Printf("Chronon dynamic map styles selected: camera=%s label=%s", cameraAnimation, labelAnimation)
+	payload := map[string]any{
+		"width": plan.Width, "height": plan.Height,
+		"fps_num": plan.FPSNum, "fps_den": plan.FPSDen,
+		"duration_us": plan.DurationMS * 1000, "pins": pins,
+		"area_glow_radius_km": plan.Items[0].Map.AreaGlowRadiusKM,
+		"camera_animation":    cameraAnimation,
+		"label_animation":     labelAnimation,
+	}
+	encoded, err := json.Marshal(payload)
+	if err != nil {
+		_ = os.RemoveAll(tmpDir)
+		return "", fmt.Errorf("encode map render input: %w", err)
+	}
+	if err := os.WriteFile(inputPath, encoded, 0600); err != nil {
+		_ = os.RemoveAll(tmpDir)
+		return "", fmt.Errorf("write map render input: %w", err)
+	}
+	cmd := exec.CommandContext(ctx, "/usr/bin/python3", scriptPath, "--input", inputPath, "--output", outputPath)
+	var output strings.Builder
+	cmd.Stdout, cmd.Stderr = &output, &output
+	if err := cmd.Run(); err != nil {
+		_ = os.RemoveAll(tmpDir)
+		return "", fmt.Errorf("Chronon map renderer failed: %w: %s", err, strings.TrimSpace(output.String()))
+	}
+	if _, err := os.Stat(outputPath); err != nil {
+		_ = os.RemoveAll(tmpDir)
+		return "", fmt.Errorf("Chronon map renderer produced no video: %w: %s", err, strings.TrimSpace(output.String()))
+	}
+	return outputPath, nil
+}
+
+// randomMapAnimation selects one runtime presentation for each generated map.
+// The choice is made after the job has produced its grounded map pins and is
+// passed to Chronon as an explicit style, so a render stays internally stable.
+func randomMapAnimation(options []string) (string, error) {
+	if len(options) == 0 {
+		return "", fmt.Errorf("animation catalog is empty")
+	}
+	index, err := rand.Int(rand.Reader, big.NewInt(int64(len(options))))
+	if err != nil {
+		return "", err
+	}
+	return options[index.Int64()], nil
+}
+
+// marshalRenderingGenOverlayPlan projects canonical microsecond item timing
+// onto RenderingGen's strict millisecond wire contract.
+func marshalRenderingGenOverlayPlan(plan capoverlay.OverlayPlan) ([]byte, error) {
+	raw, err := json.Marshal(plan)
+	if err != nil {
+		return nil, err
+	}
+	var wire map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &wire); err != nil {
+		return nil, err
+	}
+	var items []map[string]json.RawMessage
+	if err := json.Unmarshal(wire["items"], &items); err != nil {
+		return nil, err
+	}
+	for i, item := range items {
+		var durationUS int64
+		if encoded := item["duration_us"]; len(encoded) > 0 {
+			if err := json.Unmarshal(encoded, &durationUS); err != nil {
+				return nil, fmt.Errorf("decode item %d duration_us: %w", i, err)
+			}
+		}
+		delete(item, "start_us")
+		delete(item, "duration_us")
+		if durationUS > 0 {
+			var startMS, endMS int64
+			if err := json.Unmarshal(item["start_ms"], &startMS); err != nil {
+				return nil, fmt.Errorf("decode item %d start_ms: %w", i, err)
+			}
+			if err := json.Unmarshal(item["end_ms"], &endMS); err != nil {
+				return nil, fmt.Errorf("decode item %d end_ms: %w", i, err)
+			}
+			if endMS <= startMS {
+				return nil, fmt.Errorf("item %d has invalid millisecond timing %d-%d", i, startMS, endMS)
+			}
+			encoded, err := json.Marshal(endMS - startMS)
+			if err != nil {
+				return nil, err
+			}
+			item["duration_ms"] = encoded
+		}
+	}
+	wireItems, err := json.Marshal(items)
+	if err != nil {
+		return nil, err
+	}
+	wire["items"] = wireItems
+	return json.Marshal(wire)
+}
+
+func runtimeFontAssets(plan capoverlay.OverlayPlan) []RenderQueueAsset {
+	for _, item := range plan.Items {
+		family, _ := item.Params["font_family"].(string)
+		if strings.TrimSpace(family) == "inter" {
+			return []RenderQueueAsset{NewRenderQueueAsset(
+				kernelasset.Ref{AssetID: capoverlay.CanonicalInterFontPath, SHA256: capoverlay.CanonicalInterFontHash},
+				capoverlay.CanonicalInterFontPath, "")}
+		}
+	}
+	return nil
+}
+
 // The publication batch type and its join helpers live in
 // overlay_publication.go, next to the publication port they serve; the pool
 // fields above belong to this type.
-
-// Drive publication is outside the Chronon/GPU critical path and each
-// artifact is independently idempotent. Six workers keep a multilingual
-// overlay drain from becoming a serial tail while remaining conservative
-// toward Drive/API rate limits; render admission is still owned by
-// RenderingGen's gpu_lanes, not this pool.
-const defaultOverlayPublicationWorkers = 6
-const maxOverlayPublicationWorkers = 8
-
-// NewQueueRenderEnqueuer creates a queue-backed Chronon render enqueuer.
-func NewQueueRenderEnqueuer(client RenderQueueClient) (*QueueRenderEnqueuer, error) {
-	if client == nil {
-		return nil, fmt.Errorf("queue render enqueuer requires a queue client")
-	}
-	return &QueueRenderEnqueuer{client: client, pollInterval: defaultQueuePollInterval}, nil
-}
-
-// SetPollInterval tunes the observation cadence independently from the
-// RenderingGen worker. A short interval removes avoidable tail latency after
-// Chronon finishes; a caller may leave it unset to retain the safe default.
-func (e *QueueRenderEnqueuer) SetPollInterval(interval time.Duration) {
-	if e != nil && interval > 0 {
-		e.pollInterval = interval
-	}
-}
-
-// SetRecorder attaches the optional analytics recorder. Production
-// composition injects the SQLite-backed recorder; tests may inject a fake or
-// leave it nil to skip analytics.
-func (e *QueueRenderEnqueuer) SetRecorder(r RenderAttemptRecorder) {
-	if e == nil {
-		return
-	}
-	e.recorder = r
-}
-
-// SetArtifactPublisher attaches the required post-render publication side
-// effect. It is optional for unit-test compositions and enabled by the
-// production composition root when Drive is configured.
-func (e *QueueRenderEnqueuer) SetArtifactPublisher(p OverlayArtifactPublisher) {
-	if e != nil {
-		e.publisher = p
-	}
-}
-
-// SetAsyncPublication enables the production publication pool. It is opt-in so
-// small unit-test compositions retain the historical synchronous fail-closed
-// behaviour unless they explicitly install the pool.
-func (e *QueueRenderEnqueuer) SetAsyncPublication(on bool) {
-	if e == nil {
-		return
-	}
-	e.asyncPublication = on
-	if on && e.publicationSem == nil {
-		e.publicationSem = make(chan struct{}, e.publicationWorkerCount())
-	}
-}
-
-// SetPublicationWorkers configures the bounded Drive/analytics publication
-// pool. Production wiring calls this before SetAsyncPublication; changing a
-// live semaphore would strand goroutines that already hold the old budget.
-func (e *QueueRenderEnqueuer) SetPublicationWorkers(workers int) {
-	if e == nil {
-		return
-	}
-	if workers <= 0 {
-		workers = defaultOverlayPublicationWorkers
-	}
-	if workers > maxOverlayPublicationWorkers {
-		workers = maxOverlayPublicationWorkers
-	}
-	e.publicationWorkers = workers
-}
-
-func (e *QueueRenderEnqueuer) publicationWorkerCount() int {
-	if e == nil || e.publicationWorkers <= 0 {
-		return defaultOverlayPublicationWorkers
-	}
-	return e.publicationWorkers
-}
-
-// SetFreshRender controls whether EnqueueChrononPlan creates a new queue job
-// for every call. Overlay production enables this so a completed job from an
-// older test or retry can never be returned as the current render artifact.
-// The default remains false for callers that explicitly rely on queue-level
-// idempotency and ErrJobExists recovery. The returned RenderReference.JobID
-// and the analytics attempt_id always carry the real queue job id.
-func (e *QueueRenderEnqueuer) SetFreshRender(on bool) {
-	if e != nil {
-		e.freshRender = on
-	}
-}
-
-// SetSeparateItemRenders makes production overlay output one video per
-// entity/phrase. Each child plan is rendered on a local zero-based timeline;
-// the source TTS timestamps remain in the publication receipt.
-func (e *QueueRenderEnqueuer) SetSeparateItemRenders(on bool) {
-	if e != nil {
-		e.separateItemRenders = on
-	}
-}
-
-// SetItemRenderPool tunes how many per-item overlay renders may be in flight
-// at once. It is a PIPELINING bound, not a GPU bound: the RenderingGen worker
-// owns `worker.gpu_lanes` and is the only authority on concurrent GPU work.
-// A non-positive value restores the default.
-func (e *QueueRenderEnqueuer) SetItemRenderPool(workers int) {
-	if e != nil {
-		e.itemRenderPool = workers
-	}
-}
-
-// itemRenderWorkers resolves the per-item render pool size. It never returns
-// less than 1, so every item is rendered exactly once even when the caller
-// never opted in.
-func (e *QueueRenderEnqueuer) itemRenderWorkers() int {
-	if e != nil && e.itemRenderPool > 0 {
-		return e.itemRenderPool
-	}
-	return defaultSeparateItemRenderWorkers
-}
 
 // EnqueueChrononPlan submits the semantic OverlayPlan to RenderingGen. The
 // worker is the sole owner of the semantic→Chronon v2 compilation and writes
@@ -252,6 +286,28 @@ func (e *QueueRenderEnqueuer) enqueueChrononPlan(ctx context.Context, plan capov
 		return RenderReference{}, fmt.Errorf("queue render enqueuer is not configured")
 	}
 	semanticPlan := plan
+	var generatedMapVideo string
+	if len(semanticPlan.Items) == 1 && semanticPlan.Items[0].Map != nil {
+		videoPath, err := renderDynamicMapVideo(ctx, semanticPlan)
+		if err != nil {
+			return RenderReference{}, fmt.Errorf("render Chronon dynamic map: %w", err)
+		}
+		generatedMapVideo = videoPath
+		defer os.RemoveAll(filepath.Dir(generatedMapVideo))
+		sha, size, err := digest.SHA256File(videoPath)
+		if err != nil {
+			return RenderReference{}, fmt.Errorf("identify Chronon dynamic map video: %w", err)
+		}
+		if size == 0 {
+			return RenderReference{}, fmt.Errorf("Chronon dynamic map video is empty")
+		}
+		assetRef := capoverlay.NewOverlayAssetRef(
+			kernelasset.Ref{AssetID: "chronon:dynamic-map:" + sha, SHA256: sha, MediaType: "video/mp4"},
+			"", videoPath,
+		)
+		semanticPlan.Background = &capoverlay.OverlayBackground{Kind: "video", AssetRefs: []capoverlay.OverlayAssetRef{assetRef}, Fit: "cover"}
+		semanticPlan.Items = nil
+	}
 	// Drive routing belongs to PipelineGen's publication boundary, not to
 	// RenderingGen's strict semantic overlay-plan wire contract. Keep it on
 	// the in-memory/persisted plan for the publisher, but omit it from the
@@ -389,6 +445,7 @@ func (e *QueueRenderEnqueuer) enqueueChrononPlan(ctx context.Context, plan capov
 				Language:                 plan.Language,
 				ProjectID:                plan.ProjectID,
 				JobID:                    firstNonEmpty(plan.DriveJobID, plan.PlanID),
+				ResultJobID:              firstNonEmpty(plan.ResultJobID, plan.DriveJobID),
 				PlanID:                   plan.PlanID,
 				DriveFolderID:            plan.DriveFolderID,
 				RequireDriveBeforeReturn: plan.RequireDriveBeforeReturn,
@@ -398,8 +455,11 @@ func (e *QueueRenderEnqueuer) enqueueChrononPlan(ctx context.Context, plan capov
 				PollCount:                wait.PollCount,
 			}
 			if metadata != nil {
-				if metadata.JobID != "" {
+				if publication.JobID == "" && metadata.JobID != "" {
 					publication.JobID = metadata.JobID
+				}
+				if publication.ResultJobID == "" && metadata.ResultJobID != "" {
+					publication.ResultJobID = metadata.ResultJobID
 				}
 				publication.OverlayItemID = metadata.ItemID
 				publication.OverlayItemKind = metadata.ItemKind
@@ -463,134 +523,4 @@ func (e *QueueRenderEnqueuer) enqueueChrononPlan(ctx context.Context, plan capov
 	// never re-times a phase the worker already measured).
 	recordRenderingGenPhases(ctx, done.Artifact)
 	return RenderReference{JobID: jobID, Status: "COMPLETED", Artifact: done.Artifact}, nil
-}
-
-// marshalRenderingGenOverlayPlan projects PipelineGen's canonical microsecond
-// timing onto RenderingGen's strict overlay-plan.v1 wire contract. The two
-// runtimes share start_ms/end_ms on the wire; start_us/duration_us remain
-// internal to PipelineGen's frozen plan and must not cross this boundary.
-func marshalRenderingGenOverlayPlan(plan capoverlay.OverlayPlan) ([]byte, error) {
-	raw, err := json.Marshal(plan)
-	if err != nil {
-		return nil, err
-	}
-	var wire map[string]json.RawMessage
-	if err := json.Unmarshal(raw, &wire); err != nil {
-		return nil, err
-	}
-	var items []map[string]json.RawMessage
-	if err := json.Unmarshal(wire["items"], &items); err != nil {
-		return nil, err
-	}
-	for i, item := range items {
-		var durationUS int64
-		if encoded := item["duration_us"]; len(encoded) > 0 {
-			if err := json.Unmarshal(encoded, &durationUS); err != nil {
-				return nil, fmt.Errorf("decode item %d duration_us: %w", i, err)
-			}
-		}
-		delete(item, "start_us")
-		delete(item, "duration_us")
-		if durationUS > 0 {
-			var startMS, endMS int64
-			if err := json.Unmarshal(item["start_ms"], &startMS); err != nil {
-				return nil, fmt.Errorf("decode item %d start_ms: %w", i, err)
-			}
-			if err := json.Unmarshal(item["end_ms"], &endMS); err != nil {
-				return nil, fmt.Errorf("decode item %d end_ms: %w", i, err)
-			}
-			if endMS <= startMS {
-				return nil, fmt.Errorf("item %d has invalid millisecond timing %d-%d", i, startMS, endMS)
-			}
-			encoded, err := json.Marshal(endMS - startMS)
-			if err != nil {
-				return nil, err
-			}
-			item["duration_ms"] = encoded
-		}
-	}
-	wireItems, err := json.Marshal(items)
-	if err != nil {
-		return nil, err
-	}
-	wire["items"] = wireItems
-	return json.Marshal(wire)
-}
-
-func runtimeFontAssets(plan capoverlay.OverlayPlan) []RenderQueueAsset {
-	for _, item := range plan.Items {
-		family, _ := item.Params["font_family"].(string)
-		if strings.TrimSpace(family) == "inter" {
-			return []RenderQueueAsset{NewRenderQueueAsset(
-				kernelasset.Ref{AssetID: capoverlay.CanonicalInterFontPath, SHA256: capoverlay.CanonicalInterFontHash},
-				capoverlay.CanonicalInterFontPath, "")}
-		}
-	}
-	return nil
-}
-
-// RenderingGen queue job states (the `state` field of GET /jobs/{id}).
-//
-// The vocabulary is a WIRE FACT owned by the queue, so it is declared once here
-// and every decision in this file derives from these constants. It used to be
-// four raw literals across three functions (`terminalRenderState`,
-// `terminalRenderResult` twice, `RearmFailedRenderJob`), kept aligned by a
-// comment: a rename on the queue side would have silently stopped matching —
-// the poll loop would never see terminal and the re-arm would never fire.
-const (
-	// RenderQueueStateCompleted — terminal success; the only state that yields
-	// a render result.
-	RenderQueueStateCompleted = "completed"
-	// RenderQueueStateFailed — terminal failure carrying FailReason.
-	RenderQueueStateFailed = "failed"
-	// RenderQueueStateCancelled — terminal cancellation, reported as a failure
-	// with its own reason (never as a completed render).
-	RenderQueueStateCancelled = "cancelled"
-)
-
-// terminalRenderState reports whether state is a terminal render state. The
-// canonical terminal set is completed | failed | cancelled and MUST stay
-// aligned with the RenderQueueWaiter contract above; a terminal state that is
-// not recognised here would either be treated as success or poll forever.
-func terminalRenderState(state string) bool {
-	switch state {
-	case RenderQueueStateCompleted, RenderQueueStateFailed, RenderQueueStateCancelled:
-		return true
-	default:
-		return false
-	}
-}
-
-// terminalRenderResult maps a terminal job to the enqueuer's return value.
-// Only "completed" is a success: a failed job surfaces its reason, and a
-// cancelled job fails closed with its own reason rather than being reported as
-// a completed render (which would surface downstream as the misleading
-// "completed without certified artifact" error).
-//
-// An UNRECOGNISED terminal state fails closed. The previous default branch
-// returned a nil error, so any terminal state added by a newer queue (a
-// timeout, a preemption, a partial) would have been reported to the caller as a
-// successful render with no artifact — the flow declaring success without
-// having completed. The caller responds to a terminal state by fetching the
-// certified artifact, so "I do not know this state" must never be the answer
-// that skips that step.
-func terminalRenderResult(job RenderQueueJob, id string, metrics RenderCompletionMetrics) (RenderQueueJob, RenderCompletionMetrics, error) {
-	switch job.State {
-	case RenderQueueStateCompleted:
-		return job, metrics, nil
-	case RenderQueueStateFailed:
-		reason := job.FailReason
-		if reason == "" {
-			reason = "unknown failure"
-		}
-		return job, metrics, fmt.Errorf("render job %s failed: %s", id, reason)
-	case RenderQueueStateCancelled:
-		reason := job.FailReason
-		if reason == "" {
-			reason = "unknown reason"
-		}
-		return job, metrics, fmt.Errorf("render job %s cancelled: %s", id, reason)
-	default:
-		return job, metrics, fmt.Errorf("render job %s reached unrecognised terminal state %q", id, job.State)
-	}
 }

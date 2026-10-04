@@ -118,6 +118,10 @@ func (e *executionRun) audioCompile() bool {
 			failure.cause = fmt.Errorf("snapshot overlay plan: %w", err)
 			return false
 		}
+		// The overlay branch runs from a detached snapshot. Reassert the
+		// broker job identity at this hand-off so publication cannot fall back
+		// to the internal run/plan ID after JSON checkpointing.
+		setOverlayDriveJobID(snapshot, e.exec.JobID)
 		done = make(chan audioOverlayOutcome, 1)
 		go func() {
 			var outcome audioOverlayOutcome

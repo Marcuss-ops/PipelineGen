@@ -400,7 +400,7 @@ func TestRunner_OverlayPlanAppliesRunLevelEditorialBudget(t *testing.T) {
 			require.GreaterOrEqual(t, item.DurationUS, int64(5_000_000), "each Date item must carry a five-second duration")
 		}
 		if tc.template == "TIMELINE_DATE_CARD" || tc.template == "METRIC_STAT_CARD" {
-			require.Equal(t, 132.0, item.Params["font_size_px"], "Date and Metric use the shared text size +20px")
+			require.Equal(t, 140.0, item.Params["font_size_px"], "Date and Metric use the shared text size +28px")
 		}
 	}
 	require.LessOrEqual(t, res.FinalAudio.DurationMS, res.OverlayPlan.DurationMS,

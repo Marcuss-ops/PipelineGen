@@ -237,8 +237,19 @@ func (g *ScriptVoiceoverGenerator) Generate(
 			input.SceneID, input.Language)
 	}
 
+	assetID := strings.TrimSpace(result.LegacyFileMD5)
+	if assetID == "" {
+		// Some completed voiceover publishes return the canonical voiceover
+		// row ID without the legacy content hash. The script timeline still
+		// needs a stable asset reference in order to compile the generated
+		// audio, so fall back to that canonical ID.
+		assetID = strings.TrimSpace(result.ID)
+	}
+	if assetID == "" {
+		return scriptgen.AudioReference{}, fmt.Errorf("voiceover scriptgen: pipeline returned no asset ID for scene %s language %s", input.SceneID, input.Language)
+	}
 	ref := scriptgen.AudioReference{
-		ID:       result.LegacyFileMD5,
+		ID:       assetID,
 		URL:      result.DriveLink,
 		FilePath: filePath,
 		Duration: float64(result.DurationMs) / 1000.0,
@@ -277,6 +288,7 @@ func (g *ScriptVoiceoverGenerator) Generate(
 		zap.String("scene_id", input.SceneID),
 		zap.String("language", string(input.Language)),
 		zap.String("file_path", filePath),
+		zap.String("asset_id", assetID),
 		zap.String("file_hash", result.LegacyFileMD5),
 		zap.Bool("timing_captured", ref.Timing != nil),
 	)

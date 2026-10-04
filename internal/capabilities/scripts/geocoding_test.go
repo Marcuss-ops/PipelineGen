@@ -5,6 +5,8 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/linguistics"
+
 	capabilitygeocoding "github.com/Marcuss-ops/PipelineGen/internal/capabilities/geocoding"
 	mediadomain "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
@@ -117,6 +119,28 @@ func TestRunVidRushJoinAndPrepareGeocodesOnlyOnExplicitEnable(t *testing.T) {
 	}
 	if annotation.PrimaryEntities[0].Geo != nil {
 		t.Fatalf("prepare branch mutated the shared source annotation: %+v", annotation.PrimaryEntities[0].Geo)
+	}
+}
+
+func TestMapPlaceCandidateIgnoredWordsUsesConfiguredLexicon(t *testing.T) {
+	registry, err := linguistics.NewLexiconRegistry("../../../config/lexicons")
+	if err != nil {
+		t.Fatalf("load canonical lexicon: %v", err)
+	}
+	ignored, err := mapPlaceCandidateIgnoredWords(registry, "en")
+	if err != nil {
+		t.Fatalf("resolve English map candidate exclusions: %v", err)
+	}
+	for _, word := range []string{"a", "an", "the", "this", "from", "our", "we", "it", "as", "and", "but", "journey", "tracing", "continuing"} {
+		if _, ok := ignored[word]; !ok {
+			t.Errorf("canonical English entity blocklist does not exclude %q", word)
+		}
+	}
+	if _, err := mapPlaceCandidateIgnoredWords(registry, "missing-language"); err == nil {
+		t.Fatal("unconfigured language must fail closed rather than invent a stopword set")
+	}
+	if _, err := mapPlaceCandidateIgnoredWords(nil, "en"); err == nil {
+		t.Fatal("missing lexicon registry must fail closed")
 	}
 }
 

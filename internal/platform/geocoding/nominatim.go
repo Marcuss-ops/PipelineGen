@@ -113,9 +113,11 @@ func (n *Nominatim) Geocode(ctx context.Context, request capgeocoding.Request) (
 	cachePath := n.cachePath(req)
 	if result, ok, err := readCached(cachePath); err != nil {
 		return capgeocoding.Result{}, err
-	} else if ok {
+	} else if ok && result.Scope != "" {
 		return result, nil
 	}
+	// Pre-scope cache entries predate geographic-level zooms. Refresh them
+	// once so city/country/region classification reaches the map planner.
 
 	query, err := url.Parse(n.baseURL)
 	if err != nil {
@@ -126,6 +128,7 @@ func (n *Nominatim) Geocode(ctx context.Context, request capgeocoding.Request) (
 	values.Set("format", "jsonv2")
 	values.Set("limit", "1")
 	values.Set("accept-language", req.Language)
+	values.Set("addressdetails", "1")
 	query.RawQuery = values.Encode()
 	httpRequest, err := http.NewRequestWithContext(ctx, http.MethodGet, query.String(), nil)
 	if err != nil {
@@ -154,9 +157,13 @@ func (n *Nominatim) Geocode(ctx context.Context, request capgeocoding.Request) (
 		return capgeocoding.Result{}, fmt.Errorf("nominatim: response exceeds %d bytes", maxResponseBytes)
 	}
 	var hits []struct {
-		Latitude    string `json:"lat"`
-		Longitude   string `json:"lon"`
-		DisplayName string `json:"display_name"`
+		Latitude    string            `json:"lat"`
+		Longitude   string            `json:"lon"`
+		DisplayName string            `json:"display_name"`
+		Category    string            `json:"category"`
+		Type        string            `json:"type"`
+		Addresstype string            `json:"addresstype"`
+		Address     map[string]string `json:"address"`
 	}
 	if err := json.Unmarshal(body, &hits); err != nil {
 		return capgeocoding.Result{}, fmt.Errorf("nominatim: decode response: %w", err)
@@ -172,6 +179,7 @@ func (n *Nominatim) Geocode(ctx context.Context, request capgeocoding.Request) (
 		return capgeocoding.Result{}, fmt.Errorf("nominatim: invalid longitude: %w", err)
 	}
 	result.DisplayName = hits[0].DisplayName
+	result.Scope = classifyScope(req.Query, hits[0].Category, hits[0].Type, hits[0].Addresstype, hits[0].Address)
 	if err := result.Validate(); err != nil {
 		return capgeocoding.Result{}, err
 	}
@@ -179,6 +187,29 @@ func (n *Nominatim) Geocode(ctx context.Context, request capgeocoding.Request) (
 		return capgeocoding.Result{}, err
 	}
 	return result, nil
+}
+
+func classifyScope(query, category, typ, addressType string, address map[string]string) string {
+	query = strings.ToLower(strings.TrimSpace(query))
+	category = strings.ToLower(category)
+	typ = strings.ToLower(typ)
+	addressType = strings.ToLower(addressType)
+	if typ == "continent" || strings.EqualFold(address["continent"], query) {
+		return "continent"
+	}
+	if typ == "country" || addressType == "country" || strings.EqualFold(address["country"], query) {
+		return "country"
+	}
+	if typ == "state" || typ == "region" || typ == "province" || addressType == "state" || addressType == "region" || strings.EqualFold(address["state"], query) || strings.EqualFold(address["region"], query) || strings.EqualFold(address["province"], query) {
+		return "region"
+	}
+	if typ == "city" || typ == "town" || typ == "village" || typ == "municipality" || typ == "administrative" || addressType == "city" || addressType == "town" || addressType == "village" {
+		return "city"
+	}
+	if category == "place" {
+		return "city"
+	}
+	return ""
 }
 
 // waitForPermit serializes public-service requests from this adapter and

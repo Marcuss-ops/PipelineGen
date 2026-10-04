@@ -1,0 +1,110 @@
+{
+  "version": 2,
+  "preset": "custom",
+  "correlation_id": "chronon-two-stop-confirmed-20261003",
+  "force_refresh": true,
+  "items": [
+    {
+      "id": "chronon-two-stop-confirmed-20261003",
+      "project": "chronon-two-stop-confirmed-20261003",
+      "title": "Campagna Lupia to Venezia Two City Map",
+      "language": "en",
+      "tone": "documentario informativo, sobrio e verificabile",
+      "style": "Write a concise factual narration. The named entities Campagna Lupia (a town) and Venezia (a city) are places, not people. Mention each exact name clearly. Do not broaden either location to Italy or add unsupported details.",
+      "model": "gemma4:e4b",
+      "source": {
+        "type": "text",
+        "topic": "Two named city locations: Campagna Lupia and Venezia",
+        "source_text": "Write a short location journey. Preserve these two geographic proper names exactly: Campagna Lupia, a town in Italy, and Venezia, a city in Italy. Campagna Lupia is the starting place. Venezia is the destination place. Never treat either geographic name as a person, and do not replace the two places with Italy."
+      },
+      "script_params": {
+        "target_words": 60,
+        "min_words": 40,
+        "segment_words": 60,
+        "single_scene": true,
+        "skip_quality_gate": false,
+        "segments": [
+          {
+            "id": "two-city-trip",
+            "kind": "narration",
+            "topic": "Campagna Lupia town to Venezia city",
+            "source_text": "Campagna Lupia is a town in Italy and the starting place. Venezia is a city in Italy and the destination place. Mention both places clearly as geographic locations, never as people. Do not replace these two places with Italy.",
+            "target_words": 60,
+            "min_words": 40
+          }
+        ]
+      },
+      "output": {
+        "save_to_db": true,
+        "extract_entities": true,
+        "generate_metadata": true,
+        "generate_timeline": true,
+        "voiceover_enabled": true,
+        "languages": [
+          "en"
+        ],
+        "drive_folder_id": "1J_xUGo_bchzXDIGqSX04CU44c_Dm3SxS",
+        "render": {
+          "enabled": true,
+          "drive_folder_id": "1faj34ESpSZMD32rFBAnDpmhRqQ1TqWUK",
+          "drive_subfolder_name": "chronon-two-stop-confirmed-20261003",
+          "require_gpu": true,
+          "subtitles": {
+            "enabled": false
+          }
+        }
+      },
+      "audio": {
+        "mode": "COMBINED_TIMELINE",
+        "timing": {
+          "mode": "required",
+          "boundary": "word",
+          "formats": [
+            "json",
+            "srt",
+            "vtt"
+          ]
+        }
+      },
+      "media_plan": {
+        "mode": "hybrid",
+        "cache": {
+          "read": true,
+          "write": true
+        },
+        "provider_policy": {
+          "internet_images": "disabled",
+          "artlist": "disabled",
+          "image_generation": "disabled",
+          "youtube": "disabled",
+          "geocoding": "enabled"
+        },
+        "extraction": {
+          "enabled": true,
+          "include": [
+            "entities"
+          ],
+          "max_entities_per_segment": 8,
+          "max_important_phrases_per_segment": 5,
+          "max_image_queries_per_segment": 0
+        },
+        "materialization": {
+          "mode": "selected",
+          "upload_to_drive": false,
+          "wait_for_ready": false
+        },
+        "planner": {
+          "candidate_limit": 1
+        },
+        "include_trace": true
+      },
+      "docs": {
+        "enabled": true,
+        "languages": [
+          "en"
+        ]
+      },
+      "maps_only": true
+    }
+  ]
+}

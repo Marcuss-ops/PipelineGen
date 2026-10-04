@@ -240,6 +240,7 @@ func BuildOverlayPlan(b SemanticRenderBundleV1, videoID, projectID string, width
 		events[semanticOccurrenceKey(e.EntityID, e.OccurrenceID)] = e
 	}
 	items := make([]OverlayItem, 0, len(b.Entities))
+	captionOrdinal := 0
 	for _, e := range b.Entities {
 		key := semanticOccurrenceKey(e.EntityID, e.OccurrenceID)
 		ev, ok := events[key]
@@ -292,6 +293,9 @@ func BuildOverlayPlan(b SemanticRenderBundleV1, videoID, projectID string, width
 				item.EndMs = item.StartMs + MaxImageOverlayDurationMS
 			}
 			item.Text = ""
+			item.EntityCaption = displayText
+			item.CaptionMotionID = SelectEntityCaptionMotionAt(b.RunID, b.Scene.SegmentID, captionOrdinal)
+			captionOrdinal++
 			// Keep generated-image overlays varied across the complete certified
 			// layer-only catalog; the centered selector is reserved for maps.
 			item.MotionID = SelectEntityImageMotionAt(b.RunID, b.Scene.SegmentID, len(items))

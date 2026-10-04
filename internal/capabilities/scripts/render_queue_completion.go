@@ -24,6 +24,129 @@ import (
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 )
 
+// RenderingGen queue job states are wire facts owned by the queue.
+const (
+	RenderQueueStateCompleted = "completed"
+	RenderQueueStateFailed    = "failed"
+	RenderQueueStateCancelled = "cancelled"
+)
+
+// terminalRenderState reports whether state is a terminal render state.
+func terminalRenderState(state string) bool {
+	switch state {
+	case RenderQueueStateCompleted, RenderQueueStateFailed, RenderQueueStateCancelled:
+		return true
+	default:
+		return false
+	}
+}
+
+// terminalRenderResult is the single classifier for terminal queue states.
+func terminalRenderResult(job RenderQueueJob, id string, metrics RenderCompletionMetrics) (RenderQueueJob, RenderCompletionMetrics, error) {
+	switch job.State {
+	case RenderQueueStateCompleted:
+		return job, metrics, nil
+	case RenderQueueStateFailed, RenderQueueStateCancelled:
+		reason := job.FailReason
+		if reason == "" {
+			if job.State == RenderQueueStateCancelled {
+				reason = "unknown reason"
+			} else {
+				reason = "unknown failure"
+			}
+		}
+		return job, metrics, fmt.Errorf("render job %s %s: %s", id, job.State, reason)
+	default:
+		return job, metrics, fmt.Errorf("render job %s reached unrecognised terminal state %q", id, job.State)
+	}
+}
+
+// Drive publication is outside the Chronon/GPU critical path. This worker
+// bound is independent of GPU admission, which remains owned by RenderingGen.
+const defaultOverlayPublicationWorkers = 6
+const maxOverlayPublicationWorkers = 8
+
+// NewQueueRenderEnqueuer creates a queue-backed Chronon render enqueuer.
+func NewQueueRenderEnqueuer(client RenderQueueClient) (*QueueRenderEnqueuer, error) {
+	if client == nil {
+		return nil, fmt.Errorf("queue render enqueuer requires a queue client")
+	}
+	return &QueueRenderEnqueuer{client: client, pollInterval: defaultQueuePollInterval}, nil
+}
+
+func (e *QueueRenderEnqueuer) SetPollInterval(interval time.Duration) {
+	if e != nil && interval > 0 {
+		e.pollInterval = interval
+	}
+}
+
+func (e *QueueRenderEnqueuer) SetRecorder(r RenderAttemptRecorder) {
+	if e != nil {
+		e.recorder = r
+	}
+}
+
+func (e *QueueRenderEnqueuer) SetArtifactPublisher(p OverlayArtifactPublisher) {
+	if e != nil {
+		e.publisher = p
+	}
+}
+
+func (e *QueueRenderEnqueuer) SetAsyncPublication(on bool) {
+	if e == nil {
+		return
+	}
+	e.asyncPublication = on
+	if on && e.publicationSem == nil {
+		e.publicationSem = make(chan struct{}, e.publicationWorkerCount())
+	}
+}
+
+func (e *QueueRenderEnqueuer) SetPublicationWorkers(workers int) {
+	if e == nil {
+		return
+	}
+	if workers <= 0 {
+		workers = defaultOverlayPublicationWorkers
+	}
+	if workers > maxOverlayPublicationWorkers {
+		workers = maxOverlayPublicationWorkers
+	}
+	e.publicationWorkers = workers
+}
+
+func (e *QueueRenderEnqueuer) publicationWorkerCount() int {
+	if e == nil || e.publicationWorkers <= 0 {
+		return defaultOverlayPublicationWorkers
+	}
+	return e.publicationWorkers
+}
+
+func (e *QueueRenderEnqueuer) SetFreshRender(on bool) {
+	if e != nil {
+		e.freshRender = on
+	}
+}
+
+func (e *QueueRenderEnqueuer) SetSeparateItemRenders(on bool) {
+	if e != nil {
+		e.separateItemRenders = on
+	}
+}
+
+func (e *QueueRenderEnqueuer) SetItemRenderPool(workers int) {
+	if e != nil {
+		e.itemRenderPool = workers
+	}
+}
+
+func (e *QueueRenderEnqueuer) itemRenderWorkers() int {
+	if e != nil && e.itemRenderPool > 0 {
+		return e.itemRenderPool
+	}
+	return defaultSeparateItemRenderWorkers
+}
+
 // recordRenderingGenPhases projects the worker-reported RenderingGen phase
 // durations (materialize/plan/render/encode/probe/hash/objectstore_upload/
 // drive_publish) into canonical run operations bound to ctx. Phases the

@@ -43,7 +43,7 @@
         ]
       },
       "docs": {
-        "enabled": true,
+        "enabled": false,
         "languages": ["en"],
         "folder_id": "1ST6FxPuRaxwBOIz39MAN8Jj4gDv509-K"
       },

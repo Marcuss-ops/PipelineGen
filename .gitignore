@@ -286,6 +286,9 @@ local.env
 # Docker secrets (never commit tokens)
 secrets/
 
+# Local semantic phrase-impact benchmark venv (FastEmbed + ONNX CPU only).
+.venv-phrase-impact/
+
 # Whisper worker Python venv (faster-whisper + CTranslate2 + CUDA 12 wheels).
 # Host-side venv used by `make whisper-preflight` and the systemd
 # ExecStartPre gate. Recreate it on demand with the curated lockfile:

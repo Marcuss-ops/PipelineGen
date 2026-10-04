@@ -350,20 +350,23 @@ func (r *chrononTemplateMapPlateResolver) ResolveFlyover(from, to capoverlay.Map
 		(geodesy.Point{Latitude: to.Latitude, Longitude: to.Longitude}).Validate() != nil {
 		return capoverlay.MapPlate{}, false
 	}
-	// Preserve geographic bleed for the camera move, while rasterizing each
-	// LOD at the composition's native 1920x1080 resolution. The raster is
-	// projected over this larger logical map plane by the overlay compiler.
-	plateWidth := width * 2
-	plateHeight := height * 2
+	// Camera LODs need bleed around the output viewport during cross-fades
+	// AND around the route's own extent: a multi-city run merges its mentions
+	// into ONE route whose endpoints (and intermediate pins) can sit far from
+	// the plate centre, so the projected window is 3x the canvas and the
+	// raster is that same resolution (the previous 2x logical / 1x raster
+	// split made the LOD coverage contract impossible to satisfy and
+	// distorted the georeference).
+	plateWidth := width * 3
+	plateHeight := height * 3
 	center := routeMapCenter(from, to)
 	// Adjacent zoom levels keep each raster active only across a narrow
 	// cross-fade interval, so its geographic window can contain the complete
 	// camera viewport throughout that interval.
-	// Keep the maximum zoom at 9 for the 2x logical map plane. The planner
-	// validates the full camera viewport during each LOD cross-fade; zooms
-	// above 9 can crop a route that includes both a city and its country-level
-	// entity even when both pins fit inside the source raster.
-	zooms := []int{5, 6, 7, 8, 9}
+	// Start at the regional view and finish one zoom level closer. A long
+	// zoom ladder made a single city collapse into an endless push-in instead
+	// of keeping the route readable while the camera travels between places.
+	zooms := []int{6, 7}
 	covered := make([]int, 0, len(zooms))
 	for _, zoom := range zooms {
 		window := geodesy.CenteredOn(center.Latitude, center.Longitude, zoom, plateWidth, plateHeight)
@@ -371,6 +374,12 @@ func (r *chrononTemplateMapPlateResolver) ResolveFlyover(from, to capoverlay.Map
 			covered = append(covered, zoom)
 		}
 	}
+	// The worker validates every LOD over the exact zoom interval where its
+	// opacity is > 0 and fails the whole compile when one misses the camera
+	// viewport. Apply that same bound HERE and drop the finest zooms until
+	// the surviving ladder passes, so a long route degrades to fewer LODs
+	// instead of voiding the plan.
+	covered = trimZoomsToViewport(covered, plateWidth, plateHeight, center, from, to)
 	if len(covered) == 0 {
 		log.Printf("chronontemplate map resolver: no zoom covers route from=(%.6f,%.6f) to=(%.6f,%.6f) size=%dx%d", from.Latitude, from.Longitude, to.Latitude, to.Longitude, width, height)
 		return capoverlay.MapPlate{}, false
@@ -390,6 +399,54 @@ func (r *chrononTemplateMapPlateResolver) ResolveFlyover(from, to capoverlay.Map
 		base.LODs = append([]capoverlay.MapPlate(nil), plates[1:]...)
 	}
 	return base, true
+}
+
+// mapPlateFadeHalfBandZoom mirrors the worker's mapLODFadeHalfBandZoom: the
+// half-width in zoom stops of every LOD cross-fade.
+const mapPlateFadeHalfBandZoom = 0.5
+
+// trimZoomsToViewport drops the finest zooms from the ladder until every
+// surviving LOD covers the camera viewport across its active interval (the
+// worker's mapLODWindowCoversMove contract, mirrored here). Returns nil when
+// fewer than two zooms survive — the caller fails closed.
+func trimZoomsToViewport(covered []int, plateWidth, plateHeight int, center, from, to capoverlay.MapCenter) []int {
+	for len(covered) >= 2 {
+		startZoom := float64(covered[0])
+		endZoom := float64(covered[len(covered)-1])
+		ok := true
+		for index, zoom := range covered {
+			low, high := float64(zoom), float64(zoom)
+			if index == 0 {
+				low = startZoom
+			} else {
+				low = (float64(covered[index-1])+float64(zoom))/2 - mapPlateFadeHalfBandZoom
+				if low < startZoom {
+					low = startZoom
+				}
+			}
+			if index == len(covered)-1 {
+				high = endZoom
+			} else {
+				high = (float64(zoom)+float64(covered[index+1]))/2 + mapPlateFadeHalfBandZoom
+				if high > endZoom {
+					high = endZoom
+				}
+			}
+			window := geodesy.CenteredOn(center.Latitude, center.Longitude, zoom, plateWidth, plateHeight)
+			if !window.CoversMove(
+				geodesy.Point{Latitude: from.Latitude, Longitude: from.Longitude},
+				geodesy.Point{Latitude: to.Latitude, Longitude: to.Longitude},
+				startZoom, endZoom, low, high, plateWidth/3, plateHeight/3) {
+				ok = false
+				break
+			}
+		}
+		if ok {
+			return covered
+		}
+		covered = covered[:len(covered)-1]
+	}
+	return nil
 }
 
 func routeMapCenter(from, to capoverlay.MapCenter) capoverlay.MapCenter {
@@ -415,15 +472,16 @@ func (r *chrononTemplateMapPlateResolver) generate(center capoverlay.MapCenter, 
 	// cache entry while the Python renderer is creating it.
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	rasterWidth, rasterHeight := width/2, height/2
-	key := fmt.Sprintf("%.6f_%.6f_z%d_%dx%d_r%dx%d", center.Latitude, center.Longitude, zoom, width, height, rasterWidth, rasterHeight)
+	// The raster is the declared window; keep the legacy 2x-split keys out of
+	// the same cache namespace so stale stretched plates cannot be reused.
+	key := fmt.Sprintf("%.6f_%.6f_z%d_%dx%d", center.Latitude, center.Longitude, zoom, width, height)
 	key = strings.NewReplacer("-", "m", ".", "p").Replace(key)
-	path := filepath.Join(r.cacheDir, "esri-world-imagery", key+".png")
+	path := filepath.Join(r.cacheDir, "esri-world-imagery-v2", key+".png")
 	if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
 		return capoverlay.MapPlate{}, false
 	}
 	if info, err := os.Stat(path); err != nil || info.Size() == 0 {
-		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+		ctx, cancel := context.WithTimeout(context.Background(), 8*time.Minute)
 		defer cancel()
 		// The service prepends its Whisper venv to PATH. That venv has
 		// faster-whisper but not OpenCV, while the system Python has cv2 (a
@@ -434,7 +492,7 @@ func (r *chrononTemplateMapPlateResolver) generate(center capoverlay.MapCenter, 
 			"--latitude", fmt.Sprintf("%.8f", center.Latitude),
 			"--longitude", fmt.Sprintf("%.8f", center.Longitude),
 			"--zoom", fmt.Sprint(zoom),
-			"--width", fmt.Sprint(rasterWidth), "--height", fmt.Sprint(rasterHeight),
+			"--width", fmt.Sprint(width), "--height", fmt.Sprint(height),
 			"--output", path,
 		)
 		if output, err := cmd.CombinedOutput(); err != nil {

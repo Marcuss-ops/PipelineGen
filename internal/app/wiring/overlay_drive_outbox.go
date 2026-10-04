@@ -47,7 +47,7 @@ func (p *durableOverlayArtifactPublisher) PublishOverlay(ctx context.Context, sp
 	if err != nil {
 		return fmt.Errorf("encode overlay Drive publication: %w", err)
 	}
-	aggregateID := firstNonEmptyOverlay(spec.JobID, spec.PlanID, spec.ProjectID)
+	aggregateID := firstNonEmptyOverlay(spec.ResultJobID, spec.JobID, spec.PlanID, spec.ProjectID)
 	eventKey := "overlay-drive:" + aggregateID + ":" + spec.Language + ":" + spec.PlanID + ":" + spec.OverlayItemID + ":" + strings.ToLower(artifact.SHA256)
 	if _, err := p.repo.Enqueue(ctx, nil, renderinggen.EventOverlayDrivePublicationRequested, aggregateID, "overlay_artifact", string(payload), eventKey); err != nil {
 		return fmt.Errorf("enqueue overlay Drive publication: %w", err)
@@ -84,7 +84,7 @@ func (h *overlayDrivePublicationHandler) Handle(ctx context.Context, evt outboxe
 	if err := json.Unmarshal([]byte(evt.PayloadJSON), &req); err != nil {
 		return fmt.Errorf("decode overlay Drive publication: %w", err)
 	}
-	jobID := firstNonEmptyOverlay(evt.AggregateID, req.Spec.JobID)
+	jobID := firstNonEmptyOverlay(req.Spec.ResultJobID, evt.AggregateID, req.Spec.JobID)
 	link := sqljobs.OverlayDriveLink{
 		ItemID: req.Spec.OverlayItemID, Language: req.Spec.Language, PlanID: req.Spec.PlanID,
 		DriveFileID: req.Artifact.DriveFileID, DriveLink: req.Artifact.DriveLink,

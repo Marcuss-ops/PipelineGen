@@ -15,98 +15,9 @@ import (
 	capabilityimagesearch "github.com/Marcuss-ops/PipelineGen/internal/capabilities/imagesearch"
 	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
 	scriptports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
-	mediadomain "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 	"go.uber.org/zap"
 )
-
-// runVidRushJoinAndPrepare is the background branch of the SceneTextReady
-// fan-out: it awaits the VidRush barrier, computes the per-scene entity
-// annotations and the pre-timing OverlayIntents from a read-only scene-text
-// snapshot, and enqueues overlay.prepare. It runs concurrently with TTS and
-// never touches the mutable result (or result.Scenes), so prepare starts as
-// soon as NLP results arrive without waiting for TTS or final audio and
-// without racing the TTS writer. The caller applies the returned projections
-// to result after the join.
-func (r *Runner) runVidRushJoinAndPrepare(ctx context.Context, runID string, req GenerateRequest, snapshot []sceneTextSnapshot) (vidRushPrepareResult, error) {
-	// Final VidRush barrier: wait only for enrichments still running, never
-	// re-running whole-document extraction. The fenced per-scene
-	// results are projected onto the durable result after the join.
-	segments, err := r.waitForVidRush(ctx, runID)
-	if err != nil {
-		return vidRushPrepareResult{}, err
-	}
-	phraseLimit := req.MediaPlan.Extraction.MaxImportantPhrasesPerSegment
-	includePhrases := req.MediaPlan.Extraction.Includes(mediadomain.ExtractionIncludeImportantPhrases)
-	annotations := computeSegmentEntityAnnotations(snapshot, req.SourceLanguage, segments, phraseLimit, includePhrases, req.MediaPlan.Extraction.ImportantPhrases)
-	// Geocoding is explicitly enabled by provider policy or automatically for
-	// grounded location extraction when both production adapters are configured.
-	// An explicit policy without a wired adapter fails closed.
-	// The enrichment projects onto CLONED annotations: the snapshot's entity
-	// structs are shared read-only state and must never be mutated in place.
-	if r.shouldGeocodeScriptLocations(req) {
-		geocoded := make(map[int]*scriptpkg.SceneAnnotations, len(annotations))
-		for index, annotation := range annotations {
-			if annotation == nil {
-				geocoded[index] = nil
-				continue
-			}
-			clone := *annotation
-			clone.PrimaryEntities = append([]scriptpkg.AnnotatedEntity(nil), annotation.PrimaryEntities...)
-			clone.SecondaryEntities = append([]scriptpkg.AnnotatedEntity(nil), annotation.SecondaryEntities...)
-			for i := range clone.PrimaryEntities {
-				clone.PrimaryEntities[i].Geo = annotation.PrimaryEntities[i].Geo
-			}
-			for i := range clone.SecondaryEntities {
-				clone.SecondaryEntities[i].Geo = annotation.SecondaryEntities[i].Geo
-			}
-			geocoded[index] = &clone
-		}
-		if err := r.geocodePlaceAnnotations(ctx, geocoded, string(req.SourceLanguage)); err != nil {
-			return vidRushPrepareResult{}, err
-		}
-		annotations = geocoded
-	}
-	var intents []capabilityoverlay.OverlayIntent
-	if r.overlayRegistry != nil {
-		intents = planOverlayIntentsForAnnotations(snapshot, annotations, r.overlayRegistry)
-		// Submit overlay.prepare (fire-and-forget): it resolves templates and
-		// prefetches entity assets independently of the timing-frozen render
-		// path. overlay.render never waits for it — render enqueues only
-		// after the canonical timing is frozen in the audio-compile phase.
-		// Fail-closed — an enqueue error fails the run, never a silent no-op.
-		if err := r.enqueueOverlayPrepare(ctx, runID, req, intents); err != nil {
-			return vidRushPrepareResult{}, err
-		}
-	}
-	return vidRushPrepareResult{segments: segments, annotations: annotations, intents: intents}, nil
-}
-
-func sourceTraceFromResult(result *GenerateResult) scriptpkg.SourceTrace {
-	trace := scriptpkg.SourceTrace{}
-	if result == nil {
-		return trace
-	}
-	trace = result.SourceTrace
-	seen := make(map[string]struct{})
-	for _, scene := range result.Scenes {
-		refs := scene.Clips
-		if len(refs) == 0 && scene.Clip != nil {
-			refs = []*ClipReference{scene.Clip}
-		}
-		for _, ref := range refs {
-			if ref == nil || ref.ID == "" {
-				continue
-			}
-			if _, ok := seen[ref.ID]; ok {
-				continue
-			}
-			seen[ref.ID] = struct{}{}
-			trace.AcceptedClipIDs = append(trace.AcceptedClipIDs, ref.ID)
-		}
-	}
-	return trace
-}
 
 // Runner executes the durable script generation stages.
 // Each stage is checkpointed so a retry resumes from the last

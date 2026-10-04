@@ -281,6 +281,9 @@ func BuildFinalJobPayloads(ctx context.Context, runID string, req GenerateReques
 	if delta := plannedDurationMS - result.FinalAudio.DurationMS; delta < -40 || delta > 40 {
 		return nil, nil, fmt.Errorf("final_job scene duration %dms does not match certified final audio %dms (tolerance 40ms)", plannedDurationMS, result.FinalAudio.DurationMS)
 	}
+	if err := enforceFinalJobPreflight(remoteScenes, result.FinalAudio.DurationMS); err != nil {
+		return nil, nil, err
+	}
 	audioRef, err := finalJobAudioAsset(*result.FinalAudio)
 	if err != nil {
 		return nil, nil, err

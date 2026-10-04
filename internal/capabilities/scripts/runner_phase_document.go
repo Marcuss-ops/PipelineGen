@@ -208,28 +208,33 @@ func (r *Runner) runDocumentPhase(ctx context.Context, runID string, req Generat
 	docsEnabled, docsLangs, _ := req.ResolveDocsConfig()
 	docsFolderID := routing.DocsFolderID
 
+	// VOICEOVER_READY is local, certified audio and is sufficient for audio
+	// compilation. The async publish pool (TimingDisabled) is joined HERE, at
+	// the last phase before completion, on EVERY path — including docs-disabled:
+	// the published links are consumed by the cross-run voiceover cache (the
+	// metadata timing links) and the media registry, not only by the Google
+	// document, and a run that completes while its uploads are still in flight
+	// orphans them past its own lifecycle (K2). The uploads themselves are
+	// deliberately NOT gated on docs.
+	if r.voiceoverPublishDrainer != nil {
+		publishDrainStarted := time.Now()
+		r.voiceoverPublishDrainer.Wait()
+		voiceoverGenerated := 0
+		if result.AudioMetrics != nil {
+			voiceoverGenerated = result.AudioMetrics.VoiceoverGenerated
+		}
+		kernobs.RecordStage(ctx, kernobs.StageInfo{Stage: "publish_pool_drain", ItemsInput: int64(voiceoverGenerated)}, publishDrainStarted, time.Now(), nil)
+		r.log.Info("voiceover publish pool drained",
+			zap.String("run_id", runID),
+			zap.Int("generated", voiceoverGenerated))
+	}
+
 	documentSkipped := stageSkipped(resumeIdx, StagePublishingDocuments) || r.docPublisher == nil || !docsEnabled || len(docsLangs) == 0
 	if !documentSkipped {
 		if err := r.updateStage(ctx, runID, RunStatusRunning, StagePublishingDocuments); err != nil {
 			r.failExecutionStep(ctx, exec, documentStep, err)
 			r.failRunWithRetry(ctx, runID, StagePublishingDocuments, err)
 			return false
-		}
-		// VOICEOVER_READY is local, certified audio and is sufficient for
-		// audio compilation. Drive publication is needed only when Docs
-		// projects the published links, so drain the independent publisher
-		// pool at this final consumer boundary instead of blocking audio.
-		if r.voiceoverPublishDrainer != nil {
-			publishDrainStarted := time.Now()
-			r.voiceoverPublishDrainer.Wait()
-			voiceoverGenerated := 0
-			if result.AudioMetrics != nil {
-				voiceoverGenerated = result.AudioMetrics.VoiceoverGenerated
-			}
-			kernobs.RecordStage(ctx, kernobs.StageInfo{Stage: "publish_pool_drain", ItemsInput: int64(voiceoverGenerated)}, publishDrainStarted, time.Now(), nil)
-			r.log.Info("voiceover publish pool drained",
-				zap.String("run_id", runID),
-				zap.Int("generated", voiceoverGenerated))
 		}
 		if r.documentRenderer == nil {
 			cause := fmt.Errorf("canonical document renderer is not configured")

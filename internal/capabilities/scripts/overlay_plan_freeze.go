@@ -69,10 +69,12 @@ func setOverlayDriveJobID(result *GenerateResult, jobID string) {
 	jobID = strings.TrimSpace(jobID)
 	if result.OverlayPlan != nil {
 		result.OverlayPlan.DriveJobID = jobID
+		result.OverlayPlan.ResultJobID = jobID
 	}
 	for _, plan := range result.LocalizedOverlayPlans {
 		if plan != nil {
 			plan.DriveJobID = jobID
+			plan.ResultJobID = jobID
 		}
 	}
 }

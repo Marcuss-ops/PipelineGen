@@ -119,6 +119,9 @@ func TestBuildOverlayPlanUsesCanonicalImageCapability(t *testing.T) {
 	if !containsMotion(generatedEntityImageMotionCandidates, item.MotionID) {
 		t.Fatalf("entity portrait motion = %q, want a generated-overlay image catalog motion", item.MotionID)
 	}
+	if item.EntityCaption != "Gerard Butler" || !containsMotion(generatedEntityCaptionMotionCandidates, item.CaptionMotionID) {
+		t.Fatalf("entity caption = %q motion=%q; want the displayed name and a certified caption motion", item.EntityCaption, item.CaptionMotionID)
+	}
 	// DYNAMIC window: the image card keeps the certified timeline-event span
 	// (2500ms) instead of a flat five-second block.
 	if item.EndMs-item.StartMs != 2500 {

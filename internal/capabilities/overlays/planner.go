@@ -2,9 +2,7 @@ package overlays
 
 import (
 	"fmt"
-	"sort"
 	"strings"
-	"unicode"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
@@ -159,20 +157,6 @@ type ImageCandidate struct {
 // MaxImageOverlayDurationMS is the hard editorial ceiling for every image,
 // product and logo overlay.
 const MaxImageOverlayDurationMS int64 = 5_000
-
-func clampImageWindow(candidate ImageCandidate) ImageCandidate {
-	if candidate.StartUS > 0 || candidate.DurationUS > 0 {
-		if candidate.DurationUS > MaxImageOverlayDurationMS*1000 {
-			candidate.DurationUS = MaxImageOverlayDurationMS * 1000
-			candidate.EndMs = (candidate.StartUS + candidate.DurationUS + 999) / 1000
-		}
-		return candidate
-	}
-	if candidate.EndMs-candidate.StartMs > MaxImageOverlayDurationMS {
-		candidate.EndMs = candidate.StartMs + MaxImageOverlayDurationMS
-	}
-	return candidate
-}
 
 type SceneInput struct {
 	ID       string
@@ -395,14 +379,28 @@ func BuildPlan(input PlanInput, config PlannerConfig) (OverlayPlan, error) {
 				ID: id, SceneID: scene.ID, PresetID: selectPhrasePreset(input.PlanID, scene.ID, id),
 				Kind: "text_phrase", TemplateID: "IMPORTANT_PHRASE", Text: candidate.Text,
 				StartMs: candidate.StartMs, EndMs: candidate.EndMs, StartUS: candidate.StartUS, DurationUS: candidate.DurationUS,
-				MotionParams: phraseMotionParams(candidate, input.FPSNum, input.FPSDen),
-				Params:       map[string]any{"position": "center", "style": "headline", "priority": candidate.Score},
+				MotionParams: phraseMotionParams(candidate, input.FPSNum, input.FPSDen), Params: map[string]any{"position": "center", "style": "headline", "priority": candidate.Score},
 			})
 		}
-
-		// Maps: grounded places covered by a certified plate become one map
-		// item per plate, carrying the plate's georeference and provenance.
-		for _, mapItem := range mapItemsForScene(scene.ID, mapPlansForScene(input.PlateResolver, scene.Maps, input.Width, input.Height), input.Width, input.Height, mapOrdinal) {
+	}
+	// Maps: grounded places from EVERY scene resolve together against the
+	// certified plates, anchored to the first scene that mentions one. A
+	// multi-city script is ONE journey: the mentions merge into a single
+	// route plate (one flyover over all pins) instead of one map render job
+	// per scene. The run-level map ceiling still applies below.
+	mapAnchorScene := ""
+	mapCandidates := make([]MapCandidate, 0)
+	for i := range input.Scenes {
+		if len(input.Scenes[i].Maps) == 0 {
+			continue
+		}
+		if mapAnchorScene == "" {
+			mapAnchorScene = input.Scenes[i].ID
+		}
+		mapCandidates = append(mapCandidates, input.Scenes[i].Maps...)
+	}
+	if mapAnchorScene != "" {
+		for _, mapItem := range mapItemsForScene(mapAnchorScene, mapPlansForScene(input.PlateResolver, mapCandidates, input.Width, input.Height), input.Width, input.Height, mapOrdinal) {
 			plan.Items = append(plan.Items, mapItem)
 			mapOrdinal++
 		}
@@ -519,66 +517,4 @@ func validateImageMotionPool(pool []string) error {
 		seen[id] = true
 	}
 	return nil
-}
-
-func rankedValid(in []TimedAnnotation, maxWords int) []TimedAnnotation {
-	valid := make([]TimedAnnotation, 0, len(in))
-	for _, candidate := range in {
-		if strings.TrimSpace(candidate.Text) == "" || candidate.StartMs < 0 || candidate.EndMs <= candidate.StartMs {
-			continue
-		}
-		if maxWords > 0 && len(strings.Fields(candidate.Text)) > maxWords {
-			continue
-		}
-		candidate.Text = strings.TrimSpace(candidate.Text)
-		valid = append(valid, candidate)
-	}
-	sort.SliceStable(valid, func(i, j int) bool { return valid[i].Score > valid[j].Score })
-	seen := make(map[string]struct{}, len(valid))
-	out := make([]TimedAnnotation, 0, len(valid))
-	for _, candidate := range valid {
-		key := strings.ToLower(strings.Join(strings.Fields(candidate.Text), " "))
-		if _, dup := seen[key]; dup {
-			continue
-		}
-		seen[key] = struct{}{}
-		out = append(out, candidate)
-	}
-	return out
-}
-
-func rankedPhraseValid(in []TimedAnnotation, maxWords int) []TimedAnnotation {
-	valid := rankedValid(in, maxWords)
-	sort.SliceStable(valid, func(i, j int) bool {
-		wi, wj := len(strings.Fields(valid[i].Text)), len(strings.Fields(valid[j].Text))
-		if wi != wj {
-			return wi > wj
-		}
-		return valid[i].Score > valid[j].Score
-	})
-	return valid
-}
-
-func rankedImages(in []ImageCandidate) []ImageCandidate {
-	valid := make([]ImageCandidate, 0, len(in))
-	for _, candidate := range in {
-		if strings.TrimSpace(candidate.AssetID) == "" || candidate.StartMs < 0 || candidate.EndMs <= candidate.StartMs {
-			continue
-		}
-		valid = append(valid, candidate)
-	}
-	sort.SliceStable(valid, func(i, j int) bool { return valid[i].Score > valid[j].Score })
-	return valid
-}
-
-func itemID(sceneID, kind, value string) string {
-	var b strings.Builder
-	for _, r := range strings.ToLower(sceneID + "-" + kind + "-" + value) {
-		if unicode.IsLetter(r) || unicode.IsDigit(r) {
-			b.WriteRune(r)
-		} else if b.Len() > 0 {
-			b.WriteByte('-')
-		}
-	}
-	return strings.Trim(b.String(), "-")
 }

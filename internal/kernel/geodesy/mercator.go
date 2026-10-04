@@ -129,3 +129,51 @@ func (w Window) Contains(lat, lon float64) bool {
 func (w Window) CenterLatLon() (lat, lon float64) {
 	return GlobalPixelToLatLon(w.TopLeftX+w.Width/2.0, w.TopLeftY+w.Height/2.0, w.Zoom)
 }
+
+// wrapMapPlaneDelta wraps a pixel delta onto the shortest path across the
+// antimeridian at the given zoom's world width — the same wrap the worker's
+// lowering applies before projecting the plane.
+func wrapMapPlaneDelta(value, worldSize float64) float64 {
+	if value > worldSize/2 {
+		value -= worldSize
+	}
+	if value < -worldSize/2 {
+		value += worldSize
+	}
+	return value
+}
+
+// CoversMove reports whether the window contains the complete camera viewport
+// across the move's [lowZoom, highZoom] active interval. It is the planner-side
+// mirror of RenderingGen's mapLODWindowCoversMove (the worker recomputes the
+// same bound fail-closed at compile time), so a route the planner admits here
+// can never be rejected there: same Mercator grid, same viewport scale (the
+// planner emits no tilt), same zoom-parameterized camera path sampling.
+func (w Window) CoversMove(from, to Point, startZoom, endZoom, lowZoom, highZoom float64, canvasWidth, canvasHeight int) bool {
+	if highZoom < lowZoom || endZoom <= startZoom || canvasWidth <= 0 || canvasHeight <= 0 {
+		return false
+	}
+	fromX, fromY := LatLonToGlobalPixel(from.Latitude, from.Longitude, w.Zoom)
+	toX, toY := LatLonToGlobalPixel(to.Latitude, to.Longitude, w.Zoom)
+	deltaX := wrapMapPlaneDelta(toX-fromX, MercatorTileSize*math.Pow(2, float64(w.Zoom)))
+	viewportHalfWidth := float64(canvasWidth) / 2
+	viewportHalfHeight := float64(canvasHeight) / 2
+	zoomFactor := math.Pow(2, endZoom-startZoom)
+	toTime := func(zoom float64) float64 {
+		return math.Max(0, math.Min(1, (math.Pow(2, zoom-startZoom)-1)/(zoomFactor-1)))
+	}
+	startT, endT := toTime(lowZoom), toTime(highZoom)
+	for step := 0; step <= 64; step++ {
+		t := startT + (endT-startT)*float64(step)/64
+		zoom := startZoom + math.Log2(1+(zoomFactor-1)*t)
+		x := fromX + deltaX*t - w.TopLeftX
+		y := fromY + (toY-fromY)*t - w.TopLeftY
+		zoomScale := math.Pow(2, float64(w.Zoom)-zoom)
+		marginX := viewportHalfWidth * zoomScale
+		marginY := viewportHalfHeight * zoomScale
+		if x < marginX || y < marginY || x > w.Width-marginX || y > w.Height-marginY {
+			return false
+		}
+	}
+	return true
+}

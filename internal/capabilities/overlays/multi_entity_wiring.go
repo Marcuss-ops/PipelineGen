@@ -3,6 +3,7 @@ package overlays
 import (
 	"fmt"
 	"sort"
+	"strings"
 )
 
 // MultiEntityKind classifies the elements within an EntityGroup.
@@ -248,12 +249,14 @@ func WireMultiEntityOverlay(group MultiEntityGroup) OverlayItem {
 			}
 
 			imageLayers = append(imageLayers, OverlayImageLayer{
-				ID:       fmt.Sprintf("layer_%d", idx+1),
-				AssetID:  it.AssetRef.AssetID,
-				StartMS:  relStart,
-				EndMS:    relEnd,
-				PresetID: presetID,
-				MotionID: group.MotionPreset,
+				ID:              fmt.Sprintf("layer_%d", idx+1),
+				AssetID:         it.AssetRef.AssetID,
+				StartMS:         relStart,
+				EndMS:           relEnd,
+				PresetID:        presetID,
+				MotionID:        group.MotionPreset,
+				Caption:         strings.TrimSpace(it.Name),
+				CaptionMotionID: EntityCaptionMotionAtOffset(0, idx),
 			})
 		}
 		if it.Text != "" {

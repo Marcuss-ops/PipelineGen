@@ -52,6 +52,12 @@ func TestGroupNearbyEntities_DuoImages(t *testing.T) {
 	if len(item.ImageLayers) != 2 {
 		t.Errorf("expected 2 image layers, got %d", len(item.ImageLayers))
 	}
+	if item.ImageLayers[0].Caption != "Entity Alpha" || item.ImageLayers[1].Caption != "Entity Beta" {
+		t.Errorf("image caption names = %q/%q, want each entity name", item.ImageLayers[0].Caption, item.ImageLayers[1].Caption)
+	}
+	if item.ImageLayers[0].CaptionMotionID == "" || item.ImageLayers[1].CaptionMotionID == "" || item.ImageLayers[0].CaptionMotionID == item.ImageLayers[1].CaptionMotionID {
+		t.Errorf("image captions should have varied motions: %q/%q", item.ImageLayers[0].CaptionMotionID, item.ImageLayers[1].CaptionMotionID)
+	}
 }
 
 func TestGroupNearbyEntities_TrioQuadPenta(t *testing.T) {

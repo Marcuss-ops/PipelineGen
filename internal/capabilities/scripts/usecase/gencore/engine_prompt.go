@@ -101,15 +101,13 @@ func buildClipGroundingInstructions(plan *scriptpkg.ResolvedGenerationPlan) stri
 	return strings.Join(lines, "\n")
 }
 
-// buildSegmentInstructions renders the PR-CS-1 ScriptSegment blocks
-// plus the canonical DoD-driven footer (DoD #1-#5). The function
-// runs unconditionally — segments are a script-level structural
-// directive, independent of clip evidence.
-//
-// This is the canonical Branch A path. Branch B (SegmentTopics
-// prompt rendering) was removed in August 2026 per
-// DL-SCRIPT-BRANCH-B-001.
-func buildSegmentInstructions(plan *scriptpkg.ResolvedGenerationPlan) string {
+// buildSegmentHeader renders the per-JOB shared part of the segment
+// instructions: the editorial style and guidelines block. Every per-segment
+// generation call in one job renders the SAME header, so in the
+// shared-prefix layout (B3, TODO-pipeline-100x-velocita) it is emitted
+// FIRST in the user message and Ollama's automatic KV prefix cache reuses
+// it across the segment fan-out instead of re-evaluating it per call.
+func buildSegmentHeader(plan *scriptpkg.ResolvedGenerationPlan) string {
 	if plan == nil || len(plan.Segments) == 0 {
 		return ""
 	}
@@ -122,6 +120,37 @@ func buildSegmentInstructions(plan *scriptpkg.ResolvedGenerationPlan) string {
 		b.WriteString(guidelines)
 		b.WriteByte('\n')
 	}
+	return b.String()
+}
+
+// buildSegmentInstructions renders the PR-CS-1 ScriptSegment blocks
+// plus the canonical DoD-driven footer (DoD #1-#5). The function
+// runs unconditionally — segments are a script-level structural
+// directive, independent of clip evidence.
+//
+// This is the canonical Branch A path. Branch B (SegmentTopics
+// prompt rendering) was removed in August 2026 per
+// DL-SCRIPT-BRANCH-B-001.
+//
+// The composition is header + body so the legacy layout stays
+// byte-identical with the pre-split behaviour.
+func buildSegmentInstructions(plan *scriptpkg.ResolvedGenerationPlan) string {
+	if plan == nil || len(plan.Segments) == 0 {
+		return ""
+	}
+	return buildSegmentHeader(plan) + buildSegmentBody(plan)
+}
+
+// buildSegmentBody renders the per-SEGMENT assignment blocks plus the
+// canonical DoD footer. In the shared-prefix layout this part is the
+// per-call VARIABLE payload: it is emitted LAST in the user message so the
+// shared instructions above it stay KV-cache resident across the fan-out
+// while only the assignment is evaluated per call.
+func buildSegmentBody(plan *scriptpkg.ResolvedGenerationPlan) string {
+	if plan == nil || len(plan.Segments) == 0 {
+		return ""
+	}
+	var b strings.Builder
 	for i, s := range plan.Segments {
 		if i > 0 {
 			b.WriteString("\n\n")

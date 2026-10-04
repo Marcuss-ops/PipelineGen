@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"sort"
 	"strings"
 	"testing"
@@ -270,14 +271,14 @@ func TestModernAppleFamilyExposesAllCatalogMotions(t *testing.T) {
 }
 
 func TestGeneratedPhraseRotationCoversFifteenAndFits24FPSTiming(t *testing.T) {
-	if len(generatedPhraseMotions) != 108 {
-		t.Fatalf("generated phrase pool has %d entries, want all 108 registered phrase motions", len(generatedPhraseMotions))
+	if len(generatedPhraseMotions) != 113 {
+		t.Fatalf("generated phrase pool has %d entries, want all 113 registered phrase motions", len(generatedPhraseMotions))
 	}
-	sequence := defaultPhraseMotionSequence("rotation-108", "run")
-	seenAll := make(map[string]bool, 108)
+	sequence := defaultPhraseMotionSequence("rotation-113", "run")
+	seenAll := make(map[string]bool, 113)
 	familyCounts := map[string]int{}
 	for ordinal, want := range sequence {
-		if got := selectPhraseMotion("rotation-108", "run", ordinal, nil); got != want {
+		if got := selectPhraseMotion("rotation-113", "run", ordinal, nil); got != want {
 			t.Fatalf("default phrase selector at ordinal %d = %q, want catalog rotation entry %q", ordinal, got, want)
 		}
 	}
@@ -299,8 +300,8 @@ func TestGeneratedPhraseRotationCoversFifteenAndFits24FPSTiming(t *testing.T) {
 			}
 		}
 	}
-	if len(sequence) != 108 || len(seenAll) != 108 {
-		t.Fatalf("default phrase sequence covers %d motions, want all 108", len(seenAll))
+	if len(sequence) != 113 || len(seenAll) != 113 {
+		t.Fatalf("default phrase sequence covers %d motions, want all 113", len(seenAll))
 	}
 	for family, want := range map[string]int{"classic_apple": 5, "modern_apple": 5, "typewriter": 5} {
 		if familyCounts[family] != want {
@@ -440,15 +441,15 @@ func TestCertifiedImageMotionPoolAndPlannerAssignment(t *testing.T) {
 // TestRandomImageMotionOffsetRotatesThroughAllCertifiedIDs pins the MAP
 // rotation over the CENTERED pool: a map's basemap must keep the raster pinned
 // to the canvas center so the pins projected over it never drift. The plan's
-// random offset may start anywhere in the generated catalog's span; the
-// centered pool reduces it modulo its own size and must still cover exactly
+// random offset may start anywhere in the largest generated visual pool's
+// span; the centered pool reduces it modulo its own size and must still cover exactly
 // its three ids.
 func TestRandomImageMotionOffsetRotatesThroughAllCertifiedIDs(t *testing.T) {
 	count := len(centeredImageMotionCandidates)
 	if count != 3 {
 		t.Fatalf("centered image motions = %d, want 3", count)
 	}
-	span := len(generatedEntityImageMotionCandidates)
+	span := max(len(generatedEntityImageMotionCandidates), len(generatedEntityCaptionMotionCandidates), len(centeredImageMotionCandidates))
 	for attempt := 0; attempt < 4; attempt++ {
 		offset, err := RandomImageMotionOffset()
 		if err != nil {
@@ -510,6 +511,92 @@ func TestEntityImageMotionRotationCoversTheCertifiedCatalog(t *testing.T) {
 		if again := EntityImageMotionAtOffset(offset, 3); again != EntityImageMotionAtOffset(offset, 3) {
 			t.Fatalf("entity image motion selection is not deterministic: %q", again)
 		}
+	}
+}
+
+func TestGeneratedEntityCaptionMotionsMatchCanonical2DCatalog(t *testing.T) {
+	pool := CertifiedEntityCaptionMotions()
+	if len(pool) != 4 {
+		t.Fatalf("generated entity-caption motion pool = %d motions, want 4", len(pool))
+	}
+	poolSet := make(map[string]bool, len(pool))
+	for _, id := range pool {
+		if poolSet[id] {
+			t.Fatalf("caption motion pool contains duplicate %q", id)
+		}
+		poolSet[id] = true
+	}
+	want := map[string]bool{
+		"text_fade_up": true, "text_scale_punch": true,
+		"text_word_rise": true, "text_word_stagger": true,
+	}
+	if !reflect.DeepEqual(poolSet, want) {
+		t.Fatalf("caption motion pool = %v, want exactly %v", poolSet, want)
+	}
+	for offset := 0; offset < len(pool); offset++ {
+		seen := map[string]bool{}
+		for ordinal := 0; ordinal < len(pool); ordinal++ {
+			id := EntityCaptionMotionAtOffset(offset, ordinal)
+			if !poolSet[id] || seen[id] {
+				t.Fatalf("caption offset %d ordinal %d emitted unknown/repeated motion %q", offset, ordinal, id)
+			}
+			seen[id] = true
+		}
+		if again := EntityCaptionMotionAtOffset(offset, 2); again != EntityCaptionMotionAtOffset(offset, 2) {
+			t.Fatalf("caption motion selection changed across retries: %q", again)
+		}
+	}
+	root, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var catalogPath string
+	for dir := root; ; dir = filepath.Dir(dir) {
+		candidate := filepath.Join(dir, "RenderingGen", "renderinggen", "internal", "motion", "catalog", "chronontemplate_catalog.v1.json")
+		if _, err := os.Stat(candidate); err == nil {
+			catalogPath = candidate
+			break
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			break
+		}
+	}
+	if catalogPath == "" {
+		t.Fatal("could not locate canonical ChrononTemplate motion catalog")
+	}
+	data, err := os.ReadFile(catalogPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var document struct {
+		Motions []struct {
+			ID       string `json:"id"`
+			Category string `json:"category"`
+			Tracks   []struct {
+				Property string `json:"property"`
+			} `json:"tracks"`
+		} `json:"motions"`
+	}
+	if err := json.Unmarshal(data, &document); err != nil {
+		t.Fatal(err)
+	}
+	catalogSet := map[string]bool{}
+	for _, motion := range document.Motions {
+		if motion.Category != "entity_caption_v1" || !poolSet[motion.ID] {
+			continue
+		}
+		catalogSet[motion.ID] = true
+		for _, track := range motion.Tracks {
+			switch track.Property {
+			case "opacity", "scale", "position_x", "position_y":
+			default:
+				t.Fatalf("selected caption motion %q uses unsupported/3D property %q", motion.ID, track.Property)
+			}
+		}
+	}
+	if !reflect.DeepEqual(catalogSet, poolSet) {
+		t.Fatalf("generated captions %v differ from certified entity_caption_v1 catalog %v", poolSet, catalogSet)
 	}
 }
 
@@ -588,8 +675,8 @@ func TestGeneratedImageMotionPoolMatchesCanonicalChrononCatalog(t *testing.T) {
 			t.Fatalf("selected image motion %d=%q, catalog=%q", i, selectedIDs[i], wantSelected[i])
 		}
 	}
-	if len(catalogPhraseIDs) != 108 || len(phraseMotionCandidates) != len(catalogPhraseIDs) {
-		t.Fatalf("catalog has %d phrase motions, callable pool has %d; want all 108", len(catalogPhraseIDs), len(phraseMotionCandidates))
+	if len(catalogPhraseIDs) != 113 || len(phraseMotionCandidates) != len(catalogPhraseIDs) {
+		t.Fatalf("catalog has %d phrase motions, callable pool has %d; want all 113", len(catalogPhraseIDs), len(phraseMotionCandidates))
 	}
 	callable := append([]string(nil), phraseMotionCandidates...)
 	sort.Strings(callable)
