@@ -6,12 +6,26 @@ indexing endpoints accept only compute inputs and return only embedding
 metadata to the Go caller.
 """
 
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, Field, field_validator
 
 
 class EmbedRequest(BaseModel):
     text: str
     type: str = "query"  # "query" per retrieval, "passage" per document indexing
+
+
+class BatchTextEmbedRequest(BaseModel):
+    texts: list[str] = Field(min_length=1, max_length=32)
+    type: str = "query"
+
+    @field_validator("texts")
+    @classmethod
+    def _validate_size(cls, value):
+        if any(not isinstance(text, str) or not text.strip() for text in value):
+            raise ValueError("texts must contain non-blank strings")
+        if any(len(text) > 100_000 for text in value):
+            raise ValueError("each text cannot exceed 100000 characters")
+        return value
 
 
 class PhashRequest(BaseModel):

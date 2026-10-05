@@ -74,10 +74,39 @@ import (
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/media/rustexec"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/nlp"
 	topicsourcecache "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/topicsourcecache"
 
 	"go.uber.org/zap"
 )
+
+// buildVisualNERBackend resolves one explicitly configured backend from the
+// shared platform registry. Both generated narration and legacy entity search
+// call this factory so they use the same selection policy without fallback.
+func buildVisualNERBackend(cfg *config.Config, log *zap.Logger) (scriptgen.NERBackend, error) {
+	if cfg == nil {
+		return nil, fmt.Errorf("build VisualNER backend: config is required")
+	}
+	registry, err := nlp.NewBackendRegistry(
+		cfg.External.VisualNERBackend,
+		cfg.External.RustVisualNERPath,
+		cfg.External.FfmpegPath,
+		cfg.External.SpacyNERURL,
+		log,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("build VisualNER backend registry: %w", err)
+	}
+	selected := strings.ToLower(strings.TrimSpace(cfg.External.VisualNERBackend))
+	if selected == "" {
+		selected = "rust"
+	}
+	backend, err := registry.Resolve(selected)
+	if err != nil {
+		return nil, fmt.Errorf("resolve VisualNER backend: %w", err)
+	}
+	return backend, nil
+}
 
 // buildScriptUseCases constructs the script-domain use-case cluster
 // consumed by the HTTP handler + the script.generate job handler.
@@ -107,6 +136,7 @@ func buildScriptUseCases(
 	*gencore.GenerateOneUseCase,
 	*usecase.GenerateManyUseCase,
 	*jobs.GenerateJobHandler,
+	error,
 ) {
 	engine := root.AI.ScriptEngine
 
@@ -116,19 +146,15 @@ func buildScriptUseCases(
 		oneUC.SetStockPrefetcher(stockPrefetcher)
 		log.Info("wireScriptFlow: script.generate stock prefetch wired")
 	}
-	if strings.TrimSpace(cfg.External.RustVisualNERPath) != "" {
-		visualNERExecutor := rustexec.NewExecutor(cfg.External.RustVisualNERPath, cfg.External.FfmpegPath, log)
-		visualNER, nerErr := rustexec.NewVisualNERAdapter(visualNERExecutor)
-		if nerErr != nil {
-			log.Warn("wireScriptFlow: batch VisualNER adapter unavailable", zap.Error(nerErr))
-		} else if enricher, enrichErr := scriptgen.NewSceneIRSegmentEnricher(visualNER); enrichErr != nil {
-			log.Warn("wireScriptFlow: batch SceneIR enricher unavailable", zap.Error(enrichErr))
-		} else {
-			oneUC.SetSegmentEnricher(enricher)
-			log.Info("wireScriptFlow: batch SceneIR/VisualNER enricher wired")
-		}
+	visualNER, nerErr := buildVisualNERBackend(cfg, log)
+	if nerErr != nil {
+		return nil, nil, nil, fmt.Errorf("wireScriptFlow: build NER backend: %w", nerErr)
+	}
+	if enricher, enrichErr := scriptgen.NewSceneIRSegmentEnricher(visualNER); enrichErr != nil {
+		return nil, nil, nil, fmt.Errorf("wireScriptFlow: build SceneIR enricher: %w", enrichErr)
 	} else {
-		log.Warn("wireScriptFlow: batch SceneIR/VisualNER enricher disabled (rust_visualner_path empty)")
+		oneUC.SetSegmentEnricher(enricher)
+		log.Info("wireScriptFlow: batch SceneIR/VisualNER enricher wired", zap.String("backend", strings.TrimSpace(cfg.External.VisualNERBackend)))
 	}
 	if cfg.External.RustMusclesPath != "" {
 		oneUC.SetAudioProcessor(rustexec.NewConfiguredVideoProcessor(cfg.External.RustMusclesPath, cfg.External.FfmpegPath, root.MediaExec.Policy, root.MediaExec.Profile, log))
@@ -164,7 +190,7 @@ func buildScriptUseCases(
 	// ── Generate job handler ────────────────────────────────────
 	genJobHandler := jobs.NewGenerateJobHandler(oneUC, manyUC, log)
 
-	return oneUC, manyUC, genJobHandler
+	return oneUC, manyUC, genJobHandler, nil
 }
 
 // wireScriptChildJobAuditP04 wires the P0 #4 per-item retry pattern:

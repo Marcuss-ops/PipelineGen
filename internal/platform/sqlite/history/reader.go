@@ -9,6 +9,7 @@ import (
 	"time"
 
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
+	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
 )
 
 type Reader struct{ jobs, obs *sql.DB }
@@ -161,4 +162,37 @@ func (r *Reader) GetRunReport(ctx context.Context, jobID string) (json.RawMessag
 	return json.RawMessage(report), nil
 }
 
+// GetScriptRunSnapshot reads the durable script checkpoint for the job. This
+// is intentionally independent from the broker result: at CORE_READY the
+// script result has already been checkpointed, while requested artifacts may
+// still be publishing and the broker job must remain RUNNING.
+func (r *Reader) GetScriptRunSnapshot(ctx context.Context, jobID string) (*appjobs.ScriptRunSnapshot, error) {
+	if strings.TrimSpace(jobID) == "" {
+		return nil, fmt.Errorf("get script run snapshot: job id is required")
+	}
+	var runID, payload string
+	err := r.obs.QueryRowContext(ctx, `SELECT run_id,workflow_payload_json FROM run_observability WHERE job_id=? AND job_type='script.generate' ORDER BY created_at DESC LIMIT 1`, jobID).Scan(&runID, &payload)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("read script run snapshot %s: %w", jobID, err)
+	}
+	var checkpoint struct {
+		Status       scriptgen.RunStatus `json:"status"`
+		CurrentStage scriptgen.Stage     `json:"current_stage"`
+		Result       json.RawMessage     `json:"result"`
+	}
+	if err := json.Unmarshal([]byte(payload), &checkpoint); err != nil {
+		return nil, fmt.Errorf("decode script run snapshot %s: %w", jobID, err)
+	}
+	return &appjobs.ScriptRunSnapshot{
+		RunID:        runID,
+		Status:       string(checkpoint.Status),
+		CurrentStage: string(checkpoint.CurrentStage),
+		Result:       checkpoint.Result,
+	}, nil
+}
+
 var _ appjobs.HistoryReader = (*Reader)(nil)
+var _ appjobs.ScriptRunReader = (*Reader)(nil)

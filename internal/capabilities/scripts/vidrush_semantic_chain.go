@@ -154,6 +154,12 @@ func (e *SceneIRSegmentEnricher) Enrich(ctx context.Context, plan *scriptpkg.Res
 	if err := validateVisualEntities(sourceForExtraction, entities); err != nil {
 		return scriptpkg.VidRushSegmentResult{}, fmt.Errorf("visualner contract: %w", err)
 	}
+	// All backends share one label-normalization pass before policy filtering,
+	// deduplication and projection. This keeps PER/ORG/LOC and backend-specific
+	// spellings from changing downstream behavior.
+	for i := range entities {
+		entities[i].Type = scriptpkg.EntityType(scriptpkg.NormalizeAnnotationType(string(entities[i].Type)))
+	}
 	if extraction.HasCategoryOnlyIncludes() {
 		filtered := make([]VisualEntity, 0, len(entities))
 		for _, entity := range entities {
@@ -162,13 +168,6 @@ func (e *SceneIRSegmentEnricher) Enrich(ctx context.Context, plan *scriptpkg.Res
 			}
 		}
 		entities = filtered
-	}
-	if extraction.HasCategoryOnlyIncludes() || extraction.EntityExtractionExplicitlyRequested() {
-		// Type aliases (METRIC/STATISTIC/QUANTITY) are allowed by the
-		// selection policy but must be canonical before projection/fanout.
-		for i := range entities {
-			entities[i].Type = scriptpkg.EntityType(scriptpkg.NormalizeAnnotationType(string(entities[i].Type)))
-		}
 	}
 	if !extraction.Includes(mediadomain.ExtractionIncludeImportantPhrases) &&
 		!extraction.Includes(mediadomain.ExtractionIncludeImportantWords) {

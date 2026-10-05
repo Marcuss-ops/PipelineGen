@@ -298,6 +298,8 @@ type RenderCompletionMetrics struct {
 	PollingSleep   time.Duration
 	PollInterval   time.Duration
 	PollCount      int
+	WaitStartedAt  time.Time
+	WaitFinishedAt time.Time
 }
 
 type FinalAudioReference struct {

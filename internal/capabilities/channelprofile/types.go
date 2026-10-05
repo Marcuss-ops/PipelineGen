@@ -59,8 +59,8 @@ type Profile struct {
 	// run (the animated IMPORTANT_PHRASE overlays). Empty means "keep the
 	// certified default pool"; every id must be a certified motion.
 	PhraseMotions []string `yaml:"phrase_motions,omitempty"`
-	// ImageMotions replaces the image-motion rotation pool for this channel.
-	// Empty means use the complete certified default pool.
+	// ImageMotions replaces the default ten-motion single-image rotation pool
+	// for this channel. Every id must still belong to the certified catalog.
 	ImageMotions []string `yaml:"image_motions,omitempty"`
 }
 

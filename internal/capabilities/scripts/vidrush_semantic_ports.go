@@ -20,15 +20,15 @@
 // are selected in the leaf package scripts/phrases, then grounded here; entity
 // fan-out helpers validate and project identities without NLP calls.
 //
-// There is deliberately NO model-owned phrase/NLP extraction port: phrase
-// selection is deterministic over the scene text (writer-owned weights +
-// lexicon), and named entities come from VisualNER. The former model-owned
-// extraction surface had zero production readers and was deleted rather than
-// left as a dead alternative to the deterministic path.
+// Named entities use the shared NERBackend contract below; editorial phrase
+// selection remains a separate deterministic surface over scene text and the
+// configured lexicon.
 package scriptgeneration
 
 import (
 	"context"
+	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediacert"
@@ -36,9 +36,8 @@ import (
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
-// VisualEntity is the source-grounded entity produced by the VisualNER
-// Rust crate. It mirrors rust/visualner::VisualEntity so the FFI adapter
-// can decode the crate's JSON output without translation.
+// VisualEntity is the common source-grounded entity returned by every NER
+// backend and projected through the scene pipeline.
 type VisualEntity struct {
 	Text     string               `json:"text"`
 	Type     scriptpkg.EntityType `json:"type"`
@@ -48,16 +47,73 @@ type VisualEntity struct {
 	Evidence string               `json:"evidence,omitempty"`
 }
 
-// VisualNERPort extracts source-grounded visual entities from a scene's
-// source text. The deterministic Rust crate (rust/visualner) is the
-// production implementation; the rule it enforces is NO EVIDENCE → NO ENTITY.
-type VisualNERPort interface {
+// NERBackend is the shared extraction contract for interchangeable named-
+// entity backends. Implementations return source-grounded UTF-8 byte spans;
+// the scene enricher owns the single validation/normalization/deduplication
+// path regardless of which backend is selected.
+type NERBackend interface {
 	Extract(ctx context.Context, language string, sourceText string, entityCount int) ([]VisualEntity, error)
 }
 
-// LocalStockResolverPort is the LOCAL FIRST PROVIDER SECOND resolver. The
-// stockintelligence.Service is the production implementation; it consults the
-// local Qdrant search + SQLite hydrate first and falls back to the provider
+// VisualNERPort is retained as the domain-specific name used by the scene
+// pipeline; it is the same contract as NERBackend, not a second interface.
+type VisualNERPort = NERBackend
+
+// VisualNERBackendRegistry contains the concrete backends available in one
+// composition. Selection is explicit and never falls back to another backend:
+// that keeps benchmark results and runtime behavior reproducible.
+type VisualNERBackendRegistry struct {
+	backends map[string]NERBackend
+}
+
+// NewVisualNERBackendRegistry validates and copies the available backend map.
+func NewVisualNERBackendRegistry(backends map[string]NERBackend) (*VisualNERBackendRegistry, error) {
+	if len(backends) == 0 {
+		return nil, fmt.Errorf("scriptgeneration: at least one NER backend is required")
+	}
+	registered := make(map[string]NERBackend, len(backends))
+	for name, backend := range backends {
+		key := strings.ToLower(strings.TrimSpace(name))
+		if key == "" || backend == nil {
+			return nil, fmt.Errorf("scriptgeneration: NER backend name and implementation are required")
+		}
+		if _, exists := registered[key]; exists {
+			return nil, fmt.Errorf("scriptgeneration: duplicate NER backend %q", key)
+		}
+		registered[key] = backend
+	}
+	return &VisualNERBackendRegistry{backends: registered}, nil
+}
+
+// Resolve selects a configured backend or returns an error. There is no
+// silent fallback because that would invalidate quality/performance results.
+func (r *VisualNERBackendRegistry) Resolve(name string) (NERBackend, error) {
+	if r == nil {
+		return nil, fmt.Errorf("scriptgeneration: NER backend registry is not configured")
+	}
+	key := strings.ToLower(strings.TrimSpace(name))
+	if key == "" {
+		return nil, fmt.Errorf("scriptgeneration: NER backend selection is required")
+	}
+	backend, ok := r.backends[key]
+	if !ok {
+		return nil, fmt.Errorf("scriptgeneration: NER backend %q is unavailable (registered: %s)", key, strings.Join(sortedNERBackendNames(r.backends), ", "))
+	}
+	return backend, nil
+}
+
+func sortedNERBackendNames(backends map[string]NERBackend) []string {
+	names := make([]string, 0, len(backends))
+	for name := range backends {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names
+}
+
+// LocalStockResolverPort is the LOCAL FIRST PROVIDER SECOND resolver.
+// The stockintelligence.Service is the production implementation; it consults
+// the local Qdrant search + SQLite hydrate first and falls back to the provider
 // only when local_candidates < threshold or best_score < minimum_quality.
 type LocalStockResolverPort interface {
 	Resolve(ctx context.Context, req stockintelligence.ResolveRequest) (stockintelligence.ResolveResult, error)

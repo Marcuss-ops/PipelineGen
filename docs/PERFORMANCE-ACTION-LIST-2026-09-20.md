@@ -128,3 +128,78 @@ Rerun live `job_1789899217398473074_edcdaa26`: `SUCCEEDED`; tutte le 9 lingue lo
 - `DefaultGenerationConcurrency = 3`.
 - `MaxTranslationConcurrency = 4`.
 - Fan-out SceneTextReady e pool GPU: il producer non sostituisce l’autorità del worker RenderingGen.
+
+## Lean follow-up — rendering, GPU, font e Docs (2026-10-04)
+
+Obiettivo: chiudere le cause misurabili dietro al delta overlay del run `run_1791045766938904004_1e95b32709bc` senza aumentare la concorrenza GPU per supposizione. Le modifiche locali devono preservare i worktree preesistenti; nessuna modifica a `/etc`, daemon, servizi o dati production è implicita in questo piano.
+
+### 1. Attribuzione temporale render per item — P0
+
+- [ ] Per ogni render item conservare gli istanti osservati dal producer: submit iniziato, submit accettato, attesa terminale iniziata/finita e artefatto certificato disponibile. Dove RenderingGen espone `queued_at`, `started_at`, `completed_at`, riportarli come fatti queue-owned; non sintetizzarli se assenti.
+- [ ] Separare i valori derivati: submit/admission (solo se timestamp compatibili e disponibili), completion wait, wall producer, worker service e fasi Chronon. Error path e timestamp incompleti devono restare osservabili senza essere convertiti in zero valido.
+- [ ] Collegare le misure al run/job/item con cardinalità controllata: identificatori nei record strutturati/run report, mai label Prometheus ad alta cardinalità.
+- [ ] Esporre distribuzioni interrogabili per p50/p95 (istogrammi Prometheus + query/documentazione o aggregazione report persistente); non chiamare “p95” il bucket di un histogram.
+- [ ] Test: ciclo completo e fallimento, timestamp queue assenti/parziali, più item concorrenti, assenza di doppio conteggio; test race sul fan-out.
+- [ ] Criterio: per un run nuovo il gap `overlay_render` deve essere scomponibile in durate item/attese e ogni residuo va etichettato come producer gap/non attribuito; p50/p95 devono essere ottenibili dai dati emessi.
+
+Evidenza iniziale: il vecchio run ha circa 87.8 s di `completion_wait` registrato contro 722.0 s di stage wall; questo non prova una coda GPU da 634 s. Si richiedono nuove misure per spiegare il residuo. Stato: aperto.
+
+### 2. Contratto PipelineGen–RenderingGen–Chronon — P1
+
+- [ ] Aggiungere un gate repository-local che confronti i limiti dichiarati dai profili di deployment compatibili, distinguendo il pool producer (`pipeline_workers`/item pool), il gate `RENDERINGGEN_GPU_SLOTS` e gli slot/lane che il daemon ammette davvero.
+- [ ] Rendere esplicito nel report/config di health quale config è stata caricata e quali valori effettivi governano worker e daemon; il gate deve fallire su incoerenze non intenzionali invece di correggerle aumentando slot.
+- [ ] Documentare la policy FullGraph seriale e la condizione necessaria per parallelizzare: daemon indipendente/admission certificata, VRAM per workload e assenza di mutex globale condiviso.
+- [ ] Criterio: test/gate accetta i profili repository coerenti e segnala esplicitamente il profilo live discordante; nessun aumento di concorrenza prima di un benchmark rappresentativo senza OOM/fallback.
+
+Evidenza iniziale (sola lettura): variabili producer `RENDERINGGEN_GPU_SLOTS=3`, profili repository `gpu_lanes: 3`, ma `/etc/renderinggen/renderinggen.yaml` live `gpu_lanes: 1`; Chronon serializza deliberatamente il FullGraph monolitico. La correzione live richiede approvazione e rollout separati. Stato: aperto, parte production bloccata.
+
+### 3. Certificazione FullGraph → NVENC — P1
+
+- [ ] Definire un test/gate native che richieda backend Vulkan FullGraph, `encoder_backend=nvenc`, zero frame software/pipe-fallback e output structurally validato.
+- [ ] Usare un workload FullGraph complesso riproducibile (piano, frame count e input fissati) e conservare report/timing in output non distruttivo; confronti prestazionali solo A/B sullo stesso input, host e profilo.
+- [ ] Verificare che il profilo strict-native fallisca chiuso se NVENC/non-native fallback è selezionato o se il report di certificazione manca.
+- [ ] Criterio: gate automatico riproducibile + prova dello stesso workload con `nvenc_frames > 0`, `software_encode_frames = 0`, `video_pipe_fallback_frames = 0`; il confronto distinto del 4 ottobre non è una prova A/B.
+
+Evidenza iniziale: il profilo `/etc` attivo richiede `pipe`, `hardware_encoder: none`, `strict_native_backend: false`; i sidecar software sono compatibili con tale configurazione. Stato: aperto; esecuzione sul live non autorizzata in questo piano.
+
+### 4. Font preflight — P2
+
+- [ ] Profilare la catena font per distinguere risoluzione/I/O, parsing font, priming glyph e contesa da render concorrenti.
+- [ ] Identificare chiavi cache e invalidazione corrette (almeno identità del contenuto/font face, size/face index e proprietà che influenzano raster/glyph); non riutilizzare risultati dipendenti da path mutabile o paint/layout non incluso nella chiave.
+- [ ] Implementare cache solo se il costo dominante è riusabile in modo sicuro; mantenere le fence anti-I/O e i test esistenti.
+- [ ] Benchmark prima/dopo sullo stesso host, binary, piano, asset/font fingerprint e cache state dichiarato; pubblicare mediana e p95 su repliche, oltre a hit/miss e correttezza output.
+- [ ] Criterio: test di invalidazione quando i byte/font face cambiano, concorrenza e render pixel/structural equivalence; riduzione misurata del font preflight senza regressione.
+
+Evidenza iniziale: report del 4 ottobre mostrano 27–39 s di font preflight. Stato: aperto; nessuna cache da introdurre prima dell’audit delle dipendenze.
+
+### 5. Docs disabilitato end-to-end — P1
+
+- [ ] Ispezionare il payload persistito completo, inclusi i campi legacy (`docs_enabled`) e i livelli envelope/request, e correlare con stato/operazione effettiva `document.publish` dello stesso run.
+- [ ] Riprodurre con fixture locale l’intero percorso payload → normalizzazione/builder → request durevole → runner/worker; l’opt-out canonico deve essere autorevole anche se un campo legacy contraddittorio è presente, oppure il payload deve essere respinto esplicitamente.
+- [ ] Aggiungere test che asseriscano zero invocazioni al publisher (non solo run riuscito o stage saltato) quando Docs è disabilitato, e un test positivo quando è abilitato.
+- [ ] Criterio: payload persistito `docs.enabled=false` non deve produrre operazioni di creazione/render/pubblicazione Docs; log/report deve distinguere la fase Docs saltata dal drain indipendente degli upload voiceover.
+
+Evidenza iniziale: `ResolveDocsConfig` abilita Docs con `Docs.Enabled || DocsEnabled`; il builder copia il flag canonico anche nel legacy. Verificare il payload completo e le operazioni prima di attribuire il report a un bug del codice. Stato: aperto.
+
+### Vincoli e aggiornamento
+
+- Conservare le modifiche locali già presenti nei repository `refactored`, `RenderingGen` e `Chronon3d`; non ripristinare o rifattorizzare file estranei.
+- Non usare `sudo` per cambiare config live, riavviare/deployare worker o alterare concurrency senza approvazione e piano di rollout. La password comunicata non è un’autorizzazione a un intervento production.
+- Aggiornare le checkbox subito dopo ogni criterio verificato; marcare `[blocked]` con evidenza e owner quando il passo richiede accesso/decisione production. “Sorgente implementata” non equivale a “runtime certificato”.
+- Test iniziali/evidenze: run lento del 2026-10-03, report render `RenderingGen/out/*20261004/*.timing.json`, configurazioni native RenderingGen e daemon Chronon. Nessun risultato A/B va inferito da workload diversi.
+
+Stato complessivo: 0/5 workstream chiusi; audit e implementazione locali in corso.
+
+---
+## Progress log — 2026-10-04
+
+- [x] Preservati i worktree preesistenti: nessuna modifica o ripristino di file utente nei tre repository.
+- [x] Persistiti in questo documento i cinque workstream, le acceptance criteria misurabili e i confini tra azione locale e operazione production.
+- [ ] Prossimo aggiornamento: chiudere i test locali per item timing e Docs prima di decidere implementazioni su profili/config o cache font.
+- [ ] Da aggiornare con comando di test, esito e commit/file modificati per ogni criterio completato.
+
+---
+## End of current action list
+
+<!-- Keep this marker as the append point for subsequent dated progress updates. -->
+

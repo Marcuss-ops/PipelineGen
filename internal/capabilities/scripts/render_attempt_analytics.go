@@ -15,6 +15,7 @@ package scriptgeneration
 import (
 	"context"
 	"encoding/json"
+	"time"
 
 	capoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
 )
@@ -39,6 +40,20 @@ type RenderAttemptAnalytics struct {
 	// CompletionWaitMS, which is client-side queue observation time.
 	RenderMS int64 `json:"render_ms,omitempty"`
 	EncodeMS int64 `json:"encode_ms,omitempty"`
+
+	// Producer and queue lifecycle timestamps are optional observed facts.
+	// Pointers preserve the distinction between "timestamp absent" and a
+	// fabricated zero time; consumers must only derive durations when both
+	// endpoints are present and ordered.
+	SubmitStartedAt     *time.Time `json:"submit_started_at,omitempty"`
+	SubmitAcceptedAt    *time.Time `json:"submit_accepted_at,omitempty"`
+	WaitStartedAt       *time.Time `json:"wait_started_at,omitempty"`
+	WaitFinishedAt      *time.Time `json:"wait_finished_at,omitempty"`
+	QueueQueuedAt       *time.Time `json:"queue_queued_at,omitempty"`
+	QueueStartedAt      *time.Time `json:"queue_started_at,omitempty"`
+	QueueCompletedAt    *time.Time `json:"queue_completed_at,omitempty"`
+	ArtifactAvailableAt *time.Time `json:"artifact_available_at,omitempty"`
+	Outcome             string     `json:"outcome,omitempty"` // bounded: success | failure
 
 	// Queue observation metrics. PollingSleepMS is the time spent sleeping
 	// between status polls; it quantifies polling-induced latency directly

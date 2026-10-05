@@ -176,6 +176,96 @@ func (e *HTTPTextEmbedder) Embed(ctx context.Context, text string) (coreasset.Em
 	}, nil
 }
 
+// EmbedBatch posts an ordered group of query texts to the sidecar's
+// /embed_batch endpoint. The entire response is validated against the same
+// canonical E5 contract as Embed before any result is returned.
+func (e *HTTPTextEmbedder) EmbedBatch(ctx context.Context, texts []string) ([]coreasset.EmbeddingResult, error) {
+	if len(texts) == 0 {
+		return []coreasset.EmbeddingResult{}, nil
+	}
+	if len(texts) > 32 {
+		return nil, fmt.Errorf("embedder batch contains %d texts, maximum is 32", len(texts))
+	}
+	for i, text := range texts {
+		if text == "" {
+			return nil, fmt.Errorf("embedder batch text %d is empty", i)
+		}
+	}
+	payload, err := json.Marshal(map[string]any{"texts": texts, "type": "query"})
+	if err != nil {
+		return nil, fmt.Errorf("marshal batch embedder request: %w", err)
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost,
+		e.serverURL+"/embed_batch", bytes.NewReader(payload))
+	if err != nil {
+		return nil, fmt.Errorf("create batch embedder request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := e.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("batch embedder request failed: %w", err)
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("read batch embedder response: %w", err)
+	}
+	if resp.StatusCode == http.StatusNotFound {
+		// Rolling upgrades may reach an older sidecar before /embed_batch
+		// is deployed. Preserve availability through the canonical endpoint.
+		results := make([]coreasset.EmbeddingResult, len(texts))
+		for i, text := range texts {
+			result, err := e.Embed(ctx, text)
+			if err != nil {
+				return nil, fmt.Errorf("batch endpoint unavailable; embed text %d through /embed: %w", i, err)
+			}
+			results[i] = result
+		}
+		return results, nil
+	}
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("batch embedder returned status %d: %s", resp.StatusCode, string(body))
+	}
+
+	var envelope struct {
+		Embeddings   [][]float64 `json:"embeddings"`
+		Dimensions   int         `json:"dimensions"`
+		Count        int         `json:"count"`
+		Model        string      `json:"model"`
+		ModelVersion string      `json:"model_version"`
+		ContractHash string      `json:"contract_hash"`
+		Error        string      `json:"error"`
+	}
+	if err := json.Unmarshal(body, &envelope); err != nil {
+		return nil, fmt.Errorf("parse batch embedder response: %w", err)
+	}
+	if envelope.Error != "" {
+		return nil, fmt.Errorf("sidecar batch error: %s", envelope.Error)
+	}
+	if envelope.Count != len(texts) || len(envelope.Embeddings) != len(texts) {
+		return nil, fmt.Errorf("batch embedding count mismatch: declared=%d actual=%d requested=%d", envelope.Count, len(envelope.Embeddings), len(texts))
+	}
+	if err := validateCanonicalTextEnvelope(envelope.Model, envelope.ModelVersion, envelope.ContractHash, envelope.Dimensions); err != nil {
+		return nil, err
+	}
+
+	results := make([]coreasset.EmbeddingResult, len(envelope.Embeddings))
+	for i, embedding := range envelope.Embeddings {
+		if len(embedding) != envelope.Dimensions {
+			return nil, fmt.Errorf("batch embedding %d dimension mismatch: declared %d, actual %d", i, envelope.Dimensions, len(embedding))
+		}
+		vector := make([]float32, len(embedding))
+		for j, value := range embedding {
+			vector[j] = float32(value)
+		}
+		results[i] = coreasset.EmbeddingResult{
+			Vector: vector, Dimensions: envelope.Dimensions, Model: envelope.Model,
+			ModelVersion: envelope.ModelVersion, ContractHash: envelope.ContractHash,
+		}
+	}
+	return results, nil
+}
+
 func validateCanonicalTextEnvelope(modelID, revision, contractHash string, dimensions int) error {
 	got := coreembedding.Contract{
 		ModelID:       modelID,

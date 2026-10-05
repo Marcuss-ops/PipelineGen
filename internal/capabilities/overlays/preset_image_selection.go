@@ -37,6 +37,12 @@ func CertifiedImageMotions() []string {
 	return append([]string(nil), imageMotionCandidates...)
 }
 
+// CertifiedSingleImageMotions returns the curated animation pool used by
+// automatic single-image overlays and channel-profile overrides.
+func CertifiedSingleImageMotions() []string {
+	return append([]string(nil), singleImageMotionCandidates...)
+}
+
 // CertifiedEntityCaptionMotions returns the curated non-3D caption motion pool.
 // Callers receive a copy so the producer's vocabulary cannot be mutated.
 func CertifiedEntityCaptionMotions() []string {
@@ -168,7 +174,7 @@ func EntityImageParams(width, height int) map[string]any {
 }
 
 func selectImageMotion(jobID, sceneID string, ordinal int, pool []string) string {
-	candidates := imageMotionCandidates
+	candidates := singleImageMotionCandidates
 	if len(pool) > 0 {
 		candidates = pool
 	}

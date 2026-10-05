@@ -105,6 +105,7 @@ func renderDynamicMapVideo(ctx context.Context, plan capoverlay.OverlayPlan) (st
 	}
 	inputPath := filepath.Join(tmpDir, "map.json")
 	outputPath := filepath.Join(tmpDir, "map.mp4")
+	summaryPath := filepath.Join(tmpDir, "map.telemetry.json")
 	pins := make([]map[string]any, 0, len(plan.Items[0].Map.Pins))
 	for _, pin := range plan.Items[0].Map.Pins {
 		pins = append(pins, map[string]any{"id": pin.ID, "label": pin.Label, "latitude": pin.Latitude, "longitude": pin.Longitude, "scope": pin.Scope})
@@ -142,9 +143,11 @@ func renderDynamicMapVideo(ctx context.Context, plan capoverlay.OverlayPlan) (st
 		_ = os.RemoveAll(tmpDir)
 		return "", fmt.Errorf("write map render input: %w", err)
 	}
-	cmd := exec.CommandContext(ctx, "/usr/bin/python3", scriptPath, "--input", inputPath, "--output", outputPath)
-	var output strings.Builder
+	cmd := exec.CommandContext(ctx, "/usr/bin/python3", scriptPath, "--input", inputPath,
+		"--output", outputPath, "--summary-output", summaryPath)
+	var output boundedMapRenderOutput
 	cmd.Stdout, cmd.Stderr = &output, &output
+	renderStarted := time.Now()
 	if err := cmd.Run(); err != nil {
 		_ = os.RemoveAll(tmpDir)
 		return "", fmt.Errorf("Chronon map renderer failed: %w: %s", err, strings.TrimSpace(output.String()))
@@ -153,7 +156,118 @@ func renderDynamicMapVideo(ctx context.Context, plan capoverlay.OverlayPlan) (st
 		_ = os.RemoveAll(tmpDir)
 		return "", fmt.Errorf("Chronon map renderer produced no video: %w: %s", err, strings.TrimSpace(output.String()))
 	}
+	var summary struct {
+		Schema     string `json:"schema"`
+		Frames     int    `json:"frames"`
+		Dimensions struct {
+			Width  int `json:"width"`
+			Height int `json:"height"`
+		} `json:"dimensions"`
+		FPS struct {
+			Num int `json:"num"`
+			Den int `json:"den"`
+		} `json:"fps"`
+		RendererWallS        float64 `json:"renderer_wall_s"`
+		FramePipelineS       float64 `json:"frame_pipeline_s"`
+		RenderEncodeWallS    float64 `json:"render_encode_wall_s"`
+		PostFrameTailS       float64 `json:"post_frame_tail_s"`
+		EngineFallbackFrames int     `json:"engine_fallback_frames"`
+		OutputBytes          int64   `json:"output_bytes"`
+		GateMS               float64 `json:"gate_ms"`
+		Tile                 struct {
+			DiskCacheHits           int     `json:"tile_disk_cache_hits"`
+			DiskCacheMisses         int     `json:"tile_disk_cache_misses"`
+			NetworkFetches          int     `json:"tile_network_fetches"`
+			Fallbacks               int     `json:"tile_fallbacks"`
+			BytesDownloaded         int64   `json:"tile_bytes_downloaded"`
+			FetchMS                 float64 `json:"tile_fetch_ms"`
+			PrefetchMS              float64 `json:"prefetch_ms"`
+			PrefetchTilesRequested  int     `json:"prefetch_tiles_requested"`
+			PrefetchTilesMemoryHits int     `json:"prefetch_tiles_memory_hits"`
+			LateFetches             int     `json:"late_tile_fetches"`
+		} `json:"tile"`
+		Plates struct {
+			PrepareMS       float64 `json:"prepare_ms"`
+			ComposeMS       float64 `json:"plate_compose_ms"`
+			PlateCount      int     `json:"plate_count"`
+			PlateBytes      int64   `json:"plate_bytes"`
+			RequiredTiles   int     `json:"required_tile_count"`
+			PrefetchFetched int     `json:"prefetch_tiles_fetched"`
+			MemoryHits      int     `json:"prefetch_tiles_memory_hits"`
+		} `json:"plates"`
+	}
+	summaryBytes, err := os.ReadFile(summaryPath)
+	if err != nil {
+		return "", fmt.Errorf("read Chronon map telemetry summary: %w: %s", err, strings.TrimSpace(output.String()))
+	}
+	if err := json.Unmarshal(summaryBytes, &summary); err != nil {
+		return "", fmt.Errorf("decode Chronon map telemetry summary: %w", err)
+	}
+	if summary.Schema != "chronon.dynamic-map-telemetry.v1" || summary.Frames < 2 || summary.OutputBytes <= 0 {
+		return "", fmt.Errorf("Chronon map telemetry summary violates schema/output invariants: schema=%q frames=%d bytes=%d",
+			summary.Schema, summary.Frames, summary.OutputBytes)
+	}
+	if summary.Dimensions.Width <= 0 || summary.Dimensions.Height <= 0 || summary.FPS.Num <= 0 || summary.FPS.Den <= 0 ||
+		summary.Tile.DiskCacheHits+summary.Tile.DiskCacheMisses == 0 ||
+		summary.Plates.RequiredTiles == 0 || summary.Plates.PlateCount == 0 ||
+		summary.Plates.PrepareMS < 0 || summary.Plates.ComposeMS < 0 || summary.GateMS < 0 ||
+		summary.FramePipelineS <= 0 || summary.RenderEncodeWallS <= 0 || summary.OutputBytes <= 0 {
+		return "", fmt.Errorf("Chronon map telemetry summary is missing required telemetry field")
+	}
+	if summary.Dimensions.Width != plan.Width || summary.Dimensions.Height != plan.Height ||
+		summary.FPS.Num != plan.FPSNum || summary.FPS.Den != plan.FPSDen {
+		return "", fmt.Errorf("Chronon map telemetry media contract mismatch: dimensions=%dx%d fps=%d/%d, want %dx%d fps=%d/%d",
+			summary.Dimensions.Width, summary.Dimensions.Height, summary.FPS.Num, summary.FPS.Den,
+			plan.Width, plan.Height, plan.FPSNum, plan.FPSDen)
+	}
+	if summary.Tile.DiskCacheMisses != summary.Tile.NetworkFetches+summary.Tile.Fallbacks {
+		return "", fmt.Errorf("Chronon map telemetry cache/fetch counters do not balance: hits=%d misses=%d downloads=%d fallbacks=%d",
+			summary.Tile.DiskCacheHits, summary.Tile.DiskCacheMisses, summary.Tile.NetworkFetches, summary.Tile.Fallbacks)
+	}
+	if summary.Plates.RequiredTiles != summary.Plates.PrefetchFetched+summary.Plates.MemoryHits ||
+		summary.Tile.PrefetchTilesRequested != summary.Plates.RequiredTiles ||
+		summary.Tile.PrefetchTilesMemoryHits != summary.Plates.MemoryHits {
+		return "", fmt.Errorf("Chronon map telemetry prefetch coverage mismatch: required=%d fetched=%d plate_hits=%d requested=%d tile_hits=%d",
+			summary.Plates.RequiredTiles, summary.Plates.PrefetchFetched, summary.Plates.MemoryHits,
+			summary.Tile.PrefetchTilesRequested, summary.Tile.PrefetchTilesMemoryHits)
+	}
+	if summary.EngineFallbackFrames != 0 || summary.Tile.Fallbacks != 0 || summary.Tile.LateFetches != 0 {
+		return "", fmt.Errorf("Chronon map has unapproved fallback work: engine_frames=%d tile_fallbacks=%d late_fetches=%d",
+			summary.EngineFallbackFrames, summary.Tile.Fallbacks, summary.Tile.LateFetches)
+	}
+	log.Printf("Chronon dynamic map ready: frames=%d tiles(cache_hit=%d cache_miss=%d downloaded=%d fallback=%d late=%d fetch_ms=%.1f prefetch_ms=%.1f) plates(count=%d bytes=%d compose_ms=%.1f prepare_ms=%.1f required_tiles=%d prefetched=%d) frames_s=%.2f encode_wall_s=%.2f encode_tail_s=%.2f output_bytes=%d process_wall_s=%.2f",
+		summary.Frames, summary.Tile.DiskCacheHits, summary.Tile.DiskCacheMisses,
+		summary.Tile.NetworkFetches, summary.Tile.Fallbacks, summary.Tile.LateFetches,
+		summary.Tile.FetchMS, summary.Tile.PrefetchMS, summary.Plates.PlateCount,
+		summary.Plates.PlateBytes, summary.Plates.ComposeMS, summary.Plates.PrepareMS,
+		summary.Plates.RequiredTiles, summary.Plates.PrefetchFetched,
+		summary.FramePipelineS, summary.RenderEncodeWallS, summary.PostFrameTailS,
+		summary.OutputBytes, time.Since(renderStarted).Seconds())
 	return outputPath, nil
+}
+
+// boundedMapRenderOutput caps retained child-process logs while keeping the
+// most recent diagnostics. The machine-readable summary is written separately.
+type boundedMapRenderOutput struct {
+	mu   sync.Mutex
+	data []byte
+}
+
+func (b *boundedMapRenderOutput) Write(p []byte) (int, error) {
+	const maxBytes = 64 * 1024
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.data = append(b.data, p...)
+	if len(b.data) > maxBytes {
+		b.data = append([]byte(nil), b.data[len(b.data)-maxBytes:]...)
+	}
+	return len(p), nil
+}
+
+func (b *boundedMapRenderOutput) String() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return string(b.data)
 }
 
 // randomMapAnimation selects one runtime presentation for each generated map.
@@ -415,27 +529,44 @@ func (e *QueueRenderEnqueuer) enqueueChrononPlan(ctx context.Context, plan capov
 		Assets:      assets,
 	}
 
-	if err := e.client.Submit(ctx, job); err != nil {
-		if e.freshRender {
-			return RenderReference{}, fmt.Errorf("chronon queue fresh render submit failed: %w", err)
-		}
-		if errors.Is(err, ErrJobExists) {
-			// The re-arm decision is owned by RearmFailedRenderJob (the same
-			// helper the clip.render executor uses), and it fails closed when the
-			// job is FAILED and cannot be re-armed.
-			if rearmErr := RearmFailedRenderJob(ctx, e.client, plan.PlanID); rearmErr != nil {
-				return RenderReference{}, fmt.Errorf("chronon queue render: %w", rearmErr)
+	submitStartedAt := time.Now()
+	submitErr := e.client.Submit(ctx, job)
+	if submitErr != nil {
+		if e.freshRender || !errors.Is(submitErr, ErrJobExists) {
+			message := "chronon queue render submit failed"
+			if e.freshRender {
+				message = "chronon queue fresh render submit failed"
 			}
-		} else {
-			return RenderReference{}, fmt.Errorf("chronon queue render submit failed: %w", err)
+			recordErr := e.recordQueueAttempt(ctx, jobID, plan, metadata, RenderCompletionMetrics{}, submitStartedAt, time.Time{}, nil, time.Time{}, "failure")
+			return RenderReference{}, errors.Join(fmt.Errorf("%s: %w", message, submitErr), recordErr)
+		}
+		// The re-arm decision is owned by RearmFailedRenderJob (the same
+		// helper the clip.render executor uses), and it fails closed when the
+		// job is FAILED and cannot be re-armed.
+		if rearmErr := RearmFailedRenderJob(ctx, e.client, plan.PlanID); rearmErr != nil {
+			recordErr := e.recordQueueAttempt(ctx, jobID, plan, metadata, RenderCompletionMetrics{}, submitStartedAt, time.Time{}, nil, time.Time{}, "failure")
+			return RenderReference{}, errors.Join(fmt.Errorf("chronon queue render: %w", rearmErr), recordErr)
 		}
 	}
-
+	submitAcceptedAt := time.Now()
 	done, wait, err := e.waitForCompletion(ctx, jobID)
 	if err != nil {
-		return RenderReference{}, err
+		observeCompletionWait(wait, renderOutcomeFailure)
+		recordErr := e.recordQueueAttempt(ctx, jobID, plan, metadata, wait, submitStartedAt, submitAcceptedAt, &done, time.Time{}, "failure")
+		return RenderReference{}, errors.Join(err, recordErr)
 	}
-	postRender := func(postCtx context.Context) error {
+	observeCompletionWait(wait, renderOutcomeSuccess)
+	artifactAvailableAt := time.Now()
+	postRender := func(postCtx context.Context) (postErr error) {
+		defer func() {
+			if e.recorder == nil {
+				return
+			}
+			recordErr := e.recordQueueAttempt(postCtx, jobID, plan, metadata, wait, submitStartedAt, submitAcceptedAt, &done, artifactAvailableAt, renderOutcomeSuccess)
+			if recordErr != nil {
+				postErr = errors.Join(postErr, fmt.Errorf("record render attempt analytics: %w", recordErr))
+			}
+		}()
 		if e.publisher != nil {
 			if done.Artifact == nil || done.Artifact.SHA256 == "" || done.Artifact.SizeBytes <= 0 || done.Artifact.URL == "" {
 				return fmt.Errorf("render job %s completed without certified artifact", jobID)
@@ -473,23 +604,6 @@ func (e *QueueRenderEnqueuer) enqueueChrononPlan(ctx context.Context, plan capov
 			}
 			if err := e.publisher.PublishOverlay(postCtx, publication, done.Artifact); err != nil {
 				return fmt.Errorf("publish overlay artifact to Drive: %w", err)
-			}
-		}
-		if e.recorder != nil {
-			// attempt_id is the analytics idempotency key: it must be the real
-			// queue job id. In fresh mode that is the unique per-attempt identity,
-			// so two renders of the same plan record two rows instead of upsert-
-			// colliding on the plan id.
-			// For the production per-item pool the item correlation is the child
-			// plan's single item: overwrite that field with the item-aware
-			// metadata so the analytics row answers "which overlay" rather than
-			// "which plan carried one item".
-			attempt := BuildRenderAttemptAnalyticsWithWait(jobID, plan, done.Artifact, wait)
-			if metadata != nil && metadata.ItemID != "" {
-				attempt.ItemID = metadata.ItemID
-			}
-			if err := e.recorder.RecordAttempt(postCtx, attempt); err != nil {
-				return fmt.Errorf("record render attempt analytics: %w", err)
 			}
 		}
 		return nil

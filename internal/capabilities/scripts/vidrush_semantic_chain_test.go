@@ -152,6 +152,25 @@ func TestSceneIRSegmentEnricherFailsClosedBeforeVisualNER(t *testing.T) {
 	require.Zero(t, ner.calls, "an invalid canonical segment must never reach VisualNER")
 }
 
+func TestValidateVisualEntitiesRejectsInvalidOffsetsAndEvidence(t *testing.T) {
+	for _, entity := range []VisualEntity{
+		{Text: "Tesla", Start: -1, End: 4, Evidence: "Tesla"},
+		{Text: "Tesla", Start: 5, End: 4, Evidence: "Tesla"},
+		{Text: "Tesla", Start: 0, End: 99, Evidence: "Tesla"},
+		{Text: "Tesla", Start: 0, End: 5, Evidence: "Elon!"},
+		{Text: "Elon", Start: 0, End: 5, Evidence: "Elon!"},
+	} {
+		require.Error(t, validateVisualEntities("Tesla", []VisualEntity{entity}), "entity must be rejected: %+v", entity)
+	}
+}
+
+func TestValidateVisualEntitiesAllowsUTF8ByteOffsets(t *testing.T) {
+	source := "😀 Tesla."
+	start := strings.Index(source, "Tesla")
+	entity := VisualEntity{Text: "Tesla", Start: start, End: start + len("Tesla"), Evidence: "Tesla"}
+	require.NoError(t, validateVisualEntities(source, []VisualEntity{entity}))
+}
+
 func TestNormalizeVisualPersonNameRemovesSentenceContext(t *testing.T) {
 	for input, want := range map[string]string{
 		"While Dolly Parton's": "Dolly Parton",

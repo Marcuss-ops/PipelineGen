@@ -40,9 +40,9 @@
 #   phrase_motions    → render-safe motions (overlays.CertifiedPhraseMotions):
 #                       empty = all 107 certified phrase motions; a non-empty
 #                       list is an explicit rotation override.
-#   image_motions     → certified layer-only image motions; empty = all 32
-#                       compatible image motions (18 Overlay V3/2.5D + 14
-#                       Editorial Image V1). Recipe/stack motions remain opt-in.
+#   image_motions     → certified layer-only image motions; empty = the
+#                       curated ten-motion single-image default. A non-empty
+#                       list explicitly replaces that default.
 #   sound_effects[].gain_db must be <= 0 dB (the master mix owns the level)
 #   font: only Montserrat-Bold and Poppins-Bold ship as files; any other
 #         family name projects onto one of those two (same rule as

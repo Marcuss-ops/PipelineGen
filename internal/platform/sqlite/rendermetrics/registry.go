@@ -31,6 +31,13 @@ func New(db *sql.DB) (*Registry, error) {
 
 var _ scriptgen.RenderAttemptRecorder = (*Registry)(nil)
 
+func formatOptionalTime(value *time.Time) any {
+	if value == nil || value.IsZero() {
+		return nil
+	}
+	return value.UTC().Format(time.RFC3339Nano)
+}
+
 // RecordAttempt upserts one render-attempt analytics row. It fails closed on a
 // missing attempt identity; it never silently succeeds as a no-op.
 func (r *Registry) RecordAttempt(ctx context.Context, attempt scriptgen.RenderAttemptAnalytics) error {
@@ -43,6 +50,8 @@ func (r *Registry) RecordAttempt(ctx context.Context, attempt scriptgen.RenderAt
 	_, err := r.db.ExecContext(ctx, `
 		INSERT INTO render_attempt_analytics (
 			attempt_id, job_id, item_id,
+			submit_started_at, submit_accepted_at, wait_started_at, wait_finished_at,
+			queue_queued_at, queue_started_at, queue_completed_at, artifact_available_at, outcome,
 			phrase_count, word_count, number_count, image_count, leak_count,
 			render_ms, encode_ms,
 			completion_wait_ms, polling_sleep_ms, polling_interval_ms, poll_count,
@@ -53,10 +62,19 @@ func (r *Registry) RecordAttempt(ctx context.Context, attempt scriptgen.RenderAt
 			metrics_json, chronon_telemetry,
 			chronon_timing_storage_key, chronon_timing_url, chronon_timing_sha256, chronon_timing_size_bytes, chronon_timing_content_type,
 			recorded_at
-		) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+		) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
 		ON CONFLICT(attempt_id) DO UPDATE SET
 			job_id = excluded.job_id,
 			item_id = excluded.item_id,
+			submit_started_at = excluded.submit_started_at,
+			submit_accepted_at = excluded.submit_accepted_at,
+			wait_started_at = excluded.wait_started_at,
+			wait_finished_at = excluded.wait_finished_at,
+			queue_queued_at = excluded.queue_queued_at,
+			queue_started_at = excluded.queue_started_at,
+			queue_completed_at = excluded.queue_completed_at,
+			artifact_available_at = excluded.artifact_available_at,
+			outcome = excluded.outcome,
 			phrase_count = excluded.phrase_count,
 			word_count = excluded.word_count,
 			number_count = excluded.number_count,
@@ -102,6 +120,15 @@ func (r *Registry) RecordAttempt(ctx context.Context, attempt scriptgen.RenderAt
 		attempt.AttemptID,
 		attempt.JobID,
 		attempt.ItemID,
+		formatOptionalTime(attempt.SubmitStartedAt),
+		formatOptionalTime(attempt.SubmitAcceptedAt),
+		formatOptionalTime(attempt.WaitStartedAt),
+		formatOptionalTime(attempt.WaitFinishedAt),
+		formatOptionalTime(attempt.QueueQueuedAt),
+		formatOptionalTime(attempt.QueueStartedAt),
+		formatOptionalTime(attempt.QueueCompletedAt),
+		formatOptionalTime(attempt.ArtifactAvailableAt),
+		attempt.Outcome,
 		attempt.Content.Phrases,
 		attempt.Content.Words,
 		attempt.Content.Numbers,

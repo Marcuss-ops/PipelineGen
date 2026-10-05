@@ -3,6 +3,7 @@ package scriptgeneration
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"testing"
 	"time"
 
@@ -176,4 +177,53 @@ func (f *fakeAttemptRecorder) RecordAttempt(_ context.Context, a RenderAttemptAn
 	}
 	f.recorded = append(f.recorded, a)
 	return nil
+}
+
+func TestQueueAttemptRecorderPreservesObservedAndMissingTimes(t *testing.T) {
+	recorder := &fakeAttemptRecorder{}
+	enqueuer := &QueueRenderEnqueuer{recorder: recorder}
+	started := time.Date(2026, 10, 4, 12, 0, 0, 0, time.UTC)
+	accepted := started.Add(25 * time.Millisecond)
+	waitStarted := accepted.Add(time.Second)
+	waitFinished := waitStarted.Add(3 * time.Second)
+	queued := accepted.Add(-time.Millisecond)
+	queueStarted := queued.Add(1500 * time.Millisecond)
+	completed := queueStarted.Add(500 * time.Millisecond)
+	job := &RenderQueueJob{ID: "queue-1", QueuedAt: queued, StartedAt: queueStarted, CompletedAt: completed}
+	plan := capoverlay.OverlayPlan{PlanID: "plan-1", Items: []capoverlay.OverlayItem{{ID: "item-7", TemplateID: "IMPORTANT_PHRASE"}}}
+
+	if err := enqueuer.recordQueueAttempt(context.Background(), "queue-1", plan, &overlayItemPublicationMetadata{ItemID: "item-7"}, RenderCompletionMetrics{
+		CompletionWait: 3 * time.Second,
+		WaitStartedAt:  waitStarted,
+		WaitFinishedAt: waitFinished}, started, accepted, job, time.Time{}, "failure"); err != nil {
+		t.Fatal(err)
+	}
+	if len(recorder.recorded) != 1 {
+		t.Fatalf("record count=%d, want 1", len(recorder.recorded))
+	}
+	got := recorder.recorded[0]
+	if got.ItemID != "item-7" || got.Outcome != "failure" || got.SubmitStartedAt == nil || !got.SubmitStartedAt.Equal(started) ||
+		got.SubmitAcceptedAt == nil || !got.SubmitAcceptedAt.Equal(accepted) || got.WaitStartedAt == nil || !got.WaitStartedAt.Equal(waitStarted) ||
+		got.WaitFinishedAt == nil || !got.WaitFinishedAt.Equal(waitFinished) || got.QueueQueuedAt == nil || !got.QueueQueuedAt.Equal(queued) ||
+		got.QueueStartedAt == nil || !got.QueueStartedAt.Equal(queueStarted) || got.QueueCompletedAt == nil || !got.QueueCompletedAt.Equal(completed) ||
+		got.ArtifactAvailableAt != nil {
+		t.Fatalf("observed queue timing not faithfully projected: %+v", got)
+	}
+
+	if err := enqueuer.recordQueueAttempt(context.Background(), "queue-submit-fail", plan, nil, RenderCompletionMetrics{}, started, time.Time{}, nil, time.Time{}, "failure"); err != nil {
+		t.Fatal(err)
+	}
+	got = recorder.recorded[1]
+	if got.SubmitStartedAt == nil || got.SubmitAcceptedAt != nil || got.WaitStartedAt != nil || got.QueueQueuedAt != nil || got.ArtifactAvailableAt != nil {
+		t.Fatalf("missing events must remain absent, got %+v", got)
+	}
+}
+
+func TestQueueAttemptRecorderReturnsPersistenceError(t *testing.T) {
+	wantErr := context.DeadlineExceeded
+	enqueuer := &QueueRenderEnqueuer{recorder: &fakeAttemptRecorder{err: wantErr}}
+	err := enqueuer.recordQueueAttempt(context.Background(), "queue-1", capoverlay.OverlayPlan{PlanID: "plan-1"}, nil, RenderCompletionMetrics{}, time.Now(), time.Time{}, nil, time.Time{}, "failure")
+	if err == nil || !errors.Is(err, wantErr) {
+		t.Fatalf("recording error=%v, want wrapped %v", err, wantErr)
+	}
 }

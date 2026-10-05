@@ -137,9 +137,12 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 	}
 
 	// Use cases and job registration.
-	oneUC, manyUC, genJobHandler := buildScriptUseCases(
+	oneUC, manyUC, genJobHandler, useCaseErr := buildScriptUseCases(
 		cfg, root, normCfg, sourceReg, ppReg, clipSearchPort, clipSourceBuilder, stockPrefetcher, log,
 	)
+	if useCaseErr != nil {
+		return fmt.Errorf("wireScriptFlow: build use cases: %w", useCaseErr)
+	}
 	if root.Jobs == nil || root.Jobs.Service == nil {
 		return fmt.Errorf("wireScriptFlow: jobs broker is required (Issue 7 / P1 fail-fast)")
 	}

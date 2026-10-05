@@ -317,8 +317,10 @@ func TestGetFull_ExposesTimingReferences(t *testing.T) {
 // stubHistoryReader is the minimal HistoryReader stub that returns a
 // canned run-report JSON for GetRunReport (the timing-diagnostics surface).
 type stubHistoryReader struct {
-	report json.RawMessage
-	err    error
+	report       json.RawMessage
+	scriptRun    *ScriptRunSnapshot
+	scriptRunErr error
+	err          error
 }
 
 func (s *stubHistoryReader) ListHistory(_ context.Context, _ HistoryFilter) ([]HistoryItem, error) {
@@ -327,8 +329,12 @@ func (s *stubHistoryReader) ListHistory(_ context.Context, _ HistoryFilter) ([]H
 func (s *stubHistoryReader) GetRunReport(_ context.Context, _ string) (json.RawMessage, error) {
 	return s.report, s.err
 }
+func (s *stubHistoryReader) GetScriptRunSnapshot(_ context.Context, _ string) (*ScriptRunSnapshot, error) {
+	return s.scriptRun, s.scriptRunErr
+}
 
 var _ HistoryReader = (*stubHistoryReader)(nil)
+var _ ScriptRunReader = (*stubHistoryReader)(nil)
 
 // runGetFullWithHistory wires the canonical handler with a stub service AND a
 // history reader, then fires GET /api/jobs/{id}/full.
@@ -407,6 +413,57 @@ func TestGetFull_ExposesTimingBreakdown(t *testing.T) {
 	assert.Equal(t, int64(690), opWork["sqlite.hydrate"], "sqlite.hydrate work must surface")
 	assert.Equal(t, int64(78910), opWork["ollama.generate"], "ollama.generate work must surface")
 	assert.Equal(t, int64(710), opWork["google_docs.publish"], "google_docs.publish work must surface")
+}
+
+// TestGetFull_CoreReadyProjectsDurableScriptWithoutCompletingJob pins the
+// availability projection on the exact endpoint clients poll: the canonical
+// script is exposed while the broker job stays RUNNING and its result is not
+// prematurely presented as complete.
+func TestGetFull_CoreReadyProjectsDurableScriptWithoutCompletingJob(t *testing.T) {
+	scriptResult := json.RawMessage(`{"output":{"text":"Script already available"},"scenes":[{"id":"scene-0","text":{"en":"Script already available"}}]}`)
+	stub := &stubServiceForGetFull{
+		outID:     "job-core-ready",
+		outType:   pushedType,
+		outStatus: job.StatusRunning,
+		eventsList: []job.Event{{
+			ID: "evt-render", JobID: "job-core-ready", Type: "artifact.publish", Message: "publishing required artifacts",
+		}},
+	}
+	history := &stubHistoryReader{scriptRun: &ScriptRunSnapshot{
+		RunID: "run-core-ready", Status: "RUNNING", CurrentStage: "CORE_READY", Result: scriptResult,
+	}}
+	body := runGetFullWithHistory(t, stub, history)
+
+	var response struct {
+		Status            job.Status      `json:"status"`
+		CurrentStage      string          `json:"current_stage"`
+		CurrentEventStage string          `json:"current_event_stage"`
+		CoreReady         bool            `json:"core_ready"`
+		ScriptRun         json.RawMessage `json:"script_run"`
+		Script            json.RawMessage `json:"script"`
+		Result            json.RawMessage `json:"result"`
+	}
+	require.NoError(t, json.Unmarshal(body, &response))
+	assert.Equal(t, job.StatusRunning, response.Status,
+		"CORE_READY is an availability milestone and must not complete the broker job")
+	assert.Equal(t, "CORE_READY", response.CurrentStage)
+	assert.Equal(t, "artifact.publish", response.CurrentEventStage,
+		"the former event-derived stage remains available for existing diagnostics")
+	assert.True(t, response.CoreReady)
+	assert.JSONEq(t, "null", string(response.Result),
+		"the broker result remains null until worker artifact publication is complete")
+
+	var run struct {
+		RunID        string          `json:"run_id"`
+		Status       string          `json:"status"`
+		CurrentStage string          `json:"current_stage"`
+		Result       json.RawMessage `json:"result"`
+	}
+	require.NoError(t, json.Unmarshal(response.ScriptRun, &run))
+	assert.Equal(t, "run-core-ready", run.RunID)
+	assert.Equal(t, "RUNNING", run.Status)
+	assert.Equal(t, "CORE_READY", run.CurrentStage)
+	assert.JSONEq(t, `{"text":"Script already available"}`, string(response.Script), "the canonical durable output.text is available while artifacts are pending")
 }
 
 // TestGetFull_TimingNullWithoutReport pins the shape-stability contract: the

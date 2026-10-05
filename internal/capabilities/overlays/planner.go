@@ -503,13 +503,13 @@ func validateImageMotionPool(pool []string) error {
 		return nil
 	}
 	certified := make(map[string]bool)
-	for _, id := range CertifiedImageMotions() {
+	for _, id := range CertifiedSingleImageMotions() {
 		certified[id] = true
 	}
 	seen := make(map[string]bool, len(pool))
 	for _, id := range pool {
 		if !certified[id] {
-			return fmt.Errorf("overlay planner: image motion %q is not in the certified render-safe pool", id)
+			return fmt.Errorf("overlay planner: image motion %q is not in the certified single-image pool", id)
 		}
 		if seen[id] {
 			return fmt.Errorf("overlay planner: image motion pool repeats %q", id)

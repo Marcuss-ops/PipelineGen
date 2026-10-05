@@ -111,13 +111,16 @@ func (n *Nominatim) Geocode(ctx context.Context, request capgeocoding.Request) (
 		return capgeocoding.Result{}, err
 	}
 	cachePath := n.cachePath(req)
-	if result, ok, err := readCached(cachePath); err != nil {
+	if result, classified, ok, err := readCached(cachePath); err != nil {
 		return capgeocoding.Result{}, err
-	} else if ok && result.Scope != "" {
+	} else if ok && (result.Scope != "" || classified) {
 		return result, nil
 	}
 	// Pre-scope cache entries predate geographic-level zooms. Refresh them
 	// once so city/country/region classification reaches the map planner.
+	// Entries the classifier has already inspected keep their Scope-less value
+	// (an endpoint may legitimately omit addresstype), so the refresh happens
+	// once per entry instead of on every read.
 
 	query, err := url.Parse(n.baseURL)
 	if err != nil {
@@ -243,26 +246,36 @@ func (n *Nominatim) cachePath(req capgeocoding.Request) string {
 	return filepath.Join(n.cacheDir, digest.SHA256String(key)+".json")
 }
 
-func readCached(path string) (capgeocoding.Result, bool, error) {
+func readCached(path string) (capgeocoding.Result, bool, bool, error) {
 	data, err := os.ReadFile(path)
 	if errors.Is(err, os.ErrNotExist) {
-		return capgeocoding.Result{}, false, nil
+		return capgeocoding.Result{}, false, false, nil
 	}
 	if err != nil {
-		return capgeocoding.Result{}, false, fmt.Errorf("nominatim: read cache: %w", err)
+		return capgeocoding.Result{}, false, false, fmt.Errorf("nominatim: read cache: %w", err)
 	}
-	var result capgeocoding.Result
-	if err := json.Unmarshal(data, &result); err != nil {
-		return capgeocoding.Result{}, false, fmt.Errorf("nominatim: decode cache %q: %w", path, err)
+	var entry cacheEntry
+	if err := json.Unmarshal(data, &entry); err != nil {
+		return capgeocoding.Result{}, false, false, fmt.Errorf("nominatim: decode cache %q: %w", path, err)
 	}
-	if err := result.Validate(); err != nil {
-		return capgeocoding.Result{}, false, fmt.Errorf("nominatim: invalid cached result: %w", err)
+	if err := entry.Result.Validate(); err != nil {
+		return capgeocoding.Result{}, false, false, fmt.Errorf("nominatim: invalid cached result: %w", err)
 	}
-	return result, true, nil
+	return entry.Result, entry.ScopeClassified, true, nil
+}
+
+// cacheEntry is the on-disk cache record. ScopeClassified records that
+// classifyScope already inspected the source response, so a Scope-less hit
+// from an endpoint that omits addresstype is served instead of refetched on
+// every read. Legacy records without the flag are refreshed once and
+// rewritten with it set.
+type cacheEntry struct {
+	capgeocoding.Result
+	ScopeClassified bool `json:"scope_classified,omitempty"`
 }
 
 func writeCached(path string, result capgeocoding.Result) error {
-	data, err := json.Marshal(result)
+	data, err := json.Marshal(cacheEntry{Result: result, ScopeClassified: true})
 	if err != nil {
 		return fmt.Errorf("nominatim: encode cache: %w", err)
 	}

@@ -200,14 +200,18 @@ func recordRenderingGenPhases(ctx context.Context, artifact *RenderArtifact) {
 func (e *QueueRenderEnqueuer) waitForCompletion(ctx context.Context, id string) (RenderQueueJob, RenderCompletionMetrics, error) {
 	waitStarted := time.Now()
 	defer func() {
+		finishedAt := time.Now()
 		kernobs.RecordWait(ctx, kernobs.WaitInfo{
 			Kind:       kernobs.WaitCompletion,
 			Component:  kernobs.ComponentRenderQueue,
 			StartedAt:  waitStarted,
-			FinishedAt: time.Now(),
+			FinishedAt: finishedAt,
 		})
 	}()
-	return WaitRenderQueueTerminal(ctx, e.client, id, e.pollInterval)
+	job, metrics, err := WaitRenderQueueTerminal(ctx, e.client, id, e.pollInterval)
+	metrics.WaitStartedAt = waitStarted
+	metrics.WaitFinishedAt = time.Now()
+	return job, metrics, err
 }
 
 // WaitRenderQueueTerminal blocks until the queue reports a TERMINAL state for id

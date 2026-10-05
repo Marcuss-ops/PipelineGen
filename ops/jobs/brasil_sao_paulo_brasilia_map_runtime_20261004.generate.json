@@ -1,0 +1,121 @@
+{
+  "version": 2,
+  "preset": "custom",
+  "correlation_id": "brasil-sao-paulo-brasilia-map-runtime-20261004",
+  "force_refresh": true,
+  "items": [
+    {
+      "id": "brasil-sao-paulo-brasilia-map-runtime-20261004",
+      "project": "brasil-sao-paulo-brasilia-map-runtime-20261004",
+      "title": "São Paulo a Brasília — mapa em runtime",
+      "language": "pt",
+      "tone": "documentário geográfico curto, claro e factual",
+      "style": "Português brasileiro natural. Identifique os lugares apenas na escala correta. Descreva o deslocamento entre São Paulo e Brasília sem inventar rota, distância ou duração.",
+      "model": "gemma4:e4b",
+      "source": {
+        "type": "text",
+        "topic": "Mapa de São Paulo a Brasília, Brasil",
+        "source_text": "Este breve mapa apresenta São Paulo, no estado de São Paulo, e Brasília, a capital do Brasil, no Distrito Federal. São dois pontos geográficos distintos no território brasileiro."
+      },
+      "script_params": {
+        "target_words": 55,
+        "min_words": 35,
+        "segment_words": 55,
+        "single_scene": true,
+        "skip_quality_gate": false,
+        "segments": [
+          {
+            "id": "mapa-sao-paulo-brasilia",
+            "kind": "narration",
+            "topic": "São Paulo e Brasília no mapa do Brasil",
+            "source_text": "No mapa do Brasil, localize São Paulo, no estado de São Paulo, e Brasília, no Distrito Federal. Brasília é a capital federal. O vídeo destaca os dois lugares e a relação geográfica entre eles, sem indicar uma rota ou distância específica.",
+            "target_words": 55,
+            "min_words": 35
+          }
+        ]
+      },
+      "output": {
+        "save_to_db": true,
+        "extract_entities": true,
+        "generate_metadata": true,
+        "generate_timeline": true,
+        "voiceover_enabled": true,
+        "languages": [
+          "pt"
+        ],
+        "drive_folder_id": "1J_xUGo_bchzXDIGqSX04CU44c_Dm3SxS",
+        "render": {
+          "enabled": true,
+          "drive_folder_id": "1J_xUGo_bchzXDIGqSX04CU44c_Dm3SxS",
+          "drive_subfolder_name": "Brasil Runtime Map Sao Paulo Brasilia 2026-10-04",
+          "require_gpu": true,
+          "subtitles": {
+            "enabled": false
+          }
+        }
+      },
+      "maps_only": true,
+      "audio": {
+        "mode": "COMBINED_TIMELINE",
+        "timing": {
+          "mode": "required",
+          "boundary": "word",
+          "formats": [
+            "json",
+            "srt",
+            "vtt"
+          ]
+        }
+      },
+      "docs": {
+        "enabled": false
+      },
+      "media_plan": {
+        "mode": "hybrid",
+        "provider_policy": {
+          "internet_images": "disabled",
+          "image_generation": "disabled",
+          "artlist": "disabled",
+          "youtube": "disabled",
+          "geocoding": "enabled"
+        },
+        "cache": {
+          "read": true,
+          "write": true
+        },
+        "extraction": {
+          "enabled": true,
+          "include": [
+            "entities"
+          ],
+          "max_entities_per_segment": 8,
+          "max_important_phrases_per_segment": 0,
+          "max_image_queries_per_segment": 0,
+          "entity_images": {
+            "enabled": false
+          }
+        },
+        "planner": {
+          "candidate_limit": 8
+        },
+        "materialization": {
+          "mode": "selected",
+          "upload_to_drive": true,
+          "wait_for_ready": true
+        },
+        "include_trace": true
+      },
+      "overlay_background": {
+        "kind": "color",
+        "color": [
+          0.035,
+          0.045,
+          0.065,
+          1
+        ],
+        "fit": "cover",
+        "opacity": 1
+      }
+    }
+  ]
+}

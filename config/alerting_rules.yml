@@ -545,6 +545,27 @@ groups:
             phase): if the GPU time is normal, the queue/transport is the
             bottleneck; if the GPU time also rose, profile the render lane.
 
+      # Queue terminal wait percentile (separate from submit + service + publish).
+      # Quantiles are computed from histogram buckets, not approximated from a
+      # selected bucket; outcome is bounded and intentionally has no item label.
+      - alert: OverlayCompletionWaitSlow
+        expr: |
+          histogram_quantile(0.95,
+            sum(rate(overlay_completion_wait_seconds_bucket{outcome="success"}[10m])) by (le)
+          ) > 60
+        for: 10m
+        labels:
+          severity: warning
+          team: backend
+          service: velox-go
+          pipeline: overlay
+        annotations:
+          summary: "⚠️ Overlay completion-wait p95 > 60s"
+          description: |
+            overlay_completion_wait_seconds success p95 is {{ $value }}s.
+            This isolates producer wait for terminal queue state and is not
+            a GPU-service or submit-admission duration.
+
       # WARNING: the GPU render phase itself regressed.
       # chronon_render_seconds is relayed from the certified artifact's
       # render_ms, so a change here is a real change in the Vulkan lane.

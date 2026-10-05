@@ -72,7 +72,23 @@ var (
 		"image_tilt_parallax",
 		"image_yaw_reveal",
 	}
-	imageAnimationCandidates = renderSafeImageMotions
+	// Single-image overlays now rotate only through the ten motion looks we
+	// rendered against the Drive references. The four camera-led looks use the
+	// closest already-registered image motions so the worker and catalog stay
+	// in sync: dolly_settle, orbit_arc, counter_tilt and dolly_breath.
+	singleImageMotionCandidates = []string{
+		"image_25d_depth_float_in",
+		"image_25d_yaw_flip_in",
+		"image_25d_pitch_lift",
+		"image_25d_pop_z_bounce",
+		"image_25d_swipe_3d",
+		"image_25d_card_swing",
+		"image_depth_dolly",
+		"image_orbit_enter",
+		"image_tilt_parallax",
+		"image_focus_push",
+	}
+	imageAnimationCandidates = singleImageMotionCandidates
 	imageMotionCandidates    = renderSafeImageMotions
 	// centeredImageMotionCandidates is the certified CENTERED image-motion
 	// pool: the subset of motions that keep the raster pinned to the canvas
@@ -235,6 +251,18 @@ var (
 		"typewriter_blur_focus",
 		"typewriter_soft_lift",
 	}
+	text3DMotionCandidates = []string{
+		"text_3d_camera_push",
+		"text_3d_perspective_drop",
+		"text_3d_roll_depth",
+		"text_3d_tilt_rise",
+		"text_3d_word_cascade",
+		"text_3d_yaw_flip_in",
+		"text_3d_pitch_lift",
+		"text_3d_yaw_sweep",
+		"text_3d_double_axis_reveal",
+		"text_3d_orbit_lock",
+	}
 	phraseAppleCleanMotionCandidates = []string{
 		"phrase_apple_clean_01_blur_soft_reveal",
 		"phrase_apple_clean_02_blur_focus_snap",
@@ -288,11 +316,11 @@ var (
 		"phrase_apple_clean_29_opacity_hero_settle",
 		"phrase_apple_clean_30_opacity_clean_apple",
 	}
-	phraseMotionCandidates      = combineMotionPools(classicAppleMotionCandidates, modernAppleMotionCandidates, typewriterMotionCandidates)
+	phraseMotionCandidates      = combineMotionPools(classicAppleMotionCandidates, modernAppleMotionCandidates, typewriterMotionCandidates, text3DMotionCandidates)
 	renderSafeTextMotions       = phraseAppleCleanMotionCandidates
 	generatedPhraseMotions      = phraseMotionCandidates
 	generatedTextMotions        = phraseAppleCleanMotionCandidates
-	defaultPhraseMotionFamilies = []string{"classic_apple", "modern_apple", "typewriter"}
+	defaultPhraseMotionFamilies = []string{"classic_apple", "modern_apple", "typewriter", "text_3d_v1"}
 )
 
 // ImagePresetCandidates returns a copy of the render-safe generated-image
@@ -374,7 +402,7 @@ func selectPhraseMotion(jobID, sceneID string, ordinal int, pool []string) strin
 		}
 		return selectMotionFromPool(jobID, sceneID, "explicit", ordinal, pool)
 	}
-	// The default is a full deterministic no-repeat walk of the 113-motion
+	// The default is a full deterministic no-repeat walk of the 123-motion
 	// catalog. Do not siphon every third phrase into a smaller "visible"
 	// subset: that makes the large catalog repeat much earlier than necessary.
 	sequence := defaultPhraseMotionSequence(jobID, sceneID)
@@ -550,6 +578,8 @@ func phraseMotionFamilyCandidates(family string) []string {
 		return modernAppleMotionCandidates
 	case "typewriter":
 		return typewriterMotionCandidates
+	case "text_3d_v1", "3d":
+		return text3DMotionCandidates
 	case "classic_apple":
 		return classicAppleMotionCandidates
 	default:

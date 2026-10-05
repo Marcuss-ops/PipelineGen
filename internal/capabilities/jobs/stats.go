@@ -63,6 +63,25 @@ type HistoryReader interface {
 	GetRunReport(context.Context, string) (json.RawMessage, error)
 }
 
+// ScriptRunSnapshot is the caller-visible durable checkpoint for a
+// script.generate job. It is a separate projection from job.Result: the
+// script can be durable while the worker is still RUNNING its required
+// artifact publication/finalization.
+type ScriptRunSnapshot struct {
+	RunID        string          `json:"run_id"`
+	Status       string          `json:"status"`
+	CurrentStage string          `json:"current_stage"`
+	Result       json.RawMessage `json:"result,omitempty"`
+}
+
+// ScriptRunReader is an optional extension implemented by history readers
+// that can load the durable script-generation checkpoint by worker job ID.
+// Keeping this separate from HistoryReader preserves compatibility with
+// alternate history backends that do not store script checkpoints.
+type ScriptRunReader interface {
+	GetScriptRunSnapshot(context.Context, string) (*ScriptRunSnapshot, error)
+}
+
 // JobStatsReader is the narrow port for job statistics.
 // Production bindings: *appjobs.Service (delegates to the SQLite
 // repository via type-assertion). Tests can stub with a fake reader

@@ -217,6 +217,20 @@ func (c *Config) Validate() error {
 	if c.External.OllamaURL == "" {
 		return fmt.Errorf("ollama url is required")
 	}
+	switch strings.ToLower(strings.TrimSpace(c.External.VisualNERBackend)) {
+	case "", "rust":
+	case "spacy":
+		spacyURL := strings.TrimSpace(c.External.SpacyNERURL)
+		if spacyURL == "" {
+			return fmt.Errorf("external.spacy_ner_url is required when visualner_backend=spacy")
+		}
+		parsedSpacyURL, err := url.Parse(spacyURL)
+		if err != nil || parsedSpacyURL.Host == "" || parsedSpacyURL.User != nil || parsedSpacyURL.RawQuery != "" || parsedSpacyURL.Fragment != "" || (parsedSpacyURL.Scheme != "http" && parsedSpacyURL.Scheme != "https") {
+			return fmt.Errorf("external.spacy_ner_url must be a valid http(s) base URL without credentials, query, or fragment")
+		}
+	default:
+		return fmt.Errorf("external.visualner_backend %q is unsupported; choose rust or spacy", c.External.VisualNERBackend)
+	}
 	if c.External.VeloxMasterURL != "" {
 		if _, err := url.Parse(c.External.VeloxMasterURL); err != nil {
 			return fmt.Errorf("invalid velox_master_url %q: %w", c.External.VeloxMasterURL, err)

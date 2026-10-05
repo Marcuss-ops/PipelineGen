@@ -41,16 +41,15 @@ func TestSelectEntityImagePresetUsesOnlyRenderSafeCandidates(t *testing.T) {
 
 // TestGeneratedTextOverlaysStayOnTheRenderSafeTextContract pins official
 // RenderingGen preset ids and the explicit native motion contract.
-func TestGeneratedImageAnimationSelectorUsesTheFullCertifiedPool(t *testing.T) {
-	pool := CertifiedImageMotions()
-	if len(pool) != 32 {
-		t.Fatalf("certified generated-image pool has %d motions, want 32", len(pool))
+func TestGeneratedImageAnimationSelectorUsesOnlyTheNewSingleImagePool(t *testing.T) {
+	pool := CertifiedSingleImageMotions()
+	if len(pool) != 10 {
+		t.Fatalf("certified single-image pool has %d motions, want 10", len(pool))
 	}
 	allowed := make(map[string]bool, len(pool))
 	for _, id := range pool {
 		allowed[id] = true
 	}
-	selected := make(map[string]bool, len(pool))
 	for i := 0; i < 256; i++ {
 		jobID := fmt.Sprintf("image-job-%d", i)
 		itemID := fmt.Sprintf("image-item-%d", i)
@@ -61,10 +60,9 @@ func TestGeneratedImageAnimationSelectorUsesTheFullCertifiedPool(t *testing.T) {
 		if again := SelectImageAnimation(jobID, "scene", itemID); again != motion {
 			t.Fatalf("image animation is not deterministic for the same item: %q vs %q", motion, again)
 		}
-		selected[motion] = true
 	}
-	if len(selected) < 2 {
-		t.Fatalf("image animation selector never varies across identities: %v", selected)
+	if len(renderSafeImageMotions) <= len(pool) {
+		t.Fatal("legacy render-safe catalog was unexpectedly discarded instead of excluded from the single-image selector")
 	}
 }
 

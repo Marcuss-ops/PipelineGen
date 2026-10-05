@@ -52,6 +52,8 @@ security:
     - "cdn.artlist.io"
 
 external:
+  visualner_backend: rust
+  spacy_ner_url: ""
   ollama_url: "http://localhost:11434"
   ollama_model: "gemma4:e4b"
   ollama_timeout_seconds: 120
