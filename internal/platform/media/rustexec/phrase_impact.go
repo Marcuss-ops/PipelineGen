@@ -23,6 +23,7 @@ type phraseImpactResponse struct {
 			Text string `json:"text"`
 		} `json:"bullet_points"`
 		HeavySentences []scriptpkg.ImportantSentence `json:"heavy_sentences"`
+		Timings        scriptpkg.PhraseImpactTimings `json:"timings"`
 	} `json:"result"`
 	Sentences []string `json:"sentences"`
 }
@@ -107,5 +108,9 @@ func (a *PhraseImpactAnalyzer) Analyze(ctx context.Context, transcript, language
 		result.BulletPoints = append(result.BulletPoints, bullet.Text)
 	}
 	result.HeavySentences = response.Result.HeavySentences
+	// The worker's own stage breakdown travels with the result so the runner
+	// can publish the embedding cost; it is telemetry, not an input to any
+	// editorial decision.
+	result.Timings = response.Result.Timings
 	return result, nil
 }

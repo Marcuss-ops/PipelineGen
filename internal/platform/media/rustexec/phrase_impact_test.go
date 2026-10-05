@@ -194,6 +194,24 @@ func TestPhraseImpactResultIsTheKernelContract(t *testing.T) {
 	}
 }
 
+// TestPhraseImpactAnalyzerDecodesWorkerStageTimings keeps the worker's own
+// stage breakdown on the result. It is the only place the production embedding
+// cost becomes visible, so a dropped field would be a silent measurement hole.
+func TestPhraseImpactAnalyzerDecodesWorkerStageTimings(t *testing.T) {
+	runner := &phraseImpactFakeRunner{replies: []string{
+		`{"ok":true,"result":{"summary":"ok","bullet_points":[],"heavy_sentences":[],"timings":{"split_ms":0.4,"embedding_ms":12.5,"similarity_ms":1.1,"ranking_ms":0.9,"summary_ms":2.2,"bullet_ms":0.1,"total_ms":17.2}}}`,
+	}}
+	analyzer := NewPhraseImpactAnalyzer("bin/phrase_impact", runner, nil)
+
+	got, err := analyzer.Analyze(context.Background(), "Some narration.", "en")
+	if err != nil {
+		t.Fatalf("Analyze returned error: %v", err)
+	}
+	if got.Timings.EmbeddingMS != 12.5 || got.Timings.TotalMS != 17.2 || got.Timings.SummaryMS != 2.2 {
+		t.Fatalf("timings = %+v, want the worker-reported stage breakdown", got.Timings)
+	}
+}
+
 // TestPhraseImpactAnalyzerRunsTheRealRustWorker is the end-to-end check of the
 // delivered artifact: the Go adapter drives the actual pipelinegen-muscles
 // binary in its phrase-impact mode over the real NDJSON contract. It skips

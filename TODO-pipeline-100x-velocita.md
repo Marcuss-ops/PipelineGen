@@ -351,10 +351,20 @@ Tre gap di strumentazione dallo snapshot:
       `wirePhraseImpactAnalyzer` + `external.rust_phrase_impact_path`
       (default `bin/phrase_impact`, installato da `make build-muscles`).
       Benchmark per titolo: `go test ./scripts/bench -run '^$' -bench BenchmarkPhraseImpactTitles`.
-      RESTA (qualità, non velocità): `impact_weight` → preset motion nel catalogo
-      RenderingGen (frasi pesanti = motion animato, leggere = statico). Oggi le frasi
-      overlay restano deterministiche (`internal/capabilities/scripts/phrases`); il peso
-      non alimenta ancora la selezione motion.
+      Telemetria: il worker riporta il proprio stage breakdown e il runner lo pubblica
+      in `script_phrase_impact_stage_seconds` (label `stage`: split|embedding|similarity|
+      ranking|summary|bullet|total) — lo stage `embedding` è l'unico non-CPU locale, ed è
+      da lì che si misura se conviene la GPU/ONNX.
+- [~] **E2b. Peso → motion preset (RenderingGen)** — FATTO 2026-10-05:
+      `PlanInput.HeavyPhrasePriority` (default produzione `0.85`, `heavyPhrasePriorityDefault`)
+      divide la corsia frasi: le frasi con priorità ≥ soglia prendono un ingresso
+      prominente certificato (`selectHeavyPhraseMotion`, sottoinsieme visibile del catalogo),
+      le altre restano nella rotazione calma invariata. La priorità è lo `Score`
+      dell'annotazione già trasportata dal planner. Default 0 ⇒ piano bit-identico
+      (nessun test esistente cambia). NOTA: il peso usato è lo score dell'annotazione,
+      NON (ancora) l'`impact_weight` delle `heavy_sentences` del worker Rust: collegare
+      quest'ultimo per-frase resta il passo successivo se si vuole che il riassunto
+      pesante piloti direttamente l'animazione.
 - [ ] **E3. Cache artlist per (frase, lingua)** — resolve ripetuti da cache locale.
       *Guadagno:* 1,9h → ~0.
 
