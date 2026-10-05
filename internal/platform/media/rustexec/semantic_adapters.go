@@ -38,6 +38,12 @@ func NewVisualNERAdapter(executor *Executor) (*VisualNERAdapter, error) {
 	}
 	return &VisualNERAdapter{executor: executor}, nil
 }
+func (a *VisualNERAdapter) Close() {
+	if a != nil && a.executor != nil {
+		a.executor.Close()
+	}
+}
+
 func (a *VisualNERAdapter) Extract(ctx context.Context, language, sourceText string, limit int) ([]scriptgen.VisualEntity, error) {
 	if a == nil || a.executor == nil {
 		return nil, fmt.Errorf("visualner: executor is not configured")

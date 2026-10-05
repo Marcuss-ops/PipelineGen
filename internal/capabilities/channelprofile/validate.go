@@ -236,7 +236,7 @@ func (p Profile) validateImageMotions() error {
 		return nil
 	}
 	certified := make(map[string]bool)
-	for _, id := range overlays.CertifiedImageMotions() {
+	for _, id := range overlays.CertifiedSingleImageMotions() {
 		certified[id] = true
 	}
 	seen := make(map[string]bool, len(p.ImageMotions))

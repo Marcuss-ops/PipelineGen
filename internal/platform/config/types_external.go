@@ -25,6 +25,8 @@ type ExternalConfig struct {
 	RustMusclesPath             string   `yaml:"rust_muscles_path" env:"VELOX_RUST_MUSCLES_PATH" default:"bin/pipelinegen-muscles"`
 	RustVisualNERPath           string   `yaml:"rust_visualner_path" env:"VELOX_RUST_VISUALNER_PATH" default:"bin/visualner"`
 	RustMediaSamplerPath        string   `yaml:"rust_mediasampler_path" env:"VELOX_RUST_MEDIASAMPLER_PATH" default:"bin/mediasampler"`
+	VisualNERBackend            string   `yaml:"visualner_backend" env:"VELOX_VISUALNER_BACKEND" default:"rust"`
+	SpacyNERURL                 string   `yaml:"spacy_ner_url" env:"VELOX_SPACY_NER_URL" default:""`
 	NvidiaAPIKey                string   `yaml:"nvidia_api_key" env:"NVIDIA_API_KEY" default:""`
 	NvidiaModel                 string   `yaml:"nvidia_model" env:"NVIDIA_MODEL" default:"stabilityai/sdxl-turbo"`
 	NvidiaLocalNIMURL           string   `yaml:"nvidia_local_nim_url" env:"NVIDIA_LOCAL_NIM_URL" default:"http://localhost:8000/v1/infer"`

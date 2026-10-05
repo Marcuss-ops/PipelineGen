@@ -96,30 +96,82 @@ func (a *EmbedAssetTextAdapter) LoadAssetSearchTexts(ctx context.Context, assetI
 	return texts, nil
 }
 
-// EmbedAssetTexts is the batch surface of the worker's embedding port. The
-// DB leg is N→1 (LoadAssetSearchTexts); the provider leg stays one Embed
-// per non-blank text because the sidecar /embed contract is single-text.
-// When the sidecar grows a verified batch endpoint, only this method changes
-// — the worker's batch path already consumes the map shape.
-//
-// An asset whose search_text is blank resolves to the embedder's canonical
-// empty result (EmbeddingResult{}, nil) and is omitted from the map so the
-// worker's per-asset path keeps ownership of the zero-length decision.
+// batchTextEmbedder is the optional extension implemented by sidecars that
+// provide canonical, order-preserving text batch inference.
+type batchTextEmbedder interface {
+	EmbedBatch(ctx context.Context, texts []string) ([]coreasset.EmbeddingResult, error)
+}
+
+// EmbedAssetTexts resolves the canonical search_text values in one database
+// query and, when supported, one E5 batch inference request. The single-text
+// interface remains the compatibility fallback for other Embedder providers.
+// Blank search_text remains omitted so worker retry/dead-letter behavior does
+// not change.
 func (a *EmbedAssetTextAdapter) EmbedAssetTexts(ctx context.Context, assetIDs []string) (map[string][]float32, error) {
 	texts, err := a.LoadAssetSearchTexts(ctx, assetIDs)
 	if err != nil {
 		return nil, err
 	}
+	return a.embedSearchTexts(ctx, assetIDs, texts)
+}
+
+func (a *EmbedAssetTextAdapter) embedSearchTexts(ctx context.Context, assetIDs []string, texts map[string]string) (map[string][]float32, error) {
 	out := make(map[string][]float32, len(texts))
-	for id, text := range texts {
-		res, err := a.embeder.Embed(ctx, text)
-		if err != nil {
-			return nil, fmt.Errorf("embed asset %q: %w", id, err)
+	batch, supportsBatch := a.embeder.(batchTextEmbedder)
+	if !supportsBatch {
+		seen := make(map[string]struct{}, len(assetIDs))
+		for _, id := range assetIDs {
+			if _, duplicate := seen[id]; duplicate {
+				continue
+			}
+			seen[id] = struct{}{}
+			text, found := texts[id]
+			if !found || strings.TrimSpace(text) == "" {
+				continue
+			}
+			res, err := a.embeder.Embed(ctx, text)
+			if err != nil {
+				return nil, fmt.Errorf("embed asset %q: %w", id, err)
+			}
+			if len(res.Vector) != 0 {
+				out[id] = res.Vector
+			}
 		}
-		if len(res.Vector) == 0 {
+		return out, nil
+	}
+
+	orderedIDs := make([]string, 0, len(texts))
+	orderedTexts := make([]string, 0, len(texts))
+	seen := make(map[string]struct{}, len(texts))
+	for _, id := range assetIDs {
+		if _, duplicate := seen[id]; duplicate {
 			continue
 		}
-		out[id] = res.Vector
+		seen[id] = struct{}{}
+		text, found := texts[id]
+		if !found || strings.TrimSpace(text) == "" {
+			continue
+		}
+		orderedIDs = append(orderedIDs, id)
+		orderedTexts = append(orderedTexts, text)
+	}
+	if len(orderedTexts) == 0 {
+		return out, nil
+	}
+	for start := 0; start < len(orderedIDs); start += 32 {
+		end := min(start+32, len(orderedIDs))
+		results, err := batch.EmbedBatch(ctx, orderedTexts[start:end])
+		if err != nil {
+			return nil, fmt.Errorf("embed assets %q..%q as batch: %w", orderedIDs[start], orderedIDs[end-1], err)
+		}
+		if len(results) != end-start {
+			return nil, fmt.Errorf("text embedder returned %d batch results for %d asset texts", len(results), end-start)
+		}
+		for i, result := range results {
+			if len(result.Vector) != 0 {
+				out[orderedIDs[start+i]] = result.Vector
+			}
+		}
 	}
 	return out, nil
 }

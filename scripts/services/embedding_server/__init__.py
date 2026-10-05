@@ -9,7 +9,7 @@ Package layout (split out from a 604-line single file):
                  concurrency primitives (semaphore + busy counters),
                  /health endpoint + tracking middleware.
   models.py    — Pydantic request schemas.
-  text.py      — text endpoints (/embed, /index, /index_bulk,
+  text.py      — text endpoints (/embed, /embed_batch, /index, /index_bulk,
                  /index_transcript) + normalize_text helper.
   visual.py    — visual endpoints (/embed_visual, /visual_analyze,
                  /index_visual, /index_visual_multi, /phash).
@@ -43,6 +43,7 @@ try:
     import spacy
     import imagehash
     from PIL import Image
+    import importlib.util
 except ImportError as e:
     print(f"Missing dependency: {e}")
     print(
@@ -92,13 +93,23 @@ from scripts.services.model_registry_generated import (  # noqa: E402
 )
 
 print("Loading NLP model (en_core_web_sm)...")
-nlp = spacy.load("en_core_web_sm")
+nlp = None
+if importlib.util.find_spec("en_core_web_sm") is not None:
+    nlp = spacy.load("en_core_web_sm")
+else:
+    # spaCy is optional for the embedding-only routes when the NER challenger
+    # is installed separately; keep normalization available without a model.
+    print("en_core_web_sm is not installed; using identity text normalization")
+
 nlp_it = None
-try:
-    print("Loading Italian NLP model (it_core_news_sm)...")
-    nlp_it = spacy.load("it_core_news_sm")
-except Exception as e:
-    print(f"Italian NLP model it_core_news_sm not loaded (using English fallback): {e}")
+if importlib.util.find_spec("it_core_news_sm") is not None:
+    try:
+        print("Loading Italian NLP model (it_core_news_sm)...")
+        nlp_it = spacy.load("it_core_news_sm")
+    except Exception as e:
+        print(f"Italian NLP model it_core_news_sm not loaded (using English fallback): {e}")
+else:
+    print("it_core_news_sm is not installed")
 
 print(f"Loading SentenceTransformer model ({TEXT_MODEL_NAME})...")
 model = SentenceTransformer(
@@ -214,7 +225,8 @@ async def health():
 # algorithms; we just attach them to the FastAPI app here. This pattern
 # avoids `from . import app` relative-import edge cases (where `app` could
 # be ambiguously a submodule or an attribute).
-from . import text, visual, audio  # noqa: E402, F401
+from . import text, visual, audio, ner  # noqa: E402, F401
 app.include_router(text.router)
 app.include_router(visual.router)
 app.include_router(audio.router)
+app.include_router(ner.router)

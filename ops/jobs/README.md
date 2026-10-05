@@ -39,7 +39,22 @@ Neither payload carries a `_comment` key: the envelope body is decoded with
 
 The response body of `POST /api/script/generate` is the async envelope
 (`ok`, `job_id`, `status`, `status_url`, `current_stage`); poll
-`status_url` (`/api/jobs/{id}/full`) for phase transitions and timing.
+`status_url` (`/api/jobs/{id}/full`) for phase transitions and timing. For a
+`script.generate` job, `/full` also projects the durable generation checkpoint
+as `script_run` (`run_id`, `status`, `current_stage`). At `CORE_READY`, it sets
+`core_ready: true` and exposes the caller-visible `script` (`GenerateResult.output`)
+even while requested artifacts are still being published. This is an
+availability milestone, not completion: the top-level broker `status` remains
+`RUNNING`, and clients must keep polling until that status reaches its terminal
+state. The event-derived stage is retained as `current_event_stage` when
+`current_stage` is projected to `CORE_READY`; the broker `result` remains the
+completion result and is not populated early.
+
+The worker verification policy is orthogonal to product speed/quality choices:
+receipt verification and artifact identity/hash gates must not be weakened by a
+request profile. In particular, `pipeline.receipt_verify: fast` is an existing
+verification policy that tolerates a missing receipt; it is not a safe shortcut
+for a new product-level fast profile.
 
 `dolly_parton_5clips_wm_dualbg_subsstyle.generate.json` is the visual-contract
 variant of that preview: the same five clip ids, but the render block asks for

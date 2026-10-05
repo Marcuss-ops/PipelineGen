@@ -14,6 +14,7 @@ import (
 	mwm2m "github.com/Marcuss-ops/PipelineGen/internal/capabilities/middleware"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 )
 
@@ -387,6 +388,35 @@ func (h *JobsHandler) GetFull(c *gin.Context) {
 	// `timing` field without changing the /full status response.
 	resp["timing"] = h.readTimingBreakdown(c.Request.Context(), id)
 
+	// script.generate persists its caller-visible script checkpoint in the
+	// durable run ledger before the broker job finishes publishing every
+	// requested artifact. Project that snapshot onto the canonical polling
+	// endpoint, but leave the job's top-level status untouched: CORE_READY is
+	// availability, never job success. The separate script field is intentionally
+	// only the canonical output projection, not a second job result or a promise
+	// that other requested artifacts have completed.
+	if j.Type == scriptpkg.TypeGenerate {
+		snapshot := h.readScriptRunSnapshot(c.Request.Context(), id)
+		resp["core_ready"] = snapshot != nil && snapshot.CurrentStage == "CORE_READY"
+		if snapshot != nil {
+			resp["script_run"] = gin.H{
+				"run_id":        snapshot.RunID,
+				"status":        snapshot.Status,
+				"current_stage": snapshot.CurrentStage,
+			}
+			if snapshot.CurrentStage == "CORE_READY" && len(snapshot.Result) > 0 {
+				var result struct {
+					Output json.RawMessage `json:"output"`
+				}
+				if err := json.Unmarshal(snapshot.Result, &result); err == nil && len(result.Output) > 0 && string(result.Output) != "null" {
+					resp["script"] = result.Output
+				}
+				resp["current_event_stage"] = resp["current_stage"]
+				resp["current_stage"] = snapshot.CurrentStage
+			}
+		}
+	}
+
 	apiutil.OK(c, resp)
 }
 
@@ -407,6 +437,25 @@ func (h *JobsHandler) readTimingBreakdown(ctx context.Context, id string) any {
 		return nil
 	}
 	return report.TimingSummary()
+}
+
+// readScriptRunSnapshot returns the durable script checkpoint when the
+// configured history backend supports that projection. It is best-effort so
+// an unavailable run ledger does not make the canonical broker-status endpoint
+// unavailable; the job status itself remains authoritative for completion.
+func (h *JobsHandler) readScriptRunSnapshot(ctx context.Context, id string) *ScriptRunSnapshot {
+	reader, ok := h.history.(ScriptRunReader)
+	if !ok {
+		return nil
+	}
+	snapshot, err := reader.GetScriptRunSnapshot(ctx, id)
+	if err != nil {
+		if h.log != nil {
+			h.log.Warn("failed to read script run snapshot", zap.String("job_id", id), zap.Error(err))
+		}
+		return nil
+	}
+	return snapshot
 }
 
 func stringValue(value any) string {

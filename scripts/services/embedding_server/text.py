@@ -33,7 +33,7 @@ from . import (
     model,
     nlp,
 )
-from .models import EmbedRequest, IndexBulkRequest, IndexTextRequest
+from .models import BatchTextEmbedRequest, EmbedRequest, IndexBulkRequest, IndexTextRequest
 
 router = APIRouter()
 
@@ -42,9 +42,12 @@ def normalize_text(text: str, language: str = "") -> str:
     """Normalize with the explicitly selected model only.
 
     Language classification belongs to the Go lexicon registry. The sidecar
-    never guesses a language from an embedded word list.
+    never guesses a language from an embedded word list. Without the optional
+    spaCy lemmatizer model, retain deterministic lowercase token text.
     """
     _ = language
+    if nlp is None:
+        return " ".join(text.lower().split())
     doc = nlp(text.lower())
     return " ".join(
         [token.lemma_ for token in doc if not token.is_stop and not token.is_punct]
@@ -98,6 +101,45 @@ async def embed(req: EmbedRequest):
                 "model_version": TEXT_MODEL_VERSION,
                 "contract_hash": TEXT_CONTRACT_HASH,
             }
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/embed_batch")
+async def embed_batch(req: BatchTextEmbedRequest):
+    """Generate an ordered batch of canonical E5 text embeddings.
+
+    The input and output arrays preserve order. The model receives one list
+    of prefixed strings, so the transformer executes batched inference under
+    one shared inference slot. A failure rejects the whole batch.
+    """
+    async with _inference_sem:
+        try:
+            prefix = "query: " if req.type == "query" else "passage: "
+            normalized = [normalize_text(text) for text in req.texts]
+            prefixed = [prefix + text for text in normalized]
+            embeddings = model.encode(prefixed, normalize_embeddings=True).tolist()
+            if len(embeddings) != len(req.texts):
+                raise HTTPException(
+                    status_code=500,
+                    detail=f"embedding count mismatch: expected {len(req.texts)}, got {len(embeddings)}",
+                )
+            dimensions = len(embeddings[0]) if embeddings else 0
+            if dimensions != model.get_sentence_embedding_dimension() or any(
+                len(embedding) != dimensions for embedding in embeddings
+            ):
+                raise HTTPException(status_code=500, detail="embedding dimension mismatch in batch")
+            return {
+                "embeddings": embeddings,
+                "dimensions": dimensions,
+                "count": len(embeddings),
+                "type": req.type,
+                "model": TEXT_MODEL_NAME,
+                "model_version": TEXT_MODEL_VERSION,
+                "contract_hash": TEXT_CONTRACT_HASH,
+            }
+        except HTTPException:
+            raise
         except Exception as e:
             raise HTTPException(status_code=500, detail=str(e))
 

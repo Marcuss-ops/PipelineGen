@@ -4,6 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"os"
+	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -147,6 +150,83 @@ func runIDFromContext(ctx context.Context) string {
 
 func newFakeRenderQueueClient() *fakeRenderQueueClient {
 	return &fakeRenderQueueClient{jobs: make(map[string]RenderQueueJob)}
+}
+
+func TestBoundedMapRenderOutputRetainsOnlyRecentDiagnostics(t *testing.T) {
+	var output boundedMapRenderOutput
+	first := "OLD-DIAGNOSTIC-" + strings.Repeat("a", 48*1024)
+	last := strings.Repeat("z", 32*1024)
+	if n, err := output.Write([]byte(first)); err != nil || n != len(first) {
+		t.Fatalf("first write = %d, %v", n, err)
+	}
+	if n, err := output.Write([]byte(last)); err != nil || n != len(last) {
+		t.Fatalf("second write = %d, %v", n, err)
+	}
+	got := output.String()
+	if len(got) != 64*1024 {
+		t.Fatalf("retained diagnostic bytes = %d, want %d", len(got), 64*1024)
+	}
+	if !strings.HasSuffix(got, last) || strings.HasPrefix(got, "OLD-DIAGNOSTIC-") {
+		t.Fatal("bounded output did not retain the recent diagnostic tail")
+	}
+}
+
+func TestRenderDynamicMapVideoRequiresCompleteCertifiedTelemetry(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		summary string
+		wantErr string
+	}{
+		{
+			name:    "valid summary",
+			summary: `{"schema":"chronon.dynamic-map-telemetry.v1","frames":120,"dimensions":{"width":1920,"height":1080},"fps":{"num":24,"den":1},"tile":{"tile_disk_cache_hits":7,"tile_disk_cache_misses":0,"tile_network_fetches":0,"tile_fallbacks":0,"tile_bytes_downloaded":0,"tile_fetch_ms":12.0,"prefetch_ms":3.0,"prefetch_tiles_requested":7,"prefetch_tiles_memory_hits":0,"late_tile_fetches":0},"plates":{"prepare_ms":4.0,"plate_compose_ms":1.0,"plate_count":11,"plate_bytes":42,"required_tile_count":7,"prefetch_tiles_fetched":7,"prefetch_tiles_memory_hits":0},"gate_ms":2.0,"frame_pipeline_s":3.0,"render_encode_wall_s":3.5,"post_frame_tail_s":0.5,"engine_fallback_frames":0,"output_bytes":8,"renderer_wall_s":9.0}`,
+		},
+		{
+			name:    "missing counters",
+			summary: `{"schema":"chronon.dynamic-map-telemetry.v1","frames":120,"output_bytes":8}`,
+			wantErr: "missing required telemetry field",
+		},
+		{
+			name:    "fallback work",
+			summary: `{"schema":"chronon.dynamic-map-telemetry.v1","frames":120,"dimensions":{"width":1920,"height":1080},"fps":{"num":24,"den":1},"tile":{"tile_disk_cache_hits":0,"tile_disk_cache_misses":1,"tile_network_fetches":0,"tile_fallbacks":1,"tile_bytes_downloaded":0,"tile_fetch_ms":12.0,"prefetch_ms":3.0,"prefetch_tiles_requested":7,"prefetch_tiles_memory_hits":0,"late_tile_fetches":0},"plates":{"prepare_ms":4.0,"plate_compose_ms":1.0,"plate_count":11,"plate_bytes":42,"required_tile_count":7,"prefetch_tiles_fetched":7,"prefetch_tiles_memory_hits":0},"gate_ms":2.0,"frame_pipeline_s":3.0,"render_encode_wall_s":3.5,"post_frame_tail_s":0.5,"engine_fallback_frames":0,"output_bytes":8,"renderer_wall_s":9.0}`,
+			wantErr: "unapproved fallback work",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			plate := filepath.Join(dir, "plate-generator.py")
+			if err := os.WriteFile(plate, []byte("# path anchor\n"), 0600); err != nil {
+				t.Fatal(err)
+			}
+			renderer := filepath.Join(dir, "render_dynamic_map_overlay.py")
+			program := "import argparse,pathlib\np=argparse.ArgumentParser();p.add_argument('--input');p.add_argument('--output');p.add_argument('--summary-output');a=p.parse_args()\npathlib.Path(a.output).write_bytes(b'fake-mp4')\npathlib.Path(a.summary_output).write_text(" + strconv.Quote(tc.summary) + ",encoding='utf-8')\nprint('test diagnostic')\n"
+			if err := os.WriteFile(renderer, []byte(program), 0600); err != nil {
+				t.Fatal(err)
+			}
+			t.Setenv("VELOX_GEO_MAP_PLATE_GENERATOR_PATH", plate)
+			plan := capoverlay.OverlayPlan{
+				PlanID: "map-telemetry-test", Width: 1920, Height: 1080,
+				FPSNum: 24, FPSDen: 1, DurationMS: 5000,
+				Items: []capoverlay.OverlayItem{{ID: "map-1", Map: &capoverlay.MapOverlay{Pins: []capoverlay.MapOverlayPin{{
+					ID: "place:rome", Label: "Rome", Latitude: 41.89, Longitude: 12.49,
+				}}}}},
+			}
+			path, err := renderDynamicMapVideo(context.Background(), plan)
+			if tc.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tc.wantErr) {
+					t.Fatalf("renderDynamicMapVideo error = %v, want substring %q", err, tc.wantErr)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("renderDynamicMapVideo: %v", err)
+			}
+			defer os.RemoveAll(filepath.Dir(path))
+			if data, err := os.ReadFile(path); err != nil || string(data) != "fake-mp4" {
+				t.Fatalf("rendered output = %q, %v", data, err)
+			}
+		})
+	}
 }
 
 func (f *fakeRenderQueueClient) Submit(_ context.Context, job RenderQueueJob) error {

@@ -12,7 +12,6 @@ import (
 	mediasub "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/media"
 	assetspersistence "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
 	capcheckpoint "github.com/Marcuss-ops/PipelineGen/internal/capabilities/checkpoint"
-	entityports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/entities/ports"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/entitycatalog"
 	capabilityimagesearch "github.com/Marcuss-ops/PipelineGen/internal/capabilities/imagesearch"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediacert"
@@ -27,6 +26,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/drive"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/embeddings"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/media/rustexec"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/nlp"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/observability"
 	pgmedia "github.com/Marcuss-ops/PipelineGen/internal/platform/postgres/media"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/renderinggen"
@@ -165,12 +165,11 @@ func BuildScriptGenerationRuntime(cfg *config.Config, root *ComposeRoot, runRepo
 	}
 
 	executor := rustexec.NewExecutor(cfg.External.RustMusclesPath, cfg.External.FfmpegPath, log)
-	visualNERExecutor := rustexec.NewExecutor(cfg.External.RustVisualNERPath, cfg.External.FfmpegPath, log)
-	mediaSamplerExecutor := rustexec.NewExecutor(cfg.External.RustMediaSamplerPath, cfg.External.FfmpegPath, log)
-	visualNER, err := rustexec.NewVisualNERAdapter(visualNERExecutor)
+	visualNER, err := buildVisualNERBackend(cfg, log)
 	if err != nil {
-		return nil, fmt.Errorf("build VisualNER adapter: %w", err)
+		return nil, err
 	}
+	mediaSamplerExecutor := rustexec.NewExecutor(cfg.External.RustMediaSamplerPath, cfg.External.FfmpegPath, log)
 	mediaSampler, err := rustexec.NewMediaSamplerAdapter(mediaSamplerExecutor)
 	if err != nil {
 		return nil, fmt.Errorf("build MediaSampler adapter: %w", err)
@@ -366,7 +365,10 @@ func BuildScriptGenerationRuntime(cfg *config.Config, root *ComposeRoot, runRepo
 		return nil, fmt.Errorf("build script generation runtime: Job Registry is required for execution lineage")
 	}
 
-	var vidRushEntityExtractor entityports.EntityExtractor = visualNER
+	vidRushEntityExtractor, err := nlp.NewEntityExtractorAdapter(visualNER)
+	if err != nil {
+		return nil, fmt.Errorf("build NER entity extractor port: %w", err)
+	}
 	imageSearchResolver := capabilityimagesearch.NewResolver(vidRushEntityExtractor)
 	runner.SetImageSearchResolver(imageSearchResolver)
 	log.Info("image search intent resolver wired (capabilities/imagesearch, deterministic path)")

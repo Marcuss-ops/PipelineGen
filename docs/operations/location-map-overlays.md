@@ -94,6 +94,38 @@ not satisfy the PNG/provenance/runtime-georeference contract by themselves.
 No production map is emitted unless a certified plate covers the geocoded
 point. Ordinary location text cards do not require a geocoder or plate.
 
+## Latency and render-profile contract
+
+The current dynamic-map path has two distinct video passes; it is **not** a
+certified pass-through. This describes behavior verified in code, not an
+end-to-end latency or quality certification:
+
+- A targeted 5-second, 1920×1080@24 local render completed with 120 frames and
+  zero engine fallback frames, tile fallbacks, or late tile fetches. This was a
+  cache-hot local sample, not a production speedup measurement.
+- The calibration harness's harmless dry-run resolved representative overlay
+  and video-source plans to six future runs (three repetitions each). It did
+  not render or measure GPU use.
+- No map fast/quality comparison, production latency improvement, or extra GPU
+  concurrency is certified by those checks.
+
+**Still blocked:** eliminating the worker encode needs a versioned import path
+that accepts producer-rendered bytes and then performs trusted structural and
+full-decode checks, receipt/provenance accounting, content-store publication,
+and artifact-ledger completion without fabricating a Chronon render receipt.
+That is a cross-service contract change, not a safe local optimization. Keep
+`overlay.render` for maps until the import protocol and its end-to-end tests are
+implemented. GPU concurrency remains unchanged until the full calibration is
+run while safely isolated from active production rendering.
+
+Current encoder settings are implementation defaults, not user-selectable
+profiles:
+
+- ChrononTemplate: libx264 `veryfast`, CRF 18, yuv420p.
+- RenderingGen: configured encoder backend/preset (e.g. native NVENC p1).
+
+These are separate stages and tuning one does not remove the second encode.
+
 ## Verification
 
 Focused verification from the repository checkout:

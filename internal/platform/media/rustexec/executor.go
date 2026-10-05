@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/rustworker"
@@ -37,6 +38,8 @@ func NewResourceLimiter(capacity int) *ResourceLimiter {
 // policy, output bounds, and execution slots. Adapters should share one
 // instance when they belong to the same composition root.
 type Executor struct {
+	lifecycleMu sync.RWMutex
+	closed      bool
 	binaryPath  string
 	ffmpegPath  string
 	log         *zap.Logger
@@ -103,6 +106,11 @@ func (e *Executor) Run(ctx context.Context, input []byte) ([]byte, []byte, error
 	if e == nil {
 		return nil, nil, fmt.Errorf("rust media executor is nil")
 	}
+	e.lifecycleMu.RLock()
+	defer e.lifecycleMu.RUnlock()
+	if e.closed {
+		return nil, nil, fmt.Errorf("rust media executor is closed")
+	}
 	runCtx := ctx
 	cancel := func() {}
 	if e.timeout > 0 {
@@ -133,6 +141,37 @@ func (e *Executor) Run(ctx context.Context, input []byte) ([]byte, []byte, error
 }
 
 // FFmpegPath is the resolved ffmpeg executable forwarded by Client.
+// Close terminates the executor's persistent workers. It is safe to call more
+// than once and is intended for bounded benchmark/test lifecycles; long-lived
+// application compositions normally keep their shared executor alive.
+func (e *Executor) Close() {
+	if e == nil {
+		return
+	}
+	e.lifecycleMu.Lock()
+	defer e.lifecycleMu.Unlock()
+	if e.closed {
+		return
+	}
+	e.closed = true
+	if e.runnerPool == nil {
+		if runner, ok := e.runner.(*persistentRustProcessRunner); ok {
+			runner.reset()
+		}
+		return
+	}
+	workers := make([]RustProcessRunner, 0, cap(e.runnerPool))
+	for i := 0; i < cap(e.runnerPool); i++ {
+		workers = append(workers, <-e.runnerPool)
+	}
+	for _, worker := range workers {
+		if runner, ok := worker.(*persistentRustProcessRunner); ok {
+			runner.reset()
+		}
+		e.runnerPool <- worker
+	}
+}
+
 func (e *Executor) FFmpegPath() string {
 	if e == nil || e.ffmpegPath == "" {
 		return "ffmpeg"

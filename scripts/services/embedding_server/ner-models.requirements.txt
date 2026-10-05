@@ -1,0 +1,7 @@
+# Install inside the Python environment that runs scripts.services.embedding_server.
+# Base spaCy runtime dependencies are managed by the embedding-server deployment.
+--require-hashes
+spacy==3.8.14 \
+    --hash=sha256:38bffb3ad22dfd1f486a0cf33f150d1238166718dbb0c81e35baea2bd078622b
+https://github.com/explosion/spacy-models/releases/download/xx_ent_wiki_sm-3.8.0/xx_ent_wiki_sm-3.8.0-py3-none-any.whl \
+    --hash=sha256:2ef5062817ec481429555f7ae3e6199037b08a02df629323b7ee91fda506fe78

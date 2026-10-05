@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"testing"
+	"time"
 
 	_ "github.com/mattn/go-sqlite3"
 
@@ -29,6 +30,15 @@ CREATE TABLE render_attempt_analytics (
     attempt_id      TEXT PRIMARY KEY,
     job_id          TEXT NOT NULL DEFAULT '',
     item_id         TEXT NOT NULL DEFAULT '',
+    submit_started_at TEXT,
+    submit_accepted_at TEXT,
+    wait_started_at TEXT,
+    wait_finished_at TEXT,
+    queue_queued_at TEXT,
+    queue_started_at TEXT,
+    queue_completed_at TEXT,
+    artifact_available_at TEXT,
+    outcome TEXT NOT NULL DEFAULT '',
     phrase_count    INTEGER NOT NULL DEFAULT 0,
     word_count      INTEGER NOT NULL DEFAULT 0,
     number_count    INTEGER NOT NULL DEFAULT 0,
@@ -84,10 +94,17 @@ func TestRecordAttemptUpsertsIdempotently(t *testing.T) {
 	}
 	ctx := context.Background()
 
+	started := time.Date(2026, 10, 4, 12, 0, 0, 123, time.UTC)
+	accepted := started.Add(10 * time.Millisecond)
+	queueStart := accepted.Add(2 * time.Second)
 	a := scriptgen.RenderAttemptAnalytics{
 		AttemptID:               "attempt-1",
 		JobID:                   "job-1",
 		ItemID:                  "phrase-hello",
+		SubmitStartedAt:         &started,
+		SubmitAcceptedAt:        &accepted,
+		QueueStartedAt:          &queueStart,
+		Outcome:                 "success",
 		Content:                 capoverlay.ContentCounts{Phrases: 1, Words: 2, Images: 3, Leaks: 4},
 		RenderMS:                100,
 		EncodeMS:                50,
@@ -124,13 +141,14 @@ func TestRecordAttemptUpsertsIdempotently(t *testing.T) {
 		t.Fatalf("rows = %d, want 1 (upsert keyed by attempt_id)", count)
 	}
 	var gotSHA, gotItemID, gotBackend, gotChrononVersion, gotMetrics, gotTelemetry, gotTimingKey string
+	var gotSubmitStarted, gotSubmitAccepted, gotQueueStarted, gotOutcome string
 	var phrases, words, images, leaks, renderMS, encodeMS, completionWaitMS, pollingSleepMS, pollingIntervalMS, pollCount int
 	var width, height, matMS, planMS int
-	if err := db.QueryRow(`SELECT sha256, item_id, backend, chronon_version, metrics_json, chronon_telemetry, chronon_timing_storage_key, phrase_count, word_count, image_count, leak_count, render_ms, encode_ms, completion_wait_ms, polling_sleep_ms, polling_interval_ms, poll_count, width, height, materialize_ms, plan_ms FROM render_attempt_analytics WHERE attempt_id='attempt-1'`).
-		Scan(&gotSHA, &gotItemID, &gotBackend, &gotChrononVersion, &gotMetrics, &gotTelemetry, &gotTimingKey, &phrases, &words, &images, &leaks, &renderMS, &encodeMS, &completionWaitMS, &pollingSleepMS, &pollingIntervalMS, &pollCount, &width, &height, &matMS, &planMS); err != nil {
+	if err := db.QueryRow(`SELECT sha256, item_id, backend, chronon_version, metrics_json, chronon_telemetry, chronon_timing_storage_key, submit_started_at, submit_accepted_at, queue_started_at, outcome, phrase_count, word_count, image_count, leak_count, render_ms, encode_ms, completion_wait_ms, polling_sleep_ms, polling_interval_ms, poll_count, width, height, materialize_ms, plan_ms FROM render_attempt_analytics WHERE attempt_id='attempt-1'`).
+		Scan(&gotSHA, &gotItemID, &gotBackend, &gotChrononVersion, &gotMetrics, &gotTelemetry, &gotTimingKey, &gotSubmitStarted, &gotSubmitAccepted, &gotQueueStarted, &gotOutcome, &phrases, &words, &images, &leaks, &renderMS, &encodeMS, &completionWaitMS, &pollingSleepMS, &pollingIntervalMS, &pollCount, &width, &height, &matMS, &planMS); err != nil {
 		t.Fatal(err)
 	}
-	if gotSHA != "sha-2" || gotItemID != "phrase-hello" || gotBackend != "vulkan" || gotChrononVersion != "chronon-0.9.1" || gotMetrics != `{"gpu_lane_wait_ms":900}` || gotTelemetry != `{"job":{"plan_compile_ms":4.1}}` || gotTimingKey != "chronon/timing/abc.json" ||
+	if gotSHA != "sha-2" || gotItemID != "phrase-hello" || gotBackend != "vulkan" || gotChrononVersion != "chronon-0.9.1" || gotMetrics != `{"gpu_lane_wait_ms":900}` || gotTelemetry != `{"job":{"plan_compile_ms":4.1}}` || gotTimingKey != "chronon/timing/abc.json" || gotSubmitStarted != started.Format(time.RFC3339Nano) || gotSubmitAccepted != accepted.Format(time.RFC3339Nano) || gotQueueStarted != queueStart.Format(time.RFC3339Nano) || gotOutcome != "success" ||
 		phrases != 1 || words != 2 || images != 3 || leaks != 4 || renderMS != 100 || encodeMS != 50 || completionWaitMS != 2100 || pollingSleepMS != 2000 || pollingIntervalMS != 2000 || pollCount != 2 ||
 		width != 1920 || height != 1080 || matMS != 420 || planMS != 12 {
 		t.Fatalf("row = sha=%s item=%s backend=%s chronon=%s metrics=%s telemetry=%s timing=%s counts=%d/%d/%d/%d render=%d encode=%d completion_wait=%d polling_sleep=%d interval=%d polls=%d wh=%d/%d mat=%d plan=%d", gotSHA, gotItemID, gotBackend, gotChrononVersion, gotMetrics, gotTelemetry, gotTimingKey, phrases, words, images, leaks, renderMS, encodeMS, completionWaitMS, pollingSleepMS, pollingIntervalMS, pollCount, width, height, matMS, planMS)

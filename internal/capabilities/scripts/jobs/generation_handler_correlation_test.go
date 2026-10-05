@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"testing"
 
+	domainScript "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
+
 	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	"go.uber.org/zap"
@@ -65,6 +67,52 @@ func TestGenerateJobHandlerCorrelatesRunWhenJobIDBindingRacesWorker(t *testing.T
 	}
 	if runRepo.run.JobID != "job-1" {
 		t.Fatalf("self-healed job ID = %q, want job-1", runRepo.run.JobID)
+	}
+}
+
+func TestBuildDurableRunRequestUsesPersistedDocsIntent(t *testing.T) {
+	tests := []struct {
+		name           string
+		durableEnabled bool
+		envelope       string
+		wantEnabled    bool
+	}{
+		{
+			name:           "durable opt-out overrides job envelope opt-in",
+			durableEnabled: false,
+			envelope:       `{"version":2,"preset":"custom","items":[{"id":"item-1","docs":{"enabled":true,"languages":["it"],"folder_id":"job-folder"},"source":{"type":"text","topic":"topic"}}]}`,
+			wantEnabled:    false,
+		},
+		{
+			name:           "durable opt-in overrides job envelope opt-out",
+			durableEnabled: true,
+			envelope:       `{"version":2,"preset":"custom","items":[{"id":"item-1","docs":{"enabled":false},"source":{"type":"text","topic":"topic"}}]}`,
+			wantEnabled:    true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var env domainScript.GenerationEnvelopeV2
+			if err := json.Unmarshal([]byte(tt.envelope), &env); err != nil {
+				t.Fatalf("decode envelope: %v", err)
+			}
+			run := &scriptgen.GenerationRun{Request: scriptgen.GenerateRequest{
+				IdempotencyKey: "idem-1",
+				Docs:           scriptgen.DocumentsConfig{Enabled: tt.durableEnabled, Languages: []scriptgen.Language{"fr"}, FolderID: "durable-folder"},
+				DocsEnabled:    !tt.durableEnabled, // deliberately contradictory legacy bit
+			}}
+			got, err := buildDurableRunRequest(&env, run)
+			if err != nil {
+				t.Fatalf("build durable request: %v", err)
+			}
+			enabled, languages, folderID := got.ResolveDocsConfig()
+			if enabled != tt.wantEnabled || got.Docs.Enabled != tt.wantEnabled || got.DocsEnabled != tt.wantEnabled {
+				t.Fatalf("Docs intent canonical=%t legacy=%t resolved=%t, want %t", got.Docs.Enabled, got.DocsEnabled, enabled, tt.wantEnabled)
+			}
+			if len(languages) != 1 || languages[0] != "fr" || folderID != "durable-folder" {
+				t.Fatalf("persisted Docs routing not retained: languages=%v folder=%q", languages, folderID)
+			}
+		})
 	}
 }
 

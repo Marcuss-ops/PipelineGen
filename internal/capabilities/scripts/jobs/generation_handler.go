@@ -220,7 +220,7 @@ func (h *GenerateJobHandler) Handle(
 	// executor. Batch jobs retain the existing fan-out dispatcher until
 	// their per-item runtime is migrated to the same port.
 	if h.durableRunner != nil && len(env.Items) == 1 && run != nil {
-		runRequest, buildErr := scriptgen.BuildGenerateRequest(env, run.Request.IdempotencyKey)
+		runRequest, buildErr := buildDurableRunRequest(env, run)
 		if buildErr != nil {
 			noteRunLedgerFailure(h.log, "fail_run", run.ID, h.runRepo.FailRun(ctx, scriptgen.FailRunInput{RunID: run.ID, FailedStage: scriptgen.StageCompilingAudio, ErrorCode: "INVALID_GENERATION_REQUEST", ErrorMessage: buildErr.Error()}))
 			return nil, fmt.Errorf("generate job handler: build durable request: %w", buildErr)
@@ -316,6 +316,28 @@ func (h *GenerateJobHandler) Handle(
 		}
 	}
 	return result, dispatchErr
+}
+
+// buildDurableRunRequest combines the submitted envelope with the durable
+// run's canonical document intent. Submission payload and pipeline_run are
+// committed by separate boundaries, so the persisted run—not a potentially
+// divergent job envelope—owns whether Docs publication was requested.
+func buildDurableRunRequest(env *domainScript.GenerationEnvelopeV2, run *scriptgen.GenerationRun) (scriptgen.GenerateRequest, error) {
+	if run == nil {
+		return scriptgen.GenerateRequest{}, fmt.Errorf("generate job handler: durable run is required")
+	}
+	req, err := scriptgen.BuildGenerateRequest(env, run.Request.IdempotencyKey)
+	if err != nil {
+		return scriptgen.GenerateRequest{}, err
+	}
+	// Copy the full canonical configuration so the persisted language and
+	// destination contract remain aligned as well as the enable bit. Normalize
+	// the deprecated field from the canonical value: ResolveDocsConfig retains
+	// legacy fallback for older callers, but a worker must not let it override
+	// an explicit durable opt-out.
+	req.Docs = run.Request.Docs
+	req.DocsEnabled = run.Request.Docs.Enabled
+	return req, nil
 }
 
 // incompleteRunError decides what a durable run that did NOT reach COMPLETED
