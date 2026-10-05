@@ -14,7 +14,7 @@ import (
 // must stay on center (a panning or sliding basemap would move the geography
 // away from the pins projected over it).
 func mapMotionIDs() []string {
-	return centeredImageMotionCandidates
+	return mapImageMotionCandidates
 }
 
 // One certified marker treatment for every grounded place, so a map's pins are
@@ -208,6 +208,37 @@ func mapMotionAt(ordinal int) string {
 	return pool[ordinal%len(pool)]
 }
 
+// mapMotionForCenter prefers the map-specific Chronon treatment that matches
+// a supported geographic region. The bounds only choose a visual recipe; map
+// coverage, pins and coordinates remain owned by the certified plate.
+func mapMotionForCenter(ordinal int, center MapCenter) string {
+	lat, lon := center.Latitude, center.Longitude
+	switch {
+	case lat >= -44 && lat <= -10 && lon >= 112 && lon <= 154:
+		return "map_image_australia_sunset_drift"
+	case lat >= -34 && lat <= 6 && lon >= -74 && lon <= -34:
+		return "map_image_brazil_glow_reveal"
+	case lat >= 20 && lat <= 24 && lon >= 68 && lon <= 75:
+		return "map_image_gujarat_detail_push"
+	case lat >= 6 && lat <= 35 && lon >= 67 && lon <= 98:
+		return "map_image_india_contour_draw"
+	case lat >= 33 && lat <= 39 && lon >= 124 && lon <= 132:
+		return "map_image_korea_pin_focus"
+	case lat >= 18 && lat <= 54 && lon >= 73 && lon <= 135:
+		return "map_image_china_slow_reveal"
+	case lat >= 25 && lat <= 40 && lon >= 44 && lon <= 64:
+		return "map_image_iran_gold_focus"
+	case lat >= 35 && lat <= 48 && lon >= 6 && lon <= 19:
+		return "map_image_italy_beacon_arrival"
+	case lat >= 4 && lat <= 14 && lon >= 2 && lon <= 15:
+		return "map_image_nigeria_neon_bloom"
+	case lat >= 24 && lat <= 50 && lon >= -125 && lon <= -66:
+		return "map_image_usa_sweep_in"
+	default:
+		return mapMotionAt(ordinal)
+	}
+}
+
 // mapItemsForScene lowers a scene's resolved map plans to at most one overlay
 // item per certified plate. It fails closed at every step: a plan without a
 // plate or a place, a plate whose raster is not the canvas size, a place
@@ -282,7 +313,7 @@ func mapItemsForScene(sceneID string, plans []MapPlan, canvasWidth, canvasHeight
 			Provider: "local", SourceID: entry.plate.ID, SourceLicense: entry.plate.License,
 			Center: entry.plate.Center, Zoom: entry.plate.Zoom,
 			Width: entry.plate.Width, Height: entry.plate.Height,
-			Attribution: entry.plate.Attribution, MotionID: mapMotionAt(ordinal), Pins: pins,
+			Attribution: entry.plate.Attribution, MotionID: mapMotionForCenter(ordinal, entry.plate.Center), Pins: pins,
 			AreaGlowRadiusKM: mapAreaGlowRadiusKM(pins),
 		}
 		if len(lods) >= 2 {

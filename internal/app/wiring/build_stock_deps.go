@@ -70,7 +70,7 @@ import (
 // StockBundleDeps itself carries 7 sub-bundle fields → 7 fields, well
 // below the 8-field cap. The nesting follows the canonical godlike/06
 // SSOT pattern established by PR-NEST-FLAT-DEPS-ARLIST
-// (build_bundles_artlist.go::ServiceDeps{ServicePorts + ServiceDependencies}).
+// (the nested ServicePorts + ServiceDependencies shape).
 //
 // Mandatory fields return an error when BuildStockBundle is called with
 // nil; optional fields fall through to the existing type's nil-tolerance

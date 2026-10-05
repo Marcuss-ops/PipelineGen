@@ -40,7 +40,7 @@ import (
 // that performs the actual jobs.Service.RegisterHandler call.
 //
 // The Bind closure MUST be nil-safe: if the handler construction path
-// is unwired (e.g. destinations nil for an artlist-only deploy), the
+// is unwired (e.g. destinations nil for a YouTube-only deploy), the
 // closure should return nil without binding. The validator only
 // surfaces FAILURES, not unwired-but-optional paths.
 //

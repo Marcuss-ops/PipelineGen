@@ -27,7 +27,6 @@ import (
 	semantic "github.com/Marcuss-ops/PipelineGen/internal/capabilities/semantic"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/transcripts"
 	monitoradapter "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/adapters/monitoradapter"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/artlist/health"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/downloader"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/observability"
 	sqlchannels "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/channels"
@@ -162,58 +161,6 @@ func buildSchedulerSteps(deps schedulerDeps) (*monitor.ChannelMonitor, []Startup
 				return nil
 			},
 			Stop: func(_ context.Context) error { return nil },
-		})
-	}
-
-	// Artlist Node scraper health probe (ART-002 P1.3, July 2026):
-	// 60s-tick HTTP liveness probe on the persistent Node scraper
-	// server. Fires an alert (log.Warn + Prometheus counter
-	// artlist_scraper_health_alerts_total) after 3 consecutive
-	// transport errors (the user spec "alert 3 fallimenti
-	// consecutivi"). Composition-time fail-closed (P0.1 gate
-	// mirrors): the step is only registered when BOTH the Artlist
-	// feature is enabled AND the scraper URL is configured
-	// (mirrors validateArtlistScraperURL in build_bundles_artlist.go).
-	// Otherwise the step is omitted entirely (not gated on
-	// ErrCapabilityDisabled — the capability is intentionally
-	// absent when Artlist is off, not "disabled at startup").
-	if deps.cfg.Features.ArtlistEnabled && deps.cfg.External.ArtlistScraperServerURL != "" {
-		artlistProbe := health.New(
-			deps.cfg.External.ArtlistScraperServerURL,
-			deps.log,
-			&health.Options{
-				Interval:         health.DefaultProbeInterval,    // 60s
-				FailureThreshold: health.DefaultFailureThreshold, // 3
-				Metrics:          health.NewMetrics(),            // promauto globals
-			},
-		)
-		ap := artlistProbe
-		steps = append(steps, StartupStep{
-			Name: "artlist-scraper-health-probe", Required: false,
-			Start: func(startCtx context.Context) error {
-				// health.Probe.Start launches its own ticker
-				// goroutine internally (no SafeGo wrap needed —
-				// unlike channel-monitor whose Start blocks until
-				// ctx cancellation, the probe's Start returns
-				// immediately after launching the goroutine).
-				if err := ap.Start(startCtx); err != nil {
-					return fmt.Errorf("artlist-scraper-health-probe start: %w", err)
-				}
-				deps.log.Info("Artlist scraper health probe started",
-					zap.String("server_url", deps.cfg.External.ArtlistScraperServerURL),
-					zap.Duration("interval", health.DefaultProbeInterval),
-					zap.Int("failure_threshold", health.DefaultFailureThreshold),
-				)
-				return nil
-			},
-			Stop: func(stopCtx context.Context) error {
-				// health.Probe.Stop blocks until the ticker
-				// goroutine confirms shutdown OR stopCtx times
-				// out (the per-call budget caps the wait at
-				// 5s; the goroutine exits via ctx cancellation
-				// on the parent lifecycle in practice).
-				return ap.Stop(stopCtx)
-			},
 		})
 	}
 

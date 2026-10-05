@@ -43,8 +43,8 @@ func TestWireRegistry_StockMounted(t *testing.T) {
 	})
 	all := reg.All()
 	assert.Equal(t, WireMounted, all["stock"], "stock should be MOUNTED when /api/stock-pipeline/* routes are registered")
-	assert.Equal(t, WireNotMounted, all["artlist"], "artlist should be NOT_MOUNTED when no /api/artlist routes are registered")
-	assert.Equal(t, WireNotMounted, all["voiceover"], "voiceover should be NOT_MOUNTED when no /api/voiceover routes are registered")
+	assert.Equal(t, WireNotMounted, all["voiceover"], "voiceover should be NOT_MOUNTED when no /api/media/voiceover routes are registered")
+	assert.Equal(t, WireNotMounted, all["clip-render"], "clip-render should be NOT_MOUNTED when no /api/clips/render route is registered")
 }
 
 // TestWireRegistry_AllCapabilitiesMounted verifies the happy path
@@ -53,7 +53,7 @@ func TestWireRegistry_StockMounted(t *testing.T) {
 func TestWireRegistry_AllCapabilitiesMounted(t *testing.T) {
 	reg := NewWireRegistry([]RouteInfo{
 		{Method: "POST", Path: "/api/stock-pipeline/run"},
-		{Method: "POST", Path: "/api/artlist/sync"},
+		{Method: "POST", Path: "/api/media/voiceover/sync"},
 		{Method: "POST", Path: "/api/media/voiceover/generate"},
 		{Method: "POST", Path: "/api/script/generate"},
 		{Method: "POST", Path: "/api/youtube/clip-extract"},
@@ -117,13 +117,13 @@ func TestWireRegistry_PrefixMatching(t *testing.T) {
 	reg := NewWireRegistry([]RouteInfo{
 		{Method: "POST", Path: "/api/stock-pipeline/run"},
 		{Method: "POST", Path: "/api/stock/anything-else"},
-		{Method: "POST", Path: "/api/artlist/sync"},
+		{Method: "POST", Path: "/api/media/voiceover/sync"},
 		{Method: "GET", Path: "/api/storage/sync"},
 	})
 	assert.True(t, reg.IsMounted("stock"))
-	assert.True(t, reg.IsMounted("artlist"))
+	assert.True(t, reg.IsMounted("voiceover"))
 	assert.True(t, reg.IsMounted("storage"))
-	assert.False(t, reg.IsMounted("voiceover"))
+	assert.False(t, reg.IsMounted("clip-render"))
 	assert.False(t, reg.IsMounted("register"))
 }
 
@@ -158,13 +158,13 @@ func TestWireRegistry_FromEngineWithRoutes(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	engine := gin.New()
 	engine.POST("/api/stock-pipeline/run", func(c *gin.Context) {})
-	engine.POST("/api/artlist/sync", func(c *gin.Context) {})
+	engine.POST("/api/media/voiceover/sync", func(c *gin.Context) {})
 
 	reg := NewWireRegistryFromEngine(engine)
 	all := reg.All()
 	assert.Equal(t, WireMounted, all["stock"])
-	assert.Equal(t, WireMounted, all["artlist"])
-	assert.Equal(t, WireNotMounted, all["voiceover"])
+	assert.Equal(t, WireMounted, all["voiceover"])
+	assert.Equal(t, WireNotMounted, all["clip-render"])
 }
 
 // TestWireRegistry_AllReturnsMapWithAllKnownCapabilities is a
@@ -222,13 +222,13 @@ func TestWireRegistry_PrefixBoundaryDoesNotMatch(t *testing.T) {
 func TestWireRegistry_PrefixBoundaryExactMatch(t *testing.T) {
 	reg := NewWireRegistry([]RouteInfo{
 		{Method: "POST", Path: "/api/stock-pipeline"},
-		{Method: "POST", Path: "/api/artlist"},
+		{Method: "POST", Path: "/api/media/voiceover"},
 		{Method: "GET", Path: "/qdrant/"},
 	})
 	assert.True(t, reg.IsMounted("stock"), "exact-prefix route /api/stock-pipeline must classify as stock")
-	assert.True(t, reg.IsMounted("artlist"), "exact-prefix route /api/artlist must classify as artlist")
+	assert.True(t, reg.IsMounted("voiceover"), "exact-prefix route /api/media/voiceover must classify as voiceover")
 	assert.True(t, reg.IsMounted("qdrant_health"), "trailing-slash route /qdrant/ must classify as qdrant_health")
-	assert.False(t, reg.IsMounted("voiceover"), "no voiceover route in this test")
+	assert.False(t, reg.IsMounted("clip-render"), "no clip-render route in this test")
 }
 
 // TestWireRegistry_ClipsMountedUnderMedia locks the canonical clips
@@ -308,17 +308,17 @@ func TestWireRegistry_VoiceoverMountedUnderMedia(t *testing.T) {
 	})
 
 	t.Run("all_lit_at_canonical_prefix", func(t *testing.T) {
-		// Production realistic: stock + artlist registered at /api/*,
+		// Production realistic: stock + voiceover registered at /api/*,
 		// voiceover registered at the assets aggregate /api/media/voiceover/*
 		// (assetsRouteMod wraps all 7 capability descriptors).
 		reg := NewWireRegistry([]RouteInfo{
 			{Method: "POST", Path: "/api/stock-pipeline/run"},
-			{Method: "POST", Path: "/api/artlist/sync"},
+			{Method: "POST", Path: "/api/media/voiceover/sync"},
 			{Method: "POST", Path: "/api/media/voiceover/generate"},
 		})
 		all := reg.All()
 		assert.Equal(t, WireMounted, all["stock"])
-		assert.Equal(t, WireMounted, all["artlist"])
+		assert.Equal(t, WireMounted, all["voiceover"])
 		assert.Equal(t, WireMounted, all["voiceover"],
 			"with the canonical assets aggregate prefix /api/media/voiceover/generate, "+
 				"voiceover MUST report MOUNTED — this is the regression guard")

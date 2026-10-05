@@ -44,8 +44,7 @@ func TestWireServicesDoesNotPanicWithoutDriveAndArtlist(t *testing.T) {
 			},
 		},
 		Features: config.FeaturesConfig{
-			DriveEnabled:   false,
-			ArtlistEnabled: false,
+			DriveEnabled: false,
 		},
 	}
 	cfg.Linguistics.LexiconRoot = testLexiconRoot()
@@ -95,8 +94,7 @@ func TestCleanupCanBeCalledMultipleTimesSafely(t *testing.T) {
 			},
 		},
 		Features: config.FeaturesConfig{
-			DriveEnabled:   false,
-			ArtlistEnabled: false,
+			DriveEnabled: false,
 		},
 	}
 	cfg.Linguistics.LexiconRoot = testLexiconRoot()
@@ -148,7 +146,6 @@ func TestWireServicesSkipsOptionalHandlersWhenDepsMissing(t *testing.T) {
 		},
 		Features: config.FeaturesConfig{
 			DriveEnabled:   false,
-			ArtlistEnabled: false,
 			YouTubeEnabled: false,
 		},
 	}
@@ -200,8 +197,7 @@ func TestStartupIntegration(t *testing.T) {
 			},
 		},
 		Features: config.FeaturesConfig{
-			DriveEnabled:   false,
-			ArtlistEnabled: false,
+			DriveEnabled: false,
 		},
 	}
 	cfg.Linguistics.LexiconRoot = testLexiconRoot()

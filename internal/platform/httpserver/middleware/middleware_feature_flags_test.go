@@ -1,8 +1,7 @@
 // Feature flag middleware tests (PG-006, June 2026).
 //
 // Previously these tests constructed `&config.Config{Features:
-// config.FeaturesConfig{...}}` literals to drive the ArtlistEnabled
-// per-feature gate. With the typed-port cascade, the package no longer
+// config.FeaturesConfig{...}}` literals to drive the per-feature gate. With the typed-port cascade, the package no longer
 // imports `internal/platform/config` — the testFlags stub from
 // port_fakes_test.go (a 3-method FeatureFlagsPort fake) replaces the
 // config literal.
@@ -19,9 +18,9 @@ import (
 func TestFeatureFlagCheckerDisabled(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
-	flags := &testFlags{artlist: false}
+	flags := &testFlags{scriptClips: false}
 	r := gin.New()
-	r.Use(ArtlistEnabled(flags))
+	r.Use(ScriptClipsEnabled(flags))
 	r.GET("/test", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"status": "ok"})
 	})
@@ -38,9 +37,9 @@ func TestFeatureFlagCheckerDisabled(t *testing.T) {
 func TestFeatureFlagCheckerEnabled(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
-	flags := &testFlags{artlist: true}
+	flags := &testFlags{scriptClips: true}
 	r := gin.New()
-	r.Use(ArtlistEnabled(flags))
+	r.Use(ScriptClipsEnabled(flags))
 	r.GET("/test", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"status": "ok"})
 	})

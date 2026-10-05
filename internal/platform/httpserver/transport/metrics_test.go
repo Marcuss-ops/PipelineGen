@@ -44,7 +44,7 @@ func TestSyncWireCapabilityMounted_StockMounted(t *testing.T) {
 func TestSyncWireCapabilityMounted_AllCapabilitiesMounted(t *testing.T) {
 	reg := NewWireRegistry([]RouteInfo{
 		{Method: "POST", Path: "/api/stock-pipeline/run"},
-		{Method: "POST", Path: "/api/artlist/sync"},
+		{Method: "POST", Path: "/api/media/voiceover/sync"},
 		{Method: "POST", Path: "/api/media/voiceover/generate"},
 		{Method: "POST", Path: "/api/script/generate"},
 		{Method: "POST", Path: "/api/clips/process"},
@@ -67,19 +67,19 @@ func TestSyncWireCapabilityMounted_AllCapabilitiesMounted(t *testing.T) {
 }
 
 // TestSyncWireCapabilityMounted_MixedMountState pins the partial-mount
-// case: stock + artlist mounted, others not. The gauge must reflect
+// case: stock + voiceover mounted, others not. The gauge must reflect
 // the per-capability state independently.
 func TestSyncWireCapabilityMounted_MixedMountState(t *testing.T) {
 	reg := NewWireRegistry([]RouteInfo{
 		{Method: "POST", Path: "/api/stock-pipeline/run"},
-		{Method: "POST", Path: "/api/artlist/sync"},
+		{Method: "POST", Path: "/api/media/voiceover/sync"},
 		{Method: "POST", Path: "/internal/v1/media/search"},
 	})
 	SyncWireCapabilityMounted(reg)
 	assert.Equal(t, 1.0, testutil.ToFloat64(WireCapabilityMounted.WithLabelValues("stock")))
-	assert.Equal(t, 1.0, testutil.ToFloat64(WireCapabilityMounted.WithLabelValues("artlist")))
+	assert.Equal(t, 1.0, testutil.ToFloat64(WireCapabilityMounted.WithLabelValues("voiceover")))
 	assert.Equal(t, 1.0, testutil.ToFloat64(WireCapabilityMounted.WithLabelValues("mediasearch")))
-	assert.Equal(t, 0.0, testutil.ToFloat64(WireCapabilityMounted.WithLabelValues("voiceover")))
+	assert.Equal(t, 0.0, testutil.ToFloat64(WireCapabilityMounted.WithLabelValues("clip-render")))
 	assert.Equal(t, 0.0, testutil.ToFloat64(WireCapabilityMounted.WithLabelValues("youtube")))
 	assert.Equal(t, 0.0, testutil.ToFloat64(WireCapabilityMounted.WithLabelValues("register")))
 	assert.Equal(t, 0.0, testutil.ToFloat64(WireCapabilityMounted.WithLabelValues("storage")))

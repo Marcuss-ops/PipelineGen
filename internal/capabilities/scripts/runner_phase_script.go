@@ -202,6 +202,21 @@ func (r *Runner) runSceneTextPhase(ctx context.Context, runID string, req Genera
 			result.ExpectedRenderCount = expectedUnits
 			result.RenderMetrics = &RenderMetrics{Expected: expectedUnits, Concurrency: req.Render.RenderConcurrency}
 		}
+		if r.phraseImpactAnalyzer != nil && strings.TrimSpace(output.Text) != "" {
+			impact, impactErr := r.phraseImpactAnalyzer.Analyze(ctx, output.Text, string(req.SourceLanguage))
+			if impactErr != nil {
+				// The extractive summary is an optional data product. A broken
+				// or unavailable Rust NLP worker must never cost the caller the
+				// video, so the failure is recorded and the run continues with
+				// the editorial fields empty rather than failing closed.
+				r.log.Warn("phrase-impact analysis unavailable; continuing without extractive summary",
+					zap.String("run_id", runID), zap.Error(impactErr))
+			} else {
+				result.Summary = impact.Summary
+				result.BulletPoints = impact.BulletPoints
+				result.HeavySentences = impact.HeavySentences
+			}
+		}
 		// Explicit clip workflows may request real video reconstruction without
 		// generating TTS. The historical fan-out was only entered after a
 		// voiceover existed, which made audio.mode=NONE silently produce a script

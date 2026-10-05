@@ -322,7 +322,7 @@ func (m *MapOverlay) Validate(canvasWidth, canvasHeight int, assets []OverlayAss
 	if err := (geodesy.Point{Latitude: m.Center.Latitude, Longitude: m.Center.Longitude}).Validate(); err != nil {
 		return fmt.Errorf("invalid map center: %w", err)
 	}
-	if m.MotionID != "image_fade_reveal" && m.MotionID != "image_focus_reveal" && m.MotionID != "image_scale_reveal" {
+	if !isAllowedMapMotion(m.MotionID) {
 		return fmt.Errorf("unsupported or missing map motion %q", m.MotionID)
 	}
 	if err := m.validateCameraMove(canvasWidth, canvasHeight, assets); err != nil {
@@ -382,6 +382,18 @@ func (m *MapOverlay) Validate(canvasWidth, canvasHeight int, assets []OverlayAss
 		}
 	}
 	return nil
+}
+
+func isAllowedMapMotion(id string) bool {
+	if id == "image_fade_reveal" || id == "image_focus_reveal" || id == "image_scale_reveal" {
+		return true
+	}
+	for _, candidate := range mapImageMotionCandidates {
+		if id == candidate {
+			return true
+		}
+	}
+	return false
 }
 
 // isSingleLineVisibleText reports whether value is non-blank valid UTF-8 with

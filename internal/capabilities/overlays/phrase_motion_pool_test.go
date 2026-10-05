@@ -486,13 +486,14 @@ func TestRandomImageMotionOffsetRotatesThroughAllCertifiedIDs(t *testing.T) {
 	}
 }
 
-// TestEntityImageMotionRotationCoversTheGeneratedPool is the regression
-// gate for generated portraits staying inside a restrained, certified motion
-// pool while preserving per-plan rotation and retry determinism.
+// TestEntityImageMotionRotationCoversTheCertifiedCatalog is the regression
+// gate for generated portraits rotating over the full certified 2D image
+// vocabulary (no camera-backed 3D) while preserving per-plan rotation and
+// retry determinism.
 func TestEntityImageMotionRotationCoversTheCertifiedCatalog(t *testing.T) {
 	pool := CertifiedEntityImageMotions()
-	if len(pool) != 3 {
-		t.Fatalf("generated entity-image rotation pool = %d motions, want the three restrained motions", len(pool))
+	if len(pool) != 10 {
+		t.Fatalf("generated entity-image rotation pool = %d motions, want the ten certified 2D motions", len(pool))
 	}
 	for i, id := range pool {
 		if !containsString(imageMotionCandidates, id) {

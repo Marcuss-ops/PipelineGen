@@ -7,6 +7,10 @@ import (
 const (
 	// SharedTextFontSizePX is phrase_default's canonical 1080p text size.
 	SharedTextFontSizePX = 112
+	// PresentationPhraseFontMinimumPX lifts runtime documentary phrases above
+	// the undersized 70px legacy request while leaving date/stat callouts on
+	// their dedicated size path.
+	PresentationPhraseFontMinimumPX = 92
 	// PresentationTextFontIncreasePX keeps Date and Metric callouts readable
 	// while retaining the shared text font and appearance family.
 	PresentationTextFontIncreasePX = 28
@@ -99,13 +103,24 @@ var (
 		"image_focus_reveal",
 		"image_scale_reveal",
 	}
-	// Generated entity portraits share a restrained 2D entrance language. The
-	// wider catalog remains available to explicit editorial plans, while
-	// automatic entity cards avoid abrupt rotations and 3D flips on real people.
+	// Generated entity portraits rotate over the COMPLETE certified 2D image
+	// vocabulary: every layer-only image motion that does NOT enable the
+	// camera-backed 3D path (no position_z / rotation_x / rotation_y). Keeping
+	// the pool to the certified 2D set preserves the restrained look on real
+	// people while giving each portrait a genuinely different entrance instead
+	// of the same three reveals. The 3D families (image_25d_*, editorial
+	// depth/flip) stay available to explicit editorial plans only.
 	generatedEntityImageMotionCandidates = []string{
 		"image_fade_reveal",
 		"image_focus_reveal",
 		"image_scale_reveal",
+		"image_slide_left_reveal",
+		"image_slide_right_reveal",
+		"image_card_push",
+		"image_diagonal_sweep",
+		"image_soft_focus_reveal",
+		"image_photo_drop",
+		"image_roll_in",
 	}
 	// Entity-name captions use the four certified 2D caption motions. The
 	// catalog's depth/yaw variants are intentionally omitted so a portrait's
@@ -131,6 +146,31 @@ var (
 		"typewriter_glitch", "typewriter_neon",
 		"typewriter_lift", "typewriter_slide_in", "typewriter_scale_up",
 		"typewriter_blur_focus", "typewriter_soft_lift",
+	}
+	// Map image recipes authored in ChrononTemplate's map_image_v1 family.
+	// They are transported through MapOverlay.motion_id and lowered onto the
+	// certified basemap layer by RenderingGen.
+	mapImageMotionCandidates = []string{
+		"map_image_australia_sunset_drift",
+		"map_image_brazil_glow_reveal",
+		"map_image_china_slow_reveal",
+		"map_image_gujarat_detail_push",
+		"map_image_india_contour_draw",
+		"map_image_iran_gold_focus",
+		"map_image_italy_beacon_arrival",
+		"map_image_korea_pin_focus",
+		"map_image_nigeria_neon_bloom",
+		"map_image_usa_sweep_in",
+	}
+	// Documentary phrase rotation uses only continuous opacity/slide entrances.
+	// Typewriter and 3D families intermittently shimmer/flicker on long runtime
+	// text, so keep them available for explicit editorial plans but out of this
+	// automatic path.
+	documentaryCleanPhraseMotionCandidates = []string{
+		"phrase_apple_clean_07_slide_up_soft",
+		"phrase_apple_clean_10_slide_from_right_apple",
+		"phrase_apple_clean_25_opacity_soft_reveal",
+		"phrase_apple_clean_28_opacity_cinematic",
 	}
 	classicAppleMotionCandidates = []string{
 		"air_rise_type_on",
@@ -315,6 +355,15 @@ var (
 		"phrase_apple_clean_28_opacity_cinematic",
 		"phrase_apple_clean_29_opacity_hero_settle",
 		"phrase_apple_clean_30_opacity_clean_apple",
+		// Long phrases are still allowed to rotate through clearly different
+		// text families; limiting them to Apple fades made every documentary
+		// sentence look identical and hid typewriter / 3D treatments entirely.
+		"typewriter_clean",
+		"typewriter_lift",
+		"typewriter_tracking",
+		"text_3d_camera_push",
+		"text_3d_tilt_rise",
+		"phrase_apple_clean_02_blur_focus_snap",
 	}
 	phraseMotionCandidates      = combineMotionPools(classicAppleMotionCandidates, modernAppleMotionCandidates, typewriterMotionCandidates, text3DMotionCandidates)
 	renderSafeTextMotions       = phraseAppleCleanMotionCandidates
@@ -329,6 +378,12 @@ var (
 // a second copy that can drift from the ids the planner can actually emit.
 func ImagePresetCandidates() []string {
 	return append([]string(nil), imagePresetCandidates...)
+}
+
+// MapImageMotionCandidates projects ChrononTemplate's map_image_v1 styles to
+// the map planner without exposing the mutable package slice.
+func MapImageMotionCandidates() []string {
+	return append([]string(nil), mapImageMotionCandidates...)
 }
 
 func selectPreset(jobID, sceneID, itemID, family string, candidates []string) string {
@@ -386,243 +441,4 @@ func DatePresentationMotionCandidates() []string {
 
 func MetricPresentationMotionCandidates() []string {
 	return append([]string(nil), metricPresentationMotionCandidates...)
-}
-
-func selectPhrasePreset(jobID, sceneID, itemID string) string {
-	return selectPreset(jobID, sceneID, itemID, "important_phrase", phrasePresetCandidates)
-}
-
-func selectPhraseMotion(jobID, sceneID string, ordinal int, pool []string) string {
-	if len(pool) > 0 {
-		// Explicit channel pools retain their editorial entrance preference,
-		// while remaining strictly inside the caller's certified vocabulary.
-		visibleEntrances := visiblePhraseEntrancePool(pool)
-		if len(visibleEntrances) > 0 && ordinal%3 == 0 {
-			return selectMotionFromPool(jobID, sceneID, "visible_entrance", ordinal/3, visibleEntrances)
-		}
-		return selectMotionFromPool(jobID, sceneID, "explicit", ordinal, pool)
-	}
-	// The default is a full deterministic no-repeat walk of the 123-motion
-	// catalog. Do not siphon every third phrase into a smaller "visible"
-	// subset: that makes the large catalog repeat much earlier than necessary.
-	sequence := defaultPhraseMotionSequence(jobID, sceneID)
-	if len(sequence) == 0 {
-		return ""
-	}
-	return sequence[ordinal%len(sequence)]
-}
-
-// selectLongPhraseMotion keeps longer cards on block-level entrances such as
-// a soft reveal, line slide, or restrained scale — but the rotation the caller
-// asked for always survives. The editorial preference is the intersection of
-// the long-phrase list with pool; when that intersection is degenerate (empty,
-// or a SINGLE motion) it cannot rotate, and every long phrase would render the
-// identical animation. That is the defect this guard closes: a narrow channel
-// pool can intersect the long-phrase list in only one id, collapsing every
-// long phrase onto that single animation.
-//
-// Precedence: a rotating intersection (>= 2 motions) > the caller's pool (a
-// channel profile's explicit, already-certified vocabulary) > the long-phrase
-// list (only when the caller supplied no pool at all). A single-motion pool is
-// honoured verbatim — an operator who names one motion asked for one motion.
-func selectLongPhraseMotion(jobID, sceneID string, ordinal int, pool []string) string {
-	compatible := make([]string, 0, len(longPhraseMotionCandidates))
-	allowed := make(map[string]struct{}, len(pool))
-	for _, id := range pool {
-		allowed[id] = struct{}{}
-	}
-	for _, id := range longPhraseMotionCandidates {
-		if len(pool) == 0 {
-			compatible = append(compatible, id)
-			continue
-		}
-		if _, ok := allowed[id]; ok {
-			compatible = append(compatible, id)
-		}
-	}
-	switch {
-	case len(compatible) >= 2 && len(pool) == 0:
-		// Keep the default long-card lane a simple no-repeat walk too; routing
-		// it through selectPhraseMotion would apply a smaller explicit-pool
-		// entrance subset and reintroduce repeats before the pool is exhausted.
-		return selectMotionFromPool(jobID, sceneID, "long_phrase_default", ordinal, compatible)
-	case len(compatible) >= 2:
-		return selectPhraseMotion(jobID, sceneID, ordinal, compatible)
-	case len(pool) > 0:
-		return selectPhraseMotion(jobID, sceneID, ordinal, pool)
-	default:
-		return selectPhraseMotion(jobID, sceneID, ordinal, compatible)
-	}
-}
-
-// visiblePhraseEntrancePool limits the guaranteed entrance slot to certified
-// motions with an unmistakable reveal. The general phrase pool remains fully
-// available in the other slots, including calmer fades and settles.
-//
-// When a caller supplies an explicit rotation pool, the pool is honoured
-// verbatim: a calmer pool with no visible entrances stays calmer because the
-// caller asked for it. The default rotation bypasses this filtering and walks
-// the complete catalog without repeats.
-func visiblePhraseEntrancePool(pool []string) []string {
-	if len(pool) == 0 {
-		pool = phraseMotionCandidates
-	}
-	out := make([]string, 0, len(pool))
-	for _, id := range pool {
-		if strings.HasPrefix(id, "typewriter_") ||
-			strings.Contains(id, "slide") || strings.Contains(id, "reveal") ||
-			strings.Contains(id, "stagger") || strings.Contains(id, "cascade") ||
-			strings.Contains(id, "lift") || strings.Contains(id, "fold") ||
-			strings.Contains(id, "pop") || strings.Contains(id, "scale_in") ||
-			strings.Contains(id, "scale_push") || strings.Contains(id, "focus_rise") {
-			out = append(out, id)
-		}
-	}
-	return out
-}
-
-func defaultPhraseMotionSequence(jobID, sceneID string) []string {
-	families := append([]string(nil), defaultPhraseMotionFamilies...)
-	if len(families) == 0 {
-		return nil
-	}
-	seededFamily := selectPreset(jobID, sceneID, "run", "important_phrase_motion_family", families)
-	for i, family := range families {
-		if family == seededFamily {
-			families = append(families[i:], families[:i]...)
-			break
-		}
-	}
-	rotated := make(map[string][]string, len(families))
-	maxLen := 0
-	for _, family := range families {
-		candidates := phraseMotionFamilyCandidates(family)
-		if len(candidates) == 0 {
-			continue
-		}
-		seeded := selectPreset(jobID, sceneID, "run", "important_phrase_motion:"+family, candidates)
-		start := 0
-		for i, candidate := range candidates {
-			if candidate == seeded {
-				start = i
-				break
-			}
-		}
-		order := make([]string, len(candidates))
-		for i := range candidates {
-			order[i] = candidates[(start+i)%len(candidates)]
-		}
-		rotated[family] = order
-		if len(order) > maxLen {
-			maxLen = len(order)
-		}
-	}
-	sequence := make([]string, 0, len(phraseMotionCandidates))
-	for rank := 0; rank < maxLen; rank++ {
-		for _, family := range families {
-			if motions := rotated[family]; rank < len(motions) {
-				sequence = append(sequence, motions[rank])
-			}
-		}
-	}
-	return sequence
-}
-
-func selectMotionFromPool(jobID, sceneID, family string, ordinal int, candidates []string) string {
-	if len(candidates) == 0 {
-		return ""
-	}
-	seeded := selectPreset(jobID, sceneID, "run", "important_phrase_motion:"+family, candidates)
-	start := 0
-	for i, candidate := range candidates {
-		if candidate == seeded {
-			start = i
-			break
-		}
-	}
-	return candidates[(start+ordinal)%len(candidates)]
-}
-
-// CertifiedPhraseMotions returns the certified render-safe motion pool this
-// build rotates over. It is the membership authority a caller-supplied pool is
-// validated against (see PlanInput.PhraseMotions): every id is a catalog motion
-// that lowers to composition tracks only, so an id outside this list either
-// needs a text-animator stack or a glow the native text lane rejects — it
-// cannot render here.
-//
-// The returned slice is a copy — callers may keep it without pinning the
-// package's own storage.
-func CertifiedPhraseMotions() []string {
-	return append([]string(nil), phraseMotionCandidates...)
-}
-
-// LongPhraseMotionCandidates exposes the read-only block-level entrance list
-// the planner prefers for cards of 8+ words. selectLongPhraseMotion intersects
-// a caller pool with it and falls back to the pool itself when that
-// intersection cannot rotate, so operators and contract tests can check a
-// channel profile's pool actually rotates its long cards.
-func LongPhraseMotionCandidates() []string {
-	return append([]string(nil), longPhraseMotionCandidates...)
-}
-
-// certifiedPhraseFamily returns the subset of the production-safe phrase
-// vocabulary that belongs to a public motion family. Families with no
-// render-safe members are intentionally rejected by the planner.
-func certifiedPhraseFamily(family string) []string {
-	return append([]string(nil), phraseMotionFamilyCandidates(family)...)
-}
-
-func phraseMotionFamilyCandidates(family string) []string {
-	switch family {
-	case "modern_apple":
-		return modernAppleMotionCandidates
-	case "typewriter":
-		return typewriterMotionCandidates
-	case "text_3d_v1", "3d":
-		return text3DMotionCandidates
-	case "classic_apple":
-		return classicAppleMotionCandidates
-	default:
-		return nil
-	}
-}
-
-func combineMotionPools(pools ...[]string) []string {
-	total := 0
-	for _, pool := range pools {
-		total += len(pool)
-	}
-	out := make([]string, 0, total)
-	for _, pool := range pools {
-		out = append(out, pool...)
-	}
-	return out
-}
-
-// RenderSafeTextMotions returns the render-safe text-motion vocabulary. It is
-// the read-only projection of the single owner of that list (the rotation pool
-// itself), so a consumer — including a structural test — never keeps a second
-// copy that could drift from what the planner can actually emit.
-func RenderSafeTextMotions() []string {
-	return append([]string(nil), renderSafeTextMotions...)
-}
-
-// SelectTextMotion chooses the entrance motion of one generated TEXT item
-// (entity name card, quote, important word, number, keyword). The item's
-// preset alone would fall back to the preset's own motion — which on the
-// installed catalog is the glyph-level apple_phrase_v2, i.e. exactly the
-// animator stack this lane rejects — so every generated text item states its
-// motion explicitly. A new job fingerprint can select another treatment while
-// retries of the same job stay bit-identical.
-func SelectTextMotion(jobID, sceneID, itemID string) string {
-	return selectPreset(jobID, sceneID, itemID, "text_motion", generatedTextMotions)
-}
-
-func containsMotion(pool []string, id string) bool {
-	for _, candidate := range pool {
-		if candidate == id {
-			return true
-		}
-	}
-	return false
 }

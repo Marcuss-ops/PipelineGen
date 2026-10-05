@@ -53,8 +53,8 @@ func TestHTTPTextEmbedderBatchPreservesOrderAndValidatesContract(t *testing.T) {
 		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
 			t.Fatalf("decode request: %v", err)
 		}
-		if request.Type != "query" || len(request.Texts) != len(texts) || request.Texts[0] != texts[0] || request.Texts[1] != texts[1] {
-			t.Fatalf("request = %+v, want ordered texts %v with query type", request, texts)
+		if request.Type != "passage" || len(request.Texts) != len(texts) || request.Texts[0] != texts[0] || request.Texts[1] != texts[1] {
+			t.Fatalf("request = %+v, want ordered texts %v with passage type", request, texts)
 		}
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"embeddings":    [][]float64{first, second},
@@ -67,7 +67,7 @@ func TestHTTPTextEmbedderBatchPreservesOrderAndValidatesContract(t *testing.T) {
 	}))
 	defer server.Close()
 
-	results, err := NewHTTPTextEmbedder(server.URL).(*HTTPTextEmbedder).EmbedBatch(context.Background(), texts)
+	results, err := NewHTTPTextEmbedder(server.URL).(*HTTPTextEmbedder).EmbedPassagesBatch(context.Background(), texts)
 	if err != nil {
 		t.Fatalf("EmbedBatch returned error: %v", err)
 	}

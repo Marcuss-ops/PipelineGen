@@ -47,6 +47,9 @@ func (r *Runner) compileAudioOverlayPlan(ctx context.Context, runID string, req 
 	canvas.Style = req.OverlayStyle
 	canvas.PhraseMotions = req.PhraseMotions
 	canvas.PhraseMotionFamily = req.PhraseMotionFamily
+	if canvas.PhraseMotionFamily == "" && len(canvas.PhraseMotions) == 0 {
+		canvas.PhraseMotionFamily = "documentary_clean_v1"
+	}
 	canvas.ImageMotions = req.ImageMotions
 	canvas.MaxPhraseOverlays = req.MaxPhraseOverlays
 	canvas.MapsOnly = req.MapsOnly

@@ -4,7 +4,7 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/middleware"
+	capmiddleware "github.com/Marcuss-ops/PipelineGen/internal/capabilities/middleware"
 	"github.com/gin-gonic/gin"
 )
 
@@ -27,9 +27,7 @@ func FeatureFlagChecker(featureName string, isEnabled bool) gin.HandlerFunc {
 	}
 }
 
-// ArtlistEnabled checks if the Artlist feature is enabled.
-func ArtlistEnabled(flags middleware.FeatureFlagsPort) gin.HandlerFunc {
-	return FeatureFlagChecker("Artlist", flags != nil && flags.ArtlistEnabled())
-}
-
 // ScriptClipsEnabled checks if the ScriptClips feature is enabled.
+func ScriptClipsEnabled(flags capmiddleware.FeatureFlagsPort) gin.HandlerFunc {
+	return FeatureFlagChecker("ScriptClips", flags != nil && flags.ScriptClipsEnabled())
+}

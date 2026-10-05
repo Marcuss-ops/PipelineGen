@@ -4,6 +4,7 @@ import (
 	"strings"
 
 	scriptports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
+	mediadomain "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
@@ -37,8 +38,17 @@ func buildVidRushFanoutPlan(plan *scriptpkg.ResolvedGenerationPlan, segment scri
 	}
 	artlistQueries := scriptpkg.QueriesForArtlist(profile, 5)
 	imageQueries := append([]string(nil), segment.Insights.ImageQueries...)
+	// Explicit media-plan searches are the caller's retrieval intent. Apply
+	// them at fanout planning too, so certification and the later materializer
+	// search the same per-scene image subjects.
+	manualImageQueries := ResolveManualSegmentQueries(plan, scriptpkg.CanonicalSegment{ID: segment.SegmentID}, scriptpkg.VidRushProviderInternetImages, mediadomain.SlotSecondaryImage)
+	if len(manualImageQueries) > 0 {
+		imageQueries = manualImageQueries
+	}
 	perSceneImages := plan.MediaPlan.Extraction.EntityImages.PerScene()
-	if perSceneImages {
+	if len(manualImageQueries) > 0 {
+		// The explicit image queries above are already scene scoped.
+	} else if perSceneImages {
 		// Entity-only searches are cached and reused by canonical identity. In
 		// per-scene mode, anchor the query to the scene's own opening sentence
 		// (with its lead entity as context) so repeated people can receive a

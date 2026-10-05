@@ -78,7 +78,6 @@ func minimalConfig(dataDir string) *config.Config {
 		},
 		Features: config.FeaturesConfig{
 			DriveEnabled:   false,
-			ArtlistEnabled: false,
 			YouTubeEnabled: false,
 		},
 		VLM:         config.VLMConfig{Enabled: false},

@@ -257,7 +257,30 @@ func applyOverlayImageStyle(item *capabilityoverlay.OverlayItem, style *scriptpk
 		}
 		item.ImageLayers[i].Frame = overlayImageFrame(style)
 	}
+	normalizeEntityImageLayer(item)
 	item.RenderKey = ""
+}
+
+func normalizeEntityImageLayer(item *capabilityoverlay.OverlayItem) {
+	if item == nil || item.Kind != string(capabilityoverlay.KindEntityImage) {
+		return
+	}
+	// Entity portrait frames currently make the Vulkan image node disappear
+	// when radius/shadow treatments are lowered onto it. Keep its visual
+	// bounds simple and let the caption render independently until the
+	// renderer can apply those effects without hiding the media layer.
+	item.Frame = nil
+	if item.Params != nil {
+		delete(item.Params, "radius")
+		delete(item.Params, "position_y")
+	}
+	for i := range item.ImageLayers {
+		item.ImageLayers[i].Frame = nil
+		if item.ImageLayers[i].Params != nil {
+			delete(item.ImageLayers[i].Params, "radius")
+			delete(item.ImageLayers[i].Params, "position_y")
+		}
+	}
 }
 
 func isRuntimeTextStyleParam(key string) bool {
@@ -271,6 +294,10 @@ func isRuntimeTextStyleParam(key string) bool {
 
 func isTextOverlayKind(kind string) bool {
 	return strings.HasPrefix(kind, "text_") || kind == "number" || kind == "quote" || kind == "brand_text"
+}
+
+func isEntityOverlayKind(kind string) bool {
+	return kind == string(capabilityoverlay.KindEntityCard) || kind == string(capabilityoverlay.KindEntityImage)
 }
 
 func mergeStyleParam(existing any, add map[string]any) map[string]any {

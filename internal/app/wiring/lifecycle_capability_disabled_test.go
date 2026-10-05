@@ -56,7 +56,6 @@ func TestErrCapabilityDisabled_NotEqualToOtherSentinels(t *testing.T) {
 		name string
 		sent error
 	}{
-		{"ErrRecommendAdapterNotConfigured", ErrRecommendAdapterNotConfigured},
 		{"ErrStageDriveInsufficientForCompletion", ErrStageDriveInsufficientForCompletion},
 	}
 	for _, o := range others {

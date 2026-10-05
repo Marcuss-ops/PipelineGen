@@ -233,7 +233,6 @@ func TestResolver_Download_AuthorizedByNewDefaults(t *testing.T) {
 			ArtlistAcquisitionMode:    "authorized_api",
 			ArtlistDailyDownloadLimit: 10,
 			ArtlistAccountID:          "default",
-			ArtlistScraperServerURL:   "http://artlist-scraper:9123",
 		},
 	}
 
@@ -293,7 +292,6 @@ func TestResolver_Download_ManualImportBlocksDownloadAtP1Default(t *testing.T) {
 			ArtlistAcquisitionMode:    "manual_import", // operator override
 			ArtlistDailyDownloadLimit: 10,              // irrelevant when manual_import
 			ArtlistAccountID:          "default",
-			ArtlistScraperServerURL:   "http://artlist-scraper:9123",
 		},
 	}
 

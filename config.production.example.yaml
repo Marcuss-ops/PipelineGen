@@ -98,7 +98,6 @@ external:
   pexels_api_key: ""
   pexels_base_url: "https://api.pexels.com/v1"
   artlist_live_search_cache_ttl_hours: 24
-  artlist_scraper_server_url: "http://127.0.0.1:9123"
   artlist:
     acquisition_mode: "authorized_api"
     auto_download:
@@ -262,7 +261,6 @@ concurrency:
   max_concurrent_stock_cuts: 3
 
 features:
-  artlist_enabled: true
   youtube_enabled: false
   drive_enabled: true
   script_clips_enabled: false

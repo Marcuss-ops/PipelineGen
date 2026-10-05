@@ -6,8 +6,7 @@
 // composition sites call into. There is exactly ONE place that decides
 // whether Drive credentials + token files are available for runtime
 // service (mirrors PR-QDRANT-CONFIG-MISMATCH-GATE's validateQdrantIndexerCompatibility
-// at build_bundles_qdrant_gates.go:104 + ART-002 P0.1's
-// validateArtlistScraperURL at build_bundles_artlist.go:423).
+// at build_bundles_qdrant_gates.go).
 //
 // godlike/07 no-fake-availability: the underlying
 // drive.NewDriveServiceFromFiles (auth.go:115) SILENTLY swallows

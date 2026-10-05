@@ -241,13 +241,6 @@ func (c *Config) RateLimitRequests() int {
 }
 
 // FeatureFlagsPort compatibility helpers.
-func (c *Config) ArtlistEnabled() bool {
-	if c == nil {
-		return false
-	}
-	return c.Features.ArtlistEnabled
-}
-
 func (c *Config) ScriptClipsEnabled() bool {
 	if c == nil {
 		return false

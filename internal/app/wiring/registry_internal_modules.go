@@ -3,13 +3,11 @@ package wiring
 import (
 	"context"
 	"database/sql"
-	"errors"
 	"fmt"
 
 	searchwiring "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/search"
 	youtubewiring "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/youtube"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers"
-	artlistadapter "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers/artlist"
 	stockadapter "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers/stock"
 	youtubeadapter "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers/youtube"
 	scriptassetsapi "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/scriptassets"
@@ -86,18 +84,7 @@ func registerInternalModules(ctx context.Context, registry *module.Registry, log
 		rerankerPort = root.AI.Reranker
 	}
 
-	// Bootstrap all provider adapters before composing the search graph.
-	if err := registerArtlist(ctx, registry, log, cfg, root, regWiring); err != nil {
-		return registryCrossStepState{}, err
-	}
-
 	var providerEntries []TrackedProviderEntry
-	if regWiring.ArtlistSvc != nil && regWiring.ArtlistSvc.Service != nil {
-		providerEntries = append(providerEntries, TrackedProviderEntry{
-			Id: "artlist", Kind: ProviderKindSearch,
-			Search: artlistadapter.NewGatewayAdapter(regWiring.ArtlistSvc.Service),
-		})
-	}
 	if cfg.Features.YouTubeEnabled && root.Domains != nil && root.Domains.YoutubeClipService != nil {
 		providerEntries = append(providerEntries, TrackedProviderEntry{
 			Id: "youtube", Kind: ProviderKindSearch,
@@ -251,75 +238,6 @@ func registerInternalModules(ctx context.Context, registry *module.Registry, log
 	// fullimages module + wiring were removed.
 
 	return crossStep, nil
-}
-
-func registerArtlist(ctx context.Context, registry *module.Registry, log *zap.Logger, cfg *config.Config, root *ComposeRoot, regWiring *RegistryWiring) error {
-	if !cfg.Features.ArtlistEnabled {
-		log.Info("registerArtlist: feature disabled (cfg.Features.ArtlistEnabled=false); skipping route registration")
-		regWiring.ArtlistSvc = nil
-		return nil
-	}
-
-	artlistWiring, err := WireArtlist(
-		ctx,
-		log,
-		cfg,
-		&ArtlistBundle{
-			MediaExec:          root.MediaExec,
-			Committer:          canonicalCommitterOrSkipped(root, log),
-			DB:                 root.DB,
-			MediaDB:            root.MediaPostgres,
-			ClipsRepo:          root.Repos.ClipsRepo,
-			DriveClient:        nil,
-			DriveUploader:      root.Drive.DriveUploader,
-			Publisher:          root.Drive.Publisher,
-			AssetIndexService:  root.Search.AssetIndexService,
-			ClipIndexerService: root.Process.ClipIndexerService,
-			MediaProcessor:     root.Process.MediaProcessor,
-			Jobs:               root.Jobs,
-			CatalogSyncService: root.Sync.CatalogSync,
-			TextTrackRepo:      root.Repos.TextTrackRepo,
-		},
-		root.Outbox.Dispatcher,
-		root.Drive.Reader,
-		root.Drive.Lifecycle,
-		root.Domains.MetaWriter,
-		root.Drive.DestResolver,
-		root.TextTracks.FanOut,
-	)
-	if err != nil {
-		var depMissing ErrArtlistDepMissing
-		if errors.As(err, &depMissing) {
-			log.Error("registerArtlist: mandatory dependency strictly required when Artlist is enabled; aborting boot (godlike/07 fail-closed)",
-				zap.String("root_path", "/api/artlist/*"),
-				zap.String("missing_dep", depMissing.Kind.String()),
-				zap.String("missing_field", depMissing.Field),
-				zap.Error(err),
-			)
-		} else {
-			log.Error("registerArtlist: WireArtlist unexpected failure; aborting boot (godlike/07 fail-closed)",
-				zap.String("root_path", "/api/artlist/*"),
-				zap.Error(err),
-			)
-		}
-		return fmt.Errorf("registerArtlist aborting boot (godlike/07 fail-closed): %w", err)
-	}
-
-	if err := tryRegisterModuleStrict(registry, log, artlistWiring.Module, WithRegistrationPoint("register.Artlist")); err != nil {
-		_ = artlistWiring.Service.Close()
-		return fmt.Errorf("registerArtlist: tryRegisterModuleStrict: %w", err)
-	}
-
-	regWiring.ArtlistSvc = artlistWiring
-	if err := WireArtlistJobBindings(artlistWiring.Service, root.Jobs); err != nil {
-		_ = artlistWiring.Service.Close()
-		return fmt.Errorf("wire registry: artlist: %w", err)
-	}
-
-	log.Info("registerArtlist: ART-001 reversal milestone complete",
-		zap.String("descriptor_module_name", artlistWiring.Module.Name()),
-	)
-	return nil
 }
 
 func registerYouTubeClip(registry *module.Registry, log *zap.Logger, cfg *config.Config, root *ComposeRoot, regWiring *RegistryWiring, searchSvc *search.Aggregator, searchFanOut search.SearchFanOut, idempotencyHandler gin.HandlerFunc) error {

@@ -92,14 +92,9 @@ func (a *RateLimitAdapter) RateLimitRequests() int {
 //
 // Snapshot-immutable, nil-receiver-safe.
 type FeatureFlagsAdapter struct {
-	// Artlist is cfg.Features.ArtlistEnabled (snapshot).
-	Artlist bool
 	// ScriptClips is cfg.Features.ScriptClipsEnabled (snapshot).
 	ScriptClips bool
 }
-
-// ArtlistEnabled reports whether the Artlist feature is enabled.
-func (a *FeatureFlagsAdapter) ArtlistEnabled() bool { return a != nil && a.Artlist }
 
 // ScriptClipsEnabled reports whether the ScriptClips feature is enabled.
 func (a *FeatureFlagsAdapter) ScriptClipsEnabled() bool { return a != nil && a.ScriptClips }

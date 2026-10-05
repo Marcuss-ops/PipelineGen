@@ -197,6 +197,7 @@ func BuildScriptGenerationRuntime(cfg *config.Config, root *ComposeRoot, runRepo
 	// reuse) was invisible in production logs while the same code logged
 	// normally in tests. Nil-safe.
 	runner.SetLogger(log)
+	wirePhraseImpactAnalyzer(runner, cfg, log)
 	// Location overlays use the real Nominatim adapter and the only accepted
 	// basemap source: operator-certified local plates. The capability layer
 	// still gates all lookups and map planning on request-level geocoding opt-in.
@@ -503,13 +504,13 @@ func buildRuntimeMediaCertSpec(plan *scriptpkg.ResolvedGenerationPlan) mediacert
 	if plan == nil {
 		return spec
 	}
-	// Certify Artlist relevance only when the resolved media plan actually
-	// enables Artlist. Mixed mode means the item combines caller-selected
-	// clips and stock bindings; it does not imply an Artlist search. In
-	// particular, folder-backed stock bindings must not be mis-certified as
-	// Artlist winners when the provider is disabled.
-	if plan.MediaMode == scriptpkg.MediaModeMixed && plan.MediaPlan.ProviderPolicy.Artlist.AsBool() {
-		spec.VideoProvider = scriptpkg.VidRushProviderArtlist
+	// Certify provider relevance only when the resolved media plan actually
+	// enables that provider. Mixed mode means the item combines
+	// caller-selected clips and stock bindings; it does not imply a provider
+	// search. In particular, folder-backed stock bindings must not be
+	// mis-certified as provider winners when the provider is disabled.
+	if plan.MediaMode == scriptpkg.MediaModeMixed && plan.MediaPlan.ProviderPolicy.YouTube.AsBool() {
+		spec.VideoProvider = scriptpkg.VidRushProviderYouTube
 	}
 	// Only authored plan segments define an external scene-identity contract.
 	// Free-form text generation may legitimately produce multiple structured

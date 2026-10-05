@@ -28,7 +28,7 @@
 // disturbing the 11 other fields that live in Core.
 //
 // Pass by pointer (`*AssetsModuleDeps`) to keep symmetry with
-// JobsBundle / MediaIngestBundle / StockBundle / ArtlistBundle (all
+// JobsBundle / MediaIngestBundle / StockBundle (all
 // pointer-receiver here in package app).
 //
 // PR4d-chunk2 (June 2026): absorbs the historical AssetsBundle
@@ -179,7 +179,7 @@ type BackgroundDeps struct {
 // fields.
 //
 // The pointer-pass convention (`*AssetsModuleDeps`) keeps symmetry
-// with JobsBundle / MediaIngestBundle / StockBundle / ArtlistBundle
+// with JobsBundle / MediaIngestBundle / StockBundle
 // in the same composition-root package.
 type AssetsModuleDeps struct {
 	Core       CoreDeps

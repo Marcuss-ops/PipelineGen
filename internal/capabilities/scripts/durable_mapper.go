@@ -106,6 +106,13 @@ func DurableResultToDomain(in *GenerateResult) *domain.GenerationResult {
 	if in.Entities != nil {
 		out.Artifacts.Entities = in.Entities
 	}
+	// The extractive editorial data products (summary, bullets, heavy
+	// sentences) travel with the item so the persisted video payload exposes
+	// the same takeaways the capability computed. They never alter scenes or
+	// rendered captions.
+	out.Summary = in.Summary
+	out.BulletPoints = in.BulletPoints
+	out.HeavySentences = in.HeavySentences
 	return out
 }
 

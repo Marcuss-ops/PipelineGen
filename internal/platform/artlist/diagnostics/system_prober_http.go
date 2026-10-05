@@ -97,7 +97,7 @@ func (p *AdminSystemProber) probeScraperDeep(ctx context.Context, client *http.C
 		// so the aggregate AND is false and the failing stage surfaces
 		// the operator-actionable advice.
 		err := "scraper_url_not_configured"
-		detail := "operator did not configure the scraper endpoint URL (cfg.External.ArtlistScraperServerURL is empty)"
+		detail := "operator did not configure the scraper endpoint URL"
 		return artlist.ProbeResult{
 			OK:        false,
 			Error:     err,

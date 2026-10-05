@@ -70,7 +70,6 @@ func newMiddlewareFeatureFlagsAdapter(cfg *config.Config) middleware.FeatureFlag
 		return nil
 	}
 	return &mw.FeatureFlagsAdapter{
-		Artlist:     cfg.Features.ArtlistEnabled,
 		ScriptClips: cfg.Features.ScriptClipsEnabled,
 	}
 }

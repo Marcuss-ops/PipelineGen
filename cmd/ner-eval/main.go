@@ -10,7 +10,6 @@ package main
 
 import (
 	"context"
-	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -23,6 +22,8 @@ import (
 	"syscall"
 	"time"
 	"unicode/utf8"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 
 	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
@@ -193,7 +194,7 @@ func run(args []string, stdout, stderr io.Writer) error {
 
 	result := report{
 		Version: "ner-evaluation.v1", Backend: *backendName, CorpusVersion: gold.Version,
-		CorpusSHA256: sha256Hex(data), Scenes: len(gold.Cases),
+		CorpusSHA256: digest.SHA256Bytes(data), Scenes: len(gold.Cases),
 		WarmupPasses: *warmup, WarmupCalls: len(gold.Cases) * *warmup,
 		Iterations: *iterations, EvaluationCalls: len(gold.Cases) * *iterations, Labels: map[string]score{},
 		ByLanguage: map[string]languageReport{},
@@ -596,4 +597,3 @@ func maxRSSMB(includeChildren bool) float64 {
 	}
 	return float64(peak) / 1024
 }
-func sha256Hex(data []byte) string { sum := sha256.Sum256(data); return fmt.Sprintf("%x", sum[:]) }

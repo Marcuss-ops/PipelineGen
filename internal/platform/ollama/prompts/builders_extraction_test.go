@@ -8,7 +8,7 @@ import (
 // TestEntityExtractionPrompt_ConsolidatesEntitiesPhrasesWordsIntoSinglePass
 // certifies the SceneAnalysis consolidation contract: a single extraction
 // prompt requests named entities, important phrases, and important words (plus
-// visual subjects and Artlist phrases) in ONE model call. There is no separate
+// visual subjects and visual phrases) in ONE model call. There is no separate
 // prompt for entities, phrases, or words — splitting them would be a regression
 // to three independent LLM requests for the same scene text.
 func TestEntityExtractionPrompt_ConsolidatesEntitiesPhrasesWordsIntoSinglePass(t *testing.T) {
@@ -20,7 +20,7 @@ func TestEntityExtractionPrompt_ConsolidatesEntitiesPhrasesWordsIntoSinglePass(t
 		"## nomi_speciali",     // named entities
 		"## parole_importanti", // important words
 		"## entity_senza_testo",
-		"## artlist_phrases",
+		"## visual_phrases",
 	} {
 		if !strings.Contains(prompt, section) {
 			t.Fatalf("single-pass extraction prompt must request %q (got %d-byte prompt)", section, len(prompt))
@@ -39,7 +39,7 @@ func TestEntityExtractionBatchPrompt_ConsolidatesPerSceneSections(t *testing.T) 
 		"## nomi_speciali",
 		"## parole_importanti",
 		"## entity_senza_testo",
-		"## artlist_phrases",
+		"## visual_phrases",
 	} {
 		if !strings.Contains(prompt, section) {
 			t.Fatalf("batch extraction prompt must request %q once per segment", section)

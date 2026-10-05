@@ -20,14 +20,12 @@
 // envelope so the composition root fail-fasts regardless of which build_*
 // function catches the misconfiguration first.
 //
-// Mirror surface: internal/app/build_bundles_artlist.go::validateArtlistScraperURL
-// (ART-002 P0.1, July 2026). Same shape: package-level helper returning a
-// typed enrror; promotion is one call line per wire site. The 4 canonical
-// tests for this helper live in build_bundles_qdrant_gates_test.go;
-// operators reading the godlike/07 fail-closed contract can grep the
-// literals in logs to identify which operator misconfiguration broke
-// boot (the design pattern matches ART-002 P0.1's 5-substring assertion
-// contract).
+// Same shape as the other package-level fail-closed helpers: a
+// package-level helper returning a typed error; promotion is one call
+// line per wire site. The 4 canonical tests for this helper live in
+// build_bundles_qdrant_gates_test.go; operators reading the godlike/07
+// fail-closed contract can grep the literals in logs to identify which
+// operator misconfiguration broke boot.
 //
 // Wave-tracker anchor: architecture/current.yaml#QDRANT-CHAIN-VERIFY-2026-07-04
 // (linked_issues[0] = PR-QDRANT-CONFIG-MISMATCH-GATE; status flips pending

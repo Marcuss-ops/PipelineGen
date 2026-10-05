@@ -10,14 +10,13 @@
 // out of WireServices so the order is visible at a glance and adding
 // a future Required precondition is a single-edit canonical change.
 //
-// Why the user's literal stock|voiceover|artlist|images split doesn't
+// Why the user's literal stock|voiceover|images split doesn't
 // fit wire_services.go: this entire file is the cross-cutting
 // composition-root surface, NOT a per-domain aggregator. The codebase
 // is already organized by domain:
 //
 //   - stock         → wire_stock_pipeline.go (218 LOC)
 //   - voiceover     → build_bundles_voiceover.go
-//   - artlist       → build_bundles_artlist_*.go (6 sibling files)
 //   - images        → chrome-pool-prewarm step (~50 LOC inside THIS file,
 //     because it's a Required boot prerequisite, not
 //     a domain service)

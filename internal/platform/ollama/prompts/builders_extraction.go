@@ -25,7 +25,7 @@ exactly these markers and the six labeled sections:
 ## entity_senza_testo
 ## nomi_speciali
 ## parole_importanti
-## artlist_phrases
+## visual_phrases
 ## noun_chunks
 ### END_SEGMENT
 
@@ -146,7 +146,7 @@ Output EXACTLY six labeled sections. Every item must start with "- ".
 ## parole_importanti
 - [specific concrete keyword]
 
-## artlist_phrases
+## visual_phrases
 - [short visual concept phrase]
 
 ## noun_chunks
@@ -167,8 +167,8 @@ IMPORTANT PHRASE RULES:
 
 VISUAL SEARCH RULES:
 1. entity_senza_testo uses "Subject: Description" and must describe a filmable visual.
-2. artlist_phrases must contain EXACTLY 3 to 5 natural visual concepts, ideally 2-4 words each.
-3. Every phrase must be concrete, camera-recordable, specific to this segment, and useful in Artlist search.
+2. visual_phrases must contain EXACTLY 3 to 5 natural visual concepts, ideally 2-4 words each.
+3. Every phrase must be concrete, camera-recordable, specific to this segment, and useful in stock-footage search.
 4. Reject adjacent word pairs copied mechanically from the text, dangling articles, isolated dates, apostrophe fragments, generic abstractions, and verb-only sequences.
 
 GOOD: "Vesuvio erupting", "Roman ruins excavation", "Ancient city streets".

@@ -33,7 +33,7 @@ import (
 )
 
 // wireScriptFlow constructs and registers the ScriptFlow module.
-func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, root *ComposeRoot, registry *module.Registry, artlistWiring *ArtlistWiring, searchFanOut assetsearch.SearchFanOut, stockPrefetcher scriptports.StockPrefetcher) error {
+func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, root *ComposeRoot, registry *module.Registry, searchFanOut assetsearch.SearchFanOut, stockPrefetcher scriptports.StockPrefetcher) error {
 	_ = ctx
 	if cfg == nil {
 		return fmt.Errorf("wireScriptFlow: config is required")
@@ -116,18 +116,10 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 			ImageSearcher: vidrushInternetImageSearcher(root, log),
 			MediaExec:     root.MediaExec,
 		}
-		// Artlist is optional for script generation. When its feature is
-		// disabled, keep the shared VidRush materialization wiring alive with
-		// only Internet Images and Drive delivery; never dereference the absent
-		// Artlist wiring bundle.
-		if artlistWiring != nil {
-			vidRushDeps.Delivery.ProviderAssets = artlistWiring.ProviderAssets
-			vidRushDeps.Delivery.Downloader = artlistWiring.ArtlistDownloader
-		}
 		vidRushProviders, vidRushFinalizer = vidrushwiring.BuildVidRushMaterialization(cfg, vidRushDeps, log)
 	}
 	vidRushCache := vidrushCachePort(root, log)
-	if err := registerScriptPostProcessors(ppReg, root, artlistWiring, cfg, log, scriptsRepoAdapter, metaModel, searchFanOut, vidRushProviders, vidRushFinalizer, vidRushCache); err != nil {
+	if err := registerScriptPostProcessors(ppReg, root, cfg, log, scriptsRepoAdapter, metaModel, searchFanOut, vidRushProviders, vidRushFinalizer, vidRushCache); err != nil {
 		return fmt.Errorf("wireScriptFlow: %w", err)
 	}
 	sourceReg.Freeze()
@@ -276,8 +268,8 @@ func scriptGenerationEnabled(cfg *config.Config) bool {
 	return cfg != nil && cfg.Scripts.Capability.Enabled
 }
 
-func registerScripts(ctx context.Context, registry *module.Registry, log *zap.Logger, cfg *config.Config, root *ComposeRoot, artlistWiring *ArtlistWiring, searchFanOut assetsearch.SearchFanOut, stockPrefetcher scriptports.StockPrefetcher) error {
-	if err := wireScriptFlow(ctx, cfg, log, root, registry, artlistWiring, searchFanOut, stockPrefetcher); err != nil {
+func registerScripts(ctx context.Context, registry *module.Registry, log *zap.Logger, cfg *config.Config, root *ComposeRoot, searchFanOut assetsearch.SearchFanOut, stockPrefetcher scriptports.StockPrefetcher) error {
+	if err := wireScriptFlow(ctx, cfg, log, root, registry, searchFanOut, stockPrefetcher); err != nil {
 		return err
 	}
 	return registerScriptHistory(registry, log, cfg, root)

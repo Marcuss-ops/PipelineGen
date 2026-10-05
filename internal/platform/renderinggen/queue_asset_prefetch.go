@@ -203,6 +203,8 @@ func canonicalFontAssetID(path string) (string, bool) {
 		return FontUrbanist, true
 	case "assets/fonts/Bricolage-Grotesque.ttf", "fonts/Bricolage-Grotesque.ttf", "Bricolage-Grotesque.ttf":
 		return FontBricolageGrotesque, true
+	case "assets/fonts/PlayfairDisplay-Italic.ttf", "fonts/PlayfairDisplay-Italic.ttf", "PlayfairDisplay-Italic.ttf":
+		return FontPlayfairDisplayItalic, true
 	default:
 		return "", false
 	}

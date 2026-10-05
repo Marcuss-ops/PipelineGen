@@ -35,7 +35,7 @@ func TestAuthPolicy_IsValid_RejectsTypos(t *testing.T) {
 
 func TestCapability_IsValid_Accepts10CanonicalValues(t *testing.T) {
 	for _, c := range []Capability{
-		CapabilityAssets, CapabilityArtlist, CapabilityYouTube,
+		CapabilityAssets, CapabilityYouTube,
 		CapabilityScripts, CapabilityImages, CapabilityVoiceover,
 		CapabilityContent, CapabilityChannels, CapabilityJobs, CapabilitySystem,
 	} {
