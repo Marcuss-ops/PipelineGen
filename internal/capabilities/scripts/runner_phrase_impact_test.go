@@ -10,10 +10,13 @@ import (
 	"testing"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
+	dto "github.com/prometheus/client_model/go"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/observability"
 )
 
 type stubPhraseImpactAnalyzer struct {
@@ -69,6 +72,48 @@ func TestRunnerPersistsExtractiveSummaryOnTheResult(t *testing.T) {
 
 	// The editorial summary must never leak into the rendered narration.
 	assert.Equal(t, "First scene text\n\nSecond scene text\n\nThird scene text", final.Result.Output.Text)
+}
+
+// TestRunnerPublishesPhraseImpactStageTimings pins the measurement contract:
+// the worker's own stage breakdown reaches the stage histogram, so the one
+// non-local stage (embedding) is visible in production instead of inferred.
+func TestRunnerPublishesPhraseImpactStageTimings(t *testing.T) {
+	runner, repo, _, _, _, _, _ := newTestRunner()
+	runner.SetPhraseImpactAnalyzer(&stubPhraseImpactAnalyzer{result: scriptpkg.PhraseImpactResult{
+		Summary: "s", BulletPoints: []string{"b"},
+		Timings: scriptpkg.PhraseImpactTimings{EmbeddingMS: 12.5, TotalMS: 17.2},
+	}})
+
+	embedding := observability.ScriptPhraseImpactStageSeconds.WithLabelValues("embedding")
+	before := histogramSampleCount(t, embedding)
+
+	req := defaultTestRequest()
+	runID := "run-phrase-impact-timings-001"
+	require.NoError(t, repo.Create(context.Background(), &GenerationRun{
+		ID: runID, Request: req, Status: RunStatusPending, CurrentStage: StageNormalizing,
+	}))
+
+	runner.Execute(context.Background(), runID, req)
+	final := awaitCompletion(t, repo, runID, 5*time.Second)
+	require.NotNil(t, final)
+	require.Equal(t, RunStatusCompleted, final.Status)
+
+	if got := histogramSampleCount(t, embedding); got != before+1 {
+		t.Fatalf("embedding stage observations = %d, want %d (one per successful analysis)", got, before+1)
+	}
+}
+
+func histogramSampleCount(t *testing.T, observer prometheus.Observer) uint64 {
+	t.Helper()
+	metric, ok := observer.(prometheus.Metric)
+	if !ok {
+		t.Fatalf("observer is not a prometheus.Metric: %T", observer)
+	}
+	var value dto.Metric
+	if err := metric.Write(&value); err != nil {
+		t.Fatalf("write histogram metric: %v", err)
+	}
+	return value.GetHistogram().GetSampleCount()
 }
 
 // TestRunnerSurvivesPhraseImpactFailure pins the resilience contract: the

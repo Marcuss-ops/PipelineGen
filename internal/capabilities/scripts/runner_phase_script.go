@@ -215,6 +215,7 @@ func (r *Runner) runSceneTextPhase(ctx context.Context, runID string, req Genera
 				result.Summary = impact.Summary
 				result.BulletPoints = impact.BulletPoints
 				result.HeavySentences = impact.HeavySentences
+				observePhraseImpactTimings(impact.Timings)
 			}
 		}
 		// Explicit clip workflows may request real video reconstruction without

@@ -164,6 +164,28 @@ func selectMotionFromPool(jobID, sceneID, family string, ordinal int, candidates
 	return candidates[(start+ordinal)%len(candidates)]
 }
 
+// selectHeavyPhraseMotion picks the entrance of a phrase the caller marked as
+// heavy (see PlanInput.HeavyPhrasePriority). It draws from the certified
+// VISIBLE entrances of the run's pool, so a heavy phrase is unmistakably
+// animated while the calm rotation — and its no-repeat walk — is left intact
+// for the phrases that are not heavy. A caller pool is honoured verbatim; when
+// that pool carries no visible entrance the certified default pool is used
+// instead of collapsing the heavy lane onto a single motion.
+func selectHeavyPhraseMotion(jobID, sceneID string, ordinal int, pool []string) string {
+	candidates := visiblePhraseEntrancePool(pool)
+	if len(candidates) == 0 {
+		candidates = visiblePhraseEntrancePool(nil)
+	}
+	return selectMotionFromPool(jobID, sceneID, "heavy_phrase", ordinal, candidates)
+}
+
+// CertifiedHeavyPhraseMotions exposes the read-only heavy-phrase entrance pool
+// so a contract test can assert the heavy lane is a strict subset of the
+// callable phrase catalog rather than a second, drifting vocabulary.
+func CertifiedHeavyPhraseMotions() []string {
+	return visiblePhraseEntrancePool(nil)
+}
+
 // CertifiedPhraseMotions returns the certified render-safe motion pool this
 // build rotates over. It is the membership authority a caller-supplied pool is
 // validated against (see PlanInput.PhraseMotions): every id is a catalog motion

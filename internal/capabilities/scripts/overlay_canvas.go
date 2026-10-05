@@ -18,6 +18,13 @@ import (
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
+// heavyPhrasePriorityDefault is the score band above which a generated phrase
+// counts as HEAVY for the E2 motion mapping. The admitted-phrase priority is
+// the annotation score the semantic profile grounded the phrase with, so a
+// phrase at or above this value gets the prominent entrance and everything
+// below keeps the calm rotation.
+const heavyPhrasePriorityDefault = 0.85
+
 // OverlayCanvasSpec is the target render canvas for the derived OverlayPlan.
 // The runner's withDefaults() resolves a zero spec to the production contract
 // (1920×1080 @ 24/1), matching the AssemblyReadyVideoContract.
@@ -37,6 +44,11 @@ type OverlayCanvasSpec struct {
 	PhraseMotions      []string
 	PhraseMotionFamily string
 	ImageMotions       []string
+	// HeavyPhrasePriority splits the phrase lane by editorial weight (goal E2):
+	// phrases at or above this priority get a prominent certified entrance, the
+	// rest keep the calm rotation. Zero disables the split. The runner fills in
+	// the production default when the request carries none.
+	HeavyPhrasePriority float64
 	// MaxPhraseOverlays overrides the run-level grounded-phrase ceiling for
 	// this render. It is caller-supplied (request max_phrase_overlays); zero
 	// keeps the certified default (capabilityoverlay.MaxPhraseOverlaysPerRun).
@@ -155,6 +167,19 @@ func overlayStyleParams(style *scriptpkg.OverlayStyleSpec) map[string]any {
 			shadow["offset"] = append([]float64(nil), style.Shadow.Offset...)
 		}
 		p["style"] = mergeStyleParam(p["style"], map[string]any{"shadow": shadow})
+		// RenderingGen applies text appearance overrides from these flat runtime
+		// keys. The nested style map is preserved for semantic consumers, but by
+		// itself it does not replace the text preset's default shadow.
+		if style.Shadow.Opacity != nil {
+			p["shadow_opacity"] = *style.Shadow.Opacity
+		}
+		if style.Shadow.Blur != nil {
+			p["shadow_blur_px"] = *style.Shadow.Blur
+		}
+		if len(style.Shadow.Offset) > 0 {
+			p["shadow_offset_x_px"] = style.Shadow.Offset[0]
+			p["shadow_offset_y_px"] = style.Shadow.Offset[1]
+		}
 	}
 	return p
 }
@@ -285,7 +310,8 @@ func normalizeEntityImageLayer(item *capabilityoverlay.OverlayItem) {
 
 func isRuntimeTextStyleParam(key string) bool {
 	switch key {
-	case "font_family", "font_size_px", "glow_size", "stroke_size":
+	case "font_family", "font_size_px", "glow_size", "stroke_size",
+		"shadow_blur_px", "shadow_opacity", "shadow_offset_x_px", "shadow_offset_y_px":
 		return true
 	default:
 		return false

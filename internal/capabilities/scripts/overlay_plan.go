@@ -145,7 +145,7 @@ func compileOverlayPlanWithMotionOffset(result *GenerateResult, language Languag
 		// controls generic scene stills; explicit images_per_scene=0 must keep
 		// those disabled even when entity cards use per-scene scope.
 		sceneImagesEnabled := len(perSceneImages) < 2 || perSceneImages[1]
-		if len(perSceneImages) > 0 && perSceneImages[0] && sceneImagesEnabled {
+		if sceneImagesEnabled {
 			if sceneInput == nil {
 				sceneInput = &capabilityoverlay.SceneInput{ID: scene.ID}
 			}
@@ -175,7 +175,8 @@ func compileOverlayPlanWithMotionOffset(result *GenerateResult, language Languag
 		Scenes:        scenes,
 		Background:    canvas.Background,
 		PhraseMotions: canvas.PhraseMotions, PhraseMotionFamily: canvas.PhraseMotionFamily, ImageMotions: canvas.ImageMotions,
-		PlateResolver: plates,
+		HeavyPhrasePriority: canvas.HeavyPhrasePriority,
+		PlateResolver:       plates,
 	}, plannerConfig)
 	if err != nil {
 		return nil, fmt.Errorf("overlay plan: plan: %w", err)

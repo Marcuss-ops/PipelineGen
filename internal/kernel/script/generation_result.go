@@ -505,4 +505,29 @@ type PhraseImpactResult struct {
 	Summary        string              `json:"summary"`
 	BulletPoints   []string            `json:"bullet_points"`
 	HeavySentences []ImportantSentence `json:"heavy_sentences"`
+	// Timings is the Rust worker's OWN stage breakdown for this analysis, in
+	// milliseconds. It is telemetry and never changes the summary, bullets or
+	// heavy sentences. The embedding stage is the only part of this path that
+	// is not local CPU work (it is the E5 passage embedder, local model or
+	// HTTP), so a deployment reads its real cost here instead of guessing it.
+	// A zero value means the worker reported no breakdown, never a fabricated
+	// 0 ms sample.
+	Timings PhraseImpactTimings `json:"timings,omitempty"`
+}
+
+// PhraseImpactTimings mirrors the Rust worker's StageTimings contract.
+// Every field is milliseconds and is produced by the worker, not by the Go
+// adapter, so it cannot drift from the measured work.
+//
+// It lives in the kernel package next to PhraseImpactResult because the
+// capability that consumes it and the platform adapter that decodes it must
+// agree on one shape, and a platform adapter must never import a capability.
+type PhraseImpactTimings struct {
+	SplitMS      float64 `json:"split_ms"`
+	EmbeddingMS  float64 `json:"embedding_ms"`
+	SimilarityMS float64 `json:"similarity_ms"`
+	RankingMS    float64 `json:"ranking_ms"`
+	SummaryMS    float64 `json:"summary_ms"`
+	BulletMS     float64 `json:"bullet_ms"`
+	TotalMS      float64 `json:"total_ms"`
 }

@@ -242,6 +242,11 @@ type TranslationPipelineMetrics struct {
 // divergent definition.
 type PhraseImpactResult = scriptpkg.PhraseImpactResult
 
+// PhraseImpactTimings is the worker's own stage breakdown, aliased for the
+// same reason as PhraseImpactResult: callers keep the local name without a
+// second divergent definition.
+type PhraseImpactTimings = scriptpkg.PhraseImpactTimings
+
 // PhraseImpactAnalyzer computes the extractive summary for a generated video.
 // Nil keeps a generation run available while explicitly omitting the optional
 // NLP data products.

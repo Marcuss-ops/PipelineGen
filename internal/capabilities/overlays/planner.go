@@ -207,6 +207,14 @@ type PlanInput struct {
 	// PhraseMotionFamily optionally limits automatic phrase-motion selection
 	// to a certified family and applies the one sampled motion to every phrase.
 	PhraseMotionFamily string
+	// HeavyPhrasePriority, when POSITIVE, splits the phrase lane by editorial
+	// weight: a phrase whose priority (the score the candidate was admitted
+	// with) is at least this value is HEAVY and takes a distinct, prominent
+	// certified entrance, while the remaining phrases keep the calm default
+	// rotation. Zero (the default) disables the split and reproduces the
+	// previous single-rotation plan bit for bit, which is what every existing
+	// caller and contract test relies on.
+	HeavyPhrasePriority float64
 	// ImageMotions optionally narrows the certified layer-only image motion pool.
 	ImageMotions []string
 	// PlateResolver resolves a grounded WGS84 point to the certified basemap
@@ -418,14 +426,24 @@ func BuildPlan(input PlanInput, config PlannerConfig) (OverlayPlan, error) {
 	// Every admitted phrase gets a distinct, visible catalog motion, even when
 	// phrases span different scenes or the winning candidates were not the
 	// first annotations supplied by NLP.
+	// A declared heavy-phrase priority splits the phrase lane in two: the
+	// phrases at or above that priority take a prominent entrance from their own
+	// rotation, and only the rest walk the calm sequence. Two rotations rather
+	// than one is why the two ordinals advance independently; the calm lane's
+	// no-repeat walk is otherwise untouched.
 	phraseOrdinal := 0
+	heavyOrdinal := 0
 	imageOrdinal := 0
 	for i := range plan.Items {
 		switch plan.Items[i].Kind {
 		case "text_phrase":
-			if len(strings.Fields(plan.Items[i].Text)) >= 8 {
+			switch {
+			case input.HeavyPhrasePriority > 0 && itemPriority(plan.Items[i]) >= input.HeavyPhrasePriority:
+				plan.Items[i].MotionID = selectHeavyPhraseMotion(input.PlanID, "run", heavyOrdinal, input.PhraseMotions)
+				heavyOrdinal++
+			case len(strings.Fields(plan.Items[i].Text)) >= 8:
 				plan.Items[i].MotionID = selectLongPhraseMotion(input.PlanID, "run", phraseOrdinal, input.PhraseMotions)
-			} else {
+			default:
 				plan.Items[i].MotionID = selectPhraseMotion(input.PlanID, "run", phraseOrdinal, input.PhraseMotions)
 			}
 			phraseOrdinal++
@@ -447,6 +465,28 @@ func BuildPlan(input PlanInput, config PlannerConfig) (OverlayPlan, error) {
 		return OverlayPlan{}, err
 	}
 	return plan, nil
+}
+
+// itemPriority reads the editorial priority the planner stamped on an admitted
+// item's params. A missing or non-numeric value is 0, which never satisfies a
+// positive HeavyPhrasePriority: an unweighted item can never be promoted into
+// the heavy lane by accident.
+func itemPriority(item OverlayItem) float64 {
+	if item.Params == nil {
+		return 0
+	}
+	switch value := item.Params["priority"].(type) {
+	case float64:
+		return value
+	case float32:
+		return float64(value)
+	case int:
+		return float64(value)
+	case int64:
+		return float64(value)
+	default:
+		return 0
+	}
 }
 
 // phraseMotionParams gives the entrance half of the phrase's on-screen

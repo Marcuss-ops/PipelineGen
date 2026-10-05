@@ -44,6 +44,20 @@ var (
 		Help: "Optional phrase or entity timing anchors omitted because they were absent from captured voiceover word timing.",
 	}, []string{"scene_id", "surface"})
 
+	// ScriptPhraseImpactStageSeconds observes the Rust extractive-summary
+	// worker's OWN stage timings, reported per analysis. The whole point is the
+	// `embedding` stage: it is the only part of the path that is not local CPU
+	// work, and without this metric a deployment can only guess whether the E5
+	// passage embedder (local ONNX or HTTP) is what the run is paying for.
+	// `stage` is a bounded label set: split | embedding | similarity | ranking |
+	// summary | bullet | total. A worker that reports no breakdown emits no
+	// sample, so absence is visible as a missing series rather than a false 0.
+	ScriptPhraseImpactStageSeconds = promauto.NewHistogramVec(prometheus.HistogramOpts{
+		Name:    "script_phrase_impact_stage_seconds",
+		Help:    "Rust phrase-impact worker stage duration in seconds, by stage.",
+		Buckets: []float64{0.0005, 0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5},
+	}, []string{"stage"})
+
 	// ── Checkpoint write-amplification instrumentation ──────────────────
 	//
 	// The script voiceover phase checkpoints the WHOLE GenerateResult once per
