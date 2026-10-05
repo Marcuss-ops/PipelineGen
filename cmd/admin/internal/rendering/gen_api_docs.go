@@ -33,19 +33,16 @@ func RunGenAPIDocs(args []string) error {
 		Security: config.SecurityConfig{
 			CORSOrigins: []string{},
 		},
-		// PRE-EXISTING GENERATOR GAP, resolved dynamically: Artlist AND
-		// clip.render both fail closed on a nil AssetTxFinalizer committer
-		// (godlike/07), and that committer exists only with a media
-		// PostgreSQL handle — which a DB-less docs snapshot cannot open.
-		// Boot used to abort at registerArtlist before any route was
-		// collected, so the manifest could not be regenerated at all.
-		// Both features are therefore mounted ONLY when the canonical
+		// PRE-EXISTING GENERATOR GAP, resolved dynamically: clip.render
+		// fails closed on a nil AssetTxFinalizer committer (godlike/07),
+		// and that committer exists only with a media PostgreSQL handle —
+		// which a DB-less docs snapshot cannot open. The feature is
+		// therefore mounted ONLY when the canonical
 		// PIPELINEGEN_MEDIA_POSTGRES_DSN env var is present (any host
 		// running the server has it); without it the generator produces
-		// the rest of the manifest and their description keys live in
+		// the rest of the manifest and its description keys live in
 		// routeDescriptionsGated ("absence is gating, not drift").
 		Features: config.FeaturesConfig{
-			ArtlistEnabled:     mediaPG,
 			YouTubeEnabled:     true,
 			VoiceoverEnabled:   true,
 			ImagesEnabled:      true,
@@ -89,7 +86,6 @@ func RunGenAPIDocs(args []string) error {
 			RequiredLanguages: []string{"en", "it"},
 		},
 		External: config.ExternalConfig{
-			ArtlistScraperServerURL: "http://localhost:0",
 			// BuildClipRenderRuntime fail-closes when the RenderingGen queue
 			// URL is empty. Docs runs never submit a render job (the queue
 			// client is constructed, never dialed at boot), so the canonical
@@ -147,7 +143,6 @@ func RunGenAPIDocs(args []string) error {
 		Requests: cfg.Security.RateLimitRequests,
 	}
 	featuresAdapter := &middleware.FeatureFlagsAdapter{
-		Artlist:     cfg.Features.ArtlistEnabled,
 		ScriptClips: cfg.Features.ScriptClipsEnabled,
 	}
 	routerCfg := &httpserver.RouterConfig{
@@ -221,14 +216,6 @@ var routeDescriptions = map[string]string{
 	"GET /": "API root (redirects or 404)",
 
 	// ── Artlist ───────────────────────────────────────────────
-	"POST /api/artlist/run":           "Start Artlist pipeline for a term",
-	"POST /api/artlist/search":        "Search Artlist catalog (cached)",
-	"GET /api/artlist/search/live":    "Search Artlist catalog (live, no cache)",
-	"GET /api/artlist/stats":          "Get Artlist statistics",
-	"GET /api/artlist/runs/:run_id":   "Get Artlist pipeline run status",
-	"GET /api/artlist/diagnostics":    "Artlist diagnostics",
-	"POST /api/artlist/sync-catalogs": "Sync Artlist catalogs to media DB",
-	"POST /api/artlist/recommend":     "Get Artlist recommendations for a term",
 
 	// ── Stock pipeline / stock batches ───────────────────────
 	// StockPipelineEnabled (same media-PostgreSQL gate as Artlist above;
@@ -494,18 +481,6 @@ var routeDescriptionsGated = map[string]bool{
 	"GET /api/clips/exists":      true,
 	"GET /api/clips/transcript":  true,
 	"GET /api/clips/diagnostics": true,
-	// Artlist (see the ArtlistEnabled note in the cfg above): the routes
-	// are live in production, but the docs snapshot cannot wire the
-	// capability without a media PostgreSQL committer, so their absence
-	// from the manifest is gating, not drift.
-	"POST /api/artlist/run":           true,
-	"POST /api/artlist/search":        true,
-	"GET /api/artlist/search/live":    true,
-	"GET /api/artlist/stats":          true,
-	"GET /api/artlist/runs/:run_id":   true,
-	"GET /api/artlist/diagnostics":    true,
-	"POST /api/artlist/sync-catalogs": true,
-	"POST /api/artlist/recommend":     true,
 	// clip.render (ClipRenderEnabled, same media PostgreSQL gate as
 	// Artlist above): mounted only when the docs snapshot has a media
 	// SSOT handle, otherwise gating not drift.

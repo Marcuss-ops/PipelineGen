@@ -109,7 +109,6 @@ func (a *pgMediaAssetLookupAdapter) GetAsset(
 func registerScriptPostProcessors(
 	ppReg *adapters.PostProcessorRegistry,
 	root *ComposeRoot,
-	artlistWiring *ArtlistWiring,
 	cfg *config.Config,
 	log *zap.Logger,
 	scriptsRepoAdapter ports.ScriptRepository,
@@ -269,7 +268,7 @@ func registerScriptPostProcessors(
 
 	// AI-backed processors (entities, metadata, translation,
 	// visual_planning, clip_search) — see wire_script_postprocess_ai.go.
-	if err := registerAIBackedProcessors(ppReg, root, artlistWiring, searchFanOut, vidRushProviders, vidRushCache, cfg, log); err != nil {
+	if err := registerAIBackedProcessors(ppReg, root, searchFanOut, vidRushProviders, vidRushCache, cfg, log); err != nil {
 		return err
 	}
 	// VidRush search processors only discover remote candidates. The shared

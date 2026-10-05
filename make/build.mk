@@ -92,6 +92,7 @@ build-muscles:
 	@mkdir -p bin
 	$(RUST_ICU_ENV) $(RUST_CARGO) build --release --manifest-path rust/Cargo.toml
 	install -m 0755 rust/target/release/pipelinegen-muscles bin/pipelinegen-muscles
+	install -m 0755 rust/target/release/pipelinegen-muscles bin/phrase_impact
 	install -m 0755 rust/target/release/visualner bin/visualner
 	install -m 0755 rust/target/release/mediasampler bin/mediasampler
 

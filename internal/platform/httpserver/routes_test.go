@@ -21,13 +21,13 @@ func TestRegistryRoutesKeepExpectedPrefixes(t *testing.T) {
 	registry := NewRegistry()
 
 	// Create mock modules that simulate the FIXED behavior (creating sub-groups)
-	artlistModule := &mockModuleWithGroup{name: "artlist", prefix: "/artlist", enabled: true}
+	voiceoverModule := &mockModuleWithGroup{name: "voiceover", prefix: "/voiceover", enabled: true}
 	youtubeModule := &mockModuleWithGroup{name: "clips", prefix: "/clips", enabled: true}
 	jobsModule := &mockModuleWithGroup{name: "jobs", prefix: "/jobs", enabled: true}
 	mediaModule := &mockModuleWithGroup{name: "media", prefix: "/media", enabled: true}
 	stockModule := &mockModuleWithGroup{name: "stock-pipeline", prefix: "/stock-pipeline", enabled: true}
 
-	registry.Register(artlistModule)
+	registry.Register(voiceoverModule)
 	registry.Register(youtubeModule)
 	registry.Register(jobsModule)
 	registry.Register(mediaModule)
@@ -50,10 +50,10 @@ func TestRegistryRoutesKeepExpectedPrefixes(t *testing.T) {
 		routeMap[key] = true
 	}
 
-	// Artlist routes should be under /api/artlist/
-	assert.True(t, routeMap["POST /api/artlist/run"], "POST /api/artlist/run should be registered")
-	assert.True(t, routeMap["GET /api/artlist/runs/:run_id"], "GET /api/artlist/runs/:run_id should be registered")
-	assert.True(t, routeMap["GET /api/artlist/stats"], "GET /api/artlist/stats should be registered")
+	// Voiceover routes should be under /api/voiceover/
+	assert.True(t, routeMap["POST /api/voiceover/generate"], "POST /api/voiceover/generate should be registered")
+	assert.True(t, routeMap["GET /api/voiceover/voices"], "GET /api/voiceover/voices should be registered")
+	assert.True(t, routeMap["GET /api/voiceover/status"], "GET /api/voiceover/status should be registered")
 
 	// Clips routes should be under /api/clips/
 	assert.True(t, routeMap["POST /api/clips/process"], "POST /api/clips/process should be registered")
@@ -73,7 +73,7 @@ func TestRegistryRoutesKeepExpectedPrefixes(t *testing.T) {
 	assert.True(t, routeMap["POST /api/stock-pipeline/search-and-run"], "POST /api/stock-pipeline/search-and-run should be registered")
 
 	// Ensure routes are NOT at wrong paths (without module prefix)
-	assert.False(t, routeMap["POST /api/run"], "POST /api/run should NOT be registered (missing artlist prefix)")
+	assert.False(t, routeMap["POST /api/run"], "POST /api/run should NOT be registered (missing voiceover prefix)")
 	assert.False(t, routeMap["POST /api/extract"], "POST /api/extract should NOT be registered (missing clips prefix)")
 	assert.False(t, routeMap["GET /api"], "GET /api should NOT be registered (missing jobs prefix)")
 }
@@ -168,7 +168,7 @@ func TestRouteCollisionDetection(t *testing.T) {
 		api := engine.Group("/api")
 
 		distinctA := &mockModuleWithGroup{name: "clips", prefix: "/clips", enabled: true}
-		distinctB := &mockModuleWithGroup{name: "artlist", prefix: "/artlist", enabled: true}
+		distinctB := &mockModuleWithGroup{name: "voiceover", prefix: "/voiceover", enabled: true}
 
 		// Neither registration should panic
 		distinctA.RegisterRoutes(api)
@@ -195,10 +195,10 @@ func (m *mockModuleWithGroup) RegisterRoutes(rg *gin.RouterGroup) {
 	group := rg.Group(m.prefix)
 
 	switch m.name {
-	case "artlist":
-		group.POST("/run", func(c *gin.Context) {})
-		group.GET("/runs/:run_id", func(c *gin.Context) {})
-		group.GET("/stats", func(c *gin.Context) {})
+	case "voiceover":
+		group.POST("/generate", func(c *gin.Context) {})
+		group.GET("/voices", func(c *gin.Context) {})
+		group.GET("/status", func(c *gin.Context) {})
 	case "clips":
 		group.POST("/process", func(c *gin.Context) {})
 		group.GET("/info", func(c *gin.Context) {})
@@ -340,7 +340,6 @@ func (testRateLimitAdapter) RateLimitRequests() int { return 0 }
 // requiring a *config.Config pointer.
 type testFeatureFlagsAdapter struct{}
 
-func (testFeatureFlagsAdapter) ArtlistEnabled() bool     { return false }
 func (testFeatureFlagsAdapter) ScriptClipsEnabled() bool { return false }
 
 // TestMetricsRouteReleaseMode is the fail-closed matrix for /metrics

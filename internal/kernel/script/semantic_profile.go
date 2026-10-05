@@ -233,7 +233,7 @@ func (p SegmentSemanticProfile) Clone() SegmentSemanticProfile {
 // The derivation keeps the extractor's division of authority: named entities
 // come from the deterministic NLP buckets (an empty result never invents an
 // entity), ImportantPhrases pass through verbatim, ImportantWords become the
-// weighted Keywords stream and ArtlistPhrases become the weighted
+// weighted Keywords stream and VisualPhrases become the weighted
 // VisualTerms stream — the extractor's order IS the importance ranking, so
 // the first term carries the highest deterministic confidence. Retrieval
 // queries are intentionally NOT derived here: query builders translate the
@@ -257,7 +257,7 @@ func BuildSegmentSemanticProfile(seg CanonicalSegment, res EntityResult, underst
 	profile.Entities = appendEntityGroup(profile.Entities, res.Concepts, "CONCEPT")
 	profile.Keywords = weightedTerms(res.ImportantWords)
 	visualValues := append([]string(nil), res.NounChunks...)
-	visualValues = append(visualValues, res.ArtlistPhrases...)
+	visualValues = append(visualValues, res.VisualPhrases...)
 	visualValues = append(visualValues, res.VisualConcepts...)
 	profile.VisualTerms = weightedTerms(visualValues)
 	if profile.Topic == "" {

@@ -3,7 +3,7 @@
 // Hermetic TDD tests that pin the wired-vs-unwired behavior contract for
 // the feature flags:
 //
-//   - ArtlistEnabled:  route-level gate (module not registered when disabled)
+//   - ScriptClipsEnabled:  route-level gate (module not registered when disabled)
 //   - QdrantEnabled:   composition-time compatibility gate (not per-request)
 //
 // Each test function exercises ONE behavioral invariant. The test names
@@ -34,15 +34,15 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/httpserver/middleware"
 )
 
-// ─── ArtlistEnabled: module-level gate ─────────────────────────────
+// ─── ScriptClipsEnabled: module-level gate ─────────────────────────────
 
-// TestFeatureFlag_Artlist_ModuleEnabled_WhenFlagTrue asserts that
+// TestFeatureFlag_ScriptClips_ModuleEnabled_WhenFlagTrue asserts that
 // a RouteModule with EnabledFunc returning true reports Enabled().
-func TestFeatureFlag_Artlist_ModuleEnabled_WhenFlagTrue(t *testing.T) {
+func TestFeatureFlag_ScriptClips_ModuleEnabled_WhenFlagTrue(t *testing.T) {
 	mod := NewRouteModule(
-		"artlist",
+		"script-clips",
 		func() bool { return true },
-		"/artlist",
+		"/script-clips",
 		&noopHandler{},
 		zap.NewNop(),
 	)
@@ -50,13 +50,13 @@ func TestFeatureFlag_Artlist_ModuleEnabled_WhenFlagTrue(t *testing.T) {
 		"module must report Enabled()=true when EnabledFunc returns true")
 }
 
-// TestFeatureFlag_Artlist_ModuleDisabled_WhenFlagFalse asserts that
+// TestFeatureFlag_ScriptClips_ModuleDisabled_WhenFlagFalse asserts that
 // a RouteModule with EnabledFunc returning false reports !Enabled().
-func TestFeatureFlag_Artlist_ModuleDisabled_WhenFlagFalse(t *testing.T) {
+func TestFeatureFlag_ScriptClips_ModuleDisabled_WhenFlagFalse(t *testing.T) {
 	mod := NewRouteModule(
-		"artlist",
+		"script-clips",
 		func() bool { return false },
-		"/artlist",
+		"/script-clips",
 		&noopHandler{},
 		zap.NewNop(),
 	)
@@ -64,26 +64,26 @@ func TestFeatureFlag_Artlist_ModuleDisabled_WhenFlagFalse(t *testing.T) {
 		"module must report Enabled()=false when EnabledFunc returns false")
 }
 
-// TestFeatureFlag_Artlist_ModuleDisabled_RegisterRoutesStillMounts asserts
+// TestFeatureFlag_ScriptClips_ModuleDisabled_RegisterRoutesStillMounts asserts
 // the separation-of-concerns contract: RegisterRoutes always mounts routes
 // regardless of Enabled() state. The registry's GetEnabled() is the actual
 // gate — modules should NOT self-censor in RegisterRoutes.
-func TestFeatureFlag_Artlist_ModuleDisabled_RegisterRoutesStillMounts(t *testing.T) {
+func TestFeatureFlag_ScriptClips_ModuleDisabled_RegisterRoutesStillMounts(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	r := gin.New()
 	apiGroup := r.Group("/api")
 
 	mod := NewRouteModule(
-		"artlist",
+		"script-clips",
 		func() bool { return false },
-		"/artlist",
+		"/script-clips",
 		&noopHandler{},
 		zap.NewNop(),
 	)
 
 	mod.RegisterRoutes(apiGroup)
 
-	req, _ := http.NewRequest("GET", "/api/artlist/test", nil)
+	req, _ := http.NewRequest("GET", "/api/script-clips/test", nil)
 	w := httptest.NewRecorder()
 	r.ServeHTTP(w, req)
 
@@ -91,20 +91,21 @@ func TestFeatureFlag_Artlist_ModuleDisabled_RegisterRoutesStillMounts(t *testing
 		"RegisterRoutes always mounts; the registry uses Enabled() to filter — this is by design")
 }
 
-// ─── ArtlistEnabled: per-request middleware (nil-flags only) ───────
+// ─── ScriptClipsEnabled: per-request middleware (nil-flags only) ───────
 //
-// NOTE: the enabled/disabled ArtlistEnabled middleware tests are already
-// canonically pinned in internal/api/middleware/middleware_feature_flags_test.go
+// NOTE: the enabled/disabled ScriptClipsEnabled middleware tests are already
+// canonically pinned in internal/platform/httpserver/middleware/middleware_feature_flags_test.go
 // (TestFeatureFlagCheckerDisabled + TestFeatureFlagCheckerEnabled). The
 // nil-flags case is the UNIQUE gap not covered by the existing tests.
 
-// TestFeatureFlag_Artlist_Middleware_Blocked_NilFlags asserts that
-// the ArtlistEnabled middleware returns 503 when flags port is nil.
-func TestFeatureFlag_Artlist_Middleware_Blocked_NilFlags(t *testing.T) {
+// TestFeatureFlag_ScriptClips_Middleware_Blocked_NilFlags asserts that a
+// feature-gate middleware returns 503 when the flags port is nil, so a missing
+// feature source can never be mistaken for "enabled".
+func TestFeatureFlag_ScriptClips_Middleware_Blocked_NilFlags(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	r := gin.New()
-	r.Use(middleware.ArtlistEnabled(nil))
+	r.Use(middleware.ScriptClipsEnabled(nil))
 	r.GET("/test", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"status": "ok"})
 	})
@@ -114,7 +115,7 @@ func TestFeatureFlag_Artlist_Middleware_Blocked_NilFlags(t *testing.T) {
 	r.ServeHTTP(w, req)
 
 	assert.Equal(t, http.StatusServiceUnavailable, w.Code,
-		"ArtlistEnabled middleware must return 503 when flags port is nil")
+		"feature-flag middleware must return 503 when the flags port is nil")
 }
 
 // ─── QdrantEnabled: composition-time gate ──────────────────────────

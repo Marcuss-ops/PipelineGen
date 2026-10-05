@@ -1,0 +1,218 @@
+{
+  "version": 2,
+  "preset": "custom",
+  "correlation_id": "brasil-milton-runtime-full-overlay-showcase-20261005",
+  "force_refresh": true,
+  "items": [
+    {
+      "id": "brasil-milton-runtime-full-overlay-showcase-20261005",
+      "project": "brasil-milton-runtime-full-overlay-showcase-20261005",
+      "title": "Milton Leite — mappe, dati e due ritratti | showcase runtime",
+      "language": "pt",
+      "tone": "documentário jornalístico sóbrio, claro e responsável",
+      "style": "Português brasileiro natural. Diferencie suspeitas, medidas cautelares e fatos processuais. Não apresente alegações como fatos provados.",
+      "model": "gemma4:e4b",
+      "source": {
+        "type": "text",
+        "topic": "Duas figuras públicas no contexto do caso Milton Leite",
+        "source_text": "Milton Leite e Rogerio Schietti Cruz são duas pessoas públicas associadas a etapas diferentes deste caso. A defesa contesta a prisão de Milton Leite e nega envolvimento criminoso. Rogerio Schietti Cruz é ministro do Superior Tribunal de Justiça e, em 25 de setembro de 2026, negou liminarmente um pedido de habeas corpus. A decisão preliminar não julgou Milton culpado."
+      },
+      "script_params": {
+        "target_words": 120,
+        "min_words": 80,
+        "segment_words": 60,
+        "single_scene": false,
+        "images_per_scene": 1,
+        "skip_quality_gate": false,
+        "segments": [
+          {
+            "id": "sao-paulo",
+            "kind": "narration",
+            "topic": "Milton Leite e a investigação em São Paulo",
+            "source_text": "Em 17 de setembro de 2026, autoridades de São Paulo deflagraram a Operação Vectura Corrupta. A investigação apura suspeitas relacionadas a empresas de transporte coletivo. Foram divulgados 16 mandados de prisão temporária e 18 mandados de busca. Milton Leite, ex-vereador e ex-presidente da Câmara Municipal, estava entre os alvos. A apuração continua; as suspeitas não equivalem a uma condenação.",
+            "target_words": 60,
+            "min_words": 40
+          },
+          {
+            "id": "brasilia-stj",
+            "kind": "narration",
+            "topic": "Rogerio Schietti Cruz e a decisão do STJ em Brasília",
+            "source_text": "Em 25 de setembro de 2026, o ministro Rogerio Schietti Cruz, do Superior Tribunal de Justiça, negou liminarmente o habeas corpus que pedia a revogação da prisão temporária. A decisão preliminar não julgou Milton Leite culpado. A defesa contesta a medida e nega envolvimento criminoso. Prisão cautelar não é condenação.",
+            "target_words": 60,
+            "min_words": 40
+          }
+        ]
+      },
+      "max_phrase_overlays": 6,
+      "max_image_overlays": 6,
+      "output": {
+        "save_to_db": true,
+        "extract_entities": true,
+        "generate_metadata": true,
+        "generate_timeline": true,
+        "voiceover_enabled": true,
+        "languages": [
+          "pt"
+        ],
+        "drive_folder_id": "1J_xUGo_bchzXDIGqSX04CU44c_Dm3SxS",
+        "render": {
+          "enabled": true,
+          "drive_folder_id": "1J_xUGo_bchzXDIGqSX04CU44c_Dm3SxS",
+          "drive_subfolder_name": "Milton Runtime Full Overlay Showcase 2026-10-05",
+          "require_gpu": true,
+          "subtitles": {
+            "enabled": false
+          }
+        }
+      },
+      "audio": {
+        "mode": "COMBINED_TIMELINE",
+        "timing": {
+          "mode": "required",
+          "boundary": "word",
+          "formats": [
+            "json",
+            "srt",
+            "vtt"
+          ]
+        }
+      },
+      "docs": {
+        "enabled": false
+      },
+      "media_plan": {
+        "mode": "hybrid",
+        "provider_policy": {
+          "internet_images": "enabled",
+          "image_generation": "disabled",
+          "artlist": "disabled",
+          "youtube": "disabled",
+          "geocoding": "enabled"
+        },
+        "cache": {
+          "read": false,
+          "write": true
+        },
+        "force_refresh_assets": true,
+        "extraction": {
+          "enabled": true,
+          "include": [
+            "entities",
+            "persons",
+            "special_names",
+            "important_phrases",
+            "dates",
+            "metrics",
+            "locations"
+          ],
+          "important_phrases": [
+            "16 mandados de prisão temporária. 18 buscas.",
+            "Prisão cautelar não é condenação."
+          ],
+          "max_entities_per_segment": 6,
+          "max_important_phrases_per_segment": 2,
+          "max_image_queries_per_segment": 2,
+          "entity_images": {
+            "enabled": true,
+            "entity_types": [
+              "PERSON"
+            ],
+            "max_per_entity": 1,
+            "scope": "per_scene",
+            "upload_to_drive": true
+          }
+        },
+        "searches": [
+          {
+            "segment_id": "sao-paulo",
+            "slot": "secondary_image",
+            "query": "Milton Leite retrato ex vereador São Paulo",
+            "providers": [
+              "internet_images"
+            ],
+            "media_types": [
+              "image"
+            ],
+            "limit": 10
+          },
+          {
+            "segment_id": "brasilia-stj",
+            "slot": "secondary_image",
+            "query": "Rogerio Schietti Cruz ministro STJ retrato",
+            "providers": [
+              "internet_images"
+            ],
+            "media_types": [
+              "image"
+            ],
+            "limit": 10
+          }
+        ],
+        "planner": {
+          "candidate_limit": 10
+        },
+        "materialization": {
+          "mode": "selected",
+          "upload_to_drive": true,
+          "wait_for_ready": true
+        },
+        "include_trace": true
+      },
+      "overlay_background": {
+        "kind": "color",
+        "color": [
+          0.035,
+          0.045,
+          0.065,
+          1
+        ],
+        "fit": "cover",
+        "opacity": 1
+      },
+      "phrase_motion_family": "modern_apple",
+      "overlay_style": {
+        "font_family": "poppins",
+        "color": [
+          0.96,
+          0.94,
+          0.88,
+          1
+        ],
+        "size": {
+          "font_size": 70
+        },
+        "shadow": {
+          "enabled": true,
+          "color": "#05080D",
+          "opacity": 0.72,
+          "blur": 12,
+          "offset": [
+            0,
+            4
+          ]
+        },
+        "image": {
+          "width": 980,
+          "height": 560,
+          "position_y": -38,
+          "radius": 22,
+          "border": {
+            "width": 2,
+            "color": "#E8D9B5"
+          },
+          "shadow": {
+            "enabled": true,
+            "color": "#05080D",
+            "opacity": 0.42,
+            "blur": 18,
+            "offset": [
+              0,
+              8
+            ]
+          }
+        }
+      }
+    }
+  ],
+  "final_job": false
+}

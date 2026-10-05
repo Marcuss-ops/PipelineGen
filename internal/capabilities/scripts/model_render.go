@@ -22,8 +22,11 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"strings"
 	"time"
 
+	capoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
 	kernelasset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
@@ -427,4 +430,74 @@ type DocumentsConfig struct {
 	// FolderID is the target Google Drive folder ID for documents.
 	// When empty, documents are created in the default Drive location.
 	FolderID string `json:"folder_id,omitempty"`
+}
+
+// marshalRenderingGenOverlayPlan converts a PipelineGen OverlayPlan into the
+// RenderingGen wire payload (millisecond item timing), and runtimeFontAssets
+// resolves the canonical font assets the queue job must carry. Both are wire-
+// model conversions, so they live next to RenderQueueJob/RenderQueueAsset.
+
+func marshalRenderingGenOverlayPlan(plan capoverlay.OverlayPlan) ([]byte, error) {
+	raw, err := json.Marshal(plan)
+	if err != nil {
+		return nil, err
+	}
+	var wire map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &wire); err != nil {
+		return nil, err
+	}
+	var items []map[string]json.RawMessage
+	if err := json.Unmarshal(wire["items"], &items); err != nil {
+		return nil, err
+	}
+	for i, item := range items {
+		var durationUS int64
+		if encoded := item["duration_us"]; len(encoded) > 0 {
+			if err := json.Unmarshal(encoded, &durationUS); err != nil {
+				return nil, fmt.Errorf("decode item %d duration_us: %w", i, err)
+			}
+		}
+		delete(item, "start_us")
+		delete(item, "duration_us")
+		if durationUS > 0 {
+			var startMS, endMS int64
+			if err := json.Unmarshal(item["start_ms"], &startMS); err != nil {
+				return nil, fmt.Errorf("decode item %d start_ms: %w", i, err)
+			}
+			if err := json.Unmarshal(item["end_ms"], &endMS); err != nil {
+				return nil, fmt.Errorf("decode item %d end_ms: %w", i, err)
+			}
+			if endMS <= startMS {
+				return nil, fmt.Errorf("item %d has invalid millisecond timing %d-%d", i, startMS, endMS)
+			}
+			encoded, err := json.Marshal(endMS - startMS)
+			if err != nil {
+				return nil, err
+			}
+			item["duration_ms"] = encoded
+		}
+	}
+	wireItems, err := json.Marshal(items)
+	if err != nil {
+		return nil, err
+	}
+	wire["items"] = wireItems
+	return json.Marshal(wire)
+}
+
+func runtimeFontAssets(plan capoverlay.OverlayPlan) []RenderQueueAsset {
+	for _, item := range plan.Items {
+		family, _ := item.Params["font_family"].(string)
+		switch strings.TrimSpace(family) {
+		case "inter":
+			return []RenderQueueAsset{NewRenderQueueAsset(
+				kernelasset.Ref{AssetID: capoverlay.CanonicalInterFontPath, SHA256: capoverlay.CanonicalInterFontHash},
+				capoverlay.CanonicalInterFontPath, "")}
+		case "playfair_display_italic":
+			return []RenderQueueAsset{NewRenderQueueAsset(
+				kernelasset.Ref{AssetID: capoverlay.CanonicalPlayfairDisplayItalicFontPath, SHA256: capoverlay.CanonicalPlayfairDisplayItalicFontHash},
+				capoverlay.CanonicalPlayfairDisplayItalicFontPath, "")}
+		}
+	}
+	return nil
 }

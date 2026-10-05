@@ -21,7 +21,7 @@
 //     registerRealtime + registerAdminModule
 //     (thin route modules exposed via /api/* paths).
 //   - registry_internal_modules.go registerInternalModules wrapper
-//   - registerArtlist + registerYouTubeClip + registerMediaIngest
+//   - registerYouTubeClip + registerMediaIngest
 //   - registerScraper + registerStockPipeline
 //     (bundle-driven modules).
 //   - search leaf (internal/app/wiring/search)  search.Build helper
@@ -138,7 +138,6 @@ var (
 // outputs exposed to the server and tests.
 type RegistryWiring struct {
 	Registry      *module.Registry
-	ArtlistSvc    *ArtlistWiring
 	YouTubeClip   *youtubewiring.YouTubeClipWiring
 	MediaIngest   *MediaIngestWiring
 	Assets        *AssetsWiring
@@ -220,7 +219,7 @@ func WireRegistry(ctx context.Context, cfg *config.Config, log *zap.Logger, root
 	// registerImages (consumes MediaIngest.Service) and
 	// registerAssets (consumes explicit registryCrossStepState). Wraps
 	// registerIdempotencyMiddleware +
-	// registerSearchBackend + registerArtlist + registerYouTubeClip +
+	// registerSearchBackend + registerYouTubeClip +
 	// registerMediaIngest + registerScraper +
 	// registerStockPipeline in the canonical DAG order.
 	crossStep, err := registerInternalModules(ctx, registry, log, cfg, root, wiring)
@@ -232,7 +231,7 @@ func WireRegistry(ctx context.Context, cfg *config.Config, log *zap.Logger, root
 	wiring.SearchFanOut = crossStep.SearchFanOut
 
 	// Step 3 — Scripts: wireScriptFlow orchestration + ScriptHistory module.
-	if err := registerScripts(ctx, registry, log, cfg, root, wiring.ArtlistSvc, crossStep.SearchFanOut, crossStep.StockPrefetcher); err != nil {
+	if err := registerScripts(ctx, registry, log, cfg, root, crossStep.SearchFanOut, crossStep.StockPrefetcher); err != nil {
 		return nil, fmt.Errorf("wire registry: scripts: %w", err)
 	}
 

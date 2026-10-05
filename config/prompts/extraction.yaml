@@ -24,7 +24,7 @@ entity_extraction: |
   ## parole_importanti
   - [specific technical term, object, ingredient, action, or concrete concept]
 
-  ## artlist_phrases
+  ## visual_phrases
   - [short visual concept phrase]
 
   ## noun_chunks
@@ -45,9 +45,9 @@ entity_extraction: |
      - Do not return a person, place, organization, or partial name; names belong only in "nomi_speciali".
      - Prefer the action, claim, event, or descriptive fragment that explains why the segment matters.
   4. "entity_senza_testo": Map identifiable visual subjects to concise, concrete search descriptions using "Subject: Description".
-  5. "artlist_phrases": Extract EXACTLY 3 to 5 SHORT VISUAL CONCEPT PHRASES, ideally 2-4 words, suitable for stock-footage search.
+  5. "visual_phrases": Extract EXACTLY 3 to 5 SHORT VISUAL CONCEPT PHRASES, ideally 2-4 words, suitable for stock-footage search.
 
-  ARTLIST PHRASES MUST BE:
+  VISUAL PHRASES MUST BE:
     - Concrete and filmable by a camera.
     - Specific to this segment and its named entities.
     - Natural search phrases, not adjacent word pairs copied mechanically from the text.
@@ -65,10 +65,10 @@ entity_extraction: |
     - alimentavano contribuì
     - 79 d
 
-  SELF-CHECK for every artlist phrase:
+  SELF-CHECK for every visual phrase:
     1. Can a camera record it?
     2. Is it more than a random adjacent word pair?
-    3. Would it return relevant Artlist footage?
+    3. Would it return relevant stock footage?
     4. Is it specific to this segment?
 
   Output ONLY the six labeled sections.

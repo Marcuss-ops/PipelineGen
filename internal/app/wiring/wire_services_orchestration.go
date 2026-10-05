@@ -34,7 +34,7 @@
 // The assetSvc + workerHandler construction is the one DOMAIN-COUPLED
 // block in this file (it consumes root.Search + root.Repos for AssetSvc
 // and broker for WorkerHandler). Per-domain wiring for stock / voiceover /
-// artlist / images lives in the dedicated wire_* / build_bundles_* files;
+// images lives in the dedicated wire_* / build_bundles_* files;
 // this file is cross-cutting.
 package wiring
 
@@ -132,11 +132,6 @@ func WireServices(cfg *config.Config, log *zap.Logger, mode string) (*AppDeps, e
 
 	cleanupStack := make([]func(), 0, 8)
 	cleanupStack = append(cleanupStack, coreClean)
-	cleanupStack = append(cleanupStack, func() {
-		if registryWiring.ArtlistSvc != nil && registryWiring.ArtlistSvc.Service != nil {
-			registryWiring.ArtlistSvc.Service.Close()
-		}
-	})
 	// PG-011: removed the defensive logDB.Close block — the observability
 	// DB is the same handle as root.DB (the OpenSet opens both as a single
 	// SQLiteDB-set; root.DB and dbs.Main share the underlying *sql.DB).

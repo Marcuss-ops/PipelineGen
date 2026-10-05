@@ -111,7 +111,6 @@ type Capability string
 
 const (
 	CapabilityAssets    Capability = "assets"
-	CapabilityArtlist   Capability = "artlist"
 	CapabilityYouTube   Capability = "youtube"
 	CapabilityScripts   Capability = "scripts"
 	CapabilityImages    Capability = "images"
@@ -127,7 +126,7 @@ const (
 // allowlist in `architecture/policy.yaml::capabilities`.
 func (c Capability) IsValid() bool {
 	switch c {
-	case CapabilityAssets, CapabilityArtlist, CapabilityYouTube,
+	case CapabilityAssets, CapabilityYouTube,
 		CapabilityScripts, CapabilityImages, CapabilityVoiceover,
 		CapabilityContent, CapabilityChannels, CapabilityJobs, CapabilitySystem:
 		return true

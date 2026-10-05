@@ -137,7 +137,6 @@ func NewServerWithHealth(deps ServerDeps) *Server {
 			Requests: cfg.Security.RateLimitRequests,
 		}
 		featuresAdapter := &middleware.FeatureFlagsAdapter{
-			Artlist:     cfg.Features.ArtlistEnabled,
 			ScriptClips: cfg.Features.ScriptClipsEnabled,
 		}
 		router := NewRouter(&RouterConfig{

@@ -15,9 +15,9 @@ import (
 // clipsRepoAdapter wraps *assets.ClipsRepository to satisfy
 // clips.ClipRepositoryPort. All 10 methods are exact delegations; the
 // adapter intentionally exposes ONLY the surface the handler uses
-// (Pattern 0). Three instances are wired by the composition root —
-// one per source (artlist, clips, stock) — because the API handler
-// uses three separate repo pointers for its cross-source routes.
+// (Pattern 0). The composition root wires a single instance that every
+// clip source (YouTube, clips, stock) shares through the canonical
+// clips.ClipRepositoryPort.
 //
 // P2-9 (September 2026): the ListClipsPaged delegation is GONE with the port
 // method. It was the last production entry into

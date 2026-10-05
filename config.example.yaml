@@ -93,7 +93,6 @@ external:
   pexels_base_url: "https://api.pexels.com/v1"
   # Artlist scraper optimizations
   artlist_live_search_cache_ttl_hours: 24    # Level 1: in-memory cache TTL (0=disabled)
-  artlist_scraper_server_url: "http://127.0.0.1:9123"             # Level 3: scraper server on host (PR-ARTLIST-CONFIG-PREFIX July 2026: bound from env VELOX_ARTLIST_SCRAPER_SERVER_URL; canonical IPv4 loopback 127.0.0.1, port 9123)
   # Artlist provider configuration (PR-CONFIG-SPLIT, July 2026).
   # acquisition_mode controls HOW assets are discovered + how the
   # pipeline talks to Artlist (manual_import | authorized_api).
@@ -359,7 +358,6 @@ concurrency:
 
 features:
   # Stable modules - enable as needed
-  artlist_enabled: true
   youtube_enabled: false
   drive_enabled: true
   # Experimental modules - default to false

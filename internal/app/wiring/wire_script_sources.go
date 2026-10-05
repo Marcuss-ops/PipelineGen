@@ -16,12 +16,15 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/maps"
 	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
 	scriptapi "github.com/Marcuss-ops/PipelineGen/internal/capabilities/script"
+	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
 	scriptports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
 	usecase "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/usecase"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	coreasset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/embeddings"
 	platformgeocoding "github.com/Marcuss-ops/PipelineGen/internal/platform/geocoding"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/media/rustexec"
 	pgmedia "github.com/Marcuss-ops/PipelineGen/internal/platform/postgres/media"
 	"go.uber.org/zap"
 )
@@ -446,4 +449,26 @@ func wireMapPlates(runner mapPlateWiringTarget, manifestPath string, log *zap.Lo
 		zap.Int("plates", len(plates)),
 	)
 	return nil
+}
+
+// wirePhraseImpactAnalyzer wires the dedicated Rust extractive-summary worker
+// (a separate NDJSON contract from mediaexec.v1) into the script runner. It is
+// wired only when the configured binary is present, so a deployment that has
+// not yet built it degrades to "no summary" instead of failing every
+// generation.
+func wirePhraseImpactAnalyzer(runner *scriptgen.Runner, cfg *config.Config, log *zap.Logger) {
+	path := strings.TrimSpace(cfg.External.RustPhraseImpactPath)
+	if path == "" {
+		return
+	}
+	if _, statErr := os.Stat(path); statErr != nil {
+		log.Warn("phrase-impact Rust worker not found; extractive summary disabled",
+			zap.String("path", path), zap.Error(statErr))
+		return
+	}
+	var phraseEmbedder *embeddings.HTTPTextEmbedder
+	if strings.TrimSpace(cfg.ClipIndexer.ServerURL) != "" {
+		phraseEmbedder = embeddings.NewHTTPTextEmbedderWithTimeout(cfg.ClipIndexer.ServerURL, cfg.ClipIndexer.EmbedTimeout()).(*embeddings.HTTPTextEmbedder)
+	}
+	runner.SetPhraseImpactAnalyzer(rustexec.NewPhraseImpactAnalyzer(path, nil, phraseEmbedder))
 }

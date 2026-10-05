@@ -50,6 +50,7 @@ type Runner struct {
 	nlpGenerationGate       *GenerationGate
 	vidRushPipeline         *VidRushPipeline
 	finalJobSubmitter       FinalJobSubmitter
+	phraseImpactAnalyzer    PhraseImpactAnalyzer
 
 	// ttsConcurrency bounds the TTS voiceover worker pool: the voiceover
 	// phase fans out scene×language synthesis to at most this many concurrent
@@ -273,11 +274,8 @@ func (r *Runner) beginVidRush(ctx context.Context, runID string, req GenerateReq
 			providerResolver = semanticResolver
 		}
 	}
-	// In an images-only plan the shared fanout still owns image discovery, but
-	// the semantic stock resolver must not run the video/Artlist path.
-	if req.MediaPlan.ProviderPolicy.Artlist == "disabled" {
-		providerResolver = p.ProviderResolver
-	}
+	// Preserve the canonical stock resolver when it is wired; provider
+	// registrations, not a vendor-specific special case, control its inputs.
 	if p.PlanResolver == nil {
 		return nil, fmt.Errorf("scriptgeneration: vidrush pipeline requires a plan resolver")
 	}
@@ -301,7 +299,7 @@ func (r *Runner) beginVidRush(ctx context.Context, runID string, req GenerateReq
 			r.log.Info("VidRush plan resolved", zap.String("run_id", runID), zap.String("drive_folder_id", strings.TrimSpace(plan.DriveFolderID)), zap.String("title", plan.Title), zap.String("language", plan.Language))
 		}
 		requestedPolicy := req.MediaPlan.ProviderPolicy
-		if requestedPolicy.Artlist != "" || requestedPolicy.YouTube != "" ||
+		if requestedPolicy.YouTube != "" ||
 			requestedPolicy.InternetImages != "" || requestedPolicy.ImageGeneration != "" {
 			plan.MediaPlan.ProviderPolicy = requestedPolicy
 		}

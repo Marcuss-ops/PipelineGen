@@ -3,6 +3,7 @@
 package scriptgeneration
 
 import (
+	"context"
 	"time"
 
 	capabilityaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
@@ -31,6 +32,12 @@ type GenerateResult struct {
 	SourceTrace scriptpkg.SourceTrace `json:"source,omitempty"`
 	// Scenes is the ordered list of generated scenes.
 	Scenes []Scene `json:"scenes"`
+
+	// Summary and ranked editorial takeaways are extractive data products from
+	// the narration. They do not alter scenes, TTS, or rendered captions.
+	Summary        string                        `json:"summary,omitempty"`
+	BulletPoints   []string                      `json:"bullet_points,omitempty"`
+	HeavySentences []scriptpkg.ImportantSentence `json:"heavy_sentences,omitempty"`
 
 	// Segments is the compatibility projection of the canonical VidRush
 	// enrichment results. Each entry preserves insights.entities for legacy
@@ -229,3 +236,23 @@ type TranslationPipelineMetrics struct {
 // execution of the script generation workflow. It is created BEFORE
 // any external I/O (verdetto invariant: the POST handler creates
 // the pipeline_run first).
+
+// PhraseImpactResult is the kernel-owned extractive editorial summary contract.
+// It is aliased here so capability callers keep the local name without a second
+// divergent definition.
+type PhraseImpactResult = scriptpkg.PhraseImpactResult
+
+// PhraseImpactAnalyzer computes the extractive summary for a generated video.
+// Nil keeps a generation run available while explicitly omitting the optional
+// NLP data products.
+type PhraseImpactAnalyzer interface {
+	Analyze(context.Context, string, string) (scriptpkg.PhraseImpactResult, error)
+}
+
+// SetPhraseImpactAnalyzer wires the extractive summary engine. Nil keeps a
+// generation run available while explicitly omitting optional NLP results.
+func (r *Runner) SetPhraseImpactAnalyzer(analyzer PhraseImpactAnalyzer) {
+	if r != nil {
+		r.phraseImpactAnalyzer = analyzer
+	}
+}

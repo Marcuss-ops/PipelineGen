@@ -37,7 +37,6 @@ func (testMetricsRateAdapter) RateLimitRequests() int { return 0 }
 
 type testMetricsFeaturesAdapter struct{}
 
-func (testMetricsFeaturesAdapter) ArtlistEnabled() bool     { return false }
 func (testMetricsFeaturesAdapter) ScriptClipsEnabled() bool { return false }
 
 // TestServerMetricsMountMatrix verifies the (mode×token) matrix for

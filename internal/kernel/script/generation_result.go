@@ -78,9 +78,14 @@ type GenerationResult struct {
 	Script ScriptSummary `json:"script,omitempty"`
 
 	// Canonical output (PR 9):
-	//   ScriptOutput carries the canonical script text, word count,
-	//   and structured specscene.
+	//   ScriptOutput carries canonical script text, word count, and specscene.
 	Output ScriptOutput `json:"output"`
+
+	// Extractive editorial summary and the most important narration sentences.
+	// These remain result metadata, never rendered captions or scene text.
+	Summary        string              `json:"summary,omitempty"`
+	BulletPoints   []string            `json:"bullet_points,omitempty"`
+	HeavySentences []ImportantSentence `json:"heavy_sentences,omitempty"`
 
 	// VidRushSegments carries the per-segment semantic extraction
 	// and media resolution results used by the VidRush payload.
@@ -477,4 +482,27 @@ type GenerationEnvelopeSummary struct {
 	Total     int `json:"total"`
 	Succeeded int `json:"succeeded"`
 	Failed    int `json:"failed"`
+}
+
+// ImportantSentence is an extractive narration sentence ranked by importance.
+type ImportantSentence struct {
+	Index      int      `json:"index"`
+	Text       string   `json:"text"`
+	Importance float64  `json:"importance"`
+	StartSec   *float64 `json:"start,omitempty"`
+	EndSec     *float64 `json:"end,omitempty"`
+}
+
+// PhraseImpactResult is the extractive editorial summary of a generated
+// narration: one summary paragraph, a short ordered bullet list, and the
+// ranked heavy sentences it was derived from. Every field is extracted from
+// the source text, so nothing in it is a generated, unsupported claim.
+//
+// It lives in the kernel package because the capability that produces it and
+// the platform adapter that computes it (a Rust worker) must agree on one
+// shape, and a platform adapter must never import a capability.
+type PhraseImpactResult struct {
+	Summary        string              `json:"summary"`
+	BulletPoints   []string            `json:"bullet_points"`
+	HeavySentences []ImportantSentence `json:"heavy_sentences"`
 }

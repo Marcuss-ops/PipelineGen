@@ -23,6 +23,7 @@ type ExternalConfig struct {
 	Youtube429CooldownSeconds   int      `yaml:"youtube_429_cooldown_seconds" env:"VELOX_YOUTUBE_429_COOLDOWN_SECONDS" default:"60"`
 	FfmpegPath                  string   `yaml:"ffmpeg_path" env:"FFMPEG_PATH" default:"ffmpeg"`
 	RustMusclesPath             string   `yaml:"rust_muscles_path" env:"VELOX_RUST_MUSCLES_PATH" default:"bin/pipelinegen-muscles"`
+	RustPhraseImpactPath        string   `yaml:"rust_phrase_impact_path" env:"VELOX_RUST_PHRASE_IMPACT_PATH" default:"bin/phrase_impact"`
 	RustVisualNERPath           string   `yaml:"rust_visualner_path" env:"VELOX_RUST_VISUALNER_PATH" default:"bin/visualner"`
 	RustMediaSamplerPath        string   `yaml:"rust_mediasampler_path" env:"VELOX_RUST_MEDIASAMPLER_PATH" default:"bin/mediasampler"`
 	VisualNERBackend            string   `yaml:"visualner_backend" env:"VELOX_VISUALNER_BACKEND" default:"rust"`
@@ -109,19 +110,11 @@ type ExternalConfig struct {
 	// Default: 8 (tuned for boxing research pipelines).
 	ResearchTargetPoolSize int `yaml:"research_target_pool_size" env:"RESEARCH_TARGET_POOL_SIZE" default:"8"`
 
-	// Artlist scraper optimizations
-	// (PR-ARTLIST-CONFIG-PREFIX, July 2026): env var renamed from the
-	// bare ARTLIST_SCRAPER_SERVER_URL to VELOX_-prefixed form so it
-	// matches docker-compose.yml + the Velox internal-services naming
-	// convention (VELOX_MASTER_URL, VELOX_NODE_SCRAPER_DIR, ...). The
-	// YAML key `artlist_scraper_server_url` is unchanged for backward
-	// compatibility with existing config.example.yaml consumers.
-	// godlike/07 fail-closed: cutover is pure (no fallback to the bare
-	// name); validateArtlistScraperURL in internal/app/build_bundles_artlist.go
-	// surfaces the missing env at boot with the new VELOX_-prefixed
-	// escape-hatch instructions in the error message.
-	ArtlistScraperServerURL        string `yaml:"artlist_scraper_server_url" env:"VELOX_ARTLIST_SCRAPER_SERVER_URL" default:""`
-	ArtlistLiveSearchCacheTTLHours int    `yaml:"artlist_live_search_cache_ttl_hours" env:"ARTLIST_CACHE_TTL_HOURS" default:"24"`
+	// ArtlistLiveSearchCacheTTLHours bounds the Level-1 in-memory cache
+	// TTL (in hours) for the local Artlist scraper seam, consumed by
+	// internal/capabilities/assets/providers/artlist/search_core.go. A
+	// value of 0 (or less) disables the cache.
+	ArtlistLiveSearchCacheTTLHours int `yaml:"artlist_live_search_cache_ttl_hours" env:"ARTLIST_CACHE_TTL_HOURS" default:"24"`
 
 	// Artlist cookies path for yt-dlp (July 2026): replaces the hardcoded
 	// `/tmp/artlist_cookies.txt` in internal/platform/downloader/downloader.go.

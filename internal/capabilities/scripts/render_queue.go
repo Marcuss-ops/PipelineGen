@@ -286,66 +286,6 @@ func randomMapAnimation(options []string) (string, error) {
 
 // marshalRenderingGenOverlayPlan projects canonical microsecond item timing
 // onto RenderingGen's strict millisecond wire contract.
-func marshalRenderingGenOverlayPlan(plan capoverlay.OverlayPlan) ([]byte, error) {
-	raw, err := json.Marshal(plan)
-	if err != nil {
-		return nil, err
-	}
-	var wire map[string]json.RawMessage
-	if err := json.Unmarshal(raw, &wire); err != nil {
-		return nil, err
-	}
-	var items []map[string]json.RawMessage
-	if err := json.Unmarshal(wire["items"], &items); err != nil {
-		return nil, err
-	}
-	for i, item := range items {
-		var durationUS int64
-		if encoded := item["duration_us"]; len(encoded) > 0 {
-			if err := json.Unmarshal(encoded, &durationUS); err != nil {
-				return nil, fmt.Errorf("decode item %d duration_us: %w", i, err)
-			}
-		}
-		delete(item, "start_us")
-		delete(item, "duration_us")
-		if durationUS > 0 {
-			var startMS, endMS int64
-			if err := json.Unmarshal(item["start_ms"], &startMS); err != nil {
-				return nil, fmt.Errorf("decode item %d start_ms: %w", i, err)
-			}
-			if err := json.Unmarshal(item["end_ms"], &endMS); err != nil {
-				return nil, fmt.Errorf("decode item %d end_ms: %w", i, err)
-			}
-			if endMS <= startMS {
-				return nil, fmt.Errorf("item %d has invalid millisecond timing %d-%d", i, startMS, endMS)
-			}
-			encoded, err := json.Marshal(endMS - startMS)
-			if err != nil {
-				return nil, err
-			}
-			item["duration_ms"] = encoded
-		}
-	}
-	wireItems, err := json.Marshal(items)
-	if err != nil {
-		return nil, err
-	}
-	wire["items"] = wireItems
-	return json.Marshal(wire)
-}
-
-func runtimeFontAssets(plan capoverlay.OverlayPlan) []RenderQueueAsset {
-	for _, item := range plan.Items {
-		family, _ := item.Params["font_family"].(string)
-		if strings.TrimSpace(family) == "inter" {
-			return []RenderQueueAsset{NewRenderQueueAsset(
-				kernelasset.Ref{AssetID: capoverlay.CanonicalInterFontPath, SHA256: capoverlay.CanonicalInterFontHash},
-				capoverlay.CanonicalInterFontPath, "")}
-		}
-	}
-	return nil
-}
-
 // The publication batch type and its join helpers live in
 // overlay_publication.go, next to the publication port they serve; the pool
 // fields above belong to this type.

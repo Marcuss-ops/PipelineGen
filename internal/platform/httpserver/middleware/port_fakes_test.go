@@ -31,15 +31,15 @@ func (t *testSecurity) EnableAuth() bool    { return t.enabled }
 func (t *testSecurity) AdminToken() string  { return t.admin }
 func (t *testSecurity) WorkerToken() string { return t.worker }
 
-// testFlags is a 2-method fake implementing middleware.FeatureFlagsPort.
+// testFlags is a 1-method fake implementing middleware.FeatureFlagsPort.
 // Constructed inline by the feature-flag middleware tests.
 type testFlags struct {
-	artlist     bool
 	scriptClips bool
 }
 
-func (t *testFlags) ArtlistEnabled() bool     { return t.artlist }
-func (t *testFlags) ScriptClipsEnabled() bool { return t.scriptClips } // testM2MSecurity is a fake implementing middleware.M2MSecurityPort for
+func (t *testFlags) ScriptClipsEnabled() bool { return t.scriptClips }
+
+// testM2MSecurity is a fake implementing middleware.M2MSecurityPort for
 // the jobClientAuthMiddleware / requireScope tests. HashClientSecret
 // mirrors the production SHA-256 SSOT so the digest round-trips through
 // LookupClient exactly as it does in the real SQLite store.

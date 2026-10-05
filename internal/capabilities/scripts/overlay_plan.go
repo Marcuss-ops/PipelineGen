@@ -234,14 +234,33 @@ func compileOverlayPlanWithMotionOffset(result *GenerateResult, language Languag
 				}
 			}
 			items[i].Params = merged
+			if items[i].Kind == "text_phrase" || items[i].Kind == string(capabilityoverlay.KindImportantPhrase) {
+				phraseFontSize := float64(capabilityoverlay.PresentationPhraseFontMinimumPX)
+				if configured, ok := styleParams["font_size_px"].(float64); ok && configured > phraseFontSize {
+					phraseFontSize = configured
+				}
+				items[i].Params["font_size_px"] = phraseFontSize
+				if phraseStyle, ok := items[i].Params["style"].(map[string]any); ok {
+					phraseStyle["font_size"] = phraseFontSize
+				}
+			}
 			if items[i].TemplateID == "TIMELINE_DATE_CARD" || items[i].TemplateID == "METRIC_STAT_CARD" {
 				// Match the selected shared text style and apply the presentation
 				// size increase without adding a separate preset or font family.
 				baseFontSize := float64(capabilityoverlay.SharedTextFontSizePX)
-				if configured, ok := styleParams["font_size_px"].(float64); ok && configured > 0 {
+				if configured, ok := styleParams["font_size_px"].(float64); ok && configured > baseFontSize {
 					baseFontSize = configured
 				}
-				items[i].Params["font_size_px"] = baseFontSize + float64(capabilityoverlay.PresentationTextFontIncreasePX)
+				presentationFontSize := baseFontSize + float64(capabilityoverlay.PresentationTextFontIncreasePX)
+				items[i].Params["font_size_px"] = presentationFontSize
+				if presentationStyle, ok := items[i].Params["style"].(map[string]any); ok {
+					presentationStyle["font_size"] = presentationFontSize
+				}
+				// Kind "number" is semantically lowered by RenderingGen through
+				// its generic text lane, so it misses the date/stat box growth
+				// branch. Send the matching height with the font override or the
+				// preset's shrink-only fit silently scales 240px callouts back down.
+				items[i].Params["height"] = presentationFontSize*1.7 + 32
 			}
 			items[i].RenderKey = ""
 			if isImageOverlayItem(items[i]) && canvas.Style != nil {
@@ -260,6 +279,7 @@ func compileOverlayPlanWithMotionOffset(result *GenerateResult, language Languag
 					}
 					child.Params = childParams
 				}
+				normalizeEntityImageLayer(&items[i])
 			}
 		}
 	}
@@ -344,6 +364,24 @@ func compileOverlayPlanWithMotionOffset(result *GenerateResult, language Languag
 	}
 	items = composeNearbyEntityImages(items, canvas.Width, canvas.Height)
 	assignEntityImageMotions(items, imageMotionOffset, canvas.Width, canvas.Height)
+	// assignEntityImageMotions rebuilds entity item params with its geometry
+	// defaults. Apply the explicit typeface afterward so it reaches the
+	// generated name caption without overriding image geometry.
+	fontFamily := ""
+	if canvas.Style != nil {
+		fontFamily = strings.TrimSpace(canvas.Style.FontFamily)
+	}
+	if fontFamily != "" {
+		for i := range items {
+			if !isEntityOverlayKind(items[i].Kind) {
+				continue
+			}
+			if items[i].Params == nil {
+				items[i].Params = map[string]any{}
+			}
+			items[i].Params["font_family"] = fontFamily
+		}
+	}
 	if canvas.Style != nil && canvas.Style.Image != nil {
 		for i := range items {
 			if isImageOverlayItem(items[i]) {

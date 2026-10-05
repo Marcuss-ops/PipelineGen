@@ -1,7 +1,7 @@
 // Package app — wire_services.go (PUBLIC ENTRY POINTS, July 2026 split).
 //
 // Split rationale (stage-based; the user's literal stock|voiceover|
-// artlist|images split doesn't fit this cross-cutting root — see
+// images split doesn't fit this cross-cutting root — see
 // wire_services_startup_plan.go header for the explicit deviation):
 //
 //   - wire_services.go               : THIS FILE. Public entry points —

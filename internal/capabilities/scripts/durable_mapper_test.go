@@ -226,3 +226,33 @@ func TestDurableResultToDomainPreservesFinalAudioContainerAndDurationUS(t *testi
 		t.Fatalf("duration_us missing from persisted final_audio JSON: %s", encoded)
 	}
 }
+
+// TestDurableResultToDomainCarriesExtractiveEditorialProducts certifies the
+// summary/bullets/heavy-sentence data products reach the persisted domain
+// payload. Without this projection the extractive analysis would compute on
+// the capability side and be dropped before the video result is written.
+func TestDurableResultToDomainCarriesExtractiveEditorialProducts(t *testing.T) {
+	in := &GenerateResult{
+		Summary:      "La civiltà Maya prosperò nelle città-stato.",
+		BulletPoints: []string{"Città-stato indipendenti", "Agricoltura intensiva"},
+		HeavySentences: []scriptpkg.ImportantSentence{
+			{Index: 1, Text: "La civiltà Maya prosperò.", Importance: 0.91},
+		},
+	}
+
+	out := DurableResultToDomain(in)
+	require.NotNil(t, out)
+	assert.Equal(t, "La civiltà Maya prosperò nelle città-stato.", out.Summary)
+	assert.Equal(t, []string{"Città-stato indipendenti", "Agricoltura intensiva"}, out.BulletPoints)
+	require.Len(t, out.HeavySentences, 1)
+	assert.Equal(t, "La civiltà Maya prosperò.", out.HeavySentences[0].Text)
+
+	encoded, err := json.Marshal(out)
+	require.NoError(t, err)
+	var wire map[string]any
+	require.NoError(t, json.Unmarshal(encoded, &wire))
+	assert.Equal(t, "La civiltà Maya prosperò nelle città-stato.", wire["summary"],
+		"summary must survive the durable JSON projection consumed by the video payload")
+	assert.NotNil(t, wire["bullet_points"])
+	assert.NotNil(t, wire["heavy_sentences"])
+}

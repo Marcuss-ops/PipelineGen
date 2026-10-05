@@ -37,7 +37,6 @@ features:
   # consume is disabled so boot neither pays its composition cost nor
   # aborts on its fail-closed dependency gates (e.g. Artlist's
   # AssetTxFinalizer requirement).
-  artlist_enabled: false
   youtube_enabled: false
   script_clips_enabled: false
   voiceover_enabled: false

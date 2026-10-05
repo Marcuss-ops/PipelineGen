@@ -116,7 +116,6 @@ func TestConfig_FeatureFlags_AlignWithTypesGo(t *testing.T) {
 
 	// Anchors that MUST be present (one per FeaturesConfig field).
 	required := []string{
-		"artlist_enabled:",
 		"youtube_enabled:",
 		"drive_enabled:",
 		"script_clips_enabled:",
@@ -136,6 +135,7 @@ func TestConfig_FeatureFlags_AlignWithTypesGo(t *testing.T) {
 	// config block; workflow was retired). Flag those as drift so a future
 	// copy-paste doesn't reintroduce the gap.
 	forbidden := []string{
+		"artlist_enabled:",              // retired: the Artlist capability is not mounted
 		"workflow_enabled:",             // retired flag
 		"google_accounting_enabled:",    // belongs to GoogleAccountingConfig, not FeaturesConfig
 		"catalog_script_vector_search:", // retired flag

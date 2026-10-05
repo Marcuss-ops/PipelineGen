@@ -325,11 +325,11 @@ func TestHealthHandler_ReadyIncludesWireFieldStockMounted(t *testing.T) {
 	ready := systemhealth.NewReadyChecker(svc)
 	handler := NewHealthHandler(svc, ready)
 
-	// Build a real gin engine with stock + artlist routes, then extract
+	// Build a real gin engine with stock + voiceover routes, then extract
 	// the WireRegistry and inject it into the HealthHandler.
 	engine := gin.New()
 	engine.POST("/api/stock-pipeline/run", func(c *gin.Context) {})
-	engine.POST("/api/artlist/sync", func(c *gin.Context) {})
+	engine.POST("/api/media/voiceover/sync", func(c *gin.Context) {})
 	handler.SetWireRegistry(NewWireRegistryFromEngine(engine))
 
 	router := gin.New()
@@ -345,8 +345,8 @@ func TestHealthHandler_ReadyIncludesWireFieldStockMounted(t *testing.T) {
 	wire, ok := resp["wire"].(map[string]any)
 	require.True(t, ok, "/ready response must include wire field")
 	assert.Equal(t, WireMounted, wire["stock"], "stock should be MOUNTED")
-	assert.Equal(t, WireMounted, wire["artlist"], "artlist should be MOUNTED")
-	assert.Equal(t, WireNotMounted, wire["voiceover"], "voiceover should be NOT_MOUNTED")
+	assert.Equal(t, WireMounted, wire["voiceover"], "voiceover should be MOUNTED")
+	assert.Equal(t, WireNotMounted, wire["clip-render"], "clip-render should be NOT_MOUNTED (no render routes registered)")
 }
 
 // TestHealthHandler_ReadyRendersWireMapProductionHotPath simulates the
@@ -368,7 +368,7 @@ func TestHealthHandler_ReadyRendersWireMapProductionHotPath(t *testing.T) {
 	engine := gin.New()
 	engine.POST("/api/stock-pipeline/run", func(c *gin.Context) {})
 	engine.POST("/api/stock-pipeline/search-and-run", func(c *gin.Context) {})
-	engine.POST("/api/artlist/sync", func(c *gin.Context) {})
+	engine.POST("/api/media/voiceover/sync", func(c *gin.Context) {})
 	engine.POST("/internal/v1/media/search", func(c *gin.Context) {})
 	engine.GET("/internal/v1/media/ready", func(c *gin.Context) {})
 	engine.GET("/qdrant/live", func(c *gin.Context) {})
@@ -390,10 +390,10 @@ func TestHealthHandler_ReadyRendersWireMapProductionHotPath(t *testing.T) {
 	wire, ok := resp["wire"].(map[string]any)
 	require.True(t, ok, "production hot path /ready response must include wire field")
 	assert.Equal(t, WireMounted, wire["stock"], "stock should be MOUNTED in production hot path")
-	assert.Equal(t, WireMounted, wire["artlist"], "artlist should be MOUNTED in production hot path")
+	assert.Equal(t, WireMounted, wire["voiceover"], "voiceover should be MOUNTED in production hot path")
 	assert.Equal(t, WireMounted, wire["mediasearch"], "mediasearch should be MOUNTED (both /internal/v1/media/search and /ready are routed)")
 	assert.Equal(t, WireMounted, wire["qdrant_health"], "qdrant_health should be MOUNTED")
-	assert.Equal(t, WireNotMounted, wire["voiceover"], "voiceover should be NOT_MOUNTED (no voiceover routes registered)")
+	assert.Equal(t, WireNotMounted, wire["clip-render"], "clip-render should be NOT_MOUNTED (no render routes registered)")
 }
 
 // TestHealthHandler_ReadyWireSurvivesFailurePath verifies the wire

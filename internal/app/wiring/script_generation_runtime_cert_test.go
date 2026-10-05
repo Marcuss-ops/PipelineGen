@@ -62,29 +62,29 @@ func TestBuildRuntimeMediaCertSpecDoesNotRequireSecondaryImagesForClipOnly(t *te
 	}
 }
 
-func TestBuildRuntimeMediaCertSpecDoesNotAssumeArtlistForMixedFolderBindings(t *testing.T) {
+func TestBuildRuntimeMediaCertSpecDoesNotAssumeAVideoProviderForMixedFolderBindings(t *testing.T) {
 	plan := &scriptpkg.ResolvedGenerationPlan{
 		MediaMode: scriptpkg.MediaModeMixed,
 		MediaPlan: media.MediaPlanSpec{
-			ProviderPolicy: media.MediaProviderPolicy{Artlist: media.MediaToggleDisabled},
+			ProviderPolicy: media.MediaProviderPolicy{YouTube: media.MediaToggleDisabled},
 		},
 	}
 	spec := buildRuntimeMediaCertSpec(plan)
 	if spec.VideoProvider != "" {
-		t.Fatalf("video_provider = %q, want none when Artlist is disabled", spec.VideoProvider)
+		t.Fatalf("video_provider = %q, want none when no video provider is enabled", spec.VideoProvider)
 	}
 }
 
-func TestBuildRuntimeMediaCertSpecRequiresArtlistRelevanceWhenEnabled(t *testing.T) {
+func TestBuildRuntimeMediaCertSpecRequiresProviderRelevanceWhenVideoProviderEnabled(t *testing.T) {
 	plan := &scriptpkg.ResolvedGenerationPlan{
 		MediaMode: scriptpkg.MediaModeMixed,
 		MediaPlan: media.MediaPlanSpec{
-			ProviderPolicy: media.MediaProviderPolicy{Artlist: media.MediaToggleEnabled},
+			ProviderPolicy: media.MediaProviderPolicy{YouTube: media.MediaToggleEnabled},
 		},
 	}
 	spec := buildRuntimeMediaCertSpec(plan)
-	if spec.VideoProvider != scriptpkg.VidRushProviderArtlist {
-		t.Fatalf("video_provider = %q, want %q when Artlist is enabled", spec.VideoProvider, scriptpkg.VidRushProviderArtlist)
+	if spec.VideoProvider != scriptpkg.VidRushProviderYouTube {
+		t.Fatalf("video_provider = %q, want %q when the video provider is enabled", spec.VideoProvider, scriptpkg.VidRushProviderYouTube)
 	}
 }
 

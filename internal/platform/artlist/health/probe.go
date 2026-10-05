@@ -2,7 +2,6 @@
 //
 // Per AGENTS.md Pattern 0, the struct is composition-injected: the
 // caller (internal/app/lifecycle_scheduler.go) passes the serverURL
-// (cfg.External.ArtlistScraperServerURL), a logger, and an optional
 // metrics handle (NewHealthMetrics() points at the promauto globals
 // from observability/metrics_artlist.go).
 //

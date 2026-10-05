@@ -616,7 +616,7 @@ func TestSemanticProviderResolverBindsWinnerFromLocalFirst(t *testing.T) {
 	}
 	res, err := resolver.ResolveProviders(context.Background(), &scriptpkg.ResolvedGenerationPlan{
 		MediaPlan: mediadomain.MediaPlanSpec{ProviderPolicy: mediadomain.MediaProviderPolicy{
-			Artlist: mediadomain.MediaToggleEnabled,
+			YouTube: mediadomain.MediaToggleEnabled,
 		}},
 	}, segment)
 	require.NoError(t, err)

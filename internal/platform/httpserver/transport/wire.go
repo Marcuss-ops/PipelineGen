@@ -48,7 +48,6 @@ var knownCapabilities = []struct {
 	prefixes []string
 }{
 	{name: "stock", prefixes: []string{"/api/stock-pipeline"}},
-	{name: "artlist", prefixes: []string{"/api/artlist"}},
 	// voiceover mounts via internal/app/wire_assets.go::WireAssets which
 	// wraps the Assets module under prefix "/media" (assetsRouteMod) +
 	// the voiceover capability's own prefix "/voiceover"

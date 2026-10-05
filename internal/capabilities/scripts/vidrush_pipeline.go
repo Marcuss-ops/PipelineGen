@@ -198,7 +198,7 @@ func (r *SemanticProviderResolver) ResolveProviders(ctx context.Context, plan *s
 	// provider policy. Image-only/generation-only plans still use the later
 	// image materialization stages, but must not probe local video stock or
 	// fall back to Artlist.
-	if plan == nil || !plan.MediaPlan.ProviderPolicy.Artlist.AsBool() {
+	if plan == nil || !plan.MediaPlan.ProviderPolicy.YouTube.AsBool() {
 		segment.Cache.InternetImagesProviderSearches = 0
 		return segment, nil
 	}
@@ -239,7 +239,7 @@ func (r *SemanticProviderResolver) ResolveProviders(ctx context.Context, plan *s
 		primary := scriptpkg.SegmentAssetCandidate{
 			SegmentID: segment.SegmentID,
 			AssetID:   winnerID,
-			Provider:  scriptpkg.VidRushProviderArtlist,
+			Provider:  scriptpkg.VidRushProviderYouTube,
 			Score:     0.9,
 		}
 		for _, c := range stockRes.Candidates {

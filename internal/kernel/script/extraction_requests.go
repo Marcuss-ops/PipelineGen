@@ -18,7 +18,7 @@ type EntityResult struct {
 	Persons          []Entity `json:"persons,omitempty"`
 	Places           []Entity `json:"places,omitempty"`
 	Concepts         []Entity `json:"concepts,omitempty"`
-	ArtlistPhrases   []string `json:"artlist_phrases,omitempty"`
+	VisualPhrases    []string `json:"visual_phrases,omitempty"`
 	ImportantPhrases []string `json:"important_phrases,omitempty"`
 	ImportantWords   []string `json:"important_words,omitempty"`
 	SpecialNames     []string `json:"special_names,omitempty"`

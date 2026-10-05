@@ -91,10 +91,14 @@ func (e *HTTPTextEmbedder) Embed(ctx context.Context, text string) (coreasset.Em
 		return coreasset.EmbeddingResult{}, nil
 	}
 
-	payload, err := json.Marshal(map[string]string{
-		"text": text,
-		"type": "query", // E5 model prefix for queries (vs "passage" for index)
-	})
+	return e.embedWithType(ctx, text, "query")
+}
+
+func (e *HTTPTextEmbedder) embedWithType(ctx context.Context, text, kind string) (coreasset.EmbeddingResult, error) {
+	if text == "" {
+		return coreasset.EmbeddingResult{}, nil
+	}
+	payload, err := json.Marshal(map[string]string{"text": text, "type": kind})
 	if err != nil {
 		return coreasset.EmbeddingResult{}, fmt.Errorf("marshal embedder request: %w", err)
 	}
@@ -179,7 +183,15 @@ func (e *HTTPTextEmbedder) Embed(ctx context.Context, text string) (coreasset.Em
 // EmbedBatch posts an ordered group of query texts to the sidecar's
 // /embed_batch endpoint. The entire response is validated against the same
 // canonical E5 contract as Embed before any result is returned.
+func (e *HTTPTextEmbedder) EmbedPassagesBatch(ctx context.Context, texts []string) ([]coreasset.EmbeddingResult, error) {
+	return e.embedBatch(ctx, texts, "passage")
+}
+
 func (e *HTTPTextEmbedder) EmbedBatch(ctx context.Context, texts []string) ([]coreasset.EmbeddingResult, error) {
+	return e.embedBatch(ctx, texts, "query")
+}
+
+func (e *HTTPTextEmbedder) embedBatch(ctx context.Context, texts []string, kind string) ([]coreasset.EmbeddingResult, error) {
 	if len(texts) == 0 {
 		return []coreasset.EmbeddingResult{}, nil
 	}
@@ -191,7 +203,7 @@ func (e *HTTPTextEmbedder) EmbedBatch(ctx context.Context, texts []string) ([]co
 			return nil, fmt.Errorf("embedder batch text %d is empty", i)
 		}
 	}
-	payload, err := json.Marshal(map[string]any{"texts": texts, "type": "query"})
+	payload, err := json.Marshal(map[string]any{"texts": texts, "type": kind})
 	if err != nil {
 		return nil, fmt.Errorf("marshal batch embedder request: %w", err)
 	}
@@ -215,7 +227,7 @@ func (e *HTTPTextEmbedder) EmbedBatch(ctx context.Context, texts []string) ([]co
 		// is deployed. Preserve availability through the canonical endpoint.
 		results := make([]coreasset.EmbeddingResult, len(texts))
 		for i, text := range texts {
-			result, err := e.Embed(ctx, text)
+			result, err := e.embedWithType(ctx, text, kind)
 			if err != nil {
 				return nil, fmt.Errorf("batch endpoint unavailable; embed text %d through /embed: %w", i, err)
 			}

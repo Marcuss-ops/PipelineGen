@@ -119,7 +119,6 @@ type WorkersConfig struct {
 
 // FeaturesConfig controls optional modules.
 type FeaturesConfig struct {
-	ArtlistEnabled bool `yaml:"artlist_enabled" env:"VELOX_FEATURE_ARTLIST_ENABLED" default:"false"`
 	YouTubeEnabled bool `yaml:"youtube_enabled" env:"VELOX_FEATURE_YOUTUBE_ENABLED" default:"false"`
 	// ClipRenderEnabled gates POST /api/clips/render + the clip.render
 	// job binding (canonical VeloxEditing-compatible clip

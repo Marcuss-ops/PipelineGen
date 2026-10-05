@@ -209,7 +209,7 @@ func TestBuildSegmentSemanticProfile_WeightsKeywordsByOrder(t *testing.T) {
 		CanonicalSegment{ID: "segment-002", TextHash: "hash-2"},
 		EntityResult{
 			ImportantWords:   []string{"tractor", "agriculture", "steam engine"},
-			ArtlistPhrases:   []string{"horse drawn farming", "vintage tractor field"},
+			VisualPhrases:    []string{"horse drawn farming", "vintage tractor field"},
 			ImportantPhrases: []string{"John Froelich early gasoline tractor"},
 		},
 		"", "",
@@ -224,7 +224,7 @@ func TestBuildSegmentSemanticProfile_WeightsKeywordsByOrder(t *testing.T) {
 		t.Fatalf("last keyword = %#v, want steam engine/%.4f", profile.Keywords[2], 1.0/3.0)
 	}
 	if len(profile.VisualTerms) != 2 || profile.VisualTerms[0].Value != "horse drawn farming" || profile.VisualTerms[0].Confidence != 1.0 {
-		t.Fatalf("visual terms = %#v, want ordered weighted artlist phrases", profile.VisualTerms)
+		t.Fatalf("visual terms = %#v, want ordered weighted visual phrases", profile.VisualTerms)
 	}
 	if !reflect.DeepEqual(profile.ImportantPhrases, []string{"John Froelich early gasoline tractor"}) {
 		t.Fatalf("important phrases = %v", profile.ImportantPhrases)
@@ -260,7 +260,7 @@ func TestBuildSegmentSemanticProfile_PreservesTemporalEntitiesAndClassifiesTerms
 			ImportantWords: []string{
 				"tractor", "agriculture", "plowing",
 			},
-			ArtlistPhrases: []string{"vintage tractor field"},
+			VisualPhrases: []string{"vintage tractor field"},
 		},
 		"gemma3:1b", "v1",
 	)

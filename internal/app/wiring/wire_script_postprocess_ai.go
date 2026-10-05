@@ -67,7 +67,6 @@ var _ scriptgen.SegmentMaterializer = (*adapters.VidRushMaterializationProcessor
 func registerAIBackedProcessors(
 	ppReg *adapters.PostProcessorRegistry,
 	root *ComposeRoot,
-	artlistWiring *ArtlistWiring,
 	searchFanOut search.SearchFanOut,
 	vidRushProviders *adapters.VidRushAssetProviderRegistry,
 	vidRushCache ports.VidRushCachePort,

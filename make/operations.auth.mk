@@ -6,13 +6,6 @@ doctor:
 	@curl -sS -f -H "Authorization: Bearer $(VELOX_ADMIN_TOKEN)" http://127.0.0.1:$${VELOX_PORT:-8000}/api/system/doctor | jq . || { echo "Server not running? Try: make run (override port via VELOX_PORT)"; exit 1; }
 
 TERM ?= technology
-artlist:
-	@[ -n "$$VELOX_ADMIN_TOKEN" ] || { echo "❌ VELOX_ADMIN_TOKEN unset — source scripts/with-velox-auth or export manually."; exit 1; }
-	@curl -sS -f -X POST http://127.0.0.1:$${VELOX_PORT:-8000}/api/artlist/run \
-		-H "Content-Type: application/json" \
-		-H "Authorization: Bearer $(VELOX_ADMIN_TOKEN)" \
-		-d '{"term":"$(TERM)","limit":$(LIMIT),"strategy":"$(STRATEGY)"}' | jq . || { echo "Server not running? Try: make run (override port via VELOX_PORT)"; exit 1; }
-
 # auth-check — prove the admin token is accepted by the LIVE server.
 #
 # Probes /api/system/doctor: an admin-authenticated route that is mounted by
