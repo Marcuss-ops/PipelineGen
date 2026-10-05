@@ -340,11 +340,21 @@ Tre gap di strumentazione dallo snapshot:
 
 - [ ] **E1. VisualNER in-process** (FFI link, no stdio spawn).
       *Guadagno:* 3,7s → <0,5s per scena.
-- [ ] **E2. Frasi pesanti v2 (embedding)** — bge-small ONNX + TextRank coseno →
-      `impact_weight` per frase; arricchisce/affianca il lessicono deterministico di
-      `internal/capabilities/scripts/phrases`. Costo ~10–30ms. **Qualità, non velocità:**
-      peso → preset motion nel catalogo RenderingGen (frasi pesanti = motion animato,
-      leggere = statico).
+- [~] **E2. Frasi pesanti v2 (embedding)** — PARTE NLP IN PRODUZIONE 2026-10-05:
+      `rust/pipelinegen-muscles::phrase_impact` (TextRank/coseno; embedding E5 precomputati
+      oppure modalità lessicale deterministica) produce `summary` estrattivo,
+      `bullet_points` e `heavy_sentences`. L'adapter
+      `internal/platform/media/rustexec.PhraseImpactAnalyzer` li espone al runner
+      (`runner_phase_script.go`) e `durable_mapper.go` li proietta su
+      `GenerateResult`/`GenerationResult` (`summary`/`bullet_points`/`heavy_sentences`);
+      un worker rotto degrada senza far fallire il video. Wiring:
+      `wirePhraseImpactAnalyzer` + `external.rust_phrase_impact_path`
+      (default `bin/phrase_impact`, installato da `make build-muscles`).
+      Benchmark per titolo: `go test ./scripts/bench -run '^$' -bench BenchmarkPhraseImpactTitles`.
+      RESTA (qualità, non velocità): `impact_weight` → preset motion nel catalogo
+      RenderingGen (frasi pesanti = motion animato, leggere = statico). Oggi le frasi
+      overlay restano deterministiche (`internal/capabilities/scripts/phrases`); il peso
+      non alimenta ancora la selezione motion.
 - [ ] **E3. Cache artlist per (frase, lingua)** — resolve ripetuti da cache locale.
       *Guadagno:* 1,9h → ~0.
 
