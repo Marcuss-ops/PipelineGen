@@ -208,35 +208,56 @@ func mapMotionAt(ordinal int) string {
 	return pool[ordinal%len(pool)]
 }
 
-// mapMotionForCenter prefers the map-specific Chronon treatment that matches
-// a supported geographic region. The bounds only choose a visual recipe; map
-// coverage, pins and coordinates remain owned by the certified plate.
+// mapMotionForCenter picks the map-specific Chronon treatment for a grounded
+// center. The geographic bounds choose a region recipe that ANCHORS the
+// rotation, but the ordinal advances through the certified pool from that
+// anchor, so a run of maps in the SAME region no longer renders the identical
+// animation: consecutive maps differ while the region still leads for the
+// first one. Map coverage, pins and coordinates remain owned by the certified
+// plate; the bounds only choose a visual recipe.
 func mapMotionForCenter(ordinal int, center MapCenter) string {
 	lat, lon := center.Latitude, center.Longitude
+	region := ""
 	switch {
 	case lat >= -44 && lat <= -10 && lon >= 112 && lon <= 154:
-		return "map_image_australia_sunset_drift"
+		region = "map_image_australia_sunset_drift"
 	case lat >= -34 && lat <= 6 && lon >= -74 && lon <= -34:
-		return "map_image_brazil_glow_reveal"
+		region = "map_image_brazil_glow_reveal"
 	case lat >= 20 && lat <= 24 && lon >= 68 && lon <= 75:
-		return "map_image_gujarat_detail_push"
+		region = "map_image_gujarat_detail_push"
 	case lat >= 6 && lat <= 35 && lon >= 67 && lon <= 98:
-		return "map_image_india_contour_draw"
+		region = "map_image_india_contour_draw"
 	case lat >= 33 && lat <= 39 && lon >= 124 && lon <= 132:
-		return "map_image_korea_pin_focus"
+		region = "map_image_korea_pin_focus"
 	case lat >= 18 && lat <= 54 && lon >= 73 && lon <= 135:
-		return "map_image_china_slow_reveal"
+		region = "map_image_china_slow_reveal"
 	case lat >= 25 && lat <= 40 && lon >= 44 && lon <= 64:
-		return "map_image_iran_gold_focus"
+		region = "map_image_iran_gold_focus"
 	case lat >= 35 && lat <= 48 && lon >= 6 && lon <= 19:
-		return "map_image_italy_beacon_arrival"
+		region = "map_image_italy_beacon_arrival"
 	case lat >= 4 && lat <= 14 && lon >= 2 && lon <= 15:
-		return "map_image_nigeria_neon_bloom"
+		region = "map_image_nigeria_neon_bloom"
 	case lat >= 24 && lat <= 50 && lon >= -125 && lon <= -66:
-		return "map_image_usa_sweep_in"
-	default:
+		region = "map_image_usa_sweep_in"
+	}
+	if region == "" {
 		return mapMotionAt(ordinal)
 	}
+	pool := mapMotionIDs()
+	if len(pool) == 0 {
+		return region
+	}
+	start := 0
+	for index, id := range pool {
+		if id == region {
+			start = index
+			break
+		}
+	}
+	if ordinal < 0 {
+		ordinal = 0
+	}
+	return pool[(start+ordinal)%len(pool)]
 }
 
 // mapItemsForScene lowers a scene's resolved map plans to at most one overlay

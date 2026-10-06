@@ -290,6 +290,15 @@ const (
 	OperationHash              OperationName = "hash"
 	OperationObjectStoreUpload OperationName = "objectstore_upload"
 	OperationDrivePublish      OperationName = "drive_publish"
+	// OperationSubmit and OperationWaitCompletion name the two halves of a
+	// blocking queue boundary (submit round-trip → wait for the terminal
+	// state) so a stage wall decomposes into submit + wait + Σ owner-reported
+	// phases with every duration measured by its owner exactly once. The
+	// wait is ALSO a canonical run-level WaitCompletion observation; the
+	// operation here is the stage-bound projection of the same measured
+	// interval, never a second timer.
+	OperationSubmit         OperationName = "submit"
+	OperationWaitCompletion OperationName = "wait_completion"
 	// Chronon render phase operations. These are the render engine's OWN
 	// phases (startup/probe/decode/composite/subtitle_raster/watermark_
 	// raster/frame_conversion/encode/audio_mux + the GPU byte counters),

@@ -7,16 +7,12 @@ import (
 	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
 )
 
-// Generated entity portraits stay within the certified 2D image pool: the
-// full layer-only image vocabulary, none of the camera-backed 3D families.
-// Entity captions stay on the four certified 2D caption motions.
+// Generated entity portraits and their captions rotate over the full
+// registered ChrononTemplate catalogs.
 //
-// The pool size is asserted as a literal (10 images, 4 captions) rather than
-// derived from the pool under test, so this gate actually fails when the
-// catalog drifts. TestEntityImageMotionRotationCoversTheCertifiedCatalog in
-// package overlays pins the same ten ids against the master image catalog.
-func TestAssignEntityImageMotionsUsesRestrainedCatalog(t *testing.T) {
-	const wantImages, wantCaptions = 10, 4
+// Pool sizes are literals so this gate fails if either connected catalog drifts.
+func TestAssignEntityImageMotionsUsesCertifiedCatalog(t *testing.T) {
+	const wantImages, wantCaptions = 32, 21
 
 	certified := capabilityoverlay.CertifiedEntityImageMotions()
 	captionCertified := capabilityoverlay.CertifiedEntityCaptionMotions()

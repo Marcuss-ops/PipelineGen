@@ -192,6 +192,38 @@ func recordRenderingGenPhases(ctx context.Context, artifact *RenderArtifact) {
 	}
 }
 
+// recordQueueBoundaryPhases projects the two halves of the blocking queue
+// boundary PipelineGen itself owns — the submit round-trip and the
+// terminal-state wait — onto the run bound to ctx as canonical operations
+// under StageOverlayRender, next to the worker-reported phases. With them the
+// stage wall decomposes as submit + wait + Σ worker phases, and the dominant
+// term of a slow overlay stage (waiting for the remote GPU lane) is joinable
+// to the stage instead of living only in the run-level wait list. Each
+// duration is measured by its owner exactly once: the caller timed the
+// boundary on its own clock, the worker timed the phases, and the kernel
+// never re-times either. The run-level WaitCompletion observation is kept —
+// this is the stage-bound projection of the same measured interval, not a
+// second timer. A non-positive duration records nothing: a missing
+// measurement is never a fake zero.
+func recordQueueBoundaryPhases(ctx context.Context, submitMS, waitMS int64) {
+	for _, phase := range []struct {
+		operation  kernobs.OperationName
+		durationMS int64
+	}{
+		{kernobs.OperationSubmit, submitMS},
+		{kernobs.OperationWaitCompletion, waitMS},
+	} {
+		if phase.durationMS <= 0 {
+			continue
+		}
+		kernobs.RecordOperation(ctx, kernobs.OperationInfo{
+			Stage:     StageOverlayRender,
+			Component: kernobs.ComponentRenderQueue,
+			Operation: phase.operation,
+		}, phase.durationMS)
+	}
+}
+
 // waitForCompletion parks until the queue reports the job terminal, and records
 // the whole blocked interval as a completion wait on the bound run
 // (RunReport.Waits), never as a stage: it is time spent waiting on the render

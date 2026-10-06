@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -171,6 +172,213 @@ func TestBoundedMapRenderOutputRetainsOnlyRecentDiagnostics(t *testing.T) {
 	}
 }
 
+// validDynamicMapTelemetry is the minimal summary the dynamic-map renderer must
+// emit to be certified. It is shared by the render-contract tests below.
+const validDynamicMapTelemetry = `{"schema":"chronon.dynamic-map-telemetry.v1","frames":120,"dimensions":{"width":1920,"height":1080},"fps":{"num":24,"den":1},"tile":{"tile_disk_cache_hits":7,"tile_disk_cache_misses":0,"tile_network_fetches":0,"tile_fallbacks":0,"tile_bytes_downloaded":0,"tile_fetch_ms":12.0,"prefetch_ms":3.0,"prefetch_tiles_requested":7,"prefetch_tiles_memory_hits":0,"late_tile_fetches":0},"plates":{"prepare_ms":4.0,"plate_compose_ms":1.0,"plate_count":11,"plate_bytes":42,"required_tile_count":7,"prefetch_tiles_fetched":7,"prefetch_tiles_memory_hits":0},"gate_ms":2.0,"frame_pipeline_s":3.0,"render_encode_wall_s":3.5,"post_frame_tail_s":0.5,"engine_fallback_frames":0,"output_bytes":8,"renderer_wall_s":9.0}`
+
+// TestMapBasemapStylesAreUniqueAndNonEmpty keeps the palette a real choice set:
+// a duplicate id would silently bias the rotation. It also asserts the session
+// anchor (esri_sat) stays available, so the historic look remains reachable.
+func TestMapBasemapStylesAreUniqueAndNonEmpty(t *testing.T) {
+	styles := mapBasemapStyles()
+	if len(styles) < 2 {
+		t.Fatalf("basemap palette has %d styles; variety needs at least two", len(styles))
+	}
+	seen := make(map[string]struct{}, len(styles))
+	for _, style := range styles {
+		if strings.TrimSpace(style) == "" {
+			t.Fatal("basemap palette contains a blank style id")
+		}
+		if _, duplicate := seen[style]; duplicate {
+			t.Fatalf("basemap palette duplicates id %q", style)
+		}
+		seen[style] = struct{}{}
+	}
+	if _, ok := seen["esri_sat"]; !ok {
+		t.Fatal("basemap palette dropped esri_sat, the historic certified default")
+	}
+}
+
+// TestBasemapPaletteMatchesChrononTilePyramid pins the cross-repository
+// contract: every basemap the runtime selects must be a style the Chronon tile
+// pyramid can actually serve (Chronon3d BASEMAP_STYLES). The Chronon toolchain
+// lives in a sibling checkout; when it is absent the guard skips rather than
+// failing a consumer that only vendors this repository.
+func TestBasemapPaletteMatchesChrononTilePyramid(t *testing.T) {
+	modulePath := filepath.Join("..", "..", "..", "..", "Chronon3d", "tools", "cartography", "dynamic_tile_pyramid.py")
+	raw, err := os.ReadFile(modulePath)
+	if err != nil {
+		t.Skipf("Chronon tile pyramid module not checked out: %v", err)
+	}
+	source := string(raw)
+	for _, style := range mapBasemapStyles() {
+		if !strings.Contains(source, `"`+style+`"`) {
+			t.Fatalf("basemap %q is selectable by the runtime but absent from dynamic_tile_pyramid.py", style)
+		}
+	}
+}
+
+// newTestMapPlan is a minimal single-map plan: exactly the shape
+// renderDynamicMapVideo accepts (one item whose Map is set).
+func newTestMapPlan(planID string) capoverlay.OverlayPlan {
+	return capoverlay.OverlayPlan{
+		PlanID: planID, Width: 1920, Height: 1080,
+		FPSNum: 24, FPSDen: 1, DurationMS: 5000,
+		Items: []capoverlay.OverlayItem{{ID: "map-1", Map: &capoverlay.MapOverlay{Pins: []capoverlay.MapOverlayPin{{
+			ID: "place:rome", Label: "Rome", Latitude: 41.89, Longitude: 12.49,
+		}}}}},
+	}
+}
+
+// captureMapRenderPayload installs a stand-in Chronon map renderer that echoes
+// the payload it received back to disk, then renders plan through
+// renderDynamicMapVideo and returns that payload. It is the view the real
+// renderer would act on.
+func captureMapRenderPayload(t *testing.T, plan capoverlay.OverlayPlan) map[string]any {
+	t.Helper()
+	dir := t.TempDir()
+	plate := filepath.Join(dir, "plate-generator.py")
+	if err := os.WriteFile(plate, []byte("# path anchor\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	rendererDir := filepath.Join(dir, "map")
+	if err := os.MkdirAll(rendererDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	renderer := filepath.Join(rendererDir, "render_dynamic_map_overlay.py")
+	program := "import argparse,json,pathlib\n" +
+		"p=argparse.ArgumentParser();p.add_argument('--input');p.add_argument('--output');p.add_argument('--summary-output');a=p.parse_args()\n" +
+		"payload=json.loads(pathlib.Path(a.input).read_text())\n" +
+		"pathlib.Path(a.output).write_bytes(b'fake-mp4')\n" +
+		"pathlib.Path(str(a.output)+'.input.json').write_text(json.dumps(payload))\n" +
+		"pathlib.Path(a.summary_output).write_text(" + strconv.Quote(validDynamicMapTelemetry) + ",encoding='utf-8')\n" +
+		"print('test diagnostic')\n"
+	if err := os.WriteFile(renderer, []byte(program), 0600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("VELOX_GEO_MAP_PLATE_GENERATOR_PATH", plate)
+	path, err := renderDynamicMapVideo(context.Background(), plan)
+	if err != nil {
+		t.Fatalf("renderDynamicMapVideo: %v", err)
+	}
+	defer os.RemoveAll(filepath.Dir(path))
+	raw, err := os.ReadFile(path + ".input.json")
+	if err != nil {
+		t.Fatalf("read captured map payload: %v", err)
+	}
+	var payload map[string]any
+	if err := json.Unmarshal(raw, &payload); err != nil {
+		t.Fatalf("decode captured map payload: %v", err)
+	}
+	return payload
+}
+
+// TestRenderDynamicMapVideoMapPresentationIsDeterministicPerRun proves the map
+// look is a pure function of the run identity: two renders of the same plan
+// hand the renderer byte-identical choices, and each choice equals the
+// deterministic selection for that seed. A crypto/rand draw here would have
+// made an approved render unreproducible.
+func TestRenderDynamicMapVideoMapPresentationIsDeterministicPerRun(t *testing.T) {
+	plan := newTestMapPlan("map-determinism-test")
+	first := captureMapRenderPayload(t, plan)
+	second := captureMapRenderPayload(t, plan)
+
+	keys := []string{"basemap", "camera_animation", "label_animation"}
+	for _, key := range keys {
+		if first[key] != second[key] {
+			t.Fatalf("map %s is not stable across replays of one run: %v then %v", key, first[key], second[key])
+		}
+	}
+
+	seed := mapRunSeed(plan)
+	itemID := plan.Items[0].ID
+	want := map[string]string{
+		"basemap":          deterministicMapStyle(seed, "map_basemap", itemID, mapBasemapStyles()),
+		"camera_animation": deterministicMapStyle(seed, "map_camera", itemID, mapCameraAnimations),
+		"label_animation":  deterministicMapStyle(seed, "map_label", itemID, mapLabelAnimations),
+	}
+	t.Logf("resolved map presentation for seed %q: camera=%s label=%s basemap=%s",
+		seed, want["camera_animation"], want["label_animation"], want["basemap"])
+	for key, expected := range want {
+		if got := first[key]; got != expected {
+			t.Fatalf("map %s = %v, want the deterministic selection %q", key, got, expected)
+		}
+	}
+
+	// The chosen basemap must be one the renderer can actually draw.
+	basemap, _ := first["basemap"].(string)
+	for _, candidate := range mapBasemapStyles() {
+		if candidate == basemap {
+			return
+		}
+	}
+	t.Fatalf("captured basemap %q is outside the certified palette %v", basemap, mapBasemapStyles())
+}
+
+// TestMapRunSeedPrefersFingerprintThenPlanIdentity pins the seed precedence: the
+// plan fingerprint is the canonical variant knob, with the plan/video ids as
+// fallbacks so a plan stamped before the fingerprint still resolves stably.
+func TestMapRunSeedPrefersFingerprintThenPlanIdentity(t *testing.T) {
+	plan := newTestMapPlan("plan-a")
+	plan.VideoID = "video-a"
+	plan.Fingerprint = "fp-a"
+	if got := mapRunSeed(plan); got != "fp-a" {
+		t.Fatalf("seed with fingerprint = %q, want fp-a", got)
+	}
+	plan.Fingerprint = ""
+	if got := mapRunSeed(plan); got != "plan-a" {
+		t.Fatalf("seed without fingerprint = %q, want plan-a", got)
+	}
+	plan.PlanID = ""
+	if got := mapRunSeed(plan); got != "video-a" {
+		t.Fatalf("seed with only video id = %q, want video-a", got)
+	}
+	plan.VideoID = ""
+	if got := mapRunSeed(plan); got != "map" {
+		t.Fatalf("seed with no identity = %q, want the stable \"map\" fallback", got)
+	}
+}
+
+// TestDeterministicMapStyleIsStableInRangeAndStillVaries keeps both halves of
+// the contract: the selection is a pure function of (seed, channel) and always
+// lands inside its candidate list, while distinct runs still get distinct looks
+// — determinism must not collapse the palette back onto one choice.
+func TestDeterministicMapStyleIsStableInRangeAndStillVaries(t *testing.T) {
+	seeds := make([]string, 0, 64)
+	for i := 0; i < 64; i++ {
+		seeds = append(seeds, fmt.Sprintf("run-%02d", i))
+	}
+	for _, channel := range []string{"map_camera", "map_label", "map_basemap"} {
+		options := mapCameraAnimations
+		if channel == "map_label" {
+			options = mapLabelAnimations
+		} else if channel == "map_basemap" {
+			options = mapBasemapStyles()
+		}
+		picked := make(map[string]struct{})
+		for _, seed := range seeds {
+			got := deterministicMapStyle(seed, channel, "map-1", options)
+			if again := deterministicMapStyle(seed, channel, "map-1", options); again != got {
+				t.Fatalf("%s for seed %q is not stable: %q then %q", channel, seed, got, again)
+			}
+			allowed := false
+			for _, candidate := range options {
+				if candidate == got {
+					allowed = true
+					break
+				}
+			}
+			if !allowed {
+				t.Fatalf("%s for seed %q picked %q, which is outside its candidates", channel, seed, got)
+			}
+			picked[got] = struct{}{}
+		}
+		if len(picked) < 2 {
+			t.Fatalf("%s resolved to a single value across %d runs (%v); the palette lost its variety", channel, len(seeds), picked)
+		}
+	}
+}
+
 func TestRenderDynamicMapVideoRequiresCompleteCertifiedTelemetry(t *testing.T) {
 	for _, tc := range []struct {
 		name    string
@@ -198,7 +406,11 @@ func TestRenderDynamicMapVideoRequiresCompleteCertifiedTelemetry(t *testing.T) {
 			if err := os.WriteFile(plate, []byte("# path anchor\n"), 0600); err != nil {
 				t.Fatal(err)
 			}
-			renderer := filepath.Join(dir, "render_dynamic_map_overlay.py")
+			rendererDir := filepath.Join(dir, "map")
+			if err := os.MkdirAll(rendererDir, 0o700); err != nil {
+				t.Fatal(err)
+			}
+			renderer := filepath.Join(rendererDir, "render_dynamic_map_overlay.py")
 			program := "import argparse,pathlib\np=argparse.ArgumentParser();p.add_argument('--input');p.add_argument('--output');p.add_argument('--summary-output');a=p.parse_args()\npathlib.Path(a.output).write_bytes(b'fake-mp4')\npathlib.Path(a.summary_output).write_text(" + strconv.Quote(tc.summary) + ",encoding='utf-8')\nprint('test diagnostic')\n"
 			if err := os.WriteFile(renderer, []byte(program), 0600); err != nil {
 				t.Fatal(err)

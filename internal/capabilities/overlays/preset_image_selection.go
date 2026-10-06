@@ -43,7 +43,7 @@ func CertifiedSingleImageMotions() []string {
 	return append([]string(nil), singleImageMotionCandidates...)
 }
 
-// CertifiedEntityCaptionMotions returns the curated non-3D caption motion pool.
+// CertifiedEntityCaptionMotions returns all registered entity-caption motions.
 // Callers receive a copy so the producer's vocabulary cannot be mutated.
 func CertifiedEntityCaptionMotions() []string {
 	return append([]string(nil), generatedEntityCaptionMotionCandidates...)
@@ -112,7 +112,7 @@ func ImageMotionAtOffset(offset, ordinal int) string {
 }
 
 // EntityImageMotionAtOffset returns the image motion at a position in the
-// randomly rotated restrained catalog for generated overlays. The
+// randomly rotated certified catalog for generated overlays. The
 // offset is the plan-level entropy value sampled by RandomImageMotionOffset;
 // the pool reduces it modulo its own size.
 func EntityImageMotionAtOffset(offset, ordinal int) string {
@@ -147,8 +147,8 @@ func rotateMotionAtOffset(offset, ordinal int, pool []string) string {
 	return pool[index]
 }
 
-// CertifiedEntityImageMotions returns the rotation pool GENERATED entity-image
-// overlays rotate over: the restrained certified image-motion subset. Callers
+// CertifiedEntityImageMotions returns the complete certified image-motion
+// pool used by GENERATED entity-image overlays. Callers
 // receive a copy.
 func CertifiedEntityImageMotions() []string {
 	return append([]string(nil), generatedEntityImageMotionCandidates...)

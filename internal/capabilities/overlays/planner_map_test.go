@@ -316,6 +316,35 @@ func TestBuildPlanMapMotionsAreCertifiedAndDeterministic(t *testing.T) {
 	}
 }
 
+// TestMapMotionForCenterVariesWithinOneRegion is the regression gate for the
+// "every map of the same country looks identical" defect: the region recipe
+// anchors the first map, but consecutive maps in the SAME region must rotate
+// through the certified pool instead of repeating the same animation.
+func TestMapMotionForCenterVariesWithinOneRegion(t *testing.T) {
+	usa := MapCenter{Latitude: 39.0, Longitude: -98.0}
+	first := mapMotionForCenter(0, usa)
+	if first != "map_image_usa_sweep_in" {
+		t.Fatalf("ordinal 0 in the USA region = %q, want the region anchor map_image_usa_sweep_in", first)
+	}
+	if !containsString(mapMotionIDs(), first) {
+		t.Fatalf("map motion %q is outside the certified pool", first)
+	}
+	seen := map[string]bool{first: true}
+	for ordinal := 1; ordinal < len(mapMotionIDs()); ordinal++ {
+		id := mapMotionForCenter(ordinal, usa)
+		if !containsString(mapMotionIDs(), id) {
+			t.Fatalf("ordinal %d emitted %q outside the certified pool", ordinal, id)
+		}
+		if seen[id] {
+			t.Fatalf("ordinal %d reused %q: same-region maps must not repeat until the pool is exhausted", ordinal, id)
+		}
+		seen[id] = true
+	}
+	if again := mapMotionForCenter(2, usa); again != mapMotionForCenter(2, usa) {
+		t.Fatalf("map motion selection is not deterministic: %q", again)
+	}
+}
+
 // TestMapItemsDoNotDisplaceImagesOrPhrases certifies the editorial budget
 // contract: maps are a SEPARATE arm, so admitting one can never evict an image
 // or a phrase, and a run with no eligible map is byte-for-byte the old result.
