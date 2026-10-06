@@ -123,8 +123,11 @@ def evaluate(binary: Path, embedding_server_url: str | None = None) -> dict[str,
 
     embeddings: list[list[float]] = []
     embedding_metadata: dict[str, Any] | None = None
+    embedding_ms = 0.0
     if embedding_server_url:
+        embedding_started = time.monotonic()
         embeddings, embedding_metadata = embed_passages(embedding_server_url, [item["text"] for item in sentences])
+        embedding_ms = (time.monotonic() - embedding_started) * 1000.0
         if len(embeddings) != len(sentences):
             raise AssertionError(f"embedding count mismatch: expected {len(sentences)}, got {len(embeddings)}")
     analysis = run_worker(
@@ -134,6 +137,7 @@ def evaluate(binary: Path, embedding_server_url: str | None = None) -> dict[str,
             "language": "it",
             "embeddings": embeddings,
             "lexical_only": not bool(embedding_server_url),
+            "embedding_ms": embedding_ms,
             "options": {
                 "summary_length": "short",
                 "bullet_count": 10,
@@ -161,7 +165,6 @@ def evaluate(binary: Path, embedding_server_url: str | None = None) -> dict[str,
     negation_sentence = next(row["text"] for row in sentence_gold if row.get("must_preserve_negation"))
     summary_preserves_negation = negation not in summary or negation.casefold() in summary.casefold()
     bullets_preserve_negation = all(negation not in bullet or negation.casefold() in bullet.casefold() for bullet in bullets)
-    extractive_units = {sentence["text"] for sentence in sentences}
     summary_is_extractive = is_extractive(summary, [sentence["text"] for sentence in sentences])
     report = {
         "benchmark": "synthetic-phrase-impact-evaluation.v1",
