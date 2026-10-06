@@ -70,7 +70,9 @@ func TestValidateFailsClosed(t *testing.T) {
 		}, "repeats"},
 		{"uncertified image motion", func(p *Profile) { p.ImageMotions = []string{"not_an_image_motion"} }, "certified image motion"},
 		{"duplicate image motion", func(p *Profile) { p.ImageMotions = []string{"image_25d_card_swing", "image_25d_card_swing"} }, "repeats"},
-		{"legacy image motion", func(p *Profile) { p.ImageMotions = []string{"image_card_push"} }, "certified image motion"},
+		// image_card_push is now part of the certified 32-motion render-safe
+		// catalog, so the fail-closed case uses an id outside that catalog.
+		{"retired image motion", func(p *Profile) { p.ImageMotions = []string{"image_card_push_legacy"} }, "certified image motion"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			p := validProfile()
