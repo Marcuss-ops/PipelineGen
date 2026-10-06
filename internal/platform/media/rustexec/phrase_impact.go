@@ -12,7 +12,10 @@ import (
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
-const phraseImpactOutputLimit = 2 << 20
+const (
+	phraseImpactOutputLimit        = 2 << 20
+	phraseImpactEmbeddingBatchSize = 32
+)
 
 type phraseImpactResponse struct {
 	OK     bool   `json:"ok"`
@@ -85,12 +88,17 @@ func (a *PhraseImpactAnalyzer) Analyze(ctx context.Context, transcript, language
 			}
 			sentences[i] = sentence.Text
 		}
-		vectors, err := a.embedder.EmbedPassagesBatch(ctx, sentences)
-		if err != nil {
-			return scriptpkg.PhraseImpactResult{}, fmt.Errorf("phrase-impact E5 embeddings: %w", err)
-		}
-		if len(vectors) != len(sentences) {
-			return scriptpkg.PhraseImpactResult{}, fmt.Errorf("phrase-impact E5 returned %d embeddings for %d sentences", len(vectors), len(sentences))
+		vectors := make([]coreasset.EmbeddingResult, 0, len(sentences))
+		for start := 0; start < len(sentences); start += phraseImpactEmbeddingBatchSize {
+			end := min(start+phraseImpactEmbeddingBatchSize, len(sentences))
+			batch, err := a.embedder.EmbedPassagesBatch(ctx, sentences[start:end])
+			if err != nil {
+				return scriptpkg.PhraseImpactResult{}, fmt.Errorf("phrase-impact E5 embeddings for sentences %d..%d: %w", start, end, err)
+			}
+			if len(batch) != end-start {
+				return scriptpkg.PhraseImpactResult{}, fmt.Errorf("phrase-impact E5 returned %d embeddings for sentence batch %d..%d", len(batch), start, end)
+			}
+			vectors = append(vectors, batch...)
 		}
 		rows := make([][]float32, len(vectors))
 		for i := range vectors {
