@@ -1,3 +1,4 @@
+import json
 import unittest
 
 from scripts.bench.phrase_impact import align_sentence_times, read_markdown, split_sentences
@@ -5,6 +6,44 @@ from pathlib import Path
 
 
 class PhraseImpactParsingTests(unittest.TestCase):
+    def test_embedding_batches_preserve_order_and_validate_metadata(self):
+        from unittest import mock
+
+        import scripts.bench.elon_phrase_impact as benchmark
+
+        seen = []
+
+        def response_for(request, timeout):
+            payload = json.loads(request.data.decode("utf-8"))
+            seen.append(payload)
+            count = len(payload["texts"])
+            body = {
+                "embeddings": [[float(index)] * 4 for index in range(count)],
+                "dimensions": 4,
+                "count": count,
+                "model": "test-model",
+                "model_version": "test-revision",
+                "contract_hash": "test-contract",
+            }
+            response = mock.MagicMock()
+            response.read.return_value = json.dumps(body).encode("utf-8")
+            response.__enter__.return_value = response
+            response.__exit__.return_value = None
+            return response
+
+        with mock.patch.object(benchmark.urllib.request, "urlopen", side_effect=response_for):
+            vectors, metadata = benchmark.embed_passages(
+                "http://e5.test", [f"sentence {i}" for i in range(35)]
+            )
+
+        self.assertEqual([len(batch["texts"]) for batch in seen], [32, 3])
+        self.assertEqual(
+            seen[0]["texts"] + seen[1]["texts"],
+            [f"sentence {i}" for i in range(35)],
+        )
+        self.assertEqual(len(vectors), 35)
+        self.assertEqual(metadata["model"], "test-model")
+
     def test_split_sentences_preserves_decimal_and_terminal_punctuation(self):
         self.assertEqual(
             split_sentences("O valor foi 16.5 milhões. Outra frase? Sim!"),
