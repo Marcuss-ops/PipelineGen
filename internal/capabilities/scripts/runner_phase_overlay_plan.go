@@ -48,7 +48,7 @@ func (r *Runner) compileAudioOverlayPlan(ctx context.Context, runID string, req 
 	canvas.PhraseMotions = req.PhraseMotions
 	canvas.PhraseMotionFamily = req.PhraseMotionFamily
 	if canvas.PhraseMotionFamily == "" && len(canvas.PhraseMotions) == 0 {
-		canvas.PhraseMotionFamily = "documentary_clean_v1"
+		canvas.PhraseMotionFamily = "modern_product_v1"
 	}
 	// Goal E2: the phrases the semantic profile grounded as most relevant take
 	// the prominent entrance, the rest keep the calm rotation. The canvas may

@@ -67,11 +67,13 @@ keep their image style.
   `video_metadata`, `intro`, `outro`) is optional unless its own
   validator says otherwise (`source` is required).
 
-For phrase overlays, set `phrase_motion_family` to `modern_apple` to sample
-one certified modern Apple motion for the payload and reuse it for every
-phrase. Retries with the same job identity keep the same selection. Omit the
-field to retain the default run-wide phrase motion rotation. Image motions are
-sampled independently per image item.
+For a full current phrase palette, set `phrase_motion_family` to
+`modern_product_v1`. It rotates certified modern Apple, typewriter, spatial
+3D, and text brush accents across phrase items; phrases shorter than six words
+always use the Short Phrases lane, including phrases marked high priority.
+Retries with the same job identity keep the same selection. Image motions are
+sampled independently per image item. `modern_apple` remains available when a
+payload explicitly wants only that style family.
 
 `max_phrase_overlays` sets the **run-level ceiling** for grounded phrase
 overlays, i.e. how many phrases the payload may choose to render. A positive
@@ -100,7 +102,7 @@ motions, and every entity card's duration follows the spoken mention dynamically
   "version": 2,
   "items": [{
     "source": { "type": "clips", "clip_ids": ["clip-1"] },
-    "phrase_motion_family": "modern_apple"
+    "phrase_motion_family": "modern_product_v1"
   }]
 }
 ```
