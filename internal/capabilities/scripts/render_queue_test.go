@@ -742,7 +742,7 @@ func TestQueueRenderEnqueuerSetPollInterval(t *testing.T) {
 	}
 }
 
-func TestSeparateOverlayItemPlanUsesTTSWindowPlusPaddingAndFiveSecondCap(t *testing.T) {
+func TestSeparateOverlayItemPlanPreservesPhraseDurationWithoutPaddingOrCap(t *testing.T) {
 	parent := capoverlay.OverlayPlan{
 		SchemaVersion: capoverlay.SchemaVersionPlan, PlanID: "dolly:overlay", VideoID: "dolly",
 		ScriptName: "Dolly", Language: "en", Width: 1920, Height: 1080, FPSNum: 24, FPSDen: 1,
@@ -768,14 +768,29 @@ func TestSeparateOverlayItemPlanUsesTTSWindowPlusPaddingAndFiveSecondCap(t *test
 	long.EntityID = ""
 	long.Kind = "text_phrase"
 	long.TemplateID = "IMPORTANT_PHRASE"
-	long.StartUS, long.DurationUS = 0, 4_500_000
-	long.StartMs, long.EndMs = 0, 4500
+	long.StartUS, long.DurationUS = 0, 7_250_000
+	long.StartMs, long.EndMs = 0, 7250
 	child, meta, err = separateOverlayItemPlan(parent, long, 1)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if child.DurationMS != 5000 || child.Items[0].DurationUS != 5_000_000 || meta.TargetDurationUS != 5_000_000 {
-		t.Fatalf("five-second cap not applied: child=%+v meta=%+v", child, meta)
+	if child.DurationMS != 7250 || child.Items[0].DurationUS != 7_250_000 || meta.TargetDurationUS != 7_250_000 {
+		t.Fatalf("phrase duration was padded or capped: child=%+v meta=%+v", child, meta)
+	}
+	if child.Items[0].StartMs != 0 || child.Items[0].EndMs != 7250 || child.Items[0].StartUS != 0 {
+		t.Fatalf("phrase item window = [%d,%d), want exact local 7250ms window", child.Items[0].StartMs, child.Items[0].EndMs)
+	}
+
+	shortPhrase := long
+	shortPhrase.ID = "phrase-short"
+	shortPhrase.StartUS, shortPhrase.DurationUS = 0, 4_500_000
+	shortPhrase.StartMs, shortPhrase.EndMs = 0, 4500
+	shortChild, shortMeta, err := separateOverlayItemPlan(parent, shortPhrase, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if shortChild.DurationMS != 4500 || shortMeta.TargetDurationUS != 4_500_000 {
+		t.Fatalf("short phrase duration was padded: child=%+v meta=%+v", shortChild, shortMeta)
 	}
 
 	composite := parent.Items[0]

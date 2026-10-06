@@ -170,6 +170,7 @@ type overlayItemPublicationMetadata struct {
 
 const (
 	overlayItemPaddingUS          int64 = 2_000_000
+	shortPhraseAnimationPaddingUS int64 = 2_000_000
 	maxOverlayItemDurationUS      int64 = 5_000_000
 	maxCompositeOverlayDurationUS int64 = 8_000_000
 )
@@ -185,6 +186,28 @@ func separateOverlayItemPlan(parent capoverlay.OverlayPlan, source capoverlay.Ov
 	}
 	targetUS := durationUS + overlayItemPaddingUS
 	maxDurationUS := maxOverlayItemDurationUS
+	if strings.EqualFold(strings.TrimSpace(source.TemplateID), "IMPORTANT_PHRASE") || source.Kind == "text_phrase" || source.Kind == string(capoverlay.KindImportantPhrase) {
+		// Keep the full spoken window, then give the phrase entrance two fixed
+		// seconds of additional animation time. Motion params are extended too,
+		// so RenderingGen doesn't merely hold the settled phrase for that time.
+		targetUS = durationUS + shortPhraseAnimationPaddingUS
+		maxDurationUS = targetUS
+		if source.MotionParams == nil {
+			source.MotionParams = map[string]any{}
+		}
+		enterFrames, _ := source.MotionParams["enter_frames"].(int)
+		if enterFrames == 0 {
+			if numeric, ok := source.MotionParams["enter_frames"].(float64); ok {
+				enterFrames = int(numeric)
+			}
+		}
+		fpsNum, fpsDen := parent.FPSNum, parent.FPSDen
+		if fpsNum <= 0 || fpsDen <= 0 {
+			fpsNum, fpsDen = 24, 1
+		}
+		extraFrames := int((shortPhraseAnimationPaddingUS*int64(fpsNum) + 1_000_000*int64(fpsDen) - 1) / (1_000_000 * int64(fpsDen)))
+		source.MotionParams["enter_frames"] = enterFrames + extraFrames
+	}
 	if source.Map != nil {
 		// Map fly-throughs are a five-second production shot. The enclosing
 		// spoken interval can be much shorter, but must not truncate the camera

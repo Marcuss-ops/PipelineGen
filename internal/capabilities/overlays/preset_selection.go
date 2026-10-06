@@ -112,18 +112,21 @@ var (
 		"trump_entity_text_10", "trump_entity_text_11", "trump_entity_text_12",
 		"trump_entity_text_13", "trump_entity_text_14", "trump_entity_text_15",
 	}
-	// Dates and metrics are text overlays: use the renderer-certified typewriter
-	// motions instead of the image-like date-card and stat-card motion families.
-	// Keeping both pools on the same typography treatment also prevents numeric
-	// values from inheriting image transitions.
+	// Automatic date selection is a curated premium subset of ChrononTemplate's
+	// date_v1 catalog. The remaining authored motions stay available in the
+	// catalog for explicit plans, but generated dates rotate only through these
+	// eight restrained, legible treatments.
 	datePresentationMotionCandidates = []string{
-		"typewriter_clean", "typewriter_slide_in", "typewriter_soft_lift",
+		"date_fade_rise", "date_calendar_flip", "date_timeline_tick", "date_chronology_focus",
+		"date_page_turn", "date_calendar_drop", "date_month_wipe", "date_era_zoom",
 	}
+	// Metrics use the authored metric_v1 treatment family rather than generic
+	// typewriter effects. This curated pool favors meaningful count, chart,
+	// comparison and reveal motions for automatic statistic overlays.
 	metricPresentationMotionCandidates = []string{
-		"typewriter_clean", "typewriter_pop", "typewriter_tracking",
-		"typewriter_glitch", "typewriter_neon",
-		"typewriter_lift", "typewriter_slide_in", "typewriter_scale_up",
-		"typewriter_blur_focus", "typewriter_soft_lift",
+		"metric_counter_scale_settle", "metric_odometer_vertical", "metric_digits_stagger",
+		"metric_delta_reveal", "metric_focus_punch", "metric_before_after",
+		"metric_count_flip", "metric_split_odometer",
 	}
 	// Map image recipes authored in ChrononTemplate's map_image_v1 family.
 	// They are transported through MapOverlay.motion_id and lowered onto the
@@ -256,6 +259,33 @@ var (
 		"premium_soft_reveal",
 		"quiet_hero_settle",
 		"soft_kinetic_rise",
+	}
+	// Short phrases use a deliberate, GPU safe subset of the modern Apple
+	// vocabulary. One word phrases get a more cinematic treatment: glyph lift
+	// and camera backed pushes make the single word feel like a trailer beat.
+	shortPhraseMotionCandidates = []string{
+		"apple_cinematic_exit",
+		"apple_expand_from_center",
+		"apple_focus_rise",
+		"apple_hero_statement",
+		"apple_line_cascade",
+		"apple_precision_type",
+		"apple_scale_push",
+		"apple_tracking_reveal",
+		"apple_vertical_glyph_lift",
+		"apple_word_cascade",
+		"apple_word_pulse",
+		"cinematic_camera_push",
+		"depth_parallax_reveal",
+		"magnetic_word_focus",
+		"text_3d_camera_push",
+		"text_3d_word_cascade",
+	}
+	singleWordMotionCandidates = []string{
+		"apple_hero_statement",
+		"apple_vertical_glyph_lift",
+		"cinematic_camera_push",
+		"text_3d_camera_push",
 	}
 	typewriterMotionCandidates = []string{
 		"typewriter_clean",
@@ -397,9 +427,10 @@ func NumberPresentationTemplateForEntityType(entityType string) string {
 }
 
 // NumberPresentationForEntityType maps extracted date/time and numeric-value
-// entity types to the registered ChrononTemplate presentation family. The
-// catalog-owned motion ids are selected deterministically; callers never
-// synthesize a preset or timing window.
+// entity types to the registered ChrononTemplate presentation family. Date and
+// metric motions are independently sampled from their curated premium pools;
+// stable item identity keeps retries identical while different values vary.
+// Callers never synthesize a preset or timing window.
 func NumberPresentationForEntityType(jobID, sceneID, itemID, entityType string) (templateID, motionID string) {
 	switch NumberPresentationTemplateForEntityType(entityType) {
 	case "TIMELINE_DATE_CARD":
