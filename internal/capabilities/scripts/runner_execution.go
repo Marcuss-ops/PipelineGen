@@ -160,12 +160,18 @@ func (e *executionRun) normalize() bool {
 func (e *executionRun) mediaPreflightPhase() bool {
 	return e.measure(kernobs.StageRunMediaPreflight, func(c context.Context) bool {
 		if stageSkipped(e.resumeIdx, StagePreflight) {
+			if err := e.validateEnabledVidRushProviders(c); err != nil {
+				return e.fail(StagePreflight, err)
+			}
 			return true
 		}
 		if err := e.r.updateStage(c, e.runID, RunStatusRunning, StagePreflight); err != nil {
 			return e.fail(StagePreflight, err)
 		}
 		if e.r.mediaPreflight == nil {
+			if err := e.validateEnabledVidRushProviders(c); err != nil {
+				return e.fail(StagePreflight, err)
+			}
 			if e.req.Intro == nil && e.req.Outro == nil {
 				return true
 			}
@@ -174,6 +180,11 @@ func (e *executionRun) mediaPreflightPhase() bool {
 				Detail:   "media preflight is not wired — fixed media cannot be certified before generation",
 			}}}
 			return e.fail(StagePreflight, result.AsError())
+		}
+		if _, ok := e.r.mediaPreflight.(VidRushProviderAvailabilityPreflight); !ok {
+			if err := e.validateEnabledVidRushProviders(c); err != nil {
+				return e.fail(StagePreflight, err)
+			}
 		}
 		result := e.r.mediaPreflight.Run(c, e.req)
 		if err := result.AsError(); err != nil {
@@ -187,6 +198,13 @@ func (e *executionRun) mediaPreflightPhase() bool {
 			zap.Int64("wall_ms", result.WallMS))
 		return true
 	})
+}
+
+func (e *executionRun) validateEnabledVidRushProviders(ctx context.Context) error {
+	if availabilityPreflight, ok := e.r.mediaPreflight.(VidRushProviderAvailabilityPreflight); ok {
+		return availabilityPreflight.RunVidRushProviderAvailability(ctx, e.req).AsError()
+	}
+	return RunVidRushProviderAvailabilityPreflight(ctx, e.req.MediaPlan, nil).AsError()
 }
 
 // beginVidRushPhase registers run-scoped VidRush wiring only after the

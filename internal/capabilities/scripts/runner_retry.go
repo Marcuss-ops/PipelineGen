@@ -68,6 +68,22 @@ func deriveErrorCode(err error, stage Stage) string {
 	}
 }
 
+// isPermanentMediaPreflightFailure reports a static VidRush registration
+// failure that cannot be repaired by retrying within the same frozen runtime
+// composition. Other preflight failures retain the normal retry policy.
+func isPermanentMediaPreflightFailure(err error) bool {
+	var preflightErr *MediaPreflightError
+	if !errors.As(err, &preflightErr) || preflightErr == nil {
+		return false
+	}
+	for _, failure := range preflightErr.Result.Failures {
+		if failure.Category == "vidrush_provider" {
+			return true
+		}
+	}
+	return false
+}
+
 // containsAny reports whether s contains any of the substrings.
 func containsAny(s string, substrs ...string) bool {
 	for _, sub := range substrs {

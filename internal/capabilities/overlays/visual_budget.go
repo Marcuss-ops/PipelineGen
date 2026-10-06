@@ -113,70 +113,14 @@ func ApplyEditorialOverlayBudgetWithImageLimit(items []OverlayItem, phraseLimit,
 		mapCeiling = MaxMapOverlaysPerRun
 	}
 	mapIndices := rankedUniqueMapIndices(items, mapCeiling)
-	numberIndices := rankedUniqueValueIndices(items, MaxNumberOverlaysPerRun)
+	numberIndices := rankedUniqueKindIndices(items, "number", MaxNumberOverlaysPerRun)
 	brandIndices := rankedUniqueKindIndices(items, "brand_text", MaxBrandTextOverlaysPerRun)
-	keep := make(map[int]struct{}, len(imageIndices)+len(phraseIndices)+len(mapIndices)+len(numberIndices)+len(brandIndices))
-	for _, index := range imageIndices {
-		keep[index] = struct{}{}
-	}
-	for _, index := range phraseIndices {
-		keep[index] = struct{}{}
-	}
-	for _, index := range mapIndices {
-		keep[index] = struct{}{}
-	}
-	for _, index := range numberIndices {
-		keep[index] = struct{}{}
-	}
-	for _, index := range brandIndices {
-		keep[index] = struct{}{}
-	}
-
-	out := make([]OverlayItem, 0, len(keep))
-	for i, item := range items {
-		if _, ok := keep[i]; ok {
-			out = append(out, item)
-		}
-	}
+	out := retainOverlayItems(items, imageIndices, phraseIndices, mapIndices, numberIndices, brandIndices)
 	return out, MeasurePhraseOverlayBudgetWithLimit(out, limit)
 }
 
-// rankedUniqueValueIndices ranks and deduplicates numeric/stat overlays by
-// normalized spoken text. Their cap is independent of the other overlay arms.
-func rankedUniqueValueIndices(items []OverlayItem, cap int) []int {
-	if cap <= 0 {
-		return nil
-	}
-	seen := make(map[string]int)
-	for i, item := range items {
-		if item.Kind != "number" {
-			continue
-		}
-		key := strings.ToLower(strings.Join(strings.Fields(item.Text), " "))
-		if key == "" {
-			continue
-		}
-		if current, ok := seen[key]; !ok || overlayItemPriority(item) > overlayItemPriority(items[current]) {
-			seen[key] = i
-		}
-	}
-	indices := make([]int, 0, len(seen))
-	for _, index := range seen {
-		indices = append(indices, index)
-	}
-	sort.SliceStable(indices, func(i, j int) bool {
-		left, right := indices[i], indices[j]
-		if lp, rp := overlayItemPriority(items[left]), overlayItemPriority(items[right]); lp != rp {
-			return lp > rp
-		}
-		return left < right
-	})
-	if len(indices) > cap {
-		indices = indices[:cap]
-	}
-	return indices
-}
-
+// rankedUniqueKindIndices ranks and deduplicates one text-based overlay kind
+// by normalized text. Each kind's cap is independent of the other overlay arms.
 func rankedUniqueKindIndices(items []OverlayItem, kind string, cap int) []int {
 	if cap <= 0 {
 		return nil
@@ -263,29 +207,30 @@ func ApplyEditorialOverlayBudgetWithLimit(items []OverlayItem, phraseLimit int) 
 	limit := EffectivePhraseOverlayLimit(phraseLimit)
 	imageIndices := rankedUniqueOverlayIndices(items, true, limit)
 	phraseIndices := rankedUniqueOverlayIndices(items, false, limit)
-	numberIndices := rankedUniqueValueIndices(items, MaxNumberOverlaysPerRun)
+	numberIndices := rankedUniqueKindIndices(items, "number", MaxNumberOverlaysPerRun)
 	brandIndices := rankedUniqueKindIndices(items, "brand_text", MaxBrandTextOverlaysPerRun)
-	keep := make(map[int]struct{}, len(imageIndices)+len(phraseIndices)+len(numberIndices)+len(brandIndices))
-	for _, index := range imageIndices {
-		keep[index] = struct{}{}
-	}
-	for _, index := range phraseIndices {
-		keep[index] = struct{}{}
-	}
-	for _, index := range numberIndices {
-		keep[index] = struct{}{}
-	}
-	for _, index := range brandIndices {
-		keep[index] = struct{}{}
-	}
+	out := retainOverlayItems(items, imageIndices, phraseIndices, numberIndices, brandIndices)
+	return out, MeasurePhraseOverlayBudgetWithLimit(out, limit)
+}
 
+func retainOverlayItems(items []OverlayItem, indexGroups ...[]int) []OverlayItem {
+	capacity := 0
+	for _, indices := range indexGroups {
+		capacity += len(indices)
+	}
+	keep := make(map[int]struct{}, capacity)
+	for _, indices := range indexGroups {
+		for _, index := range indices {
+			keep[index] = struct{}{}
+		}
+	}
 	out := make([]OverlayItem, 0, len(keep))
-	for i, item := range items {
-		if _, ok := keep[i]; ok {
+	for index, item := range items {
+		if _, ok := keep[index]; ok {
 			out = append(out, item)
 		}
 	}
-	return out, MeasurePhraseOverlayBudgetWithLimit(out, limit)
+	return out
 }
 
 func DefaultVisualBudget(sceneID string) VisualBudget {

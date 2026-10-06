@@ -150,12 +150,23 @@ func (r *AudioPrefetchResult) RequestedCount() int {
 }
 
 // dedupeIDs returns the ids with blank entries removed and duplicates
-// collapsed, preserving first-occurrence order.
+// collapsed, preserving first-occurrence order. Call canonicalAudioIDs first
+// when deduplication must use the audio catalog's alias identity.
 func dedupeIDs(ids []string) []string {
+	return dedupeIDsBy(ids, strings.TrimSpace)
+}
+
+// canonicalAudioIDs trims aliases to the one catalog identity before
+// deduplicating, so a public alias and its canonical ID are resolved once.
+func canonicalAudioIDs(ids []string) []string {
+	return dedupeIDsBy(ids, capabilityaudio.CanonicalAssetID)
+}
+
+func dedupeIDsBy(ids []string, normalize func(string) string) []string {
 	out := make([]string, 0, len(ids))
 	seen := make(map[string]struct{}, len(ids))
 	for _, raw := range ids {
-		id := strings.TrimSpace(raw)
+		id := normalize(raw)
 		if id == "" {
 			continue
 		}

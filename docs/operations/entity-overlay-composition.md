@@ -76,9 +76,10 @@ The dynamic entity duration is applied on these entity-image paths:
    (`ResolveRankedEntityOverlayPlan`);
 2. product/logo image candidates (`imageCandidate` in
    `overlay_entity_cards.go`);
-3. the semantic render bundle — `BuildOverlayPlan` preserves the certified
-   entity timeline event window rather than resetting it to a flat block;
-   the hard image ceiling (`MaxImageOverlayDurationMS`) still applies.
+3. the semantic render bundle records the certified entity timeline and asset
+   bindings for audit; the renderer plan is compiled from the canonical entity
+   resolver, which preserves the spoken window and applies the hard image ceiling
+   (`MaxImageOverlayDurationMS`).
 
 **Separate scope:** generic per-scene contextual images are not entity
 portraits. `sceneImageCandidate` in `overlay_scene_images.go` is anchored at
@@ -124,7 +125,7 @@ inside the parent window, so the frame-intersection gate stays satisfied.
 | 5 s boundary (5000 composes, 5001 separates), cross-scene isolation | `TestComposeNearbyEntityImagesHonorsFiveSecondMentionGap` |
 | Composite timing/identity/captions + plan validation + wire + independent certified motions | `TestComposeNearbyEntityImagesCreatesOneStaggeredComposite` |
 | Dynamic duration clamps + millisecond quantization | `internal/capabilities/entities/overlay_resolver_test.go` (`TestEntitySpokenWindowDurationDynamicClamps`, `TestResolveEntityOverlayPlan_DurationFollowsSpokenWindow`) |
-| Bundle keeps the certified window | `internal/capabilities/overlays/semantic_render_bundle_test.go` (`TestBuildOverlayPlanUsesCanonicalImageCapability`) |
+| Bundle preserves repeated scene-scoped entity occurrences | `internal/capabilities/scripts/semantic_render_bundle_builder_test.go` (`TestBuildSemanticRenderBundleKeepsRepeatedEntityImageOccurrencesPerScene`) |
 | Async Drive receipt is projected without mutating the render certificate | `internal/platform/sqlite/jobs/result_store_overlay_links_test.go` (`TestRecordOverlayDriveLinkKeepsAsyncReceiptBesideRenderArtifact`) |
 | Real-engine side-by-side render (opt-in, `CHRONON_BIN=…`) | `RenderingGen/renderinggen/internal/overlay/composite_image_runtime_test.go` |
 

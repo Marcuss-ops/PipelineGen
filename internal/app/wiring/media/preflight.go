@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
+	scriptports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
 	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
@@ -30,7 +31,14 @@ func NewPreflight(assets AssetDetailsLookup, audioAssetSource scriptgen.AudioAss
 // surface requested), so a clip-only run is never failed by a degraded image
 // provider it would never have used.
 func NewPreflightWithImageProviderHealth(assets AssetDetailsLookup, audioAssetSource scriptgen.AudioAssetSource, clipAudioAssetSource scriptgen.ClipAudioAssetSource, imageProviderHealth scriptgen.ImageProviderHealthProbe) scriptgen.MediaPreflight {
+	return NewPreflightWithProviderAvailability(assets, audioAssetSource, clipAudioAssetSource, imageProviderHealth, nil)
+}
+
+// NewPreflightWithProviderAvailability also validates explicitly enabled
+// VidRush providers against the frozen composition registry.
+func NewPreflightWithProviderAvailability(assets AssetDetailsLookup, audioAssetSource scriptgen.AudioAssetSource, clipAudioAssetSource scriptgen.ClipAudioAssetSource, imageProviderHealth scriptgen.ImageProviderHealthProbe, providerAvailability scriptgen.VidRushProviderAvailabilityProbe) scriptgen.MediaPreflight {
 	return &preflightAdapter{
+		providerAvailability: providerAvailability,
 		clipProber:           &assetServiceClipProber{assets: assets},
 		audioAssetSource:     audioAssetSource,
 		clipAudioAssetSource: clipAudioAssetSource,
@@ -43,6 +51,7 @@ type preflightAdapter struct {
 	audioAssetSource     scriptgen.AudioAssetSource
 	clipAudioAssetSource scriptgen.ClipAudioAssetSource
 	imageProviderHealth  scriptgen.ImageProviderHealthProbe
+	providerAvailability scriptgen.VidRushProviderAvailabilityProbe
 }
 
 // ImageProviderHealthSurface is the narrow image-capability surface the
@@ -66,6 +75,31 @@ type imageProviderHealthProbe struct {
 	surface ImageProviderHealthSurface
 }
 
+type vidRushProviderAvailabilityProbe struct {
+	providerLookup interface {
+		Provider(name string) (scriptports.VidRushAssetProvider, error)
+	}
+}
+
+var _ scriptgen.VidRushProviderAvailabilityProbe = vidRushProviderAvailabilityProbe{}
+
+func NewVidRushProviderAvailabilityProbe(providerLookup interface {
+	Provider(name string) (scriptports.VidRushAssetProvider, error)
+}) scriptgen.VidRushProviderAvailabilityProbe {
+	if providerLookup == nil {
+		return nil
+	}
+	return vidRushProviderAvailabilityProbe{providerLookup: providerLookup}
+}
+
+func (p vidRushProviderAvailabilityProbe) ProbeVidRushProvider(_ context.Context, provider string) error {
+	if p.providerLookup == nil {
+		return fmt.Errorf("VidRush provider registry not wired")
+	}
+	_, err := p.providerLookup.Provider(provider)
+	return err
+}
+
 var _ scriptgen.ImageProviderHealthProbe = imageProviderHealthProbe{}
 
 func (p imageProviderHealthProbe) ProbeImageProviderHealth(ctx context.Context) error {
@@ -76,6 +110,10 @@ func (p imageProviderHealthProbe) ProbeImageProviderHealth(ctx context.Context) 
 }
 
 var _ scriptgen.MediaPreflight = (*preflightAdapter)(nil)
+
+func (a *preflightAdapter) RunVidRushProviderAvailability(ctx context.Context, req scriptgen.GenerateRequest) scriptgen.PreflightResult {
+	return scriptgen.RunVidRushProviderAvailabilityPreflight(ctx, req.MediaPlan, a.providerAvailability)
+}
 
 func (a *preflightAdapter) Run(ctx context.Context, req scriptgen.GenerateRequest) scriptgen.PreflightResult {
 	clipIDs := make([]string, 0, len(req.Source.ClipIDs)+4)
@@ -153,6 +191,8 @@ func (a *preflightAdapter) Run(ctx context.Context, req scriptgen.GenerateReques
 		BackgroundAssetID:  backgroundID,
 		BackgroundResolver: a.clipProber,
 	}
+	in.MediaPlan = req.MediaPlan
+	in.VidRushProviderAvailability = a.providerAvailability
 	if a.imageProviderHealth != nil && requestNeedsImageProviders(req) {
 		in.ImageProviderHealth = a.imageProviderHealth
 	}

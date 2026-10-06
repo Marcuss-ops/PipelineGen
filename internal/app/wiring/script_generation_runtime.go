@@ -241,6 +241,19 @@ func BuildScriptGenerationRuntime(cfg *config.Config, root *ComposeRoot, runRepo
 	// the canonical committer could be reported as missing by the preflight
 	// while the worker asset-transfer path (which uses the same selector) saw it.
 	assetLookup := mediasub.AssetDetailsLookup(root.MediaAssetDetailsLookup())
+	// Provider availability is part of the preflight contract even when the
+	// media asset resolver is unavailable. Keep the preflight wired in that
+	// degraded composition so an enabled but unregistered provider fails before
+	// scene-text generation instead of falling through to late materialization.
+	var imageProviderHealth scriptgen.ImageProviderHealthProbe
+	if root.Domains != nil && root.Domains.ImageService != nil {
+		imageProviderHealth = mediasub.NewImageProviderHealthProbe(root.Domains.ImageService)
+	}
+	var providerAvailability scriptgen.VidRushProviderAvailabilityProbe
+	if vidRushProviders != nil {
+		providerAvailability = mediasub.NewVidRushProviderAvailabilityProbe(vidRushProviders)
+	}
+	runner.SetMediaPreflight(mediasub.NewPreflightWithProviderAvailability(assetLookup, nil, nil, imageProviderHealth, providerAvailability))
 	if assetLookup != nil {
 		var driveReader drive.Reader
 		if root.Drive != nil {
@@ -257,15 +270,9 @@ func BuildScriptGenerationRuntime(cfg *config.Config, root *ComposeRoot, runRepo
 		}
 		runner.SetAudioAssetSource(audioAdapter)
 		runner.SetOverlayBackgroundSource(audioAdapter)
-		// Wire the image-provider health probe when the images capability is
-		// composed. The probe runs ONLY for requests that depend on internet
-		// image retrieval, so a degraded provider is caught before generation
-		// instead of by burning a complete durable run.
-		var imageProviderHealth scriptgen.ImageProviderHealthProbe
-		if root.Domains != nil && root.Domains.ImageService != nil {
-			imageProviderHealth = mediasub.NewImageProviderHealthProbe(root.Domains.ImageService)
-		}
-		runner.SetMediaPreflight(mediasub.NewPreflightWithImageProviderHealth(assetLookup, audioAdapter, audioAdapter, imageProviderHealth))
+		// Add canonical audio resolvers to the already-wired preflight without
+		// changing its unconditional provider-availability check.
+		runner.SetMediaPreflight(mediasub.NewPreflightWithProviderAvailability(assetLookup, audioAdapter, audioAdapter, imageProviderHealth, providerAvailability))
 		log.Info("audio asset resolver wired (BGM/SFX asset_id → local path) including P0.5 media preflight adapter")
 	} else {
 		log.Warn("audio asset resolver not wired: asset registry missing (BGM/SFX intents will fail closed)")

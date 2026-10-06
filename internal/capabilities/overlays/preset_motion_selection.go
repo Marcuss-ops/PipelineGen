@@ -121,7 +121,7 @@ func visiblePhraseEntrancePool(pool []string) []string {
 		if strings.HasPrefix(id, "typewriter_") || strings.HasPrefix(id, "brush_phrase_") ||
 			strings.Contains(id, "slide") || strings.Contains(id, "reveal") ||
 			strings.Contains(id, "stagger") || strings.Contains(id, "cascade") ||
-			strings.Contains(id, "lift") || strings.Contains(id, "fold") ||
+			strings.Contains(id, "expand") || strings.Contains(id, "lift") || strings.Contains(id, "fold") ||
 			strings.Contains(id, "pop") || strings.Contains(id, "scale_in") ||
 			strings.Contains(id, "scale_push") || strings.Contains(id, "focus_rise") {
 			out = append(out, id)

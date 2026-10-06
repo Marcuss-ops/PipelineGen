@@ -360,7 +360,7 @@ func TestRunLevelImageBudgetKeepsPerSceneOccurrences(t *testing.T) {
 	}
 }
 
-func TestEditorialOverlayBudgetRetainsValueCalloutsWithoutCrowdingExistingArms(t *testing.T) {
+func TestEditorialOverlayBudgetRetainsValueAndBrandCalloutsWithoutCrowdingExistingArms(t *testing.T) {
 	items := []OverlayItem{
 		{ID: "image", SceneID: "scene-1", Kind: "entity_image", EntityRef: &OverlayEntityRef{CanonicalEntityID: "person:ada"}},
 		{ID: "phrase", SceneID: "scene-1", Kind: "text_phrase", Text: "A grounded editorial phrase"},
@@ -369,13 +369,29 @@ func TestEditorialOverlayBudgetRetainsValueCalloutsWithoutCrowdingExistingArms(t
 	for i := 0; i < MaxNumberOverlaysPerRun+2; i++ {
 		items = append(items, OverlayItem{ID: fmt.Sprintf("number-%d", i), Kind: "number", Text: fmt.Sprintf("%d percent", i), Params: map[string]any{"priority": float64(i)}})
 	}
+	for i := 0; i < MaxBrandTextOverlaysPerRun+2; i++ {
+		items = append(items, OverlayItem{ID: fmt.Sprintf("brand-%d", i), Kind: "brand_text", Text: fmt.Sprintf("Brand %d", i), Params: map[string]any{"priority": float64(i)}})
+	}
+	items = append(items, OverlayItem{ID: "brand-6-preferred", Kind: "brand_text", Text: "  Brand   6  ", Params: map[string]any{"priority": float64(10)}})
 	got, _ := ApplyEditorialOverlayBudgetWithLimits(items, 1, 1)
 	counts := map[string]int{}
 	for _, item := range got {
 		counts[item.Kind]++
 	}
-	if counts["entity_image"] != 1 || counts["text_phrase"] != 1 || counts["map"] != 1 || counts["number"] != MaxNumberOverlaysPerRun {
-		t.Fatalf("budget counts = %v, want image/phrase/map plus bounded values", counts)
+	if counts["entity_image"] != 1 || counts["text_phrase"] != 1 || counts["map"] != 1 || counts["number"] != MaxNumberOverlaysPerRun || counts["brand_text"] != MaxBrandTextOverlaysPerRun {
+		t.Fatalf("budget counts = %v, want image/phrase/map plus bounded values and brand cards", counts)
+	}
+	foundPreferredBrand, foundOriginalBrand := false, false
+	for _, item := range got {
+		if item.ID == "brand-6-preferred" {
+			foundPreferredBrand = true
+		}
+		if item.ID == "brand-6" {
+			foundOriginalBrand = true
+		}
+	}
+	if !foundPreferredBrand || foundOriginalBrand {
+		t.Fatalf("brand duplicate winner = preferred:%t original:%t, want normalized text dedup to keep only highest priority", foundPreferredBrand, foundOriginalBrand)
 	}
 }
 
