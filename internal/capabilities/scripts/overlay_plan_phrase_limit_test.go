@@ -95,13 +95,22 @@ func TestCompileOverlayPlanHonoursCallerPhraseCeiling(t *testing.T) {
 	require.NotNil(t, plan)
 	require.Equal(t, capabilityoverlay.MaxPhraseOverlaysPerRun, countPlanPhrases(plan), "absent ceiling must keep the certified default")
 
-	// A ceiling above the available candidates admits them all without error.
+	// The hard maximum includes every candidate in this fixture (and is
+	// greater than the old default), so the caller-selected value admits all.
 	raised := GoldenOverlayCanvas
-	raised.MaxPhraseOverlays = 12
-	plan, err = CompileOverlayPlan(result, "en", raised, "plan-ceiling-12", "video-ceiling", "project-ceiling")
+	raised.MaxPhraseOverlays = capabilityoverlay.MaxPhraseOverlaysHardLimit
+	plan, err = CompileOverlayPlan(result, "en", raised, "plan-ceiling-hard-max", "video-ceiling", "project-ceiling")
 	require.NoError(t, err)
 	require.NotNil(t, plan)
-	require.Equal(t, 8, countPlanPhrases(plan), "a raised ceiling must admit every grounded candidate")
+	require.Equal(t, 8, countPlanPhrases(plan), "the approved hard maximum must admit every grounded candidate")
+
+	// Oversized caller requests are clamped by the same canonical budget
+	// resolver used by the production planner.
+	raised.MaxPhraseOverlays = capabilityoverlay.MaxPhraseOverlaysHardLimit + 10
+	plan, err = CompileOverlayPlan(result, "en", raised, "plan-ceiling-clamped", "video-ceiling", "project-ceiling")
+	require.NoError(t, err)
+	require.NotNil(t, plan)
+	require.Equal(t, 8, countPlanPhrases(plan), "available grounded candidates remain intact after clamping")
 }
 
 // TestCompileResultOverlayPlanBudgetEchoesCallerCeiling certifies the reported
@@ -111,9 +120,12 @@ func TestCompileResultOverlayPlanBudgetEchoesCallerCeiling(t *testing.T) {
 		{ID: "scene-0", Index: 0, Text: map[Language]string{"en": "A scene without certified timing."}},
 	}}
 	canvas := GoldenOverlayCanvas
-	canvas.MaxPhraseOverlays = 9
+	canvas.MaxPhraseOverlays = capabilityoverlay.MaxPhraseOverlaysHardLimit + 10
 	require.NoError(t, compileResultOverlayPlan(result, "en", "plan-budget", "project-budget", "", canvas, nil))
 	require.Nil(t, result.OverlayPlan)
 	require.NotNil(t, result.PhraseOverlayBudget)
-	require.Equal(t, capabilityoverlay.PhraseOverlayBudget{Requested: 9, Shortfall: 9}, *result.PhraseOverlayBudget)
+	require.Equal(t, capabilityoverlay.PhraseOverlayBudget{
+		Requested: capabilityoverlay.MaxPhraseOverlaysHardLimit,
+		Shortfall: capabilityoverlay.MaxPhraseOverlaysHardLimit,
+	}, *result.PhraseOverlayBudget)
 }
