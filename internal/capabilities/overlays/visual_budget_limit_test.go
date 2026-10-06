@@ -6,19 +6,44 @@ import (
 	"testing"
 )
 
-// TestEffectivePhraseOverlayLimitFallsBackToCertifiedDefault certifies that
-// an absent (0) or nonsensical (negative) caller value keeps the certified
-// ceiling, while a positive value is honoured verbatim — it may raise or
-// lower it.
-func TestEffectivePhraseOverlayLimitFallsBackToCertifiedDefault(t *testing.T) {
+// TestEffectivePhraseOverlayLimitAppliesDefaultAndHardMaximum pins default,
+// caller overrides, and the absolute work ceiling in one policy owner.
+func TestEffectivePhraseOverlayLimitAppliesDefaultAndHardMaximum(t *testing.T) {
 	for _, requested := range []int{0, -1, -100} {
 		if got := EffectivePhraseOverlayLimit(requested); got != MaxPhraseOverlaysPerRun {
 			t.Fatalf("EffectivePhraseOverlayLimit(%d) = %d, want the certified default %d", requested, got, MaxPhraseOverlaysPerRun)
 		}
 	}
-	for _, requested := range []int{1, 9, 40} {
+	for _, requested := range []int{1, 9, MaxPhraseOverlaysHardLimit} {
 		if got := EffectivePhraseOverlayLimit(requested); got != requested {
-			t.Fatalf("EffectivePhraseOverlayLimit(%d) = %d, want the caller value verbatim", requested, got)
+			t.Fatalf("EffectivePhraseOverlayLimit(%d) = %d, want the requested value", requested, got)
+		}
+	}
+	for _, requested := range []int{MaxPhraseOverlaysHardLimit + 1, 40, int(^uint(0) >> 1)} {
+		if got := EffectivePhraseOverlayLimit(requested); got != MaxPhraseOverlaysHardLimit {
+			t.Fatalf("EffectivePhraseOverlayLimit(%d) = %d, want hard maximum %d", requested, got, MaxPhraseOverlaysHardLimit)
+		}
+	}
+}
+
+func TestApplyEditorialOverlayBudgetClampsOversizedPhraseRequest(t *testing.T) {
+	items := limitTestItems(MaxPhraseOverlaysHardLimit + 5)
+	got, budget := ApplyEditorialOverlayBudgetWithLimit(items, MaxPhraseOverlaysHardLimit+10)
+	if phrases := countPhraseItems(got); phrases != MaxPhraseOverlaysHardLimit {
+		t.Fatalf("phrase overlays = %d, want hard maximum %d", phrases, MaxPhraseOverlaysHardLimit)
+	}
+	if budget != (PhraseOverlayBudget{Requested: MaxPhraseOverlaysHardLimit, Materialized: MaxPhraseOverlaysHardLimit}) {
+		t.Fatalf("phrase budget = %+v, want effective requested/materialized hard maximum", budget)
+	}
+	ids := phraseItemIDs(got)
+	for i := 0; i < 5; i++ {
+		if ids[fmt.Sprintf("phrase-%d", i)] {
+			t.Errorf("lower-ranked phrase-%d survived the hard cap", i)
+		}
+	}
+	for i := 5; i < MaxPhraseOverlaysHardLimit+5; i++ {
+		if !ids[fmt.Sprintf("phrase-%d", i)] {
+			t.Errorf("top-ranked phrase-%d was dropped", i)
 		}
 	}
 }
@@ -84,17 +109,17 @@ func TestApplyEditorialOverlayBudgetHonoursCallerPhraseLimit(t *testing.T) {
 		t.Fatalf("lower ceiling admitted the wrong phrases: %+v", ids)
 	}
 
-	// A ceiling ABOVE the certified default: every grounded candidate is
-	// admitted, and the image ceiling is untouched.
-	got, budget = ApplyEditorialOverlayBudgetWithLimit(items, 40)
-	if phrases := countPhraseItems(got); phrases != 17 {
-		t.Fatalf("phrase overlays = %d, want all 17 candidates admitted", phrases)
+	// The approved ceiling is 15: seventeen candidates keep only their top
+	// fifteen, and the image ceiling remains unchanged.
+	got, budget = ApplyEditorialOverlayBudgetWithLimit(items, MaxPhraseOverlaysHardLimit)
+	if phrases := countPhraseItems(got); phrases != MaxPhraseOverlaysHardLimit {
+		t.Fatalf("phrase overlays = %d, want hard maximum %d", phrases, MaxPhraseOverlaysHardLimit)
 	}
-	if images := len(got) - 17; images != MaxImageOverlaysPerRun {
+	if images := len(got) - MaxPhraseOverlaysHardLimit; images != MaxImageOverlaysPerRun {
 		t.Fatalf("image overlays = %d, want the unchanged ceiling %d", images, MaxImageOverlaysPerRun)
 	}
-	if budget != (PhraseOverlayBudget{Requested: 40, Materialized: 17, Shortfall: 23}) {
-		t.Fatalf("phrase budget = %+v, want requested 40 and 17 materialized", budget)
+	if budget != (PhraseOverlayBudget{Requested: MaxPhraseOverlaysHardLimit, Materialized: MaxPhraseOverlaysHardLimit}) {
+		t.Fatalf("phrase budget = %+v, want effective request/materialized %d", budget, MaxPhraseOverlaysHardLimit)
 	}
 
 	// Absent (zero) keeps the certified default.
@@ -109,7 +134,7 @@ func TestApplyEditorialOverlayBudgetHonoursCallerPhraseLimit(t *testing.T) {
 
 func TestApplyEditorialOverlayBudgetHonoursCallerImageLimit(t *testing.T) {
 	items := limitTestItems(17)
-	got, budget := ApplyEditorialOverlayBudgetWithImageLimit(items, 15, 10, 0)
+	got, budget := ApplyEditorialOverlayBudgetWithImageLimit(items, MaxPhraseOverlaysHardLimit, 10, 0)
 	images := 0
 	for _, item := range got {
 		if item.Kind == "image" || item.Kind == "entity_image" {
@@ -119,14 +144,14 @@ func TestApplyEditorialOverlayBudgetHonoursCallerImageLimit(t *testing.T) {
 	if images != 10 {
 		t.Fatalf("image overlays = %d, want caller ceiling 10", images)
 	}
-	if phrases := countPhraseItems(got); phrases != 15 {
-		t.Fatalf("phrase overlays = %d, want caller ceiling 15", phrases)
+	if phrases := countPhraseItems(got); phrases != MaxPhraseOverlaysHardLimit {
+		t.Fatalf("phrase overlays = %d, want caller ceiling %d", phrases, MaxPhraseOverlaysHardLimit)
 	}
-	if len(got) != 25 {
-		t.Fatalf("total overlays = %d, want exactly 25", len(got))
+	if len(got) != 10+MaxPhraseOverlaysHardLimit {
+		t.Fatalf("total overlays = %d, want exactly %d", len(got), 10+MaxPhraseOverlaysHardLimit)
 	}
-	if budget != (PhraseOverlayBudget{Requested: 15, Materialized: 15}) {
-		t.Fatalf("phrase budget = %+v, want 15 requested/materialized", budget)
+	if budget != (PhraseOverlayBudget{Requested: MaxPhraseOverlaysHardLimit, Materialized: MaxPhraseOverlaysHardLimit}) {
+		t.Fatalf("phrase budget = %+v, want %d requested/materialized", budget, MaxPhraseOverlaysHardLimit)
 	}
 }
 
@@ -153,7 +178,7 @@ func TestApplyEditorialOverlayBudgetCombinesContextAndEntityImageKinds(t *testin
 		})
 	}
 
-	got, _ := ApplyEditorialOverlayBudgetWithImageLimit(items, 15, 10, 0)
+	got, _ := ApplyEditorialOverlayBudgetWithImageLimit(items, MaxPhraseOverlaysHardLimit, 10, 0)
 	images := 0
 	phrases := 0
 	for _, item := range got {
@@ -200,7 +225,7 @@ func TestImageBudgetDedupesSameBytesAcrossEntityAndContextArms(t *testing.T) {
 			AssetRefs: []OverlayAssetRef{{AssetID: "asset-office", SHA256: "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"}},
 			Params:    map[string]any{"priority": float64(50)}},
 	}
-	got, _ := ApplyEditorialOverlayBudgetWithImageLimit(items, 15, 10, 0)
+	got, _ := ApplyEditorialOverlayBudgetWithImageLimit(items, MaxPhraseOverlaysHardLimit, 10, 0)
 	images := 0
 	ids := make(map[string]bool)
 	for _, item := range got {

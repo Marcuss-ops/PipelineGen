@@ -75,13 +75,14 @@ Retries with the same job identity keep the same selection. Image motions are
 sampled independently per image item. `modern_apple` remains available when a
 payload explicitly wants only that style family.
 
-`max_phrase_overlays` sets the **run-level ceiling** for grounded phrase
-overlays, i.e. how many phrases the payload may choose to render. A positive
-value is honoured verbatim and may raise or lower the certified default (five);
-zero or omitted keeps that default. Deduplication and semantic ranking still run
-first, so a ceiling larger than the number of grounded candidates simply admits
-them all. The image ceiling is unaffected. `video.create` exposes the same key at
-the top level and forwards it to its script-generate child.
+`max_phrase_overlays` requests the **run-level ceiling** for grounded phrase
+overlays. Zero or omission keeps the certified default of five. Positive values
+may lower or raise that default, but the runtime clamps the effective ceiling to
+**15 phrases per run**. Candidates are deduplicated and ranked before admission,
+so the highest-ranked 15 survive an oversized request; the effective limit is
+reported in `phrase_overlay_budget.requested_phrase_overlays`. The image ceiling
+is unaffected. `video.create` exposes the same key at the top level and forwards
+it to its script-generate child.
 
 Entity image cards are grouped and timed automatically; there is no payload
 switch to opt out. Cards whose certified spoken anchors are five seconds or

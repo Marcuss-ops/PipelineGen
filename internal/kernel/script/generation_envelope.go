@@ -123,12 +123,11 @@ type GenerationItemV2 struct {
 	// PhraseMotionFamily selects the certified motion family used by phrase
 	// overlays. One motion is sampled per payload and shared by every phrase.
 	PhraseMotionFamily string `json:"phrase_motion_family,omitempty"`
-	// MaxPhraseOverlays sets the run-level ceiling for grounded phrase
-	// overlays. A positive value is honoured verbatim, so a caller may lower
-	// or raise it; zero (or omitted) keeps the certified default
-	// (overlay.MaxPhraseOverlaysPerRun). Dedup and semantic ranking still run
-	// first, so a ceiling above the number of grounded candidates simply
-	// admits them all.
+	// MaxPhraseOverlays sets the requested run-level ceiling for grounded
+	// phrase overlays. A positive value may lower or raise the default, but
+	// runtime caps it at overlay.MaxPhraseOverlaysHardLimit; zero or omitted
+	// keeps overlay.MaxPhraseOverlaysPerRun. Dedup and semantic ranking still
+	// run first, and the effective limit is reported in the phrase budget.
 	MaxPhraseOverlays int `json:"max_phrase_overlays,omitempty"`
 	// MapsOnly keeps runtime-resolved map overlays and removes all image,
 	// phrase, number, and other editorial overlay items from the render plan.

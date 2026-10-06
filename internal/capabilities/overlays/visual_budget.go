@@ -30,25 +30,28 @@ const MaxImageOverlaysPerRun = 18
 // used by existing callers; its value is the common image overlay ceiling.
 const MaxEntityImageOverlaysPerRun = MaxImageOverlaysPerRun
 
-// MaxPhraseOverlaysPerRun is the DEFAULT run-level ceiling for grounded
+// MaxPhraseOverlaysPerRun is the default run-level ceiling for grounded
 // phrase overlays. Phrase candidates are deduplicated across scenes, ranked
-// by their certified semantic score, and only then admitted to the render
-// plan. A caller may override it per run through EffectivePhraseOverlayLimit
-// (the request's max_phrase_overlays); the constant is the fallback, not a
-// hard maximum.
+// by certified semantic score, then admitted to the render plan.
 const MaxPhraseOverlaysPerRun = 5
 
-// EffectivePhraseOverlayLimit resolves the run-level phrase ceiling. A
-// caller-provided positive limit wins verbatim — it may raise or lower the
-// certified default; a zero (or negative) value keeps
-// MaxPhraseOverlaysPerRun. Keeping the fallback here, and not at every call
-// site, is what makes "absent in the payload" and "0 in the payload" mean
-// the same thing.
+// MaxPhraseOverlaysHardLimit is the absolute phrase-overlay ceiling for one
+// run, even when a payload asks for more. The cap bounds rendering work while
+// preserving the default editorial selection of five phrases.
+const MaxPhraseOverlaysHardLimit = 15
+
+// EffectivePhraseOverlayLimit resolves the effective run-level phrase ceiling.
+// A positive caller limit may lower or raise the default, but never exceeds the
+// hard maximum; zero or a negative value keeps the certified default. Keeping
+// the policy here ensures every planner uses the same limit.
 func EffectivePhraseOverlayLimit(requested int) int {
-	if requested > 0 {
-		return requested
+	if requested <= 0 {
+		return MaxPhraseOverlaysPerRun
 	}
-	return MaxPhraseOverlaysPerRun
+	if requested > MaxPhraseOverlaysHardLimit {
+		return MaxPhraseOverlaysHardLimit
+	}
+	return requested
 }
 
 // ApplyEditorialOverlayBudget enforces the production run-level visual
