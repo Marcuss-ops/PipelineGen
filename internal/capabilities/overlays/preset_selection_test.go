@@ -39,12 +39,15 @@ func TestSelectEntityImagePresetUsesOnlyRenderSafeCandidates(t *testing.T) {
 	}
 }
 
-// TestGeneratedTextOverlaysStayOnTheRenderSafeTextContract pins official
-// RenderingGen preset ids and the explicit native motion contract.
+// TestGeneratedImageAnimationSelectorUsesOnlyTheNewSingleImagePool pins the
+// single-image contract: generated overlays rotate over the COMPLETE
+// 32-motion render-safe catalog (the IDs RenderingGen's runtime catalog
+// contract verifies), stay deterministic per item and never emit an id
+// outside that pool.
 func TestGeneratedImageAnimationSelectorUsesOnlyTheNewSingleImagePool(t *testing.T) {
 	pool := CertifiedSingleImageMotions()
-	if len(pool) != 10 {
-		t.Fatalf("certified single-image pool has %d motions, want 10", len(pool))
+	if len(pool) != 32 {
+		t.Fatalf("certified single-image pool has %d motions, want 32", len(pool))
 	}
 	allowed := make(map[string]bool, len(pool))
 	for _, id := range pool {
@@ -61,8 +64,13 @@ func TestGeneratedImageAnimationSelectorUsesOnlyTheNewSingleImagePool(t *testing
 			t.Fatalf("image animation is not deterministic for the same item: %q vs %q", motion, again)
 		}
 	}
-	if len(renderSafeImageMotions) <= len(pool) {
-		t.Fatal("legacy render-safe catalog was unexpectedly discarded instead of excluded from the single-image selector")
+	for _, id := range renderSafeImageMotions {
+		if !allowed[id] {
+			t.Fatalf("render-safe motion %q is missing from the certified single-image pool", id)
+		}
+	}
+	if len(renderSafeImageMotions) != 32 {
+		t.Fatalf("render-safe catalog has %d motions, want 32", len(renderSafeImageMotions))
 	}
 }
 
@@ -195,8 +203,8 @@ func TestDateAndMetricEntityTypesRouteToCertifiedPresentationTemplates(t *testin
 }
 
 func TestDateAndMetricPresentationPoolsCoverCanonicalInventories(t *testing.T) {
-	if got := len(DatePresentationMotionCandidates()); got != 10 {
-		t.Errorf("Date presentation motion count=%d, want 10 certified typewriter motions", got)
+	if got := len(DatePresentationMotionCandidates()); got != 3 {
+		t.Errorf("Date presentation motion count=%d, want 3 certified typewriter motions", got)
 	}
 	if got := len(MetricPresentationMotionCandidates()); got != 10 {
 		t.Errorf("Metric presentation motion count=%d, want 10 certified typewriter motions", got)
