@@ -325,10 +325,25 @@ def observability_stages(con: sqlite3.Connection) -> list[dict]:
     ]
 
 
-def observability_operations(con: sqlite3.Connection) -> list[dict]:
-    """Per-operation cost, including the operation-level queue wait."""
+def observability_operations(con: sqlite3.Connection) -> dict:
+    """Per-operation cost, including the operation-level queue wait.
+
+    The value is a dict with two views: ``operations`` holds the per
+    stage/component/operation rows across ALL stages; ``overlay_render``
+    holds that stage's decomposition — within it the boundary operations
+    (component ``render_queue``: submit, wait_completion) and the
+    worker-reported phases (component ``renderinggen``) are summarized
+    separately, so the stage wall splits into submit + GPU-lane wait +
+    Σ render work + Σ encode/upload without re-parsing raw rows.
+    """
     if "run_operation_observations" not in table_names(con):
-        return []
+        return {"operations": [], "overlay_render": []}
+    return {"operations": _operation_rows(con), "overlay_render": overlay_render_decomposition(con)}
+
+
+def _operation_rows(con: sqlite3.Connection) -> list[dict]:
+    """Per stage/component/operation rows across all stages, top 40 by total
+    duration, including the operation-level queue wait."""
     sql = """
     SELECT stage, component, operation, status, COUNT(*),
            COALESCE(SUM(duration_ms),0), COALESCE(SUM(queue_wait_ms),0),
@@ -354,6 +369,47 @@ def observability_operations(con: sqlite3.Connection) -> list[dict]:
                 "cache_hits": int(hits),
             }
         )
+    return out
+
+
+def overlay_render_decomposition(con: sqlite3.Connection) -> list[dict]:
+    """Sums the overlay_render stage's own operations per component and
+    operation, ordered the way the wall decomposes: boundary first (submit,
+    wait), then owner-reported work. Dates come from created_at, which the
+    recorder now stamps at write time for owner-measured rows; the historical
+    undated rows are excluded from the window but reported as a count so the
+    gap stays visible.
+    """
+    out: list[dict] = []
+    rows = []
+    try:
+        rows = con.execute(
+            """
+            SELECT component, operation, COUNT(*), COALESCE(SUM(duration_ms),0),
+                   COALESCE(AVG(duration_ms),0)
+            FROM run_operation_observations
+            WHERE stage = 'overlay_render' AND created_at != ''
+            GROUP BY component, operation
+            ORDER BY COALESCE(SUM(duration_ms),0) DESC
+            """
+        ).fetchall()
+        undated = con.execute(
+            "SELECT COUNT(*) FROM run_operation_observations WHERE stage = 'overlay_render' AND created_at = ''"
+        ).fetchone()[0]
+    except sqlite3.Error:
+        undated = 0
+    for comp, op, n, total, avg in rows:
+        out.append(
+            {
+                "component": comp,
+                "operation": op,
+                "count": n,
+                "total_hours": round(total / 3_600_000.0, 2),
+                "avg_s": round(avg / 1000.0, 3),
+            }
+        )
+    if undated:
+        out.append({"component": "(historical, undated rows excluded from windows)", "operation": "", "count": undated, "total_hours": None, "avg_s": None})
     return out
 
 
@@ -548,7 +604,7 @@ def build(refactored: Path) -> dict:
     else:
         snap["run_observability"] = {}
         snap["stage_observations"] = []
-        snap["operation_observations"] = []
+        snap["operation_observations"] = {}
         snap["api_requests"] = {"requests": 0, "present": False}
 
     snap["findings"] = derive_findings(

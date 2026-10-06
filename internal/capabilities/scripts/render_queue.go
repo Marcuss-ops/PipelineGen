@@ -2,12 +2,10 @@ package scriptgeneration
 
 import (
 	"context"
-	"crypto/rand"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
-	"math/big"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -95,7 +93,7 @@ func renderDynamicMapVideo(ctx context.Context, plan capoverlay.OverlayPlan) (st
 	if plateGenerator == "" {
 		return "", fmt.Errorf("VELOX_GEO_MAP_PLATE_GENERATOR_PATH is not configured")
 	}
-	scriptPath := filepath.Join(filepath.Dir(plateGenerator), "render_dynamic_map_overlay.py")
+	scriptPath := filepath.Join(filepath.Dir(plateGenerator), "map", "render_dynamic_map_overlay.py")
 	if _, err := os.Stat(scriptPath); err != nil {
 		return "", fmt.Errorf("find Chronon map renderer %s: %w", scriptPath, err)
 	}
@@ -105,34 +103,45 @@ func renderDynamicMapVideo(ctx context.Context, plan capoverlay.OverlayPlan) (st
 	}
 	inputPath := filepath.Join(tmpDir, "map.json")
 	outputPath := filepath.Join(tmpDir, "map.mp4")
+	encodedOutputPath := filepath.Join(tmpDir, "map-encoded.mp4")
 	summaryPath := filepath.Join(tmpDir, "map.telemetry.json")
+	// Tile preparation and per-frame compositing scale roughly with canvas area.
+	// Render the satellite plates at delivery resolution, then upscale the
+	// finished map to the overlay contract. The final program is 1920x1080, so
+	// retaining a 3x map raster only multiplies tile and RAM use before it is
+	// downsampled again.
+	renderWidth, renderHeight := plan.Width, plan.Height
+	if renderWidth > 1920 || renderHeight > 1080 {
+		renderWidth, renderHeight = 1920, 1080
+	}
 	pins := make([]map[string]any, 0, len(plan.Items[0].Map.Pins))
 	for _, pin := range plan.Items[0].Map.Pins {
 		pins = append(pins, map[string]any{"id": pin.ID, "label": pin.Label, "latitude": pin.Latitude, "longitude": pin.Longitude, "scope": pin.Scope})
 	}
-	cameraAnimation, err := randomMapAnimation([]string{
-		"signature_dive", "tilt_reveal", "orbit_arrival", "slow_approach", "wide_context",
-	})
-	if err != nil {
+	// The camera move, the label accent and the basemap are the map's LOOK. They
+	// are resolved by the pipeline's single deterministic sampler, seeded by the
+	// plan identity: replaying a run reproduces the exact same map presentation,
+	// while a new run (a new fingerprint) re-rolls it. A random draw here would
+	// make a re-render of an already approved job silently different from the
+	// artifact that was approved.
+	seed := mapRunSeed(plan)
+	mapItemID := plan.Items[0].ID
+	cameraAnimation := deterministicMapStyle(seed, "map_camera", mapItemID, mapCameraAnimations)
+	labelAnimation := deterministicMapStyle(seed, "map_label", mapItemID, mapLabelAnimations)
+	basemapStyle := deterministicMapStyle(seed, "map_basemap", mapItemID, mapBasemapStyles())
+	if cameraAnimation == "" || labelAnimation == "" || basemapStyle == "" {
 		_ = os.RemoveAll(tmpDir)
-		return "", fmt.Errorf("choose dynamic map camera animation: %w", err)
+		return "", fmt.Errorf("dynamic map presentation catalog is empty")
 	}
-	labelAnimation, err := randomMapAnimation([]string{
-		"gentle_fade", "soft_glow", "clean_fade", "word_soft_fade", "slow_fade",
-		"quiet_bloom", "quick_fade", "silky_fade", "subtle_halo", "cinematic_fade",
-	})
-	if err != nil {
-		_ = os.RemoveAll(tmpDir)
-		return "", fmt.Errorf("choose dynamic map label animation: %w", err)
-	}
-	log.Printf("Chronon dynamic map styles selected: camera=%s label=%s", cameraAnimation, labelAnimation)
+	log.Printf("Chronon dynamic map styles selected: seed=%s camera=%s label=%s basemap=%s", seed, cameraAnimation, labelAnimation, basemapStyle)
 	payload := map[string]any{
-		"width": plan.Width, "height": plan.Height,
+		"width": renderWidth, "height": renderHeight,
 		"fps_num": plan.FPSNum, "fps_den": plan.FPSDen,
 		"duration_us": plan.DurationMS * 1000, "pins": pins,
 		"area_glow_radius_km": plan.Items[0].Map.AreaGlowRadiusKM,
 		"camera_animation":    cameraAnimation,
 		"label_animation":     labelAnimation,
+		"basemap":             basemapStyle,
 	}
 	encoded, err := json.Marshal(payload)
 	if err != nil {
@@ -214,11 +223,23 @@ func renderDynamicMapVideo(ctx context.Context, plan capoverlay.OverlayPlan) (st
 		summary.FramePipelineS <= 0 || summary.RenderEncodeWallS <= 0 || summary.OutputBytes <= 0 {
 		return "", fmt.Errorf("Chronon map telemetry summary is missing required telemetry field")
 	}
-	if summary.Dimensions.Width != plan.Width || summary.Dimensions.Height != plan.Height ||
+	if summary.Dimensions.Width != renderWidth || summary.Dimensions.Height != renderHeight ||
 		summary.FPS.Num != plan.FPSNum || summary.FPS.Den != plan.FPSDen {
 		return "", fmt.Errorf("Chronon map telemetry media contract mismatch: dimensions=%dx%d fps=%d/%d, want %dx%d fps=%d/%d",
 			summary.Dimensions.Width, summary.Dimensions.Height, summary.FPS.Num, summary.FPS.Den,
-			plan.Width, plan.Height, plan.FPSNum, plan.FPSDen)
+			renderWidth, renderHeight, plan.FPSNum, plan.FPSDen)
+	}
+	if renderWidth != plan.Width || renderHeight != plan.Height {
+		scale := fmt.Sprintf("scale=%d:%d:flags=lanczos", plan.Width, plan.Height)
+		upscale := exec.CommandContext(ctx, "/usr/bin/ffmpeg", "-hide_banner", "-loglevel", "error", "-y",
+			"-i", outputPath, "-vf", scale, "-r", fmt.Sprintf("%d/%d", plan.FPSNum, plan.FPSDen),
+			"-c:v", "libx264", "-preset", "fast", "-crf", "18", "-pix_fmt", "yuv420p", "-movflags", "+faststart", encodedOutputPath)
+		if output, err := upscale.CombinedOutput(); err != nil {
+			return "", fmt.Errorf("scale dynamic map to overlay contract: %w: %s", err, strings.TrimSpace(string(output)))
+		}
+		if err := os.Rename(encodedOutputPath, outputPath); err != nil {
+			return "", fmt.Errorf("install scaled dynamic map: %w", err)
+		}
 	}
 	if summary.Tile.DiskCacheMisses != summary.Tile.NetworkFetches+summary.Tile.Fallbacks {
 		return "", fmt.Errorf("Chronon map telemetry cache/fetch counters do not balance: hits=%d misses=%d downloads=%d fallbacks=%d",
@@ -270,18 +291,67 @@ func (b *boundedMapRenderOutput) String() string {
 	return string(b.data)
 }
 
-// randomMapAnimation selects one runtime presentation for each generated map.
-// The choice is made after the job has produced its grounded map pins and is
-// passed to Chronon as an explicit style, so a render stays internally stable.
-func randomMapAnimation(options []string) (string, error) {
-	if len(options) == 0 {
-		return "", fmt.Errorf("animation catalog is empty")
+// mapBasemapStyles is the certified basemap palette the dynamic map renderer
+// rotates through. Every id MUST be a provider the Chronon tile pyramid serves
+// (Chronon3d/tools/cartography/dynamic_tile_pyramid.py BASEMAP_STYLES); the
+// renderer rejects any id outside its own palette, so this list can never hand
+// it a basemap it cannot draw. TestMapBasemapStylesMatchChrononPalette guards
+// the cross-repository drift.
+func mapBasemapStyles() []string {
+	return []string{
+		"esri_sat",
+		"esri_topo",
+		"esri_natgeo",
+		"esri_ocean",
+		"esri_light",
+		"esri_dark",
 	}
-	index, err := rand.Int(rand.Reader, big.NewInt(int64(len(options))))
-	if err != nil {
-		return "", err
+}
+
+// mapCameraAnimations and mapLabelAnimations are the certified presentation
+// vocabularies the Chronon map renderer accepts for a generated map
+// (render_dynamic_map_overlay.py validates camera_animation against its own set
+// and label_animation against MAP_LABEL_ANIMATIONS). They are only candidate
+// lists: the choice among them belongs to the deterministic sampler below.
+var (
+	mapCameraAnimations = []string{
+		"signature_dive", "tilt_reveal", "orbit_arrival", "slow_approach", "wide_context",
 	}
-	return options[index.Int64()], nil
+	mapLabelAnimations = []string{
+		"gentle_fade", "soft_glow", "clean_fade", "word_soft_fade", "slow_fade",
+		"quiet_bloom", "quick_fade", "silky_fade", "subtle_halo", "cinematic_fade",
+	}
+)
+
+// mapRunSeed is the stable per-run seed for a map's presentation choices. The
+// plan fingerprint is the canonical variant knob — a new fingerprint IS a new
+// variant — with PlanID/VideoID as fallbacks for a plan stamped before the
+// fingerprint was computed. It never reads wall-clock or process state, so the
+// same run always resolves the same map presentation.
+func mapRunSeed(plan capoverlay.OverlayPlan) string {
+	for _, candidate := range []string{plan.Fingerprint, plan.PlanID, plan.VideoID} {
+		if seed := strings.TrimSpace(candidate); seed != "" {
+			return seed
+		}
+	}
+	return "map"
+}
+
+// deterministicMapStyle resolves ONE presentation value from options as a pure
+// function of the run seed and the style channel. It samples through the
+// overlays package's single deterministic sampler, so map presentation obeys
+// exactly the same seed→choice contract as every other semantic selection in
+// the pipeline. The channel keeps the three choices independent: the same seed
+// picks the camera move, the label accent and the basemap from separate
+// digests, so they never collapse onto one correlated draw.
+func deterministicMapStyle(seed, channel, itemID string, options []string) string {
+	return capoverlay.DefaultDeterministicPresetSampler.Sample(capoverlay.PresetSampleInput{
+		JobFingerprint: seed,
+		SceneID:        "map",
+		SemanticID:     itemID,
+		PresetFamily:   channel,
+		Presets:        options,
+	}).Preset
 }
 
 // marshalRenderingGenOverlayPlan projects canonical microsecond item timing
@@ -574,7 +644,10 @@ func (e *QueueRenderEnqueuer) enqueueChrononPlan(ctx context.Context, plan capov
 	// Map the RenderingGen worker's own phase timings into the canonical
 	// run model instead of a new timing family: each reported phase becomes
 	// one owner-measured operation on the run bound to ctx (the kernel
-	// never re-times a phase the worker already measured).
+	// never re-times a phase the worker already measured). The boundary the
+	// CALLER owns is projected alongside them, so the stage wall decomposes
+	// as submit + wait + Σ worker phases.
 	recordRenderingGenPhases(ctx, done.Artifact)
+	recordQueueBoundaryPhases(ctx, submitAcceptedAt.Sub(submitStartedAt).Milliseconds(), wait.CompletionWait.Milliseconds())
 	return RenderReference{JobID: jobID, Status: "COMPLETED", Artifact: done.Artifact}, nil
 }

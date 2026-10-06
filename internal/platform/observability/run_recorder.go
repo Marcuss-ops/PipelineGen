@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"strings"
 	"sync"
 	"time"
 
@@ -165,7 +166,20 @@ func (r *SQLiteRecorder) AppendOperation(ctx context.Context, runID string, o ke
 	if runID == "" || o.ObservationID == "" || o.Operation == "" {
 		return r.fail(runID, "append_operation", errors.New("run_id, observation_id and operation are required"))
 	}
-	_, err := r.db.ExecContext(ctx, `INSERT INTO run_operation_observations (observation_id,run_id,stage,component,operation,provider,status,duration_ms,queue_wait_ms,attempts,items,bytes,cache_status,error_code,worker_id,queued_at,started_at,finished_at,source_sha256,source_duration_ms,source_size_bytes,width,height,fps,input_codec,output_codec,cache_hit,strategy,metadata_json,output_duration_ms,output_size_bytes,cpu_user_ms,cpu_system_ms,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(observation_id) DO NOTHING`, o.ObservationID, runID, o.Stage, o.Component, o.Operation, nullable(o.Provider), o.Status, o.DurationMs, o.QueueWaitMs, o.Attempts, o.Items, o.Bytes, nullable(o.CacheStatus), nullable(o.ErrorCode), nullable(o.WorkerID), nullableTime(o.QueuedAt), nullableTime(o.StartedAt), nullableTime(o.FinishedAt), o.SourceSHA256, o.SourceDurationMS, o.SourceSizeBytes, o.Width, o.Height, o.FPS, o.InputCodec, o.OutputCodec, boolInt(o.CacheHit), o.Strategy, metadataJSON(o.MetadataJSON), o.OutputDurationMS, o.OutputSizeBytes, o.CPUUserMS, o.CPUSystemMS, o.CreatedAt)
+	// The write timestamp is a RECORDER fact, not a fact about the measured
+	// work: owner-measured operations (RenderingGen/Chronon projections) carry
+	// no created_at, and ingesting them as created_at='' made the rows
+	// un-dateable — every time-window query on run_operation_observations
+	// (timing_snapshot, dashboards) silently dropped them. A zero clock in a
+	// timestamp column is a gap an operator cannot distinguish from a gap in
+	// the data, so the recorder stamps the row at write time when the kernel
+	// left it empty. Queued/started/finished stay owner-owned: an unknown
+	// measurement time is recorded as NULL, never backfilled by guesswork.
+	createdAt := o.CreatedAt
+	if strings.TrimSpace(createdAt) == "" {
+		createdAt = timeValue(time.Now())
+	}
+	_, err := r.db.ExecContext(ctx, `INSERT INTO run_operation_observations (observation_id,run_id,stage,component,operation,provider,status,duration_ms,queue_wait_ms,attempts,items,bytes,cache_status,error_code,worker_id,queued_at,started_at,finished_at,source_sha256,source_duration_ms,source_size_bytes,width,height,fps,input_codec,output_codec,cache_hit,strategy,metadata_json,output_duration_ms,output_size_bytes,cpu_user_ms,cpu_system_ms,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(observation_id) DO NOTHING`, o.ObservationID, runID, o.Stage, o.Component, o.Operation, nullable(o.Provider), o.Status, o.DurationMs, o.QueueWaitMs, o.Attempts, o.Items, o.Bytes, nullable(o.CacheStatus), nullable(o.ErrorCode), nullable(o.WorkerID), nullableTime(o.QueuedAt), nullableTime(o.StartedAt), nullableTime(o.FinishedAt), o.SourceSHA256, o.SourceDurationMS, o.SourceSizeBytes, o.Width, o.Height, o.FPS, o.InputCodec, o.OutputCodec, boolInt(o.CacheHit), o.Strategy, metadataJSON(o.MetadataJSON), o.OutputDurationMS, o.OutputSizeBytes, o.CPUUserMS, o.CPUSystemMS, createdAt)
 	if err != nil {
 		return r.fail(runID, "append_operation", err)
 	}

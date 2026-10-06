@@ -76,24 +76,13 @@ var (
 		"image_tilt_parallax",
 		"image_yaw_reveal",
 	}
-	// Single-image overlays now rotate only through the ten motion looks we
-	// rendered against the Drive references. The four camera-led looks use the
-	// closest already-registered image motions so the worker and catalog stay
-	// in sync: dolly_settle, orbit_arc, counter_tilt and dolly_breath.
-	singleImageMotionCandidates = []string{
-		"image_25d_depth_float_in",
-		"image_25d_yaw_flip_in",
-		"image_25d_pitch_lift",
-		"image_25d_pop_z_bounce",
-		"image_25d_swipe_3d",
-		"image_25d_card_swing",
-		"image_depth_dolly",
-		"image_orbit_enter",
-		"image_tilt_parallax",
-		"image_focus_push",
-	}
-	imageAnimationCandidates = singleImageMotionCandidates
-	imageMotionCandidates    = renderSafeImageMotions
+	// Single-image overlays can use the complete 32-motion ChrononTemplate
+	// layer-only image catalog. The renderer owns these IDs and its runtime
+	// catalog contract verifies all 32; this prevents automatic scene images
+	// from repeatedly falling back to a handful of legacy presets.
+	singleImageMotionCandidates = renderSafeImageMotions
+	imageAnimationCandidates    = singleImageMotionCandidates
+	imageMotionCandidates       = renderSafeImageMotions
 	// centeredImageMotionCandidates is the certified CENTERED image-motion
 	// pool: the subset of motions that keep the raster pinned to the canvas
 	// center, so a map's geography never drifts away from the pins projected
@@ -103,43 +92,32 @@ var (
 		"image_focus_reveal",
 		"image_scale_reveal",
 	}
-	// Generated entity portraits rotate over the COMPLETE certified 2D image
-	// vocabulary: every layer-only image motion that does NOT enable the
-	// camera-backed 3D path (no position_z / rotation_x / rotation_y). Keeping
-	// the pool to the certified 2D set preserves the restrained look on real
-	// people while giving each portrait a genuinely different entrance instead
-	// of the same three reveals. The 3D families (image_25d_*, editorial
-	// depth/flip) stay available to explicit editorial plans only.
-	generatedEntityImageMotionCandidates = []string{
-		"image_fade_reveal",
-		"image_focus_reveal",
-		"image_scale_reveal",
-		"image_slide_left_reveal",
-		"image_slide_right_reveal",
-		"image_card_push",
-		"image_diagonal_sweep",
-		"image_soft_focus_reveal",
-		"image_photo_drop",
-		"image_roll_in",
-	}
-	// Entity-name captions use the four certified 2D caption motions. The
-	// catalog's depth/yaw variants are intentionally omitted so a portrait's
-	// label stays restrained and does not force the camera-backed 3D path.
+	// Entity portraits use the same complete certified image pool as other
+	// generated images; RenderingGen has explicit lowering for the 2.5D and
+	// editorial families, and the full set is covered by its image canary.
+	generatedEntityImageMotionCandidates = renderSafeImageMotions
+	// Entity captions can use every authored entity-name treatment: six shared
+	// caption motions plus fifteen premium documentary treatments. All target
+	// text layers and are registered in RenderingGen's runtime motion catalog.
 	generatedEntityCaptionMotionCandidates = []string{
+		"text_depth_in",
 		"text_fade_up",
 		"text_scale_punch",
 		"text_word_rise",
 		"text_word_stagger",
+		"text_yaw_in",
+		"trump_entity_text_01", "trump_entity_text_02", "trump_entity_text_03",
+		"trump_entity_text_04", "trump_entity_text_05", "trump_entity_text_06",
+		"trump_entity_text_07", "trump_entity_text_08", "trump_entity_text_09",
+		"trump_entity_text_10", "trump_entity_text_11", "trump_entity_text_12",
+		"trump_entity_text_13", "trump_entity_text_14", "trump_entity_text_15",
 	}
 	// Dates and metrics are text overlays: use the renderer-certified typewriter
 	// motions instead of the image-like date-card and stat-card motion families.
 	// Keeping both pools on the same typography treatment also prevents numeric
 	// values from inheriting image transitions.
 	datePresentationMotionCandidates = []string{
-		"typewriter_clean", "typewriter_pop", "typewriter_tracking",
-		"typewriter_glitch", "typewriter_neon",
-		"typewriter_lift", "typewriter_slide_in", "typewriter_scale_up",
-		"typewriter_blur_focus", "typewriter_soft_lift",
+		"typewriter_clean", "typewriter_slide_in", "typewriter_soft_lift",
 	}
 	metricPresentationMotionCandidates = []string{
 		"typewriter_clean", "typewriter_pop", "typewriter_tracking",

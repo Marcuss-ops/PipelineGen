@@ -195,7 +195,32 @@ del final job), non un orfano voiceover.
   (già applicato, ~0,35s campione) resta l'unico gain sicuro. Da rivisitare solo con
   un concat sample-accurate verificato su QA audio completo.
 
-## 1. Come funziona oggi (catena)
+### 0.4 Ondata 2026-10-05 — strumentazione overlay_render, created_at, diagnosi prepare_join
+
+Snapshot di riferimento: `ops/benchmarks/job-timing-20261005T164155Z.json` (e `job-timing-20261005T153538Z.json` della mattina). Fonti: run_observability / run_stage_observations / run_operation_observations + jobs.db + job_events.
+
+**TREND PRINCIPALE (dove va il tempo ADESSO):** `overlay_render` domina le 48h (43% del lavoro di stage: 2,10h completati + 0,72h falliti) e la sua media è triplicata in una settimana: 74s/run (09-28) → 219s (09-30) → 227s (10-04) → **271s (10-05, max 722s)**. La coda storica (741,9h vs 135,7h wall, 85%) resta il quadro macro ma A1/A2 hanno curato i sintomi su script.generate: max queue 600s (era 12.926s), ollama.generate 0,76h nelle 48h (era dominante).
+
+**1. CORRELAZIONE overlay_render ↔ piani nuovi (misurata, non speculata):**
+- Il wall dello stage è composto al ~88% da Σ`renderinggen.render` + encode (medie 48h su 28 run: stage 269,7s = render 223,6s + encode 12,0s + upload 0,4s; submit ~0).
+- Il VOLUME di item per run è esploso: **21 ops (run 10-03) → 133 (10-04) → 231 (10-05)**, coerente con i payload brasiliani 10-04/10-05 (`max_important_phrases_per_segment` 1→5, `images_per_scene` 1→2, `max_entities_per_segment` 6→8, piani showcase/heavy-phrase). Un piano che raddoppia gli item raddoppia il wall: il collo è la dimensione del piano, NON la velocità della GPU per item.
+- Controesempio wait-dominated: la run 722s del 10-03 ha solo 86s di render (26KB di report) — il resto è attesa GPU lane (le ops del 10-03 portano timeline NULL, la scomposizione fine è possibile solo per le run post-fix).
+- Pearson report-size↔durata r=0,508 (n=28): il piano (dimensione del report) spiega metà della varianza; l'altra metà è lane wait.
+- **Azione editoriale:** prima di ottimizzare il motore, misurare il costo per-item dei preset heavy-phrase/showcase e decidere se il budget frasi (5 per segmento) vale il wall. **Azione strumentale (FATTA, vedi sotto):** submit/wait ora canonici — le prossime run mostreranno la lane wait esplicita.
+
+**2. STRUMENTAZIONE overlay_render (IMPLEMENTATA 2026-10-05, test verdi):**
+- `OperationSubmit` ("submit") e `OperationWaitCompletion` ("wait_completion") entrano nel vocabolario kernel; `recordQueueBoundaryPhases` (render_queue_completion.go) proietta le due metà del boundary misurate dal chiamante sotto StageOverlayRender/component `render_queue`, accanto alle fasi worker (`recordRenderingGenPhases`). Il wall di stage si scompone in submit + wait + Σ fasi worker SENZA un secondo timer: il wait resta anche WaitCompletion run-level (proiezione stage-bound dello stesso intervallo). Regola no-fake-zero: metà non misurata → nessuna riga.
+- Fix `created_at`: le righe owner-measured (renderinggen/chronon) arrivavano senza created_at e venivano salvate '' → 33.259 righe NON databili escluse da OGNI query a finestra (evidenziato nella nuova vista `overlay_render` dello snapshot). Il recorder ora timbra la riga alla scrittura quando il kernel la lascia vuota; queued/started/finished restano owner-owned (NULL, mai backfill). Prossime run: scomposizione interrogabile per giorno/finestra.
+- `timing_snapshot.py`: `operation_observations` ora è un dict `{operations, overlay_render}`; la vista `overlay_render` somma per componente/operazione del solo stage (boundary vs fasi) e riporta il conteggio delle righe storiche non datate.
+
+**3. DIAGNOSI prepare_join 53% (87 falliti / 163 nelle 48h) — ROOT CAUSE TROVATA:**
+- `prepare_join` PROPAGA l'errore del ramo semantic (`generation_handler` fail-closed); il fallimento avviene prima del join: `vidrush semantic certification failed: CERTIFIED=false (IMAGE FANOUT: images available = 0/1, expected at least 1/2/5; CROSS-SCENE REUSE: asset già bound ad altro segmento)`.
+- Schema osservato: fallimento certificazione → run attempt 1/3 → deferral 5s → attempt 2 → 3 → budget esaurito → il job muore con errore TERMINALE mascherato `read durable run result: context canceled` (Get(ctx) con ctx già annullato dal runner che ha finito di fallire). 62 dei 75+ messaggi CERTIFIED=false dal 10-04 sono "images available = 1, expected at least 2" = piani dual-image che ricevono 1 immagine.
+- La certificazione sta facendo il suo lavoro (rifiuta asset riutilizzati/fotteri); il DIFETTO era di osservabilità: il root cause editoriale era raggiungibile solo dai job_deferred (tentativi 1-2), mai dalla colonna error_code terminale. **FIX APPLICATO:** `deriveErrorCode` classifica `CERTIFIED=false` → `SEMANTIC_CERTIFICATION_FAILED` PRIMA delle euristiche generiche (il "render" nel messaggio lo mandava a ENQUEUE_FAILED). Pin: caso in `TestDeriveErrorCode`.
+- Residuo aperto: il `context canceled` terminale rimane fuorviante come MESSAGGIO (il codice ora parla). Proposta per la prossima ondata: in `incompleteRunError`, quando `updated.ErrorMessage != ""` non usare affatto il `getErr` (già fatto) E ritentare la Get con `context.WithoutCancel` nel handler per leggere l'esito reale; non fatto qui perché tocca il path di completamento handler (rischio fuori dal perimetro osservabilità di oggi).
+- Sui vidrush.verify/acquire "falliti" (1.167/660): rumore di polling (0,01-0,27s), non incidono sul wall; non azione.
+
+**Verifica in produzione (quando il binario viene ridistribuito):** nuova run brasiliana → `SELECT operation, component, duration_ms FROM run_operation_observations WHERE stage='overlay_render' AND run_id=...` deve mostrare submit/wait_completion/render/encode con created_at popolato; un fallimento certificazione deve esporre error_code=SEMANTIC_CERTIFICATION_FAILED su jobs.error.
 
 ```
 HTTP submit

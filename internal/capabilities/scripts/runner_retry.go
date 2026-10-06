@@ -36,6 +36,15 @@ func deriveErrorCode(err error, stage Stage) string {
 	switch {
 	case containsAny(errStr, "INCOMPLETE_RENDER_SET"):
 		return "INCOMPLETE_RENDER_SET"
+	// The semantic certification verdict (CERTIFIED=false) is the most actionable
+	// terminal class in the failure log — IMAGE FANOUT / CROSS-SCENE REUSE name
+	// the exact fix — but the generic heuristics below could never see it: the
+	// "render" substring inside the message routed it to ENQUEUE_FAILED, hiding
+	// the editorial root cause under an infrastructure label. It must be
+	// classified BEFORE those heuristics for the same reason the typed errors
+	// above are.
+	case containsAny(errStr, "CERTIFIED=false"):
+		return "SEMANTIC_CERTIFICATION_FAILED"
 	case containsAny(errStr, "timeout", "deadline exceeded", "context deadline"):
 		return "PROVIDER_TIMEOUT"
 	case containsAny(errStr, "unavailable", "not configured", "not initialized", "not found", "connection refused"):

@@ -386,8 +386,8 @@ func TestCertifiedImageMotionPoolAndPlannerAssignment(t *testing.T) {
 		}
 		selected[id] = true
 	}
-	if len(selected) != 10 {
-		t.Fatalf("single-image selector covered %d new motions, want all 10", len(selected))
+	if len(selected) != len(singleImageMotionCandidates) || len(selected) != 32 {
+		t.Fatalf("single-image selector covered %d motions, want all 32 catalog motions", len(selected))
 	}
 	for _, id := range renderSafeImageMotions {
 		if !containsString(singleImageMotionCandidates, id) && selected[id] {
@@ -446,7 +446,7 @@ func TestCertifiedImageMotionPoolAndPlannerAssignment(t *testing.T) {
 			t.Fatalf("image motion %q escaped the explicit pool %v", item.MotionID, input.ImageMotions)
 		}
 	}
-	input.ImageMotions = []string{"image_fade_reveal"}
+	input.ImageMotions = []string{"image_focus_in"}
 	if _, err := BuildPlan(input, AllCandidatesPlannerConfig(input.Scenes)); err == nil {
 		t.Fatal("explicit legacy image motion should be rejected for a single-image plan")
 	}
@@ -492,8 +492,8 @@ func TestRandomImageMotionOffsetRotatesThroughAllCertifiedIDs(t *testing.T) {
 // retry determinism.
 func TestEntityImageMotionRotationCoversTheCertifiedCatalog(t *testing.T) {
 	pool := CertifiedEntityImageMotions()
-	if len(pool) != 10 {
-		t.Fatalf("generated entity-image rotation pool = %d motions, want the ten certified 2D motions", len(pool))
+	if len(pool) != 32 {
+		t.Fatalf("generated entity-image rotation pool = %d motions, want all 32 certified motions", len(pool))
 	}
 	for i, id := range pool {
 		if !containsString(imageMotionCandidates, id) {
@@ -531,8 +531,8 @@ func TestEntityImageMotionRotationCoversTheCertifiedCatalog(t *testing.T) {
 
 func TestGeneratedEntityCaptionMotionsMatchCanonical2DCatalog(t *testing.T) {
 	pool := CertifiedEntityCaptionMotions()
-	if len(pool) != 4 {
-		t.Fatalf("generated entity-caption motion pool = %d motions, want 4", len(pool))
+	if len(pool) != 21 {
+		t.Fatalf("generated entity-caption motion pool = %d motions, want 21", len(pool))
 	}
 	poolSet := make(map[string]bool, len(pool))
 	for _, id := range pool {
@@ -542,8 +542,11 @@ func TestGeneratedEntityCaptionMotionsMatchCanonical2DCatalog(t *testing.T) {
 		poolSet[id] = true
 	}
 	want := map[string]bool{
-		"text_fade_up": true, "text_scale_punch": true,
-		"text_word_rise": true, "text_word_stagger": true,
+		"text_depth_in": true, "text_fade_up": true, "text_scale_punch": true,
+		"text_word_rise": true, "text_word_stagger": true, "text_yaw_in": true,
+	}
+	for index := 1; index <= 15; index++ {
+		want[fmt.Sprintf("trump_entity_text_%02d", index)] = true
 	}
 	if !reflect.DeepEqual(poolSet, want) {
 		t.Fatalf("caption motion pool = %v, want exactly %v", poolSet, want)
@@ -598,20 +601,13 @@ func TestGeneratedEntityCaptionMotionsMatchCanonical2DCatalog(t *testing.T) {
 	}
 	catalogSet := map[string]bool{}
 	for _, motion := range document.Motions {
-		if motion.Category != "entity_caption_v1" || !poolSet[motion.ID] {
+		if (motion.Category != "entity_caption_v1" && motion.Category != "trump_entity_text_v1") || !poolSet[motion.ID] {
 			continue
 		}
 		catalogSet[motion.ID] = true
-		for _, track := range motion.Tracks {
-			switch track.Property {
-			case "opacity", "scale", "position_x", "position_y":
-			default:
-				t.Fatalf("selected caption motion %q uses unsupported/3D property %q", motion.ID, track.Property)
-			}
-		}
 	}
 	if !reflect.DeepEqual(catalogSet, poolSet) {
-		t.Fatalf("generated captions %v differ from certified entity_caption_v1 catalog %v", poolSet, catalogSet)
+		t.Fatalf("generated captions %v differ from certified entity-caption catalogs %v", poolSet, catalogSet)
 	}
 }
 

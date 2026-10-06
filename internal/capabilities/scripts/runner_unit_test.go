@@ -53,6 +53,12 @@ func TestDeriveErrorCode(t *testing.T) {
 		{"document failed", errors.New("upsert document for language es failed: document content rejected"), StagePublishingDocuments, "DOCUMENT_FAILED"},
 		{"generic fallback", errors.New("something unexpected happened"), StagePublishingDocuments, "PUBLISHING_DOCUMENTS_FAILED"},
 		{"incomplete render set", errors.New("INCOMPLETE_RENDER_SET: expected=20 successful=19 failed=1"), StagePublishingDocuments, "INCOMPLETE_RENDER_SET"},
+		// The certification verdict is classified BEFORE the generic heuristics:
+		// without its own case, the "render" substring inside the message routed
+		// the most actionable editorial failure to ENQUEUE_FAILED (observed on the
+		// 2026-10-05 burst: 62 terminal runs whose IMAGE FANOUT root cause was
+		// invisible in the error_code column).
+		{"semantic certification failure", errors.New("vidrush semantic certification failed: CERTIFIED=false (IMAGE FANOUT: images available = 1, expected at least 2)"), StageGeneratingSceneText, "SEMANTIC_CERTIFICATION_FAILED"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
