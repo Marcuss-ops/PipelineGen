@@ -260,34 +260,31 @@ var (
 		"quiet_hero_settle",
 		"soft_kinetic_rise",
 	}
-	// Short phrases use a deliberate, GPU safe subset of the modern Apple
-	// vocabulary. One word phrases get a more cinematic treatment: glyph lift
-	// and camera backed pushes make the single word feel like a trailer beat.
-	shortPhraseMotionCandidates = []string{
-		"apple_cinematic_exit",
-		"apple_expand_from_center",
-		"apple_focus_rise",
-		"apple_hero_statement",
-		"apple_line_cascade",
-		"apple_precision_type",
-		"apple_scale_push",
-		"apple_tracking_reveal",
-		"apple_vertical_glyph_lift",
-		"apple_word_cascade",
-		"apple_word_pulse",
-		"cinematic_camera_push",
-		"depth_parallax_reveal",
-		"magnetic_word_focus",
-		"text_3d_camera_push",
-		"text_3d_word_cascade",
-	}
-	singleWordMotionCandidates = []string{
+	// Short phrases rotate through the modern, typewriter and spatial text
+	// families so these authored treatments are reachable in normal runs.
+	shortPhraseMotionCandidates = combineMotionPools(modernAppleMotionCandidates, typewriterMotionCandidates, text3DMotionCandidates, brushPhraseMotionCandidates)
+	singleWordMotionCandidates  = []string{
 		"apple_hero_statement",
 		"apple_vertical_glyph_lift",
 		"cinematic_camera_push",
 		"text_3d_camera_push",
 	}
 	typewriterMotionCandidates = []string{
+		"typewriter_modern_01_monospace_block_cursor",
+		"typewriter_modern_02_kinetic_scramble",
+		"typewriter_modern_03_soft_opacity_ramp",
+		"typewriter_modern_04_character_bounce",
+		"typewriter_modern_05_backspace_correction",
+		"typewriter_modern_06_glow_beam_sweep",
+		"typewriter_modern_07_word_snap",
+		"typewriter_modern_08_mechanical_y_shift",
+		"typewriter_modern_09_highlighter_expansion",
+		"typewriter_modern_10_weight_ramp",
+		"typewriter_modern_11_dynamic_auto_wrap",
+		"typewriter_modern_12_glitch_pop",
+		"typewriter_modern_13_elastic_leading_cursor",
+		"typewriter_modern_14_focal_blur_dissolve",
+		"typewriter_modern_15_paper_punch_stencil",
 		"typewriter_clean",
 		"typewriter_glitch",
 		"typewriter_neon",
@@ -298,6 +295,19 @@ var (
 		"typewriter_scale_up",
 		"typewriter_blur_focus",
 		"typewriter_soft_lift",
+	}
+	brushPhraseMotionCandidates = []string{
+		"brush_phrase_arrow_point",
+		"brush_phrase_circle_focus",
+		"brush_phrase_gold_marker",
+		"brush_phrase_lower_rule",
+		"brush_phrase_red_brush_underline",
+		"brush_phrase_red_endpoint_rule",
+		"brush_phrase_red_underline",
+		"brush_phrase_signature_flourish",
+		"brush_phrase_white_double_underline",
+		"brush_phrase_white_light_sweep",
+		"brush_phrase_white_underline",
 	}
 	text3DMotionCandidates = []string{
 		"text_3d_camera_push",
@@ -373,11 +383,11 @@ var (
 		"text_3d_tilt_rise",
 		"phrase_apple_clean_02_blur_focus_snap",
 	}
-	phraseMotionCandidates      = combineMotionPools(classicAppleMotionCandidates, modernAppleMotionCandidates, typewriterMotionCandidates, text3DMotionCandidates)
+	phraseMotionCandidates      = combineMotionPools(classicAppleMotionCandidates, modernAppleMotionCandidates, typewriterMotionCandidates, text3DMotionCandidates, brushPhraseMotionCandidates)
 	renderSafeTextMotions       = phraseAppleCleanMotionCandidates
 	generatedPhraseMotions      = phraseMotionCandidates
 	generatedTextMotions        = phraseAppleCleanMotionCandidates
-	defaultPhraseMotionFamilies = []string{"classic_apple", "modern_apple", "typewriter", "text_3d_v1"}
+	defaultPhraseMotionFamilies = []string{"classic_apple", "modern_apple", "typewriter", "text_3d_v1", "brush_v1"}
 )
 
 // ImagePresetCandidates returns a copy of the render-safe generated-image

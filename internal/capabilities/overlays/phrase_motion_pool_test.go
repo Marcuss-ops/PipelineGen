@@ -271,14 +271,14 @@ func TestModernAppleFamilyExposesAllCatalogMotions(t *testing.T) {
 }
 
 func TestGeneratedPhraseRotationCoversFifteenAndFits24FPSTiming(t *testing.T) {
-	if len(generatedPhraseMotions) != 123 {
-		t.Fatalf("generated phrase pool has %d entries, want all 123 registered phrase motions", len(generatedPhraseMotions))
+	if len(generatedPhraseMotions) != 149 {
+		t.Fatalf("generated phrase pool has %d entries, want all 149 registered phrase motions", len(generatedPhraseMotions))
 	}
-	sequence := defaultPhraseMotionSequence("rotation-123", "run")
-	seenAll := make(map[string]bool, 123)
+	sequence := defaultPhraseMotionSequence("rotation-149", "run")
+	seenAll := make(map[string]bool, 149)
 	familyCounts := map[string]int{}
 	for ordinal, want := range sequence {
-		if got := selectPhraseMotion("rotation-123", "run", ordinal, nil); got != want {
+		if got := selectPhraseMotion("rotation-149", "run", ordinal, nil); got != want {
 			t.Fatalf("default phrase selector at ordinal %d = %q, want catalog rotation entry %q", ordinal, got, want)
 		}
 	}
@@ -297,15 +297,17 @@ func TestGeneratedPhraseRotationCoversFifteenAndFits24FPSTiming(t *testing.T) {
 				familyCounts["typewriter"]++
 			case containsString(text3DMotionCandidates, id):
 				familyCounts["text_3d_v1"]++
+			case containsString(brushPhraseMotionCandidates, id):
+				familyCounts["brush_v1"]++
 			default:
 				t.Fatalf("default phrase sequence selected unregistered motion %q", id)
 			}
 		}
 	}
-	if len(sequence) != 123 || len(seenAll) != 123 {
-		t.Fatalf("default phrase sequence covers %d motions, want all 123", len(seenAll))
+	if len(sequence) != 149 || len(seenAll) != 149 {
+		t.Fatalf("default phrase sequence covers %d motions, want all 149", len(seenAll))
 	}
-	for _, family := range []string{"classic_apple", "modern_apple", "typewriter", "text_3d_v1"} {
+	for _, family := range []string{"classic_apple", "modern_apple", "typewriter", "text_3d_v1", "brush_v1"} {
 		if familyCounts[family] == 0 {
 			t.Fatalf("first 15 phrase motions do not include family %s", family)
 		}
@@ -679,7 +681,7 @@ func TestGeneratedImageMotionPoolMatchesCanonicalChrononCatalog(t *testing.T) {
 				}
 			}
 		}
-		if definition.Category == "apple_v2" || definition.Category == "apple_v3" || definition.Category == "phrase_apple_clean_v1" || definition.Category == "apple_phrase_v1" || definition.Category == "text_3d_v1" || strings.HasPrefix(definition.ID, "typewriter_") {
+		if definition.Category == "apple_v2" || definition.Category == "apple_v3" || definition.Category == "phrase_apple_clean_v1" || definition.Category == "apple_phrase_v1" || definition.Category == "text_3d_v1" || (definition.Category == "brush_v1" && strings.HasPrefix(definition.ID, "brush_phrase_")) || strings.HasPrefix(definition.ID, "typewriter_") {
 			catalogPhraseIDs = append(catalogPhraseIDs, definition.ID)
 		}
 	}
@@ -699,8 +701,8 @@ func TestGeneratedImageMotionPoolMatchesCanonicalChrononCatalog(t *testing.T) {
 			t.Fatalf("selected image motion %d=%q, catalog=%q", i, selectedIDs[i], wantSelected[i])
 		}
 	}
-	if len(catalogPhraseIDs) != 123 || len(phraseMotionCandidates) != len(catalogPhraseIDs) {
-		t.Fatalf("catalog has %d phrase motions, callable pool has %d; want all 123", len(catalogPhraseIDs), len(phraseMotionCandidates))
+	if len(catalogPhraseIDs) != 149 || len(phraseMotionCandidates) != len(catalogPhraseIDs) {
+		t.Fatalf("catalog has %d phrase motions, callable pool has %d; want all 149", len(catalogPhraseIDs), len(phraseMotionCandidates))
 	}
 	callable := append([]string(nil), phraseMotionCandidates...)
 	sort.Strings(callable)

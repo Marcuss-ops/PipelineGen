@@ -438,11 +438,13 @@ func BuildPlan(input PlanInput, config PlannerConfig) (OverlayPlan, error) {
 		switch plan.Items[i].Kind {
 		case "text_phrase":
 			switch {
+			case len(strings.Fields(plan.Items[i].Text)) > 0 && len(strings.Fields(plan.Items[i].Text)) < 6:
+				// Length owns the Short Phrases lane even when the NLP priority
+				// also marks this phrase as important.
+				plan.Items[i].MotionID = selectShortPhraseMotion(input.PlanID, "run", phraseOrdinal, len(strings.Fields(plan.Items[i].Text)), input.PhraseMotions)
 			case input.HeavyPhrasePriority > 0 && itemPriority(plan.Items[i]) >= input.HeavyPhrasePriority:
 				plan.Items[i].MotionID = selectHeavyPhraseMotion(input.PlanID, "run", heavyOrdinal, input.PhraseMotions)
 				heavyOrdinal++
-			case len(strings.Fields(plan.Items[i].Text)) < 6:
-				plan.Items[i].MotionID = selectShortPhraseMotion(input.PlanID, "run", phraseOrdinal, len(strings.Fields(plan.Items[i].Text)), input.PhraseMotions)
 			case len(strings.Fields(plan.Items[i].Text)) >= 6:
 				plan.Items[i].MotionID = selectLongPhraseMotion(input.PlanID, "run", phraseOrdinal, input.PhraseMotions)
 			default:

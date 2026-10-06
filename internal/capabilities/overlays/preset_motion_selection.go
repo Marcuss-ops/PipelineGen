@@ -76,11 +76,11 @@ func selectLongPhraseMotion(jobID, sceneID string, ordinal int, pool []string) s
 	}
 }
 
-// selectShortPhraseMotion routes phrases of one to five words through a more
-// expressive modern-Apple pool. Single-word phrases use a tighter cinematic
-// subset with per-glyph lift and camera push options. A caller-provided pool
-// remains authoritative when it contains compatible motions; if it does not,
-// the certified short-phrase defaults keep the length based routing intact.
+// selectShortPhraseMotion routes phrases of one to five words through modern
+// Apple, typewriter and spatial 3D motions. Single-word phrases use a tighter
+// cinematic subset. A caller-provided pool remains authoritative when it
+// contains compatible motions; otherwise the certified short-phrase defaults
+// keep length-based routing intact.
 func selectShortPhraseMotion(jobID, sceneID string, ordinal, wordCount int, pool []string) string {
 	candidates := shortPhraseMotionCandidates
 	if wordCount == 1 {
@@ -118,7 +118,7 @@ func visiblePhraseEntrancePool(pool []string) []string {
 	}
 	out := make([]string, 0, len(pool))
 	for _, id := range pool {
-		if strings.HasPrefix(id, "typewriter_") ||
+		if strings.HasPrefix(id, "typewriter_") || strings.HasPrefix(id, "brush_phrase_") ||
 			strings.Contains(id, "slide") || strings.Contains(id, "reveal") ||
 			strings.Contains(id, "stagger") || strings.Contains(id, "cascade") ||
 			strings.Contains(id, "lift") || strings.Contains(id, "fold") ||
@@ -217,9 +217,9 @@ func CertifiedHeavyPhraseMotions() []string {
 // CertifiedPhraseMotions returns the certified render-safe motion pool this
 // build rotates over. It is the membership authority a caller-supplied pool is
 // validated against (see PlanInput.PhraseMotions): every id is a catalog motion
-// that lowers to composition tracks only, so an id outside this list either
-// needs a text-animator stack or a glow the native text lane rejects — it
-// cannot render here.
+// whose text, animator and companion-layer lowering is implemented by
+// RenderingGen. The complete membership list includes typewriter, spatial 3D
+// and brush phrase recipes.
 //
 // The returned slice is a copy — callers may keep it without pinning the
 // package's own storage.
@@ -257,10 +257,14 @@ func certifiedPhraseFamily(family string) []string {
 
 func phraseMotionFamilyCandidates(family string) []string {
 	switch family {
+	case "modern_product_v1":
+		return combineMotionPools(modernAppleMotionCandidates, typewriterMotionCandidates, text3DMotionCandidates, brushPhraseMotionCandidates)
 	case "modern_apple":
 		return modernAppleMotionCandidates
 	case "typewriter":
 		return typewriterMotionCandidates
+	case "brush_v1":
+		return brushPhraseMotionCandidates
 	case "text_3d_v1", "3d":
 		return text3DMotionCandidates
 	case "classic_apple":
