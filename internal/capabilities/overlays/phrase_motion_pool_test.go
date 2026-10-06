@@ -80,8 +80,8 @@ func TestBuildPlanRotatesWithinTheChannelPool(t *testing.T) {
 		Scenes: []SceneInput{{
 			ID: "scene-1",
 			Phrases: []TimedAnnotation{
-				{Text: "first grounded phrase", StartMs: 100, EndMs: 600, StartUS: 100_000, DurationUS: 500_000, Score: 1},
-				{Text: "second grounded phrase", StartMs: 700, EndMs: 1200, StartUS: 700_000, DurationUS: 500_000, Score: 0.9},
+				{Text: "the first grounded phrase stays on the important phrase lane", StartMs: 100, EndMs: 600, StartUS: 100_000, DurationUS: 500_000, Score: 1},
+				{Text: "the second grounded phrase stays on the important phrase lane", StartMs: 700, EndMs: 1200, StartUS: 700_000, DurationUS: 500_000, Score: 0.9},
 			},
 		}},
 	}
@@ -149,8 +149,8 @@ func TestBuildPlanLongPhrasesRotateWithinTheChannelPool(t *testing.T) {
 			DurationUS: 2_000_000,
 			Score:      1 - float64(i)*0.01,
 		}
-		if words := len(strings.Fields(longPhrases[i].Text)); words < 8 {
-			t.Fatalf("fixture phrase %d has %d words; the long-phrase path needs >= 8", i, words)
+		if words := len(strings.Fields(longPhrases[i].Text)); words < 6 {
+			t.Fatalf("fixture phrase %d has %d words; the long-phrase path needs >= 6", i, words)
 		}
 	}
 	input := PlanInput{
@@ -342,8 +342,8 @@ func TestGeneratedPhraseRotationCoversFifteenAndFits24FPSTiming(t *testing.T) {
 			t.Fatalf("motion %q repeated before the 15th phrase", item.MotionID)
 		}
 		seen[item.MotionID] = true
-		if got := item.MotionParams["enter_frames"]; got != 24 {
-			t.Fatalf("phrase %q enter_frames = %v, want 24 frames (half of 2 seconds at 24 fps)", item.Text, got)
+		if got := item.MotionParams["enter_frames"]; got != 16 {
+			t.Fatalf("phrase %q enter_frames = %v, want 16 frames (one third of 2 seconds at 24 fps)", item.Text, got)
 		}
 	}
 	if count != MaxPhraseOverlaysPerRun {
@@ -351,10 +351,23 @@ func TestGeneratedPhraseRotationCoversFifteenAndFits24FPSTiming(t *testing.T) {
 	}
 }
 
-func TestPhraseMotionEntranceUsesHalfPhraseDuration(t *testing.T) {
-	params := phraseMotionParams(TimedAnnotation{StartMs: 0, EndMs: 800, DurationUS: 800_000}, 24, 1)
-	if got := params["enter_frames"]; got != 10 {
-		t.Fatalf("short phrase enter_frames = %v, want 10 frames (half of 800 ms at 24 fps)", got)
+func TestPhraseMotionEntranceUsesOneThirdPhraseDuration(t *testing.T) {
+	for _, tc := range []struct {
+		name       string
+		phrase     TimedAnnotation
+		fpsNum     int
+		fpsDen     int
+		wantFrames int
+	}{
+		{name: "microsecond timing rounds up", phrase: TimedAnnotation{StartMs: 0, EndMs: 800, DurationUS: 800_000}, fpsNum: 24, fpsDen: 1, wantFrames: 7},
+		{name: "millisecond fallback", phrase: TimedAnnotation{StartMs: 100, EndMs: 3100}, fpsNum: 30, fpsDen: 1, wantFrames: 30},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			params := phraseMotionParams(tc.phrase, tc.fpsNum, tc.fpsDen)
+			if got := params["enter_frames"]; got != tc.wantFrames {
+				t.Fatalf("enter_frames = %v, want %d frames (one third of phrase duration)", got, tc.wantFrames)
+			}
+		})
 	}
 }
 

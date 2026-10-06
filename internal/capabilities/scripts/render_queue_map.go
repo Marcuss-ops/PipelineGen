@@ -58,10 +58,13 @@ func renderDynamicMapVideo(ctx context.Context, plan capoverlay.OverlayPlan) (st
 	// make a re-render of an already approved job silently different from the
 	// artifact that was approved.
 	seed := mapRunSeed(plan)
-	mapItemID := plan.Items[0].ID
-	cameraAnimation := deterministicMapStyle(seed, "map_camera", mapItemID, mapCameraAnimations)
-	labelAnimation := deterministicMapStyle(seed, "map_label", mapItemID, mapLabelAnimations)
-	basemapStyle := deterministicMapStyle(seed, "map_basemap", mapItemID, mapBasemapStyles())
+	// Select the map treatment once per parent run. Child map jobs can have
+	// different IDs and fingerprints, so sampling by the child would produce
+	// inconsistent camera/label/basemap motion within one video.
+	const mapRunStyleSlot = "run"
+	cameraAnimation := deterministicMapStyle(seed, "map_camera", mapRunStyleSlot, mapCameraAnimations)
+	labelAnimation := deterministicMapStyle(seed, "map_label", mapRunStyleSlot, mapLabelAnimations)
+	basemapStyle := deterministicMapStyle(seed, "map_basemap", mapRunStyleSlot, mapBasemapStyles())
 	if cameraAnimation == "" || labelAnimation == "" || basemapStyle == "" {
 		_ = os.RemoveAll(tmpDir)
 		return "", fmt.Errorf("dynamic map presentation catalog is empty")
@@ -262,7 +265,10 @@ var (
 // fingerprint was computed. It never reads wall-clock or process state, so the
 // same run always resolves the same map presentation.
 func mapRunSeed(plan capoverlay.OverlayPlan) string {
-	for _, candidate := range []string{plan.Fingerprint, plan.PlanID, plan.VideoID} {
+	// Child render plans get their own fingerprint and ID. Prefer the parent
+	// job identity so a run-level style choice remains the same across all map
+	// clips belonging to that video.
+	for _, candidate := range []string{plan.ResultJobID, plan.DriveJobID, plan.Fingerprint, plan.PlanID, plan.VideoID} {
 		if seed := strings.TrimSpace(candidate); seed != "" {
 			return seed
 		}

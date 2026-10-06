@@ -93,7 +93,7 @@ func TestPhraseImpactAnalyzerFallsBackToLexicalModeWithoutEmbedder(t *testing.T)
 
 func TestPhraseImpactAnalyzerUsesCanonicalSentenceSplitAndPassageVectors(t *testing.T) {
 	runner := &phraseImpactFakeRunner{replies: []string{
-		`{"ok":true,"sentences":["Il Milan vinse.","Poi celebrò!"]}`,
+		`{"ok":true,"sentences":[{"text":"Il Milan vinse.","start_byte":0,"end_byte":15},{"text":"Poi celebrò!","start_byte":16,"end_byte":29}]}`,
 		`{"ok":true,"result":{"summary":"Il Milan vinse.","bullet_points":[],"heavy_sentences":[]}}`,
 	}}
 	embedder := &phraseImpactFakeEmbedder{vectors: [][]float32{{1, 0}, {0, 1}}}
@@ -130,13 +130,27 @@ func TestPhraseImpactAnalyzerUsesCanonicalSentenceSplitAndPassageVectors(t *test
 
 func TestPhraseImpactAnalyzerRejectsEmbeddingCountMismatch(t *testing.T) {
 	runner := &phraseImpactFakeRunner{replies: []string{
-		`{"ok":true,"sentences":["One.","Two."]}`,
+		`{"ok":true,"sentences":[{"text":"One.","start_byte":0,"end_byte":4},{"text":"Two.","start_byte":5,"end_byte":9}]}`,
 	}}
 	embedder := &phraseImpactFakeEmbedder{vectors: [][]float32{{1, 0}}}
 	analyzer := NewPhraseImpactAnalyzer("bin/phrase_impact", runner, embedder)
 
 	if _, err := analyzer.Analyze(context.Background(), "One. Two.", "en"); err == nil {
 		t.Fatal("a vector/sentence count mismatch must fail closed rather than misalign scores")
+	}
+}
+
+func TestPhraseImpactAnalyzerRejectsInvalidSentenceByteOffsets(t *testing.T) {
+	runner := &phraseImpactFakeRunner{replies: []string{
+		`{"ok":true,"sentences":[{"text":"Milan." ,"start_byte":0,"end_byte":5}]}`,
+	}}
+	embedder := &phraseImpactFakeEmbedder{vectors: [][]float32{{1, 0}}}
+	analyzer := NewPhraseImpactAnalyzer("bin/phrase_impact", runner, embedder)
+	if _, err := analyzer.Analyze(context.Background(), "Il Milan vinse.", "it"); err == nil || !strings.Contains(err.Error(), "invalid UTF-8 byte offsets") {
+		t.Fatalf("Analyze error = %v, want invalid source offsets rejected before embedding", err)
+	}
+	if len(embedder.calls) != 0 {
+		t.Fatalf("embedder was called with invalid source offsets: %#v", embedder.calls)
 	}
 }
 

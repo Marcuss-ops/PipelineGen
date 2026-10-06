@@ -25,7 +25,11 @@ type phraseImpactResponse struct {
 		HeavySentences []scriptpkg.ImportantSentence `json:"heavy_sentences"`
 		Timings        scriptpkg.PhraseImpactTimings `json:"timings"`
 	} `json:"result"`
-	Sentences []string `json:"sentences"`
+	Sentences []struct {
+		Text      string `json:"text"`
+		StartByte int    `json:"start_byte"`
+		EndByte   int    `json:"end_byte"`
+	} `json:"sentences"`
 }
 
 type passageBatchEmbedder interface {
@@ -74,12 +78,19 @@ func (a *PhraseImpactAnalyzer) Analyze(ctx context.Context, transcript, language
 		if !split.OK || len(split.Sentences) == 0 {
 			return scriptpkg.PhraseImpactResult{}, fmt.Errorf("phrase-impact sentence split failed: %s", split.Error)
 		}
-		vectors, err := a.embedder.EmbedPassagesBatch(ctx, split.Sentences)
+		sentences := make([]string, len(split.Sentences))
+		for i, sentence := range split.Sentences {
+			if sentence.StartByte < 0 || sentence.EndByte <= sentence.StartByte || sentence.EndByte > len(transcript) || !bytes.Equal([]byte(transcript[sentence.StartByte:sentence.EndByte]), []byte(sentence.Text)) {
+				return scriptpkg.PhraseImpactResult{}, fmt.Errorf("phrase-impact sentence %d has invalid UTF-8 byte offsets", i)
+			}
+			sentences[i] = sentence.Text
+		}
+		vectors, err := a.embedder.EmbedPassagesBatch(ctx, sentences)
 		if err != nil {
 			return scriptpkg.PhraseImpactResult{}, fmt.Errorf("phrase-impact E5 embeddings: %w", err)
 		}
-		if len(vectors) != len(split.Sentences) {
-			return scriptpkg.PhraseImpactResult{}, fmt.Errorf("phrase-impact E5 returned %d embeddings for %d sentences", len(vectors), len(split.Sentences))
+		if len(vectors) != len(sentences) {
+			return scriptpkg.PhraseImpactResult{}, fmt.Errorf("phrase-impact E5 returned %d embeddings for %d sentences", len(vectors), len(sentences))
 		}
 		rows := make([][]float32, len(vectors))
 		for i := range vectors {

@@ -248,7 +248,7 @@ func isImageOverlayItem(item capabilityoverlay.OverlayItem) bool {
 		return false
 	}
 	switch item.Kind {
-	case string(capabilityoverlay.KindEntityImage), string(capabilityoverlay.KindEntityCard), string(capabilityoverlay.KindImagePopup), string(capabilityoverlay.KindProduct), string(capabilityoverlay.KindLogo):
+	case "image", string(capabilityoverlay.KindEntityImage), string(capabilityoverlay.KindEntityCard), string(capabilityoverlay.KindImagePopup), string(capabilityoverlay.KindProduct), string(capabilityoverlay.KindLogo):
 		return true
 	default:
 		return false

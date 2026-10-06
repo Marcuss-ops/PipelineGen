@@ -441,7 +441,9 @@ func BuildPlan(input PlanInput, config PlannerConfig) (OverlayPlan, error) {
 			case input.HeavyPhrasePriority > 0 && itemPriority(plan.Items[i]) >= input.HeavyPhrasePriority:
 				plan.Items[i].MotionID = selectHeavyPhraseMotion(input.PlanID, "run", heavyOrdinal, input.PhraseMotions)
 				heavyOrdinal++
-			case len(strings.Fields(plan.Items[i].Text)) >= 8:
+			case len(strings.Fields(plan.Items[i].Text)) < 6:
+				plan.Items[i].MotionID = selectShortPhraseMotion(input.PlanID, "run", phraseOrdinal, len(strings.Fields(plan.Items[i].Text)), input.PhraseMotions)
+			case len(strings.Fields(plan.Items[i].Text)) >= 6:
 				plan.Items[i].MotionID = selectLongPhraseMotion(input.PlanID, "run", phraseOrdinal, input.PhraseMotions)
 			default:
 				plan.Items[i].MotionID = selectPhraseMotion(input.PlanID, "run", phraseOrdinal, input.PhraseMotions)
@@ -489,7 +491,7 @@ func itemPriority(item OverlayItem) float64 {
 	}
 }
 
-// phraseMotionParams gives the entrance half of the phrase's on-screen
+// phraseMotionParams gives the entrance one third of the phrase's on-screen
 // duration. Motion catalog windows are frame counts, so convert that duration
 // at the output frame rate before sending the plan.
 func phraseMotionParams(phrase TimedAnnotation, fpsNum, fpsDen int) map[string]any {
@@ -500,9 +502,8 @@ func phraseMotionParams(phrase TimedAnnotation, fpsNum, fpsDen int) map[string]a
 	if phraseDurationUS <= 0 && phrase.EndMs > phrase.StartMs {
 		phraseDurationUS = (phrase.EndMs - phrase.StartMs) * 1_000
 	}
-	entranceDurationUS := phraseDurationUS / 2
-	framesNumerator := entranceDurationUS * int64(fpsNum)
-	framesDenominator := 1_000_000 * int64(fpsDen)
+	framesNumerator := phraseDurationUS * int64(fpsNum)
+	framesDenominator := 3_000_000 * int64(fpsDen)
 	frames := (framesNumerator + framesDenominator - 1) / framesDenominator
 	if frames < 1 {
 		frames = 1

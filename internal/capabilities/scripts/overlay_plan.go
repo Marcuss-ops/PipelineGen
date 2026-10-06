@@ -182,6 +182,7 @@ func compileOverlayPlanWithMotionOffset(result *GenerateResult, language Languag
 		return nil, fmt.Errorf("overlay plan: plan: %w", err)
 	}
 	items := plannerPlan.Items
+	attachGroundedCaptionsToSceneImages(items, result.Scenes, planID)
 	if canvas.MapsOnly {
 		kept := items[:0]
 		for _, item := range items {
@@ -217,7 +218,7 @@ func compileOverlayPlanWithMotionOffset(result *GenerateResult, language Languag
 				merged[k] = v
 			}
 			for k, v := range styleParams {
-				if isRuntimeTextStyleParam(k) && !isTextOverlayKind(items[i].Kind) {
+				if isRuntimeTextStyleParam(k) && (isImageOverlayItem(items[i]) || (!isTextOverlayKind(items[i].Kind) && strings.TrimSpace(items[i].EntityCaption) == "")) {
 					continue
 				}
 				if strings.HasPrefix(k, "image_") {
@@ -377,10 +378,7 @@ func compileOverlayPlanWithMotionOffset(result *GenerateResult, language Languag
 			if !isEntityOverlayKind(items[i].Kind) {
 				continue
 			}
-			if items[i].Params == nil {
-				items[i].Params = map[string]any{}
-			}
-			items[i].Params["font_family"] = fontFamily
+			items[i].CaptionFontFamily = fontFamily
 		}
 	}
 	if canvas.Style != nil && canvas.Style.Image != nil {

@@ -224,7 +224,10 @@ func (e *QueueRenderEnqueuer) enqueueChrononPlan(ctx context.Context, plan capov
 	// registry dependency during plan preparation. DejaVuSans is also staged
 	// because RenderingGen selects it for Cyrillic semantic plans.
 	for _, item := range semanticPlan.Items {
-		if item.Text != "" || item.TemplateID == "IMPORTANT_WORD" || item.TemplateID == "IMPORTANT_PHRASE" || item.TemplateID == "lower_third" {
+		// Image presets may build their own text layer for entity captions even
+		// when the source overlay has no standalone Text field. Stage the preset
+		// fonts for those items too so the runtime can compile that caption.
+		if item.Text != "" || item.TemplateID == "IMPORTANT_WORD" || item.TemplateID == "IMPORTANT_PHRASE" || item.TemplateID == "lower_third" || isImageOverlayItem(item) || item.EntityCaption != "" || len(item.ImageLayers) > 0 {
 			if _, ok := seen[capoverlay.GoldenPresetFontHash]; !ok {
 				assets = append(assets, NewRenderQueueAsset(
 					kernelasset.Ref{AssetID: capoverlay.CanonicalPresetFontPath, SHA256: capoverlay.GoldenPresetFontHash},

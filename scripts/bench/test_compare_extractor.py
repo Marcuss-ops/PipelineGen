@@ -2,6 +2,7 @@ import math
 import unittest
 
 from scripts.bench.compare_extractor import CASES, HEAVY_CASE_IDS, entity_metrics, gold_rows, ndcg, validate_cases
+from scripts.bench.elon_phrase_impact import is_extractive
 
 
 class SyntheticExtractorComparisonTests(unittest.TestCase):
@@ -23,6 +24,12 @@ class SyntheticExtractorComparisonTests(unittest.TestCase):
         tesla = [entity for entity in gold_rows(case) if entity["text"] == "Tesla"]
         self.assertEqual(len(tesla), 3)
         self.assertEqual([case["text"].encode()[item["start"]:item["end"]].decode() for item in tesla], ["Tesla"] * 3)
+
+    def test_extractive_summary_accepts_source_sentences_and_rejects_inserted_or_partial_text(self):
+        source = ["La frase originale contiene la negazione non avrebbe annunciato licenziamenti.", "Un'altra frase sorgente completa."]
+        self.assertTrue(is_extractive(" ".join(source), source))
+        self.assertFalse(is_extractive("Tesla ha annunciato licenziamenti.", source))
+        self.assertFalse(is_extractive("La frase originale contiene la negazione", source))
 
     def test_utf8_gold_offsets_match_accented_money_and_place(self):
         case = next(case for case in CASES if case["id"] == "S011")

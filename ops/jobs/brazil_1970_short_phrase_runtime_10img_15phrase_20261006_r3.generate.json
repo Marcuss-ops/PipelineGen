@@ -1,0 +1,356 @@
+{
+  "version": 2,
+  "preset": "custom",
+  "correlation_id": "brazil-1970-short-phrase-runtime-10img-15phrase-20261006-r3",
+  "items": [
+    {
+      "id": "brazil-1970-short-phrase-runtime-10img-15phrase-20261006-r3",
+      "title": "Brasile 1970 — runtime short phrases: 10 immagini, 15 frasi",
+      "project": "brazil-1970-short-phrase-runtime-10img-15phrase-20261006-r3",
+      "language": "it",
+      "tone": "documentario sportivo, autorevole e cinematografico",
+      "style": "Italiano naturale. Mantieni corretti i nomi Brasile, Pelé, Gérson, Jairzinho e Carlos Alberto. Evidenzia il risultato della finale e il terzo titolo mondiale senza aggiungere risultati non presenti nella fonte.",
+      "source": {
+        "type": "text",
+        "topic": "La vittoria del Brasile di Pelé ai Mondiali di calcio del 1970",
+        "source_text": "Il Campionato del mondo di calcio del 1970 si disputò in Messico. Nella finale del 21 giugno, il Brasile batté l'Italia per 4-1 allo stadio Azteca di Città del Messico. Pelé segnò il primo gol; Gérson, Jairzinho e Carlos Alberto segnarono gli altri. Con quella vittoria, il Brasile conquistò il suo terzo titolo mondiale e divenne la prima nazionale a vincere tre Coppe del Mondo. La squadra è ricordata per il gioco offensivo e la qualità tecnica. Il 4-1 della finale e i quattro marcatori sono il cuore di questa storia.",
+        "cache": {},
+        "research": {}
+      },
+      "script_params": {
+        "target_words": 120,
+        "min_words": 80,
+        "segment_words": 12,
+        "segments": [
+          {
+            "id": "brazil-beat-01",
+            "kind": "narration",
+            "topic": "La finale dei Mondiali 1970",
+            "source_text": "Il 21 giugno 1970, Brasile e Italia si affrontano nella finale della Coppa del Mondo allo stadio Azteca, a Città del Messico.",
+            "target_words": 12,
+            "min_words": 8
+          },
+          {
+            "id": "brazil-beat-02",
+            "kind": "narration",
+            "topic": "Pelé apre il risultato",
+            "source_text": "Pelé segna il primo gol della finale per il Brasile. È il primo momento decisivo della partita contro l’Italia.",
+            "target_words": 12,
+            "min_words": 8
+          },
+          {
+            "id": "brazil-beat-03",
+            "kind": "narration",
+            "topic": "Il gol di Gérson",
+            "source_text": "Gérson segna il secondo gol brasiliano nella finale mondiale del 1970, disputata allo stadio Azteca in Messico.",
+            "target_words": 12,
+            "min_words": 8
+          },
+          {
+            "id": "brazil-beat-04",
+            "kind": "narration",
+            "topic": "Jairzinho trova la rete",
+            "source_text": "Jairzinho segna per il Brasile nella finale contro l’Italia. La squadra brasiliana continua a costruire il vantaggio.",
+            "target_words": 12,
+            "min_words": 8
+          },
+          {
+            "id": "brazil-beat-05",
+            "kind": "narration",
+            "topic": "Carlos Alberto chiude la finale",
+            "source_text": "Carlos Alberto segna l’ultimo gol del Brasile nella finale del 1970, completando il risultato contro l’Italia.",
+            "target_words": 12,
+            "min_words": 8
+          },
+          {
+            "id": "brazil-beat-06",
+            "kind": "narration",
+            "topic": "Il risultato: quattro a uno",
+            "source_text": "Il Brasile batte l’Italia per quattro a uno allo stadio Azteca nella finale del 21 giugno 1970.",
+            "target_words": 12,
+            "min_words": 8
+          },
+          {
+            "id": "brazil-beat-07",
+            "kind": "narration",
+            "topic": "Il terzo titolo mondiale",
+            "source_text": "La vittoria in Messico consegna al Brasile il suo terzo titolo mondiale di calcio.",
+            "target_words": 12,
+            "min_words": 8
+          },
+          {
+            "id": "brazil-beat-08",
+            "kind": "narration",
+            "topic": "Un primato nella Coppa del Mondo",
+            "source_text": "Con tre titoli, il Brasile diventa la prima nazionale a vincere tre Coppe del Mondo.",
+            "target_words": 12,
+            "min_words": 8
+          },
+          {
+            "id": "brazil-beat-09",
+            "kind": "narration",
+            "topic": "Il torneo si gioca in Messico",
+            "source_text": "La Coppa del Mondo 1970 si disputa in Messico e la finale si gioca allo stadio Azteca di Città del Messico.",
+            "target_words": 12,
+            "min_words": 8
+          },
+          {
+            "id": "brazil-beat-10",
+            "kind": "narration",
+            "topic": "La squadra del 1970",
+            "source_text": "La selezione brasiliana del 1970 è ricordata per il gioco offensivo e la qualità tecnica dei suoi giocatori.",
+            "target_words": 12,
+            "min_words": 8
+          }
+        ],
+        "images_per_scene": 1
+      },
+      "output": {
+        "render": {
+          "enabled": true,
+          "require_gpu": true,
+          "subtitles": {
+            "enabled": false
+          }
+        },
+        "audio": {},
+        "extract_entities": "enabled",
+        "generate_scene_images": "enabled",
+        "save_to_db": true,
+        "generate_metadata": true,
+        "generate_timeline": true,
+        "voiceover_enabled": "enabled"
+      },
+      "overlay_background": {
+        "kind": "image",
+        "asset_id": "short-phrase-black-gradient-dots",
+        "fit": "cover",
+        "opacity": 1
+      },
+      "max_phrase_overlays": 15,
+      "max_image_overlays": 10,
+      "audio": {
+        "mode": "COMBINED_TIMELINE",
+        "timing": {
+          "mode": "required",
+          "boundary": "word",
+          "formats": [
+            "json",
+            "srt",
+            "vtt"
+          ]
+        }
+      },
+      "docs": {
+        "enabled": false
+      },
+      "media_plan": {
+        "mode": "hybrid",
+        "provider_policy": {
+          "artlist": "disabled",
+          "youtube": "disabled",
+          "internet_images": "enabled",
+          "image_generation": "disabled",
+          "geocoding": "disabled"
+        },
+        "cache": {
+          "read": true,
+          "write": true
+        },
+        "extraction": {
+          "enabled": true,
+          "include": [
+            "entities",
+            "special_names",
+            "important_phrases",
+            "metrics",
+            "dates"
+          ],
+          "max_entities_per_segment": 5,
+          "max_important_phrases_per_segment": 2,
+          "important_phrases": [
+            "Final da Copa de 1970",
+            "Estádio Azteca",
+            "Brasil contra a Itália",
+            "Pelé abriu o placar",
+            "O primeiro gol foi brasileiro",
+            "Gérson marcou o segundo gol",
+            "Jairzinho também marcou",
+            "Carlos Alberto fechou o placar",
+            "Brasil venceu por 4 a 1",
+            "Quatro a um na final",
+            "Terceiro título mundial",
+            "Brasil, tricampeão do mundo",
+            "Final disputada no México",
+            "Seleção de jogo ofensivo",
+            "Uma geração de talento"
+          ],
+          "max_image_queries_per_segment": 1,
+          "entity_images": {
+            "enabled": true,
+            "entity_types": [
+              "PERSON"
+            ],
+            "max_per_entity": 1,
+            "upload_to_drive": true
+          }
+        },
+        "planner": {
+          "candidate_limit": 10
+        },
+        "materialization": {
+          "mode": "selected",
+          "upload_to_drive": true,
+          "wait_for_ready": true
+        },
+        "searches": [
+          {
+            "segment_id": "brazil-beat-01",
+            "slot": "secondary_image",
+            "query": "Finale Brasile Italia Coppa del Mondo 1970 stadio Azteca foto archivio",
+            "providers": [
+              "internet_images"
+            ],
+            "media_types": [
+              "image"
+            ],
+            "limit": 1
+          },
+          {
+            "segment_id": "brazil-beat-02",
+            "slot": "secondary_image",
+            "query": "Pelé gol finale Brasile Italia 1970 fotografia storica",
+            "providers": [
+              "internet_images"
+            ],
+            "media_types": [
+              "image"
+            ],
+            "limit": 1
+          },
+          {
+            "segment_id": "brazil-beat-03",
+            "slot": "secondary_image",
+            "query": "Gérson Brasile Italia finale 1970 gol fotografia d archivio",
+            "providers": [
+              "internet_images"
+            ],
+            "media_types": [
+              "image"
+            ],
+            "limit": 1
+          },
+          {
+            "segment_id": "brazil-beat-04",
+            "slot": "secondary_image",
+            "query": "Jairzinho gol Brasile Coppa del Mondo 1970 fotografia",
+            "providers": [
+              "internet_images"
+            ],
+            "media_types": [
+              "image"
+            ],
+            "limit": 1
+          },
+          {
+            "segment_id": "brazil-beat-05",
+            "slot": "secondary_image",
+            "query": "Carlos Alberto gol finale mondiale 1970 Brasile Italia",
+            "providers": [
+              "internet_images"
+            ],
+            "media_types": [
+              "image"
+            ],
+            "limit": 1
+          },
+          {
+            "segment_id": "brazil-beat-06",
+            "slot": "secondary_image",
+            "query": "Brasile Itália quatro a um final Copa 1970 fotografia histórica",
+            "providers": [
+              "internet_images"
+            ],
+            "media_types": [
+              "image"
+            ],
+            "limit": 1
+          },
+          {
+            "segment_id": "brazil-beat-07",
+            "slot": "secondary_image",
+            "query": "Brasil terceiro título mundial Copa 1970 equipe fotografia",
+            "providers": [
+              "internet_images"
+            ],
+            "media_types": [
+              "image"
+            ],
+            "limit": 1
+          },
+          {
+            "segment_id": "brazil-beat-08",
+            "slot": "secondary_image",
+            "query": "Brasil primeiro tricampeão Copa do Mundo Jules Rimet 1970",
+            "providers": [
+              "internet_images"
+            ],
+            "media_types": [
+              "image"
+            ],
+            "limit": 1
+          },
+          {
+            "segment_id": "brazil-beat-09",
+            "slot": "secondary_image",
+            "query": "Estádio Azteca Copa do Mundo México 1970 fotografia histórica",
+            "providers": [
+              "internet_images"
+            ],
+            "media_types": [
+              "image"
+            ],
+            "limit": 1
+          },
+          {
+            "segment_id": "brazil-beat-10",
+            "slot": "secondary_image",
+            "query": "Seleção brasileira 1970 equipe futebol ofensivo foto arquivo",
+            "providers": [
+              "internet_images"
+            ],
+            "media_types": [
+              "image"
+            ],
+            "limit": 1
+          }
+        ]
+      },
+      "phrase_motion_family": "modern_apple",
+      "overlay_style": {
+        "font_family": "inter",
+        "color": [
+          0.96,
+          0.97,
+          1.0,
+          1.0
+        ],
+        "size": {
+          "font_size": 82
+        },
+        "shadow": {
+          "enabled": true,
+          "color": "#02040A",
+          "opacity": 0.7,
+          "blur": 14,
+          "offset": [
+            0,
+            4
+          ]
+        },
+        "glow_size": 0,
+        "stroke_size": 0
+      }
+    }
+  ]
+}

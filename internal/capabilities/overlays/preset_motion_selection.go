@@ -76,6 +76,34 @@ func selectLongPhraseMotion(jobID, sceneID string, ordinal int, pool []string) s
 	}
 }
 
+// selectShortPhraseMotion routes phrases of one to five words through a more
+// expressive modern-Apple pool. Single-word phrases use a tighter cinematic
+// subset with per-glyph lift and camera push options. A caller-provided pool
+// remains authoritative when it contains compatible motions; if it does not,
+// the certified short-phrase defaults keep the length based routing intact.
+func selectShortPhraseMotion(jobID, sceneID string, ordinal, wordCount int, pool []string) string {
+	candidates := shortPhraseMotionCandidates
+	if wordCount == 1 {
+		candidates = singleWordMotionCandidates
+	}
+	if len(pool) > 0 {
+		allowed := make(map[string]struct{}, len(pool))
+		for _, id := range pool {
+			allowed[id] = struct{}{}
+		}
+		compatible := make([]string, 0, len(candidates))
+		for _, id := range candidates {
+			if _, ok := allowed[id]; ok {
+				compatible = append(compatible, id)
+			}
+		}
+		if len(compatible) > 0 {
+			candidates = compatible
+		}
+	}
+	return selectMotionFromPool(jobID, sceneID, "short_phrase", ordinal, candidates)
+}
+
 // visiblePhraseEntrancePool limits the guaranteed entrance slot to certified
 // motions with an unmistakable reveal. The general phrase pool remains fully
 // available in the other slots, including calmer fades and settles.
@@ -200,12 +228,24 @@ func CertifiedPhraseMotions() []string {
 }
 
 // LongPhraseMotionCandidates exposes the read-only block-level entrance list
-// the planner prefers for cards of 8+ words. selectLongPhraseMotion intersects
+// the planner prefers for cards of 6+ words. selectLongPhraseMotion intersects
 // a caller pool with it and falls back to the pool itself when that
 // intersection cannot rotate, so operators and contract tests can check a
 // channel profile's pool actually rotates its long cards.
 func LongPhraseMotionCandidates() []string {
 	return append([]string(nil), longPhraseMotionCandidates...)
+}
+
+// ShortPhraseMotionCandidates exposes the read-only modern motion pool used
+// for phrases shorter than six words.
+func ShortPhraseMotionCandidates() []string {
+	return append([]string(nil), shortPhraseMotionCandidates...)
+}
+
+// SingleWordMotionCandidates exposes the read-only cinematic pool used for
+// one-word phrase beats.
+func SingleWordMotionCandidates() []string {
+	return append([]string(nil), singleWordMotionCandidates...)
 }
 
 // certifiedPhraseFamily returns the subset of the production-safe phrase

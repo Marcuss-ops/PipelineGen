@@ -1,0 +1,385 @@
+{
+  "version": 2,
+  "preset": "custom",
+  "force_refresh": false,
+  "items": [
+    {
+      "id": "brasil-10-images-15-short-phrases-modern-v2-20261006",
+      "project": "brasil-10-images-15-short-phrases-modern-v2-20261006",
+      "title": "Brasil — 10 imagens, 15 frases curtas | Inter + render GPU (corrigido)",
+      "language": "pt",
+      "tone": "atlas visual documental, claro e informativo",
+      "style": "Português brasileiro natural. Use apenas as relações geográficas indicadas. Mostre cada cidade em uma cena individual; mantenha nomes e rótulos legíveis.",
+      "model": "gemma4:e4b",
+      "source": {
+        "type": "text",
+        "topic": "Dez cidades brasileiras em imagens e mapas",
+        "source_text": "São Paulo é uma cidade brasileira situada em sudeste. O render mostra uma imagem identificada da cidade e sua localização no mapa do Brasil. Brasília é uma cidade brasileira situada em Distrito Federal. Brasília localiza a capital federal no Distrito Federal. A frase visual desta etapa é: Brasília localiza a capital federal. O render mostra uma imagem identificada da cidade e sua localização no mapa do Brasil. Rio de Janeiro é uma cidade brasileira situada em litoral sudeste. O render mostra uma imagem identificada da cidade e sua localização no mapa do Brasil. Salvador é uma cidade brasileira situada em Bahia. Salvador apresenta uma referência urbana no litoral da Bahia. O render mostra uma imagem identificada da cidade e sua localização no mapa do Brasil. Manaus é uma cidade brasileira situada em Amazonas. Manaus abre o recorte amazônico, às margens do Rio Negro. O render mostra uma imagem identificada da cidade e sua localização no mapa do Brasil. Curitiba é uma cidade brasileira situada em Paraná. Curitiba situa a próxima imagem na região Sul, no estado do Paraná. O render mostra uma imagem identificada da cidade e sua localização no mapa do Brasil. Recife é uma cidade brasileira situada em Pernambuco. Pontes, rios e costa dão forma ao Recife, em Pernambuco. O render mostra uma imagem identificada da cidade e sua localização no mapa do Brasil. Porto Alegre é uma cidade brasileira situada em Rio Grande do Sul. Porto Alegre representa a capital gaúcha junto ao Guaíba. O render mostra uma imagem identificada da cidade e sua localização no mapa do Brasil. Belo Horizonte é uma cidade brasileira situada em Minas Gerais. Belo Horizonte identifica um polo urbano no interior de Minas Gerais. O render mostra uma imagem identificada da cidade e sua localização no mapa do Brasil. Fortaleza é uma cidade brasileira situada em Ceará. Fortaleza fecha o percurso na costa do Ceará. O render mostra uma imagem identificada da cidade e sua localização no mapa do Brasil. Frase visual: Dez cidades brasileiras. Frase visual: São Paulo em movimento. Frase visual: Brasília, capital federal. Frase visual: Rio entre morros e mar. Frase visual: Baía e relevo costeiro. Frase visual: Salvador no litoral baiano. Frase visual: Manaus junto ao Rio Negro. Frase visual: Recorte amazônico. Frase visual: Curitiba no Paraná. Frase visual: Pontes cruzam Recife. Frase visual: Rios, pontes e costa. Frase visual: Porto Alegre e o Guaíba. Frase visual: Belo Horizonte em Minas. Frase visual: Fortaleza na costa cearense. Frase visual: Um país continental."
+      },
+      "script_params": {
+        "target_words": 360,
+        "min_words": 240,
+        "segment_words": 36,
+        "single_scene": false,
+        "images_per_scene": 1,
+        "skip_quality_gate": false,
+        "source_text_verbatim": true,
+        "segments": [
+          {
+            "id": "sao-paulo",
+            "kind": "narration",
+            "topic": "São Paulo, Brasil",
+            "source_text": "São Paulo é uma cidade brasileira situada em sudeste. Frase visual: Dez cidades brasileiras. Frase visual: São Paulo em movimento.",
+            "target_words": 36,
+            "min_words": 24
+          },
+          {
+            "id": "brasilia",
+            "kind": "narration",
+            "topic": "Brasília, Brasil",
+            "source_text": "Brasília é uma cidade brasileira situada em Distrito Federal. Brasília localiza a capital federal no Distrito Federal. A frase visual desta etapa é: Brasília localiza a capital federal. Frase visual: Brasília, capital federal.",
+            "target_words": 36,
+            "min_words": 24
+          },
+          {
+            "id": "rio-de-janeiro",
+            "kind": "narration",
+            "topic": "Rio de Janeiro, Brasil",
+            "source_text": "Rio de Janeiro é uma cidade brasileira situada em litoral sudeste. Frase visual: Rio entre morros e mar. Frase visual: Baía e relevo costeiro.",
+            "target_words": 36,
+            "min_words": 24
+          },
+          {
+            "id": "salvador",
+            "kind": "narration",
+            "topic": "Salvador, Brasil",
+            "source_text": "Salvador é uma cidade brasileira situada em Bahia. Salvador apresenta uma referência urbana no litoral da Bahia. Frase visual: Salvador no litoral baiano.",
+            "target_words": 36,
+            "min_words": 24
+          },
+          {
+            "id": "manaus",
+            "kind": "narration",
+            "topic": "Manaus, Brasil",
+            "source_text": "Manaus é uma cidade brasileira situada em Amazonas. Manaus abre o recorte amazônico, às margens do Rio Negro. Frase visual: Manaus junto ao Rio Negro. Frase visual: Recorte amazônico.",
+            "target_words": 36,
+            "min_words": 24
+          },
+          {
+            "id": "curitiba",
+            "kind": "narration",
+            "topic": "Curitiba, Brasil",
+            "source_text": "Curitiba é uma cidade brasileira situada em Paraná. Curitiba situa a próxima imagem na região Sul, no estado do Paraná. Frase visual: Curitiba no Paraná.",
+            "target_words": 36,
+            "min_words": 24
+          },
+          {
+            "id": "recife",
+            "kind": "narration",
+            "topic": "Recife, Brasil",
+            "source_text": "Recife é uma cidade brasileira situada em Pernambuco. Pontes, rios e costa dão forma ao Recife, em Pernambuco. Frase visual: Pontes cruzam Recife. Frase visual: Rios, pontes e costa.",
+            "target_words": 36,
+            "min_words": 24
+          },
+          {
+            "id": "porto-alegre",
+            "kind": "narration",
+            "topic": "Porto Alegre, Brasil",
+            "source_text": "Porto Alegre é uma cidade brasileira situada em Rio Grande do Sul. Porto Alegre representa a capital gaúcha junto ao Guaíba. Frase visual: Porto Alegre e o Guaíba.",
+            "target_words": 36,
+            "min_words": 24
+          },
+          {
+            "id": "belo-horizonte",
+            "kind": "narration",
+            "topic": "Belo Horizonte, Brasil",
+            "source_text": "Belo Horizonte é uma cidade brasileira situada em Minas Gerais. Belo Horizonte identifica um polo urbano no interior de Minas Gerais. Frase visual: Belo Horizonte em Minas.",
+            "target_words": 36,
+            "min_words": 24
+          },
+          {
+            "id": "fortaleza",
+            "kind": "narration",
+            "topic": "Fortaleza, Brasil",
+            "source_text": "Fortaleza é uma cidade brasileira situada em Ceará. Fortaleza fecha o percurso na costa do Ceará. Frase visual: Fortaleza na costa cearense. Frase visual: Um país continental.",
+            "target_words": 36,
+            "min_words": 24
+          }
+        ]
+      },
+      "max_phrase_overlays": 15,
+      "max_image_overlays": 10,
+      "output": {
+        "save_to_db": true,
+        "extract_entities": true,
+        "generate_metadata": true,
+        "generate_timeline": true,
+        "voiceover_enabled": true,
+        "languages": [
+          "pt"
+        ],
+        "drive_folder_id": "1cW_SrXc779dss5uwwDt0lgbQt8dN4Y8b",
+        "render": {
+          "enabled": true,
+          "drive_folder_id": "1cW_SrXc779dss5uwwDt0lgbQt8dN4Y8b",
+          "drive_subfolder_name": "Brasil 10 imagens 15 frasi corte Inter GPU 2026-10-06 v2",
+          "require_gpu": true,
+          "subtitles": {
+            "enabled": false
+          },
+          "render_concurrency": 2
+        }
+      },
+      "audio": {
+        "mode": "COMBINED_TIMELINE",
+        "timing": {
+          "mode": "required",
+          "boundary": "word",
+          "formats": [
+            "json",
+            "srt",
+            "vtt"
+          ]
+        }
+      },
+      "docs": {
+        "enabled": false
+      },
+      "media_plan": {
+        "mode": "hybrid",
+        "provider_policy": {
+          "youtube": "disabled",
+          "internet_images": "enabled",
+          "image_generation": "disabled",
+          "artlist": "disabled",
+          "geocoding": "enabled"
+        },
+        "cache": {
+          "read": true,
+          "write": true
+        },
+        "force_refresh_assets": false,
+        "extraction": {
+          "enabled": true,
+          "include": [
+            "entities",
+            "locations",
+            "important_phrases"
+          ],
+          "important_phrases": [
+            "Dez cidades brasileiras",
+            "São Paulo em movimento",
+            "Brasília, capital federal",
+            "Rio entre morros e mar",
+            "Baía e relevo costeiro",
+            "Salvador no litoral baiano",
+            "Manaus junto ao Rio Negro",
+            "Recorte amazônico",
+            "Curitiba no Paraná",
+            "Pontes cruzam Recife",
+            "Rios, pontes e costa",
+            "Porto Alegre e o Guaíba",
+            "Belo Horizonte em Minas",
+            "Fortaleza na costa cearense",
+            "Um país continental"
+          ],
+          "max_entities_per_segment": 6,
+          "max_important_phrases_per_segment": 2,
+          "max_image_queries_per_segment": 1,
+          "entity_images": {
+            "enabled": true,
+            "entity_types": [
+              "GPE",
+              "LOCATION"
+            ],
+            "max_per_entity": 1,
+            "scope": "per_scene",
+            "upload_to_drive": true
+          }
+        },
+        "planner": {
+          "candidate_limit": 10
+        },
+        "materialization": {
+          "mode": "selected",
+          "upload_to_drive": true,
+          "wait_for_ready": true
+        },
+        "include_trace": true,
+        "searches": [
+          {
+            "segment_id": "sao-paulo",
+            "slot": "secondary_image",
+            "query": "São Paulo sudeste Brazil city skyline landmark photo",
+            "providers": [
+              "internet_images"
+            ],
+            "media_types": [
+              "image"
+            ],
+            "limit": 8
+          },
+          {
+            "segment_id": "brasilia",
+            "slot": "secondary_image",
+            "query": "Brasília Distrito Federal Brazil city skyline landmark photo",
+            "providers": [
+              "internet_images"
+            ],
+            "media_types": [
+              "image"
+            ],
+            "limit": 8
+          },
+          {
+            "segment_id": "rio-de-janeiro",
+            "slot": "secondary_image",
+            "query": "Rio de Janeiro litoral sudeste Brazil city skyline landmark photo",
+            "providers": [
+              "internet_images"
+            ],
+            "media_types": [
+              "image"
+            ],
+            "limit": 8
+          },
+          {
+            "segment_id": "salvador",
+            "slot": "secondary_image",
+            "query": "Salvador Bahia Brazil city skyline landmark photo",
+            "providers": [
+              "internet_images"
+            ],
+            "media_types": [
+              "image"
+            ],
+            "limit": 8
+          },
+          {
+            "segment_id": "manaus",
+            "slot": "secondary_image",
+            "query": "Manaus Amazonas Brazil city skyline landmark photo",
+            "providers": [
+              "internet_images"
+            ],
+            "media_types": [
+              "image"
+            ],
+            "limit": 8
+          },
+          {
+            "segment_id": "curitiba",
+            "slot": "secondary_image",
+            "query": "Curitiba Paraná Brazil city skyline landmark photo",
+            "providers": [
+              "internet_images"
+            ],
+            "media_types": [
+              "image"
+            ],
+            "limit": 8
+          },
+          {
+            "segment_id": "recife",
+            "slot": "secondary_image",
+            "query": "Recife Pernambuco Brazil city skyline landmark photo",
+            "providers": [
+              "internet_images"
+            ],
+            "media_types": [
+              "image"
+            ],
+            "limit": 8
+          },
+          {
+            "segment_id": "porto-alegre",
+            "slot": "secondary_image",
+            "query": "Porto Alegre Rio Grande do Sul Brazil city skyline landmark photo",
+            "providers": [
+              "internet_images"
+            ],
+            "media_types": [
+              "image"
+            ],
+            "limit": 8
+          },
+          {
+            "segment_id": "belo-horizonte",
+            "slot": "secondary_image",
+            "query": "Belo Horizonte Minas Gerais Brazil city skyline landmark photo",
+            "providers": [
+              "internet_images"
+            ],
+            "media_types": [
+              "image"
+            ],
+            "limit": 8
+          },
+          {
+            "segment_id": "fortaleza",
+            "slot": "secondary_image",
+            "query": "Fortaleza Ceará Brazil city skyline landmark photo",
+            "providers": [
+              "internet_images"
+            ],
+            "media_types": [
+              "image"
+            ],
+            "limit": 8
+          }
+        ]
+      },
+      "overlay_background": {
+        "kind": "image",
+        "asset_id": "short-phrase-black-gradient-dots",
+        "fit": "cover",
+        "opacity": 1
+      },
+      "overlay_style": {
+        "font_family": "inter",
+        "color": [
+          0.96,
+          0.97,
+          1,
+          1
+        ],
+        "size": {
+          "font_size": 70
+        },
+        "shadow": {
+          "enabled": true,
+          "color": "#000000",
+          "opacity": 0.72,
+          "blur": 12,
+          "offset": [
+            0,
+            3
+          ]
+        },
+        "image": {
+          "width": 1100,
+          "height": 620,
+          "position_y": -44,
+          "radius": 28,
+          "border": {
+            "width": 2,
+            "color": "#FFFFFF"
+          },
+          "shadow": {
+            "enabled": true,
+            "color": "#142033",
+            "opacity": 0.2,
+            "blur": 14,
+            "offset": [
+              0,
+              6
+            ]
+          }
+        },
+        "glow_size": 0,
+        "stroke_size": 1
+      },
+      "phrase_motion_family": "modern_apple"
+    }
+  ]
+}

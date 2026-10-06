@@ -1,8 +1,11 @@
 package overlays
 
 import (
+	"encoding/json"
 	"fmt"
-	"strings"
+	"os"
+	"path/filepath"
+	"reflect"
 	"testing"
 )
 
@@ -202,16 +205,128 @@ func TestDateAndMetricEntityTypesRouteToCertifiedPresentationTemplates(t *testin
 	}
 }
 
-func TestDateAndMetricPresentationPoolsCoverCanonicalInventories(t *testing.T) {
-	if got := len(DatePresentationMotionCandidates()); got != 3 {
-		t.Errorf("Date presentation motion count=%d, want 3 certified typewriter motions", got)
+func TestDateAndMetricPresentationPoolsAreCuratedCanonicalSubsets(t *testing.T) {
+	wantDates := []string{
+		"date_fade_rise", "date_calendar_flip", "date_timeline_tick", "date_chronology_focus",
+		"date_page_turn", "date_calendar_drop", "date_month_wipe", "date_era_zoom",
 	}
-	if got := len(MetricPresentationMotionCandidates()); got != 10 {
-		t.Errorf("Metric presentation motion count=%d, want 10 certified typewriter motions", got)
+	wantMetrics := []string{
+		"metric_counter_scale_settle", "metric_odometer_vertical", "metric_digits_stagger",
+		"metric_delta_reveal", "metric_focus_punch", "metric_before_after",
+		"metric_count_flip", "metric_split_odometer",
 	}
-	for _, id := range append(DatePresentationMotionCandidates(), MetricPresentationMotionCandidates()...) {
-		if !strings.HasPrefix(id, "typewriter_") {
-			t.Errorf("date/metric motion %q is not a typewriter motion", id)
+	if !reflect.DeepEqual(DatePresentationMotionCandidates(), wantDates) {
+		t.Fatalf("date premium pool=%v, want curated date_v1 subset %v", DatePresentationMotionCandidates(), wantDates)
+	}
+	if !reflect.DeepEqual(MetricPresentationMotionCandidates(), wantMetrics) {
+		t.Fatalf("metric premium pool=%v, want curated metric_v1 subset %v", MetricPresentationMotionCandidates(), wantMetrics)
+	}
+}
+
+func TestDateAndMetricPresentationPoolsMatchChrononTemplateCatalog(t *testing.T) {
+	root, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var catalogPath string
+	for dir := root; ; dir = filepath.Dir(dir) {
+		candidate := filepath.Join(dir, "ChrononTemplate", "catalog", "entity_presentation.v1.json")
+		if _, err := os.Stat(candidate); err == nil {
+			catalogPath = candidate
+			break
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			break
+		}
+	}
+	if catalogPath == "" {
+		t.Fatal("could not locate ChrononTemplate's canonical entity presentation catalog")
+	}
+	data, err := os.ReadFile(catalogPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var catalog struct {
+		Families []struct {
+			ID      string `json:"id"`
+			Presets []struct {
+				ID string `json:"id"`
+			} `json:"presets"`
+		} `json:"families"`
+	}
+	if err := json.Unmarshal(data, &catalog); err != nil {
+		t.Fatal(err)
+	}
+	familyIDs := map[string][]string{}
+	for _, family := range catalog.Families {
+		for _, preset := range family.Presets {
+			familyIDs[family.ID] = append(familyIDs[family.ID], preset.ID)
+		}
+	}
+	for _, tc := range []struct {
+		family string
+		pool   []string
+	}{{"date_v1", DatePresentationMotionCandidates()}, {"metric_v1", MetricPresentationMotionCandidates()}} {
+		canonical := make(map[string]bool, len(familyIDs[tc.family]))
+		for _, id := range familyIDs[tc.family] {
+			canonical[id] = true
+		}
+		if len(canonical) != 20 {
+			t.Fatalf("ChrononTemplate %s catalog contains %d motions, want 20", tc.family, len(canonical))
+		}
+		for _, id := range tc.pool {
+			if !canonical[id] {
+				t.Errorf("%s selected motion %q outside ChrononTemplate's canonical family", tc.family, id)
+			}
+		}
+	}
+}
+
+func TestPresentationSamplerUsesCuratedMotionsWithStablePerValueVariation(t *testing.T) {
+	pool := DatePresentationMotionCandidates()
+	seen := make(map[string]bool, len(pool))
+	for i := 0; i < 512; i++ {
+		jobID := fmt.Sprintf("date-job-%d", i/16)
+		sceneID := fmt.Sprintf("scene-%d", i/8)
+		itemID := fmt.Sprintf("date-item-%d", i)
+		_, first := NumberPresentationForEntityType(jobID, sceneID, itemID, "DATE")
+		_, retry := NumberPresentationForEntityType(jobID, sceneID, itemID, "DATE")
+		if !containsString(pool, first) {
+			t.Fatalf("date %q selected motion %q outside date_v1 catalog", itemID, first)
+		}
+		if retry != first {
+			t.Fatalf("retry changed date %q motion: %q != %q", itemID, first, retry)
+		}
+		seen[first] = true
+	}
+	if len(seen) != len(pool) {
+		t.Fatalf("distinct dates covered %d of %d curated date_v1 motions: %v", len(seen), len(pool), seen)
+	}
+	metricSeen := make(map[string]bool, len(MetricPresentationMotionCandidates()))
+	for i := 0; i < 512; i++ {
+		jobID := fmt.Sprintf("metric-job-%d", i/16)
+		sceneID := fmt.Sprintf("scene-%d", i/8)
+		itemID := fmt.Sprintf("metric-item-%d", i)
+		_, first := NumberPresentationForEntityType(jobID, sceneID, itemID, "METRIC")
+		_, retry := NumberPresentationForEntityType(jobID, sceneID, itemID, "METRIC")
+		if !containsString(MetricPresentationMotionCandidates(), first) {
+			t.Fatalf("metric %q selected motion %q outside curated metric_v1 pool", itemID, first)
+		}
+		if retry != first {
+			t.Fatalf("retry changed metric %q motion: %q != %q", itemID, first, retry)
+		}
+		metricSeen[first] = true
+	}
+	if len(metricSeen) != len(MetricPresentationMotionCandidates()) {
+		t.Fatalf("distinct metrics covered %d of %d curated metric_v1 motions", len(metricSeen), len(MetricPresentationMotionCandidates()))
+	}
+	for i := 0; i < len(pool); i++ {
+		itemID := fmt.Sprintf("unique-date-%d", i)
+		_, a := NumberPresentationForEntityType("job-per-date", "scene-per-date", itemID, "DATE")
+		_, b := NumberPresentationForEntityType("job-per-date", "scene-per-date", itemID, "DATE")
+		if a != b {
+			t.Fatalf("same date identity changed motion across retries: %q != %q", a, b)
 		}
 	}
 }

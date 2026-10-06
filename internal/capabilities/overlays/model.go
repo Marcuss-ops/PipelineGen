@@ -150,10 +150,11 @@ type OverlayItem struct {
 	Text      string            `json:"text,omitempty"`
 	// EntityCaption is the visible name label for a single entity image.
 	// Composite image items keep their labels on ImageLayers instead.
-	EntityCaption   string              `json:"entity_caption,omitempty"`
-	CaptionMotionID string              `json:"caption_motion_id,omitempty"`
-	AssetRefs       []OverlayAssetRef   `json:"asset_refs,omitempty"`
-	ImageLayers     []OverlayImageLayer `json:"image_layers,omitempty"`
+	EntityCaption     string              `json:"entity_caption,omitempty"`
+	CaptionMotionID   string              `json:"caption_motion_id,omitempty"`
+	CaptionFontFamily string              `json:"caption_font_family,omitempty"`
+	AssetRefs         []OverlayAssetRef   `json:"asset_refs,omitempty"`
+	ImageLayers       []OverlayImageLayer `json:"image_layers,omitempty"`
 	// Frame carries image-card border, shadow, stroke and clipping radius to
 	// RenderingGen. It is empty for text and structural items.
 	Frame *OverlayItemFrame `json:"frame,omitempty"`
@@ -498,7 +499,7 @@ func (p *OverlayPlan) Validate() error {
 		}
 		if item.RenderKey == "" {
 			key := ComputeRenderKey(*p, item)
-			p.Items[i] = OverlayItem{ID: item.ID, SceneID: item.SceneID, EntityID: item.EntityID, Kind: item.Kind, StartMs: item.StartMs, EndMs: item.EndMs, StartUS: item.StartUS, DurationUS: item.DurationUS, TemplateID: item.TemplateID, PresetID: item.PresetID, ImagePresetID: item.ImagePresetID, MotionID: item.MotionID, MotionParams: item.MotionParams, EntityRef: item.EntityRef, Text: item.Text, EntityCaption: item.EntityCaption, CaptionMotionID: item.CaptionMotionID, AssetRefs: item.AssetRefs, ImageLayers: item.ImageLayers, Frame: item.Frame, Map: item.Map, Params: item.Params, RenderKey: key}
+			p.Items[i] = OverlayItem{ID: item.ID, SceneID: item.SceneID, EntityID: item.EntityID, Kind: item.Kind, StartMs: item.StartMs, EndMs: item.EndMs, StartUS: item.StartUS, DurationUS: item.DurationUS, TemplateID: item.TemplateID, PresetID: item.PresetID, ImagePresetID: item.ImagePresetID, MotionID: item.MotionID, MotionParams: item.MotionParams, EntityRef: item.EntityRef, Text: item.Text, EntityCaption: item.EntityCaption, CaptionMotionID: item.CaptionMotionID, CaptionFontFamily: item.CaptionFontFamily, AssetRefs: item.AssetRefs, ImageLayers: item.ImageLayers, Frame: item.Frame, Map: item.Map, Params: item.Params, RenderKey: key}
 		}
 	}
 	if p.Fingerprint == "" {
