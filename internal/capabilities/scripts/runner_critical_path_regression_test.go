@@ -156,7 +156,9 @@ func TestOverlayPrepare_DoesNotBlockTTSOrNLP(t *testing.T) {
 	// are covered by the separate asynchronous prepare tests.
 	require.Eventually(t, func() bool { return voCallCount(voGen) == 1 }, 5*time.Second, time.Millisecond,
 		"TTS must complete for a text-only plan")
-	require.Equal(t, 1, enricher.callCount(),
+	// TTS and NLP are parallel critical-path branches, so TTS finishing does
+	// not order NLP: wait for it instead of sampling it the instant TTS lands.
+	require.Eventually(t, func() bool { return enricher.callCount() == 1 }, 5*time.Second, time.Millisecond,
 		"NLP must complete for a text-only plan")
 	select {
 	case <-done:
