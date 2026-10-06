@@ -291,11 +291,10 @@ func TestRenderDynamicMapVideoMapPresentationIsDeterministicPerRun(t *testing.T)
 	}
 
 	seed := mapRunSeed(plan)
-	itemID := plan.Items[0].ID
 	want := map[string]string{
-		"basemap":          deterministicMapStyle(seed, "map_basemap", itemID, mapBasemapStyles()),
-		"camera_animation": deterministicMapStyle(seed, "map_camera", itemID, mapCameraAnimations),
-		"label_animation":  deterministicMapStyle(seed, "map_label", itemID, mapLabelAnimations),
+		"basemap":          deterministicMapStyle(seed, "map_basemap", mapRunStyleSlot, mapBasemapStyles()),
+		"camera_animation": deterministicMapStyle(seed, "map_camera", mapRunStyleSlot, mapCameraAnimations),
+		"label_animation":  deterministicMapStyle(seed, "map_label", mapRunStyleSlot, mapLabelAnimations),
 	}
 	t.Logf("resolved map presentation for seed %q: camera=%s label=%s basemap=%s",
 		seed, want["camera_animation"], want["label_animation"], want["basemap"])
@@ -742,7 +741,7 @@ func TestQueueRenderEnqueuerSetPollInterval(t *testing.T) {
 	}
 }
 
-func TestSeparateOverlayItemPlanPreservesPhraseDurationWithoutPaddingOrCap(t *testing.T) {
+func TestSeparateOverlayItemPlanAddsTwoSecondsToPhraseDuration(t *testing.T) {
 	parent := capoverlay.OverlayPlan{
 		SchemaVersion: capoverlay.SchemaVersionPlan, PlanID: "dolly:overlay", VideoID: "dolly",
 		ScriptName: "Dolly", Language: "en", Width: 1920, Height: 1080, FPSNum: 24, FPSDen: 1,
@@ -774,11 +773,11 @@ func TestSeparateOverlayItemPlanPreservesPhraseDurationWithoutPaddingOrCap(t *te
 	if err != nil {
 		t.Fatal(err)
 	}
-	if child.DurationMS != 7250 || child.Items[0].DurationUS != 7_250_000 || meta.TargetDurationUS != 7_250_000 {
-		t.Fatalf("phrase duration was padded or capped: child=%+v meta=%+v", child, meta)
+	if child.DurationMS != 9250 || child.Items[0].DurationUS != 9_250_000 || meta.TargetDurationUS != 9_250_000 {
+		t.Fatalf("phrase duration should include two animation seconds: child=%+v meta=%+v", child, meta)
 	}
-	if child.Items[0].StartMs != 0 || child.Items[0].EndMs != 7250 || child.Items[0].StartUS != 0 {
-		t.Fatalf("phrase item window = [%d,%d), want exact local 7250ms window", child.Items[0].StartMs, child.Items[0].EndMs)
+	if child.Items[0].StartMs != 0 || child.Items[0].EndMs != 9250 || child.Items[0].StartUS != 0 {
+		t.Fatalf("phrase item window = [%d,%d), want local 9250ms window", child.Items[0].StartMs, child.Items[0].EndMs)
 	}
 
 	shortPhrase := long
@@ -789,8 +788,8 @@ func TestSeparateOverlayItemPlanPreservesPhraseDurationWithoutPaddingOrCap(t *te
 	if err != nil {
 		t.Fatal(err)
 	}
-	if shortChild.DurationMS != 4500 || shortMeta.TargetDurationUS != 4_500_000 {
-		t.Fatalf("short phrase duration was padded: child=%+v meta=%+v", shortChild, shortMeta)
+	if shortChild.DurationMS != 6500 || shortMeta.TargetDurationUS != 6_500_000 {
+		t.Fatalf("short phrase duration should include two animation seconds: child=%+v meta=%+v", shortChild, shortMeta)
 	}
 
 	composite := parent.Items[0]

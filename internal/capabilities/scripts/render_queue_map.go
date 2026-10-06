@@ -15,6 +15,8 @@ import (
 	capoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
 )
 
+const mapRunStyleSlot = "run"
+
 // renderDynamicMapVideo delegates map motion to the same ChrononTemplate
 // camera/tile-pyramid renderer used by approved dynamic-map overlays. The
 // resulting MP4 enters normal content-addressed staging and publication.
