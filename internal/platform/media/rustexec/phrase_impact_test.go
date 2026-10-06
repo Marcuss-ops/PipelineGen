@@ -167,9 +167,6 @@ func TestPhraseImpactAnalyzerChunksPassagesAtSidecarBatchLimitAndPreservesOrder(
 	if _, err := analyzer.Analyze(context.Background(), transcript, "en"); err != nil {
 		t.Fatalf("Analyze returned error: %v", err)
 	}
-	if len(embedder.calls) != 3 {
-		t.Fatalf("embedder batch sizes = %v, want 32, 32, 5", batchLengths(embedder.calls))
-	}
 	if got := batchLengths(embedder.calls); !reflect.DeepEqual(got, []int{32, 32, 5}) {
 		t.Fatalf("embedder batch sizes = %v, want [32 32 5]", got)
 	}
@@ -194,6 +191,28 @@ func TestPhraseImpactAnalyzerChunksPassagesAtSidecarBatchLimitAndPreservesOrder(
 		if vector[0] != float32(batchIndex+1) || vector[1] != float32(batchOffset+1) {
 			t.Fatalf("vector %d moved during batching: %v", i, vector)
 		}
+	}
+}
+
+func TestPhraseImpactAnalyzerRejectsShortEmbeddingBatch(t *testing.T) {
+	segments := make([]string, phraseImpactEmbeddingBatchSize+1)
+	responses := make([]string, len(segments))
+	for i := range segments {
+		segments[i] = fmt.Sprintf("S%02d.", i)
+		start := i * 5
+		responses[i] = fmt.Sprintf(`{"text":%q,"start_byte":%d,"end_byte":%d}`, segments[i], start, start+len(segments[i]))
+	}
+	runner := &phraseImpactFakeRunner{replies: []string{
+		`{"ok":true,"sentences":[` + strings.Join(responses, ",") + `]}`,
+	}}
+	embedder := &phraseImpactFakeEmbedder{vectors: make([][]float32, phraseImpactEmbeddingBatchSize-1)}
+	analyzer := NewPhraseImpactAnalyzer("bin/phrase_impact", runner, embedder)
+	_, err := analyzer.Analyze(context.Background(), strings.Join(segments, " "), "en")
+	if err == nil || !strings.Contains(err.Error(), "sentence batch 0..32") {
+		t.Fatalf("Analyze error = %v, want truncated first vector batch rejected", err)
+	}
+	if len(embedder.calls) != 1 {
+		t.Fatalf("embedder calls = %v, want fail closed after short first response", batchLengths(embedder.calls))
 	}
 }
 
@@ -303,10 +322,10 @@ func TestPhraseImpactAnalyzerDecodesWorkerStageTimings(t *testing.T) {
 	}
 }
 
-// TestPhraseImpactAnalyzerRunsTheRealRustWorker is the end-to-end check of the
-// delivered artifact: the Go adapter drives the actual pipelinegen-muscles
-// binary in its phrase-impact mode over the real NDJSON contract. It skips
-// when no binary is available so the suite stays hermetic.
+// TestPhraseImpactAnalyzerUsesCanonicalMultilingualE5ForSyntheticFixture
+// exercises the real adapter, local multilingual E5 sidecar, and Rust worker
+// against the labeled Italian diagnostic corpus. It is opt-in because it
+// requires both local services and several CPU inference batches.
 func TestPhraseImpactAnalyzerUsesCanonicalMultilingualE5ForSyntheticFixture(t *testing.T) {
 	if os.Getenv("PHRASE_IMPACT_E5_E2E") != "1" {
 		t.Skip("set PHRASE_IMPACT_E5_E2E=1 to exercise the local multilingual E5 sidecar")
@@ -431,6 +450,10 @@ func containsExactSentence(sentences []string, candidate string) bool {
 	return false
 }
 
+// TestPhraseImpactAnalyzerRunsTheRealRustWorker is the end-to-end check of the
+// delivered artifact: the Go adapter drives the actual pipelinegen-muscles
+// binary in its phrase-impact mode over the real NDJSON contract. It skips
+// when no binary is available so the suite stays hermetic.
 func TestPhraseImpactAnalyzerRunsTheRealRustWorker(t *testing.T) {
 	binary := os.Getenv("PHRASE_IMPACT_BIN")
 	if binary == "" {
