@@ -67,6 +67,9 @@ func AllCandidatesPlannerConfig(scenes []SceneInput) PlannerConfig {
 		}
 		totalCandidates += len(scene.Phrases) + len(scene.Keywords) + len(scene.Images) +
 			len(scene.Numbers) + len(scene.BrandTexts) + len(scene.Quotes) + len(scene.Products) + len(scene.Logos) + len(scene.Maps)
+		for _, group := range scene.MultiEntityGroups {
+			totalCandidates += len(group.Items)
+		}
 	}
 	// A positive value is required to avoid withDefaults restoring a cap. The
 	// extra slot makes the overlap budget strictly larger than every possible
@@ -176,6 +179,10 @@ type SceneInput struct {
 	// become a map item; anything uncovered is silently skipped (never
 	// guessed at).
 	Maps []MapCandidate
+	// MultiEntityGroups are explicitly authored adjacent image/phrase groups.
+	// They are lowered to the existing image_layers and important_phrase
+	// primitives; they do not create new renderer kinds.
+	MultiEntityGroups []MultiEntityGroup
 }
 
 // PlanInput is the minimal upstream projection required by the overlay
@@ -272,6 +279,7 @@ func BuildPlan(input PlanInput, config PlannerConfig) (OverlayPlan, error) {
 	//	important words            z=80
 	//	important phrases          z=100
 	mapOrdinal := 0
+	imageOrdinal := 0
 	for _, scene := range input.Scenes {
 		if strings.TrimSpace(scene.ID) == "" {
 			return OverlayPlan{}, fmt.Errorf("overlay planner: scene id is required")
@@ -390,6 +398,35 @@ func BuildPlan(input PlanInput, config PlannerConfig) (OverlayPlan, error) {
 				MotionParams: phraseMotionParams(candidate, input.FPSNum, input.FPSDen), Params: map[string]any{"position": "center", "style": "headline", "priority": candidate.Score},
 			})
 		}
+		for _, group := range scene.MultiEntityGroups {
+			if group.SceneID != "" && group.SceneID != scene.ID {
+				return OverlayPlan{}, fmt.Errorf("overlay planner: multi-entity group %q belongs to scene %q, not %q", group.GroupID, group.SceneID, scene.ID)
+			}
+			if group.SceneID == "" {
+				group.SceneID = scene.ID
+			}
+			groupItems, err := WireMultiEntityOverlays(group, input.Width, input.Height)
+			if err != nil {
+				return OverlayPlan{}, err
+			}
+			for _, item := range groupItems {
+				if item.Kind == string(KindEntityImage) {
+					if len(item.ImageLayers) > 0 {
+						for layerIndex := range item.ImageLayers {
+							layer := &item.ImageLayers[layerIndex]
+							layer.MotionID = selectImageMotion(input.PlanID, "run", imageOrdinal, input.ImageMotions)
+							layer.PresetID = selectImagePreset(input.PlanID, item.SceneID, item.ID+":"+layer.ID)
+							imageOrdinal++
+						}
+					} else {
+						item.MotionID = selectImageMotion(input.PlanID, "run", imageOrdinal, input.ImageMotions)
+						item.CaptionMotionID = EntityCaptionMotionAtOffset(0, imageOrdinal)
+						imageOrdinal++
+					}
+				}
+				plan.Items = append(plan.Items, item)
+			}
+		}
 	}
 	// Maps: grounded places from EVERY scene resolve together against the
 	// certified plates, anchored to the first scene that mentions one. A
@@ -433,18 +470,20 @@ func BuildPlan(input PlanInput, config PlannerConfig) (OverlayPlan, error) {
 	// no-repeat walk is otherwise untouched.
 	phraseOrdinal := 0
 	heavyOrdinal := 0
-	imageOrdinal := 0
+	imageOrdinal = 0
 	for i := range plan.Items {
 		switch plan.Items[i].Kind {
 		case "text_phrase":
 			switch {
-			case len(strings.Fields(plan.Items[i].Text)) > 0 && len(strings.Fields(plan.Items[i].Text)) < 6:
-				// Length owns the Short Phrases lane even when the NLP priority
-				// also marks this phrase as important.
-				plan.Items[i].MotionID = selectShortPhraseMotion(input.PlanID, "run", phraseOrdinal, len(strings.Fields(plan.Items[i].Text)), input.PhraseMotions)
 			case input.HeavyPhrasePriority > 0 && itemPriority(plan.Items[i]) >= input.HeavyPhrasePriority:
+				// An explicitly configured heavy lane is the strongest phrase
+				// treatment and takes precedence over the length-based short lane.
 				plan.Items[i].MotionID = selectHeavyPhraseMotion(input.PlanID, "run", heavyOrdinal, input.PhraseMotions)
 				heavyOrdinal++
+			case EditorialSectionForItem(plan.Items[i]) == EditorialSectionShortPhrase:
+				// The same classifier drives the editor section and the motion
+				// selection branch when no explicit heavy treatment applies.
+				plan.Items[i].MotionID = selectShortPhraseMotion(input.PlanID, "run", phraseOrdinal, len(strings.Fields(plan.Items[i].Text)), input.PhraseMotions)
 			case len(strings.Fields(plan.Items[i].Text)) >= 6:
 				plan.Items[i].MotionID = selectLongPhraseMotion(input.PlanID, "run", phraseOrdinal, input.PhraseMotions)
 			default:
@@ -452,8 +491,15 @@ func BuildPlan(input PlanInput, config PlannerConfig) (OverlayPlan, error) {
 			}
 			phraseOrdinal++
 		case "image", "entity_image", "product", "logo":
-			plan.Items[i].MotionID = selectImageMotion(input.PlanID, "run", imageOrdinal, input.ImageMotions)
-			imageOrdinal++
+			if plan.Items[i].Kind == "entity_image" && len(plan.Items[i].ImageLayers) > 0 {
+				plan.Items[i].MotionID = "" // each child layer owns its selected motion
+			} else {
+				plan.Items[i].MotionID = selectImageMotion(input.PlanID, "run", imageOrdinal, input.ImageMotions)
+				if plan.Items[i].Kind == "entity_image" && plan.Items[i].EntityCaption != "" && len(plan.Items[i].AssetRefs) > 0 {
+					plan.Items[i].CaptionMotionID = EntityCaptionMotionAtOffset(0, imageOrdinal)
+				}
+				imageOrdinal++
+			}
 			if plan.Items[i].Kind == "image" {
 				params := EntityImageParams(plan.Width, plan.Height)
 				if plan.Items[i].Params == nil {

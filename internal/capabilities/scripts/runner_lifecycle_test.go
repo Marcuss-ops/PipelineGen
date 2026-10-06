@@ -180,6 +180,26 @@ func TestRetryDelay(t *testing.T) {
 }
 
 func TestShouldRetry(t *testing.T) {
+	t.Run("permanent provider preflight failure has no retry schedule", func(t *testing.T) {
+		result := PreflightResult{Failures: []PreflightFailure{{
+			Category: "vidrush_provider", AssetID: "image_generation", Detail: "provider not registered",
+		}}}
+		runner, repo, _, _, _, _, _ := newTestRunner()
+		runID := "run-permanent-provider-preflight"
+		require.NoError(t, repo.Create(context.Background(), &GenerationRun{
+			ID: runID, Status: RunStatusRunning, CurrentStage: StagePreflight,
+		}))
+
+		runner.failRunWithRetry(context.Background(), runID, StagePreflight, result.AsError())
+
+		failed, err := repo.Get(context.Background(), runID)
+		require.NoError(t, err)
+		require.Equal(t, RunStatusFailed, failed.Status)
+		require.Equal(t, "MEDIA_PREFLIGHT_FAILED", failed.ErrorCode)
+		require.Nil(t, failed.NextRetryAt)
+		require.Equal(t, 1, failed.AttemptCount)
+	})
+
 	future := time.Now().Add(1 * time.Hour)
 	past := time.Now().Add(-1 * time.Hour)
 

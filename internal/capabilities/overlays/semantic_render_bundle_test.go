@@ -1,15 +1,11 @@
 package overlays
 
-import (
-	"crypto/sha256"
-	"encoding/hex"
-	"testing"
-)
+import "testing"
 
 func TestSemanticRenderBundleV1_RejectsAssetWithoutMatchingEntity(t *testing.T) {
 	// An asset that names an entity the bundle does not carry is an
-	// unjoinable provenance record: BuildOverlayPlan would silently downgrade
-	// the entity card to text-only. Validate must fail closed.
+	// unjoinable provenance record. Validate must fail closed rather than
+	// allowing a downstream consumer to silently downgrade the image.
 	scene := NewSceneIR("scene-1", 0, "Gerard Butler spoke in London.", "", SegmentSemanticProfile{})
 	b := SemanticRenderBundleV1{
 		Version: SemanticRenderBundleVersion,
@@ -62,73 +58,5 @@ func TestSemanticRenderBundleV1_RejectsUngroundedEntity(t *testing.T) {
 	}
 	if err := b.Validate(); err == nil {
 		t.Fatal("expected source-grounding validation failure")
-	}
-}
-
-func TestTimelinePlannerAndBundleBuildOverlayPlan(t *testing.T) {
-	scene := NewSceneIR("scene-1", 0, "Gerard Butler spoke in London.", "", SegmentSemanticProfile{})
-	entities := []ResolvedEntity{
-		{EntityID: "person:gerard-butler", Type: "PERSON", Text: "Gerard Butler", CanonicalText: "Gerard Butler", Evidence: "Gerard Butler", Start: 0, End: 13, Confidence: .97, SceneID: scene.SegmentID},
-		{EntityID: "location:london", Type: "LOCATION", Text: "London", CanonicalText: "London", Evidence: "London", Start: 23, End: 29, Confidence: .99, SceneID: scene.SegmentID},
-	}
-	planner := TimelinePlanner{}
-	timeline, err := planner.Plan(10_000, entities, map[string]EntityTiming{
-		"person:gerard-butler": {EntityID: "person:gerard-butler", StartMs: 2300, EndMs: 2800},
-		"location:london":      {EntityID: "location:london", StartMs: 6500, EndMs: 7000},
-	}, map[string]string{
-		"person:gerard-butler": string(PresetModernName),
-		"location:london":      string(PresetModernName),
-	})
-	if err != nil {
-		t.Fatalf("plan timeline: %v", err)
-	}
-	if timeline[0].StartMs != 2050 || timeline[0].EndMs != 4550 {
-		t.Fatalf("unexpected person window: %+v", timeline[0])
-	}
-	b := SemanticRenderBundleV1{Version: SemanticRenderBundleVersion, RunID: "run-1", Scene: scene, Entities: entities, Timeline: timeline}
-	plan, err := BuildOverlayPlan(b, "video-1", "project-1", 1920, 1080, 24, 1)
-	if err != nil {
-		t.Fatalf("build overlay plan: %v", err)
-	}
-	if plan.SchemaVersion != SchemaVersionPlan || plan.FPSNum != 24 || len(plan.Items) != 2 || plan.Fingerprint == "" {
-		t.Fatalf("unexpected overlay plan: %+v", plan)
-	}
-	if plan.Items[0].PresetID != string(PresetModernName) {
-		t.Fatalf("preset was not carried into overlay plan: %+v", plan.Items[0])
-	}
-}
-
-func TestBuildOverlayPlanUsesCanonicalImageCapability(t *testing.T) {
-	scene := NewSceneIR("scene-1", 0, "Gerard Butler", "", SegmentSemanticProfile{})
-	entityID := "person:gerard-butler"
-	digest := sha256.Sum256([]byte("portrait"))
-	bundle := SemanticRenderBundleV1{
-		Version: SemanticRenderBundleVersion, RunID: "run-image", Scene: scene,
-		Entities: []ResolvedEntity{{EntityID: entityID, Type: "PERSON", Text: "Gerard Butler", CanonicalText: "Gerard Butler", Evidence: "Gerard Butler", Start: 0, End: len(scene.SourceText), Confidence: .97, SceneID: scene.SegmentID}},
-		Timeline: []TimelineEvent{{EntityID: entityID, StartMs: 0, EndMs: 2500, PresetID: string(PresetModernName)}},
-		Assets:   []BoundAsset{{EntityID: entityID, AssetID: "asset-1", ContentHash: hex.EncodeToString(digest[:]), SourceURL: "https://example.test/portrait.jpg", Verified: true}},
-	}
-	plan, err := BuildOverlayPlan(bundle, "video-1", "project-1", 1920, 1080, 24, 1)
-	if err != nil {
-		t.Fatal(err)
-	}
-	item := plan.Items[0]
-	if item.Kind != string(KindEntityImage) || item.TemplateID != "image_popup" || item.PresetID != SelectEntityImagePreset(bundle.RunID, scene.SegmentID, entityID) {
-		t.Fatalf("image item = %+v", item)
-	}
-	if !containsMotion(generatedEntityImageMotionCandidates, item.MotionID) {
-		t.Fatalf("entity portrait motion = %q, want a generated-overlay image catalog motion", item.MotionID)
-	}
-	if item.EntityCaption != "Gerard Butler" || !containsMotion(generatedEntityCaptionMotionCandidates, item.CaptionMotionID) {
-		t.Fatalf("entity caption = %q motion=%q; want the displayed name and a certified caption motion", item.EntityCaption, item.CaptionMotionID)
-	}
-	// DYNAMIC window: the image card keeps the certified timeline-event span
-	// (2500ms) instead of a flat five-second block.
-	if item.EndMs-item.StartMs != 2500 {
-		t.Fatalf("entity image duration = %dms, want the certified 2500ms window", item.EndMs-item.StartMs)
-	}
-	wantWidth, wantHeight := 1920*68/100, 1080*70/100
-	if item.Params["box_width"] != wantWidth || item.Params["box_height"] != wantHeight {
-		t.Fatalf("image item size = %#v, want %dx%d on 1920x1080 canvas", item.Params, wantWidth, wantHeight)
 	}
 }

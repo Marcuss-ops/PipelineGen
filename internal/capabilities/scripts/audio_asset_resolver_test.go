@@ -202,3 +202,21 @@ func TestAudioAssetResolver_NilSourceFailsClosed(t *testing.T) {
 		t.Fatal("Resolve on an unwired resolver must fail closed")
 	}
 }
+
+func TestCanonicalAudioIDsDeduplicatesAliasesAndCanonicalIDs(t *testing.T) {
+	canonical := audio.CanonicalAssetID("bgm1")
+	if canonical == "" || canonical == "bgm1" {
+		t.Fatalf("bgm1 canonical ID = %q, want a bound catalog ID", canonical)
+	}
+
+	got := canonicalAudioIDs([]string{" bgm1 ", canonical, "", "bgm1", " custom-id ", "custom-id"})
+	want := []string{canonical, "custom-id"}
+	if len(got) != len(want) {
+		t.Fatalf("canonicalAudioIDs() = %#v, want %#v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("canonicalAudioIDs()[%d] = %q, want %q; result=%#v", i, got[i], want[i], got)
+		}
+	}
+}

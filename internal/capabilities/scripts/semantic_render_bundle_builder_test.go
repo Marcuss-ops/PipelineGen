@@ -5,7 +5,6 @@ import (
 	"testing"
 
 	capabilityentities "github.com/Marcuss-ops/PipelineGen/internal/capabilities/entities"
-	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
@@ -173,11 +172,10 @@ func TestBuildSemanticRenderBundleKeepsRepeatedEntityImageOccurrencesPerScene(t 
 	if len(bundle.Entities) != 2 || len(bundle.Assets) != 2 || len(bundle.Timeline) != 2 {
 		t.Fatalf("scene-scoped rows = entities:%d assets:%d timeline:%d", len(bundle.Entities), len(bundle.Assets), len(bundle.Timeline))
 	}
-	plan, err := capabilityoverlay.BuildOverlayPlan(*bundle, "video-scenes", "project", 1920, 1080, 24, 1)
-	if err != nil {
-		t.Fatalf("build overlay plan: %v", err)
+	if bundle.Entities[0].OccurrenceID == "" || bundle.Entities[0].OccurrenceID == bundle.Entities[1].OccurrenceID {
+		t.Fatalf("repeated entity occurrence IDs = %q and %q, want distinct scene-scoped IDs", bundle.Entities[0].OccurrenceID, bundle.Entities[1].OccurrenceID)
 	}
-	if len(plan.Items) != 2 || plan.Items[0].ID == plan.Items[1].ID || plan.Items[0].SceneID == plan.Items[1].SceneID {
-		t.Fatalf("repeated entity occurrences collapsed: %+v", plan.Items)
+	if bundle.Entities[0].SceneID == bundle.Entities[1].SceneID {
+		t.Fatalf("repeated entity scene IDs = %q and %q, want separate scenes", bundle.Entities[0].SceneID, bundle.Entities[1].SceneID)
 	}
 }

@@ -4,10 +4,8 @@ import (
 	"encoding/hex"
 	"fmt"
 	"regexp"
-	"sort"
 	"strings"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 )
 
@@ -113,7 +111,6 @@ func (b SemanticRenderBundleV1) Validate() error {
 		}
 		entities[semanticOccurrenceKey(e.EntityID, e.OccurrenceID)] = e
 	}
-	assets := make(map[string]BoundAsset, len(b.Assets))
 	for _, a := range b.Assets {
 		if a.EntityID == "" || a.AssetID == "" || !contentHashPattern.MatchString(strings.ToLower(a.ContentHash)) || !a.Verified {
 			return fmt.Errorf("semantic render bundle: asset %q is not verified/content-addressed", a.AssetID)
@@ -121,7 +118,6 @@ func (b SemanticRenderBundleV1) Validate() error {
 		if _, err := hex.DecodeString(a.ContentHash); err != nil {
 			return fmt.Errorf("semantic render bundle: asset %q has invalid content hash", a.AssetID)
 		}
-		assets[semanticOccurrenceKey(a.EntityID, a.OccurrenceID)] = a
 	}
 	for _, ev := range b.Timeline {
 		if _, ok := entities[semanticOccurrenceKey(ev.EntityID, ev.OccurrenceID)]; !ok || ev.StartMs < 0 || ev.EndMs <= ev.StartMs || ev.PresetID == "" {
@@ -129,8 +125,8 @@ func (b SemanticRenderBundleV1) Validate() error {
 		}
 	}
 	// An asset that names an entity the bundle does not carry is an
-	// unjoinable provenance record: BuildOverlayPlan would look it up and
-	// silently downgrade the entity card to text-only. Fail closed — a
+	// unjoinable provenance record. Fail closed so downstream consumers cannot
+	// silently downgrade the associated entity to text-only. A
 	// verified, content-addressed asset must always join to a real bundle
 	// entity. Asset-less text overlays remain valid (image selection is
 	// explicit), but an asset with a dangling entity id is a contract break.
@@ -139,7 +135,6 @@ func (b SemanticRenderBundleV1) Validate() error {
 			return fmt.Errorf("semantic render bundle: asset %q joins entity %q which is not in the bundle", a.AssetID, a.EntityID)
 		}
 	}
-	_ = assets
 	return nil
 }
 
@@ -148,168 +143,4 @@ func semanticOccurrenceKey(entityID, occurrenceID string) string {
 		return occurrenceID
 	}
 	return entityID
-}
-
-// EntityTiming is the minimal timing input accepted by TimelinePlanner.
-type EntityTiming struct {
-	EntityID       string
-	StartMs, EndMs int64
-}
-
-// TimelinePlanner creates deterministic bounded windows around certified word
-// timings. It never invents an entity or lets an event leave the scene.
-type TimelinePlanner struct{ LeadInMs, MinDurationMs, MaxDurationMs int64 }
-
-func (p TimelinePlanner) Plan(sceneDurationMs int64, entities []ResolvedEntity, timings map[string]EntityTiming, presets map[string]string) ([]TimelineEvent, error) {
-	lead, minDur, maxDur := p.LeadInMs, p.MinDurationMs, p.MaxDurationMs
-	if lead <= 0 {
-		lead = 250
-	}
-	if minDur <= 0 {
-		minDur = 2500
-	}
-	if maxDur <= 0 {
-		maxDur = 5000
-	}
-	if sceneDurationMs <= 0 || maxDur < minDur {
-		return nil, fmt.Errorf("timeline planner: invalid duration policy")
-	}
-	out := make([]TimelineEvent, 0, len(entities))
-	for _, e := range entities {
-		t, ok := timings[e.EntityID]
-		if !ok || t.EndMs <= t.StartMs {
-			return nil, fmt.Errorf("timeline planner: missing timing for %q", e.EntityID)
-		}
-		start := t.StartMs - lead
-		if start < 0 {
-			start = 0
-		}
-		end := t.EndMs + lead
-		if end-start < minDur {
-			end = start + minDur
-		}
-		if end-start > maxDur {
-			end = start + maxDur
-		}
-		if end > sceneDurationMs {
-			end = sceneDurationMs
-		}
-		if end <= start {
-			return nil, fmt.Errorf("timeline planner: entity %q has no room", e.EntityID)
-		}
-		preset := strings.TrimSpace(presets[e.EntityID])
-		if preset == "" {
-			return nil, fmt.Errorf("timeline planner: missing preset for %q", e.EntityID)
-		}
-		out = append(out, TimelineEvent{EntityID: e.EntityID, StartMs: start, EndMs: end, PresetID: preset})
-	}
-	sort.SliceStable(out, func(i, j int) bool {
-		if out[i].StartMs != out[j].StartMs {
-			return out[i].StartMs < out[j].StartMs
-		}
-		return out[i].EntityID < out[j].EntityID
-	})
-	return out, nil
-}
-
-// BuildOverlayPlan is the sole bundle→overlay-plan projection. It uses the
-// existing canonical template/preset registries and leaves Chronon lowering
-// to CompileChrononPlan.
-func BuildOverlayPlan(b SemanticRenderBundleV1, videoID, projectID string, width, height, fpsNum, fpsDen int) (OverlayPlan, error) {
-	if err := b.Validate(); err != nil {
-		return OverlayPlan{}, err
-	}
-	if width <= 0 {
-		width = 1920
-	}
-	if height <= 0 {
-		height = 1080
-	}
-	if fpsNum <= 0 {
-		fpsNum = 24
-	}
-	if fpsDen <= 0 {
-		fpsDen = 1
-	}
-	assets := make(map[string]BoundAsset, len(b.Assets))
-	for _, a := range b.Assets {
-		assets[semanticOccurrenceKey(a.EntityID, a.OccurrenceID)] = a
-	}
-	events := make(map[string]TimelineEvent, len(b.Timeline))
-	for _, e := range b.Timeline {
-		events[semanticOccurrenceKey(e.EntityID, e.OccurrenceID)] = e
-	}
-	items := make([]OverlayItem, 0, len(b.Entities))
-	captionOrdinal := 0
-	for _, e := range b.Entities {
-		key := semanticOccurrenceKey(e.EntityID, e.OccurrenceID)
-		ev, ok := events[key]
-		if !ok {
-			return OverlayPlan{}, fmt.Errorf("bundle: missing timeline for %q", e.EntityID)
-		}
-		templateID := "concept_default"
-		kind := "entity_card"
-		if e.Type == "PERSON" {
-			templateID = "person_default"
-		} else if e.Type == "LOCATION" {
-			templateID = "gpe_default"
-		} else if e.Type == "ORGANIZATION" {
-			templateID = "org_default"
-		}
-		// The displayed text is PipelineGen's decision and is ALWAYS sent: the
-		// RenderingGen compiler renders `text` verbatim and has no entity_ref
-		// fallback. When the surface mention is empty, the canonical name is the
-		// display text.
-		displayText := strings.TrimSpace(e.Text)
-		if displayText == "" {
-			displayText = strings.TrimSpace(e.CanonicalText)
-		}
-		itemID := key
-		sceneID := b.Scene.SegmentID
-		if e.OccurrenceID != "" {
-			itemID = e.OccurrenceID
-			sceneID = e.SceneID
-		}
-		item := OverlayItem{ID: itemID, SceneID: sceneID, EntityID: e.EntityID, Kind: kind, StartMs: ev.StartMs, EndMs: ev.EndMs, TemplateID: templateID, PresetID: ev.PresetID, Text: displayText,
-			// Text cards carry an explicit render-safe entrance motion; image
-			// cards replace it below with their official image preset animation.
-			MotionID:  SelectTextMotion(b.RunID, b.Scene.SegmentID, e.EntityID),
-			EntityRef: &OverlayEntityRef{EntityID: e.EntityID, Type: e.Type, Name: e.CanonicalText, SurfaceText: displayText}}
-		if a, ok := assets[key]; ok {
-			// An image is a capability choice, not merely an extra field on a
-			// text card. The canonical image_popup template/preset owns the
-			// geometry and keeps the entity asset on the direct-YUV path.
-			item.Kind = string(KindEntityImage)
-			item.TemplateID = "image_popup"
-			item.PresetID = SelectEntityImagePreset(b.RunID, b.Scene.SegmentID, e.EntityID)
-			// DYNAMIC display window: the timeline event already bounds the
-			// certified spoken mention into the certified display bounds, so
-			// the image card keeps that window instead of resetting to a flat
-			// five-second block. The hard editorial image ceiling still applies
-			// to any window that reaches it.
-			if window := ev.EndMs - ev.StartMs; window > 0 && window < MaxImageOverlayDurationMS {
-				item.EndMs = item.StartMs + window
-			} else {
-				item.EndMs = item.StartMs + MaxImageOverlayDurationMS
-			}
-			item.Text = ""
-			item.EntityCaption = displayText
-			item.CaptionMotionID = SelectEntityCaptionMotionAt(b.RunID, b.Scene.SegmentID, captionOrdinal)
-			captionOrdinal++
-			// Keep generated-image overlays varied across the complete certified
-			// layer-only catalog; the centered selector is reserved for maps.
-			item.MotionID = SelectEntityImageMotionAt(b.RunID, b.Scene.SegmentID, len(items))
-			item.MotionParams = nil
-			item.Params = EntityImageParams(width, height)
-			item.AssetRefs = []OverlayAssetRef{NewOverlayAssetRef(
-				asset.New(a.AssetID, a.ContentHash, "image/jpeg", 0), a.SourceURL, "")}
-		}
-		items = append(items, item)
-	}
-	plan := OverlayPlan{SchemaVersion: SchemaVersionPlan, PlanID: b.RunID, VideoID: videoID, ProjectID: projectID, Width: width, Height: height, FPSNum: fpsNum, FPSDen: fpsDen, Items: items}
-	if err := plan.Validate(); err != nil {
-		return OverlayPlan{}, err
-	}
-	b.OverlayPlanHash = plan.Fingerprint
-	return plan, nil
 }

@@ -2,11 +2,12 @@ package overlays
 
 import (
 	"fmt"
+	"math"
 	"sort"
 	"strings"
 )
 
-// MultiEntityKind classifies the elements within an EntityGroup.
+// MultiEntityKind classifies the elements within a temporally grouped scene.
 type MultiEntityKind string
 
 const (
@@ -15,45 +16,8 @@ const (
 	MultiEntityKindMixed  MultiEntityKind = "mixed"
 )
 
-var (
-	MultiImageDuoMotions = []string{
-		"duo_split_reveal",
-		"duo_depth_stagger",
-		"duo_cross_focus",
-		"duo_parallax_balance",
-		"duo_compare_hold",
-	}
-	MultiImageTrioMotions = []string{
-		"trio_fan_reveal",
-		"trio_center_priority",
-		"trio_ladder_stagger",
-		"trio_arc_focus",
-		"trio_depth_peel",
-	}
-	MultiImageQuadMotions = []string{
-		"quad_grid_assemble",
-		"quad_corner_converge",
-		"quad_pair_focus",
-		"quad_mosaic_spotlight",
-		"quad_crossflow",
-	}
-	MultiImagePentaMotions = []string{
-		"penta_hero_plus_four",
-		"penta_carousel_focus",
-		"penta_cluster_expand",
-		"penta_strip_wave",
-		"penta_priority_cycle",
-	}
-	MultiPhraseMotions = []string{
-		"phrase_vertical_focus_stack",
-		"phrase_ladder_priority",
-		"phrase_dual_side_compare",
-		"phrase_stagger_keep_alive",
-		"phrase_center_with_history",
-	}
-)
-
-// MultiEntityCandidate is a prospective item (image or phrase) eligible for multi-entity grouping.
+// MultiEntityCandidate is one grounded image or phrase that may share a
+// presentation window with nearby candidates.
 type MultiEntityCandidate struct {
 	ID       string
 	SceneID  string
@@ -66,7 +30,9 @@ type MultiEntityCandidate struct {
 	Priority int
 }
 
-// MultiEntityGroup represents a cluster of 2..5 entities to be presented simultaneously.
+// MultiEntityGroup is an editorial grouping, not a renderer animation. Each
+// child image receives its own normal image motion; phrase content stays on
+// the existing important_phrase primitive.
 type MultiEntityGroup struct {
 	GroupID       string
 	SceneID       string
@@ -75,253 +41,301 @@ type MultiEntityGroup struct {
 	Items         []MultiEntityCandidate
 	StartMS       int64
 	EndMS         int64
-	MotionPreset  string
 	FocusStrategy string
 }
 
-// GroupNearbyEntities clusters candidates within a temporal window (default <= 1800ms)
-// or co-occurring within the same scene segment, avoiding fragmented sequential renders.
+// GroupNearbyEntities clusters valid same-scene candidates within maxGapMS,
+// preserving chronological order and the existing maximum of five per group.
 func GroupNearbyEntities(candidates []MultiEntityCandidate, maxGapMS int64) []MultiEntityGroup {
-	if len(candidates) == 0 {
+	valid := make([]MultiEntityCandidate, 0, len(candidates))
+	for _, candidate := range candidates {
+		if candidate.StartMS < 0 || candidate.EndMS <= candidate.StartMS {
+			continue
+		}
+		if candidate.Kind == MultiEntityKindImage && (candidate.AssetRef == nil || strings.TrimSpace(candidate.AssetRef.AssetID) == "") {
+			continue
+		}
+		if candidate.Kind == MultiEntityKindPhrase && strings.TrimSpace(candidate.Text) == "" {
+			continue
+		}
+		if candidate.Kind != MultiEntityKindImage && candidate.Kind != MultiEntityKindPhrase {
+			continue
+		}
+		valid = append(valid, candidate)
+	}
+	if len(valid) == 0 {
 		return nil
 	}
 	if maxGapMS <= 0 {
-		maxGapMS = 1800 // 1.8s temporal window for Vidrush-style multi-entity binding
+		maxGapMS = 1800
 	}
-
-	// Sort chronologically by StartMS
-	sorted := make([]MultiEntityCandidate, len(candidates))
-	copy(sorted, candidates)
-	sort.Slice(sorted, func(i, j int) bool {
-		if sorted[i].StartMS == sorted[j].StartMS {
-			return sorted[i].Priority > sorted[j].Priority
-		}
-		return sorted[i].StartMS < sorted[j].StartMS
-	})
-
+	// Stable chronology preserves the caller's order for equal-start candidates.
+	sort.SliceStable(valid, func(i, j int) bool { return valid[i].StartMS < valid[j].StartMS })
 	var groups []MultiEntityGroup
-	var current []MultiEntityCandidate
-
+	current := make([]MultiEntityCandidate, 0, 5)
 	flush := func() {
 		if len(current) == 0 {
 			return
 		}
-		g := createGroupFromCluster(current)
-		groups = append(groups, g)
+		groups = append(groups, createGroupFromCluster(current))
 		current = nil
 	}
-
-	for _, cand := range sorted {
+	for _, candidate := range valid {
 		if len(current) == 0 {
-			current = append(current, cand)
+			current = append(current, candidate)
 			continue
 		}
-
-		last := current[len(current)-1]
-		gap := cand.StartMS - last.EndMS
-		// Overlapping or closely following (gap <= maxGapMS) and same scene (if specified)
-		sameScene := last.SceneID == "" || cand.SceneID == "" || last.SceneID == cand.SceneID
-		canGroup := gap <= maxGapMS && sameScene && len(current) < 5
-
-		if canGroup {
-			current = append(current, cand)
-		} else {
-			flush()
-			current = append(current, cand)
+		previous := current[len(current)-1]
+		sameScene := candidate.SceneID == ""
+		if candidate.SceneID != "" {
+			sameScene = true
+			for _, member := range current {
+				if member.SceneID != "" && member.SceneID != candidate.SceneID {
+					sameScene = false
+					break
+				}
+			}
 		}
+		imageStackWithinWindow := candidate.Kind != MultiEntityKindImage || imageStackFitsWindow(current, candidate)
+		if sameScene && imageStackWithinWindow && candidate.StartMS-previous.EndMS <= maxGapMS && len(current) < 5 {
+			current = append(current, candidate)
+			continue
+		}
+		flush()
+		current = append(current, candidate)
 	}
 	flush()
-
 	return groups
 }
 
+func imageStackFitsWindow(current []MultiEntityCandidate, candidate MultiEntityCandidate) bool {
+	start, end := candidate.StartMS, min(candidate.EndMS, candidate.StartMS+MaxImageOverlayDurationMS)
+	for _, item := range current {
+		if item.Kind != MultiEntityKindImage {
+			continue
+		}
+		itemEnd := min(item.EndMS, item.StartMS+MaxImageOverlayDurationMS)
+		if item.StartMS < start {
+			start = item.StartMS
+		}
+		if itemEnd > end {
+			end = itemEnd
+		}
+	}
+	return end-start <= MaxImageOverlayDurationMS
+}
+
 func createGroupFromCluster(items []MultiEntityCandidate) MultiEntityGroup {
-	earliestStart := items[0].StartMS
-	latestEnd := items[0].EndMS
-	hasImage := false
-	hasPhrase := false
-
-	for _, it := range items {
-		if it.StartMS < earliestStart {
-			earliestStart = it.StartMS
+	start, end := items[0].StartMS, items[0].EndMS
+	hasImage, hasPhrase := false, false
+	for _, item := range items {
+		if item.StartMS < start {
+			start = item.StartMS
 		}
-		if it.EndMS > latestEnd {
-			latestEnd = it.EndMS
+		if item.EndMS > end {
+			end = item.EndMS
 		}
-		if it.Kind == MultiEntityKindImage {
-			hasImage = true
-		} else if it.Kind == MultiEntityKindPhrase {
-			hasPhrase = true
-		}
+		hasImage = hasImage || item.Kind == MultiEntityKindImage
+		hasPhrase = hasPhrase || item.Kind == MultiEntityKindPhrase
 	}
-
-	// Guarantee at least 5.0s (5000ms) presentation duration for cinematic readability
-	if latestEnd-earliestStart < 5000 {
-		latestEnd = earliestStart + 5000
+	if end-start < 5000 {
+		end = start + 5000
 	}
-
 	kind := MultiEntityKindImage
 	if hasImage && hasPhrase {
 		kind = MultiEntityKindMixed
 	} else if hasPhrase {
 		kind = MultiEntityKindPhrase
 	}
-
-	count := len(items)
-	motion := SelectMultiEntityMotion(kind, count, 0)
-
-	focusStrategy := "sequential_highlight"
-	if count == 2 {
-		focusStrategy = "bilateral_exchange"
-	} else if count >= 3 {
-		focusStrategy = "stagger_and_hold"
+	focus := "sequential_highlight"
+	if len(items) == 2 {
+		focus = "bilateral_exchange"
+	} else if len(items) >= 3 {
+		focus = "stagger_and_hold"
 	}
-
+	sceneID := ""
+	for _, item := range items {
+		if item.SceneID != "" {
+			sceneID = item.SceneID
+			break
+		}
+	}
 	return MultiEntityGroup{
-		GroupID:       fmt.Sprintf("group_%s_%d_%d", kind, count, earliestStart),
-		SceneID:       items[0].SceneID,
-		GroupType:     kind,
-		Count:         count,
-		Items:         items,
-		StartMS:       earliestStart,
-		EndMS:         latestEnd,
-		MotionPreset:  motion,
-		FocusStrategy: focusStrategy,
+		GroupID: fmt.Sprintf("group_%s_%d_%d", kind, len(items), start),
+		SceneID: sceneID, GroupType: kind, Count: len(items),
+		Items: append([]MultiEntityCandidate(nil), items...), StartMS: start, EndMS: end,
+		FocusStrategy: focus,
 	}
 }
 
-// SelectMultiEntityMotion deterministically resolves a certified preset for a given entity count and kind.
-func SelectMultiEntityMotion(kind MultiEntityKind, count int, seed int) string {
-	switch kind {
-	case MultiEntityKindPhrase:
-		if count == 2 {
-			return "phrase_dual_side_compare"
-		}
-		idx := seed % len(MultiPhraseMotions)
-		if idx < 0 {
-			idx = -idx
-		}
-		return MultiPhraseMotions[idx]
-
-	case MultiEntityKindImage, MultiEntityKindMixed:
-		switch count {
-		case 2:
-			return MultiImageDuoMotions[seed%len(MultiImageDuoMotions)]
-		case 3:
-			return MultiImageTrioMotions[seed%len(MultiImageTrioMotions)]
-		case 4:
-			return MultiImageQuadMotions[seed%len(MultiImageQuadMotions)]
-		case 5:
-			return MultiImagePentaMotions[seed%len(MultiImagePentaMotions)]
-		default:
-			if count > 5 {
-				return MultiImagePentaMotions[seed%len(MultiImagePentaMotions)]
-			}
-			return MultiImageDuoMotions[0]
-		}
+// WireMultiEntityOverlays lowers a group to the existing semantic primitives.
+// Image children use image_layers with independent certified motions. Phrase
+// children remain separate IMPORTANT_PHRASE items to preserve their own timing.
+// Mixed groups produce both types rather than inventing a composite renderer.
+func WireMultiEntityOverlays(group MultiEntityGroup, canvasWidth, canvasHeight int) ([]OverlayItem, error) {
+	if strings.TrimSpace(group.GroupID) == "" || strings.TrimSpace(group.SceneID) == "" || group.StartMS < 0 || group.EndMS <= group.StartMS || len(group.Items) == 0 || len(group.Items) > 5 || canvasWidth <= 0 || canvasHeight <= 0 {
+		return nil, fmt.Errorf("multi-entity wiring: invalid group identity, timing, or contents")
 	}
-	return "duo_split_reveal"
-}
-
-// WireMultiEntityOverlay converts an EntityGroup into a unified OverlayItem for the Chronon pipeline.
-func WireMultiEntityOverlay(group MultiEntityGroup) OverlayItem {
-	templateID := "MULTI_ENTITY"
-	presetID := "multi_entity_layout_v1"
-	if group.GroupType == MultiEntityKindPhrase {
-		templateID = "MULTI_PHRASE"
-		presetID = "multi_phrase_layout_v1"
-	}
-
-	var assetRefs []OverlayAssetRef
-	var imageLayers []OverlayImageLayer
-	var texts []string
-
-	for idx, it := range group.Items {
-		if it.AssetRef != nil {
-			assetRefs = append(assetRefs, *it.AssetRef)
-			relStart := it.StartMS - group.StartMS
-			if relStart < 0 {
-				relStart = 0
+	assets := make([]OverlayAssetRef, 0, len(group.Items))
+	layers := make([]OverlayImageLayer, 0, len(group.Items))
+	phrases := make([]MultiEntityCandidate, 0, len(group.Items))
+	layerIDs := make(map[string]struct{}, len(group.Items))
+	imageStartOffset, imageEndOffset := int64(math.MaxInt64), int64(0)
+	for index, candidate := range group.Items {
+		if candidate.StartMS < group.StartMS || candidate.EndMS > group.EndMS || candidate.EndMS <= candidate.StartMS {
+			return nil, fmt.Errorf("multi-entity wiring: candidate %q falls outside group window", candidate.ID)
+		}
+		if candidate.SceneID != "" && candidate.SceneID != group.SceneID {
+			return nil, fmt.Errorf("multi-entity wiring: candidate %q belongs to scene %q, not %q", candidate.ID, candidate.SceneID, group.SceneID)
+		}
+		if candidate.Kind == MultiEntityKindImage && candidate.AssetRef != nil {
+			for _, ref := range assets {
+				if ref.AssetID == candidate.AssetRef.AssetID {
+					return nil, fmt.Errorf("multi-entity wiring: duplicate image asset %q", ref.AssetID)
+				}
 			}
-			relEnd := it.EndMS - group.StartMS
-			if relEnd > (group.EndMS - group.StartMS) {
-				relEnd = group.EndMS - group.StartMS
+		}
+		switch candidate.Kind {
+		case MultiEntityKindImage:
+			if candidate.AssetRef == nil || strings.TrimSpace(candidate.AssetRef.AssetID) == "" || strings.TrimSpace(candidate.AssetRef.SHA256) == "" {
+				return nil, fmt.Errorf("multi-entity wiring: image candidate %q requires a content-addressed asset", candidate.ID)
 			}
-
-			imageLayers = append(imageLayers, OverlayImageLayer{
-				ID:              fmt.Sprintf("layer_%d", idx+1),
-				AssetID:         it.AssetRef.AssetID,
-				StartMS:         relStart,
-				EndMS:           relEnd,
-				PresetID:        presetID,
-				MotionID:        group.MotionPreset,
-				Caption:         strings.TrimSpace(it.Name),
-				CaptionMotionID: EntityCaptionMotionAtOffset(0, idx),
+			endMS := min(candidate.EndMS, candidate.StartMS+MaxImageOverlayDurationMS)
+			if endMS <= candidate.StartMS {
+				return nil, fmt.Errorf("multi-entity wiring: image candidate %q starts outside the %dms image window", candidate.ID, MaxImageOverlayDurationMS)
+			}
+			ref := *candidate.AssetRef
+			assets = append(assets, ref)
+			layerID := strings.TrimSpace(candidate.ID)
+			if layerID == "" {
+				layerID = fmt.Sprintf("image_%d", index+1)
+			}
+			if _, duplicate := layerIDs[layerID]; duplicate {
+				return nil, fmt.Errorf("multi-entity wiring: duplicate image candidate id %q", layerID)
+			}
+			layerIDs[layerID] = struct{}{}
+			imageIndex := len(layers)
+			startOffset, endOffset := candidate.StartMS-group.StartMS, endMS-group.StartMS
+			if startOffset < imageStartOffset {
+				imageStartOffset = startOffset
+			}
+			if endOffset > imageEndOffset {
+				imageEndOffset = endOffset
+			}
+			position := multiImagePosition(countKind(group.Items, MultiEntityKindImage), imageIndex, canvasWidth, canvasHeight)
+			layers = append(layers, OverlayImageLayer{
+				ID: layerID, AssetID: ref.AssetID,
+				StartMS: candidate.StartMS - group.StartMS, EndMS: endMS - group.StartMS,
+				PresetID:        selectImagePreset(group.GroupID, group.SceneID, layerID),
+				MotionID:        EntityImageMotionAtOffset(0, imageIndex),
+				Caption:         strings.TrimSpace(candidate.Name),
+				CaptionMotionID: EntityCaptionMotionAtOffset(0, imageIndex),
+				Params:          map[string]any{"position_x": position[0], "position_y": position[1], "width": position[2], "height": position[3], "fit": "contain"},
 			})
-		}
-		if it.Text != "" {
-			texts = append(texts, it.Text)
-		}
-	}
-
-	combinedText := ""
-	if len(texts) > 0 {
-		for i, t := range texts {
-			if i > 0 {
-				combinedText += "\n"
+		case MultiEntityKindPhrase:
+			if strings.TrimSpace(candidate.Text) == "" {
+				return nil, fmt.Errorf("multi-entity wiring: phrase candidate %q requires text", candidate.ID)
 			}
-			combinedText += t
+			phrases = append(phrases, candidate)
+		default:
+			return nil, fmt.Errorf("multi-entity wiring: unsupported candidate kind %q", candidate.Kind)
 		}
 	}
-
-	return OverlayItem{
-		ID:          group.GroupID,
-		SceneID:     group.SceneID,
-		Kind:        "multi_entity_card",
-		StartMs:     group.StartMS,
-		EndMs:       group.EndMS,
-		StartUS:     group.StartMS * 1000,
-		DurationUS:  (group.EndMS - group.StartMS) * 1000,
-		TemplateID:  templateID,
-		PresetID:    presetID,
-		MotionID:    group.MotionPreset,
-		Text:        combinedText,
-		AssetRefs:   assetRefs,
-		ImageLayers: imageLayers,
-		Params: map[string]any{
-			"entity_count":   group.Count,
-			"group_type":     string(group.GroupType),
-			"focus_strategy": group.FocusStrategy,
-		},
+	if len(layers) > 0 && imageEndOffset-imageStartOffset > MaxImageOverlayDurationMS {
+		return nil, fmt.Errorf("multi-entity wiring: image stack spans %dms, exceeding the %dms image ceiling", imageEndOffset-imageStartOffset, MaxImageOverlayDurationMS)
 	}
+	if len(layers) > 0 {
+		for index := range layers {
+			layers[index].StartMS -= imageStartOffset
+			layers[index].EndMS -= imageStartOffset
+		}
+	}
+	var out []OverlayItem
+	if len(layers) > 0 {
+		imageID := group.GroupID + "-images"
+		imageWindowStart := group.StartMS + imageStartOffset
+		imageWindowEnd := group.StartMS + imageEndOffset
+		imageItem := OverlayItem{
+			ID: imageID, SceneID: group.SceneID,
+			Kind: string(KindEntityImage), TemplateID: "IMAGE_OVERLAY",
+			PresetID: selectImagePreset(group.GroupID, group.SceneID, imageID),
+			StartMs:  imageWindowStart, EndMs: imageWindowEnd, StartUS: imageWindowStart * 1000, DurationUS: (imageWindowEnd - imageWindowStart) * 1000,
+			AssetRefs: assets,
+		}
+		if len(layers) == 1 {
+			imageItem.EntityCaption = layers[0].Caption
+			imageItem.CaptionMotionID = layers[0].CaptionMotionID
+			imageItem.MotionID = layers[0].MotionID
+			imageItem.Params = layers[0].Params
+		} else {
+			imageItem.ImageLayers = layers
+		}
+		out = append(out, imageItem)
+	}
+	for index, candidate := range phrases {
+		phraseID := fmt.Sprintf("%s-phrase-%d", group.GroupID, index+1)
+		item := OverlayItem{
+			ID: phraseID, SceneID: group.SceneID,
+			Kind: "text_phrase", TemplateID: "IMPORTANT_PHRASE",
+			PresetID: selectPhrasePreset(group.GroupID, group.SceneID, phraseID),
+			StartMs:  candidate.StartMS, EndMs: candidate.EndMS, StartUS: candidate.StartMS * 1000,
+			DurationUS: (candidate.EndMS - candidate.StartMS) * 1000,
+			Text:       strings.TrimSpace(candidate.Text),
+			Params:     map[string]any{"position": "center", "style": "headline", "priority": candidate.Priority},
+		}
+		words := len(strings.Fields(item.Text))
+		if words > 0 && words < 6 {
+			item.MotionID = selectShortPhraseMotion(group.GroupID, group.SceneID, index, words, nil)
+		} else {
+			item.MotionID = selectLongPhraseMotion(group.GroupID, group.SceneID, index, nil)
+		}
+		out = append(out, item)
+	}
+	return out, nil
 }
 
-// IsMultiEntityMotion returns true if the motion ID belongs to any certified multi-entity family.
-func IsMultiEntityMotion(motionID string) bool {
-	for _, m := range MultiImageDuoMotions {
-		if m == motionID {
-			return true
+func countKind(items []MultiEntityCandidate, kind MultiEntityKind) int {
+	count := 0
+	for _, item := range items {
+		if item.Kind == kind {
+			count++
 		}
 	}
-	for _, m := range MultiImageTrioMotions {
-		if m == motionID {
-			return true
-		}
+	return count
+}
+
+func multiImagePosition(count, index, canvasWidth, canvasHeight int) []float64 {
+	width, height := float64(canvasWidth)*0.42, float64(canvasHeight)*0.56
+	var x, y float64
+	switch count {
+	case 1:
+		x, y = 0, 0
+	case 2:
+		x = []float64{-0.25, 0.25}[index]
+	case 3:
+		width, height = float64(canvasWidth)*0.40, float64(canvasHeight)*0.46
+		positions := [][2]float64{{-0.22, -0.22}, {0.22, -0.22}, {0, 0.25}}
+		x, y = positions[index][0], positions[index][1]
+	case 4:
+		positions := [][2]float64{{-0.24, -0.22}, {0.24, -0.22}, {-0.24, 0.22}, {0.24, 0.22}}
+		x, y = positions[index][0], positions[index][1]
+	case 5:
+		width, height = float64(canvasWidth)*0.34, float64(canvasHeight)*0.42
+		positions := [][2]float64{{-0.32, -0.25}, {0, -0.25}, {0.32, -0.25}, {-0.18, 0.24}, {0.18, 0.24}}
+		x, y = positions[index][0], positions[index][1]
+	default:
+		columns := int(math.Ceil(math.Sqrt(float64(max(1, count)))))
+		row := index / columns
+		column := index % columns
+		rows := (count + columns - 1) / columns
+		x = (float64(column) - float64(columns-1)/2) * float64(canvasWidth) * 0.46
+		y = (float64(row) - float64(rows-1)/2) * float64(canvasHeight) * 0.52
+		width = float64(canvasWidth) * 0.42 / math.Sqrt(float64(columns))
+		height = float64(canvasHeight) * 0.56 / math.Sqrt(float64(rows))
 	}
-	for _, m := range MultiImageQuadMotions {
-		if m == motionID {
-			return true
-		}
+	if count >= 2 && count <= 5 {
+		x *= float64(canvasWidth)
+		y *= float64(canvasHeight)
 	}
-	for _, m := range MultiImagePentaMotions {
-		if m == motionID {
-			return true
-		}
-	}
-	for _, m := range MultiPhraseMotions {
-		if m == motionID {
-			return true
-		}
-	}
-	return false
+	return []float64{x, y, width, height}
 }

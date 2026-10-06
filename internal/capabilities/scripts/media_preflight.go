@@ -27,6 +27,7 @@ import (
 	"time"
 
 	capabilityaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
+	mediadomain "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
@@ -115,6 +116,21 @@ type ImageProviderHealthProbe interface {
 	ProbeImageProviderHealth(ctx context.Context) error
 }
 
+// VidRushProviderAvailabilityProbe verifies that a provider explicitly enabled
+// by the media plan was actually registered in the composed materialization
+// registry. This is a registration check, not a network health check.
+type VidRushProviderAvailabilityProbe interface {
+	ProbeVidRushProvider(ctx context.Context, provider string) error
+}
+
+// VidRushProviderAvailabilityPreflight rechecks the static provider registry
+// when a durable run resumes after MEDIA_PREFLIGHT. A retry must not skip a
+// known-missing composition dependency merely because its asset checks already
+// completed in an earlier attempt.
+type VidRushProviderAvailabilityPreflight interface {
+	RunVidRushProviderAvailability(ctx context.Context, req GenerateRequest) PreflightResult
+}
+
 // MediaPreflightInput carries everything needed to verify media
 // requirements for one run.
 type FixedClipPreflight struct {
@@ -155,6 +171,11 @@ type MediaPreflightInput struct {
 	// internet image retrieval (clip-only / fixed-media runs) and no probe is
 	// issued. A non-nil probe MUST pass for the preflight to succeed.
 	ImageProviderHealth ImageProviderHealthProbe
+	// VidRushProviderAvailability is required whenever a provider toggle is
+	// enabled in MediaPlan. A missing probe is itself a fail-closed preflight
+	// failure; disabled providers are never probed.
+	MediaPlan                   mediadomain.MediaPlanSpec
+	VidRushProviderAvailability VidRushProviderAvailabilityProbe
 }
 
 // RunMediaPreflight executes all independent asset checks concurrently and
@@ -191,6 +212,11 @@ func RunMediaPreflight(ctx context.Context, in MediaPreflightInput) PreflightRes
 		}
 	}
 
+	// Provider registration checks are synchronous and run before the asset
+	// fan-out, so appending their failures cannot race with concurrent probes.
+	providerResult := RunVidRushProviderAvailabilityPreflight(ctx, in.MediaPlan, in.VidRushProviderAvailability)
+	failures = append(failures, providerResult.Failures...)
+
 	// Flatten: one goroutine per check item. Add to wg BEFORE spawning.
 	// ── Clip existence ──────────────────────────────────────────
 	allClipIDs := make([]string, 0, len(in.ClipIDs)+len(in.FixedClips))
@@ -198,7 +224,7 @@ func RunMediaPreflight(ctx context.Context, in MediaPreflightInput) PreflightRes
 	for _, fixed := range in.FixedClips {
 		allClipIDs = append(allClipIDs, fixed.ClipID)
 	}
-	for _, id := range allClipIDs {
+	for _, id := range uniqueClipProbeIDs(allClipIDs) {
 		id := id
 		if in.ClipProber == nil {
 			mu.Lock()
@@ -300,8 +326,8 @@ func RunMediaPreflight(ctx context.Context, in MediaPreflightInput) PreflightRes
 	// Resolve each canonical audio asset once. An effect may intentionally be
 	// placed on many scenes, but concurrent materialization of the same Drive
 	// asset races on the shared content-addressed `.part` file.
-	bgmIDs := uniqueCanonicalAudioIDs(in.BGMIDs)
-	sfxIDs := uniqueCanonicalAudioIDs(in.SFXIDs)
+	bgmIDs := canonicalAudioIDs(in.BGMIDs)
+	sfxIDs := canonicalAudioIDs(in.SFXIDs)
 
 	// ── BGM assets ────────────────────────────────────────────
 	for _, id := range bgmIDs {
@@ -379,10 +405,12 @@ func RunMediaPreflight(ctx context.Context, in MediaPreflightInput) PreflightRes
 	if in.RenderEnabled && strings.TrimSpace(in.WatermarkAssetID) != "" {
 		id := in.WatermarkAssetID
 		if in.WatermarkResolver == nil {
+			mu.Lock()
 			failures = append(failures, PreflightFailure{
 				Category: "watermark", AssetID: id,
 				Detail: "watermark resolver not wired",
 			})
+			mu.Unlock()
 		} else {
 			wg.Add(1)
 			go func() {
@@ -403,10 +431,12 @@ func RunMediaPreflight(ctx context.Context, in MediaPreflightInput) PreflightRes
 	if in.RenderEnabled && strings.TrimSpace(in.BackgroundAssetID) != "" {
 		id := in.BackgroundAssetID
 		if in.BackgroundResolver == nil {
+			mu.Lock()
 			failures = append(failures, PreflightFailure{
 				Category: "background", AssetID: id,
 				Detail: "background resolver not wired",
 			})
+			mu.Unlock()
 		} else {
 			wg.Add(1)
 			go func() {
@@ -449,6 +479,59 @@ func RunMediaPreflight(ctx context.Context, in MediaPreflightInput) PreflightRes
 	}
 }
 
+// RunVidRushProviderAvailabilityPreflight checks every explicitly enabled
+// VidRush provider against the frozen composition registry. It is shared by
+// the full preflight and the durable-resume fast check.
+func RunVidRushProviderAvailabilityPreflight(ctx context.Context, plan mediadomain.MediaPlanSpec, probe VidRushProviderAvailabilityProbe) PreflightResult {
+	started := time.Now()
+	providerChecks := []struct {
+		name    string
+		enabled bool
+	}{
+		{name: scriptpkg.VidRushProviderArtlist, enabled: plan.ProviderPolicy.Artlist.AsBool()},
+		{name: scriptpkg.VidRushProviderYouTube, enabled: plan.ProviderPolicy.YouTube.AsBool()},
+		{name: scriptpkg.VidRushProviderInternetImages, enabled: plan.ProviderPolicy.InternetImages.AsBool()},
+		{name: scriptpkg.VidRushProviderImageGeneration, enabled: plan.ProviderPolicy.ImageGeneration.AsBool()},
+	}
+	var failures []PreflightFailure
+	for _, check := range providerChecks {
+		if !check.enabled {
+			continue
+		}
+		if probe == nil {
+			failures = append(failures, PreflightFailure{
+				Category: "vidrush_provider",
+				AssetID:  check.name,
+				Detail:   "provider availability probe not wired — cannot verify enabled provider",
+			})
+			continue
+		}
+		if err := probe.ProbeVidRushProvider(ctx, check.name); err != nil {
+			failures = append(failures, PreflightFailure{
+				Category: "vidrush_provider",
+				AssetID:  check.name,
+				Detail:   fmt.Sprintf("enabled provider unavailable: %v", err),
+			})
+		}
+	}
+	return PreflightResult{Failures: failures, WallMS: time.Since(started).Milliseconds()}
+}
+
+// uniqueClipProbeIDs removes repeated existence probes without normalizing IDs
+// or dropping empty values: blank IDs must still reach the fail-closed prober.
+func uniqueClipProbeIDs(ids []string) []string {
+	unique := make([]string, 0, len(ids))
+	seen := make(map[string]struct{}, len(ids))
+	for _, id := range ids {
+		if _, ok := seen[id]; ok {
+			continue
+		}
+		seen[id] = struct{}{}
+		unique = append(unique, id)
+	}
+	return unique
+}
+
 func validateFixedClipAudio(resolved capabilityaudio.ResolvedAudioAsset, fixed FixedClipPreflight) error {
 	if strings.TrimSpace(resolved.Path) == "" {
 		return fmt.Errorf("authoritative original audio resolved to an empty path")
@@ -472,18 +555,4 @@ func validateFixedClipAudio(resolved capabilityaudio.ResolvedAudioAsset, fixed F
 		return fmt.Errorf("source window [%d,%d]ms exceeds original audio duration %dms", fixed.SourceInMS, fixed.SourceOutMS, resolved.DurationUS/1000)
 	}
 	return nil
-}
-
-func uniqueCanonicalAudioIDs(ids []string) []string {
-	out := make([]string, 0, len(ids))
-	seen := make(map[string]struct{}, len(ids))
-	for _, raw := range ids {
-		id := capabilityaudio.CanonicalAssetID(raw)
-		if _, ok := seen[id]; ok {
-			continue
-		}
-		seen[id] = struct{}{}
-		out = append(out, id)
-	}
-	return out
 }

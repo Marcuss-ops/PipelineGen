@@ -35,8 +35,6 @@ const (
 	PresetModernWord   SemanticPreset = "phrase_default"
 	PresetModernName   SemanticPreset = "phrase_default"
 	PresetModernImage  SemanticPreset = "image_fade_in"
-	PresetMultiEntity  SemanticPreset = "multi_entity_layout_v1"
-	PresetMultiPhrase  SemanticPreset = "multi_phrase_layout_v1"
 )
 
 // semanticPresetTable is the frozen semantic_role → preset table. It is the
@@ -48,12 +46,6 @@ const (
 // they compile to a bare layer whose appearance is the renderer's default, not
 // a Chronon visual preset.
 var semanticPresetTable = map[string]SemanticPreset{
-	// ── Multi-Entity Layout & Simultaneous Presentations ───────────────
-	"MULTI_ENTITY": PresetMultiEntity,
-	"MULTI_PHRASE": PresetMultiPhrase,
-	"multi_entity": PresetMultiEntity,
-	"multi_phrase": PresetMultiPhrase,
-
 	// ── The canonical semantic entity vocabulary ────────────────────────
 	"IMPORTANT_PHRASE": PresetModernPhrase,
 	"IMPORTANT_WORD":   PresetModernWord,

@@ -44,6 +44,10 @@ const DefaultOverlapBudget = 3
 // across hosts. Unknown templates return PriorityStructural — the conservative
 // default: the degradation never removes content it does not understand.
 func ContentPriority(templateID string) int {
+	return contentPriorityForItem(OverlayItem{TemplateID: templateID})
+}
+
+func contentPriorityForTemplate(templateID string) int {
 	switch templateID {
 	case "BACKGROUND", "VIDEO_BACKGROUND", "SHAPE":
 		return PriorityStructural
@@ -87,7 +91,7 @@ func DegradeOverlaps(items []OverlayItem, budget int) []OverlayItem {
 	kept := make([]bool, len(items))
 	content := make([]candidate, 0, len(items))
 	for i, item := range items {
-		p := ContentPriority(item.TemplateID)
+		p := contentPriorityForItem(item)
 		if p == PriorityStructural {
 			kept[i] = true
 			continue
@@ -152,7 +156,7 @@ func CountContent(plan OverlayPlan) ContentCounts {
 			c.Numbers++
 			continue
 		}
-		switch ContentPriority(item.TemplateID) {
+		switch contentPriorityForTemplate(item.TemplateID) {
 		case PriorityPhrase:
 			c.Phrases++
 		case PriorityWord:

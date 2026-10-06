@@ -236,7 +236,7 @@ func (r *Runner) failRunWithRetry(ctx context.Context, runID string, failedStage
 	// Compute the next retry attempt (1-based for display, 0-based for storage).
 	nextAttempt := attempt + 1
 	var nextRetryAt *time.Time
-	if nextAttempt <= MaxRetries {
+	if nextAttempt <= MaxRetries && !isPermanentMediaPreflightFailure(err) {
 		delay := RetryDelay(attempt)
 		now := time.Now().UTC()
 		t := now.Add(delay)

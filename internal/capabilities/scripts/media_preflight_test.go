@@ -3,13 +3,82 @@ package scriptgeneration
 import (
 	"context"
 	"errors"
+	"os"
 	"strings"
+	"sync"
 	"testing"
 )
 
 // probeStub is a ClipPreflighter with a fixed result per asset id.
 type probeStub struct {
 	ok map[string]bool
+}
+
+type countingProbeStub struct {
+	mu    sync.Mutex
+	calls map[string]int
+	err   error
+}
+
+func (p *countingProbeStub) ProbeClip(_ context.Context, clipID string) error {
+	p.mu.Lock()
+	p.calls[clipID]++
+	p.mu.Unlock()
+	return p.err
+}
+
+func (p *countingProbeStub) callCounts() map[string]int {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	calls := make(map[string]int, len(p.calls))
+	for id, count := range p.calls {
+		calls[id] = count
+	}
+	return calls
+}
+
+func TestRunMediaPreflightDeduplicatesClipExistenceProbes(t *testing.T) {
+	path := t.TempDir() + "/fixed-audio.m4a"
+	if err := os.WriteFile(path, []byte("audio"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	probe := &countingProbeStub{calls: make(map[string]int)}
+	result := RunMediaPreflight(context.Background(), MediaPreflightInput{
+		ClipIDs: []string{"clip-a", "clip-a", "", "clip-b"},
+		FixedClips: []FixedClipPreflight{
+			{ClipID: "clip-a"},
+			{ClipID: "clip-b"},
+		},
+		ClipProber:      probe,
+		ClipAudioSource: fixedAudioPreflightStub{path: path, durationUS: 5_000_000},
+	})
+	if result.HasFailures() {
+		t.Fatalf("preflight = %s, want success", result.Error())
+	}
+	want := map[string]int{"clip-a": 1, "clip-b": 1, "": 1}
+	calls := probe.callCounts()
+	if len(calls) != len(want) {
+		t.Fatalf("probe calls = %#v, want %#v", calls, want)
+	}
+	for id, count := range want {
+		if calls[id] != count {
+			t.Errorf("probe calls for %q = %d, want %d", id, calls[id], count)
+		}
+	}
+}
+
+func TestRunMediaPreflightDeduplicatedClipFailureRemainsFailClosed(t *testing.T) {
+	probe := &countingProbeStub{calls: make(map[string]int), err: errors.New("not reachable")}
+	result := RunMediaPreflight(context.Background(), MediaPreflightInput{
+		ClipIDs:    []string{"clip-a", "clip-a"},
+		ClipProber: probe,
+	})
+	if !result.HasFailures() || !strings.Contains(result.Error(), "[clip] clip-a") {
+		t.Fatalf("preflight = %s, want a fail-closed clip-a failure", result.Error())
+	}
+	if calls := probe.callCounts()["clip-a"]; calls != 1 {
+		t.Fatalf("probe calls for duplicate failing clip = %d, want 1", calls)
+	}
 }
 
 func (p probeStub) ProbeClip(_ context.Context, clipID string) error {
