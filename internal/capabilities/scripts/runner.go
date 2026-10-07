@@ -16,6 +16,7 @@ import (
 	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
 	scriptports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
+	"github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 	"go.uber.org/zap"
 )
 
@@ -293,7 +294,7 @@ func (r *Runner) beginVidRush(ctx context.Context, runID string, req GenerateReq
 		// semantic/media portion from losing the folder before the
 		// materializer reaches the finalizer.
 		if strings.TrimSpace(plan.DriveFolderID) == "" {
-			plan.DriveFolderID = firstNonEmpty(req.Render.DriveFolderID, req.DriveFolderID, req.Docs.FolderID)
+			plan.DriveFolderID = textutil.FirstNonEmpty(req.Render.DriveFolderID, req.DriveFolderID, req.Docs.FolderID)
 		}
 		if r.log != nil {
 			r.log.Info("VidRush plan resolved", zap.String("run_id", runID), zap.String("drive_folder_id", strings.TrimSpace(plan.DriveFolderID)), zap.String("title", plan.Title), zap.String("language", plan.Language))

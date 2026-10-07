@@ -65,10 +65,10 @@ type Dependencies struct {
 // closed at boot, not silently succeeding at first request).
 func Build(deps Dependencies) (*submodule.Descriptor, error) {
 	if deps.Ingest == nil {
-		return nil, missingDepError("Ingest")
+		return nil, submodule.MissingDependencyError("clips-ingest", "Ingest")
 	}
 	if deps.EnabledFunc == nil {
-		return nil, missingDepError("EnabledFunc")
+		return nil, submodule.MissingDependencyError("clips-ingest", "EnabledFunc")
 	}
 	idem := deps.Idempotency
 	if idem == nil {
@@ -106,17 +106,3 @@ type ingestRoutesRegistrar struct {
 func (r *ingestRoutesRegistrar) RegisterRoutes(g *gin.RouterGroup) {
 	r.ingest.RegisterRoutes(g, r.idem)
 }
-
-// missingDepError is the canonical typed-narrow error path for
-// per-dep nil checks. godlike/07 NO-FAKE-AVAILABILITY: every missing
-// required dep surfaces as a distinct typed sentinel so the
-// composition root can branch via errors.Is / strings.Contains.
-func missingDepError(name string) error {
-	return errMissingDep{"clips-ingest.Build: " + name + " is required (godlike/07 fail-closed)"}
-}
-
-// errMissingDep is the package-local typed sentinel the parent +
-// future tests can match against. Internal to this package.
-type errMissingDep struct{ msg string }
-
-func (e errMissingDep) Error() string { return e.msg }

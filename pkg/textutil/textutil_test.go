@@ -2,6 +2,26 @@ package textutil
 
 import "testing"
 
+func TestFirstNonEmpty(t *testing.T) {
+	tests := []struct {
+		name   string
+		values []string
+		want   string
+	}{
+		{name: "skips empty and whitespace", values: []string{"", " \t", "value", "later"}, want: "value"},
+		{name: "returns original non-empty value", values: []string{"  value  "}, want: "  value  "},
+		{name: "all empty", values: []string{"", "  "}, want: ""},
+		{name: "no values", want: ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := FirstNonEmpty(tt.values...); got != tt.want {
+				t.Fatalf("FirstNonEmpty(%q) = %q, want %q", tt.values, got, tt.want)
+			}
+		})
+	}
+}
+
 // These cases were previously colocated in the (now retired)
 // internal/capabilities/images/workflow/fullimages/service_test.go — they exercise
 // textutil.SafeName, so they live here with the implementation they cover.

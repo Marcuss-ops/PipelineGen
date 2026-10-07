@@ -67,10 +67,10 @@ type Dependencies struct {
 // REQUIRED.
 func Build(deps Dependencies) (*submodule.Descriptor, error) {
 	if deps.Ops == nil {
-		return nil, missingDepError("Ops")
+		return nil, submodule.MissingDependencyError("clips-operations", "Ops")
 	}
 	if deps.EnabledFunc == nil {
-		return nil, missingDepError("EnabledFunc")
+		return nil, submodule.MissingDependencyError("clips-operations", "EnabledFunc")
 	}
 	idem := deps.Idempotency
 	if idem == nil {
@@ -126,14 +126,3 @@ func (r *operationsRoutesRegistrar) RegisterRoutes(g *gin.RouterGroup) {
 	g.POST("/:source/folders/:id/manifest", r.idem, r.ops.RegenerateManifest)
 	g.DELETE("/:source/folders/:id", r.idem, r.ops.TrashFolder)
 }
-
-// missingDepError is the canonical typed-narrow error path for
-// per-dep nil checks. godlike/07 NO-FAKE-AVAILABILITY.
-func missingDepError(name string) error {
-	return errMissingDep{"clips-operations.Build: " + name + " is required (godlike/07 fail-closed)"}
-}
-
-// errMissingDep is the package-local typed sentinel.
-type errMissingDep struct{ msg string }
-
-func (e errMissingDep) Error() string { return e.msg }

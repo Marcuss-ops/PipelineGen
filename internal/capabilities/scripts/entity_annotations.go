@@ -198,15 +198,6 @@ func normalizeEntityImageName(value string) string {
 	return strings.Join(strings.Fields(value), " ")
 }
 
-func firstNonEmpty(values ...string) string {
-	for _, value := range values {
-		if strings.TrimSpace(value) != "" {
-			return value
-		}
-	}
-	return ""
-}
-
 func entityImagePreviewURL(candidate scriptpkg.SegmentAssetCandidate) string {
 	// RenderingGen materializes through the declared URL when the content hash
 	// is not already in its object store. Once PipelineGen has published the

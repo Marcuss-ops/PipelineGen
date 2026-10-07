@@ -26,6 +26,7 @@ import (
 	"unicode/utf8"
 
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
+	"github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
 
 // localizedSourceMatch is one SOURCE annotation entity grounded in a
@@ -59,7 +60,7 @@ func matchLocalizedSourceEntities(text, language string, source *scriptpkg.Scene
 		if kind == "" {
 			continue
 		}
-		identity := firstNonEmpty(entity.CanonicalName, entity.Text)
+		identity := textutil.FirstNonEmpty(entity.CanonicalName, entity.Text)
 		aliases := []string{identity}
 		if kind == scriptpkg.EntityTypePerson {
 			identity = normalizeVisualPersonName(identity)
@@ -175,7 +176,7 @@ func localizedSourceEntityKey(entity scriptpkg.AnnotatedEntity) string {
 	if id := strings.TrimSpace(entity.CanonicalEntityID); id != "" {
 		return "id:" + strings.ToLower(id)
 	}
-	return "name:" + strings.ToLower(strings.TrimSpace(firstNonEmpty(entity.CanonicalName, entity.Text)))
+	return "name:" + strings.ToLower(strings.TrimSpace(textutil.FirstNonEmpty(entity.CanonicalName, entity.Text)))
 }
 
 // sourceMatchesCoverEntityLimit reports whether the source-grounded matches

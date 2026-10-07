@@ -11,6 +11,7 @@ import (
 	scriptports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
+	"github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
 
 type visualNERRequest struct {
@@ -169,21 +170,12 @@ func (a *MediaSamplerAdapter) Sample(ctx context.Context, sceneID, subject strin
 	input := make([]mediaSamplerCandidate, 0, len(candidates))
 	for _, candidate := range candidates {
 		input = append(input, mediaSamplerCandidate{
-			ID: candidate.AssetID, Label: firstNonEmpty(candidate.Entity, candidate.Query),
+			ID: candidate.AssetID, Label: textutil.FirstNonEmpty(candidate.Entity, candidate.Query),
 			GenericSimilarity: float32(candidate.RelevanceScore), OwnerSegmentID: candidate.SegmentID,
 		})
 	}
 	_, winner, err := a.SampleScene(ctx, sceneID, subject, terms, input, allowReuse)
 	return winner, err
-}
-
-func firstNonEmpty(values ...string) string {
-	for _, value := range values {
-		if strings.TrimSpace(value) != "" {
-			return value
-		}
-	}
-	return ""
 }
 
 var _ scriptgen.VisualNERPort = (*VisualNERAdapter)(nil)

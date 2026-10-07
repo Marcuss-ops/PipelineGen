@@ -56,10 +56,10 @@ type Dependencies struct {
 // closed at boot, not silently succeeding at first request).
 func Build(deps Dependencies) (*submodule.Descriptor, error) {
 	if deps.Processing == nil {
-		return nil, missingDepError("Processing")
+		return nil, submodule.MissingDependencyError("clips-processing", "Processing")
 	}
 	if deps.EnabledFunc == nil {
-		return nil, missingDepError("EnabledFunc")
+		return nil, submodule.MissingDependencyError("clips-processing", "EnabledFunc")
 	}
 	idem := deps.Idempotency
 	if idem == nil {
@@ -104,15 +104,3 @@ func (r *processingRoutesRegistrar) RegisterRoutes(g *gin.RouterGroup) {
 	g.POST("/:source/clips/:id/reprocess", r.idem, r.processing.ReprocessClip)
 	g.POST("/enrich", r.idem, r.processing.EnrichMedia)
 }
-
-// missingDepError is the canonical typed-narrow error path for
-// per-dep nil checks. godlike/07 NO-FAKE-AVAILABILITY: every missing
-// required dep surfaces as a distinct typed sentinel.
-func missingDepError(name string) error {
-	return errMissingDep{"clips-processing.Build: " + name + " is required (godlike/07 fail-closed)"}
-}
-
-// errMissingDep is the package-local typed sentinel.
-type errMissingDep struct{ msg string }
-
-func (e errMissingDep) Error() string { return e.msg }

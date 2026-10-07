@@ -8,6 +8,7 @@ import (
 	"reflect"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers"
+	"github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
 
 // Compile-time assertion: *Adapter satisfies providers.SearchProvider.
@@ -72,7 +73,7 @@ func (a *Adapter) Search(ctx context.Context, req providers.SearchRequest) (prov
 	candidates := make([]providers.Candidate, 0, len(resp.Clips))
 	for i := range resp.Clips {
 		clip := &resp.Clips[i]
-		previewURL := firstNonEmpty(clip.GetMetadataString("preview_url"), clip.ClipPageURL)
+		previewURL := textutil.FirstNonEmpty(clip.GetMetadataString("preview_url"), clip.ClipPageURL)
 		candidates = append(candidates, providers.Candidate{
 			Provider:     a.Name(),
 			ExternalID:   clip.ID,
@@ -83,7 +84,7 @@ func (a *Adapter) Search(ctx context.Context, req providers.SearchRequest) (prov
 			PageURL:      clip.ClipPageURL,
 			PreviewURL:   previewURL,
 			ThumbnailURL: clip.ThumbnailURL,
-			SourceRef:    firstNonEmpty(clip.SourceURL, clip.ClipPageURL),
+			SourceRef:    textutil.FirstNonEmpty(clip.SourceURL, clip.ClipPageURL),
 			SourceName:   a.Name(),
 			MediaType:    clip.MediaType,
 			Duration:     clip.Duration,
@@ -111,7 +112,7 @@ func mapLiveCandidates(provider string, in []Candidate) []providers.Candidate {
 			PreviewURL:   clip.PreviewURL,
 			// SourceRef is the stable provider identity. The temporary media
 			// URL stays out of the identity and is refreshed by resolve.
-			SourceRef:  firstNonEmpty(clip.ID, clip.SourceRef),
+			SourceRef:  textutil.FirstNonEmpty(clip.ID, clip.SourceRef),
 			Duration:   clip.Duration,
 			DurationMs: clip.Duration.Milliseconds(),
 			Width:      clip.Width,
