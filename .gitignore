@@ -131,7 +131,10 @@ docs/screenshots/
 # ner-eval CLI built locally from cmd/ner-eval/main.go (same pattern as the
 # other root binaries below: an old binary left in a working copy is never
 # committed).
-ner-eval
+# Anchored to the repo root ON PURPOSE: a bare `ner-eval` pattern also matched
+# the cmd/ner-eval/ DIRECTORY, so every source file split out of main.go there
+# was silently untracked and a fresh clone could not build the package.
+/ner-eval
 *.bak
 pipelinegen.bak
 config.yaml.server.bak

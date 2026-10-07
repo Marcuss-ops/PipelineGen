@@ -3,7 +3,6 @@ package images
 import (
 	"context"
 	"errors"
-	detail "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"sort"
 	"strconv"
 	"strings"
@@ -11,6 +10,8 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	detail "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
+	"github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 	"golang.org/x/sync/singleflight"
 )
 
@@ -72,7 +73,7 @@ func (p *resolverSearchProvider) searchUncached(ctx context.Context, req provide
 	}
 	out := make([]providers.Candidate, 0, len(hits))
 	for _, hit := range hits {
-		id := firstNonEmptyImage(hit.AssetID, hit.SourcePageURL, hit.PreviewURL)
+		id := textutil.FirstNonEmpty(hit.AssetID, hit.SourcePageURL, hit.PreviewURL)
 		out = append(out, providers.Candidate{
 			Provider: hit.Provider, ExternalID: id, ID: id,
 			Title: hit.Name, PageURL: hit.SourcePageURL,
@@ -166,15 +167,6 @@ func normalizeImageQuery(query string) string {
 func cloneProviderSearchResult(in providers.SearchResult) providers.SearchResult {
 	in.Candidates = append([]providers.Candidate(nil), in.Candidates...)
 	return in
-}
-
-func firstNonEmptyImage(values ...string) string {
-	for _, value := range values {
-		if strings.TrimSpace(value) != "" {
-			return value
-		}
-	}
-	return ""
 }
 
 var _ providers.SearchProvider = (*resolverSearchProvider)(nil)

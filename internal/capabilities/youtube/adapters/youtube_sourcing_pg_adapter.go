@@ -135,6 +135,10 @@ func existingClipFromRecord(rec *pgmedia.MediaAssetRecord) *sourcing.ExistingCli
 	}
 }
 
+// firstNonEmptyString returns the first literally non-empty value. It is NOT
+// textutil.FirstNonEmpty: that helper treats a whitespace-only candidate as
+// absent, while this caller contract preserves a provider-supplied blank
+// verbatim (the values are dedupe/source identity fields, not display text).
 func firstNonEmptyString(values ...string) string {
 	for _, v := range values {
 		if v != "" {

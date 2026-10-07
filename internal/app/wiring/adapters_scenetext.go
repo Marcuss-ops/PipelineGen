@@ -13,6 +13,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/usecase/gencore"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
+	"github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 
 	"go.uber.org/zap"
 )
@@ -167,7 +168,7 @@ func (g *SceneTextGenerator) GenerateSceneTextStreamWithTrace(
 		// cities and phrases, dilutes the per-scene prompt, and can shorten the
 		// generated narration. Keep global style/guidelines, but isolate source.
 		if plan.ClipEvidence == nil && req.Source.Type == scriptgen.SourceText && strings.TrimSpace(segment.SourceText) != "" {
-			segmentReq.Source.Topic = firstNonEmpty(segment.Topic, segmentReq.Source.Topic)
+			segmentReq.Source.Topic = textutil.FirstNonEmpty(segment.Topic, segmentReq.Source.Topic)
 			segmentReq.Source.SourceText = segment.SourceText
 			segmentReq.Source.Query = ""
 		}

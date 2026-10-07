@@ -13,6 +13,7 @@ import (
 	scenepkg "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/scene"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/usecase/gencore"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
+	"github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
 
 func researchTrace(plan *scriptpkg.ResolvedGenerationPlan) scriptpkg.SourceTrace {
@@ -293,7 +294,7 @@ func (g *SceneTextGenerator) buildPlan(ctx context.Context, req scriptgen.Genera
 		Segments:          append([]scriptpkg.ScriptSegment(nil), req.ScriptParams.Segments...),
 		SentencesPerImage: req.ScriptParams.SentencesPerImage,
 		ImagesPerScene:    req.ScriptParams.ImagesPerScene,
-		Style:             firstNonEmpty(req.Style, req.ScriptParams.Style),
+		Style:             textutil.FirstNonEmpty(req.Style, req.ScriptParams.Style),
 		Guidelines:        req.ScriptParams.Guidelines,
 		NumClips:          req.Source.NumClips,
 		MediaPlan:         req.MediaPlan.Clone(),

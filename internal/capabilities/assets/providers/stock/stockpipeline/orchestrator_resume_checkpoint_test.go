@@ -125,18 +125,52 @@ func TestOrchestrator_RunResilient_FutureCheckpointVersionFailsClosed(t *testing
 }
 
 func TestRunStateCheckpoint_CompatibilityShapes(t *testing.T) {
-	o := &Orchestrator{}
-
-	versioned, err := o.rehydrateRunState(json.RawMessage(`{"checkpoint_version":1,"Plan":[{"SourceID":"https://example.com/v.mp4"}]}`))
+	versioned, err := rehydrateRunState(json.RawMessage(`{"checkpoint_version":1,"Plan":[{"SourceID":"https://example.com/v.mp4"}]}`))
 	require.NoError(t, err)
 	require.Len(t, versioned.Plan, 1)
 	require.Equal(t, "https://example.com/v.mp4", versioned.Plan[0].SourceID)
 
-	_, err = o.rehydrateRunState(json.RawMessage(`{}`))
+	_, err = rehydrateRunState(json.RawMessage(`{}`))
 	require.Error(t, err, "an empty object has no canonical RunState fields")
 
-	_, err = o.rehydrateRunState(json.RawMessage(`null`))
+	_, err = rehydrateRunState(json.RawMessage(`null`))
 	require.Error(t, err, "JSON null is not a checkpoint object")
+
+	legacy, err := rehydrateRunState(json.RawMessage(`{"Plan":[{"SourceID":"https://legacy.example/video.mp4"}]}`))
+	require.NoError(t, err, "flat unversioned checkpoints remain resumable")
+	require.Len(t, legacy.Plan, 1)
+	require.Equal(t, "https://legacy.example/video.mp4", legacy.Plan[0].SourceID)
+
+	encoded, err := marshalRunStateCheckpoint(&legacy)
+	require.NoError(t, err)
+	require.Contains(t, string(encoded), `"checkpoint_version":1`)
+	roundTrip, err := rehydrateRunState(encoded)
+	require.NoError(t, err)
+	require.Equal(t, legacy.Plan, roundTrip.Plan)
+}
+
+func TestLegacyCheckpointEligibility(t *testing.T) {
+	cfg := OrchestratorConfig{}
+	input := &RunInput{}
+	require.True(t, legacyCheckpointEligible(cfg, input))
+	require.False(t, legacyCheckpointEligible(cfg, nil))
+	require.False(t, legacyCheckpointEligible(cfg, &RunInput{DirectURLs: []string{"https://example.com/video.mp4"}}))
+	require.False(t, legacyCheckpointEligible(OrchestratorConfig{PolicyVersion: "policy-v1"}, input))
+}
+
+func TestResumeCheckpointFingerprintCompatibility(t *testing.T) {
+	cfg := OrchestratorConfig{}
+	input := &RunInput{}
+	jobID, stepName := "job-compat", "stock.plan"
+	legacy := steps.StepState{Fingerprint: legacyStepInputFingerprint(jobID, stepName)}
+	require.Equal(t, legacy.Fingerprint, resumeCheckpointFingerprint(jobID, stepName, cfg, input, nil, legacy, true))
+
+	changed := &RunInput{DirectURLs: []string{"https://example.com/new.mp4"}}
+	require.NotEqual(t, legacy.Fingerprint, resumeCheckpointFingerprint(jobID, stepName, cfg, changed, nil, legacy, true), "bare legacy fingerprints cannot skip work for non-empty requests")
+
+	v2 := steps.StepState{Fingerprint: legacyV2StepInputFingerprint(jobID, stepName, cfg, input, nil)}
+	require.Equal(t, v2.Fingerprint, resumeCheckpointFingerprint(jobID, stepName, cfg, input, nil, v2, true))
+	require.Equal(t, stepInputFingerprint(jobID, stepName, cfg, input, nil), resumeCheckpointFingerprint(jobID, stepName, cfg, input, nil, steps.StepState{Fingerprint: "unrecognized"}, true), "unknown fingerprints must fall forward to the current identity")
 }
 
 // TestOrchestrator_RunResilient_MalformedResultFailsClosed verifies

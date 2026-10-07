@@ -141,6 +141,30 @@ func TestBuildVoiceoverWork_ExplicitLanguagesDoNotLimitTranslationInputs(t *test
 	require.Equal(t, "hello", work[0].text)
 }
 
+func TestBuildVoiceoverLanguageWork_UsesCanonicalSceneLanguageOrderAndText(t *testing.T) {
+	text := map[Language]string{"fr": "bonjour", "it": "ciao", "en": "hello", "de": "hallo", "pt": ""}
+	work := buildVoiceoverLanguageWork(text, "en", []Language{"it", "fr"}, nil)
+	require.Equal(t, []sceneLanguageWork{
+		{lang: "en", text: "hello"},
+		{lang: "it", text: "ciao"},
+		{lang: "fr", text: "bonjour"},
+		{lang: "de", text: "hallo"},
+	}, work, "selection follows source, declared targets, then undeclared languages alphabetically and omits blank text")
+
+	explicit := buildVoiceoverLanguageWork(text, "en", []Language{"it", "fr"}, []Language{"fr", "en"})
+	require.Equal(t, []sceneLanguageWork{
+		{lang: "en", text: "hello"},
+		{lang: "fr", text: "bonjour"},
+	}, explicit)
+}
+
+func TestVoiceoverLanguageFilter_DistinguishesOmittedAndExplicitEmpty(t *testing.T) {
+	all := newVoiceoverLanguageFilter(nil)
+	none := newVoiceoverLanguageFilter([]Language{})
+	require.True(t, all.allows("en"), "omitted selection means all available languages")
+	require.False(t, none.allows("en"), "an explicit empty selection means no voiceovers")
+}
+
 // countingVoiceoverGenerator records every synthesis request under a
 // (scene_id, language) key so a test can prove the runner never asks the
 // provider for the same pair twice.

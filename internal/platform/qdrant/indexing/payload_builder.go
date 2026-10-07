@@ -1,7 +1,7 @@
 // Package indexing — payload_builder.go: canonical writer-side payload builder.
 //
 // Extracted from payload_mapper_document.go (July 2026).
-// Owns: BuildPayloadFromDocument (the orchestrator) + firstNonEmpty.
+// Owns: BuildPayloadFromDocument (the orchestrator).
 //
 // The per-domain payload fillers live in sibling files of this package
 // (July 2026 split of the flat emitter — script/scene/voiceover/media
@@ -26,7 +26,14 @@ import (
 
 	coreembedding "github.com/Marcuss-ops/PipelineGen/internal/kernel/embedding"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/schema"
+	"github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
+
+// firstNonEmpty is retained as a package-local facade for sibling Qdrant
+// payload builders; new code should use the canonical trimmed text helper.
+func firstNonEmpty(values ...string) string {
+	return strings.TrimSpace(textutil.FirstNonEmpty(values...))
+}
 
 // ══════════════════════════════════════════════════════════════════════════
 // PR 6 (refactor/qdrant-index-document) — canonical Mapper airlock.
@@ -107,14 +114,4 @@ func BuildPayloadFromDocument(doc *IndexDocument, schema *schema.IndexSchema) ma
 	fillVLMPayload(payload, doc)
 
 	return payload
-}
-
-func firstNonEmpty(values ...string) string {
-	for _, v := range values {
-		v = strings.TrimSpace(v)
-		if v != "" {
-			return v
-		}
-	}
-	return ""
 }

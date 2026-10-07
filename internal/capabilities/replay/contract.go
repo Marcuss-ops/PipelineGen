@@ -112,7 +112,7 @@ func (b ReplayBundle) Validate() error {
 	if strings.TrimSpace(b.OriginalJobID) == "" {
 		return fmt.Errorf("%w: original_job_id is required", ErrInvalidBundle)
 	}
-	if !isSHA256(b.PlanSHA256) {
+	if !digest.IsCanonicalSHA256(b.PlanSHA256) {
 		return fmt.Errorf("%w: plan_sha256 must be a valid SHA256", ErrInvalidBundle)
 	}
 	if b.PlanSHA256 != b.RenderPlan.PlanSHA256 {
@@ -130,11 +130,11 @@ func (b ReplayBundle) Validate() error {
 	if strings.TrimSpace(b.FFmpegVersion) == "" {
 		return fmt.Errorf("%w: ffmpeg_version is required", ErrInvalidBundle)
 	}
-	if b.EncoderPolicyHash != "" && !isSHA256(b.EncoderPolicyHash) {
+	if b.EncoderPolicyHash != "" && !digest.IsCanonicalSHA256(b.EncoderPolicyHash) {
 		return fmt.Errorf("%w: encoder_policy_hash must be a valid SHA256", ErrInvalidBundle)
 	}
 	for i, asset := range b.Assets {
-		if strings.TrimSpace(asset.AssetID) == "" || !isSHA256(asset.SHA256) || strings.TrimSpace(asset.CASURI) == "" {
+		if strings.TrimSpace(asset.AssetID) == "" || !digest.IsCanonicalSHA256(asset.SHA256) || strings.TrimSpace(asset.CASURI) == "" {
 			return fmt.Errorf("%w: asset[%d] requires asset_id, sha256 and cas_uri", ErrInvalidBundle, i)
 		}
 		if asset.SizeBytes < 0 {
@@ -172,8 +172,6 @@ type AssetSource interface {
 	Materialize(ctx context.Context, asset ReplayAsset) (MaterializedAsset, error)
 }
 
-// isSHA256 is the digest-shape gate for the bundle's recorded hashes. The rule
-// is owned by kernel/digest (the digest SSOT).
-func isSHA256(value string) bool {
-	return digest.IsCanonicalSHA256(value)
-}
+// isSHA256 preserves the replay package's internal validation seam while
+// delegating the canonical digest contract to kernel/digest.
+func isSHA256(value string) bool { return digest.IsCanonicalSHA256(value) }

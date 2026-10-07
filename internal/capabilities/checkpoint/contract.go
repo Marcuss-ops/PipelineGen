@@ -91,7 +91,7 @@ func (c Checkpoint) Validate() error {
 	if strings.TrimSpace(c.ProcessorVersion) == "" {
 		return fmt.Errorf("%w: processor_version is required", ErrInvalidCheckpoint)
 	}
-	if c.ArtifactSHA256 != "" && !isSHA256(c.ArtifactSHA256) {
+	if c.ArtifactSHA256 != "" && !digest.IsCanonicalSHA256(c.ArtifactSHA256) {
 		return fmt.Errorf("%w: artifact_sha256 must be a valid SHA256", ErrInvalidCheckpoint)
 	}
 	if c.CompletedAt.IsZero() {
@@ -108,11 +108,4 @@ type Store interface {
 	Get(ctx context.Context, jobID, stage, unitID string) (*Checkpoint, error)
 	Complete(ctx context.Context, checkpoint Checkpoint) error
 	Invalidate(ctx context.Context, jobID, stage, unitID string) error
-}
-
-// isSHA256 is the digest-shape gate for recorded artifact hashes. The rule is
-// owned by kernel/digest (the digest SSOT) so this contract and every other
-// sealed contract answer the same question the same way.
-func isSHA256(value string) bool {
-	return digest.IsCanonicalSHA256(value)
 }

@@ -66,7 +66,7 @@ func WireCanonicalImageCommitter(repo *imagesrepo.ImagesRepository, committer pe
 			return 0, fmt.Errorf("canonical image commit: resolve taxonomy: %w", taxErr)
 		}
 		contentHash := ""
-		if isSHA256(img.Hash) {
+		if digest.IsSHA256(img.Hash) {
 			contentHash = img.Hash
 		}
 		request := mediacommit.CommitMediaAssetRequest{
@@ -188,16 +188,10 @@ func assetLocationsFromAsset(a *asset.Asset) []asset.LocationCommit {
 }
 
 func optionalImageContent(hash string) *mediacommit.ContentIdentity {
-	if !isSHA256(hash) {
+	if !digest.IsSHA256(hash) {
 		return nil
 	}
 	return &mediacommit.ContentIdentity{ContentSHA256: hash}
-}
-
-// isSHA256 is the digest-shape gate for an image content hash. The rule is
-// owned by kernel/digest (the digest SSOT).
-func isSHA256(value string) bool {
-	return digest.IsSHA256(value)
 }
 
 func firstImageRef(values ...string) string {

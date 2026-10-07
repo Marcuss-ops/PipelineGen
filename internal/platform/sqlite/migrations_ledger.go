@@ -69,7 +69,7 @@ func ensureMigrationLedgerTx(db ledgerQueryable) error {
 			checksumRows.Close()
 			return fmt.Errorf("scan schema_migrations checksums: %w", err)
 		}
-		if checksum != checksumSHA || !isSHA256Hex(checksumSHA) {
+		if checksum != checksumSHA || !digest.IsSHA256(checksumSHA) {
 			checksumRows.Close()
 			return fmt.Errorf("schema_migrations checksum is not canonical: version=%d checksum=%q checksum_sha256=%q", version, checksum, checksumSHA)
 		}
@@ -98,14 +98,6 @@ func ensureMigrationLedgerTx(db ledgerQueryable) error {
 		return fmt.Errorf("index schema_migrations.migration_id: %w", err)
 	}
 	return nil
-}
-
-// isSHA256Hex is the digest-shape gate for the ledger's recorded checksums.
-// The rule is owned by kernel/digest (the digest SSOT); the local
-// sha256HexLength constant it used to carry was a second declaration of the
-// same length, free to drift from digest.SHA256HexLength.
-func isSHA256Hex(value string) bool {
-	return digest.IsSHA256(value)
 }
 
 type ledgerQueryable interface {

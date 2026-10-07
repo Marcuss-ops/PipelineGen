@@ -30,8 +30,16 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/drive"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/media/rustexec"
 	outboxevents "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
+	"github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 	"go.uber.org/zap"
 )
+
+// firstNonEmpty returns the first non-blank value, trim-normalized. The
+// embedded TrimSpace preserves this package's historical contract (the
+// canonical textutil.FirstNonEmpty returns the value as-is).
+func firstNonEmpty(values ...string) string {
+	return strings.TrimSpace(textutil.FirstNonEmpty(values...))
+}
 
 // BuildVidRushCache wires the SQLite-backed VidRush cache port over the
 // cache database plane. Nil-tolerant: a missing cache plane disables the
@@ -526,15 +534,6 @@ func provenanceSlugWiring(value string) string {
 		}
 	}
 	return strings.Trim(b.String(), "-")
-}
-
-func firstNonEmpty(values ...string) string {
-	for _, v := range values {
-		if strings.TrimSpace(v) != "" {
-			return strings.TrimSpace(v)
-		}
-	}
-	return ""
 }
 
 var _ scriptports.VidRushAssetProvider = (*vidRushArtlistProvider)(nil)
