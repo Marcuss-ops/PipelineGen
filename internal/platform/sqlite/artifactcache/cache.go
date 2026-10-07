@@ -16,6 +16,7 @@ import (
 	capcache "github.com/Marcuss-ops/PipelineGen/internal/capabilities/artifactcache"
 	capregistry "github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaregistry"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/cas"
+	"github.com/Marcuss-ops/PipelineGen/pkg/defaults"
 )
 
 var ErrNotWired = errors.New("artifact cache sqlite adapter: not wired")
@@ -138,7 +139,7 @@ func (c *Cache) Claim(ctx context.Context, key capcache.Key, lease time.Duration
 		err := c.db.QueryRowContext(ctx, `SELECT cache_key, source_sha256, operation, parameters_json, processor_version, artifact_sha256, size_bytes, mime_type, status, created_at, last_accessed_at, COALESCE(lease_until, '') FROM artifact_cache_entries WHERE cache_key=?`, digest).Scan(&entry.CacheKey, &entry.SourceSHA256, &entry.Operation, &entry.ParametersJSON, &entry.ProcessorVersion, &entry.ArtifactSHA256, &entry.SizeBytes, &entry.MIMEType, &status, &entry.CreatedAt, &entry.LastAccessedAt, &storedLeaseUntil)
 		if errors.Is(err, sql.ErrNoRows) {
 			leaseID := uuid.NewString()
-			_, err = c.db.ExecContext(ctx, `INSERT INTO artifact_cache_entries (cache_key,source_sha256,operation,parameters_json,processor_version,artifact_sha256,size_bytes,mime_type,status,lease_id,lease_until,created_at,last_accessed_at,updated_at,error_message) VALUES (?,?,?,?,?,'',0,'','BUILDING',?,?, ?, ?, ?, '')`, digest, key.SourceSHA256, key.Operation, nonEmpty(key.ParametersJSON, "{}"), key.ProcessorVersion, leaseID, leaseUntil, now.Format(time.RFC3339Nano), now.Format(time.RFC3339Nano), now.Format(time.RFC3339Nano))
+			_, err = c.db.ExecContext(ctx, `INSERT INTO artifact_cache_entries (cache_key,source_sha256,operation,parameters_json,processor_version,artifact_sha256,size_bytes,mime_type,status,lease_id,lease_until,created_at,last_accessed_at,updated_at,error_message) VALUES (?,?,?,?,?,'',0,'','BUILDING',?,?, ?, ?, ?, '')`, digest, key.SourceSHA256, key.Operation, defaults.String(key.ParametersJSON, "{}"), key.ProcessorVersion, leaseID, leaseUntil, now.Format(time.RFC3339Nano), now.Format(time.RFC3339Nano), now.Format(time.RFC3339Nano))
 			if err == nil {
 				if metricErr := c.bumpMetric(ctx, key.Operation, false, 0, 0, now.Format(time.RFC3339Nano)); metricErr != nil {
 					return capcache.Claim{}, metricErr
@@ -205,13 +206,6 @@ func (c *Cache) Claim(ctx context.Context, key capcache.Key, lease time.Duration
 			return capcache.Claim{LeaseID: leaseID, Acquired: true}, nil
 		}
 	}
-}
-
-func nonEmpty(value, fallback string) string {
-	if strings.TrimSpace(value) == "" {
-		return fallback
-	}
-	return value
 }
 
 func (c *Cache) Store(ctx context.Context, key capcache.Key, content io.Reader, mimeType string, expectedWorkMS int64) (*capcache.Entry, error) {

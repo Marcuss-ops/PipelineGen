@@ -12,6 +12,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 
 	capregistry "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobregistry"
+	"github.com/Marcuss-ops/PipelineGen/pkg/defaults"
 	"github.com/google/uuid"
 )
 
@@ -39,9 +40,9 @@ func (r *Registry) RecordJob(ctx context.Context, j capregistry.Job) error {
 		(id,type,status,project,video_name,correlation_id,payload_hash,error,worker_id,
 		 created_at,updated_at,started_at,completed_at,project_id,video_id,parent_job_id,root_job_id,host,duration_ms,git_sha,app_version)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		j.JobID, j.JobType, nonEmpty(j.Status, "QUEUED"), j.ProjectID, j.VideoID, j.CorrelationID,
+		j.JobID, j.JobType, defaults.String(j.Status, "QUEUED"), j.ProjectID, j.VideoID, j.CorrelationID,
 		hash, j.ErrorMessage, j.WorkerID,
-		nonEmpty(j.CreatedAt, "1970-01-01T00:00:00Z"), nonEmpty(j.CreatedAt, "1970-01-01T00:00:00Z"), nullIfEmpty(j.StartedAt), nullIfEmpty(j.CompletedAt),
+		defaults.String(j.CreatedAt, "1970-01-01T00:00:00Z"), defaults.String(j.CreatedAt, "1970-01-01T00:00:00Z"), nullIfEmpty(j.StartedAt), nullIfEmpty(j.CompletedAt),
 		j.ProjectID, j.VideoID, j.ParentJobID, j.RootJobID, j.Host, j.DurationMS, j.GitSHA, j.AppVersion)
 	if err != nil {
 		return fmt.Errorf("record job %q: %w", j.JobID, err)
@@ -55,7 +56,7 @@ func (r *Registry) UpdateJob(ctx context.Context, j capregistry.Job) error {
 		hash = hashPayload(j.PayloadJSON)
 	}
 	_, err := r.db.ExecContext(ctx, `UPDATE jobs SET status=?, correlation_id=?, project_id=?, video_id=?, parent_job_id=?, root_job_id=?, payload_hash=?, error=?, worker_id=?, started_at=?, completed_at=?, duration_ms=?, git_sha=?, app_version=?, updated_at=COALESCE(?, updated_at) WHERE id=?`,
-		nonEmpty(j.Status, "QUEUED"), j.CorrelationID, j.ProjectID, j.VideoID, j.ParentJobID, j.RootJobID,
+		defaults.String(j.Status, "QUEUED"), j.CorrelationID, j.ProjectID, j.VideoID, j.ParentJobID, j.RootJobID,
 		hash, j.ErrorMessage, j.WorkerID,
 		nullIfEmpty(j.StartedAt), nullIfEmpty(j.CompletedAt), j.DurationMS, j.GitSHA, j.AppVersion, nullIfEmpty(j.CompletedAt), j.JobID)
 	if err != nil {
@@ -66,14 +67,14 @@ func (r *Registry) UpdateJob(ctx context.Context, j capregistry.Job) error {
 
 func (r *Registry) persistPayloadResult(ctx context.Context, j capregistry.Job) error {
 	if j.PayloadJSON != "" && j.PayloadJSON != "null" {
-		if _, err := r.db.ExecContext(ctx, `INSERT INTO job_payloads (job_id,codec_id,payload,payload_hash,created_at) VALUES (?, 'json', ?, ?, ?) ON CONFLICT(job_id) DO UPDATE SET payload=excluded.payload,payload_hash=excluded.payload_hash`, j.JobID, j.PayloadJSON, hashPayload(j.PayloadJSON), nonEmpty(j.CreatedAt, "1970-01-01T00:00:00Z")); err != nil {
+		if _, err := r.db.ExecContext(ctx, `INSERT INTO job_payloads (job_id,codec_id,payload,payload_hash,created_at) VALUES (?, 'json', ?, ?, ?) ON CONFLICT(job_id) DO UPDATE SET payload=excluded.payload,payload_hash=excluded.payload_hash`, j.JobID, j.PayloadJSON, hashPayload(j.PayloadJSON), defaults.String(j.CreatedAt, "1970-01-01T00:00:00Z")); err != nil {
 			if _, legacyErr := r.db.ExecContext(ctx, `UPDATE jobs SET payload_json=? WHERE id=?`, j.PayloadJSON, j.JobID); legacyErr != nil {
 				return fmt.Errorf("persist payload %q: %w", j.JobID, err)
 			}
 		}
 	}
 	if j.ResultJSON != "" && j.ResultJSON != "null" {
-		if _, err := r.db.ExecContext(ctx, `INSERT INTO job_results (job_id,attempt,result_hash,codec_id,result_payload,created_at) VALUES (?,0,?,'json',?,?) ON CONFLICT(job_id,attempt,result_hash) DO NOTHING`, j.JobID, hashPayload(j.ResultJSON), j.ResultJSON, nonEmpty(j.CompletedAt, nonEmpty(j.CreatedAt, "1970-01-01T00:00:00Z"))); err != nil {
+		if _, err := r.db.ExecContext(ctx, `INSERT INTO job_results (job_id,attempt,result_hash,codec_id,result_payload,created_at) VALUES (?,0,?,'json',?,?) ON CONFLICT(job_id,attempt,result_hash) DO NOTHING`, j.JobID, hashPayload(j.ResultJSON), j.ResultJSON, defaults.String(j.CompletedAt, defaults.String(j.CreatedAt, "1970-01-01T00:00:00Z"))); err != nil {
 			if _, legacyErr := r.db.ExecContext(ctx, `UPDATE jobs SET result_json=? WHERE id=?`, j.ResultJSON, j.JobID); legacyErr != nil {
 				return fmt.Errorf("persist result %q: %w", j.JobID, err)
 			}
@@ -145,7 +146,7 @@ func (r *Registry) RecordStep(ctx context.Context, s capregistry.Step) error {
 		return errors.New("job registry: step identity is required")
 	}
 	_, err := r.db.ExecContext(ctx, `INSERT INTO job_steps (step_id,job_id,step_name,step_type,status,started_at,completed_at,duration_ms,input_count,output_count,input_bytes,output_bytes,metrics_json,error_code,error_message,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(step_id) DO UPDATE SET status=excluded.status, completed_at=excluded.completed_at, duration_ms=excluded.duration_ms, output_count=excluded.output_count, output_bytes=excluded.output_bytes, metrics_json=excluded.metrics_json, error_code=excluded.error_code, error_message=excluded.error_message`,
-		s.StepID, s.JobID, s.StepName, s.StepType, s.Status, nullIfEmpty(s.StartedAt), nullIfEmpty(s.CompletedAt), s.DurationMS, s.InputCount, s.OutputCount, s.InputBytes, s.OutputBytes, nonEmpty(s.MetricsJSON, "{}"), s.ErrorCode, s.ErrorMessage, nonEmpty(s.CreatedAt, "1970-01-01T00:00:00Z"))
+		s.StepID, s.JobID, s.StepName, s.StepType, s.Status, nullIfEmpty(s.StartedAt), nullIfEmpty(s.CompletedAt), s.DurationMS, s.InputCount, s.OutputCount, s.InputBytes, s.OutputBytes, defaults.String(s.MetricsJSON, "{}"), s.ErrorCode, s.ErrorMessage, defaults.String(s.CreatedAt, "1970-01-01T00:00:00Z"))
 	if err != nil {
 		return fmt.Errorf("record step %q: %w", s.StepID, err)
 	}
@@ -159,7 +160,7 @@ func (r *Registry) RecordMetric(ctx context.Context, m capregistry.Metric) error
 	if m.JobID == "" || m.Name == "" {
 		return errors.New("job registry: metric job_id and name are required")
 	}
-	_, err := r.db.ExecContext(ctx, `INSERT INTO job_registry_metrics (metric_id,job_id,step_id,metric_name,metric_value,unit,created_at) VALUES (?,?,?,?,?,?,?) ON CONFLICT(metric_id) DO NOTHING`, m.MetricID, m.JobID, nullIfEmpty(m.StepID), m.Name, m.Value, m.Unit, nonEmpty(m.CreatedAt, "1970-01-01T00:00:00Z"))
+	_, err := r.db.ExecContext(ctx, `INSERT INTO job_registry_metrics (metric_id,job_id,step_id,metric_name,metric_value,unit,created_at) VALUES (?,?,?,?,?,?,?) ON CONFLICT(metric_id) DO NOTHING`, m.MetricID, m.JobID, nullIfEmpty(m.StepID), m.Name, m.Value, m.Unit, defaults.String(m.CreatedAt, "1970-01-01T00:00:00Z"))
 	if err != nil {
 		return fmt.Errorf("record metric %q: %w", m.MetricID, err)
 	}
@@ -170,7 +171,7 @@ func (r *Registry) RelateAsset(ctx context.Context, a capregistry.AssetRelation)
 	if a.JobID == "" || a.AssetID == "" || a.Relation == "" {
 		return errors.New("job registry: asset relation identity is required")
 	}
-	_, err := r.db.ExecContext(ctx, `INSERT INTO job_asset_relations (job_id,asset_id,relation,step_id,ordinal,created_at) VALUES (?,?,?,?,?,?) ON CONFLICT(job_id,asset_id,relation,step_id) DO UPDATE SET ordinal=excluded.ordinal`, a.JobID, a.AssetID, a.Relation, a.StepID, a.Ordinal, nonEmpty(a.CreatedAt, "1970-01-01T00:00:00Z"))
+	_, err := r.db.ExecContext(ctx, `INSERT INTO job_asset_relations (job_id,asset_id,relation,step_id,ordinal,created_at) VALUES (?,?,?,?,?,?) ON CONFLICT(job_id,asset_id,relation,step_id) DO UPDATE SET ordinal=excluded.ordinal`, a.JobID, a.AssetID, a.Relation, a.StepID, a.Ordinal, defaults.String(a.CreatedAt, "1970-01-01T00:00:00Z"))
 	if err != nil {
 		return fmt.Errorf("relate job %q to asset %q: %w", a.JobID, a.AssetID, err)
 	}
@@ -184,7 +185,7 @@ func (r *Registry) AppendEvent(ctx context.Context, e capregistry.Event) (int64,
 	if e.JobID == "" || e.EventType == "" {
 		return 0, errors.New("job registry: event identity is required")
 	}
-	res, err := r.db.ExecContext(ctx, `INSERT INTO job_registry_events (event_id,job_id,event_type,payload_json,created_at) VALUES (?,?,?,?,?) ON CONFLICT(event_id) DO NOTHING`, e.EventID, e.JobID, e.EventType, nonEmpty(e.PayloadJSON, "{}"), nonEmpty(e.CreatedAt, "1970-01-01T00:00:00Z"))
+	res, err := r.db.ExecContext(ctx, `INSERT INTO job_registry_events (event_id,job_id,event_type,payload_json,created_at) VALUES (?,?,?,?,?) ON CONFLICT(event_id) DO NOTHING`, e.EventID, e.JobID, e.EventType, defaults.String(e.PayloadJSON, "{}"), defaults.String(e.CreatedAt, "1970-01-01T00:00:00Z"))
 	if err != nil {
 		return 0, fmt.Errorf("append job event %q: %w", e.EventID, err)
 	}
@@ -251,12 +252,6 @@ func hashPayload(raw string) string {
 	}
 	sum := digest.SHA256Bytes([]byte(raw))
 	return sum
-}
-func nonEmpty(v, fallback string) string {
-	if strings.TrimSpace(v) == "" {
-		return fallback
-	}
-	return v
 }
 func nullIfEmpty(v string) any {
 	if strings.TrimSpace(v) == "" {

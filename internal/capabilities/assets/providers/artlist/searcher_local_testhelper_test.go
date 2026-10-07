@@ -21,6 +21,7 @@ import (
 	"strings"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
 
 // SQLiteSearcher is the test-only compatibility bridge over an AssetStore.
@@ -73,9 +74,9 @@ func candidatesFromAssets(clips []*asset.Asset) []Candidate {
 			Description:  clip.GetMetadataString("description"),
 			Creator:      clip.GetMetadataString("creator"),
 			PageURL:      clip.ClipPageURL,
-			PreviewURL:   firstNonEmpty(clip.GetMetadataString("preview_url"), clip.ClipPageURL),
+			PreviewURL:   textutil.FirstNonEmpty(clip.GetMetadataString("preview_url"), clip.ClipPageURL),
 			ThumbnailURL: clip.ThumbnailURL,
-			SourceRef:    firstNonEmpty(clip.SourceURL, clip.ClipPageURL),
+			SourceRef:    textutil.FirstNonEmpty(clip.SourceURL, clip.ClipPageURL),
 			SourceName:   "database",
 			MediaType:    clip.MediaType,
 			Duration:     clip.Duration,

@@ -75,6 +75,12 @@ func (d *Descriptor) RegisterRoutes(rg *gin.RouterGroup) { d.module.RegisterRout
 // *Descriptor pointer.
 func (d *Descriptor) Module() api.Module { return d.module }
 
+// MissingDependencyError creates the canonical fail-closed error for a
+// required dependency of a named clips sub-descriptor.
+func MissingDependencyError(moduleName, dependency string) error {
+	return fmt.Errorf("%s.Build: %s is required (godlike/07 fail-closed)", moduleName, dependency)
+}
+
 // Build wraps the supplied RouteRegistrar in a canonical *Descriptor.
 // Missing mandatory deps fail closed (godlike/07 NO-FAKE-AVAILABILITY).
 func Build(d Deps) (*Descriptor, error) {

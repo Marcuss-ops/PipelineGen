@@ -3,7 +3,6 @@ package artlist
 import (
 	"context"
 	"errors"
-	"strings"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
@@ -62,15 +61,6 @@ func getIntFromResult(m map[string]any, key string) int {
 	default:
 		return 0
 	}
-}
-
-func firstNonEmpty(values ...string) string {
-	for _, value := range values {
-		if strings.TrimSpace(value) != "" {
-			return value
-		}
-	}
-	return ""
 }
 
 func cloneMetadata(metadata asset.Metadata) map[string]any {

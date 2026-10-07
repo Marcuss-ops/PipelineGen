@@ -96,16 +96,16 @@ type Dependencies struct {
 // at first request).
 func Build(deps Dependencies) (*submodule.Descriptor, error) {
 	if deps.Search == nil {
-		return nil, missingDepError("Search")
+		return nil, submodule.MissingDependencyError("clips-catalog", "Search")
 	}
 	if deps.Folders == nil {
-		return nil, missingDepError("Folders")
+		return nil, submodule.MissingDependencyError("clips-catalog", "Folders")
 	}
 	if deps.FindDuplicates == nil {
-		return nil, missingDepError("FindDuplicates")
+		return nil, submodule.MissingDependencyError("clips-catalog", "FindDuplicates")
 	}
 	if deps.EnabledFunc == nil {
-		return nil, missingDepError("EnabledFunc")
+		return nil, submodule.MissingDependencyError("clips-catalog", "EnabledFunc")
 	}
 	// Idempotency nil-tolerated (test fixtures / dry-run CLI).
 	idem := deps.Idempotency
@@ -164,18 +164,3 @@ func (r *catalogRoutes) RegisterRoutes(g *gin.RouterGroup) {
 	// wrapper is needed at the call site.
 	g.POST("/:source/clips/:id/duplicates", r.idem, gin.HandlerFunc(r.deps.FindDuplicates))
 }
-
-// missingDepError is the canonical typed-narrow error path for
-// per-dep nil checks. godlike/07 NO-FAKE-AVAILABILITY: every missing
-// required dep surfaces as a distinct typed sentinel so the
-// composition root can branch via errors.Is / strings.Contains.
-func missingDepError(name string) error {
-	return errMissingDep{"clips-catalog.Build: " + name + " is required (godlike/07 fail-closed)"}
-}
-
-// errMissingDep is the package-local typed sentinel the parent +
-// future tests can match against. Internal to this package; no
-// godlike/06 SSOT cross-package exposure needed today.
-type errMissingDep struct{ msg string }
-
-func (e errMissingDep) Error() string { return e.msg }

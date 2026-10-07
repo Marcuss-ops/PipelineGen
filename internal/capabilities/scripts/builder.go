@@ -29,6 +29,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/channelprofile"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaregistry"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
+	"github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
 
 // BuildGenerateRequest is the sole canonical builder for
@@ -138,7 +139,7 @@ func BuildGenerateRequest(env *scriptpkg.GenerationEnvelopeV2, idempotencyKey st
 	// connected to the render contract as well: the existing publisher then
 	// creates/reuses its deterministic <script>/<language>/overlay child.
 	// Docs.folder_id remains the canonical Docs destination when supplied.
-	artifactFolderID := firstNonEmpty(item.Output.DriveFolderID, docsFolderID)
+	artifactFolderID := textutil.FirstNonEmpty(item.Output.DriveFolderID, docsFolderID)
 	if strings.TrimSpace(item.Output.Render.DriveFolderID) == "" {
 		item.Output.Render.DriveFolderID = artifactFolderID
 	}

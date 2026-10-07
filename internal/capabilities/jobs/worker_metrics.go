@@ -15,6 +15,7 @@ import (
 	capregistry "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobregistry"
 	kernjob "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
+	"github.com/Marcuss-ops/PipelineGen/pkg/defaults"
 	"go.uber.org/zap"
 )
 
@@ -92,7 +93,7 @@ func (r *JobRegistryRecorder) Start(ctx context.Context, j *kernjob.Job, workerI
 	}
 	stepID := executionStepID(j.ID, attemptID, j.Revision)
 	payload := rawJSON(j.Payload)
-	if err := r.registry.RecordJob(ctx, capregistry.Job{JobID: j.ID, JobType: j.Type, Status: nonEmpty(string(j.Status), "RUNNING"), CorrelationID: j.CorrelationID, ProjectID: j.Project, VideoID: j.VideoName, ParentJobID: parentJobID(j.Payload), RootJobID: rootJobID(j.Payload), PayloadJSON: payload, PayloadHash: payloadHash(payload), ResultJSON: rawJSON(j.Result), GitSHA: payloadString(j.Payload, "git_sha"), AppVersion: payloadString(j.Payload, "app_version"), WorkerID: workerID, Host: r.host, CreatedAt: formatTime(j.CreatedAt), StartedAt: formatTime(started)}); err != nil {
+	if err := r.registry.RecordJob(ctx, capregistry.Job{JobID: j.ID, JobType: j.Type, Status: defaults.String(string(j.Status), "RUNNING"), CorrelationID: j.CorrelationID, ProjectID: j.Project, VideoID: j.VideoName, ParentJobID: parentJobID(j.Payload), RootJobID: rootJobID(j.Payload), PayloadJSON: payload, PayloadHash: payloadHash(payload), ResultJSON: rawJSON(j.Result), GitSHA: payloadString(j.Payload, "git_sha"), AppVersion: payloadString(j.Payload, "app_version"), WorkerID: workerID, Host: r.host, CreatedAt: formatTime(j.CreatedAt), StartedAt: formatTime(started)}); err != nil {
 		r.warn("record job start", j.ID, err)
 	}
 	if err := r.registry.RecordStep(ctx, capregistry.Step{StepID: stepID, JobID: j.ID, StepName: "worker.execution", StepType: "worker", Status: "RUNNING", StartedAt: started.Format(time.RFC3339Nano), CreatedAt: started.Format(time.RFC3339Nano)}); err != nil {
@@ -200,7 +201,7 @@ func (r *JobRegistryRecorder) Finish(ctx context.Context, j *kernjob.Job, stepID
 	}
 	resultJSON := rawJSON(result)
 	completed := finished.Format(time.RFC3339Nano)
-	if err := r.registry.UpdateJob(ctx, capregistry.Job{JobID: j.ID, JobType: j.Type, Status: nonEmpty(status, "FAILED"), CorrelationID: j.CorrelationID, ProjectID: j.Project, VideoID: j.VideoName, ParentJobID: parentJobID(j.Payload), RootJobID: rootJobID(j.Payload), PayloadJSON: rawJSON(j.Payload), PayloadHash: payloadHash(rawJSON(j.Payload)), ResultJSON: resultJSON, ErrorMessage: message, GitSHA: payloadString(j.Payload, "git_sha"), AppVersion: payloadString(j.Payload, "app_version"), WorkerID: workerID, Host: r.host, CreatedAt: formatTime(j.CreatedAt), StartedAt: formatTime(started), CompletedAt: completed, DurationMS: duration}); err != nil {
+	if err := r.registry.UpdateJob(ctx, capregistry.Job{JobID: j.ID, JobType: j.Type, Status: defaults.String(status, "FAILED"), CorrelationID: j.CorrelationID, ProjectID: j.Project, VideoID: j.VideoName, ParentJobID: parentJobID(j.Payload), RootJobID: rootJobID(j.Payload), PayloadJSON: rawJSON(j.Payload), PayloadHash: payloadHash(rawJSON(j.Payload)), ResultJSON: resultJSON, ErrorMessage: message, GitSHA: payloadString(j.Payload, "git_sha"), AppVersion: payloadString(j.Payload, "app_version"), WorkerID: workerID, Host: r.host, CreatedAt: formatTime(j.CreatedAt), StartedAt: formatTime(started), CompletedAt: completed, DurationMS: duration}); err != nil {
 		r.warn("record job terminal state", j.ID, err)
 	}
 	if stepID == "" {
@@ -264,7 +265,7 @@ func (r *JobRegistryRecorder) recordReport(ctx context.Context, jobID, jobType, 
 		r.metric(ctx, capregistry.Metric{MetricID: metricID(jobID, stageID, "duration_ms"), JobID: jobID, StepID: stageID, Name: "duration_ms", Unit: "ms", Value: float64(stage.DurationMs)})
 	}
 	for i, operation := range report.Operations {
-		name := nonEmpty(operation.Operation, "operation")
+		name := defaults.String(operation.Operation, "operation")
 		metricStepID := fmt.Sprintf("%s:operation:%d", stepID, i)
 		r.metric(ctx, capregistry.Metric{MetricID: metricID(jobID, metricStepID, name+".duration_ms"), JobID: jobID, StepID: stepID, Name: name + ".duration_ms", Unit: "ms", Value: float64(operation.DurationMs)})
 		r.metric(ctx, capregistry.Metric{MetricID: metricID(jobID, metricStepID, name+".items"), JobID: jobID, StepID: stepID, Name: name + ".items", Unit: "count", Value: float64(operation.Items)})
@@ -451,10 +452,4 @@ func terminalEvent(status string) string {
 	default:
 		return "JOB_FAILED"
 	}
-}
-func nonEmpty(value, fallback string) string {
-	if strings.TrimSpace(value) == "" {
-		return fallback
-	}
-	return value
 }

@@ -30,6 +30,7 @@ import (
 	capabilityentities "github.com/Marcuss-ops/PipelineGen/internal/capabilities/entities"
 	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
+	"github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
 
 // CompileOverlayPlan derives the full semantic OverlayPlan for a completed
@@ -436,7 +437,7 @@ func compileOverlayPlanWithMotionOffset(result *GenerateResult, language Languag
 		PlanID:                 planID,
 		VideoID:                videoID,
 		ProjectID:              strings.TrimSpace(projectID),
-		ScriptName:             firstNonEmpty(result.OutputName, result.Title, projectID),
+		ScriptName:             textutil.FirstNonEmpty(result.OutputName, result.Title, projectID),
 		Language:               string(language),
 		Width:                  canvas.Width,
 		Height:                 canvas.Height,

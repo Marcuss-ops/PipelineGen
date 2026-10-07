@@ -14,6 +14,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providerassets"
 	artapp "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers/artlist"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
 
 // pexelsVideoFile mirrors the inline JSON shape used both for
@@ -228,7 +229,7 @@ func bestPexelsVideoRendition(files []pexelsVideoFile) (string, providerassets.P
 		}
 	}
 
-	url := firstNonEmpty(bestHD, bestSD, bestLow, fallback)
+	url := textutil.FirstNonEmpty(bestHD, bestSD, bestLow, fallback)
 	for _, f := range files {
 		if f.Link == url {
 			return url, providerassets.ProviderRendition{

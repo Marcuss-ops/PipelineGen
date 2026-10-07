@@ -17,6 +17,7 @@ import (
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 	"github.com/Marcuss-ops/PipelineGen/pkg/background"
 	"github.com/Marcuss-ops/PipelineGen/pkg/corid"
+	"github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
 
 // QueueRenderEnqueuer adapts the central RenderingGen queue for the Chronon
@@ -313,8 +314,8 @@ func (e *QueueRenderEnqueuer) enqueueChrononPlan(ctx context.Context, plan capov
 				ScriptName:               plan.ScriptName,
 				Language:                 plan.Language,
 				ProjectID:                plan.ProjectID,
-				JobID:                    firstNonEmpty(plan.DriveJobID, plan.PlanID),
-				ResultJobID:              firstNonEmpty(plan.ResultJobID, plan.DriveJobID),
+				JobID:                    textutil.FirstNonEmpty(plan.DriveJobID, plan.PlanID),
+				ResultJobID:              textutil.FirstNonEmpty(plan.ResultJobID, plan.DriveJobID),
 				PlanID:                   plan.PlanID,
 				DriveFolderID:            plan.DriveFolderID,
 				RequireDriveBeforeReturn: plan.RequireDriveBeforeReturn,

@@ -38,6 +38,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providerassets"
 	artapp "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers/artlist"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
 
 // Pixabay is an HTTP-clamped implementation of artlist.Searcher
@@ -170,7 +171,7 @@ func (p *Pixabay) decode(body []byte, term string, limit int) ([]artapp.Candidat
 
 	out := make([]artapp.Candidate, 0, len(payload.Hits))
 	for _, hit := range payload.Hits {
-		videoURL := firstNonEmpty(hit.Videos.Medium.URL, hit.Videos.Large.URL, hit.Videos.Small.URL)
+		videoURL := textutil.FirstNonEmpty(hit.Videos.Medium.URL, hit.Videos.Large.URL, hit.Videos.Small.URL)
 		if videoURL == "" {
 			continue
 		}
@@ -178,7 +179,7 @@ func (p *Pixabay) decode(body []byte, term string, limit int) ([]artapp.Candidat
 		if title == "" {
 			title = term
 		}
-		bestURL := firstNonEmpty(hit.Videos.Large.URL, hit.Videos.Medium.URL, hit.Videos.Small.URL)
+		bestURL := textutil.FirstNonEmpty(hit.Videos.Large.URL, hit.Videos.Medium.URL, hit.Videos.Small.URL)
 		rendition := providerassets.ProviderRendition{
 			Kind:      "master",
 			Container: "mp4",
@@ -243,15 +244,6 @@ func mapTransportErr(err error) error {
 		return fmt.Errorf("%w: %v", artapp.ErrTimeout, err)
 	}
 	return fmt.Errorf("%w: %v", artapp.ErrTransportFallback, err)
-}
-
-func firstNonEmpty(vals ...string) string {
-	for _, v := range vals {
-		if strings.TrimSpace(v) != "" {
-			return v
-		}
-	}
-	return ""
 }
 
 // splitTags splits a comma-separated tag string into trimmed tokens.

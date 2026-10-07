@@ -44,6 +44,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	coredl "github.com/Marcuss-ops/PipelineGen/internal/platform/downloader"
 	"github.com/Marcuss-ops/PipelineGen/pkg/retry"
+	"github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 	"go.uber.org/zap"
 )
 
@@ -223,7 +224,7 @@ func (r *Resolver) Download(ctx context.Context, req artapp.DownloadRequest) (*a
 	// count and the eventual record. The row starts as pending and is
 	// updated to succeeded/failed after the transport completes.
 	auditID, auditErr := r.cfg.AuditRepository.RecordDownload(ctx, artapp.DownloadAuditRecord{
-		AssetID:     firstNonEmpty(req.ClipID, req.Filename, req.SourceRef),
+		AssetID:     textutil.FirstNonEmpty(req.ClipID, req.Filename, req.SourceRef),
 		ExternalURL: req.SourceRef,
 		AccountID:   r.cfg.AccountID,
 		Provider:    "artlist",

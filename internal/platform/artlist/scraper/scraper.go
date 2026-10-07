@@ -26,6 +26,7 @@ import (
 	artapp "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers/artlist"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/process"
+	"github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 	"go.uber.org/zap"
 )
 
@@ -303,8 +304,8 @@ func toCandidates(clips []Clip) []artapp.Candidate {
 }
 
 func clipToCandidate(c Clip) artapp.Candidate {
-	id := firstNonEmpty(c.ClipID, c.ID)
-	title := firstNonEmpty(c.Title, c.Name, id)
+	id := textutil.FirstNonEmpty(c.ClipID, c.ID)
+	title := textutil.FirstNonEmpty(c.Title, c.Name, id)
 	raw := make(map[string]any, len(c.RawMetadata)+2)
 	for k, v := range c.RawMetadata {
 		raw[k] = v
@@ -326,10 +327,10 @@ func clipToCandidate(c Clip) artapp.Candidate {
 		Title:        title,
 		Description:  c.Description,
 		Creator:      c.Creator,
-		SourceRef:    firstNonEmpty(c.PrimaryURL, c.PreviewURL, c.ClipPageURL),
+		SourceRef:    textutil.FirstNonEmpty(c.PrimaryURL, c.PreviewURL, c.ClipPageURL),
 		PageURL:      c.ClipPageURL,
 		ThumbnailURL: c.ThumbnailURL,
-		PreviewURL:   firstNonEmpty(c.PreviewURL, c.PrimaryURL, c.ClipPageURL),
+		PreviewURL:   textutil.FirstNonEmpty(c.PreviewURL, c.PrimaryURL, c.ClipPageURL),
 		Keywords:     c.Tags,
 		Categories:   c.Categories,
 		RawMetadata:  raw,
@@ -440,13 +441,4 @@ func (p *Provider) FetchDetails(ctx context.Context, clipPageURL string) (*artap
 
 	c := clipToCandidate(detail.Clip)
 	return &c, nil
-}
-
-func firstNonEmpty(values ...string) string {
-	for _, v := range values {
-		if strings.TrimSpace(v) != "" {
-			return v
-		}
-	}
-	return ""
 }

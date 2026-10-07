@@ -9,6 +9,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/observability"
 	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
+	"github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
 
 // defaultSeparateItemRenderWorkers is how many per-item overlay renders may be
@@ -242,8 +243,8 @@ func separateOverlayItemPlan(parent capoverlay.OverlayPlan, source capoverlay.Ov
 		return capoverlay.OverlayPlan{}, nil, fmt.Errorf("build child plan for %q: %w", source.ID, err)
 	}
 	metadata := &overlayItemPublicationMetadata{
-		JobID:       firstNonEmpty(parent.DriveJobID, parent.PlanID),
-		ResultJobID: firstNonEmpty(parent.ResultJobID, parent.DriveJobID),
+		JobID:       textutil.FirstNonEmpty(parent.DriveJobID, parent.PlanID),
+		ResultJobID: textutil.FirstNonEmpty(parent.ResultJobID, parent.DriveJobID),
 		ItemID:      source.ID, ItemKind: source.Kind, EntityID: source.EntityID,
 		Text: source.Text, SourceStartUS: startUS, SourceEndUS: startUS + durationUS,
 		TargetDurationUS: targetUS,

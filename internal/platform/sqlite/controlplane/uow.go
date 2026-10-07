@@ -12,6 +12,7 @@ import (
 	capcontrol "github.com/Marcuss-ops/PipelineGen/internal/capabilities/controlplane"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/event"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
+	"github.com/Marcuss-ops/PipelineGen/pkg/defaults"
 )
 
 // UnitOfWork is the SQLite implementation of the canonical mutation boundary.
@@ -108,8 +109,8 @@ func (u *UnitOfWork) Run(ctx context.Context, command capcontrol.Command, mutati
 	}
 	outboxResult, err := u.box.Enqueue(ctx, tx,
 		command.Outbox.EventType,
-		nonEmpty(command.Outbox.AggregateID, command.AggregateID),
-		nonEmpty(command.Outbox.AggregateType, command.AggregateType),
+		defaults.String(command.Outbox.AggregateID, command.AggregateID),
+		defaults.String(command.Outbox.AggregateType, command.AggregateType),
 		nonEmptyJSON(command.Outbox.PayloadJSON),
 		command.Outbox.EventKey,
 	)
@@ -185,7 +186,7 @@ func (u *UnitOfWork) RunInTransaction(ctx context.Context, transaction capcontro
 	if err != nil {
 		return capcontrol.Result{}, err
 	}
-	outboxResult, err := u.box.Enqueue(ctx, tx, command.Outbox.EventType, nonEmpty(command.Outbox.AggregateID, command.AggregateID), nonEmpty(command.Outbox.AggregateType, command.AggregateType), nonEmptyJSON(command.Outbox.PayloadJSON), command.Outbox.EventKey)
+	outboxResult, err := u.box.Enqueue(ctx, tx, command.Outbox.EventType, defaults.String(command.Outbox.AggregateID, command.AggregateID), defaults.String(command.Outbox.AggregateType, command.AggregateType), nonEmptyJSON(command.Outbox.PayloadJSON), command.Outbox.EventKey)
 	if err != nil {
 		return capcontrol.Result{}, fmt.Errorf("controlplane uow: enqueue outbox: %w", err)
 	}
@@ -293,13 +294,6 @@ func isCompletedReplay(existing *outboxevents.EnqueueResult, requested capcontro
 	return existing.ExistingEventType == requested.EventType &&
 		existing.ExistingAggregateType == requested.AggregateType &&
 		existing.ExistingAggregateID == requested.AggregateID
-}
-
-func nonEmpty(value, fallback string) string {
-	if strings.TrimSpace(value) == "" {
-		return fallback
-	}
-	return value
 }
 
 func nonEmptyJSON(value string) string {
