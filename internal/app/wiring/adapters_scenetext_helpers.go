@@ -6,21 +6,15 @@ import (
 
 	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
+	"github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
-
-// firstNonEmpty returns the first value whose trimmed content is non-empty.
-// Root-local copy: the vidrush sub-package owns its own variant.
-func firstNonEmpty(values ...string) string {
-	for _, v := range values {
-		if strings.TrimSpace(v) != "" {
-			return strings.TrimSpace(v)
-		}
-	}
-	return ""
-}
 
 func buildEditorialPromptFromGenReq(req scriptgen.GenerateRequest) string {
 	return buildEditorialPrompt(req.Source.Topic, req.Source.SourceText, req.Title, req.Source.Query, req.ScriptParams.TargetWords, req.ScriptParams.MinWords, firstNonEmpty(req.Style, req.ScriptParams.Style), req.ScriptParams.Guidelines, string(req.SourceLanguage), req.ScriptParams.PromptVersion)
+}
+
+func firstNonEmpty(values ...string) string {
+	return strings.TrimSpace(textutil.FirstNonEmpty(values...))
 }
 
 func buildEditorialPrompt(topic, sourceText, title, query string, targetWords, minWords int, style, guidelines, language, promptVersion string) string {

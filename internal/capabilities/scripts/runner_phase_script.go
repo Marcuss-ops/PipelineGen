@@ -44,65 +44,10 @@ func (r *Runner) runSceneTextPhase(ctx context.Context, runID string, req Genera
 		streamed := false
 		var streamTranslationMetrics *TranslationPipelineMetrics
 		var streamAudioMetrics *AudioPipelineMetrics
-		var ready *sceneReadyCoordinator
-		// ── Streaming eligibility ──────────────────────────────────
-		// SceneTextStreamer can emit scenes one-by-one so downstream
-		// branches (NLP, TTS, render) start before the LLM finishes.
-		// Historically this was disabled for all SourceClips because
-		// bindExplicitClipSceneText can mutate scene text after
-		// generation. SceneStreamingEligibility now gates streaming
-		// per-request: clips with no SCENE N: markers in source text
-		// are streamable (no post-gen rebinding).
-		streamable := SceneStreamingEligibility(req)
-		segmentTopologyNeedsMaterialization := req.ScriptParams.SegmentWords > 0 && !req.ScriptParams.SingleScene && len(req.ScriptParams.Segments) == 0
-		// Explicit phrase hints can stream only when each hint is grounded in
-		// exactly one explicit segment brief. In that case emit appends any
-		// missing hint to that scene BEFORE SceneTextReady starts NLP/TTS. Other
-		// hint requests retain the batch materialization path because their scene
-		// owner cannot be determined safely before all generated scenes exist.
-		if len(req.MediaPlan.Extraction.ImportantPhrases) > 0 && !importantPhraseHintOwnersAvailable(req) {
-			streamable = false
-			segmentTopologyNeedsMaterialization = true
-		}
-		// Literal intro/outro must not be streamed scene-by-scene: they are
-		// injected verbatim post-LLM and never rewritten from source_text.
-		// Force batch when a fixed section is present so SceneTextReady
-		// events are emitted only after injection.
-		if req.Intro != nil || req.Outro != nil {
-			streamable = false
-		}
-		// A declared segment budget without explicit segments requires
-		// whole-prose materialization before SceneCommitted; streaming a
-		// model's provisional single scene would permanently launch VidRush
-		// enrichment with the wrong topology.
-		// Explicit segment plans are already authoritative and the production
-		// SceneTextGenerator streams one isolated model call per segment with a
-		// stable ID/index. Keep them streamable so SceneTextReady can start
-		// NLP/TTS for segment N while segment N+1 is still generating.
-		if req.Intro != nil || req.Outro != nil {
-			segmentTopologyNeedsMaterialization = true
-		}
-		if !req.ScriptParams.SourceTextVerbatim {
-			if _, ok := r.textGen.(SceneTextStreamer); ok && !segmentTopologyNeedsMaterialization && (req.Source.Type != SourceClips || streamable) {
-				ready = newSceneReadyCoordinator(ctx, r, runID, req, routing, exec)
-			}
-		}
-		if req.ScriptParams.SourceTextVerbatim {
-			scenes, genErr = materializeVerbatimSourceTextScenes(req)
-		} else if streamer, ok := r.textGen.(SceneTextTraceStreamer); ok && !segmentTopologyNeedsMaterialization && (req.Source.Type != SourceClips || streamable) {
-			streamed = true
-			scenes, generatedTrace, genErr = r.generateSceneTextStreamingWithTrace(ctx, runID, req, exec, streamer, ready)
-		} else if streamer, ok := r.textGen.(SceneTextStreamer); ok && !segmentTopologyNeedsMaterialization && (req.Source.Type != SourceClips || streamable) {
-			// Scene-ready streaming: emit SceneTextReady(N) per scene
-			// as its text becomes final so downstream branches start
-			// while the LLM keeps generating later scenes.
-			streamed = true
-			scenes, genErr = r.generateSceneTextStreaming(ctx, runID, req, exec, streamer, ready)
-		} else if traced, ok := r.textGen.(SceneTextTraceGenerator); ok {
-			scenes, generatedTrace, genErr = traced.GenerateSceneTextWithTrace(ctx, req)
-		} else {
-			scenes, genErr = r.textGen.GenerateSceneText(ctx, req)
-		}
+		path := r.prepareSceneTextGeneration(ctx, runID, req, routing, exec)
+		ready := path.ready
+		scenes, generatedTrace, streamed, genErr = r.generateSceneText(ctx, runID, req, exec, path)
+		segmentTopologyNeedsMaterialization := path.topologyNeedsMaterialization
 		if genErr != nil {
 			cause := fmt.Errorf("generate scene text failed: %w", genErr)
 			r.failExecutionStep(ctx, exec, scriptStep, cause)
@@ -451,4 +396,59 @@ func (r *Runner) runSceneTextPhase(ctx context.Context, runID string, req Genera
 	}
 
 	return result, true
+}
+
+// ── Scene-text generation path selection + dispatch ────────────────
+type sceneTextGenerationPath struct {
+	streamable                   bool
+	topologyNeedsMaterialization bool
+	ready                        *sceneReadyCoordinator
+}
+
+func (r *Runner) prepareSceneTextGeneration(ctx context.Context, runID string, req GenerateRequest, routing scriptpkg.ArtifactRoutingContext, exec ExecutionContext) sceneTextGenerationPath {
+	path := sceneTextGenerationPath{
+		streamable:                   SceneStreamingEligibility(req),
+		topologyNeedsMaterialization: req.ScriptParams.SegmentWords > 0 && !req.ScriptParams.SingleScene && len(req.ScriptParams.Segments) == 0,
+	}
+	if len(req.MediaPlan.Extraction.ImportantPhrases) > 0 && !importantPhraseHintOwnersAvailable(req) {
+		path.streamable = false
+		path.topologyNeedsMaterialization = true
+	}
+	if req.Intro != nil || req.Outro != nil {
+		path.streamable = false
+		path.topologyNeedsMaterialization = true
+	}
+	if req.ScriptParams.SourceTextVerbatim {
+		return path
+	}
+	streamEligible := !path.topologyNeedsMaterialization && (req.Source.Type != SourceClips || path.streamable)
+	if streamEligible {
+		if _, ok := r.textGen.(SceneTextStreamer); ok {
+			path.ready = newSceneReadyCoordinator(ctx, r, runID, req, routing, exec)
+		}
+	}
+	return path
+}
+
+func (r *Runner) generateSceneText(ctx context.Context, runID string, req GenerateRequest, exec ExecutionContext, path sceneTextGenerationPath) ([]Scene, scriptpkg.SourceTrace, bool, error) {
+	if req.ScriptParams.SourceTextVerbatim {
+		scenes, err := materializeVerbatimSourceTextScenes(req)
+		return scenes, scriptpkg.SourceTrace{}, false, err
+	}
+
+	streamEligible := !path.topologyNeedsMaterialization && (req.Source.Type != SourceClips || path.streamable)
+	if streamer, ok := r.textGen.(SceneTextTraceStreamer); ok && streamEligible {
+		scenes, trace, err := r.generateSceneTextStreamingWithTrace(ctx, runID, req, exec, streamer, path.ready)
+		return scenes, trace, true, err
+	}
+	if streamer, ok := r.textGen.(SceneTextStreamer); ok && streamEligible {
+		scenes, err := r.generateSceneTextStreaming(ctx, runID, req, exec, streamer, path.ready)
+		return scenes, scriptpkg.SourceTrace{}, true, err
+	}
+	if traced, ok := r.textGen.(SceneTextTraceGenerator); ok {
+		scenes, trace, err := traced.GenerateSceneTextWithTrace(ctx, req)
+		return scenes, trace, false, err
+	}
+	scenes, err := r.textGen.GenerateSceneText(ctx, req)
+	return scenes, scriptpkg.SourceTrace{}, false, err
 }

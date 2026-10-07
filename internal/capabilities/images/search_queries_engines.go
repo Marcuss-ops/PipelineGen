@@ -13,20 +13,17 @@
 //   - search_engine_commons.go:   Wikimedia Commons (searchWikimediaCommons
 //     and the Commons REST types/helpers)
 //
-// This file owns the cross-engine helper firstNonEmptyImageURL.
+// This file contains cross-engine query helpers.
 package images
 
-import "strings"
+import (
+	"strings"
 
-// firstNonEmptyImageURL returns the first non-empty (trimmed) value.
-// Shared by the SearXNG and Wikimedia Commons engines to pick the best
-// image URL from a set of progressively-less-preferred candidates
-// (original > preferred > thumbnail).
+	"github.com/Marcuss-ops/PipelineGen/pkg/textutil"
+)
+
+// firstNonEmptyImageURL preserves the trim-normalized URL contract while
+// delegating candidate selection to the canonical text helper.
 func firstNonEmptyImageURL(values ...string) string {
-	for _, value := range values {
-		if strings.TrimSpace(value) != "" {
-			return strings.TrimSpace(value)
-		}
-	}
-	return ""
+	return strings.TrimSpace(textutil.FirstNonEmpty(values...))
 }

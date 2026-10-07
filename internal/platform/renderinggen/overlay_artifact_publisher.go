@@ -16,6 +16,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	pathutil "github.com/Marcuss-ops/PipelineGen/internal/platform/filesystem"
 	"github.com/Marcuss-ops/PipelineGen/pkg/background"
+	"github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
 
 const overlayPublicationTimeout = 30 * time.Minute
@@ -268,12 +269,7 @@ func downloadCertifiedArtifact(ctx context.Context, client *http.Client, rawURL 
 }
 
 func firstNonEmpty(values ...string) string {
-	for _, value := range values {
-		if strings.TrimSpace(value) != "" {
-			return strings.TrimSpace(value)
-		}
-	}
-	return ""
+	return strings.TrimSpace(textutil.FirstNonEmpty(values...))
 }
 
 var _ scriptgen.OverlayArtifactPublisher = (*DriveOverlayArtifactPublisher)(nil)

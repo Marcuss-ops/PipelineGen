@@ -7,17 +7,13 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/sourcing"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
 
 // firstNonEmpty returns the first non-blank value, mirroring the composition
 // root helper of the same name (which this package can no longer see).
 func firstNonEmpty(values ...string) string {
-	for _, v := range values {
-		if strings.TrimSpace(v) != "" {
-			return strings.TrimSpace(v)
-		}
-	}
-	return ""
+	return strings.TrimSpace(textutil.FirstNonEmpty(values...))
 }
 
 func fromExistingClip(c *sourcing.ExistingClip) *asset.Asset {

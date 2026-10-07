@@ -11,14 +11,18 @@
 package stockpipeline
 
 import (
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
+	"context"
+	"encoding/json"
+	"fmt"
 	"sync"
 
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/acquisition"
 	assets "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/ports"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/execution/steps"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/finalization"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 )
 
@@ -161,4 +165,109 @@ func sha256String(text string) string {
 
 func defaultStepRunnerLog() *zap.Logger {
 	return zap.NewNop()
+}
+
+// ── Durable step history + RunState checkpoint codec ────────────────
+// loadCompletedStepRows returns only the latest row per stage when that row is
+// completed. A newer failed row supersedes an older completed row, allowing a
+// retry to execute instead of skipping stale work.
+func (o *Orchestrator) loadCompletedStepRows(ctx context.Context, jobID string) (map[string]steps.StepState, error) {
+	if o.stepStore == nil {
+		return nil, steps.ErrStoreNotWired
+	}
+	history, err := o.stepStore.ListByJob(ctx, jobID)
+	if err != nil {
+		return nil, err
+	}
+	latest := make(map[string]steps.StepState)
+	for _, row := range history {
+		if existing, ok := latest[row.StepKey]; !ok || row.ID > existing.ID {
+			latest[row.StepKey] = row
+		}
+	}
+	completed := make(map[string]steps.StepState, len(latest))
+	for stepKey, row := range latest {
+		if row.Status == steps.StatusCompleted {
+			completed[stepKey] = row
+		}
+	}
+	return completed, nil
+}
+
+const currentRunStateCheckpointVersion = 1
+
+// runStateCheckpoint is a flat, versioned envelope. Embedding RunState keeps
+// historical top-level fields such as "Plan" readable in v0 checkpoints.
+type runStateCheckpoint struct {
+	CheckpointVersion int `json:"checkpoint_version"`
+	RunState
+}
+
+func marshalRunStateCheckpoint(state *RunState) ([]byte, error) {
+	if state == nil {
+		return nil, fmt.Errorf("nil RunState")
+	}
+	return json.Marshal(runStateCheckpoint{
+		CheckpointVersion: currentRunStateCheckpointVersion,
+		RunState:          *state,
+	})
+}
+
+// rehydrateRunState validates and decodes both historical flat checkpoints
+// (v0) and the current flat envelope (v1). Future or malformed versions fail
+// closed instead of silently restoring an empty state.
+func rehydrateRunState(result json.RawMessage) (RunState, error) {
+	if len(result) == 0 {
+		return RunState{}, fmt.Errorf("rehydrateRunState: empty checkpoint result")
+	}
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(result, &fields); err != nil {
+		return RunState{}, fmt.Errorf("rehydrateRunState: unmarshal: %w", err)
+	}
+	if len(fields) == 0 {
+		return RunState{}, fmt.Errorf("rehydrateRunState: checkpoint has no RunState fields")
+	}
+
+	versionRaw, versioned := fields["checkpoint_version"]
+	if !versioned {
+		var legacy RunState
+		if err := json.Unmarshal(result, &legacy); err != nil {
+			return RunState{}, fmt.Errorf("rehydrateRunState: legacy unmarshal: %w", err)
+		}
+		return legacy, nil
+	}
+
+	var version int
+	if string(versionRaw) == "null" {
+		return RunState{}, fmt.Errorf("rehydrateRunState: checkpoint_version is null")
+	}
+	if err := json.Unmarshal(versionRaw, &version); err != nil {
+		return RunState{}, fmt.Errorf("rehydrateRunState: checkpoint_version: %w", err)
+	}
+	if version != currentRunStateCheckpointVersion {
+		return RunState{}, fmt.Errorf("rehydrateRunState: unsupported checkpoint_version=%d (want %d)", version, currentRunStateCheckpointVersion)
+	}
+	if !hasRunStateField(fields) {
+		return RunState{}, fmt.Errorf("rehydrateRunState: versioned checkpoint has no RunState fields")
+	}
+
+	var checkpoint runStateCheckpoint
+	if err := json.Unmarshal(result, &checkpoint); err != nil {
+		return RunState{}, fmt.Errorf("rehydrateRunState: versioned unmarshal: %w", err)
+	}
+	return checkpoint.RunState, nil
+}
+
+// hasRunStateField allows additive unknown fields within v1, while refusing a
+// versioned payload that contains no recognized RunState data at all.
+func hasRunStateField(fields map[string]json.RawMessage) bool {
+	for key := range fields {
+		switch key {
+		case "Plan", "StagedAssets", "CutPaths", "ComposedPaths", "Published",
+			"MetadataPublished", "Manifest", "FinalStatus", "FinalizationResult",
+			"Counts", "SourceErrors":
+			return true
+		}
+	}
+	return false
 }

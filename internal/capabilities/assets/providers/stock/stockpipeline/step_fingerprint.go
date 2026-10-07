@@ -3,6 +3,8 @@ package stockpipeline
 import (
 	"encoding/json"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/execution/steps"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/finalization"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 )
 
@@ -430,4 +432,95 @@ func cloneRunState(state *RunState) (*RunState, error) {
 		return nil, err
 	}
 	return &clone, nil
+}
+
+// ── Legacy checkpoint eligibility + resume fingerprint ──────────────
+// legacyCheckpointEligible limits the original jobID|stepKey fingerprint
+// migration to requests whose effective input is entirely zero-value. A v0 row
+// carries no input hash at all, so the only safe answer to "could this row be
+// the same work?" is to require that the CURRENT run carries none of the
+// inputs a modern fingerprint would have covered: any explicit target, budget,
+// output override, destination, lease or operator metadata marks a job the
+// legacy build cannot have produced, and the v0 row must NOT be trusted.
+//
+// Without this gate, an old checkpoint with no input identity could incorrectly
+// skip work for a new request. The decision is expressed as named dimensions
+// (below) so each one is independently reviewable and tested; do NOT delete the
+// legacy branch until persisted checkpoints and jobs that depend on it are
+// proven absent.
+func legacyCheckpointEligible(cfg OrchestratorConfig, input *RunInput) bool {
+	if input == nil {
+		return false
+	}
+	return legacyPolicySaltAbsent(cfg, input) &&
+		legacyLeaseAbsent(cfg.Lease) &&
+		legacyConfigDurationsAbsent(cfg) &&
+		legacyExplicitTargetsAbsent(input) &&
+		legacyBudgetOverridesAbsent(input) &&
+		legacyRenderOverridesAbsent(input) &&
+		legacyDestinationOverridesAbsent(input) &&
+		legacyLeaseAbsent(input.FinalizationLease)
+}
+
+// legacyPolicySaltAbsent: a legacy-shaped run carries no fingerprint salt on
+// either the resolved config or the request.
+func legacyPolicySaltAbsent(cfg OrchestratorConfig, input *RunInput) bool {
+	return cfg.PolicyVersion == "" && input.PolicyVersion == ""
+}
+
+// legacyLeaseAbsent: a legacy-shaped run is not broker-leased. Shared by the
+// orchestrator lease (cfg.Lease) and the finalization lease
+// (input.FinalizationLease) — both are the same finalization.Lease shape, and
+// either one carrying an id, an attempt or an expiry marks a modern job.
+func legacyLeaseAbsent(lease finalization.Lease) bool {
+	return lease.LeaseID == "" && lease.JobID == "" && lease.WorkerID == "" && lease.Attempt == 0 && lease.ExpiresAt.IsZero()
+}
+
+// legacyConfigDurationsAbsent: the resolved config carries no duration budget.
+func legacyConfigDurationsAbsent(cfg OrchestratorConfig) bool {
+	return cfg.ChunkDurationSec == 0 && cfg.ClipDurationSec == 0
+}
+
+// legacyExplicitTargetsAbsent: the request names no source explicitly (no
+// search query, direct URL, Drive URL or clip spec).
+func legacyExplicitTargetsAbsent(input *RunInput) bool {
+	return len(input.SearchQueries) == 0 && len(input.DirectURLs) == 0 && len(input.DriveURLs) == 0 && len(input.Clips) == 0
+}
+
+// legacyBudgetOverridesAbsent: the request carries no duration, budget,
+// download-mode or max-video tuning of its own.
+func legacyBudgetOverridesAbsent(input *RunInput) bool {
+	return input.TotalMinutes == 0 && input.TargetTotalDurationSeconds == 0 && input.TargetDurationPerSourceSeconds == 0 &&
+		input.ClipsPerSource == 0 && input.ClipDurationSeconds == 0 && input.DownloadMode == "" && input.MaxVideos == 0 &&
+		input.ChunkDuration == 0 && input.ClipDuration == 0 && input.SecondsPerSegment == 0
+}
+
+// legacyRenderOverridesAbsent: the request does not override the rendering
+// pipeline (audio/effects/transitions) or the output folder naming.
+func legacyRenderOverridesAbsent(input *RunInput) bool {
+	return !input.NoAudio && !input.NoEffects && !input.NoTransitions && input.Subfolder == "" && input.FolderName == ""
+}
+
+// legacyDestinationOverridesAbsent: the request carries no destination
+// resolution, operator metadata or persist flag.
+func legacyDestinationOverridesAbsent(input *RunInput) bool {
+	return input.DriveFolderID == "" && input.FolderID == "" && !input.DriveFolderResolved && input.Metadata == nil && !input.Persist
+}
+
+// resumeCheckpointFingerprint returns a stored legacy fingerprint only when
+// its compatibility contract matches the current request. All other cases
+// retain the current fingerprint so the step executes as a new attempt.
+func resumeCheckpointFingerprint(jobID, stepName string, cfg OrchestratorConfig, input *RunInput, previous *RunState, row steps.StepState, hasRow bool) string {
+	fingerprint := stepInputFingerprint(jobID, stepName, cfg, input, previous)
+	if !hasRow {
+		return fingerprint
+	}
+	switch {
+	case row.Fingerprint == legacyStepInputFingerprint(jobID, stepName) && legacyCheckpointEligible(cfg, input):
+		return row.Fingerprint
+	case row.Fingerprint == legacyV2StepInputFingerprint(jobID, stepName, cfg, input, previous):
+		return row.Fingerprint
+	default:
+		return fingerprint
+	}
 }

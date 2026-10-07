@@ -203,7 +203,7 @@ func (p LocalizedClipPlan) Validate() error {
 	if strings.TrimSpace(p.SourceAssetID) == "" {
 		return fmt.Errorf("%w: source_asset_id is required", ErrInvalidLocalizedClipPlan)
 	}
-	if !isSHA256Hex(p.SourceSHA256) {
+	if !digest.IsCanonicalSHA256(p.SourceSHA256) {
 		return fmt.Errorf("%w: source_sha256 must be a 64-hex SHA-256 (got %q)", ErrInvalidLocalizedClipPlan, p.SourceSHA256)
 	}
 	if err := validateBCP47(p.TargetLanguage); err != nil {
@@ -225,7 +225,7 @@ func (p LocalizedClipPlan) Validate() error {
 		return fmt.Errorf("%w: duration_ms must be > 0 (got %d)", ErrInvalidLocalizedClipPlan, p.DurationMS)
 	}
 	if p.Watermark != nil {
-		if strings.TrimSpace(p.Watermark.AssetID) == "" || strings.TrimSpace(p.Watermark.LocalPath) == "" || !isSHA256Hex(p.Watermark.SHA256) {
+		if strings.TrimSpace(p.Watermark.AssetID) == "" || strings.TrimSpace(p.Watermark.LocalPath) == "" || !digest.IsCanonicalSHA256(p.Watermark.SHA256) {
 			return fmt.Errorf("%w: watermark materialized asset is incomplete", ErrInvalidLocalizedClipPlan)
 		}
 		if p.WatermarkSpec == nil || strings.TrimSpace(p.WatermarkSpec.AssetID) == "" {
@@ -236,7 +236,7 @@ func (p LocalizedClipPlan) Validate() error {
 		if p.BackgroundMode != cliprender.BackgroundModeAsset {
 			return fmt.Errorf("%w: background materialized asset requires mode=asset (got %q)", ErrInvalidLocalizedClipPlan, p.BackgroundMode)
 		}
-		if strings.TrimSpace(p.Background.AssetID) == "" || strings.TrimSpace(p.Background.LocalPath) == "" || !isSHA256Hex(p.Background.SHA256) {
+		if strings.TrimSpace(p.Background.AssetID) == "" || strings.TrimSpace(p.Background.LocalPath) == "" || !digest.IsCanonicalSHA256(p.Background.SHA256) {
 			return fmt.Errorf("%w: background materialized asset is incomplete", ErrInvalidLocalizedClipPlan)
 		}
 	}
@@ -302,10 +302,6 @@ func validateBCP47(code string) error {
 	return nil
 }
 
-// isSHA256Hex reports whether value is a 64-character lowercase hex string
-// (the canonical SHA-256 digest shape). The rule is owned by kernel/digest (the
-// digest SSOT) and shared with the cliprender plan: the two contracts used to
-// mirror each other's copy, which is exactly the drift this removes.
-func isSHA256Hex(value string) bool {
-	return digest.IsCanonicalSHA256(value)
-}
+// isSHA256Hex preserves the localization package's internal validation seam
+// while delegating the canonical digest contract to kernel/digest.
+func isSHA256Hex(value string) bool { return digest.IsCanonicalSHA256(value) }

@@ -72,7 +72,7 @@ func (p ClipRenderPlanV1) Validate() error {
 	if p.Version != PlanVersion || p.RunID == "" || p.OutputPath == "" {
 		return fmt.Errorf("%w: version, run_id, or output_path missing", ErrInvalidClipPlan)
 	}
-	if p.Source.AssetID == "" || p.Source.Path == "" || !isSHA256Hex(p.Source.SHA256) {
+	if p.Source.AssetID == "" || p.Source.Path == "" || !digest.IsCanonicalSHA256(p.Source.SHA256) {
 		return fmt.Errorf("%w: source must carry asset_id, path, and sha256", ErrInvalidClipPlan)
 	}
 	if p.Output.ContractID == "" || p.Output.Container == "" || p.Output.VideoCodec == "" ||
@@ -104,7 +104,7 @@ func (p ClipRenderPlanV1) Validate() error {
 				return fmt.Errorf("%w: background mode=%s must not carry a kind (got %q)", ErrInvalidClipPlan, p.Background.Mode, p.Background.Kind)
 			}
 		case BackgroundModeAsset:
-			if p.Background.AssetID == "" || p.Background.Path == "" || !isSHA256Hex(p.Background.SHA256) {
+			if p.Background.AssetID == "" || p.Background.Path == "" || !digest.IsCanonicalSHA256(p.Background.SHA256) {
 				return fmt.Errorf("%w: background mode=asset requires asset_id, path, and sha256", ErrInvalidClipPlan)
 			}
 			if !IsBackgroundKind(p.Background.Kind) {
@@ -116,7 +116,7 @@ func (p ClipRenderPlanV1) Validate() error {
 	}
 
 	if p.Watermark != nil {
-		if strings.TrimSpace(p.Watermark.Text) == "" && (p.Watermark.AssetID == "" || p.Watermark.Path == "" || !isSHA256Hex(p.Watermark.SHA256)) {
+		if strings.TrimSpace(p.Watermark.Text) == "" && (p.Watermark.AssetID == "" || p.Watermark.Path == "" || !digest.IsCanonicalSHA256(p.Watermark.SHA256)) {
 			return fmt.Errorf("%w: watermark requires asset_id, path, and sha256", ErrInvalidClipPlan)
 		}
 		switch p.Watermark.Position {
@@ -138,7 +138,7 @@ func (p ClipRenderPlanV1) Validate() error {
 		default:
 			return fmt.Errorf("%w: invalid subtitle mode %q", ErrInvalidClipPlan, p.Subtitles.Mode)
 		}
-		if p.Subtitles.Path == "" || !isSHA256Hex(p.Subtitles.SHA256) {
+		if p.Subtitles.Path == "" || !digest.IsCanonicalSHA256(p.Subtitles.SHA256) {
 			return fmt.Errorf("%w: subtitles require an ASS path + sha256", ErrInvalidClipPlan)
 		}
 	}
@@ -150,7 +150,7 @@ func (p ClipRenderPlanV1) Validate() error {
 			return fmt.Errorf("%w: overlay declared with no segments", ErrInvalidClipPlan)
 		}
 		for i, seg := range p.Overlay.Segments {
-			if seg.Path == "" || !isSHA256Hex(seg.SHA256) {
+			if seg.Path == "" || !digest.IsCanonicalSHA256(seg.SHA256) {
 				return fmt.Errorf("%w: overlay segment %d requires a segment path + sha256", ErrInvalidClipPlan, i)
 			}
 			if seg.StartMS < 0 || seg.EndMS <= seg.StartMS {
@@ -172,9 +172,6 @@ func (p ClipRenderPlanV1) Validate() error {
 	return nil
 }
 
-// isSHA256Hex is the digest-shape gate for the sealed plan's resolved inputs.
-// The rule is owned by kernel/digest (the digest SSOT), which this contract and
-// the localization plan both consult instead of each carrying a copy.
-func isSHA256Hex(value string) bool {
-	return digest.IsCanonicalSHA256(value)
-}
+// isSHA256Hex preserves the package-level validation seam used by plan,
+// continuation and chunk contracts while delegating to the digest SSOT.
+func isSHA256Hex(value string) bool { return digest.IsCanonicalSHA256(value) }

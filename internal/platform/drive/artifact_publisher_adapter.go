@@ -52,6 +52,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/delivery"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/finalization"
 	pathutil "github.com/Marcuss-ops/PipelineGen/internal/platform/filesystem"
+	"github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
 
 // ── Sentinel errors ─────────────────────────────────────────────────
@@ -357,12 +358,7 @@ func isHexString(s string) bool {
 }
 
 func firstNonEmpty(values ...string) string {
-	for _, value := range values {
-		if strings.TrimSpace(value) != "" {
-			return strings.TrimSpace(value)
-		}
-	}
-	return ""
+	return strings.TrimSpace(textutil.FirstNonEmpty(values...))
 }
 
 // ── Kind → DestinationKey mapping ───────────────────────────────────

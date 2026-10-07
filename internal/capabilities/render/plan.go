@@ -387,7 +387,7 @@ func (p RenderPlan) Validate() error {
 		}
 	}
 	if p.FinalAudio != nil {
-		if p.FinalAudio.AssetID == "" || p.FinalAudio.Path == "" || !isSHA256(p.FinalAudio.SHA256) {
+		if p.FinalAudio.AssetID == "" || p.FinalAudio.Path == "" || !digest.IsSHA256(p.FinalAudio.SHA256) {
 			return fmt.Errorf("%w: final audio identity or SHA256 is invalid", ErrInvalidPlan)
 		}
 	}
@@ -436,7 +436,7 @@ func validateExecutionPolicy(policy *RenderExecutionPolicy) error {
 	if policy == nil {
 		return nil
 	}
-	if !isSHA256(policy.TargetProfileHash) || !isSHA256(policy.EncoderPolicyHash) {
+	if !digest.IsSHA256(policy.TargetProfileHash) || !digest.IsSHA256(policy.EncoderPolicyHash) {
 		return fmt.Errorf("%w: execution policy requires SHA256 target_profile_hash and encoder_policy_hash", ErrInvalidPlan)
 	}
 	if strings.TrimSpace(policy.RendererVersion) == "" {
@@ -448,7 +448,7 @@ func validateExecutionPolicy(policy *RenderExecutionPolicy) error {
 func validateManifestEntries(entries []AssetManifestEntry) error {
 	seen := make(map[string]struct{}, len(entries))
 	for _, entry := range entries {
-		if entry.AssetID == "" || entry.Path == "" || !isSHA256(entry.SHA256) || entry.FrameCount <= 0 {
+		if entry.AssetID == "" || entry.Path == "" || !digest.IsSHA256(entry.SHA256) || entry.FrameCount <= 0 {
 			return fmt.Errorf("%w: manifest entry requires asset_id, path, SHA256, and positive frame_count", ErrInvalidPlan)
 		}
 		if _, ok := seen[entry.AssetID]; ok {
@@ -459,6 +459,6 @@ func validateManifestEntries(entries []AssetManifestEntry) error {
 	return nil
 }
 
-func isSHA256(value string) bool {
-	return digest.IsSHA256(value)
-}
+// isSHA256 preserves the render package's internal validation seam while
+// delegating the digest contract to its canonical owner.
+func isSHA256(value string) bool { return digest.IsSHA256(value) }

@@ -55,15 +55,6 @@ type sceneReadyCoordinator struct {
 	nlpSlots  concurrent.Semaphore
 }
 
-// sceneLanguageWork is one independent (scene, language) unit of the
-// SceneTextReady downstream: which language, and whether its target text still
-// needs translating. The source language never needs translation, so it
-// carries no translation dependency at all.
-type sceneLanguageWork struct {
-	lang             Language
-	needsTranslation bool
-}
-
 // sceneLanguageOutcome is the per-language result of the fan-out. The
 // coordinator applies it to the scene after the join, so the scene's Text and
 // Voiceover maps keep exactly one writer.
@@ -72,19 +63,6 @@ type sceneLanguageOutcome struct {
 	text       string
 	translated bool
 	audioRef   AudioReference
-}
-
-// buildSceneLanguageWork projects the ordered language list into the
-// per-language work items, preserving the canonical dispatch order. A target
-// language is translated only when its text is still empty; the source
-// language is never a translation work item.
-func buildSceneLanguageWork(langs []Language, text map[Language]string, source Language) []sceneLanguageWork {
-	work := make([]sceneLanguageWork, 0, len(langs))
-	for _, lang := range langs {
-		needsTranslation := lang != source && text[lang] == ""
-		work = append(work, sceneLanguageWork{lang: lang, needsTranslation: needsTranslation})
-	}
-	return work
 }
 
 // poolSize falls back to the certified default when a configured pool width is
@@ -211,19 +189,16 @@ func (c *sceneReadyCoordinator) process(scene Scene) (Scene, error) {
 	if out.Text == nil {
 		out.Text = make(map[Language]string)
 	}
-	langs := make([]Language, 0, len(c.req.Languages))
-	seen := map[Language]bool{}
-	for _, lang := range append([]Language{c.req.SourceLanguage}, c.req.Languages...) {
-		if lang != "" && !seen[lang] {
-			seen[lang] = true
-			langs = append(langs, lang)
-		}
+	languageText := make(map[Language]string, len(out.Text)+len(c.req.Languages)+1)
+	for lang, text := range out.Text {
+		languageText[lang] = text
 	}
+	langs := requestedSceneLanguages(c.req.SourceLanguage, c.req.Languages)
 
-	// Per-(scene, language) work: a target translates its OWN text; the source
-	// language has no translation dependency at all. The order is the canonical
-	// dispatch order, so results stay deterministic.
-	work := buildSceneLanguageWork(langs, out.Text, c.req.SourceLanguage)
+	// The complete canonical language order feeds the stream even when the
+	// model emitted text for a target already: downstream SceneTextReady
+	// translation owns populating every requested target language.
+	work := buildSceneLanguageWork(langs, nil, c.req.SourceLanguage)
 	translationWork := 0
 	for _, item := range work {
 		if item.needsTranslation {
@@ -233,6 +208,7 @@ func (c *sceneReadyCoordinator) process(scene Scene) (Scene, error) {
 	// The source text is read once, on the coordinator goroutine, before the
 	// fan-out: workers never re-read the shared map for it.
 	sourceText := out.Text[c.req.SourceLanguage]
+	voiceoverFilter := newVoiceoverLanguageFilter(c.req.VoiceoverLanguages)
 
 	mode, err := capabilityaudio.ResolveAudioMode(c.req.Audio, false)
 	if err != nil {
@@ -261,7 +237,7 @@ func (c *sceneReadyCoordinator) process(scene Scene) (Scene, error) {
 	// certified widths are unchanged.
 	outcomes, err := concurrent.Map(c.ctx, work, c.languageWorkers(needsTTS), func(ctx context.Context, itemIdx int, item sceneLanguageWork) (sceneLanguageOutcome, error) {
 		res := sceneLanguageOutcome{lang: item.lang, text: out.Text[item.lang]}
-		if item.needsTranslation {
+		if item.lang != c.req.SourceLanguage {
 			translated, err := c.translateLanguage(ctx, itemIdx, out.ID, item.lang, sourceText)
 			if err != nil {
 				return sceneLanguageOutcome{}, err
@@ -270,7 +246,7 @@ func (c *sceneReadyCoordinator) process(scene Scene) (Scene, error) {
 			res.translated = true
 		}
 		c.launchLocalizedNLP(out, item.lang, res.text)
-		if needsTTS && voiceoverLanguageRequested(c.req, item.lang) {
+		if needsTTS && voiceoverFilter.allows(item.lang) {
 			audioRef, err := c.synthesizeLanguage(ctx, itemIdx, out.ID, item.lang, res.text)
 			if err != nil {
 				return sceneLanguageOutcome{}, fmt.Errorf("TTS ready scene %s: %w", out.ID, err)

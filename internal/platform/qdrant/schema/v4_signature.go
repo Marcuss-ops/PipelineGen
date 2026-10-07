@@ -68,7 +68,7 @@ func (s V4Signature) Validate() error {
 	if strings.TrimSpace(s.SchemaVersion) == "" {
 		return fmt.Errorf("v4 signature: schema version is required")
 	}
-	if !isSHA256Hex(s.EmbeddingContractHash) {
+	if !digest.IsCanonicalSHA256(s.EmbeddingContractHash) {
 		return fmt.Errorf("v4 signature: embedding contract hash must be a 64-hex SHA-256, got %q", s.EmbeddingContractHash)
 	}
 	if strings.TrimSpace(s.SemanticDocumentVersion) == "" {
@@ -133,14 +133,4 @@ func ParseV4Signature(name string) (V4Signature, bool) {
 		SemanticDocumentVersion: parts[2],
 		TextDimension:           dim,
 	}, true
-}
-
-// isSHA256Hex reports whether s is a 64-character lowercase hex digest.
-// Delegates to the digest SSOT (kernel/digest.IsCanonicalSHA256) instead of a
-// local copy, so the v4 signature keeps one canonical digest shape. It used to
-// route through the asset domain's validator, which meant the projection's
-// identity rule answered to another domain's facade rather than to the digest
-// owner itself.
-func isSHA256Hex(s string) bool {
-	return digest.IsCanonicalSHA256(s)
 }

@@ -11,7 +11,6 @@ package stockpipeline
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
@@ -188,41 +187,12 @@ func (o *Orchestrator) RunResilient(ctx context.Context, input *RunInput) (summa
 	// when the original ctx is cancelled (e.g. a step returned an
 	// error and the caller cancelled the context). Per AGENTS.md
 	// §Known Issues context.Background() allowlist pattern.
-	defer func() {
-		stager := o.stager
-		if stager == nil {
-			return
-		}
-		// Keep staged sources available only across retryable failures.
-		// Terminal failures and cancellation must release the temporary
-		// workspace; otherwise failed jobs leak staged source files.
-		if err != nil {
-			_, retryable := retry.Classify(err)
-			if retryable {
-				return
-			}
-		}
-		cleanupCtx := context.WithoutCancel(ctx)
-		resources := make([]cleanup.Resource, 0, len(state.StagedAssets))
-		for _, sa := range state.StagedAssets {
-			if sa == nil {
-				continue
-			}
-			resources = append(resources, cleanup.Resource{
-				SourceID:  sa.SourceID,
-				LocalPath: sa.LocalPath,
-			})
-		}
-		failures := cleanup.ReleaseAll(cleanupCtx, &stockCleanupReleaser{stager: stager}, resources)
-		for _, failure := range failures {
-			if o.executorLog != nil {
-				o.executorLog.Warn("orchestrator: staged source cleanup failed",
-					zap.String("local_path", failure.Resource.LocalPath),
-					zap.String("source_id", failure.Resource.SourceID),
-					zap.Error(failure.Err))
-			}
-		}
-	}()
+	//
+	// The closure wrapper (instead of `defer o.releaseStagedSources(ctx,
+	// state, err)`) is required: a direct defer would evaluate the named
+	// `err` at registration time — always nil — and never release the
+	// workspace of a failed run.
+	defer func() { o.releaseStagedSources(ctx, state, err) }()
 
 	// §12-3 crash-resume: load the durable step history once so
 	// pre-completed steps can rehydrate their produced state.
@@ -255,21 +225,8 @@ func (o *Orchestrator) RunResilient(ctx context.Context, input *RunInput) (summa
 			continue
 		}
 
-		fingerprint := stepInputFingerprint(o.cfg.JobId, step.Name(), o.cfg, input, previousState)
-		// Rows written before fingerprint v2 used jobID|stepKey. Keep
-		// those checkpoints resumable during the migration, but only
-		// fall back for that explicit legacy format; a mismatching v2
-		// fingerprint must create a new attempt instead of skipping work.
-		if row, ok := completedRows[step.Name()]; ok {
-			switch {
-			case row.Fingerprint == legacyStepInputFingerprint(o.cfg.JobId, step.Name()) && legacyCheckpointEligible(o.cfg, input, previousState):
-				fingerprint = row.Fingerprint
-			case row.Fingerprint == legacyV2StepInputFingerprint(o.cfg.JobId, step.Name(), o.cfg, input, previousState):
-				// v2 checkpoints remain resumable during the explicit
-				// v3 migration. New checkpoints always use v3.
-				fingerprint = row.Fingerprint
-			}
-		}
+		row, hasRow := completedRows[step.Name()]
+		fingerprint := resumeCheckpointFingerprint(o.cfg.JobId, step.Name(), o.cfg, input, previousState, row, hasRow)
 		key := steps.StepKey{
 			JobID:            o.cfg.JobId,
 			StepKey:          step.Name(),
@@ -278,46 +235,17 @@ func (o *Orchestrator) RunResilient(ctx context.Context, input *RunInput) (summa
 
 		if err := o.stepStore.MarkStarted(ctx, key); err != nil {
 			if errors.Is(err, steps.ErrStepAlreadyCompleted) {
-				// Step 10 C2/4 resume contract: this step is
-				// already Completed in the steps.Store (likely
-				// from a prior SIGKILL'd run that persisted
-				// progress before crashing). Skip re-execution
-				// — do NOT call step.Run, do NOT call
-				// MarkCompleted (terminal-immutability). The
-				// next stage in dispatchSteps proceeds.
-				if o.executorLog != nil {
-					o.executorLog.Info("orchestrator: skip already-completed step (recovery)",
-						zap.String("step", step.Name()),
-						zap.String("job_id", o.cfg.JobId))
+				// Step 10 C2/4 resume contract: this step is already Completed
+				// in the steps.Store (likely from a prior SIGKILL'd run that
+				// persisted progress before crashing). Skip re-execution — do
+				// NOT call step.Run, do NOT call MarkCompleted
+				// (terminal-immutability) — rehydrate the RunState the completed
+				// step left behind and proceed to the next dispatch stage.
+				resumed, resumeErr := o.resumeCompletedStep(step, completedRows, state)
+				if resumeErr != nil {
+					return nil, resumeErr
 				}
-				// Rehydrate the accumulated RunState produced by
-				// this completed step. The row's result_json holds
-				// the full RunState snapshot taken at the step's
-				// MarkCompleted, so resuming here restores exactly
-				// the state the step left behind.
-				if row, ok := completedRows[step.Name()]; ok {
-					if len(row.Result) == 0 {
-						return nil, fmt.Errorf("orchestrator: %s resume: %w: empty completed checkpoint", step.Name(), ErrStockResumeStateReadFailed)
-					} else {
-						rehydrated, rehydrateErr := o.rehydrateRunState(row.Result)
-						if rehydrateErr != nil {
-							return nil, fmt.Errorf("orchestrator: %s resume: %w: %v", step.Name(), ErrStockResumeStateInvalid, rehydrateErr)
-						}
-						*state = rehydrated
-						var cloneErr error
-						previousState, cloneErr = cloneRunState(state)
-						if cloneErr != nil {
-							return nil, fmt.Errorf("orchestrator: %s resume clone: %w: %v", step.Name(), ErrStockResumeStateInvalid, cloneErr)
-						}
-						if o.executorLog != nil {
-							o.executorLog.Info("orchestrator: rehydrated RunState from completed step",
-								zap.String("step", step.Name()),
-								zap.String("job_id", o.cfg.JobId))
-						}
-					}
-				} else {
-					return nil, fmt.Errorf("orchestrator: %s resume: %w: completed row missing", step.Name(), ErrStockResumeStateReadFailed)
-				}
+				previousState = resumed
 				continue
 			}
 			return nil, fmt.Errorf("orchestrator: %s MarkStarted: %w", step.Name(), err)
@@ -339,23 +267,11 @@ func (o *Orchestrator) RunResilient(ctx context.Context, input *RunInput) (summa
 			return nil, runErr
 		}
 
-		stateBytes, marshalErr := marshalRunStateCheckpoint(state)
-		if marshalErr != nil {
-			return nil, fmt.Errorf("orchestrator: %s checkpoint: %w: %v", step.Name(), ErrStockResumeStateInvalid, marshalErr)
+		nextPrevious, checkpointErr := o.checkpointStep(ctx, key, step, state)
+		if checkpointErr != nil {
+			return nil, checkpointErr
 		}
-
-		var cloneErr error
-		previousState, cloneErr = cloneRunState(state)
-		if cloneErr != nil {
-			return nil, fmt.Errorf("orchestrator: %s checkpoint clone: %w: %v", step.Name(), ErrStockResumeStateInvalid, cloneErr)
-		}
-		if err := o.stepStore.MarkCompleted(ctx, key, stateBytes, nil); err != nil {
-			// ErrStepAlreadyCompleted cannot fire here (we just
-			// MarkStarted the same key); any other error
-			// (ErrStoreNotWired, ErrInvalidStepKey) is a
-			// programming error and surfaces loudly.
-			return nil, fmt.Errorf("orchestrator: %s MarkCompleted: %w", step.Name(), err)
-		}
+		previousState = nextPrevious
 	}
 
 	// §12-1 P0 #1 (July 2026) — orchestrator-level fail-closed gate.
@@ -437,6 +353,110 @@ func (o *Orchestrator) RunResilient(ctx context.Context, input *RunInput) (summa
 	return summary, nil
 }
 
+// releaseStagedSources releases the staged source files of a finished run.
+//
+// Retryable failures keep the staged bytes (the retry reads them); terminal
+// failures and cancellation release the temporary workspace, because otherwise
+// failed jobs leak staged source files. nil stager ⇒ unwired fixture.
+//
+// It runs with context.WithoutCancel so the release still happens when the
+// caller's context was cancelled (e.g. a step returned an error and the caller
+// cancelled), per the AGENTS.md §Known Issues context.Background() allowlist
+// pattern.
+func (o *Orchestrator) releaseStagedSources(ctx context.Context, state *RunState, runErr error) {
+	stager := o.stager
+	if stager == nil {
+		return
+	}
+	// Keep staged sources available only across retryable failures.
+	if runErr != nil {
+		if _, retryable := retry.Classify(runErr); retryable {
+			return
+		}
+	}
+	cleanupCtx := context.WithoutCancel(ctx)
+	resources := make([]cleanup.Resource, 0, len(state.StagedAssets))
+	for _, sa := range state.StagedAssets {
+		if sa == nil {
+			continue
+		}
+		resources = append(resources, cleanup.Resource{
+			SourceID:  sa.SourceID,
+			LocalPath: sa.LocalPath,
+		})
+	}
+	failures := cleanup.ReleaseAll(cleanupCtx, &stockCleanupReleaser{stager: stager}, resources)
+	for _, failure := range failures {
+		if o.executorLog != nil {
+			o.executorLog.Warn("orchestrator: staged source cleanup failed",
+				zap.String("local_path", failure.Resource.LocalPath),
+				zap.String("source_id", failure.Resource.SourceID),
+				zap.Error(failure.Err))
+		}
+	}
+}
+
+// resumeCompletedStep handles the MarkStarted → ErrStepAlreadyCompleted branch
+// of the resume contract: the step is already Completed in the steps.Store, so
+// its body must NOT run again and its row must NOT be rewritten
+// (terminal-immutability). The row's result_json carries the full RunState
+// snapshot taken at MarkCompleted, so rehydrating it restores exactly the state
+// the step left behind.
+//
+// It returns the rehydrated state projected as the next step's
+// previous-output context. Any malformed or missing checkpoint fails closed.
+func (o *Orchestrator) resumeCompletedStep(step Step, completedRows map[string]steps.StepState, state *RunState) (*RunState, error) {
+	if o.executorLog != nil {
+		o.executorLog.Info("orchestrator: skip already-completed step (recovery)",
+			zap.String("step", step.Name()),
+			zap.String("job_id", o.cfg.JobId))
+	}
+	row, ok := completedRows[step.Name()]
+	if !ok {
+		return nil, fmt.Errorf("orchestrator: %s resume: %w: completed row missing", step.Name(), ErrStockResumeStateReadFailed)
+	}
+	if len(row.Result) == 0 {
+		return nil, fmt.Errorf("orchestrator: %s resume: %w: empty completed checkpoint", step.Name(), ErrStockResumeStateReadFailed)
+	}
+	rehydrated, rehydrateErr := rehydrateRunState(row.Result)
+	if rehydrateErr != nil {
+		return nil, fmt.Errorf("orchestrator: %s resume: %w: %v", step.Name(), ErrStockResumeStateInvalid, rehydrateErr)
+	}
+	*state = rehydrated
+	previous, cloneErr := cloneRunState(state)
+	if cloneErr != nil {
+		return nil, fmt.Errorf("orchestrator: %s resume clone: %w: %v", step.Name(), ErrStockResumeStateInvalid, cloneErr)
+	}
+	if o.executorLog != nil {
+		o.executorLog.Info("orchestrator: rehydrated RunState from completed step",
+			zap.String("step", step.Name()),
+			zap.String("job_id", o.cfg.JobId))
+	}
+	return previous, nil
+}
+
+// checkpointStep persists the post-Run RunState of one step and returns the
+// clone that becomes the next step's previous-output projection.
+//
+// Ordering is fixed: marshal (fail closed on a malformed state) → clone (the
+// next fingerprint's previous-output context) → MarkCompleted. A MarkCompleted
+// error other than ErrStepAlreadyCompleted cannot fire here — this key was just
+// MarkStarted — so it is a programming error and surfaces loudly.
+func (o *Orchestrator) checkpointStep(ctx context.Context, key steps.StepKey, step Step, state *RunState) (*RunState, error) {
+	stateBytes, marshalErr := marshalRunStateCheckpoint(state)
+	if marshalErr != nil {
+		return nil, fmt.Errorf("orchestrator: %s checkpoint: %w: %v", step.Name(), ErrStockResumeStateInvalid, marshalErr)
+	}
+	previous, cloneErr := cloneRunState(state)
+	if cloneErr != nil {
+		return nil, fmt.Errorf("orchestrator: %s checkpoint clone: %w: %v", step.Name(), ErrStockResumeStateInvalid, cloneErr)
+	}
+	if err := o.stepStore.MarkCompleted(ctx, key, stateBytes, nil); err != nil {
+		return nil, fmt.Errorf("orchestrator: %s MarkCompleted: %w", step.Name(), err)
+	}
+	return previous, nil
+}
+
 // shouldBypassStockCompose is the single dispatch gate for the
 // canonical cutter fast path. Keeping the step-name check here makes
 // the complete bypass explicit: no Run, checkpoint, or resume lookup
@@ -453,137 +473,4 @@ func (o *Orchestrator) executorLogOrNop() *zap.Logger {
 		return o.executorLog
 	}
 	return defaultStepRunnerLog()
-}
-
-// loadCompletedStepRows builds a map of the latest Completed row
-// for each step key for the given job. It is used once per
-// RunResilient call so the resume path can rehydrate RunState
-// without querying the store inside the dispatch loop.
-func legacyCheckpointEligible(cfg OrchestratorConfig, input *RunInput, _ *RunState) bool {
-	if input == nil {
-		return false
-	}
-	return cfg.PolicyVersion == "" && input.PolicyVersion == "" && cfg.Lease.LeaseID == "" && cfg.Lease.JobID == "" && cfg.Lease.WorkerID == "" && cfg.Lease.Attempt == 0 && cfg.Lease.ExpiresAt.IsZero() && cfg.ChunkDurationSec == 0 && cfg.ClipDurationSec == 0 &&
-		len(input.SearchQueries) == 0 && len(input.DirectURLs) == 0 && len(input.DriveURLs) == 0 && len(input.Clips) == 0 &&
-		input.TotalMinutes == 0 && input.TargetTotalDurationSeconds == 0 && input.TargetDurationPerSourceSeconds == 0 &&
-		input.ClipsPerSource == 0 && input.ClipDurationSeconds == 0 && input.DownloadMode == "" && input.MaxVideos == 0 &&
-		input.ChunkDuration == 0 && input.ClipDuration == 0 && input.SecondsPerSegment == 0 && !input.NoAudio &&
-		!input.NoEffects && !input.NoTransitions && input.Subfolder == "" && input.FolderName == "" &&
-		input.DriveFolderID == "" && input.FolderID == "" && !input.DriveFolderResolved && input.Metadata == nil && !input.Persist &&
-		input.FinalizationLease.LeaseID == "" && input.FinalizationLease.JobID == "" && input.FinalizationLease.WorkerID == "" && input.FinalizationLease.Attempt == 0 && input.FinalizationLease.ExpiresAt.IsZero()
-}
-
-func (o *Orchestrator) loadCompletedStepRows(ctx context.Context, jobID string) (map[string]steps.StepState, error) {
-	if o.stepStore == nil {
-		return nil, steps.ErrStoreNotWired
-	}
-	history, err := o.stepStore.ListByJob(ctx, jobID)
-	if err != nil {
-		return nil, err
-	}
-	latest := make(map[string]steps.StepState)
-	for _, row := range history {
-		// Design A: latest row per (job_id, step_key) wins, regardless
-		// of status. A newer Failed row must supersede an older Completed
-		// row so a retry executes the step instead of skipping stale work.
-		if existing, ok := latest[row.StepKey]; !ok || row.ID > existing.ID {
-			latest[row.StepKey] = row
-		}
-	}
-	completed := make(map[string]steps.StepState, len(latest))
-	for stepKey, row := range latest {
-		if row.Status == steps.StatusCompleted {
-			completed[stepKey] = row
-		}
-	}
-	return completed, nil
-}
-
-const currentRunStateCheckpointVersion = 1
-
-// runStateCheckpoint is a flat, versioned envelope. Embedding RunState
-// keeps the pre-versioning JSON shape intact: old checkpoints with fields
-// such as "Plan" remain readable and new checkpoints add only the
-// checkpoint_version discriminator.
-type runStateCheckpoint struct {
-	CheckpointVersion int `json:"checkpoint_version"`
-	RunState
-}
-
-func marshalRunStateCheckpoint(state *RunState) ([]byte, error) {
-	if state == nil {
-		return nil, fmt.Errorf("nil RunState")
-	}
-	return json.Marshal(runStateCheckpoint{
-		CheckpointVersion: currentRunStateCheckpointVersion,
-		RunState:          *state,
-	})
-}
-
-// rehydrateRunState validates and unmarshals a RunState checkpoint.
-//
-// Compatibility contract:
-//   - checkpoints without checkpoint_version are legacy v0 and remain
-//     readable;
-//   - checkpoint_version=1 is the current flat envelope;
-//   - an empty object has no canonical RunState fields and is invalid;
-//   - a future, malformed, or non-object versioned payload fails closed.
-func (o *Orchestrator) rehydrateRunState(result json.RawMessage) (RunState, error) {
-	if len(result) == 0 {
-		return RunState{}, fmt.Errorf("orchestrator: rehydrateRunState: empty checkpoint result")
-	}
-
-	var fields map[string]json.RawMessage
-	if err := json.Unmarshal(result, &fields); err != nil {
-		return RunState{}, fmt.Errorf("orchestrator: rehydrateRunState: unmarshal: %w", err)
-	}
-	if len(fields) == 0 {
-		return RunState{}, fmt.Errorf("orchestrator: rehydrateRunState: checkpoint has no RunState fields")
-	}
-
-	versionRaw, versioned := fields["checkpoint_version"]
-	if !versioned {
-		// v0 compatibility: decode the historical flat RunState directly.
-		var legacy RunState
-		if err := json.Unmarshal(result, &legacy); err != nil {
-			return RunState{}, fmt.Errorf("orchestrator: rehydrateRunState: legacy unmarshal: %w", err)
-		}
-		return legacy, nil
-	}
-
-	var version int
-	if string(versionRaw) == "null" {
-		return RunState{}, fmt.Errorf("orchestrator: rehydrateRunState: checkpoint_version is null")
-	}
-	if err := json.Unmarshal(versionRaw, &version); err != nil {
-		return RunState{}, fmt.Errorf("orchestrator: rehydrateRunState: checkpoint_version: %w", err)
-	}
-	if version != currentRunStateCheckpointVersion {
-		return RunState{}, fmt.Errorf("orchestrator: rehydrateRunState: unsupported checkpoint_version=%d (want %d)", version, currentRunStateCheckpointVersion)
-	}
-	if !hasRunStateField(fields) {
-		return RunState{}, fmt.Errorf("orchestrator: rehydrateRunState: versioned checkpoint has no RunState fields")
-	}
-
-	var checkpoint runStateCheckpoint
-	if err := json.Unmarshal(result, &checkpoint); err != nil {
-		return RunState{}, fmt.Errorf("orchestrator: rehydrateRunState: versioned unmarshal: %w", err)
-	}
-	return checkpoint.RunState, nil
-}
-
-// hasRunStateField distinguishes a valid v1 envelope from a versioned
-// payload that only carries an unknown/future field. Unknown fields remain
-// ignorable when a known RunState field is present, preserving additive JSON
-// compatibility within the same checkpoint version.
-func hasRunStateField(fields map[string]json.RawMessage) bool {
-	for key := range fields {
-		switch key {
-		case "Plan", "StagedAssets", "CutPaths", "ComposedPaths", "Published",
-			"MetadataPublished", "Manifest", "FinalStatus", "FinalizationResult",
-			"Counts", "SourceErrors":
-			return true
-		}
-	}
-	return false
 }

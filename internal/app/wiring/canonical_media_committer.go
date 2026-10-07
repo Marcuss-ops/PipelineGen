@@ -32,12 +32,16 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"go.uber.org/zap"
 
 	mediasub "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/media"
 	appadminconsole "github.com/Marcuss-ops/PipelineGen/internal/capabilities/adminconsole"
+	localized "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/localized"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
+	texttracksport "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/texttracks"
+	youtubeports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/ports"
 	youtube "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/usecase"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	pgmedia "github.com/Marcuss-ops/PipelineGen/internal/platform/postgres/media"
@@ -442,4 +446,110 @@ func mediaMetadataPatchJSON(a *asset.Asset) string {
 		return ""
 	}
 	return string(raw)
+}
+
+// canonicalClipWriter is the single-writer contract the canonical
+// AssetCommitter must satisfy before it can be handed to the per-segment
+// pipeline: atomic clip commit + localized clip write + timed-cue write.
+// MEDIA DEMOLITION (September 2026): since the demolition the concrete engine
+// is always the PostgreSQL committer; the interface keeps the composition root
+// engine-agnostic.
+type canonicalClipWriter interface {
+	youtubeports.ClipAtomicWriter
+	localized.LocalizedClipWriter
+	texttracksport.TimedCueWriter
+}
+
+// assertCanonicalMediaWriter asserts every canonical-writer surface the
+// YouTube clip pipeline requires from the ONE committer and returns the two
+// narrow views the pipeline consumes. The dependency is explicit: this
+// function cannot resolve a writer on its own, so a caller can never
+// accidentally construct a pipeline without the canonical committer.
+//
+// The assertion order is load-bearing (it decides which wiring error a
+// partially-wired root reports first): clip/localized/timed-cue writer, then
+// the mutation committer, then the clip metadata writer.
+func assertCanonicalMediaWriter(committer persistence.AssetCommitter) (canonicalClipWriter, youtubeports.ClipMetadataWriter, error) {
+	if committer == nil {
+		return nil, nil, fmt.Errorf("compose domains: canonical asset committer is required")
+	}
+	canonicalMediaCommitter, ok := committer.(canonicalClipWriter)
+	if !ok || canonicalMediaCommitter == nil {
+		return nil, nil, fmt.Errorf("compose domains: canonical AssetCommitter must implement ClipAtomicWriter + LocalizedClipWriter (got %T) — single-writer invariant", committer)
+	}
+	canonicalMutator, ok := committer.(persistence.AssetMutationCommitter)
+	if !ok || canonicalMutator == nil {
+		return nil, nil, fmt.Errorf("compose domains: canonical AssetCommitter does not implement AssetMutationCommitter")
+	}
+	_ = canonicalMutator
+	// MEDIA DEMOLITION (September 2026): the canonical media writer
+	// implements youtubeports.ClipMetadataWriter directly over the media
+	// SSOT — the SQLite-bound ClipMetadataWriterAdapter is retired.
+	clipMetadataWriter, ok := committer.(youtubeports.ClipMetadataWriter)
+	if !ok || clipMetadataWriter == nil {
+		return nil, nil, fmt.Errorf("compose domains: canonical AssetCommitter must implement youtubeports.ClipMetadataWriter (got %T) — single-writer invariant", committer)
+	}
+	return canonicalMediaCommitter, clipMetadataWriter, nil
+}
+
+// ── folder-path writer bridge ───────────────────────────────────────────
+
+// folderPathWriterAdapter bridges the texttracks.FolderPathWriter port
+// (3-arg UpdateFolderPath) to the canonical media writer's 5-arg
+// UpdateFolderPathTx. MEDIA DEMOLITION (September 2026): the adapter is
+// port-based — the concrete engine (PostgreSQL since the demolition) is
+// supplied by the composition root.
+type folderPathWriterAdapter struct {
+	committer interface {
+		DB() *sql.DB
+		UpdateFolderPathTx(ctx context.Context, tx *sql.Tx, assetID, folderID, folderPath, updatedAt string) error
+		CommitIndexEventTx(ctx context.Context, tx *sql.Tx, assetID, source, contentHash, mediaType string) error
+	}
+	log *zap.Logger
+}
+
+// clipWriterFolderPathSource asserts the narrow tx-mutation surface the
+// adapter needs from the canonical writer.
+func clipWriterFolderPathSource(committer persistence.AssetCommitter) interface {
+	DB() *sql.DB
+	UpdateFolderPathTx(ctx context.Context, tx *sql.Tx, assetID, folderID, folderPath, updatedAt string) error
+	CommitIndexEventTx(ctx context.Context, tx *sql.Tx, assetID, source, contentHash, mediaType string) error
+} {
+	return committer.(interface {
+		DB() *sql.DB
+		UpdateFolderPathTx(ctx context.Context, tx *sql.Tx, assetID, folderID, folderPath, updatedAt string) error
+		CommitIndexEventTx(ctx context.Context, tx *sql.Tx, assetID, source, contentHash, mediaType string) error
+	})
+}
+
+func (a *folderPathWriterAdapter) UpdateFolderPath(ctx context.Context, assetID, folderPath string) error {
+	if a == nil || a.committer == nil {
+		return fmt.Errorf("folderPathWriterAdapter: committer not wired")
+	}
+	tx, err := a.committer.DB().BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	committed := false
+	defer func() {
+		if !committed {
+			_ = tx.Rollback()
+		}
+	}()
+	var sourceVersion string
+	if err := tx.QueryRowContext(ctx, `SELECT COALESCE(source_version,'') FROM media_assets WHERE id=$1`, assetID).Scan(&sourceVersion); err != nil {
+		return fmt.Errorf("folderPathWriterAdapter: asset: %w", err)
+	}
+	updatedAt := time.Now().UTC().Format(time.RFC3339)
+	if err := a.committer.UpdateFolderPathTx(ctx, tx, assetID, "", folderPath, updatedAt); err != nil {
+		return err
+	}
+	if err := a.committer.CommitIndexEventTx(ctx, tx, assetID, "youtube", sourceVersion, "video"); err != nil {
+		return err
+	}
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+	committed = true
+	return nil
 }

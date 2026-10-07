@@ -3,10 +3,10 @@ package scriptgeneration
 import (
 	"context"
 	"fmt"
-	"sort"
 	"sync"
 	"time"
 
+	scriptRunner "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/runner"
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
 	"go.uber.org/zap"
@@ -16,6 +16,10 @@ type translationWork struct {
 	sceneIndex int
 	lang       Language
 	text       string
+}
+
+func sortTranslationWork(work []translationWork, source Language, targets []Language) {
+	scriptRunner.SortBySceneAndLanguage(work, func(item translationWork) int { return item.sceneIndex }, func(item translationWork) string { return string(item.lang) }, string(source), languageStrings(targets))
 }
 
 func (r *Runner) runTranslationPhase(ctx context.Context, runID string, req GenerateRequest, exec ExecutionContext, resumeIdx int, result *GenerateResult) bool {
@@ -57,13 +61,9 @@ func (r *Runner) runTranslationPhase(ctx context.Context, runID string, req Gene
 		// The provider calls stay concurrent, but the order in which units are
 		// offered to the pool is pinned so the scheduler never dispatches
 		// scene×language work in an arbitrary order across runs.
-		sort.SliceStable(work, func(a, b int) bool {
-			if work[a].sceneIndex != work[b].sceneIndex {
-				return work[a].sceneIndex < work[b].sceneIndex
-			}
-			return dispatchLanguagePriority(req.SourceLanguage, req.Languages, work[a].lang) <
-				dispatchLanguagePriority(req.SourceLanguage, req.Languages, work[b].lang)
-		})
+		// Stable sorting preserves insertion order for duplicate/equal-priority
+		// work while delegating the canonical language rank to scripts/runner.
+		sortTranslationWork(work, req.SourceLanguage, req.Languages)
 		workers := r.translationConcurrency
 		if workers <= 0 {
 			workers = DefaultTranslationConcurrency

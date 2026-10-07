@@ -196,16 +196,6 @@ func (h *SystemHandler) toolStatus(configured, bare string) string {
 	return "not_installed"
 }
 
-// firstNonEmptyString returns the first non-empty value.
-func firstNonEmptyString(values ...string) string {
-	for _, v := range values {
-		if v != "" {
-			return v
-		}
-	}
-	return ""
-}
-
 func (h *SystemHandler) checkExternalTools(ctx context.Context, resp *DoctorResponse) {
 	// Ollama
 	if !h.toolChecker.CommandExists("ollama") {
@@ -229,7 +219,7 @@ func (h *SystemHandler) checkExternalTools(ctx context.Context, resp *DoctorResp
 		resp.Checks["yt_dlp_path"] = resolved
 	}
 	if resp.Checks["yt_dlp"] != "ok" {
-		resp.Fixes = append(resp.Fixes, fmt.Sprintf("install yt-dlp or point YTDLP_PATH at a working executable (probed %q)", firstNonEmptyString(strings.TrimSpace(h.cfg.YtdlpPath), "yt-dlp")))
+		resp.Fixes = append(resp.Fixes, fmt.Sprintf("install yt-dlp or point YTDLP_PATH at a working executable (probed %q)", textutil.FirstNonEmpty(strings.TrimSpace(h.cfg.YtdlpPath), "yt-dlp")))
 	}
 
 	// ffmpeg / ffprobe — same resolution rule.

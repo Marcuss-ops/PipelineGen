@@ -10,6 +10,7 @@ import (
 
 	providers "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers"
 	search "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/search"
+	"github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
 
 // providerSearchBackend wraps a single providers.SearchProvider so
@@ -152,7 +153,7 @@ func (b *providerSearchBackend) resolveKnownAssetID(ctx context.Context, ext sea
 // providerSourceRef returns the provider-native reference for a candidate
 // (ExternalID preferred, ID as legacy fallback, SourceRef last resort).
 func providerSourceRef(c providers.Candidate) string {
-	return firstNonEmptyProvider(c.ExternalID, c.ID, c.SourceRef)
+	return textutil.FirstNonEmpty(c.ExternalID, c.ID, c.SourceRef)
 }
 
 func providerDurationMs(c providers.Candidate) int64 {
@@ -160,15 +161,6 @@ func providerDurationMs(c providers.Candidate) int64 {
 		return c.DurationMs
 	}
 	return c.Duration.Milliseconds()
-}
-
-func firstNonEmptyProvider(values ...string) string {
-	for _, value := range values {
-		if strings.TrimSpace(value) != "" {
-			return value
-		}
-	}
-	return ""
 }
 
 var _ search.SearchBackend = (*providerSearchBackend)(nil)
