@@ -227,6 +227,13 @@ type PlanInput struct {
 	// AnimationCounts caps the distinct style pool for each runtime subfamily.
 	// Missing or non-positive entries use the five-style default.
 	AnimationCounts map[string]int
+	// EntityStyleID pins the entity-card composition family for generated
+	// entity cards (a channel profile's or job's choice): "random" samples
+	// the full 25 Apple Spatial registry, tag selectors (badge, camera,
+	// side, typewriter, testo_sotto) narrow it, and a 01..25 variant pins
+	// one composition. Empty keeps the certified "random" default. Invalid
+	// selectors fail closed in BuildPlan.
+	EntityStyleID string
 	// PlateResolver resolves a grounded WGS84 point to the certified basemap
 	// plate covering it. Nil (or an uncovered point) means the scene emits no
 	// map: the planner never fabricates geography.
@@ -245,6 +252,13 @@ func BuildPlan(input PlanInput, config PlannerConfig) (OverlayPlan, error) {
 	}
 	if err := validateImageMotionPool(input.ImageMotions); err != nil {
 		return OverlayPlan{}, err
+	}
+	entityStyleSelector := strings.TrimSpace(input.EntityStyleID)
+	if entityStyleSelector == "" {
+		entityStyleSelector = IdentityEntityStyleSelector
+	}
+	if !IsValidEntityStyleSelector(entityStyleSelector) {
+		return OverlayPlan{}, fmt.Errorf("overlay planner: entity_style_id %q is not a certified selector (random, a tag such as badge/camera/side/typewriter, or a 01..25 variant)", input.EntityStyleID)
 	}
 	imageMotionLimit := animationCount(input.AnimationCounts, "single_image", "image_double", "image_triplet", "image_four", "image_five", "single_image_with_text", "image_double_with_text", "image_triplet_with_text", "image_four_with_text", "image_five_with_text", "images")
 	input.ImageMotions = limitedMotionPool(input.ImageMotions, imageMotionLimit)
@@ -422,12 +436,11 @@ func BuildPlan(input PlanInput, config PlannerConfig) (OverlayPlan, error) {
 			}
 			for _, item := range groupItems {
 				if item.Kind == string(KindEntityImage) {
-					if len(item.ImageLayers) > 0 {
-						for layerIndex := range item.ImageLayers {
+					if len(item.ImageLayers) > 0 {						for layerIndex := range item.ImageLayers {
 							layer := &item.ImageLayers[layerIndex]
 							imageLimit := animationCount(input.AnimationCounts, "entities")
 							if layer.Caption != "" {
-								pool := limitedMotionPool(generatedImageWithTextMotionCandidates, animationCount(input.AnimationCounts, "images_with_text", "single_image_with_text", "image_double_with_text", "image_triplet_with_text", "image_four_with_text", "image_five_with_text"))
+								pool := ImageWithTextMotionPool(animationCount(input.AnimationCounts, "images_with_text", "single_image_with_text", "image_double_with_text", "image_triplet_with_text", "image_four_with_text", "image_five_with_text"))
 								layer.MotionID = selectImageMotion(input.PlanID, "run", imageOrdinal, pool)
 							} else {
 								layer.MotionID = entityImageMotionAtOffset(imageOrdinal, imageLimit)
@@ -437,7 +450,7 @@ func BuildPlan(input PlanInput, config PlannerConfig) (OverlayPlan, error) {
 						}
 					} else {
 						if item.EntityCaption != "" {
-							pool := limitedMotionPool(generatedImageWithTextMotionCandidates, animationCount(input.AnimationCounts, "images_with_text", "single_image_with_text", "entity_text_images"))
+							pool := ImageWithTextMotionPool(animationCount(input.AnimationCounts, "images_with_text", "single_image_with_text", "entity_text_images"))
 							item.MotionID = selectImageMotion(input.PlanID, "run", imageOrdinal, pool)
 						} else {
 							item.MotionID = entityImageMotionAtOffset(imageOrdinal, animationCount(input.AnimationCounts, "entities"))
@@ -516,14 +529,14 @@ func BuildPlan(input PlanInput, config PlannerConfig) (OverlayPlan, error) {
 			} else {
 				if plan.Items[i].Kind == "entity_image" {
 					if plan.Items[i].EntityCaption != "" {
-						pool := limitedMotionPool(generatedImageWithTextMotionCandidates, animationCount(input.AnimationCounts, "images_with_text", "single_image_with_text", "entity_text_images"))
+						pool := ImageWithTextMotionPool(animationCount(input.AnimationCounts, "images_with_text", "single_image_with_text", "entity_text_images"))
 						plan.Items[i].MotionID = selectImageMotion(input.PlanID, "run", imageOrdinal, pool)
 					} else {
 						plan.Items[i].MotionID = entityImageMotionAtOffset(imageOrdinal, animationCount(input.AnimationCounts, "entities"))
 					}
 				} else {
 					if plan.Items[i].EntityCaption != "" {
-						pool := limitedMotionPool(generatedImageWithTextMotionCandidates, animationCount(input.AnimationCounts, "images_with_text", "single_image_with_text", "entity_text_images"))
+						pool := ImageWithTextMotionPool(animationCount(input.AnimationCounts, "images_with_text", "single_image_with_text", "entity_text_images"))
 						plan.Items[i].MotionID = selectImageMotion(input.PlanID, "run", imageOrdinal, pool)
 					} else {
 						plan.Items[i].MotionID = selectImageMotion(input.PlanID, "run", imageOrdinal, input.ImageMotions)
@@ -531,6 +544,7 @@ func BuildPlan(input PlanInput, config PlannerConfig) (OverlayPlan, error) {
 				}
 				if plan.Items[i].Kind == "entity_image" && plan.Items[i].EntityCaption != "" && len(plan.Items[i].AssetRefs) > 0 {
 					plan.Items[i].CaptionMotionID = entityCaptionMotionAtOffset(imageOrdinal, animationCount(input.AnimationCounts, "entity_caption", "entity_captions"))
+					plan.Items[i].EntityStyleID = entityStyleSelector
 				}
 				imageOrdinal++
 			}

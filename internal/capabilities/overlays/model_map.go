@@ -322,7 +322,10 @@ func (m *MapOverlay) Validate(canvasWidth, canvasHeight int, assets []OverlayAss
 	if err := (geodesy.Point{Latitude: m.Center.Latitude, Longitude: m.Center.Longitude}).Validate(); err != nil {
 		return fmt.Errorf("invalid map center: %w", err)
 	}
-	if !isAllowedMapMotion(m.MotionID) {
+	// An empty motion is the certified stable runtime map treatment: the map
+	// camera owns the movement while its georeferenced raster, pin and label
+	// remain still relative to one another.
+	if strings.TrimSpace(m.MotionID) != "" && !isAllowedMapMotion(m.MotionID) {
 		return fmt.Errorf("unsupported or missing map motion %q", m.MotionID)
 	}
 	if err := m.validateCameraMove(canvasWidth, canvasHeight, assets); err != nil {

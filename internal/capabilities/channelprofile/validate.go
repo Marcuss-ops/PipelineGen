@@ -53,6 +53,24 @@ func (p Profile) Validate() error {
 	if err := p.validateImageMotions(); err != nil {
 		return fmt.Errorf("channelprofile %q: %w", p.ChannelID, err)
 	}
+	if err := p.validateEntityStyleID(); err != nil {
+		return fmt.Errorf("channelprofile %q: %w", p.ChannelID, err)
+	}
+	return nil
+}
+
+// validateEntityStyleID rejects a selector this build cannot honour at LOAD
+// time, instead of failing some job's plan compile later. The vocabulary is
+// RenderingGen's entity_style_id contract: the random selector, the tag
+// selectors, and the 01..25 Apple Spatial variants.
+func (p Profile) validateEntityStyleID() error {
+	selector := strings.TrimSpace(p.EntityStyleID)
+	if selector == "" {
+		return nil
+	}
+	if !overlays.IsValidEntityStyleSelector(selector) {
+		return fmt.Errorf("entity_style_id %q is not a certified entity style selector (random, a tag such as badge/camera/side/typewriter, or a 01..25 variant)", selector)
+	}
 	return nil
 }
 

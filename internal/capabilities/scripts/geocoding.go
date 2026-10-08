@@ -94,16 +94,19 @@ func geocodeGroundedPlaceNames(ctx context.Context, geocoder capabilitygeocoding
 	seen := make(map[string]struct{})
 	entityIndexes := make(map[string]int)
 	for _, entity := range append(append([]scriptpkg.AnnotatedEntity(nil), annotation.PrimaryEntities...), annotation.SecondaryEntities...) {
+		canonical := strings.ToLower(strings.TrimSpace(entity.CanonicalName))
+		seen[canonical] = struct{}{}
+		seen[strings.ToLower(normalizeGeocodePlaceQuery(entity.CanonicalName, language))] = struct{}{}
 		if entity.Geo != nil && (entity.Geo.Scope == "continent" || entity.Geo.Scope == "country" || entity.Geo.Scope == "region" || entity.Geo.Scope == "city") {
-			seen[strings.ToLower(strings.TrimSpace(entity.CanonicalName))] = struct{}{}
+			seen[canonical] = struct{}{}
 		}
 	}
 	for index, entity := range annotation.PrimaryEntities {
-		entityIndexes[strings.ToLower(strings.TrimSpace(entity.CanonicalName))] = index
+		entityIndexes[strings.ToLower(normalizeGeocodePlaceQuery(entity.CanonicalName, language))] = index
 	}
 	queries := make([]string, 0, 8)
 	for _, match := range capitalizedNameRE.FindAllString(text, -1) {
-		name := strings.Join(strings.Fields(strings.TrimSpace(match)), " ")
+		name := normalizeGeocodePlaceQuery(match, language)
 		key := strings.ToLower(name)
 		if name == "" {
 			continue
@@ -148,6 +151,8 @@ func geocodeGroundedPlaceNames(ctx context.Context, geocoder capabilitygeocoding
 		geo := &scriptpkg.GeoCoordinate{Latitude: result.Latitude, Longitude: result.Longitude, DisplayName: result.DisplayName, Scope: result.Scope}
 		if index, exists := entityIndexes[strings.ToLower(name)]; exists {
 			annotation.PrimaryEntities[index].Geo = geo
+			annotation.PrimaryEntities[index].CanonicalName = name
+			annotation.PrimaryEntities[index].Text = name
 			annotation.PrimaryEntities[index].Type = "LOCATION"
 			continue
 		}
@@ -160,15 +165,38 @@ func geocodeGroundedPlaceNames(ctx context.Context, geocoder capabilitygeocoding
 	// When a map has multiple city stops, country/region mentions are context
 	// for those stops rather than extra pins in the animation.
 	cities := 0
+	countries := 0
+	regions := 0
 	for _, entity := range annotation.PrimaryEntities {
-		if entity.Geo != nil && entity.Geo.Scope == "city" {
-			cities++
+		if entity.Geo != nil {
+			switch entity.Geo.Scope {
+			case "city":
+				cities++
+			case "country":
+				countries++
+			case "region":
+				regions++
+			}
 		}
 	}
-	if cities > 1 {
+	// A scene map should focus on its most specific grounded place level.
+	// Country and continent mentions provide context for city pins; they are
+	// not separate pins that send the camera to an unrelated map.
+	if cities > 0 || countries > 0 || regions > 0 {
 		kept := annotation.PrimaryEntities[:0]
 		for _, entity := range annotation.PrimaryEntities {
-			if entity.Geo == nil || entity.Geo.Scope == "city" {
+			keep := entity.Geo == nil
+			if entity.Geo != nil {
+				switch {
+				case cities > 0:
+					keep = entity.Geo.Scope == "city"
+				case countries > 0:
+					keep = entity.Geo.Scope == "country"
+				case regions > 0:
+					keep = entity.Geo.Scope == "region"
+				}
+			}
+			if keep {
 				kept = append(kept, entity)
 			}
 		}
@@ -187,14 +215,24 @@ func mapPlaceCandidateIgnoredWords(registry *linguistics.LexiconRegistry, langua
 	if err != nil {
 		return nil, err
 	}
-	return profile.EntityBlocklist, nil
+	ignored := make(map[string]struct{}, len(profile.EntityBlocklist)+len(profile.StopWords)+len(profile.FunctionWords))
+	for word := range profile.EntityBlocklist {
+		ignored[word] = struct{}{}
+	}
+	for word := range profile.StopWords {
+		ignored[word] = struct{}{}
+	}
+	for word := range profile.FunctionWords {
+		ignored[word] = struct{}{}
+	}
+	return ignored, nil
 }
 
 func geocodeAnnotatedEntity(ctx context.Context, geocoder capabilitygeocoding.Geocoder, resolved map[string]capabilitygeocoding.Result, entity *scriptpkg.AnnotatedEntity, sceneIndex int, language string) error {
 	if entity == nil || !isPlaceEntityType(entity.Type) || entity.Geo != nil {
 		return nil
 	}
-	name := strings.Join(strings.Fields(strings.TrimSpace(entity.CanonicalName)), " ")
+	name := normalizeGeocodePlaceQuery(entity.CanonicalName, language)
 	if name == "" {
 		return nil
 	}
@@ -225,12 +263,30 @@ func geocodeAnnotatedEntity(ctx context.Context, geocoder capabilitygeocoding.Ge
 		DisplayName: strings.TrimSpace(result.DisplayName),
 		Scope:       result.Scope,
 	}
+	if name != strings.Join(strings.Fields(strings.TrimSpace(entity.CanonicalName)), " ") {
+		entity.CanonicalName = name
+		entity.Text = name
+	}
 	return nil
+}
+
+// normalizeGeocodePlaceQuery removes the Portuguese sentence article in the
+// observed country phrase "O Brasil". Nominatim ranked a locality in Galicia
+// for that full phrase; the query should name the country itself, Brasil.
+func normalizeGeocodePlaceQuery(value, language string) string {
+	words := strings.Fields(strings.TrimSpace(value))
+	lang := strings.ToLower(strings.TrimSpace(language))
+	lang = strings.SplitN(lang, "-", 2)[0]
+	if lang == "pt" && len(words) == 2 && strings.EqualFold(words[0], "o") && strings.EqualFold(words[1], "Brasil") {
+		words = words[1:]
+	}
+	return strings.Join(words, " ")
 }
 
 func isGenericPlaceLabel(name string) bool {
 	switch strings.ToLower(strings.Join(strings.Fields(strings.TrimSpace(name)), " ")) {
-	case "here", "there", "local", "nearby", "home", "workplace", "city", "town", "village", "region", "area", "location":
+	case "here", "there", "local", "nearby", "home", "workplace", "city", "town", "village", "region", "area", "location",
+		"nesta", "neste", "nessa", "nesse", "esta", "este", "essa", "esse":
 		return true
 	default:
 		return false

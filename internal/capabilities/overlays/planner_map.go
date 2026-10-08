@@ -343,7 +343,10 @@ func mapItemsForScene(sceneID string, plans []MapPlan, canvasWidth, canvasHeight
 			Provider: "local", SourceID: entry.plate.ID, SourceLicense: entry.plate.License,
 			Center: entry.plate.Center, Zoom: entry.plate.Zoom,
 			Width: entry.plate.Width, Height: entry.plate.Height,
-			Attribution: entry.plate.Attribution, MotionID: mapMotionForCenterWithLimit(ordinal, entry.plate.Center, motionLimit), Pins: pins,
+			// Runtime maps use a quiet, stable treatment. The old rotating
+			// map_image_v1 recipes animated the raster and pins independently,
+			// making a georeferenced plate look like it was shaking.
+			Attribution: entry.plate.Attribution, Pins: pins,
 			AreaGlowRadiusKM: mapAreaGlowRadiusKM(pins),
 		}
 		if len(lods) >= 2 {

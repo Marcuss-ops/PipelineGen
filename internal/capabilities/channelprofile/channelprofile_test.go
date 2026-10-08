@@ -32,6 +32,7 @@ func validProfile() Profile {
 			"phrase_apple_clean_01_blur_soft_reveal", "phrase_apple_clean_02_blur_focus_snap",
 		},
 		ImageMotions: []string{"image_25d_card_swing", "image_depth_dolly"},
+		EntityStyleID: "badge",
 	}
 }
 
@@ -73,6 +74,7 @@ func TestValidateFailsClosed(t *testing.T) {
 		// image_card_push is now part of the certified 32-motion render-safe
 		// catalog, so the fail-closed case uses an id outside that catalog.
 		{"retired image motion", func(p *Profile) { p.ImageMotions = []string{"image_card_push_legacy"} }, "certified image motion"},
+		{"unknown entity style selector", func(p *Profile) { p.EntityStyleID = "neon_explosion" }, "entity_style_id"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			p := validProfile()

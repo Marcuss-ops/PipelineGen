@@ -80,6 +80,13 @@ func ApplyChannelProfile(req *GenerateRequest, p channelprofile.Profile) error {
 	if len(req.ImageMotions) == 0 && len(p.ImageMotions) > 0 {
 		req.ImageMotions = append([]string(nil), p.ImageMotions...)
 	}
+	// Entity-card composition family: caller intent wins (the request's own
+	// pin is authoritative even when it names a different tag), a profile
+	// completes only a blank. An empty value means "keep the certified
+	// random selector" — the planner never sees a channel-forced "random".
+	if strings.TrimSpace(req.EntityStyleID) == "" && strings.TrimSpace(p.EntityStyleID) != "" {
+		req.EntityStyleID = strings.TrimSpace(p.EntityStyleID)
+	}
 
 	// Audio blocks share the ApplyEditingAssetPolicy gate: layer intents and
 	// the mix policy only reach the canonical pipeline on COMBINED_TIMELINE.

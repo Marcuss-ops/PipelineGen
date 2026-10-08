@@ -300,19 +300,12 @@ func TestBuildPlanMapMotionsAreCertifiedAndDeterministic(t *testing.T) {
 			continue
 		}
 		maps++
-		motion := first.Items[i].Map.MotionID
-		if motion != second.Items[i].Map.MotionID {
-			t.Fatalf("map motion is not deterministic: %q != %q", motion, second.Items[i].Map.MotionID)
-		}
-		if !containsString(mapMotionIDs(), motion) {
-			t.Fatalf("map motion %q is not in the certified centered pool %v", motion, mapMotionIDs())
+		if first.Items[i].Map.MotionID != "" || second.Items[i].Map.MotionID != "" {
+			t.Fatalf("runtime maps must use the stable V1 camera treatment without image motion: %q / %q", first.Items[i].Map.MotionID, second.Items[i].Map.MotionID)
 		}
 	}
 	if maps != 2 {
 		t.Fatalf("expected two map items (one per scene/plate), got %d", maps)
-	}
-	if first.Items[0].Map.MotionID == first.Items[1].Map.MotionID {
-		t.Fatalf("consecutive maps reused motion %q", first.Items[0].Map.MotionID)
 	}
 }
 
