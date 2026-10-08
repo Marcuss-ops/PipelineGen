@@ -376,20 +376,33 @@ func assignEntityImageMotions(items []capabilityoverlay.OverlayItem, offset, wid
 	}
 	for itemIndex := range items {
 		item := &items[itemIndex]
+		if item.Kind == "image" && strings.TrimSpace(item.EntityCaption) != "" {
+			item.MotionID = capabilityoverlay.ImageWithTextMotionAtOffset(offset, imageOrdinal, 5)
+			imageOrdinal++
+			continue
+		}
 		if item.Kind != string(capabilityoverlay.KindEntityImage) {
 			continue
 		}
 		if len(item.ImageLayers) > 0 {
 			for layerIndex := range item.ImageLayers {
 				layer := &item.ImageLayers[layerIndex]
-				layer.MotionID = capabilityoverlay.EntityImageMotionAtOffset(offset, imageOrdinal)
+				if strings.TrimSpace(layer.Caption) != "" {
+					layer.MotionID = capabilityoverlay.ImageWithTextMotionAtOffset(offset, imageOrdinal, 5)
+				} else {
+					layer.MotionID = capabilityoverlay.EntityImageMotionAtOffset(offset, imageOrdinal)
+				}
 				layer.MotionParams = map[string]any{"enter_frames": 8}
 				layer.CaptionMotionID = captionMotion()
 				imageOrdinal++
 			}
 			continue
 		}
-		item.MotionID = capabilityoverlay.EntityImageMotionAtOffset(offset, imageOrdinal)
+		if strings.TrimSpace(item.EntityCaption) != "" {
+			item.MotionID = capabilityoverlay.ImageWithTextMotionAtOffset(offset, imageOrdinal, 5)
+		} else {
+			item.MotionID = capabilityoverlay.EntityImageMotionAtOffset(offset, imageOrdinal)
+		}
 		item.MotionParams = map[string]any{"enter_frames": 8}
 		item.CaptionMotionID = captionMotion()
 		item.Params = capabilityoverlay.EntityImageParams(width, height)
@@ -508,6 +521,7 @@ func attachGroundedCaptionsToSceneImages(items []capabilityoverlay.OverlayItem, 
 			continue
 		}
 		item.EntityCaption = match.name
+		item.MotionID = capabilityoverlay.ImageWithTextMotionAtOffset(0, ordinal, 5)
 		item.CaptionMotionID = capabilityoverlay.SelectEntityCaptionMotionAt(runID, match.sceneID, ordinal)
 		ordinal++
 	}

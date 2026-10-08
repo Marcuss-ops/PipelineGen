@@ -19,8 +19,8 @@ func TestBuildPlanSplitsHeavyPhrasesIntoTheProminentLane(t *testing.T) {
 	}
 
 	phrases := []TimedAnnotation{
-		{Text: "the heaviest grounded phrase", StartMs: 0, EndMs: 1000, StartUS: 0, DurationUS: 1_000_000, Score: 0.97},
-		{Text: "a light grounded phrase", StartMs: 1200, EndMs: 2200, StartUS: 1_200_000, DurationUS: 1_000_000, Score: 0.10},
+		{Text: "the heaviest grounded phrase carries the main story", StartMs: 0, EndMs: 1000, StartUS: 0, DurationUS: 1_000_000, Score: 0.97},
+		{Text: "a light grounded phrase stays in the background", StartMs: 1200, EndMs: 2200, StartUS: 1_200_000, DurationUS: 1_000_000, Score: 0.10},
 	}
 	input := PlanInput{
 		PlanID: "heavy", VideoID: "video-heavy", Width: 1920, Height: 1080, FPSNum: 24, FPSDen: 1,
@@ -43,14 +43,14 @@ func TestBuildPlanSplitsHeavyPhrasesIntoTheProminentLane(t *testing.T) {
 	}
 
 	split := byText(input)
-	heavyItem, ok := split["the heaviest grounded phrase"]
+	heavyItem, ok := split["the heaviest grounded phrase carries the main story"]
 	if !ok {
 		t.Fatal("the heavy phrase did not reach the plan")
 	}
 	if !containsString(heavy, heavyItem.MotionID) {
 		t.Fatalf("heavy phrase motion %q is outside the prominent entrance pool %v", heavyItem.MotionID, heavy)
 	}
-	lightItem, ok := split["a light grounded phrase"]
+	lightItem, ok := split["a light grounded phrase stays in the background"]
 	if !ok {
 		t.Fatal("the light phrase did not reach the plan")
 	}
@@ -67,11 +67,11 @@ func TestBuildPlanSplitsHeavyPhrasesIntoTheProminentLane(t *testing.T) {
 	without := input
 	without.HeavyPhrasePriority = 0
 	calm := byText(without)
-	if calm["a light grounded phrase"].MotionID != lightItem.MotionID {
+	if calm["a light grounded phrase stays in the background"].MotionID != lightItem.MotionID {
 		t.Fatalf("the calm rotation changed for non-heavy phrases: %q vs %q",
-			calm["a light grounded phrase"].MotionID, lightItem.MotionID)
+			calm["a light grounded phrase stays in the background"].MotionID, lightItem.MotionID)
 	}
-	if calm["the heaviest grounded phrase"].MotionID == heavyItem.MotionID {
+	if calm["the heaviest grounded phrase carries the main story"].MotionID == heavyItem.MotionID {
 		t.Fatalf("disabling the split did not restore the calm motion for the heavy phrase")
 	}
 }

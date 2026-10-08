@@ -237,6 +237,7 @@ func BuildGenerateRequest(env *scriptpkg.GenerationEnvelopeV2, idempotencyKey st
 		MaxPhraseOverlays:     item.MaxPhraseOverlays,
 		MapsOnly:              item.MapsOnly,
 		MaxImageOverlays:      item.MaxImageOverlays,
+		AnimationCounts:       cloneAnimationCounts(item.AnimationCounts),
 		DisableNumberOverlays: item.DisableNumberOverlays,
 		IdempotencyKey:        idempotencyKey,
 		ForceRefresh:          env.ForceRefresh,
@@ -344,6 +345,17 @@ func cloneInt(src *int) *int {
 	}
 	value := *src
 	return &value
+}
+
+func cloneAnimationCounts(src map[string]int) map[string]int {
+	if src == nil {
+		return nil
+	}
+	dst := make(map[string]int, len(src))
+	for key, value := range src {
+		dst[key] = value
+	}
+	return dst
 }
 
 // ── Editorial asset SELECTION policy application ──────────────────────────

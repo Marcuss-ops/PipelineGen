@@ -249,7 +249,7 @@ func TestBuildPlanAssignsDistinctPhraseMotions(t *testing.T) {
 		Scenes: []SceneInput{{ID: "scene-1", Phrases: []TimedAnnotation{
 			{Text: "La velocità apre la distanza", StartMs: 100, EndMs: 900, Score: 1},
 			{Text: "La pressione mantiene il controllo", StartMs: 1000, EndMs: 1800, Score: 0.9},
-			{Text: "La disciplina trasforma la potenza", StartMs: 1900, EndMs: 2700, Score: 0.8},
+			{Text: "La disciplina trasforma la potenza nel tempo", StartMs: 1900, EndMs: 2700, Score: 0.8},
 		}}},
 	}, PlannerConfig{MaxPhrases: 3})
 	if err != nil {
@@ -272,9 +272,9 @@ func TestBuildPlanAssignsDistinctPhraseMotions(t *testing.T) {
 
 func TestBuildPlanSharesPayloadSelectedPhraseFamilyMotion(t *testing.T) {
 	scenes := []SceneInput{{ID: "scene-1", Phrases: []TimedAnnotation{
-		{Text: "Prima frase", StartMs: 100, EndMs: 900, Score: 1},
-		{Text: "Seconda frase", StartMs: 1000, EndMs: 1800, Score: .9},
-		{Text: "Terza frase", StartMs: 1900, EndMs: 2700, Score: .8},
+		{Text: "Prima frase racconta un fatto storico importante", StartMs: 100, EndMs: 900, Score: 1},
+		{Text: "Seconda frase spiega il contesto della vicenda", StartMs: 1000, EndMs: 1800, Score: .9},
+		{Text: "Terza frase mostra come cambia la situazione", StartMs: 1900, EndMs: 2700, Score: .8},
 	}}}
 	input := PlanInput{PlanID: "family-payload", VideoID: "v1", Width: 1920, Height: 1080, FPSNum: 24, FPSDen: 1,
 		PhraseMotionFamily: "modern_apple", Scenes: scenes}
@@ -303,11 +303,11 @@ func TestBuildPlanSharesPayloadSelectedPhraseFamilyMotion(t *testing.T) {
 
 func TestBuildPlanAssignsDistinctCertifiedMotionsAcrossRunAfterBudget(t *testing.T) {
 	scenes := []SceneInput{
-		{ID: "scene-0", Phrases: []TimedAnnotation{{Text: "Discipline gave speed a direction", StartMs: 0, EndMs: 900, Score: 0.8}}},
-		{ID: "scene-1", Phrases: []TimedAnnotation{{Text: "Twenty years old and champion", StartMs: 1000, EndMs: 1900, Score: 0.9}}},
-		{ID: "scene-2", Phrases: []TimedAnnotation{{Text: "Tokyo ended the unbeaten run", StartMs: 2000, EndMs: 2900, Score: 0.7}}},
-		{ID: "scene-3", Phrases: []TimedAnnotation{{Text: "A title fight to the eleventh", StartMs: 3000, EndMs: 3900, Score: 0.6}}},
-		{ID: "scene-4", Phrases: []TimedAnnotation{{Text: "The rematch ended in disqualification", StartMs: 4000, EndMs: 4900, Score: 0.5}}},
+		{ID: "scene-0", Phrases: []TimedAnnotation{{Text: "Discipline gave speed a clear direction", StartMs: 0, EndMs: 900, Score: 0.8}}},
+		{ID: "scene-1", Phrases: []TimedAnnotation{{Text: "Twenty years old and already champion", StartMs: 1000, EndMs: 1900, Score: 0.9}}},
+		{ID: "scene-2", Phrases: []TimedAnnotation{{Text: "Tokyo ended the unbeaten run last night", StartMs: 2000, EndMs: 2900, Score: 0.7}}},
+		{ID: "scene-3", Phrases: []TimedAnnotation{{Text: "A title fight lasted until the eleventh round", StartMs: 3000, EndMs: 3900, Score: 0.6}}},
+		{ID: "scene-4", Phrases: []TimedAnnotation{{Text: "The rematch ended in disqualification after controversy", StartMs: 4000, EndMs: 4900, Score: 0.5}}},
 	}
 	plan, err := BuildPlan(PlanInput{
 		PlanID: "phrases-across-scenes", VideoID: "v1", Width: 1920, Height: 1080, FPSNum: 24, FPSDen: 1,

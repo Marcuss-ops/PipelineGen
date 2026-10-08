@@ -237,7 +237,7 @@ func TestBuildPlanDefaultLongPhrasesRotateWithoutRepeating(t *testing.T) {
 		if !containsString(longPhraseMotionCandidates, item.MotionID) {
 			t.Fatalf("long phrase motion %q is outside the default block-level pool", item.MotionID)
 		}
-		if seen[item.MotionID] {
+		if seen[item.MotionID] && len(seen) < 5 {
 			t.Fatalf("default long-phrase selector repeated %q before its pool was exhausted", item.MotionID)
 		}
 		seen[item.MotionID] = true
@@ -248,8 +248,8 @@ func TestBuildPlanDefaultLongPhrasesRotateWithoutRepeating(t *testing.T) {
 	if count != len(longPhrases) {
 		t.Fatalf("planned %d long phrases, want %d", count, len(longPhrases))
 	}
-	if len(seen) < len(longPhrases) {
-		t.Fatalf("default long-phrase rotation selected %d distinct motions for %d cards", len(seen), len(longPhrases))
+	if len(seen) != min(5, len(longPhraseMotionCandidates)) {
+		t.Fatalf("default long-phrase pool used %d styles, want the five-style limit", len(seen))
 	}
 }
 
@@ -546,8 +546,8 @@ func TestEntityImageMotionRotationCoversTheCertifiedCatalog(t *testing.T) {
 
 func TestGeneratedEntityCaptionMotionsMatchCanonical2DCatalog(t *testing.T) {
 	pool := CertifiedEntityCaptionMotions()
-	if len(pool) != 21 {
-		t.Fatalf("generated entity-caption motion pool = %d motions, want 21", len(pool))
+	if len(pool) != 43 {
+		t.Fatalf("generated entity-caption motion pool = %d motions, want 43", len(pool))
 	}
 	poolSet := make(map[string]bool, len(pool))
 	for _, id := range pool {
@@ -562,6 +562,19 @@ func TestGeneratedEntityCaptionMotionsMatchCanonical2DCatalog(t *testing.T) {
 	}
 	for index := 1; index <= 15; index++ {
 		want[fmt.Sprintf("trump_entity_text_%02d", index)] = true
+	}
+	for _, id := range []string{
+		"typewriter_blur_focus", "typewriter_clean", "typewriter_lift", "typewriter_neon",
+		"typewriter_pop", "typewriter_scale_up", "typewriter_slide_in", "typewriter_soft_lift", "typewriter_tracking",
+		"typewriter_modern_01_monospace_block_cursor", "typewriter_modern_02_kinetic_scramble",
+		"typewriter_modern_03_soft_opacity_ramp", "typewriter_modern_04_character_bounce",
+		"typewriter_modern_05_backspace_correction", "typewriter_modern_06_glow_beam_sweep",
+		"typewriter_modern_07_word_snap", "typewriter_modern_08_mechanical_y_shift",
+		"typewriter_modern_09_highlighter_expansion", "typewriter_modern_10_weight_ramp",
+		"typewriter_modern_13_elastic_leading_cursor", "typewriter_modern_14_focal_blur_dissolve",
+		"typewriter_modern_15_paper_punch_stencil",
+	} {
+		want[id] = true
 	}
 	if !reflect.DeepEqual(poolSet, want) {
 		t.Fatalf("caption motion pool = %v, want exactly %v", poolSet, want)
@@ -604,8 +617,9 @@ func TestGeneratedEntityCaptionMotionsMatchCanonical2DCatalog(t *testing.T) {
 	}
 	var document struct {
 		Motions []struct {
-			ID       string `json:"id"`
-			Category string `json:"category"`
+			ID       string   `json:"id"`
+			Category string   `json:"category"`
+			Targets  []string `json:"targets"`
 			Tracks   []struct {
 				Property string `json:"property"`
 			} `json:"tracks"`
@@ -616,7 +630,7 @@ func TestGeneratedEntityCaptionMotionsMatchCanonical2DCatalog(t *testing.T) {
 	}
 	catalogSet := map[string]bool{}
 	for _, motion := range document.Motions {
-		if (motion.Category != "entity_caption_v1" && motion.Category != "trump_entity_text_v1") || !poolSet[motion.ID] {
+		if !containsString(motion.Targets, "text") || !poolSet[motion.ID] {
 			continue
 		}
 		catalogSet[motion.ID] = true

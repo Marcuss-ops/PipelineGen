@@ -42,6 +42,39 @@ func TestSelectEntityImagePresetUsesOnlyRenderSafeCandidates(t *testing.T) {
 	}
 }
 
+func TestHeavyPhraseMotionRotationCoversFamilies(t *testing.T) {
+	selectedFamilies := map[string]bool{}
+	for ordinal := 0; ordinal < len(defaultPhraseMotionFamilies); ordinal++ {
+		id := selectHeavyPhraseMotion("job-families", "run", ordinal, phraseMotionCandidates)
+		switch {
+		case containsMotionID(classicAppleMotionCandidates, id):
+			selectedFamilies["classic_apple"] = true
+		case containsMotionID(modernAppleMotionCandidates, id):
+			selectedFamilies["modern_apple"] = true
+		case containsMotionID(typewriterMotionCandidates, id):
+			selectedFamilies["typewriter"] = true
+		case containsMotionID(text3DMotionCandidates, id):
+			selectedFamilies["text_3d_v1"] = true
+		case containsMotionID(brushPhraseMotionCandidates, id):
+			selectedFamilies["brush_v1"] = true
+		}
+	}
+	for _, family := range []string{"classic_apple", "modern_apple", "typewriter", "text_3d_v1", "brush_v1"} {
+		if !selectedFamilies[family] {
+			t.Errorf("first heavy phrase rotation omits family %s: %v", family, selectedFamilies)
+		}
+	}
+}
+
+func containsMotionID(pool []string, id string) bool {
+	for _, candidate := range pool {
+		if candidate == id {
+			return true
+		}
+	}
+	return false
+}
+
 // TestGeneratedImageAnimationSelectorUsesOnlyTheNewSingleImagePool pins the
 // single-image contract: generated overlays rotate over the COMPLETE
 // 32-motion render-safe catalog (the IDs RenderingGen's runtime catalog
@@ -87,6 +120,7 @@ func TestGeneratedTextOverlaysStayOnTheRenderSafeTextContract(t *testing.T) {
 	}
 
 	motions := RenderSafeTextMotions()
+	shortPhraseMotions := ShortPhraseMotionCandidates()
 	if len(motions) == 0 {
 		t.Fatal("no render-safe text motions; every generated text overlay would render statically")
 	}
@@ -132,7 +166,11 @@ func TestGeneratedTextOverlaysStayOnTheRenderSafeTextContract(t *testing.T) {
 			t.Fatalf("text item %q carries no explicit motion: the preset's own glyph motion would be transported", item.ID)
 		}
 		if item.Kind == "text_phrase" {
-			if !containsString(CertifiedPhraseMotions(), item.MotionID) {
+			allowedPhraseMotions := CertifiedPhraseMotions()
+			if EditorialSectionForItem(item) == EditorialSectionShortPhrase {
+				allowedPhraseMotions = shortPhraseMotions
+			}
+			if !containsString(allowedPhraseMotions, item.MotionID) {
 				t.Fatalf("phrase item %q motion %q is outside the callable phrase catalog", item.ID, item.MotionID)
 			}
 		} else if !safe[item.MotionID] {
@@ -290,8 +328,8 @@ func TestPresentationSamplerUsesCuratedMotionsWithStablePerValueVariation(t *tes
 		jobID := fmt.Sprintf("date-job-%d", i/16)
 		sceneID := fmt.Sprintf("scene-%d", i/8)
 		itemID := fmt.Sprintf("date-item-%d", i)
-		_, first := NumberPresentationForEntityType(jobID, sceneID, itemID, "DATE")
-		_, retry := NumberPresentationForEntityType(jobID, sceneID, itemID, "DATE")
+		_, first := NumberPresentationForEntityTypeWithLimit(jobID, sceneID, itemID, "DATE", 5)
+		_, retry := NumberPresentationForEntityTypeWithLimit(jobID, sceneID, itemID, "DATE", 5)
 		if !containsString(pool, first) {
 			t.Fatalf("date %q selected motion %q outside date_v1 catalog", itemID, first)
 		}
@@ -300,16 +338,16 @@ func TestPresentationSamplerUsesCuratedMotionsWithStablePerValueVariation(t *tes
 		}
 		seen[first] = true
 	}
-	if len(seen) != len(pool) {
-		t.Fatalf("distinct dates covered %d of %d curated date_v1 motions: %v", len(seen), len(pool), seen)
+	if len(seen) != min(5, len(pool)) {
+		t.Fatalf("default date styles covered %d, want the five-style cap: %v", len(seen), seen)
 	}
 	metricSeen := make(map[string]bool, len(MetricPresentationMotionCandidates()))
 	for i := 0; i < 512; i++ {
 		jobID := fmt.Sprintf("metric-job-%d", i/16)
 		sceneID := fmt.Sprintf("scene-%d", i/8)
 		itemID := fmt.Sprintf("metric-item-%d", i)
-		_, first := NumberPresentationForEntityType(jobID, sceneID, itemID, "METRIC")
-		_, retry := NumberPresentationForEntityType(jobID, sceneID, itemID, "METRIC")
+		_, first := NumberPresentationForEntityTypeWithLimit(jobID, sceneID, itemID, "METRIC", 5)
+		_, retry := NumberPresentationForEntityTypeWithLimit(jobID, sceneID, itemID, "METRIC", 5)
 		if !containsString(MetricPresentationMotionCandidates(), first) {
 			t.Fatalf("metric %q selected motion %q outside curated metric_v1 pool", itemID, first)
 		}
@@ -318,8 +356,8 @@ func TestPresentationSamplerUsesCuratedMotionsWithStablePerValueVariation(t *tes
 		}
 		metricSeen[first] = true
 	}
-	if len(metricSeen) != len(MetricPresentationMotionCandidates()) {
-		t.Fatalf("distinct metrics covered %d of %d curated metric_v1 motions", len(metricSeen), len(MetricPresentationMotionCandidates()))
+	if len(metricSeen) != min(5, len(MetricPresentationMotionCandidates())) {
+		t.Fatalf("default metric styles covered %d, want the five-style cap", len(metricSeen))
 	}
 	for i := 0; i < len(pool); i++ {
 		itemID := fmt.Sprintf("unique-date-%d", i)

@@ -60,6 +60,7 @@ func (r *Runner) compileAudioOverlayPlan(ctx context.Context, runID string, req 
 	canvas.MaxPhraseOverlays = req.MaxPhraseOverlays
 	canvas.MapsOnly = req.MapsOnly
 	canvas.MaxImageOverlays = req.MaxImageOverlays
+	canvas.AnimationCounts = req.AnimationCounts
 	canvas.DisableNumberOverlays = req.DisableNumberOverlays
 	if canvas.Style == nil && background != nil {
 		canvas.Style = background.Style

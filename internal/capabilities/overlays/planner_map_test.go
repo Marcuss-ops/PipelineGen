@@ -345,6 +345,17 @@ func TestMapMotionForCenterVariesWithinOneRegion(t *testing.T) {
 	}
 }
 
+func TestMapMotionHonorsRuntimeFamilyCount(t *testing.T) {
+	center := MapCenter{Latitude: 37.7, Longitude: -122.4}
+	seen := map[string]bool{}
+	for ordinal := 0; ordinal < 12; ordinal++ {
+		seen[mapMotionForCenterWithLimit(ordinal, center, 3)] = true
+	}
+	if len(seen) != 3 {
+		t.Fatalf("map runtime count selected %d distinct motions, want 3: %v", len(seen), seen)
+	}
+}
+
 // TestMapItemsDoNotDisplaceImagesOrPhrases certifies the editorial budget
 // contract: maps are a SEPARATE arm, so admitting one can never evict an image
 // or a phrase, and a run with no eligible map is byte-for-byte the old result.

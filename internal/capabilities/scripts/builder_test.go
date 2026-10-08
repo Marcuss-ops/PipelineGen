@@ -96,6 +96,24 @@ func TestBuildGenerateRequest_PropagatesLLMIdentity(t *testing.T) {
 	}
 }
 
+func TestBuildGenerateRequestCarriesAnimationCounts(t *testing.T) {
+	var env scriptpkg.GenerationEnvelopeV2
+	if err := json.Unmarshal([]byte(`{"version":2,"items":[{"title":"styles","language":"en","source":{"type":"text","topic":"topic"},"animation_counts":{"images":3,"important_phrase":4,"maps":2}}]}`), &env); err != nil {
+		t.Fatal(err)
+	}
+	request, err := BuildGenerateRequest(&env, "animation-counts")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if request.AnimationCounts["images"] != 3 || request.AnimationCounts["important_phrase"] != 4 || request.AnimationCounts["maps"] != 2 {
+		t.Fatalf("animation_counts did not reach runtime request: %#v", request.AnimationCounts)
+	}
+	request.AnimationCounts["images"] = 1
+	if env.Items[0].AnimationCounts["images"] != 3 {
+		t.Fatal("runtime request aliases mutable envelope animation_counts")
+	}
+}
+
 func TestBuildGenerateRequestPropagatesMixedMediaMode(t *testing.T) {
 	env := &scriptpkg.GenerationEnvelopeV2{Version: 2, Items: []scriptpkg.GenerationItemV2{{
 		ID: "mixed-builder", Language: "en", MediaMode: scriptpkg.MediaModeMixed,
