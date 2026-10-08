@@ -224,6 +224,9 @@ type PlanInput struct {
 	HeavyPhrasePriority float64
 	// ImageMotions optionally narrows the certified layer-only image motion pool.
 	ImageMotions []string
+	// AnimationCounts caps the distinct style pool for each runtime subfamily.
+	// Missing or non-positive entries use the five-style default.
+	AnimationCounts map[string]int
 	// PlateResolver resolves a grounded WGS84 point to the certified basemap
 	// plate covering it. Nil (or an uncovered point) means the scene emits no
 	// map: the planner never fabricates geography.
@@ -243,6 +246,11 @@ func BuildPlan(input PlanInput, config PlannerConfig) (OverlayPlan, error) {
 	if err := validateImageMotionPool(input.ImageMotions); err != nil {
 		return OverlayPlan{}, err
 	}
+	imageMotionLimit := animationCount(input.AnimationCounts, "single_image", "image_double", "image_triplet", "image_four", "image_five", "single_image_with_text", "image_double_with_text", "image_triplet_with_text", "image_four_with_text", "image_five_with_text", "images")
+	input.ImageMotions = limitedMotionPool(input.ImageMotions, imageMotionLimit)
+	if len(input.ImageMotions) == 0 {
+		input.ImageMotions = limitedMotionPool(singleImageMotionCandidates, imageMotionLimit)
+	}
 	if input.PhraseMotionFamily != "" {
 		familyPool := certifiedPhraseFamily(input.PhraseMotionFamily)
 		if len(familyPool) == 0 {
@@ -261,6 +269,9 @@ func BuildPlan(input PlanInput, config PlannerConfig) (OverlayPlan, error) {
 			familyPool = input.PhraseMotions
 		}
 		input.PhraseMotions = familyPool
+	}
+	if len(input.PhraseMotions) > 0 {
+		input.PhraseMotions = limitedMotionPool(input.PhraseMotions, animationCount(input.AnimationCounts, "important_phrase", "important_phrases"))
 	}
 	plan := OverlayPlan{
 		SchemaVersion: SchemaVersionPlan,
@@ -337,7 +348,7 @@ func BuildPlan(input PlanInput, config PlannerConfig) (OverlayPlan, error) {
 			numbers = numbers[:config.MaxNumbers]
 		}
 		for _, number := range numbers {
-			plan.Items = append(plan.Items, numberOverlayItem(input.PlanID, scene.ID, number))
+			plan.Items = append(plan.Items, numberOverlayItem(input.PlanID, scene.ID, number, input.AnimationCounts))
 		}
 
 		brandTexts := rankedValid(scene.BrandTexts, 0)
@@ -414,13 +425,24 @@ func BuildPlan(input PlanInput, config PlannerConfig) (OverlayPlan, error) {
 					if len(item.ImageLayers) > 0 {
 						for layerIndex := range item.ImageLayers {
 							layer := &item.ImageLayers[layerIndex]
-							layer.MotionID = selectImageMotion(input.PlanID, "run", imageOrdinal, input.ImageMotions)
+							imageLimit := animationCount(input.AnimationCounts, "entities")
+							if layer.Caption != "" {
+								pool := limitedMotionPool(generatedImageWithTextMotionCandidates, animationCount(input.AnimationCounts, "images_with_text", "single_image_with_text", "image_double_with_text", "image_triplet_with_text", "image_four_with_text", "image_five_with_text"))
+								layer.MotionID = selectImageMotion(input.PlanID, "run", imageOrdinal, pool)
+							} else {
+								layer.MotionID = entityImageMotionAtOffset(imageOrdinal, imageLimit)
+							}
 							layer.PresetID = selectImagePreset(input.PlanID, item.SceneID, item.ID+":"+layer.ID)
 							imageOrdinal++
 						}
 					} else {
-						item.MotionID = selectImageMotion(input.PlanID, "run", imageOrdinal, input.ImageMotions)
-						item.CaptionMotionID = EntityCaptionMotionAtOffset(0, imageOrdinal)
+						if item.EntityCaption != "" {
+							pool := limitedMotionPool(generatedImageWithTextMotionCandidates, animationCount(input.AnimationCounts, "images_with_text", "single_image_with_text", "entity_text_images"))
+							item.MotionID = selectImageMotion(input.PlanID, "run", imageOrdinal, pool)
+						} else {
+							item.MotionID = entityImageMotionAtOffset(imageOrdinal, animationCount(input.AnimationCounts, "entities"))
+						}
+						item.CaptionMotionID = entityCaptionMotionAtOffset(imageOrdinal, animationCount(input.AnimationCounts, "entity_caption", "entity_captions"))
 						imageOrdinal++
 					}
 				}
@@ -445,7 +467,7 @@ func BuildPlan(input PlanInput, config PlannerConfig) (OverlayPlan, error) {
 		mapCandidates = append(mapCandidates, input.Scenes[i].Maps...)
 	}
 	if mapAnchorScene != "" {
-		for _, mapItem := range mapItemsForScene(mapAnchorScene, mapPlansForScene(input.PlateResolver, mapCandidates, input.Width, input.Height), input.Width, input.Height, mapOrdinal) {
+		for _, mapItem := range mapItemsForScene(mapAnchorScene, mapPlansForScene(input.PlateResolver, mapCandidates, input.Width, input.Height), input.Width, input.Height, mapOrdinal, animationCount(input.AnimationCounts, "one_map", "two_maps", "maps")) {
 			plan.Items = append(plan.Items, mapItem)
 			mapOrdinal++
 		}
@@ -475,33 +497,45 @@ func BuildPlan(input PlanInput, config PlannerConfig) (OverlayPlan, error) {
 		switch plan.Items[i].Kind {
 		case "text_phrase":
 			switch {
-			case input.HeavyPhrasePriority > 0 && itemPriority(plan.Items[i]) >= input.HeavyPhrasePriority:
-				// An explicitly configured heavy lane is the strongest phrase
-				// treatment and takes precedence over the length-based short lane.
-				plan.Items[i].MotionID = selectHeavyPhraseMotion(input.PlanID, "run", heavyOrdinal, input.PhraseMotions)
-				heavyOrdinal++
 			case EditorialSectionForItem(plan.Items[i]) == EditorialSectionShortPhrase:
-				// The same classifier drives the editor section and the motion
-				// selection branch when no explicit heavy treatment applies.
-				plan.Items[i].MotionID = selectShortPhraseMotion(input.PlanID, "run", phraseOrdinal, len(strings.Fields(plan.Items[i].Text)), input.PhraseMotions)
+				// Word count owns the family boundary. Heavy editorial emphasis
+				// must not route a short phrase outside its selected family.
+				plan.Items[i].MotionID = selectShortPhraseMotionLimited(input.PlanID, "run", phraseOrdinal, len(strings.Fields(plan.Items[i].Text)), input.PhraseMotions, animationCount(input.AnimationCounts, "short_important_phrase", "short_phrases"))
+			case input.HeavyPhrasePriority > 0 && itemPriority(plan.Items[i]) >= input.HeavyPhrasePriority:
+				plan.Items[i].MotionID = selectHeavyPhraseMotionLimited(input.PlanID, "run", heavyOrdinal, input.PhraseMotions, animationCount(input.AnimationCounts, "important_phrase", "important_phrases"))
+				heavyOrdinal++
 			case len(strings.Fields(plan.Items[i].Text)) >= 6:
-				plan.Items[i].MotionID = selectLongPhraseMotion(input.PlanID, "run", phraseOrdinal, input.PhraseMotions)
+				plan.Items[i].MotionID = selectLongPhraseMotionLimited(input.PlanID, "run", phraseOrdinal, input.PhraseMotions, animationCount(input.AnimationCounts, "important_phrase", "important_phrases"))
 			default:
-				plan.Items[i].MotionID = selectPhraseMotion(input.PlanID, "run", phraseOrdinal, input.PhraseMotions)
+				plan.Items[i].MotionID = selectPhraseMotionLimited(input.PlanID, "run", phraseOrdinal, input.PhraseMotions, animationCount(input.AnimationCounts, "important_phrase", "important_phrases"))
 			}
 			phraseOrdinal++
 		case "image", "entity_image", "product", "logo":
 			if plan.Items[i].Kind == "entity_image" && len(plan.Items[i].ImageLayers) > 0 {
 				plan.Items[i].MotionID = "" // each child layer owns its selected motion
 			} else {
-				plan.Items[i].MotionID = selectImageMotion(input.PlanID, "run", imageOrdinal, input.ImageMotions)
+				if plan.Items[i].Kind == "entity_image" {
+					if plan.Items[i].EntityCaption != "" {
+						pool := limitedMotionPool(generatedImageWithTextMotionCandidates, animationCount(input.AnimationCounts, "images_with_text", "single_image_with_text", "entity_text_images"))
+						plan.Items[i].MotionID = selectImageMotion(input.PlanID, "run", imageOrdinal, pool)
+					} else {
+						plan.Items[i].MotionID = entityImageMotionAtOffset(imageOrdinal, animationCount(input.AnimationCounts, "entities"))
+					}
+				} else {
+					if plan.Items[i].EntityCaption != "" {
+						pool := limitedMotionPool(generatedImageWithTextMotionCandidates, animationCount(input.AnimationCounts, "images_with_text", "single_image_with_text", "entity_text_images"))
+						plan.Items[i].MotionID = selectImageMotion(input.PlanID, "run", imageOrdinal, pool)
+					} else {
+						plan.Items[i].MotionID = selectImageMotion(input.PlanID, "run", imageOrdinal, input.ImageMotions)
+					}
+				}
 				if plan.Items[i].Kind == "entity_image" && plan.Items[i].EntityCaption != "" && len(plan.Items[i].AssetRefs) > 0 {
-					plan.Items[i].CaptionMotionID = EntityCaptionMotionAtOffset(0, imageOrdinal)
+					plan.Items[i].CaptionMotionID = entityCaptionMotionAtOffset(imageOrdinal, animationCount(input.AnimationCounts, "entity_caption", "entity_captions"))
 				}
 				imageOrdinal++
 			}
 			if plan.Items[i].Kind == "image" {
-				params := EntityImageParams(plan.Width, plan.Height)
+				params := ImageOverlayParams(plan.Width, plan.Height)
 				if plan.Items[i].Params == nil {
 					plan.Items[i].Params = map[string]any{}
 				}

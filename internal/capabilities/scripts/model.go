@@ -70,8 +70,9 @@ type GenerateRequest struct {
 	MapsOnly          bool `json:"maps_only,omitempty"`
 	// MaxImageOverlays is the caller-selected run-level ceiling for all image
 	// overlays, including scene-context and entity-bound imagery.
-	MaxImageOverlays      int  `json:"max_image_overlays,omitempty"`
-	DisableNumberOverlays bool `json:"disable_number_overlays,omitempty"`
+	MaxImageOverlays      int            `json:"max_image_overlays,omitempty"`
+	AnimationCounts       map[string]int `json:"animation_counts,omitempty"`
+	DisableNumberOverlays bool           `json:"disable_number_overlays,omitempty"`
 	// OverlayBackground is the visual background selected by script.generate;
 	// it is transported into the sealed OverlayPlan at render time.
 	OverlayBackground *scriptpkg.OverlayBackgroundSpec `json:"overlay_background,omitempty"`

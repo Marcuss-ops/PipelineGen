@@ -2,11 +2,15 @@ package overlays
 
 import "strings"
 
-func numberOverlayItem(planID, sceneID string, number TimedAnnotation) OverlayItem {
+func numberOverlayItem(planID, sceneID string, number TimedAnnotation, animationCounts map[string]int) OverlayItem {
 	id := itemID(sceneID, "number", number.Text)
 	templateID, motionID := "NUMBER", SelectTextMotion(planID, sceneID, id)
 	if numberType := strings.TrimSpace(number.Type); numberType != "" {
-		if presentationTemplate, presentationMotion := NumberPresentationForEntityType(planID, sceneID, id, numberType); presentationTemplate != "" {
+		limit := animationCounts["metric_stat"]
+		if NumberPresentationTemplateForEntityType(numberType) == "TIMELINE_DATE_CARD" {
+			limit = animationCounts["timeline_date"]
+		}
+		if presentationTemplate, presentationMotion := NumberPresentationForEntityTypeWithLimit(planID, sceneID, id, numberType, limit); presentationTemplate != "" {
 			templateID, motionID = presentationTemplate, presentationMotion
 		}
 	}

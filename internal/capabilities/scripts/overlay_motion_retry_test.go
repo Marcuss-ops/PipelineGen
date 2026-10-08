@@ -93,8 +93,8 @@ func TestCompileOverlayPlanRetrySamplesFreshIndependentImageMotions(t *testing.T
 		}
 		got := []string{item.ImageLayers[0].MotionID, item.ImageLayers[1].MotionID}
 		want := []string{
-			capabilityoverlay.ImageMotionAtOffset(offset, 0),
-			capabilityoverlay.ImageMotionAtOffset(offset, 1),
+			capabilityoverlay.ImageWithTextMotionAtOffset(offset, 0, 5),
+			capabilityoverlay.ImageWithTextMotionAtOffset(offset, 1, 5),
 		}
 		if got[0] != want[0] || got[1] != want[1] {
 			t.Fatalf("attempt with offset %d motions = %v, want independent pool selection %v", offset, got, want)

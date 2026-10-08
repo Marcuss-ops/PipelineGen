@@ -216,6 +216,10 @@ func mapMotionAt(ordinal int) string {
 // first one. Map coverage, pins and coordinates remain owned by the certified
 // plate; the bounds only choose a visual recipe.
 func mapMotionForCenter(ordinal int, center MapCenter) string {
+	return mapMotionForCenterWithLimit(ordinal, center, len(mapMotionIDs()))
+}
+
+func mapMotionForCenterWithLimit(ordinal int, center MapCenter, limit int) string {
 	lat, lon := center.Latitude, center.Longitude
 	region := ""
 	switch {
@@ -240,24 +244,29 @@ func mapMotionForCenter(ordinal int, center MapCenter) string {
 	case lat >= 24 && lat <= 50 && lon >= -125 && lon <= -66:
 		region = "map_image_usa_sweep_in"
 	}
-	if region == "" {
-		return mapMotionAt(ordinal)
-	}
 	pool := mapMotionIDs()
 	if len(pool) == 0 {
-		return region
+		return ""
+	}
+	if limit <= 0 || limit > len(pool) {
+		limit = 5
+		if limit > len(pool) {
+			limit = len(pool)
+		}
 	}
 	start := 0
-	for index, id := range pool {
-		if id == region {
-			start = index
-			break
+	if region != "" {
+		for index, id := range pool {
+			if id == region {
+				start = index
+				break
+			}
 		}
 	}
 	if ordinal < 0 {
 		ordinal = 0
 	}
-	return pool[(start+ordinal)%len(pool)]
+	return pool[(start+(ordinal%limit))%len(pool)]
 }
 
 // mapItemsForScene lowers a scene's resolved map plans to at most one overlay
@@ -265,7 +274,7 @@ func mapMotionForCenter(ordinal int, center MapCenter) string {
 // plate or a place, a plate whose raster is not the canvas size, a place
 // outside the plate's window, or an empty audio span produces no item — never
 // a map pinned at a guessed location.
-func mapItemsForScene(sceneID string, plans []MapPlan, canvasWidth, canvasHeight, ordinal int) []OverlayItem {
+func mapItemsForScene(sceneID string, plans []MapPlan, canvasWidth, canvasHeight, ordinal, motionLimit int) []OverlayItem {
 	if len(plans) == 0 || canvasWidth <= 0 || canvasHeight <= 0 {
 		return nil
 	}
@@ -334,7 +343,7 @@ func mapItemsForScene(sceneID string, plans []MapPlan, canvasWidth, canvasHeight
 			Provider: "local", SourceID: entry.plate.ID, SourceLicense: entry.plate.License,
 			Center: entry.plate.Center, Zoom: entry.plate.Zoom,
 			Width: entry.plate.Width, Height: entry.plate.Height,
-			Attribution: entry.plate.Attribution, MotionID: mapMotionForCenter(ordinal, entry.plate.Center), Pins: pins,
+			Attribution: entry.plate.Attribution, MotionID: mapMotionForCenterWithLimit(ordinal, entry.plate.Center, motionLimit), Pins: pins,
 			AreaGlowRadiusKM: mapAreaGlowRadiusKM(pins),
 		}
 		if len(lods) >= 2 {

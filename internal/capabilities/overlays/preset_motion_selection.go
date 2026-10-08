@@ -17,10 +17,6 @@ func selectPhraseMotion(jobID, sceneID string, ordinal int, pool []string) strin
 	if len(pool) > 0 {
 		// Explicit channel pools retain their editorial entrance preference,
 		// while remaining strictly inside the caller's certified vocabulary.
-		visibleEntrances := visiblePhraseEntrancePool(pool)
-		if len(visibleEntrances) > 0 && ordinal%3 == 0 {
-			return selectMotionFromPool(jobID, sceneID, "visible_entrance", ordinal/3, visibleEntrances)
-		}
 		return selectMotionFromPool(jobID, sceneID, "explicit", ordinal, pool)
 	}
 	// The default is a full deterministic no-repeat walk of the 123-motion
@@ -33,19 +29,16 @@ func selectPhraseMotion(jobID, sceneID string, ordinal int, pool []string) strin
 	return sequence[ordinal%len(sequence)]
 }
 
-// selectLongPhraseMotion keeps longer cards on block-level entrances such as
-// a soft reveal, line slide, or restrained scale — but the rotation the caller
-// asked for always survives. The editorial preference is the intersection of
-// the long-phrase list with pool; when that intersection is degenerate (empty,
-// or a SINGLE motion) it cannot rotate, and every long phrase would render the
-// identical animation. That is the defect this guard closes: a narrow channel
-// pool can intersect the long-phrase list in only one id, collapsing every
-// long phrase onto that single animation.
-//
-// Precedence: a rotating intersection (>= 2 motions) > the caller's pool (a
-// channel profile's explicit, already-certified vocabulary) > the long-phrase
-// list (only when the caller supplied no pool at all). A single-motion pool is
-// honoured verbatim — an operator who names one motion asked for one motion.
+func selectPhraseMotionLimited(jobID, sceneID string, ordinal int, pool []string, limit int) string {
+	if len(pool) > 0 {
+		return selectPhraseMotion(jobID, sceneID, ordinal, limitedMotionPool(pool, limit))
+	}
+	return selectMotionFromPool(jobID, sceneID, "important_phrase_limited", ordinal, limitedMotionPool(defaultPhraseMotionSequence(jobID, sceneID), limit))
+}
+
+// selectLongPhraseMotion keeps long copy inside the long-phrase motion family.
+// A supplied channel pool is used only where it overlaps that family; a short
+// phrase pool must never leak across the word-count boundary.
 func selectLongPhraseMotion(jobID, sceneID string, ordinal int, pool []string) string {
 	compatible := make([]string, 0, len(longPhraseMotionCandidates))
 	allowed := make(map[string]struct{}, len(pool))
@@ -69,22 +62,44 @@ func selectLongPhraseMotion(jobID, sceneID string, ordinal int, pool []string) s
 		return selectMotionFromPool(jobID, sceneID, "long_phrase_default", ordinal, compatible)
 	case len(compatible) >= 2:
 		return selectPhraseMotion(jobID, sceneID, ordinal, compatible)
-	case len(pool) > 0:
+	case len(pool) > 0 && !isShortPhraseMotionPool(pool):
+		// Explicit non-short pools remain authoritative even when only one
+		// motion overlaps the long-phrase preference list. This keeps channel
+		// rotation varied without letting short recipes leak into long copy.
 		return selectPhraseMotion(jobID, sceneID, ordinal, pool)
 	default:
-		return selectPhraseMotion(jobID, sceneID, ordinal, compatible)
+		return selectMotionFromPool(jobID, sceneID, "long_phrase", ordinal, longPhraseMotionCandidates)
 	}
 }
 
-// selectShortPhraseMotion routes phrases of one to five words through modern
-// Apple, typewriter and spatial 3D motions. Single-word phrases use a tighter
-// cinematic subset. A caller-provided pool remains authoritative when it
-// contains compatible motions; otherwise the certified short-phrase defaults
-// keep length-based routing intact.
+func selectLongPhraseMotionLimited(jobID, sceneID string, ordinal int, pool []string, limit int) string {
+	if len(pool) == 0 {
+		return selectMotionFromPool(jobID, sceneID, "long_phrase_default", ordinal, limitedMotionPool(longPhraseMotionCandidates, limit))
+	}
+	return selectLongPhraseMotion(jobID, sceneID, ordinal, limitedMotionPool(pool, limit))
+}
+
+func isShortPhraseMotionPool(pool []string) bool {
+	for _, id := range pool {
+		if !strings.HasPrefix(id, "short_phrase_") {
+			return false
+		}
+	}
+	return len(pool) > 0
+}
+
+// selectShortPhraseMotion routes phrases of one to five words through the
+// matching exact-cardinality ChrononTemplate recipes. A caller's pool is
+// intersected with that family so incompatible animations cannot enter the lane.
 func selectShortPhraseMotion(jobID, sceneID string, ordinal, wordCount int, pool []string) string {
-	candidates := shortPhraseMotionCandidates
-	if wordCount == 1 {
-		candidates = singleWordMotionCandidates
+	return selectShortPhraseMotionLimited(jobID, sceneID, ordinal, wordCount, pool, 0)
+}
+
+func selectShortPhraseMotionLimited(jobID, sceneID string, ordinal, wordCount int, pool []string, limit int) string {
+	candidates := shortPhraseMotionCandidates[wordCount]
+	if len(candidates) == 0 {
+		// Never apply a short-phrase recipe to a different word count.
+		return ""
 	}
 	if len(pool) > 0 {
 		allowed := make(map[string]struct{}, len(pool))
@@ -101,7 +116,42 @@ func selectShortPhraseMotion(jobID, sceneID string, ordinal, wordCount int, pool
 			candidates = compatible
 		}
 	}
+	candidates = limitedMotionPool(candidates, limit)
 	return selectMotionFromPool(jobID, sceneID, "short_phrase", ordinal, candidates)
+}
+
+// limitedMotionPool keeps a deterministic rotating window of at most five
+// styles by default. A positive limit overrides that default and is bounded
+// by the catalog size.
+func limitedMotionPool(pool []string, limit int) []string {
+	if len(pool) == 0 {
+		return nil
+	}
+	unique := make([]string, 0, len(pool))
+	seen := make(map[string]struct{}, len(pool))
+	for _, id := range pool {
+		if _, exists := seen[id]; exists || strings.TrimSpace(id) == "" {
+			continue
+		}
+		seen[id] = struct{}{}
+		unique = append(unique, id)
+	}
+	if limit <= 0 {
+		limit = 5
+	}
+	if limit > len(unique) {
+		limit = len(unique)
+	}
+	return append([]string(nil), unique[:limit]...)
+}
+
+func animationCount(counts map[string]int, keys ...string) int {
+	for _, key := range keys {
+		if count := counts[key]; count > 0 {
+			return count
+		}
+	}
+	return 0
 }
 
 // visiblePhraseEntrancePool limits the guaranteed entrance slot to certified
@@ -204,7 +254,40 @@ func selectHeavyPhraseMotion(jobID, sceneID string, ordinal int, pool []string) 
 	if len(candidates) == 0 {
 		candidates = visiblePhraseEntrancePool(nil)
 	}
-	return selectMotionFromPool(jobID, sceneID, "heavy_phrase", ordinal, candidates)
+	allowed := make(map[string]bool, len(candidates))
+	for _, id := range candidates {
+		allowed[id] = true
+	}
+	type motionFamily struct {
+		name string
+		ids  []string
+	}
+	families := make([]motionFamily, 0, len(defaultPhraseMotionFamilies))
+	for _, family := range defaultPhraseMotionFamilies {
+		ids := make([]string, 0)
+		for _, id := range phraseMotionFamilyCandidates(family) {
+			if allowed[id] {
+				ids = append(ids, id)
+			}
+		}
+		if len(ids) > 0 {
+			families = append(families, motionFamily{name: family, ids: ids})
+		}
+	}
+	if len(families) == 0 {
+		return selectMotionFromPool(jobID, sceneID, "heavy_phrase", ordinal, candidates)
+	}
+	family := families[ordinal%len(families)]
+	return selectMotionFromPool(jobID, sceneID, "heavy_phrase:"+family.name, ordinal/len(families), family.ids)
+}
+
+func selectHeavyPhraseMotionLimited(jobID, sceneID string, ordinal int, pool []string, limit int) string {
+	if len(pool) == 0 {
+		pool = limitedMotionPool(phraseMotionCandidates, limit)
+	} else {
+		pool = limitedMotionPool(pool, limit)
+	}
+	return selectHeavyPhraseMotion(jobID, sceneID, ordinal, pool)
 }
 
 // CertifiedHeavyPhraseMotions exposes the read-only heavy-phrase entrance pool
@@ -236,16 +319,24 @@ func LongPhraseMotionCandidates() []string {
 	return append([]string(nil), longPhraseMotionCandidates...)
 }
 
-// ShortPhraseMotionCandidates exposes the read-only modern motion pool used
-// for phrases shorter than six words.
+// ShortPhraseMotionCandidates exposes the read-only ChrononTemplate motion
+// pool used for phrases shorter than six words.
 func ShortPhraseMotionCandidates() []string {
-	return append([]string(nil), shortPhraseMotionCandidates...)
+	return flattenShortPhraseMotionCandidates()
 }
 
 // SingleWordMotionCandidates exposes the read-only cinematic pool used for
 // one-word phrase beats.
 func SingleWordMotionCandidates() []string {
-	return append([]string(nil), singleWordMotionCandidates...)
+	return append([]string(nil), shortPhraseMotionCandidates[1]...)
+}
+
+func flattenShortPhraseMotionCandidates() []string {
+	var candidates []string
+	for wordCount := 1; wordCount <= 5; wordCount++ {
+		candidates = append(candidates, shortPhraseMotionCandidates[wordCount]...)
+	}
+	return candidates
 }
 
 // certifiedPhraseFamily returns the subset of the production-safe phrase
@@ -258,7 +349,9 @@ func certifiedPhraseFamily(family string) []string {
 func phraseMotionFamilyCandidates(family string) []string {
 	switch family {
 	case "modern_product_v1":
-		return combineMotionPools(modernAppleMotionCandidates, typewriterMotionCandidates, text3DMotionCandidates, brushPhraseMotionCandidates)
+		return phraseMotionCandidates
+	case "short_phrase_product_v1":
+		return flattenShortPhraseMotionCandidates()
 	case "modern_apple":
 		return modernAppleMotionCandidates
 	case "typewriter":

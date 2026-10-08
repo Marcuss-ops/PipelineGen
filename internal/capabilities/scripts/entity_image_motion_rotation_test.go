@@ -12,7 +12,7 @@ import (
 //
 // Pool sizes are literals so this gate fails if either connected catalog drifts.
 func TestAssignEntityImageMotionsUsesCertifiedCatalog(t *testing.T) {
-	const wantImages, wantCaptions = 32, 21
+	const wantImages, wantCaptions = 32, 43
 
 	certified := capabilityoverlay.CertifiedEntityImageMotions()
 	captionCertified := capabilityoverlay.CertifiedEntityCaptionMotions()
@@ -23,11 +23,11 @@ func TestAssignEntityImageMotionsUsesCertifiedCatalog(t *testing.T) {
 		t.Fatalf("generated entity image catalog has %d motions, want %d", len(certified), wantImages)
 	}
 
-	// One single-portrait item per certified motion so a full rotation has
-	// enough slots to reach every id, plus one composite pair whose two
-	// children must keep independent motions.
-	items := make([]capabilityoverlay.OverlayItem, 0, wantImages+1)
-	for i := 0; i < wantImages; i++ {
+	// Enough single portraits to exhaust both catalogs, plus one composite pair
+	// whose two children must keep independent motions.
+	portraitCount := wantCaptions - 2
+	items := make([]capabilityoverlay.OverlayItem, 0, portraitCount+1)
+	for i := 0; i < portraitCount; i++ {
 		items = append(items, capabilityoverlay.OverlayItem{
 			ID: fmt.Sprintf("portrait-%d", i), Kind: string(capabilityoverlay.KindEntityImage),
 		})
@@ -84,5 +84,22 @@ func TestAssignEntityImageMotionsUsesCertifiedCatalog(t *testing.T) {
 	// not collapse onto a single shared entrance.
 	if len(composite) != 2 {
 		t.Fatalf("composite children used %d distinct motions, want 2 independent assignments", len(composite))
+	}
+}
+
+func TestAssignEntityImageMotionsUsesSeparatePoolForImagesWithText(t *testing.T) {
+	items := []capabilityoverlay.OverlayItem{
+		{ID: "named-image-a", Kind: "image", EntityCaption: "São Paulo", CaptionMotionID: "typewriter_clean"},
+		{ID: "named-image-b", Kind: "image", EntityCaption: "Brasília", CaptionMotionID: "text_yaw_in"},
+	}
+	assignEntityImageMotions(items, 0, 1920, 1080)
+	textPool := capabilityoverlay.CertifiedImageWithTextMotions()
+	for i := 0; i < 2; i++ {
+		if items[i].MotionID == "" || !containsMotionID(textPool, items[i].MotionID) {
+			t.Fatalf("image with text %q got uncertified motion %q", items[i].ID, items[i].MotionID)
+		}
+	}
+	if items[0].MotionID == items[1].MotionID {
+		t.Fatalf("image with text rotation reused %q", items[0].MotionID)
 	}
 }

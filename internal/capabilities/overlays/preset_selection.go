@@ -96,9 +96,22 @@ var (
 	// generated images; RenderingGen has explicit lowering for the 2.5D and
 	// editorial families, and the full set is covered by its image canary.
 	generatedEntityImageMotionCandidates = renderSafeImageMotions
-	// Entity captions can use every authored entity-name treatment: six shared
-	// caption motions plus fifteen premium documentary treatments. All target
-	// text layers and are registered in RenderingGen's runtime motion catalog.
+	// Captions get a distinct image entrance rotation so image-with-text cards
+	// do not repeat the plain-image opening sequence.
+	generatedImageWithTextMotionCandidates = []string{
+		"image_parallax_depth_reveal", "image_tilt_settle", "image_card_push",
+		"image_diagonal_sweep", "image_soft_focus_reveal", "image_25d_depth_float_in",
+		"image_25d_yaw_flip_in", "image_25d_pitch_lift", "image_25d_pop_z_bounce",
+		"image_25d_swipe_3d", "image_25d_card_swing", "image_25d_blur_focus_in",
+		"image_collage_scatter", "image_card_flip", "image_depth_cascade",
+		"image_depth_dolly", "image_document_push", "image_evidence_focus",
+		"image_float_settle", "image_focus_push", "image_orbit_enter",
+		"image_perspective_stack", "image_photo_drop", "image_roll_in",
+		"image_tilt_parallax", "image_yaw_reveal",
+	}
+	// Entity captions can use the authored caption treatments plus compatible
+	// typewriter motions. These all target text layers and are registered in
+	// RenderingGen; glitch and auto-wrap variants stay out of name captions.
 	generatedEntityCaptionMotionCandidates = []string{
 		"text_depth_in",
 		"text_fade_up",
@@ -106,6 +119,28 @@ var (
 		"text_word_rise",
 		"text_word_stagger",
 		"text_yaw_in",
+		"typewriter_blur_focus",
+		"typewriter_clean",
+		"typewriter_lift",
+		"typewriter_neon",
+		"typewriter_pop",
+		"typewriter_scale_up",
+		"typewriter_slide_in",
+		"typewriter_soft_lift",
+		"typewriter_tracking",
+		"typewriter_modern_01_monospace_block_cursor",
+		"typewriter_modern_02_kinetic_scramble",
+		"typewriter_modern_03_soft_opacity_ramp",
+		"typewriter_modern_04_character_bounce",
+		"typewriter_modern_05_backspace_correction",
+		"typewriter_modern_06_glow_beam_sweep",
+		"typewriter_modern_07_word_snap",
+		"typewriter_modern_08_mechanical_y_shift",
+		"typewriter_modern_09_highlighter_expansion",
+		"typewriter_modern_10_weight_ramp",
+		"typewriter_modern_13_elastic_leading_cursor",
+		"typewriter_modern_14_focal_blur_dissolve",
+		"typewriter_modern_15_paper_punch_stencil",
 		"trump_entity_text_01", "trump_entity_text_02", "trump_entity_text_03",
 		"trump_entity_text_04", "trump_entity_text_05", "trump_entity_text_06",
 		"trump_entity_text_07", "trump_entity_text_08", "trump_entity_text_09",
@@ -260,14 +295,59 @@ var (
 		"quiet_hero_settle",
 		"soft_kinetic_rise",
 	}
-	// Short phrases rotate through the modern, typewriter and spatial text
-	// families so these authored treatments are reachable in normal runs.
-	shortPhraseMotionCandidates = combineMotionPools(modernAppleMotionCandidates, typewriterMotionCandidates, text3DMotionCandidates, brushPhraseMotionCandidates)
-	singleWordMotionCandidates  = []string{
-		"apple_hero_statement",
-		"apple_vertical_glyph_lift",
-		"cinematic_camera_push",
-		"text_3d_camera_push",
+	// Keep exact word-count groups so a recipe cannot receive an unsupported
+	// phrase length. Recipes with known runtime failures remain excluded until
+	// their ChrononTemplate definitions are repaired and canaried.
+	shortPhraseMotionCandidates = map[int][]string{
+		1: {
+			"typewriter_modern_01_monospace_block_cursor", "typewriter_modern_03_soft_opacity_ramp",
+			"short_phrase_scale_settle_word",
+			"short_phrase_product_text_shimmer",
+			"short_phrase_product_chromatic_fringe_title",
+			"short_phrase_product_fold_text",
+		},
+		2: {
+			"typewriter_modern_02_kinetic_scramble", "typewriter_modern_07_word_snap",
+			"short_phrase_character_tracking_reveal",
+			"short_phrase_editorial_quiet_zoom",
+			"short_phrase_product_focus_blur_resolve",
+		},
+		3: {
+			"typewriter_modern_04_character_bounce", "typewriter_modern_09_highlighter_expansion",
+			"short_phrase_character_write_on",
+			"short_phrase_word_mask_sequence",
+			"short_phrase_word_cascade_sentence",
+			"short_phrase_semantic_chain_curve",
+			"short_phrase_single_word_swap",
+			"short_phrase_product_blur_out_up",
+			"short_phrase_product_bottom_up_letters",
+			"short_phrase_product_text_match_cut",
+			"short_phrase_product_weight_wave",
+			"short_phrase_product_masked_heading",
+			"short_phrase_product_scrambled_text",
+			"short_phrase_product_glare_hover",
+			"short_phrase_product_glow_cursor",
+			"short_phrase_product_gradual_blur",
+			"short_phrase_product_shape_blur",
+		},
+		4: {
+			"typewriter_modern_05_backspace_correction", "typewriter_modern_10_weight_ramp",
+			"short_phrase_semantic_two_line",
+			"short_phrase_simple_progressive_phrase",
+			"short_phrase_editorial_rule_handoff",
+			"short_phrase_phrase_build_focus",
+			"short_phrase_editorial_baseline_rise",
+			"short_phrase_editorial_tracking_close",
+			"short_phrase_editorial_glyph_curtain",
+			"short_phrase_editorial_contrast_sweep",
+			"short_phrase_editorial_lift_and_rule",
+			"short_phrase_product_scroll_reveal",
+		},
+		5: {
+			"typewriter_modern_06_glow_beam_sweep", "typewriter_modern_08_mechanical_y_shift",
+			"short_phrase_editorial_side_glide",
+			"short_phrase_editorial_focus_resolve",
+		},
 	}
 	typewriterMotionCandidates = []string{
 		"typewriter_modern_01_monospace_block_cursor",
@@ -353,10 +433,9 @@ var (
 		"phrase_apple_clean_29_opacity_hero_settle",
 		"phrase_apple_clean_30_opacity_clean_apple",
 	}
-	// Long grounded phrases need a single readable entrance for the full text
-	// block. Avoid per-word, per-glyph and typewriter motions for these items;
-	// the planner intersects this list with the caller's selected family so an
-	// explicit family remains authoritative.
+	// Long grounded phrases use block entrances and readable text sequences.
+	// Glitch and auto-wrap treatments stay out; the planner intersects this list
+	// with the caller's selected family so an explicit family remains authoritative.
 	longPhraseMotionCandidates = []string{
 		"apple_expand_from_center",
 		"apple_focus_rise",
@@ -382,6 +461,32 @@ var (
 		"text_3d_camera_push",
 		"text_3d_tilt_rise",
 		"phrase_apple_clean_02_blur_focus_snap",
+		// Complete phrases can also use the catalog's text families. Exclude
+		// glitch and auto-wrap treatments here so longer copy stays legible.
+		"typewriter_blur_focus", "typewriter_neon", "typewriter_pop",
+		"typewriter_scale_up", "typewriter_slide_in", "typewriter_soft_lift",
+		"typewriter_modern_01_monospace_block_cursor",
+		"typewriter_modern_02_kinetic_scramble",
+		"typewriter_modern_03_soft_opacity_ramp",
+		"typewriter_modern_04_character_bounce",
+		"typewriter_modern_05_backspace_correction",
+		"typewriter_modern_06_glow_beam_sweep",
+		"typewriter_modern_07_word_snap",
+		"typewriter_modern_08_mechanical_y_shift",
+		"typewriter_modern_09_highlighter_expansion",
+		"typewriter_modern_10_weight_ramp",
+		"typewriter_modern_13_elastic_leading_cursor",
+		"typewriter_modern_14_focal_blur_dissolve",
+		"typewriter_modern_15_paper_punch_stencil",
+		"text_3d_double_axis_reveal", "text_3d_orbit_lock",
+		"text_3d_perspective_drop", "text_3d_pitch_lift", "text_3d_roll_depth",
+		"text_3d_word_cascade", "text_3d_yaw_flip_in", "text_3d_yaw_sweep",
+		"brush_phrase_arrow_point", "brush_phrase_circle_focus",
+		"brush_phrase_gold_marker", "brush_phrase_lower_rule",
+		"brush_phrase_red_brush_underline", "brush_phrase_red_endpoint_rule",
+		"brush_phrase_red_underline", "brush_phrase_signature_flourish",
+		"brush_phrase_white_double_underline", "brush_phrase_white_light_sweep",
+		"brush_phrase_white_underline",
 	}
 	phraseMotionCandidates      = combineMotionPools(classicAppleMotionCandidates, modernAppleMotionCandidates, typewriterMotionCandidates, text3DMotionCandidates, brushPhraseMotionCandidates)
 	renderSafeTextMotions       = phraseAppleCleanMotionCandidates
@@ -442,11 +547,15 @@ func NumberPresentationTemplateForEntityType(entityType string) string {
 // stable item identity keeps retries identical while different values vary.
 // Callers never synthesize a preset or timing window.
 func NumberPresentationForEntityType(jobID, sceneID, itemID, entityType string) (templateID, motionID string) {
+	return NumberPresentationForEntityTypeWithLimit(jobID, sceneID, itemID, entityType, 0)
+}
+
+func NumberPresentationForEntityTypeWithLimit(jobID, sceneID, itemID, entityType string, limit int) (templateID, motionID string) {
 	switch NumberPresentationTemplateForEntityType(entityType) {
 	case "TIMELINE_DATE_CARD":
-		return "TIMELINE_DATE_CARD", selectPreset(jobID, sceneID, itemID, "date_presentation", datePresentationMotionCandidates)
+		return "TIMELINE_DATE_CARD", selectPreset(jobID, sceneID, itemID, "date_presentation", limitedMotionPool(datePresentationMotionCandidates, limit))
 	case "METRIC_STAT_CARD":
-		return "METRIC_STAT_CARD", selectPreset(jobID, sceneID, itemID, "metric_presentation", metricPresentationMotionCandidates)
+		return "METRIC_STAT_CARD", selectPreset(jobID, sceneID, itemID, "metric_presentation", limitedMotionPool(metricPresentationMotionCandidates, limit))
 	default:
 		return "", ""
 	}

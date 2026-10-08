@@ -134,8 +134,15 @@ type GenerationItemV2 struct {
 	MapsOnly bool `json:"maps_only,omitempty"`
 	// MaxImageOverlays sets the run-level ceiling for image overlays. A
 	// positive value is honored; zero keeps the certified default.
-	MaxImageOverlays      int  `json:"max_image_overlays,omitempty"`
-	DisableNumberOverlays bool `json:"disable_number_overlays,omitempty"`
+	MaxImageOverlays int `json:"max_image_overlays,omitempty"`
+	// AnimationCounts sets the maximum distinct styles rotated within each
+	// overlay subfamily. Keys match runtime use-case IDs (images, entities,
+	// entity_caption, important_phrase, short_important_phrase, one_map,
+	// two_maps, metric_stat, timeline_date, or a specific image composition).
+	// Omitted subfamilies use five styles; positive values are capped to the
+	// available catalog.
+	AnimationCounts       map[string]int `json:"animation_counts,omitempty"`
+	DisableNumberOverlays bool           `json:"disable_number_overlays,omitempty"`
 
 	// Audio configures the audio execution mode (audio.mode) plus the
 	// editorial audio intent block (mix_policy, background_music,
@@ -240,9 +247,9 @@ func (s *OverlayStyleSpec) Validate() error {
 		return nil
 	}
 	switch s.FontFamily {
-	case "", "poppins", "inter", "dejavu_sans", "playfair_display_italic":
+	case "", "poppins", "inter", "dejavu_sans", "playfair_display_italic", "bricolage_grotesque":
 	default:
-		return fmt.Errorf("overlay_style.font_family %q is unsupported (poppins, inter, dejavu_sans, playfair_display_italic)", s.FontFamily)
+		return fmt.Errorf("overlay_style.font_family %q is unsupported (poppins, inter, dejavu_sans, playfair_display_italic, bricolage_grotesque)", s.FontFamily)
 	}
 	if s.GlowSize != nil && (math.IsNaN(*s.GlowSize) || math.IsInf(*s.GlowSize, 0) || *s.GlowSize < 0 || *s.GlowSize > 256) {
 		return fmt.Errorf("overlay_style.glow_size must be between 0 and 256 pixels")

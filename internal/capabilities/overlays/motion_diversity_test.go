@@ -90,3 +90,35 @@ func TestBuildPlanProducesVariedPhraseAndImageMotions(t *testing.T) {
 		}
 	}
 }
+
+func TestBuildPlanHonorsRuntimeStyleCountsPerSubfamily(t *testing.T) {
+	phrases := make([]TimedAnnotation, 6)
+	images := make([]ImageCandidate, 6)
+	for i := 0; i < 6; i++ {
+		start := int64(i * 2_000)
+		phrases[i] = TimedAnnotation{Text: fmt.Sprintf("Grounded story phrase number %d across this scene", i+1), StartMs: start, EndMs: start + 1_500, Score: 1 - float64(i)*.01}
+		images[i] = ImageCandidate{AssetID: fmt.Sprintf("asset-%d", i), URL: fmt.Sprintf("https://example.test/%d.jpg", i), SHA256: fmt.Sprintf("%064x", i+1), MediaType: "image/jpeg", StartMs: start, EndMs: start + 1_500, Score: 1 - float64(i)*.01}
+	}
+	input := PlanInput{PlanID: "style-counts", VideoID: "style-counts", Width: 1280, Height: 720, FPSNum: 24, FPSDen: 1,
+		AnimationCounts: map[string]int{"images": 2, "important_phrase": 3},
+		Scenes:          []SceneInput{{ID: "scene", Phrases: phrases, Images: images}}}
+	plan, err := BuildPlan(input, AllCandidatesPlannerConfig(input.Scenes))
+	if err != nil {
+		t.Fatal(err)
+	}
+	phraseStyles, imageStyles := map[string]bool{}, map[string]bool{}
+	for _, item := range plan.Items {
+		switch item.Kind {
+		case "text_phrase":
+			phraseStyles[item.MotionID] = true
+		case "image":
+			imageStyles[item.MotionID] = true
+		}
+	}
+	if len(phraseStyles) > 3 || len(imageStyles) > 2 {
+		t.Fatalf("runtime style count exceeded its per-family cap: phrases=%d images=%d", len(phraseStyles), len(imageStyles))
+	}
+	if len(phraseStyles) < 2 || len(imageStyles) != 2 {
+		t.Fatalf("runtime style pools were not exercised: phrases=%d images=%d; want phrase variety and exactly two image styles", len(phraseStyles), len(imageStyles))
+	}
+}

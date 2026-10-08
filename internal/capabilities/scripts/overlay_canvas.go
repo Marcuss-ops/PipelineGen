@@ -55,6 +55,7 @@ type OverlayCanvasSpec struct {
 	// MaxImageOverlays overrides the run-level image ceiling; zero keeps the
 	// certified default (capabilityoverlay.MaxImageOverlaysPerRun).
 	MaxImageOverlays      int
+	AnimationCounts       map[string]int
 	DisableNumberOverlays bool
 }
 

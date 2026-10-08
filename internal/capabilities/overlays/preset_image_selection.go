@@ -55,6 +55,14 @@ func EntityCaptionMotionAtOffset(offset, ordinal int) string {
 	return rotateMotionAtOffset(offset, ordinal, generatedEntityCaptionMotionCandidates)
 }
 
+func entityCaptionMotionAtOffset(ordinal, limit int) string {
+	return rotateMotionAtOffset(0, ordinal, limitedMotionPool(generatedEntityCaptionMotionCandidates, limit))
+}
+
+func entityImageMotionAtOffset(ordinal, limit int) string {
+	return rotateMotionAtOffset(0, ordinal, limitedMotionPool(generatedEntityImageMotionCandidates, limit))
+}
+
 // SelectEntityCaptionMotionAt provides a stable per-job selector for semantic
 // render bundles that do not carry the full plan's sampled motion offset.
 func SelectEntityCaptionMotionAt(jobID, sceneID string, ordinal int) string {
@@ -119,6 +127,13 @@ func EntityImageMotionAtOffset(offset, ordinal int) string {
 	return rotateMotionAtOffset(offset, ordinal, generatedEntityImageMotionCandidates)
 }
 
+// ImageWithTextMotionAtOffset rotates the separate image entrance pool used
+// when an image carries an entity label. The five-style cap matches the
+// runtime default; callers may supply a lower configured cap.
+func ImageWithTextMotionAtOffset(offset, ordinal, limit int) string {
+	return rotateMotionAtOffset(offset, ordinal, limitedMotionPool(generatedImageWithTextMotionCandidates, limit))
+}
+
 // SelectEntityImageMotionAt rotates generated-image motions from a
 // deterministic per-job starting point. It is for stable semantic bundle
 // projections that cannot carry the compilation-time random offset.
@@ -154,9 +169,15 @@ func CertifiedEntityImageMotions() []string {
 	return append([]string(nil), generatedEntityImageMotionCandidates...)
 }
 
-// EntityImageParams returns a larger, slightly raised hero image. The
-// caption renderer anchors the name below it; shifting the image up keeps
-// both pieces together in the center-safe area.
+// CertifiedImageWithTextMotions returns the dedicated certified image
+// entrances used by image overlays with an entity caption.
+func CertifiedImageWithTextMotions() []string {
+	return append([]string(nil), generatedImageWithTextMotionCandidates...)
+}
+
+// EntityImageParams returns the larger, raised hero box used by entity images.
+// Entity captions anchor below it, so the portrait stays in the center-safe area.
+
 func EntityImageParams(width, height int) map[string]any {
 	if width <= 0 || height <= 0 {
 		return map[string]any{"box_width": 800, "box_height": 650, "width": 800, "height": 650, "position_y": -60}
@@ -168,9 +189,24 @@ func EntityImageParams(width, height int) map[string]any {
 	if boxHeight < 1 {
 		boxHeight = 1
 	}
-	// "width"/"height" are the keys RenderingGen's imageLayer() reads;
-	// "box_width"/"box_height" stay for consumers of the legacy spelling.
 	return map[string]any{"box_width": boxWidth, "box_height": boxHeight, "width": boxWidth, "height": boxHeight, "position_y": -float64(height) * 0.10}
+}
+
+// ImageOverlayParams gives a standalone photo one consistent bounded box.
+// Explicit cover fit fills it without contain's dark matte on mismatched
+// source aspect ratios.
+func ImageOverlayParams(width, height int) map[string]any {
+	if width <= 0 || height <= 0 {
+		return map[string]any{"box_width": 800, "box_height": 450, "width": 800, "height": 450, "position_y": 0, "fit": "cover"}
+	}
+	boxWidth, boxHeight := width*68/100, height*70/100
+	if boxWidth < 1 {
+		boxWidth = 1
+	}
+	if boxHeight < 1 {
+		boxHeight = 1
+	}
+	return map[string]any{"box_width": boxWidth, "box_height": boxHeight, "width": boxWidth, "height": boxHeight, "position_y": 0, "fit": "cover"}
 }
 
 func selectImageMotion(jobID, sceneID string, ordinal int, pool []string) string {

@@ -176,8 +176,8 @@ func compileOverlayPlanWithMotionOffset(result *GenerateResult, language Languag
 		Scenes:        scenes,
 		Background:    canvas.Background,
 		PhraseMotions: canvas.PhraseMotions, PhraseMotionFamily: canvas.PhraseMotionFamily, ImageMotions: canvas.ImageMotions,
-		HeavyPhrasePriority: canvas.HeavyPhrasePriority,
-		PlateResolver:       plates,
+		HeavyPhrasePriority: canvas.HeavyPhrasePriority, AnimationCounts: canvas.AnimationCounts,
+		PlateResolver: plates,
 	}, plannerConfig)
 	if err != nil {
 		return nil, fmt.Errorf("overlay plan: plan: %w", err)
