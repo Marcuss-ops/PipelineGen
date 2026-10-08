@@ -176,7 +176,7 @@ func compileOverlayPlanWithMotionOffset(result *GenerateResult, language Languag
 		Scenes:        scenes,
 		Background:    canvas.Background,
 		PhraseMotions: canvas.PhraseMotions, PhraseMotionFamily: canvas.PhraseMotionFamily, ImageMotions: canvas.ImageMotions,
-		HeavyPhrasePriority: canvas.HeavyPhrasePriority, AnimationCounts: canvas.AnimationCounts,
+		HeavyPhrasePriority: canvas.HeavyPhrasePriority, AnimationCounts: canvas.AnimationCounts, EntityStyleID: canvas.EntityStyleID,
 		PlateResolver: plates,
 	}, plannerConfig)
 	if err != nil {
@@ -366,7 +366,7 @@ func compileOverlayPlanWithMotionOffset(result *GenerateResult, language Languag
 		return nil, nil
 	}
 	items = composeNearbyEntityImages(items, canvas.Width, canvas.Height)
-	assignEntityImageMotions(items, imageMotionOffset, canvas.Width, canvas.Height)
+	assignEntityImageMotions(items, imageMotionOffset, canvas.Width, canvas.Height, canvas.EntityStyleID)
 	// assignEntityImageMotions rebuilds entity item params with its geometry
 	// defaults. Apply the explicit typeface afterward so it reaches the
 	// generated name caption without overriding image geometry.

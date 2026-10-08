@@ -72,6 +72,12 @@ type GenerateRequest struct {
 	// overlays, including scene-context and entity-bound imagery.
 	MaxImageOverlays      int            `json:"max_image_overlays,omitempty"`
 	AnimationCounts       map[string]int `json:"animation_counts,omitempty"`
+	// EntityStyleID pins the entity-card composition family for generated
+	// entity cards. Resolved like PhraseMotions: the envelope item may carry
+	// it explicitly, and a channel profile fills the blank ("random" keeps
+	// the certified full-registry sampling). Invalid selectors fail closed
+	// at plan compilation.
+	EntityStyleID         string         `json:"entity_style_id,omitempty"`
 	DisableNumberOverlays bool           `json:"disable_number_overlays,omitempty"`
 	// OverlayBackground is the visual background selected by script.generate;
 	// it is transported into the sealed OverlayPlan at render time.

@@ -36,7 +36,7 @@ func TestAssignEntityImageMotionsUsesCertifiedCatalog(t *testing.T) {
 		ID: "pair", Kind: string(capabilityoverlay.KindEntityImage),
 		ImageLayers: []capabilityoverlay.OverlayImageLayer{{ID: "a"}, {ID: "b"}},
 	})
-	assignEntityImageMotions(items, 0, 1920, 1080)
+	assignEntityImageMotions(items, 0, 1920, 1080, "")
 
 	captionSeen := map[string]bool{}
 	seen := map[string]bool{}
@@ -92,7 +92,7 @@ func TestAssignEntityImageMotionsUsesSeparatePoolForImagesWithText(t *testing.T)
 		{ID: "named-image-a", Kind: "image", EntityCaption: "São Paulo", CaptionMotionID: "typewriter_clean"},
 		{ID: "named-image-b", Kind: "image", EntityCaption: "Brasília", CaptionMotionID: "text_yaw_in"},
 	}
-	assignEntityImageMotions(items, 0, 1920, 1080)
+	assignEntityImageMotions(items, 0, 1920, 1080, "")
 	textPool := capabilityoverlay.CertifiedImageWithTextMotions()
 	for i := 0; i < 2; i++ {
 		if items[i].MotionID == "" || !containsMotionID(textPool, items[i].MotionID) {

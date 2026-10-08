@@ -270,6 +270,15 @@ func WireMultiEntityOverlays(group MultiEntityGroup, canvasWidth, canvasHeight i
 		} else {
 			imageItem.ImageLayers = layers
 		}
+		// Composite entity stacks carry the certified "random" style selector
+		// too: RenderingGen samples the full 25 Apple Spatial compositions per
+		// (plan, item) identity, so grouped portraits keep the same runtime
+		// variety as single cards. Multi-layer stacks keep captions on their
+		// child layers (no item-level entity_caption), so they stay unstamped:
+		// the worker's style precondition requires the item-level caption.
+		if imageItem.EntityCaption != "" {
+			imageItem.EntityStyleID = IdentityEntityStyleSelector
+		}
 		out = append(out, imageItem)
 	}
 	for index, candidate := range phrases {

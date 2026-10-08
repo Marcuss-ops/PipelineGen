@@ -54,8 +54,12 @@ type OverlayCanvasSpec struct {
 	MapsOnly          bool
 	// MaxImageOverlays overrides the run-level image ceiling; zero keeps the
 	// certified default (capabilityoverlay.MaxImageOverlaysPerRun).
-	MaxImageOverlays      int
-	AnimationCounts       map[string]int
+	MaxImageOverlays int
+	AnimationCounts  map[string]int
+	// EntityStyleID pins the entity-card composition family for generated
+	// entity cards (channel profile or explicit job choice). Empty keeps the
+	// certified "random" selector; the planner validates fail-closed.
+	EntityStyleID         string
 	DisableNumberOverlays bool
 }
 

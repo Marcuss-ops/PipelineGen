@@ -137,6 +137,13 @@ type OverlayItem struct {
 	// phrases can use the same apple_v2 preset while carrying different
 	// motions.
 	MotionID string `json:"motion_id,omitempty"`
+	// EntityStyleID is the RenderingGen entity-card composition selector. The
+	// certified generated selector is "random" (resolved by RenderingGen as
+	// a tag query over the full 25 Apple Spatial entity styles with badge
+	// color alternation); "badge", "camera", "side", "typewriter",
+	// "testo_sotto", "premium_random_v1" and the 01..25 variants are also
+	// valid. Empty keeps the legacy behavior (no entity style card).
+	EntityStyleID string `json:"entity_style_id,omitempty"`
 	// MotionParams carries optional parameters for MotionID. PipelineGen keeps
 	// these opaque and RenderingGen validates them against Chronon's catalog.
 	MotionParams map[string]any `json:"motion_params,omitempty"`
@@ -499,7 +506,7 @@ func (p *OverlayPlan) Validate() error {
 		}
 		if item.RenderKey == "" {
 			key := ComputeRenderKey(*p, item)
-			p.Items[i] = OverlayItem{ID: item.ID, SceneID: item.SceneID, EntityID: item.EntityID, Kind: item.Kind, StartMs: item.StartMs, EndMs: item.EndMs, StartUS: item.StartUS, DurationUS: item.DurationUS, TemplateID: item.TemplateID, PresetID: item.PresetID, ImagePresetID: item.ImagePresetID, MotionID: item.MotionID, MotionParams: item.MotionParams, EntityRef: item.EntityRef, Text: item.Text, EntityCaption: item.EntityCaption, CaptionMotionID: item.CaptionMotionID, CaptionFontFamily: item.CaptionFontFamily, AssetRefs: item.AssetRefs, ImageLayers: item.ImageLayers, Frame: item.Frame, Map: item.Map, Params: item.Params, RenderKey: key}
+			p.Items[i] = OverlayItem{ID: item.ID, SceneID: item.SceneID, EntityID: item.EntityID, Kind: item.Kind, StartMs: item.StartMs, EndMs: item.EndMs, StartUS: item.StartUS, DurationUS: item.DurationUS, TemplateID: item.TemplateID, PresetID: item.PresetID, ImagePresetID: item.ImagePresetID, MotionID: item.MotionID, MotionParams: item.MotionParams, EntityRef: item.EntityRef, Text: item.Text, EntityCaption: item.EntityCaption, EntityStyleID: item.EntityStyleID, CaptionMotionID: item.CaptionMotionID, CaptionFontFamily: item.CaptionFontFamily, AssetRefs: item.AssetRefs, ImageLayers: item.ImageLayers, Frame: item.Frame, Map: item.Map, Params: item.Params, RenderKey: key}
 		}
 	}
 	if p.Fingerprint == "" {

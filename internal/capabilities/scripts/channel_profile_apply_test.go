@@ -76,6 +76,34 @@ func TestApplyChannelProfileFillsBlankSurfaces(t *testing.T) {
 }
 
 // The guardrail that keeps a profile a default-fill and never an override.
+func TestApplyChannelProfileEntityStyleSelector(t *testing.T) {
+	// Blank request: the profile's pin fills the selector.
+	req := &GenerateRequest{}
+	profile := channelprofile.Profile{ChannelID: "style-channel", EntityStyleID: "camera"}
+	if err := ApplyChannelProfile(req, profile); err != nil {
+		t.Fatalf("ApplyChannelProfile: %v", err)
+	}
+	if req.EntityStyleID != "camera" {
+		t.Fatalf("entity_style_id = %q, want the profile pin camera", req.EntityStyleID)
+	}
+	// Caller intent wins: an explicit request pin is never overwritten.
+	req = &GenerateRequest{EntityStyleID: "badge"}
+	if err := ApplyChannelProfile(req, profile); err != nil {
+		t.Fatalf("ApplyChannelProfile: %v", err)
+	}
+	if req.EntityStyleID != "badge" {
+		t.Fatalf("caller entity_style_id = %q, want badge (caller intent wins)", req.EntityStyleID)
+	}
+	// A profile without the block leaves the request blank (certified default).
+	req = &GenerateRequest{}
+	if err := ApplyChannelProfile(req, channelprofile.Profile{ChannelID: "plain"}); err != nil {
+		t.Fatalf("ApplyChannelProfile: %v", err)
+	}
+	if req.EntityStyleID != "" {
+		t.Fatalf("entity_style_id = %q, want empty (certified random default)", req.EntityStyleID)
+	}
+}
+
 func TestApplyChannelProfileNeverOverridesCallerIntent(t *testing.T) {
 	profile := channelprofile.Profile{
 		ChannelID:     "crime",

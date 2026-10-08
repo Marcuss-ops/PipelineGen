@@ -56,10 +56,16 @@ func EntityCaptionMotionAtOffset(offset, ordinal int) string {
 }
 
 func entityCaptionMotionAtOffset(ordinal, limit int) string {
+	if limit <= 0 {
+		return rotateMotionAtOffset(0, ordinal, generatedEntityCaptionMotionCandidates)
+	}
 	return rotateMotionAtOffset(0, ordinal, limitedMotionPool(generatedEntityCaptionMotionCandidates, limit))
 }
 
 func entityImageMotionAtOffset(ordinal, limit int) string {
+	if limit <= 0 {
+		return rotateMotionAtOffset(0, ordinal, generatedEntityImageMotionCandidates)
+	}
 	return rotateMotionAtOffset(0, ordinal, limitedMotionPool(generatedEntityImageMotionCandidates, limit))
 }
 
@@ -128,10 +134,32 @@ func EntityImageMotionAtOffset(offset, ordinal int) string {
 }
 
 // ImageWithTextMotionAtOffset rotates the separate image entrance pool used
-// when an image carries an entity label. The five-style cap matches the
-// runtime default; callers may supply a lower configured cap.
+// when an image carries an entity label. A positive limit caps the rotating
+// window (a channel's AnimationCounts entry); limit <= 0 keeps the FULL
+// certified catalog so generated overlays rotate every entrance — including
+// the 2.5D 3D camera family — instead of the legacy five-style cap.
 func ImageWithTextMotionAtOffset(offset, ordinal, limit int) string {
-	return rotateMotionAtOffset(offset, ordinal, limitedMotionPool(generatedImageWithTextMotionCandidates, limit))
+	return rotateMotionAtOffset(offset, ordinal, ImageWithTextMotionPool(limit))
+}
+
+// ImageWithTextMotionPool returns the certified image-with-text entrance
+// pool. A positive count caps the rotating window; zero (or negative) keeps
+// the complete catalog.
+func ImageWithTextMotionPool(count int) []string {
+	if count <= 0 {
+		return append([]string(nil), generatedImageWithTextMotionCandidates...)
+	}
+	return limitedMotionPool(generatedImageWithTextMotionCandidates, count)
+}
+
+// EntityCaptionMotionPool returns the certified entity-caption motion pool.
+// A positive count caps the rotating window; zero (or negative) keeps the
+// complete catalog (authored text treatments + typewriter + trump families).
+func EntityCaptionMotionPool(count int) []string {
+	if count <= 0 {
+		return append([]string(nil), generatedEntityCaptionMotionCandidates...)
+	}
+	return limitedMotionPool(generatedEntityCaptionMotionCandidates, count)
 }
 
 // SelectEntityImageMotionAt rotates generated-image motions from a

@@ -62,6 +62,12 @@ type Profile struct {
 	// ImageMotions replaces the default ten-motion single-image rotation pool
 	// for this channel. Every id must still belong to the certified catalog.
 	ImageMotions []string `yaml:"image_motions,omitempty"`
+	// EntityStyleID pins the RenderingGen entity-card composition family for
+	// this channel's generated entity cards: "random" (the full 25 Apple
+	// Spatial registry), a tag selector (badge, camera, side, typewriter,
+	// testo_sotto, premium_random_v1) or one 01..25 variant. Validated at
+	// load; a request that pins its own selector is never overridden.
+	EntityStyleID string `yaml:"entity_style_id,omitempty"`
 }
 
 // SubtitlesProfile is the channel's subtitle choice. Presence of the block
