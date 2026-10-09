@@ -59,6 +59,7 @@ func (r *Runner) compileAudioOverlayPlan(ctx context.Context, runID string, req 
 	}
 	canvas.ImageMotions = req.ImageMotions
 	canvas.MaxPhraseOverlays = req.MaxPhraseOverlays
+	canvas.MaxMapOverlays = req.MaxMapOverlays
 	canvas.MapsOnly = req.MapsOnly
 	canvas.MaxImageOverlays = req.MaxImageOverlays
 	canvas.AnimationCounts = req.AnimationCounts
@@ -72,7 +73,9 @@ func (r *Runner) compileAudioOverlayPlan(ctx context.Context, runID string, req 
 	if !r.shouldGeocodeScriptLocations(req) {
 		plates = nil
 	}
-	if err := compileResultOverlayPlan(result, req.SourceLanguage, runID, req.Project, driveFolderID, canvas, plates, req.MediaPlan.Extraction.EntityImages.PerScene(), req.ScriptParams.ImagesPerScene > 0); err != nil {
+	imageProviderEnabled := req.MediaPlan.ProviderPolicy.InternetImages.AsBool() || req.MediaPlan.ProviderPolicy.ImageGeneration.AsBool()
+	genericSceneImagesEnabled := req.MaxImageOverlays > 0 && imageProviderEnabled
+	if err := compileResultOverlayPlan(result, req.SourceLanguage, runID, req.Project, driveFolderID, canvas, plates, req.MediaPlan.Extraction.EntityImages.PerScene(), genericSceneImagesEnabled); err != nil {
 		cause := fmt.Errorf("overlay plan compilation failed: %w", err)
 		r.failExecutionStep(ctx, exec, step, cause)
 		r.failRunWithRetry(ctx, runID, StageCompilingAudio, cause)

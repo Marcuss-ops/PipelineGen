@@ -46,6 +46,11 @@ const (
 	FontUrbanist              = "font-urbanist"
 	FontBricolageGrotesque    = "font-bricolage-grotesque"
 	FontPlayfairDisplayItalic = "font-playfair-display-italic"
+	FontGoogleSans            = "font-google-sans"
+	FontChangaOne             = "font-changa-one"
+	FontDMSerifDisplay        = "font-dm-serif-display"
+	FontDMSerifDisplayItalic  = "font-dm-serif-display-italic"
+	FontSFProDisplay          = "font-sf-pro-display"
 )
 
 // AssetRootEnv overrides the configured asset root. When unset the root is
@@ -57,20 +62,42 @@ const AssetRootEnv = "PIPELINEGEN_ASSET_ROOT"
 // path. This map is the single owner of "which file backs which font id"; the
 // mapper never hardcodes a font path.
 var canonicalFonts = map[string]string{
-	FontMontserratBold:        "assets/fonts/Montserrat-Bold.ttf",
-	FontPoppinsBold:           "assets/fonts/Poppins-Bold.ttf",
-	FontDejaVuSans:            "assets/fonts/DejaVuSans.ttf",
-	FontInter:                 "assets/fonts/Inter.ttf",
-	FontManrope:               "assets/fonts/Manrope.ttf",
-	FontDMSans:                "assets/fonts/DM-Sans.ttf",
-	FontInstrumentSans:        "assets/fonts/Instrument-Sans.ttf",
-	FontPlusJakartaSans:       "assets/fonts/Plus-Jakarta-Sans.ttf",
-	FontSora:                  "assets/fonts/Sora.ttf",
-	FontSpaceGrotesk:          "assets/fonts/Space-Grotesk.ttf",
-	FontOutfit:                "assets/fonts/Outfit.ttf",
-	FontUrbanist:              "assets/fonts/Urbanist.ttf",
-	FontBricolageGrotesque:    "assets/fonts/Bricolage-Grotesque.ttf",
-	FontPlayfairDisplayItalic: "assets/fonts/PlayfairDisplay-Italic.ttf",
+	FontMontserratBold:                      "assets/fonts/Montserrat-Bold.ttf",
+	FontPoppinsBold:                         "assets/fonts/Poppins-Bold.ttf",
+	FontDejaVuSans:                          "assets/fonts/DejaVuSans.ttf",
+	FontInter:                               "assets/fonts/Inter.ttf",
+	FontManrope:                             "assets/fonts/Manrope.ttf",
+	FontDMSans:                              "assets/fonts/DM-Sans.ttf",
+	FontInstrumentSans:                      "assets/fonts/Instrument-Sans.ttf",
+	FontPlusJakartaSans:                     "assets/fonts/Plus-Jakarta-Sans.ttf",
+	FontSora:                                "assets/fonts/Sora.ttf",
+	FontSpaceGrotesk:                        "assets/fonts/Space-Grotesk.ttf",
+	FontOutfit:                              "assets/fonts/Outfit.ttf",
+	FontUrbanist:                            "assets/fonts/Urbanist.ttf",
+	FontBricolageGrotesque:                  "assets/fonts/Bricolage-Grotesque.ttf",
+	FontPlayfairDisplayItalic:               "assets/fonts/PlayfairDisplay-Italic.ttf",
+	FontGoogleSans:                          "assets/fonts/Google-Sans.ttf",
+	FontChangaOne:                           "assets/fonts/Changa-One.ttf",
+	FontDMSerifDisplay:                      "assets/fonts/DM-Serif-Display.ttf",
+	FontDMSerifDisplayItalic:                "assets/fonts/DM-Serif-Display-Italic.ttf",
+	FontSFProDisplay:                        "assets/fonts/SF-Pro-Display-Regular.otf",
+	"font-sf-pro-display-ultralight":        "assets/fonts/SF-Pro-Display-Ultralight.otf",
+	"font-sf-pro-display-ultralight-italic": "assets/fonts/SF-Pro-Display-UltralightItalic.otf",
+	"font-sf-pro-display-thin":              "assets/fonts/SF-Pro-Display-Thin.otf",
+	"font-sf-pro-display-thin-italic":       "assets/fonts/SF-Pro-Display-ThinItalic.otf",
+	"font-sf-pro-display-light":             "assets/fonts/SF-Pro-Display-Light.otf",
+	"font-sf-pro-display-light-italic":      "assets/fonts/SF-Pro-Display-LightItalic.otf",
+	"font-sf-pro-display-regular-italic":    "assets/fonts/SF-Pro-Display-RegularItalic.otf",
+	"font-sf-pro-display-medium":            "assets/fonts/SF-Pro-Display-Medium.otf",
+	"font-sf-pro-display-medium-italic":     "assets/fonts/SF-Pro-Display-MediumItalic.otf",
+	"font-sf-pro-display-semibold":          "assets/fonts/SF-Pro-Display-Semibold.otf",
+	"font-sf-pro-display-semibold-italic":   "assets/fonts/SF-Pro-Display-SemiboldItalic.otf",
+	"font-sf-pro-display-bold":              "assets/fonts/SF-Pro-Display-Bold.otf",
+	"font-sf-pro-display-bold-italic":       "assets/fonts/SF-Pro-Display-BoldItalic.otf",
+	"font-sf-pro-display-heavy":             "assets/fonts/SF-Pro-Display-Heavy.otf",
+	"font-sf-pro-display-heavy-italic":      "assets/fonts/SF-Pro-Display-HeavyItalic.otf",
+	"font-sf-pro-display-black":             "assets/fonts/SF-Pro-Display-Black.otf",
+	"font-sf-pro-display-black-italic":      "assets/fonts/SF-Pro-Display-BlackItalic.otf",
 }
 
 var (

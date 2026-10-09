@@ -173,6 +173,7 @@ const (
 	overlayItemPaddingUS          int64 = 2_000_000
 	shortPhraseAnimationPaddingUS int64 = 2_000_000
 	maxOverlayItemDurationUS      int64 = 5_000_000
+	mapCameraShotDurationUS       int64 = 8_000_000
 	maxCompositeOverlayDurationUS int64 = 8_000_000
 )
 
@@ -210,10 +211,11 @@ func separateOverlayItemPlan(parent capoverlay.OverlayPlan, source capoverlay.Ov
 		source.MotionParams["enter_frames"] = enterFrames + extraFrames
 	}
 	if source.Map != nil {
-		// Map fly-throughs are a five-second production shot. The enclosing
-		// spoken interval can be much shorter, but must not truncate the camera
-		// animation to a sub-second map flash.
-		targetUS = maxOverlayItemDurationUS
+		// Map shots spend 6.5 seconds on the camera approach, then hold the
+		// destination for 1.5 seconds. The spoken interval can be shorter, but
+		// must not truncate the camera animation or its label read.
+		targetUS = mapCameraShotDurationUS
+		maxDurationUS = mapCameraShotDurationUS
 	}
 	if len(source.ImageLayers) > 0 {
 		// A composite's children carry staggered windows relative to the

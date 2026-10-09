@@ -439,9 +439,11 @@ func BuildPlan(input PlanInput, config PlannerConfig) (OverlayPlan, error) {
 							imageLimit := animationCount(input.AnimationCounts, "entities")
 							if layer.Caption != "" {
 								pool := ImageWithTextMotionPool(animationCount(input.AnimationCounts, "images_with_text", "single_image_with_text", "image_double_with_text", "image_triplet_with_text", "image_four_with_text", "image_five_with_text"))
-								layer.MotionID = selectImageMotion(input.PlanID, "run", imageOrdinal, pool)
+								layer.MotionID = selectImageMotion(input.PlanID, input.VideoID, imageOrdinal, pool)
+								layer.CaptionMotionID = SelectEntityCaptionMotionAt(input.PlanID, input.VideoID, imageOrdinal)
 							} else {
 								layer.MotionID = entityImageMotionAtOffset(imageOrdinal, imageLimit)
+								layer.CaptionMotionID = ""
 							}
 							layer.PresetID = selectImagePreset(input.PlanID, item.SceneID, item.ID+":"+layer.ID)
 							imageOrdinal++
@@ -449,11 +451,15 @@ func BuildPlan(input PlanInput, config PlannerConfig) (OverlayPlan, error) {
 					} else {
 						if item.EntityCaption != "" {
 							pool := ImageWithTextMotionPool(animationCount(input.AnimationCounts, "images_with_text", "single_image_with_text", "entity_text_images"))
-							item.MotionID = selectImageMotion(input.PlanID, "run", imageOrdinal, pool)
+							item.MotionID = selectImageMotion(input.PlanID, input.VideoID, imageOrdinal, pool)
+							item.CaptionMotionID = SelectEntityCaptionMotionAt(input.PlanID, input.VideoID, imageOrdinal)
+							if entityStyleSelector != "" {
+								item.EntityStyleID = entityStyleSelector
+							}
 						} else {
 							item.MotionID = entityImageMotionAtOffset(imageOrdinal, animationCount(input.AnimationCounts, "entities"))
+							item.CaptionMotionID = ""
 						}
-						item.CaptionMotionID = entityCaptionMotionAtOffset(imageOrdinal, animationCount(input.AnimationCounts, "entity_caption", "entity_captions"))
 						imageOrdinal++
 					}
 				}
@@ -511,10 +517,24 @@ func BuildPlan(input PlanInput, config PlannerConfig) (OverlayPlan, error) {
 		switch plan.Items[i].Kind {
 		case "text_phrase":
 			if len(input.PhraseMotions) == 0 {
-				// Generated documentary copy uses the small, neutral Apple-clean
-				// pool. The full catalog remains available to explicit plans, but
-				// automatic selection must not inject chromatic/glitch effects.
-				plan.Items[i].MotionID = selectMotionFromPool(input.PlanID, "run", "documentary_clean_phrase", phraseOrdinal, documentaryCleanPhraseMotionCandidates)
+				motionSeed := input.PlanID
+				if input.VideoID != "" {
+					motionSeed += ":" + input.VideoID
+				}
+				words := len(strings.Fields(plan.Items[i].Text))
+				switch {
+				case EditorialSectionForItem(plan.Items[i]) == EditorialSectionShortPhrase:
+					plan.Items[i].MotionID = selectShortPhraseMotionLimited(motionSeed, "run", phraseOrdinal, words, nil, animationCount(input.AnimationCounts, "short_important_phrase", "short_phrases"))
+				case input.HeavyPhrasePriority > 0 && itemPriority(plan.Items[i]) >= input.HeavyPhrasePriority:
+					plan.Items[i].MotionID = selectHeavyPhraseMotionLimited(motionSeed, "run", heavyOrdinal, nil, animationCount(input.AnimationCounts, "important_phrase", "important_phrases"))
+					heavyOrdinal++
+				case words >= 6:
+					plan.Items[i].MotionID = selectLongPhraseMotionLimited(motionSeed, "run", phraseOrdinal, nil, animationCount(input.AnimationCounts, "important_phrase", "important_phrases"))
+				default:
+					// Ordinary generated phrases walk the entire certified catalog;
+					// only an explicit AnimationCounts value narrows this pool.
+					plan.Items[i].MotionID = selectPhraseMotionLimited(motionSeed, "run", phraseOrdinal, nil, animationCount(input.AnimationCounts, "important_phrase", "important_phrases"))
+				}
 				phraseOrdinal++
 				continue
 			}
@@ -539,21 +559,23 @@ func BuildPlan(input PlanInput, config PlannerConfig) (OverlayPlan, error) {
 				if plan.Items[i].Kind == "entity_image" {
 					if plan.Items[i].EntityCaption != "" {
 						pool := ImageWithTextMotionPool(animationCount(input.AnimationCounts, "images_with_text", "single_image_with_text", "entity_text_images"))
-						plan.Items[i].MotionID = selectImageMotion(input.PlanID, "run", imageOrdinal, pool)
+						plan.Items[i].MotionID = selectImageMotion(input.PlanID, input.VideoID, imageOrdinal, pool)
+						plan.Items[i].CaptionMotionID = SelectEntityCaptionMotionAt(input.PlanID, input.VideoID, imageOrdinal)
 					} else {
 						plan.Items[i].MotionID = entityImageMotionAtOffset(imageOrdinal, animationCount(input.AnimationCounts, "entities"))
 					}
 				} else {
 					if plan.Items[i].EntityCaption != "" {
 						pool := ImageWithTextMotionPool(animationCount(input.AnimationCounts, "images_with_text", "single_image_with_text", "entity_text_images"))
-						plan.Items[i].MotionID = selectImageMotion(input.PlanID, "run", imageOrdinal, pool)
+						plan.Items[i].MotionID = selectImageMotion(input.PlanID, input.VideoID, imageOrdinal, pool)
 					} else {
-						plan.Items[i].MotionID = selectImageMotion(input.PlanID, "run", imageOrdinal, input.ImageMotions)
+						plan.Items[i].MotionID = selectImageMotion(input.PlanID, input.VideoID, imageOrdinal, input.ImageMotions)
 					}
 				}
-				if entityStyleSelector != "" && plan.Items[i].Kind == "entity_image" && plan.Items[i].EntityCaption != "" && len(plan.Items[i].AssetRefs) > 0 {
-					plan.Items[i].CaptionMotionID = entityCaptionMotionAtOffset(imageOrdinal, animationCount(input.AnimationCounts, "entity_caption", "entity_captions"))
-					plan.Items[i].EntityStyleID = entityStyleSelector
+				if plan.Items[i].Kind == "entity_image" && plan.Items[i].EntityCaption != "" && len(plan.Items[i].AssetRefs) > 0 {
+					if entityStyleSelector != "" {
+						plan.Items[i].EntityStyleID = entityStyleSelector
+					}
 				}
 				imageOrdinal++
 			}

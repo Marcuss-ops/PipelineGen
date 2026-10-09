@@ -255,39 +255,24 @@ func capEntityImageOverlays(items []capabilityoverlay.OverlayItem, max int, perS
 		return items
 	}
 	seen := make(map[string]struct{}, max)
-	sceneCounts := make(map[string]int)
 	out := make([]capabilityoverlay.OverlayItem, 0, len(items))
 	for _, item := range items {
 		if item.Kind != string(capabilityoverlay.KindEntityImage) {
 			out = append(out, item)
 			continue
 		}
-		if len(perScene) > 0 && perScene[0] && strings.TrimSpace(item.SceneID) != "" {
-			sceneID := strings.TrimSpace(item.SceneID)
-			if sceneCounts[sceneID] >= 1 {
-				continue // per_scene mode's contract is exactly one image per scene.
-			}
-			identity := sceneID
-			if item.EntityRef != nil && strings.TrimSpace(item.EntityRef.CanonicalEntityID) != "" {
-				identity += "::" + strings.TrimSpace(item.EntityRef.CanonicalEntityID)
-			} else {
-				identity += "::" + strings.TrimSpace(item.EntityID)
-			}
-			if _, exists := seen[identity]; exists || len(seen) >= max {
-				continue
-			}
-			seen[identity] = struct{}{}
-			sceneCounts[sceneID]++
-			out = append(out, item)
-			continue
-		}
-		// EntityID is occurrence-scoped in some planner paths. For the
-		// run-level image budget the identity must be semantic, otherwise the
-		// same person mentioned in multiple scenes consumes multiple image
-		// slots and the same portrait is rendered repeatedly.
+		// Image extraction can assign occurrence or scene scoped IDs. Prefer
+		// canonical type/name so an entity is shown only once in the whole video,
+		// even when per-scene image binding is enabled.
 		identity := ""
 		if item.EntityRef != nil {
 			identity = strings.TrimSpace(item.EntityRef.CanonicalEntityID)
+			if separator := strings.Index(identity, "::"); separator >= 0 {
+				identity = identity[separator+2:]
+			}
+			if identity == "" && strings.TrimSpace(item.EntityRef.Name) != "" && strings.TrimSpace(item.EntityRef.Type) != "" {
+				identity = capabilityentities.StableEntityID(item.EntityRef.Type, item.EntityRef.Name)
+			}
 			if identity == "" {
 				identity = strings.TrimSpace(item.EntityRef.EntityID)
 			}

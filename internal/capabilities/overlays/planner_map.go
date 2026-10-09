@@ -24,7 +24,7 @@ func mapMotionIDs() []string {
 const (
 	mapPinColor                = "#FF3B30"
 	mapPinRadiusPX             = 10.0
-	mapCameraDurationUS  int64 = 5_000_000
+	mapCameraDurationUS  int64 = 8_000_000
 	mapPinReadDurationUS int64 = 1_000_000
 	mapCameraLeadUS      int64 = 2_000_000
 )
@@ -331,10 +331,11 @@ func mapItemsForScene(sceneID string, plans []MapPlan, canvasWidth, canvasHeight
 				From: from, To: to,
 				StartZoom: float64(entry.plate.Zoom), EndZoom: float64(lods[len(lods)-1].Zoom),
 			}
-			// Give the camera route a full five seconds on screen. A map tied
-			// only to the short spoken duration of one place rendered as a
-			// brief flash, even though its camera move was designed as an
-			// animation.
+		}
+		// Every dynamic map gets the same minimum presentation duration,
+		// including a stationary single-place fly-to with only one plate.
+		// Otherwise its camera treatment would be cut off by a short mention.
+		if durationUS < mapCameraDurationUS {
 			durationUS = mapCameraDurationUS
 		}
 		// Reserve a readable one-second slot for every location after the

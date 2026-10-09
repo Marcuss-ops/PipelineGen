@@ -3,6 +3,7 @@ package overlays
 import (
 	"crypto/rand"
 	"math/big"
+	"strings"
 )
 
 func selectWordPreset(jobID, sceneID, itemID string) string {
@@ -245,7 +246,7 @@ func selectImageMotion(jobID, sceneID string, ordinal int, pool []string) string
 	if len(candidates) == 0 {
 		return ""
 	}
-	seeded := selectPreset(jobID, sceneID, sceneID, "image_motion", candidates)
+	seeded := selectPreset(jobID, sceneID, sceneID, "image_motion:"+strings.Join(candidates, ","), candidates)
 	start := 0
 	for i, candidate := range candidates {
 		if candidate == seeded {

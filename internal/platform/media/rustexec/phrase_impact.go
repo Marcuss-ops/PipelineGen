@@ -25,8 +25,9 @@ type phraseImpactResponse struct {
 		BulletPoints []struct {
 			Text string `json:"text"`
 		} `json:"bullet_points"`
-		HeavySentences []scriptpkg.ImportantSentence `json:"heavy_sentences"`
-		Timings        scriptpkg.PhraseImpactTimings `json:"timings"`
+		HeavySentences  []scriptpkg.ImportantSentence `json:"heavy_sentences"`
+		ChapterManifest scriptpkg.ChapterManifest     `json:"chapter_manifest"`
+		Timings         scriptpkg.PhraseImpactTimings `json:"timings"`
 	} `json:"result"`
 	Sentences []struct {
 		Text      string `json:"text"`
@@ -52,9 +53,15 @@ func NewPhraseImpactAnalyzer(binary string, runner RustProcessRunner, embedder p
 	return &PhraseImpactAnalyzer{binary: binary, runner: runner, embedder: embedder}
 }
 
-// Analyze uses the canonical E5 passage vectors when available; without E5 it
-// explicitly uses the bounded lexical scoring mode within Rust.
+// Analyze preserves the historical API for callers that have no scene context.
 func (a *PhraseImpactAnalyzer) Analyze(ctx context.Context, transcript, language string) (scriptpkg.PhraseImpactResult, error) {
+	return a.AnalyzeWithContext(ctx, transcript, language, nil, nil)
+}
+
+// AnalyzeWithContext uses the canonical E5 passage vectors when available;
+// without E5 it explicitly uses the bounded lexical scoring mode within Rust.
+// Scene and topic metadata is optional editorial context for chapter analysis.
+func (a *PhraseImpactAnalyzer) AnalyzeWithContext(ctx context.Context, transcript, language string, scenes, topics []string) (scriptpkg.PhraseImpactResult, error) {
 	transcript = strings.TrimSpace(transcript)
 	if transcript == "" {
 		return scriptpkg.PhraseImpactResult{}, nil
@@ -62,10 +69,25 @@ func (a *PhraseImpactAnalyzer) Analyze(ctx context.Context, transcript, language
 	if a == nil || a.runner == nil || strings.TrimSpace(a.binary) == "" {
 		return scriptpkg.PhraseImpactResult{}, fmt.Errorf("phrase-impact Rust worker is not configured")
 	}
+	chapterOptions := map[string]any{
+		"profile_version":    "segmentation.v1",
+		"min_sentences":      5,
+		"max_sentences":      36,
+		"min_words":          90,
+		"context_sentences":  3,
+		"semantic_weight":    1.0,
+		"lexical_weight":     1.0,
+		"scene_weight":       0.2,
+		"evidence_weight":    1.0,
+		"complexity_penalty": 1.0,
+		"bullet_count":       3,
+	}
 	request := map[string]any{
 		"transcript": transcript, "language": strings.TrimSpace(language),
 		"embeddings": [][]float32{}, "lexical_only": true,
-		"options": map[string]any{"summary_length": "medium", "bullet_count": 5, "min_heavy": 3, "max_heavy": 15},
+		"scenes": scenes, "scene_topics": topics,
+		"chapter_options": chapterOptions,
+		"options":         map[string]any{"summary_length": "medium", "bullet_count": 5, "min_heavy": 3, "max_heavy": 15},
 	}
 	if a.embedder != nil {
 		started := time.Now()
@@ -122,7 +144,7 @@ func (a *PhraseImpactAnalyzer) Analyze(ctx context.Context, transcript, language
 	if !response.OK {
 		return scriptpkg.PhraseImpactResult{}, fmt.Errorf("phrase-impact Rust analysis: %s", response.Error)
 	}
-	result := scriptpkg.PhraseImpactResult{Summary: response.Result.Summary}
+	result := scriptpkg.PhraseImpactResult{Summary: response.Result.Summary, ChapterManifest: response.Result.ChapterManifest}
 	for _, bullet := range response.Result.BulletPoints {
 		result.BulletPoints = append(result.BulletPoints, bullet.Text)
 	}

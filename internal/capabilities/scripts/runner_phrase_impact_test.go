@@ -20,17 +20,21 @@ import (
 )
 
 type stubPhraseImpactAnalyzer struct {
-	result   scriptpkg.PhraseImpactResult
-	err      error
-	calls    int
-	lastText string
-	lastLang string
+	result     scriptpkg.PhraseImpactResult
+	err        error
+	calls      int
+	lastText   string
+	lastLang   string
+	lastScenes []string
+	lastTopics []string
 }
 
-func (s *stubPhraseImpactAnalyzer) Analyze(_ context.Context, transcript, language string) (scriptpkg.PhraseImpactResult, error) {
+func (s *stubPhraseImpactAnalyzer) AnalyzeWithContext(_ context.Context, transcript, language string, scenes, topics []string) (scriptpkg.PhraseImpactResult, error) {
 	s.calls++
 	s.lastText = transcript
 	s.lastLang = language
+	s.lastScenes = append([]string(nil), scenes...)
+	s.lastTopics = append([]string(nil), topics...)
 	if s.err != nil {
 		return scriptpkg.PhraseImpactResult{}, s.err
 	}
@@ -48,6 +52,7 @@ func TestRunnerPersistsExtractiveSummaryOnTheResult(t *testing.T) {
 		HeavySentences: []scriptpkg.ImportantSentence{
 			{Index: 0, Text: "First scene text", Importance: 0.93},
 		},
+		ChapterManifest: scriptpkg.ChapterManifest{SchemaVersion: "chapter_manifest.v1", Chapters: []scriptpkg.ChapterManifestEntry{{Title: "Scene topic", TitleSource: "scene_topic", StartSentence: 0, EndSentence: 1, Bullets: []scriptpkg.ChapterBullet{{StartSentence: 0, EndSentence: 1, Text: "First scene text"}}}}},
 	}}
 	runner.SetPhraseImpactAnalyzer(analyzer)
 
@@ -69,6 +74,8 @@ func TestRunnerPersistsExtractiveSummaryOnTheResult(t *testing.T) {
 	assert.Equal(t, []string{"Punto uno", "Punto due"}, final.Result.BulletPoints)
 	require.Len(t, final.Result.HeavySentences, 1)
 	assert.Equal(t, "First scene text", final.Result.HeavySentences[0].Text)
+	require.NotNil(t, final.Result.ChapterManifest)
+	assert.Equal(t, "chapter_manifest.v1", final.Result.ChapterManifest.SchemaVersion)
 
 	// The editorial summary must never leak into the rendered narration.
 	assert.Equal(t, "First scene text\n\nSecond scene text\n\nThird scene text", final.Result.Output.Text)

@@ -35,9 +35,10 @@ type GenerateResult struct {
 
 	// Summary and ranked editorial takeaways are extractive data products from
 	// the narration. They do not alter scenes, TTS, or rendered captions.
-	Summary        string                        `json:"summary,omitempty"`
-	BulletPoints   []string                      `json:"bullet_points,omitempty"`
-	HeavySentences []scriptpkg.ImportantSentence `json:"heavy_sentences,omitempty"`
+	Summary         string                        `json:"summary,omitempty"`
+	BulletPoints    []string                      `json:"bullet_points,omitempty"`
+	HeavySentences  []scriptpkg.ImportantSentence `json:"heavy_sentences,omitempty"`
+	ChapterManifest *scriptpkg.ChapterManifest    `json:"chapter_manifest,omitempty"`
 
 	// Segments is the compatibility projection of the canonical VidRush
 	// enrichment results. Each entry preserves insights.entities for legacy
@@ -251,7 +252,7 @@ type PhraseImpactTimings = scriptpkg.PhraseImpactTimings
 // Nil keeps a generation run available while explicitly omitting the optional
 // NLP data products.
 type PhraseImpactAnalyzer interface {
-	Analyze(context.Context, string, string) (scriptpkg.PhraseImpactResult, error)
+	AnalyzeWithContext(context.Context, string, string, []string, []string) (scriptpkg.PhraseImpactResult, error)
 }
 
 // SetPhraseImpactAnalyzer wires the extractive summary engine. Nil keeps a

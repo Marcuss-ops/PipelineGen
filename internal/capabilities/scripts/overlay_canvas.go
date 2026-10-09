@@ -51,7 +51,10 @@ type OverlayCanvasSpec struct {
 	// this render. It is caller-supplied (request max_phrase_overlays); zero
 	// keeps the certified default (capabilityoverlay.MaxPhraseOverlaysPerRun).
 	MaxPhraseOverlays int
-	MapsOnly          bool
+	// MaxMapOverlays is the caller-selected run-level cap; zero keeps the
+	// certified default.
+	MaxMapOverlays int
+	MapsOnly       bool
 	// MaxImageOverlays overrides the run-level image ceiling; zero keeps the
 	// certified default (capabilityoverlay.MaxImageOverlaysPerRun).
 	MaxImageOverlays int

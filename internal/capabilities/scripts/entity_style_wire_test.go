@@ -57,8 +57,8 @@ func TestAssignEntityImageMotionsStampsTheStyleSelector(t *testing.T) {
 		{ID: "silent", Kind: string(capabilityoverlay.KindEntityImage), AssetRefs: []capabilityoverlay.OverlayAssetRef{{AssetID: "b"}}},
 	}
 	assignEntityImageMotions(items, 0, 1920, 1080, "")
-	if items[0].EntityStyleID != capabilityoverlay.IdentityEntityStyleSelector {
-		t.Fatalf("portrait style = %q, want the certified random selector", items[0].EntityStyleID)
+	if items[0].EntityStyleID != "" {
+		t.Fatalf("default portrait style = %q, want no implicit composition selector", items[0].EntityStyleID)
 	}
 	if items[1].EntityStyleID != "" {
 		t.Fatal("caption-less entity image must not carry entity_style_id (renderer precondition)")

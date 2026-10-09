@@ -7,34 +7,40 @@ import (
 	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
 )
 
-// Generated entity portraits and their captions rotate over the full
-// registered ChrononTemplate catalogs.
-//
-// Pool sizes are literals so this gate fails if either connected catalog drifts.
+// Generated entity portraits and their captions rotate over the certified
+// automatic-runtime subcatalogs. Pool sizes are literal drift gates because
+// they define what the planner emits across the producer→renderer boundary.
 func TestAssignEntityImageMotionsUsesCertifiedCatalog(t *testing.T) {
-	const wantImages, wantCaptions = 32, 43
+	const wantImages, wantCaptions = 5, 56
 
 	certified := capabilityoverlay.CertifiedEntityImageMotions()
 	captionCertified := capabilityoverlay.CertifiedEntityCaptionMotions()
+	certifiedCaptionSet := make(map[string]bool, len(captionCertified))
 	if len(captionCertified) != wantCaptions {
 		t.Fatalf("generated entity caption catalog has %d motions, want %d", len(captionCertified), wantCaptions)
 	}
 	if len(certified) != wantImages {
 		t.Fatalf("generated entity image catalog has %d motions, want %d", len(certified), wantImages)
 	}
+	for _, id := range captionCertified {
+		if certifiedCaptionSet[id] {
+			t.Fatalf("caption catalog contains duplicate motion %q", id)
+		}
+		certifiedCaptionSet[id] = true
+	}
 
-	// Enough single portraits to exhaust both catalogs, plus one composite pair
-	// whose two children must keep independent motions.
+	// Enough captioned portraits to exhaust both bounded image and broad
+	// caption catalogs, plus one composite pair whose children rotate separately.
 	portraitCount := wantCaptions - 2
 	items := make([]capabilityoverlay.OverlayItem, 0, portraitCount+1)
 	for i := 0; i < portraitCount; i++ {
 		items = append(items, capabilityoverlay.OverlayItem{
-			ID: fmt.Sprintf("portrait-%d", i), Kind: string(capabilityoverlay.KindEntityImage),
+			ID: fmt.Sprintf("portrait-%d", i), Kind: string(capabilityoverlay.KindEntityImage), EntityCaption: fmt.Sprintf("Person %d", i),
 		})
 	}
 	items = append(items, capabilityoverlay.OverlayItem{
 		ID: "pair", Kind: string(capabilityoverlay.KindEntityImage),
-		ImageLayers: []capabilityoverlay.OverlayImageLayer{{ID: "a"}, {ID: "b"}},
+		ImageLayers: []capabilityoverlay.OverlayImageLayer{{ID: "a", Caption: "Person A"}, {ID: "b", Caption: "Person B"}},
 	})
 	assignEntityImageMotions(items, 0, 1920, 1080, "")
 
@@ -54,6 +60,10 @@ func TestAssignEntityImageMotionsUsesCertifiedCatalog(t *testing.T) {
 				if layer.CaptionMotionID == "" || !containsMotionID(captionCertified, layer.CaptionMotionID) {
 					t.Fatalf("composite caption motion %q is not certified", layer.CaptionMotionID)
 				}
+				wantCaption := captionCertified[len(captionSeen)]
+				if layer.CaptionMotionID != wantCaption {
+					t.Fatalf("composite caption motion %q, want no-repeat catalog motion %q", layer.CaptionMotionID, wantCaption)
+				}
 				captionSeen[layer.CaptionMotionID] = true
 				composite[layer.MotionID] = true
 			}
@@ -64,6 +74,10 @@ func TestAssignEntityImageMotionsUsesCertifiedCatalog(t *testing.T) {
 		}
 		if !containsMotionID(captionCertified, item.CaptionMotionID) {
 			t.Fatalf("entity image %q caption motion %q is outside the certified catalog", item.ID, item.CaptionMotionID)
+		}
+		wantCaption := captionCertified[len(captionSeen)]
+		if item.CaptionMotionID != wantCaption {
+			t.Fatalf("entity caption motion %q, want no-repeat catalog motion %q", item.CaptionMotionID, wantCaption)
 		}
 		captionSeen[item.CaptionMotionID] = true
 		if item.MotionID == "" {
@@ -97,6 +111,9 @@ func TestAssignEntityImageMotionsUsesSeparatePoolForImagesWithText(t *testing.T)
 	for i := 0; i < 2; i++ {
 		if items[i].MotionID == "" || !containsMotionID(textPool, items[i].MotionID) {
 			t.Fatalf("image with text %q got uncertified motion %q", items[i].ID, items[i].MotionID)
+		}
+		if items[i].CaptionMotionID == "" || !containsMotionID(capabilityoverlay.CertifiedEntityCaptionMotions(), items[i].CaptionMotionID) {
+			t.Fatalf("image with text %q got uncertified caption motion %q", items[i].ID, items[i].CaptionMotionID)
 		}
 	}
 	if items[0].MotionID == items[1].MotionID {

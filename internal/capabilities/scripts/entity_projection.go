@@ -372,24 +372,28 @@ func entityImageLayerParams(width, height, count, slot int) map[string]any {
 // spatial compositions are never added implicitly to runtime renders.
 func assignEntityImageMotions(items []capabilityoverlay.OverlayItem, offset, width, height int, entityStyleID string) {
 	imageOrdinal, captionOrdinal := 0, 0
+	captionMotionAt := func(ordinal int) string {
+		return capabilityoverlay.EntityCaptionMotionAtOffset(offset, ordinal)
+	}
 	pinned := strings.TrimSpace(entityStyleID)
-	captionMotion := func() string {
-		motion := capabilityoverlay.EntityCaptionMotionAtOffset(offset, captionOrdinal)
-		captionOrdinal++
+	imageMotion := func() string {
+		motion := capabilityoverlay.EntityImageMotionAtOffset(offset, imageOrdinal)
+		imageOrdinal++
 		return motion
 	}
 	for itemIndex := range items {
 		item := &items[itemIndex]
 		if item.Kind == "image" && strings.TrimSpace(item.EntityCaption) != "" {
-			item.MotionID = capabilityoverlay.ImageWithTextMotionAtOffset(offset, imageOrdinal, 0)
+			item.MotionID = imageMotion()
+			item.CaptionMotionID = captionMotionAt(captionOrdinal)
+			captionOrdinal++
 			if pinned != "" {
 				item.EntityStyleID = pinned
 			}
-			// The renderer's entity-style image path also requires an explicit
-			// image-fit preset; adding the style selector alone yields a plan the
-			// semantic compiler correctly rejects at runtime.
 			item.ImagePresetID = "image_scale_in"
-			imageOrdinal++
+			continue
+		}
+		if item.Kind == "image" {
 			continue
 		}
 		if item.Kind != string(capabilityoverlay.KindEntityImage) {
@@ -398,27 +402,27 @@ func assignEntityImageMotions(items []capabilityoverlay.OverlayItem, offset, wid
 		if len(item.ImageLayers) > 0 {
 			for layerIndex := range item.ImageLayers {
 				layer := &item.ImageLayers[layerIndex]
+				layer.MotionID = imageMotion()
 				if strings.TrimSpace(layer.Caption) != "" {
-					layer.MotionID = capabilityoverlay.ImageWithTextMotionAtOffset(offset, imageOrdinal, 0)
+					layer.CaptionMotionID = captionMotionAt(captionOrdinal)
+					captionOrdinal++
 				} else {
-					layer.MotionID = capabilityoverlay.EntityImageMotionAtOffset(offset, imageOrdinal)
+					layer.CaptionMotionID = ""
 				}
 				layer.MotionParams = map[string]any{"enter_frames": 8}
-				layer.CaptionMotionID = captionMotion()
-				imageOrdinal++
 			}
 			continue
 		}
+		item.MotionID = imageMotion()
 		if strings.TrimSpace(item.EntityCaption) != "" {
-			item.MotionID = capabilityoverlay.ImageWithTextMotionAtOffset(offset, imageOrdinal, 0)
+			item.CaptionMotionID = captionMotionAt(captionOrdinal)
+			captionOrdinal++
 			item.EntityStyleID = pinned
 		} else {
-			item.MotionID = capabilityoverlay.EntityImageMotionAtOffset(offset, imageOrdinal)
+			item.CaptionMotionID = ""
 		}
 		item.MotionParams = map[string]any{"enter_frames": 8}
-		item.CaptionMotionID = captionMotion()
 		item.Params = capabilityoverlay.EntityImageParams(width, height)
-		imageOrdinal++
 	}
 }
 
@@ -475,66 +479,4 @@ func safeEntityID(value string) string {
 		}
 	}
 	return strings.Trim(b.String(), "-")
-}
-
-// attachGroundedCaptionsToSceneImages preserves a grounded entity name on a
-// scene image when VidRush resolved that entity to the same image bytes. The
-// caption is linked by the content hash, so an unrelated scene entity can
-// never be stamped onto the image.
-func attachGroundedCaptionsToSceneImages(items []capabilityoverlay.OverlayItem, scenes []Scene, runID string) {
-	type groundedCaption struct {
-		name    string
-		sceneID string
-	}
-	bySceneAndHash := make(map[string]groundedCaption)
-	for _, scene := range scenes {
-		if scene.Annotations == nil {
-			continue
-		}
-		entities := append(append([]scriptpkg.AnnotatedEntity(nil), scene.Annotations.PrimaryEntities...), scene.Annotations.SecondaryEntities...)
-		for _, entity := range entities {
-			if entity.Image == nil {
-				continue
-			}
-			name := strings.TrimSpace(entity.Text)
-			if name == "" {
-				name = strings.TrimSpace(entity.CanonicalName)
-			}
-			hash := strings.ToLower(strings.TrimSpace(entity.Image.SHA256))
-			if name == "" || hash == "" {
-				continue
-			}
-			key := scene.ID + "\x00" + hash
-			if _, exists := bySceneAndHash[key]; !exists {
-				bySceneAndHash[key] = groundedCaption{name: name, sceneID: scene.ID}
-			}
-		}
-	}
-
-	ordinal := 0
-	for index := range items {
-		item := &items[index]
-		if item.Kind != "image" || strings.TrimSpace(item.EntityCaption) != "" {
-			continue
-		}
-		var match groundedCaption
-		for _, ref := range item.AssetRefs {
-			for _, digest := range []string{ref.SHA256, ref.AssetID} {
-				if caption, ok := bySceneAndHash[item.SceneID+"\x00"+strings.ToLower(strings.TrimSpace(digest))]; ok {
-					match = caption
-					break
-				}
-			}
-			if match.name != "" {
-				break
-			}
-		}
-		if match.name == "" {
-			continue
-		}
-		item.EntityCaption = match.name
-		item.MotionID = capabilityoverlay.ImageWithTextMotionAtOffset(0, ordinal, 5)
-		item.CaptionMotionID = capabilityoverlay.SelectEntityCaptionMotionAt(runID, match.sceneID, ordinal)
-		ordinal++
-	}
 }

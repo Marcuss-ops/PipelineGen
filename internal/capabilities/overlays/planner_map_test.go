@@ -100,8 +100,8 @@ func groundedCandidate(t *testing.T, entityID, label string, lat, lon float64, s
 
 // TestBuildPlanEmitsMapItemFromCertifiedPlate certifies the emission contract:
 // a grounded place covered by a certified plate becomes exactly one map item
-// carrying the plate's georeference, provenance, content-addressed raster and
-// the occurrence's audio window.
+// carrying the plate's georeference, provenance and content-addressed raster;
+// the map stays visible for its camera treatment even when the mention is brief.
 func TestBuildPlanEmitsMapItemFromCertifiedPlate(t *testing.T) {
 	plate := testMapPlate(t, "plate-rome", romeLat, romeLon, mapTestWidth, mapTestHeight)
 	scene := SceneInput{
@@ -129,12 +129,12 @@ func TestBuildPlanEmitsMapItemFromCertifiedPlate(t *testing.T) {
 	if item.SceneID != "scene-1" {
 		t.Fatalf("map item scene = %q, want scene-1", item.SceneID)
 	}
-	// The item window is the grounded occurrence window, not a guess.
-	if item.StartUS != 1_000_000 || item.DurationUS != 2_000_000 {
-		t.Fatalf("map item window = %d+%d, want 1000000+2000000", item.StartUS, item.DurationUS)
+	// The map keeps its full camera presentation after the spoken occurrence.
+	if item.StartUS != 1_000_000 || item.DurationUS != mapCameraDurationUS {
+		t.Fatalf("map item window = %d+%d, want 1000000+%d", item.StartUS, item.DurationUS, mapCameraDurationUS)
 	}
-	if item.StartMs != 1000 || item.EndMs != 3000 {
-		t.Fatalf("map item ms window = %d..%d, want 1000..3000", item.StartMs, item.EndMs)
+	if item.StartMs != 1000 || item.EndMs != 9000 {
+		t.Fatalf("map item ms window = %d..%d, want 1000..9000", item.StartMs, item.EndMs)
 	}
 	if item.Map == nil {
 		t.Fatal("map item carries no map declaration")
@@ -259,9 +259,9 @@ func TestBuildPlanGroupsOnePlateIntoOneMapWithDeterministicPins(t *testing.T) {
 	if item.Map.Pins[0].ID != "city:rome" || item.Map.Pins[1].ID != "city:zagarolo" {
 		t.Fatalf("pins are not in stable-id order: %q, %q", item.Map.Pins[0].ID, item.Map.Pins[1].ID)
 	}
-	// The item window covers the union of the grounded occurrences.
-	if item.StartUS != 1_000_000 || item.DurationUS != 2_000_000 {
-		t.Fatalf("map window = %d+%d, want the union 1000000+2000000", item.StartUS, item.DurationUS)
+	// The longer camera presentation contains the full union of grounded occurrences.
+	if item.StartUS != 1_000_000 || item.DurationUS != mapCameraDurationUS {
+		t.Fatalf("map window = %d+%d, want 1000000+%d", item.StartUS, item.DurationUS, mapCameraDurationUS)
 	}
 }
 

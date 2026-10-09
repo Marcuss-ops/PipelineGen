@@ -107,17 +107,40 @@ var (
 		"image_slide_left_reveal",
 		"image_slide_right_reveal",
 	}
-	// Image cards with captions use the same restrained GPU-safe reveal set as
-	// plain entity portraits. The former full catalog included perspective,
-	// collage and EffectStack recipes that fail the strict native Vulkan lane.
-	generatedImageWithTextMotionCandidates = []string{
-		"image_fade_reveal",
-	}
-	// Entity captions can use the authored caption treatments plus compatible
-	// typewriter motions. These all target text layers and are registered in
-	// RenderingGen; glitch and auto-wrap variants stay out of name captions.
+	// Image cards with captions use the same strict-GPU-certified single-layer
+	// image entrance pool as plain entity portraits. Caption motion is selected
+	// independently from ChrononTemplate's dedicated entity_card_v1 family.
+	generatedImageWithTextMotionCandidates = generatedEntityImageMotionCandidates
+	// Entity caption entrances combine the authored caption, typewriter and
+	// entity-card presentation catalogs. Runtime certification exercises each
+	// selected ID through the caption compiler and GPU lane.
 	generatedEntityCaptionMotionCandidates = []string{
-		"text_fade_up",
+		"entity_caption_rise",
+		"entity_depth_caption",
+		"entity_yaw_caption",
+		"entity_split_side",
+		"entity_border_then_caption",
+		"entity_glow_focus",
+		"entity_name_underline",
+		"entity_name_pill",
+		"entity_parallax_caption",
+		"entity_focus_frame",
+		"text_depth_in", "text_fade_up", "text_scale_punch", "text_word_rise", "text_word_stagger", "text_yaw_in",
+		"typewriter_blur_focus", "typewriter_clean", "typewriter_lift", "typewriter_neon", "typewriter_pop",
+		"typewriter_scale_up", "typewriter_slide_in", "typewriter_soft_lift", "typewriter_tracking", "typewriter_glitch",
+		"typewriter_modern_01_monospace_block_cursor", "typewriter_modern_02_kinetic_scramble",
+		"typewriter_modern_03_soft_opacity_ramp", "typewriter_modern_04_character_bounce",
+		"typewriter_modern_05_backspace_correction", "typewriter_modern_06_glow_beam_sweep",
+		"typewriter_modern_07_word_snap", "typewriter_modern_08_mechanical_y_shift",
+		"typewriter_modern_09_highlighter_expansion", "typewriter_modern_10_weight_ramp",
+		"typewriter_modern_11_dynamic_auto_wrap", "typewriter_modern_12_glitch_pop",
+		"typewriter_modern_13_elastic_leading_cursor", "typewriter_modern_14_focal_blur_dissolve",
+		"typewriter_modern_15_paper_punch_stencil",
+		"trump_entity_text_01", "trump_entity_text_02", "trump_entity_text_03",
+		"trump_entity_text_04", "trump_entity_text_05", "trump_entity_text_06",
+		"trump_entity_text_07", "trump_entity_text_08", "trump_entity_text_09",
+		"trump_entity_text_10", "trump_entity_text_11", "trump_entity_text_12",
+		"trump_entity_text_13", "trump_entity_text_14", "trump_entity_text_15",
 	}
 	// Automatic date selection is a curated premium subset of ChrononTemplate's
 	// date_v1 catalog. The remaining authored motions stay available in the
@@ -413,6 +436,34 @@ var (
 		"phrase_apple_clean_28_opacity_cinematic",
 		"phrase_apple_clean_29_opacity_hero_settle",
 		"phrase_apple_clean_30_opacity_clean_apple",
+		// Full phrase Apple-clean inventory: every ID resolves in the runtime
+		// catalog and lowers through its native text-layer motion compiler.
+		"phrase_apple_clean_03_blur_scale_clean",
+		"phrase_apple_clean_04_blur_tracking_drift",
+		"phrase_apple_clean_05_blur_apple_fade",
+		"phrase_apple_clean_06_blur_gravity",
+		"phrase_apple_clean_08_slide_up_spring",
+		"phrase_apple_clean_09_slide_down_catch",
+		"phrase_apple_clean_11_slide_left_ease",
+		"phrase_apple_clean_12_slide_diagonal_pop",
+		"phrase_apple_clean_13_scale_soft_pop",
+		"phrase_apple_clean_14_scale_bounce_clean",
+		"phrase_apple_clean_15_scale_hero_focus",
+		"phrase_apple_clean_16_scale_line_build",
+		"phrase_apple_clean_17_scale_in_place",
+		"phrase_apple_clean_18_scale_card_tilt",
+		"phrase_apple_clean_19_tracking_tighten",
+		"phrase_apple_clean_20_tracking_spread_clean",
+		"phrase_apple_clean_21_tracking_magnetic",
+		"phrase_apple_clean_22_tracking_word_focus",
+		"phrase_apple_clean_23_tracking_precision_lock",
+		"phrase_apple_clean_24_tracking_soft_kinetic",
+		"phrase_apple_clean_26_opacity_depth_push",
+		"phrase_apple_clean_27_opacity_parallax",
+		"phrase_apple_clean_01_blur_soft_reveal",
+		"phrase_apple_clean_02_blur_focus_snap",
+		"phrase_apple_clean_07_slide_up_soft",
+		"phrase_apple_clean_10_slide_from_right_apple",
 		// Long phrases are still allowed to rotate through clearly different
 		// text families; limiting them to Apple fades made every documentary
 		// sentence look identical and hid typewriter / 3D treatments entirely.

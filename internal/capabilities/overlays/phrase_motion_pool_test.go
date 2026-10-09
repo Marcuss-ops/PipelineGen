@@ -248,8 +248,8 @@ func TestBuildPlanDefaultLongPhrasesRotateWithoutRepeating(t *testing.T) {
 	if count != len(longPhrases) {
 		t.Fatalf("planned %d long phrases, want %d", count, len(longPhrases))
 	}
-	if len(seen) != min(5, len(longPhraseMotionCandidates)) {
-		t.Fatalf("default long-phrase pool used %d styles, want the five-style limit", len(seen))
+	if len(seen) != min(len(longPhrases), len(longPhraseMotionCandidates)) {
+		t.Fatalf("default long-phrase pool used %d styles, want up to the complete long-phrase rotation", len(seen))
 	}
 }
 
@@ -505,8 +505,8 @@ func TestRandomImageMotionOffsetRotatesThroughAllCertifiedIDs(t *testing.T) {
 // retry determinism.
 func TestEntityImageMotionRotationCoversTheCertifiedCatalog(t *testing.T) {
 	pool := CertifiedEntityImageMotions()
-	if len(pool) != 32 {
-		t.Fatalf("generated entity-image rotation pool = %d motions, want all 32 certified motions", len(pool))
+	if len(pool) != 5 {
+		t.Fatalf("generated entity-image rotation pool = %d motions, want all 5 restrained certified portrait motions", len(pool))
 	}
 	for i, id := range pool {
 		if !containsString(imageMotionCandidates, id) {
@@ -542,54 +542,8 @@ func TestEntityImageMotionRotationCoversTheCertifiedCatalog(t *testing.T) {
 	}
 }
 
-func TestGeneratedEntityCaptionMotionsMatchCanonical2DCatalog(t *testing.T) {
-	pool := CertifiedEntityCaptionMotions()
-	if len(pool) != 43 {
-		t.Fatalf("generated entity-caption motion pool = %d motions, want 43", len(pool))
-	}
-	poolSet := make(map[string]bool, len(pool))
-	for _, id := range pool {
-		if poolSet[id] {
-			t.Fatalf("caption motion pool contains duplicate %q", id)
-		}
-		poolSet[id] = true
-	}
-	want := map[string]bool{
-		"text_depth_in": true, "text_fade_up": true, "text_scale_punch": true,
-		"text_word_rise": true, "text_word_stagger": true, "text_yaw_in": true,
-	}
-	for index := 1; index <= 15; index++ {
-		want[fmt.Sprintf("trump_entity_text_%02d", index)] = true
-	}
-	for _, id := range []string{
-		"typewriter_blur_focus", "typewriter_clean", "typewriter_lift", "typewriter_neon",
-		"typewriter_pop", "typewriter_scale_up", "typewriter_slide_in", "typewriter_soft_lift", "typewriter_tracking",
-		"typewriter_modern_01_monospace_block_cursor", "typewriter_modern_02_kinetic_scramble",
-		"typewriter_modern_03_soft_opacity_ramp", "typewriter_modern_04_character_bounce",
-		"typewriter_modern_05_backspace_correction", "typewriter_modern_06_glow_beam_sweep",
-		"typewriter_modern_07_word_snap", "typewriter_modern_08_mechanical_y_shift",
-		"typewriter_modern_09_highlighter_expansion", "typewriter_modern_10_weight_ramp",
-		"typewriter_modern_13_elastic_leading_cursor", "typewriter_modern_14_focal_blur_dissolve",
-		"typewriter_modern_15_paper_punch_stencil",
-	} {
-		want[id] = true
-	}
-	if !reflect.DeepEqual(poolSet, want) {
-		t.Fatalf("caption motion pool = %v, want exactly %v", poolSet, want)
-	}
-	for offset := 0; offset < len(pool); offset++ {
-		seen := map[string]bool{}
-		for ordinal := 0; ordinal < len(pool); ordinal++ {
-			id := EntityCaptionMotionAtOffset(offset, ordinal)
-			if !poolSet[id] || seen[id] {
-				t.Fatalf("caption offset %d ordinal %d emitted unknown/repeated motion %q", offset, ordinal, id)
-			}
-			seen[id] = true
-		}
-		if again := EntityCaptionMotionAtOffset(offset, 2); again != EntityCaptionMotionAtOffset(offset, 2) {
-			t.Fatalf("caption motion selection changed across retries: %q", again)
-		}
-	}
+func canonicalSelectableCaptionMotionIDs(t *testing.T) map[string]bool {
+	t.Helper()
 	root, err := os.Getwd()
 	if err != nil {
 		t.Fatal(err)
@@ -619,22 +573,145 @@ func TestGeneratedEntityCaptionMotionsMatchCanonical2DCatalog(t *testing.T) {
 			Category string   `json:"category"`
 			Targets  []string `json:"targets"`
 			Tracks   []struct {
-				Property string `json:"property"`
+				Property  string            `json:"property"`
+				Keyframes []json.RawMessage `json:"keyframes"`
 			} `json:"tracks"`
+			TextAnimators []struct {
+				Properties []struct {
+					Property  string            `json:"property"`
+					Keyframes []json.RawMessage `json:"keyframes"`
+				} `json:"properties"`
+			} `json:"text_animators"`
 		} `json:"motions"`
 	}
 	if err := json.Unmarshal(data, &document); err != nil {
 		t.Fatal(err)
 	}
-	catalogSet := map[string]bool{}
-	for _, motion := range document.Motions {
-		if !containsString(motion.Targets, "text") || !poolSet[motion.ID] {
+	categories := map[string]bool{"entity_caption_v1": true, "trump_entity_text_v1": true, "typewriter": true, "typewriter_glitch": true, "typewriter_modern_v1": true, "entity_card_v1": true}
+	ids := map[string]bool{}
+	for _, definition := range document.Motions {
+		if !categories[definition.Category] || !(containsString(definition.Targets, "text") || containsString(definition.Targets, "entity")) {
 			continue
 		}
-		catalogSet[motion.ID] = true
+		animated := false
+		for _, track := range definition.Tracks {
+			animated = animated || track.Property != "" && len(track.Keyframes) > 0
+		}
+		for _, animator := range definition.TextAnimators {
+			for _, property := range animator.Properties {
+				animated = animated || property.Property != "" && len(property.Keyframes) > 0
+			}
+		}
+		if animated {
+			ids[definition.ID] = true
+		}
+	}
+	return ids
+}
+
+func TestGeneratedEntityCaptionMotionsMatchCanonicalEntityPresentationCatalog(t *testing.T) {
+	pool := CertifiedEntityCaptionMotions()
+	if len(pool) != 56 {
+		t.Fatalf("generated entity-caption motion pool = %d motions, want all 56 certified caption motions", len(pool))
+	}
+	want := canonicalSelectableCaptionMotionIDs(t)
+	poolSet := make(map[string]bool, len(pool))
+	for _, id := range pool {
+		if poolSet[id] {
+			t.Fatalf("caption motion pool contains duplicate %q", id)
+		}
+		poolSet[id] = true
+	}
+	if !reflect.DeepEqual(poolSet, want) {
+		t.Fatalf("caption motion pool = %v, want exact entity_card_v1 catalog %v", poolSet, want)
+	}
+	for offset := 0; offset < len(pool); offset++ {
+		seen := map[string]bool{}
+		for ordinal := 0; ordinal < len(pool); ordinal++ {
+			id := EntityCaptionMotionAtOffset(offset, ordinal)
+			if !poolSet[id] || seen[id] {
+				t.Fatalf("caption offset %d ordinal %d emitted unknown/repeated motion %q", offset, ordinal, id)
+			}
+			seen[id] = true
+		}
+	}
+	catalogIDs := canonicalSelectableCaptionMotionIDs(t)
+	catalogSet := make(map[string]bool, len(catalogIDs))
+	for id := range catalogIDs {
+		catalogSet[id] = true
 	}
 	if !reflect.DeepEqual(catalogSet, poolSet) {
-		t.Fatalf("generated captions %v differ from certified entity-caption catalogs %v", poolSet, catalogSet)
+		t.Fatalf("generated entity captions %v differ from canonical entity_card_v1 %v", poolSet, catalogSet)
+	}
+}
+
+func TestGeneratedEntityImageWithTextPoolsAreDiverseAndDistinct(t *testing.T) {
+	imagePool := CertifiedImageWithTextMotions()
+	captionPool := CertifiedEntityCaptionMotions()
+	if len(imagePool) != len(generatedEntityImageMotionCandidates) || len(imagePool) < 5 {
+		t.Fatalf("image-with-text motions = %v; expected the complete generated entity image pool", imagePool)
+	}
+	if !reflect.DeepEqual(imagePool, generatedEntityImageMotionCandidates) {
+		t.Fatalf("image-with-text pool = %v, want complete entity image pool %v", imagePool, generatedEntityImageMotionCandidates)
+	}
+	if len(captionPool) != 56 {
+		t.Fatalf("entity caption motions = %d, want the complete 56-motion catalog", len(captionPool))
+	}
+	seenImage, seenCaption := map[string]bool{}, map[string]bool{}
+	rotationCount := min(len(imagePool), len(captionPool))
+	for ordinal := 0; ordinal < rotationCount; ordinal++ {
+		image := ImageWithTextMotionAtOffset(0, ordinal, 0)
+		caption := EntityCaptionMotionAtOffset(0, ordinal)
+		if !containsString(imagePool, image) || seenImage[image] {
+			t.Fatalf("image-with-text ordinal %d repeats/outside pool: %q", ordinal, image)
+		}
+		if !containsString(captionPool, caption) || seenCaption[caption] {
+			t.Fatalf("entity-caption ordinal %d repeats/outside entity family: %q", ordinal, caption)
+		}
+		seenImage[image], seenCaption[caption] = true, true
+	}
+	for _, image := range imagePool {
+		if containsString(captionPool, image) {
+			t.Fatalf("image motion %q was incorrectly used as a caption treatment", image)
+		}
+	}
+}
+
+func TestGeneratedEntityCaptionRotationAndCatalogStayInSync(t *testing.T) {
+	pool := CertifiedEntityCaptionMotions()
+	if len(pool) != 56 {
+		t.Fatalf("generated entity-caption motion pool = %d motions, want 56 selectable caption motions", len(pool))
+	}
+	poolSet := make(map[string]bool, len(pool))
+	for _, id := range pool {
+		if poolSet[id] {
+			t.Fatalf("caption motion pool contains duplicate %q", id)
+		}
+		poolSet[id] = true
+	}
+	want := canonicalSelectableCaptionMotionIDs(t)
+	for offset := 0; offset < len(pool); offset++ {
+		seen := map[string]bool{}
+		for ordinal := 0; ordinal < len(pool); ordinal++ {
+			id := EntityCaptionMotionAtOffset(offset, ordinal)
+			if !poolSet[id] || seen[id] {
+				t.Fatalf("caption offset %d ordinal %d emitted unknown/repeated motion %q", offset, ordinal, id)
+			}
+			seen[id] = true
+		}
+		if again := EntityCaptionMotionAtOffset(offset, 2); again != EntityCaptionMotionAtOffset(offset, 2) {
+			t.Fatalf("caption motion selection changed across retries: %q", again)
+		}
+	}
+	catalogSet := make(map[string]bool, len(want))
+	for id := range want {
+		catalogSet[id] = true
+	}
+	if !reflect.DeepEqual(catalogSet, poolSet) {
+		t.Fatalf("generated captions %v differ from certified selectable caption catalog %v", poolSet, catalogSet)
+	}
+	if !reflect.DeepEqual(poolSet, want) {
+		t.Fatalf("generated caption family = %v, want catalog-backed selection %v", poolSet, want)
 	}
 }
 

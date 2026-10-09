@@ -68,6 +68,7 @@ type GenerateRequest struct {
 	// certified default; a positive value is honoured as-is.
 	MaxPhraseOverlays int  `json:"max_phrase_overlays,omitempty"`
 	MapsOnly          bool `json:"maps_only,omitempty"`
+	MaxMapOverlays    int  `json:"max_map_overlays,omitempty"`
 	// MaxImageOverlays is the caller-selected run-level ceiling for all image
 	// overlays, including scene-context and entity-bound imagery.
 	MaxImageOverlays int            `json:"max_image_overlays,omitempty"`

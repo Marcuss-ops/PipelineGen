@@ -8,6 +8,31 @@ import (
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
+// sceneEntityImageHashes returns content hashes already used by entity cards.
+// Generic scene stills must use a different source image so the same portrait
+// is not replayed immediately after its captioned entity card.
+func sceneEntityImageHashes(result *GenerateResult) map[string]struct{} {
+	hashes := make(map[string]struct{})
+	if result == nil {
+		return hashes
+	}
+	for _, scene := range result.Scenes {
+		if scene.Annotations == nil {
+			continue
+		}
+		entities := append(append([]scriptpkg.AnnotatedEntity(nil), scene.Annotations.PrimaryEntities...), scene.Annotations.SecondaryEntities...)
+		for _, entity := range entities {
+			if entity.Image == nil {
+				continue
+			}
+			if hash := strings.ToLower(strings.TrimSpace(entity.Image.SHA256)); hash != "" {
+				hashes[hash] = struct{}{}
+			}
+		}
+	}
+	return hashes
+}
+
 // sceneImageCandidate projects one already-materialized still image onto its
 // owning scene. Scene images are independent of entity cards: recurring people
 // can keep their canonical portrait while each scene gets its own contextual
