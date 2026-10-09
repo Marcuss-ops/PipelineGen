@@ -75,7 +75,7 @@ func renderDynamicMapVideo(ctx context.Context, plan capoverlay.OverlayPlan) (st
 	payload := map[string]any{
 		"width": renderWidth, "height": renderHeight,
 		"fps_num": plan.FPSNum, "fps_den": plan.FPSDen,
-		"duration_us": plan.DurationMS * 1000, "pins": pins,
+		"duration_us": mapItemDurationMS(plan.Items[0], plan.DurationMS) * 1000, "pins": pins,
 		"area_glow_radius_km": plan.Items[0].Map.AreaGlowRadiusKM,
 		"camera_animation":    cameraAnimation,
 		"label_animation":     labelAnimation,
@@ -212,6 +212,13 @@ func renderDynamicMapVideo(ctx context.Context, plan capoverlay.OverlayPlan) (st
 	return outputPath, nil
 }
 
+func mapItemDurationMS(item capoverlay.OverlayItem, fallback int64) int64 {
+	if item.StartMs >= 0 && item.EndMs > item.StartMs {
+		return item.EndMs - item.StartMs
+	}
+	return fallback
+}
+
 // boundedMapRenderOutput caps retained child-process logs while keeping the
 // most recent diagnostics. The machine-readable summary is written separately.
 type boundedMapRenderOutput struct {
@@ -243,14 +250,7 @@ func (b *boundedMapRenderOutput) String() string {
 // it a basemap it cannot draw. TestMapBasemapStylesMatchChrononPalette guards
 // the cross-repository drift.
 func mapBasemapStyles() []string {
-	return []string{
-		"esri_sat",
-		"esri_topo",
-		"esri_natgeo",
-		"esri_ocean",
-		"esri_light",
-		"esri_dark",
-	}
+	return []string{"esri_sat", "esri_topo", "esri_natgeo", "esri_ocean", "esri_light", "esri_dark"}
 }
 
 // mapCameraAnimations and mapLabelAnimations are the certified presentation
@@ -259,15 +259,8 @@ func mapBasemapStyles() []string {
 // and label_animation against MAP_LABEL_ANIMATIONS). They are only candidate
 // lists: the choice among them belongs to the deterministic sampler below.
 var (
-	mapCameraAnimations = []string{
-		// Keep generated maps level and stable: users asked for a clean close
-		// zoom, with no orbit/tilt treatment.
-		"signature_dive", "slow_approach",
-	}
-	mapLabelAnimations = []string{
-		"gentle_fade", "soft_glow", "clean_fade", "word_soft_fade", "slow_fade",
-		"quiet_bloom", "quick_fade", "silky_fade", "subtle_halo", "cinematic_fade",
-	}
+	mapCameraAnimations = []string{"signature_dive", "slow_approach"}
+	mapLabelAnimations  = []string{"gentle_fade", "soft_glow", "clean_fade", "word_soft_fade", "slow_fade", "quiet_bloom", "quick_fade", "silky_fade", "subtle_halo", "cinematic_fade"}
 )
 
 // mapRunSeed is the stable per-run seed for a map's presentation choices. The

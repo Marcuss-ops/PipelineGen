@@ -132,6 +132,9 @@ type GenerationItemV2 struct {
 	// MapsOnly keeps runtime-resolved map overlays and removes all image,
 	// phrase, number, and other editorial overlay items from the render plan.
 	MapsOnly bool `json:"maps_only,omitempty"`
+	// MaxMapOverlays sets the run-level ceiling for runtime map overlays.
+	// Zero keeps the certified default.
+	MaxMapOverlays int `json:"max_map_overlays,omitempty"`
 	// MaxImageOverlays sets the run-level ceiling for image overlays. A
 	// positive value is honored; zero keeps the certified default.
 	MaxImageOverlays int `json:"max_image_overlays,omitempty"`

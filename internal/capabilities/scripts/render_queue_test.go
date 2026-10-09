@@ -176,13 +176,13 @@ func TestBoundedMapRenderOutputRetainsOnlyRecentDiagnostics(t *testing.T) {
 // emit to be certified. It is shared by the render-contract tests below.
 const validDynamicMapTelemetry = `{"schema":"chronon.dynamic-map-telemetry.v1","frames":120,"dimensions":{"width":1920,"height":1080},"fps":{"num":24,"den":1},"tile":{"tile_disk_cache_hits":7,"tile_disk_cache_misses":0,"tile_network_fetches":0,"tile_fallbacks":0,"tile_bytes_downloaded":0,"tile_fetch_ms":12.0,"prefetch_ms":3.0,"prefetch_tiles_requested":7,"prefetch_tiles_memory_hits":0,"late_tile_fetches":0},"plates":{"prepare_ms":4.0,"plate_compose_ms":1.0,"plate_count":11,"plate_bytes":42,"required_tile_count":7,"prefetch_tiles_fetched":7,"prefetch_tiles_memory_hits":0},"gate_ms":2.0,"frame_pipeline_s":3.0,"render_encode_wall_s":3.5,"post_frame_tail_s":0.5,"engine_fallback_frames":0,"output_bytes":8,"video_encoder":"h264_nvenc","gpu_encoder":true,"renderer_wall_s":9.0}`
 
-// TestMapBasemapStylesAreUniqueAndNonEmpty keeps the palette a real choice set:
-// a duplicate id would silently bias the rotation. It also asserts the session
-// anchor (esri_sat) stays available, so the historic look remains reachable.
+// TestMapBasemapStylesAreUniqueAndNonEmpty pins the deterministic basemap
+// candidate catalog: it must remain explicit, non-empty, duplicate-free, and
+// retain the historic satellite default.
 func TestMapBasemapStylesAreUniqueAndNonEmpty(t *testing.T) {
 	styles := mapBasemapStyles()
-	if len(styles) < 2 {
-		t.Fatalf("basemap palette has %d styles; variety needs at least two", len(styles))
+	if len(styles) == 0 {
+		t.Fatal("basemap palette must not be empty")
 	}
 	seen := make(map[string]struct{}, len(styles))
 	for _, style := range styles {
@@ -338,21 +338,23 @@ func TestMapRunSeedPrefersFingerprintThenPlanIdentity(t *testing.T) {
 	}
 }
 
-// TestDeterministicMapStyleIsStableInRangeAndStillVaries keeps both halves of
-// the contract: the selection is a pure function of (seed, channel) and always
-// lands inside its candidate list, while distinct runs still get distinct looks
-// — determinism must not collapse the palette back onto one choice.
-func TestDeterministicMapStyleIsStableInRangeAndStillVaries(t *testing.T) {
+// TestDeterministicMapStyleIsStableInRangeAndMatchesCatalog pins the presentation
+// contract: every selection is stable and in-range; catalogs with one approved
+// treatment stay fixed, while catalogs with alternatives continue to vary.
+func TestDeterministicMapStyleIsStableInRangeAndMatchesCatalog(t *testing.T) {
 	seeds := make([]string, 0, 64)
 	for i := 0; i < 64; i++ {
 		seeds = append(seeds, fmt.Sprintf("run-%02d", i))
 	}
 	for _, channel := range []string{"map_camera", "map_label", "map_basemap"} {
 		options := mapCameraAnimations
+		wantSingle := "signature_dive"
 		if channel == "map_label" {
 			options = mapLabelAnimations
+			wantSingle = "diffuse_city_beacon"
 		} else if channel == "map_basemap" {
 			options = mapBasemapStyles()
+			wantSingle = "esri_sat"
 		}
 		picked := make(map[string]struct{})
 		for _, seed := range seeds {
@@ -372,8 +374,15 @@ func TestDeterministicMapStyleIsStableInRangeAndStillVaries(t *testing.T) {
 			}
 			picked[got] = struct{}{}
 		}
-		if len(picked) < 2 {
-			t.Fatalf("%s resolved to a single value across %d runs (%v); the palette lost its variety", channel, len(seeds), picked)
+		if len(options) == 1 {
+			if len(picked) != 1 {
+				t.Fatalf("%s selected %d values from its single-treatment catalog: %v", channel, len(picked), picked)
+			}
+			if _, ok := picked[wantSingle]; !ok {
+				t.Fatalf("%s selected %v; want the approved treatment %q", channel, picked, wantSingle)
+			}
+		} else if len(picked) < 2 {
+			t.Fatalf("%s resolved to a single value across %d runs (%v); the multi-choice catalog lost its variety", channel, len(seeds), picked)
 		}
 	}
 }

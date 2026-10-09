@@ -148,7 +148,33 @@ func (r *Runner) runSceneTextPhase(ctx context.Context, runID string, req Genera
 			result.RenderMetrics = &RenderMetrics{Expected: expectedUnits, Concurrency: req.Render.RenderConcurrency}
 		}
 		if r.phraseImpactAnalyzer != nil && strings.TrimSpace(output.Text) != "" {
-			impact, impactErr := r.phraseImpactAnalyzer.Analyze(ctx, output.Text, string(req.SourceLanguage))
+			chapterScenes, chapterTopics := make([]string, 0, len(scenes)), make([]string, 0, len(scenes))
+			for _, scene := range scenes {
+				if !scene.ExecutionMode.CountsTowardBodyWordBudget() {
+					continue
+				}
+				text := strings.TrimSpace(scene.Text[req.SourceLanguage])
+				if text == "" {
+					continue
+				}
+				chapterSceneIndex := len(chapterScenes)
+				chapterScenes = append(chapterScenes, text)
+				topic := scene.ID
+				for _, spec := range req.ScriptParams.Segments {
+					if spec.ID != "" && spec.ID == scene.ID && strings.TrimSpace(spec.Topic) != "" {
+						topic = spec.Topic
+						break
+					}
+				}
+				if topic == scene.ID && chapterSceneIndex < len(req.ScriptParams.Segments) && strings.TrimSpace(req.ScriptParams.Segments[chapterSceneIndex].Topic) != "" {
+					topic = req.ScriptParams.Segments[chapterSceneIndex].Topic
+				}
+				chapterTopics = append(chapterTopics, topic)
+			}
+			if strings.Join(chapterScenes, "\n\n") != output.Text {
+				chapterScenes, chapterTopics = nil, nil
+			}
+			impact, impactErr := r.phraseImpactAnalyzer.AnalyzeWithContext(ctx, output.Text, string(req.SourceLanguage), chapterScenes, chapterTopics)
 			if impactErr != nil {
 				// The extractive summary is an optional data product. A broken
 				// or unavailable Rust NLP worker must never cost the caller the
@@ -160,6 +186,10 @@ func (r *Runner) runSceneTextPhase(ctx context.Context, runID string, req Genera
 				result.Summary = impact.Summary
 				result.BulletPoints = impact.BulletPoints
 				result.HeavySentences = impact.HeavySentences
+				if impact.ChapterManifest.SchemaVersion != "" {
+					manifest := impact.ChapterManifest
+					result.ChapterManifest = &manifest
+				}
 				observePhraseImpactTimings(impact.Timings)
 			}
 		}

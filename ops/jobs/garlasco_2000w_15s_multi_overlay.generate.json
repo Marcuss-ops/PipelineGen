@@ -148,13 +148,14 @@
       },
       "max_phrase_overlays": 10,
       "max_image_overlays": 10,
+      "max_map_overlays": 1,
       "animation_counts": {
         "images": 10,
         "images_with_text": 10,
         "entities": 10,
         "entity_caption": 10,
         "important_phrase": 10,
-        "maps": 5,
+        "maps": 1,
         "dates": 5
       },
       "entity_style_id": "random",

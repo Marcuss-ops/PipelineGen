@@ -1,0 +1,2 @@
+Source: user-provided Google Drive folder archive SF-Pro-Display-Font-Family.zip.
+The archive did not contain a license file. Confirm the applicable Apple font license before redistributing these files outside this machine.

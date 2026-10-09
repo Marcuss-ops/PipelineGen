@@ -33,7 +33,14 @@ func selectPhraseMotionLimited(jobID, sceneID string, ordinal int, pool []string
 	if len(pool) > 0 {
 		return selectPhraseMotion(jobID, sceneID, ordinal, limitedMotionPool(pool, limit))
 	}
-	return selectMotionFromPool(jobID, sceneID, "important_phrase_limited", ordinal, limitedMotionPool(defaultPhraseMotionSequence(jobID, sceneID), limit))
+	candidates := defaultPhraseMotionSequence(jobID, sceneID)
+	// The UI's five-style preview count is not a runtime cap. Without an
+	// explicit positive count, generated phrases should use the complete
+	// certified sequence and not repeat until it has been walked.
+	if limit > 0 {
+		candidates = limitedMotionPool(candidates, limit)
+	}
+	return selectMotionFromPool(jobID, sceneID, "important_phrase_limited", ordinal, candidates)
 }
 
 // selectLongPhraseMotion keeps long copy inside the long-phrase motion family.
@@ -74,7 +81,14 @@ func selectLongPhraseMotion(jobID, sceneID string, ordinal int, pool []string) s
 
 func selectLongPhraseMotionLimited(jobID, sceneID string, ordinal int, pool []string, limit int) string {
 	if len(pool) == 0 {
-		return selectMotionFromPool(jobID, sceneID, "long_phrase_default", ordinal, limitedMotionPool(longPhraseMotionCandidates, limit))
+		candidates := longPhraseMotionCandidates
+		// Unlike the general phrase selector, the long-copy lane should not
+		// silently shrink to the five-style UI default. That small cap made
+		// unrelated videos repeatedly reuse the same handful of entrances.
+		if limit > 0 {
+			candidates = limitedMotionPool(candidates, limit)
+		}
+		return selectMotionFromPool(jobID, sceneID, "long_phrase_default", ordinal, candidates)
 	}
 	return selectLongPhraseMotion(jobID, sceneID, ordinal, limitedMotionPool(pool, limit))
 }
@@ -228,6 +242,7 @@ func defaultPhraseMotionSequence(jobID, sceneID string) []string {
 }
 
 func selectMotionFromPool(jobID, sceneID, family string, ordinal int, candidates []string) string {
+	candidates = uniqueMotionPool(candidates)
 	if len(candidates) == 0 {
 		return ""
 	}
@@ -240,6 +255,22 @@ func selectMotionFromPool(jobID, sceneID, family string, ordinal int, candidates
 		}
 	}
 	return candidates[(start+ordinal)%len(candidates)]
+}
+
+func uniqueMotionPool(pool []string) []string {
+	unique := make([]string, 0, len(pool))
+	seen := make(map[string]struct{}, len(pool))
+	for _, id := range pool {
+		if strings.TrimSpace(id) == "" {
+			continue
+		}
+		if _, exists := seen[id]; exists {
+			continue
+		}
+		seen[id] = struct{}{}
+		unique = append(unique, id)
+	}
+	return unique
 }
 
 // selectHeavyPhraseMotion picks the entrance of a phrase the caller marked as
@@ -282,10 +313,10 @@ func selectHeavyPhraseMotion(jobID, sceneID string, ordinal int, pool []string) 
 }
 
 func selectHeavyPhraseMotionLimited(jobID, sceneID string, ordinal int, pool []string, limit int) string {
-	if len(pool) == 0 {
-		pool = limitedMotionPool(phraseMotionCandidates, limit)
-	} else {
+	if len(pool) > 0 {
 		pool = limitedMotionPool(pool, limit)
+	} else if limit > 0 {
+		pool = limitedMotionPool(phraseMotionCandidates, limit)
 	}
 	return selectHeavyPhraseMotion(jobID, sceneID, ordinal, pool)
 }

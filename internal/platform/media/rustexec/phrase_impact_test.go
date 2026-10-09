@@ -1,6 +1,7 @@
 package rustexec
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -89,8 +90,9 @@ func TestPhraseImpactAnalyzerFallsBackToLexicalModeWithoutEmbedder(t *testing.T)
 	}
 
 	var request struct {
-		LexicalOnly bool   `json:"lexical_only"`
-		Language    string `json:"language"`
+		LexicalOnly    bool           `json:"lexical_only"`
+		Language       string         `json:"language"`
+		ChapterOptions map[string]any `json:"chapter_options"`
 	}
 	if err := json.Unmarshal([]byte(strings.TrimSpace(string(runner.requests))), &request); err != nil {
 		t.Fatalf("decode request: %v (%s)", err, runner.requests)
@@ -100,6 +102,36 @@ func TestPhraseImpactAnalyzerFallsBackToLexicalModeWithoutEmbedder(t *testing.T)
 	}
 	if request.Language != "it" {
 		t.Fatalf("language = %q", request.Language)
+	}
+	if request.ChapterOptions["profile_version"] != "segmentation.v1" ||
+		request.ChapterOptions["min_sentences"] != float64(5) ||
+		request.ChapterOptions["max_sentences"] != float64(36) ||
+		request.ChapterOptions["complexity_penalty"] != float64(1) {
+		t.Fatalf("chapter options = %#v, want the versioned production profile", request.ChapterOptions)
+	}
+}
+
+func TestPhraseImpactAnalyzerPassesScenesAndTopicsAsOptionalContext(t *testing.T) {
+	runner := &phraseImpactFakeRunner{replies: []string{
+		`{"ok":true,"result":{"summary":"s","bullet_points":[],"heavy_sentences":[],"chapter_manifest":{"schema_version":"chapter_manifest.v1","chapters":[{"title":"Rendering workflow","title_source":"scene_topic","start_sentence":0,"end_sentence":1,"bullets":[{"start_sentence":0,"end_sentence":1,"text":"Rendering workflow is available."}] }]}}}`,
+	}}
+	analyzer := NewPhraseImpactAnalyzer("bin/phrase_impact", runner, nil)
+	got, err := analyzer.AnalyzeWithContext(context.Background(), "Rendering workflow is available.", "en", []string{"Rendering workflow is available."}, []string{"Rendering workflow"})
+	if err != nil {
+		t.Fatalf("Analyze returned error: %v", err)
+	}
+	if got.ChapterManifest.SchemaVersion != "chapter_manifest.v1" || len(got.ChapterManifest.Chapters) != 1 {
+		t.Fatalf("chapter manifest = %#v", got.ChapterManifest)
+	}
+	var payload struct {
+		Scenes []string `json:"scenes"`
+		Topics []string `json:"scene_topics"`
+	}
+	if err := json.Unmarshal(bytes.TrimSpace(runner.requests), &payload); err != nil {
+		t.Fatalf("decode worker request: %v", err)
+	}
+	if !reflect.DeepEqual(payload.Scenes, []string{"Rendering workflow is available."}) || !reflect.DeepEqual(payload.Topics, []string{"Rendering workflow"}) {
+		t.Fatalf("scene context = %#v / %#v", payload.Scenes, payload.Topics)
 	}
 }
 

@@ -104,7 +104,7 @@ func compileOverlayPlanWithMotionOffset(result *GenerateResult, language Languag
 	// resolved lazily — a surfaceless result must never fail resolution.
 	var scenes []capabilityoverlay.SceneInput
 	var timedScenes []Scene
-	var perSceneImageHashes map[string]struct{}
+	perSceneImageHashes := sceneEntityImageHashes(result)
 	for i := range result.Scenes {
 		scene := result.Scenes[i]
 		ref, ok := scene.Voiceover[language]
@@ -150,9 +150,6 @@ func compileOverlayPlanWithMotionOffset(result *GenerateResult, language Languag
 			if sceneInput == nil {
 				sceneInput = &capabilityoverlay.SceneInput{ID: scene.ID}
 			}
-			if perSceneImageHashes == nil {
-				perSceneImageHashes = make(map[string]struct{})
-			}
 			if image, ok := sceneImageCandidate(result, scene.ID, startUS, perSceneImageHashes, timelineEndUS[scene.ID]); ok {
 				sceneInput.Images = append(sceneInput.Images, image)
 				perSceneImageHashes[strings.ToLower(image.SHA256)] = struct{}{}
@@ -169,7 +166,11 @@ func compileOverlayPlanWithMotionOffset(result *GenerateResult, language Languag
 	// canvas because that is the run-level render context this function
 	// already receives.
 	plannerConfig.RunLevelPhraseOverlayLimit = canvas.MaxPhraseOverlays
-	plannerConfig.RunLevelMapOverlayLimit = capabilityoverlay.MaxMapOverlaysPerRun
+	mapLimit := canvas.MaxMapOverlays
+	if mapLimit <= 0 || mapLimit > capabilityoverlay.MaxMapOverlaysPerRun {
+		mapLimit = capabilityoverlay.MaxMapOverlaysPerRun
+	}
+	plannerConfig.RunLevelMapOverlayLimit = mapLimit
 	plannerPlan, err := capabilityoverlay.BuildPlan(capabilityoverlay.PlanInput{
 		PlanID: planID, VideoID: videoID, ProjectID: projectID,
 		Width: canvas.Width, Height: canvas.Height, FPSNum: canvas.FPSNum, FPSDen: canvas.FPSDen,
@@ -183,7 +184,6 @@ func compileOverlayPlanWithMotionOffset(result *GenerateResult, language Languag
 		return nil, fmt.Errorf("overlay plan: plan: %w", err)
 	}
 	items := plannerPlan.Items
-	attachGroundedCaptionsToSceneImages(items, result.Scenes, planID)
 	if canvas.MapsOnly {
 		kept := items[:0]
 		for _, item := range items {
@@ -361,7 +361,7 @@ func compileOverlayPlanWithMotionOffset(result *GenerateResult, language Languag
 	// grounded phrases and up to three distinct location maps.
 	// It runs on individual assets before composition so dedupe and counts do
 	// not treat a 2–5-image group as one indivisible image.
-	items, _ = capabilityoverlay.ApplyEditorialOverlayBudgetWithImageLimit(items, canvas.MaxPhraseOverlays, canvas.MaxImageOverlays, capabilityoverlay.MaxMapOverlaysPerRun, len(perSceneImages) > 0 && perSceneImages[0])
+	items, _ = capabilityoverlay.ApplyEditorialOverlayBudgetWithImageLimit(items, canvas.MaxPhraseOverlays, canvas.MaxImageOverlays, mapLimit, len(perSceneImages) > 0 && perSceneImages[0])
 	if len(items) == 0 {
 		return nil, nil
 	}

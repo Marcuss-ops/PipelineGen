@@ -83,9 +83,10 @@ type GenerationResult struct {
 
 	// Extractive editorial summary and the most important narration sentences.
 	// These remain result metadata, never rendered captions or scene text.
-	Summary        string              `json:"summary,omitempty"`
-	BulletPoints   []string            `json:"bullet_points,omitempty"`
-	HeavySentences []ImportantSentence `json:"heavy_sentences,omitempty"`
+	Summary         string              `json:"summary,omitempty"`
+	BulletPoints    []string            `json:"bullet_points,omitempty"`
+	HeavySentences  []ImportantSentence `json:"heavy_sentences,omitempty"`
+	ChapterManifest *ChapterManifest    `json:"chapter_manifest,omitempty"`
 
 	// VidRushSegments carries the per-segment semantic extraction
 	// and media resolution results used by the VidRush payload.
@@ -502,9 +503,10 @@ type ImportantSentence struct {
 // the platform adapter that computes it (a Rust worker) must agree on one
 // shape, and a platform adapter must never import a capability.
 type PhraseImpactResult struct {
-	Summary        string              `json:"summary"`
-	BulletPoints   []string            `json:"bullet_points"`
-	HeavySentences []ImportantSentence `json:"heavy_sentences"`
+	Summary         string              `json:"summary"`
+	BulletPoints    []string            `json:"bullet_points"`
+	HeavySentences  []ImportantSentence `json:"heavy_sentences"`
+	ChapterManifest ChapterManifest     `json:"chapter_manifest,omitempty"`
 	// Timings is the Rust worker's OWN stage breakdown for this analysis, in
 	// milliseconds. It is telemetry and never changes the summary, bullets or
 	// heavy sentences. The embedding stage is the only part of this path that
@@ -513,6 +515,31 @@ type PhraseImpactResult struct {
 	// A zero value means the worker reported no breakdown, never a fabricated
 	// 0 ms sample.
 	Timings PhraseImpactTimings `json:"timings,omitempty"`
+}
+
+// ChapterManifestEntry is a deterministic, extractive chapter with references
+// into the original sentence sequence. Timestamps remain absent until speech
+// alignment supplies certified timing for those sentence ranges.
+type ChapterManifestEntry struct {
+	Title         string          `json:"title"`
+	TitleSource   string          `json:"title_source"`
+	StartSentence int             `json:"start_sentence"`
+	EndSentence   int             `json:"end_sentence"`
+	StartMS       *int64          `json:"start_ms,omitempty"`
+	EndMS         *int64          `json:"end_ms,omitempty"`
+	Bullets       []ChapterBullet `json:"bullets"`
+}
+
+// ChapterBullet is a contiguous extractive sentence span within one chapter.
+type ChapterBullet struct {
+	StartSentence int    `json:"start_sentence"`
+	EndSentence   int    `json:"end_sentence"`
+	Text          string `json:"text"`
+}
+
+type ChapterManifest struct {
+	SchemaVersion string                 `json:"schema_version"`
+	Chapters      []ChapterManifestEntry `json:"chapters"`
 }
 
 // PhraseImpactTimings mirrors the Rust worker's StageTimings contract.

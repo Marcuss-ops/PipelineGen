@@ -126,7 +126,7 @@ func TestCapEntityImageOverlaysKeepsDistinctIdentitiesUpToRunCeiling(t *testing.
 	}
 }
 
-func TestCapEntityImageOverlaysPerSceneKeepsRepeatedEntityInEachScene(t *testing.T) {
+func TestCapEntityImageOverlaysPerSceneKeepsEntityOnlyOnceAcrossRun(t *testing.T) {
 	items := []capabilityoverlay.OverlayItem{
 		{ID: "scene-1-milton", SceneID: "scene-1", EntityID: "milton", Kind: string(capabilityoverlay.KindEntityImage), EntityRef: &capabilityoverlay.OverlayEntityRef{CanonicalEntityID: "person:milton-leite"}},
 		{ID: "scene-2-milton", SceneID: "scene-2", EntityID: "milton", Kind: string(capabilityoverlay.KindEntityImage), EntityRef: &capabilityoverlay.OverlayEntityRef{CanonicalEntityID: "person:milton-leite"}},
@@ -134,8 +134,8 @@ func TestCapEntityImageOverlaysPerSceneKeepsRepeatedEntityInEachScene(t *testing
 		{ID: "phrase", SceneID: "scene-2", Kind: "text_phrase"},
 	}
 	got := capEntityImageOverlays(items, capabilityoverlay.MaxEntityImageOverlaysPerRun, true)
-	if len(got) != 3 || got[0].ID != "scene-1-milton" || got[1].ID != "scene-2-milton" || got[2].Kind != "text_phrase" {
-		t.Fatalf("per-scene image cap = %+v; want one image per scene and preserve phrase", got)
+	if len(got) != 3 || got[0].ID != "scene-1-milton" || got[1].ID != "scene-2-other" || got[2].Kind != "text_phrase" {
+		t.Fatalf("per-scene image cap = %+v; want repeated Milton omitted and unique entity plus phrase kept", got)
 	}
 }
 
@@ -454,7 +454,7 @@ func TestCapEntityImageOverlaysDeduplicatesSameCanonicalEntity(t *testing.T) {
 	}
 }
 
-func TestCapEntityImageOverlaysKeepsRepeatedIdentityInPerSceneScope(t *testing.T) {
+func TestCapEntityImageOverlaysDeduplicatesIdentityInPerSceneScope(t *testing.T) {
 	items := []capabilityoverlay.OverlayItem{
 		{ID: "scene-1", SceneID: "scene-1", EntityID: "occurrence-1", Kind: string(capabilityoverlay.KindEntityImage),
 			EntityRef: &capabilityoverlay.OverlayEntityRef{CanonicalEntityID: "person:isabelle-caracristi"}},
@@ -463,10 +463,10 @@ func TestCapEntityImageOverlaysKeepsRepeatedIdentityInPerSceneScope(t *testing.T
 	}
 
 	got := capEntityImageOverlays(items, capabilityoverlay.MaxEntityImageOverlaysPerRun, true)
-	if len(got) != 2 {
-		t.Fatalf("per-scene image count = %d, want repeated identity retained once in each scene", len(got))
+	if len(got) != 1 {
+		t.Fatalf("per-scene image count = %d, want one render for repeated identity", len(got))
 	}
-	if got[0].SceneID != "scene-1" || got[1].SceneID != "scene-2" {
-		t.Fatalf("retained scenes = %q, %q; want scene-1 and scene-2", got[0].SceneID, got[1].SceneID)
+	if got[0].SceneID != "scene-1" {
+		t.Fatalf("retained scene = %q, want first occurrence in scene-1", got[0].SceneID)
 	}
 }

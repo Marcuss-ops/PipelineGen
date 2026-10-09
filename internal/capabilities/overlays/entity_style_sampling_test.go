@@ -100,10 +100,10 @@ func TestEntityCaptionMotionPoolFullCatalogByDefault(t *testing.T) {
 	}
 }
 
-func TestPlannerDefaultImageWithTextRotationUsesTheFullCatalog(t *testing.T) {
+func TestPlannerDefaultImageWithTextRotationUsesFullIndependentPools(t *testing.T) {
 	// Three captioned entity images, no AnimationCounts configured: the run
-	// must rotate the COMPLETE image-with-text catalog (the legacy cap was
-	// five) and stamp the certified entity-style selector.
+	// rotates the strict-GPU image pool and the complete entity-card caption
+	// catalog independently, without replacing motion_id by a style selector.
 	scenes := make([]SceneInput, 0, 3)
 	for i := 0; i < 3; i++ {
 		scenes = append(scenes, SceneInput{ID: fmt.Sprintf("scene-%d", i), MultiEntityGroups: []MultiEntityGroup{{
@@ -136,11 +136,23 @@ func TestPlannerDefaultImageWithTextRotationUsesTheFullCatalog(t *testing.T) {
 			styled++
 		}
 	}
-	if styled != 3 {
-		t.Fatalf("styled entity items = %d, want 3", styled)
+	if styled != 0 {
+		t.Fatalf("default entity plan unexpectedly stamps entity style %d times; style selection must not overwrite catalog animation motion IDs", styled)
 	}
 	if len(motions) < 2 {
-		t.Fatalf("three captioned images rotated only %d distinct motions; the full-catalog default must exceed the legacy five-style cap window for consecutive ordinals: %v", len(motions), motions)
+		t.Fatalf("three captioned images rotated only %d distinct motions; expect no-repeat cycling over the image-with-text catalog: %v", len(motions), motions)
+	}
+	captions := map[string]bool{}
+	for _, item := range plan.Items {
+		if item.Kind == string(KindEntityImage) && item.EntityCaption != "" {
+			if item.CaptionMotionID == "" || captions[item.CaptionMotionID] {
+				t.Fatalf("caption motion empty or repeated across images: %q", item.CaptionMotionID)
+			}
+			captions[item.CaptionMotionID] = true
+		}
+	}
+	if len(captions) != 3 {
+		t.Fatalf("distinct caption motions = %d, want 3: %v", len(captions), captions)
 	}
 }
 

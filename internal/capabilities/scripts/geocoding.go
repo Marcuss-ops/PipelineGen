@@ -7,6 +7,7 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"unicode"
 
 	capabilitygeocoding "github.com/Marcuss-ops/PipelineGen/internal/capabilities/geocoding"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/linguistics"
@@ -59,11 +60,17 @@ func (r *Runner) geocodePlaceAnnotations(ctx context.Context, annotations map[in
 			continue
 		}
 		for entityIndex := range annotation.PrimaryEntities {
+			if len(options) > 0 && options[0].mapsOnly && !containsGroundedPlaceName(options[0].sceneTexts[index], annotation.PrimaryEntities[entityIndex].CanonicalName) {
+				continue
+			}
 			if err := geocodeAnnotatedEntity(ctx, r.geocoder, resolved, &annotation.PrimaryEntities[entityIndex], index, language); err != nil {
 				return err
 			}
 		}
 		for entityIndex := range annotation.SecondaryEntities {
+			if len(options) > 0 && options[0].mapsOnly && !containsGroundedPlaceName(options[0].sceneTexts[index], annotation.SecondaryEntities[entityIndex].CanonicalName) {
+				continue
+			}
 			if err := geocodeAnnotatedEntity(ctx, r.geocoder, resolved, &annotation.SecondaryEntities[entityIndex], index, language); err != nil {
 				return err
 			}
@@ -75,6 +82,47 @@ func (r *Runner) geocodePlaceAnnotations(ctx context.Context, annotations map[in
 		}
 	}
 	return nil
+}
+
+// containsGroundedPlaceName prevents a semantic annotation or a geocoder
+// homonym from creating a map stop for a name that the scene never says.
+// Compare Unicode letters/digits while treating punctuation and spacing as
+// separators, so possessives and sentence punctuation remain harmless.
+func containsGroundedPlaceName(sceneText, candidate string) bool {
+	normalize := func(s string) string {
+		var b strings.Builder
+		space := true
+		for _, r := range s {
+			r = unicode.ToLower(r)
+			if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') || (r >= 'à' && r <= 'ö') || (r >= 'ø' && r <= 'ÿ') {
+				b.WriteRune(r)
+				space = false
+			} else if !space {
+				b.WriteByte(' ')
+				space = true
+			}
+		}
+		return strings.TrimSpace(b.String())
+	}
+	needle := normalize(candidate)
+	if needle == "" {
+		return false
+	}
+	text := " " + normalize(sceneText) + " "
+	if !strings.Contains(text, " "+needle+" ") {
+		return false
+	}
+	// Proper place names are case-sensitive evidence here: a lowercase verb
+	// such as "vigevano" must not become the city Vigevano by homonym lookup.
+	if !strings.Contains(sceneText, candidate) {
+		return false
+	}
+	// These temporal words are frequently mislabeled as Italian place names;
+	// Nominatim can return tiny homonymous localities for them.
+	if strings.EqualFold(needle, "anno") || strings.EqualFold(needle, "anni") {
+		return false
+	}
+	return true
 }
 
 var capitalizedNameRE = regexp.MustCompile(`(?:[A-ZÀ-ÖØ-Þ][\p{L}\p{M}'’’-]*)(?:[ \t]+[A-ZÀ-ÖØ-Þ][\p{L}\p{M}'’’-]*){0,3}`)

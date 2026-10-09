@@ -172,7 +172,7 @@ func TestCompileOverlayPlanWithPlatesEmitsGroundedMapItem(t *testing.T) {
 	require.Equal(t, "MAP", item.TemplateID)
 	require.Equal(t, "scene-0", item.SceneID)
 	require.Equal(t, int64(500), item.StartMs, "the map starts when the place is spoken")
-	require.Equal(t, int64(900), item.EndMs)
+	require.Equal(t, int64(8500), item.EndMs, "the single-place satellite map stays visible for its full camera treatment")
 	require.NotNil(t, item.Map)
 	require.Equal(t, "local", item.Map.Provider)
 	require.Equal(t, plate.ID, item.Map.SourceID)

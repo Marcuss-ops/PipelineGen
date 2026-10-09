@@ -235,6 +235,10 @@ func TestDurableResultToDomainCarriesExtractiveEditorialProducts(t *testing.T) {
 	in := &GenerateResult{
 		Summary:      "La civiltà Maya prosperò nelle città-stato.",
 		BulletPoints: []string{"Città-stato indipendenti", "Agricoltura intensiva"},
+		ChapterManifest: &scriptpkg.ChapterManifest{SchemaVersion: "chapter_manifest.v1", Chapters: []scriptpkg.ChapterManifestEntry{{
+			Title: "Città-stato Maya", TitleSource: "extractive_keyphrase", StartSentence: 0, EndSentence: 2,
+			Bullets: []scriptpkg.ChapterBullet{{StartSentence: 0, EndSentence: 2, Text: "La civiltà Maya prosperò. La civiltà Maya organizzò città-stato."}},
+		}}},
 		HeavySentences: []scriptpkg.ImportantSentence{
 			{Index: 1, Text: "La civiltà Maya prosperò.", Importance: 0.91},
 		},
@@ -246,6 +250,10 @@ func TestDurableResultToDomainCarriesExtractiveEditorialProducts(t *testing.T) {
 	assert.Equal(t, []string{"Città-stato indipendenti", "Agricoltura intensiva"}, out.BulletPoints)
 	require.Len(t, out.HeavySentences, 1)
 	assert.Equal(t, "La civiltà Maya prosperò.", out.HeavySentences[0].Text)
+	require.NotNil(t, out.ChapterManifest)
+	assert.Equal(t, "chapter_manifest.v1", out.ChapterManifest.SchemaVersion)
+	require.Len(t, out.ChapterManifest.Chapters, 1)
+	assert.Equal(t, 2, out.ChapterManifest.Chapters[0].EndSentence)
 
 	encoded, err := json.Marshal(out)
 	require.NoError(t, err)
@@ -255,4 +263,5 @@ func TestDurableResultToDomainCarriesExtractiveEditorialProducts(t *testing.T) {
 		"summary must survive the durable JSON projection consumed by the video payload")
 	assert.NotNil(t, wire["bullet_points"])
 	assert.NotNil(t, wire["heavy_sentences"])
+	assert.Equal(t, "chapter_manifest.v1", wire["chapter_manifest"].(map[string]any)["schema_version"])
 }
