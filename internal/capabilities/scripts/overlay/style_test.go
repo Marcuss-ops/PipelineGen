@@ -39,6 +39,17 @@ func TestImageFrameAndEntityImageNormalization(t *testing.T) {
 	require.NotContains(t, item.ImageLayers[0].Params, "position_y")
 }
 
+func TestImageFrameShadowStaysWithinNativeGPUBlurLimit(t *testing.T) {
+	enabled := true
+	largeBlur := 24.0
+	frame := ImageFrame(&scriptpkg.OverlayImageStyleSpec{
+		Shadow: &scriptpkg.OverlayShadowSpec{Enabled: enabled, Blur: &largeBlur},
+	})
+	require.NotNil(t, frame)
+	require.NotNil(t, frame.Shadow)
+	require.Equal(t, 10.0, frame.Shadow.BlurPX)
+}
+
 func TestOverlayKindPolicies(t *testing.T) {
 	require.True(t, IsRuntimeTextStyleParam("font_size_px"))
 	require.False(t, IsRuntimeTextStyleParam("image_width"))

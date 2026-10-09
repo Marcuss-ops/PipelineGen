@@ -300,8 +300,11 @@ func TestBuildPlanMapMotionsAreCertifiedAndDeterministic(t *testing.T) {
 			continue
 		}
 		maps++
-		if first.Items[i].Map.MotionID != "" || second.Items[i].Map.MotionID != "" {
-			t.Fatalf("runtime maps must use the stable V1 camera treatment without image motion: %q / %q", first.Items[i].Map.MotionID, second.Items[i].Map.MotionID)
+		if first.Items[i].Map.MotionID == "" || first.Items[i].Map.MotionID != second.Items[i].Map.MotionID {
+			t.Fatalf("runtime map motion must be selected and deterministic: %q / %q", first.Items[i].Map.MotionID, second.Items[i].Map.MotionID)
+		}
+		if !containsString(mapMotionIDs(), first.Items[i].Map.MotionID) {
+			t.Fatalf("runtime map emitted unsupported motion %q", first.Items[i].Map.MotionID)
 		}
 	}
 	if maps != 2 {
@@ -309,18 +312,13 @@ func TestBuildPlanMapMotionsAreCertifiedAndDeterministic(t *testing.T) {
 	}
 }
 
-// TestMapMotionForCenterVariesWithinOneRegion is the regression gate for the
-// "every map of the same country looks identical" defect: the region recipe
-// anchors the first map, but consecutive maps in the SAME region must rotate
-// through the certified pool instead of repeating the same animation.
+// TestMapMotionForCenterVariesWithinOneRegion verifies automatic map picks
+// rotate through safe centered recipes instead of always rendering statically.
 func TestMapMotionForCenterVariesWithinOneRegion(t *testing.T) {
 	usa := MapCenter{Latitude: 39.0, Longitude: -98.0}
 	first := mapMotionForCenter(0, usa)
-	if first != "map_image_usa_sweep_in" {
-		t.Fatalf("ordinal 0 in the USA region = %q, want the region anchor map_image_usa_sweep_in", first)
-	}
 	if !containsString(mapMotionIDs(), first) {
-		t.Fatalf("map motion %q is outside the certified pool", first)
+		t.Fatalf("ordinal 0 in the USA region = %q, want a centered map-safe motion", first)
 	}
 	seen := map[string]bool{first: true}
 	for ordinal := 1; ordinal < len(mapMotionIDs()); ordinal++ {
@@ -346,6 +344,11 @@ func TestMapMotionHonorsRuntimeFamilyCount(t *testing.T) {
 	}
 	if len(seen) != 3 {
 		t.Fatalf("map runtime count selected %d distinct motions, want 3: %v", len(seen), seen)
+	}
+	for id := range seen {
+		if !containsString(mapMotionIDs(), id) {
+			t.Fatalf("map motion %q is not in the producer's safe map pool", id)
+		}
 	}
 }
 

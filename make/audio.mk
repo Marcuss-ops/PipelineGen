@@ -2,7 +2,7 @@
 # provider/Velox credentials are deliberately not required by the unit gate.
 
 verify-audio-chunked:
-	go test ./internal/capabilities/scripts ./internal/application/scripts/adapters ./internal/application/scripts/usecase
+	go test ./internal/capabilities/scripts ./internal/capabilities/scripts/adapters ./internal/capabilities/scripts/usecase
 	@echo "✅ CHUNKED_VOICEOVER gate passed"
 
 verify-audio-combined:

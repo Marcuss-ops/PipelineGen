@@ -323,7 +323,7 @@ func (e *executionRun) parallelFanOut() bool {
 		// Resolve BGM/SFX assets and materialize original clip audio in
 		// parallel with TTS. Best-effort: skip when the source is nil.
 		var prefetched *AudioPrefetchResult
-		if e.r.audioAssetSource != nil && (len(e.req.BackgroundMusic) > 0 || len(e.req.SoundEffects) > 0 ||
+		if e.r.audioAssetSource != nil && (len(e.req.BackgroundMusic) > 0 || len(e.req.SoundEffects) > 0 || e.req.RandomSFXOnClipStart ||
 			e.req.MixPolicy.Normalize() == capabilityaudio.MixVoiceoverWithDuckedClip) {
 			bgmIDs := make([]string, len(e.req.BackgroundMusic))
 			for i, b := range e.req.BackgroundMusic {
@@ -332,6 +332,16 @@ func (e *executionRun) parallelFanOut() bool {
 			sfxIDs := make([]string, len(e.req.SoundEffects))
 			for i, s := range e.req.SoundEffects {
 				sfxIDs[i] = s.AssetID
+			}
+			if e.req.RandomSFXOnClipStart {
+				clipStartTimeline, timelineErr := CompileCanonicalTimeline(*e.result)
+				if timelineErr != nil {
+					e.r.log.Warn("clip-start SFX prefetch timeline unavailable; compile will resolve assets synchronously", zap.String("run_id", e.runID), zap.Error(timelineErr))
+				} else {
+					for _, intent := range randomClipStartSFXIntents(clipStartTimeline) {
+						sfxIDs = append(sfxIDs, intent.AssetID)
+					}
+				}
 			}
 			var clipIDs []string
 			if !e.req.FinalJob {

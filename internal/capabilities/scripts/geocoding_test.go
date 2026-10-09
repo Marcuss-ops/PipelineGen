@@ -122,6 +122,63 @@ func TestRunVidRushJoinAndPrepareGeocodesOnlyOnExplicitEnable(t *testing.T) {
 	}
 }
 
+func TestRequestedMapCountGeocodesGroundedPlaceNames(t *testing.T) {
+	lexicon, err := linguistics.NewLexiconRegistry("../../../config/lexicons")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := linguistics.SetDefaultLexicon(lexicon); err != nil {
+		t.Fatal(err)
+	}
+	geocoder := &recordingGeocoder{result: capabilitygeocoding.Result{
+		Latitude: 45.184, Longitude: 8.997, DisplayName: "Pavia, Lombardy, Italy", Scope: "city",
+	}}
+	runner := NewRunner(newInMemRunRepository(), nil, nil, nil, nil)
+	runner.SetGeocoder(geocoder)
+	request := GenerateRequest{SourceLanguage: "it", AnimationCounts: map[string]int{"maps": 5}}
+	request.MediaPlan.ProviderPolicy.Geocoding = mediadomain.MediaToggleEnabled
+	annotation := &scriptpkg.SceneAnnotations{Version: 1, Language: "it", Status: "completed"}
+	prepared, err := runner.runVidRushJoinAndPrepare(context.Background(), "run-map-count", request, []sceneTextSnapshot{{
+		ID: "scene-pavia", Index: 0, Text: "Pavia apre il racconto giudiziario.", Annotations: annotation,
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(geocoder.requests) != 1 || geocoder.requests[0].Query != "Pavia" {
+		t.Fatalf("requested maps did not geocode the exact spoken place: %+v", geocoder.requests)
+	}
+	places := 0
+	for _, entity := range prepared.annotations[0].PrimaryEntities {
+		if isPlaceEntityType(entity.Type) && entity.Geo != nil {
+			places++
+		}
+	}
+	if places != 1 {
+		t.Fatalf("grounded map places = %d, want one validated city candidate: %+v", places, prepared.annotations[0].PrimaryEntities)
+	}
+}
+
+func TestGroundedMapFallbackIgnoresSentenceAdverbsAndUppercaseOrganizations(t *testing.T) {
+	lexicon, err := linguistics.NewLexiconRegistry("../../../config/lexicons")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := linguistics.SetDefaultLexicon(lexicon); err != nil {
+		t.Fatal(err)
+	}
+	geocoder := &recordingGeocoder{result: capabilitygeocoding.Result{
+		Latitude: 45.184, Longitude: 8.997, DisplayName: "homonymous locality", Scope: "city",
+	}}
+	annotation := &scriptpkg.SceneAnnotations{Version: 1, Language: "it", Status: "completed"}
+	if err := geocodeGroundedPlaceNames(context.Background(), geocoder, map[string]capabilitygeocoding.Result{},
+		annotation, "Infine, ANSA pubblica un aggiornamento.", "it", 0); err != nil {
+		t.Fatal(err)
+	}
+	if len(geocoder.requests) != 0 || len(annotation.PrimaryEntities) != 0 {
+		t.Fatalf("prose and uppercase organization became map places: requests=%+v entities=%+v", geocoder.requests, annotation.PrimaryEntities)
+	}
+}
+
 func TestMapPlaceCandidateIgnoredWordsUsesConfiguredLexicon(t *testing.T) {
 	registry, err := linguistics.NewLexiconRegistry("../../../config/lexicons")
 	if err != nil {

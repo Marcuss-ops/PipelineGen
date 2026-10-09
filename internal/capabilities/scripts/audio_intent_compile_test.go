@@ -5,6 +5,13 @@ package scriptgeneration
 
 import (
 	"context"
+	"encoding/json"
+	"math"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
@@ -30,6 +37,111 @@ func intentCompileTimeline() audio.CanonicalTimeline {
 
 // intentCompileSource builds the fake asset source with certified
 // durations: BGM 20s, three SFX of 1s / 0.5s / 0.3s.
+func clipBoundaryTestTimeline() audio.CanonicalTimeline {
+	return audio.CanonicalTimeline{
+		Version: audio.TimelineVersion, DurationUS: 2_000_000,
+		Segments: []audio.TimelineSegment{{
+			ID: "scene-clip", Index: 0, TimelineStartUS: 0, DurationUS: 2_000_000,
+			VideoSegments: []audio.VideoSegment{
+				{AssetID: "clip-a", TimelineOffsetUS: 0, TimelineDurationUS: 800_000},
+				{AssetID: "clip-b", TimelineOffsetUS: 800_000, TimelineDurationUS: 1_200_000},
+				{AssetID: "freeze-tail", TimelineOffsetUS: 2_000_000, TimelineDurationUS: 250_000, Freeze: true},
+			},
+			AudioIntents: []audio.AudioIntent{{Mode: audio.AudioVoiceover, VoiceoverAssetID: "vo", SourceDurationUS: 2_000_000, TimelineDurationUS: 2_000_000}},
+		}},
+	}
+}
+
+func TestCompileCanonicalAudioWithRandomClipStartSFX_UsesCanonicalMix(t *testing.T) {
+	timeline := clipBoundaryTestTimeline()
+	first := randomClipStartSFXIntents(timeline)
+	if len(first) != 2 {
+		t.Fatalf("generated SFX intents = %d, want 2 real clip starts", len(first))
+	}
+	second := randomClipStartSFXIntents(timeline)
+	for i := range first {
+		if first[i] != second[i] {
+			t.Fatalf("retry changed deterministic intent %d", i)
+		}
+	}
+
+	// This runtime test exercises actual AAC media via FFmpeg/ffprobe instead
+	// of replacing asset materialization with in-memory paths.
+	if os.Getenv("PIPELINEGEN_SFX_RUNTIME") != "1" {
+		t.Skip("set PIPELINEGEN_SFX_RUNTIME=1 to render the downloaded Drive SFX assets")
+	}
+	manifestPath := filepath.Join("../../../data/media/sfx_clip_random/manifest.json")
+	manifestBytes, err := os.ReadFile(manifestPath)
+	if err != nil {
+		t.Fatalf("read local Drive SFX manifest: %v", err)
+	}
+	var manifest struct {
+		Entries []struct {
+			Path string `json:"path"`
+		} `json:"entries"`
+	}
+	if err := json.Unmarshal(manifestBytes, &manifest); err != nil {
+		t.Fatal(err)
+	}
+	if len(manifest.Entries) != 15 {
+		t.Fatalf("runtime manifest entries=%d, want 15", len(manifest.Entries))
+	}
+
+	source := newFakeAudioAssetSource(nil)
+	for i, intent := range first {
+		path := filepath.Join("../../../", manifest.Entries[i].Path)
+		probe, err := exec.Command("ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "default=noprint_wrappers=1:nokey=1", path).Output()
+		if err != nil {
+			t.Fatalf("probe local SFX %s: %v", path, err)
+		}
+		seconds, err := strconv.ParseFloat(strings.TrimSpace(string(probe)), 64)
+		if err != nil {
+			t.Fatalf("parse duration for %s: %v", path, err)
+		}
+		assetID := audio.CanonicalAssetID(intent.AssetID)
+		durationUS := int64(math.Round(seconds * 1_000_000))
+		source.assets[assetID] = audio.ResolvedAudioAsset{AssetID: assetID, Path: path, DurationUS: durationUS}
+		first[i].DurationMS = 250 // short clip-start cue; source remains the downloaded file
+	}
+	if len(first) != 2 {
+		t.Fatalf("got %d runtime SFX", len(first))
+	}
+	// Ensure the samples are spaced inside this 2s test timeline, independent
+	// of each source file's natural duration.
+	first[0].AtMS, first[1].AtMS = 0, 800
+	first[0].DurationMS, first[1].DurationMS = 250, 250
+	timeline = audio.CanonicalTimeline{
+		Version: audio.TimelineVersion, DurationUS: 2_000_000,
+		Segments: []audio.TimelineSegment{{
+			ID: "scene-clip", Index: 0, TimelineStartUS: 0, DurationUS: 2_000_000,
+			Audio: audio.AudioIntent{Mode: audio.AudioSilence},
+		}},
+	}
+	compiled, compileErr := CompileAudioWithIntents(context.Background(), timeline, audio.DefaultAudioProfile(), audio.MixVoiceoverOnly, nil, first, source)
+	if compileErr != nil {
+		t.Fatalf("compile SFX plan using downloaded assets: %v", compileErr)
+	}
+	plan, assets := compiled.Plan, compiled.Assets
+	sfx := eventsForRole(plan, audio.TrackSFX)
+	if len(sfx) != 2 {
+		t.Fatalf("compiled SFX events=%d, want 2", len(sfx))
+	}
+	if sfx[0].TimelineStartUS != 0 || sfx[1].TimelineStartUS != 800_000 {
+		t.Fatalf("SFX placement = %+v", sfx)
+	}
+	for _, event := range sfx {
+		if event.GainDB != audio.SoundEffectGainDB {
+			t.Fatalf("SFX gain=%v, want canonical %v dB", event.GainDB, audio.SoundEffectGainDB)
+		}
+	}
+	for _, asset := range assets {
+		if _, err := os.Stat(asset.Path); err != nil {
+			t.Fatalf("real downloaded SFX path %s: %v", asset.Path, err)
+		}
+	}
+
+}
+
 func intentCompileSource() *fakeAudioAssetSource {
 	source := newFakeAudioAssetSource(map[string]string{
 		"bgm_20s":    "/m/bgm.m4a",

@@ -131,7 +131,11 @@ type OverlayBackgroundSource interface {
 
 // VoiceoverInput carries the data needed to generate a voiceover.
 type VoiceoverInput struct {
-	SceneID  string
+	SceneID string
+	// RunID isolates audio and boundary-metadata files across durable retries.
+	// A canceled prior attempt may still be cleaning up a TTS subprocess when
+	// the next attempt starts, so project+scene alone is not a safe filename.
+	RunID    string
 	Language Language
 	Text     string
 	// Project is the semantic project namespace for the voiceover publish

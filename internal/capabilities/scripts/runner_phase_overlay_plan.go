@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	capoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/observability"
@@ -76,6 +77,18 @@ func (r *Runner) compileAudioOverlayPlan(ctx context.Context, runID string, req 
 		r.failExecutionStep(ctx, exec, step, cause)
 		r.failRunWithRetry(ctx, runID, StageCompilingAudio, cause)
 		return false
+	}
+	if req.RandomSFXOnImageOverlay {
+		plans := []*capoverlay.OverlayPlan{result.OverlayPlan}
+		for _, plan := range result.LocalizedOverlayPlans {
+			plans = append(plans, plan)
+		}
+		if err := attachRandomOverlaySFX(plans); err != nil {
+			cause := fmt.Errorf("attach random image-overlay SFX: %w", err)
+			r.failExecutionStep(ctx, exec, step, cause)
+			r.failRunWithRetry(ctx, runID, StageCompilingAudio, cause)
+			return false
+		}
 	}
 	r.logPhraseMotionSelections(runID, result.OverlayPlan)
 	r.logPhraseAnchoringDiagnostics(runID, result, req.SourceLanguage)

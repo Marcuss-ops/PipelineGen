@@ -288,7 +288,8 @@ func TestGenerationItemV2_AudioBlock_RoundTrip(t *testing.T) {
 	item := GenerationItemV2{
 		Title: "test",
 		Audio: AudioOutputConfig{
-			MixPolicy: "voiceover_with_ducked_clip",
+			MixPolicy:            "voiceover_with_ducked_clip",
+			RandomSFXOnClipStart: true,
 			BackgroundMusic: []BackgroundMusicIntent{{
 				AssetID: "bgm_01",
 				StartMS: 0,
@@ -313,6 +314,9 @@ func TestGenerationItemV2_AudioBlock_RoundTrip(t *testing.T) {
 	var decoded GenerationItemV2
 	if err := json.Unmarshal(raw, &decoded); err != nil {
 		t.Fatalf("unmarshal: %v", err)
+	}
+	if !decoded.Audio.RandomSFXOnClipStart {
+		t.Fatal("random_sfx_on_clip_start lost in round-trip")
 	}
 	if len(decoded.Audio.BackgroundMusic) != 1 {
 		t.Fatalf("background_music lost in round-trip: %+v", decoded.Audio.BackgroundMusic)

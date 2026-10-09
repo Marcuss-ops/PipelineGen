@@ -1,9 +1,11 @@
 package overlays
 
 import (
+	"encoding/binary"
 	"sort"
 	"strings"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/geodesy"
 )
 
@@ -20,9 +22,11 @@ func mapMotionIDs() []string {
 // One certified marker treatment for every grounded place, so a map's pins are
 // deterministic and never invented per item.
 const (
-	mapPinColor               = "#FF3B30"
-	mapPinRadiusPX            = 10.0
-	mapCameraDurationUS int64 = 5_000_000
+	mapPinColor                = "#FF3B30"
+	mapPinRadiusPX             = 10.0
+	mapCameraDurationUS  int64 = 5_000_000
+	mapPinReadDurationUS int64 = 1_000_000
+	mapCameraLeadUS      int64 = 2_000_000
 )
 
 // MapPlate is the certified plate a map item is drawn from: the operator
@@ -194,9 +198,20 @@ func mapPlansForScene(resolver PlateResolver, candidates []MapCandidate, canvasW
 	return plans
 }
 
-// mapMotionAt returns the deterministic motion for the n-th emitted map. The
-// small certified pool is rotated so consecutive maps in one run differ while
-// the same input always produces the same choices.
+// deterministicMapMotionStart gives each plan a stable starting point while
+// mapMotionForCenter rotates distinct maps through the certified pool.
+func deterministicMapMotionStart(planID string, limit int) int {
+	poolSize := len(mapMotionIDs())
+	if limit > 0 && limit < poolSize {
+		poolSize = limit
+	}
+	if poolSize <= 1 {
+		return 0
+	}
+	sum := digest.SHA256Sum([]byte("map-motion\x00" + planID))
+	return int(binary.BigEndian.Uint64(sum[:8]) % uint64(poolSize))
+}
+
 func mapMotionAt(ordinal int) string {
 	pool := mapMotionIDs()
 	if len(pool) == 0 {
@@ -208,65 +223,25 @@ func mapMotionAt(ordinal int) string {
 	return pool[ordinal%len(pool)]
 }
 
-// mapMotionForCenter picks the map-specific Chronon treatment for a grounded
-// center. The geographic bounds choose a region recipe that ANCHORS the
-// rotation, but the ordinal advances through the certified pool from that
-// anchor, so a run of maps in the SAME region no longer renders the identical
-// animation: consecutive maps differ while the region still leads for the
-// first one. Map coverage, pins and coordinates remain owned by the certified
-// plate; the bounds only choose a visual recipe.
-func mapMotionForCenter(ordinal int, center MapCenter) string {
-	return mapMotionForCenterWithLimit(ordinal, center, len(mapMotionIDs()))
+// mapMotionForCenter selects from only map-safe centered treatments. The
+// plan-level ordinal rotates maps so adjacent plates vary; regional bounds no
+// longer select deprecated country recipes for arbitrary local rasters.
+func mapMotionForCenter(ordinal int, _ MapCenter) string {
+	return mapMotionForCenterWithLimit(ordinal, MapCenter{}, len(mapMotionIDs()))
 }
 
-func mapMotionForCenterWithLimit(ordinal int, center MapCenter, limit int) string {
-	lat, lon := center.Latitude, center.Longitude
-	region := ""
-	switch {
-	case lat >= -44 && lat <= -10 && lon >= 112 && lon <= 154:
-		region = "map_image_australia_sunset_drift"
-	case lat >= -34 && lat <= 6 && lon >= -74 && lon <= -34:
-		region = "map_image_brazil_glow_reveal"
-	case lat >= 20 && lat <= 24 && lon >= 68 && lon <= 75:
-		region = "map_image_gujarat_detail_push"
-	case lat >= 6 && lat <= 35 && lon >= 67 && lon <= 98:
-		region = "map_image_india_contour_draw"
-	case lat >= 33 && lat <= 39 && lon >= 124 && lon <= 132:
-		region = "map_image_korea_pin_focus"
-	case lat >= 18 && lat <= 54 && lon >= 73 && lon <= 135:
-		region = "map_image_china_slow_reveal"
-	case lat >= 25 && lat <= 40 && lon >= 44 && lon <= 64:
-		region = "map_image_iran_gold_focus"
-	case lat >= 35 && lat <= 48 && lon >= 6 && lon <= 19:
-		region = "map_image_italy_beacon_arrival"
-	case lat >= 4 && lat <= 14 && lon >= 2 && lon <= 15:
-		region = "map_image_nigeria_neon_bloom"
-	case lat >= 24 && lat <= 50 && lon >= -125 && lon <= -66:
-		region = "map_image_usa_sweep_in"
-	}
+func mapMotionForCenterWithLimit(ordinal int, _ MapCenter, limit int) string {
 	pool := mapMotionIDs()
 	if len(pool) == 0 {
 		return ""
 	}
 	if limit <= 0 || limit > len(pool) {
-		limit = 5
-		if limit > len(pool) {
-			limit = len(pool)
-		}
-	}
-	start := 0
-	if region != "" {
-		for index, id := range pool {
-			if id == region {
-				start = index
-				break
-			}
-		}
+		limit = len(pool)
 	}
 	if ordinal < 0 {
 		ordinal = 0
 	}
-	return pool[(start+(ordinal%limit))%len(pool)]
+	return pool[ordinal%limit]
 }
 
 // mapItemsForScene lowers a scene's resolved map plans to at most one overlay
@@ -339,14 +314,14 @@ func mapItemsForScene(sceneID string, plans []MapPlan, canvasWidth, canvasHeight
 				Height:        lod.Height,
 			})
 		}
+		motionID := mapMotionForCenter(ordinal, entry.plate.Center)
 		mapOverlay := &MapOverlay{
 			Provider: "local", SourceID: entry.plate.ID, SourceLicense: entry.plate.License,
 			Center: entry.plate.Center, Zoom: entry.plate.Zoom,
 			Width: entry.plate.Width, Height: entry.plate.Height,
-			// Runtime maps use a quiet, stable treatment. The old rotating
-			// map_image_v1 recipes animated the raster and pins independently,
-			// making a georeferenced plate look like it was shaking.
-			Attribution: entry.plate.Attribution, Pins: pins,
+			// The selected motion is restricted to centered scale/opacity
+			// treatments, so the basemap and projected pins remain registered.
+			Attribution: entry.plate.Attribution, Pins: pins, MotionID: motionID,
 			AreaGlowRadiusKM: mapAreaGlowRadiusKM(pins),
 		}
 		if len(lods) >= 2 {
@@ -361,6 +336,13 @@ func mapItemsForScene(sceneID string, plans []MapPlan, canvasWidth, canvasHeight
 			// brief flash, even though its camera move was designed as an
 			// animation.
 			durationUS = mapCameraDurationUS
+		}
+		// Reserve a readable one-second slot for every location after the
+		// camera has settled. A crowded place sequence grows the map overlay
+		// instead of piling every marker into the same few frames.
+		minimumPinSequenceUS := mapCameraLeadUS + int64(len(pins))*mapPinReadDurationUS
+		if durationUS < minimumPinSequenceUS {
+			durationUS = minimumPinSequenceUS
 		}
 		items = append(items, OverlayItem{
 			ID: itemID(sceneID, "map", entry.plate.ID), SceneID: sceneID,
@@ -476,8 +458,9 @@ func mapPinsFor(plate MapPlate, places []MapCandidate) (pins []MapOverlayPin, st
 	if len(pins) == 0 {
 		return nil, 0, 0, 0, false
 	}
-	// Deterministic pin order: the stable entity id ascending.
-	sort.SliceStable(pins, func(i, j int) bool { return pins[i].ID < pins[j].ID })
+	// Preserve the chronological spoken order established above. The worker
+	// reveals these points one at a time, so sorting by entity id would make
+	// the animation contradict the narration.
 	durationUS = lastEnd - firstStart
 	if durationUS <= 0 {
 		return nil, 0, 0, 0, false

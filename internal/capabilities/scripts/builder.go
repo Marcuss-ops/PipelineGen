@@ -178,7 +178,8 @@ func BuildGenerateRequest(env *scriptpkg.GenerationEnvelopeV2, idempotencyKey st
 	}
 
 	// Editorial audio intent block: the canonical top-level audio config
-	// carries mix_policy / background_music / sound_effects; the nested
+	// carries mix_policy / background_music / sound_effects and opt-in
+	// random SFX on each clip start; the nested
 	// output.audio shape is the compat fallback (same pattern as mode and
 	// timing). background_music was already normalized to a slice at the
 	// wire boundary (AudioOutputConfig.UnmarshalJSON accepts a single
@@ -196,6 +197,8 @@ func BuildGenerateRequest(env *scriptpkg.GenerationEnvelopeV2, idempotencyKey st
 	if soundEffects == nil {
 		soundEffects = item.Output.Audio.SoundEffects
 	}
+	randomSFXOnClipStart := item.Audio.RandomSFXOnClipStart || item.Output.Audio.RandomSFXOnClipStart
+	randomSFXOnImageOverlay := item.Audio.RandomSFXOnImageOverlay || item.Output.Audio.RandomSFXOnImageOverlay
 	voiceoverLanguages := item.Audio.VoiceoverLanguages
 	if voiceoverLanguages == nil {
 		voiceoverLanguages = item.Output.Audio.VoiceoverLanguages
@@ -276,11 +279,13 @@ func BuildGenerateRequest(env *scriptpkg.GenerationEnvelopeV2, idempotencyKey st
 		// artifacts; empty falls back to the configured default. Threaded
 		// verbatim into the routing context so the per-scene TTS command
 		// honors the caller-explicit folder instead of dropping it.
-		VoiceoverFolderID: item.Output.VoiceoverFolderID,
-		Audio:             audioMode,
-		MixPolicy:         mixPolicy,
-		BackgroundMusic:   backgroundMusic,
-		SoundEffects:      soundEffects,
+		VoiceoverFolderID:       item.Output.VoiceoverFolderID,
+		Audio:                   audioMode,
+		MixPolicy:               mixPolicy,
+		BackgroundMusic:         backgroundMusic,
+		SoundEffects:            soundEffects,
+		RandomSFXOnClipStart:    randomSFXOnClipStart,
+		RandomSFXOnImageOverlay: randomSFXOnImageOverlay,
 		// ChannelID is carried verbatim from the envelope item: it is the
 		// lookup key for the channel profile applied below, never a value the
 		// builder derives.

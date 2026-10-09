@@ -161,6 +161,7 @@ type OverlayItem struct {
 	CaptionMotionID   string              `json:"caption_motion_id,omitempty"`
 	CaptionFontFamily string              `json:"caption_font_family,omitempty"`
 	AssetRefs         []OverlayAssetRef   `json:"asset_refs,omitempty"`
+	SoundEffect       *OverlaySoundEffect `json:"sound_effect,omitempty"`
 	ImageLayers       []OverlayImageLayer `json:"image_layers,omitempty"`
 	// Frame carries image-card border, shadow, stroke and clipping radius to
 	// RenderingGen. It is empty for text and structural items.
@@ -204,6 +205,15 @@ type OverlayItemFrameStroke struct {
 // OverlayImageLayer is one independently timed and animated image within a
 // composite entity-image overlay. Times are relative to the parent item so a
 // single queued render can reveal nearby entities at their own spoken anchors.
+// OverlaySoundEffect is a producer-selected cue bound to this visual item.
+// LocalPath is process-local queue staging data and is never serialized.
+type OverlaySoundEffect struct {
+	AssetRef      OverlayAssetRef `json:"asset_ref"`
+	StartOffsetMS int64           `json:"start_offset_ms,omitempty"`
+	DurationMS    int64           `json:"duration_ms"`
+	GainDB        float64         `json:"gain_db"`
+}
+
 type OverlayImageLayer struct {
 	ID              string            `json:"id"`
 	AssetID         string            `json:"asset_id"`
@@ -474,6 +484,35 @@ func (p *OverlayPlan) Validate() error {
 			}
 			assetIDs[ref.AssetID] = true
 		}
+		if sfx := item.SoundEffect; sfx != nil {
+			kind := strings.ToLower(strings.TrimSpace(item.Kind))
+			if kind != "image" && kind != "entity_image" && kind != "image_popup" && kind != "product" && kind != "logo" {
+				return fmt.Errorf("overlay plan: item %q sound_effect requires an image overlay", item.ID)
+			}
+			if strings.TrimSpace(sfx.AssetRef.AssetID) == "" || len(sfx.AssetRef.SHA256) != 64 || strings.Trim(sfx.AssetRef.SHA256, "0123456789abcdefABCDEF") != "" ||
+				strings.TrimSpace(sfx.AssetRef.URL) == "" || !strings.EqualFold(strings.TrimSpace(sfx.AssetRef.MediaType), "audio/mp4") ||
+				sfx.StartOffsetMS < 0 || sfx.DurationMS <= 0 || sfx.GainDB != sfx.GainDB || sfx.GainDB > 24 || sfx.GainDB < -96 ||
+				sfx.StartOffsetMS > item.EndMs-item.StartMs || sfx.DurationMS > item.EndMs-item.StartMs-sfx.StartOffsetMS {
+				return fmt.Errorf("overlay plan: item %q sound_effect requires valid audio identity, visible timing, positive duration, and gain in [-96,24] dB", item.ID)
+			}
+			visibleStartMS := int64(0)
+			visibleEndMS := item.EndMs - item.StartMs
+			if len(item.ImageLayers) > 0 {
+				firstLayer := item.ImageLayers[0]
+				for _, layer := range item.ImageLayers[1:] {
+					if layer.StartMS < firstLayer.StartMS {
+						firstLayer = layer
+					}
+				}
+				visibleStartMS, visibleEndMS = firstLayer.StartMS, firstLayer.EndMS
+				if visibleEndMS > item.EndMs-item.StartMs {
+					visibleEndMS = item.EndMs - item.StartMs
+				}
+			}
+			if sfx.StartOffsetMS != visibleStartMS || sfx.DurationMS > visibleEndMS-visibleStartMS {
+				return fmt.Errorf("overlay plan: item %q sound_effect must start with its first visible image and fit that image window", item.ID)
+			}
+		}
 		imageLayerIDs := make(map[string]struct{}, len(item.ImageLayers))
 		for layerIndex, layer := range item.ImageLayers {
 			if strings.TrimSpace(layer.ID) == "" || !assetIDs[layer.AssetID] {
@@ -506,7 +545,7 @@ func (p *OverlayPlan) Validate() error {
 		}
 		if item.RenderKey == "" {
 			key := ComputeRenderKey(*p, item)
-			p.Items[i] = OverlayItem{ID: item.ID, SceneID: item.SceneID, EntityID: item.EntityID, Kind: item.Kind, StartMs: item.StartMs, EndMs: item.EndMs, StartUS: item.StartUS, DurationUS: item.DurationUS, TemplateID: item.TemplateID, PresetID: item.PresetID, ImagePresetID: item.ImagePresetID, MotionID: item.MotionID, MotionParams: item.MotionParams, EntityRef: item.EntityRef, Text: item.Text, EntityCaption: item.EntityCaption, EntityStyleID: item.EntityStyleID, CaptionMotionID: item.CaptionMotionID, CaptionFontFamily: item.CaptionFontFamily, AssetRefs: item.AssetRefs, ImageLayers: item.ImageLayers, Frame: item.Frame, Map: item.Map, Params: item.Params, RenderKey: key}
+			p.Items[i] = OverlayItem{ID: item.ID, SceneID: item.SceneID, EntityID: item.EntityID, Kind: item.Kind, StartMs: item.StartMs, EndMs: item.EndMs, StartUS: item.StartUS, DurationUS: item.DurationUS, TemplateID: item.TemplateID, PresetID: item.PresetID, ImagePresetID: item.ImagePresetID, MotionID: item.MotionID, MotionParams: item.MotionParams, EntityRef: item.EntityRef, Text: item.Text, EntityCaption: item.EntityCaption, EntityStyleID: item.EntityStyleID, CaptionMotionID: item.CaptionMotionID, CaptionFontFamily: item.CaptionFontFamily, AssetRefs: item.AssetRefs, SoundEffect: item.SoundEffect, ImageLayers: item.ImageLayers, Frame: item.Frame, Map: item.Map, Params: item.Params, RenderKey: key}
 		}
 	}
 	if p.Fingerprint == "" {

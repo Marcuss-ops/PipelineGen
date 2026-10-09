@@ -72,7 +72,6 @@ func selectLongPhraseMotion(jobID, sceneID string, ordinal int, pool []string) s
 	}
 }
 
-
 func selectLongPhraseMotionLimited(jobID, sceneID string, ordinal int, pool []string, limit int) string {
 	if len(pool) == 0 {
 		return selectMotionFromPool(jobID, sceneID, "long_phrase_default", ordinal, limitedMotionPool(longPhraseMotionCandidates, limit))

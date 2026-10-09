@@ -69,9 +69,9 @@ func ApplyEditorialOverlayBudget(items []OverlayItem) ([]OverlayItem, PhraseOver
 // plate manifest from turning every grounded mention into a rendered map.
 const MaxMapOverlaysPerScene = 2
 
-// MaxMapOverlaysPerRun is the certified run-level map ceiling. It supports
-// short multi-stop scripts while bounding full-canvas map rendering.
-const MaxMapOverlaysPerRun = 3
+// MaxMapOverlaysPerRun bounds full-canvas map renders while allowing a
+// five-location verification run to exercise map timing and animation.
+const MaxMapOverlaysPerRun = 5
 
 // MaxNumberOverlaysPerRun bounds value callouts independently so metrics,
 // money and dates can survive the editorial budget without displacing the

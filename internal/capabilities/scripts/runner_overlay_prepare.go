@@ -119,7 +119,8 @@ func (r *Runner) runVidRushJoinAndPrepare(ctx context.Context, runID string, req
 		for index, scene := range snapshot {
 			sceneTexts[index] = scene.Text
 		}
-		if err := r.geocodePlaceAnnotations(ctx, geocoded, string(req.SourceLanguage), geocodeOptions{sceneTexts: sceneTexts, mapsOnly: req.MapsOnly}); err != nil {
+		wantMaps := req.MapsOnly || req.AnimationCounts["maps"] > 0 || req.AnimationCounts["one_map"] > 0 || req.AnimationCounts["two_maps"] > 0
+		if err := r.geocodePlaceAnnotations(ctx, geocoded, string(req.SourceLanguage), geocodeOptions{sceneTexts: sceneTexts, mapsOnly: wantMaps}); err != nil {
 			return vidRushPrepareResult{}, err
 		}
 		annotations = geocoded

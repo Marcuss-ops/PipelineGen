@@ -367,17 +367,12 @@ func entityImageLayerParams(width, height, count, slot int) map[string]any {
 //
 // The broader image catalog remains callable for explicit editorial plans;
 // this automatic path avoids abrupt flips and strong perspective effects.
-// entityStyleID is the run's pinned entity-card composition selector (a
-// channel profile or job choice; empty keeps the certified "random"
-// default). It must re-stamp here — resolver-derived cards enter after the
-// planner pass — and re-stamping with the SAME pinned value never clobbers a
-// selector the planner already carried.
+// entityStyleID is an explicitly requested entity-card composition selector.
+// Empty leaves the planner's simple image and caption motions in place, so
+// spatial compositions are never added implicitly to runtime renders.
 func assignEntityImageMotions(items []capabilityoverlay.OverlayItem, offset, width, height int, entityStyleID string) {
 	imageOrdinal, captionOrdinal := 0, 0
 	pinned := strings.TrimSpace(entityStyleID)
-	if pinned == "" {
-		pinned = capabilityoverlay.IdentityEntityStyleSelector
-	}
 	captionMotion := func() string {
 		motion := capabilityoverlay.EntityCaptionMotionAtOffset(offset, captionOrdinal)
 		captionOrdinal++
@@ -387,7 +382,13 @@ func assignEntityImageMotions(items []capabilityoverlay.OverlayItem, offset, wid
 		item := &items[itemIndex]
 		if item.Kind == "image" && strings.TrimSpace(item.EntityCaption) != "" {
 			item.MotionID = capabilityoverlay.ImageWithTextMotionAtOffset(offset, imageOrdinal, 0)
-			item.EntityStyleID = pinned
+			if pinned != "" {
+				item.EntityStyleID = pinned
+			}
+			// The renderer's entity-style image path also requires an explicit
+			// image-fit preset; adding the style selector alone yields a plan the
+			// semantic compiler correctly rejects at runtime.
+			item.ImagePresetID = "image_scale_in"
 			imageOrdinal++
 			continue
 		}
@@ -395,19 +396,19 @@ func assignEntityImageMotions(items []capabilityoverlay.OverlayItem, offset, wid
 			continue
 		}
 		if len(item.ImageLayers) > 0 {
-				for layerIndex := range item.ImageLayers {
-					layer := &item.ImageLayers[layerIndex]
-					if strings.TrimSpace(layer.Caption) != "" {
-						layer.MotionID = capabilityoverlay.ImageWithTextMotionAtOffset(offset, imageOrdinal, 0)
-					} else {
-						layer.MotionID = capabilityoverlay.EntityImageMotionAtOffset(offset, imageOrdinal)
-					}
-					layer.MotionParams = map[string]any{"enter_frames": 8}
-					layer.CaptionMotionID = captionMotion()
-					imageOrdinal++
+			for layerIndex := range item.ImageLayers {
+				layer := &item.ImageLayers[layerIndex]
+				if strings.TrimSpace(layer.Caption) != "" {
+					layer.MotionID = capabilityoverlay.ImageWithTextMotionAtOffset(offset, imageOrdinal, 0)
+				} else {
+					layer.MotionID = capabilityoverlay.EntityImageMotionAtOffset(offset, imageOrdinal)
 				}
-				continue
+				layer.MotionParams = map[string]any{"enter_frames": 8}
+				layer.CaptionMotionID = captionMotion()
+				imageOrdinal++
 			}
+			continue
+		}
 		if strings.TrimSpace(item.EntityCaption) != "" {
 			item.MotionID = capabilityoverlay.ImageWithTextMotionAtOffset(offset, imageOrdinal, 0)
 			item.EntityStyleID = pinned

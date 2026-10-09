@@ -22,6 +22,14 @@ func SHA256Bytes(data []byte) string {
 	return hex.EncodeToString(sum[:])
 }
 
+// SHA256Size is the length in bytes of a raw SHA-256 digest.
+const SHA256Size = sha256.Size
+
+// SHA256Sum returns the raw (binary, not hex) SHA-256 digest of data. Use it
+// when a caller needs the fixed-size binary form (seeds, bucket indexes); the
+// textual identity form is SHA256Bytes.
+func SHA256Sum(data []byte) [SHA256Size]byte { return sha256.Sum256(data) }
+
 // SHA256String returns the canonical SHA-256 hex digest of the raw bytes of
 // the given string.
 func SHA256String(text string) string { return SHA256Bytes([]byte(text)) }

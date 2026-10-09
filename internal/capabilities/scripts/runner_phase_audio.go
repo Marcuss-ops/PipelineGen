@@ -151,7 +151,7 @@ func (r *Runner) runAudioCompilePhase(ctx context.Context, runID string, req Gen
 			// expansion → SFX placement → automation, all compiled into the
 			// sealed plan by CompileAudioWithIntents. Absent intents keep the
 			// legacy primary-only CompileWithMixPolicy path.
-			if len(req.BackgroundMusic) > 0 || len(req.SoundEffects) > 0 {
+			if len(req.BackgroundMusic) > 0 || len(req.SoundEffects) > 0 || req.RandomSFXOnClipStart {
 				audioSource := r.audioAssetSource
 				// P1.1: use prefetched BGM/SFX paths (already resolved during TTS).
 				if result.AudioPrefetch != nil && result.AudioPrefetch.AudioSource != nil {
@@ -167,7 +167,7 @@ func (r *Runner) runAudioCompilePhase(ctx context.Context, runID string, req Gen
 				if req.FinalJob {
 					audioInput = finalJobAudioInput(*result, req.SourceLanguage)
 				}
-				canonicalTimeline, compiledAudioPlan, audioAssets, compileTimings, err = CompileCanonicalAudioPlanAudioOnlyWithIntents(ctx, audioInput, req.SourceLanguage, capabilityaudio.DefaultAudioProfile(), audioSource, policy, req.BackgroundMusic, req.SoundEffects)
+				canonicalTimeline, compiledAudioPlan, audioAssets, compileTimings, err = CompileCanonicalAudioPlanAudioOnlyWithIntents(ctx, audioInput, req.SourceLanguage, capabilityaudio.DefaultAudioProfile(), audioSource, policy, req.BackgroundMusic, req.SoundEffects, req.RandomSFXOnClipStart)
 			} else {
 				audioInput := *result
 				if req.FinalJob {

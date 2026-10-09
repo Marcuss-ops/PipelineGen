@@ -217,6 +217,9 @@ func (e *QueueRenderEnqueuer) enqueueChrononPlan(ctx context.Context, plan capov
 		for _, ref := range item.AssetRefs {
 			addAsset(ref)
 		}
+		if item.SoundEffect != nil {
+			addAsset(item.SoundEffect.AssetRef)
+		}
 	}
 	// Chronon's VisualPresetRegistry preflights the preset-owned font before
 	// applying a layer's explicit font_asset override. Keep both content-

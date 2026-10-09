@@ -138,12 +138,14 @@ func ImageFrame(style *scriptpkg.OverlayImageStyleSpec) *capabilityoverlay.Overl
 		if color == "" {
 			color = "#000000"
 		}
-		shadow := &capabilityoverlay.OverlayItemFrameShadow{Color: color, Opacity: 0.7, BlurPX: 12, OffsetYP: 6}
+		// Chronon certifies separable blur on the strict Vulkan path through
+		// 10 px. Keep generated image cards inside that native-GPU range.
+		shadow := &capabilityoverlay.OverlayItemFrameShadow{Color: color, Opacity: 0.7, BlurPX: 10, OffsetYP: 6}
 		if style.Shadow.Opacity != nil {
 			shadow.Opacity = *style.Shadow.Opacity
 		}
 		if style.Shadow.Blur != nil {
-			shadow.BlurPX = *style.Shadow.Blur
+			shadow.BlurPX = min(*style.Shadow.Blur, 10)
 		}
 		if len(style.Shadow.Offset) > 0 {
 			shadow.OffsetXP = style.Shadow.Offset[0]

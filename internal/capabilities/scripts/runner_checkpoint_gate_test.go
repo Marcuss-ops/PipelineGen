@@ -268,10 +268,12 @@ func TestCheckpointSnapshotIsADeepCopy(t *testing.T) {
 	live := newCheckpointResult(2)
 	live.OverlayPlan = &capabilityoverlay.OverlayPlan{Items: []capabilityoverlay.OverlayItem{{
 		ID: "map-item", AssetRefs: []capabilityoverlay.OverlayAssetRef{{AssetID: "lod-0", LocalPath: "/cache/lod-0.png"}},
+		SoundEffect: &capabilityoverlay.OverlaySoundEffect{AssetRef: capabilityoverlay.OverlayAssetRef{AssetID: "overlay-sfx:primary", LocalPath: "/cache/primary.m4a"}},
 	}}}
 	live.LocalizedOverlayPlans = map[Language]*capabilityoverlay.OverlayPlan{
 		"es": {Items: []capabilityoverlay.OverlayItem{{
 			ID: "map-item-es", AssetRefs: []capabilityoverlay.OverlayAssetRef{{AssetID: "lod-0-es", LocalPath: "/cache/lod-0-es.png"}},
+			SoundEffect: &capabilityoverlay.OverlaySoundEffect{AssetRef: capabilityoverlay.OverlayAssetRef{AssetID: "overlay-sfx:localized", LocalPath: "/cache/localized.m4a"}},
 		}}},
 	}
 	snapshot, err := snapshotGenerateResult(live)
@@ -289,6 +291,10 @@ func TestCheckpointSnapshotIsADeepCopy(t *testing.T) {
 		"transient map asset paths must remain available to the detached render snapshot")
 	require.Equal(t, "/cache/lod-0-es.png", snapshot.LocalizedOverlayPlans["es"].Items[0].AssetRefs[0].LocalPath,
 		"localized render snapshots must retain transient asset paths too")
+	require.Equal(t, "/cache/primary.m4a", snapshot.OverlayPlan.Items[0].SoundEffect.AssetRef.LocalPath,
+		"random SFX cue path must survive the detached render snapshot")
+	require.Equal(t, "/cache/localized.m4a", snapshot.LocalizedOverlayPlans["es"].Items[0].SoundEffect.AssetRef.LocalPath,
+		"localized random SFX cue path must survive the detached snapshot")
 
 	require.Nil(t, mustSnapshotNil(t), "a nil result must snapshot to nil rather than an empty result")
 }

@@ -105,7 +105,8 @@ func geocodeGroundedPlaceNames(ctx context.Context, geocoder capabilitygeocoding
 		entityIndexes[strings.ToLower(normalizeGeocodePlaceQuery(entity.CanonicalName, language))] = index
 	}
 	queries := make([]string, 0, 8)
-	for _, match := range capitalizedNameRE.FindAllString(text, -1) {
+	for _, span := range capitalizedNameRE.FindAllStringIndex(text, -1) {
+		match := text[span[0]:span[1]]
 		name := normalizeGeocodePlaceQuery(match, language)
 		key := strings.ToLower(name)
 		if name == "" {
@@ -117,6 +118,12 @@ func geocodeGroundedPlaceNames(ctx context.Context, geocoder capabilitygeocoding
 		// Sentence-start capitalized prose is not a place name. Multiword
 		// proper names and single words after geographic cues remain eligible.
 		if len(strings.Fields(name)) == 1 && len(name) < 4 {
+			continue
+		}
+		// Capitalization alone is weak evidence: sentence-initial adverbs
+		// ("Infine") and uppercase organizations ("ANSA") must not become
+		// map pins merely because a geocoder happens to know a homonymous town.
+		if len(name) > 1 && name == strings.ToUpper(name) {
 			continue
 		}
 		if _, ok := seen[key]; ok {
@@ -224,6 +231,12 @@ func mapPlaceCandidateIgnoredWords(registry *linguistics.LexiconRegistry, langua
 	}
 	for word := range profile.FunctionWords {
 		ignored[word] = struct{}{}
+	}
+	// Sentence-initial adverbs can look like proper place names after
+	// title-casing. Keep this small extension in the same exclusion set so a
+	// geocoder homonym cannot turn prose such as "Infine" into a map pin.
+	if strings.EqualFold(language, "it") || strings.HasPrefix(strings.ToLower(language), "it-") {
+		ignored["infine"] = struct{}{}
 	}
 	return ignored, nil
 }

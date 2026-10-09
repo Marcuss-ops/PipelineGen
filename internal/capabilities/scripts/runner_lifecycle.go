@@ -153,6 +153,10 @@ func restoreOverlayPlanRuntimeAssetLocations(source, target *capabilityoverlay.O
 				target.Items[i].AssetRefs[j].LocalPath = source.Items[i].AssetRefs[j].LocalPath
 			}
 		}
+		if source.Items[i].SoundEffect != nil && target.Items[i].SoundEffect != nil &&
+			source.Items[i].SoundEffect.AssetRef.AssetID == target.Items[i].SoundEffect.AssetRef.AssetID {
+			target.Items[i].SoundEffect.AssetRef.LocalPath = source.Items[i].SoundEffect.AssetRef.LocalPath
+		}
 	}
 }
 

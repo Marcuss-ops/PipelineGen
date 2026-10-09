@@ -155,6 +155,26 @@ func TestApplyEditorialOverlayBudgetHonoursCallerImageLimit(t *testing.T) {
 	}
 }
 
+func TestApplyEditorialOverlayBudgetAllowsFiveMaps(t *testing.T) {
+	items := make([]OverlayItem, 0, 6)
+	for i := 0; i < 6; i++ {
+		items = append(items, OverlayItem{
+			ID: fmt.Sprintf("map-%d", i), Kind: "map", SceneID: fmt.Sprintf("scene-%d", i),
+			Map:    &MapOverlay{SourceID: fmt.Sprintf("plate-%d", i)},
+			Params: map[string]any{"priority": float64(i)},
+		})
+	}
+	got, _ := ApplyEditorialOverlayBudgetWithImageLimit(items, 0, 0, 0)
+	if len(got) != 5 {
+		t.Fatalf("map overlays = %d, want five", len(got))
+	}
+	for _, item := range got {
+		if item.ID == "map-0" {
+			t.Fatal("lowest-priority sixth map survived the five-map ceiling")
+		}
+	}
+}
+
 func TestApplyEditorialOverlayBudgetCombinesContextAndEntityImageKinds(t *testing.T) {
 	items := make([]OverlayItem, 0, 30)
 	for i := 0; i < 8; i++ {

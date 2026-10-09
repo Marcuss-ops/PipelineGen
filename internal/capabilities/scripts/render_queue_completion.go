@@ -431,6 +431,12 @@ func semanticAssetLogicalPath(ref capoverlay.OverlayAssetRef) string {
 			ext = ".jpg"
 		case "video/mp4", "video/quicktime", "video":
 			ext = ".mp4"
+		case "audio/mp4":
+			ext = ".m4a"
+		case "audio/mpeg":
+			ext = ".mp3"
+		case "audio/wav", "audio/x-wav", "audio":
+			ext = ".wav"
 		case "font/ttf", "font":
 			ext = ".ttf"
 		}

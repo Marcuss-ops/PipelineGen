@@ -467,16 +467,14 @@ func TestCertifiedImageMotionPoolAndPlannerAssignment(t *testing.T) {
 	}
 }
 
-// TestRandomImageMotionOffsetRotatesThroughAllCertifiedIDs pins the MAP
-// rotation over the CENTERED pool: a map's basemap must keep the raster pinned
-// to the canvas center so the pins projected over it never drift. The plan's
-// random offset may start anywhere in the largest generated visual pool's
-// span; the centered pool reduces it modulo its own size and must still cover exactly
-// its three ids.
+// TestRandomImageMotionOffsetRotatesThroughAllCertifiedIDs pins map rotation
+// over the centered pool: the raster remains registered with projected pins.
+// The plan's random offset may start anywhere in the largest generated pool's
+// span; the centered pool reduces it modulo its own size and must cover every id.
 func TestRandomImageMotionOffsetRotatesThroughAllCertifiedIDs(t *testing.T) {
 	count := len(centeredImageMotionCandidates)
-	if count != 3 {
-		t.Fatalf("centered image motions = %d, want 3", count)
+	if count != 4 {
+		t.Fatalf("centered map-safe motions = %d, want 4", count)
 	}
 	span := max(len(generatedEntityImageMotionCandidates), len(generatedEntityCaptionMotionCandidates), len(centeredImageMotionCandidates))
 	for attempt := 0; attempt < 4; attempt++ {

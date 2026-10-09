@@ -98,7 +98,7 @@ type GenerationFingerprintInput struct {
 	Topic string `json:"topic"`
 
 	// AudioIntent is the editorial audio intent block (audio.mix_policy,
-	// background_music, sound_effects — plus the audio mode/timing that
+	// background_music, sound_effects, random_sfx_on_clip_start — plus the audio mode/timing that
 	// selects the pipeline). It participates in the generation identity:
 	// different audio intents compile to different audio plans, so the
 	// item identity / idempotency / cache key must change. Nil when no
@@ -260,7 +260,7 @@ func FingerprintInputFromItem(item GenerationItemV2) GenerationFingerprintInput 
 	// pipeline) changes the compiled audio plan and must invalidate the
 	// item identity / cache key. A zero config stays nil so items without
 	// an audio block keep their legacy identity byte for byte.
-	if item.Audio.Mode != "" || item.Audio.Timing != nil || item.Audio.MixPolicy != "" || len(item.Audio.BackgroundMusic) > 0 || len(item.Audio.SoundEffects) > 0 {
+	if item.Audio.Mode != "" || item.Audio.Timing != nil || item.Audio.MixPolicy != "" || item.Audio.RandomSFXOnClipStart || item.Audio.RandomSFXOnImageOverlay || len(item.Audio.BackgroundMusic) > 0 || len(item.Audio.SoundEffects) > 0 {
 		audioCfg := item.Audio
 		input.AudioIntent = &audioCfg
 	}
