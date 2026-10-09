@@ -270,6 +270,7 @@ func (r *Runner) synthesizeVoiceoverWork(ctx context.Context, runID string, req 
 		}, func(measureCtx context.Context) error {
 			var err error
 			audioRef, err = r.voiceoverGen.Generate(measureCtx, VoiceoverInput{
+				RunID:    runID,
 				SceneID:  item.sceneID,
 				Language: item.lang,
 				Text:     item.text,

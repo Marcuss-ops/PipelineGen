@@ -141,14 +141,14 @@ type GenerationItemV2 struct {
 	// two_maps, metric_stat, timeline_date, or a specific image composition).
 	// Omitted subfamilies use five styles; positive values are capped to the
 	// available catalog.
-	AnimationCounts       map[string]int `json:"animation_counts,omitempty"`
+	AnimationCounts map[string]int `json:"animation_counts,omitempty"`
 	// EntityStyleID pins the RenderingGen entity-card composition family for
 	// every generated entity card in this item: "random" (default, full 25
 	// Apple Spatial registry), a tag selector (badge, camera, side,
 	// typewriter, testo_sotto, premium_random_v1) or one 01..25 variant.
 	// Invalid selectors fail closed at plan compilation.
-	EntityStyleID         string         `json:"entity_style_id,omitempty"`
-	DisableNumberOverlays bool           `json:"disable_number_overlays,omitempty"`
+	EntityStyleID         string `json:"entity_style_id,omitempty"`
+	DisableNumberOverlays bool   `json:"disable_number_overlays,omitempty"`
 
 	// Audio configures the audio execution mode (audio.mode) plus the
 	// editorial audio intent block (mix_policy, background_music,

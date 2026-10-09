@@ -174,7 +174,7 @@ func TestBoundedMapRenderOutputRetainsOnlyRecentDiagnostics(t *testing.T) {
 
 // validDynamicMapTelemetry is the minimal summary the dynamic-map renderer must
 // emit to be certified. It is shared by the render-contract tests below.
-const validDynamicMapTelemetry = `{"schema":"chronon.dynamic-map-telemetry.v1","frames":120,"dimensions":{"width":1920,"height":1080},"fps":{"num":24,"den":1},"tile":{"tile_disk_cache_hits":7,"tile_disk_cache_misses":0,"tile_network_fetches":0,"tile_fallbacks":0,"tile_bytes_downloaded":0,"tile_fetch_ms":12.0,"prefetch_ms":3.0,"prefetch_tiles_requested":7,"prefetch_tiles_memory_hits":0,"late_tile_fetches":0},"plates":{"prepare_ms":4.0,"plate_compose_ms":1.0,"plate_count":11,"plate_bytes":42,"required_tile_count":7,"prefetch_tiles_fetched":7,"prefetch_tiles_memory_hits":0},"gate_ms":2.0,"frame_pipeline_s":3.0,"render_encode_wall_s":3.5,"post_frame_tail_s":0.5,"engine_fallback_frames":0,"output_bytes":8,"renderer_wall_s":9.0}`
+const validDynamicMapTelemetry = `{"schema":"chronon.dynamic-map-telemetry.v1","frames":120,"dimensions":{"width":1920,"height":1080},"fps":{"num":24,"den":1},"tile":{"tile_disk_cache_hits":7,"tile_disk_cache_misses":0,"tile_network_fetches":0,"tile_fallbacks":0,"tile_bytes_downloaded":0,"tile_fetch_ms":12.0,"prefetch_ms":3.0,"prefetch_tiles_requested":7,"prefetch_tiles_memory_hits":0,"late_tile_fetches":0},"plates":{"prepare_ms":4.0,"plate_compose_ms":1.0,"plate_count":11,"plate_bytes":42,"required_tile_count":7,"prefetch_tiles_fetched":7,"prefetch_tiles_memory_hits":0},"gate_ms":2.0,"frame_pipeline_s":3.0,"render_encode_wall_s":3.5,"post_frame_tail_s":0.5,"engine_fallback_frames":0,"output_bytes":8,"video_encoder":"h264_nvenc","gpu_encoder":true,"renderer_wall_s":9.0}`
 
 // TestMapBasemapStylesAreUniqueAndNonEmpty keeps the palette a real choice set:
 // a duplicate id would silently bias the rotation. It also asserts the session
@@ -386,7 +386,7 @@ func TestRenderDynamicMapVideoRequiresCompleteCertifiedTelemetry(t *testing.T) {
 	}{
 		{
 			name:    "valid summary",
-			summary: `{"schema":"chronon.dynamic-map-telemetry.v1","frames":120,"dimensions":{"width":1920,"height":1080},"fps":{"num":24,"den":1},"tile":{"tile_disk_cache_hits":7,"tile_disk_cache_misses":0,"tile_network_fetches":0,"tile_fallbacks":0,"tile_bytes_downloaded":0,"tile_fetch_ms":12.0,"prefetch_ms":3.0,"prefetch_tiles_requested":7,"prefetch_tiles_memory_hits":0,"late_tile_fetches":0},"plates":{"prepare_ms":4.0,"plate_compose_ms":1.0,"plate_count":11,"plate_bytes":42,"required_tile_count":7,"prefetch_tiles_fetched":7,"prefetch_tiles_memory_hits":0},"gate_ms":2.0,"frame_pipeline_s":3.0,"render_encode_wall_s":3.5,"post_frame_tail_s":0.5,"engine_fallback_frames":0,"output_bytes":8,"renderer_wall_s":9.0}`,
+			summary: `{"schema":"chronon.dynamic-map-telemetry.v1","frames":120,"dimensions":{"width":1920,"height":1080},"fps":{"num":24,"den":1},"tile":{"tile_disk_cache_hits":7,"tile_disk_cache_misses":0,"tile_network_fetches":0,"tile_fallbacks":0,"tile_bytes_downloaded":0,"tile_fetch_ms":12.0,"prefetch_ms":3.0,"prefetch_tiles_requested":7,"prefetch_tiles_memory_hits":0,"late_tile_fetches":0},"plates":{"prepare_ms":4.0,"plate_compose_ms":1.0,"plate_count":11,"plate_bytes":42,"required_tile_count":7,"prefetch_tiles_fetched":7,"prefetch_tiles_memory_hits":0},"gate_ms":2.0,"frame_pipeline_s":3.0,"render_encode_wall_s":3.5,"post_frame_tail_s":0.5,"engine_fallback_frames":0,"output_bytes":8,"video_encoder":"h264_nvenc","gpu_encoder":true,"renderer_wall_s":9.0}`,
 		},
 		{
 			name:    "missing counters",
@@ -395,7 +395,7 @@ func TestRenderDynamicMapVideoRequiresCompleteCertifiedTelemetry(t *testing.T) {
 		},
 		{
 			name:    "fallback work",
-			summary: `{"schema":"chronon.dynamic-map-telemetry.v1","frames":120,"dimensions":{"width":1920,"height":1080},"fps":{"num":24,"den":1},"tile":{"tile_disk_cache_hits":0,"tile_disk_cache_misses":1,"tile_network_fetches":0,"tile_fallbacks":1,"tile_bytes_downloaded":0,"tile_fetch_ms":12.0,"prefetch_ms":3.0,"prefetch_tiles_requested":7,"prefetch_tiles_memory_hits":0,"late_tile_fetches":0},"plates":{"prepare_ms":4.0,"plate_compose_ms":1.0,"plate_count":11,"plate_bytes":42,"required_tile_count":7,"prefetch_tiles_fetched":7,"prefetch_tiles_memory_hits":0},"gate_ms":2.0,"frame_pipeline_s":3.0,"render_encode_wall_s":3.5,"post_frame_tail_s":0.5,"engine_fallback_frames":0,"output_bytes":8,"renderer_wall_s":9.0}`,
+			summary: `{"schema":"chronon.dynamic-map-telemetry.v1","frames":120,"dimensions":{"width":1920,"height":1080},"fps":{"num":24,"den":1},"tile":{"tile_disk_cache_hits":0,"tile_disk_cache_misses":1,"tile_network_fetches":0,"tile_fallbacks":1,"tile_bytes_downloaded":0,"tile_fetch_ms":12.0,"prefetch_ms":3.0,"prefetch_tiles_requested":7,"prefetch_tiles_memory_hits":0,"late_tile_fetches":0},"plates":{"prepare_ms":4.0,"plate_compose_ms":1.0,"plate_count":11,"plate_bytes":42,"required_tile_count":7,"prefetch_tiles_fetched":7,"prefetch_tiles_memory_hits":0},"gate_ms":2.0,"frame_pipeline_s":3.0,"render_encode_wall_s":3.5,"post_frame_tail_s":0.5,"engine_fallback_frames":0,"output_bytes":8,"video_encoder":"h264_nvenc","gpu_encoder":true,"renderer_wall_s":9.0}`,
 			wantErr: "unapproved fallback work",
 		},
 	} {
@@ -934,6 +934,62 @@ func TestQueueRenderEnqueuerChrononPlan(t *testing.T) {
 	}
 	if submitted.Assets[3].SHA256 != capoverlay.GoldenFontHash || submitted.Assets[3].URL != capoverlay.CanonicalTextFontPath {
 		t.Fatalf("Cyrillic semantic font not projected: %+v", submitted.Assets[3])
+	}
+}
+
+func TestQueueRenderEnqueuerStagesImageSFXWithoutSerializingLocalPath(t *testing.T) {
+	localPath := filepath.Join(t.TempDir(), "cue.m4a")
+	if err := os.WriteFile(localPath, []byte("cue"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	plan := capoverlay.GoldenOverlayPlanV1()
+	var image *capoverlay.OverlayItem
+	for i := range plan.Items {
+		if strings.EqualFold(plan.Items[i].TemplateID, "IMAGE_OVERLAY") {
+			image = &plan.Items[i]
+			break
+		}
+	}
+	if image == nil {
+		t.Fatal("golden plan has no image item")
+	}
+	image.Kind = "image"
+	image.SoundEffect = &capoverlay.OverlaySoundEffect{
+		AssetRef:   capoverlay.OverlayAssetRef{AssetID: "overlay-sfx:test", SHA256: strings.Repeat("f", 64), MediaType: "audio/mp4", URL: "assets/semantic/overlay-sfx-test.m4a", LocalPath: localPath},
+		DurationMS: 250, GainDB: -18,
+	}
+	image.RenderKey = ""
+	plan.Fingerprint = ""
+	if err := plan.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	client := &captureSFXQueueClient{}
+	enqueuer, err := NewQueueRenderEnqueuer(client)
+	if err != nil {
+		t.Fatal(err)
+	}
+	enqueuer.pollInterval = time.Millisecond
+	if _, err := enqueuer.EnqueueChrononPlan(context.Background(), plan); err != nil {
+		t.Fatal(err)
+	}
+	job := client.job
+	found := false
+	for _, asset := range job.Assets {
+		if asset.SHA256 == strings.Repeat("f", 64) {
+			found = true
+			if asset.URL != "assets/semantic/overlay-sfx-test.m4a" || asset.LocalPath != localPath {
+				t.Fatalf("staged SFX queue asset = %+v", asset)
+			}
+		}
+	}
+	if !found {
+		t.Fatalf("cue asset missing from queue assets: %+v", job.Assets)
+	}
+	if strings.Contains(string(job.OverlaySpec), localPath) {
+		t.Fatal("producer-local SFX path leaked into semantic overlay wire")
+	}
+	if !strings.Contains(string(job.OverlaySpec), `"sound_effect"`) {
+		t.Fatal("semantic image SFX cue missing from queue wire")
 	}
 }
 

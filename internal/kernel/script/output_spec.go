@@ -101,6 +101,12 @@ type OutputSpec struct {
 
 type AudioOutputConfig struct {
 	Mode string `json:"mode,omitempty"`
+	// RandomSFXOnClipStart adds a deterministic random whoosh at the start
+	// of every real video clip in the generated timeline. It is opt-in.
+	RandomSFXOnClipStart bool `json:"random_sfx_on_clip_start,omitempty"`
+	// RandomSFXOnImageOverlay pairs an independently mixed cue with each
+	// image overlay. The producer selects concrete assets before queueing.
+	RandomSFXOnImageOverlay bool `json:"random_sfx_on_image_overlay,omitempty"`
 	// VoiceoverLanguages limits speech synthesis independently from the
 	// translated output languages. Nil preserves legacy synthesis for the
 	// source and every requested translation; a non-nil list selects the

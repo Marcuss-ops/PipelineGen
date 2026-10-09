@@ -144,7 +144,7 @@ func (c *sceneReadyCoordinator) synthesizeLanguage(ctx context.Context, itemIdx 
 		WorkerID: fmt.Sprintf("tts-%d", itemIdx), MetadataJSON: fmt.Sprintf("{\"scene_id\":%q,\"language\":%q}", sceneID, lang),
 	}, func(measureCtx context.Context) error {
 		var err error
-		audioRef, err = c.runner.voiceoverGen.Generate(measureCtx, VoiceoverInput{SceneID: sceneID, Language: lang, Text: text, Project: c.routing.Project, VoiceoverFolderID: c.routing.VoiceoverFolderID, Timing: c.req.Timing})
+		audioRef, err = c.runner.voiceoverGen.Generate(measureCtx, VoiceoverInput{RunID: c.runID, SceneID: sceneID, Language: lang, Text: text, Project: c.routing.Project, VoiceoverFolderID: c.routing.VoiceoverFolderID, Timing: c.req.Timing})
 		return err
 	})
 	return audioRef, err

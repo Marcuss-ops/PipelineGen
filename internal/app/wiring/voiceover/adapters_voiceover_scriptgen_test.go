@@ -18,6 +18,7 @@ import (
 	capabilityaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
 	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
 	voiceover "github.com/Marcuss-ops/PipelineGen/internal/capabilities/voiceover/service"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 )
 
 // stubScriptVOExecutor implements voiceover.VoiceoverItemExecutor by
@@ -254,6 +255,23 @@ func TestScriptVoiceoverGenerator_JobUniqueFilename(t *testing.T) {
 	require.NotNil(t, exec.gotCmd)
 	assert.Equal(t, "scene_comici-sandler_scene-0_it.mp3", exec.gotCmd.Filename,
 		"the project namespace must make the voiceover filename job-unique")
+}
+
+func TestScriptVoiceoverGenerator_RetryUniqueFilename(t *testing.T) {
+	exec := &stubScriptVOExecutor{result: &voiceover.VoiceoverItemResult{
+		Status: voiceover.StatusCompleted, LegacyFileMD5: "hash",
+		LocalPath: "/tmp/out/scene_run_17914750840333_project_scene-0_it.mp3", DurationMs: 500,
+	}}
+	gen := NewScriptVoiceoverGenerator(exec, "/tmp/out", nil)
+	_, err := gen.Generate(context.Background(), scriptgen.VoiceoverInput{
+		RunID: "run_1791475084033364410_3f1b652117e0", SceneID: "scene-0", Language: "it",
+		Text: "Ciao mondo", Project: "project",
+	})
+	require.NoError(t, err)
+	require.NotNil(t, exec.gotCmd)
+	wantRunPrefix := "run_17914750840333_" + digest.SHA256Bytes([]byte("run_1791475084033364410_3f1b652117e0"))[:8]
+	assert.Equal(t, "scene_"+wantRunPrefix+"_project_scene-0_it.mp3", exec.gotCmd.Filename,
+		"a durable retry must not share its audio or timing-metadata path with the prior attempt")
 }
 
 // TestScriptVoiceoverGenerator_ForwardsExplicitDestination pins the

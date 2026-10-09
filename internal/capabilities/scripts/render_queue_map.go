@@ -120,6 +120,8 @@ func renderDynamicMapVideo(ctx context.Context, plan capoverlay.OverlayPlan) (st
 		PostFrameTailS       float64 `json:"post_frame_tail_s"`
 		EngineFallbackFrames int     `json:"engine_fallback_frames"`
 		OutputBytes          int64   `json:"output_bytes"`
+		VideoEncoder         string  `json:"video_encoder"`
+		GPUEncoder           bool    `json:"gpu_encoder"`
 		GateMS               float64 `json:"gate_ms"`
 		Tile                 struct {
 			DiskCacheHits           int     `json:"tile_disk_cache_hits"`
@@ -167,11 +169,16 @@ func renderDynamicMapVideo(ctx context.Context, plan capoverlay.OverlayPlan) (st
 			summary.Dimensions.Width, summary.Dimensions.Height, summary.FPS.Num, summary.FPS.Den,
 			renderWidth, renderHeight, plan.FPSNum, plan.FPSDen)
 	}
+	if !summary.GPUEncoder || summary.VideoEncoder != "h264_nvenc" {
+		return "", fmt.Errorf("Chronon map renderer did not use the required GPU encoder: encoder=%q gpu=%t",
+			summary.VideoEncoder, summary.GPUEncoder)
+	}
 	if renderWidth != plan.Width || renderHeight != plan.Height {
 		scale := fmt.Sprintf("scale=%d:%d:flags=lanczos", plan.Width, plan.Height)
 		upscale := exec.CommandContext(ctx, "/usr/bin/ffmpeg", "-hide_banner", "-loglevel", "error", "-y",
 			"-i", outputPath, "-vf", scale, "-r", fmt.Sprintf("%d/%d", plan.FPSNum, plan.FPSDen),
-			"-c:v", "libx264", "-preset", "fast", "-crf", "18", "-pix_fmt", "yuv420p", "-movflags", "+faststart", encodedOutputPath)
+			"-c:v", "h264_nvenc", "-gpu", "0", "-preset", "p4", "-tune", "hq", "-rc", "vbr", "-cq", "18", "-b:v", "0",
+			"-pix_fmt", "yuv420p", "-movflags", "+faststart", encodedOutputPath)
 		if output, err := upscale.CombinedOutput(); err != nil {
 			return "", fmt.Errorf("scale dynamic map to overlay contract: %w: %s", err, strings.TrimSpace(string(output)))
 		}
@@ -253,7 +260,9 @@ func mapBasemapStyles() []string {
 // lists: the choice among them belongs to the deterministic sampler below.
 var (
 	mapCameraAnimations = []string{
-		"signature_dive", "tilt_reveal", "orbit_arrival", "slow_approach", "wide_context",
+		// Keep generated maps level and stable: users asked for a clean close
+		// zoom, with no orbit/tilt treatment.
+		"signature_dive", "slow_approach",
 	}
 	mapLabelAnimations = []string{
 		"gentle_fade", "soft_glow", "clean_fade", "word_soft_fade", "slow_fade",

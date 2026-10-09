@@ -254,10 +254,7 @@ func BuildPlan(input PlanInput, config PlannerConfig) (OverlayPlan, error) {
 		return OverlayPlan{}, err
 	}
 	entityStyleSelector := strings.TrimSpace(input.EntityStyleID)
-	if entityStyleSelector == "" {
-		entityStyleSelector = IdentityEntityStyleSelector
-	}
-	if !IsValidEntityStyleSelector(entityStyleSelector) {
+	if entityStyleSelector != "" && !IsValidEntityStyleSelector(entityStyleSelector) {
 		return OverlayPlan{}, fmt.Errorf("overlay planner: entity_style_id %q is not a certified selector (random, a tag such as badge/camera/side/typewriter, or a 01..25 variant)", input.EntityStyleID)
 	}
 	imageMotionLimit := animationCount(input.AnimationCounts, "single_image", "image_double", "image_triplet", "image_four", "image_five", "single_image_with_text", "image_double_with_text", "image_triplet_with_text", "image_four_with_text", "image_five_with_text", "images")
@@ -436,7 +433,8 @@ func BuildPlan(input PlanInput, config PlannerConfig) (OverlayPlan, error) {
 			}
 			for _, item := range groupItems {
 				if item.Kind == string(KindEntityImage) {
-					if len(item.ImageLayers) > 0 {						for layerIndex := range item.ImageLayers {
+					if len(item.ImageLayers) > 0 {
+						for layerIndex := range item.ImageLayers {
 							layer := &item.ImageLayers[layerIndex]
 							imageLimit := animationCount(input.AnimationCounts, "entities")
 							if layer.Caption != "" {
@@ -480,6 +478,9 @@ func BuildPlan(input PlanInput, config PlannerConfig) (OverlayPlan, error) {
 		mapCandidates = append(mapCandidates, input.Scenes[i].Maps...)
 	}
 	if mapAnchorScene != "" {
+		// Seed map motion ordering from the plan as well as geography so
+		// different generated plans do not all start with the same treatment.
+		mapOrdinal = deterministicMapMotionStart(input.PlanID, animationCount(input.AnimationCounts, "one_map", "two_maps", "maps"))
 		for _, mapItem := range mapItemsForScene(mapAnchorScene, mapPlansForScene(input.PlateResolver, mapCandidates, input.Width, input.Height), input.Width, input.Height, mapOrdinal, animationCount(input.AnimationCounts, "one_map", "two_maps", "maps")) {
 			plan.Items = append(plan.Items, mapItem)
 			mapOrdinal++
@@ -509,6 +510,14 @@ func BuildPlan(input PlanInput, config PlannerConfig) (OverlayPlan, error) {
 	for i := range plan.Items {
 		switch plan.Items[i].Kind {
 		case "text_phrase":
+			if len(input.PhraseMotions) == 0 {
+				// Generated documentary copy uses the small, neutral Apple-clean
+				// pool. The full catalog remains available to explicit plans, but
+				// automatic selection must not inject chromatic/glitch effects.
+				plan.Items[i].MotionID = selectMotionFromPool(input.PlanID, "run", "documentary_clean_phrase", phraseOrdinal, documentaryCleanPhraseMotionCandidates)
+				phraseOrdinal++
+				continue
+			}
 			switch {
 			case EditorialSectionForItem(plan.Items[i]) == EditorialSectionShortPhrase:
 				// Word count owns the family boundary. Heavy editorial emphasis
@@ -542,7 +551,7 @@ func BuildPlan(input PlanInput, config PlannerConfig) (OverlayPlan, error) {
 						plan.Items[i].MotionID = selectImageMotion(input.PlanID, "run", imageOrdinal, input.ImageMotions)
 					}
 				}
-				if plan.Items[i].Kind == "entity_image" && plan.Items[i].EntityCaption != "" && len(plan.Items[i].AssetRefs) > 0 {
+				if entityStyleSelector != "" && plan.Items[i].Kind == "entity_image" && plan.Items[i].EntityCaption != "" && len(plan.Items[i].AssetRefs) > 0 {
 					plan.Items[i].CaptionMotionID = entityCaptionMotionAtOffset(imageOrdinal, animationCount(input.AnimationCounts, "entity_caption", "entity_captions"))
 					plan.Items[i].EntityStyleID = entityStyleSelector
 				}

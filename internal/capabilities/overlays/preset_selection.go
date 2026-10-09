@@ -83,69 +83,41 @@ var (
 	singleImageMotionCandidates = renderSafeImageMotions
 	imageAnimationCandidates    = singleImageMotionCandidates
 	imageMotionCandidates       = renderSafeImageMotions
-	// centeredImageMotionCandidates is the certified CENTERED image-motion
-	// pool: the subset of motions that keep the raster pinned to the canvas
-	// center, so a map's geography never drifts away from the pins projected
-	// over it. MapOverlay.Validate accepts exactly these three ids.
+	// centeredImageMotionCandidates is the certified georeferenced-map pool:
+	// every recipe changes only opacity/scale/blur around the plate center, so
+	// projected pins and labels remain attached to the map. Keep this list
+	// catalog-backed by the admission test; the old country-name recipes are
+	// deprecated and must not be selected for operator-supplied rasters.
 	centeredImageMotionCandidates = []string{
 		"image_fade_reveal",
 		"image_focus_reveal",
 		"image_scale_reveal",
+		"image_soft_focus_reveal",
 	}
 	// Entity portraits use the same complete certified image pool as other
 	// generated images; RenderingGen has explicit lowering for the 2.5D and
 	// editorial families, and the full set is covered by its image canary.
-	generatedEntityImageMotionCandidates = renderSafeImageMotions
-	// Captions get a distinct image entrance rotation so image-with-text cards
-	// do not repeat the plain-image opening sequence.
+	// Runtime entity portraits use restrained, single-layer reveals. Composite,
+	// perspective and scatter motions were producing decorative strokes and
+	// accidental-looking line fragments on ordinary photos.
+	generatedEntityImageMotionCandidates = []string{
+		"image_fade_reveal",
+		"image_focus_reveal",
+		"image_scale_reveal",
+		"image_slide_left_reveal",
+		"image_slide_right_reveal",
+	}
+	// Image cards with captions use the same restrained GPU-safe reveal set as
+	// plain entity portraits. The former full catalog included perspective,
+	// collage and EffectStack recipes that fail the strict native Vulkan lane.
 	generatedImageWithTextMotionCandidates = []string{
-		"image_parallax_depth_reveal", "image_tilt_settle", "image_card_push",
-		"image_diagonal_sweep", "image_soft_focus_reveal", "image_25d_depth_float_in",
-		"image_25d_yaw_flip_in", "image_25d_pitch_lift", "image_25d_pop_z_bounce",
-		"image_25d_swipe_3d", "image_25d_card_swing", "image_25d_blur_focus_in",
-		"image_collage_scatter", "image_card_flip", "image_depth_cascade",
-		"image_depth_dolly", "image_document_push", "image_evidence_focus",
-		"image_float_settle", "image_focus_push", "image_orbit_enter",
-		"image_perspective_stack", "image_photo_drop", "image_roll_in",
-		"image_tilt_parallax", "image_yaw_reveal",
+		"image_fade_reveal",
 	}
 	// Entity captions can use the authored caption treatments plus compatible
 	// typewriter motions. These all target text layers and are registered in
 	// RenderingGen; glitch and auto-wrap variants stay out of name captions.
 	generatedEntityCaptionMotionCandidates = []string{
-		"text_depth_in",
 		"text_fade_up",
-		"text_scale_punch",
-		"text_word_rise",
-		"text_word_stagger",
-		"text_yaw_in",
-		"typewriter_blur_focus",
-		"typewriter_clean",
-		"typewriter_lift",
-		"typewriter_neon",
-		"typewriter_pop",
-		"typewriter_scale_up",
-		"typewriter_slide_in",
-		"typewriter_soft_lift",
-		"typewriter_tracking",
-		"typewriter_modern_01_monospace_block_cursor",
-		"typewriter_modern_02_kinetic_scramble",
-		"typewriter_modern_03_soft_opacity_ramp",
-		"typewriter_modern_04_character_bounce",
-		"typewriter_modern_05_backspace_correction",
-		"typewriter_modern_06_glow_beam_sweep",
-		"typewriter_modern_07_word_snap",
-		"typewriter_modern_08_mechanical_y_shift",
-		"typewriter_modern_09_highlighter_expansion",
-		"typewriter_modern_10_weight_ramp",
-		"typewriter_modern_13_elastic_leading_cursor",
-		"typewriter_modern_14_focal_blur_dissolve",
-		"typewriter_modern_15_paper_punch_stencil",
-		"trump_entity_text_01", "trump_entity_text_02", "trump_entity_text_03",
-		"trump_entity_text_04", "trump_entity_text_05", "trump_entity_text_06",
-		"trump_entity_text_07", "trump_entity_text_08", "trump_entity_text_09",
-		"trump_entity_text_10", "trump_entity_text_11", "trump_entity_text_12",
-		"trump_entity_text_13", "trump_entity_text_14", "trump_entity_text_15",
 	}
 	// Automatic date selection is a curated premium subset of ChrononTemplate's
 	// date_v1 catalog. The remaining authored motions stay available in the
@@ -163,21 +135,10 @@ var (
 		"metric_delta_reveal", "metric_focus_punch", "metric_before_after",
 		"metric_count_flip", "metric_split_odometer",
 	}
-	// Map image recipes authored in ChrononTemplate's map_image_v1 family.
-	// They are transported through MapOverlay.motion_id and lowered onto the
-	// certified basemap layer by RenderingGen.
-	mapImageMotionCandidates = []string{
-		"map_image_australia_sunset_drift",
-		"map_image_brazil_glow_reveal",
-		"map_image_china_slow_reveal",
-		"map_image_gujarat_detail_push",
-		"map_image_india_contour_draw",
-		"map_image_iran_gold_focus",
-		"map_image_italy_beacon_arrival",
-		"map_image_korea_pin_focus",
-		"map_image_nigeria_neon_bloom",
-		"map_image_usa_sweep_in",
-	}
+	// mapImageMotionCandidates is the producer's safe selector pool, not the
+	// full runtime map catalog: country/renderer-bound map_image_v1 entries are
+	// not appropriate for arbitrary operator-supplied georeferenced rasters.
+	mapImageMotionCandidates = centeredImageMotionCandidates
 	// Documentary phrase rotation uses only continuous opacity/slide entrances.
 	// Typewriter and 3D families intermittently shimmer/flicker on long runtime
 	// text, so keep them available for explicit editorial plans but out of this
@@ -503,8 +464,9 @@ func ImagePresetCandidates() []string {
 	return append([]string(nil), imagePresetCandidates...)
 }
 
-// MapImageMotionCandidates projects ChrononTemplate's map_image_v1 styles to
-// the map planner without exposing the mutable package slice.
+// MapImageMotionCandidates returns map-safe, centered image motions for
+// operator-supplied georeferenced rasters. Renderer/country-specific map
+// catalog entries remain discoverable through the runtime animation catalog.
 func MapImageMotionCandidates() []string {
 	return append([]string(nil), mapImageMotionCandidates...)
 }

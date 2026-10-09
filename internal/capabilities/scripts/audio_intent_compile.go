@@ -170,6 +170,7 @@ func CompileCanonicalAudioPlanAudioOnlyWithIntents(
 	policy audio.AudioMixPolicy,
 	bgm []scriptpkg.BackgroundMusicIntent,
 	sfx []scriptpkg.SoundEffectIntent,
+	randomSFXOnClipStart ...bool,
 ) (audio.CanonicalTimeline, audio.CompiledAudioPlan, audio.ResolvedAudioAssets, AudioCompileTimings, error) {
 	// Audio-only narration runs may be compiled before clip materialization.
 	// With VOICEOVER_ONLY there is deliberately no dependency on a local clip
@@ -181,6 +182,9 @@ func CompileCanonicalAudioPlanAudioOnlyWithIntents(
 	timeline, primaryAssets, timings, err := buildCanonicalTimelineAndPrimaryAssets(result, language, false)
 	if err != nil {
 		return audio.CanonicalTimeline{}, audio.CompiledAudioPlan{}, nil, timings, err
+	}
+	if len(randomSFXOnClipStart) > 0 && randomSFXOnClipStart[0] {
+		sfx = append(append([]scriptpkg.SoundEffectIntent(nil), sfx...), randomClipStartSFXIntents(timeline)...)
 	}
 	planStarted := time.Now()
 	compiled, err := CompileAudioWithIntents(ctx, timeline, profile, policy, bgm, sfx, source)

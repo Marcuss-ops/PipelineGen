@@ -220,16 +220,18 @@ func attachEntityCardAsset(item capabilityoverlay.OverlayItem, media *capability
 	// Preserve the entity name as a real caption layer. Text is cleared below
 	// because image items do not render the generic text field.
 	item.EntityCaption = entityImageCaption(item)
-	// The resolved portrait + caption satisfies RenderingGen's entity-style
-	// precondition, so stamp the certified "random" selector: the worker
-	// samples the full 25 Apple Spatial compositions instead of the legacy
-	// fixed fallback.
-	item.EntityStyleID = capabilityoverlay.IdentityEntityStyleSelector
+	// Keep composition selection opt-in. The planner assigns a GPU-safe image
+	// reveal and caption motion; runtime renders must not choose a random
+	// spatial composition.
+	item.EntityStyleID = ""
 	// The run-level pass assigns a non-repeating catalog motion after image
 	// overlays have been capped.
 	item.MotionID = ""
 	item.MotionParams = nil
-	item.ImagePresetID = ""
+	// RenderingGen requires the image treatment explicitly when an entity
+	// image also carries an entity-card composition selector. Keep the
+	// animation preset above independent from this image-fit preset.
+	item.ImagePresetID = "image_scale_in"
 	item.Text = ""
 	item.Params = nil
 	if item.EntityRef == nil {

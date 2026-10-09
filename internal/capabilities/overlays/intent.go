@@ -234,9 +234,25 @@ func PlanOverlayIntents(scenes []SceneEntityInput, registry *ChrononOverlayRegis
 	}
 	resolver := NewTemplateResolver(registry)
 	var intents []OverlayIntent
+	// An entity can be mentioned in several scenes. Keep one visual name card
+	// per canonical person/place across the full job; repeated spoken mentions
+	// remain in the script, but they do not stamp the same caption onto every
+	// later image.
+	seenVisualEntityText := make(map[string]struct{})
 	for _, scene := range scenes {
 		for _, entity := range scene.Entities {
 			if intent, ok := bindEntityIntent(scene, entity, resolver); ok {
+				if intent.Kind == string(KindEntityCard) {
+					idKey := canonicalVisualEntityKey(entity.CanonicalID, "")
+					nameKey := canonicalVisualEntityKey("", entity.Name)
+					if _, duplicate := seenVisualEntityText[nameKey]; duplicate {
+						continue
+					}
+					seenVisualEntityText[nameKey] = struct{}{}
+					if idKey != "" {
+						seenVisualEntityText[idKey] = struct{}{}
+					}
+				}
 				intents = append(intents, intent)
 			}
 		}
@@ -277,6 +293,11 @@ func PlanOverlayIntents(scenes []SceneEntityInput, registry *ChrononOverlayRegis
 			if strings.TrimSpace(image.EntityName) == "" || strings.TrimSpace(image.AssetID) == "" || strings.TrimSpace(image.SHA256) == "" {
 				continue
 			}
+			key := canonicalVisualEntityKey("", image.EntityName)
+			if _, duplicate := seenVisualEntityText[key]; duplicate {
+				continue
+			}
+			seenVisualEntityText[key] = struct{}{}
 			entry, err := registry.Resolve(string(KindEntityImage))
 			if err != nil {
 				continue
@@ -292,6 +313,13 @@ func PlanOverlayIntents(scenes []SceneEntityInput, registry *ChrononOverlayRegis
 		}
 	}
 	return intents
+}
+
+func canonicalVisualEntityKey(canonicalID, name string) string {
+	if id := strings.ToLower(strings.TrimSpace(canonicalID)); id != "" {
+		return "id:" + id
+	}
+	return "name:" + strings.ToLower(strings.Join(strings.Fields(strings.TrimSpace(name)), " "))
 }
 
 // EntityTypeToKind is the SINGLE canonical owner of the NLP entity-type →

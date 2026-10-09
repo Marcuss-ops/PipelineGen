@@ -100,8 +100,9 @@ func (g *ScriptVoiceoverGenerator) voiceForLanguage(language scriptgen.Language)
 // pipeline and returns an AudioReference pointing at the produced audio,
 // carrying the canonical SpeechTimingArtifact when timing was captured.
 //
-// The filename is deterministic: scene_{sceneID}_{language}.mp3 so
-// retries produce the same file (idempotent local write). Silence removal
+// The filename is deterministic per durable run and scene, so work from a
+// canceled attempt cannot overwrite audio or Edge boundaries from its retry.
+// Silence removal
 // is intentionally disabled: the Edge boundaries describe the exact bytes
 // produced, so trimming silence without an edit map would leave stale
 // timestamps (the SILENCE gate). The combined-audio stage owns any
@@ -125,15 +126,16 @@ func (g *ScriptVoiceoverGenerator) Generate(
 		return scriptgen.AudioReference{}, fmt.Errorf("voiceover scriptgen: no configured Edge TTS voice for language %q", input.Language)
 	}
 
-	// Build a safe, JOB-UNIQUE filename:
-	// scene_{sanitizedProject}_{sanitizedSceneID}_{language}.mp3.
+	// Build a safe, attempt-unique filename:
+	// scene_{runID}_{sanitizedProject}_{sanitizedSceneID}_{language}.mp3.
 	// Scene IDs are per-job sequential ("scene-0", "scene-1", …) and
 	// concurrent script.generate jobs share one voiceover output directory,
 	// so scene+language alone collides across jobs (observed: two jobs both
 	// writing scene_scene-0_it.mp3 → interleaved writes corrupt the audio and
-	// its metadata.jsonl). The semantic project namespace makes the filename
-	// deterministic for retries AND unique per job. Empty Project keeps the
-	// legacy scene+language shape (back-compat for direct callers).
+	// its metadata.jsonl). The semantic project namespace makes it unique per
+	// job. RunID additionally isolates durable retries: cancellation can return
+	// control before a provider subprocess has finished its file cleanup. Empty
+	// RunID keeps direct callers' existing names.
 	safeSceneID := sanitizeFilename(input.SceneID)
 	// Scene IDs commonly contain the full project slug and exceed the
 	// 50-character sanitizer limit. Truncating them directly collapsed
@@ -146,6 +148,13 @@ func (g *ScriptVoiceoverGenerator) Generate(
 	stem := safeSceneID
 	if project := strings.TrimSpace(input.Project); project != "" {
 		stem = sanitizeFilename(project) + "_" + safeSceneID
+	}
+	if runID := strings.TrimSpace(input.RunID); runID != "" {
+		safeRunID := sanitizeFilename(runID)
+		if len(safeRunID) > 18 {
+			safeRunID = safeRunID[:18] + "_" + digest.SHA256Bytes([]byte(runID))[:8]
+		}
+		stem = safeRunID + "_" + stem
 	}
 	filename := fmt.Sprintf("scene_%s_%s.mp3", stem, string(input.Language))
 

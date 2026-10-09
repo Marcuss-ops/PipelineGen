@@ -18,3 +18,26 @@ profiles
 sessions
 .venv-whisper/
 deliverables
+
+# --- Context-size hardening (local build outputs, venvs, caches, test data) ---
+# Anchored to the repo root on purpose: unanchored names like `server` or
+# `bin` would also exclude cmd/server/ and other source packages.
+/.venv-argos
+/.venv-phrase-impact
+/.venv-whisper
+/.pytest_cache
+/.cache
+/rust/target
+/bin
+/out
+/output
+/artifacts
+/tests
+/server
+/driveupload
+/ner-eval
+/tmp*
+/.tmp
+/.tmp-diag
+/coverage.html
+/*.test

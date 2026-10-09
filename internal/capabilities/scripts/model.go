@@ -70,15 +70,15 @@ type GenerateRequest struct {
 	MapsOnly          bool `json:"maps_only,omitempty"`
 	// MaxImageOverlays is the caller-selected run-level ceiling for all image
 	// overlays, including scene-context and entity-bound imagery.
-	MaxImageOverlays      int            `json:"max_image_overlays,omitempty"`
-	AnimationCounts       map[string]int `json:"animation_counts,omitempty"`
+	MaxImageOverlays int            `json:"max_image_overlays,omitempty"`
+	AnimationCounts  map[string]int `json:"animation_counts,omitempty"`
 	// EntityStyleID pins the entity-card composition family for generated
 	// entity cards. Resolved like PhraseMotions: the envelope item may carry
 	// it explicitly, and a channel profile fills the blank ("random" keeps
 	// the certified full-registry sampling). Invalid selectors fail closed
 	// at plan compilation.
-	EntityStyleID         string         `json:"entity_style_id,omitempty"`
-	DisableNumberOverlays bool           `json:"disable_number_overlays,omitempty"`
+	EntityStyleID         string `json:"entity_style_id,omitempty"`
+	DisableNumberOverlays bool   `json:"disable_number_overlays,omitempty"`
 	// OverlayBackground is the visual background selected by script.generate;
 	// it is transported into the sealed OverlayPlan at render time.
 	OverlayBackground *scriptpkg.OverlayBackgroundSpec `json:"overlay_background,omitempty"`
@@ -94,6 +94,13 @@ type GenerateRequest struct {
 	// so the required/best-effort fail-closed semantics are honoured
 	// end-to-end by the per-item voiceover pipeline.
 	Timing *capabilityaudio.TimingRequest `json:"voiceover_timing,omitempty"`
+	// RandomSFXOnClipStart requests one deterministic random whoosh at the
+	// start of every real clip in the generated timeline. It is opt-in and is
+	// carried from audio.random_sfx_on_clip_start.
+	RandomSFXOnClipStart bool `json:"random_sfx_on_clip_start,omitempty"`
+	// RandomSFXOnImageOverlay requests one deterministic cue on each finalized
+	// image overlay; concrete content-addressed assets are selected before queueing.
+	RandomSFXOnImageOverlay bool `json:"random_sfx_on_image_overlay,omitempty"`
 	// MixPolicy is the editorial mix decision requested by the caller
 	// (audio.mix_policy). Empty means no policy (legacy full-volume
 	// overlap). The wire alias "voiceover_with_ducked_clip" is normalized

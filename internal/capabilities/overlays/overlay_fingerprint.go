@@ -42,6 +42,12 @@ func ComputeRenderKey(p OverlayPlan, item OverlayItem) string {
 			mapJSON = string(raw)
 		}
 	}
+	soundEffectJSON := ""
+	if item.SoundEffect != nil {
+		if raw, err := json.Marshal(item.SoundEffect); err == nil {
+			soundEffectJSON = string(raw)
+		}
+	}
 	frameJSON := ""
 	if item.Frame != nil {
 		if raw, err := json.Marshal(item.Frame); err == nil {
@@ -62,11 +68,12 @@ func ComputeRenderKey(p OverlayPlan, item OverlayItem) string {
 		EntityCaption                    string `json:"entity_caption,omitempty"`
 		EntityStyleID                    string `json:"entity_style_id,omitempty"`
 		CaptionMotionID                  string `json:"caption_motion_id,omitempty"`
+		SoundEffect                      string `json:"sound_effect,omitempty"`
 		Frame                            string `json:"frame,omitempty"`
 		Map                              string `json:"map,omitempty"`
 	}{
 		item.TemplateID, item.Text, string(params), renderer, assetHashes, p.Width, p.Height, p.FPSNum, p.FPSDen, item.StartMs, item.EndMs, item.StartUS, item.DurationUS,
-		item.PresetID, item.ImagePresetID, item.MotionID, motionParamsJSON(item.MotionParams), imageLayersJSON(item.ImageLayers), item.EntityCaption, item.EntityStyleID, item.CaptionMotionID, frameJSON, mapJSON,
+		item.PresetID, item.ImagePresetID, item.MotionID, motionParamsJSON(item.MotionParams), imageLayersJSON(item.ImageLayers), item.EntityCaption, item.EntityStyleID, item.CaptionMotionID, soundEffectJSON, frameJSON, mapJSON,
 	}
 	b, _ := json.Marshal(input)
 	h := digest.SHA256Bytes(b)
