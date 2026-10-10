@@ -298,16 +298,45 @@ func (f *VidRushProviderFanout) resolveArtlistCandidates(ctx context.Context, pl
 	if f.metrics != nil {
 		f.metrics.IncAssetCache("artlist", false)
 	}
-	if f.metrics != nil {
-		f.metrics.IncProviderRequest("artlist")
-	}
-	matches, err := f.artlist.SearchClips(ctx, plan.Title, artlistQueries)
-	if err != nil {
-		if f.metrics != nil {
-			f.metrics.IncProviderFailure("artlist")
+	// P6a (anti-muda): query-set dedup across segments. The segment cache
+	// above keys on segment identity, so N segments about the same entities
+	// pay N identical provider searches. Raw matches carry no segment
+	// identity — share them, then convert per owning segment below.
+	querysetKey := vidRushArtlistQuerySetKey(plan.Title, plan.Language, artlistQueries)
+	matches, querysetHit := artlistQuerySetLoad(querysetKey)
+	if !querysetHit && !plan.MediaPlan.ForceRefreshAssets && !plan.ForceRefresh {
+		var persisted artlistQuerySetPayload
+		if hit, err := loadVidRushPersistentJSON(ctx, f.cache, "artlist-queryset", querysetKey, &persisted); err != nil {
+			outcomes <- vidRushProviderOutcome{provider: "artlist", err: err}
+			return
+		} else if hit {
+			matches, querysetHit = cloneArtlistMatches(persisted.Matches), true
+			artlistQuerySetStore(querysetKey, matches)
 		}
-		outcomes <- vidRushProviderOutcome{provider: "artlist", err: err}
-		return
+	}
+	if !querysetHit {
+		if f.metrics != nil {
+			f.metrics.IncProviderRequest("artlist")
+		}
+		var err error
+		matches, err = f.artlist.SearchClips(ctx, plan.Title, artlistQueries)
+		if err != nil {
+			if f.metrics != nil {
+				f.metrics.IncProviderFailure("artlist")
+			}
+			outcomes <- vidRushProviderOutcome{provider: "artlist", err: err}
+			return
+		}
+		matches = dedupeArtlistMatches(matches)
+		artlistQuerySetStore(querysetKey, matches)
+		// Best-effort L2: a store failure must not turn a successful
+		// search into an error outcome (the segment store below owns
+		// the fail-closed path).
+		if !plan.MediaPlan.ForceRefreshAssets && !plan.ForceRefresh {
+			_ = storeVidRushPersistentJSON(ctx, f.cache, "artlist-queryset", querysetKey, artlistQuerySetPayload{Matches: matches})
+		}
+	} else if f.metrics != nil {
+		f.metrics.IncAssetCache("artlist", true)
 	}
 	candidates := artlistMatchesToCandidates(artlistIdentity, dedupeArtlistMatches(matches))
 	payload := artlistSegmentCachePayload{

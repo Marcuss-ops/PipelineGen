@@ -111,6 +111,56 @@ func TestPhraseImpactAnalyzerFallsBackToLexicalModeWithoutEmbedder(t *testing.T)
 	}
 }
 
+// TestPhraseImpactAnalyzerInjectsTheLexiconPhraseStopWords pins the seam that
+// makes keyphrase extraction language-general: the Rust worker owns no word list
+// of its own, so the adapter must ship the request language's phrase stop words
+// on every call. The expectations are read from the repository's own lexicon
+// data (installed by TestMain), which is also what production injects.
+func TestPhraseImpactAnalyzerInjectsTheLexiconPhraseStopWords(t *testing.T) {
+	const reply = `{"ok":true,"result":{"summary":"s","bullet_points":[],"heavy_sentences":[]}}`
+	cases := []struct {
+		language string
+		must     []string
+		mustNot  []string
+	}{
+		// A fully enumerated language ships its own profile.
+		{language: "en", must: []string{"the", "than", "by", "did"}, mustNot: []string{"della"}},
+		{language: "it", must: []string{"il", "della", "che"}, mustNot: []string{"the", "than"}},
+		// A language the repository does not enumerate degrades to the
+		// cross-linguistic fallback profile, never to an unrelated one.
+		{language: "xx", must: []string{"the", "della"}, mustNot: []string{"than", "did"}},
+		// Region tags resolve to their base language profile.
+		{language: "it-IT", must: []string{"della", "il"}, mustNot: []string{"than", "did"}},
+	}
+	for _, tc := range cases {
+		runner := &phraseImpactFakeRunner{replies: []string{reply}}
+		analyzer := NewPhraseImpactAnalyzer("bin/phrase_impact", runner, nil)
+		if _, err := analyzer.Analyze(context.Background(), "Some narration.", tc.language); err != nil {
+			t.Fatalf("Analyze(%q) returned error: %v", tc.language, err)
+		}
+		var payload struct {
+			StopWords []string `json:"stopwords"`
+		}
+		if err := json.Unmarshal(bytes.TrimSpace(runner.requests), &payload); err != nil {
+			t.Fatalf("decode request for %q: %v", tc.language, err)
+		}
+		set := make(map[string]bool, len(payload.StopWords))
+		for _, word := range payload.StopWords {
+			set[word] = true
+		}
+		for _, want := range tc.must {
+			if !set[want] {
+				t.Errorf("%s: injected stop words must contain %q, got %d words", tc.language, want, len(set))
+			}
+		}
+		for _, unwanted := range tc.mustNot {
+			if set[unwanted] {
+				t.Errorf("%s: injected stop words must not contain another language's %q", tc.language, unwanted)
+			}
+		}
+	}
+}
+
 func TestPhraseImpactAnalyzerPassesScenesAndTopicsAsOptionalContext(t *testing.T) {
 	runner := &phraseImpactFakeRunner{replies: []string{
 		`{"ok":true,"result":{"summary":"s","bullet_points":[],"heavy_sentences":[],"chapter_manifest":{"schema_version":"chapter_manifest.v1","chapters":[{"title":"Rendering workflow","title_source":"scene_topic","start_sentence":0,"end_sentence":1,"bullets":[{"start_sentence":0,"end_sentence":1,"text":"Rendering workflow is available."}] }]}}}`,

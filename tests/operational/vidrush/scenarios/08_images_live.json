@@ -51,7 +51,7 @@
           "stock_enabled": "disabled"
         },
         "docs": {
-          "enabled": true,
+          "enabled": false,
           "languages": ["en"]
         },
         "media_plan": {

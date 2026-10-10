@@ -137,6 +137,7 @@ func InjectDocumentLateBound(skeleton string, model *scriptpkg.ModelScriptOutput
 		scene := &model.SpecScene.Scenes[i]
 		var b strings.Builder
 		if !opts.PayloadOnly {
+			writeDocumentSceneEditorial(&b, scene)
 			writeDocumentSceneTiming(&b, scene, opts)
 			writeDocumentSceneMediaDurations(&b, scene, opts)
 			writeDocumentPhraseTimings(&b, scene, opts)
@@ -221,6 +222,41 @@ func injectDocumentLateBoundLegacy(skeleton string, opts DocumentRenderOptions, 
 	}
 	skeleton = strings.Replace(skeleton, documentSkeletonAfterMarker, after, 1)
 	return skeleton
+}
+
+// writeDocumentSceneEditorial renders the scene's editorial title and its
+// extractive bullet list (editorial.v1) into the human scene section.
+//
+// It renders whatever the model actually carries and nothing more: a scene
+// with no resolved title shows no heading, and a scene with no bullets shows
+// no list. Nothing is derived here — no reading-speed estimate, no "Scene N"
+// fallback title — because a fabricated title would be indistinguishable from
+// an extracted one on the very surface the operator reads.
+func writeDocumentSceneEditorial(b *strings.Builder, scene *scriptpkg.SpecScene) {
+	if scene == nil {
+		return
+	}
+	if title := strings.TrimSpace(scene.Title); title != "" {
+		b.WriteString("<h3>")
+		b.WriteString(html.EscapeString(title))
+		b.WriteString("</h3>")
+	}
+	bullets := make([]string, 0, len(scene.Bullets))
+	for _, bullet := range scene.Bullets {
+		if text := strings.TrimSpace(bullet); text != "" {
+			bullets = append(bullets, text)
+		}
+	}
+	if len(bullets) == 0 {
+		return
+	}
+	b.WriteString("<ul>")
+	for _, bullet := range bullets {
+		b.WriteString("<li>")
+		b.WriteString(html.EscapeString(bullet))
+		b.WriteString("</li>")
+	}
+	b.WriteString("</ul>")
 }
 
 // writeDocumentSemanticSummary renders the operator-facing aggregate view of

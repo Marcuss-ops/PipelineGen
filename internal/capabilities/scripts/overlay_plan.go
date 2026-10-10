@@ -367,6 +367,9 @@ func compileOverlayPlanWithMotionOffset(result *GenerateResult, language Languag
 	}
 	items = composeNearbyEntityImages(items, canvas.Width, canvas.Height)
 	assignEntityImageMotions(items, imageMotionOffset, canvas.Width, canvas.Height, canvas.EntityStyleID)
+	capabilityoverlay.EnsureDistinctPhraseMotions(items, capabilityoverlay.PlanInput{PlanID: planID, VideoID: videoID})
+	capabilityoverlay.EnsureDistinctNumberMotions(items, nil)
+	nameOverlayItemsForReview(items)
 	// assignEntityImageMotions rebuilds entity item params with its geometry
 	// defaults. Apply the explicit typeface afterward so it reaches the
 	// generated name caption without overriding image geometry.

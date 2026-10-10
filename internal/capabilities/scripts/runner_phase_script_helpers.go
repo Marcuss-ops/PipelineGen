@@ -6,7 +6,113 @@ import (
 	"strings"
 
 	"go.uber.org/zap"
+
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
+
+// buildSceneAnalysisInputs locates each body scene verbatim in the transcript
+// so the Rust worker can verify slice identity. Offsets stay nil when the
+// scene text is not found exactly once (repeated text => nil, local-only).
+func buildSceneAnalysisInputs(transcript string, scenes []Scene, req GenerateRequest) []scriptpkg.SceneAnalysisInput {
+	out := make([]scriptpkg.SceneAnalysisInput, 0, len(scenes))
+	for _, scene := range scenes {
+		if !scene.ExecutionMode.CountsTowardBodyWordBudget() {
+			continue
+		}
+		text := strings.TrimSpace(scene.Text[req.SourceLanguage])
+		if text == "" {
+			continue
+		}
+		topic := scene.ID
+		for _, spec := range req.ScriptParams.Segments {
+			if spec.ID != "" && spec.ID == scene.ID && strings.TrimSpace(spec.Topic) != "" {
+				topic = spec.Topic
+				break
+			}
+		}
+		in := scriptpkg.SceneAnalysisInput{SceneID: scene.ID, Text: text}
+		t := strings.TrimSpace(topic)
+		if t != "" {
+			in.Topic = &t
+		}
+		// Verbatim single-occurrence locate; repeated text => nil offsets.
+		if first := strings.Index(transcript, text); first >= 0 && strings.Count(transcript, text) == 1 {
+			s, e := first, first+len(text)
+			if e <= len(transcript) {
+				in.StartByte, in.EndByte = &s, &e
+			}
+		}
+		out = append(out, in)
+	}
+	return out
+}
+
+// buildEditorialManifest seals the per-scene products into editorial.v1 with
+// a full fingerprint over everything influencing the result. Uncertified
+// worker output still produces a manifest with Certified=false, never a
+// fabricated certified one.
+func buildEditorialManifest(req GenerateRequest, inputs []scriptpkg.SceneAnalysisInput, res scriptpkg.PhraseImpactResult) *scriptpkg.EditorialManifest {
+	ids := make([]string, len(inputs))
+	texts := make([]string, len(inputs))
+	topics := make([]string, len(inputs))
+	offsets := make([][2]int64, len(inputs))
+	for i, in := range inputs {
+		ids[i] = in.SceneID
+		texts[i] = in.Text
+		if in.Topic != nil {
+			topics[i] = *in.Topic
+		}
+		if in.StartByte != nil && in.EndByte != nil {
+			offsets[i] = [2]int64{int64(*in.StartByte), int64(*in.EndByte)}
+		} else {
+			offsets[i] = [2]int64{-1, -1}
+		}
+	}
+	fpIn := scriptpkg.EditorialFingerprintInput{
+		Transcript:       strings.TrimSpace(res.Summary) + "\n" + strings.Join(texts, "\n\n"),
+		SceneIDs:         ids,
+		SceneTexts:       texts,
+		SceneOffsets:     offsets,
+		SceneTopics:      topics,
+		Language:         string(req.SourceLanguage),
+		ProfileVersion:   "highlights.v1",
+		RankingWeights:   map[string]float64{"semantic": 1.0, "lexical": 1.0, "scene": 0.2, "evidence": 1.0},
+		TokenizerVersion: "rust-splitter.v1",
+		EmbeddingModel:   "lexical",
+		EmbeddingVersion: "v1",
+		AlgorithmVersion: "phrase-impact.scene-highlights.v1",
+	}
+	fp, err := scriptpkg.ComputeEditorialFingerprint(fpIn)
+	if err != nil {
+		return nil
+	}
+	scenes := make([]scriptpkg.EditorialScene, 0, len(res.SceneHighlights))
+	for _, h := range res.SceneHighlights {
+		bullets := make([]scriptpkg.EditorialSceneBullet, len(h.Bullets))
+		for i, b := range h.Bullets {
+			bullets[i] = scriptpkg.EditorialSceneBullet{SentenceStart: b.SentenceStart, SentenceEnd: b.SentenceEnd, Text: b.Text}
+		}
+		hl := make([]scriptpkg.EditorialHighlight, len(h.Highlights))
+		for i, s := range h.Highlights {
+			hl[i] = scriptpkg.EditorialHighlight{SentenceIndex: s.SentenceIndex, StartByte: s.StartByte, EndByte: s.EndByte, Text: s.Text, Score: s.Score, VisualEligible: s.VisualEligible}
+		}
+		scenes = append(scenes, scriptpkg.EditorialScene{
+			SceneID: h.SceneID, Title: h.Title, TitleStatus: h.TitleStatus,
+			TitleSource: h.TitleSource, Bullets: bullets, Highlights: hl,
+			GloballyIndexed: h.GloballyIndexed,
+		})
+	}
+	m := &scriptpkg.EditorialManifest{
+		SchemaVersion: scriptpkg.EditorialManifestVersion, SourceLanguage: string(req.SourceLanguage),
+		ProfileVersion: "highlights.v1", Scenes: scenes,
+		Certified:   res.SceneHighlightsCertified,
+		Fingerprint: fp,
+	}
+	if err := m.Validate(); err != nil {
+		m.Certified = false
+	}
+	return m
+}
 
 // Clip-backed narrator intros are intentionally short-form. Keep a small
 // floor to reject empty/placeholders without imposing long-form documentary

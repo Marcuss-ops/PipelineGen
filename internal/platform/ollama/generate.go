@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math/rand"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/pkg/jsonutil"
@@ -33,7 +34,24 @@ type Generator struct {
 	client           *client.Client
 	translationCache TranslationCache
 	metadataModel    string // lighter model for entity extraction, metadata, translations
+
+	// P0-2 (anti-muda): per-query web-context cache. All segments of one
+	// job derive the same SearXNG query from the title, so without sharing
+	// an N-segment fan-out pays N identical web round-trips and each reply
+	// risks a byte-different prefix that defeats the shared-prefix KV
+	// cache. TTL is short: freshness per job, not across jobs.
+	webMu    sync.Mutex
+	webCache map[string]webContextEntry
 }
+
+// webContextEntry is one cached SearXNG formatting result.
+type webContextEntry struct {
+	context   string
+	expiresAt time.Time
+}
+
+// webContextTTL bounds reuse to the current job fan-out window.
+const webContextTTL = 5 * time.Minute
 
 func NewGenerator(c *client.Client) *Generator {
 	return &Generator{client: c}
@@ -41,6 +59,39 @@ func NewGenerator(c *client.Client) *Generator {
 
 func (g *Generator) GetClient() *client.Client {
 	return g.client
+}
+
+// cachedWebContext returns the shared web context for a query when it is
+// still fresh. Double-checked under a short mutex: concurrent segments of
+// the same fan-out may rarely double-search once, but the sequential case
+// (the common one) always collapses N searches to 1.
+func (g *Generator) cachedWebContext(query string) (string, bool) {
+	if g == nil {
+		return "", false
+	}
+	g.webMu.Lock()
+	defer g.webMu.Unlock()
+	if g.webCache == nil {
+		return "", false
+	}
+	entry, ok := g.webCache[query]
+	if !ok || time.Now().After(entry.expiresAt) {
+		return "", false
+	}
+	return entry.context, true
+}
+
+// storeWebContext shares a fresh web context with sibling segments.
+func (g *Generator) storeWebContext(query, formatted string) {
+	if g == nil || strings.TrimSpace(query) == "" || formatted == "" {
+		return
+	}
+	g.webMu.Lock()
+	defer g.webMu.Unlock()
+	if g.webCache == nil {
+		g.webCache = make(map[string]webContextEntry)
+	}
+	g.webCache[query] = webContextEntry{context: formatted, expiresAt: time.Now().Add(webContextTTL)}
 }
 
 // WarmModel exposes the explicit residency seam to the script engine.
@@ -55,6 +106,15 @@ func (g *Generator) WarmModel(ctx context.Context, model string) error {
 // (entity extraction, video metadata, translations).
 func (g *Generator) SetMetadataModel(model string) {
 	g.metadataModel = model
+}
+
+// MetadataModel reports the lighter model used for post-generation phases.
+// Empty means "reuse the client default" (single-resident, no eviction).
+func (g *Generator) MetadataModel() string {
+	if g == nil {
+		return ""
+	}
+	return g.metadataModel
 }
 
 // resolveModel returns the effective model: explicit > g.metadataModel > client default.
@@ -88,7 +148,15 @@ func (g *Generator) GenerateVisualPrompt(ctx context.Context, text, topic, style
 		{Role: "user", Content: userPrompt},
 	}
 
-	result, err := g.client.Chat(ctx, messages, nil, nil)
+	// P1-4 (anti-muda): bound the output. A visual prompt is 1-2 sentences
+	// by contract; an unbounded num_predict lets the model ramble into an
+	// essay and burns the dominant per-scene cost. 128 matches the visual
+	// planner adapter (adapters/visual_planner.go).
+	options := map[string]any{
+		"num_predict": 128,
+		"temperature": 0.3,
+	}
+	result, err := g.client.Chat(ctx, messages, options, nil)
 	if err != nil {
 		return "", fmt.Errorf("visual prompt generation failed: %w", err)
 	}
@@ -115,21 +183,33 @@ func (g *Generator) GenerateScript(ctx context.Context, req types.TextGeneration
 		metrics.ScriptGenerationTotal.WithLabelValues(modelLabel, languageLabel, genOutcome).Inc()
 	}()
 
-	// Auto-retrieve web context if SearXNG is configured and query is derivable
+	// Auto-retrieve web context if SearXNG is configured and query is derivable.
+	// P0-2 (anti-muda): de-duplicated per query with a short-TTL cache so an
+	// N-segment fan-out pays ONE web round-trip instead of N. The cached
+	// string is byte-identical for every segment, which also keeps the
+	// shared-prefix KV cache usable across the fan-out.
 	if ws := g.client.WebSearcher(); ws != nil && !req.DisableWebSearch && req.WebContext == "" {
 		searchQuery := SearchQueryForScript(req)
 		if searchQuery != "" {
-			searchStart := time.Now()
-			results, err := ws.Search(ctx, searchQuery)
-			if err != nil {
-				logger.Warn("web search failed in GenerateScript", zap.Error(err), zap.String("query", searchQuery))
-			} else if len(results) > 0 {
-				req.WebContext = client.FormatContext(results)
-				logger.Info("web search context injected into prompt",
+			if cached, ok := g.cachedWebContext(searchQuery); ok {
+				req.WebContext = cached
+				logger.Info("web search context reused from job cache",
 					zap.String("query", searchQuery),
-					zap.Int("results", len(results)),
-					zap.Duration("elapsed", time.Since(searchStart)),
 				)
+			} else {
+				searchStart := time.Now()
+				results, err := ws.Search(ctx, searchQuery)
+				if err != nil {
+					logger.Warn("web search failed in GenerateScript", zap.Error(err), zap.String("query", searchQuery))
+				} else if len(results) > 0 {
+					req.WebContext = client.FormatContext(results)
+					g.storeWebContext(searchQuery, req.WebContext)
+					logger.Info("web search context injected into prompt",
+						zap.String("query", searchQuery),
+						zap.Int("results", len(results)),
+						zap.Duration("elapsed", time.Since(searchStart)),
+					)
+				}
 			}
 		}
 	}

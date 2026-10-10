@@ -44,6 +44,7 @@ package processor
 import (
 	"context"
 	"fmt"
+	"sort"
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
@@ -145,7 +146,18 @@ func RunVoiceoverSceneFanout(ctx context.Context, executor voiceover.VoiceoverIt
 	}
 	requestID := resolveSceneFanoutRequestID(ctx)
 
-	return concurrent.ParallelMap(items, concurrency, func(idx int, item VoiceoverSceneInput) *SceneOutcome {
+	// P7a (anti-muda): launch longest-text-first (LPT — same pattern as
+	// the localization clip fan-out). TTS cost scales with text length,
+	// so starting the longest scenes first lets the short ones fill the
+	// tail instead of queueing behind them. ParallelMap preserves slice
+	// order, so map over the LPT permutation and restore the input order
+	// afterwards: the returned slice is still in input order.
+	order := voiceoverLaunchOrder(items)
+	ordered := make([]VoiceoverSceneInput, len(items))
+	for newPos, oldIdx := range order {
+		ordered[newPos] = items[oldIdx]
+	}
+	mapped := concurrent.ParallelMap(ordered, concurrency, func(idx int, item VoiceoverSceneInput) *SceneOutcome {
 		out := &SceneOutcome{SceneIndex: item.SceneIndex}
 		// Per-item panic-recover: a misbehaving fake (e.g. nil-typed
 		// executor, malformed Destination) surfaces as a failed outcome
@@ -235,6 +247,26 @@ func RunVoiceoverSceneFanout(ctx context.Context, executor voiceover.VoiceoverIt
 		}
 		return out
 	})
+	unordered := make([]*SceneOutcome, len(items))
+	for newPos, oldIdx := range order {
+		unordered[oldIdx] = mapped[newPos]
+	}
+	return unordered
+}
+
+// voiceoverLaunchOrder returns the input indexes sorted by descending text
+// length (stable): the LPT launch order for the TTS-bound scene fan-out.
+// Equal lengths keep the input order, so uniform batches behave
+// byte-identically to the pre-LPT dispatch.
+func voiceoverLaunchOrder(items []VoiceoverSceneInput) []int {
+	order := make([]int, len(items))
+	for i := range items {
+		order[i] = i
+	}
+	sort.SliceStable(order, func(a, b int) bool {
+		return len(items[order[a]].Text) > len(items[order[b]].Text)
+	})
+	return order
 }
 
 // resolveSceneFanoutRequestID derives a stable per-batch RequestID

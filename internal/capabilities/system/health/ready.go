@@ -1,6 +1,10 @@
 package system
 
-import "context"
+import (
+	"context"
+	"sync"
+	"time"
+)
 
 // ReadyChecker evaluates full-system readiness in one call.
 //
@@ -103,52 +107,111 @@ func (r *ReadyChecker) CheckReady(ctx context.Context) HealthResponse {
 			},
 		}
 	}
-	resp := r.svc.Check(ctx, []string{"db", "drive", "qdrant", "jobs"})
+	resp := HealthResponse{OK: true, Status: "ready", Checks: map[string]CheckResult{}}
+	r.runReadyChecks(ctx, &resp)
+	return resp
+}
+
+// readyCheckBudget bounds ONE readiness probe.
+//
+// The probes run CONCURRENTLY, so this is a per-probe budget and not a
+// serialized sum. Before that, every probe shared the transport's single 15s
+// deadline and ran in series: when the slow probes (Drive canary retry loop,
+// Drive root probe) consumed the budget, every later probe saw an
+// already-expired context and reported "context deadline exceeded" for healthy
+// dependencies — Ollama answered /api/tags in 8ms and /ready still reported it
+// unreachable, and tts, storage_* and script_generate.db were false-negative
+// for the same reason.
+//
+// It is a variable so tests can shrink the budget.
+var readyCheckBudget = 15 * time.Second
+
+// runReadyChecks runs every readiness probe concurrently and merges the
+// results into resp. Each probe gets its own bounded context
+// (context.WithoutCancel + readyCheckBudget): the aggregate deadline describes
+// the /ready SLA, never a probe's budget, so one slow dependency can only lose
+// its own probe.
+func (r *ReadyChecker) runReadyChecks(ctx context.Context, resp *HealthResponse) {
+	checks := make([]func(context.Context, *HealthResponse), 0, 17)
+
+	// Mandatory/optional component set (db, drive, qdrant, jobs).
+	checks = append(checks, func(c context.Context, sub *HealthResponse) {
+		got := r.svc.Check(c, []string{"db", "drive", "qdrant", "jobs"})
+		mergeHealthResponse(sub, &got)
+	})
+
 	if r.storagePlanes != nil {
-		for name, result := range r.storagePlanes(ctx) {
-			resp.Checks["storage_"+name] = result
-			// A cache or observability outage is a degradation, not a reason
-			// to take the media/execution service out of readiness.
-			if name != "cache" && name != "observability" {
+		checks = append(checks, func(c context.Context, sub *HealthResponse) {
+			for name, result := range r.storagePlanes(c) {
+				sub.Checks["storage_"+name] = result
+				// A cache or observability outage is a degradation, not a reason
+				// to take the media/execution service out of readiness.
+				if name == "cache" || name == "observability" {
+					continue
+				}
 				if applicable, ok := result["applicable"].(bool); !ok || applicable {
 					if healthy, ok := result["ok"].(bool); !ok || !healthy {
-						resp.OK = false
-						resp.Status = "unhealthy"
+						sub.OK = false
+						sub.Status = "unhealthy"
 					}
 				}
 			}
-		}
+		})
 	}
 
-	// Step 8: run severe checks (tools, clips path, Drive canary, handlers).
-	// Each nil dep reports applicable=false, preserving the allOK logic.
-	r.runToolsCheck(ctx, &resp)
-	r.runClipsPathCheck(&resp)
-	r.runCanaryCheck(ctx, &resp)
-	r.runHandlerCheck(ctx, &resp)
+	// Step 8 severe checks (tools, clips path, Drive canary, handlers) — each
+	// nil dep still reports applicable=false.
+	checks = append(checks, r.runToolsCheck, r.ctxFreeCheck(r.runClipsPathCheck), r.runCanaryCheck, r.runHandlerCheck)
 
-	// Step 4: run Drive-specific severe checks (credentials, folder,
-	// Publisher wiring, DestinationClip registration).
-	r.runDriveCredentialsCheck(ctx, &resp)
-	r.runDriveFolderCheck(ctx, &resp)
-	r.runPublisherCheck(&resp)
-	r.runDestinationClipCheck(&resp)
+	// Step 4 Drive-specific severe checks (credentials, folder, Publisher
+	// wiring, DestinationClip registration).
+	checks = append(checks, r.runDriveCredentialsCheck, r.runDriveFolderCheck, r.ctxFreeCheck(r.runPublisherCheck), r.ctxFreeCheck(r.runDestinationClipCheck))
 
-	// FASE 6: run severe readiness checks (temp, tts, drive_root, ollama, outbox,
-	// script_generate).
-	r.runTempPathCheck(&resp)
-	r.runTTSCheck(ctx, &resp)
-	r.runDriveRootCheck(ctx, &resp)
-	r.runOllamaCheck(ctx, &resp)
-	r.runOutboxCheck(ctx, &resp)
+	// FASE 6 severe readiness checks (temp, tts, drive_root, ollama, outbox) and
+	// the script-generation / yt-dlp health probes.
+	checks = append(checks, r.ctxFreeCheck(r.runTempPathCheck), r.runTTSCheck, r.runDriveRootCheck, r.runOllamaCheck, r.runOutboxCheck, r.runScriptGenerateCheck, r.runYTDLPHealthCheck)
 
-	// Script-generation readiness: database, job registry/worker, Ollama,
-	// document service, Drive, and the /api/script route.
-	r.runScriptGenerateCheck(ctx, &resp)
+	var (
+		mu sync.Mutex
+		wg sync.WaitGroup
+	)
+	for _, check := range checks {
+		wg.Add(1)
+		go func(check func(context.Context, *HealthResponse)) {
+			defer wg.Done()
+			checkCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), readyCheckBudget)
+			defer cancel()
+			// A probe writes only into its own response: the aggregate is
+			// touched exclusively under mu, so the runners need no locking.
+			sub := HealthResponse{OK: true, Status: "ready", Checks: map[string]CheckResult{}}
+			check(checkCtx, &sub)
+			mu.Lock()
+			defer mu.Unlock()
+			mergeHealthResponse(resp, &sub)
+		}(check)
+	}
+	wg.Wait()
+}
 
-	// PR-YTDLP-HEALTH-GUARD: yt-dlp toolchain drift (stale version / missing
-	// PO Token provider). Warn-only: it never flips resp.OK.
-	r.runYTDLPHealthCheck(ctx, &resp)
+// ctxFreeCheck adapts a probe that takes no context to the check signature.
+func (r *ReadyChecker) ctxFreeCheck(check func(*HealthResponse)) func(context.Context, *HealthResponse) {
+	return func(_ context.Context, sub *HealthResponse) { check(sub) }
+}
 
-	return resp
+// mergeHealthResponse folds one probe's response into the aggregate: every
+// check result is kept, and a probe that failed flips the aggregate verdict.
+func mergeHealthResponse(dst, src *HealthResponse) {
+	if dst == nil || src == nil {
+		return
+	}
+	if dst.Checks == nil {
+		dst.Checks = map[string]CheckResult{}
+	}
+	for name, result := range src.Checks {
+		dst.Checks[name] = result
+	}
+	if !src.OK {
+		dst.OK = false
+		dst.Status = "unhealthy"
+	}
 }

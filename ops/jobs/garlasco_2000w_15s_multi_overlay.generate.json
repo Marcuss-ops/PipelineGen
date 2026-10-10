@@ -149,12 +149,36 @@
       "max_phrase_overlays": 10,
       "max_image_overlays": 10,
       "max_map_overlays": 1,
+      "overlay_style": {
+        "font_family": "inter",
+        "color": [
+          0.96,
+          0.97,
+          1.0,
+          1.0
+        ],
+        "size": {
+          "font_size": 82
+        },
+        "shadow": {
+          "enabled": true,
+          "color": "#02040A",
+          "opacity": 0.7,
+          "blur": 14,
+          "offset": [
+            0,
+            4
+          ]
+        },
+        "glow_size": 10,
+        "stroke_size": 2
+      },
       "animation_counts": {
         "images": 10,
         "images_with_text": 10,
         "entities": 10,
         "entity_caption": 10,
-        "important_phrase": 10,
+        "short_important_phrase": 10,
         "maps": 1,
         "dates": 5
       },

@@ -2,10 +2,67 @@ package gencore
 
 import (
 	"fmt"
+	"os"
+	"strconv"
 	"strings"
+	"sync"
 
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
+
+// EnvClipEvidenceFieldChars bounds one Description/Transcript evidence field
+// sent to the model (PIPELINEGEN_* env namespace). Unset/0 = unlimited
+// (legacy, byte-identical). Bounding trims pathological multi-thousand-char
+// transcripts that bloat every attempt of the segment retry loop; it changes
+// prompt semantics, so flipping it is an operator decision verified against
+// a live editorial canary — never a silent default change (same rule as the
+// shared-prefix layout gate).
+const EnvClipEvidenceFieldChars = "PIPELINEGEN_CLIP_EVIDENCE_FIELD_CHARS"
+
+var (
+	clipEvidenceCharsOnce sync.Once
+	clipEvidenceChars     int
+)
+
+// clipEvidenceFieldChars returns the effective per-field evidence budget.
+func clipEvidenceFieldChars() int {
+	clipEvidenceCharsOnce.Do(func() {
+		raw := strings.TrimSpace(os.Getenv(EnvClipEvidenceFieldChars))
+		if raw == "" {
+			return
+		}
+		if parsed, err := strconv.Atoi(raw); err == nil && parsed > 0 {
+			clipEvidenceChars = parsed
+		}
+	})
+	return clipEvidenceChars
+}
+
+// resetClipEvidenceFieldCharsForTest re-arms the once-guard so a test that
+// changes the environment observes the new value. Production never calls it.
+func resetClipEvidenceFieldCharsForTest() {
+	clipEvidenceCharsOnce = sync.Once{}
+	clipEvidenceChars = 0
+}
+
+// clipEvidenceField passes an evidence field through, truncating at a word
+// boundary with an explicit marker when the operator knob is set. Short
+// fields (the common case) are byte-identical with or without the knob.
+func clipEvidenceField(field string) string {
+	limit := clipEvidenceFieldChars()
+	if limit <= 0 {
+		return field
+	}
+	trimmed := strings.TrimSpace(field)
+	if len(trimmed) <= limit {
+		return field
+	}
+	cut := strings.LastIndex(trimmed[:limit], " ")
+	if cut <= 0 {
+		cut = limit
+	}
+	return trimmed[:cut] + " [...evidence truncated]"
+}
 
 // cleanSegmentSourceText converts legacy editorial briefs into model-facing
 // evidence. The old payload stored both the clip description and the request
@@ -211,10 +268,10 @@ func buildSegmentBody(plan *scriptpkg.ResolvedGenerationPlan) string {
 						fmt.Fprintf(&b, " (%s)", detail.Name)
 					}
 					if detail.Description != "" {
-						fmt.Fprintf(&b, "\n  Description: %s", detail.Description)
+						fmt.Fprintf(&b, "\n  Description: %s", clipEvidenceField(detail.Description))
 					}
 					if detail.Transcript != "" {
-						fmt.Fprintf(&b, "\n  Transcript: %s", detail.Transcript)
+						fmt.Fprintf(&b, "\n  Transcript: %s", clipEvidenceField(detail.Transcript))
 					}
 					b.WriteByte('\n')
 				}

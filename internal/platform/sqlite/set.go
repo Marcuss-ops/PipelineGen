@@ -322,9 +322,9 @@ func resolveJobsMigrationsDir() string {
 	return filepath.Join("migrations", "sqlite_jobs")
 }
 
-// Health runs `PRAGMA quick_check` on BOTH databases. Returns the
-// first error encountered (primary first, then observability) so the
-// caller can log a structured failure.
+// Health runs the bounded plane liveness probe on BOTH databases. Returns the
+// first error encountered (primary first, then observability) so the caller
+// can log a structured failure.
 
 // PlaneHealth is the independent health result for one storage plane. A
 // degraded cache or observability plane is reported without masking the
@@ -348,7 +348,7 @@ func (s *DatabaseSet) HealthByPlane(ctx context.Context) map[string]PlaneHealth 
 			result[name] = PlaneHealth{Error: fmt.Errorf("%s database unavailable", name)}
 			return
 		}
-		if err := quickCheck(ctx, db.DB); err != nil {
+		if err := planeLivenessCheck(ctx, db.DB); err != nil {
 			result[name] = PlaneHealth{Error: err}
 			return
 		}
@@ -361,17 +361,29 @@ func (s *DatabaseSet) HealthByPlane(ctx context.Context) map[string]PlaneHealth 
 	return result
 }
 
-// quickCheck runs PRAGMA quick_check which returns ok/integer-coded error.
-func quickCheck(ctx context.Context, db *sql.DB) error {
+// planeLivenessCheck is the readiness probe for ONE SQLite plane.
+//
+// It runs a bounded round trip (`PRAGMA schema_version`) instead of
+// `PRAGMA quick_check`. quick_check scans EVERY page of the file, so it is not
+// "cheap polling" at this deployment's scale: the 1.16 GB media plane took
+// 10.6s per probe and the 1.5 GB jobs plane never finished inside the /ready
+// budget, which is why /ready reported "context deadline exceeded" for planes
+// that were perfectly healthy. Deep verification stays where it belongs and
+// keeps its coverage: `admin db check` (IntegrityCheck, doctor.go) and the
+// post-restore verifier (backup.go) both still run PRAGMA integrity_check.
+//
+// schema_version reads the schema cookie from page 1: it proves the handle is
+// live, the file is readable and the header/schema is intact, and it surfaces
+// the driver error when it is not. Corruption deeper inside the file is
+// deliberately NOT detected here — a hot readiness endpoint cannot pay a
+// full-file scan on every poll.
+func planeLivenessCheck(ctx context.Context, db *sql.DB) error {
 	if db == nil {
 		return fmt.Errorf("nil db handle")
 	}
-	var status string
-	if err := db.QueryRowContext(ctx, "PRAGMA quick_check").Scan(&status); err != nil {
-		return err
-	}
-	if status != "ok" {
-		return fmt.Errorf("quick_check returned %q", status)
+	var schemaVersion int64
+	if err := db.QueryRowContext(ctx, "PRAGMA schema_version").Scan(&schemaVersion); err != nil {
+		return fmt.Errorf("schema_version probe: %w", err)
 	}
 	return nil
 }

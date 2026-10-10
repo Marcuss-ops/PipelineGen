@@ -73,6 +73,17 @@ func (p *boundedVidRushSearchProvider) Search(ctx context.Context, req scriptpor
 func (*boundedVidRushSearchProvider) Acquire(context.Context, scriptpkg.SegmentAssetCandidate) (scriptports.LocalArtifact, error) {
 	return scriptports.LocalArtifact{}, nil
 }
+
+// querysetCountingArtlistSearcher records SearchClips calls for the query-set dedup
+// pin below.
+type querysetCountingArtlistSearcher struct {
+	calls atomic.Int32
+}
+
+func (s *querysetCountingArtlistSearcher) SearchClips(_ context.Context, _ string, phrases []string) ([]ArtlistClipMatch, error) {
+	s.calls.Add(1)
+	return []ArtlistClipMatch{{Phrase: phrases[0], ClipNames: []string{"clip-1"}, ClipDriveLinks: []string{"https://cdn.example/clip-1"}}}, nil
+}
 func (*boundedVidRushSearchProvider) Verify(context.Context, scriptports.LocalArtifact) (scriptports.VerifiedArtifact, error) {
 	return scriptports.VerifiedArtifact{}, nil
 }
@@ -340,5 +351,76 @@ func TestVidRushProviderFanoutForceRefreshBypassesCache(t *testing.T) {
 	}
 	if got := b.Cache.InternetImages; got == "HIT_EXACT" {
 		t.Fatalf("force-refresh cache state = %q, want a fresh search (MISS/REFRESHED)", got)
+	}
+}
+
+// TestVidRushArtlistQuerySetSharedAcrossSegments pins the P6a anti-muda
+// contract: two DIFFERENT segments (different ids/hashes) with the SAME
+// Artlist query set pay ONE provider search — the raw matches are shared and
+// each segment stamps its own identity at conversion.
+func TestVidRushArtlistQuerySetSharedAcrossSegments(t *testing.T) {
+	vidrushArtlistCache = cacheutil.NewLRU(vidrushArtlistL1Capacity)
+	searcher := &querysetCountingArtlistSearcher{}
+	fanout := NewVidRushProviderFanout(searcher, nil)
+	plan := &scriptpkg.ResolvedGenerationPlan{
+		Title:    "queryset-dedup",
+		Language: "en",
+		MediaPlan: mediadomain.MediaPlanSpec{
+			ProviderPolicy: mediadomain.MediaProviderPolicy{Artlist: mediadomain.MediaToggleEnabled},
+		},
+	}
+	segmentA := scriptpkg.VidRushSegmentResult{
+		SegmentID: "seg-a", TextHash: "hash-a", Text: "first text about Ali",
+		Insights: scriptpkg.SegmentInsights{SegmentID: "seg-a", ArtlistQueries: []string{"Muhammad Ali"}},
+	}
+	segmentB := scriptpkg.VidRushSegmentResult{
+		SegmentID: "seg-b", TextHash: "hash-b", Text: "second text about Ali",
+		Insights: scriptpkg.SegmentInsights{SegmentID: "seg-b", ArtlistQueries: []string{"  muhammad ali "}},
+	}
+
+	a, err := fanout.ResolveProviders(context.Background(), plan, segmentA)
+	if err != nil {
+		t.Fatalf("segment A: %v", err)
+	}
+	b, err := fanout.ResolveProviders(context.Background(), plan, segmentB)
+	if err != nil {
+		t.Fatalf("segment B: %v", err)
+	}
+	if got := searcher.calls.Load(); got != 1 {
+		t.Fatalf("provider searches = %d, want 1 shared across both segments", got)
+	}
+	for _, candidate := range a.Assets.Candidates {
+		if candidate.SegmentID != "seg-a" {
+			t.Fatalf("segment A candidate carries %q, want seg-a", candidate.SegmentID)
+		}
+	}
+	for _, candidate := range b.Assets.Candidates {
+		if candidate.SegmentID != "seg-b" {
+			t.Fatalf("segment B candidate carries %q, want seg-b", candidate.SegmentID)
+		}
+	}
+	if len(a.Assets.Candidates) == 0 || len(b.Assets.Candidates) == 0 {
+		t.Fatal("both segments must receive candidates from the shared matches")
+	}
+}
+
+// TestVidRushArtlistQuerySetKey pins the normalization: order, case and
+// padding variants of one query set share a single key.
+func TestVidRushArtlistQuerySetKey(t *testing.T) {
+	base := vidRushArtlistQuerySetKey("Title", "en", []string{"Muhammad Ali", "Boxing"})
+	for _, variant := range [][]string{
+		{"boxing", "muhammad ali"},
+		{"  Muhammad Ali ", "BOXING"},
+		{"Boxing", "Muhammad Ali"},
+	} {
+		if got := vidRushArtlistQuerySetKey("Title", "en", variant); got != base {
+			t.Fatalf("variant %q has a different key", variant)
+		}
+	}
+	if other := vidRushArtlistQuerySetKey("Title", "en", []string{"Muhammad Ali"}); other == base {
+		t.Fatal("a different query set must not share the key")
+	}
+	if other := vidRushArtlistQuerySetKey("Other", "en", []string{"Muhammad Ali", "Boxing"}); other == base {
+		t.Fatal("a different title must not share the key")
 	}
 }

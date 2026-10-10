@@ -91,8 +91,11 @@ func (r *SourceResolver) ResolveSource(ctx context.Context, assetID string) (loc
 	}
 
 	durationMS := mat.DurationMS
-	if durationMS <= 0 && info != nil && info.Duration > 0 {
-		durationMS = info.Duration.Milliseconds()
+	if info != nil && info.Duration > 0 {
+		probedMS := info.Duration.Milliseconds()
+		if durationMS <= 0 || (probedMS > 0 && probedMS < durationMS) {
+			durationMS = probedMS
+		}
 	}
 	facts := localization.SourceFacts{
 		AssetID:    ref.AssetID,

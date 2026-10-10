@@ -174,7 +174,42 @@ func (r *Runner) runSceneTextPhase(ctx context.Context, runID string, req Genera
 			if strings.Join(chapterScenes, "\n\n") != output.Text {
 				chapterScenes, chapterTopics = nil, nil
 			}
-			impact, impactErr := r.phraseImpactAnalyzer.AnalyzeWithContext(ctx, output.Text, string(req.SourceLanguage), chapterScenes, chapterTopics)
+			// Per-scene inputs carry verified byte identity when each scene
+			// text is found verbatim in the transcript; otherwise offsets
+			// stay nil and that scene degrades to local-only analysis
+			// (no fabricated global offsets).
+			sceneInputs := buildSceneAnalysisInputs(output.Text, scenes, req)
+			var impactErr error
+			var rawImpact interface{} = r.phraseImpactAnalyzer
+			if sceneAnalyzer, ok := rawImpact.(SceneHighlightAnalyzer); ok && len(sceneInputs) > 0 {
+				impactRes, err := sceneAnalyzer.AnalyzeScenes(ctx, output.Text, string(req.SourceLanguage), sceneInputs)
+				impactErr = err
+				if err == nil {
+					result.Summary = impactRes.Summary
+					result.BulletPoints = impactRes.BulletPoints
+					result.HeavySentences = impactRes.HeavySentences
+					if impactRes.ChapterManifest.SchemaVersion != "" {
+						manifest := impactRes.ChapterManifest
+						result.ChapterManifest = &manifest
+					}
+					result.SceneHighlights = impactRes.SceneHighlights
+					result.Editorial = buildEditorialManifest(req, sceneInputs, impactRes)
+					observePhraseImpactTimings(impactRes.Timings)
+				}
+			} else {
+				legacy, err := r.phraseImpactAnalyzer.AnalyzeWithContext(ctx, output.Text, string(req.SourceLanguage), chapterScenes, chapterTopics)
+				impactErr = err
+				if err == nil {
+					result.Summary = legacy.Summary
+					result.BulletPoints = legacy.BulletPoints
+					result.HeavySentences = legacy.HeavySentences
+					if legacy.ChapterManifest.SchemaVersion != "" {
+						manifest := legacy.ChapterManifest
+						result.ChapterManifest = &manifest
+					}
+					observePhraseImpactTimings(legacy.Timings)
+				}
+			}
 			if impactErr != nil {
 				// The extractive summary is an optional data product. A broken
 				// or unavailable Rust NLP worker must never cost the caller the
@@ -182,15 +217,6 @@ func (r *Runner) runSceneTextPhase(ctx context.Context, runID string, req Genera
 				// the editorial fields empty rather than failing closed.
 				r.log.Warn("phrase-impact analysis unavailable; continuing without extractive summary",
 					zap.String("run_id", runID), zap.Error(impactErr))
-			} else {
-				result.Summary = impact.Summary
-				result.BulletPoints = impact.BulletPoints
-				result.HeavySentences = impact.HeavySentences
-				if impact.ChapterManifest.SchemaVersion != "" {
-					manifest := impact.ChapterManifest
-					result.ChapterManifest = &manifest
-				}
-				observePhraseImpactTimings(impact.Timings)
 			}
 		}
 		// Explicit clip workflows may request real video reconstruction without

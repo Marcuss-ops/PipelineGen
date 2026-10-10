@@ -100,6 +100,13 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 	if mm := strings.TrimSpace(cfg.External.OllamaMetadataModel); mm != "" {
 		metaModel = mm
 	}
+	// P0-3 (anti-muda): with OLLAMA_MAX_LOADED_MODELS=1 every model switch
+	// evicts the resident runner (tens of seconds). The default above keeps
+	// a single resident model; only an explicit distinct metadata model
+	// opts into the eviction cost.
+	if metaModel != "" && strings.TrimSpace(cfg.External.OllamaModel) != "" && metaModel != strings.TrimSpace(cfg.External.OllamaModel) {
+		log.Warn("wireScriptFlow: distinct metadata model opts into runner eviction (single-resident Ollama); set OLLAMA_METADATA_MODEL empty to reuse the script model")
+	}
 
 	// Post-processors.
 	scriptsRepoAdapter := sqlitescripts.NewRepositoryAdapter(root.Repos.ScriptsRepo)

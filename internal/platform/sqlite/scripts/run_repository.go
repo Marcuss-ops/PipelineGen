@@ -91,9 +91,38 @@ func (r *SQLiteRunRepository) Get(ctx context.Context, runID string) (*scriptgen
 	return r.scan(ctx, `WHERE run_id=?`, runID)
 }
 
+// submissionRunPredicate restricts run_observability to the rows THIS
+// repository owns. Create stamps every submission run with
+// attempt_id = run_id + ":script"; the observability recorder's own job-attempt
+// rows never carry that marker.
+const submissionRunPredicate = `WHERE job_id=? AND attempt_id=run_id||':script'`
+
+// GetByJobID resolves the submission run that owns jobID.
+//
+// job_id is NOT unique in run_observability: the observability recorder owns a
+// second row for every job attempt, so one script.generate job has (at least)
+// two rows sharing this job_id — the run Create wrote at submission time and
+// the worker's attempt row. Both can land in the same second, and the worker
+// row's created_at ("...T12:02:23Z") sorts AFTER the submission row's
+// nanosecond stamp ("...T12:02:23.027707553Z") as TEXT, so the old unfiltered
+// `ORDER BY created_at DESC` returned the WORKER row. The durable lane then
+// executed and finalised that row, and the submission run every operator
+// surface reads (GET /full, the run ledger) stayed RUNNING forever — the
+// ghost-run ledger: 1397 script.generate runs left RUNNING between 2026-09-01
+// and 2026-10-10, 571 of them for jobs that had already SUCCEEDED.
+//
+// Selecting on the submission marker first makes job → run correlation
+// deterministic instead of "whichever row was written last". Jobs that never
+// went through the HTTP starter have no submission row; they keep the
+// historical correlation (any row for that job) so the durable lane still
+// receives a run.
 func (r *SQLiteRunRepository) GetByJobID(ctx context.Context, jobID string) (*scriptgen.GenerationRun, error) {
 	if jobID == "" {
 		return nil, errors.New("scriptgeneration: GetByJobID requires job ID")
+	}
+	run, err := r.scan(ctx, submissionRunPredicate+` ORDER BY created_at DESC LIMIT 1`, jobID)
+	if err != nil || run != nil {
+		return run, err
 	}
 	return r.scan(ctx, `WHERE job_id=? ORDER BY created_at DESC LIMIT 1`, jobID)
 }

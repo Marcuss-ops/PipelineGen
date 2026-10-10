@@ -590,6 +590,8 @@ func BuildPlan(input PlanInput, config PlannerConfig) (OverlayPlan, error) {
 			}
 		}
 	}
+	EnsureDistinctPhraseMotions(plan.Items, input)
+	EnsureDistinctNumberMotions(plan.Items, input.AnimationCounts)
 	if err := plan.Validate(); err != nil {
 		return OverlayPlan{}, err
 	}

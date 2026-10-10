@@ -39,6 +39,10 @@ type GenerateResult struct {
 	BulletPoints    []string                      `json:"bullet_points,omitempty"`
 	HeavySentences  []scriptpkg.ImportantSentence `json:"heavy_sentences,omitempty"`
 	ChapterManifest *scriptpkg.ChapterManifest    `json:"chapter_manifest,omitempty"`
+	// SceneHighlights is the per-scene editorial product (editorial.v1).
+	// Global Summary/BulletPoints above stay untouched for compatibility.
+	SceneHighlights []scriptpkg.SceneHighlight   `json:"scene_highlights,omitempty"`
+	Editorial       *scriptpkg.EditorialManifest `json:"editorial,omitempty"`
 
 	// Segments is the compatibility projection of the canonical VidRush
 	// enrichment results. Each entry preserves insights.entities for legacy
@@ -253,6 +257,13 @@ type PhraseImpactTimings = scriptpkg.PhraseImpactTimings
 // NLP data products.
 type PhraseImpactAnalyzer interface {
 	AnalyzeWithContext(context.Context, string, string, []string, []string) (scriptpkg.PhraseImpactResult, error)
+}
+
+// SceneHighlightAnalyzer is the optional per-scene extension (editorial.v1).
+// The Rust adapter implements it; other analyzers keep the legacy path.
+type SceneHighlightAnalyzer interface {
+	PhraseImpactAnalyzer
+	AnalyzeScenes(context.Context, string, string, []scriptpkg.SceneAnalysisInput) (scriptpkg.PhraseImpactResult, error)
 }
 
 // SetPhraseImpactAnalyzer wires the extractive summary engine. Nil keeps a

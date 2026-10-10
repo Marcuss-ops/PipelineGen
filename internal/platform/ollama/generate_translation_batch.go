@@ -134,19 +134,11 @@ func (g *Generator) TranslateBatchWithModel(ctx context.Context, segments []Batc
 func (g *Generator) translateChunk(ctx context.Context, chunk []BatchTranslationSegment, langName, model string) (map[string]string, error) {
 	systemPrompt, userPrompt := batchTranslationPrompts(chunk, langName)
 
-	// 1 char ≈ 0.25 tokens; a translation is not a composition, so the source
-	// length is the honest upper bound (plus per-segment punctuation slack).
-	sourceChars := 0
-	for _, segment := range chunk {
-		sourceChars += len([]rune(segment.Text))
-	}
-	predictLimit := sourceChars*2 + 256*len(chunk)
-	if predictLimit < 512 {
-		predictLimit = 512
-	}
-	if predictLimit > 8192 {
-		predictLimit = 8192
-	}
+	// P1-6 (anti-muda): budget from the per-cue ceiling instead of a flat
+	// 512 floor + 256/segment slack. A translation is not a composition,
+	// so the summed per-segment ceiling + small JSON-envelope slack is the
+	// honest upper bound (e.g. 12 short cues: ~1536 vs ~3792 before).
+	predictLimit := batchTranslationOutputBudget(chunk)
 
 	options := map[string]any{
 		"num_predict": predictLimit,
@@ -166,6 +158,23 @@ func (g *Generator) translateChunk(ctx context.Context, chunk []BatchTranslation
 		return nil, fmt.Errorf("batched translation request failed: %w", err)
 	}
 	return parseBatchTranslationResponse(raw, chunk)
+}
+
+// batchTranslationOutputBudget sums the per-cue translation ceiling
+// (translationOutputBudget: 2x source tokens + 64 slack, floor 96) over the
+// chunk plus JSON-envelope slack (~32 tokens per segment for
+// {"id","text"} framing). Pure function so the budget contract is
+// pinnable without a client.
+func batchTranslationOutputBudget(chunk []BatchTranslationSegment) int {
+	total := 0
+	for _, segment := range chunk {
+		total += translationOutputBudget(len([]rune(segment.Text)))
+	}
+	total += 32 * len(chunk)
+	if total > 8192 {
+		total = 8192
+	}
+	return total
 }
 
 // batchTranslationPrompts renders the batched translation prompt. Exported

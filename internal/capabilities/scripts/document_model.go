@@ -39,6 +39,11 @@ func modelScriptOutputForDocument(result *GenerateResult, language Language) *sc
 	}
 	var allText []string
 	renderedLinks := localizedRenderLinksFor(result, language)
+	// The editorial manifest is extracted in ONE language (its SourceLanguage).
+	// A document rendered for any other language must not surface foreign
+	// titles or bullets, so the projection is language-scoped exactly like the
+	// annotation fallback below.
+	editorialByScene := editorialScenesForLanguage(result, language)
 	for _, scene := range result.Scenes {
 		text := strings.TrimSpace(scene.Text[language])
 		if !scene.ExecutionMode.IsFixedMedia() && text != "" {
@@ -69,6 +74,10 @@ func modelScriptOutputForDocument(result *GenerateResult, language Language) *sc
 			converted.Kind = fixedSceneKind(scene)
 		} else if scene.Clip != nil || len(scene.Clips) > 0 {
 			converted.Kind = scriptpkg.SceneClip
+		}
+		if editorial, ok := editorialByScene[scene.ID]; ok {
+			converted.Title = editorial.title
+			converted.Bullets = editorial.bullets
 		}
 		for _, clip := range scene.Clips {
 			if clip == nil {
@@ -138,6 +147,49 @@ func modelScriptOutputForDocument(result *GenerateResult, language Language) *sc
 		Text:          strings.Join(allText, "\n\n"),
 		SpecScene:     spec,
 	}
+}
+
+// editorialSceneProjection is the document-facing slice of one editorial
+// scene: a resolved title (never a fabricated "Scene N") and the extractive
+// bullet texts.
+type editorialSceneProjection struct {
+	title   string
+	bullets []string
+}
+
+// editorialScenesForLanguage projects the sealed editorial manifest onto the
+// document, but ONLY when the document language is the manifest's source
+// language. Translations are projections of the EN-canonical manifest and are
+// not produced yet, so a non-source document legitimately has no editorial.
+func editorialScenesForLanguage(result *GenerateResult, language Language) map[string]editorialSceneProjection {
+	out := map[string]editorialSceneProjection{}
+	if result == nil || result.Editorial == nil {
+		return out
+	}
+	if !strings.EqualFold(strings.TrimSpace(result.Editorial.SourceLanguage), string(language)) {
+		return out
+	}
+	for _, scene := range result.Editorial.Scenes {
+		if strings.TrimSpace(scene.SceneID) == "" {
+			continue
+		}
+		proj := editorialSceneProjection{}
+		// An unavailable title stays absent: the manifest contract forbids a
+		// fabricated public title, and the document must honour that.
+		if scene.TitleStatus == "resolved" && scene.Title != nil {
+			proj.title = strings.TrimSpace(*scene.Title)
+		}
+		for _, bullet := range scene.Bullets {
+			if text := strings.TrimSpace(bullet.Text); text != "" {
+				proj.bullets = append(proj.bullets, text)
+			}
+		}
+		if proj.title == "" && len(proj.bullets) == 0 {
+			continue
+		}
+		out[scene.SceneID] = proj
+	}
+	return out
 }
 
 func annotationForLanguage(scene Scene, language Language) *scriptpkg.SceneAnnotations {

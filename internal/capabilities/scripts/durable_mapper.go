@@ -114,6 +114,8 @@ func DurableResultToDomain(in *GenerateResult) *domain.GenerationResult {
 	out.BulletPoints = in.BulletPoints
 	out.HeavySentences = in.HeavySentences
 	out.ChapterManifest = in.ChapterManifest
+	out.SceneHighlights = in.SceneHighlights
+	out.Editorial = in.Editorial
 	return out
 }
 
