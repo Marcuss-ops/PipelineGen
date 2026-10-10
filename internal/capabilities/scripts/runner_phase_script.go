@@ -11,6 +11,7 @@ import (
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/observability"
+	"github.com/Marcuss-ops/PipelineGen/pkg/retry"
 	"go.uber.org/zap"
 )
 
@@ -501,10 +502,44 @@ func (r *Runner) generateSceneText(ctx context.Context, runID string, req Genera
 		scenes, err := r.generateSceneTextStreaming(ctx, runID, req, exec, streamer, path.ready)
 		return scenes, scriptpkg.SourceTrace{}, true, err
 	}
+	// I2 (bounded in-phase retry): the batch branches publish nothing before
+	// they return, so replaying them is side-effect free. ONLY typed-transient
+	// infrastructure errors (transport failure, 502/503/504 — marked by the
+	// Ollama client) get one extra attempt; validation, certification and
+	// context-cancellation errors fail closed on the first attempt. Streaming
+	// branches are excluded: they commit incrementally and replaying them
+	// could duplicate downstream work.
 	if traced, ok := r.textGen.(SceneTextTraceGenerator); ok {
-		scenes, trace, err := traced.GenerateSceneTextWithTrace(ctx, req)
-		return scenes, trace, false, err
+		out, err := retry.DoWithValue(ctx, func() (sceneTextBatchResult, error) {
+			scenes, trace, err := traced.GenerateSceneTextWithTrace(ctx, req)
+			return sceneTextBatchResult{scenes: scenes, trace: trace}, err
+		}, sceneTextRetryOptions())
+		return out.scenes, out.trace, false, err
 	}
-	scenes, err := r.textGen.GenerateSceneText(ctx, req)
-	return scenes, scriptpkg.SourceTrace{}, false, err
+	out, err := retry.DoWithValue(ctx, func() (sceneTextBatchResult, error) {
+		scenes, err := r.textGen.GenerateSceneText(ctx, req)
+		return sceneTextBatchResult{scenes: scenes}, err
+	}, sceneTextRetryOptions())
+	return out.scenes, out.trace, false, err
+}
+
+// sceneTextBatchResult carries the batch generate tuple through the retry engine.
+type sceneTextBatchResult struct {
+	scenes []Scene
+	trace  scriptpkg.SourceTrace
+}
+
+// sceneTextRetryOptions allows exactly one extra attempt, only for
+// typed-transient infrastructure errors. A full generate costs ~100s, so a
+// single retry is cheaper than a dead job plus a whole-job retry; more than
+// one would risk amplifying an overloaded Ollama into a retry storm.
+func sceneTextRetryOptions() retry.Options {
+	return retry.Options{
+		MaxAttempts:    2,
+		InitialBackoff: 2 * time.Second,
+		MaxBackoff:     8 * time.Second,
+		BackoffFactor:  2.0,
+		DisableJitter:  true,
+		IsRetryable:    retry.IsTransient,
+	}
 }

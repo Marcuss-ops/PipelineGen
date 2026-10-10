@@ -470,3 +470,34 @@ func TestCapEntityImageOverlaysDeduplicatesIdentityInPerSceneScope(t *testing.T)
 		t.Fatalf("retained scene = %q, want first occurrence in scene-1", got[0].SceneID)
 	}
 }
+
+func TestApplyHeavySentenceBoostPilotsPhrasePriority(t *testing.T) {
+	in := &capabilityoverlay.SceneInput{ID: "s1", Phrases: []capabilityoverlay.TimedAnnotation{
+		{Text: "il raccolto è crollato", Score: 0.5},
+		{Text: "una frase qualunque", Score: 0.5},
+	}}
+	heavies := []scriptpkg.ImportantSentence{
+		{Index: 0, Text: "Il raccolto è crollato a causa della siccità estiva.", Importance: 0.95},
+	}
+	applyHeavySentenceBoost(in, heavies)
+	if in.Phrases[0].Score != 0.95 {
+		t.Fatalf("matching phrase must inherit heavy importance, got %v", in.Phrases[0].Score)
+	}
+	if in.Phrases[1].Score != 0.5 {
+		t.Fatalf("non-matching phrase must keep its score, got %v", in.Phrases[1].Score)
+	}
+}
+
+func TestApplyHeavySentenceBoostNeverLowersAndToleratesEmpty(t *testing.T) {
+	in := &capabilityoverlay.SceneInput{ID: "s1", Phrases: []capabilityoverlay.TimedAnnotation{
+		{Text: "il raccolto è crollato", Score: 0.98},
+	}}
+	applyHeavySentenceBoost(in, []scriptpkg.ImportantSentence{
+		{Index: 0, Text: "Il raccolto è crollato.", Importance: 0.4},
+	})
+	if in.Phrases[0].Score != 0.98 {
+		t.Fatalf("scores must only rise, got %v", in.Phrases[0].Score)
+	}
+	applyHeavySentenceBoost(nil, nil)
+	applyHeavySentenceBoost(&capabilityoverlay.SceneInput{}, nil)
+}
