@@ -178,6 +178,14 @@ func BuildFinalJobPayloads(ctx context.Context, runID string, req GenerateReques
 		if req.MediaMode == scriptpkg.MediaModeStockOnly && (localScene.Stock == nil || strings.TrimSpace(localScene.Stock.FolderID) == "") {
 			return nil, nil, fmt.Errorf("final_job stock_only scene %q has no stock folder binding; refusing to route it through the clip path", segment.ID)
 		}
+		// A scene whose clips are ALL stock-marked is audio-only by contract:
+		// clip render was deliberately skipped for it, so no certified clip
+		// render exists. Its video MUST come from its stock folder binding;
+		// without one there is no visual source and the remote worker would
+		// receive a scene it cannot composite.
+		if sceneVisualClipsAreStockOnly(localScene) && (localScene.Stock == nil || strings.TrimSpace(localScene.Stock.FolderID) == "") {
+			return nil, nil, fmt.Errorf("final_job scene %q has only stock-marked clips and no stock folder binding; its video must come from a stock folder (segments[].stock_folder_id)", segment.ID)
+		}
 		if localScene.Stock == nil || strings.TrimSpace(localScene.Stock.FolderID) == "" {
 			// Clip-only scene: the runtime receives the clip THIS pipeline
 			// produced, never the unmodified source clip from the library.

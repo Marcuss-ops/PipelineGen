@@ -264,7 +264,10 @@ func finalJobAudioInput(result GenerateResult, language Language) GenerateResult
 		// Historically only fixed intro/outro sections carried an AudioClip
 		// intent, so intermediate clip scenes could reach 51 with narration
 		// alone (or with an inconsistent source track inherited downstream).
-		// Stock-selected scenes remain visual-only.
+		// Stock-selected scenes remain visual-only, EXCEPT for clips the caller
+		// explicitly marked as used-as-stock: those keep the clip audio at full
+		// original volume because the caller asked for that clip to be HEARD.
+		stockClipIDs := sceneStockClipIDs(*scene)
 		if !scene.ExecutionMode.IsFixedMedia() && scene.Stock == nil && scene.Clip != nil && !hasClipAudioIntent(intents, scene.Clip.ID) {
 			if sourceInUS, sourceDurationUS, ok := finalJobClipAudioWindow(scene.Clip); ok {
 				intents = append(intents, capabilityaudio.AudioIntent{
@@ -275,6 +278,23 @@ func finalJobAudioInput(result GenerateResult, language Language) GenerateResult
 				})
 			}
 		}
+		// A stock-marked clip is an explicit editorial request to hear that
+		// clip: its original audio joins the master at full volume even when
+		// the scene's visual comes from a stock folder and even when the run's
+		// global policy is VOICEOVER_ONLY.
+		for _, clip := range sceneClips(*scene) {
+			if clip == nil || !clip.AsStock || hasClipAudioIntent(intents, clip.ID) {
+				continue
+			}
+			if sourceInUS, sourceDurationUS, ok := finalJobClipAudioWindow(clip); ok {
+				intents = append(intents, capabilityaudio.AudioIntent{
+					Mode: capabilityaudio.AudioClip, ClipAssetID: clip.ID,
+					SourceInUS: sourceInUS, SourceDurationUS: sourceDurationUS,
+					TimelineOffsetUS: 0, TimelineDurationUS: sourceDurationUS,
+					UseOriginalAudio: true, ProtectedOriginalAudio: true, GainDB: 0,
+				})
+			}
+		}
 		filtered := make([]capabilityaudio.AudioIntent, 0, len(intents)+1)
 		hasVoiceover := false
 		for _, intent := range intents {
@@ -282,9 +302,17 @@ func finalJobAudioInput(result GenerateResult, language Language) GenerateResult
 				// The clip's original audio reaches the remote master: keep the
 				// intent and stamp the restored-mix gain. The mix policy still
 				// ducks it under speech; the compiler never touches an explicit
-				// non-zero GainDB.
+				// non-zero GainDB. A stock-marked clip is the exception: the
+				// caller asked for it AS STOCK, so it stays at full original
+				// volume and keeps its protection against VO-only removal and
+				// ducking.
 				restored := intent
-				restored.GainDB = kernelaudio.FinalJobRestoredClipGainDB
+				if _, isStock := stockClipIDs[intent.ClipAssetID]; isStock {
+					restored.ProtectedOriginalAudio = true
+					restored.GainDB = 0
+				} else {
+					restored.GainDB = kernelaudio.FinalJobRestoredClipGainDB
+				}
 				filtered = append(filtered, restored)
 				continue
 			}

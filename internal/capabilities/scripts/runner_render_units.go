@@ -40,10 +40,70 @@ type SceneRenderUnit struct {
 	Clip *ClipReference
 }
 
+// sceneClips returns the scene's authoritative clip list: the explicit
+// multi-clip binding when present, else the legacy single Clip alias.
+func sceneClips(scene Scene) []*ClipReference {
+	clips := scene.Clips
+	if len(clips) == 0 && scene.Clip != nil {
+		clips = []*ClipReference{scene.Clip}
+	}
+	return clips
+}
+
+// sceneStockClipIDs returns the IDs of the scene's clips explicitly marked by
+// the caller as used-as-stock (payload stock_clip_ids). A stock-marked clip
+// contributes its original audio to the master but is never rendered or shown.
+func sceneStockClipIDs(scene Scene) map[string]struct{} {
+	var ids map[string]struct{}
+	for _, clip := range sceneClips(scene) {
+		if clip == nil || !clip.AsStock {
+			continue
+		}
+		if ids == nil {
+			ids = make(map[string]struct{}, 1)
+		}
+		ids[clip.ID] = struct{}{}
+	}
+	return ids
+}
+
+// primaryVisualClip returns the first clip a localized render may show: the
+// scene's primary clip unless it is stock-marked, in which case the next
+// non-stock clip is selected. nil means the scene has no visual clip at all
+// (audio-only stock clips): there is nothing to render.
+func primaryVisualClip(scene Scene) *ClipReference {
+	for _, clip := range sceneClips(scene) {
+		if clip == nil {
+			continue
+		}
+		if !clip.AsStock {
+			return clip
+		}
+	}
+	return nil
+}
+
+// sceneVisualClipsAreStockOnly reports that the scene binds at least one clip
+// and every bound clip is stock-marked. Such a scene has no visual clip to
+// render or show: its video comes from its stock binding, and the final job
+// must never fall back to the (non-existent) certified clip render.
+func sceneVisualClipsAreStockOnly(scene Scene) bool {
+	clips := sceneClips(scene)
+	if len(clips) == 0 {
+		return false
+	}
+	for _, clip := range clips {
+		if clip == nil || !clip.AsStock {
+			return false
+		}
+	}
+	return true
+}
+
 // RenderUnitsForScene decomposes a scene into its localized render units.
 // Protected fixed-media scenes produce one unit per bound clip (any non-empty
 // validated sequence is allowed); every other scene produces a single unit on
-// its primary clip, preserving the historical fan-out shape.
+// its primary VISUAL clip, preserving the historical fan-out shape.
 func RenderUnitsForScene(scene Scene) []SceneRenderUnit {
 	if scene.ExecutionMode.IsFixedMedia() {
 		clips := scene.Clips
@@ -69,10 +129,10 @@ func RenderUnitsForScene(scene Scene) []SceneRenderUnit {
 	if scene.Stock != nil {
 		return nil
 	}
-	clip := scene.Clip
-	if clip == nil && len(scene.Clips) > 0 {
-		clip = scene.Clips[0]
-	}
+	// Clips marked as used-as-stock are audio-only. They are never processed
+	// with a localized clip render: the scene's visual comes from its stock
+	// binding, so rendering the marked clip would be unused work.
+	clip := primaryVisualClip(scene)
 	if clip == nil {
 		return nil
 	}
@@ -106,10 +166,7 @@ func sceneRenderSpec(req GenerateRequest, scene Scene) kernelscript.VideoRenderS
 }
 
 func sceneHasYouTubeSourceClip(scene Scene) bool {
-	clip := scene.Clip
-	if clip == nil && len(scene.Clips) > 0 {
-		clip = scene.Clips[0]
-	}
+	clip := primaryVisualClip(scene)
 	return clip != nil && strings.HasPrefix(strings.ToLower(strings.TrimSpace(clip.ID)), "yt_")
 }
 
@@ -136,10 +193,7 @@ func RenderUnitCount(scenes []Scene) int {
 // behaviour: the scene-level helper and its unit-level sibling
 // (localizedRenderUnitClipFields, below) are one cohesive render-unit family.
 func localizedRenderClipFields(scene Scene) (clipID, assetID, sha256 string, durationMS int64) {
-	clip := scene.Clip
-	if clip == nil && len(scene.Clips) > 0 {
-		clip = scene.Clips[0]
-	}
+	clip := primaryVisualClip(scene)
 	if clip == nil {
 		return "", "", "", 0
 	}

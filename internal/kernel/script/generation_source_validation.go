@@ -62,6 +62,15 @@ func validateGenerationSourceClips(item GenerationItemV2, ref string) error {
 		return err
 	}
 	segmentsExplicit := HasExplicitSegmentClipIDs(item.ScriptParams.Segments)
+	// Stock clip marking is a per-clip editorial decision inside the
+	// segment-owned clip contract: every stock_clip_ids entry must name one
+	// of the same segment's clip_ids. Validate it independently of the
+	// legacy root shape so a bad marking never reaches the runtime.
+	for i, segment := range item.ScriptParams.Segments {
+		if details := validateSegmentStockClipIDs(segment, i, ref); len(details) > 0 {
+			return &PlanInvalidError{ItemID: item.ID, Details: details}
+		}
+	}
 	// Explicit segment ownership wins over the legacy root field. Keep
 	// accepting source.clip_ids for compatibility, but never redistribute
 	// it when any segment declares clip_ids (including an explicit []).
@@ -165,6 +174,56 @@ func firstDuplicate(ids []string) string {
 	return ""
 }
 
+// validateSegmentStockClipIDs enforces the per-clip stock marking contract:
+// entries are non-empty, unique, and each names a clip the same segment
+// declares in clip_ids. A marking on a segment without clip_ids is invalid:
+// stock marking never invents clip ownership.
+func validateSegmentStockClipIDs(segment ScriptSegment, index int, ref string) []string {
+	if segment.StockClipIDs == nil {
+		return nil
+	}
+	prefix := ref + ": segments[" + strconv.Itoa(index) + "].stock_clip_ids"
+	var d []string
+	owned := make(map[string]struct{}, len(segment.ClipIDs))
+	for _, id := range segment.ClipIDs {
+		owned[strings.TrimSpace(id)] = struct{}{}
+	}
+	seen := make(map[string]struct{}, len(segment.StockClipIDs))
+	for _, raw := range segment.StockClipIDs {
+		id := strings.TrimSpace(raw)
+		if id == "" {
+			d = append(d, prefix+" cannot be empty or whitespace-only")
+			continue
+		}
+		if _, dup := seen[id]; dup {
+			d = append(d, prefix+" duplicate clip_id "+id)
+			continue
+		}
+		seen[id] = struct{}{}
+		if _, ok := owned[id]; !ok {
+			d = append(d, prefix+" clip_id "+id+" is not declared in this segment's clip_ids")
+		}
+	}
+	return d
+}
+
+// SegmentClipIsStock reports whether the segment marks the given clip as
+// used-as-stock (audio-only): its original audio joins the generated
+// voiceover mix, while its video is never rendered or shown. Comparison
+// trims surrounding whitespace; an empty id is never a stock declaration.
+func SegmentClipIsStock(segment ScriptSegment, clipID string) bool {
+	clipID = strings.TrimSpace(clipID)
+	if clipID == "" {
+		return false
+	}
+	for _, raw := range segment.StockClipIDs {
+		if strings.TrimSpace(raw) == clipID {
+			return true
+		}
+	}
+	return false
+}
+
 // CloneScriptSegments returns a deep copy of segment metadata, including the
 // per-segment clip ID slices. Segment clip ownership is editorial input and
 // must not alias the request payload after plan construction.
@@ -180,6 +239,9 @@ func CloneScriptSegments(in []ScriptSegment) []ScriptSegment {
 		// clip ownership and must select advanced mode.
 		if segment.ClipIDs != nil {
 			out[i].ClipIDs = slices.Clone(segment.ClipIDs)
+		}
+		if segment.StockClipIDs != nil {
+			out[i].StockClipIDs = slices.Clone(segment.StockClipIDs)
 		}
 	}
 	return out

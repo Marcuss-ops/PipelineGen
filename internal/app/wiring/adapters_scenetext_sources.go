@@ -161,8 +161,10 @@ func (g *SceneTextGenerator) convertClipProseScenes(
 		}
 
 		ownedIDs := []string(nil)
+		var ownedSegment scriptpkg.ScriptSegment
 		if len(plan.Segments) > 0 && i < len(plan.Segments) {
 			ownedIDs = plan.Segments[i].ClipIDs
+			ownedSegment = plan.Segments[i]
 		} else {
 			clipIndex := i
 			if len(plan.Segments) == len(clipIDs)+1 {
@@ -187,12 +189,23 @@ func (g *SceneTextGenerator) convertClipProseScenes(
 			// is certified at render time from the materialized binary.
 			ensureClipPlanningDuration(clip, durationMS)
 			clipDurationUS := (clip.SourceOutMS - clip.SourceInMS) * 1000
+			// Stock-marked clips are audio-only: they are never rendered and
+			// never shown, while their original audio joins the generated
+			// voiceover at full original volume.
+			stockMarked := scriptpkg.SegmentClipIsStock(ownedSegment, clipID)
+			if stockMarked {
+				clip.AsStock = true
+			}
 			out.Clips = append(out.Clips, clip)
 			if out.Clip == nil {
 				out.Clip = clip
 			}
 			out.DurationUS += clipDurationUS
-			out.AudioIntents = append(out.AudioIntents, capabilityaudio.AudioIntent{Mode: capabilityaudio.AudioClip, ClipAssetID: clipID, SourceInUS: clip.SourceInMS * 1000, SourceDurationUS: clipDurationUS, TimelineOffsetUS: offsetUS, TimelineDurationUS: clipDurationUS, UseOriginalAudio: true})
+			if stockMarked {
+				out.AudioIntents = append(out.AudioIntents, stockClipAudioIntent(clipID, clip.SourceInMS*1000, clipDurationUS, offsetUS))
+			} else {
+				out.AudioIntents = append(out.AudioIntents, capabilityaudio.AudioIntent{Mode: capabilityaudio.AudioClip, ClipAssetID: clipID, SourceInUS: clip.SourceInMS * 1000, SourceDurationUS: clipDurationUS, TimelineOffsetUS: offsetUS, TimelineDurationUS: clipDurationUS, UseOriginalAudio: true})
+			}
 			offsetUS += clipDurationUS
 		}
 		if len(out.Clips) > 0 {

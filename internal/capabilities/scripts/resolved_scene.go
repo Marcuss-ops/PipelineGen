@@ -194,6 +194,11 @@ func resolvedVideos(scene Scene, intents []audio.AudioIntent) ([]audio.VideoSegm
 		if clip == nil {
 			continue
 		}
+		// Clips marked as used-as-stock are audio-only: their video is never
+		// part of the timeline, so the final video can never show them.
+		if clip.AsStock {
+			continue
+		}
 		if clip.SourceInMS < 0 || clip.SourceOutMS < 0 || clip.SourceOutMS < clip.SourceInMS {
 			return nil, fmt.Errorf("scene %s has invalid clip source range", scene.ID)
 		}
@@ -237,7 +242,7 @@ func sceneVisualDurationUS(scene Scene, intents []audio.AudioIntent) int64 {
 	}
 	var total int64
 	for _, clip := range clips {
-		if clip == nil {
+		if clip == nil || clip.AsStock {
 			continue
 		}
 		if _, durationUS := clipVisualWindowUS(clip, intents); durationUS > 0 {

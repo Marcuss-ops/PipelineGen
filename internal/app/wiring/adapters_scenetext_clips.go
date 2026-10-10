@@ -5,9 +5,47 @@ import (
 	"fmt"
 	"math"
 
+	capabilityaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
 	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
+
+// markSegmentStockClips applies the segment's per-clip stock marking
+// (script_params.segments[].stock_clip_ids) to the resolved scene clips. A
+// stock-marked clip keeps its binding and original audio, while its video is
+// never processed with a localized clip render and never shown: the scene's
+// visual comes from its stock binding.
+func markSegmentStockClips(clips []*scriptgen.ClipReference, segment scriptpkg.ScriptSegment) {
+	if len(segment.StockClipIDs) == 0 {
+		return
+	}
+	for _, clip := range clips {
+		if clip == nil {
+			continue
+		}
+		if scriptpkg.SegmentClipIsStock(segment, clip.ID) {
+			clip.AsStock = true
+		}
+	}
+}
+
+// stockClipAudioIntent is the canonical voice of a stock-marked clip in the
+// master mix: the clip's ORIGINAL audio at full volume, protected from the
+// run's global VO-only removal and from ducking (the caller explicitly asked
+// for this clip to be heard as stock).
+func stockClipAudioIntent(clipID string, sourceInUS, durationUS int64, timelineOffsetUS int64) capabilityaudio.AudioIntent {
+	return capabilityaudio.AudioIntent{
+		Mode:                   capabilityaudio.AudioClip,
+		ClipAssetID:            clipID,
+		SourceInUS:             sourceInUS,
+		SourceDurationUS:       durationUS,
+		TimelineOffsetUS:       timelineOffsetUS,
+		TimelineDurationUS:     durationUS,
+		UseOriginalAudio:       true,
+		ProtectedOriginalAudio: true,
+		GainDB:                 0,
+	}
+}
 
 func (g *SceneTextGenerator) resolveEvidenceClip(ctx context.Context, plan *scriptpkg.ResolvedGenerationPlan, clipID string, allowDriveOnly bool) (*scriptgen.ClipReference, error) {
 	if plan == nil || plan.ClipEvidence == nil {
