@@ -461,12 +461,16 @@ func (a *localizedRenderEnqueuerAdapter) ensureDatabaseSubtitles(ctx context.Con
 
 func invalidSubtitleText(trackText string, cues []detail.TimedCue) bool {
 	text := strings.ToLower(strings.TrimSpace(trackText))
-	if strings.Contains(text, "clip description:") || strings.Contains(text, "write a ") || strings.Contains(text, "source text:") {
+	if strings.Contains(text, "clip description:") || strings.Contains(text, "source text:") ||
+		strings.Contains(text, "write a script") || strings.Contains(text, "write a narration") ||
+		strings.Contains(text, "write a brief") || strings.Contains(text, "write a summary") {
 		return true
 	}
 	for _, cue := range cues {
 		cueText := strings.ToLower(strings.TrimSpace(cue.Text))
-		if strings.Contains(cueText, "clip description:") || strings.Contains(cueText, "write a ") {
+		if strings.Contains(cueText, "clip description:") || strings.Contains(cueText, "source text:") ||
+			strings.Contains(cueText, "write a script") || strings.Contains(cueText, "write a narration") ||
+			strings.Contains(cueText, "write a brief") || strings.Contains(cueText, "write a summary") {
 			return true
 		}
 	}
