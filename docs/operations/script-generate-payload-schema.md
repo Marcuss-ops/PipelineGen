@@ -52,7 +52,7 @@ lives **inside an item**; there are no top-level shortcut keys.
 ```
 
 `overlay_style` controls the visual style of generated **text** overlays.
-`font_family` accepts `poppins`, `inter`, or `dejavu_sans`; `size.font_size`
+`font_family` accepts `poppins`, `inter`, `inter_bold`, or `dejavu_sans`; `size.font_size`
 sets the text size in pixels; `glow_size` accepts `0..256`; and `stroke_size`
 accepts `0..64`. Omit a field to keep the certified preset value. These
 overrides are applied to phrase, word, number, and quote overlays; image cards

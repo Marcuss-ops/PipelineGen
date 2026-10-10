@@ -203,11 +203,33 @@ func (t *CueTranslator) translateChunk(ctx context.Context, batcher translation.
 
 	res, batchErr := batcher.TranslateBatch(ctx, cmd)
 	if batchErr == nil {
-		if alignErr := applyBatchTranslations(out, cues, indexes, res.Segments); alignErr == nil {
+		alignErr := applyBatchTranslations(out, cues, indexes, res.Segments)
+		if alignErr == nil {
 			return nil
-		} else {
-			batchErr = alignErr
 		}
+		// P3a (anti-muda): the provider ANSWERED but dropped/mangled an
+		// id — usually one poisoned cue, not twelve. Bisect the chunk so
+		// only the guilty sub-range pays the per-cue fallback instead of
+		// re-translating the whole chunk cue-by-cue. A provider TRANSPORT
+		// error (batchErr != nil) keeps the direct per-cue fallback: when
+		// the runner is sick every sub-batch fails too and bisecting only
+		// multiplies failing calls.
+		t.log.Warn("cue batch translation misaligned; bisecting to isolate the bad cue",
+			zap.String("lang", targetLang),
+			zap.Int("cues", len(indexes)),
+			zap.Error(alignErr),
+		)
+		// Start from the halves: re-issuing the full chunk first would
+		// just re-print the same dropped id (the failure is already
+		// observed, not transient).
+		if len(indexes) <= 1 {
+			return t.translatePerCue(ctx, cues, indexes, targetLang, out)
+		}
+		mid := len(indexes) / 2
+		if err := t.translateBisect(ctx, batcher, cues, indexes[:mid], targetLang, out); err != nil {
+			return err
+		}
+		return t.translateBisect(ctx, batcher, cues, indexes[mid:], targetLang, out)
 	}
 
 	t.log.Warn("cue batch translation unusable; falling back to per-cue",
@@ -215,6 +237,11 @@ func (t *CueTranslator) translateChunk(ctx context.Context, batcher translation.
 		zap.Int("cues", len(indexes)),
 		zap.Error(batchErr),
 	)
+	return t.translatePerCue(ctx, cues, indexes, targetLang, out)
+}
+
+// translatePerCue is the correctness floor: every cue translated alone.
+func (t *CueTranslator) translatePerCue(ctx context.Context, cues []detail.TimedCue, indexes []int, targetLang string, out []detail.TimedCue) error {
 	for _, index := range indexes {
 		translated, err := t.translateOne(ctx, cues[index].Text, targetLang)
 		if err != nil {
@@ -223,6 +250,52 @@ func (t *CueTranslator) translateChunk(ctx context.Context, batcher translation.
 		out[index] = detail.TimedCue{StartMs: cues[index].StartMs, EndMs: cues[index].EndMs, Text: translated}
 	}
 	return nil
+}
+
+// translateBisect re-tries a MISALIGNED chunk by halves: a half whose batch
+// answer aligns is done, a half that misaligns splits again, and a lone cue
+// that misaligns even alone falls back to per-cue. One poisoned cue in N
+// costs ~2*log2(N) small batch calls + 1 per-cue call instead of N per-cue
+// calls; a fully healthy chunk never reaches here (fast path above).
+func (t *CueTranslator) translateBisect(ctx context.Context, batcher translation.BatchTranslationPort, cues []detail.TimedCue, indexes []int, targetLang string, out []detail.TimedCue) error {
+	if len(indexes) == 0 {
+		return nil
+	}
+	segments := make([]translation.BatchTranslationSegment, 0, len(indexes))
+	for _, index := range indexes {
+		segments = append(segments, translation.BatchTranslationSegment{
+			ID:   strconv.Itoa(index),
+			Text: cues[index].Text,
+		})
+	}
+	cmd := translation.BatchTranslationCommand{
+		SourceLang: t.sourceLang,
+		TargetLang: targetLang,
+		Segments:   segments,
+		ChunkSize:  len(segments),
+	}
+	if t.ollamaModel != "" {
+		cmd.ModelPolicy = &translation.ModelPolicy{Provider: translation.ProviderOllama, Model: t.ollamaModel}
+	}
+	res, err := batcher.TranslateBatch(ctx, cmd)
+	if err != nil {
+		// The sub-batch hit a transport error mid-bisect: this range is
+		// genuinely untranslatable in batch, pay per-cue for exactly it.
+		return t.translatePerCue(ctx, cues, indexes, targetLang, out)
+	}
+	if applyBatchTranslations(out, cues, indexes, res.Segments) == nil {
+		return nil
+	}
+	if len(indexes) <= 1 {
+		// A lone cue that misaligns even alone is the poison itself:
+		// per-cue is the only remaining path for exactly this cue.
+		return t.translatePerCue(ctx, cues, indexes, targetLang, out)
+	}
+	mid := len(indexes) / 2
+	if err := t.translateBisect(ctx, batcher, cues, indexes[:mid], targetLang, out); err != nil {
+		return err
+	}
+	return t.translateBisect(ctx, batcher, cues, indexes[mid:], targetLang, out)
 }
 
 // applyBatchTranslations copies a batched answer onto the output slice,

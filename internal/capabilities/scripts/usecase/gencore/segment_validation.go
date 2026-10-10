@@ -180,6 +180,12 @@ func (e *Engine) generateSegments(
 			segmentReq.SourceText = cleanSegmentSourceText(req.SourceText)
 		}
 		segmentReq.ClipIDs = append([]string(nil), segment.ClipIDs...)
+		// P1-5 (anti-muda): repair suffix must NOT accumulate. Keep the
+		// first-attempt base so retry N renders base+suffix instead of
+		// base+suffix+...+suffix (prompt growth = slower + KV-miss).
+		baseRepairPrompt := segmentReq.Prompt
+		baseRepairAssignment := segmentReq.SegmentAssignment
+		useSharedPrefix := SegmentPromptLayout() == SegmentPromptLayoutSharedPrefix
 		budget := segmentBudgetFor(plan, index, settings.segmentTolerancePercent)
 		// MinWords is the provider's writing target and output-token budget;
 		// the independent QA gate below still uses budget.Min.
@@ -274,10 +280,30 @@ func (e *Engine) generateSegments(
 				validationExhausted = true
 				break
 			}
+			// P1-5 (anti-muda): the legacy code appended the repair suffix
+			// to Prompt unconditionally, but in shared-prefix layout Prompt
+			// is ignored (rendered from SharedPrefix/SegmentAssignment), so
+			// the repair was silent. Route it to the layout in use and
+			// rebuild from the base instead of accumulating.
+			var repairSuffix string
 			if budget.Max > 0 {
-				segmentReq.Prompt += fmt.Sprintf("\n\nRegenerate only this segment. Return one paragraph of at least %d words (target %d) and no more than the explicitly requested %d words. Do not add headings or a second paragraph.", budget.RequestedMin, budget.Target, budget.Max)
+				repairSuffix = fmt.Sprintf("\n\nRegenerate only this segment. Return one paragraph of at least %d words (target %d) and no more than the explicitly requested %d words. Do not add headings or a second paragraph.", budget.RequestedMin, budget.Target, budget.Max)
 			} else {
-				segmentReq.Prompt += fmt.Sprintf("\n\nRegenerate only this segment. Return one paragraph of at least %d words (target about %d). There is no maximum word count. Do not add headings or a second paragraph.", budget.RequestedMin, budget.Target)
+				repairSuffix = fmt.Sprintf("\n\nRegenerate only this segment. Return one paragraph of at least %d words (target about %d). There is no maximum word count. Do not add headings or a second paragraph.", budget.RequestedMin, budget.Target)
+			}
+			if useSharedPrefix {
+				segmentReq.SegmentAssignment = baseRepairAssignment + repairSuffix
+			} else {
+				segmentReq.Prompt = baseRepairPrompt + repairSuffix
+			}
+			// Vary the sample on repair: same prompt + same seed reprints
+			// the same rejection (~20s wasted). A warmer, unpinned sample
+			// gives the retry a chance to actually differ.
+			segmentReq.Temperature = 0.7
+			segmentReq.Seed = 0
+			if segmentReq.Options != nil {
+				delete(segmentReq.Options, "seed")
+				delete(segmentReq.Options, "temperature")
 			}
 		}
 		if lastErr != nil {

@@ -132,5 +132,154 @@ func (f *FallbackTranslator) logDegenerate(role string, cmd TranslationCommand, 
 	)
 }
 
+// TranslateBatch implements BatchTranslationPort (P3b, anti-muda): the
+// expensive leg is batched, the cheap leg stays per-segment.
+//
+// Every segment first goes through `primary` alone (today: Argos sidecar —
+// CPU-only, no prompt tax). Segments the primary answers acceptably keep
+// that answer; only the failed/degenerate remainder is sent to `fallback`
+// in ONE batched call per ChunkSize window (today: Ollama — the call
+// dominated by the ~130-token system prompt). Without this, a chain could
+// only batch when the whole request skipped the primary, so every fallback
+// cue paid a full LLM round-trip alone.
+//
+// Provenance: UsedProvider is the primary's when it served every segment,
+// the fallback's when it served every segment, else "mixed" (godlike/07:
+// never attribute a mixed answer to one provider).
+func (f *FallbackTranslator) TranslateBatch(ctx context.Context, cmd BatchTranslationCommand) (BatchTranslationResult, error) {
+	if f == nil {
+		return BatchTranslationResult{}, ErrUnimplemented
+	}
+	if len(cmd.Segments) == 0 {
+		return BatchTranslationResult{}, nil
+	}
+	if f.primary == nil && f.fallback == nil {
+		return BatchTranslationResult{}, ErrUnimplemented
+	}
+
+	out := make([]BatchTranslationSegment, len(cmd.Segments))
+	pending := make([]int, 0, len(cmd.Segments))
+	primaryProvider := ""
+	for i, segment := range cmd.Segments {
+		out[i] = segment
+		if f.primary == nil {
+			pending = append(pending, i)
+			continue
+		}
+		res, err := f.primary.Translate(ctx, TranslationCommand{
+			SourceLang: cmd.SourceLang,
+			TargetLang: cmd.TargetLang,
+			Text:       segment.Text,
+		})
+		if err != nil {
+			pending = append(pending, i)
+			continue
+		}
+		if res.TranslatedText == "" {
+			pending = append(pending, i)
+			continue
+		}
+		if assess := AssessTranslation(segment.Text, res.TranslatedText, cmd.SourceLang, cmd.TargetLang); !assess.Acceptable() {
+			f.logDegenerate("primary", TranslationCommand{
+				SourceLang: cmd.SourceLang,
+				TargetLang: cmd.TargetLang,
+				Text:       segment.Text,
+			}, res, assess)
+			pending = append(pending, i)
+			continue
+		}
+		out[i].Text = res.TranslatedText
+		if primaryProvider == "" {
+			primaryProvider = res.UsedProvider
+		}
+	}
+	if len(pending) == 0 {
+		return BatchTranslationResult{Segments: out, UsedProvider: primaryProvider, CacheStatus: "miss"}, nil
+	}
+	if f.fallback == nil {
+		first := cmd.Segments[pending[0]]
+		return BatchTranslationResult{}, &ErrDegenerateTranslation{
+			SourceLang: cmd.SourceLang,
+			TargetLang: cmd.TargetLang,
+			Reason:     fmt.Sprintf("primary failed %d of %d segments and no fallback is wired (first: %q)", len(pending), len(cmd.Segments), first.Text),
+		}
+	}
+
+	// The fallback leg: batch-capable fallback gets one call per window,
+	// otherwise degrade to per-segment fallback calls (yesterday's cost).
+	if batchFallback, ok := f.fallback.(BatchTranslationPort); ok {
+		window := cmd.ChunkSize
+		if window < 1 {
+			window = len(pending)
+		}
+		fallbackProvider := ""
+		for start := 0; start < len(pending); start += window {
+			end := start + window
+			if end > len(pending) {
+				end = len(pending)
+			}
+			windowSegments := make([]BatchTranslationSegment, 0, end-start)
+			for _, index := range pending[start:end] {
+				windowSegments = append(windowSegments, BatchTranslationSegment{ID: cmd.Segments[index].ID, Text: cmd.Segments[index].Text})
+			}
+			res, err := batchFallback.TranslateBatch(ctx, BatchTranslationCommand{
+				SourceLang:  cmd.SourceLang,
+				TargetLang:  cmd.TargetLang,
+				Segments:    windowSegments,
+				ModelPolicy: cmd.ModelPolicy,
+				ChunkSize:   len(windowSegments),
+			})
+			if err != nil {
+				return BatchTranslationResult{}, err
+			}
+			if len(res.Segments) != len(windowSegments) {
+				return BatchTranslationResult{}, fmt.Errorf("translation: fallback batch returned %d segments for %d requested", len(res.Segments), len(windowSegments))
+			}
+			byID := make(map[string]string, len(res.Segments))
+			for _, segment := range res.Segments {
+				byID[segment.ID] = segment.Text
+			}
+			for _, index := range pending[start:end] {
+				text, ok := byID[cmd.Segments[index].ID]
+				if !ok || text == "" {
+					return BatchTranslationResult{}, fmt.Errorf("translation: fallback batch missing segment %q", cmd.Segments[index].ID)
+				}
+				out[index].Text = text
+			}
+			if fallbackProvider == "" {
+				fallbackProvider = res.UsedProvider
+			}
+		}
+		provider := fallbackProvider
+		if primaryProvider != "" {
+			provider = "mixed"
+		}
+		return BatchTranslationResult{Segments: out, UsedModel: "", UsedProvider: provider, CacheStatus: "miss"}, nil
+	}
+
+	for _, index := range pending {
+		res, err := f.fallback.Translate(ctx, TranslationCommand{
+			SourceLang: cmd.SourceLang,
+			TargetLang: cmd.TargetLang,
+			Text:       cmd.Segments[index].Text,
+		})
+		if err != nil {
+			return BatchTranslationResult{}, err
+		}
+		if res.TranslatedText == "" {
+			return BatchTranslationResult{}, fmt.Errorf("translation: fallback provider returned empty output")
+		}
+		out[index].Text = res.TranslatedText
+	}
+	provider := ""
+	if primaryProvider != "" {
+		provider = "mixed"
+	}
+	return BatchTranslationResult{Segments: out, UsedProvider: provider, CacheStatus: "miss"}, nil
+}
+
 // Compile-time assertion: *FallbackTranslator satisfies TranslationPort.
 var _ TranslationPort = (*FallbackTranslator)(nil)
+
+// Compile-time assertion: *FallbackTranslator satisfies BatchTranslationPort.
+var _ BatchTranslationPort = (*FallbackTranslator)(nil)

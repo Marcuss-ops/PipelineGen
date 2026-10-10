@@ -256,9 +256,9 @@ func (s *OverlayStyleSpec) Validate() error {
 		return nil
 	}
 	switch s.FontFamily {
-	case "", "poppins", "inter", "dejavu_sans", "playfair_display_italic", "bricolage_grotesque":
+	case "", "poppins", "inter", "inter_bold", "dejavu_sans", "playfair_display_italic", "bricolage_grotesque":
 	default:
-		return fmt.Errorf("overlay_style.font_family %q is unsupported (poppins, inter, dejavu_sans, playfair_display_italic, bricolage_grotesque)", s.FontFamily)
+		return fmt.Errorf("overlay_style.font_family %q is unsupported (poppins, inter, inter_bold, dejavu_sans, playfair_display_italic, bricolage_grotesque)", s.FontFamily)
 	}
 	if s.GlowSize != nil && (math.IsNaN(*s.GlowSize) || math.IsInf(*s.GlowSize, 0) || *s.GlowSize < 0 || *s.GlowSize > 256) {
 		return fmt.Errorf("overlay_style.glow_size must be between 0 and 256 pixels")

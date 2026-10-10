@@ -177,6 +177,13 @@ type SpecScene struct {
 	// Title is an optional human-readable scene title.
 	Title string `json:"title,omitempty"`
 
+	// Bullets is the extractive per-scene bullet list (editorial.v1). Each
+	// entry is a contiguous span of the scene's own sentences, so the
+	// document surface never shows a generated claim. It is populated only
+	// for the language the editorial manifest was extracted in (its
+	// SourceLanguage); a localized document carries no foreign bullets.
+	Bullets []string `json:"bullets,omitempty"`
+
 	// Annotations contains deterministic, scene-local semantic annotations
 	// produced from the final scene text.
 	Annotations *SceneAnnotations `json:"annotations,omitempty"`

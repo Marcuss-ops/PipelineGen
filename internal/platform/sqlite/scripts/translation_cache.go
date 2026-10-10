@@ -246,9 +246,14 @@ func (c *Cache) SweepStale(ctx context.Context, maxAgeDays int) (int64, error) {
 }
 
 // cacheKey generates a deterministic key for a source text + target language pair.
+// P1-6 (anti-muda): collapse internal whitespace and lowercase the language
+// so " Hello  world " and "hello world" (or "PT-BR" vs "pt-br") share one
+// entry instead of paying a second LLM call. Note: the key shape changes vs
+// pre-fix rows — old rows miss once, get re-stored, and age out via sweep.
 func cacheKey(sourceText, targetLanguage string) string {
-	normalized := strings.ToLower(strings.TrimSpace(sourceText))
-	payload := normalized + "|" + strings.TrimSpace(targetLanguage)
+	normalized := strings.Join(strings.Fields(strings.ToLower(strings.TrimSpace(sourceText))), " ")
+	lang := strings.ToLower(strings.TrimSpace(targetLanguage))
+	payload := normalized + "|" + lang
 	hash := digest.SHA256Bytes([]byte(payload))
 	return hash
 }

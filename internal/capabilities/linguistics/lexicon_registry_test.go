@@ -289,6 +289,48 @@ func TestLexiconConfigChangeChangesBehavior(t *testing.T) {
 	}
 }
 
+// TestLexiconRegistry_PhraseStopWordsUnionsProfileAndFallsBack pins the
+// language-general contract the phrase-impact worker depends on: the injected
+// set is the union of a profile's stop words and function words, and a language
+// the repository does not enumerate degrades to the cross-linguistic fallback
+// profile instead of failing or leaking an unrelated language's words.
+func TestLexiconRegistry_PhraseStopWordsUnionsProfileAndFallsBack(t *testing.T) {
+	dir := t.TempDir()
+	writeLexiconFile(t, filepath.Join(dir, "en"), "stopwords.txt", "the", "and")
+	writeLexiconFile(t, filepath.Join(dir, "en"), "function_words.txt", "of", "the")
+	writeLexiconFile(t, filepath.Join(dir, "fallback"), "stopwords.txt", "the", "le")
+	writeLexiconFile(t, filepath.Join(dir, "fallback"), "function_words.txt", "by")
+
+	r, err := NewLexiconRegistry(dir)
+	if err != nil {
+		t.Fatalf("NewLexiconRegistry: %v", err)
+	}
+
+	en := r.PhraseStopWords("en")
+	for _, want := range []string{"the", "and", "of"} {
+		if _, ok := en[want]; !ok {
+			t.Errorf("en phrase stop words must contain the profile's %q", want)
+		}
+	}
+	if len(en) != 3 {
+		t.Errorf("en phrase stop words = %v, want the union of 2 stop words and 2 function words", en)
+	}
+
+	// A language with no profile resolves to the cross-linguistic fallback set:
+	// keyphrase extraction must still work for the languages the repository does
+	// not enumerate.
+	uncovered := r.PhraseStopWords("xx-YY")
+	if _, ok := uncovered["by"]; !ok {
+		t.Errorf("an unenumerated language must fall back to the cross-linguistic profile, got %v", uncovered)
+	}
+	if _, ok := uncovered["and"]; ok {
+		t.Errorf("an unenumerated language must not inherit another language's words: %v", uncovered)
+	}
+	if len(uncovered) != 3 {
+		t.Errorf("fallback phrase stop words = %v, want the fallback profile's union", uncovered)
+	}
+}
+
 func TestSetDefaultLexiconRejectsNil(t *testing.T) {
 	if err := SetDefaultLexicon(nil); err == nil {
 		t.Fatal("expected nil default registry to return an error")

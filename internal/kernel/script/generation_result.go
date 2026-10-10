@@ -87,6 +87,9 @@ type GenerationResult struct {
 	BulletPoints    []string            `json:"bullet_points,omitempty"`
 	HeavySentences  []ImportantSentence `json:"heavy_sentences,omitempty"`
 	ChapterManifest *ChapterManifest    `json:"chapter_manifest,omitempty"`
+	// SceneHighlights + Editorial carry the per-scene editorial.v1 product.
+	SceneHighlights []SceneHighlight   `json:"scene_highlights,omitempty"`
+	Editorial       *EditorialManifest `json:"editorial,omitempty"`
 
 	// VidRushSegments carries the per-segment semantic extraction
 	// and media resolution results used by the VidRush payload.
@@ -502,11 +505,44 @@ type ImportantSentence struct {
 // It lives in the kernel package because the capability that produces it and
 // the platform adapter that computes it (a Rust worker) must agree on one
 // shape, and a platform adapter must never import a capability.
+// SceneBulletSpan is an extractive sentence span inside one scene.
+type SceneBulletSpan struct {
+	SentenceStart int    `json:"sentence_start"`
+	SentenceEnd   int    `json:"sentence_end"`
+	Text          string `json:"text"`
+}
+
+// ScenePhraseSpan is a short verbatim overlay candidate with exact offsets.
+type ScenePhraseSpan struct {
+	SentenceIndex  int     `json:"sentence_index"`
+	StartByte      int     `json:"start_byte"`
+	EndByte        int     `json:"end_byte"`
+	Text           string  `json:"text"`
+	Score          float64 `json:"score"`
+	VisualEligible bool    `json:"visual_eligible"`
+}
+
+// SceneHighlight is the per-scene editorial product. Title is nil when
+// TitleStatus is "unavailable"; no fabricated public title is ever emitted.
+type SceneHighlight struct {
+	SceneID         string            `json:"scene_id"`
+	Title           *string           `json:"title,omitempty"`
+	TitleStatus     string            `json:"title_status"`
+	TitleSource     string            `json:"title_source"`
+	Bullets         []SceneBulletSpan `json:"bullets"`
+	Highlights      []ScenePhraseSpan `json:"highlights"`
+	GloballyIndexed bool              `json:"globally_indexed"`
+}
+
 type PhraseImpactResult struct {
 	Summary         string              `json:"summary"`
 	BulletPoints    []string            `json:"bullet_points"`
 	HeavySentences  []ImportantSentence `json:"heavy_sentences"`
 	ChapterManifest ChapterManifest     `json:"chapter_manifest,omitempty"`
+	SceneHighlights []SceneHighlight    `json:"scene_highlights,omitempty"`
+	// SceneHighlightsCertified is false when scene identity was incoherent:
+	// the manifest must not be treated as certified (video still continues).
+	SceneHighlightsCertified bool `json:"scene_highlights_certified,omitempty"`
 	// Timings is the Rust worker's OWN stage breakdown for this analysis, in
 	// milliseconds. It is telemetry and never changes the summary, bullets or
 	// heavy sentences. The embedding stage is the only part of this path that

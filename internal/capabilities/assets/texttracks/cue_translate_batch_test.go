@@ -26,6 +26,9 @@ type recordingBatchTranslator struct {
 
 	failBatch bool
 	misalign  bool
+	// poisonID, when set, is the ONE segment id dropped from every batched
+	// answer (a single cue the model chokes on while the rest align).
+	poisonID string
 }
 
 func (r *recordingBatchTranslator) Translate(_ context.Context, cmd translation.TranslationCommand) (translation.TranslationResult, error) {
@@ -48,6 +51,9 @@ func (r *recordingBatchTranslator) TranslateBatch(_ context.Context, cmd transla
 	for i, segment := range cmd.Segments {
 		if r.misalign && i == 0 {
 			continue // drop the first id: a misaligned answer
+		}
+		if r.poisonID != "" && segment.ID == r.poisonID {
+			continue // drop only the poisoned cue: every other id aligns
 		}
 		segments = append(segments, translation.BatchTranslationSegment{
 			ID:   segment.ID,
@@ -153,6 +159,42 @@ func TestCueTranslator_MisalignedBatchFallsBackToPerCue(t *testing.T) {
 		if !strings.HasSuffix(got[i].Text, "[it]") {
 			t.Fatalf("cue %d text = %q, want a translated cue", i, got[i].Text)
 		}
+	}
+}
+
+// TestCueTranslator_BisectIsolatesOnePoisonCue pins the P3a anti-muda
+// contract: one cue the model drops must not drag the whole chunk to
+// per-cue. 12 cues with cue 5 poisoned cost a handful of shrinking batch
+// calls + exactly 1 per-cue call (the poisoned cue), and every cue still
+// lands translated with its timing intact.
+func TestCueTranslator_BisectIsolatesOnePoisonCue(t *testing.T) {
+	tr := &recordingBatchTranslator{target: "it", poisonID: "5"}
+	ct := NewCueTranslator(tr, "en", "gemma4:e4b", 1, nil)
+	cues := batchTestCues(12)
+
+	got, _, err := ct.Translate(context.Background(), cues, "it")
+	if err != nil {
+		t.Fatalf("Translate: %v", err)
+	}
+	batches, perCue := tr.counts()
+	if perCue != 1 {
+		t.Fatalf("per-cue calls = %d, want exactly 1 (only the poisoned cue)", perCue)
+	}
+	// Descent for poison at 5 of 12: 12, 6+6, 3+3, 1+2, 1+1 = 9 shrinking
+	// batch calls + 1 per-cue, vs 1 wasted batch + 12 per-cue before.
+	if batches > 10 {
+		t.Fatalf("batched calls = %d, want <= 10 for one poison in 12", batches)
+	}
+	for i := range got {
+		if !strings.HasSuffix(got[i].Text, "[it]") {
+			t.Fatalf("cue %d text = %q, want a translated cue", i, got[i].Text)
+		}
+		if got[i].StartMs != cues[i].StartMs || got[i].EndMs != cues[i].EndMs {
+			t.Fatalf("cue %d timing drifted", i)
+		}
+	}
+	if tr.perCueCalls[0] != cues[5].Text {
+		t.Fatalf("per-cue call was for %q, want the poisoned cue %q", tr.perCueCalls[0], cues[5].Text)
 	}
 }
 

@@ -23,9 +23,11 @@ import (
 
 // IntegrityCheck runs `PRAGMA integrity_check` returning the status
 // string. `ok` means a clean DB; any other value means corruption.
-// Returns nil on `ok`, error otherwise. The runtime integrity_check
-// in DatabaseSet.Health uses PRAGMA quick_check for cheap polling;
-// this thorough variant is for `db check` and post-restore verification.
+// Returns nil on `ok`, error otherwise. This is the canonical FULL
+// verification: it scans every page, which is why the readiness path
+// (DatabaseSet.Health / HealthByPlane) does not use it — those endpoints use
+// the bounded schema_version probe (planeLivenessCheck in set.go). Reach for
+// this one from `db check` and post-restore verification.
 func IntegrityCheck(ctx context.Context, db *sql.DB) error {
 	var status string
 	if err := db.QueryRowContext(ctx, "PRAGMA integrity_check").Scan(&status); err != nil {
