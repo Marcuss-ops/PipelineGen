@@ -351,7 +351,11 @@ func (r *Runner) synthesizeVoiceoverWork(ctx context.Context, runID string, req 
 		clipID, clipAssetID, clipSHA256, clipDurationMS := localizedRenderClipFields(*item.scene)
 		renderSpec := sceneRenderSpec(req, *item.scene)
 		sceneIndex := item.scene.Index
-		needsRender := item.scene.Stock == nil && (item.lang == req.SourceLanguage || (req.Render.Subtitles != nil && req.Render.Subtitles.Enabled))
+		// A scene renders only when it owns a VISUAL clip: a stock binding or
+		// stock-marked (audio-only) clips mean the clip is never processed by
+		// a localized clip render.
+		needsRender := item.scene.Stock == nil && primaryVisualClip(*item.scene) != nil &&
+			(item.lang == req.SourceLanguage || (req.Render.Subtitles != nil && req.Render.Subtitles.Enabled))
 		if checkpointDue.due(time.Now()) {
 			var snapshotErr error
 			snapshot, snapshotErr = snapshotGenerateResult(result)

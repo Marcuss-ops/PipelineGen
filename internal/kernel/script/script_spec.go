@@ -19,6 +19,14 @@ type ScriptSegment struct {
 	Topic      string   `json:"topic"`
 	SourceText string   `json:"source_text,omitempty"`
 	ClipIDs    []string `json:"clip_ids,omitempty"`
+	// StockClipIDs marks, per clip, the clip_ids owned by this segment that
+	// are used AS STOCK: the clip's original audio joins the generated
+	// voiceover mix at full original volume, while its video is never
+	// rendered (no clip.render) and never shown in the final video. The
+	// scene itself is stock-visual: a bound stock folder provides its video
+	// and no localized clip render is produced for the marked clips. Every
+	// entry must be one of the segment's clip_ids.
+	StockClipIDs []string `json:"stock_clip_ids,omitempty"`
 	// StockFolderID/StockFolderLink select a Drive folder whose stock assets
 	// belong to this segment. The ingress expands these fields into the
 	// internal stock binding contract; callers do not need to provide

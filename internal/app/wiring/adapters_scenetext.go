@@ -275,6 +275,9 @@ func (g *SceneTextGenerator) GenerateSceneTextStreamWithTrace(
 				}
 			}
 		}
+		// Apply the caller's per-clip stock marking to every attached clip
+		// (streaming path: one segment, one scene).
+		markSegmentStockClips(scenes[0].Clips, segment)
 		return sceneResult{index: index, scene: scenes[0]}
 	}
 	workers := g.segmentConcurrency
@@ -439,6 +442,10 @@ func (g *SceneTextGenerator) GenerateSceneTextWithTrace(
 					}
 				}
 			}
+			// Apply the caller's per-clip stock marking to every clip of this
+			// segment's scene, whether it was attached here or resolved from
+			// the model's own bindings.
+			markSegmentStockClips(scenes[i].Clips, plan.Segments[i])
 		}
 	}
 

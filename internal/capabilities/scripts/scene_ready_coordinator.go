@@ -326,7 +326,10 @@ func (c *sceneReadyCoordinator) process(scene Scene) (Scene, error) {
 			renderSourceText = c.req.Source.SourceText
 			renderText = renderSourceText
 		}
-		if out.Stock == nil {
+		// A localized clip render needs a VISUAL clip: stock-bound scenes and
+		// scenes whose clips are all stock-marked (audio-only) are never
+		// processed by clip render.
+		if out.Stock == nil && primaryVisualClip(out) != nil {
 			clipID, clipAssetID, clipSHA256, clipDurationMS := localizedRenderClipFields(out)
 			renderSpec := sceneRenderSpec(c.req, out)
 			sceneID, sceneIndex := out.ID, out.Index

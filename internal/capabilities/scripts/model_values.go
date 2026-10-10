@@ -80,6 +80,12 @@ type ClipReference struct {
 	// DurationSource is the canonical provenance of DurationUS
 	// (probe / provider_metadata / unknown).
 	DurationSource kernelasset.DurationSource `json:"duration_source,omitempty"`
+	// AsStock marks a clip used AS STOCK (payload
+	// script_params.segments[].stock_clip_ids): its original audio joins the
+	// generated voiceover mix at full original volume, while its video is
+	// never processed with a localized clip render and never shown in the
+	// final video. The scene's visual comes from its stock binding.
+	AsStock        bool                       `json:"as_stock,omitempty"`
 	AudioAssetID   string                     `json:"audio_asset_id,omitempty"`
 	AudioPath      string                     `json:"audio_path,omitempty"`
 	Path           string                     `json:"path,omitempty"`
