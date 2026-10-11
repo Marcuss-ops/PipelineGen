@@ -117,7 +117,6 @@ var (
 	generatedEntityCaptionMotionCandidates = []string{
 		"entity_caption_rise",
 		"entity_depth_caption",
-		"entity_yaw_caption",
 		"entity_split_side",
 		"entity_border_then_caption",
 		"entity_glow_focus",
@@ -125,7 +124,7 @@ var (
 		"entity_name_pill",
 		"entity_parallax_caption",
 		"entity_focus_frame",
-		"text_depth_in", "text_fade_up", "text_scale_punch", "text_word_rise", "text_word_stagger", "text_yaw_in",
+		"text_depth_in", "text_fade_up", "text_scale_punch", "text_word_rise", "text_word_stagger",
 		"typewriter_blur_focus", "typewriter_clean", "typewriter_lift", "typewriter_neon", "typewriter_pop",
 		"typewriter_scale_up", "typewriter_slide_in", "typewriter_soft_lift", "typewriter_tracking", "typewriter_glitch",
 		"typewriter_modern_01_monospace_block_cursor", "typewriter_modern_02_kinetic_scramble",
@@ -137,10 +136,10 @@ var (
 		"typewriter_modern_13_elastic_leading_cursor", "typewriter_modern_14_focal_blur_dissolve",
 		"typewriter_modern_15_paper_punch_stencil",
 		"trump_entity_text_01", "trump_entity_text_02", "trump_entity_text_03",
-		"trump_entity_text_04", "trump_entity_text_05", "trump_entity_text_06",
-		"trump_entity_text_07", "trump_entity_text_08", "trump_entity_text_09",
+		"trump_entity_text_04", "trump_entity_text_05",
+		"trump_entity_text_07", "trump_entity_text_09",
 		"trump_entity_text_10", "trump_entity_text_11", "trump_entity_text_12",
-		"trump_entity_text_13", "trump_entity_text_14", "trump_entity_text_15",
+		"trump_entity_text_13", "trump_entity_text_14",
 	}
 	// Automatic date selection is a curated premium subset of ChrononTemplate's
 	// date_v1 catalog. The remaining authored motions stay available in the

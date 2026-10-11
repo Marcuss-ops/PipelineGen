@@ -330,7 +330,7 @@ func (r *Runner) beginVidRush(ctx context.Context, runID string, req GenerateReq
 	// coordinator's barrier so a CERTIFIED=false run fails the job even
 	// when the inner barrier returned no error.
 	barrier := VidRushBarrier(coordinator)
-	if p.CertifierPort != nil {
+	if p.CertifierPort != nil && plan.HasVisualMediaPlan() {
 		certBarrier, err := NewMediaCertBarrier(barrier, p.CertifierPort, certSpec)
 		if err != nil {
 			return nil, fmt.Errorf("vidrush pipeline: %w", err)

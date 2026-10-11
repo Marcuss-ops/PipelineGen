@@ -4,10 +4,9 @@
 > referenced path against the current tree before acting.
 
 **Date:** 2026-09-13
-**Status:** the code-level remainder is CLOSED, including the item-3
-locator-first artifact path (§2.7). What is left is deployment-bound (live
-GPU/Chronon/RenderingGen/Drive measurement and the production object-store
-endpoint).
+**Status:** CODE CLOSED; live acceptance remains open for production object-store/Drive locator
+reachability, real GPU/Chronon IPC certification, and cross-process folder deduplication evidence.
+The settle-pool and locator-first code paths are implemented and locally tested (§2, §2.7).
 **Scope:** `POST /api/clips/render` end to end (PipelineGen `refactored/` +
 RenderingGen + Chronon3d).
 **Predecessor:** `docs/CLIP-RENDER-DEMOLITION-2026-09-12.md`,
@@ -16,12 +15,10 @@ RenderingGen + Chronon3d).
 ## 0. Why this ticket exists
 
 A fresh eight-item audit of `POST /api/clips/render` listed a sequence of
-remaining bottlenecks. Re-checking each one against the current tree shows that
-**six of the eight were already closed by the 2026-09-13 clip.render audit**; the
-audit text predates that pass. Only **P0.5 (dedicated settle pool)** was still
-genuinely open, and it is landed here. The seventh item (final-artifact
-round-trip) and the eighth (final demolition) remain, and both are deployment /
-cross-repo work rather than a missing abstraction.
+remaining bottlenecks. Re-checking against the current tree showed that six were
+already closed, P0.5 was landed here, and the locator-first artifact path was
+subsequently implemented (§2.7). The code-level remainder is closed; only the
+explicit deployment and cross-process evidence listed in §3 remains.
 
 The purpose of this document is to stop the same items from being re-opened:
 each verdict below names the file that decides it.
@@ -138,9 +135,11 @@ Repaired to match the shipped architecture:
 * `TestWorker_RecordsRunReportStages` now expects the real serial critical path
   `clip.prepare → clip.render → clip.probe → clip.publish`.
 
-Gate: `go test ./internal/capabilities/cliprender/...` green,
-`go test -run TestScenario` (the canonical benchmark matrix) green, and
-`go vet ./...` clean.
+Current verified gates: `go test ./internal/capabilities/cliprender/...` and
+`go vet ./...` were recorded green for the code cutover. The former canonical
+`TestScenario` benchmark harness is absent from this checkout; `make
+bench-cliprender` now fails closed on its missing selector, so throughput evidence
+must be regenerated after the harness is restored.
 
 ## 2.7 LANDED — locator-first artifact (item 3, code half)
 

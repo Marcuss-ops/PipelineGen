@@ -8,8 +8,9 @@
 **Status:** CUTOVER LANDED 2026-10-11 — steps 1–5 are implemented and covered by hermetic tests
 (step 1 boundary + resume prerequisite earlier; steps 2–5 in this pass: staged completion strategy,
 docs child + handler registration, enqueue at CORE_READY with inline skip, post-core completion port,
-aggregator-owned terminal flip). REMAINING (live-only): one clean end-to-end run proving no duplicate
-Doc, Docs∥finalization overlap wall time, and the measured core_ready_ms→terminal distance.
+aggregator-owned terminal flip). The explicit hermetic no-duplicate-Doc retry criterion is now covered by
+`TestPublishRunDocuments_NoDuplicateDocOnRetry`. REMAINING (live-only): one clean end-to-end run proving
+no duplicate Drive object, Docs∥finalization overlap wall time, and the measured core_ready_ms→terminal distance.
 **Parent:** `docs/PIPELINE-WASTE-AUDIT-2026-09-12.md` §11,
 `docs/tickets/TICKET-PIPELINE-CRITICAL-PATH-DEPLOYMENT-2026-09-13.md` (item D1)
 
@@ -33,8 +34,8 @@ persist ──────────────┘
 is exposed separately as `core_ready=true` / `current_stage=CORE_READY`, never as a rename of the
 terminal state.
 
-Measured target: with the recorded 50.2 s run, core availability should land in the 35–40 s band
-instead of at the terminal flip.
+Historical target from the pre-cutover 50.2 s run: core availability was expected in the 35–40 s
+band instead of at the terminal flip. The current measured live tail remains open below.
 
 ## 2. Landed (step 1 + the prerequisite)
 
@@ -59,56 +60,47 @@ one of the spec's own acceptance gates — was false.
 - no post-processing leg is deferred (docs disabled) — it would be a second name for `COMPLETED`;
 - the core contract does not hold — the milestone must never advertise a core that is not durable.
 
-## 3. Blockers found during recon (why steps 2–5 are not a mechanical edit)
+## 3. Historical blockers found during recon (superseded by §12 cutover)
+
+The following analysis records the pre-cutover state from 2026-09-13; it is
+retained as design history, not as the current implementation status. Steps 1–5
+were subsequently implemented as documented in §12.
 
 ### B1 — one job cannot be both a worker-spine artifact producer and a parent of children
 
-`registry_script.go:12` declares `TypeScriptGenerate` as
-`ArtifactOwnershipWorkerSpine` + `FinalizationStrategyCompleteWithArtifacts`, and
-`registry_types.go:80-90` validates the pair: `worker_spine` **requires** `complete_with_artifacts`,
-and `none`/`application_transaction` **require** `legacy_complete`. There is no strategy that means
-"publish my own core artifacts now, then hand the rest to a child".
 
-A docs child job would require script.generate to also be a parent
-(`ScriptParentState=waiting_children`, `ListAwaitingAggregation`, `FinalizeAggregateParent` —
-`scripts/jobs/parent_aggregator.go`). Today that aggregation model belongs to the **batch** path
-(`TypeScriptGenerateItem` children); the single-item `/api/script/generate` job does everything
-inline and completes via the spine. Mixing the two in one job type is exactly the "two authorities
-for one fact" the repo's discipline forbids.
-
-**This is the "cambiare l'ownership in un solo punto centrale" the spec names.** It requires a new
-`ArtifactOwnership`/`FinalizationStrategy` pair (e.g. `worker_spine_then_children`), a validator
-case, and a defined two-phase terminal (core artifacts published → flip to `waiting_children` →
-aggregator finalizes). That is an architectural decision, not an edit.
+Historically, `registry_script.go:12` declared `TypeScriptGenerate` as
+`ArtifactOwnershipWorkerSpine` + `FinalizationStrategyCompleteWithArtifacts`, while the registry
+had no strategy for publishing core artifacts then deferring the remaining work.
+A docs child therefore required `script.generate` to act as both a
+worker-spine artifact producer and a parent (`ScriptParentState=waiting_children`,
+`ListAwaitingAggregation`, `FinalizeAggregateParent`). The pre-cutover registry
+had no staged ownership/finalization strategy. This blocker was resolved in the
+2026-10-11 cutover by adding `CompleteWithArtifactsThenDefer` and migrating
+`TypeScriptGenerate`; see §12. This historical analysis is not a current
+architectural blocker.
 
 ### B2 — the Docs-vs-finalization overlap is not expressible in the current phase order
 
-`Worker.runJob` (`capabilities/jobs/worker_execution.go:334`) is:
+Before the cutover, `Worker.runJob` dispatched inline Docs publication and
+then called `finalizeJob`, so the two legs were sequential. The cutover moves
+Docs to a durable child, making overlap architecturally possible; actual
+Docs/finalization overlap and wall-time savings remain unverified until a live
+E2E run. See §12 and the deployment-bound ticket.
 
-```text
-Dispatch(jobCtx)                      ← Runner.Execute: …, persist, documents()
-finalizeJob(finalizationCtx)          ← post_writer_finalize: Drive publish + terminal flip
-```
+### B3 — Completion gate and durability (historical)
 
-Docs publication happens **inside** `Dispatch`; the ~9 s of artifact/Drive publication happens
-**after** it, in `finalizeJob`. They are strictly sequential, so the current architecture cannot
-overlap the 5.1 s Docs publish with the 9.3 s finalization — no ordering tweak inside the runner
-can do it. The overlap requires the docs work to leave `Dispatch`, i.e. B1.
+The pre-cutover concern was that `IsRunCompletable` had no production caller
+and the Docs leg lacked a durable child. The current cutover routes completion
+through `CompletePostCoreRun`; the aggregator refuses the terminal flip until
+all required artifacts are durable, while child retries resume from the run
+snapshot. Local tests cover refusal, retry, redrive and restart behavior. Live
+Drive durability remains a deployment acceptance item.
 
-### B3 — `IsRunCompletable` had no production caller
+## 4. Historical remaining steps (superseded by §12 cutover)
 
-It is only referenced by tests, so the split in §2 changed no behavior. Harmless, but it also means
-the terminal state was never gated by the contract in production; any future gate must be added
-deliberately.
-
-### B4 — `JobFinalizer` retries are the only current durability for the tail
-
-`finalizeJobArtifactPath` retries transient storage contention 5×/exponential
-(`worker_finalize_paths.go`), and the run-level retry re-enters via `ResumeFrom`. There is no
-durable outbox for the Docs leg specifically; with §2's resume fix, the run checkpoint is the
-durable snapshot a child would receive — which is the natural input for step 2 and is now correct.
-
-## 4. Remaining steps
+The numbered list below was the pre-cutover plan. It is retained for traceability;
+none of these code steps should be reopened as unimplemented without new evidence.
 
 1. **New completion strategy** (B1). Introduce the ownership/strategy pair that allows a phase-1
    spine publication followed by phase-2 child aggregation, with the validator case and a single
@@ -126,24 +118,28 @@ durable snapshot a child would receive — which is the natural input for step 2
 
 ## 5. Acceptance gates (from the spec, made executable)
 
-- [x] `CORE_READY` does not wait for Google Docs/Drive — **landed**: the boundary is recorded at
-      `persist()`, before `documents()`.
-- [x] `COMPLETED` still means every required artifact is persisted — **landed**:
-      `IsRunCompletable` = core + documents, and the terminal state is unchanged.
-- [x] Crash/restart between `CORE_READY` and publish is recoverable — **landed** for the resume
-      half: `ResumeFrom` re-enters at `PUBLISHING_DOCUMENTS` and the result is adopted from the
-      checkpoint. The child-job half arrives with step 2.
-- [ ] No duplicate Doc on retry — largely already true (per-language idempotent checkpoint inside
-      `runDocumentPhase`; `UpsertDocument` keyed by run+language); needs an explicit test once the
-      child exists.
-- [ ] No goroutine is required for durability — blocked on steps 2–4.
-- [ ] Docs and finalization run concurrently — blocked on B1/B2.
+- [x] `CORE_READY` does not wait for Google Docs/Drive — **landed**: the deferred child is
+      enqueued after the durable `persist()` boundary; inline document publication is skipped.
+- [x] `COMPLETED` still means every required artifact is persisted — **landed**: `CompletePostCoreRun`
+      and the parent aggregator fail closed until the requested documents and core are durable.
+- [x] Crash/restart between `CORE_READY` and publish is recoverable — landed: `ResumeFrom`
+      re-enters at `PUBLISHING_DOCUMENTS`, adopts the checkpoint result, and the deferred child
+      reads the durable run snapshot rather than process-local state (steps 2–5; hermetic tests in
+      `docs_deferred_test.go` and `docs_deferred_aggregator_test.go`).
+- [x] No duplicate Doc on retry — `TestPublishRunDocuments_NoDuplicateDocOnRetry` verifies two
+      retries do not republish an already-durable language, returns the full existing document set,
+      and includes a positive control that publishes when the document is absent.
+- [x] No goroutine is required for durability — the durable broker child, run snapshot and
+      aggregator own recovery; the completion path does not depend on the process-local drain
+      (cutover step 5, `runner_docs_publish.go`).
+- [x] Docs work is handed to a durable child and the completion aggregator can finalize independently — cutover landed (§12), locally covered by deferred-child and aggregator tests.
+- [ ] Live acceptance: prove Docs and finalization overlap on one real E2E payload and measure `core_ready_ms`→terminal; see the deployment-bound ticket.
 
 ## 6. Definition of done
 
-Steps 1–5 land with the gates in §5 green, and the measured distance between `core_ready_ms` and
-the terminal flip is reported for the same E2E payload. Until then, `core_ready_ms` makes the tail
-measurable, which is the precondition for claiming any improvement.
+The code cutover and hermetic gates are landed (§12). Full acceptance still requires one live E2E
+payload reporting the `core_ready_ms`→terminal distance, proving Docs/finalization overlap, and
+reconciling Drive artifacts without loss or duplication.
 
 ## 7. Measured baseline (2026-09-13)
 
@@ -153,11 +149,9 @@ Reproduce with:
 bash tests/operational/measure_core_ready_tail.sh
 ```
 
-The script derives the boundary from the recorded critical path: everything strictly after the
-`persistence` entry is post-core work. Runs recorded before the marker was introduced are
-reconstructed by the same rule, and the reconstruction is cross-checked against the stage sum
-(`document + complete_finalize + post_writer_finalize`); it must agree within the run's own
-`unattributed_ms`. All 38 recorded runs reconcile.
+This is a historical pre-cutover measurement procedure. Its old-run corpus and tail baseline
+remain useful for comparison, but do not certify the current deferred Docs path; rerun it on a
+post-cutover live run to close the remaining acceptance criteria.
 
 ### The run that emitted the real boundary
 
@@ -406,7 +400,12 @@ refused-never-flips / re-drive / exhausted-fail / retryable-wait / ok=false
 gate / deferral decision table). Full `scripts/...`, `jobs/...`,
 `app/wiring/...` suites green.
 
+Verified locally after cutover:
+`go test ./internal/capabilities/scripts -run 'TestDocsDeferred|TestPublishRunDocuments_NoDuplicateDocOnRetry|TestRunner_IdempotentRestart_NoDuplicateWrites' -count=1`
+passes, including the explicit no-duplicate-Doc retry test and positive control.
+
 Live-only remainder (needs a real Docs/Drive deployment, unreachable from a
-checkout — same class as the clip.render restart-mid-render criterion):
-`No duplicate Doc on retry` explicit test, `Docs ∥ finalization` measured
-overlap on one E2E payload, and the reported `core_ready_ms`→terminal distance.
+checkout — same class as the clip.render restart-mid-render criterion): prove no
+duplicate Drive object across the real outbox/publication boundary, measure
+Docs ∥ finalization overlap on one E2E payload, and report
+`core_ready_ms`→terminal distance.

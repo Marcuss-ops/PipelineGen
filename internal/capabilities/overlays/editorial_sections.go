@@ -54,6 +54,11 @@ type EditorialPlanSection struct {
 // from render-plan items to editor sections. Frases brevi have 1–5 words,
 // matching BuildPlan's existing short-phrase motion threshold.
 func EditorialSectionForItem(item OverlayItem) EditorialSectionID {
+	if item.Params != nil {
+		if item.Params["editorial_role"] == "scene_title" || item.Params["editorial_role"] == "scene_bullet" {
+			return EditorialSectionImportantPhrase
+		}
+	}
 	kind := strings.ToLower(strings.TrimSpace(item.Kind))
 	template := strings.ToUpper(strings.TrimSpace(item.TemplateID))
 
@@ -121,6 +126,9 @@ func OrganizeEditorialPlan(plan OverlayPlan) []EditorialPlanSection {
 // classification while retaining the established priority for other known
 // content kinds. The section is derived (not stored as a second item field).
 func contentPriorityForItem(item OverlayItem) int {
+	if item.Params != nil && (item.Params["editorial_role"] == "scene_title" || item.Params["editorial_role"] == "scene_bullet") {
+		return PriorityPhrase
+	}
 	switch EditorialSectionForItem(item) {
 	case EditorialSectionEntityTextImage, EditorialSectionSingleImage, EditorialSectionImageStack, EditorialSectionMap:
 		return PriorityImage
@@ -129,7 +137,7 @@ func contentPriorityForItem(item OverlayItem) int {
 	case EditorialSectionNumbersAndDates:
 		return PriorityWord
 	}
-	if priority := contentPriorityForTemplate(item.TemplateID); priority != PriorityStructural {
+	if priority := contentPriorityForTemplateLegacy(item); priority != PriorityStructural {
 		return priority
 	}
 	switch strings.ToLower(strings.TrimSpace(item.Kind)) {

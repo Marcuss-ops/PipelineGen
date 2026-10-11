@@ -120,8 +120,19 @@ type GenerationItemV2 struct {
 	// phrase/word/image overlays. It is transport-only; Chronon's preset
 	// registry remains the source of defaults.
 	OverlayStyle *OverlayStyleSpec `json:"overlay_style,omitempty"`
-	// PhraseMotionFamily selects the certified motion family used by phrase
-	// overlays. One motion is sampled per payload and shared by every phrase.
+	// MapType chooses the single basemap treatment used by runtime maps:
+	// roadmap (default), terrain, or satellite.
+	MapType            string `json:"map_type,omitempty"`
+	MapCameraAnimation string `json:"map_camera_animation,omitempty"`
+	MapLabelAnimation  string `json:"map_label_animation,omitempty"`
+	// Motion pools are optional caller choices. Empty pools use the runtime's
+	// seeded random rotation across the complete certified catalogs.
+	PhraseMotions      []string `json:"phrase_motions,omitempty"`
+	ImageMotions       []string `json:"image_motions,omitempty"`
+	EntityImageMotions []string `json:"entity_image_motions,omitempty"`
+	// PhraseMotionFamily optionally restricts phrase_motions to a certified
+	// family. With no explicit pool or family, the runtime rotates through its
+	// seeded random sequence over the full certified animation catalog.
 	PhraseMotionFamily string `json:"phrase_motion_family,omitempty"`
 	// MaxPhraseOverlays sets the requested run-level ceiling for grounded
 	// phrase overlays. A positive value may lower or raise the default, but

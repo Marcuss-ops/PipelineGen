@@ -155,7 +155,7 @@ func TestApplyEditorialOverlayBudgetHonoursCallerImageLimit(t *testing.T) {
 	}
 }
 
-func TestApplyEditorialOverlayBudgetAllowsFiveMaps(t *testing.T) {
+func TestApplyEditorialOverlayBudgetKeepsOneComposedMap(t *testing.T) {
 	items := make([]OverlayItem, 0, 6)
 	for i := 0; i < 6; i++ {
 		items = append(items, OverlayItem{
@@ -165,13 +165,11 @@ func TestApplyEditorialOverlayBudgetAllowsFiveMaps(t *testing.T) {
 		})
 	}
 	got, _ := ApplyEditorialOverlayBudgetWithImageLimit(items, 0, 0, 0)
-	if len(got) != 5 {
-		t.Fatalf("map overlays = %d, want five", len(got))
+	if len(got) != 1 {
+		t.Fatalf("map overlays = %d, want one", len(got))
 	}
-	for _, item := range got {
-		if item.ID == "map-0" {
-			t.Fatal("lowest-priority sixth map survived the five-map ceiling")
-		}
+	if got[0].ID == "map-0" {
+		t.Fatal("lowest-priority map survived the one-map ceiling")
 	}
 }
 

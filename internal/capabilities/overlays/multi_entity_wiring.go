@@ -226,11 +226,13 @@ func WireMultiEntityOverlays(group MultiEntityGroup, canvasWidth, canvasHeight i
 			layers = append(layers, OverlayImageLayer{
 				ID: layerID, AssetID: ref.AssetID,
 				StartMS: candidate.StartMS - group.StartMS, EndMS: endMS - group.StartMS,
-				PresetID:        selectImagePreset(group.GroupID, group.SceneID, layerID),
-				MotionID:        EntityImageMotionAtOffset(0, imageIndex),
-				Caption:         strings.TrimSpace(candidate.Name),
-				CaptionMotionID: EntityCaptionMotionAtOffset(0, imageIndex),
-				Params:          map[string]any{"position_x": position[0], "position_y": position[1], "width": position[2], "height": position[3], "fit": "contain"},
+				PresetID:          selectImagePreset(group.GroupID, group.SceneID, layerID),
+				MotionID:          EntityImageMotionAtOffset(0, imageIndex),
+				Caption:           strings.TrimSpace(candidate.Name),
+				CaptionMotionID:   EntityCaptionMotionAtOffset(0, imageIndex),
+				CaptionFontFamily: "",
+				CaptionColor:      "",
+				Params:            map[string]any{"position_x": position[0], "position_y": position[1], "width": position[2], "height": position[3], "fit": "contain"},
 			})
 		case MultiEntityKindPhrase:
 			if strings.TrimSpace(candidate.Text) == "" {

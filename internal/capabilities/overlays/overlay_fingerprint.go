@@ -124,9 +124,43 @@ func imageLayersJSON(layers []OverlayImageLayer) string {
 	copy(wireLayers, layers)
 	for index := range wireLayers {
 		wireLayers[index].EntityID = ""
+		// The run-level typography declaration is merged into caption params
+		// only when the child did not declare an override. Hash that effective
+		// value in the same payload slot RenderingGen consumes.
+		if strings.TrimSpace(wireLayers[index].Caption) != "" {
+			params := make(map[string]any, len(wireLayers[index].Params)+3)
+			for key, value := range wireLayers[index].Params {
+				params[key] = value
+			}
+			if wireLayers[index].CaptionFontFamily != "" {
+				if _, explicit := params["font_family"]; !explicit {
+					params["font_family"] = wireLayers[index].CaptionFontFamily
+				}
+			}
+			if wireLayers[index].CaptionColor != "" {
+				style, _ := params["style"].(map[string]any)
+				if _, explicit := style["fill"]; !explicit {
+					params["style"] = mergeFingerprintStyle(style, map[string]any{"fill": wireLayers[index].CaptionColor})
+				}
+			}
+			wireLayers[index].Params = params
+		}
 	}
 	b, _ := json.Marshal(wireLayers)
 	return string(b)
+}
+
+func mergeFingerprintStyle(existing any, additions map[string]any) map[string]any {
+	out := map[string]any{}
+	if current, ok := existing.(map[string]any); ok {
+		for key, value := range current {
+			out[key] = value
+		}
+	}
+	for key, value := range additions {
+		out[key] = value
+	}
+	return out
 }
 
 // RenderKey is kept as the concise public spelling used by planners.

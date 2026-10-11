@@ -64,23 +64,25 @@ verify-go:
 verify-unit-fast:
 	$(GO) test ./internal/kernel/... ./internal/capabilities/... ./internal/app/... ./cmd/... ./pkg/...
 
-# bench-cliprender — the canonical clip.render performance benchmark. Headless
-# and CI-safe: it drives the REAL worker (submit + settle phases), the real
-# ParentAggregator and the real kernel RunReport against a deterministic
-# RenderingGen lane simulator, so no server, GPU or Drive is required. It
-# emits one KPI table per scenario (wall, clips/min, p50/p95, submit/settle
-# slot occupancy, GPU utilisation, hashes, downloads).
+# bench-cliprender — guarded entry point for the clip.render throughput suite.
+# The former synthetic scenario harness has been removed. This target refuses
+# to report a successful benchmark when its selector matches zero tests; restore
+# the benchmark suite before claiming current throughput evidence.
 #
-#   make bench-cliprender                       all scenarios
-#   make bench-cliprender BENCH_CLIPRENDER_RUN=TestScenario2  one scenario
+#   make bench-cliprender                       default scenario selector
+#   make bench-cliprender BENCH_CLIPRENDER_RUN=TestName  explicit test selector
 #
-# Set VELOX_BENCH_WRITE_REPORT=1 to persist the JSON artifacts under
-# tests/operational/results/cliprender-bench/ (off by default: the working
-# tree stays clean).
+# VELOX_BENCH_WRITE_REPORT is passed to the matching test when the suite exists.
 BENCH_CLIPRENDER_RUN ?= TestScenario
 bench-cliprender:
-	VELOX_BENCH_WRITE_REPORT=$(VELOX_BENCH_WRITE_REPORT) \
-		$(GO) test ./internal/capabilities/cliprender/ -run '$(BENCH_CLIPRENDER_RUN)' -count=1 -v
+	@set -eu; \
+		tests=$$($(GO) test ./internal/capabilities/cliprender/ -list '$(BENCH_CLIPRENDER_RUN)'); \
+		if ! printf '%s\n' "$$tests" | grep -Eq '$(BENCH_CLIPRENDER_RUN)'; then \
+			echo "ERROR: no cliprender benchmark tests match '$(BENCH_CLIPRENDER_RUN)'; the canonical scenario harness is missing or the selector is stale" >&2; \
+			exit 1; \
+		fi; \
+		VELOX_BENCH_WRITE_REPORT=$(VELOX_BENCH_WRITE_REPORT) \
+			$(GO) test ./internal/capabilities/cliprender/ -run '$(BENCH_CLIPRENDER_RUN)' -count=1 -v
 
 VERIFY_JOBS ?= 2
 verify-unit: go-version-check

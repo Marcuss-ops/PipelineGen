@@ -69,9 +69,21 @@ func renderDynamicMapVideo(ctx context.Context, plan capoverlay.OverlayPlan) (st
 	if mapStyleSlot == "" {
 		mapStyleSlot = mapRunStyleSlot
 	}
-	cameraAnimation := deterministicMapStyle(seed, "map_camera", mapStyleSlot, mapCameraAnimations)
-	labelAnimation := deterministicMapStyle(seed, "map_label", mapStyleSlot, mapLabelAnimations)
-	basemapStyle := deterministicMapStyle(seed, "map_basemap", mapStyleSlot, mapBasemapStyles())
+	cameraChoice, _ := plan.Items[0].Params["map_camera_animation"].(string)
+	labelChoice, _ := plan.Items[0].Params["map_label_animation"].(string)
+	cameraAnimation, err := resolveMapAnimation(cameraChoice, seed, mapStyleSlot, "map_camera", mapCameraAnimations)
+	if err != nil {
+		return "", err
+	}
+	labelAnimation, err := resolveMapAnimation(labelChoice, seed, mapStyleSlot, "map_label", mapLabelAnimations)
+	if err != nil {
+		return "", err
+	}
+	mapType, _ := plan.Items[0].Params["map_type"].(string)
+	basemapStyle, err := resolveMapBasemap(mapType, seed, mapStyleSlot)
+	if err != nil {
+		return "", err
+	}
 	if cameraAnimation == "" || labelAnimation == "" || basemapStyle == "" {
 		_ = os.RemoveAll(tmpDir)
 		return "", fmt.Errorf("dynamic map presentation catalog is empty")
@@ -85,6 +97,7 @@ func renderDynamicMapVideo(ctx context.Context, plan capoverlay.OverlayPlan) (st
 		"camera_animation":    cameraAnimation,
 		"label_animation":     labelAnimation,
 		"basemap":             basemapStyle,
+		"typography":          dynamicMapTypography(plan.Items[0].Params),
 	}
 	encoded, err := json.Marshal(payload)
 	if err != nil {
@@ -217,6 +230,66 @@ func renderDynamicMapVideo(ctx context.Context, plan capoverlay.OverlayPlan) (st
 	return outputPath, nil
 }
 
+func resolveMapBasemap(mapType, seed, slot string) (string, error) {
+	switch strings.ToLower(strings.TrimSpace(mapType)) {
+	case "", "roadmap":
+		return "esri_light", nil
+	case "terrain":
+		return "esri_topo", nil
+	case "satellite":
+		return "esri_sat", nil
+	case "random":
+		return deterministicMapStyle(seed, "map_basemap", slot, mapBasemapStyles()), nil
+	default:
+		return "", fmt.Errorf("unsupported runtime map_type %q", mapType)
+	}
+}
+
+func resolveMapAnimation(requested, seed, slot, channel string, certified []string) (string, error) {
+	requested = strings.TrimSpace(requested)
+	if requested == "" || requested == "random" {
+		selected := deterministicMapStyle(seed, channel, slot, certified)
+		if selected == "" {
+			return "", fmt.Errorf("no certified map animation available for %s", channel)
+		}
+		return selected, nil
+	}
+	for _, candidate := range certified {
+		if requested == candidate {
+			return requested, nil
+		}
+	}
+	return "", fmt.Errorf("unsupported runtime %s %q", channel, requested)
+}
+
+func dynamicMapTypography(params map[string]any) map[string]any {
+	style := map[string]any{
+		"font_family": "bricolage_grotesque", "font_size_px": 92.0,
+		"fill": "#F8F5EA", "stroke_size": 2.0,
+		"shadow_color": "#000000", "shadow_opacity": 0.7,
+		"shadow_blur_px": 14.0, "shadow_offset_x_px": 0.0,
+		"shadow_offset_y_px": 4.0, "glow_size": 10.0,
+		"glow_intensity": 0.4, "glow_color": "#FFFFFF",
+	}
+	for _, key := range []string{"font_family", "font_size_px", "stroke_size", "shadow_opacity",
+		"shadow_blur_px", "shadow_offset_x_px", "shadow_offset_y_px", "glow_size"} {
+		if value, ok := params[key]; ok {
+			style[key] = value
+		}
+	}
+	if nested, ok := params["style"].(map[string]any); ok {
+		if fill, ok := nested["fill"].(string); ok && strings.TrimSpace(fill) != "" {
+			style["fill"] = fill
+		}
+		if shadow, ok := nested["shadow"].(map[string]any); ok {
+			if color, ok := shadow["color"].(string); ok && color != "" {
+				style["shadow_color"] = color
+			}
+		}
+	}
+	return style
+}
+
 func mapItemDurationMS(item capoverlay.OverlayItem, fallback int64) int64 {
 	if item.StartMs >= 0 && item.EndMs > item.StartMs {
 		return item.EndMs - item.StartMs
@@ -248,13 +321,11 @@ func (b *boundedMapRenderOutput) String() string {
 	return string(b.data)
 }
 
-// mapBasemapStyles is the production land-map palette. The global ocean and
-// gray canvas services return valid-looking "Map data not yet available" tiles
-// at city zooms, so keep those styles out of generated place maps. Both
-// remaining providers are in Chronon's certified palette and cover city zoom.
+// mapBasemapStyles is the certified palette available when a caller explicitly
+// asks for map_type=random. The default map_type is the stable street-map style.
 // TestMapBasemapStylesMatchChrononPalette guards cross-repository drift.
 func mapBasemapStyles() []string {
-	return []string{"esri_sat", "esri_topo"}
+	return []string{"esri_light", "esri_topo", "esri_sat"}
 }
 
 // mapCameraAnimations and mapLabelAnimations are the certified presentation

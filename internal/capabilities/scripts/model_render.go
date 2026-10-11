@@ -528,6 +528,11 @@ func runtimeFontAssets(plan capoverlay.OverlayPlan) ([]RenderQueueAsset, error) 
 			if err := addParams(child.Params); err != nil {
 				return nil, fmt.Errorf("overlay item %q image layer: %w", item.ID, err)
 			}
+			if family := strings.TrimSpace(child.CaptionFontFamily); family != "" {
+				if err := add(family); err != nil {
+					return nil, fmt.Errorf("overlay item %q image layer caption: %w", item.ID, err)
+				}
+			}
 		}
 		if !capoverlay.IsChainItemKind(item.Kind) {
 			continue
@@ -551,6 +556,11 @@ func runtimeFontAssets(plan capoverlay.OverlayPlan) ([]RenderQueueAsset, error) 
 			for _, child := range segment.ImageLayers {
 				if err := addParams(child.Params); err != nil {
 					return nil, fmt.Errorf("overlay item %q chain image layer: %w", item.ID, err)
+				}
+				if family := strings.TrimSpace(child.CaptionFontFamily); family != "" {
+					if err := add(family); err != nil {
+						return nil, fmt.Errorf("overlay item %q chain image layer caption: %w", item.ID, err)
+					}
 				}
 			}
 		}

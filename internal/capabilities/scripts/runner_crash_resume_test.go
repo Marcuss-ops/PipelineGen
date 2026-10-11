@@ -146,6 +146,8 @@ func TestRunner_TranslationCrashResume_ReusesCompletedScenes(t *testing.T) {
 //	scene-2/es                                       → CONTINUE
 func TestRunner_TTSCrashResume_ReusesCompletedScenes(t *testing.T) {
 	runner, repo, _, _, _, _, _ := newTestRunner()
+	commits := &recordingSceneCommitObserver{}
+	runner.SetSceneCommitObserver(commits)
 	req := defaultTestRequest()
 	req.Languages = []Language{"en", "es"}
 	runner.textGen = newStubTextGenerator(fourSceneText())
@@ -167,6 +169,8 @@ func TestRunner_TTSCrashResume_ReusesCompletedScenes(t *testing.T) {
 	failed := awaitCompletion(t, repo, runID, 5*time.Second)
 	require.Equal(t, RunStatusFailed, failed.Status)
 	require.Equal(t, StageGeneratingVoiceovers, failed.FailedStage)
+	firstAttemptCommits := commits.committed()
+	require.Len(t, firstAttemptCommits, len(fourSceneText()), "fresh scene generation commits every scene")
 
 	// The crash preserved scene-0 & scene-1 voiceovers (per-unit checkpoint).
 	require.NotNil(t, failed.Result)
@@ -187,6 +191,12 @@ func TestRunner_TTSCrashResume_ReusesCompletedScenes(t *testing.T) {
 	runner.Execute(context.Background(), runID, req)
 	final := awaitCompletion(t, repo, runID, 5*time.Second)
 	require.Equal(t, RunStatusCompleted, final.Status)
+	allCommits := commits.committed()
+	require.Len(t, allCommits, 2*len(fourSceneText()), "a resumed attempt must republish checkpointed scenes into its fresh VidRush coordinator")
+	for i := range firstAttemptCommits {
+		require.Equal(t, firstAttemptCommits[i].SceneID, allCommits[i+len(firstAttemptCommits)].SceneID)
+		require.Equal(t, firstAttemptCommits[i].TextHash, allCommits[i+len(firstAttemptCommits)].TextHash)
+	}
 
 	// REUSE: scene-0 & scene-1 voiceovers are not re-synthesized.
 	require.Equal(t, 1, ttsGen.callsFor("scene-0", "en"), "scene-0/en must be reused")

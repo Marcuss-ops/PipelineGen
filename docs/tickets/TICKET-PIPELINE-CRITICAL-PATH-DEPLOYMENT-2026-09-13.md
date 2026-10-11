@@ -5,7 +5,8 @@
 > referenced path against the current tree before acting.
 
 **Date:** 2026-09-13
-**Status:** OPEN — blocked on a real GPU/Chronon/RenderingGen deployment
+**Status:** PARTIALLY VERIFIED — code cutovers have landed, but D1/D3/D4 live acceptance remains open.
+D2 was measured on the reference GPU and its slot-contract divergence is resolved (addendum below).
 **Parent audit:** `docs/PIPELINE-WASTE-AUDIT-2026-09-12.md`
 **Predecessor:** the code-level acceptance criteria (§2.3, §3, §6.2, §7, §8) are closed; this
 ticket is everything that cannot be closed from a source checkout alone.
@@ -37,27 +38,17 @@ Bottleneck stage `scene_analysis`, bottleneck operation `nlp.extract`, **23.86 %
 Read the tail as a block: `document.publish` + `post_writer_finalize` + `finalize` ≈ **15.6 s
 (31 % of wall)** run **after** the render is already complete.
 
-## Open acceptance criteria
+## Acceptance criteria and current status
 
-### D1 — Docs/Drive off the critical path (audit §11)
+### D1 — Docs/Drive off the critical path (audit §11) — CODE CUTOVER LANDED; LIVE MEASUREMENT OPEN
 
-- **Criterion:** `render_complete` is emitted before Docs/Drive publication begins, and
-  Docs/Drive work appears as post-processing outside the completion path.
-- **Current placement:** `runner_execution_pipeline.go` runs
-  `audioCompile() → persist() → documents() → complete()`. Google Docs publication is the
-  last phase, so a `RUNNING` job has no document and only previously-completed runs are
-  visible in the Drive folder. This is the user-visible symptom.
-- **Precedent to copy:** `clip.render` already has configurable async Drive delivery over the
-  PostgreSQL media outbox (`clip_async_drive_enabled: true`, consumer + pending/dead-letter
-  metrics). `script.generate` does not use it.
-- **Measurement that decides it:** the same E2E payload must show `document.publish` and
-  `post_writer_finalize` no longer inside the job's completion wall, with the published
-  artifacts still reconciled (0 missing, 0 duplicated) after the outbox drains.
-- **Risk to settle first:** moving publication post-completion changes what "SUCCEEDED"
-  guarantees. The outbox must be durable before the terminal flip, exactly as the clip path
-  does.
+PipelineGen now defers Docs publication to the durable `script.docs_publish` child at
+`CORE_READY`; see `TICKET-CORE-READY-DURABLE-DAG.md` §12. The former inline ordering was
+superseded. Remaining proof: a live run showing zero missing/duplicate Drive artifacts, measured
+Docs/finalization overlap, and `core_ready_ms`→terminal distance. The cutover preserves the
+terminal guarantee by requiring requested artifacts before the aggregator completes the parent.
 
-### D2 — Render serialization / GPU gate (audit §9, §10)
+### D2 — Render serialization / GPU gate (audit §9, §10) — MEASURED; LIVE RECHECK OPEN
 
 - **Criterion:** `overlay_render` wall reconciles with its work; render concurrency > 1 is
   either proven beneficial or explicitly rejected with numbers.
@@ -74,14 +65,10 @@ Read the tail as a block: `document.publish` + `post_writer_finalize` + `finaliz
      overlay handler path (`app/wiring/overlay_handlers.go`, `rendering_runtime.go`).
   2. The RenderingGen queue wait (`render_queue.go`, event-driven long poll with a 250 ms
      polling fallback). This is remote and cannot be fixed from this repo.
-- **Contract divergence found 2026-09-28 (open):** the drop-in pins
-  `RENDERINGGEN_GPU_SLOTS=3` and its own comment states the peer value is RenderingGen's
-  `worker.gpu_lanes` from `RenderingGen/renderinggen/config.yaml`, "pinned by
-  `infra/native/renderinggen-native.yaml`". Both files actually say `gpu_lanes: 2`; only
-  `infra/native/renderinggen-b.yaml` says 3. The two processes sharing the RTX A4000
-  therefore declare **different** admission contracts (3 vs 2). The drop-in is explicit
-  that they must be equal and changed in the same commit, so this is a live defect and a
-  precondition for trusting any D2 number. Reproduce: `make gpu-admission-preflight`.
+- **Historical contract divergence (resolved 2026-10-11):** the former drop-in pinned
+  `RENDERINGGEN_GPU_SLOTS=3` while native RenderingGen declared 2. The profiles were brought
+  into parity at 3 on the native pipeline/config surfaces. The 2026-10-11 GPU admission run
+  and repository preflight recorded below are the current local evidence.
 - **Measurement that decides it:** `tests/operational/measure_gpu_admission.sh`
   (`make gate-gpu-admission`). It runs the shipped
   `capabilities/scripts/render_concurrency_benchmark_test.go` in real-stack mode at the
@@ -96,7 +83,8 @@ Read the tail as a block: `document.publish` + `post_writer_finalize` + `finaliz
   gate is measuring is *admission* concurrency (less queue wait), **not** two Chronon
   renders executing simultaneously.
 
-### D3 — Chronon warm daemon on the production path (audit §9)
+### D3 — Chronon warm daemon on the production path (audit §9) — LOCAL WARM DAEMON EXISTS; BINDING MEASUREMENT OPEN
+
 
 - **Criterion:** cold render vs warm #1 vs warm #2 show startup/preparation near zero on the
   warm runs.
@@ -110,7 +98,7 @@ Read the tail as a block: `document.publish` + `post_writer_finalize` + `finaliz
 - **Measurement that decides it:** the existing RenderingGen cold/warm benchmark, run against
   the production binding, with the artifact SHA preserved.
 
-### D4 — Warm/cold evidence for the whole pipeline (audit §3, §6, §12)
+### D4 — Warm/cold evidence for the whole pipeline (audit §3, §6, §12) — LIVE EVIDENCE OPEN
 
 - **Criterion (now unblocked in code):** a warm rerun with identical inputs must skip the
   creative phases. The certification scripts no longer hard-code `force_refresh: true`

@@ -34,6 +34,10 @@ func TestContentPriorityCanonicalTable(t *testing.T) {
 			t.Errorf("ContentPriority(%q) = %d, want %d", tc.template, got, tc.want)
 		}
 	}
+	chartBar := OverlayItem{TemplateID: "SHAPE", Params: map[string]any{"chart_bar": true}}
+	if got := contentPriorityForItem(chartBar); got != PriorityStructural {
+		t.Errorf("chart bar keeps the SHAPE structural priority = %d, want %d", got, PriorityStructural)
+	}
 	// Relative ordering the degradation relies on: phrase > word > image > effect.
 	if !(PriorityPhrase > PriorityWord && PriorityWord > PriorityImage && PriorityImage > PriorityEffect) {
 		t.Fatalf("priority ordering broken: phrase=%d word=%d image=%d effect=%d",
@@ -140,11 +144,12 @@ func TestCountContentCensus(t *testing.T) {
 		{ID: "l1", TemplateID: "LIGHT_LEAK"},
 		{ID: "l2", TemplateID: "LIGHT_LEAK"},
 		{ID: "shape", TemplateID: "SHAPE"},
+		{ID: "chart-bar", TemplateID: "SHAPE", Params: map[string]any{"chart_bar": true}},
 		{ID: "unknown", TemplateID: "FUTURE_TEMPLATE"},
 	}}
 	got := CountContent(plan)
 	if got.Phrases != 2 || got.Words != 1 || got.Numbers != 1 || got.Images != 1 || got.Leaks != 2 {
-		t.Fatalf("CountContent = %+v, want phrases=2 words=1 numbers=1 images=1 leaks=2", got)
+		t.Fatalf("CountContent = %+v, want phrases=2 words=1 numbers=1 images=1 leaks=2; chart bars are structural", got)
 	}
 }
 

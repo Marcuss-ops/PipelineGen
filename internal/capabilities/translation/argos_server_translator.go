@@ -203,9 +203,7 @@ func (a *ArgosServerTranslator) ensureStarted(ctx context.Context) error {
 		}
 	}
 	if !found {
-		if cmd.Process != nil {
-			_ = cmd.Process.Kill()
-		}
+		stopArgosProcess(cmd)
 		return fmt.Errorf("argos server did not print PORT within %s: %w", a.startTimeout, ErrArgosBridgeUnavailable)
 	}
 
@@ -223,9 +221,9 @@ func (a *ArgosServerTranslator) ensureStarted(ctx context.Context) error {
 
 	if err := a.healthCheck(ctx); err != nil {
 		a.started = false
-		if cmd.Process != nil {
-			_ = cmd.Process.Kill()
-		}
+		a.cmd = nil
+		a.baseURL = ""
+		stopArgosProcess(cmd)
 		return fmt.Errorf("argos server health check failed after startup: %w", err)
 	}
 	a.log.Info("argos: server started", zap.Int("pid", cmd.Process.Pid), zap.Int("port", port))
@@ -262,13 +260,31 @@ func (a *ArgosServerTranslator) baseURLSnapshot() string {
 func (a *ArgosServerTranslator) invalidate(reason string) {
 	a.startMu.Lock()
 	wasStarted := a.started
+	cmd := a.cmd
+	client := a.httpClient
 	a.started = false
 	a.baseURL = ""
+	a.cmd = nil
 	a.startMu.Unlock()
 	if wasStarted {
 		a.log.Warn("argos: sidecar invalidated, will be relaunched on the next request",
 			zap.String("reason", reason))
+		if client != nil {
+			client.CloseIdleConnections()
+		}
+		// A timed-out HTTP request does not imply that the Python handler
+		// stopped. Retire and reap the exact process we invalidated before its
+		// replacement can accumulate alongside it and consume CPU indefinitely.
+		stopArgosProcess(cmd)
 	}
+}
+
+func stopArgosProcess(cmd *exec.Cmd) {
+	if cmd == nil || cmd.Process == nil {
+		return
+	}
+	_ = cmd.Process.Kill()
+	_ = cmd.Wait()
 }
 
 // acquire takes an in-flight slot (bounded parallelism) or returns when the

@@ -29,6 +29,10 @@ type visualNERRequest struct {
 }
 type visualNERResponse struct {
 	Entities []scriptgen.VisualEntity `json:"entities"`
+	// Error is set by the Rust worker when it rejects a line without
+	// killing the persistent process (decode/contract failure). Empty on
+	// success; absent on responses from older binaries.
+	Error string `json:"error,omitempty"`
 }
 
 type VisualNERAdapter struct{ executor *Executor }
@@ -65,6 +69,9 @@ func (a *VisualNERAdapter) Extract(ctx context.Context, language, sourceText str
 	var response visualNERResponse
 	if err := json.Unmarshal(stdout, &response); err != nil {
 		return nil, fmt.Errorf("visualner: decode: %w", err)
+	}
+	if strings.TrimSpace(response.Error) != "" {
+		return nil, fmt.Errorf("visualner: worker: %s", response.Error)
 	}
 	for i := range response.Entities {
 		e := &response.Entities[i]
@@ -131,6 +138,10 @@ type mediaSamplerScene struct {
 type mediaSamplerResponse struct {
 	Results  []mediaSamplerResult `json:"results"`
 	WinnerID *string              `json:"winner_id"`
+	// Error is set by the Rust worker when it rejects a line without
+	// killing the persistent process (decode/contract failure). Empty on
+	// success; absent on responses from older binaries.
+	Error string `json:"error,omitempty"`
 }
 
 func NewMediaSamplerAdapter(executor *Executor) (*MediaSamplerAdapter, error) {
@@ -155,6 +166,9 @@ func (a *MediaSamplerAdapter) SampleScene(ctx context.Context, sceneID, subject 
 	var response mediaSamplerResponse
 	if err := json.Unmarshal(stdout, &response); err != nil {
 		return nil, "", fmt.Errorf("mediasampler: decode: %w", err)
+	}
+	if strings.TrimSpace(response.Error) != "" {
+		return nil, "", fmt.Errorf("mediasampler: worker: %s", response.Error)
 	}
 	winner := ""
 	if response.WinnerID != nil {

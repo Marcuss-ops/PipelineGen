@@ -235,17 +235,19 @@ type OverlaySoundEffect struct {
 }
 
 type OverlayImageLayer struct {
-	ID              string            `json:"id"`
-	AssetID         string            `json:"asset_id"`
-	StartMS         int64             `json:"start_ms"`
-	EndMS           int64             `json:"end_ms"`
-	PresetID        string            `json:"preset_id,omitempty"`
-	MotionID        string            `json:"motion_id,omitempty"`
-	MotionParams    map[string]any    `json:"motion_params,omitempty"`
-	Caption         string            `json:"caption,omitempty"`
-	CaptionMotionID string            `json:"caption_motion_id,omitempty"`
-	Params          map[string]any    `json:"params,omitempty"`
-	Frame           *OverlayItemFrame `json:"frame,omitempty"`
+	ID                string            `json:"id"`
+	AssetID           string            `json:"asset_id"`
+	StartMS           int64             `json:"start_ms"`
+	EndMS             int64             `json:"end_ms"`
+	PresetID          string            `json:"preset_id,omitempty"`
+	MotionID          string            `json:"motion_id,omitempty"`
+	MotionParams      map[string]any    `json:"motion_params,omitempty"`
+	Caption           string            `json:"caption,omitempty"`
+	CaptionMotionID   string            `json:"caption_motion_id,omitempty"`
+	CaptionFontFamily string            `json:"caption_font_family,omitempty"`
+	CaptionColor      string            `json:"caption_color,omitempty"`
+	Params            map[string]any    `json:"params,omitempty"`
+	Frame             *OverlayItemFrame `json:"frame,omitempty"`
 	// EntityID remains producer-only so a composite's child identities can
 	// still join to their pre-timing intents without changing the worker wire.
 	EntityID string `json:"-"`

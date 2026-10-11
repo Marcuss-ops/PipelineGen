@@ -1,6 +1,6 @@
 # TICKET-I1 — Chunk producer contract + `(fingerprint, frame_range)` cache key
 
-**Status: PARTIALLY LANDED — the producer and the VRAM gate are not.**
+**Status: PARTIALLY LANDED — partition validation, range identity and daemon admission policy exist; the producer, per-window artifact cache, measured VRAM headroom, overlap execution and assembly parity remain open.**
 
 Written 2026-09-18. This is a forward design for the chunk PRODUCER, and the
 `TODO.md` doctrine applies: a criterion that is not reachable from a checkout is
@@ -168,7 +168,7 @@ its verdict from the measured peak on purpose.
 
 ## 6. Acceptance criteria (all to be implemented)
 
-None of these are satisfied today. Each names its closing artifact.
+The validator, key non-conflation and admission-policy criteria below are satisfied. Producer-dependent runtime criteria remain open and name their required closing artifacts.
 
 - [x] **Partition validator** — LANDED. `ChunkSet.Validate` (`chunk_plan.go`)
       rejects a gap, an overlap, an empty window, and a range not ending at
@@ -199,6 +199,7 @@ None of these are satisfied today. Each names its closing artifact.
       `RenderJobClass`/`RenderAdmission`, `kRenderJobExecutionSerialized` and the
       derivation of the flag from `reference_device_policy_input()` all landed
       with the cases. Nothing was added to close it.
+- [ ] **Producer implementation + per-window cache entry** — submit exactly partitioned chunk windows under the namespaced window identity and keep chunk artifacts separate from whole-clip cache/publication. No production producer or cache entry exists today.
 - [ ] **Overlap (VRAM-gated, live)** — two disjoint chunks of one plan render
       concurrently with wall `w` strictly less than the sum of their solo walls.
       Requires §5 step 1 **and a chunk producer** — corrected 2026-09-28, see

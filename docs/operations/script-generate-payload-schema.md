@@ -42,6 +42,12 @@ lives **inside an item**; there are no top-level shortcut keys.
         "glow_size": 18,
         "stroke_size": 3
       },
+      "map_type": "roadmap",
+      "map_camera_animation": "random",
+      "map_label_animation": "random",
+      "phrase_motions": ["phrase_apple_clean_07_slide_up_soft"],
+      "image_motions": ["image_fade_reveal", "image_focus_reveal"],
+      "entity_image_motions": ["image_fade_reveal", "image_scale_reveal"],
       "output":       { "...": "opt-in post-generation artifacts" },
       "docs":         { "enabled": true, "languages": ["en", "it"] },
       "audio":        { "...": "audio.mode + editorial audio intent" },
@@ -51,18 +57,26 @@ lives **inside an item**; there are no top-level shortcut keys.
 }
 ```
 
-`overlay_style` controls the visual style of generated **text** overlays.
-`font_family` accepts `poppins`, `inter`, `inter_bold`, or `dejavu_sans`; `size.font_size`
-sets the text size in pixels; `glow_size` accepts `0..256`; and `stroke_size`
-accepts `0..64`. Omit a field to keep the certified preset value. These
-overrides are applied to phrase, word, number, and quote overlays; image cards
-keep their image style.
+`overlay_style` is the run-level visual authority for generated **text**.
+`font_family` accepts `poppins`, `inter`, `inter_bold`, `dejavu_sans`,
+`playfair_display_italic`, or `bricolage_grotesque`; the queue stages the
+selected content-addressed font once per family and RenderingGen rejects any
+unbundled selection. `size.font_size` sets text size in pixels; `glow_size`
+accepts `0..256`; `stroke_size` accepts `0..64`. Omit a field to retain the
+preset/role default; explicit zero disables the relevant effect. Run typography
+applies to phrase, word, number, quote, entity captions, and captioned image
+layers, without changing image geometry or image styles. Precedence for a
+caption is run-level `overlay_style`, then explicit item/child runtime style,
+then legacy `caption_font_family`, then the language-aware default; entity
+composition styles only supply layout, motion, and fallback color.
 
 - `version` is always `2`. `items` must contain **at least one** entry.
 - A single-item envelope maps to the unified `/generate` flow; multiple
   items map to batch generation.
 - Every per-item block (`source`, `script_params`, `output`, `docs`,
   `audio`, `media_plan`, `overlay_background`, `overlay_style`,
+  `map_type`, `map_camera_animation`, `map_label_animation`,
+  `phrase_motions`, `image_motions`, `entity_image_motions`,
   `phrase_motion_family`, `max_phrase_overlays`,
   `video_metadata`, `intro`, `outro`) is optional unless its own
   validator says otherwise (`source` is required).
@@ -74,6 +88,15 @@ always use the Short Phrases lane, including phrases marked high priority.
 Retries with the same job identity keep the same selection. Image motions are
 sampled independently per image item. `modern_apple` remains available when a
 payload explicitly wants only that style family.
+
+`map_type` selects one basemap for the run: `roadmap` (default), `terrain`,
+`satellite`, or `random`. Roadmap uses the clean street-map canvas, terrain
+uses topographic tiles, and satellite selects satellite imagery.
+`map_camera_animation` and `map_label_animation` accept certified IDs or
+`random`; omission and `random` select a stable seeded choice for retries.
+`phrase_motions`, `image_motions`, and `entity_image_motions` accept arrays of
+certified animation IDs and rotate through the requested pool. Omit an array
+to use a seeded, varied default from that content type's certified catalog.
 
 `max_phrase_overlays` requests the **run-level ceiling** for grounded phrase
 overlays. Zero or omission keeps the certified default of five. Positive values
