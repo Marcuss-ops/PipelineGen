@@ -31,10 +31,14 @@ func TestImageFrameAndEntityImageNormalization(t *testing.T) {
 		ImageLayers: []capabilityoverlay.OverlayImageLayer{{Params: map[string]any{"radius": 12.0, "position_y": 0.2}, Frame: ImageFrame(style)}},
 	}
 	ApplyImageStyle(&item, style)
-	require.Nil(t, item.Frame)
+	// Entity portraits keep the shared image frame (and its clip radius) while
+	// the legacy geometry params that distort the portrait are stripped.
+	require.NotNil(t, item.Frame)
+	require.Equal(t, 12.0, item.Frame.ClipRadiusPX)
 	require.NotContains(t, item.Params, "radius")
 	require.NotContains(t, item.Params, "position_y")
-	require.Nil(t, item.ImageLayers[0].Frame)
+	require.NotNil(t, item.ImageLayers[0].Frame)
+	require.Equal(t, 12.0, item.ImageLayers[0].Frame.ClipRadiusPX)
 	require.NotContains(t, item.ImageLayers[0].Params, "radius")
 	require.NotContains(t, item.ImageLayers[0].Params, "position_y")
 }

@@ -2,11 +2,13 @@
 # measure_gpu_admission.sh — the host-side measurement procedure for the two
 # GPU-bound acceptance criteria that cannot be decided from a checkout:
 #
-#   d2  render serialization / GPU admission (TICKET-PIPELINE-CRITICAL-PATH
-#       -DEPLOYMENT section "D2"). Question: does overlay render wall reconcile
-#       with its accumulated work, and is admission concurrency > 1 beneficial?
+#   d2  render serialization / GPU admission (former pipeline critical-path
+#       ticket, section "D2" — closed 2026-10-11, rationale in git history).
+#       Question: does overlay render wall reconcile with its accumulated
+#       work, and is admission concurrency > 1 beneficial?
 #
-#   i1  chunk overlap, VRAM-gated (TICKET-I1-CHUNK-PRODUCER-CONTRACT section 6).
+#   i1  chunk overlap, VRAM-gated (former I1 chunk-producer ticket, section 6
+#       — closed 2026-10-11 as wont-fix, rationale in git history).
 #       Question: do two DISJOINT chunks of one plan overlap (wall w strictly
 #       less than the sum of their solo walls)?
 #

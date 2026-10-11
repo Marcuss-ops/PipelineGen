@@ -17,9 +17,9 @@
 // historically: 116 script tokens vs 95 TTS word boundaries). Turning the gate
 // off is a CONTENT-contract change (per-scene hint resolution), not a
 // refactor — this test keeps the current contract from drifting silently while
-// the trade-off and its measured cost are recorded in
-// refactored/docs/PIPELINE-WASTE-AUDIT-2026-09-12.md §19 ("Status update —
-// 2026-09-28: gate Drive fair e la coda di audio_publish").
+// the trade-off and its measured cost are recorded in git history
+// (former refactored/docs/PIPELINE-WASTE-AUDIT-2026-09-12.md §19, removed
+// 2026-10-11 on ticket closeout).
 package scriptgeneration
 
 import (
