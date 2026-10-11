@@ -219,6 +219,14 @@ func (p *ResolvedGenerationPlan) HasClips() bool {
 	return p.ClipEvidence != nil && len(p.ClipEvidence.AcceptedClipIDs) > 0
 }
 
+// HasVisualMediaPlan reports whether this plan explicitly requests visual
+// media resolution. Narrative segments alone do not imply media work: an
+// item with media_plan.mode=disabled still goes through text, audio and
+// editorial overlay stages without producing VidRush media results.
+func (p *ResolvedGenerationPlan) HasVisualMediaPlan() bool {
+	return p != nil && (p.MediaMode != "" || media.IsActiveMediaPlanMode(p.MediaPlan.Mode))
+}
+
 // HasPostprocessor returns true when the named postprocessor is in
 // the execution list.
 func (p *ResolvedGenerationPlan) HasPostprocessor(name string) bool {

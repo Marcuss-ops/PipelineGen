@@ -48,9 +48,6 @@ func (r *Runner) compileAudioOverlayPlan(ctx context.Context, runID string, req 
 	canvas.Style = req.OverlayStyle
 	canvas.PhraseMotions = req.PhraseMotions
 	canvas.PhraseMotionFamily = req.PhraseMotionFamily
-	if canvas.PhraseMotionFamily == "" && len(canvas.PhraseMotions) == 0 {
-		canvas.PhraseMotionFamily = "modern_product_v1"
-	}
 	// Goal E2: the phrases the semantic profile grounded as most relevant take
 	// the prominent entrance, the rest keep the calm rotation. The canvas may
 	// already carry an explicit override (zero = unset).
@@ -58,6 +55,10 @@ func (r *Runner) compileAudioOverlayPlan(ctx context.Context, runID string, req 
 		canvas.HeavyPhrasePriority = heavyPhrasePriorityDefault
 	}
 	canvas.ImageMotions = req.ImageMotions
+	canvas.EntityImageMotions = req.EntityImageMotions
+	canvas.MapType = req.MapType
+	canvas.MapCameraAnimation = req.MapCameraAnimation
+	canvas.MapLabelAnimation = req.MapLabelAnimation
 	canvas.MaxPhraseOverlays = req.MaxPhraseOverlays
 	canvas.MaxMapOverlays = req.MaxMapOverlays
 	canvas.MapsOnly = req.MapsOnly

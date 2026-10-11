@@ -20,7 +20,8 @@ func TestBuildRuntimeMediaCertSpecDoesNotInventTextSceneIdentity(t *testing.T) {
 
 func TestBuildRuntimeMediaCertSpecUsesExplicitIDsAndDeterministicFallback(t *testing.T) {
 	plan := &scriptpkg.ResolvedGenerationPlan{
-		Mode: "text",
+		Mode:      "text",
+		MediaPlan: media.MediaPlanSpec{Mode: media.MediaPlanModeAuto},
 		Segments: []scriptpkg.ScriptSegment{
 			{ID: "authored-a", Topic: "Donald Trump"},
 			{Topic: "United States"},
@@ -39,6 +40,7 @@ func TestBuildRuntimeMediaCertSpecAllowsEntityImageReuseFromGenericExtractionSur
 	plan := &scriptpkg.ResolvedGenerationPlan{
 		Mode: "text",
 		MediaPlan: media.MediaPlanSpec{
+			Mode:       media.MediaPlanModeAuto,
 			Extraction: media.MediaExtractionPolicy{Include: []string{"entities"}},
 		},
 	}
@@ -111,6 +113,7 @@ func TestBuildRuntimeMediaCertSpecMarksStockFolderScenesStockBound(t *testing.T)
 
 func TestBuildRuntimeMediaCertSpecStockBoundViaFolderLink(t *testing.T) {
 	plan := &scriptpkg.ResolvedGenerationPlan{
+		MediaPlan: media.MediaPlanSpec{Mode: media.MediaPlanModeAuto},
 		Segments: []scriptpkg.ScriptSegment{
 			{ID: "scene-0", StockFolderLink: "https://drive.google.com/drive/folders/1Sr15dwjKQkuNn9yaPBav8TwNS_lfEzd-"},
 		},
@@ -118,5 +121,23 @@ func TestBuildRuntimeMediaCertSpecStockBoundViaFolderLink(t *testing.T) {
 	spec := buildRuntimeMediaCertSpec(plan)
 	if !spec.SegmentsExpected[0].StockBound {
 		t.Fatal("a stock_folder_link segment must be marked stock_bound")
+	}
+}
+
+func TestBuildRuntimeMediaCertSpecSkipsDisabledVisualMediaPlan(t *testing.T) {
+	plan := &scriptpkg.ResolvedGenerationPlan{
+		Mode:     "text",
+		Segments: []scriptpkg.ScriptSegment{{ID: "scene-1", Topic: "one authored scene"}},
+		MediaPlan: media.MediaPlanSpec{
+			Mode:       media.MediaPlanModeDisabled,
+			Extraction: media.MediaExtractionPolicy{Enabled: false},
+		},
+	}
+	if plan.HasVisualMediaPlan() {
+		t.Fatal("disabled visual media plan must not request MediaCert")
+	}
+	spec := buildRuntimeMediaCertSpec(plan)
+	if spec.Segments != 0 || len(spec.SegmentsExpected) != 0 {
+		t.Fatalf("disabled plan acquired media expectations: %+v", spec)
 	}
 }

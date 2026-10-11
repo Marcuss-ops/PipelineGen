@@ -26,6 +26,12 @@ func TestRenderKeyTracksRenderingFieldsAndIgnoresProducerIdentity(t *testing.T) 
 	}
 
 	mutations := map[string]func(*OverlayPlan, *OverlayItem){
+		"composite child caption font": func(_ *OverlayPlan, i *OverlayItem) {
+			i.ImageLayers = []OverlayImageLayer{{ID: "child", AssetID: "asset", Caption: "Ada", CaptionFontFamily: "poppins"}}
+		},
+		"composite child caption color": func(_ *OverlayPlan, i *OverlayItem) {
+			i.ImageLayers = []OverlayImageLayer{{ID: "child", AssetID: "asset", Caption: "Ada", CaptionColor: "#AABBCC"}}
+		},
 		"template":          func(_ *OverlayPlan, i *OverlayItem) { i.TemplateID = "other" },
 		"timing":            func(_ *OverlayPlan, i *OverlayItem) { i.DurationUS++ },
 		"font params":       func(_ *OverlayPlan, i *OverlayItem) { i.Params["font_family"] = "bolder" },

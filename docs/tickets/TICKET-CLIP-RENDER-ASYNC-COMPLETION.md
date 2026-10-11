@@ -5,11 +5,11 @@
 > referenced path against the current tree before acting.
 
 **Priority:** P0 — this is the throughput bottleneck, not RenderingGen/Chronon.
-**Status:** DONE except one live-only acceptance criterion. The continuation
-primitive EXISTS (§1.1), the render boundary is split into `Submit`/`Settle`,
-and the worker phase dispatch + composition-root wiring landed (§9, 2026-09-15 —
-§7's "remaining" list is complete; §3 is superseded by §1.1 and retained only as
-history). Open: the restart-mid-render criterion needs a live RenderingGen.
+**Status:** implementation and hermetic recovery criteria are complete.
+Open acceptance evidence: rerun the removed benchmark matrix, then verify
+kill-mid-render against a live RenderingGen/Drive deployment. Until the
+benchmark harness is restored, the historical scenario measurements below do
+not prove current throughput.
 **Owner:** `internal/capabilities/cliprender` (worker) + `internal/kernel/job` (continuation) + `internal/app/wiring`.
 
 ## 1. Problem
@@ -77,7 +77,7 @@ new job type (the phase travels in the payload, so
 `architecture/ownership/jobs.yaml` still declares exactly one `clip.render` job
 with one `RegisterHandler` binding — `percheck_job_ownership` is untouched).
 
-## 2. Required design
+## 2. Original required design (implemented; see §6, §9 and addendum)
 
 **Submission boundary (fast):**
 
@@ -152,22 +152,14 @@ continuation/completion worker, not the initial Master job:
 * Drive publication + asset commit (`w.publisher.Publish`)
 * result projection (`renderedResult`, `finalizeMetrics`, RunReport stages)
 
-## 3. Blocking gap: no continuation primitive
+## 3. Historical blocking-gap analysis (superseded by §6 and §9)
 
-`internal/kernel/job` has **no** continuation/resume/rehydrate primitive (no
-`Continuation`, no resume entrypoint). The states above also need durable
-storage: there is no `clip_render_state` table today. Implementing Wave B
-therefore requires, in order:
+The following requirements are recorded as the pre-implementation analysis;
+the corresponding implementation is described in §6, §9 and the restart
+addendum.
 
-1. A durable render-state store (SQLite table + migration) owned by
-   `internal/capabilities/cliprender` behind a narrow port.
-2. A terminal-event consumer that maps `renderinggen_job_id → clip_render_id`
-   and enqueues an idempotent continuation job.
-3. Splitting `ClipRenderExecutor.Render` into `Submit` (returns the remote job
-   identity) and `Complete` (materialize + return the certified `RenderOutcome`).
-4. Worker support for "resume from persisted state" (idempotent re-entry).
 
-## 4. P0.5 guardrail (temporary, while Wave B is open)
+## 4. Historical P0.5 guardrail proposal (landed; see acceptance criterion)
 
 Assign `clip.render` to a **separate pool/budget** so four slow renders cannot
 starve every other Master job.
@@ -184,37 +176,42 @@ async redesign.
 
 ## 5. Acceptance criteria
 
-- [x] `clip.render` submission returns and releases its Master slot as soon as
-      the RenderingGen job id is durably persisted. — worker.go dispatches on
-      `render_phase`; MEASURED by benchmark scenario 2 (§8.2): the submit
-      handler occupies 1 ms while the blocking (pre-split) pipeline occupies
-      63 ms for the same 60 ms render.
-- [ ] Remote render state survives a PipelineGen restart: a restarted process
-      resumes completion and never re-submits a render that is already running.
-      — the continuation contract is in place (CAS-addressed resume document,
-      deterministic `run_id`, idempotent submit); the kill-mid-render test
-      still needs a live RenderingGen.
+- [x] Submit phase returns after enqueueing the continuation rather than
+      waiting for the remote render — `Worker.Handle` dispatches on
+      `render_phase` and the submit path returns before settle. The former
+      1 ms-vs-63 ms measurement is historical only; the benchmark harness has
+      been removed, so current fixed-concurrency throughput is not re-certified.
+- [x] Hermetic restart recovery resumes completion without submitting a second
+      render — `worker_restart_test.go::TestWorker_RestartMidRenderResumesWithoutResubmitting`
+      drops worker A's in-memory state, resumes on worker B from the persisted
+      continuation/CAS document, and asserts one remote identity and one
+      publication.
+- [ ] Real-stack kill-mid-render recovery: kill/restart against a live
+      RenderingGen and Drive, then verify no lost render and no duplicate Drive
+      object. The hermetic test does not certify remote queue/object-store/Drive
+      behavior.
 - [x] Completion is event-driven (no aggressive polling) and idempotent under
-      duplicate/at-least-once delivery. — the settle phase is a normal job
-      continuation (redelivery re-derives the same `run_id`); scenario 3 (§8.2)
-      measures the completion tail with and without event-driven finalisation.
+      duplicate/at-least-once delivery — settle is a normal job continuation,
+      with deterministic identity on redelivery.
 - [x] Publication/certification/probe run in the continuation, not the initial
-      job. — worker.go `settle` calls the probe/publish tail and the `submit`
-      phase returns immediately after `EnqueueContinuation`; scenario 2 shows
-      the submit phase does not track the render.
-- [ ] Crash/restart recovery test: kill mid-render → restart → exactly one
-      published artifact, no duplicate Drive object, no lost render.
-- [x] Before/after throughput report at fixed concurrency proving the slot is
-      not occupied while Chronon renders. — `make bench-cliprender` (§8).
+      job — worker `settle` calls the probe/publish tail, while `submit` returns
+      after `EnqueueContinuation`.
+- [x] Hermetic crash/restart recovery does not resubmit and publishes once
+      (test above).
+- [ ] Live crash/restart recovery: kill mid-render → restart → exactly one
+      published Drive artifact, no duplicate Drive object, no lost render.
+- [ ] Refresh the before/after throughput report at fixed concurrency — the
+      old measurements in §8 are historical; the benchmark harness is currently
+      absent and `make bench-cliprender` now fails closed instead of passing with
+      zero tests.
 - [x] Guardrail (dedicated clip-render budget) landed and documented as
       temporary. — `jobs.clip_render_settle_workers` (default 16, `0` disables)
       builds a dedicated settle pool (JobTypes=[clip.render],
       PayloadMatch{render_phase=settle}) and the general pool EXCLUDES
-      `render_phase=settle` via the new kernel/job `PayloadNotMatch` +
-      `ClaimNextMatchingExcluding`. Pinned by the kernel, SQLite, jobs-worker and
+      `render_phase=settle` via `PayloadNotMatch` +
+      `ClaimNextMatchingExcluding`. Pinned by kernel, SQLite, jobs-worker and
       wiring tests. See
-      `docs/tickets/TICKET-CLIP-RENDER-CRITICAL-PATH-2026-09-13.md` §2. The
-      benchmark's `WaiterPool` remains the pre-production model.
+      `docs/tickets/TICKET-CLIP-RENDER-CRITICAL-PATH-2026-09-13.md` §2.
 
 ## 6. LANDED — the render-boundary split + the continuation contract
 
@@ -302,58 +299,26 @@ declared digest (via the `internal/kernel/digest` SSOT — the archcheck
   drift, a malformed address, and an invalid document (which is rejected
   BEFORE anything is written).
 
-## 7. REMAINING — worker phase dispatch + wiring (the exact change set)
+## 7. Historical implementation plan (landed; superseded by §9 and addendum)
 
-1. `internal/capabilities/cliprender/worker.go` — dispatch on the phase read by
-   `ParseRenderPhase`:
-   * `submit`: keep the existing prepare → subtitles → overlay → `Compile` →
-     seal path, then call `AsyncRenderExecutor.Submit`, persist the
-     `Submission`, set `parent_state = waiting_children` in the job result,
-     call `ContinuationEnqueuer.EnqueueContinuation`, and RETURN without
-     probing or publishing. Fail closed (return the enqueue error) when no
-     continuation port is wired — a submission whose continuation was lost is a
-     render nobody will ever collect.
-   * `settle`: `DecodeContinuation` from the payload, call
-     `AsyncRenderExecutor.Settle`, then reuse the EXISTING probe → publish tail
-     verbatim. No preparation runs.
-2. Carry the resume inputs in the continuation payload so the settle phase does
-   NOT re-prepare (re-preparing would re-resolve and re-upload assets): the
-   sealed plan (already carried), plus the normalized request, the resolved
-   contract + transcript, the subtitle artifact, and the resolved publish
-   folder id. This makes the continuation payload large; a durable blob/side
-   reference is the cleaner follow-up once the run workspace is content
-   addressed.
-3. `internal/app/wiring` — wire the `ContinuationStore` (a `cas.Store` built
-   once) and satisfy `ContinuationEnqueuer` with
-   `job.Service.Enqueue(TypeClipRender, ...)` + `job.InjectParentLink`, behind
-   an explicit switch. **DECISION (2026-09-12): default OFF**, opt-in via env
-   var, until validated against a live RenderingGen — the same staging the
-   single-pass overlay cutover used.
-4. Guardrail (P0.5): claim filtering is already by explicit type list
-   (`internal/capabilities/jobs/queue/claim.go`), so the settle phase can be
-   given a dedicated pool; `ConcurrencyKey` exists but is never enforced, which
-   is why the pool — not the key — is the guardrail to land.
-5. Aggregator: mirror
-   `internal/capabilities/scripts/jobs/parent_aggregator.go` to finalise the
-   `clip.render` parent from the settle child's outcome (reusing
-   `ListAwaitingAggregation` + `FinalizeAggregateParent`), which is what makes
-   the parent's final result truthful instead of stuck at
-   `waiting_children`.
-6. Crash/restart + before/after throughput evidence per §5 — the throughput
-   half LANDED 2026-09-12 (§8); the crash/restart half still needs a live
-   RenderingGen.
+The original plan called for submit/settle phase dispatch, content-addressed
+resume state, composition-root wiring, a dedicated settle pool, parent
+aggregation and recovery tests. These implementation items have landed; see §6,
+§9 and the 2026-10-11 restart addendum. The remaining acceptance work is limited
+to the live-stack restart/Drive proof and refreshed throughput evidence listed
+in §5.
 
-## 8. LANDED — the canonical throughput benchmark (2026-09-12)
+## 8. Historical benchmark results (2026-09-12; no longer a current gate)
 
-`make bench-cliprender` (scenarios in `internal/capabilities/cliprender/bench_*_test.go`)
-answers §5's throughput criterion headlessly. The harness drives the REAL
-`Worker.Handle` in both phases, the real continuation contract, the real
-`ParentAggregator` and the real kernel RunReport, and models the two things
-that bound clip throughput: N Master slots and L RenderingGen GPU lanes. Every
-remote cost (render, artifact download, Drive publish, asset materialization,
-ASR) is a latency parameter, so a scenario is a controlled experiment rather
-than a hardware lottery. It is CI-safe (no server, GPU, Drive or Whisper) and
-`-race`-clean.
+Historical benchmark status (superseded by the removal recorded below):
+`make bench-cliprender` was documented as driving the real `Worker.Handle` in
+both phases plus the `ParentAggregator` and kernel RunReport against a synthetic
+RenderingGen lane simulator. The benchmark harness has since been removed from
+`internal/capabilities/cliprender`, so the old scenario results in §8.2 are
+historical evidence, not a current runnable benchmark. The make target is now
+fail-closed rather than reporting a false pass when its default `TestScenario`
+selector matches no tests; it still needs a replacement benchmark suite before
+throughput criteria can be freshly measured.
 
 ### 8.1 The scenarios
 
@@ -501,13 +466,12 @@ Corrections from the audit (all on the submit/settle boundary):
    projection now says `publication_status: REUSED` (`RenderPublishResult.Reused`)
    and the job wall is reported instead of leaving the run report blank.
 
-Still open (NOT reachable in this repository — needs the live stack):
+Remaining live-stack evidence (not a code implementation gap):
 
-- **AC 2 of §5 — restart mid-render.** The resume contract is in place and
-  idempotent by construction, but proving "a restarted process resumes
-  completion and never re-submits" requires a live RenderingGen to kill. No
-  hermetic test can substitute for it, and the coverage matrix in `AGENTS.md`
-  (StockRust L1/L3 shellless) shows the same class of gap elsewhere.
+- **Real-stack portion of AC 2 of §5 — restart mid-render.** The hermetic
+  restart contract is pinned by `TestWorker_RestartMidRenderResumesWithoutResubmitting`;
+  proving it against the real queue/object store and ensuring no duplicate Drive
+  object still requires killing/restarting a live RenderingGen deployment.
 - **Cost, not correctness:** a broker retry of the submit half re-runs local
   preparation. The remote job id is derivable before preparation
   (`plan.RunID == job.ID`), but the resume address is a content digest, so

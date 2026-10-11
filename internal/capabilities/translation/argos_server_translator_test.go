@@ -13,6 +13,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"go.uber.org/zap"
 )
@@ -419,5 +420,28 @@ func TestArgosServerTranslator_RelaunchesAfterStop(t *testing.T) {
 	}
 	if res.TranslatedText != "ciao second" {
 		t.Fatalf("unexpected text after relaunch: %q", res.TranslatedText)
+	}
+}
+
+func TestArgosServerTranslator_KillsAndReapsTimedOutSidecar(t *testing.T) {
+	a := newStubArgosServerTranslator(t)
+	body := strings.Replace(stubArgosServerBody, "import json, threading", "import json, threading, time", 1)
+	body = strings.Replace(body, "        self._json(200, {\n            \"translated_text\":", "        time.sleep(5)\n        self._json(200, {\n            \"translated_text\":", 1)
+	if err := os.WriteFile(a.script, []byte("#!/usr/bin/env python3\n"+body), 0o755); err != nil {
+		t.Fatalf("write slow sidecar: %v", err)
+	}
+	a.requestTimeout = 100 * time.Millisecond
+	a.httpClient = newArgosHTTPClient(a.requestTimeout, cap(a.sem))
+	if err := a.ensureStarted(context.Background()); err != nil {
+		t.Fatalf("ensureStarted: %v", err)
+	}
+	oldCmd := a.cmd
+	if _, err := a.Translate(context.Background(), TranslationCommand{
+		SourceLang: "en", TargetLang: "it", Text: "slow",
+	}); err == nil {
+		t.Fatal("Translate succeeded, want timeout from slow sidecar")
+	}
+	if oldCmd.ProcessState == nil {
+		t.Fatal("timed-out sidecar process was not waited/reaped")
 	}
 }

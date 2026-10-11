@@ -1,13 +1,12 @@
 package scriptgeneration
 
-// Runtime regression certification (R17/R18): Fase 1 must not alter
-// rendering. The overlay compiler never reads SceneHighlights/Editorial, so
-// attaching them — even corrupt ones — must leave the compiled plan
-// byte-identical. If a future phase wires them in, THESE TESTS MUST FAIL
-// loudly instead of silently changing videos.
+// Runtime regression certification (R17/R18): certified, grounded editorial
+// data may add only its admitted title/bullet primitives; corrupt data must
+// remain a no-op and never affect the rendering plan.
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -50,38 +49,35 @@ func corruptEditorial() *scriptpkg.EditorialManifest {
 	}
 }
 
-// TestOverlayPlanIgnoresEditorialManifest_R17 certifies that attaching a
-// valid EditorialManifest leaves the compiled OverlayPlan byte-identical.
-func TestOverlayPlanIgnoresEditorialManifest_R17(t *testing.T) {
+// TestOverlayPlanProjectsCertifiedEditorial_R17 certifies that a valid
+// manifest contributes its grounded title to the compiled plan.
+func TestOverlayPlanProjectsCertifiedEditorial_R17(t *testing.T) {
 	plain := marshalPlan(t, editorialRegressionResult(t))
 
 	withEditorial := editorialRegressionResult(t)
-	title := "Alpha One"
-	withEditorial.SceneHighlights = []scriptpkg.SceneHighlight{{
-		SceneID: "scene-0", Title: &title, TitleStatus: "resolved",
-		TitleSource:     "topic_validated",
-		Bullets:         []scriptpkg.SceneBulletSpan{{SentenceStart: 0, SentenceEnd: 1, Text: "alpha one"}},
-		Highlights:      []scriptpkg.ScenePhraseSpan{{SentenceIndex: 0, StartByte: 0, EndByte: 9, Text: "alpha one", Score: 0.9, VisualEligible: true}},
-		GloballyIndexed: true,
-	}}
+	withEditorial.SourceLanguage = "en"
+	withEditorial.Output.Text = withEditorial.Scenes[0].Text["en"]
+	title := "alpha one bravo"
 	withEditorial.Editorial = &scriptpkg.EditorialManifest{
-		SchemaVersion: "editorial.v1", SourceLanguage: "en", ProfileVersion: "highlights.v1",
-		Certified: true, Fingerprint: "abc",
+		SchemaVersion: scriptpkg.EditorialManifestVersion, SourceLanguage: "en", ProfileVersion: "highlights.v1",
+		Scenes:    []scriptpkg.EditorialScene{{SceneID: "scene-0", Title: &title, TitleStatus: "resolved", TitleSource: "topic_validated", Bullets: []scriptpkg.EditorialSceneBullet{}, Highlights: []scriptpkg.EditorialHighlight{}}},
+		Certified: true, Fingerprint: strings.Repeat("a", 64),
 	}
-	require.Equal(t, plain, marshalPlan(t, withEditorial),
-		"R17: valid editorial must not change the overlay plan")
+	compiled := marshalPlan(t, withEditorial)
+	require.NotEqual(t, plain, compiled, "R17: a certified grounded title is projected")
+	require.Contains(t, compiled, `"editorial_role":"scene_title"`)
+	require.Contains(t, compiled, `"text":"alpha one bravo"`)
 }
 
-// TestOverlayPlanIgnoresCorruptEditorial_R18 certifies that even an invalid
-// manifest cannot leak into rendering: candidates exist as data (R18) but
-// are never rendered prematurely.
+// TestOverlayPlanIgnoresCorruptEditorial_R18 certifies that invalid manifest
+// contents fail closed and leave the semantic render plan unchanged.
 func TestOverlayPlanIgnoresCorruptEditorial_R18(t *testing.T) {
 	plain := marshalPlan(t, editorialRegressionResult(t))
 
 	withCorrupt := editorialRegressionResult(t)
 	withCorrupt.Editorial = corruptEditorial()
 	require.Equal(t, plain, marshalPlan(t, withCorrupt),
-		"R18: corrupt editorial must not change the overlay plan either")
+		"R18: corrupt editorial must not change the overlay plan")
 	require.NotNil(t, withCorrupt.Editorial.Scenes[0].Title,
 		"R18: the manifest still carries candidates as data")
 }

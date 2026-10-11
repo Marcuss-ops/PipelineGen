@@ -1,6 +1,7 @@
 package scriptgeneration
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
 
@@ -10,12 +11,10 @@ import (
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
-// TestCompileOverlayPlanRetrySamplesFreshIndependentImageMotions exercises the
-// complete semantic-plan compilation path twice for the same job identity,
-// with a fresh motion-pool sample per attempt. The injected offsets make the
-// retry assertion deterministic; production supplies crypto/rand at the same
-// boundary. Each composite portrait consumes a distinct ordinal on each run.
-func TestCompileOverlayPlanRetrySamplesFreshIndependentImageMotions(t *testing.T) {
+// TestCompileOverlayPlanRetryKeepsStableIndependentImageMotions verifies
+// deterministic plan identity selection end-to-end. Recompilation of one plan
+// is an idempotent retry; a distinct plan ID rotates the certified choices.
+func TestCompileOverlayPlanRetryKeepsStableIndependentImageMotions(t *testing.T) {
 	const (
 		portraitOneHash = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 		portraitTwoHash = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
@@ -65,63 +64,51 @@ func TestCompileOverlayPlanRetrySamplesFreshIndependentImageMotions(t *testing.T
 		}}}},
 	}
 
-	motionsForAttempt := func(offset int) []string {
+	motionsForPlan := func(planID string) ([]string, string) {
 		t.Helper()
-		calls := 0
-		plan, err := compileOverlayPlanWithMotionOffset(result, "en", GoldenOverlayCanvas, "retry-job", "retry-video", "retry-project", func() (int, error) {
-			calls++
-			return offset, nil
-		}, nil)
+		plan, err := compileOverlayPlanWithMotionOffset(result, "en", GoldenOverlayCanvas, planID, "retry-video", "retry-project", nil, nil)
 		if err != nil {
-			t.Fatalf("compile attempt with offset %d: %v", offset, err)
-		}
-		if calls != 1 {
-			t.Fatalf("attempt sampled the motion offset %d times, want exactly once", calls)
+			t.Fatalf("compile plan %q: %v", planID, err)
 		}
 		if plan == nil {
-			t.Fatalf("attempt with offset %d produced no plan", offset)
+			t.Fatalf("plan %q produced no output", planID)
 		}
 		if err := plan.Validate(); err != nil {
-			t.Fatalf("attempt with offset %d produced invalid plan: %v", offset, err)
+			t.Fatalf("plan %q is invalid: %v", planID, err)
 		}
 		if len(plan.Items) != 1 || len(plan.Items[0].ImageLayers) != 2 {
-			t.Fatalf("attempt with offset %d should produce one two-image composite, got %+v", offset, plan.Items)
+			t.Fatalf("plan %q should produce one two-image composite, got %+v", planID, plan.Items)
 		}
 		item := plan.Items[0]
 		if item.StartMs != 0 || item.EndMs != 2000 || item.ImageLayers[1].StartMS != 1000 || item.ImageLayers[0].EndMS != 2000 || item.ImageLayers[1].EndMS != 2000 {
-			t.Fatalf("attempt with offset %d lost the staggered mention timing: %+v", offset, item)
+			t.Fatalf("plan %q lost the staggered mention timing: %+v", planID, item)
 		}
 		got := []string{item.ImageLayers[0].MotionID, item.ImageLayers[1].MotionID}
-		want := []string{
-			capabilityoverlay.ImageWithTextMotionAtOffset(offset, 0, 5),
-			capabilityoverlay.ImageWithTextMotionAtOffset(offset, 1, 5),
-		}
-		if got[0] != want[0] || got[1] != want[1] {
-			t.Fatalf("attempt with offset %d motions = %v, want independent pool selection %v", offset, got, want)
-		}
 		certified := capabilityoverlay.CertifiedImageMotions()
 		if got[0] == got[1] {
-			t.Fatalf("attempt with offset %d reused one motion for both portraits: %v", offset, got)
+			t.Fatalf("plan %q reused one motion for both portraits: %v", planID, got)
 		}
 		for _, id := range got {
 			if !containsMotionID(certified, id) {
-				t.Fatalf("attempt with offset %d emitted uncertified image motion %q", offset, id)
+				t.Fatalf("plan %q emitted uncertified image motion %q", planID, id)
 			}
 		}
-		return got
+		wire, err := json.Marshal(plan)
+		if err != nil {
+			t.Fatalf("marshal plan %q: %v", planID, err)
+		}
+		return got, string(wire)
 	}
 
-	firstAttempt := motionsForAttempt(0)
-	retryAttempt := motionsForAttempt(1)
-	if firstAttempt[0] == retryAttempt[0] && firstAttempt[1] == retryAttempt[1] {
-		t.Fatalf("retry reused both previous portrait motions: first=%v retry=%v", firstAttempt, retryAttempt)
+	first, firstWire := motionsForPlan("retry-job")
+	retry, retryWire := motionsForPlan("retry-job")
+	if first[0] != retry[0] || first[1] != retry[1] || firstWire != retryWire {
+		t.Fatalf("retry changed the serialized render plan: motions %v vs %v", first, retry)
 	}
-	if firstAttempt[0] == retryAttempt[0] || firstAttempt[1] == retryAttempt[1] {
-		t.Fatalf("retry should resample both portrait motions independently: first=%v retry=%v", firstAttempt, retryAttempt)
+	newPlan, _ := motionsForPlan("retry-job-revision-2")
+	if first[0] == newPlan[0] && first[1] == newPlan[1] {
+		t.Fatalf("distinct plan identity reused the full image motion rotation: old=%v new=%v", first, newPlan)
 	}
-
-	// A worker replay consumes the already compiled/serialized plan; this test
-	// models a fresh generation attempt by invoking the compiler again.
 }
 
 func containsMotionID(pool []string, id string) bool {

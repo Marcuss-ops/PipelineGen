@@ -42,6 +42,10 @@ type OverlayCanvasSpec struct {
 	PhraseMotions      []string
 	PhraseMotionFamily string
 	ImageMotions       []string
+	EntityImageMotions []string
+	MapType            string
+	MapCameraAnimation string
+	MapLabelAnimation  string
 	// HeavyPhrasePriority splits the phrase lane by editorial weight (goal E2):
 	// phrases at or above this priority get a prominent certified entrance, the
 	// rest keep the calm rotation. Zero disables the split. The runner fills in
@@ -100,8 +104,29 @@ func overlayStyleParams(style *scriptpkg.OverlayStyleSpec) map[string]any {
 }
 
 func overlayImageFrame(style *scriptpkg.OverlayImageStyleSpec) *capabilityoverlay.OverlayItemFrame {
-	return scriptoverlay.ImageFrame(style)
+	return scriptoverlay.ImageFrame(effectiveImageStyle(style))
 }
+
+func effectiveImageStyle(style *scriptpkg.OverlayImageStyleSpec) *scriptpkg.OverlayImageStyleSpec {
+	effective := &scriptpkg.OverlayImageStyleSpec{
+		Border: &scriptpkg.OverlayImageBorder{Width: 12, Color: "#111827", Radius: float64Pointer(24)},
+		Shadow: &scriptpkg.OverlayShadowSpec{Enabled: true, Color: "#000000", Opacity: float64Pointer(0.7),
+			Blur: float64Pointer(10), Offset: []float64{0, 4}},
+	}
+	if style == nil {
+		return effective
+	}
+	copy := *style
+	if copy.Border == nil {
+		copy.Border = effective.Border
+	}
+	if copy.Shadow == nil {
+		copy.Shadow = effective.Shadow
+	}
+	return &copy
+}
+
+func float64Pointer(value float64) *float64 { return &value }
 
 func isImageOverlayItem(item capabilityoverlay.OverlayItem) bool {
 	return scriptoverlay.IsImageOverlayItem(item)
@@ -112,11 +137,11 @@ func isImageOverlayKind(kind string) bool {
 }
 
 func imageStyleParams(style *scriptpkg.OverlayImageStyleSpec) map[string]any {
-	return scriptoverlay.ImageStyleParams(style)
+	return scriptoverlay.ImageStyleParams(effectiveImageStyle(style))
 }
 
 func applyOverlayImageStyle(item *capabilityoverlay.OverlayItem, style *scriptpkg.OverlayImageStyleSpec) {
-	scriptoverlay.ApplyImageStyle(item, style)
+	scriptoverlay.ApplyImageStyle(item, effectiveImageStyle(style))
 }
 
 func normalizeEntityImageLayer(item *capabilityoverlay.OverlayItem) {

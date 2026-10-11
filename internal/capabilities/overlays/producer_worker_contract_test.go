@@ -188,11 +188,10 @@ func TestChainSegmentFieldsMatchRenderingGenMirror(t *testing.T) {
 	}
 }
 
-// TestChartItemWireShapeMatchesWorkerSchema pins the chart payload path this
-// repo emits: params.shape must allow "chart" (plus "type" for the enum), and
-// the chart object must accept chart_type/data. A worker schema that dropped
-// them would reject every chart card.
-func TestChartItemWireShapeMatchesWorkerSchema(t *testing.T) {
+// TestChartItemsLowerToPrimitivesAndSchemaSupportsMarkers asserts chart plans
+// use the existing native text/rect kinds. Private grouping markers stay in
+// the existing extensible params object rather than creating worker schema fields.
+func TestChartItemsLowerToPrimitivesAndSchemaSupportsMarkers(t *testing.T) {
 	itemSchema := loadOverlayPlanItemSchema(t)
 	props, ok := itemSchema["properties"].(map[string]any)
 	require.True(t, ok)
@@ -202,22 +201,14 @@ func TestChartItemWireShapeMatchesWorkerSchema(t *testing.T) {
 	require.True(t, ok, "items.items.params.properties must be declared")
 
 	shapeProp, ok := paramProps["shape"].(map[string]any)
-	require.True(t, ok, "params.shape must be declared (the chart primitive selects it)")
+	require.True(t, ok, "params.shape must be declared")
 	enum, ok := shapeProp["enum"].([]any)
-	require.True(t, ok, "params.shape must enumerate its values")
-	foundChart := false
+	require.True(t, ok, "params.shape must enumerate supported native shapes")
 	for _, v := range enum {
-		if v == "chart" {
-			foundChart = true
-		}
+		require.NotEqual(t, "chart", v, "the unsupported chart pseudo-shape must stay out of the contract")
 	}
-	require.True(t, foundChart, `params.shape must allow "chart"`)
-
-	chartProp, ok := paramProps["chart"].(map[string]any)
-	require.True(t, ok, "params.chart must be declared")
-	chartProps, ok := chartProp["properties"].(map[string]any)
-	require.True(t, ok, "params.chart must declare properties")
-	for _, name := range []string{"chart_type", "data"} {
-		require.Truef(t, chartProps[name] != nil, "params.chart must declare %q", name)
-	}
+	require.NotContains(t, paramProps, "chart", "the unsupported chart data payload must stay out of the contract")
+	require.Contains(t, paramProps, "chart_card")
+	require.Contains(t, paramProps, "chart_bar")
+	require.Contains(t, paramProps, "chart_group_id")
 }

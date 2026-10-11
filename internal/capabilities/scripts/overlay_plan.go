@@ -25,10 +25,11 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
+
 	capabilityentities "github.com/Marcuss-ops/PipelineGen/internal/capabilities/entities"
 	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
 	scriptoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/overlay"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	"github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
 
@@ -108,7 +109,7 @@ func recapPlacementsForScenes(briefs []recapSceneBrief) []capabilityoverlay.Reca
 // The returned plan is sealed (render keys + fingerprint) and ready to
 // enqueue through QueueRenderEnqueuer.EnqueueChrononPlan.
 func CompileOverlayPlan(result *GenerateResult, language Language, canvas OverlayCanvasSpec, planID, videoID, projectID string, perSceneImages ...bool) (*capabilityoverlay.OverlayPlan, error) {
-	return compileOverlayPlanWithMotionOffset(result, language, canvas, planID, videoID, projectID, capabilityoverlay.RandomImageMotionOffset, nil, perSceneImages...)
+	return compileOverlayPlanWithMotionOffset(result, language, canvas, planID, videoID, projectID, nil, nil, perSceneImages...)
 }
 
 // CompileOverlayPlanWithPlates is CompileOverlayPlan with the run's certified
@@ -116,15 +117,14 @@ func CompileOverlayPlan(result *GenerateResult, language Language, canvas Overla
 // become map overlay items. A nil resolver behaves exactly like
 // CompileOverlayPlan (no maps — the fail-closed default deployment).
 func CompileOverlayPlanWithPlates(result *GenerateResult, language Language, canvas OverlayCanvasSpec, planID, videoID, projectID string, resolver capabilityoverlay.PlateResolver, perSceneImages ...bool) (*capabilityoverlay.OverlayPlan, error) {
-	return compileOverlayPlanWithMotionOffset(result, language, canvas, planID, videoID, projectID, capabilityoverlay.RandomImageMotionOffset, resolver, perSceneImages...)
+	return compileOverlayPlanWithMotionOffset(result, language, canvas, planID, videoID, projectID, nil, resolver, perSceneImages...)
 }
 
-// compileOverlayPlanWithMotionOffset derives the motion entropy
-// deterministically from the run identity (plan + video + project) at the
-// plan-compilation boundary. Identical inputs compile byte-identical plans
-// (R17/R18 regression certification) and retries of the same job stay
-// bit-identical, while distinct runs still draw independent motion orders.
-// A queued plan is immutable across worker retries.
+// compileOverlayPlanWithMotionOffset derives motion entropy deterministically
+// from immutable plan identity (plan + video + project). Identical inputs
+// compile byte-identical plans and retries stay bit-identical; a new plan ID
+// rotates the certified motion pools. chooseOffset stays in the internal API
+// for source compatibility, but the plan identity is the entropy source.
 func compileOverlayPlanWithMotionOffset(result *GenerateResult, language Language, canvas OverlayCanvasSpec, planID, videoID, projectID string, chooseOffset func() (int, error), plates capabilityoverlay.PlateResolver, perSceneImages ...bool) (*capabilityoverlay.OverlayPlan, error) {
 	if result == nil {
 		return nil, nil
@@ -134,6 +134,7 @@ func compileOverlayPlanWithMotionOffset(result *GenerateResult, language Languag
 		return nil, fmt.Errorf("overlay plan: plan_id and video_id are required")
 	}
 	motionSeed := digest.SHA256String(planID + "\x00" + videoID + "\x00" + projectID)
+	imageMotionOffset := capabilityoverlay.ImageMotionOffsetForSeed(motionSeed)
 	entityTimeline := result.EntityTimeline
 	timelineLanguage := Language(strings.TrimSpace(entityTimelineLanguage(entityTimeline)))
 	timelineMatches := entityTimeline != nil && (strings.EqualFold(string(timelineLanguage), string(language)) ||
@@ -223,9 +224,6 @@ func compileOverlayPlanWithMotionOffset(result *GenerateResult, language Languag
 				perSceneImageHashes[strings.ToLower(image.SHA256)] = struct{}{}
 			}
 		}
-		if sceneInput != nil {
-			scenes = append(scenes, *sceneInput)
-		}
 		brief := recapSceneBrief{id: scene.ID}
 		if start, ok := timelineStartUS[scene.ID]; ok {
 			brief.startUS = start
@@ -250,8 +248,12 @@ func compileOverlayPlanWithMotionOffset(result *GenerateResult, language Languag
 				}
 			}
 		}
+		if sceneInput != nil {
+			scenes = append(scenes, *sceneInput)
+		}
 		recapBriefs = append(recapBriefs, brief)
 	}
+	scenes = projectEditorialOverlays(result, language, timedScenes, resolved, scenes)
 	// Recaps ride the certified quote primitive at chapter-boundary scenes
 	// (R01); short runs yield no placement (R02). Disabled via the canvas
 	// kill-switch; placements that cannot contribute stay no-ops.
@@ -259,9 +261,8 @@ func compileOverlayPlanWithMotionOffset(result *GenerateResult, language Languag
 	if !canvas.DisableRecapOverlays {
 		recapPlacements = recapPlacementsForScenes(recapBriefs)
 	}
-	// Charts ride the preset-less SHAPE primitive (params.shape=chart) on
-	// scenes carrying a strict grounded numeric comparison; scenes without
-	// one yield no placement. Disabled via the canvas kill-switch.
+	// Charts lower grounded numeric comparisons to native bar rectangles and
+	// a text-label item; scenes without strict numeric data yield no placement.
 	var chartPlacements []capabilityoverlay.ChartPlacement
 	if !canvas.DisableChartOverlays {
 		chartPlacements = capabilityoverlay.ChartPlacementsForScenes(scenes)
@@ -326,6 +327,9 @@ func compileOverlayPlanWithMotionOffset(result *GenerateResult, language Languag
 	// owned by overlay_plan_finalize.go so this file stays inside the strict
 	// 600-line cap; the call is the same one this block performed inline.
 	applyOverlayStyleToItems(items, canvas)
+	if err := applyMapPresentationToItems(items, canvas.MapType, canvas.MapCameraAnimation, canvas.MapLabelAnimation); err != nil {
+		return nil, err
+	}
 
 	// Entity overlays (PERSON / ORGANIZATION / LOCATION / CONCEPT) come from the
 	// certified EntityTimeline via the overlay resolver. NUMBER / QUOTE /
@@ -390,15 +394,8 @@ func compileOverlayPlanWithMotionOffset(result *GenerateResult, language Languag
 	// prevents a long script with many scenes from producing one image render
 	// for every extracted person.
 	items = capEntityImageOverlays(items, capabilityoverlay.MaxEntityImageOverlaysPerRun, len(perSceneImages) > 0 && perSceneImages[0])
-	if chooseOffset == nil {
-		return nil, fmt.Errorf("overlay plan: image motion offset chooser is required")
-	}
-	imageMotionOffset, err := chooseOffset()
-	if err != nil {
-		return nil, fmt.Errorf("overlay plan: choose random image motion offset: %w", err)
-	}
 	// The map-aware editorial budget keeps the certified run ceilings: images,
-	// grounded phrases and up to three distinct location maps.
+	// grounded phrases and one composed location map.
 	// It runs on individual assets before composition so dedupe and counts do
 	// not treat a 2–5-image group as one indivisible image.
 	items, _ = capabilityoverlay.ApplyEditorialOverlayBudgetWithImageLimit(items, canvas.MaxPhraseOverlays, canvas.MaxImageOverlays, mapLimit, len(perSceneImages) > 0 && perSceneImages[0])
@@ -406,7 +403,10 @@ func compileOverlayPlanWithMotionOffset(result *GenerateResult, language Languag
 		return nil, nil
 	}
 	items = composeNearbyEntityImages(items, canvas.Width, canvas.Height)
-	assignEntityImageMotions(items, imageMotionOffset, canvas.Width, canvas.Height, canvas.EntityStyleID)
+	if err := assignEntityImageMotions(items, imageMotionOffset, canvas.Width, canvas.Height,
+		canvas.EntityStyleID, canvas.EntityImageMotions); err != nil {
+		return nil, fmt.Errorf("overlay plan: entity image motions: %w", err)
+	}
 	capabilityoverlay.EnsureDistinctPhraseMotions(items, capabilityoverlay.PlanInput{PlanID: planID, VideoID: videoID, MotionSeed: motionSeed})
 	capabilityoverlay.EnsureDistinctNumberMotions(items, nil)
 	items = capabilityoverlay.CoalesceChainedOverlays(items, canvas.AnimationCounts)
@@ -414,13 +414,12 @@ func compileOverlayPlanWithMotionOffset(result *GenerateResult, language Languag
 	// facade, so the naming rule has exactly one home.
 	scriptoverlay.NameItemsForReview(items)
 	// assignEntityImageMotions rebuilds entity item params with its geometry
-	// defaults. Apply the explicit typeface afterward so it reaches the
-	// generated name caption without overriding image geometry.
-	fontFamily := ""
-	if canvas.Style != nil {
-		fontFamily = strings.TrimSpace(canvas.Style.FontFamily)
-	}
-	if fontFamily != "" {
+	// defaults. Preserve explicit runtime text styles on caption-bearing image
+	// children (including composite and chain children) without changing image
+	// geometry; payload choices override child presets only when explicitly set.
+	styleParams := overlayStyleParams(canvas.Style)
+	captionColor := scriptoverlay.StyleFontColor(canvas.Style)
+	if captionColor != "" || len(styleParams) > 0 {
 		for i := range items {
 			if capabilityoverlay.IsChainItemKind(items[i].Kind) {
 				segments, ok := capabilityoverlay.DecodeChainSegments(items[i].Params)
@@ -428,8 +427,29 @@ func compileOverlayPlanWithMotionOffset(result *GenerateResult, language Languag
 					continue // Validate below rejects malformed chain payloads.
 				}
 				for segmentIndex := range segments {
-					if isEntityOverlayKind(segments[segmentIndex].Kind) {
-						segments[segmentIndex].CaptionFontFamily = fontFamily
+					segment := &segments[segmentIndex]
+					segmentStyle := make(map[string]any, len(styleParams))
+					for key, value := range styleParams {
+						segmentStyle[key] = value
+					}
+					if segment.Style == nil {
+						segment.Style = map[string]any{}
+					}
+					for key, value := range segmentStyle {
+						if key == "style" {
+							segment.Style[key] = scriptoverlay.MergeStyleParam(segment.Style[key], value.(map[string]any))
+						} else {
+							segment.Style[key] = value
+						}
+					}
+					if isEntityOverlayKind(segment.Kind) {
+						if captionColor != "" {
+							segment.CaptionColor = captionColor
+						}
+						scriptoverlay.MergeCaptionStyleIntoLayers(segment.ImageLayers, styleParams)
+					}
+					if isImageOverlayKind(segment.Kind) {
+						scriptoverlay.MergeCaptionStyleIntoLayers(segment.ImageLayers, styleParams)
 					}
 				}
 				items[i].Params["chain_segments"] = segments
@@ -437,9 +457,15 @@ func compileOverlayPlanWithMotionOffset(result *GenerateResult, language Languag
 				continue
 			}
 			if isEntityOverlayKind(items[i].Kind) {
-				items[i].CaptionFontFamily = fontFamily
-				items[i].RenderKey = ""
+				items[i].Params = scriptoverlay.MergeRuntimeTextStyleParams(items[i].Params, styleParams)
+				if captionColor != "" {
+					items[i].CaptionColor = captionColor
+				}
 			}
+			if isImageOverlayItem(items[i]) {
+				scriptoverlay.MergeCaptionStyleIntoLayers(items[i].ImageLayers, styleParams)
+			}
+			items[i].RenderKey = ""
 		}
 	}
 	if canvas.Style != nil && canvas.Style.Image != nil {

@@ -56,13 +56,15 @@ type GenerateRequest struct {
 	// Carried verbatim from the envelope item; empty means "no channel
 	// profile applies".
 	ChannelID string `json:"channel_id,omitempty"`
-	// PhraseMotions is the channel profile's phrase-motion rotation pool,
-	// resolved ONCE at ingress (BuildGenerateRequest) and consumed by the
-	// overlay planner. Empty keeps the certified default pool. It is not
-	// caller wire vocabulary: only a channel profile sets it.
+	// PhraseMotions and ImageMotions are optional payload-selected certified
+	// animation pools. Empty delegates to the complete seeded random catalog.
 	PhraseMotions      []string `json:"phrase_motions,omitempty"`
 	PhraseMotionFamily string   `json:"phrase_motion_family,omitempty"`
 	ImageMotions       []string `json:"image_motions,omitempty"`
+	EntityImageMotions []string `json:"entity_image_motions,omitempty"`
+	MapType            string   `json:"map_type,omitempty"`
+	MapCameraAnimation string   `json:"map_camera_animation,omitempty"`
+	MapLabelAnimation  string   `json:"map_label_animation,omitempty"`
 	// MaxPhraseOverlays is the caller-selected run-level ceiling for grounded
 	// phrase overlays, carried verbatim from the envelope item. Zero keeps the
 	// certified default; a positive value is honoured as-is.

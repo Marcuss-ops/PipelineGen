@@ -69,9 +69,9 @@ func ApplyEditorialOverlayBudget(items []OverlayItem) ([]OverlayItem, PhraseOver
 // plate manifest from turning every grounded mention into a rendered map.
 const MaxMapOverlaysPerScene = 2
 
-// MaxMapOverlaysPerRun bounds full-canvas map renders while allowing a
-// five-location verification run to exercise map timing and animation.
-const MaxMapOverlaysPerRun = 5
+// MaxMapOverlaysPerRun keeps location coverage inside one composed Chronon map
+// render. Multiple full-canvas map clips fragment a single geography story.
+const MaxMapOverlaysPerRun = 1
 
 // MaxNumberOverlaysPerRun bounds value callouts independently so metrics,
 // money and dates can survive the editorial budget without displacing the
@@ -118,12 +118,75 @@ func ApplyEditorialOverlayBudgetWithImageLimit(items []OverlayItem, phraseLimit,
 	mapIndices := rankedUniqueMapIndices(items, mapCeiling)
 	numberIndices := rankedUniqueKindIndices(items, "number", MaxNumberOverlaysPerRun)
 	brandIndices := rankedUniqueKindIndices(items, "brand_text", MaxBrandTextOverlaysPerRun)
-	out := retainOverlayItems(items, imageIndices, phraseIndices, mapIndices, numberIndices, brandIndices)
+	chartLabelIndices := chartLabelIndices(items)
+	chartBarIndices := chartBarIndices(items)
+	editorialIndices := editorialLabelIndices(items)
+	out := retainOverlayItems(items, imageIndices, phraseIndices, mapIndices, numberIndices, brandIndices, chartBarIndices, chartLabelIndices, editorialIndices)
 	return out, MeasurePhraseOverlayBudgetWithLimit(out, limit)
 }
 
 // rankedUniqueKindIndices ranks and deduplicates one text-based overlay kind
 // by normalized text. Each kind's cap is independent of the other overlay arms.
+func chartBarIndices(items []OverlayItem) []int {
+	admittedGroups := make(map[string]struct{})
+	for _, index := range chartLabelIndices(items) {
+		if group, ok := items[index].Params["chart_group_id"].(string); ok && group != "" {
+			admittedGroups[group] = struct{}{}
+		}
+	}
+	indices := make([]int, 0)
+	for i, item := range items {
+		if item.Params == nil || item.Params["chart_bar"] != true {
+			continue
+		}
+		group, _ := item.Params["chart_group_id"].(string)
+		if _, admitted := admittedGroups[group]; admitted {
+			indices = append(indices, i)
+		}
+	}
+	return indices
+}
+
+func editorialVisualIndices(items []OverlayItem) []int {
+	indices := make([]int, 0)
+	for i, item := range items {
+		if item.Params != nil && (item.Params["editorial_role"] == "scene_title" || item.Params["editorial_role"] == "scene_bullet") {
+			indices = append(indices, i)
+		}
+	}
+	return indices
+}
+
+func chartLabelIndices(items []OverlayItem) []int {
+	indices := make([]int, 0)
+	seenScenes := make(map[string]struct{})
+	for i, item := range items {
+		if item.Params == nil || item.Params["chart_card"] != true {
+			continue
+		}
+		scene := strings.TrimSpace(item.SceneID)
+		if scene == "" {
+			continue
+		}
+		if _, admitted := seenScenes[scene]; admitted {
+			continue
+		}
+		seenScenes[scene] = struct{}{}
+		indices = append(indices, i)
+	}
+	return indices
+}
+
+func editorialLabelIndices(items []OverlayItem) []int {
+	indices := make([]int, 0)
+	for i, item := range items {
+		if item.Params != nil && (item.Params["editorial_role"] == "scene_title" || item.Params["editorial_role"] == "scene_bullet") {
+			indices = append(indices, i)
+		}
+	}
+	return indices
+}
+
 func rankedUniqueKindIndices(items []OverlayItem, kind string, cap int) []int {
 	if cap <= 0 {
 		return nil
@@ -212,7 +275,10 @@ func ApplyEditorialOverlayBudgetWithLimit(items []OverlayItem, phraseLimit int) 
 	phraseIndices := rankedUniqueOverlayIndices(items, false, limit)
 	numberIndices := rankedUniqueKindIndices(items, "number", MaxNumberOverlaysPerRun)
 	brandIndices := rankedUniqueKindIndices(items, "brand_text", MaxBrandTextOverlaysPerRun)
-	out := retainOverlayItems(items, imageIndices, phraseIndices, numberIndices, brandIndices)
+	chartLabelIndices := chartLabelIndices(items)
+	chartBarIndices := chartBarIndices(items)
+	editorialIndices := editorialLabelIndices(items)
+	out := retainOverlayItems(items, imageIndices, phraseIndices, numberIndices, brandIndices, chartBarIndices, chartLabelIndices, editorialIndices)
 	return out, MeasurePhraseOverlayBudgetWithLimit(out, limit)
 }
 

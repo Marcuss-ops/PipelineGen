@@ -25,7 +25,7 @@ func rankedUniqueOverlayIndices(items []OverlayItem, images bool, phraseLimit in
 				key = strings.TrimSpace(item.SceneID) + ":" + key
 			}
 		} else {
-			if item.Kind != "text_phrase" {
+			if item.Kind != "text_phrase" || item.Params != nil && (item.Params["chart_card"] == true || item.Params["editorial_role"] == "scene_title" || item.Params["editorial_role"] == "scene_bullet") {
 				continue
 			}
 			key = strings.ToLower(strings.Join(strings.Fields(item.Text), " "))

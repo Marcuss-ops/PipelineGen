@@ -2,8 +2,11 @@ package overlays
 
 import (
 	"crypto/rand"
+	"encoding/binary"
 	"math/big"
 	"strings"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 )
 
 func selectWordPreset(jobID, sceneID, itemID string) string {
@@ -104,10 +107,9 @@ func SelectImageMotionAt(jobID, sceneID string, ordinal int) string {
 	return selectImageMotion(jobID, sceneID, ordinal, centeredImageMotionCandidates)
 }
 
-// RandomImageMotionOffset chooses a fresh cryptographically random starting
-// offset for one render plan. The caller samples it ONCE per plan and each
-// visual lane reduces it modulo its own pool size, keeping image and caption
-// rotations independent but stable for the compiled plan.
+// RandomImageMotionOffset chooses a cryptographically random starting offset.
+// It remains available for explicitly non-idempotent previews; durable render
+// plans use ImageMotionOffsetForSeed so retries can reproduce the same choice.
 func RandomImageMotionOffset() (int, error) {
 	span := max(len(generatedEntityImageMotionCandidates), len(generatedEntityCaptionMotionCandidates), len(centeredImageMotionCandidates))
 	if span == 0 {
@@ -118,6 +120,18 @@ func RandomImageMotionOffset() (int, error) {
 		return 0, err
 	}
 	return int(start.Int64()), nil
+}
+
+// ImageMotionOffsetForSeed returns a stable pool rotation for one immutable
+// plan identity. Each newly assigned plan ID varies the rotation; replaying the
+// same plan identity produces the same offset, as required for retries.
+func ImageMotionOffsetForSeed(seed string) int {
+	span := max(len(generatedEntityImageMotionCandidates), len(generatedEntityCaptionMotionCandidates), len(centeredImageMotionCandidates))
+	if span == 0 {
+		return 0
+	}
+	sum := digest.SHA256Sum([]byte("image-motion-offset\x00" + seed))
+	return int(binary.BigEndian.Uint64(sum[:8]) % uint64(span))
 }
 
 // ImageMotionAtOffset returns the image motion at a position in the randomly

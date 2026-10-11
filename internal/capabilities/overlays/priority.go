@@ -44,12 +44,18 @@ const DefaultOverlapBudget = 3
 // across hosts. Unknown templates return PriorityStructural — the conservative
 // default: the degradation never removes content it does not understand.
 func ContentPriority(templateID string) int {
-	return contentPriorityForItem(OverlayItem{TemplateID: templateID})
+	return contentPriorityForTemplate(templateID)
 }
 
 func contentPriorityForTemplate(templateID string) int {
-	switch templateID {
-	case "BACKGROUND", "VIDEO_BACKGROUND", "SHAPE":
+	return contentPriorityForItem(OverlayItem{TemplateID: templateID})
+}
+
+func contentPriorityForTemplateLegacy(item OverlayItem) int {
+	switch item.TemplateID {
+	case "BACKGROUND", "VIDEO_BACKGROUND":
+		return PriorityStructural
+	case "SHAPE":
 		return PriorityStructural
 	case "IMPORTANT_PHRASE":
 		return PriorityPhrase
@@ -151,12 +157,15 @@ type ContentCounts struct {
 func CountContent(plan OverlayPlan) ContentCounts {
 	var c ContentCounts
 	for _, item := range plan.Items {
-		switch item.TemplateID {
-		case "NUMBER":
+		switch {
+		case item.TemplateID == "NUMBER" || item.Kind == string(KindNumber):
 			c.Numbers++
 			continue
 		}
-		switch contentPriorityForTemplate(item.TemplateID) {
+		// Census must use the semantic item classifier: image-backed entity
+		// presets can share legacy text template IDs such as person_default,
+		// but are images in the final render plan.
+		switch contentPriorityForItem(item) {
 		case PriorityPhrase:
 			c.Phrases++
 		case PriorityWord:

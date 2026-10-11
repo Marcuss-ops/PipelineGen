@@ -16,7 +16,7 @@ import (
 
 func buildRuntimeMediaCertSpec(plan *scriptpkg.ResolvedGenerationPlan) mediacert.Spec {
 	spec := mediacert.Spec{}
-	if plan == nil {
+	if plan == nil || !plan.HasVisualMediaPlan() {
 		return spec
 	}
 	// Certify provider relevance only when the resolved media plan actually

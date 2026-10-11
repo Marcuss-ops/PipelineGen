@@ -89,31 +89,29 @@ func StyleParams(style *scriptpkg.OverlayStyleSpec) map[string]any {
 			params["image_radius"] = *image.Radius
 		}
 	}
-	if style.Shadow != nil && style.Shadow.Enabled {
+	if style.Shadow != nil {
+		opacity, blur, offsetX, offsetY := 0.7, 8.0, 0.0, 4.0
+		if !style.Shadow.Enabled {
+			opacity, blur, offsetX, offsetY = 0, 0, 0, 0
+		}
+		if style.Shadow.Opacity != nil {
+			opacity = *style.Shadow.Opacity
+		}
+		if style.Shadow.Blur != nil {
+			blur = *style.Shadow.Blur
+		}
+		if len(style.Shadow.Offset) >= 2 {
+			offsetX, offsetY = style.Shadow.Offset[0], style.Shadow.Offset[1]
+		}
 		shadow := map[string]any{}
 		if style.Shadow.Color != "" {
 			shadow["color"] = style.Shadow.Color
 		}
-		if style.Shadow.Opacity != nil {
-			shadow["opacity"] = *style.Shadow.Opacity
-		}
-		if style.Shadow.Blur != nil {
-			shadow["blur"] = *style.Shadow.Blur
-		}
-		if len(style.Shadow.Offset) > 0 {
-			shadow["offset"] = append([]float64(nil), style.Shadow.Offset...)
-		}
+		shadow["opacity"], shadow["blur"] = opacity, blur
+		shadow["offset"] = []float64{offsetX, offsetY}
 		params["style"] = mergeStyleParam(params["style"], map[string]any{"shadow": shadow})
-		if style.Shadow.Opacity != nil {
-			params["shadow_opacity"] = *style.Shadow.Opacity
-		}
-		if style.Shadow.Blur != nil {
-			params["shadow_blur_px"] = *style.Shadow.Blur
-		}
-		if len(style.Shadow.Offset) > 0 {
-			params["shadow_offset_x_px"] = style.Shadow.Offset[0]
-			params["shadow_offset_y_px"] = style.Shadow.Offset[1]
-		}
+		params["shadow_opacity"], params["shadow_blur_px"] = opacity, blur
+		params["shadow_offset_x_px"], params["shadow_offset_y_px"] = offsetX, offsetY
 	}
 	return params
 }
@@ -179,6 +177,39 @@ func ImageStyleParams(style *scriptpkg.OverlayImageStyleSpec) map[string]any {
 
 // ApplyImageStyle applies runtime image params and frame metadata to the item
 // and its image layers, then normalizes entity portrait geometry.
+func MergeCaptionStyleIntoLayers(layers []capabilityoverlay.OverlayImageLayer, styleParams map[string]any) {
+	if len(styleParams) == 0 {
+		return
+	}
+	for index := range layers {
+		if strings.TrimSpace(layers[index].Caption) == "" {
+			continue
+		}
+		layers[index].Params = MergeRuntimeTextStyleParams(layers[index].Params, styleParams)
+	}
+}
+
+// MergeRuntimeTextStyleParams applies the canonical run-level typography to
+// one text-bearing item while preserving its geometry and image controls.
+func MergeRuntimeTextStyleParams(params, styleParams map[string]any) map[string]any {
+	out := make(map[string]any, len(params)+len(styleParams))
+	for key, value := range params {
+		out[key] = value
+	}
+	for key, value := range styleParams {
+		if key == "style" {
+			if nested, ok := value.(map[string]any); ok {
+				out[key] = mergeStyleParam(out[key], nested)
+			}
+			continue
+		}
+		if IsRuntimeTextStyleParam(key) {
+			out[key] = value
+		}
+	}
+	return out
+}
+
 func ApplyImageStyle(item *capabilityoverlay.OverlayItem, style *scriptpkg.OverlayImageStyleSpec) {
 	if item == nil || style == nil {
 		return
@@ -210,19 +241,17 @@ func ApplyImageStyle(item *capabilityoverlay.OverlayItem, style *scriptpkg.Overl
 	item.RenderKey = ""
 }
 
-// NormalizeEntityImageLayer removes frame geometry unsupported by the current
-// renderer for entity portraits while leaving captions independent.
+// NormalizeEntityImageLayer removes legacy geometry overrides that distort
+// entity portraits while retaining the shared image frame and backing panel.
 func NormalizeEntityImageLayer(item *capabilityoverlay.OverlayItem) {
 	if item == nil || item.Kind != string(capabilityoverlay.KindEntityImage) {
 		return
 	}
-	item.Frame = nil
 	if item.Params != nil {
 		delete(item.Params, "radius")
 		delete(item.Params, "position_y")
 	}
 	for i := range item.ImageLayers {
-		item.ImageLayers[i].Frame = nil
 		if item.ImageLayers[i].Params != nil {
 			delete(item.ImageLayers[i].Params, "radius")
 			delete(item.ImageLayers[i].Params, "position_y")
@@ -263,6 +292,16 @@ func IsRuntimeTextStyleParam(key string) bool {
 // IsTextOverlayKind reports whether an item is a renderer text primitive.
 func IsTextOverlayKind(kind string) bool {
 	return strings.HasPrefix(kind, "text_") || kind == "number" || kind == "quote" || kind == "brand_text"
+}
+
+// StyleFontColor projects an explicit RGBA style color to the caption's
+// supported hex fill. An omitted color remains omitted so entity preset color
+// can remain the fallback.
+func StyleFontColor(style *scriptpkg.OverlayStyleSpec) string {
+	if style == nil || len(style.Color) < 3 {
+		return ""
+	}
+	return rgbaHex(style.Color)
 }
 
 // IsEntityOverlayKind reports entity card and entity image primitives.

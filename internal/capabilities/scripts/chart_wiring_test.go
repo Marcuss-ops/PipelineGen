@@ -41,13 +41,21 @@ func TestChartWiringComparisonReachesPlan(t *testing.T) {
 		}
 	}
 	require.NotNil(t, chart)
-	assert.Equal(t, "SHAPE", chart.TemplateID)
-	assert.Equal(t, "chart", chart.Params["shape"])
-	chartPayload, ok := chart.Params["chart"].(map[string]any)
-	require.True(t, ok)
-	assert.Equal(t, "bar", chartPayload["chart_type"])
-	assert.Equal(t, []float64{42, 18}, chartPayload["data"])
-	assert.Equal(t, countChartItems(plan.Items), plan.ChartCards, "sealed recount matches planner count")
+	assert.Equal(t, "text_phrase", chart.Kind)
+	assert.Equal(t, "IMPORTANT_PHRASE", chart.TemplateID)
+	assert.Equal(t, "42%\n18%", chart.Text)
+	assert.NotContains(t, chart.Params, "chart")
+	bars := 0
+	for _, item := range plan.Items {
+		if item.Params["chart_bar"] == true {
+			bars++
+			assert.Equal(t, "SHAPE", item.TemplateID)
+			assert.Equal(t, "rect", item.Params["shape"])
+		}
+	}
+	assert.Equal(t, 2, bars)
+	assert.Equal(t, 3, countChartItems(plan.Items), "sealed recount counts chart label and native bars")
+	assert.Equal(t, 1, plan.ChartCards, "planner count tracks comparisons, not their native drawing primitives")
 }
 
 func TestChartWiringDisabledStaysEmpty(t *testing.T) {

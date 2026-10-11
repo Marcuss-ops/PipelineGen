@@ -20,6 +20,9 @@ type TimedAnnotation struct {
 	StartUS    int64
 	DurationUS int64
 	Score      float64
+	// PresentationRole is an internal producer hint for grounded editorial
+	// title/bullet placement; it does not create a new wire kind.
+	PresentationRole string
 }
 
 type ImageCandidate struct {
@@ -314,11 +317,26 @@ func BuildPlan(input PlanInput, config PlannerConfig) (OverlayPlan, error) {
 		}
 		for _, candidate := range phrases {
 			id := itemID(scene.ID, "phrase", candidate.Text)
+			params := map[string]any{"position": "center", "style": "headline", "priority": candidate.Score}
+			switch candidate.PresentationRole {
+			case "scene_title":
+				params["position"] = "lower_third"
+				params["position_x"] = float64(input.Width) / 2
+				params["position_y"] = float64(input.Height) * 0.28
+				params["style"] = "title"
+				params["editorial_role"] = "scene_title"
+			case "scene_bullet":
+				params["position"] = "center"
+				params["position_x"] = float64(input.Width) / 2
+				params["position_y"] = float64(input.Height) * 0.18
+				params["style"] = "headline"
+				params["editorial_role"] = "scene_bullet"
+			}
 			plan.Items = append(plan.Items, OverlayItem{
 				ID: id, SceneID: scene.ID, PresetID: selectPhrasePreset(input.PlanID, scene.ID, id),
 				Kind: "text_phrase", TemplateID: "IMPORTANT_PHRASE", Text: candidate.Text,
 				StartMs: candidate.StartMs, EndMs: candidate.EndMs, StartUS: candidate.StartUS, DurationUS: candidate.DurationUS,
-				MotionParams: phraseMotionParams(candidate, input.FPSNum, input.FPSDen), Params: map[string]any{"position": "center", "style": "headline", "priority": candidate.Score},
+				MotionParams: phraseMotionParams(candidate, input.FPSNum, input.FPSDen), Params: params,
 			})
 		}
 		for _, group := range scene.MultiEntityGroups {
@@ -375,15 +393,13 @@ func BuildPlan(input PlanInput, config PlannerConfig) (OverlayPlan, error) {
 		plan.RecapPlacements = len(input.Recap)
 		plan.Items = append(plan.Items, BuildRecapPlanItems(input.PlanID, input.Recap)...)
 	}
-	// Charts: bar comparisons of grounded scene numbers. SHAPE is
-	// structural (never counted/dropped by DegradeOverlaps below), so the
-	// emission gate here keeps charts competing for screen space: a chart
-	// whose window already carries budget-or-more content items is
-	// skipped instead of piling onto a dense scene.
+	// Charts: bar comparisons of grounded scene numbers. Their label item is
+	// the atomic content slot and native SHAPE rect bars stay attached through
+	// overlap degradation and run-level selection.
 	if len(input.Charts) > 0 {
 		plan.ChartPlacements = len(input.Charts)
 		for _, item := range BuildChartItems(input.PlanID, input.Charts, input.Width, input.Height) {
-			if chartWindowCrowded(plan.Items, item.StartUS, item.StartUS+item.DurationUS, config.MaxOverlap) {
+			if item.Params["chart_card"] == true && chartWindowCrowded(plan.Items, item.StartUS, item.StartUS+item.DurationUS, config.MaxOverlap) {
 				continue
 			}
 			plan.Items = append(plan.Items, item)
@@ -418,11 +434,13 @@ func BuildPlan(input PlanInput, config PlannerConfig) (OverlayPlan, error) {
 	// items may pile up at any moment (lowest editorial priority drops first;
 	// structural layers are never counted nor dropped).
 	plan.Items = DegradeOverlaps(plan.Items, config.MaxOverlap)
+	plan.Items = PruneOrphanChartBars(plan.Items)
 	if config.RunLevelEditorialBudget {
 		plan.Items, _ = ApplyEditorialOverlayBudgetWithLimits(plan.Items, config.RunLevelPhraseOverlayLimit, config.RunLevelMapOverlayLimit)
 	} else {
 		plan.Items, _ = ApplyPhraseOverlayBudgetWithLimit(plan.Items, config.RunLevelPhraseOverlayLimit)
 	}
+	plan.Items = PruneOrphanChartBars(plan.Items)
 	// Recap observability is counted here: after overlap degradation and
 	// run-level budgets (the gates that can drop cards), before chain
 	// fusion (which may merge admitted cards into chain segments while
@@ -528,6 +546,7 @@ func BuildPlan(input PlanInput, config PlannerConfig) (OverlayPlan, error) {
 	// + fade transition, driven by AnimationCounts chain_gap_ms /
 	// chain_max_segments. Legacy items pass through untouched.
 	plan.Items = CoalesceChainedOverlays(plan.Items, input.AnimationCounts)
+	plan.Items = PruneOrphanChartBars(plan.Items)
 	if err := plan.Validate(); err != nil {
 		return OverlayPlan{}, err
 	}

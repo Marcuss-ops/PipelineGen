@@ -15,6 +15,7 @@
 package scriptgeneration
 
 import (
+	"fmt"
 	"sort"
 	"strings"
 
@@ -371,14 +372,37 @@ func entityImageLayerParams(width, height, count, slot int) map[string]any {
 // entityStyleID is an explicitly requested entity-card composition selector.
 // Empty leaves the planner's simple image and caption motions in place, so
 // spatial compositions are never added implicitly to runtime renders.
-func assignEntityImageMotions(items []capabilityoverlay.OverlayItem, offset, width, height int, entityStyleID string) {
+func assignEntityImageMotions(items []capabilityoverlay.OverlayItem, offset, width, height int, entityStyleID string, requestedPools ...[]string) error {
 	imageOrdinal, captionOrdinal := 0, 0
+	var requested []string
+	if len(requestedPools) > 0 {
+		requested = requestedPools[0]
+	}
+	allowed := make(map[string]bool)
+	for _, id := range capabilityoverlay.CertifiedEntityImageMotions() {
+		allowed[id] = true
+	}
+	seen := make(map[string]bool, len(requested))
+	for _, id := range requested {
+		if !allowed[id] {
+			return fmt.Errorf("entity_image_motions contains uncertified motion %q", id)
+		}
+		if seen[id] {
+			return fmt.Errorf("entity_image_motions repeats motion %q", id)
+		}
+		seen[id] = true
+	}
 	captionMotionAt := func(ordinal int) string {
 		return capabilityoverlay.EntityCaptionMotionAtOffset(offset, ordinal)
 	}
 	pinned := strings.TrimSpace(entityStyleID)
 	imageMotion := func() string {
-		motion := capabilityoverlay.EntityImageMotionAtOffset(offset, imageOrdinal)
+		motion := ""
+		if len(requested) > 0 {
+			motion = requested[imageOrdinal%len(requested)]
+		} else {
+			motion = capabilityoverlay.EntityImageMotionAtOffset(offset, imageOrdinal)
+		}
 		imageOrdinal++
 		return motion
 	}
@@ -435,6 +459,7 @@ func assignEntityImageMotions(items []capabilityoverlay.OverlayItem, offset, wid
 		}
 		item.Params = geometry
 	}
+	return nil
 }
 
 // projectSceneEntityResult builds the per-scene typed EntityResult from one

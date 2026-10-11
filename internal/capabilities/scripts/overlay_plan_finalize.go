@@ -20,10 +20,40 @@
 package scriptgeneration
 
 import (
+	"fmt"
 	"strings"
 
 	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
+
+func applyMapPresentationToItems(items []capabilityoverlay.OverlayItem, mapType, cameraAnimation, labelAnimation string) error {
+	mapType = strings.ToLower(strings.TrimSpace(mapType))
+	if mapType == "" {
+		mapType = "roadmap"
+	}
+	switch mapType {
+	case "roadmap", "terrain", "satellite", "random":
+	default:
+		return fmt.Errorf("map_type %q is unsupported; choose roadmap, terrain, satellite, or random", mapType)
+	}
+	for i := range items {
+		if items[i].Map == nil {
+			continue
+		}
+		if items[i].Params == nil {
+			items[i].Params = map[string]any{}
+		}
+		items[i].Params["map_type"] = mapType
+		if cameraAnimation != "" {
+			items[i].Params["map_camera_animation"] = cameraAnimation
+		}
+		if labelAnimation != "" {
+			items[i].Params["map_label_animation"] = labelAnimation
+		}
+	}
+	return nil
+}
 
 // countRecapItems counts final recap survivors, including cards preserved
 // inside a fused chain item.
@@ -52,12 +82,12 @@ func countRecapItems(items []capabilityoverlay.OverlayItem) int {
 func countChartItems(items []capabilityoverlay.OverlayItem) int {
 	n := 0
 	for i := range items {
-		if items[i].Params["chart_card"] == true {
+		if items[i].Params["chart_card"] == true || items[i].Params["chart_bar"] == true {
 			n++
 		}
 		if segments, ok := capabilityoverlay.DecodeChainSegments(items[i].Params); ok {
 			for _, segment := range segments {
-				if segment.Params["chart_card"] == true {
+				if segment.Params["chart_card"] == true || segment.Params["chart_bar"] == true {
 					n++
 				}
 			}
@@ -94,16 +124,13 @@ func recapItemsByScene(items []capabilityoverlay.OverlayItem) map[string]int {
 // the sealing path so the file-size split changes no behaviour.
 func applyOverlayStyleToItems(items []capabilityoverlay.OverlayItem, canvas OverlayCanvasSpec) {
 	styleParams := overlayStyleParams(canvas.Style)
-	if len(styleParams) == 0 {
-		return
-	}
 	for i := range items {
 		merged := map[string]any{}
 		for k, v := range items[i].Params {
 			merged[k] = v
 		}
 		for k, v := range styleParams {
-			if isRuntimeTextStyleParam(k) && (isImageOverlayItem(items[i]) || (!isTextOverlayKind(items[i].Kind) && strings.TrimSpace(items[i].EntityCaption) == "")) {
+			if isRuntimeTextStyleParam(k) && (isImageOverlayItem(items[i]) || (!isTextOverlayKind(items[i].Kind) && strings.TrimSpace(items[i].EntityCaption) == "" && items[i].Map == nil)) {
 				continue
 			}
 			if strings.HasPrefix(k, "image_") {
@@ -116,6 +143,11 @@ func applyOverlayStyleToItems(items []capabilityoverlay.OverlayItem, canvas Over
 			}
 			if k == "style" {
 				merged[k] = mergeStyleParam(merged[k], v.(map[string]any))
+			} else if isRuntimeTextStyleParam(k) {
+				// A run-level payload choice is canonical across text motions.
+				// Preset or animation-derived values are defaults and must not
+				// make the same payload render with different typography.
+				merged[k] = v
 			} else if _, exists := merged[k]; !exists {
 				merged[k] = v
 			}
@@ -150,8 +182,12 @@ func applyOverlayStyleToItems(items []capabilityoverlay.OverlayItem, canvas Over
 			items[i].Params["height"] = presentationFontSize*1.7 + 32
 		}
 		items[i].RenderKey = ""
-		if isImageOverlayItem(items[i]) && canvas.Style != nil {
-			items[i].Frame = overlayImageFrame(canvas.Style.Image)
+		if isImageOverlayItem(items[i]) {
+			var imageStyle *scriptpkg.OverlayImageStyleSpec
+			if canvas.Style != nil {
+				imageStyle = canvas.Style.Image
+			}
+			applyOverlayImageStyle(&items[i], imageStyle)
 			for childIndex := range items[i].ImageLayers {
 				child := &items[i].ImageLayers[childIndex]
 				childParams := map[string]any{}

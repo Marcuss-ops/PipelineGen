@@ -420,6 +420,19 @@ func (r *Runner) runSceneTextPhase(ctx context.Context, runID string, req Genera
 		if run != nil && run.Result != nil {
 			result = run.Result
 		}
+		// SceneCommitObserver is attempt-scoped (the VidRush coordinator is
+		// rebuilt for each Execute). A voiceover or later-stage retry resumes
+		// past scene generation, so replay the durable scenes into this attempt's
+		// fresh coordinator before its final VidRush barrier. Without this, the
+		// barrier sees an empty result and MediaCert reports every check failed.
+		if result != nil {
+			if err := r.emitSceneCommits(ctx, runID, req, exec, result.Scenes); err != nil {
+				cause := fmt.Errorf("replay scene commits from checkpoint: %w", err)
+				r.failExecutionStep(ctx, exec, scriptStep, cause)
+				r.failRunWithRetry(ctx, runID, StageGeneratingSceneText, cause)
+				return result, false
+			}
+		}
 	}
 
 	// Record resolved clip assets as script inputs once the scene plan exists.
