@@ -260,8 +260,8 @@ type JobDefinition struct {
 	// "single_global" bucket). Nothing reads it today: no queue, runner or
 	// store path consults it, so it bounds nothing. The cap actually in force
 	// is the worker capability / pool budget, and the clip.render settle pool
-	// is scoped by PayloadMatch instead (see
-	// refactored/docs/tickets/TICKET-CLIP-RENDER-ASYNC-COMPLETION.md §5-6).
+	// is scoped by PayloadMatch instead (former async-completion ticket §5-6,
+	// closed 2026-10-11; rationale in git history).
 	//
 	// Do NOT rely on it to limit concurrency. Either keep the populated values
 	// for the day a keyed-cap authority lands, or delete the field together
