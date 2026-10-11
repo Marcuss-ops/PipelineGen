@@ -393,7 +393,7 @@ func assignEntityImageMotions(items []capabilityoverlay.OverlayItem, offset, wid
 		seen[id] = true
 	}
 	captionMotionAt := func(ordinal int) string {
-		return capabilityoverlay.EntityCaptionMotionAtOffset(offset, ordinal)
+		return capabilityoverlay.RuntimeEntityCaptionMotionAtOffset(offset, ordinal)
 	}
 	pinned := strings.TrimSpace(entityStyleID)
 	imageMotion := func() string {

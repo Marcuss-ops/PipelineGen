@@ -235,6 +235,8 @@ var SupportedFontFamilies = []string{
 	"dejavu_sans",
 	"playfair_display_italic",
 	"bricolage_grotesque",
+	"oswald",
+	"abril_fatface",
 }
 
 // IsSupportedFontFamily reports whether family is selectable in a payload

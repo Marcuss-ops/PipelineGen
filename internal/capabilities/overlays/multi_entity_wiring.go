@@ -229,7 +229,7 @@ func WireMultiEntityOverlays(group MultiEntityGroup, canvasWidth, canvasHeight i
 				PresetID:          selectImagePreset(group.GroupID, group.SceneID, layerID),
 				MotionID:          EntityImageMotionAtOffset(0, imageIndex),
 				Caption:           strings.TrimSpace(candidate.Name),
-				CaptionMotionID:   EntityCaptionMotionAtOffset(0, imageIndex),
+				CaptionMotionID:   RuntimeEntityCaptionMotionAtOffset(0, imageIndex),
 				CaptionFontFamily: "",
 				CaptionColor:      "",
 				Params:            map[string]any{"position_x": position[0], "position_y": position[1], "width": position[2], "height": position[3], "fit": "contain"},

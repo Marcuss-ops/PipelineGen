@@ -35,6 +35,14 @@ const (
 	CanonicalInterBoldFontHash = "deb990e241954e1af87c6033d40a76cf0f48e0d112541794526051ac4a3ee2c8"
 	// CanonicalBricolageGrotesqueFontHash is the SHA-256 of CanonicalBricolageGrotesqueFontPath.
 	CanonicalBricolageGrotesqueFontHash = "413e7357809ddd12fd80a96a8a396de0e401638d4acd3cb3e37532f0472ac682"
+	// CanonicalOswaldFontPath is the payload-selected Oswald family.
+	CanonicalOswaldFontPath = "assets/fonts/Oswald.ttf"
+	// CanonicalOswaldFontHash is the SHA-256 of CanonicalOswaldFontPath.
+	CanonicalOswaldFontHash = "5b38c246e255a12f5712d640d56bcced0472466fc68983d2d0410ec0457c2817"
+	// CanonicalAbrilFatfaceFontPath is the payload-selected Abril Fatface family.
+	CanonicalAbrilFatfaceFontPath = "assets/fonts/AbrilFatface-Regular.ttf"
+	// CanonicalAbrilFatfaceFontHash is the SHA-256 of CanonicalAbrilFatfaceFontPath.
+	CanonicalAbrilFatfaceFontHash = "5971d4a3758a922a9fedc7f6fb825a96341a2e718c45a4b2c9a6b417c8c4dbe9"
 )
 
 // CanonicalFontAsset binds a payload-selectable font family ID to the exact
@@ -57,6 +65,8 @@ var CanonicalFontAssetsByFamily = map[string]CanonicalFontAsset{
 	"dejavu_sans":             {Path: CanonicalTextFontPath, SHA256: GoldenFontHash},
 	"playfair_display_italic": {Path: CanonicalPlayfairDisplayItalicFontPath, SHA256: CanonicalPlayfairDisplayItalicFontHash},
 	"bricolage_grotesque":     {Path: CanonicalBricolageGrotesqueFontPath, SHA256: CanonicalBricolageGrotesqueFontHash},
+	"oswald":                  {Path: CanonicalOswaldFontPath, SHA256: CanonicalOswaldFontHash},
+	"abril_fatface":           {Path: CanonicalAbrilFatfaceFontPath, SHA256: CanonicalAbrilFatfaceFontHash},
 }
 
 // ModernFontPaths is the local, workspace-relative registry for the

@@ -15,9 +15,15 @@ func TestAssignEntityImageMotionsUsesCertifiedCatalog(t *testing.T) {
 
 	certified := capabilityoverlay.CertifiedEntityImageMotions()
 	captionCertified := capabilityoverlay.CertifiedEntityCaptionMotions()
+	// The automatic runtime rotation runs over the camera-safe subcatalog; the
+	// full certified catalog only gates what explicit plans may ask for.
+	automaticCaptions := capabilityoverlay.CertifiedAutomaticEntityCaptionMotions()
 	certifiedCaptionSet := make(map[string]bool, len(captionCertified))
 	if len(captionCertified) != wantCaptions {
 		t.Fatalf("generated entity caption catalog has %d motions, want %d", len(captionCertified), wantCaptions)
+	}
+	if len(automaticCaptions) == 0 || len(automaticCaptions) > len(captionCertified) {
+		t.Fatalf("automatic entity caption pool has %d motions, want 1..%d", len(automaticCaptions), len(captionCertified))
 	}
 	if len(certified) != wantImages {
 		t.Fatalf("generated entity image catalog has %d motions, want %d", len(certified), wantImages)
@@ -29,9 +35,10 @@ func TestAssignEntityImageMotionsUsesCertifiedCatalog(t *testing.T) {
 		certifiedCaptionSet[id] = true
 	}
 
-	// Enough captioned portraits to exhaust both bounded image and broad
-	// caption catalogs, plus one composite pair whose children rotate separately.
-	portraitCount := wantCaptions - 2
+	// Enough captioned portraits to exhaust both the bounded image catalog and
+	// the automatic caption pool, plus one composite pair whose children rotate
+	// separately.
+	portraitCount := len(automaticCaptions) - 2
 	items := make([]capabilityoverlay.OverlayItem, 0, portraitCount+1)
 	for i := 0; i < portraitCount; i++ {
 		items = append(items, capabilityoverlay.OverlayItem{
@@ -60,7 +67,7 @@ func TestAssignEntityImageMotionsUsesCertifiedCatalog(t *testing.T) {
 				if layer.CaptionMotionID == "" || !containsMotionID(captionCertified, layer.CaptionMotionID) {
 					t.Fatalf("composite caption motion %q is not certified", layer.CaptionMotionID)
 				}
-				wantCaption := captionCertified[len(captionSeen)]
+				wantCaption := automaticCaptions[len(captionSeen)]
 				if layer.CaptionMotionID != wantCaption {
 					t.Fatalf("composite caption motion %q, want no-repeat catalog motion %q", layer.CaptionMotionID, wantCaption)
 				}
@@ -75,7 +82,7 @@ func TestAssignEntityImageMotionsUsesCertifiedCatalog(t *testing.T) {
 		if !containsMotionID(captionCertified, item.CaptionMotionID) {
 			t.Fatalf("entity image %q caption motion %q is outside the certified catalog", item.ID, item.CaptionMotionID)
 		}
-		wantCaption := captionCertified[len(captionSeen)]
+		wantCaption := automaticCaptions[len(captionSeen)]
 		if item.CaptionMotionID != wantCaption {
 			t.Fatalf("entity caption motion %q, want no-repeat catalog motion %q", item.CaptionMotionID, wantCaption)
 		}
@@ -91,8 +98,8 @@ func TestAssignEntityImageMotionsUsesCertifiedCatalog(t *testing.T) {
 	if len(seen) != wantImages {
 		t.Fatalf("%d entity images selected %d distinct motions, want catalog rotation across %d", len(items), len(seen), wantImages)
 	}
-	if len(captionSeen) != wantCaptions {
-		t.Fatalf("%d entity captions selected %d distinct motions, want rotation across %d", len(items), len(captionSeen), wantCaptions)
+	if len(captionSeen) != len(automaticCaptions) {
+		t.Fatalf("%d entity captions selected %d distinct motions, want rotation across the %d automatic motions", len(items), len(captionSeen), len(automaticCaptions))
 	}
 	// The two composite children are assigned independently, so the pair must
 	// not collapse onto a single shared entrance.

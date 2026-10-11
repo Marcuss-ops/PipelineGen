@@ -9,6 +9,42 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 )
 
+// Camera-backed caption motions stay available to explicit plans, but the
+// automatic runtime pool excludes them until the worker catalog has the
+// matching camera-safe lowering. Older workers mirror these captions or clear
+// the background when projecting their tracks.
+var runtimeUnsafeEntityCaptionMotions = map[string]struct{}{
+	"entity_depth_caption":    {},
+	"entity_parallax_caption": {},
+	"entity_yaw_caption":      {},
+	"text_depth_in":           {},
+	"text_yaw_in":             {},
+	"trump_entity_text_06":    {},
+	"trump_entity_text_08":    {},
+	"trump_entity_text_11":    {},
+	"trump_entity_text_13":    {},
+	"trump_entity_text_14":    {},
+	"trump_entity_text_15":    {},
+}
+
+// CertifiedAutomaticEntityCaptionMotions returns the runtime-safe automatic
+// caption pool. The full certified catalog stays available for explicit plans
+// and catalog browsing; callers receive a copy.
+func CertifiedAutomaticEntityCaptionMotions() []string {
+	return append([]string(nil), automaticEntityCaptionMotionCandidates()...)
+}
+
+func automaticEntityCaptionMotionCandidates() []string {
+	pool := make([]string, 0, len(generatedEntityCaptionMotionCandidates))
+	for _, id := range generatedEntityCaptionMotionCandidates {
+		if _, unsafe := runtimeUnsafeEntityCaptionMotions[id]; unsafe {
+			continue
+		}
+		pool = append(pool, id)
+	}
+	return pool
+}
+
 func selectWordPreset(jobID, sceneID, itemID string) string {
 	return selectPreset(jobID, sceneID, itemID, "important_word", wordPresetCandidates)
 }
@@ -59,6 +95,13 @@ func EntityCaptionMotionAtOffset(offset, ordinal int) string {
 	return rotateMotionAtOffset(offset, ordinal, generatedEntityCaptionMotionCandidates)
 }
 
+// RuntimeEntityCaptionMotionAtOffset selects a caption entrance from the
+// camera-safe automatic pool. The full certified pool remains available for
+// explicit plans and catalog browsing.
+func RuntimeEntityCaptionMotionAtOffset(offset, ordinal int) string {
+	return rotateMotionAtOffset(offset, ordinal, automaticEntityCaptionMotionCandidates())
+}
+
 func entityCaptionMotionAtOffset(ordinal, limit int) string {
 	if limit <= 0 {
 		return rotateMotionAtOffset(0, ordinal, generatedEntityCaptionMotionCandidates)
@@ -76,7 +119,7 @@ func entityImageMotionAtOffset(ordinal, limit int) string {
 // SelectEntityCaptionMotionAt provides a stable per-job selector for semantic
 // render bundles that do not carry the full plan's sampled motion offset.
 func SelectEntityCaptionMotionAt(jobID, sceneID string, ordinal int) string {
-	pool := generatedEntityCaptionMotionCandidates
+	pool := automaticEntityCaptionMotionCandidates()
 	if len(pool) == 0 {
 		return ""
 	}

@@ -499,10 +499,9 @@ func applyBackgroundSelection(req *GenerateRequest, policy mediaregistry.Editing
 }
 
 // applyOverlayBackgroundSelection fills the OVERLAY render's background plate
-// when the caller left it blank. It is the overlay counterpart of
-// applyBackgroundSelection and uses the same curated pool and the same seed, so
-// the two render surfaces of one job cannot disagree about which plates exist
-// and a replay selects the same one.
+// when the caller left it blank. It inherits a caller's registered video plate
+// first; otherwise it uses the same curated pool and seed as
+// applyBackgroundSelection, so both render surfaces stay on one plate.
 //
 // It is deliberately gated on req.Render.Enabled: the overlay pipeline treats a
 // non-nil OverlayBackground as a request to compile an overlay plan, so filling
@@ -517,6 +516,22 @@ func applyOverlayBackgroundSelection(req *GenerateRequest, policy mediaregistry.
 	}
 	if !overlayBackgroundSelectionIsBlank(req.OverlayBackground) {
 		return nil
+	}
+	// A caller-selected editorial plate is the shared background source for
+	// both the assembled video and its rendered overlay scenes. Inherit it here
+	// so image/phrase overlays cannot replace the visible video background with
+	// an unrelated default plate.
+	if background := req.Render.Background; background != nil &&
+		strings.EqualFold(strings.TrimSpace(background.Mode), videoBackgroundModeAsset) {
+		if plate, ok := mediaregistry.ResolveEditorialBackgroundReference(background.AssetID); ok {
+			req.OverlayBackground = &scriptpkg.OverlayBackgroundSpec{
+				Kind:    overlayBackgroundPlateKind,
+				AssetID: plate.ID,
+				Fit:     overlayBackgroundPlateFit,
+				Loop:    true,
+			}
+			return nil
+		}
 	}
 	plate, err := policy.SelectBackground(seed)
 	if err != nil {
