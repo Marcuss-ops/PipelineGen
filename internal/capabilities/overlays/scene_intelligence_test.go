@@ -115,6 +115,18 @@ func TestSIV04MovedSceneRecalculatesContinuity(t *testing.T) {
 	assert.Equal(t, "s2", got.LastSceneID, "continuity follows the new order")
 }
 
+func TestSIV02AlternativeAssetsKeepStableIdentity(t *testing.T) {
+	states := ResolveContinuity([]ContinuityInput{
+		{EntityID: "toyota", SceneID: "scene-02", Assets: []string{"asset-a", "asset-b"}, Style: "corporate", Accent: "red"},
+		{EntityID: "toyota", SceneID: "scene-05", Assets: []string{"asset-b", "asset-c"}, Style: "different-style", Accent: "different-accent"},
+	})
+	state := states["toyota"]
+	assert.Equal(t, "corporate", state.StyleFamily, "alternate assets must retain the pinned entity identity")
+	assert.Equal(t, "red", state.AccentToken)
+	assert.Equal(t, "asset-b", state.PreferredAsset, "an available alternative can rotate without changing entity identity")
+	assert.Equal(t, 2, state.SeenScenes)
+}
+
 func TestSIV05MissingAssetFallsBackValid(t *testing.T) {
 	// V05: previously preferred asset unavailable → valid fallback,
 	// never a broken reference.
@@ -193,19 +205,25 @@ func TestSIR01R02PlacementPoints(t *testing.T) {
 }
 
 func TestSIR03RecapNeverLeaksLaterChapters(t *testing.T) {
-	// R03 + crucial test: a recap after chapter 3 uses only narrated
-	// sentences — nothing from later chapters leaks in.
-	got := BuildRecapCandidates([]RecapSource{
+	// R03 + crucial test: a recap boundary is explicit and sources from
+	// later narration indices are rejected, including mixed-span sources.
+	sources := []RecapSource{
 		{ID: "ch1", Title: "Cause", SentenceIDs: []int{1, 2}, Score: 0.9},
 		{ID: "ch2", Title: "Costi", SentenceIDs: []int{3, 4}, Score: 0.8},
 		{ID: "ch3", Title: "Effetti", SentenceIDs: []int{5, 6}, Score: 0.7},
-	}, 3)
-	require.NotEmpty(t, got)
-	for _, c := range got {
-		for _, s := range c.SentenceIDs {
-			assert.LessOrEqual(t, s, 6, "no sentence from chapters after the recap point")
-		}
+		{ID: "ch4", Title: "Sviluppo successivo", SentenceIDs: []int{7, 8}, Score: 1.0},
+		{ID: "mixed", Title: "Copertura mista", SentenceIDs: []int{5, 9}, Score: 2.0},
 	}
+	got := BuildRecapCandidatesThrough(sources, 5, 6)
+	require.Len(t, got, 3)
+	for _, c := range got {
+		for _, sentenceID := range c.SentenceIDs {
+			assert.LessOrEqual(t, sentenceID, 6, "no sentence from chapters after the recap point")
+		}
+		assert.NotContains(t, c.SourceIDs, "ch4")
+		assert.NotContains(t, c.SourceIDs, "mixed", "mixed temporal provenance is rejected whole")
+	}
+	assert.Empty(t, BuildRecapCandidatesThrough(sources, 3, -1), "an invalid recap boundary cannot admit content")
 }
 
 func TestSIR04EquivalentBulletsDeduplicated(t *testing.T) {

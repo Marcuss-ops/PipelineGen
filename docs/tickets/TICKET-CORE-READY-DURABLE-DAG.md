@@ -5,8 +5,11 @@
 > referenced path against the current tree before acting.
 
 **Date:** 2026-09-13
-**Status:** PARTIALLY LANDED — step 1 + the resume prerequisite are in; steps 2–5 are blocked on a
-central completion-contract change (see §3)
+**Status:** CUTOVER LANDED 2026-10-11 — steps 1–5 are implemented and covered by hermetic tests
+(step 1 boundary + resume prerequisite earlier; steps 2–5 in this pass: staged completion strategy,
+docs child + handler registration, enqueue at CORE_READY with inline skip, post-core completion port,
+aggregator-owned terminal flip). REMAINING (live-only): one clean end-to-end run proving no duplicate
+Doc, Docs∥finalization overlap wall time, and the measured core_ready_ms→terminal distance.
 **Parent:** `docs/PIPELINE-WASTE-AUDIT-2026-09-12.md` §11,
 `docs/tickets/TICKET-PIPELINE-CRITICAL-PATH-DEPLOYMENT-2026-09-13.md` (item D1)
 
@@ -382,3 +385,28 @@ top-ranked *low-risk* win, but it is not the largest available one. Ranked by si
 levers are: the head (`scene_analysis`), then the Drive upload path in §8 (which costs both the tail
 *and* `audio_publish`), then the GPU gate / Chronon process-per-render (`overlay_render`: 6 227 ms of
 work behind 11 160 ms of wall). Sections §9 and §10 of the parent audit stay deployment-bound.
+
+## 12. Cutover landed (2026-10-11)
+
+Steps 1–5 are implemented; the blockers in §3/§9 are resolved as follows
+(all hermetic suites green on the landing tree):
+
+| step | change | where |
+|---|---|---|
+| 1 (strategy) | `CompleteWithArtifactsThenDefer` accepted under `WorkerSpine`; `TypeScriptGenerate` migrated | `capabilities/jobs/registry_types.go`, `registry_script.go` |
+| 2 (child) | `script.docs_publish` type + handler registered in production wiring | `kernel/script` (`TypeDocsPublish`), `scripts/jobs/docs_publish_handler.go`, `app/wiring/wire_script.go` |
+| 3 (enqueue) | child enqueued at `markCoreReady` (ActiveKey `docs-publish:<parent>:<run>`, idempotent re-enqueue); pipeline skips inline `documents()`/`complete()` when deferred | `scripts/runner_execution.go`, `runner_execution_pipeline.go`, `app/wiring/build_bundles_domain_scripts.go` (+ canonical `DocsPublishActiveKey`/`DocsPublishCorrelationID`) |
+| 4 (terminal) | `CompletePostCoreRun` (idempotent; refuses via `ErrPostCoreNotCompletable` without every artifact); aggregator flips the broker parent only after completion | `scripts/runner_docs_publish.go`, `scripts/jobs/parent_aggregator.go` (`aggregateDocsDeferred`), `app/wiring/lifecycle_worker.go` |
+| 5 (drain) | no process-local state on the completion path: the child re-reads the durable snapshot, publication stays idempotent per (run, language), broker retry resumes at `PUBLISHING_DOCUMENTS` | `scripts/runner_docs_publish.go`, `scripts/model_run.go` (`ResumeFrom`) |
+
+Tests (all hermetic, no server/GPU/Drive): `scripts/docs_deferred_test.go`
+(deferral flag, fail-closed enqueue, idempotent/refusing completion, key
+canon), `scripts/jobs/docs_deferred_aggregator_test.go` (wait / complete+flip /
+refused-never-flips / re-drive / exhausted-fail / retryable-wait / ok=false
+gate / deferral decision table). Full `scripts/...`, `jobs/...`,
+`app/wiring/...` suites green.
+
+Live-only remainder (needs a real Docs/Drive deployment, unreachable from a
+checkout — same class as the clip.render restart-mid-render criterion):
+`No duplicate Doc on retry` explicit test, `Docs ∥ finalization` measured
+overlap on one E2E payload, and the reported `core_ready_ms`→terminal distance.

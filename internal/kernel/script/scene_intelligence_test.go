@@ -1,6 +1,8 @@
 package script
 
 import (
+	"fmt"
+	"math"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -8,6 +10,16 @@ import (
 )
 
 // ── Manifest contract ───────────────────────────────────────────
+
+func validTestSIManifest() *SceneIntelligenceManifest {
+	return &SceneIntelligenceManifest{
+		SchemaVersion: SceneIntelligenceManifestVersion, AnalyzerVersion: SceneIntelligenceAnalyzerVersion,
+		RelationRegistryVersion: RelationRegistryVersion,
+		Scenes: []SISceneSignals{{
+			SceneID: "s1", Density: SIDensity{SceneID: "s1", Score: 0.2, Level: "low"},
+		}},
+	}
+}
 
 func TestSIRegistryAdmitsOnlyKnownRelations(t *testing.T) {
 	for _, k := range []string{RelationCauses, RelationContributesTo, RelationPrecedes, RelationContrastsWith, RelationOwns, RelationFunds, RelationPartnersWith, RelationCompetesWith} {
@@ -19,6 +31,21 @@ func TestSIRegistryAdmitsOnlyKnownRelations(t *testing.T) {
 func TestSIValidateRejectsBadManifests(t *testing.T) {
 	bad := &SceneIntelligenceManifest{SchemaVersion: "scene_intelligence.v99"}
 	assert.Error(t, bad.Validate())
+
+	mismatchedDensity := validTestSIManifest()
+	mismatchedDensity.Scenes[0].Density.SceneID = "another-scene"
+	assert.Error(t, mismatchedDensity.Validate(), "density cannot point at a different scene")
+
+	missingEvidence := validTestSIManifest()
+	missingEvidence.Scenes[0].Comparisons = []SIComparison{{
+		SceneID: "s1", Kind: "comparison", Subjects: []string{"Ford", "Toyota"},
+		Relation: RelationContrastsWith, CandidateVisual: "split_comparison",
+	}}
+	assert.Error(t, missingEvidence.Validate(), "semantic candidate needs grounded evidence")
+
+	nonFinite := validTestSIManifest()
+	nonFinite.Scenes[0].Density.Score = math.NaN()
+	assert.Error(t, nonFinite.Validate(), "NaN density is not a certified score")
 
 	dup := &SceneIntelligenceManifest{
 		SchemaVersion: SceneIntelligenceManifestVersion, AnalyzerVersion: SceneIntelligenceAnalyzerVersion,
@@ -42,6 +69,18 @@ func TestSIValidateRejectsBadManifests(t *testing.T) {
 		}},
 	}
 	assert.Error(t, qual.Validate(), "qualitative comparison must not carry values")
+}
+
+func TestSIValidatePreservesCompleteEntityGraphBeyondVisualBudget(t *testing.T) {
+	manifest := validTestSIManifest()
+	for i := 0; i < 100; i++ {
+		manifest.Scenes[0].Relations = append(manifest.Scenes[0].Relations, SIEntityRelation{
+			Subject: fmt.Sprintf("entity-%02d", i%50), Object: fmt.Sprintf("entity-%02d", (i+1)%50),
+			Relation: RelationPartnersWith, EvidenceSentenceIDs: []int{i},
+		})
+	}
+	require.NoError(t, manifest.Validate(), "the canonical graph is data; visual subgraph selection is downstream")
+	assert.Len(t, manifest.Scenes[0].Relations, 100)
 }
 
 func TestSIFingerprintDiffersOnContent(t *testing.T) {
@@ -169,10 +208,11 @@ func TestSINewFieldsRoundTrip(t *testing.T) {
 			Comparisons: []SIComparison{{
 				SceneID: "s", Kind: "comparison", Subjects: []string{"ford", "toyota"},
 				Relation: RelationContrastsWith, CandidateVisual: "split_comparison", Negated: neg,
+				EvidenceSentenceIDs: []int{0},
 			}},
 			Causal: []SICausalRelation{{
 				Kind: "causal_relation", Cause: "c", Effect: "e", Relation: RelationCauses,
-				ExtractionConfidence: 0.6, Attribution: &attr, Hypothetical: true,
+				EvidenceSentenceIDs: []int{1}, ExtractionConfidence: 0.6, Attribution: &attr, Hypothetical: true,
 			}},
 			TemporalEvents: []SITemporalEvent{{
 				EventID: "event-0000", TextSpan: "2020–2023", TemporalExpression: "2020–2023",
@@ -242,6 +282,7 @@ func TestSICrossLanguageIdentityWithLocalTiming(t *testing.T) {
 	require.NoError(t, r.Localize(id, "de", "Industriebeschäftigung"))
 	enWords := []WordMark{{Text: "Industrial", StartMS: 15200, EndMS: 16000}, {Text: "employment", StartMS: 16000, EndMS: 18600}}
 	itWords := []WordMark{{Text: "Occupazione", StartMS: 15200, EndMS: 16800}, {Text: "industriale", StartMS: 16800, EndMS: 19200}}
+	deWords := []WordMark{{Text: "Industriebeschäftigung", StartMS: 15200, EndMS: 19600}}
 	texts := map[CanonicalID]string{id: "Industrial employment"}
 	en, un := AnchorElements([]CanonicalID{id}, texts, "en", enWords, 300, 15000, 20000)
 	require.Empty(t, un)
@@ -252,8 +293,18 @@ func TestSICrossLanguageIdentityWithLocalTiming(t *testing.T) {
 	require.Len(t, it, 1)
 	assert.Equal(t, en[0].CanonicalID, it[0].CanonicalID, "identity shared across languages")
 	assert.NotEqual(t, en[0].EndMS, it[0].EndMS, "timing local per language")
+	deTexts := map[CanonicalID]string{id: "Industriebeschäftigung"}
+	de, un := AnchorElements([]CanonicalID{id}, deTexts, "de", deWords, 300, 15000, 20000)
+	require.Empty(t, un)
+	require.Len(t, de, 1)
+	assert.Equal(t, en[0].CanonicalID, de[0].CanonicalID, "canonical identity also survives the German projection")
+	assert.NotEqual(t, it[0].EndMS, de[0].EndMS, "German timing is independently derived")
 	require.NoError(t, r.AnchorTiming(id, "it", it[0].StartMS, it[0].EndMS))
+	require.NoError(t, r.AnchorTiming(id, "de", de[0].StartMS, de[0].EndMS))
 	got, ok := r.GetLocalized(id, "it")
+	require.True(t, ok)
+	assert.True(t, got.Anchored)
+	got, ok = r.GetLocalized(id, "de")
 	require.True(t, ok)
 	assert.True(t, got.Anchored)
 }

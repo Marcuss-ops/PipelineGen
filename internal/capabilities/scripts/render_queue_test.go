@@ -273,12 +273,15 @@ func captureMapRenderPayload(t *testing.T, plan capoverlay.OverlayPlan) map[stri
 	return payload
 }
 
-// TestRenderDynamicMapVideoMapPresentationIsDeterministicPerRun proves the map
-// look is a pure function of the run identity: two renders of the same plan
-// hand the renderer byte-identical choices, and each choice equals the
-// deterministic selection for that seed. A crypto/rand draw here would have
-// made an approved render unreproducible.
-func TestRenderDynamicMapVideoMapPresentationIsDeterministicPerRun(t *testing.T) {
+// TestRenderDynamicMapVideoMapPresentationIsDeterministicPerItem proves the map
+// look is a pure function of the run identity plus the map item: two renders
+// of the same plan hand the renderer byte-identical choices, and each choice
+// equals the deterministic selection for that (seed, item) pair. Sampling per
+// item (instead of once per run) is deliberate: one video holding several
+// maps must show different camera moves instead of the same treatment on
+// every map clip. A crypto/rand draw here would have made an approved render
+// unreproducible.
+func TestRenderDynamicMapVideoMapPresentationIsDeterministicPerItem(t *testing.T) {
 	plan := newTestMapPlan("map-determinism-test")
 	first := captureMapRenderPayload(t, plan)
 	second := captureMapRenderPayload(t, plan)
@@ -292,9 +295,9 @@ func TestRenderDynamicMapVideoMapPresentationIsDeterministicPerRun(t *testing.T)
 
 	seed := mapRunSeed(plan)
 	want := map[string]string{
-		"basemap":          deterministicMapStyle(seed, "map_basemap", mapRunStyleSlot, mapBasemapStyles()),
-		"camera_animation": deterministicMapStyle(seed, "map_camera", mapRunStyleSlot, mapCameraAnimations),
-		"label_animation":  deterministicMapStyle(seed, "map_label", mapRunStyleSlot, mapLabelAnimations),
+		"basemap":          deterministicMapStyle(seed, "map_basemap", "map-1", mapBasemapStyles()),
+		"camera_animation": deterministicMapStyle(seed, "map_camera", "map-1", mapCameraAnimations),
+		"label_animation":  deterministicMapStyle(seed, "map_label", "map-1", mapLabelAnimations),
 	}
 	t.Logf("resolved map presentation for seed %q: camera=%s label=%s basemap=%s",
 		seed, want["camera_animation"], want["label_animation"], want["basemap"])
@@ -1013,7 +1016,10 @@ func TestRuntimeFontAssetsStagesSelectedInterFont(t *testing.T) {
 			break
 		}
 	}
-	assets := runtimeFontAssets(plan)
+	assets, err := runtimeFontAssets(plan)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if len(assets) != 1 {
 		t.Fatalf("runtime font assets = %d, want selected Inter asset", len(assets))
 	}
@@ -1023,7 +1029,7 @@ func TestRuntimeFontAssetsStagesSelectedInterFont(t *testing.T) {
 	for i := range plan.Items {
 		delete(plan.Items[i].Params, "font_family")
 	}
-	if got := runtimeFontAssets(plan); len(got) != 0 {
+	if got, err := runtimeFontAssets(plan); err != nil || len(got) != 0 {
 		t.Fatalf("default font should not add a runtime override asset: %+v", got)
 	}
 }
@@ -1615,5 +1621,47 @@ func TestQueueRenderEnqueuerUnboundPublicationJoinsAndClears(t *testing.T) {
 	}
 	if err := enqueuer.Wait(context.Background()); err != nil {
 		t.Fatalf("a joined failure must be taken, not re-reported: %v", err)
+	}
+}
+
+func TestSeparateOverlayItemPlanRebasesChainSegments(t *testing.T) {
+	img := func(id string, startUS int64) capoverlay.OverlayItem {
+		return capoverlay.OverlayItem{
+			ID: id, SceneID: "delitto-e-luogo", Kind: "entity_image", TemplateID: "IMAGE_OVERLAY",
+			PresetID: "image_default", MotionID: "image_scale_reveal",
+			StartUS: startUS, DurationUS: 1_500_000,
+			StartMs: startUS / 1000, EndMs: (startUS + 1_500_000 + 999) / 1000,
+			AssetRefs: []capoverlay.OverlayAssetRef{{AssetID: "asset-" + id, SHA256: "abc"}},
+		}
+	}
+	fused := capoverlay.CoalesceChainedOverlays([]capoverlay.OverlayItem{
+		img("img-a", 60_000_000), img("img-b", 62_000_000),
+	}, map[string]int{"chain_gap_ms": 2500})
+	if len(fused) != 1 || !capoverlay.IsChainItemKind(fused[0].Kind) {
+		t.Fatalf("fixtures must fuse into one chain: %+v", fused)
+	}
+	parent := capoverlay.OverlayPlan{
+		SchemaVersion: capoverlay.SchemaVersionPlan, PlanID: "chain:overlay", VideoID: "chain",
+		ScriptName: "Chain", Language: "it", Width: 1920, Height: 1080, FPSNum: 24, FPSDen: 1,
+		Items: fused,
+	}
+	child, meta, err := separateOverlayItemPlan(parent, parent.Items[0], 0)
+	if err != nil {
+		t.Fatalf("chain child split must validate: %v", err)
+	}
+	if child.Items[0].StartUS != 0 || child.Items[0].DurationUS != 3_500_000 || child.DurationMS != 3500 {
+		t.Fatalf("chain child must keep the full rebased span: %+v", child.Items[0])
+	}
+	segs, ok := capoverlay.DecodeChainSegments(child.Items[0].Params)
+	if !ok || len(segs) != 2 || segs[0].StartUS != 0 || segs[1].StartUS != 2_000_000 {
+		t.Fatalf("chain segments must be child-local: %+v", child.Items[0].Params["chain_segments"])
+	}
+	if meta.SourceStartUS != 60_000_000 || meta.TargetDurationUS != 3_500_000 {
+		t.Fatalf("chain source metadata = %+v", meta)
+	}
+	// The parent plan must be untouched: its segments stay absolute.
+	parentSegs, ok := capoverlay.DecodeChainSegments(parent.Items[0].Params)
+	if !ok || parentSegs[0].StartUS != 60_000_000 {
+		t.Fatalf("parent plan mutated by the child split: %+v", parent.Items[0].Params["chain_segments"])
 	}
 }

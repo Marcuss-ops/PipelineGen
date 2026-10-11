@@ -13,6 +13,7 @@ package scriptgeneration
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -41,6 +42,27 @@ import (
 // a child that was never submitted.
 type DocsPublishEnqueuer interface {
 	EnqueueDocsPublish(ctx context.Context, req DocsPublishEnqueue) error
+}
+
+// DocsPublishActiveKey is the deterministic idempotency key of the deferred
+// Docs child for a (parent job, run) pair. ONE canonical builder (godlike/06
+// SSOT): the wiring enqueuer, the parent handler's waiting envelope and the
+// parent aggregator's child lookup all derive the same key, so a retried
+// parent re-enqueue addresses the same child row instead of fanning out a
+// second publisher for the same documents.
+func DocsPublishActiveKey(parentJobID, runID string) string {
+	return "docs-publish:" + parentJobID + ":" + runID
+}
+
+// DocsPublishCorrelationID is the deterministic correlation of the deferred
+// Docs child. The parent's own correlation is passed through when present so
+// the child's events join the parent's trace; otherwise it derives from the
+// (parent job, run) pair exactly like the active key.
+func DocsPublishCorrelationID(parentJobID, parentCorrelation, runID string) string {
+	if strings.TrimSpace(parentCorrelation) != "" {
+		return strings.TrimSpace(parentCorrelation)
+	}
+	return strings.TrimSpace(parentJobID) + ":docs:" + strings.TrimSpace(runID)
 }
 
 // DocsPublishEnqueue is the enqueue request for the deferred Docs child.

@@ -88,6 +88,7 @@ var defaultRules = []rule{
 	{"percheck_media_assets_writer_canonical", simple(boundaries.ScanMediaAssetsWriterCanonical)},
 	{"percheck_media_txn_boundary", simple(boundaries.ScanMediaTxBoundary)},
 	{"percheck_sqlite_media_reader_ban", simple(boundaries.ScanSQLiteMediaReaderBan)},
+	{"percheck_overlay_catalog_parity", simple(boundaries.ScanOverlayCatalogParity)},
 	{"percheck_pg_dual_write_contract", simple(boundaries.ScanPGDualWriteContract)},
 	{"percheck_media_write_bridge_ban", simple(boundaries.ScanMediaWriteBridgeBan)},
 	{"percheck_asset_state_no_shadow_enum", simple(governance.ScanAssetStateNoShadowEnum)},

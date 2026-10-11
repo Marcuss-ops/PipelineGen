@@ -56,6 +56,7 @@ func (p *VidRushMaterializationProcessor) materializeOne(ctx context.Context, pl
 			isImage := candidate.Provider == scriptpkg.VidRushProviderInternetImages || candidate.Provider == scriptpkg.VidRushProviderImageGeneration
 			catalogImage := p.catalog != nil && strings.EqualFold(strings.TrimSpace(candidate.Provider), scriptpkg.VidRushProviderInternetImages) &&
 				(strings.TrimSpace(candidate.Entity) != "" || strings.HasPrefix(strings.TrimSpace(candidate.AssetID), "entity-image-"))
+			refreshMaterialized := plan != nil && (plan.ForceRefresh || plan.MediaPlan.ForceRefreshAssets)
 			wasReady := readyVidRushCandidate(candidate)
 			if hydrated, hydrationErr := p.hydrateEntityCatalogMaterialization(ctx, candidate); hydrationErr != nil {
 				warnings = append(warnings, fmt.Sprintf("vidrush_materialization: entity catalog lookup: %v", hydrationErr))
@@ -67,6 +68,22 @@ func (p *VidRushMaterializationProcessor) materializeOne(ctx context.Context, pl
 					}
 				}
 				candidate = hydrated
+			}
+			// A force refresh distrusts every recorded lifecycle: the bytes
+			// behind a stored URL or catalog row can change upstream, so a
+			// recorded hash is only a claim until bytes are re-downloaded
+			// and re-hashed in-run. Stripping here (after hydration, which
+			// re-stamps catalog statuses) is the single point that keeps
+			// un-acquired candidates out of selection and overlay bindings
+			// on refresh — including the groups-cap and acquire-budget
+			// preservation paths below, which keep candidates for
+			// diagnostics only. Identifiers and URLs are preserved so the
+			// Acquire below can still re-download from the source.
+			if refreshMaterialized {
+				candidate.AcquisitionStatus = ""
+				candidate.VerificationStatus = ""
+				candidate.PersistenceStatus = ""
+				candidate.IndexStatus = ""
 			}
 			if isImage && targetImages > 0 && len(readyImageGroups) >= targetImages {
 				// Keep the remaining remote hits for diagnostics/candidate-set
@@ -83,18 +100,23 @@ func (p *VidRushMaterializationProcessor) materializeOne(ctx context.Context, pl
 				materialized = append(materialized, candidate)
 				continue
 			}
+			// A force refresh must re-acquire even a durable catalog hit: the
+			// strip above already cleared recorded lifecycles, so this gate is
+			// defense in depth — a ready durable hit never terminates a refresh
+			// run. A fresh Acquire→Verify recomputes the digest and the
+			// Finalize below commits the new version through the canonical
+			// writer, so the catalog self-heals instead of pinning stale bytes.
 			// A durable catalog hit is terminal even when this run has a Drive
 			// output root. Reacquiring it only to copy it into a per-run images
 			// folder downloaded the same entity image once per scene. Its
 			// canonical DriveLink (and cached LocalPath when still present) is
 			// already a reusable artifact; only new images go through the
 			// run-specific finalization route below.
-			if readyVidRushCandidate(candidate) && (!candidate.IsLegacyCandidate() || legacyPersisted) {
+			if !refreshMaterialized && readyVidRushCandidate(candidate) && (!candidate.IsLegacyCandidate() || legacyPersisted) {
 				materialized = append(materialized, candidate)
 				markReadyImage(candidate)
 				continue
 			}
-			refreshMaterialized := plan != nil && (plan.ForceRefresh || plan.MediaPlan.ForceRefreshAssets)
 			if !refreshMaterialized {
 				if key := vidRushCandidateIdentity(candidate); key != "" {
 					if cached, ok := vidrushMaterializedCache.Get(key); ok {
@@ -134,6 +156,8 @@ func (p *VidRushMaterializationProcessor) materializeOne(ctx context.Context, pl
 			if attempts[providerName] >= acquireBudget {
 				// Preserve the discovered candidate for diagnostics and a future
 				// retry, but do not turn every remote search hit into a download.
+				// Recorded lifecycles were already stripped above on refresh,
+				// so a preserved candidate can never bind by a stale hash.
 				materialized = append(materialized, candidate)
 				continue
 			}

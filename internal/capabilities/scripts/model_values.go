@@ -10,6 +10,8 @@
 package scriptgeneration
 
 import (
+	"strings"
+
 	capabilityaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
 	kernelasset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
@@ -85,14 +87,18 @@ type ClipReference struct {
 	// generated voiceover mix at full original volume, while its video is
 	// never processed with a localized clip render and never shown in the
 	// final video. The scene's visual comes from its stock binding.
-	AsStock      bool   `json:"as_stock,omitempty"`
-	AudioAssetID string `json:"audio_asset_id,omitempty"`
-	AudioPath    string `json:"audio_path,omitempty"`
-	Path         string `json:"path,omitempty"`
-	SHA256       string `json:"sha256,omitempty"`
-	FrameCount   int64  `json:"frame_count,omitempty"`
-	SourceInMS   int64  `json:"source_in_ms,omitempty"`
-	SourceOutMS  int64  `json:"source_out_ms,omitempty"`
+	AsStock bool `json:"as_stock,omitempty"`
+	// Tags carries the caller's clip labels. The "stock" tag is a
+	// presentation directive: retain the source audio in the final mix,
+	// but do not render or show this clip as picture.
+	Tags         []string `json:"tags,omitempty"`
+	AudioAssetID string   `json:"audio_asset_id,omitempty"`
+	AudioPath    string   `json:"audio_path,omitempty"`
+	Path         string   `json:"path,omitempty"`
+	SHA256       string   `json:"sha256,omitempty"`
+	FrameCount   int64    `json:"frame_count,omitempty"`
+	SourceInMS   int64    `json:"source_in_ms,omitempty"`
+	SourceOutMS  int64    `json:"source_out_ms,omitempty"`
 	// Subject identity of the clip, threaded from the canonical asset
 	// metadata (ClipSemanticMetadata). The scene↔clip identity gate uses
 	// the union of Speakers + MentionedPeople + Subject to certify that a
@@ -101,6 +107,24 @@ type ClipReference struct {
 	Speakers        []string `json:"speakers,omitempty"`
 	MentionedPeople []string `json:"mentioned_people,omitempty"`
 	Subject         string   `json:"subject,omitempty"`
+}
+
+// usedAsStock accepts both the legacy explicit flag and the payload tag.
+// Matching is case- and whitespace-insensitive because tags are editorial
+// labels, not identifiers.
+func (c *ClipReference) usedAsStock() bool {
+	if c == nil {
+		return false
+	}
+	if c.AsStock {
+		return true
+	}
+	for _, tag := range c.Tags {
+		if strings.EqualFold(strings.TrimSpace(tag), "stock") {
+			return true
+		}
+	}
+	return false
 }
 
 // AssetDuration resolves the canonical total duration of this clip with

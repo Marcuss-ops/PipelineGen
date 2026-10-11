@@ -403,6 +403,15 @@ func (uc *GenerateOneUseCase) Execute(
 		if overlayErr != nil {
 			return nil, uc.logPhaseError(item, "overlay_render", scriptpkg.ErrGenerationFailed, overlayErr, tracker)
 		}
+		if overlayPlan != nil {
+			uc.log.Info("generate-one: overlay plan compiled",
+				zap.String("plan_id", planID),
+				zap.Int("items", len(overlayPlan.Items)),
+				zap.Int("timed_scenes", overlayPlan.TimedScenes),
+				zap.Int("recap_placements", overlayPlan.RecapPlacements),
+				zap.Int("recap_cards", overlayPlan.RecapCards),
+			)
+		}
 		if overlayPlan != nil && len(overlayPlan.Items) > 0 {
 			if uc.overlayRenderEnqueuer == nil {
 				return nil, uc.logPhaseError(item, "overlay_render", scriptpkg.ErrGenerationFailed,

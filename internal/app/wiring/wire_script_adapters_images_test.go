@@ -60,6 +60,37 @@ func TestInternetImageSearchAdapter_ReusesDurableDatabaseImageBeforeProvider(t *
 	}
 }
 
+// TestInternetImageSearchAdapter_ForceRefreshSkipsDurableDatabaseReuse pins the
+// stale-hash self-heal at the search seam: with ForceRefresh the adapter must
+// not serve recorded hashes from the durable image index (their bytes may have
+// changed upstream), so the run re-downloads and re-hashes live provider rows.
+// Regression for the Garlasco L3 poisoning where a re-encoded source kept
+// surfacing its dead content address into overlay plans.
+func TestInternetImageSearchAdapter_ForceRefreshSkipsDurableDatabaseReuse(t *testing.T) {
+	fixture := &imageResolverFixture{
+		cached: []images.ImageSearchResult{{
+			AssetID: "db-stale", Name: "Chiara Poggi", DriveLink: "https://drive.google.com/file/d/db-stale/view", LegacyFileMD5: "stale-recorded-hash",
+			PreviewURL: "https://images.example/stale.jpg", License: "unknown",
+		}},
+		providerRows: []images.ImageSearchResult{{AssetID: "web-fresh", Name: "Chiara Poggi", PreviewURL: "https://images.example/fresh.jpg"}},
+	}
+	adapter := newInternetImageSearchAdapter(fixture, zap.NewNop())
+
+	got, err := adapter.SearchImages(context.Background(), scriptadapters.InternetImageSearchRequest{Query: "Chiara Poggi", Limit: 2, ForceRefresh: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got[0].AssetID != "web-fresh" {
+		t.Fatalf("refresh candidates = %+v, want live provider rows, never the durable index", got)
+	}
+	if fixture.lookupCalls != 0 || fixture.searchCalls != 1 {
+		t.Fatalf("lookup_calls=%d search_calls=%d; force refresh must skip the DB index and hit the provider", fixture.lookupCalls, fixture.searchCalls)
+	}
+	if got[0].AcquisitionStatus == scriptpkg.VidRushStatusAcquired || got[0].PersistenceStatus == scriptpkg.VidRushStatusPersisted {
+		t.Fatalf("refresh candidate lifecycle = %+v; live hits must not carry durable statuses", got[0])
+	}
+}
+
 func TestInternetImageSearchAdapter_FallsBackWhenDatabaseHasNoDurableImage(t *testing.T) {
 	fixture := &imageResolverFixture{
 		cached:       []images.ImageSearchResult{{AssetID: "incomplete", Name: "John Cena", PreviewURL: "https://images.example/cena.jpg"}},

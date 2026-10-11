@@ -396,6 +396,13 @@ hard_gates:
   # the explicitly grandfathered legacy read plane. The grandfather set is a
   # debt register that ratchets to zero as the P2-9 Phase 2 consumers migrate.
   - percheck_sqlite_media_reader_ban
+  # Overlay/motion catalog parity (added 2026-10-11): the ChrononTemplate
+  # AUTHOR catalog, its EMITTED catalog and the RenderingGen EMBEDDED copy
+  # must agree on overlay_presets and motions. Before this gate the only
+  # protection was a shell sync helper nobody ran in CI, so an author editing
+  # one JSON produced a producer/worker mismatch discovered at render time.
+  # A no-op when the sibling checkouts are absent (bare PipelineGen CI).
+  - percheck_overlay_catalog_parity
   # Media dual-write side (added 2026-09-16): migration 004 adds a TIMESTAMPTZ
   # mirror beside every legacy TEXT timestamp on the media hot-path tables
   # (media_assets, asset_locations, outbox_events) and delegates the dual-write

@@ -244,6 +244,8 @@ func BuildGenerateRequest(env *scriptpkg.GenerationEnvelopeV2, idempotencyKey st
 		AnimationCounts:       cloneAnimationCounts(item.AnimationCounts),
 		EntityStyleID:         strings.TrimSpace(item.EntityStyleID),
 		DisableNumberOverlays: item.DisableNumberOverlays,
+		DisableRecapOverlays:  item.DisableRecapOverlays,
+		DisableChartOverlays:  item.DisableChartOverlays,
 		IdempotencyKey:        idempotencyKey,
 		ForceRefresh:          env.ForceRefresh,
 		FinalJob:              env.FinalJob,
@@ -355,12 +357,15 @@ func cloneInt(src *int) *int {
 }
 
 func cloneAnimationCounts(src map[string]int) map[string]int {
-	if src == nil {
-		return nil
-	}
-	dst := make(map[string]int, len(src))
+	dst := make(map[string]int, len(src)+1)
 	for key, value := range src {
 		dst[key] = value
+	}
+	// Production default: fuse nearby/overlapping overlays (image@10s +
+	// phrase@12s) into one chain item instead of two popups. Explicit
+	// chain_disabled / chain_gap_ms / chain_enabled always win.
+	if dst["chain_disabled"] <= 0 && dst["chain_gap_ms"] <= 0 && dst["chain_enabled"] <= 0 {
+		dst["chain_gap_ms"] = 2500
 	}
 	return dst
 }

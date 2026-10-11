@@ -60,6 +60,52 @@ type DocsPublishRequest struct {
 	Attempt int
 }
 
+// ErrPostCoreNotCompletable marks a post-core completion refused because the
+// run does not hold every required artifact: completing it would mint a
+// COMPLETED whose COMPLETED lie the ticket's acceptance gate forbids
+// (COMPLETED still means every required artifact is persisted). The caller
+// waits for the deferred legs instead of completing.
+var ErrPostCoreNotCompletable = fmt.Errorf("scriptgeneration: post-core run is not completable")
+
+// CompletePostCoreRun completes a docs-deferred run after its deferred legs
+// are durable (TICKET-CORE-READY-DURABLE-DAG step 4: the terminal flip owned
+// by the aggregator, executed here so child and aggregator share ONE
+// implementation).
+//
+// Idempotent: a run that is already COMPLETED returns nil without writing.
+// A run whose result does not satisfy IsRunCompletable (core + every
+// requested document) returns ErrPostCoreNotCompletable and writes nothing —
+// the caller must wait for the deferred legs, never complete around them.
+// Otherwise it runs the standard completion (overlay-pool drain +
+// checkpoint + completeRun), exactly as the inline path's complete() does,
+// so the deferred run's terminal state is byte-identical in meaning to an
+// inline one.
+func (r *Runner) CompletePostCoreRun(ctx context.Context, runID string) error {
+	if strings.TrimSpace(runID) == "" {
+		return fmt.Errorf("scriptgeneration: post-core completion requires a run id: %w", ErrRunNotFound)
+	}
+	run, err := r.repo.Get(ctx, runID)
+	if err != nil {
+		return fmt.Errorf("scriptgeneration: load run %s for post-core completion: %w", runID, err)
+	}
+	if run == nil {
+		return fmt.Errorf("scriptgeneration: load run %s for post-core completion: %w", runID, ErrRunNotFound)
+	}
+	if run.Status == RunStatusCompleted {
+		return nil
+	}
+	if run.Result == nil {
+		return fmt.Errorf("scriptgeneration: run %s has no checkpointed result: %w", runID, ErrPostCoreNotCompletable)
+	}
+	docsEnabled, docsLangs, _ := run.Request.ResolveDocsConfig()
+	if docsEnabled && len(docsLangs) > 0 && !IsRunCompletable(run.Result, docsLangs) {
+		return fmt.Errorf("scriptgeneration: run %s is missing required artifacts: %w", runID, ErrPostCoreNotCompletable)
+	}
+	e := &executionRun{r: r, ctx: ctx, runID: runID, req: run.Request, result: run.Result}
+	e.complete()
+	return nil
+}
+
 // PublishedDocument is one document this leg made durable, in the shape the
 // parent aggregation reads.
 type PublishedDocument struct {

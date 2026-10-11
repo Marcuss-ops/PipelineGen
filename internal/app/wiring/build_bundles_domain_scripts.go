@@ -112,13 +112,9 @@ func (e *docsPublishChildEnqueuer) EnqueueDocsPublish(ctx context.Context, req s
 	if err := json.Unmarshal(payload, &linkedPayload); err != nil {
 		return fmt.Errorf("docs publish child enqueue: decode linked payload: %w", err)
 	}
-	correlationID := strings.TrimSpace(req.CorrelationID)
-	if correlationID == "" {
-		correlationID = parentID + ":docs:" + runID
-	}
 	child, err := e.jobs.Enqueue(ctx, &job.EnqueueRequest{
-		Type: scriptpkg.TypeDocsPublish, Payload: linkedPayload, CorrelationID: correlationID,
-		ActiveKey:  "docs-publish:" + parentID + ":" + runID,
+		Type: scriptpkg.TypeDocsPublish, Payload: linkedPayload, CorrelationID: scriptgen.DocsPublishCorrelationID(parentID, req.CorrelationID, runID),
+		ActiveKey:  scriptgen.DocsPublishActiveKey(parentID, runID),
 		MaxRetries: appjobs.Compose().DefaultMaxRetries(scriptpkg.TypeDocsPublish),
 	})
 	if err != nil {

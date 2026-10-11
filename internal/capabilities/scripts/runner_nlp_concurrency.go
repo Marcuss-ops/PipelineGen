@@ -3,6 +3,8 @@
 // max_lines_per_file_strict gate.
 package scriptgeneration
 
+import "github.com/Marcuss-ops/PipelineGen/internal/platform/observability"
+
 // SetNLPConcurrency sets the NLP/entity-extraction fan-out width used by the
 // SceneReadyCoordinator and the translated-NLP pass. Values <= 0 fall back to
 // the certified default (DefaultNLPConcurrency).
@@ -20,4 +22,30 @@ func (r *Runner) SetNLPConcurrency(concurrency int) {
 		concurrency = DefaultNLPConcurrency
 	}
 	r.nlpConcurrency = concurrency
+}
+
+// ── Phrase-impact (extractive summary) stage metrics ────────────────────
+//
+// Consolidated from phrase_impact_metrics.go (2026-10-11) to keep the
+// internal/capabilities/scripts production-file count inside the registered
+// package_hotspots.json baseline. Both files report the research/NLP worker
+// surface, so they share one home.
+func observePhraseImpactTimings(timings PhraseImpactTimings) {
+	stages := [...]struct {
+		name string
+		ms   float64
+	}{
+		{"split", timings.SplitMS},
+		{"embedding", timings.EmbeddingMS},
+		{"similarity", timings.SimilarityMS},
+		{"ranking", timings.RankingMS},
+		{"summary", timings.SummaryMS},
+		{"bullet", timings.BulletMS},
+		{"total", timings.TotalMS},
+	}
+	for _, stage := range stages {
+		if stage.ms > 0 {
+			observability.ScriptPhraseImpactStageSeconds.WithLabelValues(stage.name).Observe(stage.ms / 1000)
+		}
+	}
 }

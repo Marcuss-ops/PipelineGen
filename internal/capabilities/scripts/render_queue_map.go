@@ -60,13 +60,18 @@ func renderDynamicMapVideo(ctx context.Context, plan capoverlay.OverlayPlan) (st
 	// make a re-render of an already approved job silently different from the
 	// artifact that was approved.
 	seed := mapRunSeed(plan)
-	// Select the map treatment once per parent run. Child map jobs can have
-	// different IDs and fingerprints, so sampling by the child would produce
-	// inconsistent camera/label/basemap motion within one video.
-	const mapRunStyleSlot = "run"
-	cameraAnimation := deterministicMapStyle(seed, "map_camera", mapRunStyleSlot, mapCameraAnimations)
-	labelAnimation := deterministicMapStyle(seed, "map_label", mapRunStyleSlot, mapLabelAnimations)
-	basemapStyle := deterministicMapStyle(seed, "map_basemap", mapRunStyleSlot, mapBasemapStyles())
+	// Select the map treatment once per map ITEM, not once per parent run.
+	// A video holding several maps must show different camera moves, label
+	// accents and basemaps instead of the same treatment on every map clip.
+	// The seed is still the run identity, so replaying a run reproduces the
+	// exact same per-item presentation; only the slot varies per item.
+	mapStyleSlot := strings.TrimSpace(plan.Items[0].ID)
+	if mapStyleSlot == "" {
+		mapStyleSlot = mapRunStyleSlot
+	}
+	cameraAnimation := deterministicMapStyle(seed, "map_camera", mapStyleSlot, mapCameraAnimations)
+	labelAnimation := deterministicMapStyle(seed, "map_label", mapStyleSlot, mapLabelAnimations)
+	basemapStyle := deterministicMapStyle(seed, "map_basemap", mapStyleSlot, mapBasemapStyles())
 	if cameraAnimation == "" || labelAnimation == "" || basemapStyle == "" {
 		_ = os.RemoveAll(tmpDir)
 		return "", fmt.Errorf("dynamic map presentation catalog is empty")
@@ -258,9 +263,12 @@ func mapBasemapStyles() []string {
 // and label_animation against MAP_LABEL_ANIMATIONS). They are only candidate
 // lists: the choice among them belongs to the deterministic sampler below.
 var (
-	// Keep the map camera in the two restrained treatments. Signature Dive
-	// starts at a much wider zoom and reads as a sudden drop on city maps.
-	mapCameraAnimations = []string{"slow_approach", "wide_context"}
+	// Map camera treatments. Signature Dive starts at a much wider zoom and
+	// reads as a sudden drop on city maps, so it stays out. Tilt Reveal and
+	// Orbit Arrival add pitch/yaw variety through the certified _ShotBuilder
+	// presets (the Python renderer already accepts them); combined with
+	// per-item sampling below, one video holds visibly different map moves.
+	mapCameraAnimations = []string{"slow_approach", "wide_context", "tilt_reveal", "orbit_arrival"}
 	mapLabelAnimations  = []string{"gentle_fade", "soft_glow", "clean_fade", "word_soft_fade", "slow_fade", "quiet_bloom", "quick_fade", "silky_fade", "subtle_halo", "cinematic_fade"}
 )
 

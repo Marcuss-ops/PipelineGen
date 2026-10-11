@@ -249,7 +249,11 @@ func (e *QueueRenderEnqueuer) enqueueChrononPlan(ctx context.Context, plan capov
 	// workspace-relative path must be staged alongside the preset fonts before
 	// the worker mounts the plan. The runtime family vocabulary is closed at
 	// OverlayStyleSpec.Validate, and this mapping is the matching asset owner.
-	assets = append(assets, runtimeFontAssets(semanticPlan)...)
+	fontAssets, err := runtimeFontAssets(semanticPlan)
+	if err != nil {
+		return RenderReference{}, fmt.Errorf("stage selected runtime fonts: %w", err)
+	}
+	assets = append(assets, fontAssets...)
 	jobID := plan.PlanID
 	if e.freshRender {
 		jobID = fmt.Sprintf("%s:render:%d:%d", plan.PlanID, time.Now().UTC().UnixNano(), e.freshSeq.Add(1))

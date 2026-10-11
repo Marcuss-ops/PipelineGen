@@ -34,6 +34,11 @@ type InternetImageSearchRequest struct {
 	Language  string
 	Limit     int
 	Provider  string
+	// ForceRefresh bypasses durable retrieved-image reuse: the bytes behind
+	// a stored URL can change upstream (source re-encode), so a recorded
+	// hash is only a claim until bytes are re-downloaded and re-hashed
+	// in-run. Callers set it from the plan's refresh flags.
+	ForceRefresh bool
 }
 
 type InternetImageSearcher interface {
