@@ -81,8 +81,19 @@ var (
 	// catalog contract verifies all 32; this prevents automatic scene images
 	// from repeatedly falling back to a handful of legacy presets.
 	singleImageMotionCandidates = renderSafeImageMotions
-	imageAnimationCandidates    = singleImageMotionCandidates
+	imageAnimationCandidates    = automaticSingleImageMotionCandidates
 	imageMotionCandidates       = renderSafeImageMotions
+	// Automatic video images stay on the simple 2D entrance set. Depth/camera
+	// image motions are still certified and may be requested explicitly, but on
+	// the installed Vulkan debug worker they make later image-chain segments
+	// take seconds per frame instead of milliseconds.
+	automaticSingleImageMotionCandidates = []string{
+		"image_fade_reveal",
+		"image_focus_reveal",
+		"image_scale_reveal",
+		"image_slide_left_reveal",
+		"image_slide_right_reveal",
+	}
 	// centeredImageMotionCandidates is the certified georeferenced-map pool:
 	// every recipe changes only opacity/scale/blur around the plate center, so
 	// projected pins and labels remain attached to the map. Keep this list

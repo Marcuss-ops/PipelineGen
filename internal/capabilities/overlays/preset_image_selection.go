@@ -77,8 +77,9 @@ func CertifiedImageMotions() []string {
 	return append([]string(nil), imageMotionCandidates...)
 }
 
-// CertifiedSingleImageMotions returns the curated animation pool used by
-// automatic single-image overlays and channel-profile overrides.
+// CertifiedSingleImageMotions returns the complete certified layer-only
+// catalog. Automatic runtime planning uses a smaller 2D pool; explicit plans
+// and channel-profile overrides may select any certified motion.
 func CertifiedSingleImageMotions() []string {
 	return append([]string(nil), singleImageMotionCandidates...)
 }

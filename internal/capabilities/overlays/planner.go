@@ -164,7 +164,7 @@ func BuildPlan(input PlanInput, config PlannerConfig) (OverlayPlan, error) {
 	imageMotionLimit := animationCount(input.AnimationCounts, "single_image", "image_double", "image_triplet", "image_four", "image_five", "single_image_with_text", "image_double_with_text", "image_triplet_with_text", "image_four_with_text", "image_five_with_text", "images")
 	input.ImageMotions = limitedMotionPool(input.ImageMotions, imageMotionLimit)
 	if len(input.ImageMotions) == 0 {
-		input.ImageMotions = limitedMotionPool(singleImageMotionCandidates, imageMotionLimit)
+		input.ImageMotions = limitedMotionPool(automaticSingleImageMotionCandidates, imageMotionLimit)
 	}
 	if input.PhraseMotionFamily != "" {
 		familyPool := certifiedPhraseFamily(input.PhraseMotionFamily)
