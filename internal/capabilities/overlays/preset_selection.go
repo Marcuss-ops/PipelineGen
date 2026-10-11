@@ -23,9 +23,9 @@ const (
 var (
 	// phrase_default is the official animated phrase style. Motion ids carry
 	// Apple-clean animation independently; static_text_smoke is the fallback.
-	namePresetRenderSafeCandidates = []string{"phrase_default"}
-	phrasePresetCandidates         = []string{"phrase_default"}
-	wordPresetCandidates           = []string{"phrase_default"}
+	namePresetRenderSafeCandidates = []string{string(PresetModernName)}
+	phrasePresetCandidates         = []string{string(PresetModernPhrase)}
+	wordPresetCandidates           = []string{string(PresetModernWord)}
 	imagePresetCandidates          = []string{
 		// Auto-selected images use an entrance long enough to remain visible.
 		// image_fast_fade is an explicit short variant (<1.5 s), so it stays

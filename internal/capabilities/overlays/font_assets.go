@@ -17,9 +17,13 @@ const (
 	// CanonicalInterFontPath is the optional payload-selected Inter family.
 	CanonicalInterFontPath                 = "assets/fonts/Inter.ttf"
 	CanonicalPlayfairDisplayItalicFontPath = "assets/fonts/PlayfairDisplay-Italic.ttf"
-	CanonicalGoogleSansFontPath            = "assets/fonts/Google-Sans.ttf"
-	CanonicalChangaOneFontPath             = "assets/fonts/Changa-One.ttf"
-	CanonicalDMSerifDisplayFontPath        = "assets/fonts/DM-Serif-Display.ttf"
+	// CanonicalInterBoldFontPath is the payload-selected Inter Bold family.
+	CanonicalInterBoldFontPath = "assets/fonts/Inter-Bold.ttf"
+	// CanonicalBricolageGrotesqueFontPath is the payload-selected Bricolage family.
+	CanonicalBricolageGrotesqueFontPath = "assets/fonts/Bricolage-Grotesque.ttf"
+	CanonicalGoogleSansFontPath         = "assets/fonts/Google-Sans.ttf"
+	CanonicalChangaOneFontPath          = "assets/fonts/Changa-One.ttf"
+	CanonicalDMSerifDisplayFontPath     = "assets/fonts/DM-Serif-Display.ttf"
 	// GoldenFontHash is the SHA-256 of CanonicalTextFontPath.
 	GoldenFontHash = "690243adfefe0ce154b547db6205794bd30ac4277275179517a90994f4980648"
 	// GoldenPresetFontHash is the SHA-256 of CanonicalPresetFontPath.
@@ -27,7 +31,33 @@ const (
 	// CanonicalInterFontHash is the SHA-256 of CanonicalInterFontPath.
 	CanonicalInterFontHash                 = "29160a80ff49ddcab2c97711247e08b1fab27a484a329ce8b813d820dc559031"
 	CanonicalPlayfairDisplayItalicFontHash = "a5e26dc5e2e77fb2803a0bf02fd4f81ee136ec8dea863ccdb0c59a263b21378b"
+	// CanonicalInterBoldFontHash is the SHA-256 of CanonicalInterBoldFontPath.
+	CanonicalInterBoldFontHash = "deb990e241954e1af87c6033d40a76cf0f48e0d112541794526051ac4a3ee2c8"
+	// CanonicalBricolageGrotesqueFontHash is the SHA-256 of CanonicalBricolageGrotesqueFontPath.
+	CanonicalBricolageGrotesqueFontHash = "413e7357809ddd12fd80a96a8a396de0e401638d4acd3cb3e37532f0472ac682"
 )
+
+// CanonicalFontAsset binds a payload-selectable font family ID to the exact
+// workspace path and content hash the render queue stages. This map is the
+// single source of truth for which families the queue producer can stage:
+// SupportedFontFamilies, runtimeFontAssets and the RenderingGen bundle gate
+// must all agree with it (pinned by TestCanonicalFontAssetsParity), so adding
+// a family is one map entry, never a switch case in three files.
+type CanonicalFontAsset struct {
+	Path   string
+	SHA256 string
+}
+
+// CanonicalFontAssetsByFamily owns every payload-selectable font family.
+// Keys are the exact IDs accepted by OverlayStyleSpec.FontFamily.
+var CanonicalFontAssetsByFamily = map[string]CanonicalFontAsset{
+	"poppins":                 {Path: CanonicalPresetFontPath, SHA256: GoldenPresetFontHash},
+	"inter":                   {Path: CanonicalInterFontPath, SHA256: CanonicalInterFontHash},
+	"inter_bold":              {Path: CanonicalInterBoldFontPath, SHA256: CanonicalInterBoldFontHash},
+	"dejavu_sans":             {Path: CanonicalTextFontPath, SHA256: GoldenFontHash},
+	"playfair_display_italic": {Path: CanonicalPlayfairDisplayItalicFontPath, SHA256: CanonicalPlayfairDisplayItalicFontHash},
+	"bricolage_grotesque":     {Path: CanonicalBricolageGrotesqueFontPath, SHA256: CanonicalBricolageGrotesqueFontHash},
+}
 
 // ModernFontPaths is the local, workspace-relative registry for the
 // downloaded Google Fonts variable-font fleet. RenderingGen resolves these

@@ -185,12 +185,15 @@ func (a *internetImageSearchAdapter) SearchImages(ctx context.Context, req adapt
 			RightsStatus: retrievedImageRightsStatus(r.License), RightsBasis: retrievedImageRightsBasis(r.License, r.Author),
 		}
 	}
-	// Reuse durable retrieved images first. The optional resolver seam keeps
-	// this DB-first policy out of the provider implementation; a fresh
-	// randomized order avoids selecting the same stored image every run.
+	// Reuse durable retrieved images first — unless the run asked for a force
+	// refresh. The bytes behind a stored URL can change upstream (source
+	// re-encode), and a recorded hash is only a claim until bytes are
+	// re-downloaded and re-hashed in-run. Refresh runs always take the live
+	// provider path below so overlay hashes stay content-addressed; a stale
+	// recorded hash reaching the render lane fails the whole job at L3.
 	if lookup, ok := a.resolver.(interface {
 		ExistingImages(context.Context, string, int) ([]imagesrouting.ImageSearchResult, error)
-	}); ok {
+	}); ok && !req.ForceRefresh {
 		cached, lookupErr := lookup.ExistingImages(ctx, req.Query, req.Limit)
 		if lookupErr != nil {
 			a.log.Warn("VidRush existing image lookup failed; falling back to DuckDuckGo", zap.String("query", req.Query), zap.Error(lookupErr))

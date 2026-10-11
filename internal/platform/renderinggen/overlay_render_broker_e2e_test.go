@@ -87,7 +87,7 @@ func TestOverlayRenderBrokerE2E(t *testing.T) {
 				AssetRefs: []capoverlay.OverlayAssetRef{{AssetID: "fixture", URL: "assets/overlay_globe.png", SHA256: imageHash}},
 			},
 			{
-				ID: "phrase", TemplateID: "IMPORTANT_PHRASE", PresetID: "clean_slide_up",
+				ID: "phrase", TemplateID: "IMPORTANT_PHRASE", PresetID: "phrase_default",
 				StartMs: 1000, EndMs: 4000,
 				Text: "MICHAEL JORDAN CHANGED BASKETBALL",
 			},

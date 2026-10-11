@@ -23,6 +23,7 @@ package jobs
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -239,7 +240,26 @@ func (h *GenerateJobHandler) Handle(
 		if getErr != nil {
 			return nil, fmt.Errorf("generate job handler: read durable run result: %w", getErr)
 		}
+		// Deferred Docs leg (TICKET-CORE-READY-DURABLE-DAG step 3 cutover):
+		// the pipeline stopped at CORE_READY with the core snapshot durable
+		// and the `script.docs_publish` child enqueued, so the terminal flip
+		// belongs to the parent aggregator, not to this attempt. When the
+		// deferred legs are already durable (a previous child published while
+		// this attempt was in flight), close the run here instead of waiting
+		// for an aggregator tick that has nothing left to decide.
+		if updated != nil && updated.Status != scriptgen.RunStatusCompleted && isDocsDeferredRun(updated) {
+			if cerr := h.durableRunner.CompletePostCoreRun(ctx, updated.ID); cerr == nil {
+				if regot, regerr := h.runRepo.Get(ctx, run.ID); regerr == nil && regot != nil {
+					updated = regot
+				}
+			} else if !errors.Is(cerr, scriptgen.ErrPostCoreNotCompletable) {
+				return nil, fmt.Errorf("generate job handler: post-core completion: %w", cerr)
+			}
+		}
 		if updated == nil || updated.Status != scriptgen.RunStatusCompleted {
+			if waiting, werr := h.docsDeferredEnvelope(ctx, j, updated); waiting != nil || werr != nil {
+				return waiting, werr
+			}
 			// A failed run that still has its OWN retry budget left is WAITING,
 			// not dead. The run scheduled its next attempt (NextRetryAt) before
 			// ending this one — the same shape as any other external wait — so the
@@ -356,6 +376,66 @@ func incompleteRunError(updated *scriptgen.GenerationRun) error {
 		return fmt.Errorf("generate job handler: durable run failed: %s", updated.ErrorMessage)
 	}
 	return fmt.Errorf("generate job handler: durable run did not complete")
+}
+
+// isDocsDeferredRun reports whether a non-completed run stopped at the
+// CORE_READY boundary with its core snapshot durable and document publication
+// requested, i.e. the pipeline handed the Docs leg to the `script.docs_publish`
+// child (TICKET-CORE-READY-DURABLE-DAG step 3 cutover). Only a RUNNING run
+// qualifies: a FAILED run owns its retry schedule and must keep the deferral
+// path below, never the waiting envelope.
+func isDocsDeferredRun(run *scriptgen.GenerationRun) bool {
+	if run == nil || run.Status != scriptgen.RunStatusRunning {
+		return false
+	}
+	if run.CurrentStage != scriptgen.StageCoreReady {
+		return false
+	}
+	docsEnabled, docsLangs, _ := run.Request.ResolveDocsConfig()
+	if !docsEnabled || len(docsLangs) == 0 {
+		return false
+	}
+	return scriptgen.IsCoreCompletable(run.Result, docsLangs)
+}
+
+// docsDeferredEnvelope builds the broker result of a docs-deferred parent:
+// SUCCEEDED with parent_state=waiting_children, so the parent aggregator
+// owns the terminal flip once the `script.docs_publish` child publishes.
+// It returns (nil, nil) when the run is not docs-deferred and the caller
+// must keep the legacy incomplete-run path.
+//
+// The core artifacts are persisted with their manifest first — the worker's
+// own spine publication (phase 1 of the ThenDefer strategy): the deferred
+// flip concerns only the terminal state, never the artifacts.
+func (h *GenerateJobHandler) docsDeferredEnvelope(ctx context.Context, j *job.Job, run *scriptgen.GenerationRun) (map[string]any, error) {
+	if !isDocsDeferredRun(run) {
+		return nil, nil
+	}
+	domainResult := scriptgen.DurableResultToDomain(run.Result)
+	if domainResult == nil {
+		return nil, fmt.Errorf("generate job handler: durable result is empty")
+	}
+	artifacts, persistErr := processor.PersistGeneratedArtifacts(ctx, j.ID, domainResult, h.log)
+	if persistErr != nil {
+		return nil, fmt.Errorf("generate job handler: durable artifact persistence: %w", persistErr)
+	}
+	manifest := buildManifestFromArtifacts(j.ID, artifacts)
+	if validateErr := manifest.Validate(); validateErr != nil {
+		return nil, fmt.Errorf("generate job handler: durable artifact manifest: %w", validateErr)
+	}
+	if h.log != nil {
+		h.log.Info("durable run deferred to docs child — returning waiting parent",
+			zap.String("job_id", j.ID),
+			zap.String("run_id", run.ID))
+	}
+	return map[string]any{
+		"run_id":                 run.ID,
+		"parent_state":           "waiting_children",
+		"docs_deferred":          true,
+		"docs_child_correlation": scriptgen.DocsPublishCorrelationID(j.ID, j.CorrelationID, run.ID),
+		"stage_progress":         domainResult.StageProgress,
+		job.ManifestKey:          manifest,
+	}, nil
 }
 
 // pendingRunRetry reports whether a durable run that did NOT complete is still

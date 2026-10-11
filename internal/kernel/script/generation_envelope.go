@@ -156,6 +156,8 @@ type GenerationItemV2 struct {
 	// Invalid selectors fail closed at plan compilation.
 	EntityStyleID         string `json:"entity_style_id,omitempty"`
 	DisableNumberOverlays bool   `json:"disable_number_overlays,omitempty"`
+	DisableRecapOverlays  bool   `json:"disable_recap_overlays,omitempty"`
+	DisableChartOverlays  bool   `json:"disable_chart_overlays,omitempty"`
 
 	// Audio configures the audio execution mode (audio.mode) plus the
 	// editorial audio intent block (mix_policy, background_music,
@@ -209,6 +211,35 @@ type OverlayBackgroundSpec struct {
 	Style     *OverlayStyleSpec `json:"style,omitempty"`
 }
 
+// SupportedFontFamilies is the single source of truth for the font family
+// IDs a payload may select. The empty string keeps the preset font.
+// capabilities/overlays.CanonicalFontAssetsByFamily must expose exactly
+// these IDs with their staged path and hash (pinned by parity test); the
+// RenderingGen runtime registry must resolve the same IDs. Adding a family
+// is one entry here plus its asset entry — never an inline enum elsewhere.
+var SupportedFontFamilies = []string{
+	"poppins",
+	"inter",
+	"inter_bold",
+	"dejavu_sans",
+	"playfair_display_italic",
+	"bricolage_grotesque",
+}
+
+// IsSupportedFontFamily reports whether family is selectable in a payload
+// (empty keeps the preset font).
+func IsSupportedFontFamily(family string) bool {
+	if family == "" {
+		return true
+	}
+	for _, supported := range SupportedFontFamilies {
+		if family == supported {
+			return true
+		}
+	}
+	return false
+}
+
 // OverlayStyleSpec is the canonical script.generate visual override block.
 // Every field is optional so existing payloads keep their exact behaviour.
 type OverlayStyleSpec struct {
@@ -259,10 +290,8 @@ func (s *OverlayStyleSpec) Validate() error {
 	if s == nil {
 		return nil
 	}
-	switch s.FontFamily {
-	case "", "poppins", "inter", "inter_bold", "dejavu_sans", "playfair_display_italic", "bricolage_grotesque":
-	default:
-		return fmt.Errorf("overlay_style.font_family %q is unsupported (poppins, inter, inter_bold, dejavu_sans, playfair_display_italic, bricolage_grotesque)", s.FontFamily)
+	if !IsSupportedFontFamily(s.FontFamily) {
+		return fmt.Errorf("overlay_style.font_family %q is unsupported (%s)", s.FontFamily, strings.Join(SupportedFontFamilies, ", "))
 	}
 	if s.GlowSize != nil && (math.IsNaN(*s.GlowSize) || math.IsInf(*s.GlowSize, 0) || *s.GlowSize < 0 || *s.GlowSize > 256) {
 		return fmt.Errorf("overlay_style.glow_size must be between 0 and 256 pixels")

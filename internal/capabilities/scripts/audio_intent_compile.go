@@ -283,7 +283,7 @@ func finalJobAudioInput(result GenerateResult, language Language) GenerateResult
 		// the scene's visual comes from a stock folder and even when the run's
 		// global policy is VOICEOVER_ONLY.
 		for _, clip := range sceneClips(*scene) {
-			if clip == nil || !clip.AsStock || hasClipAudioIntent(intents, clip.ID) {
+			if !clip.usedAsStock() || hasClipAudioIntent(intents, clip.ID) {
 				continue
 			}
 			if sourceInUS, sourceDurationUS, ok := finalJobClipAudioWindow(clip); ok {

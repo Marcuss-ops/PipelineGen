@@ -135,3 +135,27 @@ Read the tail as a block: `document.publish` + `post_writer_finalize` + `finaliz
 Each of D1–D4 closes with a preserved artifact (report JSON or benchmark output), a stated
 before/after wall time, and a before/after correctness gate. No item closes on reasoning
 alone.
+
+## Addendum 2026-10-11 — D2 measured on the reference host
+
+`make gate-gpu-admission` with `CLIP_PATH=RenderingGen/testdata/golden/background.mp4`
+on RTX A4000 (this tree): **PASS**. Admission concurrency above 1 pays —
+concurrency is admission overlap, not parallel Chronon execution (the daemon
+execution-domain mutex still serializes the device).
+
+| concurrency | wall ms | work ms | speedup |
+|---|---|---|---|
+| 1 | 10691 | 10685 | 1.00x |
+| 2 | 6071 | 12120 | 2.00x |
+| 3 | 5313 | 13871 | 2.61x |
+| 5 | 3944 | 19556 | 4.96x |
+
+Pairwise: 1→2 wall 1.76x, 2→3 1.14x, 3→5 1.35x. Artifacts:
+`ops/benchmarks/gpu-admission-20261011T102927Z/` (`d2-summary.json` + log).
+The D2 contract divergence noted 2026-09-28 is resolved: PipelineGen
+`RENDERINGGEN_GPU_SLOTS=3` == RenderingGen `gpu_lanes: 3` on all three
+config surfaces (`renderinggen/config.yaml`, `infra/native/renderinggen-native.yaml`,
+`renderinggen-b.yaml`); `make gpu-admission-preflight` confirms 3=3.
+
+Remaining D2 work is Chronon-side (warm daemon on the production path, D3) and
+re-measurement after any admission change — not a second run of this gate.

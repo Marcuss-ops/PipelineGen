@@ -64,6 +64,14 @@ type OverlayCanvasSpec struct {
 	// certified "random" selector; the planner validates fail-closed.
 	EntityStyleID         string
 	DisableNumberOverlays bool
+	// DisableRecapOverlays is the kill-switch for automatic recap cards
+	// (recap_plan.go). False by default: recaps ride the certified quote
+	// primitive at chapter boundaries unless explicitly disabled.
+	DisableRecapOverlays bool
+	// DisableChartOverlays is the kill-switch for automatic bar charts
+	// (chart_plan.go). False by default: scenes with a strict grounded
+	// numeric comparison render one bar chart unless explicitly disabled.
+	DisableChartOverlays bool
 }
 
 // GoldenOverlayCanvas is the validated golden canary canvas (1280×720,
@@ -97,6 +105,14 @@ func overlayImageFrame(style *scriptpkg.OverlayImageStyleSpec) *capabilityoverla
 
 func isImageOverlayItem(item capabilityoverlay.OverlayItem) bool {
 	return scriptoverlay.IsImageOverlayItem(item)
+}
+
+func isImageOverlayKind(kind string) bool {
+	return scriptoverlay.IsImageOverlayKind(kind)
+}
+
+func imageStyleParams(style *scriptpkg.OverlayImageStyleSpec) map[string]any {
+	return scriptoverlay.ImageStyleParams(style)
 }
 
 func applyOverlayImageStyle(item *capabilityoverlay.OverlayItem, style *scriptpkg.OverlayImageStyleSpec) {

@@ -80,6 +80,8 @@ type GenerateRequest struct {
 	// at plan compilation.
 	EntityStyleID         string `json:"entity_style_id,omitempty"`
 	DisableNumberOverlays bool   `json:"disable_number_overlays,omitempty"`
+	DisableRecapOverlays  bool   `json:"disable_recap_overlays,omitempty"`
+	DisableChartOverlays  bool   `json:"disable_chart_overlays,omitempty"`
 	// OverlayBackground is the visual background selected by script.generate;
 	// it is transported into the sealed OverlayPlan at render time.
 	OverlayBackground *scriptpkg.OverlayBackgroundSpec `json:"overlay_background,omitempty"`

@@ -880,3 +880,199 @@ func TestVidRushMaterializationReusesCatalogedDriveImageWithoutAcquireOrFinalize
 		t.Fatalf("reused images = %+v, want the cataloged Drive/hash candidate", images)
 	}
 }
+
+type refreshReacquireImageProvider struct {
+	acquireCalls atomic.Int32
+}
+
+func (p *refreshReacquireImageProvider) Name() string {
+	return scriptpkg.VidRushProviderInternetImages
+}
+func (p *refreshReacquireImageProvider) Search(context.Context, scriptports.VidRushSearchRequest) ([]scriptpkg.SegmentAssetCandidate, error) {
+	return nil, nil
+}
+func (p *refreshReacquireImageProvider) Acquire(_ context.Context, candidate scriptpkg.SegmentAssetCandidate) (scriptports.LocalArtifact, error) {
+	p.acquireCalls.Add(1)
+	candidate.AcquisitionStatus = scriptpkg.VidRushStatusAcquired
+	return scriptports.LocalArtifact{Candidate: candidate, LocalPath: "/tmp/fresh-image.jpg", MIMEType: "image/jpeg", SizeBytes: 10, LegacyFileMD5: "fresh-download-hash"}, nil
+}
+func (p *refreshReacquireImageProvider) Verify(_ context.Context, artifact scriptports.LocalArtifact) (scriptports.VerifiedArtifact, error) {
+	candidate := artifact.Candidate
+	candidate.VerificationStatus = scriptpkg.VidRushStatusVerified
+	candidate.RightsStatus = "verified"
+	return scriptports.VerifiedArtifact{Candidate: candidate, LocalPath: artifact.LocalPath, MIMEType: artifact.MIMEType, SizeBytes: artifact.SizeBytes, LegacyFileMD5: artifact.LegacyFileMD5, Width: 1920, Height: 1080, RightsStatus: "verified"}, nil
+}
+
+type refreshReacquireFinalizer struct {
+	finalizeCalls atomic.Int32
+}
+
+func (f *refreshReacquireFinalizer) Finalize(_ context.Context, artifact scriptports.VerifiedArtifact) (scriptpkg.SegmentAssetCandidate, error) {
+	f.finalizeCalls.Add(1)
+	candidate := artifact.Candidate
+	candidate.AssetID = "fresh-drive-asset-michael-jordan"
+	candidate.LegacyFileMD5 = artifact.LegacyFileMD5
+	candidate.DriveLink = "https://drive.google.com/file/d/fresh-drive-asset-michael-jordan/view"
+	candidate.PersistenceStatus = scriptpkg.VidRushStatusPersisted
+	candidate.IndexStatus = scriptpkg.VidRushStatusIndexed
+	return candidate, nil
+}
+
+// TestVidRushMaterializationForceRefreshReacquiresCatalogedDriveImage pins the
+// stale-hash self-heal: with ForceRefreshAssets a durable catalog hit must go
+// through Acquire→Verify→Finalize again (fresh digest), never reuse the
+// recorded hash. Regression for the Garlasco L3 poisoning where the source
+// image was re-encoded upstream and every refresh run kept referencing the
+// dead content address instead of committing the new bytes.
+func TestVidRushMaterializationForceRefreshReacquiresCatalogedDriveImage(t *testing.T) {
+	vidrushMaterializedCache = cacheutil.NewLRU(vidrushMaterializedL1Capacity)
+	repo := newIntegrationEntityImageCatalog()
+	seedCatalogPerson(t, repo, "Michael Jordan", "https://images.example/michael-jordan.jpg")
+	identity, err := entitycatalog.CanonicalizePersonName("Michael Jordan")
+	if err != nil {
+		t.Fatal(err)
+	}
+	rows, err := repo.ListCandidates(context.Background(), identity.CanonicalEntityID, 10)
+	if err != nil || len(rows) != 1 {
+		t.Fatalf("catalog rows = %d, err=%v", len(rows), err)
+	}
+	if err := repo.UpsertMaterialization(context.Background(), entitycatalog.Materialization{
+		CandidateID:    rows[0].ID,
+		AssetID:        "drive-asset-michael-jordan",
+		LegacyFileMD5:  "stale-recorded-hash",
+		DriveLink:      "https://drive.google.com/file/d/drive-asset-michael-jordan/view",
+		Status:         entitycatalog.MaterializationStatusMaterialized,
+		MaterializedAt: time.Now().UTC(), LastVerifiedAt: time.Now().UTC(),
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	provider := &refreshReacquireImageProvider{}
+	finalizer := &refreshReacquireFinalizer{}
+	registry := NewVidRushAssetProviderRegistry()
+	if err := registry.Register(provider); err != nil {
+		t.Fatal(err)
+	}
+	registry.Freeze()
+	processor := NewVidRushMaterializationProcessorWithCatalog(registry, finalizer, nil, repo)
+	plan := &scriptpkg.ResolvedGenerationPlan{ImagesPerScene: 1, ForceRefresh: true}
+	plan.MediaPlan.ProviderPolicy.InternetImages = "enabled"
+	plan.MediaPlan.ForceRefreshAssets = true
+	input := ProcessInput{VidRushSegments: []scriptpkg.VidRushSegmentResult{{
+		SegmentID: "catalog-refresh",
+		Assets: scriptpkg.SegmentAssetSelection{Candidates: []scriptpkg.SegmentAssetCandidate{{
+			AssetID:      "discovered-before-catalog-hydration",
+			Provider:     scriptpkg.VidRushProviderInternetImages,
+			Entity:       "Michael Jordan",
+			Query:        "Michael Jordan",
+			SourceURL:    "https://images.example/michael-jordan.jpg",
+			RightsStatus: "unknown",
+		}}},
+	}}}
+
+	result, err := processor.Process(context.Background(), plan, input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := provider.acquireCalls.Load(); got != 1 {
+		t.Fatalf("image acquire calls = %d, want 1: force refresh must re-download a cataloged image", got)
+	}
+	if got := finalizer.finalizeCalls.Load(); got != 1 {
+		t.Fatalf("finalizer calls = %d, want 1: force refresh must commit the fresh bytes", got)
+	}
+	images := result.VidRushSegments[0].Assets.SecondaryImages
+	if len(images) != 1 || images[0].AssetID != "fresh-drive-asset-michael-jordan" || images[0].LegacyFileMD5 != "fresh-download-hash" || images[0].DriveLink == "" {
+		t.Fatalf("refreshed images = %+v, want the freshly acquired/finalized candidate, never the stale catalog hash", images)
+	}
+}
+
+type refreshFailingAcquireProvider struct {
+	acquireCalls atomic.Int32
+}
+
+func (p *refreshFailingAcquireProvider) Name() string {
+	return scriptpkg.VidRushProviderInternetImages
+}
+func (p *refreshFailingAcquireProvider) Search(context.Context, scriptports.VidRushSearchRequest) ([]scriptpkg.SegmentAssetCandidate, error) {
+	return nil, nil
+}
+func (p *refreshFailingAcquireProvider) Acquire(_ context.Context, candidate scriptpkg.SegmentAssetCandidate) (scriptports.LocalArtifact, error) {
+	p.acquireCalls.Add(1)
+	return scriptports.LocalArtifact{}, errors.New("source unreachable on refresh")
+}
+func (p *refreshFailingAcquireProvider) Verify(context.Context, scriptports.LocalArtifact) (scriptports.VerifiedArtifact, error) {
+	return scriptports.VerifiedArtifact{}, errors.New("unreachable verifier")
+}
+
+// TestVidRushMaterializationForceRefreshStripsRecordedLifecycle pins the
+// single strip point: with ForceRefreshAssets a catalog-hydrated candidate
+// whose source cannot be re-downloaded must lose its recorded lifecycle, so
+// the stale hash can never bind into selection or overlay plans as a ready
+// asset. The run degrades to fewer images (visible warning) instead of
+// failing the whole job at L3 with a dead content address.
+func TestVidRushMaterializationForceRefreshStripsRecordedLifecycle(t *testing.T) {
+	vidrushMaterializedCache = cacheutil.NewLRU(vidrushMaterializedL1Capacity)
+	repo := newIntegrationEntityImageCatalog()
+	seedCatalogPerson(t, repo, "Michael Jordan", "https://images.example/michael-jordan.jpg")
+	identity, err := entitycatalog.CanonicalizePersonName("Michael Jordan")
+	if err != nil {
+		t.Fatal(err)
+	}
+	rows, err := repo.ListCandidates(context.Background(), identity.CanonicalEntityID, 10)
+	if err != nil || len(rows) != 1 {
+		t.Fatalf("catalog rows = %d, err=%v", len(rows), err)
+	}
+	if err := repo.UpsertMaterialization(context.Background(), entitycatalog.Materialization{
+		CandidateID:    rows[0].ID,
+		AssetID:        "drive-asset-michael-jordan",
+		LegacyFileMD5:  "stale-recorded-hash",
+		DriveLink:      "https://drive.google.com/file/d/drive-asset-michael-jordan/view",
+		Status:         entitycatalog.MaterializationStatusMaterialized,
+		MaterializedAt: time.Now().UTC(), LastVerifiedAt: time.Now().UTC(),
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	provider := &refreshFailingAcquireProvider{}
+	registry := NewVidRushAssetProviderRegistry()
+	if err := registry.Register(provider); err != nil {
+		t.Fatal(err)
+	}
+	registry.Freeze()
+	processor := NewVidRushMaterializationProcessorWithCatalog(registry, &catalogReuseFinalizer{}, nil, repo)
+	plan := &scriptpkg.ResolvedGenerationPlan{ImagesPerScene: 1, ForceRefresh: true}
+	plan.MediaPlan.ProviderPolicy.InternetImages = "enabled"
+	plan.MediaPlan.ForceRefreshAssets = true
+	input := ProcessInput{VidRushSegments: []scriptpkg.VidRushSegmentResult{{
+		SegmentID: "catalog-refresh-unreachable",
+		Assets: scriptpkg.SegmentAssetSelection{Candidates: []scriptpkg.SegmentAssetCandidate{{
+			AssetID:      "discovered-before-catalog-hydration",
+			Provider:     scriptpkg.VidRushProviderInternetImages,
+			Entity:       "Michael Jordan",
+			Query:        "Michael Jordan",
+			SourceURL:    "https://images.example/michael-jordan.jpg",
+			RightsStatus: "unknown",
+		}}},
+	}}}
+
+	result, err := processor.Process(context.Background(), plan, input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := provider.acquireCalls.Load(); got != 1 {
+		t.Fatalf("image acquire calls = %d, want 1: refresh must attempt the re-download", got)
+	}
+	for _, c := range result.VidRushSegments[0].Assets.Candidates {
+		if readyVidRushCandidate(c) {
+			t.Fatalf("candidate %+v stayed ready on refresh without an in-run download; recorded lifecycle must be stripped", c)
+		}
+		if c.LegacyFileMD5 == "stale-recorded-hash" && c.PersistenceStatus == scriptpkg.VidRushStatusPersisted {
+			t.Fatalf("stale catalog hash still persisted on %+v; refresh must not reuse it", c)
+		}
+	}
+	for _, img := range result.VidRushSegments[0].Assets.SecondaryImages {
+		if img.LegacyFileMD5 == "stale-recorded-hash" {
+			t.Fatalf("stale hash selected into secondary images %+v; unreachable sources must degrade, never bind", img)
+		}
+	}
+}

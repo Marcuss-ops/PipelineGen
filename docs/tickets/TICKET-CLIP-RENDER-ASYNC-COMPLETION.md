@@ -514,3 +514,23 @@ Still open (NOT reachable in this repository — needs the live stack):
   skipping it would need a durable job-id → resume-digest index — a second owner
   for a fact the continuation payload already carries. Documented at the call
   site (`worker.go`, submit phase).
+
+## Addendum 2026-10-11 — hermetic restart half
+
+`internal/capabilities/cliprender/worker_restart_test.go::TestWorker_RestartMidRenderResumesWithoutResubmitting`
+pins the restart contract hermetically: submit on worker A → drop every
+in-memory handle → replayed submit + settle on a fresh worker B against the
+persisted continuation/CAS document. It asserts the replayed submit addresses
+the SAME remote render (`Submission.RenderJobID == plan.RunID == parent job
+id`, never a second render), the restarted worker submits nothing new on the
+settle path, and exactly one artifact is published.
+
+Two harness-faithfulness notes (test comments, not production gaps): the plan
+content digest legitimately differs between attempts (local temp paths), while
+the remote identity stays stable; the fake continuation store is single-slot
+where production CAS is content-addressed, so the test restores the original
+document before settling — exactly what a Get addressed by the original ref
+returns from the real CAS.
+
+Still live-only: kill-mid-render against a real RenderingGen (exactly one
+published artifact, no duplicate Drive object, no lost render).

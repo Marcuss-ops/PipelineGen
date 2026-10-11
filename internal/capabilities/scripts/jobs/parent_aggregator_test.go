@@ -110,6 +110,26 @@ func (s *stubScriptAggregatorJobsService) ListAwaitingAggregation(ctx context.Co
 	return []job.Job{*s.parentJob}, nil
 }
 
+// List returns in-memory children matching the (type, correlation) filter.
+// A nil filter field matches everything, mirroring the SQL List semantics
+// the aggregator relies on (type + correlation_id equality when set).
+func (s *stubScriptAggregatorJobsService) List(_ context.Context, filter job.Filter) ([]job.Job, error) {
+	var out []job.Job
+	for _, child := range s.childJobs {
+		if child == nil {
+			continue
+		}
+		if filter.Type != nil && *filter.Type != "" && child.Type != *filter.Type {
+			continue
+		}
+		if filter.CorrelationID != nil && *filter.CorrelationID != "" && child.CorrelationID != *filter.CorrelationID {
+			continue
+		}
+		out = append(out, *child)
+	}
+	return out, nil
+}
+
 // Get returns the child or parent job by ID.
 func (s *stubScriptAggregatorJobsService) Get(ctx context.Context, id string) (*job.Job, error) {
 	if j, ok := s.childJobs[id]; ok {

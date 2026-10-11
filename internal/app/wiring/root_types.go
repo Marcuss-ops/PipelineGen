@@ -7,6 +7,7 @@ import (
 	assetspersistence "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
 	cliprender "github.com/Marcuss-ops/PipelineGen/internal/capabilities/cliprender"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaexec"
+	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
 	apiMw "github.com/Marcuss-ops/PipelineGen/internal/platform/httpserver/middleware"
 	storage "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite"
 	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
@@ -22,6 +23,12 @@ type ComposeRoot struct {
 	CanonicalAssetWriter assetspersistence.CanonicalAssetWriter
 	MediaExec            mediaexec.ExecutionConfig
 	ClipRenderRuntime    *ClipRenderRuntime
+
+	// ScriptGenerationRunner is the durable single-item script.generate runtime.
+	// Cached here so the script parent aggregator (lifecycle step) can complete
+	// docs-deferred runs through the same Runner that executed them, instead of
+	// a second completion implementation drifting from the pipeline.
+	ScriptGenerationRunner *scriptgen.Runner
 
 	// ClipRenderParentAggregator is the ONE clip.render parent finalisation
 	// authority, shared by the event-driven notifier (the worker's child

@@ -457,8 +457,6 @@ func marshalRenderingGenOverlayPlan(plan capoverlay.OverlayPlan) ([]byte, error)
 				return nil, fmt.Errorf("decode item %d duration_us: %w", i, err)
 			}
 		}
-		delete(item, "start_us")
-		delete(item, "duration_us")
 		if durationUS > 0 {
 			var startMS, endMS int64
 			if err := json.Unmarshal(item["start_ms"], &startMS); err != nil {
@@ -485,19 +483,77 @@ func marshalRenderingGenOverlayPlan(plan capoverlay.OverlayPlan) ([]byte, error)
 	return json.Marshal(wire)
 }
 
-func runtimeFontAssets(plan capoverlay.OverlayPlan) []RenderQueueAsset {
+// runtimeFontAssets stages one queue asset per payload-selected font family
+// in the plan, resolved through the single
+// capoverlay.CanonicalFontAssetsByFamily registry. Every supported family is
+// staged — never a hardcoded subset — so the family a payload selects is the
+// family the worker materializes. Assets are deduplicated and stably ordered.
+func runtimeFontAssets(plan capoverlay.OverlayPlan) ([]RenderQueueAsset, error) {
+	seen := map[string]struct{}{}
+	var assets []RenderQueueAsset
+	add := func(family string) error {
+		family = strings.TrimSpace(family)
+		if family == "" {
+			return nil
+		}
+		if _, dup := seen[family]; dup {
+			return nil
+		}
+		entry, ok := capoverlay.CanonicalFontAssetsByFamily[family]
+		if !ok {
+			return fmt.Errorf("unknown runtime font family %q", family)
+		}
+		seen[family] = struct{}{}
+		assets = append(assets, NewRenderQueueAsset(
+			kernelasset.Ref{AssetID: entry.Path, SHA256: entry.SHA256},
+			entry.Path, ""))
+		return nil
+	}
+	addParams := func(params map[string]any) error {
+		if family, _ := params["font_family"].(string); family != "" {
+			return add(family)
+		}
+		return nil
+	}
 	for _, item := range plan.Items {
-		family, _ := item.Params["font_family"].(string)
-		switch strings.TrimSpace(family) {
-		case "inter":
-			return []RenderQueueAsset{NewRenderQueueAsset(
-				kernelasset.Ref{AssetID: capoverlay.CanonicalInterFontPath, SHA256: capoverlay.CanonicalInterFontHash},
-				capoverlay.CanonicalInterFontPath, "")}
-		case "playfair_display_italic":
-			return []RenderQueueAsset{NewRenderQueueAsset(
-				kernelasset.Ref{AssetID: capoverlay.CanonicalPlayfairDisplayItalicFontPath, SHA256: capoverlay.CanonicalPlayfairDisplayItalicFontHash},
-				capoverlay.CanonicalPlayfairDisplayItalicFontPath, "")}
+		if err := addParams(item.Params); err != nil {
+			return nil, fmt.Errorf("overlay item %q: %w", item.ID, err)
+		}
+		if family := strings.TrimSpace(item.CaptionFontFamily); family != "" {
+			if err := add(family); err != nil {
+				return nil, fmt.Errorf("overlay item %q caption: %w", item.ID, err)
+			}
+		}
+		for _, child := range item.ImageLayers {
+			if err := addParams(child.Params); err != nil {
+				return nil, fmt.Errorf("overlay item %q image layer: %w", item.ID, err)
+			}
+		}
+		if !capoverlay.IsChainItemKind(item.Kind) {
+			continue
+		}
+		segments, ok := capoverlay.DecodeChainSegments(item.Params)
+		if !ok {
+			continue // malformed chains are rejected by plan validation
+		}
+		for _, segment := range segments {
+			if err := addParams(segment.Params); err != nil {
+				return nil, fmt.Errorf("overlay item %q chain segment: %w", item.ID, err)
+			}
+			if err := addParams(segment.Style); err != nil {
+				return nil, fmt.Errorf("overlay item %q chain segment style: %w", item.ID, err)
+			}
+			if family := strings.TrimSpace(segment.CaptionFontFamily); family != "" {
+				if err := add(family); err != nil {
+					return nil, fmt.Errorf("overlay item %q chain caption: %w", item.ID, err)
+				}
+			}
+			for _, child := range segment.ImageLayers {
+				if err := addParams(child.Params); err != nil {
+					return nil, fmt.Errorf("overlay item %q chain image layer: %w", item.ID, err)
+				}
+			}
 		}
 	}
-	return nil
+	return assets, nil
 }

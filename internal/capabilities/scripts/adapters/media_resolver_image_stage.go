@@ -359,7 +359,8 @@ func (p *MediaResolverImageStage) processInternetImageSegments(ctx context.Conte
 				// segment makes the semantic catalog gate discard later people.
 				results, searchErr = p.searcher.SearchImages(callCtx, InternetImageSearchRequest{SegmentID: updated.SegmentID, Position: updated.Position, Query: query, Entity: query,
 					TextHash: updated.TextHash, Language: plan.Language, Limit: perQueryLimit,
-					Provider: "internet_images",
+					Provider:     "internet_images",
+					ForceRefresh: plan.MediaPlan.ForceRefreshAssets || plan.ForceRefresh,
 				})
 				return searchErr
 			})

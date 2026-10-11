@@ -56,6 +56,15 @@ type executionRun struct {
 	// snapshot is the read-only scene-text projection taken before the
 	// concurrent TTS and VidRush-prepare branches start.
 	snapshot []sceneTextSnapshot
+
+	// docsDeferred is set by markCoreReady when the post-CORE_READY Docs leg
+	// was handed to the `script.docs_publish` child (TICKET-CORE-READY-
+	// DURABLE-DAG step 3). The pipeline consults it to skip the inline
+	// documents() phase and the terminal complete(): the run stays non-terminal
+	// at CORE_READY and the terminal flip is deferred to the parent aggregator
+	// once the child publishes. False on every path where the enqueuer is nil
+	// (pre-cutover inline behaviour, unchanged) or the core is not durable.
+	docsDeferred bool
 }
 
 // measure runs one named business phase on the canonical Run clock, keeping
@@ -468,13 +477,20 @@ func (e *executionRun) persist() bool {
 //     would just be a second name for COMPLETED;
 //   - the core contract does not hold, because the milestone must never
 //     advertise a core that is not durable (NO-FAKE-AVAILABILITY).
-func (e *executionRun) markCoreReady() {
+//
+// markCoreReady records the CORE_READY boundary and, when the deferred Docs
+// leg is wired, hands the post-core Docs work to the `script.docs_publish`
+// child. It reports whether the terminal flip was deferred: true means the
+// caller must skip the inline documents() phase and complete() — the run stays
+// non-terminal at CORE_READY and the parent aggregator owns completion once
+// the child publishes. False preserves the pre-cutover inline behaviour.
+func (e *executionRun) markCoreReady() bool {
 	docsEnabled, docsLangs, _ := e.req.ResolveDocsConfig()
 	if !docsEnabled || len(docsLangs) == 0 {
-		return
+		return false
 	}
 	if !IsCoreCompletable(e.result, docsLangs) {
-		return
+		return false
 	}
 
 	started := time.Now()
@@ -487,8 +503,10 @@ func (e *executionRun) markCoreReady() {
 	// (ResumeFrom) and what an availability consumer polls.
 	if err := e.r.updateStage(e.ctx, e.runID, RunStatusRunning, StageCoreReady); err != nil {
 		// An observation must never fail a run whose core work succeeded.
+		// No child was enqueued on this path, so report non-deferred and
+		// keep the pre-cutover inline documents behaviour.
 		e.log("scriptgeneration: core ready stage update failed", zap.String("error", err.Error()))
-		return
+		return false
 	}
 	e.log("scriptgeneration: core ready",
 		zap.Bool("core_ready", true),
@@ -522,11 +540,19 @@ func (e *executionRun) markCoreReady() {
 				zap.String("error", enqueueErr.Error()))
 			e.fail(StagePublishingDocuments,
 				fmt.Errorf("enqueue docs publish child for run %s: %w", e.runID, enqueueErr))
-			return
+			return false
 		}
 		e.log("scriptgeneration: docs publish child enqueued",
 			zap.String("parent_job_id", e.exec.JobID))
+		// The child owns the Docs leg from here: the pipeline must skip the
+		// inline documents() phase (which would publish every document a
+		// second time — harmless by idempotency but no longer on this wall
+		// clock) and must NOT mark the run COMPLETED. The parent aggregator
+		// flips the terminal state once the child publishes.
+		e.docsDeferred = true
+		return true
 	}
+	return false
 }
 
 // documents runs the document (Docs) publishing phase with the pre-rendered

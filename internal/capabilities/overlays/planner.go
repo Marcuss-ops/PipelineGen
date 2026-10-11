@@ -122,6 +122,17 @@ type PlanInput struct {
 	// map: the planner never fabricates geography.
 	PlateResolver PlateResolver
 	Scenes        []SceneInput
+	// Recap carries recap slots bound to placement scenes (see recap_plan.go).
+	// Nil/empty disables recaps; entries that cannot contribute are skipped.
+	// Recap items join the plan before overlap degradation and validation,
+	// so collision and timing rules apply to them like any other item.
+	Recap []RecapPlacement
+	// Charts carries bar-chart slots derived from grounded scene numbers
+	// (see chart_plan.go). Nil/empty disables charts; entries that cannot
+	// contribute are skipped. Chart items join the plan before validation
+	// (after the emission budget gate below, since SHAPE bypasses
+	// DegradeOverlaps as structural).
+	Charts []ChartPlacement
 }
 
 // BuildPlan selects bounded overlays from scene annotations. Candidates with
@@ -357,6 +368,27 @@ func BuildPlan(input PlanInput, config PlannerConfig) (OverlayPlan, error) {
 			}
 		}
 	}
+	// Recaps: visual summaries of already-narrated chapters at placement
+	// scenes. They enter before maps so overlap degradation below treats
+	// them as ordinary content items (lowest priority drops first).
+	if len(input.Recap) > 0 {
+		plan.RecapPlacements = len(input.Recap)
+		plan.Items = append(plan.Items, BuildRecapPlanItems(input.PlanID, input.Recap)...)
+	}
+	// Charts: bar comparisons of grounded scene numbers. SHAPE is
+	// structural (never counted/dropped by DegradeOverlaps below), so the
+	// emission gate here keeps charts competing for screen space: a chart
+	// whose window already carries budget-or-more content items is
+	// skipped instead of piling onto a dense scene.
+	if len(input.Charts) > 0 {
+		plan.ChartPlacements = len(input.Charts)
+		for _, item := range BuildChartItems(input.PlanID, input.Charts, input.Width, input.Height) {
+			if chartWindowCrowded(plan.Items, item.StartUS, item.StartUS+item.DurationUS, config.MaxOverlap) {
+				continue
+			}
+			plan.Items = append(plan.Items, item)
+		}
+	}
 	// Maps: grounded places from EVERY scene resolve together against the
 	// certified plates, anchored to the first scene that mentions one. A
 	// multi-city script is ONE journey: the mentions merge into a single
@@ -390,6 +422,18 @@ func BuildPlan(input PlanInput, config PlannerConfig) (OverlayPlan, error) {
 		plan.Items, _ = ApplyEditorialOverlayBudgetWithLimits(plan.Items, config.RunLevelPhraseOverlayLimit, config.RunLevelMapOverlayLimit)
 	} else {
 		plan.Items, _ = ApplyPhraseOverlayBudgetWithLimit(plan.Items, config.RunLevelPhraseOverlayLimit)
+	}
+	// Recap observability is counted here: after overlap degradation and
+	// run-level budgets (the gates that can drop cards), before chain
+	// fusion (which may merge admitted cards into chain segments while
+	// still rendering their text).
+	for i := range plan.Items {
+		if v, ok := plan.Items[i].Params["recap"]; ok && v == true {
+			plan.RecapCards++
+		}
+		if v, ok := plan.Items[i].Params["chart_card"]; ok && v == true {
+			plan.ChartCards++
+		}
 	}
 	// Assign the phrase motion sequence AFTER run-level ranking and dedupe.
 	// Every admitted phrase gets a distinct, visible catalog motion, even when

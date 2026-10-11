@@ -164,6 +164,19 @@ func ImageFrame(style *scriptpkg.OverlayImageStyleSpec) *capabilityoverlay.Overl
 	return frame
 }
 
+// ImageStyleParams returns the image-specific runtime overrides from the
+// same style projection used for standalone image items.
+func ImageStyleParams(style *scriptpkg.OverlayImageStyleSpec) map[string]any {
+	all := StyleParams(&scriptpkg.OverlayStyleSpec{Image: style})
+	out := make(map[string]any)
+	for key, value := range all {
+		if strings.HasPrefix(key, "image_") {
+			out[strings.TrimPrefix(key, "image_")] = value
+		}
+	}
+	return out
+}
+
 // ApplyImageStyle applies runtime image params and frame metadata to the item
 // and its image layers, then normalizes entity portrait geometry.
 func ApplyImageStyle(item *capabilityoverlay.OverlayItem, style *scriptpkg.OverlayImageStyleSpec) {
@@ -217,17 +230,24 @@ func NormalizeEntityImageLayer(item *capabilityoverlay.OverlayItem) {
 	}
 }
 
-// IsImageOverlayItem reports image-backed overlay items except map plans.
-func IsImageOverlayItem(item capabilityoverlay.OverlayItem) bool {
-	if item.Map != nil || len(item.AssetRefs) == 0 {
-		return false
-	}
-	switch item.Kind {
+// IsImageOverlayKind reports kinds lowered by RenderingGen as image-backed
+// overlay content, independent of whether the producer has attached its asset
+// refs yet (chain segments own their asset refs separately).
+func IsImageOverlayKind(kind string) bool {
+	switch kind {
 	case "image", string(capabilityoverlay.KindEntityImage), string(capabilityoverlay.KindEntityCard), string(capabilityoverlay.KindImagePopup), string(capabilityoverlay.KindProduct), string(capabilityoverlay.KindLogo):
 		return true
 	default:
 		return false
 	}
+}
+
+// IsImageOverlayItem reports image-backed overlay items except map plans.
+func IsImageOverlayItem(item capabilityoverlay.OverlayItem) bool {
+	if item.Map != nil || len(item.AssetRefs) == 0 {
+		return false
+	}
+	return IsImageOverlayKind(item.Kind)
 }
 
 // IsRuntimeTextStyleParam reports flat renderer keys for text styling.

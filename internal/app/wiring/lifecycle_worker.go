@@ -139,6 +139,18 @@ func buildOllamaWarmStep(cfg *config.Config, root *ComposeRoot, log *zap.Logger)
 	}
 }
 
+// docsDeferredRunCompleter exposes the composed script Runner as the
+// aggregator's post-core completion port. It returns nil unless the script
+// runtime was actually built: stuffing a typed-nil *Runner into the
+// interface would read non-nil and panic on first field access, while a nil
+// interface keeps docs-deferred parents safely waiting.
+func docsDeferredRunCompleter(root *ComposeRoot) scriptjobs.DocsDeferredRunCompleter {
+	if root == nil || root.ScriptGenerationRunner == nil {
+		return nil
+	}
+	return root.ScriptGenerationRunner
+}
+
 // buildWorkerSteps returns the worker-mode StartupStep list:
 // self-heartbeat + job-scanner + metrics-refresher + voiceover-parent-aggregator +
 // script-parent-aggregator. The voiceover + script parent-aggregators
@@ -271,6 +283,17 @@ func buildWorkerSteps(deps workerDeps) []StartupStep {
 			RunRepo:      scriptRunRepo,
 			Logger:       deps.log,
 			PollInterval: 30 * time.Second,
+			// Deferred Docs leg (TICKET-CORE-READY-DURABLE-DAG step 4): the
+			// aggregator completes docs-deferred runs through the same Runner
+			// that executed them and re-drives lost children through the same
+			// enqueuer the pipeline uses (deterministic active key: a re-drive
+			// addresses the same child row, never a second publisher). Both			// are nil-safe: without them docs-deferred parents wait instead of
+			// completing or re-driving.
+			// NOTE: a typed-nil *Runner must never land in the interface —
+			// it would read non-nil and panic on field access. Assign only
+			// when the composition actually built the runtime.
+			RunCompleter: docsDeferredRunCompleter(deps.root),
+			DocsEnqueuer: &docsPublishChildEnqueuer{jobs: jobsService},
 		})
 		steps = append(steps, StartupStep{
 			Name: "script-parent-aggregator", Required: false,

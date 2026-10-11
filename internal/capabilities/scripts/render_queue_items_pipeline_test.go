@@ -144,15 +144,19 @@ func TestMarshalRenderingGenOverlayPlanProjectsMicrosecondTiming(t *testing.T) {
 		if id != "canonical-timing" {
 			continue
 		}
-		if _, ok := item["start_us"]; ok {
-			t.Fatal("wire item contains non-contract start_us")
+		var startUS, durationUS int64
+		if err := json.Unmarshal(item["start_us"], &startUS); err != nil {
+			t.Fatalf("start_us missing or invalid: %v", err)
 		}
-		if _, ok := item["duration_us"]; ok {
-			t.Fatal("wire item contains non-contract duration_us")
+		if err := json.Unmarshal(item["duration_us"], &durationUS); err != nil {
+			t.Fatalf("duration_us missing or invalid: %v", err)
+		}
+		if startUS != 100_500 || durationUS != 105_500 {
+			t.Fatalf("canonical timing = [%d,+%d), want [100500,+105500)", startUS, durationUS)
 		}
 		var durationMS int64
 		if err := json.Unmarshal(item["duration_ms"], &durationMS); err != nil {
-			t.Fatalf("duration_ms missing or invalid: %v", err)
+			t.Fatalf("legacy duration_ms projection missing or invalid: %v", err)
 		}
 		if durationMS != 106 {
 			t.Fatalf("duration_ms = %d, want ceil(end_ms-start_ms) = 106", durationMS)

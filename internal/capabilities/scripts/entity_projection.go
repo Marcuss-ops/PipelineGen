@@ -20,6 +20,7 @@ import (
 
 	capabilityentities "github.com/Marcuss-ops/PipelineGen/internal/capabilities/entities"
 	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
+	scriptoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/overlay"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
@@ -422,7 +423,17 @@ func assignEntityImageMotions(items []capabilityoverlay.OverlayItem, offset, wid
 			item.CaptionMotionID = ""
 		}
 		item.MotionParams = map[string]any{"enter_frames": 8}
-		item.Params = capabilityoverlay.EntityImageParams(width, height)
+		// The geometry rebuild must not drop the payload's runtime text
+		// style: overlay_plan stamped font/glow/stroke/shadow/size onto this
+		// item before motions were assigned, and the caption compiler reads
+		// them from Params. Re-seed geometry, carry the text style through.
+		geometry := capabilityoverlay.EntityImageParams(width, height)
+		for key, value := range item.Params {
+			if scriptoverlay.IsRuntimeTextStyleParam(key) {
+				geometry[key] = value
+			}
+		}
+		item.Params = geometry
 	}
 }
 

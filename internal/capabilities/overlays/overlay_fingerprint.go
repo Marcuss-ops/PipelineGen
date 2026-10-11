@@ -54,6 +54,14 @@ func ComputeRenderKey(p OverlayPlan, item OverlayItem) string {
 			frameJSON = string(raw)
 		}
 	}
+	captionMotionParamsJSON := motionParamsJSON(item.CaptionMotionParams)
+	captionStyleJSON := captionStyleJSON(item)
+	styleJSON := ""
+	if len(item.Style) > 0 {
+		if raw, err := json.Marshal(item.Style); err == nil {
+			styleJSON = string(raw)
+		}
+	}
 	input := struct {
 		Template, Text, Params, Renderer string
 		Assets                           []string
@@ -68,16 +76,34 @@ func ComputeRenderKey(p OverlayPlan, item OverlayItem) string {
 		EntityCaption                    string `json:"entity_caption,omitempty"`
 		EntityStyleID                    string `json:"entity_style_id,omitempty"`
 		CaptionMotionID                  string `json:"caption_motion_id,omitempty"`
+		CaptionMotionParams              string `json:"caption_motion_params,omitempty"`
+		CaptionStyle                     string `json:"caption_style,omitempty"`
+		Style                            string `json:"style,omitempty"`
 		SoundEffect                      string `json:"sound_effect,omitempty"`
 		Frame                            string `json:"frame,omitempty"`
 		Map                              string `json:"map,omitempty"`
 	}{
 		item.TemplateID, item.Text, string(params), renderer, assetHashes, p.Width, p.Height, p.FPSNum, p.FPSDen, item.StartMs, item.EndMs, item.StartUS, item.DurationUS,
-		item.PresetID, item.ImagePresetID, item.MotionID, motionParamsJSON(item.MotionParams), imageLayersJSON(item.ImageLayers), item.EntityCaption, item.EntityStyleID, item.CaptionMotionID, soundEffectJSON, frameJSON, mapJSON,
+		item.PresetID, item.ImagePresetID, item.MotionID, motionParamsJSON(item.MotionParams), imageLayersJSON(item.ImageLayers), item.EntityCaption, item.EntityStyleID, item.CaptionMotionID, captionMotionParamsJSON, captionStyleJSON, styleJSON, soundEffectJSON, frameJSON, mapJSON,
 	}
 	b, _ := json.Marshal(input)
 	h := digest.SHA256Bytes(b)
 	return h
+}
+
+func captionStyleJSON(item OverlayItem) string {
+	if item.CaptionFontFamily == "" && item.CaptionLayout == "" && item.CaptionColor == "" {
+		return ""
+	}
+	raw, err := json.Marshal(struct {
+		FontFamily string `json:"font_family,omitempty"`
+		Layout     string `json:"layout,omitempty"`
+		Color      string `json:"color,omitempty"`
+	}{item.CaptionFontFamily, item.CaptionLayout, item.CaptionColor})
+	if err != nil {
+		return ""
+	}
+	return string(raw)
 }
 
 func motionParamsJSON(params map[string]any) string {

@@ -14,11 +14,11 @@ import (
 	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
 )
 
-// TestDiagSnapScaleText is a diagnostic: only background.jpg + 1 IMPORTANT_WORD
-// with preset snap_scale. If the rendered text shows up, fonts are materialized
+// TestDiagText is a diagnostic: only background.jpg + 1 IMPORTANT_WORD
+// with preset phrase_default. If the rendered text shows up, fonts are materialized
 // by the worker; if it renders as a uniform rectangle, font/asset resolution
 // is broken.
-func TestDiagSnapScaleText(t *testing.T) {
+func TestDiagText(t *testing.T) {
 	if os.Getenv("PIPELINEGEN_RENDERINGGEN_E2E") != "1" {
 		t.Skip("set PIPELINEGEN_RENDERINGGEN_E2E=1 to run")
 	}
@@ -33,7 +33,7 @@ func TestDiagSnapScaleText(t *testing.T) {
 	backgroundHash := sha256Hex(background)
 	putObject(t, storeURL, backgroundHash, background)
 
-	jobID := getenvOr("PIPELINEGEN_E2E_JOB_ID", "diag-text-snap-scale")
+	jobID := getenvOr("PIPELINEGEN_E2E_JOB_ID", "diag-text")
 	plan := capoverlay.OverlayPlan{
 		SchemaVersion: capoverlay.SchemaVersionPlan,
 		PlanID:        jobID,
@@ -45,7 +45,7 @@ func TestDiagSnapScaleText(t *testing.T) {
 		RendererVersion: "chronon",
 		Items: []capoverlay.OverlayItem{
 			{ID: "background", TemplateID: "BACKGROUND", StartMs: 0, EndMs: 4000, AssetRefs: []capoverlay.OverlayAssetRef{{AssetID: "background", URL: "assets/background.jpg", SHA256: backgroundHash}}},
-			{ID: "word", TemplateID: "IMPORTANT_WORD", Text: "LEGEND", PresetID: "snap_scale", StartMs: 500, EndMs: 3500, Params: map[string]any{"position": []any{640, 360}, "box_width": 600, "box_height": 200}},
+			{ID: "word", TemplateID: "IMPORTANT_WORD", Text: "LEGEND", PresetID: "phrase_default", StartMs: 500, EndMs: 3500, Params: map[string]any{"position": []any{640, 360}, "box_width": 600, "box_height": 200}},
 		},
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)

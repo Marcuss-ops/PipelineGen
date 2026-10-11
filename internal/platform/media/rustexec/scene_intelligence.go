@@ -65,8 +65,9 @@ func EncodeSIAnalysisRequest(scenes []SISceneRequest) ([]byte, error) {
 
 // DecodeSIManifest parses Rust-produced manifest JSON into the canonical
 // contract and fail-closed validates it. Unknown schema, qualitative
-// comparisons carrying values, unknown relations and over-cap graphs are
-// rejected here — never passed to planners.
+// comparisons carrying values, unknown relations and malformed references are
+// rejected here — never passed to planners. Semantic graph cardinality is
+// preserved; a visual budget belongs to downstream admission.
 func DecodeSIManifest(raw []byte) (*scriptpkg.SceneIntelligenceManifest, error) {
 	var m scriptpkg.SceneIntelligenceManifest
 	if err := json.Unmarshal(raw, &m); err != nil {

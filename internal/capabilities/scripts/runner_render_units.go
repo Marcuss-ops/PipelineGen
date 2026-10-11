@@ -56,7 +56,7 @@ func sceneClips(scene Scene) []*ClipReference {
 func sceneStockClipIDs(scene Scene) map[string]struct{} {
 	var ids map[string]struct{}
 	for _, clip := range sceneClips(scene) {
-		if clip == nil || !clip.AsStock {
+		if !clip.usedAsStock() {
 			continue
 		}
 		if ids == nil {
@@ -76,7 +76,7 @@ func primaryVisualClip(scene Scene) *ClipReference {
 		if clip == nil {
 			continue
 		}
-		if !clip.AsStock {
+		if !clip.usedAsStock() {
 			return clip
 		}
 	}
@@ -93,7 +93,7 @@ func sceneVisualClipsAreStockOnly(scene Scene) bool {
 		return false
 	}
 	for _, clip := range clips {
-		if clip == nil || !clip.AsStock {
+		if !clip.usedAsStock() {
 			return false
 		}
 	}

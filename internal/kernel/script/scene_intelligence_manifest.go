@@ -21,6 +21,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"sort"
 	"strings"
 
@@ -37,8 +38,8 @@ const SceneIntelligenceAnalyzerVersion = "scene_intelligence.v1"
 // comparisons, causal links and the entity graph.
 const RelationRegistryVersion = "relation_registry.v1"
 
-// MaxRelationNodesPerScene caps one screen composition, not the knowledge
-// graph: the full graph may be larger, only relevant nodes show.
+// MaxRelationNodesPerScene is the visual subgraph budget. The semantic
+// manifest carries the complete graph; visual admission enforces this cap.
 const MaxRelationNodesPerScene = 6
 
 // RelationRegistry kinds: the ONLY relation vocabulary detectors may emit.
@@ -176,29 +177,77 @@ func (m *SceneIntelligenceManifest) Validate() error {
 			return fmt.Errorf("duplicate scene %q", s.SceneID)
 		}
 		seen[s.SceneID] = struct{}{}
-		if s.Density.Score < 0 || s.Density.Score > 1 {
+		if s.Density.SceneID != s.SceneID {
+			return fmt.Errorf("density scene reference mismatch in %q", s.SceneID)
+		}
+		if s.Density.Score < 0 || s.Density.Score > 1 || math.IsNaN(s.Density.Score) || math.IsInf(s.Density.Score, 0) {
 			return fmt.Errorf("density out of range in %q", s.SceneID)
 		}
 		for _, c := range s.Comparisons {
+			if c.SceneID != s.SceneID {
+				return fmt.Errorf("comparison scene reference mismatch in %q", s.SceneID)
+			}
+			if len(c.Subjects) < 2 {
+				return fmt.Errorf("comparison requires at least two subjects in %q", s.SceneID)
+			}
+			for _, subject := range c.Subjects {
+				if strings.TrimSpace(subject) == "" {
+					return fmt.Errorf("comparison has empty subject in %q", s.SceneID)
+				}
+			}
+			if len(c.EvidenceSentenceIDs) == 0 {
+				return fmt.Errorf("comparison requires evidence in %q", s.SceneID)
+			}
 			if c.Kind == "comparison" && c.CandidateVisual == "split_comparison" && len(c.Values) != 0 {
 				return fmt.Errorf("qualitative comparison must not carry values in %q", s.SceneID)
 			}
 			if !IsKnownRelation(c.Relation) {
 				return fmt.Errorf("unknown relation %q in %q", c.Relation, s.SceneID)
 			}
+			for _, value := range c.Values {
+				if math.IsNaN(value) || math.IsInf(value, 0) {
+					return fmt.Errorf("comparison has non-finite value in %q", s.SceneID)
+				}
+			}
 		}
 		for _, c := range s.Causal {
+			if c.Kind != "causal_relation" {
+				return fmt.Errorf("invalid causal kind %q in %q", c.Kind, s.SceneID)
+			}
+			if strings.TrimSpace(c.Cause) == "" || strings.TrimSpace(c.Effect) == "" || c.ExtractionConfidence < 0 || c.ExtractionConfidence > 1 || math.IsNaN(c.ExtractionConfidence) || math.IsInf(c.ExtractionConfidence, 0) {
+				return fmt.Errorf("invalid causal relation in %q", s.SceneID)
+			}
+			if len(c.EvidenceSentenceIDs) == 0 {
+				return fmt.Errorf("causal relation requires evidence in %q", s.SceneID)
+			}
+			if c.Relation != RelationCauses && c.Relation != RelationContributesTo && c.Relation != RelationPrecedes {
+				return fmt.Errorf("invalid causal relation kind %q in %q", c.Relation, s.SceneID)
+			}
 			if !IsKnownRelation(c.Relation) {
 				return fmt.Errorf("unknown relation %q in %q", c.Relation, s.SceneID)
 			}
 		}
+		for _, event := range s.TemporalEvents {
+			if strings.TrimSpace(event.EventID) == "" || strings.TrimSpace(event.TextSpan) == "" || strings.TrimSpace(event.TemporalExpression) == "" || event.NarrationIndex < 0 || event.Certainty < 0 || event.Certainty > 1 || math.IsNaN(event.Certainty) || math.IsInf(event.Certainty, 0) {
+				return fmt.Errorf("invalid temporal event in %q", s.SceneID)
+			}
+			if event.NormalizedYear != nil && event.NormalizedEndYear != nil && *event.NormalizedEndYear < *event.NormalizedYear {
+				return fmt.Errorf("reversed temporal interval in %q", s.SceneID)
+			}
+		}
 		for _, r := range s.Relations {
+			if r.Relation != RelationCauses && r.Relation != RelationContributesTo && r.Relation != RelationPrecedes && r.Relation != RelationOwns && r.Relation != RelationFunds && r.Relation != RelationPartnersWith && r.Relation != RelationCompetesWith && r.Relation != RelationContrastsWith {
+				return fmt.Errorf("invalid entity relation kind %q in %q", r.Relation, s.SceneID)
+			}
+			if strings.TrimSpace(r.Subject) == "" || strings.TrimSpace(r.Object) == "" || r.Subject == r.Object {
+				return fmt.Errorf("invalid entity relation endpoints in %q", s.SceneID)
+			}
+			if len(r.EvidenceSentenceIDs) == 0 {
+				return fmt.Errorf("entity relation requires evidence in %q", s.SceneID)
+			}
 			if !IsKnownRelation(r.Relation) {
 				return fmt.Errorf("unknown relation %q in %q", r.Relation, s.SceneID)
 			}
-		}
-		if len(s.Relations) > MaxRelationNodesPerScene {
-			return fmt.Errorf("too many relation nodes in %q", s.SceneID)
 		}
 	}
 	return nil

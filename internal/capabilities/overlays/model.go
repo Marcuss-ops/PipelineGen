@@ -76,6 +76,22 @@ type OverlayPlan struct {
 	Background  *OverlayBackground `json:"background,omitempty"`
 	Items       []OverlayItem      `json:"items"`
 	Fingerprint string             `json:"fingerprint,omitempty"`
+	// RecapPlacements counts the recap slots BuildPlan attempted; RecapCards
+	// counts recap items surviving in Items after overlap degradation.
+	// Application-only observability (like DriveJobID below): excluded from
+	// the wire contract and the semantic fingerprint, so they never alter
+	// render keys or cache identity.
+	RecapPlacements int `json:"-"`
+	RecapCards      int `json:"-"`
+	// ChartPlacements counts the chart slots BuildPlan attempted;
+	// ChartCards counts chart items surviving in Items after the emission
+	// budget gate. Same exclusion rules as the counters above.
+	ChartPlacements int `json:"-"`
+	ChartCards      int `json:"-"`
+	// TimedScenes counts the scenes that carried certified word timing at
+	// compile time (the recap placement denominator). Same exclusion rules
+	// as the counters above.
+	TimedScenes int `json:"-"`
 }
 
 type OverlaySource struct {
@@ -122,7 +138,7 @@ type OverlayItem struct {
 	// entity card, "IMPORTANT_PHRASE" for a phrase).
 	TemplateID string `json:"template_id"`
 	// PresetID is the semantic visual preset selected by PipelineGen for
-	// this item (e.g. "phrase_focus_v1", "entity_card_v1"). It is the
+	// this item (e.g. "phrase_default", "image_fade_in"). It is the
 	// contract slot of the plan's preset resolver: the value space is owned
 	// by the preset registry, never invented here. Empty means "no preset
 	// selected" — the item compiles through the semantic_role → Chronon
@@ -134,7 +150,7 @@ type OverlayItem struct {
 	ImagePresetID string `json:"image_preset_id,omitempty"`
 	// MotionID is the optional Chronon-owned text/image motion selected for
 	// this semantic item. It is intentionally separate from PresetID: several
-	// phrases can use the same apple_v2 preset while carrying different
+	// phrases can use the same phrase_default preset while carrying different
 	// motions.
 	MotionID string `json:"motion_id,omitempty"`
 	// EntityStyleID is the RenderingGen entity-card composition selector. The
@@ -157,12 +173,16 @@ type OverlayItem struct {
 	Text      string            `json:"text,omitempty"`
 	// EntityCaption is the visible name label for a single entity image.
 	// Composite image items keep their labels on ImageLayers instead.
-	EntityCaption     string              `json:"entity_caption,omitempty"`
-	CaptionMotionID   string              `json:"caption_motion_id,omitempty"`
-	CaptionFontFamily string              `json:"caption_font_family,omitempty"`
-	AssetRefs         []OverlayAssetRef   `json:"asset_refs,omitempty"`
-	SoundEffect       *OverlaySoundEffect `json:"sound_effect,omitempty"`
-	ImageLayers       []OverlayImageLayer `json:"image_layers,omitempty"`
+	EntityCaption       string              `json:"entity_caption,omitempty"`
+	CaptionMotionID     string              `json:"caption_motion_id,omitempty"`
+	CaptionMotionParams map[string]any      `json:"caption_motion_params,omitempty"`
+	CaptionFontFamily   string              `json:"caption_font_family,omitempty"`
+	CaptionLayout       string              `json:"caption_layout,omitempty"`
+	CaptionColor        string              `json:"caption_color,omitempty"`
+	Style               map[string]any      `json:"style,omitempty"`
+	AssetRefs           []OverlayAssetRef   `json:"asset_refs,omitempty"`
+	SoundEffect         *OverlaySoundEffect `json:"sound_effect,omitempty"`
+	ImageLayers         []OverlayImageLayer `json:"image_layers,omitempty"`
 	// Frame carries image-card border, shadow, stroke and clipping radius to
 	// RenderingGen. It is empty for text and structural items.
 	Frame *OverlayItemFrame `json:"frame,omitempty"`
@@ -543,12 +563,25 @@ func (p *OverlayPlan) Validate() error {
 		} else if item.Map != nil {
 			return fmt.Errorf("overlay plan: item %q must not carry a map declaration", item.ID)
 		}
+		if err := validateChartItem(item); err != nil {
+			return err
+		}
 		if err := ValidateChainItem(item); err != nil {
 			return err
 		}
+		if sfx := item.SoundEffect; sfx != nil {
+			if strings.TrimSpace(sfx.AssetRef.AssetID) == "" {
+				return fmt.Errorf("overlay plan: item %q sound_effect requires asset_ref.asset_id", item.ID)
+			}
+			assetIDs[sfx.AssetRef.AssetID] = true
+		}
+		key := ComputeRenderKey(*p, item)
+		if item.RenderKey != "" && item.RenderKey != key {
+			return fmt.Errorf("overlay plan: item %q render_key does not match render inputs", item.ID)
+		}
 		if item.RenderKey == "" {
-			key := ComputeRenderKey(*p, item)
-			p.Items[i] = OverlayItem{ID: item.ID, SceneID: item.SceneID, EntityID: item.EntityID, Kind: item.Kind, StartMs: item.StartMs, EndMs: item.EndMs, StartUS: item.StartUS, DurationUS: item.DurationUS, TemplateID: item.TemplateID, PresetID: item.PresetID, ImagePresetID: item.ImagePresetID, MotionID: item.MotionID, MotionParams: item.MotionParams, EntityRef: item.EntityRef, Text: item.Text, EntityCaption: item.EntityCaption, EntityStyleID: item.EntityStyleID, CaptionMotionID: item.CaptionMotionID, CaptionFontFamily: item.CaptionFontFamily, AssetRefs: item.AssetRefs, SoundEffect: item.SoundEffect, ImageLayers: item.ImageLayers, Frame: item.Frame, Map: item.Map, Params: item.Params, RenderKey: key}
+			item.RenderKey = key
+			p.Items[i] = item
 		}
 	}
 	if p.Fingerprint == "" {

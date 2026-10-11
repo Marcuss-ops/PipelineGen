@@ -65,6 +65,8 @@ func (r *Runner) compileAudioOverlayPlan(ctx context.Context, runID string, req 
 	canvas.AnimationCounts = req.AnimationCounts
 	canvas.EntityStyleID = req.EntityStyleID
 	canvas.DisableNumberOverlays = req.DisableNumberOverlays
+	canvas.DisableRecapOverlays = req.DisableRecapOverlays
+	canvas.DisableChartOverlays = req.DisableChartOverlays
 	if canvas.Style == nil && background != nil {
 		canvas.Style = background.Style
 	}
@@ -92,6 +94,18 @@ func (r *Runner) compileAudioOverlayPlan(ctx context.Context, runID string, req 
 			r.failRunWithRetry(ctx, runID, StageCompilingAudio, cause)
 			return false
 		}
+	}
+	if result.OverlayPlan != nil {
+		r.log.Info("runner: overlay plan compiled",
+			zap.String("run_id", runID),
+			zap.Int("scenes", len(result.Scenes)),
+			zap.Int("timed_scenes", result.OverlayPlan.TimedScenes),
+			zap.Int("items", len(result.OverlayPlan.Items)),
+			zap.Int("recap_placements", result.OverlayPlan.RecapPlacements),
+			zap.Int("recap_cards", result.OverlayPlan.RecapCards),
+			zap.Int("chart_placements", result.OverlayPlan.ChartPlacements),
+			zap.Int("chart_cards", result.OverlayPlan.ChartCards),
+		)
 	}
 	r.logPhraseMotionSelections(runID, result.OverlayPlan)
 	r.logPhraseAnchoringDiagnostics(runID, result, req.SourceLanguage)

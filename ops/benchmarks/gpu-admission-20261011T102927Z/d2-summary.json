@@ -1,0 +1,33 @@
+{
+  "criterion": "D2",
+  "levels": [
+    {
+      "concurrency": 1,
+      "wall_ms": 10691,
+      "work_ms": 10685,
+      "speedup": 0.9994387802824806
+    },
+    {
+      "concurrency": 2,
+      "wall_ms": 6071,
+      "work_ms": 12120,
+      "speedup": 1.9963762147916324
+    },
+    {
+      "concurrency": 3,
+      "wall_ms": 5313,
+      "work_ms": 13871,
+      "speedup": 2.610766045548654
+    },
+    {
+      "concurrency": 5,
+      "wall_ms": 3944,
+      "work_ms": 19556,
+      "speedup": 4.95841784989858
+    }
+  ],
+  "serial_wall_ms": 10691,
+  "best_concurrency": 5,
+  "best_speedup": 4.958,
+  "concurrency_pays": true
+}

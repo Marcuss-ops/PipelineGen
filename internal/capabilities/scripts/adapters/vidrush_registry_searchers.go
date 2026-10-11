@@ -488,6 +488,10 @@ func (f *VidRushProviderFanout) resolveInternetImageCandidates(ctx context.Conte
 				SegmentID: segmentID, Position: workerInput.Position, Query: query, Entity: query,
 				TextHash: textHash, Language: plan.Language, Limit: perQueryLimit,
 				Provider: "internet_images",
+				// A refresh must not resurrect recorded hashes from the
+				// durable image index: re-downloaded bytes are re-hashed
+				// in-run, keeping overlay refs content-addressed.
+				ForceRefresh: plan.MediaPlan.ForceRefreshAssets || plan.ForceRefresh,
 			})
 			if err != nil {
 				if f.metrics != nil {

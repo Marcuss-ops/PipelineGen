@@ -224,6 +224,27 @@ func separateOverlayItemPlan(parent capoverlay.OverlayPlan, source capoverlay.Ov
 		targetUS = durationUS
 		maxDurationUS = maxCompositeOverlayDurationUS
 	}
+	if capoverlay.IsChainItemKind(source.Kind) {
+		// A chain item carries its segments at absolute plan times, but the
+		// child plan is rebased to start at zero: rebase a COPY of the
+		// segments (the parent plan's Params map must not be mutated) so
+		// both this validation and the RenderingGen window check see
+		// child-local times. Keep the full span: truncating a chain to the
+		// 5s single-item cap would push later segments outside the child
+		// window and fail validation downstream.
+		rebased, ok := capoverlay.RebaseChainSegments(source.Params, startUS)
+		if !ok {
+			return capoverlay.OverlayPlan{}, nil, fmt.Errorf("overlay item %q chain segments are not decodable", source.ID)
+		}
+		params := make(map[string]any, len(source.Params))
+		for k, v := range source.Params {
+			params[k] = v
+		}
+		params["chain_segments"] = rebased
+		source.Params = params
+		targetUS = durationUS
+		maxDurationUS = durationUS
+	}
 	if targetUS > maxDurationUS {
 		targetUS = maxDurationUS
 	}

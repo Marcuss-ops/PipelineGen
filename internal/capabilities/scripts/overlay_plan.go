@@ -32,6 +32,64 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
 
+// recapSceneBrief is one timed scene's recap projection: its top phrase
+// stands in for the chapter bullet, and its canonical window bounds the
+// recap cards shown when a later placement scene begins.
+type recapSceneBrief struct {
+	id      string
+	title   string
+	score   float64
+	startUS int64
+	endUS   int64
+}
+
+// recapPlacementsForScenes maps the scene sequence to recap slots. Placement
+// chapters come from RecapPlacementPoints (R01: after several chapters;
+// R02: short runs yield none). A point p displays at the start of scene
+// p+1 covering scenes 0..p — never the scene being entered (R03: no leak
+// of not-yet-narrated content). Scene ordinals are the narration index
+// space, so later scenes always sort after the boundary. A display scene
+// already taken by an earlier point is skipped, keeping card windows
+// disjoint. Deterministic: same briefs → same placements.
+func recapPlacementsForScenes(briefs []recapSceneBrief) []capabilityoverlay.RecapPlacement {
+	points := capabilityoverlay.RecapPlacementPoints(len(briefs), false)
+	usedDisplay := map[int]struct{}{}
+	var out []capabilityoverlay.RecapPlacement
+	for _, p := range points {
+		display := p + 1
+		if display > len(briefs)-1 {
+			display = len(briefs) - 1
+		}
+		if display < 1 {
+			continue
+		}
+		if _, taken := usedDisplay[display]; taken {
+			continue
+		}
+		usedDisplay[display] = struct{}{}
+		narratedThrough := display - 1
+		var sources []capabilityoverlay.RecapSource
+		for i := 0; i <= narratedThrough && i < len(briefs); i++ {
+			if strings.TrimSpace(briefs[i].title) == "" {
+				continue
+			}
+			sources = append(sources, capabilityoverlay.RecapSource{
+				ID: briefs[i].id, Title: briefs[i].title,
+				SentenceIDs: []int{i}, Score: briefs[i].score,
+			})
+		}
+		w := briefs[display]
+		if w.startUS >= w.endUS {
+			continue
+		}
+		out = append(out, capabilityoverlay.RecapPlacement{
+			SceneID: w.id, WindowStartUS: w.startUS, WindowEndUS: w.endUS,
+			Sources: sources, NarratedThrough: narratedThrough, MaxCards: 3,
+		})
+	}
+	return out
+}
+
 // CompileOverlayPlan derives the full semantic OverlayPlan for a completed
 // real result. It returns nil (no-op) when the result carries no derivable
 // overlay surface (no annotations, no word timing, no entity timeline) and
@@ -132,6 +190,10 @@ func compileOverlayPlanWithMotionOffset(result *GenerateResult, language Languag
 		timelineStartUS[scene.ID] = scene.TimelineStartUS
 		timelineEndUS[scene.ID] = scene.TimelineStartUS + scene.DurationUS
 	}
+	// Recap briefs run parallel to timedScenes: each scene's top-score phrase
+	// stands in for its chapter bullet. Scenes without phrases contribute no
+	// recap source — the builder invents nothing.
+	recapBriefs := make([]recapSceneBrief, 0, len(timedScenes))
 	for _, scene := range timedScenes {
 		ref := scene.Voiceover[language]
 		startUS, ok := timelineStartUS[scene.ID]
@@ -164,6 +226,45 @@ func compileOverlayPlanWithMotionOffset(result *GenerateResult, language Languag
 		if sceneInput != nil {
 			scenes = append(scenes, *sceneInput)
 		}
+		brief := recapSceneBrief{id: scene.ID}
+		if start, ok := timelineStartUS[scene.ID]; ok {
+			brief.startUS = start
+			brief.endUS = timelineEndUS[scene.ID]
+		}
+		if sceneInput != nil {
+			// Any top verbatim text stands in for the bullet: phrases
+			// first, then quotes, keywords, numbers and brand texts.
+			// Image-only scenes contribute no source — never invented.
+			textCands := []capabilityoverlay.TimedAnnotation{}
+			textCands = append(textCands, sceneInput.Phrases...)
+			textCands = append(textCands, sceneInput.Quotes...)
+			textCands = append(textCands, sceneInput.Keywords...)
+			textCands = append(textCands, sceneInput.Numbers...)
+			textCands = append(textCands, sceneInput.BrandTexts...)
+			for _, tc := range textCands {
+				if strings.TrimSpace(tc.Text) == "" {
+					continue
+				}
+				if brief.title == "" || tc.Score > brief.score {
+					brief.title, brief.score = tc.Text, tc.Score
+				}
+			}
+		}
+		recapBriefs = append(recapBriefs, brief)
+	}
+	// Recaps ride the certified quote primitive at chapter-boundary scenes
+	// (R01); short runs yield no placement (R02). Disabled via the canvas
+	// kill-switch; placements that cannot contribute stay no-ops.
+	var recapPlacements []capabilityoverlay.RecapPlacement
+	if !canvas.DisableRecapOverlays {
+		recapPlacements = recapPlacementsForScenes(recapBriefs)
+	}
+	// Charts ride the preset-less SHAPE primitive (params.shape=chart) on
+	// scenes carrying a strict grounded numeric comparison; scenes without
+	// one yield no placement. Disabled via the canvas kill-switch.
+	var chartPlacements []capabilityoverlay.ChartPlacement
+	if !canvas.DisableChartOverlays {
+		chartPlacements = capabilityoverlay.ChartPlacementsForScenes(scenes)
 	}
 
 	plannerConfig := capabilityoverlay.AllCandidatesPlannerConfig(scenes)
@@ -180,8 +281,9 @@ func compileOverlayPlanWithMotionOffset(result *GenerateResult, language Languag
 	plannerPlan, err := capabilityoverlay.BuildPlan(capabilityoverlay.PlanInput{
 		PlanID: planID, VideoID: videoID, ProjectID: projectID,
 		MotionSeed: motionSeed,
-		Width:      canvas.Width, Height: canvas.Height, FPSNum: canvas.FPSNum, FPSDen: canvas.FPSDen,
-		Scenes:        scenes,
+		Width:      canvas.Width, Height: canvas.Height, FPSNum: canvas.FPSNum, FPSDen: canvas.FPSDen, Scenes: scenes,
+		Recap:         recapPlacements,
+		Charts:        chartPlacements,
 		Background:    canvas.Background,
 		PhraseMotions: canvas.PhraseMotions, PhraseMotionFamily: canvas.PhraseMotionFamily, ImageMotions: canvas.ImageMotions,
 		HeavyPhrasePriority: canvas.HeavyPhrasePriority, AnimationCounts: canvas.AnimationCounts, EntityStyleID: canvas.EntityStyleID,
@@ -190,6 +292,7 @@ func compileOverlayPlanWithMotionOffset(result *GenerateResult, language Languag
 	if err != nil {
 		return nil, fmt.Errorf("overlay plan: plan: %w", err)
 	}
+	plannerPlan.TimedScenes = len(timedScenes)
 	items := plannerPlan.Items
 	if canvas.MapsOnly {
 		kept := items[:0]
@@ -219,80 +322,10 @@ func compileOverlayPlanWithMotionOffset(result *GenerateResult, language Languag
 		}
 	}
 	items = filteredItems
-	if styleParams := overlayStyleParams(canvas.Style); len(styleParams) > 0 {
-		for i := range items {
-			merged := map[string]any{}
-			for k, v := range items[i].Params {
-				merged[k] = v
-			}
-			for k, v := range styleParams {
-				if isRuntimeTextStyleParam(k) && (isImageOverlayItem(items[i]) || (!isTextOverlayKind(items[i].Kind) && strings.TrimSpace(items[i].EntityCaption) == "")) {
-					continue
-				}
-				if strings.HasPrefix(k, "image_") {
-					if !isImageOverlayItem(items[i]) {
-						continue
-					}
-					key := strings.TrimPrefix(k, "image_")
-					merged[key] = v
-					continue
-				}
-				if k == "style" {
-					merged[k] = mergeStyleParam(merged[k], v.(map[string]any))
-				} else if _, exists := merged[k]; !exists {
-					merged[k] = v
-				}
-			}
-			items[i].Params = merged
-			if items[i].Kind == "text_phrase" || items[i].Kind == string(capabilityoverlay.KindImportantPhrase) {
-				phraseFontSize := float64(capabilityoverlay.PresentationPhraseFontMinimumPX)
-				if configured, ok := styleParams["font_size_px"].(float64); ok && configured > phraseFontSize {
-					phraseFontSize = configured
-				}
-				items[i].Params["font_size_px"] = phraseFontSize
-				if phraseStyle, ok := items[i].Params["style"].(map[string]any); ok {
-					phraseStyle["font_size"] = phraseFontSize
-				}
-			}
-			if items[i].TemplateID == "TIMELINE_DATE_CARD" || items[i].TemplateID == "METRIC_STAT_CARD" {
-				// Match the selected shared text style and apply the presentation
-				// size increase without adding a separate preset or font family.
-				baseFontSize := float64(capabilityoverlay.SharedTextFontSizePX)
-				if configured, ok := styleParams["font_size_px"].(float64); ok && configured > baseFontSize {
-					baseFontSize = configured
-				}
-				presentationFontSize := baseFontSize + float64(capabilityoverlay.PresentationTextFontIncreasePX)
-				items[i].Params["font_size_px"] = presentationFontSize
-				if presentationStyle, ok := items[i].Params["style"].(map[string]any); ok {
-					presentationStyle["font_size"] = presentationFontSize
-				}
-				// Kind "number" is semantically lowered by RenderingGen through
-				// its generic text lane, so it misses the date/stat box growth
-				// branch. Send the matching height with the font override or the
-				// preset's shrink-only fit silently scales 240px callouts back down.
-				items[i].Params["height"] = presentationFontSize*1.7 + 32
-			}
-			items[i].RenderKey = ""
-			if isImageOverlayItem(items[i]) && canvas.Style != nil {
-				items[i].Frame = overlayImageFrame(canvas.Style.Image)
-				for childIndex := range items[i].ImageLayers {
-					child := &items[i].ImageLayers[childIndex]
-					childParams := map[string]any{}
-					for key, value := range child.Params {
-						childParams[key] = value
-					}
-					for key, value := range styleParams {
-						if strings.HasPrefix(key, "image_") {
-							name := strings.TrimPrefix(key, "image_")
-							childParams[name] = value
-						}
-					}
-					child.Params = childParams
-				}
-				normalizeEntityImageLayer(&items[i])
-			}
-		}
-	}
+	// Run-level style projection (text sizing, image frame/layer params) is
+	// owned by overlay_plan_finalize.go so this file stays inside the strict
+	// 600-line cap; the call is the same one this block performed inline.
+	applyOverlayStyleToItems(items, canvas)
 
 	// Entity overlays (PERSON / ORGANIZATION / LOCATION / CONCEPT) come from the
 	// certified EntityTimeline via the overlay resolver. NUMBER / QUOTE /
@@ -389,14 +422,50 @@ func compileOverlayPlanWithMotionOffset(result *GenerateResult, language Languag
 	}
 	if fontFamily != "" {
 		for i := range items {
-			if !isEntityOverlayKind(items[i].Kind) {
+			if capabilityoverlay.IsChainItemKind(items[i].Kind) {
+				segments, ok := capabilityoverlay.DecodeChainSegments(items[i].Params)
+				if !ok {
+					continue // Validate below rejects malformed chain payloads.
+				}
+				for segmentIndex := range segments {
+					if isEntityOverlayKind(segments[segmentIndex].Kind) {
+						segments[segmentIndex].CaptionFontFamily = fontFamily
+					}
+				}
+				items[i].Params["chain_segments"] = segments
+				items[i].RenderKey = ""
 				continue
 			}
-			items[i].CaptionFontFamily = fontFamily
+			if isEntityOverlayKind(items[i].Kind) {
+				items[i].CaptionFontFamily = fontFamily
+				items[i].RenderKey = ""
+			}
 		}
 	}
 	if canvas.Style != nil && canvas.Style.Image != nil {
 		for i := range items {
+			if capabilityoverlay.IsChainItemKind(items[i].Kind) {
+				segments, ok := capabilityoverlay.DecodeChainSegments(items[i].Params)
+				if !ok {
+					continue // Validate below rejects malformed chain payloads.
+				}
+				for segmentIndex := range segments {
+					segment := &segments[segmentIndex]
+					if !isImageOverlayKind(segment.Kind) {
+						continue
+					}
+					segment.Frame = overlayImageFrame(canvas.Style.Image)
+					for childIndex := range segment.ImageLayers {
+						child := &segment.ImageLayers[childIndex]
+						child.Params = mergeStyleParam(child.Params, imageStyleParams(canvas.Style.Image))
+						child.Frame = overlayImageFrame(canvas.Style.Image)
+					}
+					segment.Params = mergeStyleParam(segment.Params, imageStyleParams(canvas.Style.Image))
+				}
+				items[i].Params["chain_segments"] = segments
+				items[i].RenderKey = ""
+				continue
+			}
 			if isImageOverlayItem(items[i]) {
 				applyOverlayImageStyle(&items[i], canvas.Style.Image)
 			}
@@ -444,6 +513,14 @@ func compileOverlayPlanWithMotionOffset(result *GenerateResult, language Languag
 		// never lost when it crosses the PipelineGen → Chronon boundary.
 		durationMS = (durationUS + 999) / 1000
 	}
+	// Item transforms above (chain coalescing, font/style projection and
+	// image composition) can change renderer-owned inputs after an upstream
+	// planner has sealed its own intermediate plan. This is the final plan
+	// sealing boundary, so discard those provisional keys and let Validate
+	// recompute them from the actual serialized render inputs.
+	for i := range items {
+		items[i].RenderKey = ""
+	}
 
 	plan := capabilityoverlay.OverlayPlan{
 		SchemaVersion:          capabilityoverlay.SchemaVersionPlan,
@@ -465,6 +542,15 @@ func compileOverlayPlanWithMotionOffset(result *GenerateResult, language Languag
 		// pixel format from it.
 		MediaContract: capabilityoverlay.ContractIDForCanvas(canvas.Width, canvas.Height, canvas.FPSNum, canvas.FPSDen, true),
 		Items:         items,
+		// Carry the planner's recap observability into the sealed plan:
+		// plannerPlan itself is superseded here by post-processing (entity
+		// overlays, budgets, chain fusion). RecapCards is recounted on the
+		// final items so fused-away markers cannot inflate it.
+		RecapPlacements: plannerPlan.RecapPlacements,
+		RecapCards:      countRecapItems(items),
+		ChartPlacements: plannerPlan.ChartPlacements,
+		ChartCards:      countChartItems(items),
+		TimedScenes:     plannerPlan.TimedScenes,
 	}
 	if err := plan.Validate(); err != nil {
 		return nil, fmt.Errorf("overlay plan: seal: %w", err)

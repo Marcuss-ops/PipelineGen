@@ -54,7 +54,7 @@ func TestOverlayPlanContract_PresetIDSerialized(t *testing.T) {
 		Width: 1280, Height: 720, FPSNum: 30, FPSDen: 1,
 		Items: []OverlayItem{{
 			ID: "ov_001", StartMs: 1500, EndMs: 3700,
-			TemplateID: "IMPORTANT_PHRASE", PresetID: "phrase_focus_v1",
+			TemplateID: "IMPORTANT_PHRASE", PresetID: "phrase_default",
 			Text: "QUESTO CAMBIA TUTTO",
 		}},
 	}
@@ -68,7 +68,7 @@ func TestOverlayPlanContract_PresetIDSerialized(t *testing.T) {
 		} `json:"items"`
 	}
 	require.NoError(t, json.Unmarshal(raw, &doc))
-	require.Equal(t, "phrase_focus_v1", doc.Items[0].PresetID)
+	require.Equal(t, "phrase_default", doc.Items[0].PresetID)
 }
 
 // TestOverlayPlanContract_EntityRefValidation pins the fail-closed contract:
@@ -111,7 +111,7 @@ func TestOverlayPlanContract_PresetDoesNotChangeLegacyRenderKey(t *testing.T) {
 
 	// The same item with a preset MUST produce a different render key (the
 	// preset changes the visual output) and a different fingerprint.
-	plan.Items[0].PresetID = "entity_card_v1"
+	plan.Items[0].PresetID = "phrase_default"
 	plan.Items[0].RenderKey = ""
 	plan.Fingerprint = ""
 	require.NoError(t, plan.Validate())

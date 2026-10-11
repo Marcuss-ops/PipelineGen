@@ -16,6 +16,7 @@ import (
 	scriptapi "github.com/Marcuss-ops/PipelineGen/internal/capabilities/script"
 	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
 	adapters "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters"
+	scriptjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/jobs"
 	scriptports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/submission"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/usecase"
@@ -212,6 +213,23 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 			log.Info("wireScriptFlow: durable script.generate stock prefetch wired")
 		}
 		genJobHandler.SetDurableRunner(durableRunner)
+		// Deferred Docs leg (TICKET-CORE-READY-DURABLE-DAG steps 2-4 cutover):
+		// the pipeline hands post-CORE_READY document publication to the
+		// `script.docs_publish` child, the handler returns a waiting parent,
+		// and the parent aggregator owns the terminal flip. All three sides
+		// are fail-closed (enqueue error fails the run; missing publisher
+		// fails the child; the aggregator never flips without the run).
+		if root.Jobs != nil && root.Jobs.Facade != nil {
+			durableRunner.SetDocsPublishEnqueuer(&docsPublishChildEnqueuer{jobs: root.Jobs.Facade})
+			log.Info("wireScriptFlow: deferred script.docs_publish child wired")
+		}
+		if root.Jobs != nil && root.Jobs.Service != nil {
+			docsHandler := scriptjobs.NewDocsPublishJobHandler(durableRunner, log)
+			if err := docsHandler.Register(root.Jobs.Service); err != nil {
+				return fmt.Errorf("wireScriptFlow: register script.docs_publish handler: %w", err)
+			}
+		}
+		root.ScriptGenerationRunner = durableRunner
 		oneUC.SetOverlayBackgroundSource(durableRunner.OverlayBackgroundSource())
 		if overlayEnqueuer := durableRunner.OverlayRenderEnqueuer(); overlayEnqueuer != nil {
 			oneUC.SetOverlayRenderEnqueuer(overlayEnqueuer)

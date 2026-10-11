@@ -49,7 +49,21 @@ func normalizeRecapTitle(title string) string {
 // wins); sources without coverage are dropped, never invented: a recap
 // shows only what was already treated, no new claims. Titles stay verbatim
 // — negations and attributions are preserved exactly as narrated.
+//
+// Callers building a recap at a narration boundary should use
+// BuildRecapCandidatesThrough so a later chapter cannot leak into the card.
 func BuildRecapCandidates(sources []RecapSource, maxCards int) []RecapCandidate {
+	return BuildRecapCandidatesThrough(sources, maxCards, int(^uint(0)>>1))
+}
+
+// BuildRecapCandidatesThrough additionally gates every cited sentence by
+// its narration index. A candidate is admitted only when all of its source
+// sentence IDs are at or before narratedThrough; mixed earlier/later sources
+// are rejected whole rather than silently truncated or rewritten.
+func BuildRecapCandidatesThrough(sources []RecapSource, maxCards, narratedThrough int) []RecapCandidate {
+	if narratedThrough < 0 {
+		return []RecapCandidate{}
+	}
 	if maxCards <= 0 {
 		maxCards = 3
 	}
@@ -64,6 +78,16 @@ func BuildRecapCandidates(sources []RecapSource, maxCards int) []RecapCandidate 
 	})
 	for _, s := range ordered {
 		if strings.TrimSpace(s.ID) == "" || strings.TrimSpace(s.Title) == "" || len(s.SentenceIDs) == 0 {
+			continue
+		}
+		covered := true
+		for _, sentenceID := range s.SentenceIDs {
+			if sentenceID < 0 || sentenceID > narratedThrough {
+				covered = false
+				break
+			}
+		}
+		if !covered {
 			continue
 		}
 		key := normalizeRecapTitle(s.Title)
