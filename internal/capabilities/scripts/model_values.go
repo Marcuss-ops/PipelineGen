@@ -85,14 +85,14 @@ type ClipReference struct {
 	// generated voiceover mix at full original volume, while its video is
 	// never processed with a localized clip render and never shown in the
 	// final video. The scene's visual comes from its stock binding.
-	AsStock        bool                       `json:"as_stock,omitempty"`
-	AudioAssetID   string                     `json:"audio_asset_id,omitempty"`
-	AudioPath      string                     `json:"audio_path,omitempty"`
-	Path           string                     `json:"path,omitempty"`
-	SHA256         string                     `json:"sha256,omitempty"`
-	FrameCount     int64                      `json:"frame_count,omitempty"`
-	SourceInMS     int64                      `json:"source_in_ms,omitempty"`
-	SourceOutMS    int64                      `json:"source_out_ms,omitempty"`
+	AsStock      bool   `json:"as_stock,omitempty"`
+	AudioAssetID string `json:"audio_asset_id,omitempty"`
+	AudioPath    string `json:"audio_path,omitempty"`
+	Path         string `json:"path,omitempty"`
+	SHA256       string `json:"sha256,omitempty"`
+	FrameCount   int64  `json:"frame_count,omitempty"`
+	SourceInMS   int64  `json:"source_in_ms,omitempty"`
+	SourceOutMS  int64  `json:"source_out_ms,omitempty"`
 	// Subject identity of the clip, threaded from the canonical asset
 	// metadata (ClipSemanticMetadata). The scene↔clip identity gate uses
 	// the union of Speakers + MentionedPeople + Subject to certify that a

@@ -347,6 +347,80 @@ func TestGenerationEnvelopeValidate_RejectsDuplicateAcrossLegacyFields(t *testin
 	}
 }
 
+func TestGenerationEnvelopePayloadContract_AcceptsStockClipIDsSubset(t *testing.T) {
+	envelope := GenerationEnvelopeV2{Version: 2, Items: []GenerationItemV2{{
+		ID: "stock-marked", Source: SourceSpec{Type: SourceClips},
+		ScriptParams: ScriptSpec{Segments: []ScriptSegment{
+			{ID: "scene-a", Topic: "A", ClipIDs: []string{"clip-a", "clip-b"}, StockClipIDs: []string{"clip-b"}},
+			{ID: "scene-b", Topic: "B", ClipIDs: []string{"clip-c"}},
+		}},
+	}}}
+	if err := envelope.Validate(); err != nil {
+		t.Fatalf("a stock_clip_ids subset of the segment's clip_ids must be accepted: %v", err)
+	}
+}
+
+func TestGenerationEnvelopeValidate_RejectsStockClipOutsideSegmentClipIDs(t *testing.T) {
+	envelope := GenerationEnvelopeV2{Version: 2, Items: []GenerationItemV2{{
+		ID: "stock-foreign", Source: SourceSpec{Type: SourceClips},
+		ScriptParams: ScriptSpec{Segments: []ScriptSegment{{Topic: "Scene", ClipIDs: []string{"clip-a"}, StockClipIDs: []string{"clip-b"}}}},
+	}}}
+	if err := envelope.Validate(); err == nil {
+		t.Fatal("a stock_clip_ids entry not owned by the segment must be rejected")
+	}
+}
+
+func TestGenerationEnvelopeValidate_RejectsStockMarkingWithoutClipIDs(t *testing.T) {
+	envelope := GenerationEnvelopeV2{Version: 2, Items: []GenerationItemV2{{
+		ID: "stock-unowned", Source: SourceSpec{Type: SourceClips, ClipIDs: []string{"root-clip"}},
+		ScriptParams: ScriptSpec{Segments: []ScriptSegment{{Topic: "Scene", StockClipIDs: []string{"root-clip"}}}},
+	}}}
+	if err := envelope.Validate(); err == nil {
+		t.Fatal("stock marking never invents clip ownership on a segment without clip_ids")
+	}
+}
+
+func TestGenerationEnvelopeValidate_RejectsDuplicateAndEmptyStockClipIDs(t *testing.T) {
+	for name, segment := range map[string]ScriptSegment{
+		"duplicate": {Topic: "Scene", ClipIDs: []string{"clip-a"}, StockClipIDs: []string{"clip-a", "clip-a"}},
+		"empty":     {Topic: "Scene", ClipIDs: []string{"clip-a"}, StockClipIDs: []string{"clip-a", "  "}},
+	} {
+		envelope := GenerationEnvelopeV2{Version: 2, Items: []GenerationItemV2{{
+			ID: "stock-" + name, Source: SourceSpec{Type: SourceClips},
+			ScriptParams: ScriptSpec{Segments: []ScriptSegment{segment}},
+		}}}
+		if err := envelope.Validate(); err == nil {
+			t.Errorf("%s stock_clip_ids must be rejected", name)
+		}
+	}
+}
+
+func TestCloneScriptSegments_DeepCopiesStockClipIDs(t *testing.T) {
+	original := []ScriptSegment{{ID: "scene", Topic: "Scene", ClipIDs: []string{"clip-a"}, StockClipIDs: []string{"clip-a"}}}
+	clone := CloneScriptSegments(original)
+	clone[0].StockClipIDs[0] = "mutated"
+	clone[0].ClipIDs[0] = "mutated"
+	if original[0].StockClipIDs[0] != "clip-a" {
+		t.Fatal("StockClipIDs share storage with the caller's segment slice")
+	}
+	if original[0].ClipIDs[0] != "clip-a" {
+		t.Fatal("ClipIDs share storage with the caller's segment slice")
+	}
+}
+
+func TestSegmentClipIsStock_TrimsAndNeverMatchesEmpty(t *testing.T) {
+	segment := ScriptSegment{ClipIDs: []string{"clip-a"}, StockClipIDs: []string{" clip-a "}}
+	if !SegmentClipIsStock(segment, "clip-a") {
+		t.Fatal("stock marking must match after whitespace trimming")
+	}
+	if SegmentClipIsStock(segment, "clip-b") {
+		t.Fatal("an unmarked clip must not be reported as stock")
+	}
+	if SegmentClipIsStock(ScriptSegment{StockClipIDs: []string{""}}, "") {
+		t.Fatal("an empty clip id is never a stock declaration")
+	}
+}
+
 func assertSegmentClipIDs(t *testing.T, got []ScriptSegment, want [][]string) {
 	t.Helper()
 	if len(got) != len(want) {

@@ -324,6 +324,42 @@ func TestResolveAudioModeIsExplicitAndFailClosed(t *testing.T) {
 // final_audio.m4a and requires only audio/timeline prerequisites. It must
 // be a valid mode even when RenderVideo=false — video rendering is an
 // independent flag that never gates the audio master.
+// TestCanonicalTimelineValidate_StockAudioMustBeOriginalClipStream pins the
+// stock-audio validation half of the used-as-stock contract: a stock intent
+// is only valid as an original clip stream, and the same holds for a
+// compiled stock event.
+func TestCanonicalTimelineValidate_StockAudioMustBeOriginalClipStream(t *testing.T) {
+	valid := stockClipTimeline()
+	if err := valid.Validate(); err != nil {
+		t.Fatalf("a stock original-clip intent must validate: %v", err)
+	}
+	bad := stockClipTimeline()
+	bad.Segments[0].AudioIntents[1].Mode = AudioVoiceover
+	bad.Segments[0].AudioIntents[1].ClipAssetID = ""
+	bad.Segments[0].AudioIntents[1].VoiceoverAssetID = "vo-stock"
+	if err := bad.Validate(); err == nil {
+		t.Fatal("a stock flag on a voiceover intent must fail closed")
+	}
+	plan, err := Compile(valid, DefaultAudioProfile())
+	if err != nil {
+		t.Fatalf("compile stock timeline: %v", err)
+	}
+	if err := plan.Validate(); err != nil {
+		t.Fatalf("a compiled stock event must validate: %v", err)
+	}
+	broken := plan
+	for i := range broken.Tracks {
+		for j := range broken.Tracks[i].Events {
+			if broken.Tracks[i].Events[j].StockOriginalAudio {
+				broken.Tracks[i].Events[j].Type = EventVoiceover
+			}
+		}
+	}
+	if err := broken.Validate(); err == nil {
+		t.Fatal("a stock flag on a non-clip event must fail closed")
+	}
+}
+
 func TestResolveAudioMode_CombinedTimelineAllowedWithoutVideo(t *testing.T) {
 	got, err := ResolveAudioMode(AudioModeCombinedTimeline, true)
 	if err != nil {

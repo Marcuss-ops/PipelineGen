@@ -543,6 +543,9 @@ func (p *OverlayPlan) Validate() error {
 		} else if item.Map != nil {
 			return fmt.Errorf("overlay plan: item %q must not carry a map declaration", item.ID)
 		}
+		if err := ValidateChainItem(item); err != nil {
+			return err
+		}
 		if item.RenderKey == "" {
 			key := ComputeRenderKey(*p, item)
 			p.Items[i] = OverlayItem{ID: item.ID, SceneID: item.SceneID, EntityID: item.EntityID, Kind: item.Kind, StartMs: item.StartMs, EndMs: item.EndMs, StartUS: item.StartUS, DurationUS: item.DurationUS, TemplateID: item.TemplateID, PresetID: item.PresetID, ImagePresetID: item.ImagePresetID, MotionID: item.MotionID, MotionParams: item.MotionParams, EntityRef: item.EntityRef, Text: item.Text, EntityCaption: item.EntityCaption, EntityStyleID: item.EntityStyleID, CaptionMotionID: item.CaptionMotionID, CaptionFontFamily: item.CaptionFontFamily, AssetRefs: item.AssetRefs, SoundEffect: item.SoundEffect, ImageLayers: item.ImageLayers, Frame: item.Frame, Map: item.Map, Params: item.Params, RenderKey: key}

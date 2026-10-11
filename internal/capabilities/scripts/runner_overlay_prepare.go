@@ -6,6 +6,13 @@
 // pre-timing OverlayIntents as values, and the caller applies them to the
 // durable result after the join. This keeps overlay.prepare from ever waiting
 // for TTS or final audio without introducing a data race with the TTS writer.
+//
+// It also owns the ENQUEUE half of the same seam: which OverlayIntents carry
+// asset bytes worth prefetching, and the fire-and-forget submission of the
+// prepare job itself. Producer and consumer of one queue belong together — a
+// change to what counts as "worth prefetching" is a change to what the prepare
+// branch can compute, and vice versa. Merged 2026-10-10 from
+// runner_overlay_enqueue.go.
 package scriptgeneration
 
 import (
@@ -16,6 +23,7 @@ import (
 	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
 	phrasepkg "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/phrases"
 	mediadomain "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
+	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
@@ -372,4 +380,51 @@ func supplementSourceImportantPhrases(ann *scriptpkg.SceneAnnotations, text, lan
 
 func phraseKey(value string) string {
 	return strings.ToLower(strings.Join(strings.Fields(strings.TrimSpace(value)), " "))
+}
+
+// enqueueOverlayPrepare builds the overlay.prepare job for the run's
+// pre-timing OverlayIntents and submits it (fire-and-forget). The plan id is
+// the run id — the same idempotency key the overlay plan uses — so a retry
+// never double-prepares.
+func (r *Runner) enqueueOverlayPrepare(ctx context.Context, runID string, req GenerateRequest, intents []capabilityoverlay.OverlayIntent) error {
+	if r.overlayPrepareEnqueuer == nil || len(intents) == 0 {
+		return nil
+	}
+	if !overlayPrepareNeedsAssetPrefetch(intents) {
+		// Text/phrase-only intents have no asset bytes for RenderingGen to
+		// resolve or prefetch. The final timing-frozen compile resolves their
+		// templates directly, so an overlay.prepare queue round-trip would only
+		// add lease/IPC latency to the run.
+		return nil
+	}
+	canvas := r.overlayCanvas.withDefaults()
+	// overlay.prepare is a business stage boundary: the enqueue itself is
+	// measured on the canonical Run clock so the run's critical path shows
+	// the prepare submit wall time (which runs in parallel with TTS) instead
+	// of hiding it inside the generate phase.
+	if _, err := kernobs.MeasureStageReport(ctx, StageOverlayPrepare, func(stageCtx context.Context) error {
+		return r.overlayPrepareEnqueuer.EnqueuePrepare(stageCtx, capabilityoverlay.PrepareRequest{
+			SchemaVersion: capabilityoverlay.SchemaVersionPrepare,
+			PlanID:        runID,
+			VideoID:       runID,
+			ProjectID:     strings.TrimSpace(req.Project),
+			Width:         canvas.Width,
+			Height:        canvas.Height,
+			FPSNum:        canvas.FPSNum,
+			FPSDen:        canvas.FPSDen,
+			Intents:       intents,
+		})
+	}); err != nil {
+		return err
+	}
+	return nil
+}
+
+func overlayPrepareNeedsAssetPrefetch(intents []capabilityoverlay.OverlayIntent) bool {
+	for _, intent := range intents {
+		if len(intent.AssetRefs) > 0 || len(intent.Payload.AssetRefs) > 0 {
+			return true
+		}
+	}
+	return false
 }

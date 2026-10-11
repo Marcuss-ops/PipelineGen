@@ -108,6 +108,84 @@ func TestBuildFinalJobPayloadsStockOnlyNeverFallsBackToClip(t *testing.T) {
 	}
 }
 
+// TestBuildFinalJobPayloadsAllStockClipsRouteToStockFolder pins the
+// used-as-stock video contract: a scene whose clips are ALL stock-marked
+// has no certified clip render, so its video MUST come from its stock folder
+// binding — the remote worker receives the Drive stock reference, never a
+// clip fallback.
+func TestBuildFinalJobPayloadsAllStockClipsRouteToStockFolder(t *testing.T) {
+	result := &GenerateResult{
+		CanonicalTimeline: &capabilityaudio.CanonicalTimeline{DurationUS: 2_000_000, Segments: []capabilityaudio.TimelineSegment{{ID: "scene-1", DurationUS: 2_000_000}}},
+		FinalAudio:        certifiedFinalAudio(2000),
+		Scenes: []Scene{{
+			ID:    "scene-1",
+			Clips: []*ClipReference{{ID: "stock-clip", AsStock: true, DurationUS: 10_000_000}},
+			Stock: &scriptpkg.StockBinding{FolderID: "folder-1"},
+		}},
+	}
+	pre, _, err := BuildFinalJobPayloads(context.Background(), "run-1", GenerateRequest{Title: "A story", SourceLanguage: "pt"}, result, finalJobPayloadResolver{})
+	if err != nil {
+		t.Fatalf("BuildFinalJobPayloads: %v", err)
+	}
+	scenes := pre["scenes"].([]map[string]any)
+	if len(scenes) != 1 {
+		t.Fatalf("scenes = %d, want the single stock chunk", len(scenes))
+	}
+	stock := scenes[0]["stock"].(map[string]any)
+	if stock["drive_file_id"] != "drive-asset" {
+		t.Fatalf("scene stock = %#v, want the Drive stock reference", stock)
+	}
+	if _, hasClip := scenes[0]["clip"]; hasClip {
+		t.Fatalf("all-stock scene must never fall back to the clip path: %#v", scenes[0])
+	}
+}
+
+// TestBuildFinalJobPayloadsAllStockClipsWithoutFolderFailsClosed pins the
+// fail-closed half: an all-stock-marked scene with no stock folder binding
+// has NO visual source at all (no certified render exists by contract), so
+// the build must refuse it instead of handing the worker an uncomposable
+// scene.
+func TestBuildFinalJobPayloadsAllStockClipsWithoutFolderFailsClosed(t *testing.T) {
+	result := &GenerateResult{
+		CanonicalTimeline: &capabilityaudio.CanonicalTimeline{DurationUS: 2_000_000, Segments: []capabilityaudio.TimelineSegment{{ID: "scene-1", DurationUS: 2_000_000}}},
+		FinalAudio:        certifiedFinalAudio(2000),
+		Scenes: []Scene{{
+			ID:    "scene-1",
+			Clips: []*ClipReference{{ID: "stock-clip", AsStock: true, DurationUS: 10_000_000}},
+		}},
+	}
+	_, _, err := BuildFinalJobPayloads(context.Background(), "run-1", GenerateRequest{Title: "A story", SourceLanguage: "pt"}, result, finalJobPayloadResolver{})
+	if err == nil || !strings.Contains(err.Error(), "has only stock-marked clips") {
+		t.Fatalf("BuildFinalJobPayloads error = %v, want fail-closed all-stock routing", err)
+	}
+}
+
+// TestFinalJobIntermediateClipWindowsNeverClassifiesStockAudio pins the
+// overlay-publication half: a scene whose ONLY clip intents are
+// stock-stamped is never reclassified as an intermediate clip window, so
+// replace-mode overlays keep covering its stock video. An ordinary clip
+// scene in the same shape IS classified (control).
+func TestFinalJobIntermediateClipWindowsNeverClassifiesStockAudio(t *testing.T) {
+	stockIntent := capabilityaudio.AudioIntent{Mode: capabilityaudio.AudioClip, ClipAssetID: "stock-clip", SourceInUS: 0, SourceDurationUS: 2_000_000, TimelineOffsetUS: 0, TimelineDurationUS: 2_000_000, UseOriginalAudio: true, StockOriginalAudio: true}
+	ordinaryIntent := capabilityaudio.AudioIntent{Mode: capabilityaudio.AudioClip, ClipAssetID: "clip-1", SourceInUS: 0, SourceDurationUS: 2_000_000, TimelineOffsetUS: 0, TimelineDurationUS: 2_000_000, UseOriginalAudio: true}
+	voiceover := capabilityaudio.AudioIntent{Mode: capabilityaudio.AudioVoiceover, VoiceoverAssetID: "vo-1", SourceDurationUS: 2_000_000, TimelineOffsetUS: 0, TimelineDurationUS: 2_000_000}
+	stockResult := &GenerateResult{CanonicalTimeline: &capabilityaudio.CanonicalTimeline{DurationUS: 4_000_000, Segments: []capabilityaudio.TimelineSegment{
+		{ID: "scene-0", Index: 0, TimelineStartUS: 0, DurationUS: 2_000_000, AudioIntents: []capabilityaudio.AudioIntent{voiceover}},
+		{ID: "scene-1", Index: 1, TimelineStartUS: 2_000_000, DurationUS: 2_000_000, AudioIntents: []capabilityaudio.AudioIntent{voiceover, stockIntent}},
+	}}}
+	if windows := finalJobIntermediateClipWindows(stockResult); len(windows) != 0 {
+		t.Fatalf("stock-audio scene classified as intermediate clip window: %+v", windows)
+	}
+	ordinaryResult := &GenerateResult{CanonicalTimeline: &capabilityaudio.CanonicalTimeline{DurationUS: 4_000_000, Segments: []capabilityaudio.TimelineSegment{
+		{ID: "scene-0", Index: 0, TimelineStartUS: 0, DurationUS: 2_000_000, AudioIntents: []capabilityaudio.AudioIntent{voiceover}},
+		{ID: "scene-1", Index: 1, TimelineStartUS: 2_000_000, DurationUS: 2_000_000, AudioIntents: []capabilityaudio.AudioIntent{voiceover, ordinaryIntent}},
+	}}}
+	windows := finalJobIntermediateClipWindows(ordinaryResult)
+	if len(windows) != 1 || windows["scene-1"].startUS != 2_000_000 {
+		t.Fatalf("ordinary clip scene must stay classified, got %+v", windows)
+	}
+}
+
 func (finalJobPayloadResolver) ListFinalJobStockFolder(context.Context, string) ([]FinalJobStockFile, error) {
 	return []FinalJobStockFile{{ID: "drive-asset", Name: "stock.mp4"}}, nil
 }
@@ -212,6 +290,117 @@ func TestFinalJobAudioInputLeavesStockScenesVisualOnly(t *testing.T) {
 		if intent.Mode == capabilityaudio.AudioClip {
 			t.Fatalf("stock-selected scene inherited source clip audio: %#v", intent)
 		}
+	}
+}
+
+// TestFinalJobAudioInputStockClipJoinsAtFullVolume pins the used-as-stock
+// audio contract (payload stock_clip_ids): a stock-marked clip with no
+// intent yet gains an AudioClip intent at FULL original volume (GainDB 0 +
+// StockOriginalAudio) beside the generated voiceover — never dropped, never
+// attenuated — even though the scene's visual comes from a stock folder.
+func TestFinalJobAudioInputStockClipJoinsAtFullVolume(t *testing.T) {
+	result := GenerateResult{Scenes: []Scene{{
+		ID: "scene-stock", Clips: []*ClipReference{
+			{ID: "stock-clip", AsStock: true, DurationUS: 10_000_000, AudioPath: "/tmp/stock.mp4", SourceInMS: 1_000, SourceOutMS: 6_000},
+		},
+		Stock:     &scriptpkg.StockBinding{FolderID: "folder-1"},
+		Voiceover: map[Language]AudioReference{"pt": {ID: "vo-pt", FilePath: "/tmp/vo.m4a", Duration: 6}},
+	}}}
+	projected := finalJobAudioInput(result, "pt")
+	intents := projected.Scenes[0].AudioIntents
+	var clip, voiceover *capabilityaudio.AudioIntent
+	for i := range intents {
+		switch intents[i].Mode {
+		case capabilityaudio.AudioClip:
+			clip = &intents[i]
+		case capabilityaudio.AudioVoiceover:
+			voiceover = &intents[i]
+		}
+	}
+	if clip == nil || clip.ClipAssetID != "stock-clip" {
+		t.Fatalf("stock clip audio was dropped: %#v", intents)
+	}
+	if !clip.UseOriginalAudio || !clip.StockOriginalAudio {
+		t.Fatalf("stock clip must stay an original-audio stream: %#v", clip)
+	}
+	if clip.GainDB != 0 {
+		t.Fatalf("stock clip gain = %v, want full original volume (0)", clip.GainDB)
+	}
+	if clip.SourceInUS != 1_000_000 || clip.SourceDurationUS != 5_000_000 {
+		t.Fatalf("stock clip window = [%d,%d), want the source window", clip.SourceInUS, clip.SourceInUS+clip.SourceDurationUS)
+	}
+	if voiceover == nil || voiceover.VoiceoverAssetID != "vo-pt" {
+		t.Fatalf("scene voiceover must ride beside stock audio: %#v", intents)
+	}
+}
+
+// TestFinalJobAudioInputStockIntentKeepsFullVolume pins the re-stamp path:
+// a stock-marked clip that already carries an AudioClip intent (e.g. with a
+// local-lane duck gain) is re-stamped to full volume + StockOriginalAudio
+// instead of receiving the restored-mix gain.
+func TestFinalJobAudioInputStockIntentKeepsFullVolume(t *testing.T) {
+	result := GenerateResult{Scenes: []Scene{{
+		ID:    "scene-stock",
+		Clips: []*ClipReference{{ID: "stock-clip", AsStock: true, DurationUS: 10_000_000}},
+		AudioIntents: []capabilityaudio.AudioIntent{
+			{Mode: capabilityaudio.AudioClip, ClipAssetID: "stock-clip", SourceInUS: 0, SourceDurationUS: 5_000_000, TimelineOffsetUS: 0, TimelineDurationUS: 5_000_000, UseOriginalAudio: true, GainDB: kernelaudio.DuckClipBaseGainDB},
+		},
+		Voiceover: map[Language]AudioReference{"pt": {ID: "vo-pt", FilePath: "/tmp/vo.m4a", Duration: 6}},
+	}}}
+	projected := finalJobAudioInput(result, "pt")
+	var clip *capabilityaudio.AudioIntent
+	for i := range projected.Scenes[0].AudioIntents {
+		if projected.Scenes[0].AudioIntents[i].Mode == capabilityaudio.AudioClip {
+			clip = &projected.Scenes[0].AudioIntents[i]
+		}
+	}
+	if clip == nil {
+		t.Fatalf("stock clip intent was dropped: %#v", projected.Scenes[0].AudioIntents)
+	}
+	if !clip.StockOriginalAudio {
+		t.Fatalf("stock clip intent must be stamped StockOriginalAudio: %#v", clip)
+	}
+	if clip.GainDB != 0 {
+		t.Fatalf("stock clip gain = %v, want full original volume (0), not the restored-mix gain %v", clip.GainDB, kernelaudio.FinalJobRestoredClipGainDB)
+	}
+}
+
+// TestFinalJobAudioInputStockSurvivesVoiceoverOnlyMaster is the end-to-end
+// proof: projection → canonical timeline → global VOICEOVER_ONLY compile.
+// The stock event must survive at full volume with the voiceover intact,
+// while an ordinary clip in the same run is removed by the policy.
+func TestFinalJobAudioInputStockSurvivesVoiceoverOnlyMaster(t *testing.T) {
+	result := GenerateResult{Scenes: []Scene{
+		{
+			ID: "scene-ordinary", Index: 0,
+			Clip:      &ClipReference{ID: "ordinary-clip", DurationUS: 10_000_000, AudioPath: "/tmp/ord.mp4", SourceInMS: 0, SourceOutMS: 5_000},
+			Voiceover: map[Language]AudioReference{"pt": {ID: "vo-ord", FilePath: "/tmp/vo-ord.m4a", Duration: 5}},
+		},
+		{
+			ID: "scene-stock", Index: 1,
+			Clips:     []*ClipReference{{ID: "stock-clip", AsStock: true, DurationUS: 10_000_000, AudioPath: "/tmp/stock.mp4", SourceInMS: 0, SourceOutMS: 5_000}},
+			Stock:     &scriptpkg.StockBinding{FolderID: "folder-1"},
+			Voiceover: map[Language]AudioReference{"pt": {ID: "vo-stock", FilePath: "/tmp/vo-stock.m4a", Duration: 5}},
+		},
+	}}
+	projected := finalJobAudioInput(result, "pt")
+	timeline, _, _, _, err := CompileCanonicalAudioPlanAudioOnly(projected, "pt", capabilityaudio.DefaultAudioProfile())
+	if err != nil {
+		t.Fatalf("compile projected timeline: %v", err)
+	}
+	plan, err := capabilityaudio.CompileWithMixPolicy(timeline, capabilityaudio.DefaultAudioProfile(), kernelaudio.MixVoiceoverOnly)
+	if err != nil {
+		t.Fatalf("compile VOICEOVER_ONLY master: %v", err)
+	}
+	clips := eventsForRole(plan, capabilityaudio.TrackClipAudio)
+	if len(clips) != 1 || clips[0].AssetID != "stock-clip" {
+		t.Fatalf("VO-only master clip events = %+v, want only the stock clip", clips)
+	}
+	if clips[0].GainDB != 0 || !clips[0].StockOriginalAudio {
+		t.Fatalf("stock event must stay at full volume: %+v", clips[0])
+	}
+	if voices := eventsForRole(plan, capabilityaudio.TrackVoiceover); len(voices) != 2 {
+		t.Fatalf("both scene voiceovers must survive, got %+v", voices)
 	}
 }
 

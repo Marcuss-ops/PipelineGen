@@ -251,6 +251,48 @@ func TestPendingReceiptWithoutAResumableSubmitterFailsClosed(t *testing.T) {
 	}
 }
 
+// TestFinalJobWithoutAWiredSubmitterFailsTheRunClosed pins the deployment with
+// no Master hand-off provisioned (no VELOX_FINAL_JOB_M2M_SECRET, no credentials
+// file): the composition root logs and wires NO submitter, and a final_job=true
+// request must then FAIL the run closed at the publishing stage.
+//
+// The alternative — reporting success — would hand the operator a run that
+// never produced the requested final video, with any local-only artifact
+// standing in unlabelled for the remote render that was asked for.
+func TestFinalJobWithoutAWiredSubmitterFailsTheRunClosed(t *testing.T) {
+	const runID = "run-unwired-final-job"
+	runner, repo := newFinalJobRunner(nil, runID, nil)
+	req := defaultTestRequest()
+	req.FinalJob = true
+
+	result := &GenerateResult{}
+	if ok := runner.submitFinalJob(context.Background(), runID, req, result); ok {
+		t.Fatal("final_job=true with no wired submitter must not report success")
+	}
+
+	run, err := repo.Get(context.Background(), runID)
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	if run.Status != RunStatusFailed {
+		t.Fatalf("run status = %q, want FAILED", run.Status)
+	}
+	if run.FailedStage != StagePublishingDocuments {
+		t.Fatalf("failed stage = %q, want %q", run.FailedStage, StagePublishingDocuments)
+	}
+	if !containsAny(run.ErrorMessage, "submitter is not configured") {
+		t.Fatalf("error = %q, want it to name the unconfigured hand-off", run.ErrorMessage)
+	}
+	// No remote job exists, so nothing may claim a handle: a receipt here would
+	// make a later attempt try to resume a render that was never submitted.
+	if result.RemoteFinalJob != nil {
+		t.Fatalf("receipt = %+v, want none for a submission that never happened", result.RemoteFinalJob)
+	}
+	if run.Result != nil && run.Result.RemoteFinalJob != nil {
+		t.Fatalf("durable receipt = %+v, want none", run.Result.RemoteFinalJob)
+	}
+}
+
 // TestPendingRemoteRenderErrorCodeIsStable pins the deferral code against the
 // message heuristics: the wrapped transport message says "timeout", which would
 // otherwise classify a deliberate deferral as PROVIDER_TIMEOUT.

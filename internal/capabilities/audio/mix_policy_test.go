@@ -256,6 +256,121 @@ func TestCompileWithMixPolicy_ExplicitClipGainIsPreserved(t *testing.T) {
 	}
 }
 
+// stockClipTimeline is a scene whose caller marked the clip as used-as-stock
+// (payload stock_clip_ids): the stock intent rides BESIDE the generated
+// voiceover and must survive every global mix policy at full volume while
+// the voiceover stays intact.
+func stockClipTimeline() CanonicalTimeline {
+	return CanonicalTimeline{
+		Version:    TimelineVersion,
+		DurationUS: 10_000_000,
+		Segments: []TimelineSegment{{
+			ID: "scene-1", Index: 0, TimelineStartUS: 0, DurationUS: 10_000_000,
+			AudioIntents: []AudioIntent{
+				{Mode: AudioVoiceover, VoiceoverAssetID: "vo-1", SourceDurationUS: 8_000_000, TimelineOffsetUS: 0, TimelineDurationUS: 10_000_000},
+				{Mode: AudioClip, ClipAssetID: "stock-clip", SourceInUS: 0, SourceDurationUS: 10_000_000, TimelineOffsetUS: 0, TimelineDurationUS: 10_000_000, UseOriginalAudio: true, StockOriginalAudio: true},
+			},
+		}},
+	}
+}
+
+// TestCompileWithMixPolicy_VoiceoverOnlyKeepsStockClipAudioAtFullVolume pins
+// the used-as-stock contract: under a global VOICEOVER_ONLY policy the
+// stock-marked clip is NOT removed (unlike ordinary clip audio), stays at
+// full original volume (GainDB 0), and the scene keeps its voiceover.
+func TestCompileWithMixPolicy_VoiceoverOnlyKeepsStockClipAudioAtFullVolume(t *testing.T) {
+	plan, err := CompileWithMixPolicy(stockClipTimeline(), DefaultAudioProfile(), kernelaudio.MixVoiceoverOnly)
+	if err != nil {
+		t.Fatal(err)
+	}
+	clip := findTrack(plan.Tracks, TrackClipAudio)
+	if clip == nil || len(clip.Events) != 1 {
+		t.Fatalf("stock clip must survive VOICEOVER_ONLY, tracks=%+v", plan.Tracks)
+	}
+	event := clip.Events[0]
+	if event.AssetID != "stock-clip" || !event.StockOriginalAudio || !event.UseOriginalAudio {
+		t.Fatalf("stock clip event lost its identity: %+v", event)
+	}
+	if event.GainDB != 0 {
+		t.Fatalf("stock clip gain = %v, want full original volume (0)", event.GainDB)
+	}
+	vo := findTrack(plan.Tracks, TrackVoiceover)
+	if vo == nil || len(vo.Events) != 1 || vo.Events[0].AssetID != "vo-1" {
+		t.Fatalf("scene voiceover must stay intact beside stock audio: %+v", vo)
+	}
+}
+
+// TestCompileWithMixPolicy_DuckedPolicyNeverDucksStockClipAudio pins the
+// second half of the contract: under VOICEOVER_DUCKED_CLIP the stock event
+// keeps GainDB 0 and no ducking automation targets its window.
+func TestCompileWithMixPolicy_DuckedPolicyNeverDucksStockClipAudio(t *testing.T) {
+	plan, err := CompileWithMixPolicy(stockClipTimeline(), DefaultAudioProfile(), kernelaudio.MixVoiceoverWithDuckedClip)
+	if err != nil {
+		t.Fatal(err)
+	}
+	clip := findTrack(plan.Tracks, TrackClipAudio)
+	if clip == nil || len(clip.Events) != 1 || clip.Events[0].GainDB != 0 {
+		t.Fatalf("stock clip must stay at unity under ducking: %+v", clip)
+	}
+	for _, a := range plan.Automation {
+		if a.TargetTrackID == "clip_audio" {
+			t.Fatalf("ducking automation must never target a stock-only clip track: %+v", a)
+		}
+	}
+	vo := findTrack(plan.Tracks, TrackVoiceover)
+	if vo == nil || len(vo.Events) != 1 || vo.Events[0].GainDB != 0 {
+		t.Fatalf("voiceover must stay at unity: %+v", vo)
+	}
+}
+
+// TestCompileWithMixPolicy_StockClipBesideOrdinaryClipDucksOnlyOrdinary
+// pins the mixed scene: an ordinary clip in one segment ducks normally
+// while the stock-marked clip in the next segment stays at full volume and
+// the ducking automation never covers the stock window.
+func TestCompileWithMixPolicy_StockClipBesideOrdinaryClipDucksOnlyOrdinary(t *testing.T) {
+	tl := CanonicalTimeline{
+		Version:    TimelineVersion,
+		DurationUS: 10_000_000,
+		Segments: []TimelineSegment{
+			{
+				ID: "scene-ordinary", Index: 0, TimelineStartUS: 0, DurationUS: 5_000_000,
+				AudioIntents: []AudioIntent{
+					{Mode: AudioVoiceover, VoiceoverAssetID: "vo-ordinary", SourceDurationUS: 5_000_000, TimelineOffsetUS: 0, TimelineDurationUS: 5_000_000},
+					{Mode: AudioClip, ClipAssetID: "ordinary-clip", SourceInUS: 0, SourceDurationUS: 5_000_000, TimelineOffsetUS: 0, TimelineDurationUS: 5_000_000, UseOriginalAudio: true},
+				},
+			},
+			{
+				ID: "scene-stock", Index: 1, TimelineStartUS: 5_000_000, DurationUS: 5_000_000,
+				AudioIntents: []AudioIntent{
+					{Mode: AudioVoiceover, VoiceoverAssetID: "vo-stock", SourceDurationUS: 5_000_000, TimelineOffsetUS: 0, TimelineDurationUS: 5_000_000},
+					{Mode: AudioClip, ClipAssetID: "stock-clip", SourceInUS: 0, SourceDurationUS: 5_000_000, TimelineOffsetUS: 0, TimelineDurationUS: 5_000_000, UseOriginalAudio: true, StockOriginalAudio: true},
+				},
+			},
+		},
+	}
+	plan, err := CompileWithMixPolicy(tl, DefaultAudioProfile(), kernelaudio.MixVoiceoverWithDuckedClip)
+	if err != nil {
+		t.Fatal(err)
+	}
+	clip := findTrack(plan.Tracks, TrackClipAudio)
+	if clip == nil || len(clip.Events) != 2 {
+		t.Fatalf("both clip events must remain, tracks=%+v", plan.Tracks)
+	}
+	if clip.Events[0].AssetID != "ordinary-clip" || clip.Events[0].GainDB != kernelaudio.DuckClipBaseGainDB {
+		t.Fatalf("ordinary clip must use the ducked policy gain: %+v", clip.Events[0])
+	}
+	if clip.Events[1].AssetID != "stock-clip" || clip.Events[1].GainDB != 0 || !clip.Events[1].StockOriginalAudio {
+		t.Fatalf("stock clip must stay at full volume: %+v", clip.Events[1])
+	}
+	if len(plan.Automation) != 1 {
+		t.Fatalf("ducking automation must cover only the ordinary window: %+v", plan.Automation)
+	}
+	a := plan.Automation[0]
+	if a.StartUS != 0 || a.EndUS != 5_000_000 {
+		t.Fatalf("duck window = [%d,%d), want [0,5000000) (never the stock window)", a.StartUS, a.EndUS)
+	}
+}
+
 func TestCompileWithLayers_EnforcesCanonicalBGMAndSFXLevels(t *testing.T) {
 	bgm := []AudioLayer{{AssetID: "music", TimelineStartUS: 0, DurationUS: 10_000_000, GainDB: -2}}
 	sfx := []AudioLayer{{AssetID: "whoosh", TimelineStartUS: 2_000_000, DurationUS: 500_000, GainDB: 0}}

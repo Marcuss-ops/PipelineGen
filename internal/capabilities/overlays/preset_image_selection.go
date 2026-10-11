@@ -243,16 +243,21 @@ func selectImageMotion(jobID, sceneID string, ordinal int, pool []string) string
 	if len(pool) > 0 {
 		candidates = pool
 	}
+	candidates = uniqueMotionPool(candidates)
 	if len(candidates) == 0 {
 		return ""
 	}
-	seeded := selectPreset(jobID, sceneID, sceneID, "image_motion:"+strings.Join(candidates, ","), candidates)
+	// Per-group true variation: deterministic shuffle from the run seed so
+	// the image lane never mirrors the phrase lane order, while retries of
+	// the same job stay bit-identical.
+	shuffled := shuffleMotionPool(candidates, jobID+"\x00image_motion")
+	seeded := selectPreset(jobID, sceneID, sceneID, "image_motion:"+strings.Join(shuffled, ","), shuffled)
 	start := 0
-	for i, candidate := range candidates {
+	for i, candidate := range shuffled {
 		if candidate == seeded {
 			start = i
 			break
 		}
 	}
-	return candidates[(start+ordinal)%len(candidates)]
+	return shuffled[(start+ordinal)%len(shuffled)]
 }

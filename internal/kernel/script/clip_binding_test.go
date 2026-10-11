@@ -1,6 +1,6 @@
-// Package script — clip_binding_helpers_test.go: hermetic
+// Package script — clip_binding_test.go: hermetic
 // table-driven coverage for the canonical helpers in
-// clip_binding_helpers.go.
+// clip_binding.go.
 //
 // godlike/06 SSOT: pinning tests for the canonical
 // `max(0, endMs - startMs)` math (the literal SSOT — no

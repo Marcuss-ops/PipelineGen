@@ -165,13 +165,77 @@ fixed in this tree; one blocker is outside this tree.
 | 1 | `params.font_family "inter_bold" is unsupported` at overlay compile | the published schema/test pair and the runtime resolver disagreed about the selectable families; the deployed worker predated the resolver entry | fixed: `TestRuntimeStyleInterBoldIsSelectableAndRenderable` pins listing + lowering + asset presence; the enum contract test now names the 5 selectable families (`bricolage_grotesque` stays internal) |
 | 2 | `workspace: invalid job id ... contains unsupported character` | `queue/client.ValidateJobID` accepted ASCII only, so an id derived from `comunità` failed at workspace materialization after the plan was paid for | fixed: letters/digits/marks in any script are accepted; separators, controls, symbols, traversal and invalid UTF-8 stay rejected (`TestValidateJobIDAcceptsAuthoredTextAndRejectsUnsafeComponents`) |
 | 3 | `invariants + archcheck` | the new surface pushed two files past 600 LOC and two packages past their registered file budgets | fixed: `planner_config.go` split, numeric-value admission moved beside its caller, timing and overlay-prepare pairs merged; `go run ./cmd/archcheck --strict` reports 0 violations |
-| 4 | `render: ipc render: daemon status Error (1) ... surface is not exportable to CUDA` | Chronon3d native render-graph surfaces are created without `desc.residency.exportable`, so the Direct-YUV handoff to the encoder rejects them | **blocked**: the predicate lives in Chronon3d `vulkan_surface_authority.hpp` / `native_surface.hpp` (being edited in another session while this ran); every overlay composition fails there, no PipelineGen path can work around it |
+| 4 | `render: ipc render: daemon status Error (1) ... surface is not exportable to CUDA` | Chronon3d native render-graph surfaces were created without `desc.residency.exportable`, so the Direct-YUV handoff to the encoder rejected every text/number composition | **fixed outside this tree**: the Chronon3d surface-authority work landed at 18:51 and the same jobs started reporting `completed` |
+| 5 | `official preset font "assets/fonts/Inter.ttf" is missing from the editorial_v1 bundle` | the shipped worker font bundle carried Poppins-Bold, Inter-Bold, Playfair and Bricolage but NOT `Inter.ttf` / `DejaVuSans.ttf`, so `inter` and `dejavu_sans` — both published, selectable families — could not render at all | fixed: the two faces (and `OFL-Inter.txt`) are staged in the bundle, and `processor::TestMaterializeBuiltinFontsStagesEveryRuntimeFontAsset` now stages EVERY asset `overlay.RuntimeFontAssets()` can return, so the guard fails on the exact live error when a family is unshippable |
 
 Job states reached: `SCRIPT` → `TRANSLATION` → `VOICEOVER` → `AUDIO_COMPILE`
 completed (17:04–17:07 on r18), overlay render then failed on defect 4. A later
 attempt also failed once in scene-text validation (`segment[5] did not produce
 one valid paragraph`) and once on an Ollama circuit breaker — LLM-side flakes,
 not scene-intelligence behaviour, and both cleared on retry.
+
+### The run that completed
+
+After defects 1, 4 and 5 were fixed, the same payload (r22,
+`job_1791658498906120876_b17e80d3`) reached **SUCCEEDED / progress 100**:
+
+```
+SCRIPT 18:54:59→18:56:13  TRANSLATION 18:56:13  VOICEOVER 18:56:13→18:57:24
+AUDIO_COMPILE 18:57:24→18:58:25  overlay_render 18:57:34→18:58:18
+PERSISTENCE 18:58:38  worker.execution COMPLETED 18:58:51
+10/10 overlay.render jobs completed on attempt 1
+```
+
+### Render-side verification of that run
+
+Plan properties (from the queue record of each render job):
+
+| Property | Observed |
+| -------- | -------- |
+| overlays per run | 10 render jobs; 9 overlay items (5 `number` date cards, 4 `text_phrase`), `max_phrase_overlays: 4` / `max_image_overlays: 0` / `max_map_overlays: 1` respected |
+| fonts asked for | `inter_bold` on 9/9 items — the family the worker used to reject (defect 1) |
+| motion variety | 9 distinct motions over 9 items: `date_page_turn`, `date_timeline_tick`, `typewriter_modern_02_kinetic_scramble`, `image_scale_reveal`, `shutter_blade_reveal`, `typewriter_modern_09_highlighter_expansion`, `date_fade_rise`, `date_month_wipe`, `date_chronology_focus`, `precision_word_stagger` — no repeat |
+| collisions | none: no two item windows overlap inside a plan |
+| timing | every window inside the scene duration |
+| phrases | 2, 2, 12 words in the plans read; the planner cap is `MaxPhraseWords` (default 20) and this payload sets no lower bound, so a 12-word card is inside policy — "short" is a payload knob, not a planner guarantee |
+| cross-scene identity | not exercised by THIS payload: `max_image_overlays: 0`, so no image identity is planned to reuse |
+
+Artifacts (downloaded from the object store and probed): all 10 are
+1920×1080 H.264 segments whose frame counts match their declared durations
+(120 frames = 5.000 s, 192 = 8.000 s, 65 = 2.708 s, …), 190 KiB–1.9 MiB, zero
+download or probe failures.
+
+Pixel-level proof the font override is honoured (not silently substituted):
+the SAME composition submitted twice with only `params.font_family` changed
+(`inter` vs `inter_bold`) renders two different frames — different frame
+digests, PSNR 23.82 dB, SSIM 0.971 (same layout, different glyph raster). And
+the whole selectable set renders live, one job per family:
+`poppins`, `inter`, `inter_bold`, `dejavu_sans`, `playfair_display_italic`,
+`bricolage_grotesque` — all `completed` on attempt 1.
+
+What is still a HUMAN gate: judging whether the rendered cards look good. The
+sample frames and segments are on disk (`/tmp/render-artifact-check`,
+`/tmp/font-override-probe`), and the run published its artifacts through the
+normal path.
+
+### Plan-level artifacts of the real run
+
+The queue still holds the overlay.render jobs the run submitted, each with the
+compiled plan. Reading them (r19: 5 jobs, 4 overlay items) is the render-side
+check that does not need an encoder:
+
+| Property | Observed |
+| -------- | -------- |
+| fonts asked for | `inter_bold` on 4/4 items — the family the deployed worker used to reject; defect 1 is gone end to end up to the encoder |
+| mixing | 2 `text_phrase` + 2 `number` (timeline date cards), `max_phrase_overlays: 4` / `max_image_overlays: 0` / `max_map_overlays: 1` respected |
+| motion variety | `date_calendar_flip`, `date_timeline_tick`, `typewriter_modern_02_kinetic_scramble`, `masked_upward_reveal` — one per item, no repeats |
+| collisions | none: no two item windows overlap |
+| timing | every window inside the scene duration; no item exceeds its scene |
+| phrase length | 2, 2 and 12 words. 12 is the longest; the planner's cap is `MaxPhraseWords` (default 20) and this payload sets no lower bound, so the plan is inside policy — "short" here is a payload knob, not a planner guarantee |
+| cross-scene identity | nothing to reuse: the plan's images are 0 (`max_image_overlays: 0`), so continuity is not exercised by THIS payload |
+
+The counts are partial by construction: the run died on the first render, so only
+3 of the script's scenes were ever planned.
 
 ## Release criteria status
 
@@ -191,11 +255,13 @@ not scene-intelligence behaviour, and both cleared on retry.
    (`cargo bench --bench scene_intelligence`, exit 0): 1k p50 1.77ms /
    3k 5.26ms / 10k 17.42ms p95, ~50k sent/s, RSS 3.5MB, same linear shape,
    no regression. Planner/admission render path green: X02+X10 package
-   0.117s, V/R 11/11 package 0.015s, five Go packages exit 0. Full render
-   cost past the overlay boundary still blocked on Chronon3d defect 4 above.
-6. Visual check on real rendered sample — pending (human gate), and currently
-   unreachable until defect 4 is fixed: no overlay composition renders on this
-   host, for any job.
+   0.117s, V/R 11/11 package 0.015s, five Go packages exit 0. The real run's
+   overlay render cost is no longer blocked: 10/10 jobs completed in 44 s
+   wall (`overlay_render` 18:57:34→18:58:18) for 9 overlay items.
+6. Visual check on real rendered sample — artifacts verified programmatically
+   (resolutions, frame counts vs declared durations, per-frame luma, and a
+   font-override pixel diff). The human judgement of the rendered cards is the
+   only part still open, with the samples left on disk for it.
 
 ## Repository gates after this work
 
@@ -203,4 +269,9 @@ not scene-intelligence behaviour, and both cleared on retry.
 make archcheck-strict        # 0 violations (was 3 errors + 1 warning)
 python3 scripts/regen_hotspots.py --check   # fresh
 make verify-rust-muscles     # 184 passed
+cd RenderingGen/renderinggen && go test ./internal/overlay/ ./internal/processor/ ./internal/workspace/...
+cd RenderingGen/queue && go test ./...
+cd refactored && go test ./internal/kernel/script/ ./internal/capabilities/overlays/ \
+  ./internal/capabilities/scripts/ ./internal/capabilities/scripts/overlay/ \
+  ./internal/platform/media/rustexec/
 ```

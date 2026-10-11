@@ -7,128 +7,6 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
-// PlannerConfig contains the conservative editorial limits for one scene.
-// The planner is deterministic: ties preserve the order supplied by the
-// caller, while higher scores win within each category.
-type PlannerConfig struct {
-	MaxPhrases     int
-	MaxKeywords    int
-	MaxImages      int
-	MaxPhraseWords int
-	// Extended semantic entity limits (NUMBER / BRAND TEXT / QUOTE / PRODUCT / LOGO).
-	MaxNumbers    int
-	MaxBrandTexts int
-	MaxQuotes     int
-	MaxProducts   int
-	MaxLogos      int
-	// MaxOverlap caps how many content items may overlap at any single
-	// moment; beyond it the planner drops the lowest-priority overlapping
-	// items (see DegradeOverlaps). Default: DefaultOverlapBudget (3).
-	MaxOverlap int
-	// RunLevelEditorialBudget applies the production image + grounded-phrase
-	// contract and drops other content overlay kinds. Structural background
-	// layers are not represented as OverlayItems and are unaffected.
-	RunLevelEditorialBudget bool
-	// RunLevelPhraseOverlayLimit overrides the run-level grounded-phrase
-	// ceiling used by the editorial budget. Zero keeps the certified default
-	// (MaxPhraseOverlaysPerRun); positive values are capped by
-	// MaxPhraseOverlaysHardLimit.
-	RunLevelPhraseOverlayLimit int
-	// RunLevelMapOverlayLimit is the per-scene map ceiling used by the
-	// map-aware editorial budget. Zero keeps the certified default
-	// (MaxMapOverlaysPerScene); a positive value raises it per run.
-	RunLevelMapOverlayLimit int
-}
-
-// AllCandidatesPlannerConfig is the production generation policy: every
-// valid, uniquely identified image or phrase candidate received from the
-// certified semantic surfaces is kept in the plan, subject to the run-level
-// 5+5 budget. Other content overlay kinds are excluded. Timing validation,
-// duplicate removal and the hard image-duration ceiling remain active. This is
-// intentionally explicit instead of changing the conservative defaults used
-// by the standalone planner/certification tests.
-func AllCandidatesPlannerConfig(scenes []SceneInput) PlannerConfig {
-	maxPerScene := func(count func(SceneInput) int) int {
-		max := 0
-		for _, scene := range scenes {
-			if n := count(scene); n > max {
-				max = n
-			}
-		}
-		return max
-	}
-	maxPhraseWords := 0
-	totalCandidates := 0
-	for _, scene := range scenes {
-		for _, phrase := range scene.Phrases {
-			if n := len(strings.Fields(phrase.Text)); n > maxPhraseWords {
-				maxPhraseWords = n
-			}
-		}
-		totalCandidates += len(scene.Phrases) + len(scene.Keywords) + len(scene.Images) +
-			len(scene.Numbers) + len(scene.BrandTexts) + len(scene.Quotes) + len(scene.Products) + len(scene.Logos) + len(scene.Maps)
-		for _, group := range scene.MultiEntityGroups {
-			totalCandidates += len(group.Items)
-		}
-	}
-	// A positive value is required to avoid withDefaults restoring a cap. The
-	// extra slot makes the overlap budget strictly larger than every possible
-	// planner-owned candidate in this input.
-	if totalCandidates < 1 {
-		totalCandidates = 1
-	}
-	if maxPhraseWords < 1 {
-		maxPhraseWords = 1
-	}
-	return PlannerConfig{
-		MaxPhrases:              maxPerScene(func(s SceneInput) int { return len(s.Phrases) }),
-		MaxKeywords:             maxPerScene(func(s SceneInput) int { return len(s.Keywords) }),
-		MaxImages:               maxPerScene(func(s SceneInput) int { return len(s.Images) }),
-		MaxPhraseWords:          maxPhraseWords,
-		MaxNumbers:              maxPerScene(func(s SceneInput) int { return len(s.Numbers) }),
-		MaxBrandTexts:           maxPerScene(func(s SceneInput) int { return len(s.BrandTexts) }),
-		MaxQuotes:               maxPerScene(func(s SceneInput) int { return len(s.Quotes) }),
-		MaxProducts:             maxPerScene(func(s SceneInput) int { return len(s.Products) }),
-		MaxLogos:                maxPerScene(func(s SceneInput) int { return len(s.Logos) }),
-		MaxOverlap:              totalCandidates + 1,
-		RunLevelEditorialBudget: true,
-	}
-}
-
-func (c PlannerConfig) withDefaults() PlannerConfig {
-	if c.MaxPhrases <= 0 {
-		c.MaxPhrases = 1
-	}
-	if c.MaxKeywords <= 0 {
-		c.MaxKeywords = 3
-	}
-	if c.MaxImages <= 0 {
-		c.MaxImages = 1
-	}
-	if c.MaxPhraseWords <= 0 {
-		c.MaxPhraseWords = 20
-	}
-	if c.MaxNumbers <= 0 {
-		c.MaxNumbers = 1
-	}
-	if c.MaxBrandTexts <= 0 {
-		c.MaxBrandTexts = 1
-	}
-	if c.MaxQuotes <= 0 {
-		c.MaxQuotes = 1
-	}
-	if c.MaxProducts <= 0 {
-		c.MaxProducts = 1
-	}
-	if c.MaxLogos <= 0 {
-		c.MaxLogos = 1
-	}
-	if c.MaxOverlap <= 0 {
-		c.MaxOverlap = DefaultOverlapBudget
-	}
-	return c
-}
-
 // TimedAnnotation is a semantic annotation already projected onto the final
 // timeline. StartMs/EndMs must come from certified speech timing; the planner
 // never estimates them from text length or scene duration. StartUS/DurationUS
@@ -191,10 +69,13 @@ type PlanInput struct {
 	PlanID    string
 	VideoID   string
 	ProjectID string
-	Width     int
-	Height    int
-	FPSNum    int
-	FPSDen    int
+	// MotionSeed changes phrase-motion selection between newly compiled plans.
+	// Empty preserves the historical deterministic PlanID/VideoID behavior.
+	MotionSeed string
+	Width      int
+	Height     int
+	FPSNum     int
+	FPSDen     int
 	// RendererVersion is intentionally optional. PipelineGen emits semantic
 	// overlay instructions; RenderingGen owns the concrete renderer selection.
 	// Callers should leave this empty unless the queue contract explicitly
@@ -225,7 +106,9 @@ type PlanInput struct {
 	// ImageMotions optionally narrows the certified layer-only image motion pool.
 	ImageMotions []string
 	// AnimationCounts caps the distinct style pool for each runtime subfamily.
-	// Missing or non-positive entries use the five-style default.
+	// Missing or non-positive entries keep the FULL certified catalog so runs
+	// rotate every entrance; a positive value bounds the window. Chain tuning
+	// rides here too: chain_gap_ms, chain_max_segments, chain_disabled.
 	AnimationCounts map[string]int
 	// EntityStyleID pins the entity-card composition family for generated
 	// entity cards (a channel profile's or job's choice): "random" samples
@@ -247,6 +130,13 @@ type PlanInput struct {
 // later materialized by RenderingGen from the asset manifest.
 func BuildPlan(input PlanInput, config PlannerConfig) (OverlayPlan, error) {
 	config = config.withDefaults()
+	motionSeed := strings.TrimSpace(input.MotionSeed)
+	if motionSeed == "" {
+		motionSeed = input.PlanID
+		if input.VideoID != "" {
+			motionSeed += ":" + input.VideoID
+		}
+	}
 	if err := validatePhraseMotionPool(input.PhraseMotions); err != nil {
 		return OverlayPlan{}, err
 	}
@@ -282,7 +172,7 @@ func BuildPlan(input PlanInput, config PlannerConfig) (OverlayPlan, error) {
 		input.PhraseMotions = familyPool
 	}
 	if len(input.PhraseMotions) > 0 {
-		input.PhraseMotions = limitedMotionPool(input.PhraseMotions, animationCount(input.AnimationCounts, "important_phrase", "important_phrases"))
+		input.PhraseMotions = limitedShuffledMotionPool(input.PhraseMotions, animationCount(input.AnimationCounts, "important_phrase", "important_phrases"), motionSeed+"\x00phrase_pool")
 	}
 	plan := OverlayPlan{
 		SchemaVersion: SchemaVersionPlan,
@@ -517,10 +407,6 @@ func BuildPlan(input PlanInput, config PlannerConfig) (OverlayPlan, error) {
 		switch plan.Items[i].Kind {
 		case "text_phrase":
 			if len(input.PhraseMotions) == 0 {
-				motionSeed := input.PlanID
-				if input.VideoID != "" {
-					motionSeed += ":" + input.VideoID
-				}
 				words := len(strings.Fields(plan.Items[i].Text))
 				switch {
 				case EditorialSectionForItem(plan.Items[i]) == EditorialSectionShortPhrase:
@@ -542,14 +428,14 @@ func BuildPlan(input PlanInput, config PlannerConfig) (OverlayPlan, error) {
 			case EditorialSectionForItem(plan.Items[i]) == EditorialSectionShortPhrase:
 				// Word count owns the family boundary. Heavy editorial emphasis
 				// must not route a short phrase outside its selected family.
-				plan.Items[i].MotionID = selectShortPhraseMotionLimited(input.PlanID, "run", phraseOrdinal, len(strings.Fields(plan.Items[i].Text)), input.PhraseMotions, animationCount(input.AnimationCounts, "short_important_phrase", "short_phrases"))
+				plan.Items[i].MotionID = selectShortPhraseMotionLimited(motionSeed, "run", phraseOrdinal, len(strings.Fields(plan.Items[i].Text)), input.PhraseMotions, animationCount(input.AnimationCounts, "short_important_phrase", "short_phrases"))
 			case input.HeavyPhrasePriority > 0 && itemPriority(plan.Items[i]) >= input.HeavyPhrasePriority:
-				plan.Items[i].MotionID = selectHeavyPhraseMotionLimited(input.PlanID, "run", heavyOrdinal, input.PhraseMotions, animationCount(input.AnimationCounts, "important_phrase", "important_phrases"))
+				plan.Items[i].MotionID = selectHeavyPhraseMotionLimited(motionSeed, "run", heavyOrdinal, input.PhraseMotions, animationCount(input.AnimationCounts, "important_phrase", "important_phrases"))
 				heavyOrdinal++
 			case len(strings.Fields(plan.Items[i].Text)) >= 6:
-				plan.Items[i].MotionID = selectLongPhraseMotionLimited(input.PlanID, "run", phraseOrdinal, input.PhraseMotions, animationCount(input.AnimationCounts, "important_phrase", "important_phrases"))
+				plan.Items[i].MotionID = selectLongPhraseMotionLimited(motionSeed, "run", phraseOrdinal, input.PhraseMotions, animationCount(input.AnimationCounts, "important_phrase", "important_phrases"))
 			default:
-				plan.Items[i].MotionID = selectPhraseMotionLimited(input.PlanID, "run", phraseOrdinal, input.PhraseMotions, animationCount(input.AnimationCounts, "important_phrase", "important_phrases"))
+				plan.Items[i].MotionID = selectPhraseMotionLimited(motionSeed, "run", phraseOrdinal, input.PhraseMotions, animationCount(input.AnimationCounts, "important_phrase", "important_phrases"))
 			}
 			phraseOrdinal++
 		case "image", "entity_image", "product", "logo":
@@ -590,8 +476,14 @@ func BuildPlan(input PlanInput, config PlannerConfig) (OverlayPlan, error) {
 			}
 		}
 	}
+	input.MotionSeed = motionSeed
 	EnsureDistinctPhraseMotions(plan.Items, input)
 	EnsureDistinctNumberMotions(plan.Items, input.AnimationCounts)
+	// Multi-Animations Runtime: fuse nearby overlays into single chain items
+	// (phrase_chain / image_chain) with concatenated motions and a fly-under
+	// + fade transition, driven by AnimationCounts chain_gap_ms /
+	// chain_max_segments. Legacy items pass through untouched.
+	plan.Items = CoalesceChainedOverlays(plan.Items, input.AnimationCounts)
 	if err := plan.Validate(); err != nil {
 		return OverlayPlan{}, err
 	}

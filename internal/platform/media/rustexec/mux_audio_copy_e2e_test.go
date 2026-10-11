@@ -175,3 +175,49 @@ func TestMuxAudioCopyE2EFailsClosedOnDurationMismatch(t *testing.T) {
 		t.Fatalf("mux must not publish an output on duration mismatch")
 	}
 }
+
+// TestMuxAudioCopyE2ERejectsNonContractAudio pins the P0.3 copy-only
+// certification: a final master that is NOT AAC-LC 48kHz stereo (here PCM
+// 44.1kHz) must fail closed with FINAL_MUX_AUDIO_NOT_COPY_ELIGIBLE instead
+// of being stream-copied into an MP4 downstream cannot play.
+func TestMuxAudioCopyE2ERejectsNonContractAudio(t *testing.T) {
+	musclesPath := resolveMusclesBinary()
+	if musclesPath == "" {
+		t.Skip("pipelinegen-muscles binary not found (set VELOX_RUST_MUSCLES_PATH or build via make build-muscles)")
+	}
+	ffmpegPath := resolveFFmpegBinary()
+	if ffmpegPath == "" {
+		t.Skip("ffmpeg binary not found")
+	}
+	ffprobePath := resolveFFprobeBinary(ffmpegPath)
+	if ffprobePath == "" {
+		t.Skip("ffprobe binary not found")
+	}
+
+	dir := t.TempDir()
+	videoPath := filepath.Join(dir, "video.mp4")
+	audioPath := filepath.Join(dir, "final-audio.wav")
+	outputPath := filepath.Join(dir, "final.mp4")
+	generateVideoMP4(t, ffmpegPath, videoPath, 5.000)
+	cmd := exec.Command(ffmpegPath, "-hide_banner", "-loglevel", "error", "-y",
+		"-f", "lavfi", "-i", "anullsrc=r=44100:cl=stereo",
+		"-t", "5.000",
+		"-c:a", "pcm_s16le", audioPath)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("generate PCM audio %s: %v: %s", audioPath, err, out)
+	}
+
+	executor := newRealExecutor(t, musclesPath, ffmpegPath)
+	processor := &VideoProcessor{client: NewClientWithExecutor(executor, nil)}
+	asset := copyEligibleAsset(t, ffprobePath, audioPath)
+	err := processor.MuxFinalAudioCopy(context.Background(), videoPath, audioPath, outputPath, asset)
+	if err == nil {
+		t.Fatalf("mux must fail closed on non-AAC final audio")
+	}
+	if !strings.Contains(err.Error(), "FINAL_MUX_AUDIO_NOT_COPY_ELIGIBLE") {
+		t.Fatalf("mux failed with non-certification error: %v", err)
+	}
+	if _, statErr := os.Stat(outputPath); statErr == nil {
+		t.Fatalf("mux must not publish an output for non-contract audio")
+	}
+}

@@ -6,7 +6,11 @@
 package overlays
 
 import (
+	"encoding/binary"
+	"strconv"
 	"strings"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 )
 
 func selectPhrasePreset(jobID, sceneID, itemID string) string {
@@ -130,33 +134,62 @@ func selectShortPhraseMotionLimited(jobID, sceneID string, ordinal, wordCount in
 			candidates = compatible
 		}
 	}
-	candidates = limitedMotionPool(candidates, limit)
+	candidates = limitedShuffledMotionPool(candidates, limit, jobID+"\x00short_phrase:"+strconv.Itoa(wordCount))
 	return selectMotionFromPool(jobID, sceneID, "short_phrase", ordinal, candidates)
 }
 
-// limitedMotionPool keeps a deterministic rotating window of at most five
-// styles by default. A positive limit overrides that default and is bounded
-// by the catalog size.
+// limitedMotionPool caps a deduplicated rotation window to at most limit
+// entries. A non-positive limit keeps the FULL certified catalog so a run
+// without an explicit AnimationCounts entry rotates every entrance instead
+// of the legacy five-style cap (the cap is what made long runs repeat the
+// same handful of motions). A positive limit is bounded by the catalog size.
 func limitedMotionPool(pool []string, limit int) []string {
 	if len(pool) == 0 {
 		return nil
 	}
-	unique := make([]string, 0, len(pool))
-	seen := make(map[string]struct{}, len(pool))
-	for _, id := range pool {
-		if _, exists := seen[id]; exists || strings.TrimSpace(id) == "" {
-			continue
-		}
-		seen[id] = struct{}{}
-		unique = append(unique, id)
-	}
+	unique := uniqueMotionPool(pool)
 	if limit <= 0 {
-		limit = 5
+		return unique
 	}
 	if limit > len(unique) {
 		limit = len(unique)
 	}
 	return append([]string(nil), unique[:limit]...)
+}
+
+// limitedShuffledMotionPool shuffles the deduplicated pool deterministically
+// from seed, then caps it to limit entries. A non-positive limit keeps the
+// full shuffled catalog. Each visual lane passes its own seed
+// (planID + ":" + lane) so phrase, short-phrase, long-phrase, heavy, image
+// and number lanes draw different orders from the same run — true per-group
+// variation that stays bit-identical across retries of the same job.
+func limitedShuffledMotionPool(pool []string, limit int, seed string) []string {
+	shuffled := shuffleMotionPool(pool, seed)
+	if limit <= 0 {
+		return shuffled
+	}
+	if limit > len(shuffled) {
+		limit = len(shuffled)
+	}
+	return append([]string(nil), shuffled[:limit]...)
+}
+
+// shuffleMotionPool returns a deterministic Fisher-Yates shuffle of the
+// deduplicated pool, seeded by SHA256(seed). Empty seed keeps catalog order.
+// The shuffle is stable for the same seed and independent across seeds, so
+// two lanes never share an order unless they share a seed.
+func shuffleMotionPool(pool []string, seed string) []string {
+	unique := uniqueMotionPool(pool)
+	if len(unique) <= 1 || strings.TrimSpace(seed) == "" {
+		return unique
+	}
+	order := append([]string(nil), unique...)
+	for i := len(order) - 1; i > 0; i-- {
+		sum := digest.SHA256Sum([]byte(seed + "\x00" + string(rune(i))))
+		j := int(binary.BigEndian.Uint64(sum[:8]) % uint64(i+1))
+		order[i], order[j] = order[j], order[i]
+	}
+	return order
 }
 
 func animationCount(counts map[string]int, keys ...string) int {
@@ -246,15 +279,21 @@ func selectMotionFromPool(jobID, sceneID, family string, ordinal int, candidates
 	if len(candidates) == 0 {
 		return ""
 	}
-	seeded := selectPreset(jobID, sceneID, "run", "important_phrase_motion:"+family, candidates)
+	// Per-group true variation: shuffle deterministically from the run seed
+	// + lane family before walking. Two lanes (phrase vs long vs heavy vs
+	// image) never share an order, and two runs never share one either —
+	// while retries of the same job stay bit-identical. The seeded start
+	// below then rotates within that shuffled order.
+	shuffled := shuffleMotionPool(candidates, jobID+"\x00"+family)
+	seeded := selectPreset(jobID, sceneID, "run", "important_phrase_motion:"+family, shuffled)
 	start := 0
-	for i, candidate := range candidates {
+	for i, candidate := range shuffled {
 		if candidate == seeded {
 			start = i
 			break
 		}
 	}
-	return candidates[(start+ordinal)%len(candidates)]
+	return shuffled[(start+ordinal)%len(shuffled)]
 }
 
 func uniqueMotionPool(pool []string) []string {

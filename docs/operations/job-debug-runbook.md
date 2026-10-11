@@ -459,15 +459,57 @@ mechanism from the JOB-level deferral in §11: here the run fails with
 - The attempt that follows **attaches** to that job id — no second PREPARE, so
   the Master is never asked to render the same work twice.
 - The wait is handed back **at most once per run**: the first wait is bounded by
-  `VELOX_FINAL_JOB_ATTACH_SECONDS` (default `60`, chosen above the observed
-  40-60s render), and every wait after it runs to completion with the client's
-  full 2h poll timeout. A render longer than the whole retry window therefore
-  still finishes instead of dying on an exhausted attempt budget.
+  `VELOX_FINAL_JOB_ATTACH_SECONDS` (default `3000`, i.e. 50 minutes — see
+  `defaultFinalJobAttachBudget` in `internal/app/wiring/remote_final_job.go`),
+  and every wait after it runs to completion with the client's full 2h poll
+  timeout. A render longer than the whole retry window therefore still finishes
+  instead of dying on an exhausted attempt budget.
+- The 50-minute default is a measured bound, not a preference: the first bounded
+  wait was set to 60s, which was shorter than the real Master renders (observed
+  6-14 minutes), so a render that outlived one attempt was never joined back to
+  its parent job. It is deliberately below the 60-minute script job timeout so
+  the bounded wait still ends inside the attempt's own budget.
 - `VELOX_FINAL_JOB_ATTACH_SECONDS=0` disables the hand-off entirely and restores
   the blocking wait. A malformed value is a configuration error: the composition
   root fails closed instead of silently falling back.
 - A receipt already `SUCCEEDED` (a later phase failed the run) is reused as-is —
   the step is a no-op, not a resubmit.
+
+### When the hand-off is not provisioned (no credentials)
+
+The adapter is built from a Master M2M secret: `VELOX_FINAL_JOB_M2M_SECRET` if
+set, otherwise the `VELOX_M2M_SECRET` line of the file named by
+`VELOX_FINAL_JOB_CREDENTIALS_FILE` (default `~/creator-77-master.env`). With
+neither present the composition root **does not** build the adapter; it logs
+
+```
+remote final-job handoff unavailable; final_job=true requests will fail closed
+```
+
+and leaves the submitter unwired (never a default/empty token, never a silent
+local-only render). A `final_job=true` request on such a host then fails the run
+closed at the publishing stage with
+
+```
+final_job=true but remote final-job submitter is not configured
+```
+
+(`status = FAILED`, `failed_stage = publishing_documents`, no
+`result.remote_final_job` receipt — nothing was submitted, so nothing may claim
+a handle). The live host is checked by grepping the service log for which branch
+was taken:
+
+```bash
+journalctl -u pipelinegen.service --no-pager | grep 'remote final-job handoff'
+```
+
+`handoff wired` names the Master URL in use; `handoff unavailable` means every
+`final_job=true` request on that host will fail closed until credentials are
+provisioned.
+
+Pinned by `TestRemoteFinalJobAdapterFailsClosedWithoutCredentials`
+(`internal/app/wiring`) and `TestFinalJobWithoutAWiredSubmitterFailsTheRunClosed`
+(`internal/capabilities/scripts`).
 
 ### Triage
 
@@ -481,6 +523,10 @@ mechanism from the JOB-level deferral in §11: here the run fails with
 - **`cannot resume it` failure** — a pending receipt exists but the wired
   submitter does not implement the attach half of the port. The run fails
   closed on purpose: the alternative is submitting a duplicate render.
+- **`submitter is not configured` failure** — this host has no Master
+  credentials, so no hand-off was wired. Provision them (see the subsection
+  above) rather than retrying the run: the retry cannot succeed on a host whose
+  composition root has nothing to submit with.
 - **`remote final job ... ended FAILED`** — a real Master-side failure; it is
   reported as `PUBLISHING_DOCUMENTS_FAILED` (or `PROVIDER_*` per §3's heuristics),
   never as a deferral.

@@ -27,6 +27,14 @@ type gateVoiceoverPublishPool struct {
 	waitCalls int
 	release   chan struct{}
 	uploads   int
+	// inflight is the JOIN half: Wait() must not return until every queued
+	// upload has finished. Gating Wait() and the uploads on the same `release`
+	// signal is NOT join semantics — it lets Wait() return while the upload
+	// goroutine is still unscheduled, so the drain assertion below raced the
+	// upload's own scheduling and read uploads=0 under -race (observed
+	// 2026-10-10: FAIL TestRunner_VoiceoverPublishPoolDrainedEvenWhenDocsDisabled
+	// expected 1, actual 0).
+	inflight sync.WaitGroup
 }
 
 func newGateVoiceoverPublishPool() *gateVoiceoverPublishPool {
@@ -36,7 +44,9 @@ func newGateVoiceoverPublishPool() *gateVoiceoverPublishPool {
 // submitUpload simulates the per-scene publish the voiceover service queues
 // while the run proceeds (the work publishStage performs in the background).
 func (g *gateVoiceoverPublishPool) submitUpload() {
+	g.inflight.Add(1)
 	go func() {
+		defer g.inflight.Done()
 		<-g.release
 		g.mu.Lock()
 		g.uploads++
@@ -48,7 +58,8 @@ func (g *gateVoiceoverPublishPool) Wait() {
 	g.mu.Lock()
 	g.waitCalls++
 	g.mu.Unlock()
-	<-g.release
+	// Probe first (so a test can observe the join was entered) and then join.
+	g.inflight.Wait()
 }
 
 func (g *gateVoiceoverPublishPool) snapshot() (waitCalls, uploads int) {

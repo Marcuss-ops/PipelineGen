@@ -2,6 +2,13 @@ package overlays
 
 import "strings"
 
+// removedGeneratedPhraseMotions contains animations that are no longer
+// allowed in generated overlays. They remain catalogued for historical
+// render inspection, but no selector may assign them to a new phrase.
+var removedGeneratedPhraseMotions = map[string]struct{}{
+	"chromatic_aberration_pop": {},
+}
+
 // ensureDistinctPhraseMotions is a final run-wide guard over the category
 // selectors. Short, long, heavy, and regular phrase lanes can each rotate
 // without repeats internally while still colliding with one another; resolve
@@ -12,9 +19,12 @@ import "strings"
 // construction and at the final run boundary.
 func EnsureDistinctPhraseMotions(items []OverlayItem, input PlanInput) {
 	used := make(map[string]struct{})
-	seed := input.PlanID
-	if input.VideoID != "" {
-		seed += ":" + input.VideoID
+	seed := strings.TrimSpace(input.MotionSeed)
+	if seed == "" {
+		seed = input.PlanID
+		if input.VideoID != "" {
+			seed += ":" + input.VideoID
+		}
 	}
 	shortLimit := animationCount(input.AnimationCounts, "short_important_phrase", "short_phrases")
 	phraseLimit := animationCount(input.AnimationCounts, "important_phrase", "important_phrases")
@@ -23,11 +33,14 @@ func EnsureDistinctPhraseMotions(items []OverlayItem, input PlanInput) {
 		if item.Kind != "text_phrase" || strings.TrimSpace(item.MotionID) == "" {
 			continue
 		}
-		if _, duplicate := used[item.MotionID]; !duplicate {
+		_, removed := removedGeneratedPhraseMotions[item.MotionID]
+		_, duplicate := used[item.MotionID]
+		if !removed && !duplicate {
 			used[item.MotionID] = struct{}{}
 			continue
 		}
 		candidates := phraseMotionCandidatesForItem(*item, input, seed, shortLimit, phraseLimit)
+		candidates = excludeRemovedGeneratedPhraseMotions(candidates)
 		if len(candidates) == 0 {
 			continue
 		}
@@ -48,6 +61,17 @@ func EnsureDistinctPhraseMotions(items []OverlayItem, input PlanInput) {
 			break
 		}
 	}
+}
+
+func excludeRemovedGeneratedPhraseMotions(candidates []string) []string {
+	filtered := make([]string, 0, len(candidates))
+	for _, candidate := range candidates {
+		if _, removed := removedGeneratedPhraseMotions[candidate]; removed {
+			continue
+		}
+		filtered = append(filtered, candidate)
+	}
+	return filtered
 }
 
 // EnsureDistinctNumberMotions rotates date and metric presentation recipes

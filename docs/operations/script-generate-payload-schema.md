@@ -128,6 +128,42 @@ Fixed `intro`/`outro` sections may omit `playback.source_in_ms` and
 Any other window must specify both endpoints with `source_out_ms >
 source_in_ms`.
 
+### Per-clip stock marking (`stock_clip_ids`)
+
+`items[].script_params.segments[].stock_clip_ids` marks individual clips of
+that segment as **used-as-stock** (audio-only). A marked clip keeps its
+binding and its original audio joins the generated voiceover mix at **full
+original volume** — it survives the global `VOICEOVER_ONLY` removal and is
+never ducked — while its video is never processed with a localized clip
+render and never shown. The scene's visual comes from its stock binding, so
+a scene whose clips are ALL stock-marked must also carry
+`segments[].stock_folder_id` (expanded into the stock binding); without one
+the final-job build fails closed instead of handing the remote worker a
+scene it cannot composite.
+
+```json
+{
+  "version": 2,
+  "items": [{
+    "source": { "type": "clips" },
+    "script_params": { "segments": [{
+      "topic": "Body scene",
+      "clip_ids": ["clip-a", "clip-b"],
+      "stock_clip_ids": ["clip-b"],
+      "stock_folder_id": "<drive-folder-id>",
+      "stock_folder_link": "https://drive.google.com/drive/folders/<drive-folder-id>"
+    }]}
+  }]
+}
+```
+
+Validation is fail-closed (400): every entry must name one of the **same**
+segment's `clip_ids` (stock marking never invents clip ownership), entries
+must be non-empty and unique. SSOT:
+`internal/kernel/script/script_spec.go` (`ScriptSegment.StockClipIDs`),
+`internal/kernel/script/generation_source_validation.go`
+(`validateSegmentStockClipIDs`).
+
 `bindGenerateEnvelope` decodes with **`DisallowUnknownFields`** and
 additionally rejects removed contract keys against the raw body before
 decoding. Therefore a misplaced or retired key is a hard `400`, never a

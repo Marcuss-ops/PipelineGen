@@ -27,6 +27,7 @@ import (
 
 	capabilityentities "github.com/Marcuss-ops/PipelineGen/internal/capabilities/entities"
 	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
+	scriptoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/overlay"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	"github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
@@ -376,7 +377,9 @@ func compileOverlayPlanWithMotionOffset(result *GenerateResult, language Languag
 	capabilityoverlay.EnsureDistinctPhraseMotions(items, capabilityoverlay.PlanInput{PlanID: planID, VideoID: videoID, MotionSeed: motionSeed})
 	capabilityoverlay.EnsureDistinctNumberMotions(items, nil)
 	items = capabilityoverlay.CoalesceChainedOverlays(items, canvas.AnimationCounts)
-	nameOverlayItemsForReview(items)
+	// Owned by the overlay subpackage: the root package is the compatibility
+	// facade, so the naming rule has exactly one home.
+	scriptoverlay.NameItemsForReview(items)
 	// assignEntityImageMotions rebuilds entity item params with its geometry
 	// defaults. Apply the explicit typeface afterward so it reaches the
 	// generated name caption without overriding image geometry.

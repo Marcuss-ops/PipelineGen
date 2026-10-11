@@ -1,17 +1,27 @@
-package scriptgeneration
+// Package overlay owns overlay-specific policy used by the scripts capability.
+//
+// names.go owns the review-name derivation moved here from the root scripts
+// package (2026-10-10): the root package is the compatibility facade and each
+// overlay family migrates into this subpackage
+// (architecture/package_hotspots.json::internal/capabilities/scripts targets).
+// The entry point is exported because its caller still lives in the facade;
+// the two helpers stay package-local — nothing outside this file owns them.
+package overlay
 
 import (
 	"fmt"
 	"strings"
 	"unicode"
 
+	"golang.org/x/text/unicode/norm"
+
 	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
 )
 
-// nameOverlayItemsForReview makes the chosen motion, subject, and overlay
+// NameItemsForReview makes the chosen motion, subject, and overlay
 // category visible in every render artifact name. This lets operators spot a
 // repeated or unexpected animation directly from a job's overlay list.
-func nameOverlayItemsForReview(items []capabilityoverlay.OverlayItem) {
+func NameItemsForReview(items []capabilityoverlay.OverlayItem) {
 	seen := make(map[string]int, len(items))
 	for i := range items {
 		item := &items[i]
@@ -72,8 +82,11 @@ func overlayNameCategory(kind, motion string) string {
 func overlayNameSlug(value string) string {
 	var b strings.Builder
 	separator := false
-	for _, r := range strings.ToLower(strings.TrimSpace(value)) {
-		if unicode.IsLetter(r) || unicode.IsDigit(r) {
+	for _, r := range norm.NFD.String(strings.ToLower(strings.TrimSpace(value))) {
+		if unicode.Is(unicode.Mn, r) {
+			continue
+		}
+		if r <= unicode.MaxASCII && (unicode.IsLetter(r) || unicode.IsDigit(r)) {
 			if separator && b.Len() > 0 {
 				b.WriteByte('-')
 			}

@@ -329,7 +329,7 @@ func (c *sceneReadyCoordinator) process(scene Scene) (Scene, error) {
 		// A localized clip render needs a VISUAL clip: stock-bound scenes and
 		// scenes whose clips are all stock-marked (audio-only) are never
 		// processed by clip render.
-		if out.Stock == nil && primaryVisualClip(out) != nil {
+		if out.Stock == nil && !sceneVisualClipsAreStockOnly(out) {
 			clipID, clipAssetID, clipSHA256, clipDurationMS := localizedRenderClipFields(out)
 			renderSpec := sceneRenderSpec(c.req, out)
 			sceneID, sceneIndex := out.ID, out.Index

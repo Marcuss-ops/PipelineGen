@@ -348,7 +348,7 @@ func TestDeterministicMapStyleIsStableInRangeAndMatchesCatalog(t *testing.T) {
 	}
 	for _, channel := range []string{"map_camera", "map_label", "map_basemap"} {
 		options := mapCameraAnimations
-		wantSingle := "signature_dive"
+		wantSingle := "slow_approach"
 		if channel == "map_label" {
 			options = mapLabelAnimations
 			wantSingle = "diffuse_city_beacon"

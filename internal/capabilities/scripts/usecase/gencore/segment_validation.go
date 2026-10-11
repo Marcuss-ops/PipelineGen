@@ -155,20 +155,13 @@ func (e *Engine) generateSegments(
 			segmentPlan.ClipEvidence.SegmentEvidence = []scriptpkg.SegmentClipEvidence{plan.ClipEvidence.SegmentEvidence[index]}
 		}
 		segmentReq := req
-		if SegmentPromptLayout() == SegmentPromptLayoutSharedPrefix {
-			// Shared-prefix layout (B3, TODO-pipeline-100x-velocita): the shared
-			// instructions (editorial header + plain-text output contract) are
-			// rendered FIRST and stay KV-cache resident across the fan-out; the
-			// per-segment assignment (SEGMENT block + DoD footer with this
-			// segment's target words) is rendered LAST as the absolute-priority
-			// instruction. Byte semantics of the two blocks are identical to the
-			// legacy brief: header + body == buildSegmentInstructions.
-			segmentReq.Prompt = ""
-			segmentReq.SharedPrefix = buildSegmentHeader(&segmentPlan) + plainTextInstruction
-			segmentReq.SegmentAssignment = buildSegmentBody(&segmentPlan)
-		} else {
-			segmentReq.Prompt = buildSegmentInstructions(&segmentPlan) + "\n\n" + plainTextInstruction
-		}
+		// Layout and opening scope are composed by one pure helper so the
+		// fan-out and its tests share exactly one prompt contract. The
+		// opening-scope directive keeps the script's mandated opening sentence
+		// in the first segment instead of letting the shared style repeat it in
+		// every segment (see segmentOpeningScopeDirective).
+		segmentReq.Prompt, segmentReq.SharedPrefix, segmentReq.SegmentAssignment =
+			segmentPromptParts(&segmentPlan, index, len(plan.Segments))
 		// Clip jobs use the editorial description of the assigned clip as the
 		// primary source text for Gemma. This is the historical, stable
 		// contract: rewrite the supplied description in a funny YouTube voice.

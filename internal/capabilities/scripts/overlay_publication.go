@@ -334,7 +334,10 @@ func finalJobIntermediateClipWindows(result *GenerateResult) map[string]finalJob
 		}
 		clipAudio := false
 		for _, intent := range segment.EffectiveAudioIntents() {
-			if intent.Mode == capabilityaudio.AudioClip && !intent.ProtectedOriginalAudio {
+			// A stock-marked clip is audio-only: replace-mode overlays on its
+			// window hide the scene's stock video, which is the intended visual,
+			// so the scene is never reclassified as an intermediate clip window.
+			if intent.Mode == capabilityaudio.AudioClip && !intent.ProtectedOriginalAudio && !intent.StockOriginalAudio {
 				clipAudio = true
 				break
 			}

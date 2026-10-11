@@ -132,7 +132,9 @@ func TestLocalizedClipRenderer_RendersCertifiedArtifact(t *testing.T) {
 // directly. Before this the id existed only as a `plan_revision` line in the
 // master log and had to be scraped out.
 func TestLocalizedClipRenderer_ProjectsTheRenderJobIdentity(t *testing.T) {
-	const revision = "clip-1/es/overlay-v3/0123456789abcdef"
+	// The revision doubles as the RenderingGen queue job id, so it must be a
+	// single valid workspace filename component (`:` separators, never `/`).
+	const revision = "clip-1:es:overlay-v3:0123456789abcdef"
 	compiler := &fakeRendererCompiler{plan: render.RenderPlan{OutputPath: "/tmp/renders/clip-1.es.mp4", Revision: revision}}
 	r := newTestRenderer(t, compiler, newTestWire(t, &fakeSubtitleResolver{track: matchingTrack()}, &fakeSubtitleCompiler{asset: validSubtitleAsset()}), &fakeRenderPlanExecutor{facts: validRenderFacts()})
 

@@ -1,4 +1,14 @@
+// Merged 2026-10-10 with research_cache.go: the research cache is the
+// persistence half of the research contract defined here.
 package script
+
+import (
+	"fmt"
+	"strings"
+	"time"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
+)
 
 // SubjectIdentity is the canonical identity for a research subject. It
 // replaces the hardcoded diacritics switch in research_subject_filter.go
@@ -81,4 +91,60 @@ type ResearchReport struct {
 	// the evidence gate). When non-empty the aggregate is partial and the
 	// ranking must be treated as uncertain.
 	DroppedCandidates []DroppedResearchCandidate `json:"dropped_candidates,omitempty"`
+}
+
+// ResearchCacheRecord is the canonical shape of one research_cache row.
+// It is deliberately a value struct: callers create a record, compute
+// the key via ComputeResearchCacheKey, and pass it to a repository.
+type ResearchCacheRecord struct {
+	Key                string    // SHA256 cache key; PRIMARY KEY in SQLite.
+	Topic              string    // Human-readable topic used as fallback.
+	Language           string    // Target language of the source text.
+	MaxSteps           int       // Research depth / max steps requested.
+	SourceText         string    // The cached research text.
+	SourceTextHash     string    // SHA-256 of SourceText.
+	ResearchReportJSON string    // Sanitized JSON provenance/metrics report.
+	SourcesCount       int       // Number of selected sources.
+	ClaimsVerified     int       // Number of verified claims.
+	ClaimsRejected     int       // Number of rejected claims.
+	SearchQueryCount   int       // Number of executed web queries.
+	PagesFetched       int       // Number of fetched pages.
+	ConceptID          string    // Optional media_concepts.id that produced this text.
+	TopicFingerprint   string    // Stable topic identity (e.g., SHA256 of normalized topic).
+	SourceFingerprint  string    // Stable identity of the source material (URL, asset, document).
+	ResolverVersion    string    // Version of the source resolver that produced the text.
+	ResearchVersion    string    // Version of the research strategy / prompts.
+	HitCount           int       // How many times the row has been reused.
+	ExpiresAt          time.Time // Absolute TTL.
+	CreatedAt          time.Time // Row creation time.
+	UpdatedAt          time.Time // Last mutation time.
+}
+
+// ComputeResearchCacheKey returns the canonical SHA-256 hex key for a
+// research_cache entry. The keyspace is defined as:
+//
+//	SHA256(topic_fingerprint + ":" + language + ":" + research_version + ":" + source_fingerprint + ":" + max_steps)
+//
+// The separators prevent collisions between adjacent components (e.g.
+// topic_fingerprint="ab" + language="c" vs topic_fingerprint="a" +
+// language="bc"). max_steps is represented as a decimal integer so the
+// same source material researched with different depths produces
+// distinct keys.
+func ComputeResearchCacheKey(topicFingerprint, language, researchVersion, sourceFingerprint string, maxSteps int) string {
+	topicFingerprint = strings.TrimSpace(topicFingerprint)
+	language = strings.TrimSpace(language)
+	researchVersion = strings.TrimSpace(researchVersion)
+	sourceFingerprint = strings.TrimSpace(sourceFingerprint)
+
+	payload := fmt.Sprintf(
+		"%s:%s:%s:%s:%d",
+		topicFingerprint,
+		language,
+		researchVersion,
+		sourceFingerprint,
+		maxSteps,
+	)
+
+	sum := digest.SHA256Bytes([]byte(payload))
+	return sum
 }

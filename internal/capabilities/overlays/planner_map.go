@@ -112,9 +112,25 @@ func mapPlansForScene(resolver PlateResolver, candidates []MapCandidate, canvasW
 	if resolver == nil || len(candidates) == 0 {
 		return nil
 	}
+	// A generated map is limited to one plate for this run. Use repeated,
+	// grounded mentions as a relevance signal so a secondary place named once
+	// (for example, the city where a document is held) cannot displace the
+	// story's main location from that single map.
+	mentionCount := make(map[string]int, len(candidates))
+	for _, candidate := range candidates {
+		if id := strings.TrimSpace(candidate.EntityID); id != "" {
+			mentionCount[id]++
+		}
+	}
 	valid := make([]MapCandidate, 0, len(candidates))
 	seen := make(map[string]struct{}, len(candidates))
 	for _, candidate := range candidates {
+		if count := mentionCount[strings.TrimSpace(candidate.EntityID)]; count > 1 {
+			candidate.Score += float64(count-1) * 0.01
+			if candidate.Score > 1 {
+				candidate.Score = 1
+			}
+		}
 		// Re-validate through the single candidate constructor so a candidate
 		// built by hand (or one whose identity was emptied downstream) cannot
 		// reach the planner as a map pinned at a guessed location.
