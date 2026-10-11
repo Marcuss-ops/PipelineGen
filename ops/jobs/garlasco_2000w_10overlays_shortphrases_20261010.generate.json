@@ -1,7 +1,7 @@
 {
   "version": 2,
   "preset": "custom",
-  "correlation_id": "garlasco-2000w-15s-runtime-inter-glow-20261010-retry9",
+  "correlation_id": "garlasco-shortphrases-10overlay-20261010-r18",
   "force_refresh": true,
   "items": [
     {
@@ -30,7 +30,7 @@
             "topic": "Garlasco il 13 agosto 2007",
             "source_text": "La prima frase deve essere esattamente: “Il 13 agosto 2007, Chiara Poggi fu uccisa nella sua abitazione a Garlasco.” Non scrivere 2018 né altra data come data dell’omicidio. Segue un breve contesto sobrio sulla vittima e sulla vicenda, senza dettagli grafici.",
             "target_words": 110,
-            "min_words": 70,
+            "min_words": 30,
             "max_words": 132
           },
           {
@@ -39,7 +39,7 @@
             "topic": "Chiara Poggi e la memoria pubblica",
             "source_text": "Descrivi Chiara Poggi come persona al centro del caso, evitando di ridurla a un nome negli atti. Non inventare abitudini private, dialoghi, passioni o biografia non verificata.",
             "target_words": 110,
-            "min_words": 70,
+            "min_words": 30,
             "max_words": 132
           },
           {
@@ -48,7 +48,7 @@
             "topic": "Il procedimento relativo ad Alberto Stasi",
             "source_text": "Spiega che Alberto Stasi, allora fidanzato di Chiara Poggi, è stato condannato in via definitiva a sedici anni per l’omicidio. Distingui questa condanna dai nuovi accertamenti e non presentare le nuove ipotesi come una revisione già avvenuta.",
             "target_words": 110,
-            "min_words": 70,
+            "min_words": 30,
             "max_words": 132
           },
           {
@@ -57,7 +57,7 @@
             "topic": "Le prime indagini e i reperti",
             "source_text": "Ricostruisci con cautela il lavoro investigativo avviato nel 2007. Distingui i reperti, le consulenze, le interpretazioni e le decisioni giudiziarie, senza affermare che una singola traccia dimostri da sola la responsabilità di qualcuno.",
             "target_words": 110,
-            "min_words": 70,
+            "min_words": 30,
             "max_words": 132
           },
           {
@@ -66,7 +66,7 @@
             "topic": "La nuova indagine della Procura di Pavia",
             "source_text": "Spiega che Andrea Sempio è indagato nella nuova inchiesta della Procura di Pavia per l’omicidio di Chiara Poggi. L’accusa è una tesi investigativa contestata, non una condanna; ricorda la presunzione di innocenza e attribuisci le ricostruzioni ai magistrati.",
             "target_words": 110,
-            "min_words": 70,
+            "min_words": 30,
             "max_words": 132
           },
           {
@@ -75,7 +75,7 @@
             "topic": "La seconda chiusura delle indagini",
             "source_text": "Riferisci che il 28 settembre 2026 la Procura di Pavia ha notificato una seconda chiusura delle indagini dopo ulteriori accertamenti e consulenze, passaggio che può precedere una richiesta di processo ma non equivale a un rinvio a giudizio o a una sentenza.",
             "target_words": 110,
-            "min_words": 70,
+            "min_words": 30,
             "max_words": 132
           },
           {
@@ -84,7 +84,7 @@
             "topic": "La posizione pubblica di Andrea Sempio",
             "source_text": "Racconta che Andrea Sempio respinge le accuse e ha dichiarato in televisione di non riconoscersi nelle ricostruzioni investigative. Riporta le sue parole solo come dichiarazioni attribuite e non come prova autonoma dei fatti.",
             "target_words": 110,
-            "min_words": 70,
+            "min_words": 30,
             "max_words": 132
           },
           {
@@ -93,7 +93,7 @@
             "topic": "La traccia indicata come impronta 33",
             "source_text": "Descrivi la discussione tecnica sull’impronta 33 come un punto controverso tra periti e parti. Specifica che attribuzione, qualità e interpretazione sono oggetto di valutazioni e contestazioni; non trasformare un dato forense discusso in certezza narrativa.",
             "target_words": 110,
-            "min_words": 70,
+            "min_words": 30,
             "max_words": 140
           },
           {
@@ -102,7 +102,7 @@
             "topic": "La bicicletta e gli accertamenti genetici",
             "source_text": "Riassumi il dibattito documentale sui campioni raccolti sui pedali della bicicletta collegata ad Alberto Stasi. Attribuisci le informazioni agli atti e alle relazioni riportate dalla stampa e chiarisci che risultati diversi richiedono contesto tecnico e contraddittorio.",
             "target_words": 110,
-            "min_words": 70,
+            "min_words": 30,
             "max_words": 132
           },
           {
@@ -111,7 +111,7 @@
             "topic": "Il materiale acquisito al RIS di Parma",
             "source_text": "Spiega che nella nuova fase sono stati acquisiti documenti di lavoro e carte conservate presso il RIS di Parma, secondo quanto riportato da ANSA l’8 ottobre 2026. La presenza di un documento non dimostra da sola dolo, occultamento intenzionale o responsabilità penale.",
             "target_words": 110,
-            "min_words": 70,
+            "min_words": 30,
             "max_words": 132
           },
           {
@@ -120,7 +120,7 @@
             "topic": "Le date e la catena dei reperti",
             "source_text": "Usa le date 13 agosto 2007, 19, 20 e 26 settembre 2007, 2016, 28 settembre 2026 e 8 ottobre 2026 come riferimenti temporali solo nei limiti delle fonti. Distingui data del prelievo, dell’analisi, del deposito e della pubblicazione.",
             "target_words": 110,
-            "min_words": 70,
+            "min_words": 30,
             "max_words": 132
           },
           {
@@ -129,7 +129,7 @@
             "topic": "Vigevano e Pavia nel percorso giudiziario",
             "source_text": "Localizza Vigevano e Pavia nel racconto processuale senza inventare spostamenti delle persone. Spiega con linguaggio accessibile che competenze e fascicoli possono cambiare nel tempo e che ogni passaggio va letto negli atti ufficiali.",
             "target_words": 110,
-            "min_words": 70,
+            "min_words": 30,
             "max_words": 132
           },
           {
@@ -138,7 +138,7 @@
             "topic": "Milano, Brescia e i filoni distinti",
             "source_text": "Cita Milano e Brescia solo per descrivere luoghi delle cronache e filoni istituzionali distinti menzionati dalle fonti. Non collegare automaticamente un’indagine sulla gestione degli atti a una prova contro Andrea Sempio.",
             "target_words": 110,
-            "min_words": 70,
+            "min_words": 30,
             "max_words": 132
           },
           {
@@ -147,7 +147,7 @@
             "topic": "Le difese e il contraddittorio",
             "source_text": "Cita Angela Taccia e Liborio Cataliotti come difensori di Andrea Sempio e Giada Bocellari e Antonio De Rensis come legali di Alberto Stasi solo attribuendo loro posizioni pubbliche. Illustra perché consulenti, accesso agli atti e contraddittorio sono essenziali.",
             "target_words": 110,
-            "min_words": 70,
+            "min_words": 30,
             "max_words": 132
           },
           {
@@ -156,7 +156,7 @@
             "topic": "Metodo, prudenza e dignità delle persone",
             "source_text": "Concludi spiegando che un’indagine, una richiesta di processo, un rinvio a giudizio e una condanna sono fasi diverse. Ricorda Chiara Poggi senza spettacolarizzare la violenza, proteggi la reputazione delle persone coinvolte e separa fatti accertati, accuse, dichiarazioni e questioni aperte.",
             "target_words": 110,
-            "min_words": 70,
+            "min_words": 30,
             "max_words": 132
           }
         ]

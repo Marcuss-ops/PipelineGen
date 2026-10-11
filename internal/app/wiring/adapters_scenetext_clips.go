@@ -30,20 +30,21 @@ func markSegmentStockClips(clips []*scriptgen.ClipReference, segment scriptpkg.S
 }
 
 // stockClipAudioIntent is the canonical voice of a stock-marked clip in the
-// master mix: the clip's ORIGINAL audio at full volume, protected from the
-// run's global VO-only removal and from ducking (the caller explicitly asked
-// for this clip to be heard as stock).
+// master mix: the clip's ORIGINAL audio at full volume, exempt from the run's
+// global VO-only removal and from ducking (the caller explicitly asked for
+// this clip to be heard as stock) while the scene keeps its generated
+// voiceover and BGM/SFX coverage.
 func stockClipAudioIntent(clipID string, sourceInUS, durationUS int64, timelineOffsetUS int64) capabilityaudio.AudioIntent {
 	return capabilityaudio.AudioIntent{
-		Mode:                   capabilityaudio.AudioClip,
-		ClipAssetID:            clipID,
-		SourceInUS:             sourceInUS,
-		SourceDurationUS:       durationUS,
-		TimelineOffsetUS:       timelineOffsetUS,
-		TimelineDurationUS:     durationUS,
-		UseOriginalAudio:       true,
-		ProtectedOriginalAudio: true,
-		GainDB:                 0,
+		Mode:               capabilityaudio.AudioClip,
+		ClipAssetID:        clipID,
+		SourceInUS:         sourceInUS,
+		SourceDurationUS:   durationUS,
+		TimelineOffsetUS:   timelineOffsetUS,
+		TimelineDurationUS: durationUS,
+		UseOriginalAudio:   true,
+		StockOriginalAudio: true,
+		GainDB:             0,
 	}
 }
 

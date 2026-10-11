@@ -129,9 +129,14 @@ func RenderUnitsForScene(scene Scene) []SceneRenderUnit {
 	if scene.Stock != nil {
 		return nil
 	}
-	// Clips marked as used-as-stock are audio-only. They are never processed
-	// with a localized clip render: the scene's visual comes from its stock
-	// binding, so rendering the marked clip would be unused work.
+	// Clips marked as used-as-stock are audio-only. A scene whose clips are
+	// ALL stock-marked is never processed with a localized clip render: its
+	// video comes from its stock binding, so rendering the marked clip would
+	// be unused work. A scene that still owns a visual clip (or no clip at
+	// all, the subtitle-only lane) keeps the historical fan-out shape.
+	if sceneVisualClipsAreStockOnly(scene) {
+		return nil
+	}
 	clip := primaryVisualClip(scene)
 	if clip == nil {
 		return nil

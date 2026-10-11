@@ -72,6 +72,7 @@ func compilePlan(t CanonicalTimeline, profile CanonicalAudioProfile, bgm, sfx []
 				SourceDurationUS:       intent.SourceDurationUS,
 				UseOriginalAudio:       intent.UseOriginalAudio,
 				ProtectedOriginalAudio: intent.ProtectedOriginalAudio,
+				StockOriginalAudio:     intent.StockOriginalAudio,
 				GainDB:                 intent.GainDB,
 			}
 			var role AudioTrackRole
@@ -231,7 +232,7 @@ func applyMixPolicy(p *CompiledAudioPlan) {
 			return
 		}
 		for i := range clip.Events {
-			if clip.Events[i].ProtectedOriginalAudio {
+			if clip.Events[i].ProtectedOriginalAudio || clip.Events[i].StockOriginalAudio {
 				continue
 			}
 			if clip.Events[i].GainDB == 0 {
@@ -259,7 +260,7 @@ func clipDuckingAutomation(tracks []AudioTrack) []AudioAutomation {
 	voTrackID := strings.ToLower(string(TrackVoiceover))
 	var out []AudioAutomation
 	for _, ce := range clip.Events {
-		if ce.ProtectedOriginalAudio {
+		if ce.ProtectedOriginalAudio || ce.StockOriginalAudio {
 			continue
 		}
 		clipEnd := ce.TimelineStartUS + ce.DurationUS
@@ -311,7 +312,10 @@ func removeUnprotectedClipEvents(tracks *[]AudioTrack) {
 		}
 		out := (*tracks)[i].Events[:0]
 		for _, event := range (*tracks)[i].Events {
-			if event.ProtectedOriginalAudio {
+			// Protected fixed media and clips the caller explicitly marked as
+			// used-as-stock survive every global VO-only policy: the caller
+			// asked for that original audio to be heard.
+			if event.ProtectedOriginalAudio || event.StockOriginalAudio {
 				out = append(out, event)
 			}
 		}

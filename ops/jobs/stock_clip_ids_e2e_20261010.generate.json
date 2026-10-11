@@ -1,0 +1,93 @@
+{
+  "version": 2,
+  "preset": "custom",
+  "correlation_id": "stock-clip-ids-e2e-20261010",
+  "force_refresh": true,
+  "items": [
+    {
+      "id": "stock-clip-ids-e2e-20261010",
+      "project": "stock-clip-ids-e2e",
+      "title": "Stock clip ids E2E",
+      "language": "en",
+      "tone": "documentary",
+      "style": "Two short paragraphs about Dolly Parton's voice and the life of a song.",
+      "model": "gemma4:e4b",
+      "media_mode": "mixed",
+      "source": {
+        "type": "clips",
+        "clip_ids": [
+          "yt_00kQibp-xNM_0_15_v1",
+          "yt_00kQibp-xNM_23_36_v1"
+        ]
+      },
+      "script_params": {
+        "target_words": 90,
+        "min_words": 50,
+        "segment_words": 45,
+        "segments": [
+          {
+            "id": "seg-voice",
+            "kind": "narration",
+            "topic": "Dolly Parton's unmistakable voice",
+            "clip_ids": [
+              "yt_00kQibp-xNM_0_15_v1"
+            ],
+            "stock_clip_ids": [
+              "yt_00kQibp-xNM_0_15_v1"
+            ],
+            "stock_folder_id": "1C-q2swarUlf4JEUYHVe0Ol88MDSU8FUq",
+            "stock_folder_link": "https://drive.google.com/drive/folders/1C-q2swarUlf4JEUYHVe0Ol88MDSU8FUq",
+            "target_words": 45,
+            "min_words": 20
+          },
+          {
+            "id": "seg-song",
+            "kind": "narration",
+            "topic": "The life of a song beyond its first singer",
+            "clip_ids": [
+              "yt_00kQibp-xNM_23_36_v1"
+            ],
+            "stock_clip_ids": [
+              "yt_00kQibp-xNM_23_36_v1"
+            ],
+            "stock_folder_id": "1C-q2swarUlf4JEUYHVe0Ol88MDSU8FUq",
+            "stock_folder_link": "https://drive.google.com/drive/folders/1C-q2swarUlf4JEUYHVe0Ol88MDSU8FUq",
+            "target_words": 45,
+            "min_words": 20
+          }
+        ]
+      },
+      "output": {
+        "save_to_db": true,
+        "extract_entities": false,
+        "generate_timeline": true,
+        "generate_metadata": false,
+        "voiceover_enabled": true,
+        "languages": ["en"],
+        "render": {
+          "enabled": false
+        }
+      },
+      "media_plan": {
+        "mode": "disabled",
+        "extraction": {
+          "enabled": false,
+          "entity_images": {
+            "enabled": false
+          }
+        }
+      },
+      "audio": {
+        "mode": "COMBINED_TIMELINE",
+        "timing": {
+          "mode": "required",
+          "boundary": "word",
+          "formats": ["json", "srt", "vtt"]
+        }
+      },
+      "docs": {
+        "enabled": false
+      }
+    }
+  ]
+}

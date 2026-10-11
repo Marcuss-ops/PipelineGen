@@ -62,8 +62,15 @@ type AudioIntent struct {
 	UseOriginalAudio   bool  `json:"use_original_audio,omitempty"`
 	// ProtectedOriginalAudio marks fixed_media audio whose original clip
 	// stream is authoritative and must survive every global mix policy.
-	ProtectedOriginalAudio bool    `json:"protected_original_audio,omitempty"`
-	GainDB                 float64 `json:"gain_db,omitempty"`
+	ProtectedOriginalAudio bool `json:"protected_original_audio,omitempty"`
+	// StockOriginalAudio marks an original clip-audio intent the caller
+	// explicitly asked to hear at full volume while the clip is used as stock
+	// (payload stock_clip_ids). Unlike ProtectedOriginalAudio it is NOT the
+	// fixed-media firewall: the scene keeps its generated voiceover and
+	// BGM/SFX keep covering the scene window, while the event itself is never
+	// removed by a global VOICEOVER_ONLY policy and never ducked.
+	StockOriginalAudio bool    `json:"stock_original_audio,omitempty"`
+	GainDB             float64 `json:"gain_db,omitempty"`
 }
 
 type AudioTrackRole string
@@ -163,8 +170,12 @@ type AudioEvent struct {
 	UseOriginalAudio bool           `json:"use_original_audio,omitempty"`
 	// ProtectedOriginalAudio is copied from the fixed_media scene contract;
 	// it prevents VO-only removal and clip ducking from mutating the span.
-	ProtectedOriginalAudio bool    `json:"protected_original_audio,omitempty"`
-	GainDB                 float64 `json:"gain_db,omitempty"`
+	ProtectedOriginalAudio bool `json:"protected_original_audio,omitempty"`
+	// StockOriginalAudio is copied from the used-as-stock clip contract; it
+	// prevents VO-only removal and clip ducking from mutating the span while
+	// the scene keeps its voiceover and BGM/SFX coverage.
+	StockOriginalAudio bool    `json:"stock_original_audio,omitempty"`
+	GainDB             float64 `json:"gain_db,omitempty"`
 }
 
 type AudioLayer struct {
@@ -363,6 +374,9 @@ func (t CanonicalTimeline) Validate() error {
 			if intent.ProtectedOriginalAudio && (intent.Mode != AudioClip || !intent.UseOriginalAudio || intent.ClipAssetID == "") {
 				return fmt.Errorf("%w: segment %d protected audio must be an original clip stream", ErrInvalidTimeline, i)
 			}
+			if intent.StockOriginalAudio && (intent.Mode != AudioClip || !intent.UseOriginalAudio || intent.ClipAssetID == "") {
+				return fmt.Errorf("%w: segment %d stock audio must be an original clip stream", ErrInvalidTimeline, i)
+			}
 			switch intent.Mode {
 			case AudioVoiceover, AudioClip, AudioSilence:
 			default:
@@ -454,6 +468,9 @@ func validateEvent(e AudioEvent, role AudioTrackRole) error {
 	}
 	if e.ProtectedOriginalAudio && (e.Type != EventClip || !e.UseOriginalAudio) {
 		return fmt.Errorf("%w: protected audio must be an original clip event", ErrInvalidAudioPlan)
+	}
+	if e.StockOriginalAudio && (e.Type != EventClip || !e.UseOriginalAudio) {
+		return fmt.Errorf("%w: stock audio must be an original clip event", ErrInvalidAudioPlan)
 	}
 	if role == TrackVoiceover && e.Type != EventVoiceover && e.Type != EventSilence {
 		return fmt.Errorf("%w: voiceover track contains %s", ErrInvalidAudioPlan, e.Type)

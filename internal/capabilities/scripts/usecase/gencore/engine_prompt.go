@@ -299,6 +299,45 @@ func buildSegmentBody(plan *scriptpkg.ResolvedGenerationPlan) string {
 	return b.String()
 }
 
+// segmentOpeningScopeDirective keeps the script's mandated opening sentence in
+// the FIRST segment only. The caller's free-form style is sent to every
+// per-segment call ("Editorial style for every segment"), so a style that
+// mandates an exact opening line ("La prima frase deve iniziare esattamente
+// con: ...") makes small models repeat that line at the start of every
+// segment. The engine never rewrites the caller's style; it scopes the mandate
+// from the segmentation side: every segment after the first carries — with
+// last-position, absolute-priority placement — an explicit statement that the
+// opening sentence belongs to segment 1 and must not be repeated. The first
+// segment and single-segment jobs are byte-identical to before.
+func segmentOpeningScopeDirective(index, total int) string {
+	if index <= 0 || total <= 1 {
+		return ""
+	}
+	return fmt.Sprintf("\n\nThis call generates segment %d of %d and is NOT the script's opening segment. The script's opening sentence belongs to segment 1 only: do not begin this paragraph with it, do not repeat it anywhere, and do not reuse the opening sentence of another segment. Begin directly with this segment's Topic and source text.", index+1, total)
+}
+
+// segmentPromptParts renders the prompt fields of one per-segment call in the
+// active layout. It is the single composition point shared by the segment
+// fan-out (generateOne) and the layout tests, so the placement of every block —
+// including the opening-scope directive — has exactly one owner.
+//
+// Shared-prefix layout (B3, TODO-pipeline-100x-velocita): the shared
+// instructions (editorial header + plain-text output contract) are rendered
+// FIRST and stay KV-cache resident across the fan-out; the per-segment
+// assignment (SEGMENT block + DoD footer with this segment's target words) is
+// rendered LAST as the absolute-priority instruction. Byte semantics of the
+// two blocks are identical to the legacy brief: header + body ==
+// buildSegmentInstructions. The opening-scope directive is appended after the
+// assignment (shared prefix) or after the plain-text contract (legacy), so it
+// never changes the shared prefix bytes.
+func segmentPromptParts(segmentPlan *scriptpkg.ResolvedGenerationPlan, index, total int) (prompt, sharedPrefix, assignment string) {
+	scope := segmentOpeningScopeDirective(index, total)
+	if SegmentPromptLayout() == SegmentPromptLayoutSharedPrefix {
+		return "", buildSegmentHeader(segmentPlan) + plainTextInstruction, buildSegmentBody(segmentPlan) + scope
+	}
+	return buildSegmentInstructions(segmentPlan) + "\n\n" + plainTextInstruction + scope, "", ""
+}
+
 // plainTextInstruction is the prompt suffix appended unconditionally
 // for the canonical script-generation pipeline.
 //

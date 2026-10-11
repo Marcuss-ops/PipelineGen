@@ -203,12 +203,12 @@ func resultWithoutClipAudioIntents(result GenerateResult) GenerateResult {
 		scene := &result.Scenes[i]
 		intents := make([]audio.AudioIntent, 0, len(scene.AudioIntents))
 		for _, intent := range scene.AudioIntents {
-			if intent.Mode != audio.AudioClip || intent.ProtectedOriginalAudio {
+			if intent.Mode != audio.AudioClip || intent.ProtectedOriginalAudio || intent.StockOriginalAudio {
 				intents = append(intents, intent)
 			}
 		}
 		scene.AudioIntents = intents
-		if scene.Audio.Mode == audio.AudioClip && !scene.Audio.ProtectedOriginalAudio {
+		if scene.Audio.Mode == audio.AudioClip && !scene.Audio.ProtectedOriginalAudio && !scene.Audio.StockOriginalAudio {
 			scene.Audio.Mode = audio.AudioVoiceover
 		}
 	}
@@ -291,7 +291,7 @@ func finalJobAudioInput(result GenerateResult, language Language) GenerateResult
 					Mode: capabilityaudio.AudioClip, ClipAssetID: clip.ID,
 					SourceInUS: sourceInUS, SourceDurationUS: sourceDurationUS,
 					TimelineOffsetUS: 0, TimelineDurationUS: sourceDurationUS,
-					UseOriginalAudio: true, ProtectedOriginalAudio: true, GainDB: 0,
+					UseOriginalAudio: true, StockOriginalAudio: true, GainDB: 0,
 				})
 			}
 		}
@@ -308,7 +308,7 @@ func finalJobAudioInput(result GenerateResult, language Language) GenerateResult
 				// ducking.
 				restored := intent
 				if _, isStock := stockClipIDs[intent.ClipAssetID]; isStock {
-					restored.ProtectedOriginalAudio = true
+					restored.StockOriginalAudio = true
 					restored.GainDB = 0
 				} else {
 					restored.GainDB = kernelaudio.FinalJobRestoredClipGainDB

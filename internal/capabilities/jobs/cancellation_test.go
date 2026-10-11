@@ -327,8 +327,20 @@ func TestRenewLeaseLoopWith_Continue_NoOp(t *testing.T) {
 	leaseDone := make(chan struct{})
 	go w.renewLeaseLoopWith(jobCtx, "test-job-id", stopLease, leaseDone, renewLeaseLoopOpts{jobCancel: jobCancel})
 
-	// Sleep long enough for at least 3 renew ticks (15ms / 3 = 5ms tick → 25ms covers 5 ticks).
-	time.Sleep(25 * time.Millisecond)
+	// Wait for the first renew tick with a bounded poll instead of a fixed
+	// sleep. The tick cadence is 15ms/3 = 5ms, but the gate runs this package
+	// concurrently with the whole repository (cmd/archcheck alone is CPU-bound
+	// for over a minute), so a fixed 25ms window can be starved and produce a
+	// false red. The deadline is generous; the assertion itself is unchanged
+	// (the loop must still renew at least once and must not exit/cancel).
+	deadline := time.Now().Add(2 * time.Second)
+	for mock.hits() < 1 && time.Now().Before(deadline) {
+		select {
+		case <-leaseDone:
+			t.Fatal("renewLeaseLoopWith exited on LeaseStateContinue — should be a no-op")
+		case <-time.After(time.Millisecond):
+		}
+	}
 
 	// The loop MUST still be alive (no exit) and jobCancel MUST NOT have been called.
 	select {

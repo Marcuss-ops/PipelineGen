@@ -243,14 +243,13 @@ func (b *boundedMapRenderOutput) String() string {
 	return string(b.data)
 }
 
-// mapBasemapStyles is the certified basemap palette the dynamic map renderer
-// rotates through. Every id MUST be a provider the Chronon tile pyramid serves
-// (Chronon3d/tools/cartography/dynamic_tile_pyramid.py BASEMAP_STYLES); the
-// renderer rejects any id outside its own palette, so this list can never hand
-// it a basemap it cannot draw. TestMapBasemapStylesMatchChrononPalette guards
-// the cross-repository drift.
+// mapBasemapStyles is the production land-map palette. The global ocean and
+// gray canvas services return valid-looking "Map data not yet available" tiles
+// at city zooms, so keep those styles out of generated place maps. Both
+// remaining providers are in Chronon's certified palette and cover city zoom.
+// TestMapBasemapStylesMatchChrononPalette guards cross-repository drift.
 func mapBasemapStyles() []string {
-	return []string{"esri_sat", "esri_topo", "esri_natgeo", "esri_ocean", "esri_light", "esri_dark"}
+	return []string{"esri_sat", "esri_topo"}
 }
 
 // mapCameraAnimations and mapLabelAnimations are the certified presentation
@@ -259,7 +258,9 @@ func mapBasemapStyles() []string {
 // and label_animation against MAP_LABEL_ANIMATIONS). They are only candidate
 // lists: the choice among them belongs to the deterministic sampler below.
 var (
-	mapCameraAnimations = []string{"signature_dive", "slow_approach"}
+	// Keep the map camera in the two restrained treatments. Signature Dive
+	// starts at a much wider zoom and reads as a sudden drop on city maps.
+	mapCameraAnimations = []string{"slow_approach", "wide_context"}
 	mapLabelAnimations  = []string{"gentle_fade", "soft_glow", "clean_fade", "word_soft_fade", "slow_fade", "quiet_bloom", "quick_fade", "silky_fade", "subtle_halo", "cinematic_fade"}
 )
 

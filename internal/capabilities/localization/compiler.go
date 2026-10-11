@@ -186,6 +186,15 @@ func (c *LocalizedClipCompiler) outputPath(localized LocalizedClipPlan) string {
 
 // localizedRevision derives a deterministic, human-readable render revision
 // from the plan identity. It is stable across re-runs of the same plan.
+//
+// The revision IS the RenderingGen queue job id (cliprender's plan.RunID, see
+// continuation.go), and that id must survive being used as ONE filename
+// component in the worker workspace: RenderingGen's ValidateJobID admits
+// letters, digits, marks and `-`/`_`/`.`/`:` only, and names colon or dash as
+// the producer separators. A `/` here failed EVERY localized clip render at
+// workspace materialization (observed live 2026-10-10: "workspace: invalid
+// job id ... contains unsupported character '/'") after RenderingGen tightened
+// the id contract on 2026-10-09.
 func localizedRevision(localized LocalizedClipPlan) string {
 	// The queue job identity must change when visual inputs change. Keeping
 	// only clip/language here silently reuses an older completed artifact and
@@ -196,7 +205,7 @@ func localizedRevision(localized LocalizedClipPlan) string {
 	}
 	// Include the concrete overlay compiler revision so renderer fixes cannot
 	// silently reuse an artifact produced by an older worker binary.
-	return localized.ClipID + "/" + localized.TargetLanguage + "/overlay-v3/" + fingerprint
+	return localized.ClipID + ":" + localized.TargetLanguage + ":overlay-v3:" + fingerprint
 }
 
 // canonicalSHA256 folds an opaque profile/style hash string into a canonical

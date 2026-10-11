@@ -9,12 +9,16 @@ package rustexec
 // Skipped when the binary is absent; it never fails a hermetic run.
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
 	"testing"
+	"unicode"
 
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 	"github.com/stretchr/testify/require"
@@ -175,6 +179,198 @@ func TestLiveUTF8EmojiOffsets(t *testing.T) {
 			"span %d..%d must respect UTF-8 boundaries", sp.StartByte, sp.EndByte)
 	}
 	validateLiveHighlights(t, text, inputs, res.SceneHighlights)
+}
+
+// liveBulletFixture returns an Italian transcript that exercises every branch
+// of the document-wide bullet contract: a sentence longer than
+// MAX_SEGMENT_WORDS (which the worker must chunk internally for analysis), a
+// two-word fragment, and enough ordinary sentences for the chapter segmenter to
+// produce chapters with bullets.
+func liveBulletFixture() string {
+	words := make([]string, 0, 45)
+	for i := 0; i < 45; i++ {
+		words = append(words, fmt.Sprintf("elemento%d", i))
+	}
+	var b strings.Builder
+	b.WriteString("È imprescindibile comprendere che ")
+	b.WriteString(strings.Join(words, " "))
+	b.WriteString(" e che il quadro processuale resti comunque completo.")
+	b.WriteString(" impronta 33.")
+	for i := 0; i < 30; i++ {
+		fmt.Fprintf(&b, " Il capitolo numero %d raccoglie i fatti principali del procedimento e li ordina con metodo rigoroso davanti al giudice.", i)
+	}
+	return b.String()
+}
+
+// liveWorkerSentences asks the real worker for the sentence (and chunk)
+// sequence, so the assertions can be made against exactly what the analyzer
+// sees rather than against a reimplementation of the splitter.
+func liveWorkerSentences(t *testing.T, bin, transcript, language string) []string {
+	t.Helper()
+	runner := newPersistentRustProcessRunner()
+	payload, err := json.Marshal(map[string]any{
+		"operation": "split_sentences", "transcript": transcript, "language": language,
+	})
+	require.NoError(t, err)
+	stdout, stderr, err := runner.Run(context.Background(), bin, append(payload, '\n'), phraseImpactOutputLimit)
+	require.NoError(t, err, "split_sentences: %s", strings.TrimSpace(string(stderr)))
+	var response phraseImpactResponse
+	require.NoError(t, json.Unmarshal(bytes.TrimSpace(stdout), &response))
+	require.True(t, response.OK, response.Error)
+	require.NotEmpty(t, response.Sentences)
+	texts := make([]string, len(response.Sentences))
+	for i, sentence := range response.Sentences {
+		texts[i] = sentence.Text
+	}
+	return texts
+}
+
+// liveSentenceCloses mirrors the worker's terminal-punctuation rule: a unit
+// closes a sentence only when it ends on terminal punctuation, optionally
+// followed by a closing quote or bracket.
+func liveSentenceCloses(text string) bool {
+	trimmed := strings.TrimRight(text, " \t\n\r")
+	runes := []rune(trimmed)
+	if len(runes) == 0 {
+		return false
+	}
+	terminal := func(r rune) bool {
+		switch r {
+		case '.', '!', '?', '…', '。', '！', '？':
+			return true
+		}
+		return false
+	}
+	if terminal(runes[len(runes)-1]) {
+		return true
+	}
+	switch runes[len(runes)-1] {
+	case '"', '\'', '’', '”', ')', ']', '}', '»':
+		return len(runes) >= 2 && terminal(runes[len(runes)-2])
+	}
+	return false
+}
+
+// liveBulletHasSubstance mirrors the worker's MIN_BULLET_WORDS/MIN_BULLET_CHARS
+// floor: a two-word tail is a fragment, not a bullet.
+func liveBulletHasSubstance(text string) bool {
+	if len(strings.Fields(text)) >= 4 {
+		return true
+	}
+	alnum := 0
+	for _, r := range text {
+		if unicode.IsLetter(r) || unicode.IsDigit(r) {
+			alnum++
+		}
+	}
+	return alnum >= 16
+}
+
+// liveLocateSpan finds the contiguous chunk span whose join reconstructs text
+// exactly, which is how the worker itself composes a bullet.
+func liveLocateSpan(texts []string, text string) (int, int, bool) {
+	for start := range texts {
+		joined := ""
+		for end := start + 1; end <= len(texts); end++ {
+			if end == start+1 {
+				joined = texts[start]
+			} else {
+				joined += " " + texts[end-1]
+			}
+			if joined == text {
+				return start, end, true
+			}
+			if len(joined) > len(text) {
+				break
+			}
+		}
+	}
+	return 0, 0, false
+}
+
+// TestLiveGlobalAndChapterBulletsAreWholeSubstantiveSentences drives the REAL
+// worker through the Go adapter and pins the document-wide bullet contract: the
+// global and chapter surfaces obey the same anti-truncation and anti-fragment
+// rule as the per-scene highlights. A bullet is a whole, substantive source
+// sentence — never the head chunk of a sentence longer than MAX_SEGMENT_WORDS
+// and never a two-word fragment.
+func TestLiveGlobalAndChapterBulletsAreWholeSubstantiveSentences(t *testing.T) {
+	bin := liveBinaryPath(t)
+	analyzer := NewPhraseImpactAnalyzer(bin, nil, nil)
+	transcript := liveBulletFixture()
+	texts := liveWorkerSentences(t, bin, transcript, "it")
+
+	// Fixture sanity: the worker must really have chunked the long sentence,
+	// otherwise the regression this test guards would go unexercised.
+	chunked := false
+	for i := 1; i < len(texts); i++ {
+		if !liveSentenceCloses(texts[i-1]) {
+			chunked = true
+			break
+		}
+	}
+	require.True(t, chunked, "fixture must contain a sentence the worker chunks")
+
+	st, en := 0, len(transcript)
+	inputs := []SceneInput{{SceneID: "s1", Text: transcript, StartByte: &st, EndByte: &en}}
+	res, err := analyzer.AnalyzeScenes(context.Background(), transcript, "it", inputs)
+	require.NoError(t, err)
+
+	assertBullet := func(surface, bullet string) {
+		t.Helper()
+		start, end, ok := liveLocateSpan(texts, bullet)
+		require.True(t, ok, "%s bullet must be an exact contiguous source span: %q", surface, bullet)
+		require.True(t, start == 0 || liveSentenceCloses(texts[start-1]),
+			"%s bullet starts mid-sentence: %q", surface, bullet)
+		require.True(t, end == len(texts) || liveSentenceCloses(texts[end-1]),
+			"%s bullet ends mid-sentence: %q", surface, bullet)
+		require.True(t, liveBulletHasSubstance(bullet), "%s bullet is a fragment: %q", surface, bullet)
+		require.NotEqual(t, "impronta 33.", strings.TrimSpace(bullet),
+			"%s bullet must not publish the two-word tail", surface)
+	}
+
+	require.NotEmpty(t, res.BulletPoints, "the fixture must produce global bullets")
+	for _, bullet := range res.BulletPoints {
+		assertBullet("global", bullet)
+	}
+
+	require.NotEmpty(t, res.ChapterManifest.Chapters, "the fixture must produce chapters")
+	chapterBullets := 0
+	for _, chapter := range res.ChapterManifest.Chapters {
+		require.True(t, chapter.StartSentence < chapter.EndSentence)
+		require.LessOrEqual(t, chapter.EndSentence, len(texts))
+		for _, bullet := range chapter.Bullets {
+			chapterBullets++
+			require.True(t, 0 <= bullet.StartSentence && bullet.StartSentence < bullet.EndSentence,
+				"chapter bullet range must be non-empty: %q", bullet.Text)
+			require.LessOrEqual(t, bullet.EndSentence, len(texts))
+			require.Equal(t, strings.Join(texts[bullet.StartSentence:bullet.EndSentence], " "), bullet.Text,
+				"chapter bullet must be the exact concatenation of its source sentences")
+			assertBullet("chapter", bullet.Text)
+		}
+	}
+	require.Greater(t, chapterBullets, 0, "the fixture must produce chapter bullets")
+
+	// The head chunk of the long sentence is the exact defect this contract
+	// exists for: it must never surface as a bullet anywhere.
+	head := ""
+	for _, text := range texts {
+		if strings.HasPrefix(text, "È imprescindibile comprendere che") {
+			head = text
+			break
+		}
+	}
+	require.NotEmpty(t, head)
+	require.False(t, liveSentenceCloses(texts[0]),
+		"the long sentence's head chunk must not close a sentence, so it can never be published")
+	require.NotContains(t, res.BulletPoints, head,
+		"the chunked head of the long sentence must never be a global bullet")
+	for _, chapter := range res.ChapterManifest.Chapters {
+		for _, bullet := range chapter.Bullets {
+			require.NotEqual(t, head, strings.TrimSpace(bullet.Text),
+				"the chunked head of the long sentence must never be a chapter bullet")
+		}
+	}
 }
 
 func isCharBoundary(s string, i int) bool {

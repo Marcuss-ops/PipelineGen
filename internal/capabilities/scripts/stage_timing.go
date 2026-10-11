@@ -10,9 +10,23 @@
 // dependency time. Every stage below is measured with MeasureStageReport —
 // the single canonical clock owned by internal/kernel/observability — and
 // must never be re-measured with an ad-hoc time.Now().
+//
+// The file also owns the RUNNER PHASE aliases (generate, voiceover,
+// audio_compile, translation, persistence, document) and measurePhase, the one
+// wrapper that records a phase on the canonical Run clock. The two sets are one
+// ownership surface: a stage a report joins against and the measurement that
+// writes it must never be declared in different files, or a renamed phase
+// silently reports under a label nothing joins on. Merged 2026-10-10 from
+// runner_phase_timing.go for that reason (and to stay inside the
+// max_lines_per_file_strict budget of the package).
 package scriptgeneration
 
-import kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
+import (
+	"context"
+	"errors"
+
+	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
+)
 
 const (
 	StageScriptPrepare     = kernobs.StageScriptPrepare
@@ -62,3 +76,47 @@ const (
 	// are uploaded to Google Docs (the publish half of docs).
 	StageDocumentPublish = kernobs.StageDocumentPublish
 )
+
+// Canonical-runner phase stage names. These are the pipeline business phases
+// owned by the Runner (NOT the generic observability taxonomy, and NOT the
+// legacy GenerateOneUseCase stage vocabulary). Each name matches the stage
+// label already used by the operations recorded inside that phase, so
+// Breakdown/FanoutReports join the phase's wall time with its operations
+// deterministically.
+//
+//   - generate      ← runSceneTextPhase   (ollama.generate is recorded under kernobs.StageGenerate)
+//   - voiceover     ← runVoiceoverPhase   (tts.synthesize under voiceoverStage)
+//   - audio_compile ← runAudioCompilePhase + publishFinalAudio (audio ops + drive.upload under audioCompileStage)
+//
+// Aliased from internal/kernel/observability: the registry is the single
+// owner of every phase literal, so the runner cannot drift from the taxonomy
+// a report is joined against.
+const (
+	stageNormalize   kernobs.StageName = kernobs.StageRunNormalize
+	stageTranslation kernobs.StageName = kernobs.StageRunTranslation
+	stagePersistence kernobs.StageName = kernobs.StageRunPersistence
+	stageDocument    kernobs.StageName = kernobs.StageRunDocument
+)
+
+// errPhaseFailed marks a phase that returned false inside measurePhase so the
+// canonical StageReport is recorded with a failed status (never as a silent
+// completed stage).
+var errPhaseFailed = errors.New("scriptgeneration: phase failed")
+
+// measurePhase wraps one Runner phase with MeasureStageReport on the canonical
+// Run clock (never a second timer). The phase keeps its bool contract: false
+// is translated into a typed error so the StageReport status reflects the
+// failure, then propagated unchanged to the caller. When no Run is bound to
+// ctx, MeasureStageReport degrades to a pass-through and behaviour is
+// identical to calling the phase directly.
+func (r *Runner) measurePhase(ctx context.Context, stage kernobs.StageName, fn func(context.Context) bool) bool {
+	ok := false
+	kernobs.MeasureStageReport(ctx, stage, func(c context.Context) error {
+		ok = fn(c)
+		if !ok {
+			return errPhaseFailed
+		}
+		return nil
+	})
+	return ok
+}

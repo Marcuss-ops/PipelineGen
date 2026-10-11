@@ -111,6 +111,65 @@ func TestSharedPrefixSegmentRequest_CarriesSplitBrief(t *testing.T) {
 	}
 }
 
+// TestSegmentPromptParts_ScopesOpeningSentenceToFirstSegment pins the source of
+// the "opening sentence repeated in every segment" defect: the caller's style
+// reaches every per-segment call, so a mandated opening line was reproduced at
+// the start of each segment. Only the segments after the first carry the
+// opening-scope directive, and the first segment (or a single-segment job) is
+// byte-identical to the previous prompt.
+func TestSegmentPromptParts_ScopesOpeningSentenceToFirstSegment(t *testing.T) {
+	plan := samplePlan()
+
+	t.Setenv(EnvSegmentPromptLayout, SegmentPromptLayoutSharedPrefix)
+	resetSegmentLayoutForTest()
+	firstPrompt, firstShared, firstAssignment := segmentPromptParts(plan, 0, 3)
+	if firstPrompt != "" {
+		t.Fatalf("shared-prefix layout must not use Prompt, got %q", firstPrompt)
+	}
+	if strings.Contains(firstShared, "opening sentence") || strings.Contains(firstAssignment, "opening sentence") {
+		t.Fatalf("first segment must not carry the opening-scope directive")
+	}
+	if firstAssignment != buildSegmentBody(plan) {
+		t.Fatalf("first segment assignment changed: %q", truncateForTest(firstAssignment))
+	}
+
+	laterPrompt, laterShared, laterAssignment := segmentPromptParts(plan, 1, 3)
+	if laterPrompt != "" {
+		t.Fatalf("shared-prefix layout must not use Prompt, got %q", laterPrompt)
+	}
+	if laterShared != firstShared {
+		t.Fatalf("the shared prefix must stay KV-cache identical across the fan-out")
+	}
+	if !strings.Contains(laterAssignment, "segment 2 of 3") {
+		t.Fatalf("later assignment must state its position, got %q", truncateForTest(laterAssignment))
+	}
+	if !strings.Contains(laterAssignment, "belongs to segment 1 only") {
+		t.Fatalf("later assignment must scope the opening sentence to segment 1")
+	}
+	if !strings.HasPrefix(laterAssignment, buildSegmentBody(plan)) {
+		t.Fatalf("the scope directive must be appended after the assignment")
+	}
+
+	singlePrompt, _, singleAssignment := segmentPromptParts(plan, 0, 1)
+	if singlePrompt != "" || singleAssignment != buildSegmentBody(plan) {
+		t.Fatalf("single-segment jobs must be unchanged: prompt=%q assignment=%q", singlePrompt, truncateForTest(singleAssignment))
+	}
+
+	t.Setenv(EnvSegmentPromptLayout, SegmentPromptLayoutLegacy)
+	resetSegmentLayoutForTest()
+	legacyFirst, shared, assignment := segmentPromptParts(plan, 0, 2)
+	if shared != "" || assignment != "" {
+		t.Fatalf("legacy layout must not fill the split fields")
+	}
+	if legacyFirst != buildSegmentInstructions(plan)+"\n\n"+plainTextInstruction {
+		t.Fatalf("first legacy prompt changed: %q", truncateForTest(legacyFirst))
+	}
+	legacyLater, _, _ := segmentPromptParts(plan, 1, 2)
+	if !strings.Contains(legacyLater, "segment 2 of 2") {
+		t.Fatalf("legacy layout must also scope the opening sentence: %q", truncateForTest(legacyLater))
+	}
+}
+
 func truncateForTest(s string) string {
 	if len(s) > 60 {
 		return s[:60]

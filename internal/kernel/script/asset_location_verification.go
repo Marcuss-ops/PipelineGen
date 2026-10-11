@@ -11,6 +11,8 @@
 //
 // No drive_link may be written into a Google Doc without first passing
 // through this resolver.
+// Merged 2026-10-10 with asset_location_commit.go: verifying a resolved
+// location and committing it are one operation on one type.
 package script
 
 import (
@@ -145,4 +147,13 @@ type AssetLocationResolver interface {
 	// (network timeout, Drive API 5xx) — the caller MUST fail
 	// closed in that case.
 	ResolveAndVerify(ctx context.Context, assetID, currentFileID, currentLink string) (*VerifiedLocation, error)
+}
+
+// AssetLocationChange is the durable state change produced by Drive
+// reconciliation for a media asset. DriveLink is empty when the location
+// is unusable; DriveFileID is retained when known for diagnosis or republishing.
+type AssetLocationChange struct {
+	AssetID     string
+	DriveFileID string
+	DriveLink   string
 }

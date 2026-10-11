@@ -142,8 +142,12 @@ type GenerationItemV2 struct {
 	// overlay subfamily. Keys match runtime use-case IDs (images, entities,
 	// entity_caption, important_phrase, short_important_phrase, one_map,
 	// two_maps, metric_stat, timeline_date, or a specific image composition).
-	// Omitted subfamilies use five styles; positive values are capped to the
-	// available catalog.
+	// Omitted subfamilies rotate the FULL certified catalog (every entrance
+	// stays available, so long runs never collapse onto the same handful of
+	// motions); positive values cap the rotating window to the available
+	// catalog. Chain tuning rides here too: chain_gap_ms / chain_enabled opt
+	// into fusing nearby overlays into single multi-animation chain items,
+	// chain_max_segments bounds them, chain_disabled forces legacy items.
 	AnimationCounts map[string]int `json:"animation_counts,omitempty"`
 	// EntityStyleID pins the RenderingGen entity-card composition family for
 	// every generated entity card in this item: "random" (default, full 25

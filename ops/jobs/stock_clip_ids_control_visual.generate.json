@@ -1,0 +1,93 @@
+{
+  "version": 2,
+  "preset": "custom",
+  "correlation_id": "stock-clip-ids-control-visual-20261010",
+  "force_refresh": true,
+  "items": [
+    {
+      "id": "stock-clip-ids-control-visual-20261010",
+      "project": "stock-clip-ids-control-visual",
+      "title": "Stock clip ids control visual",
+      "language": "en",
+      "tone": "documentary",
+      "style": "One short paragraph about Dolly Parton's unmistakable voice.",
+      "model": "gemma4:e4b",
+      "source": {
+        "type": "clips",
+        "clip_ids": [
+          "yt_00kQibp-xNM_0_15_v1"
+        ]
+      },
+      "script_params": {
+        "target_words": 45,
+        "min_words": 20,
+        "segment_words": 45,
+        "segments": [
+          {
+            "id": "seg-visual",
+            "kind": "narration",
+            "topic": "Dolly Parton's unmistakable voice",
+            "clip_ids": [
+              "yt_00kQibp-xNM_0_15_v1"
+            ],
+            "target_words": 45,
+            "min_words": 20
+          }
+        ]
+      },
+      "output": {
+        "save_to_db": true,
+        "extract_entities": "disabled",
+        "generate_timeline": true,
+        "generate_metadata": "disabled",
+        "voiceover_enabled": "enabled",
+        "languages": [
+          "en"
+        ],
+        "render": {
+          "enabled": true,
+          "background": {
+            "mode": "blur_source"
+          },
+          "subtitles": {
+            "enabled": true,
+            "mode": "burn",
+            "preset": "subs-young"
+          },
+          "render_concurrency": 2,
+          "foreground_scale_percent": 85
+        }
+      },
+      "media_plan": {
+        "mode": "disabled",
+        "extraction": {
+          "enabled": false,
+          "entity_images": {
+            "enabled": false
+          }
+        }
+      },
+      "audio": {
+        "mode": "COMBINED_TIMELINE",
+        "timing": {
+          "mode": "required",
+          "boundary": "word",
+          "formats": [
+            "json",
+            "srt",
+            "vtt"
+          ]
+        }
+      },
+      "docs": {
+        "enabled": false
+      },
+      "overlay_background": {
+        "kind": "image",
+        "asset_id": "drive-background-05",
+        "fit": "cover",
+        "opacity": 1
+      }
+    }
+  ]
+}

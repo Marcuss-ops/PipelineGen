@@ -25,6 +25,40 @@ import (
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
+// requireReviewName pins the operator-facing review-name contract from
+// overlay_names.go: every compiled item ID is
+// "motion-slug__subject-slug__category__NN" so a repeated animation is
+// visible from a job's overlay list. Tests look items up by content (kind +
+// text / canonical entity) and assert this shape plus the subject slug —
+// never a motion-derived prefix, which legitimately varies with the catalog.
+func requireReviewName(t *testing.T, id, subjectSlug string, categories ...string) {
+	t.Helper()
+	parts := strings.Split(id, "__")
+	require.Len(t, parts, 4, "review name must be motion__subject__category__NN: %q", id)
+	require.NotEmpty(t, parts[0], "review name carries the motion slug: %q", id)
+	require.Equal(t, subjectSlug, parts[1], "review name carries the subject slug: %q", id)
+	require.Contains(t, categories, parts[2], "review name carries the overlay category: %q", id)
+	require.Len(t, parts[3], 2, "review name carries the zero-padded ordinal: %q", id)
+	for _, r := range parts[3] {
+		require.Contains(t, "0123456789", string(r), "review ordinal must be numeric: %q", id)
+	}
+}
+
+// overlayItemByText finds the single item of a kind carrying text. It is the
+// stable lookup now that compiled IDs are review names (motion-derived) rather
+// than planner content addresses.
+func overlayItemByText(t *testing.T, items []capabilityoverlay.OverlayItem, kind, text string) capabilityoverlay.OverlayItem {
+	t.Helper()
+	var found []capabilityoverlay.OverlayItem
+	for _, item := range items {
+		if item.Kind == kind && item.Text == text {
+			found = append(found, item)
+		}
+	}
+	require.Len(t, found, 1, "want exactly one %s %q, got %d", kind, text, len(found))
+	return found[0]
+}
+
 func TestFreezeOverlayIntentsPromotesVerifiedEntityImageToImageOnly(t *testing.T) {
 	asset := capabilityoverlay.OverlayAssetRef{
 		AssetID: "portrait-sha", URL: "https://images.example.test/jordan.jpg",
@@ -352,18 +386,28 @@ func TestRunner_OverlayPlanAppliesRunLevelEditorialBudget(t *testing.T) {
 		Shortfall:    capabilityoverlay.MaxPhraseOverlaysPerRun - 2,
 	}, *res.PhraseOverlayBudget)
 
-	phrase := byID["scene-0-phrase-changed-everything"]
+	phrase := overlayItemByText(t, res.OverlayPlan.Items, "text_phrase", "changed everything")
+	requireReviewName(t, phrase.ID, "changed-everything", "phrase", "short_phrase")
 	require.Equal(t, "IMPORTANT_PHRASE", phrase.TemplateID)
 	require.Equal(t, int64(500), phrase.StartMs)
 	require.Equal(t, int64(700), phrase.EndMs)
 	require.NotEmpty(t, phrase.PresetID)
 	require.NotEmpty(t, phrase.MotionID)
 
-	scene1Phrase := byID["scene-1-phrase-growth-matters"]
+	scene1Phrase := overlayItemByText(t, res.OverlayPlan.Items, "text_phrase", "Growth matters")
+	requireReviewName(t, scene1Phrase.ID, "growth-matters", "phrase", "short_phrase")
 	require.Equal(t, int64(2900), scene1Phrase.StartMs)
 	require.Equal(t, int64(3100), scene1Phrase.EndMs)
 
-	person := byID["overlay-scene-0-tim-cook"]
+	var person capabilityoverlay.OverlayItem
+	personFound := false
+	for _, item := range res.OverlayPlan.Items {
+		if item.EntityRef != nil && item.EntityRef.CanonicalEntityID == "person:tim-cook" {
+			person, personFound = item, true
+		}
+	}
+	require.True(t, personFound, "the chosen entity (Tim Cook) must become the entity card")
+	requireReviewName(t, person.ID, "tim-cook", "entity_image")
 	require.Equal(t, "entity_image", person.Kind)
 	require.Equal(t, "image_popup", person.TemplateID)
 	require.Empty(t, person.Text)
@@ -371,7 +415,8 @@ func TestRunner_OverlayPlanAppliesRunLevelEditorialBudget(t *testing.T) {
 	require.Len(t, person.AssetRefs, 1)
 	require.Equal(t, "person:tim-cook", person.EntityRef.CanonicalEntityID)
 	require.Contains(t, capabilityoverlay.ImagePresetCandidates(), person.PresetID)
-	value := byID["scene-0-number-ten-million"]
+	value := overlayItemByText(t, res.OverlayPlan.Items, "number", "ten million")
+	requireReviewName(t, value.ID, "ten-million", "date_number")
 	require.Equal(t, "METRIC_STAT_CARD", value.TemplateID)
 	require.Contains(t, capabilityoverlay.MetricPresentationMotionCandidates(), value.MotionID)
 	for _, tc := range []struct {
@@ -896,8 +941,15 @@ func TestCompileOverlayPlan_ChosenEntityImageCarriesResolvedAsset(t *testing.T) 
 		byID[item.ID] = item
 		require.NotEqual(t, "person_default", item.TemplateID, "an entity with an image must not fall back to a text card")
 	}
-	card, ok := byID["overlay-scene-0-tim-cook"]
-	require.True(t, ok, "the chosen entity (Tim Cook) must become the entity card")
+	var card capabilityoverlay.OverlayItem
+	cardFound := false
+	for _, item := range plan.Items {
+		if item.EntityRef != nil && item.EntityRef.CanonicalEntityID == "person:tim-cook" {
+			card, cardFound = item, true
+		}
+	}
+	require.True(t, cardFound, "the chosen entity (Tim Cook) must become the entity card")
+	requireReviewName(t, card.ID, "tim-cook", "entity_image")
 	require.Equal(t, "entity_image", card.Kind)
 	require.Equal(t, "image_popup", card.TemplateID)
 	require.Contains(t, capabilityoverlay.CertifiedImageMotions(), card.MotionID,
