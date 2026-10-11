@@ -4,11 +4,9 @@ package overlays
 // runtime bar charts.
 //
 // A chart is a visual comparison of already-grounded number annotations
-// ("42% vs 18%"): it rides the certified preset-less SHAPE primitive with
-// params.shape=chart, a path RenderingGen already compiles
-// (semantic_shape.go: bar/line/pie/donut, fail-closed on bad data), so no
-// RenderingGen change is needed. Unknown templates still fail closed at
-// the worker.
+// ("42% vs 18%"): it is lowered to one IMPORTANT_PHRASE text label and
+// preset-less SHAPE rect bars. The unsupported shape.chart pseudo-shape and
+// chart data payload are never emitted; worker support is ordinary text/rect.
 //
 // Provenance and timing rules (fail-soft, never guessed):
 //   - values come ONLY from the scene's own grounded Numbers (certified
@@ -156,55 +154,97 @@ func ChartPlacementsForScenes(scenes []SceneInput) []ChartPlacement {
 	return out
 }
 
-// BuildChartItems lowers chart placements to overlay items on the
-// preset-less SHAPE primitive (params.shape=chart, bar). Placements that
-// cannot contribute are skipped silently. Items carry a "chart_card"
-// marker so plan observability can count survivors after budgeting.
+// BuildChartItems lowers each grounded comparison into a label text layer and
+// native rectangular bars. Chronon RenderPlan V3 deliberately rejects
+// shape.chart; each rectangle and text layer is a certified primitive and all
+// layers retain the exact grounded comparison window. Invalid placements are
+// skipped, never guessed.
 func BuildChartItems(planID string, placements []ChartPlacement, canvasW, canvasH int) []OverlayItem {
+	if canvasW <= 0 || canvasH <= 0 {
+		return []OverlayItem{}
+	}
 	var out []OverlayItem
 	usedIDs := map[string]struct{}{}
 	for _, p := range placements {
 		sceneID := strings.TrimSpace(p.SceneID)
-		if sceneID == "" || p.WindowEndUS <= p.WindowStartUS {
+		if sceneID == "" || p.WindowStartUS < 0 || p.WindowEndUS <= p.WindowStartUS ||
+			len(p.Values) < ChartMinValues || len(p.Values) > ChartMaxValues || len(p.Labels) != len(p.Values) {
 			continue
 		}
-		if len(p.Values) < ChartMinValues || len(p.Values) > ChartMaxValues {
+		valid := true
+		maxAbs := 0.0
+		for i, value := range p.Values {
+			if math.IsNaN(value) || math.IsInf(value, 0) || strings.TrimSpace(p.Labels[i]) == "" {
+				valid = false
+				break
+			}
+			if math.Abs(value) > maxAbs {
+				maxAbs = math.Abs(value)
+			}
+		}
+		if !valid {
 			continue
 		}
-		for _, v := range p.Values {
-			if math.IsNaN(v) || math.IsInf(v, 0) {
-				goto skip
-			}
+		startMS, endMS := p.WindowStartUS/1000, (p.WindowEndUS+999)/1000
+		if endMS <= startMS {
+			continue
 		}
-		{
-			data := append([]float64(nil), p.Values...)
-			startMS := p.WindowStartUS / 1000
-			endMS := (p.WindowEndUS + 999) / 1000
-			if endMS <= startMS {
-				continue
+		chartKey := itemID(sceneID, "chart", strings.Join(p.Labels, "-vs-"))
+		if _, dup := usedIDs[chartKey]; dup {
+			continue
+		}
+		usedIDs[chartKey] = struct{}{}
+		chartW := float64(canvasW) * 0.72
+		chartH := float64(canvasH) * 0.42
+		left := (float64(canvasW) - chartW) / 2
+		top := (float64(canvasH) - chartH) / 2
+		rowH := chartH / float64(len(p.Values))
+		labelTexts := make([]string, len(p.Labels))
+		for i, label := range p.Labels {
+			labelTexts[i] = strings.TrimSpace(label)
+		}
+		labelItem := OverlayItem{
+			ID: chartKey, SceneID: sceneID, Kind: "text_phrase", TemplateID: "IMPORTANT_PHRASE",
+			// IMPORTANT_PHRASE is a preset-driven template: RenderingGen rejects a
+			// label without a preset_id, so the shared label card carries the same
+			// certified phrase preset every other phrase item does. The SHAPE bars
+			// stay preset-less (structural primitives).
+			PresetID: selectPhrasePreset(planID, sceneID, chartKey),
+			Text:     strings.Join(labelTexts, "\n"),
+			StartMs:  startMS, EndMs: endMS, StartUS: p.WindowStartUS, DurationUS: p.WindowEndUS - p.WindowStartUS,
+			Params: map[string]any{
+				"position_x": left + chartW*0.24, "position_y": top + chartH/2,
+				"width": chartW * 0.44, "height": chartH,
+				"font_size_px": math.Min(float64(canvasH)*0.042, 44), "fill": "#FFFFFF", "position": "center", "style": "headline",
+				"chart_card": true, "chart_group_id": chartKey,
+			},
+		}
+		out = append(out, labelItem)
+		const maxBarWidthRatio = 0.44
+		maxBarWidth := chartW * maxBarWidthRatio
+		barHeight := math.Max(4, rowH*0.52)
+		for i, value := range p.Values {
+			fraction := 0.0
+			if maxAbs > 0 {
+				fraction = math.Abs(value) / maxAbs
 			}
-			id := itemID(sceneID, "chart", strings.Join(p.Labels, "-vs-"))
-			if _, dup := usedIDs[id]; dup {
-				continue
-			}
-			usedIDs[id] = struct{}{}
-			params := map[string]any{
-				"shape": "chart",
-				"chart": map[string]any{"chart_type": "bar", "data": data},
-			}
-			if canvasW > 0 && canvasH > 0 {
-				params["width"] = float64(canvasW) * 0.72
-				params["height"] = float64(canvasH) * 0.40
-			}
-			params["chart_card"] = true
+			barWidth := math.Max(4, maxBarWidth*fraction)
+			barID := chartKey + fmt.Sprintf("__bar_%02d", i)
+			// RenderingGen/Chronon positions shape layers by their center.
+			// Keep every bar inside the right-hand plot column by placing its
+			// center half its width after the plot's left edge, and center it
+			// vertically within its row.
+			barX := left + chartW*0.52 + barWidth/2
+			barY := top + rowH*(float64(i)+0.5)
 			out = append(out, OverlayItem{
-				ID: id, SceneID: sceneID,
-				Kind: "shape", TemplateID: "SHAPE",
+				ID: barID, SceneID: sceneID, Kind: "shape", TemplateID: "SHAPE",
 				StartMs: startMS, EndMs: endMS, StartUS: p.WindowStartUS, DurationUS: p.WindowEndUS - p.WindowStartUS,
-				Params: params,
+				Params: map[string]any{
+					"shape": "rect", "width": barWidth, "height": barHeight,
+					"position": []float64{barX, barY}, "fill": []float64{0.20, 0.78, 0.94, 1}, "chart_bar": true, "chart_group_id": chartKey,
+				},
 			})
 		}
-	skip:
 	}
 	if out == nil {
 		return []OverlayItem{}
@@ -212,70 +252,67 @@ func BuildChartItems(planID string, placements []ChartPlacement, canvasW, canvas
 	return out
 }
 
-// validateChartItem fail-closes chart-shaped items whose payload the
-// RenderingGen worker would reject (unsupported type, empty or
-// non-finite data): such a plan must never reach the queue looking
-// validated. Non-chart items pass untouched.
+// PruneOrphanChartBars keeps a comparison atomic after overlap or budget
+// admission removes its label card. Rectangles without an admitted label are
+// visual clutter and are therefore removed as a group.
+func PruneOrphanChartBars(items []OverlayItem) []OverlayItem {
+	admittedGroups := make(map[string]struct{})
+	barCounts := make(map[string]int)
+	for _, item := range items {
+		if item.Params == nil {
+			continue
+		}
+		group, _ := item.Params["chart_group_id"].(string)
+		if group == "" {
+			continue
+		}
+		if item.Params["chart_card"] == true {
+			admittedGroups[group] = struct{}{}
+		}
+		if item.Params["chart_bar"] == true {
+			barCounts[group]++
+		}
+	}
+	out := make([]OverlayItem, 0, len(items))
+	for _, item := range items {
+		if item.Params != nil && item.Params["chart_card"] == true {
+			group, _ := item.Params["chart_group_id"].(string)
+			if _, admitted := admittedGroups[group]; !admitted || barCounts[group] == 0 {
+				continue
+			}
+		}
+		if item.Params != nil && item.Params["chart_bar"] == true {
+			group, _ := item.Params["chart_group_id"].(string)
+			if _, admitted := admittedGroups[group]; !admitted {
+				continue
+			}
+		}
+		out = append(out, item)
+	}
+	return out
+}
+
+// validateChartItem prevents unsupported shape.chart and pseudo-chart payloads
+// from passing plan validation and reaching the queue. Supported charts must
+// already have been lowered to ordinary rect/text items by BuildChartItems.
 func validateChartItem(item OverlayItem) error {
 	if strings.TrimSpace(item.TemplateID) != "SHAPE" {
 		return nil
 	}
 	shape, _ := item.Params["shape"].(string)
-	_, hasChart := item.Params["chart"]
-	if shape != "chart" && !hasChart {
-		return nil
+	if shape == "chart" {
+		return fmt.Errorf("overlay plan: item %q uses unsupported shape.chart; lower charts to rect/text primitives", item.ID)
 	}
-	chartMap, _ := item.Params["chart"].(map[string]any)
-	if chartMap == nil {
-		return fmt.Errorf("overlay plan: chart item %q requires a chart payload", item.ID)
-	}
-	if rawType, ok := chartMap["chart_type"]; ok {
-		t, _ := rawType.(string)
-		switch t {
-		case "bar", "line", "pie", "donut":
-		default:
-			return fmt.Errorf("overlay plan: chart item %q has unsupported chart_type", item.ID)
-		}
-	}
-	rawData, ok := chartMap["data"]
-	if !ok {
-		return fmt.Errorf("overlay plan: chart item %q requires non-empty data", item.ID)
-	}
-	var data []float64
-	switch d := rawData.(type) {
-	case []float64:
-		data = d
-	case []any:
-		for _, v := range d {
-			switch n := v.(type) {
-			case float64:
-				data = append(data, n)
-			case int:
-				data = append(data, float64(n))
-			case int64:
-				data = append(data, float64(n))
-			default:
-				return fmt.Errorf("overlay plan: chart item %q data values must be finite numbers", item.ID)
-			}
-		}
-	default:
-		return fmt.Errorf("overlay plan: chart item %q data must be an array", item.ID)
-	}
-	if len(data) < ChartMinValues || len(data) > ChartMaxValues {
-		return fmt.Errorf("overlay plan: chart item %q data must carry %d..%d values", item.ID, ChartMinValues, ChartMaxValues)
-	}
-	for _, v := range data {
-		if math.IsNaN(v) || math.IsInf(v, 0) {
-			return fmt.Errorf("overlay plan: chart item %q data values must be finite numbers", item.ID)
-		}
+	if _, hasChart := item.Params["chart"]; hasChart {
+		return fmt.Errorf("overlay plan: item %q carries unsupported chart payload; lower charts to rect/text primitives", item.ID)
 	}
 	return nil
 }
 
-// chartWindowCrowded reports whether budget-or-more content items already
-// overlap the chart window: SHAPE bypasses DegradeOverlaps (structural),
-// so the emission gate in BuildPlan uses this to keep charts competing
-// for screen space like ordinary content.
+// chartWindowCrowded reports whether the chart window already has budget-or-
+// more competing content items. A chart's bars are structural rects, while its
+// single label card is the admitted content unit; this keeps the comparison
+// atomic while allowing it to compete like ordinary content.
 func chartWindowCrowded(items []OverlayItem, startUS, endUS int64, budget int) bool {
 	if budget <= 0 {
 		budget = DefaultOverlapBudget

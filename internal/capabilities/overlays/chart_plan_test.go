@@ -1,6 +1,7 @@
 package overlays
 
 import (
+	"math"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -36,6 +37,16 @@ func chartNumbers(texts ...string) []TimedAnnotation {
 	return out
 }
 
+func countNativeChartItems(items []OverlayItem) int {
+	count := 0
+	for _, item := range items {
+		if item.Params["chart_card"] == true || item.Params["chart_bar"] == true {
+			count++
+		}
+	}
+	return count
+}
+
 func TestChartPlacementsForScenesComparison(t *testing.T) {
 	got := ChartPlacementsForScenes([]SceneInput{{ID: "s1", Numbers: chartNumbers("42%", "18%")}})
 	require.Len(t, got, 1, "two grounded numbers → one chart")
@@ -66,27 +77,50 @@ func TestChartPlacementsCapsAtSix(t *testing.T) {
 	assert.Len(t, got[0].Values, ChartMaxValues, "chart data stays readable")
 }
 
-func TestBuildChartItemsShapeContract(t *testing.T) {
+func TestBuildChartItemsLowersToNativeBarShapes(t *testing.T) {
 	got := BuildChartItems("plan-chart", []ChartPlacement{{
 		SceneID: "s1", WindowStartUS: 0, WindowEndUS: 18_000_000,
 		Values: []float64{42, 18}, Labels: []string{"42%", "18%"},
 	}}, 1920, 1080)
-	require.Len(t, got, 1)
-	it := got[0]
-	assert.Equal(t, "s1", it.SceneID)
-	assert.Equal(t, "shape", it.Kind)
-	assert.Equal(t, "SHAPE", it.TemplateID)
-	assert.Empty(t, it.PresetID, "SHAPE is preset-less")
-	assert.Equal(t, "chart", it.Params["shape"])
-	chart, ok := it.Params["chart"].(map[string]any)
-	require.True(t, ok, "chart payload must be an object")
-	assert.Equal(t, "bar", chart["chart_type"])
-	assert.Equal(t, []float64{42, 18}, chart["data"])
-	assert.Equal(t, true, it.Params["chart_card"])
-	assert.Equal(t, int64(0), it.StartMs)
-	assert.Equal(t, int64(18000), it.EndMs)
-	assert.Equal(t, it.StartMs, it.StartUS/1000, "ms projection floors start_us")
-	assert.Equal(t, it.EndMs, (it.StartUS+it.DurationUS+999)/1000, "ms projection ceils end_us")
+	require.Len(t, got, 3, "one shared label plus one native rectangle per value")
+	label := got[0]
+	assert.Equal(t, "s1", label.SceneID)
+	assert.Equal(t, "text_phrase", label.Kind)
+	assert.Equal(t, "IMPORTANT_PHRASE", label.TemplateID)
+	assert.Equal(t, "42%\n18%", label.Text)
+	// The label is a preset-driven IMPORTANT_PHRASE: without a preset_id the
+	// RenderingGen worker rejects the whole plan, so the producer must supply one.
+	assert.NotEmpty(t, label.PresetID, "the chart label must carry a preset_id for the worker")
+	assert.Equal(t, true, label.Params["chart_card"])
+	assert.Equal(t, int64(0), label.StartMs)
+	assert.Equal(t, int64(18000), label.EndMs)
+	assert.Equal(t, label.StartMs, label.StartUS/1000, "ms projection floors start_us")
+	assert.Equal(t, label.EndMs, (label.StartUS+label.DurationUS+999)/1000, "ms projection ceils end_us")
+	for i, bar := range got[1:] {
+		assert.Equal(t, "shape", bar.Kind)
+		assert.Equal(t, "SHAPE", bar.TemplateID)
+		assert.Empty(t, bar.PresetID, "native SHAPE bars are preset-less")
+		assert.Equal(t, "rect", bar.Params["shape"])
+		assert.Equal(t, true, bar.Params["chart_bar"])
+		assert.NotContains(t, bar.Params, "chart")
+		assert.Equal(t, label.StartUS, bar.StartUS, "all components share the grounded audio span")
+		assert.Equal(t, label.DurationUS, bar.DurationUS)
+		position, ok := bar.Params["position"].([]float64)
+		require.True(t, ok, "bar position is the renderer's center coordinate")
+		require.Len(t, position, 2)
+		width := bar.Params["width"].(float64)
+		chartW, chartH := 1920*0.72, 1080*0.42
+		left, top := (1920-chartW)/2, (1080-chartH)/2
+		rowH := chartH / 2
+		assert.InDelta(t, left+chartW*0.52+width/2, position[0], 0.001, "bar stays within the plot column without covering the label")
+		assert.InDelta(t, top+rowH*(float64(i)+0.5), position[1], 0.001, "bar is centered within its row")
+		if i == 0 {
+			assert.Equal(t, 16, int(math.Round(bar.Params["width"].(float64)/(1920*0.72*0.44)*16)))
+		}
+	}
+	for _, item := range got {
+		assert.NotEqual(t, "chart", item.Params["shape"], "no unsupported chart pseudo-shape can escape")
+	}
 	again := BuildChartItems("plan-chart", []ChartPlacement{{
 		SceneID: "s1", WindowStartUS: 0, WindowEndUS: 18_000_000,
 		Values: []float64{42, 18}, Labels: []string{"42%", "18%"},
@@ -103,6 +137,23 @@ func TestBuildChartItemsSkipsInvalid(t *testing.T) {
 		SceneID: "", WindowStartUS: 0, WindowEndUS: 5_000_000,
 		Values: []float64{1, 2}, Labels: []string{"1", "2"},
 	}}, 1920, 1080), "empty scene → no chart")
+}
+
+func TestChartGroupAdmissionIsAtomicAndRequiresItsLabel(t *testing.T) {
+	items := BuildChartItems("p", []ChartPlacement{{
+		SceneID: "s", WindowStartUS: 0, WindowEndUS: 5_000_000,
+		Values: []float64{2, 1}, Labels: []string{"2", "1"},
+	}}, 1920, 1080)
+	require.Len(t, items, 3)
+	label := items[0]
+	bars := items[1:]
+	// A failed label admission removes the whole comparison.
+	assert.Empty(t, PruneOrphanChartBars(bars))
+	// A fully admitted label+bar group is retained intact.
+	admitted := append([]OverlayItem{label}, bars...)
+	require.Len(t, PruneOrphanChartBars(admitted), 3)
+	// A barless label is invalid/incomplete and cannot be left as a chart.
+	assert.Empty(t, PruneOrphanChartBars([]OverlayItem{label}))
 }
 
 func TestChartPlanValidationFailClosed(t *testing.T) {
@@ -161,5 +212,16 @@ func TestChartEmissionBudgetGate(t *testing.T) {
 		}
 	}
 	require.NotNil(t, chart, "chart card reaches the compiled plan")
-	assert.Equal(t, "SHAPE", chart.TemplateID)
+	assert.Equal(t, 3, countNativeChartItems(free.Items), "chart-card plus both bar shapes are retained")
+	assert.Equal(t, "text_phrase", chart.Kind)
+	assert.NotContains(t, chart.Params, "chart")
+	bars := 0
+	for _, item := range free.Items {
+		if item.Params["chart_bar"] == true {
+			bars++
+			assert.Equal(t, "SHAPE", item.TemplateID)
+			assert.Equal(t, "rect", item.Params["shape"])
+		}
+	}
+	assert.Equal(t, 2, bars, "native bars reach the admitted plan")
 }

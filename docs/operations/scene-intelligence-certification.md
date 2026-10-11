@@ -406,6 +406,25 @@ notes are not claimed as measurements from this execution.
     restore the package build. Deploy once their work settles + full
     scripts suite is green.
 
+## Session 2026-10-11 (later) — charts reach the worker: label preset + position contract
+  (toolchain: go1.25.13; PipelineGen + RenderingGen)
+
+  - Fix: `BuildChartItems`'s shared label card now carries a `PresetID`
+    (`selectPhrasePreset`). IMPORTANT_PHRASE is preset-driven, so a preset-less
+    label was rejected by RenderingGen (`overlay: item ... requires preset_id`)
+    and the whole overlay plan failed to compile — charts could never render.
+    The SHAPE bars stay preset-less (structural primitives).
+  - Contract fix: `RenderingGen/contracts/overlay-plan.v1.schema.json`'s
+    `params.position` was array-only, but the producer sends the semantic
+    placement string (`center`, `lower_third`, …) for every text/image item, so
+    every plan with a named placement was schema-invalid. It is now `oneOf`
+    [ [x, y] array, string ]; shape items still use the point form.
+  - Proof (cross-repo, runs even without go.work):
+    `TestPipelineGenChartPlanLowersToRectAndLabel` and
+    `TestPipelineGenChainPlanLowersEverySegment` embed the producer's verbatim
+    bytes and compile them; `TestBuildChartItemsLowersToNativeBarShapes` pins
+    the label preset so the producer cannot regress it.
+
 ## Session 2026-10-11 (~12:00 UTC) — elimination plan executed + archcheck green
   (toolchain: go1.25.13; `go run ./cmd/archcheck --strict` now passed=true,
   total_violations=0, has_hard_gate_hits=false)
