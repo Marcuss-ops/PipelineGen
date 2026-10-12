@@ -52,6 +52,32 @@ func TestBuildPlan_PropagatesProject(t *testing.T) {
 	}
 }
 
+func TestBuildPlan_PropagatesSegmentExtractionOverrides(t *testing.T) {
+	segments := []scriptpkg.ScriptSegment{{
+		ID: "scene-1", Topic: "scene", ExtractEntities: scriptpkg.ToggleDisabled,
+		ClipIDs: []string{"clip-a"}, StockClipIDs: []string{"clip-a"},
+	}}
+	plan := BuildPlan(scriptpkg.GenerationItemV2{
+		Output:       scriptpkg.OutputSpec{ExtractEntities: scriptpkg.ToggleEnabled},
+		Source:       scriptpkg.SourceSpec{Type: scriptpkg.SourceText, Topic: "topic"},
+		ScriptParams: scriptpkg.ScriptSpec{Segments: segments},
+	})
+	if plan.ExtractEntities != scriptpkg.ToggleEnabled || len(plan.Segments) != 1 || plan.Segments[0].ExtractEntities != scriptpkg.ToggleDisabled {
+		t.Fatalf("run/segment extraction toggles not propagated: run=%q segments=%+v", plan.ExtractEntities, plan.Segments)
+	}
+	cacheKey := scriptpkg.BuildCacheKey(&plan)
+	plan.ExtractEntities = scriptpkg.ToggleDisabled
+	if cacheKey == scriptpkg.BuildCacheKey(&plan) {
+		t.Fatal("resolved plan cache identity must change when its run-level entity policy changes")
+	}
+	plan.ExtractEntities = scriptpkg.ToggleEnabled
+	plan.Segments[0].ClipIDs[0] = "mutated"
+	plan.Segments[0].StockClipIDs[0] = "mutated"
+	if segments[0].ClipIDs[0] != "clip-a" || segments[0].StockClipIDs[0] != "clip-a" {
+		t.Fatal("BuildPlan aliases nested segment ownership slices")
+	}
+}
+
 func TestBuildPlan_PropagatesSourceTextVerbatim(t *testing.T) {
 	plan := BuildPlan(scriptpkg.GenerationItemV2{
 		Source: scriptpkg.SourceSpec{Type: scriptpkg.SourceText, Topic: "topic"},

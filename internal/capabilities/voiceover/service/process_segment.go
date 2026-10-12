@@ -107,7 +107,7 @@ func (u *ProcessSegmentUseCase) Execute(ctx context.Context, cmd *ProcessSegment
 	// downloaded and validated the canonical word-level artifact. The script
 	// overlay compiler consumes that exact artifact, so a timing link or summary
 	// alone is not sufficient to skip synthesis.
-	if u.deps.Cache.VoiceoverCache != nil {
+	if !cmd.ForceSynthesis && u.deps.Cache.VoiceoverCache != nil {
 		fingerprint := BuildVoiceoverContentFingerprint(cmd.TextHash, cmd.Language, cmd.Voice, cmd.Dest.FolderID, cmd.Timing, cmd.RemoveSilence)
 		hit, lookupErr := u.deps.Cache.VoiceoverCache.Lookup(ctx, fingerprint, timingPolicy.Mode != audio.TimingDisabled)
 		if lookupErr != nil {

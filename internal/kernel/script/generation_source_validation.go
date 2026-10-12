@@ -243,6 +243,7 @@ func CloneScriptSegments(in []ScriptSegment) []ScriptSegment {
 		if segment.StockClipIDs != nil {
 			out[i].StockClipIDs = slices.Clone(segment.StockClipIDs)
 		}
+		out[i].OverlayCategories = CloneOverlayCategories(segment.OverlayCategories)
 	}
 	return out
 }

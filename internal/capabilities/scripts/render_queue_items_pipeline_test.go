@@ -166,6 +166,36 @@ func TestMarshalRenderingGenOverlayPlanProjectsMicrosecondTiming(t *testing.T) {
 	t.Fatal("wire plan lost canonical-timing item")
 }
 
+func TestMarshalRenderingGenOverlayPlanOmitsGeocodingScopeFromMapPins(t *testing.T) {
+	plan := newTestMapPlan("map-scope-wire")
+	plan.Items[0].Map.Pins[0].Scope = "city"
+	plan.Items[0].Map.AreaGlowRadiusKM = 1.5
+	raw, err := marshalRenderingGenOverlayPlan(plan)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var wire struct {
+		Items []struct {
+			Map struct {
+				Pins             []map[string]json.RawMessage `json:"pins"`
+				AreaGlowRadiusKM json.RawMessage              `json:"area_glow_radius_km"`
+			} `json:"map"`
+		} `json:"items"`
+	}
+	if err := json.Unmarshal(raw, &wire); err != nil {
+		t.Fatal(err)
+	}
+	if len(wire.Items) != 1 || len(wire.Items[0].Map.Pins) != 1 {
+		t.Fatalf("wire map pins = %#v", wire.Items)
+	}
+	if _, present := wire.Items[0].Map.Pins[0]["scope"]; present {
+		t.Fatal("geocoding scope guides PipelineGen map selection but is not RenderingGen overlay-plan.v1 data")
+	}
+	if len(wire.Items[0].Map.AreaGlowRadiusKM) != 0 {
+		t.Fatal("dynamic-map-only area glow is not supported by the shared semantic renderer contract")
+	}
+}
+
 // TestSeparateOverlayItemsPipelineMultipleRendersInFlight pins the measured
 // bottleneck this path used to have. The sequential body submitted one child
 // plan and blocked on its terminal state before submitting the next, so exactly
@@ -176,7 +206,8 @@ func TestMarshalRenderingGenOverlayPlanProjectsMicrosecondTiming(t *testing.T) {
 // The fixture makes the difference visible rather than assumed: with the pool
 // disabled the SAME plan and the SAME client cannot finish at all.
 func TestSeparateOverlayItemsPipelineMultipleRendersInFlight(t *testing.T) {
-	plan := overlayPlanWithPhrases(2) // 5 renderable items, 1 background skipped
+	plan := overlayPlanWithPhrases(2)     // 5 renderable items, 1 background skipped
+	plan.RequireDriveBeforeReturn = false // ordinary generated overlay path
 	// The goal is the width this batch actually runs at, resolved by the SAME
 	// authority the enqueue path uses. It is deliberately not a literal: a
 	// 5-item batch is deeper than the back-pressure depth, so the certified
@@ -242,6 +273,7 @@ func TestSeparateOverlayItemsPipelineMultipleRendersInFlight(t *testing.T) {
 // match the plan the caller asked for.
 func TestSeparateOverlayItemsPreservePlanOrderAndIndices(t *testing.T) {
 	plan := overlayPlanWithPhrases(2)
+	plan.RequireDriveBeforeReturn = false
 	enqueuer, err := NewQueueRenderEnqueuer(&completingRenderQueueClient{})
 	if err != nil {
 		t.Fatal(err)
@@ -299,6 +331,7 @@ func (c *failingItemRenderClient) Get(_ context.Context, id string) (RenderQueue
 // exactly that item.
 func TestSeparateOverlayItemsFailureNamesTheItem(t *testing.T) {
 	plan := overlayPlanWithPhrases(2)
+	plan.RequireDriveBeforeReturn = false
 	enqueuer, err := NewQueueRenderEnqueuer(&failingItemRenderClient{failContaining: "phrase_extra_1"})
 	if err != nil {
 		t.Fatal(err)

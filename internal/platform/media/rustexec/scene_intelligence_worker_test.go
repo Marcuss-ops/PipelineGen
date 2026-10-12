@@ -66,6 +66,20 @@ func TestSIAnalyzer_BatchIsOneRoundTrip(t *testing.T) {
 	assert.Equal(t, "analyze", sent["operation"])
 	assert.Len(t, sent["scenes"], 2, "both scenes in the single request")
 	assert.Len(t, sent["entities_per_scene"], 2)
+	assert.Equal(t, float64(0), sentScenesMap(t, sent)["video_start_ms"])
+}
+
+func sentScenesMap(t *testing.T, request map[string]any) map[string]any {
+	t.Helper()
+	scenes, ok := request["scenes"].([]any)
+	require.True(t, ok)
+	for _, raw := range scenes {
+		if scene, ok := raw.(map[string]any); ok && scene["scene_id"] == "scene-01" {
+			return scene
+		}
+	}
+	t.Fatal("scene-01 missing from SI worker request")
+	return nil
 }
 
 func TestSIAnalyzer_EmptyBatchFailsClosed(t *testing.T) {

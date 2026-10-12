@@ -3,12 +3,123 @@ package scriptgeneration
 import (
 	"context"
 	"fmt"
+	"sort"
 	"strings"
 
 	"go.uber.org/zap"
 
+	capabilityaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
+
+func (r *Runner) analyzeSceneIntelligence(ctx context.Context, runID, transcript string, scenes []Scene, req GenerateRequest) (*scriptpkg.SceneIntelligenceManifest, []scriptpkg.SISceneAnalysisInput, error) {
+	if r == nil || r.sceneIntelligenceAnalyzer == nil {
+		return nil, nil, nil
+	}
+	inputs := buildSceneAnalysisInputs(transcript, scenes, req)
+	if len(inputs) == 0 {
+		return nil, nil, nil
+	}
+	// SI has a separate video-time axis. Populate it only from the same sealed
+	// resolved timeline used by audio/overlay compilation; never infer a
+	// duration from text length or borrow event-year time.
+	mode, modeErr := capabilityaudio.ResolveAudioMode(req.Audio, false)
+	if modeErr != nil {
+		return nil, nil, modeErr
+	}
+	resolved, resolveErr := ResolveScenes(scenes, req.SourceLanguage, mode, false)
+	if resolveErr != nil {
+		return nil, nil, fmt.Errorf("resolve grounded SI video windows: %w", resolveErr)
+	}
+	windows := make(map[string][2]int64, len(resolved))
+	for _, scene := range resolved {
+		if scene.DurationUS <= 0 || scene.TimelineStartUS < 0 {
+			continue
+		}
+		startMS, endMS := scene.TimelineStartUS/1000, (scene.TimelineStartUS+scene.DurationUS)/1000
+		if endMS > startMS {
+			windows[scene.ID] = [2]int64{startMS, endMS}
+		}
+	}
+	requests := make([]scriptpkg.SISceneAnalysisInput, 0, len(inputs))
+	for _, input := range inputs {
+		window, ok := windows[input.SceneID]
+		if !ok {
+			continue
+		}
+		entities := sceneEntitySurfaces(scenes, input.SceneID)
+		requests = append(requests, scriptpkg.SISceneAnalysisInput{
+			SceneID: input.SceneID, Text: input.Text, Language: string(req.SourceLanguage),
+			VideoStartMS: window[0], VideoEndMS: window[1], Entities: entities,
+		})
+	}
+	if len(requests) == 0 {
+		return nil, nil, nil
+	}
+	manifest, err := r.sceneIntelligenceAnalyzer.AnalyzeBatch(ctx, requests)
+	if err != nil {
+		return nil, nil, err
+	}
+	if manifest == nil {
+		return nil, requests, nil
+	}
+	if err := manifest.Validate(); err != nil {
+		return nil, nil, fmt.Errorf("scene-intelligence manifest validation: %w", err)
+	}
+	wanted := make(map[string]struct{}, len(requests))
+	for _, request := range requests {
+		wanted[request.SceneID] = struct{}{}
+	}
+	for _, signal := range manifest.Scenes {
+		if _, ok := wanted[signal.SceneID]; !ok {
+			return nil, nil, fmt.Errorf("scene-intelligence manifest references unknown scene %q", signal.SceneID)
+		}
+		for _, event := range signal.TemporalEvents {
+			text := signalSceneText(requests, signal.SceneID)
+			if event.NarrationIndex < 0 || event.NarrationIndex >= len(splitGroundingSentences(text)) {
+				return nil, nil, fmt.Errorf("scene-intelligence temporal event %q has no grounded narration index", event.EventID)
+			}
+		}
+	}
+	if r.log != nil {
+		r.log.Info("scene-intelligence analysis complete", zap.String("run_id", runID), zap.Int("scenes", len(manifest.Scenes)))
+	}
+	return manifest, requests, nil
+}
+
+func signalSceneText(requests []scriptpkg.SISceneAnalysisInput, sceneID string) string {
+	for _, request := range requests {
+		if request.SceneID == sceneID {
+			return request.Text
+		}
+	}
+	return ""
+}
+
+func sceneEntitySurfaces(scenes []Scene, sceneID string) []string {
+	set := make(map[string]struct{})
+	for _, scene := range scenes {
+		if scene.ID != sceneID || scene.Annotations == nil {
+			continue
+		}
+		for _, entity := range scene.Annotations.PrimaryEntities {
+			if value := strings.TrimSpace(entity.CanonicalName); value != "" {
+				set[value] = struct{}{}
+			}
+		}
+		for _, entity := range scene.Annotations.SecondaryEntities {
+			if value := strings.TrimSpace(entity.CanonicalName); value != "" {
+				set[value] = struct{}{}
+			}
+		}
+	}
+	entities := make([]string, 0, len(set))
+	for value := range set {
+		entities = append(entities, value)
+	}
+	sort.Strings(entities)
+	return entities
+}
 
 // buildSceneAnalysisInputs locates each body scene verbatim in the transcript
 // so the Rust worker can verify slice identity. Offsets stay nil when the

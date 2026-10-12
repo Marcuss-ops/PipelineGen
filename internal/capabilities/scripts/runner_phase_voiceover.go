@@ -294,7 +294,8 @@ func (r *Runner) synthesizeVoiceoverWork(ctx context.Context, runID string, req 
 				// pipeline can honour required/best-effort fail-closed
 				// semantics (missing/invalid timing fails the job instead of
 				// producing plausible-but-wrong timestamps).
-				Timing: req.Timing,
+				Timing:         req.Timing,
+				ForceSynthesis: req.ForceRefresh,
 			})
 			return err
 		})

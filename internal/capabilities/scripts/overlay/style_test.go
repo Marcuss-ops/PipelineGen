@@ -54,6 +54,24 @@ func TestImageFrameShadowStaysWithinNativeGPUBlurLimit(t *testing.T) {
 	require.Equal(t, 10.0, frame.Shadow.BlurPX)
 }
 
+func TestStyleParamsProjectsCursorAndBoundedImage(t *testing.T) {
+	width, blink := 6.0, true
+	bounded := true
+	got := StyleParams(&scriptpkg.OverlayStyleSpec{
+		Cursor: &scriptpkg.OverlayCursorStyleSpec{Color: "#FF3355", Width: &width, Blink: &blink},
+		Image:  &scriptpkg.OverlayImageStyleSpec{Bounded: &bounded, Fit: "cover"},
+	})
+	require.Equal(t, "#FF3355", got["cursor_color"])
+	require.Equal(t, 6.0, got["cursor_width_px"])
+	require.Equal(t, true, got["cursor_blink"])
+	require.Equal(t, true, got["image_bounded"])
+	require.Equal(t, "cover", got["image_fit"])
+	require.True(t, IsRuntimeCursorParam("cursor_color"))
+	require.True(t, IsRuntimeImageParam("image_bounded"))
+	require.True(t, IsRuntimeImageParam("image_border_color"))
+	require.True(t, IsRuntimeTextStyleParam("cursor_width_px"))
+}
+
 func TestOverlayKindPolicies(t *testing.T) {
 	require.True(t, IsRuntimeTextStyleParam("font_size_px"))
 	require.False(t, IsRuntimeTextStyleParam("image_width"))

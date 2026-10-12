@@ -224,7 +224,7 @@ func WireMultiEntityOverlays(group MultiEntityGroup, canvasWidth, canvasHeight i
 			}
 			position := multiImagePosition(countKind(group.Items, MultiEntityKindImage), imageIndex, canvasWidth, canvasHeight)
 			layers = append(layers, OverlayImageLayer{
-				ID: layerID, AssetID: ref.AssetID,
+				ID: layerID, GroupID: group.GroupID, SubgroupID: layerID, AssetID: ref.AssetID,
 				StartMS: candidate.StartMS - group.StartMS, EndMS: endMS - group.StartMS,
 				PresetID:          selectImagePreset(group.GroupID, group.SceneID, layerID),
 				MotionID:          EntityImageMotionAtOffset(0, imageIndex),
@@ -258,7 +258,7 @@ func WireMultiEntityOverlays(group MultiEntityGroup, canvasWidth, canvasHeight i
 		imageWindowStart := group.StartMS + imageStartOffset
 		imageWindowEnd := group.StartMS + imageEndOffset
 		imageItem := OverlayItem{
-			ID: imageID, SceneID: group.SceneID,
+			ID: imageID, SceneID: group.SceneID, GroupID: group.GroupID,
 			Kind: string(KindEntityImage), TemplateID: "IMAGE_OVERLAY",
 			PresetID: selectImagePreset(group.GroupID, group.SceneID, imageID),
 			StartMs:  imageWindowStart, EndMs: imageWindowEnd, StartUS: imageWindowStart * 1000, DurationUS: (imageWindowEnd - imageWindowStart) * 1000,
@@ -280,7 +280,7 @@ func WireMultiEntityOverlays(group MultiEntityGroup, canvasWidth, canvasHeight i
 	for index, candidate := range phrases {
 		phraseID := fmt.Sprintf("%s-phrase-%d", group.GroupID, index+1)
 		item := OverlayItem{
-			ID: phraseID, SceneID: group.SceneID,
+			ID: phraseID, SceneID: group.SceneID, GroupID: group.GroupID, SubgroupID: phraseID,
 			Kind: "text_phrase", TemplateID: "IMPORTANT_PHRASE",
 			PresetID: selectPhrasePreset(group.GroupID, group.SceneID, phraseID),
 			StartMs:  candidate.StartMS, EndMs: candidate.EndMS, StartUS: candidate.StartMS * 1000,

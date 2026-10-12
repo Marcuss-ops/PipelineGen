@@ -222,7 +222,7 @@ func (c *VidRushIncrementalCoordinator) OnSceneCommitted(ctx context.Context, ev
 	if event.SceneID == "" {
 		return fmt.Errorf("vidrush incremental coordinator: scene commit missing scene id")
 	}
-	if !event.ExecutionMode.IsFixedMedia() && c.enricher == nil {
+	if !event.ExecutionMode.IsFixedMedia() && event.ExtractEntities != scriptpkg.ToggleDisabled && c.enricher == nil {
 		// Validate before wg.Add. Returning after incrementing the barrier
 		// counter would permanently block Wait for a coordinator that cannot
 		// perform enrichment.
@@ -257,12 +257,32 @@ func (c *VidRushIncrementalCoordinator) OnSceneCommitted(ctx context.Context, ev
 		// materialization enrichment.
 		return nil
 	}
+	if event.ExtractEntities == scriptpkg.ToggleDisabled {
+		// The explicit per-scene opt-out bypasses extraction and every
+		// downstream provider/materialization stage. Keep a fully fenced empty
+		// result so the scene barrier cannot mistake this for another scene.
+		result := scriptpkg.VidRushSegmentResult{
+			SegmentID: event.SceneID,
+			SceneID:   event.SceneID,
+			Position:  event.SceneIndex,
+			Text:      event.Text,
+			TextHash:  event.TextHash,
+			Insights: scriptpkg.SegmentInsights{
+				SegmentID: event.SceneID,
+				TextHash:  event.TextHash,
+			},
+		}
+		c.recordResult(event, result, nil)
+		c.wg.Done()
+		return nil
+	}
 	scene := scriptpkg.SpecScene{
 		ID:            event.SceneID,
 		Index:         event.SceneIndex,
 		Text:          event.Text,
 		ExecutionMode: event.ExecutionMode,
 	}
+
 	if event.SourceText != "" || event.SemanticProfile != nil {
 		scene.Metadata = &scriptpkg.SceneMetadata{SourceText: event.SourceText}
 	}
@@ -510,6 +530,11 @@ func (c *VidRushIncrementalCoordinator) waitForVidRush(ctx context.Context) ([]s
 		if record.err != nil {
 			resultErr = fmt.Errorf("vidrush scene %q (index %d) enrichment: %w", latest.SceneID, idx, record.err)
 			break
+		}
+		if latest.ExtractEntities == scriptpkg.ToggleDisabled {
+			// Keep the fence record internal to the barrier; disabled scenes do
+			// not expose semantic extraction results to consumers.
+			continue
 		}
 		// Defensive final fence: never apply a result whose identity does not
 		// match the latest committed scene text.

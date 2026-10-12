@@ -174,7 +174,7 @@ func buildResolutionContext(item scriptpkg.GenerationItemV2) scriptpkg.SourceRes
 		TargetWords:  item.ScriptParams.TargetWords,
 		NumClips:     item.Source.NumClips,
 		SegmentWords: item.ScriptParams.SegmentWords,
-		Segments:     append([]scriptpkg.ScriptSegment(nil), item.ScriptParams.Segments...),
+		Segments:     scriptpkg.CloneScriptSegments(item.ScriptParams.Segments),
 		// RequireDriveLink is hardcoded to true as the canonical
 		// fail-closed default (godlike/07 NO-FAKE-AVAILABILITY). A
 		// future source-resolution migration may introduce a non-

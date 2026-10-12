@@ -256,8 +256,8 @@ func overlayScene0Annotations() *scriptpkg.SceneAnnotations {
 		SecondaryEntities: []scriptpkg.AnnotatedEntity{
 			{ID: "entity-change-everything", CanonicalName: "changed everything", Type: "QUOTE", Confidence: 0.85},
 			{ID: "entity-ten-million", CanonicalName: "ten million", Type: "CARDINAL", Confidence: 0.9},
-			{ID: "entity-date", CanonicalName: "2025", Type: "DATE", Confidence: 0.92},
-			{ID: "entity-calendar-date", CanonicalName: "March 5, 2026", Type: "DATE", Confidence: 0.92},
+			{ID: "entity-date", CanonicalName: "2025", Type: "DATE", Confidence: 0.92, Mentions: []scriptpkg.AnnotationSpan{{Text: "2025", StartRune: 98, EndRune: 102}}},
+			{ID: "entity-calendar-date", CanonicalName: "March 5, 2026", Type: "DATE", Confidence: 0.92, Mentions: []scriptpkg.AnnotationSpan{{Text: "March 5, 2026", StartRune: 106, EndRune: 119}}},
 			{ID: "entity-percent", CanonicalName: "25%", Type: "PERCENT", Confidence: 0.91},
 			{ID: "entity-money", CanonicalName: "$2 million", Type: "MONEY", Confidence: 0.9},
 			{
@@ -313,6 +313,7 @@ func TestRunner_OverlayPlanAppliesRunLevelEditorialBudget(t *testing.T) {
 	req.Languages = []Language{"en"}
 	req.Docs = DocumentsConfig{Enabled: true, Languages: []Language{"en"}}
 	req.Project = "overlay-cert"
+	req.AnimationCounts = map[string]int{"chain_disabled": 1}
 
 	runID := "run-overlay-001"
 	require.NoError(t, repo.Create(context.Background(), &GenerationRun{ID: runID, Request: req, Status: RunStatusPending, CurrentStage: StageNormalizing}))
@@ -326,22 +327,34 @@ func TestRunner_OverlayPlanAppliesRunLevelEditorialBudget(t *testing.T) {
 	require.NotNil(t, res.FinalAudio, "the overlay plan must have a certified master-audio extent")
 	require.GreaterOrEqual(t, res.OverlayPlan.DurationMS, res.FinalAudio.DurationMS,
 		"overlay plan duration must cover audio and any longer Date overlay")
+	var latestDateTailMS int64
+	for _, item := range res.OverlayPlan.Items {
+		if item.TemplateID == "TIMELINE_DATE_CARD" && item.EndMs > latestDateTailMS {
+			latestDateTailMS = item.EndMs
+		}
+	}
+	require.GreaterOrEqual(t, latestDateTailMS, int64(6900), "both grounded dates retain their five-second display tails")
+	require.GreaterOrEqual(t, res.OverlayPlan.DurationMS, latestDateTailMS, "plan canvas covers the date tail")
 	datePayload, err := marshalRenderingGenOverlayPlan(*res.OverlayPlan)
 	require.NoError(t, err)
 	var wire struct {
 		DurationMS int64 `json:"duration_ms"`
 		Items      []struct {
 			Text       string `json:"text"`
+			TemplateID string `json:"template_id"`
 			DurationMS int64  `json:"duration_ms"`
 		} `json:"items"`
 	}
 	require.NoError(t, json.Unmarshal(datePayload, &wire))
-	require.GreaterOrEqual(t, wire.DurationMS, int64(6900), "overlay payload must cover the full Date display tail")
+	require.GreaterOrEqual(t, wire.DurationMS, latestDateTailMS, "overlay payload must cover the complete Date display tail")
+	dateCount := 0
 	for _, item := range wire.Items {
-		if item.Text == "2025" || item.Text == "March 5, 2026" {
+		if item.TemplateID == "TIMELINE_DATE_CARD" {
+			dateCount++
 			require.Equal(t, int64(5000), item.DurationMS, "Date item payload duration must be five seconds")
 		}
 	}
+	require.Equal(t, 2, dateCount, "both certified date candidates survive the run-level budget")
 	finalAudioDurationUS := res.FinalAudio.DurationUS
 	if finalAudioDurationUS <= 0 {
 		finalAudioDurationUS = res.FinalAudio.DurationMS * 1000

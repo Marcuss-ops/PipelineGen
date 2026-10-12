@@ -382,6 +382,9 @@ func assignEntityImageMotions(items []capabilityoverlay.OverlayItem, offset, wid
 	for _, id := range capabilityoverlay.CertifiedEntityImageMotions() {
 		allowed[id] = true
 	}
+	for _, id := range capabilityoverlay.CertifiedLightLeakMotions() {
+		allowed[id] = true
+	}
 	seen := make(map[string]bool, len(requested))
 	for _, id := range requested {
 		if !allowed[id] {

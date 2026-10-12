@@ -148,6 +148,16 @@ func (r *Runner) runSceneTextPhase(ctx context.Context, runID string, req Genera
 			result.ExpectedRenderCount = expectedUnits
 			result.RenderMetrics = &RenderMetrics{Expected: expectedUnits, Concurrency: req.Render.RenderConcurrency}
 		}
+		if r.sceneIntelligenceAnalyzer != nil && strings.TrimSpace(output.Text) != "" {
+			if manifest, siInputs, err := r.analyzeSceneIntelligence(ctx, runID, output.Text, scenes, req); err != nil {
+				r.log.Warn("scene-intelligence analysis unavailable; continuing without scene signals",
+					zap.String("run_id", runID), zap.Error(err))
+			} else if manifest != nil {
+				result.SceneIntelligence = manifest
+				result.sceneIntelligenceInputs = append([]scriptpkg.SISceneAnalysisInput(nil), siInputs...)
+				result.SceneIntelligenceProjection = ProjectGroundedSceneIntelligence(manifest, SIProjectionConfig{Enabled: true}, siInputs, nil)
+			}
+		}
 		if r.phraseImpactAnalyzer != nil && strings.TrimSpace(output.Text) != "" {
 			chapterScenes, chapterTopics := make([]string, 0, len(scenes)), make([]string, 0, len(scenes))
 			for _, scene := range scenes {

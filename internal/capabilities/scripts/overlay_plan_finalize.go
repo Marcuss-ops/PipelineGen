@@ -27,15 +27,24 @@ import (
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
-func applyMapPresentationToItems(items []capabilityoverlay.OverlayItem, mapType, cameraAnimation, labelAnimation string) error {
+func applyMapPresentationToItems(items []capabilityoverlay.OverlayItem, mapType, cameraAnimation, labelAnimation, mapAnimation string) error {
 	mapType = strings.ToLower(strings.TrimSpace(mapType))
 	if mapType == "" {
-		mapType = "roadmap"
+		mapType = "satellite"
 	}
 	switch mapType {
 	case "roadmap", "terrain", "satellite", "random":
 	default:
 		return fmt.Errorf("map_type %q is unsupported; choose roadmap, terrain, satellite, or random", mapType)
+	}
+	if err := validateRuntimeMapAnimation("map_camera_animation", cameraAnimation, mapCameraAnimationsCertified()); err != nil {
+		return err
+	}
+	if err := validateRuntimeMapAnimation("map_label_animation", labelAnimation, mapLabelAnimationsCertified()); err != nil {
+		return err
+	}
+	if err := validateRuntimeMapAnimation("map_animation", mapAnimation, mapMapAnimationsCertified()); err != nil {
+		return err
 	}
 	for i := range items {
 		if items[i].Map == nil {
@@ -51,8 +60,27 @@ func applyMapPresentationToItems(items []capabilityoverlay.OverlayItem, mapType,
 		if labelAnimation != "" {
 			items[i].Params["map_label_animation"] = labelAnimation
 		}
+		if mapAnimation != "" {
+			items[i].Params["map_animation"] = mapAnimation
+		}
 	}
 	return nil
+}
+
+// validateRuntimeMapAnimation fails closed on unknown runtime animation ids.
+// Empty and "random" mean "seeded random choice" and always pass; any other
+// value must be in the certified list the Python renderer accepts.
+func validateRuntimeMapAnimation(field, value string, certified []string) error {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" || strings.EqualFold(trimmed, "random") {
+		return nil
+	}
+	for _, candidate := range certified {
+		if trimmed == candidate {
+			return nil
+		}
+	}
+	return fmt.Errorf("%s %q is unsupported; choose random or one of: %s", field, value, strings.Join(certified, ", "))
 }
 
 // countRecapItems counts final recap survivors, including cards preserved

@@ -295,6 +295,9 @@ func compileOverlayPlanWithMotionOffset(result *GenerateResult, language Languag
 	}
 	plannerPlan.TimedScenes = len(timedScenes)
 	items := plannerPlan.Items
+	if canvas.RandomLightLeakOnClipStart {
+		items = append(items, clipStartLightLeakItems(planID, result.CanonicalTimeline)...)
+	}
 	if canvas.MapsOnly {
 		kept := items[:0]
 		for _, item := range items {
@@ -327,7 +330,7 @@ func compileOverlayPlanWithMotionOffset(result *GenerateResult, language Languag
 	// owned by overlay_plan_finalize.go so this file stays inside the strict
 	// 600-line cap; the call is the same one this block performed inline.
 	applyOverlayStyleToItems(items, canvas)
-	if err := applyMapPresentationToItems(items, canvas.MapType, canvas.MapCameraAnimation, canvas.MapLabelAnimation); err != nil {
+	if err := applyMapPresentationToItems(items, canvas.MapType, canvas.MapCameraAnimation, canvas.MapLabelAnimation, canvas.MapAnimation); err != nil {
 		return nil, err
 	}
 
@@ -394,6 +397,9 @@ func compileOverlayPlanWithMotionOffset(result *GenerateResult, language Languag
 	// prevents a long script with many scenes from producing one image render
 	// for every extracted person.
 	items = capEntityImageOverlays(items, capabilityoverlay.MaxEntityImageOverlaysPerRun, len(perSceneImages) > 0 && perSceneImages[0])
+	// Apply category controls before budgeting and chain composition so filtered
+	// overlays do not consume capacity and the remaining items can still fuse.
+	items = filterOverlayItemsByCategory(items, result.Scenes, canvas)
 	// The map-aware editorial budget keeps the certified run ceilings: images,
 	// grounded phrases and one composed location map.
 	// It runs on individual assets before composition so dedupe and counts do
@@ -409,6 +415,9 @@ func compileOverlayPlanWithMotionOffset(result *GenerateResult, language Languag
 	}
 	capabilityoverlay.EnsureDistinctPhraseMotions(items, capabilityoverlay.PlanInput{PlanID: planID, VideoID: videoID, MotionSeed: motionSeed})
 	capabilityoverlay.EnsureDistinctNumberMotions(items, nil)
+	if err := applyAnimationPolicies(items, canvas.AnimationPolicies, planID, videoID, canvas.EntityImageMotions); err != nil {
+		return nil, fmt.Errorf("overlay plan: animation policies: %w", err)
+	}
 	items = capabilityoverlay.CoalesceChainedOverlays(items, canvas.AnimationCounts)
 	// Owned by the overlay subpackage: the root package is the compatibility
 	// facade, so the naming rule has exactly one home.
@@ -562,6 +571,7 @@ func compileOverlayPlanWithMotionOffset(result *GenerateResult, language Languag
 		DurationMS:             durationMS,
 		ForegroundScalePercent: canvas.ForegroundScalePercent,
 		Background:             canvas.Background,
+		AnimationPolicies:      toOverlayAnimationPolicies(canvas.AnimationPolicies),
 		// Overlays are composited over the master video, so they require an
 		// alpha channel. The contract travels with the plan (never re-derived
 		// downstream); the compiled chronon output derives container/codec/

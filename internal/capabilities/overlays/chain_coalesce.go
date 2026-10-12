@@ -58,9 +58,10 @@ const (
 )
 
 const (
-	// 2.5s: fuse nearby/overlapping overlays (e.g. image@10s + phrase@12s)
-	// into one chain item instead of two popups.
-	defaultChainGapUS       int64 = 2_500_000
+	// 5s: fuse same-scene overlays with at most five seconds of empty
+	// timeline between them into one multi-animation chain item.
+	defaultChainGapUS       int64 = 5_000_000
+	maxChainGapUS           int64 = 5_000_000
 	defaultChainMaxSegments       = 8
 	maxChainSegmentsHard          = 32
 )
@@ -72,6 +73,8 @@ const (
 // cards, composite images and maps lower through their own compilers.
 type ChainSegment struct {
 	Text                string              `json:"text,omitempty"`
+	GroupID             string              `json:"group_id,omitempty"`
+	SubgroupID          string              `json:"subgroup_id,omitempty"`
 	MotionID            string              `json:"motion_id,omitempty"`
 	PresetID            string              `json:"preset_id,omitempty"`
 	ImagePresetID       string              `json:"image_preset_id,omitempty"`
@@ -98,23 +101,27 @@ type ChainSegment struct {
 }
 
 // chainConfig resolves the gap + segment ceiling from AnimationCounts (the
-// user's chosen configurability surface). Chaining stays OPT-IN so the
-// legacy path is intact: it runs only when the caller sets chain_gap_ms > 0
-// or chain_enabled > 0. Production request building injects the default gap
-// (see cloneAnimationCounts); chain_disabled > 0 forces it off even then.
+// user's chosen configurability surface). Direct callers with no config keep
+// the legacy path; production request building injects a 5000ms default gap.
+// chain_disabled > 0 forces chaining off even when a gap is configured.
 //
-//	chain_gap_ms:       max hole between two overlays to fuse (enables
-//	                     chaining; production default 2500 when enabled
-//	                     via chain_enabled).
-//	chain_enabled:      when > 0, chain with the default 2500ms gap.
-//	chain_max_segments: max segments per chain item (default 8, hard 32).
-//	chain_disabled:     when > 0, coalescing is skipped entirely.
+//\tchain_gap_ms:       max empty interval between two overlays to fuse.
+//\tchain_enabled:      when > 0, chain with the default 5000ms gap.
+//\tchain_max_segments: max segments per chain item (default 8, hard 32).
+//\tchain_disabled:     when > 0, coalescing is skipped entirely.
 func chainConfig(counts map[string]int) (maxGapUS int64, maxSegments int, disabled bool) {
 	if counts == nil || counts["chain_disabled"] > 0 {
 		return 0, 0, true
 	}
 	if v := counts["chain_gap_ms"]; v > 0 {
-		maxGapUS = int64(v) * 1000
+		// The runtime contract caps the empty interval at five seconds even
+		// when a payload asks for more. Bound before multiplying to avoid
+		// overflowing int64 for malformed large configuration values.
+		if int64(v) > maxChainGapUS/1000 {
+			maxGapUS = maxChainGapUS
+		} else {
+			maxGapUS = int64(v) * 1000
+		}
 	} else if counts["chain_enabled"] > 0 {
 		maxGapUS = defaultChainGapUS
 	} else {
@@ -279,7 +286,8 @@ func fuseChain(group []OverlayItem, chainIndex int) OverlayItem {
 	assets := make([]OverlayAssetRef, 0)
 	for _, item := range group {
 		seg := ChainSegment{
-			Text: item.Text, MotionID: item.MotionID, PresetID: item.PresetID,
+			Text: item.Text, GroupID: item.GroupID, SubgroupID: item.SubgroupID,
+			MotionID: item.MotionID, PresetID: item.PresetID,
 			ImagePresetID: item.ImagePresetID, TemplateID: item.TemplateID,
 			Kind: item.Kind, EntityID: item.EntityID,
 			EntityCaption: item.EntityCaption, CaptionMotionID: item.CaptionMotionID,

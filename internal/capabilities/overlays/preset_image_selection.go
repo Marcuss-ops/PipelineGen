@@ -84,6 +84,39 @@ func CertifiedSingleImageMotions() []string {
 	return append([]string(nil), singleImageMotionCandidates...)
 }
 
+// CertifiedLightLeakMotions returns the RenderingGen-supported light_leak_v1
+// image-recipe motions. This list is the producer's allowlist for payload
+// policies targeting visual light leaks; ordinary image-target policies do
+// not implicitly admit recipe motions that expand one image into extra layers.
+func CertifiedLightLeakMotions() []string {
+	return append([]string(nil), certifiedLightLeakMotionCandidates...)
+}
+
+var certifiedLightLeakMotionCandidates = []string{
+	"lightleak_anamorphic_pass",
+	"lightleak_bokeh_pass",
+	"lightleak_corner_bloom",
+	"lightleak_diagonal_sweep",
+	"lightleak_dual_edge",
+	"lightleak_edge_warm",
+	"lightleak_film_burn",
+	"lightleak_focus_glow",
+	"lightleak_horizontal_sweep",
+	"lightleak_prismatic",
+	"lightleak_pulse",
+	"lightleak_soft_flare",
+}
+
+// SelectLightLeakMotion deterministically picks one certified image light leak
+// for a plan/target key; retrying the same inputs yields the same treatment.
+func SelectLightLeakMotion(planID, targetID string) string {
+	pool := certifiedLightLeakMotionCandidates
+	if len(pool) == 0 {
+		return ""
+	}
+	return selectPreset(planID, targetID, targetID, "light_leak", pool)
+}
+
 // CertifiedEntityCaptionMotions returns all registered entity-caption motions.
 // Callers receive a copy so the producer's vocabulary cannot be mutated.
 func CertifiedEntityCaptionMotions() []string {

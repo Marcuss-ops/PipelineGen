@@ -16,6 +16,7 @@ import (
 	capoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
 	kernelasset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
 // fakeRenderQueueClient implements RenderQueueClient in-memory for the
@@ -179,6 +180,22 @@ const validDynamicMapTelemetry = `{"schema":"chronon.dynamic-map-telemetry.v1","
 // TestMapBasemapStylesAreUniqueAndNonEmpty pins the deterministic basemap
 // candidate catalog: it must remain explicit, non-empty, duplicate-free, and
 // retain the historic satellite default.
+func TestBuildGenerateRequestPropagatesMapPresentation(t *testing.T) {
+	var env scriptpkg.GenerationEnvelopeV2
+	payload := `{"version":2,"items":[{"title":"maps","language":"en","source":{"type":"text","topic":"topic"},"map_type":"satellite","map_camera_animation":"steady_hold","map_label_animation":"rise_up","map_animation":"focus_title"}]}`
+	if err := json.Unmarshal([]byte(payload), &env); err != nil {
+		t.Fatal(err)
+	}
+	request, err := BuildGenerateRequest(&env, "map-presentation")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if request.MapType != "satellite" || request.MapCameraAnimation != "steady_hold" || request.MapLabelAnimation != "rise_up" || request.MapAnimation != "focus_title" {
+		t.Fatalf("map presentation did not reach runtime request: type=%q camera=%q label=%q composition=%q",
+			request.MapType, request.MapCameraAnimation, request.MapLabelAnimation, request.MapAnimation)
+	}
+}
+
 func TestMapBasemapStylesAreUniqueAndNonEmpty(t *testing.T) {
 	styles := mapBasemapStyles()
 	if len(styles) == 0 {
@@ -294,11 +311,12 @@ func TestRenderDynamicMapVideoMapPresentationIsDeterministicPerItem(t *testing.T
 	}
 
 	seed := mapRunSeed(plan)
-	// A plan that requests no map_type resolves the stable street-map style;
-	// only map_type=random samples the basemap palette. Camera and label always
-	// sample the item slot so several maps in one video differ.
+	// A plan that requests no map_type resolves the classic Python satellite
+	// map (esri_sat); only map_type=random samples the 3-style classic
+	// palette. Camera and label always sample the item slot so several maps
+	// in one video differ.
 	want := map[string]string{
-		"basemap":          "esri_street",
+		"basemap":          "esri_sat",
 		"camera_animation": deterministicMapStyle(seed, "map_camera", "map-1", mapCameraAnimations),
 		"label_animation":  deterministicMapStyle(seed, "map_label", "map-1", mapLabelAnimations),
 	}
@@ -318,6 +336,146 @@ func TestRenderDynamicMapVideoMapPresentationIsDeterministicPerItem(t *testing.T
 		}
 	}
 	t.Fatalf("captured basemap %q is outside the certified palette %v", basemap, mapBasemapStyles())
+}
+
+// TestResolveMapBasemapDefaultsToClassicSatellite pins the runtime map-type
+// contract: omission means the classic Python satellite map, explicit ids win
+// verbatim, random samples only the 3-style classic palette, and unknown ids
+// fail closed.
+func TestResolveMapBasemapDefaultsToClassicSatellite(t *testing.T) {
+	for _, tc := range []struct{ in, want string }{
+		{"", "esri_sat"}, {"satellite", "esri_sat"},
+		{"roadmap", "esri_street"}, {"terrain", "esri_topo"},
+		{"ROADMAP", "esri_street"},
+	} {
+		if got, err := resolveMapBasemap(tc.in, "seed", "map-1"); err != nil || got != tc.want {
+			t.Fatalf("resolveMapBasemap(%q) = %q, %v; want %q", tc.in, got, err, tc.want)
+		}
+	}
+	got, err := resolveMapBasemap("random", "seed-a", "map-1")
+	if err != nil {
+		t.Fatalf("resolveMapBasemap(random): %v", err)
+	}
+	allowed := map[string]bool{"esri_sat": true, "esri_street": true, "esri_topo": true}
+	if !allowed[got] {
+		t.Fatalf("random basemap = %q, want one of the 3 classic styles", got)
+	}
+	if _, err := resolveMapBasemap("neon_cyber", "seed", "map-1"); err == nil {
+		t.Fatal("unknown map_type must fail closed")
+	}
+}
+
+// TestResolveMapAnimationRuntimeChoice pins the single-animation-per-runtime
+// contract: an explicit certified id wins verbatim, omission/random samples
+// the calm pool deterministically, and unknown ids fail closed.
+func TestResolveMapAnimationRuntimeChoice(t *testing.T) {
+	if got, err := resolveMapAnimation("steady_hold", "s", "map-1", "map_camera", mapCameraAnimationsCertified(), mapCameraAnimations); err != nil || got != "steady_hold" {
+		t.Fatalf("explicit steady_hold = %q, %v", got, err)
+	}
+	if got, err := resolveMapAnimation("rise_up", "s", "map-1", "map_label", mapLabelAnimationsCertified(), mapLabelAnimations); err != nil || got != "rise_up" {
+		t.Fatalf("explicit rise_up = %q, %v", got, err)
+	}
+	for _, empty := range []string{"", "random", "RANDOM"} {
+		got, err := resolveMapAnimation(empty, "seed-x", "map-1", "map_camera", mapCameraAnimationsCertified(), mapCameraAnimations)
+		if err != nil {
+			t.Fatalf("random camera (%q): %v", empty, err)
+		}
+		want := deterministicMapStyle("seed-x", "map_camera", "map-1", mapCameraAnimations)
+		if got != want {
+			t.Fatalf("random camera (%q) = %q, want pool pick %q", empty, got, want)
+		}
+	}
+	if _, err := resolveMapAnimation("hyper_spin", "s", "map-1", "map_camera", mapCameraAnimationsCertified(), mapCameraAnimations); err == nil {
+		t.Fatal("unknown camera animation must fail closed")
+	}
+	if _, err := resolveMapAnimation("hyper_glow", "s", "map-1", "map_label", mapLabelAnimationsCertified(), mapLabelAnimations); err == nil {
+		t.Fatal("unknown label animation must fail closed")
+	}
+	// New ids are certified in Go and accepted by the Python renderer lists.
+	for _, id := range []string{"signature_dive", "steady_hold", "fast_push"} {
+		found := false
+		for _, c := range mapCameraAnimationsCertified() {
+			if c == id {
+				found = true
+			}
+		}
+		if !found {
+			t.Fatalf("camera certified list dropped %q", id)
+		}
+	}
+	for _, id := range []string{"rise_up", "pop_in", "soft_tracking", "diffuse_city_beacon", "title_top", "badge_side", "huge_center", "small_above", "caption_card", "editorial_serif", "gpin_bubble", "card_glass", "bare_big", "ribbon", "dot_ring", "outline_box"} {
+		found := false
+		for _, c := range mapLabelAnimationsCertified() {
+			if c == id {
+				found = true
+			}
+		}
+		if !found {
+			t.Fatalf("label certified list dropped %q", id)
+		}
+	}
+}
+
+// TestApplyMapPresentationValidatesAnimations pins fail-closed plan
+// compilation for unknown runtime animation ids.
+func TestApplyMapPresentationValidatesAnimations(t *testing.T) {
+	items := []capoverlay.OverlayItem{{ID: "map-1", Map: &capoverlay.MapOverlay{}}}
+	if err := applyMapPresentationToItems(items, "satellite", "steady_hold", "rise_up", "focus_title"); err != nil {
+		t.Fatalf("valid runtime map presentation: %v", err)
+	}
+	if items[0].Params["map_type"] != "satellite" || items[0].Params["map_camera_animation"] != "steady_hold" || items[0].Params["map_label_animation"] != "rise_up" || items[0].Params["map_animation"] != "focus_title" {
+		t.Fatalf("presentation params not projected: %+v", items[0].Params)
+	}
+	if err := applyMapPresentationToItems([]capoverlay.OverlayItem{{ID: "m", Map: &capoverlay.MapOverlay{}}}, "satellite", "nope", "", ""); err == nil {
+		t.Fatal("unknown camera animation must fail at plan compilation")
+	}
+	if err := applyMapPresentationToItems([]capoverlay.OverlayItem{{ID: "m", Map: &capoverlay.MapOverlay{}}}, "satellite", "", "nope", ""); err == nil {
+		t.Fatal("unknown label animation must fail at plan compilation")
+	}
+	if err := applyMapPresentationToItems([]capoverlay.OverlayItem{{ID: "m", Map: &capoverlay.MapOverlay{}}}, "satellite", "", "", "hyper_map"); err == nil {
+		t.Fatal("unknown map composition must fail at plan compilation")
+	}
+	classic := []capoverlay.OverlayItem{{ID: "map-1", Map: &capoverlay.MapOverlay{}}}
+	if err := applyMapPresentationToItems(classic, "satellite", "", "", ""); err != nil {
+		t.Fatalf("empty composition (classic look) must pass: %v", err)
+	}
+	if _, ok := classic[0].Params["map_animation"]; ok {
+		t.Fatal("empty composition must not stamp a map_animation param")
+	}
+}
+
+// TestResolveMapComposition pins the 21-system contract: empty keeps the
+// classic look, random samples deterministically, explicit certified ids win
+// verbatim, unknown ids fail closed.
+func TestResolveMapComposition(t *testing.T) {
+	if got, err := resolveMapComposition("", "seed", "map-1"); err != nil || got != "" {
+		t.Fatalf("empty composition = %q, %v; want classic passthrough", got, err)
+	}
+	if got, err := resolveMapComposition("route_line", "seed", "map-1"); err != nil || got != "route_line" {
+		t.Fatalf("explicit route_line = %q, %v", got, err)
+	}
+	if got, err := resolveMapComposition("ed_iran_glow", "seed", "map-1"); err != nil || got != "ed_iran_glow" {
+		t.Fatalf("explicit ed_iran_glow = %q, %v", got, err)
+	}
+	got, err := resolveMapComposition("random", "seed-x", "map-1")
+	if err != nil {
+		t.Fatalf("random composition: %v", err)
+	}
+	want := deterministicMapStyle("seed-x", "map_composition", "map-1", mapMapAnimationsCertified())
+	if got != want {
+		t.Fatalf("random composition = %q, want pool pick %q", got, want)
+	}
+	if _, err := resolveMapComposition("hyper_map", "seed", "map-1"); err == nil {
+		t.Fatal("unknown map composition must fail closed")
+	}
+	if len(mapMapAnimationsCertified()) != 21 {
+		t.Fatalf("certified compositions = %d, want the 15 systems + 6 GPU editorial scenes", len(mapMapAnimationsCertified()))
+	}
+	for _, retired := range []string{"ed_oil_flows", "ed_routes_clean", "ed_hormuz_focus", "ed_wide_minimal"} {
+		if _, err := resolveMapComposition(retired, "seed", "map-1"); err == nil {
+			t.Errorf("uncertified editorial scene %q must fail closed", retired)
+		}
+	}
 }
 
 // TestMapRunSeedPrefersFingerprintThenPlanIdentity pins the seed precedence: the

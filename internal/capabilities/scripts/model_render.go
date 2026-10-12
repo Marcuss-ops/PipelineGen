@@ -451,6 +451,40 @@ func marshalRenderingGenOverlayPlan(plan capoverlay.OverlayPlan) ([]byte, error)
 		return nil, err
 	}
 	for i, item := range items {
+		// Map pin scope is PipelineGen geocoding metadata used to select and
+		// rank locations. It is not part of RenderingGen's overlay-plan.v1
+		// contract (which deliberately accepts only renderable pin fields), so
+		// keep it on the in-memory plan but omit it from the worker payload.
+		if encodedMap := item["map"]; len(encodedMap) > 0 {
+			var mapWire map[string]json.RawMessage
+			if err := json.Unmarshal(encodedMap, &mapWire); err != nil {
+				return nil, fmt.Errorf("decode item %d map: %w", i, err)
+			}
+			// The geographic glow is consumed only by the dynamic single-map
+			// pre-render path. A map folded into a shared semantic scene is
+			// rendered by RenderingGen's map compiler, whose contract has no
+			// area-glow input.
+			delete(mapWire, "area_glow_radius_km")
+			if encodedPins := mapWire["pins"]; len(encodedPins) > 0 {
+				var pins []map[string]json.RawMessage
+				if err := json.Unmarshal(encodedPins, &pins); err != nil {
+					return nil, fmt.Errorf("decode item %d map pins: %w", i, err)
+				}
+				for _, pin := range pins {
+					delete(pin, "scope")
+				}
+				wirePins, err := json.Marshal(pins)
+				if err != nil {
+					return nil, fmt.Errorf("encode item %d map pins: %w", i, err)
+				}
+				mapWire["pins"] = wirePins
+			}
+			wireMap, err := json.Marshal(mapWire)
+			if err != nil {
+				return nil, fmt.Errorf("encode item %d map: %w", i, err)
+			}
+			item["map"] = wireMap
+		}
 		var durationUS int64
 		if encoded := item["duration_us"]; len(encoded) > 0 {
 			if err := json.Unmarshal(encoded, &durationUS); err != nil {

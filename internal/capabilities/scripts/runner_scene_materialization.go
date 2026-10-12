@@ -509,6 +509,8 @@ func (r *Runner) emitSceneCommit(ctx context.Context, runID string, req Generate
 	}
 	event := NewSceneCommitted(runID, scene, req.SourceLanguage, int64(exec.Attempt))
 	event.SourceText = committedSegmentSourceText(req, scene)
+	event.ExtractEntities = sceneExtractionToggle(req, scene)
+
 	if err := observer.OnSceneCommitted(ctx, event); err != nil {
 		return fmt.Errorf("scene %q commit: %w", scene.ID, err)
 	}
@@ -519,15 +521,48 @@ func (r *Runner) emitSceneCommit(ctx context.Context, runID string, req Generate
 // committed scene. It intentionally never falls back to the generated
 // narration: a missing segment brief remains visible to the enricher as
 // missing evidence instead of silently broadening to the global source.
+func sceneExtractionToggle(req GenerateRequest, scene Scene) scriptpkg.Toggle {
+	segmentToggle := scriptpkg.ToggleDefault
+	matchedByID := false
+	for _, segment := range req.ScriptParams.Segments {
+		if id := strings.TrimSpace(segment.ID); id != "" && id == strings.TrimSpace(scene.ID) {
+			segmentToggle = segment.ExtractEntities
+			matchedByID = true
+			break
+		}
+	}
+	if !matchedByID && scene.Index >= 0 && scene.Index < len(req.ScriptParams.Segments) {
+		segment := req.ScriptParams.Segments[scene.Index]
+		segmentID := strings.TrimSpace(segment.ID)
+		if segmentID == "" || segmentID == strings.TrimSpace(scene.ID) {
+			segmentToggle = segment.ExtractEntities
+		}
+	}
+	if segmentToggle == "" || segmentToggle == scriptpkg.ToggleDefault {
+		return req.ExtractEntities
+	}
+	return segmentToggle
+}
+
+// segmentExtractionExplicitlyEnabled reports whether a payload segment itself
+// opts in. It deliberately does not treat the run-level default as a segment
+// opt-in; this is used only when the run-level toggle is disabled.
+func segmentExtractionExplicitlyEnabled(segment scriptpkg.ScriptSegment) bool {
+	return segment.ExtractEntities == scriptpkg.ToggleEnabled
+}
+
 func committedSegmentSourceText(req GenerateRequest, scene Scene) string {
 	for _, segment := range req.ScriptParams.Segments {
-		if strings.TrimSpace(segment.ID) == strings.TrimSpace(scene.ID) && strings.TrimSpace(segment.SourceText) != "" {
+		if strings.TrimSpace(segment.ID) != "" && strings.TrimSpace(segment.ID) == strings.TrimSpace(scene.ID) && strings.TrimSpace(segment.SourceText) != "" {
 			return strings.TrimSpace(segment.SourceText)
 		}
 	}
 	if scene.Index >= 0 && scene.Index < len(req.ScriptParams.Segments) {
-		if source := strings.TrimSpace(req.ScriptParams.Segments[scene.Index].SourceText); source != "" {
-			return source
+		segment := req.ScriptParams.Segments[scene.Index]
+		if segmentID := strings.TrimSpace(segment.ID); segmentID == "" || segmentID == strings.TrimSpace(scene.ID) {
+			if source := strings.TrimSpace(segment.SourceText); source != "" {
+				return source
+			}
 		}
 	}
 	return ""

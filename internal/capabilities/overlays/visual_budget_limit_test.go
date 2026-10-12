@@ -438,6 +438,21 @@ func TestEditorialOverlayBudgetRetainsValueAndBrandCalloutsWithoutCrowdingExisti
 	}
 }
 
+func TestEditorialOverlayBudgetPreservesPreviouslyBudgetedDateChain(t *testing.T) {
+	chain := OverlayItem{
+		ID: "date-chain", SceneID: "scene-1", Kind: KindPhraseChain,
+		StartMs: 1700, EndMs: 6900, StartUS: 1_700_000, DurationUS: 5_200_000,
+		Params: map[string]any{"chain_count": 2, "chain_segments": []any{
+			map[string]any{"kind": "number", "template_id": "TIMELINE_DATE_CARD", "text": "2025"},
+			map[string]any{"kind": "number", "template_id": "TIMELINE_DATE_CARD", "text": "March 5, 2026"},
+		}},
+	}
+	got, _ := ApplyEditorialOverlayBudgetWithImageLimit([]OverlayItem{chain}, 1, 1, 1)
+	if len(got) != 1 || got[0].ID != chain.ID || got[0].EndMs != 6900 {
+		t.Fatalf("date chain after budget = %+v, want the original chain and full 6900ms tail", got)
+	}
+}
+
 // TestApplyPhraseOverlayBudgetHonoursCallerPhraseLimit covers the non-run-level
 // entry point (RunLevelEditorialBudget=false) with the same payload ceiling.
 func TestApplyPhraseOverlayBudgetHonoursCallerPhraseLimit(t *testing.T) {

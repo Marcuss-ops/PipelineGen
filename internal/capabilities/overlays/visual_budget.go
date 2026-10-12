@@ -121,7 +121,8 @@ func ApplyEditorialOverlayBudgetWithImageLimit(items []OverlayItem, phraseLimit,
 	chartLabelIndices := chartLabelIndices(items)
 	chartBarIndices := chartBarIndices(items)
 	editorialIndices := editorialLabelIndices(items)
-	out := retainOverlayItems(items, imageIndices, phraseIndices, mapIndices, numberIndices, brandIndices, chartBarIndices, chartLabelIndices, editorialIndices)
+	chainIndices := chainItemIndices(items)
+	out := retainOverlayItems(items, imageIndices, phraseIndices, mapIndices, numberIndices, brandIndices, chartBarIndices, chartLabelIndices, editorialIndices, chainIndices)
 	return out, MeasurePhraseOverlayBudgetWithLimit(out, limit)
 }
 
@@ -181,6 +182,20 @@ func editorialLabelIndices(items []OverlayItem) []int {
 	indices := make([]int, 0)
 	for i, item := range items {
 		if item.Params != nil && (item.Params["editorial_role"] == "scene_title" || item.Params["editorial_role"] == "scene_bullet") {
+			indices = append(indices, i)
+		}
+	}
+	return indices
+}
+
+// chainItemIndices keeps chains that already passed the planner's category
+// budgets. A later budget pass (after entity media is attached) must not drop
+// fused dates, metrics, or phrases just because their child categories are
+// represented inside chain_segments instead of the top-level item kind.
+func chainItemIndices(items []OverlayItem) []int {
+	indices := make([]int, 0)
+	for i := range items {
+		if IsChainItemKind(items[i].Kind) {
 			indices = append(indices, i)
 		}
 	}
@@ -278,7 +293,8 @@ func ApplyEditorialOverlayBudgetWithLimit(items []OverlayItem, phraseLimit int) 
 	chartLabelIndices := chartLabelIndices(items)
 	chartBarIndices := chartBarIndices(items)
 	editorialIndices := editorialLabelIndices(items)
-	out := retainOverlayItems(items, imageIndices, phraseIndices, numberIndices, brandIndices, chartBarIndices, chartLabelIndices, editorialIndices)
+	chainIndices := chainItemIndices(items)
+	out := retainOverlayItems(items, imageIndices, phraseIndices, numberIndices, brandIndices, chartBarIndices, chartLabelIndices, editorialIndices, chainIndices)
 	return out, MeasurePhraseOverlayBudgetWithLimit(out, limit)
 }
 

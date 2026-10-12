@@ -101,12 +101,21 @@ var ErrEmptyGeneratedText = errors.New("scriptgeneration: generated narration is
 // ── Document config helper ──────────────────────────────────────────
 
 // EntityExtractionDisabled reports whether the caller explicitly disabled
-// per-scene entity extraction via output.extract_entities=disabled. The
-// incremental VidRush pipeline (entity extraction → provider fan-out) is
-// skipped for such runs; ToggleDefault and ToggleEnabled preserve the
-// canonical always-extract behavior.
+// run-level entity extraction via output.extract_entities=disabled. A segment
+// with extract_entities=enabled may still opt back in independently.
 func (req GenerateRequest) EntityExtractionDisabled() bool {
 	return req.ExtractEntities == scriptpkg.ToggleDisabled
+}
+
+// HasEnabledSegmentEntityExtraction reports whether at least one segment
+// explicitly opts back into entity extraction when the run-level toggle is off.
+func (req GenerateRequest) HasEnabledSegmentEntityExtraction() bool {
+	for _, segment := range req.ScriptParams.Segments {
+		if segmentExtractionExplicitlyEnabled(segment) {
+			return true
+		}
+	}
+	return false
 }
 
 // NeedsSemanticEnrichment reports whether the run has a real downstream
@@ -115,10 +124,10 @@ func (req GenerateRequest) EntityExtractionDisabled() bool {
 // runs do not need VidRush, while explicit entities, scene images, enabled
 // extraction policy, or an active visual media plan do.
 func (req GenerateRequest) NeedsSemanticEnrichment() bool {
-	if req.ExtractEntities == scriptpkg.ToggleDisabled {
+	if req.ExtractEntities == scriptpkg.ToggleDisabled && !req.HasEnabledSegmentEntityExtraction() {
 		return false
 	}
-	if req.ExtractEntities == scriptpkg.ToggleEnabled || req.GenerateSceneImages == scriptpkg.ToggleEnabled {
+	if req.HasEnabledSegmentEntityExtraction() || req.ExtractEntities == scriptpkg.ToggleEnabled || req.GenerateSceneImages == scriptpkg.ToggleEnabled {
 		return true
 	}
 	if req.MediaPlan.Extraction.EntityImageSurfaceEnabled() ||

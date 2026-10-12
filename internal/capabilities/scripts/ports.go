@@ -159,6 +159,9 @@ type VoiceoverInput struct {
 	// pipeline so the required/best-effort fail-closed semantics are
 	// honoured end-to-end.
 	Timing *audio.TimingRequest
+	// ForceSynthesis bypasses the cross-run voiceover cache for an explicit
+	// force_refresh generation request.
+	ForceSynthesis bool
 }
 
 // VoiceoverGenerator produces audio assets from text.

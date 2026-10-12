@@ -43,23 +43,24 @@ const SemanticSchema = "renderinggen.overlay-plan.v1"
 // It mirrors the semanticPlan struct in RenderingGen's compiler package so
 // changes to either side surface as compile/unmarshal errors immediately.
 type overlayPlan struct {
-	SchemaVersion   string             `json:"schema_version"`
-	PlanID          string             `json:"plan_id"`
-	VideoID         string             `json:"video_id"`
-	Width           int                `json:"width"`
-	Height          int                `json:"height"`
-	FPSNum          int                `json:"fps_num"`
-	FPSDen          int                `json:"fps_den"`
-	DurationMS      int64              `json:"duration_ms,omitempty"`
-	OutputProfileID string             `json:"output_profile_id,omitempty"`
-	Source          *overlaySource     `json:"source,omitempty"`
-	ForegroundScale int                `json:"foreground_scale_percent,omitempty"`
-	SourceFrame     *sourceFrameBlock  `json:"source_frame,omitempty"`
-	Background      *overlayBackground `json:"background,omitempty"`
-	Subtitles       *overlaySubtitles  `json:"subtitles,omitempty"`
-	Watermark       *overlayWatermark  `json:"watermark,omitempty"`
-	Audio           *overlayAudio      `json:"audio,omitempty"`
-	Items           []json.RawMessage  `json:"items"`
+	SchemaVersion     string                      `json:"schema_version"`
+	PlanID            string                      `json:"plan_id"`
+	VideoID           string                      `json:"video_id"`
+	Width             int                         `json:"width"`
+	Height            int                         `json:"height"`
+	FPSNum            int                         `json:"fps_num"`
+	FPSDen            int                         `json:"fps_den"`
+	DurationMS        int64                       `json:"duration_ms,omitempty"`
+	OutputProfileID   string                      `json:"output_profile_id,omitempty"`
+	AnimationPolicies []scriptpkg.AnimationPolicy `json:"animation_policies,omitempty"`
+	Source            *overlaySource              `json:"source,omitempty"`
+	ForegroundScale   int                         `json:"foreground_scale_percent,omitempty"`
+	SourceFrame       *sourceFrameBlock           `json:"source_frame,omitempty"`
+	Background        *overlayBackground          `json:"background,omitempty"`
+	Subtitles         *overlaySubtitles           `json:"subtitles,omitempty"`
+	Watermark         *overlayWatermark           `json:"watermark,omitempty"`
+	Audio             *overlayAudio               `json:"audio,omitempty"`
+	Items             []json.RawMessage           `json:"items"`
 }
 
 type overlaySource struct {

@@ -26,6 +26,28 @@ type translatedNLPOutcome struct {
 	cached   *scriptpkg.SceneAnnotations
 }
 
+// localizedNLPSnapshot freezes only the scene identity, text, and source
+// annotations consumed by computeLocalizedAnnotations. It is created before
+// the parallel TTS branch begins writing voiceover/timing fields.
+func localizedNLPSnapshot(result *GenerateResult) *GenerateResult {
+	if result == nil {
+		return nil
+	}
+	snapshot := &GenerateResult{Scenes: make([]Scene, len(result.Scenes))}
+	for index := range result.Scenes {
+		scene := result.Scenes[index]
+		snapshot.Scenes[index] = Scene{
+			ID: scene.ID, Index: scene.Index, Text: make(map[Language]string, len(scene.Text)),
+			Annotations: scene.Annotations, Entities: scene.Entities,
+			LocalizedAnnotations: scene.LocalizedAnnotations,
+		}
+		for language, text := range scene.Text {
+			snapshot.Scenes[index].Text[language] = text
+		}
+	}
+	return snapshot
+}
+
 // ── Coordinator-side translated-NLP dispatch ──────────────────────────
 // Split out of scene_ready_coordinator.go to keep that file under the
 // godlike/08 max_lines_per_file_strict cap (600). Same package, same behaviour:
@@ -39,9 +61,6 @@ func (c *sceneReadyCoordinator) translatedNLPRequested() bool {
 		return false
 	}
 	extraction := c.req.MediaPlan.Extraction
-	if c.req.EntityExtractionDisabled() {
-		return false
-	}
 	return extraction.EntityExtractionRequested() ||
 		extraction.Includes(mediadomain.ExtractionIncludeImportantPhrases) ||
 		extraction.Includes(mediadomain.ExtractionIncludeImportantWords)
@@ -52,7 +71,7 @@ func (c *sceneReadyCoordinator) translatedNLPRequested() bool {
 // translation/TTS worker: the scene's voiceover can continue while source NER
 // finishes, and the final pass reuses this value instead of calling NER again.
 func (c *sceneReadyCoordinator) localizedNLPForScene(scene Scene, lang Language, text string) (*scriptpkg.SceneAnnotations, error) {
-	if !c.translatedNLPRequested() || lang == c.req.SourceLanguage || strings.TrimSpace(text) == "" {
+	if !c.translatedNLPRequested() || sceneExtractionToggle(c.req, scene) == scriptpkg.ToggleDisabled || lang == c.req.SourceLanguage || strings.TrimSpace(text) == "" {
 		return nil, nil
 	}
 	if err := c.nlpSlots.AcquireCtx(c.ctx); err != nil {
@@ -95,7 +114,7 @@ func (c *sceneReadyCoordinator) localizedNLPForScene(scene Scene, lang Language,
 }
 
 func (c *sceneReadyCoordinator) launchLocalizedNLP(scene Scene, lang Language, text string) {
-	if !c.translatedNLPRequested() || lang == c.req.SourceLanguage || strings.TrimSpace(text) == "" {
+	if !c.translatedNLPRequested() || sceneExtractionToggle(c.req, scene) == scriptpkg.ToggleDisabled || lang == c.req.SourceLanguage || strings.TrimSpace(text) == "" {
 		return
 	}
 	c.nlpWg.Add(1)
@@ -166,6 +185,8 @@ func (r *Runner) computeLocalizedAnnotations(ctx context.Context, req GenerateRe
 	if r == nil || result == nil {
 		return nil, nil
 	}
+	// In the parallel SceneTextReady path result is a detached NLP snapshot;
+	// mutation after this read cannot race with voiceover scene updates.
 	sourceAnnotationsFor := func(sceneIndex int) *scriptpkg.SceneAnnotations {
 		if sourceAnnotations == nil {
 			return result.Scenes[sceneIndex].Annotations
@@ -174,12 +195,9 @@ func (r *Runner) computeLocalizedAnnotations(ctx context.Context, req GenerateRe
 	}
 	extraction := req.MediaPlan.Extraction
 	includeEntities := extraction.EntityExtractionRequested()
-	if req.EntityExtractionDisabled() {
-		includeEntities = false
-	}
 	includePhrases := extraction.Includes(mediadomain.ExtractionIncludeImportantPhrases)
 	includeWords := extraction.Includes(mediadomain.ExtractionIncludeImportantWords)
-	if req.EntityExtractionDisabled() || (!includeEntities && !includePhrases && !includeWords) {
+	if !includeEntities && !includePhrases && !includeWords {
 		return nil, nil
 	}
 
@@ -196,6 +214,9 @@ func (r *Runner) computeLocalizedAnnotations(ctx context.Context, req GenerateRe
 
 	work := make([]translatedNLPWork, 0)
 	for sceneIndex := range result.Scenes {
+		if sceneExtractionToggle(req, result.Scenes[sceneIndex]) == scriptpkg.ToggleDisabled {
+			continue
+		}
 		for _, lang := range langs {
 			if lang == req.SourceLanguage {
 				continue

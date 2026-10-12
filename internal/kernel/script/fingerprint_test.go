@@ -7,6 +7,25 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+func TestOverlayCategoryControlsAffectFingerprintAndAreDeepCopied(t *testing.T) {
+	item := script.GenerationItemV2{OverlayCategories: map[script.OverlayCategory]script.Toggle{script.OverlayCategoryImages: script.ToggleDisabled}}
+	base := script.BuildFingerprint(script.FingerprintInputFromItem(item))
+	item.OverlayCategories[script.OverlayCategoryImages] = script.ToggleEnabled
+	if got := script.BuildFingerprint(script.FingerprintInputFromItem(item)); got == base {
+		t.Fatal("run category toggle did not affect fingerprint")
+	}
+	item.RandomLightLeakOnClipStart = true
+	if got := script.BuildFingerprint(script.FingerprintInputFromItem(item)); got == base {
+		t.Fatal("clip-start light-leak toggle did not affect fingerprint")
+	}
+	segment := script.ScriptSegment{OverlayCategories: map[script.OverlayCategory]script.Toggle{script.OverlayCategoryPhrases: script.ToggleDisabled}}
+	cloned := script.CloneScriptSegments([]script.ScriptSegment{segment})
+	cloned[0].OverlayCategories[script.OverlayCategoryPhrases] = script.ToggleEnabled
+	if segment.OverlayCategories[script.OverlayCategoryPhrases] != script.ToggleDisabled {
+		t.Fatal("segment category map was aliased")
+	}
+}
+
 func TestBuildFingerprint_Deterministic(t *testing.T) {
 	input := script.GenerationFingerprintInput{
 		ContractVersion:     1,
@@ -194,6 +213,62 @@ func TestFingerprintInputFromPlan_WiresPromptVersions(t *testing.T) {
 	assert.Equal(t, "ev1", input.EditorPromptVersion)
 	assert.Equal(t, "qv1", input.QAPromptVersion)
 	assert.Equal(t, 2, input.ContractVersion)
+}
+
+func TestEntityExtractionPoliciesChangeFingerprint(t *testing.T) {
+	item := script.GenerationItemV2{
+		Source: script.SourceSpec{Type: script.SourceText, Topic: "topic"},
+		ScriptParams: script.ScriptSpec{Segments: []script.ScriptSegment{{
+			ID: "scene-1", Topic: "scene", ExtractEntities: script.ToggleDisabled,
+		}}},
+		Output: script.OutputSpec{ExtractEntities: script.ToggleDisabled},
+	}
+	disabled := script.BuildFingerprint(script.FingerprintInputFromItem(item))
+	item.Output.ExtractEntities = script.ToggleEnabled
+	runEnabled := script.BuildFingerprint(script.FingerprintInputFromItem(item))
+	assert.NotEqual(t, disabled, runEnabled, "run-level extraction policy affects downstream outputs")
+
+	item.Output.ExtractEntities = script.ToggleDisabled
+	item.ScriptParams.Segments[0].ExtractEntities = script.ToggleEnabled
+	segmentEnabled := script.BuildFingerprint(script.FingerprintInputFromItem(item))
+	assert.NotEqual(t, disabled, segmentEnabled, "per-segment extraction policy affects downstream outputs")
+
+	plan := script.ResolvedGenerationPlan{
+		ExtractEntities: script.ToggleDisabled,
+		Segments: []script.ScriptSegment{{
+			ID: "scene-1", Topic: "scene", ExtractEntities: script.ToggleDisabled,
+		}},
+	}
+	planDisabled := script.BuildFingerprint(script.FingerprintInputFromPlan(&plan))
+	plan.ExtractEntities = script.ToggleEnabled
+	planRunEnabled := script.BuildFingerprint(script.FingerprintInputFromPlan(&plan))
+	assert.NotEqual(t, planDisabled, planRunEnabled, "resolved-plan fingerprint includes the run toggle")
+	plan.ExtractEntities = script.ToggleDisabled
+	plan.Segments[0].ExtractEntities = script.ToggleEnabled
+	planSegmentEnabled := script.BuildFingerprint(script.FingerprintInputFromPlan(&plan))
+	assert.NotEqual(t, planDisabled, planSegmentEnabled, "resolved-plan fingerprint includes segment overrides")
+
+	legacyDefault := script.GenerationItemV2{
+		Source: script.SourceSpec{Type: script.SourceText, Topic: "topic"},
+	}
+	legacyExplicitDefault := legacyDefault
+	legacyExplicitDefault.Output.ExtractEntities = script.ToggleDefault
+	assert.Equal(t,
+		script.BuildFingerprint(script.FingerprintInputFromItem(legacyDefault)),
+		script.BuildFingerprint(script.FingerprintInputFromItem(legacyExplicitDefault)),
+		"omitted and explicit default preserve legacy fingerprint identity",
+	)
+}
+
+func TestFingerprintInputFromPlanDeepCopiesSegmentSlices(t *testing.T) {
+	plan := script.ResolvedGenerationPlan{Segments: []script.ScriptSegment{{
+		ID: "scene-1", Topic: "scene", ClipIDs: []string{"clip-a"}, StockClipIDs: []string{"clip-stock"},
+	}}}
+	input := script.FingerprintInputFromPlan(&plan)
+	input.Segments[0].ClipIDs[0] = "changed"
+	input.Segments[0].StockClipIDs[0] = "changed"
+	assert.Equal(t, "clip-a", plan.Segments[0].ClipIDs[0])
+	assert.Equal(t, "clip-stock", plan.Segments[0].StockClipIDs[0])
 }
 
 func TestSourceTextVerbatimIsFingerprintInput(t *testing.T) {

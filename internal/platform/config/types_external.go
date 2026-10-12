@@ -24,6 +24,7 @@ type ExternalConfig struct {
 	FfmpegPath                  string   `yaml:"ffmpeg_path" env:"FFMPEG_PATH" default:"ffmpeg"`
 	RustMusclesPath             string   `yaml:"rust_muscles_path" env:"VELOX_RUST_MUSCLES_PATH" default:"bin/pipelinegen-muscles"`
 	RustPhraseImpactPath        string   `yaml:"rust_phrase_impact_path" env:"VELOX_RUST_PHRASE_IMPACT_PATH" default:"bin/phrase_impact"`
+	RustSceneIntelligencePath   string   `yaml:"rust_scene_intelligence_path" env:"VELOX_RUST_SCENE_INTELLIGENCE_PATH" default:"bin/scene_intelligence"`
 	RustVisualNERPath           string   `yaml:"rust_visualner_path" env:"VELOX_RUST_VISUALNER_PATH" default:"bin/visualner"`
 	RustMediaSamplerPath        string   `yaml:"rust_mediasampler_path" env:"VELOX_RUST_MEDIASAMPLER_PATH" default:"bin/mediasampler"`
 	VisualNERBackend            string   `yaml:"visualner_backend" env:"VELOX_VISUALNER_BACKEND" default:"rust"`

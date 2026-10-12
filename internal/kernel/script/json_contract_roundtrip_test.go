@@ -25,7 +25,16 @@ func TestGenerationEnvelopeV2_RoundTripPreservesContract(t *testing.T) {
 				Topic:      "Contract compatibility",
 				SourceText: "Round-trip source text.",
 			},
-			ScriptParams: ScriptSpec{TargetWords: 240, PromptVersion: "v1"},
+			ScriptParams: ScriptSpec{
+				TargetWords: 240, PromptVersion: "v1",
+				Segments: []ScriptSegment{{
+					ID: "scene-a", Topic: "Scene A", ExtractEntities: ToggleDisabled,
+					OverlayCategories: map[OverlayCategory]Toggle{OverlayCategoryImages: ToggleDisabled},
+					SourceText:        "Grounded source text.",
+				}},
+			},
+			OverlayCategories:          map[OverlayCategory]Toggle{OverlayCategoryPhrases: ToggleEnabled},
+			RandomLightLeakOnClipStart: true,
 			Output: OutputSpec{
 				ExtractEntities:     ToggleEnabled,
 				GenerateMetadata:    ToggleDisabled,
@@ -65,6 +74,23 @@ func TestGenerationEnvelopeV2_RoundTripPreservesContract(t *testing.T) {
 	}
 	if !reflect.DeepEqual(original, *decoded) {
 		t.Fatalf("round-trip mismatch:\noriginal=%#v\ndecoded=%#v\njson=%s", original, *decoded, raw)
+	}
+	if !strings.Contains(wire, `"extract_entities":"disabled"`) {
+		t.Fatalf("per-segment extraction override missing from canonical JSON: %s", wire)
+	}
+}
+
+func TestGenerationEnvelopeV2_DecodeRejectsInvalidRunEntityExtractionToggle(t *testing.T) {
+	_, err := DecodeEnvelopeV2(json.RawMessage(`{"version":2,"items":[{"source":{"type":"text","topic":"topic"},"script_params":{"target_words":100},"output":{"extract_entities":"maybe"}}]}`))
+	if err == nil || !strings.Contains(err.Error(), "invalid Toggle string value") {
+		t.Fatalf("invalid run toggle decode error = %v", err)
+	}
+}
+
+func TestGenerationEnvelopeV2_DecodeRejectsInvalidSegmentEntityExtractionToggle(t *testing.T) {
+	_, err := DecodeEnvelopeV2(json.RawMessage(`{"version":2,"items":[{"source":{"type":"text","topic":"topic"},"script_params":{"target_words":100,"segments":[{"topic":"scene","extract_entities":"maybe"}]}}]}`))
+	if err == nil || !strings.Contains(err.Error(), "invalid Toggle string value") {
+		t.Fatalf("invalid segment toggle decode error = %v", err)
 	}
 }
 

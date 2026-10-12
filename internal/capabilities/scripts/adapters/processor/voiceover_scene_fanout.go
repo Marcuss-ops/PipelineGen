@@ -80,7 +80,8 @@ type VoiceoverSceneInput struct {
 	// nil means the canonical defaults apply (best_effort / word / [json]);
 	// required makes the per-item pipeline fail closed on missing/invalid
 	// timing or silence-trim without an edit map.
-	Timing *audio.TimingRequest
+	Timing         *audio.TimingRequest
+	ForceSynthesis bool
 }
 
 // SceneOutcome is the canonical per-scene fanout return shape. Status
@@ -202,9 +203,10 @@ func RunVoiceoverSceneFanout(ctx context.Context, executor voiceover.VoiceoverIt
 			// Silence removal without an edit map would shift those
 			// boundaries, so the batch script path must keep the same
 			// no-trim contract as the durable runner.
-			RemoveSilence: false,
-			Moments:       item.Moments,
-			Timing:        item.Timing,
+			RemoveSilence:  false,
+			Moments:        item.Moments,
+			Timing:         item.Timing,
+			ForceSynthesis: item.ForceSynthesis,
 		}
 
 		// Execute the per-item pipeline (TTS → publish → finalize).

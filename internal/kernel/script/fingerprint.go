@@ -90,6 +90,14 @@ type GenerationFingerprintInput struct {
 	// NOT a canonical no-op).
 	Segments []ScriptSegment `json:"segments"`
 
+	// ExtractEntities is the effective run-level semantic extraction policy.
+	// Omitted/default remains absent from the fingerprint for byte-compatible
+	// legacy identities; explicit enabled/disabled values affect downstream
+	// entity and overlay outputs and therefore must invalidate cache identity.
+	ExtractEntities            Toggle                     `json:"extract_entities,omitempty"`
+	OverlayCategories          map[OverlayCategory]Toggle `json:"overlay_categories,omitempty"`
+	RandomLightLeakOnClipStart bool                       `json:"random_light_leak_on_clip_start,omitempty"`
+
 	// SourceTextVerbatim changes whether the model rewrites segment text.
 	SourceTextVerbatim bool `json:"source_text_verbatim,omitempty"`
 
@@ -190,6 +198,12 @@ func FingerprintInputFromPlan(plan *ResolvedGenerationPlan) GenerationFingerprin
 		PlannerVersion:      plan.PromptProfile,
 		GroundingPolicy:     plan.GroundingPolicy,
 	}
+	switch plan.ExtractEntities {
+	case ToggleEnabled, ToggleDisabled:
+		input.ExtractEntities = plan.ExtractEntities
+	}
+	input.OverlayCategories = CloneOverlayCategories(plan.OverlayCategories)
+	input.RandomLightLeakOnClipStart = plan.RandomLightLeakOnClipStart
 
 	if plan.ClipEvidence != nil {
 		input.ClipIDs = append([]string(nil), plan.ClipEvidence.AcceptedClipIDs...)
@@ -203,7 +217,7 @@ func FingerprintInputFromPlan(plan *ResolvedGenerationPlan) GenerationFingerprin
 	// in-place edits to plan.Segments do not leak into the
 	// BuildFingerprint call chain.
 	if len(plan.Segments) > 0 {
-		input.Segments = append([]ScriptSegment(nil), plan.Segments...)
+		input.Segments = CloneScriptSegments(plan.Segments)
 	}
 	input.SourceTextVerbatim = plan.SourceTextVerbatim
 
@@ -229,20 +243,27 @@ func FingerprintInputFromPlan(plan *ResolvedGenerationPlan) GenerationFingerprin
 // is the canonical input for adapters.BuildItemIdentity.
 func FingerprintInputFromItem(item GenerationItemV2) GenerationFingerprintInput {
 	input := GenerationFingerprintInput{
-		ContractVersion:     2,
-		SourceType:          string(item.Source.Type),
-		Language:            item.Language,
-		Tone:                item.Tone,
-		Style:               item.Style,
-		Guidelines:          item.Source.Guidelines,
-		TargetWords:         item.ScriptParams.TargetWords,
-		Model:               item.Model,
-		PromptVersion:       item.ScriptParams.PromptVersion,
-		EditorPromptVersion: item.ScriptParams.EditorPromptVersion,
-		QAPromptVersion:     item.ScriptParams.QAPromptVersion,
-		PlannerVersion:      item.ScriptParams.PlannerVersion,
-		GroundingPolicy:     item.Source.GroundingPolicy,
-		SourceTextVerbatim:  item.ScriptParams.SourceTextVerbatim,
+		ContractVersion:            2,
+		SourceType:                 string(item.Source.Type),
+		Language:                   item.Language,
+		Tone:                       item.Tone,
+		Style:                      item.Style,
+		Guidelines:                 item.Source.Guidelines,
+		TargetWords:                item.ScriptParams.TargetWords,
+		Model:                      item.Model,
+		PromptVersion:              item.ScriptParams.PromptVersion,
+		EditorPromptVersion:        item.ScriptParams.EditorPromptVersion,
+		QAPromptVersion:            item.ScriptParams.QAPromptVersion,
+		PlannerVersion:             item.ScriptParams.PlannerVersion,
+		GroundingPolicy:            item.Source.GroundingPolicy,
+		SourceTextVerbatim:         item.ScriptParams.SourceTextVerbatim,
+		Segments:                   CloneScriptSegments(item.ScriptParams.Segments),
+		OverlayCategories:          CloneOverlayCategories(item.OverlayCategories),
+		RandomLightLeakOnClipStart: item.RandomLightLeakOnClipStart,
+	}
+	switch item.Output.ExtractEntities {
+	case ToggleEnabled, ToggleDisabled:
+		input.ExtractEntities = item.Output.ExtractEntities
 	}
 
 	if len(item.Source.ClipIDs) > 0 {
@@ -366,8 +387,9 @@ func cloneFingerprintInput(input GenerationFingerprintInput) GenerationFingerpri
 	// Without this, BuildFingerprint's in-place SortClipIDsAndHashes
 	// (or future similar transforms) would mutate the caller's slice.
 	if input.Segments != nil {
-		input.Segments = append([]ScriptSegment(nil), input.Segments...)
+		input.Segments = CloneScriptSegments(input.Segments)
 	}
+	input.OverlayCategories = CloneOverlayCategories(input.OverlayCategories)
 	if input.Intro != nil {
 		input.Intro = CloneFixedSection(input.Intro)
 	}

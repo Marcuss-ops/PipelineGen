@@ -230,43 +230,47 @@ func BuildGenerateRequest(env *scriptpkg.GenerationEnvelopeV2, idempotencyKey st
 	}
 
 	req := GenerateRequest{
-		Model:                 item.Model,
-		Tone:                  item.Tone,
-		Style:                 item.Style,
-		Render:                item.Output.Render,
-		OverlayBackground:     item.OverlayBackground,
-		OverlayStyle:          item.OverlayStyle,
-		MapType:               item.MapType,
-		MapCameraAnimation:    item.MapCameraAnimation,
-		MapLabelAnimation:     item.MapLabelAnimation,
-		PhraseMotions:         append([]string(nil), item.PhraseMotions...),
-		PhraseMotionFamily:    item.PhraseMotionFamily,
-		ImageMotions:          append([]string(nil), item.ImageMotions...),
-		EntityImageMotions:    append([]string(nil), item.EntityImageMotions...),
-		MaxPhraseOverlays:     item.MaxPhraseOverlays,
-		MapsOnly:              item.MapsOnly,
-		MaxMapOverlays:        item.MaxMapOverlays,
-		MaxImageOverlays:      item.MaxImageOverlays,
-		AnimationCounts:       cloneAnimationCounts(item.AnimationCounts),
-		EntityStyleID:         strings.TrimSpace(item.EntityStyleID),
-		DisableNumberOverlays: item.DisableNumberOverlays,
-		DisableRecapOverlays:  item.DisableRecapOverlays,
-		DisableChartOverlays:  item.DisableChartOverlays,
-		IdempotencyKey:        idempotencyKey,
-		ForceRefresh:          env.ForceRefresh,
-		FinalJob:              env.FinalJob,
-		Source:                source,
-		MediaMode:             item.MediaMode,
-		StockBindings:         append([]scriptpkg.StockBindingInput(nil), item.Output.StockBindings...),
-		ScriptParams:          item.ScriptParams,
-		MediaPlan:             item.MediaPlan.Clone(),
-		ExtractEntities:       item.Output.ExtractEntities,
-		GenerateSceneImages:   item.Output.GenerateSceneImages,
-		SourceLanguage:        sourceLang,
-		Languages:             languages,
-		GenerateTimeline:      generateTimeline,
-		Timing:                timing,
-		VoiceoverLanguages:    toLanguages(voiceoverLanguages),
+		Model:                      item.Model,
+		Tone:                       item.Tone,
+		Style:                      item.Style,
+		Render:                     item.Output.Render,
+		OverlayBackground:          item.OverlayBackground,
+		OverlayStyle:               item.OverlayStyle,
+		MapType:                    item.MapType,
+		MapCameraAnimation:         item.MapCameraAnimation,
+		MapLabelAnimation:          item.MapLabelAnimation,
+		MapAnimation:               item.MapAnimation,
+		PhraseMotions:              append([]string(nil), item.PhraseMotions...),
+		PhraseMotionFamily:         item.PhraseMotionFamily,
+		ImageMotions:               append([]string(nil), item.ImageMotions...),
+		EntityImageMotions:         append([]string(nil), item.EntityImageMotions...),
+		AnimationPolicies:          append([]scriptpkg.AnimationPolicy(nil), item.AnimationPolicies...),
+		RandomLightLeakOnClipStart: item.RandomLightLeakOnClipStart,
+		MaxPhraseOverlays:          item.MaxPhraseOverlays,
+		MapsOnly:                   item.MapsOnly,
+		MaxMapOverlays:             item.MaxMapOverlays,
+		MaxImageOverlays:           item.MaxImageOverlays,
+		AnimationCounts:            cloneAnimationCounts(item.AnimationCounts),
+		EntityStyleID:              strings.TrimSpace(item.EntityStyleID),
+		DisableNumberOverlays:      item.DisableNumberOverlays,
+		DisableRecapOverlays:       item.DisableRecapOverlays,
+		DisableChartOverlays:       item.DisableChartOverlays,
+		OverlayCategories:          scriptpkg.CloneOverlayCategories(item.OverlayCategories),
+		IdempotencyKey:             idempotencyKey,
+		ForceRefresh:               env.ForceRefresh,
+		FinalJob:                   env.FinalJob,
+		Source:                     source,
+		MediaMode:                  item.MediaMode,
+		StockBindings:              append([]scriptpkg.StockBindingInput(nil), item.Output.StockBindings...),
+		ScriptParams:               item.ScriptParams,
+		MediaPlan:                  item.MediaPlan.Clone(),
+		ExtractEntities:            item.Output.ExtractEntities,
+		GenerateSceneImages:        item.Output.GenerateSceneImages,
+		SourceLanguage:             sourceLang,
+		Languages:                  languages,
+		GenerateTimeline:           generateTimeline,
+		Timing:                     timing,
+		VoiceoverLanguages:         toLanguages(voiceoverLanguages),
 		Docs: DocumentsConfig{
 			Enabled:   docsEnabled,
 			Languages: toLanguages(docsLanguages),
@@ -300,6 +304,7 @@ func BuildGenerateRequest(env *scriptpkg.GenerationEnvelopeV2, idempotencyKey st
 		// builder derives.
 		ChannelID: item.ChannelID,
 	}
+	req.ScriptParams.Segments = scriptpkg.CloneScriptSegments(item.ScriptParams.Segments)
 	// Channel profile: curated per-channel defaults for the choices this
 	// request left BLANK (subtitles, watermark, overlay style, SFX, mix
 	// policy, phrase-motion pool). Applied BEFORE the editing asset policy so
@@ -367,11 +372,12 @@ func cloneAnimationCounts(src map[string]int) map[string]int {
 	for key, value := range src {
 		dst[key] = value
 	}
-	// Production default: fuse nearby/overlapping overlays (image@10s +
-	// phrase@12s) into one chain item instead of two popups. Explicit
-	// chain_disabled / chain_gap_ms / chain_enabled always win.
-	if dst["chain_disabled"] <= 0 && dst["chain_gap_ms"] <= 0 && dst["chain_enabled"] <= 0 {
-		dst["chain_gap_ms"] = 2500
+	// Production default: fuse same-scene overlays when the empty interval
+	// between them is at most five seconds. Explicit chain_disabled /
+	// chain_gap_ms / chain_enabled always win; the latter enables chaining
+	// with the same five-second default used by the empty configuration.
+	if dst["chain_disabled"] <= 0 && dst["chain_gap_ms"] <= 0 {
+		dst["chain_gap_ms"] = 5000
 	}
 	return dst
 }

@@ -19,6 +19,7 @@ type ProcessSegmentCommand struct {
 	Strategy             string
 	Metadata             map[string]any
 	RemoveSilence        bool
+	ForceSynthesis       bool
 	Timing               *audio.TimingRequest
 	Moments              []audio.MomentQuery
 	Project              string

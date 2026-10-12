@@ -103,6 +103,42 @@ func commit(t *testing.T, c *VidRushIncrementalCoordinator, runID, sceneID strin
 	require.NoError(t, err)
 }
 
+func TestIncrementalCoordinator_SceneExtractionOptOutReturnsFencedEmptyResult(t *testing.T) {
+	enricher := &fakeSegmentEnricher{errs: map[string]error{}}
+	resolver := &fakeSegmentProviderResolver{}
+	coordinator := NewVidRushIncrementalCoordinator(enricher, nil, 4)
+	coordinator.SetSegmentProviderResolver(resolver)
+	event := SceneCommitted{
+		RunID: "run-opt-out", SceneID: "scene-1", SceneIndex: 1,
+		Text: "No enrichment", TextHash: SceneTextHash("No enrichment"),
+		Revision: 1, Language: "en", ExtractEntities: scriptpkg.ToggleDisabled,
+	}
+	require.NoError(t, coordinator.OnSceneCommitted(context.Background(), event))
+	result, err := coordinator.WaitForScene(context.Background(), event.RunID, event.SceneIndex)
+	require.NoError(t, err)
+	assert.Equal(t, event.SceneID, result.SceneID)
+	assert.Equal(t, event.SceneIndex, result.Position)
+	assert.Equal(t, event.TextHash, result.TextHash)
+	assert.Zero(t, enricher.callCount())
+	assert.Zero(t, resolver.callCount())
+	results, err := coordinator.WaitForVidRush(context.Background(), event.RunID)
+	require.NoError(t, err)
+	require.Empty(t, results, "disabled scenes must not leak fence-only placeholders through the barrier")
+}
+
+func TestIncrementalCoordinator_DisabledSceneDoesNotRequireEnricher(t *testing.T) {
+	coordinator := NewVidRushIncrementalCoordinator(nil, nil, 1)
+	event := SceneCommitted{
+		RunID: "run-disabled-without-enricher", SceneID: "scene-0", SceneIndex: 0,
+		Text: "No enrichment", TextHash: SceneTextHash("No enrichment"),
+		ExtractEntities: scriptpkg.ToggleDisabled,
+	}
+	require.NoError(t, coordinator.OnSceneCommitted(context.Background(), event))
+	result, err := coordinator.WaitForScene(context.Background(), event.RunID, event.SceneIndex)
+	require.NoError(t, err)
+	assert.Equal(t, event.SceneID, result.SceneID)
+}
+
 func TestIncrementalCoordinator_EachCommittedSceneProcessedExactlyOnce(t *testing.T) {
 	enricher := &fakeSegmentEnricher{errs: map[string]error{}}
 	coordinator := NewVidRushIncrementalCoordinator(enricher, nil, 4)

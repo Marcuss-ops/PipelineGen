@@ -33,18 +33,23 @@ import (
 // concurrently with TTS without racing the TTS writer. Annotations is a shared
 // read-only pointer: the branch never mutates it.
 type sceneTextSnapshot struct {
-	ID          string
-	Index       int
-	Text        string
-	Annotations *scriptpkg.SceneAnnotations
-	ClipIDs     []string
+	ID              string
+	Index           int
+	Text            string
+	Annotations     *scriptpkg.SceneAnnotations
+	ClipIDs         []string
+	ExtractEntities scriptpkg.Toggle
 }
 
 // snapshotSceneText projects the source-language text (and any pre-existing
 // annotations) of every scene into a lightweight read-only snapshot. It is
 // taken before the concurrent TTS and prepare branches start, so both branches
 // read stable text and the prepare branch never reads the mutable Scene struct.
-func snapshotSceneText(scenes []Scene, language Language) []sceneTextSnapshot {
+func snapshotSceneText(scenes []Scene, language Language, requests ...GenerateRequest) []sceneTextSnapshot {
+	var request GenerateRequest
+	if len(requests) > 0 {
+		request = requests[0]
+	}
 	out := make([]sceneTextSnapshot, 0, len(scenes))
 	for i := range scenes {
 		clipIDs := make([]string, 0, len(scenes[i].Clips)+1)
@@ -56,7 +61,11 @@ func snapshotSceneText(scenes []Scene, language Language) []sceneTextSnapshot {
 		if scenes[i].Clip != nil && scenes[i].Clip.ID != "" {
 			clipIDs = append(clipIDs, scenes[i].Clip.ID)
 		}
-		out = append(out, sceneTextSnapshot{ID: scenes[i].ID, Index: i, Text: scenes[i].Text[language], Annotations: scenes[i].Annotations, ClipIDs: clipIDs})
+		out = append(out, sceneTextSnapshot{
+			ID: scenes[i].ID, Index: i, Text: scenes[i].Text[language],
+			Annotations: scenes[i].Annotations, ClipIDs: clipIDs,
+			ExtractEntities: sceneExtractionToggle(request, scenes[i]),
+		})
 	}
 	return out
 }
@@ -64,9 +73,10 @@ func snapshotSceneText(scenes []Scene, language Language) []sceneTextSnapshot {
 // vidRushPrepareResult carries the computed outputs of the prepare branch,
 // applied to the durable result by the caller after the join.
 type vidRushPrepareResult struct {
-	segments    []scriptpkg.VidRushSegmentResult
-	annotations map[int]*scriptpkg.SceneAnnotations
-	intents     []capabilityoverlay.OverlayIntent
+	segments       []scriptpkg.VidRushSegmentResult
+	annotations    map[int]*scriptpkg.SceneAnnotations
+	disabledScenes map[int]bool
+	intents        []capabilityoverlay.OverlayIntent
 }
 
 // vidRushPrepareOutcome is the channel payload the prepare branch sends back
@@ -102,6 +112,9 @@ func (r *Runner) runVidRushJoinAndPrepare(ctx context.Context, runID string, req
 	if err != nil {
 		return vidRushPrepareResult{}, err
 	}
+	if req.EntityExtractionDisabled() {
+		segments = retainExplicitlyEnabledSegments(req, snapshot, segments)
+	}
 	phraseLimit := req.MediaPlan.Extraction.MaxImportantPhrasesPerSegment
 	includePhrases := req.MediaPlan.Extraction.Includes(mediadomain.ExtractionIncludeImportantPhrases)
 	annotations := computeSegmentEntityAnnotations(snapshot, req.SourceLanguage, segments, phraseLimit, includePhrases, req.MediaPlan.Extraction.ImportantPhrases)
@@ -125,7 +138,9 @@ func (r *Runner) runVidRushJoinAndPrepare(ctx context.Context, runID string, req
 		}
 		sceneTexts := make(map[int]string, len(snapshot))
 		for index, scene := range snapshot {
-			sceneTexts[index] = scene.Text
+			if scene.ExtractEntities != scriptpkg.ToggleDisabled {
+				sceneTexts[index] = scene.Text
+			}
 		}
 		wantMaps := req.MapsOnly || req.AnimationCounts["maps"] > 0 || req.AnimationCounts["one_map"] > 0 || req.AnimationCounts["two_maps"] > 0
 		if err := r.geocodePlaceAnnotations(ctx, geocoded, string(req.SourceLanguage), geocodeOptions{sceneTexts: sceneTexts, mapsOnly: wantMaps}); err != nil {
@@ -140,7 +155,31 @@ func (r *Runner) runVidRushJoinAndPrepare(ctx context.Context, runID string, req
 			return vidRushPrepareResult{}, err
 		}
 	}
-	return vidRushPrepareResult{segments: segments, annotations: annotations, intents: intents}, nil
+	disabledScenes := make(map[int]bool)
+	for _, scene := range snapshot {
+		if scene.ExtractEntities == scriptpkg.ToggleDisabled {
+			disabledScenes[scene.Index] = true
+		}
+	}
+	return vidRushPrepareResult{segments: segments, annotations: annotations, disabledScenes: disabledScenes, intents: intents}, nil
+}
+
+// retainExplicitlyEnabledSegments keeps only incremental results for segments
+// whose explicit enabled override wins over the run-level opt-out.
+func retainExplicitlyEnabledSegments(_ GenerateRequest, snapshot []sceneTextSnapshot, segments []scriptpkg.VidRushSegmentResult) []scriptpkg.VidRushSegmentResult {
+	if len(segments) == 0 {
+		return nil
+	}
+	out := make([]scriptpkg.VidRushSegmentResult, 0, len(segments))
+	for _, segment := range segments {
+		for _, scene := range snapshot {
+			if scene.ID == segment.SceneID && scene.ExtractEntities == scriptpkg.ToggleEnabled {
+				out = append(out, segment)
+				break
+			}
+		}
+	}
+	return out
 }
 
 func sourceTraceFromResult(result *GenerateResult) scriptpkg.SourceTrace {
@@ -175,16 +214,46 @@ func sourceTraceFromResult(result *GenerateResult) scriptpkg.SourceTrace {
 // It is shared by both the serial and parallel orchestration paths so the
 // projection contract has exactly one owner.
 func applyVidRushPrepareProjections(result *GenerateResult, prepared vidRushPrepareResult) {
-	if len(prepared.segments) > 0 {
-		result.Entities = aggregateEntityResult(prepared.segments)
+	if result == nil {
+		return
+	}
+	if len(prepared.segments) > 0 || len(prepared.disabledScenes) > 0 {
+		segments := make([]scriptpkg.VidRushSegmentResult, 0, len(prepared.segments))
+		for _, segment := range prepared.segments {
+			disabled := prepared.disabledScenes[segment.Position]
+			if segment.SceneID != "" {
+				for index := range result.Scenes {
+					if result.Scenes[index].ID == segment.SceneID {
+						disabled = prepared.disabledScenes[index]
+						break
+					}
+				}
+			}
+			if !disabled {
+				segments = append(segments, segment)
+			}
+		}
+		result.Segments = append([]scriptpkg.VidRushSegmentResult(nil), segments...)
+		result.Entities = aggregateEntityResult(segments)
+		if result.Entities == nil {
+			result.Artifacts = nil
+		} else {
+			result.Artifacts = &GenerateArtifacts{Entities: result.Entities}
+		}
 		for idx, ann := range prepared.annotations {
 			if idx >= 0 && idx < len(result.Scenes) {
 				result.Scenes[idx].Annotations = ann
 			}
 		}
-		applySegmentEntityResults(result, prepared.segments)
+		applySegmentEntityResults(result, segments)
 	}
-	projectEntityCompatibility(result, prepared.segments)
+	for index := range prepared.disabledScenes {
+		if index >= 0 && index < len(result.Scenes) {
+			result.Scenes[index].Annotations = nil
+			result.Scenes[index].Entities = nil
+			result.Scenes[index].EntityOverlayRequired = false
+		}
+	}
 	result.OverlayIntents = prepared.intents
 }
 
@@ -199,6 +268,9 @@ func applyVidRushPrepareProjections(result *GenerateResult, prepared vidRushPrep
 func computeSegmentEntityAnnotations(snapshot []sceneTextSnapshot, language Language, segments []scriptpkg.VidRushSegmentResult, phraseLimit int, includePhrases bool, requestedPhraseSets ...[]string) map[int]*scriptpkg.SceneAnnotations {
 	annotations := make(map[int]*scriptpkg.SceneAnnotations)
 	for _, s := range snapshot {
+		if s.ExtractEntities == scriptpkg.ToggleDisabled {
+			continue
+		}
 		if s.Annotations != nil {
 			annotations[s.Index] = s.Annotations
 		}
@@ -216,7 +288,7 @@ func computeSegmentEntityAnnotations(snapshot []sceneTextSnapshot, language Lang
 				idx, ok = seg.Position, true
 			}
 		}
-		if !ok {
+		if !ok || snapshot[idx].ExtractEntities == scriptpkg.ToggleDisabled {
 			continue
 		}
 		text := strings.TrimSpace(snapshot[idx].Text)
@@ -236,11 +308,17 @@ func computeSegmentEntityAnnotations(snapshot []sceneTextSnapshot, language Lang
 		// scene; entity spans remain blocked.
 		corpus := make([]string, 0, len(snapshot))
 		for _, scene := range snapshot {
+			if scene.ExtractEntities == scriptpkg.ToggleDisabled {
+				continue
+			}
 			if text := strings.TrimSpace(scene.Text); text != "" {
 				corpus = append(corpus, text)
 			}
 		}
 		for _, scene := range snapshot {
+			if scene.ExtractEntities == scriptpkg.ToggleDisabled {
+				continue
+			}
 			text := strings.TrimSpace(scene.Text)
 			if text == "" {
 				continue
@@ -255,6 +333,9 @@ func computeSegmentEntityAnnotations(snapshot []sceneTextSnapshot, language Lang
 	}
 	if len(requestedPhraseSets) > 0 {
 		for _, scene := range snapshot {
+			if scene.ExtractEntities == scriptpkg.ToggleDisabled {
+				continue
+			}
 			text := strings.TrimSpace(scene.Text)
 			if text == "" {
 				continue

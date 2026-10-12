@@ -20,15 +20,8 @@ import (
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
-// SISceneRequest is one scene's analysis input.
-type SISceneRequest struct {
-	SceneID      string   `json:"scene_id"`
-	Text         string   `json:"text"`
-	Language     string   `json:"language,omitempty"`
-	VideoStartMS int64    `json:"video_start_ms"`
-	VideoEndMS   int64    `json:"video_end_ms"`
-	Entities     []string `json:"entities,omitempty"`
-}
+// SISceneRequest is the worker-facing alias of the kernel analysis input.
+type SISceneRequest = scriptpkg.SISceneAnalysisInput
 
 // SIAnalysisRequest is the canonical request envelope.
 type SIAnalysisRequest struct {

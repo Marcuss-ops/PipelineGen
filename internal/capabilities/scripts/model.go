@@ -58,13 +58,17 @@ type GenerateRequest struct {
 	ChannelID string `json:"channel_id,omitempty"`
 	// PhraseMotions and ImageMotions are optional payload-selected certified
 	// animation pools. Empty delegates to the complete seeded random catalog.
-	PhraseMotions      []string `json:"phrase_motions,omitempty"`
-	PhraseMotionFamily string   `json:"phrase_motion_family,omitempty"`
-	ImageMotions       []string `json:"image_motions,omitempty"`
-	EntityImageMotions []string `json:"entity_image_motions,omitempty"`
-	MapType            string   `json:"map_type,omitempty"`
-	MapCameraAnimation string   `json:"map_camera_animation,omitempty"`
-	MapLabelAnimation  string   `json:"map_label_animation,omitempty"`
+	PhraseMotions              []string                                       `json:"phrase_motions,omitempty"`
+	PhraseMotionFamily         string                                         `json:"phrase_motion_family,omitempty"`
+	ImageMotions               []string                                       `json:"image_motions,omitempty"`
+	EntityImageMotions         []string                                       `json:"entity_image_motions,omitempty"`
+	AnimationPolicies          []scriptpkg.AnimationPolicy                    `json:"animation_policies,omitempty"`
+	RandomLightLeakOnClipStart bool                                           `json:"random_light_leak_on_clip_start,omitempty"`
+	OverlayCategories          map[scriptpkg.OverlayCategory]scriptpkg.Toggle `json:"overlay_categories,omitempty"`
+	MapType                    string                                         `json:"map_type,omitempty"`
+	MapCameraAnimation         string                                         `json:"map_camera_animation,omitempty"`
+	MapLabelAnimation          string                                         `json:"map_label_animation,omitempty"`
+	MapAnimation               string                                         `json:"map_animation,omitempty"`
 	// MaxPhraseOverlays is the caller-selected run-level ceiling for grounded
 	// phrase overlays, carried verbatim from the envelope item. Zero keeps the
 	// certified default; a positive value is honoured as-is.

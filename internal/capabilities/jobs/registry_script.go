@@ -17,7 +17,7 @@ func registerScriptEntries(r *Registry) {
 	// ArtifactOwnership is unchanged, so ProducesArtifacts (ownership-derived)
 	// and the spine publication path are unaffected — only the terminal
 	// ownership moves (TICKET-CORE-READY-DURABLE-DAG steps 2-4).
-	r.Register(JobPolicy{Completion: CompletionDeclaration{JobType: TypeScriptGenerate, ArtifactOwnership: ArtifactOwnershipWorkerSpine, FinalizationStrategy: FinalizationStrategyCompleteWithArtifactsThenDefer}, Description: "Script generation", Timeout: 60 * time.Minute, DefaultMaxRetries: 2})
+	r.Register(JobPolicy{Completion: CompletionDeclaration{JobType: TypeScriptGenerate, ArtifactOwnership: ArtifactOwnershipWorkerSpine, FinalizationStrategy: FinalizationStrategyCompleteWithArtifactsThenDefer}, Description: "Script generation", Timeout: 3 * time.Hour, DefaultMaxRetries: 2})
 	r.Register(JobPolicy{Completion: CompletionDeclaration{JobType: TypeMediaCurate, ArtifactOwnership: ArtifactOwnershipNone, FinalizationStrategy: FinalizationStrategyLegacyComplete}, Description: "Media curation", Timeout: 30 * time.Minute, DefaultMaxRetries: 1})
 
 	// Step 11B sibling types (script.generate -> voiceover / image fan-out).
