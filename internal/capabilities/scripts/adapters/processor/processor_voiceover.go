@@ -315,13 +315,14 @@ func (p *VoiceoverProcessor) Process(ctx context.Context, plan *scriptpkg.Resolv
 					zap.String("voiceover_group", plan.VoiceoverGroup))
 			}
 			items = append(items, VoiceoverSceneInput{
-				SceneIndex:  i,
-				Text:        sceneText,
-				Voice:       p.voices[language],
-				Filename:    filename,
-				Destination: dest,
-				Moments:     momentQueriesFromAnnotations(scene.Annotations),
-				Timing:      plan.Timing,
+				SceneIndex:     i,
+				Text:           sceneText,
+				Voice:          p.voices[language],
+				Filename:       filename,
+				Destination:    dest,
+				Moments:        momentQueriesFromAnnotations(scene.Annotations),
+				Timing:         plan.Timing,
+				ForceSynthesis: plan.ForceRefresh,
 			})
 		}
 

@@ -139,6 +139,18 @@ type SIEntityRelation struct {
 	EvidenceSentenceIDs []int  `json:"evidence_sentence_ids"`
 }
 
+// SISceneAnalysisInput is the kernel-owned request boundary shared by the
+// optional Scene Intelligence worker and capability runner. Video windows are
+// playback time (milliseconds), distinct from historical event years.
+type SISceneAnalysisInput struct {
+	SceneID      string   `json:"scene_id"`
+	Text         string   `json:"text"`
+	Language     string   `json:"language,omitempty"`
+	VideoStartMS int64    `json:"video_start_ms"`
+	VideoEndMS   int64    `json:"video_end_ms"`
+	Entities     []string `json:"entities,omitempty"`
+}
+
 // SISceneSignals bundles one scene's signals.
 type SISceneSignals struct {
 	SceneID        string             `json:"scene_id"`

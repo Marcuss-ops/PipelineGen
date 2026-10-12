@@ -7,8 +7,8 @@ import (
 	"strings"
 	"time"
 
-	capoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/observability"
 	"go.uber.org/zap"
@@ -56,14 +56,26 @@ func (r *Runner) compileAudioOverlayPlan(ctx context.Context, runID string, req 
 	}
 	canvas.ImageMotions = req.ImageMotions
 	canvas.EntityImageMotions = req.EntityImageMotions
+	canvas.AnimationPolicies = req.AnimationPolicies
+	canvas.RandomLightLeakOnClipStart = req.RandomLightLeakOnClipStart
 	canvas.MapType = req.MapType
 	canvas.MapCameraAnimation = req.MapCameraAnimation
 	canvas.MapLabelAnimation = req.MapLabelAnimation
+	canvas.MapAnimation = req.MapAnimation
 	canvas.MaxPhraseOverlays = req.MaxPhraseOverlays
 	canvas.MaxMapOverlays = req.MaxMapOverlays
 	canvas.MapsOnly = req.MapsOnly
 	canvas.MaxImageOverlays = req.MaxImageOverlays
-	canvas.AnimationCounts = req.AnimationCounts
+	canvas.AnimationCounts = cloneAnimationCounts(req.AnimationCounts)
+	canvas.OverlayCategories = scriptpkg.CloneOverlayCategories(req.OverlayCategories)
+	canvas.OverlayCategorySegments = scriptpkg.CloneScriptSegments(req.ScriptParams.Segments)
+	// The current chain wire carries visual segments only; it cannot preserve
+	// per-image sound_effect clips. Keep image overlays separate when per-image
+	// SFX are requested so the established asset resolver can attach one cue to
+	// each image before the plan is queued, rather than silently dropping cues.
+	if req.RandomSFXOnImageOverlay {
+		canvas.AnimationCounts["chain_disabled"] = 1
+	}
 	canvas.EntityStyleID = req.EntityStyleID
 	canvas.DisableNumberOverlays = req.DisableNumberOverlays
 	canvas.DisableRecapOverlays = req.DisableRecapOverlays
@@ -85,15 +97,19 @@ func (r *Runner) compileAudioOverlayPlan(ctx context.Context, runID string, req 
 		return false
 	}
 	if req.RandomSFXOnImageOverlay {
-		plans := []*capoverlay.OverlayPlan{result.OverlayPlan}
-		for _, plan := range result.LocalizedOverlayPlans {
-			plans = append(plans, plan)
-		}
-		if err := attachRandomOverlaySFX(plans); err != nil {
+		if err := attachRandomOverlaySFXToPlan(result.OverlayPlan); err != nil {
 			cause := fmt.Errorf("attach random image-overlay SFX: %w", err)
 			r.failExecutionStep(ctx, exec, step, cause)
 			r.failRunWithRetry(ctx, runID, StageCompilingAudio, cause)
 			return false
+		}
+		for _, plan := range result.LocalizedOverlayPlans {
+			if err := attachRandomOverlaySFXToPlan(plan); err != nil {
+				cause := fmt.Errorf("attach random localized image-overlay SFX: %w", err)
+				r.failExecutionStep(ctx, exec, step, cause)
+				r.failRunWithRetry(ctx, runID, StageCompilingAudio, cause)
+				return false
+			}
 		}
 	}
 	if result.OverlayPlan != nil {

@@ -663,6 +663,33 @@ func TestTranslatedNLPFiltersCategorySelectorsWithoutDroppingValuesFromBroadMode
 	}
 }
 
+func TestTranslatedNLPRunOptOutStillProcessesExplicitlyEnabledSegment(t *testing.T) {
+	ner := &recordingVisualNER{entities: []VisualEntity{{
+		Text: "Marie Curie", Type: scriptpkg.EntityTypePerson, Score: 0.95,
+		Start: 0, End: len("Marie Curie"), Evidence: "Marie Curie",
+	}}}
+	runner := &Runner{vidRushPipeline: &VidRushPipeline{NERPort: ner}}
+	req := translatedNERCoverageRequest()
+	req.ExtractEntities = scriptpkg.ToggleDisabled
+	req.ScriptParams.Segments = []scriptpkg.ScriptSegment{{
+		ID: "scene-0", Topic: "enabled", ExtractEntities: scriptpkg.ToggleEnabled,
+	}}
+	result := &GenerateResult{Scenes: []Scene{{
+		ID: "scene-0", Index: 0, Text: map[Language]string{
+			"en": "source", "it": "Marie Curie ha studiato la radioattività.",
+		},
+	}}}
+	if err := runner.runTranslatedNLP(context.Background(), req, result); err != nil {
+		t.Fatal(err)
+	}
+	if ner.calls != 1 {
+		t.Fatalf("NER calls = %d, want one for the explicitly enabled segment", ner.calls)
+	}
+	if result.Scenes[0].LocalizedAnnotations["it"] == nil {
+		t.Fatal("enabled segment did not receive translated annotations")
+	}
+}
+
 func TestTranslatedNLPDisabledSelectorSkipsNERAndAnnotations(t *testing.T) {
 	ner := &countingTranslatedNER{}
 	runner := &Runner{vidRushPipeline: &VidRushPipeline{NERPort: ner}}

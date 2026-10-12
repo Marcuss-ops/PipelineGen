@@ -181,6 +181,41 @@ func TestRunner_ExtractEntitiesDisabledLeavesResultWithoutEntities(t *testing.T)
 // TestRunner_ExplicitExtractEntitiesStillRunsVidRush guards the opt-in side:
 // an explicit entity consumer runs the enricher exactly once per committed
 // scene and persists the aggregate.
+func TestRunner_SegmentOverridesControlEnrichmentAndProjection(t *testing.T) {
+	runner, repo, _, _, _, _, _ := newTestRunner()
+	enricher := &entitySwitchEnricher{}
+	runner.SetVidRushPipeline(entitySwitchPipeline(enricher))
+
+	req := defaultTestRequest()
+	req.ExtractEntities = scriptpkg.ToggleDisabled
+	req.ScriptParams.Segments = []scriptpkg.ScriptSegment{
+		{ID: "scene-0", Topic: "enabled scene", ExtractEntities: scriptpkg.ToggleEnabled},
+		{ID: "scene-1", Topic: "disabled scene", ExtractEntities: scriptpkg.ToggleDisabled},
+	}
+	runID := "run-segment-extraction-overrides"
+	require.NoError(t, repo.Create(context.Background(), &GenerationRun{
+		ID: runID, Request: req, Status: RunStatusPending, CurrentStage: StageNormalizing,
+	}))
+
+	runner.Execute(context.Background(), runID, req)
+	final := awaitCompletion(t, repo, runID, 5*time.Second)
+	require.NotNil(t, final)
+	require.Equal(t, RunStatusCompleted, final.Status)
+	require.NotNil(t, final.Result)
+	require.NotNil(t, final.Result.Entities, "the explicitly enabled scene must produce an entity aggregate")
+	assert.Equal(t, 1, enricher.callCount(), "only the enabled scene should enter entity enrichment")
+	require.Len(t, final.Result.Scenes, 3)
+	assert.NotNil(t, final.Result.Scenes[0].Entities, "enabled scene must receive entity results")
+	assert.Nil(t, final.Result.Scenes[1].Entities, "disabled scene must not receive entity results")
+	assert.Nil(t, final.Result.Scenes[1].Annotations, "disabled scene must not retain entity annotations")
+	assert.Nil(t, final.Result.Scenes[1].VidRush, "disabled scene must not expose its internal barrier placeholder")
+	assert.Nil(t, final.Result.Scenes[2].Entities, "unmatched scene must inherit the disabled run policy")
+	assert.Nil(t, final.Result.Scenes[2].Annotations, "unmatched scene must not retain entity annotations")
+	assert.Nil(t, final.Result.Scenes[2].VidRush, "unmatched scene must not expose its internal barrier placeholder")
+	assert.Len(t, final.Result.Segments, 1, "only the enabled segment's semantic result should be durable")
+	assert.Equal(t, "scene-0", final.Result.Segments[0].SceneID)
+}
+
 func TestRunner_ExplicitExtractEntitiesStillRunsVidRush(t *testing.T) {
 	runner, repo, _, _, _, _, _ := newTestRunner()
 	enricher := &entitySwitchEnricher{}
@@ -201,6 +236,24 @@ func TestRunner_ExplicitExtractEntitiesStillRunsVidRush(t *testing.T) {
 	assert.Equal(t, len(defaultTestScenes()), enricher.callCount(), "each committed scene enriched exactly once")
 }
 
+func TestGenerateRequest_SceneExtractionToggleUsesStableIdentity(t *testing.T) {
+	req := GenerateRequest{
+		ExtractEntities: scriptpkg.ToggleDisabled,
+		ScriptParams: scriptpkg.ScriptSpec{Segments: []scriptpkg.ScriptSegment{
+			{ID: "scene-1", Topic: "first", ExtractEntities: scriptpkg.ToggleEnabled},
+			{ID: "scene-2", Topic: "second", ExtractEntities: scriptpkg.ToggleDisabled},
+		}},
+	}
+	assert.Equal(t, scriptpkg.ToggleEnabled, sceneExtractionToggle(req, Scene{ID: "scene-1", Index: 1}), "stable matching ID wins over an unrelated positional segment")
+	assert.Equal(t, scriptpkg.ToggleDisabled, sceneExtractionToggle(req, Scene{ID: "scene-generated", Index: 0}), "a non-empty mismatched positional ID cannot leak another segment policy")
+
+	legacy := GenerateRequest{
+		ExtractEntities: scriptpkg.ToggleDisabled,
+		ScriptParams:    scriptpkg.ScriptSpec{Segments: []scriptpkg.ScriptSegment{{Topic: "legacy", ExtractEntities: scriptpkg.ToggleEnabled}}},
+	}
+	assert.Equal(t, scriptpkg.ToggleEnabled, sceneExtractionToggle(legacy, Scene{ID: "scene-0", Index: 0}), "ID-less legacy segment resolves by position")
+}
+
 func TestGenerateRequest_NeedsSemanticEnrichment(t *testing.T) {
 	plain := GenerateRequest{}
 	assert.False(t, plain.NeedsSemanticEnrichment(), "no semantic consumer must skip VidRush")
@@ -218,5 +271,15 @@ func TestGenerateRequest_NeedsSemanticEnrichment(t *testing.T) {
 	assert.False(t, GenerateRequest{
 		ExtractEntities:     scriptpkg.ToggleDisabled,
 		GenerateSceneImages: scriptpkg.ToggleEnabled,
-	}.NeedsSemanticEnrichment(), "explicit disable must win")
+	}.NeedsSemanticEnrichment(), "explicit disable must win unless an individual segment opts in")
+
+	segmentOverride := GenerateRequest{
+		ExtractEntities: scriptpkg.ToggleDisabled,
+		ScriptParams: scriptpkg.ScriptSpec{Segments: []scriptpkg.ScriptSegment{{
+			ID: "scene-on", Topic: "enabled scene", ExtractEntities: scriptpkg.ToggleEnabled,
+		}}},
+	}
+	assert.True(t, segmentOverride.NeedsSemanticEnrichment(), "enabled segment must opt back in against run-level disable")
+	assert.Equal(t, scriptpkg.ToggleEnabled, sceneExtractionToggle(segmentOverride, Scene{ID: "scene-on", Index: 0}), "scene ID selector preserves enabled override")
+	assert.Equal(t, scriptpkg.ToggleDisabled, sceneExtractionToggle(segmentOverride, Scene{ID: "scene-off", Index: 1}), "unmatched scene inherits the disabled run default")
 }

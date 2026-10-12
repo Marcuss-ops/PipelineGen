@@ -133,6 +133,10 @@ func attachRandomOverlaySFX(plans []*capoverlay.OverlayPlan) error {
 	return attachRandomOverlaySFXFromAssets(plans, assets)
 }
 
+func attachRandomOverlaySFXToPlan(plan *capoverlay.OverlayPlan) error {
+	return attachRandomOverlaySFX([]*capoverlay.OverlayPlan{plan})
+}
+
 func attachRandomOverlaySFXFromAssets(plans []*capoverlay.OverlayPlan, assets []randomOverlaySFXAsset) error {
 	if len(assets) == 0 {
 		return fmt.Errorf("random overlay SFX asset set is empty")

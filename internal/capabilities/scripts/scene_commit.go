@@ -34,6 +34,9 @@ type SceneCommitted struct {
 	// ExecutionMode carries the canonical scene authorization policy through
 	// the incremental boundary. Empty is backward-compatible generated mode.
 	ExecutionMode scriptpkg.SceneExecutionMode `json:"execution_mode,omitempty"`
+	// ExtractEntities is the per-scene extraction override. default inherits
+	// the run-level output toggle; disabled skips this scene's enrichment.
+	ExtractEntities scriptpkg.Toggle `json:"extract_entities,omitempty"`
 
 	// SemanticProfile is populated by the canonical segment-understanding
 	// stage when the event is emitted. It is optional for compatibility with

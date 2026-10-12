@@ -4,6 +4,10 @@ import json
 import os
 import sys
 
+from edge_tts_bridge.compat import apply_edge_tts_compat
+
+apply_edge_tts_compat()
+
 from edge_tts import Communicate
 
 from edge_tts_bridge.boundaries import boundary_line, remove_partials

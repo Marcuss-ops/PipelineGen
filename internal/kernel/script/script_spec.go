@@ -14,11 +14,17 @@ package script
 // ScriptSpec.Segments is the SOLE canonical owner;
 // SourceSpec and Item layers consume via generator-normalizer copies.
 type ScriptSegment struct {
-	ID         string   `json:"id,omitempty"`
-	Kind       string   `json:"kind,omitempty"`
-	Topic      string   `json:"topic"`
-	SourceText string   `json:"source_text,omitempty"`
-	ClipIDs    []string `json:"clip_ids,omitempty"`
+	ID   string `json:"id,omitempty"`
+	Kind string `json:"kind,omitempty"`
+	// ExtractEntities overrides the run-level extraction toggle for this
+	// scene. default/omitted inherits output.extract_entities.
+	ExtractEntities Toggle   `json:"extract_entities,omitempty"`
+	// OverlayCategories overrides visual category enablement for this scene.
+	// default/omitted inherits the GenerationItemV2 setting.
+	OverlayCategories map[OverlayCategory]Toggle `json:"overlay_categories,omitempty"`
+	Topic           string   `json:"topic"`
+	SourceText      string   `json:"source_text,omitempty"`
+	ClipIDs         []string `json:"clip_ids,omitempty"`
 	// StockClipIDs marks, per clip, the clip_ids owned by this segment that
 	// are used AS STOCK: the clip's original audio joins the generated
 	// voiceover mix at full original volume, while its video is never

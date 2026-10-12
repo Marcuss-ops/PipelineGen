@@ -12,6 +12,10 @@ package scriptgeneration
 
 import (
 	"sort"
+	"strconv"
+	"strings"
+	"unicode"
+	"unicode/utf8"
 
 	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
@@ -25,7 +29,9 @@ type SIProjectionConfig struct {
 
 // SI SceneProjection is one scene's saved shadow signals.
 type SISceneProjection struct {
-	SceneID string
+	SceneID      string
+	VideoStartMS int64
+	VideoEndMS   int64
 	// VisualBudget is the density hint for Visual Admission ("low" means
 	// few simultaneous overlays on a cognitively dense scene).
 	VisualBudget string
@@ -95,6 +101,171 @@ func ProjectSceneIntelligence(m *scriptpkg.SceneIntelligenceManifest, cfg SIProj
 		return nil
 	}
 	return out
+}
+
+// ProjectGroundedSceneIntelligence projects only scene signals whose claims
+// are verbatim-grounded in the request text and whose owning scene has a
+// certified positive playback window. Evidence sentence indices are bounded
+// by the scene's sentence index; no temporal event without a span in its
+// indexed narration sentence can become a timeline candidate.
+func ProjectGroundedSceneIntelligence(m *scriptpkg.SceneIntelligenceManifest, cfg SIProjectionConfig, inputs []scriptpkg.SISceneAnalysisInput, recapScenes map[string]bool) []SISceneProjection {
+	if !cfg.Enabled || m == nil || m.Validate() != nil {
+		return nil
+	}
+	inputByID := make(map[string]scriptpkg.SISceneAnalysisInput, len(inputs))
+	for _, input := range inputs {
+		if strings.TrimSpace(input.SceneID) == "" || input.SceneID != strings.TrimSpace(input.SceneID) || input.VideoStartMS < 0 || input.VideoEndMS <= input.VideoStartMS || strings.TrimSpace(input.Text) == "" {
+			continue
+		}
+		if _, duplicate := inputByID[input.SceneID]; duplicate {
+			return nil // ambiguous canonical scene/window binding fails closed
+		}
+		inputByID[input.SceneID] = input
+	}
+	grounded := &scriptpkg.SceneIntelligenceManifest{
+		SchemaVersion: m.SchemaVersion, AnalyzerVersion: m.AnalyzerVersion,
+		RelationRegistryVersion: m.RelationRegistryVersion,
+	}
+	for _, signal := range m.Scenes {
+		input, ok := inputByID[signal.SceneID]
+		if !ok {
+			continue
+		}
+		filtered := filterGroundedSceneSignals(signal, input.Text)
+		if filtered.SceneID != "" {
+			grounded.Scenes = append(grounded.Scenes, filtered)
+		}
+	}
+	if len(grounded.Scenes) == 0 {
+		return nil
+	}
+	out := ProjectSceneIntelligence(grounded, cfg, recapScenes)
+	for i := range out {
+		input := inputByID[out[i].SceneID]
+		out[i].VideoStartMS, out[i].VideoEndMS = input.VideoStartMS, input.VideoEndMS
+	}
+	return out
+}
+
+func splitGroundingSentences(text string) []string {
+	var sentences []string
+	start := 0
+	for index, r := range text {
+		if r != '.' && r != '!' && r != '?' && r != '\u3002' && r != '\uff01' && r != '\uff1f' {
+			continue
+		}
+		end := index + utf8.RuneLen(r)
+		if sentence := strings.TrimSpace(text[start:end]); sentence != "" {
+			sentences = append(sentences, sentence)
+		}
+		start = end
+		for start < len(text) {
+			next, width := utf8.DecodeRuneInString(text[start:])
+			if !unicode.IsSpace(next) {
+				break
+			}
+			start += width
+		}
+	}
+	if tail := strings.TrimSpace(text[start:]); tail != "" {
+		sentences = append(sentences, tail)
+	}
+	return sentences
+}
+
+func normalizedYearsGrounded(start, end *int, expression string) bool {
+	if start == nil && end == nil {
+		return true
+	}
+	var years []int
+	for _, token := range strings.FieldsFunc(expression, func(r rune) bool { return r < '0' || r > '9' }) {
+		if year, err := strconv.Atoi(token); err == nil {
+			years = append(years, year)
+		}
+	}
+	if start != nil && (len(years) == 0 || years[0] != *start) {
+		return false
+	}
+	if end != nil && (len(years) < 2 || years[1] != *end) {
+		return false
+	}
+	return true
+}
+
+func filterGroundedSceneSignals(signal scriptpkg.SISceneSignals, text string) scriptpkg.SISceneSignals {
+	sentences := splitGroundingSentences(text)
+	maxEvidence := len(sentences)
+	evidenceSentences := func(ids []int) ([]string, bool) {
+		if len(ids) == 0 {
+			return nil, false
+		}
+		selected := make([]string, 0, len(ids))
+		for _, id := range ids {
+			if id < 0 || id >= maxEvidence {
+				return nil, false
+			}
+			selected = append(selected, strings.ToLower(sentences[id]))
+		}
+		return selected, true
+	}
+	termsGroundedInEvidence := func(ids []int, terms ...string) bool {
+		selected, ok := evidenceSentences(ids)
+		if !ok {
+			return false
+		}
+		for _, sentence := range selected {
+			all := true
+			for _, term := range terms {
+				term = strings.ToLower(strings.TrimSpace(term))
+				if term == "" || !strings.Contains(sentence, term) {
+					all = false
+					break
+				}
+			}
+			if all {
+				return true
+			}
+		}
+		return false
+	}
+	filtered := signal
+	filtered.Comparisons = nil
+	for _, comparison := range signal.Comparisons {
+		terms := append([]string(nil), comparison.Subjects...)
+		valid := termsGroundedInEvidence(comparison.EvidenceSentenceIDs, terms...)
+		if comparison.Negated {
+			valid = false
+		}
+		if valid {
+			filtered.Comparisons = append(filtered.Comparisons, comparison)
+		}
+	}
+	filtered.Causal = nil
+	for _, relation := range signal.Causal {
+		if !relation.Hypothetical && termsGroundedInEvidence(relation.EvidenceSentenceIDs, relation.Cause, relation.Effect) {
+			filtered.Causal = append(filtered.Causal, relation)
+		}
+	}
+	filtered.Relations = nil
+	for _, relation := range signal.Relations {
+		if termsGroundedInEvidence(relation.EvidenceSentenceIDs, relation.Subject, relation.Object) {
+			filtered.Relations = append(filtered.Relations, relation)
+		}
+	}
+	filtered.TemporalEvents = nil
+	for _, event := range signal.TemporalEvents {
+		span, expression := strings.TrimSpace(event.TextSpan), strings.TrimSpace(event.TemporalExpression)
+		if event.NarrationIndex >= 0 && event.NarrationIndex < maxEvidence && span != "" && expression != "" &&
+			strings.Contains(text, span) && strings.Contains(strings.ToLower(span), strings.ToLower(expression)) &&
+			strings.Contains(strings.ToLower(sentences[event.NarrationIndex]), strings.ToLower(span)) &&
+			normalizedYearsGrounded(event.NormalizedYear, event.NormalizedEndYear, expression) {
+			filtered.TemporalEvents = append(filtered.TemporalEvents, event)
+		}
+	}
+	if strings.TrimSpace(signal.SceneID) == "" || (len(filtered.Comparisons) == 0 && len(filtered.Causal) == 0 && len(filtered.Relations) == 0 && len(filtered.TemporalEvents) == 0) {
+		return scriptpkg.SISceneSignals{}
+	}
+	return filtered
 }
 
 // ── Per-job Scene Intelligence observability report ─────────────────────

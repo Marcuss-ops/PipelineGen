@@ -45,6 +45,11 @@ import sys
 import time
 
 from aiohttp import web
+
+from .compat import apply_edge_tts_compat
+
+apply_edge_tts_compat()
+
 from edge_tts import Communicate
 
 from .boundaries import boundary_line, remove_partials

@@ -58,6 +58,22 @@ func (e *GenerationEnvelopeV2) Validate() error {
 		}
 		item = e.Items[i]
 
+		// Validate tri-state output and segment overrides at the structural
+		// boundary so unknown toggles never degrade into an implicit default.
+		if !validEntityExtractionToggle(item.Output.ExtractEntities) {
+			return &PlanInvalidError{ItemID: item.ID, Details: []string{ref + ": output.extract_entities must be default, enabled, or disabled"}}
+		}
+		if details := validateSegmentEntityExtractionToggles(item.ScriptParams.Segments, ref); len(details) > 0 {
+			return &PlanInvalidError{ItemID: item.ID, Details: details}
+		}
+		if err := ValidateOverlayCategories(item.OverlayCategories); err != nil {
+			return &PlanInvalidError{ItemID: item.ID, Details: []string{ref + ": " + err.Error()}}
+		}
+		for index, segment := range item.ScriptParams.Segments {
+			if err := ValidateOverlayCategories(segment.OverlayCategories); err != nil {
+				return &PlanInvalidError{ItemID: item.ID, Details: []string{ref + ": script_params.segments[" + strconv.Itoa(index) + "]: " + err.Error()}}
+			}
+		}
 		// Universal numeric invariants — every payload must satisfy these
 		// regardless of config, caller, or installation.
 		if details := validateGenerationScriptParams(item.ScriptParams, ref); len(details) > 0 {
@@ -149,6 +165,25 @@ func (e *GenerationEnvelopeV2) Validate() error {
 //
 // Config-dependent limits (max segments, source-text size) remain in the
 // application layer (PayloadValidator) because they vary per installation.
+func validEntityExtractionToggle(toggle Toggle) bool {
+	switch toggle {
+	case "", ToggleDefault, ToggleEnabled, ToggleDisabled:
+		return true
+	default:
+		return false
+	}
+}
+
+func validateSegmentEntityExtractionToggles(segments []ScriptSegment, ref string) []string {
+	var details []string
+	for index, segment := range segments {
+		if !validEntityExtractionToggle(segment.ExtractEntities) {
+			details = append(details, ref+": script_params.segments["+strconv.Itoa(index)+"].extract_entities must be default, enabled, or disabled")
+		}
+	}
+	return details
+}
+
 func validateGenerationScriptParams(sp ScriptSpec, ref string) []string {
 	var d []string
 

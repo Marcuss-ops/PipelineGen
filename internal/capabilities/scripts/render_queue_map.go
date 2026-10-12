@@ -49,9 +49,30 @@ func renderDynamicMapVideo(ctx context.Context, plan capoverlay.OverlayPlan) (st
 	if renderWidth > 1920 || renderHeight > 1080 {
 		renderWidth, renderHeight = 1920, 1080
 	}
+	// Optional per-pin composition extras (subtitle, category, color, value,
+	// unit, photo, location) ride on the map item params keyed by pin id.
+	// Absent extras degrade gracefully in the renderer: compact cards, no
+	// counter row, no photo slot. Never fabricated.
+	pinExtrasByID := map[string]any{}
+	if raw, ok := plan.Items[0].Params["map_pin_extras"]; ok {
+		if typed, ok := raw.(map[string]any); ok {
+			pinExtrasByID = typed
+		}
+	}
 	pins := make([]map[string]any, 0, len(plan.Items[0].Map.Pins))
 	for _, pin := range plan.Items[0].Map.Pins {
-		pins = append(pins, map[string]any{"id": pin.ID, "label": pin.Label, "latitude": pin.Latitude, "longitude": pin.Longitude, "scope": pin.Scope})
+		entry := map[string]any{"id": pin.ID, "label": pin.Label, "latitude": pin.Latitude, "longitude": pin.Longitude, "scope": pin.Scope}
+		if color := strings.TrimSpace(pin.Color); color != "" {
+			entry["color"] = color
+		}
+		if raw, ok := pinExtrasByID[pin.ID].(map[string]any); ok {
+			for _, key := range []string{"subtitle", "category", "color", "value", "unit", "photo", "location"} {
+				if value, ok := raw[key]; ok {
+					entry[key] = value
+				}
+			}
+		}
+		pins = append(pins, entry)
 	}
 	// The camera move, the label accent and the basemap are the map's LOOK. They
 	// are resolved by the pipeline's single deterministic sampler, seeded by the
@@ -71,11 +92,16 @@ func renderDynamicMapVideo(ctx context.Context, plan capoverlay.OverlayPlan) (st
 	}
 	cameraChoice, _ := plan.Items[0].Params["map_camera_animation"].(string)
 	labelChoice, _ := plan.Items[0].Params["map_label_animation"].(string)
-	cameraAnimation, err := resolveMapAnimation(cameraChoice, seed, mapStyleSlot, "map_camera", mapCameraAnimations)
+	cameraAnimation, err := resolveMapAnimation(cameraChoice, seed, mapStyleSlot, "map_camera", mapCameraAnimationsCertified(), mapCameraAnimations)
 	if err != nil {
 		return "", err
 	}
-	labelAnimation, err := resolveMapAnimation(labelChoice, seed, mapStyleSlot, "map_label", mapLabelAnimations)
+	labelAnimation, err := resolveMapAnimation(labelChoice, seed, mapStyleSlot, "map_label", mapLabelAnimationsCertified(), mapLabelAnimations)
+	if err != nil {
+		return "", err
+	}
+	compositionChoice, _ := plan.Items[0].Params["map_animation"].(string)
+	mapAnimation, err := resolveMapComposition(compositionChoice, seed, mapStyleSlot)
 	if err != nil {
 		return "", err
 	}
@@ -88,7 +114,7 @@ func renderDynamicMapVideo(ctx context.Context, plan capoverlay.OverlayPlan) (st
 		_ = os.RemoveAll(tmpDir)
 		return "", fmt.Errorf("dynamic map presentation catalog is empty")
 	}
-	log.Printf("Chronon dynamic map styles selected: seed=%s camera=%s label=%s basemap=%s", seed, cameraAnimation, labelAnimation, basemapStyle)
+	log.Printf("Chronon dynamic map styles selected: seed=%s camera=%s label=%s composition=%s basemap=%s", seed, cameraAnimation, labelAnimation, mapAnimation, basemapStyle)
 	payload := map[string]any{
 		"width": renderWidth, "height": renderHeight,
 		"fps_num": plan.FPSNum, "fps_den": plan.FPSDen,
@@ -96,6 +122,7 @@ func renderDynamicMapVideo(ctx context.Context, plan capoverlay.OverlayPlan) (st
 		"area_glow_radius_km": plan.Items[0].Map.AreaGlowRadiusKM,
 		"camera_animation":    cameraAnimation,
 		"label_animation":     labelAnimation,
+		"map_animation":       mapAnimation,
 		"basemap":             basemapStyle,
 		"typography":          dynamicMapTypography(plan.Items[0].Params),
 	}
@@ -230,14 +257,18 @@ func renderDynamicMapVideo(ctx context.Context, plan capoverlay.OverlayPlan) (st
 	return outputPath, nil
 }
 
+// resolveMapBasemap maps the runtime map_type to the Chronon tile-pyramid
+// basemap id. Empty means the classic Python satellite map (esri_sat, the
+// historic Chronon default): never a random pick and never a decorative
+// color canvas. Only map_type=random samples the 3-style classic palette.
 func resolveMapBasemap(mapType, seed, slot string) (string, error) {
 	switch strings.ToLower(strings.TrimSpace(mapType)) {
-	case "", "roadmap":
+	case "", "satellite":
+		return "esri_sat", nil
+	case "roadmap":
 		return "esri_street", nil
 	case "terrain":
 		return "esri_topo", nil
-	case "satellite":
-		return "esri_sat", nil
 	case "random":
 		return deterministicMapStyle(seed, "map_basemap", slot, mapBasemapStyles()), nil
 	default:
@@ -245,10 +276,19 @@ func resolveMapBasemap(mapType, seed, slot string) (string, error) {
 	}
 }
 
-func resolveMapAnimation(requested, seed, slot, channel string, certified []string) (string, error) {
+// resolveMapAnimation resolves ONE runtime map animation. An explicit
+// certified id wins verbatim (one choice per runtime, applied to every map
+// item by applyMapPresentationToItems). Empty/random samples the restrained
+// random pool deterministically so replays stay byte-identical. Certified
+// holds every id the Python renderer accepts; randomPool is the subset the
+// sampler may pick when the caller chose nothing.
+func resolveMapAnimation(requested, seed, slot, channel string, certified, randomPool []string) (string, error) {
 	requested = strings.TrimSpace(requested)
-	if requested == "" || requested == "random" {
-		selected := deterministicMapStyle(seed, channel, slot, certified)
+	if requested == "" || strings.EqualFold(requested, "random") {
+		if len(randomPool) == 0 {
+			randomPool = certified
+		}
+		selected := deterministicMapStyle(seed, channel, slot, randomPool)
 		if selected == "" {
 			return "", fmt.Errorf("no certified map animation available for %s", channel)
 		}
@@ -321,11 +361,13 @@ func (b *boundedMapRenderOutput) String() string {
 	return string(b.data)
 }
 
-// mapBasemapStyles is the certified palette available when a caller explicitly
-// asks for map_type=random. The default map_type is the stable street-map style.
+// mapBasemapStyles is the classic palette available when a caller explicitly
+// asks for map_type=random: satellite, street and topo only. Decorative
+// canvases (ocean, light/dark gray, natgeo) are never sampled. The default
+// map_type (empty/satellite) is the classic Python satellite map (esri_sat).
 // TestMapBasemapStylesMatchChrononPalette guards cross-repository drift.
 func mapBasemapStyles() []string {
-	return []string{"esri_street", "esri_topo", "esri_sat"}
+	return []string{"esri_sat", "esri_street", "esri_topo"}
 }
 
 // mapCameraAnimations and mapLabelAnimations are the certified presentation
@@ -334,14 +376,62 @@ func mapBasemapStyles() []string {
 // and label_animation against MAP_LABEL_ANIMATIONS). They are only candidate
 // lists: the choice among them belongs to the deterministic sampler below.
 var (
-	// Map camera treatments. Signature Dive starts at a much wider zoom and
-	// reads as a sudden drop on city maps, so it stays out. Tilt Reveal and
-	// Orbit Arrival add pitch/yaw variety through the certified _ShotBuilder
-	// presets (the Python renderer already accepts them); combined with
-	// per-item sampling below, one video holds visibly different map moves.
+	// mapCameraAnimations is the restrained RANDOM pool: four calm moves.
+	// Signature Dive starts at a much wider zoom and reads as a sudden drop
+	// on city maps, so it stays out of the random rotation (it remains an
+	// explicit runtime choice). New moves (steady_hold, fast_push) are
+	// explicit-only for the same reason: the random default must stay calm.
 	mapCameraAnimations = []string{"slow_approach", "wide_context", "tilt_reveal", "orbit_arrival"}
-	mapLabelAnimations  = []string{"gentle_fade", "soft_glow", "clean_fade", "word_soft_fade", "slow_fade", "quiet_bloom", "quick_fade", "silky_fade", "subtle_halo", "cinematic_fade"}
+	// mapLabelAnimations is the restrained RANDOM pool: the ten calm fades.
+	// New label treatments (rise_up, pop_in, soft_tracking) plus the beacon
+	// variant stay explicit-only so the random default never surprises.
+	mapLabelAnimations = []string{"gentle_fade", "soft_glow", "clean_fade", "word_soft_fade", "slow_fade", "quiet_bloom", "quick_fade", "silky_fade", "subtle_halo", "cinematic_fade"}
 )
+
+// mapCameraAnimationsCertified lists every camera id the Python renderer
+// accepts, including explicit-only choices. resolveMapAnimation validates
+// against this list; the random sampler draws from mapCameraAnimations.
+func mapCameraAnimationsCertified() []string {
+	return []string{"slow_approach", "wide_context", "tilt_reveal", "orbit_arrival", "signature_dive", "steady_hold", "fast_push"}
+}
+
+// resolveMapComposition resolves ONE cartographic motion-graphic system.
+// Empty means the classic camera+label look (no composition); "random"
+// samples the 23 systems deterministically; an explicit certified id wins
+// verbatim. Unknown ids fail closed.
+func resolveMapComposition(requested, seed, slot string) (string, error) {
+	requested = strings.TrimSpace(requested)
+	if requested == "" {
+		return "", nil
+	}
+	if strings.EqualFold(requested, "random") {
+		selected := deterministicMapStyle(seed, "map_composition", slot, mapMapAnimationsCertified())
+		if selected == "" {
+			return "", fmt.Errorf("no certified map composition available")
+		}
+		return selected, nil
+	}
+	for _, candidate := range mapMapAnimationsCertified() {
+		if requested == candidate {
+			return requested, nil
+		}
+	}
+	return "", fmt.Errorf("unsupported runtime map_animation %q", requested)
+}
+
+// mapMapAnimationsCertified lists every renderer-approved map_animation id:
+// map systems from map_compositions plus the six GPU-certified editorial
+// scenes in map_editorial.MAP_EDITORIAL_SCENES.
+// TestMapCompositionsMatchPython guards cross-repository drift.
+func mapMapAnimationsCertified() []string {
+	return []string{"simple_label", "region_zoom", "bracket_label", "photo_callout", "pulse_marker", "multi_locations", "focus_title", "route_line", "spotlight", "region_fill", "info_card", "vertical_callout", "icon_label", "label_reveal", "global_context", "ed_saudi_base", "ed_iran_glow", "ed_yemen_fill", "ed_yemen_markers", "ed_hormuz_routes", "ed_mocha_tactical"}
+}
+
+// mapLabelAnimationsCertified lists every label id the Python renderer
+// accepts, including explicit-only choices.
+func mapLabelAnimationsCertified() []string {
+	return []string{"gentle_fade", "soft_glow", "clean_fade", "word_soft_fade", "slow_fade", "quiet_bloom", "quick_fade", "silky_fade", "subtle_halo", "cinematic_fade", "diffuse_city_beacon", "rise_up", "pop_in", "soft_tracking", "title_top", "badge_side", "huge_center", "small_above", "caption_card", "editorial_serif", "gpin_bubble", "card_glass", "bare_big", "ribbon", "dot_ring", "outline_box"}
+}
 
 // mapRunSeed is the stable per-run seed for a map's presentation choices. The
 // plan fingerprint is the canonical variant knob — a new fingerprint IS a new

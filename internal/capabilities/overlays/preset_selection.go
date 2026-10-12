@@ -321,7 +321,6 @@ var (
 			"short_phrase_product_masked_heading",
 			"short_phrase_product_scrambled_text",
 			"short_phrase_product_glare_hover",
-			"short_phrase_product_glow_cursor",
 			"short_phrase_product_gradual_blur",
 			"short_phrase_product_shape_blur",
 		},

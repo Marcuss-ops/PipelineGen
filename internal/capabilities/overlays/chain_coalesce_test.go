@@ -16,8 +16,8 @@ func chainFixture(kind, sceneID, text string, startUS, durationUS int64, motion 
 	}
 }
 
-// Without chain keys the legacy path is intact: items pass through untouched.
-// Production enables chaining via cloneAnimationCounts (default 2500ms gap).
+// Without chain keys the legacy direct-call path is intact: items pass through untouched.
+// Production enables chaining via cloneAnimationCounts (default 5000ms gap).
 func TestCoalesceDisabledByDefault(t *testing.T) {
 	items := []OverlayItem{
 		chainFixture("text_phrase", "s1", "alpha", 100_000, 500_000, "motion_a"),
@@ -223,6 +223,63 @@ func TestCoalesceHonorsLimits(t *testing.T) {
 	off := CoalesceChainedOverlays(items, map[string]int{"chain_gap_ms": 1000, "chain_disabled": 1})
 	if len(off) != 4 {
 		t.Fatalf("chain_disabled must keep legacy items")
+	}
+}
+
+// The production default fuses at a five-second empty interval, excludes the
+// first item beyond the boundary, and still respects per-scene isolation.
+func TestCoalesceFiveSecondDefaultBoundary(t *testing.T) {
+	items := []OverlayItem{
+		chainFixture("text_phrase", "s1", "first", 0, 1_000_000, "motion_a"),
+		chainFixture("text_phrase", "s1", "at-boundary", 6_000_000, 1_000_000, "motion_b"),
+		chainFixture("text_phrase", "s1", "beyond-boundary", 12_000_001, 1_000_000, "motion_c"),
+		chainFixture("text_phrase", "s2", "other-scene", 13_000_000, 1_000_000, "motion_d"),
+	}
+	got := CoalesceChainedOverlays(items, map[string]int{"chain_enabled": 1})
+	if len(got) != 3 {
+		t.Fatalf("got %d items, want two-segment chain + two standalone items: %+v", len(got), got)
+	}
+	segments, ok := DecodeChainSegments(got[0].Params)
+	if !ok || len(segments) != 2 || segments[1].Text != "at-boundary" {
+		t.Fatalf("exact 5000ms empty interval must fuse: segments=%+v ok=%t", segments, ok)
+	}
+	if got[1].Text != "beyond-boundary" || got[1].SceneID != "s1" || got[2].SceneID != "s2" {
+		t.Fatalf("items past boundary or across scenes were merged: %+v", got)
+	}
+}
+
+func TestCoalesceClampsConfiguredGapToFiveSeconds(t *testing.T) {
+	items := []OverlayItem{
+		chainFixture("text_phrase", "s1", "first", 0, 1_000_000, "motion_a"),
+		chainFixture("text_phrase", "s1", "second", 6_000_001, 1_000_000, "motion_b"),
+	}
+	got := CoalesceChainedOverlays(items, map[string]int{"chain_gap_ms": 10_000})
+	if len(got) != 2 || IsChainItemKind(got[0].Kind) {
+		t.Fatalf("configured gap above the 5000ms ceiling must not fuse: %+v", got)
+	}
+	got = CoalesceChainedOverlays(items, map[string]int{"chain_gap_ms": int(^uint(0) >> 1)})
+	if len(got) != 2 {
+		t.Fatalf("oversized gap must clamp without overflow, got %+v", got)
+	}
+}
+
+func TestCoalescePreservesAnimationPolicySelectorsAndOverrides(t *testing.T) {
+	first := chainFixture("text_phrase", "s1", "first", 0, 1_000_000, "motion_a")
+	first.GroupID, first.SubgroupID = "group-a", "child-a"
+	first.MotionParams = map[string]any{"enter_frames": 17, "vendor": "payload-owned"}
+	second := chainFixture("text_phrase", "s1", "second", 2_000_000, 1_000_000, "motion_b")
+	second.GroupID, second.SubgroupID = "group-a", "child-b"
+	second.MotionParams = map[string]any{"exit_frames": 9}
+	got := CoalesceChainedOverlays([]OverlayItem{first, second}, map[string]int{"chain_enabled": 1})
+	segments, ok := DecodeChainSegments(got[0].Params)
+	if len(got) != 1 || !ok || len(segments) != 2 {
+		t.Fatalf("expected the two selected animations in one chain: %+v", got)
+	}
+	if segments[0].GroupID != "group-a" || segments[0].SubgroupID != "child-a" || segments[0].MotionParams["vendor"] != "payload-owned" || segments[0].MotionParams["enter_frames"] != 17 {
+		t.Fatalf("first segment lost policy selector/override: %+v", segments[0])
+	}
+	if segments[1].GroupID != "group-a" || segments[1].SubgroupID != "child-b" || segments[1].MotionParams["exit_frames"] != 9 {
+		t.Fatalf("second segment lost policy selector/override: %+v", segments[1])
 	}
 }
 

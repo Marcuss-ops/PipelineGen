@@ -39,10 +39,9 @@ type QueueRenderEnqueuer struct {
 	// overlay render path enables it; idempotent callers keep the default
 	// plan-id identity and the ErrJobExists recovery path.
 	freshRender bool
-	// separateItemRenders is enabled by production composition. It changes
-	// the overlay output contract from one full-timeline movie to one short
-	// render per semantic item. Tests keep the legacy default unless they
-	// explicitly opt into the item contract.
+	// separateItemRenders enables one short artifact per semantic overlay item
+	// after nearby items have been fused into chain items. Ordinary overlay plans
+	// must not become a single full-duration video with sparse layers.
 	separateItemRenders bool
 	// itemRenderPool bounds how many per-item overlay renders may be in
 	// flight at once. It exists because the per-item path used to submit a
@@ -92,6 +91,9 @@ type QueueRenderEnqueuer struct {
 // important: sending PipelineGen's old v1 concrete document makes the worker
 // validate it against the v2 schema and fail before Chronon starts.
 func (e *QueueRenderEnqueuer) EnqueueChrononPlan(ctx context.Context, plan capoverlay.OverlayPlan) (RenderReference, error) {
+	// Nearby semantic items have already been coalesced into chain items by the
+	// planner. Render each resulting item/chain as its own short MP4. Rendering
+	// the entire plan here creates one sparse video spanning the full narration.
 	if e != nil && e.separateItemRenders && len(plan.Items) > 0 {
 		return e.enqueueSeparateOverlayItems(ctx, plan)
 	}

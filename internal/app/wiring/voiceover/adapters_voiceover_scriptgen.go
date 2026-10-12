@@ -193,8 +193,9 @@ func (g *ScriptVoiceoverGenerator) Generate(
 		// Do not trim this per-scene asset here: without an edit map the
 		// cleanup would invalidate the canonical timing artifact before the
 		// script runner lowers overlays.
-		RemoveSilence: false,
-		Strategy:      asset.StrategyVerify,
+		RemoveSilence:  false,
+		ForceSynthesis: input.ForceSynthesis,
+		Strategy:       asset.StrategyVerify,
 	}
 	// Destination is the caller-explicit voiceover folder threaded verbatim
 	// from output.voiceover_folder_id through the routing context. When

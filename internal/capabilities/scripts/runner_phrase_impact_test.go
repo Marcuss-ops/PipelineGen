@@ -126,6 +126,88 @@ func histogramSampleCount(t *testing.T, observer prometheus.Observer) uint64 {
 // TestRunnerSurvivesPhraseImpactFailure pins the resilience contract: the
 // extractive summary is an optional data product, so a broken or missing
 // Rust NLP worker must not cost the caller the video.
+type stubSceneIntelligenceAnalyzer struct {
+	manifest *scriptpkg.SceneIntelligenceManifest
+	err      error
+	calls    int
+	last     []scriptpkg.SISceneAnalysisInput
+}
+
+func (s *stubSceneIntelligenceAnalyzer) AnalyzeBatch(_ context.Context, scenes []scriptpkg.SISceneAnalysisInput) (*scriptpkg.SceneIntelligenceManifest, error) {
+	s.calls++
+	s.last = append([]scriptpkg.SISceneAnalysisInput(nil), scenes...)
+	if s.err != nil {
+		return nil, s.err
+	}
+	return s.manifest, nil
+}
+
+func TestRunnerRunsOptionalSceneIntelligenceWithGroundedPlaybackWindows(t *testing.T) {
+	runner, repo, _, _, _, _, _ := newTestRunner()
+	analyzer := &stubSceneIntelligenceAnalyzer{manifest: &scriptpkg.SceneIntelligenceManifest{
+		SchemaVersion:           scriptpkg.SceneIntelligenceManifestVersion,
+		AnalyzerVersion:         scriptpkg.SceneIntelligenceAnalyzerVersion,
+		RelationRegistryVersion: scriptpkg.RelationRegistryVersion,
+		Scenes: []scriptpkg.SISceneSignals{{
+			SceneID: "scene-0", Density: scriptpkg.SIDensity{SceneID: "scene-0", Score: 0.2, SuggestedVisualBudget: "standard"},
+			TemporalEvents: []scriptpkg.SITemporalEvent{{EventID: "event-0000", TextSpan: "First scene text", TemporalExpression: "scene", NarrationIndex: 0}},
+		}},
+	}}
+	runner.SetSceneIntelligenceAnalyzer(analyzer)
+	req := defaultTestRequest()
+	runID := "run-scene-intelligence-grounded-001"
+	require.NoError(t, repo.Create(context.Background(), &GenerationRun{ID: runID, Request: req, Status: RunStatusPending, CurrentStage: StageNormalizing}))
+	runner.Execute(context.Background(), runID, req)
+	final := awaitCompletion(t, repo, runID, 5*time.Second)
+	require.Equal(t, RunStatusCompleted, final.Status)
+	require.NotNil(t, final.Result)
+	require.NotNil(t, final.Result.SceneIntelligence)
+	require.Len(t, analyzer.last, 3)
+	assert.Equal(t, int64(0), analyzer.last[0].VideoStartMS)
+	assert.Equal(t, int64(1000), analyzer.last[0].VideoEndMS)
+	assert.Equal(t, "scene-0", analyzer.last[0].SceneID)
+	require.Len(t, final.Result.SceneIntelligenceProjection, 1)
+	assert.Equal(t, "scene-0", final.Result.SceneIntelligenceProjection[0].SceneID)
+	assert.Equal(t, int64(0), final.Result.SceneIntelligenceProjection[0].VideoStartMS)
+	assert.Equal(t, int64(1000), final.Result.SceneIntelligenceProjection[0].VideoEndMS)
+	assert.False(t, final.Result.SceneIntelligenceProjection[0].TimelineRecipeEligible,
+		"a temporal event without an absolute year cannot create an absolute timeline recipe")
+	assert.Nil(t, final.Result.BulletPoints, "SI must not fabricate or replace legacy editorial products when phrase analysis is unwired")
+}
+
+func TestRunnerRejectsInvalidSceneIntelligenceManifestFailSoft(t *testing.T) {
+	runner, repo, _, _, _, _, _ := newTestRunner()
+	invalid := &scriptpkg.SceneIntelligenceManifest{
+		SchemaVersion: "unknown.v99", AnalyzerVersion: scriptpkg.SceneIntelligenceAnalyzerVersion,
+		RelationRegistryVersion: scriptpkg.RelationRegistryVersion,
+	}
+	analyzer := &stubSceneIntelligenceAnalyzer{manifest: invalid}
+	runner.SetSceneIntelligenceAnalyzer(analyzer)
+	req := defaultTestRequest()
+	runID := "run-scene-intelligence-invalid-001"
+	require.NoError(t, repo.Create(context.Background(), &GenerationRun{ID: runID, Request: req, Status: RunStatusPending, CurrentStage: StageNormalizing}))
+	runner.Execute(context.Background(), runID, req)
+	final := awaitCompletion(t, repo, runID, 5*time.Second)
+	require.Equal(t, RunStatusCompleted, final.Status)
+	require.NotNil(t, final.Result)
+	assert.Nil(t, final.Result.SceneIntelligence, "an invalid worker manifest is discarded rather than persisted")
+	assert.Nil(t, final.Result.SceneIntelligenceProjection)
+}
+
+func TestRunnerSceneIntelligenceFailureIsFailSoft(t *testing.T) {
+	runner, repo, _, _, _, _, _ := newTestRunner()
+	runner.SetSceneIntelligenceAnalyzer(&stubSceneIntelligenceAnalyzer{err: errors.New("SI worker offline")})
+	req := defaultTestRequest()
+	runID := "run-scene-intelligence-offline-001"
+	require.NoError(t, repo.Create(context.Background(), &GenerationRun{ID: runID, Request: req, Status: RunStatusPending, CurrentStage: StageNormalizing}))
+	runner.Execute(context.Background(), runID, req)
+	final := awaitCompletion(t, repo, runID, 5*time.Second)
+	require.Equal(t, RunStatusCompleted, final.Status)
+	require.NotNil(t, final.Result)
+	assert.Nil(t, final.Result.SceneIntelligence)
+	assert.Nil(t, final.Result.SceneIntelligenceProjection)
+}
+
 func TestRunnerSurvivesPhraseImpactFailure(t *testing.T) {
 	runner, repo, _, _, _, _, _ := newTestRunner()
 	runner.SetPhraseImpactAnalyzer(&stubPhraseImpactAnalyzer{err: errors.New("phrase-impact Rust worker is not configured")})

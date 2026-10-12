@@ -42,9 +42,15 @@ lives **inside an item**; there are no top-level shortcut keys.
         "glow_size": 18,
         "stroke_size": 3
       },
-      "map_type": "roadmap",
-      "map_camera_animation": "random",
-      "map_label_animation": "random",
+      "map_type": "satellite",
+      "map_camera_animation": "slow_approach",
+      "map_label_animation": "gentle_fade",
+      "map_animation": "focus_title",
+      "animation_policies": [
+        {"target":"important_phrase","group_id":"scene-1","motion_id":"phrase_apple_clean_07_slide_up_soft"},
+        {"target":"image","group_id":"scene-1","subgroup_id":"hero","motion_id":"image_focus_reveal"}
+      ],
+      "random_light_leak_on_clip_start": true,
       "phrase_motions": ["phrase_apple_clean_07_slide_up_soft"],
       "image_motions": ["image_fade_reveal", "image_focus_reveal"],
       "entity_image_motions": ["image_fade_reveal", "image_scale_reveal"],
@@ -59,7 +65,7 @@ lives **inside an item**; there are no top-level shortcut keys.
 
 `overlay_style` is the run-level visual authority for generated **text**.
 `font_family` accepts `poppins`, `inter`, `inter_bold`, `dejavu_sans`,
-`playfair_display_italic`, or `bricolage_grotesque`; the queue stages the
+`playfair_display_italic`, `bricolage_grotesque`, `oswald`, or `abril_fatface`; the queue stages the
 selected content-addressed font once per family and RenderingGen rejects any
 unbundled selection. `size.font_size` sets text size in pixels; `glow_size`
 accepts `0..256`; `stroke_size` accepts `0..64`. Omit a field to retain the
@@ -76,8 +82,10 @@ composition styles only supply layout, motion, and fallback color.
 - Every per-item block (`source`, `script_params`, `output`, `docs`,
   `audio`, `media_plan`, `overlay_background`, `overlay_style`,
   `map_type`, `map_camera_animation`, `map_label_animation`,
+  `map_animation`,
   `phrase_motions`, `image_motions`, `entity_image_motions`,
-  `phrase_motion_family`, `max_phrase_overlays`,
+  `phrase_motion_family`, `animation_policies`,
+  `random_light_leak_on_clip_start`, `max_phrase_overlays`,
   `video_metadata`, `intro`, `outro`) is optional unless its own
   validator says otherwise (`source` is required).
 
@@ -89,14 +97,133 @@ Retries with the same job identity keep the same selection. Image motions are
 sampled independently per image item. `modern_apple` remains available when a
 payload explicitly wants only that style family.
 
-`map_type` selects one basemap for the run: `roadmap` (default), `terrain`,
-`satellite`, or `random`. Roadmap uses the clean street-map canvas, terrain
-uses topographic tiles, and satellite selects satellite imagery.
-`map_camera_animation` and `map_label_animation` accept certified IDs or
-`random`; omission and `random` select a stable seeded choice for retries.
+`script_params.segments[].extract_entities` optionally overrides the
+item-wide `output.extract_entities` tri-state for that scene. Omitted or
+`"default"` inherits the run value; `"enabled"` explicitly extracts entities
+for that segment (including when the run value is disabled), while
+`"disabled"` skips its source/translated NLP, provider search, materialization,
+and entity overlays. Boolean inputs are accepted for compatibility and are
+normalized to the canonical `"enabled"` / `"disabled"` values. Unknown strings
+fail validation.
+
+```json
+{
+  "version": 2,
+  "items": [{
+    "source": { "type": "text", "topic": "..." },
+    "script_params": { "segments": [
+      {"id":"scene-1", "topic":"person scene", "extract_entities":"enabled"},
+      {"id":"scene-2", "topic":"non-person scene", "extract_entities":"disabled"}
+    ]},
+    "output": {"extract_entities":"disabled"}
+  }]
+}
+```
+
+The segment toggle is an override rather than a second NLP category selector;
+all extractions that run still obey `media_plan.extraction.include` and its
+limits. Segment order/IDs remain part of the content fingerprint, including
+the override values.
+
+Visual overlay categories can also be selected with the item-level
+`overlay_categories` map and overridden per script segment. Supported keys are
+`phrases`, `images`, `numbers`, `quotes`, `brand_text`, `maps`, `charts`,
+`recaps`, `titles`, and `bullets`; values are `default`, `enabled`, or
+`disabled`. Per-scene values inherit the item setting when omitted or
+`default`; with no item setting the existing runtime defaults apply. Segment
+matching uses an explicit scene ID first, then its position when the segment
+has no ID (or the same ID as the generated scene).
+
+`map_type` selects one basemap for the run: `satellite` (default, the
+classic Python satellite map), `roadmap`, `terrain`, or `random`. Satellite
+uses Esri World Imagery, roadmap the clean street-map canvas, terrain
+topographic tiles. `random` samples only this 3-style classic palette
+(never ocean/light/dark/natgeo decorative canvases); omission means
+`satellite`, never a random pick.
+`map_camera_animation` selects ONE camera move for the whole run
+(`slow_approach`, `wide_context`, `tilt_reveal`, `orbit_arrival`,
+`signature_dive`, `steady_hold`, `fast_push`) or `random`; omission and
+`random` select a stable seeded choice from the calm random pool
+(`slow_approach`, `wide_context`, `tilt_reveal`, `orbit_arrival`) so retries
+stay byte-identical. `map_label_animation` works the same way: an explicit
+certified id (`gentle_fade`, `soft_glow`, `clean_fade`, `word_soft_fade`,
+`slow_fade`, `quiet_bloom`, `quick_fade`, `silky_fade`, `subtle_halo`,
+`cinematic_fade`, `diffuse_city_beacon`, `rise_up`, `pop_in`,
+`soft_tracking`, `title_top`, `badge_side`, `huge_center`, `small_above`,
+`caption_card`, `editorial_serif`, `gpin_bubble`, `card_glass`, `bare_big`,
+`ribbon`, `dot_ring`, `outline_box`) pins every map label in the video,
+while omission/`random` samples the ten calm fades. The six geometries use
+their own size/position/typeface; the six compositions (google pin + bubble,
+glass card, naked type, full-width ribbon, minimal dot, wireframe box) also
+hide the bottom rail and draw their own marker. Unknown ids fail closed
+at plan compilation.
+`map_animation` selects ONE of the 15 cartographic motion-graphic systems
+(`simple_label`, `region_zoom`, `bracket_label`, `photo_callout`,
+`pulse_marker`, `multi_locations`, `focus_title`, `route_line`,
+`spotlight`, `region_fill`, `info_card`, `vertical_callout`, `icon_label`,
+`label_reveal`, `global_context`) plus the 8 editorial scenes
+(`ed_saudi_base`, `ed_iran_glow`, `ed_yemen_markers`, `ed_oil_flows`,
+`ed_mocha_tactical`, `ed_routes_clean`, `ed_hormuz_focus`,
+`ed_wide_minimal`); each owns marker + text and suppresses
+the standard rail. Omission and `random` sample the 23 deterministically per
+map item. `multi_locations`,
+`route_line`, `ed_yemen_markers` and `ed_oil_flows` need at least two
+grounded pins or the render fails closed. Editorial scenes draw real
+Natural Earth country borders with modern glow/fill/route primitives;
+conflict zones and route courses are schematic overlays, markers come
+from grounded pins.
+Optional per-pin extras ride on the map item's `map_pin_extras` param keyed
+by pin id (`subtitle`, `category` wind/solar/focus, `color` #RRGGBB,
+`value` + `unit` for the info-card counter, `photo` absolute asset path,
+`location`); absent extras degrade gracefully and are never fabricated.
+Region systems use a circular highlight (no polygon dataset exists);
+the global-context inset is a stylized schematic, not a second real map.
 `phrase_motions`, `image_motions`, and `entity_image_motions` accept arrays of
 certified animation IDs and rotate through the requested pool. Omit an array
-to use a seeded, varied default from that content type's certified catalog.
+to use the existing seeded per-overlay rotation.
+
+Nearby overlay items in the same scene are fused into one chain overlay when
+they overlap or have no more than five seconds of empty timeline between them.
+Chains retain each segment's own text/image/map content and selected motion;
+`animation_counts.chain_gap_ms` can lower the maximum gap and
+`animation_counts.chain_disabled: 1` opts out. RenderingGen lowers the chain as
+one overlay render instead of one MP4 per member.
+
+Use `animation_policies` when one motion should be chosen explicitly for each
+animation group (or subgroup), instead of the planner's normal per-overlay
+rotation. Each entry has `target` (`important_phrase`, `image`, `caption`,
+`date`, or `metric`),
+`group_id`, optional `subgroup_id`, optional `motion_id`, and optional
+`motion_params`. Omit `motion_id` (or provide it as an empty string) to keep the
+group declaration but have the runtime choose one random certified motion for
+all matching items; this choice is seeded and stable on retry. `motion_params`
+requires an explicit `motion_id`. The group selector matches a producer-supplied
+group ID, or a `scene_id` when no explicit group ID exists; an item's ID is the
+default subgroup, and image composite children may specify their own subgroup
+IDs. A subgroup policy takes precedence over a group policy; a matching group
+policy applies to every compatible item in that group. Explicit item/child
+motion IDs remain higher priority. Groups not mentioned by this payload retain
+their existing automatic per-overlay rotation. Motion IDs must be certified for
+their target; `date` applies to `TIMELINE_DATE_CARD` and `metric` to
+`METRIC_STAT_CARD`. Duplicate selectors and invalid timing params fail closed.
+
+`random_light_leak_on_clip_start: true` adds a short certified light-leak
+overlay at the beginning of each real video clip (synthetic freeze tails are
+skipped). Light leaks on image overlays can be selected with an `image` motion
+policy and a `lightleak_*` motion ID. Pair clip-start accents with
+`audio.random_sfx_on_clip_start` for a deterministic whoosh, or use explicit
+`audio.sound_effects` to place a chosen SFX; image overlay SFX remain controlled
+by `audio.random_sfx_on_image_overlay`.
+
+```json
+{
+  "animation_policies": [
+    {"target":"important_phrase", "group_id":"scene-1", "motion_id":"phrase_apple_clean_07_slide_up_soft"},
+    {"target":"image", "group_id":"people", "subgroup_id":"hero", "motion_id":"image_focus_reveal"},
+    {"target":"caption", "group_id":"people"}
+  ]
+}
+```
 
 `max_phrase_overlays` requests the **run-level ceiling** for grounded phrase
 overlays. Zero or omission keeps the certified default of five. Positive values
@@ -185,7 +312,9 @@ segment's `clip_ids` (stock marking never invents clip ownership), entries
 must be non-empty and unique. SSOT:
 `internal/kernel/script/script_spec.go` (`ScriptSegment.StockClipIDs`),
 `internal/kernel/script/generation_source_validation.go`
-(`validateSegmentStockClipIDs`).
+(`validateSegmentStockClipIDs`). The per-scene entity extraction override is
+owned by `ScriptSegment.ExtractEntities` in that same contract and validated
+by `GenerationEnvelopeV2.Validate()` in `generation_validation.go`.
 
 `bindGenerateEnvelope` decodes with **`DisallowUnknownFields`** and
 additionally rejects removed contract keys against the raw body before

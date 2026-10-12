@@ -114,6 +114,35 @@ func TestBuildGenerateRequestCarriesAnimationCounts(t *testing.T) {
 	}
 }
 
+func TestBuildGenerateRequestDefaultsOverlayChainGapToFiveSeconds(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		config string
+		want   int
+	}{
+		{name: "default", want: 5000},
+		{name: "explicit gap wins", config: `,"animation_counts":{"chain_gap_ms":1250}`, want: 1250},
+		{name: "explicit disable wins", config: `,"animation_counts":{"chain_disabled":1}`, want: 0},
+		{name: "explicit enabled uses default gap", config: `,"animation_counts":{"chain_enabled":1}`, want: 5000},
+		{name: "disable dominates enabled", config: `,"animation_counts":{"chain_enabled":1,"chain_disabled":1}`, want: 0},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var env scriptpkg.GenerationEnvelopeV2
+			payload := `{"version":2,"items":[{"title":"chain","language":"en","source":{"type":"text","topic":"topic"}` + tc.config + `}]}`
+			if err := json.Unmarshal([]byte(payload), &env); err != nil {
+				t.Fatal(err)
+			}
+			request, err := BuildGenerateRequest(&env, "chain-default")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := request.AnimationCounts["chain_gap_ms"]; got != tc.want {
+				t.Fatalf("chain_gap_ms = %d, want %d (%#v)", got, tc.want, request.AnimationCounts)
+			}
+		})
+	}
+}
+
 func TestBuildGenerateRequestPropagatesMixedMediaMode(t *testing.T) {
 	env := &scriptpkg.GenerationEnvelopeV2{Version: 2, Items: []scriptpkg.GenerationItemV2{{
 		ID: "mixed-builder", Language: "en", MediaMode: scriptpkg.MediaModeMixed,
@@ -152,6 +181,24 @@ func TestBuildGenerateRequest_ForceRefreshReachesGenerationAndVidRush(t *testing
 	}
 	if !got.MediaPlan.ForceRefreshAssets || !got.MediaPlan.ForceRefreshExtraction || !got.MediaPlan.ForceRefreshBindings {
 		t.Fatalf("force refresh did not reach VidRush media plan: %+v", got.MediaPlan)
+	}
+}
+
+func TestBuildGenerateRequest_PropagatesSegmentEntityExtractionOverrides(t *testing.T) {
+	var env scriptpkg.GenerationEnvelopeV2
+	payload := `{"version":2,"items":[{"source":{"type":"text","topic":"editorial"},"script_params":{"segments":[{"id":"scene-on","topic":"enabled","extract_entities":"enabled"},{"id":"scene-off","topic":"disabled","extract_entities":"disabled"}]},"output":{"extract_entities":"disabled"}}]}`
+	if err := json.Unmarshal([]byte(payload), &env); err != nil {
+		t.Fatal(err)
+	}
+	got, err := BuildGenerateRequest(&env, "segment-extraction")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.ExtractEntities != scriptpkg.ToggleDisabled || len(got.ScriptParams.Segments) != 2 {
+		t.Fatalf("run toggle/segments were not carried: run=%q segments=%+v", got.ExtractEntities, got.ScriptParams.Segments)
+	}
+	if got.ScriptParams.Segments[0].ExtractEntities != scriptpkg.ToggleEnabled || got.ScriptParams.Segments[1].ExtractEntities != scriptpkg.ToggleDisabled {
+		t.Fatalf("segment overrides = %+v", got.ScriptParams.Segments)
 	}
 }
 
@@ -455,7 +502,7 @@ func TestBuildGenerateRequest_CombinedTimelineIsTheOnlyAudioGate(t *testing.T) {
 // []BackgroundMusicIntent.
 func TestBuildGenerateRequest_MapsAudioIntentBlock(t *testing.T) {
 	var env scriptpkg.GenerationEnvelopeV2
-	if err := json.Unmarshal([]byte(`{"version":2,"items":[{"title":"audio-intents","project":"test-project","language":"en",		"source":{"type":"text","topic":"topic"},"output":{"voiceover_enabled":true},"audio":{"mode":"COMBINED_TIMELINE","mix_policy":"voiceover_with_ducked_clip","random_sfx_on_clip_start":true,"random_sfx_on_image_overlay":true,"background_music":{"asset_id":"music_123","start_ms":0,"end":"video_end","loop":true,"gain_db":-24},"sound_effects":[{"asset_id":"whoosh","scene_id":"scene_2","anchor":"end","offset_ms":-300,"gain_db":-8}]}}]}`), &env); err != nil {
+	if err := json.Unmarshal([]byte(`{"version":2,"items":[{"title":"audio-intents","project":"test-project","language":"en",		"source":{"type":"text","topic":"topic"},"random_light_leak_on_clip_start":true,"output":{"voiceover_enabled":true},"audio":{"mode":"COMBINED_TIMELINE","mix_policy":"voiceover_with_ducked_clip","random_sfx_on_clip_start":true,"random_sfx_on_image_overlay":true,"background_music":{"asset_id":"music_123","start_ms":0,"end":"video_end","loop":true,"gain_db":-24},"sound_effects":[{"asset_id":"whoosh","scene_id":"scene_2","anchor":"end","offset_ms":-300,"gain_db":-8}]}}]}`), &env); err != nil {
 		t.Fatal(err)
 	}
 	got, err := BuildGenerateRequest(&env, "audio-intents-key")
@@ -467,6 +514,9 @@ func TestBuildGenerateRequest_MapsAudioIntentBlock(t *testing.T) {
 	}
 	if !got.RandomSFXOnClipStart || !got.RandomSFXOnImageOverlay {
 		t.Fatalf("random SFX opt-ins were dropped from the payload: clip_start=%t image_overlay=%t", got.RandomSFXOnClipStart, got.RandomSFXOnImageOverlay)
+	}
+	if !got.RandomLightLeakOnClipStart {
+		t.Fatal("clip-start light-leak option was dropped from the payload")
 	}
 	if len(got.BackgroundMusic) != 1 {
 		t.Fatalf("BackgroundMusic = %+v, want exactly one entry (single-object wire form must normalize to a slice)", got.BackgroundMusic)

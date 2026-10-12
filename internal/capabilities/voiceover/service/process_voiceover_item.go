@@ -364,18 +364,19 @@ func (u *ProcessVoiceoverItemUseCase) Execute(ctx context.Context, item *Generat
 	// through (mergeUserMetadata in the ProcessSegmentUseCase handles
 	// the user-meta overlay + StyleGroup injection in one place).
 	cmd := &ProcessSegmentCommand{
-		ID:            id,
-		RequestID:     item.RequestID,
-		TextHash:      itemHash,
-		Text:          item.Text,
-		Language:      item.Language,
-		Voice:         item.Voice,
-		Filename:      item.Filename,
-		Strategy:      string(item.Strategy),
-		Metadata:      item.Metadata,
-		RemoveSilence: item.RemoveSilence,
-		Timing:        item.Timing,
-		Moments:       item.Moments,
+		ID:             id,
+		RequestID:      item.RequestID,
+		TextHash:       itemHash,
+		Text:           item.Text,
+		Language:       item.Language,
+		Voice:          item.Voice,
+		Filename:       item.Filename,
+		Strategy:       string(item.Strategy),
+		Metadata:       item.Metadata,
+		RemoveSilence:  item.RemoveSilence,
+		ForceSynthesis: item.ForceSynthesis,
+		Timing:         item.Timing,
+		Moments:        item.Moments,
 		// PR-P12-VOICEOVER-SEMANTIC-FIELDS (July 2026): forward the
 		// canonical semantic project identifier from the per-item command
 		// (API request or internal caller) so the adapter (Stage 3

@@ -65,6 +65,20 @@ func StyleParams(style *scriptpkg.OverlayStyleSpec) map[string]any {
 	if style.StrokeSize != nil {
 		params["stroke_size"] = *style.StrokeSize
 	}
+	if cursor := style.Cursor; cursor != nil {
+		if cursor.Color != "" {
+			params["cursor_color"] = cursor.Color
+		}
+		if cursor.Width != nil {
+			params["cursor_width_px"] = *cursor.Width
+		}
+		if cursor.Height != nil {
+			params["cursor_height_px"] = *cursor.Height
+		}
+		if cursor.Blink != nil {
+			params["cursor_blink"] = *cursor.Blink
+		}
+	}
 	if style.TransitionIn != nil && strings.TrimSpace(style.TransitionIn.Preset) != "" {
 		animation := map[string]any{"preset": style.TransitionIn.Preset}
 		if style.TransitionIn.DurationFrames > 0 {
@@ -87,6 +101,45 @@ func StyleParams(style *scriptpkg.OverlayStyleSpec) map[string]any {
 		}
 		if image.Radius != nil {
 			params["image_radius"] = *image.Radius
+		}
+		if image.Bounded != nil {
+			params["image_bounded"] = *image.Bounded
+		}
+		if image.Fit != "" {
+			params["image_fit"] = image.Fit
+		}
+		if image.Border != nil {
+			params["image_border_width"] = image.Border.Width
+			if image.Border.Color != "" {
+				params["image_border_color"] = image.Border.Color
+			}
+			if image.Border.Radius != nil {
+				params["image_border_radius"] = *image.Border.Radius
+			}
+		}
+		if image.Stroke != nil {
+			params["image_stroke_width"] = image.Stroke.Width
+			if image.Stroke.Color != "" {
+				params["image_stroke_color"] = image.Stroke.Color
+			}
+		}
+		if image.Shadow != nil {
+			params["image_shadow_enabled"] = image.Shadow.Enabled
+			if image.Shadow.Color != "" {
+				params["image_shadow_color"] = image.Shadow.Color
+			}
+			if image.Shadow.Opacity != nil {
+				params["image_shadow_opacity"] = *image.Shadow.Opacity
+			}
+			if image.Shadow.Blur != nil {
+				params["image_shadow_blur"] = *image.Shadow.Blur
+			}
+			if len(image.Shadow.Offset) >= 1 {
+				params["image_shadow_offset_x"] = image.Shadow.Offset[0]
+			}
+			if len(image.Shadow.Offset) >= 2 {
+				params["image_shadow_offset_y"] = image.Shadow.Offset[1]
+			}
 		}
 	}
 	if style.Shadow != nil {
@@ -282,7 +335,33 @@ func IsImageOverlayItem(item capabilityoverlay.OverlayItem) bool {
 // IsRuntimeTextStyleParam reports flat renderer keys for text styling.
 func IsRuntimeTextStyleParam(key string) bool {
 	switch key {
-	case "font_family", "font_size_px", "glow_size", "stroke_size", "shadow_blur_px", "shadow_opacity", "shadow_offset_x_px", "shadow_offset_y_px":
+	case "font_family", "font_size_px", "glow_size", "stroke_size", "shadow_blur_px", "shadow_opacity", "shadow_offset_x_px", "shadow_offset_y_px",
+		"cursor_color", "cursor_width_px", "cursor_height_px", "cursor_blink":
+		return true
+	default:
+		return false
+	}
+}
+
+// IsRuntimeCursorParam reports the cursor caret overrides.
+func IsRuntimeCursorParam(key string) bool {
+	switch key {
+	case "cursor_color", "cursor_width_px", "cursor_height_px", "cursor_blink":
+		return true
+	default:
+		return false
+	}
+}
+
+// IsRuntimeImageParam reports the image-card runtime overrides.
+func IsRuntimeImageParam(key string) bool {
+	switch key {
+	case "image_width", "image_height", "image_position_x", "image_position_y", "image_radius",
+		"image_bounded", "image_fit",
+		"image_border_width", "image_border_color", "image_border_radius",
+		"image_stroke_width", "image_stroke_color",
+		"image_shadow_enabled", "image_shadow_color", "image_shadow_opacity", "image_shadow_blur",
+		"image_shadow_offset_x", "image_shadow_offset_y":
 		return true
 	default:
 		return false

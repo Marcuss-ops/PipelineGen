@@ -39,13 +39,17 @@ type OverlayCanvasSpec struct {
 	// the request's channel profile (empty = the certified default pool). It
 	// lives here because the canvas is the run-level render context this
 	// function already receives; the planner validates the ids fail-closed.
-	PhraseMotions      []string
-	PhraseMotionFamily string
-	ImageMotions       []string
-	EntityImageMotions []string
+	PhraseMotions              []string
+	PhraseMotionFamily         string
+	ImageMotions               []string
+	EntityImageMotions         []string
+	AnimationPolicies          []scriptpkg.AnimationPolicy
+	RandomLightLeakOnClipStart bool
+
 	MapType            string
 	MapCameraAnimation string
 	MapLabelAnimation  string
+	MapAnimation       string
 	// HeavyPhrasePriority splits the phrase lane by editorial weight (goal E2):
 	// phrases at or above this priority get a prominent certified entrance, the
 	// rest keep the calm rotation. Zero disables the split. The runner fills in
@@ -61,8 +65,10 @@ type OverlayCanvasSpec struct {
 	MapsOnly       bool
 	// MaxImageOverlays overrides the run-level image ceiling; zero keeps the
 	// certified default (capabilityoverlay.MaxImageOverlaysPerRun).
-	MaxImageOverlays int
-	AnimationCounts  map[string]int
+	MaxImageOverlays        int
+	AnimationCounts         map[string]int
+	OverlayCategories       map[scriptpkg.OverlayCategory]scriptpkg.Toggle
+	OverlayCategorySegments []scriptpkg.ScriptSegment
 	// EntityStyleID pins the entity-card composition family for generated
 	// entity cards (channel profile or explicit job choice). Empty keeps the
 	// certified "random" selector; the planner validates fail-closed.

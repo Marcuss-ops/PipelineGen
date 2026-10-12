@@ -68,17 +68,22 @@ type ResolvedGenerationPlan struct {
 	SearchResults []SearchResultItem `json:"search_results,omitempty"`
 
 	// ── Sizing ────────────────────────────────────────────────────────
-	TargetWords        int             `json:"target_words,omitempty"`
-	SingleScene        bool            `json:"single_scene,omitempty"`
-	Duration           int             `json:"duration,omitempty"`
-	MinWords           int             `json:"min_words,omitempty"`
-	NumClips           int             `json:"num_clips,omitempty"`
-	SegmentWords       int             `json:"segment_words,omitempty"`
-	Segments           []ScriptSegment `json:"segments,omitempty"`
-	SourceTextVerbatim bool            `json:"source_text_verbatim,omitempty"`
-	SentencesPerImage  int             `json:"sentences_per_image,omitempty"`
-	ImagesPerScene     int             `json:"images_per_scene,omitempty"`
-	MediaDensity       string          `json:"media_density,omitempty"`
+	TargetWords                int                        `json:"target_words,omitempty"`
+	SingleScene                bool                       `json:"single_scene,omitempty"`
+	Duration                   int                        `json:"duration,omitempty"`
+	MinWords                   int                        `json:"min_words,omitempty"`
+	NumClips                   int                        `json:"num_clips,omitempty"`
+	SegmentWords               int                        `json:"segment_words,omitempty"`
+	Segments                   []ScriptSegment            `json:"segments,omitempty"`
+	OverlayCategories          map[OverlayCategory]Toggle `json:"overlay_categories,omitempty"`
+	RandomLightLeakOnClipStart bool                       `json:"random_light_leak_on_clip_start,omitempty"`
+	// ExtractEntities is the run-level semantic extraction decision, copied
+	// from OutputSpec so scene-level default toggles inherit one owner.
+	ExtractEntities    Toggle `json:"extract_entities,omitempty"`
+	SourceTextVerbatim bool   `json:"source_text_verbatim,omitempty"`
+	SentencesPerImage  int    `json:"sentences_per_image,omitempty"`
+	ImagesPerScene     int    `json:"images_per_scene,omitempty"`
+	MediaDensity       string `json:"media_density,omitempty"`
 
 	// ── Style ─────────────────────────────────────────────────────────
 	Style string `json:"style,omitempty"`
@@ -278,7 +283,8 @@ func (p *ResolvedGenerationPlan) HasPostprocessor(name string) bool {
 // downstream type assertion `plan.ClipEvidence != nil` is the
 // canonical nil-guard at the consumer.
 func NewResolvedGenerationPlan(p ResolvedGenerationPlan) *ResolvedGenerationPlan {
-	p.Segments = slices.Clone(p.Segments)
+	p.Segments = CloneScriptSegments(p.Segments)
+	p.OverlayCategories = CloneOverlayCategories(p.OverlayCategories)
 	p.Languages = slices.Clone(p.Languages)
 	p.Postprocessors = slices.Clone(p.Postprocessors)
 	if p.ClipEvidence != nil {

@@ -280,7 +280,7 @@ func (e *executionRun) translate() bool {
 // parallel path runs it on the semantic branch while TTS is still in flight
 // (see parallelFanOut).
 func (e *executionRun) sceneTextReady() bool {
-	e.snapshot = snapshotSceneText(e.result.Scenes, e.req.SourceLanguage)
+	e.snapshot = snapshotSceneText(e.result.Scenes, e.req.SourceLanguage, e.req)
 
 	ok := e.parallelFanOut()
 	if ok {
@@ -293,6 +293,10 @@ func (e *executionRun) sceneTextReady() bool {
 // overlay.prepare branch (DocsPrepare + audio prefetch) runs concurrently
 // with TTS, then the branch is joined and its projections applied.
 func (e *executionRun) parallelFanOut() bool {
+	// Freeze the fields translated NLP consumes before TTS starts mutating
+	// scene structs. The semantic branch uses this detached projection while
+	// voiceover workers update e.result.Scenes concurrently.
+	nlpInput := localizedNLPSnapshot(e.result)
 	prepareCtx, cancelPrepare := context.WithCancel(e.ctx)
 	defer cancelPrepare()
 	// Start semantic enrichment first and independently. The old version put
@@ -316,7 +320,7 @@ func (e *executionRun) parallelFanOut() bool {
 		// after the join, because the TTS writer snapshots whole Scene structs
 		// (localizedRenderClipFields) and marshals the result per unit, so any
 		// concurrent write onto result.Scenes would be a data race.
-		localized, nlpErr := e.r.computeLocalizedAnnotations(prepareCtx, e.req, e.result, res.annotations)
+		localized, nlpErr := e.r.computeLocalizedAnnotations(prepareCtx, e.req, nlpInput, res.annotations)
 		semanticDone <- vidRushPrepareOutcome{result: res, localizedAnnotations: localized, nlpErr: nlpErr}
 	}()
 

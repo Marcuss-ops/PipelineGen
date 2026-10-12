@@ -73,9 +73,10 @@ type OverlayPlan struct {
 	// Background is an optional full-canvas layer rendered below every
 	// semantic overlay. When omitted, the source video remains visible below
 	// the overlays (the legacy behaviour).
-	Background  *OverlayBackground `json:"background,omitempty"`
-	Items       []OverlayItem      `json:"items"`
-	Fingerprint string             `json:"fingerprint,omitempty"`
+	Background        *OverlayBackground `json:"background,omitempty"`
+	AnimationPolicies []AnimationPolicy  `json:"animation_policies,omitempty"`
+	Items             []OverlayItem      `json:"items"`
+	Fingerprint       string             `json:"fingerprint,omitempty"`
 	// RecapPlacements counts the recap slots BuildPlan attempted; RecapCards
 	// counts recap items surviving in Items after overlap degradation.
 	// Application-only observability (like DriveJobID below): excluded from
@@ -92,6 +93,16 @@ type OverlayPlan struct {
 	// compile time (the recap placement denominator). Same exclusion rules
 	// as the counters above.
 	TimedScenes int `json:"-"`
+}
+
+// AnimationPolicy is a per-group semantic motion choice forwarded unchanged
+// to RenderingGen's animation_policies contract.
+type AnimationPolicy struct {
+	Target       string         `json:"target"`
+	GroupID      string         `json:"group_id"`
+	SubgroupID   string         `json:"subgroup_id,omitempty"`
+	MotionID     string         `json:"motion_id,omitempty"`
+	MotionParams map[string]any `json:"motion_params,omitempty"`
 }
 
 type OverlaySource struct {
@@ -116,8 +127,10 @@ type OverlayBackground struct {
 }
 
 type OverlayItem struct {
-	ID      string `json:"id"`
-	SceneID string `json:"scene_id,omitempty"`
+	ID         string `json:"id"`
+	SceneID    string `json:"scene_id,omitempty"`
+	GroupID    string `json:"group_id,omitempty"`
+	SubgroupID string `json:"subgroup_id,omitempty"`
 	// EntityID and Kind tag overlay items driven by an entity occurrence
 	// (kind "entity_card"). They are optional: phrase/keyword/background
 	// items never carry them, so the golden document shape is unchanged.
@@ -235,19 +248,22 @@ type OverlaySoundEffect struct {
 }
 
 type OverlayImageLayer struct {
-	ID                string            `json:"id"`
-	AssetID           string            `json:"asset_id"`
-	StartMS           int64             `json:"start_ms"`
-	EndMS             int64             `json:"end_ms"`
-	PresetID          string            `json:"preset_id,omitempty"`
-	MotionID          string            `json:"motion_id,omitempty"`
-	MotionParams      map[string]any    `json:"motion_params,omitempty"`
-	Caption           string            `json:"caption,omitempty"`
-	CaptionMotionID   string            `json:"caption_motion_id,omitempty"`
-	CaptionFontFamily string            `json:"caption_font_family,omitempty"`
-	CaptionColor      string            `json:"caption_color,omitempty"`
-	Params            map[string]any    `json:"params,omitempty"`
-	Frame             *OverlayItemFrame `json:"frame,omitempty"`
+	ID                  string            `json:"id"`
+	GroupID             string            `json:"group_id,omitempty"`
+	SubgroupID          string            `json:"subgroup_id,omitempty"`
+	AssetID             string            `json:"asset_id"`
+	StartMS             int64             `json:"start_ms"`
+	EndMS               int64             `json:"end_ms"`
+	PresetID            string            `json:"preset_id,omitempty"`
+	MotionID            string            `json:"motion_id,omitempty"`
+	MotionParams        map[string]any    `json:"motion_params,omitempty"`
+	Caption             string            `json:"caption,omitempty"`
+	CaptionMotionID     string            `json:"caption_motion_id,omitempty"`
+	CaptionMotionParams map[string]any    `json:"caption_motion_params,omitempty"`
+	CaptionFontFamily   string            `json:"caption_font_family,omitempty"`
+	CaptionColor        string            `json:"caption_color,omitempty"`
+	Params              map[string]any    `json:"params,omitempty"`
+	Frame               *OverlayItemFrame `json:"frame,omitempty"`
 	// EntityID remains producer-only so a composite's child identities can
 	// still join to their pre-timing intents without changing the worker wire.
 	EntityID string `json:"-"`

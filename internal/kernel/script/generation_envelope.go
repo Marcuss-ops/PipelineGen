@@ -66,6 +66,9 @@ type GenerationItemV2 struct {
 	// results. When non-empty, the matching GenerationResult
 	// carries the same ID.
 	ID string `json:"id,omitempty"`
+	// OverlayCategories is the item-level default for scene category toggles.
+	// Per-segment settings inherit these values unless explicitly overridden.
+	OverlayCategories map[OverlayCategory]Toggle `json:"overlay_categories,omitempty"`
 
 	// ── Identity ──────────────────────────────────────────────────────
 	Title string `json:"title,omitempty"`
@@ -121,15 +124,44 @@ type GenerationItemV2 struct {
 	// registry remains the source of defaults.
 	OverlayStyle *OverlayStyleSpec `json:"overlay_style,omitempty"`
 	// MapType chooses the single basemap treatment used by runtime maps:
-	// roadmap (default), terrain, or satellite.
+	// satellite (default, the classic Python map), roadmap, terrain, or
+	// random (classic 3-style palette only). Empty means satellite.
+	// MapCameraAnimation pins ONE camera move for the run
+	// (slow_approach, wide_context, tilt_reveal, orbit_arrival,
+	// signature_dive, steady_hold, fast_push); empty/random samples the
+	// calm pool deterministically. MapLabelAnimation pins ONE label
+	// treatment (ten calm fades plus diffuse_city_beacon, rise_up, pop_in,
+	// soft_tracking, the distinct-geometry title_top, badge_side,
+	// huge_center, small_above, caption_card, editorial_serif and the full
+	// marker compositions gpin_bubble, card_glass, bare_big, ribbon,
+	// dot_ring, outline_box, which hide the bottom rail and draw their own
+	// marker); empty/random samples the calm fades. MapAnimation selects ONE
+	// of the 15 cartographic motion-graphic systems (simple_label,
+	// region_zoom, bracket_label, photo_callout, pulse_marker,
+	// multi_locations, focus_title, route_line, spotlight, region_fill,
+	// info_card, vertical_callout, icon_label, label_reveal,
+	// global_context); each owns marker + text and suppresses the standard
+	// rail. Empty keeps the classic camera+label look; random samples the 15
+	// deterministically.
 	MapType            string `json:"map_type,omitempty"`
 	MapCameraAnimation string `json:"map_camera_animation,omitempty"`
 	MapLabelAnimation  string `json:"map_label_animation,omitempty"`
+	MapAnimation       string `json:"map_animation,omitempty"`
 	// Motion pools are optional caller choices. Empty pools use the runtime's
 	// seeded random rotation across the complete certified catalogs.
 	PhraseMotions      []string `json:"phrase_motions,omitempty"`
 	ImageMotions       []string `json:"image_motions,omitempty"`
 	EntityImageMotions []string `json:"entity_image_motions,omitempty"`
+	// AnimationPolicies explicitly selects one catalog motion per semantic
+	// animation group. group_id can match a producer group or scene_id; an
+	// optional subgroup_id narrows the selection to one item/layer. Omit
+	// motion_id to request one stable random choice for that group/subgroup.
+	AnimationPolicies []AnimationPolicy `json:"animation_policies,omitempty"`
+	// RandomLightLeakOnClipStart emits a short, deterministic LIGHT_LEAK overlay
+	// at the beginning of each real video clip segment. Image-overlay light leaks
+	// can be selected through animation_policies target=image. Pair with
+	// audio.random_sfx_on_clip_start or explicit audio.sound_effects for sound.
+	RandomLightLeakOnClipStart bool `json:"random_light_leak_on_clip_start,omitempty"`
 	// PhraseMotionFamily optionally restricts phrase_motions to a certified
 	// family. With no explicit pool or family, the runtime rotates through its
 	// seeded random sequence over the full certified animation catalog.
@@ -202,6 +234,18 @@ type GenerationItemV2 struct {
 	Outro *FixedSection `json:"outro,omitempty"`
 }
 
+// AnimationPolicy selects a renderer-catalog motion for a semantic group.
+// Target is important_phrase, image, caption, date, or metric, matching
+// RenderingGen's overlay-plan.v1 contract. An empty MotionID requests a stable random choice
+// shared by every compatible item in the selected group/subgroup.
+type AnimationPolicy struct {
+	Target       string         `json:"target"`
+	GroupID      string         `json:"group_id"`
+	SubgroupID   string         `json:"subgroup_id,omitempty"`
+	MotionID     string         `json:"motion_id,omitempty"`
+	MotionParams map[string]any `json:"motion_params,omitempty"`
+}
+
 // OverlayBackgroundSpec is the script.generate payload shape for an
 // optional visual overlay background. Image/video backgrounds identify one
 // content-addressed asset; color backgrounds use RGBA components in [0,1].
@@ -267,13 +311,30 @@ type OverlayStyleSpec struct {
 	// corresponding effect; nil preserves the preset's value.
 	GlowSize   *float64 `json:"glow_size,omitempty"`
 	StrokeSize *float64 `json:"stroke_size,omitempty"`
+	// Cursor overrides the typewriter caret rendered alongside phrase
+	// overlays: its chosen color, its pixel geometry (width = thickness,
+	// height = pixel size) and its blink behaviour. Nil preserves the
+	// motion-authored caret; explicit zero width hides it.
+	Cursor *OverlayCursorStyleSpec `json:"cursor,omitempty"`
 	// Image controls apply to generated image overlays and entity portraits.
 	// They stay separate from text styling so one script can tune both layers.
 	Image *OverlayImageStyleSpec `json:"image,omitempty"`
 }
 
+// OverlayCursorStyleSpec controls the runtime typewriter caret.
+// Color is #RRGGBB; Width is the caret thickness in output pixels;
+// Height is the caret pixel height; Blink opts into the post-type blink.
+type OverlayCursorStyleSpec struct {
+	Color  string   `json:"color,omitempty"`
+	Width  *float64 `json:"width,omitempty"`
+	Height *float64 `json:"height,omitempty"`
+	Blink  *bool    `json:"blink,omitempty"`
+}
+
 // OverlayImageStyleSpec controls image-card geometry and its visible frame.
 // Geometry uses output pixels; position is relative to the canvas center.
+// Bounded, when true, clips the card inside its authored box (fit controls
+// how the pixels fill that box); nil preserves the preset behaviour.
 type OverlayImageStyleSpec struct {
 	Width     *int                `json:"width,omitempty"`
 	Height    *int                `json:"height,omitempty"`
@@ -283,6 +344,8 @@ type OverlayImageStyleSpec struct {
 	Border    *OverlayImageBorder `json:"border,omitempty"`
 	Stroke    *OverlayImageStroke `json:"stroke,omitempty"`
 	Shadow    *OverlayShadowSpec  `json:"shadow,omitempty"`
+	Bounded   *bool               `json:"bounded,omitempty"`
+	Fit       string              `json:"fit,omitempty"`
 }
 
 type OverlayImageBorder struct {
@@ -315,7 +378,21 @@ func (s *OverlayStyleSpec) Validate() error {
 	if s.Size != nil && s.Size.FontSize != nil && (math.IsNaN(*s.Size.FontSize) || math.IsInf(*s.Size.FontSize, 0) || *s.Size.FontSize <= 0 || *s.Size.FontSize > 512) {
 		return fmt.Errorf("overlay_style.size.font_size must be greater than 0 and at most 512 pixels")
 	}
+	if cursor := s.Cursor; cursor != nil {
+		if cursor.Color != "" && !isStyleHexColor(cursor.Color) {
+			return fmt.Errorf("overlay_style.cursor.color must be #RRGGBB")
+		}
+		if cursor.Width != nil && (math.IsNaN(*cursor.Width) || math.IsInf(*cursor.Width, 0) || *cursor.Width < 0 || *cursor.Width > 64) {
+			return fmt.Errorf("overlay_style.cursor.width must be between 0 and 64 pixels")
+		}
+		if cursor.Height != nil && (math.IsNaN(*cursor.Height) || math.IsInf(*cursor.Height, 0) || *cursor.Height < 0 || *cursor.Height > 256) {
+			return fmt.Errorf("overlay_style.cursor.height must be between 0 and 256 pixels")
+		}
+	}
 	if image := s.Image; image != nil {
+		if image.Fit != "" && image.Fit != "cover" && image.Fit != "contain" && image.Fit != "fill" {
+			return fmt.Errorf("overlay_style.image.fit must be cover, contain or fill")
+		}
 		for name, value := range map[string]*int{"width": image.Width, "height": image.Height} {
 			if value != nil && (*value <= 0 || *value > 8192) {
 				return fmt.Errorf("overlay_style.image.%s must be between 1 and 8192 pixels", name)
@@ -362,6 +439,9 @@ func (s *OverlayStyleSpec) Validate() error {
 				if math.IsNaN(offset) || math.IsInf(offset, 0) || math.Abs(offset) > 256 {
 					return fmt.Errorf("overlay_style.image.shadow.offset values must be within ±256 pixels")
 				}
+			}
+			if image.Shadow.Color != "" && !isStyleHexColor(image.Shadow.Color) {
+				return fmt.Errorf("overlay_style.image.shadow.color must be #RRGGBB")
 			}
 		}
 	}
