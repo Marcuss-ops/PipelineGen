@@ -16,10 +16,35 @@ func (p OverlayPlan) FingerprintValue() string {
 	copyPlan.DriveFolderID = ""
 	for i := range copyPlan.Items {
 		copyPlan.Items[i].RenderKey = ""
+		// Params may carry typed values (chain_segments as []ChainSegment)
+		// that the durable JSON checkpoint decodes into generic maps. Hash
+		// the canonical wire form so the fingerprint survives that round
+		// trip unchanged, exactly like DecodeChainSegments expects.
+		copyPlan.Items[i].Params = canonicalParamsMap(copyPlan.Items[i].Params)
 	}
 	b, _ := json.Marshal(copyPlan)
 	h := digest.SHA256Bytes(b)
 	return h
+}
+
+// canonicalParamsMap re-encodes an item's free-form Params through a JSON
+// round trip so hashing never depends on the in-memory representation of
+// nested values. Typed values (chain segments, for example) marshal in Go
+// field order but decode as generic maps that marshal with sorted keys; the
+// durable checkpoint always produces the latter form.
+func canonicalParamsMap(params map[string]any) map[string]any {
+	if len(params) == 0 {
+		return params
+	}
+	raw, err := json.Marshal(params)
+	if err != nil {
+		return params
+	}
+	var canonical map[string]any
+	if err := json.Unmarshal(raw, &canonical); err != nil {
+		return params
+	}
+	return canonical
 }
 
 func ComputeRenderKey(p OverlayPlan, item OverlayItem) string {
@@ -28,7 +53,7 @@ func ComputeRenderKey(p OverlayPlan, item OverlayItem) string {
 		assetHashes = append(assetHashes, strings.ToLower(strings.TrimSpace(ref.SHA256)))
 	}
 	sort.Strings(assetHashes)
-	params, _ := json.Marshal(item.Params)
+	params, _ := json.Marshal(canonicalParamsMap(item.Params))
 	renderer := p.RendererVersion
 	if renderer == "" {
 		renderer = "chronon"
