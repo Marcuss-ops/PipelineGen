@@ -17,7 +17,6 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/delivery"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/downloader"
 	driveutil "github.com/Marcuss-ops/PipelineGen/internal/platform/drive"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/imagesregistry"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/imagesrepo"
 	"go.uber.org/zap"
 )
@@ -108,8 +107,14 @@ func buildIngestService(
 	if mutationsDisp == nil {
 		log.Warn("buildIngestService: mutationsDisp is nil — ingest will surface ErrDispatcherUnavailable on first Upsert (QDRANT-002 PR7 fail-closed)")
 	}
-	imagesRegistry := imagesregistry.NewRegistryAdapter(repos.ImageRepo, cfg.Storage.ImagesPath(), log, canonicalCommitter)
-	imagesLifecycle := NewLifecycleFromDeps(&AssetLifecycleDeps{Registry: imagesRegistry, Publisher: publisher, DriveReader: driveUploader, AssetIndex: search.AssetIndexService, Store: ingest.NewImageStoreAdapter(repos.ImageRepo, cfg.Storage.ImagesPath())}, log)
+	// Image media records use the same canonical PostgreSQL reader, writer and
+	// registry-backed AssetRecordStore as clips. The old image-specific wiring
+	// committed to PostgreSQL, then read it back from the empty SQLite mirror;
+	// it also wrote a second, divergent image row through ImagesRepository.
+	mediaDetails := mediaDetailsReaderFromCommitter(canonicalCommitter)
+	mediaProcessing := persistence.CanonicalAssetProcessingWriter(canonicalCommitter)
+	imagesRegistry := artifacts.NewClipsRegistryWithLogger(mediaDetails, mediaProcessing, canonicalCommitter, log)
+	imagesLifecycle := NewLifecycleFromDeps(&AssetLifecycleDeps{Registry: imagesRegistry, Publisher: publisher, DriveReader: driveUploader, AssetIndex: search.AssetIndexService}, log)
 	voiceoverRegistry := voservice.NewVoiceoverRegistryAdapter(repos.VoiceoverRepo)
 	voiceoverLifecycle := NewLifecycleFromDeps(&AssetLifecycleDeps{Registry: voiceoverRegistry, Publisher: publisher, DriveReader: driveUploader, AssetIndex: search.AssetIndexService, Store: ingest.NewVoiceoverStoreAdapter(repos.VoiceoverRepo)}, log)
 	// MEDIA-SSOT P2-9 step 2: the media-hydration read for both clip registries
@@ -117,7 +122,6 @@ func buildIngestService(
 	// ingest path reads the same media SSOT the committer writes. Passing
 	// repos.Assets here made ingest hydrate from the operational SQLite mirror,
 	// where a PostgreSQL-committed clip looked absent.
-	mediaDetails := mediaDetailsReaderFromCommitter(canonicalCommitter)
 	// MEDIA-SSOT write-bridge: retirement resolves from the canonical
 	// committer's own engine. Neither the registry nor the store receives the
 	// generic detail.Repository seam, so neither can retire an asset in a
@@ -129,7 +133,6 @@ func buildIngestService(
 	// means the media plane is closed and the ingest write fails closed
 	// instead of landing on an unnamed database.
 	mediaLocations := persistence.CanonicalAssetLocationWriter(canonicalCommitter)
-	mediaProcessing := persistence.CanonicalAssetProcessingWriter(canonicalCommitter)
 	// MEDIA-SSOT P2-9 Phase 2: the drive-file-id listing is a MEDIA read, so it
 	// resolves from the canonical committer's engine too. It used to run inside
 	// the clip store as raw SQL against dbs.Main (operational SQLite), a

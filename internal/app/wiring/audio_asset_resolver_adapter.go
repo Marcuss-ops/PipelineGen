@@ -29,6 +29,7 @@ import (
 
 	mediasub "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/media"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaregistry"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	drivepkg "github.com/Marcuss-ops/PipelineGen/internal/platform/drive"
 )
@@ -88,6 +89,9 @@ func (r *audioAssetSourceAdapter) ResolveOverlayBackground(ctx context.Context, 
 	if err != nil {
 		return scriptgen.OverlayBackgroundAsset{}, fmt.Errorf("hash overlay background %q: %w", assetID, err)
 	}
+	if plate, ok := mediaregistry.ResolveEditorialBackgroundReference(assetID); ok && hash != plate.SHA256 {
+		return scriptgen.OverlayBackgroundAsset{}, fmt.Errorf("overlay background %q has local hash %q, want catalog hash %q", assetID, hash, plate.SHA256)
+	}
 	mimeType := mime.TypeByExtension(filepath.Ext(path))
 	if mimeType == "" {
 		mimeType = "video/mp4"
@@ -103,6 +107,21 @@ func localOverlayBackgroundPath(assetID string) string {
 	candidates := []string{
 		filepath.Join("data", "backgrounds", name),
 		filepath.Join("RenderingGen", "assets", "backgrounds", name),
+	}
+	// Editorial background aliases are the public identity; their local
+	// filenames are catalog-owned and can differ from the alias (for example
+	// drive-background-crime -> background-crime.mp4). Resolve that mapping
+	// from the media registry instead of keeping a second alias table here.
+	if plate, ok := mediaregistry.ResolveEditorialBackgroundReference(assetID); ok {
+		candidates = append(candidates,
+			filepath.Join("data", "backgrounds", plate.Filename),
+			filepath.Join("RenderingGen", "assets", "backgrounds", plate.Filename),
+			// The production PipelineGen service runs with refactored/ as
+			// WorkingDirectory while the canonical RenderingGen assets live
+			// beside it at the repository root.
+			filepath.Join("..", "data", "backgrounds", plate.Filename),
+			filepath.Join("..", "RenderingGen", "assets", "backgrounds", plate.Filename),
+		)
 	}
 	if filepath.Ext(name) == "" {
 		for _, ext := range []string{".mp4", ".mov", ".webm", ".png", ".jpg", ".jpeg"} {

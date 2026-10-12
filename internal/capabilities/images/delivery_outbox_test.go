@@ -15,11 +15,11 @@ type recordingImageDeliveryRepo struct {
 }
 
 type imageDeliveryUpdate struct {
-	hash, fileID, driveLink, downloadLink, status string
+	assetID, fileID, driveLink, downloadLink, status string
 }
 
-func (r *recordingImageDeliveryRepo) UpdateDriveDelivery(_ context.Context, hash, fileID, driveLink, downloadLink, status string) error {
-	r.updates = append(r.updates, imageDeliveryUpdate{hash, fileID, driveLink, downloadLink, status})
+func (r *recordingImageDeliveryRepo) UpdateDriveDelivery(_ context.Context, assetID, fileID, driveLink, downloadLink, status string) error {
+	r.updates = append(r.updates, imageDeliveryUpdate{assetID, fileID, driveLink, downloadLink, status})
 	return r.err
 }
 
@@ -64,7 +64,7 @@ func TestImageDriveDeliveryHandler_SuccessPersistsProjection(t *testing.T) {
 		t.Fatalf("projection updates = %d, want 1", len(repo.updates))
 	}
 	got := repo.updates[0]
-	if got.hash != "hash-123" || got.fileID != "drive-123" || got.driveLink == "" || got.downloadLink == "" || got.status != "ready" {
+	if got.assetID != "asset-123" || got.fileID != "drive-123" || got.driveLink == "" || got.downloadLink == "" || got.status != "ready" {
 		t.Fatalf("projection = %#v, want successful Drive identity and ready status", got)
 	}
 }

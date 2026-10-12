@@ -15,6 +15,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	voiceover "github.com/Marcuss-ops/PipelineGen/internal/capabilities/voiceover/service"
 	audioasset "github.com/Marcuss-ops/PipelineGen/internal/platform/audio"
@@ -128,6 +129,7 @@ func TestParseEdgeWordBoundaries_MissingFileFailsClosed(t *testing.T) {
 type fakeTTSGenerator struct {
 	calls         int
 	metadataPaths []string
+	durations     []time.Duration
 }
 
 func (f *fakeTTSGenerator) Generate(_ context.Context, _ *audioasset.AudioInput) (*audioasset.AudioResult, error) {
@@ -136,13 +138,57 @@ func (f *fakeTTSGenerator) Generate(_ context.Context, _ *audioasset.AudioInput)
 	res := &audioasset.AudioResult{
 		LocalPath:     "/tmp/stub.mp3",
 		LegacyFileMD5: "stub-hash",
-		Duration:      1234,
+		Duration:      3 * time.Second,
 		Voice:         "it-IT-ElsaNeural",
+	}
+	if idx < len(f.durations) {
+		res.Duration = f.durations[idx]
 	}
 	if idx < len(f.metadataPaths) && f.metadataPaths[idx] != "" {
 		res.MetadataPath = f.metadataPaths[idx]
 	}
 	return res, nil
+}
+
+func TestUseCaseTTSAdapterRetriesWhenBoundariesOutlastAudio(t *testing.T) {
+	dir := t.TempDir()
+	shortPath := filepath.Join(dir, "short.metadata.jsonl")
+	completePath := filepath.Join(dir, "complete.metadata.jsonl")
+	require.NoError(t, os.WriteFile(shortPath, []byte(
+		"{\"type\": \"WordBoundary\", \"text\": \"Milano\", \"start_us\": 50000, \"end_us\": 550000}\n"), 0o644))
+	require.NoError(t, os.WriteFile(completePath, []byte(
+		"{\"type\": \"WordBoundary\", \"text\": \"Milano\", \"start_us\": 50000, \"end_us\": 300000}\n"), 0o644))
+
+	fake := &fakeTTSGenerator{
+		metadataPaths: []string{shortPath, completePath},
+		durations:     []time.Duration{360 * time.Millisecond, time.Second},
+	}
+	out, err := newUseCaseTTSAdapter(fake).Synthesize(context.Background(), voiceover.TTSInput{
+		Text: "Milano e Brescia emergono", Language: "it", Filename: "out.mp3", OutputDir: dir,
+	})
+	require.NoError(t, err)
+	require.Equal(t, 2, fake.calls, "a truncated audio capture must trigger one full synthesis retry")
+	require.Equal(t, time.Second, out.Duration)
+	require.Len(t, out.WordBoundaries, 1)
+	assert.Equal(t, int64(300000), out.WordBoundaries[0].EndUS)
+}
+
+func TestUseCaseTTSAdapterFailsWhenRetryStillTruncatesAudio(t *testing.T) {
+	dir := t.TempDir()
+	firstPath := filepath.Join(dir, "first.metadata.jsonl")
+	secondPath := filepath.Join(dir, "second.metadata.jsonl")
+	boundary := "{\"type\": \"WordBoundary\", \"text\": \"word\", \"start_us\": 0, \"end_us\": 550000}\n"
+	require.NoError(t, os.WriteFile(firstPath, []byte(boundary), 0o644))
+	require.NoError(t, os.WriteFile(secondPath, []byte(boundary), 0o644))
+	fake := &fakeTTSGenerator{
+		metadataPaths: []string{firstPath, secondPath},
+		durations:     []time.Duration{360 * time.Millisecond, 360 * time.Millisecond},
+	}
+	_, err := newUseCaseTTSAdapter(fake).Synthesize(context.Background(), voiceover.TTSInput{
+		Text: "a long sentence", Language: "it", Filename: "out.mp3", OutputDir: dir,
+	})
+	require.Error(t, err)
+	require.Equal(t, 2, fake.calls)
 }
 
 // TestUseCaseTTSAdapter_RetriesOnCorruptBoundaries pins the retry contract:

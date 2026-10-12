@@ -37,6 +37,7 @@ type qualityChecker interface {
 var qualityGateRules = []qualityChecker{
 	languageMatchChecker{},
 	sourceCoverageChecker{},
+	sourceDatePreservationChecker{},
 	clipCoverageChecker{},
 	unsupportedClaimsChecker{},
 	researchCandidateCoverageChecker{},

@@ -298,7 +298,7 @@ func TestRenderDynamicMapVideoMapPresentationIsDeterministicPerItem(t *testing.T
 	// only map_type=random samples the basemap palette. Camera and label always
 	// sample the item slot so several maps in one video differ.
 	want := map[string]string{
-		"basemap":          "esri_light",
+		"basemap":          "esri_street",
 		"camera_animation": deterministicMapStyle(seed, "map_camera", "map-1", mapCameraAnimations),
 		"label_animation":  deterministicMapStyle(seed, "map_label", "map-1", mapLabelAnimations),
 	}

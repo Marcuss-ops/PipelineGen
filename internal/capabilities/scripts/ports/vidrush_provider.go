@@ -24,7 +24,10 @@ type VidRushSearchRequest struct {
 	TextHash  string
 	Text      string
 	Query     string
-	Limit     int
+	// Entity preserves the canonical subject identity separately from Query,
+	// which may carry provider-specific retrieval hints.
+	Entity string `json:"entity,omitempty"`
+	Limit  int
 	// TargetDurationMs is the desired clip length derived from the
 	// segment timing budget (voiceover > scene > estimated). Zero means
 	// the provider falls back to its own default.

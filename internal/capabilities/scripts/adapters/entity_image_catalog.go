@@ -4,9 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/url"
+	"path"
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/entitycatalog"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
@@ -55,6 +58,26 @@ func entityImageCatalogCandidates(ctx context.Context, repo entitycatalog.Reposi
 	known := 0
 	for _, row := range rows {
 		known++
+		if reason := personImageSourceIdentityFailure(identity.CanonicalName, row.SourceURL, ""); reason != "" {
+			if row.SemanticStatus != entitycatalog.CandidateSemanticRejected || row.QualityReason != reason {
+				if _, err := repo.UpsertCandidate(ctx, entitycatalog.Candidate{
+					CanonicalEntityID: row.CanonicalEntityID,
+					Provider:          row.Provider,
+					Rank:              row.Rank,
+					SourceURL:         row.SourceURL,
+					ThumbnailURL:      row.ThumbnailURL,
+					Width:             row.Width,
+					Height:            row.Height,
+					Status:            row.Status,
+					SemanticStatus:    entitycatalog.CandidateSemanticRejected,
+					TechnicalScore:    row.TechnicalScore,
+					QualityReason:     reason,
+				}); err != nil {
+					return entityImageCatalogPool{}, fmt.Errorf("entity image catalog: reject unverified source identity for candidate %d: %w", row.ID, err)
+				}
+			}
+			continue
+		}
 		assessment := entitycatalog.AssessCandidateState(nowUTC(), row)
 		if assessment.State != row.Status && !row.LastSeenAt.IsZero() &&
 			row.Status != entitycatalog.CandidateStatusBroken && row.Status != entitycatalog.CandidateStatusRetired {
@@ -63,11 +86,18 @@ func entityImageCatalogCandidates(ctx context.Context, repo entitycatalog.Reposi
 			}
 			row.Status = assessment.State
 		}
-		if !entitycatalog.IsUsableCandidateStatus(assessment.State) || !entitycatalog.IsUsableCandidateQuality(row) {
+		recertifyLayout := personImageLayoutNeedsRecertification(row.QualityReason)
+		if !entitycatalog.IsUsableCandidateStatus(assessment.State) || (!entitycatalog.IsUsableCandidateQuality(row) && !recertifyLayout) {
 			continue
 		}
 		if strings.TrimSpace(row.SourceURL) == "" {
 			continue
+		}
+		semanticStatus, semanticScore, qualityReason := row.SemanticStatus, row.SemanticScore, row.QualityReason
+		if recertifyLayout {
+			semanticStatus = entitycatalog.CandidateSemanticUnknown
+			semanticScore = 0
+			qualityReason = "pending visual recheck under dominant-subject policy"
 		}
 		candidate := scriptpkg.SegmentAssetCandidate{
 			AssetID:               fmt.Sprintf("entity-image-%d", row.ID),
@@ -79,10 +109,10 @@ func entityImageCatalogCandidates(ctx context.Context, repo entitycatalog.Reposi
 			PreviewURL:            row.ThumbnailURL,
 			Width:                 row.Width,
 			Height:                row.Height,
-			SemanticStatus:        row.SemanticStatus,
-			SemanticScore:         row.SemanticScore,
+			SemanticStatus:        semanticStatus,
+			SemanticScore:         semanticScore,
 			TechnicalQualityScore: row.TechnicalScore,
-			QualityReason:         row.QualityReason,
+			QualityReason:         qualityReason,
 			RightsStatus:          "unknown",
 			SelectionReason:       "persistent PERSON entity image catalog candidate",
 		}
@@ -103,6 +133,14 @@ func entityImageCatalogCandidates(ctx context.Context, repo entitycatalog.Reposi
 		target = known
 	}
 	return entityImageCatalogPool{Candidates: out, UsableCount: len(out), KnownCount: known, Sufficient: known > 0 && len(out) >= target}, nil
+}
+
+// personImageLayoutNeedsRecertification identifies the prior visual-layout
+// verdict that incorrectly required a tight headshot and rejected contextual
+// editorial photos. It does not reopen collage, identity, or technical
+// rejections; the current scorer must still approve the pixels.
+func personImageLayoutNeedsRecertification(reason string) bool {
+	return strings.TrimSpace(reason) == "Ollama visual verification did not find one clear person"
 }
 
 // persistEntityImageCatalogCandidates promotes a successful PERSON provider
@@ -144,6 +182,51 @@ func persistEntityImageCatalogCandidates(ctx context.Context, repo entitycatalog
 		}
 	}
 	return repo.SetRefreshState(ctx, identity.CanonicalEntityID, entitycatalog.RefreshStatusSucceeded, nowUTC(), "")
+}
+
+// persistPersonImageVisualVerdicts writes the final pixel-level decision back
+// to the same PERSON catalog row that owns provider identity and URL quality.
+// This prevents an earlier metadata-only promotion from remaining usable after
+// visual verification rejected the pixels.
+func persistPersonImageVisualVerdicts(ctx context.Context, repo entitycatalog.Repository, results []scriptpkg.SegmentAssetCandidate) error {
+	if repo == nil {
+		return nil
+	}
+	for rank, result := range results {
+		if !strings.EqualFold(strings.TrimSpace(result.Provider), scriptpkg.VidRushProviderInternetImages) ||
+			strings.TrimSpace(result.Entity) == "" || strings.TrimSpace(result.SourceURL) == "" ||
+			(result.SemanticStatus != entitycatalog.CandidateSemanticAccepted && result.SemanticStatus != entitycatalog.CandidateSemanticRejected) {
+			continue
+		}
+		identity, err := entitycatalog.CanonicalizePersonName(result.Entity)
+		if err != nil {
+			continue
+		}
+		if err := repo.UpsertEntity(ctx, entitycatalog.Entity{
+			CanonicalEntityID: identity.CanonicalEntityID,
+			EntityType:        entitycatalog.EntityTypePerson,
+			CanonicalName:     identity.CanonicalName,
+		}); err != nil {
+			return err
+		}
+		if _, err := repo.UpsertCandidate(ctx, entitycatalog.Candidate{
+			CanonicalEntityID: identity.CanonicalEntityID,
+			Provider:          entityImageCatalogProvider,
+			Rank:              rank + 1,
+			SourceURL:         result.SourceURL,
+			ThumbnailURL:      result.PreviewURL,
+			Width:             result.Width,
+			Height:            result.Height,
+			Status:            entitycatalog.CandidateStatusFresh,
+			SemanticStatus:    result.SemanticStatus,
+			SemanticScore:     result.SemanticScore,
+			TechnicalScore:    result.TechnicalQualityScore,
+			QualityReason:     result.QualityReason,
+		}); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // nowUTC is a small seam for catalog refresh timestamps while keeping the
@@ -239,6 +322,9 @@ func filterPersonEntityImageCandidates(identity entitycatalog.PersonIdentity, re
 }
 
 func evaluatePersonImageCandidate(identity entitycatalog.PersonIdentity, candidate scriptpkg.SegmentAssetCandidate) (bool, float64, float64, string) {
+	if reason := personImageSourceIdentityFailure(identity.CanonicalName, candidate.SourceURL, candidate.SourcePageURL); reason != "" {
+		return false, 0, 0, reason
+	}
 	expectedID := identity.CanonicalEntityID
 	semanticScore := 0.5
 	reason := "PERSON identity inferred from query; technical dimensions not supplied"
@@ -280,6 +366,108 @@ func evaluatePersonImageCandidate(identity entitycatalog.PersonIdentity, candida
 		reason += "; dimensions meet minimum"
 	}
 	return true, semanticScore, technicalScore, reason
+}
+
+// personImageSourceIdentityFailure fails closed unless the durable image URL
+// itself carries the full canonical name. The catalog does not persist
+// SourcePageURL, so it cannot serve as durable identity evidence. Search
+// query/entity fields are not provenance: providers and cache adapters may
+// copy them from the requested query even when the returned image is unrelated.
+func personImageSourceIdentityFailure(canonicalName, sourceURL, _ string) string {
+	if mismatch := personImageSourceNameMismatch(canonicalName, sourceURL); mismatch != "" {
+		return mismatch
+	}
+	if sourcePathHasCanonicalPersonName(canonicalName, sourceURL) {
+		return ""
+	}
+	return fmt.Sprintf("image source URL does not establish canonical PERSON identity %q", canonicalName)
+}
+
+func sourcePathHasCanonicalPersonName(canonicalName, source string) bool {
+	if strings.TrimSpace(canonicalName) == "" || strings.TrimSpace(source) == "" {
+		return false
+	}
+	parsed, err := url.Parse(strings.TrimSpace(source))
+	if err != nil {
+		return false
+	}
+	decoded := parsed.Path
+	for i := 0; i < 2; i++ {
+		if next, decodeErr := url.PathUnescape(decoded); decodeErr == nil && next != decoded {
+			decoded = next
+		}
+	}
+	tokens := strings.FieldsFunc(strings.ToLower(decoded), func(r rune) bool { return !unicode.IsLetter(r) && !unicode.IsNumber(r) })
+	want := strings.FieldsFunc(normalizeEntityMatch(canonicalName), func(r rune) bool { return !unicode.IsLetter(r) && !unicode.IsNumber(r) })
+	if len(want) < 2 || len(tokens) < len(want) {
+		return false
+	}
+	for start := 0; start <= len(tokens)-len(want); start++ {
+		match := true
+		for i := range want {
+			if tokens[start+i] != want[i] {
+				match = false
+				break
+			}
+		}
+		if match {
+			return true
+		}
+	}
+	return false
+}
+
+// personImageSourceNameMismatch catches a high-confidence provenance conflict
+// when an image filename explicitly names the queried person but spells the
+// surname differently (for example Angela-Tuccia for Angela Taccia). Provider
+// adapters label results with the search query, so Entity alone is not proof
+// of image identity. Generic filenames remain eligible for the pixel/layout
+// verifier and later source checks.
+func personImageSourceNameMismatch(canonicalName, sourceURL string) string {
+	name := strings.Fields(normalizeEntityMatch(canonicalName))
+	if len(name) < 2 || strings.TrimSpace(sourceURL) == "" {
+		return ""
+	}
+	parsed, err := url.Parse(strings.TrimSpace(sourceURL))
+	if err != nil {
+		return ""
+	}
+	basename := path.Base(parsed.Path)
+	for i := 0; i < 2; i++ {
+		if decoded, decodeErr := url.PathUnescape(basename); decodeErr == nil && decoded != basename {
+			basename = decoded
+		}
+	}
+	tokens := strings.FieldsFunc(strings.ToLower(basename), func(r rune) bool { return !unicode.IsLetter(r) })
+	if len(tokens) < 2 || tokens[0] != name[0] {
+		return ""
+	}
+	second := tokens[1]
+	if second == name[len(name)-1] || len([]rune(second)) < 3 || personImageFilenameQualifier(second) {
+		return ""
+	}
+	return fmt.Sprintf("image source filename names %s %s, not requested person %s", name[0], second, canonicalName)
+}
+
+// PersonImageSourceNameMismatch exposes the provenance check to the VLM
+// adapter so provider and catalog candidates use the same identity rule.
+func PersonImageSourceNameMismatch(canonicalName, sourceURL string) string {
+	return personImageSourceNameMismatch(canonicalName, sourceURL)
+}
+
+// PersonImageSourceIdentityFailure exposes the fail-closed source-provenance
+// gate to adapters that verify cached or freshly discovered image pixels.
+func PersonImageSourceIdentityFailure(canonicalName, sourceURL, sourcePageURL string) string {
+	return personImageSourceIdentityFailure(canonicalName, sourceURL, sourcePageURL)
+}
+
+func personImageFilenameQualifier(token string) bool {
+	switch token {
+	case "foto", "photo", "portrait", "headshot", "image", "img", "profile", "person", "persona", "ritratto", "avvocato", "avvocata", "di", "della", "de", "del", "la", "il", "e", "the", "for", "case", "news", "ufficiale", "ufficiali", "ansa", "ipa":
+		return true
+	default:
+		return false
+	}
 }
 
 func personQueryContainsCanonicalName(query, canonicalName string) bool {

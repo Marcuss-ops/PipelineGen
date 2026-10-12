@@ -113,7 +113,8 @@ func (s *VidRushRegistryMediaResolver) SearchImages(ctx context.Context, req Int
 		return nil, scriptports.ErrVidRushProviderNotFound
 	}
 	return s.Registry.Search(ctx, scriptpkg.VidRushProviderInternetImages, scriptports.VidRushSearchRequest{
-		SegmentID: req.SegmentID, Position: req.Position, TextHash: req.TextHash, Text: req.Query, Query: req.Query, Limit: req.Limit,
+		SegmentID: req.SegmentID, Position: req.Position, TextHash: req.TextHash, Text: req.Query,
+		Query: req.Query, Entity: req.Entity, Limit: req.Limit,
 	})
 }
 
@@ -123,13 +124,25 @@ func (s *VidRushRegistryMediaResolver) SearchImages(ctx context.Context, req Int
 // provider-specific search, rate limiting and retry stay in the searchers, so
 // no provider orchestration is duplicated for the incremental path.
 type VidRushProviderFanout struct {
-	artlist ArtlistClipSearcher
-	images  InternetImageSearcher
-	youtube scriptports.VidRushAssetProvider
-	cache   scriptports.VidRushCachePort
-	catalog entitycatalog.Repository
-	metrics VidRushMetrics
-	log     zap.Logger
+	artlist        ArtlistClipSearcher
+	images         InternetImageSearcher
+	semanticScorer SemanticCandidateScorer
+	youtube        scriptports.VidRushAssetProvider
+	cache          scriptports.VidRushCachePort
+	catalog        entitycatalog.Repository
+	metrics        VidRushMetrics
+	log            zap.Logger
+}
+
+// WithSemanticScorer applies the same pixel-level person-image gate to
+// incremental discovery, including segment and catalog cache hits. Without
+// this, candidates discovered by this fanout could reach materialization
+// without passing the image-stage verifier.
+func (f *VidRushProviderFanout) WithSemanticScorer(scorer SemanticCandidateScorer) *VidRushProviderFanout {
+	if f != nil {
+		f.semanticScorer = scorer
+	}
+	return f
 }
 
 func (f *VidRushProviderFanout) WithLogger(log *zap.Logger) *VidRushProviderFanout {
@@ -365,7 +378,8 @@ func (f *VidRushProviderFanout) resolveInternetImageCandidates(ctx context.Conte
 	if !plan.MediaPlan.ForceRefreshAssets && !plan.ForceRefresh {
 		if cached, ok := cacheLoad(vidrushImageCache, segmentCacheKeyStr); ok {
 			if payload, ok := cached.(internetImageCachePayload); ok {
-				outcomes <- vidRushProviderOutcome{provider: "internet_images", candidates: append([]scriptpkg.SegmentAssetCandidate(nil), payload.Candidates...), allCacheHits: true}
+				candidates, err := f.verifyPersonImageCandidates(ctx, payload.Candidates)
+				outcomes <- vidRushProviderOutcome{provider: "internet_images", candidates: candidates, err: err, allCacheHits: true}
 				return
 			}
 		}
@@ -377,7 +391,8 @@ func (f *VidRushProviderFanout) resolveInternetImageCandidates(ctx context.Conte
 			if len(persisted.Candidates) > 0 {
 				cacheStore(vidrushImageCache, segmentCacheKeyStr, persisted)
 			}
-			outcomes <- vidRushProviderOutcome{provider: "internet_images", candidates: append([]scriptpkg.SegmentAssetCandidate(nil), persisted.Candidates...), allCacheHits: true}
+			candidates, scoreErr := f.verifyPersonImageCandidates(ctx, persisted.Candidates)
+			outcomes <- vidRushProviderOutcome{provider: "internet_images", candidates: candidates, err: scoreErr, allCacheHits: true}
 			return
 		}
 	}
@@ -482,10 +497,11 @@ func (f *VidRushProviderFanout) resolveInternetImageCandidates(ctx context.Conte
 			if f.metrics != nil {
 				f.metrics.IncProviderRequest("internet_images")
 			}
+			searchQuery := personImageSearchQuery(query, catalogEligible)
 			searched, err := f.images.SearchImages(ctx, InternetImageSearchRequest{
-				// The query is the identity surface for entity-image
-				// searches; preserve it through provider normalization.
-				SegmentID: segmentID, Position: workerInput.Position, Query: query, Entity: query,
+				// Entity remains canonical; the provider query may include a
+				// retrieval hint but candidates are normalized to canonical identity.
+				SegmentID: segmentID, Position: workerInput.Position, Query: searchQuery, Entity: query,
 				TextHash: textHash, Language: plan.Language, Limit: perQueryLimit,
 				Provider: "internet_images",
 				// A refresh must not resurrect recorded hashes from the
@@ -519,7 +535,22 @@ func (f *VidRushProviderFanout) resolveInternetImageCandidates(ctx context.Conte
 			}
 			providerResults := normalizeInternetImageCatalogResults(searched, query)
 			if catalogEligible && f.catalog != nil {
+				accepted, rejected := 0, make(map[string]int)
+				for _, candidate := range providerResults {
+					ok, _, _, reason := evaluatePersonImageCandidate(catalogIdentity, candidate)
+					if ok {
+						accepted++
+					} else {
+						rejected[reason]++
+					}
+				}
+				providerCount := len(providerResults)
 				providerResults = filterPersonEntityImageCandidates(catalogIdentity, providerResults)
+				if len(rejected) > 0 && f.log.Core() != nil {
+					f.log.Info("VidRush person image catalog gate", zap.String("segment_id", segmentID),
+						zap.String("query", query), zap.Int("provider_candidates", providerCount),
+						zap.Int("catalog_eligible", accepted), zap.Any("catalog_rejections", rejected))
+				}
 				if catalogErr := persistEntityImageCatalogCandidates(ctx, f.catalog, catalogIdentity, providerResults); catalogErr != nil {
 					if releaseCatalog != nil {
 						releaseCatalog()
@@ -570,6 +601,12 @@ func (f *VidRushProviderFanout) resolveInternetImageCandidates(ctx context.Conte
 	}
 	// Durable-cache the segment result (including an empty result set)
 	// so a warm replay of this exact segment is deterministic.
+	var verifyErr error
+	candidates, verifyErr = f.verifyPersonImageCandidates(ctx, candidates)
+	if verifyErr != nil {
+		outcomes <- vidRushProviderOutcome{provider: "internet_images", candidates: candidates, err: verifyErr}
+		return
+	}
 	payload := internetImageCachePayload{Candidates: append([]scriptpkg.SegmentAssetCandidate(nil), candidates...)}
 	if len(payload.Candidates) > 0 {
 		cacheStore(vidrushImageCache, segmentCacheKeyStr, payload)
@@ -585,6 +622,33 @@ func (f *VidRushProviderFanout) resolveInternetImageCandidates(ctx context.Conte
 		f.log.Info("VidRush image fanout merged candidates", zap.String("segment_id", segmentID), zap.Int("count", len(candidates)))
 	}
 	outcomes <- vidRushProviderOutcome{provider: "internet_images", candidates: candidates, allCacheHits: allCacheHits}
+}
+
+func (f *VidRushProviderFanout) verifyPersonImageCandidates(ctx context.Context, candidates []scriptpkg.SegmentAssetCandidate) ([]scriptpkg.SegmentAssetCandidate, error) {
+	if f == nil || f.semanticScorer == nil || len(candidates) == 0 {
+		return append([]scriptpkg.SegmentAssetCandidate(nil), candidates...), nil
+	}
+	scored, err := f.semanticScorer.ScoreImageCandidates(ctx, "person entity image", candidates)
+	if err != nil {
+		return candidates, err
+	}
+	if scored == nil {
+		scored = candidates
+	}
+	if err := persistPersonImageVisualVerdicts(ctx, f.catalog, scored); err != nil {
+		return scored, err
+	}
+	return filterInternetImageCandidates(deduplicateInternetImageCandidates(normalizeInternetImageCandidates(scored, "person entity image"))), nil
+}
+
+func personImageSearchQuery(canonicalName string, isPerson bool) string {
+	canonicalName = strings.TrimSpace(canonicalName)
+	if !isPerson || canonicalName == "" {
+		return canonicalName
+	}
+	// Search uses a narrow subject description to avoid article hero collages;
+	// canonical entity identity remains a separate provider request field.
+	return canonicalName + " single-person portrait headshot photo"
 }
 
 // The YouTube source-hint helpers live in

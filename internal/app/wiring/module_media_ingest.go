@@ -23,7 +23,6 @@ import (
 	storage "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assetindex"
 	sqassets "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/channels"
-	imagesregistry "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/imagesregistry"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/imagesrepo"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outbox"
 
@@ -93,13 +92,17 @@ func WireMediaIngest(cfg *config.Config, log *zap.Logger, bundle *MediaIngestBun
 	}
 	svc := bundle.PrebuiltService
 	if svc == nil {
-		imagesRegistry := imagesregistry.NewRegistryAdapter(bundle.ImageRepo, cfg.Storage.ImagesPath(), log, bundle.Committer)
-		imagesLifecycle := NewLifecycleFromDeps(&AssetLifecycleDeps{Registry: imagesRegistry, Publisher: bundle.Publisher, DriveReader: bundle.DriveUploader, AssetIndex: bundle.AssetIndexService, Store: ingest.NewImageStoreAdapter(bundle.ImageRepo, cfg.Storage.ImagesPath())}, log)
+		// Image media records share the PostgreSQL media SSOT with clips.
+		// The SQLite ImagesRepository is an operational projection and cannot
+		// read back rows written by the canonical committer.
+		mediaDetails := mediaDetailsReaderFromCommitter(bundle.Committer)
+		mediaProcessing := assetspersistence.CanonicalAssetProcessingWriter(bundle.Committer)
+		imagesRegistry := artifacts.NewClipsRegistryWithLogger(mediaDetails, mediaProcessing, bundle.Committer, log)
+		imagesLifecycle := NewLifecycleFromDeps(&AssetLifecycleDeps{Registry: imagesRegistry, Publisher: bundle.Publisher, DriveReader: bundle.DriveUploader, AssetIndex: bundle.AssetIndexService}, log)
 		voiceoverRegistry := voapp.NewVoiceoverRegistryAdapter(bundle.VoiceoverRepo)
 		voiceoverLifecycle := NewLifecycleFromDeps(&AssetLifecycleDeps{Registry: voiceoverRegistry, Publisher: bundle.Publisher, DriveReader: bundle.DriveUploader, AssetIndex: bundle.AssetIndexService, Store: ingest.NewVoiceoverStoreAdapter(bundle.VoiceoverRepo)}, log)
 		// MEDIA-SSOT P2-9 step 2: hydrate the media record from the canonical
 		// committer's engine, never from the operational SQLite mirror.
-		mediaDetails := mediaDetailsReaderFromCommitter(bundle.Committer)
 		// MEDIA-SSOT write-bridge: retirement resolves from the canonical
 		// committer's own engine (see build_bundles_ingest.go).
 		mediaRetirer := assetspersistence.CanonicalAssetSoftDeleter(bundle.Committer)
@@ -109,7 +112,6 @@ func WireMediaIngest(cfg *config.Config, log *zap.Logger, bundle *MediaIngestBun
 		// port means the media plane is closed and the ingest write fails
 		// closed instead of landing on an unnamed database.
 		mediaLocations := assetspersistence.CanonicalAssetLocationWriter(bundle.Committer)
-		mediaProcessing := assetspersistence.CanonicalAssetProcessingWriter(bundle.Committer)
 		// MEDIA-SSOT P2-9 Phase 2: the drive-file-id listing is a MEDIA read, so it
 		// resolves from the canonical committer's engine. bundle.DB is the
 		// operational SQLite store; it holds no committed media rows, so a

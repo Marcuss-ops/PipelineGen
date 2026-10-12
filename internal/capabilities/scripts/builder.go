@@ -514,24 +514,33 @@ func applyOverlayBackgroundSelection(req *GenerateRequest, policy mediaregistry.
 	if req == nil || !req.Render.Enabled {
 		return nil
 	}
-	if !overlayBackgroundSelectionIsBlank(req.OverlayBackground) {
-		return nil
-	}
-	// A caller-selected editorial plate is the shared background source for
-	// both the assembled video and its rendered overlay scenes. Inherit it here
-	// so image/phrase overlays cannot replace the visible video background with
-	// an unrelated default plate.
+	// The assembled video background is the single source of truth for every
+	// overlay scene. Override a conflicting overlay_background declaration so
+	// image and phrase renders cannot publish on a second plate (for example a
+	// black gradient) while the final video uses a channel background.
 	if background := req.Render.Background; background != nil &&
 		strings.EqualFold(strings.TrimSpace(background.Mode), videoBackgroundModeAsset) {
-		if plate, ok := mediaregistry.ResolveEditorialBackgroundReference(background.AssetID); ok {
-			req.OverlayBackground = &scriptpkg.OverlayBackgroundSpec{
-				Kind:    overlayBackgroundPlateKind,
-				AssetID: plate.ID,
-				Fit:     overlayBackgroundPlateFit,
-				Loop:    true,
+		assetID := strings.TrimSpace(background.AssetID)
+		kind := ""
+		if plate, ok := mediaregistry.ResolveEditorialBackgroundReference(assetID); ok {
+			assetID = plate.ID
+			if strings.HasPrefix(strings.ToLower(strings.TrimSpace(plate.MediaType)), "video/") {
+				kind = overlayBackgroundPlateKind
 			}
-			return nil
 		}
+		if assetID == "" {
+			return fmt.Errorf("apply editing asset policy: overlay background: render background mode=asset requires asset_id")
+		}
+		if kind != "image" && kind != "video" {
+			return fmt.Errorf("apply editing asset policy: overlay background: render background asset %q requires kind=image or kind=video", assetID)
+		}
+		req.OverlayBackground = &scriptpkg.OverlayBackgroundSpec{
+			Kind: kind, AssetID: assetID, Fit: overlayBackgroundPlateFit, Loop: kind == "video",
+		}
+		return nil
+	}
+	if !overlayBackgroundSelectionIsBlank(req.OverlayBackground) {
+		return nil
 	}
 	plate, err := policy.SelectBackground(seed)
 	if err != nil {

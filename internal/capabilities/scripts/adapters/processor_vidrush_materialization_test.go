@@ -413,6 +413,31 @@ func TestVidRushMaterializationReportsRequiredImageCountFailure(t *testing.T) {
 	}
 }
 
+func TestVidRushMaterializationCarriesWarningsThroughIncrementalMaterialize(t *testing.T) {
+	provider := &generationMaterializationProviderStub{fail: true}
+	registry := NewVidRushAssetProviderRegistry()
+	if err := registry.Register(provider); err != nil {
+		t.Fatal(err)
+	}
+	registry.Freeze()
+	processor := newTestMaterializationProcessor(registry, materializationFinalizerStub{})
+	plan := &scriptpkg.ResolvedGenerationPlan{PromptVersion: "incremental-warning-v1", ImagesPerScene: 2}
+	plan.MediaPlan.ProviderPolicy.ImageGeneration = "enabled"
+
+	result, err := processor.Materialize(context.Background(), plan, scriptpkg.VidRushSegmentResult{
+		SegmentID: "incremental-warning-segment",
+		Text:      "a mountain at sunrise",
+		TextHash:  "incremental-warning-hash",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "FAILED_REQUIRED_IMAGE_COUNT: required=2 verified=0 segment=incremental-warning-segment"
+	if !containsWarning(result.Warnings, want) {
+		t.Fatalf("segment warnings = %#v, want %q", result.Warnings, want)
+	}
+}
+
 func containsWarning(warnings []string, want string) bool {
 	for _, warning := range warnings {
 		if warning == want {

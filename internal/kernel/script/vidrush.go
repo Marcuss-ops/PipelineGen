@@ -392,6 +392,10 @@ type VidRushSegmentResult struct {
 	Position  int    `json:"position"`
 	Text      string `json:"text"`
 	TextHash  string `json:"text_hash"`
+	// Warnings are non-fatal outcomes produced while resolving this segment's
+	// media. The incremental materializer carries them here so the generation
+	// finalizer can expose the same warning surface as the batch postprocessor.
+	Warnings []string `json:"warnings,omitempty"`
 	// SourceText and SourceTextHash preserve the immutable scene brief used
 	// for semantic extraction. Text is the generated narration and can differ.
 	SourceText     string `json:"source_text,omitempty"`

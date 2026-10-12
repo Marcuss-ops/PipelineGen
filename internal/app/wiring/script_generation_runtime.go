@@ -28,6 +28,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/media/rustexec"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/nlp"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/observability"
+	ollamaadapters "github.com/Marcuss-ops/PipelineGen/internal/platform/ollama/adapters"
 	pgmedia "github.com/Marcuss-ops/PipelineGen/internal/platform/postgres/media"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/renderinggen"
 	sqlitecheckpoint "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/checkpoint"
@@ -389,12 +390,19 @@ func BuildScriptGenerationRuntime(cfg *config.Config, root *ComposeRoot, runRepo
 			entityImageCatalogRepo = root.Repos.EntityImageCatalog
 		}
 		registryMediaResolver := &documentadapters.VidRushRegistryMediaResolver{Registry: vidRushProviders}
-		vidRushFanout = documentadapters.NewVidRushProviderFanoutWithResolver(
+		fanout := documentadapters.NewVidRushProviderFanoutWithResolver(
 			registryMediaResolver,
 			vidRushCache,
 			entityImageCatalogRepo,
 			vidRushMetrics,
 		).WithLogger(log)
+		if root.AI != nil && root.AI.ScriptGen != nil {
+			if ollamaClient := root.AI.ScriptGen.GetClient(); ollamaClient != nil {
+				fanout.WithSemanticScorer(ollamaadapters.NewOllamaPersonImageScorer(ollamaClient))
+				log.Info("VidRush image fanout wired with GPU-capable person-image verification", zap.String("model", ollamaClient.Model()))
+			}
+		}
+		vidRushFanout = fanout
 	}
 	var vidRushMaterializer scriptgen.SegmentMaterializer
 	if vidRushProviders != nil && vidRushFinalizer != nil {

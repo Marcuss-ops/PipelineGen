@@ -233,7 +233,7 @@ func renderDynamicMapVideo(ctx context.Context, plan capoverlay.OverlayPlan) (st
 func resolveMapBasemap(mapType, seed, slot string) (string, error) {
 	switch strings.ToLower(strings.TrimSpace(mapType)) {
 	case "", "roadmap":
-		return "esri_light", nil
+		return "esri_street", nil
 	case "terrain":
 		return "esri_topo", nil
 	case "satellite":
@@ -325,7 +325,7 @@ func (b *boundedMapRenderOutput) String() string {
 // asks for map_type=random. The default map_type is the stable street-map style.
 // TestMapBasemapStylesMatchChrononPalette guards cross-repository drift.
 func mapBasemapStyles() []string {
-	return []string{"esri_light", "esri_topo", "esri_sat"}
+	return []string{"esri_street", "esri_topo", "esri_sat"}
 }
 
 // mapCameraAnimations and mapLabelAnimations are the certified presentation

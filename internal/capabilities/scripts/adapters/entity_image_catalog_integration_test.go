@@ -2,7 +2,9 @@ package adapters
 
 import (
 	"context"
+	neturl "net/url"
 	"sort"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -188,6 +190,15 @@ func seedCatalogPerson(t *testing.T, repo *integrationEntityImageCatalog, name s
 		t.Fatal(err)
 	}
 	for i, url := range urls {
+		if !sourcePathHasCanonicalPersonName(identity.CanonicalName, url) {
+			parsed, parseErr := neturl.Parse(url)
+			if parseErr != nil {
+				t.Fatalf("parse fixture URL %q: %v", url, parseErr)
+			}
+			nameSlug := strings.Join(strings.FieldsFunc(normalizeEntityMatch(identity.CanonicalName), func(r rune) bool { return r < 'a' || r > 'z' }), "-")
+			parsed.Path = "/" + nameSlug + "/" + strings.TrimLeft(parsed.Path, "/")
+			url = parsed.String()
+		}
 		if _, err := repo.UpsertCandidate(context.Background(), entitycatalog.Candidate{CanonicalEntityID: identity.CanonicalEntityID, Provider: "duckduckgo", Rank: i + 1, SourceURL: url, Status: entitycatalog.CandidateStatusActive, SemanticStatus: entitycatalog.CandidateSemanticAccepted}); err != nil {
 			t.Fatal(err)
 		}

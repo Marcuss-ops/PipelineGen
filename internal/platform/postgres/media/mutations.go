@@ -355,6 +355,45 @@ func (c *PostgresAssetCommitter) UpdateDriveDeliveryByLegacyHash(ctx context.Con
 	return nil
 }
 
+// UpdateDriveDeliveryByAssetID records image delivery using the canonical
+// media_assets identity carried by the outbox event. The ownership row and
+// its Drive locator are committed together, so a successful upload cannot be
+// retried merely because a SQLite projection lacks the row.
+func (c *PostgresAssetCommitter) UpdateDriveDeliveryByAssetID(ctx context.Context, assetID string, mutation persistence.DriveDeliveryMutation) error {
+	assetID = strings.TrimSpace(assetID)
+	if assetID == "" {
+		return fmt.Errorf("asset committer: asset id is required for Drive delivery")
+	}
+	tx, err := c.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("asset committer: begin Drive delivery tx: %w", err)
+	}
+	defer tx.Rollback()
+	preserveIdentity := strings.HasPrefix(mutation.Status, "delivery_failed:") && mutation.DriveFileID == "" && mutation.DriveLink == "" && mutation.DownloadLink == ""
+	var contentHash string
+	if preserveIdentity {
+		err = tx.QueryRowContext(ctx, `UPDATE media_assets SET metadata_json = (metadata_json::jsonb || jsonb_build_object('delivery_status', $1::text))::text, updated_at = to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'), updated_at_ts = now() WHERE id = $2 AND source = 'image' RETURNING COALESCE(content_sha256, '')`, mutation.Status, assetID).Scan(&contentHash)
+	} else {
+		err = tx.QueryRowContext(ctx, `UPDATE media_assets SET drive_file_id = $1, drive_link = $2, download_link = $3, metadata_json = (metadata_json::jsonb || jsonb_build_object('delivery_status', $4::text))::text, updated_at = to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'), updated_at_ts = now() WHERE id = $5 AND source = 'image' RETURNING COALESCE(content_sha256, '')`, mutation.DriveFileID, mutation.DriveLink, mutation.DownloadLink, mutation.Status, assetID).Scan(&contentHash)
+	}
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return fmt.Errorf("asset committer: image asset %q not found", assetID)
+		}
+		return fmt.Errorf("asset committer: update Drive delivery: %w", err)
+	}
+	if !preserveIdentity && mutation.DriveFileID != "" {
+		now := time.Now().UTC().Format(time.RFC3339)
+		if _, err := tx.ExecContext(ctx, `INSERT INTO asset_locations (asset_id, location_kind, uri, external_id, web_view_link, download_url, mime_type, file_size_bytes, legacy_file_md5, is_primary, created_at, updated_at, created_at_ts, updated_at_ts) VALUES ($1, 'drive', $2, $3, $4, $5, '', 0, '', 0, $6, $7, NULLIF($6, '')::timestamptz, NULLIF($7, '')::timestamptz) ON CONFLICT (asset_id, location_kind) DO UPDATE SET uri=excluded.uri, external_id=excluded.external_id, web_view_link=excluded.web_view_link, download_url=excluded.download_url, updated_at=excluded.updated_at, updated_at_ts=excluded.updated_at_ts`, assetID, "drive://"+mutation.DriveFileID, mutation.DriveFileID, mutation.DriveLink, mutation.DownloadLink, now, now); err != nil {
+			return fmt.Errorf("asset committer: upsert Drive location: %w", err)
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("asset committer: commit Drive delivery: %w", err)
+	}
+	return nil
+}
+
 // ── Image projection fields (SQLite mirror: projection_mutations) ───────
 
 // UpdateMediaAssetImageFields persists the image projection through the

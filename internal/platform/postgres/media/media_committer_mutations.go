@@ -109,3 +109,7 @@ func (c *PostgresMediaCommitter) UpdateOrphanMetadata(ctx context.Context, asset
 func (c *PostgresMediaCommitter) UpdateDriveDeliveryByLegacyHash(ctx context.Context, hash string, mutation persistence.DriveDeliveryMutation) error {
 	return c.assets.UpdateDriveDeliveryByLegacyHash(ctx, hash, mutation)
 }
+
+func (c *PostgresMediaCommitter) UpdateDriveDeliveryByAssetID(ctx context.Context, assetID string, mutation persistence.DriveDeliveryMutation) error {
+	return c.assets.UpdateDriveDeliveryByAssetID(ctx, assetID, mutation)
+}
