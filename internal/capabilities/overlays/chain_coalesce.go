@@ -105,10 +105,10 @@ type ChainSegment struct {
 // the legacy path; production request building injects a 5000ms default gap.
 // chain_disabled > 0 forces chaining off even when a gap is configured.
 //
-//\tchain_gap_ms:       max empty interval between two overlays to fuse.
-//\tchain_enabled:      when > 0, chain with the default 5000ms gap.
-//\tchain_max_segments: max segments per chain item (default 8, hard 32).
-//\tchain_disabled:     when > 0, coalescing is skipped entirely.
+// \tchain_gap_ms:       max empty interval between two overlays to fuse.
+// \tchain_enabled:      when > 0, chain with the default 5000ms gap.
+// \tchain_max_segments: max segments per chain item (default 8, hard 32).
+// \tchain_disabled:     when > 0, coalescing is skipped entirely.
 func chainConfig(counts map[string]int) (maxGapUS int64, maxSegments int, disabled bool) {
 	if counts == nil || counts["chain_disabled"] > 0 {
 		return 0, 0, true
