@@ -308,15 +308,11 @@ func fuseChain(group []OverlayItem, chainIndex int) OverlayItem {
 			assets = append(assets, ref)
 		}
 	}
-	params := make(map[string]any, len(first.Params)+6)
-	for k, v := range first.Params {
-		// Recap metadata belongs to the segment where it was authored. It
-		// is aggregated onto the chain below, never leaked to every segment.
-		if k == "recap" || k == "recap_count" {
-			continue
-		}
-		params[k] = v
-	}
+	// Segment params and styles already live on ChainSegment. The container
+	// must not inherit the first child's runtime style: RenderingGen validates
+	// the container before lowering it, and a mixed chain has no single preset
+	// family (for example font_family on an image-first mixed chain).
+	params := make(map[string]any, 6)
 	recapCount := 0
 	for _, segment := range segments {
 		if segment.Params["recap"] == true {
@@ -349,11 +345,12 @@ func fuseChain(group []OverlayItem, chainIndex int) OverlayItem {
 	}
 	return OverlayItem{
 		ID: id, SceneID: first.SceneID, Kind: kind, TemplateID: template,
-		PresetID: first.PresetID, MotionID: first.MotionID, MotionParams: first.MotionParams,
-		Text: legacyText, EntityCaption: first.EntityCaption, CaptionMotionID: first.CaptionMotionID,
-		CaptionMotionParams: cloneAnyMap(first.CaptionMotionParams), CaptionFontFamily: first.CaptionFontFamily,
-		CaptionLayout: first.CaptionLayout, CaptionColor: first.CaptionColor, Style: cloneAnyMap(first.Style),
-		Frame:   cloneOverlayFrame(first.Frame),
+		// A chain is only a container. Its children carry the authoritative
+		// preset and motion, and may belong to different preset families.
+		// Copying the first child's preset here makes a mixed image/text chain
+		// fail root validation before RenderingGen can lower its segments.
+		PresetID: "", MotionID: "", MotionParams: nil,
+		Text:    legacyText,
 		StartMs: startUS / 1000, EndMs: (endUS + 999) / 1000,
 		StartUS: startUS, DurationUS: durationUS,
 		AssetRefs: assets, Params: params,

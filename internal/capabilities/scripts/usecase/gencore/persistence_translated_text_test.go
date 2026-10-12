@@ -65,6 +65,33 @@ func TestBuildGenerationResult_SerializesMetadataArtifactsAsJSON(t *testing.T) {
 	}
 }
 
+func TestBuildGenerationResult_CollectsIncrementalSegmentWarnings(t *testing.T) {
+	warning := "FAILED_REQUIRED_IMAGE_COUNT: required=1 verified=0 segment=scene-1"
+	engineResult := &EngineResult{
+		Output:    scriptpkg.ModelScriptOutputV1{Text: "Generated script text."},
+		WordCount: 3,
+	}
+	postResult := &adapters.PipelineResult{
+		VidRushSegments: []scriptpkg.VidRushSegmentResult{{
+			SegmentID: "scene-1",
+			Warnings:  []string{warning},
+		}},
+	}
+
+	result := buildGenerationResult(
+		scriptpkg.GenerationItemV2{ID: "incremental-warning-item"},
+		scriptpkg.ResolvedGenerationPlan{Title: "Test", Language: "it"},
+		engineResult,
+		postResult,
+	)
+	if !containsGenerationWarning(result.Warnings, warning) {
+		t.Fatalf("generation warnings = %#v, want %q", result.Warnings, warning)
+	}
+	if got := ClassifyGenerationStatus(result, false); got != scriptpkg.ItemStatusSucceededWithWarnings {
+		t.Fatalf("generation status = %q, want %q", got, scriptpkg.ItemStatusSucceededWithWarnings)
+	}
+}
+
 func TestBuildGenerationResult_PrefersTranslatedOutput_StandaloneCases(t *testing.T) {
 	engineResult := &EngineResult{
 		Output: scriptpkg.ModelScriptOutputV1{

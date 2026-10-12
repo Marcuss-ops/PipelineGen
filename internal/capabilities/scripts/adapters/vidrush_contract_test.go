@@ -39,10 +39,10 @@ func TestVidRushImageValidationRejectsSSRFAndHTML(t *testing.T) {
 	}
 }
 
-func TestVidRushImageHeadPreflightRejectsNonImageBeforeBodyDownload(t *testing.T) {
+func TestVidRushImageHeadPreflightTreatsMimeAsAdvisoryAndRejectsOversize(t *testing.T) {
 	policy := DefaultVidRushImagePolicy()
-	if err := validateVidRushImageHead(http.StatusOK, "text/html; charset=utf-8", 1024, policy); !errors.Is(err, ErrVidRushImageInvalid) {
-		t.Fatalf("HTML HEAD response error = %v, want invalid image", err)
+	if err := validateVidRushImageHead(http.StatusOK, "text/html; charset=utf-8", 1024, policy); err != nil {
+		t.Fatalf("misreported HEAD MIME should be advisory: %v", err)
 	}
 	if err := validateVidRushImageHead(http.StatusOK, "image/jpeg", policy.MaxBytes+1, policy); !errors.Is(err, ErrVidRushImageTooLarge) {
 		t.Fatalf("oversized HEAD response error = %v, want too large", err)

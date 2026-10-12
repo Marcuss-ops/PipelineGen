@@ -49,10 +49,10 @@ func buildVidRushFanoutPlan(plan *scriptpkg.ResolvedGenerationPlan, segment scri
 	if len(manualImageQueries) > 0 {
 		// The explicit image queries above are already scene scoped.
 	} else if perSceneImages {
-		// Entity-only searches are cached and reused by canonical identity. In
-		// per-scene mode, anchor the query to the scene's own opening sentence
-		// (with its lead entity as context) so repeated people can receive a
-		// scene-specific image candidate rather than the same catalog portrait.
+		// Entity-image searches use the canonical person identity. Adding the
+		// scene's opening prose created queries like "Chiara Poggi Presenta ..."
+		// and let collages/news cards bind as identity portraits. Variant
+		// selection happens within the canonical entity pool downstream.
 		if query := sceneScopedImageQuery(segment); query != "" {
 			imageQueries = []string{query}
 		}
@@ -172,39 +172,19 @@ func buildVidRushFanoutPlan(plan *scriptpkg.ResolvedGenerationPlan, segment scri
 }
 
 func sceneScopedImageQuery(segment scriptpkg.VidRushSegmentResult) string {
-	entity := ""
 	for _, candidate := range segment.Insights.Entities {
 		if normalizeAnnotationType(candidate.Type) == "PERSON" && strings.TrimSpace(candidate.Value) != "" {
-			entity = strings.TrimSpace(candidate.Value)
-			break
+			return strings.TrimSpace(candidate.Value)
 		}
 	}
-	if entity == "" {
-		entity = sourceLeadEntity(segment.SourceText)
-	}
-	// Keep the query grounded in this scene's immutable editorial source. A
-	// generic suffix made every person query identical (and could be entirely
-	// unrelated to the story), causing the image provider to reuse one asset
-	// across scenes.
-	text := strings.TrimSpace(segment.SourceText)
-	if text == "" {
-		text = strings.TrimSpace(segment.Text)
-	}
-	if text == "" {
-		return entity
-	}
-	for _, sentence := range strings.FieldsFunc(text, func(r rune) bool { return r == '.' || r == '!' || r == '?' || r == '\n' }) {
-		text = strings.Join(strings.Fields(sentence), " ")
-		if text != "" {
-			break
+	// Some extraction runs omit the person surface but retain the canonical
+	// identity mapping. Use its key as the query rather than guessing from prose.
+	for surface, canonicalID := range segment.Insights.ImageEntityCanonicalIDs {
+		if strings.HasPrefix(strings.ToLower(strings.TrimSpace(canonicalID)), "person:") && strings.TrimSpace(surface) != "" {
+			return strings.TrimSpace(surface)
 		}
 	}
-	query := strings.TrimSpace(strings.Join([]string{entity, text}, " "))
-	words := strings.Fields(query)
-	if len(words) > 14 {
-		query = strings.Join(words[:14], " ")
-	}
-	return strings.Join(strings.Fields(query), " ")
+	return ""
 }
 
 func sourceLeadEntity(source string) string {

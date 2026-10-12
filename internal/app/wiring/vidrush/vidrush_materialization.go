@@ -432,7 +432,11 @@ func (p *vidRushInternetImageProvider) Search(ctx context.Context, req scriptpor
 	if p == nil || p.searcher == nil {
 		return nil, fmt.Errorf("vidrush images: search resolver unavailable")
 	}
-	results, err := p.searcher.SearchImages(ctx, adapters.InternetImageSearchRequest{SegmentID: req.SegmentID, Position: req.Position, Query: req.Query, Entity: req.Query, TextHash: req.TextHash, Limit: req.Limit, Provider: scriptpkg.VidRushProviderInternetImages})
+	entity := strings.TrimSpace(req.Entity)
+	if entity == "" {
+		entity = req.Query
+	}
+	results, err := p.searcher.SearchImages(ctx, adapters.InternetImageSearchRequest{SegmentID: req.SegmentID, Position: req.Position, Query: req.Query, Entity: entity, TextHash: req.TextHash, Limit: req.Limit, Provider: scriptpkg.VidRushProviderInternetImages})
 	return results, err
 }
 func (p *vidRushInternetImageProvider) Acquire(ctx context.Context, candidate scriptpkg.SegmentAssetCandidate) (scriptports.LocalArtifact, error) {

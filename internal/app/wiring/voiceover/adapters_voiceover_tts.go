@@ -26,6 +26,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaexec"
@@ -96,28 +97,38 @@ func (a *useCaseTTSAdapter) Synthesize(ctx context.Context, in voiceover.TTSInpu
 	var boundaries []voiceover.RawSpeechBoundary
 	skippedCorrupt := 0
 	if res.MetadataPath != "" {
+		metadataPaths := []string{res.MetadataPath}
+		defer func() {
+			for _, path := range metadataPaths {
+				_ = os.Remove(path)
+			}
+		}()
 		boundaries, skippedCorrupt, err = parseEdgeWordBoundaries(res.MetadataPath)
 		if err != nil {
 			return voiceover.TTSOutput{}, fmt.Errorf("voiceover TTS: parse word boundaries %q: %w", res.MetadataPath, err)
 		}
-		// A truncated/partial boundary write (NUL bytes) loses one or more
-		// word boundaries. Retry the synthesis once for a clean capture
-		// before accepting the degraded result, so a one-off bridge glitch
-		// never ships a silently incomplete timing artifact. The retry
-		// re-runs the whole synthesis (audio + boundaries come from the SAME
-		// stream), so res and boundaries stay consistent when the retry wins.
-		if skippedCorrupt > 0 {
-			if retryRes, retryErr := a.proc.Generate(ctx, input); retryErr == nil && retryRes != nil && retryRes.MetadataPath != "" {
-				if retryBoundaries, retrySkipped, parseErr := parseEdgeWordBoundaries(retryRes.MetadataPath); parseErr == nil && retrySkipped == 0 {
+		originalFits := speechBoundariesFitDuration(boundaries, res.Duration)
+		// Edge can occasionally return a truncated audio stream with word
+		// boundaries from the complete utterance. Treat that as a bad capture
+		// and retry the whole synthesis once so audio and timing remain paired.
+		// The same retry also repairs partial/corrupt metadata writes.
+		if skippedCorrupt > 0 || !originalFits {
+			retryValid := false
+			retryRes, retryErr := a.proc.Generate(ctx, input)
+			if retryErr == nil && retryRes != nil && retryRes.MetadataPath != "" {
+				metadataPaths = append(metadataPaths, retryRes.MetadataPath)
+				retryBoundaries, retrySkipped, parseErr := parseEdgeWordBoundaries(retryRes.MetadataPath)
+				if parseErr == nil && retrySkipped == 0 && speechBoundariesFitDuration(retryBoundaries, retryRes.Duration) {
 					res = retryRes
 					boundaries = retryBoundaries
+					skippedCorrupt = 0
+					retryValid = true
 				}
 			}
+			if !originalFits && !retryValid {
+				return voiceover.TTSOutput{}, fmt.Errorf("voiceover TTS: truncated capture has word boundaries ending at %s past audio duration %s; retry did not produce a valid paired capture", latestSpeechBoundaryEnd(boundaries), res.Duration)
+			}
 		}
-		// Boundary metadata is an intermediate Edge TTS artifact. It has
-		// already been parsed (and, when needed, retried), so do not leave
-		// one JSONL file per scene in the job workspace.
-		_ = os.Remove(res.MetadataPath)
 	}
 
 	out := voiceover.TTSOutput{
@@ -136,6 +147,30 @@ func (a *useCaseTTSAdapter) Synthesize(ctx context.Context, in voiceover.TTSInpu
 		out.WordBoundaries = boundaries
 	}
 	return out, nil
+}
+
+func speechBoundariesFitDuration(boundaries []voiceover.RawSpeechBoundary, duration time.Duration) bool {
+	if len(boundaries) == 0 {
+		return true
+	}
+	if duration <= 0 {
+		return false
+	}
+	return latestSpeechBoundaryEndUS(boundaries) <= duration.Microseconds()
+}
+
+func latestSpeechBoundaryEnd(boundaries []voiceover.RawSpeechBoundary) time.Duration {
+	return time.Duration(latestSpeechBoundaryEndUS(boundaries)) * time.Microsecond
+}
+
+func latestSpeechBoundaryEndUS(boundaries []voiceover.RawSpeechBoundary) int64 {
+	var latest int64
+	for _, boundary := range boundaries {
+		if boundary.EndUS > latest {
+			latest = boundary.EndUS
+		}
+	}
+	return latest
 }
 
 // edgeBoundaryLine is one metadata.jsonl line from the Edge TTS bridge

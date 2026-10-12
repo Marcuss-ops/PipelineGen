@@ -32,7 +32,7 @@ type ImageDriveDeliveryPayload struct {
 // ImageDeliveryRepository is the worker's narrow post-publish projection port.
 // It must not be used by the ingest request before the canonical commit.
 type ImageDeliveryRepository interface {
-	UpdateDriveDelivery(ctx context.Context, contentHash, driveFileID, driveLink, downloadLink, status string) error
+	UpdateDriveDelivery(ctx context.Context, assetID, driveFileID, driveLink, downloadLink, status string) error
 }
 
 // ImageDriveDeliveryHandler performs Drive delivery after the ownership
@@ -93,14 +93,14 @@ func (h *ImageDriveDeliveryHandler) HandlePayload(ctx context.Context, payloadJS
 		ConflictPolicy:      delivery.ConflictSkip,
 	})
 	if err != nil {
-		if projectionErr := h.markFailed(ctx, payload.ContentHash, err.Error()); projectionErr != nil {
+		if projectionErr := h.markFailed(ctx, payload.AssetID, err.Error()); projectionErr != nil {
 			return fmt.Errorf("image drive delivery: publish: %w (record failure: %v)", err, projectionErr)
 		}
 		return fmt.Errorf("image drive delivery: publish: %w", err)
 	}
 	if result == nil || (strings.TrimSpace(result.FileID) == "" && strings.TrimSpace(result.WebViewLink) == "") {
 		err := errors.New("publisher returned no Drive identity")
-		if projectionErr := h.markFailed(ctx, payload.ContentHash, err.Error()); projectionErr != nil {
+		if projectionErr := h.markFailed(ctx, payload.AssetID, err.Error()); projectionErr != nil {
 			return fmt.Errorf("image drive delivery: publish: %w (record failure: %v)", err, projectionErr)
 		}
 		return fmt.Errorf("image drive delivery: publish: %w", err)
@@ -114,16 +114,16 @@ func (h *ImageDriveDeliveryHandler) HandlePayload(ctx context.Context, payloadJS
 	if downloadLink == "" && result.FileID != "" {
 		downloadLink = "https://drive.google.com/uc?id=" + result.FileID
 	}
-	if err := h.repo.UpdateDriveDelivery(ctx, payload.ContentHash, result.FileID, driveLink, downloadLink, "ready"); err != nil {
+	if err := h.repo.UpdateDriveDelivery(ctx, payload.AssetID, result.FileID, driveLink, downloadLink, "ready"); err != nil {
 		return fmt.Errorf("image drive delivery: persist success: %w", err)
 	}
 	h.log.Info("image Drive delivery completed", zap.String("asset_id", payload.AssetID), zap.String("drive_file_id", result.FileID))
 	return nil
 }
 
-func (h *ImageDriveDeliveryHandler) markFailed(ctx context.Context, hash, message string) error {
-	if err := h.repo.UpdateDriveDelivery(ctx, hash, "", "", "", "delivery_failed: "+message); err != nil {
-		h.log.Warn("image Drive delivery failure projection failed", zap.Error(err), zap.String("content_hash", hash))
+func (h *ImageDriveDeliveryHandler) markFailed(ctx context.Context, assetID, message string) error {
+	if err := h.repo.UpdateDriveDelivery(ctx, assetID, "", "", "", "delivery_failed: "+message); err != nil {
+		h.log.Warn("image Drive delivery failure projection failed", zap.Error(err), zap.String("asset_id", assetID))
 		return err
 	}
 	return nil

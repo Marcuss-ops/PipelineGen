@@ -164,6 +164,11 @@ func buildGenerationResultWithCache(
 					continue
 				}
 				result.Cache.Segments[seg.SegmentID] = seg.Cache
+				for _, warning := range seg.Warnings {
+					if !containsGenerationWarning(result.Warnings, warning) {
+						result.Warnings = append(result.Warnings, warning)
+					}
+				}
 			}
 			// Reproject from the exact response segments after final binding
 			// finalization. This is the authoritative candidate surface and
@@ -278,6 +283,15 @@ func buildGenerationResultWithCache(
 
 	// Keep the canonical trace assembled before postprocessor artifact merges.
 	return projectGenerationResult(result, postResult, plan, cacheHit)
+}
+
+func containsGenerationWarning(warnings []string, candidate string) bool {
+	for _, warning := range warnings {
+		if warning == candidate {
+			return true
+		}
+	}
+	return false
 }
 
 // projectGenerationResult performs the final cache/result projection after

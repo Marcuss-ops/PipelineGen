@@ -41,6 +41,7 @@ func TestCoalesceFusesNearbyPhrases(t *testing.T) {
 		chainFixture("text_phrase", "s1", "beta", 700_000, 500_000, "motion_b"),
 		chainFixture("text_phrase", "s1", "gamma", 5_000_000, 500_000, "motion_c"),
 	}
+	items[0].Params = map[string]any{"font_family": "Inter", "font_size_px": 72}
 	got := CoalesceChainedOverlays(items, map[string]int{"chain_gap_ms": 600})
 	if len(got) != 2 {
 		t.Fatalf("got %d items, want chain + standalone: %+v", len(got), got)
@@ -49,12 +50,21 @@ func TestCoalesceFusesNearbyPhrases(t *testing.T) {
 	if chain.Kind != KindPhraseChain || chain.TemplateID != TemplatePhraseChain {
 		t.Fatalf("chain kind/template = %q/%q", chain.Kind, chain.TemplateID)
 	}
+	if chain.PresetID != "" || chain.MotionID != "" {
+		t.Fatalf("chain container must not copy a child preset or motion: preset=%q motion=%q", chain.PresetID, chain.MotionID)
+	}
 	if chain.StartUSValue() != 100_000 || chain.EndUSValue() != 1_200_000 {
 		t.Fatalf("chain window = [%d,%d)", chain.StartUSValue(), chain.EndUSValue())
 	}
 	segs, ok := chain.Params["chain_segments"].([]ChainSegment)
 	if !ok || len(segs) != 2 {
 		t.Fatalf("chain segments = %+v", chain.Params["chain_segments"])
+	}
+	if _, leaked := chain.Params["font_family"]; leaked {
+		t.Fatal("chain container must not inherit a child's font family")
+	}
+	if segs[0].Params["font_family"] != "Inter" {
+		t.Fatalf("segment runtime style lost: %+v", segs[0].Params)
 	}
 	if segs[0].MotionID != "motion_a" || segs[1].MotionID != "motion_b" {
 		t.Fatalf("segment motions lost: %+v", segs)

@@ -228,6 +228,7 @@ func (p *VidRushMaterializationProcessor) Materialize(ctx context.Context, plan 
 	if err != nil {
 		return scriptpkg.VidRushSegmentResult{}, err
 	}
+	out.result.Warnings = append(out.result.Warnings, out.warnings...)
 	if p.log != nil {
 		p.log.Info("VidRush materialization completed", zap.String("segment_id", segment.SegmentID), zap.Int("selected_images", len(out.result.Assets.SecondaryImages)), zap.Int("materialized_candidates", len(out.result.Assets.Candidates)), zap.Strings("warnings", out.warnings))
 	}

@@ -93,6 +93,54 @@ func TestProjectEntityImageBindings_RepeatedEntityGetsDistinctCandidates(t *test
 	}
 }
 
+func TestProjectEntityImageBindings_PerSceneScopeDoesNotReuseSingleCandidate(t *testing.T) {
+	person := func() *scriptpkg.SceneAnnotations {
+		return &scriptpkg.SceneAnnotations{PrimaryEntities: []scriptpkg.AnnotatedEntity{{Text: "Milton Leite", CanonicalName: "Milton Leite", Type: "PERSON"}}}
+	}
+	spec := scriptpkg.SpecSceneOutput{Version: 1, Scenes: []scriptpkg.SpecScene{
+		{ID: "scene-0", SegmentID: "scene-0", Index: 0, Annotations: person()},
+		{ID: "scene-1", SegmentID: "scene-1", Index: 1, Annotations: person()},
+	}}
+	candidate := readyEntityImageCandidate("milton-only", "Milton Leite", "Milton Leite")
+	segments := []scriptpkg.VidRushSegmentResult{
+		{SegmentID: "scene-0", SceneID: "scene-0", Assets: scriptpkg.SegmentAssetSelection{SecondaryImages: []scriptpkg.SegmentAssetCandidate{candidate}}},
+		{SegmentID: "scene-1", SceneID: "scene-1", Assets: scriptpkg.SegmentAssetSelection{SecondaryImages: []scriptpkg.SegmentAssetCandidate{candidate}}},
+	}
+	policy := entityImagePolicyForTest()
+	policy.Scope = "per_scene"
+
+	out := projectEntityImageBindings(spec, segments, policy)
+	first := out.Scenes[0].Annotations.PrimaryEntities[0].Image
+	second := out.Scenes[1].Annotations.PrimaryEntities[0].Image
+	if first == nil || first.Status != "resolved" || first.AssetID != "milton-only" {
+		t.Fatalf("first per-scene binding = %+v, want resolved candidate", first)
+	}
+	if second == nil || second.Status != "not_found" {
+		t.Fatalf("second per-scene binding = %+v, want not_found instead of cross-scene reuse", second)
+	}
+}
+
+func TestRemoveCrossSceneImageCandidateReuseKeepsLaterDistinctImages(t *testing.T) {
+	shared := readyEntityImageCandidate("shared", "Milton Leite", "Milton Leite")
+	firstOnly := readyEntityImageCandidate("first-only", "Milton Leite", "Milton Leite")
+	secondOnly := readyEntityImageCandidate("second-only", "Milton Leite", "Milton Leite")
+	segments := []scriptpkg.VidRushSegmentResult{
+		{SegmentID: "scene-0", Assets: scriptpkg.SegmentAssetSelection{Candidates: []scriptpkg.SegmentAssetCandidate{shared, firstOnly}, SecondaryImages: []scriptpkg.SegmentAssetCandidate{shared, firstOnly}}},
+		{SegmentID: "scene-1", Assets: scriptpkg.SegmentAssetSelection{Candidates: []scriptpkg.SegmentAssetCandidate{shared, secondOnly}, SecondaryImages: []scriptpkg.SegmentAssetCandidate{shared, secondOnly}}},
+	}
+
+	out := scriptpkg.RemoveCrossSceneImageCandidateReuse(segments)
+	if len(out[0].Assets.SecondaryImages) != 2 || len(out[1].Assets.SecondaryImages) != 1 {
+		t.Fatalf("secondary images = first:%v second:%v, want shared image only in first scene", out[0].Assets.SecondaryImages, out[1].Assets.SecondaryImages)
+	}
+	if out[1].Assets.SecondaryImages[0].AssetID != "second-only" {
+		t.Fatalf("later scene image = %q, want second-only", out[1].Assets.SecondaryImages[0].AssetID)
+	}
+	if len(out[1].Assets.Candidates) != 1 || out[1].Assets.Candidates[0].AssetID != "second-only" {
+		t.Fatalf("later scene candidates = %v, want only second-only", out[1].Assets.Candidates)
+	}
+}
+
 // TestProjectEntityImageBindings_SingleCandidatePoolStillBinds certifies the
 // availability fallback: a pool with only one usable image still binds it to
 // every occurrence rather than degrading a later scene to text-only.

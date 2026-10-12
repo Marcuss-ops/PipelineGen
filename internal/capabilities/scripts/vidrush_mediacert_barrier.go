@@ -52,6 +52,9 @@ func (b *MediaCertBarrier) WaitForVidRush(ctx context.Context, runID string) ([]
 	if err != nil {
 		return nil, err
 	}
+	if !b.spec.AllowCrossSceneAssetReuse {
+		segments = scriptpkg.RemoveCrossSceneImageCandidateReuse(segments)
+	}
 	segments = filterEntityRenderSurface(segments)
 	result := mediacert.MediaResult{
 		JobStatus: "SUCCEEDED",

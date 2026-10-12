@@ -1,7 +1,6 @@
 package adapters
 
 import (
-	"strings"
 	"testing"
 
 	mediadomain "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
@@ -79,7 +78,7 @@ func TestVidRushFanoutPlanIncludesBrandImageQueries(t *testing.T) {
 	}
 }
 
-func TestVidRushFanoutPlanPerSceneImagesUsesSceneSpecificQuery(t *testing.T) {
+func TestVidRushFanoutPlanPerSceneImagesUsesCanonicalEntityQuery(t *testing.T) {
 	if !(mediadomain.EntityImagePolicy{Scope: "per_scene"}).PerScene() {
 		t.Fatal("per_scene scope was not recognized")
 	}
@@ -99,14 +98,26 @@ func TestVidRushFanoutPlanPerSceneImagesUsesSceneSpecificQuery(t *testing.T) {
 	base.Text = "Milton Leite contestou a decisão do Superior Tribunal de Justiça."
 	base.SourceText = "A defesa questionou a prisão temporária e contestou os fundamentos da decisão."
 	second := buildVidRushFanoutPlan(plan, base, nil, &gatedImageSearcher{}, nil)
-	if len(first.imageQueries) == 0 || len(second.imageQueries) == 0 || first.imageQueries[0] == second.imageQueries[0] {
-		t.Fatalf("per-scene image queries are not scene-specific: first=%q second=%q", first.imageQueries, second.imageQueries)
+	if len(first.imageQueries) != 1 || len(second.imageQueries) != 1 || first.imageQueries[0] != "Milton Leite" || second.imageQueries[0] != "Milton Leite" {
+		t.Fatalf("per-scene image queries must use the canonical entity identity: first=%q second=%q", first.imageQueries, second.imageQueries)
 	}
-	if len(first.imageQueries) != 1 || len(second.imageQueries) != 1 {
-		t.Fatalf("per-scene image fanout must stay bounded to one query: first=%q second=%q", first.imageQueries, second.imageQueries)
+}
+
+func TestVidRushFanoutPlanPerSceneImageQueryIgnoresNarrativeSuffix(t *testing.T) {
+	plan := &scriptpkg.ResolvedGenerationPlan{MediaPlan: mediadomain.MediaPlanSpec{
+		Extraction:     mediadomain.MediaExtractionPolicy{EntityImages: mediadomain.EntityImagePolicy{Enabled: true, Scope: "per_scene"}},
+		ProviderPolicy: mediadomain.MediaProviderPolicy{InternetImages: mediadomain.MediaToggleEnabled},
+	}}
+	segment := scriptpkg.VidRushSegmentResult{
+		SegmentID: "delitto-e-luogo", TextHash: "hash", SourceText: "Presenta Chiara Poggi, ventiseienne uccisa nella sua abitazione a Garlasco.",
+		Insights: scriptpkg.SegmentInsights{
+			Entities:     []scriptpkg.ExtractedEntity{{Value: "Chiara Poggi", Type: "PERSON"}},
+			ImageQueries: []string{"Chiara Poggi Presenta Chiara Poggi, ventiseienne uccisa"},
+		},
 	}
-	if strings.Contains(strings.ToLower(first.imageQueries[0]), "boxing") || strings.Contains(strings.ToLower(second.imageQueries[0]), "boxing") {
-		t.Fatalf("scene image queries contain unrelated boxing suffix: first=%q second=%q", first.imageQueries, second.imageQueries)
+	fanout := buildVidRushFanoutPlan(plan, segment, nil, &gatedImageSearcher{}, nil)
+	if len(fanout.imageQueries) != 1 || fanout.imageQueries[0] != "Chiara Poggi" {
+		t.Fatalf("entity image query = %q, want canonical identity only", fanout.imageQueries)
 	}
 }
 

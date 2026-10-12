@@ -108,6 +108,7 @@ func normalizeVidRushSegmentAssets(segment *scriptpkg.VidRushSegmentResult) {
 
 func CloneVidRushSegmentResult(in scriptpkg.VidRushSegmentResult) scriptpkg.VidRushSegmentResult {
 	out := in
+	out.Warnings = append([]string(nil), in.Warnings...)
 	if strings.TrimSpace(out.TextHash) == "" {
 		identityText := out.Text
 		if strings.TrimSpace(identityText) == "" {

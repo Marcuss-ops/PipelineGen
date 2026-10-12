@@ -161,15 +161,16 @@ func TestApplyEditingAssetPolicyOverlayBackgroundIsGatedOnRender(t *testing.T) {
 	}
 }
 
-// TestApplyEditingAssetPolicyPreservesExplicitOverlayBackground pins the
-// caller-intent rule on the overlay surface too: an explicit kind survives,
-// including the deliberate black canvas (kind "color").
+// TestApplyEditingAssetPolicyPreservesExplicitOverlayBackgroundWithoutRenderPlate
+// pins explicit background behavior only when there is no selected render
+// plate to serve as the shared source of truth.
 func TestApplyEditingAssetPolicyPreservesExplicitOverlayBackground(t *testing.T) {
 	policy := mediaregistry.DefaultEditingAssetsPolicy()
 
-	t.Run("black canvas is preserved", func(t *testing.T) {
+	t.Run("black canvas survives when render has no background", func(t *testing.T) {
 		req := combinedTimelineRequest("key")
 		req.Render.Enabled = true
+		req.Render.Background = &scriptpkg.VideoBackgroundSpec{Mode: "none"}
 		req.OverlayBackground = &scriptpkg.OverlayBackgroundSpec{Kind: "color", Color: []float64{0, 0, 0, 1}}
 		if err := ApplyEditingAssetPolicy(&req, policy); err != nil {
 			t.Fatal(err)
@@ -182,6 +183,7 @@ func TestApplyEditingAssetPolicyPreservesExplicitOverlayBackground(t *testing.T)
 	t.Run("explicit plate is preserved", func(t *testing.T) {
 		req := combinedTimelineRequest("key")
 		req.Render.Enabled = true
+		req.Render.Background = &scriptpkg.VideoBackgroundSpec{Mode: "none"}
 		req.OverlayBackground = &scriptpkg.OverlayBackgroundSpec{Kind: "video", AssetID: "drive-background-01"}
 		if err := ApplyEditingAssetPolicy(&req, policy); err != nil {
 			t.Fatal(err)
@@ -209,6 +211,30 @@ func TestApplyEditingAssetPolicyPreservesExplicitOverlayBackground(t *testing.T)
 			t.Errorf("overlay plate selection is not deterministic: %q vs %q", first.OverlayBackground.AssetID, second.OverlayBackground.AssetID)
 		}
 	})
+}
+
+func TestApplyEditingAssetPolicyUsesRenderBackgroundAsOverlaySourceOfTruth(t *testing.T) {
+	policy := mediaregistry.DefaultEditingAssetsPolicy()
+	req := combinedTimelineRequest("shared-overlay-bg")
+	req.Render.Enabled = true
+	req.Render.Background = &scriptpkg.VideoBackgroundSpec{
+		Mode: "asset", AssetID: "drive-background-crime",
+	}
+	req.OverlayBackground = &scriptpkg.OverlayBackgroundSpec{
+		Kind: "image", AssetID: "short-phrase-black-gradient-dots",
+	}
+	if err := ApplyEditingAssetPolicy(&req, policy); err != nil {
+		t.Fatalf("ApplyEditingAssetPolicy: %v", err)
+	}
+	if req.OverlayBackground == nil {
+		t.Fatal("overlay background is missing")
+	}
+	if req.OverlayBackground.Kind != "video" || req.OverlayBackground.AssetID != "drive-background-crime" {
+		t.Fatalf("overlay background = %+v, want the render's drive-background-crime video", req.OverlayBackground)
+	}
+	if req.OverlayBackground.Fit != overlayBackgroundPlateFit || !req.OverlayBackground.Loop {
+		t.Errorf("shared render background contract not applied: %+v", req.OverlayBackground)
+	}
 }
 
 func TestApplyEditingAssetPolicyFailsClosed(t *testing.T) {

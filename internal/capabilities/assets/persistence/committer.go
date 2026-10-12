@@ -294,6 +294,13 @@ type DriveDeliveryMutation struct {
 	Status       string
 }
 
+// AssetDriveDeliveryWriter records the Drive side effect against the
+// canonical asset identity. Outbox payloads carry AssetID; content hashes are
+// byte identities and must not be used as a second lookup key here.
+type AssetDriveDeliveryWriter interface {
+	UpdateDriveDeliveryByAssetID(ctx context.Context, assetID string, mutation DriveDeliveryMutation) error
+}
+
 type AssetCommitter interface {
 	// CommitTx writes the asset, locations, metadata and optional
 	// outbox event inside the caller-owned transaction.

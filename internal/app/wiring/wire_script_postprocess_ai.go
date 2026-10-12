@@ -154,7 +154,14 @@ func registerAIBackedProcessors(
 		if root != nil && root.Repos != nil {
 			entityImageCatalogRepo = root.Repos.EntityImageCatalog
 		}
-		if !ppReg.Register(adapters.NewMediaResolverImageStageWithCatalog(imageSearcher, vidRushCache, entityImageCatalogRepo, vidrushMetrics)) {
+		imageStage := adapters.NewMediaResolverImageStageWithCatalog(imageSearcher, vidRushCache, entityImageCatalogRepo, vidrushMetrics)
+		if root != nil && root.AI != nil && root.AI.ScriptGen != nil {
+			if ollamaClient := root.AI.ScriptGen.GetClient(); ollamaClient != nil {
+				imageStage.WithSemanticScorer(ollamaadapters.NewOllamaPersonImageScorer(ollamaClient))
+				log.Info("InternetImagesProcessor wired with GPU-capable Ollama person-image verification", zap.String("model", ollamaClient.Model()))
+			}
+		}
+		if !ppReg.Register(imageStage) {
 			return fmt.Errorf("register internet_images processor: composition bug")
 		}
 		log.Info("InternetImagesProcessor wired through canonical ImageSearchResolver")

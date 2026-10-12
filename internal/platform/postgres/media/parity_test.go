@@ -564,6 +564,39 @@ func TestParity_UpdateDriveDeliveryByLegacyHash(t *testing.T) {
 	}
 }
 
+func TestParity_UpdateDriveDeliveryByAssetID(t *testing.T) {
+	c, db := newPostgresCommitter(t)
+	ctx := context.Background()
+	req := fullCommitRequest()
+	req.Asset.Source = "image"
+	req.Asset.Filename = "image.jpg"
+	req.Asset.MediaType = "image"
+	req.IndexPolicy = mediacommit.IndexPolicy{Indexable: false}
+	if _, err := c.CommitMediaAsset(ctx, req); err != nil {
+		t.Fatal(err)
+	}
+
+	err := c.UpdateDriveDeliveryByAssetID(ctx, req.Asset.AssetID, persistence.DriveDeliveryMutation{
+		DriveFileID: "drv-asset-id", DriveLink: "https://drive.example/asset", DownloadLink: "https://dl.example/asset", Status: "ready",
+	})
+	if err != nil {
+		t.Fatalf("UpdateDriveDeliveryByAssetID: %v", err)
+	}
+	var driveFileID, deliveryStatus, locationURI, locationID string
+	if err := db.QueryRow(`SELECT drive_file_id, metadata_json::jsonb->>'delivery_status' FROM media_assets WHERE id = $1`, req.Asset.AssetID).Scan(&driveFileID, &deliveryStatus); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.QueryRow(`SELECT uri, external_id FROM asset_locations WHERE asset_id = $1 AND location_kind = 'drive'`, req.Asset.AssetID).Scan(&locationURI, &locationID); err != nil {
+		t.Fatal(err)
+	}
+	if driveFileID != "drv-asset-id" || deliveryStatus != "ready" || locationURI != "drive://drv-asset-id" || locationID != "drv-asset-id" {
+		t.Fatalf("drive projection mismatch: asset=%q status=%q location=%q external=%q", driveFileID, deliveryStatus, locationURI, locationID)
+	}
+	if err := c.UpdateDriveDeliveryByAssetID(ctx, "missing-image", persistence.DriveDeliveryMutation{Status: "ready"}); err == nil {
+		t.Fatal("unknown asset id must fail closed")
+	}
+}
+
 // ── Renditions + index event seams ──────────────────────────────────────
 
 func TestParity_CommitRenditionTx(t *testing.T) {

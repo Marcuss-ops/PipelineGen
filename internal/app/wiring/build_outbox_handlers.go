@@ -36,7 +36,6 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	detail "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	storage "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/imagesrepo"
 	sqmetadataexport "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/metadataexport"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
@@ -297,7 +296,6 @@ func registerPostgresMediaOutboxHandlers(
 	worker *pgmedia.PostgresIndexWorker,
 	drivePublisher delivery.Publisher,
 	mutator assetspersistence.AssetMutator,
-	imageRepo *imagesrepo.ImagesRepository,
 	subtitles detail.SubtitleArtifactRepository,
 	log *zap.Logger,
 ) error {
@@ -315,14 +313,16 @@ func registerPostgresMediaOutboxHandlers(
 		observability.NewMediaOutboxStatusCountAdapter(),
 		cliprender.EventClipRenderDriveDeliveryRequested,
 	)
-	if imageRepo != nil {
-		imageHandler, imageErr := imagesapp.NewImageDriveDeliveryHandler(imageRepo, drivePublisher, log)
-		if imageErr != nil {
-			return fmt.Errorf("image PostgreSQL Drive delivery handler: %w", imageErr)
-		}
-		if err := worker.RegisterHandler(imagesapp.EventTypeImageDriveDeliveryRequested, imageDriveDeliveryPGHandler{handler: imageHandler}); err != nil {
-			return fmt.Errorf("register image PostgreSQL Drive delivery handler: %w", err)
-		}
+	imageWriter, ok := mutator.(assetspersistence.AssetDriveDeliveryWriter)
+	if !ok {
+		return fmt.Errorf("image PostgreSQL Drive delivery handler: canonical asset mutator does not support Drive delivery by asset id")
+	}
+	imageHandler, imageErr := imagesapp.NewImageDriveDeliveryHandler(pgImageDriveDeliveryRepository{writer: imageWriter}, drivePublisher, log)
+	if imageErr != nil {
+		return fmt.Errorf("image PostgreSQL Drive delivery handler: %w", imageErr)
+	}
+	if err := worker.RegisterHandler(imagesapp.EventTypeImageDriveDeliveryRequested, imageDriveDeliveryPGHandler{handler: imageHandler}); err != nil {
+		return fmt.Errorf("register image PostgreSQL Drive delivery handler: %w", err)
 	}
 	log.Info("PostgreSQL media outbox Drive delivery handlers registered")
 	return nil

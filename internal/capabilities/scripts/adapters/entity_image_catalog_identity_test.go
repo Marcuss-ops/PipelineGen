@@ -11,6 +11,120 @@ import (
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
+func TestPersonImageSourceNameMismatchRejectsConflictingNamedImage(t *testing.T) {
+	identity, err := entitycatalog.CanonicalizePersonName("Angela Taccia")
+	if err != nil {
+		t.Fatal(err)
+	}
+	cases := []struct {
+		url     string
+		wantBad bool
+	}{
+		{"https://example.test/2020/Angela-Tuccia-1.jpg", true},
+		{"https://example.test/angela%2520taccia.jpg", false},
+		{"https://example.test/IMG_6075-1-scaled.jpeg", false},
+		{"https://example.test/angela-taccia-avvocata.jpg", false},
+	}
+	for _, tc := range cases {
+		got := personImageSourceNameMismatch(identity.CanonicalName, tc.url)
+		if (got != "") != tc.wantBad {
+			t.Errorf("personImageSourceNameMismatch(%q) = %q, want mismatch=%v", tc.url, got, tc.wantBad)
+		}
+	}
+}
+
+func TestPersonImageSourceIdentityFailsClosedWithoutCanonicalProvenance(t *testing.T) {
+	identity, err := entitycatalog.CanonicalizePersonName("Angela Taccia")
+	if err != nil {
+		t.Fatal(err)
+	}
+	cases := []struct {
+		name          string
+		sourceURL     string
+		sourcePageURL string
+		wantRejected  bool
+	}{
+		{name: "generic materialized filename", sourceURL: "https://www.newspeople.it/wp-content/uploads/2026/05/IMG_6075-1-scaled.jpeg", wantRejected: true},
+		{name: "explicitly different person", sourceURL: "https://www.aobmagazine.it/Angela-Tuccia-1.jpg", wantRejected: true},
+		{name: "double escaped canonical filename", sourceURL: "https://media.example/angela%2520taccia.jpg"},
+		{name: "canonical source page without durable image URL provenance", sourceURL: "https://cdn.example/IMG_6075.jpeg", sourcePageURL: "https://news.example/angela-taccia-avvocata-sempio", wantRejected: true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := personImageSourceIdentityFailure(identity.CanonicalName, tc.sourceURL, tc.sourcePageURL)
+			if (got != "") != tc.wantRejected {
+				t.Fatalf("identity failure = %q, want rejected=%v", got, tc.wantRejected)
+			}
+		})
+	}
+}
+
+func TestEntityImageCatalogRejectsCachedGenericFilename(t *testing.T) {
+	repo := newIntegrationEntityImageCatalog()
+	identity, err := entitycatalog.CanonicalizePersonName("Angela Taccia")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := repo.UpsertEntity(context.Background(), entitycatalog.Entity{CanonicalEntityID: identity.CanonicalEntityID, EntityType: entitycatalog.EntityTypePerson, CanonicalName: identity.CanonicalName}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repo.UpsertCandidate(context.Background(), entitycatalog.Candidate{
+		CanonicalEntityID: identity.CanonicalEntityID,
+		Provider:          "duckduckgo",
+		Rank:              1,
+		SourceURL:         "https://www.newspeople.it/wp-content/uploads/2026/05/IMG_6075-1-scaled.jpeg",
+		Status:            entitycatalog.CandidateStatusFresh,
+		SemanticStatus:    entitycatalog.CandidateSemanticAccepted,
+		QualityReason:     "canonical PERSON metadata matched; Ollama visual verification confirmed one portrait subject and no collage",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	pool, err := entityImageCatalogCandidates(context.Background(), repo, identity, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(pool.Candidates) != 0 {
+		t.Fatalf("cached generic source returned %d person image candidates, want none", len(pool.Candidates))
+	}
+	rows, err := repo.ListCandidates(context.Background(), identity.CanonicalEntityID, 10)
+	if err != nil || len(rows) != 1 {
+		t.Fatalf("catalog rows=%d err=%v, want original candidate retained", len(rows), err)
+	}
+	if rows[0].SemanticStatus != entitycatalog.CandidateSemanticRejected || !strings.Contains(rows[0].QualityReason, "does not establish canonical PERSON identity") {
+		t.Fatalf("cached candidate verdict = %q / %q, want persisted provenance rejection", rows[0].SemanticStatus, rows[0].QualityReason)
+	}
+}
+
+func TestEntityImageCatalogReopensLegacyHeadshotOnlyVerdictForCurrentScorer(t *testing.T) {
+	repo := newIntegrationEntityImageCatalog()
+	identity, err := entitycatalog.CanonicalizePersonName("Angela Taccia")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := repo.UpsertEntity(context.Background(), entitycatalog.Entity{CanonicalEntityID: identity.CanonicalEntityID, EntityType: entitycatalog.EntityTypePerson, CanonicalName: identity.CanonicalName}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repo.UpsertCandidate(context.Background(), entitycatalog.Candidate{
+		CanonicalEntityID: identity.CanonicalEntityID,
+		Provider:          "duckduckgo",
+		Rank:              1,
+		SourceURL:         "https://media-assets.vanityfair.it/photos/angela%2520taccia.jpg",
+		Status:            entitycatalog.CandidateStatusFresh,
+		SemanticStatus:    entitycatalog.CandidateSemanticRejected,
+		QualityReason:     "Ollama visual verification did not find one clear person",
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	pool, err := entityImageCatalogCandidates(context.Background(), repo, identity, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(pool.Candidates) != 1 || pool.Candidates[0].SemanticStatus != entitycatalog.CandidateSemanticUnknown {
+		t.Fatalf("legacy headshot-only row = %+v, want one unresolved candidate for current pixel recheck", pool.Candidates)
+	}
+}
+
 type rankedIdentitySearcher struct {
 	calls atomic.Int32
 }

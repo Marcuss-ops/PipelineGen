@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
+	_ "golang.org/x/image/webp"
 
 	scriptports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
@@ -219,7 +220,7 @@ func downloadVidRushImage(ctx context.Context, client *http.Client, rawURL, sour
 	return data, mime, nil
 }
 
-func validateVidRushImageHead(status int, contentType string, contentLength int64, policy VidRushImagePolicy) error {
+func validateVidRushImageHead(status int, _ string, contentLength int64, policy VidRushImagePolicy) error {
 	policy = normalizeVidRushImagePolicy(policy)
 	if status == http.StatusMethodNotAllowed || status == http.StatusNotImplemented {
 		return nil // host does not support HEAD; the guarded GET remains authoritative.
@@ -227,10 +228,9 @@ func validateVidRushImageHead(status int, contentType string, contentLength int6
 	if status < http.StatusOK || status >= http.StatusMultipleChoices {
 		return fmt.Errorf("vidrush image: upstream HEAD status %d", status)
 	}
-	declared := strings.TrimSpace(strings.Split(contentType, ";")[0])
-	if declared != "" && !strings.EqualFold(declared, "application/octet-stream") && !allowedVidRushImageMIME(declared) {
-		return ErrVidRushImageInvalid
-	}
+	// HEAD metadata is advisory: several image hosts return text/plain or a
+	// placeholder length here even though GET serves the actual image. GET
+	// validates the response MIME against sniffed bytes and decodes the image.
 	if contentLength > policy.MaxBytes {
 		return ErrVidRushImageTooLarge
 	}
@@ -410,7 +410,7 @@ func CanonicalizeVidRushImageFile(path string, policy VidRushImagePolicy) error 
 
 func allowedVidRushImageMIME(mime string) bool {
 	switch strings.ToLower(strings.TrimSpace(strings.Split(mime, ";")[0])) {
-	case "image/jpeg", "image/png", "image/gif":
+	case "image/jpeg", "image/png", "image/gif", "image/webp":
 		return true
 	default:
 		return false

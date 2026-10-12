@@ -85,7 +85,17 @@ func projectEntityImageBindings(spec scriptpkg.SpecSceneOutput, segments []scrip
 			}
 			variantSeed := strings.TrimSpace(out.Scenes[i].ID) + "|" + entityImageIdentity(*entity)
 			if candidate, ok := findEntityImageCandidateFrom(*entity, *seg, variantSeed, usedCandidates); ok {
-				if key := vidRushCandidateIdentity(candidate); key != "" {
+				key := vidRushCandidateIdentity(candidate)
+				if policy.PerScene() && key != "" {
+					if _, alreadyUsed := usedCandidates[key]; alreadyUsed {
+						// Per-scene scope promises independent image evidence, and the
+						// media-cert gate rejects duplicate assets across scenes. Keep
+						// this scene text-only when its pool has no unused variant;
+						// reusing the lone image would make the whole run uncertifiable.
+						continue
+					}
+				}
+				if key != "" {
 					usedCandidates[key] = struct{}{}
 				}
 				identity := entityImageIdentity(*entity)

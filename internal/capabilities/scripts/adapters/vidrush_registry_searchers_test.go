@@ -249,6 +249,45 @@ func TestVidRushProviderFanoutRunsProvidersInParallel(t *testing.T) {
 	}
 }
 
+func TestPersonImageSearchQueryAddsPortraitHintWithoutChangingIdentity(t *testing.T) {
+	if got := personImageSearchQuery("  Chiara Poggi  ", true); got != "Chiara Poggi single-person portrait headshot photo" {
+		t.Fatalf("person image provider query = %q", got)
+	}
+	if got := personImageSearchQuery("Pavia", false); got != "Pavia" {
+		t.Fatalf("non-person image provider query = %q", got)
+	}
+}
+
+type rejectAllPersonImages struct{ calls int }
+
+func (s *rejectAllPersonImages) ScoreImageCandidates(_ context.Context, _ string, candidates []scriptpkg.SegmentAssetCandidate) ([]scriptpkg.SegmentAssetCandidate, error) {
+	s.calls++
+	for i := range candidates {
+		candidates[i].SemanticStatus = "rejected"
+		candidates[i].SemanticScore = 0
+	}
+	return candidates, nil
+}
+
+func TestVidRushFanoutAppliesImageGateToCachedCandidates(t *testing.T) {
+	scorer := &rejectAllPersonImages{}
+	fanout := NewVidRushProviderFanout(nil, nil).WithSemanticScorer(scorer)
+	candidate := scriptpkg.SegmentAssetCandidate{
+		AssetID: "cached-person", Provider: scriptpkg.VidRushProviderInternetImages,
+		SourceURL: "https://images.example/cached-person.jpg", Entity: "Example Person",
+	}
+	got, err := fanout.verifyPersonImageCandidates(context.Background(), []scriptpkg.SegmentAssetCandidate{candidate})
+	if err != nil {
+		t.Fatalf("verify cached candidate: %v", err)
+	}
+	if scorer.calls != 1 {
+		t.Fatalf("scorer calls = %d, want 1", scorer.calls)
+	}
+	if len(got) != 0 {
+		t.Fatalf("verified candidates = %+v, want rejected cached image filtered before materialization", got)
+	}
+}
+
 // TestVidRushProviderFanoutCachesEmptyImageResults certifies the durable-runner
 // provider fanout caches empty internet_images results in L2 (TTL 48h) so a
 // warm replay of the same segment is deterministic and does not re-call the

@@ -221,9 +221,13 @@ var _ scriptports.MediaSamplerPort = (*stubMediaSampler)(nil)
 type stubMediaCertifier struct {
 	report mediacert.Report
 	err    error
+	input  *mediacert.MediaResult
 }
 
-func (s stubMediaCertifier) Certify(_ context.Context, _ mediacert.Spec, _ mediacert.MediaResult) (mediacert.Report, error) {
+func (s stubMediaCertifier) Certify(_ context.Context, _ mediacert.Spec, input mediacert.MediaResult) (mediacert.Report, error) {
+	if s.input != nil {
+		*s.input = input
+	}
 	if s.err != nil {
 		return mediacert.Report{}, s.err
 	}
@@ -720,4 +724,28 @@ func TestMediaCertBarrierPassesCertifiedRun(t *testing.T) {
 	segs, err := barrier.WaitForVidRush(context.Background(), "run-1")
 	require.NoError(t, err)
 	require.Len(t, segs, 1)
+}
+
+func TestMediaCertBarrierPrunesReusedImagesBeforeCertification(t *testing.T) {
+	shared := scriptpkg.SegmentAssetCandidate{AssetID: "shared-image"}
+	firstOnly := scriptpkg.SegmentAssetCandidate{AssetID: "first-only"}
+	secondOnly := scriptpkg.SegmentAssetCandidate{AssetID: "second-only"}
+	inner := stubBarrier{segments: []scriptpkg.VidRushSegmentResult{
+		{SegmentID: "scene-0", Assets: scriptpkg.SegmentAssetSelection{Candidates: []scriptpkg.SegmentAssetCandidate{shared, firstOnly}, SecondaryImages: []scriptpkg.SegmentAssetCandidate{shared, firstOnly}}},
+		{SegmentID: "scene-1", Assets: scriptpkg.SegmentAssetSelection{Candidates: []scriptpkg.SegmentAssetCandidate{shared, secondOnly}, SecondaryImages: []scriptpkg.SegmentAssetCandidate{shared, secondOnly}}},
+	}}
+	certifiedInput := mediacert.MediaResult{}
+	certifier := stubMediaCertifier{
+		report: mediacert.Report{JobStatus: "SUCCEEDED", Certified: true},
+		input:  &certifiedInput,
+	}
+	barrier, err := NewMediaCertBarrier(inner, certifier, mediacert.Spec{Segments: 2})
+	require.NoError(t, err)
+
+	segments, err := barrier.WaitForVidRush(context.Background(), "run-image-dedup")
+	require.NoError(t, err)
+	require.Len(t, certifiedInput.Segments, 2)
+	require.Equal(t, []scriptpkg.SegmentAssetCandidate{shared, firstOnly}, certifiedInput.Segments[0].Assets.SecondaryImages)
+	require.Equal(t, []scriptpkg.SegmentAssetCandidate{secondOnly}, certifiedInput.Segments[1].Assets.SecondaryImages)
+	require.Equal(t, certifiedInput.Segments[1].Assets.SecondaryImages, segments[1].Assets.SecondaryImages)
 }

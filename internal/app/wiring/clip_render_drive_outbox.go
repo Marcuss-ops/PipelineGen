@@ -282,6 +282,22 @@ func (h *clipRenderDriveDeliveryHandler) removeStagedArtifact(assetID, path stri
 // imageDriveDeliveryPGHandler adapts the capability-owned image payload
 // handler to the PostgreSQL media outbox worker. Image delivery intents are
 // emitted by the same Postgres AssetCommitter as clip intents.
+type pgImageDriveDeliveryRepository struct {
+	writer persistence.AssetDriveDeliveryWriter
+}
+
+func (r pgImageDriveDeliveryRepository) UpdateDriveDelivery(ctx context.Context, assetID, driveFileID, driveLink, downloadLink, status string) error {
+	if r.writer == nil {
+		return fmt.Errorf("image Drive delivery: canonical asset writer is unavailable")
+	}
+	return r.writer.UpdateDriveDeliveryByAssetID(ctx, assetID, persistence.DriveDeliveryMutation{
+		DriveFileID:  driveFileID,
+		DriveLink:    driveLink,
+		DownloadLink: downloadLink,
+		Status:       status,
+	})
+}
+
 type imageDriveDeliveryPGHandler struct {
 	handler *imagesapp.ImageDriveDeliveryHandler
 }

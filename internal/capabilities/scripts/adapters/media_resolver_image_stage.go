@@ -178,7 +178,7 @@ func (p *MediaResolverImageStage) processInternetImageSegments(ctx context.Conte
 			// identity. Keep it out of the durable key so a warm replay
 			// reuses the same scene assets even if extraction wording
 			// changes between runs.
-			"internet-images-assets-v3",
+			"internet-images-assets-v4",
 			updated.SegmentID,
 			updated.TextHash,
 			plan.Language,
@@ -401,6 +401,11 @@ func (p *MediaResolverImageStage) processInternetImageSegments(ctx context.Conte
 			} else {
 				queryResult.candidates = scored
 			}
+			if p.semanticScorer != nil {
+				if err := persistPersonImageVisualVerdicts(ctx, p.catalog, queryResult.candidates); err != nil {
+					return nil, fmt.Errorf("internet_images: persist visual person-image verdicts for segment %s: %w", updated.SegmentID, err)
+				}
+			}
 			queryResult.candidates = filterInternetImageCandidates(deduplicateInternetImageCandidates(normalizeInternetImageCandidates(queryResult.candidates, queryResult.query)))
 			if queryResult.err != nil {
 				if p.metrics != nil {
@@ -463,6 +468,9 @@ func (p *MediaResolverImageStage) processInternetImageSegments(ctx context.Conte
 	}
 	entityImagePolicy := plan.MediaPlan.Extraction.EntityImages
 	entityImagePolicy.Enabled = plan.MediaPlan.Extraction.EntityImageSurfaceEnabled()
+	if entityImagePolicy.PerScene() {
+		updatedSegments = scriptpkg.RemoveCrossSceneImageCandidateReuse(updatedSegments)
+	}
 	updatedSpecScene := projectEntityImageBindings(input.SpecScene, updatedSegments, entityImagePolicy)
 	return &PostProcessResult{
 		VidRushSegments:  updatedSegments,
