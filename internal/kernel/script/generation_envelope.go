@@ -162,6 +162,9 @@ type GenerationItemV2 struct {
 	// can be selected through animation_policies target=image. Pair with
 	// audio.random_sfx_on_clip_start or explicit audio.sound_effects for sound.
 	RandomLightLeakOnClipStart bool `json:"random_light_leak_on_clip_start,omitempty"`
+	// RandomLightLeakOnOverlayStart emits a deterministic short leak at each
+	// finalized visual overlay's start.
+	RandomLightLeakOnOverlayStart bool `json:"random_light_leak_on_overlay_start,omitempty"`
 	// PhraseMotionFamily optionally restricts phrase_motions to a certified
 	// family. With no explicit pool or family, the runtime rotates through its
 	// seeded random sequence over the full certified animation catalog.
@@ -172,6 +175,9 @@ type GenerationItemV2 struct {
 	// keeps overlay.MaxPhraseOverlaysPerRun. Dedup and semantic ranking still
 	// run first, and the effective limit is reported in the phrase budget.
 	MaxPhraseOverlays int `json:"max_phrase_overlays,omitempty"`
+	// MaxOverlaysPerScene caps the rendered overlay items in each scene.
+	// Zero retains the established scene budget.
+	MaxOverlaysPerScene int `json:"max_overlays_per_scene,omitempty"`
 	// MapsOnly keeps runtime-resolved map overlays and removes all image,
 	// phrase, number, and other editorial overlay items from the render plan.
 	MapsOnly bool `json:"maps_only,omitempty"`
@@ -310,6 +316,9 @@ type OverlayStyleSpec struct {
 	// GlowSize and StrokeSize are pixel widths. Explicit zero disables the
 	// corresponding effect; nil preserves the preset's value.
 	GlowSize   *float64 `json:"glow_size,omitempty"`
+	// GlowColor explicitly replaces a motion preset's glow color while keeping
+	// its authored radius and intensity.
+	GlowColor  string   `json:"glow_color,omitempty"`
 	StrokeSize *float64 `json:"stroke_size,omitempty"`
 	// Cursor overrides the typewriter caret rendered alongside phrase
 	// overlays: its chosen color, its pixel geometry (width = thickness,
@@ -371,6 +380,9 @@ func (s *OverlayStyleSpec) Validate() error {
 	}
 	if s.GlowSize != nil && (math.IsNaN(*s.GlowSize) || math.IsInf(*s.GlowSize, 0) || *s.GlowSize < 0 || *s.GlowSize > 256) {
 		return fmt.Errorf("overlay_style.glow_size must be between 0 and 256 pixels")
+	}
+	if s.GlowColor != "" && !isStyleHexColor(s.GlowColor) {
+		return fmt.Errorf("overlay_style.glow_color must be #RRGGBB")
 	}
 	if s.StrokeSize != nil && (math.IsNaN(*s.StrokeSize) || math.IsInf(*s.StrokeSize, 0) || *s.StrokeSize < 0 || *s.StrokeSize > 64) {
 		return fmt.Errorf("overlay_style.stroke_size must be between 0 and 64 pixels")

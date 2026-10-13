@@ -311,12 +311,12 @@ func TestRenderDynamicMapVideoMapPresentationIsDeterministicPerItem(t *testing.T
 	}
 
 	seed := mapRunSeed(plan)
-	// A plan that requests no map_type resolves the classic Python satellite
-	// map (esri_sat); only map_type=random samples the 3-style classic
+	// A plan that requests no map_type resolves the clean street map
+	// (esri_street); only map_type=random samples the 3-style classic
 	// palette. Camera and label always sample the item slot so several maps
 	// in one video differ.
 	want := map[string]string{
-		"basemap":          "esri_sat",
+		"basemap":          "esri_street",
 		"camera_animation": deterministicMapStyle(seed, "map_camera", "map-1", mapCameraAnimations),
 		"label_animation":  deterministicMapStyle(seed, "map_label", "map-1", mapLabelAnimations),
 	}
@@ -338,13 +338,13 @@ func TestRenderDynamicMapVideoMapPresentationIsDeterministicPerItem(t *testing.T
 	t.Fatalf("captured basemap %q is outside the certified palette %v", basemap, mapBasemapStyles())
 }
 
-// TestResolveMapBasemapDefaultsToClassicSatellite pins the runtime map-type
-// contract: omission means the classic Python satellite map, explicit ids win
+// TestResolveMapBasemapDefaultsToStreet pins the runtime map-type
+// contract: omission means the clean street map, explicit ids win
 // verbatim, random samples only the 3-style classic palette, and unknown ids
 // fail closed.
-func TestResolveMapBasemapDefaultsToClassicSatellite(t *testing.T) {
+func TestResolveMapBasemapDefaultsToStreet(t *testing.T) {
 	for _, tc := range []struct{ in, want string }{
-		{"", "esri_sat"}, {"satellite", "esri_sat"},
+		{"", "esri_street"}, {"satellite", "esri_sat"},
 		{"roadmap", "esri_street"}, {"terrain", "esri_topo"},
 		{"ROADMAP", "esri_street"},
 	} {
@@ -444,17 +444,25 @@ func TestApplyMapPresentationValidatesAnimations(t *testing.T) {
 	}
 }
 
-// TestResolveMapComposition pins the 21-system contract: empty keeps the
-// classic look, random samples deterministically, explicit certified ids win
-// verbatim, unknown ids fail closed.
+// TestResolveMapComposition pins the certified composition contract: empty and
+// random select deterministically, explicit certified ids win verbatim, and
+// unknown ids fail closed.
 func TestResolveMapComposition(t *testing.T) {
-	if got, err := resolveMapComposition("", "seed", "map-1"); err != nil || got != "" {
-		t.Fatalf("empty composition = %q, %v; want classic passthrough", got, err)
+	if got, err := resolveMapComposition("", "seed", "map-1"); err != nil || got == "" {
+		t.Fatalf("empty composition should pick a certified random treatment, got %q, %v", got, err)
 	}
-	if got, err := resolveMapComposition("route_line", "seed", "map-1"); err != nil || got != "route_line" {
+	if got, err := resolveMapComposition("random", "seed", "map-1", 1); err != nil || got == "" {
+		t.Fatalf("single-pin random composition = %q, %v", got, err)
+	} else if got == "multi_locations" || got == "route_line" || got == "ed_yemen_markers" {
+		t.Fatalf("single-pin random composition selected incompatible %q", got)
+	}
+	if got, err := resolveMapComposition("random", "seed", "map-1", 2); err != nil || got == "" {
+		t.Fatalf("two-pin random composition = %q, %v", got, err)
+	}
+	if got, err := resolveMapComposition("route_line", "seed", "map-1", 2); err != nil || got != "route_line" {
 		t.Fatalf("explicit route_line = %q, %v", got, err)
 	}
-	if got, err := resolveMapComposition("ed_iran_glow", "seed", "map-1"); err != nil || got != "ed_iran_glow" {
+	if got, err := resolveMapComposition("ed_iran_glow", "seed", "map-1", 1); err != nil || got != "ed_iran_glow" {
 		t.Fatalf("explicit ed_iran_glow = %q, %v", got, err)
 	}
 	got, err := resolveMapComposition("random", "seed-x", "map-1")
@@ -465,11 +473,30 @@ func TestResolveMapComposition(t *testing.T) {
 	if got != want {
 		t.Fatalf("random composition = %q, want pool pick %q", got, want)
 	}
+	if again, err := resolveMapComposition("", "seed-x", "map-1"); err != nil || again != want {
+		t.Fatalf("omitted map_animation = %q, %v; want deterministic random pick %q", again, err, want)
+	}
 	if _, err := resolveMapComposition("hyper_map", "seed", "map-1"); err == nil {
 		t.Fatal("unknown map composition must fail closed")
 	}
-	if len(mapMapAnimationsCertified()) != 21 {
-		t.Fatalf("certified compositions = %d, want the 15 systems + 6 GPU editorial scenes", len(mapMapAnimationsCertified()))
+	if len(mapMapAnimationsCertified()) != 23 {
+		t.Fatalf("certified compositions = %d, want the 15 systems + 8 GPU editorial scenes", len(mapMapAnimationsCertified()))
+	}
+	for _, invalid := range []struct {
+		id       string
+		pinCount int
+	}{
+		{"route_line", 1}, {"multi_locations", 0}, {"ed_yemen_markers", 2},
+	} {
+		if _, err := resolveMapComposition(invalid.id, "seed", "map-1", invalid.pinCount); err != nil {
+			t.Fatalf("explicit certified %q should be accepted at selection stage: %v", invalid.id, err)
+		}
+		pool := eligibleMapCompositions(invalid.pinCount, mapMapAnimationsCertified())
+		for _, candidate := range pool {
+			if candidate == invalid.id {
+				t.Fatalf("incompatible composition %q remains random-eligible with %d pins", invalid.id, invalid.pinCount)
+			}
+		}
 	}
 	for _, retired := range []string{"ed_oil_flows", "ed_routes_clean", "ed_hormuz_focus", "ed_wide_minimal"} {
 		if _, err := resolveMapComposition(retired, "seed", "map-1"); err == nil {

@@ -1,6 +1,8 @@
 package overlays
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"sort"
 	"strings"
 	"unicode"
@@ -72,13 +74,21 @@ func rankedImages(in []ImageCandidate) []ImageCandidate {
 }
 
 func itemID(sceneID, kind, value string) string {
+	raw := strings.ToLower(sceneID + "-" + kind + "-" + value)
 	var b strings.Builder
-	for _, r := range strings.ToLower(sceneID + "-" + kind + "-" + value) {
+	for _, r := range raw {
 		if unicode.IsLetter(r) || unicode.IsDigit(r) {
 			b.WriteRune(r)
 		} else if b.Len() > 0 {
 			b.WriteByte('-')
 		}
 	}
-	return strings.Trim(b.String(), "-")
+	id := strings.Trim(b.String(), "-")
+	const maxIDRunes = 110 // Leaves room for the stable suffix under subgroup_id's 128-rune limit.
+	runes := []rune(id)
+	if len(runes) <= maxIDRunes {
+		return id
+	}
+	digest := sha256.Sum256([]byte(raw))
+	return strings.TrimRight(string(runes[:maxIDRunes]), "-") + "-" + hex.EncodeToString(digest[:6])
 }

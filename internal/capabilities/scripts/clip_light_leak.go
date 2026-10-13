@@ -43,3 +43,22 @@ func clipStartLightLeakItems(planID string, timeline *audio.CanonicalTimeline) [
 	}
 	return items
 }
+
+func overlayStartLightLeakItems(planID string, overlays []capabilityoverlay.OverlayItem) []capabilityoverlay.OverlayItem {
+	var items []capabilityoverlay.OverlayItem
+	for _, overlay := range overlays {
+		if overlay.Kind == "light_leak" || overlay.DurationUS <= 0 || overlay.ID == "" {
+			continue
+		}
+		id := "light-leak-overlay-" + digest.SHA256String(planID + "\x00" + overlay.ID)[:16]
+		duration := min(clipStartLightLeakDurationUS, overlay.DurationUS)
+		items = append(items, capabilityoverlay.OverlayItem{
+			ID: id, SceneID: overlay.SceneID, GroupID: overlay.GroupID, SubgroupID: id,
+			Kind: "light_leak", TemplateID: "LIGHT_LEAK",
+			MotionID: capabilityoverlay.SelectLightLeakMotion(planID, id),
+			StartUS:  overlay.StartUS, DurationUS: duration,
+			StartMs: overlay.StartUS / 1000, EndMs: (overlay.StartUS + duration + 999) / 1000,
+		})
+	}
+	return items
+}

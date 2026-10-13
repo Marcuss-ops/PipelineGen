@@ -7,16 +7,16 @@ import (
 	"strings"
 )
 
-// chain_coalesce.go owns the Multi-Animations Runtime: nearby overlays are
-// fused into ONE chain item carrying concatenated animations instead of N
-// independent items.
+// chain_coalesce.go owns the nearby-overlay handoff: nearby overlays are
+// fused into one chain item, but each segment gets a non-overlapping timed
+// window so its motion can be seen before the next one enters.
 //
 // Why: every OverlayItem becomes layers inside one Chronon plan, but N items
 // still mean N independent entrances/exits with no transition between them.
-// A chain item spans first.Start → last.End and carries each segment's own
-// text + motion plus the gap between them, so RenderingGen lowers it as one
-// continuous shot: segment 1 entrance → camera passes under (fly-under dip)
-// → fade reveals segment 2 with its own motion → … — no 1000 popups.
+// A chain item spans the scheduled segment windows and carries each
+// segment's own text + motion plus a short handoff gap, so RenderingGen lowers
+// it as one continuous shot: segment 1 entrance → camera passes under
+// (fly-under dip) → fade reveals segment 2 with its own motion.
 //
 // Wire compat: Kind is the new "phrase_chain"/"image_chain"/"mixed_chain"
 // (unknown kinds lower as text/image behaviour in RenderingGen), TemplateID
@@ -64,6 +64,8 @@ const (
 	maxChainGapUS           int64 = 5_000_000
 	defaultChainMaxSegments       = 8
 	maxChainSegmentsHard          = 32
+	minChainSegmentDurationUS int64 = 2_500_000
+	chainHandoffGapUS         int64 = 400_000
 )
 
 // ChainSegment is one animation inside a chain item. StartUS/DurationUS are
@@ -245,7 +247,7 @@ func CoalesceChainedOverlays(items []OverlayItem, counts map[string]int) []Overl
 	return out
 }
 
-// fuseChain builds the single chain item spanning min(Start) → max(End).
+// fuseChain builds the single chain item with segments laid out sequentially.
 // Homogeneous text/image/map groups keep their dedicated chain kind;
 // anything heterogeneous (or card groups) becomes mixed_chain. The first
 // segment's Preset/Motion stay on the item for legacy readers; Text mirrors
@@ -254,21 +256,14 @@ func CoalesceChainedOverlays(items []OverlayItem, counts map[string]int) []Overl
 func fuseChain(group []OverlayItem, chainIndex int) OverlayItem {
 	first := group[0]
 	startUS := first.StartUSValue()
-	endUS := first.EndUSValue()
 	families := make(map[string]bool)
 	for _, item := range group {
 		if s := item.StartUSValue(); s < startUS {
 			startUS = s
 		}
-		if e := item.EndUSValue(); e > endUS {
-			endUS = e
-		}
 		families[chainFamily(item.Kind)] = true
 	}
-	durationUS := endUS - startUS
-	if durationUS <= 0 {
-		durationUS = first.EndUSValue() - first.StartUSValue()
-	}
+	cursorUS := startUS
 	kind, template, family := KindMixedChain, TemplateMixedChain, "mixed"
 	if len(families) == 1 {
 		switch {
@@ -284,7 +279,15 @@ func fuseChain(group []OverlayItem, chainIndex int) OverlayItem {
 	motions := make([]string, 0, len(group))
 	seenAssets := make(map[string]struct{})
 	assets := make([]OverlayAssetRef, 0)
-	for _, item := range group {
+	for index, item := range group {
+		segmentStartUS := item.StartUSValue()
+		segmentDurationUS := item.EndUSValue() - item.StartUSValue()
+		if segmentDurationUS < minChainSegmentDurationUS {
+			segmentDurationUS = minChainSegmentDurationUS
+		}
+		if index > 0 {
+			segmentStartUS = cursorUS + chainHandoffGapUS
+		}
 		seg := ChainSegment{
 			Text: item.Text, GroupID: item.GroupID, SubgroupID: item.SubgroupID,
 			MotionID: item.MotionID, PresetID: item.PresetID,
@@ -294,7 +297,7 @@ func fuseChain(group []OverlayItem, chainIndex int) OverlayItem {
 			CaptionMotionParams: cloneAnyMap(item.CaptionMotionParams),
 			CaptionFontFamily:   item.CaptionFontFamily, CaptionLayout: item.CaptionLayout,
 			CaptionColor: item.CaptionColor, EntityStyleID: item.EntityStyleID,
-			StartUS: item.StartUSValue(), DurationUS: item.EndUSValue() - item.StartUSValue(),
+			StartUS: segmentStartUS, DurationUS: segmentDurationUS,
 			MotionParams: cloneAnyMap(item.MotionParams),
 			Style:        cloneAnyMap(item.Style),
 			Assets:       append([]OverlayAssetRef(nil), item.AssetRefs...),
@@ -308,6 +311,7 @@ func fuseChain(group []OverlayItem, chainIndex int) OverlayItem {
 		}
 		segments = append(segments, seg)
 		motions = append(motions, item.MotionID)
+		cursorUS = segmentStartUS + segmentDurationUS
 		for _, ref := range item.AssetRefs {
 			if _, seen := seenAssets[ref.AssetID]; seen || strings.TrimSpace(ref.AssetID) == "" {
 				continue
@@ -334,10 +338,7 @@ func fuseChain(group []OverlayItem, chainIndex int) OverlayItem {
 	params["chain_motions"] = motions
 	params["chain_count"] = len(segments)
 	params["chain_camera"] = ChainCameraFlyUnderFade
-	params["chain_gap_us"] = group[len(group)-1].StartUSValue() - first.EndUSValue()
-	if endUS < first.EndUSValue() {
-		params["chain_gap_us"] = int64(0)
-	}
+	params["chain_gap_us"] = chainHandoffGapUS
 	id := fmt.Sprintf("%s:chain-%s:%d", strings.TrimSpace(first.SceneID), family, chainIndex)
 	if strings.TrimSpace(first.SceneID) == "" {
 		id = fmt.Sprintf("chain-%s:%d", family, chainIndex)
@@ -359,8 +360,8 @@ func fuseChain(group []OverlayItem, chainIndex int) OverlayItem {
 		// fail root validation before RenderingGen can lower its segments.
 		PresetID: "", MotionID: "", MotionParams: nil,
 		Text:    legacyText,
-		StartMs: startUS / 1000, EndMs: (endUS + 999) / 1000,
-		StartUS: startUS, DurationUS: durationUS,
+		StartMs: startUS / 1000, EndMs: (cursorUS + 999) / 1000,
+		StartUS: startUS, DurationUS: cursorUS - startUS,
 		AssetRefs: assets, Params: params,
 	}
 }

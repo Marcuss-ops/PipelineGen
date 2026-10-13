@@ -210,7 +210,7 @@ func buildEditorialManifest(req GenerateRequest, inputs []scriptpkg.SceneAnalysi
 		scenes = append(scenes, scriptpkg.EditorialScene{
 			SceneID: h.SceneID, Title: h.Title, TitleStatus: h.TitleStatus,
 			TitleSource: h.TitleSource, Bullets: bullets, Highlights: hl,
-			GloballyIndexed: h.GloballyIndexed,
+			ChartValues: append([]string(nil), h.ChartValues...), GloballyIndexed: h.GloballyIndexed,
 		})
 	}
 	m := &scriptpkg.EditorialManifest{

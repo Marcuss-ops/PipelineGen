@@ -41,8 +41,10 @@ func StyleParams(style *scriptpkg.OverlayStyleSpec) map[string]any {
 	}
 	params := map[string]any{}
 	if len(style.Color) > 0 {
+		fill := rgbaHex(style.Color)
 		params["color"] = append([]float64(nil), style.Color...)
-		params["style"] = map[string]any{"fill": rgbaHex(style.Color)}
+		params["fill"] = fill
+		params["style"] = map[string]any{"fill": fill}
 	}
 	if style.Size != nil {
 		if style.Size.Width != nil {
@@ -61,6 +63,12 @@ func StyleParams(style *scriptpkg.OverlayStyleSpec) map[string]any {
 	}
 	if style.GlowSize != nil {
 		params["glow_size"] = *style.GlowSize
+	}
+	if style.GlowColor != "" {
+		params["glow_color"] = style.GlowColor
+		params["style"] = mergeStyleParam(params["style"], map[string]any{
+			"glow": map[string]any{"color": style.GlowColor},
+		})
 	}
 	if style.StrokeSize != nil {
 		params["stroke_size"] = *style.StrokeSize
@@ -335,7 +343,7 @@ func IsImageOverlayItem(item capabilityoverlay.OverlayItem) bool {
 // IsRuntimeTextStyleParam reports flat renderer keys for text styling.
 func IsRuntimeTextStyleParam(key string) bool {
 	switch key {
-	case "font_family", "font_size_px", "glow_size", "stroke_size", "shadow_blur_px", "shadow_opacity", "shadow_offset_x_px", "shadow_offset_y_px",
+	case "font_family", "font_size_px", "fill", "glow_size", "glow_color", "stroke_size", "shadow_blur_px", "shadow_opacity", "shadow_offset_x_px", "shadow_offset_y_px",
 		"cursor_color", "cursor_width_px", "cursor_height_px", "cursor_blink":
 		return true
 	default:
@@ -370,7 +378,10 @@ func IsRuntimeImageParam(key string) bool {
 
 // IsTextOverlayKind reports whether an item is a renderer text primitive.
 func IsTextOverlayKind(kind string) bool {
-	return strings.HasPrefix(kind, "text_") || kind == "number" || kind == "quote" || kind == "brand_text"
+	kind = strings.ToLower(strings.TrimSpace(kind))
+	return strings.HasPrefix(kind, "text_") || kind == "phrase" || kind == "important_phrase" ||
+		kind == "short_phrase" || kind == "keyword" || kind == "important_word" ||
+		kind == "number" || kind == "date_number" || kind == "quote" || kind == "brand_text" || kind == "brand-text"
 }
 
 // StyleFontColor projects an explicit RGBA style color to the caption's

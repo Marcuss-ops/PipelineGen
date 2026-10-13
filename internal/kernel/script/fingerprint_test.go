@@ -18,6 +18,10 @@ func TestOverlayCategoryControlsAffectFingerprintAndAreDeepCopied(t *testing.T) 
 	if got := script.BuildFingerprint(script.FingerprintInputFromItem(item)); got == base {
 		t.Fatal("clip-start light-leak toggle did not affect fingerprint")
 	}
+	item.RandomLightLeakOnOverlayStart = true
+	if got := script.BuildFingerprint(script.FingerprintInputFromItem(item)); got == base {
+		t.Fatal("overlay-start light-leak toggle did not affect fingerprint")
+	}
 	segment := script.ScriptSegment{OverlayCategories: map[script.OverlayCategory]script.Toggle{script.OverlayCategoryPhrases: script.ToggleDisabled}}
 	cloned := script.CloneScriptSegments([]script.ScriptSegment{segment})
 	cloned[0].OverlayCategories[script.OverlayCategoryPhrases] = script.ToggleEnabled

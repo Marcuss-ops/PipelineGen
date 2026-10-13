@@ -155,6 +155,21 @@ func TestApplyEditorialOverlayBudgetHonoursCallerImageLimit(t *testing.T) {
 	}
 }
 
+func TestLimitOverlayItemsPerSceneCountsChartAsOneUnit(t *testing.T) {
+	chartItems := BuildChartItems("per-scene-chart", []ChartPlacement{{
+		SceneID: "scene-1", WindowStartUS: 0, WindowEndUS: 4_000_000,
+		Values: []float64{42, 18}, Labels: []string{"42%", "18%"},
+	}}, 1920, 1080)
+	items := append(chartItems, OverlayItem{ID: "extra", SceneID: "scene-1", Kind: "number", TemplateID: "METRIC_STAT_CARD", StartMs: 0, EndMs: 4000, Params: map[string]any{"priority": -1.0}})
+	got := LimitOverlayItemsPerScene(items, 1)
+	if len(got) != 3 {
+		t.Fatalf("one per-scene chart unit should retain its label + two bars: %+v", got)
+	}
+	if got[0].Params["chart_card"] != true || got[1].Params["chart_bar"] != true || got[2].Params["chart_bar"] != true {
+		t.Fatalf("chart group was not kept atomically: %+v", got)
+	}
+}
+
 func TestApplyEditorialOverlayBudgetKeepsOneComposedMap(t *testing.T) {
 	items := make([]OverlayItem, 0, 6)
 	for i := 0; i < 6; i++ {

@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
 func chartWiringNumbers() []capabilityoverlay.TimedAnnotation {
@@ -56,6 +57,39 @@ func TestChartWiringComparisonReachesPlan(t *testing.T) {
 	assert.Equal(t, 2, bars)
 	assert.Equal(t, 3, countChartItems(plan.Items), "sealed recount counts chart label and native bars")
 	assert.Equal(t, 1, plan.ChartCards, "planner count tracks comparisons, not their native drawing primitives")
+}
+
+func TestChartWiringRequiresRustSceneAuthorization(t *testing.T) {
+	numbers := chartWiringNumbers()
+	scenes := []capabilityoverlay.SceneInput{{
+		ID: "s1", Numbers: numbers,
+		ChartNumbers: []capabilityoverlay.TimedAnnotation{},
+	}}
+	placements := capabilityoverlay.ChartPlacementsForScenes(scenes)
+	assert.Empty(t, placements, "Rust's explicit empty scene result must disable planner fallback")
+}
+
+func TestRustChartValuesRestrictToGroundedNumbers(t *testing.T) {
+	numbers := append(chartWiringNumbers(), capabilityoverlay.TimedAnnotation{
+		Text: "9%", Type: "PERCENT", StartMs: 20_000, EndMs: 28_000,
+		StartUS: 20_000_000, DurationUS: 8_000_000, Score: 0.9,
+	})
+	input := &capabilityoverlay.SceneInput{ID: "s1", Numbers: numbers}
+	applyRustChartValues(input, []scriptpkg.SceneHighlight{{
+		SceneID: "s1", ChartValues: []string{"42%", "18%"},
+	}}, "s1", true)
+	require.Len(t, input.ChartNumbers, 2)
+	assert.Equal(t, "42%", input.ChartNumbers[0].Text)
+	assert.Equal(t, "18%", input.ChartNumbers[1].Text)
+	placements := capabilityoverlay.ChartPlacementsForScenes([]capabilityoverlay.SceneInput{*input})
+	require.Len(t, placements, 1)
+	assert.Equal(t, []string{"42%", "18%"}, placements[0].Labels, "unapproved grounded third value is excluded")
+
+	applyRustChartValues(input, nil, "s1", true)
+	assert.Empty(t, input.ChartNumbers, "missing Rust extraction must explicitly disable charts")
+	input.ChartNumbers = nil
+	applyRustChartValues(input, []scriptpkg.SceneHighlight{{SceneID: "s1", ChartValues: []string{"42%", "18%"}}}, "s1", false)
+	assert.Empty(t, input.ChartNumbers, "uncertified Rust extraction must never authorize charts")
 }
 
 func TestChartWiringDisabledStaysEmpty(t *testing.T) {

@@ -2,6 +2,7 @@ package overlays
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
@@ -50,11 +51,15 @@ type SceneInput struct {
 	// Extended semantic entity annotations: numbers (stat highlights),
 	// quotes, product images and logos. They terminate in the same
 	// canonical primitives as the base set (Text / Image).
-	Numbers    []TimedAnnotation
-	BrandTexts []TimedAnnotation
-	Quotes     []TimedAnnotation
-	Products   []ImageCandidate
-	Logos      []ImageCandidate
+	Numbers []TimedAnnotation
+	// ChartNumbers is the subset explicitly authorized by the per-scene Rust
+	// chart extractor. Nil preserves legacy planner behavior; an empty non-nil
+	// slice explicitly disables charts for a scene.
+	ChartNumbers []TimedAnnotation
+	BrandTexts   []TimedAnnotation
+	Quotes       []TimedAnnotation
+	Products     []ImageCandidate
+	Logos        []ImageCandidate
 	// Maps carries the scene's grounded place candidates. Each one must be
 	// covered by a certified plate from PlanInput.PlateResolver before it can
 	// become a map item; anything uncovered is silently skipped (never
@@ -312,6 +317,17 @@ func BuildPlan(input PlanInput, config PlannerConfig) (OverlayPlan, error) {
 		}
 
 		phrases := rankedPhraseValid(scene.Phrases, config.MaxPhraseWords)
+		// A scene bullet is the requested opening card for the voiceover scene.
+		// Reserve the planner's phrase slot for it before ordinary extracted
+		// highlights (which are sorted longest-first); otherwise a short Rust
+		// highlight can be silently crowded out by the scene title or a longer
+		// phrase before the run-level editorial budget ever sees it.
+		sort.SliceStable(phrases, func(i, j int) bool {
+			if (phrases[i].PresentationRole == "scene_bullet") != (phrases[j].PresentationRole == "scene_bullet") {
+				return phrases[i].PresentationRole == "scene_bullet"
+			}
+			return false
+		})
 		if len(phrases) > config.MaxPhrases {
 			phrases = phrases[:config.MaxPhrases]
 		}

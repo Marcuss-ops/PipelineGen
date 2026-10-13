@@ -40,6 +40,7 @@ type EditorialScene struct {
 	TitleSource     string                 `json:"title_source"`
 	Bullets         []EditorialSceneBullet `json:"bullets"`
 	Highlights      []EditorialHighlight   `json:"highlights"`
+	ChartValues     []string               `json:"chart_values,omitempty"`
 	GloballyIndexed bool                   `json:"globally_indexed"`
 }
 

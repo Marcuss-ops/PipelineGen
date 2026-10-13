@@ -68,15 +68,16 @@ type ResolvedGenerationPlan struct {
 	SearchResults []SearchResultItem `json:"search_results,omitempty"`
 
 	// ── Sizing ────────────────────────────────────────────────────────
-	TargetWords                int                        `json:"target_words,omitempty"`
-	SingleScene                bool                       `json:"single_scene,omitempty"`
-	Duration                   int                        `json:"duration,omitempty"`
-	MinWords                   int                        `json:"min_words,omitempty"`
-	NumClips                   int                        `json:"num_clips,omitempty"`
-	SegmentWords               int                        `json:"segment_words,omitempty"`
-	Segments                   []ScriptSegment            `json:"segments,omitempty"`
-	OverlayCategories          map[OverlayCategory]Toggle `json:"overlay_categories,omitempty"`
-	RandomLightLeakOnClipStart bool                       `json:"random_light_leak_on_clip_start,omitempty"`
+	TargetWords                   int                        `json:"target_words,omitempty"`
+	SingleScene                   bool                       `json:"single_scene,omitempty"`
+	Duration                      int                        `json:"duration,omitempty"`
+	MinWords                      int                        `json:"min_words,omitempty"`
+	NumClips                      int                        `json:"num_clips,omitempty"`
+	SegmentWords                  int                        `json:"segment_words,omitempty"`
+	Segments                      []ScriptSegment            `json:"segments,omitempty"`
+	OverlayCategories             map[OverlayCategory]Toggle `json:"overlay_categories,omitempty"`
+	RandomLightLeakOnClipStart    bool                       `json:"random_light_leak_on_clip_start,omitempty"`
+	RandomLightLeakOnOverlayStart bool                       `json:"random_light_leak_on_overlay_start,omitempty"`
 	// ExtractEntities is the run-level semantic extraction decision, copied
 	// from OutputSpec so scene-level default toggles inherit one owner.
 	ExtractEntities    Toggle `json:"extract_entities,omitempty"`

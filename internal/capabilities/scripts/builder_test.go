@@ -534,6 +534,20 @@ func TestBuildGenerateRequest_MapsAudioIntentBlock(t *testing.T) {
 	}
 }
 
+func TestBuildGenerateRequest_MapsOverlayStartLightLeak(t *testing.T) {
+	var env scriptpkg.GenerationEnvelopeV2
+	if err := json.Unmarshal([]byte(`{"version":2,"items":[{"title":"leak","project":"leak","language":"it","source":{"type":"text","topic":"topic"},"random_light_leak_on_overlay_start":true}]}`), &env); err != nil {
+		t.Fatal(err)
+	}
+	got, err := BuildGenerateRequest(&env, "overlay-leak-key")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !got.RandomLightLeakOnOverlayStart {
+		t.Fatal("overlay-start light-leak option was dropped from the payload")
+	}
+}
+
 // TestBuildGenerateRequest_MapsSegmentedBackgroundMusic certifies that
 // multiple segmented BGM layers (disjoint windows with end_ms / end)
 // survive the builder untouched.
