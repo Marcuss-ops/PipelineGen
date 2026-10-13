@@ -31,7 +31,14 @@ func toOverlayAnimationPolicies(policies []scriptpkg.AnimationPolicy) []capabili
 // applyAnimationPolicies overlays exact payload choices after automatic motion
 // assignment. Missing choices retain the first seeded motion in each group and
 // reuse it for the remaining compatible items, so a group has one treatment.
-func applyAnimationPolicies(items []capabilityoverlay.OverlayItem, policies []scriptpkg.AnimationPolicy, planID, videoID string, entityImagePool []string) error {
+// The optional trailing pool is the run-level entity-caption pool
+// (entity_caption_motions): it drives seeded caption choices and the
+// automatic caption rotation. Empty keeps the certified automatic pool.
+func applyAnimationPolicies(items []capabilityoverlay.OverlayItem, policies []scriptpkg.AnimationPolicy, planID, videoID string, entityImagePool []string, entityCaptionPools ...[]string) error {
+	var entityCaptionPool []string
+	if len(entityCaptionPools) > 0 {
+		entityCaptionPool = entityCaptionPools[0]
+	}
 	selected := make(map[animationGroupKey]scriptpkg.AnimationPolicy, len(policies))
 	for i, policy := range policies {
 		if strings.TrimSpace(policy.Target) != policy.Target || strings.TrimSpace(policy.GroupID) != policy.GroupID || strings.TrimSpace(policy.SubgroupID) != policy.SubgroupID || strings.TrimSpace(policy.MotionID) != policy.MotionID {
@@ -63,6 +70,10 @@ func applyAnimationPolicies(items []capabilityoverlay.OverlayItem, policies []sc
 	}
 
 	groupMotions := make(map[animationGroupKey]scriptpkg.AnimationPolicy)
+	// seededGroups marks group motions that came from a seeded draw rather
+	// than an exact payload choice, so word-count mismatches re-seed seeded
+	// draws per item while explicit choices fail closed.
+	seededGroups := make(map[animationGroupKey]bool)
 	seed := digest.SHA256String(planID + "\x00" + videoID)
 	declaredGroups := make(map[animationGroupKey]struct{}, len(policies))
 	for _, policy := range policies {
@@ -70,9 +81,15 @@ func applyAnimationPolicies(items []capabilityoverlay.OverlayItem, policies []sc
 			declaredGroups[animationGroupKey{target: policy.Target, groupID: policy.GroupID}] = struct{}{}
 		}
 	}
-	resolve := func(target, groupID, subgroupID string) (string, map[string]any) {
+	// resolve maps one item onto its policy motion. words carries the phrase
+	// word count for important_phrase targets so seeded choices land in the
+	// item's exact-cardinality word group; other targets pass 0. explicit
+	// reports whether the motion was an exact payload choice (as opposed to
+	// a seeded group draw) so callers can fail closed on explicit mismatches
+	// while re-seeding seeded draws per item.
+	resolve := func(target, groupID, subgroupID string, words int) (motionID string, params map[string]any, explicit bool) {
 		if groupID == "" {
-			return "", nil
+			return "", nil, false
 		}
 		key := animationGroupKey{target, groupID, subgroupID}
 		policy, hasPolicy := selected[key]
@@ -83,26 +100,31 @@ func applyAnimationPolicies(items []capabilityoverlay.OverlayItem, policies []sc
 		if hasPolicy {
 			if policy.MotionID == "" {
 				selectionSubgroup := policy.SubgroupID
-				policy.MotionID = seededGroupMotion(target, groupID, seed+"\x00"+selectionSubgroup, entityImagePool)
+				policy.MotionID = seededGroupMotion(target, groupID, seed+"\x00"+selectionSubgroup, words, entityImagePool, entityCaptionPool)
 				if policy.MotionID == "" {
-					return "", nil
+					return "", nil, false
 				}
+				policy.MotionParams = clonePolicyParams(policy.MotionParams)
+				groupMotions[key] = policy
+				seededGroups[key] = true
+				return policy.MotionID, policy.MotionParams, false
 			}
 			policy.MotionParams = clonePolicyParams(policy.MotionParams)
 			groupMotions[key] = policy
-			return policy.MotionID, policy.MotionParams
+			return policy.MotionID, policy.MotionParams, true
 		}
 		fallbackKey := animationGroupKey{target: target, groupID: groupID}
 		if motion, ok := groupMotions[fallbackKey]; ok {
-			return motion.MotionID, clonePolicyParams(motion.MotionParams)
+			return motion.MotionID, clonePolicyParams(motion.MotionParams), !seededGroups[fallbackKey]
 		}
 		if _, declared := declaredGroups[fallbackKey]; declared {
-			if motionID := seededGroupMotion(target, groupID, seed, entityImagePool); motionID != "" {
+			if motionID := seededGroupMotion(target, groupID, seed, words, entityImagePool, entityCaptionPool); motionID != "" {
 				groupMotions[fallbackKey] = scriptpkg.AnimationPolicy{Target: target, GroupID: groupID, MotionID: motionID}
-				return motionID, nil
+				seededGroups[fallbackKey] = true
+				return motionID, nil, false
 			}
 		}
-		return "", nil
+		return "", nil, false
 	}
 
 	for itemIndex := range items {
@@ -114,7 +136,26 @@ func applyAnimationPolicies(items []capabilityoverlay.OverlayItem, policies []sc
 		item.GroupID = groupID
 		item.SubgroupID = firstNonBlank(item.SubgroupID, item.ID)
 		if item.Kind == "text_phrase" {
-			if motionID, motionParams := resolve("important_phrase", groupID, item.SubgroupID); motionID != "" {
+			words := len(strings.Fields(item.Text))
+			if motionID, motionParams, explicit := resolve("important_phrase", groupID, item.SubgroupID, words); motionID != "" {
+				if err := checkPolicyPhraseMotionCompatible(*item, motionID); err != nil {
+					if explicit {
+						return fmt.Errorf("animation policy for target %q group %q: %w", "important_phrase", groupID, err)
+					}
+					// A seeded group draw is word-locked: the cached group
+					// motion can belong to a sibling's word count. Re-seed
+					// this item from its own count instead of failing the
+					// plan; uniformity cannot hold across word counts
+					// because recipes are exact-cardinality.
+					motionID = seededGroupMotion("important_phrase", groupID, seed+"\x00"+item.SubgroupID, words, entityImagePool, entityCaptionPool)
+					if motionID == "" {
+						return fmt.Errorf("animation policy for target %q group %q: no seeded motion for %d-word phrase", "important_phrase", groupID, words)
+					}
+					motionParams = nil
+					if err := checkPolicyPhraseMotionCompatible(*item, motionID); err != nil {
+						return fmt.Errorf("animation policy for target %q group %q: %w", "important_phrase", groupID, err)
+					}
+				}
 				item.MotionID, item.MotionParams = motionID, motionParams
 			}
 		}
@@ -126,12 +167,12 @@ func applyAnimationPolicies(items []capabilityoverlay.OverlayItem, policies []sc
 			case "METRIC_STAT_CARD":
 				target = "metric"
 			}
-			if motionID, motionParams := resolve(target, groupID, item.SubgroupID); motionID != "" {
+			if motionID, motionParams, _ := resolve(target, groupID, item.SubgroupID, 0); motionID != "" {
 				item.MotionID, item.MotionParams = motionID, motionParams
 			}
 		}
 		if item.EntityCaption != "" {
-			if motionID, motionParams := resolve("caption", groupID, item.SubgroupID); motionID != "" {
+			if motionID, motionParams, _ := resolve("caption", groupID, item.SubgroupID, 0); motionID != "" {
 				item.CaptionMotionID, item.CaptionMotionParams = motionID, motionParams
 			}
 		}
@@ -141,18 +182,18 @@ func applyAnimationPolicies(items []capabilityoverlay.OverlayItem, policies []sc
 			childSubgroupID := firstNonBlank(child.SubgroupID, child.ID)
 			child.GroupID = childGroupID
 			child.SubgroupID = childSubgroupID
-			if motionID, motionParams := resolve("image", childGroupID, childSubgroupID); motionID != "" {
+			if motionID, motionParams, _ := resolve("image", childGroupID, childSubgroupID, 0); motionID != "" {
 				child.MotionID, child.MotionParams = motionID, motionParams
 			}
 			if child.Caption != "" {
-				if captionMotion, captionParams := resolve("caption", childGroupID, childSubgroupID); captionMotion != "" {
+				if captionMotion, captionParams, _ := resolve("caption", childGroupID, childSubgroupID, 0); captionMotion != "" {
 					child.CaptionMotionID = captionMotion
 					child.CaptionMotionParams = captionParams
 				}
 			}
 		}
 		if isImageOverlayKind(item.Kind) && len(item.ImageLayers) == 0 {
-			if motionID, motionParams := resolve("image", groupID, item.SubgroupID); motionID != "" {
+			if motionID, motionParams, _ := resolve("image", groupID, item.SubgroupID, 0); motionID != "" {
 				item.MotionID, item.MotionParams = motionID, motionParams
 			}
 		}
@@ -160,11 +201,42 @@ func applyAnimationPolicies(items []capabilityoverlay.OverlayItem, policies []sc
 	return nil
 }
 
-func seededGroupMotion(target, groupID, seed string, entityImagePool []string) string {
+// checkPolicyPhraseMotionCompatible fails closed when a policy motion cannot
+// render the phrase wording. It classifies the real item with the same
+// EditorialSectionForItem routing the automatic planner uses: short-lane
+// items (1-5 words) only accept their exact word-count group; longer copy
+// only rejects the exact-cardinality short recipes, which would mis-render
+// it.
+func checkPolicyPhraseMotionCompatible(item capabilityoverlay.OverlayItem, motionID string) error {
+	words := len(strings.Fields(item.Text))
+	if capabilityoverlay.EditorialSectionForItem(item) == capabilityoverlay.EditorialSectionShortPhrase {
+		// Membership is checked against the item's own word-count group: the
+		// groups may share motions, so a reverse lookup would report the first
+		// group instead of the one the phrase actually belongs to.
+		for _, id := range capabilityoverlay.ShortPhraseMotionsForWordCount(words) {
+			if id == motionID {
+				return nil
+			}
+		}
+		return fmt.Errorf("motion %q is not in the %d-word short-phrase group for %q", motionID, words, item.Text)
+	}
+	if capabilityoverlay.IsShortPhraseRecipe(motionID) {
+		return fmt.Errorf("motion %q is an exact-cardinality short-phrase recipe, incompatible with %d-word phrase %q", motionID, words, item.Text)
+	}
+	return nil
+}
+
+func seededGroupMotion(target, groupID, seed string, words int, entityImagePool, entityCaptionPool []string) string {
 	var pool []string
 	switch target {
 	case "important_phrase":
-		pool = capabilityoverlay.CertifiedPhraseMotions()
+		// Short-lane phrases draw from their exact word-count group, like
+		// the automatic planner; longer copy walks the general catalog.
+		if words >= 1 && words <= 5 {
+			pool = capabilityoverlay.ShortPhraseMotionsForWordCount(words)
+		} else {
+			pool = capabilityoverlay.CertifiedPhraseMotions()
+		}
 	case "image":
 		pool = capabilityoverlay.CertifiedSingleImageMotions()
 		if len(entityImagePool) > 0 {
@@ -176,7 +248,13 @@ func seededGroupMotion(target, groupID, seed string, entityImagePool []string) s
 		// leaks); do not make policy admission depend on automatic motion pools.
 		pool = append(pool, capabilityoverlay.CertifiedLightLeakMotions()...)
 	case "caption":
-		pool = capabilityoverlay.CertifiedAutomaticEntityCaptionMotions()
+		// A run-level entity_caption_motions pool overrides the automatic
+		// camera-safe pool; it is validated fail-closed where assigned.
+		if len(entityCaptionPool) > 0 {
+			pool = entityCaptionPool
+		} else {
+			pool = capabilityoverlay.CertifiedAutomaticEntityCaptionMotions()
+		}
 	case "date":
 		pool = capabilityoverlay.DatePresentationMotionCandidates()
 	case "metric":
@@ -223,6 +301,12 @@ func certifiedPolicyMotion(target, motionID string, entityImagePool []string) bo
 	var pool []string
 	switch target {
 	case "important_phrase":
+		// Short-lane recipes live outside the general catalog; admit the
+		// exact-cardinality groups too. Word-count compatibility is enforced
+		// per item at application time.
+		if _, ok := capabilityoverlay.ShortPhraseMotionWordCount(motionID); ok {
+			return true
+		}
 		pool = capabilityoverlay.CertifiedPhraseMotions()
 	case "image":
 		pool = append(capabilityoverlay.CertifiedSingleImageMotions(), entityImagePool...)
