@@ -25,6 +25,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
 	capabilityaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
+	scriptaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/audio"
 	kernelaudio "github.com/Marcuss-ops/PipelineGen/internal/kernel/audio"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
@@ -84,7 +85,7 @@ func CompileAudioWithIntents(
 	if err != nil {
 		return fail(err)
 	}
-	expander := NewAudioLoopExpander()
+	expander := scriptaudio.NewAudioLoopExpander()
 	var bgmLayers []audio.AudioLayer
 	for _, layer := range resolvedBGM {
 		expanded, err := expander.Expand(layer, durationByID[layer.AssetID])

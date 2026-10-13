@@ -7,7 +7,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/entitycatalog"
 	scriptports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
@@ -24,18 +23,6 @@ import (
 // never acquires, scores, ranks or selects a winner.
 type VidRushRegistryMediaResolver struct {
 	Registry *VidRushAssetProviderRegistry
-}
-
-// MediaResolver is the unified provider discovery boundary used by the
-// production fan-out. A resolver may expose several provider queries, but it
-// never owns acquisition or winner selection.
-type MediaResolver interface {
-	ArtlistClipSearcher
-	InternetImageSearcher
-}
-
-func NewVidRushProviderFanoutWithResolver(resolver MediaResolver, cache scriptports.VidRushCachePort, catalog entitycatalog.Repository, metrics ...VidRushMetrics) *VidRushProviderFanout {
-	return NewVidRushProviderFanoutWithCatalog(resolver, resolver, cache, catalog, metrics...)
 }
 
 func (s *VidRushRegistryMediaResolver) SearchClips(ctx context.Context, title string, phrases []string) ([]ArtlistClipMatch, error) {
@@ -123,59 +110,6 @@ func (s *VidRushRegistryMediaResolver) SearchImages(ctx context.Context, req Int
 // provider registry). It owns only the concurrency and the candidate merge; the
 // provider-specific search, rate limiting and retry stay in the searchers, so
 // no provider orchestration is duplicated for the incremental path.
-type VidRushProviderFanout struct {
-	artlist        ArtlistClipSearcher
-	images         InternetImageSearcher
-	semanticScorer SemanticCandidateScorer
-	youtube        scriptports.VidRushAssetProvider
-	cache          scriptports.VidRushCachePort
-	catalog        entitycatalog.Repository
-	metrics        VidRushMetrics
-	log            zap.Logger
-}
-
-// WithSemanticScorer applies the same pixel-level person-image gate to
-// incremental discovery, including segment and catalog cache hits. Without
-// this, candidates discovered by this fanout could reach materialization
-// without passing the image-stage verifier.
-func (f *VidRushProviderFanout) WithSemanticScorer(scorer SemanticCandidateScorer) *VidRushProviderFanout {
-	if f != nil {
-		f.semanticScorer = scorer
-	}
-	return f
-}
-
-func (f *VidRushProviderFanout) WithLogger(log *zap.Logger) *VidRushProviderFanout {
-	if f != nil && log != nil {
-		f.log = *log
-	}
-	return f
-}
-
-func NewVidRushProviderFanout(artlist ArtlistClipSearcher, images InternetImageSearcher, metrics ...VidRushMetrics) *VidRushProviderFanout {
-	return NewVidRushProviderFanoutWithCatalog(artlist, images, nil, nil, metrics...)
-}
-
-// NewVidRushProviderFanoutWithYouTube adds the canonical YouTube provider to
-// the existing fan-out while preserving the legacy constructor.
-func NewVidRushProviderFanoutWithYouTube(artlist ArtlistClipSearcher, images InternetImageSearcher, youtube scriptports.VidRushAssetProvider, metrics ...VidRushMetrics) *VidRushProviderFanout {
-	fanout := NewVidRushProviderFanout(artlist, images, metrics...)
-	fanout.youtube = youtube
-	return fanout
-}
-
-func NewVidRushProviderFanoutWithCache(artlist ArtlistClipSearcher, images InternetImageSearcher, cache scriptports.VidRushCachePort, metrics ...VidRushMetrics) *VidRushProviderFanout {
-	return NewVidRushProviderFanoutWithCatalog(artlist, images, cache, nil, metrics...)
-}
-
-func NewVidRushProviderFanoutWithCatalog(artlist ArtlistClipSearcher, images InternetImageSearcher, cache scriptports.VidRushCachePort, catalog entitycatalog.Repository, metrics ...VidRushMetrics) *VidRushProviderFanout {
-	var m VidRushMetrics
-	if len(metrics) > 0 {
-		m = metrics[0]
-	}
-	return &VidRushProviderFanout{artlist: artlist, images: images, cache: cache, catalog: catalog, metrics: m}
-}
-
 // ResolveProviders runs Artlist and internet-image discovery concurrently for
 // one segment and merges the winning candidates back into an immutable result.
 // Required providers fail closed; best-effort providers never turn an

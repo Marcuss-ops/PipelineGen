@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
+	scriptoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/overlay"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
@@ -15,13 +16,13 @@ func TestAnimationPoliciesSelectMotionPerGroupAndPreserveAutomaticDefaults(t *te
 		{ID: "phrase-2", SceneID: "scene-a", Kind: "text_phrase", MotionID: "another-auto-phrase"},
 		{ID: "phrase-3", SceneID: "scene-b", Kind: "text_phrase", MotionID: "scene-b-auto"},
 	}
-	if err := applyAnimationPolicies(items, nil, "plan", "video", nil); err != nil {
+	if err := scriptoverlay.ApplyAnimationPolicies(items, nil, "plan", "video", nil); err != nil {
 		t.Fatalf("empty policy application: %v", err)
 	}
 	if items[0].MotionID != "auto-phrase" || items[1].MotionID != "another-auto-phrase" {
 		t.Fatalf("without payload policies, preserve planner selection: %q %q", items[0].MotionID, items[1].MotionID)
 	}
-	if err := applyAnimationPolicies(items, []scriptpkg.AnimationPolicy{{Target: "important_phrase", GroupID: "scene-a", MotionID: "not_certified"}}, "plan", "video", nil); err == nil {
+	if err := scriptoverlay.ApplyAnimationPolicies(items, []scriptpkg.AnimationPolicy{{Target: "important_phrase", GroupID: "scene-a", MotionID: "not_certified"}}, "plan", "video", nil); err == nil {
 		t.Fatal("uncertified group policy should fail")
 	}
 
@@ -29,7 +30,7 @@ func TestAnimationPoliciesSelectMotionPerGroupAndPreserveAutomaticDefaults(t *te
 		{ID: "scene-phrase-1", SceneID: "scene-random", Kind: "text_phrase"},
 		{ID: "scene-phrase-2", SceneID: "scene-random", Kind: "text_phrase"},
 	}
-	if err := applyAnimationPolicies(fallback, []scriptpkg.AnimationPolicy{{Target: "important_phrase", GroupID: "scene-random", MotionID: capabilityoverlay.CertifiedPhraseMotions()[2]}}, "plan", "video", nil); err != nil {
+	if err := scriptoverlay.ApplyAnimationPolicies(fallback, []scriptpkg.AnimationPolicy{{Target: "important_phrase", GroupID: "scene-random", MotionID: capabilityoverlay.CertifiedPhraseMotions()[2]}}, "plan", "video", nil); err != nil {
 		t.Fatalf("scene group fallback: %v", err)
 	}
 	if fallback[0].MotionID != capabilityoverlay.CertifiedPhraseMotions()[2] || fallback[1].MotionID != capabilityoverlay.CertifiedPhraseMotions()[2] {
@@ -39,7 +40,7 @@ func TestAnimationPoliciesSelectMotionPerGroupAndPreserveAutomaticDefaults(t *te
 	policies := []scriptpkg.AnimationPolicy{
 		{Target: "important_phrase", GroupID: "scene-a", MotionID: capabilityoverlay.CertifiedPhraseMotions()[0], MotionParams: map[string]any{"enter_frames": 8}},
 	}
-	if err := applyAnimationPolicies(items, policies, "plan", "video", nil); err != nil {
+	if err := scriptoverlay.ApplyAnimationPolicies(items, policies, "plan", "video", nil); err != nil {
 		t.Fatalf("explicit group policy: %v", err)
 	}
 	if items[0].MotionID != policies[0].MotionID || items[1].MotionID != policies[0].MotionID {
@@ -54,7 +55,7 @@ func TestAnimationPoliciesSelectMotionPerGroupAndPreserveAutomaticDefaults(t *te
 }
 
 func TestAnimationPoliciesOmitUnsetMotionFromWorkerPayload(t *testing.T) {
-	payload, err := json.Marshal(toOverlayAnimationPolicies([]scriptpkg.AnimationPolicy{{Target: "important_phrase", GroupID: "scene-a"}}))
+	payload, err := json.Marshal(scriptoverlay.ToOverlayAnimationPolicies([]scriptpkg.AnimationPolicy{{Target: "important_phrase", GroupID: "scene-a"}}))
 	if err != nil {
 		t.Fatalf("marshal worker animation policy: %v", err)
 	}
@@ -73,10 +74,10 @@ func TestAnimationPoliciesChooseStableRandomMotionWhenGroupSelectionIsOmitted(t 
 		}
 	}
 	first, second := makeItems(), makeItems()
-	if err := applyAnimationPolicies(first, policies, "stable-plan", "video", nil); err != nil {
+	if err := scriptoverlay.ApplyAnimationPolicies(first, policies, "stable-plan", "video", nil); err != nil {
 		t.Fatalf("select random motion for group: %v", err)
 	}
-	if err := applyAnimationPolicies(second, policies, "stable-plan", "video", nil); err != nil {
+	if err := scriptoverlay.ApplyAnimationPolicies(second, policies, "stable-plan", "video", nil); err != nil {
 		t.Fatalf("repeat random motion selection: %v", err)
 	}
 	if first[0].MotionID == "" || first[0].MotionID != first[1].MotionID || first[0].MotionID != second[0].MotionID {
@@ -88,7 +89,7 @@ func TestAnimationPoliciesChooseStableRandomMotionWhenGroupSelectionIsOmitted(t 
 
 	subgroupOnly := []scriptpkg.AnimationPolicy{{Target: "important_phrase", GroupID: "scene-random", SubgroupID: "one"}}
 	untargeted := []capabilityoverlay.OverlayItem{{ID: "two", GroupID: "scene-random", SubgroupID: "two", Kind: "text_phrase", MotionID: "planner-choice"}}
-	if err := applyAnimationPolicies(untargeted, subgroupOnly, "stable-plan", "video", nil); err != nil {
+	if err := scriptoverlay.ApplyAnimationPolicies(untargeted, subgroupOnly, "stable-plan", "video", nil); err != nil {
 		t.Fatalf("subgroup-only policy should be valid: %v", err)
 	}
 	if untargeted[0].MotionID != "planner-choice" {
@@ -106,7 +107,7 @@ func TestAnimationPoliciesApplySubgroupOverridesAndFallbackByGroup(t *testing.T)
 		{Target: "important_phrase", GroupID: "editorial", MotionID: phrasePool[0]},
 		{Target: "important_phrase", GroupID: "editorial", SubgroupID: "headline", MotionID: phrasePool[1]},
 	}
-	if err := applyAnimationPolicies(items, policies, "plan", "video", nil); err != nil {
+	if err := scriptoverlay.ApplyAnimationPolicies(items, policies, "plan", "video", nil); err != nil {
 		t.Fatalf("group/subgroup policies: %v", err)
 	}
 	if items[0].MotionID != phrasePool[1] || items[1].MotionID != phrasePool[0] {
@@ -117,7 +118,7 @@ func TestAnimationPoliciesApplySubgroupOverridesAndFallbackByGroup(t *testing.T)
 		{ID: "a", SceneID: "same-scene", Kind: "text_phrase"},
 		{ID: "b", SceneID: "same-scene", Kind: "text_phrase"},
 	}
-	if err := applyAnimationPolicies(fallbackItems, []scriptpkg.AnimationPolicy{{Target: "important_phrase", GroupID: "same-scene", MotionID: phrasePool[2]}}, "stable-plan", "video", nil); err != nil {
+	if err := scriptoverlay.ApplyAnimationPolicies(fallbackItems, []scriptpkg.AnimationPolicy{{Target: "important_phrase", GroupID: "same-scene", MotionID: phrasePool[2]}}, "stable-plan", "video", nil); err != nil {
 		t.Fatal(err)
 	}
 	if fallbackItems[0].MotionID != phrasePool[2] || fallbackItems[1].MotionID != phrasePool[2] {
@@ -130,10 +131,10 @@ func TestAnimationPoliciesApplySubgroupOverridesAndFallbackByGroup(t *testing.T)
 		{ID: "body-2", GroupID: "editorial", SubgroupID: "body", Kind: "text_phrase"},
 	}
 	randomSecond := append([]capabilityoverlay.OverlayItem(nil), randomFirst...)
-	if err := applyAnimationPolicies(randomFirst, randomPolicies, "stable-plan", "video", nil); err != nil {
+	if err := scriptoverlay.ApplyAnimationPolicies(randomFirst, randomPolicies, "stable-plan", "video", nil); err != nil {
 		t.Fatal(err)
 	}
-	if err := applyAnimationPolicies(randomSecond, randomPolicies, "stable-plan", "video", nil); err != nil {
+	if err := scriptoverlay.ApplyAnimationPolicies(randomSecond, randomPolicies, "stable-plan", "video", nil); err != nil {
 		t.Fatal(err)
 	}
 	if randomFirst[0].MotionID == "" || randomFirst[0].MotionID != randomFirst[1].MotionID || randomFirst[0].MotionID != randomSecond[0].MotionID {
@@ -152,7 +153,7 @@ func TestAnimationPoliciesTargetDatesAndMetricsAndSurviveWireProjection(t *testi
 		{Target: "date", GroupID: "values", MotionID: dateMotion},
 		{Target: "metric", GroupID: "values", MotionID: metricMotion},
 	}
-	if err := applyAnimationPolicies(items, policies, "plan", "video", nil); err != nil {
+	if err := scriptoverlay.ApplyAnimationPolicies(items, policies, "plan", "video", nil); err != nil {
 		t.Fatalf("apply date/metric policies: %v", err)
 	}
 	if items[0].MotionID != dateMotion || items[1].MotionID != metricMotion {
@@ -161,7 +162,7 @@ func TestAnimationPoliciesTargetDatesAndMetricsAndSurviveWireProjection(t *testi
 	plan := capabilityoverlay.OverlayPlan{
 		SchemaVersion: capabilityoverlay.SchemaVersionPlan, PlanID: "plan", VideoID: "video",
 		Width: 1920, Height: 1080, FPSNum: 24, FPSDen: 1, DurationMS: 1000,
-		AnimationPolicies: toOverlayAnimationPolicies(policies), Items: items,
+		AnimationPolicies: scriptoverlay.ToOverlayAnimationPolicies(policies), Items: items,
 	}
 	raw, err := marshalRenderingGenOverlayPlan(plan)
 	if err != nil {
@@ -189,7 +190,7 @@ func TestAnimationPolicyAcceptsCertifiedLightLeakForImage(t *testing.T) {
 		AssetRefs: []capabilityoverlay.OverlayAssetRef{{AssetID: "image-asset"}},
 	}}
 	policy := []scriptpkg.AnimationPolicy{{Target: "image", GroupID: "visuals", MotionID: motions[0]}}
-	if err := applyAnimationPolicies(items, policy, "plan-lightleak", "video", nil); err != nil {
+	if err := scriptoverlay.ApplyAnimationPolicies(items, policy, "plan-lightleak", "video", nil); err != nil {
 		t.Fatalf("certified light leak must be accepted for image target: %v", err)
 	}
 	if items[0].MotionID != motions[0] {
@@ -204,7 +205,7 @@ func TestAnimationPolicyAcceptsCertifiedLightLeakForImage(t *testing.T) {
 		Kind: string(capabilityoverlay.KindEntityImage), TemplateID: "IMAGE_OVERLAY",
 		AssetRefs: []capabilityoverlay.OverlayAssetRef{{AssetID: "portrait-asset"}},
 	}}
-	if err := applyAnimationPolicies(entityItems, policy, "plan-lightleak", "video", capabilityoverlay.CertifiedEntityImageMotions()); err != nil {
+	if err := scriptoverlay.ApplyAnimationPolicies(entityItems, policy, "plan-lightleak", "video", capabilityoverlay.CertifiedEntityImageMotions()); err != nil {
 		t.Fatalf("entity image policy must accept certified light leak with its automatic pool present: %v", err)
 	}
 	if entityItems[0].MotionID != motions[0] {
@@ -221,7 +222,7 @@ func TestRetiredRecipeCannotBePinnedByAnAnimationPolicy(t *testing.T) {
 		t.Fatalf("%s is not retired any more; pick a retired id for this test", retired)
 	}
 	items := []capabilityoverlay.OverlayItem{{ID: "phrase", SceneID: "scene", Kind: "text_phrase"}}
-	err := applyAnimationPolicies(items, []scriptpkg.AnimationPolicy{{
+	err := scriptoverlay.ApplyAnimationPolicies(items, []scriptpkg.AnimationPolicy{{
 		Target: "important_phrase", GroupID: "scene", MotionID: retired,
 	}}, "plan", "video", nil)
 	if err == nil {
@@ -249,7 +250,7 @@ func TestAnimationPoliciesRejectUncertifiedAndDuplicateSelectors(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			items := []capabilityoverlay.OverlayItem{{ID: "phrase", SceneID: "scene", Kind: "text_phrase"}}
-			err := applyAnimationPolicies(items, tc.policies, "plan", "video", nil)
+			err := scriptoverlay.ApplyAnimationPolicies(items, tc.policies, "plan", "video", nil)
 			if err == nil || !strings.Contains(err.Error(), tc.want) {
 				t.Fatalf("error = %v, want substring %q", err, tc.want)
 			}

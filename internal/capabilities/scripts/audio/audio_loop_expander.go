@@ -14,7 +14,13 @@
 // The last event is truncated so the loop ends exactly on the BGM window
 // end (which, for end=video_end, is CanonicalTimeline.DurationUS) — the
 // audio master duration never drifts from the video duration.
-package scriptgeneration
+// Package audio — audio_loop_expander.go expands a resolved BGM layer into
+// deterministic timeline events. Moved from the root scripts package
+// (2026-10-13): the root package is the compatibility facade and audio
+// planning migrates into this subpackage. The registered scripts hotspot
+// must never gain production files, so audio planning lives here; behaviour
+// is unchanged.
+package audio
 
 import (
 	"errors"

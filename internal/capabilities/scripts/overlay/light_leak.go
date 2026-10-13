@@ -1,4 +1,9 @@
-package scriptgeneration
+// Package overlay — light_leak.go owns the random light-leak overlay
+// derivation. Moved from the root scripts package (2026-10-13): the root
+// package is the compatibility facade and each overlay family migrates into
+// this subpackage. The registered scripts hotspot must never gain
+// production files, so overlay policy lives here; behaviour is unchanged.
+package overlay
 
 import (
 	"fmt"
@@ -8,9 +13,9 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 )
 
-const clipStartLightLeakDurationUS int64 = 1_200_000
+const ClipStartLightLeakDurationUS int64 = 1_200_000
 
-func clipStartLightLeakItems(planID string, timeline *audio.CanonicalTimeline) []capabilityoverlay.OverlayItem {
+func ClipStartLightLeakItems(planID string, timeline *audio.CanonicalTimeline) []capabilityoverlay.OverlayItem {
 	if timeline == nil || timeline.DurationUS <= 0 {
 		return nil
 	}
@@ -24,7 +29,7 @@ func clipStartLightLeakItems(planID string, timeline *audio.CanonicalTimeline) [
 			if startUS < 0 || startUS >= timeline.DurationUS {
 				continue
 			}
-			durationUS := min(clipStartLightLeakDurationUS, clip.TimelineDurationUS)
+			durationUS := min(ClipStartLightLeakDurationUS, clip.TimelineDurationUS)
 			if remaining := timeline.DurationUS - startUS; durationUS > remaining {
 				durationUS = remaining
 			}
@@ -44,14 +49,14 @@ func clipStartLightLeakItems(planID string, timeline *audio.CanonicalTimeline) [
 	return items
 }
 
-func overlayStartLightLeakItems(planID string, overlays []capabilityoverlay.OverlayItem) []capabilityoverlay.OverlayItem {
+func OverlayStartLightLeakItems(planID string, overlays []capabilityoverlay.OverlayItem) []capabilityoverlay.OverlayItem {
 	var items []capabilityoverlay.OverlayItem
 	for _, overlay := range overlays {
 		if overlay.Kind == "light_leak" || overlay.DurationUS <= 0 || overlay.ID == "" {
 			continue
 		}
 		id := "light-leak-overlay-" + digest.SHA256String(planID + "\x00" + overlay.ID)[:16]
-		duration := min(clipStartLightLeakDurationUS, overlay.DurationUS)
+		duration := min(ClipStartLightLeakDurationUS, overlay.DurationUS)
 		items = append(items, capabilityoverlay.OverlayItem{
 			ID: id, SceneID: overlay.SceneID, GroupID: overlay.GroupID, SubgroupID: id,
 			Kind: "light_leak", TemplateID: "LIGHT_LEAK",

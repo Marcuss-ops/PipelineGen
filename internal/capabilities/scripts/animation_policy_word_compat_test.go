@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
+	scriptoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/overlay"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
@@ -27,7 +28,7 @@ func TestAnimationPolicyFailsClosedOnWordMismatchedPhraseMotion(t *testing.T) {
 		{ID: "s", SceneID: "scene", Kind: "text_phrase", TemplateID: "IMPORTANT_PHRASE", Text: "Crollo margini"},
 	}
 	policy := []scriptpkg.AnimationPolicy{{Target: "important_phrase", GroupID: "scene", MotionID: longPhraseMotion}}
-	if err := applyAnimationPolicies(shortItem, policy, "plan", "video", nil); err == nil {
+	if err := scriptoverlay.ApplyAnimationPolicies(shortItem, policy, "plan", "video", nil); err == nil {
 		t.Fatalf("long-phrase motion %q on a 2-word phrase must fail, applied %q", longPhraseMotion, shortItem[0].MotionID)
 	}
 
@@ -38,7 +39,7 @@ func TestAnimationPolicyFailsClosedOnWordMismatchedPhraseMotion(t *testing.T) {
 	// Exact-cardinality recipes must never reach non-short copy.
 	exactRecipe := "short_phrase_scale_settle_word"
 	longPolicy := []scriptpkg.AnimationPolicy{{Target: "important_phrase", GroupID: "scene", MotionID: exactRecipe}}
-	if err := applyAnimationPolicies(longItem, longPolicy, "plan", "video", nil); err == nil {
+	if err := scriptoverlay.ApplyAnimationPolicies(longItem, longPolicy, "plan", "video", nil); err == nil {
 		t.Fatalf("exact recipe %q on 8-word copy must fail, applied %q", exactRecipe, longItem[0].MotionID)
 	}
 
@@ -48,7 +49,7 @@ func TestAnimationPolicyFailsClosedOnWordMismatchedPhraseMotion(t *testing.T) {
 		{ID: "s", SceneID: "scene", Kind: "text_phrase", TemplateID: "IMPORTANT_PHRASE", Text: "Crollo margini"},
 	}
 	okPolicy := []scriptpkg.AnimationPolicy{{Target: "important_phrase", GroupID: "scene", MotionID: twoWordRecipe}}
-	if err := applyAnimationPolicies(okItem, okPolicy, "plan", "video", nil); err != nil {
+	if err := scriptoverlay.ApplyAnimationPolicies(okItem, okPolicy, "plan", "video", nil); err != nil {
 		t.Fatalf("matching 2-word recipe must apply: %v", err)
 	}
 	if okItem[0].MotionID != twoWordRecipe {
@@ -60,7 +61,7 @@ func TestAnimationPolicyFailsClosedOnWordMismatchedPhraseMotion(t *testing.T) {
 		{ID: "l", SceneID: "scene", Kind: "text_phrase", TemplateID: "IMPORTANT_PHRASE", Text: longText},
 	}
 	general := capabilityoverlay.CertifiedPhraseMotions()[0]
-	if err := applyAnimationPolicies(generalItem,
+	if err := scriptoverlay.ApplyAnimationPolicies(generalItem,
 		[]scriptpkg.AnimationPolicy{{Target: "important_phrase", GroupID: "scene", MotionID: general}},
 		"plan", "video", nil); err != nil {
 		t.Fatalf("general catalog motion on long copy must apply: %v", err)
@@ -76,10 +77,10 @@ func TestAnimationPolicySeedsShortGroupsPerWordCount(t *testing.T) {
 		}
 	}
 	first, second := makeItems(), makeItems()
-	if err := applyAnimationPolicies(first, policies, "stable-plan", "video", nil); err != nil {
+	if err := scriptoverlay.ApplyAnimationPolicies(first, policies, "stable-plan", "video", nil); err != nil {
 		t.Fatalf("seeded mixed-word group must not fail: %v", err)
 	}
-	if err := applyAnimationPolicies(second, policies, "stable-plan", "video", nil); err != nil {
+	if err := scriptoverlay.ApplyAnimationPolicies(second, policies, "stable-plan", "video", nil); err != nil {
 		t.Fatalf("seeded retry must not fail: %v", err)
 	}
 	for i, words := range []int{2, 4} {
@@ -154,10 +155,10 @@ func TestAnimationPolicySeededCaptionUsesRequestedPool(t *testing.T) {
 		}
 	}
 	first, second := makeItems(), makeItems()
-	if err := applyAnimationPolicies(first, policies, "plan", "video", nil, requested); err != nil {
+	if err := scriptoverlay.ApplyAnimationPolicies(first, policies, "plan", "video", nil, requested); err != nil {
 		t.Fatalf("seeded caption with requested pool: %v", err)
 	}
-	if err := applyAnimationPolicies(second, policies, "plan", "video", nil, requested); err != nil {
+	if err := scriptoverlay.ApplyAnimationPolicies(second, policies, "plan", "video", nil, requested); err != nil {
 		t.Fatalf("seeded caption retry: %v", err)
 	}
 	if first[0].CaptionMotionID != requested[0] {
@@ -168,7 +169,7 @@ func TestAnimationPolicySeededCaptionUsesRequestedPool(t *testing.T) {
 	}
 	// Without a requested pool the certified automatic pool applies.
 	plain := makeItems()
-	if err := applyAnimationPolicies(plain, policies, "plan", "video", nil); err != nil {
+	if err := scriptoverlay.ApplyAnimationPolicies(plain, policies, "plan", "video", nil); err != nil {
 		t.Fatalf("seeded caption without pool: %v", err)
 	}
 	allowed := make(map[string]bool, len(automatic))

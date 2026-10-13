@@ -33,64 +33,6 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
 
-// recapSceneBrief is one timed scene's recap projection: its top phrase
-// stands in for the chapter bullet, and its canonical window bounds the
-// recap cards shown when a later placement scene begins.
-type recapSceneBrief struct {
-	id      string
-	title   string
-	score   float64
-	startUS int64
-	endUS   int64
-}
-
-// recapPlacementsForScenes maps the scene sequence to recap slots. Placement
-// chapters come from RecapPlacementPoints (R01: after several chapters;
-// R02: short runs yield none). A point p displays at the start of scene
-// p+1 covering scenes 0..p — never the scene being entered (R03: no leak
-// of not-yet-narrated content). Scene ordinals are the narration index
-// space, so later scenes always sort after the boundary. A display scene
-// already taken by an earlier point is skipped, keeping card windows
-// disjoint. Deterministic: same briefs → same placements.
-func recapPlacementsForScenes(briefs []recapSceneBrief) []capabilityoverlay.RecapPlacement {
-	points := capabilityoverlay.RecapPlacementPoints(len(briefs), false)
-	usedDisplay := map[int]struct{}{}
-	var out []capabilityoverlay.RecapPlacement
-	for _, p := range points {
-		display := p + 1
-		if display > len(briefs)-1 {
-			display = len(briefs) - 1
-		}
-		if display < 1 {
-			continue
-		}
-		if _, taken := usedDisplay[display]; taken {
-			continue
-		}
-		usedDisplay[display] = struct{}{}
-		narratedThrough := display - 1
-		var sources []capabilityoverlay.RecapSource
-		for i := 0; i <= narratedThrough && i < len(briefs); i++ {
-			if strings.TrimSpace(briefs[i].title) == "" {
-				continue
-			}
-			sources = append(sources, capabilityoverlay.RecapSource{
-				ID: briefs[i].id, Title: briefs[i].title,
-				SentenceIDs: []int{i}, Score: briefs[i].score,
-			})
-		}
-		w := briefs[display]
-		if w.startUS >= w.endUS {
-			continue
-		}
-		out = append(out, capabilityoverlay.RecapPlacement{
-			SceneID: w.id, WindowStartUS: w.startUS, WindowEndUS: w.endUS,
-			Sources: sources, NarratedThrough: narratedThrough, MaxCards: 3,
-		})
-	}
-	return out
-}
-
 // CompileOverlayPlan derives the full semantic OverlayPlan for a completed
 // real result. It returns nil (no-op) when the result carries no derivable
 // overlay surface (no annotations, no word timing, no entity timeline) and
@@ -194,7 +136,7 @@ func compileOverlayPlanWithMotionOffset(result *GenerateResult, language Languag
 	// Recap briefs run parallel to timedScenes: each scene's top-score phrase
 	// stands in for its chapter bullet. Scenes without phrases contribute no
 	// recap source — the builder invents nothing.
-	recapBriefs := make([]recapSceneBrief, 0, len(timedScenes))
+	recapBriefs := make([]scriptoverlay.RecapSceneBrief, 0, len(timedScenes))
 	for _, scene := range timedScenes {
 		ref := scene.Voiceover[language]
 		startUS, ok := timelineStartUS[scene.ID]
@@ -227,10 +169,10 @@ func compileOverlayPlanWithMotionOffset(result *GenerateResult, language Languag
 				perSceneImageHashes[strings.ToLower(image.SHA256)] = struct{}{}
 			}
 		}
-		brief := recapSceneBrief{id: scene.ID}
+		brief := scriptoverlay.RecapSceneBrief{ID: scene.ID}
 		if start, ok := timelineStartUS[scene.ID]; ok {
-			brief.startUS = start
-			brief.endUS = timelineEndUS[scene.ID]
+			brief.StartUS = start
+			brief.EndUS = timelineEndUS[scene.ID]
 		}
 		if sceneInput != nil {
 			// Any top verbatim text stands in for the bullet: phrases
@@ -246,8 +188,8 @@ func compileOverlayPlanWithMotionOffset(result *GenerateResult, language Languag
 				if strings.TrimSpace(tc.Text) == "" {
 					continue
 				}
-				if brief.title == "" || tc.Score > brief.score {
-					brief.title, brief.score = tc.Text, tc.Score
+				if brief.Title == "" || tc.Score > brief.Score {
+					brief.Title, brief.Score = tc.Text, tc.Score
 				}
 			}
 		}
@@ -265,7 +207,7 @@ func compileOverlayPlanWithMotionOffset(result *GenerateResult, language Languag
 	// kill-switch; placements that cannot contribute stay no-ops.
 	var recapPlacements []capabilityoverlay.RecapPlacement
 	if !canvas.DisableRecapOverlays {
-		recapPlacements = recapPlacementsForScenes(recapBriefs)
+		recapPlacements = scriptoverlay.RecapPlacementsForScenes(recapBriefs)
 	}
 	// Charts lower grounded numeric comparisons to native bar rectangles and
 	// a text-label item; scenes without strict numeric data yield no placement.
@@ -320,7 +262,7 @@ func compileOverlayPlanWithMotionOffset(result *GenerateResult, language Languag
 	plannerPlan.TimedScenes = len(timedScenes)
 	items := plannerPlan.Items
 	if canvas.RandomLightLeakOnClipStart {
-		items = append(items, clipStartLightLeakItems(planID, result.CanonicalTimeline)...)
+		items = append(items, scriptoverlay.ClipStartLightLeakItems(planID, result.CanonicalTimeline)...)
 	}
 	if canvas.MapsOnly {
 		kept := items[:0]
@@ -351,7 +293,7 @@ func compileOverlayPlanWithMotionOffset(result *GenerateResult, language Languag
 	}
 	items = filteredItems
 	if canvas.RandomLightLeakOnOverlayStart {
-		items = append(items, overlayStartLightLeakItems(planID, items)...)
+		items = append(items, scriptoverlay.OverlayStartLightLeakItems(planID, items)...)
 	}
 	// Run-level style projection (text sizing, image frame/layer params) is
 	// owned by overlay_plan_finalize.go so this file stays inside the strict
@@ -448,7 +390,7 @@ func compileOverlayPlanWithMotionOffset(result *GenerateResult, language Languag
 	for index := range items {
 		prePolicyMotions[index] = items[index].MotionID
 	}
-	if err := applyAnimationPolicies(items, canvas.AnimationPolicies, planID, videoID, canvas.EntityImageMotions, canvas.EntityCaptionMotions); err != nil {
+	if err := scriptoverlay.ApplyAnimationPolicies(items, canvas.AnimationPolicies, planID, videoID, canvas.EntityImageMotions, canvas.EntityCaptionMotions); err != nil {
 		return nil, fmt.Errorf("overlay plan: animation policies: %w", err)
 	}
 	// Policies run after the distinct guards and can reintroduce duplicates
@@ -618,7 +560,7 @@ func compileOverlayPlanWithMotionOffset(result *GenerateResult, language Languag
 		DurationMS:             durationMS,
 		ForegroundScalePercent: canvas.ForegroundScalePercent,
 		Background:             canvas.Background,
-		AnimationPolicies:      toOverlayAnimationPolicies(canvas.AnimationPolicies),
+		AnimationPolicies:      scriptoverlay.ToOverlayAnimationPolicies(canvas.AnimationPolicies),
 		// Overlays are composited over the master video, so they require an
 		// alpha channel. The contract travels with the plan (never re-derived
 		// downstream); the compiled chronon output derives container/codec/

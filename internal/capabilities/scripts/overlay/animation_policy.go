@@ -1,4 +1,10 @@
-package scriptgeneration
+// Package overlay — animation_policy.go owns the run-level animation-policy
+// projection applied after automatic motion assignment. Moved from the root
+// scripts package (2026-10-13): the root package is the compatibility facade
+// and each overlay family migrates into this subpackage. The registered
+// scripts hotspot must never gain production files, so overlay policy lives
+// here; behaviour is unchanged.
+package overlay
 
 import (
 	"fmt"
@@ -15,9 +21,9 @@ type animationGroupKey struct {
 	target, groupID, subgroupID string
 }
 
-// toOverlayAnimationPolicies projects the script payload onto the rendering
+// ToOverlayAnimationPolicies projects the script payload onto the rendering
 // contract without changing the caller's selections.
-func toOverlayAnimationPolicies(policies []scriptpkg.AnimationPolicy) []capabilityoverlay.AnimationPolicy {
+func ToOverlayAnimationPolicies(policies []scriptpkg.AnimationPolicy) []capabilityoverlay.AnimationPolicy {
 	out := make([]capabilityoverlay.AnimationPolicy, len(policies))
 	for i, policy := range policies {
 		out[i] = capabilityoverlay.AnimationPolicy{
@@ -34,7 +40,7 @@ func toOverlayAnimationPolicies(policies []scriptpkg.AnimationPolicy) []capabili
 // The optional trailing pool is the run-level entity-caption pool
 // (entity_caption_motions): it drives seeded caption choices and the
 // automatic caption rotation. Empty keeps the certified automatic pool.
-func applyAnimationPolicies(items []capabilityoverlay.OverlayItem, policies []scriptpkg.AnimationPolicy, planID, videoID string, entityImagePool []string, entityCaptionPools ...[]string) error {
+func ApplyAnimationPolicies(items []capabilityoverlay.OverlayItem, policies []scriptpkg.AnimationPolicy, planID, videoID string, entityImagePool []string, entityCaptionPools ...[]string) error {
 	var entityCaptionPool []string
 	if len(entityCaptionPools) > 0 {
 		entityCaptionPool = entityCaptionPools[0]
@@ -192,7 +198,7 @@ func applyAnimationPolicies(items []capabilityoverlay.OverlayItem, policies []sc
 				}
 			}
 		}
-		if isImageOverlayKind(item.Kind) && len(item.ImageLayers) == 0 {
+		if IsImageOverlayKind(item.Kind) && len(item.ImageLayers) == 0 {
 			if motionID, motionParams, _ := resolve("image", groupID, item.SubgroupID, 0); motionID != "" {
 				item.MotionID, item.MotionParams = motionID, motionParams
 			}

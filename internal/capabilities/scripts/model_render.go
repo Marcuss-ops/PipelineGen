@@ -35,25 +35,6 @@ import (
 // downstream document/assembly steps consume. It is retained for that path
 // and is NOT part of the removed video render pipeline. The Artifact field is
 // nil while the job is still queued or running.
-type RenderReference struct {
-	JobID    string          `json:"job_id"`
-	Status   string          `json:"status"`
-	Artifact *RenderArtifact `json:"artifact,omitempty"`
-	// Items carries the per-overlay render lineage when production renders
-	// each semantic item as its own short video. Artifact remains the first
-	// item for backward-compatible document/publication consumers.
-	Items []OverlayItemRenderReference `json:"items,omitempty"`
-}
-
-// OverlayItemRenderReference binds one semantic overlay item to the queue job
-// and certified artifact that rendered it.
-type OverlayItemRenderReference struct {
-	ItemID   string          `json:"item_id"`
-	JobID    string          `json:"job_id"`
-	Status   string          `json:"status"`
-	Artifact *RenderArtifact `json:"artifact,omitempty"`
-}
-
 // RenderArtifact is the certified artifact produced by the central
 // RenderingGen queue. It mirrors the queue's artifact contract (including the
 // copy-only certification) so the document renderer and Velox copy assembly
