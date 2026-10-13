@@ -80,6 +80,10 @@ type EditorialFingerprintInput struct {
 	EmbeddingModel   string
 	EmbeddingVersion string
 	AlgorithmVersion string
+	// SceneProducts is the per-scene output (bullets, highlights, chart values,
+	// title). Hashing it means any change to the emitted editorial products
+	// changes the fingerprint, not only changes to the inputs.
+	SceneProducts []EditorialScene
 }
 
 // ComputeEditorialFingerprint hashes the canonical JSON of the full input.

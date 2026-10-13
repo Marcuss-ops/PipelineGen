@@ -166,6 +166,7 @@ func (h *ScriptGenerateItemJobHandler) HandleJob(
 	tracker := gencore.NewProgressTracker(pf, item.ID)
 	tracker.SetContext(ctx)
 	tracker.SetEventFn(ef)
+	tracker.SetStageSink(appjobs.SafeStageStatusSink(tools), j.ID)
 	tracker.SetKind(domainScript.TypeGenerateItem)
 
 	execCtx := ctx

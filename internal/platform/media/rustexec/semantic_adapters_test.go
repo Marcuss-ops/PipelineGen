@@ -74,6 +74,26 @@ func TestVisualNERAdapterSendsV1AndAcceptsGroundedEntities(t *testing.T) {
 		t.Fatalf("language=%q, want en", req.Language)
 	}
 }
+func TestVisualNERAnalyzeDecodesGroundedRelations(t *testing.T) {
+	r := &semanticRunner{output: []byte(`{"entities":[{"text":"salad","start":6,"end":11,"score":0.9,"type":"CONCEPT"},{"text":"Greek","start":0,"end":5,"score":0.8,"type":"LOC"}],"relations":[{"source":0,"target":1,"sentence_index":0,"evidence":"Greek salad"}],"lower_thirds":[],"bullets":[],"chart_points":[]}`)}
+	a, _ := NewVisualNERAdapter(executorForSemantic(r))
+	analysis, err := a.Analyze(context.Background(), "en", "Greek salad", 3)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(analysis.Entities) != 2 || len(analysis.Relations) != 1 {
+		t.Fatalf("entities=%d relations=%d", len(analysis.Entities), len(analysis.Relations))
+	}
+}
+
+func TestVisualNERAnalyzeRejectsOutOfRangeRelation(t *testing.T) {
+	r := &semanticRunner{output: []byte(`{"entities":[{"text":"salad","start":6,"end":11,"score":0.9}],"relations":[{"source":0,"target":3,"sentence_index":0,"evidence":"Greek salad"}]}`)}
+	a, _ := NewVisualNERAdapter(executorForSemantic(r))
+	if _, err := a.Analyze(context.Background(), "en", "Greek salad", 3); err == nil {
+		t.Fatal("expected out-of-range relation error")
+	}
+}
+
 func TestMediaSamplerAdapterSendsV1AndReturnsWinner(t *testing.T) {
 	r := &semanticRunner{output: []byte(`{"results":[],"winner_id":"salad"}`)}
 	a, _ := NewMediaSamplerAdapter(executorForSemantic(r))

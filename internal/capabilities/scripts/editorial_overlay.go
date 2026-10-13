@@ -81,25 +81,28 @@ func projectEditorialOverlays(result *GenerateResult, language Language, scenes 
 			}
 		}
 		for _, bullet := range editorial.Bullets {
+			if bullet.SentenceStart < 0 || bullet.SentenceEnd <= bullet.SentenceStart {
+				continue
+			}
 			shortText := editorialBulletShortPhrase(editorial, bullet)
 			if shortText == "" {
 				continue
 			}
+			// The blocking overlay rule forbids one- and two-word callouts,
+			// and the extractor regularly returns a two-word highlight. Grow the
+			// certified snippet into the following spoken words instead of
+			// dropping the scene, so the short-phrase family still renders.
+			shortText = expandEditorialPhraseToMinimumWords(text, shortText)
 			if located, ok := locateEditorialPhrase(*voiceover.Timing, text, shortText); ok &&
 				located.StartUS >= 0 && located.EndUS > located.StartUS && located.EndUS <= voiceover.Timing.DurationUS {
 				annotation := editorialTimedAnnotation(located, window[0], "scene_bullet", 0.99)
-				// Show the extractive bullet as the narration scene opens. Its
-				// source phrase remains voiceover-timed for grounding, while its
-				// display window gives the short-phrase motion a readable hold.
-				annotation.StartUS = window[0]
-				annotation.StartMs = window[0] / 1000
-				annotation.DurationUS = min(int64(3_000_000), window[1]-window[0])
-				annotation.EndMs = (annotation.StartUS + annotation.DurationUS + 999) / 1000
 				inputs[inputIndex].Phrases = append(inputs[inputIndex].Phrases, annotation)
 				break // the visual contract is one bullet per scene
 			}
 		}
-		if !hasOpeningSceneBullet(inputs[inputIndex].Phrases) {
+		// A fallback opening bullet is allowed only when the analysis explicitly
+		// had no title candidate. Never turn a rejected title into a bullet.
+		if !hasOpeningSceneBullet(inputs[inputIndex].Phrases) && editorial.Title == nil && editorial.TitleStatus == "unavailable" {
 			if opening, ok := editorialOpeningPhrase(inputs[inputIndex], text, *voiceover.Timing); ok {
 				opening.PresentationRole = "scene_bullet"
 				opening.StartUS = window[0]
@@ -142,7 +145,9 @@ func editorialOpeningPhrase(input capabilityoverlay.SceneInput, sceneText string
 	found := false
 	for _, candidate := range candidates {
 		words := strings.Fields(strings.TrimSpace(candidate.Text))
-		if len(words) < 2 || candidate.DurationUS <= 0 || candidate.EndMs <= candidate.StartMs {
+		// Blocking overlay rule: a shown callout holds at least three
+		// complete words, never a one- or two-word fragment.
+		if len(words) < 3 || candidate.DurationUS <= 0 || candidate.EndMs <= candidate.StartMs {
 			continue
 		}
 		if len(words) > 5 {
@@ -172,7 +177,7 @@ func editorialOpeningPhrase(input capabilityoverlay.SceneInput, sceneText string
 	if len(words) > 5 {
 		words = words[:5]
 	}
-	for len(words) >= 2 {
+	for len(words) >= 3 {
 		phrase := strings.Join(words, " ")
 		if located, ok := locateEditorialPhrase(timing, sceneText, phrase); ok && located.EndUS > located.StartUS && located.EndUS <= timing.DurationUS {
 			return capabilityoverlay.TimedAnnotation{
@@ -183,6 +188,100 @@ func editorialOpeningPhrase(input capabilityoverlay.SceneInput, sceneText string
 		words = words[:len(words)-1]
 	}
 	return capabilityoverlay.TimedAnnotation{}, false
+}
+
+// editorialBoundaryFunctionWords guards phrase edges the same way the Rust
+// extractor does: a shown callout must never start or end on an article,
+// preposition, conjunction or relative pronoun. Growing "subito focalizzata"
+// into "subito focalizzata sulla" (or "sentenze emesse" into "sentenze
+// emesse e") renders a dangling fragment with no sense, so expansion keeps
+// adding verbatim words until the phrase ends on a content word.
+var editorialBoundaryFunctionWords = map[string]struct{}{
+	// Italian articles, articulated prepositions and simple prepositions.
+	"il": {}, "lo": {}, "la": {}, "i": {}, "gli": {}, "le": {},
+	"un": {}, "uno": {}, "una": {}, "un'": {},
+	"del": {}, "dello": {}, "della": {}, "dei": {}, "degli": {}, "delle": {},
+	"al": {}, "allo": {}, "alla": {}, "ai": {}, "agli": {}, "alle": {},
+	"dal": {}, "dallo": {}, "dalla": {}, "dai": {}, "dagli": {}, "dalle": {},
+	"nel": {}, "nello": {}, "nella": {}, "nei": {}, "negli": {}, "nelle": {},
+	"sul": {}, "sullo": {}, "sulla": {}, "sui": {}, "sugli": {}, "sulle": {},
+	"dell": {}, "dall": {}, "nell": {}, "sull": {}, "coll": {},
+	"di": {}, "a": {}, "ad": {}, "da": {}, "in": {}, "con": {},
+	"su": {}, "per": {}, "tra": {}, "fra": {},
+	// Italian conjunctions, relatives and clitic/negation particles: ending
+	// a callout on one of these always reads as cut mid-sentence.
+	"e": {}, "ed": {}, "o": {}, "od": {}, "ma": {}, "se": {},
+	"anche": {}, "come": {}, "dove": {}, "quando": {}, "cui": {},
+	"che": {}, "chi": {}, "quale": {}, "quali": {},
+	"si": {}, "ci": {}, "ne": {}, "non": {},
+	// English equivalents for the same boundary guard.
+	"the": {}, "an": {}, "of": {}, "to": {}, "on": {}, "at": {},
+	"for": {}, "with": {}, "from": {}, "by": {}, "and": {},
+	"or": {}, "but": {}, "as": {}, "that": {}, "which": {},
+	"who": {}, "whom": {}, "whose": {}, "when": {}, "where": {},
+}
+
+func isEditorialBoundaryFunctionWord(word string) bool {
+	cleaned := strings.ToLower(strings.Trim(strings.TrimSpace(word), ".,;:!?\"'()[]"))
+	if cleaned == "" {
+		return true
+	}
+	_, blocked := editorialBoundaryFunctionWords[cleaned]
+	return blocked
+}
+
+// hasHangingPhrasePunct reports a trailing comma, semicolon or colon: the
+// callout is cut mid-enumeration ("impronte,") and reads broken on screen.
+// A terminal stop (./!/¨/…) instead closes the sentence and is a good ending.
+func hasHangingPhrasePunct(word string) bool {
+	trimmed := strings.TrimSpace(word)
+	if trimmed == "" {
+		return true
+	}
+	last := trimmed[len(trimmed)-1]
+	return last == ',' || last == ';' || last == ':'
+}
+
+// expandEditorialPhraseToMinimumWords grows an extractive phrase shorter than
+// the blocking rule's three-word minimum into a complete snippet of at least
+// three words. The extra words are taken verbatim from the scene narration
+// right after the phrase, so locateEditorialPhrase still demands exact spoken
+// text and certified word timing before anything renders. Growth continues
+// past dangling function words (up to the five-word short-phrase ceiling)
+// and fails closed — returning the phrase unchanged so downstream drops it —
+// when no clean content-word ending exists.
+func expandEditorialPhraseToMinimumWords(sceneText, phrase string) string {
+	trimmed := strings.TrimSpace(phrase)
+	words := strings.Fields(trimmed)
+	if len(words) == 0 || len(words) >= 3 {
+		return trimmed
+	}
+	source := strings.Fields(strings.TrimSpace(sceneText))
+	for i := 0; i+len(words) <= len(source); i++ {
+		match := true
+		for j := range words {
+			if !strings.EqualFold(source[i+j], words[j]) {
+				match = false
+				break
+			}
+		}
+		if !match {
+			continue
+		}			// Never end the callout on a function word or a hanging comma:
+			// keep growing while the candidate ends dangling, within the
+			// short-phrase ceiling of five words the bullet lane renders
+			// through.
+			for length := 3; length <= 5 && i+length <= len(source); length++ {
+				grown := source[i : i+length]
+				last := grown[len(grown)-1]
+				if isEditorialBoundaryFunctionWord(last) || hasHangingPhrasePunct(last) {
+					continue
+				}
+				return strings.Join(grown, " ")
+			}
+			return trimmed
+	}
+	return trimmed
 }
 
 // editorialBulletShortPhrase chooses the highest-scoring Rust-certified
@@ -209,7 +308,21 @@ func editorialBulletShortPhrase(scene scriptpkg.EditorialScene, bullet scriptpkg
 		}
 	}
 	if chosen == "" {
-		return sceneFallback
+		if sceneFallback != "" {
+			return sceneFallback
+		}
+		// The sentence-span bullet itself is an extractive source. When the
+		// analyzer did not provide a shorter visual highlight, use its opening
+		// five words; locateEditorialPhrase below still requires exact spoken
+		// text and certified word timing before the phrase can render. The
+		// blocking overlay rule keeps the three-word minimum here as well.
+		words := strings.Fields(strings.TrimSpace(bullet.Text))
+		if len(words) > 5 {
+			words = words[:5]
+		}
+		if len(words) >= 3 {
+			return strings.Join(words, " ")
+		}
 	}
 	return chosen
 }

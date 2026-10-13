@@ -84,13 +84,23 @@ func MeasurePhraseOverlayBudget(items []OverlayItem) PhraseOverlayBudget {
 func MeasurePhraseOverlayBudgetWithLimit(items []OverlayItem, requested int) PhraseOverlayBudget {
 	budget := PhraseOverlayBudget{Requested: EffectivePhraseOverlayLimit(requested)}
 	seen := make(map[string]struct{})
-	for _, item := range items {
-		if item.Kind != "text_phrase" {
-			continue
-		}
-		key := strings.ToLower(strings.Join(strings.Fields(item.Text), " "))
-		if key != "" {
+	add := func(text string) {
+		if key := strings.ToLower(strings.Join(strings.Fields(text), " ")); key != "" {
 			seen[key] = struct{}{}
+		}
+	}
+	for _, item := range items {
+		switch item.Kind {
+		case "text_phrase":
+			add(item.Text)
+		case KindPhraseChain:
+			// Fused phrase chains carry their phrases per segment; count them
+			// so the reported materialization matches the rendered plan.
+			if segments, ok := DecodeChainSegments(item.Params); ok {
+				for _, segment := range segments {
+					add(segment.Text)
+				}
+			}
 		}
 	}
 	budget.Materialized = len(seen)

@@ -60,10 +60,10 @@ const (
 const (
 	// 5s: fuse same-scene overlays with at most five seconds of empty
 	// timeline between them into one multi-animation chain item.
-	defaultChainGapUS       int64 = 5_000_000
-	maxChainGapUS           int64 = 5_000_000
-	defaultChainMaxSegments       = 8
-	maxChainSegmentsHard          = 32
+	defaultChainGapUS         int64 = 5_000_000
+	maxChainGapUS             int64 = 5_000_000
+	defaultChainMaxSegments         = 8
+	maxChainSegmentsHard            = 32
 	minChainSegmentDurationUS int64 = 2_500_000
 	chainHandoffGapUS         int64 = 400_000
 )
@@ -282,7 +282,10 @@ func fuseChain(group []OverlayItem, chainIndex int) OverlayItem {
 	for index, item := range group {
 		segmentStartUS := item.StartUSValue()
 		segmentDurationUS := item.EndUSValue() - item.StartUSValue()
-		if segmentDurationUS < minChainSegmentDurationUS {
+		// Preserve certified phrase timing exactly: extending a short spoken
+		// phrase changes its editorial window and can overlap later narration.
+		// Image and map segments need a minimum hold for the visual transition.
+		if (chainFamily(item.Kind) != "text" || families["map"]) && segmentDurationUS < minChainSegmentDurationUS {
 			segmentDurationUS = minChainSegmentDurationUS
 		}
 		if index > 0 {

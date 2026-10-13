@@ -32,11 +32,9 @@ var (
 		// available for editorial plans but is not picked for generated overlays.
 		"image_focus_in", "image_fade_in", "image_scale_in",
 		"image_slide_left", "image_slide_right",
-		// modern_rounded_pop adds rounded-corner masking. The current strict
-		// Vulkan/NVENC image path rejects that mask and has no legacy fallback;
-		// keep the preset available for explicit certification plans, but never
-		// select it for generated overlays until the native mask path lands.
-		"bottom_card_rise",
+		// The strict Vulkan/NVENC image path now applies image radius in its
+		// native source node; keep a rounded treatment in normal rotation.
+		"modern_rounded_pop", "bottom_card_rise",
 	}
 	// RenderingGen catalog inventories: all 32 certified layer-only image motions
 	// and the full phrase families (42 classic Apple, 60 modern Apple and 10 typewriter).
@@ -159,7 +157,7 @@ var (
 	// eight restrained, legible treatments.
 	datePresentationMotionCandidates = []string{
 		"date_fade_rise", "date_calendar_flip", "date_timeline_tick", "date_chronology_focus",
-		"date_page_turn", "date_calendar_drop", "date_month_wipe", "date_era_zoom",
+		"date_calendar_drop", "date_month_wipe", "date_era_zoom",
 	}
 	// Metrics use the authored metric_v1 treatment family rather than generic
 	// typewriter effects. This curated pool favors meaningful count, chart,
@@ -187,7 +185,6 @@ var (
 		"air_rise_type_on",
 		"apple_phrase_v2",
 		"aurora_gradient_sweep",
-		"chromatic_aberration_pop",
 		"cinematic_credits_drift",
 		"counter_scroll_reveal",
 		"crisp_mask_center_open",
@@ -290,59 +287,15 @@ var (
 		"quiet_hero_settle",
 		"soft_kinetic_rise",
 	}
-	// Keep exact word-count groups so a recipe cannot receive an unsupported
-	// phrase length. Recipes with known runtime failures remain excluded until
-	// their ChrononTemplate definitions are repaired and canaried.
-	shortPhraseMotionCandidates = map[int][]string{
-		1: {
-			"typewriter_modern_01_monospace_block_cursor", "typewriter_modern_03_soft_opacity_ramp",
-			"short_phrase_scale_settle_word",
-			"short_phrase_product_text_shimmer",
-			"short_phrase_product_chromatic_fringe_title",
-			"short_phrase_product_fold_text",
-		},
-		2: {
-			"typewriter_modern_02_kinetic_scramble", "typewriter_modern_07_word_snap",
-			"short_phrase_character_tracking_reveal",
-			"short_phrase_editorial_quiet_zoom",
-			"short_phrase_product_focus_blur_resolve",
-		},
-		3: {
-			"typewriter_modern_04_character_bounce", "typewriter_modern_09_highlighter_expansion",
-			"short_phrase_character_write_on",
-			"short_phrase_word_mask_sequence",
-			"short_phrase_word_cascade_sentence",
-			"short_phrase_semantic_chain_curve",
-			"short_phrase_single_word_swap",
-			"short_phrase_product_blur_out_up",
-			"short_phrase_product_bottom_up_letters",
-			"short_phrase_product_text_match_cut",
-			"short_phrase_product_weight_wave",
-			"short_phrase_product_masked_heading",
-			"short_phrase_product_scrambled_text",
-			"short_phrase_product_glare_hover",
-			"short_phrase_product_gradual_blur",
-			"short_phrase_product_shape_blur",
-		},
-		4: {
-			"typewriter_modern_05_backspace_correction", "typewriter_modern_10_weight_ramp",
-			"short_phrase_semantic_two_line",
-			"short_phrase_simple_progressive_phrase",
-			"short_phrase_editorial_rule_handoff",
-			"short_phrase_phrase_build_focus",
-			"short_phrase_editorial_baseline_rise",
-			"short_phrase_editorial_tracking_close",
-			"short_phrase_editorial_glyph_curtain",
-			"short_phrase_editorial_contrast_sweep",
-			"short_phrase_editorial_lift_and_rule",
-			"short_phrase_product_scroll_reveal",
-		},
-		5: {
-			"typewriter_modern_06_glow_beam_sweep", "typewriter_modern_08_mechanical_y_shift",
-			"short_phrase_editorial_side_glide",
-			"short_phrase_editorial_focus_resolve",
-		},
-	}
+	// Generated short phrases rotate the surviving exact-cardinality
+	// ChrononTemplate recipes, grouped by the word_count each recipe declares in
+	// its own definition (short_phrase_word_groups.go). The previous
+	// implementation pointed every bucket at the same four documentary-clean
+	// entrances, which is why every short phrase in a run looked alike.
+	// Typewriter glyph animators stay out of the automatic lane: they rendered
+	// blank clips on the installed Vulkan runtime, and the 2026-10-13 review
+	// retired 14 more recipes outright (removedGeneratedPhraseMotions).
+	shortPhraseMotionCandidates = copyShortPhraseWordGroups()
 	typewriterMotionCandidates = []string{
 		"typewriter_modern_01_monospace_block_cursor",
 		"typewriter_modern_02_kinetic_scramble",
@@ -470,10 +423,7 @@ var (
 		"phrase_apple_clean_24_tracking_soft_kinetic",
 		"phrase_apple_clean_26_opacity_depth_push",
 		"phrase_apple_clean_27_opacity_parallax",
-		"phrase_apple_clean_01_blur_soft_reveal",
 		"phrase_apple_clean_02_blur_focus_snap",
-		"phrase_apple_clean_07_slide_up_soft",
-		"phrase_apple_clean_10_slide_from_right_apple",
 		// Long phrases are still allowed to rotate through clearly different
 		// text families; limiting them to Apple fades made every documentary
 		// sentence look identical and hid typewriter / 3D treatments entirely.
@@ -482,7 +432,6 @@ var (
 		"typewriter_tracking",
 		"text_3d_camera_push",
 		"text_3d_tilt_rise",
-		"phrase_apple_clean_02_blur_focus_snap",
 		// Complete phrases can also use the catalog's text families. Exclude
 		// glitch and auto-wrap treatments here so longer copy stays legible.
 		"typewriter_blur_focus", "typewriter_neon", "typewriter_pop",

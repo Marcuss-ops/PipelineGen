@@ -22,9 +22,10 @@ func selectPhraseMotion(jobID, sceneID string, ordinal int, pool []string) strin
 		// while remaining strictly inside the caller's certified vocabulary.
 		return selectMotionFromPool(jobID, sceneID, "explicit", ordinal, pool)
 	}
-	// The default is a full deterministic no-repeat walk of the 123-motion
-	// catalog. Do not siphon every third phrase into a smaller "visible"
-	// subset: that makes the large catalog repeat much earlier than necessary.
+	// The default is a full deterministic no-repeat walk of the certified
+	// callable catalog (removed motions excluded). Do not siphon every third
+	// phrase into a smaller "visible" subset: that makes the large catalog
+	// repeat much earlier than necessary.
 	sequence := defaultPhraseMotionSequence(jobID, sceneID)
 	if len(sequence) == 0 {
 		return ""
@@ -202,6 +203,53 @@ func animationCount(counts map[string]int, keys ...string) int {
 		}
 	}
 	return 0
+}
+
+// Animation-count lanes. Each lane is ONE canonical key plus its aliases,
+// resolved in a single place so every call site reading the same pool sees
+// the same limit. Scattered inline key lists drifted apart (the
+// images-with-text pool was capped by two different alias sets in different
+// planner branches, so one alias was silently ignored on one path). Adding a
+// lane means adding one entry here; call sites use laneAnimationCount.
+const (
+	laneImages           = "images"
+	laneImagesWithText   = "images_with_text"
+	laneEntities         = "entities"
+	laneImportantPhrase  = "important_phrase"
+	laneShortPhrase      = "short_important_phrase"
+	laneMaps             = "maps"
+	laneTimelineDate     = "timeline_date"
+	laneMetricStat       = "metric_stat"
+)
+
+var animationLaneKeys = map[string][]string{
+	laneImages: {
+		"single_image", "image_double", "image_triplet", "image_four", "image_five",
+		"single_image_with_text", "image_double_with_text", "image_triplet_with_text", "image_four_with_text", "image_five_with_text",
+		"images",
+	},
+	laneImagesWithText: {
+		"images_with_text",
+		"single_image_with_text", "image_double_with_text", "image_triplet_with_text", "image_four_with_text", "image_five_with_text",
+		"entity_text_images",
+	},
+	laneEntities:        {"entities"},
+	laneImportantPhrase: {"important_phrase", "important_phrases"},
+	laneShortPhrase:     {"short_important_phrase", "short_phrases"},
+	laneMaps:            {"one_map", "two_maps", "maps"},
+	laneTimelineDate:    {"timeline_date", "dates"},
+	laneMetricStat:      {"metric_stat", "metrics"},
+}
+
+// laneAnimationCount resolves one canonical lane through its alias table.
+// The first positive alias wins, mirroring the legacy inline order, so
+// existing payloads keep their limits bit for bit.
+func laneAnimationCount(counts map[string]int, lane string) int {
+	keys, ok := animationLaneKeys[lane]
+	if !ok {
+		return 0
+	}
+	return animationCount(counts, keys...)
 }
 
 // visiblePhraseEntrancePool limits the guaranteed entrance slot to certified
@@ -398,6 +446,35 @@ func ShortPhraseMotionCandidates() []string {
 	return flattenShortPhraseMotionCandidates()
 }
 
+// ShortPhraseMotionsForWordCount exposes the read-only exact-cardinality
+// recipe group for one to five words. A recipe only renders its own count,
+// so payload policies and seeded group choices must match motion to wording.
+// Callers receive a copy. Counts outside 1..5 yield no candidates.
+func ShortPhraseMotionsForWordCount(wordCount int) []string {
+	return append([]string(nil), shortPhraseMotionCandidates[wordCount]...)
+}
+
+// ShortPhraseMotionWordCount reports the exact word-count group a motion
+// belongs to. Typewriter ids curated into a group are word-agnostic in the
+// general catalog but group-pinned here so policies mirror automatic routing.
+func ShortPhraseMotionWordCount(motionID string) (int, bool) {
+	for wordCount := 1; wordCount <= 5; wordCount++ {
+		for _, id := range shortPhraseMotionCandidates[wordCount] {
+			if id == motionID {
+				return wordCount, true
+			}
+		}
+	}
+	return 0, false
+}
+
+// IsShortPhraseRecipe reports whether the id is an exact-cardinality
+// short-phrase recipe. Such recipes mis-render any other word count, so
+// non-short copy must never receive one, by policy or by rotation.
+func IsShortPhraseRecipe(motionID string) bool {
+	return strings.HasPrefix(motionID, "short_phrase_")
+}
+
 // SingleWordMotionCandidates exposes the read-only cinematic pool used for
 // one-word phrase beats.
 func SingleWordMotionCandidates() []string {
@@ -419,27 +496,32 @@ func certifiedPhraseFamily(family string) []string {
 	return append([]string(nil), phraseMotionFamilyCandidates(family)...)
 }
 
+// phraseMotionFamilyCandidates returns the family's members with the retired
+// animations removed: a family pool is the planner's authoritative allowance,
+// so a removed recipe must not survive inside one.
 func phraseMotionFamilyCandidates(family string) []string {
+	var pool []string
 	switch family {
 	case "modern_product_v1":
-		return phraseMotionCandidates
+		pool = phraseMotionCandidates
 	case "short_phrase_product_v1":
-		return flattenShortPhraseMotionCandidates()
+		pool = flattenShortPhraseMotionCandidates()
 	case "modern_apple":
-		return modernAppleMotionCandidates
+		pool = modernAppleMotionCandidates
 	case "typewriter":
-		return typewriterMotionCandidates
+		pool = typewriterMotionCandidates
 	case "brush_v1":
-		return brushPhraseMotionCandidates
+		pool = brushPhraseMotionCandidates
 	case "text_3d_v1", "3d":
-		return text3DMotionCandidates
+		pool = text3DMotionCandidates
 	case "classic_apple":
-		return classicAppleMotionCandidates
+		pool = classicAppleMotionCandidates
 	case "documentary_clean_v1":
-		return documentaryCleanPhraseMotionCandidates
+		pool = documentaryCleanPhraseMotionCandidates
 	default:
 		return nil
 	}
+	return excludeRemovedGeneratedPhraseMotions(pool)
 }
 
 func combineMotionPools(pools ...[]string) []string {

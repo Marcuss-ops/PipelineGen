@@ -65,6 +65,8 @@ func (h *WorkersBrokerHandler) RegisterRoutes(r *gin.RouterGroup) {
 	r.POST("/jobs/claim", h.Claim)
 	r.POST("/jobs/:id/renew", h.Renew)
 	r.POST("/jobs/:id/progress", h.Progress)
+	r.GET("/jobs/:id/stages", h.ListStages)
+	r.PATCH("/jobs/:id/stages/:stage", h.UpdateStage)
 	r.POST("/jobs/:id/complete", h.Complete)
 	r.POST("/jobs/:id/complete-with-artifacts", h.CompleteWithArtifacts)
 	r.POST("/jobs/:id/fail", h.Fail)
@@ -166,6 +168,76 @@ func (h *WorkersBrokerHandler) Progress(c *gin.Context) {
 		return
 	}
 	apiutil.OK(c, gin.H{"ok": true})
+}
+
+// workerStageStatusRequest is the worker-side PATCH body for a stage update.
+type workerStageStatusRequest struct {
+	Status   jobs.StageStatus `json:"status"`
+	Progress int              `json:"progress"`
+	Detail   string           `json:"detail"`
+}
+
+// stageStore returns the broker's durable per-stage projection. The SQLite
+// jobs plane implements it; a broker without it reports 503 rather than
+// silently dropping the worker's stage update.
+func (h *WorkersBrokerHandler) stageStore() (jobs.JobStageStatusStore, bool) {
+	store, ok := h.broker.(jobs.JobStageStatusStore)
+	return store, ok
+}
+
+// UpdateStage records a pipeline stage status reported by a remote worker.
+func (h *WorkersBrokerHandler) UpdateStage(c *gin.Context) {
+	store, ok := h.stageStore()
+	if !ok {
+		apiutil.Error(c, http.StatusServiceUnavailable, "stage status store is not configured")
+		return
+	}
+	var body workerStageStatusRequest
+	if err := c.ShouldBindJSON(&body); err != nil {
+		apiutil.BadRequest(c, err.Error())
+		return
+	}
+	if body.Status == "" {
+		apiutil.BadRequest(c, "status is required (queued|running|completed|failed|skipped)")
+		return
+	}
+	progress := body.Progress
+	if progress == 0 && body.Status == jobs.StageCompleted {
+		progress = 100
+	}
+	rec := jobs.JobStageStatus{
+		JobID:     c.Param("id"),
+		Stage:     jobs.StageName(c.Param("stage")),
+		Status:    body.Status,
+		Progress:  progress,
+		Detail:    body.Detail,
+		UpdatedAt: time.Now().UTC(),
+	}
+	if err := rec.Validate(); err != nil {
+		apiutil.BadRequest(c, err.Error())
+		return
+	}
+	if err := store.UpsertJobStageStatus(c.Request.Context(), rec); err != nil {
+		apiutil.InternalError(c, err)
+		return
+	}
+	apiutil.OK(c, gin.H{"job_id": rec.JobID, "stage": rec})
+}
+
+// ListStages returns the per-stage projection for a job, for worker-side
+// readers and tests.
+func (h *WorkersBrokerHandler) ListStages(c *gin.Context) {
+	store, ok := h.stageStore()
+	if !ok {
+		apiutil.Error(c, http.StatusServiceUnavailable, "stage status store is not configured")
+		return
+	}
+	stages, err := store.ListJobStageStatuses(c.Request.Context(), c.Param("id"))
+	if err != nil {
+		apiutil.InternalError(c, err)
+		return
+	}
+	apiutil.OK(c, gin.H{"job_id": c.Param("id"), "stages": stages})
 }
 
 func (h *WorkersBrokerHandler) Complete(c *gin.Context) {

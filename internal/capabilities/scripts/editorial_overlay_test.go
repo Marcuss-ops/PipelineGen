@@ -46,7 +46,53 @@ func TestProjectEditorialOverlaysGroundedAndAudioTimed(t *testing.T) {
 	require.Equal(t, int64(2_000_000), title.StartUS)
 	bullet := roles["scene_bullet"]
 	require.Equal(t, "Duisburg factory orders fell sharply.", bullet.Text)
-	require.True(t, bullet.StartUS >= title.StartUS+title.DurationUS, "bullet begins after its title span")
+	require.Equal(t, title.StartUS+title.DurationUS, bullet.StartUS, "bullet follows the title at its spoken word boundary")
+}
+
+func TestEditorialBulletShortPhraseGrowsTwoWordHighlightToBlockingMinimum(t *testing.T) {
+	result, scenes, resolved, inputs := editorialOverlayFixture()
+	// The certified highlights.v1 extractor regularly returns a two-word
+	// highlight. It must be grown into the following spoken words rather than
+	// dropped, or the blocking three-word rule leaves the run with no phrases
+	// and therefore no overlay render at all.
+	result.Editorial.Scenes[0].Highlights = []scriptpkg.EditorialHighlight{{Text: "Duisburg factory", Score: 0.9, VisualEligible: true}}
+	got := projectEditorialOverlays(result, "en", scenes, resolved, inputs)
+	require.Len(t, got, 1)
+	var bullet *capabilityoverlay.TimedAnnotation
+	for i := range got[0].Phrases {
+		if got[0].Phrases[i].PresentationRole == "scene_bullet" {
+			bullet = &got[0].Phrases[i]
+		}
+	}
+	require.NotNil(t, bullet, "the certified two-word highlight must still render as a scene bullet")
+	require.Equal(t, "Duisburg factory orders", bullet.Text)
+	require.GreaterOrEqual(t, len(strings.Fields(bullet.Text)), 3)
+	require.Greater(t, bullet.DurationUS, int64(0))
+}
+
+func TestExpandEditorialPhraseToMinimumWords(t *testing.T) {
+	tests := []struct {
+		name      string
+		sceneText string
+		phrase    string
+		want      string
+	}{
+		{"grows two words past a dangling conjunction", "sono svolti eventi che hanno segnato", "svolti eventi", "svolti eventi che hanno"},
+		{"never ends on a preposition", "si è subito focalizzata sulla casa stessa", "subito focalizzata", "subito focalizzata sulla casa"},
+		{"never ends on a conjunction", "con sentenze emesse e successive revisioni", "sentenze emesse", "sentenze emesse e successive"},
+		{"fails closed when only function words follow", "svolti eventi e", "svolti eventi", "svolti eventi"},
+		{"grows past a hanging comma", "inquirenti raccolgono impronte, testimonianze e reperti", "inquirenti raccolgono", "inquirenti raccolgono impronte, testimonianze"},
+		{"keeps three words", "sono svolti eventi che hanno segnato", "svolti eventi che", "svolti eventi che"},
+		{"keeps longer phrases", "Alpha bravo charlie delta", "bravo charlie delta", "bravo charlie delta"},
+		{"fails closed when ungrounded", "sono svolti eventi", "missing phrase", "missing phrase"},
+		{"fails closed at the end of a short scene", "unico frammento", "unico frammento", "unico frammento"},
+		{"matches case insensitively", "Svolti Eventi Che Hanno Segnato", "svolti eventi", "Svolti Eventi Che Hanno"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			require.Equal(t, tc.want, expandEditorialPhraseToMinimumWords(tc.sceneText, tc.phrase))
+		})
+	}
 }
 
 func TestProjectEditorialOverlaysFailsClosed(t *testing.T) {
@@ -74,7 +120,19 @@ func TestProjectEditorialOverlaysFailsClosed(t *testing.T) {
 				resolved = nil
 			}
 			got := projectEditorialOverlays(result, "en", scenes, resolved, inputs)
-			require.Empty(t, got[0].Phrases, "invalid editorial input cannot leak into visual candidates")
+			switch tc.name {
+			case "ungrounded title", "unsupported title source":
+				require.Len(t, got[0].Phrases, 1, "the independently grounded bullet may render, but the invalid title must not leak")
+				require.Equal(t, "scene_bullet", got[0].Phrases[0].PresentationRole)
+			case "ungrounded bullet":
+				require.Len(t, got[0].Phrases, 1, "the independently grounded title may render, but the invalid bullet must not leak")
+				require.Equal(t, "scene_title", got[0].Phrases[0].PresentationRole)
+			case "invalid bullet span":
+				require.Len(t, got[0].Phrases, 1, "the valid title survives an invalid bullet span")
+				require.Equal(t, "scene_title", got[0].Phrases[0].PresentationRole)
+			default:
+				require.Empty(t, got[0].Phrases, "invalid editorial input cannot leak into visual candidates")
+			}
 		})
 	}
 }

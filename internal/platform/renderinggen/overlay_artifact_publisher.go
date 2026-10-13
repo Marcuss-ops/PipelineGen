@@ -138,6 +138,14 @@ func (p *DriveOverlayArtifactPublisher) PublishOverlay(ctx context.Context, spec
 		pathutil.SafeFolderName(language),
 		filenameKind,
 		strings.ToLower(artifact.SHA256[:min(len(artifact.SHA256), 12)]))
+	entityKind := strings.ToLower(strings.TrimSpace(spec.OverlayItemKind))
+	if entityKind == "entity_card" || entityKind == "entity_image" {
+		entityName := firstNonEmpty(spec.OverlayEntityName, spec.OverlayText, spec.OverlayEntityID)
+		motionName := firstNonEmpty(spec.OverlayMotionID, "statica")
+		filename = fmt.Sprintf("Entità-%s-Entità-%s-%s.mp4",
+			pathutil.SafeFolderName(entityName), pathutil.SafeFolderName(motionName),
+			strings.ToLower(artifact.SHA256[:min(len(artifact.SHA256), 12)]))
+	}
 	// Drive identity is content-based for overlays. Keep script and language in
 	// the logical identity so the same bytes are reused for the same semantic
 	// artifact while distinct scripts do not collide when they share the root.

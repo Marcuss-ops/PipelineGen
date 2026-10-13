@@ -117,6 +117,10 @@ type PlanInput struct {
 	// Missing or non-positive entries keep the FULL certified catalog so runs
 	// rotate every entrance; a positive value bounds the window. Chain tuning
 	// rides here too: chain_gap_ms, chain_max_segments, chain_disabled.
+	// Lane keys are canonicalized by animationLaneKeys (preset_motion_selection.go):
+	// images, images_with_text, entities, important_phrase, short_important_phrase,
+	// maps, timeline_date, metric_stat — each with documented aliases resolved
+	// in one place, so every reader of a lane sees the same limit.
 	AnimationCounts map[string]int
 	// EntityStyleID pins the entity-card composition family for generated
 	// entity cards (a channel profile's or job's choice): "random" samples
@@ -166,7 +170,7 @@ func BuildPlan(input PlanInput, config PlannerConfig) (OverlayPlan, error) {
 	if entityStyleSelector != "" && !IsValidEntityStyleSelector(entityStyleSelector) {
 		return OverlayPlan{}, fmt.Errorf("overlay planner: entity_style_id %q is not a certified selector (random, a tag such as badge/camera/side/typewriter, or a 01..25 variant)", input.EntityStyleID)
 	}
-	imageMotionLimit := animationCount(input.AnimationCounts, "single_image", "image_double", "image_triplet", "image_four", "image_five", "single_image_with_text", "image_double_with_text", "image_triplet_with_text", "image_four_with_text", "image_five_with_text", "images")
+	imageMotionLimit := laneAnimationCount(input.AnimationCounts, laneImages)
 	input.ImageMotions = limitedMotionPool(input.ImageMotions, imageMotionLimit)
 	if len(input.ImageMotions) == 0 {
 		input.ImageMotions = limitedMotionPool(automaticSingleImageMotionCandidates, imageMotionLimit)
@@ -191,7 +195,7 @@ func BuildPlan(input PlanInput, config PlannerConfig) (OverlayPlan, error) {
 		input.PhraseMotions = familyPool
 	}
 	if len(input.PhraseMotions) > 0 {
-		input.PhraseMotions = limitedShuffledMotionPool(input.PhraseMotions, animationCount(input.AnimationCounts, "important_phrase", "important_phrases"), motionSeed+"\x00phrase_pool")
+		input.PhraseMotions = limitedShuffledMotionPool(input.PhraseMotions, laneAnimationCount(input.AnimationCounts, laneImportantPhrase), motionSeed+"\x00phrase_pool")
 	}
 	plan := OverlayPlan{
 		SchemaVersion: SchemaVersionPlan,
@@ -336,15 +340,11 @@ func BuildPlan(input PlanInput, config PlannerConfig) (OverlayPlan, error) {
 			params := map[string]any{"position": "center", "style": "headline", "priority": candidate.Score}
 			switch candidate.PresentationRole {
 			case "scene_title":
-				params["position"] = "lower_third"
-				params["position_x"] = float64(input.Width) / 2
-				params["position_y"] = float64(input.Height) * 0.28
+				params["position"] = "center"
 				params["style"] = "title"
 				params["editorial_role"] = "scene_title"
 			case "scene_bullet":
 				params["position"] = "center"
-				params["position_x"] = float64(input.Width) / 2
-				params["position_y"] = float64(input.Height) * 0.18
 				params["style"] = "headline"
 				params["editorial_role"] = "scene_bullet"
 			}
@@ -371,9 +371,9 @@ func BuildPlan(input PlanInput, config PlannerConfig) (OverlayPlan, error) {
 					if len(item.ImageLayers) > 0 {
 						for layerIndex := range item.ImageLayers {
 							layer := &item.ImageLayers[layerIndex]
-							imageLimit := animationCount(input.AnimationCounts, "entities")
+							imageLimit := laneAnimationCount(input.AnimationCounts, laneEntities)
 							if layer.Caption != "" {
-								pool := ImageWithTextMotionPool(animationCount(input.AnimationCounts, "images_with_text", "single_image_with_text", "image_double_with_text", "image_triplet_with_text", "image_four_with_text", "image_five_with_text"))
+								pool := ImageWithTextMotionPool(laneAnimationCount(input.AnimationCounts, laneImagesWithText))
 								layer.MotionID = selectImageMotion(input.PlanID, input.VideoID, imageOrdinal, pool)
 								layer.CaptionMotionID = SelectEntityCaptionMotionAt(input.PlanID, input.VideoID, imageOrdinal)
 							} else {
@@ -385,14 +385,14 @@ func BuildPlan(input PlanInput, config PlannerConfig) (OverlayPlan, error) {
 						}
 					} else {
 						if item.EntityCaption != "" {
-							pool := ImageWithTextMotionPool(animationCount(input.AnimationCounts, "images_with_text", "single_image_with_text", "entity_text_images"))
+							pool := ImageWithTextMotionPool(laneAnimationCount(input.AnimationCounts, laneImagesWithText))
 							item.MotionID = selectImageMotion(input.PlanID, input.VideoID, imageOrdinal, pool)
 							item.CaptionMotionID = SelectEntityCaptionMotionAt(input.PlanID, input.VideoID, imageOrdinal)
 							if entityStyleSelector != "" {
 								item.EntityStyleID = entityStyleSelector
 							}
 						} else {
-							item.MotionID = entityImageMotionAtOffset(imageOrdinal, animationCount(input.AnimationCounts, "entities"))
+							item.MotionID = entityImageMotionAtOffset(imageOrdinal, laneAnimationCount(input.AnimationCounts, laneEntities))
 							item.CaptionMotionID = ""
 						}
 						imageOrdinal++
@@ -421,29 +421,40 @@ func BuildPlan(input PlanInput, config PlannerConfig) (OverlayPlan, error) {
 			plan.Items = append(plan.Items, item)
 		}
 	}
-	// Maps: grounded places from EVERY scene resolve together against the
-	// certified plates, anchored to the first scene that mentions one. A
-	// multi-city script is ONE journey: the mentions merge into a single
-	// route plate (one flyover over all pins) instead of one map render job
-	// per scene. The run-level map ceiling still applies below.
-	mapAnchorScene := ""
-	mapCandidates := make([]MapCandidate, 0)
-	for i := range input.Scenes {
-		if len(input.Scenes[i].Maps) == 0 {
-			continue
+	// Maps normally merge grounded places across scenes into one journey. A
+	// caller that explicitly requests multiple maps gets scene-scoped map
+	// presentations instead, so each map stays aligned to the place being
+	// narrated and the run-level budget can admit several distinct scenes.
+	mapOrdinal = deterministicMapMotionStart(input.PlanID, laneAnimationCount(input.AnimationCounts, laneMaps))
+	if laneAnimationCount(input.AnimationCounts, laneMaps) > 1 {
+		for i := range input.Scenes {
+			scene := input.Scenes[i]
+			if len(scene.Maps) == 0 {
+				continue
+			}
+			plans := mapPlansForScene(input.PlateResolver, scene.Maps, input.Width, input.Height)
+			for _, mapItem := range mapItemsForScene(scene.ID, plans, input.Width, input.Height, mapOrdinal, laneAnimationCount(input.AnimationCounts, laneMaps)) {
+				plan.Items = append(plan.Items, mapItem)
+				mapOrdinal++
+			}
 		}
-		if mapAnchorScene == "" {
-			mapAnchorScene = input.Scenes[i].ID
+	} else {
+		mapAnchorScene := ""
+		mapCandidates := make([]MapCandidate, 0)
+		for i := range input.Scenes {
+			if len(input.Scenes[i].Maps) == 0 {
+				continue
+			}
+			if mapAnchorScene == "" {
+				mapAnchorScene = input.Scenes[i].ID
+			}
+			mapCandidates = append(mapCandidates, input.Scenes[i].Maps...)
 		}
-		mapCandidates = append(mapCandidates, input.Scenes[i].Maps...)
-	}
-	if mapAnchorScene != "" {
-		// Seed map motion ordering from the plan as well as geography so
-		// different generated plans do not all start with the same treatment.
-		mapOrdinal = deterministicMapMotionStart(input.PlanID, animationCount(input.AnimationCounts, "one_map", "two_maps", "maps"))
-		for _, mapItem := range mapItemsForScene(mapAnchorScene, mapPlansForScene(input.PlateResolver, mapCandidates, input.Width, input.Height), input.Width, input.Height, mapOrdinal, animationCount(input.AnimationCounts, "one_map", "two_maps", "maps")) {
-			plan.Items = append(plan.Items, mapItem)
-			mapOrdinal++
+		if mapAnchorScene != "" {
+			for _, mapItem := range mapItemsForScene(mapAnchorScene, mapPlansForScene(input.PlateResolver, mapCandidates, input.Width, input.Height), input.Width, input.Height, mapOrdinal, laneAnimationCount(input.AnimationCounts, laneMaps)) {
+				plan.Items = append(plan.Items, mapItem)
+				mapOrdinal++
+			}
 		}
 	}
 	// Degrade overlaps deterministically: no more than MaxOverlap content
@@ -488,16 +499,16 @@ func BuildPlan(input PlanInput, config PlannerConfig) (OverlayPlan, error) {
 				words := len(strings.Fields(plan.Items[i].Text))
 				switch {
 				case EditorialSectionForItem(plan.Items[i]) == EditorialSectionShortPhrase:
-					plan.Items[i].MotionID = selectShortPhraseMotionLimited(motionSeed, "run", phraseOrdinal, words, nil, animationCount(input.AnimationCounts, "short_important_phrase", "short_phrases"))
+					plan.Items[i].MotionID = selectShortPhraseMotionLimited(motionSeed, "run", phraseOrdinal, words, nil, laneAnimationCount(input.AnimationCounts, laneShortPhrase))
 				case input.HeavyPhrasePriority > 0 && itemPriority(plan.Items[i]) >= input.HeavyPhrasePriority:
-					plan.Items[i].MotionID = selectHeavyPhraseMotionLimited(motionSeed, "run", heavyOrdinal, nil, animationCount(input.AnimationCounts, "important_phrase", "important_phrases"))
+					plan.Items[i].MotionID = selectHeavyPhraseMotionLimited(motionSeed, "run", heavyOrdinal, nil, laneAnimationCount(input.AnimationCounts, laneImportantPhrase))
 					heavyOrdinal++
 				case words >= 6:
-					plan.Items[i].MotionID = selectLongPhraseMotionLimited(motionSeed, "run", phraseOrdinal, nil, animationCount(input.AnimationCounts, "important_phrase", "important_phrases"))
+					plan.Items[i].MotionID = selectLongPhraseMotionLimited(motionSeed, "run", phraseOrdinal, nil, laneAnimationCount(input.AnimationCounts, laneImportantPhrase))
 				default:
 					// Ordinary generated phrases walk the entire certified catalog;
 					// only an explicit AnimationCounts value narrows this pool.
-					plan.Items[i].MotionID = selectPhraseMotionLimited(motionSeed, "run", phraseOrdinal, nil, animationCount(input.AnimationCounts, "important_phrase", "important_phrases"))
+					plan.Items[i].MotionID = selectPhraseMotionLimited(motionSeed, "run", phraseOrdinal, nil, laneAnimationCount(input.AnimationCounts, laneImportantPhrase))
 				}
 				phraseOrdinal++
 				continue
@@ -506,14 +517,14 @@ func BuildPlan(input PlanInput, config PlannerConfig) (OverlayPlan, error) {
 			case EditorialSectionForItem(plan.Items[i]) == EditorialSectionShortPhrase:
 				// Word count owns the family boundary. Heavy editorial emphasis
 				// must not route a short phrase outside its selected family.
-				plan.Items[i].MotionID = selectShortPhraseMotionLimited(motionSeed, "run", phraseOrdinal, len(strings.Fields(plan.Items[i].Text)), input.PhraseMotions, animationCount(input.AnimationCounts, "short_important_phrase", "short_phrases"))
+				plan.Items[i].MotionID = selectShortPhraseMotionLimited(motionSeed, "run", phraseOrdinal, len(strings.Fields(plan.Items[i].Text)), input.PhraseMotions, laneAnimationCount(input.AnimationCounts, laneShortPhrase))
 			case input.HeavyPhrasePriority > 0 && itemPriority(plan.Items[i]) >= input.HeavyPhrasePriority:
-				plan.Items[i].MotionID = selectHeavyPhraseMotionLimited(motionSeed, "run", heavyOrdinal, input.PhraseMotions, animationCount(input.AnimationCounts, "important_phrase", "important_phrases"))
+				plan.Items[i].MotionID = selectHeavyPhraseMotionLimited(motionSeed, "run", heavyOrdinal, input.PhraseMotions, laneAnimationCount(input.AnimationCounts, laneImportantPhrase))
 				heavyOrdinal++
 			case len(strings.Fields(plan.Items[i].Text)) >= 6:
-				plan.Items[i].MotionID = selectLongPhraseMotionLimited(motionSeed, "run", phraseOrdinal, input.PhraseMotions, animationCount(input.AnimationCounts, "important_phrase", "important_phrases"))
+				plan.Items[i].MotionID = selectLongPhraseMotionLimited(motionSeed, "run", phraseOrdinal, input.PhraseMotions, laneAnimationCount(input.AnimationCounts, laneImportantPhrase))
 			default:
-				plan.Items[i].MotionID = selectPhraseMotionLimited(motionSeed, "run", phraseOrdinal, input.PhraseMotions, animationCount(input.AnimationCounts, "important_phrase", "important_phrases"))
+				plan.Items[i].MotionID = selectPhraseMotionLimited(motionSeed, "run", phraseOrdinal, input.PhraseMotions, laneAnimationCount(input.AnimationCounts, laneImportantPhrase))
 			}
 			phraseOrdinal++
 		case "image", "entity_image", "product", "logo":
@@ -522,15 +533,15 @@ func BuildPlan(input PlanInput, config PlannerConfig) (OverlayPlan, error) {
 			} else {
 				if plan.Items[i].Kind == "entity_image" {
 					if plan.Items[i].EntityCaption != "" {
-						pool := ImageWithTextMotionPool(animationCount(input.AnimationCounts, "images_with_text", "single_image_with_text", "entity_text_images"))
+						pool := ImageWithTextMotionPool(laneAnimationCount(input.AnimationCounts, laneImagesWithText))
 						plan.Items[i].MotionID = selectImageMotion(input.PlanID, input.VideoID, imageOrdinal, pool)
 						plan.Items[i].CaptionMotionID = SelectEntityCaptionMotionAt(input.PlanID, input.VideoID, imageOrdinal)
 					} else {
-						plan.Items[i].MotionID = entityImageMotionAtOffset(imageOrdinal, animationCount(input.AnimationCounts, "entities"))
+						plan.Items[i].MotionID = entityImageMotionAtOffset(imageOrdinal, laneAnimationCount(input.AnimationCounts, laneEntities))
 					}
 				} else {
 					if plan.Items[i].EntityCaption != "" {
-						pool := ImageWithTextMotionPool(animationCount(input.AnimationCounts, "images_with_text", "single_image_with_text", "entity_text_images"))
+						pool := ImageWithTextMotionPool(laneAnimationCount(input.AnimationCounts, laneImagesWithText))
 						plan.Items[i].MotionID = selectImageMotion(input.PlanID, input.VideoID, imageOrdinal, pool)
 					} else {
 						plan.Items[i].MotionID = selectImageMotion(input.PlanID, input.VideoID, imageOrdinal, input.ImageMotions)

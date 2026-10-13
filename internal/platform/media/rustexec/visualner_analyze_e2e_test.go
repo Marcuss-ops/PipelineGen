@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -74,6 +75,36 @@ func TestVisualNERAnalyzeRealBinaryProducesBulletsAndChartPoints(t *testing.T) {
 	}
 	if !found25 {
 		t.Fatalf("expected chart point 25 from real binary, got %+v", analysis.ChartPoints)
+	}
+}
+
+// TestVisualNERChartCandidatesRealBinaryGroundsLabels checks that the adapter
+// returns exact source labels for the worker's chart values.
+func TestVisualNERChartCandidatesRealBinaryGroundsLabels(t *testing.T) {
+	binary := resolveVisualNERBinary()
+	if binary == "" {
+		t.Skip("visualner release binary not built; run cargo build --release -p visualner --bin visualner")
+	}
+	text := "Le vendite sono salite del 25% nel primo trimestre."
+	executor := newRealExecutor(t, binary, resolveFFmpegBinary())
+	adapter, err := NewVisualNERAdapter(executor)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer adapter.Close()
+
+	candidates, err := adapter.ChartCandidates(context.Background(), "it", text, 12)
+	if err != nil {
+		t.Fatalf("chart candidates failed: %v", err)
+	}
+	found := false
+	for _, c := range candidates {
+		if c.Value == 25 && c.Text == "25%" && strings.Contains(text, c.Text) {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("expected grounded 25%% candidate, got %+v", candidates)
 	}
 }
 

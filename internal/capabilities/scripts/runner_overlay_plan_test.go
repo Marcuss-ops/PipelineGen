@@ -230,7 +230,7 @@ func overlayScene0Annotations() *scriptpkg.SceneAnnotations {
 		Language: "en",
 		Status:   "completed",
 		ImportantPhrases: []scriptpkg.AnnotationSpan{
-			{Text: "changed everything", Score: 0.8},
+			{Text: "Apple changed everything", Score: 0.8},
 		},
 		ImportantWords: []scriptpkg.AnnotationSpan{
 			{Text: "Apple", Score: 1.0},
@@ -274,7 +274,7 @@ func overlayScene1Annotations() *scriptpkg.SceneAnnotations {
 		Language: "en",
 		Status:   "completed",
 		ImportantPhrases: []scriptpkg.AnnotationSpan{
-			{Text: "Growth matters", Score: 0.8},
+			{Text: "Growth matters more", Score: 0.8},
 		},
 		ImportantWords: []scriptpkg.AnnotationSpan{
 			{Text: "Growth", Score: 1.0},
@@ -399,18 +399,19 @@ func TestRunner_OverlayPlanAppliesRunLevelEditorialBudget(t *testing.T) {
 		Shortfall:    capabilityoverlay.MaxPhraseOverlaysPerRun - 2,
 	}, *res.PhraseOverlayBudget)
 
-	phrase := overlayItemByText(t, res.OverlayPlan.Items, "text_phrase", "changed everything")
-	requireReviewName(t, phrase.ID, "changed-everything", "phrase", "short_phrase")
+	phrase := overlayItemByText(t, res.OverlayPlan.Items, "text_phrase", "Apple changed everything")
+	requireReviewName(t, phrase.ID, "apple-changed-everything", "phrase", "short_phrase")
 	require.Equal(t, "IMPORTANT_PHRASE", phrase.TemplateID)
-	require.Equal(t, int64(500), phrase.StartMs)
+	// The three-word phrase is anchored from its first word ("Apple" at 400ms).
+	require.Equal(t, int64(400), phrase.StartMs)
 	require.Equal(t, int64(700), phrase.EndMs)
 	require.NotEmpty(t, phrase.PresetID)
 	require.NotEmpty(t, phrase.MotionID)
 
-	scene1Phrase := overlayItemByText(t, res.OverlayPlan.Items, "text_phrase", "Growth matters")
-	requireReviewName(t, scene1Phrase.ID, "growth-matters", "phrase", "short_phrase")
+	scene1Phrase := overlayItemByText(t, res.OverlayPlan.Items, "text_phrase", "Growth matters more")
+	requireReviewName(t, scene1Phrase.ID, "growth-matters-more", "phrase", "short_phrase")
 	require.Equal(t, int64(2900), scene1Phrase.StartMs)
-	require.Equal(t, int64(3100), scene1Phrase.EndMs)
+	require.Equal(t, int64(3200), scene1Phrase.EndMs)
 
 	var person capabilityoverlay.OverlayItem
 	personFound := false
@@ -766,6 +767,26 @@ func TestOverlaySceneInputUsesPhraseEndpointTimingFallback(t *testing.T) {
 	require.Equal(t, "O maior arrependimento da minha vida", got.Phrases[0].Text)
 	require.Equal(t, int64(0), got.Phrases[0].StartUS)
 	require.Equal(t, int64(300_000), got.Phrases[0].DurationUS)
+}
+
+func TestOverlaySceneInputDropsPhrasesShorterThanThreeWords(t *testing.T) {
+	timing := speechTimingForWords([]string{"Short", "phrase", "then", "three", "words"})
+	scene := Scene{
+		ID: "phrase-minimum-scene", Index: 0,
+		Text: map[Language]string{"en": "Short phrase then three words."},
+		Annotations: &scriptpkg.SceneAnnotations{
+			Version: 1, Language: "en", Status: "completed",
+			ImportantPhrases: []scriptpkg.AnnotationSpan{
+				{Text: "Short phrase", Score: 0.95},
+				{Text: "then three words", Score: 0.9},
+			},
+		},
+	}
+	got, err := overlaySceneInput(scene, "en", "en", timing, 0, nil, nil)
+	require.NoError(t, err)
+	require.NotNil(t, got)
+	require.Len(t, got.Phrases, 1)
+	require.Equal(t, "then three words", got.Phrases[0].Text)
 }
 
 func TestLocatePhraseTimingEndpointFallbackRemainsFailClosed(t *testing.T) {

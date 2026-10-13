@@ -298,6 +298,11 @@ func validatePolicyMotionParams(params map[string]any) error {
 }
 
 func certifiedPolicyMotion(target, motionID string, entityImagePool []string) bool {
+	// A retired animation is refused for every target, even when a payload
+	// names one explicitly: no selector may emit it again.
+	if capabilityoverlay.IsRemovedGeneratedPhraseMotion(motionID) {
+		return false
+	}
 	var pool []string
 	switch target {
 	case "important_phrase":

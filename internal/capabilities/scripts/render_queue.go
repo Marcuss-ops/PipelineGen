@@ -342,7 +342,9 @@ func (e *QueueRenderEnqueuer) enqueueChrononPlan(ctx context.Context, plan capov
 				}
 				publication.OverlayItemID = metadata.ItemID
 				publication.OverlayItemKind = metadata.ItemKind
+				publication.OverlayMotionID = metadata.MotionID
 				publication.OverlayEntityID = metadata.EntityID
+				publication.OverlayEntityName = metadata.EntityName
 				publication.OverlayEntityIDs = append([]string(nil), metadata.EntityIDs...)
 				publication.OverlayEntityLabels = append([]string(nil), metadata.EntityLabels...)
 				publication.OverlayText = metadata.Text

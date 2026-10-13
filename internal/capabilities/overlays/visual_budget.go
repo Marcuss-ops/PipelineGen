@@ -22,9 +22,9 @@ import (
 )
 
 // MaxImageOverlaysPerRun is the hard run-level ceiling for image overlays.
-// It matches the certified image-motion catalog so a focused run can exercise
-// every registered image motion once while still bounding render fan-out.
-const MaxImageOverlaysPerRun = 18
+// It bounds render fan-out while allowing the requested 20-image acceptance
+// corpus. Motion selection remains deterministic and may reuse catalog motions.
+const MaxImageOverlaysPerRun = 20
 
 // MaxEntityImageOverlaysPerRun is retained as the entity-image-specific name
 // used by existing callers; its value is the common image overlay ceiling.
@@ -55,7 +55,7 @@ func EffectivePhraseOverlayLimit(requested int) int {
 }
 
 // ApplyEditorialOverlayBudget enforces the production run-level visual
-// contract with the default phrase ceiling: up to eighteen unique images plus
+// contract with the default phrase ceiling: up to twenty unique images plus
 // the default number of unique grounded phrases. Other content overlay kinds
 // are excluded; structural background layers are not represented as
 // OverlayItems and remain intact. When there are fewer valid candidates, it
@@ -69,9 +69,9 @@ func ApplyEditorialOverlayBudget(items []OverlayItem) ([]OverlayItem, PhraseOver
 // plate manifest from turning every grounded mention into a rendered map.
 const MaxMapOverlaysPerScene = 2
 
-// MaxMapOverlaysPerRun keeps location coverage inside one composed Chronon map
-// render. Multiple full-canvas map clips fragment a single geography story.
-const MaxMapOverlaysPerRun = 1
+// MaxMapOverlaysPerRun bounds the number of grounded map overlays admitted to
+// one run. Each map must still have a grounded location and a ready plate.
+const MaxMapOverlaysPerRun = 5
 
 // MaxNumberOverlaysPerRun bounds value callouts independently so metrics,
 // money and dates can survive the editorial budget without displacing the

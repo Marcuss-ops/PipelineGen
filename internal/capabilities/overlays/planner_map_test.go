@@ -469,6 +469,9 @@ func TestBuildPlanEmitsNativeFlyToFromCertifiedOfflineLODs(t *testing.T) {
 	if move.StartZoom != 4 || move.EndZoom != 6 || len(item.Map.LODs) != 2 || len(item.AssetRefs) != 2 {
 		t.Fatalf("fly-to LOD package incomplete: camera=%+v LODs=%+v assets=%+v", move, item.Map.LODs, item.AssetRefs)
 	}
+	if item.Map.MotionID != "" {
+		t.Fatalf("camera map has redundant image-layer motion %q", item.Map.MotionID)
+	}
 	if item.AssetRefs[0].URL != "" || item.AssetRefs[1].URL != "" {
 		t.Fatalf("offline LOD package unexpectedly carries a network URL: %+v", item.AssetRefs)
 	}
@@ -600,5 +603,54 @@ func TestBuildPlanMergesCrossSceneRouteIntoOneMapItem(t *testing.T) {
 	}
 	if err := plan.Validate(); err != nil {
 		t.Fatalf("merged route plan does not seal: %v", err)
+	}
+}
+
+// An explicit multi-map request presents grounded locations in their own
+// narration scenes so one long route plate does not collapse the quota to a
+// single render item.
+func TestBuildPlanExplicitMultiMapRequestScopesMapsToScenes(t *testing.T) {
+	routeLat, routeLon := 45.4, 6.2
+	base := testMapPlate(t, "route-base", routeLat, routeLon, 7680, 4320)
+	base.Zoom = 5
+	base.Window = geodesy.CenteredOn(routeLat, routeLon, 5, 7680, 4320)
+	base.Asset.AssetID = "route-base-asset"
+	fine := testMapPlate(t, "route-fine", routeLat, routeLon, 7680, 4320)
+	fine.Zoom = 7
+	fine.Window = geodesy.CenteredOn(routeLat, routeLon, 7, 7680, 4320)
+	fine.Asset.AssetID = "route-fine-asset"
+	base.LODs = []MapPlate{fine}
+	scenes := []SceneInput{
+		{ID: "scene-1", Maps: []MapCandidate{groundedCandidate(t, "city:paris", "Paris", parisLat, parisLon, 0, 1_000_000)}},
+		{ID: "scene-2", Maps: []MapCandidate{groundedCandidate(t, "city:london", "London", 51.5074, -0.1278, 10_000_000, 1_000_000)}},
+		{ID: "scene-3", Maps: []MapCandidate{groundedCandidate(t, "city:rome", "Rome", romeLat, romeLon, 20_000_000, 1_000_000)}},
+	}
+	config := AllCandidatesPlannerConfig(scenes)
+	config.RunLevelMapOverlayLimit = 5
+	plan, err := BuildPlan(PlanInput{
+		PlanID: "map-plan-multi", VideoID: "map-video",
+		Width: mapTestWidth, Height: mapTestHeight, FPSNum: 30, FPSDen: 1,
+		PlateResolver:   flyoverPlateResolver{stubPlateResolver: stubPlateResolver{plates: []MapPlate{base}}, flyover: base, ok: true},
+		AnimationCounts: map[string]int{"maps": 5}, Scenes: scenes,
+	}, config)
+	if err != nil {
+		t.Fatalf("build plan: %v", err)
+	}
+	var maps []OverlayItem
+	for _, item := range plan.Items {
+		if item.Kind == "map" {
+			maps = append(maps, item)
+		}
+	}
+	if len(maps) != 3 {
+		t.Fatalf("explicit multi-map request emitted %d grounded scene maps, want 3", len(maps))
+	}
+	for i, item := range maps {
+		if item.SceneID != scenes[i].ID || len(item.Map.Pins) != 1 {
+			t.Fatalf("map %d is not scoped to its spoken scene: scene=%q pins=%v", i, item.SceneID, item.Map.Pins)
+		}
+	}
+	if err := plan.Validate(); err != nil {
+		t.Fatalf("multi-map plan does not seal: %v", err)
 	}
 }

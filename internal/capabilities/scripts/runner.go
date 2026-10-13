@@ -15,6 +15,7 @@ import (
 	capabilityimagesearch "github.com/Marcuss-ops/PipelineGen/internal/capabilities/imagesearch"
 	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
 	scriptports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 	"github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 	"go.uber.org/zap"
@@ -41,18 +42,24 @@ type Runner struct {
 	// local paths + certified durations before the audio plan is compiled.
 	// Nil means the audio intent block is not resolvable — a run that
 	// carries BGM/SFX intents fails closed in the audio-compile phase.
-	audioAssetSource          AudioAssetSource
-	overlayBackgroundSource   OverlayBackgroundSource
-	scriptPersistence         ScriptPersistence
-	recorder                  ExecutionRecorder
-	sceneCommitObserver       SceneCommitObserver
-	vidRushBarrier            VidRushBarrier
-	vidRushTiming             VidRushTimingRecorder
-	nlpGenerationGate         *GenerationGate
+	audioAssetSource        AudioAssetSource
+	overlayBackgroundSource OverlayBackgroundSource
+	scriptPersistence       ScriptPersistence
+	recorder                ExecutionRecorder
+	sceneCommitObserver     SceneCommitObserver
+	vidRushBarrier          VidRushBarrier
+	vidRushTiming           VidRushTimingRecorder
+	nlpGenerationGate       *GenerationGate
+	// jobStageSink mirrors durable run stages into job_stage_status rows of
+	// the single-item job; jobStages maps runID -> open job stage state.
+	jobStageSink              job.JobStageStatusStore
+	jobStages                 sync.Map
 	vidRushPipeline           *VidRushPipeline
 	finalJobSubmitter         FinalJobSubmitter
 	phraseImpactAnalyzer      PhraseImpactAnalyzer
 	sceneIntelligenceAnalyzer SceneIntelligenceAnalyzer
+	sceneChartAnalyzer        SceneChartAnalyzer
+	sceneBulletAnalyzer       SceneBulletAnalyzer
 
 	// ttsConcurrency bounds the TTS voiceover worker pool: the voiceover
 	// phase fans out scene×language synthesis to at most this many concurrent
@@ -472,7 +479,10 @@ func (r *Runner) ExecuteWithContext(ctx context.Context, runID string, req Gener
 		return
 	}
 
+	r.bindJobStage(runID, exec.JobID)
 	r.runExecution(ctx, runID, req, exec)
+	r.closeJobStage(ctx, runID)
+	r.unbindJobStage(runID)
 }
 
 // prepareExecution normalizes and validates the correlation context before any

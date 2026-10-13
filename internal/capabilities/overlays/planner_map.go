@@ -330,7 +330,14 @@ func mapItemsForScene(sceneID string, plans []MapPlan, canvasWidth, canvasHeight
 				Height:        lod.Height,
 			})
 		}
-		motionID := mapMotionForCenter(ordinal, entry.plate.Center)
+		// A camera map already owns its animation through CameraMove. Running
+		// an image reveal/scale track on the same georeferenced plane compounds
+		// both transforms and produces a distorted, double-exposed map during
+		// the fly-to. Static plates still receive the centered image motion.
+		motionID := ""
+		if len(lods) < 2 {
+			motionID = mapMotionForCenter(ordinal, entry.plate.Center)
+		}
 		mapOverlay := &MapOverlay{
 			Provider: "local", SourceID: entry.plate.ID, SourceLicense: entry.plate.License,
 			Center: entry.plate.Center, Zoom: entry.plate.Zoom,

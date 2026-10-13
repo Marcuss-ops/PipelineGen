@@ -28,26 +28,50 @@ func isNumericOverlayValue(value string) bool {
 		"due": {}, "tre": {}, "quattro": {}, "cinque": {}, "undici": {}, "dodici": {}, "tredici": {}, "quattordici": {}, "quindici": {}, "sedici": {}, "diciassette": {}, "diciotto": {}, "diciannove": {}, "venti": {}, "trenta": {}, "quaranta": {}, "cinquanta": {}, "sessanta": {}, "settanta": {}, "ottanta": {}, "novanta": {}, "cento": {}, "mille": {}, "mila": {}, "milione": {}, "milioni": {}, "primo": {}, "prima": {}, "secondo": {}, "terzo": {}, "terza": {},
 		"um": {}, "uma": {}, "dois": {}, "duas": {}, "três": {}, "quatro": {}, "sete": {}, "oito": {}, "dez": {}, "onze": {}, "doze": {}, "treze": {}, "quatorze": {}, "quinze": {}, "dezesseis": {}, "vinte": {}, "trinta": {}, "quarenta": {}, "cinquenta": {}, "sessenta": {}, "oitenta": {}, "cem": {}, "milhão": {}, "milhões": {}, "primeiro": {}, "primeira": {}, "segundo": {}, "terceiro": {}, "terceira": {},
 	}
+	// A number mention may carry a date month, a short date connector, or a
+	// unit. Other prose around digits is not a numeric card: letting one number
+	// token admit an entire sentence produced mirrored date-card animations for
+	// phrases such as "partendo dal 13 agosto 2007".
+	context := map[string]struct{}{
+		"data": {}, "date": {}, "fecha": {}, "dia": {}, "día": {}, "day": {}, "anno": {}, "year": {}, "ano": {}, "año": {},
+		"de": {}, "del": {}, "di": {}, "da": {}, "do": {}, "dos": {}, "el": {}, "la": {}, "l": {}, "the": {},
+		"gennaio": {}, "febbraio": {}, "marzo": {}, "aprile": {}, "maggio": {}, "giugno": {}, "luglio": {}, "agosto": {}, "settembre": {}, "ottobre": {}, "novembre": {}, "dicembre": {},
+		"january": {}, "february": {}, "march": {}, "april": {}, "may": {}, "june": {}, "july": {}, "august": {}, "september": {}, "october": {}, "november": {}, "december": {},
+		"enero": {}, "febrero": {}, "abril": {}, "mayo": {}, "junio": {}, "julio": {}, "septiembre": {}, "octubre": {}, "diciembre": {},
+		"janeiro": {}, "fevereiro": {}, "maio": {}, "junho": {}, "julho": {}, "setembro": {}, "outubro": {}, "dezembro": {},
+		"anni": {}, "years": {}, "anos": {}, "months": {}, "mesi": {}, "meses": {}, "km": {}, "kg": {},
+	}
 	var token strings.Builder
+	sawNumber := false
+	valid := true
 	flush := func() bool {
 		if token.Len() == 0 {
 			return false
 		}
-		_, ok := words[strings.ToLower(token.String())]
+		word := strings.ToLower(token.String())
 		token.Reset()
-		return ok
+		if _, ok := words[word]; ok {
+			sawNumber = true
+			return true
+		}
+		if _, ok := context[word]; !ok {
+			valid = false
+		}
+		return false
 	}
 	for _, r := range value {
 		if unicode.IsDigit(r) {
-			return true
+			sawNumber = true
+			continue
 		}
 		if unicode.IsLetter(r) {
 			token.WriteRune(r)
-		} else if flush() {
-			return true
+		} else {
+			flush()
 		}
 	}
-	return flush()
+	flush()
+	return valid && sawNumber
 }
 
 func numericEntityGroundedForLanguage(scene Scene, language, sourceLanguage Language, value string) bool {

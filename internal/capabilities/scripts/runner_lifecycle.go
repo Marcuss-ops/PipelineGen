@@ -19,7 +19,11 @@ import (
 
 // updateStage persists the stage transition.
 func (r *Runner) updateStage(ctx context.Context, runID string, status RunStatus, stage Stage) error {
-	return r.repo.UpdateStage(ctx, runID, status, stage)
+	if err := r.repo.UpdateStage(ctx, runID, status, stage); err != nil {
+		return err
+	}
+	r.relayJobStage(ctx, runID, stage)
+	return nil
 }
 
 // checkpoint saves the partial result to the repository.

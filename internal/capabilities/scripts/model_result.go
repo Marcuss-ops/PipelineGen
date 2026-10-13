@@ -286,6 +286,51 @@ type SceneIntelligenceAnalyzer interface {
 	AnalyzeBatch(context.Context, []scriptpkg.SISceneAnalysisInput) (*scriptpkg.SceneIntelligenceManifest, error)
 }
 
+// ChartValueCandidate is a numeric label grounded as an exact source span by
+// the VisualNER worker. The scripts layer re-checks Text with the strict chart
+// parser before any value can authorize a chart.
+type ChartValueCandidate struct {
+	Text  string
+	Value float64
+}
+
+// SceneChartAnalyzer returns VisualNER chart-point candidates for one scene's
+// text. It is optional; nil keeps chart authorization on the existing path.
+type SceneChartAnalyzer interface {
+	ChartCandidates(ctx context.Context, language, sourceText string, limit int) ([]ChartValueCandidate, error)
+}
+
+// BulletCandidate is one VisualNER sentence bullet grounded as an exact
+// source span. SentenceIndex is the worker's scene-local sentence number;
+// the scripts layer re-maps it onto the Go sentence splitter before it can
+// become an editorial bullet.
+type BulletCandidate struct {
+	Text          string
+	SentenceIndex int
+	Start         int
+	End           int
+}
+
+// SceneBulletAnalyzer returns VisualNER sentence-bullet candidates for one
+// scene's text. It is optional; nil keeps the existing phrase-impact bullets.
+type SceneBulletAnalyzer interface {
+	BulletCandidates(ctx context.Context, language, sourceText string, limit int) ([]BulletCandidate, error)
+}
+
+// SetSceneBulletAnalyzer wires the optional VisualNER bullet source.
+func (r *Runner) SetSceneBulletAnalyzer(analyzer SceneBulletAnalyzer) {
+	if r != nil {
+		r.sceneBulletAnalyzer = analyzer
+	}
+}
+
+// SetSceneChartAnalyzer wires the optional VisualNER chart-point source.
+func (r *Runner) SetSceneChartAnalyzer(analyzer SceneChartAnalyzer) {
+	if r != nil {
+		r.sceneChartAnalyzer = analyzer
+	}
+}
+
 // SetSceneIntelligenceAnalyzer wires the optional shadow analyzer. Nil leaves
 // SI disabled and does not affect narration or visual planning.
 func (r *Runner) SetSceneIntelligenceAnalyzer(analyzer SceneIntelligenceAnalyzer) {

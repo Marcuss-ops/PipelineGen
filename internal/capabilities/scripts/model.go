@@ -62,6 +62,7 @@ type GenerateRequest struct {
 	PhraseMotionFamily            string                                         `json:"phrase_motion_family,omitempty"`
 	ImageMotions                  []string                                       `json:"image_motions,omitempty"`
 	EntityImageMotions            []string                                       `json:"entity_image_motions,omitempty"`
+	EntityCaptionMotions          []string                                       `json:"entity_caption_motions,omitempty"`
 	AnimationPolicies             []scriptpkg.AnimationPolicy                    `json:"animation_policies,omitempty"`
 	RandomLightLeakOnClipStart    bool                                           `json:"random_light_leak_on_clip_start,omitempty"`
 	RandomLightLeakOnOverlayStart bool                                           `json:"random_light_leak_on_overlay_start,omitempty"`
@@ -83,6 +84,9 @@ type GenerateRequest struct {
 	// overlays, including scene-context and entity-bound imagery.
 	MaxImageOverlays int            `json:"max_image_overlays,omitempty"`
 	AnimationCounts  map[string]int `json:"animation_counts,omitempty"`
+	// OverlayGroupLimits caps overlays per group (maps, short_phrases,
+	// long_phrases, entities_with_text, images). Present 0 disables a group.
+	OverlayGroupLimits map[string]int `json:"overlay_group_limits,omitempty"`
 	// EntityStyleID pins the entity-card composition family for generated
 	// entity cards. Resolved like PhraseMotions: the envelope item may carry
 	// it explicitly, and a channel profile fills the blank ("random" keeps
@@ -92,6 +96,9 @@ type GenerateRequest struct {
 	DisableNumberOverlays bool   `json:"disable_number_overlays,omitempty"`
 	DisableRecapOverlays  bool   `json:"disable_recap_overlays,omitempty"`
 	DisableChartOverlays  bool   `json:"disable_chart_overlays,omitempty"`
+	// EnableCharts is the explicit opt-in for chart overlays. Charts render
+	// only when this is true and DisableChartOverlays is false.
+	EnableCharts bool `json:"enable_charts,omitempty"`
 	// OverlayBackground is the visual background selected by script.generate;
 	// it is transported into the sealed OverlayPlan at render time.
 	OverlayBackground *scriptpkg.OverlayBackgroundSpec `json:"overlay_background,omitempty"`

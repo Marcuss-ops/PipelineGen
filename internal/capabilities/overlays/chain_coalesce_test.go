@@ -53,7 +53,7 @@ func TestCoalesceFusesNearbyPhrases(t *testing.T) {
 	if chain.PresetID != "" || chain.MotionID != "" {
 		t.Fatalf("chain container must not copy a child preset or motion: preset=%q motion=%q", chain.PresetID, chain.MotionID)
 	}
-	if chain.StartUSValue() != 100_000 || chain.EndUSValue() != 1_200_000 {
+	if chain.StartUSValue() != 100_000 || chain.EndUSValue() != 1_500_000 {
 		t.Fatalf("chain window = [%d,%d)", chain.StartUSValue(), chain.EndUSValue())
 	}
 	segs, ok := chain.Params["chain_segments"].([]ChainSegment)
@@ -167,6 +167,28 @@ func TestCoalesceFusesMapPhrase(t *testing.T) {
 	segs, ok := got[0].Params["chain_segments"].([]ChainSegment)
 	if !ok || len(segs) != 2 || segs[0].Map == nil {
 		t.Fatalf("mixed segments must keep the map payload: %+v", got[0].Params["chain_segments"])
+	}
+}
+
+func TestCoalesceKeepsShortTextBeforeMapReadable(t *testing.T) {
+	phrase := chainFixture("text_phrase", "s1", "Procura di Pavia", 10_000_000, 762_500, "phrase_motion")
+	mapItem := chainFixture("map", "s1", "", 10_762_500, 8_000_000, "")
+	mapItem.TemplateID = "MAP"
+	mapItem.Map = &MapOverlay{Provider: "local"}
+	mapItem.AssetRefs = []OverlayAssetRef{{AssetID: "basemap", SHA256: "hash"}}
+	got := CoalesceChainedOverlays([]OverlayItem{phrase, mapItem}, map[string]int{"chain_enabled": 1})
+	if len(got) != 1 {
+		t.Fatalf("expected one mixed chain, got %+v", got)
+	}
+	segments, ok := DecodeChainSegments(got[0].Params)
+	if !ok || len(segments) != 2 {
+		t.Fatalf("mixed chain segments not decoded: %+v", got[0].Params)
+	}
+	if segments[0].DurationUS < minChainSegmentDurationUS {
+		t.Fatalf("text lead duration = %d us, want at least %d us", segments[0].DurationUS, minChainSegmentDurationUS)
+	}
+	if segments[1].StartUS < segments[0].StartUS+segments[0].DurationUS+chainHandoffGapUS {
+		t.Fatalf("map starts before readable text and handoff: first=%+v map=%+v", segments[0], segments[1])
 	}
 }
 
@@ -334,5 +356,35 @@ func TestValidateChainItemAfterJSONRoundTrip(t *testing.T) {
 	segs, ok := DecodeChainSegments(reloaded.Params)
 	if !ok || len(segs) != 2 || segs[0].MotionID != "motion_a" {
 		t.Fatalf("decoded segments = %+v, ok=%v", segs, ok)
+	}
+}
+
+// Fused chains must preserve the run-wide no-repeat invariant verbatim:
+// segment motions survive fusion distinct and in order, so the distinctness
+// established by EnsureDistinctPhraseMotions before coalescing still holds
+// inside every chain after it.
+func TestCoalescePreservesDistinctMotionsPerChain(t *testing.T) {
+	items := []OverlayItem{
+		chainFixture("text_phrase", "s1", "alpha", 100_000, 2_500_000, "short_phrase_scale_settle_word"),
+		chainFixture("text_phrase", "s1", "beta", 2_700_000, 2_500_000, "short_phrase_character_tracking_reveal"),
+		chainFixture("text_phrase", "s1", "gamma", 5_300_000, 2_500_000, "typewriter_clean"),
+	}
+	got := CoalesceChainedOverlays(items, map[string]int{"chain_enabled": 1})
+	if len(got) != 1 || !IsChainItemKind(got[0].Kind) {
+		t.Fatalf("nearby phrases must fuse into one chain: %+v", got)
+	}
+	segs, ok := got[0].Params["chain_segments"].([]ChainSegment)
+	if !ok || len(segs) != 3 {
+		t.Fatalf("chain segments = %+v", got[0].Params["chain_segments"])
+	}
+	seen := map[string]bool{}
+	for i, seg := range segs {
+		if seg.MotionID != items[i].MotionID {
+			t.Errorf("segment %d motion = %q, want %q (fusion must not reselect)", i, seg.MotionID, items[i].MotionID)
+		}
+		if seen[seg.MotionID] {
+			t.Errorf("segment %d repeats motion %q inside one chain", i, seg.MotionID)
+		}
+		seen[seg.MotionID] = true
 	}
 }

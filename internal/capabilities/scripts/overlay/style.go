@@ -61,16 +61,21 @@ func StyleParams(style *scriptpkg.OverlayStyleSpec) map[string]any {
 	if style.FontFamily != "" {
 		params["font_family"] = style.FontFamily
 	}
-	if style.GlowSize != nil {
+	// Chronon's runtime text override treats an explicit zero-size glow/stroke
+	// as a layer effect override. On standalone overlay clips this can lower the
+	// glyph pass to a fully transparent/black frame. Omit disabled effects; the
+	// renderer's preset defaults already have no glow or stroke for documentary
+	// text, and non-zero user choices still travel through the runtime contract.
+	if style.GlowSize != nil && *style.GlowSize > 0 {
 		params["glow_size"] = *style.GlowSize
 	}
-	if style.GlowColor != "" {
+	if style.GlowSize != nil && *style.GlowSize > 0 && style.GlowColor != "" {
 		params["glow_color"] = style.GlowColor
 		params["style"] = mergeStyleParam(params["style"], map[string]any{
 			"glow": map[string]any{"color": style.GlowColor},
 		})
 	}
-	if style.StrokeSize != nil {
+	if style.StrokeSize != nil && *style.StrokeSize > 0 {
 		params["stroke_size"] = *style.StrokeSize
 	}
 	if cursor := style.Cursor; cursor != nil {

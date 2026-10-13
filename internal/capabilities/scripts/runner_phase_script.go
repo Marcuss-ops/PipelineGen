@@ -203,6 +203,14 @@ func (r *Runner) runSceneTextPhase(ctx context.Context, runID string, req Genera
 						manifest := impactRes.ChapterManifest
 						result.ChapterManifest = &manifest
 					}
+					impactRes.SceneHighlights = r.attachVisualBullets(ctx, string(req.SourceLanguage), sceneInputs, impactRes.SceneHighlights)
+					if req.EnableCharts && !req.DisableChartOverlays {
+						impactRes.SceneHighlights = r.attachVisualChartValues(ctx, string(req.SourceLanguage), sceneInputs, impactRes.SceneHighlights)
+					} else {
+						for i := range impactRes.SceneHighlights {
+							impactRes.SceneHighlights[i].ChartValues = nil
+						}
+					}
 					result.SceneHighlights = impactRes.SceneHighlights
 					result.Editorial = buildEditorialManifest(req, sceneInputs, impactRes)
 					observePhraseImpactTimings(impactRes.Timings)

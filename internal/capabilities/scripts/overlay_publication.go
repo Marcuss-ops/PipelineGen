@@ -49,7 +49,9 @@ type OverlayPublicationSpec struct {
 	// downstream consumers to reconstruct the source plan.
 	OverlayItemID       string
 	OverlayItemKind     string
+	OverlayMotionID     string
 	OverlayEntityID     string
+	OverlayEntityName   string
 	OverlayEntityIDs    []string
 	OverlayEntityLabels []string
 	OverlayText         string

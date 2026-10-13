@@ -16,8 +16,8 @@ func TestChrononOverlayRegistry_CanonicalTable(t *testing.T) {
 	if reg == nil {
 		t.Fatal("NewChrononOverlayRegistry returned nil")
 	}
-	if reg.Len() != 14 {
-		t.Fatalf("registry kind count = %d, want 14", reg.Len())
+	if reg.Len() != 18 {
+		t.Fatalf("registry kind count = %d, want 18", reg.Len())
 	}
 
 	want := map[OverlayKind]struct {
@@ -38,11 +38,15 @@ func TestChrononOverlayRegistry_CanonicalTable(t *testing.T) {
 		KindImportantPhrase: {"IMPORTANT_PHRASE", "ImportantPhraseRenderer"},
 		KindImportantWord:   {"IMPORTANT_WORD", "ImportantWordRenderer"},
 		KindEntityImage:     {"IMAGE_OVERLAY", "EntityImageRenderer"},
+		KindDateBadge:       {"DATE_BADGE", "DateBadgeRenderer"},
+		KindRankingBadge:    {"RANKING_BADGE", "RankingBadgeRenderer"},
+		KindEventBadge:      {"EVENT_BADGE", "EventBadgeRenderer"},
+		KindChapterCard:     {"CHAPTER_CARD", "ChapterCardRenderer"},
 	}
 
 	kinds := reg.Kinds()
-	if len(kinds) != 14 {
-		t.Fatalf("Kinds() returned %d kinds, want 14", len(kinds))
+	if len(kinds) != 18 {
+		t.Fatalf("Kinds() returned %d kinds, want 18", len(kinds))
 	}
 	for i := 1; i < len(kinds); i++ {
 		if kinds[i-1] >= kinds[i] {

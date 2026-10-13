@@ -54,6 +54,8 @@ type ProgressTracker struct {
 	currentPayload  map[string]any
 	stageMu         sync.Mutex
 	stageProgress   map[string]job.StageProgress
+	stageSink       job.JobStageStatusStore // optional durable stage-row sink
+	stageJobID      string
 }
 
 // NewProgressTracker creates a ProgressTracker. fn may be nil
@@ -202,6 +204,10 @@ func (p *ProgressTracker) TrackStage(stage, language string, status, jobID, errM
 		}
 	}
 	p.stageProgress[stage] = progress
+	percent := 0
+	if progress.Total > 0 {
+		percent = progress.Completed * 100 / progress.Total
+	}
 	snapshot := make(map[string]job.StageProgress, len(p.stageProgress))
 	for key, item := range p.stageProgress {
 		item.Languages = append([]job.StageLanguageStatus(nil), item.Languages...)
@@ -215,6 +221,11 @@ func (p *ProgressTracker) TrackStage(stage, language string, status, jobID, errM
 		"job_id":         jobID,
 		"stage_progress": snapshot,
 	}
+	detail := language
+	if errMsg != "" {
+		detail = errMsg
+	}
+	p.reportStageRow(job.StageStatus(status), percent, detail)
 	p.TrackEvent("stage_progress", "Stage progress updated", stageData)
 }
 
@@ -259,9 +270,56 @@ func (p *ProgressTracker) StageProgress() map[string]job.StageProgress {
 	return out
 }
 
-// Emit sends a progress update if a callback is configured.
+// SetStageSink wires the optional durable stage-row sink (the
+// job_stage_status projection behind GET /api/jobs/{id}/stages) for jobID.
+// Once set, every phase message (Emit) and language transition (TrackStage)
+// is persisted as it happens, so /full and /stages show the current phase
+// while the job is still running. A nil sink disables persistence.
+func (p *ProgressTracker) SetStageSink(sink job.JobStageStatusStore, jobID string) {
+	if p == nil {
+		return
+	}
+	p.activityMu.Lock()
+	p.stageSink = sink
+	p.stageJobID = jobID
+	p.activityMu.Unlock()
+}
+
+// reportStageRow upserts the (job, script) stage row. It is fail-soft: the
+// stage projection is observability and must never fail generation.
+func (p *ProgressTracker) reportStageRow(status job.StageStatus, progress int, detail string) {
+	p.activityMu.Lock()
+	sink, jobID, ctx := p.stageSink, p.stageJobID, p.activityContext
+	p.activityMu.Unlock()
+	if sink == nil || jobID == "" {
+		return
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if progress < 0 {
+		progress = 0
+	}
+	if progress > 100 {
+		progress = 100
+	}
+	if len(detail) > 500 {
+		detail = detail[:500]
+	}
+	_ = sink.UpsertJobStageStatus(ctx, job.JobStageStatus{
+		JobID:     jobID,
+		Stage:     job.StageScript,
+		Status:    status,
+		Progress:  progress,
+		Detail:    detail,
+		UpdatedAt: time.Now().UTC(),
+	})
+}
+
+// Emit sends a progress update if a callback is configured and records the
+// phase as the durable script stage row.
 func (p *ProgressTracker) Emit(percent int, message string) {
-	if p == nil || p.fn == nil {
+	if p == nil {
 		return
 	}
 	if percent < 0 {
@@ -270,7 +328,10 @@ func (p *ProgressTracker) Emit(percent int, message string) {
 	if percent > 100 {
 		percent = 100
 	}
-	p.fn(percent, message)
+	if p.fn != nil {
+		p.fn(percent, message)
+	}
+	p.reportStageRow(job.StageRunning, percent, message)
 }
 
 // phase is a nil-safe wrapper around Emit. Each Phase* method
