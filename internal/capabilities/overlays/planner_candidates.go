@@ -73,6 +73,27 @@ func rankedImages(in []ImageCandidate) []ImageCandidate {
 	return valid
 }
 
+// dedupeCandidateIDs drops candidates whose text would mint an overlay id
+// already used by an earlier candidate of the same scene and kind: itemID
+// is a pure slug of (scene, kind, text), so a repeated wording (model
+// echoing a phrase, title restated as bullet) would fail plan validation
+// fail-closed. The lists arrive priority-sorted, so the first occurrence —
+// the highest-priority one — wins; identical wording never needs two
+// identical cards on screen.
+func dedupeCandidateIDs(in []TimedAnnotation, sceneID, kind string) []TimedAnnotation {
+	seen := make(map[string]struct{}, len(in))
+	out := in[:0]
+	for _, candidate := range in {
+		id := itemID(sceneID, kind, candidate.Text)
+		if _, exists := seen[id]; exists {
+			continue
+		}
+		seen[id] = struct{}{}
+		out = append(out, candidate)
+	}
+	return out
+}
+
 func itemID(sceneID, kind, value string) string {
 	raw := strings.ToLower(sceneID + "-" + kind + "-" + value)
 	var b strings.Builder

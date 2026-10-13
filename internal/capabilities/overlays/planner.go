@@ -290,7 +290,7 @@ func BuildPlan(input PlanInput, config PlannerConfig) (OverlayPlan, error) {
 			})
 		}
 
-		quotes := rankedValid(scene.Quotes, 0)
+		quotes := dedupeCandidateIDs(rankedValid(scene.Quotes, 0), scene.ID, "quote")
 		if len(quotes) > config.MaxQuotes {
 			quotes = quotes[:config.MaxQuotes]
 		}
@@ -305,7 +305,7 @@ func BuildPlan(input PlanInput, config PlannerConfig) (OverlayPlan, error) {
 			})
 		}
 
-		keywords := rankedValid(scene.Keywords, 0)
+		keywords := dedupeCandidateIDs(rankedValid(scene.Keywords, 0), scene.ID, "keyword")
 		if len(keywords) > config.MaxKeywords {
 			keywords = keywords[:config.MaxKeywords]
 		}
@@ -320,7 +320,7 @@ func BuildPlan(input PlanInput, config PlannerConfig) (OverlayPlan, error) {
 			})
 		}
 
-		phrases := rankedPhraseValid(scene.Phrases, config.MaxPhraseWords)
+		phrases := dedupeCandidateIDs(rankedPhraseValid(scene.Phrases, config.MaxPhraseWords), scene.ID, "phrase")
 		// A scene bullet is the requested opening card for the voiceover scene.
 		// Reserve the planner's phrase slot for it before ordinary extracted
 		// highlights (which are sorted longest-first); otherwise a short Rust
