@@ -11,6 +11,9 @@
 package scriptgeneration
 
 import (
+	"fmt"
+	"strings"
+
 	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
 	scriptoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/overlay"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
@@ -179,4 +182,185 @@ func isEntityOverlayKind(kind string) bool {
 
 func mergeStyleParam(existing any, add map[string]any) map[string]any {
 	return scriptoverlay.MergeStyleParam(existing, add)
+}
+
+// ── Overlay category filter (merged from overlay_category_filter.go) ──
+//
+// Merged here to keep the registered scripts hotspot at its committed
+// baseline: the filter is canvas policy (it reads OverlayCanvasSpec) and
+// this file is its cohesive home. No behaviour change.
+
+func hasSegmentOverlayCategories(segments []scriptpkg.ScriptSegment) bool {
+	for _, segment := range segments {
+		if len(segment.OverlayCategories) > 0 {
+			return true
+		}
+	}
+	return false
+}
+
+func filterOverlayItemsByCategory(items []capabilityoverlay.OverlayItem, scenes []Scene, canvas OverlayCanvasSpec) []capabilityoverlay.OverlayItem {
+	if len(canvas.OverlayCategories) == 0 && !hasSegmentOverlayCategories(canvas.OverlayCategorySegments) {
+		return items
+	}
+	indexes := make(map[string]int, len(scenes))
+	for _, scene := range scenes {
+		indexes[scene.ID] = scene.Index
+	}
+	out := make([]capabilityoverlay.OverlayItem, 0, len(items))
+	for _, item := range items {
+		category, ok := overlayItemCategory(item)
+		if !ok || overlayCategoryEnabled(category, item.SceneID, indexes[item.SceneID], canvas) {
+			out = append(out, item)
+		}
+	}
+	return out
+}
+
+func overlayCategoryEnabled(category scriptpkg.OverlayCategory, sceneID string, sceneIndex int, canvas OverlayCanvasSpec) bool {
+	value := canvas.OverlayCategories[category]
+	for i, segment := range canvas.OverlayCategorySegments {
+		id := strings.TrimSpace(segment.ID)
+		if id != "" && id == sceneID {
+			if override := segment.OverlayCategories[category]; override != "" && override != scriptpkg.ToggleDefault {
+				value = override
+			}
+			break
+		}
+		if i == sceneIndex && id == "" {
+			if override := segment.OverlayCategories[category]; override != "" && override != scriptpkg.ToggleDefault {
+				value = override
+			}
+		}
+	}
+	return value != scriptpkg.ToggleDisabled
+}
+
+func overlayItemCategory(item capabilityoverlay.OverlayItem) (scriptpkg.OverlayCategory, bool) {
+	kind := strings.ToLower(strings.TrimSpace(item.Kind))
+	template := strings.ToLower(strings.TrimSpace(item.TemplateID))
+	role, _ := item.Params["editorial_role"].(string)
+	role = strings.ToLower(strings.TrimSpace(role))
+	switch {
+	case strings.Contains(template, "date") || strings.Contains(template, "metric") || kind == "number":
+		return scriptpkg.OverlayCategoryNumbers, true
+	case item.Map != nil || kind == "map":
+		return scriptpkg.OverlayCategoryMaps, true
+	case strings.Contains(template, "chart") || kind == "chart_card" || kind == "chart_bar":
+		return scriptpkg.OverlayCategoryCharts, true
+	case item.Params["recap"] == true || strings.Contains(template, "recap"):
+		return scriptpkg.OverlayCategoryRecaps, true
+	case role == "title" || role == "headline" || role == "scene_title" || strings.Contains(template, "title"):
+		return scriptpkg.OverlayCategoryTitles, true
+	case role == "bullet" || role == "bullet_point" || role == "scene_bullet" || strings.Contains(template, "bullet"):
+		return scriptpkg.OverlayCategoryBullets, true
+	case strings.Contains(template, "quote") || role == "quote":
+		return scriptpkg.OverlayCategoryQuotes, true
+	case strings.Contains(kind, "brand") || role == "brand":
+		return scriptpkg.OverlayCategoryBrandText, true
+	case kind == "text_phrase" || strings.Contains(template, "phrase"):
+		return scriptpkg.OverlayCategoryPhrases, true
+	case strings.Contains(kind, "image") || kind == "entity_card" || kind == "product" || kind == "logo":
+		return scriptpkg.OverlayCategoryImages, true
+	default:
+		return "", false
+	}
+}
+
+// ── Overlay group limits (merged from overlay_group_limits.go) ──
+//
+// Merged here to keep the registered scripts hotspot at its committed
+// baseline: group capping reads the canvas OverlayGroupLimits and the
+// canvas helpers above. No behaviour change.
+
+// Overlay group keys accepted by the group-limit validation.
+const (
+	overlayGroupMaps             = "maps"
+	overlayGroupShortPhrases     = "short_phrases"
+	overlayGroupLongPhrases      = "long_phrases"
+	overlayGroupEntitiesWithText = "entities_with_text"
+	overlayGroupImages           = "images"
+)
+
+var overlayGroupKeys = map[string]bool{
+	overlayGroupMaps:             true,
+	overlayGroupShortPhrases:     true,
+	overlayGroupLongPhrases:      true,
+	overlayGroupEntitiesWithText: true,
+	overlayGroupImages:           true,
+}
+
+func cloneOverlayGroupLimits(src map[string]int) map[string]int {
+	if src == nil {
+		return nil
+	}
+	dst := make(map[string]int, len(src))
+	for key, value := range src {
+		dst[key] = value
+	}
+	return dst
+}
+
+// validateOverlayGroupLimits fails closed on unknown keys or negative caps.
+func validateOverlayGroupLimits(limits map[string]int) error {
+	for key, value := range limits {
+		if !overlayGroupKeys[key] {
+			return fmt.Errorf("overlay_group_limits has unsupported group %q", key)
+		}
+		if value < 0 {
+			return fmt.Errorf("overlay_group_limits[%q] must be >= 0, got %d", key, value)
+		}
+	}
+	return nil
+}
+
+// overlayGroupOf assigns one overlay to exactly one group. Maps, images,
+// entity cards and phrases are disjoint; short phrases use the exact-cardinality
+// short recipes, every other grounded phrase counts as long.
+func overlayGroupOf(item capabilityoverlay.OverlayItem) string {
+	switch {
+	case item.Kind == "map" && item.Map != nil:
+		return overlayGroupMaps
+	case isImageOverlayItem(item):
+		return overlayGroupImages
+	case entityCardKind(capabilityoverlay.OverlayKind(item.Kind)):
+		return overlayGroupEntitiesWithText
+	case item.Kind == "text_phrase" || item.Kind == string(capabilityoverlay.KindImportantPhrase):
+		if capabilityoverlay.IsShortPhraseRecipe(item.MotionID) {
+			return overlayGroupShortPhrases
+		}
+		return overlayGroupLongPhrases
+	}
+	return ""
+}
+
+// applyOverlayGroupLimits keeps, per group in plan order, at most the
+// configured number of overlays. Present zero drops the group; absent keys
+// and ungrouped items pass through unchanged.
+func applyOverlayGroupLimits(items []capabilityoverlay.OverlayItem, limits map[string]int) []capabilityoverlay.OverlayItem {
+	if len(limits) == 0 {
+		return items
+	}
+	kept := make(map[string]int, len(limits))
+	out := items[:0]
+	for _, item := range items {
+		group := overlayGroupOf(item)
+		limit, capped := limits[group]
+		if group == "" || !capped {
+			out = append(out, item)
+			continue
+		}
+		if kept[group] >= limit {
+			continue
+		}
+		kept[group]++
+		out = append(out, item)
+	}
+	return out
+}
+
+// overlayGroupLimit returns the cap for a group and whether it was set.
+func overlayGroupLimit(limits map[string]int, group string) (int, bool) {
+	value, ok := limits[group]
+	return value, ok
 }

@@ -7,11 +7,12 @@ import (
 	"testing"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
+	scriptaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/audio"
 )
 
 func expand(t *testing.T, bgm audio.ResolvedBGM, sourceDurationUS int64) []audio.AudioLayer {
 	t.Helper()
-	layers, err := NewAudioLoopExpander().Expand(bgm, sourceDurationUS)
+	layers, err := scriptaudio.NewAudioLoopExpander().Expand(bgm, sourceDurationUS)
 	if err != nil {
 		t.Fatalf("expand %+v (source %dus): %v", bgm, sourceDurationUS, err)
 	}
@@ -141,7 +142,7 @@ func TestAudioLoopExpander_FailClosed(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if _, err := NewAudioLoopExpander().Expand(tt.bgm, tt.sourceDurationUS); err == nil {
+			if _, err := scriptaudio.NewAudioLoopExpander().Expand(tt.bgm, tt.sourceDurationUS); err == nil {
 				t.Fatalf("expected error for %s (bgm=%+v source=%d)", tt.name, tt.bgm, tt.sourceDurationUS)
 			}
 		})

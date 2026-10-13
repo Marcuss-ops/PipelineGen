@@ -5,6 +5,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
 	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
+	scriptoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/overlay"
 )
 
 func TestClipStartLightLeakItemsTargetRealVideoSegments(t *testing.T) {
@@ -16,11 +17,11 @@ func TestClipStartLightLeakItemsTargetRealVideoSegments(t *testing.T) {
 			{AssetID: "clip-b", TimelineOffsetUS: 3_500_000, TimelineDurationUS: 1_500_000},
 		},
 	}}}
-	got := clipStartLightLeakItems("plan", timeline)
+	got := scriptoverlay.ClipStartLightLeakItems("plan", timeline)
 	if len(got) != 2 {
 		t.Fatalf("light leak items = %d, want one per real clip", len(got))
 	}
-	if got[0].TemplateID != "LIGHT_LEAK" || got[0].Kind != "light_leak" || got[0].StartUS != 1_000_000 || got[0].DurationUS != clipStartLightLeakDurationUS {
+	if got[0].TemplateID != "LIGHT_LEAK" || got[0].Kind != "light_leak" || got[0].StartUS != 1_000_000 || got[0].DurationUS != scriptoverlay.ClipStartLightLeakDurationUS {
 		t.Fatalf("first light leak = %+v", got[0])
 	}
 	if got[1].StartUS != 4_500_000 {
@@ -32,7 +33,7 @@ func TestClipStartLightLeakItemsTargetRealVideoSegments(t *testing.T) {
 }
 
 func TestOverlayStartLightLeakItemsTargetFinalizedOverlays(t *testing.T) {
-	got := overlayStartLightLeakItems("plan", []capabilityoverlay.OverlayItem{
+	got := scriptoverlay.OverlayStartLightLeakItems("plan", []capabilityoverlay.OverlayItem{
 		{ID: "phrase-1", SceneID: "scene-1", GroupID: "group-1", Kind: "phrase", StartUS: 2_000_000, DurationUS: 3_000_000},
 		{ID: "leak-1", Kind: "light_leak", StartUS: 3_000_000, DurationUS: 1_000_000},
 		{ID: "instant", Kind: "image", StartUS: 4_000_000},
@@ -40,7 +41,7 @@ func TestOverlayStartLightLeakItemsTargetFinalizedOverlays(t *testing.T) {
 	if len(got) != 1 {
 		t.Fatalf("overlay-start leaks = %d, want one per eligible visual overlay", len(got))
 	}
-	if got[0].Kind != "light_leak" || got[0].TemplateID != "LIGHT_LEAK" || got[0].StartUS != 2_000_000 || got[0].DurationUS != clipStartLightLeakDurationUS {
+	if got[0].Kind != "light_leak" || got[0].TemplateID != "LIGHT_LEAK" || got[0].StartUS != 2_000_000 || got[0].DurationUS != scriptoverlay.ClipStartLightLeakDurationUS {
 		t.Fatalf("overlay-start leak = %+v", got[0])
 	}
 	if !containsString(capabilityoverlay.CertifiedLightLeakMotions(), got[0].MotionID) {

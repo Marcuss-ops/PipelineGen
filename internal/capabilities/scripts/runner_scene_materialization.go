@@ -200,22 +200,6 @@ func materializeVerbatimSourceTextScenes(req GenerateRequest) ([]Scene, error) {
 	return scenes, nil
 }
 
-func nonEmptyParagraphs(source string) []string {
-	paragraphs := strings.Split(strings.TrimSpace(source), "\n\n")
-	out := make([]string, 0, len(paragraphs))
-	for _, paragraph := range paragraphs {
-		if value := strings.TrimSpace(paragraph); value != "" {
-			out = append(out, value)
-		}
-	}
-	return out
-}
-
-// ensureRequestedImportantPhrases makes explicit editorial phrase hints
-// renderable in the final source-language narration.  A model may follow the
-// meaning of a brief while omitting its literal phrase; the hint is still a
-// caller-owned, source-grounded overlay requirement, so append it to the
-// first eligible scene when no generated scene contains it.
 func ensureRequestedImportantPhrases(req GenerateRequest, scenes []Scene) []Scene {
 	hints := req.MediaPlan.Extraction.ImportantPhrases
 	if len(hints) == 0 || len(scenes) == 0 {
@@ -450,45 +434,6 @@ func fixedMediaClipProjection(ids []string, playback scriptpkg.FixedPlaybackPoli
 	return clips, intents, durationUS
 }
 
-func fixedPlaybackDurationUS(playback scriptpkg.FixedPlaybackPolicy) int64 {
-	if playback.SourceOutMS <= playback.SourceInMS || playback.SourceOutMS == 0 {
-		return 0
-	}
-	return (playback.SourceOutMS - playback.SourceInMS) * 1000
-}
-
-// normalizeGeneratedSceneIdentity repairs model-produced duplicate or missing
-// scene identities before downstream VidRush fan-out. A model may return a
-// valid number of prose chunks while copying the last scene id/index onto
-// multiple chunks; enrichment must never collapse those chunks through an id
-// keyed map.
-func normalizeGeneratedSceneIdentity(scenes []Scene) {
-	seen := make(map[string]struct{}, len(scenes))
-	for i := range scenes {
-		id := strings.TrimSpace(scenes[i].ID)
-		if id == "" {
-			id = fmt.Sprintf("scene-%d", i)
-		}
-		if _, exists := seen[id]; exists {
-			base := fmt.Sprintf("scene-%d", i)
-			id = base
-			for suffix := 1; ; suffix++ {
-				if _, collision := seen[id]; !collision {
-					break
-				}
-				id = fmt.Sprintf("%s-%d", base, suffix)
-			}
-		}
-		seen[id] = struct{}{}
-		scenes[i].ID = id
-		scenes[i].Index = i
-	}
-}
-
-// emitSceneCommits publishes one SceneCommitted event per stable scene after
-// the scene-text stage completes. It is a no-op when no observer is wired.
-// Emission happens only on the fresh-generation path (not on resume), so a
-// committed scene is reported exactly once per generation attempt.
 func (r *Runner) emitSceneCommits(ctx context.Context, runID string, req GenerateRequest, exec ExecutionContext, scenes []Scene) error {
 	for _, scene := range scenes {
 		if err := r.emitSceneCommit(ctx, runID, req, exec, scene); err != nil {

@@ -188,3 +188,62 @@ type DocumentReference struct {
 	ID   string `json:"id"`
 	Link string `json:"link"`
 }
+
+// ── Request clone helpers (merged from builder.go) ──
+//
+// Merged here to keep builder.go under max_lines_per_file_strict=600:
+// pure zero-I/O request normalization helpers. No behaviour change.
+
+func toLanguages(src []string) []Language {
+	if src == nil {
+		return nil
+	}
+	dst := make([]Language, 0, len(src))
+	for _, lang := range src {
+		if lang != "" {
+			dst = append(dst, Language(lang))
+		}
+	}
+	return dst
+}
+
+// copyStrings returns a copy of the string slice (nil-safe).
+func copyStrings(src []string) []string {
+	if src == nil {
+		return nil
+	}
+	dst := make([]string, len(src))
+	copy(dst, src)
+	return dst
+}
+
+func cloneFloat64(src *float64) *float64 {
+	if src == nil {
+		return nil
+	}
+	value := *src
+	return &value
+}
+
+func cloneInt(src *int) *int {
+	if src == nil {
+		return nil
+	}
+	value := *src
+	return &value
+}
+
+func cloneAnimationCounts(src map[string]int) map[string]int {
+	dst := make(map[string]int, len(src)+1)
+	for key, value := range src {
+		dst[key] = value
+	}
+	// Production default: fuse same-scene overlays when the empty interval
+	// between them is at most five seconds. Explicit chain_disabled /
+	// chain_gap_ms / chain_enabled always win; the latter enables chaining
+	// with the same five-second default used by the empty configuration.
+	if dst["chain_disabled"] <= 0 && dst["chain_gap_ms"] <= 0 {
+		dst["chain_gap_ms"] = 5000
+	}
+	return dst
+}

@@ -12,9 +12,10 @@ import (
 	"github.com/stretchr/testify/require"
 
 	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
+	scriptoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/overlay"
 )
 
-func recapBriefs5() []recapSceneBrief {
+func recapBriefs5() []scriptoverlay.RecapSceneBrief {
 	titles := []string{
 		"Nel 2020 fu annunciato il progetto",
 		"L'aumento dei costi ha ridotto i margini",
@@ -22,18 +23,18 @@ func recapBriefs5() []recapSceneBrief {
 		"Nel 2024 il progetto venne completato",
 		"La ripresa supera le attese",
 	}
-	briefs := make([]recapSceneBrief, 0, 5)
+	briefs := make([]scriptoverlay.RecapSceneBrief, 0, 5)
 	for i, title := range titles {
-		briefs = append(briefs, recapSceneBrief{
-			id: title[:2] + string(rune('1'+i)), title: title, score: 0.8,
-			startUS: int64(i) * 20_000_000, endUS: int64(i+1) * 20_000_000,
+		briefs = append(briefs, scriptoverlay.RecapSceneBrief{
+			ID: title[:2] + string(rune('1'+i)), Title: title, Score: 0.8,
+			StartUS: int64(i) * 20_000_000, EndUS: int64(i+1) * 20_000_000,
 		})
 	}
 	return briefs
 }
 
 func TestRecapWiringFiveScenesOnePlacement(t *testing.T) {
-	got := recapPlacementsForScenes(recapBriefs5())
+	got := scriptoverlay.RecapPlacementsForScenes(recapBriefs5())
 	require.Len(t, got, 1, "5 scenes → recap after chapter 3")
 	p := got[0]
 	assert.Equal(t, 2, p.NarratedThrough, "covers scenes 0..2, never the scene being entered")
@@ -49,12 +50,12 @@ func TestRecapWiringFiveScenesOnePlacement(t *testing.T) {
 }
 
 func TestRecapWiringShortRunNoPlacement(t *testing.T) {
-	assert.Empty(t, recapPlacementsForScenes(recapBriefs5()[:2]), "short run → no recap")
-	assert.Empty(t, recapPlacementsForScenes(nil))
+	assert.Empty(t, scriptoverlay.RecapPlacementsForScenes(recapBriefs5()[:2]), "short run → no recap")
+	assert.Empty(t, scriptoverlay.RecapPlacementsForScenes(nil))
 }
 
 func TestRecapWiringPlanValidation(t *testing.T) {
-	placements := recapPlacementsForScenes(recapBriefs5())
+	placements := scriptoverlay.RecapPlacementsForScenes(recapBriefs5())
 	require.NotEmpty(t, placements)
 	plan, err := capabilityoverlay.BuildPlan(capabilityoverlay.PlanInput{
 		PlanID: "recap-wire", VideoID: "v1", Width: 1920, Height: 1080, FPSNum: 24, FPSDen: 1,
