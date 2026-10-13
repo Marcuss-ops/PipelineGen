@@ -296,7 +296,7 @@ var (
 	// blank clips on the installed Vulkan runtime, and the 2026-10-13 review
 	// retired 14 more recipes outright (removedGeneratedPhraseMotions).
 	shortPhraseMotionCandidates = copyShortPhraseWordGroups()
-	typewriterMotionCandidates = []string{
+	typewriterMotionCandidates  = []string{
 		"typewriter_modern_01_monospace_block_cursor",
 		"typewriter_modern_02_kinetic_scramble",
 		"typewriter_modern_03_soft_opacity_ramp",

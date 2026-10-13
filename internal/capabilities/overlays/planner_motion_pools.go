@@ -31,12 +31,12 @@ func itemPriority(item OverlayItem) float64 {
 }
 
 // phraseMotionParams gives the entrance one third of the phrase's on-screen
-// duration and pins the exit at 0.2s. Motion catalog windows are
-// frame counts, so convert both durations at the output frame rate before
-// sending the plan. The catalog's authored phrase exits run 12 frames (0.4-0.5s)
-// and their mirrored colour tracks drive the settled phrase back through the
-// authoring gray for that whole window, which read as a long gray dwell before
-// the phrase disappeared; 0.2s keeps the exit legible without it.
+// duration and disables the exit outright. Motion catalog windows are frame
+// counts, so convert the entrance duration at the output frame rate before
+// sending the plan. An explicit zero exit_frames tells RenderingGen to skip
+// the mirrored exit tracks entirely: they drove the settled phrase back
+// through the authoring gray on the way out, and the phrase must hold settled
+// and cut hard instead.
 func phraseMotionParams(phrase TimedAnnotation, fpsNum, fpsDen int) map[string]any {
 	if fpsNum <= 0 || fpsDen <= 0 {
 		return nil
@@ -51,19 +51,7 @@ func phraseMotionParams(phrase TimedAnnotation, fpsNum, fpsDen int) map[string]a
 	if frames < 1 {
 		frames = 1
 	}
-	return map[string]any{"enter_frames": int(frames), "exit_frames": phraseExitFrames(fpsNum, fpsDen)}
-}
-
-// phraseExitFrames rounds the shared 0.2s phrase exit window up to whole output
-// frames, so 24 fps gets 5 frames and 30 fps gets 6. A phrase is scored once; a
-// longer tail only delays the cut and re-exposes the gray authoring colour of
-// the mirrored entrance tracks.
-func phraseExitFrames(fpsNum, fpsDen int) int {
-	frames := (fpsNum + 5*fpsDen - 1) / (5 * fpsDen)
-	if frames < 1 {
-		return 1
-	}
-	return frames
+	return map[string]any{"enter_frames": int(frames), "exit_frames": 0}
 }
 
 // validatePhraseMotionPool fails closed on a caller-supplied motion pool that

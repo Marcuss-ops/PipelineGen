@@ -19,14 +19,14 @@ import (
 // time instead of at build time.
 
 type canonicalMotionUniverse struct {
-	motionIDs        map[string]bool
-	motionTargets    map[string][]string
-	shortWordCount   map[string]int
-	shortTargets     map[string][]string
-	imagePresets     map[string]bool
-	textPresets      map[string]bool
-	presentationIDs  map[string]bool
-	decorIDs         map[string]bool
+	motionIDs       map[string]bool
+	motionTargets   map[string][]string
+	shortWordCount  map[string]int
+	shortTargets    map[string][]string
+	imagePresets    map[string]bool
+	textPresets     map[string]bool
+	presentationIDs map[string]bool
+	decorIDs        map[string]bool
 }
 
 func loadCanonicalMotionUniverse(t *testing.T) canonicalMotionUniverse {
@@ -203,7 +203,7 @@ func TestShortPhraseWordGroupsMatchCatalog(t *testing.T) {
 			}
 			// Length-agnostic typewriter alternates are deliberately dealt
 			// into each word group by selectShortPhraseMotionLimited; they
-				// must exist in the canonical motions catalog.
+			// must exist in the canonical motions catalog.
 			if !universe.motionIDs[id] {
 				t.Errorf("short-phrase word group %d alternate %q is absent from the canonical catalogs", wordCount, id)
 			}

@@ -1,11 +1,11 @@
 package overlays
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
 	"sort"
 	"strings"
 	"unicode"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 )
 
 // clampImageWindow enforces the shared hard editorial ceiling for image-like overlays.
@@ -89,6 +89,6 @@ func itemID(sceneID, kind, value string) string {
 	if len(runes) <= maxIDRunes {
 		return id
 	}
-	digest := sha256.Sum256([]byte(raw))
-	return strings.TrimRight(string(runes[:maxIDRunes]), "-") + "-" + hex.EncodeToString(digest[:6])
+	sum := digest.SHA256String(raw)
+	return strings.TrimRight(string(runes[:maxIDRunes]), "-") + "-" + sum[:12]
 }
