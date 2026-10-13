@@ -39,12 +39,13 @@ type OverlayCanvasSpec struct {
 	// the request's channel profile (empty = the certified default pool). It
 	// lives here because the canvas is the run-level render context this
 	// function already receives; the planner validates the ids fail-closed.
-	PhraseMotions              []string
-	PhraseMotionFamily         string
-	ImageMotions               []string
-	EntityImageMotions         []string
-	AnimationPolicies          []scriptpkg.AnimationPolicy
-	RandomLightLeakOnClipStart bool
+	PhraseMotions                 []string
+	PhraseMotionFamily            string
+	ImageMotions                  []string
+	EntityImageMotions            []string
+	AnimationPolicies             []scriptpkg.AnimationPolicy
+	RandomLightLeakOnClipStart    bool
+	RandomLightLeakOnOverlayStart bool
 
 	MapType            string
 	MapCameraAnimation string
@@ -58,7 +59,8 @@ type OverlayCanvasSpec struct {
 	// MaxPhraseOverlays overrides the run-level grounded-phrase ceiling for
 	// this render. It is caller-supplied (request max_phrase_overlays); zero
 	// keeps the certified default (capabilityoverlay.MaxPhraseOverlaysPerRun).
-	MaxPhraseOverlays int
+	MaxPhraseOverlays   int
+	MaxOverlaysPerScene int
 	// MaxMapOverlays is the caller-selected run-level cap; zero keeps the
 	// certified default.
 	MaxMapOverlays int

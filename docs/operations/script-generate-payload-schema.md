@@ -40,6 +40,7 @@ lives **inside an item**; there are no top-level shortcut keys.
         "font_family": "inter",
         "size": { "font_size": 64 },
         "glow_size": 18,
+        "glow_color": "#000000",
         "stroke_size": 3
       },
       "map_type": "satellite",
@@ -68,7 +69,7 @@ lives **inside an item**; there are no top-level shortcut keys.
 `playfair_display_italic`, `bricolage_grotesque`, `oswald`, or `abril_fatface`; the queue stages the
 selected content-addressed font once per family and RenderingGen rejects any
 unbundled selection. `size.font_size` sets text size in pixels; `glow_size`
-accepts `0..256`; `stroke_size` accepts `0..64`. Omit a field to retain the
+accepts `0..256`; `glow_color` accepts `#RRGGBB`; `stroke_size` accepts `0..64`. Omit a field to retain the
 preset/role default; explicit zero disables the relevant effect. Run typography
 applies to phrase, word, number, quote, entity captions, and captioned image
 layers, without changing image geometry or image styles. Precedence for a
@@ -161,17 +162,16 @@ at plan compilation.
 (`simple_label`, `region_zoom`, `bracket_label`, `photo_callout`,
 `pulse_marker`, `multi_locations`, `focus_title`, `route_line`,
 `spotlight`, `region_fill`, `info_card`, `vertical_callout`, `icon_label`,
-`label_reveal`, `global_context`) plus the 8 editorial scenes
-(`ed_saudi_base`, `ed_iran_glow`, `ed_yemen_markers`, `ed_oil_flows`,
-`ed_mocha_tactical`, `ed_routes_clean`, `ed_hormuz_focus`,
-`ed_wide_minimal`); each owns marker + text and suppresses
-the standard rail. Omission and `random` sample the 23 deterministically per
-map item. `multi_locations`,
-`route_line`, `ed_yemen_markers` and `ed_oil_flows` need at least two
-grounded pins or the render fails closed. Editorial scenes draw real
-Natural Earth country borders with modern glow/fill/route primitives;
-conflict zones and route courses are schematic overlays, markers come
-from grounded pins.
+`label_reveal`, `global_context`) plus the six certified editorial scenes
+(`ed_saudi_base`, `ed_iran_glow`, `ed_yemen_fill`, `ed_yemen_markers`,
+`ed_hormuz_routes`, `ed_mocha_tactical`); each owns marker + text and
+suppresses the standard rail. Omission and `random` sample one composition
+deterministically per map item. Random selection excludes systems whose
+minimum pin requirements do not match this map; explicitly selecting an
+incompatible composition is still rejected by the renderer. The default
+basemap remains `satellite` (Esri `esri_sat`, “Astri Map Classic”); omitted
+`map_animation` now means one random certified composition, while
+`map_camera_animation` and `map_label_animation` retain their calm defaults.
 Optional per-pin extras ride on the map item's `map_pin_extras` param keyed
 by pin id (`subtitle`, `category` wind/solar/focus, `color` #RRGGBB,
 `value` + `unit` for the info-card counter, `photo` absolute asset path,
@@ -233,6 +233,14 @@ so the highest-ranked 15 survive an oversized request; the effective limit is
 reported in `phrase_overlay_budget.requested_phrase_overlays`. The image ceiling
 is unaffected. `video.create` exposes the same key at the top level and forwards
 it to its script-generate child.
+
+`max_overlays_per_scene` caps selected overlay items in each scene before
+composition. For example, `2` retains at most two items per scene. Nearby
+survivors can be fused by the animation-chain runtime; set
+`animation_counts.chain_max_segments` to `2` to limit each chain to two
+animations. The chain hands off with `fly_under_fade`, which dips the framing
+down before revealing the next segment. Omission or zero keeps the existing
+scene policy.
 
 Entity image cards are grouped and timed automatically; there is no payload
 switch to opt out. Cards whose certified spoken anchors are five seconds or

@@ -14,12 +14,12 @@ func TestParseChartValueStrict(t *testing.T) {
 		"€100": 100, "100€": 100, "$75": 75, "-3.2%": -3.2,
 		"  60 % ": 60,
 	} {
-		got, ok := parseChartValue(text)
+		got, ok := ParseChartValue(text)
 		require.True(t, ok, "verbatim %q must parse", text)
 		assert.Equal(t, want, got, "verbatim %q", text)
 	}
 	for _, text := range []string{"", "tredici", "abc123", "12ab", "1.2.3", "--4", "%", "€", "molti", "42 euro"} {
-		_, ok := parseChartValue(text)
+		_, ok := ParseChartValue(text)
 		assert.False(t, ok, "%q must never coerce a chart value", text)
 	}
 }

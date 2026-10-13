@@ -101,9 +101,13 @@ func renderDynamicMapVideo(ctx context.Context, plan capoverlay.OverlayPlan) (st
 		return "", err
 	}
 	compositionChoice, _ := plan.Items[0].Params["map_animation"].(string)
-	mapAnimation, err := resolveMapComposition(compositionChoice, seed, mapStyleSlot)
+	mapAnimation, err := resolveMapComposition(compositionChoice, seed, mapStyleSlot, len(plan.Items[0].Map.Pins))
 	if err != nil {
 		return "", err
+	}
+	if mapAnimation == "location_focus" || mapAnimation == "location_pulse" {
+		// This scene owns its name rail and marker inside the GPU compositor.
+		labelAnimation = "none"
 	}
 	mapType, _ := plan.Items[0].Params["map_type"].(string)
 	basemapStyle, err := resolveMapBasemap(mapType, seed, mapStyleSlot)
@@ -258,12 +262,13 @@ func renderDynamicMapVideo(ctx context.Context, plan capoverlay.OverlayPlan) (st
 }
 
 // resolveMapBasemap maps the runtime map_type to the Chronon tile-pyramid
-// basemap id. Empty means the classic Python satellite map (esri_sat, the
-// historic Chronon default): never a random pick and never a decorative
-// color canvas. Only map_type=random samples the 3-style classic palette.
+// basemap id. Empty means a clean street map, never a random pick or a
+// decorative color canvas. Only map_type=random samples the classic palette.
 func resolveMapBasemap(mapType, seed, slot string) (string, error) {
 	switch strings.ToLower(strings.TrimSpace(mapType)) {
-	case "", "satellite":
+	case "":
+		return "esri_street", nil
+	case "satellite":
 		return "esri_sat", nil
 	case "roadmap":
 		return "esri_street", nil
@@ -396,16 +401,21 @@ func mapCameraAnimationsCertified() []string {
 }
 
 // resolveMapComposition resolves ONE cartographic motion-graphic system.
-// Empty means the classic camera+label look (no composition); "random"
-// samples the 23 systems deterministically; an explicit certified id wins
-// verbatim. Unknown ids fail closed.
-func resolveMapComposition(requested, seed, slot string) (string, error) {
+// Empty and "random" sample eligible certified compositions deterministically;
+// an explicit certified id wins verbatim. Unknown ids fail closed.
+func resolveMapComposition(requested, seed, slot string, pinCounts ...int) (string, error) {
 	requested = strings.TrimSpace(requested)
-	if requested == "" {
-		return "", nil
-	}
-	if strings.EqualFold(requested, "random") {
-		selected := deterministicMapStyle(seed, "map_composition", slot, mapMapAnimationsCertified())
+	if requested == "" || strings.EqualFold(requested, "random") {
+		pool := mapMapAnimationsCertified()
+		if len(pinCounts) > 0 {
+			pool = eligibleMapCompositions(pinCounts[0], pool)
+			// Single-place maps use the authored OpenCL location treatment.
+			// Generic legacy compositions are not implemented by the GPU scene renderer.
+			if pinCounts[0] == 1 {
+				pool = []string{"location_focus", "location_pulse"}
+			}
+		}
+		selected := deterministicMapStyle(seed, "map_composition", slot, pool)
 		if selected == "" {
 			return "", fmt.Errorf("no certified map composition available")
 		}
@@ -419,12 +429,33 @@ func resolveMapComposition(requested, seed, slot string) (string, error) {
 	return "", fmt.Errorf("unsupported runtime map_animation %q", requested)
 }
 
+// eligibleMapCompositions removes only renderer-documented multi-pin systems
+// that cannot run for this map's grounded pin count. Explicit selections still
+// validate against the full certified catalog and fail closed in the renderer.
+func eligibleMapCompositions(pinCount int, certified []string) []string {
+	out := make([]string, 0, len(certified))
+	for _, id := range certified {
+		switch id {
+		case "multi_locations", "route_line":
+			if pinCount < 2 {
+				continue
+			}
+		case "ed_yemen_markers":
+			if pinCount != 3 {
+				continue
+			}
+		}
+		out = append(out, id)
+	}
+	return out
+}
+
 // mapMapAnimationsCertified lists every renderer-approved map_animation id:
-// map systems from map_compositions plus the six GPU-certified editorial
+// map systems from map_compositions plus the GPU-certified editorial
 // scenes in map_editorial.MAP_EDITORIAL_SCENES.
 // TestMapCompositionsMatchPython guards cross-repository drift.
 func mapMapAnimationsCertified() []string {
-	return []string{"simple_label", "region_zoom", "bracket_label", "photo_callout", "pulse_marker", "multi_locations", "focus_title", "route_line", "spotlight", "region_fill", "info_card", "vertical_callout", "icon_label", "label_reveal", "global_context", "ed_saudi_base", "ed_iran_glow", "ed_yemen_fill", "ed_yemen_markers", "ed_hormuz_routes", "ed_mocha_tactical"}
+	return []string{"location_focus", "location_pulse", "simple_label", "region_zoom", "bracket_label", "photo_callout", "pulse_marker", "multi_locations", "focus_title", "route_line", "spotlight", "region_fill", "info_card", "vertical_callout", "icon_label", "label_reveal", "global_context", "ed_saudi_base", "ed_iran_glow", "ed_yemen_fill", "ed_yemen_markers", "ed_hormuz_routes", "ed_mocha_tactical"}
 }
 
 // mapLabelAnimationsCertified lists every label id the Python renderer

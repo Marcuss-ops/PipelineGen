@@ -94,9 +94,10 @@ type GenerationFingerprintInput struct {
 	// Omitted/default remains absent from the fingerprint for byte-compatible
 	// legacy identities; explicit enabled/disabled values affect downstream
 	// entity and overlay outputs and therefore must invalidate cache identity.
-	ExtractEntities            Toggle                     `json:"extract_entities,omitempty"`
-	OverlayCategories          map[OverlayCategory]Toggle `json:"overlay_categories,omitempty"`
-	RandomLightLeakOnClipStart bool                       `json:"random_light_leak_on_clip_start,omitempty"`
+	ExtractEntities               Toggle                     `json:"extract_entities,omitempty"`
+	OverlayCategories             map[OverlayCategory]Toggle `json:"overlay_categories,omitempty"`
+	RandomLightLeakOnClipStart    bool                       `json:"random_light_leak_on_clip_start,omitempty"`
+	RandomLightLeakOnOverlayStart bool                       `json:"random_light_leak_on_overlay_start,omitempty"`
 
 	// SourceTextVerbatim changes whether the model rewrites segment text.
 	SourceTextVerbatim bool `json:"source_text_verbatim,omitempty"`
@@ -204,6 +205,7 @@ func FingerprintInputFromPlan(plan *ResolvedGenerationPlan) GenerationFingerprin
 	}
 	input.OverlayCategories = CloneOverlayCategories(plan.OverlayCategories)
 	input.RandomLightLeakOnClipStart = plan.RandomLightLeakOnClipStart
+	input.RandomLightLeakOnOverlayStart = plan.RandomLightLeakOnOverlayStart
 
 	if plan.ClipEvidence != nil {
 		input.ClipIDs = append([]string(nil), plan.ClipEvidence.AcceptedClipIDs...)
@@ -243,23 +245,24 @@ func FingerprintInputFromPlan(plan *ResolvedGenerationPlan) GenerationFingerprin
 // is the canonical input for adapters.BuildItemIdentity.
 func FingerprintInputFromItem(item GenerationItemV2) GenerationFingerprintInput {
 	input := GenerationFingerprintInput{
-		ContractVersion:            2,
-		SourceType:                 string(item.Source.Type),
-		Language:                   item.Language,
-		Tone:                       item.Tone,
-		Style:                      item.Style,
-		Guidelines:                 item.Source.Guidelines,
-		TargetWords:                item.ScriptParams.TargetWords,
-		Model:                      item.Model,
-		PromptVersion:              item.ScriptParams.PromptVersion,
-		EditorPromptVersion:        item.ScriptParams.EditorPromptVersion,
-		QAPromptVersion:            item.ScriptParams.QAPromptVersion,
-		PlannerVersion:             item.ScriptParams.PlannerVersion,
-		GroundingPolicy:            item.Source.GroundingPolicy,
-		SourceTextVerbatim:         item.ScriptParams.SourceTextVerbatim,
-		Segments:                   CloneScriptSegments(item.ScriptParams.Segments),
-		OverlayCategories:          CloneOverlayCategories(item.OverlayCategories),
-		RandomLightLeakOnClipStart: item.RandomLightLeakOnClipStart,
+		ContractVersion:               2,
+		SourceType:                    string(item.Source.Type),
+		Language:                      item.Language,
+		Tone:                          item.Tone,
+		Style:                         item.Style,
+		Guidelines:                    item.Source.Guidelines,
+		TargetWords:                   item.ScriptParams.TargetWords,
+		Model:                         item.Model,
+		PromptVersion:                 item.ScriptParams.PromptVersion,
+		EditorPromptVersion:           item.ScriptParams.EditorPromptVersion,
+		QAPromptVersion:               item.ScriptParams.QAPromptVersion,
+		PlannerVersion:                item.ScriptParams.PlannerVersion,
+		GroundingPolicy:               item.Source.GroundingPolicy,
+		SourceTextVerbatim:            item.ScriptParams.SourceTextVerbatim,
+		Segments:                      CloneScriptSegments(item.ScriptParams.Segments),
+		OverlayCategories:             CloneOverlayCategories(item.OverlayCategories),
+		RandomLightLeakOnClipStart:    item.RandomLightLeakOnClipStart,
+		RandomLightLeakOnOverlayStart: item.RandomLightLeakOnOverlayStart,
 	}
 	switch item.Output.ExtractEntities {
 	case ToggleEnabled, ToggleDisabled:

@@ -47,7 +47,7 @@ func projectEditorialOverlays(result *GenerateResult, language Language, scenes 
 			continue
 		}
 		text := strings.TrimSpace(scene.Text[language])
-		if text == "" || !validEditorialManifestScene(editorial, text, transcript) {
+		if text == "" {
 			continue
 		}
 		inputIndex, hasInput := byInput[editorial.SceneID]
@@ -67,21 +67,13 @@ func projectEditorialOverlays(result *GenerateResult, language Language, scenes 
 		if _, err := capabilityaudio.LocatePhrase(*voiceover.Timing, text); err != nil {
 			continue
 		}
-		if editorial.TitleStatus == "resolved" && editorial.Title != nil &&
-			(!validEditorialTitleSource(editorial.TitleSource) || !editorialTitleIsGrounded(text, strings.TrimSpace(*editorial.Title))) {
-			continue // an unknown source or ungrounded title invalidates the editorial scene
-		}
-		bulletInvalid := false
-		for _, bullet := range editorial.Bullets {
-			if !validEditorialBullet(editorial, bullet, text, transcript) {
-				bulletInvalid = true
-				break
-			}
-		}
-		if bulletInvalid {
-			continue // reject all editorial text from an internally inconsistent scene
-		}
-		if editorial.TitleStatus == "resolved" && editorial.Title != nil {
+		titleAllowed := editorial.TitleStatus == "resolved" && editorial.Title != nil &&
+			validEditorialTitleSource(editorial.TitleSource) && editorialTitleIsGrounded(text, strings.TrimSpace(*editorial.Title))
+		// Editorial.Validate above certifies the manifest structure. Ground
+		// every displayed title or bullet phrase independently against this
+		// scene's narration and exact word timing below; a paraphrased summary
+		// must not suppress a valid, extractive opening phrase.
+		if titleAllowed {
 			if located, ok := locateEditorialPhrase(*voiceover.Timing, text, strings.TrimSpace(*editorial.Title)); ok &&
 				located.StartUS >= 0 && located.EndUS > located.StartUS && located.EndUS <= voiceover.Timing.DurationUS {
 				inputs[inputIndex].Phrases = append(inputs[inputIndex].Phrases,
@@ -89,11 +81,32 @@ func projectEditorialOverlays(result *GenerateResult, language Language, scenes 
 			}
 		}
 		for _, bullet := range editorial.Bullets {
-			if located, ok := locateEditorialPhrase(*voiceover.Timing, text, strings.TrimSpace(bullet.Text)); ok &&
+			shortText := editorialBulletShortPhrase(editorial, bullet)
+			if shortText == "" {
+				continue
+			}
+			if located, ok := locateEditorialPhrase(*voiceover.Timing, text, shortText); ok &&
 				located.StartUS >= 0 && located.EndUS > located.StartUS && located.EndUS <= voiceover.Timing.DurationUS {
-				inputs[inputIndex].Phrases = append(inputs[inputIndex].Phrases,
-					editorialTimedAnnotation(located, window[0], "scene_bullet", 0.99))
+				annotation := editorialTimedAnnotation(located, window[0], "scene_bullet", 0.99)
+				// Show the extractive bullet as the narration scene opens. Its
+				// source phrase remains voiceover-timed for grounding, while its
+				// display window gives the short-phrase motion a readable hold.
+				annotation.StartUS = window[0]
+				annotation.StartMs = window[0] / 1000
+				annotation.DurationUS = min(int64(3_000_000), window[1]-window[0])
+				annotation.EndMs = (annotation.StartUS + annotation.DurationUS + 999) / 1000
+				inputs[inputIndex].Phrases = append(inputs[inputIndex].Phrases, annotation)
 				break // the visual contract is one bullet per scene
+			}
+		}
+		if !hasOpeningSceneBullet(inputs[inputIndex].Phrases) {
+			if opening, ok := editorialOpeningPhrase(inputs[inputIndex], text, *voiceover.Timing); ok {
+				opening.PresentationRole = "scene_bullet"
+				opening.StartUS = window[0]
+				opening.StartMs = window[0] / 1000
+				opening.DurationUS = min(int64(3_000_000), window[1]-window[0])
+				opening.EndMs = (opening.StartUS + opening.DurationUS + 999) / 1000
+				inputs[inputIndex].Phrases = append(inputs[inputIndex].Phrases, opening)
 			}
 		}
 		for i := range inputs[inputIndex].Phrases {
@@ -108,6 +121,97 @@ func projectEditorialOverlays(result *GenerateResult, language Language, scenes 
 		}
 	}
 	return inputs
+}
+
+func hasOpeningSceneBullet(phrases []capabilityoverlay.TimedAnnotation) bool {
+	for _, phrase := range phrases {
+		if phrase.PresentationRole == "scene_bullet" {
+			return true
+		}
+	}
+	return false
+}
+
+func editorialOpeningPhrase(input capabilityoverlay.SceneInput, sceneText string, timing capabilityaudio.SpeechTimingArtifact) (capabilityoverlay.TimedAnnotation, bool) {
+	candidates := make([]capabilityoverlay.TimedAnnotation, 0, len(input.Phrases)+len(input.Keywords)+len(input.Quotes)+len(input.Numbers))
+	candidates = append(candidates, input.Phrases...)
+	candidates = append(candidates, input.Keywords...)
+	candidates = append(candidates, input.Quotes...)
+	candidates = append(candidates, input.Numbers...)
+	best := capabilityoverlay.TimedAnnotation{}
+	found := false
+	for _, candidate := range candidates {
+		words := strings.Fields(strings.TrimSpace(candidate.Text))
+		if len(words) < 2 || candidate.DurationUS <= 0 || candidate.EndMs <= candidate.StartMs {
+			continue
+		}
+		if len(words) > 5 {
+			words = words[:5]
+		}
+		phrase := strings.Join(words, " ")
+		located, ok := locateEditorialPhrase(timing, sceneText, phrase)
+		if !ok || located.EndUS <= located.StartUS || located.EndUS > timing.DurationUS {
+			continue
+		}
+		if !found || candidate.Score > best.Score {
+			best = capabilityoverlay.TimedAnnotation{
+				Text: located.Text, StartUS: located.StartUS, StartMs: located.StartUS / 1000,
+				EndMs: (located.EndUS + 999) / 1000, DurationUS: located.EndUS - located.StartUS,
+				Score: candidate.Score,
+			}
+			found = true
+		}
+	}
+	if found {
+		return best, true
+	}
+	// Final exact-source fallback: take at most five words from the beginning
+	// of the scene, shortening until the complete phrase has certified TTS
+	// word offsets.
+	words := strings.Fields(strings.TrimSpace(sceneText))
+	if len(words) > 5 {
+		words = words[:5]
+	}
+	for len(words) >= 2 {
+		phrase := strings.Join(words, " ")
+		if located, ok := locateEditorialPhrase(timing, sceneText, phrase); ok && located.EndUS > located.StartUS && located.EndUS <= timing.DurationUS {
+			return capabilityoverlay.TimedAnnotation{
+				Text: located.Text, StartUS: located.StartUS, StartMs: located.StartUS / 1000,
+				EndMs: (located.EndUS + 999) / 1000, DurationUS: located.EndUS - located.StartUS, Score: 0.5,
+			}, true
+		}
+		words = words[:len(words)-1]
+	}
+	return capabilityoverlay.TimedAnnotation{}, false
+}
+
+// editorialBulletShortPhrase chooses the highest-scoring Rust-certified
+// visual highlight from the sentence span summarized by this scene bullet.
+// Rust marks only phrases of at most five words visual-eligible, which routes
+// the resulting card through the certified short-phrase motion family.
+func editorialBulletShortPhrase(scene scriptpkg.EditorialScene, bullet scriptpkg.EditorialSceneBullet) string {
+	var chosen string
+	bestScore := -1.0
+	var sceneFallback string
+	sceneFallbackScore := -1.0
+	for _, highlight := range scene.Highlights {
+		words := strings.Fields(strings.TrimSpace(highlight.Text))
+		if !highlight.VisualEligible || len(words) == 0 || len(words) > 5 {
+			continue
+		}
+		if highlight.Score > sceneFallbackScore {
+			sceneFallback, sceneFallbackScore = strings.TrimSpace(highlight.Text), highlight.Score
+		}
+		// Rust may index sentence spans across the complete script. Grounding
+		// against this scene's bullet text is the reliable scene-local check.
+		if strings.Contains(strings.ToLower(bullet.Text), strings.ToLower(strings.TrimSpace(highlight.Text))) && highlight.Score > bestScore {
+			chosen, bestScore = strings.TrimSpace(highlight.Text), highlight.Score
+		}
+	}
+	if chosen == "" {
+		return sceneFallback
+	}
+	return chosen
 }
 
 func validEditorialManifestScene(scene scriptpkg.EditorialScene, text, transcript string) bool {
@@ -127,11 +231,37 @@ func validEditorialManifestScene(scene scriptpkg.EditorialScene, text, transcrip
 		return false
 	}
 	for _, bullet := range scene.Bullets {
+		if scene.GloballyIndexed {
+			if bullet.SentenceStart < 0 || bullet.SentenceEnd <= bullet.SentenceStart {
+				return false
+			}
+			continue
+		}
 		if !validEditorialBullet(scene, bullet, text, transcript) {
 			return false
 		}
 	}
+	if len(scene.ChartValues) > 6 {
+		return false
+	}
+	seenChartValues := make(map[float64]struct{}, len(scene.ChartValues))
+	for _, value := range scene.ChartValues {
+		parsed, ok := parseEditorialChartValue(value)
+		if !ok || !strings.Contains(text, value) {
+			return false
+		}
+		if _, duplicate := seenChartValues[parsed]; duplicate {
+			return false
+		}
+		seenChartValues[parsed] = struct{}{}
+	}
 	for _, highlight := range scene.Highlights {
+		if scene.GloballyIndexed {
+			if !highlight.VisualEligible || strings.TrimSpace(highlight.Text) == "" || !strings.Contains(strings.ToLower(text), strings.ToLower(strings.TrimSpace(highlight.Text))) {
+				return false
+			}
+			continue
+		}
 		raw := []byte(transcript)
 		if highlight.StartByte < 0 || highlight.EndByte <= highlight.StartByte || highlight.EndByte > len(raw) ||
 			!highlight.VisualEligible || strings.TrimSpace(highlight.Text) == "" ||
@@ -141,6 +271,10 @@ func validEditorialManifestScene(scene scriptpkg.EditorialScene, text, transcrip
 		}
 	}
 	return true
+}
+
+func parseEditorialChartValue(value string) (float64, bool) {
+	return capabilityoverlay.ParseChartValue(value)
 }
 
 func editorialTitleIsGrounded(sceneText, title string) bool {
@@ -164,7 +298,10 @@ func validEditorialBullet(scene scriptpkg.EditorialScene, bullet scriptpkg.Edito
 	}
 	source := text
 	if scene.GloballyIndexed {
-		source = transcript
+		// SentenceStart/End are script-global and the bullet may summarize
+		// rather than quote the scene. Display only a separate exact Rust
+		// highlight found in this scene and located in its TTS below.
+		return bullet.SentenceStart >= 0 && bullet.SentenceEnd > bullet.SentenceStart
 	}
 	sentences := editorialSentences(source)
 	if bullet.SentenceEnd > len(sentences) {

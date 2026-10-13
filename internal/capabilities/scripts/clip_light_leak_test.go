@@ -30,3 +30,20 @@ func TestClipStartLightLeakItemsTargetRealVideoSegments(t *testing.T) {
 		t.Fatalf("uncertified light leak motion %q", got[0].MotionID)
 	}
 }
+
+func TestOverlayStartLightLeakItemsTargetFinalizedOverlays(t *testing.T) {
+	got := overlayStartLightLeakItems("plan", []capabilityoverlay.OverlayItem{
+		{ID: "phrase-1", SceneID: "scene-1", GroupID: "group-1", Kind: "phrase", StartUS: 2_000_000, DurationUS: 3_000_000},
+		{ID: "leak-1", Kind: "light_leak", StartUS: 3_000_000, DurationUS: 1_000_000},
+		{ID: "instant", Kind: "image", StartUS: 4_000_000},
+	})
+	if len(got) != 1 {
+		t.Fatalf("overlay-start leaks = %d, want one per eligible visual overlay", len(got))
+	}
+	if got[0].Kind != "light_leak" || got[0].TemplateID != "LIGHT_LEAK" || got[0].StartUS != 2_000_000 || got[0].DurationUS != clipStartLightLeakDurationUS {
+		t.Fatalf("overlay-start leak = %+v", got[0])
+	}
+	if !containsString(capabilityoverlay.CertifiedLightLeakMotions(), got[0].MotionID) {
+		t.Fatalf("uncertified light leak motion %q", got[0].MotionID)
+	}
+}

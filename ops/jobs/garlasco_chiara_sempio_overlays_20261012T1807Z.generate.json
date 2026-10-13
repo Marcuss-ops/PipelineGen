@@ -1,0 +1,332 @@
+{
+  "version": 2,
+  "preset": "custom",
+  "correlation_id": "garlasco-chiara-sempio-overlays-20261012T1807Z",
+  "force_refresh": false,
+  "items": [
+    {
+      "id": "garlasco-chiara-sempio-overlays-20261012T1807Z",
+      "project": "garlasco-chiara-sempio-overlays-20261012T1807Z",
+      "title": "Garlasco — Chiara Poggi e Andrea Sempio, overlay editoriali",
+      "language": "it",
+      "tone": "documentario giornalistico sobrio, verificabile e garantista",
+      "style": "Scrivi in italiano un copione di circa 2.000 parole diviso in esattamente 15 segmenti di narrazione, uno per ciascun segmento fornito, e una sola frase grammaticale per segmento. Ogni frase può essere lunga e articolata, ma deve restare comprensibile. Usa solo i fatti dei brief: Andrea Sempio è indagato e respinge le accuse; non presentarlo come colpevole. Distingui sempre le tesi della Procura, le posizioni delle difese, gli atti e i fatti giudiziari definitivi. Inserisci in modo naturale le date menzionate per verificare i callout data. Non inventare citazioni, prove, moventi, dettagli privati o scene del crimine; evita immagini o descrizioni grafiche. Mantieni i 15 segmenti separati e nel loro ordine. Regola bloccante sulle date: copia nel copione ogni data completa giorno-mese-anno esattamente con i numeri e l’ordine presenti nel source_text. Per la data del delitto scrivi letteralmente “13 agosto 2007”; non convertirla in parole e non modificarne l’anno. Per le schede immagine, cerca immagini individuali e contestualmente pertinenti: una scheda nominativa per Chiara Poggi e una per Andrea Sempio; niente collage, immagini di avvocati o didascalie che confondano l’identità. Se il controllo di identità non trova un candidato affidabile, ometti la scheda e segnala l’avviso; non sostituirla con un volto incerto. Ogni segmento deve essere sviluppato in una sola frase completa e non va compresso: rispetta sempre il minimo parole specificato nel relativo segmento.",
+      "model": "gemma4:e4b",
+      "source": {
+        "type": "text",
+        "topic": "Il caso giudiziario di Garlasco: fatti pubblici, indagini, reperti e garanzie processuali",
+        "source_text": "Realizza un copione editoriale di prova sul caso giudiziario di Garlasco, con overlay per Chiara Poggi e Andrea Sempio. Chiara Poggi fu uccisa nella sua abitazione a Garlasco il 13 agosto 2007. Andrea Sempio è indagato nella nuova inchiesta della Procura di Pavia, respinge le accuse e non è stato condannato in questo procedimento. Il 28 settembre 2026 la Procura di Pavia ha notificato una seconda chiusura delle indagini, con ulteriori atti e consulenze; tale avviso non equivale a rinvio a giudizio o condanna. Secondo ANSA dell’11 ottobre 2026, il termine per il deposito delle memorie e controconsulenze difensive è il 18 ottobre 2026. Alberto Stasi è stato condannato in via definitiva per l’omicidio. Attribuisci sempre le tesi investigative, separa i fascicoli e le fasi processuali, rispetta la presunzione di innocenza e non inventare citazioni o dettagli privati."
+      },
+      "script_params": {
+        "target_words": 1100,
+        "min_words": 900,
+        "segment_words": 75,
+        "single_scene": false,
+        "skip_quality_gate": false,
+        "segments": [
+          {
+            "id": "delitto-e-luogo",
+            "kind": "narration",
+            "topic": "Garlasco il 13 agosto 2007",
+            "source_text": "Presenta Chiara Poggi, ventiseienne uccisa nella sua abitazione a Garlasco il 13 agosto 2007. Mantieni tono sobrio e centra la vicenda sulla persona e sul contesto, senza dettagli grafici. Ripeti la data scrivendola esattamente così: 13 agosto 2007.",
+            "target_words": 75,
+            "min_words": 55
+          },
+          {
+            "id": "chiara-poggi",
+            "kind": "narration",
+            "topic": "Chiara Poggi e la memoria pubblica",
+            "source_text": "Descrivi Chiara Poggi come persona al centro del caso, evitando di ridurla a un nome negli atti. Non inventare abitudini private, dialoghi, passioni o biografia non verificata.",
+            "target_words": 75,
+            "min_words": 55
+          },
+          {
+            "id": "alberto-stasi",
+            "kind": "narration",
+            "topic": "Il procedimento relativo ad Alberto Stasi",
+            "source_text": "Spiega che Alberto Stasi, allora fidanzato di Chiara Poggi, è stato condannato in via definitiva a sedici anni per l’omicidio. Distingui questa condanna dai nuovi accertamenti e non presentare le nuove ipotesi come una revisione già avvenuta.",
+            "target_words": 75,
+            "min_words": 55
+          },
+          {
+            "id": "indagine-originaria",
+            "kind": "narration",
+            "topic": "Le prime indagini e i reperti",
+            "source_text": "Ricostruisci con cautela il lavoro investigativo avviato nel 2007. Distingui i reperti, le consulenze, le interpretazioni e le decisioni giudiziarie, senza affermare che una singola traccia dimostri da sola la responsabilità di qualcuno.",
+            "target_words": 75,
+            "min_words": 55
+          },
+          {
+            "id": "nuova-indagine",
+            "kind": "narration",
+            "topic": "La nuova indagine della Procura di Pavia",
+            "source_text": "Spiega che Andrea Sempio è indagato nella nuova inchiesta della Procura di Pavia per l’omicidio di Chiara Poggi. L’accusa è una tesi investigativa contestata, non una condanna; ricorda la presunzione di innocenza e attribuisci le ricostruzioni ai magistrati.",
+            "target_words": 75,
+            "min_words": 55
+          },
+          {
+            "id": "chiusura-settembre",
+            "kind": "narration",
+            "topic": "La seconda chiusura delle indagini",
+            "source_text": "Riferisci che il 28 settembre 2026 la Procura di Pavia ha notificato una seconda chiusura delle indagini dopo ulteriori accertamenti e consulenze, passaggio che può precedere una richiesta di processo ma non equivale a un rinvio a giudizio o a una sentenza. Secondo ANSA dell’11 ottobre, le parti hanno tempo fino al 18 ottobre 2026 per depositare memorie e controconsulenze; non anticipare quale sarà la decisione successiva.",
+            "target_words": 75,
+            "min_words": 55
+          },
+          {
+            "id": "difesa-sempio",
+            "kind": "narration",
+            "topic": "La posizione pubblica di Andrea Sempio",
+            "source_text": "Racconta che Andrea Sempio respinge le accuse e ha dichiarato in televisione di non riconoscersi nelle ricostruzioni investigative. Riporta le sue parole solo come dichiarazioni attribuite e non come prova autonoma dei fatti.",
+            "target_words": 75,
+            "min_words": 55
+          },
+          {
+            "id": "impronta-33",
+            "kind": "narration",
+            "topic": "La traccia indicata come impronta 33",
+            "source_text": "Descrivi la discussione tecnica sull’impronta 33 come un punto controverso tra periti e parti. Specifica che attribuzione, qualità e interpretazione sono oggetto di valutazioni e contestazioni; non trasformare un dato forense discusso in certezza narrativa.",
+            "target_words": 75,
+            "min_words": 55
+          },
+          {
+            "id": "bicicletta-e-dna",
+            "kind": "narration",
+            "topic": "La bicicletta e gli accertamenti genetici",
+            "source_text": "Riassumi il dibattito documentale sui campioni raccolti sui pedali della bicicletta collegata ad Alberto Stasi. Attribuisci le informazioni agli atti e alle relazioni riportate dalla stampa e chiarisci che risultati diversi richiedono contesto tecnico e contraddittorio.",
+            "target_words": 75,
+            "min_words": 55
+          },
+          {
+            "id": "ris-parma",
+            "kind": "narration",
+            "topic": "Il materiale acquisito al RIS di Parma",
+            "source_text": "Spiega in una sola frase ampia, di almeno 90 parole, che l’acquisizione di carte conservate presso il RIS di Parma, riportata da ANSA l’8 ottobre 2026, è un passaggio documentale e non una conclusione sul loro significato. Chiarisci che per valutarle occorre conoscere quali atti siano stati acquisiti, a quale periodo si riferiscano, da chi siano stati formati e come siano stati conservati e inseriti nel fascicolo; distingui sempre le informazioni giornalistiche dagli atti ufficiali e lascia aperti i punti non documentati. Concludi spiegando che soltanto l’esame nel contraddittorio e le decisioni processuali successive potranno attribuire un significato giuridico a quei materiali: il loro ritrovamento, da solo, non dimostra dolo, occultamento intenzionale o responsabilità penale.",
+            "target_words": 75,
+            "min_words": 55
+          },
+          {
+            "id": "date-e-reperti",
+            "kind": "narration",
+            "topic": "Le date e la catena dei reperti",
+            "source_text": "Usa le date 13 agosto 2007, 19, 20 e 26 settembre 2007, 2016, 28 settembre 2026 e 8 ottobre 2026 come riferimenti temporali solo nei limiti delle fonti. Distingui data del prelievo, dell’analisi, del deposito e della pubblicazione.",
+            "target_words": 75,
+            "min_words": 55
+          },
+          {
+            "id": "vigevano-e-pavia",
+            "kind": "narration",
+            "topic": "Vigevano e Pavia nel percorso giudiziario",
+            "source_text": "Localizza Vigevano e Pavia nel racconto processuale senza inventare spostamenti delle persone. Spiega con linguaggio accessibile che competenze e fascicoli possono cambiare nel tempo e che ogni passaggio va letto negli atti ufficiali.",
+            "target_words": 75,
+            "min_words": 55
+          },
+          {
+            "id": "milano-e-brescia",
+            "kind": "narration",
+            "topic": "Milano, Brescia e i filoni distinti",
+            "source_text": "Cita Milano e Brescia solo per descrivere luoghi delle cronache e filoni istituzionali distinti menzionati dalle fonti. Non collegare automaticamente un’indagine sulla gestione degli atti a una prova contro Andrea Sempio.",
+            "target_words": 75,
+            "min_words": 55
+          },
+          {
+            "id": "avvocati-e-contraddittorio",
+            "kind": "narration",
+            "topic": "Le difese e il contraddittorio",
+            "source_text": "Cita Angela Taccia e Liborio Cataliotti come difensori di Andrea Sempio e Giada Bocellari e Antonio De Rensis come legali di Alberto Stasi solo attribuendo loro posizioni pubbliche. Illustra perché consulenti, accesso agli atti e contraddittorio sono essenziali.",
+            "target_words": 75,
+            "min_words": 55
+          },
+          {
+            "id": "chiusura-giornalistica",
+            "kind": "narration",
+            "topic": "Metodo, prudenza e dignità delle persone",
+            "source_text": "Concludi spiegando che un’indagine, una richiesta di processo, un rinvio a giudizio e una condanna sono fasi diverse. Ricorda Chiara Poggi senza spettacolarizzare la violenza, proteggi la reputazione delle persone coinvolte e separa fatti accertati, accuse, dichiarazioni e questioni aperte.",
+            "target_words": 75,
+            "min_words": 55
+          }
+        ],
+        "force_refresh": false
+      },
+      "max_phrase_overlays": 10,
+      "max_image_overlays": 20,
+      "max_map_overlays": 1,
+      "overlay_style": {
+        "font_family": "playfair_display_italic",
+        "color": [
+          0,
+          0,
+          0,
+          1
+        ],
+        "size": {
+          "font_size": 120
+        },
+        "shadow": {
+          "enabled": true,
+          "color": "#000000",
+          "opacity": 0.16,
+          "blur": 3,
+          "offset": [
+            0,
+            1
+          ]
+        },
+        "glow_size": 2,
+        "glow_color": "#000000",
+        "stroke_size": 0
+      },
+      "animation_counts": {
+        "maps": 1,
+        "images": 10,
+        "images_with_text": 10,
+        "short_important_phrase": 10,
+        "entities": 5,
+        "entity_caption": 5,
+        "dates": 5,
+        "chain_gap_ms": 5000,
+        "chain_max_segments": 2,
+        "chain_disabled": 0
+      },
+      "entity_style_id": "random",
+      "output": {
+        "save_to_db": true,
+        "extract_entities": true,
+        "generate_metadata": true,
+        "generate_timeline": true,
+        "voiceover_enabled": true,
+        "languages": [
+          "it"
+        ],
+        "drive_folder_id": "1J_xUGo_bchzXDIGqSX04CU44c_Dm3SxS",
+        "render": {
+          "enabled": true,
+          "drive_folder_id": "1J_xUGo_bchzXDIGqSX04CU44c_Dm3SxS",
+          "require_gpu": false,
+          "subtitles": {
+            "enabled": false
+          },
+          "background": {
+            "mode": "none"
+          },
+          "drive_subfolder_name": "garlasco-chiara-sempio-overlays-20261012T1807Z"
+        },
+        "docs": {
+          "enabled": false
+        },
+        "drive_subfolder_name": "garlasco-chiara-sempio-overlays-20261012T1807Z"
+      },
+      "media_plan": {
+        "mode": "hybrid",
+        "provider_policy": {
+          "internet_images": "enabled",
+          "image_generation": "disabled",
+          "artlist": "disabled",
+          "youtube": "disabled",
+          "geocoding": "enabled"
+        },
+        "cache": {
+          "read": true,
+          "write": true
+        },
+        "force_refresh_assets": false,
+        "extraction": {
+          "enabled": true,
+          "include": [
+            "persons",
+            "important_phrases",
+            "dates",
+            "metrics",
+            "locations",
+            "organizations"
+          ],
+          "important_phrases": [
+            "Chiara Poggi",
+            "Andrea Sempio",
+            "Alberto Stasi",
+            "Procura di Pavia",
+            "impronta 33",
+            "pedali della bicicletta",
+            "presunzione di innocenza",
+            "28 settembre 2026",
+            "8 ottobre 2026",
+            "18 ottobre 2026"
+          ],
+          "max_entities_per_segment": 5,
+          "max_important_phrases_per_segment": 3,
+          "max_image_queries_per_segment": 2,
+          "entity_images": {
+            "enabled": true,
+            "entity_types": [
+              "PERSON",
+              "ORG",
+              "GPE"
+            ],
+            "max_per_entity": 2,
+            "scope": "per_scene",
+            "upload_to_drive": true
+          }
+        },
+        "materialization": {
+          "mode": "selected",
+          "upload_to_drive": true,
+          "wait_for_ready": true
+        },
+        "planner": {
+          "candidate_limit": 30
+        },
+        "include_trace": true
+      },
+      "audio": {
+        "mode": "COMBINED_TIMELINE",
+        "timing": {
+          "mode": "required",
+          "boundary": "word",
+          "formats": [
+            "json",
+            "srt",
+            "vtt"
+          ]
+        },
+        "random_sfx_on_clip_start": false,
+        "random_sfx_on_image_overlay": false
+      },
+      "docs": {
+        "enabled": false
+      },
+      "overlay_background": {
+        "kind": "color",
+        "color": [
+          1,
+          1,
+          1,
+          1
+        ]
+      },
+      "map_type": "roadmap",
+      "map_camera_animation": "random",
+      "map_label_animation": "random",
+      "random_light_leak_on_clip_start": true,
+      "animation_policies": [
+        {
+          "target": "image",
+          "group_id": "chiara-poggi",
+          "motion_id": "image_fade_reveal"
+        },
+        {
+          "target": "image",
+          "group_id": "nuova-indagine",
+          "motion_id": "image_fade_reveal"
+        }
+      ],
+      "map_animation": "focus_title",
+      "max_overlays_per_scene": 4,
+      "phrase_motion_family": "modern_apple",
+      "image_motions": [
+        "image_fade_reveal"
+      ],
+      "entity_image_motions": [
+        "image_fade_reveal"
+      ]
+    }
+  ]
+}

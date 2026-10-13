@@ -205,6 +205,9 @@ func compileOverlayPlanWithMotionOffset(result *GenerateResult, language Languag
 		if err != nil {
 			return nil, err
 		}
+		// Rust's per-scene chart extraction is a narrowing signal only: chart
+		// values still must match grounded, audio-timed number annotations.
+		applyRustChartValues(sceneInput, result.SceneHighlights, scene.ID, result.Editorial != nil && result.Editorial.Certified)
 		// E2b: the Rust heavy-sentence importance pilots phrase priority, so
 		// the heavy summary drives the prominent-motion lane downstream.
 		applyHeavySentenceBoost(sceneInput, result.HeavySentences)
@@ -326,6 +329,9 @@ func compileOverlayPlanWithMotionOffset(result *GenerateResult, language Languag
 		}
 	}
 	items = filteredItems
+	if canvas.RandomLightLeakOnOverlayStart {
+		items = append(items, overlayStartLightLeakItems(planID, items)...)
+	}
 	// Run-level style projection (text sizing, image frame/layer params) is
 	// owned by overlay_plan_finalize.go so this file stays inside the strict
 	// 600-line cap; the call is the same one this block performed inline.
@@ -405,6 +411,7 @@ func compileOverlayPlanWithMotionOffset(result *GenerateResult, language Languag
 	// It runs on individual assets before composition so dedupe and counts do
 	// not treat a 2–5-image group as one indivisible image.
 	items, _ = capabilityoverlay.ApplyEditorialOverlayBudgetWithImageLimit(items, canvas.MaxPhraseOverlays, canvas.MaxImageOverlays, mapLimit, len(perSceneImages) > 0 && perSceneImages[0])
+	items = capabilityoverlay.LimitOverlayItemsPerScene(items, canvas.MaxOverlaysPerScene)
 	if len(items) == 0 {
 		return nil, nil
 	}

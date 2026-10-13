@@ -442,3 +442,74 @@ func overlayItemPriority(item OverlayItem) float64 {
 	}
 	return 0
 }
+
+// LimitOverlayItemsPerScene admits at most limit overlay items in each scene,
+// preferring higher editorial priority and retaining source order for ties.
+// A nonpositive limit leaves the plan unchanged. Survivors remain in timeline
+// order so the chain composer can hand off between them deterministically.
+// Keep chart label/bar groups atomic: selecting a label also reserves its bars.
+func LimitOverlayItemsPerScene(items []OverlayItem, limit int) []OverlayItem {
+	if limit <= 0 || len(items) == 0 {
+		return items
+	}
+	type sceneOverlayUnit struct {
+		indices  []int
+		priority float64
+		first    int
+	}
+	byScene := make(map[string][]int)
+	chartGroups := make(map[string][]int)
+	for i, item := range items {
+		sceneID := strings.TrimSpace(item.SceneID)
+		byScene[sceneID] = append(byScene[sceneID], i)
+		if item.Params != nil {
+			if group, ok := item.Params["chart_group_id"].(string); ok && group != "" {
+				chartGroups[group] = append(chartGroups[group], i)
+			}
+		}
+	}
+	keep := make(map[int]struct{}, len(items))
+	for _, indices := range byScene {
+		units := make([]sceneOverlayUnit, 0, len(indices))
+		seenCharts := make(map[string]struct{})
+		for _, index := range indices {
+			item := items[index]
+			if item.Params != nil && item.Params["chart_bar"] == true {
+				continue // the chart label owns its bars as one visual unit
+			}
+			unit := sceneOverlayUnit{indices: []int{index}, priority: overlayItemPriority(item), first: index}
+			if item.Params != nil && item.Params["chart_card"] == true {
+				group, _ := item.Params["chart_group_id"].(string)
+				if group != "" {
+					if _, seen := seenCharts[group]; seen {
+						continue
+					}
+					seenCharts[group] = struct{}{}
+					unit.indices = append(unit.indices[:0], chartGroups[group]...)
+				}
+			}
+			units = append(units, unit)
+		}
+		sort.SliceStable(units, func(i, j int) bool {
+			if units[i].priority != units[j].priority {
+				return units[i].priority > units[j].priority
+			}
+			return units[i].first < units[j].first
+		})
+		if len(units) > limit {
+			units = units[:limit]
+		}
+		for _, unit := range units {
+			for _, index := range unit.indices {
+				keep[index] = struct{}{}
+			}
+		}
+	}
+	out := make([]OverlayItem, 0, len(keep))
+	for i, item := range items {
+		if _, ok := keep[i]; ok {
+			out = append(out, item)
+		}
+	}
+	return out
+}

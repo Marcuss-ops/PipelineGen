@@ -35,6 +35,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
@@ -56,6 +57,10 @@ func validateEditorialCert(t *testing.T, m *scriptpkg.EditorialManifest, transcr
 				"highlight span out of bounds %+v len=%d", h, len(raw))
 			require.Equal(t, h.Text, string(raw[h.StartByte:h.EndByte]),
 				"highlight bytes must reconstruct text exactly")
+		}
+		for _, value := range s.ChartValues {
+			_, ok := capabilityoverlay.ParseChartValue(value)
+			require.True(t, ok, "chart value must be a strict literal: %q", value)
 		}
 		for _, b := range s.Bullets {
 			require.True(t, b.SentenceStart < b.SentenceEnd,

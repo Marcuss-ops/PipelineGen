@@ -79,6 +79,22 @@ func TestProjectEditorialOverlaysFailsClosed(t *testing.T) {
 	}
 }
 
+func TestEditorialChartValuesMustBeGroundedStrictLiterals(t *testing.T) {
+	transcript := "The metric increased from 42% to €18.5, while thirteen jobs changed."
+	title := "metric increased"
+	base := scriptpkg.EditorialScene{
+		SceneID: "scene-1", Title: &title, TitleStatus: "resolved", TitleSource: "topic_validated",
+		Bullets: []scriptpkg.EditorialSceneBullet{}, Highlights: []scriptpkg.EditorialHighlight{},
+		ChartValues: []string{"42%", "€18.5"},
+	}
+	text := "The metric increased from 42% to €18.5, while thirteen jobs changed."
+	require.True(t, validEditorialManifestScene(base, text, transcript))
+	base.ChartValues = []string{"42%", "thirteen"}
+	require.False(t, validEditorialManifestScene(base, text, transcript), "number words must not authorize charts")
+	base.ChartValues = []string{"42%", "999%"}
+	require.False(t, validEditorialManifestScene(base, text, transcript), "invented values must not authorize charts")
+}
+
 func TestProjectEditorialOverlaysRequiresExactVoiceoverLanguageAndSceneText(t *testing.T) {
 	result, scenes, resolved, inputs := editorialOverlayFixture()
 	result.Editorial.SourceLanguage = "it"

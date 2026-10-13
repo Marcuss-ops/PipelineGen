@@ -57,7 +57,7 @@ type ChartPlacement struct {
 // whitespace, digits with one decimal separator (dot or comma), one
 // optional trailing %/currency sign. Anything else is rejected so the
 // chart can never invent or coerce a value.
-func parseChartValue(text string) (float64, bool) {
+func ParseChartValue(text string) (float64, bool) {
 	t := strings.TrimSpace(text)
 	if t == "" {
 		return 0, false
@@ -117,11 +117,15 @@ func ChartPlacementsForScenes(scenes []SceneInput) []ChartPlacement {
 			end   int64
 		}
 		var pts []plotted
-		for _, n := range scene.Numbers {
+		numbers := scene.Numbers
+		if scene.ChartNumbers != nil {
+			numbers = scene.ChartNumbers
+		}
+		for _, n := range numbers {
 			if strings.TrimSpace(n.Text) == "" || n.StartUS < 0 || n.DurationUS <= 0 {
 				continue
 			}
-			v, ok := parseChartValue(n.Text)
+			v, ok := ParseChartValue(n.Text)
 			if !ok {
 				continue
 			}

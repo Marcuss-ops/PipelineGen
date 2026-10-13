@@ -58,11 +58,13 @@ func (r *Runner) compileAudioOverlayPlan(ctx context.Context, runID string, req 
 	canvas.EntityImageMotions = req.EntityImageMotions
 	canvas.AnimationPolicies = req.AnimationPolicies
 	canvas.RandomLightLeakOnClipStart = req.RandomLightLeakOnClipStart
+	canvas.RandomLightLeakOnOverlayStart = req.RandomLightLeakOnOverlayStart
 	canvas.MapType = req.MapType
 	canvas.MapCameraAnimation = req.MapCameraAnimation
 	canvas.MapLabelAnimation = req.MapLabelAnimation
 	canvas.MapAnimation = req.MapAnimation
 	canvas.MaxPhraseOverlays = req.MaxPhraseOverlays
+	canvas.MaxOverlaysPerScene = req.MaxOverlaysPerScene
 	canvas.MaxMapOverlays = req.MaxMapOverlays
 	canvas.MapsOnly = req.MapsOnly
 	canvas.MaxImageOverlays = req.MaxImageOverlays

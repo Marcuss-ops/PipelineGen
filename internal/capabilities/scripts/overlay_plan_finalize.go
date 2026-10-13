@@ -171,6 +171,13 @@ func applyOverlayStyleToItems(items []capabilityoverlay.OverlayItem, canvas Over
 			}
 			if k == "style" {
 				merged[k] = mergeStyleParam(merged[k], v.(map[string]any))
+				// Motion presets also carry a top-level Style map. Keep explicit
+				// run typography/color/effect choices in sync there; chain
+				// coalescing copies this map into each ChainSegment, and the
+				// renderer gives it precedence over Params.style.
+				if isTextOverlayKind(items[i].Kind) || strings.TrimSpace(items[i].EntityCaption) != "" || items[i].Map != nil {
+					items[i].Style = mergeStyleParam(items[i].Style, v.(map[string]any))
+				}
 			} else if isRuntimeTextStyleParam(k) {
 				// A run-level payload choice is canonical across text motions.
 				// Preset or animation-derived values are defaults and must not

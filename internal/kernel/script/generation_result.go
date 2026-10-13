@@ -531,6 +531,7 @@ type SceneHighlight struct {
 	TitleSource     string            `json:"title_source"`
 	Bullets         []SceneBulletSpan `json:"bullets"`
 	Highlights      []ScenePhraseSpan `json:"highlights"`
+	ChartValues     []string          `json:"chart_values,omitempty"`
 	GloballyIndexed bool              `json:"globally_indexed"`
 }
 

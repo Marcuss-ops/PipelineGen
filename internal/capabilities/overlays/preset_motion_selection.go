@@ -7,7 +7,6 @@ package overlays
 
 import (
 	"encoding/binary"
-	"strconv"
 	"strings"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
@@ -134,7 +133,11 @@ func selectShortPhraseMotionLimited(jobID, sceneID string, ordinal, wordCount in
 			candidates = compatible
 		}
 	}
-	candidates = limitedShuffledMotionPool(candidates, limit, jobID+"\x00short_phrase:"+strconv.Itoa(wordCount))
+	// The per-family animation count used to truncate the pool here, before
+	// rotation, so every phrase in a word-count group drew from the same few
+	// recipes. The full group is now rotated; limit is kept for the call sites
+	// but no longer narrows the pool.
+	_ = limit
 	return selectMotionFromPool(jobID, sceneID, "short_phrase", ordinal, candidates)
 }
 
