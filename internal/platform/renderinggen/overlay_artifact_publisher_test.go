@@ -155,6 +155,34 @@ func TestDriveOverlayMapArtifactNamesAndMetadataExposeGroundedPlaces(t *testing.
 	}
 }
 
+func TestDriveEntityOverlayFilenameUsesEntityMotionAndHash(t *testing.T) {
+	for _, itemKind := range []string{"entity_card", "entity_image"} {
+		t.Run(itemKind, func(t *testing.T) {
+			payload := []byte("certified entity overlay bytes")
+			sum := sha256.Sum256(payload)
+			hash := hex.EncodeToString(sum[:])
+			store := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { _, _ = w.Write(payload) }))
+			defer store.Close()
+			capture := &captureOverlayPublisher{}
+			publisher := &DriveOverlayArtifactPublisher{publisher: capture, client: store.Client()}
+			publisher.SetRootFolderID("overlay-root")
+			artifact := &scriptgen.RenderArtifact{URL: store.URL + "/entity.mp4", SHA256: hash, SizeBytes: int64(len(payload)), MimeType: "video/mp4"}
+			err := publisher.PublishOverlay(context.Background(), scriptgen.OverlayPublicationSpec{
+				ScriptName: "Garlasco overlay acceptance 20 immagini", Language: "it", PlanID: "entity-plan",
+				OverlayItemID: "entity-card-1", OverlayItemKind: itemKind, OverlayEntityName: "Chiara Poggi",
+				OverlayMotionID: "image_fade_in",
+			}, artifact)
+			if err != nil {
+				t.Fatal(err)
+			}
+			want := "Entità-Chiara Poggi-Entità-image_fade_in-" + hash[:12] + ".mp4"
+			if got := capture.artifacts[0].Filename; got != want {
+				t.Fatalf("entity filename = %q, want %q", got, want)
+			}
+		})
+	}
+}
+
 func TestDriveOverlayArtifactPublisherSurvivesCallerCancellation(t *testing.T) {
 	payload := []byte("certified overlay bytes")
 	sum := sha256.Sum256(payload)

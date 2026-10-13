@@ -53,9 +53,14 @@ type EditorialPlanSection struct {
 // template, caption and layer fields. It is the single owner of the mapping
 // from render-plan items to editor sections. Frases brevi have 1–5 words,
 // matching BuildPlan's existing short-phrase motion threshold.
+// A scene_title keeps the ImportantPhrase lane (lower-third title card with
+// its own visual role). A scene_bullet is a center/headline phrase like any
+// other, so it follows the word-count split below: a 2-word bullet rotates
+// with the short-phrase catalog instead of bypassing it while occupying the
+// planner's reserved phrase slot.
 func EditorialSectionForItem(item OverlayItem) EditorialSectionID {
 	if item.Params != nil {
-		if item.Params["editorial_role"] == "scene_title" || item.Params["editorial_role"] == "scene_bullet" {
+		if item.Params["editorial_role"] == "scene_title" {
 			return EditorialSectionImportantPhrase
 		}
 	}

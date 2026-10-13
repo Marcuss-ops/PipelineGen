@@ -92,6 +92,7 @@ func (e *singleGenerationExecutor) Execute(
 	tracker := gencore.NewProgressTracker(progressFn, item.ID)
 	tracker.SetContext(ctx)
 	tracker.SetEventFn(eventFn)
+	tracker.SetStageSink(appjobs.SafeStageStatusSink(tools), j.ID)
 	tracker.SetKind(domainScript.TypeGenerate)
 	tracker.TrackStage(string(job.StageScript), item.Language, string(job.StageRunning), j.ID, "")
 	eventFn("job.created", "Script generation job created", map[string]any{

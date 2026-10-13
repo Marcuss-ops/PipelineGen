@@ -271,11 +271,11 @@ func TestModernAppleFamilyExposesAllCatalogMotions(t *testing.T) {
 }
 
 func TestGeneratedPhraseRotationCoversFifteenAndFits24FPSTiming(t *testing.T) {
-	if len(generatedPhraseMotions) != 149 {
-		t.Fatalf("generated phrase pool has %d entries, want all 149 registered phrase motions", len(generatedPhraseMotions))
+	if len(generatedPhraseMotions) != 148 {
+		t.Fatalf("generated phrase pool has %d entries, want all 148 callable phrase motions (removed motions excluded)", len(generatedPhraseMotions))
 	}
 	sequence := defaultPhraseMotionSequence("rotation-149", "run")
-	seenAll := make(map[string]bool, 149)
+	seenAll := make(map[string]bool, 148)
 	familyCounts := map[string]int{}
 	for ordinal, want := range sequence {
 		if got := selectPhraseMotion("rotation-149", "run", ordinal, nil); got != want {
@@ -304,18 +304,25 @@ func TestGeneratedPhraseRotationCoversFifteenAndFits24FPSTiming(t *testing.T) {
 			}
 		}
 	}
-	if len(sequence) != 149 || len(seenAll) != 149 {
-		t.Fatalf("default phrase sequence covers %d motions, want all 149", len(seenAll))
+	if len(sequence) != 148 || len(seenAll) != 148 {
+		t.Fatalf("default phrase sequence covers %d motions, want all 148", len(seenAll))
 	}
 	for _, family := range []string{"classic_apple", "modern_apple", "typewriter", "text_3d_v1", "brush_v1"} {
 		if familyCounts[family] == 0 {
 			t.Fatalf("first 15 phrase motions do not include family %s", family)
 		}
 	}
-	phrases := make([]TimedAnnotation, 15)
-	for i := range phrases {
+	// The phrases deliberately vary in length: a short phrase only draws from
+	// the exact-cardinality group its word count declares, and the smallest
+	// groups hold a handful of recipes, so a run of fifteen four-word phrases
+	// could not stay distinct. This fixture keeps every group inside its depth
+	// while the no-repeat assertion below still demands fifteen distinct
+	// motions from the fifteen phrases.
+	rotationWordCounts := []int{1, 2, 3, 4, 1, 2, 3, 4, 3, 4, 1, 2, 3, 4, 1}
+	phrases := make([]TimedAnnotation, len(rotationWordCounts))
+	for i, words := range rotationWordCounts {
 		phrases[i] = TimedAnnotation{
-			Text:       fmt.Sprintf("distinct spoken phrase %02d", i),
+			Text:       fmt.Sprintf("%sphrase %02d", strings.Repeat("word ", words-1), i),
 			StartMs:    int64(i * 2200),
 			EndMs:      int64(i*2200 + 2000),
 			StartUS:    int64(i*2200) * 1000,
@@ -368,6 +375,30 @@ func TestPhraseMotionEntranceUsesOneThirdPhraseDuration(t *testing.T) {
 			params := phraseMotionParams(tc.phrase, tc.fpsNum, tc.fpsDen)
 			if got := params["enter_frames"]; got != tc.wantFrames {
 				t.Fatalf("enter_frames = %v, want %d frames (one third of phrase duration)", got, tc.wantFrames)
+			}
+		})
+	}
+}
+
+// TestPhraseExitWindowIsPointTwoSeconds pins the shared phrase exit: every run
+// cuts the phrase out in 0.2s regardless of the catalog's authored 12-frame
+// exit, which kept the mirrored gray authoring colour on screen too long.
+func TestPhraseExitWindowIsPointTwoSeconds(t *testing.T) {
+	for _, tc := range []struct {
+		name       string
+		fpsNum     int
+		fpsDen     int
+		wantFrames int
+	}{
+		{name: "24 fps", fpsNum: 24, fpsDen: 1, wantFrames: 5},
+		{name: "25 fps", fpsNum: 25, fpsDen: 1, wantFrames: 5},
+		{name: "30 fps", fpsNum: 30, fpsDen: 1, wantFrames: 6},
+		{name: "29.97 fps", fpsNum: 30000, fpsDen: 1001, wantFrames: 6},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			params := phraseMotionParams(TimedAnnotation{StartMs: 0, EndMs: 3000, DurationUS: 3_000_000}, tc.fpsNum, tc.fpsDen)
+			if got := params["exit_frames"]; got != tc.wantFrames {
+				t.Fatalf("exit_frames = %v, want %d frames (0.2s at %d/%d fps)", got, tc.wantFrames, tc.fpsNum, tc.fpsDen)
 			}
 		})
 	}
@@ -770,6 +801,9 @@ func TestGeneratedImageMotionPoolMatchesCanonicalChrononCatalog(t *testing.T) {
 				}
 			}
 		}
+		if _, removed := removedGeneratedPhraseMotions[definition.ID]; removed {
+			continue
+		}
 		if definition.Category == "apple_v2" || definition.Category == "apple_v3" || definition.Category == "phrase_apple_clean_v1" || definition.Category == "apple_phrase_v1" || definition.Category == "text_3d_v1" || (definition.Category == "brush_v1" && strings.HasPrefix(definition.ID, "brush_phrase_")) || strings.HasPrefix(definition.ID, "typewriter_") {
 			catalogPhraseIDs = append(catalogPhraseIDs, definition.ID)
 		}
@@ -790,8 +824,8 @@ func TestGeneratedImageMotionPoolMatchesCanonicalChrononCatalog(t *testing.T) {
 			t.Fatalf("selected image motion %d=%q, catalog=%q", i, selectedIDs[i], wantSelected[i])
 		}
 	}
-	if len(catalogPhraseIDs) != 149 || len(phraseMotionCandidates) != len(catalogPhraseIDs) {
-		t.Fatalf("catalog has %d phrase motions, callable pool has %d; want all 149", len(catalogPhraseIDs), len(phraseMotionCandidates))
+	if len(catalogPhraseIDs) != 148 || len(phraseMotionCandidates) != len(catalogPhraseIDs) {
+		t.Fatalf("catalog has %d callable phrase motions, callable pool has %d; want all 148 (removed motions excluded)", len(catalogPhraseIDs), len(phraseMotionCandidates))
 	}
 	callable := append([]string(nil), phraseMotionCandidates...)
 	sort.Strings(callable)

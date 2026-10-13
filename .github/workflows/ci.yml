@@ -221,6 +221,37 @@ jobs:
       timeout-minutes: 5
       run: make verify-no-secrets
 
+  # ── Rust workers (visualner needs system ICU at build time) ─────────
+  #
+  # visualner links rust_icu_* against the installed ICU4C development
+  # package and pins generated symbols to its major via
+  # RUST_ICU_MAJOR_VERSION_NUMBER (see rust/README.md). The major is read
+  # from pkg-config here so the CI host and the build can never disagree.
+  rust:
+    name: Rust workers (test + clippy, ICU-pinned)
+    runs-on: ubuntu-latest
+    steps:
+    - name: Check out code
+      uses: actions/checkout@v7
+      with:
+        submodules: false
+
+    - name: Install ICU4C development package
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y libicu-dev pkg-config
+
+    - name: Export ICU major for rust_icu
+      run: |
+        ICU_MAJOR=$(pkg-config --modversion icu-i18n | cut -d. -f1)
+        echo "RUST_ICU_MAJOR_VERSION_NUMBER=$ICU_MAJOR" >> "$GITHUB_ENV"
+
+    - name: cargo test (workspace)
+      run: cargo test --manifest-path rust/Cargo.toml --workspace
+
+    - name: cargo clippy (workspace, warnings are errors)
+      run: cargo clippy --manifest-path rust/Cargo.toml --workspace --all-targets -- -D warnings
+
   # ── Black-box smoke jobs: RETIRED 2026-09-13 ─────────────────────────
   #
   # Two jobs were removed from this workflow because their entire payload was

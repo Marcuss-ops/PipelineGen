@@ -152,6 +152,7 @@ func recapItemsByScene(items []capabilityoverlay.OverlayItem) map[string]int {
 // the sealing path so the file-size split changes no behaviour.
 func applyOverlayStyleToItems(items []capabilityoverlay.OverlayItem, canvas OverlayCanvasSpec) {
 	styleParams := overlayStyleParams(canvas.Style)
+	runGlowDisabled := canvas.Style != nil && canvas.Style.GlowSize != nil && *canvas.Style.GlowSize <= 0
 	for i := range items {
 		merged := map[string]any{}
 		for k, v := range items[i].Params {
@@ -185,6 +186,19 @@ func applyOverlayStyleToItems(items []capabilityoverlay.OverlayItem, canvas Over
 				merged[k] = v
 			} else if _, exists := merged[k]; !exists {
 				merged[k] = v
+			}
+		}
+		// A run-level glow of zero means "no glow". StyleParams omits disabled
+		// glows (an explicit zero renders black frames in Chronon), so the
+		// animation's own glow must be removed here or it would survive the run choice.
+		if runGlowDisabled && (isTextOverlayKind(items[i].Kind) || strings.TrimSpace(items[i].EntityCaption) != "") && items[i].Map == nil && !isImageOverlayItem(items[i]) {
+			delete(merged, "glow_size")
+			delete(merged, "glow_color")
+			if nested, ok := merged["style"].(map[string]any); ok {
+				delete(nested, "glow")
+			}
+			if items[i].Style != nil {
+				delete(items[i].Style, "glow")
 			}
 		}
 		items[i].Params = merged

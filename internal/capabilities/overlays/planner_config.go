@@ -110,7 +110,7 @@ func (c PlannerConfig) withDefaults() PlannerConfig {
 		c.MaxImages = 1
 	}
 	if c.MaxPhraseWords <= 0 {
-		c.MaxPhraseWords = 20
+		c.MaxPhraseWords = 30
 	}
 	if c.MaxNumbers <= 0 {
 		c.MaxNumbers = 1

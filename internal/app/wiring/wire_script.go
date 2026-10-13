@@ -213,6 +213,9 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 			log.Info("wireScriptFlow: durable script.generate stock prefetch wired")
 		}
 		genJobHandler.SetDurableRunner(durableRunner)
+		if root.Jobs != nil && root.Jobs.Repo != nil {
+			durableRunner.SetJobStageSink(root.Jobs.Repo)
+		}
 		// Deferred Docs leg (TICKET-CORE-READY-DURABLE-DAG steps 2-4 cutover):
 		// the pipeline hands post-CORE_READY document publication to the
 		// `script.docs_publish` child, the handler returns a waiting parent,

@@ -69,6 +69,10 @@ func (h *JobsHandler) GetFull(c *gin.Context) {
 	// `timing` field without changing the /full status response.
 	resp["timing"] = h.readTimingBreakdown(c.Request.Context(), id)
 
+	// Durable intermediate phases (job_stage_status). Written while the job
+	// runs, so polling /full shows the current phase before the job ends.
+	resp["stages"] = h.readStageRows(c.Request.Context(), id)
+
 	// script.generate persists its caller-visible script checkpoint in the
 	// durable run ledger before the broker job finishes publishing every
 	// requested artifact. Project that snapshot onto the canonical polling
@@ -99,6 +103,27 @@ func (h *JobsHandler) GetFull(c *gin.Context) {
 	}
 
 	apiutil.OK(c, resp)
+}
+
+// readStageRows returns the per-stage projection for a job, always as an array
+// (never null). Best-effort: a missing or failing store yields an empty list
+// and never changes the /full status response.
+func (h *JobsHandler) readStageRows(ctx context.Context, id string) []job.JobStageStatus {
+	rows := []job.JobStageStatus{}
+	if h.stages == nil {
+		return rows
+	}
+	items, err := h.stages.ListJobStageStatuses(ctx, id)
+	if err != nil {
+		if h.log != nil {
+			h.log.Warn("failed to list job stage rows", zap.String("job_id", id), zap.Error(err))
+		}
+		return rows
+	}
+	if items != nil {
+		rows = items
+	}
+	return rows
 }
 
 // readTimingBreakdown returns the canonical timing summary for a job's most

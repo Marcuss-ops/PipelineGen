@@ -179,24 +179,6 @@ func buildEditorialManifest(req GenerateRequest, inputs []scriptpkg.SceneAnalysi
 			offsets[i] = [2]int64{-1, -1}
 		}
 	}
-	fpIn := scriptpkg.EditorialFingerprintInput{
-		Transcript:       strings.TrimSpace(res.Summary) + "\n" + strings.Join(texts, "\n\n"),
-		SceneIDs:         ids,
-		SceneTexts:       texts,
-		SceneOffsets:     offsets,
-		SceneTopics:      topics,
-		Language:         string(req.SourceLanguage),
-		ProfileVersion:   "highlights.v1",
-		RankingWeights:   map[string]float64{"semantic": 1.0, "lexical": 1.0, "scene": 0.2, "evidence": 1.0},
-		TokenizerVersion: "rust-splitter.v1",
-		EmbeddingModel:   "lexical",
-		EmbeddingVersion: "v1",
-		AlgorithmVersion: "phrase-impact.scene-highlights.v1",
-	}
-	fp, err := scriptpkg.ComputeEditorialFingerprint(fpIn)
-	if err != nil {
-		return nil
-	}
 	scenes := make([]scriptpkg.EditorialScene, 0, len(res.SceneHighlights))
 	for _, h := range res.SceneHighlights {
 		bullets := make([]scriptpkg.EditorialSceneBullet, len(h.Bullets))
@@ -212,6 +194,25 @@ func buildEditorialManifest(req GenerateRequest, inputs []scriptpkg.SceneAnalysi
 			TitleSource: h.TitleSource, Bullets: bullets, Highlights: hl,
 			ChartValues: append([]string(nil), h.ChartValues...), GloballyIndexed: h.GloballyIndexed,
 		})
+	}
+	fpIn := scriptpkg.EditorialFingerprintInput{
+		Transcript:       strings.TrimSpace(res.Summary) + "\n" + strings.Join(texts, "\n\n"),
+		SceneIDs:         ids,
+		SceneTexts:       texts,
+		SceneOffsets:     offsets,
+		SceneTopics:      topics,
+		Language:         string(req.SourceLanguage),
+		ProfileVersion:   "highlights.v1",
+		RankingWeights:   map[string]float64{"semantic": 1.0, "lexical": 1.0, "scene": 0.2, "evidence": 1.0},
+		TokenizerVersion: "rust-splitter.v1",
+		EmbeddingModel:   "lexical",
+		EmbeddingVersion: "v1",
+		AlgorithmVersion: "phrase-impact.scene-highlights.v1",
+		SceneProducts:    scenes,
+	}
+	fp, err := scriptpkg.ComputeEditorialFingerprint(fpIn)
+	if err != nil {
+		return nil
 	}
 	m := &scriptpkg.EditorialManifest{
 		SchemaVersion: scriptpkg.EditorialManifestVersion, SourceLanguage: string(req.SourceLanguage),

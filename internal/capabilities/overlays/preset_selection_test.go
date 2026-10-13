@@ -11,16 +11,16 @@ import (
 
 // TestSelectEntityImagePresetUsesOnlyRenderSafeCandidates pins the generated
 // entity-image preset contract: every selection comes from the render-safe
-// candidate set (never modern_rounded_pop, whose native mask path is not
-// implemented), stays bit-identical for a retry of the same job, and still
+// candidate set, including rounded corners, stays bit-identical for a retry
+// of the same job, and still
 // varies across identities so one run does not render five identical motions.
 func TestSelectEntityImagePresetUsesOnlyRenderSafeCandidates(t *testing.T) {
 	safe := make(map[string]bool, len(imagePresetCandidates))
 	for _, id := range imagePresetCandidates {
 		safe[id] = true
 	}
-	if safe["modern_rounded_pop"] {
-		t.Fatal("modern_rounded_pop must not be selectable for generated entity images")
+	if !safe["modern_rounded_pop"] {
+		t.Fatal("modern_rounded_pop must be selectable now that native image radius is supported")
 	}
 
 	variants := map[string]bool{}
@@ -246,7 +246,7 @@ func TestDateAndMetricEntityTypesRouteToCertifiedPresentationTemplates(t *testin
 func TestDateAndMetricPresentationPoolsAreCuratedCanonicalSubsets(t *testing.T) {
 	wantDates := []string{
 		"date_fade_rise", "date_calendar_flip", "date_timeline_tick", "date_chronology_focus",
-		"date_page_turn", "date_calendar_drop", "date_month_wipe", "date_era_zoom",
+		"date_calendar_drop", "date_month_wipe", "date_era_zoom",
 	}
 	wantMetrics := []string{
 		"metric_counter_scale_settle", "metric_odometer_vertical", "metric_digits_stagger",

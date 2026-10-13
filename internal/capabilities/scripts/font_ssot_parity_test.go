@@ -105,12 +105,17 @@ func TestRunStyleWinsOverAnimationSpecificTextParams(t *testing.T) {
 	applyOverlayStyleToItems(items, canvas)
 	params := items[0].Params
 	for key, want := range map[string]any{
-		"font_family": "poppins", "glow_size": float64(0), "stroke_size": float64(3),
+		"font_family": "poppins", "stroke_size": float64(3),
 		"shadow_blur_px": float64(0), "shadow_opacity": float64(0),
 	} {
 		if got := params[key]; got != want {
 			t.Errorf("run style %s = %v, want %v", key, got, want)
 		}
+	}
+	// A disabled run glow is omitted entirely (an explicit zero renders black
+	// frames in Chronon), so the animation's glow must not survive it.
+	if _, ok := params["glow_size"]; ok {
+		t.Errorf("run style disabled glow but glow_size = %v survived", params["glow_size"])
 	}
 	style, _ := params["style"].(map[string]any)
 	if style["fill"] != "#FFFFFF" {
@@ -124,7 +129,9 @@ func TestRunStyleWinsOverAnimationSpecificTextParams(t *testing.T) {
 	entityParams := scriptoverlay.MergeRuntimeTextStyleParams(map[string]any{
 		"font_family": "inter_bold", "position_x": 10.0, "glow_size": 8.0,
 	}, overlayStyleParams(canvas.Style))
-	if entityParams["font_family"] != "poppins" || entityParams["glow_size"] != 0.0 || entityParams["stroke_size"] != 3.0 {
+	// The merge applies canonical runtime keys only; a disabled glow is omitted
+	// from the run style, so it injects no glow_size of its own.
+	if entityParams["font_family"] != "poppins" || entityParams["glow_size"] != 8.0 || entityParams["stroke_size"] != 3.0 {
 		t.Errorf("entity caption style = %v, want canonical run style", entityParams)
 	}
 	if entityParams["position_x"] != 10.0 {

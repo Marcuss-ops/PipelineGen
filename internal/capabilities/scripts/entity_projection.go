@@ -372,11 +372,20 @@ func entityImageLayerParams(width, height, count, slot int) map[string]any {
 // entityStyleID is an explicitly requested entity-card composition selector.
 // Empty leaves the planner's simple image and caption motions in place, so
 // spatial compositions are never added implicitly to runtime renders.
+// requestedPools[0] is the optional run-level entity-image pool
+// (entity_image_motions); requestedPools[1] is the optional run-level
+// entity-caption pool (entity_caption_motions), restricted to the
+// camera-safe automatic caption catalog because it drives automatic
+// assignment. Both are validated fail-closed.
 func assignEntityImageMotions(items []capabilityoverlay.OverlayItem, offset, width, height int, entityStyleID string, requestedPools ...[]string) error {
 	imageOrdinal, captionOrdinal := 0, 0
 	var requested []string
 	if len(requestedPools) > 0 {
 		requested = requestedPools[0]
+	}
+	var requestedCaptions []string
+	if len(requestedPools) > 1 {
+		requestedCaptions = requestedPools[1]
 	}
 	allowed := make(map[string]bool)
 	for _, id := range capabilityoverlay.CertifiedEntityImageMotions() {
@@ -395,7 +404,33 @@ func assignEntityImageMotions(items []capabilityoverlay.OverlayItem, offset, wid
 		}
 		seen[id] = true
 	}
+	captionAllowed := make(map[string]bool)
+	for _, id := range capabilityoverlay.CertifiedAutomaticEntityCaptionMotions() {
+		captionAllowed[id] = true
+	}
+	seenCaption := make(map[string]bool, len(requestedCaptions))
+	for _, id := range requestedCaptions {
+		if strings.TrimSpace(id) == "" {
+			return fmt.Errorf("entity_caption_motions carries an empty id")
+		}
+		if !captionAllowed[id] {
+			return fmt.Errorf("entity_caption_motions contains uncertified motion %q", id)
+		}
+		if seenCaption[id] {
+			return fmt.Errorf("entity_caption_motions repeats motion %q", id)
+		}
+		seenCaption[id] = true
+	}
 	captionMotionAt := func(ordinal int) string {
+		// A run-level caption pool rotates offset-aware like the automatic
+		// pool so retries of the same plan stay bit-identical.
+		if len(requestedCaptions) > 0 {
+			index := (offset + ordinal) % len(requestedCaptions)
+			if index < 0 {
+				index += len(requestedCaptions)
+			}
+			return requestedCaptions[index]
+		}
 		return capabilityoverlay.RuntimeEntityCaptionMotionAtOffset(offset, ordinal)
 	}
 	pinned := strings.TrimSpace(entityStyleID)

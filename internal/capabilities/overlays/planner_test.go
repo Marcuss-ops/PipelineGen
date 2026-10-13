@@ -14,7 +14,7 @@ func TestBuildPlanAppliesConservativeLimitsAndRanks(t *testing.T) {
 			Phrases: []TimedAnnotation{
 				// 22 words > the 20-word default → dropped by the word budget even
 				// though it carries the highest score.
-				{Text: "too many words for this phrase to be eligible because it keeps running past the conservative headline ceiling for a rendered overlay", StartMs: 1, EndMs: 2, Score: 10},
+				{Text: "too many words for this phrase to be eligible because it keeps running past the conservative headline ceiling for a rendered overlay and it still continues well beyond the thirty word limit now", StartMs: 1, EndMs: 2, Score: 10},
 				{Text: "This changes everything", StartMs: 100, EndMs: 900, Score: 2},
 				{Text: "Lower priority", StartMs: 1000, EndMs: 1200, Score: 1},
 			},
@@ -159,7 +159,7 @@ func TestApplyPhraseOverlayBudgetReportsShortfallWithoutInventingItems(t *testin
 	}
 }
 
-func TestApplyEditorialOverlayBudgetEnforcesRunLevelEighteenImagesAndFivePhrases(t *testing.T) {
+func TestApplyEditorialOverlayBudgetEnforcesRunLevelTwentyImagesAndFivePhrases(t *testing.T) {
 	items := make([]OverlayItem, 0, 40)
 	for i := 0; i < 20; i++ {
 		items = append(items, OverlayItem{
@@ -191,7 +191,7 @@ func TestApplyEditorialOverlayBudgetEnforcesRunLevelEighteenImagesAndFivePhrases
 			t.Fatalf("non-editorial overlay survived: %+v", item)
 		}
 	}
-	if images != MaxImageOverlaysPerRun || phrases != MaxPhraseOverlaysPerRun || len(got) != 18+MaxPhraseOverlaysPerRun {
+	if images != MaxImageOverlaysPerRun || phrases != MaxPhraseOverlaysPerRun || len(got) != MaxImageOverlaysPerRun+MaxPhraseOverlaysPerRun {
 		t.Fatalf("image/phrase/total counts = %d/%d/%d, want %d images and the configured five phrases", images, phrases, len(got), MaxImageOverlaysPerRun)
 	}
 	if budget != (PhraseOverlayBudget{Requested: MaxPhraseOverlaysPerRun, Materialized: MaxPhraseOverlaysPerRun, Shortfall: 0}) {
@@ -200,9 +200,9 @@ func TestApplyEditorialOverlayBudgetEnforcesRunLevelEighteenImagesAndFivePhrases
 	// Images keep their input order; the admitted phrases are the
 	// MaxPhraseOverlaysPerRun highest-priority ones — phrase-12..phrase-16 for
 	// the certified default of five — re-emitted in input order.
-	if got[0].ID != "image-2" || got[17].ID != "image-19" ||
-		got[18].ID != fmt.Sprintf("phrase-%d", 17-MaxPhraseOverlaysPerRun) ||
-		got[18+MaxPhraseOverlaysPerRun-1].ID != "phrase-16" {
+	if got[0].ID != "image-0" || got[MaxImageOverlaysPerRun-1].ID != "image-19" ||
+		got[MaxImageOverlaysPerRun].ID != fmt.Sprintf("phrase-%d", 17-MaxPhraseOverlaysPerRun) ||
+		got[MaxImageOverlaysPerRun+MaxPhraseOverlaysPerRun-1].ID != "phrase-16" {
 		t.Fatalf("run-level ranking chose wrong survivors: %+v", got)
 	}
 }
@@ -387,6 +387,32 @@ func TestBuildPlanExtendedEntities(t *testing.T) {
 	logo := byKind["logo"]
 	if logo.TemplateID != "LOGO" || logo.Params["position"] != "corner" {
 		t.Fatalf("logo item = %+v", logo)
+	}
+}
+
+func TestBuildPlanKeepsSceneTitlesAndBulletsCentered(t *testing.T) {
+	for _, role := range []string{"scene_title", "scene_bullet"} {
+		plan, err := BuildPlan(PlanInput{
+			PlanID: "center-" + role, VideoID: "video-" + role,
+			Width: 1920, Height: 1080, FPSNum: 24, FPSDen: 1,
+			Scenes: []SceneInput{{ID: "scene", Phrases: []TimedAnnotation{{
+				Text: "A complete three word phrase", StartMs: 0, EndMs: 1000,
+				StartUS: 0, DurationUS: 1_000_000, Score: 1, PresentationRole: role,
+			}}}},
+		}, PlannerConfig{MaxPhrases: 1})
+		if err != nil {
+			t.Fatalf("BuildPlan(%s): %v", role, err)
+		}
+		if len(plan.Items) != 1 {
+			t.Fatalf("%s plan items = %d, want 1", role, len(plan.Items))
+		}
+		params := plan.Items[0].Params
+		if params["position"] != "center" {
+			t.Errorf("%s position = %v, want center", role, params["position"])
+		}
+		if _, ok := params["position_y"]; ok {
+			t.Errorf("%s has vertical offset %v", role, params["position_y"])
+		}
 	}
 }
 

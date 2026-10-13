@@ -21,6 +21,24 @@ func TestStyleParamsProjectsRuntimeTextAndImageValues(t *testing.T) {
 	require.Equal(t, 320, got["image_width"])
 }
 
+func TestStyleParamsOmitsDisabledTextEffects(t *testing.T) {
+	zero := 0.0
+	got := StyleParams(&scriptpkg.OverlayStyleSpec{
+		GlowSize: &zero, GlowColor: "#000000", StrokeSize: &zero,
+	})
+	require.NotContains(t, got, "glow_size")
+	require.NotContains(t, got, "glow_color")
+	require.NotContains(t, got, "stroke_size")
+
+	positive := 2.0
+	got = StyleParams(&scriptpkg.OverlayStyleSpec{
+		GlowSize: &positive, GlowColor: "#FFFFFF", StrokeSize: &positive,
+	})
+	require.Equal(t, positive, got["glow_size"])
+	require.Equal(t, "#FFFFFF", got["glow_color"])
+	require.Equal(t, positive, got["stroke_size"])
+}
+
 func TestImageFrameAndEntityImageNormalization(t *testing.T) {
 	radius := 12.0
 	style := &scriptpkg.OverlayImageStyleSpec{Radius: &radius}

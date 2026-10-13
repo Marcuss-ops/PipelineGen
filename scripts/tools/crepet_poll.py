@@ -31,6 +31,7 @@ def main() -> int:
     deadline = time.time() + float(sys.argv[1] if len(sys.argv) > 1 else 540)
     jobs = [l.split() for l in JOBS.read_text().splitlines() if l.strip()]
     last: dict[str, str] = {}
+    phase_last: dict[str, str] = {}
     done: set[str] = set()
     while time.time() < deadline:
         for vid, jid in jobs:
@@ -46,6 +47,13 @@ def main() -> int:
             if status != last.get(vid):
                 print(f"{vid} {jid} -> {status} progress={b.get('progress')} stage={b.get('current_stage')}")
                 last[vid] = status
+            # Intermediate phases from the durable stage table, printed once each
+            # as they change (phase name, percent, detail).
+            for row in b.get("stages") or []:
+                key = f"{row.get('stage')}|{row.get('status')}|{row.get('progress')}|{row.get('detail')}"
+                if key != phase_last.get(vid):
+                    phase_last[vid] = key
+                    print(f"  {vid} phase {row.get('stage')} [{row.get('status')}] {row.get('progress')}% {row.get('detail') or ''}".rstrip())
             if status in TERMINAL:
                 done.add(vid)
                 result = (b.get("result") or job.get("result") or {})

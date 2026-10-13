@@ -41,7 +41,7 @@ func TestCompileLegacyOverlayPlan_PreservesEntityImagePresetAndTiming(t *testing
 					Text:  text,
 					Annotations: &scriptpkg.SceneAnnotations{
 						Version: 1, Language: "en",
-						ImportantPhrases: []scriptpkg.AnnotationSpan{{Text: "Analytical Engine", Score: 0.9}},
+						ImportantPhrases: []scriptpkg.AnnotationSpan{{Text: "the Analytical Engine", Score: 0.9}},
 						PrimaryEntities: []scriptpkg.AnnotatedEntity{{
 							CanonicalName: "Ada Lovelace", Type: "PERSON", Confidence: 0.99,
 							Image: &scriptpkg.EntityImageBinding{

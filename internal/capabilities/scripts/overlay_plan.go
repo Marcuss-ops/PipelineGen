@@ -5,7 +5,7 @@
 // of an actual run into the overlay planner and resolver, so every candidate
 // carries real timestamps — never estimates. The final production budget
 // keeps the certified run-level ceiling of grounded phrases (overridable per
-// request through max_phrase_overlays) and eighteen materialized images per run.
+// request through max_phrase_overlays) and twenty materialized images per run.
 //
 // Ownership split (single owner per surface):
 //
@@ -257,6 +257,9 @@ func compileOverlayPlanWithMotionOffset(result *GenerateResult, language Languag
 		recapBriefs = append(recapBriefs, brief)
 	}
 	scenes = projectEditorialOverlays(result, language, timedScenes, resolved, scenes)
+	for i := range scenes {
+		scenes[i].Phrases = phrasesAtLeastThreeWords(scenes[i].Phrases)
+	}
 	// Recaps ride the certified quote primitive at chapter-boundary scenes
 	// (R01); short runs yield no placement (R02). Disabled via the canvas
 	// kill-switch; placements that cannot contribute stay no-ops.
@@ -267,19 +270,37 @@ func compileOverlayPlanWithMotionOffset(result *GenerateResult, language Languag
 	// Charts lower grounded numeric comparisons to native bar rectangles and
 	// a text-label item; scenes without strict numeric data yield no placement.
 	var chartPlacements []capabilityoverlay.ChartPlacement
-	if !canvas.DisableChartOverlays {
+	if canvas.EnableCharts && !canvas.DisableChartOverlays {
 		chartPlacements = capabilityoverlay.ChartPlacementsForScenes(scenes)
 	}
 
+	if err := validateOverlayGroupLimits(canvas.OverlayGroupLimits); err != nil {
+		return nil, err
+	}
 	plannerConfig := capabilityoverlay.AllCandidatesPlannerConfig(scenes)
+	// Explicit group caps may raise the run budgets: short+long phrase caps
+	// together set the grounded-phrase ceiling when larger than the request.
+	phraseCeiling := canvas.MaxPhraseOverlays
+	if shortCap, okShort := overlayGroupLimit(canvas.OverlayGroupLimits, overlayGroupShortPhrases); okShort {
+		if longCap, okLong := overlayGroupLimit(canvas.OverlayGroupLimits, overlayGroupLongPhrases); okLong && shortCap+longCap > phraseCeiling {
+			phraseCeiling = shortCap + longCap
+		}
+	}
+	imageCeiling := canvas.MaxImageOverlays
+	if n, ok := overlayGroupLimit(canvas.OverlayGroupLimits, overlayGroupImages); ok && n > 0 {
+		imageCeiling = n
+	}
 	// The run-level grounded-phrase ceiling is caller-selected (request
 	// max_phrase_overlays); zero keeps the certified default. It rides the
 	// canvas because that is the run-level render context this function
 	// already receives.
-	plannerConfig.RunLevelPhraseOverlayLimit = canvas.MaxPhraseOverlays
+	plannerConfig.RunLevelPhraseOverlayLimit = phraseCeiling
 	mapLimit := canvas.MaxMapOverlays
 	if mapLimit <= 0 || mapLimit > capabilityoverlay.MaxMapOverlaysPerRun {
 		mapLimit = capabilityoverlay.MaxMapOverlaysPerRun
+	}
+	if n, ok := overlayGroupLimit(canvas.OverlayGroupLimits, overlayGroupMaps); ok && n > 0 {
+		mapLimit = n
 	}
 	plannerConfig.RunLevelMapOverlayLimit = mapLimit
 	plannerPlan, err := capabilityoverlay.BuildPlan(capabilityoverlay.PlanInput{
@@ -410,20 +431,39 @@ func compileOverlayPlanWithMotionOffset(result *GenerateResult, language Languag
 	// grounded phrases and one composed location map.
 	// It runs on individual assets before composition so dedupe and counts do
 	// not treat a 2–5-image group as one indivisible image.
-	items, _ = capabilityoverlay.ApplyEditorialOverlayBudgetWithImageLimit(items, canvas.MaxPhraseOverlays, canvas.MaxImageOverlays, mapLimit, len(perSceneImages) > 0 && perSceneImages[0])
+	items, _ = capabilityoverlay.ApplyEditorialOverlayBudgetWithImageLimit(items, phraseCeiling, imageCeiling, mapLimit, len(perSceneImages) > 0 && perSceneImages[0])
+	items = applyOverlayGroupLimits(items, canvas.OverlayGroupLimits)
 	items = capabilityoverlay.LimitOverlayItemsPerScene(items, canvas.MaxOverlaysPerScene)
 	if len(items) == 0 {
 		return nil, nil
 	}
 	items = composeNearbyEntityImages(items, canvas.Width, canvas.Height)
 	if err := assignEntityImageMotions(items, imageMotionOffset, canvas.Width, canvas.Height,
-		canvas.EntityStyleID, canvas.EntityImageMotions); err != nil {
+		canvas.EntityStyleID, canvas.EntityImageMotions, canvas.EntityCaptionMotions); err != nil {
 		return nil, fmt.Errorf("overlay plan: entity image motions: %w", err)
 	}
 	capabilityoverlay.EnsureDistinctPhraseMotions(items, capabilityoverlay.PlanInput{PlanID: planID, VideoID: videoID, MotionSeed: motionSeed})
 	capabilityoverlay.EnsureDistinctNumberMotions(items, nil)
-	if err := applyAnimationPolicies(items, canvas.AnimationPolicies, planID, videoID, canvas.EntityImageMotions); err != nil {
+	prePolicyMotions := make(map[int]string, len(items))
+	for index := range items {
+		prePolicyMotions[index] = items[index].MotionID
+	}
+	if err := applyAnimationPolicies(items, canvas.AnimationPolicies, planID, videoID, canvas.EntityImageMotions, canvas.EntityCaptionMotions); err != nil {
 		return nil, fmt.Errorf("overlay plan: animation policies: %w", err)
+	}
+	// Policies run after the distinct guards and can reintroduce duplicates
+	// against automatic motions. Re-run with policy-touched items pinned:
+	// explicit choices stand, automatic collisions rotate away.
+	if len(canvas.AnimationPolicies) > 0 {
+		pinned := make(map[int]bool, len(items))
+		for index := range items {
+			if items[index].MotionID != prePolicyMotions[index] {
+				pinned[index] = true
+			}
+		}
+		policyInput := capabilityoverlay.PlanInput{PlanID: planID, VideoID: videoID, MotionSeed: motionSeed, AnimationCounts: canvas.AnimationCounts}
+		capabilityoverlay.EnsureDistinctPhraseMotionsPinned(items, policyInput, pinned)
+		capabilityoverlay.EnsureDistinctNumberMotionsPinned(items, canvas.AnimationCounts, pinned)
 	}
 	items = capabilityoverlay.CoalesceChainedOverlays(items, canvas.AnimationCounts)
 	// Owned by the overlay subpackage: the root package is the compatibility

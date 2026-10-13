@@ -17,6 +17,7 @@ import (
 
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/remote"
+	kjob "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	remoteshared "github.com/Marcuss-ops/PipelineGen/internal/platform/remote/shared"
 )
 
@@ -65,6 +66,10 @@ const (
 	pathUploadPrepareFmt  = remoteshared.InternalPathPrefix + "/jobs/%s/uploads/prepare"
 	pathUploadFileFmt     = remoteshared.InternalPathPrefix + "/jobs/%s/uploads/%s/file"
 	pathUploadFinalizeFmt = remoteshared.InternalPathPrefix + "/jobs/%s/uploads/%s/finalize"
+
+	// Per-stage status projection (worker → master durable sink).
+	pathStagesFmt = remoteshared.InternalPathPrefix + "/jobs/%s/stages"
+	pathStageFmt  = remoteshared.InternalPathPrefix + "/jobs/%s/stages/%s"
 )
 
 // ── P0 Commit 6: typed request/response DTOs for upload-protocol commands ─
@@ -232,17 +237,50 @@ func (c *Client) IsCancelled(ctx context.Context, jobID, leaseID string) (bool, 
 	return body.Cancelled, nil
 }
 
+// UpsertJobStageStatus implements job.JobStageStatusStore for remote workers:
+// the stage status is written to the master's durable per-stage projection.
+func (c *Client) UpsertJobStageStatus(ctx context.Context, s kjob.JobStageStatus) error {
+	body := struct {
+		Status   kjob.StageStatus `json:"status"`
+		Progress int              `json:"progress"`
+		Detail   string           `json:"detail"`
+	}{Status: s.Status, Progress: s.Progress, Detail: s.Detail}
+	return c.do(ctx, http.MethodPatch, fmt.Sprintf(pathStageFmt, url.PathEscape(s.JobID), url.PathEscape(string(s.Stage))), body, nil)
+}
+
+// ListJobStageStatuses implements job.JobStageStatusStore for remote workers.
+func (c *Client) ListJobStageStatuses(ctx context.Context, jobID string) ([]kjob.JobStageStatus, error) {
+	var resp struct {
+		Stages []kjob.JobStageStatus `json:"stages"`
+	}
+	if err := c.do(ctx, http.MethodGet, fmt.Sprintf(pathStagesFmt, url.PathEscape(jobID)), nil, &resp); err != nil {
+		return nil, err
+	}
+	return resp.Stages, nil
+}
+
 func (c *Client) post(ctx context.Context, path string, reqBody any, respBody any) error {
-	bodyBytes, err := json.Marshal(reqBody)
-	if err != nil {
-		return fmt.Errorf("marshal request: %w", err)
+	return c.do(ctx, http.MethodPost, path, reqBody, respBody)
+}
+
+// do sends a JSON request with the given method. A nil reqBody sends no body.
+func (c *Client) do(ctx context.Context, method, path string, reqBody any, respBody any) error {
+	var bodyReader io.Reader
+	if reqBody != nil {
+		bodyBytes, err := json.Marshal(reqBody)
+		if err != nil {
+			return fmt.Errorf("marshal request: %w", err)
+		}
+		bodyReader = bytes.NewReader(bodyBytes)
 	}
 	url := c.baseURL + path
-	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewReader(bodyBytes))
+	req, err := http.NewRequestWithContext(ctx, method, url, bodyReader)
 	if err != nil {
 		return fmt.Errorf("create request: %w", err)
 	}
-	req.Header.Set("Content-Type", "application/json")
+	if reqBody != nil {
+		req.Header.Set("Content-Type", "application/json")
+	}
 	c.setAuth(req)
 	resp, err := c.httpClient.Do(req)
 	if err != nil {

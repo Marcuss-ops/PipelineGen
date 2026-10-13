@@ -39,10 +39,15 @@ type OverlayCanvasSpec struct {
 	// the request's channel profile (empty = the certified default pool). It
 	// lives here because the canvas is the run-level render context this
 	// function already receives; the planner validates the ids fail-closed.
-	PhraseMotions                 []string
-	PhraseMotionFamily            string
-	ImageMotions                  []string
-	EntityImageMotions            []string
+	PhraseMotions      []string
+	PhraseMotionFamily string
+	ImageMotions       []string
+	EntityImageMotions []string
+	// EntityCaptionMotions is the run-level caption pool carried from the
+	// request (empty = the certified automatic pool). It lives here because
+	// the canvas is the run-level render context this function already
+	// receives; assignment validates the ids fail-closed.
+	EntityCaptionMotions          []string
 	AnimationPolicies             []scriptpkg.AnimationPolicy
 	RandomLightLeakOnClipStart    bool
 	RandomLightLeakOnOverlayStart bool
@@ -67,7 +72,9 @@ type OverlayCanvasSpec struct {
 	MapsOnly       bool
 	// MaxImageOverlays overrides the run-level image ceiling; zero keeps the
 	// certified default (capabilityoverlay.MaxImageOverlaysPerRun).
-	MaxImageOverlays        int
+	MaxImageOverlays int
+	// OverlayGroupLimits carries the per-group caps (see overlay_group_limits).
+	OverlayGroupLimits      map[string]int
 	AnimationCounts         map[string]int
 	OverlayCategories       map[scriptpkg.OverlayCategory]scriptpkg.Toggle
 	OverlayCategorySegments []scriptpkg.ScriptSegment
@@ -81,9 +88,11 @@ type OverlayCanvasSpec struct {
 	// primitive at chapter boundaries unless explicitly disabled.
 	DisableRecapOverlays bool
 	// DisableChartOverlays is the kill-switch for automatic bar charts
-	// (chart_plan.go). False by default: scenes with a strict grounded
-	// numeric comparison render one bar chart unless explicitly disabled.
+	// (chart_plan.go). False by default.
 	DisableChartOverlays bool
+	// EnableCharts is the explicit opt-in for chart overlays. Charts render
+	// only when this is true and DisableChartOverlays is false.
+	EnableCharts bool
 }
 
 // GoldenOverlayCanvas is the validated golden canary canvas (1280×720,

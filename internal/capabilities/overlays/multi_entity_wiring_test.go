@@ -275,3 +275,47 @@ func TestWireMultiEntityOverlaysSeparatesMixedContentIntoExistingKinds(t *testin
 		t.Fatalf("mixed group items did not join their editorial sections: %+v", items)
 	}
 }
+
+// Group motion offsets must be seeded by group identity: rewiring the same
+// group is bit-identical (retries), while distinct groups vary (previously a
+// hardcoded offset 0 gave every group in every job the same entrances).
+func TestWireMultiEntityMotionsSeededByGroup(t *testing.T) {
+	mkGroup := func(groupID string) MultiEntityGroup {
+		return MultiEntityGroup{
+			GroupID: groupID, SceneID: "scene-1", StartMS: 0, EndMS: 5000,
+			Items: []MultiEntityCandidate{
+				{ID: "a", Kind: MultiEntityKindImage, StartMS: 0, EndMS: 4000, AssetRef: &OverlayAssetRef{AssetID: "img-a", SHA256: strings.Repeat("a", 64)}, Name: "Ada"},
+				{ID: "b", Kind: MultiEntityKindImage, StartMS: 0, EndMS: 4000, AssetRef: &OverlayAssetRef{AssetID: "img-b", SHA256: strings.Repeat("b", 64)}, Name: "Grace"},
+			},
+		}
+	}
+	wire := func(groupID string) []OverlayImageLayer {
+		t.Helper()
+		items, err := WireMultiEntityOverlays(mkGroup(groupID), 1280, 720)
+		if err != nil {
+			t.Fatalf("wire %s: %v", groupID, err)
+		}
+		if len(items) != 1 || len(items[0].ImageLayers) != 2 {
+			t.Fatalf("wire %s = %+v, want one item with two layers", groupID, items)
+		}
+		return items[0].ImageLayers
+	}
+	first, again := wire("group-1"), wire("group-1")
+	for i := range first {
+		if first[i].MotionID != again[i].MotionID || first[i].CaptionMotionID != again[i].CaptionMotionID {
+			t.Fatalf("rewire not deterministic: %+v vs %+v", first, again)
+		}
+		if first[i].MotionID == "" || first[i].CaptionMotionID == "" {
+			t.Fatalf("empty motion on layer %d: %+v", i, first[i])
+		}
+	}
+	seen := map[string]bool{}
+	for _, groupID := range []string{"group-1", "group-2", "group-3", "group-4", "group-5", "group-6", "group-7", "group-8"} {
+		for _, layer := range wire(groupID) {
+			seen[layer.MotionID] = true
+		}
+	}
+	if len(seen) < 2 {
+		t.Errorf("eight distinct groups share one image motion %v: offset seed has no effect", seen)
+	}
+}

@@ -160,7 +160,9 @@ type overlayItemPublicationMetadata struct {
 	ResultJobID      string
 	ItemID           string
 	ItemKind         string
+	MotionID         string
 	EntityID         string
+	EntityName       string
 	EntityIDs        []string
 	EntityLabels     []string
 	Text             string
@@ -170,8 +172,14 @@ type overlayItemPublicationMetadata struct {
 }
 
 const (
-	overlayItemPaddingUS          int64 = 2_000_000
-	shortPhraseAnimationPaddingUS int64 = 2_000_000
+	overlayItemPaddingUS int64 = 2_000_000
+	// shortPhraseAnimationPaddingUS is the tail room after the spoken window
+	// on phrase clips: just enough for the 0.2s exit (exit_frames) plus a
+	// breath of hold. It used to be two full seconds, which stretched the
+	// glyph stagger sweep across the padding so words sat half-faded (gray)
+	// for ~2s before disappearing; the tail now holds settled text and the
+	// only transition is the 0.2s exit.
+	shortPhraseAnimationPaddingUS int64 = 300_000
 	maxOverlayItemDurationUS      int64 = 5_000_000
 	mapCameraShotDurationUS       int64 = 8_000_000
 	maxCompositeOverlayDurationUS int64 = 8_000_000
@@ -189,9 +197,9 @@ func separateOverlayItemPlan(parent capoverlay.OverlayPlan, source capoverlay.Ov
 	targetUS := durationUS + overlayItemPaddingUS
 	maxDurationUS := maxOverlayItemDurationUS
 	if strings.EqualFold(strings.TrimSpace(source.TemplateID), "IMPORTANT_PHRASE") || source.Kind == "text_phrase" || source.Kind == string(capoverlay.KindImportantPhrase) {
-		// Keep the full spoken window, then give the phrase entrance two fixed
-		// seconds of additional animation time. Motion params are extended too,
-		// so RenderingGen doesn't merely hold the settled phrase for that time.
+		// Keep the full spoken window plus a short tail for the 0.2s exit.
+		// Motion params are extended too, so the entrance tracks cover the
+		// padded clip instead of ending early.
 		targetUS = durationUS + shortPhraseAnimationPaddingUS
 		maxDurationUS = targetUS
 		if source.MotionParams == nil {
@@ -268,9 +276,27 @@ func separateOverlayItemPlan(parent capoverlay.OverlayPlan, source capoverlay.Ov
 	metadata := &overlayItemPublicationMetadata{
 		JobID:       textutil.FirstNonEmpty(parent.DriveJobID, parent.PlanID),
 		ResultJobID: textutil.FirstNonEmpty(parent.ResultJobID, parent.DriveJobID),
-		ItemID:      source.ID, ItemKind: source.Kind, EntityID: source.EntityID,
+		ItemID:      source.ID, ItemKind: source.Kind, MotionID: source.MotionID, EntityID: source.EntityID,
 		Text: source.Text, SourceStartUS: startUS, SourceEndUS: startUS + durationUS,
 		TargetDurationUS: targetUS,
+	}
+	if capoverlay.IsChainItemKind(source.Kind) {
+		if segments, ok := capoverlay.DecodeChainSegments(source.Params); ok {
+			for _, segment := range segments {
+				if segment.Kind != string(capoverlay.KindEntityImage) && segment.Kind != string(capoverlay.KindEntityCard) {
+					continue
+				}
+				metadata.ItemKind = segment.Kind
+				metadata.EntityName = strings.TrimSpace(segment.EntityCaption)
+				metadata.MotionID = strings.TrimSpace(segment.MotionID)
+				break
+			}
+		}
+	}
+	if source.EntityRef != nil {
+		if metadata.EntityName == "" {
+			metadata.EntityName = source.EntityRef.Name
+		}
 	}
 	if source.Map != nil {
 		metadata.EntityIDs, metadata.EntityLabels = mapEntityLineage(source.Map)

@@ -320,6 +320,11 @@ func TestRenderDynamicMapVideoMapPresentationIsDeterministicPerItem(t *testing.T
 		"camera_animation": deterministicMapStyle(seed, "map_camera", "map-1", mapCameraAnimations),
 		"label_animation":  deterministicMapStyle(seed, "map_label", "map-1", mapLabelAnimations),
 	}
+	// Focus/pulse compositions draw their own marker rail and suppress a
+	// separate label entrance to avoid animating the same label twice.
+	if composition, _ := first["map_animation"].(string); composition == "location_focus" || composition == "location_pulse" {
+		want["label_animation"] = "none"
+	}
 	t.Logf("resolved map presentation for seed %q: camera=%s label=%s basemap=%s",
 		seed, want["camera_animation"], want["label_animation"], want["basemap"])
 	for key, expected := range want {
@@ -941,7 +946,7 @@ func TestQueueRenderEnqueuerSetPollInterval(t *testing.T) {
 	}
 }
 
-func TestSeparateOverlayItemPlanAddsTwoSecondsToPhraseDuration(t *testing.T) {
+func TestSeparateOverlayItemPlanAddsShortTailToPhraseDuration(t *testing.T) {
 	parent := capoverlay.OverlayPlan{
 		SchemaVersion: capoverlay.SchemaVersionPlan, PlanID: "dolly:overlay", VideoID: "dolly",
 		ScriptName: "Dolly", Language: "en", Width: 1920, Height: 1080, FPSNum: 24, FPSDen: 1,
@@ -973,11 +978,11 @@ func TestSeparateOverlayItemPlanAddsTwoSecondsToPhraseDuration(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if child.DurationMS != 9250 || child.Items[0].DurationUS != 9_250_000 || meta.TargetDurationUS != 9_250_000 {
-		t.Fatalf("phrase duration should include two animation seconds: child=%+v meta=%+v", child, meta)
+	if child.DurationMS != 7550 || child.Items[0].DurationUS != 7_550_000 || meta.TargetDurationUS != 7_550_000 {
+		t.Fatalf("phrase duration should include the 0.3s exit tail: child=%+v meta=%+v", child, meta)
 	}
-	if child.Items[0].StartMs != 0 || child.Items[0].EndMs != 9250 || child.Items[0].StartUS != 0 {
-		t.Fatalf("phrase item window = [%d,%d), want local 9250ms window", child.Items[0].StartMs, child.Items[0].EndMs)
+	if child.Items[0].StartMs != 0 || child.Items[0].EndMs != 7550 || child.Items[0].StartUS != 0 {
+		t.Fatalf("phrase item window = [%d,%d), want local 7550ms window", child.Items[0].StartMs, child.Items[0].EndMs)
 	}
 
 	shortPhrase := long
@@ -988,8 +993,8 @@ func TestSeparateOverlayItemPlanAddsTwoSecondsToPhraseDuration(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if shortChild.DurationMS != 6500 || shortMeta.TargetDurationUS != 6_500_000 {
-		t.Fatalf("short phrase duration should include two animation seconds: child=%+v meta=%+v", shortChild, shortMeta)
+	if shortChild.DurationMS != 4800 || shortMeta.TargetDurationUS != 4_800_000 {
+		t.Fatalf("short phrase duration should include the 0.3s exit tail: child=%+v meta=%+v", shortChild, shortMeta)
 	}
 
 	composite := parent.Items[0]
@@ -1837,14 +1842,14 @@ func TestSeparateOverlayItemPlanRebasesChainSegments(t *testing.T) {
 	if err != nil {
 		t.Fatalf("chain child split must validate: %v", err)
 	}
-	if child.Items[0].StartUS != 0 || child.Items[0].DurationUS != 3_500_000 || child.DurationMS != 3500 {
+	if child.Items[0].StartUS != 0 || child.Items[0].DurationUS != 5_400_000 || child.DurationMS != 5400 {
 		t.Fatalf("chain child must keep the full rebased span: %+v", child.Items[0])
 	}
 	segs, ok := capoverlay.DecodeChainSegments(child.Items[0].Params)
-	if !ok || len(segs) != 2 || segs[0].StartUS != 0 || segs[1].StartUS != 2_000_000 {
+	if !ok || len(segs) != 2 || segs[0].StartUS != 0 || segs[1].StartUS != 2_900_000 {
 		t.Fatalf("chain segments must be child-local: %+v", child.Items[0].Params["chain_segments"])
 	}
-	if meta.SourceStartUS != 60_000_000 || meta.TargetDurationUS != 3_500_000 {
+	if meta.SourceStartUS != 60_000_000 || meta.TargetDurationUS != 5_400_000 {
 		t.Fatalf("chain source metadata = %+v", meta)
 	}
 	// The parent plan must be untouched: its segments stay absolute.

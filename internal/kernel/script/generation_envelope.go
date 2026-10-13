@@ -152,6 +152,10 @@ type GenerationItemV2 struct {
 	PhraseMotions      []string `json:"phrase_motions,omitempty"`
 	ImageMotions       []string `json:"image_motions,omitempty"`
 	EntityImageMotions []string `json:"entity_image_motions,omitempty"`
+	// EntityCaptionMotions is the optional run-level caption pool for
+	// automatic entity-caption assignment. Empty keeps the certified
+	// camera-safe automatic pool. Entries must name automatic-pool motions.
+	EntityCaptionMotions []string `json:"entity_caption_motions,omitempty"`
 	// AnimationPolicies explicitly selects one catalog motion per semantic
 	// animation group. group_id can match a producer group or scene_id; an
 	// optional subgroup_id narrows the selection to one item/layer. Omit
@@ -187,6 +191,12 @@ type GenerationItemV2 struct {
 	// MaxImageOverlays sets the run-level ceiling for image overlays. A
 	// positive value is honored; zero keeps the certified default.
 	MaxImageOverlays int `json:"max_image_overlays,omitempty"`
+	// OverlayGroupLimits sets a per-group maximum of rendered overlays. Keys:
+	// maps, short_phrases, long_phrases, entities_with_text, images. A key
+	// present with 0 disables that group; a positive value caps it (and may
+	// raise the maps/images/phrase budgets above the certified defaults); an
+	// absent key keeps the full certified behaviour for that group.
+	OverlayGroupLimits map[string]int `json:"overlay_group_limits,omitempty"`
 	// AnimationCounts sets the maximum distinct styles rotated within each
 	// overlay subfamily. Keys match runtime use-case IDs (images, entities,
 	// entity_caption, important_phrase, short_important_phrase, one_map,
@@ -207,6 +217,10 @@ type GenerationItemV2 struct {
 	DisableNumberOverlays bool   `json:"disable_number_overlays,omitempty"`
 	DisableRecapOverlays  bool   `json:"disable_recap_overlays,omitempty"`
 	DisableChartOverlays  bool   `json:"disable_chart_overlays,omitempty"`
+	// EnableCharts is the explicit opt-in for chart overlays. Charts render
+	// only when this is true and DisableChartOverlays is false; the default
+	// (false) means no chart is ever planned.
+	EnableCharts bool `json:"enable_charts,omitempty"`
 
 	// Audio configures the audio execution mode (audio.mode) plus the
 	// editorial audio intent block (mix_policy, background_music,
@@ -315,7 +329,7 @@ type OverlayStyleSpec struct {
 	FontFamily string `json:"font_family,omitempty"`
 	// GlowSize and StrokeSize are pixel widths. Explicit zero disables the
 	// corresponding effect; nil preserves the preset's value.
-	GlowSize   *float64 `json:"glow_size,omitempty"`
+	GlowSize *float64 `json:"glow_size,omitempty"`
 	// GlowColor explicitly replaces a motion preset's glow color while keeping
 	// its authored radius and intensity.
 	GlowColor  string   `json:"glow_color,omitempty"`

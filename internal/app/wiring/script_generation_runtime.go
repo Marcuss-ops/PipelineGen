@@ -199,6 +199,16 @@ func BuildScriptGenerationRuntime(cfg *config.Config, root *ComposeRoot, runRepo
 	// normally in tests. Nil-safe.
 	runner.SetLogger(log)
 	wirePhraseImpactAnalyzer(runner, cfg, log)
+	// The selected VisualNER backend supplies chart-point candidates only when
+	// it implements the optional chart contract (the Rust adapter does).
+	if chartAnalyzer, ok := visualNER.(scriptgen.SceneChartAnalyzer); ok {
+		runner.SetSceneChartAnalyzer(chartAnalyzer)
+	}
+	// The same backend supplies VisualNER sentence bullets when it
+	// implements the optional bullet contract (the Rust adapter does).
+	if bulletAnalyzer, ok := visualNER.(scriptgen.SceneBulletAnalyzer); ok {
+		runner.SetSceneBulletAnalyzer(bulletAnalyzer)
+	}
 	wireSceneIntelligenceAnalyzer(runner, cfg, log)
 	// Location overlays use the real Nominatim adapter and the only accepted
 	// basemap source: operator-certified local plates. The capability layer

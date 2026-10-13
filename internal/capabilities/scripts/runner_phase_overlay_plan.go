@@ -56,6 +56,7 @@ func (r *Runner) compileAudioOverlayPlan(ctx context.Context, runID string, req 
 	}
 	canvas.ImageMotions = req.ImageMotions
 	canvas.EntityImageMotions = req.EntityImageMotions
+	canvas.EntityCaptionMotions = req.EntityCaptionMotions
 	canvas.AnimationPolicies = req.AnimationPolicies
 	canvas.RandomLightLeakOnClipStart = req.RandomLightLeakOnClipStart
 	canvas.RandomLightLeakOnOverlayStart = req.RandomLightLeakOnOverlayStart
@@ -69,6 +70,7 @@ func (r *Runner) compileAudioOverlayPlan(ctx context.Context, runID string, req 
 	canvas.MapsOnly = req.MapsOnly
 	canvas.MaxImageOverlays = req.MaxImageOverlays
 	canvas.AnimationCounts = cloneAnimationCounts(req.AnimationCounts)
+	canvas.OverlayGroupLimits = cloneOverlayGroupLimits(req.OverlayGroupLimits)
 	canvas.OverlayCategories = scriptpkg.CloneOverlayCategories(req.OverlayCategories)
 	canvas.OverlayCategorySegments = scriptpkg.CloneScriptSegments(req.ScriptParams.Segments)
 	// The current chain wire carries visual segments only; it cannot preserve
@@ -82,6 +84,7 @@ func (r *Runner) compileAudioOverlayPlan(ctx context.Context, runID string, req 
 	canvas.DisableNumberOverlays = req.DisableNumberOverlays
 	canvas.DisableRecapOverlays = req.DisableRecapOverlays
 	canvas.DisableChartOverlays = req.DisableChartOverlays
+	canvas.EnableCharts = req.EnableCharts
 	if canvas.Style == nil && background != nil {
 		canvas.Style = background.Style
 	}

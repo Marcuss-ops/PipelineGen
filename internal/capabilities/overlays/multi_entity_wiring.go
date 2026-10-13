@@ -223,13 +223,17 @@ func WireMultiEntityOverlays(group MultiEntityGroup, canvasWidth, canvasHeight i
 				imageEndOffset = endOffset
 			}
 			position := multiImagePosition(countKind(group.Items, MultiEntityKindImage), imageIndex, canvasWidth, canvasHeight)
+			// Seed the motion offset from the group identity (same scheme as
+			// the scripts-layer assignEntityImageMotions path): a hardcoded 0
+				// gave every group in every job the identical entrances.
+			motionOffset := ImageMotionOffsetForSeed(group.GroupID + "\x00" + group.SceneID)
 			layers = append(layers, OverlayImageLayer{
 				ID: layerID, GroupID: group.GroupID, SubgroupID: layerID, AssetID: ref.AssetID,
 				StartMS: candidate.StartMS - group.StartMS, EndMS: endMS - group.StartMS,
 				PresetID:          selectImagePreset(group.GroupID, group.SceneID, layerID),
-				MotionID:          EntityImageMotionAtOffset(0, imageIndex),
+				MotionID:          EntityImageMotionAtOffset(motionOffset, imageIndex),
 				Caption:           strings.TrimSpace(candidate.Name),
-				CaptionMotionID:   RuntimeEntityCaptionMotionAtOffset(0, imageIndex),
+				CaptionMotionID:   RuntimeEntityCaptionMotionAtOffset(motionOffset, imageIndex),
 				CaptionFontFamily: "",
 				CaptionColor:      "",
 				Params:            map[string]any{"position_x": position[0], "position_y": position[1], "width": position[2], "height": position[3], "fit": "contain"},

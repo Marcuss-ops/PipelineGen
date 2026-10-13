@@ -155,6 +155,27 @@ func TestApplyEditorialOverlayBudgetHonoursCallerImageLimit(t *testing.T) {
 	}
 }
 
+func TestApplyEditorialOverlayBudgetAdmitsFiveGroundedMaps(t *testing.T) {
+	items := make([]OverlayItem, 0, MaxMapOverlaysPerRun+2)
+	for i := 0; i < MaxMapOverlaysPerRun+2; i++ {
+		items = append(items, OverlayItem{
+			ID: fmt.Sprintf("map-%d", i), SceneID: fmt.Sprintf("scene-%d", i), Kind: "map",
+			Map:    &MapOverlay{Provider: "local", SourceID: fmt.Sprintf("plate-%d", i)},
+			Params: map[string]any{"priority": float64(i)},
+		})
+	}
+	got, _ := ApplyEditorialOverlayBudgetWithImageLimit(items, 0, 0, MaxMapOverlaysPerRun)
+	count := 0
+	for _, item := range got {
+		if item.Kind == "map" {
+			count++
+		}
+	}
+	if count != 5 {
+		t.Fatalf("map overlays = %d, want the five-map acceptance limit", count)
+	}
+}
+
 func TestLimitOverlayItemsPerSceneCountsChartAsOneUnit(t *testing.T) {
 	chartItems := BuildChartItems("per-scene-chart", []ChartPlacement{{
 		SceneID: "scene-1", WindowStartUS: 0, WindowEndUS: 4_000_000,
@@ -170,9 +191,9 @@ func TestLimitOverlayItemsPerSceneCountsChartAsOneUnit(t *testing.T) {
 	}
 }
 
-func TestApplyEditorialOverlayBudgetKeepsOneComposedMap(t *testing.T) {
-	items := make([]OverlayItem, 0, 6)
-	for i := 0; i < 6; i++ {
+func TestApplyEditorialOverlayBudgetKeepsFiveHighestPriorityMaps(t *testing.T) {
+	items := make([]OverlayItem, 0, MaxMapOverlaysPerRun+2)
+	for i := 0; i < MaxMapOverlaysPerRun+2; i++ {
 		items = append(items, OverlayItem{
 			ID: fmt.Sprintf("map-%d", i), Kind: "map", SceneID: fmt.Sprintf("scene-%d", i),
 			Map:    &MapOverlay{SourceID: fmt.Sprintf("plate-%d", i)},
@@ -180,11 +201,13 @@ func TestApplyEditorialOverlayBudgetKeepsOneComposedMap(t *testing.T) {
 		})
 	}
 	got, _ := ApplyEditorialOverlayBudgetWithImageLimit(items, 0, 0, 0)
-	if len(got) != 1 {
-		t.Fatalf("map overlays = %d, want one", len(got))
+	if len(got) != MaxMapOverlaysPerRun {
+		t.Fatalf("map overlays = %d, want %d", len(got), MaxMapOverlaysPerRun)
 	}
-	if got[0].ID == "map-0" {
-		t.Fatal("lowest-priority map survived the one-map ceiling")
+	for _, item := range got {
+		if item.ID == "map-0" || item.ID == "map-1" {
+			t.Fatalf("below-cap map %q survived the five-map ceiling", item.ID)
+		}
 	}
 }
 

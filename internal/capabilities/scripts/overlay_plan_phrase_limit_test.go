@@ -15,11 +15,11 @@ import (
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
-// phraseCeilingFixture builds one scene with eight two-word grounded phrases,
-// each anchored to certified word timing (100ms per word, 16 words).
+// phraseCeilingFixture builds one scene with eight three-word grounded phrases,
+// each anchored to certified word timing (100ms per word, 24 words).
 func phraseCeilingFixture(t *testing.T) *GenerateResult {
 	t.Helper()
-	words := []string{"alpha", "one", "bravo", "two", "charlie", "three", "delta", "four", "echo", "five", "foxtrot", "six", "golf", "seven", "hotel", "eight"}
+	words := []string{"alpha", "one", "bravo", "two", "charlie", "three", "delta", "four", "echo", "five", "foxtrot", "six", "golf", "seven", "hotel", "eight", "india", "juliet", "kilo", "lima", "mike", "november", "oscar", "papa"}
 	wordTimings := make([]capabilityaudio.SpeechWordTiming, len(words))
 	for i, word := range words {
 		wordTimings[i] = capabilityaudio.SpeechWordTiming{
@@ -40,7 +40,7 @@ func phraseCeilingFixture(t *testing.T) *GenerateResult {
 	phrases := make([]scriptpkg.AnnotationSpan, 0, 8)
 	for i := 0; i < 8; i++ {
 		phrases = append(phrases, scriptpkg.AnnotationSpan{
-			Text:  fmt.Sprintf("%s %s", words[i*2], words[i*2+1]),
+			Text:  fmt.Sprintf("%s %s %s", words[i*3], words[i*3+1], words[i*3+2]),
 			Score: 0.9 - float64(i)*0.1,
 		})
 	}
@@ -56,10 +56,10 @@ func phraseCeilingFixture(t *testing.T) *GenerateResult {
 			ID:          "scene-0",
 			Index:       0,
 			Text:        map[Language]string{"en": text},
-			Voiceover:   map[Language]AudioReference{"en": {ID: "vo-scene-0-en", Duration: 1.6, Timing: &timing}},
+			Voiceover:   map[Language]AudioReference{"en": {ID: "vo-scene-0-en", Duration: 2.4, Timing: &timing}},
 			Annotations: &scriptpkg.SceneAnnotations{Version: 1, Language: "en", Status: "completed", ImportantPhrases: phrases},
 		}},
-		ResolvedScenes: []ResolvedScene{{ID: "scene-0", Index: 0, TimelineStartUS: 0, DurationUS: 1_600_000}},
+		ResolvedScenes: []ResolvedScene{{ID: "scene-0", Index: 0, TimelineStartUS: 0, DurationUS: 2_400_000}},
 	}
 }
 

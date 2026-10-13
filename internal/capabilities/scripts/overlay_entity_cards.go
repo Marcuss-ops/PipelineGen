@@ -342,7 +342,13 @@ func overlaySceneInput(scene Scene, language, sourceLanguage Language, timing ca
 		return capabilityoverlay.TimedAnnotation{Text: p.Text, StartMs: p.GlobalStartUS / 1000, EndMs: (p.GlobalEndUS + 999) / 1000, StartUS: p.GlobalStartUS, DurationUS: p.GlobalEndUS - p.GlobalStartUS, Score: score}
 	}
 	for _, span := range ann.ImportantPhrases {
-		if p, err := locate(strings.TrimSpace(span.Text)); err == nil {
+		phrase := strings.TrimSpace(span.Text)
+		// Shorter spans read as fragments in the rendered callouts. Keep the
+		// runtime phrase surface to complete snippets of at least three words.
+		if len(strings.Fields(phrase)) < 3 {
+			continue
+		}
+		if p, err := locate(phrase); err == nil {
 			out.Phrases = append(out.Phrases, timed(p, span.Score))
 		}
 	}
@@ -404,6 +410,16 @@ func overlaySceneInput(scene Scene, language, sourceLanguage Language, timing ca
 		return nil, nil
 	}
 	return &out, nil
+}
+
+func phrasesAtLeastThreeWords(phrases []capabilityoverlay.TimedAnnotation) []capabilityoverlay.TimedAnnotation {
+	filtered := make([]capabilityoverlay.TimedAnnotation, 0, len(phrases))
+	for _, phrase := range phrases {
+		if len(strings.Fields(strings.TrimSpace(phrase.Text))) >= 3 {
+			filtered = append(filtered, phrase)
+		}
+	}
+	return filtered
 }
 
 func entityImageURL(binding *scriptpkg.EntityImageBinding) string {

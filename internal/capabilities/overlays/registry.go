@@ -64,6 +64,14 @@ const (
 	// content-addressed basemap asset; only centered motions are allowed so
 	// the geography never drifts from the canvas.
 	KindMap OverlayKind = "map"
+	// KindDateBadge renders a dated-event badge (a DATE span shown as a timeline tag).
+	KindDateBadge OverlayKind = "date_badge"
+	// KindRankingBadge renders a ranking tag ("1st", "top 3") from a RANKING intent.
+	KindRankingBadge OverlayKind = "ranking_badge"
+	// KindEventBadge renders a named-event badge (EVENT span).
+	KindEventBadge OverlayKind = "event_badge"
+	// KindChapterCard renders a full-frame chapter title that separates sections.
+	KindChapterCard OverlayKind = "chapter_card"
 )
 
 // DurationPolicy declares how an overlay's on-screen duration is derived.
@@ -238,6 +246,38 @@ var canonicalOverlayEntries = []OverlayEntry{
 		RequiredInputs:    []string{"asset_refs"},
 		DurationPolicy:    DurationBounded,
 		PositioningPolicy: PositionPopup,
+		Version:           1,
+	},
+	{
+		Kind:              KindDateBadge,
+		Template:          "DATE_BADGE",
+		RequiredInputs:    []string{"text"},
+		DurationPolicy:    DurationBounded,
+		PositioningPolicy: PositionCorner,
+		Version:           1,
+	},
+	{
+		Kind:              KindRankingBadge,
+		Template:          "RANKING_BADGE",
+		RequiredInputs:    []string{"text"},
+		DurationPolicy:    DurationBounded,
+		PositioningPolicy: PositionCorner,
+		Version:           1,
+	},
+	{
+		Kind:              KindEventBadge,
+		Template:          "EVENT_BADGE",
+		RequiredInputs:    []string{"text"},
+		DurationPolicy:    DurationBounded,
+		PositioningPolicy: PositionCorner,
+		Version:           1,
+	},
+	{
+		Kind:              KindChapterCard,
+		Template:          "CHAPTER_CARD",
+		RequiredInputs:    []string{"text"},
+		DurationPolicy:    DurationBounded,
+		PositioningPolicy: PositionCentered,
 		Version:           1,
 	},
 }
