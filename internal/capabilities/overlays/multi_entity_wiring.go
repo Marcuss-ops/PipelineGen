@@ -225,7 +225,7 @@ func WireMultiEntityOverlays(group MultiEntityGroup, canvasWidth, canvasHeight i
 			position := multiImagePosition(countKind(group.Items, MultiEntityKindImage), imageIndex, canvasWidth, canvasHeight)
 			// Seed the motion offset from the group identity (same scheme as
 			// the scripts-layer assignEntityImageMotions path): a hardcoded 0
-				// gave every group in every job the identical entrances.
+			// gave every group in every job the identical entrances.
 			motionOffset := ImageMotionOffsetForSeed(group.GroupID + "\x00" + group.SceneID)
 			layers = append(layers, OverlayImageLayer{
 				ID: layerID, GroupID: group.GroupID, SubgroupID: layerID, AssetID: ref.AssetID,

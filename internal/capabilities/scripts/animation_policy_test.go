@@ -212,6 +212,26 @@ func TestAnimationPolicyAcceptsCertifiedLightLeakForImage(t *testing.T) {
 	}
 }
 
+// TestRetiredRecipeCannotBePinnedByAnAnimationPolicy pins the production
+// guarantee behind the 2026-10-13 removals: a payload that names a retired
+// recipe must fail closed instead of rendering it.
+func TestRetiredRecipeCannotBePinnedByAnAnimationPolicy(t *testing.T) {
+	const retired = "short_phrase_product_warp_text"
+	if !capabilityoverlay.IsRemovedGeneratedPhraseMotion(retired) {
+		t.Fatalf("%s is not retired any more; pick a retired id for this test", retired)
+	}
+	items := []capabilityoverlay.OverlayItem{{ID: "phrase", SceneID: "scene", Kind: "text_phrase"}}
+	err := applyAnimationPolicies(items, []scriptpkg.AnimationPolicy{{
+		Target: "important_phrase", GroupID: "scene", MotionID: retired,
+	}}, "plan", "video", nil)
+	if err == nil {
+		t.Fatalf("a retired recipe was accepted as an explicit animation policy: %q", items[0].MotionID)
+	}
+	if !strings.Contains(err.Error(), "not certified") {
+		t.Fatalf("error = %v, want the not-certified refusal", err)
+	}
+}
+
 func TestAnimationPoliciesRejectUncertifiedAndDuplicateSelectors(t *testing.T) {
 	cases := []struct {
 		name     string

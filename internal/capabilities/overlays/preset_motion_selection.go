@@ -35,14 +35,16 @@ func selectPhraseMotion(jobID, sceneID string, ordinal int, pool []string) strin
 
 func selectPhraseMotionLimited(jobID, sceneID string, ordinal int, pool []string, limit int) string {
 	if len(pool) > 0 {
-		return selectPhraseMotion(jobID, sceneID, ordinal, limitedMotionPool(pool, limit))
+		return selectPhraseMotion(jobID, sceneID, ordinal, limitedShuffledMotionPool(pool, limit, jobID+"\x00important_phrase_pool"))
 	}
 	candidates := defaultPhraseMotionSequence(jobID, sceneID)
 	// The UI's five-style preview count is not a runtime cap. Without an
 	// explicit positive count, generated phrases should use the complete
-	// certified sequence and not repeat until it has been walked.
+	// certified sequence and not repeat until it has been walked. A positive
+	// count caps the window through the run seed, so two runs used the same
+	// catalog prefix before this: e.g. the first three motions forever.
 	if limit > 0 {
-		candidates = limitedMotionPool(candidates, limit)
+		candidates = limitedShuffledMotionPool(candidates, limit, jobID+"\x00important_phrase_limited")
 	}
 	return selectMotionFromPool(jobID, sceneID, "important_phrase_limited", ordinal, candidates)
 }
@@ -88,13 +90,15 @@ func selectLongPhraseMotionLimited(jobID, sceneID string, ordinal int, pool []st
 		candidates := longPhraseMotionCandidates
 		// Unlike the general phrase selector, the long-copy lane should not
 		// silently shrink to the five-style UI default. That small cap made
-		// unrelated videos repeatedly reuse the same handful of entrances.
+		// unrelated videos repeatedly reuse the same handful of entrances, and
+		// a catalog-order cap made the same handful recur across unrelated
+		// videos, so the window is drawn through the run seed.
 		if limit > 0 {
-			candidates = limitedMotionPool(candidates, limit)
+			candidates = limitedShuffledMotionPool(candidates, limit, jobID+"\x00long_phrase_default")
 		}
 		return selectMotionFromPool(jobID, sceneID, "long_phrase_default", ordinal, candidates)
 	}
-	return selectLongPhraseMotion(jobID, sceneID, ordinal, limitedMotionPool(pool, limit))
+	return selectLongPhraseMotion(jobID, sceneID, ordinal, limitedShuffledMotionPool(pool, limit, jobID+"\x00long_phrase_pool"))
 }
 
 func isShortPhraseMotionPool(pool []string) bool {
@@ -212,14 +216,14 @@ func animationCount(counts map[string]int, keys ...string) int {
 // planner branches, so one alias was silently ignored on one path). Adding a
 // lane means adding one entry here; call sites use laneAnimationCount.
 const (
-	laneImages           = "images"
-	laneImagesWithText   = "images_with_text"
-	laneEntities         = "entities"
-	laneImportantPhrase  = "important_phrase"
-	laneShortPhrase      = "short_important_phrase"
-	laneMaps             = "maps"
-	laneTimelineDate     = "timeline_date"
-	laneMetricStat       = "metric_stat"
+	laneImages          = "images"
+	laneImagesWithText  = "images_with_text"
+	laneEntities        = "entities"
+	laneImportantPhrase = "important_phrase"
+	laneShortPhrase     = "short_important_phrase"
+	laneMaps            = "maps"
+	laneTimelineDate    = "timeline_date"
+	laneMetricStat      = "metric_stat"
 )
 
 var animationLaneKeys = map[string][]string{

@@ -380,25 +380,25 @@ func TestPhraseMotionEntranceUsesOneThirdPhraseDuration(t *testing.T) {
 	}
 }
 
-// TestPhraseExitWindowIsPointTwoSeconds pins the shared phrase exit: every run
-// cuts the phrase out in 0.2s regardless of the catalog's authored 12-frame
-// exit, which kept the mirrored gray authoring colour on screen too long.
-func TestPhraseExitWindowIsPointTwoSeconds(t *testing.T) {
+// TestPhraseExitIsDisabled pins the shared phrase exit: every run sends an
+// explicit zero so RenderingGen skips the mirrored exit tracks entirely.
+// Any positive window drove the settled phrase back through the authoring
+// gray on the way out; the phrase must hold settled and cut hard instead.
+func TestPhraseExitIsDisabled(t *testing.T) {
 	for _, tc := range []struct {
-		name       string
-		fpsNum     int
-		fpsDen     int
-		wantFrames int
+		name   string
+		fpsNum int
+		fpsDen int
 	}{
-		{name: "24 fps", fpsNum: 24, fpsDen: 1, wantFrames: 5},
-		{name: "25 fps", fpsNum: 25, fpsDen: 1, wantFrames: 5},
-		{name: "30 fps", fpsNum: 30, fpsDen: 1, wantFrames: 6},
-		{name: "29.97 fps", fpsNum: 30000, fpsDen: 1001, wantFrames: 6},
+		{name: "24 fps", fpsNum: 24, fpsDen: 1},
+		{name: "25 fps", fpsNum: 25, fpsDen: 1},
+		{name: "30 fps", fpsNum: 30, fpsDen: 1},
+		{name: "29.97 fps", fpsNum: 30000, fpsDen: 1001},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			params := phraseMotionParams(TimedAnnotation{StartMs: 0, EndMs: 3000, DurationUS: 3_000_000}, tc.fpsNum, tc.fpsDen)
-			if got := params["exit_frames"]; got != tc.wantFrames {
-				t.Fatalf("exit_frames = %v, want %d frames (0.2s at %d/%d fps)", got, tc.wantFrames, tc.fpsNum, tc.fpsDen)
+			if got := params["exit_frames"]; got != 0 {
+				t.Fatalf("exit_frames = %v, want explicit 0 (disabled exit) at %d/%d fps", got, tc.fpsNum, tc.fpsDen)
 			}
 		})
 	}

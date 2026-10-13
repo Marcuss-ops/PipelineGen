@@ -1,7 +1,6 @@
 package overlays
 
 import (
-	"strconv"
 	"strings"
 )
 
@@ -220,10 +219,10 @@ func phraseMotionCandidatesForItem(item OverlayItem, input PlanInput, seed strin
 		if len(candidates) == 0 {
 			candidates = append([]string(nil), shortPhraseMotionCandidates[words]...)
 		}
-		// A lane count caps the rotation window, but never in catalog order: the
-		// seeded shuffle keeps the first N recipes of a run from being the same
-		// first N of every other run.
-		candidates = limitedShuffledMotionPool(candidates, shortLimit, seed+"\x00short_phrase\x00"+strconv.Itoa(words))
+		// The assignment lane (selectShortPhraseMotionLimited) rotates the whole
+		// word group: a lane count never narrows the short-phrase pool, and
+		// capping it here would let the guard rotate into recipes the lane never
+		// drew, breaking the per-family style count.
 		return excludeRemovedGeneratedPhraseMotions(candidates)
 	case input.HeavyPhrasePriority > 0 && itemPriority(item) >= input.HeavyPhrasePriority:
 		return excludeRemovedGeneratedPhraseMotions(visiblePhraseEntrancePool(input.PhraseMotions))
@@ -235,13 +234,20 @@ func phraseMotionCandidatesForItem(item OverlayItem, input PlanInput, seed strin
 				candidates = compatible
 			}
 		}
+		// The same lane seed as the assignment keeps one capped window per run:
+		// a different window here would let the guard rotate duplicates into
+		// recipes the lane never drew, exceeding the requested style count.
+		lane := "long_phrase_default"
+		if len(input.PhraseMotions) > 0 {
+			lane = "long_phrase_pool"
+		}
 		if phraseLimit > 0 {
-			candidates = limitedMotionPool(candidates, phraseLimit)
+			candidates = limitedShuffledMotionPool(candidates, phraseLimit, seed+"\x00"+lane)
 		}
 		return excludeRemovedGeneratedPhraseMotions(candidates)
 	default:
 		if len(input.PhraseMotions) > 0 {
-			candidates = limitedShuffledMotionPool(input.PhraseMotions, phraseLimit, seed+"\x00phrase\x00"+strconv.Itoa(words))
+			candidates = limitedShuffledMotionPool(input.PhraseMotions, phraseLimit, seed+"\x00important_phrase_pool")
 			return excludeRemovedGeneratedPhraseMotions(candidates)
 		}
 		candidates = defaultPhraseMotionSequence(seed, "run")

@@ -1,5 +1,10 @@
 package scriptgeneration
 
+// LEXICON_MIRROR_DEBT: owner=scripts, deadline=2026-12-31 — the spoken
+// number-word and date-context sets below predate numeric/month vocabulary
+// in the LexiconRegistry; migrate them to config/lexicons/** once the
+// registry gains that data instead of extending these literals.
+
 import (
 	"strconv"
 	"strings"
