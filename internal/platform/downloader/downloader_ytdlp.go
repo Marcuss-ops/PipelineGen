@@ -13,7 +13,6 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
-	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/process"
 	"github.com/Marcuss-ops/PipelineGen/pkg/security"
@@ -40,6 +39,17 @@ func (d *YTDLPDownloader) Download(ctx context.Context, req *DownloadRequest) er
 
 	if parsed, err := url.Parse(req.URL); err == nil && parsed.Scheme == "file" {
 		return d.downloadLocalFile(req, parsed)
+	}
+
+	// Section-via-mirror (October 2026 GPU cutover): a single-section
+	// request is cut locally from the mirrored full source when available.
+	// Fail-soft — any miss or cut failure falls through to the network path.
+	if len(req.DownloadSections) == 1 {
+		template := outputTemplateFor(req.OutputPath)
+		dest := strings.Replace(template, "%(ext)s", "mp4", 1)
+		if ok, _ := d.tryDownloadSectionsViaMirror(ctx, req, []string{dest}); ok {
+			return nil
+		}
 	}
 
 	// Local per-video-ID mirror (F1, TODO-pipeline-100x-velocita): a full-source
@@ -83,14 +93,21 @@ func (d *YTDLPDownloader) Download(ctx context.Context, req *DownloadRequest) er
 		// --no-warnings, and extractor-args. Format selection is via
 		// FormatArg so the downloader doesn't inline the -f string.
 		args = append(args, d.cmdBuilder.BaseArgsForClient(req.URL, req.UseCookies, playerClient)...)
-		if len(req.DownloadSections) > 0 {
+		sectioned := len(req.DownloadSections) > 0
+		if sectioned {
 			args = append(args, d.cmdBuilder.SectionFormatArg(true)...)
 		} else {
 			args = append(args, d.cmdBuilder.FormatArg(true)...)
 		}
 		// Native fragment concurrency: inert when aria2c takes over below,
 		// decisive when the native downloader handles a DASH source.
-		args = append(args, d.cmdBuilder.ConcurrentFragmentsArg()...)
+		// Sectioned fetches use the wider section budget (8) with no
+		// sleep pacing — a bounded range, not a scrape (Oct 2026 cutover).
+		if sectioned {
+			args = append(args, d.cmdBuilder.SectionConcurrentFragmentsArg()...)
+		} else {
+			args = append(args, d.cmdBuilder.ConcurrentFragmentsArg()...)
+		}
 
 		// aria2c is intentionally limited to full-source downloads. Section
 		// downloads must remain under yt-dlp/ffmpeg control so the time window
@@ -141,25 +158,31 @@ func (d *YTDLPDownloader) Download(ctx context.Context, req *DownloadRequest) er
 			}
 			if req.ForceKeyframes {
 				args = append(args, "--force-keyframes-at-cuts")
-			} else if req.StreamCopy {
+			}
+			// GPU input decode (ffmpeg_i: phase — inert on the native
+			// downloader, valid placement when ffmpeg owns the fetch).
+			args = append(args, d.cmdBuilder.SectionHWAccelDownloaderArgs()...)
+			if req.StreamCopy && !req.ForceKeyframes {
 				args = append(args, "--downloader-args", "ffmpeg:-c copy")
 			}
 		}
 
 		// August 2026 rate-limit pacing: random sleep before each YouTube
 		// download keeps a hot IP from being hammered back-to-back.
-		args = append(args, d.youtubeSleepIntervalArgs(req.URL)...)
+		// Sectioned fetches skip it (bounded range, not a scrape).
+		if len(req.DownloadSections) > 0 {
+			args = append(args, d.youtubeSectionSleepIntervalArgs()...)
+		} else {
+			args = append(args, d.youtubeSleepIntervalArgs(req.URL)...)
+		}
 
 		args = append(args, req.URL)
 		return args
 	}
 
-	timeout := req.Timeout
-	if timeout <= 0 {
-		timeout = 10 * time.Minute
-	}
+	timeout := d.effectiveDownloadTimeout(req.Timeout)
 
-	_, err := d.runWithTransportRetry(ctx, req.URL, func() (*process.Result, error) {
+	_, err := d.runWithTransportRetrySectioned(ctx, req.URL, len(req.DownloadSections) > 0, func() (*process.Result, error) {
 		return d.runWithClientFallback(ctx, req.URL, process.Options{
 			Timeout:        timeout,
 			CombinedOutput: true,
@@ -220,6 +243,12 @@ func (d *YTDLPDownloader) DownloadRange(ctx context.Context, req *DownloadReques
 		outputTemplate = outputTemplate + ".%(ext)s"
 	}
 
+	// Section-via-mirror first (fail-soft to the network path below).
+	mirrorDest := strings.Replace(outputTemplate, "%(ext)s", "mp4", 1)
+	if ok, _ := d.tryDownloadSectionsViaMirror(ctx, req, []string{mirrorDest}); ok {
+		return mirrorDest, nil
+	}
+
 	buildArgs := func(playerClient string) []string {
 		args := []string{}
 		if req.NoPlaylist || shouldForceNoPlaylist(req.URL) {
@@ -229,7 +258,8 @@ func (d *YTDLPDownloader) DownloadRange(ctx context.Context, req *DownloadReques
 		args = append(args, d.cmdBuilder.SectionFormatArg(true)...)
 		// Native fragment concurrency for sectioned DASH sources; the section
 		// cut stays under yt-dlp/ffmpeg control (no external downloader here).
-		args = append(args, d.cmdBuilder.ConcurrentFragmentsArg()...)
+		// Wider section budget (8) with no sleep pacing (Oct 2026 cutover).
+		args = append(args, d.cmdBuilder.SectionConcurrentFragmentsArg()...)
 		// Do not add aria2c here. yt-dlp must retain control of the
 		// sectioned download and ffmpeg cut; an external downloader can
 		// bypass or interfere with the requested time range.
@@ -248,16 +278,17 @@ func (d *YTDLPDownloader) DownloadRange(ctx context.Context, req *DownloadReques
 		if req.ForceKeyframes {
 			args = append(args, "--force-keyframes-at-cuts")
 		}
+		args = append(args, d.cmdBuilder.SectionHWAccelDownloaderArgs()...)
 		args = append(args, "-o", outputTemplate)
 
-		args = append(args, d.youtubeSleepIntervalArgs(req.URL)...)
+		args = append(args, d.youtubeSectionSleepIntervalArgs()...)
 		args = append(args, req.URL)
 		return args
 	}
 
-	_, err := d.runWithTransportRetry(ctx, req.URL, func() (*process.Result, error) {
+	_, err := d.runWithTransportRetrySectioned(ctx, req.URL, true, func() (*process.Result, error) {
 		return d.runWithClientFallback(ctx, req.URL, process.Options{
-			Timeout:        10 * time.Minute,
+			Timeout:        d.effectiveDownloadTimeout(req.Timeout),
 			CombinedOutput: true,
 		}, buildArgs)
 	})
@@ -310,7 +341,21 @@ func (d *YTDLPDownloader) DownloadSections(ctx context.Context, req *DownloadReq
 	// own file.  E.g. req.OutputPath = "/tmp/raw_clip_name.mp4" produces
 	// "/tmp/raw_clip_name.%(ext)s" — unique per segment name, not a shared
 	// "001_segment.%(ext)s" that would collide in concurrent runs.
-	basePath := strings.TrimSuffix(req.OutputPath, filepath.Ext(req.OutputPath))
+	basePath := strings.TrimSuffix(req.OutputPath, filepath.Ext(req.OutputPath)) // Section-via-mirror first: one full-source fetch, N local GPU cuts.
+	// Fail-soft — any miss or cut failure falls through to per-section
+	// network downloads below.
+	mirrorDests := sectionDestPaths(req)
+	if ok, _ := d.tryDownloadSectionsViaMirror(ctx, req, mirrorDests); ok {
+		results := make([]DownloadedSegment, len(req.DownloadSections))
+		for i, dest := range mirrorDests {
+			results[i] = DownloadedSegment{
+				Path:  dest,
+				Name:  fmt.Sprintf("segment_%03d", i+1),
+				Index: i,
+			}
+		}
+		return results, nil
+	}
 
 	concurrency := d.sectionConcurrency
 	if concurrency <= 0 {
@@ -356,6 +401,8 @@ func (d *YTDLPDownloader) DownloadSections(ctx context.Context, req *DownloadReq
 				}
 				args = append(args, d.cmdBuilder.BaseArgsForClient(req.URL, req.UseCookies, playerClient)...)
 				args = append(args, d.cmdBuilder.SectionFormatArg(true)...)
+				// Wider section fragment budget (8), no sleep pacing.
+				args = append(args, d.cmdBuilder.SectionConcurrentFragmentsArg()...)
 				// Keep section downloads on yt-dlp/ffmpeg. aria2c is reserved
 				// for full-source downloads because it cannot own the time-range
 				// cut without risking a full or incorrectly bounded output.
@@ -371,16 +418,17 @@ func (d *YTDLPDownloader) DownloadSections(ctx context.Context, req *DownloadReq
 				if req.ForceKeyframes {
 					args = append(args, "--force-keyframes-at-cuts")
 				}
+				args = append(args, d.cmdBuilder.SectionHWAccelDownloaderArgs()...)
 				args = append(args, "-o", outputTemplate)
 
-				args = append(args, d.youtubeSleepIntervalArgs(req.URL)...)
+				args = append(args, d.youtubeSectionSleepIntervalArgs()...)
 				args = append(args, req.URL)
 				return args
 			}
 
-			_, err := d.runWithTransportRetry(ctx, req.URL, func() (*process.Result, error) {
+			_, err := d.runWithTransportRetrySectioned(ctx, req.URL, true, func() (*process.Result, error) {
 				return d.runWithClientFallback(ctx, req.URL, process.Options{
-					Timeout:        10 * time.Minute,
+					Timeout:        d.effectiveDownloadTimeout(req.Timeout),
 					CombinedOutput: true,
 				}, buildArgs)
 			})

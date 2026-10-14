@@ -366,7 +366,7 @@ def main(argv=None):
     s.add_argument("--with-transcript", action="store_true",
                    help="store the real spoken words of each window as a transcript track")
     s.add_argument("--idempotency", default="")
-    s.add_argument("--timeout", type=int, default=1800); s.add_argument("--interval", type=int, default=8)
+    s.add_argument("--timeout", type=int, default=3000); s.add_argument("--interval", type=int, default=8)
     s.add_argument("--no-wait", action="store_true")
     s.set_defaults(fn=cmd_clip)
 

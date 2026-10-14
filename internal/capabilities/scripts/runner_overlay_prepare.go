@@ -249,7 +249,23 @@ func applyVidRushPrepareProjections(result *GenerateResult, prepared vidRushPrep
 	}
 	for index := range prepared.disabledScenes {
 		if index >= 0 && index < len(result.Scenes) {
-			result.Scenes[index].Annotations = nil
+			// Entity extraction is off: drop the entity surface but keep
+			// grounded important phrases. Phrases ground by verbatim
+			// substring + certified timing and need no NER; nil-ing the
+			// whole annotation would silently drop operator-supplied and
+			// catalog phrases on entity-free runs. An annotation left with
+			// no phrase content is still nil-ed to preserve the
+			// disabled-means-no-entity-annotations contract.
+			if ann := result.Scenes[index].Annotations; ann != nil {
+				stripped := *ann
+				stripped.PrimaryEntities = nil
+				stripped.SecondaryEntities = nil
+				if len(stripped.ImportantPhrases) == 0 {
+					result.Scenes[index].Annotations = nil
+				} else {
+					result.Scenes[index].Annotations = &stripped
+				}
+			}
 			result.Scenes[index].Entities = nil
 			result.Scenes[index].EntityOverlayRequired = false
 		}
@@ -306,19 +322,18 @@ func computeSegmentEntityAnnotations(snapshot []sceneTextSnapshot, language Lang
 		// text, using the same deterministic selector used for translations.
 		// This never calls a model and never invents a phrase outside the spoken
 		// scene; entity spans remain blocked.
+		// Phrase selection is decoupled from the entity toggle: important
+		// phrases are editorial text grounded by verbatim string matching
+		// plus certified word timing, never by NER. An entity-free catalog
+		// run (extract_entities=disabled) must still project its phrases;
+		// only the entity/segment paths above stay gated on the toggle.
 		corpus := make([]string, 0, len(snapshot))
 		for _, scene := range snapshot {
-			if scene.ExtractEntities == scriptpkg.ToggleDisabled {
-				continue
-			}
 			if text := strings.TrimSpace(scene.Text); text != "" {
 				corpus = append(corpus, text)
 			}
 		}
 		for _, scene := range snapshot {
-			if scene.ExtractEntities == scriptpkg.ToggleDisabled {
-				continue
-			}
 			text := strings.TrimSpace(scene.Text)
 			if text == "" {
 				continue
@@ -331,11 +346,11 @@ func computeSegmentEntityAnnotations(snapshot []sceneTextSnapshot, language Lang
 			supplementSourceImportantPhrases(ann, text, string(language), phraseLimit, corpus)
 		}
 	}
+	// Operator-supplied phrase hints are external input grounded by verbatim
+	// substring match (findEntitySpan): like the selector above they need no
+	// NER, so they apply even when entity extraction is disabled.
 	if len(requestedPhraseSets) > 0 {
 		for _, scene := range snapshot {
-			if scene.ExtractEntities == scriptpkg.ToggleDisabled {
-				continue
-			}
 			text := strings.TrimSpace(scene.Text)
 			if text == "" {
 				continue

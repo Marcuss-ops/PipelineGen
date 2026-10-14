@@ -10,6 +10,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/entitycatalog"
 	scriptports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
+	scriptmetrics "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports/metrics"
 	mediadomain "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
@@ -165,6 +166,47 @@ func (p *VidRushMaterializationProcessor) Process(ctx context.Context, plan *scr
 		entityImagePolicy = plan.MediaPlan.Extraction.EntityImages
 		entityImagePolicy.Enabled = plan.MediaPlan.Extraction.EntityImageSurfaceEnabled()
 	}
+	if entityImagePolicy.PerScene() && p.catalog != nil {
+		// Materialization selects a bounded set independently for each scene.
+		// That set can collapse to the same top-ranked photo on every occurrence,
+		// even though the durable entity catalog already contains other verified
+		// variants. Rehydrate the shared pool before per-scene binding so its
+		// run-scoped used-candidate ledger can distribute distinct photos.
+		pools := make(map[string][]scriptpkg.SegmentAssetCandidate)
+		for _, scene := range input.SpecScene.Scenes {
+			if scene.Annotations == nil {
+				continue
+			}
+			for _, entity := range scene.Annotations.PrimaryEntities {
+				if !strings.EqualFold(strings.TrimSpace(entity.Type), "PERSON") {
+					continue
+				}
+				name := strings.TrimSpace(entity.CanonicalName)
+				if name == "" {
+					name = strings.TrimSpace(entity.Text)
+				}
+				identity, identityErr := entitycatalog.CanonicalizePersonName(name)
+				if identityErr != nil || identity.CanonicalEntityID == "" {
+					continue
+				}
+				if _, loaded := pools[identity.CanonicalEntityID]; loaded {
+					continue
+				}
+				pool, poolErr := entityImageCatalogCandidates(ctx, p.catalog, identity, entityImageCatalogPoolSize)
+				if poolErr != nil {
+					return nil, fmt.Errorf("vidrush materialization: load per-scene entity image pool %s: %w", identity.CanonicalEntityID, poolErr)
+				}
+				pools[identity.CanonicalEntityID] = pool.Candidates
+			}
+		}
+		if len(pools) > 0 {
+			for i := range segments {
+				for _, candidates := range pools {
+					segments[i].Assets.Candidates = AppendProviderCandidatesUnique(segments[i].Assets.Candidates, candidates)
+				}
+			}
+		}
+	}
 	updatedSpecScene := projectEntityImageBindings(input.SpecScene, segments, entityImagePolicy)
 	return &PostProcessResult{
 		VidRushSegments:  segments,
@@ -284,14 +326,23 @@ func (p *VidRushMaterializationProcessor) persistEntityCatalogMaterialization(ct
 	if p == nil || p.catalog == nil || !strings.EqualFold(strings.TrimSpace(discovered.Provider), scriptpkg.VidRushProviderInternetImages) {
 		return nil
 	}
+	outcome := scriptmetrics.EntityImageOutcomeSuccess
+	defer func() {
+		incEntityImageCatalogLifecycle(p.metrics, scriptmetrics.EntityImageStageCatalogPersist, outcome)
+	}()
 	candidateID, err := entityImageCatalogCandidateID(ctx, p.catalog, discovered)
-	if err != nil || candidateID < 1 {
+	if err != nil {
+		outcome = scriptmetrics.EntityImageOutcomeFailure
 		return err
+	}
+	if candidateID < 1 {
+		return nil
 	}
 	// A catalog-managed image is reusable only when its canonical materialization
 	// is durable. Do not allow a successful VidRush result to hide a missing
 	// reference-database row or incomplete Drive/hash identity.
 	if strings.TrimSpace(persisted.AssetID) == "" || strings.TrimSpace(persisted.DriveLink) == "" || strings.TrimSpace(persisted.LegacyFileMD5) == "" {
+		outcome = scriptmetrics.EntityImageOutcomeFailure
 		return fmt.Errorf("entity image catalog: materialized candidate %d is missing asset_id, drive_link, or legacy_file_md5", candidateID)
 	}
 	now := time.Now().UTC()
@@ -303,7 +354,13 @@ func (p *VidRushMaterializationProcessor) persistEntityCatalogMaterialization(ct
 		// filesystem path is not durable media metadata.
 		MaterializedAt: now, LastVerifiedAt: now,
 	}); err != nil {
+		outcome = scriptmetrics.EntityImageOutcomeFailure
 		return err
 	}
-	return p.catalog.SetCandidateStatus(ctx, candidateID, entitycatalog.CandidateStatusFresh)
+	if err := p.catalog.SetCandidateStatus(ctx, candidateID, entitycatalog.CandidateStatusFresh); err != nil {
+		outcome = scriptmetrics.EntityImageOutcomeFailure
+		return err
+	}
+	addEntityImageCatalogCandidates(p.metrics, scriptmetrics.EntityImageStageCatalogPersist, scriptmetrics.EntityImageOutcomeSuccess, 1)
+	return nil
 }

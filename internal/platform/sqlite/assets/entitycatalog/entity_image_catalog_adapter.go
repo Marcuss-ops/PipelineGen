@@ -146,13 +146,14 @@ func (a *SQLiteEntityImageCatalogAdapter) UpsertCandidate(ctx context.Context, c
 	}
 	_, err := a.db.ExecContext(ctx, `
 		INSERT INTO entity_image_catalog_candidates (
-			canonical_entity_id, provider, rank, source_url, thumbnail_url,
+			canonical_entity_id, provider, rank, source_url, source_page_url, thumbnail_url,
 			width, height, status, semantic_status, semantic_score,
 			technical_score, quality_reason, first_seen_at, last_seen_at, updated_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 		ON CONFLICT(canonical_entity_id, provider, source_url) DO UPDATE SET
 			rank = excluded.rank,
 			thumbnail_url = excluded.thumbnail_url,
+			source_page_url = excluded.source_page_url,
 			width = excluded.width,
 			height = excluded.height,
 			status = CASE
@@ -166,7 +167,7 @@ func (a *SQLiteEntityImageCatalogAdapter) UpsertCandidate(ctx context.Context, c
 			last_seen_at = CURRENT_TIMESTAMP,
 			updated_at = CURRENT_TIMESTAMP
 	`, canonicalID, strings.TrimSpace(candidate.Provider), candidate.Rank,
-		strings.TrimSpace(candidate.SourceURL), strings.TrimSpace(candidate.ThumbnailURL),
+		strings.TrimSpace(candidate.SourceURL), strings.TrimSpace(candidate.SourcePageURL), strings.TrimSpace(candidate.ThumbnailURL),
 		candidate.Width, candidate.Height, status,
 		defaultSemanticStatus(candidate.SemanticStatus), candidate.SemanticScore,
 		candidate.TechnicalScore, strings.TrimSpace(candidate.QualityReason))
@@ -231,7 +232,7 @@ func (a *SQLiteEntityImageCatalogAdapter) ListCandidates(ctx context.Context, ca
 	}
 	rows, err := a.db.QueryContext(ctx, `
 		SELECT candidate_id, canonical_entity_id, provider, rank, source_url,
-		       thumbnail_url, width, height, status, semantic_status,
+		       source_page_url, thumbnail_url, width, height, status, semantic_status,
 		       semantic_score, technical_score, quality_reason,
 		       first_seen_at, last_seen_at, updated_at
 		FROM entity_image_catalog_candidates
@@ -249,7 +250,7 @@ func (a *SQLiteEntityImageCatalogAdapter) ListCandidates(ctx context.Context, ca
 		var firstSeen, lastSeen, updatedAt string
 		if err := rows.Scan(
 			&candidate.ID, &candidate.CanonicalEntityID, &candidate.Provider,
-			&candidate.Rank, &candidate.SourceURL, &candidate.ThumbnailURL,
+			&candidate.Rank, &candidate.SourceURL, &candidate.SourcePageURL, &candidate.ThumbnailURL,
 			&candidate.Width, &candidate.Height, &candidate.Status,
 			&candidate.SemanticStatus, &candidate.SemanticScore,
 			&candidate.TechnicalScore, &candidate.QualityReason,

@@ -168,7 +168,7 @@ func BuildPlan(input PlanInput, config PlannerConfig) (OverlayPlan, error) {
 	}
 	entityStyleSelector := strings.TrimSpace(input.EntityStyleID)
 	if entityStyleSelector != "" && !IsValidEntityStyleSelector(entityStyleSelector) {
-		return OverlayPlan{}, fmt.Errorf("overlay planner: entity_style_id %q is not a certified selector (random, a tag such as badge/camera/side/typewriter, or a 01..25 variant)", input.EntityStyleID)
+		return OverlayPlan{}, fmt.Errorf("overlay planner: entity_style_id %q is not a certified selector (random, a tag such as badge/camera/side, or a 01..25 variant)", input.EntityStyleID)
 	}
 	imageMotionLimit := laneAnimationCount(input.AnimationCounts, laneImages)
 	input.ImageMotions = limitedMotionPool(input.ImageMotions, imageMotionLimit)
@@ -490,16 +490,42 @@ func BuildPlan(input PlanInput, config PlannerConfig) (OverlayPlan, error) {
 	// than one is why the two ordinals advance independently; the calm lane's
 	// no-repeat walk is otherwise untouched.
 	phraseOrdinal := 0
+	shortPhraseOrdinal := 0
 	heavyOrdinal := 0
 	imageOrdinal = 0
 	for i := range plan.Items {
 		switch plan.Items[i].Kind {
 		case "text_phrase":
+			if EditorialSectionForItem(plan.Items[i]) == EditorialSectionShortPhrase {
+				// Short phrases use the renderer-supported phrase entrance pool.
+				// Keep selection seeded per run, but advance the ordinal so each
+				// phrase gets a different entrance until the pool is exhausted.
+				words := len(strings.Fields(plan.Items[i].Text))
+				plan.Items[i].MotionID = selectShortPhraseMotionLimited(
+					motionSeed,
+					"short_phrase_group",
+					shortPhraseOrdinal,
+					words,
+					input.PhraseMotions,
+					laneAnimationCount(input.AnimationCounts, laneShortPhrase),
+				)
+				if input.FPSNum > 0 && input.FPSDen > 0 {
+					minimumEntranceFrames := int(shortPhraseEntranceFrames(input.FPSNum, input.FPSDen))
+					if plan.Items[i].MotionParams == nil {
+						plan.Items[i].MotionParams = make(map[string]any)
+					}
+					if current, ok := plan.Items[i].MotionParams["enter_frames"].(int); !ok || current < minimumEntranceFrames {
+						plan.Items[i].MotionParams["enter_frames"] = minimumEntranceFrames
+					}
+					plan.Items[i].MotionParams["exit_frames"] = 0
+				}
+				phraseOrdinal++
+				shortPhraseOrdinal++
+				continue
+			}
 			if len(input.PhraseMotions) == 0 {
 				words := len(strings.Fields(plan.Items[i].Text))
 				switch {
-				case EditorialSectionForItem(plan.Items[i]) == EditorialSectionShortPhrase:
-					plan.Items[i].MotionID = selectShortPhraseMotionLimited(motionSeed, "run", phraseOrdinal, words, nil, laneAnimationCount(input.AnimationCounts, laneShortPhrase))
 				case input.HeavyPhrasePriority > 0 && itemPriority(plan.Items[i]) >= input.HeavyPhrasePriority:
 					plan.Items[i].MotionID = selectHeavyPhraseMotionLimited(motionSeed, "run", heavyOrdinal, nil, laneAnimationCount(input.AnimationCounts, laneImportantPhrase))
 					heavyOrdinal++
@@ -514,10 +540,6 @@ func BuildPlan(input PlanInput, config PlannerConfig) (OverlayPlan, error) {
 				continue
 			}
 			switch {
-			case EditorialSectionForItem(plan.Items[i]) == EditorialSectionShortPhrase:
-				// Word count owns the family boundary. Heavy editorial emphasis
-				// must not route a short phrase outside its selected family.
-				plan.Items[i].MotionID = selectShortPhraseMotionLimited(motionSeed, "run", phraseOrdinal, len(strings.Fields(plan.Items[i].Text)), input.PhraseMotions, laneAnimationCount(input.AnimationCounts, laneShortPhrase))
 			case input.HeavyPhrasePriority > 0 && itemPriority(plan.Items[i]) >= input.HeavyPhrasePriority:
 				plan.Items[i].MotionID = selectHeavyPhraseMotionLimited(motionSeed, "run", heavyOrdinal, input.PhraseMotions, laneAnimationCount(input.AnimationCounts, laneImportantPhrase))
 				heavyOrdinal++

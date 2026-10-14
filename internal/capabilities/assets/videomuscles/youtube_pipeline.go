@@ -90,12 +90,35 @@ func NewPipeline(cfg *config.Config, log *zap.Logger, clipProcess ClipProcessor)
 	}
 }
 
+// defaultSectionDownloadTimeout is the historical per-section bound, kept as
+// the fallback so a composition that leaves the knob unset downloads exactly
+// as before.
+const defaultSectionDownloadTimeout = 10 * time.Minute
+
+// sectionDownloadTimeout resolves the per-section download bound from the
+// configured knob. A hardcoded 10 minutes fits a <=60s window comfortably but
+// not a 10-minute one — the section is ~10x the bytes and YouTube throttles
+// long ranges, so the command was killed mid-transfer and the block failed
+// terminally. Raising VELOX_YOUTUBE_SECTION_DOWNLOAD_TIMEOUT_SECONDS in step
+// with VELOX_YOUTUBE_MAX_SEGMENT_DURATION_SECONDS is what lets a long block
+// finish.
+func (p *Pipeline) sectionDownloadTimeout() time.Duration {
+	if p != nil && p.cfg != nil && p.cfg.Jobs.YoutubeSectionDownloadTimeoutSeconds > 0 {
+		return time.Duration(p.cfg.Jobs.YoutubeSectionDownloadTimeoutSeconds) * time.Second
+	}
+	return defaultSectionDownloadTimeout
+}
+
 // buildYouTubeSectionDownloadRequest keeps section acquisition stream-copy-only.
 // The downloaded section may include keyframe padding; CutAndNormalize below
 // trims that padding and performs the single canonical encode. Setting
 // ForceKeyframes here would make yt-dlp invoke its own ffmpeg re-encode first,
 // creating a hidden double encode before the canonical render.
-func buildYouTubeSectionDownloadRequest(req YouTubeCutRequest, outputPath, section string, useCookies bool) *coredl.DownloadRequest {
+//
+// The Timeout is the configured section bound, never a literal: an explicit
+// request Timeout overrides the downloader's configured default, so a
+// hardcoded value here would silently cap the largest downloadable window.
+func (p *Pipeline) buildYouTubeSectionDownloadRequest(req YouTubeCutRequest, outputPath, section string, useCookies bool) *coredl.DownloadRequest {
 	return &coredl.DownloadRequest{
 		URL:              req.URL,
 		OutputPath:       outputPath,
@@ -103,7 +126,7 @@ func buildYouTubeSectionDownloadRequest(req YouTubeCutRequest, outputPath, secti
 		DownloadSections: []string{section},
 		ForceKeyframes:   false,
 		UseCookies:       useCookies,
-		Timeout:          10 * time.Minute,
+		Timeout:          p.sectionDownloadTimeout(),
 	}
 }
 
@@ -235,7 +258,7 @@ func (p *Pipeline) DownloadAndCutYouTubeVideo(ctx context.Context, req YouTubeCu
 		endStr := p.formatTime(req.Start + req.Duration)
 		section := fmt.Sprintf("*%s-%s", startStr, endStr)
 
-		dlReq := buildYouTubeSectionDownloadRequest(req, tempVideoPath, section, p.hasYouTubeCookies())
+		dlReq := p.buildYouTubeSectionDownloadRequest(req, tempVideoPath, section, p.hasYouTubeCookies())
 
 		downloadTimer := time.Now()
 		segments, err := p.ytdlp.DownloadSections(ctx, dlReq)

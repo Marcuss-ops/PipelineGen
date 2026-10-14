@@ -144,7 +144,6 @@ func TestMotionPoolsAreCanonicalSubsets(t *testing.T) {
 	assertPoolInUniverse(t, universe, "phraseMotionCandidates", phraseMotionCandidates)
 	assertPoolInUniverse(t, universe, "classicAppleMotionCandidates", classicAppleMotionCandidates)
 	assertPoolInUniverse(t, universe, "modernAppleMotionCandidates", modernAppleMotionCandidates)
-	assertPoolInUniverse(t, universe, "typewriterMotionCandidates", typewriterMotionCandidates)
 	assertPoolInUniverse(t, universe, "brushPhraseMotionCandidates", brushPhraseMotionCandidates)
 	assertPoolInUniverse(t, universe, "text3DMotionCandidates", text3DMotionCandidates)
 	assertPoolInUniverse(t, universe, "phraseAppleCleanMotionCandidates", phraseAppleCleanMotionCandidates)
@@ -179,33 +178,22 @@ func TestMotionPoolsAreCanonicalSubsets(t *testing.T) {
 	}
 }
 
-// TestShortPhraseWordGroupsMatchCatalog pins the 1..5 word-count routing to
-// the catalog's own word_count: a recipe must only be selected for the length
-// its ChrononTemplate definition supports.
+// TestShortPhraseWordGroupsMatchCatalog ensures every routed recipe still
+// exists in the canonical catalog and is only listed at its authored word_count.
+// ShortPhrase overlays themselves are static in the planner; these groups are
+// retained for explicit exact-cardinality template tooling.
 func TestShortPhraseWordGroupsMatchCatalog(t *testing.T) {
 	universe := loadCanonicalMotionUniverse(t)
 	for wordCount := 1; wordCount <= 5; wordCount++ {
 		pool := shortPhraseMotionCandidates[wordCount]
-		if len(pool) == 0 {
-			t.Fatalf("short-phrase word group %d is empty", wordCount)
-		}
 		for _, id := range pool {
-			if strings.HasPrefix(id, "short_phrase_") {
-				want, ok := universe.shortWordCount[id]
-				if !ok {
-					t.Errorf("short-phrase id %q (word group %d) is not a canonical short-phrase recipe", id, wordCount)
-					continue
-				}
-				if want != wordCount {
-					t.Errorf("short-phrase id %q sits in word group %d but the catalog declares word_count %d", id, wordCount, want)
-				}
+			want, ok := universe.shortWordCount[id]
+			if !ok {
+				t.Errorf("short-phrase id %q (word group %d) is not a canonical short-phrase recipe", id, wordCount)
 				continue
 			}
-			// Length-agnostic typewriter alternates are deliberately dealt
-			// into each word group by selectShortPhraseMotionLimited; they
-			// must exist in the canonical motions catalog.
-			if !universe.motionIDs[id] {
-				t.Errorf("short-phrase word group %d alternate %q is absent from the canonical catalogs", wordCount, id)
+			if want != wordCount {
+				t.Errorf("short-phrase id %q sits in word group %d but the catalog declares word_count %d", id, wordCount, want)
 			}
 		}
 	}

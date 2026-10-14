@@ -17,6 +17,11 @@ import (
 
 const entityImageCatalogProvider = "duckduckgo"
 
+const (
+	entityImageCatalogPoolSize              = 10
+	entityImageCatalogMaterializationCopies = 5
+)
+
 // entityImageCatalogPool is the durable candidate pool plus its usable count.
 // Broken and retired URLs are never returned as fallback candidates.
 type entityImageCatalogPool struct {
@@ -26,13 +31,20 @@ type entityImageCatalogPool struct {
 	Sufficient  bool
 }
 
+func entityImageCatalogRequestedLimit(_ *scriptpkg.ResolvedGenerationPlan) int {
+	// The durable entity catalog is a reusable variant pool, not the current
+	// scene's selection cap. Keep the full bounded pool available so later
+	// scenes can select a different candidate without another provider call.
+	return entityImageCatalogPoolSize
+}
+
 func entityImageCatalogPoolTarget(limit int) int {
 	if limit <= 1 {
 		return 1
 	}
-	// Keep a small reserve below the provider query limit. This matches the
-	// intended policy: eight healthy URLs out of a ten-entry pool are enough,
-	// while three healthy URLs trigger a refresh but remain usable as fallback.
+	// Keep a small reserve below the provider query limit. Eight healthy URLs
+	// out of a ten-entry pool are enough; shorter but fully usable existing
+	// pools remain valid fallback while the caller decides whether to refresh.
 	if target := limit - 2; target > 0 {
 		return target
 	}
@@ -58,13 +70,14 @@ func entityImageCatalogCandidates(ctx context.Context, repo entitycatalog.Reposi
 	known := 0
 	for _, row := range rows {
 		known++
-		if reason := personImageSourceIdentityFailure(identity.CanonicalName, row.SourceURL, ""); reason != "" {
+		if reason := personImageSourceIdentityFailure(identity.CanonicalName, row.SourceURL, row.SourcePageURL); reason != "" {
 			if row.SemanticStatus != entitycatalog.CandidateSemanticRejected || row.QualityReason != reason {
 				if _, err := repo.UpsertCandidate(ctx, entitycatalog.Candidate{
 					CanonicalEntityID: row.CanonicalEntityID,
 					Provider:          row.Provider,
 					Rank:              row.Rank,
 					SourceURL:         row.SourceURL,
+					SourcePageURL:     row.SourcePageURL,
 					ThumbnailURL:      row.ThumbnailURL,
 					Width:             row.Width,
 					Height:            row.Height,
@@ -106,6 +119,7 @@ func entityImageCatalogCandidates(ctx context.Context, repo entitycatalog.Reposi
 			Entity:                identity.CanonicalName,
 			Score:                 1.0 / float64(max(1, row.Rank)),
 			SourceURL:             row.SourceURL,
+			SourcePageURL:         row.SourcePageURL,
 			PreviewURL:            row.ThumbnailURL,
 			Width:                 row.Width,
 			Height:                row.Height,
@@ -125,6 +139,7 @@ func entityImageCatalogCandidates(ctx context.Context, repo entitycatalog.Reposi
 		}
 		out = append(out, candidate)
 	}
+	usableCount := len(out)
 	if limit > 0 && len(out) > limit {
 		out = out[:limit]
 	}
@@ -132,7 +147,7 @@ func entityImageCatalogCandidates(ctx context.Context, repo entitycatalog.Reposi
 	if known > 0 && known < target {
 		target = known
 	}
-	return entityImageCatalogPool{Candidates: out, UsableCount: len(out), KnownCount: known, Sufficient: known > 0 && len(out) >= target}, nil
+	return entityImageCatalogPool{Candidates: out, UsableCount: usableCount, KnownCount: known, Sufficient: known > 0 && usableCount >= target}, nil
 }
 
 // personImageLayoutNeedsRecertification identifies the prior visual-layout
@@ -169,6 +184,7 @@ func persistEntityImageCatalogCandidates(ctx context.Context, repo entitycatalog
 			Provider:          entityImageCatalogProvider,
 			Rank:              rank,
 			SourceURL:         result.SourceURL,
+			SourcePageURL:     result.SourcePageURL,
 			ThumbnailURL:      result.PreviewURL,
 			Width:             result.Width,
 			Height:            result.Height,
@@ -214,6 +230,7 @@ func persistPersonImageVisualVerdicts(ctx context.Context, repo entitycatalog.Re
 			Provider:          entityImageCatalogProvider,
 			Rank:              rank + 1,
 			SourceURL:         result.SourceURL,
+			SourcePageURL:     result.SourcePageURL,
 			ThumbnailURL:      result.PreviewURL,
 			Width:             result.Width,
 			Height:            result.Height,
@@ -369,15 +386,17 @@ func evaluatePersonImageCandidate(identity entitycatalog.PersonIdentity, candida
 }
 
 // personImageSourceIdentityFailure fails closed unless the durable image URL
-// itself carries the full canonical name. The catalog does not persist
-// SourcePageURL, so it cannot serve as durable identity evidence. Search
+// or persisted editorial source page carries the full canonical name. Search
 // query/entity fields are not provenance: providers and cache adapters may
 // copy them from the requested query even when the returned image is unrelated.
-func personImageSourceIdentityFailure(canonicalName, sourceURL, _ string) string {
+func personImageSourceIdentityFailure(canonicalName, sourceURL, sourcePageURL string) string {
 	if mismatch := personImageSourceNameMismatch(canonicalName, sourceURL); mismatch != "" {
 		return mismatch
 	}
 	if sourcePathHasCanonicalPersonName(canonicalName, sourceURL) {
+		return ""
+	}
+	if sourcePageURL != "" && sourcePathHasCanonicalPersonName(canonicalName, sourcePageURL) {
 		return ""
 	}
 	return fmt.Sprintf("image source URL does not establish canonical PERSON identity %q", canonicalName)

@@ -471,6 +471,19 @@ func TestTranscriptPersistDefaultAndExplicitOptOut(t *testing.T) {
 	}
 }
 
+func TestValidate_ClipEffectsRequireBoundedSupportedSettings(t *testing.T) {
+	valid := &RenderRequest{SourceAssetID: "asset-1", Output: &OutputSpec{Effects: []ClipEffectSpec{{Type: "glitch", Amount: .7, Seed: 9}}, Grid: &ClipGridSpec{SpacingPX: 64, LineWidthPX: 1, Color: "#44D7B6", Opacity: .2}}}
+	valid.Normalize()
+	if err := valid.Validate(); err != nil {
+		t.Fatalf("valid effect request: %v", err)
+	}
+	invalid := &RenderRequest{SourceAssetID: "asset-1", Output: &OutputSpec{Effects: []ClipEffectSpec{{Type: "not_supported"}}}}
+	invalid.Normalize()
+	if err := invalid.Validate(); err == nil {
+		t.Fatal("unsupported global effect must fail at request validation")
+	}
+}
+
 // TestTranscriptUnknownFieldFailsClosed keeps the strict-decoder contract
 // INSIDE the transcript block, which a custom UnmarshalJSON would otherwise
 // bypass (encoding/json hands the whole subtree to the method).

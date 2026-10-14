@@ -86,6 +86,9 @@ func (p ClipRenderPlanV1) Validate() error {
 	if err := ValidatePlanSourceFrame(p.Output.SourceFrame, p.Output.ForegroundScalePercent); err != nil {
 		return fmt.Errorf("%w: %w", ErrInvalidClipPlan, err)
 	}
+	if err := ValidateClipEffects(p.Output.Effects, p.Output.Grid); err != nil {
+		return fmt.Errorf("%w: output.%w", ErrInvalidClipPlan, err)
+	}
 	switch p.Audio.Mode {
 	case AudioModeCopyIfCompatible, AudioModeTranscode:
 	default:

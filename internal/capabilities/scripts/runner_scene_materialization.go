@@ -192,9 +192,11 @@ func materializeVerbatimSourceTextScenes(req GenerateRequest) ([]Scene, error) {
 			return nil, fmt.Errorf("source_text_verbatim segment %q has no source_text", id)
 		}
 		scenes = append(scenes, Scene{
-			ID:    id,
-			Index: i,
-			Text:  map[Language]string{req.SourceLanguage: segment.SourceText},
+			ID:                 id,
+			Index:              i,
+			DurationMS:         segment.DurationMS,
+			ShortPhraseOverlay: segment.ShortPhraseOverlay,
+			Text:               map[Language]string{req.SourceLanguage: segment.SourceText},
 		})
 	}
 	return scenes, nil

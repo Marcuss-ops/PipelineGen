@@ -585,6 +585,44 @@ func TestEntityImageCacheColdWarmForcedRefresh(t *testing.T) {
 	assertResolved(t, "run C", c)
 }
 
+// Empty person-image searches are not durable facts. A transient provider miss
+// must not suppress discovery for every later scene mentioning that person.
+func TestEntityImageCacheRetriesEmptyProviderResult(t *testing.T) {
+	vidrushImageCache = cacheutil.NewLRU(vidrushImageL1Capacity)
+	entityImageCache = cacheutil.NewLRU(entityImageL1Capacity)
+	searcher := &emptyInternetImageSearcher{}
+	processor := NewMediaResolverImageStageWithCache(searcher, newMemoryVidRushCache())
+	plan := &scriptpkg.ResolvedGenerationPlan{
+		Topic:    "Garlasco",
+		Language: "it",
+		MediaPlan: media.MediaPlanSpec{
+			ProviderPolicy: media.MediaProviderPolicy{InternetImages: media.MediaToggleEnabled},
+			Extraction: media.MediaExtractionPolicy{EntityImages: media.EntityImagePolicy{
+				Enabled: true, EntityTypes: []string{"PERSON"}, MaxPerEntity: 1,
+			}},
+		},
+	}
+	input := func(segmentID string) ProcessInput {
+		return ProcessInput{
+			SpecScene: scriptpkg.SpecSceneOutput{Version: 1, Scenes: []scriptpkg.SpecScene{{
+				ID: segmentID, SegmentID: segmentID, Index: 0,
+				Annotations: &scriptpkg.SceneAnnotations{PrimaryEntities: []scriptpkg.AnnotatedEntity{{
+					CanonicalName: "Alberto Stasi", Text: "Alberto Stasi", Type: "PERSON",
+				}}},
+			}}},
+			VidRushSegments: []scriptpkg.VidRushSegmentResult{{SegmentID: segmentID, SceneID: segmentID, TextHash: segmentID}},
+		}
+	}
+	for _, scene := range []string{"scene-a", "scene-b"} {
+		if _, err := processor.Process(context.Background(), plan, input(scene)); err != nil {
+			t.Fatalf("process %s: %v", scene, err)
+		}
+	}
+	if searcher.calls != 2 {
+		t.Fatalf("provider calls = %d, want 2; an empty entity-image result must not be cached", searcher.calls)
+	}
+}
+
 // TestInternetImagesResearchPathCacheColdWarm certifies the research-path
 // cache lifecycle: entity_images binding is DISABLED and the single-shot
 // LLM scene text (and therefore the segment-level TextHash) changes between

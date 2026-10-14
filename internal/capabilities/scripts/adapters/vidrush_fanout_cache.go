@@ -13,7 +13,7 @@ func vidRushFanoutArtlistCacheKey(plan *vidRushFanoutPlan, generation *scriptpkg
 }
 
 func vidRushFanoutImageCacheKey(plan *vidRushFanoutPlan, generation *scriptpkg.ResolvedGenerationPlan) string {
-	return segmentCacheKey("internet-images-assets-v4", plan.segmentID, plan.textHash, generation.Language, generation.Model, generation.PromptVersion, fmt.Sprintf("%d", plan.perQueryLimit))
+	return segmentCacheKey("internet-images-assets-v5", plan.segmentID, plan.textHash, generation.Language, generation.Model, generation.PromptVersion, fmt.Sprintf("%d", plan.perQueryLimit))
 }
 
 // artlistQuerySetPayload caches the RAW provider answer keyed by the query

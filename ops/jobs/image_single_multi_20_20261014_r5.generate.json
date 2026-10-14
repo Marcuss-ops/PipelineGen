@@ -1,0 +1,262 @@
+{
+  "version": 2,
+  "preset": "custom",
+  "correlation_id": "image-single-multi-20-20261014-r5",
+  "force_refresh": true,
+  "items": [
+    {
+      "id": "image-single-multi-20-20261014-r5",
+      "project": "image-single-multi-20-20261014-r5",
+      "title": "Verifica motion immagini singole e multiple — 20 layer",
+      "language": "it",
+      "tone": "neutro e dimostrativo",
+      "style": "Test tecnico delle animazioni per immagini. Usa i segmenti forniti senza aggiungere altre categorie di overlay. Le immagini rappresentano luoghi urbani delle città citate.",
+      "model": "gemma4:e4b",
+      "source": {
+        "type": "text",
+        "topic": "20 immagini per test delle animazioni singole e in coppia",
+        "source_text": "Ogni persona è descritta in una frase autonoma per ottenere un’immagine pertinente per ciascuna entità."
+      },
+      "script_params": {
+        "target_words": 240,
+        "min_words": 100,
+        "segment_words": 20,
+        "single_scene": false,
+        "skip_quality_gate": false,
+        "force_refresh": true,
+        "source_text_verbatim": true,
+        "segments": [
+          {
+            "id": "single-01",
+            "kind": "narration",
+            "topic": "Alan Turing",
+            "source_text": "Alan Turing was a mathematician and computer scientist.",
+            "target_words": 20,
+            "min_words": 8
+          },
+          {
+            "id": "single-02",
+            "kind": "narration",
+            "topic": "Ada Lovelace",
+            "source_text": "Ada Lovelace was a mathematician who wrote about early computing.",
+            "target_words": 20,
+            "min_words": 8
+          },
+          {
+            "id": "single-03",
+            "kind": "narration",
+            "topic": "Marie Curie",
+            "source_text": "Marie Curie was a scientist known for research on radioactivity.",
+            "target_words": 20,
+            "min_words": 8
+          },
+          {
+            "id": "single-04",
+            "kind": "narration",
+            "topic": "Katherine Johnson",
+            "source_text": "Katherine Johnson was a mathematician who worked for NASA.",
+            "target_words": 20,
+            "min_words": 8
+          },
+          {
+            "id": "pair-01",
+            "kind": "narration",
+            "topic": "Ada Lovelace e Grace Hopper",
+            "source_text": "Ada Lovelace was a mathematician who wrote about early computing. Grace Hopper was a computer scientist who worked on early compilers.",
+            "target_words": 20,
+            "min_words": 8
+          },
+          {
+            "id": "pair-02",
+            "kind": "narration",
+            "topic": "Alan Turing e Ada Lovelace",
+            "source_text": "Alan Turing was a mathematician and computer scientist. Ada Lovelace was a mathematician who wrote about early computing.",
+            "target_words": 20,
+            "min_words": 8
+          },
+          {
+            "id": "pair-03",
+            "kind": "narration",
+            "topic": "Marie Curie e Katherine Johnson",
+            "source_text": "Marie Curie was a scientist known for research on radioactivity. Katherine Johnson was a mathematician who worked for NASA.",
+            "target_words": 20,
+            "min_words": 8
+          },
+          {
+            "id": "pair-04",
+            "kind": "narration",
+            "topic": "Nikola Tesla e Albert Einstein",
+            "source_text": "Nikola Tesla was an inventor. Albert Einstein was a theoretical physicist.",
+            "target_words": 20,
+            "min_words": 8
+          },
+          {
+            "id": "pair-05",
+            "kind": "narration",
+            "topic": "Galileo Galilei e Frida Kahlo",
+            "source_text": "Galileo Galilei was an astronomer and physicist. Frida Kahlo was a Mexican painter.",
+            "target_words": 20,
+            "min_words": 8
+          },
+          {
+            "id": "pair-06",
+            "kind": "narration",
+            "topic": "Grace Hopper e Katherine Johnson",
+            "source_text": "Grace Hopper was a computer scientist. Katherine Johnson was a mathematician who worked for NASA.",
+            "target_words": 20,
+            "min_words": 8
+          },
+          {
+            "id": "pair-07",
+            "kind": "narration",
+            "topic": "Alan Turing e Marie Curie",
+            "source_text": "Alan Turing was a mathematician and computer scientist. Marie Curie was a scientist known for research on radioactivity.",
+            "target_words": 20,
+            "min_words": 8
+          },
+          {
+            "id": "pair-08",
+            "kind": "narration",
+            "topic": "Ada Lovelace e Nikola Tesla",
+            "source_text": "Ada Lovelace was a mathematician who wrote about early computing. Nikola Tesla was an inventor.",
+            "target_words": 20,
+            "min_words": 8
+          }
+        ],
+        "images_per_scene": 1
+      },
+      "max_phrase_overlays": 0,
+      "max_image_overlays": 20,
+      "max_map_overlays": 0,
+      "max_overlays_per_scene": 4,
+      "animation_counts": {
+        "maps": 0,
+        "images": 20,
+        "images_with_text": 0,
+        "important_phrase": 0,
+        "short_important_phrase": 0,
+        "entities": 20,
+        "entity_caption": 0,
+        "dates": 0,
+        "metric_stat": 0,
+        "timeline_date": 0,
+        "charts": 0,
+        "bullets": 0,
+        "quotes": 0,
+        "brand_text": 0,
+        "recaps": 0,
+        "titles": 0
+      },
+      "overlay_group_limits": {
+        "maps": 0,
+        "short_phrases": 0,
+        "long_phrases": 0,
+        "entities_with_text": 20,
+        "images": 20
+      },
+      "output": {
+        "save_to_db": true,
+        "extract_entities": "enabled",
+        "generate_metadata": true,
+        "generate_timeline": true,
+        "voiceover_enabled": true,
+        "languages": [
+          "it"
+        ],
+        "drive_folder_id": "1J_xUGo_bchzXDIGqSX04CU44c_Dm3SxS",
+        "drive_subfolder_name": "image-single-multi-20-20261014-r5",
+        "render": {
+          "enabled": true,
+          "require_gpu": true,
+          "drive_folder_id": "1J_xUGo_bchzXDIGqSX04CU44c_Dm3SxS",
+          "drive_subfolder_name": "image-single-multi-20-20261014-r5",
+          "subtitles": {
+            "enabled": false
+          },
+          "background": {
+            "mode": "asset",
+            "asset_id": "drive-background-crime",
+            "kind": "video"
+          }
+        },
+        "docs": {
+          "enabled": false
+        }
+      },
+      "media_plan": {
+        "mode": "hybrid",
+        "provider_policy": {
+          "internet_images": "enabled",
+          "image_generation": "disabled",
+          "artlist": "disabled",
+          "youtube": "disabled",
+          "geocoding": "disabled"
+        },
+        "cache": {
+          "read": true,
+          "write": true
+        },
+        "force_refresh_assets": false,
+        "extraction": {
+          "enabled": true,
+          "include": [
+            "entities"
+          ],
+          "max_entities_per_segment": 4,
+          "max_important_phrases_per_segment": 0,
+          "max_image_queries_per_segment": 2,
+          "important_phrases": [],
+          "entity_images": {
+            "enabled": true,
+            "entity_types": [
+              "PERSON"
+            ],
+            "max_per_entity": 1,
+            "scope": "per_scene",
+            "upload_to_drive": true
+          }
+        },
+        "materialization": {
+          "mode": "selected",
+          "upload_to_drive": true,
+          "wait_for_ready": true
+        },
+        "include_trace": true,
+        "force_refresh_bindings": true
+      },
+      "audio": {
+        "mode": "COMBINED_TIMELINE",
+        "timing": {
+          "mode": "required",
+          "boundary": "word",
+          "formats": [
+            "json",
+            "srt",
+            "vtt"
+          ]
+        },
+        "random_sfx_on_clip_start": false,
+        "random_sfx_on_image_overlay": false
+      },
+      "overlay_categories": {
+        "maps": "disabled",
+        "phrases": "disabled",
+        "images": "enabled",
+        "numbers": "disabled",
+        "quotes": "disabled",
+        "brand_text": "disabled",
+        "charts": "disabled",
+        "recaps": "disabled",
+        "titles": "disabled",
+        "bullets": "disabled"
+      },
+      "overlay_background": {
+        "kind": "video",
+        "asset_id": "drive-background-crime",
+        "fit": "cover",
+        "opacity": 1,
+        "loop": true
+      }
+    }
+  ]
+}

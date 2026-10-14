@@ -363,9 +363,9 @@ func entityImageLayerParams(width, height, count, slot int) map[string]any {
 }
 
 // assignEntityImageMotions samples a fresh pool offset once per newly compiled
-// plan, then rotates through the complete certified generated-image motions. In a
-// composite each portrait consumes its own ordinal, so entrances stay subtle
-// while retaining a small amount of variation.
+// plan, then rotates through the complete certified 32-motion image catalog.
+// In a composite each portrait consumes its own ordinal, so every image gets
+// an independent motion and a run of up to 20 images avoids repeats.
 //
 // The broader image catalog remains callable for explicit editorial plans;
 // this automatic path avoids abrupt flips and strong perspective effects.

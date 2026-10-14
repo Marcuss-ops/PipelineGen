@@ -103,6 +103,27 @@ func TestVidRushFanoutPlanPerSceneImagesUsesCanonicalEntityQuery(t *testing.T) {
 	}
 }
 
+func TestVidRushFanoutPlanPerSceneImagesKeepsBothPeople(t *testing.T) {
+	plan := &scriptpkg.ResolvedGenerationPlan{MediaPlan: mediadomain.MediaPlanSpec{
+		Extraction:     mediadomain.MediaExtractionPolicy{EntityImages: mediadomain.EntityImagePolicy{Enabled: true, Scope: "per_scene"}},
+		ProviderPolicy: mediadomain.MediaProviderPolicy{InternetImages: mediadomain.MediaToggleEnabled},
+	}}
+	segment := scriptpkg.VidRushSegmentResult{
+		SegmentID: "pair-01", TextHash: "pair-hash",
+		Insights: scriptpkg.SegmentInsights{
+			Entities: []scriptpkg.ExtractedEntity{
+				{Value: "Alberto Stasi", Type: "PERSON"},
+				{Value: "Giada Bocellari", Type: "PERSON"},
+			},
+			ImageQueries: []string{"Alberto Stasi", "Giada Bocellari"},
+		},
+	}
+	fanout := buildVidRushFanoutPlan(plan, segment, nil, &gatedImageSearcher{}, nil)
+	if len(fanout.imageQueries) != 2 || fanout.imageQueries[0] != "Alberto Stasi" || fanout.imageQueries[1] != "Giada Bocellari" {
+		t.Fatalf("per-scene image queries = %#v, want one query per person", fanout.imageQueries)
+	}
+}
+
 func TestVidRushFanoutPlanPerSceneImageQueryIgnoresNarrativeSuffix(t *testing.T) {
 	plan := &scriptpkg.ResolvedGenerationPlan{MediaPlan: mediadomain.MediaPlanSpec{
 		Extraction:     mediadomain.MediaExtractionPolicy{EntityImages: mediadomain.EntityImagePolicy{Enabled: true, Scope: "per_scene"}},

@@ -96,9 +96,20 @@ type GenerateRequest struct {
 	DisableNumberOverlays bool   `json:"disable_number_overlays,omitempty"`
 	DisableRecapOverlays  bool   `json:"disable_recap_overlays,omitempty"`
 	DisableChartOverlays  bool   `json:"disable_chart_overlays,omitempty"`
+	// DisableEditorialOverlays skips the automatic scene_title/scene_bullet
+	// projection (projectEditorialOverlays). It exists for motion-catalog
+	// runs where the operator-supplied grounded phrases must keep the run
+	// budget: titles/bullets carry top scores (1.0/0.99) and would otherwise
+	// crowd full-length phrases out of max_phrase_overlays, and their
+	// truncated ≤7-word texts would fall into the short-phrase motion lane.
+	// False by default: editorial cards render unless explicitly disabled.
+	DisableEditorialOverlays bool `json:"disable_editorial_overlays,omitempty"`
 	// EnableCharts is the explicit opt-in for chart overlays. Charts render
 	// only when this is true and DisableChartOverlays is false.
 	EnableCharts bool `json:"enable_charts,omitempty"`
+	// HeavyPhrasePriority optionally overrides the editorial-weight threshold
+	// for the prominent-motion lane. Zero keeps the certified default.
+	HeavyPhrasePriority float64 `json:"heavy_phrase_priority,omitempty"`
 	// OverlayBackground is the visual background selected by script.generate;
 	// it is transported into the sealed OverlayPlan at render time.
 	OverlayBackground *scriptpkg.OverlayBackgroundSpec `json:"overlay_background,omitempty"`
@@ -259,9 +270,10 @@ type GenerateRequest struct {
 // clip reference, generated text per language, and an optional
 // voiceover per language.
 type Scene struct {
-	ID         string `json:"id"`
-	Index      int    `json:"index"`
-	DurationMS int64  `json:"duration_ms,omitempty"`
+	ID                 string `json:"id"`
+	Index              int    `json:"index"`
+	DurationMS         int64  `json:"duration_ms,omitempty"`
+	ShortPhraseOverlay bool   `json:"short_phrase_overlay,omitempty"`
 	// DurationUS is the sealed internal timing value. DurationMS remains only
 	// as a legacy wire field at the boundary.
 	DurationUS int64            `json:"duration_us,omitempty"`

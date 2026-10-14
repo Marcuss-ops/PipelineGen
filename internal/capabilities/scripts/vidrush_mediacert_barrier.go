@@ -52,6 +52,10 @@ func (b *MediaCertBarrier) WaitForVidRush(ctx context.Context, runID string) ([]
 	if err != nil {
 		return nil, err
 	}
+	// Per-scene entity overlays may reuse their catalog candidates when the
+	// entity's distinct image pool is exhausted. The binder prefers unused
+	// images, but certification must not erase repeated candidates and then
+	// reject scenes that should keep their overlay visible.
 	if !b.spec.AllowCrossSceneAssetReuse {
 		segments = scriptpkg.RemoveCrossSceneImageCandidateReuse(segments)
 	}

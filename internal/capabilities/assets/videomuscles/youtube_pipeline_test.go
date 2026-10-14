@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaexec"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
@@ -27,7 +28,7 @@ func TestCanonicalYouTubeCutOptionsDelegatesEncoderPolicy(t *testing.T) {
 }
 
 func TestBuildYouTubeSectionDownloadRequestDisablesForceKeyframes(t *testing.T) {
-	req := buildYouTubeSectionDownloadRequest(YouTubeCutRequest{
+	req := (&Pipeline{}).buildYouTubeSectionDownloadRequest(YouTubeCutRequest{
 		URL:            "https://www.youtube.com/watch?v=example",
 		ForceKeyframes: true,
 	}, "/tmp/raw.mp4", "*00:00:01.000-00:00:05.000", true)
@@ -37,6 +38,20 @@ func TestBuildYouTubeSectionDownloadRequestDisablesForceKeyframes(t *testing.T) 
 	require.Equal(t, []string{"*00:00:01.000-00:00:05.000"}, req.DownloadSections)
 	require.Equal(t, "mp4", req.MergeFormat)
 	require.True(t, req.UseCookies)
+	require.Equal(t, defaultSectionDownloadTimeout, req.Timeout,
+		"an unconfigured pipeline keeps the historical per-section bound")
+}
+
+func TestBuildYouTubeSectionDownloadRequestUsesConfiguredSectionTimeout(t *testing.T) {
+	cfg := &config.Config{}
+	cfg.Jobs.YoutubeSectionDownloadTimeoutSeconds = 2700
+
+	req := (&Pipeline{cfg: cfg}).buildYouTubeSectionDownloadRequest(
+		YouTubeCutRequest{URL: "https://www.youtube.com/watch?v=example"},
+		"/tmp/raw.mp4", "*00:10:00.000-00:20:00.000", false)
+
+	require.Equal(t, 45*time.Minute, req.Timeout,
+		"the configured section bound must reach the download request; a literal here would override it")
 }
 
 func TestUsableCachedClipIgnoresEmptyFiles(t *testing.T) {

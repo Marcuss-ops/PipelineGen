@@ -260,6 +260,30 @@ func TestMapClipPlanToOverlayPlan_VideoBackground(t *testing.T) {
 	}
 }
 
+func TestMapClipPlanToOverlayPlan_GlobalEffectsAndGrid(t *testing.T) {
+	plan := mapperPlan(t, nil)
+	plan.Subtitles = nil
+	plan.Output.Effects = []cliprender.ClipEffectSpec{{Type: "glitch", Amount: .5, Seed: 11}, {Type: "mosaic", BlockSize: 16}}
+	plan.Output.Grid = &cliprender.ClipGridSpec{SpacingPX: 64, LineWidthPX: 1, Color: "#35C9D0", Opacity: .25}
+	if err := plan.Seal(); err != nil {
+		t.Fatal(err)
+	}
+	raw, err := MapClipPlanToOverlayPlan(plan)
+	if err != nil {
+		t.Fatalf("map: %v", err)
+	}
+	var doc struct {
+		ClipEffects []map[string]any `json:"clip_effects"`
+		ClipGrid    *clipGridBlock   `json:"clip_grid"`
+	}
+	if err := json.Unmarshal(raw, &doc); err != nil {
+		t.Fatal(err)
+	}
+	if len(doc.ClipEffects) != 2 || doc.ClipEffects[0]["type"] != "glitch" || doc.ClipGrid == nil || doc.ClipGrid.SpacingPX != 64 {
+		t.Fatalf("clip visuals lost on semantic wire: %s", raw)
+	}
+}
+
 // TestMapClipPlanToOverlayPlan_BackgroundKindMismatchFailsClosed proves the
 // mapper never stages bytes under a family they do not belong to: an image
 // kind with a video suffix (or the reverse) is a mapping error, not a silently

@@ -255,15 +255,36 @@ func capEntityImageOverlays(items []capabilityoverlay.OverlayItem, max int, perS
 		return items
 	}
 	seen := make(map[string]struct{}, max)
+	seenAssetHashes := make(map[string]struct{}, max)
+	perSceneImages := len(perScene) > 0 && perScene[0]
 	out := make([]capabilityoverlay.OverlayItem, 0, len(items))
 	for _, item := range items {
 		if item.Kind != string(capabilityoverlay.KindEntityImage) {
 			out = append(out, item)
 			continue
 		}
+		assetKey := ""
+		if perSceneImages {
+			if len(item.AssetRefs) > 0 {
+				assetKey = strings.ToLower(strings.TrimSpace(item.AssetRefs[0].SHA256))
+				if assetKey == "" {
+					assetKey = strings.ToLower(strings.TrimSpace(item.AssetRefs[0].AssetID))
+				}
+				if assetKey == "" {
+					assetKey = strings.ToLower(strings.TrimSpace(item.AssetRefs[0].URL))
+				}
+			}
+			if assetKey != "" {
+				if _, duplicate := seenAssetHashes[assetKey]; duplicate {
+					continue
+				}
+				seenAssetHashes[assetKey] = struct{}{}
+			}
+		}
 		// Image extraction can assign occurrence or scene scoped IDs. Prefer
-		// canonical type/name so an entity is shown only once in the whole video,
-		// even when per-scene image binding is enabled.
+		// canonical type/name so shared-entity mode shows an entity once; per-scene
+		// mode keys that identity by scene so each occurrence can keep its own
+		// image overlay and independently chosen motion.
 		identity := ""
 		if item.EntityRef != nil {
 			identity = strings.TrimSpace(item.EntityRef.CanonicalEntityID)
@@ -285,6 +306,9 @@ func capEntityImageOverlays(items []capabilityoverlay.OverlayItem, max int, perS
 		}
 		if identity == "" {
 			identity = strings.TrimSpace(item.ID)
+		}
+		if perSceneImages && assetKey != "" && strings.TrimSpace(item.SceneID) != "" {
+			identity = strings.TrimSpace(item.SceneID) + "::" + identity
 		}
 		if _, exists := seen[identity]; exists {
 			continue

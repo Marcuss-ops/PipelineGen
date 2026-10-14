@@ -267,6 +267,53 @@ func (a *internetImageSearchAdapter) SearchImages(ctx context.Context, req adapt
 				}
 			}
 		}
+		// Fill a thin durable PERSON pool with a second, focused search. The
+		// catalog refresh path explicitly bypasses the old retrieved-image
+		// shortcut, so this query reaches providers and can contribute new URLs.
+		variant := strings.TrimSpace(req.Entity) + " portrait"
+		variantFilter := filter
+		variantFilter.SubjectID = variant
+		variantResults, variantErr := searcher.Search(queryCtx, variantFilter)
+		if variantErr != nil {
+			a.log.Warn("VidRush portrait image search failed", zap.String("query", variant), zap.Error(variantErr))
+		} else {
+			results = append(results, variantResults...)
+		}
+		if explicit, ok := a.resolver.(interface {
+			ResolveProvider(string) (imagesrouting.ImageSearcher, error)
+		}); ok {
+			if commonsSearcher, commonsErr := explicit.ResolveProvider("wikimedia_commons"); commonsErr == nil {
+				commons, searchErr := commonsSearcher.Search(queryCtx, variantFilter)
+				if searchErr != nil {
+					a.log.Warn("VidRush Wikimedia Commons portrait search failed", zap.String("query", variant), zap.Error(searchErr))
+				} else {
+					results = append(commons, results...)
+				}
+			}
+		}
+	}
+	// Long scene queries often return non-empty DDG results that are unusable
+	// thumbnails or hotlink-protected pages. An empty-only fallback therefore
+	// leaves the materializer with a full list of bad candidates and no chance
+	// to recover. Add independent SearXNG candidates for context searches even
+	// when DDG returned rows; downstream acquisition and image decoding decide
+	// which sources are actually usable. Keep short identity searches on their
+	// dedicated person/Commons path so this does not weaken portrait matching.
+	contextQuery := strings.TrimSpace(req.Entity) == "" || strings.EqualFold(strings.TrimSpace(req.Query), strings.TrimSpace(req.Entity)) || len(strings.Fields(strings.TrimSpace(req.Query))) > 4
+	if contextQuery {
+		if explicit, ok := a.resolver.(interface {
+			ResolveProvider(string) (imagesrouting.ImageSearcher, error)
+		}); ok {
+			if fallback, fallbackErr := explicit.ResolveProvider("searxng"); fallbackErr == nil {
+				fallbackResults, searchErr := fallback.Search(queryCtx, filter)
+				if searchErr != nil {
+					a.log.Warn("VidRush SearXNG image fallback failed", zap.String("query", req.Query), zap.Error(searchErr))
+				} else if len(fallbackResults) > 0 {
+					a.log.Info("VidRush SearXNG context search added candidates", zap.String("query", req.Query), zap.Int("count", len(fallbackResults)), zap.Int("ddg_count", len(results)))
+					results = interleaveImageSearchResults(results, fallbackResults)
+				}
+			}
+		}
 	}
 	// Keep provider diagnostics at the VidRush boundary. The downstream
 	// materializer deliberately drops candidates that cannot be acquired,
@@ -278,10 +325,35 @@ func (a *internetImageSearchAdapter) SearchImages(ctx context.Context, req adapt
 	}
 	a.log.Info("VidRush internet image search returned candidates", zap.String("query", req.Query), zap.Int("count", len(results)))
 	out := make([]scriptpkg.SegmentAssetCandidate, 0, len(results))
+	seen := make(map[string]struct{}, len(results))
 	for _, r := range results {
+		key := strings.TrimSpace(r.PreviewURL)
+		if key == "" {
+			continue
+		}
+		if _, duplicate := seen[key]; duplicate {
+			continue
+		}
+		seen[key] = struct{}{}
 		out = append(out, toCandidate(r))
 	}
 	return out, nil
+}
+
+// interleaveImageSearchResults keeps candidates from both independent
+// providers inside the fanout's bounded limit. Appending SearXNG after DDG
+// meant the registry truncated the slice back to DDG-only before acquisition.
+func interleaveImageSearchResults(primary, alternatives []imagesrouting.ImageSearchResult) []imagesrouting.ImageSearchResult {
+	out := make([]imagesrouting.ImageSearchResult, 0, len(primary)+len(alternatives))
+	for i := 0; i < len(primary) || i < len(alternatives); i++ {
+		if i < len(alternatives) {
+			out = append(out, alternatives[i])
+		}
+		if i < len(primary) {
+			out = append(out, primary[i])
+		}
+	}
+	return out
 }
 
 func retrievedImageRightsStatus(license string) string {

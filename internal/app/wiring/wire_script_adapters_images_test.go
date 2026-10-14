@@ -11,11 +11,12 @@ import (
 )
 
 type imageResolverFixture struct {
-	cached       []images.ImageSearchResult
-	lookupErr    error
-	providerRows []images.ImageSearchResult
-	lookupCalls  int
-	searchCalls  int
+	cached          []images.ImageSearchResult
+	lookupErr       error
+	providerRows    []images.ImageSearchResult
+	searchResponses [][]images.ImageSearchResult
+	lookupCalls     int
+	searchCalls     int
 }
 
 func (f *imageResolverFixture) Resolve(images.ImageSearchTerritory) (images.ImageSearcher, error) {
@@ -35,6 +36,13 @@ type imageSearchFixture struct{ owner *imageResolverFixture }
 
 func (s imageSearchFixture) Search(context.Context, images.ImageFilter) ([]images.ImageSearchResult, error) {
 	s.owner.searchCalls++
+	if len(s.owner.searchResponses) > 0 {
+		index := s.owner.searchCalls - 1
+		if index >= len(s.owner.searchResponses) {
+			return nil, nil
+		}
+		return s.owner.searchResponses[index], nil
+	}
 	return s.owner.providerRows, nil
 }
 
@@ -107,5 +115,43 @@ func TestInternetImageSearchAdapter_FallsBackWhenDatabaseHasNoDurableImage(t *te
 	}
 	if fixture.lookupCalls != 1 || fixture.searchCalls != 1 {
 		t.Fatalf("lookup_calls=%d search_calls=%d; incomplete DB rows must fall back once", fixture.lookupCalls, fixture.searchCalls)
+	}
+}
+
+func TestInternetImageSearchAdapter_FallsBackToSearXNGWhenDuckDuckGoIsEmpty(t *testing.T) {
+	fixture := &imageResolverFixture{searchResponses: [][]images.ImageSearchResult{
+		{},
+		{{AssetID: "searx-archive", Name: "Archivio giudiziario", PreviewURL: "https://images.example/archive.jpg", SourcePageURL: "https://example.org/archive"}},
+	}}
+	adapter := newInternetImageSearchAdapter(fixture, zap.NewNop())
+
+	got, err := adapter.SearchImages(context.Background(), scriptadapters.InternetImageSearchRequest{Query: "archivio giudiziario faldoni", Limit: 4})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got[0].AssetID != "searx-archive" || got[0].Provider != "internet_images" {
+		t.Fatalf("fallback candidates = %+v, want SearXNG archive candidate", got)
+	}
+	if fixture.searchCalls != 2 {
+		t.Fatalf("provider search calls = %d, want DDG then SearXNG", fixture.searchCalls)
+	}
+}
+
+func TestInternetImageSearchAdapter_AddsSearXNGAlternativesForNonemptyContextSearch(t *testing.T) {
+	fixture := &imageResolverFixture{searchResponses: [][]images.ImageSearchResult{
+		{{AssetID: "ddg-thumb", PreviewURL: "https://images.example/thumb.jpg"}},
+		{{AssetID: "searx-original", Name: "Courtroom interior", PreviewURL: "https://images.example/original.jpg", SourcePageURL: "https://example.org/courtroom"}},
+	}}
+	adapter := newInternetImageSearchAdapter(fixture, zap.NewNop())
+	query := "Tribunale Pavia aula udienza vuota"
+	got, err := adapter.SearchImages(context.Background(), scriptadapters.InternetImageSearchRequest{Query: query, Entity: query, Limit: 4})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 2 || got[0].AssetID != "searx-original" || got[1].AssetID != "ddg-thumb" {
+		t.Fatalf("merged context candidates = %+v, want SearXNG and DDG interleaved so both survive fanout limit", got)
+	}
+	if fixture.searchCalls != 2 {
+		t.Fatalf("provider search calls = %d, want DDG plus SearXNG", fixture.searchCalls)
 	}
 }

@@ -53,8 +53,8 @@ func buildVidRushFanoutPlan(plan *scriptpkg.ResolvedGenerationPlan, segment scri
 		// scene's opening prose created queries like "Chiara Poggi Presenta ..."
 		// and let collages/news cards bind as identity portraits. Variant
 		// selection happens within the canonical entity pool downstream.
-		if query := sceneScopedImageQuery(segment); query != "" {
-			imageQueries = []string{query}
+		if queries := sceneScopedImageQueries(segment); len(queries) > 0 {
+			imageQueries = queries
 		}
 	}
 	// Entity-image mode is an explicit narrow surface: preserve only the
@@ -185,6 +185,40 @@ func sceneScopedImageQuery(segment scriptpkg.VidRushSegmentResult) string {
 		}
 	}
 	return ""
+}
+
+// sceneScopedImageQueries retains every imageable person in the scene. The
+// singular helper remains for callers that need a lead identity, while the
+// media fanout must search each distinct person so a two-person scene cannot
+// silently lose its second subject.
+func sceneScopedImageQueries(segment scriptpkg.VidRushSegmentResult) []string {
+	queries := make([]string, 0, len(segment.Insights.Entities)+len(segment.Insights.ImageEntityCanonicalIDs))
+	seen := make(map[string]struct{}, cap(queries))
+	add := func(raw string) {
+		name := strings.TrimSpace(raw)
+		key := normalizeEntityMatch(name)
+		if name == "" || key == "" {
+			return
+		}
+		if _, exists := seen[key]; exists {
+			return
+		}
+		seen[key] = struct{}{}
+		queries = append(queries, name)
+	}
+	for _, entity := range segment.Insights.Entities {
+		if normalizeAnnotationType(entity.Type) == "PERSON" {
+			add(entity.Value)
+		}
+	}
+	if len(queries) == 0 {
+		for surface, canonicalID := range segment.Insights.ImageEntityCanonicalIDs {
+			if strings.HasPrefix(strings.ToLower(strings.TrimSpace(canonicalID)), "person:") {
+				add(surface)
+			}
+		}
+	}
+	return queries
 }
 
 func sourceLeadEntity(source string) string {

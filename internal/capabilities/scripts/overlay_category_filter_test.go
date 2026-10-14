@@ -31,6 +31,54 @@ func TestOverlayCategoryFilterUsesPositionForIDLessSegments(t *testing.T) {
 	}
 }
 
+// A text-only named entity card is the entities_with_text lane, not imagery:
+// an `images: disabled` toggle removes photo overlays (including image-backed
+// entity cards) and must NOT delete the name cards the entity timeline
+// derived — those are bounded by the entities_with_text group limit instead.
+// The GPE/LOCATION alias matters here: the normalized place type produces the
+// same text-only `location` card as an entity_card, and both must survive.
+func TestOverlayCategoryFilterKeepsTextOnlyNamedEntityCards(t *testing.T) {
+	items := []overlays.OverlayItem{
+		{ID: "person-card", SceneID: "scene-0", Kind: "entity_card", TemplateID: "person_default", Text: "Ada Lovelace"},
+		{ID: "place-card", SceneID: "scene-0", Kind: "location", TemplateID: "gpe_default", Text: "Roma"},
+		{ID: "org-card", SceneID: "scene-0", Kind: "organization", TemplateID: "org_default", Text: "ESA"},
+		{ID: "photo", SceneID: "scene-0", Kind: "entity_image", TemplateID: "person_default",
+			AssetRefs: []overlays.OverlayAssetRef{{SHA256: "hash-photo"}}},
+	}
+	canvas := OverlayCanvasSpec{OverlayCategories: map[scriptpkg.OverlayCategory]scriptpkg.Toggle{
+		scriptpkg.OverlayCategoryImages: scriptpkg.ToggleDisabled,
+	}}
+	got := filterOverlayItemsByCategory(items, []Scene{{ID: "scene-0", Index: 0}}, canvas)
+	ids := make([]string, 0, len(got))
+	for _, item := range got {
+		ids = append(ids, item.ID)
+	}
+	want := []string{"person-card", "place-card", "org-card"}
+	if len(ids) != len(want) {
+		t.Fatalf("kept %v, want the three text-only name cards %v", ids, want)
+	}
+	for i := range want {
+		if ids[i] != want[i] {
+			t.Fatalf("kept %v, want %v", ids, want)
+		}
+	}
+}
+
+// The entities_with_text group limit is the documented control for the
+// text-only name cards: a present zero drops them, so the lane is still
+// fully controllable from the payload.
+func TestOverlayGroupLimitsDisableTextOnlyNamedEntityCards(t *testing.T) {
+	items := []overlays.OverlayItem{
+		{ID: "place-card", SceneID: "scene-0", Kind: "location", TemplateID: "gpe_default", Text: "Roma"},
+		{ID: "photo", SceneID: "scene-0", Kind: "entity_image", TemplateID: "person_default",
+			AssetRefs: []overlays.OverlayAssetRef{{SHA256: "hash-photo"}}},
+	}
+	got := applyOverlayGroupLimits(append([]overlays.OverlayItem(nil), items...), map[string]int{"entities_with_text": 0})
+	if len(got) != 1 || got[0].ID != "photo" {
+		t.Fatalf("kept %#v, want only the image-backed card", got)
+	}
+}
+
 func TestOverlayCategoryFilterRecognizesSceneTitlesAndBullets(t *testing.T) {
 	items := []overlays.OverlayItem{
 		{ID: "title", SceneID: "scene-0", Kind: "text_phrase", Params: map[string]any{"editorial_role": "scene_title"}},

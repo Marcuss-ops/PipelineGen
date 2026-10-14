@@ -15,6 +15,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/entitycatalog"
 	scriptports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
+	scriptmetrics "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports/metrics"
 	mediadomain "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
@@ -157,6 +158,8 @@ func (p *MediaResolverImageStage) processInternetImageSegments(ctx context.Conte
 			continue
 		}
 		imageQueries := updated.Insights.ImageQueries
+		entityPoolLookup := entityImagesEnabled && plan != nil && plan.MediaPlan.Extraction.EntityImages.PerScene()
+		catalogLimit := entityImageCatalogPoolSize
 		// Explicit media_plan.searches are the caller's retrieval intent and
 		// take precedence over entity-image expansion for the image slot.
 		manualImageQueries := ResolveManualSegmentQueries(plan, scriptpkg.CanonicalSegment{ID: updated.SegmentID}, scriptpkg.VidRushProviderInternetImages, mediadomain.SlotSecondaryImage)
@@ -178,7 +181,7 @@ func (p *MediaResolverImageStage) processInternetImageSegments(ctx context.Conte
 			// identity. Keep it out of the durable key so a warm replay
 			// reuses the same scene assets even if extraction wording
 			// changes between runs.
-			"internet-images-assets-v4",
+			"internet-images-assets-v5",
 			updated.SegmentID,
 			updated.TextHash,
 			plan.Language,
@@ -189,7 +192,11 @@ func (p *MediaResolverImageStage) processInternetImageSegments(ctx context.Conte
 		// cache_only is an absolute no-provider contract. A forced refresh flag
 		// must not turn it into an external search; it may only replay a warm
 		// materialized result.
-		if internetImageCacheReadable(plan, options) {
+		// A segment cache can contain the one portrait selected by an earlier
+		// job. In per-scene entity mode the canonical entity catalog is the
+		// reusable cache; bypass the segment winner so the full pool can be
+		// bound and randomized again for this run.
+		if internetImageCacheReadable(plan, options) && !entityPoolLookup {
 			if cached, ok := cacheLoad(vidrushImageCache, cacheKey); ok {
 				if payload, ok := cached.(internetImageCachePayload); ok {
 					candidates := append([]scriptpkg.SegmentAssetCandidate(nil), payload.Candidates...)
@@ -222,7 +229,7 @@ func (p *MediaResolverImageStage) processInternetImageSegments(ctx context.Conte
 				continue
 			}
 		}
-		if cacheOnly {
+		if cacheOnly && !entityPoolLookup {
 			updated.Cache.InternetImages = "CACHE_MISS"
 			warnings = append(warnings, internetImageCacheMissWarning(updated.SegmentID))
 			updatedSegments = append(updatedSegments, updated)
@@ -267,7 +274,7 @@ func (p *MediaResolverImageStage) processInternetImageSegments(ctx context.Conte
 				defer releaseCatalogLock()
 				if !plan.MediaPlan.ForceRefreshAssets && !plan.ForceRefresh {
 					lookupStarted := time.Now()
-					pool, err := entityImageCatalogCandidates(ctx, p.catalog, catalogIdentity, perQueryLimit)
+					pool, err := entityImageCatalogCandidates(ctx, p.catalog, catalogIdentity, catalogLimit)
 					observeEntityImageCatalogLookup(p.metrics, lookupStarted)
 					if err != nil {
 						return queryResult{}, err
@@ -283,6 +290,9 @@ func (p *MediaResolverImageStage) processInternetImageSegments(ctx context.Conte
 					}
 					catalogFallback = pool.Candidates
 					catalogRefreshRequired = true
+					if cacheOnly {
+						return queryResult{candidates: catalogFallback, query: query, fromCache: true}, nil
+					}
 				}
 			}
 			if !catalogRefreshRequired && !plan.MediaPlan.ForceRefreshAssets && !plan.ForceRefresh {
@@ -349,6 +359,10 @@ func (p *MediaResolverImageStage) processInternetImageSegments(ctx context.Conte
 				// query without calling the external searcher.
 				p.metrics.IncProviderRequest("internet_images")
 			}
+			imageLimit := perQueryLimit
+			if catalogEligible && imageLimit < entityImageCatalogPoolSize {
+				imageLimit = entityImageCatalogPoolSize
+			}
 			var results []scriptpkg.SegmentAssetCandidate
 			err := measureVidRushProvider(ctx, p.metrics, kernobs.OperationInfo{
 				Stage: kernobs.StageAcquire, Component: "vidrush", Operation: "search", Provider: "internet_images",
@@ -358,17 +372,19 @@ func (p *MediaResolverImageStage) processInternetImageSegments(ctx context.Conte
 				// Labelling every result with the first entity in a multi-person
 				// segment makes the semantic catalog gate discard later people.
 				results, searchErr = p.searcher.SearchImages(callCtx, InternetImageSearchRequest{SegmentID: updated.SegmentID, Position: updated.Position, Query: query, Entity: query,
-					TextHash: updated.TextHash, Language: plan.Language, Limit: perQueryLimit,
+					TextHash: updated.TextHash, Language: plan.Language, Limit: imageLimit,
 					Provider:     "internet_images",
-					ForceRefresh: plan.MediaPlan.ForceRefreshAssets || plan.ForceRefresh,
+					ForceRefresh: plan.MediaPlan.ForceRefreshAssets || plan.ForceRefresh || catalogRefreshRequired,
 				})
 				return searchErr
 			})
 			if err == nil {
 				results = normalizeInternetImageCatalogResults(results, query)
 				if catalogEligible {
-					results = filterPersonEntityImageCandidates(catalogIdentity, results)
-					if catalogErr := persistEntityImageCatalogCandidates(ctx, p.catalog, catalogIdentity, results); catalogErr != nil {
+					addEntityImageCatalogCandidates(p.metrics, scriptmetrics.EntityImageStageDiscovery, scriptmetrics.EntityImageOutcomeFound, len(results))
+					incEntityImageCatalogLifecycle(p.metrics, scriptmetrics.EntityImageStageDiscovery, scriptmetrics.EntityImageOutcomeSuccess)
+					results = filterPersonEntityImageCandidatesMeasured(catalogIdentity, results, p.metrics)
+					if catalogErr := persistEntityImageCatalogCandidatesMeasured(ctx, p.catalog, catalogIdentity, results, p.metrics); catalogErr != nil {
 						return queryResult{}, catalogErr
 					}
 				}
@@ -383,8 +399,16 @@ func (p *MediaResolverImageStage) processInternetImageSegments(ctx context.Conte
 				if results == nil {
 					results = []scriptpkg.SegmentAssetCandidate{}
 				}
-				if cacheErr := storeVidRushPersistentJSON(ctx, p.cache, "entity_images", entityCacheKey, results); cacheErr != nil {
-					return queryResult{}, cacheErr
+				// A no-result response is transient for person image searches: a
+				// provider may be temporarily sparse, rate-limited, or return a
+				// different page on the next query. Persisting that miss for the
+				// normal 48h cache TTL poisons every later scene for this entity.
+				// Keep negative caching for ordinary editorial image queries, but
+				// retry empty entity-image searches on the next run.
+				if len(results) > 0 || !entityImagesEnabled {
+					if cacheErr := storeVidRushPersistentJSON(ctx, p.cache, "entity_images", entityCacheKey, results); cacheErr != nil {
+						return queryResult{}, cacheErr
+					}
 				}
 			}
 			if err != nil && len(catalogFallback) > 0 {
@@ -396,11 +420,13 @@ func (p *MediaResolverImageStage) processInternetImageSegments(ctx context.Conte
 			warnings = append(warnings, fmt.Sprintf("internet_images: bounded query fan-out failed for segment %s: %v", updated.SegmentID, mapErr))
 		}
 		for _, queryResult := range queryResults {
-			if scored, scoreErr := scoreInternetImageCandidates(ctx, p.semanticScorer, queryResult.query, queryResult.candidates); scoreErr != nil {
+			scored, scoreErr := scoreInternetImageCandidates(ctx, p.semanticScorer, queryResult.query, queryResult.candidates)
+			if scoreErr != nil {
 				warnings = append(warnings, fmt.Sprintf("internet_images: semantic scoring unavailable for segment %s: %v", updated.SegmentID, scoreErr))
 			} else {
 				queryResult.candidates = scored
 			}
+			recordEntityImageVisualOutcomes(p.metrics, queryResult.candidates, scoreErr)
 			if p.semanticScorer != nil {
 				if err := persistPersonImageVisualVerdicts(ctx, p.catalog, queryResult.candidates); err != nil {
 					return nil, fmt.Errorf("internet_images: persist visual person-image verdicts for segment %s: %w", updated.SegmentID, err)
@@ -451,15 +477,17 @@ func (p *MediaResolverImageStage) processInternetImageSegments(ctx context.Conte
 		payload := internetImageCachePayload{
 			Candidates: append([]scriptpkg.SegmentAssetCandidate(nil), candidates...),
 		}
-		if len(payload.Candidates) > 0 {
+		if len(payload.Candidates) > 0 && !entityPoolLookup {
 			cacheStore(vidrushImageCache, cacheKey, payload)
 		}
 		// Empty provider results are durable-cached in L2 (TTL 48h) so a warm
 		// replay of the same segment is deterministic and does not re-call the
 		// provider, but they stay out of the no-TTL L1 map to avoid unbounded
 		// growth of empty in-memory entries.
-		if cacheErr := storeVidRushPersistentJSON(ctx, p.cache, "internet_images", cacheKey, payload); cacheErr != nil {
-			return nil, cacheErr
+		if !entityPoolLookup {
+			if cacheErr := storeVidRushPersistentJSON(ctx, p.cache, "internet_images", cacheKey, payload); cacheErr != nil {
+				return nil, cacheErr
+			}
 		}
 		updatedSegments = append(updatedSegments, updated)
 	}
@@ -468,7 +496,12 @@ func (p *MediaResolverImageStage) processInternetImageSegments(ctx context.Conte
 	}
 	entityImagePolicy := plan.MediaPlan.Extraction.EntityImages
 	entityImagePolicy.Enabled = plan.MediaPlan.Extraction.EntityImageSurfaceEnabled()
-	if entityImagePolicy.PerScene() {
+	// Entity-image overlays are authored per scene, but their candidate pool is
+	// shared by the entity catalog. Keep repeated catalog candidates attached
+	// here: the overlay binder prefers an unused variant and falls back to a
+	// previously shown image when the pool is exhausted. Removing duplicates at
+	// this stage can leave later scenes with no image at all.
+	if entityImagePolicy.PerScene() && !entityImagePolicy.Enabled {
 		updatedSegments = scriptpkg.RemoveCrossSceneImageCandidateReuse(updatedSegments)
 	}
 	updatedSpecScene := projectEntityImageBindings(input.SpecScene, updatedSegments, entityImagePolicy)

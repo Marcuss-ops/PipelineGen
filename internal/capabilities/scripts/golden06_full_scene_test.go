@@ -118,10 +118,11 @@ func TestGolden06FullScriptScene(t *testing.T) {
 	require.NoError(t, plan.Validate())
 	require.NotEmpty(t, plan.Items)
 
-	// 2. Final content selection admits grounded phrases, bounded value cards
-	//    and materialized images, each anchored to certified timing.
+	// 2. Final content selection admits grounded phrases, bounded value cards,
+	//    materialized images and the text-only named entity cards the resolver
+	//    derived from the certified timeline, each anchored to certified timing.
 	templates := map[string]bool{}
-	phrases, images, numbers := 0, 0, 0
+	phrases, images, numbers, namedCards := 0, 0, 0, 0
 	for _, item := range plan.Items {
 		templates[item.TemplateID] = true
 		switch item.Kind {
@@ -131,10 +132,14 @@ func TestGolden06FullScriptScene(t *testing.T) {
 			images++
 		case "number":
 			numbers++
+		case "entity_card", "organization", "location", "concept":
+			require.Empty(t, item.AssetRefs, "the named-entity lane admits text-only cards")
+			namedCards++
 		default:
 			t.Fatalf("editorial plan must exclude overlay kind %q", item.Kind)
 		}
 	}
+	require.GreaterOrEqual(t, namedCards, 1, "the narrated place keeps its text-only name card")
 	require.True(t, templates["IMPORTANT_PHRASE"], "grounded phrases must survive the budget (got %v)", templates)
 	require.True(t, templates["image_popup"], "materialized images must survive the budget (got %v)", templates)
 	require.LessOrEqual(t, phrases, capabilityoverlay.MaxPhraseOverlaysPerRun)
@@ -193,7 +198,12 @@ func TestGolden06FullScriptScene(t *testing.T) {
 	require.Equal(t, 1280, analytics.Width)
 	require.Equal(t, 720, analytics.Height)
 	require.NotZero(t, analytics.Content.Phrases, "content census must count phrases")
-	require.Zero(t, analytics.Content.Words, "keyword overlays are outside the final editorial plan")
+	// The canonical priority table classes text emphasis — important words,
+	// numbers, quotes, entity cards, lower thirds — as word-level content, so
+	// the census must report exactly the text-only named entity cards the
+	// timeline produced and nothing else: a keyword overlay leaking into the
+	// final plan would raise this count above the named-card total.
+	require.Equal(t, namedCards, analytics.Content.Words, "only the named entity cards are word-level content")
 	// The content census is extended to include numbers by the queue contract.
 	require.NotZero(t, analytics.Content.Images, "content census must count images")
 

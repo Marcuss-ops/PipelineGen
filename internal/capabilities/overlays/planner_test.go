@@ -321,8 +321,14 @@ func TestBuildPlanAssignsDistinctCertifiedMotionsAcrossRunAfterBudget(t *testing
 	}
 	// The rotation pool is read from its single owner: a test that kept its own
 	// copy could pass while the planner rotated over an unrenderable motion.
+	// Six-plus-word phrases rotate in the long lane, which also carries the
+	// native important_phrase highlight accents outside the general pool
+	// (both pools are pinned to the canonical catalog by the parity test).
 	allowed := map[string]bool{}
 	for _, id := range phraseMotionCandidates {
+		allowed[id] = true
+	}
+	for _, id := range longPhraseMotionCandidates {
 		allowed[id] = true
 	}
 	seen := make(map[string]bool, len(plan.Items))

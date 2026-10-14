@@ -283,8 +283,10 @@ func overlayScene1Annotations() *scriptpkg.SceneAnnotations {
 }
 
 // TestRunner_OverlayPlanAppliesRunLevelEditorialBudget certifies that a real
-// timed run keeps only grounded phrase overlays and image overlays, with a
-// five-item global ceiling for each and no invented phrase backfill.
+// timed run keeps only editorial overlay categories — grounded phrases and
+// images under their five-item global ceilings, the independent number and
+// brand lanes, and the text-only named entity cards the entity resolver
+// derives from the certified timeline — with no invented phrase backfill.
 func TestRunner_OverlayPlanAppliesRunLevelEditorialBudget(t *testing.T) {
 	repo := newInMemRunRepository()
 	textGen := newStubTextGenerator([]Scene{
@@ -372,7 +374,7 @@ func TestRunner_OverlayPlanAppliesRunLevelEditorialBudget(t *testing.T) {
 	require.NoError(t, res.OverlayPlan.Validate())
 
 	byID := map[string]capabilityoverlay.OverlayItem{}
-	images, phrases, numbers, brands := 0, 0, 0, 0
+	images, phrases, numbers, brands, namedCards := 0, 0, 0, 0, 0
 	for _, item := range res.OverlayPlan.Items {
 		byID[item.ID] = item
 		switch item.Kind {
@@ -384,6 +386,13 @@ func TestRunner_OverlayPlanAppliesRunLevelEditorialBudget(t *testing.T) {
 			numbers++
 		case "brand_text":
 			brands++
+		case "entity_card", "organization", "location", "concept":
+			// A TEXT-ONLY named entity card (the scene narrates Cupertino, but
+			// no verified asset exists for it) is its own bounded editorial
+			// category, exactly like phrases, numbers and brand text. Only
+			// image-backed entity cards are promoted to the image lane.
+			require.Empty(t, item.AssetRefs, "the named-card lane admits text-only cards")
+			namedCards++
 		default:
 			t.Fatalf("non-editorial overlay survived editorial budget: %+v", item)
 		}
@@ -392,7 +401,8 @@ func TestRunner_OverlayPlanAppliesRunLevelEditorialBudget(t *testing.T) {
 	require.Equal(t, 2, phrases)
 	require.Equal(t, 5, numbers, "spoken value cards survive on their independent bounded lane")
 	require.Equal(t, 0, brands, "verified Apple logo asset suppresses the brand-text fallback")
-	require.Len(t, res.OverlayPlan.Items, 8)
+	require.Equal(t, 1, namedCards, "Cupertino keeps its text-only place card")
+	require.Len(t, res.OverlayPlan.Items, 9)
 	require.Equal(t, capabilityoverlay.PhraseOverlayBudget{
 		Requested:    capabilityoverlay.MaxPhraseOverlaysPerRun,
 		Materialized: 2,

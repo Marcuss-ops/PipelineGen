@@ -42,7 +42,10 @@ func buildRuntimeMediaCertSpec(plan *scriptpkg.ResolvedGenerationPlan) mediacert
 	// Canonical entity scope keeps a person/place visually consistent across
 	// scenes. Per-scene scope explicitly asks for independent visual evidence
 	// and therefore disables that reuse certification.
-	spec.AllowCrossSceneAssetReuse = plan.MediaPlan.Extraction.EntityImageSurfaceEnabled() && !plan.MediaPlan.Extraction.EntityImages.PerScene()
+	// Entity overlays stay visible in each scene even when their five-image
+	// catalog pool has already been used. The binder prefers unseen images and
+	// falls back to reuse, so the certifier must see those candidates too.
+	spec.AllowCrossSceneAssetReuse = plan.MediaPlan.Extraction.EntityImageSurfaceEnabled() || !plan.MediaPlan.Extraction.EntityImages.PerScene()
 	for i, segment := range plan.Segments {
 		id := strings.TrimSpace(segment.ID)
 		if id == "" {

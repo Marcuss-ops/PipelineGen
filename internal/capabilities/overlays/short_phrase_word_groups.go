@@ -11,17 +11,14 @@ package overlays
 // from that catalog, so any drift fails the tests instead of silently
 // rerouting generated short phrases.
 //
-// Recipes declared for 6+ words, the retired recipes and the typewriter glyph
-// animators are deliberately absent: the first two are out of the short-phrase
-// lane by contract, and the typewriter ids rendered blank clips on the
-// installed Vulkan runtime, so they stay available to explicit plans only.
+// Recipes declared for 6+ words and retired recipes are deliberately absent.
+// The C++ burst recipe is assigned to its authored three-word group and joins
+// the automatic short-phrase rotation (short_phrase_typewriter was retired
+// with the typewriter family and is rejected as a stale payload).
 var shortPhraseRecipeWordGroups = map[int][]string{
 	1: {
-		"short_phrase_scale_settle_word",
-		"short_phrase_product_scramble_reveal",
 		"short_phrase_product_text_shimmer",
 		"short_phrase_product_chromatic_fringe_title",
-		"short_phrase_product_fold_text",
 	},
 	2: {
 		"short_phrase_character_tracking_reveal",
@@ -31,10 +28,8 @@ var shortPhraseRecipeWordGroups = map[int][]string{
 		"short_phrase_product_split_flap_text",
 	},
 	3: {
-		"short_phrase_word_mask_sequence",
-		"short_phrase_word_cascade_sentence",
-		"short_phrase_single_word_swap",
-		"short_phrase_character_write_on",
+		"short_phrase_burst",
+		"short_phrase_editorial_claude_terminal_focus",
 		"short_phrase_product_blur_out_up",
 		"short_phrase_product_bottom_up_letters",
 		"short_phrase_product_kinetic_center_build",
@@ -43,22 +38,20 @@ var shortPhraseRecipeWordGroups = map[int][]string{
 		"short_phrase_product_masked_heading",
 		"short_phrase_product_scrambled_text",
 		"short_phrase_product_gradual_blur",
-		"short_phrase_product_shape_blur",
-		"short_phrase_editorial_paper_title_card",
 	},
 	4: {
-		"short_phrase_semantic_two_line",
-		"short_phrase_simple_progressive_phrase",
+		"short_phrase_editorial_baseline_rise",
 		"short_phrase_editorial_tracking_close",
-		"short_phrase_editorial_rule_handoff",
 		"short_phrase_editorial_glyph_curtain",
 		"short_phrase_editorial_contrast_sweep",
 		"short_phrase_product_perspective_marquee",
+		"short_phrase_product_scroll_reveal",
 		"short_phrase_product_strikethrough_replace",
 	},
 	5: {
-		"short_phrase_shape_phrase_wipe",
+		"short_phrase_editorial_side_glide",
 		"short_phrase_editorial_focus_resolve",
+		"short_phrase_shape_phrase_wipe",
 	},
 }
 

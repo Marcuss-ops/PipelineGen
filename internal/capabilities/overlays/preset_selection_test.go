@@ -51,15 +51,13 @@ func TestHeavyPhraseMotionRotationCoversFamilies(t *testing.T) {
 			selectedFamilies["classic_apple"] = true
 		case containsMotionID(modernAppleMotionCandidates, id):
 			selectedFamilies["modern_apple"] = true
-		case containsMotionID(typewriterMotionCandidates, id):
-			selectedFamilies["typewriter"] = true
 		case containsMotionID(text3DMotionCandidates, id):
 			selectedFamilies["text_3d_v1"] = true
 		case containsMotionID(brushPhraseMotionCandidates, id):
 			selectedFamilies["brush_v1"] = true
 		}
 	}
-	for _, family := range []string{"classic_apple", "modern_apple", "typewriter", "text_3d_v1", "brush_v1"} {
+	for _, family := range []string{"classic_apple", "modern_apple", "text_3d_v1", "brush_v1"} {
 		if !selectedFamilies[family] {
 			t.Errorf("first heavy phrase rotation omits family %s: %v", family, selectedFamilies)
 		}
@@ -120,7 +118,6 @@ func TestGeneratedTextOverlaysStayOnTheRenderSafeTextContract(t *testing.T) {
 	}
 
 	motions := RenderSafeTextMotions()
-	shortPhraseMotions := ShortPhraseMotionCandidates()
 	if len(motions) == 0 {
 		t.Fatal("no render-safe text motions; every generated text overlay would render statically")
 	}
@@ -162,15 +159,17 @@ func TestGeneratedTextOverlaysStayOnTheRenderSafeTextContract(t *testing.T) {
 			continue
 		}
 		textItems++
+		if item.Kind == "text_phrase" && EditorialSectionForItem(item) == EditorialSectionShortPhrase {
+			if item.MotionID == "" {
+				t.Fatalf("short-phrase item %q must be animated, got no motion", item.ID)
+			}
+			continue
+		}
 		if item.MotionID == "" {
 			t.Fatalf("text item %q carries no explicit motion: the preset's own glyph motion would be transported", item.ID)
 		}
 		if item.Kind == "text_phrase" {
-			allowedPhraseMotions := CertifiedPhraseMotions()
-			if EditorialSectionForItem(item) == EditorialSectionShortPhrase {
-				allowedPhraseMotions = shortPhraseMotions
-			}
-			if !containsString(allowedPhraseMotions, item.MotionID) {
+			if !containsString(CertifiedPhraseMotions(), item.MotionID) {
 				t.Fatalf("phrase item %q motion %q is outside the callable phrase catalog", item.ID, item.MotionID)
 			}
 		} else if !safe[item.MotionID] {

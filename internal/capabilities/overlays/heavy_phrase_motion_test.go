@@ -54,7 +54,10 @@ func TestBuildPlanSplitsHeavyPhrasesIntoTheProminentLane(t *testing.T) {
 	if !ok {
 		t.Fatal("the light phrase did not reach the plan")
 	}
-	if !containsString(CertifiedPhraseMotions(), lightItem.MotionID) {
+	// Seven-word light phrases rotate in the long lane, which additionally
+	// carries the native important_phrase highlight accents: both pools are
+	// pinned to the canonical catalog by the parity test.
+	if !containsString(CertifiedPhraseMotions(), lightItem.MotionID) && !containsString(LongPhraseMotionCandidates(), lightItem.MotionID) {
 		t.Fatalf("light phrase motion %q is not a certified phrase motion", lightItem.MotionID)
 	}
 	if lightItem.MotionID == heavyItem.MotionID {

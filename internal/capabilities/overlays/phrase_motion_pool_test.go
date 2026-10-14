@@ -199,6 +199,23 @@ func TestBuildPlanLongPhrasesRotateWithinTheChannelPool(t *testing.T) {
 	}
 }
 
+// TestLongLaneExcludesBlackRendering3DMotions pins the frame-verified
+// finding that text_3d_v1 motions render pure black (mean 0.0/stddev 0.0
+// over 105+ frames) on the standalone important_phrase overlay path, while
+// the Go lowering is correct (centered enable_3d text layer with tracks).
+// Until the Chronon enable_3d text path is fixed, the long lane must not
+// rotate them: a blank video is a silent failure worse than less variety.
+func TestLongLaneExcludesBlackRendering3DMotions(t *testing.T) {
+	for _, id := range longPhraseMotionCandidates {
+		if strings.HasPrefix(id, "text_3d_") {
+			t.Fatalf("long lane carries %q, which renders black on the overlay path", id)
+		}
+	}
+	if len(longPhraseMotionCandidates) == 0 {
+		t.Fatal("long lane is empty")
+	}
+}
+
 func TestBuildPlanDefaultLongPhrasesRotateWithoutRepeating(t *testing.T) {
 	longPhrases := make([]TimedAnnotation, 15)
 	for i := range longPhrases {
@@ -255,8 +272,8 @@ func TestBuildPlanDefaultLongPhrasesRotateWithoutRepeating(t *testing.T) {
 
 func TestModernAppleFamilyExposesAllCatalogMotions(t *testing.T) {
 	family := certifiedPhraseFamily("modern_apple")
-	if len(family) != 61 {
-		t.Fatalf("modern_apple family has %d motions, want all 61 registered modern Apple motions", len(family))
+	if len(family) != 60 {
+		t.Fatalf("modern_apple family has %d motions, want all 60 callable modern Apple motions (removed motions excluded)", len(family))
 	}
 	for _, id := range modernAppleMotionCandidates {
 		if !containsString(family, id) {
@@ -271,14 +288,15 @@ func TestModernAppleFamilyExposesAllCatalogMotions(t *testing.T) {
 }
 
 func TestGeneratedPhraseRotationCoversFifteenAndFits24FPSTiming(t *testing.T) {
-	if len(generatedPhraseMotions) != 148 {
-		t.Fatalf("generated phrase pool has %d entries, want all 148 callable phrase motions (removed motions excluded)", len(generatedPhraseMotions))
+	const callablePhraseMotionCount = 122 // 41 classic + 60 modern Apple, 10 text_3d_v1, 11 brush (typewriter retired).
+	if len(generatedPhraseMotions) != callablePhraseMotionCount {
+		t.Fatalf("generated phrase pool has %d entries, want all %d callable phrase motions (removed motions excluded)", len(generatedPhraseMotions), callablePhraseMotionCount)
 	}
-	sequence := defaultPhraseMotionSequence("rotation-149", "run")
-	seenAll := make(map[string]bool, 148)
+	sequence := defaultPhraseMotionSequence("rotation-159", "run")
+	seenAll := make(map[string]bool, callablePhraseMotionCount)
 	familyCounts := map[string]int{}
 	for ordinal, want := range sequence {
-		if got := selectPhraseMotion("rotation-149", "run", ordinal, nil); got != want {
+		if got := selectPhraseMotion("rotation-159", "run", ordinal, nil); got != want {
 			t.Fatalf("default phrase selector at ordinal %d = %q, want catalog rotation entry %q", ordinal, got, want)
 		}
 	}
@@ -293,8 +311,6 @@ func TestGeneratedPhraseRotationCoversFifteenAndFits24FPSTiming(t *testing.T) {
 				familyCounts["classic_apple"]++
 			case containsString(modernAppleMotionCandidates, id):
 				familyCounts["modern_apple"]++
-			case containsString(typewriterMotionCandidates, id):
-				familyCounts["typewriter"]++
 			case containsString(text3DMotionCandidates, id):
 				familyCounts["text_3d_v1"]++
 			case containsString(brushPhraseMotionCandidates, id):
@@ -304,10 +320,10 @@ func TestGeneratedPhraseRotationCoversFifteenAndFits24FPSTiming(t *testing.T) {
 			}
 		}
 	}
-	if len(sequence) != 148 || len(seenAll) != 148 {
-		t.Fatalf("default phrase sequence covers %d motions, want all 148", len(seenAll))
+	if len(sequence) != callablePhraseMotionCount || len(seenAll) != callablePhraseMotionCount {
+		t.Fatalf("default phrase sequence covers %d motions, want all %d", len(seenAll), callablePhraseMotionCount)
 	}
-	for _, family := range []string{"classic_apple", "modern_apple", "typewriter", "text_3d_v1", "brush_v1"} {
+	for _, family := range []string{"classic_apple", "modern_apple", "text_3d_v1", "brush_v1"} {
 		if familyCounts[family] == 0 {
 			t.Fatalf("first 15 phrase motions do not include family %s", family)
 		}
@@ -351,8 +367,8 @@ func TestGeneratedPhraseRotationCoversFifteenAndFits24FPSTiming(t *testing.T) {
 			t.Fatalf("motion %q repeated before the 15th phrase", item.MotionID)
 		}
 		seen[item.MotionID] = true
-		if got := item.MotionParams["enter_frames"]; got != 16 {
-			t.Fatalf("phrase %q enter_frames = %v, want 16 frames (one third of 2 seconds at 24 fps)", item.Text, got)
+		if got := item.MotionParams["enter_frames"]; got != 96 {
+			t.Fatalf("phrase %q enter_frames = %v, want 96 frames (4 s minimum entrance at 24 fps)", item.Text, got)
 		}
 	}
 	if count != MaxPhraseOverlaysPerRun {
@@ -368,8 +384,8 @@ func TestPhraseMotionEntranceUsesOneThirdPhraseDuration(t *testing.T) {
 		fpsDen     int
 		wantFrames int
 	}{
-		{name: "microsecond timing rounds up", phrase: TimedAnnotation{StartMs: 0, EndMs: 800, DurationUS: 800_000}, fpsNum: 24, fpsDen: 1, wantFrames: 7},
-		{name: "millisecond fallback", phrase: TimedAnnotation{StartMs: 100, EndMs: 3100}, fpsNum: 30, fpsDen: 1, wantFrames: 30},
+		{name: "microsecond timing rounds up", phrase: TimedAnnotation{StartMs: 0, EndMs: 800, DurationUS: 800_000}, fpsNum: 24, fpsDen: 1, wantFrames: 96},
+		{name: "millisecond fallback", phrase: TimedAnnotation{StartMs: 100, EndMs: 3100}, fpsNum: 30, fpsDen: 1, wantFrames: 120},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			params := phraseMotionParams(tc.phrase, tc.fpsNum, tc.fpsDen)
@@ -530,14 +546,13 @@ func TestRandomImageMotionOffsetRotatesThroughAllCertifiedIDs(t *testing.T) {
 	}
 }
 
-// TestEntityImageMotionRotationCoversTheCertifiedCatalog is the regression
-// gate for generated portraits rotating over the full certified 2D image
-// vocabulary (no camera-backed 3D) while preserving per-plan rotation and
-// retry determinism.
-func TestEntityImageMotionRotationCoversTheCertifiedCatalog(t *testing.T) {
+// TestEntityImageMotionRotationCoversThePhotoSafeCatalog keeps generated
+// portraits varied while excluding image recipes that can introduce collage
+// fragments or perspective artifacts.
+func TestEntityImageMotionRotationCoversThePhotoSafeCatalog(t *testing.T) {
 	pool := CertifiedEntityImageMotions()
-	if len(pool) != 5 {
-		t.Fatalf("generated entity-image rotation pool = %d motions, want all 5 restrained certified portrait motions", len(pool))
+	if len(pool) != 9 {
+		t.Fatalf("generated entity-image rotation pool = %d motions, want 9 photo-safe motions", len(pool))
 	}
 	for i, id := range pool {
 		if !containsString(imageMotionCandidates, id) {
@@ -618,10 +633,14 @@ func canonicalSelectableCaptionMotionIDs(t *testing.T) map[string]bool {
 	if err := json.Unmarshal(data, &document); err != nil {
 		t.Fatal(err)
 	}
-	categories := map[string]bool{"entity_caption_v1": true, "trump_entity_text_v1": true, "typewriter": true, "typewriter_glitch": true, "typewriter_modern_v1": true, "entity_card_v1": true}
+	categories := map[string]bool{"entity_caption_v1": true, "trump_entity_text_v1": true, "entity_card_v1": true}
 	ids := map[string]bool{}
 	for _, definition := range document.Motions {
 		if !categories[definition.Category] || !(containsString(definition.Targets, "text") || containsString(definition.Targets, "entity")) {
+			continue
+		}
+		if containsString(definition.Targets, "important_phrase") &&
+			!containsString(definition.Targets, "caption") && !containsString(definition.Targets, "entity") {
 			continue
 		}
 		animated := false
@@ -642,8 +661,8 @@ func canonicalSelectableCaptionMotionIDs(t *testing.T) map[string]bool {
 
 func TestGeneratedEntityCaptionMotionsMatchCanonicalEntityPresentationCatalog(t *testing.T) {
 	pool := CertifiedEntityCaptionMotions()
-	if len(pool) != 56 {
-		t.Fatalf("generated entity-caption motion pool = %d motions, want all 56 certified caption motions", len(pool))
+	if len(pool) != 31 {
+		t.Fatalf("generated entity-caption motion pool = %d motions, want all 31 certified caption motions", len(pool))
 	}
 	want := canonicalSelectableCaptionMotionIDs(t)
 	poolSet := make(map[string]bool, len(pool))
@@ -685,8 +704,8 @@ func TestGeneratedEntityImageWithTextPoolsAreDiverseAndDistinct(t *testing.T) {
 	if !reflect.DeepEqual(imagePool, generatedEntityImageMotionCandidates) {
 		t.Fatalf("image-with-text pool = %v, want complete entity image pool %v", imagePool, generatedEntityImageMotionCandidates)
 	}
-	if len(captionPool) != 56 {
-		t.Fatalf("entity caption motions = %d, want the complete 56-motion catalog", len(captionPool))
+	if len(captionPool) != 31 {
+		t.Fatalf("entity caption motions = %d, want the complete 31-motion catalog", len(captionPool))
 	}
 	seenImage, seenCaption := map[string]bool{}, map[string]bool{}
 	rotationCount := min(len(imagePool), len(captionPool))
@@ -710,8 +729,8 @@ func TestGeneratedEntityImageWithTextPoolsAreDiverseAndDistinct(t *testing.T) {
 
 func TestGeneratedEntityCaptionRotationAndCatalogStayInSync(t *testing.T) {
 	pool := CertifiedEntityCaptionMotions()
-	if len(pool) != 56 {
-		t.Fatalf("generated entity-caption motion pool = %d motions, want 56 selectable caption motions", len(pool))
+	if len(pool) != 31 {
+		t.Fatalf("generated entity-caption motion pool = %d motions, want 31 selectable caption motions", len(pool))
 	}
 	poolSet := make(map[string]bool, len(pool))
 	for _, id := range pool {
@@ -804,7 +823,7 @@ func TestGeneratedImageMotionPoolMatchesCanonicalChrononCatalog(t *testing.T) {
 		if _, removed := removedGeneratedPhraseMotions[definition.ID]; removed {
 			continue
 		}
-		if definition.Category == "apple_v2" || definition.Category == "apple_v3" || definition.Category == "phrase_apple_clean_v1" || definition.Category == "apple_phrase_v1" || definition.Category == "text_3d_v1" || (definition.Category == "brush_v1" && strings.HasPrefix(definition.ID, "brush_phrase_")) || strings.HasPrefix(definition.ID, "typewriter_") {
+		if definition.Category == "apple_v2" || definition.Category == "apple_v3" || definition.Category == "phrase_apple_clean_v1" || definition.Category == "apple_phrase_v1" || definition.Category == "text_3d_v1" || (definition.Category == "brush_v1" && strings.HasPrefix(definition.ID, "brush_phrase_")) {
 			catalogPhraseIDs = append(catalogPhraseIDs, definition.ID)
 		}
 	}
@@ -824,8 +843,8 @@ func TestGeneratedImageMotionPoolMatchesCanonicalChrononCatalog(t *testing.T) {
 			t.Fatalf("selected image motion %d=%q, catalog=%q", i, selectedIDs[i], wantSelected[i])
 		}
 	}
-	if len(catalogPhraseIDs) != 148 || len(phraseMotionCandidates) != len(catalogPhraseIDs) {
-		t.Fatalf("catalog has %d callable phrase motions, callable pool has %d; want all 148 (removed motions excluded)", len(catalogPhraseIDs), len(phraseMotionCandidates))
+	if len(catalogPhraseIDs) != 122 || len(phraseMotionCandidates) != len(catalogPhraseIDs) {
+		t.Fatalf("catalog has %d callable phrase motions, callable pool has %d; want all 122 (removed motions excluded)", len(catalogPhraseIDs), len(phraseMotionCandidates))
 	}
 	callable := append([]string(nil), phraseMotionCandidates...)
 	sort.Strings(callable)

@@ -157,6 +157,49 @@ func (e *fakeContinuationEnqueuer) EnqueueContinuation(_ context.Context, req Co
 	return "settle-child-1", nil
 }
 
+func TestClipRenderHTTPToWorkerSubmitsEffectsAndGrid(t *testing.T) {
+	jobs := &stubJobsSvc{returnJob: &job.Job{ID: "clip-effects-e2e"}}
+	rec := doRender(newTestRouter(jobs), `{"source_asset_id":"asset-source","output":{"effects":[{"type":"glitch","amount":0.55,"seed":37},{"type":"mosaic","block_size":14}],"grid":{"spacing_px":72,"line_width_px":1.25,"color":"#33CCDD","opacity":0.18}}}`)
+	if rec.Code != 202 || jobs.enqueued == nil {
+		t.Fatalf("POST /render status=%d body=%s enqueued=%+v", rec.Code, rec.Body.String(), jobs.enqueued)
+	}
+
+	w, _, _ := newTestWorker(t)
+	renderer := &fakeAsyncRenderExecutor{outcome: fullRenderOutcome()}
+	w.WithRenderExecutor(renderer)
+	_, _, err := handleSubmitted(t, context.Background(), w, "clip-effects-e2e", jobs.enqueued.Payload.(*RenderRequest))
+	if err != nil {
+		t.Fatalf("worker submit from HTTP-accepted payload: %v", err)
+	}
+	if renderer.submitCalls != 1 || len(renderer.plan.Output.Effects) != 2 || renderer.plan.Output.Effects[0].Type != "glitch" || renderer.plan.Output.Grid == nil {
+		t.Fatalf("RenderingGen executor payload lost effects: submit=%d output=%+v", renderer.submitCalls, renderer.plan.Output)
+	}
+	if err := renderer.plan.Validate(); err != nil {
+		t.Fatalf("submitted plan invalid: %v", err)
+	}
+}
+
+func TestWorker_AsyncSubmitCarriesGlobalClipEffectsToRenderer(t *testing.T) {
+	w, _, _ := newTestWorker(t)
+	renderer := &fakeAsyncRenderExecutor{outcome: fullRenderOutcome()}
+	w.WithRenderExecutor(renderer)
+
+	req := baseRenderRequest()
+	req.Output.Effects = []ClipEffectSpec{{Type: "glitch", Amount: 0.55, Seed: 37}, {Type: "mosaic", BlockSize: 14}}
+	req.Output.Grid = &ClipGridSpec{SpacingPX: 72, LineWidthPX: 1.25, Color: "#33CCDD", Opacity: 0.18}
+	_, _, err := handleSubmitted(t, context.Background(), w, "job-global-effects", req)
+	if err != nil {
+		t.Fatalf("submit with global effects: %v", err)
+	}
+
+	if renderer.submitCalls != 1 || len(renderer.plan.Output.Effects) != 2 || renderer.plan.Output.Effects[0].Seed != 37 || renderer.plan.Output.Grid == nil {
+		t.Fatalf("RenderingGen submit did not receive global effects: calls=%d output=%+v", renderer.submitCalls, renderer.plan.Output)
+	}
+	if err := renderer.plan.Validate(); err != nil {
+		t.Fatalf("renderer received an invalid sealed plan: %v", err)
+	}
+}
+
 func TestWorker_AsyncSubmitReleasesRenderSlotAndSettleResumesFromCAS(t *testing.T) {
 	w, _, _ := newTestWorker(t)
 	renderer := &fakeAsyncRenderExecutor{outcome: &RenderOutcome{

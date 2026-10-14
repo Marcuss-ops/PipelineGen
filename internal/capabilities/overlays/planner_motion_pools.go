@@ -30,6 +30,13 @@ func itemPriority(item OverlayItem) float64 {
 	}
 }
 
+// shortPhraseEntranceFrames is the single 4-second entrance floor for the
+// short-phrase lane (1-5 words or <=6s duration). One helper so planner.go
+// and phraseMotionParams can never drift apart again.
+func shortPhraseEntranceFrames(fpsNum, fpsDen int) int64 {
+	return (4*int64(fpsNum) + int64(fpsDen) - 1) / int64(fpsDen)
+}
+
 // phraseMotionParams gives the entrance one third of the phrase's on-screen
 // duration and disables the exit outright. Motion catalog windows are frame
 // counts, so convert the entrance duration at the output frame rate before
@@ -48,6 +55,12 @@ func phraseMotionParams(phrase TimedAnnotation, fpsNum, fpsDen int) map[string]a
 	framesNumerator := phraseDurationUS * int64(fpsNum)
 	framesDenominator := 3_000_000 * int64(fpsDen)
 	frames := (framesNumerator + framesDenominator - 1) / framesDenominator
+	wordCount := len(strings.Fields(phrase.Text))
+	if (wordCount > 0 && wordCount < 6) || phraseDurationUS <= 6_000_000 {
+		if minimum := shortPhraseEntranceFrames(fpsNum, fpsDen); frames < minimum {
+			frames = minimum
+		}
+	}
 	if frames < 1 {
 		frames = 1
 	}
@@ -57,13 +70,19 @@ func phraseMotionParams(phrase TimedAnnotation, fpsNum, fpsDen int) map[string]a
 // validatePhraseMotionPool fails closed on a caller-supplied motion pool that
 // names an id this build cannot render, or that would make the rotation
 // ambiguous (duplicates). An empty pool is the certified default and is
-// always valid.
+// always valid. The long-phrase lane additionally rotates the native
+// important_phrase highlight accents, so those long-lane ids are admitted
+// here too; lanes that cannot use them (short phrases) ignore them at
+// intersection time instead of failing the run.
 func validatePhraseMotionPool(pool []string) error {
 	if len(pool) == 0 {
 		return nil
 	}
 	certified := make(map[string]bool)
 	for _, id := range CertifiedPhraseMotions() {
+		certified[id] = true
+	}
+	for _, id := range LongPhraseMotionCandidates() {
 		certified[id] = true
 	}
 	seen := make(map[string]bool, len(pool))

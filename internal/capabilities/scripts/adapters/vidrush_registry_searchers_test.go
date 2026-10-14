@@ -25,6 +25,28 @@ type rateLimitedVidRushSearchProvider struct {
 	calls atomic.Int32
 }
 
+type roundRobinImageSearchProvider struct {
+	queries []string
+}
+
+func (*roundRobinImageSearchProvider) Name() string { return scriptpkg.VidRushProviderInternetImages }
+
+func (p *roundRobinImageSearchProvider) Search(_ context.Context, req scriptports.VidRushSearchRequest) ([]scriptpkg.SegmentAssetCandidate, error) {
+	p.queries = append(p.queries, req.Query)
+	slug := strings.NewReplacer(" ", "-", ":", "").Replace(strings.ToLower(req.Query))
+	return []scriptpkg.SegmentAssetCandidate{{
+		AssetID: "image-" + slug, Provider: p.Name(), SourceURL: "https://cdn.example/" + slug + ".jpg", Query: req.Query,
+	}}, nil
+}
+
+func (*roundRobinImageSearchProvider) Acquire(context.Context, scriptpkg.SegmentAssetCandidate) (scriptports.LocalArtifact, error) {
+	return scriptports.LocalArtifact{}, errors.New("not used")
+}
+
+func (*roundRobinImageSearchProvider) Verify(context.Context, scriptports.LocalArtifact) (scriptports.VerifiedArtifact, error) {
+	return scriptports.VerifiedArtifact{}, errors.New("not used")
+}
+
 func (p *rateLimitedVidRushSearchProvider) Name() string { return scriptpkg.VidRushProviderArtlist }
 
 func (p *rateLimitedVidRushSearchProvider) Search(_ context.Context, req scriptports.VidRushSearchRequest) ([]scriptpkg.SegmentAssetCandidate, error) {
@@ -109,6 +131,35 @@ func TestVidRushRegistryMediaResolverUsesBoundedFanout(t *testing.T) {
 	}
 	if got := provider.maxActive.Load(); got > 3 {
 		t.Fatalf("max concurrent provider calls = %d, want <= 3", got)
+	}
+}
+
+func TestVidRushRegistryMediaResolverSearchImagesKeepsVariantsInTopPool(t *testing.T) {
+	provider := &roundRobinImageSearchProvider{}
+	registry := NewVidRushAssetProviderRegistry()
+	if err := registry.Register(provider); err != nil {
+		t.Fatal(err)
+	}
+	registry.Freeze()
+
+	got, err := (&VidRushRegistryMediaResolver{Registry: registry}).SearchImages(context.Background(), InternetImageSearchRequest{
+		Query: "Alberto Stasi single-person portrait headshot photo", Entity: "Alberto Stasi", Limit: 2,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(provider.queries) != 5 {
+		t.Fatalf("image queries = %d, want 5", len(provider.queries))
+	}
+	if len(got) != 5 {
+		t.Fatalf("candidate count = %d, want bounded 5-query pool", len(got))
+	}
+	seenQueries := make(map[string]struct{}, len(got))
+	for _, candidate := range got {
+		seenQueries[candidate.Query] = struct{}{}
+	}
+	if len(seenQueries) != 5 {
+		t.Fatalf("top pool contains %d query variants, want all 5: %+v", len(seenQueries), got)
 	}
 }
 
@@ -288,6 +339,29 @@ func TestVidRushFanoutAppliesImageGateToCachedCandidates(t *testing.T) {
 	}
 }
 
+func TestVidRushFanoutUsesPortraitGateOnlyForPersonQueries(t *testing.T) {
+	scorer := &rejectAllPersonImages{}
+	fanout := NewVidRushProviderFanout(nil, nil).WithSemanticScorer(scorer)
+	segment := scriptpkg.VidRushSegmentResult{SegmentID: "ctx-01", Insights: scriptpkg.SegmentInsights{
+		Entities: []scriptpkg.ExtractedEntity{{Value: "Alberto Stasi", Type: "PERSON"}},
+	}}
+	candidates := []scriptpkg.SegmentAssetCandidate{
+		{AssetID: "person", Provider: scriptpkg.VidRushProviderInternetImages, Query: "Alberto Stasi", Entity: "Alberto Stasi", SourceURL: "https://images.example/person.jpg"},
+		{AssetID: "courtroom", Provider: scriptpkg.VidRushProviderInternetImages, Query: "aula tribunale Pavia", Entity: "aula tribunale Pavia", SourceURL: "https://images.example/courtroom.jpg"},
+	}
+
+	got, err := fanout.verifySegmentImageCandidates(context.Background(), segment, candidates)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if scorer.calls != 1 {
+		t.Fatalf("portrait scorer calls = %d, want only the PERSON candidate", scorer.calls)
+	}
+	if len(got) != 1 || got[0].AssetID != "courtroom" {
+		t.Fatalf("verified candidates = %+v, want contextual photo retained and rejected portrait removed", got)
+	}
+}
+
 // TestVidRushProviderFanoutCachesEmptyImageResults certifies the durable-runner
 // provider fanout caches empty internet_images results in L2 (TTL 48h) so a
 // warm replay of the same segment is deterministic and does not re-call the
@@ -344,6 +418,39 @@ func TestVidRushProviderFanoutCachesEmptyImageResults(t *testing.T) {
 	}
 	if got := b.Cache.InternetImages; got != "HIT_EXACT" {
 		t.Fatalf("run B cache state = %q, want HIT_EXACT", got)
+	}
+}
+
+func TestVidRushProviderFanoutRetriesEmptyEntityImageResults(t *testing.T) {
+	vidrushImageCache = cacheutil.NewLRU(vidrushImageL1Capacity)
+	entityImageCache = cacheutil.NewLRU(entityImageL1Capacity)
+	searcher := &emptyInternetImageSearcher{}
+	cache := newMemoryVidRushCache()
+	fanout := NewVidRushProviderFanoutWithCache(nil, searcher, cache)
+	plan := &scriptpkg.ResolvedGenerationPlan{
+		Topic:    "Garlasco",
+		Language: "it",
+		MediaPlan: mediadomain.MediaPlanSpec{
+			ProviderPolicy: mediadomain.MediaProviderPolicy{InternetImages: mediadomain.MediaToggleEnabled},
+			Extraction: mediadomain.MediaExtractionPolicy{EntityImages: mediadomain.EntityImagePolicy{
+				Enabled: true, EntityTypes: []string{"PERSON"}, MaxPerEntity: 1,
+			}},
+		},
+	}
+	segment := scriptpkg.VidRushSegmentResult{
+		SegmentID: "scene-0", TextHash: "same-hash", Text: "Alberto Stasi al processo",
+		Insights: scriptpkg.SegmentInsights{
+			ImageQueries: []string{"Alberto Stasi"},
+			Entities:     []scriptpkg.ExtractedEntity{{Type: "PERSON", Value: "Alberto Stasi"}},
+		},
+	}
+	for i := 0; i < 2; i++ {
+		if _, err := fanout.ResolveProviders(context.Background(), plan, segment); err != nil {
+			t.Fatalf("run %d: %v", i+1, err)
+		}
+	}
+	if searcher.calls != 2 {
+		t.Fatalf("provider calls = %d, want 2; empty entity-image result must not be cached", searcher.calls)
 	}
 }
 

@@ -40,7 +40,15 @@ const DefaultYouTubeFormatSelectors = "bv*[height<=1080][ext=mp4]+ba[ext=m4a]/b[
 // it became sectioned. Keep both selectors height-aligned; the guard test
 // (TestSectionFormatArg_NeverSelectsBelowTheOutputHeight) fails if this cap
 // drifts below the canonical one.
-const DefaultYouTubeSectionFormatSelectors = "bv*[height<=1080][ext=mp4]+ba[ext=m4a]/b[height<=1080][ext=mp4]/best[height<=1080][ext=mp4]/best[ext=mp4]/best"
+//
+// Codec preference (October 2026 GPU cutover): the leading alternatives pin
+// H.264 (avc1) first, then VP9 (vp09) — both decode with GPU/NVDEC or cheap
+// CPU paths — before the unconstrained fallback. The previous selector had no
+// codec preference and matched AV1 (itag 399) on most sources, forcing a
+// libdav1d software decode + re-encode (~500% CPU per job) inside every
+// --force-keyframes-at-cuts section fetch. The trailing alternatives are
+// unchanged so a source without avc1/vp09 still downloads instead of failing.
+const DefaultYouTubeSectionFormatSelectors = "bv*[height<=1080][vcodec^=avc1][ext=mp4]+ba[ext=m4a]/bv*[height<=1080][vcodec^=vp09][ext=mp4]+ba[ext=m4a]/bv*[height<=1080][ext=mp4]+ba[ext=m4a]/b[height<=1080][ext=mp4]/best[height<=1080][ext=mp4]/best[ext=mp4]/best"
 
 // canonicalYouTubePlayerClient is the player client used by BaseArgs for
 // the first (primary) download attempt. Alternate clients from
@@ -203,8 +211,38 @@ const defaultConcurrentFragments = 4
 // default; the env override is clamped to 1..16 so a typo can neither disable
 // the concurrency (0/negative) nor open an abusive hammer.
 func (b *CommandBuilder) ConcurrentFragmentsArg() []string {
-	width := defaultConcurrentFragments
-	if raw := strings.TrimSpace(os.Getenv(EnvConcurrentFragments)); raw != "" {
+	return concurrentFragmentsArg(EnvConcurrentFragments, defaultConcurrentFragments)
+}
+
+// EnvSectionConcurrentFragments is the operator override for fragment
+// concurrency on time-windowed (--download-sections) fetches
+// (PIPELINEGEN_YTDLP_SECTION_CONCURRENT_FRAGMENTS).
+//
+// Section fetches are bounded ranges, not channel scrapes: they carry no
+// ban risk from parallelism, and the October 2026 measurement showed a
+// single 600s section crawling at ~9.3 MB/min with width 4 + sleep pacing.
+// Width 8 by default; clamped to 1..16 like the full-source variant.
+const EnvSectionConcurrentFragments = "PIPELINEGEN_YTDLP_SECTION_CONCURRENT_FRAGMENTS"
+
+const defaultSectionConcurrentFragments = 8
+
+// SectionConcurrentFragmentsArg returns the --concurrent-fragments pair for
+// sectioned downloads. Falls back to ConcurrentFragmentsArg's env knob when
+// the section-specific one is unset, so a single operator override still
+// governs every path.
+func (b *CommandBuilder) SectionConcurrentFragmentsArg() []string {
+	if strings.TrimSpace(os.Getenv(EnvSectionConcurrentFragments)) != "" {
+		return concurrentFragmentsArg(EnvSectionConcurrentFragments, defaultSectionConcurrentFragments)
+	}
+	if strings.TrimSpace(os.Getenv(EnvConcurrentFragments)) != "" {
+		return concurrentFragmentsArg(EnvConcurrentFragments, defaultConcurrentFragments)
+	}
+	return []string{"--concurrent-fragments", strconv.Itoa(defaultSectionConcurrentFragments)}
+}
+
+func concurrentFragmentsArg(envKey string, fallback int) []string {
+	width := fallback
+	if raw := strings.TrimSpace(os.Getenv(envKey)); raw != "" {
 		if parsed, err := strconv.Atoi(raw); err == nil {
 			width = parsed
 		}
@@ -216,6 +254,33 @@ func (b *CommandBuilder) ConcurrentFragmentsArg() []string {
 		width = 16
 	}
 	return []string{"--concurrent-fragments", strconv.Itoa(width)}
+}
+
+// EnvHWAccel is the operator knob for GPU-accelerated decode inside the
+// yt-dlp-driven ffmpeg step (PIPELINEGEN_YTDLP_HWACCEL). Values are passed
+// through as the ffmpeg -hwaccel argument ("cuda" on the RTX A4000 host,
+// "auto" is the portable default); "off" disables the flag so CPU-only
+// hosts keep byte-identical argv.
+//
+// Placement note (verified against yt-dlp 2026.8.19
+// downloader/external.py:511): the ffmpeg_i: prefix routes the flag to the
+// INPUT side (before -i), the only position where -hwaccel is valid. The
+// native DASH/HLS downloader ignores downloader-args entirely, so on the
+// common path this flag is inert — it only helps when the external ffmpeg
+// downloader owns the fetch. Zero regression surface by construction.
+const EnvHWAccel = "PIPELINEGEN_YTDLP_HWACCEL"
+
+// SectionHWAccelDownloaderArgs returns the --downloader-args pair that moves
+// a yt-dlp-internal ffmpeg decode leg onto the GPU. Nil when disabled.
+func (b *CommandBuilder) SectionHWAccelDownloaderArgs() []string {
+	method := strings.TrimSpace(os.Getenv(EnvHWAccel))
+	if method == "" {
+		method = "auto"
+	}
+	if strings.EqualFold(method, "off") {
+		return nil
+	}
+	return []string{"--downloader-args", "ffmpeg_i:-hwaccel " + method}
 }
 
 // FormatArg returns the -f format string for YouTube downloads when addFormat

@@ -214,10 +214,21 @@ type GenerationItemV2 struct {
 	DisableNumberOverlays bool   `json:"disable_number_overlays,omitempty"`
 	DisableRecapOverlays  bool   `json:"disable_recap_overlays,omitempty"`
 	DisableChartOverlays  bool   `json:"disable_chart_overlays,omitempty"`
+	// DisableEditorialOverlays skips the automatic scene_title/scene_bullet
+	// projection so operator-supplied grounded phrases keep the run budget
+	// (motion-catalog runs). False by default.
+	DisableEditorialOverlays bool `json:"disable_editorial_overlays,omitempty"`
 	// EnableCharts is the explicit opt-in for chart overlays. Charts render
 	// only when this is true and DisableChartOverlays is false; the default
 	// (false) means no chart is ever planned.
 	EnableCharts bool `json:"enable_charts,omitempty"`
+	// HeavyPhrasePriority overrides the editorial-weight threshold that splits
+	// the phrase lane: items at or above it take the prominent-motion lane
+	// instead of the caller-pool rotation. Zero keeps the certified default.
+	// Motion-catalog runs pin it unreachable so every phrase rotates the
+	// requested pool exactly (a heavy-boosted phrase would otherwise leave
+	// the pool and the no-repeat guard would substitute an outside motion).
+	HeavyPhrasePriority float64 `json:"heavy_phrase_priority,omitempty"`
 
 	// Audio configures the audio execution mode (audio.mode) plus the
 	// editorial audio intent block (mix_policy, background_music,

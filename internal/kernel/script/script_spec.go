@@ -16,6 +16,12 @@ package script
 type ScriptSegment struct {
 	ID   string `json:"id,omitempty"`
 	Kind string `json:"kind,omitempty"`
+	// DurationMS is an explicit editorial scene duration. It lets verbatim,
+	// no-voiceover runs build a timeline without synthesizing audio.
+	DurationMS int64 `json:"duration_ms,omitempty"`
+	// ShortPhraseOverlay explicitly requests one static short-phrase overlay
+	// for this verbatim segment, using its editorial duration as the display window.
+	ShortPhraseOverlay bool `json:"short_phrase_overlay,omitempty"`
 	// ExtractEntities overrides the run-level extraction toggle for this
 	// scene. default/omitted inherits output.extract_entities.
 	ExtractEntities Toggle `json:"extract_entities,omitempty"`

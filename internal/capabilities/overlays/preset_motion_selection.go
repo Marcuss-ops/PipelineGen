@@ -110,40 +110,37 @@ func isShortPhraseMotionPool(pool []string) bool {
 	return len(pool) > 0
 }
 
-// selectShortPhraseMotion routes phrases of one to five words through the
-// matching exact-cardinality ChrononTemplate recipes. A caller's pool is
-// intersected with that family so incompatible animations cannot enter the lane.
+// selectShortPhraseMotion routes 1-5 word phrases through renderer-visible
+// phrase entrances plus word-count-compatible C++ short-phrase recipes. Caller
+// pools are intersected with that compatible set to reject incompatible IDs.
+// Policy: rotation_no_repeat with persisted run seed (motionSeed).
 func selectShortPhraseMotion(jobID, sceneID string, ordinal, wordCount int, pool []string) string {
 	return selectShortPhraseMotionLimited(jobID, sceneID, ordinal, wordCount, pool, 0)
 }
 
 func selectShortPhraseMotionLimited(jobID, sceneID string, ordinal, wordCount int, pool []string, limit int) string {
-	candidates := shortPhraseMotionCandidates[wordCount]
-	if len(candidates) == 0 {
-		// Never apply a short-phrase recipe to a different word count.
-		return ""
+	candidates := ShortPhraseVisibleMotionCandidates()
+	if wordCount >= 1 && wordCount <= 5 {
+		candidates = append(candidates, ShortPhraseMotionsForWordCount(wordCount)...)
 	}
+	candidates = uniqueMotionPool(candidates)
 	if len(pool) > 0 {
-		allowed := make(map[string]struct{}, len(pool))
-		for _, id := range pool {
-			allowed[id] = struct{}{}
-		}
-		compatible := make([]string, 0, len(candidates))
-		for _, id := range candidates {
-			if _, ok := allowed[id]; ok {
-				compatible = append(compatible, id)
-			}
-		}
-		if len(compatible) > 0 {
+		if compatible := intersectMotionPool(candidates, pool); len(compatible) > 0 {
 			candidates = compatible
+			return selectMotionFromPool(jobID, sceneID, "short_phrase", ordinal, limitedShuffledMotionPool(candidates, limit, jobID+"\x00short_phrase_pool"))
 		}
 	}
-	// The per-family animation count used to truncate the pool here, before
-	// rotation, so every phrase in a word-count group drew from the same few
-	// recipes. The full group is now rotated; limit is kept for the call sites
-	// but no longer narrows the pool.
-	_ = limit
+	if limit > 0 {
+		candidates = limitedShuffledMotionPool(candidates, limit, jobID+"\x00short_phrase_default")
+	}
 	return selectMotionFromPool(jobID, sceneID, "short_phrase", ordinal, candidates)
+}
+
+// ShortPhraseVisibleMotionCandidates returns the renderer-certified general
+// phrase entrance pool. Exact C++ short-phrase recipes are added separately
+// for the phrase's authored word count by selectShortPhraseMotionLimited.
+func ShortPhraseVisibleMotionCandidates() []string {
+	return append([]string(nil), phraseAppleCleanMotionCandidates...)
 }
 
 // limitedMotionPool caps a deduplicated rotation window to at most limit
@@ -270,7 +267,7 @@ func visiblePhraseEntrancePool(pool []string) []string {
 	}
 	out := make([]string, 0, len(pool))
 	for _, id := range pool {
-		if strings.HasPrefix(id, "typewriter_") || strings.HasPrefix(id, "brush_phrase_") ||
+		if strings.HasPrefix(id, "brush_phrase_") ||
 			strings.Contains(id, "slide") || strings.Contains(id, "reveal") ||
 			strings.Contains(id, "stagger") || strings.Contains(id, "cascade") ||
 			strings.Contains(id, "expand") || strings.Contains(id, "lift") || strings.Contains(id, "fold") ||
@@ -426,8 +423,8 @@ func CertifiedHeavyPhraseMotions() []string {
 // build rotates over. It is the membership authority a caller-supplied pool is
 // validated against (see PlanInput.PhraseMotions): every id is a catalog motion
 // whose text, animator and companion-layer lowering is implemented by
-// RenderingGen. The complete membership list includes typewriter, spatial 3D
-// and brush phrase recipes.
+// RenderingGen. The complete membership list includes the surviving Apple,
+// spatial 3D and brush phrase recipes (typewriter/highlight retired).
 //
 // The returned slice is a copy — callers may keep it without pinning the
 // package's own storage.
@@ -459,8 +456,7 @@ func ShortPhraseMotionsForWordCount(wordCount int) []string {
 }
 
 // ShortPhraseMotionWordCount reports the exact word-count group a motion
-// belongs to. Typewriter ids curated into a group are word-agnostic in the
-// general catalog but group-pinned here so policies mirror automatic routing.
+// belongs to.
 func ShortPhraseMotionWordCount(motionID string) (int, bool) {
 	for wordCount := 1; wordCount <= 5; wordCount++ {
 		for _, id := range shortPhraseMotionCandidates[wordCount] {
@@ -472,11 +468,16 @@ func ShortPhraseMotionWordCount(motionID string) (int, bool) {
 	return 0, false
 }
 
-// IsShortPhraseRecipe reports whether the id is an exact-cardinality
-// short-phrase recipe. Such recipes mis-render any other word count, so
-// non-short copy must never receive one, by policy or by rotation.
+// IsShortPhraseRecipe reports whether motionID is one of the currently
+// published exact-cardinality recipes. A prefix alone is not sufficient:
+// retired IDs keep that wire prefix but must no longer be recognized.
 func IsShortPhraseRecipe(motionID string) bool {
-	return strings.HasPrefix(motionID, "short_phrase_")
+	for _, ids := range shortPhraseMotionCandidates {
+		if containsMotion(ids, motionID) {
+			return true
+		}
+	}
+	return false
 }
 
 // SingleWordMotionCandidates exposes the read-only cinematic pool used for
@@ -512,8 +513,6 @@ func phraseMotionFamilyCandidates(family string) []string {
 		pool = flattenShortPhraseMotionCandidates()
 	case "modern_apple":
 		pool = modernAppleMotionCandidates
-	case "typewriter":
-		pool = typewriterMotionCandidates
 	case "brush_v1":
 		pool = brushPhraseMotionCandidates
 	case "text_3d_v1", "3d":
