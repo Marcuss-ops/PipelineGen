@@ -66,8 +66,8 @@ func projectEntityImageBindings(spec scriptpkg.SpecSceneOutput, segments []scrip
 	// entity, reused for cost), but within ONE run the same candidate must not
 	// be rebound to every scene that mentions the entity: each occurrence
 	// prefers a DISTINCT candidate from the same entity pool. When the pool has
-	// only one usable candidate the fallback still binds it (availability beats
-	// strict distinctness), so a cold catalog never loses the image entirely.
+	// only one usable candidate shared-entity mode reuses it (availability beats
+	// strict distinctness); per-scene mode fails closed rather than repeating it.
 	usedCandidates := make(map[string]struct{})
 	for i := range out.Scenes {
 		if out.Scenes[i].Annotations == nil {
@@ -84,17 +84,15 @@ func projectEntityImageBindings(spec scriptpkg.SpecSceneOutput, segments []scrip
 				continue
 			}
 			variantSeed := strings.TrimSpace(out.Scenes[i].ID) + "|" + entityImageIdentity(*entity)
-			if candidate, ok := findEntityImageCandidateFrom(*entity, *seg, variantSeed, usedCandidates); ok {
+			candidate, ok := findEntityImageCandidateFrom(*entity, *seg, variantSeed, usedCandidates)
+			if !ok && !policy.PerScene() {
+				// Shared-entity mode prefers an unused variant, but a single-image
+				// catalog must remain usable across repeated mentions. Per-scene
+				// mode keeps its stricter distinctness contract.
+				candidate, ok = findEntityImageCandidateFrom(*entity, *seg, variantSeed)
+			}
+			if ok {
 				key := vidRushCandidateIdentity(candidate)
-				if policy.PerScene() && key != "" {
-					if _, alreadyUsed := usedCandidates[key]; alreadyUsed {
-						// Per-scene scope promises independent image evidence, and the
-						// media-cert gate rejects duplicate assets across scenes. Keep
-						// this scene text-only when its pool has no unused variant;
-						// reusing the lone image would make the whole run uncertifiable.
-						continue
-					}
-				}
 				if key != "" {
 					usedCandidates[key] = struct{}{}
 				}
@@ -288,8 +286,8 @@ func findEntityImageCandidate(entity scriptpkg.AnnotatedEntity, seg scriptpkg.Vi
 // candidate pool, so a shared library holding several variants of one entity
 // gives different scenes different images instead of every scene fronting the
 // same portrait. The used ledger still wins — an already-distributed candidate
-// is skipped to its next unused sibling — and the rotated first match is the
-// last-resort fallback so a single-candidate pool still binds.
+// is skipped to its next unused sibling. Once every candidate has appeared in
+// the run, this returns no match instead of reusing a portrait as false variety.
 func findEntityImageCandidateFrom(entity scriptpkg.AnnotatedEntity, seg scriptpkg.VidRushSegmentResult, seed string, used ...map[string]struct{}) (scriptpkg.SegmentAssetCandidate, bool) {
 	want := normalizeEntityMatch(entity.CanonicalName)
 	if want == "" {
@@ -310,26 +308,18 @@ func findEntityImageCandidateFrom(entity scriptpkg.AnnotatedEntity, seg scriptpk
 		return scriptpkg.SegmentAssetCandidate{}, false
 	}
 	// Deterministic variant rotation: the scene+entity seed starts the scan at
-	// a stable offset, so two scenes sharing the entity anchor on different
-	// variants when the pool has them.
+	// a stable offset, while the run ledger spreads repeated scenes across the
+	// available pool.
 	start := entityVariantOffset(seed, len(matches))
-	var firstMatch *scriptpkg.SegmentAssetCandidate
 	for step := 0; step < len(matches); step++ {
 		candidate := matches[(start+step)%len(matches)]
 		key := vidRushCandidateIdentity(candidate)
 		if excluded != nil && key != "" {
 			if _, taken := excluded[key]; taken {
-				if firstMatch == nil {
-					match := candidate
-					firstMatch = &match
-				}
 				continue
 			}
 		}
 		return candidate, true
-	}
-	if firstMatch != nil {
-		return *firstMatch, true
 	}
 	return scriptpkg.SegmentAssetCandidate{}, false
 }
@@ -376,8 +366,7 @@ func entityImageMatches(want string, seg scriptpkg.VidRushSegmentResult) []scrip
 
 // entityVariantOffset maps a scene+entity seed deterministically onto an offset
 // in [0, poolSize). The same (scene, entity, pool) always yields the same
-// variant, so replays are stable, while different scenes spread across the
-// pool. A pool of one (or an empty seed) always starts at zero.
+// variant, so replays are stable, while different scenes spread across the pool.
 func entityVariantOffset(seed string, poolSize int) int {
 	if poolSize <= 1 || strings.TrimSpace(seed) == "" {
 		return 0

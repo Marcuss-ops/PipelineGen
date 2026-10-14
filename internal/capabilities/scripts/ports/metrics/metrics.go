@@ -137,6 +137,25 @@ type VidRushMetrics interface {
 // VidRushMetrics so existing lightweight metrics fakes remain source
 // compatible. Implementations must keep identifiers, URLs and queries out of
 // metric labels; those values belong in structured logs.
+const (
+	EntityImageStageDiscovery = "discovery"
+	EntityImageStageIdentity  = "identity"
+	EntityImageStageVisual    = "visual"
+
+	EntityImageStageAcquire        = "acquire"
+	EntityImageStageVerify         = "verify"
+	EntityImageStagePublish        = "publish"
+	EntityImageStageCatalogPersist = "catalog_persist"
+	EntityImageStageReuse          = "reuse"
+
+	EntityImageOutcomeFound    = "found"
+	EntityImageOutcomeAccepted = "accepted"
+	EntityImageOutcomeRejected = "rejected"
+	EntityImageOutcomeSuccess  = "success"
+	EntityImageOutcomeFailure  = "failure"
+	EntityImageOutcomeSkipped  = "skipped"
+)
+
 type EntityImageCatalogMetrics interface {
 	IncEntityImageCatalogLookup(hit bool)
 	IncEntityImageCatalogRefresh()
@@ -146,6 +165,13 @@ type EntityImageCatalogMetrics interface {
 	ObserveEntityImageCatalogMaterialization(seconds float64)
 	IncEntityImageCatalogDriveReuse()
 	IncEntityImageCatalogNewDownload()
+	// AddEntityImageCatalogCandidates records counts for bounded lifecycle
+	// stages (discovery, identity, visual) and outcomes (found, accepted,
+	// rejected). IncEntityImageCatalogLifecycle records acquire, verify,
+	// publish, catalog-persist and reuse success/failure events. Stage/outcome
+	// values are fixed enums, never entity IDs, URLs or queries.
+	AddEntityImageCatalogCandidates(stage, outcome string, count int)
+	IncEntityImageCatalogLifecycle(stage, outcome string)
 }
 
 // NormalizeTargetLang applies the canonical godlike/07
@@ -166,6 +192,29 @@ type EntityImageCatalogMetrics interface {
 // godlike/07 typed-error contract: the returned string is ALWAYS
 // non-empty (the "unknown" fallback guarantees bounded cardinality
 // even when the caller passes an empty plan language).
+// NormalizeEntityImageMetricStage and NormalizeEntityImageMetricOutcome keep
+// Prometheus labels within the small lifecycle vocabulary above.
+func NormalizeEntityImageMetricStage(stage string) string {
+	switch stage {
+	case EntityImageStageDiscovery, EntityImageStageIdentity, EntityImageStageVisual,
+		EntityImageStageAcquire, EntityImageStageVerify, EntityImageStagePublish,
+		EntityImageStageCatalogPersist, EntityImageStageReuse:
+		return stage
+	default:
+		return "unknown"
+	}
+}
+
+func NormalizeEntityImageMetricOutcome(outcome string) string {
+	switch outcome {
+	case EntityImageOutcomeFound, EntityImageOutcomeAccepted, EntityImageOutcomeRejected,
+		EntityImageOutcomeSuccess, EntityImageOutcomeFailure, EntityImageOutcomeSkipped:
+		return outcome
+	default:
+		return "unknown"
+	}
+}
+
 func NormalizeTargetLang(lang string) string {
 	if strings.TrimSpace(lang) == "" {
 		return "unknown"

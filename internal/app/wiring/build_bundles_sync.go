@@ -87,17 +87,18 @@ func buildYouTubeRuntimeConfig(cfg *config.Config) youtubetypes.RuntimeConfig {
 	maxVideo := cfg.Concurrency.MaxConcurrentVideoExtracts
 	maxOllama := cfg.Concurrency.MaxConcurrentOllamaCalls
 	return youtubetypes.RuntimeConfig{
-		MaxConcurrentVideoExtracts: maxVideo,
-		MaxConcurrentOllamaCalls:   maxOllama,
-		YouTubeExtractTimeout:      cfg.Jobs.YouTubeExtractTimeout,
-		DataDir:                    cfg.Storage.DataDir,
-		YtdlpPath:                  cfg.External.ResolvedYtdlpPath(),
-		ClipsFolderID:              cfg.Drive.ClipsFolder(),
-		YouTubeSubtitlesFolderID:   cfg.Drive.YouTubeSubtitlesFolder(),
-		OllamaModel:                cfg.External.OllamaModel,
-		OllamaMetadataModel:        cfg.External.OllamaMetadataModel,
-		YouTubeCookiesPath:         cfg.External.ResolveYouTubeCookiesPath(),
-		YouTubeJSRuntimePath:       cfg.External.YouTubeJSRuntimePath,
-		YouTubeEnabled:             cfg.Features.YouTubeEnabled,
+		MaxConcurrentVideoExtracts:    maxVideo,
+		MaxConcurrentOllamaCalls:      maxOllama,
+		YouTubeExtractTimeout:         cfg.Jobs.YouTubeExtractTimeout,
+		SectionDownloadTimeoutSeconds: cfg.Jobs.YoutubeSectionDownloadTimeoutSeconds,
+		DataDir:                       cfg.Storage.DataDir,
+		YtdlpPath:                     cfg.External.ResolvedYtdlpPath(),
+		ClipsFolderID:                 cfg.Drive.ClipsFolder(),
+		YouTubeSubtitlesFolderID:      cfg.Drive.YouTubeSubtitlesFolder(),
+		OllamaModel:                   cfg.External.OllamaModel,
+		OllamaMetadataModel:           cfg.External.OllamaMetadataModel,
+		YouTubeCookiesPath:            cfg.External.ResolveYouTubeCookiesPath(),
+		YouTubeJSRuntimePath:          cfg.External.YouTubeJSRuntimePath,
+		YouTubeEnabled:                cfg.Features.YouTubeEnabled,
 	}
 }

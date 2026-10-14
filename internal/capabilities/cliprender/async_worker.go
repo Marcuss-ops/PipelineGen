@@ -185,6 +185,7 @@ func (w *Worker) preparePlan(ctx context.Context, req *RenderRequest, runID stri
 		Cues: prepared.Transcript.Cues, Contract: prepared.Contract, AudioMode: req.Audio.Mode,
 		Overlay: overlayInput, OutputPath: filepath.Join(runDir, "rendered-clip.mp4"),
 		ForegroundScalePercent: req.Output.ForegroundScalePercent,
+		Effects:                req.Output.Effects, Grid: req.Output.Grid,
 	})
 	if err != nil {
 		return nil, ClipRenderPlanV1{}, nil, -1, fmt.Errorf("clip.render: compile plan: %w", err)

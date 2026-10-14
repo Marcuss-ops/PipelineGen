@@ -73,6 +73,12 @@ const (
 	// the upstream, and this bound only keeps one request from opening an
 	// unbounded number of ffmpeg/yt-dlp processes.
 	sectionStageConcurrency = 4
+
+	// sectionStageDownloadTimeout is the fallback bound for ONE staged section
+	// fetch when RuntimeConfig leaves the knob unset. It is the historical
+	// literal value, kept so a composition that does not configure the knob
+	// behaves exactly as before.
+	sectionStageDownloadTimeout = 12 * time.Minute
 )
 
 // sectionBlock is one merged, contiguous download window plus the segments it
@@ -237,6 +243,14 @@ func (s *ExtractionService) stageSectionBlocks(ctx context.Context, req *youtube
 		return nil
 	}
 
+	// A staged section is the same time-range fetch the per-segment path runs,
+	// so it is bounded by the same configured knob; the 12m default is the
+	// historical value kept for compositions that leave the knob unset.
+	sectionTimeout := sectionStageDownloadTimeout
+	if s.cfg.SectionDownloadTimeoutSeconds > 0 {
+		sectionTimeout = time.Duration(s.cfg.SectionDownloadTimeoutSeconds) * time.Second
+	}
+
 	concurrency := sectionStageConcurrency
 	if concurrency > len(blocks) {
 		concurrency = len(blocks)
@@ -274,7 +288,7 @@ func (s *ExtractionService) stageSectionBlocks(ctx context.Context, req *youtube
 				Source:         source,
 				CallerRef:      "youtube.extract.section:" + videoID,
 				IdempotencyKey: acquisition.DeriveIdempotencyKey(source),
-				Timeout:        12 * time.Minute,
+				Timeout:        sectionTimeout,
 				TTL:            24 * time.Hour,
 			})
 			if err != nil {

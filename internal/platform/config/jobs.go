@@ -38,11 +38,20 @@ type JobsConfig struct {
 	// canonical default is 60s (DefaultSegmentPolicy); production may
 	// raise it (e.g. 120 for 2-minute clips) via config/env without
 	// touching the shared default policy.
-	YoutubeMaxSegmentDurationSeconds int    `yaml:"youtube_max_segment_duration_seconds" env:"VELOX_YOUTUBE_MAX_SEGMENT_DURATION_SECONDS" default:"60"`
-	MaintenanceInterval              string `yaml:"maintenance_interval" default:"24h"`
-	BackupInterval                   string `yaml:"backup_interval" default:"6h"`
-	IndexingInterval                 string `yaml:"indexing_interval" default:"15m"`
-	RetentionDays                    int    `yaml:"retention_days" env:"VELOX_RETENTION_DAYS" default:"30"`
+	YoutubeMaxSegmentDurationSeconds int `yaml:"youtube_max_segment_duration_seconds" env:"VELOX_YOUTUBE_MAX_SEGMENT_DURATION_SECONDS" default:"60"`
+	// YoutubeSectionDownloadTimeoutSeconds bounds ONE time-range download
+	// (the download-sections fetch that produces a single clip window, and the
+	// equivalent staged-section fetch). The historical value was a hardcoded
+	// 10 minutes, which fits a <=60s window comfortably but not a 10-minute
+	// one: the section is ~10x the bytes and YouTube throttles long ranges, so
+	// the process is killed mid-download and the segment fails as terminal.
+	// Operators raising YoutubeMaxSegmentDurationSeconds must raise this in
+	// step; the default preserves the historical 600s bound.
+	YoutubeSectionDownloadTimeoutSeconds int    `yaml:"youtube_section_download_timeout_seconds" env:"VELOX_YOUTUBE_SECTION_DOWNLOAD_TIMEOUT_SECONDS" default:"600"`
+	MaintenanceInterval                  string `yaml:"maintenance_interval" default:"24h"`
+	BackupInterval                       string `yaml:"backup_interval" default:"6h"`
+	IndexingInterval                     string `yaml:"indexing_interval" default:"15m"`
+	RetentionDays                        int    `yaml:"retention_days" env:"VELOX_RETENTION_DAYS" default:"30"`
 	// RetentionInterval is the periodic sweeper tick interval — controls how
 	// often the job_events retention sweeper runs (when RetentionDays > 0).
 	// Default 12h: balances bounded DELETE-load (lock contention) against

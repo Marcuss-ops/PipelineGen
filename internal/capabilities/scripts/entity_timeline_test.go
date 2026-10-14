@@ -11,6 +11,7 @@ import (
 
 	capabilityaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
 	capabilityentities "github.com/Marcuss-ops/PipelineGen/internal/capabilities/entities"
+	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
@@ -193,8 +194,23 @@ func TestRunner_EntityTimelineDerivedFromRealWordTiming(t *testing.T) {
 	content := docPub.records[0].Content
 	require.NotContains(t, content, "<h2>Remote Job Payload JSON</h2>", "document must not expose the remote payload")
 	require.Contains(t, content, "<h2>SpecScene JSON</h2>", "document must expose the semantic SpecScene audit JSON")
-	require.NotContains(t, content, "<h2>Semantic Overlay JSON</h2>", "entity-only plans have no final editorial overlays")
-	require.Nil(t, res.OverlayPlan, "entity cards are semantic data, not part of the final 5+5 editorial plan")
+	// ENTITY NAME CARDS ARE AN EDITORIAL LANE. An entity-only run projects the
+	// exact text cards the resolver derived from the certified timeline — no
+	// phrase, image, value or brand lane is invented — and the two same-scene
+	// mentions coalesce into one entity-name chain per scene.
+	require.NotNil(t, res.OverlayPlan, "entity name cards project a final editorial plan")
+	require.Contains(t, content, "<h2>Semantic Overlay JSON</h2>", "the document carries the entity-card plan")
+	require.Len(t, res.OverlayPlan.Items, 2, "one coalesced entity-name chain per scene")
+	for _, item := range res.OverlayPlan.Items {
+		require.Empty(t, item.AssetRefs, "the narrated entities have no verified media")
+		segments, ok := capabilityoverlay.DecodeChainSegments(item.Params)
+		require.True(t, ok, "entity-name chain must carry its decoded segments: %+v", item.Params)
+		require.Len(t, segments, 2, "Tom Hanks and Los Angeles share the scene")
+		kinds := []string{segments[0].Kind, segments[1].Kind}
+		texts := []string{segments[0].Text, segments[1].Text}
+		require.ElementsMatch(t, []string{"entity_card", "location"}, kinds)
+		require.ElementsMatch(t, []string{"Tom Hanks", "Los Angeles"}, texts)
+	}
 }
 
 func TestEntitySourcesUseLocalizedMentionForGrounding(t *testing.T) {

@@ -93,6 +93,10 @@ type OverlayCanvasSpec struct {
 	// DisableChartOverlays is the kill-switch for automatic bar charts
 	// (chart_plan.go). False by default.
 	DisableChartOverlays bool
+	// DisableEditorialOverlays skips the automatic scene_title/scene_bullet
+	// projection so operator-supplied grounded phrases keep the run budget
+	// (catalog runs). False by default.
+	DisableEditorialOverlays bool
 	// EnableCharts is the explicit opt-in for chart overlays. Charts render
 	// only when this is true and DisableChartOverlays is false.
 	EnableCharts bool
@@ -260,6 +264,16 @@ func overlayItemCategory(item capabilityoverlay.OverlayItem) (scriptpkg.OverlayC
 		return scriptpkg.OverlayCategoryBrandText, true
 	case kind == "text_phrase" || strings.Contains(template, "phrase"):
 		return scriptpkg.OverlayCategoryPhrases, true
+	case kind == string(capabilityoverlay.KindEntityCard) && !isImageOverlayItem(item):
+		// A text-only named entity card is NOT imagery, whatever entity type it
+		// names: the planner caps these cards per scene and the payload controls
+		// them through the `entities_with_text` group limit, exactly like the
+		// group classifier (overlayGroupOf) already separates them from `images`.
+		// Categorizing them as images would let an `images: disabled` toggle — a
+		// control for photo overlays — silently delete every place, person and
+		// organization name card in the run, and an image-backed card of the
+		// SAME entity would still be filtered by that toggle.
+		return "", false
 	case strings.Contains(kind, "image") || kind == "entity_card" || kind == "product" || kind == "logo":
 		return scriptpkg.OverlayCategoryImages, true
 	default:
@@ -321,10 +335,10 @@ func overlayGroupOf(item capabilityoverlay.OverlayItem) string {
 	switch {
 	case item.Kind == "map" && item.Map != nil:
 		return overlayGroupMaps
-	case isImageOverlayItem(item):
-		return overlayGroupImages
 	case entityCardKind(capabilityoverlay.OverlayKind(item.Kind)):
 		return overlayGroupEntitiesWithText
+	case isImageOverlayItem(item):
+		return overlayGroupImages
 	case item.Kind == "text_phrase" || item.Kind == string(capabilityoverlay.KindImportantPhrase):
 		if capabilityoverlay.IsShortPhraseRecipe(item.MotionID) {
 			return overlayGroupShortPhrases
@@ -334,29 +348,91 @@ func overlayGroupOf(item capabilityoverlay.OverlayItem) string {
 	return ""
 }
 
-// applyOverlayGroupLimits keeps, per group in plan order, at most the
-// configured number of overlays. Present zero drops the group; absent keys
-// and ungrouped items pass through unchanged.
+// applyOverlayGroupLimits keeps, per group, at most the configured number of
+// overlays. Present zero drops the group; absent keys and ungrouped items pass
+// through unchanged.
+//
+// A capped group spends its allowance across SCENES before taking a second
+// overlay from any one scene. Counting the candidates in plan order starves
+// every scene past the allowance, because the plan carries both cards of the
+// first scenes before the first card of the last one: a fifteen-scene run with
+// an entities_with_text cap of fifteen rendered ten name cards in ten scenes
+// and left five scenes empty. The kept set is therefore chosen per group —
+// the first overlay of every scene in plan order, then the ranked remainder —
+// while the emitted items still follow plan order, so the render plan's
+// z-order and content identity are unchanged.
 func applyOverlayGroupLimits(items []capabilityoverlay.OverlayItem, limits map[string]int) []capabilityoverlay.OverlayItem {
 	if len(limits) == 0 {
 		return items
 	}
-	kept := make(map[string]int, len(limits))
-	out := items[:0]
-	for _, item := range items {
+	// Entity images can carry captions inside the image item and its child
+	// layers. Those captions are text overlays too, so an explicit zero for
+	// entities_with_text must remove their text and motion before composition.
+	if limit, capped := limits[overlayGroupEntitiesWithText]; capped && limit == 0 {
+		stripOverlayImageCaptions(items)
+	}
+	candidates := make(map[string][]int, len(limits))
+	for index, item := range items {
 		group := overlayGroupOf(item)
-		limit, capped := limits[group]
-		if group == "" || !capped {
+		if group == "" {
+			continue
+		}
+		if _, capped := limits[group]; !capped {
+			continue
+		}
+		candidates[group] = append(candidates[group], index)
+	}
+	keep := make(map[int]struct{}, len(items))
+	for group, indices := range candidates {
+		seenScenes := make(map[string]struct{}, len(indices))
+		diverse := make([]int, 0, len(indices))
+		remaining := make([]int, 0, len(indices))
+		for _, index := range indices {
+			sceneID := strings.TrimSpace(items[index].SceneID)
+			if sceneID == "" {
+				remaining = append(remaining, index)
+				continue
+			}
+			if _, ok := seenScenes[sceneID]; ok {
+				remaining = append(remaining, index)
+				continue
+			}
+			seenScenes[sceneID] = struct{}{}
+			diverse = append(diverse, index)
+		}
+		selected := append(diverse, remaining...)
+		if limit := limits[group]; len(selected) > limit {
+			selected = selected[:limit]
+		}
+		for _, index := range selected {
+			keep[index] = struct{}{}
+		}
+	}
+	out := items[:0]
+	for index, item := range items {
+		group := overlayGroupOf(item)
+		if _, capped := limits[group]; group == "" || !capped {
 			out = append(out, item)
 			continue
 		}
-		if kept[group] >= limit {
-			continue
+		if _, ok := keep[index]; ok {
+			out = append(out, item)
 		}
-		kept[group]++
-		out = append(out, item)
 	}
 	return out
+}
+
+func stripOverlayImageCaptions(items []capabilityoverlay.OverlayItem) {
+	for i := range items {
+		items[i].EntityCaption = ""
+		items[i].CaptionMotionID = ""
+		items[i].CaptionMotionParams = nil
+		for layer := range items[i].ImageLayers {
+			items[i].ImageLayers[layer].Caption = ""
+			items[i].ImageLayers[layer].CaptionMotionID = ""
+			items[i].ImageLayers[layer].CaptionMotionParams = nil
+		}
+	}
 }
 
 // overlayGroupLimit returns the cap for a group and whether it was set.

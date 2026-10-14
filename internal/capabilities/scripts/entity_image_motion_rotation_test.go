@@ -11,7 +11,7 @@ import (
 // automatic-runtime subcatalogs. Pool sizes are literal drift gates because
 // they define what the planner emits across the producer→renderer boundary.
 func TestAssignEntityImageMotionsUsesCertifiedCatalog(t *testing.T) {
-	const wantImages, wantCaptions = 5, 56
+	const wantImages, wantCaptions = 9, 31
 
 	certified := capabilityoverlay.CertifiedEntityImageMotions()
 	captionCertified := capabilityoverlay.CertifiedEntityCaptionMotions()
@@ -110,7 +110,7 @@ func TestAssignEntityImageMotionsUsesCertifiedCatalog(t *testing.T) {
 
 func TestAssignEntityImageMotionsUsesSeparatePoolForImagesWithText(t *testing.T) {
 	items := []capabilityoverlay.OverlayItem{
-		{ID: "named-image-a", Kind: "image", EntityCaption: "São Paulo", CaptionMotionID: "typewriter_clean"},
+		{ID: "named-image-a", Kind: "image", EntityCaption: "São Paulo", CaptionMotionID: "text_word_rise"},
 		{ID: "named-image-b", Kind: "image", EntityCaption: "Brasília", CaptionMotionID: "text_yaw_in"},
 	}
 	assignEntityImageMotions(items, 0, 1920, 1080, "")

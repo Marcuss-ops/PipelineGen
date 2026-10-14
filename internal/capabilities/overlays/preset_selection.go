@@ -37,7 +37,8 @@ var (
 		"modern_rounded_pop", "bottom_card_rise",
 	}
 	// RenderingGen catalog inventories: all 32 certified layer-only image motions
-	// and the full phrase families (42 classic Apple, 60 modern Apple and 10 typewriter).
+	// and the surviving phrase families (42 classic Apple and 60 modern Apple;
+	// the retired typewriter/highlight families were removed with the catalog).
 	renderSafeImageMotions = []string{
 		"image_fade_reveal",
 		"image_focus_reveal",
@@ -103,26 +104,29 @@ var (
 		"image_scale_reveal",
 		"image_soft_focus_reveal",
 	}
-	// Entity portraits use the same complete certified image pool as other
-	// generated images; RenderingGen has explicit lowering for the 2.5D and
-	// editorial families, and the full set is covered by its image canary.
-	// Runtime entity portraits use restrained, single-layer reveals. Composite,
-	// perspective and scatter motions were producing decorative strokes and
-	// accidental-looking line fragments on ordinary photos.
+	// Entity portraits use restrained single-photo moves. Keep collage,
+	// perspective, depth-stack and 2.5D recipes out of this pool: they can
+	// introduce stray fragments or visibly distort ordinary source portraits.
+	// This pool still gives repeated entity cards more variety than the former
+	// five-reveal cap without weakening photo quality.
 	generatedEntityImageMotionCandidates = []string{
 		"image_fade_reveal",
 		"image_focus_reveal",
 		"image_scale_reveal",
 		"image_slide_left_reveal",
 		"image_slide_right_reveal",
+		"image_diagonal_sweep",
+		"image_soft_focus_reveal",
+		"image_float_settle",
+		"image_focus_push",
 	}
-	// Image cards with captions use the same strict-GPU-certified single-layer
-	// image entrance pool as plain entity portraits. Caption motion is selected
-	// independently from ChrononTemplate's dedicated entity_card_v1 family.
+	// Image cards with captions share the same full certified image pool as
+	// plain entity portraits; caption motion is selected independently.
 	generatedImageWithTextMotionCandidates = generatedEntityImageMotionCandidates
-	// Entity caption entrances combine the authored caption, typewriter and
-	// entity-card presentation catalogs. Runtime certification exercises each
-	// selected ID through the caption compiler and GPU lane.
+	// Entity caption entrances combine the authored caption, text-treatment
+	// and entity-card presentation catalogs (the retired typewriter families
+	// were removed here with the catalog). Runtime certification exercises
+	// each selected ID through the caption compiler and GPU lane.
 	generatedEntityCaptionMotionCandidates = []string{
 		"entity_caption_rise",
 		"entity_depth_caption",
@@ -135,16 +139,6 @@ var (
 		"entity_parallax_caption",
 		"entity_focus_frame",
 		"text_depth_in", "text_fade_up", "text_scale_punch", "text_word_rise", "text_word_stagger", "text_yaw_in",
-		"typewriter_blur_focus", "typewriter_clean", "typewriter_lift", "typewriter_neon", "typewriter_pop",
-		"typewriter_scale_up", "typewriter_slide_in", "typewriter_soft_lift", "typewriter_tracking", "typewriter_glitch",
-		"typewriter_modern_01_monospace_block_cursor", "typewriter_modern_02_kinetic_scramble",
-		"typewriter_modern_03_soft_opacity_ramp", "typewriter_modern_04_character_bounce",
-		"typewriter_modern_05_backspace_correction", "typewriter_modern_06_glow_beam_sweep",
-		"typewriter_modern_07_word_snap", "typewriter_modern_08_mechanical_y_shift",
-		"typewriter_modern_09_highlighter_expansion", "typewriter_modern_10_weight_ramp",
-		"typewriter_modern_11_dynamic_auto_wrap", "typewriter_modern_12_glitch_pop",
-		"typewriter_modern_13_elastic_leading_cursor", "typewriter_modern_14_focal_blur_dissolve",
-		"typewriter_modern_15_paper_punch_stencil",
 		"trump_entity_text_01", "trump_entity_text_02", "trump_entity_text_03",
 		"trump_entity_text_04", "trump_entity_text_05", "trump_entity_text_06",
 		"trump_entity_text_07", "trump_entity_text_08", "trump_entity_text_09",
@@ -264,7 +258,6 @@ var (
 		"phrase_apple_clean_11_slide_left_ease",
 		"phrase_apple_clean_12_slide_diagonal_pop",
 		"phrase_apple_clean_13_scale_soft_pop",
-		"phrase_apple_clean_14_scale_bounce_clean",
 		"phrase_apple_clean_15_scale_hero_focus",
 		"phrase_apple_clean_16_scale_line_build",
 		"phrase_apple_clean_17_scale_in_place",
@@ -298,33 +291,6 @@ var (
 	// short_phrase_product_scroll_reveal was retired the same day after it
 	// crashed the Vulkan daemon.
 	shortPhraseMotionCandidates = copyShortPhraseWordGroups()
-	typewriterMotionCandidates  = []string{
-		"typewriter_modern_01_monospace_block_cursor",
-		"typewriter_modern_02_kinetic_scramble",
-		"typewriter_modern_03_soft_opacity_ramp",
-		"typewriter_modern_04_character_bounce",
-		"typewriter_modern_05_backspace_correction",
-		"typewriter_modern_06_glow_beam_sweep",
-		"typewriter_modern_07_word_snap",
-		"typewriter_modern_08_mechanical_y_shift",
-		"typewriter_modern_09_highlighter_expansion",
-		"typewriter_modern_10_weight_ramp",
-		"typewriter_modern_11_dynamic_auto_wrap",
-		"typewriter_modern_12_glitch_pop",
-		"typewriter_modern_13_elastic_leading_cursor",
-		"typewriter_modern_14_focal_blur_dissolve",
-		"typewriter_modern_15_paper_punch_stencil",
-		"typewriter_clean",
-		"typewriter_glitch",
-		"typewriter_neon",
-		"typewriter_pop",
-		"typewriter_tracking",
-		"typewriter_lift",
-		"typewriter_slide_in",
-		"typewriter_scale_up",
-		"typewriter_blur_focus",
-		"typewriter_soft_lift",
-	}
 	brushPhraseMotionCandidates = []string{
 		"brush_phrase_arrow_point",
 		"brush_phrase_circle_focus",
@@ -364,7 +330,6 @@ var (
 		"phrase_apple_clean_11_slide_left_ease",
 		"phrase_apple_clean_12_slide_diagonal_pop",
 		"phrase_apple_clean_13_scale_soft_pop",
-		"phrase_apple_clean_14_scale_bounce_clean",
 		"phrase_apple_clean_15_scale_hero_focus",
 		"phrase_apple_clean_16_scale_line_build",
 		"phrase_apple_clean_17_scale_in_place",
@@ -412,7 +377,6 @@ var (
 		"phrase_apple_clean_11_slide_left_ease",
 		"phrase_apple_clean_12_slide_diagonal_pop",
 		"phrase_apple_clean_13_scale_soft_pop",
-		"phrase_apple_clean_14_scale_bounce_clean",
 		"phrase_apple_clean_15_scale_hero_focus",
 		"phrase_apple_clean_16_scale_line_build",
 		"phrase_apple_clean_17_scale_in_place",
@@ -426,46 +390,21 @@ var (
 		"phrase_apple_clean_26_opacity_depth_push",
 		"phrase_apple_clean_27_opacity_parallax",
 		"phrase_apple_clean_02_blur_focus_snap",
-		// Long phrases are still allowed to rotate through clearly different
-		// text families; limiting them to Apple fades made every documentary
-		// sentence look identical and hid typewriter / 3D treatments entirely.
-		"typewriter_clean",
-		"typewriter_lift",
-		"typewriter_tracking",
-		"text_3d_camera_push",
-		"text_3d_tilt_rise",
-		// Complete phrases can also use the catalog's text families. Exclude
-		// glitch and auto-wrap treatments here so longer copy stays legible.
-		"typewriter_blur_focus", "typewriter_neon", "typewriter_pop",
-		"typewriter_scale_up", "typewriter_slide_in", "typewriter_soft_lift",
-		"typewriter_modern_01_monospace_block_cursor",
-		"typewriter_modern_02_kinetic_scramble",
-		"typewriter_modern_03_soft_opacity_ramp",
-		"typewriter_modern_04_character_bounce",
-		"typewriter_modern_05_backspace_correction",
-		"typewriter_modern_06_glow_beam_sweep",
-		"typewriter_modern_07_word_snap",
-		"typewriter_modern_08_mechanical_y_shift",
-		"typewriter_modern_09_highlighter_expansion",
-		"typewriter_modern_10_weight_ramp",
-		"typewriter_modern_13_elastic_leading_cursor",
-		"typewriter_modern_14_focal_blur_dissolve",
-		"typewriter_modern_15_paper_punch_stencil",
-		"text_3d_double_axis_reveal", "text_3d_orbit_lock",
-		"text_3d_perspective_drop", "text_3d_pitch_lift", "text_3d_roll_depth",
-		"text_3d_word_cascade", "text_3d_yaw_flip_in", "text_3d_yaw_sweep",
-		"brush_phrase_arrow_point", "brush_phrase_circle_focus",
-		"brush_phrase_gold_marker", "brush_phrase_lower_rule",
-		"brush_phrase_red_brush_underline", "brush_phrase_red_endpoint_rule",
-		"brush_phrase_red_underline", "brush_phrase_signature_flourish",
-		"brush_phrase_white_double_underline", "brush_phrase_white_light_sweep",
-		"brush_phrase_white_underline",
+		// NOTE: text_3d_v1 motions are deliberately absent. They lower to a
+		// correct centered enable_3d text layer, but Chronon renders pure
+		// black for them on the standalone overlay path (verified by frame
+		// inspection: mean 0.0/stddev 0.0 over 105 frames for tilt_rise and
+		// double_axis_reveal, while apple entrances render visible animated
+		// text). Re-admit only after the C++ enable_3d text path is fixed.
+		// NOTE: the typewriter, highlight and burst families were removed
+		// from this lane with the catalog retirement (they no longer resolve
+		// upstream); the lane now rotates the surviving Apple inventories.
 	}
-	phraseMotionCandidates      = combineMotionPools(classicAppleMotionCandidates, modernAppleMotionCandidates, typewriterMotionCandidates, text3DMotionCandidates, brushPhraseMotionCandidates)
+	phraseMotionCandidates      = combineMotionPools(classicAppleMotionCandidates, modernAppleMotionCandidates, text3DMotionCandidates, brushPhraseMotionCandidates)
 	renderSafeTextMotions       = phraseAppleCleanMotionCandidates
 	generatedPhraseMotions      = phraseMotionCandidates
 	generatedTextMotions        = phraseAppleCleanMotionCandidates
-	defaultPhraseMotionFamilies = []string{"classic_apple", "modern_apple", "typewriter", "text_3d_v1", "brush_v1"}
+	defaultPhraseMotionFamilies = []string{"classic_apple", "modern_apple", "text_3d_v1", "brush_v1"}
 )
 
 // ImagePresetCandidates returns a copy of the render-safe generated-image

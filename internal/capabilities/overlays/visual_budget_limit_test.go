@@ -93,7 +93,10 @@ func phraseItemIDs(items []OverlayItem) map[string]bool {
 // payload-driven ceiling: the image ceiling stays fixed, the phrase ceiling
 // follows the caller, and the reported budget echoes the caller's request.
 func TestApplyEditorialOverlayBudgetHonoursCallerPhraseLimit(t *testing.T) {
-	items := limitTestItems(17)
+	// Two candidates per ceiling slot: the fixture must EXCEED the hard
+	// maximum, or a raised ceiling could not be observed at all (the previous
+	// fixture pinned 17 candidates against a 15 ceiling).
+	items := limitTestItems(MaxPhraseOverlaysHardLimit + 2)
 
 	// A ceiling BELOW the certified default: only the top-N unique grounded
 	// phrases survive, ranked by their certified score (descending).
@@ -105,12 +108,14 @@ func TestApplyEditorialOverlayBudgetHonoursCallerPhraseLimit(t *testing.T) {
 		t.Fatalf("phrase budget = %+v, want requested/materialized 3", budget)
 	}
 	// The three highest-scored phrases must win, and nothing else may leak in.
-	if ids := phraseItemIDs(got); !ids["phrase-14"] || !ids["phrase-15"] || !ids["phrase-16"] || len(ids) != 3 {
-		t.Fatalf("lower ceiling admitted the wrong phrases: %+v", ids)
+	last := len(phraseItemIDs(items)) - 1
+	top := []string{fmt.Sprintf("phrase-%d", last-2), fmt.Sprintf("phrase-%d", last-1), fmt.Sprintf("phrase-%d", last)}
+	if ids := phraseItemIDs(got); !ids[top[0]] || !ids[top[1]] || !ids[top[2]] || len(ids) != 3 {
+		t.Fatalf("lower ceiling admitted the wrong phrases (want %v): %+v", top, ids)
 	}
 
-	// The approved ceiling is 15: seventeen candidates keep only their top
-	// fifteen, and the image ceiling remains unchanged.
+	// The approved ceiling keeps only the top MaxPhraseOverlaysHardLimit
+	// candidates, and the image ceiling remains unchanged.
 	got, budget = ApplyEditorialOverlayBudgetWithLimit(items, MaxPhraseOverlaysHardLimit)
 	if phrases := countPhraseItems(got); phrases != MaxPhraseOverlaysHardLimit {
 		t.Fatalf("phrase overlays = %d, want hard maximum %d", phrases, MaxPhraseOverlaysHardLimit)
@@ -133,7 +138,7 @@ func TestApplyEditorialOverlayBudgetHonoursCallerPhraseLimit(t *testing.T) {
 }
 
 func TestApplyEditorialOverlayBudgetHonoursCallerImageLimit(t *testing.T) {
-	items := limitTestItems(17)
+	items := limitTestItems(MaxPhraseOverlaysHardLimit + 2)
 	got, budget := ApplyEditorialOverlayBudgetWithImageLimit(items, MaxPhraseOverlaysHardLimit, 10, 0)
 	images := 0
 	for _, item := range got {

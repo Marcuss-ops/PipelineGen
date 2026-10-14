@@ -198,6 +198,41 @@ func TestCompileOverlayPlanWithPlatesEmitsGroundedMapItem(t *testing.T) {
 // grounded producer path from annotations and certified timing through offline
 // LOD selection into camera_move. A single place is a stationary fly-to (zoom
 // into the geocoded target), not a fabricated route or screen-space coordinate.
+func TestCompileOverlayPlanWithShortPhraseSceneKeepsGroundedMap(t *testing.T) {
+	result := groundedPlaceResult()
+	result.Scenes[0].ShortPhraseOverlay = true
+	plan, err := CompileOverlayPlanWithPlates(
+		result, "en", GoldenOverlayCanvas, "short-map-plan", "short-map-video", "map-project",
+		plateStub{plates: []capabilityoverlay.MapPlate{newOrleansPlate(t)}},
+	)
+	require.NoError(t, err)
+	require.NotNil(t, plan)
+	require.Equal(t, 1, countKind(plan.Items, "map"), "short-phrase scenes must preserve grounded map candidates")
+	for _, item := range plan.Items {
+		if item.Kind == "map" {
+			require.NotNil(t, item.Map)
+			require.Len(t, item.Map.Pins, 1)
+			require.Equal(t, "New Orleans", item.Map.Pins[0].Label)
+		}
+	}
+}
+
+func TestCompileOverlayPlanMapsOnlyRemovesLateEntityCards(t *testing.T) {
+	canvas := GoldenOverlayCanvas
+	canvas.MapsOnly = true
+	plan, err := CompileOverlayPlanWithPlates(
+		groundedPlaceResult(), "en", canvas, "maps-only-plan", "maps-only-video", "map-project",
+		plateStub{plates: []capabilityoverlay.MapPlate{newOrleansPlate(t)}},
+	)
+	require.NoError(t, err)
+	require.NotNil(t, plan)
+	require.NotEmpty(t, plan.Items)
+	for _, item := range plan.Items {
+		require.Equal(t, "map", item.Kind, "maps_only must filter entity cards added after the base planner")
+		require.NotNil(t, item.Map)
+	}
+}
+
 func TestCompileOverlayPlanWithFlyoverPlatesEmitsNativeCamera(t *testing.T) {
 	canvas := OverlayCanvasSpec{Width: 640, Height: 360, FPSNum: 30, FPSDen: 1}
 	plan, err := CompileOverlayPlanWithPlates(

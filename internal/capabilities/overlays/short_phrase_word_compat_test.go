@@ -33,18 +33,29 @@ func TestShortPhraseWordGroupsCoverOneToFive(t *testing.T) {
 	if _, ok := ShortPhraseMotionWordCount("definitely_not_a_motion"); ok {
 		t.Error("unknown motion must not report a word group")
 	}
-	// Typewriter glyph animators are deliberately not dealt into the automatic
-	// word groups: on the installed Vulkan lane they rendered blank clips, so
-	// only exact-cardinality recipes rotate for generated short phrases. They
-	// stay general-catalog members an explicit plan can still name.
+	for _, id := range retiredShortPhraseRecipes {
+		if IsShortPhraseRecipe(id) {
+			t.Errorf("retired ID %q is still classified as a short-phrase recipe", id)
+		}
+		if _, ok := ShortPhraseMotionWordCount(id); ok {
+			t.Errorf("retired ID %q still has a routed word count", id)
+		}
+	}
+	// The surviving C++ short-phrase burst recipe is pinned to its declared
+	// three-word phrase like every other short recipe; short_phrase_typewriter
+	// was retired with the typewriter family and is rejected above with the
+	// other retired recipes.
+	if group, ok := ShortPhraseMotionWordCount("short_phrase_burst"); !ok || group != 3 {
+		t.Errorf("short_phrase_burst word group = %d (known=%v), want 3", group, ok)
+	}
 	if group, ok := ShortPhraseMotionWordCount("typewriter_modern_01_monospace_block_cursor"); ok {
 		t.Errorf("typewriter_modern_01 must not be pinned to a word group, got group %d", group)
 	}
 	if IsShortPhraseRecipe("typewriter_modern_01_monospace_block_cursor") {
 		t.Error("typewriter ids are general-catalog members, not exact recipes")
 	}
-	if !IsShortPhraseRecipe("short_phrase_scale_settle_word") {
-		t.Error("short_phrase_ prefix must mark an exact-cardinality recipe")
+	if !IsShortPhraseRecipe("short_phrase_character_tracking_reveal") {
+		t.Error("a surviving short_phrase_ ID must mark an exact-cardinality recipe")
 	}
 	// Exact recipes must never leak into the general catalog the long and
 	// regular lanes rotate over.

@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/entitycatalog"
+	scriptmetrics "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports/metrics"
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
@@ -36,7 +37,10 @@ func (p *VidRushMaterializationProcessor) materializeOne(ctx context.Context, pl
 				return
 			}
 			group := vidRushImageGroup(candidate)
-			if perSceneImageScope {
+			if p.catalog != nil && strings.EqualFold(strings.TrimSpace(candidate.Provider), scriptpkg.VidRushProviderInternetImages) &&
+				(strings.TrimSpace(candidate.Entity) != "" || strings.HasPrefix(strings.TrimSpace(candidate.AssetID), "entity-image-")) {
+				group = vidRushCandidateIdentity(candidate)
+			} else if perSceneImageScope {
 				group = strings.ToLower(strings.TrimSpace(candidate.LegacyFileMD5))
 				if group == "" {
 					group = strings.ToLower(strings.TrimSpace(candidate.AssetID))
@@ -85,7 +89,7 @@ func (p *VidRushMaterializationProcessor) materializeOne(ctx context.Context, pl
 				candidate.PersistenceStatus = ""
 				candidate.IndexStatus = ""
 			}
-			if isImage && targetImages > 0 && len(readyImageGroups) >= targetImages {
+			if isImage && targetImages > 0 && len(readyImageGroups) >= targetImages && !(catalogImage && !wasReady) {
 				// Keep the remaining remote hits for diagnostics/candidate-set
 				// hashing, but do not download or persist surplus images. This
 				// prevents Qdrant/Drive fan-out from exceeding the scene plan.
@@ -113,6 +117,9 @@ func (p *VidRushMaterializationProcessor) materializeOne(ctx context.Context, pl
 			// already a reusable artifact; only new images go through the
 			// run-specific finalization route below.
 			if !refreshMaterialized && readyVidRushCandidate(candidate) && (!candidate.IsLegacyCandidate() || legacyPersisted) {
+				if catalogImage {
+					incEntityImageCatalogLifecycle(p.metrics, scriptmetrics.EntityImageStageReuse, scriptmetrics.EntityImageOutcomeSuccess)
+				}
 				materialized = append(materialized, candidate)
 				markReadyImage(candidate)
 				continue
@@ -123,6 +130,9 @@ func (p *VidRushMaterializationProcessor) materializeOne(ctx context.Context, pl
 						if persisted, ok := cached.(scriptpkg.SegmentAssetCandidate); ok &&
 							(strings.TrimSpace(persisted.SegmentID) == "" || strings.TrimSpace(persisted.SegmentID) == strings.TrimSpace(segment.SegmentID)) &&
 							readyVidRushCandidate(persisted) {
+							if catalogImage {
+								incEntityImageCatalogLifecycle(p.metrics, scriptmetrics.EntityImageStageReuse, scriptmetrics.EntityImageOutcomeSuccess)
+							}
 							materialized = append(materialized, persisted)
 							markReadyImage(persisted)
 							continue
@@ -134,6 +144,9 @@ func (p *VidRushMaterializationProcessor) materializeOne(ctx context.Context, pl
 					} else if hit &&
 						(strings.TrimSpace(persisted.SegmentID) == "" || strings.TrimSpace(persisted.SegmentID) == strings.TrimSpace(segment.SegmentID)) &&
 						readyVidRushCandidate(persisted) {
+						if catalogImage {
+							incEntityImageCatalogLifecycle(p.metrics, scriptmetrics.EntityImageStageReuse, scriptmetrics.EntityImageOutcomeSuccess)
+						}
 						materialized = append(materialized, persisted)
 						vidrushMaterializedCache.Put(key, persisted)
 						markReadyImage(persisted)
@@ -173,15 +186,26 @@ func (p *VidRushMaterializationProcessor) materializeOne(ctx context.Context, pl
 			catalogMaterializationStarted := time.Time{}
 			if catalogImage := p.catalog != nil && providerName == scriptpkg.VidRushProviderInternetImages &&
 				(strings.TrimSpace(candidate.Entity) != "" || strings.HasPrefix(strings.TrimSpace(candidate.AssetID), "entity-image-")); catalogImage {
+				incEntityImageCatalogLifecycle(p.metrics, scriptmetrics.EntityImageStageAcquire, scriptmetrics.EntityImageOutcomeFound)
 				if catalogMetrics := entityImageCatalogMetricsFor(p.metrics); catalogMetrics != nil {
 					catalogMetrics.IncEntityImageCatalogNewDownload()
 					catalogMaterializationStarted = time.Now()
 				}
 			}
 			lifecycle := acquireAndVerify(ctx, provider, candidate, providerName, p.metrics)
+			if catalogImage {
+				outcome := scriptmetrics.EntityImageOutcomeSuccess
+				if lifecycle.err != nil && lifecycle.stage == "acquire" {
+					outcome = scriptmetrics.EntityImageOutcomeFailure
+				}
+				incEntityImageCatalogLifecycle(p.metrics, scriptmetrics.EntityImageStageAcquire, outcome)
+			}
 			if lifecycle.err != nil && lifecycle.stage == "acquire" {
 				err = lifecycle.err
 				candidate = lifecycle.candidate
+				if catalogImage {
+					addEntityImageCatalogCandidates(p.metrics, scriptmetrics.EntityImageStageAcquire, scriptmetrics.EntityImageOutcomeRejected, 1)
+				}
 				if catalogMaterializationStarted.IsZero() == false {
 					if catalogMetrics := entityImageCatalogMetricsFor(p.metrics); catalogMetrics != nil {
 						catalogMetrics.IncEntityImageCatalogURLBroken()
@@ -196,8 +220,14 @@ func (p *VidRushMaterializationProcessor) materializeOne(ctx context.Context, pl
 				continue
 			}
 			if lifecycle.err != nil {
+				if catalogImage {
+					incEntityImageCatalogLifecycle(p.metrics, scriptmetrics.EntityImageStageVerify, scriptmetrics.EntityImageOutcomeFailure)
+				}
 				err = lifecycle.err
 				candidate = lifecycle.candidate
+				if catalogImage {
+					addEntityImageCatalogCandidates(p.metrics, scriptmetrics.EntityImageStageVerify, scriptmetrics.EntityImageOutcomeRejected, 1)
+				}
 				if !catalogMaterializationStarted.IsZero() {
 					if catalogMetrics := entityImageCatalogMetricsFor(p.metrics); catalogMetrics != nil {
 						catalogMetrics.IncEntityImageCatalogURLBroken()
@@ -211,6 +241,12 @@ func (p *VidRushMaterializationProcessor) materializeOne(ctx context.Context, pl
 				materialized = append(materialized, candidate)
 				continue
 			}
+			if catalogImage {
+				incEntityImageCatalogLifecycle(p.metrics, scriptmetrics.EntityImageStageVerify, scriptmetrics.EntityImageOutcomeSuccess)
+				addEntityImageCatalogCandidates(p.metrics, scriptmetrics.EntityImageStageAcquire, scriptmetrics.EntityImageOutcomeAccepted, 1)
+				addEntityImageCatalogCandidates(p.metrics, scriptmetrics.EntityImageStageVerify, scriptmetrics.EntityImageOutcomeAccepted, 1)
+			}
+
 			verified := lifecycle.verified
 			// One dispatch for every artifact family: the provider clips the
 			// run used land in <Title>/<Language>/clips under
@@ -228,6 +264,10 @@ func (p *VidRushMaterializationProcessor) materializeOne(ctx context.Context, pl
 				return finalizeErr
 			})
 			if err != nil {
+				if catalogImage {
+					incEntityImageCatalogLifecycle(p.metrics, scriptmetrics.EntityImageStagePublish, scriptmetrics.EntityImageOutcomeFailure)
+					addEntityImageCatalogCandidates(p.metrics, scriptmetrics.EntityImageStagePublish, scriptmetrics.EntityImageOutcomeRejected, 1)
+				}
 				verified.Candidate.PersistenceStatus = scriptpkg.VidRushStatusFailed
 				observeEntityImageCatalogMaterialization(p.metrics, catalogMaterializationStarted)
 				warnings = append(warnings, fmt.Sprintf("vidrush_materialization: finalize %s for %s: %v", providerName, segment.SegmentID, err))
@@ -235,6 +275,10 @@ func (p *VidRushMaterializationProcessor) materializeOne(ctx context.Context, pl
 				continue
 			}
 			materialized = append(materialized, persisted)
+			if catalogImage {
+				incEntityImageCatalogLifecycle(p.metrics, scriptmetrics.EntityImageStagePublish, scriptmetrics.EntityImageOutcomeSuccess)
+				addEntityImageCatalogCandidates(p.metrics, scriptmetrics.EntityImageStagePublish, scriptmetrics.EntityImageOutcomeAccepted, 1)
+			}
 			if providerName == scriptpkg.VidRushProviderInternetImages {
 				newInternetImageUploads++
 			}
@@ -267,7 +311,12 @@ func (p *VidRushMaterializationProcessor) materializeOne(ctx context.Context, pl
 	// assets.
 	imageTarget := vidRushImageTargetForSegment(plan, segment)
 	materializationImageTarget := imageTarget
-	if perSceneImageScope && imageTarget > 0 {
+	if plan != nil && plan.MediaPlan.Extraction.EntityImageSurfaceEnabled() && imageTarget > 0 {
+		// Warm a five-image canonical library per requested entity. These
+		// assets are finalized into the existing per-entity Drive folder and
+		// reused by subsequent jobs without another provider search/download.
+		materializationImageTarget = imageTarget * entityImageCatalogMaterializationCopies
+	} else if perSceneImageScope && imageTarget > 0 {
 		// Keep one extra verified per-scene candidate as a uniqueness fallback.
 		// Independent searches can return the same syndicated photo in two
 		// scenes; the overlay planner chooses the next materialized image by

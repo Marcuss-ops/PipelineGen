@@ -234,6 +234,31 @@ type SubtitlesSpec struct {
 	Style *scriptpkg.VideoVisualStyleSpec `json:"style,omitempty"`
 }
 
+// ClipEffectSpec selects one native Chronon effect on the complete clip composite.
+// The allowlist and parameter bounds are intentionally closed at the HTTP edge.
+type ClipEffectSpec struct {
+	Type       string  `json:"type"`
+	Amount     float64 `json:"amount,omitempty"`
+	Radius     float64 `json:"radius,omitempty"`
+	Softness   float64 `json:"softness,omitempty"`
+	BlockSize  int     `json:"block_size,omitempty"`
+	Size       int     `json:"size,omitempty"`
+	Angle      float64 `json:"angle,omitempty"`
+	Intensity  float64 `json:"intensity,omitempty"`
+	Amplitude  float64 `json:"amplitude,omitempty"`
+	Wavelength float64 `json:"wavelength,omitempty"`
+	Seed       uint32  `json:"seed,omitempty"`
+	Animated   bool    `json:"animated,omitempty"`
+}
+
+// ClipGridSpec draws a full-canvas technical grid over the final composite.
+type ClipGridSpec struct {
+	SpacingPX   float64 `json:"spacing_px"`
+	LineWidthPX float64 `json:"line_width_px"`
+	Color       string  `json:"color"`
+	Opacity     float64 `json:"opacity"`
+}
+
 // OutputSpec pins the VeloxEditing-compatible output contract. The
 // precise codec/pixel/timebase values are owned by the contract
 // (follow-up step); the request only selects it + resolution/fps.
@@ -251,6 +276,10 @@ type OutputSpec struct {
 	// It is transported verbatim into the overlay contract; the renderer owns
 	// the geometry.
 	SourceFrame *PlanSourceFrame `json:"source_frame,omitempty"`
+	// Effects applies native adjustment-layer filters to the complete composite.
+	Effects []ClipEffectSpec `json:"effects,omitempty"`
+	// Grid is a procedural full-canvas overlay, distinct from image filters.
+	Grid *ClipGridSpec `json:"grid,omitempty"`
 }
 
 // AudioSpec selects the audio copy policy. copy_if_compatible never
@@ -552,6 +581,9 @@ func (r *RenderRequest) Validate() error {
 	// One validator for the card block, shared with the sealed plan, so the
 	// request and the plan cannot accept different source_frame shapes.
 	if err := ValidatePlanSourceFrame(r.Output.SourceFrame, r.Output.ForegroundScalePercent); err != nil {
+		return fmt.Errorf("%w: output.%w", ErrInvalidRequest, err)
+	}
+	if err := ValidateClipEffects(r.Output.Effects, r.Output.Grid); err != nil {
 		return fmt.Errorf("%w: output.%w", ErrInvalidRequest, err)
 	}
 

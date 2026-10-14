@@ -139,6 +139,18 @@ func TestCapEntityImageOverlaysPerSceneKeepsEntityOnlyOnceAcrossRun(t *testing.T
 	}
 }
 
+func TestCapEntityImageOverlaysPerSceneDropsRepeatedPhotoHash(t *testing.T) {
+	items := []capabilityoverlay.OverlayItem{
+		{ID: "scene-1-first", SceneID: "scene-1", EntityID: "person-a", Kind: string(capabilityoverlay.KindEntityImage), EntityRef: &capabilityoverlay.OverlayEntityRef{CanonicalEntityID: "person:a"}, AssetRefs: []capabilityoverlay.OverlayAssetRef{{AssetID: "asset-a", SHA256: "same-photo"}}},
+		{ID: "scene-2-second", SceneID: "scene-2", EntityID: "person-a", Kind: string(capabilityoverlay.KindEntityImage), EntityRef: &capabilityoverlay.OverlayEntityRef{CanonicalEntityID: "person:a"}, AssetRefs: []capabilityoverlay.OverlayAssetRef{{AssetID: "asset-b", SHA256: "same-photo"}}},
+		{ID: "scene-3-third", SceneID: "scene-3", EntityID: "person-a", Kind: string(capabilityoverlay.KindEntityImage), EntityRef: &capabilityoverlay.OverlayEntityRef{CanonicalEntityID: "person:a"}, AssetRefs: []capabilityoverlay.OverlayAssetRef{{AssetID: "asset-c", SHA256: "different-photo"}}},
+	}
+	got := capEntityImageOverlays(items, capabilityoverlay.MaxEntityImageOverlaysPerRun, true)
+	if len(got) != 2 || got[0].ID != "scene-1-first" || got[1].ID != "scene-3-third" {
+		t.Fatalf("per-scene photo dedupe = %+v; want one overlay per unique photo hash", got)
+	}
+}
+
 func TestComposeNearbyEntityImagesCreatesOneStaggeredComposite(t *testing.T) {
 	items := []capabilityoverlay.OverlayItem{
 		{ID: "second", SceneID: "scene-1", EntityID: "stable-second", Kind: string(capabilityoverlay.KindEntityImage), TemplateID: "image_popup", PresetID: "image_focus_in", StartMs: 2500, EndMs: 7500,

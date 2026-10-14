@@ -204,9 +204,11 @@ func selectPhrases(text string, blockedSpans [][2]int, limit int, profile *lingu
 		}
 	}
 	// Natural complete sentences and neighboring sentence pairs are editorial
-	// candidates outside the sixteen-word cap used for arbitrary fragments. Their
-	// token intervals are still disjoint-selected below, so one card cannot
-	// step on words already assigned to an earlier card.
+	// candidates outside the sixteen-word cap used for arbitrary fragments:
+	// a long-phrase card must reach the sentence terminator (or the scene
+	// end) instead of stopping mid-sentence. Their token intervals are
+	// still disjoint-selected below, so one card cannot step on words
+	// already assigned to an earlier card.
 	sentences := sentenceTokenSpans(text, tokens)
 	for i := range sentences {
 		for width := 1; width <= 2 && i+width <= len(sentences); width++ {
@@ -221,10 +223,20 @@ func selectPhrases(text string, blockedSpans [][2]int, limit int, profile *lingu
 				sentenceCount: width,
 			}
 			atSceneEnd := width == 1 && i == len(sentences)-1
-			if !isTerminatedSentenceText(span.text) && !atSceneEnd {
+			terminated := isTerminatedSentenceText(span.text)
+			if !terminated && !atSceneEnd {
 				continue
 			}
-			if wordCount > 16 {
+			// Complete sentences may run to the planner's phrase-word
+			// ceiling (default 30): anything longer is dropped downstream,
+			// so admitting it here would only steal the slot of a
+			// shorter complete sentence. An unterminated trailing tail
+			// keeps the sixteen-word fragment cap: only text that
+			// actually reaches its period (or ?, !) earns the long path.
+			if wordCount > 30 {
+				continue
+			}
+			if !terminated && wordCount > 16 {
 				continue
 			}
 			if sentenceCandidateAllowed(span, profile, blockedSpans, text) {

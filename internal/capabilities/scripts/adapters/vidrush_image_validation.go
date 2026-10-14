@@ -222,8 +222,11 @@ func downloadVidRushImage(ctx context.Context, client *http.Client, rawURL, sour
 
 func validateVidRushImageHead(status int, _ string, contentLength int64, policy VidRushImagePolicy) error {
 	policy = normalizeVidRushImagePolicy(policy)
-	if status == http.StatusMethodNotAllowed || status == http.StatusNotImplemented {
-		return nil // host does not support HEAD; the guarded GET remains authoritative.
+	if status == http.StatusMethodNotAllowed || status == http.StatusNotImplemented || status == http.StatusForbidden {
+		// Some image CDNs deny HEAD while serving the same URL to a normal GET.
+		// Treat the preflight as advisory; the guarded GET validates status, MIME,
+		// byte limits, and decoded image content before accepting anything.
+		return nil
 	}
 	if status < http.StatusOK || status >= http.StatusMultipleChoices {
 		return fmt.Errorf("vidrush image: upstream HEAD status %d", status)

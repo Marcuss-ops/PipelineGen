@@ -8,6 +8,7 @@ import (
 	"time"
 
 	scriptports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
+	scriptmetrics "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports/metrics"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
 	"github.com/Marcuss-ops/PipelineGen/pkg/retry"
@@ -99,10 +100,62 @@ func (s *VidRushRegistryMediaResolver) SearchImages(ctx context.Context, req Int
 	if s == nil || s.Registry == nil {
 		return nil, scriptports.ErrVidRushProviderNotFound
 	}
-	return s.Registry.Search(ctx, scriptpkg.VidRushProviderInternetImages, scriptports.VidRushSearchRequest{
-		SegmentID: req.SegmentID, Position: req.Position, TextHash: req.TextHash, Text: req.Query,
-		Query: req.Query, Entity: req.Entity, Limit: req.Limit,
-	})
+	queries := []string{req.Query}
+	if strings.Contains(strings.ToLower(req.Query), "single-person portrait headshot photo") {
+		// One broad portrait query repeatedly returned the same top photograph
+		// for every scene. Search a small set of identity-safe contexts through
+		// the same provider and merge them; downstream person verification and
+		// perceptual deduplication remain authoritative.
+		name := strings.TrimSpace(req.Entity)
+		queries = []string{
+			req.Query,
+			name + " foto intervista",
+			name + " foto udienza tribunale Garlasco",
+			name + " dichiarazioni foto avvocato Garlasco",
+			name + " servizio televisivo ritratto",
+		}
+	}
+	resultSets := make([][]scriptpkg.SegmentAssetCandidate, 0, len(queries))
+	var lastErr error
+	for _, query := range queries {
+		found, err := s.Registry.Search(ctx, scriptpkg.VidRushProviderInternetImages, scriptports.VidRushSearchRequest{
+			SegmentID: req.SegmentID, Position: req.Position, TextHash: req.TextHash, Text: query,
+			Query: query, Entity: req.Entity, Limit: req.Limit,
+		})
+		if err != nil {
+			lastErr = err
+			continue
+		}
+		resultSets = append(resultSets, found)
+	}
+	limit := req.Limit
+	if len(queries) > 1 && limit < 5 {
+		// The per-scene fanout limit can be lower than the explicit per-entity
+		// portrait request. Keep enough distinct candidates to satisfy five
+		// variants after merging the bounded contextual searches.
+		limit = 5
+	}
+	var candidates []scriptpkg.SegmentAssetCandidate
+	for depth := 0; ; depth++ {
+		addedAtDepth := false
+		for _, results := range resultSets {
+			if depth >= len(results) {
+				continue
+			}
+			addedAtDepth = true
+			candidates = AppendProviderCandidatesUnique(candidates, results[depth:depth+1])
+			if limit > 0 && len(candidates) >= limit {
+				return candidates[:limit], nil
+			}
+		}
+		if !addedAtDepth {
+			break
+		}
+	}
+	if len(candidates) == 0 && lastErr != nil {
+		return nil, lastErr
+	}
+	return candidates, nil
 }
 
 // VidRushProviderFanout resolves a single enriched segment's visual providers
@@ -337,7 +390,7 @@ func (f *VidRushProviderFanout) resolveInternetImageCandidates(ctx context.Conte
 		// Per-query cache keyed on (topic, query, language), stable on
 		// the research path where the generated scene text (and thus
 		// TextHash) is non-deterministic across runs.
-		entityCacheKey := versionedSegmentCacheKey("discovery", scriptports.DiscoveryCacheVersion, strings.ToLower(strings.TrimSpace(plan.Topic)), strings.ToLower(strings.TrimSpace(query)), plan.Language)
+		entityCacheKey := versionedSegmentCacheKey("entity-image-discovery-v2", scriptports.DiscoveryCacheVersion, strings.ToLower(strings.TrimSpace(plan.Topic)), strings.ToLower(strings.TrimSpace(query)), plan.Language)
 		catalogIdentity, catalogEligible, catalogErr := personCatalogIdentityForSegmentQuery(workerInput, query)
 		if catalogErr != nil {
 			outcomes <- vidRushProviderOutcome{provider: "internet_images", err: catalogErr}
@@ -357,7 +410,7 @@ func (f *VidRushProviderFanout) resolveInternetImageCandidates(ctx context.Conte
 			releaseCatalog = entityImageLocks.Lock("entity-catalog:" + catalogIdentity.CanonicalEntityID)
 			if !plan.MediaPlan.ForceRefreshAssets && !plan.ForceRefresh {
 				lookupStarted := time.Now()
-				pool, err := entityImageCatalogCandidates(ctx, f.catalog, catalogIdentity, perQueryLimit)
+				pool, err := entityImageCatalogCandidates(ctx, f.catalog, catalogIdentity, entityImageCatalogPoolSize)
 				observeEntityImageCatalogLookup(f.metrics, lookupStarted)
 				if err != nil {
 					if releaseCatalog != nil {
@@ -432,11 +485,15 @@ func (f *VidRushProviderFanout) resolveInternetImageCandidates(ctx context.Conte
 				f.metrics.IncProviderRequest("internet_images")
 			}
 			searchQuery := personImageSearchQuery(query, catalogEligible)
+			imageLimit := perQueryLimit
+			if catalogEligible && imageLimit < entityImageCatalogPoolSize {
+				imageLimit = entityImageCatalogPoolSize
+			}
 			searched, err := f.images.SearchImages(ctx, InternetImageSearchRequest{
 				// Entity remains canonical; the provider query may include a
 				// retrieval hint but candidates are normalized to canonical identity.
 				SegmentID: segmentID, Position: workerInput.Position, Query: searchQuery, Entity: query,
-				TextHash: textHash, Language: plan.Language, Limit: perQueryLimit,
+				TextHash: textHash, Language: plan.Language, Limit: imageLimit,
 				Provider: "internet_images",
 				// A refresh must not resurrect recorded hashes from the
 				// durable image index: re-downloaded bytes are re-hashed
@@ -444,6 +501,9 @@ func (f *VidRushProviderFanout) resolveInternetImageCandidates(ctx context.Conte
 				ForceRefresh: plan.MediaPlan.ForceRefreshAssets || plan.ForceRefresh,
 			})
 			if err != nil {
+				if catalogEligible {
+					incEntityImageCatalogLifecycle(f.metrics, scriptmetrics.EntityImageStageDiscovery, scriptmetrics.EntityImageOutcomeFailure)
+				}
 				if f.metrics != nil {
 					f.metrics.IncProviderFailure("internet_images")
 				}
@@ -468,24 +528,26 @@ func (f *VidRushProviderFanout) resolveInternetImageCandidates(ctx context.Conte
 				}()))
 			}
 			providerResults := normalizeInternetImageCatalogResults(searched, query)
+			if catalogEligible {
+				addEntityImageCatalogCandidates(f.metrics, scriptmetrics.EntityImageStageDiscovery, scriptmetrics.EntityImageOutcomeFound, len(providerResults))
+				incEntityImageCatalogLifecycle(f.metrics, scriptmetrics.EntityImageStageDiscovery, scriptmetrics.EntityImageOutcomeSuccess)
+			}
 			if catalogEligible && f.catalog != nil {
-				accepted, rejected := 0, make(map[string]int)
+				providerCount := len(providerResults)
+				rejected := make(map[string]int)
 				for _, candidate := range providerResults {
 					ok, _, _, reason := evaluatePersonImageCandidate(catalogIdentity, candidate)
-					if ok {
-						accepted++
-					} else {
+					if !ok {
 						rejected[reason]++
 					}
 				}
-				providerCount := len(providerResults)
-				providerResults = filterPersonEntityImageCandidates(catalogIdentity, providerResults)
+				providerResults = filterPersonEntityImageCandidatesMeasured(catalogIdentity, providerResults, f.metrics)
 				if len(rejected) > 0 && f.log.Core() != nil {
 					f.log.Info("VidRush person image catalog gate", zap.String("segment_id", segmentID),
 						zap.String("query", query), zap.Int("provider_candidates", providerCount),
-						zap.Int("catalog_eligible", accepted), zap.Any("catalog_rejections", rejected))
+						zap.Int("catalog_eligible", len(providerResults)), zap.Any("catalog_rejections", rejected))
 				}
-				if catalogErr := persistEntityImageCatalogCandidates(ctx, f.catalog, catalogIdentity, providerResults); catalogErr != nil {
+				if catalogErr := persistEntityImageCatalogCandidatesMeasured(ctx, f.catalog, catalogIdentity, providerResults, f.metrics); catalogErr != nil {
 					if releaseCatalog != nil {
 						releaseCatalog()
 					}
@@ -500,12 +562,17 @@ func (f *VidRushProviderFanout) resolveInternetImageCandidates(ctx context.Conte
 			if results == nil {
 				results = []scriptpkg.SegmentAssetCandidate{}
 			}
-			if cacheErr := storeVidRushPersistentJSON(ctx, f.cache, "entity_images", entityCacheKey, results); cacheErr != nil {
-				// The per-query cache is only a replay projection. Keep the
-				// live provider results and continue fan-out when that
-				// projection is unavailable.
-				if f.log.Core() != nil {
-					f.log.Warn("VidRush image query cache write failed; retaining live candidates", zap.String("query", query), zap.Error(cacheErr))
+			// Empty entity-image results are temporary provider observations,
+			// not stable catalog facts. Avoid poisoning later scenes/jobs with a
+			// 48h negative cache entry when the provider's index changes.
+			if len(results) > 0 || !plan.MediaPlan.Extraction.EntityImageSurfaceEnabled() {
+				if cacheErr := storeVidRushPersistentJSON(ctx, f.cache, "entity_images", entityCacheKey, results); cacheErr != nil {
+					// The per-query cache is only a replay projection. Keep the
+					// live provider results and continue fan-out when that
+					// projection is unavailable.
+					if f.log.Core() != nil {
+						f.log.Warn("VidRush image query cache write failed; retaining live candidates", zap.String("query", query), zap.Error(cacheErr))
+					}
 				}
 			}
 		}
@@ -533,24 +600,31 @@ func (f *VidRushProviderFanout) resolveInternetImageCandidates(ctx context.Conte
 			candidates = append(candidates, cand)
 		}
 	}
-	// Durable-cache the segment result (including an empty result set)
-	// so a warm replay of this exact segment is deterministic.
-	var verifyErr error
-	candidates, verifyErr = f.verifyPersonImageCandidates(ctx, candidates)
+	// Empty entity-image results must be searched again on later runs; caching
+	// them at segment level would bypass the per-person discovery retry above.
+	addEntityImageCatalogCandidates(f.metrics, scriptmetrics.EntityImageStageDiscovery, scriptmetrics.EntityImageOutcomeAccepted, len(candidates))
+	// Only canonical PERSON queries belong in the portrait verifier. Running
+	// every retrieved image through a "person entity image" scorer discarded
+	// valid contextual photos (courthouses, archives, streets) before they
+	// could reach the scene, which made distinct non-person searches look empty.
+	verified, verifyErr := f.verifySegmentImageCandidates(ctx, workerInput, candidates)
 	if verifyErr != nil {
 		outcomes <- vidRushProviderOutcome{provider: "internet_images", candidates: candidates, err: verifyErr}
 		return
 	}
+	candidates = verified
 	payload := internetImageCachePayload{Candidates: append([]scriptpkg.SegmentAssetCandidate(nil), candidates...)}
 	if len(payload.Candidates) > 0 {
 		cacheStore(vidrushImageCache, segmentCacheKeyStr, payload)
 	}
-	if cacheErr := storeVidRushPersistentJSON(ctx, f.cache, "internet_images", segmentCacheKeyStr, payload); cacheErr != nil {
-		// Cache persistence is a projection, not the source of truth for
-		// provider discovery. Preserve the live candidates so a cache
-		// outage cannot erase usable media before materialization.
-		outcomes <- vidRushProviderOutcome{provider: "internet_images", candidates: candidates, err: cacheErr}
-		return
+	if len(payload.Candidates) > 0 || !plan.MediaPlan.Extraction.EntityImageSurfaceEnabled() {
+		if cacheErr := storeVidRushPersistentJSON(ctx, f.cache, "internet_images", segmentCacheKeyStr, payload); cacheErr != nil {
+			// Cache persistence is a projection, not the source of truth for
+			// provider discovery. Preserve the live candidates so a cache
+			// outage cannot erase usable media before materialization.
+			outcomes <- vidRushProviderOutcome{provider: "internet_images", candidates: candidates, err: cacheErr}
+			return
+		}
 	}
 	if f.log.Core() != nil {
 		f.log.Info("VidRush image fanout merged candidates", zap.String("segment_id", segmentID), zap.Int("count", len(candidates)))
@@ -558,20 +632,49 @@ func (f *VidRushProviderFanout) resolveInternetImageCandidates(ctx context.Conte
 	outcomes <- vidRushProviderOutcome{provider: "internet_images", candidates: candidates, allCacheHits: allCacheHits}
 }
 
+func (f *VidRushProviderFanout) verifySegmentImageCandidates(ctx context.Context, segment scriptpkg.VidRushSegmentResult, candidates []scriptpkg.SegmentAssetCandidate) ([]scriptpkg.SegmentAssetCandidate, error) {
+	personCandidates := make([]scriptpkg.SegmentAssetCandidate, 0, len(candidates))
+	contextCandidates := make([]scriptpkg.SegmentAssetCandidate, 0, len(candidates))
+	for _, candidate := range candidates {
+		_, personQuery, err := personCatalogIdentityForSegmentQuery(segment, candidate.Query)
+		if err != nil {
+			return nil, err
+		}
+		if personQuery {
+			personCandidates = append(personCandidates, candidate)
+		} else {
+			contextCandidates = append(contextCandidates, candidate)
+		}
+	}
+	verifiedPeople, err := f.verifyPersonImageCandidates(ctx, personCandidates)
+	if err != nil {
+		return nil, err
+	}
+	verifiedContext := filterInternetImageCandidates(deduplicateInternetImageCandidates(normalizeInternetImageCandidates(contextCandidates, "")))
+	return AppendProviderCandidatesUnique(verifiedPeople, verifiedContext), nil
+}
+
 func (f *VidRushProviderFanout) verifyPersonImageCandidates(ctx context.Context, candidates []scriptpkg.SegmentAssetCandidate) ([]scriptpkg.SegmentAssetCandidate, error) {
-	if f == nil || f.semanticScorer == nil || len(candidates) == 0 {
+	if f == nil || len(candidates) == 0 {
+		return append([]scriptpkg.SegmentAssetCandidate(nil), candidates...), nil
+	}
+	if f.semanticScorer == nil {
+		recordEntityImageVisualOutcomes(f.metrics, candidates, nil)
 		return append([]scriptpkg.SegmentAssetCandidate(nil), candidates...), nil
 	}
 	scored, err := f.semanticScorer.ScoreImageCandidates(ctx, "person entity image", candidates)
 	if err != nil {
+		recordEntityImageVisualOutcomes(f.metrics, candidates, err)
 		return candidates, err
 	}
 	if scored == nil {
 		scored = candidates
 	}
 	if err := persistPersonImageVisualVerdicts(ctx, f.catalog, scored); err != nil {
+		recordEntityImageVisualOutcomes(f.metrics, scored, err)
 		return scored, err
 	}
+	recordEntityImageVisualOutcomes(f.metrics, scored, nil)
 	return filterInternetImageCandidates(deduplicateInternetImageCandidates(normalizeInternetImageCandidates(scored, "person entity image"))), nil
 }
 

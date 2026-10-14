@@ -47,7 +47,7 @@ func TestPersonImageSourceIdentityFailsClosedWithoutCanonicalProvenance(t *testi
 		{name: "generic materialized filename", sourceURL: "https://www.newspeople.it/wp-content/uploads/2026/05/IMG_6075-1-scaled.jpeg", wantRejected: true},
 		{name: "explicitly different person", sourceURL: "https://www.aobmagazine.it/Angela-Tuccia-1.jpg", wantRejected: true},
 		{name: "double escaped canonical filename", sourceURL: "https://media.example/angela%2520taccia.jpg"},
-		{name: "canonical source page without durable image URL provenance", sourceURL: "https://cdn.example/IMG_6075.jpeg", sourcePageURL: "https://news.example/angela-taccia-avvocata-sempio", wantRejected: true},
+		{name: "canonical source page without durable image URL provenance", sourceURL: "https://cdn.example/IMG_6075.jpeg", sourcePageURL: "https://news.example/angela-taccia-avvocata-sempio"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

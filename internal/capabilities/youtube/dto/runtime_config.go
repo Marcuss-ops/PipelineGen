@@ -21,6 +21,10 @@ type RuntimeConfig struct {
 
 	// Job/extraction timeouts (seconds).
 	YouTubeExtractTimeout int
+	// SectionDownloadTimeoutSeconds bounds a single time-range download (the
+	// per-segment yt-dlp fetch and the equivalent staged-section fetch). 0
+	// keeps the historical bounds (10m / 12m respectively).
+	SectionDownloadTimeoutSeconds int
 
 	// Paths resolved at composition time.
 	DataDir                  string // cfg.Storage.DataDir

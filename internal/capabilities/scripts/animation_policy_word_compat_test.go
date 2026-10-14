@@ -37,23 +37,34 @@ func TestAnimationPolicyFailsClosedOnWordMismatchedPhraseMotion(t *testing.T) {
 		{ID: "l", SceneID: "scene", Kind: "text_phrase", TemplateID: "IMPORTANT_PHRASE", Text: longText},
 	}
 	// Exact-cardinality recipes must never reach non-short copy.
-	exactRecipe := "short_phrase_scale_settle_word"
+	exactRecipe := "short_phrase_character_tracking_reveal"
 	longPolicy := []scriptpkg.AnimationPolicy{{Target: "important_phrase", GroupID: "scene", MotionID: exactRecipe}}
 	if err := scriptoverlay.ApplyAnimationPolicies(longItem, longPolicy, "plan", "video", nil); err == nil {
 		t.Fatalf("exact recipe %q on 8-word copy must fail, applied %q", exactRecipe, longItem[0].MotionID)
 	}
 
-	// Matching word counts apply; the short recipe admission that used to
-	// reject every short id as uncertified now lets them through.
+	// An explicit exact-cardinality recipe IS policy-selectable when the
+	// wording matches its word count: automatic seeded draws stay on the
+	// Visible pool, but an operator's explicit choice of the matching recipe
+	// applies. RenderingGen lowers short_phrase_style with a dedicated
+	// full-timeline path (motion.go fullPhraseTimeline).
 	okItem := []capabilityoverlay.OverlayItem{
 		{ID: "s", SceneID: "scene", Kind: "text_phrase", TemplateID: "IMPORTANT_PHRASE", Text: "Crollo margini"},
 	}
 	okPolicy := []scriptpkg.AnimationPolicy{{Target: "important_phrase", GroupID: "scene", MotionID: twoWordRecipe}}
 	if err := scriptoverlay.ApplyAnimationPolicies(okItem, okPolicy, "plan", "video", nil); err != nil {
-		t.Fatalf("matching 2-word recipe must apply: %v", err)
+		t.Fatalf("word-matched short-phrase ID %q must be policy-selectable: %v", twoWordRecipe, err)
 	}
 	if okItem[0].MotionID != twoWordRecipe {
-		t.Fatalf("matching recipe not applied, got %q", okItem[0].MotionID)
+		t.Fatalf("word-matched short-phrase ID %q was not applied, got %q", twoWordRecipe, okItem[0].MotionID)
+	}
+	// The same recipe on the wrong word count still fails closed.
+	wrongItem := []capabilityoverlay.OverlayItem{
+		{ID: "s", SceneID: "scene", Kind: "text_phrase", TemplateID: "IMPORTANT_PHRASE", Text: "La casa nel bosco verde"},
+	}
+	wrongPolicy := []scriptpkg.AnimationPolicy{{Target: "important_phrase", GroupID: "scene", MotionID: twoWordRecipe}}
+	if err := scriptoverlay.ApplyAnimationPolicies(wrongItem, wrongPolicy, "plan", "video", nil); err == nil {
+		t.Fatalf("2-word recipe %q on 4-word copy must fail, applied %q", twoWordRecipe, wrongItem[0].MotionID)
 	}
 
 	// Long copy keeps the general catalog.
@@ -68,7 +79,7 @@ func TestAnimationPolicyFailsClosedOnWordMismatchedPhraseMotion(t *testing.T) {
 	}
 }
 
-func TestAnimationPolicySeedsShortGroupsPerWordCount(t *testing.T) {
+func TestAnimationPolicySeededShortPhrasesAnimateFromVisiblePool(t *testing.T) {
 	policies := []scriptpkg.AnimationPolicy{{Target: "important_phrase", GroupID: "mixed"}}
 	makeItems := func() []capabilityoverlay.OverlayItem {
 		return []capabilityoverlay.OverlayItem{
@@ -78,23 +89,27 @@ func TestAnimationPolicySeedsShortGroupsPerWordCount(t *testing.T) {
 	}
 	first, second := makeItems(), makeItems()
 	if err := scriptoverlay.ApplyAnimationPolicies(first, policies, "stable-plan", "video", nil); err != nil {
-		t.Fatalf("seeded mixed-word group must not fail: %v", err)
+		t.Fatalf("an unset short-phrase policy must compile: %v", err)
 	}
 	if err := scriptoverlay.ApplyAnimationPolicies(second, policies, "stable-plan", "video", nil); err != nil {
-		t.Fatalf("seeded retry must not fail: %v", err)
+		t.Fatalf("retry of an unset short-phrase policy must compile: %v", err)
 	}
-	for i, words := range []int{2, 4} {
-		inGroup := false
-		for _, id := range capabilityoverlay.ShortPhraseMotionsForWordCount(words) {
-			if id == first[i].MotionID {
-				inGroup = true
-			}
+	// Seeded short-phrase draws animate from the renderer-supported Visible
+	// pool (same as the automatic planner lane): no static fallback. Exact
+	// short_phrase_* recipes stay explicit-only.
+	visible := make(map[string]bool)
+	for _, id := range capabilityoverlay.ShortPhraseVisibleMotionCandidates() {
+		visible[id] = true
+	}
+	for i := range first {
+		if first[i].MotionID == "" || second[i].MotionID == "" {
+			t.Fatalf("short phrase %d stayed static (%q/%q), want a Visible-pool entrance", i, first[i].MotionID, second[i].MotionID)
 		}
-		if !inGroup {
-			t.Fatalf("item %d (%d words) drew %q outside its word-count group", i, words, first[i].MotionID)
+		if !visible[first[i].MotionID] || !visible[second[i].MotionID] {
+			t.Fatalf("short phrase %d drew outside the Visible pool (%q/%q)", i, first[i].MotionID, second[i].MotionID)
 		}
 		if first[i].MotionID != second[i].MotionID {
-			t.Fatalf("seeded draw must be retry-stable, got %q then %q", first[i].MotionID, second[i].MotionID)
+			t.Fatalf("seeded short-phrase draw must be retry-stable, got %q then %q", first[i].MotionID, second[i].MotionID)
 		}
 	}
 }

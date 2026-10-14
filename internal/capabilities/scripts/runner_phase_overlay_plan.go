@@ -54,6 +54,12 @@ func (r *Runner) compileAudioOverlayPlan(ctx context.Context, runID string, req 
 	if canvas.HeavyPhrasePriority <= 0 {
 		canvas.HeavyPhrasePriority = heavyPhrasePriorityDefault
 	}
+	// An explicit operator threshold wins over the default: catalog runs pin
+	// it unreachable so heavy-boosted phrases stay inside the requested
+	// caller-pool rotation instead of leaving it.
+	if req.HeavyPhrasePriority > 0 {
+		canvas.HeavyPhrasePriority = req.HeavyPhrasePriority
+	}
 	canvas.ImageMotions = req.ImageMotions
 	canvas.EntityImageMotions = req.EntityImageMotions
 	canvas.EntityCaptionMotions = req.EntityCaptionMotions
@@ -84,6 +90,7 @@ func (r *Runner) compileAudioOverlayPlan(ctx context.Context, runID string, req 
 	canvas.DisableNumberOverlays = req.DisableNumberOverlays
 	canvas.DisableRecapOverlays = req.DisableRecapOverlays
 	canvas.DisableChartOverlays = req.DisableChartOverlays
+	canvas.DisableEditorialOverlays = req.DisableEditorialOverlays
 	canvas.EnableCharts = req.EnableCharts
 	if canvas.Style == nil && background != nil {
 		canvas.Style = background.Style
@@ -94,7 +101,10 @@ func (r *Runner) compileAudioOverlayPlan(ctx context.Context, runID string, req 
 		plates = nil
 	}
 	imageProviderEnabled := req.MediaPlan.ProviderPolicy.InternetImages.AsBool() || req.MediaPlan.ProviderPolicy.ImageGeneration.AsBool()
-	genericSceneImagesEnabled := req.MaxImageOverlays > 0 && imageProviderEnabled
+	// Per-scene entity-image jobs render the bound PERSON cards directly. Do
+	// not also add generic scene stills from the same candidates: those become
+	// static image-chain cards and obscure the one-motion-per-image contract.
+	genericSceneImagesEnabled := req.MaxImageOverlays > 0 && imageProviderEnabled && !req.MediaPlan.Extraction.EntityImages.PerScene()
 	if err := compileResultOverlayPlan(result, req.SourceLanguage, runID, req.Project, driveFolderID, canvas, plates, req.MediaPlan.Extraction.EntityImages.PerScene(), genericSceneImagesEnabled); err != nil {
 		cause := fmt.Errorf("overlay plan compilation failed: %w", err)
 		r.failExecutionStep(ctx, exec, step, cause)

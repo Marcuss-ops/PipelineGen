@@ -56,6 +56,8 @@ type overlayPlan struct {
 	Source            *overlaySource              `json:"source,omitempty"`
 	ForegroundScale   int                         `json:"foreground_scale_percent,omitempty"`
 	SourceFrame       *sourceFrameBlock           `json:"source_frame,omitempty"`
+	ClipEffects       []map[string]any            `json:"clip_effects,omitempty"`
+	ClipGrid          *clipGridBlock              `json:"clip_grid,omitempty"`
 	Background        *overlayBackground          `json:"background,omitempty"`
 	Subtitles         *overlaySubtitles           `json:"subtitles,omitempty"`
 	Watermark         *overlayWatermark           `json:"watermark,omitempty"`
@@ -73,6 +75,13 @@ type overlaySource struct {
 // mirrors RenderingGen's overlay contract field-for-field (border width/colour/
 // radius + shadow + stroke), so a declared frame is transported verbatim and
 // never re-interpreted here.
+type clipGridBlock struct {
+	SpacingPX   float64 `json:"spacing_px"`
+	LineWidthPX float64 `json:"line_width_px"`
+	Color       string  `json:"color"`
+	Opacity     float64 `json:"opacity"`
+}
+
 type sourceFrameBlock struct {
 	Border       *sourceFrameBorder `json:"border,omitempty"`
 	Shadow       *sourceFrameShadow `json:"shadow,omitempty"`
@@ -386,6 +395,8 @@ func MapClipPlanToOverlayPlan(plan cliprender.ClipRenderPlanV1) ([]byte, error) 
 		// would make the worker render a bare clip while the producer believes
 		// the frame was requested.
 		SourceFrame: mapSourceFrame(plan.Output.SourceFrame),
+		ClipEffects: mapClipEffects(plan.Output.Effects),
+		ClipGrid:    mapClipGrid(plan.Output.Grid),
 		// items is always emitted as an explicit empty array, never null,
 		// so the RenderingGen schema validator sees a valid JSON array.
 		Items: []json.RawMessage{},
@@ -538,6 +549,52 @@ func MapClipPlanToOverlayPlan(plan cliprender.ClipRenderPlanV1) ([]byte, error) 
 		return nil, fmt.Errorf("clip plan mapper: marshal overlay plan: %w", err)
 	}
 	return raw, nil
+}
+
+func mapClipGrid(grid *cliprender.ClipGridSpec) *clipGridBlock {
+	if grid == nil {
+		return nil
+	}
+	return &clipGridBlock{SpacingPX: grid.SpacingPX, LineWidthPX: grid.LineWidthPX, Color: grid.Color, Opacity: grid.Opacity}
+}
+
+func mapClipEffects(effects []cliprender.ClipEffectSpec) []map[string]any {
+	if len(effects) == 0 {
+		return nil
+	}
+	out := make([]map[string]any, 0, len(effects))
+	for _, effect := range effects {
+		item := map[string]any{"type": effect.Type}
+		switch effect.Type {
+		case "glitch":
+			item["amount"] = effect.Amount
+			item["seed"] = effect.Seed
+		case "scanlines":
+			item["amount"] = effect.Amount
+			item["wavelength"] = effect.Wavelength
+		case "mosaic":
+			item["block_size"] = effect.BlockSize
+		case "chromatic_aberration":
+			item["amount"] = effect.Amount
+		case "halftone":
+			item["size"] = effect.Size
+			item["angle"] = effect.Angle
+			item["amount"] = effect.Amount
+		case "vignette":
+			item["amount"] = effect.Amount
+			item["radius"] = effect.Radius
+			item["softness"] = effect.Softness
+		case "gaussian_blur":
+			item["radius"] = effect.Radius
+		case "noise":
+			item["amount"] = effect.Amount
+			item["size"] = effect.Size
+			item["seed"] = effect.Seed
+			item["animated"] = effect.Animated
+		}
+		out = append(out, item)
+	}
+	return out
 }
 
 func watermarkFontAsset() (assetRef, error) {

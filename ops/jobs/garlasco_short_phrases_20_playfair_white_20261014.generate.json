@@ -1,0 +1,351 @@
+{
+  "version": 2,
+  "preset": "custom",
+  "correlation_id": "garlasco-short-phrases-20-playfair-white-20261014",
+  "force_refresh": true,
+  "items": [
+    {
+      "id": "garlasco-short-phrases-20-playfair-white-20261014",
+      "project": "garlasco-short-phrases-20-playfair-white-20261014",
+      "title": "Garlasco — 20 Short Phrases, Playfair nero su bianco",
+      "language": "it",
+      "tone": "documentario sobrio e verificabile",
+      "style": "Crea esattamente 20 segmenti brevi. Ogni segmento deve contenere la frase selezionata corrispondente, senza aggiungere fatti non presenti nella fonte. Nessun bullet, immagine, mappa, data animata, grafico, entità grafica o altra animazione. Solo overlay Short Phrases.",
+      "model": "gemma4:e4b",
+      "source": {
+        "type": "text",
+        "topic": "Garlasco — Short Phrases",
+        "source_text": "Test di overlay tipografici per il caso di Garlasco, in provincia di Pavia. Il riferimento storico è l'omicidio di Chiara Poggi, avvenuto il 13 agosto 2007 nella sua abitazione. Il racconto riguarda indagini, atti processuali, reperti, testimonianze, consulenze tecniche, processo, sentenza definitiva e fasi del procedimento. Ogni riferimento a persone, Procura, tesi investigative, difese e contraddittorio deve restare neutro e distinguere gli atti dalle interpretazioni. Per persone non condannate in via definitiva vale la presunzione di innocenza."
+      },
+      "script_params": {
+        "target_words": 280,
+        "min_words": 180,
+        "segment_words": 14,
+        "single_scene": false,
+        "skip_quality_gate": false,
+        "segments": [
+          {
+            "id": "short-phrase-01",
+            "kind": "narration",
+            "topic": "Garlasco",
+            "source_text": "Inserisci il riferimento Garlasco in una frase breve e neutra, attenendoti alle informazioni documentate nel testo sorgente.",
+            "target_words": 14,
+            "min_words": 8
+          },
+          {
+            "id": "short-phrase-02",
+            "kind": "narration",
+            "topic": "Provincia di Pavia",
+            "source_text": "Inserisci il riferimento Provincia di Pavia in una frase breve e neutra, attenendoti alle informazioni documentate nel testo sorgente.",
+            "target_words": 14,
+            "min_words": 8
+          },
+          {
+            "id": "short-phrase-03",
+            "kind": "narration",
+            "topic": "Chiara Poggi",
+            "source_text": "Inserisci il riferimento Chiara Poggi in una frase breve e neutra, attenendoti alle informazioni documentate nel testo sorgente.",
+            "target_words": 14,
+            "min_words": 8
+          },
+          {
+            "id": "short-phrase-04",
+            "kind": "narration",
+            "topic": "13 agosto 2007",
+            "source_text": "Inserisci il riferimento 13 agosto 2007 in una frase breve e neutra, attenendoti alle informazioni documentate nel testo sorgente.",
+            "target_words": 14,
+            "min_words": 8
+          },
+          {
+            "id": "short-phrase-05",
+            "kind": "narration",
+            "topic": "Abitazione di Chiara Poggi",
+            "source_text": "Inserisci il riferimento Abitazione di Chiara Poggi in una frase breve e neutra, attenendoti alle informazioni documentate nel testo sorgente.",
+            "target_words": 14,
+            "min_words": 8
+          },
+          {
+            "id": "short-phrase-06",
+            "kind": "narration",
+            "topic": "Indagini del 2007",
+            "source_text": "Inserisci il riferimento Indagini del 2007 in una frase breve e neutra, attenendoti alle informazioni documentate nel testo sorgente.",
+            "target_words": 14,
+            "min_words": 8
+          },
+          {
+            "id": "short-phrase-07",
+            "kind": "narration",
+            "topic": "Atti processuali",
+            "source_text": "Inserisci il riferimento Atti processuali in una frase breve e neutra, attenendoti alle informazioni documentate nel testo sorgente.",
+            "target_words": 14,
+            "min_words": 8
+          },
+          {
+            "id": "short-phrase-08",
+            "kind": "narration",
+            "topic": "Reperti esaminati",
+            "source_text": "Inserisci il riferimento Reperti esaminati in una frase breve e neutra, attenendoti alle informazioni documentate nel testo sorgente.",
+            "target_words": 14,
+            "min_words": 8
+          },
+          {
+            "id": "short-phrase-09",
+            "kind": "narration",
+            "topic": "Testimonianze raccolte",
+            "source_text": "Inserisci il riferimento Testimonianze raccolte in una frase breve e neutra, attenendoti alle informazioni documentate nel testo sorgente.",
+            "target_words": 14,
+            "min_words": 8
+          },
+          {
+            "id": "short-phrase-10",
+            "kind": "narration",
+            "topic": "Consulenze tecniche",
+            "source_text": "Inserisci il riferimento Consulenze tecniche in una frase breve e neutra, attenendoti alle informazioni documentate nel testo sorgente.",
+            "target_words": 14,
+            "min_words": 8
+          },
+          {
+            "id": "short-phrase-11",
+            "kind": "narration",
+            "topic": "Ricostruzione dei fatti",
+            "source_text": "Inserisci il riferimento Ricostruzione dei fatti in una frase breve e neutra, attenendoti alle informazioni documentate nel testo sorgente.",
+            "target_words": 14,
+            "min_words": 8
+          },
+          {
+            "id": "short-phrase-12",
+            "kind": "narration",
+            "topic": "Processo a Pavia",
+            "source_text": "Inserisci il riferimento Processo a Pavia in una frase breve e neutra, attenendoti alle informazioni documentate nel testo sorgente.",
+            "target_words": 14,
+            "min_words": 8
+          },
+          {
+            "id": "short-phrase-13",
+            "kind": "narration",
+            "topic": "Sentenza definitiva",
+            "source_text": "Inserisci il riferimento Sentenza definitiva in una frase breve e neutra, attenendoti alle informazioni documentate nel testo sorgente.",
+            "target_words": 14,
+            "min_words": 8
+          },
+          {
+            "id": "short-phrase-14",
+            "kind": "narration",
+            "topic": "Alberto Stasi",
+            "source_text": "Inserisci il riferimento Alberto Stasi in una frase breve e neutra, attenendoti alle informazioni documentate nel testo sorgente.",
+            "target_words": 14,
+            "min_words": 8
+          },
+          {
+            "id": "short-phrase-15",
+            "kind": "narration",
+            "topic": "Andrea Sempio",
+            "source_text": "Inserisci il riferimento Andrea Sempio in una frase breve e neutra, attenendoti alle informazioni documentate nel testo sorgente.",
+            "target_words": 14,
+            "min_words": 8
+          },
+          {
+            "id": "short-phrase-16",
+            "kind": "narration",
+            "topic": "Procura di Pavia",
+            "source_text": "Inserisci il riferimento Procura di Pavia in una frase breve e neutra, attenendoti alle informazioni documentate nel testo sorgente.",
+            "target_words": 14,
+            "min_words": 8
+          },
+          {
+            "id": "short-phrase-17",
+            "kind": "narration",
+            "topic": "Fasi del procedimento",
+            "source_text": "Inserisci il riferimento Fasi del procedimento in una frase breve e neutra, attenendoti alle informazioni documentate nel testo sorgente.",
+            "target_words": 14,
+            "min_words": 8
+          },
+          {
+            "id": "short-phrase-18",
+            "kind": "narration",
+            "topic": "Tesi investigative",
+            "source_text": "Inserisci il riferimento Tesi investigative in una frase breve e neutra, attenendoti alle informazioni documentate nel testo sorgente.",
+            "target_words": 14,
+            "min_words": 8
+          },
+          {
+            "id": "short-phrase-19",
+            "kind": "narration",
+            "topic": "Contraddittorio tra le parti",
+            "source_text": "Inserisci il riferimento Contraddittorio tra le parti in una frase breve e neutra, attenendoti alle informazioni documentate nel testo sorgente.",
+            "target_words": 14,
+            "min_words": 8
+          },
+          {
+            "id": "short-phrase-20",
+            "kind": "narration",
+            "topic": "Presunzione di innocenza",
+            "source_text": "Inserisci il riferimento Presunzione di innocenza in una frase breve e neutra, attenendoti alle informazioni documentate nel testo sorgente.",
+            "target_words": 14,
+            "min_words": 8
+          }
+        ],
+        "force_refresh": true
+      },
+      "max_phrase_overlays": 20,
+      "max_image_overlays": 0,
+      "max_map_overlays": 0,
+      "phrase_motion_family": "short_phrase_product_v1",
+      "animation_counts": {
+        "maps": 0,
+        "images": 0,
+        "images_with_text": 0,
+        "important_phrase": 0,
+        "short_important_phrase": 20,
+        "entities": 0,
+        "entity_caption": 0,
+        "dates": 0,
+        "bullets": 0,
+        "charts": 0,
+        "chain_disabled": 1
+      },
+      "overlay_style": {
+        "font_family": "playfair_display_italic",
+        "color": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "size": {
+          "font_size": 96
+        },
+        "glow_size": 0,
+        "glow_color": "#000000",
+        "stroke_size": 0,
+        "shadow": {
+          "enabled": false,
+          "color": "#000000",
+          "opacity": 0,
+          "blur": 0,
+          "offset": [
+            0,
+            0
+          ]
+        }
+      },
+      "overlay_background": {
+        "kind": "color",
+        "color": [
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "opacity": 1.0
+      },
+      "output": {
+        "save_to_db": true,
+        "extract_entities": false,
+        "generate_metadata": true,
+        "generate_timeline": false,
+        "voiceover_enabled": false,
+        "languages": [
+          "it"
+        ],
+        "drive_folder_id": "1cW_SrXc779dss5uwwDt0lgbQt8dN4Y8b",
+        "drive_subfolder_name": "garlasco-short-phrases-20-playfair-white-20261014",
+        "render": {
+          "enabled": true,
+          "drive_folder_id": "1cW_SrXc779dss5uwwDt0lgbQt8dN4Y8b",
+          "require_gpu": true,
+          "subtitles": {
+            "enabled": false
+          },
+          "drive_subfolder_name": "garlasco-short-phrases-20-playfair-white-20261014",
+          "background": {
+            "mode": "none"
+          }
+        },
+        "docs": {
+          "enabled": false
+        }
+      },
+      "media_plan": {
+        "mode": "hybrid",
+        "provider_policy": {
+          "internet_images": "disabled",
+          "image_generation": "disabled",
+          "artlist": "disabled",
+          "youtube": "disabled",
+          "geocoding": "disabled"
+        },
+        "cache": {
+          "read": false,
+          "write": true
+        },
+        "force_refresh_assets": false,
+        "extraction": {
+          "enabled": true,
+          "include": [
+            "important_phrases"
+          ],
+          "important_phrases": [
+            "Garlasco",
+            "Provincia di Pavia",
+            "Chiara Poggi",
+            "13 agosto 2007",
+            "Abitazione di Chiara Poggi",
+            "Indagini del 2007",
+            "Atti processuali",
+            "Reperti esaminati",
+            "Testimonianze raccolte",
+            "Consulenze tecniche",
+            "Ricostruzione dei fatti",
+            "Processo a Pavia",
+            "Sentenza definitiva",
+            "Alberto Stasi",
+            "Andrea Sempio",
+            "Procura di Pavia",
+            "Fasi del procedimento",
+            "Tesi investigative",
+            "Contraddittorio tra le parti",
+            "Presunzione di innocenza"
+          ],
+          "max_entities_per_segment": 0,
+          "max_important_phrases_per_segment": 1,
+          "max_image_queries_per_segment": 0
+        },
+        "materialization": {
+          "mode": "selected",
+          "upload_to_drive": true,
+          "wait_for_ready": true
+        },
+        "include_trace": true,
+        "force_refresh_bindings": true
+      },
+      "audio": {
+        "mode": "COMBINED_TIMELINE",
+        "timing": {
+          "mode": "required",
+          "boundary": "word",
+          "formats": [
+            "json",
+            "srt",
+            "vtt"
+          ]
+        },
+        "random_sfx_on_clip_start": false,
+        "random_sfx_on_image_overlay": false
+      },
+      "max_overlays_per_scene": 20,
+      "overlay_categories": {
+        "maps": "disabled",
+        "phrases": "enabled",
+        "images": "disabled",
+        "numbers": "disabled",
+        "quotes": "disabled",
+        "brand_text": "disabled",
+        "charts": "disabled",
+        "recaps": "disabled",
+        "titles": "disabled",
+        "bullets": "disabled"
+      }
+    }
+  ]
+}

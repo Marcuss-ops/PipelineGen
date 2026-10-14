@@ -42,6 +42,13 @@ type YTDLPDownloader struct {
 	// single source. Zero keeps the conservative sequential behaviour for
 	// test fixtures; production construction sets the bounded default.
 	sectionConcurrency int
+	// downloadTimeout is the per-command bound applied when a caller leaves
+	// DownloadRequest.Timeout unset. It historically lived as a hardcoded
+	// 10-minute literal in three places, which silently capped the size of a
+	// time-range download the pipeline could ever complete; it is now the
+	// configured VELOX_YOUTUBE_SECTION_DOWNLOAD_TIMEOUT_SECONDS value with the
+	// same 10 minutes as its zero/default fallback.
+	downloadTimeout time.Duration
 	// ytGate is the shared IP budget gate (all NewYTDLP instances share one
 	// process-global semaphore via ensureYouTubeGate). yt429Cooldown is the
 	// per-process 429 pause armed by runYouTube.
@@ -131,6 +138,21 @@ func (d *YTDLPDownloader) youtubeSleepIntervalArgs(url string) []string {
 		"--min-sleep-interval", fmt.Sprintf("%d", d.ytMinSleepSeconds),
 		"--max-sleep-interval", fmt.Sprintf("%d", max),
 	}
+}
+
+// youtubeSectionSleepIntervalArgs returns the pacing flags for time-windowed
+// (--download-sections) fetches: always nil.
+//
+// The min/max sleep exists to keep full-source and channel-scrape traffic
+// from hammering a hot IP back-to-back. A section fetch is ONE bounded range
+// that already pays the per-invocation overhead (JS challenge, format
+// negotiation); the October 2026 measurement showed the 2-5s sleeps adding
+// only dead time on this path (~9.3 MB/min on a 600s section). Retry pacing
+// between fallback attempts is unchanged (sleepBetweenAttempts still applies
+// between player-client attempts), so dropping the per-invocation sleep does
+// not remove the backoff that protects the IP budget gate.
+func (d *YTDLPDownloader) youtubeSectionSleepIntervalArgs() []string {
+	return nil
 }
 
 // sleepBetweenAttempts waits a random duration in the configured [min,max]
@@ -233,6 +255,10 @@ func NewYTDLP(cfg *config.Config) *YTDLPDownloader {
 	if cooldownSec <= 0 {
 		cooldownSec = int(ytCooldownDefault.Seconds())
 	}
+	downloadTimeout := time.Duration(cfg.Jobs.YoutubeSectionDownloadTimeoutSeconds) * time.Second
+	if downloadTimeout <= 0 {
+		downloadTimeout = defaultDownloadTimeout
+	}
 	return &YTDLPDownloader{
 		path:               path,
 		cookiesPath:        cookiesPath,
@@ -242,10 +268,29 @@ func NewYTDLP(cfg *config.Config) *YTDLPDownloader {
 		ytMinSleepSeconds:  minSleep,
 		ytMaxSleepSeconds:  maxSleep,
 		sectionConcurrency: 3,
+		downloadTimeout:    downloadTimeout,
 		ytGate:             ensureYouTubeGate(gateWidth),
 		yt429Cooldown:      time.Duration(cooldownSec) * time.Second,
 		runner:             defaultRunner{},
 	}
+}
+
+// defaultDownloadTimeout is the historical per-command bound: a caller that
+// sets neither DownloadRequest.Timeout nor the config knob keeps exactly the
+// previous 10-minute behaviour.
+const defaultDownloadTimeout = 10 * time.Minute
+
+// effectiveDownloadTimeout resolves the bound for one command: the request's
+// explicit Timeout wins, then the configured value, then the historical
+// default. A manually-assembled downloader (tests) has no configured value.
+func (d *YTDLPDownloader) effectiveDownloadTimeout(requested time.Duration) time.Duration {
+	if requested > 0 {
+		return requested
+	}
+	if d != nil && d.downloadTimeout > 0 {
+		return d.downloadTimeout
+	}
+	return defaultDownloadTimeout
 }
 
 // Path returns the configured yt-dlp binary path.

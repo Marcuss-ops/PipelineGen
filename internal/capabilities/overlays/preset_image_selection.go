@@ -37,6 +37,10 @@ func CertifiedAutomaticEntityCaptionMotions() []string {
 func automaticEntityCaptionMotionCandidates() []string {
 	pool := make([]string, 0, len(generatedEntityCaptionMotionCandidates))
 	for _, id := range generatedEntityCaptionMotionCandidates {
+		if strings.HasPrefix(id, "typewriter_") && strings.HasPrefix(id, "typewriter_modern_") {
+			pool = append(pool, id)
+			continue
+		}
 		if _, unsafe := runtimeUnsafeEntityCaptionMotions[id]; unsafe {
 			continue
 		}

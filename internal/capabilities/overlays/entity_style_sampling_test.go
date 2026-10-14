@@ -174,7 +174,7 @@ func threeCaptionedScenes() []SceneInput {
 }
 
 func TestPlanInputEntityStylePinsTagSelectors(t *testing.T) {
-	for _, selector := range []string{"badge", "camera", "side", "typewriter", "testo_sotto", "01_entity_pitch_lift_text_below"} {
+	for _, selector := range []string{"badge", "camera", "side", "testo_sotto", "01_entity_pitch_lift_text_below"} {
 		t.Run(selector, func(t *testing.T) {
 			plan, err := BuildPlan(PlanInput{
 				PlanID: "pin-" + selector, VideoID: "v1", Width: 1920, Height: 1080, FPSNum: 30, FPSDen: 1,

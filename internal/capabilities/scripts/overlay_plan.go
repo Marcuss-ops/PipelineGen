@@ -27,6 +27,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 
+	capabilityaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
 	capabilityentities "github.com/Marcuss-ops/PipelineGen/internal/capabilities/entities"
 	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
 	scriptoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/overlay"
@@ -72,6 +73,17 @@ func compileOverlayPlanWithMotionOffset(result *GenerateResult, language Languag
 		return nil, nil
 	}
 	canvas = canvas.withDefaults()
+	if len(perSceneImages) > 0 && perSceneImages[0] {
+		// Per-scene entity imagery promises one independently animated item per
+		// photo. The normal multi-animation coalescer turns adjacent images into
+		// static image chains, so disable chaining for this specific surface.
+		animationCounts := make(map[string]int, len(canvas.AnimationCounts)+1)
+		for key, value := range canvas.AnimationCounts {
+			animationCounts[key] = value
+		}
+		animationCounts["chain_disabled"] = 1
+		canvas.AnimationCounts = animationCounts
+	}
 	if strings.TrimSpace(planID) == "" || strings.TrimSpace(videoID) == "" {
 		return nil, fmt.Errorf("overlay plan: plan_id and video_id are required")
 	}
@@ -112,7 +124,7 @@ func compileOverlayPlanWithMotionOffset(result *GenerateResult, language Languag
 	for i := range result.Scenes {
 		scene := result.Scenes[i]
 		ref, ok := scene.Voiceover[language]
-		if !ok || ref.Timing == nil {
+		if (!ok || ref.Timing == nil) && !scene.ShortPhraseOverlay {
 			continue // no certified word timing → nothing can be timestamped
 		}
 		if strings.TrimSpace(scene.Text[language]) == "" {
@@ -138,14 +150,42 @@ func compileOverlayPlanWithMotionOffset(result *GenerateResult, language Languag
 	// recap source — the builder invents nothing.
 	recapBriefs := make([]scriptoverlay.RecapSceneBrief, 0, len(timedScenes))
 	for _, scene := range timedScenes {
-		ref := scene.Voiceover[language]
 		startUS, ok := timelineStartUS[scene.ID]
 		if !ok {
 			return nil, fmt.Errorf("overlay plan: scene %q missing canonical timeline offset", scene.ID)
 		}
-		sceneInput, err := overlaySceneInput(scene, language, result.SourceLanguage, *ref.Timing, startUS, occByScene[scene.ID], plates)
-		if err != nil {
-			return nil, err
+		var sceneInput *capabilityoverlay.SceneInput
+		if scene.ShortPhraseOverlay {
+			endUS, exists := timelineEndUS[scene.ID]
+			if !exists || endUS <= startUS {
+				return nil, fmt.Errorf("overlay plan: short phrase scene %q has no positive canonical duration", scene.ID)
+			}
+			text := strings.TrimSpace(scene.Text[language])
+			// Short-phrase scenes still carry grounded annotations and entity
+			// occurrences. Project those surfaces as usual so location candidates
+			// can produce maps; only the phrase timing uses the canonical whole-
+			// scene window instead of word-level anchoring.
+			var timing capabilityaudio.SpeechTimingArtifact
+			if ref, ok := scene.Voiceover[language]; ok && ref.Timing != nil {
+				timing = *ref.Timing
+			}
+			sceneInput, err = overlaySceneInput(scene, language, result.SourceLanguage, timing, startUS, occByScene[scene.ID], plates)
+			if err != nil {
+				return nil, err
+			}
+			if sceneInput == nil {
+				sceneInput = &capabilityoverlay.SceneInput{ID: scene.ID}
+			}
+			sceneInput.Phrases = []capabilityoverlay.TimedAnnotation{{
+				Text: text, StartMs: startUS / 1000, EndMs: (endUS + 999) / 1000,
+				StartUS: startUS, DurationUS: endUS - startUS, Score: 1,
+			}}
+		} else {
+			ref := scene.Voiceover[language]
+			sceneInput, err = overlaySceneInput(scene, language, result.SourceLanguage, *ref.Timing, startUS, occByScene[scene.ID], plates)
+			if err != nil {
+				return nil, err
+			}
 		}
 		// Rust's per-scene chart extraction is a narrowing signal only: chart
 		// values still must match grounded, audio-timed number annotations.
@@ -198,9 +238,19 @@ func compileOverlayPlanWithMotionOffset(result *GenerateResult, language Languag
 		}
 		recapBriefs = append(recapBriefs, brief)
 	}
-	scenes = projectEditorialOverlays(result, language, timedScenes, resolved, scenes)
+	// Catalog runs disable the editorial projection so the operator-supplied
+	// grounded phrases keep the run budget (see DisableEditorialOverlays).
+	if !canvas.DisableEditorialOverlays {
+		scenes = projectEditorialOverlays(result, language, timedScenes, resolved, scenes)
+	}
+	shortPhraseScenes := make(map[string]bool, len(timedScenes))
+	for _, scene := range timedScenes {
+		shortPhraseScenes[scene.ID] = scene.ShortPhraseOverlay
+	}
 	for i := range scenes {
-		scenes[i].Phrases = phrasesAtLeastThreeWords(scenes[i].Phrases)
+		if !shortPhraseScenes[scenes[i].ID] {
+			scenes[i].Phrases = phrasesAtLeastThreeWords(scenes[i].Phrases)
+		}
 	}
 	// Recaps ride the certified quote primitive at chapter-boundary scenes
 	// (R01); short runs yield no placement (R02). Disabled via the canvas
@@ -263,15 +313,6 @@ func compileOverlayPlanWithMotionOffset(result *GenerateResult, language Languag
 	items := plannerPlan.Items
 	if canvas.RandomLightLeakOnClipStart {
 		items = append(items, scriptoverlay.ClipStartLightLeakItems(planID, result.CanonicalTimeline)...)
-	}
-	if canvas.MapsOnly {
-		kept := items[:0]
-		for _, item := range items {
-			if item.Kind == "map" && item.Map != nil {
-				kept = append(kept, item)
-			}
-		}
-		items = kept
 	}
 	// A semantic catalog reference is only a database identity until its bytes
 	// have been staged into the RenderingGen object store. Never enqueue that
@@ -366,6 +407,18 @@ func compileOverlayPlanWithMotionOffset(result *GenerateResult, language Languag
 	// prevents a long script with many scenes from producing one image render
 	// for every extracted person.
 	items = capEntityImageOverlays(items, capabilityoverlay.MaxEntityImageOverlaysPerRun, len(perSceneImages) > 0 && perSceneImages[0])
+	// MapsOnly is a final semantic filter: entity-card resolution above can
+	// append text-only named entities after BuildPlan, and those are not maps.
+	// Apply it after every producer so a map-only run cannot leak a label card.
+	if canvas.MapsOnly {
+		kept := items[:0]
+		for _, item := range items {
+			if item.Kind == "map" && item.Map != nil {
+				kept = append(kept, item)
+			}
+		}
+		items = kept
+	}
 	// Apply category controls before budgeting and chain composition so filtered
 	// overlays do not consume capacity and the remaining items can still fuse.
 	items = filterOverlayItemsByCategory(items, result.Scenes, canvas)
@@ -379,7 +432,18 @@ func compileOverlayPlanWithMotionOffset(result *GenerateResult, language Languag
 	if len(items) == 0 {
 		return nil, nil
 	}
-	items = composeNearbyEntityImages(items, canvas.Width, canvas.Height)
+	// Per-scene entity imagery promises one independently animated overlay per
+	// image. Composing two people into a single group converts their layer
+	// motions into a static multi-image card, so keep those image items separate
+	// on this surface. Shared-entity mode retains the compact composition path.
+	if len(perSceneImages) == 0 || !perSceneImages[0] {
+		items = composeNearbyEntityImages(items, canvas.Width, canvas.Height)
+	}
+	if limit, capped := canvas.OverlayGroupLimits[overlayGroupEntitiesWithText]; capped && limit == 0 {
+		// Composition creates caption text from entity names, so reapply the
+		// explicit no-text budget after it has fused the image items.
+		stripOverlayImageCaptions(items)
+	}
 	if err := assignEntityImageMotions(items, imageMotionOffset, canvas.Width, canvas.Height,
 		canvas.EntityStyleID, canvas.EntityImageMotions, canvas.EntityCaptionMotions); err != nil {
 		return nil, fmt.Errorf("overlay plan: entity image motions: %w", err)

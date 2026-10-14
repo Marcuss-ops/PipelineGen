@@ -515,6 +515,19 @@ func TestRenderHandler_ClassicPaleOliveBackgroundSubsWatermark(t *testing.T) {
 // the handler for the pale-olive+subs+watermark combination over 100 repeated
 // calls and verifies the AVERAGE latency stays under 2 ms (stub jobs service,
 // zero I/O, measures the pure Go hot-path).
+func TestRenderHandler_EnqueuesGlobalClipEffects(t *testing.T) {
+	jobsSvc := &stubJobsSvc{returnJob: &job.Job{ID: "job-effects"}}
+	r := newTestRouter(jobsSvc)
+	rec := doRender(r, `{"source_asset_id":"clip","output":{"effects":[{"type":"glitch","amount":0.5,"seed":3}],"grid":{"spacing_px":72,"line_width_px":1,"color":"#33CCDD","opacity":0.15}}}`)
+	if rec.Code != http.StatusAccepted {
+		t.Fatalf("status=%d body=%s", rec.Code, rec.Body.String())
+	}
+	req := jobsSvc.enqueued.Payload.(*RenderRequest)
+	if len(req.Output.Effects) != 1 || req.Output.Effects[0].Type != "glitch" || req.Output.Effects[0].Seed != 3 || req.Output.Grid == nil {
+		t.Fatalf("global effects not preserved in queued payload: %+v", req.Output)
+	}
+}
+
 func TestRenderHandler_ClassicPaleOliveBackground_RepeatedCallsStable(t *testing.T) {
 	jobsSvc := &stubJobsSvc{returnJob: &job.Job{ID: "job-repeat"}}
 	r := newTestRouter(jobsSvc)

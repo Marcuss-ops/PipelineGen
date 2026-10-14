@@ -41,6 +41,7 @@ func openEntityImageCatalogTestDB(t *testing.T) *sql.DB {
 			provider TEXT NOT NULL,
 			rank INTEGER NOT NULL CHECK (rank >= 1),
 			source_url TEXT NOT NULL,
+			source_page_url TEXT NOT NULL DEFAULT '',
 			thumbnail_url TEXT NOT NULL DEFAULT '',
 			width INTEGER NOT NULL DEFAULT 0 CHECK (width >= 0),
 			height INTEGER NOT NULL DEFAULT 0 CHECK (height >= 0),

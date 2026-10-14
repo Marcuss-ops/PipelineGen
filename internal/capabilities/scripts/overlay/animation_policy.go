@@ -216,15 +216,22 @@ func ApplyAnimationPolicies(items []capabilityoverlay.OverlayItem, policies []sc
 func checkPolicyPhraseMotionCompatible(item capabilityoverlay.OverlayItem, motionID string) error {
 	words := len(strings.Fields(item.Text))
 	if capabilityoverlay.EditorialSectionForItem(item) == capabilityoverlay.EditorialSectionShortPhrase {
-		// Membership is checked against the item's own word-count group: the
-		// groups may share motions, so a reverse lookup would report the first
-		// group instead of the one the phrase actually belongs to.
-		for _, id := range capabilityoverlay.ShortPhraseMotionsForWordCount(words) {
+		// Automatic seeded draws use the renderer-supported Visible pool.
+		// Explicit policies may additionally name an exact-cardinality
+		// short_phrase_* recipe, but only for its own word count: a 2-word
+		// recipe on 4-word copy mis-renders.
+		for _, id := range capabilityoverlay.ShortPhraseVisibleMotionCandidates() {
 			if id == motionID {
 				return nil
 			}
 		}
-		return fmt.Errorf("motion %q is not in the %d-word short-phrase group for %q", motionID, words, item.Text)
+		if group, ok := capabilityoverlay.ShortPhraseMotionWordCount(motionID); ok {
+			if group == words {
+				return nil
+			}
+			return fmt.Errorf("motion %q is a %d-word short-phrase recipe, incompatible with %d-word phrase %q", motionID, group, words, item.Text)
+		}
+		return fmt.Errorf("motion %q is not in the supported short-phrase entrance pool for %q", motionID, item.Text)
 	}
 	if capabilityoverlay.IsShortPhraseRecipe(motionID) {
 		return fmt.Errorf("motion %q is an exact-cardinality short-phrase recipe, incompatible with %d-word phrase %q", motionID, words, item.Text)
@@ -236,13 +243,15 @@ func seededGroupMotion(target, groupID, seed string, words int, entityImagePool,
 	var pool []string
 	switch target {
 	case "important_phrase":
-		// Short-lane phrases draw from their exact word-count group, like
-		// the automatic planner; longer copy walks the general catalog.
+		// Short-phrase seeded draws animate from the renderer-supported
+		// Visible pool (same as the automatic planner lane): no static
+		// fallback. Exact-cardinality short_phrase_* recipes stay
+		// explicit-only via animation_policies with word-count check.
 		if words >= 1 && words <= 5 {
-			pool = capabilityoverlay.ShortPhraseMotionsForWordCount(words)
-		} else {
-			pool = capabilityoverlay.CertifiedPhraseMotions()
+			pool = capabilityoverlay.ShortPhraseVisibleMotionCandidates()
+			break
 		}
+		pool = capabilityoverlay.CertifiedPhraseMotions()
 	case "image":
 		pool = capabilityoverlay.CertifiedSingleImageMotions()
 		if len(entityImagePool) > 0 {
@@ -312,11 +321,16 @@ func certifiedPolicyMotion(target, motionID string, entityImagePool []string) bo
 	var pool []string
 	switch target {
 	case "important_phrase":
-		// Short-lane recipes live outside the general catalog; admit the
-		// exact-cardinality groups too. Word-count compatibility is enforced
-		// per item at application time.
+		// Visible pool (seeded draws) plus general certified pool, plus
+		// explicit exact-cardinality short_phrase_* vocabulary (word-count
+		// enforced later in checkPolicyPhraseMotionCompatible).
+		for _, id := range capabilityoverlay.ShortPhraseVisibleMotionCandidates() {
+			if id == motionID {
+				return true
+			}
+		}
 		if _, ok := capabilityoverlay.ShortPhraseMotionWordCount(motionID); ok {
-			return true
+			return capabilityoverlay.IsShortPhraseRecipe(motionID)
 		}
 		pool = capabilityoverlay.CertifiedPhraseMotions()
 	case "image":

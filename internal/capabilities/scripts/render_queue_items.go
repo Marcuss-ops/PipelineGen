@@ -248,6 +248,21 @@ func phraseEntranceFrames(clipUS int64, fpsNum, fpsDen int) int {
 	return int(frames)
 }
 
+// plannedEnterFrames reads an enter_frames value the planner stamped, whatever
+// numeric type it survived a JSON round-trip as. Absent or non-numeric is 0.
+func plannedEnterFrames(params map[string]any) int {
+	switch value := params["enter_frames"].(type) {
+	case int:
+		return value
+	case int64:
+		return int(value)
+	case float64:
+		return int(value)
+	default:
+		return 0
+	}
+}
+
 func separateOverlayItemPlan(parent capoverlay.OverlayPlan, source capoverlay.OverlayItem, index int) (capoverlay.OverlayPlan, *overlayItemPublicationMetadata, error) {
 	startUS, durationUS := source.StartUS, source.DurationUS
 	if durationUS <= 0 {
@@ -283,7 +298,14 @@ func separateOverlayItemPlan(parent capoverlay.OverlayPlan, source capoverlay.Ov
 		if fpsNum <= 0 || fpsDen <= 0 {
 			fpsNum, fpsDen = 24, 1
 		}
-		source.MotionParams["enter_frames"] = phraseEntranceFrames(targetUS, fpsNum, fpsDen)
+		// Never shrink an entrance the planner already granted: the planner's
+		// minimum (4 s) is the source of truth for short phrases, and a clip-derived
+		// value below it would silently cut the animation back down.
+		entrance := phraseEntranceFrames(targetUS, fpsNum, fpsDen)
+		if planned := plannedEnterFrames(source.MotionParams); planned > entrance {
+			entrance = planned
+		}
+		source.MotionParams["enter_frames"] = entrance
 	}
 	if source.Map != nil {
 		// Map shots spend 6.5 seconds on the camera approach, then hold the

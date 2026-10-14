@@ -68,6 +68,7 @@ type Candidate struct {
 	Provider          string
 	Rank              int
 	SourceURL         string
+	SourcePageURL     string
 	ThumbnailURL      string
 	Width             int
 	Height            int
@@ -191,6 +192,9 @@ func ValidateCandidate(candidate Candidate) error {
 	url := strings.ToLower(strings.TrimSpace(candidate.SourceURL))
 	if !strings.HasPrefix(url, "http://") && !strings.HasPrefix(url, "https://") {
 		return errors.New("entity image catalog: candidate source URL must be absolute HTTP(S)")
+	}
+	if page := strings.ToLower(strings.TrimSpace(candidate.SourcePageURL)); page != "" && !strings.HasPrefix(page, "http://") && !strings.HasPrefix(page, "https://") {
+		return errors.New("entity image catalog: candidate source page URL must be absolute HTTP(S)")
 	}
 	if candidate.Width < 0 || candidate.Height < 0 {
 		return errors.New("entity image catalog: candidate dimensions cannot be negative")

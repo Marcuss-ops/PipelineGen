@@ -1,0 +1,265 @@
+{
+  "version": 2,
+  "preset": "custom",
+  "correlation_id": "garlasco-image-single-multi-20-20261014-r3",
+  "force_refresh": false,
+  "items": [
+    {
+      "id": "garlasco-image-single-multi-20-20261014-r3",
+      "project": "garlasco-image-single-multi-20-20261014-r3",
+      "title": "Garlasco — servizio giornalistico: processo e difesa (20 immagini animate)",
+      "language": "it",
+      "tone": "documentario giornalistico sobrio, neutrale e garantista",
+      "style": "Servizio giornalistico breve in italiano sul caso di Garlasco, con focus sul procedimento relativo ad Alberto Stasi e sul ruolo della difesa. Usa tono sobrio e garantista, attenendoti ai fatti indicati. Chiara Poggi fu uccisa il 13 agosto 2007; Alberto Stasi è stato condannato in via definitiva; Andrea Sempio è indagato nella nuova inchiesta e respinge le accuse. Distingui le fasi, le decisioni e le dichiarazioni delle parti. Evita dettagli non verificati e descrizioni grafiche.",
+      "model": "gemma4:e4b",
+      "source": {
+        "type": "text",
+        "topic": "Garlasco: la condanna definitiva di Alberto Stasi e il ruolo della difesa",
+        "source_text": "Servizio giornalistico sul caso di Garlasco, con focus sul procedimento relativo ad Alberto Stasi e sulla difesa. Chiara Poggi fu uccisa il 13 agosto 2007; Stasi è stato condannato in via definitiva per l’omicidio. Giada Bocellari è una sua legale. Andrea Sempio è indagato nella nuova inchiesta della Procura di Pavia e respinge le accuse. Distingui le decisioni definitive dalle ipotesi investigative e dalle dichiarazioni delle parti."
+      },
+      "script_params": {
+        "target_words": 240,
+        "min_words": 100,
+        "segment_words": 20,
+        "single_scene": false,
+        "skip_quality_gate": false,
+        "force_refresh": true,
+        "source_text_verbatim": true,
+        "segments": [
+          {
+            "id": "single-01",
+            "kind": "narration",
+            "topic": "Alberto Stasi",
+            "source_text": "Alberto Stasi è stato condannato in via definitiva per l’omicidio di Chiara Poggi. Questo segmento presenta l’esito giudiziario accertato.",
+            "target_words": 20,
+            "min_words": 8
+          },
+          {
+            "id": "single-02",
+            "kind": "narration",
+            "topic": "Giada Bocellari",
+            "source_text": "Giada Bocellari è una legale di Alberto Stasi. La sua attività riguarda il procedimento concluso con una condanna definitiva.",
+            "target_words": 20,
+            "min_words": 8
+          },
+          {
+            "id": "single-03",
+            "kind": "narration",
+            "topic": "Alberto Stasi",
+            "source_text": "La condanna definitiva di Alberto Stasi va distinta dalla nuova inchiesta su Andrea Sempio, che è indagato e respinge le accuse.",
+            "target_words": 20,
+            "min_words": 8
+          },
+          {
+            "id": "single-04",
+            "kind": "narration",
+            "topic": "Giada Bocellari",
+            "source_text": "Nel caso di Garlasco, il ruolo dei difensori e il contraddittorio sono elementi essenziali per valutare atti e consulenze.",
+            "target_words": 20,
+            "min_words": 8
+          },
+          {
+            "id": "pair-01",
+            "kind": "narration",
+            "topic": "Alberto Stasi e Giada Bocellari",
+            "source_text": "Alberto Stasi e la sua legale Giada Bocellari sono collegati al procedimento concluso con una condanna definitiva.",
+            "target_words": 20,
+            "min_words": 8
+          },
+          {
+            "id": "pair-02",
+            "kind": "narration",
+            "topic": "Alberto Stasi e Giada Bocellari",
+            "source_text": "Il racconto distingue la condanna definitiva di Stasi dalle nuove indagini, e attribuisce alle parti le rispettive posizioni.",
+            "target_words": 20,
+            "min_words": 8
+          },
+          {
+            "id": "pair-03",
+            "kind": "narration",
+            "topic": "Alberto Stasi e Giada Bocellari",
+            "source_text": "Gli accertamenti tecnici e le consulenze vanno letti negli atti e nel contraddittorio, senza trasformare una tesi in un fatto.",
+            "target_words": 20,
+            "min_words": 8
+          },
+          {
+            "id": "pair-04",
+            "kind": "narration",
+            "topic": "Alberto Stasi e Giada Bocellari",
+            "source_text": "Il caso riguarda l’omicidio di Chiara Poggi a Garlasco nel 2007; le diverse fasi processuali restano distinte.",
+            "target_words": 20,
+            "min_words": 8
+          },
+          {
+            "id": "pair-05",
+            "kind": "narration",
+            "topic": "Alberto Stasi e Giada Bocellari",
+            "source_text": "La condanna definitiva di Stasi non equivale a una decisione sulle accuse rivolte ad Andrea Sempio nella nuova inchiesta.",
+            "target_words": 20,
+            "min_words": 8
+          },
+          {
+            "id": "pair-06",
+            "kind": "narration",
+            "topic": "Alberto Stasi e Giada Bocellari",
+            "source_text": "Una ricostruzione giornalistica separa fatti accertati, ipotesi investigative e dichiarazioni delle difese.",
+            "target_words": 20,
+            "min_words": 8
+          },
+          {
+            "id": "pair-07",
+            "kind": "narration",
+            "topic": "Alberto Stasi e Giada Bocellari",
+            "source_text": "Il contraddittorio consente alle parti di discutere reperti e consulenze nel rispetto delle garanzie processuali.",
+            "target_words": 20,
+            "min_words": 8
+          },
+          {
+            "id": "pair-08",
+            "kind": "narration",
+            "topic": "Alberto Stasi e Giada Bocellari",
+            "source_text": "La vicenda di Garlasco richiede precisione: Chiara Poggi è la vittima, Stasi è stato condannato, Sempio è indagato e respinge le accuse.",
+            "target_words": 20,
+            "min_words": 8
+          }
+        ],
+        "images_per_scene": 1
+      },
+      "max_phrase_overlays": 0,
+      "max_image_overlays": 20,
+      "max_map_overlays": 0,
+      "max_overlays_per_scene": 4,
+      "animation_counts": {
+        "maps": 0,
+        "images": 20,
+        "images_with_text": 0,
+        "important_phrase": 0,
+        "short_important_phrase": 0,
+        "entities": 0,
+        "entity_caption": 0,
+        "dates": 0,
+        "metric_stat": 0,
+        "timeline_date": 0,
+        "charts": 0,
+        "bullets": 0,
+        "quotes": 0,
+        "brand_text": 0,
+        "recaps": 0,
+        "titles": 0
+      },
+      "overlay_group_limits": {
+        "maps": 0,
+        "short_phrases": 0,
+        "long_phrases": 0,
+        "entities_with_text": 0,
+        "images": 20
+      },
+      "output": {
+        "save_to_db": true,
+        "extract_entities": "enabled",
+        "generate_metadata": true,
+        "generate_timeline": true,
+        "voiceover_enabled": true,
+        "languages": [
+          "it"
+        ],
+        "drive_folder_id": "1J_xUGo_bchzXDIGqSX04CU44c_Dm3SxS",
+        "drive_subfolder_name": "garlasco-image-single-multi-20-20261014-r3",
+        "render": {
+          "enabled": true,
+          "require_gpu": true,
+          "drive_folder_id": "1J_xUGo_bchzXDIGqSX04CU44c_Dm3SxS",
+          "drive_subfolder_name": "garlasco-image-single-multi-20-20261014-r3",
+          "subtitles": {
+            "enabled": false
+          },
+          "background": {
+            "mode": "asset",
+            "asset_id": "drive-background-crime",
+            "kind": "video"
+          }
+        },
+        "docs": {
+          "enabled": false
+        }
+      },
+      "media_plan": {
+        "mode": "hybrid",
+        "provider_policy": {
+          "internet_images": "enabled",
+          "image_generation": "disabled",
+          "artlist": "disabled",
+          "youtube": "disabled",
+          "geocoding": "disabled"
+        },
+        "cache": {
+          "read": true,
+          "write": true
+        },
+        "force_refresh_assets": false,
+        "extraction": {
+          "enabled": true,
+          "include": [
+            "entities"
+          ],
+          "max_entities_per_segment": 2,
+          "max_important_phrases_per_segment": 0,
+          "max_image_queries_per_segment": 2,
+          "important_phrases": [],
+          "entity_images": {
+            "enabled": true,
+            "entity_types": [
+              "PERSON"
+            ],
+            "max_per_entity": 1,
+            "scope": "per_scene",
+            "upload_to_drive": true
+          }
+        },
+        "materialization": {
+          "mode": "selected",
+          "upload_to_drive": true,
+          "wait_for_ready": true
+        },
+        "include_trace": true,
+        "force_refresh_bindings": false,
+        "planner": {
+          "candidate_limit": 4
+        }
+      },
+      "audio": {
+        "mode": "COMBINED_TIMELINE",
+        "timing": {
+          "mode": "required",
+          "boundary": "word",
+          "formats": [
+            "json",
+            "srt",
+            "vtt"
+          ]
+        },
+        "random_sfx_on_clip_start": false,
+        "random_sfx_on_image_overlay": false
+      },
+      "overlay_categories": {
+        "maps": "disabled",
+        "phrases": "disabled",
+        "images": "enabled",
+        "numbers": "disabled",
+        "quotes": "disabled",
+        "brand_text": "disabled",
+        "charts": "disabled",
+        "recaps": "disabled",
+        "titles": "disabled",
+        "bullets": "disabled"
+      },
+      "overlay_background": {
+        "kind": "video",
+        "asset_id": "drive-background-crime",
+        "fit": "cover",
+        "opacity": 1,
+        "loop": true
+      }
+    }
+  ]
+}

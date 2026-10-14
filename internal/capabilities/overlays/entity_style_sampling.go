@@ -39,14 +39,13 @@ var CertifiedEntityStyleSelectors = []string{
 	"camera_random",
 	"side",
 	"side_random",
-	"typewriter",
-	"typewriter_random",
 }
 
 // CertifiedAppleSpatialEntityStyles lists the 25 official Apple Spatial entity
 // compositions (group order as registry-defined in RenderingGen
 // entity_style.go): centered 3D entrances 01–05, side-by-side spatial 06–10,
-// typewriter/cyber 11–15, highlighting badges 16–20, and 3D camera
+// text treatments 11–15 (retired typewriter captions, style IDs stable),
+// highlighting badges 16–20, and 3D camera
 // movements 21–25. They are exported for certification manifests and channel
 // profiles; the planner itself emits the selector above.
 var CertifiedAppleSpatialEntityStyles = []string{

@@ -156,6 +156,8 @@ type PlanOutput struct {
 	// it verbatim into renderinggen.overlay-plan.v1's source_frame block; the
 	// renderer owns the geometry, the producer owns the intent.
 	SourceFrame *PlanSourceFrame `json:"source_frame,omitempty"`
+	Effects     []ClipEffectSpec `json:"effects,omitempty"`
+	Grid        *ClipGridSpec    `json:"grid,omitempty"`
 }
 
 // PlanSourceFrame is the card treatment of the clip (and, per overlay segment,
@@ -382,6 +384,8 @@ type CompileInput struct {
 	// SourceFrame is the caller's card treatment of the clip (border frame +
 	// drop shadow). It travels verbatim into the sealed plan's output block.
 	SourceFrame *PlanSourceFrame
+	Effects     []ClipEffectSpec
+	Grid        *ClipGridSpec
 }
 
 // Compile builds the sealed plan from the resolved inputs. Fail-closed: any
@@ -427,6 +431,8 @@ func Compile(in CompileInput) (ClipRenderPlanV1, error) {
 			FPSDen:                 in.Contract.FPSDen,
 			ForegroundScalePercent: normalizeForegroundScale(in.ForegroundScalePercent),
 			SourceFrame:            in.SourceFrame,
+			Effects:                append([]ClipEffectSpec(nil), in.Effects...),
+			Grid:                   in.Grid,
 		},
 		Audio: PlanAudio{
 			Mode:       in.AudioMode,
@@ -563,6 +569,9 @@ func Compile(in CompileInput) (ClipRenderPlanV1, error) {
 		plan.Overlay = &PlanOverlay{Segments: segments}
 	}
 
+	if err := ValidateClipEffects(plan.Output.Effects, plan.Output.Grid); err != nil {
+		return ClipRenderPlanV1{}, fmt.Errorf("%w: output.%w", ErrInvalidClipPlan, err)
+	}
 	if err := plan.Seal(); err != nil {
 		return ClipRenderPlanV1{}, err
 	}

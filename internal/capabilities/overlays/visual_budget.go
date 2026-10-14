@@ -36,9 +36,9 @@ const MaxEntityImageOverlaysPerRun = MaxImageOverlaysPerRun
 const MaxPhraseOverlaysPerRun = 5
 
 // MaxPhraseOverlaysHardLimit is the absolute phrase-overlay ceiling for one
-// run, even when a payload asks for more. The cap bounds rendering work while
-// preserving the default editorial selection of five phrases.
-const MaxPhraseOverlaysHardLimit = 15
+// run, even when a payload asks for more. Twenty is the acceptance ceiling;
+// the default editorial selection remains five phrases.
+const MaxPhraseOverlaysHardLimit = 20
 
 // EffectivePhraseOverlayLimit resolves the effective run-level phrase ceiling.
 // A positive caller limit may lower or raise the default, but never exceeds the
@@ -122,7 +122,11 @@ func ApplyEditorialOverlayBudgetWithImageLimit(items []OverlayItem, phraseLimit,
 	chartBarIndices := chartBarIndices(items)
 	editorialIndices := editorialLabelIndices(items)
 	chainIndices := chainItemIndices(items)
-	out := retainOverlayItems(items, imageIndices, phraseIndices, mapIndices, numberIndices, brandIndices, chartBarIndices, chartLabelIndices, editorialIndices, chainIndices)
+	// Text-only named entity cards are their own editorial category (see
+	// visual_budget_entity_cards.go). Without an arm here they were planned and
+	// capped but silently dropped by retainOverlayItems.
+	namedEntityIndices := rankedNamedEntityCardIndices(items)
+	out := retainOverlayItems(items, imageIndices, phraseIndices, mapIndices, numberIndices, brandIndices, chartBarIndices, chartLabelIndices, editorialIndices, chainIndices, namedEntityIndices)
 	return out, MeasurePhraseOverlayBudgetWithLimit(out, limit)
 }
 

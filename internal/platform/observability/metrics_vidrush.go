@@ -3,6 +3,7 @@ package observability
 import (
 	"time"
 
+	scriptmetrics "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports/metrics"
 	"github.com/prometheus/client_golang/prometheus"
 )
 
@@ -32,6 +33,8 @@ var (
 	entityImageCatalogProviderCalls = prometheus.NewCounter(prometheus.CounterOpts{Name: "entity_image_catalog_provider_calls_total", Help: "External image-provider calls made for PERSON catalog population or refresh."})
 	entityImageCatalogDriveReuses   = prometheus.NewCounter(prometheus.CounterOpts{Name: "entity_image_catalog_drive_reuse_total", Help: "PERSON images reused from verified Drive materializations."})
 	entityImageCatalogNewDownloads  = prometheus.NewCounter(prometheus.CounterOpts{Name: "entity_image_catalog_new_download_total", Help: "PERSON image downloads performed because no verified Drive materialization was reusable."})
+	entityImageCatalogCandidates    = prometheus.NewCounterVec(prometheus.CounterOpts{Name: "entity_image_catalog_candidates_total", Help: "PERSON image candidates observed at bounded discovery, identity, and visual gates."}, []string{"stage", "outcome"})
+	entityImageCatalogLifecycle     = prometheus.NewCounterVec(prometheus.CounterOpts{Name: "entity_image_catalog_lifecycle_total", Help: "PERSON image candidate lifecycle outcomes from acquisition through catalog persistence and reuse."}, []string{"stage", "outcome"})
 
 	// ── Provider/processor timing metrics (VidRush) ──────────────────
 	// Labels are intentionally limited: no job_id, segment_id, asset_id,
@@ -115,6 +118,7 @@ func init() {
 		entityImageCatalogHits, entityImageCatalogMisses, entityImageCatalogRefreshes,
 		entityImageCatalogBrokenURLs, entityImageCatalogProviderCalls,
 		entityImageCatalogDriveReuses, entityImageCatalogNewDownloads,
+		entityImageCatalogCandidates, entityImageCatalogLifecycle,
 		entityImageCatalogLookupDuration, entityImageCatalogMaterializationDuration,
 		// Provider/processor timing metrics
 		vidrushProcessorDuration, vidrushProviderDuration,
@@ -171,6 +175,19 @@ func (*VidRushMetricsAdapter) IncEntityImageCatalogDriveReuse() {
 }
 func (*VidRushMetricsAdapter) IncEntityImageCatalogNewDownload() {
 	entityImageCatalogNewDownloads.Inc()
+}
+func (*VidRushMetricsAdapter) AddEntityImageCatalogCandidates(stage, outcome string, count int) {
+	if count <= 0 {
+		return
+	}
+	stage = scriptmetrics.NormalizeEntityImageMetricStage(stage)
+	outcome = scriptmetrics.NormalizeEntityImageMetricOutcome(outcome)
+	entityImageCatalogCandidates.WithLabelValues(stage, outcome).Add(float64(count))
+}
+func (*VidRushMetricsAdapter) IncEntityImageCatalogLifecycle(stage, outcome string) {
+	stage = scriptmetrics.NormalizeEntityImageMetricStage(stage)
+	outcome = scriptmetrics.NormalizeEntityImageMetricOutcome(outcome)
+	entityImageCatalogLifecycle.WithLabelValues(stage, outcome).Inc()
 }
 
 // ── Provider/processor timing helpers ─────────────────────────────────

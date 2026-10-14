@@ -369,6 +369,26 @@ func TestCompile_PropagatesVisualStyle(t *testing.T) {
 	}
 }
 
+func TestCompile_SealsGlobalClipEffectsAndGrid(t *testing.T) {
+	in := baseCompileInput()
+	in.Effects = []ClipEffectSpec{{Type: "glitch", Amount: 0.6, Seed: 17}, {Type: "mosaic", BlockSize: 12}}
+	in.Grid = &ClipGridSpec{SpacingPX: 64, LineWidthPX: 1, Color: "#39C6D8", Opacity: 0.2}
+	plan, err := Compile(in)
+	if err != nil {
+		t.Fatalf("Compile effects: %v", err)
+	}
+	if len(plan.Output.Effects) != 2 || plan.Output.Effects[0].Type != "glitch" || plan.Output.Effects[0].Seed != 17 || plan.Output.Grid == nil || plan.Output.Grid.SpacingPX != 64 {
+		t.Fatalf("clip effect config lost in sealed plan: %+v", plan.Output)
+	}
+	if err := plan.Validate(); err != nil {
+		t.Fatalf("Validate global effect plan: %v", err)
+	}
+	plan.Output.Effects[0].Amount = 4
+	if err := plan.Validate(); err == nil {
+		t.Fatal("tampered out-of-range effect must fail sealed-plan validation")
+	}
+}
+
 // TestCompile_FailClosedMissingInputs verifies the plan is never partially
 // resolved: missing source/contract/output path/audio mode are typed errors.
 func TestCompile_FailClosedMissingInputs(t *testing.T) {

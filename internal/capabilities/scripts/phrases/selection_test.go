@@ -195,6 +195,22 @@ func TestSelectPreservesSingleCompleteSentenceBeyondSixWords(t *testing.T) {
 	}
 }
 
+func TestSelectKeepsLongSentenceWholeToTerminator(t *testing.T) {
+	profile := &linguistics.LexiconProfile{
+		PhrasePolicy: linguistics.PhraseExtractionPolicy{MinWords: 2, MaxWords: 6, MaxResults: 5},
+	}
+	// Twenty-four words: beyond the sixteen-word fragment cap, so only the
+	// complete-sentence path can return it — whole, up to the period.
+	const sentence = "Nella provincia di Pavia, la giovane vittima viene ritrovata senza vita nella sua abitazione il tredici agosto del duemilasette in una vicenda che segna la memoria pubblica italiana."
+	if words := len(strings.Fields(sentence)); words <= 16 || words > 30 {
+		t.Fatalf("fixture has %d words, want 17..30 for the sentence path", words)
+	}
+	got := Select(sentence, nil, 5, profile)
+	if len(got) == 0 || got[0] != sentence {
+		t.Fatalf("long-sentence selection = %#v, want the whole sentence %q", got, sentence)
+	}
+}
+
 func TestSelectRejectsFunctionWordDensityAboveOneThird(t *testing.T) {
 	profile := &linguistics.LexiconProfile{
 		StopWords:     map[string]struct{}{"of": {}, "my": {}, "in": {}},

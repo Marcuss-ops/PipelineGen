@@ -50,6 +50,9 @@ func TestVidRushImageHeadPreflightTreatsMimeAsAdvisoryAndRejectsOversize(t *test
 	if err := validateVidRushImageHead(http.StatusMethodNotAllowed, "", -1, policy); err != nil {
 		t.Fatalf("unsupported HEAD should fall back to guarded GET: %v", err)
 	}
+	if err := validateVidRushImageHead(http.StatusForbidden, "", -1, policy); err != nil {
+		t.Fatalf("403 HEAD should fall back to guarded GET: %v", err)
+	}
 	if err := validateVidRushImageHead(http.StatusOK, "image/jpeg", 1024, policy); err != nil {
 		t.Fatalf("valid image HEAD response rejected: %v", err)
 	}
