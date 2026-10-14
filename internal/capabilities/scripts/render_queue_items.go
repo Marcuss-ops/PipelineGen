@@ -173,17 +173,80 @@ type overlayItemPublicationMetadata struct {
 
 const (
 	overlayItemPaddingUS int64 = 2_000_000
-	// shortPhraseAnimationPaddingUS is the tail room after the spoken window
-	// on phrase clips: just enough for the 0.2s exit (exit_frames) plus a
-	// breath of hold. It used to be two full seconds, which stretched the
-	// glyph stagger sweep across the padding so words sat half-faded (gray)
-	// for ~2s before disappearing; the tail now holds settled text and the
-	// only transition is the 0.2s exit.
-	shortPhraseAnimationPaddingUS int64 = 300_000
+	// shortPhraseAnimationTailUS is the settled hold a phrase clip carries
+	// after the spoken window. The clip IS what the final video shows, so the
+	// tail is the only lever that makes a short phrase last longer: at 200ms
+	// the text was cut the moment the voice stopped, and at two full seconds
+	// the glyph stagger sweep stretched across the padding so words sat
+	// half-faded (gray) for ~2s before disappearing.
+	shortPhraseAnimationTailUS int64 = 1_000_000
+	// shortPhraseAnimationMinDurationUS is the shortest a phrase clip may be.
+	// A two-second annotation otherwise ends before its entrance is readable.
+	shortPhraseAnimationMinDurationUS int64 = 3_500_000
+	// maxPhraseOverlayDurationUS bounds one phrase clip so a very long spoken
+	// window keeps a sane tail ceiling.
+	maxPhraseOverlayDurationUS    int64 = 8_000_000
 	maxOverlayItemDurationUS      int64 = 5_000_000
 	mapCameraShotDurationUS       int64 = 8_000_000
 	maxCompositeOverlayDurationUS int64 = 8_000_000
 )
+
+// phraseWindowLimitUS is the longest the phrase clip may run before it would
+// overlap the next overlay or leave the plan: the distance to the next item's
+// start (or the plan end), floored at the certified spoken window so the
+// interval itself is never truncated. A phrase with no free space returns the
+// spoken window, i.e. it keeps its current length instead of growing.
+func phraseWindowLimitUS(parent capoverlay.OverlayPlan, sourceID string, startUS, spokenUS int64) int64 {
+	limit := int64(0)
+	if next := nextPlanItemStartUS(parent, sourceID, startUS); next > 0 {
+		limit = next - startUS
+	}
+	if parent.DurationMS > 0 {
+		if end := parent.DurationMS*1000 - startUS; limit == 0 || end < limit {
+			limit = end
+		}
+	}
+	if limit <= 0 || limit < spokenUS {
+		return spokenUS
+	}
+	return limit
+}
+
+// nextPlanItemStartUS is the start of the next overlay in the parent plan
+// (absolute microseconds), or 0 when the source is the last timed item.
+func nextPlanItemStartUS(parent capoverlay.OverlayPlan, sourceID string, startUS int64) int64 {
+	next := int64(0)
+	for _, item := range parent.Items {
+		if item.ID == sourceID {
+			continue
+		}
+		itemStart := item.StartUSValue()
+		if itemStart <= startUS {
+			continue
+		}
+		if next == 0 || itemStart < next {
+			next = itemStart
+		}
+	}
+	return next
+}
+
+// phraseEntranceFrames is the phrase entrance window: one third of the clip in
+// output frames, never zero. Deriving it from the final clip keeps the contract
+// "the text is settled for the last two thirds of its window" true whatever the
+// planner granted the phrase, instead of summing a per-call padding into an
+// entrance computed for a shorter clip.
+func phraseEntranceFrames(clipUS int64, fpsNum, fpsDen int) int {
+	if clipUS <= 0 || fpsNum <= 0 || fpsDen <= 0 {
+		return 0
+	}
+	denominator := 3 * 1_000_000 * int64(fpsDen)
+	frames := (clipUS*int64(fpsNum) + denominator - 1) / denominator
+	if frames < 1 {
+		frames = 1
+	}
+	return int(frames)
+}
 
 func separateOverlayItemPlan(parent capoverlay.OverlayPlan, source capoverlay.OverlayItem, index int) (capoverlay.OverlayPlan, *overlayItemPublicationMetadata, error) {
 	startUS, durationUS := source.StartUS, source.DurationUS
@@ -197,26 +260,30 @@ func separateOverlayItemPlan(parent capoverlay.OverlayPlan, source capoverlay.Ov
 	targetUS := durationUS + overlayItemPaddingUS
 	maxDurationUS := maxOverlayItemDurationUS
 	if strings.EqualFold(strings.TrimSpace(source.TemplateID), "IMPORTANT_PHRASE") || source.Kind == "text_phrase" || source.Kind == string(capoverlay.KindImportantPhrase) {
-		// Keep the full spoken window plus a short tail for the 0.2s exit.
-		// Motion params are extended too, so the entrance tracks cover the
-		// padded clip instead of ending early.
-		targetUS = durationUS + shortPhraseAnimationPaddingUS
+		// A short phrase holds a settled tail after the spoken window and never
+		// renders shorter than the minimum, so the entrance is visible instead of
+		// being cut the moment the voice stops. The entrance is then one third of
+		// the FINAL clip: growing the clip slows the animation down instead of
+		// leaving settled text parked for the whole tail.
+		targetUS = durationUS + shortPhraseAnimationTailUS
+		if targetUS < shortPhraseAnimationMinDurationUS {
+			targetUS = shortPhraseAnimationMinDurationUS
+		}
+		if limit := phraseWindowLimitUS(parent, source.ID, startUS, durationUS); limit < targetUS {
+			targetUS = limit
+		}
+		if targetUS > maxPhraseOverlayDurationUS {
+			targetUS = maxPhraseOverlayDurationUS
+		}
 		maxDurationUS = targetUS
 		if source.MotionParams == nil {
 			source.MotionParams = map[string]any{}
-		}
-		enterFrames, _ := source.MotionParams["enter_frames"].(int)
-		if enterFrames == 0 {
-			if numeric, ok := source.MotionParams["enter_frames"].(float64); ok {
-				enterFrames = int(numeric)
-			}
 		}
 		fpsNum, fpsDen := parent.FPSNum, parent.FPSDen
 		if fpsNum <= 0 || fpsDen <= 0 {
 			fpsNum, fpsDen = 24, 1
 		}
-		extraFrames := int((shortPhraseAnimationPaddingUS*int64(fpsNum) + 1_000_000*int64(fpsDen) - 1) / (1_000_000 * int64(fpsDen)))
-		source.MotionParams["enter_frames"] = enterFrames + extraFrames
+		source.MotionParams["enter_frames"] = phraseEntranceFrames(targetUS, fpsNum, fpsDen)
 	}
 	if source.Map != nil {
 		// Map shots spend 6.5 seconds on the camera approach, then hold the

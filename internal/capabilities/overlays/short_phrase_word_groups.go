@@ -55,7 +55,6 @@ var shortPhraseRecipeWordGroups = map[int][]string{
 		"short_phrase_editorial_contrast_sweep",
 		"short_phrase_product_perspective_marquee",
 		"short_phrase_product_strikethrough_replace",
-		"short_phrase_product_scroll_reveal",
 	},
 	5: {
 		"short_phrase_shape_phrase_wipe",

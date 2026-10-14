@@ -978,11 +978,14 @@ func TestSeparateOverlayItemPlanAddsShortTailToPhraseDuration(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if child.DurationMS != 7550 || child.Items[0].DurationUS != 7_550_000 || meta.TargetDurationUS != 7_550_000 {
-		t.Fatalf("phrase duration should include the 0.3s exit tail: child=%+v meta=%+v", child, meta)
+	// The clip IS the visible duration: a 7.25s phrase takes its 1s settled
+	// tail up to the 8s phrase ceiling (the parent plan declares no end and the
+	// next overlay starts at 12s, so nothing else binds).
+	if child.DurationMS != 8000 || child.Items[0].DurationUS != 8_000_000 || meta.TargetDurationUS != 8_000_000 {
+		t.Fatalf("phrase duration should include the settled tail under the 8s ceiling: child=%+v meta=%+v", child, meta)
 	}
-	if child.Items[0].StartMs != 0 || child.Items[0].EndMs != 7550 || child.Items[0].StartUS != 0 {
-		t.Fatalf("phrase item window = [%d,%d), want local 7550ms window", child.Items[0].StartMs, child.Items[0].EndMs)
+	if child.Items[0].StartMs != 0 || child.Items[0].EndMs != 8000 || child.Items[0].StartUS != 0 {
+		t.Fatalf("phrase item window = [%d,%d), want local 8000ms window", child.Items[0].StartMs, child.Items[0].EndMs)
 	}
 
 	shortPhrase := long
@@ -993,8 +996,8 @@ func TestSeparateOverlayItemPlanAddsShortTailToPhraseDuration(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if shortChild.DurationMS != 4800 || shortMeta.TargetDurationUS != 4_800_000 {
-		t.Fatalf("short phrase duration should include the 0.3s exit tail: child=%+v meta=%+v", shortChild, shortMeta)
+	if shortChild.DurationMS != 5500 || shortMeta.TargetDurationUS != 5_500_000 {
+		t.Fatalf("short phrase duration should include the 1s settled tail: child=%+v meta=%+v", shortChild, shortMeta)
 	}
 
 	composite := parent.Items[0]
