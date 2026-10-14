@@ -23,8 +23,11 @@ var removedGeneratedPhraseMotions = func() map[string]struct{} {
 // retiredShortPhraseRecipes are the short-phrase recipes the run owner
 // rejected in the 2026-10-13 review. They stay in the ChrononTemplate catalog
 // so historical plans still resolve, but no lane, family or payload policy may
-// select them again.
+// select them again. short_phrase_product_scroll_reveal joined the list after
+// it crashed the Vulkan daemon (exit 1 + socket death) on the r3 bullet run:
+// a motion that kills the renderer must never be planned again.
 var retiredShortPhraseRecipes = []string{
+	"short_phrase_product_scroll_reveal",
 	"short_phrase_editorial_baseline_rise",
 	"short_phrase_editorial_claude_diff_patch",
 	"short_phrase_editorial_claude_prompt_response",

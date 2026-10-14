@@ -182,6 +182,13 @@ func chainable(item OverlayItem) bool {
 	if item.DurationUS <= 0 && item.EndMs <= item.StartMs {
 		return false
 	}
+	// A short-phrase animation renders as its own clip: fusing several of them
+	// into one phrase_chain played multiple short-phrase animations inside a
+	// single overlay mp4, which the run owner rejected. Anything else — long
+	// copy, images, maps — keeps chaining.
+	if family == "text" && IsShortPhraseRecipe(item.MotionID) {
+		return false
+	}
 	return true
 }
 

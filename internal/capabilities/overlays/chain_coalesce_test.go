@@ -365,8 +365,11 @@ func TestValidateChainItemAfterJSONRoundTrip(t *testing.T) {
 // inside every chain after it.
 func TestCoalescePreservesDistinctMotionsPerChain(t *testing.T) {
 	items := []OverlayItem{
-		chainFixture("text_phrase", "s1", "alpha", 100_000, 2_500_000, "short_phrase_scale_settle_word"),
-		chainFixture("text_phrase", "s1", "beta", 2_700_000, 2_500_000, "short_phrase_character_tracking_reveal"),
+		// Non-short motions on purpose: a short-phrase animation never chains
+		// (one animation per clip), the invariant under test is the chain's
+		// motion distinctness.
+		chainFixture("text_phrase", "s1", "alpha", 100_000, 2_500_000, "phrase_apple_clean_07_slide_up_soft"),
+		chainFixture("text_phrase", "s1", "beta", 2_700_000, 2_500_000, "phrase_apple_clean_25_opacity_soft_reveal"),
 		chainFixture("text_phrase", "s1", "gamma", 5_300_000, 2_500_000, "typewriter_clean"),
 	}
 	got := CoalesceChainedOverlays(items, map[string]int{"chain_enabled": 1})

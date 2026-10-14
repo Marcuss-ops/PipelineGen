@@ -294,7 +294,9 @@ var (
 	// entrances, which is why every short phrase in a run looked alike.
 	// Typewriter glyph animators stay out of the automatic lane: they rendered
 	// blank clips on the installed Vulkan runtime, and the 2026-10-13 review
-	// retired 14 more recipes outright (removedGeneratedPhraseMotions).
+	// retired 14 more recipes outright (removedGeneratedPhraseMotions);
+	// short_phrase_product_scroll_reveal was retired the same day after it
+	// crashed the Vulkan daemon.
 	shortPhraseMotionCandidates = copyShortPhraseWordGroups()
 	typewriterMotionCandidates  = []string{
 		"typewriter_modern_01_monospace_block_cursor",
