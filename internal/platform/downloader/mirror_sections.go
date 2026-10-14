@@ -33,6 +33,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/process"
 )
 
@@ -231,13 +232,17 @@ func (d *YTDLPDownloader) cutSectionLocal(ctx context.Context, srcPath, destPath
 	durArg := strconv.FormatFloat(duration, 'f', 3, 64)
 	ff := ffmpegPath()
 	cutTimeout := 20 * time.Minute
+	// Encoder policy is owned by the central resolver (percheck_video_encoder_policy):
+	// the NVENC leg uses the canonical NVENC constant and the CPU fallback uses the
+	// configured codec/preset/CRF instead of call-site literals.
+	policy := config.VideoConfig{}.EncoderPolicy()
 
 	nvencArgs := []string{
 		"-hide_banner", "-y",
 		"-ss", startArg,
 		"-i", srcPath,
 		"-t", durArg,
-		"-c:v", "h264_nvenc", "-preset", "p1",
+		"-c:v", config.EncoderNVENCH264, "-preset", "p1",
 		"-pix_fmt", "yuv420p",
 		"-c:a", "aac", "-b:a", "128k",
 		destPath,
@@ -258,7 +263,7 @@ func (d *YTDLPDownloader) cutSectionLocal(ctx context.Context, srcPath, destPath
 		"-ss", startArg,
 		"-i", srcPath,
 		"-t", durArg,
-		"-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
+		"-c:v", policy.Codec, "-preset", policy.Preset, "-crf", strconv.Itoa(policy.CRF),
 		"-pix_fmt", "yuv420p",
 		"-c:a", "aac", "-b:a", "128k",
 		destPath,

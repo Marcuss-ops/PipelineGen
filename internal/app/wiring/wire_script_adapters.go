@@ -299,8 +299,12 @@ func (a *internetImageSearchAdapter) SearchImages(ctx context.Context, req adapt
 	// when DDG returned rows; downstream acquisition and image decoding decide
 	// which sources are actually usable. Keep short identity searches on their
 	// dedicated person/Commons path so this does not weaken portrait matching.
-	contextQuery := strings.TrimSpace(req.Entity) == "" || strings.EqualFold(strings.TrimSpace(req.Query), strings.TrimSpace(req.Entity)) || len(strings.Fields(strings.TrimSpace(req.Query))) > 4
-	if contextQuery {
+	// Empty DDG rows always get the recovery path — that is the original
+	// fallback and short identity queries rely on it. The always-on fan-out is
+	// limited to genuinely long scene queries (or a query that is itself the
+	// entity), so a short "John Cena"-shaped search still hits the provider once.
+	longContextQuery := strings.EqualFold(strings.TrimSpace(req.Query), strings.TrimSpace(req.Entity)) || len(strings.Fields(strings.TrimSpace(req.Query))) > 4
+	if longContextQuery || len(results) == 0 {
 		if explicit, ok := a.resolver.(interface {
 			ResolveProvider(string) (imagesrouting.ImageSearcher, error)
 		}); ok {
