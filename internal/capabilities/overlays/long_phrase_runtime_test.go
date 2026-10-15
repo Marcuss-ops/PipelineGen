@@ -56,8 +56,10 @@ func TestBuildPlanAutomaticLongPhrasesUseLongRotation(t *testing.T) {
 	if phraseIndex != len(phrases) || len(seen) != len(phrases) {
 		t.Fatalf("planned %d phrases across %d motions, want %d distinct", phraseIndex, len(seen), len(phrases))
 	}
-	if len(seen) <= len(documentaryCleanPhraseMotionCandidates) {
-		t.Fatalf("automatic long phrases still use the small documentary pool: %d motions", len(seen))
+	// The retired 4-motion documentary pool is the floor: the automatic lane
+	// must rotate wider than that (55 after the 2026-10-15 prune).
+	if len(seen) <= 4 {
+		t.Fatalf("automatic long phrases still use a tiny pool: %d motions", len(seen))
 	}
 }
 

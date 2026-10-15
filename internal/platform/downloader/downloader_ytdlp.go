@@ -46,7 +46,7 @@ func (d *YTDLPDownloader) Download(ctx context.Context, req *DownloadRequest) er
 	// Fail-soft — any miss or cut failure falls through to the network path.
 	if len(req.DownloadSections) == 1 {
 		template := outputTemplateFor(req.OutputPath)
-		dest := strings.Replace(template, "%(ext)s", "mp4", 1)
+		dest := strings.Replace(template, "%(ext)s", mirrorSectionExt(req.MergeFormat), 1)
 		if ok, _ := d.tryDownloadSectionsViaMirror(ctx, req, []string{dest}); ok {
 			return nil
 		}
@@ -208,6 +208,20 @@ func (d *YTDLPDownloader) Download(ctx context.Context, req *DownloadRequest) er
 	return nil
 }
 
+// mirrorSectionExt resolves the container extension a mirror-served section
+// cut lands in: the caller's merge policy, defaulting to mp4 (the same
+// default tryDownloadSectionsViaMirror applies). YouTube callers always merge
+// to mp4 today, so this is behaviour-preserving; it only keeps the mirror
+// dest naming indistinguishable from the network path if a caller ever
+// merges to another container.
+func mirrorSectionExt(mergeFormat string) string {
+	ext := strings.TrimSpace(strings.TrimPrefix(mergeFormat, "."))
+	if ext == "" {
+		return "mp4"
+	}
+	return ext
+}
+
 // outputTemplateFor expands a bare output path into the yt-dlp template
 // form (appending .%(ext)s) that ResolveDownloadedSegmentPath expects.
 func outputTemplateFor(outputPath string) string {
@@ -244,7 +258,7 @@ func (d *YTDLPDownloader) DownloadRange(ctx context.Context, req *DownloadReques
 	}
 
 	// Section-via-mirror first (fail-soft to the network path below).
-	mirrorDest := strings.Replace(outputTemplate, "%(ext)s", "mp4", 1)
+	mirrorDest := strings.Replace(outputTemplate, "%(ext)s", mirrorSectionExt(req.MergeFormat), 1)
 	if ok, _ := d.tryDownloadSectionsViaMirror(ctx, req, []string{mirrorDest}); ok {
 		return mirrorDest, nil
 	}

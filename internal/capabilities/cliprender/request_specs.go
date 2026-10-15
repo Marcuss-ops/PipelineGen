@@ -148,12 +148,18 @@ type ClipEffectSpec struct {
 	Wavelength float64 `json:"wavelength,omitempty"`
 	Seed       uint32  `json:"seed,omitempty"`
 	Animated   bool    `json:"animated,omitempty"`
+	Curvature  float64 `json:"curvature,omitempty"`
+	Scale      float64 `json:"scale,omitempty"`
+	Threshold  float64 `json:"threshold,omitempty"`
+	Speed      float64 `json:"speed,omitempty"`
 }
 
 // ClipGridSpec draws a full-canvas technical grid over the final composite.
 type ClipGridSpec struct {
+	Style       string  `json:"style,omitempty"`
 	SpacingPX   float64 `json:"spacing_px"`
-	LineWidthPX float64 `json:"line_width_px"`
+	LineWidthPX float64 `json:"line_width_px,omitempty"`
+	DotRadiusPX float64 `json:"dot_radius_px,omitempty"`
 	Color       string  `json:"color"`
 	Opacity     float64 `json:"opacity"`
 }

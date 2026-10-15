@@ -50,7 +50,39 @@ func rankedValid(in []TimedAnnotation, maxWords int) []TimedAnnotation {
 }
 
 func rankedPhraseValid(in []TimedAnnotation, maxWords int) []TimedAnnotation {
-	valid := rankedValid(in, maxWords)
+	// Phrase-role policy is applied before copy deduplication. A scene bullet
+	// may intentionally repeat its title verbatim, and must survive because
+	// caller category toggles can disable titles independently later on.
+	valid := make([]TimedAnnotation, 0, len(in))
+	for _, candidate := range in {
+		candidate.Text = strings.TrimSpace(candidate.Text)
+		if candidate.Text == "" || candidate.StartMs < 0 || candidate.EndMs <= candidate.StartMs {
+			continue
+		}
+		if maxWords > 0 && len(strings.Fields(candidate.Text)) > maxWords {
+			continue
+		}
+		valid = append(valid, candidate)
+	}
+	sort.SliceStable(valid, func(i, j int) bool {
+		bulletI := valid[i].PresentationRole == "scene_bullet"
+		bulletJ := valid[j].PresentationRole == "scene_bullet"
+		if bulletI != bulletJ {
+			return bulletI
+		}
+		return valid[i].Score > valid[j].Score
+	})
+	seen := make(map[string]struct{}, len(valid))
+	unique := valid[:0]
+	for _, candidate := range valid {
+		key := strings.ToLower(strings.Join(strings.Fields(candidate.Text), " "))
+		if _, exists := seen[key]; exists {
+			continue
+		}
+		seen[key] = struct{}{}
+		unique = append(unique, candidate)
+	}
+	valid = unique
 	sort.SliceStable(valid, func(i, j int) bool {
 		wi, wj := len(strings.Fields(valid[i].Text)), len(strings.Fields(valid[j].Text))
 		if wi != wj {

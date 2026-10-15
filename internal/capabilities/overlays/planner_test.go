@@ -270,6 +270,51 @@ func TestBuildPlanAssignsDistinctPhraseMotions(t *testing.T) {
 	}
 }
 
+func TestBuildPlanDeduplicatesIdenticalTitleInFavorOfSceneBullet(t *testing.T) {
+	const text = "La chiusura delle indagini non equivale a una condanna."
+	plan, err := BuildPlan(PlanInput{
+		PlanID: "bullet-over-title", VideoID: "video-bullet-over-title",
+		Width: 1920, Height: 1080, FPSNum: 24, FPSDen: 1,
+		Scenes: []SceneInput{{ID: "scene-1", Phrases: []TimedAnnotation{
+			{Text: text, StartMs: 100, EndMs: 1500, Score: 1, PresentationRole: "scene_title"},
+			{Text: text, StartMs: 100, EndMs: 1500, Score: 0.99, PresentationRole: "scene_bullet"},
+		}}},
+	}, PlannerConfig{MaxPhrases: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(plan.Items) != 1 {
+		t.Fatalf("items = %d, want exactly one deduplicated bullet: %+v", len(plan.Items), plan.Items)
+	}
+	if got := plan.Items[0].Params["editorial_role"]; got != "scene_bullet" {
+		t.Fatalf("deduplicated role = %v, want scene_bullet to survive ahead of the title", got)
+	}
+}
+
+func TestBuildPlanPreservesExplicitSingletonPhraseMotion(t *testing.T) {
+	scenes := []SceneInput{{ID: "scene-1", Phrases: []TimedAnnotation{
+		{Text: "La chiusura delle indagini non equivale a una condanna.", StartMs: 100, EndMs: 1500, Score: 0.99, PresentationRole: "scene_bullet"},
+		{Text: "Le parti possono contestare gli accertamenti con consulenze tecniche.", StartMs: 1600, EndMs: 3000, Score: 0.99, PresentationRole: "scene_bullet"},
+	}}}
+	input := PlanInput{
+		PlanID: "singleton-motion", VideoID: "v1", Width: 1920, Height: 1080, FPSNum: 24, FPSDen: 1,
+		PhraseMotionFamily: "modern_product_v1", PhraseMotions: []string{"cinematic_camera_push"},
+		AnimationCounts: map[string]int{"important_phrase": 15}, Scenes: scenes,
+	}
+	plan, err := BuildPlan(input, PlannerConfig{MaxPhrases: 15})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(plan.Items) != 2 {
+		t.Fatalf("items = %d, want both bullet items: %+v", len(plan.Items), plan.Items)
+	}
+	for _, item := range plan.Items {
+		if item.Params["editorial_role"] != "scene_bullet" || item.MotionID != "cinematic_camera_push" {
+			t.Fatalf("explicit singleton motion was not preserved on bullet: %+v", item)
+		}
+	}
+}
+
 func TestBuildPlanSharesPayloadSelectedPhraseFamilyMotion(t *testing.T) {
 	scenes := []SceneInput{{ID: "scene-1", Phrases: []TimedAnnotation{
 		{Text: "Prima frase racconta un fatto storico importante", StartMs: 100, EndMs: 900, Score: 1},

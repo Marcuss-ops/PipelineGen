@@ -54,6 +54,12 @@ type YTDLPDownloader struct {
 	// per-process 429 pause armed by runYouTube.
 	ytGate        concurrent.Semaphore
 	yt429Cooldown time.Duration
+	// videoPolicy is the CPU-fallback encoder policy for local section cuts
+	// (mirror_sections.go cutSectionLocal). Resolved once from cfg.Video so
+	// an operator-tuned codec/preset/CRF actually applies; zero-value configs
+	// (tests) get the canonical defaults via WithDefaults, identical to the
+	// previous VideoConfig{}.EncoderPolicy() literal.
+	videoPolicy config.VideoEncoderPolicy
 	// runner is the Pattern 0 port for executing external processes
 	// (godlike/07 minimum-blast-radius + testability). The production
 	// default is `defaultRunner{}` which wraps process.Run; tests inject
@@ -265,6 +271,7 @@ func NewYTDLP(cfg *config.Config) *YTDLPDownloader {
 		artlistCookiesPath: cfg.External.ArtlistCookiesPath,
 		cmdBuilder:         ytdlp.NewCommandBuilder(cfg),
 		verifier:           &ytdlp.OutputVerifier{},
+		videoPolicy:        cfg.Video.EncoderPolicy(),
 		ytMinSleepSeconds:  minSleep,
 		ytMaxSleepSeconds:  maxSleep,
 		sectionConcurrency: 3,

@@ -31,6 +31,13 @@ type FinalJobSubmitter interface {
 	SubmitFinalJob(context.Context, string, GenerateRequest, *GenerateResult) (RemoteFinalJobResult, error)
 }
 
+// FinalJobStarter separates creating the remote render from waiting for it.
+// The runner checkpoints the returned job ID before it starts polling, so a
+// process restart can always reattach to the same render.
+type FinalJobStarter interface {
+	StartFinalJob(context.Context, string, GenerateRequest, *GenerateResult) (RemoteFinalJobResult, error)
+}
+
 // ErrFinalJobPending is the capability-owned sentinel for a remote render that
 // EXISTS on the Master and is still running. It is a sentinel so the runner can
 // branch on it without importing the transport package, and it always travels
@@ -356,6 +363,29 @@ func (r *Runner) submitFinalJob(ctx context.Context, runID string, req GenerateR
 		}
 		remote, err := attacher.AttachFinalJob(ctx, jobID, receipt.Yields > 0)
 		return r.settleFinalJob(ctx, runID, result, remote, receipt.Yields, err)
+	}
+	if starter, ok := r.finalJobSubmitter.(FinalJobStarter); ok {
+		remote, err := starter.StartFinalJob(ctx, runID, req, result)
+		if err != nil {
+			return r.settleFinalJob(ctx, runID, result, remote, 0, err)
+		}
+		if strings.TrimSpace(remote.JobID) == "" {
+			return r.settleFinalJob(ctx, runID, result, remote, 0, fmt.Errorf("remote final job starter returned no job id"))
+		}
+		remote.Yields = 0
+		if result == nil {
+			return r.settleFinalJob(ctx, runID, result, remote, 0, fmt.Errorf("remote final job %s started but the run has no result to checkpoint", remote.JobID))
+		}
+		result.RemoteFinalJob = &remote
+		if err := r.repo.SavePartialResult(ctx, runID, result); err != nil {
+			return r.settleFinalJob(ctx, runID, result, remote, 0, fmt.Errorf("checkpoint remote final job %s before attach: %w", remote.JobID, err))
+		}
+		attacher, ok := r.finalJobSubmitter.(FinalJobAttacher)
+		if !ok {
+			return r.settleFinalJob(ctx, runID, result, remote, 0, fmt.Errorf("remote final job starter cannot attach to job %s", remote.JobID))
+		}
+		attached, err := attacher.AttachFinalJob(ctx, remote.JobID, false)
+		return r.settleFinalJob(ctx, runID, result, attached, 0, err)
 	}
 	remote, err := r.finalJobSubmitter.SubmitFinalJob(ctx, runID, req, result)
 	return r.settleFinalJob(ctx, runID, result, remote, 0, err)

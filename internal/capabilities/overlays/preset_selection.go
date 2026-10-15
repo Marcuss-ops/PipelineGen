@@ -128,22 +128,24 @@ var (
 	// were removed here with the catalog). Runtime certification exercises
 	// each selected ID through the caption compiler and GPU lane.
 	generatedEntityCaptionMotionCandidates = []string{
-		"entity_caption_rise",
-		"entity_depth_caption",
-		"entity_yaw_caption",
-		"entity_split_side",
-		"entity_border_then_caption",
-		"entity_glow_focus",
-		"entity_name_underline",
-		"entity_name_pill",
-		"entity_parallax_caption",
-		"entity_focus_frame",
-		"text_depth_in", "text_fade_up", "text_scale_punch", "text_word_rise", "text_word_stagger", "text_yaw_in",
-		"trump_entity_text_01", "trump_entity_text_02", "trump_entity_text_03",
-		"trump_entity_text_04", "trump_entity_text_05", "trump_entity_text_06",
-		"trump_entity_text_07", "trump_entity_text_08", "trump_entity_text_09",
-		"trump_entity_text_10", "trump_entity_text_11", "trump_entity_text_12",
-		"trump_entity_text_13", "trump_entity_text_14", "trump_entity_text_15",
+		// One motion per distinct visual behaviour. The 18 near-duplicates that
+		// were retired from this pool (same property set, same direction, values
+		// within a few pixels or hundredths of a scale) remain in the catalog so
+		// saved plans that name them still compile; see
+		// retiredEntityCaptionMotions in RenderingGen's entity_card_layout.go.
+		"entity_caption_rise",  // vertical rise
+		"entity_depth_caption", // push forward in Z
+		"entity_split_side",    // horizontal slide
+		"text_scale_punch",     // overshoot scale
+		"text_yaw_in",          // yaw turn from depth
+		"text_word_rise",       // per-word rise
+		"trump_entity_text_04", // blur resolve
+		"trump_entity_text_08", // subtle yaw + depth
+		"trump_entity_text_09", // horizontal squeeze open
+		"trump_entity_text_10", // diagonal slide
+		"trump_entity_text_11", // pitch tilt
+		"trump_entity_text_12", // roll + scale
+		"trump_entity_text_13", // drop from above with depth
 	}
 	// Automatic date selection is a curated premium subset of ChrononTemplate's
 	// date_v1 catalog. The remaining authored motions stay available in the
@@ -165,16 +167,10 @@ var (
 	// full runtime map catalog: country/renderer-bound map_image_v1 entries are
 	// not appropriate for arbitrary operator-supplied georeferenced rasters.
 	mapImageMotionCandidates = centeredImageMotionCandidates
-	// Documentary phrase rotation uses only continuous opacity/slide entrances.
-	// Typewriter and 3D families intermittently shimmer/flicker on long runtime
-	// text, so keep them available for explicit editorial plans but out of this
-	// automatic path.
-	documentaryCleanPhraseMotionCandidates = []string{
-		"phrase_apple_clean_07_slide_up_soft",
-		"phrase_apple_clean_10_slide_from_right_apple",
-		"phrase_apple_clean_25_opacity_soft_reveal",
-		"phrase_apple_clean_28_opacity_cinematic",
-	}
+	// The documentary_clean_v1 family was retired 2026-10-15: its four entrances
+	// remain callable through the modern_apple pool and the long-phrase lane,
+	// but the family key itself is no longer selectable (see
+	// removedGeneratedPhraseMotionIDs and phraseMotionFamilyCandidates).
 	classicAppleMotionCandidates = []string{
 		"air_rise_type_on",
 		"apple_phrase_v2",
@@ -185,33 +181,19 @@ var (
 		"depth_of_field_rack_focus",
 		"duotone_block_rise",
 		"dynamic_island_expansion",
-		"editorial_push_in",
 		"fluid_gradient_text_flow",
-		"focus_pull_macro",
 		"glassmorphism_card_tilt",
 		"glitch_slice_band",
-		"high_specular_light_sweep",
 		"hologram_scanline_build",
-		"ink_bleed_spread",
 		"isometric_3d_fold",
 		"kinetic_split_word",
 		"kinetic_stamp_impact",
 		"letterbox_wipe",
-		"liquid_glass_ripple",
-		"magnetic_letters_converge",
 		"masked_upward_reveal",
-		"micro_tracker_kerning_compression",
 		"neon_flicker_ignite",
 		"parallax_depth_stack",
-		"pixel_grid_alpha_matrix",
 		"pulse_emphasis_beat",
 		"risograph_offset_print",
-		"shutter_blade_reveal",
-		"soft_clay_press",
-		"soft_edge_spotlight_dissolve",
-		"spectrum_shimmer_wave",
-		"spotlight_iris_open",
-		"staggered_char_float",
 		"underline_swipe_bold",
 		"velocity_inertia_snap",
 		"vertical_reel_snap",
@@ -222,23 +204,17 @@ var (
 		"apple_cinematic_exit",
 		"apple_compress_in",
 		"apple_expand_from_center",
-		"apple_focus_rise",
-		"apple_hero_statement",
 		"apple_line_cascade",
-		"apple_line_sweep",
 		"apple_precision_type",
-		"apple_scale_push",
 		"apple_scale_settle",
 		"apple_soft_scale",
 		"apple_spread_rise",
 		"apple_tracking_reveal",
 		"apple_vertical_glyph_lift",
 		"apple_word_cascade",
-		"apple_word_pulse",
 		"cinematic_camera_push",
 		"depth_parallax_reveal",
 		"editorial_line_build",
-		"glass_morphism_fade",
 		"hero_scale_focus",
 		"isometric_plane_fold",
 		"kinetic_keyword_lock",
@@ -274,8 +250,6 @@ var (
 		"phrase_apple_clean_28_opacity_cinematic",
 		"phrase_apple_clean_29_opacity_hero_settle",
 		"phrase_apple_clean_30_opacity_clean_apple",
-		"precision_tracking_lock",
-		"precision_word_stagger",
 		"premium_soft_reveal",
 		"quiet_hero_settle",
 		"soft_kinetic_rise",
@@ -292,17 +266,30 @@ var (
 	// crashed the Vulkan daemon.
 	shortPhraseMotionCandidates = copyShortPhraseWordGroups()
 	brushPhraseMotionCandidates = []string{
-		"brush_phrase_arrow_point",
-		"brush_phrase_circle_focus",
 		"brush_phrase_gold_marker",
-		"brush_phrase_lower_rule",
-		"brush_phrase_red_brush_underline",
-		"brush_phrase_red_endpoint_rule",
-		"brush_phrase_red_underline",
-		"brush_phrase_signature_flourish",
-		"brush_phrase_white_double_underline",
 		"brush_phrase_white_light_sweep",
-		"brush_phrase_white_underline",
+	}
+	documentaryHighlightMotionCandidates = []string{
+		"phrase_highlight_soft_marker",
+		"phrase_highlight_archive_yellow",
+		"phrase_highlight_evidence_red",
+		"phrase_highlight_phrase_focus",
+		"phrase_highlight_document_scan",
+		"doc_01_yellow_marker_sweep",
+		"doc_02_multiline_stagger_highlight",
+		"doc_03_documentary_quote_marker",
+		"doc_04_archival_source_highlight",
+		"doc_05_selective_phrase_tracking",
+		"doc_06_red_keyword_punch",
+		"doc_07_word_impact_reveal",
+		"doc_08_mixed_font_emphasis",
+		"doc_09_cinematic_underline_draw",
+		"doc_10_selective_contrast_focus",
+		"doc_11_headline_cinematic_zoom",
+		"doc_12_quote_line_by_line_reveal",
+		"doc_13_analog_scanner_highlight",
+		"doc_14_dual_highlight_sequence",
+		"doc_15_documentary_source_focus",
 	}
 	text3DMotionCandidates = []string{
 		"text_3d_camera_push",
@@ -347,17 +334,14 @@ var (
 		"phrase_apple_clean_29_opacity_hero_settle",
 		"phrase_apple_clean_30_opacity_clean_apple",
 	}
-	// Long grounded phrases use block entrances and readable text sequences.
-	// Glitch and auto-wrap treatments stay out; the planner intersects this list
-	// with the caller's selected family so an explicit family remains authoritative.
+	// Long grounded phrases combine readable Apple entrances, certified Brush
+	// accents and spatial 3D treatments. Caller families may narrow this list,
+	// while the long-lane intersection keeps short-only recipes out.
 	longPhraseMotionCandidates = []string{
 		"apple_expand_from_center",
-		"apple_focus_rise",
-		"apple_hero_statement",
 		"apple_scale_settle",
 		"apple_soft_scale",
 		"cinematic_camera_push",
-		"glass_morphism_fade",
 		"hero_scale_focus",
 		"phrase_apple_clean_01_blur_soft_reveal",
 		"phrase_apple_clean_07_slide_up_soft",
@@ -390,21 +374,51 @@ var (
 		"phrase_apple_clean_26_opacity_depth_push",
 		"phrase_apple_clean_27_opacity_parallax",
 		"phrase_apple_clean_02_blur_focus_snap",
-		// NOTE: text_3d_v1 motions are deliberately absent. They lower to a
-		// correct centered enable_3d text layer, but Chronon renders pure
-		// black for them on the standalone overlay path (verified by frame
-		// inspection: mean 0.0/stddev 0.0 over 105 frames for tilt_rise and
-		// double_axis_reveal, while apple entrances render visible animated
-		// text). Re-admit only after the C++ enable_3d text path is fixed.
-		// NOTE: the typewriter, highlight and burst families were removed
-		// from this lane with the catalog retirement (they no longer resolve
-		// upstream); the lane now rotates the surviving Apple inventories.
+		// Keep only the restrained marker and light sweep from the Brush set.
+		// The underline, circle, arrow and flourish variants drew conspicuous
+		// strokes that overwhelmed the long-form typography.
+		"brush_phrase_gold_marker",
+		"brush_phrase_white_light_sweep",
+		"phrase_highlight_soft_marker",
+		"phrase_highlight_archive_yellow",
+		"phrase_highlight_evidence_red",
+		"phrase_highlight_phrase_focus",
+		"phrase_highlight_document_scan",
+		"doc_01_yellow_marker_sweep",
+		"doc_02_multiline_stagger_highlight",
+		"doc_03_documentary_quote_marker",
+		"doc_04_archival_source_highlight",
+		"doc_05_selective_phrase_tracking",
+		"doc_06_red_keyword_punch",
+		"doc_07_word_impact_reveal",
+		"doc_08_mixed_font_emphasis",
+		"doc_09_cinematic_underline_draw",
+		"doc_10_selective_contrast_focus",
+		"doc_11_headline_cinematic_zoom",
+		"doc_12_quote_line_by_line_reveal",
+		"doc_13_analog_scanner_highlight",
+		"doc_14_dual_highlight_sequence",
+		"doc_15_documentary_source_focus",
+		// Spatial text is safe again now that semantic backgrounds stay in
+		// screen space instead of entering the camera/depth bin with the text.
+		"text_3d_camera_push",
+		"text_3d_perspective_drop",
+		"text_3d_roll_depth",
+		"text_3d_tilt_rise",
+		"text_3d_word_cascade",
+		"text_3d_yaw_flip_in",
+		"text_3d_pitch_lift",
+		"text_3d_yaw_sweep",
+		"text_3d_double_axis_reveal",
+		"text_3d_orbit_lock",
+		// NOTE: typewriter, highlight and burst are retired from the callable
+		// catalog.
 	}
-	phraseMotionCandidates      = combineMotionPools(classicAppleMotionCandidates, modernAppleMotionCandidates, text3DMotionCandidates, brushPhraseMotionCandidates)
+	phraseMotionCandidates      = combineMotionPools(classicAppleMotionCandidates, modernAppleMotionCandidates, text3DMotionCandidates, brushPhraseMotionCandidates, documentaryHighlightMotionCandidates)
 	renderSafeTextMotions       = phraseAppleCleanMotionCandidates
 	generatedPhraseMotions      = phraseMotionCandidates
 	generatedTextMotions        = phraseAppleCleanMotionCandidates
-	defaultPhraseMotionFamilies = []string{"classic_apple", "modern_apple", "text_3d_v1", "brush_v1"}
+	defaultPhraseMotionFamilies = []string{"classic_apple", "modern_apple", "text_3d_v1", "brush_v1", "documentary_highlighting_v1"}
 )
 
 // ImagePresetCandidates returns a copy of the render-safe generated-image

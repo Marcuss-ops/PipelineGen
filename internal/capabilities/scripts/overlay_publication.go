@@ -197,6 +197,10 @@ func (e *QueueRenderEnqueuer) Wait(ctx context.Context) error {
 // to the Master finalizer. Their bytes live on Drive; only the remote worker
 // fetches them and applies them over the stock timeline.
 func finalJobOverlayAssets(result *GenerateResult) ([]any, error) {
+	return finalJobOverlayAssetsExcluding(result, nil)
+}
+
+func finalJobOverlayAssetsExcluding(result *GenerateResult, consumed map[string]struct{}) ([]any, error) {
 	if result == nil || result.OverlayPlan == nil || len(result.OverlayPlan.Items) == 0 {
 		return []any{}, nil
 	}
@@ -229,6 +233,9 @@ func finalJobOverlayAssets(result *GenerateResult) ([]any, error) {
 	type frameWindow struct{ start, end int64 }
 	admittedFrames := make(map[string]frameWindow, len(result.OverlayPlan.Items))
 	for index, item := range result.OverlayPlan.Items {
+		if _, usedAsSceneClip := consumed[strings.TrimSpace(item.ID)]; usedAsSceneClip {
+			continue
+		}
 		if clipWindow, isIntermediateClip := clipWindows[item.SceneID]; isIntermediateClip {
 			// The Master only supports mode=replace. Full-frame phrase/image
 			// renders therefore cover the source clip instead of compositing on

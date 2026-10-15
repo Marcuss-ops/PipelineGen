@@ -24,6 +24,8 @@ func ValidateClipEffects(effects []ClipEffectSpec, grid *ClipGridSpec) error {
 			"block_size": e.BlockSize != 0, "size": e.Size != 0, "angle": e.Angle != 0,
 			"intensity": e.Intensity != 0, "amplitude": e.Amplitude != 0,
 			"wavelength": e.Wavelength != 0, "seed": e.Seed != 0, "animated": e.Animated,
+			"curvature": e.Curvature != 0, "scale": e.Scale != 0, "threshold": e.Threshold != 0,
+			"speed": e.Speed != 0,
 		}
 		allowed := map[string]bool{}
 		switch e.Type {
@@ -43,6 +45,16 @@ func ValidateClipEffects(effects []ClipEffectSpec, grid *ClipGridSpec) error {
 			allowed["radius"] = true
 		case "noise":
 			allowed["amount"], allowed["size"], allowed["seed"], allowed["animated"] = true, true, true, true
+		case "glow":
+			allowed["radius"], allowed["intensity"] = true, true
+		case "bloom":
+			allowed["radius"], allowed["intensity"], allowed["threshold"] = true, true, true
+		case "lens_distortion":
+			allowed["curvature"], allowed["scale"] = true, true
+		case "sharpen":
+			allowed["amount"] = true
+		case "banded_grain":
+			allowed["intensity"], allowed["speed"], allowed["seed"] = true, true, true
 		}
 		for field, supplied := range unused {
 			if supplied && !allowed[field] {
@@ -50,7 +62,8 @@ func ValidateClipEffects(effects []ClipEffectSpec, grid *ClipGridSpec) error {
 			}
 		}
 		switch e.Type {
-		case "glitch", "scanlines", "mosaic", "chromatic_aberration", "halftone", "vignette", "gaussian_blur", "noise":
+		case "glitch", "scanlines", "mosaic", "chromatic_aberration", "halftone", "vignette", "gaussian_blur", "noise",
+			"glow", "bloom", "lens_distortion", "sharpen", "banded_grain":
 		default:
 			return fmt.Errorf("effects[%d].type %q is unsupported", i, e.Type)
 		}
@@ -96,16 +109,54 @@ func ValidateClipEffects(effects []ClipEffectSpec, grid *ClipGridSpec) error {
 			if !valid(e.Amount, 0, 1) || e.Size < 1 || e.Size > 256 {
 				return bad("amount/size", "within supported noise bounds")
 			}
+		case "glow":
+			if !valid(e.Radius, 0, 256) || !valid(e.Intensity, 0, 4) {
+				return bad("radius/intensity", "radius in [0,256] and intensity in [0,4]")
+			}
+		case "bloom":
+			if !valid(e.Radius, 0, 256) || !valid(e.Intensity, 0, 4) {
+				return bad("radius/intensity", "radius in [0,256] and intensity in [0,4]")
+			}
+			if e.Threshold != 0 && !valid(e.Threshold, 0, 1) {
+				return bad("threshold", "in [0,1]")
+			}
+		case "lens_distortion":
+			if !valid(e.Curvature, -1, 1) {
+				return bad("curvature", "in [-1,1]")
+			}
+			if e.Scale != 0 && !valid(e.Scale, 0.1, 4) {
+				return bad("scale", "in [0.1,4]")
+			}
+		case "sharpen":
+			if !valid(e.Amount, 0, 10) {
+				return bad("amount", "in [0,10]")
+			}
+		case "banded_grain":
+			if !valid(e.Intensity, 0, 4) {
+				return bad("intensity", "in [0,4]")
+			}
+			if e.Speed != 0 && !valid(e.Speed, -1000, 1000) {
+				return bad("speed", "in [-1000,1000]")
+			}
 		default:
 			return fmt.Errorf("effects[%d].type %q is unsupported", i, e.Type)
 		}
 	}
 	if grid != nil {
+		if grid.Style != "" && grid.Style != "lines" && grid.Style != "dots" && grid.Style != "dot_grid" {
+			return fmt.Errorf("grid.style must be 'lines' or 'dots'")
+		}
 		if !valid(grid.SpacingPX, 4, 512) {
 			return fmt.Errorf("grid.spacing_px must be in [4,512]")
 		}
-		if !valid(grid.LineWidthPX, .25, 32) {
-			return fmt.Errorf("grid.line_width_px must be in [0.25,32]")
+		if grid.Style == "dots" || grid.Style == "dot_grid" {
+			if grid.DotRadiusPX != 0 && !valid(grid.DotRadiusPX, 0.5, 64) {
+				return fmt.Errorf("grid.dot_radius_px must be in [0.5,64]")
+			}
+		} else {
+			if !valid(grid.LineWidthPX, .25, 32) {
+				return fmt.Errorf("grid.line_width_px must be in [0.25,32]")
+			}
 		}
 		if !valid(grid.Opacity, 0, 1) {
 			return fmt.Errorf("grid.opacity must be in [0,1]")

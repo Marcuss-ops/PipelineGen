@@ -89,6 +89,17 @@ func newRemoteFinalJobAdapter(root *ComposeRoot) (*remoteFinalJobAdapter, error)
 }
 
 func (a *remoteFinalJobAdapter) SubmitFinalJob(ctx context.Context, runID string, req scriptgen.GenerateRequest, result *scriptgen.GenerateResult) (scriptgen.RemoteFinalJobResult, error) {
+	started, err := a.StartFinalJob(ctx, runID, req, result)
+	if err != nil {
+		return started, err
+	}
+	remote, waitErr := a.client.Attach(ctx, started.JobID, a.attachBudget)
+	return finalJobResult(started.JobID, remote), finalJobWaitError(waitErr)
+}
+
+// StartFinalJob creates the Master job and returns its durable handle without
+// polling. The scripts runner checkpoints this receipt before it attaches.
+func (a *remoteFinalJobAdapter) StartFinalJob(ctx context.Context, runID string, req scriptgen.GenerateRequest, result *scriptgen.GenerateResult) (scriptgen.RemoteFinalJobResult, error) {
 	if a == nil || a.client == nil {
 		return scriptgen.RemoteFinalJobResult{}, fmt.Errorf("remote final-job adapter is not configured")
 	}
@@ -109,8 +120,7 @@ func (a *remoteFinalJobAdapter) SubmitFinalJob(ctx context.Context, runID string
 	if err := a.client.Finalize(ctx, jobID, finalize); err != nil {
 		return scriptgen.RemoteFinalJobResult{JobID: jobID}, err
 	}
-	remote, waitErr := a.client.Attach(ctx, jobID, a.attachBudget)
-	return finalJobResult(jobID, remote), finalJobWaitError(waitErr)
+	return scriptgen.RemoteFinalJobResult{JobID: jobID, Status: "RUNNING"}, nil
 }
 
 // AttachFinalJob waits on a job a previous attempt already submitted: the poll

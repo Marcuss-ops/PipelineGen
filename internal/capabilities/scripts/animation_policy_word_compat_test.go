@@ -22,7 +22,9 @@ func shortRecipeForWords(t *testing.T, words int) string {
 func TestAnimationPolicyFailsClosedOnWordMismatchedPhraseMotion(t *testing.T) {
 	twoWordRecipe := shortRecipeForWords(t, 2)
 	// A long-phrase motion is outside every short-phrase group.
-	longPhraseMotion := "precision_tracking_lock"
+	// (precision_tracking_lock was retired in the 2026-10-15 look-alike
+	// prune; hero_scale_focus is its surviving long-lane sibling.)
+	longPhraseMotion := "hero_scale_focus"
 
 	shortItem := []capabilityoverlay.OverlayItem{
 		{ID: "s", SceneID: "scene", Kind: "text_phrase", TemplateID: "IMPORTANT_PHRASE", Text: "Crollo margini"},

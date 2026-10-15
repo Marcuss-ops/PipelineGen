@@ -68,46 +68,45 @@ func selectLongPhraseMotion(jobID, sceneID string, ordinal int, pool []string) s
 		}
 	}
 	switch {
-	case len(compatible) >= 2 && len(pool) == 0:
+	case len(pool) == 0:
 		// Keep the default long-card lane a simple no-repeat walk too; routing
 		// it through selectPhraseMotion would apply a smaller explicit-pool
 		// entrance subset and reintroduce repeats before the pool is exhausted.
 		return selectMotionFromPool(jobID, sceneID, "long_phrase_default", ordinal, compatible)
-	case len(compatible) >= 2:
+	case len(compatible) > 0:
 		return selectPhraseMotion(jobID, sceneID, ordinal, compatible)
-	case len(pool) > 0 && !isShortPhraseMotionPool(pool):
-		// Explicit non-short pools remain authoritative even when only one
-		// motion overlaps the long-phrase preference list. This keeps channel
-		// rotation varied without letting short recipes leak into long copy.
-		return selectPhraseMotion(jobID, sceneID, ordinal, pool)
 	default:
+		// A family pool with no long-lane matches cannot bypass the long-copy
+		// compatibility whitelist.
 		return selectMotionFromPool(jobID, sceneID, "long_phrase", ordinal, longPhraseMotionCandidates)
 	}
 }
 
 func selectLongPhraseMotionLimited(jobID, sceneID string, ordinal int, pool []string, limit int) string {
-	if len(pool) == 0 {
-		candidates := longPhraseMotionCandidates
-		// Unlike the general phrase selector, the long-copy lane should not
-		// silently shrink to the five-style UI default. That small cap made
-		// unrelated videos repeatedly reuse the same handful of entrances, and
-		// a catalog-order cap made the same handful recur across unrelated
-		// videos, so the window is drawn through the run seed.
-		if limit > 0 {
-			candidates = limitedShuffledMotionPool(candidates, limit, jobID+"\x00long_phrase_default")
-		}
-		return selectMotionFromPool(jobID, sceneID, "long_phrase_default", ordinal, candidates)
-	}
-	return selectLongPhraseMotion(jobID, sceneID, ordinal, limitedShuffledMotionPool(pool, limit, jobID+"\x00long_phrase_pool"))
-}
-
-func isShortPhraseMotionPool(pool []string) bool {
-	for _, id := range pool {
-		if !strings.HasPrefix(id, "short_phrase_") {
-			return false
+	// Apply the long-copy compatibility whitelist before the animation-count
+	// window. Sampling the full modern_product_v1 catalog first made a 15-motion
+	// window overwhelmingly Apple and could discard Brush and spatial 3D.
+	// A caller pool with no long-lane overlap stays authoritative: the channel
+	// bought that explicit vocabulary, so the whitelist must not substitute
+	// its own entries for long copy.
+	candidates := append([]string(nil), longPhraseMotionCandidates...)
+	if len(pool) > 0 {
+		if compatible := intersectMotionPool(candidates, pool); len(compatible) > 0 {
+			candidates = compatible
+		} else {
+			candidates = append([]string(nil), pool...)
 		}
 	}
-	return len(pool) > 0
+	// Draw the capped window through the run seed so the same catalog prefix
+	// does not recur across unrelated jobs.
+	if limit > 0 {
+		lane := "long_phrase_default"
+		if len(pool) > 0 {
+			lane = "long_phrase_pool"
+		}
+		candidates = limitedShuffledMotionPool(candidates, limit, jobID+"\x00"+lane)
+	}
+	return selectMotionFromPool(jobID, sceneID, "long_phrase_limited", ordinal, candidates)
 }
 
 // selectShortPhraseMotion routes 1-5 word phrases through renderer-visible
@@ -267,7 +266,7 @@ func visiblePhraseEntrancePool(pool []string) []string {
 	}
 	out := make([]string, 0, len(pool))
 	for _, id := range pool {
-		if strings.HasPrefix(id, "brush_phrase_") ||
+		if strings.HasPrefix(id, "brush_phrase_") || strings.HasPrefix(id, "phrase_highlight_") ||
 			strings.Contains(id, "slide") || strings.Contains(id, "reveal") ||
 			strings.Contains(id, "stagger") || strings.Contains(id, "cascade") ||
 			strings.Contains(id, "expand") || strings.Contains(id, "lift") || strings.Contains(id, "fold") ||
@@ -422,9 +421,9 @@ func CertifiedHeavyPhraseMotions() []string {
 // CertifiedPhraseMotions returns the certified render-safe motion pool this
 // build rotates over. It is the membership authority a caller-supplied pool is
 // validated against (see PlanInput.PhraseMotions): every id is a catalog motion
-// whose text, animator and companion-layer lowering is implemented by
-// RenderingGen. The complete membership list includes the surviving Apple,
-// spatial 3D and brush phrase recipes (typewriter/highlight retired).
+// whose text, semantic-highlight span, animator and companion-layer lowering
+// is implemented by RenderingGen. Typewriter stays retired; the new documentary
+// highlighting family is phrase-relative and part of the certified pool.
 //
 // The returned slice is a copy — callers may keep it without pinning the
 // package's own storage.
@@ -515,12 +514,16 @@ func phraseMotionFamilyCandidates(family string) []string {
 		pool = modernAppleMotionCandidates
 	case "brush_v1":
 		pool = brushPhraseMotionCandidates
+	case "documentary_highlighting_v1":
+		pool = documentaryHighlightMotionCandidates
 	case "text_3d_v1", "3d":
 		pool = text3DMotionCandidates
 	case "classic_apple":
 		pool = classicAppleMotionCandidates
-	case "documentary_clean_v1":
-		pool = documentaryCleanPhraseMotionCandidates
+	// documentary_clean_v1 was retired 2026-10-15: requesting it now falls
+	// through to the default nil pool, which the planner rejects fail-closed
+	// ("has no certified motions"). Its four motions stay callable through
+	// modern_apple and the long-phrase lane.
 	default:
 		return nil
 	}

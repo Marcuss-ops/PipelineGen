@@ -141,6 +141,21 @@ func mirrorFullSourceEntry(root, key string) (entry string, ok bool) {
 	return entry, true
 }
 
+// cleanupFetchArtifacts removes the temporary .fetch-<key> outputs of one
+// mirror fetch: the .fetch-<key>.<ext> twin after a successful store, and
+// any .part/.ytdl debris after a failed one. The glob is keyed on the full
+// 32-char content key so it can never touch another video's files. Failures
+// are ignored: this is hygiene, never delivery.
+func cleanupFetchArtifacts(root, key string) {
+	if root == "" || key == "" {
+		return
+	}
+	matches, _ := filepath.Glob(filepath.Join(root, ".fetch-"+key+".*"))
+	for _, m := range matches {
+		_ = os.Remove(m)
+	}
+}
+
 // ffmpegPath resolves the ffmpeg binary for local section cuts.
 func ffmpegPath() string {
 	if p := strings.TrimSpace(os.Getenv("FFMPEG_PATH")); p != "" {
@@ -149,13 +164,36 @@ func ffmpegPath() string {
 	return "ffmpeg"
 }
 
+// EnvNVENCPreset is the operator knob for the NVENC speed/quality tradeoff
+// on local section cuts (PIPELINEGEN_YTDLP_NVENC_PRESET). NVENC presets run
+// p1 (fastest) .. p7 (slowest/best); p1 is the default because a section cut
+// is an intermediate artifact that the canonical CutAndNormalize re-encodes
+// downstream — cut speed dominates, cut fidelity does not. Values outside
+// p1..p7 (or garbage) fall back to p1 so a typo can never fail a cut.
+const EnvNVENCPreset = "PIPELINEGEN_YTDLP_NVENC_PRESET"
+
+// nvencPreset resolves the NVENC -preset value for local section cuts.
+func nvencPreset() string {
+	raw := strings.ToLower(strings.TrimSpace(os.Getenv(EnvNVENCPreset)))
+	if len(raw) == 2 && raw[0] == 'p' && raw[1] >= '1' && raw[1] <= '7' {
+		return raw
+	}
+	return "p1"
+}
+
 // ensureFullSourceCached returns the local path of the mirrored full source
 // for videoID, fetching it once (single-flighted per key) on a miss. The
 // fetch reuses the full-source network argv — canonical format, fragment
 // concurrency, and aria2c acceleration — so a bulk fetch is not throttled
 // like a section fetch. Failures are returned; the caller degrades to the
 // per-section network path.
-func (d *YTDLPDownloader) ensureFullSourceCached(ctx context.Context, videoURL, videoID, formatOverride, mergeFormat string, timeout time.Duration) (string, error) {
+//
+// useCookies mirrors the caller's cookie policy (stock sets it on every
+// request): a cookie-gated video must fetch its full source WITH cookies,
+// otherwise the mirror fetch fails and every window of that video pays the
+// slow per-section network path forever without ever populating the cache.
+// The cache key is unchanged — cookies never alter the produced bytes.
+func (d *YTDLPDownloader) ensureFullSourceCached(ctx context.Context, videoURL, videoID, formatOverride, mergeFormat string, useCookies bool, timeout time.Duration) (string, error) {
 	root, ok := d.mirrorRoot()
 	if !ok || videoID == "" {
 		return "", fmt.Errorf("mirror unavailable")
@@ -163,6 +201,12 @@ func (d *YTDLPDownloader) ensureFullSourceCached(ctx context.Context, videoURL, 
 	key := mirrorKey(videoID, d.fullSourceFormatSignature(formatOverride, mergeFormat))
 	lockMirrorKey(key).Lock()
 	defer lockMirrorKey(key).Unlock()
+	// The fetch below writes .fetch-<key>.* twins (plus .part debris on
+	// failure). Without cleanup every mirrored video occupies 2x disk — the
+	// twin plus the entry — forever. The entry is an independent link/copy
+	// verified before return, so removing the fetch outputs on the way out
+	// (success AND failure) is always safe under this key's lock.
+	defer cleanupFetchArtifacts(root, key)
 
 	if entry, ok := mirrorFullSourceEntry(root, key); ok {
 		return entry, nil
@@ -171,7 +215,7 @@ func (d *YTDLPDownloader) ensureFullSourceCached(ctx context.Context, videoURL, 
 	fetchTemplate := filepath.Join(root, ".fetch-"+key+".%(ext)s")
 	buildArgs := func(playerClient string) []string {
 		args := []string{"--no-playlist", "--continue"}
-		args = append(args, d.cmdBuilder.BaseArgsForClient(videoURL, false, playerClient)...)
+		args = append(args, d.cmdBuilder.BaseArgsForClient(videoURL, useCookies, playerClient)...)
 		args = append(args, d.cmdBuilder.FormatArg(true)...)
 		args = append(args, d.cmdBuilder.ConcurrentFragmentsArg()...)
 		args = d.addExternalDownloaderArgs(args)
@@ -234,15 +278,16 @@ func (d *YTDLPDownloader) cutSectionLocal(ctx context.Context, srcPath, destPath
 	cutTimeout := 20 * time.Minute
 	// Encoder policy is owned by the central resolver (percheck_video_encoder_policy):
 	// the NVENC leg uses the canonical NVENC constant and the CPU fallback uses the
-	// configured codec/preset/CRF instead of call-site literals.
-	policy := config.VideoConfig{}.EncoderPolicy()
+	// downloader's configured codec/preset/CRF (resolved from cfg.Video at
+	// construction) instead of call-site literals.
+	policy := d.videoPolicy
 
 	nvencArgs := []string{
 		"-hide_banner", "-y",
 		"-ss", startArg,
 		"-i", srcPath,
 		"-t", durArg,
-		"-c:v", config.EncoderNVENCH264, "-preset", "p1",
+		"-c:v", config.EncoderNVENCH264, "-preset", nvencPreset(),
 		"-pix_fmt", "yuv420p",
 		"-c:a", "aac", "-b:a", "128k",
 		destPath,
@@ -250,9 +295,10 @@ func (d *YTDLPDownloader) cutSectionLocal(ctx context.Context, srcPath, destPath
 	if res, err := d.runner.Run(ctx, ff, nvencArgs, process.Options{Timeout: cutTimeout, CombinedOutput: true}); err == nil && res != nil {
 		if verifyErr := d.verifier.VerifyFile(destPath); verifyErr == nil {
 			return nil
+		} else {
+			_ = os.Remove(destPath)
+			log.Printf("downloader: nvenc section cut failed verification, retrying libx264: %v", verifyErr)
 		}
-		_ = os.Remove(destPath)
-		log.Printf("downloader: nvenc section cut failed verification, retrying libx264: %v", err)
 	} else if err != nil {
 		_ = os.Remove(destPath)
 		log.Printf("downloader: nvenc section cut failed (%v), falling back to libx264", err)
@@ -301,7 +347,7 @@ func (d *YTDLPDownloader) tryDownloadSectionsViaMirror(ctx context.Context, req 
 	if mergeFormat == "" {
 		mergeFormat = "mp4"
 	}
-	src, err := d.ensureFullSourceCached(ctx, req.URL, videoID, req.Format, mergeFormat, d.effectiveDownloadTimeout(req.Timeout))
+	src, err := d.ensureFullSourceCached(ctx, req.URL, videoID, req.Format, mergeFormat, req.UseCookies, d.effectiveDownloadTimeout(req.Timeout))
 	if err != nil {
 		log.Printf("downloader: mirror full-source unavailable for %s (%v); using per-section network path", videoID, err)
 		return false, nil
@@ -322,12 +368,13 @@ func (d *YTDLPDownloader) tryDownloadSectionsViaMirror(ctx context.Context, req 
 // would produce, so a mirror hit is indistinguishable to callers.
 func sectionDestPaths(req *DownloadRequest) []string {
 	basePath := strings.TrimSuffix(req.OutputPath, filepath.Ext(req.OutputPath))
+	ext := mirrorSectionExt(req.MergeFormat)
 	out := make([]string, len(req.DownloadSections))
 	for i := range req.DownloadSections {
 		if len(req.DownloadSections) == 1 {
-			out[i] = basePath + ".mp4"
+			out[i] = basePath + "." + ext
 		} else {
-			out[i] = fmt.Sprintf("%s_%03d.mp4", basePath, i+1)
+			out[i] = fmt.Sprintf("%s_%03d.%s", basePath, i+1, ext)
 		}
 	}
 	return out

@@ -81,15 +81,26 @@ func TestOverlayGroupLimitsDisableTextOnlyNamedEntityCards(t *testing.T) {
 
 func TestOverlayCategoryFilterRecognizesSceneTitlesAndBullets(t *testing.T) {
 	items := []overlays.OverlayItem{
-		{ID: "title", SceneID: "scene-0", Kind: "text_phrase", Params: map[string]any{"editorial_role": "scene_title"}},
-		{ID: "bullet", SceneID: "scene-0", Kind: "text_phrase", Params: map[string]any{"editorial_role": "scene_bullet"}},
+		{ID: "title", SceneID: "scene-0", Kind: "text_phrase", TemplateID: "IMPORTANT_PHRASE", Params: map[string]any{"editorial_role": "scene_title"}},
+		{ID: "bullet", SceneID: "scene-0", Kind: "text_phrase", TemplateID: "IMPORTANT_PHRASE", Params: map[string]any{"editorial_role": "scene_bullet"}},
 	}
+	scenes := []Scene{{ID: "scene-0", Index: 0}}
 	canvas := OverlayCanvasSpec{OverlayCategories: map[scriptpkg.OverlayCategory]scriptpkg.Toggle{
 		scriptpkg.OverlayCategoryTitles:  scriptpkg.ToggleDisabled,
-		scriptpkg.OverlayCategoryBullets: scriptpkg.ToggleDisabled,
+		scriptpkg.OverlayCategoryBullets: scriptpkg.ToggleEnabled,
+		scriptpkg.OverlayCategoryPhrases: scriptpkg.ToggleDisabled,
 	}}
-	got := filterOverlayItemsByCategory(items, []Scene{{ID: "scene-0", Index: 0}}, canvas)
+	got := filterOverlayItemsByCategory(items, scenes, canvas)
+	if len(got) != 1 || got[0].ID != "bullet" {
+		t.Fatalf("filtered items = %#v, want the explicit scene bullet despite its shared phrase template", got)
+	}
+	if category, ok := overlayItemCategory(got[0]); !ok || category != scriptpkg.OverlayCategoryBullets {
+		t.Fatalf("scene bullet category = %q, %v; want bullets", category, ok)
+	}
+
+	canvas.OverlayCategories[scriptpkg.OverlayCategoryBullets] = scriptpkg.ToggleDisabled
+	got = filterOverlayItemsByCategory(items, scenes, canvas)
 	if len(got) != 0 {
-		t.Fatalf("filtered items = %#v, want scene title and bullet excluded", got)
+		t.Fatalf("filtered items = %#v, want scene title and bullet excluded when bullets are disabled", got)
 	}
 }

@@ -106,6 +106,16 @@ func (l *LocalAdapter) MkdirTemp(dir, pattern string) (string, error) {
 	return os.MkdirTemp(dir, pattern)
 }
 
+// Link creates a hard link from src to dst. Thin pass-through to os.Link —
+// used by the stock source cache to stage a cache hit without copying bytes
+// when both paths share a filesystem (the link keeps the cache entry alive
+// by reference count, so the caller's later temp-dir cleanup removes only
+// its own link). Cross-device callers get an error and must fall back to a
+// byte copy.
+func (l *LocalAdapter) Link(src, dst string) error {
+	return os.Link(src, dst)
+}
+
 // Remove removes the named file or (empty) directory.
 func (l *LocalAdapter) Remove(name string) error {
 	return os.Remove(name)

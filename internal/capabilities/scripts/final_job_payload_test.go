@@ -19,6 +19,92 @@ func (finalJobPayloadResolver) ResolveFinalJobAsset(context.Context, string) (ma
 	return map[string]any{"asset_id": "drive-asset", "drive_file_id": "drive-asset", "url": "velox-drive://drive-asset", "sha256": strings.Repeat("b", 64), "size_bytes": int64(20), "duration_ms": int64(2000)}, nil
 }
 
+func certifiedPhraseVideoArtifact() *RenderArtifact {
+	return &RenderArtifact{
+		ID: "phrase-video", Kind: "video", DriveFileID: "phrase-drive-id",
+		SHA256: strings.Repeat("c", 64), MimeType: "video/mp4", SizeBytes: 500,
+		DurationUS: 5_000_000, FrameCount: 120, FPSNum: 24, FPSDen: 1, CopyEligible: true,
+	}
+}
+
+func phraseOnlyFinalJobResult(sceneID string) *GenerateResult {
+	artifact := certifiedPhraseVideoArtifact()
+	item := capabilityoverlay.OverlayItem{ID: "phrase-item", SceneID: sceneID, Kind: "text_phrase", TemplateID: "IMPORTANT_PHRASE", Text: "Garlasco, provincia di Pavia.", StartUS: 0, DurationUS: 5_000_000}
+	return &GenerateResult{
+		CanonicalTimeline: &capabilityaudio.CanonicalTimeline{DurationUS: 5_000_000, Segments: []capabilityaudio.TimelineSegment{{ID: sceneID, DurationUS: 5_000_000}}},
+		FinalAudio:        certifiedFinalAudio(5000),
+		Scenes:            []Scene{{ID: sceneID, Text: map[Language]string{"it": "Garlasco, provincia di Pavia."}}},
+		OverlayPlan:       &capabilityoverlay.OverlayPlan{SchemaVersion: capabilityoverlay.SchemaVersionPlan, PlanID: "plan-phrase", VideoID: "run-phrase", Width: 1920, Height: 1080, FPSNum: 24, FPSDen: 1, Items: []capabilityoverlay.OverlayItem{item}},
+		OverlayRender:     &RenderReference{Items: []OverlayItemRenderReference{{ItemID: item.ID, Status: "SUCCEEDED", Artifact: artifact}}},
+	}
+}
+
+func TestBuildFinalJobPayloadsUsesPublishedPhraseVideoForPhraseOnlyScene(t *testing.T) {
+	result := phraseOnlyFinalJobResult("scene-phrase")
+	pre, finalize, err := BuildFinalJobPayloads(context.Background(), "run-phrase", GenerateRequest{Title: "Garlasco", SourceLanguage: "it"}, result, finalJobPayloadResolver{})
+	if err != nil {
+		t.Fatalf("BuildFinalJobPayloads: %v", err)
+	}
+	scenes, ok := pre["scenes"].([]map[string]any)
+	if !ok || len(scenes) != 1 {
+		t.Fatalf("pre scenes = %#v, want one phrase-video scene", pre["scenes"])
+	}
+	ref, ok := scenes[0]["stock"].(map[string]any)
+	if !ok || ref["drive_file_id"] != "phrase-drive-id" || ref["sha256"] != strings.Repeat("c", 64) || scenes[0]["kind"] != "clip" {
+		t.Fatalf("phrase-only clip = %#v, want the certified overlay video", scenes[0])
+	}
+	if scenes[0]["duration_seconds"] != 5.0 {
+		t.Fatalf("phrase video duration = %v, want five seconds", scenes[0]["duration_seconds"])
+	}
+	assets := finalize["runtime_assets"].([]any)
+	if len(assets) != 2 || assets[0].(map[string]any)["role"] != "clip" || assets[1].(map[string]any)["role"] != "final_audio" {
+		t.Fatalf("runtime_assets = %#v, want phrase-video clip plus certified final audio", assets)
+	}
+	overlays := finalize["overlays"].([]any)
+	if len(overlays) != 0 {
+		t.Fatalf("finalize overlays = %#v, want consumed phrase video omitted to avoid rendering its animation twice", overlays)
+	}
+}
+
+func TestFinalJobPhraseVideoRejectsUncertifiedArtifact(t *testing.T) {
+	result := phraseOnlyFinalJobResult("scene-phrase")
+	result.OverlayRender.Items[0].Artifact = &RenderArtifact{ID: "incomplete", DriveFileID: "phrase-drive-id", MimeType: "video/mp4", CopyEligible: false}
+	_, _, err := BuildFinalJobPayloads(context.Background(), "run-phrase", GenerateRequest{Title: "Garlasco", SourceLanguage: "it"}, result, finalJobPayloadResolver{})
+	if err == nil || !strings.Contains(err.Error(), "not a certified published video") {
+		t.Fatalf("BuildFinalJobPayloads error = %v, want fail-closed uncertified phrase video", err)
+	}
+}
+
+func TestFinalJobPhraseVideoWithoutPublishedOverlayStillFailsClosed(t *testing.T) {
+	result := phraseOnlyFinalJobResult("scene-phrase")
+	result.OverlayRender.Items[0].Artifact = nil
+	_, _, err := BuildFinalJobPayloads(context.Background(), "run-phrase", GenerateRequest{Title: "Garlasco", SourceLanguage: "it"}, result, finalJobPayloadResolver{})
+	if err == nil || !strings.Contains(err.Error(), "no rendered phrase artifact") {
+		t.Fatalf("BuildFinalJobPayloads error = %v, want missing phrase artifact rejection", err)
+	}
+}
+
+func TestFinalJobOverlayAssetsExcludingConsumedPhraseDoesNotDuplicateTheVideo(t *testing.T) {
+	result := phraseOnlyFinalJobResult("scene-phrase")
+	consumed := map[string]struct{}{"phrase-item": {}}
+	overlays, err := finalJobOverlayAssetsExcluding(result, consumed)
+	if err != nil {
+		t.Fatalf("finalJobOverlayAssetsExcluding: %v", err)
+	}
+	if len(overlays) != 0 {
+		t.Fatalf("final overlays = %#v, want consumed phrase omitted", overlays)
+	}
+}
+
+func TestFinalJobOverlayAssetsExcludingStillRejectsMissingUnconsumedArtifacts(t *testing.T) {
+	result := phraseOnlyFinalJobResult("scene-phrase")
+	result.OverlayPlan.Items = append(result.OverlayPlan.Items, capabilityoverlay.OverlayItem{ID: "other-item", SceneID: "scene-phrase", Kind: "text_phrase", TemplateID: "IMPORTANT_PHRASE", Text: "Altra frase", StartUS: 0, DurationUS: 5_000_000})
+	_, err := finalJobOverlayAssetsExcluding(result, map[string]struct{}{"phrase-item": {}})
+	if err == nil || !strings.Contains(err.Error(), `overlay "other-item" has no published render artifact`) {
+		t.Fatalf("finalJobOverlayAssetsExcluding error = %v, want missing remaining artifact", err)
+	}
+}
+
 func TestEnforceFinalJobMinimumSceneDurationBorrowsFromEarlierScene(t *testing.T) {
 	scenes := []map[string]any{
 		{"duration_seconds": 2.0},
@@ -518,6 +604,9 @@ func TestBuildFinalJobPayloadsClipOnlySceneWithoutRenderFailsClosed(t *testing.T
 	_, _, err := BuildFinalJobPayloads(context.Background(), "run-1", GenerateRequest{Title: "Dolly", SourceLanguage: "en"}, result, finalJobPayloadResolver{})
 	if err == nil || !strings.Contains(err.Error(), "refusing to hand the unmodified source clip") {
 		t.Fatalf("BuildFinalJobPayloads error = %v, want the fail-closed clip-only error", err)
+	}
+	if !strings.Contains(err.Error(), "phrase-only fallback did not apply") {
+		t.Fatalf("BuildFinalJobPayloads error = %v, want the phrase-fallback reason for the missing clip", err)
 	}
 }
 
