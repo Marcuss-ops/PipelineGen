@@ -68,6 +68,7 @@ func BuildFinalJobPayloads(ctx context.Context, runID string, req GenerateReques
 	// decision is made once here instead of per scene, and an ambiguous run is
 	// reported by the clip-only path rather than silently resolved.
 	renderLanguage, renderLanguageErr := finalJobRenderLanguage(req, result)
+	consumedPhraseOverlays := make(map[string]struct{})
 
 	for _, segment := range result.CanonicalTimeline.Segments {
 		localScene, sceneExists := scenesByID[segment.ID]
@@ -189,9 +190,32 @@ func BuildFinalJobPayloads(ctx context.Context, runID string, req GenerateReques
 		if localScene.Stock == nil || strings.TrimSpace(localScene.Stock.FolderID) == "" {
 			// Clip-only scene: the runtime receives the clip THIS pipeline
 			// produced, never the unmodified source clip from the library.
+			var asset map[string]any
+			var durationMS int64
 			asset, durationMS, err := clipSceneRuntimeAsset(ctx, resolver, result, renderLanguage, renderLanguageErr, segment.ID)
 			if err != nil {
-				return nil, nil, err
+				if len(result.LocalizedRenders) != 0 {
+					return nil, nil, err
+				}
+				// A phrase-only scene has no source video to localize. Its certified
+				// full-frame phrase render is already the visual for that scene, so
+				// hand that video to the compositor as the clip and don't overlay the
+				// same animation a second time.
+				var overlayID string
+				var ok bool
+				var overlayErr error
+				asset, durationMS, overlayID, ok, overlayErr = finalJobPhraseOverlayClip(result, segment.ID)
+				if overlayErr != nil {
+					return nil, nil, overlayErr
+				}
+				if !ok {
+					// Keep the original clip error but say why the phrase-only
+					// fallback did not apply: it needs exactly one text_phrase
+					// item for this scene with a certified copy-eligible video
+					// artifact. Returning the bare clip error hid that reason.
+					return nil, nil, fmt.Errorf("%w; phrase-only fallback did not apply for scene %q (need exactly one text_phrase item with a certified copy-eligible video artifact)", err, segment.ID)
+				}
+				consumedPhraseOverlays[overlayID] = struct{}{}
 			}
 			// A certified scene render often contains only the selected source
 			// clip's original duration, while its narration can be much longer.
@@ -323,7 +347,7 @@ func BuildFinalJobPayloads(ctx context.Context, runID string, req GenerateReques
 		}
 		appendFinalJobRuntimeAsset(&runtimeAssets, seenRuntimeAssets, "music", music)
 	}
-	remoteOverlays, err := finalJobOverlayAssets(result)
+	remoteOverlays, err := finalJobOverlayAssetsExcluding(result, consumedPhraseOverlays)
 	if err != nil {
 		return nil, nil, err
 	}

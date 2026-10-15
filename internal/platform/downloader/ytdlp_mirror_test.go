@@ -222,11 +222,13 @@ func TestMirror_ConcurrentSameKeySingleFlight(t *testing.T) {
 
 func youtubeVideoIDContractChecks() error {
 	cases := map[string]string{
-		"https://www.youtube.com/watch?v=dQw4w9WgXcQ&t=1s": "dQw4w9WgXcQ",
-		"https://youtu.be/dQw4w9WgXcQ?si=x":                "dQw4w9WgXcQ",
-		"https://www.youtube.com/shorts/dQw4w9WgXcQ":       "dQw4w9WgXcQ",
-		"https://www.artlist.io/video/x":                   "",
-		"https://example.com/?v=":                          "",
+		"https://www.youtube.com/watch?v=dQw4w9WgXcQ&t=1s":       "dQw4w9WgXcQ",
+		"https://youtu.be/dQw4w9WgXcQ?si=x":                      "dQw4w9WgXcQ",
+		"https://www.youtube.com/shorts/dQw4w9WgXcQ":             "dQw4w9WgXcQ",
+		"https://www.youtube.com/embed/dQw4w9WgXcQ":              "dQw4w9WgXcQ",
+		"https://www.youtube.com/live/dQw4w9WgXcQ?feature=share": "dQw4w9WgXcQ",
+		"https://www.artlist.io/video/x":                         "",
+		"https://example.com/?v=":                                "",
 	}
 	for url, want := range cases {
 		if got := youtubeVideoID(url); got != want {

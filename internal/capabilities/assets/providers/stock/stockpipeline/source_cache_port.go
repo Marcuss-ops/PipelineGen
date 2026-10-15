@@ -146,9 +146,23 @@ func validateCacheHit(entry *SourceCacheEntry, fs LocalFSPort, log *zap.Logger) 
 	return nil
 }
 
-// copyFileToPath copies srcPath to dstPath. Used by the cache to
-// stage a cached file into a new temp directory without holding the
-// original locked.
+// fsLinker is the optional hard-link capability of a LocalFSPort.
+// filesystem.LocalAdapter provides it (os.Link); fakes that don't implement
+// it simply miss the fast path — the assertion below degrades to a byte copy
+// instead of failing, so link support is never a wiring requirement.
+type fsLinker interface {
+	Link(srcPath, dstPath string) error
+}
+
+// copyFileToPath stages srcPath at dstPath. Used by the cache to stage a
+// cached file into a new temp directory without holding the original locked.
+//
+// Fast path: when the filesystem offers hard links (same device), the stage
+// is a link — ~instant and zero bytes copied even for whole-source files.
+// The link keeps the cache entry alive by reference count, so the caller's
+// later temp-dir cleanup removes only its own link. Any link error
+// (cross-device, permissions, existing dst) falls through to the byte copy,
+// which truncates/creates dst as before.
 //
 // The LocalFSPort is the Pattern 0 typed port (PR-REFACTOR-P0-IO-BINDER);
 // nil is fail-closed so callers surface the wiring gap instead of
@@ -160,6 +174,11 @@ func validateCacheHit(entry *SourceCacheEntry, fs LocalFSPort, log *zap.Logger) 
 func copyFileToPath(srcPath, dstPath string, fs LocalFSPort) error {
 	if fs == nil {
 		return fmt.Errorf("cache copy: LocalFSPort not wired (composition root must inject filesystem.NewLocal())")
+	}
+	if linker, ok := fs.(fsLinker); ok {
+		if err := linker.Link(srcPath, dstPath); err == nil {
+			return nil
+		}
 	}
 	src, err := fs.Open(srcPath)
 	if err != nil {

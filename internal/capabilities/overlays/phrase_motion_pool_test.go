@@ -199,16 +199,35 @@ func TestBuildPlanLongPhrasesRotateWithinTheChannelPool(t *testing.T) {
 	}
 }
 
-// TestLongLaneExcludesBlackRendering3DMotions pins the frame-verified
-// finding that text_3d_v1 motions render pure black (mean 0.0/stddev 0.0
-// over 105+ frames) on the standalone important_phrase overlay path, while
-// the Go lowering is correct (centered enable_3d text layer with tracks).
-// Until the Chronon enable_3d text path is fixed, the long lane must not
-// rotate them: a blank video is a silent failure worse than less variety.
-func TestLongLaneExcludesBlackRendering3DMotions(t *testing.T) {
+// TestLongLaneIncludesFixed3DMotions pins that the text_3d_v1 family is back
+// in the long lane after the renderer fix was frame-verified (2026-10-15): a
+// text_3d_camera_push phrase on a white canvas renders full-frame white
+// corners (mean 255.0, no black clear showing) with visible animated text on
+// the software backend, every text_3d motion settles its rotations to 0 from
+// at most ±14° (so no authored frame can cross the ±90° mirror condition),
+// and projected 2D layers compile DoubleSided. The background plate stays in
+// screen space instead of entering the camera/depth bin with the text.
+func TestLongLaneIncludesFixed3DMotions(t *testing.T) {
+	want := map[string]bool{
+		"text_3d_camera_push": false, "text_3d_perspective_drop": false,
+		"text_3d_roll_depth": false, "text_3d_tilt_rise": false,
+		"text_3d_word_cascade": false, "text_3d_yaw_flip_in": false,
+		"text_3d_pitch_lift": false, "text_3d_yaw_sweep": false,
+		"text_3d_double_axis_reveal": false, "text_3d_orbit_lock": false,
+	}
 	for _, id := range longPhraseMotionCandidates {
+		if _, ok := want[id]; ok {
+			want[id] = true
+		}
 		if strings.HasPrefix(id, "text_3d_") {
-			t.Fatalf("long lane carries %q, which renders black on the overlay path", id)
+			if _, known := want[id]; !known {
+				t.Fatalf("long lane carries unknown 3D motion %q", id)
+			}
+		}
+	}
+	for id, seen := range want {
+		if !seen {
+			t.Fatalf("long lane is missing fixed 3D motion %q", id)
 		}
 	}
 	if len(longPhraseMotionCandidates) == 0 {
@@ -272,8 +291,11 @@ func TestBuildPlanDefaultLongPhrasesRotateWithoutRepeating(t *testing.T) {
 
 func TestModernAppleFamilyExposesAllCatalogMotions(t *testing.T) {
 	family := certifiedPhraseFamily("modern_apple")
-	if len(family) != 60 {
-		t.Fatalf("modern_apple family has %d motions, want all 60 callable modern Apple motions (removed motions excluded)", len(family))
+	// 52 after the 2026-10-15 look-alike prune (8 retired: focus_rise,
+	// scale_push, line_sweep, word_pulse, hero_statement, glass_morphism,
+	// precision_tracking_lock, precision_word_stagger).
+	if len(family) != 52 {
+		t.Fatalf("modern_apple family has %d motions, want all 52 callable modern Apple motions (removed motions excluded)", len(family))
 	}
 	for _, id := range modernAppleMotionCandidates {
 		if !containsString(family, id) {
@@ -288,7 +310,10 @@ func TestModernAppleFamilyExposesAllCatalogMotions(t *testing.T) {
 }
 
 func TestGeneratedPhraseRotationCoversFifteenAndFits24FPSTiming(t *testing.T) {
-	const callablePhraseMotionCount = 122 // 41 classic + 60 modern Apple, 10 text_3d_v1, 11 brush (typewriter retired).
+	// 111 after adding the 15 native Documentary Highlighting motion recipes:
+	// 27 classic + 52 modern Apple, 10 text_3d_v1, 2 soft Brush, 5 semantic
+	// highlights and the 15 native documentary presets.
+	const callablePhraseMotionCount = 111
 	if len(generatedPhraseMotions) != callablePhraseMotionCount {
 		t.Fatalf("generated phrase pool has %d entries, want all %d callable phrase motions (removed motions excluded)", len(generatedPhraseMotions), callablePhraseMotionCount)
 	}
@@ -315,6 +340,8 @@ func TestGeneratedPhraseRotationCoversFifteenAndFits24FPSTiming(t *testing.T) {
 				familyCounts["text_3d_v1"]++
 			case containsString(brushPhraseMotionCandidates, id):
 				familyCounts["brush_v1"]++
+			case containsString(documentaryHighlightMotionCandidates, id):
+				familyCounts["documentary_highlighting_v1"]++
 			default:
 				t.Fatalf("default phrase sequence selected unregistered motion %q", id)
 			}
@@ -323,7 +350,7 @@ func TestGeneratedPhraseRotationCoversFifteenAndFits24FPSTiming(t *testing.T) {
 	if len(sequence) != callablePhraseMotionCount || len(seenAll) != callablePhraseMotionCount {
 		t.Fatalf("default phrase sequence covers %d motions, want all %d", len(seenAll), callablePhraseMotionCount)
 	}
-	for _, family := range []string{"classic_apple", "modern_apple", "text_3d_v1", "brush_v1"} {
+	for _, family := range []string{"classic_apple", "modern_apple", "text_3d_v1", "brush_v1", "documentary_highlighting_v1"} {
 		if familyCounts[family] == 0 {
 			t.Fatalf("first 15 phrase motions do not include family %s", family)
 		}
@@ -823,7 +850,7 @@ func TestGeneratedImageMotionPoolMatchesCanonicalChrononCatalog(t *testing.T) {
 		if _, removed := removedGeneratedPhraseMotions[definition.ID]; removed {
 			continue
 		}
-		if definition.Category == "apple_v2" || definition.Category == "apple_v3" || definition.Category == "phrase_apple_clean_v1" || definition.Category == "apple_phrase_v1" || definition.Category == "text_3d_v1" || (definition.Category == "brush_v1" && strings.HasPrefix(definition.ID, "brush_phrase_")) {
+		if definition.Category == "apple_v2" || definition.Category == "apple_v3" || definition.Category == "phrase_apple_clean_v1" || definition.Category == "apple_phrase_v1" || definition.Category == "text_3d_v1" || definition.Category == "documentary_highlighting_v1" || (definition.Category == "brush_v1" && strings.HasPrefix(definition.ID, "brush_phrase_")) {
 			catalogPhraseIDs = append(catalogPhraseIDs, definition.ID)
 		}
 	}
@@ -843,8 +870,8 @@ func TestGeneratedImageMotionPoolMatchesCanonicalChrononCatalog(t *testing.T) {
 			t.Fatalf("selected image motion %d=%q, catalog=%q", i, selectedIDs[i], wantSelected[i])
 		}
 	}
-	if len(catalogPhraseIDs) != 122 || len(phraseMotionCandidates) != len(catalogPhraseIDs) {
-		t.Fatalf("catalog has %d callable phrase motions, callable pool has %d; want all 122 (removed motions excluded)", len(catalogPhraseIDs), len(phraseMotionCandidates))
+	if len(catalogPhraseIDs) != 111 || len(phraseMotionCandidates) != len(catalogPhraseIDs) {
+		t.Fatalf("catalog has %d callable phrase motions, callable pool has %d; want all 111 (removed motions excluded)", len(catalogPhraseIDs), len(phraseMotionCandidates))
 	}
 	callable := append([]string(nil), phraseMotionCandidates...)
 	sort.Strings(callable)

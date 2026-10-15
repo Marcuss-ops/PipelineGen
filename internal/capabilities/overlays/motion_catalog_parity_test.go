@@ -148,7 +148,8 @@ func TestMotionPoolsAreCanonicalSubsets(t *testing.T) {
 	assertPoolInUniverse(t, universe, "text3DMotionCandidates", text3DMotionCandidates)
 	assertPoolInUniverse(t, universe, "phraseAppleCleanMotionCandidates", phraseAppleCleanMotionCandidates)
 	assertPoolInUniverse(t, universe, "longPhraseMotionCandidates", longPhraseMotionCandidates)
-	assertPoolInUniverse(t, universe, "documentaryCleanPhraseMotionCandidates", documentaryCleanPhraseMotionCandidates)
+	// documentaryCleanPhraseMotionCandidates was retired 2026-10-15 with its
+	// family key; its four motions stay canonical through modern_apple.
 	assertPoolInUniverse(t, universe, "renderSafeImageMotions", renderSafeImageMotions)
 	assertPoolInUniverse(t, universe, "automaticSingleImageMotionCandidates", automaticSingleImageMotionCandidates)
 	assertPoolInUniverse(t, universe, "centeredImageMotionCandidates", centeredImageMotionCandidates)

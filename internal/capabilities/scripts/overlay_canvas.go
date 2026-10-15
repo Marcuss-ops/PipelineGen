@@ -254,9 +254,17 @@ func overlayItemCategory(item capabilityoverlay.OverlayItem) (scriptpkg.OverlayC
 		return scriptpkg.OverlayCategoryCharts, true
 	case item.Params["recap"] == true || strings.Contains(template, "recap"):
 		return scriptpkg.OverlayCategoryRecaps, true
-	case role == "title" || role == "headline" || role == "scene_title" || strings.Contains(template, "title"):
+	// Editorial roles override the shared IMPORTANT_PHRASE template: the
+	// request can independently enable bullets while disabling generic
+	// phrases/titles, and the template name alone must not recategorize a
+	// scene_bullet before its explicit role is examined.
+	case role == "bullet" || role == "bullet_point" || role == "scene_bullet":
+		return scriptpkg.OverlayCategoryBullets, true
+	case role == "title" || role == "headline" || role == "scene_title":
 		return scriptpkg.OverlayCategoryTitles, true
-	case role == "bullet" || role == "bullet_point" || role == "scene_bullet" || strings.Contains(template, "bullet"):
+	case strings.Contains(template, "title"):
+		return scriptpkg.OverlayCategoryTitles, true
+	case strings.Contains(template, "bullet"):
 		return scriptpkg.OverlayCategoryBullets, true
 	case strings.Contains(template, "quote") || role == "quote":
 		return scriptpkg.OverlayCategoryQuotes, true
@@ -281,8 +289,6 @@ func overlayItemCategory(item capabilityoverlay.OverlayItem) (scriptpkg.OverlayC
 	}
 }
 
-// ── Overlay group limits (merged from overlay_group_limits.go) ──
-//
 // Merged here to keep the registered scripts hotspot at its committed
 // baseline: group capping reads the canvas OverlayGroupLimits and the
 // canvas helpers above. No behaviour change.

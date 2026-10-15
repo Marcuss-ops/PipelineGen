@@ -69,6 +69,10 @@ func youtubeVideoID(rawURL string) string {
 		id = afterSubstring(trimmed, "v=")
 	case strings.Contains(trimmed, "shorts/"):
 		id = afterSubstring(trimmed, "shorts/")
+	case strings.Contains(trimmed, "/embed/"):
+		id = afterSubstring(trimmed, "/embed/")
+	case strings.Contains(trimmed, "/live/"):
+		id = afterSubstring(trimmed, "/live/")
 	default:
 		return ""
 	}

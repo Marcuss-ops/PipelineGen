@@ -53,6 +53,45 @@ var retiredShortPhraseRecipes = []string{
 // overlays by request. They are rejected like the retired short-phrase IDs.
 var removedGeneratedPhraseMotionIDs = []string{
 	"phrase_apple_clean_14_scale_bounce_clean",
+	// Retired 2026-10-15 after visual review: conspicuous Brush line/shape
+	// accents are out of the generated long-phrase pool; keep the soft gold
+	// marker and light sweep as the only Brush phrase options.
+	"brush_phrase_arrow_point",
+	"brush_phrase_circle_focus",
+	"brush_phrase_lower_rule",
+	"brush_phrase_red_brush_underline",
+	"brush_phrase_red_endpoint_rule",
+	"brush_phrase_red_underline",
+	"brush_phrase_signature_flourish",
+	"brush_phrase_white_double_underline",
+	"brush_phrase_white_underline",
+	// Retired 2026-10-15: look-alike prune. Each removed motion shares its
+	// animation recipe with a surviving sibling that stays callable (kept in
+	// parentheses): the rotation keeps variety instead of near-identical
+	// entrances. The documentary_clean_v1 family key was retired the same day;
+	// its four motions stay callable through modern_apple and the long lane.
+	"apple_focus_rise",                  // keep apple_soft_scale
+	"apple_scale_push",                  // keep apple_soft_scale
+	"apple_line_sweep",                  // keep apple_line_cascade
+	"apple_word_pulse",                  // keep apple_word_cascade
+	"precision_tracking_lock",           // keep apple_tracking_reveal
+	"precision_word_stagger",            // keep kinetic_keyword_lock
+	"apple_hero_statement",              // keep hero_scale_focus
+	"glass_morphism_fade",               // keep hero_scale_focus
+	"editorial_push_in",                 // keep cinematic_credits_drift
+	"soft_clay_press",                   // keep duotone_block_rise
+	"high_specular_light_sweep",         // keep fluid_gradient_text_flow
+	"micro_tracker_kerning_compression", // keep fluid_gradient_text_flow
+	"staggered_char_float",              // keep isometric_3d_fold
+	"pixel_grid_alpha_matrix",           // keep depth_of_field_rack_focus
+	"focus_pull_macro",                  // keep premium_soft_reveal
+	"ink_bleed_spread",                  // keep premium_soft_reveal
+	"liquid_glass_ripple",               // keep premium_soft_reveal
+	"magnetic_letters_converge",         // keep premium_soft_reveal
+	"shutter_blade_reveal",              // keep hero_scale_focus
+	"soft_edge_spotlight_dissolve",      // keep premium_soft_reveal
+	"spectrum_shimmer_wave",             // keep premium_soft_reveal
+	"spotlight_iris_open",               // keep hero_scale_focus
 	// Retired 2026-10-14 with the ChrononTemplate typewriter/highlight
 	// removal (catalog no longer resolves them; kept literal to reject
 	// stale payloads fail-closed).
@@ -137,6 +176,13 @@ func EnsureDistinctPhraseMotions(items []OverlayItem, input PlanInput) {
 // so unpinned items rotate away from them. Duplicate motions between two
 // pinned items are the caller's explicit responsibility and are left alone.
 func EnsureDistinctPhraseMotionsPinned(items []OverlayItem, input PlanInput, pinned map[int]bool) {
+	// Documentary preset IDs are public aliases, not renderer motion IDs. They
+	// can reach this final run-wide pass after scene planning, so canonicalize
+	// both the candidate pool and assigned items before duplicate resolution.
+	input.PhraseMotions = resolveDocumentaryPhraseMotions(input.PhraseMotions)
+	for i := range items {
+		items[i].MotionID = ResolveDocumentaryPhraseMotion(items[i].MotionID)
+	}
 	used := make(map[string]struct{})
 	for i := range items {
 		if !pinned[i] || items[i].Kind != "text_phrase" {
@@ -157,6 +203,11 @@ func EnsureDistinctPhraseMotionsPinned(items []OverlayItem, input PlanInput, pin
 	}
 	shortLimit := laneAnimationCount(input.AnimationCounts, laneShortPhrase)
 	phraseLimit := laneAnimationCount(input.AnimationCounts, laneImportantPhrase)
+	// A caller-supplied singleton pool is an explicit motion choice, not a
+	// request for variety. Preserve it across items; automatic pools still
+	// receive the normal run-wide uniqueness pass below.
+	explicitPool := uniqueMotionPool(input.PhraseMotions)
+	explicitSingleton := len(explicitPool) == 1
 	for i := range items {
 		item := &items[i]
 		if item.Kind != "text_phrase" || strings.TrimSpace(item.MotionID) == "" {
@@ -165,6 +216,10 @@ func EnsureDistinctPhraseMotionsPinned(items []OverlayItem, input PlanInput, pin
 		_, removed := removedGeneratedPhraseMotions[item.MotionID]
 		_, duplicate := used[item.MotionID]
 		if pinned[i] && !removed {
+			continue
+		}
+		if explicitSingleton && !removed && item.MotionID == explicitPool[0] {
+			used[item.MotionID] = struct{}{}
 			continue
 		}
 		if !removed && !duplicate {
@@ -303,8 +358,12 @@ func phraseMotionCandidatesForItem(item OverlayItem, input PlanInput, seed strin
 		candidates = append([]string(nil), longPhraseMotionCandidates...)
 		if len(input.PhraseMotions) > 0 {
 			compatible := intersectMotionPool(candidates, input.PhraseMotions)
-			if len(compatible) >= 2 {
+			if len(compatible) > 0 {
 				candidates = compatible
+			} else {
+				// Preserve an explicit channel pool even when it has no overlap
+				// with the long-copy compatibility set.
+				candidates = append([]string(nil), input.PhraseMotions...)
 			}
 		}
 		// The same lane seed as the assignment keeps one capped window per run:

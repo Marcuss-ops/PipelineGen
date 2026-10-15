@@ -87,6 +87,7 @@ func validatePhraseMotionPool(pool []string) error {
 	}
 	seen := make(map[string]bool, len(pool))
 	for _, id := range pool {
+		id = ResolveDocumentaryPhraseMotion(id)
 		if strings.TrimSpace(id) == "" {
 			return fmt.Errorf("overlay: phrase motion pool carries an empty id")
 		}

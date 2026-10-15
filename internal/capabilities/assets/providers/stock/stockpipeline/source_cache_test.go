@@ -7,10 +7,13 @@ package stockpipeline
 
 import (
 	"context"
+	"fmt"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/filesystem"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
+	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -234,6 +237,135 @@ func TestCopyFileToPath_SrcMissing(t *testing.T) {
 	err := copyFileToPath(filepath.Join(tmp, "nonexistent"), filepath.Join(tmp, "dst"), testFS)
 	if err == nil {
 		t.Error("copyFileToPath returned nil err on missing source (should fail)")
+	}
+}
+
+// linkCountingFS offers the hard-link fast path over an inner fake whose
+// Open/Create stay unconfigured: any touch of the byte-copy path surfaces
+// as a "not configured" error and fails the test.
+type linkCountingFS struct {
+	inner     *fakeLocalFS
+	linkCalls int
+	linkFn    func(src, dst string) error
+}
+
+func (f *linkCountingFS) Stat(name string) (fs.FileInfo, error) { return f.inner.Stat(name) }
+func (f *linkCountingFS) Open(name string) (io.ReadCloser, error) {
+	return f.inner.Open(name)
+}
+func (f *linkCountingFS) Create(name string) (io.WriteCloser, error) {
+	return f.inner.Create(name)
+}
+func (f *linkCountingFS) MkdirTemp(dir, pattern string) (string, error) {
+	return f.inner.MkdirTemp(dir, pattern)
+}
+func (f *linkCountingFS) Remove(name string) error    { return f.inner.Remove(name) }
+func (f *linkCountingFS) RemoveAll(path string) error { return f.inner.RemoveAll(path) }
+func (f *linkCountingFS) MkdirAll(path string, perm fs.FileMode) error {
+	return f.inner.MkdirAll(path, perm)
+}
+func (f *linkCountingFS) CreateTemp(dir, pattern string) (string, io.WriteCloser, error) {
+	return f.inner.CreateTemp(dir, pattern)
+}
+func (f *linkCountingFS) TempDir() string { return f.inner.TempDir() }
+func (f *linkCountingFS) Link(src, dst string) error {
+	f.linkCalls++
+	return f.linkFn(src, dst)
+}
+
+// Compile-time assertion: *linkCountingFS satisfies LocalFSPort.
+var _ LocalFSPort = (*linkCountingFS)(nil)
+
+// TestCopyFileToPath_UsesHardLinkWhenAvailable pins the cache-hit fast
+// path: with a linker filesystem the stage is one link call and zero byte
+// copies — the staged file shares the cache entry's inode, so whole-source
+// hits stage ~instantly.
+func TestCopyFileToPath_UsesHardLinkWhenAvailable(t *testing.T) {
+	tmp := t.TempDir()
+	src := filepath.Join(tmp, "src.mp4")
+	dst := filepath.Join(tmp, "dst.mp4")
+	content := []byte("fake-video-content-for-link-test")
+	if err := os.WriteFile(src, content, 0644); err != nil {
+		t.Fatal(err)
+	}
+	fs := &linkCountingFS{inner: &fakeLocalFS{}}
+	fs.linkFn = func(s, d string) error { return os.Link(s, d) }
+	if err := copyFileToPath(src, dst, fs); err != nil {
+		t.Fatalf("copyFileToPath returned err: %v", err)
+	}
+	if fs.linkCalls != 1 {
+		t.Fatalf("link calls = %d, want 1 (fast path must link exactly once)", fs.linkCalls)
+	}
+	got, err := os.ReadFile(dst)
+	if err != nil {
+		t.Fatalf("failed to read destination: %v", err)
+	}
+	if string(got) != string(content) {
+		t.Errorf("linked content = %q, want %q", string(got), string(content))
+	}
+	srcFi, err := os.Stat(src)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dstFi, err := os.Stat(dst)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !os.SameFile(srcFi, dstFi) {
+		t.Error("staged file is a byte copy, want a hard link sharing the cache inode")
+	}
+}
+
+// TestCopyFileToPath_FallsBackToCopyWithoutLinker pins the degradation
+// contract: a filesystem without Link support (or a failed link) still
+// stages byte-identical content via the copy path.
+func TestCopyFileToPath_FallsBackToCopyWithoutLinker(t *testing.T) {
+	tmp := t.TempDir()
+	src := filepath.Join(tmp, "src.mp4")
+	dst := filepath.Join(tmp, "dst.mp4")
+	content := []byte("fake-video-content-for-copy-fallback-test")
+	if err := os.WriteFile(src, content, 0644); err != nil {
+		t.Fatal(err)
+	}
+	// newRealishFakeLocalFS has no Link method: the fsLinker assertion
+	// misses and the copy path runs.
+	if err := copyFileToPath(src, dst, newRealishFakeLocalFS()); err != nil {
+		t.Fatalf("copyFileToPath returned err: %v", err)
+	}
+	got, err := os.ReadFile(dst)
+	if err != nil {
+		t.Fatalf("failed to read destination: %v", err)
+	}
+	if string(got) != string(content) {
+		t.Errorf("copied content = %q, want %q", string(got), string(content))
+	}
+}
+
+// TestCopyFileToPath_FallsBackToCopyOnLinkError pins that a failed link
+// (e.g. cross-device) degrades to the copy path instead of failing.
+func TestCopyFileToPath_FallsBackToCopyOnLinkError(t *testing.T) {
+	tmp := t.TempDir()
+	src := filepath.Join(tmp, "src.mp4")
+	dst := filepath.Join(tmp, "dst.mp4")
+	content := []byte("fake-video-content-for-link-error-test")
+	if err := os.WriteFile(src, content, 0644); err != nil {
+		t.Fatal(err)
+	}
+	realish := newRealishFakeLocalFS()
+	fs := &linkCountingFS{inner: realish}
+	fs.linkFn = func(s, d string) error { return fmt.Errorf("injected cross-device link failure") }
+	if err := copyFileToPath(src, dst, fs); err != nil {
+		t.Fatalf("copyFileToPath returned err: %v", err)
+	}
+	if fs.linkCalls != 1 {
+		t.Fatalf("link calls = %d, want 1 (link tried first, then copy)", fs.linkCalls)
+	}
+	got, err := os.ReadFile(dst)
+	if err != nil {
+		t.Fatalf("failed to read destination: %v", err)
+	}
+	if string(got) != string(content) {
+		t.Errorf("copied content = %q, want %q", string(got), string(content))
 	}
 }
 

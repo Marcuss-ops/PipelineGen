@@ -18,6 +18,10 @@ import (
 // later materialized by RenderingGen from the asset manifest.
 func BuildPlan(input PlanInput, config PlannerConfig) (OverlayPlan, error) {
 	config = config.withDefaults()
+	// Documentary Highlighting showcase IDs are accepted at the generation
+	// boundary, then lowered to phrase-relative renderer motions before pool
+	// validation and rotation. This keeps fixed demo coordinates out of jobs.
+	input.PhraseMotions = resolveDocumentaryPhraseMotions(input.PhraseMotions)
 	motionSeed := strings.TrimSpace(input.MotionSeed)
 	if motionSeed == "" {
 		motionSeed = input.PlanID
@@ -59,9 +63,10 @@ func BuildPlan(input PlanInput, config PlannerConfig) (OverlayPlan, error) {
 		}
 		input.PhraseMotions = familyPool
 	}
-	if len(input.PhraseMotions) > 0 {
-		input.PhraseMotions = limitedShuffledMotionPool(input.PhraseMotions, laneAnimationCount(input.AnimationCounts, laneImportantPhrase), motionSeed+"\x00phrase_pool")
-	}
+	// Keep the complete validated family pool until an overlay's lane has
+	// applied its compatibility rules. Trimming here used the global count as
+	// a catalog-size limit, so a 15-motion sample from the 122-entry mixed
+	// family almost always lost Brush and rarely retained any spatial 3D IDs.
 	plan := OverlayPlan{
 		SchemaVersion: SchemaVersionPlan,
 		PlanID:        input.PlanID, VideoID: input.VideoID, ProjectID: input.ProjectID,
@@ -408,6 +413,10 @@ func BuildPlan(input PlanInput, config PlannerConfig) (OverlayPlan, error) {
 			case input.HeavyPhrasePriority > 0 && itemPriority(plan.Items[i]) >= input.HeavyPhrasePriority:
 				plan.Items[i].MotionID = selectHeavyPhraseMotionLimited(motionSeed, "run", heavyOrdinal, input.PhraseMotions, laneAnimationCount(input.AnimationCounts, laneImportantPhrase))
 				heavyOrdinal++
+			case len(input.PhraseMotions) == 1:
+				// A caller-supplied singleton pool is an explicit motion choice;
+				// keep it stable across all long bullets in the run.
+				plan.Items[i].MotionID = input.PhraseMotions[0]
 			case len(strings.Fields(plan.Items[i].Text)) >= 6:
 				plan.Items[i].MotionID = selectLongPhraseMotionLimited(motionSeed, "run", phraseOrdinal, input.PhraseMotions, laneAnimationCount(input.AnimationCounts, laneImportantPhrase))
 			default:

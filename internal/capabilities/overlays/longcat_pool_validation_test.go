@@ -17,12 +17,13 @@ func TestLongCatalogPoolIsLongLaneCompatible(t *testing.T) {
 		t.Fatalf("read longpool: %v", err)
 	}
 	lines := strings.Split(strings.TrimSpace(string(raw)), "\n")
-	// 37 = the Apple-only long lane: the 10 text_3d_v1 entries render pure
-	// black on the standalone overlay path (frame-verified), and the
-	// typewriter/highlight/burst families were retired with the catalog,
-	// so the catalog job rotates the surviving Apple inventories only.
-	if len(lines) != 37 {
-		t.Fatalf("longpool has %d motions, want 37 (Apple-only long lane)", len(lines))
+	// 66 = 34 Apple + 2 soft Brush accents + 5 semantic highlights + 15 native documentary presets + 10 text_3d_v1. The 3D
+	// family is back after the renderer fix was frame-verified (2026-10-15);
+	// the 2026-10-15 look-alike prune retired apple_focus_rise,
+	// apple_hero_statement and glass_morphism_fade from it (kept:
+	// apple_soft_scale, hero_scale_focus). Only retired motions stay out.
+	if len(lines) != 66 {
+		t.Fatalf("longpool has %d motions, want 66 (Apple + soft Brush + semantic highlights + 15 native documentary presets + fixed 3D long lane)", len(lines))
 	}
 	certified := make(map[string]bool, len(CertifiedPhraseMotions()))
 	for _, id := range CertifiedPhraseMotions() {

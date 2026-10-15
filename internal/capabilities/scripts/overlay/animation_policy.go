@@ -50,6 +50,9 @@ func ApplyAnimationPolicies(items []capabilityoverlay.OverlayItem, policies []sc
 		if strings.TrimSpace(policy.Target) != policy.Target || strings.TrimSpace(policy.GroupID) != policy.GroupID || strings.TrimSpace(policy.SubgroupID) != policy.SubgroupID || strings.TrimSpace(policy.MotionID) != policy.MotionID {
 			return fmt.Errorf("animation_policies[%d] selector fields must be trimmed", i)
 		}
+		if policy.Target == "important_phrase" {
+			policy.MotionID = capabilityoverlay.ResolveDocumentaryPhraseMotion(policy.MotionID)
+		}
 		if policy.Target != "important_phrase" && policy.Target != "image" && policy.Target != "caption" && policy.Target != "date" && policy.Target != "metric" {
 			return fmt.Errorf("animation_policies[%d] has unsupported target %q", i, policy.Target)
 		}

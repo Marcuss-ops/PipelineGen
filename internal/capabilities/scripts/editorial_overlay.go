@@ -87,16 +87,14 @@ func projectEditorialOverlays(result *GenerateResult, language Language, scenes 
 			if bullet.SentenceStart < 0 || bullet.SentenceEnd <= bullet.SentenceStart {
 				continue
 			}
-			shortText := editorialBulletShortPhrase(editorial, bullet)
-			if shortText == "" {
+			// Use the complete extractive sentence span for the bullet. Besides
+			// remaining grounded verbatim, this routes the card through the long
+			// phrase lane so camera/3D motions authored for longer copy can render.
+			longText := editorialBulletLongPhrase(bullet)
+			if longText == "" {
 				continue
 			}
-			// The blocking overlay rule forbids one- and two-word callouts,
-			// and the extractor regularly returns a two-word highlight. Grow the
-			// certified snippet into the following spoken words instead of
-			// dropping the scene, so the short-phrase family still renders.
-			shortText = expandEditorialPhraseToMinimumWords(string(language), text, shortText)
-			if located, ok := locateEditorialPhrase(*voiceover.Timing, text, shortText); ok &&
+			if located, ok := locateEditorialPhrase(*voiceover.Timing, text, longText); ok &&
 				located.StartUS >= 0 && located.EndUS > located.StartUS && located.EndUS <= voiceover.Timing.DurationUS {
 				annotation := editorialTimedAnnotation(located, window[0], "scene_bullet", 0.99)
 				inputs[inputIndex].Phrases = append(inputs[inputIndex].Phrases, annotation)
@@ -275,47 +273,11 @@ func expandEditorialPhraseToMinimumWords(language, sceneText, phrase string) str
 	return trimmed
 }
 
-// editorialBulletShortPhrase chooses the highest-scoring Rust-certified
-// visual highlight from the sentence span summarized by this scene bullet.
-// Rust marks only phrases of at most five words visual-eligible, which routes
-// the resulting card through the certified short-phrase motion family.
-func editorialBulletShortPhrase(scene scriptpkg.EditorialScene, bullet scriptpkg.EditorialSceneBullet) string {
-	var chosen string
-	bestScore := -1.0
-	var sceneFallback string
-	sceneFallbackScore := -1.0
-	for _, highlight := range scene.Highlights {
-		words := strings.Fields(strings.TrimSpace(highlight.Text))
-		if !highlight.VisualEligible || len(words) == 0 || len(words) > 5 {
-			continue
-		}
-		if highlight.Score > sceneFallbackScore {
-			sceneFallback, sceneFallbackScore = strings.TrimSpace(highlight.Text), highlight.Score
-		}
-		// Rust may index sentence spans across the complete script. Grounding
-		// against this scene's bullet text is the reliable scene-local check.
-		if strings.Contains(strings.ToLower(bullet.Text), strings.ToLower(strings.TrimSpace(highlight.Text))) && highlight.Score > bestScore {
-			chosen, bestScore = strings.TrimSpace(highlight.Text), highlight.Score
-		}
-	}
-	if chosen == "" {
-		if sceneFallback != "" {
-			return sceneFallback
-		}
-		// The sentence-span bullet itself is an extractive source. When the
-		// analyzer did not provide a shorter visual highlight, use its opening
-		// five words; locateEditorialPhrase below still requires exact spoken
-		// text and certified word timing before the phrase can render. The
-		// blocking overlay rule keeps the three-word minimum here as well.
-		words := strings.Fields(strings.TrimSpace(bullet.Text))
-		if len(words) > 5 {
-			words = words[:5]
-		}
-		if len(words) >= 3 {
-			return strings.Join(words, " ")
-		}
-	}
-	return chosen
+// editorialBulletLongPhrase returns the complete source sentence span. The
+// editor may shorten it later, but the default camera-motion lane needs copy
+// long enough to use the certified long-phrase animation catalog.
+func editorialBulletLongPhrase(bullet scriptpkg.EditorialSceneBullet) string {
+	return strings.TrimSpace(bullet.Text)
 }
 
 func validEditorialManifestScene(scene scriptpkg.EditorialScene, text, transcript string) bool {

@@ -36,7 +36,9 @@ func TestRetiredShortPhraseRecipesAreNeverSelectable(t *testing.T) {
 		}
 		for _, family := range []string{
 			"modern_product_v1", "short_phrase_product_v1", "modern_apple",
-			"typewriter", "brush_v1", "text_3d_v1", "classic_apple", "documentary_clean_v1",
+			"typewriter", "brush_v1", "text_3d_v1", "classic_apple",
+			// documentary_clean_v1 was retired 2026-10-15 and is no longer
+			// a selectable family, so it cannot leak retired recipes.
 		} {
 			if containsMotion(certifiedPhraseFamily(family), id) {
 				t.Errorf("retired recipe %q is still reachable through family %q", id, family)

@@ -64,6 +64,7 @@ func publishCuts(ctx context.Context, runner StepRunner, sourceID string, source
 	var publishedChunks []ChunkState
 	pending := make([]stockPendingCommit, 0, len(groupPlans))
 	var uploadTasks []clipUploadTask
+	var resumedResults []clipUploadResult
 
 	for clipIdx, plan := range groupPlans {
 		item := result.Items[clipIdx]
@@ -100,7 +101,15 @@ func publishCuts(ctx context.Context, runner StepRunner, sourceID string, source
 		}
 
 		actualDurationMs := int(item.DurationSec * 1000)
-		if batchRepo != nil {
+		// Resume: an artifact already PUBLISHED/VERIFIED by a dead attempt
+		// must not be re-uploaded (that would publish a duplicate Drive
+		// file). Its persisted Drive identity is reused for the commit
+		// below; the upload pool only ever sees fresh artifacts.
+		resumedFileID, resumedFolderID, resumedLink, resumed, resumedErr := publishedRowReusable(ctx, batchRepo, artifactID)
+		if resumedErr != nil {
+			return nil, nil, fmt.Errorf("%w: inspect artifact %s for resume: %w", ErrStockExtractClipsDurableStateFailed, artifactID, resumedErr)
+		}
+		if batchRepo != nil && !resumed {
 			if err := batchRepo.MarkArtifactExtracted(ctx, artifactID, item.OutputPath, hash, actualDurationMs); err != nil {
 				return nil, nil, fmt.Errorf("%w: mark artifact %s extracted: %w", ErrStockExtractClipsDurableStateFailed, artifactID, err)
 			}
@@ -149,6 +158,46 @@ func publishCuts(ctx context.Context, runner StepRunner, sourceID string, source
 				PathLeafName:       leafName,
 			}
 
+			if resumed {
+				// Reattach the persisted Drive identity (the commit below
+				// persists it as the row's primary location) and record
+				// the chunk without touching the upload pool.
+				downloadLink := "https://drive.google.com/uc?id=" + resumedFileID
+				if clip != nil {
+					clip.SetDriveFileID(resumedFileID)
+					clip.SetDriveLink(resumedLink)
+					clip.SetDownloadLink(downloadLink)
+					clip.SetFolderID(resumedFolderID)
+				}
+				resumedResults = append(resumedResults, clipUploadResult{
+					chunk: ChunkState{
+						Index:              clipIdx,
+						ArtifactID:         plan.OutputLogicalID,
+						Filename:           segmentFilename,
+						LocalPath:          item.OutputPath,
+						SizeBytes:          item.SizeBytes,
+						SHA256:             hash,
+						Description:        plan.Description,
+						Title:              plan.Title,
+						SourceURL:          plan.SourceID,
+						SourceProvider:     plan.SourceProvider,
+						SourceVideoID:      plan.SourceVideoID,
+						StartSec:           plan.StartSec,
+						EndSec:             plan.EndSec,
+						Round:              plan.Round,
+						Tags:               append([]string(nil), plan.Tags...),
+						Category:           plan.Category,
+						Slug:               plan.Slug,
+						RemoteFileID:       resumedFileID,
+						RemoteWebViewLink:  resumedLink,
+						DrivePath:          resumedLink,
+						RemoteDownloadLink: downloadLink,
+						TimestampFolderID:  resumedFolderID,
+					},
+					leafName: leafName,
+				})
+				continue
+			}
 			uploadTasks = append(uploadTasks, clipUploadTask{
 				clipIdx:         clipIdx,
 				plan:            plan,
@@ -273,6 +322,21 @@ func publishCuts(ctx context.Context, runner StepRunner, sourceID string, source
 			}
 			bucket.chunks = append(bucket.chunks, res.chunk)
 		}
+	}
+
+	// Resumed chunks (already published by a dead attempt) merge into
+	// the same buckets in plan order; the canonical commit below
+	// upserts the same deterministic rows again instead of duplicating
+	// Drive files. This runs even when every clip resumed (uploadTasks
+	// empty) so a fully-resumed group still reports its chunks.
+	for _, res := range resumedResults {
+		publishedChunks = append(publishedChunks, res.chunk)
+		bucket := groupBuckets[res.leafName]
+		if bucket == nil {
+			bucket = &timestampGroupBuffer{leafName: res.leafName, firstIndex: res.chunk.Index}
+			groupBuckets[res.leafName] = bucket
+		}
+		bucket.chunks = append(bucket.chunks, res.chunk)
 	}
 
 	// GATE: canonical media commit. media_assets + the media index outbox

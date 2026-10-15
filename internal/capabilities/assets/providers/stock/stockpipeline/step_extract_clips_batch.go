@@ -61,6 +61,14 @@ func prepareBatchState(ctx context.Context, runner StepRunner, sourceID string, 
 }
 
 // markArtifactsExtracting marks all artifacts for a source group as EXTRACTING.
+// It is resume-aware across job attempts: a retry of a run whose previous
+// attempt died mid-extract inherits stranded rows, and claiming them must
+// converge instead of poisoning the retry (the strict PLANNED-only claim
+// turned every retried run with partial progress into a deterministic
+// failure on its first clip). Artifact IDs are unique per (batch, source,
+// clip) — orderedPlanGroups builds one group per source and the mark loop is
+// sequential — so an EXTRACTING row seen here can only be an orphan of a dead
+// attempt, never a live worker's claim; reclaiming it is race-safe.
 func markArtifactsExtracting(ctx context.Context, runner StepRunner, batchID, sourceID string, groupPlans []ClipPlan) error {
 	batchRepo := runner.BatchRepository()
 	if batchRepo == nil {
@@ -68,11 +76,74 @@ func markArtifactsExtracting(ctx context.Context, runner StepRunner, batchID, so
 	}
 	for clipIdx := range groupPlans {
 		artifactID := StockArtifactID(batchID, sourceID, clipIdx)
-		if err := batchRepo.MarkArtifactExtracting(ctx, artifactID); err != nil {
+		if err := claimArtifactForExtract(ctx, batchRepo, artifactID); err != nil {
 			return fmt.Errorf("%w: mark artifact %s extracting: %w", ErrStockExtractClipsDurableStateFailed, artifactID, err)
 		}
 	}
 	return nil
+}
+
+// claimArtifactForExtract claims one artifact row for extraction, resuming
+// durable progress left by a dead attempt:
+//   - missing row: fail-closed (prepareBatchState owns creation; a missing
+//     row is a wiring bug, not work to invent);
+//   - PLANNED / RETRY_WAIT: normal claim;
+//   - EXTRACTING: orphan of a dead attempt — reconcile to RETRY_WAIT first,
+//     then claim (attempts keeps counting, so FindIncompleteArtifacts'
+//     maxAttempts bound still applies);
+//   - EXTRACTED / PUBLISHED / VERIFIED: durable progress — keep as-is. The
+//     downstream marks already tolerate repeats (Extracted accepts
+//     EXTRACTING|EXTRACTED, Published accepts EXTRACTED|PUBLISHED, Verified
+//     accepts PUBLISHED|VERIFIED) and publishCuts skips re-uploading
+//     already-published rows, so no duplicate Drive file is produced;
+//   - FAILED_PERMANENT / QUARANTINED / anything else: fail-closed, as before.
+func claimArtifactForExtract(ctx context.Context, batchRepo StockBatchRepository, artifactID string) error {
+	artifact, err := batchRepo.GetArtifact(ctx, artifactID)
+	if err != nil {
+		return err
+	}
+	if artifact == nil {
+		// Test/back-compat repositories expose no rows (GetArtifact →
+		// nil, nil) while accepting MarkArtifactExtracting unconditionally;
+		// production MarkArtifactExtracting still fails closed on a missing
+		// row, so delegating preserves both contracts.
+		return batchRepo.MarkArtifactExtracting(ctx, artifactID)
+	}
+	switch artifact.Status {
+	case ArtifactStateExtracted, ArtifactStatePublished, ArtifactStateVerified:
+		return nil
+	case ArtifactStateExtracting:
+		if err := batchRepo.MarkArtifactFailed(ctx, artifactID, ArtifactStateRetryWait, "reclaim orphaned EXTRACTING claim from a dead attempt"); err != nil {
+			return err
+		}
+	}
+	return batchRepo.MarkArtifactExtracting(ctx, artifactID)
+}
+
+// publishedRowReusable returns the persisted Drive identity when the artifact
+// row already carries a completed publication (PUBLISHED or VERIFIED with a
+// Drive file ID) from a dead attempt. Reusing it lets a retry commit the same
+// deterministic rows without uploading a duplicate Drive file. ok=false means
+// "upload normally"; a non-nil error is fail-closed (the row could not be
+// inspected, so the caller must abort rather than risk a duplicate).
+func publishedRowReusable(ctx context.Context, batchRepo StockBatchRepository, artifactID string) (fileID, folderID, webLink string, ok bool, err error) {
+	if batchRepo == nil {
+		return "", "", "", false, nil
+	}
+	artifact, err := batchRepo.GetArtifact(ctx, artifactID)
+	if err != nil {
+		return "", "", "", false, err
+	}
+	if artifact == nil {
+		return "", "", "", false, nil
+	}
+	if artifact.Status != ArtifactStatePublished && artifact.Status != ArtifactStateVerified {
+		return "", "", "", false, nil
+	}
+	if artifact.DriveFileID == "" {
+		return "", "", "", false, nil
+	}
+	return artifact.DriveFileID, artifact.DriveFolderID, artifact.DriveLink, true, nil
 }
 
 // markGroupsRetryable reconciles artifacts that were marked EXTRACTING before

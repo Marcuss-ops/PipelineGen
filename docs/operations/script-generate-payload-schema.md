@@ -90,13 +90,19 @@ composition styles only supply layout, motion, and fallback color.
   `video_metadata`, `intro`, `outro`) is optional unless its own
   validator says otherwise (`source` is required).
 
-For a full current phrase palette, set `phrase_motion_family` to
-`modern_product_v1`. It rotates certified modern Apple, typewriter, spatial
-3D, and text brush accents across phrase items; phrases shorter than six words
-always use the Short Phrases lane, including phrases marked high priority.
-Retries with the same job identity keep the same selection. Image motions are
-sampled independently per image item. `modern_apple` remains available when a
-payload explicitly wants only that style family.
+For the full current phrase palette, set `phrase_motion_family` to
+`modern_product_v1`. It includes the callable Apple, text brush, and spatial
+3D catalogs, plus phrase-relative documentary highlighting spans; retired
+typewriter motions and the conspicuous Brush line treatments are not callable.
+Long phrases (six words or more) rotate across Apple, the two soft Brush accents,
+documentary highlights, and spatial 3D motions. Their
+family is filtered before the requested animation-count window is selected, so
+the window does not collapse to the most numerous family. Phrases shorter than
+six words always use the Short Phrases lane, including phrases marked high
+priority. Retries with the same job identity keep the same selection. Image
+motions are sampled independently per image item.
+`modern_apple` remains available when a payload explicitly wants only that
+style family.
 
 `script_params.segments[].extract_entities` optionally overrides the
 item-wide `output.extract_entities` tri-state for that scene. Omitted or
@@ -179,8 +185,12 @@ by pin id (`subtitle`, `category` wind/solar/focus, `color` #RRGGBB,
 Region systems use a circular highlight (no polygon dataset exists);
 the global-context inset is a stylized schematic, not a second real map.
 `phrase_motions`, `image_motions`, and `entity_image_motions` accept arrays of
-certified animation IDs and rotate through the requested pool. Omit an array
-to use the existing seeded per-overlay rotation.
+certified animation IDs and rotate through the requested pool. `phrase_motions`
+also accepts the 15 `doc_01`…`doc_15` Documentary Highlighting showcase IDs;
+PipelineGen resolves those aliases to phrase-relative Brush, Apple, or 3D
+motions before validating and compiling the pool, so they adapt to the supplied
+copy instead of replaying sample-specific geometry. Omit an array to use the
+existing seeded per-overlay rotation.
 
 Nearby overlay items in the same scene are fused into one chain overlay when
 they overlap or have no more than five seconds of empty timeline between them.

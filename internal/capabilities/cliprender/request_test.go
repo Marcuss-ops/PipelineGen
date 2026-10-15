@@ -472,15 +472,39 @@ func TestTranscriptPersistDefaultAndExplicitOptOut(t *testing.T) {
 }
 
 func TestValidate_ClipEffectsRequireBoundedSupportedSettings(t *testing.T) {
-	valid := &RenderRequest{SourceAssetID: "asset-1", Output: &OutputSpec{Effects: []ClipEffectSpec{{Type: "glitch", Amount: .7, Seed: 9}}, Grid: &ClipGridSpec{SpacingPX: 64, LineWidthPX: 1, Color: "#44D7B6", Opacity: .2}}}
+	valid := &RenderRequest{
+		SourceAssetID: "asset-1",
+		Output: &OutputSpec{
+			Effects: []ClipEffectSpec{
+				{Type: "glitch", Amount: .7, Seed: 9},
+				{Type: "glow", Radius: 32, Intensity: 1.5},
+				{Type: "bloom", Radius: 24, Intensity: 1.2, Threshold: 0.75},
+				{Type: "lens_distortion", Curvature: 0.15, Scale: 1.05},
+				{Type: "sharpen", Amount: 2.0},
+				{Type: "banded_grain", Intensity: 0.8, Speed: 1.5, Seed: 42},
+			},
+			Grid: &ClipGridSpec{
+				Style:       "dots",
+				SpacingPX:   48,
+				DotRadiusPX: 3.0,
+				Color:       "#44D7B6",
+				Opacity:     .25,
+			},
+		},
+	}
 	valid.Normalize()
 	if err := valid.Validate(); err != nil {
-		t.Fatalf("valid effect request: %v", err)
+		t.Fatalf("valid modern effects request: %v", err)
 	}
 	invalid := &RenderRequest{SourceAssetID: "asset-1", Output: &OutputSpec{Effects: []ClipEffectSpec{{Type: "not_supported"}}}}
 	invalid.Normalize()
 	if err := invalid.Validate(); err == nil {
 		t.Fatal("unsupported global effect must fail at request validation")
+	}
+	invalidLens := &RenderRequest{SourceAssetID: "asset-1", Output: &OutputSpec{Effects: []ClipEffectSpec{{Type: "lens_distortion", Curvature: 2.5}}}}
+	invalidLens.Normalize()
+	if err := invalidLens.Validate(); err == nil {
+		t.Fatal("lens_distortion curvature > 1 must fail at request validation")
 	}
 }
 

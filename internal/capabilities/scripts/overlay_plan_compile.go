@@ -398,7 +398,11 @@ func compileOverlayPlanWithMotionOffset(result *GenerateResult, language Languag
 		canvas.EntityStyleID, canvas.EntityImageMotions, canvas.EntityCaptionMotions); err != nil {
 		return nil, fmt.Errorf("overlay plan: entity image motions: %w", err)
 	}
-	capabilityoverlay.EnsureDistinctPhraseMotions(items, capabilityoverlay.PlanInput{PlanID: planID, VideoID: videoID, MotionSeed: motionSeed})
+	capabilityoverlay.EnsureDistinctPhraseMotions(items, capabilityoverlay.PlanInput{
+		PlanID: planID, VideoID: videoID, MotionSeed: motionSeed,
+		PhraseMotions: canvas.PhraseMotions, PhraseMotionFamily: canvas.PhraseMotionFamily,
+		AnimationCounts: canvas.AnimationCounts,
+	})
 	capabilityoverlay.EnsureDistinctNumberMotions(items, nil)
 	prePolicyMotions := make(map[int]string, len(items))
 	for index := range items {

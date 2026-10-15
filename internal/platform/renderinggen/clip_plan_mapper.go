@@ -355,7 +355,21 @@ func mapClipGrid(grid *cliprender.ClipGridSpec) *clipGridBlock {
 	if grid == nil {
 		return nil
 	}
-	return &clipGridBlock{SpacingPX: grid.SpacingPX, LineWidthPX: grid.LineWidthPX, Color: grid.Color, Opacity: grid.Opacity}
+	b := &clipGridBlock{
+		Style:     grid.Style,
+		SpacingPX: grid.SpacingPX,
+		Color:     grid.Color,
+		Opacity:   grid.Opacity,
+	}
+	if grid.LineWidthPX > 0 {
+		lw := grid.LineWidthPX
+		b.LineWidthPX = &lw
+	}
+	if grid.DotRadiusPX > 0 {
+		dr := grid.DotRadiusPX
+		b.DotRadiusPX = &dr
+	}
+	return b
 }
 
 func mapClipEffects(effects []cliprender.ClipEffectSpec) []map[string]any {
@@ -391,6 +405,30 @@ func mapClipEffects(effects []cliprender.ClipEffectSpec) []map[string]any {
 			item["size"] = effect.Size
 			item["seed"] = effect.Seed
 			item["animated"] = effect.Animated
+		case "glow":
+			item["radius"] = effect.Radius
+			item["intensity"] = effect.Intensity
+		case "bloom":
+			item["radius"] = effect.Radius
+			item["intensity"] = effect.Intensity
+			if effect.Threshold != 0 {
+				item["threshold"] = effect.Threshold
+			}
+		case "lens_distortion":
+			item["curvature"] = effect.Curvature
+			if effect.Scale != 0 {
+				item["scale"] = effect.Scale
+			}
+		case "sharpen":
+			item["amount"] = effect.Amount
+		case "banded_grain":
+			item["intensity"] = effect.Intensity
+			if effect.Speed != 0 {
+				item["speed"] = effect.Speed
+			}
+			if effect.Seed != 0 {
+				item["seed"] = effect.Seed
+			}
 		}
 		out = append(out, item)
 	}

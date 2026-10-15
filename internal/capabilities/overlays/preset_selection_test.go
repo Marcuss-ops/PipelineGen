@@ -55,9 +55,11 @@ func TestHeavyPhraseMotionRotationCoversFamilies(t *testing.T) {
 			selectedFamilies["text_3d_v1"] = true
 		case containsMotionID(brushPhraseMotionCandidates, id):
 			selectedFamilies["brush_v1"] = true
+		case containsMotionID(documentaryHighlightMotionCandidates, id):
+			selectedFamilies["documentary_highlighting_v1"] = true
 		}
 	}
-	for _, family := range []string{"classic_apple", "modern_apple", "text_3d_v1", "brush_v1"} {
+	for _, family := range []string{"classic_apple", "modern_apple", "text_3d_v1", "brush_v1", "documentary_highlighting_v1"} {
 		if !selectedFamilies[family] {
 			t.Errorf("first heavy phrase rotation omits family %s: %v", family, selectedFamilies)
 		}
