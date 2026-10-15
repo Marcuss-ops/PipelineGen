@@ -91,9 +91,13 @@ composition styles only supply layout, motion, and fallback color.
   validator says otherwise (`source` is required).
 
 For the full current phrase palette, set `phrase_motion_family` to
-`modern_product_v1`. It includes the callable Apple, text brush, and spatial
-3D catalogs, plus phrase-relative documentary highlighting spans; retired
-typewriter motions and the conspicuous Brush line treatments are not callable.
+`modern_product_v1`. It includes the callable Apple, text brush, spatial 3D,
+and documentary phrase catalogs. The 15 `doc_01`…`doc_15` IDs each keep their
+own runtime treatment, including selective marker sweeps, red keyword impact,
+mixed-font emphasis, underline, contrast focus, line reveal, scanner and dual
+highlight. `documentary_highlighting_v1` selects only that documentary family.
+Retired typewriter motions and the conspicuous Brush line treatments are not
+callable.
 Long phrases (six words or more) rotate across Apple, the two soft Brush accents,
 documentary highlights, and spatial 3D motions. Their
 family is filtered before the requested animation-count window is selected, so
