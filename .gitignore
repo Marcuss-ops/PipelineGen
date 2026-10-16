@@ -60,6 +60,12 @@ config.yaml
 /admin
 /worker
 /model-registry-gen
+# Alias facade generator (built locally from cmd/overlay-model-alias-gen).
+# Anchored with leading '/' so the pattern matches only the root-level build
+# artifact and can never exclude the cmd/overlay-model-alias-gen/ source tree —
+# same forward-prevention reasoning as /ner-eval and /mediacert above.
+# Rebuild on demand: go build -o overlay-model-alias-gen ./cmd/overlay-model-alias-gen/
+/overlay-model-alias-gen
 /seed_fixture
 /gen-api-docs
 /gen_baseline
