@@ -2,6 +2,7 @@ package scriptgeneration
 
 import (
 	"fmt"
+	caprender "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/render"
 	"testing"
 
 	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
@@ -60,9 +61,9 @@ func TestAssignEntityImageMotionsUsesCertifiedCatalog(t *testing.T) {
 	for _, item := range items {
 		if len(item.ImageLayers) > 0 {
 			// Composite children draw from their per-size entrance family
-			// (CompositeImageMotionPool), so they never reuse another group
+			// (caprender.CompositeImageMotionPool), so they never reuse another group
 			// size's family. They are excluded from the single-portrait rotation.
-			family := capabilityoverlay.CompositeImageMotionPool(len(item.ImageLayers))
+			family := caprender.CompositeImageMotionPool(len(item.ImageLayers))
 			for _, layer := range item.ImageLayers {
 				if layer.MotionID == "" {
 					t.Fatalf("composite child lost its motion")

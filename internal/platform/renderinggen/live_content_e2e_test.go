@@ -2,6 +2,7 @@ package renderinggen
 
 import (
 	"context"
+	caprender "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/render"
 	"os"
 	"path/filepath"
 	"testing"
@@ -56,8 +57,8 @@ func TestLiveContentShowcaseE2E(t *testing.T) {
 	chartHash := sha256Hex(chart)
 	logoHash := sha256Hex(logo)
 	poppinsHash := sha256Hex(poppinsBold)
-	if backgroundHash != capoverlay.GoldenBackgroundVideoHash || globeHash != capoverlay.GoldenGlobeHash ||
-		chartHash != capoverlay.GoldenChartHash || logoHash != capoverlay.GoldenLogoHash {
+	if backgroundHash != caprender.GoldenBackgroundVideoHash || globeHash != caprender.GoldenGlobeHash ||
+		chartHash != caprender.GoldenChartHash || logoHash != caprender.GoldenLogoHash {
 		t.Fatalf("golden asset drift: bg=%s globe=%s chart=%s logo=%s", backgroundHash, globeHash, chartHash, logoHash)
 	}
 	if poppinsHash != goldenPoppinsBoldHash {

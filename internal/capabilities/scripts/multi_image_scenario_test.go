@@ -2,6 +2,7 @@ package scriptgeneration
 
 import (
 	"fmt"
+	caprender "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/render"
 	"testing"
 
 	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
@@ -61,7 +62,7 @@ func TestImageOnlyScenariosGroupAndAnimateByCloseness(t *testing.T) {
 			if len(composite.ImageLayers) != tc.wantLayers {
 				t.Fatalf("%s: composite has %d layers, want %d", tc.name, len(composite.ImageLayers), tc.wantLayers)
 			}
-			pool := capabilityoverlay.CompositeImageMotionPool(tc.wantLayers)
+			pool := caprender.CompositeImageMotionPool(tc.wantLayers)
 			for _, layer := range composite.ImageLayers {
 				if !containsString(pool, layer.MotionID) {
 					t.Fatalf("%s: layer %q motion %q outside its size pool", tc.name, layer.ID, layer.MotionID)

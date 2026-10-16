@@ -6,12 +6,12 @@ package scriptgeneration
 // certified timing and no prohibited collision.
 
 import (
+	caprender "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/render"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
 	scriptoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/overlay"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
@@ -41,10 +41,10 @@ func TestSIX01SingleIndexNoDuplicateExtraction(t *testing.T) {
 	// X01: one scene with numbers, a comparison and a causal link → one
 	// candidate per signal, evidence preserved, nothing duplicated.
 	sig := siSceneSignals()
-	cands := capabilityoverlay.ComparisonCandidates(
+	cands := caprender.ComparisonCandidates(
 		sig.SceneID, sig.Comparisons[0].Subjects, sig.Comparisons[0].CandidateVisual,
 		sig.Comparisons[0].Values, sig.Comparisons[0].EvidenceSentenceIDs, 0.8, false)
-	cands = append(cands, capabilityoverlay.CausalCandidates(
+	cands = append(cands, caprender.CausalCandidates(
 		sig.SceneID, sig.Causal[0].Cause, sig.Causal[0].Effect, sig.Causal[0].Relation,
 		sig.Causal[0].EvidenceSentenceIDs, 0.9, false)...)
 	require.Len(t, cands, 2, "one candidate per asserted signal")
@@ -65,7 +65,7 @@ func TestSIX02TenCandidatesCoherentAdmission(t *testing.T) {
 	win := func(s, e int64) *scriptpkg.TimelineWindow {
 		return &scriptpkg.TimelineWindow{StartMS: s, EndMS: e}
 	}
-	budget := capabilityoverlay.DensityOverlapBudget(0.85, 3)
+	budget := caprender.DensityOverlapBudget(0.85, 3)
 	cands := []scriptoverlay.VisualCandidate{
 		{CanonicalID: "s:chart-00", Kind: scriptoverlay.VisualChart, SceneID: "s", Requested: false, Window: win(0, 4000), Score: 0.9},
 		{CanonicalID: "s:image-00", Kind: scriptoverlay.VisualImage, SceneID: "s", Requested: false, Window: win(0, 2000), Score: 0.85},

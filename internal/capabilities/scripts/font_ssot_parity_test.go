@@ -1,6 +1,7 @@
 package scriptgeneration
 
 import (
+	caprender "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/render"
 	"sort"
 	"testing"
 
@@ -14,7 +15,7 @@ import (
 // path and hash for each. Adding a family is one entry on each side.
 func TestCanonicalFontAssetsParity(t *testing.T) {
 	var registry []string
-	for family := range capoverlay.CanonicalFontAssetsByFamily {
+	for family := range caprender.CanonicalFontAssetsByFamily {
 		registry = append(registry, family)
 	}
 	sort.Strings(registry)
@@ -28,7 +29,7 @@ func TestCanonicalFontAssetsParity(t *testing.T) {
 			t.Fatalf("font registry = %v, payload contract = %v", registry, supported)
 		}
 	}
-	for family, asset := range capoverlay.CanonicalFontAssetsByFamily {
+	for family, asset := range caprender.CanonicalFontAssetsByFamily {
 		if asset.Path == "" {
 			t.Errorf("family %q has no staged path", family)
 		}

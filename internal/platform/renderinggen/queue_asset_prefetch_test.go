@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"fmt"
+	caprender "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/render"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -12,7 +13,6 @@ import (
 	"strings"
 	"testing"
 
-	capoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
 	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
 )
 
@@ -94,7 +94,7 @@ func TestHTTPAssetPrefetcherStagesCanonicalPresetFont(t *testing.T) {
 
 	prefetcher := NewHTTPAssetPrefetcher(srv.URL)
 	err = prefetcher.Prefetch(context.Background(), []scriptgen.RenderQueueAsset{{
-		SHA256: font.Hash, URL: capoverlay.CanonicalPresetFontPath,
+		SHA256: font.Hash, URL: caprender.CanonicalPresetFontPath,
 	}})
 	if err != nil {
 		t.Fatal(err)
@@ -137,7 +137,7 @@ func TestHTTPAssetPrefetcherStagesCanonicalCyrillicFont(t *testing.T) {
 
 	prefetcher := NewHTTPAssetPrefetcher(srv.URL)
 	err = prefetcher.Prefetch(context.Background(), []scriptgen.RenderQueueAsset{{
-		SHA256: font.Hash, URL: capoverlay.CanonicalTextFontPath,
+		SHA256: font.Hash, URL: caprender.CanonicalTextFontPath,
 	}})
 	if err != nil {
 		t.Fatal(err)

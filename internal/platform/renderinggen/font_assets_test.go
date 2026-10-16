@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	capoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
+	caprender "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/render"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
@@ -145,7 +145,7 @@ func TestModernFontFleetIsRegisteredAndCertified(t *testing.T) {
 }
 
 func TestModernFontPathsMapToCanonicalRegistry(t *testing.T) {
-	for id, rel := range capoverlay.ModernFontPaths {
+	for id, rel := range caprender.ModernFontPaths {
 		got, ok := canonicalFontAssetID(rel)
 		if !ok || got != id {
 			t.Errorf("modern font path %q maps to (%q, %v), want %q", rel, got, ok, id)

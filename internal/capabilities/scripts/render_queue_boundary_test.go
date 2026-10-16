@@ -2,10 +2,10 @@ package scriptgeneration
 
 import (
 	"context"
+	caprender "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/render"
 	"testing"
 	"time"
 
-	capoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 )
 
@@ -97,7 +97,7 @@ func TestEnqueueChrononPlanRecordsBoundaryOperations(t *testing.T) {
 	run := obs.StartRun(context.Background(), kernobs.RunInfo{JobID: "job-e2e", JobType: "overlay.render", AttemptID: "attempt-e2e"})
 	ctx := kernobs.WithRun(context.Background(), run)
 
-	plan := capoverlay.GoldenOverlayPlanV1()
+	plan := caprender.GoldenOverlayPlanV1()
 	client := &slowBoundaryRenderClient{fakeRenderQueueClient: fakeRenderQueueClient{jobs: map[string]RenderQueueJob{plan.PlanID: {ID: plan.PlanID, State: RenderQueueStateCompleted}}}}
 	enqueuer, err := NewQueueRenderEnqueuer(client)
 	if err != nil {

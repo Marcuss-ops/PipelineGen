@@ -2,11 +2,11 @@ package scriptgeneration
 
 import (
 	"context"
+	caprender "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/render"
 	"sync"
 	"testing"
 	"time"
 
-	capoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
 	"github.com/Marcuss-ops/PipelineGen/pkg/corid"
 )
 
@@ -53,7 +53,7 @@ func TestOverlayRenderQueueJobCarriesRunCorrelation(t *testing.T) {
 	enqueuer.SetPollInterval(time.Millisecond)
 
 	ctx := corid.WithCorrelationID(context.Background(), "run-corr-42")
-	if _, err := enqueuer.EnqueueChrononPlan(ctx, capoverlay.GoldenOverlayPlanV1()); err != nil {
+	if _, err := enqueuer.EnqueueChrononPlan(ctx, caprender.GoldenOverlayPlanV1()); err != nil {
 		t.Fatalf("enqueue overlay plan: %v", err)
 	}
 	if got := client.lastJob(t).ParentJobID; got != "run-corr-42" {
@@ -62,7 +62,7 @@ func TestOverlayRenderQueueJobCarriesRunCorrelation(t *testing.T) {
 
 	// No correlation id in the context must NOT invent one: the queue then
 	// stores an empty parent instead of a fabricated join key.
-	if _, err := enqueuer.EnqueueChrononPlan(context.Background(), capoverlay.GoldenOverlayPlanV1()); err != nil {
+	if _, err := enqueuer.EnqueueChrononPlan(context.Background(), caprender.GoldenOverlayPlanV1()); err != nil {
 		t.Fatalf("enqueue overlay plan without correlation: %v", err)
 	}
 	if got := client.lastJob(t).ParentJobID; got != "" {

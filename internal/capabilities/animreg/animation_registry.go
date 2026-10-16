@@ -43,6 +43,12 @@ type AnimationRegistry struct {
 	byID           map[string]AnimationEntry
 	mapTypeAliases map[string]string
 	mapTypeDefault string
+	// Pre-indexes built once at load time so every Candidates-level lookup is
+	// O(1) instead of a scan over all entries. Each slice is kept in authored
+	// order; callers always receive a fresh copy and never mutate the index.
+	groupIndex  map[string][]string
+	randomIndex map[string][]string
+	targetIndex map[string][]string
 }
 
 func loadAnimationRegistry(raw []byte) (*AnimationRegistry, error) {
@@ -53,8 +59,16 @@ func loadAnimationRegistry(raw []byte) (*AnimationRegistry, error) {
 	if doc.Schema != "pipelinegen.animation-registry.v1" || doc.Version != 1 || len(doc.Entries) == 0 {
 		return nil, fmt.Errorf("animation registry: unsupported or empty document")
 	}
-	r := &AnimationRegistry{entries: doc.Entries, byID: make(map[string]AnimationEntry, len(doc.Entries)), mapTypeAliases: doc.MapTypeAliases, mapTypeDefault: doc.MapTypeDefault}
-	for _, e := range doc.Entries {
+	r := &AnimationRegistry{entries: doc.Entries, byID: make(map[string]AnimationEntry, len(doc.Entries)), mapTypeAliases: doc.MapTypeAliases, mapTypeDefault: doc.MapTypeDefault,
+		groupIndex: make(map[string][]string), randomIndex: make(map[string][]string), targetIndex: make(map[string][]string)}
+	const maxOrder = int(^uint(0) >> 1)
+	type rankedID struct {
+		id    string
+		order int
+		seq   int
+	}
+	groupRows := make(map[string][]rankedID)
+	for seq, e := range doc.Entries {
 		if strings.TrimSpace(e.ID) == "" || (e.Status != "active" && e.Status != "retired") {
 			return nil, fmt.Errorf("animation registry: invalid entry id/status %q/%q", e.ID, e.Status)
 		}
@@ -65,6 +79,35 @@ func loadAnimationRegistry(raw []byte) (*AnimationRegistry, error) {
 			return nil, fmt.Errorf("animation registry: active entry %q has no family", e.ID)
 		}
 		r.byID[e.ID] = e
+		if e.Status != "active" || !e.RendererSupported {
+			continue
+		}
+		for _, group := range e.Families {
+			order := maxOrder
+			if v, ok := e.Order[group]; ok {
+				order = v
+			}
+			groupRows[group] = append(groupRows[group], rankedID{id: e.ID, order: order, seq: seq})
+		}
+		for _, group := range e.Random {
+			r.randomIndex[group] = append(r.randomIndex[group], e.ID)
+		}
+		for _, target := range e.Targets {
+			r.targetIndex[target] = append(r.targetIndex[target], e.ID)
+		}
+	}
+	for group, rows := range groupRows {
+		sort.SliceStable(rows, func(i, j int) bool {
+			if rows[i].order != rows[j].order {
+				return rows[i].order < rows[j].order
+			}
+			return rows[i].seq < rows[j].seq
+		})
+		ids := make([]string, len(rows))
+		for i, row := range rows {
+			ids[i] = row.id
+		}
+		r.groupIndex[group] = ids
 	}
 	if r.mapTypeDefault == "" || !r.Selectable(r.mapTypeDefault, "map.basemap") {
 		return nil, fmt.Errorf("animation registry: map default %q is not an active basemap", r.mapTypeDefault)
@@ -105,50 +148,28 @@ func (r *AnimationRegistry) RendererSupported(id string) bool {
 
 // Candidates returns the registry-owned group in authored order. Retired and
 // renderer-unsupported entries are excluded from every automatic/explicit pool.
+// The lookup reads the pre-built group index (O(1)); the returned slice is a
+// fresh copy, so callers never mutate the index.
 func (r *AnimationRegistry) Candidates(group string) []string {
 	if r == nil {
 		return nil
 	}
-	type ranked struct {
-		id    string
-		order int
+	ids := r.groupIndex[group]
+	if ids == nil {
+		return nil
 	}
-	rows := make([]ranked, 0)
-	for _, e := range r.entries {
-		if !r.Selectable(e.ID, group) {
-			continue
-		}
-		order, ok := e.Order[group]
-		if !ok {
-			order = int(^uint(0) >> 1)
-		}
-		rows = append(rows, ranked{id: e.ID, order: order})
-	}
-	sort.SliceStable(rows, func(i, j int) bool { return rows[i].order < rows[j].order })
-	out := make([]string, len(rows))
-	for i, row := range rows {
-		out[i] = row.id
-	}
-	return out
+	return append([]string(nil), ids...)
 }
 
 func (r *AnimationRegistry) RandomCandidates(group string) []string {
 	if r == nil {
 		return nil
 	}
-	out := make([]string, 0)
-	for _, e := range r.entries {
-		if !r.Selectable(e.ID, group) {
-			continue
-		}
-		for _, randomGroup := range e.Random {
-			if randomGroup == group {
-				out = append(out, e.ID)
-				break
-			}
-		}
+	ids := r.randomIndex[group]
+	if ids == nil {
+		return nil
 	}
-	return out
+	return append([]string(nil), ids...)
 }
 
 func (r *AnimationRegistry) WordCount(id string) (int, bool) {
@@ -156,7 +177,7 @@ func (r *AnimationRegistry) WordCount(id string) (int, bool) {
 		return 0, false
 	}
 	e, ok := r.byID[id]
-	if !ok || e.Status != "active" || !e.RendererSupported || e.WordCount < 1 || !containsMotion(e.Families, "phrase.short") {
+	if !ok || e.Status != "active" || !e.RendererSupported || e.WordCount < 1 || !r.Selectable(id, "phrase.short") {
 		return 0, false
 	}
 	return e.WordCount, true
@@ -182,13 +203,11 @@ func (r *AnimationRegistry) TargetCandidates(target string) []string {
 	if r == nil {
 		return nil
 	}
-	var out []string
-	for _, e := range r.entries {
-		if e.Status == "active" && e.RendererSupported && containsMotion(e.Targets, target) {
-			out = append(out, e.ID)
-		}
+	ids := r.targetIndex[target]
+	if ids == nil {
+		return nil
 	}
-	return out
+	return append([]string(nil), ids...)
 }
 
 func (r *AnimationRegistry) SupportsTarget(id, target string) bool {

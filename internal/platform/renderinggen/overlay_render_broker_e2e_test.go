@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	caprender "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/render"
 	"io"
 	"net/http"
 	"os"
@@ -55,7 +56,7 @@ func TestOverlayRenderBrokerE2E(t *testing.T) {
 	imageAsset := mustRead(t, filepath.Join(fixtureRoot, "overlay_globe.png"))
 	backgroundHash := sha256Hex(background)
 	imageHash := sha256Hex(imageAsset)
-	if backgroundHash != capoverlay.GoldenBackgroundVideoHash || imageHash != capoverlay.GoldenGlobeHash {
+	if backgroundHash != caprender.GoldenBackgroundVideoHash || imageHash != caprender.GoldenGlobeHash {
 		t.Fatalf("golden asset drift: bg=%s img=%s", backgroundHash, imageHash)
 	}
 	putObject(t, storeURL, backgroundHash, background)
