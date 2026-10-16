@@ -185,10 +185,17 @@ const (
 	shortPhraseAnimationMinDurationUS int64 = 3_500_000
 	// maxPhraseOverlayDurationUS bounds one phrase clip so a very long spoken
 	// window keeps a sane tail ceiling.
-	maxPhraseOverlayDurationUS    int64 = 8_000_000
-	maxOverlayItemDurationUS      int64 = 5_000_000
-	mapCameraShotDurationUS       int64 = 8_000_000
-	maxCompositeOverlayDurationUS int64 = 8_000_000
+	maxPhraseOverlayDurationUS int64 = 8_000_000
+	maxOverlayItemDurationUS   int64 = 5_000_000
+	mapCameraShotDurationUS    int64 = 8_000_000
+	// maxCompositeOverlayDurationUS must cover the largest camera journey the
+	// composer can emit: 5 children, consecutive mention anchors up to
+	// entityImageMergeGapMS (5s) apart, each slot spaced at least
+	// hold (1.5s) + travel (2s) = 3.5s. Worst case offsets reach
+	// 4*5000ms = 20000ms, plus the final hold: 21500ms. Capping below
+	// that truncates the parent while layers keep their windows, which
+	// fails child-plan validation (x4 broke at the 8s cap).
+	maxCompositeOverlayDurationUS int64 = 22_000_000
 )
 
 // phraseWindowLimitUS is the longest the phrase clip may run before it would

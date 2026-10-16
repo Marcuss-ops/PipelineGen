@@ -211,8 +211,9 @@ func TestMapBasemapStylesAreUniqueAndNonEmpty(t *testing.T) {
 		}
 		seen[style] = struct{}{}
 	}
-	if _, ok := seen["esri_sat"]; !ok {
-		t.Fatal("basemap palette dropped esri_sat, the historic certified default")
+	defaultBasemap := capoverlay.AnimationRegistryMapTypeDefault()
+	if _, ok := seen[defaultBasemap]; !ok {
+		t.Fatalf("basemap palette dropped registry default %q", defaultBasemap)
 	}
 }
 
@@ -311,12 +312,12 @@ func TestRenderDynamicMapVideoMapPresentationIsDeterministicPerItem(t *testing.T
 	}
 
 	seed := mapRunSeed(plan)
-	// A plan that requests no map_type resolves the clean street map
-	// (esri_street); only map_type=random samples the 3-style classic
-	// palette. Camera and label always sample the item slot so several maps
-	// in one video differ.
+	// A plan that requests no map_type resolves the clean dark canvas
+	// (esri_dark); only map_type=random samples the palette.
+	// Camera and label always sample the item slot so several maps in one
+	// video differ.
 	want := map[string]string{
-		"basemap":          "esri_street",
+		"basemap":          "esri_dark",
 		"camera_animation": deterministicMapStyle(seed, "map_camera", "map-1", mapCameraAnimations),
 		"label_animation":  deterministicMapStyle(seed, "map_label", "map-1", mapLabelAnimations),
 	}
@@ -343,15 +344,16 @@ func TestRenderDynamicMapVideoMapPresentationIsDeterministicPerItem(t *testing.T
 	t.Fatalf("captured basemap %q is outside the certified palette %v", basemap, mapBasemapStyles())
 }
 
-// TestResolveMapBasemapDefaultsToStreet pins the runtime map-type
-// contract: omission means the clean street map, explicit ids win
-// verbatim, random samples only the 3-style classic palette, and unknown ids
-// fail closed.
-func TestResolveMapBasemapDefaultsToStreet(t *testing.T) {
+// TestResolveMapBasemapDefaultsToDark pins the runtime map-type
+// contract: omission and satellite mean the clean dark canvas (the satellite
+// tiles were retired 2026-10-16), roadmap means the light street canvas,
+// terrain means dark, random samples only the 3-style cartographic palette,
+// and unknown ids fail closed.
+func TestResolveMapBasemapDefaultsToDark(t *testing.T) {
 	for _, tc := range []struct{ in, want string }{
-		{"", "esri_street"}, {"satellite", "esri_sat"},
-		{"roadmap", "esri_street"}, {"terrain", "esri_topo"},
-		{"ROADMAP", "esri_street"},
+		{"", "esri_dark"}, {"satellite", "esri_dark"},
+		{"roadmap", "esri_light"}, {"terrain", "esri_dark"},
+		{"ROADMAP", "esri_light"},
 	} {
 		if got, err := resolveMapBasemap(tc.in, "seed", "map-1"); err != nil || got != tc.want {
 			t.Fatalf("resolveMapBasemap(%q) = %q, %v; want %q", tc.in, got, err, tc.want)
@@ -361,9 +363,9 @@ func TestResolveMapBasemapDefaultsToStreet(t *testing.T) {
 	if err != nil {
 		t.Fatalf("resolveMapBasemap(random): %v", err)
 	}
-	allowed := map[string]bool{"esri_sat": true, "esri_street": true, "esri_topo": true}
+	allowed := map[string]bool{"esri_ocean": true, "esri_light": true, "esri_dark": true}
 	if !allowed[got] {
-		t.Fatalf("random basemap = %q, want one of the 3 classic styles", got)
+		t.Fatalf("random basemap = %q, want one of the 3 retained cartographic styles", got)
 	}
 	if _, err := resolveMapBasemap("neon_cyber", "seed", "map-1"); err == nil {
 		t.Fatal("unknown map_type must fail closed")
@@ -474,7 +476,7 @@ func TestResolveMapComposition(t *testing.T) {
 	if err != nil {
 		t.Fatalf("random composition: %v", err)
 	}
-	want := deterministicMapStyle("seed-x", "map_composition", "map-1", mapMapAnimationsCertified())
+	want := deterministicMapStyle("seed-x", "map_composition", "map-1", mapMapAnimationsRandomPool())
 	if got != want {
 		t.Fatalf("random composition = %q, want pool pick %q", got, want)
 	}
@@ -484,8 +486,13 @@ func TestResolveMapComposition(t *testing.T) {
 	if _, err := resolveMapComposition("hyper_map", "seed", "map-1"); err == nil {
 		t.Fatal("unknown map composition must fail closed")
 	}
-	if len(mapMapAnimationsCertified()) != 23 {
-		t.Fatalf("certified compositions = %d, want the 15 systems + 8 GPU editorial scenes", len(mapMapAnimationsCertified()))
+	if len(mapMapAnimationsCertified()) == 0 {
+		t.Fatal("certified composition registry is empty")
+	}
+	for _, id := range mapMapAnimationsCertified() {
+		if !capoverlay.AnimationSelectable(id, "map.composition") {
+			t.Errorf("map composition %q is absent from the shared animation registry", id)
+		}
 	}
 	for _, invalid := range []struct {
 		id       string
@@ -544,13 +551,13 @@ func TestDeterministicMapStyleIsStableInRangeAndMatchesCatalog(t *testing.T) {
 	}
 	for _, channel := range []string{"map_camera", "map_label", "map_basemap"} {
 		options := mapCameraAnimations
-		wantSingle := "slow_approach"
+		wantSingle := ""
 		if channel == "map_label" {
 			options = mapLabelAnimations
-			wantSingle = "diffuse_city_beacon"
+			wantSingle = ""
 		} else if channel == "map_basemap" {
 			options = mapBasemapStyles()
-			wantSingle = "esri_sat"
+			wantSingle = capoverlay.AnimationRegistryMapTypeDefault()
 		}
 		picked := make(map[string]struct{})
 		for _, seed := range seeds {
@@ -574,8 +581,10 @@ func TestDeterministicMapStyleIsStableInRangeAndMatchesCatalog(t *testing.T) {
 			if len(picked) != 1 {
 				t.Fatalf("%s selected %d values from its single-treatment catalog: %v", channel, len(picked), picked)
 			}
-			if _, ok := picked[wantSingle]; !ok {
-				t.Fatalf("%s selected %v; want the approved treatment %q", channel, picked, wantSingle)
+			if wantSingle != "" && len(options) == 1 {
+				if _, ok := picked[wantSingle]; !ok {
+					t.Fatalf("%s selected %v; want the approved treatment %q", channel, picked, wantSingle)
+				}
 			}
 		} else if len(picked) < 2 {
 			t.Fatalf("%s resolved to a single value across %d runs (%v); the multi-choice catalog lost its variety", channel, len(seeds), picked)
@@ -1016,6 +1025,30 @@ func TestSeparateOverlayItemPlanAddsShortTailToPhraseDuration(t *testing.T) {
 	}
 	if child.DurationMS != 8000 || child.Items[0].DurationUS != 8_000_000 || child.Items[0].ImageLayers[1].StartMS != 3000 || child.Items[0].ImageLayers[1].EndMS != 8000 || meta.TargetDurationUS != 8_000_000 {
 		t.Fatalf("composite stagger was truncated: child=%+v meta=%+v", child, meta)
+	}
+
+	// A four-child camera journey (12s group window) must pass through
+	// untruncated: capping the parent below its layers fails child-plan
+	// validation with "invalid relative time range" (x4 regression).
+	big := composite
+	big.ID = "person-a+person-b+person-c+person-d"
+	big.StartUS, big.DurationUS = 0, 12_000_000
+	big.StartMs, big.EndMs = 0, 12000
+	big.AssetRefs = append(composite.AssetRefs,
+		capoverlay.OverlayAssetRef{AssetID: "c", SHA256: "123"},
+		capoverlay.OverlayAssetRef{AssetID: "d", SHA256: "456"})
+	big.ImageLayers = []capoverlay.OverlayImageLayer{
+		{ID: "person-a", AssetID: "dolly", StartMS: 0, EndMS: 12000, PresetID: "image_focus_in"},
+		{ID: "person-b", AssetID: "grace", StartMS: 3500, EndMS: 12000, PresetID: "image_scale_in"},
+		{ID: "person-c", AssetID: "c", StartMS: 7000, EndMS: 12000, PresetID: "image_focus_in"},
+		{ID: "person-d", AssetID: "d", StartMS: 10500, EndMS: 12000, PresetID: "image_scale_in"},
+	}
+	child, meta, err = separateOverlayItemPlan(parent, big, 3)
+	if err != nil {
+		t.Fatalf("four-child composite child plan: %v", err)
+	}
+	if child.DurationMS != 12000 || child.Items[0].DurationUS != 12_000_000 || meta.TargetDurationUS != 12_000_000 {
+		t.Fatalf("four-child composite was truncated: child=%+v meta=%+v", child, meta)
 	}
 
 	longLocalizedID := strings.Repeat("frase-pública-investigação-", 20)

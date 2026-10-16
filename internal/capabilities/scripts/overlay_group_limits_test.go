@@ -61,3 +61,24 @@ func TestApplyOverlayGroupLimitsAbsentKeyKeepsDefault(t *testing.T) {
 		t.Fatalf("absent long_phrases key must keep all items, got %d", len(got))
 	}
 }
+
+func TestEffectivePhraseOverlayCeilingAllowsOnePhraseGroupToRaiseDefault(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		limits map[string]int
+	}{
+		{name: "short only", limits: map[string]int{"short_phrases": 8}},
+		{name: "long only", limits: map[string]int{"long_phrases": 8}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := effectivePhraseOverlayCeiling(0, tc.limits); got != 8 {
+				t.Fatalf("effective phrase ceiling = %d, want 8", got)
+			}
+		})
+	}
+	for _, group := range []string{"short_phrases", "long_phrases"} {
+		if got := effectivePhraseOverlayCeiling(0, map[string]int{group: 0}); got != capabilityoverlay.MaxPhraseOverlaysPerRun {
+			t.Fatalf("explicit zero %s cap gives phrase ceiling %d, want default %d for the uncapped group", group, got, capabilityoverlay.MaxPhraseOverlaysPerRun)
+		}
+	}
+}

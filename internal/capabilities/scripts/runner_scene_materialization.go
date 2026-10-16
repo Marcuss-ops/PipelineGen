@@ -196,10 +196,26 @@ func materializeVerbatimSourceTextScenes(req GenerateRequest) ([]Scene, error) {
 			Index:              i,
 			DurationMS:         segment.DurationMS,
 			ShortPhraseOverlay: segment.ShortPhraseOverlay,
+			OverlayCategories:  scriptpkg.CloneOverlayCategories(segment.OverlayCategories),
 			Text:               map[Language]string{req.SourceLanguage: segment.SourceText},
 		})
 	}
 	return scenes, nil
+}
+
+// sceneForSegment returns the eligible scene that corresponds to the given
+// brief: matched by scene ID first, then by position, and finally the first
+// eligible scene. This keeps a hint on the scene that owns its brief.
+func sceneForSegment(scenes []Scene, eligible []int, segment scriptpkg.ScriptSegment, segmentIndex int) int {
+	for _, index := range eligible {
+		if segment.ID != "" && scenes[index].ID == segment.ID {
+			return index
+		}
+	}
+	if segmentIndex < len(eligible) {
+		return eligible[segmentIndex]
+	}
+	return eligible[0]
 }
 
 func ensureRequestedImportantPhrases(req GenerateRequest, scenes []Scene) []Scene {
@@ -236,12 +252,9 @@ func ensureRequestedImportantPhrases(req GenerateRequest, scenes []Scene) []Scen
 
 		index := eligible[0]
 		for i, segment := range req.ScriptParams.Segments {
-			if i >= len(eligible) {
-				break
-			}
 			if strings.Contains(strings.ToLower(segment.SourceText), strings.ToLower(hint)) ||
 				strings.Contains(strings.ToLower(segment.Topic), strings.ToLower(hint)) {
-				index = eligible[i]
+				index = sceneForSegment(scenes, eligible, segment, i)
 				break
 			}
 		}

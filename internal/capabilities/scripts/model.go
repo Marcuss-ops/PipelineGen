@@ -58,8 +58,15 @@ type GenerateRequest struct {
 	ChannelID string `json:"channel_id,omitempty"`
 	// PhraseMotions and ImageMotions are optional payload-selected certified
 	// animation pools. Empty delegates to the complete seeded random catalog.
-	PhraseMotions                 []string                                       `json:"phrase_motions,omitempty"`
-	PhraseMotionFamily            string                                         `json:"phrase_motion_family,omitempty"`
+	PhraseMotions      []string `json:"phrase_motions,omitempty"`
+	PhraseMotionFamily string   `json:"phrase_motion_family,omitempty"`
+	// MotionSeed is the per-render entropy for automatic motion rotation.
+	// Empty preserves the historical PlanID/VideoID behavior (byte-identical
+	// retries); a fresh value per render rotates the catalogs.
+	MotionSeed string `json:"motion_seed,omitempty"`
+	// CoherenceSeed picks the run's dominant horizontal direction; empty derives
+	// it from MotionSeed. Opt-in: omitting it keeps plans byte-identical.
+	CoherenceSeed                 string                                         `json:"coherence_seed,omitempty"`
 	ImageMotions                  []string                                       `json:"image_motions,omitempty"`
 	EntityImageMotions            []string                                       `json:"entity_image_motions,omitempty"`
 	EntityCaptionMotions          []string                                       `json:"entity_caption_motions,omitempty"`
@@ -276,9 +283,10 @@ type Scene struct {
 	ShortPhraseOverlay bool   `json:"short_phrase_overlay,omitempty"`
 	// DurationUS is the sealed internal timing value. DurationMS remains only
 	// as a legacy wire field at the boundary.
-	DurationUS int64            `json:"duration_us,omitempty"`
-	Clip       *ClipReference   `json:"clip,omitempty"`
-	Clips      []*ClipReference `json:"clips,omitempty"`
+	DurationUS        int64                                          `json:"duration_us,omitempty"`
+	OverlayCategories map[scriptpkg.OverlayCategory]scriptpkg.Toggle `json:"overlay_categories,omitempty"`
+	Clip              *ClipReference                                 `json:"clip,omitempty"`
+	Clips             []*ClipReference                               `json:"clips,omitempty"`
 	// Stock preserves the caller-selected stock binding alongside Clip for
 	// mixed media scenes.
 	Stock     *scriptpkg.StockBinding     `json:"stock,omitempty"`

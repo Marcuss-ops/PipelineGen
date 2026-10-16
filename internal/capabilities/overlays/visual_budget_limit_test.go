@@ -160,6 +160,30 @@ func TestApplyEditorialOverlayBudgetHonoursCallerImageLimit(t *testing.T) {
 	}
 }
 
+func TestApplyEditorialOverlayBudgetHonoursImageLimitAboveDefault(t *testing.T) {
+	const requestedImages = MaxImageOverlaysPerRun + 5
+	items := limitTestItems(0)
+	for i := MaxImageOverlaysPerRun; i < requestedImages; i++ {
+		items = append(items, OverlayItem{
+			ID:        fmt.Sprintf("extra-image-%d", i),
+			Kind:      "image",
+			SceneID:   fmt.Sprintf("scene-%d", i),
+			AssetRefs: []OverlayAssetRef{{SHA256: fmt.Sprintf("extra-hash-%d", i)}},
+		})
+	}
+
+	got, _ := ApplyEditorialOverlayBudgetWithImageLimit(items, 1, requestedImages, 0)
+	images := 0
+	for _, item := range got {
+		if item.Kind == "image" || item.Kind == "entity_image" {
+			images++
+		}
+	}
+	if images != requestedImages {
+		t.Fatalf("image overlays = %d, want configured ceiling %d (> default %d)", images, requestedImages, MaxImageOverlaysPerRun)
+	}
+}
+
 func TestApplyEditorialOverlayBudgetAdmitsFiveGroundedMaps(t *testing.T) {
 	items := make([]OverlayItem, 0, MaxMapOverlaysPerRun+2)
 	for i := 0; i < MaxMapOverlaysPerRun+2; i++ {

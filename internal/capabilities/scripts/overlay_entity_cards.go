@@ -275,6 +275,12 @@ func capEntityImageOverlays(items []capabilityoverlay.OverlayItem, max int, perS
 				}
 			}
 			if assetKey != "" {
+				// Reusing a portrait in a later scene is valid: it may need to
+				// reappear beside another entity in a co-present sequence. Only
+				// collapse duplicate copies inside the same scene.
+				if sceneID := strings.TrimSpace(item.SceneID); sceneID != "" {
+					assetKey = sceneID + "::" + assetKey
+				}
 				if _, duplicate := seenAssetHashes[assetKey]; duplicate {
 					continue
 				}

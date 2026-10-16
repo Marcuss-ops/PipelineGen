@@ -9,24 +9,6 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 )
 
-// Camera-backed caption motions stay available to explicit plans, but the
-// automatic runtime pool excludes them until the worker catalog has the
-// matching camera-safe lowering. Older workers mirror these captions or clear
-// the background when projecting their tracks.
-var runtimeUnsafeEntityCaptionMotions = map[string]struct{}{
-	"entity_depth_caption":    {},
-	"entity_parallax_caption": {},
-	"entity_yaw_caption":      {},
-	"text_depth_in":           {},
-	"text_yaw_in":             {},
-	"trump_entity_text_06":    {},
-	"trump_entity_text_08":    {},
-	"trump_entity_text_11":    {},
-	"trump_entity_text_13":    {},
-	"trump_entity_text_14":    {},
-	"trump_entity_text_15":    {},
-}
-
 // CertifiedAutomaticEntityCaptionMotions returns the runtime-safe automatic
 // caption pool. The full certified catalog stays available for explicit plans
 // and catalog browsing; callers receive a copy.
@@ -37,14 +19,9 @@ func CertifiedAutomaticEntityCaptionMotions() []string {
 func automaticEntityCaptionMotionCandidates() []string {
 	pool := make([]string, 0, len(generatedEntityCaptionMotionCandidates))
 	for _, id := range generatedEntityCaptionMotionCandidates {
-		if strings.HasPrefix(id, "typewriter_") && strings.HasPrefix(id, "typewriter_modern_") {
+		if AnimationLaneCompatible(id, "entity.caption.automatic") {
 			pool = append(pool, id)
-			continue
 		}
-		if _, unsafe := runtimeUnsafeEntityCaptionMotions[id]; unsafe {
-			continue
-		}
-		pool = append(pool, id)
 	}
 	return pool
 }
@@ -67,7 +44,7 @@ func SelectEntityImagePreset(jobID, sceneID, itemID string) string {
 // SelectEntityImageAnimation chooses a stable-but-varied Chronon entry
 // animation for an entity image. Retries of the same job remain bit-identical.
 func SelectEntityImageAnimation(jobID, sceneID, itemID string) string {
-	return selectPreset(jobID, sceneID, itemID, "entity_image_animation", imageAnimationCandidates)
+	return selectPreset(jobID, sceneID, itemID, "entity_image_animation", automaticSingleImageMotionCandidates)
 }
 
 // SelectImageAnimation is the generic image/product/logo planner selector.
@@ -78,14 +55,14 @@ func SelectImageAnimation(jobID, sceneID, itemID string) string {
 // CertifiedImageMotions returns the complete certified image motion pool.
 // Callers receive a copy.
 func CertifiedImageMotions() []string {
-	return append([]string(nil), imageMotionCandidates...)
+	return append([]string(nil), renderSafeImageMotions...)
 }
 
 // CertifiedSingleImageMotions returns the complete certified layer-only
 // catalog. Automatic runtime planning uses a smaller 2D pool; explicit plans
 // and channel-profile overrides may select any certified motion.
 func CertifiedSingleImageMotions() []string {
-	return append([]string(nil), singleImageMotionCandidates...)
+	return append([]string(nil), renderSafeImageMotions...)
 }
 
 // CertifiedLightLeakMotions returns the RenderingGen-supported light_leak_v1
@@ -96,20 +73,7 @@ func CertifiedLightLeakMotions() []string {
 	return append([]string(nil), certifiedLightLeakMotionCandidates...)
 }
 
-var certifiedLightLeakMotionCandidates = []string{
-	"lightleak_anamorphic_pass",
-	"lightleak_bokeh_pass",
-	"lightleak_corner_bloom",
-	"lightleak_diagonal_sweep",
-	"lightleak_dual_edge",
-	"lightleak_edge_warm",
-	"lightleak_film_burn",
-	"lightleak_focus_glow",
-	"lightleak_horizontal_sweep",
-	"lightleak_prismatic",
-	"lightleak_pulse",
-	"lightleak_soft_flare",
-}
+var certifiedLightLeakMotionCandidates = AnimationCandidates("image.lightleak")
 
 // SelectLightLeakMotion deterministically picks one certified image light leak
 // for a plan/target key; retrying the same inputs yields the same treatment.
@@ -138,20 +102,6 @@ func EntityCaptionMotionAtOffset(offset, ordinal int) string {
 // explicit plans and catalog browsing.
 func RuntimeEntityCaptionMotionAtOffset(offset, ordinal int) string {
 	return rotateMotionAtOffset(offset, ordinal, automaticEntityCaptionMotionCandidates())
-}
-
-func entityCaptionMotionAtOffset(ordinal, limit int) string {
-	if limit <= 0 {
-		return rotateMotionAtOffset(0, ordinal, generatedEntityCaptionMotionCandidates)
-	}
-	return rotateMotionAtOffset(0, ordinal, limitedMotionPool(generatedEntityCaptionMotionCandidates, limit))
-}
-
-func entityImageMotionAtOffset(ordinal, limit int) string {
-	if limit <= 0 {
-		return rotateMotionAtOffset(0, ordinal, generatedEntityImageMotionCandidates)
-	}
-	return rotateMotionAtOffset(0, ordinal, limitedMotionPool(generatedEntityImageMotionCandidates, limit))
 }
 
 // SelectEntityCaptionMotionAt provides a stable per-job selector for semantic
@@ -225,6 +175,12 @@ func ImageMotionAtOffset(offset, ordinal int) string {
 // randomly rotated certified catalog for generated overlays. The
 // offset is the plan-level entropy value sampled by RandomImageMotionOffset;
 // the pool reduces it modulo its own size.
+// EntitySequenceCameraMotion returns the shared camera path used by grouped
+// portraits. The track derives each direction from the portrait positions.
+func EntitySequenceCameraMotion() string {
+	return entitySequenceCameraMotion
+}
+
 func EntityImageMotionAtOffset(offset, ordinal int) string {
 	return rotateMotionAtOffset(offset, ordinal, generatedEntityImageMotionCandidates)
 }
@@ -243,9 +199,9 @@ func ImageWithTextMotionAtOffset(offset, ordinal, limit int) string {
 // the complete catalog.
 func ImageWithTextMotionPool(count int) []string {
 	if count <= 0 {
-		return append([]string(nil), generatedImageWithTextMotionCandidates...)
+		return append([]string(nil), generatedEntityImageMotionCandidates...)
 	}
-	return limitedMotionPool(generatedImageWithTextMotionCandidates, count)
+	return limitedMotionPool(generatedEntityImageMotionCandidates, count)
 }
 
 // EntityCaptionMotionPool returns the certified entity-caption motion pool.
@@ -296,7 +252,7 @@ func CertifiedEntityImageMotions() []string {
 // CertifiedImageWithTextMotions returns the dedicated certified image
 // entrances used by image overlays with an entity caption.
 func CertifiedImageWithTextMotions() []string {
-	return append([]string(nil), generatedImageWithTextMotionCandidates...)
+	return append([]string(nil), generatedEntityImageMotionCandidates...)
 }
 
 // EntityImageParams returns the larger, raised hero box used by entity images.
@@ -334,11 +290,11 @@ func ImageOverlayParams(width, height int) map[string]any {
 }
 
 func selectImageMotion(jobID, sceneID string, ordinal int, pool []string) string {
-	candidates := singleImageMotionCandidates
+	candidates := renderSafeImageMotions
 	if len(pool) > 0 {
 		candidates = pool
 	}
-	candidates = uniqueMotionPool(candidates)
+	candidates = coherentMotionPool(uniqueMotionPool(candidates), jobID)
 	if len(candidates) == 0 {
 		return ""
 	}

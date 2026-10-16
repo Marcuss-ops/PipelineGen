@@ -148,6 +148,17 @@ func (r *Runner) runVidRushJoinAndPrepare(ctx context.Context, runID string, req
 		}
 		annotations = geocoded
 	}
+	// Map candidates are compiled again later from the durable scene
+	// annotations. Apply the name/homonym rejection to that final surface as
+	// well, so a downstream projection cannot restore a person token as a city.
+	if req.MaxMapOverlays > 0 || req.MapsOnly || req.AnimationCounts["maps"] > 0 || req.AnimationCounts["one_map"] > 0 || req.AnimationCounts["two_maps"] > 0 {
+		for index, annotation := range annotations {
+			if annotation == nil || index < 0 || index >= len(snapshot) {
+				continue
+			}
+			stripPersonNameMapCandidates(annotation, snapshot[index].Text)
+		}
+	}
 	var intents []capabilityoverlay.OverlayIntent
 	if r.overlayRegistry != nil {
 		intents = planOverlayIntentsForAnnotations(snapshot, annotations, r.overlayRegistry)

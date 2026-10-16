@@ -29,6 +29,26 @@ func BuildPlan(input PlanInput, config PlannerConfig) (OverlayPlan, error) {
 			motionSeed += ":" + input.VideoID
 		}
 	}
+	// An explicit coherence seed picks the run's dominant direction without
+	// changing the run seed. Empty leaves every selector on the run seed.
+	motionSeed = WithCoherenceSeed(motionSeed, input.CoherenceSeed)
+	// The phrase lanes rotate from motionSeed; the image/caption lanes below
+	// historically selected from PlanID. An explicit per-render seed rotates
+	// them too, while an empty seed preserves the PlanID-seeded selection
+	// bit for bit so existing sealed plans stay byte-identical.
+	imageSeed := WithCoherenceSeed(input.PlanID, input.CoherenceSeed)
+	imageMotionOffset := 0
+	if strings.TrimSpace(input.MotionSeed) != "" {
+		imageSeed = motionSeed
+		imageMotionOffset = ImageMotionOffsetForSeed(motionSeed)
+	}
+	entityImageMotionForPlan := func(ordinal, limit int) string {
+		pool := generatedEntityImageMotionCandidates
+		if limit > 0 {
+			pool = limitedMotionPool(pool, limit)
+		}
+		return rotateMotionAtOffset(imageMotionOffset, ordinal, pool)
+	}
 	if err := validatePhraseMotionPool(input.PhraseMotions); err != nil {
 		return OverlayPlan{}, err
 	}
@@ -244,10 +264,10 @@ func BuildPlan(input PlanInput, config PlannerConfig) (OverlayPlan, error) {
 							imageLimit := laneAnimationCount(input.AnimationCounts, laneEntities)
 							if layer.Caption != "" {
 								pool := ImageWithTextMotionPool(laneAnimationCount(input.AnimationCounts, laneImagesWithText))
-								layer.MotionID = selectImageMotion(input.PlanID, input.VideoID, imageOrdinal, pool)
-								layer.CaptionMotionID = SelectEntityCaptionMotionAt(input.PlanID, input.VideoID, imageOrdinal)
+								layer.MotionID = selectImageMotion(imageSeed, input.VideoID, imageOrdinal, pool)
+								layer.CaptionMotionID = SelectEntityCaptionMotionAt(imageSeed, input.VideoID, imageOrdinal)
 							} else {
-								layer.MotionID = entityImageMotionAtOffset(imageOrdinal, imageLimit)
+								layer.MotionID = entityImageMotionForPlan(imageOrdinal, imageLimit)
 								layer.CaptionMotionID = ""
 							}
 							layer.PresetID = selectImagePreset(input.PlanID, item.SceneID, item.ID+":"+layer.ID)
@@ -256,13 +276,13 @@ func BuildPlan(input PlanInput, config PlannerConfig) (OverlayPlan, error) {
 					} else {
 						if item.EntityCaption != "" {
 							pool := ImageWithTextMotionPool(laneAnimationCount(input.AnimationCounts, laneImagesWithText))
-							item.MotionID = selectImageMotion(input.PlanID, input.VideoID, imageOrdinal, pool)
-							item.CaptionMotionID = SelectEntityCaptionMotionAt(input.PlanID, input.VideoID, imageOrdinal)
+							item.MotionID = selectImageMotion(imageSeed, input.VideoID, imageOrdinal, pool)
+							item.CaptionMotionID = SelectEntityCaptionMotionAt(imageSeed, input.VideoID, imageOrdinal)
 							if entityStyleSelector != "" {
 								item.EntityStyleID = entityStyleSelector
 							}
 						} else {
-							item.MotionID = entityImageMotionAtOffset(imageOrdinal, laneAnimationCount(input.AnimationCounts, laneEntities))
+							item.MotionID = entityImageMotionForPlan(imageOrdinal, laneAnimationCount(input.AnimationCounts, laneEntities))
 							item.CaptionMotionID = ""
 						}
 						imageOrdinal++
@@ -296,7 +316,12 @@ func BuildPlan(input PlanInput, config PlannerConfig) (OverlayPlan, error) {
 	// presentations instead, so each map stays aligned to the place being
 	// narrated and the run-level budget can admit several distinct scenes.
 	mapOrdinal = deterministicMapMotionStart(input.PlanID, laneAnimationCount(input.AnimationCounts, laneMaps))
-	if laneAnimationCount(input.AnimationCounts, laneMaps) > 1 {
+	// Single-map-per-job policy (2026-10-16): a run-level ceiling of exactly
+	// one map forces the merged journey branch even when the payload's
+	// animation counts ask for several maps. Multiple basemaps with competing
+	// camera moves confused viewers; the editorial budget below then keeps
+	// the highest-priority journey map.
+	if laneAnimationCount(input.AnimationCounts, laneMaps) > 1 && config.RunLevelMapOverlayLimit != 1 {
 		for i := range input.Scenes {
 			scene := input.Scenes[i]
 			if len(scene.Maps) == 0 {
@@ -430,17 +455,17 @@ func BuildPlan(input PlanInput, config PlannerConfig) (OverlayPlan, error) {
 				if plan.Items[i].Kind == "entity_image" {
 					if plan.Items[i].EntityCaption != "" {
 						pool := ImageWithTextMotionPool(laneAnimationCount(input.AnimationCounts, laneImagesWithText))
-						plan.Items[i].MotionID = selectImageMotion(input.PlanID, input.VideoID, imageOrdinal, pool)
-						plan.Items[i].CaptionMotionID = SelectEntityCaptionMotionAt(input.PlanID, input.VideoID, imageOrdinal)
+						plan.Items[i].MotionID = selectImageMotion(imageSeed, input.VideoID, imageOrdinal, pool)
+						plan.Items[i].CaptionMotionID = SelectEntityCaptionMotionAt(imageSeed, input.VideoID, imageOrdinal)
 					} else {
-						plan.Items[i].MotionID = entityImageMotionAtOffset(imageOrdinal, laneAnimationCount(input.AnimationCounts, laneEntities))
+						plan.Items[i].MotionID = entityImageMotionForPlan(imageOrdinal, laneAnimationCount(input.AnimationCounts, laneEntities))
 					}
 				} else {
 					if plan.Items[i].EntityCaption != "" {
 						pool := ImageWithTextMotionPool(laneAnimationCount(input.AnimationCounts, laneImagesWithText))
-						plan.Items[i].MotionID = selectImageMotion(input.PlanID, input.VideoID, imageOrdinal, pool)
+						plan.Items[i].MotionID = selectImageMotion(imageSeed, input.VideoID, imageOrdinal, pool)
 					} else {
-						plan.Items[i].MotionID = selectImageMotion(input.PlanID, input.VideoID, imageOrdinal, input.ImageMotions)
+						plan.Items[i].MotionID = selectImageMotion(imageSeed, input.VideoID, imageOrdinal, input.ImageMotions)
 					}
 				}
 				if plan.Items[i].Kind == "entity_image" && plan.Items[i].EntityCaption != "" && len(plan.Items[i].AssetRefs) > 0 {
@@ -469,6 +494,10 @@ func BuildPlan(input PlanInput, config PlannerConfig) (OverlayPlan, error) {
 	// + fade transition, driven by AnimationCounts chain_gap_ms /
 	// chain_max_segments. Legacy items pass through untouched.
 	plan.Items = CoalesceChainedOverlays(plan.Items, input.AnimationCounts)
+	// Co-present items share the same visual beat: cascade their entrance
+	// settles so a phrase, a portrait and a number card do not fire on one
+	// frame. Certified windows never move, only explicit entrances lengthen.
+	CascadeClusteredEntrances(plan.Items, input.FPSNum, input.FPSDen)
 	plan.Items = PruneOrphanChartBars(plan.Items)
 	if err := plan.Validate(); err != nil {
 		return OverlayPlan{}, err

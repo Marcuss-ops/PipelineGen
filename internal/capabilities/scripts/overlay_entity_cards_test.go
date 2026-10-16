@@ -139,15 +139,16 @@ func TestCapEntityImageOverlaysPerSceneKeepsEntityOnlyOnceAcrossRun(t *testing.T
 	}
 }
 
-func TestCapEntityImageOverlaysPerSceneDropsRepeatedPhotoHash(t *testing.T) {
+func TestCapEntityImageOverlaysPerSceneOnlyDropsRepeatedPhotoHashWithinScene(t *testing.T) {
 	items := []capabilityoverlay.OverlayItem{
 		{ID: "scene-1-first", SceneID: "scene-1", EntityID: "person-a", Kind: string(capabilityoverlay.KindEntityImage), EntityRef: &capabilityoverlay.OverlayEntityRef{CanonicalEntityID: "person:a"}, AssetRefs: []capabilityoverlay.OverlayAssetRef{{AssetID: "asset-a", SHA256: "same-photo"}}},
+		{ID: "scene-1-duplicate", SceneID: "scene-1", EntityID: "person-a-copy", Kind: string(capabilityoverlay.KindEntityImage), EntityRef: &capabilityoverlay.OverlayEntityRef{CanonicalEntityID: "person:a-copy"}, AssetRefs: []capabilityoverlay.OverlayAssetRef{{AssetID: "asset-a-copy", SHA256: "same-photo"}}},
 		{ID: "scene-2-second", SceneID: "scene-2", EntityID: "person-a", Kind: string(capabilityoverlay.KindEntityImage), EntityRef: &capabilityoverlay.OverlayEntityRef{CanonicalEntityID: "person:a"}, AssetRefs: []capabilityoverlay.OverlayAssetRef{{AssetID: "asset-b", SHA256: "same-photo"}}},
 		{ID: "scene-3-third", SceneID: "scene-3", EntityID: "person-a", Kind: string(capabilityoverlay.KindEntityImage), EntityRef: &capabilityoverlay.OverlayEntityRef{CanonicalEntityID: "person:a"}, AssetRefs: []capabilityoverlay.OverlayAssetRef{{AssetID: "asset-c", SHA256: "different-photo"}}},
 	}
 	got := capEntityImageOverlays(items, capabilityoverlay.MaxEntityImageOverlaysPerRun, true)
-	if len(got) != 2 || got[0].ID != "scene-1-first" || got[1].ID != "scene-3-third" {
-		t.Fatalf("per-scene photo dedupe = %+v; want one overlay per unique photo hash", got)
+	if len(got) != 3 || got[0].ID != "scene-1-first" || got[1].ID != "scene-2-second" || got[2].ID != "scene-3-third" {
+		t.Fatalf("per-scene photo dedupe = %+v; want same-scene duplicate dropped and later reuse retained", got)
 	}
 }
 
@@ -176,7 +177,7 @@ func TestComposeNearbyEntityImagesCreatesOneStaggeredComposite(t *testing.T) {
 	if composite == nil {
 		t.Fatalf("no composite item in %+v", got)
 	}
-	if composite.ID != "first+second" || composite.StartMs != 1000 || composite.EndMs != 7500 || composite.StartUS != 1_000_000 || composite.DurationUS != 6_500_000 {
+	if composite.ID != "first+second" || composite.StartMs != 1000 || composite.EndMs != 6000 || composite.StartUS != 1_000_000 || composite.DurationUS != 5_000_000 {
 		t.Fatalf("composite timing/identity = %+v", composite)
 	}
 	if len(composite.AssetRefs) != 2 || len(composite.ImageLayers) != 2 {
@@ -186,20 +187,20 @@ func TestComposeNearbyEntityImagesCreatesOneStaggeredComposite(t *testing.T) {
 		t.Fatalf("composite captions = %q / %q, want both entity names", composite.ImageLayers[0].Caption, composite.ImageLayers[1].Caption)
 	}
 	first, second := composite.ImageLayers[0], composite.ImageLayers[1]
-	if first.AssetID != "asset-a" || first.StartMS != 0 || first.EndMS != 6500 || first.PresetID != "image_scale_in" {
+	if first.AssetID != "asset-a" || first.StartMS != 0 || first.EndMS != 5000 || first.PresetID != "image_scale_in" {
 		t.Fatalf("first portrait layer = %+v", first)
 	}
-	if second.AssetID != "asset-b" || second.StartMS != 1500 || second.EndMS != 6500 || second.PresetID != "image_focus_in" {
+	if second.AssetID != "asset-b" || second.StartMS != 3500 || second.EndMS != 5000 || second.PresetID != "image_focus_in" {
 		t.Fatalf("second portrait layer = %+v", second)
 	}
-	if first.EndMS != 6500 {
+	if first.EndMS != 5000 {
 		t.Fatalf("first portrait should stay visible to the group end, got %d ms", first.EndMS)
 	}
-	if first.Params["position_x"] != float64(-1920)*0.18 || second.Params["position_x"] != float64(1920)*0.18 {
+	if first.Params["position_x"] != float64(0) || second.Params["position_x"] != float64(1920) {
 		t.Fatalf("portrait positions = %v / %v", first.Params["position_x"], second.Params["position_x"])
 	}
-	if first.Params["width"] != 1920*34/100 || second.Params["width"] != 1920*34/100 {
-		t.Fatalf("portrait widths = %v / %v, want larger 34%% cards", first.Params["width"], second.Params["width"])
+	if first.Params["width"] != 1728 || second.Params["width"] != 1728 {
+		t.Fatalf("producer portrait widths = %v / %v, want the shared scene layout width", first.Params["width"], second.Params["width"])
 	}
 	if first.EntityID != "stable-first" || second.EntityID != "stable-second" {
 		t.Fatalf("composite child entity ids = %q / %q", first.EntityID, second.EntityID)
@@ -245,6 +246,36 @@ func TestComposeNearbyEntityImagesCreatesOneStaggeredComposite(t *testing.T) {
 	}
 }
 
+func TestComposeNearbyEntityCardsIntoCameraSequenceAndDropPlaceTitle(t *testing.T) {
+	items := []capabilityoverlay.OverlayItem{
+		{ID: "garlasco", SceneID: "scene", Kind: "location", Text: "Garlasco", StartMs: 0, EndMs: 3000,
+			EntityRef: &capabilityoverlay.OverlayEntityRef{Type: "LOCATION", Name: "Garlasco"}},
+		{ID: "chiara", SceneID: "scene", Kind: string(capabilityoverlay.KindEntityCard), TemplateID: "person_default", Text: "Chiara Poggi", StartMs: 1000, EndMs: 6000,
+			EntityRef: &capabilityoverlay.OverlayEntityRef{Type: "PERSON", Name: "Chiara Poggi"},
+			AssetRefs: []capabilityoverlay.OverlayAssetRef{{AssetID: "chiara-photo", SHA256: "chiara-hash"}}},
+		{ID: "alberto", SceneID: "scene", Kind: string(capabilityoverlay.KindEntityCard), TemplateID: "person_default", Text: "Alberto Stasi", StartMs: 2500, EndMs: 7500,
+			EntityRef: &capabilityoverlay.OverlayEntityRef{Type: "PERSON", Name: "Alberto Stasi"},
+			AssetRefs: []capabilityoverlay.OverlayAssetRef{{AssetID: "alberto-photo", SHA256: "alberto-hash"}}},
+	}
+
+	got := composeNearbyEntityImages(items, 1920, 1080)
+	if len(got) != 1 || got[0].Kind != string(capabilityoverlay.KindEntityImage) || len(got[0].ImageLayers) != 2 {
+		t.Fatalf("image-backed person cards should form one camera sequence and suppress the place title: %+v", got)
+	}
+	if got[0].ImageLayers[0].Caption != "Chiara Poggi" || got[0].ImageLayers[1].Caption != "Alberto Stasi" {
+		t.Fatalf("camera sequence captions = %+v", got[0].ImageLayers)
+	}
+	if got[0].CameraMotionID != "" {
+		t.Fatalf("camera motion is assigned after composition, got premature id %q", got[0].CameraMotionID)
+	}
+	if err := assignEntityImageMotions(got, 0, 1920, 1080, ""); err != nil {
+		t.Fatal(err)
+	}
+	if got[0].CameraMotionID != capabilityoverlay.EntitySequenceCameraMotion() {
+		t.Fatalf("shared camera motion = %q", got[0].CameraMotionID)
+	}
+}
+
 func TestComposeNearbyEntityImagesHonorsFiveSecondMentionGap(t *testing.T) {
 	makeItem := func(id, scene string, start int64) capabilityoverlay.OverlayItem {
 		return capabilityoverlay.OverlayItem{ID: id, SceneID: scene, EntityID: "ent-" + id, Kind: string(capabilityoverlay.KindEntityImage),
@@ -287,7 +318,7 @@ func TestComposeNearbyEntityImagesGroupsTwoThroughFiveWithDeterministicRemainder
 			layersSeen := 0
 			for _, item := range got {
 				if len(item.ImageLayers) < 2 || len(item.ImageLayers) > maxEntityImageGroup {
-					t.Fatalf("group %q has %d layers; expected 2..5", item.ID, len(item.ImageLayers))
+					t.Fatalf("group %q has %d layers; expected 2..6", item.ID, len(item.ImageLayers))
 				}
 				layersSeen += len(item.ImageLayers)
 				for index, layer := range item.ImageLayers {
@@ -352,20 +383,15 @@ func TestCompositeChildIdentityRemainsProducerOnlyAndNotRenderKeyInput(t *testin
 	}
 }
 
-func TestComposeNearbyEntityImagesKeepsNonEntityImagesUntouched(t *testing.T) {
+func TestComposeNearbyEntityImagesGroupsContextualImagesWithEntityImages(t *testing.T) {
 	items := []capabilityoverlay.OverlayItem{
 		{ID: "a", SceneID: "scene", Kind: string(capabilityoverlay.KindEntityImage), StartMs: 0, EndMs: 5000, AssetRefs: []capabilityoverlay.OverlayAssetRef{{AssetID: "a"}}},
 		{ID: "b", SceneID: "scene", Kind: string(capabilityoverlay.KindEntityImage), StartMs: 1000, EndMs: 6000, AssetRefs: []capabilityoverlay.OverlayAssetRef{{AssetID: "b"}}},
 		{ID: "photo", SceneID: "scene", Kind: "image", StartMs: 500, EndMs: 2000, AssetRefs: []capabilityoverlay.OverlayAssetRef{{AssetID: "photo"}}},
 	}
 	got := composeNearbyEntityImages(items, 1920, 1080)
-	if len(got) != 2 {
-		t.Fatalf("expected entity composite and standalone photo, got %+v", got)
-	}
-	for _, item := range got {
-		if item.ID == "photo" && len(item.ImageLayers) != 0 {
-			t.Fatalf("unrelated scene image was grouped: %+v", item)
-		}
+	if len(got) != 1 || len(got[0].ImageLayers) != 3 {
+		t.Fatalf("entity and contextual images should share one three-layer sequence, got %+v", got)
 	}
 }
 

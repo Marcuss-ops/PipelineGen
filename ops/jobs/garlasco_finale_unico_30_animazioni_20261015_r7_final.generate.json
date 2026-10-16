@@ -1,0 +1,721 @@
+{
+  "version": 2,
+  "preset": "custom",
+  "correlation_id": "garlasco-finale-unico-30-animazioni-20261015-r7",
+  "force_refresh": true,
+  "final_job": true,
+  "items": [
+    {
+      "id": "garlasco-finale-unico-30-animazioni",
+      "project": "garlasco-finale-30-animazioni",
+      "title": "Garlasco — finale unico: 10 mappe, 10 frasi lunghe, 10 frasi brevi",
+      "language": "it",
+      "tone": "documentario sobrio, prudente e verificabile",
+      "style": "Renderizza le 30 animazioni richieste, in ordine: 10 mappe focalizzate su Garlasco, 10 frasi lunghe con highlight adattati al testo, 10 frasi brevi con animazioni dedicate. Testo nero su bianco. Nessun audio, sottotitolo o documento.",
+      "model": "gemma4:e4b",
+      "source": {
+        "type": "text",
+        "topic": "Garlasco — render finale di mappe e frasi",
+        "source_text": "A Garlasco, in provincia di Pavia, la mappa inquadra il centro del comune.\nA Garlasco, in provincia di Pavia, la mappa inquadra il centro del comune.\nA Garlasco, in provincia di Pavia, la mappa inquadra il centro del comune.\nA Garlasco, in provincia di Pavia, la mappa inquadra il centro del comune.\nA Garlasco, in provincia di Pavia, la mappa inquadra il centro del comune.\nA Garlasco, in provincia di Pavia, la mappa inquadra il centro del comune.\nA Garlasco, in provincia di Pavia, la mappa inquadra il centro del comune.\nA Garlasco, in provincia di Pavia, la mappa inquadra il centro del comune.\nA Garlasco, in provincia di Pavia, la mappa inquadra il centro del comune.\nA Garlasco, in provincia di Pavia, la mappa inquadra il centro del comune.\nLa chiusura delle indagini non equivale a una condanna.\nLe parti possono contestare gli accertamenti con consulenze tecniche.\nOgni reperto va valutato nel contesto e con verifiche incrociate.\nLe relazioni di stampa vanno distinte dagli atti ufficiali depositati.\nLa traccia controversa resta oggetto di valutazioni tecniche contrapposte.\nNessun singolo reperto dimostra da solo una responsabilità.\nLe nuove ipotesi investigative restano da verificare nel contraddittorio.\nLe sentenze definitive vanno separate dalle indagini ancora aperte.\nOgni consulenza va letta insieme ai metodi e ai suoi limiti.\nLa presunzione di innocenza accompagna ogni indagato fino alla sentenza definitiva.\nOgni fatto richiede verifiche incrociate.\nAtti contestati.\nProve controverse.\nLe fonti vanno verificate.\nIl reperto richiede valutazione tecnica.\nNessuna accusa è condanna.\nIpotesi da verificare nel contraddittorio.\nLa memoria resta centrale.\nLe fasi restano distinte.\nFatti documentati."
+      },
+      "script_params": {
+        "target_words": 272,
+        "min_words": 272,
+        "segment_words": 14,
+        "single_scene": false,
+        "skip_quality_gate": true,
+        "source_text_verbatim": true,
+        "force_refresh": true,
+        "segments": [
+          {
+            "id": "map-01",
+            "kind": "narration",
+            "topic": "Mappa Garlasco 01",
+            "source_text": "A Garlasco, in provincia di Pavia, la mappa inquadra il centro del comune.",
+            "target_words": 14,
+            "min_words": 14,
+            "duration_ms": 8000,
+            "overlay_categories": {
+              "maps": "enabled",
+              "phrases": "disabled"
+            },
+            "extract_entities": false
+          },
+          {
+            "id": "map-02",
+            "kind": "narration",
+            "topic": "Mappa Garlasco 02",
+            "source_text": "A Garlasco, in provincia di Pavia, la mappa inquadra il centro del comune.",
+            "target_words": 14,
+            "min_words": 14,
+            "duration_ms": 8000,
+            "overlay_categories": {
+              "maps": "enabled",
+              "phrases": "disabled"
+            },
+            "extract_entities": false
+          },
+          {
+            "id": "map-03",
+            "kind": "narration",
+            "topic": "Mappa Garlasco 03",
+            "source_text": "A Garlasco, in provincia di Pavia, la mappa inquadra il centro del comune.",
+            "target_words": 14,
+            "min_words": 14,
+            "duration_ms": 8000,
+            "overlay_categories": {
+              "maps": "enabled",
+              "phrases": "disabled"
+            },
+            "extract_entities": false
+          },
+          {
+            "id": "map-04",
+            "kind": "narration",
+            "topic": "Mappa Garlasco 04",
+            "source_text": "A Garlasco, in provincia di Pavia, la mappa inquadra il centro del comune.",
+            "target_words": 14,
+            "min_words": 14,
+            "duration_ms": 8000,
+            "overlay_categories": {
+              "maps": "enabled",
+              "phrases": "disabled"
+            },
+            "extract_entities": false
+          },
+          {
+            "id": "map-05",
+            "kind": "narration",
+            "topic": "Mappa Garlasco 05",
+            "source_text": "A Garlasco, in provincia di Pavia, la mappa inquadra il centro del comune.",
+            "target_words": 14,
+            "min_words": 14,
+            "duration_ms": 8000,
+            "overlay_categories": {
+              "maps": "enabled",
+              "phrases": "disabled"
+            },
+            "extract_entities": false
+          },
+          {
+            "id": "map-06",
+            "kind": "narration",
+            "topic": "Mappa Garlasco 06",
+            "source_text": "A Garlasco, in provincia di Pavia, la mappa inquadra il centro del comune.",
+            "target_words": 14,
+            "min_words": 14,
+            "duration_ms": 8000,
+            "overlay_categories": {
+              "maps": "enabled",
+              "phrases": "disabled"
+            },
+            "extract_entities": false
+          },
+          {
+            "id": "map-07",
+            "kind": "narration",
+            "topic": "Mappa Garlasco 07",
+            "source_text": "A Garlasco, in provincia di Pavia, la mappa inquadra il centro del comune.",
+            "target_words": 14,
+            "min_words": 14,
+            "duration_ms": 8000,
+            "overlay_categories": {
+              "maps": "enabled",
+              "phrases": "disabled"
+            },
+            "extract_entities": false
+          },
+          {
+            "id": "map-08",
+            "kind": "narration",
+            "topic": "Mappa Garlasco 08",
+            "source_text": "A Garlasco, in provincia di Pavia, la mappa inquadra il centro del comune.",
+            "target_words": 14,
+            "min_words": 14,
+            "duration_ms": 8000,
+            "overlay_categories": {
+              "maps": "enabled",
+              "phrases": "disabled"
+            },
+            "extract_entities": false
+          },
+          {
+            "id": "map-09",
+            "kind": "narration",
+            "topic": "Mappa Garlasco 09",
+            "source_text": "A Garlasco, in provincia di Pavia, la mappa inquadra il centro del comune.",
+            "target_words": 14,
+            "min_words": 14,
+            "duration_ms": 8000,
+            "overlay_categories": {
+              "maps": "enabled",
+              "phrases": "disabled"
+            },
+            "extract_entities": false
+          },
+          {
+            "id": "map-10",
+            "kind": "narration",
+            "topic": "Mappa Garlasco 10",
+            "source_text": "A Garlasco, in provincia di Pavia, la mappa inquadra il centro del comune.",
+            "target_words": 14,
+            "min_words": 14,
+            "duration_ms": 8000,
+            "overlay_categories": {
+              "maps": "enabled",
+              "phrases": "disabled"
+            },
+            "extract_entities": false
+          },
+          {
+            "id": "long-01",
+            "kind": "narration",
+            "topic": "La chiusura delle indagini non equivale a una condanna.",
+            "source_text": "La chiusura delle indagini non equivale a una condanna.",
+            "target_words": 9,
+            "min_words": 9,
+            "duration_ms": 6000,
+            "overlay_categories": {
+              "maps": "disabled",
+              "phrases": "enabled"
+            },
+            "extract_entities": false
+          },
+          {
+            "id": "long-02",
+            "kind": "narration",
+            "topic": "Le parti possono contestare gli accertamenti con consulenze tecniche.",
+            "source_text": "Le parti possono contestare gli accertamenti con consulenze tecniche.",
+            "target_words": 9,
+            "min_words": 9,
+            "duration_ms": 6000,
+            "overlay_categories": {
+              "maps": "disabled",
+              "phrases": "enabled"
+            },
+            "extract_entities": false
+          },
+          {
+            "id": "long-03",
+            "kind": "narration",
+            "topic": "Ogni reperto va valutato nel contesto e con verifiche incrociate.",
+            "source_text": "Ogni reperto va valutato nel contesto e con verifiche incrociate.",
+            "target_words": 10,
+            "min_words": 10,
+            "duration_ms": 6000,
+            "overlay_categories": {
+              "maps": "disabled",
+              "phrases": "enabled"
+            },
+            "extract_entities": false
+          },
+          {
+            "id": "long-04",
+            "kind": "narration",
+            "topic": "Le relazioni di stampa vanno distinte dagli atti ufficiali depositati.",
+            "source_text": "Le relazioni di stampa vanno distinte dagli atti ufficiali depositati.",
+            "target_words": 10,
+            "min_words": 10,
+            "duration_ms": 6000,
+            "overlay_categories": {
+              "maps": "disabled",
+              "phrases": "enabled"
+            },
+            "extract_entities": false
+          },
+          {
+            "id": "long-05",
+            "kind": "narration",
+            "topic": "La traccia controversa resta oggetto di valutazioni tecniche contrapposte.",
+            "source_text": "La traccia controversa resta oggetto di valutazioni tecniche contrapposte.",
+            "target_words": 9,
+            "min_words": 9,
+            "duration_ms": 6000,
+            "overlay_categories": {
+              "maps": "disabled",
+              "phrases": "enabled"
+            },
+            "extract_entities": false
+          },
+          {
+            "id": "long-06",
+            "kind": "narration",
+            "topic": "Nessun singolo reperto dimostra da solo una responsabilità.",
+            "source_text": "Nessun singolo reperto dimostra da solo una responsabilità.",
+            "target_words": 8,
+            "min_words": 8,
+            "duration_ms": 6000,
+            "overlay_categories": {
+              "maps": "disabled",
+              "phrases": "enabled"
+            },
+            "extract_entities": false
+          },
+          {
+            "id": "long-07",
+            "kind": "narration",
+            "topic": "Le nuove ipotesi investigative restano da verificare nel contraddittorio.",
+            "source_text": "Le nuove ipotesi investigative restano da verificare nel contraddittorio.",
+            "target_words": 9,
+            "min_words": 9,
+            "duration_ms": 6000,
+            "overlay_categories": {
+              "maps": "disabled",
+              "phrases": "enabled"
+            },
+            "extract_entities": false
+          },
+          {
+            "id": "long-08",
+            "kind": "narration",
+            "topic": "Le sentenze definitive vanno separate dalle indagini ancora aperte.",
+            "source_text": "Le sentenze definitive vanno separate dalle indagini ancora aperte.",
+            "target_words": 9,
+            "min_words": 9,
+            "duration_ms": 6000,
+            "overlay_categories": {
+              "maps": "disabled",
+              "phrases": "enabled"
+            },
+            "extract_entities": false
+          },
+          {
+            "id": "long-09",
+            "kind": "narration",
+            "topic": "Ogni consulenza va letta insieme ai metodi e ai suoi limiti.",
+            "source_text": "Ogni consulenza va letta insieme ai metodi e ai suoi limiti.",
+            "target_words": 11,
+            "min_words": 11,
+            "duration_ms": 6000,
+            "overlay_categories": {
+              "maps": "disabled",
+              "phrases": "enabled"
+            },
+            "extract_entities": false
+          },
+          {
+            "id": "long-10",
+            "kind": "narration",
+            "topic": "La presunzione di innocenza accompagna ogni indagato fino alla sentenza definitiva.",
+            "source_text": "La presunzione di innocenza accompagna ogni indagato fino alla sentenza definitiva.",
+            "target_words": 11,
+            "min_words": 11,
+            "duration_ms": 6000,
+            "overlay_categories": {
+              "maps": "disabled",
+              "phrases": "enabled"
+            },
+            "extract_entities": false
+          },
+          {
+            "id": "short-01",
+            "kind": "narration",
+            "topic": "Ogni fatto richiede verifiche incrociate.",
+            "source_text": "Ogni fatto richiede verifiche incrociate.",
+            "target_words": 5,
+            "min_words": 5,
+            "duration_ms": 6000,
+            "short_phrase_overlay": true,
+            "overlay_categories": {
+              "maps": "disabled",
+              "phrases": "enabled"
+            },
+            "extract_entities": false
+          },
+          {
+            "id": "short-02",
+            "kind": "narration",
+            "topic": "Atti contestati.",
+            "source_text": "Atti contestati.",
+            "target_words": 2,
+            "min_words": 2,
+            "duration_ms": 6000,
+            "short_phrase_overlay": true,
+            "overlay_categories": {
+              "maps": "disabled",
+              "phrases": "enabled"
+            },
+            "extract_entities": false
+          },
+          {
+            "id": "short-03",
+            "kind": "narration",
+            "topic": "Prove controverse.",
+            "source_text": "Prove controverse.",
+            "target_words": 2,
+            "min_words": 2,
+            "duration_ms": 6000,
+            "short_phrase_overlay": true,
+            "overlay_categories": {
+              "maps": "disabled",
+              "phrases": "enabled"
+            },
+            "extract_entities": false
+          },
+          {
+            "id": "short-04",
+            "kind": "narration",
+            "topic": "Le fonti vanno verificate.",
+            "source_text": "Le fonti vanno verificate.",
+            "target_words": 4,
+            "min_words": 4,
+            "duration_ms": 6000,
+            "short_phrase_overlay": true,
+            "overlay_categories": {
+              "maps": "disabled",
+              "phrases": "enabled"
+            },
+            "extract_entities": false
+          },
+          {
+            "id": "short-05",
+            "kind": "narration",
+            "topic": "Il reperto richiede valutazione tecnica.",
+            "source_text": "Il reperto richiede valutazione tecnica.",
+            "target_words": 5,
+            "min_words": 5,
+            "duration_ms": 6000,
+            "short_phrase_overlay": true,
+            "overlay_categories": {
+              "maps": "disabled",
+              "phrases": "enabled"
+            },
+            "extract_entities": false
+          },
+          {
+            "id": "short-06",
+            "kind": "narration",
+            "topic": "Nessuna accusa è condanna.",
+            "source_text": "Nessuna accusa è condanna.",
+            "target_words": 4,
+            "min_words": 4,
+            "duration_ms": 6000,
+            "short_phrase_overlay": true,
+            "overlay_categories": {
+              "maps": "disabled",
+              "phrases": "enabled"
+            },
+            "extract_entities": false
+          },
+          {
+            "id": "short-07",
+            "kind": "narration",
+            "topic": "Ipotesi da verificare nel contraddittorio.",
+            "source_text": "Ipotesi da verificare nel contraddittorio.",
+            "target_words": 5,
+            "min_words": 5,
+            "duration_ms": 6000,
+            "short_phrase_overlay": true,
+            "overlay_categories": {
+              "maps": "disabled",
+              "phrases": "enabled"
+            },
+            "extract_entities": false
+          },
+          {
+            "id": "short-08",
+            "kind": "narration",
+            "topic": "La memoria resta centrale.",
+            "source_text": "La memoria resta centrale.",
+            "target_words": 4,
+            "min_words": 4,
+            "duration_ms": 6000,
+            "short_phrase_overlay": true,
+            "overlay_categories": {
+              "maps": "disabled",
+              "phrases": "enabled"
+            },
+            "extract_entities": false
+          },
+          {
+            "id": "short-09",
+            "kind": "narration",
+            "topic": "Le fasi restano distinte.",
+            "source_text": "Le fasi restano distinte.",
+            "target_words": 4,
+            "min_words": 4,
+            "duration_ms": 6000,
+            "short_phrase_overlay": true,
+            "overlay_categories": {
+              "maps": "disabled",
+              "phrases": "enabled"
+            },
+            "extract_entities": false
+          },
+          {
+            "id": "short-10",
+            "kind": "narration",
+            "topic": "Fatti documentati.",
+            "source_text": "Fatti documentati.",
+            "target_words": 2,
+            "min_words": 2,
+            "duration_ms": 6000,
+            "short_phrase_overlay": true,
+            "overlay_categories": {
+              "maps": "disabled",
+              "phrases": "enabled"
+            },
+            "extract_entities": false
+          }
+        ]
+      },
+      "max_phrase_overlays": 15,
+      "max_map_overlays": 10,
+      "max_image_overlays": 0,
+      "overlay_group_limits": {
+        "maps": 10,
+        "long_phrases": 10,
+        "short_phrases": 10
+      },
+      "animation_counts": {
+        "maps": 10,
+        "images": 0,
+        "images_with_text": 0,
+        "important_phrase": 10,
+        "short_important_phrase": 10,
+        "entities": 0,
+        "entity_caption": 0,
+        "dates": 0,
+        "chain_disabled": 1
+      },
+      "overlay_categories": {
+        "maps": "enabled",
+        "phrases": "enabled",
+        "images": "disabled",
+        "numbers": "disabled",
+        "quotes": "disabled",
+        "brand_text": "disabled",
+        "charts": "disabled",
+        "recaps": "disabled",
+        "titles": "disabled",
+        "bullets": "disabled"
+      },
+      "overlay_style": {
+        "font_family": "playfair_display_italic",
+        "color": [
+          0,
+          0,
+          0,
+          1
+        ],
+        "size": {
+          "font_size": 96
+        },
+        "glow_size": 0,
+        "stroke_size": 0,
+        "shadow": {
+          "enabled": false,
+          "color": "#000000",
+          "opacity": 0,
+          "blur": 0,
+          "offset": [
+            0,
+            0
+          ]
+        }
+      },
+      "overlay_background": {
+        "kind": "color",
+        "color": [
+          1,
+          1,
+          1,
+          1
+        ],
+        "opacity": 1
+      },
+      "max_overlays_per_scene": 1,
+      "disable_editorial_overlays": true,
+      "map_type": "roadmap",
+      "map_camera_animation": "slow_approach",
+      "map_label_animation": "gpin_bubble",
+      "animation_policies": [
+        {
+          "target": "important_phrase",
+          "group_id": "long-01",
+          "motion_id": "doc_01_yellow_marker_sweep"
+        },
+        {
+          "target": "important_phrase",
+          "group_id": "long-02",
+          "motion_id": "doc_02_multiline_stagger_highlight"
+        },
+        {
+          "target": "important_phrase",
+          "group_id": "long-03",
+          "motion_id": "doc_03_documentary_quote_marker"
+        },
+        {
+          "target": "important_phrase",
+          "group_id": "long-04",
+          "motion_id": "doc_04_archival_source_highlight"
+        },
+        {
+          "target": "important_phrase",
+          "group_id": "long-05",
+          "motion_id": "doc_05_selective_phrase_tracking"
+        },
+        {
+          "target": "important_phrase",
+          "group_id": "long-06",
+          "motion_id": "doc_06_red_keyword_punch"
+        },
+        {
+          "target": "important_phrase",
+          "group_id": "long-07",
+          "motion_id": "doc_07_word_impact_reveal"
+        },
+        {
+          "target": "important_phrase",
+          "group_id": "long-08",
+          "motion_id": "doc_08_mixed_font_emphasis"
+        },
+        {
+          "target": "important_phrase",
+          "group_id": "long-09",
+          "motion_id": "doc_09_cinematic_underline_draw"
+        },
+        {
+          "target": "important_phrase",
+          "group_id": "long-10",
+          "motion_id": "doc_10_selective_contrast_focus"
+        },
+        {
+          "target": "important_phrase",
+          "group_id": "short-01",
+          "motion_id": "short_phrase_shape_phrase_wipe"
+        },
+        {
+          "target": "important_phrase",
+          "group_id": "short-02",
+          "motion_id": "short_phrase_character_tracking_reveal"
+        },
+        {
+          "target": "important_phrase",
+          "group_id": "short-03",
+          "motion_id": "short_phrase_character_cascade_shapes"
+        },
+        {
+          "target": "important_phrase",
+          "group_id": "short-04",
+          "motion_id": "short_phrase_editorial_baseline_rise"
+        },
+        {
+          "target": "important_phrase",
+          "group_id": "short-05",
+          "motion_id": "short_phrase_editorial_side_glide"
+        },
+        {
+          "target": "important_phrase",
+          "group_id": "short-06",
+          "motion_id": "short_phrase_editorial_tracking_close"
+        },
+        {
+          "target": "important_phrase",
+          "group_id": "short-07",
+          "motion_id": "short_phrase_editorial_focus_resolve"
+        },
+        {
+          "target": "important_phrase",
+          "group_id": "short-08",
+          "motion_id": "short_phrase_editorial_glyph_curtain"
+        },
+        {
+          "target": "important_phrase",
+          "group_id": "short-09",
+          "motion_id": "short_phrase_editorial_contrast_sweep"
+        },
+        {
+          "target": "important_phrase",
+          "group_id": "short-10",
+          "motion_id": "short_phrase_editorial_quiet_zoom"
+        }
+      ],
+      "output": {
+        "save_to_db": true,
+        "extract_entities": false,
+        "generate_metadata": true,
+        "generate_timeline": true,
+        "voiceover_enabled": "disabled",
+        "languages": [
+          "it"
+        ],
+        "drive_folder_id": "1J_xUGo_bchzXDIGqSX04CU44c_Dm3SxS",
+        "drive_subfolder_name": "garlasco-finale-30-animazioni",
+        "render": {
+          "enabled": true,
+          "drive_folder_id": "1J_xUGo_bchzXDIGqSX04CU44c_Dm3SxS",
+          "drive_subfolder_name": "garlasco-finale-30-animazioni",
+          "require_gpu": true,
+          "subtitles": {
+            "enabled": false
+          },
+          "background": {
+            "mode": "none"
+          }
+        },
+        "docs": {
+          "enabled": false
+        },
+        "audio": {
+          "mode": "NONE"
+        }
+      },
+      "audio": {
+        "mode": "NONE"
+      },
+      "docs": {
+        "enabled": false
+      },
+      "media_plan": {
+        "mode": "hybrid",
+        "provider_policy": {
+          "internet_images": "disabled",
+          "image_generation": "disabled",
+          "artlist": "disabled",
+          "youtube": "disabled",
+          "geocoding": "enabled"
+        },
+        "extraction": {
+          "enabled": true,
+          "include": [
+            "locations",
+            "important_phrases"
+          ],
+          "important_phrases": [
+            "La chiusura delle indagini non equivale a una condanna.",
+            "Le parti possono contestare gli accertamenti con consulenze tecniche.",
+            "Ogni reperto va valutato nel contesto e con verifiche incrociate.",
+            "Le relazioni di stampa vanno distinte dagli atti ufficiali depositati.",
+            "La traccia controversa resta oggetto di valutazioni tecniche contrapposte.",
+            "Nessun singolo reperto dimostra da solo una responsabilità.",
+            "Le nuove ipotesi investigative restano da verificare nel contraddittorio.",
+            "Le sentenze definitive vanno separate dalle indagini ancora aperte.",
+            "Ogni consulenza va letta insieme ai metodi e ai suoi limiti.",
+            "La presunzione di innocenza accompagna ogni indagato fino alla sentenza definitiva.",
+            "Ogni fatto richiede verifiche incrociate.",
+            "Atti contestati.",
+            "Prove controverse.",
+            "Le fonti vanno verificate.",
+            "Il reperto richiede valutazione tecnica.",
+            "Nessuna accusa è condanna.",
+            "Ipotesi da verificare nel contraddittorio.",
+            "La memoria resta centrale.",
+            "Le fasi restano distinte.",
+            "Fatti documentati."
+          ],
+          "max_entities_per_segment": 1,
+          "max_important_phrases_per_segment": 1,
+          "max_image_queries_per_segment": 0
+        },
+        "materialization": {
+          "mode": "selected",
+          "upload_to_drive": false,
+          "wait_for_ready": true
+        },
+        "include_trace": true,
+        "force_refresh_bindings": true
+      }
+    }
+  ]
+}

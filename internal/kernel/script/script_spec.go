@@ -83,6 +83,10 @@ type ScriptSpec struct {
 	SegmentTopics      []string `json:"segment_topics,omitempty"`
 	SentencesPerImage  int      `json:"sentences_per_image,omitempty"`
 	ImagesPerScene     int      `json:"images_per_scene,omitempty"`
+	// MinImagesPerSource is the minimum number of ready images each image
+	// provider (internet_images, image_generation) must deliver for a segment
+	// before the materializer stops early. 0 disables the floor.
+	MinImagesPerSource int `json:"min_images_per_source,omitempty"`
 	// MediaDensity is a readable preset for visual cadence. Explicit
 	// sentences_per_image/images_per_scene values always take precedence.
 	MediaDensity        string `json:"media_density,omitempty"`

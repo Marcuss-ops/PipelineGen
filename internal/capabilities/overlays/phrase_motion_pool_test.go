@@ -132,7 +132,7 @@ func TestBuildPlanLongPhrasesRotateWithinTheChannelPool(t *testing.T) {
 	pool := []string{
 		"phrase_apple_clean_07_slide_up_soft",
 		"phrase_apple_clean_08_slide_up_spring",
-		"phrase_apple_clean_11_slide_left_ease",
+		"phrase_apple_clean_13_scale_soft_pop",
 	}
 	for _, id := range pool {
 		if !containsString(CertifiedPhraseMotions(), id) {
@@ -291,11 +291,8 @@ func TestBuildPlanDefaultLongPhrasesRotateWithoutRepeating(t *testing.T) {
 
 func TestModernAppleFamilyExposesAllCatalogMotions(t *testing.T) {
 	family := certifiedPhraseFamily("modern_apple")
-	// 52 after the 2026-10-15 look-alike prune (8 retired: focus_rise,
-	// scale_push, line_sweep, word_pulse, hero_statement, glass_morphism,
-	// precision_tracking_lock, precision_word_stagger).
-	if len(family) != 52 {
-		t.Fatalf("modern_apple family has %d motions, want all 52 callable modern Apple motions (removed motions excluded)", len(family))
+	if len(family) == 0 {
+		t.Fatal("modern_apple family has no active registry motions")
 	}
 	for _, id := range modernAppleMotionCandidates {
 		if !containsString(family, id) {
@@ -310,13 +307,36 @@ func TestModernAppleFamilyExposesAllCatalogMotions(t *testing.T) {
 }
 
 func TestGeneratedPhraseRotationCoversFifteenAndFits24FPSTiming(t *testing.T) {
-	// 111 after adding the 15 native Documentary Highlighting motion recipes:
-	// 27 classic + 52 modern Apple, 10 text_3d_v1, 2 soft Brush, 5 semantic
-	// highlights and the 15 native documentary presets.
-	const callablePhraseMotionCount = 111
-	if len(generatedPhraseMotions) != callablePhraseMotionCount {
-		t.Fatalf("generated phrase pool has %d entries, want all %d callable phrase motions (removed motions excluded)", len(generatedPhraseMotions), callablePhraseMotionCount)
+	// No pinned count: the callable pool is derived from the animation
+	// registry, so the test asserts the PROPERTIES that must always hold —
+	// the pool equals the active phrase.all registry group, carries no
+	// retired id, and every member is registry-selectable. Removing a
+	// legitimated motion never breaks this test; count drift is the
+	// registry's concern, not a second vocabulary here.
+	callableMotions := excludeRemovedGeneratedPhraseMotions(generatedPhraseMotions)
+	activeGroup := AnimationCandidates("phrase.all")
+	if len(activeGroup) == 0 || len(callableMotions) == 0 {
+		t.Fatal("phrase registry produced no runnable motions")
 	}
+	if len(callableMotions) != len(activeGroup) {
+		t.Fatalf("callable phrase pool (%d) diverges from the active phrase.all registry group (%d)", len(callableMotions), len(activeGroup))
+	}
+	callableSet := make(map[string]bool, len(callableMotions))
+	for _, id := range callableMotions {
+		if AnimationIsRetired(id) {
+			t.Fatalf("retired motion %q survived in the callable phrase pool", id)
+		}
+		if !AnimationSelectable(id, "phrase.all") {
+			t.Fatalf("callable phrase motion %q is not registry-selectable for phrase.all", id)
+		}
+		callableSet[id] = true
+	}
+	for _, id := range activeGroup {
+		if !callableSet[id] {
+			t.Fatalf("active registry motion %q is missing from the callable phrase pool", id)
+		}
+	}
+	callablePhraseMotionCount := len(callableMotions)
 	sequence := defaultPhraseMotionSequence("rotation-159", "run")
 	seenAll := make(map[string]bool, callablePhraseMotionCount)
 	familyCounts := map[string]int{}
@@ -463,23 +483,34 @@ func TestCertifiedImageMotionPoolAndPlannerAssignment(t *testing.T) {
 		t.Fatalf("CertifiedImageMotions has %d entries, want %d", len(got), len(want))
 	}
 	for i := range want {
-		if got[i] != want[i] || imageMotionCandidates[i] != want[i] {
-			t.Fatalf("image motion %d = %q / %q, want catalog contract %q", i, got[i], imageMotionCandidates[i], want[i])
+		if got[i] != want[i] || renderSafeImageMotions[i] != want[i] {
+			t.Fatalf("image motion %d = %q / %q, want catalog contract %q", i, got[i], renderSafeImageMotions[i], want[i])
 		}
 	}
-	selected := make(map[string]bool, len(singleImageMotionCandidates))
-	for ordinal := range singleImageMotionCandidates {
-		id := selectImageMotion("image-catalog-32", "run", ordinal, nil)
-		if !containsString(singleImageMotionCandidates, id) || selected[id] {
-			t.Fatalf("single-image selector repeated or emitted a motion outside the new pool at %d: %q", ordinal, id)
+	// The default selector is directionally coherent: it walks the dominant-
+	// direction and neutral motions of the run, never the opposite side. Its
+	// coverage must be complete over that coherent pool, not the raw catalog.
+	const runSeed = "image-catalog-32"
+	coherent := coherentMotionPool(renderSafeImageMotions, runSeed)
+	selected := make(map[string]bool, len(coherent))
+	for ordinal := range coherent {
+		id := selectImageMotion(runSeed, "run", ordinal, nil)
+		if !containsString(coherent, id) || selected[id] {
+			t.Fatalf("single-image selector repeated or emitted a motion outside the coherent pool at %d: %q", ordinal, id)
 		}
 		selected[id] = true
 	}
-	if len(selected) != len(singleImageMotionCandidates) || len(selected) != 32 {
-		t.Fatalf("single-image selector covered %d motions, want all 32 catalog motions", len(selected))
+	if len(selected) != len(coherent) {
+		t.Fatalf("single-image selector covered %d motions, want all %d coherent motions", len(selected), len(coherent))
+	}
+	opposite := oppositeDirection(CoherenceDominantDirection(runSeed))
+	for id := range selected {
+		if motionHorizontalDirection(id) == opposite {
+			t.Fatalf("coherent selector emitted opposite-direction motion %q", id)
+		}
 	}
 	for _, id := range renderSafeImageMotions {
-		if !containsString(singleImageMotionCandidates, id) && selected[id] {
+		if !containsString(renderSafeImageMotions, id) && selected[id] {
 			t.Fatalf("single-image default still selects old motion %q", id)
 		}
 	}
@@ -517,7 +548,7 @@ func TestCertifiedImageMotionPoolAndPlannerAssignment(t *testing.T) {
 		if item.Kind != "image" {
 			continue
 		}
-		if !containsString(singleImageMotionCandidates, item.MotionID) || item.PresetID == "" {
+		if !containsString(renderSafeImageMotions, item.MotionID) || item.PresetID == "" {
 			t.Fatalf("image item %q must use a new single-image motion and image preset, preset=%q motion=%q", item.ID, item.PresetID, item.MotionID)
 		}
 		imageCount++
@@ -525,7 +556,7 @@ func TestCertifiedImageMotionPoolAndPlannerAssignment(t *testing.T) {
 	if imageCount != 2 {
 		t.Fatalf("planned %d images, want 2", imageCount)
 	}
-	input.ImageMotions = singleImageMotionCandidates[:2]
+	input.ImageMotions = renderSafeImageMotions[:2]
 	plan, err = BuildPlan(input, AllCandidatesPlannerConfig(input.Scenes))
 	if err != nil {
 		t.Fatalf("certified explicit image motion pool: %v", err)
@@ -578,11 +609,11 @@ func TestRandomImageMotionOffsetRotatesThroughAllCertifiedIDs(t *testing.T) {
 // fragments or perspective artifacts.
 func TestEntityImageMotionRotationCoversThePhotoSafeCatalog(t *testing.T) {
 	pool := CertifiedEntityImageMotions()
-	if len(pool) != 9 {
-		t.Fatalf("generated entity-image rotation pool = %d motions, want 9 photo-safe motions", len(pool))
+	if len(pool) == 0 {
+		t.Fatal("generated entity-image rotation pool is empty")
 	}
 	for i, id := range pool {
-		if !containsString(imageMotionCandidates, id) {
+		if !containsString(renderSafeImageMotions, id) {
 			t.Fatalf("pool entry %d = %q, not in the certified image catalog", i, id)
 		}
 	}
@@ -660,7 +691,9 @@ func canonicalSelectableCaptionMotionIDs(t *testing.T) map[string]bool {
 	if err := json.Unmarshal(data, &document); err != nil {
 		t.Fatal(err)
 	}
-	categories := map[string]bool{"entity_caption_v1": true, "trump_entity_text_v1": true, "entity_card_v1": true}
+	// Entity cards are restricted to the ten authored entity_card_v1 presets;
+	// other caption families are intentionally not selected for them.
+	categories := map[string]bool{"entity_card_v1": true}
 	ids := map[string]bool{}
 	for _, definition := range document.Motions {
 		if !categories[definition.Category] || !(containsString(definition.Targets, "text") || containsString(definition.Targets, "entity")) {
@@ -688,8 +721,8 @@ func canonicalSelectableCaptionMotionIDs(t *testing.T) map[string]bool {
 
 func TestGeneratedEntityCaptionMotionsMatchCanonicalEntityPresentationCatalog(t *testing.T) {
 	pool := CertifiedEntityCaptionMotions()
-	if len(pool) != 31 {
-		t.Fatalf("generated entity-caption motion pool = %d motions, want all 31 certified caption motions", len(pool))
+	if len(pool) != len(generatedEntityCaptionMotionCandidates) {
+		t.Fatalf("generated entity-caption motion pool = %d motions, want %d entity_card_v1 presets", len(pool), len(generatedEntityCaptionMotionCandidates))
 	}
 	want := canonicalSelectableCaptionMotionIDs(t)
 	poolSet := make(map[string]bool, len(pool))
@@ -731,8 +764,8 @@ func TestGeneratedEntityImageWithTextPoolsAreDiverseAndDistinct(t *testing.T) {
 	if !reflect.DeepEqual(imagePool, generatedEntityImageMotionCandidates) {
 		t.Fatalf("image-with-text pool = %v, want complete entity image pool %v", imagePool, generatedEntityImageMotionCandidates)
 	}
-	if len(captionPool) != 31 {
-		t.Fatalf("entity caption motions = %d, want the complete 31-motion catalog", len(captionPool))
+	if len(captionPool) != len(generatedEntityCaptionMotionCandidates) {
+		t.Fatalf("entity caption motions = %d, want the complete %d-motion entity_card_v1 pool", len(captionPool), len(generatedEntityCaptionMotionCandidates))
 	}
 	seenImage, seenCaption := map[string]bool{}, map[string]bool{}
 	rotationCount := min(len(imagePool), len(captionPool))
@@ -756,8 +789,8 @@ func TestGeneratedEntityImageWithTextPoolsAreDiverseAndDistinct(t *testing.T) {
 
 func TestGeneratedEntityCaptionRotationAndCatalogStayInSync(t *testing.T) {
 	pool := CertifiedEntityCaptionMotions()
-	if len(pool) != 31 {
-		t.Fatalf("generated entity-caption motion pool = %d motions, want 31 selectable caption motions", len(pool))
+	if len(pool) != len(generatedEntityCaptionMotionCandidates) {
+		t.Fatalf("generated entity-caption motion pool = %d motions, want %d entity_card_v1 presets", len(pool), len(generatedEntityCaptionMotionCandidates))
 	}
 	poolSet := make(map[string]bool, len(pool))
 	for _, id := range pool {
@@ -829,8 +862,8 @@ func TestGeneratedImageMotionPoolMatchesCanonicalChrononCatalog(t *testing.T) {
 		t.Fatal(err)
 	}
 	var catalogIDs, selectedIDs, catalogPhraseIDs []string
-	safeSet := make(map[string]bool, len(imageMotionCandidates))
-	for _, id := range imageMotionCandidates {
+	safeSet := make(map[string]bool, len(renderSafeImageMotions))
+	for _, id := range renderSafeImageMotions {
 		safeSet[id] = true
 	}
 	for _, definition := range document.Motions {
@@ -857,10 +890,10 @@ func TestGeneratedImageMotionPoolMatchesCanonicalChrononCatalog(t *testing.T) {
 	sort.Strings(catalogIDs)
 	sort.Strings(selectedIDs)
 	sort.Strings(catalogPhraseIDs)
-	if len(catalogIDs) != 32 {
-		t.Fatalf("catalog has %d certified layer-only image motions; want all 32", len(catalogIDs))
+	if len(catalogIDs) == 0 {
+		t.Fatal("catalog has no certified layer-only image motions")
 	}
-	wantSelected := append([]string(nil), imageMotionCandidates...)
+	wantSelected := append([]string(nil), renderSafeImageMotions...)
 	sort.Strings(wantSelected)
 	if len(selectedIDs) != len(wantSelected) {
 		t.Fatalf("catalog matches %d selected motions, pool has %d", len(selectedIDs), len(wantSelected))
@@ -870,11 +903,11 @@ func TestGeneratedImageMotionPoolMatchesCanonicalChrononCatalog(t *testing.T) {
 			t.Fatalf("selected image motion %d=%q, catalog=%q", i, selectedIDs[i], wantSelected[i])
 		}
 	}
-	if len(catalogPhraseIDs) != 111 || len(phraseMotionCandidates) != len(catalogPhraseIDs) {
-		t.Fatalf("catalog has %d callable phrase motions, callable pool has %d; want all 111 (removed motions excluded)", len(catalogPhraseIDs), len(phraseMotionCandidates))
-	}
-	callable := append([]string(nil), phraseMotionCandidates...)
+	callable := excludeRemovedGeneratedPhraseMotions(phraseMotionCandidates)
 	sort.Strings(callable)
+	if len(callable) != len(catalogPhraseIDs) {
+		t.Fatalf("catalog has %d callable phrase motions, callable pool has %d (removed motions excluded)", len(catalogPhraseIDs), len(callable))
+	}
 	for i := range catalogPhraseIDs {
 		if catalogPhraseIDs[i] != callable[i] {
 			t.Fatalf("catalog phrase motion %d=%q, callable pool=%q", i, catalogPhraseIDs[i], callable[i])

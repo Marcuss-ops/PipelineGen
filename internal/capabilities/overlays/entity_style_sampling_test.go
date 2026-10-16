@@ -73,8 +73,8 @@ func TestStampEntityStyleOnlyStampsPortraitCardsWithCaption(t *testing.T) {
 
 func TestImageWithTextMotionPoolFullCatalogByDefault(t *testing.T) {
 	full := ImageWithTextMotionPool(0)
-	if len(full) != len(generatedImageWithTextMotionCandidates) {
-		t.Fatalf("full pool = %d motions, want the complete certified catalog (%d)", len(full), len(generatedImageWithTextMotionCandidates))
+	if len(full) != len(generatedEntityImageMotionCandidates) {
+		t.Fatalf("full pool = %d motions, want the complete certified catalog (%d)", len(full), len(generatedEntityImageMotionCandidates))
 	}
 	capped := ImageWithTextMotionPool(5)
 	if len(capped) != 5 {
@@ -82,11 +82,11 @@ func TestImageWithTextMotionPoolFullCatalogByDefault(t *testing.T) {
 	}
 	// The rotation must reach the whole catalog across a long run.
 	seen := map[string]struct{}{}
-	for ordinal := 0; ordinal < len(generatedImageWithTextMotionCandidates); ordinal++ {
+	for ordinal := 0; ordinal < len(generatedEntityImageMotionCandidates); ordinal++ {
 		seen[ImageWithTextMotionAtOffset(0, ordinal, 0)] = struct{}{}
 	}
-	if len(seen) != len(generatedImageWithTextMotionCandidates) {
-		t.Fatalf("full rotation reached %d distinct motions, want %d", len(seen), len(generatedImageWithTextMotionCandidates))
+	if len(seen) != len(generatedEntityImageMotionCandidates) {
+		t.Fatalf("full rotation reached %d distinct motions, want %d", len(seen), len(generatedEntityImageMotionCandidates))
 	}
 }
 

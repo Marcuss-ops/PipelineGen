@@ -179,6 +179,35 @@ func TestMotionPoolsAreCanonicalSubsets(t *testing.T) {
 	}
 }
 
+func TestAnimationRegistryActiveEntriesAreCanonicalAndRetiredEntriesAreNotSelectable(t *testing.T) {
+	universe := loadCanonicalMotionUniverse(t)
+	groups := map[string]bool{}
+	for _, entry := range canonicalAnimationRegistry.Entries() {
+		for _, group := range entry.Families {
+			groups[group] = true
+		}
+		if entry.Status == "active" && entry.RendererSupported && (containsMotion(entry.Families, "phrase.all") || containsMotion(entry.Families, "image.all") || containsMotion(entry.Families, "entity.caption") || containsMotion(entry.Families, "entity.date") || containsMotion(entry.Families, "entity.metric")) && !universe.motionIDs[entry.ID] && !universe.presentationIDs[entry.ID] {
+			t.Errorf("active registry motion %q is absent from accepted Chronon catalogs", entry.ID)
+		}
+	}
+	for group := range groups {
+		for _, id := range canonicalAnimationRegistry.Candidates(group) {
+			if canonicalAnimationRegistry.IsRetired(id) || !canonicalAnimationRegistry.RendererSupported(id) {
+				t.Errorf("group %q exposes retired or unsupported motion %q", group, id)
+			}
+		}
+		for _, id := range canonicalAnimationRegistry.RetiredCandidates(group) {
+			if canonicalAnimationRegistry.Selectable(id, group) {
+				t.Errorf("retired motion %q remains selectable in group %q", id, group)
+			}
+		}
+	}
+	defaultBasemap := canonicalAnimationRegistry.MapTypeDefault()
+	if !canonicalAnimationRegistry.Selectable(defaultBasemap, "map.basemap") {
+		t.Fatalf("default map type %q does not resolve to an active basemap", canonicalAnimationRegistry.MapTypeDefault())
+	}
+}
+
 // TestShortPhraseWordGroupsMatchCatalog ensures every routed recipe still
 // exists in the canonical catalog and is only listed at its authored word_count.
 // ShortPhrase overlays themselves are static in the planner; these groups are

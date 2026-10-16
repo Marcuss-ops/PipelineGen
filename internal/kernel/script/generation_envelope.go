@@ -170,6 +170,17 @@ type GenerationItemV2 struct {
 	// family. With no explicit pool or family, the runtime rotates through its
 	// seeded random sequence over the full certified animation catalog.
 	PhraseMotionFamily string `json:"phrase_motion_family,omitempty"`
+	// MotionSeed is the per-render entropy for automatic motion rotation
+	// (phrases, short phrases, images, captions, entity styles). Empty keeps
+	// the historical deterministic behavior derived from plan/video/project
+	// identity, so identical inputs compile byte-identical plans and retries
+	// stay bit-identical. Pass a fresh value per render (e.g. the job UUID)
+	// to rotate the certified catalogs instead of replaying the same
+	// prefix; retries of the same render must reuse the same seed.
+	MotionSeed string `json:"motion_seed,omitempty"`
+	// CoherenceSeed picks the run's dominant horizontal direction (left or
+	// right) so every lane leans the same way. Empty derives it from MotionSeed.
+	CoherenceSeed string `json:"coherence_seed,omitempty"`
 	// MaxPhraseOverlays sets the requested run-level ceiling for grounded
 	// phrase overlays. A positive value may lower or raise the default, but
 	// runtime caps it at overlay.MaxPhraseOverlaysHardLimit; zero or omitted

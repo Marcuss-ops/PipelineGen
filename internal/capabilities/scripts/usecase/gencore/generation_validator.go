@@ -257,6 +257,12 @@ func validateScript(sp scriptpkg.ScriptSpec, ref string) []string {
 	if sp.ImagesPerScene > 20 {
 		d = append(d, ref+": images_per_scene exceeds maximum of 20")
 	}
+	if sp.MinImagesPerSource < 0 {
+		d = append(d, ref+": min_images_per_source cannot be negative")
+	}
+	if sp.MinImagesPerSource > 20 {
+		d = append(d, ref+": min_images_per_source exceeds maximum of 20")
+	}
 	if density := strings.ToLower(strings.TrimSpace(sp.MediaDensity)); density != "" && density != "sparse" && density != "balanced" && density != "dense" {
 		d = append(d, ref+": media_density must be sparse, balanced, or dense")
 	}

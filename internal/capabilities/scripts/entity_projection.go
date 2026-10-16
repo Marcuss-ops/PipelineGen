@@ -16,6 +16,7 @@ package scriptgeneration
 
 import (
 	"fmt"
+	"math"
 	"sort"
 	"strings"
 
@@ -136,11 +137,12 @@ func annotationStableEntityID(entity scriptpkg.AnnotatedEntity) string {
 }
 
 // entityImageMergeGapMS is the largest gap between certified mention anchors
-// that still reads as one short visual beat: mentions five seconds apart or
-// closer are presented together inside ONE composite overlay instead of two
-// sequential image videos.
+// that still reads as one shared visual sequence. Grouping prevents nearby
+// images from being rendered as independent overlays that cover one another.
 const (
 	entityImageMergeGapMS       int64 = 5_000
+	entityImageHoldMS           int64 = 1_500
+	entityImageTravelMS         int64 = 2_000
 	maxEntityImageGroup               = 5
 	maxNamedEntityCardsPerScene       = 2
 )
@@ -169,15 +171,15 @@ func capNamedEntityCardsPerScene(items []capabilityoverlay.OverlayItem, max int)
 	return out
 }
 
-// composeNearbyEntityImages groups two to five image-backed entity items from
-// the same scene when their certified spoken anchors are no more than five
-// seconds apart. Every portrait retains its own relative reveal time, caption,
-// asset, preset and independently selected certified motion. Isolated images
-// and any remainder beyond a five-image group stay as separate items.
+// composeNearbyEntityImages groups two to six image-backed items from the same
+// scene when their certified anchors are no more than five seconds apart.
+// Entity portraits and contextual images share the same composite so each
+// enters on its own anchor without covering the earlier images. Every child
+// keeps its own caption, asset, preset and certified motion.
 func composeNearbyEntityImages(items []capabilityoverlay.OverlayItem, width, height int) []capabilityoverlay.OverlayItem {
 	indices := make([]int, 0, len(items))
 	for index := range items {
-		if items[index].Kind == string(capabilityoverlay.KindEntityImage) && len(items[index].AssetRefs) == 1 {
+		if isComposableImageItem(items[index]) {
 			indices = append(indices, index)
 		}
 	}
@@ -190,6 +192,7 @@ func composeNearbyEntityImages(items []capabilityoverlay.OverlayItem, width, hei
 	})
 
 	candidateIndexes := make(map[int]bool, len(indices))
+	composedScenes := make(map[string]bool)
 	for _, index := range indices {
 		candidateIndexes[index] = true
 	}
@@ -222,6 +225,7 @@ func composeNearbyEntityImages(items []capabilityoverlay.OverlayItem, width, hei
 				groupSize--
 			}
 			out = append(out, composeEntityImageGroup(items, remaining[:groupSize], width, height))
+			composedScenes[strings.TrimSpace(first.SceneID)] = true
 			remaining = remaining[groupSize:]
 		}
 		cursor += len(cluster)
@@ -229,6 +233,13 @@ func composeNearbyEntityImages(items []capabilityoverlay.OverlayItem, width, hei
 
 	for index, item := range items {
 		if candidateIndexes[index] {
+			continue
+		}
+		// A place label such as "Garlasco" is not part of a portrait
+		// sequence. Keeping it in the same mixed chain creates a stray title
+		// before the first photograph, so omit text-only location cards when
+		// the scene already has a multi-portrait camera sequence.
+		if composedScenes[strings.TrimSpace(item.SceneID)] && isTextOnlyLocationCard(item) {
 			continue
 		}
 		out = append(out, item)
@@ -242,27 +253,66 @@ func composeNearbyEntityImages(items []capabilityoverlay.OverlayItem, width, hei
 	return out
 }
 
+func isComposableImageItem(item capabilityoverlay.OverlayItem) bool {
+	if len(item.AssetRefs) != 1 {
+		return false
+	}
+	switch item.Kind {
+	case string(capabilityoverlay.KindEntityImage), "image":
+		return true
+	case string(capabilityoverlay.KindEntityCard):
+		// Image-backed person cards carry a verified photo but still need to
+		// join the same camera sequence as entity_image items.
+		return item.EntityRef != nil && strings.EqualFold(strings.TrimSpace(item.EntityRef.Type), "PERSON")
+	default:
+		return false
+	}
+}
+
+func isTextOnlyLocationCard(item capabilityoverlay.OverlayItem) bool {
+	if len(item.AssetRefs) != 0 {
+		return false
+	}
+	if item.EntityRef != nil && strings.EqualFold(strings.TrimSpace(item.EntityRef.Type), "LOCATION") {
+		return true
+	}
+	return strings.EqualFold(strings.TrimSpace(item.Kind), "location")
+}
+
 func composeEntityImageGroup(items []capabilityoverlay.OverlayItem, group []int, width, height int) capabilityoverlay.OverlayItem {
 	first := items[group[0]]
 	parentStart, parentEnd := first.StartMs, first.EndMs
 	parent := first
 	assetRefs := make([]capabilityoverlay.OverlayAssetRef, 0, len(group))
 	layers := make([]capabilityoverlay.OverlayImageLayer, 0, len(group))
-	for _, itemIndex := range group {
-		if items[itemIndex].EndMs > parentEnd {
-			parentEnd = items[itemIndex].EndMs
+	sequenceStarts := make([]int64, len(group))
+	for slot, itemIndex := range group {
+		child := items[itemIndex]
+		anchorOffset := max(int64(0), child.StartMs-parentStart)
+		minimumOffset := int64(slot) * (entityImageHoldMS + entityImageTravelMS)
+		if slot > 0 {
+			minimumOffset = sequenceStarts[slot-1] + entityImageHoldMS + entityImageTravelMS
 		}
+		sequenceStarts[slot] = max(anchorOffset, minimumOffset)
 	}
+	// The composite is a spatial set: all portraits and labels exist from the
+	// start, while the camera reveals each pair by travelling to its position.
+	parentEnd = parentStart + sequenceStarts[len(sequenceStarts)-1] + entityImageHoldMS
 	groupDuration := parentEnd - parentStart
 	for slot, itemIndex := range group {
 		child := items[itemIndex]
-		offset := child.StartMs - parentStart
+		offset := sequenceStarts[slot]
+		// StartMS remains the camera departure marker. RenderingGen keeps each
+		// portrait and label in the spatial scene for the full group duration.
+		layerStart := offset
+		layerEnd := groupDuration
 		assetRefs = append(assetRefs, child.AssetRefs[0])
 		layers = append(layers, capabilityoverlay.OverlayImageLayer{
 			ID: child.ID, AssetID: child.AssetRefs[0].AssetID, EntityID: stableIDForOverlayItem(child),
-			StartMS: offset, EndMS: groupDuration, PresetID: child.PresetID,
-			Caption: entityImageCaption(child),
-			Params:  entityImageLayerParams(width, height, len(group), slot),
+			StartMS: layerStart, EndMS: layerEnd, CaptionStartMS: 0, CaptionEndMS: groupDuration, PresetID: child.PresetID,
+			CaptionLayout: "below",
+			Caption:       entityImageCaption(child),
+			Params:        entityImageLayerParams(width, height, len(group), slot),
 		})
 	}
 	parent.ID = first.ID
@@ -273,6 +323,13 @@ func composeEntityImageGroup(items []capabilityoverlay.OverlayItem, group []int,
 	parent.StartUS = first.StartUSValue()
 	parent.DurationUS = parentEnd*1_000 - parent.StartUS
 	parent.AssetRefs = assetRefs
+	// image_layers are carried by the entity_image semantic primitive even
+	// when the group contains contextual images without entity captions.
+	parent.Kind = string(capabilityoverlay.KindEntityImage)
+	parent.TemplateID = "image_popup"
+	// The sequence owns the single shared camera rig; a sampled single-entity
+	// composition must not layer a second camera animation onto the group.
+	parent.EntityStyleID = ""
 	parent.MotionID = ""
 	parent.MotionParams = nil
 	parent.Params = nil
@@ -294,6 +351,7 @@ func composeEntityImageGroup(items []capabilityoverlay.OverlayItem, group []int,
 	// timelines or deduplication at downstream consumers.
 	parent.EntityID = ""
 	parent.EntityRef = nil
+	parent.Params = map[string]any{"camera_travel_ms": entityImageTravelMS}
 	return parent
 }
 
@@ -323,43 +381,18 @@ func entityImageLayerParams(width, height, count, slot int) map[string]any {
 	if width <= 0 || height <= 0 {
 		width, height = 1920, 1080
 	}
-	boxWidth, boxHeight := width*22/100, height*42/100
-	// Lift entity groups into the visual center. The caption renderer places
-	// each name below its image, so a small upward bias keeps the whole card
-	// (portrait + name) centered instead of pinning the name to the bottom.
-	positionX, positionY := 0.0, -float64(height)*0.10
-	switch count {
-	case 3:
-		boxWidth, boxHeight = width*29/100, height*48/100
-		positionX = float64(slot-1) * float64(width) * 0.29
-	case 4:
-		boxWidth, boxHeight = width*29/100, height*39/100
-		positionX = []float64{-0.17, 0.17, -0.17, 0.17}[slot] * float64(width)
-		positionY += []float64{-0.10, -0.10, 0.14, 0.14}[slot] * float64(height)
-	case 5:
-		boxWidth, boxHeight = width*24/100, height*34/100
-		positions := [][2]float64{{-0.25, -0.10}, {0, -0.10}, {0.25, -0.10}, {-0.16, 0.16}, {0.16, 0.16}}
-		positionX = positions[slot][0] * float64(width)
-		positionY += positions[slot][1] * float64(height)
-	default:
-		boxWidth, boxHeight = width*34/100, height*56/100
-		if slot == 0 {
-			positionX = -float64(width) * 0.18
-		} else {
-			positionX = float64(width) * 0.18
-		}
+	// Bound each photo to most of the canvas while preserving safe caption room.
+	// Contain preserves the source aspect ratio; one canvas-width step keeps
+	// neighboring photos and captions outside the camera viewport.
+	boxHeight := float64(height) * 0.76
+	boxWidth := float64(width) * 0.90
+	positionX, positionY := float64(slot)*float64(width), 0.0
+	if count > 1 {
+		// A shallow shared arc gives the same pan a natural, data-derived angle
+		// between stops without introducing separate camera motion modes.
+		positionY = math.Sin(2*math.Pi*float64(slot)/float64(count-1)) * 0.045 * float64(height)
 	}
-	if boxWidth < 1 {
-		boxWidth = 1
-	}
-	if boxHeight < 1 {
-		boxHeight = 1
-	}
-	return map[string]any{
-		"width": boxWidth, "height": boxHeight,
-		"position_x": positionX, "position_y": positionY,
-		"fit": "contain",
-	}
+	return map[string]any{"width": int(boxWidth), "height": int(boxHeight), "position_x": positionX, "position_y": positionY, "fit": "contain"}
 }
 
 // assignEntityImageMotions samples a fresh pool offset once per newly compiled
@@ -379,6 +412,22 @@ func entityImageLayerParams(width, height, count, slot int) map[string]any {
 // assignment. Both are validated fail-closed.
 func assignEntityImageMotions(items []capabilityoverlay.OverlayItem, offset, width, height int, entityStyleID string, requestedPools ...[]string) error {
 	imageOrdinal, captionOrdinal := 0, 0
+	// Composite groups draw from a per-size entrance pool (see
+	// CompositeImageMotionPool); each size rotates its own ordinal so a 2-, 3-,
+	// 4- or 5-image group never reuses another size's entrance family.
+	compositeOrdinal := make(map[int]int)
+	compositeMotion := func(size int) string {
+		pool := capabilityoverlay.CompositeImageMotionPool(size)
+		if len(pool) == 0 {
+			return ""
+		}
+		index := (offset + compositeOrdinal[size]) % len(pool)
+		if index < 0 {
+			index += len(pool)
+		}
+		compositeOrdinal[size]++
+		return pool[index]
+	}
 	var requested []string
 	if len(requestedPools) > 0 {
 		requested = requestedPools[0]
@@ -437,7 +486,15 @@ func assignEntityImageMotions(items []capabilityoverlay.OverlayItem, offset, wid
 	imageMotion := func() string {
 		motion := ""
 		if len(requested) > 0 {
-			motion = requested[imageOrdinal%len(requested)]
+			// A run-level image pool rotates offset-aware like the
+			// automatic pool and the caption pool below: without the
+			// offset every run replayed the payload pool from index 0,
+			// so the same entrances recurred in the same order.
+			index := (offset + imageOrdinal) % len(requested)
+			if index < 0 {
+				index += len(requested)
+			}
+			motion = requested[index]
 		} else {
 			motion = capabilityoverlay.EntityImageMotionAtOffset(offset, imageOrdinal)
 		}
@@ -463,9 +520,14 @@ func assignEntityImageMotions(items []capabilityoverlay.OverlayItem, offset, wid
 			continue
 		}
 		if len(item.ImageLayers) > 0 {
+			item.CameraMotionID = capabilityoverlay.EntitySequenceCameraMotion()
 			for layerIndex := range item.ImageLayers {
 				layer := &item.ImageLayers[layerIndex]
-				layer.MotionID = imageMotion()
+				if len(requested) > 0 {
+					layer.MotionID = imageMotion()
+				} else {
+					layer.MotionID = compositeMotion(len(item.ImageLayers))
+				}
 				if strings.TrimSpace(layer.Caption) != "" {
 					layer.CaptionMotionID = captionMotionAt(captionOrdinal)
 					captionOrdinal++

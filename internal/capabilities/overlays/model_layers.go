@@ -18,6 +18,8 @@ type OverlayImageLayer struct {
 	AssetID             string            `json:"asset_id"`
 	StartMS             int64             `json:"start_ms"`
 	EndMS               int64             `json:"end_ms"`
+	CaptionStartMS      int64             `json:"caption_start_ms,omitempty"`
+	CaptionEndMS        int64             `json:"caption_end_ms,omitempty"`
 	PresetID            string            `json:"preset_id,omitempty"`
 	MotionID            string            `json:"motion_id,omitempty"`
 	MotionParams        map[string]any    `json:"motion_params,omitempty"`
@@ -26,6 +28,7 @@ type OverlayImageLayer struct {
 	CaptionMotionParams map[string]any    `json:"caption_motion_params,omitempty"`
 	CaptionFontFamily   string            `json:"caption_font_family,omitempty"`
 	CaptionColor        string            `json:"caption_color,omitempty"`
+	CaptionLayout       string            `json:"caption_layout,omitempty"`
 	Params              map[string]any    `json:"params,omitempty"`
 	Frame               *OverlayItemFrame `json:"frame,omitempty"`
 	// EntityID remains producer-only so a composite's child identities can

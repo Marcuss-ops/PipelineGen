@@ -80,8 +80,14 @@ func TestCompileOverlayPlanRetryKeepsStableIndependentImageMotions(t *testing.T)
 			t.Fatalf("plan %q should produce one two-image composite, got %+v", planID, plan.Items)
 		}
 		item := plan.Items[0]
-		if item.StartMs != 0 || item.EndMs != 2000 || item.ImageLayers[1].StartMS != 1000 || item.ImageLayers[0].EndMS != 2000 || item.ImageLayers[1].EndMS != 2000 {
-			t.Fatalf("plan %q lost the staggered mention timing: %+v", planID, item)
+		// The composite is a camera sequence: each portrait enters after one
+		// hold+travel slot and every layer stays up for the whole group. The
+		// group spans the editorial image ceiling, not the 2s mention window.
+		secondStart := int64(entityImageHoldMS + entityImageTravelMS)
+		if item.StartMs != 0 || item.EndMs != int64(capabilityoverlay.MaxImageOverlayDurationMS) ||
+			item.ImageLayers[0].StartMS != 0 || item.ImageLayers[1].StartMS != secondStart ||
+			item.ImageLayers[0].EndMS != item.EndMs || item.ImageLayers[1].EndMS != item.EndMs {
+			t.Fatalf("plan %q has an unexpected composite sequence: %+v", planID, item)
 		}
 		got := []string{item.ImageLayers[0].MotionID, item.ImageLayers[1].MotionID}
 		certified := capabilityoverlay.CertifiedImageMotions()

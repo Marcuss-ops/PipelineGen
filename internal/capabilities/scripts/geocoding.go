@@ -60,6 +60,13 @@ func (r *Runner) geocodePlaceAnnotations(ctx context.Context, annotations map[in
 			continue
 		}
 		for entityIndex := range annotation.PrimaryEntities {
+			if len(options) > 0 && options[0].mapsOnly && (personNameFragment(annotation, annotation.PrimaryEntities[entityIndex].CanonicalName) || capitalizedNameFragment(options[0].sceneTexts[index], annotation.PrimaryEntities[entityIndex].CanonicalName)) {
+				// A one-token LOCATION/GPE annotation can be the first or last
+				// name of a separately grounded person (e.g. "Chiara" from
+				// "Chiara Poggi"). Never send that homonym to the geocoder.
+				annotation.PrimaryEntities[entityIndex].Geo = nil
+				continue
+			}
 			if len(options) > 0 && options[0].mapsOnly && !containsGroundedPlaceName(options[0].sceneTexts[index], annotation.PrimaryEntities[entityIndex].CanonicalName) {
 				continue
 			}
@@ -68,6 +75,10 @@ func (r *Runner) geocodePlaceAnnotations(ctx context.Context, annotations map[in
 			}
 		}
 		for entityIndex := range annotation.SecondaryEntities {
+			if len(options) > 0 && options[0].mapsOnly && (personNameFragment(annotation, annotation.SecondaryEntities[entityIndex].CanonicalName) || capitalizedNameFragment(options[0].sceneTexts[index], annotation.SecondaryEntities[entityIndex].CanonicalName)) {
+				annotation.SecondaryEntities[entityIndex].Geo = nil
+				continue
+			}
 			if len(options) > 0 && options[0].mapsOnly && !containsGroundedPlaceName(options[0].sceneTexts[index], annotation.SecondaryEntities[entityIndex].CanonicalName) {
 				continue
 			}
@@ -82,6 +93,74 @@ func (r *Runner) geocodePlaceAnnotations(ctx context.Context, annotations map[in
 		}
 	}
 	return nil
+}
+
+// capitalizedNameFragment rejects a one-token location annotation that is
+// actually one part of a grounded multi-token proper name in the scene. It
+// covers cases where entity extraction omitted the corresponding PERSON row.
+func capitalizedNameFragment(sceneText, candidate string) bool {
+	candidate = strings.ToLower(strings.TrimSpace(candidate))
+	if candidate == "" || strings.Contains(candidate, " ") {
+		return false
+	}
+	for _, span := range capitalizedNameRE.FindAllString(sceneText, -1) {
+		parts := strings.Fields(strings.ToLower(strings.TrimSpace(span)))
+		if len(parts) < 2 {
+			continue
+		}
+		for _, part := range parts {
+			if part == candidate {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func stripPersonNameMapCandidates(annotation *scriptpkg.SceneAnnotations, sceneText string) {
+	if annotation == nil {
+		return
+	}
+	strip := func(entities []scriptpkg.AnnotatedEntity) {
+		for index := range entities {
+			entity := &entities[index]
+			if !isPlaceEntityType(entity.Type) {
+				continue
+			}
+			name := strings.TrimSpace(entity.CanonicalName)
+			if personNameFragment(annotation, name) || capitalizedNameFragment(sceneText, name) || (len(name) > 1 && name == strings.ToUpper(name)) {
+				entity.Geo = nil
+			}
+		}
+	}
+	strip(annotation.PrimaryEntities)
+	strip(annotation.SecondaryEntities)
+}
+
+// personNameFragment rejects only single-token candidate places that are
+// already grounded as part of a multi-token PERSON name in this scene.
+func personNameFragment(annotation *scriptpkg.SceneAnnotations, candidate string) bool {
+	if annotation == nil {
+		return false
+	}
+	normalize := func(value string) string {
+		return strings.ToLower(strings.Join(strings.Fields(strings.TrimSpace(value)), " "))
+	}
+	name := normalize(candidate)
+	if name == "" || strings.Contains(name, " ") {
+		return false
+	}
+	for _, entity := range append(append([]scriptpkg.AnnotatedEntity(nil), annotation.PrimaryEntities...), annotation.SecondaryEntities...) {
+		if !strings.EqualFold(strings.TrimSpace(entity.Type), "PERSON") {
+			continue
+		}
+		for _, part := range strings.Fields(normalize(entity.CanonicalName)) {
+			if part == name {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // containsGroundedPlaceName prevents a semantic annotation or a geocoder

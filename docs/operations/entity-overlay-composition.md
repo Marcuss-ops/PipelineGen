@@ -28,9 +28,9 @@ Implemented by `composeNearbyEntityImages` in
   `entityImageMergeGapMS = 5_000` ms apart and share the same `scene_id`
   join the same cluster. Items without a scene never group; mentions in
   different scenes never group.
-- **Cluster size 2..5** (`maxEntityImageGroup`): up to five portraits share
-  one item. Remainders repartition deterministically so a group always has
-  at least two children (6 → 4+2, 7 → 5+2, 11 → 5+4+2).
+- **Cluster size 2..5** (`maxEntityImageGroup`): up to five portraits or contextual images share
+  one item (the RenderingGen ceiling; `entity_group` and composite `image_layers` reject six). Remainders repartition deterministically so a group always has
+  at least two children (7 → 5+2, 11 → 5+4+2).
 - **Wire shape**: one `entity_image` item carrying N `asset_refs` and N
   `image_layers`. Each layer keeps:
   - its own relative `start_ms`/`end_ms` inside the parent window
@@ -43,14 +43,15 @@ Implemented by `composeNearbyEntityImages` in
     `position_y`, `fit: contain`).
 - **Slot geometry** (1920×1080 reference; scales with the canvas):
   duo = left/right cards at ±24 % width; trio = one row at 31 % pitch;
-  quad = 2×2; penta = hero row of three + pair below.
+  quad = 2×2; penta = hero row of three + pair below. There is no hexa layout.
 - **Identity**: the composite item ID concatenates the child IDs
   (`id-a+id-b+…`); each layer ID is the original item ID and carries the
   child's `entity_id` (producer-only) so intent joins survive. The parent
   carries no `entity_id`/`entity_ref` — it represents the group.
 - **Renderer support**: RenderingGen lowers every layer to an
   independently animated Chronon image layer (`compileImageLayers`); the
-  overlay-plan.v1 schema sets no upper bound on `image_layers`.
+  overlay-plan.v1 schema declares `image_layers` with `minItems: 2` and
+  `maxItems: 5`.
 
 ## Dynamic duration contract
 

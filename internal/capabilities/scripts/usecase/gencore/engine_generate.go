@@ -384,7 +384,8 @@ func sourceTextVerbatimResult(plan *scriptpkg.ResolvedGenerationPlan) (*EngineRe
 		}
 		scenes = append(scenes, scriptpkg.SpecScene{
 			ID: id, SegmentID: id, Index: i, Kind: scriptpkg.SceneNarration,
-			Text: segment.SourceText,
+			Text: segment.SourceText, DurationMS: segment.DurationMS,
+			OverlayCategories: scriptpkg.CloneOverlayCategories(segment.OverlayCategories),
 		})
 		parts = append(parts, segment.SourceText)
 	}

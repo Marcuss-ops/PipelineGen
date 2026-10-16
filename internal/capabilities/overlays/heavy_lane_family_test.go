@@ -1,0 +1,60 @@
+package overlays
+
+import (
+	"strings"
+	"testing"
+)
+
+// TestHeavyLaneRotatesFamilies pins the r47 lesson: with a family-sized
+// caller pool (e.g. the full catalog expanded from phrase_motion_family)
+// every high-priority phrase lands in the heavy lane, so the heavy lane
+// itself must rotate visual families. Windowing the raw catalog order filled
+// the whole window with the first classic entries and no brush, documentary
+// or spatial 3D phrase ever rendered in production.
+func TestHeavyLaneRotatesFamilies(t *testing.T) {
+	familyOf := func(id string) string {
+		switch longPhraseFamilyBucketOf(id) {
+		case longFamilyDocumentary:
+			return "documentary"
+		case longFamily3D:
+			return "3d"
+		case longFamilyBrush:
+			return "brush"
+		case longFamilyAppleClean:
+			return "apple_clean"
+		default:
+			return "classic"
+		}
+	}
+	pool := CertifiedPhraseMotions()
+	seen := map[string]bool{}
+	for ordinal := 0; ordinal < 10; ordinal++ {
+		motion := selectHeavyPhraseMotionLimited("heavy-family-probe", "run", ordinal, pool, 10)
+		if motion == "" {
+			t.Fatalf("ordinal %d selected no motion", ordinal)
+		}
+		seen[familyOf(motion)] = true
+	}
+	if len(seen) < 3 {
+		t.Fatalf("heavy lane covered only %v families across 10 ordinals, want at least 3", seen)
+	}
+}
+
+// TestHeavyLaneSmallPoolStaysVerbatim pins that small explicit caller pools
+// keep their order and are not forced through the family window.
+func TestHeavyLaneSmallPoolStaysVerbatim(t *testing.T) {
+	pool := []string{"apple_expand_from_center", "hero_scale_focus", "cinematic_camera_push"}
+	first := selectHeavyPhraseMotionLimited("verbatim-probe", "run", 0, pool, 0)
+	found := false
+	for _, id := range pool {
+		if id == first {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("small explicit pool drew %q from outside the pool", first)
+	}
+	if strings.TrimSpace(first) == "" {
+		t.Fatal("small explicit pool drew an empty motion")
+	}
+}

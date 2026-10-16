@@ -45,6 +45,7 @@ func BuildPlan(item scriptpkg.GenerationItemV2) scriptpkg.ResolvedGenerationPlan
 		SourceTextVerbatim: item.ScriptParams.SourceTextVerbatim,
 		SentencesPerImage:  item.ScriptParams.SentencesPerImage,
 		ImagesPerScene:     item.ScriptParams.ImagesPerScene,
+		MinImagesPerSource: item.ScriptParams.MinImagesPerSource,
 		MediaDensity:       item.ScriptParams.MediaDensity, Style: item.Style,
 		PromptVersion:       item.ScriptParams.PromptVersion,
 		EditorPromptVersion: item.ScriptParams.EditorPromptVersion,

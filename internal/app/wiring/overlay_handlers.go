@@ -363,10 +363,16 @@ func (r *chrononTemplateMapPlateResolver) ResolveFlyover(from, to capoverlay.Map
 	// Adjacent zoom levels keep each raster active only across a narrow
 	// cross-fade interval, so its geographic window can contain the complete
 	// camera viewport throughout that interval.
-	// Start at the regional view and finish one zoom level closer. A long
+	// Start at the regional view and finish two zoom levels closer. A long
 	// zoom ladder made a single city collapse into an endless push-in instead
 	// of keeping the route readable while the camera travels between places.
-	zooms := []int{6, 7}
+	// Zoom 8 joined the ladder on 2026-10-16: the previous {6,7} ceiling hit
+	// the effective LOD limit (half-band 0.5 → usable until ~7.5) exactly
+	// when arrival moves keep pushing in, so the finest frame zoomed past the
+	// published raster instead of cross-fading into a sharper plate. Coverage
+	// is still validated per LOD, so routes the finer level cannot cover
+	// degrade to the previous two-step ladder.
+	zooms := []int{6, 7, 8}
 	covered := make([]int, 0, len(zooms))
 	for _, zoom := range zooms {
 		window := geodesy.CenteredOn(center.Latitude, center.Longitude, zoom, plateWidth, plateHeight)

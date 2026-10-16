@@ -95,6 +95,53 @@ func TestEntityImageCatalogRejectsCachedGenericFilename(t *testing.T) {
 	}
 }
 
+func TestDurableEntityImagePoolForSegmentAttachesVerifiedRows(t *testing.T) {
+	ctx := context.Background()
+	repo := newIntegrationEntityImageCatalog()
+	identity, err := entitycatalog.CanonicalizePersonName("Angela Taccia")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := repo.UpsertEntity(ctx, entitycatalog.Entity{CanonicalEntityID: identity.CanonicalEntityID, EntityType: entitycatalog.EntityTypePerson, CanonicalName: identity.CanonicalName}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repo.UpsertCandidate(ctx, entitycatalog.Candidate{
+		CanonicalEntityID: identity.CanonicalEntityID,
+		Provider:          "duckduckgo",
+		Rank:              1,
+		SourceURL:         "https://www.newspeople.it/wp-content/uploads/2026/05/angela-taccia-ritratto.jpeg",
+		SourcePageURL:     "https://www.newspeople.it/angela-taccia-avvocata-sempio",
+		Status:            entitycatalog.CandidateStatusFresh,
+		SemanticStatus:    entitycatalog.CandidateSemanticAccepted,
+		SemanticScore:     0.9,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	segment := scriptpkg.VidRushSegmentResult{SegmentID: "seg-1"}
+	segment.Assets.Candidates = []scriptpkg.SegmentAssetCandidate{{
+		AssetID:  "search-1",
+		Provider: scriptpkg.VidRushProviderInternetImages,
+		Query:    "Angela Taccia",
+		Entity:   "Angela Taccia",
+	}}
+	segment.Insights.Entities = []scriptpkg.ExtractedEntity{{Value: "Angela Taccia", Type: "PERSON"}}
+	pooled := durableEntityImagePoolForSegment(ctx, repo, segment)
+	if len(pooled) != 1 {
+		t.Fatalf("durable pool attached %d candidates, want 1 verified row", len(pooled))
+	}
+	if !strings.HasPrefix(pooled[0].AssetID, "entity-image-") {
+		t.Fatalf("pooled candidate id = %q, want the durable catalog shape", pooled[0].AssetID)
+	}
+	// A segment without person queries attaches nothing; nil repo is safe.
+	other := scriptpkg.VidRushSegmentResult{SegmentID: "seg-2"}
+	if got := durableEntityImagePoolForSegment(ctx, repo, other); len(got) != 0 {
+		t.Fatalf("query-less segment attached %d candidates, want none", len(got))
+	}
+	if got := durableEntityImagePoolForSegment(ctx, nil, segment); len(got) != 0 {
+		t.Fatalf("nil repo attached %d candidates, want none", len(got))
+	}
+}
+
 func TestEntityImageCatalogReopensLegacyHeadshotOnlyVerdictForCurrentScorer(t *testing.T) {
 	repo := newIntegrationEntityImageCatalog()
 	identity, err := entitycatalog.CanonicalizePersonName("Angela Taccia")

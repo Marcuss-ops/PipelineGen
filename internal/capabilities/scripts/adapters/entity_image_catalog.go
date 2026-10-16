@@ -150,6 +150,54 @@ func entityImageCatalogCandidates(ctx context.Context, repo entitycatalog.Reposi
 	return entityImageCatalogPool{Candidates: out, UsableCount: usableCount, KnownCount: known, Sufficient: known > 0 && usableCount >= target}, nil
 }
 
+// durableEntityImagePoolForSegment loads the durable per-person catalog pool
+// for every PERSON identity this segment queries, so the rows go through
+// Acquire → Verify → Finalize in-run. Without this the pool is only appended
+// after materialization, when un-acquired rows can no longer be downloaded:
+// a person with one surviving Drive asset and dozens of verified-but-never-
+// fetched editorial URLs then rebinds the same photo on every scene and
+// per-scene variety is impossible. Callers append the result with
+// AppendProviderCandidatesUnique, which collapses same-URL duplicates.
+func durableEntityImagePoolForSegment(ctx context.Context, repo entitycatalog.Repository, segment scriptpkg.VidRushSegmentResult) []scriptpkg.SegmentAssetCandidate {
+	if repo == nil {
+		return nil
+	}
+	seenQueries := make(map[string]struct{})
+	seenIdentities := make(map[string]struct{})
+	var out []scriptpkg.SegmentAssetCandidate
+	for _, candidate := range segment.Assets.Candidates {
+		if !strings.EqualFold(strings.TrimSpace(candidate.Provider), scriptpkg.VidRushProviderInternetImages) {
+			continue
+		}
+		query := strings.TrimSpace(candidate.Query)
+		if query == "" {
+			query = strings.TrimSpace(candidate.Entity)
+		}
+		if query == "" {
+			continue
+		}
+		lowered := strings.ToLower(query)
+		if _, dup := seenQueries[lowered]; dup {
+			continue
+		}
+		seenQueries[lowered] = struct{}{}
+		identity, ok, err := personCatalogIdentityForSegmentQuery(segment, query)
+		if err != nil || !ok {
+			continue
+		}
+		if _, dup := seenIdentities[identity.CanonicalEntityID]; dup {
+			continue
+		}
+		seenIdentities[identity.CanonicalEntityID] = struct{}{}
+		pool, err := entityImageCatalogCandidates(ctx, repo, identity, entityImageCatalogPoolSize)
+		if err != nil || len(pool.Candidates) == 0 {
+			continue
+		}
+		out = append(out, pool.Candidates...)
+	}
+	return out
+}
+
 // personImageLayoutNeedsRecertification identifies the prior visual-layout
 // verdict that incorrectly required a tight headshot and rejected contextual
 // editorial photos. It does not reopen collage, identity, or technical

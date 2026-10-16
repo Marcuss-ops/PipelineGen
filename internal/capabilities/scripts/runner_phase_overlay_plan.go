@@ -48,6 +48,8 @@ func (r *Runner) compileAudioOverlayPlan(ctx context.Context, runID string, req 
 	canvas.Style = req.OverlayStyle
 	canvas.PhraseMotions = req.PhraseMotions
 	canvas.PhraseMotionFamily = req.PhraseMotionFamily
+	canvas.MotionSeed = strings.TrimSpace(req.MotionSeed)
+	canvas.CoherenceSeed = strings.TrimSpace(req.CoherenceSeed)
 	// Goal E2: the phrases the semantic profile grounded as most relevant take
 	// the prominent entrance, the rest keep the calm rotation. The canvas may
 	// already carry an explicit override (zero = unset).
@@ -105,6 +107,13 @@ func (r *Runner) compileAudioOverlayPlan(ctx context.Context, runID string, req 
 	// not also add generic scene stills from the same candidates: those become
 	// static image-chain cards and obscure the one-motion-per-image contract.
 	genericSceneImagesEnabled := req.MaxImageOverlays > 0 && imageProviderEnabled && !req.MediaPlan.Extraction.EntityImages.PerScene()
+	r.log.Info("runner: overlay canvas motion inputs",
+		zap.String("run_id", runID),
+		zap.String("phrase_motion_family", canvas.PhraseMotionFamily),
+		zap.Int("phrase_motions", len(canvas.PhraseMotions)),
+		zap.Float64("heavy_phrase_priority", canvas.HeavyPhrasePriority),
+		zap.Any("animation_counts", canvas.AnimationCounts),
+	)
 	if err := compileResultOverlayPlan(result, req.SourceLanguage, runID, req.Project, driveFolderID, canvas, plates, req.MediaPlan.Extraction.EntityImages.PerScene(), genericSceneImagesEnabled); err != nil {
 		cause := fmt.Errorf("overlay plan compilation failed: %w", err)
 		r.failExecutionStep(ctx, exec, step, cause)

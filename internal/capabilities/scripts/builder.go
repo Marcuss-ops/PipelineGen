@@ -242,6 +242,8 @@ func BuildGenerateRequest(env *scriptpkg.GenerationEnvelopeV2, idempotencyKey st
 		MapAnimation:       item.MapAnimation,
 		PhraseMotions:      append([]string(nil), item.PhraseMotions...),
 		PhraseMotionFamily: item.PhraseMotionFamily,
+		MotionSeed:         strings.TrimSpace(item.MotionSeed),
+		CoherenceSeed:      strings.TrimSpace(item.CoherenceSeed),
 		ImageMotions:       append([]string(nil), item.ImageMotions...), EntityImageMotions: append([]string(nil), item.EntityImageMotions...),
 		EntityCaptionMotions:          append([]string(nil), item.EntityCaptionMotions...),
 		AnimationPolicies:             append([]scriptpkg.AnimationPolicy(nil), item.AnimationPolicies...),
