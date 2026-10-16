@@ -301,12 +301,9 @@ func seededGroupMotion(target, groupID, seed string, words int, entityImagePool,
 	if len(pool) == 0 {
 		return ""
 	}
-	digestValue := digest.SHA256String(seed + "\x00" + target + "\x00" + groupID)
-	var index uint64
-	for _, digit := range []byte(digestValue[:16]) {
-		index = index*16 + uint64(hexNibble(digit))
-	}
-	return pool[index%uint64(len(pool))]
+	// Single owner del seeding (P1-2): stesso hash di overlays.SeededGroupIndex.
+	// Legacy frozen per piani storici; i nuovi piani usano AnimationSelector.
+	return pool[capabilityoverlay.SeededGroupIndex(seed, target, groupID, len(pool))]
 }
 
 func hexNibble(digit byte) byte {

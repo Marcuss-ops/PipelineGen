@@ -1,0 +1,31 @@
+title = "PipelineGen gitleaks allowlist — BUILD-03 classification (2026-10-16)"
+
+# The 2026-10-10/16 secret audit reported 17 findings from the full-tree scan
+# (`gitleaks detect --source . --no-git`). Every one was classified manually:
+# all 17 are false positives (test fixtures, deterministic idempotency keys,
+# Google Drive folder IDs and the public jwt.io demo token). NO real credential
+# was found, so no rotation is required. Each entry below allowlists exactly one
+# observed literal — new secret-shaped strings are still reported. Do NOT widen
+# these patterns into file or rule-level exclusions.
+
+[allowlist]
+description = "Single-finding, literal-anchored allowlist (see per-entry classification)"
+regexes = [
+  "1Qatr7H-NoKiolIFh6SIrhM19nlYWdOPj",  # cmd/admin/internal/cleanup/cleanup_delete_folders.go:76 — Google Drive folder IDs (resource identifiers in the cleanup allowlist), not credentials
+  "a1b2c3d4e5f6789012345678901234567890123456789012345678901234abcd",  # internal/capabilities/assets/providers/stock/enrichment/outbox_emitter_test.go:120 — synthetic test idempotency keys (a1b2..../bbbb.... literals)
+  "a1b2c3d4e5f6789012345678901234567890123456789012345678901234abcd",  # internal/capabilities/assets/providers/stock/enrichment/outbox_emitter_test.go:251 — synthetic test idempotency keys (a1b2..../bbbb.... literals)
+  "bbbbccccddddeeeeffff0000111122223333444455556666777788889999aaaa",  # internal/capabilities/assets/providers/stock/enrichment/outbox_emitter_test.go:255 — synthetic test idempotency keys (a1b2..../bbbb.... literals)
+  "5d82d42de05145b6abc65e8866fae74894d67ff38195104747dec1269752c311",  # internal/capabilities/cliprender/adapters/cliprender_overlay_test.go:37 — synthetic test render keys (SHA-256-shaped fixture literals)
+  "6f1d5e2c8a4b9d3f0e7c1a2b4d6f8e0a1c3b5d7f9e1a3c5b7d9f1e3a5c7b9d1f",  # internal/capabilities/cliprender/adapters/cliprender_overlay_test.go:70 — synthetic test render keys (SHA-256-shaped fixture literals)
+  "d95b4617ff8783aa7ed17e000888597f26a0738b1cb55e8269664eac2b4656f1",  # internal/capabilities/cliprender/chronon_timing_result_test.go:19 — synthetic test storage key (SHA-256-shaped fixture literal)
+  "jobID+attempt+artifactID",  # internal/capabilities/jobs/completion/complete_job_service_test.go:57 — Go expression in a test (key: jobID+attempt+artifactID), not a literal
+  "idem-p2a-conc-same-key",  # internal/capabilities/script/handler_envelope_concurrency_p2a_test.go:280 — synthetic test idempotency key (idem-p2a-conc-same-key)
+  "vo-idem-match-001",  # internal/capabilities/voiceover/service/finalizer_contract_test.go:190 — synthetic test idempotency key (vo-idem-match-001)
+  "0123456789abcdef0123456789abcdef",  # internal/platform/delivery/signer_test.go:25 — synthetic test HMAC secret (0123.. sequential fixture literal)
+  "0123456789abcdef0123456789abcdef",  # internal/platform/config/config_test.go:346 — synthetic test HMAC secret (0123.. sequential fixture literal)
+  "0123456789abcdef0123456789abcdef",  # internal/platform/downloader/mirror_sections_test.go:448 — synthetic test key (0123.. sequential fixture literal)
+  "key-409-abort",  # internal/platform/httpserver/middleware/idempotency_test.go:220 — synthetic test idempotency key (key-409-abort)
+  "abc123def456abc123def456abc123def456abc123def456abc123def4561234",  # internal/platform/drive/uploader_put_p0_6_test.go:30 — synthetic test idempotency key (abc1.. fixture literal)
+  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c",  # internal/platform/process/runner_test.go:323 — canonical jwt.io demo JWT (public example token), not a credential
+  "matt-damon-20-clips-profiling-20260826-v1",  # ops/jobs/matt_damon_20_clips_profiling.generate.json:46 — deterministic job idempotency key in an ops job payload, not a credential
+]

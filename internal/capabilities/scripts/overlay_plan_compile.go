@@ -439,9 +439,7 @@ func compileOverlayPlanWithMotionOffset(result *GenerateResult, language Languag
 	// otherwise LimitOverlayItemsPerScene drops the second image before it can
 	// fuse and every animation stays a singolo overlay.
 	if canvas.AnimationCounts["chain_disabled"] == 0 {
-		if canvas.AnimationCounts["chain_disabled"] == 0 {
-			items = composeNearbyEntityImages(items, canvas.Width, canvas.Height)
-		}
+		items = composeNearbyEntityImages(items, canvas.Width, canvas.Height)
 	}
 	items = applyOverlayGroupLimits(items, canvas.OverlayGroupLimits)
 	items = capabilityoverlay.LimitOverlayItemsPerScene(items, canvas.MaxOverlaysPerScene)
@@ -464,28 +462,26 @@ func compileOverlayPlanWithMotionOffset(result *GenerateResult, language Languag
 		AnimationCounts: canvas.AnimationCounts,
 	})
 	capabilityoverlay.EnsureDistinctNumberMotions(items, nil)
-	prePolicyMotions := make(map[int]string, len(items))
-	for index := range items {
-		prePolicyMotions[index] = items[index].MotionID
-	}
-	if err := scriptoverlay.ApplyAnimationPolicies(items, canvas.AnimationPolicies, planID, videoID, canvas.EntityImageMotions, canvas.EntityCaptionMotions); err != nil {
-		return nil, fmt.Errorf("overlay plan: animation policies: %w", err)
-	}
-	// Policies run after the distinct guards and can reintroduce duplicates
-	// against automatic motions. Re-run with policy-touched items pinned:
-	// explicit choices stand, automatic collisions rotate away.
-	if len(canvas.AnimationPolicies) > 0 {
-		pinned := make(map[int]bool, len(items))
-		for index := range items {
-			if items[index].MotionID != prePolicyMotions[index] {
-				pinned[index] = true
-			}
-		}
-		policyInput := capabilityoverlay.PlanInput{PlanID: planID, VideoID: videoID, MotionSeed: motionSeed, CoherenceSeed: strings.TrimSpace(canvas.CoherenceSeed), AnimationCounts: canvas.AnimationCounts}
-		capabilityoverlay.EnsureDistinctPhraseMotionsPinned(items, policyInput, pinned)
-		capabilityoverlay.EnsureDistinctNumberMotionsPinned(items, canvas.AnimationCounts, pinned)
+	// Policy/directive projection lives in the overlay subpackage (P2-5):
+	// canonical v2 validates directives without resampling, legacy keeps
+	// dual-read. Same behavior, keeps this file under the 600-line cap.
+	if err := scriptoverlay.ApplyPoliciesOrDirectives(items, scriptoverlay.PolicyApplicationInput{
+		PlanID: planID, VideoID: videoID, MotionSeed: motionSeed, CoherenceSeed: strings.TrimSpace(canvas.CoherenceSeed),
+		PhraseMotions: canvas.PhraseMotions, PhraseMotionFamily: canvas.PhraseMotionFamily,
+		EntityImageMotions: canvas.EntityImageMotions, EntityCaptionMotions: canvas.EntityCaptionMotions,
+		AnimationPolicies: canvas.AnimationPolicies, AnimationDirectives: canvas.AnimationDirectives,
+		AnimationContractVersion: canvas.AnimationContractVersion, AnimationCatalogDigest: canvas.AnimationCatalogDigest,
+		AnimationCounts: canvas.AnimationCounts,
+	}); err != nil {
+		return nil, fmt.Errorf("overlay plan: %w", err)
 	}
 	items = capabilityoverlay.CoalesceChainedOverlays(items, canvas.AnimationCounts)
+	// Single-owner boundary (§3 step 5→6): ResolveAnimationSelections valida
+	// che chain container e composite parent non portino MotionID proprie e che
+	// ogni child/segmento conservi la scelta. Validazione, mai ricampionamento.
+	if err := capabilityoverlay.ResolveAnimationSelections(items); err != nil {
+		return nil, fmt.Errorf("overlay plan: animation selection boundary: %w", err)
+	}
 	// Owned by the overlay subpackage: the root package is the compatibility
 	// facade, so the naming rule has exactly one home.
 	scriptoverlay.NameItemsForReview(items)

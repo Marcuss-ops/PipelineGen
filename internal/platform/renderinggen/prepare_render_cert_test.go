@@ -94,6 +94,9 @@ func TestPrepareRenderCertification(t *testing.T) {
 	}
 
 	// === 2. Submit overlay.render with the timing-frozen plan ===
+	// Background rides the first-class Background block (SSOT): the legacy
+	// "item with template BACKGROUND" spelling is rejected by the worker
+	// (RenderingGen owns content; templates do not provide phrases).
 	plan := capoverlay.OverlayPlan{
 		SchemaVersion: capoverlay.SchemaVersionPlan,
 		PlanID:        planID,
@@ -103,9 +106,12 @@ func TestPrepareRenderCertification(t *testing.T) {
 		Height:        720,
 		FPSNum:        30, FPSDen: 1,
 		RendererVersion: "chronon",
+		Background: &capoverlay.OverlayBackground{
+			Kind: "image", Fit: "cover",
+			AssetRefs: []capoverlay.OverlayAssetRef{{AssetID: "background", URL: "assets/background.jpg", SHA256: backgroundHash}},
+		},
 		Items: []capoverlay.OverlayItem{
-			{ID: "background", TemplateID: "BACKGROUND", StartMs: 0, EndMs: 4000, AssetRefs: []capoverlay.OverlayAssetRef{{AssetID: "background", URL: "assets/background.jpg", SHA256: backgroundHash}}},
-			{ID: "image_mj", TemplateID: "IMAGE_OVERLAY", StartMs: 500, EndMs: 3500, Params: map[string]any{"position": []any{640, 360}, "box_width": 400, "box_height": 400}, AssetRefs: []capoverlay.OverlayAssetRef{{AssetID: "mj_photo", URL: "assets/overlay_globe.png", SHA256: globeHash}}},
+			{ID: "image_mj", TemplateID: "IMAGE_OVERLAY", PresetID: "image_slide_left", StartMs: 500, EndMs: 3500, Params: map[string]any{"position": []any{640, 360}, "box_width": 400, "box_height": 400}, AssetRefs: []capoverlay.OverlayAssetRef{{AssetID: "mj_photo", URL: "assets/overlay_globe.png", SHA256: globeHash}}},
 		},
 	}
 	renderEnq, err := scriptgen.NewQueueRenderEnqueuer(New(queueURL))

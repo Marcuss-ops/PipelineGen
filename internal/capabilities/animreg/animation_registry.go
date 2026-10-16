@@ -498,6 +498,12 @@ func RetiredAnimationCandidates(group string) []string {
 	return canonicalAnimationRegistry.RetiredCandidates(group)
 }
 
+// AnimationEntryFamilies returns the registry families of one animation id.
+// The second result is false when the id is unknown to the registry.
+func AnimationEntryFamilies(id string) ([]string, bool) {
+	return canonicalAnimationRegistry.FamiliesOf(id)
+}
+
 func AnimationWordCount(id string) (int, bool) { return canonicalAnimationRegistry.WordCount(id) }
 
 func AnimationLaneCompatible(id, lane string) bool {

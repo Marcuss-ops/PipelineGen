@@ -1,0 +1,37 @@
+{
+  "schema": "renderinggen.queue.gate-b-evidence.v1",
+  "gate": "B: CANCELLED -> lease/claim cycle -> worker must never invoke Chronon again",
+  "status": "PASS",
+  "summary": "A job cancelled while running is never claimed again and never requeued by lease expiry: after the in-flight claim (attempt 1) the job was cancelled, the late complete/fail reports were rejected (409), and across 3 full lease/claim cycles every claim returned 204 and the attempt count stayed frozen at 1. A pending job cancelled before any claim was never claimable and kept attempts=0 (Chronon never invoked).",
+  "mechanism": "New POST /jobs/{id}/cancel in the RenderingGen queue. Cancelled is a terminal state: ClaimState only selects pending/rendered rows and RequeueExpired only touches running/finalizing rows, so a cancelled job can never be re-claimed or re-queued. An in-flight attempt is closed as 'cancelled' in the render_attempts ledger (migration 020_cancel_attempt_status.sql) with a JOB_CANCELLED render_event; attempts are never incremented by cancellation.",
+  "queue": {
+    "binary": "queue/cmd/queued built from this change set",
+    "mode": "in-memory backend",
+    "lease": "1s",
+    "expire_interval": "200ms",
+    "max_attempts": 3
+  },
+  "transcript": [
+    { "step": "submit job gateb2-running", "http": 201 },
+    { "step": "worker w1 claims (one Chronon invocation)", "response_state": "running" },
+    { "step": "producer cancels while running", "http": 204 },
+    { "step": "idempotent re-cancel", "http": 204 },
+    { "step": "late complete from w1 after cancel", "http": 409, "meaning": "rejected: job is no longer running" },
+    { "step": "late fail from w1 after cancel", "http": 409, "meaning": "rejected: job is no longer running" },
+    { "step": "lease expires + expiry scan runs; worker w2 claims", "http": 204, "meaning": "no job returned" },
+    { "step": "lease/claim cycle 2", "http": 204 },
+    { "step": "lease/claim cycle 3", "http": 204 },
+    { "step": "final job state", "state": "cancelled", "attempts": 1, "meaning": "Chronon invocation count frozen at 1; never incremented again" },
+    { "step": "submit job gateb2-pending (pending-cancel variant)", "http": 201 },
+    { "step": "producer cancels before any claim", "http": 204 },
+    { "step": "worker w3 claims", "http": 204, "meaning": "cancelled pending job never claimable" },
+    { "step": "final pending job state", "state": "cancelled", "attempts": 0, "meaning": "Chronon never invoked" }
+  ],
+  "automated_coverage": [
+    "queue/internal/service/cancel_test.go: TestCancelPendingJobIsNeverClaimed, TestCancelRunningJobSurvivesLeaseClaimCycleWithoutNewChrononInvocation, TestCancelIsIdempotentAndRejectsTerminalStates",
+    "queue/internal/server/server_test.go: TestCancelEndpointMakesJobUnclaimableAcrossLeaseCycle, TestCancelEndpointRejectsTerminalAndMissingJobs",
+    "queue/internal/repository/postgres/cancel_test.go: attempts/event ledger assertions (attempt closed 'cancelled', single attempt row, events JOB_CREATED/JOB_CLAIMED/JOB_CANCELLED only)",
+    "queue/client: Cancel + StateCancelled wire support"
+  ],
+  "produced_at": "2026-09-06T15:47:00Z"
+}
