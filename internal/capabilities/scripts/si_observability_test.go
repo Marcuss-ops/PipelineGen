@@ -2,6 +2,7 @@ package scriptgeneration
 
 import (
 	"encoding/json"
+	caprender "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/render"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -53,7 +54,7 @@ func TestBuildSIJobReportJoinsSignalsAndItems(t *testing.T) {
 			{SceneID: "s3", WindowStartUS: 40_000_000, WindowEndUS: 60_000_000, NarratedThrough: 2},
 		},
 		Plan: siObsPlan(),
-		Windows: []capabilityoverlay.SceneWindow{
+		Windows: []caprender.SceneWindow{
 			{SceneID: "s1", StartUS: 0, EndUS: 20_000_000},
 			{SceneID: "s2", StartUS: 20_000_000, EndUS: 40_000_000},
 			{SceneID: "s3", StartUS: 40_000_000, EndUS: 60_000_000},

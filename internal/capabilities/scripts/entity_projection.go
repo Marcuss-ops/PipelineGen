@@ -16,6 +16,7 @@ package scriptgeneration
 
 import (
 	"fmt"
+	caprender "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/render"
 	"math"
 	"sort"
 	"strings"
@@ -413,11 +414,11 @@ func entityImageLayerParams(width, height, count, slot int) map[string]any {
 func assignEntityImageMotions(items []capabilityoverlay.OverlayItem, offset, width, height int, entityStyleID string, requestedPools ...[]string) error {
 	imageOrdinal, captionOrdinal := 0, 0
 	// Composite groups draw from a per-size entrance pool (see
-	// CompositeImageMotionPool); each size rotates its own ordinal so a 2-, 3-,
+	// caprender.CompositeImageMotionPool); each size rotates its own ordinal so a 2-, 3-,
 	// 4- or 5-image group never reuses another size's entrance family.
 	compositeOrdinal := make(map[int]int)
 	compositeMotion := func(size int) string {
-		pool := capabilityoverlay.CompositeImageMotionPool(size)
+		pool := caprender.CompositeImageMotionPool(size)
 		if len(pool) == 0 {
 			return ""
 		}

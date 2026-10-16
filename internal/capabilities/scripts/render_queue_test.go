@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	caprender "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/render"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -700,7 +701,7 @@ func TestQueueRenderEnqueuerSeparatesChrononAndPollingWait(t *testing.T) {
 	enqueuer.pollInterval = 2 * time.Second
 
 	started := time.Now()
-	if _, err := enqueuer.EnqueueChrononPlan(context.Background(), capoverlay.GoldenOverlayPlanV1()); err != nil {
+	if _, err := enqueuer.EnqueueChrononPlan(context.Background(), caprender.GoldenOverlayPlanV1()); err != nil {
 		t.Fatal(err)
 	}
 	elapsed := time.Since(started)
@@ -763,7 +764,7 @@ func TestQueueRenderEnqueuerUsesEventDrivenWait(t *testing.T) {
 	enqueuer.SetRecorder(recorder)
 
 	start := time.Now()
-	if _, err := enqueuer.EnqueueChrononPlan(context.Background(), capoverlay.GoldenOverlayPlanV1()); err != nil {
+	if _, err := enqueuer.EnqueueChrononPlan(context.Background(), caprender.GoldenOverlayPlanV1()); err != nil {
 		t.Fatal(err)
 	}
 	if client.waits != 1 {
@@ -795,7 +796,7 @@ func TestQueueRenderEnqueuerEventDrivenPropagatesFailure(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = enqueuer.EnqueueChrononPlan(context.Background(), capoverlay.GoldenOverlayPlanV1())
+	_, err = enqueuer.EnqueueChrononPlan(context.Background(), caprender.GoldenOverlayPlanV1())
 	if err == nil {
 		t.Fatal("expected the terminal failure to propagate")
 	}
@@ -884,7 +885,7 @@ func (c *retryingRenderQueueClient) Retry(_ context.Context, id string) error {
 // paid the whole wait and then read an unexplained render failure instead of
 // "the queue could not be re-armed".
 func TestQueueRenderEnqueuerFailedJobRecovery(t *testing.T) {
-	plan := capoverlay.GoldenOverlayPlanV1()
+	plan := caprender.GoldenOverlayPlanV1()
 	failedJob := RenderQueueJob{ID: plan.PlanID, State: "failed", FailReason: "chronon exploded"}
 
 	t.Run("a re-arm that fails is surfaced", func(t *testing.T) {
@@ -1103,7 +1104,7 @@ func TestQueueRenderEnqueuerChrononPlan(t *testing.T) {
 
 	// Pre-seed the semantic document so the idempotent replay path observes
 	// the same payload shape production submits.
-	spec, err := json.Marshal(capoverlay.GoldenOverlayPlanV1())
+	spec, err := json.Marshal(caprender.GoldenOverlayPlanV1())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1112,10 +1113,10 @@ func TestQueueRenderEnqueuerChrononPlan(t *testing.T) {
 		JobType:     capoverlay.JobTypeRender,
 		OverlaySpec: spec,
 		Assets: []RenderQueueAsset{
-			{SHA256: capoverlay.GoldenBackgroundHash, URL: "assets/background.jpg"},
-			{SHA256: capoverlay.GoldenAppleHash, URL: "assets/apple.png"},
-			{SHA256: capoverlay.GoldenPresetFontHash, URL: capoverlay.CanonicalPresetFontPath},
-			{SHA256: capoverlay.GoldenFontHash, URL: capoverlay.CanonicalTextFontPath},
+			{SHA256: caprender.GoldenBackgroundHash, URL: "assets/background.jpg"},
+			{SHA256: caprender.GoldenAppleHash, URL: "assets/apple.png"},
+			{SHA256: caprender.GoldenPresetFontHash, URL: caprender.CanonicalPresetFontPath},
+			{SHA256: caprender.GoldenFontHash, URL: caprender.CanonicalTextFontPath},
 		},
 		State: "completed",
 		Artifact: &RenderArtifact{
@@ -1134,7 +1135,7 @@ func TestQueueRenderEnqueuerChrononPlan(t *testing.T) {
 		},
 	}
 
-	ref, err := enqueuer.EnqueueChrononPlan(context.Background(), capoverlay.GoldenOverlayPlanV1())
+	ref, err := enqueuer.EnqueueChrononPlan(context.Background(), caprender.GoldenOverlayPlanV1())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1167,13 +1168,13 @@ func TestQueueRenderEnqueuerChrononPlan(t *testing.T) {
 	if len(submitted.Assets) != 4 {
 		t.Fatalf("submitted assets = %d, want 4", len(submitted.Assets))
 	}
-	if submitted.Assets[0].SHA256 != capoverlay.GoldenBackgroundHash || submitted.Assets[0].URL != "assets/background.jpg" {
+	if submitted.Assets[0].SHA256 != caprender.GoldenBackgroundHash || submitted.Assets[0].URL != "assets/background.jpg" {
 		t.Fatalf("asset 0 not projected: %+v", submitted.Assets[0])
 	}
-	if submitted.Assets[1].SHA256 != capoverlay.GoldenAppleHash || submitted.Assets[1].URL != "assets/apple.png" {
+	if submitted.Assets[1].SHA256 != caprender.GoldenAppleHash || submitted.Assets[1].URL != "assets/apple.png" {
 		t.Fatalf("asset 1 not projected: %+v", submitted.Assets[1])
 	}
-	if submitted.Assets[3].SHA256 != capoverlay.GoldenFontHash || submitted.Assets[3].URL != capoverlay.CanonicalTextFontPath {
+	if submitted.Assets[3].SHA256 != caprender.GoldenFontHash || submitted.Assets[3].URL != caprender.CanonicalTextFontPath {
 		t.Fatalf("Cyrillic semantic font not projected: %+v", submitted.Assets[3])
 	}
 }
@@ -1183,7 +1184,7 @@ func TestQueueRenderEnqueuerStagesImageSFXWithoutSerializingLocalPath(t *testing
 	if err := os.WriteFile(localPath, []byte("cue"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	plan := capoverlay.GoldenOverlayPlanV1()
+	plan := caprender.GoldenOverlayPlanV1()
 	var image *capoverlay.OverlayItem
 	for i := range plan.Items {
 		if strings.EqualFold(plan.Items[i].TemplateID, "IMAGE_OVERLAY") {
@@ -1235,7 +1236,7 @@ func TestQueueRenderEnqueuerStagesImageSFXWithoutSerializingLocalPath(t *testing
 }
 
 func TestRuntimeFontAssetsStagesSelectedInterFont(t *testing.T) {
-	plan := capoverlay.GoldenOverlayPlanV1()
+	plan := caprender.GoldenOverlayPlanV1()
 	for i := range plan.Items {
 		if plan.Items[i].Text != "" {
 			if plan.Items[i].Params == nil {
@@ -1252,7 +1253,7 @@ func TestRuntimeFontAssetsStagesSelectedInterFont(t *testing.T) {
 	if len(assets) != 1 {
 		t.Fatalf("runtime font assets = %d, want selected Inter asset", len(assets))
 	}
-	if assets[0].SHA256 != capoverlay.CanonicalInterFontHash || assets[0].URL != capoverlay.CanonicalInterFontPath {
+	if assets[0].SHA256 != caprender.CanonicalInterFontHash || assets[0].URL != caprender.CanonicalInterFontPath {
 		t.Fatalf("runtime font asset = %+v, want content-addressed Inter asset", assets[0])
 	}
 	for i := range plan.Items {
@@ -1290,7 +1291,7 @@ func TestQueueRenderEnqueuerFreshRenderUsesNewQueueIdentity(t *testing.T) {
 	enqueuer.SetFreshRender(true)
 	enqueuer.pollInterval = time.Millisecond
 
-	plan := capoverlay.GoldenOverlayPlanV1()
+	plan := caprender.GoldenOverlayPlanV1()
 	if _, err := enqueuer.EnqueueChrononPlan(context.Background(), plan); err != nil {
 		t.Fatal(err)
 	}
@@ -1312,7 +1313,7 @@ func TestQueueRenderEnqueuerCarriesJobDriveFolderToPublisherAndOmitsItFromWire(t
 	capture := &captureOverlayPublication{}
 	enqueuer.SetArtifactPublisher(capture)
 
-	plan := capoverlay.GoldenOverlayPlanV1()
+	plan := caprender.GoldenOverlayPlanV1()
 	plan.DriveFolderID = "job-selected-root"
 	if _, err := enqueuer.EnqueueChrononPlan(context.Background(), plan); err != nil {
 		t.Fatal(err)
@@ -1341,7 +1342,7 @@ func TestQueueRenderEnqueuerAsyncPublicationJoinsBeforeWait(t *testing.T) {
 	enqueuer.SetArtifactPublisher(publisher)
 	enqueuer.SetAsyncPublication(true)
 
-	ref, err := enqueuer.EnqueueChrononPlan(context.Background(), capoverlay.GoldenOverlayPlanV1())
+	ref, err := enqueuer.EnqueueChrononPlan(context.Background(), caprender.GoldenOverlayPlanV1())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1392,7 +1393,7 @@ func TestQueueRenderEnqueuerRecordsAttemptAnalytics(t *testing.T) {
 		},
 	}
 
-	if _, err := enqueuer.EnqueueChrononPlan(context.Background(), capoverlay.GoldenOverlayPlanV1()); err != nil {
+	if _, err := enqueuer.EnqueueChrononPlan(context.Background(), caprender.GoldenOverlayPlanV1()); err != nil {
 		t.Fatal(err)
 	}
 	if len(recorder.recorded) != 1 {
@@ -1422,7 +1423,7 @@ func TestQueueRenderEnqueuerRecorderFailureFailsClosed(t *testing.T) {
 
 	client.jobs["golden-overlay-v1"] = RenderQueueJob{ID: "golden-overlay-v1", State: "completed", Artifact: &RenderArtifact{SHA256: "ab"}}
 
-	if _, err := enqueuer.EnqueueChrononPlan(context.Background(), capoverlay.GoldenOverlayPlanV1()); err == nil {
+	if _, err := enqueuer.EnqueueChrononPlan(context.Background(), caprender.GoldenOverlayPlanV1()); err == nil {
 		t.Fatal("recorder failure must fail the enqueue")
 	}
 }
@@ -1555,7 +1556,7 @@ func TestQueueRenderEnqueuerChrononPlanPropagatesFailure(t *testing.T) {
 
 	client.jobs["golden-overlay-v1"] = RenderQueueJob{ID: "golden-overlay-v1", State: "failed", FailReason: "chronon exploded"}
 
-	if _, err := enqueuer.EnqueueChrononPlan(context.Background(), capoverlay.GoldenOverlayPlanV1()); err == nil {
+	if _, err := enqueuer.EnqueueChrononPlan(context.Background(), caprender.GoldenOverlayPlanV1()); err == nil {
 		t.Fatal("expected failure to propagate")
 	}
 }
@@ -1784,10 +1785,10 @@ func TestQueueRenderEnqueuerPublicationJoinIsRunScoped(t *testing.T) {
 	enqueuer.SetAsyncPublication(true)
 
 	// run-slow publishes first and is held open; run-fast publishes after it.
-	if _, err := enqueuer.EnqueueChrononPlan(ctxSlow, capoverlay.GoldenOverlayPlanV1()); err != nil {
+	if _, err := enqueuer.EnqueueChrononPlan(ctxSlow, caprender.GoldenOverlayPlanV1()); err != nil {
 		t.Fatalf("enqueue for run-slow: %v", err)
 	}
-	if _, err := enqueuer.EnqueueChrononPlan(ctxFast, capoverlay.GoldenOverlayPlanV1()); err != nil {
+	if _, err := enqueuer.EnqueueChrononPlan(ctxFast, caprender.GoldenOverlayPlanV1()); err != nil {
 		t.Fatalf("enqueue for run-fast: %v", err)
 	}
 	publisher.waitStarted(t, "run-slow")
@@ -1816,7 +1817,7 @@ func TestQueueRenderEnqueuerPublicationJoinIsRunScoped(t *testing.T) {
 
 	// (3) a later run starts clean: the retired batch left nothing behind.
 	ctxLater := publicationRunCtx(t, observer, "run-later")
-	if _, err := enqueuer.EnqueueChrononPlan(ctxLater, capoverlay.GoldenOverlayPlanV1()); err != nil {
+	if _, err := enqueuer.EnqueueChrononPlan(ctxLater, caprender.GoldenOverlayPlanV1()); err != nil {
 		t.Fatalf("enqueue for run-later: %v", err)
 	}
 	if err := enqueuer.Wait(ctxLater); err != nil {
@@ -1842,7 +1843,7 @@ func TestQueueRenderEnqueuerUnboundPublicationJoinsAndClears(t *testing.T) {
 	enqueuer.SetArtifactPublisher(publisher)
 	enqueuer.SetAsyncPublication(true)
 
-	if _, err := enqueuer.EnqueueChrononPlan(context.Background(), capoverlay.GoldenOverlayPlanV1()); err != nil {
+	if _, err := enqueuer.EnqueueChrononPlan(context.Background(), caprender.GoldenOverlayPlanV1()); err != nil {
 		t.Fatalf("enqueue: %v", err)
 	}
 	if err := enqueuer.Wait(context.Background()); !errors.Is(err, imposed) {

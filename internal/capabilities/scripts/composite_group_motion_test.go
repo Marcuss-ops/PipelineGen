@@ -2,6 +2,7 @@ package scriptgeneration
 
 import (
 	"fmt"
+	caprender "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/render"
 	"testing"
 
 	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
@@ -26,7 +27,7 @@ func TestCompositeLayersUseTheirGroupSizePool(t *testing.T) {
 		if err := assignEntityImageMotions(items, 0, 1920, 1080, ""); err != nil {
 			t.Fatalf("size %d: assign motions: %v", size, err)
 		}
-		pool := capabilityoverlay.CompositeImageMotionPool(size)
+		pool := caprender.CompositeImageMotionPool(size)
 		for _, layer := range items[0].ImageLayers {
 			if !containsString(pool, layer.MotionID) {
 				t.Fatalf("size %d layer %q motion %q is outside its group pool", size, layer.ID, layer.MotionID)

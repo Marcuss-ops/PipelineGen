@@ -1,34 +1,16 @@
 package overlays
 
-import (
-	"sort"
-	"testing"
-)
+import "testing"
 
-// knownUnverifiedRendererSupported lists active registry entries that carry
-// renderer_supported=true but have no backing id in the canonical
-// ChrononTemplate catalog (motions, presentations, decor). The flag is
-// hand-written, so these are debt, not proof of rendering. The test below
-// requires this list to match the real gap exactly: new unbacked entries fail,
-// and entries must be removed here once they are verified or retired.
-var knownUnverifiedRendererSupported = map[string]bool{
-	"badge_side": true, "bare_big": true, "bracket_label": true,
-	"camera_motion_photo_reveal_right": true, "caption_card": true, "card_glass": true,
-	"cinematic_fade": true, "clean_fade": true, "diffuse_city_beacon": true, "dot_ring": true,
-	"ed_hormuz_routes": true, "ed_iran_glow": true, "editorial_serif": true, "ed_mocha_tactical": true,
-	"ed_saudi_base": true, "ed_yemen_fill": true, "ed_yemen_markers": true, "esri_dark": true,
-	"esri_light": true, "esri_ocean": true, "fast_push": true, "focus_title": true,
-	"gentle_fade": true, "global_context": true, "gpin_bubble": true, "huge_center": true,
-	"icon_label": true, "info_card": true, "label_reveal": true, "location_focus": true,
-	"location_pulse": true, "multi_locations": true, "orbit_arrival": true, "outline_box": true,
-	"photo_callout": true, "pop_in": true, "pulse_marker": true, "quick_fade": true,
-	"quiet_bloom": true, "region_fill": true, "region_zoom": true, "ribbon": true,
-	"rise_up": true, "route_line": true, "signature_dive": true, "silky_fade": true,
-	"simple_label": true, "slow_approach": true, "slow_fade": true, "small_above": true,
-	"soft_glow": true, "soft_tracking": true, "spotlight": true, "steady_hold": true,
-	"subtle_halo": true, "tilt_reveal": true, "title_top": true, "vertical_callout": true,
-	"wide_context": true, "word_soft_fade": true,
-}
+// knownUnverifiedRendererSupported is deliberately EMPTY. Backing is now
+// machine-checked against the real implementation sources: the emitted
+// ChrononTemplate catalogs, the entity_visual_sequence camera recipes, the
+// rendered map golden assets, the Chronon3d BASEMAP_STYLES palette, and the
+// python map executor vocabulary. An empty list means every active entry that
+// claims renderer support is backed by one of those sources. The test computes
+// the true gap itself: if an entry is not backed anywhere, it fails here — and
+// the fix is to back it (implement it) or set status=retired, NEVER to extend
+// this list again.
 
 // TestRegistryRendererSupportedIsBackedByCanonicalUniverse prevents the
 // registry from claiming renderer support for ids the canonical catalog does
@@ -37,7 +19,9 @@ func TestRegistryRendererSupportedIsBackedByCanonicalUniverse(t *testing.T) {
 	universe := loadCanonicalMotionUniverse(t)
 	backed := func(id string) bool {
 		return universe.motionIDs[id] || universe.presentationIDs[id] || universe.decorIDs[id] ||
-			universe.imagePresets[id] || universe.textPresets[id]
+			universe.imagePresets[id] || universe.textPresets[id] ||
+			universe.renderGoldenIDs[id] || universe.cameraRecipeIDs[id] ||
+			universe.basemapStyleIDs[id] || universe.mapMotionIDs[id]
 	}
 
 	var gaps []string
@@ -49,18 +33,10 @@ func TestRegistryRendererSupportedIsBackedByCanonicalUniverse(t *testing.T) {
 			gaps = append(gaps, entry.ID)
 		}
 	}
-	sort.Strings(gaps)
-
-	gapSet := make(map[string]bool, len(gaps))
+	// Fail-closed on any residual gap: an id with renderer_supported=true but
+	// no backing in any verified source must be implemented or retired, never
+	// whitelisted again.
 	for _, id := range gaps {
-		gapSet[id] = true
-		if !knownUnverifiedRendererSupported[id] {
-			t.Errorf("registry marks %q renderer_supported but the canonical ChrononTemplate universe does not define it", id)
-		}
-	}
-	for id := range knownUnverifiedRendererSupported {
-		if !gapSet[id] {
-			t.Errorf("knownUnverifiedRendererSupported lists %q, but it is now backed or no longer active: remove it from the debt list", id)
-		}
+		t.Errorf("registry marks %q renderer_supported but no verified implementation source defines it (ChrononTemplate catalogs, entity_visual_sequence camera recipes, map goldens, Chronon3d BASEMAP_STYLES, map executor vocabulary): implement it upstream or set status=retired", id)
 	}
 }

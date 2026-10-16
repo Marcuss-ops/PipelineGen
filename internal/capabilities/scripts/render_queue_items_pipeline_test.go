@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	caprender "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/render"
 	"strings"
 	"sync"
 	"testing"
@@ -106,7 +107,7 @@ func (c *completingRenderQueueClient) Get(_ context.Context, id string) (RenderQ
 // items, so a test can drive more items than the golden plan's three renderable
 // layers.
 func overlayPlanWithPhrases(extra int) capoverlay.OverlayPlan {
-	plan := capoverlay.GoldenOverlayPlanV1()
+	plan := caprender.GoldenOverlayPlanV1()
 	for i := 0; i < extra; i++ {
 		plan.Items = append(plan.Items, capoverlay.OverlayItem{
 			ID:         fmt.Sprintf("phrase_extra_%d", i+1),
@@ -120,7 +121,7 @@ func overlayPlanWithPhrases(extra int) capoverlay.OverlayPlan {
 }
 
 func TestMarshalRenderingGenOverlayPlanProjectsMicrosecondTiming(t *testing.T) {
-	plan := capoverlay.GoldenOverlayPlanV1()
+	plan := caprender.GoldenOverlayPlanV1()
 	plan.Items = append(plan.Items, capoverlay.OverlayItem{
 		ID: "canonical-timing", TemplateID: "IMPORTANT_PHRASE",
 		StartMs: 101, EndMs: 207, StartUS: 100_500, DurationUS: 105_500,

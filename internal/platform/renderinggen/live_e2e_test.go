@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	caprender "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/render"
 	"io"
 	"net/http"
 	"os"
@@ -36,7 +37,7 @@ func TestLivePipelineGenToRenderingGen(t *testing.T) {
 	poppins := mustRead(t, filepath.Join(fixtureRoot, "Poppins-Bold.ttf"))
 	backgroundHash := sha256Hex(background)
 	poppinsHash := sha256Hex(poppins)
-	if backgroundHash != capoverlay.GoldenBackgroundHash || poppinsHash != capoverlay.GoldenPresetFontHash {
+	if backgroundHash != caprender.GoldenBackgroundHash || poppinsHash != caprender.GoldenPresetFontHash {
 		t.Fatalf("golden asset drift: background=%s poppins=%s", backgroundHash, poppinsHash)
 	}
 	putObject(t, storeURL, backgroundHash, background)

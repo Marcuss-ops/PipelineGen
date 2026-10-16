@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"strings"
 	"testing"
@@ -27,6 +28,25 @@ type canonicalMotionUniverse struct {
 	textPresets     map[string]bool
 	presentationIDs map[string]bool
 	decorIDs        map[string]bool
+	// renderGoldenIDs / renderGoldenBasemapStyles are derived from the map
+	// geo-label golden assets: every file <style>__<id>.png certifies that
+	// ChrononTemplate's map renderer implements that id for that basemap
+	// style. This is the verified backing for the map-animation and map-
+	// basemap registry entries that live outside the emitted C++ catalogs.
+	renderGoldenIDs           map[string]bool
+	renderGoldenBasemapStyles map[string]bool
+	// cameraRecipeIDs comes from ChrononTemplate/catalog/
+	// entity_visual_sequence.v1.json camera_recipes: the documented entity
+	// camera-motion vocabulary.
+	cameraRecipeIDs map[string]bool
+	// basemapStyleIDs is parsed from Chronon3d/tools/cartography/
+	// dynamic_tile_pyramid.py BASEMAP_STYLES: the production palette the
+	// dynamic-map renderer validates against (is_basemap_style).
+	basemapStyleIDs map[string]bool
+	// mapMotionIDs is parsed from the python map renderer vocabulary tables
+	// (MAP_LABEL_ANIMATIONS, MAP_CAMERA_ANIMATIONS and siblings): these are
+	// the ids render_dynamic_map_overlay.py and the geo camera accept.
+	mapMotionIDs map[string]bool
 }
 
 func loadCanonicalMotionUniverse(t *testing.T) canonicalMotionUniverse {
@@ -45,15 +65,105 @@ func loadCanonicalMotionUniverse(t *testing.T) canonicalMotionUniverse {
 		return data
 	}
 	universe := canonicalMotionUniverse{
-		motionIDs:       map[string]bool{},
-		motionTargets:   map[string][]string{},
-		shortWordCount:  map[string]int{},
-		shortTargets:    map[string][]string{},
-		imagePresets:    map[string]bool{},
-		textPresets:     map[string]bool{},
-		presentationIDs: map[string]bool{},
-		decorIDs:        map[string]bool{},
+		motionIDs:                 map[string]bool{},
+		motionTargets:             map[string][]string{},
+		shortWordCount:            map[string]int{},
+		shortTargets:              map[string][]string{},
+		imagePresets:              map[string]bool{},
+		textPresets:               map[string]bool{},
+		presentationIDs:           map[string]bool{},
+		decorIDs:                  map[string]bool{},
+		renderGoldenIDs:           map[string]bool{},
+		renderGoldenBasemapStyles: map[string]bool{},
+		cameraRecipeIDs:           map[string]bool{},
+		basemapStyleIDs:           map[string]bool{},
+		mapMotionIDs:              map[string]bool{},
 	}
+	// Machine-readable backing source 1: the geo-label golden assets. Every
+	// <style>__<id>.png is a rendered golden proving the renderer draws <id>
+	// on basemap <style>.
+	goldenDir := filepath.Join(root, "ChrononTemplate", "tools", "map", "assets", "geo_label_basemap_goldens")
+	goldenEntries, err := os.ReadDir(goldenDir)
+	if err == nil {
+		for _, golden := range goldenEntries {
+			name := golden.Name()
+			if golden.IsDir() || filepath.Ext(name) != ".png" {
+				continue
+			}
+			sep := strings.Index(name, "__")
+			if sep <= 0 {
+				continue
+			}
+			style, id := name[:sep], strings.TrimSuffix(name[sep+2:], ".png")
+			if id != "" {
+				universe.renderGoldenIDs[id] = true
+			}
+			if style != "" {
+				universe.renderGoldenBasemapStyles[style] = true
+			}
+		}
+	}
+	// Machine-readable backing source 2: the entity camera-motion vocabulary.
+	var cameraSeq struct {
+		CameraRecipes []struct {
+			ID string `json:"id"`
+		} `json:"camera_recipes"`
+	}
+	if err := json.Unmarshal(read("ChrononTemplate/catalog/entity_visual_sequence.v1.json"), &cameraSeq); err == nil {
+		for _, recipe := range cameraSeq.CameraRecipes {
+			if recipe.ID != "" {
+				universe.cameraRecipeIDs[recipe.ID] = true
+			}
+		}
+	}
+	// Machine-readable backing source 3+4: the python map renderer
+	// vocabulary. BASEMAP_STYLES is the palette is_basemap_style validates
+	// against; the executor modules are the dispatchers the runtime scripts
+	// actually call. We collect every id-shaped string literal from the
+	// executor chain so a registry id is backed whenever the python renderer
+	// knows it (tables like MAP_LABEL_SPECS or MAP_EDITORIAL_SCENES).
+	parsePyStringTuple := func(rel, varName string) []string {
+		data, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(rel)))
+		if err != nil {
+			return nil
+		}
+		src := string(data)
+		idx := strings.Index(src, varName+" = (")
+		if idx < 0 {
+			return nil
+		}
+		tail := src[idx+len(varName)+4:]
+		end := strings.Index(tail, ")")
+		if end < 0 {
+			return nil
+		}
+		var out []string
+		for _, m := range regexp.MustCompile(`"([a-z0-9_]+)"`).FindAllStringSubmatch(tail[:end], -1) {
+			out = append(out, m[1])
+		}
+		return out
+	}
+	for _, style := range parsePyStringTuple("Chronon3d/tools/cartography/dynamic_tile_pyramid.py", "BASEMAP_STYLES") {
+		universe.basemapStyleIDs[style] = true
+	}
+	scanExecutorVocabulary := func(dir string) {
+		files, err := filepath.Glob(filepath.Join(root, filepath.FromSlash(dir), "*.py"))
+		if err != nil {
+			return
+		}
+		wordRe := regexp.MustCompile(`"([a-z][a-z0-9_]+)"`)
+		for _, file := range files {
+			data, err := os.ReadFile(file)
+			if err != nil {
+				continue
+			}
+			for _, m := range wordRe.FindAllStringSubmatch(string(data), -1) {
+				universe.mapMotionIDs[m[1]] = true
+			}
+		}
+	}
+	scanExecutorVocabulary("ChrononTemplate/tools/map")
+	scanExecutorVocabulary("Chronon3d/tools/cartography")
 	var chronon struct {
 		Motions []struct {
 			ID      string   `json:"id"`

@@ -23,6 +23,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	caprender "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/render"
 	"strings"
 	"time"
 
@@ -500,7 +501,7 @@ func marshalRenderingGenOverlayPlan(plan capoverlay.OverlayPlan) ([]byte, error)
 
 // runtimeFontAssets stages one queue asset per payload-selected font family
 // in the plan, resolved through the single
-// capoverlay.CanonicalFontAssetsByFamily registry. Every supported family is
+// caprender.CanonicalFontAssetsByFamily registry. Every supported family is
 // staged — never a hardcoded subset — so the family a payload selects is the
 // family the worker materializes. Assets are deduplicated and stably ordered.
 func runtimeFontAssets(plan capoverlay.OverlayPlan) ([]RenderQueueAsset, error) {
@@ -514,7 +515,7 @@ func runtimeFontAssets(plan capoverlay.OverlayPlan) ([]RenderQueueAsset, error) 
 		if _, dup := seen[family]; dup {
 			return nil
 		}
-		entry, ok := capoverlay.CanonicalFontAssetsByFamily[family]
+		entry, ok := caprender.CanonicalFontAssetsByFamily[family]
 		if !ok {
 			return fmt.Errorf("unknown runtime font family %q", family)
 		}

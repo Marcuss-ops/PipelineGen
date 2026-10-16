@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	caprender "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/render"
 	"os"
 	"path/filepath"
 	"strings"
@@ -234,15 +235,15 @@ func (e *QueueRenderEnqueuer) enqueueChrononPlan(ctx context.Context, plan capov
 		// when the source overlay has no standalone Text field. Stage the preset
 		// fonts for those items too so the runtime can compile that caption.
 		if item.Text != "" || item.TemplateID == "IMPORTANT_WORD" || item.TemplateID == "IMPORTANT_PHRASE" || item.TemplateID == "lower_third" || isImageOverlayItem(item) || item.EntityCaption != "" || len(item.ImageLayers) > 0 {
-			if _, ok := seen[capoverlay.GoldenPresetFontHash]; !ok {
+			if _, ok := seen[caprender.GoldenPresetFontHash]; !ok {
 				assets = append(assets, NewRenderQueueAsset(
-					kernelasset.Ref{AssetID: capoverlay.CanonicalPresetFontPath, SHA256: capoverlay.GoldenPresetFontHash},
-					capoverlay.CanonicalPresetFontPath, ""))
+					kernelasset.Ref{AssetID: caprender.CanonicalPresetFontPath, SHA256: caprender.GoldenPresetFontHash},
+					caprender.CanonicalPresetFontPath, ""))
 			}
-			if _, ok := seen[capoverlay.GoldenFontHash]; !ok {
+			if _, ok := seen[caprender.GoldenFontHash]; !ok {
 				assets = append(assets, NewRenderQueueAsset(
-					kernelasset.Ref{AssetID: capoverlay.CanonicalTextFontPath, SHA256: capoverlay.GoldenFontHash},
-					capoverlay.CanonicalTextFontPath, ""))
+					kernelasset.Ref{AssetID: caprender.CanonicalTextFontPath, SHA256: caprender.GoldenFontHash},
+					caprender.CanonicalTextFontPath, ""))
 			}
 			break
 		}

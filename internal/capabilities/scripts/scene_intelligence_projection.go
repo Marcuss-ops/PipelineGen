@@ -11,6 +11,7 @@ package scriptgeneration
 // without it. Rendering wiring belongs to a later explicit phase.
 
 import (
+	caprender "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/render"
 	"sort"
 	"strconv"
 	"strings"
@@ -311,7 +312,7 @@ type SIReportInput struct {
 	Signals         []scriptpkg.SISceneSignals
 	Placements      []capabilityoverlay.RecapPlacement
 	Plan            capabilityoverlay.OverlayPlan
-	Windows         []capabilityoverlay.SceneWindow
+	Windows         []caprender.SceneWindow
 	DeadAirMinGapUS int64
 }
 
@@ -324,7 +325,7 @@ func BuildSIJobReport(in SIReportInput) SIJobReport {
 			itemsByScene[it.SceneID] = append(itemsByScene[it.SceneID], it)
 		}
 	}
-	coverage := capabilityoverlay.SceneCoverage(in.Windows, in.Plan.Items)
+	coverage := caprender.SceneCoverage(in.Windows, in.Plan.Items)
 	placedScenes := map[string]struct{}{}
 	for _, placement := range in.Placements {
 		if placement.SceneID != "" {
@@ -333,7 +334,7 @@ func BuildSIJobReport(in SIReportInput) SIJobReport {
 	}
 	gaps := 0
 	if in.DeadAirMinGapUS > 0 {
-		gaps = len(capabilityoverlay.FindDeadAirGaps(in.Windows, in.Plan.Items, in.DeadAirMinGapUS))
+		gaps = len(caprender.FindDeadAirGaps(in.Windows, in.Plan.Items, in.DeadAirMinGapUS))
 	}
 	report := SIJobReport{PlanID: in.PlanID, VideoID: in.VideoID, DeadAirGaps: gaps}
 	for _, signal := range in.Signals {
