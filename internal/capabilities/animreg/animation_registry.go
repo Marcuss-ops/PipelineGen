@@ -30,12 +30,43 @@ type AnimationEntry struct {
 	MaxPinCount       int            `json:"max_pin_count,omitempty"`
 }
 
+// ItemMotionGroupRule is one ordered rule of the number-kind mapping: the first
+// rule whose AnyOf token appears in the upper-cased item template wins.
+type ItemMotionGroupRule struct {
+	AnyOf  []string `json:"any_of"`
+	Groups []string `json:"groups"`
+}
+
+// VisualIntentSpec is one frozen SemanticType → (kind, family, priority)
+// editorial mapping. It lives in the registry because the preset families it
+// names are registry families: adding a semantic type is a registry entry, not
+// a Go table.
+type VisualIntentSpec struct {
+	Kind     string `json:"kind"`
+	Family   string `json:"family"`
+	Priority int    `json:"priority"`
+}
+
+// itemMotionGroupsDocument owns the overlay-kind → motion-group mapping, the
+// number-kind template rules and the chart upgrade: exactly one place decides
+// which registry groups an item of a given kind may sample from.
+type itemMotionGroupsDocument struct {
+	ByKind              map[string][]string   `json:"by_kind"`
+	NumberTemplateRules []ItemMotionGroupRule `json:"number_template_contains"`
+	NumberFallback      []string              `json:"number_fallback"`
+	ChartParams         []string              `json:"chart_params"`
+	ChartGroups         []string              `json:"chart_groups"`
+	Default             []string              `json:"default"`
+}
+
 type animationRegistryDocument struct {
-	Schema         string            `json:"schema"`
-	Version        int               `json:"version"`
-	MapTypeAliases map[string]string `json:"map_type_aliases"`
-	MapTypeDefault string            `json:"map_type_default"`
-	Entries        []AnimationEntry  `json:"entries"`
+	Schema           string                      `json:"schema"`
+	Version          int                         `json:"version"`
+	MapTypeAliases   map[string]string           `json:"map_type_aliases"`
+	MapTypeDefault   string                      `json:"map_type_default"`
+	ItemMotionGroups itemMotionGroupsDocument    `json:"item_motion_groups"`
+	VisualIntents    map[string]VisualIntentSpec `json:"visual_intents"`
+	Entries          []AnimationEntry            `json:"entries"`
 }
 
 type AnimationRegistry struct {
@@ -49,6 +80,10 @@ type AnimationRegistry struct {
 	groupIndex  map[string][]string
 	randomIndex map[string][]string
 	targetIndex map[string][]string
+	// Item/kind and semantic-type mappings are data of the same registry, so a
+	// pool and the kind that samples from it can never be renamed apart.
+	itemMotionGroups itemMotionGroupsDocument
+	visualIntents    map[string]VisualIntentSpec
 }
 
 func loadAnimationRegistry(raw []byte) (*AnimationRegistry, error) {
@@ -60,6 +95,7 @@ func loadAnimationRegistry(raw []byte) (*AnimationRegistry, error) {
 		return nil, fmt.Errorf("animation registry: unsupported or empty document")
 	}
 	r := &AnimationRegistry{entries: doc.Entries, byID: make(map[string]AnimationEntry, len(doc.Entries)), mapTypeAliases: doc.MapTypeAliases, mapTypeDefault: doc.MapTypeDefault,
+		itemMotionGroups: doc.ItemMotionGroups, visualIntents: doc.VisualIntents,
 		groupIndex: make(map[string][]string), randomIndex: make(map[string][]string), targetIndex: make(map[string][]string)}
 	const maxOrder = int(^uint(0) >> 1)
 	type rankedID struct {
@@ -117,7 +153,158 @@ func loadAnimationRegistry(raw []byte) (*AnimationRegistry, error) {
 			return nil, fmt.Errorf("animation registry: map type alias %q points to unavailable basemap %q", alias, id)
 		}
 	}
+	if err := r.validateItemMotionGroups(); err != nil {
+		return nil, err
+	}
+	if err := r.validateVisualIntents(); err != nil {
+		return nil, err
+	}
 	return r, nil
+}
+
+// validateItemMotionGroups is the fail-closed gate for the item-kind mapping:
+// every referenced group must be a non-empty registry group, so a rename that
+// misses the mapping fails at load instead of silently emptying an item's pool.
+func (r *AnimationRegistry) validateItemMotionGroups() error {
+	mapping := r.itemMotionGroups
+	if len(mapping.ByKind) == 0 || len(mapping.Default) == 0 || len(mapping.ChartGroups) == 0 ||
+		len(mapping.ChartParams) == 0 || len(mapping.NumberFallback) == 0 || len(mapping.NumberTemplateRules) == 0 {
+		return fmt.Errorf("animation registry: item_motion_groups must define by_kind, number_template_contains, number_fallback, chart_params, chart_groups and default")
+	}
+	seen := make(map[string]bool)
+	check := func(owner string, groups []string) error {
+		if len(groups) == 0 {
+			return fmt.Errorf("animation registry: item_motion_groups %s has no group", owner)
+		}
+		for _, group := range groups {
+			if seen[group] {
+				continue
+			}
+			seen[group] = true
+			if len(r.groupIndex[group]) == 0 {
+				return fmt.Errorf("animation registry: item_motion_groups %s references group %q with no active renderer-supported animation", owner, group)
+			}
+		}
+		return nil
+	}
+	for _, kind := range sortedKeys(mapping.ByKind) {
+		if err := check("kind "+kind, mapping.ByKind[kind]); err != nil {
+			return err
+		}
+	}
+	for _, rule := range mapping.NumberTemplateRules {
+		if len(rule.AnyOf) == 0 {
+			return fmt.Errorf("animation registry: item_motion_groups number rule without any_of tokens")
+		}
+		if err := check("number rule "+strings.Join(rule.AnyOf, "|"), rule.Groups); err != nil {
+			return err
+		}
+	}
+	if err := check("number fallback", mapping.NumberFallback); err != nil {
+		return err
+	}
+	if err := check("chart groups", mapping.ChartGroups); err != nil {
+		return err
+	}
+	return check("default", mapping.Default)
+}
+
+// validateVisualIntents is the fail-closed gate for the semantic-type table:
+// a malformed or non-canonical key would silently drop an intent kind.
+func (r *AnimationRegistry) validateVisualIntents() error {
+	if len(r.visualIntents) == 0 {
+		return fmt.Errorf("animation registry: visual_intents must not be empty")
+	}
+	for semanticType, spec := range r.visualIntents {
+		if strings.TrimSpace(semanticType) == "" || semanticType != strings.ToUpper(semanticType) {
+			return fmt.Errorf("animation registry: visual intent key %q must be canonical upper case", semanticType)
+		}
+		if strings.TrimSpace(spec.Kind) == "" || strings.TrimSpace(spec.Family) == "" {
+			return fmt.Errorf("animation registry: visual intent %q must define kind and family", semanticType)
+		}
+		if spec.Priority <= 0 {
+			return fmt.Errorf("animation registry: visual intent %q must have a positive priority", semanticType)
+		}
+	}
+	return nil
+}
+
+func sortedKeys(m map[string][]string) []string {
+	keys := make([]string, 0, len(m))
+	for key := range m {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	return keys
+}
+
+// ItemMotionGroups returns the registry groups an item of the given overlay
+// kind may sample a motion from (nil when the kind is not authored, so callers
+// fall back to the default set).
+func (r *AnimationRegistry) ItemMotionGroups(kind string) []string {
+	if r == nil {
+		return nil
+	}
+	groups, ok := r.itemMotionGroups.ByKind[strings.ToLower(strings.TrimSpace(kind))]
+	if !ok {
+		return nil
+	}
+	return append([]string(nil), groups...)
+}
+
+// ItemDefaultMotionGroups is the wide group set used for unauthored kinds.
+func (r *AnimationRegistry) ItemDefaultMotionGroups() []string {
+	if r == nil {
+		return nil
+	}
+	return append([]string(nil), r.itemMotionGroups.Default...)
+}
+
+// ItemNumberMotionGroups maps a number-kind item's template to its groups: the
+// first template-substring rule that matches wins, otherwise the fallback set.
+func (r *AnimationRegistry) ItemNumberMotionGroups(template string) []string {
+	if r == nil {
+		return nil
+	}
+	upper := strings.ToUpper(strings.TrimSpace(template))
+	for _, rule := range r.itemMotionGroups.NumberTemplateRules {
+		for _, token := range rule.AnyOf {
+			if token != "" && strings.Contains(upper, token) {
+				return append([]string(nil), rule.Groups...)
+			}
+		}
+	}
+	return append([]string(nil), r.itemMotionGroups.NumberFallback...)
+}
+
+// ItemChartGroups is the group set for an item that is (or carries) a chart.
+func (r *AnimationRegistry) ItemChartGroups() []string {
+	if r == nil {
+		return nil
+	}
+	return append([]string(nil), r.itemMotionGroups.ChartGroups...)
+}
+
+// ItemChartParams are the item params that upgrade a non-chart kind into the
+// chart group set.
+func (r *AnimationRegistry) ItemChartParams() []string {
+	if r == nil {
+		return nil
+	}
+	return append([]string(nil), r.itemMotionGroups.ChartParams...)
+}
+
+// VisualIntents returns the frozen SemanticType → (kind, family, priority)
+// table; the returned map is a copy, so callers never mutate the registry.
+func (r *AnimationRegistry) VisualIntents() map[string]VisualIntentSpec {
+	if r == nil {
+		return nil
+	}
+	out := make(map[string]VisualIntentSpec, len(r.visualIntents))
+	for semanticType, spec := range r.visualIntents {
+		out[semanticType] = spec
+	}
+	return out
 }
 
 var canonicalAnimationRegistry = func() *AnimationRegistry {
@@ -342,6 +529,34 @@ func AnimationSupportsMapType(mapType string) bool {
 
 func AnimationMapCompositionCandidates(pinCount int) []string {
 	return canonicalAnimationRegistry.MapCompositionEligible(pinCount)
+}
+
+// ItemMotionGroups is the package-level projection of the registry-owned
+// overlay-kind → motion-group mapping.
+func ItemMotionGroups(kind string) []string {
+	return canonicalAnimationRegistry.ItemMotionGroups(kind)
+}
+
+func ItemDefaultMotionGroups() []string {
+	return canonicalAnimationRegistry.ItemDefaultMotionGroups()
+}
+
+func ItemNumberMotionGroups(template string) []string {
+	return canonicalAnimationRegistry.ItemNumberMotionGroups(template)
+}
+
+func ItemChartGroups() []string {
+	return canonicalAnimationRegistry.ItemChartGroups()
+}
+
+func ItemChartParams() []string {
+	return canonicalAnimationRegistry.ItemChartParams()
+}
+
+// VisualIntents is the package-level projection of the registry-owned
+// semantic-type → visual-intent table.
+func VisualIntents() map[string]VisualIntentSpec {
+	return canonicalAnimationRegistry.VisualIntents()
 }
 
 // Canonical returns the process-wide registry loaded from the embedded JSON.

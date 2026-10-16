@@ -15,12 +15,12 @@ var intentID = capmodel.IntentID
 // It re-exports exactly the model identifiers referenced outside the model
 // package (overlays planning layer, scripts, platform, plus overlay tests).
 // Regenerate by rescanning, never by hand-editing types.
+// Regenerate with: go run ./cmd/overlay-model-alias-gen --generate
 
 type (
 	AnimationPolicy         = capmodel.AnimationPolicy
 	ChainSegment            = capmodel.ChainSegment
 	ChrononOverlayRegistry  = capmodel.ChrononOverlayRegistry
-	DurationPolicy          = capmodel.DurationPolicy
 	EntityBinding           = capmodel.EntityBinding
 	EntityImageOverlayInput = capmodel.EntityImageOverlayInput
 	EntityOverlayInput      = capmodel.EntityOverlayInput
@@ -48,7 +48,6 @@ type (
 	OverlayProbeResult      = capmodel.OverlayProbeResult
 	OverlaySoundEffect      = capmodel.OverlaySoundEffect
 	OverlaySource           = capmodel.OverlaySource
-	PositioningPolicy       = capmodel.PositioningPolicy
 	RenderRequest           = capmodel.RenderRequest
 	RenderResult            = capmodel.RenderResult
 	SceneEntityInput        = capmodel.SceneEntityInput
@@ -56,20 +55,14 @@ type (
 )
 
 const (
-	ChainCameraFlyUnderFade = capmodel.ChainCameraFlyUnderFade
-	DurationBounded         = capmodel.DurationBounded
-	DurationCertified       = capmodel.DurationCertified
 	IntentSourceEntity      = capmodel.IntentSourceEntity
 	IntentSourceEntityImage = capmodel.IntentSourceEntityImage
 	JobTypePrepare          = capmodel.JobTypePrepare
 	JobTypeRender           = capmodel.JobTypeRender
 	KindBrandText           = capmodel.KindBrandText
-	KindChapterCard         = capmodel.KindChapterCard
 	KindConcept             = capmodel.KindConcept
-	KindDateBadge           = capmodel.KindDateBadge
 	KindEntityCard          = capmodel.KindEntityCard
 	KindEntityImage         = capmodel.KindEntityImage
-	KindEventBadge          = capmodel.KindEventBadge
 	KindImagePopup          = capmodel.KindImagePopup
 	KindImportantPhrase     = capmodel.KindImportantPhrase
 	KindImportantWord       = capmodel.KindImportantWord
@@ -77,26 +70,16 @@ const (
 	KindLogo                = capmodel.KindLogo
 	KindLowerThird          = capmodel.KindLowerThird
 	KindMap                 = capmodel.KindMap
-	KindMapChain            = capmodel.KindMapChain
 	KindMixedChain          = capmodel.KindMixedChain
 	KindNumber              = capmodel.KindNumber
 	KindOrganization        = capmodel.KindOrganization
 	KindPhraseChain         = capmodel.KindPhraseChain
 	KindProduct             = capmodel.KindProduct
 	KindQuote               = capmodel.KindQuote
-	KindRankingBadge        = capmodel.KindRankingBadge
 	OverlayIntentVersion    = capmodel.OverlayIntentVersion
 	OverlayStatusReady      = capmodel.OverlayStatusReady
-	PositionCentered        = capmodel.PositionCentered
-	PositionCorner          = capmodel.PositionCorner
-	PositionEntityCard      = capmodel.PositionEntityCard
-	PositionLowerThird      = capmodel.PositionLowerThird
-	PositionPopup           = capmodel.PositionPopup
 	SchemaVersionPlan       = capmodel.SchemaVersionPlan
 	SchemaVersionResult     = capmodel.SchemaVersionResult
-	TemplateMapChain        = capmodel.TemplateMapChain
-	TemplateMixedChain      = capmodel.TemplateMixedChain
-	TemplatePhraseChain     = capmodel.TemplatePhraseChain
 	TimingStateFrozen       = capmodel.TimingStateFrozen
 	TimingStatePending      = capmodel.TimingStatePending
 )
@@ -110,15 +93,13 @@ var (
 	DefaultOverlayContractNoAlpha = capmodel.DefaultOverlayContractNoAlpha
 	DefaultOverlayContractV1      = capmodel.DefaultOverlayContractV1
 	EntityTypeToKind              = capmodel.EntityTypeToKind
-	ErrUnknownOverlayKind         = capmodel.ErrUnknownOverlayKind
+	IntentID                      = capmodel.IntentID
 	IsChainItemKind               = capmodel.IsChainItemKind
-	NewChrononOverlayRegistry     = capmodel.NewChrononOverlayRegistry
 	NewOverlayAssetRef            = capmodel.NewOverlayAssetRef
 	OverlayContractForCanvas      = capmodel.OverlayContractForCanvas
 	PlanOverlayIntents            = capmodel.PlanOverlayIntents
 	RebaseChainSegments           = capmodel.RebaseChainSegments
 	RenderKey                     = capmodel.RenderKey
 	ResolveMediaContract          = capmodel.ResolveMediaContract
-	ValidateChainItem             = capmodel.ValidateChainItem
 	ValidateResultForPlan         = capmodel.ValidateResultForPlan
 )

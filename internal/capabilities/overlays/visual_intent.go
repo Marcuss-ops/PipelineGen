@@ -20,7 +20,11 @@
 // through ONE frozen table — no scattered switches.
 package overlays
 
-import "strings"
+import (
+	"strings"
+
+	capanimreg "github.com/Marcuss-ops/PipelineGen/internal/capabilities/animreg"
+)
 
 // VisualIntentKind is the coarse visual category of an intent (image card vs
 // text callout vs number card vs ...). It is coarser than PresetFamily: one
@@ -118,26 +122,33 @@ type visualIntentEntry struct {
 	Priority int
 }
 
-// visualIntentTable is the SINGLE owner of the SemanticType → visual-intent
-// mapping. Priorities follow the editorial table (IMPORTANT_PHRASE=100,
-// MONEY=90, PERSON=80, QUOTE=75, DATE=60, ORGANIZATION=50); value artifacts
-// sit between phrase and person, badges near quote, lower-thirds below.
-var visualIntentTable = map[string]visualIntentEntry{
-	"PERSON":           {IntentKindEntityImage, FamilyPersonImage, 80},
-	"ORGANIZATION":     {IntentKindOrganizationCard, FamilyOrganization, 50},
-	"LOCATION":         {IntentKindLocationCard, FamilyLocation, 55},
-	"DATE":             {IntentKindDateBadge, FamilyDate, 60},
-	"MONEY":            {IntentKindImportantNumber, FamilyMoney, 90},
-	"NUMBER":           {IntentKindImportantNumber, FamilyNumber, 70},
-	"PERCENTAGE":       {IntentKindImportantNumber, FamilyPercentage, 88},
-	"IMPORTANT_PHRASE": {IntentKindImportantText, FamilyImportantPhrase, 100},
-	"QUOTE":            {IntentKindQuoteCard, FamilyQuote, 75},
-	"CLAIM":            {IntentKindImportantText, FamilyClaim, 72},
-	"STATISTIC":        {IntentKindImportantNumber, FamilyStatistic, 85},
-	"RANKING":          {IntentKindRankingBadge, FamilyRanking, 75},
-	"TITLE":            {IntentKindTitleCard, FamilyTitle, 70},
-	"EVENT":            {IntentKindEventBadge, FamilyEvent, 50},
-	"IMAGE_ENTITY":     {IntentKindEntityImage, FamilyImageEntity, 60},
+// visualIntentTable is the typed projection of the registry-owned
+// SemanticType → visual-intent table (`visual_intents` in
+// internal/capabilities/animreg/animation_registry.v1.json): the same JSON that
+// owns the preset families owns the editorial priority of every semantic type.
+// Priorities follow the editorial table (IMPORTANT_PHRASE=100, MONEY=90,
+// PERSON=80, QUOTE=75, DATE=60, ORGANIZATION=50); value artifacts sit between
+// phrase and person, badges near quote, lower-thirds below.
+var visualIntentTable = loadVisualIntentTable()
+
+// loadVisualIntentTable projects the registry table into the typed vocabulary.
+// A registry with an empty table is a load failure upstream (animreg rejects
+// it), so an empty table here means the JSON was bypassed: fail closed instead
+// of silently inventing no intent for every semantic type.
+func loadVisualIntentTable() map[string]visualIntentEntry {
+	specs := capanimreg.VisualIntents()
+	table := make(map[string]visualIntentEntry, len(specs))
+	for semanticType, spec := range specs {
+		table[semanticType] = visualIntentEntry{
+			Kind:     VisualIntentKind(spec.Kind),
+			Family:   PresetFamily(spec.Family),
+			Priority: spec.Priority,
+		}
+	}
+	if len(table) == 0 {
+		panic("overlays: animation registry defines no visual intents")
+	}
+	return table
 }
 
 // VisualIntentResolver maps a semantic item to its visual intent. It is
