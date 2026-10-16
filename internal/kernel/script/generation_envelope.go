@@ -158,6 +158,16 @@ type GenerationItemV2 struct {
 	// optional subgroup_id narrows the selection to one item/layer. Omit
 	// motion_id to request one stable random choice for that group/subgroup.
 	AnimationPolicies []AnimationPolicy `json:"animation_policies,omitempty"`
+	// AnimationDirectives è il contratto canonico tipizzato (P2-1, v2).
+	// Precedenza: exact elemento > exact scena > prefer richiesta > profilo
+	// canale > auto. I vecchi campi restano accettati e normalizzati una
+	// sola volta in direttive; exact incompatibile = errore, mai fallback.
+	AnimationDirectives []AnimationDirective `json:"animation_directives,omitempty"`
+	// AnimationContractVersion pinna il contratto (P2-6): 0/1 = legacy
+	// dual-read, 2 = canonico risolto prima del seal con provenance.
+	AnimationContractVersion int `json:"animation_contract_version,omitempty"`
+	// AnimationCatalogDigest pinna la vista capacità runtime versionata (P0-3).
+	AnimationCatalogDigest string `json:"animation_catalog_digest,omitempty"`
 	// RandomLightLeakOnClipStart emits a short, deterministic LIGHT_LEAK overlay
 	// at the beginning of each real video clip segment. Image-overlay light leaks
 	// can be selected through animation_policies target=image. Pair with
@@ -284,6 +294,52 @@ type AnimationPolicy struct {
 	MotionID     string         `json:"motion_id,omitempty"`
 	MotionParams map[string]any `json:"motion_params,omitempty"`
 }
+
+// AnimationDirectiveMode è il contratto canonico auto/prefer/exact (§4).
+// auto: scelta compatibile riproducibile; prefer: prova richiesta con fallback
+// autorizzato; exact: usa esattamente la scelta o errore (mai sostituzione
+// silenziosa da no-repeat/sampler/composizione).
+type AnimationDirectiveMode string
+
+const (
+	AnimationDirectiveAuto   AnimationDirectiveMode = "auto"
+	AnimationDirectivePrefer AnimationDirectiveMode = "prefer"
+	AnimationDirectiveExact  AnimationDirectiveMode = "exact"
+)
+
+// AnimationDirectiveTarget distingue motion/composition/camera/label/map-treatment.
+type AnimationDirectiveTarget string
+
+const (
+	AnimationTargetImportantPhrase AnimationDirectiveTarget = "important_phrase"
+	AnimationTargetEntityImage     AnimationDirectiveTarget = "entity_image"
+	AnimationTargetCaption         AnimationDirectiveTarget = "caption"
+	AnimationTargetImage           AnimationDirectiveTarget = "image"
+	AnimationTargetMapCamera       AnimationDirectiveTarget = "map_camera"
+	AnimationTargetMapComposition  AnimationDirectiveTarget = "map_composition"
+	AnimationTargetMapLabel        AnimationDirectiveTarget = "map_label"
+	AnimationTargetDate            AnimationDirectiveTarget = "date"
+	AnimationTargetMetric          AnimationDirectiveTarget = "metric"
+)
+
+// AnimationDirective è la rappresentazione canonica: dichiara scena,
+// contenuto, entità opzionale, preferenza e parametri — mai il futuro item.ID.
+// I vecchi campi (phrase_motions, animation_policies, map_*_animation)
+// restano ingressi compatibili normalizzati una sola volta in direttive.
+type AnimationDirective struct {
+	Scope    string                   `json:"scope"`
+	SceneRef string                   `json:"scene_ref"`
+	Target   AnimationDirectiveTarget `json:"target"`
+	Mode     AnimationDirectiveMode   `json:"mode,omitempty"`
+	MotionID string                   `json:"motion_id,omitempty"`
+	Family   string                   `json:"family,omitempty"`
+	Params   map[string]any           `json:"params,omitempty"`
+}
+
+// AnimationContractVersion versiona il contratto risolto (P2-6).
+// 1 = legacy (vecchi campi + animation_policies con doppio sampling);
+// 2 = canonico (direttive risolte prima del seal + provenance, no resample).
+const AnimationContractVersion = 2
 
 // OverlayBackgroundSpec is the script.generate payload shape for an
 // optional visual overlay background. Image/video backgrounds identify one

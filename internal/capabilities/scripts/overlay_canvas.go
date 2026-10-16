@@ -57,8 +57,16 @@ type OverlayCanvasSpec struct {
 	// request (empty = the certified automatic pool). It lives here because
 	// the canvas is the run-level render context this function already
 	// receives; assignment validates the ids fail-closed.
-	EntityCaptionMotions          []string
-	AnimationPolicies             []scriptpkg.AnimationPolicy
+	EntityCaptionMotions []string
+	AnimationPolicies    []scriptpkg.AnimationPolicy
+	// AnimationDirectives è il contratto canonico v2 (P2-1): tipizzato per
+	// scena/entità/elemento, con mode auto/prefer/exact. I vecchi campi
+	// restano ingressi compatibili normalizzati una sola volta.
+	AnimationDirectives []scriptpkg.AnimationDirective
+	// AnimationContractVersion: 0/1 legacy dual-read, 2 canonico (P2-6).
+	AnimationContractVersion int
+	// AnimationCatalogDigest pinna la vista capacità runtime (P0-3).
+	AnimationCatalogDigest        string
 	RandomLightLeakOnClipStart    bool
 	RandomLightLeakOnOverlayStart bool
 

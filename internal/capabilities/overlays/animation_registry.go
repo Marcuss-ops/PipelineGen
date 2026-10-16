@@ -17,6 +17,7 @@ var (
 	AnimationRendererSupported        = animreg.AnimationRendererSupported
 	AnimationRandomCandidates         = animreg.AnimationRandomCandidates
 	AnimationIsRetired                = animreg.AnimationIsRetired
+	AnimationEntryFamilies            = animreg.AnimationEntryFamilies
 	RetiredAnimationCandidates        = animreg.RetiredAnimationCandidates
 	AnimationWordCount                = animreg.AnimationWordCount
 	AnimationLaneCompatible           = animreg.AnimationLaneCompatible

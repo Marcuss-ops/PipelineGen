@@ -1,0 +1,28 @@
+-- Drop the dead workflow_id / source_job_id columns from render_jobs.
+--
+-- 023 declared them dead but kept them "for backward compatibility with external
+-- producers". No producer in this repository has ever written them: the INSERT
+-- in postgres/repository.go lists its columns explicitly and never names them,
+-- no SELECT projects them and no filter references them. What they cost while
+-- they wait for a producer that does not exist is not two NULLs: the index
+-- idx_render_jobs_workflow (007) is maintained on EVERY insert and every state
+-- transition of render_jobs — the table the claim loop touches hardest.
+--
+-- Same shape as 019_drop_render_jobs_priority.sql, and it settles the question
+-- for a NEW deployment too: migrations apply in lexicographic order, so a fresh
+-- database converges on the same schema as an upgraded one (001 creates the
+-- columns, this file removes them, and 007's index goes with its column).
+--
+-- DROP COLUMN is a catalog-only change, and the dependent index is dropped
+-- automatically with the column — no separate DROP INDEX is needed. The
+-- statement takes ACCESS EXCLUSIVE on render_jobs briefly; if an operator needs
+-- the index retired without that lock on a very large table, drop it first,
+-- outside a transaction, and this file then finds nothing to do:
+--
+--   DROP INDEX CONCURRENTLY IF EXISTS idx_render_jobs_workflow;
+--
+-- After this file the two columns must not come back: a column nothing writes is
+-- exactly how this one started. TestDeadJobColumnsAreDroppedForFreshInstalls
+-- pins that for unit CI, which has no database.
+ALTER TABLE render_jobs DROP COLUMN IF EXISTS workflow_id;
+ALTER TABLE render_jobs DROP COLUMN IF EXISTS source_job_id;

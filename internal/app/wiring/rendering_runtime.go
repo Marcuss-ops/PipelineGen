@@ -60,6 +60,20 @@ func gpuGateSlots() (slots int, explicit bool) {
 	return resolveGPUGateSlots(os.Getenv("RENDERINGGEN_GPU_SLOTS"))
 }
 
+// LocalOverlayRenderEnabled gate il percorso renderer locale GPU (P3-5, Fase 6).
+// Default true: PipelineGen resta produttore+orchestratore+consumatore con
+// fallback locale finché la migrazione dei consumer clip (durable resolver)
+// non è verificata. Il cutover imposta PIPELINEGEN_LOCAL_RENDER=0: a quel
+// punto il registry locale non registra più overlay.render e i render
+// passano solo da queue/worker RenderingGen. Non toccare clip.render finale.
+func LocalOverlayRenderEnabled() bool {
+	raw := os.Getenv("PIPELINEGEN_LOCAL_RENDER")
+	if raw == "" {
+		return true
+	}
+	return raw == "1"
+}
+
 type RenderingRuntime struct {
 	Registry  *worker.Registry
 	Caps      appjobs.WorkerCapabilities
@@ -122,10 +136,17 @@ func BuildRenderingRuntime(cfg *config.Config, log *zap.Logger) (*RenderingRunti
 	if err := reg.Register(capoverlays.JobTypePrepare, handlers.Prepare); err != nil {
 		return nil, nil, err
 	}
-	if err := reg.Register(capoverlays.JobTypeRender, handlers.Render); err != nil {
-		return nil, nil, err
+	// P3-5: il render locale si disattiva solo via gate esplicito dopo
+	// verifica consumer (durable resolver). Default ancora abilitato.
+	if LocalOverlayRenderEnabled() {
+		if err := reg.Register(capoverlays.JobTypeRender, handlers.Render); err != nil {
+			return nil, nil, err
+		}
+		reg.SetProducesArtifacts(capoverlays.JobTypeRender, true).Freeze()
+	} else {
+		log.Info("local overlay.render disabled: renders go through RenderingGen queue/worker only")
+		reg.Freeze()
 	}
-	reg.SetProducesArtifacts(capoverlays.JobTypeRender, true).Freeze()
 	caps := appjobs.WorkerCapabilities{JobTypes: reg.JobTypes(), GPU: true, FFmpeg: true}
 	cleanup := func() { _ = os.RemoveAll(workspace.Root) }
 	return &RenderingRuntime{Registry: reg, Caps: caps, Workspace: workspace, Cache: cache, Log: log}, cleanup, nil

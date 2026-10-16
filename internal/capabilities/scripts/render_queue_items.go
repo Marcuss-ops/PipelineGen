@@ -3,6 +3,7 @@ package scriptgeneration
 import (
 	"context"
 	"fmt"
+	"sort"
 	"strings"
 
 	capoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
@@ -111,18 +112,19 @@ func (e *QueueRenderEnqueuer) enqueueSeparateOverlayItems(ctx context.Context, p
 	// pipelining back-pressure, not GPU admission — gpu_lanes stays the sole
 	// GPU authority.
 	workers := resolveOverlayItemWorkers(e.itemRenderWorkers(), len(candidates))
-	// A georeferenced map can stage a full offline LOD pyramid (several large
-	// rasters) into one GPU render. Keep those map jobs serial within the plan;
-	// the ordinary image/text items remain pipelined at the configured width.
-	// This avoids multiple map pyramids competing for Vulkan resources at once.
+	// Classi di risorse distinte (§10): le mappe complesse restano seriali tra
+	// loro (una piramide raster LOD alla volta), testi/frasi e immagini/entità
+	// restano in pipeline alla larghezza configurata. Non serializzare più
+	// l'intero fan-out a 1 quando c'è una mappa: solo la classe mappe è a 1.
+	var mapCandidates, otherCandidates []overlayItemCandidate
 	for _, candidate := range candidates {
 		if candidate.source.Map != nil {
-			workers = 1
-			break
+			mapCandidates = append(mapCandidates, candidate)
+		} else {
+			otherCandidates = append(otherCandidates, candidate)
 		}
 	}
-	observability.OverlayItemRenderPoolSize.Set(float64(workers))
-	results, err := concurrent.Map(ctx, candidates, workers, func(opCtx context.Context, _ int, candidate overlayItemCandidate) (overlayItemRenderResult, error) {
+	renderOne := func(opCtx context.Context, _ int, candidate overlayItemCandidate) (overlayItemRenderResult, error) {
 		// Measured concurrency, not assumed: the gauge rises exactly while a
 		// render is awaiting its terminal state, so its peak is the pipelining
 		// depth actually achieved.
@@ -142,10 +144,34 @@ func (e *QueueRenderEnqueuer) enqueueSeparateOverlayItems(ctx context.Context, p
 				ItemID: candidate.source.ID, JobID: ref.JobID, Status: ref.Status, Artifact: ref.Artifact,
 			},
 		}, nil
-	})
-	if err != nil {
-		return RenderReference{}, err
 	}
+	observability.OverlayItemRenderPoolSize.Set(float64(workers))
+	var results []overlayItemRenderResult
+	if len(otherCandidates) > 0 {
+		otherResults, err := concurrent.Map(ctx, otherCandidates, workers, renderOne)
+		if err != nil {
+			return RenderReference{}, err
+		}
+		results = append(results, otherResults...)
+	}
+	if len(mapCandidates) > 0 {
+		// Classe mappe: limite separato a 1, compatibile con RAM/VRAM.
+		observability.OverlayItemRenderPoolSize.Set(1)
+		mapResults, err := concurrent.Map(ctx, mapCandidates, 1, renderOne)
+		if err != nil {
+			return RenderReference{}, err
+		}
+		results = append(results, mapResults...)
+	}
+	// Ripristina l'ordine di piano (posizione originale), non alfabetico:
+	// l'identità child (<plan>:item:%03d:<id>) dipende dalla posizione.
+	order := make(map[string]int, len(candidates))
+	for pos, c := range candidates {
+		order[c.source.ID] = pos
+	}
+	sort.Slice(results, func(i, j int) bool {
+		return order[results[i].item.ItemID] < order[results[j].item.ItemID]
+	})
 	items := make([]OverlayItemRenderReference, 0, len(results))
 	for _, result := range results {
 		items = append(items, result.item)

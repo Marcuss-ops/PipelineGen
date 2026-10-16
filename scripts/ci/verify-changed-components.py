@@ -58,6 +58,7 @@ ALL_COMPONENT_EXACT_FILES = frozenset(
         "scripts/ci/verify-changed-components.py",
         "Dockerfile",
         ".dockerignore",
+        ".gitleaks.toml",
         ".github/dependabot.yml",
         "scripts/with-velox-auth",
     }

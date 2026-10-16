@@ -4,10 +4,14 @@ go 1.25.0
 
 toolchain go1.25.13
 
-// Keep the local PipelineGen/RenderingGen pair on the same queue contract.
-// The checked-in pseudo-version predates Client.Retry, while the workspace
-// queue module already contains the method used by this adapter.
-replace github.com/Marcuss-ops/RenderingGen/queue => ../RenderingGen/queue
+// BUILD-01: the queue module is vendored in-repo (third_party/queue) so an
+// isolated PipelineGen checkout builds without a sibling RenderingGen working
+// tree. The upstream module path github.com/Marcuss-ops/RenderingGen/queue is
+// not resolvable on GitHub (the repository is published as "RenderginGen"), so
+// no versioned module reference can fetch it; the previous ../RenderingGen/queue
+// replace made every clean checkout, Docker build and CI run fail. See
+// third_party/queue/README.md for provenance and the sync procedure.
+replace github.com/Marcuss-ops/RenderingGen/queue => ./third_party/queue
 
 require (
 	github.com/Marcuss-ops/RenderingGen/queue v0.0.0-20260902155112-fb4938103f42

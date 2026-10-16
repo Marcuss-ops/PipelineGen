@@ -315,7 +315,8 @@
     "paths": [
       "internal/capabilities/jobs/",
       "internal/platform/jobs/",
-      "internal/platform/sqlite/jobs/"
+      "internal/platform/sqlite/jobs/",
+      "third_party/queue/"
     ],
     "go_packages": [
       "./internal/capabilities/jobs/...",

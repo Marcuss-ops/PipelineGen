@@ -13,6 +13,7 @@ import (
 	"time"
 
 	capoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
+	scriptoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/overlay"
 	kernelasset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
@@ -140,26 +141,36 @@ func (e *QueueRenderEnqueuer) enqueueChrononPlan(ctx context.Context, plan capov
 	}
 	semanticPlan := plan
 	var generatedMapVideo string
+	// P3-1: le mappe viaggiano come specifica semantica dietro la queue.
+	// Il backend (native vs python) è annotato sul piano; il worker esegue.
+	// Il render MP4 locale resta solo come fallback esplicito
+	// (PIPELINEGEN_MAP_LOCAL_RENDER=1) finché il backend Python non è paritario.
 	if len(semanticPlan.Items) == 1 && semanticPlan.Items[0].Map != nil {
-		videoPath, err := renderDynamicMapVideo(ctx, semanticPlan)
-		if err != nil {
-			return RenderReference{}, fmt.Errorf("render Chronon dynamic map: %w", err)
+		backend := scriptoverlay.ResolveMapBackend(true, true)
+		scriptoverlay.AnnotateMapBackend(&semanticPlan, backend)
+		// Default: specifica semantica alla queue (P3-1). Solo con
+		// PIPELINEGEN_MAP_LOCAL_RENDER=1 si usa il fallback MP4 locale.
+		if os.Getenv("PIPELINEGEN_MAP_LOCAL_RENDER") == "1" {
+			videoPath, err := renderDynamicMapVideo(ctx, semanticPlan)
+			if err != nil {
+				return RenderReference{}, fmt.Errorf("render Chronon dynamic map: %w", err)
+			}
+			generatedMapVideo = videoPath
+			defer os.RemoveAll(filepath.Dir(generatedMapVideo))
+			sha, size, err := digest.SHA256File(videoPath)
+			if err != nil {
+				return RenderReference{}, fmt.Errorf("identify Chronon dynamic map video: %w", err)
+			}
+			if size == 0 {
+				return RenderReference{}, fmt.Errorf("Chronon dynamic map video is empty")
+			}
+			assetRef := capoverlay.NewOverlayAssetRef(
+				kernelasset.Ref{AssetID: "chronon:dynamic-map:" + sha, SHA256: sha, MediaType: "video/mp4"},
+				"", videoPath,
+			)
+			semanticPlan.Background = &capoverlay.OverlayBackground{Kind: "video", AssetRefs: []capoverlay.OverlayAssetRef{assetRef}, Fit: "cover"}
+			semanticPlan.Items = nil
 		}
-		generatedMapVideo = videoPath
-		defer os.RemoveAll(filepath.Dir(generatedMapVideo))
-		sha, size, err := digest.SHA256File(videoPath)
-		if err != nil {
-			return RenderReference{}, fmt.Errorf("identify Chronon dynamic map video: %w", err)
-		}
-		if size == 0 {
-			return RenderReference{}, fmt.Errorf("Chronon dynamic map video is empty")
-		}
-		assetRef := capoverlay.NewOverlayAssetRef(
-			kernelasset.Ref{AssetID: "chronon:dynamic-map:" + sha, SHA256: sha, MediaType: "video/mp4"},
-			"", videoPath,
-		)
-		semanticPlan.Background = &capoverlay.OverlayBackground{Kind: "video", AssetRefs: []capoverlay.OverlayAssetRef{assetRef}, Fit: "cover"}
-		semanticPlan.Items = nil
 	}
 	// Drive routing belongs to PipelineGen's publication boundary, not to
 	// RenderingGen's strict semantic overlay-plan wire contract. Keep it on
