@@ -59,7 +59,7 @@ func StampAnimationProvenance(items []capabilityoverlay.OverlayItem, catalogDige
 // pinned on the legacy path: explicit choices stand, automatic collisions
 // rotate away.
 func ApplyPoliciesOrDirectives(items []capabilityoverlay.OverlayItem, in PolicyApplicationInput) error {
-	isCanonicalV2 := in.AnimationContractVersion >= 2 && len(in.AnimationDirectives) > 0
+	isCanonicalV2 := in.AnimationContractVersion >= scriptpkg.AnimationContractVersion && len(in.AnimationDirectives) > 0
 	if isCanonicalV2 {
 		for _, d := range in.AnimationDirectives {
 			if err := ValidateAnimationDirective(d); err != nil {

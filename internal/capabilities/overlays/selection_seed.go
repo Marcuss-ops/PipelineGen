@@ -32,10 +32,3 @@ func hexNibbleValue(digit byte) byte {
 	}
 	return digit - 'a' + 10
 }
-
-// NoRepeatWalk restituisce l'elemento ordinal-esimo del walk no-repeat:
-// stesso shuffle deterministico + start seeded di selectMotionFromPool,
-// senza duplicare la logica di hash nei chiamanti.
-func NoRepeatWalk(pool []string, seed, family string, ordinal int) string {
-	return selectMotionFromPool(seed, family, family, ordinal, pool)
-}
