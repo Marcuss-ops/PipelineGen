@@ -95,8 +95,14 @@ func CompileOverlayPlanFromGenerationResultWithStyleAndLimit(
 		if durationMS <= 0 && artifact != nil {
 			durationMS = (artifact.DurationUS + 999) / 1000
 		}
+		// Verbatim render-only scenes can carry an explicit editorial window
+		// without synthesizing voiceover. Preserve that duration as the final
+		// fallback so map and phrase overlays can be planned in audio-free jobs.
+		if durationMS <= 0 && source.DurationMS > 0 {
+			durationMS = source.DurationMS
+		}
 		if durationMS <= 0 {
-			return nil, fmt.Errorf("legacy overlay plan: scene %s has no measured voiceover duration", source.ID)
+			return nil, fmt.Errorf("legacy overlay plan: scene %s has no resolved duration", source.ID)
 		}
 
 		voiceoverID := fmt.Sprintf("%s:%s", result.ItemID, source.ID)

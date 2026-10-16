@@ -69,7 +69,7 @@ func TestOverlayCategoryFilterKeepsTextOnlyNamedEntityCards(t *testing.T) {
 // fully controllable from the payload.
 func TestOverlayGroupLimitsDisableTextOnlyNamedEntityCards(t *testing.T) {
 	items := []overlays.OverlayItem{
-		{ID: "place-card", SceneID: "scene-0", Kind: "location", TemplateID: "gpe_default", Text: "Roma"},
+		{ID: "person-card", SceneID: "scene-0", Kind: "entity_card", TemplateID: "person_default", Text: "Ada Lovelace"},
 		{ID: "photo", SceneID: "scene-0", Kind: "entity_image", TemplateID: "person_default",
 			AssetRefs: []overlays.OverlayAssetRef{{SHA256: "hash-photo"}}},
 	}

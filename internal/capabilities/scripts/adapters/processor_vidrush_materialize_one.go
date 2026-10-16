@@ -32,10 +32,21 @@ func (p *VidRushMaterializationProcessor) materializeOne(ctx context.Context, pl
 		materialized := make([]scriptpkg.SegmentAssetCandidate, 0, len(candidates))
 		attempts := make(map[string]int, 3)
 		readyImageGroups := make(map[string]struct{}, targetImages)
+		// readyByProvider counts ready images per image provider so the
+		// per-source minimum (plan.MinImagesPerSource) can be enforced.
+		readyByProvider := make(map[string]int, 2)
+		minPerSource := 0
+		if plan != nil {
+			minPerSource = plan.MinImagesPerSource
+		}
+		belowSourceMinimum := func(provider string) bool {
+			return minPerSource > 0 && readyByProvider[strings.ToLower(strings.TrimSpace(provider))] < minPerSource
+		}
 		markReadyImage := func(candidate scriptpkg.SegmentAssetCandidate) {
 			if candidate.Provider != scriptpkg.VidRushProviderInternetImages && candidate.Provider != scriptpkg.VidRushProviderImageGeneration {
 				return
 			}
+			readyByProvider[strings.ToLower(strings.TrimSpace(candidate.Provider))]++
 			group := vidRushImageGroup(candidate)
 			if p.catalog != nil && strings.EqualFold(strings.TrimSpace(candidate.Provider), scriptpkg.VidRushProviderInternetImages) &&
 				(strings.TrimSpace(candidate.Entity) != "" || strings.HasPrefix(strings.TrimSpace(candidate.AssetID), "entity-image-")) {
@@ -89,7 +100,7 @@ func (p *VidRushMaterializationProcessor) materializeOne(ctx context.Context, pl
 				candidate.PersistenceStatus = ""
 				candidate.IndexStatus = ""
 			}
-			if isImage && targetImages > 0 && len(readyImageGroups) >= targetImages && !(catalogImage && !wasReady) {
+			if isImage && targetImages > 0 && len(readyImageGroups) >= targetImages && !(catalogImage && !wasReady) && !belowSourceMinimum(candidate.Provider) {
 				// Keep the remaining remote hits for diagnostics/candidate-set
 				// hashing, but do not download or persist surplus images. This
 				// prevents Qdrant/Drive fan-out from exceeding the scene plan.
@@ -302,6 +313,21 @@ func (p *VidRushMaterializationProcessor) materializeOne(ctx context.Context, pl
 				}
 			}
 		}
+		// The per-source minimum is a floor the materializer tries to reach; a
+		// provider that still falls short is reported, never silently accepted.
+		if minPerSource > 0 {
+			reported := make(map[string]bool, 2)
+			for _, candidate := range candidates {
+				provider := strings.ToLower(strings.TrimSpace(candidate.Provider))
+				if (provider != scriptpkg.VidRushProviderInternetImages && provider != scriptpkg.VidRushProviderImageGeneration) || reported[provider] {
+					continue
+				}
+				reported[provider] = true
+				if belowSourceMinimum(provider) {
+					warnings = append(warnings, fmt.Sprintf("vidrush_materialization: %s delivered %d ready images for %s, below min_images_per_source=%d", provider, readyByProvider[provider], segment.SegmentID, minPerSource))
+				}
+			}
+		}
 		return materialized, nil
 	}
 
@@ -324,6 +350,15 @@ func (p *VidRushMaterializationProcessor) materializeOne(ctx context.Context, pl
 		materializationImageTarget++
 	}
 	discoveredCandidates := prioritizeExactVidRushImageCandidates(updated.Assets.Candidates, imageTarget, plan)
+	if p.catalog != nil && plan != nil && plan.MediaPlan.Extraction.EntityImages.Enabled {
+		// Attach the durable per-person pool before acquisition so
+		// verified-but-never-downloaded catalog rows get a real
+		// Acquire → Verify → Finalize attempt in-run instead of arriving
+		// after materialization, when they can no longer be fetched.
+		if pooled := durableEntityImagePoolForSegment(ctx, p.catalog, updated); len(pooled) > 0 {
+			discoveredCandidates = AppendProviderCandidatesUnique(discoveredCandidates, pooled)
+		}
+	}
 	var materializeErr error
 	updated.Assets.Candidates, materializeErr = materialize(discoveredCandidates, materializationImageTarget)
 	if materializeErr != nil {

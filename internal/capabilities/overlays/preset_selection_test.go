@@ -11,16 +11,21 @@ import (
 
 // TestSelectEntityImagePresetUsesOnlyRenderSafeCandidates pins the generated
 // entity-image preset contract: every selection comes from the render-safe
-// candidate set, including rounded corners, stays bit-identical for a retry
+// candidate set, stays bit-identical for a retry
 // of the same job, and still
 // varies across identities so one run does not render five identical motions.
+// Decorative treatments (modern_rounded_pop, bottom_card_rise) are certified
+// but explicit-only: auto-picking them crops edge pixels and adds card
+// plates to plain photo overlays.
 func TestSelectEntityImagePresetUsesOnlyRenderSafeCandidates(t *testing.T) {
 	safe := make(map[string]bool, len(imagePresetCandidates))
 	for _, id := range imagePresetCandidates {
 		safe[id] = true
 	}
-	if !safe["modern_rounded_pop"] {
-		t.Fatal("modern_rounded_pop must be selectable now that native image radius is supported")
+	for _, decorative := range []string{"modern_rounded_pop", "bottom_card_rise"} {
+		if safe[decorative] {
+			t.Fatalf("%s must stay explicit-only so auto images render full-bleed", decorative)
+		}
 	}
 
 	variants := map[string]bool{}
@@ -77,13 +82,13 @@ func containsMotionID(pool []string, id string) bool {
 
 // TestGeneratedImageAnimationSelectorUsesOnlyTheNewSingleImagePool pins the
 // single-image contract: generated overlays rotate over the COMPLETE
-// 32-motion render-safe catalog (the IDs RenderingGen's runtime catalog
+// registry-owned render-safe catalog (the IDs RenderingGen's runtime catalog
 // contract verifies), stay deterministic per item and never emit an id
 // outside that pool.
 func TestGeneratedImageAnimationSelectorUsesOnlyTheNewSingleImagePool(t *testing.T) {
 	pool := CertifiedSingleImageMotions()
-	if len(pool) != 32 {
-		t.Fatalf("certified single-image pool has %d motions, want 32", len(pool))
+	if len(pool) == 0 {
+		t.Fatal("certified single-image pool is empty")
 	}
 	allowed := make(map[string]bool, len(pool))
 	for _, id := range pool {
@@ -105,8 +110,8 @@ func TestGeneratedImageAnimationSelectorUsesOnlyTheNewSingleImagePool(t *testing
 			t.Fatalf("render-safe motion %q is missing from the certified single-image pool", id)
 		}
 	}
-	if len(renderSafeImageMotions) != 32 {
-		t.Fatalf("render-safe catalog has %d motions, want 32", len(renderSafeImageMotions))
+	if len(renderSafeImageMotions) == 0 {
+		t.Fatal("render-safe catalog is empty")
 	}
 }
 

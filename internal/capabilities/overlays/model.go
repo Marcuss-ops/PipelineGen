@@ -26,6 +26,11 @@ type OverlayPlan struct {
 	PlanID        string `json:"plan_id"`
 	VideoID       string `json:"video_id"`
 	ProjectID     string `json:"project_id,omitempty"`
+	// EntityVariationSeed salts the worker's "random" entity-style sampling
+	// (renderinggen.overlay-plan.v1 `entity_variation_seed`). Empty keeps the
+	// historical plan-identity sampling; a per-render value resamples every
+	// entity card. It is render content and participates in the fingerprint.
+	EntityVariationSeed string `json:"entity_variation_seed,omitempty"`
 	// ScriptName and Language identify freshly rendered overlay artifacts in
 	// delivery metadata. The configured Drive root is selected by the
 	// composition root; these fields never cause a caller-side upload.
@@ -166,6 +171,9 @@ type OverlayItem struct {
 	// phrases can use the same phrase_default preset while carrying different
 	// motions.
 	MotionID string `json:"motion_id,omitempty"`
+	// CameraMotionID selects one of the subtle photo-documentary camera
+	// recipes applied to this visual item or shared image sequence.
+	CameraMotionID string `json:"camera_motion_id,omitempty"`
 	// EntityStyleID is the RenderingGen entity-card composition selector. The
 	// certified generated selector is "random" (resolved by RenderingGen as
 	// a tag query over the full 25 Apple Spatial entity styles with badge
@@ -460,6 +468,9 @@ func (p *OverlayPlan) Validate() error {
 		seenIDs[item.ID] = struct{}{}
 		if item.StartMs < 0 || item.EndMs <= item.StartMs {
 			return fmt.Errorf("overlay plan: item %q has invalid time range", item.ID)
+		}
+		if err := validateAnimationReferences(item); err != nil {
+			return fmt.Errorf("overlay plan: item %q: %w", item.ID, err)
 		}
 		// Integer-microsecond timing, when present, must be internally valid
 		// and consistent with the millisecond projection (floor start, ceil

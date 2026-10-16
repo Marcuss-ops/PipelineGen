@@ -165,6 +165,13 @@ type SpecScene struct {
 	// Index is the zero-based position in the scene array.
 	Index int `json:"index"`
 
+	// DurationMS is an explicit editorial scene window for verbatim
+	// render-only runs that intentionally do not synthesize voiceover.
+	DurationMS int64 `json:"duration_ms,omitempty"`
+	// OverlayCategories preserves explicit per-segment visual intent for
+	// duration-bounded renders that intentionally omit voiceover.
+	OverlayCategories map[OverlayCategory]Toggle `json:"overlay_categories,omitempty"`
+
 	// Text is generated/narrated scene text. Protected fixed-media scenes
 	// deliberately leave this empty; their optional human-readable copy lives
 	// in DisplayText and is never treated as narration.

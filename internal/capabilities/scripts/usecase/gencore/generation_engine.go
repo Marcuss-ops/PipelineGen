@@ -146,7 +146,11 @@ func alignExplicitSegmentOutput(result *EngineResult, item scriptpkg.GenerationI
 		if id == "" {
 			return fmt.Errorf("segment %d has no ID in source_text_verbatim mode", i)
 		}
-		scenes = append(scenes, scriptpkg.SpecScene{ID: id, SegmentID: id, Index: i, Kind: scriptpkg.SceneNarration, Text: text})
+		scenes = append(scenes, scriptpkg.SpecScene{
+			ID: id, SegmentID: id, Index: i, Kind: scriptpkg.SceneNarration,
+			Text: text, DurationMS: segment.DurationMS,
+			OverlayCategories: scriptpkg.CloneOverlayCategories(segment.OverlayCategories),
+		})
 	}
 	result.Output.SpecScene.Scenes = scenes
 	result.Output.Text = strings.Join(func() []string {

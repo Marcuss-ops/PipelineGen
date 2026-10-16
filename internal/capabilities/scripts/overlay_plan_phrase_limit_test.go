@@ -95,8 +95,18 @@ func TestCompileOverlayPlanHonoursCallerPhraseCeiling(t *testing.T) {
 	require.NotNil(t, plan)
 	require.Equal(t, capabilityoverlay.MaxPhraseOverlaysPerRun, countPlanPhrases(plan), "absent ceiling must keep the certified default")
 
-	// The hard maximum includes every candidate in this fixture (and is
-	// greater than the old default), so the caller-selected value admits all.
+	// A single configured phrase group raises the combined planner ceiling
+	// above the default; the later group cap still controls its own lane.
+	for _, group := range []string{"short_phrases", "long_phrases"} {
+		raisedByGroup := GoldenOverlayCanvas
+		raisedByGroup.OverlayGroupLimits = map[string]int{group: 8}
+		plan, err = CompileOverlayPlan(result, "en", raisedByGroup, "plan-ceiling-"+group, "video-ceiling", "project-ceiling")
+		require.NoError(t, err)
+		require.NotNil(t, plan)
+		require.Equal(t, 8, countPlanPhrases(plan), "%s alone should raise the default planner ceiling", group)
+	}
+
+	// The explicit run-level hard maximum continues to admit all candidates.
 	raised := GoldenOverlayCanvas
 	raised.MaxPhraseOverlays = capabilityoverlay.MaxPhraseOverlaysHardLimit
 	plan, err = CompileOverlayPlan(result, "en", raised, "plan-ceiling-hard-max", "video-ceiling", "project-ceiling")

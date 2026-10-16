@@ -216,32 +216,42 @@ func (idx sceneIdentityIndex) sceneFor(segment scriptpkg.VidRushSegmentResult) i
 
 func scenePrimaryEntityQueries(spec scriptpkg.SpecSceneOutput, idx sceneIdentityIndex, segment scriptpkg.VidRushSegmentResult) []string {
 	best := idx.sceneFor(segment)
-	if best == -1 {
-		return nil
-	}
-	scene := spec.Scenes[best]
-	if scene.Annotations == nil {
-		return nil
-	}
-	queries := make([]string, 0, len(scene.Annotations.PrimaryEntities))
-	seen := make(map[string]struct{}, len(queries))
-	for _, entity := range scene.Annotations.PrimaryEntities {
-		if entity.Type != "PERSON" && entity.Type != "ORG" && entity.Type != "GPE" {
-			continue
-		}
-		query := strings.TrimSpace(entity.CanonicalName)
-		if query == "" {
-			query = strings.TrimSpace(entity.Text)
-		}
+	queries := make([]string, 0, len(segment.Insights.Entities))
+	seen := make(map[string]struct{}, cap(queries))
+	add := func(query string) {
+		query = strings.TrimSpace(query)
 		key := strings.ToLower(query)
 		if query == "" {
-			continue
+			return
 		}
 		if _, exists := seen[key]; exists {
-			continue
+			return
 		}
 		seen[key] = struct{}{}
 		queries = append(queries, query)
+	}
+	// Include every grounded imageable entity found by segment extraction.
+	// Scene annotations can be incomplete at this pipeline stage (often only
+	// the lead person has been projected); using them as the sole source drops
+	// co-present entities before their image searches can run.
+	for _, entity := range segment.Insights.Entities {
+		kind := strings.ToUpper(strings.TrimSpace(entity.Type))
+		if kind != "PERSON" && kind != "ORG" && kind != "GPE" {
+			continue
+		}
+		add(entity.Value)
+	}
+	if best >= 0 && spec.Scenes[best].Annotations != nil {
+		for _, entity := range spec.Scenes[best].Annotations.PrimaryEntities {
+			if entity.Type != "PERSON" && entity.Type != "ORG" && entity.Type != "GPE" {
+				continue
+			}
+			query := strings.TrimSpace(entity.CanonicalName)
+			if query == "" {
+				query = strings.TrimSpace(entity.Text)
+			}
+			add(query)
+		}
 	}
 	return queries
 }

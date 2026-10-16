@@ -339,6 +339,26 @@ func TestEntityImage_PersonQueryPreservesEntityIdentity(t *testing.T) {
 	}
 }
 
+func TestEntityImage_SceneQueriesIncludeEntitiesMissingFromPartialAnnotations(t *testing.T) {
+	spec := scriptpkg.SpecSceneOutput{Version: 1, Scenes: []scriptpkg.SpecScene{{
+		ID: "pair-01", SegmentID: "pair-01", Index: 0,
+		Annotations: &scriptpkg.SceneAnnotations{PrimaryEntities: []scriptpkg.AnnotatedEntity{{
+			CanonicalName: "Alberto Stasi", Text: "Alberto Stasi", Type: "PERSON",
+		}}},
+	}}}
+	segment := scriptpkg.VidRushSegmentResult{
+		SegmentID: "pair-01", SceneID: "pair-01",
+		Insights: scriptpkg.SegmentInsights{Entities: []scriptpkg.ExtractedEntity{
+			{Value: "Alberto Stasi", Type: "PERSON"},
+			{Value: "Giada Bocellari", Type: "PERSON"},
+		}},
+	}
+	queries := scenePrimaryEntityQueries(spec, buildSceneIdentityIndex(spec), segment)
+	if len(queries) != 2 || queries[0] != "Alberto Stasi" || queries[1] != "Giada Bocellari" {
+		t.Fatalf("primary entity queries = %v, want both co-present people", queries)
+	}
+}
+
 // TestEntityImage_ProjectionBindsOnlyIdentityScopedCandidate certifies the
 // end-to-end binding projection: the matching identity candidate resolves,
 // while a scene carrying only a generic candidate stays not_found.

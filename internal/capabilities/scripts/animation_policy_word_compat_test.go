@@ -151,7 +151,7 @@ func TestAssignEntityImageMotionsHonoursRequestedCaptionPool(t *testing.T) {
 	for _, pool := range [][]string{
 		{"not_a_motion"},
 		{requested[0], requested[0]},
-		{"entity_depth_caption"},
+		{"trump_entity_text_04"},
 	} {
 		if err := assignEntityImageMotions(makeItems(), 0, 1920, 1080, "", nil, pool); err == nil {
 			t.Fatalf("caption pool %q must fail closed", pool)

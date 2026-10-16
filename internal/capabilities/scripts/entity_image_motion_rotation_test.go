@@ -11,7 +11,9 @@ import (
 // automatic-runtime subcatalogs. Pool sizes are literal drift gates because
 // they define what the planner emits across the producer→renderer boundary.
 func TestAssignEntityImageMotionsUsesCertifiedCatalog(t *testing.T) {
-	const wantImages, wantCaptions = 9, 31
+	// Entity cards use the ten authored entity_card_v1 presets (see
+	// preset_selection.go); other caption families are not selected for them.
+	const wantImages, wantCaptions = 9, 10
 
 	certified := capabilityoverlay.CertifiedEntityImageMotions()
 	captionCertified := capabilityoverlay.CertifiedEntityCaptionMotions()
@@ -53,15 +55,20 @@ func TestAssignEntityImageMotionsUsesCertifiedCatalog(t *testing.T) {
 
 	captionSeen := map[string]bool{}
 	seen := map[string]bool{}
+	singles := map[string]bool{}
 	composite := map[string]bool{}
 	for _, item := range items {
 		if len(item.ImageLayers) > 0 {
+			// Composite children draw from their per-size entrance family
+			// (CompositeImageMotionPool), so they never reuse another group
+			// size's family. They are excluded from the single-portrait rotation.
+			family := capabilityoverlay.CompositeImageMotionPool(len(item.ImageLayers))
 			for _, layer := range item.ImageLayers {
 				if layer.MotionID == "" {
 					t.Fatalf("composite child lost its motion")
 				}
-				if !containsMotionID(certified, layer.MotionID) {
-					t.Fatalf("composite child motion %q is outside the certified catalog", layer.MotionID)
+				if !containsMotionID(family, layer.MotionID) {
+					t.Fatalf("composite child motion %q is outside its size family %v", layer.MotionID, family)
 				}
 				seen[layer.MotionID] = true
 				if layer.CaptionMotionID == "" || !containsMotionID(captionCertified, layer.CaptionMotionID) {
@@ -94,9 +101,12 @@ func TestAssignEntityImageMotionsUsesCertifiedCatalog(t *testing.T) {
 			t.Fatalf("entity image %q motion %q is outside the certified catalog", item.ID, item.MotionID)
 		}
 		seen[item.MotionID] = true
+		singles[item.MotionID] = true
 	}
-	if len(seen) != wantImages {
-		t.Fatalf("%d entity images selected %d distinct motions, want catalog rotation across %d", len(items), len(seen), wantImages)
+	// Single portraits rotate through the certified image catalog with no
+	// repeat until it is exhausted; the catalog is larger than the portrait run.
+	if len(singles) != portraitCount || portraitCount > wantImages {
+		t.Fatalf("%d single portraits selected %d distinct motions, want %d distinct from the %d-motion catalog", portraitCount, len(singles), portraitCount, wantImages)
 	}
 	if len(captionSeen) != len(automaticCaptions) {
 		t.Fatalf("%d entity captions selected %d distinct motions, want rotation across the %d automatic motions", len(items), len(captionSeen), len(automaticCaptions))

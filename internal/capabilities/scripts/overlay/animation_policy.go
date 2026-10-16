@@ -21,6 +21,22 @@ type animationGroupKey struct {
 	target, groupID, subgroupID string
 }
 
+// maxAnimationSubgroupRunes mirrors RenderingGen's group/subgroup contract
+// (validateAnimationGroupIDs): values must be trimmed and at most 128 runes.
+const maxAnimationSubgroupRunes = 128
+
+// boundAnimationSubgroupID keeps an animation group id inside the renderer
+// contract. Short ids pass through untouched; longer ones keep a readable
+// head plus a content hash so distinct groups never collide after bounding.
+func boundAnimationSubgroupID(id string) string {
+	if utf8.RuneCountInString(id) <= maxAnimationSubgroupRunes {
+		return id
+	}
+	runes := []rune(id)
+	head := string(runes[:maxAnimationSubgroupRunes-9])
+	return head + "-" + digest.SHA256String(id)[:8]
+}
+
 // ToOverlayAnimationPolicies projects the script payload onto the rendering
 // contract without changing the caller's selections.
 func ToOverlayAnimationPolicies(policies []scriptpkg.AnimationPolicy) []capabilityoverlay.AnimationPolicy {
@@ -143,7 +159,11 @@ func ApplyAnimationPolicies(items []capabilityoverlay.OverlayItem, policies []sc
 			groupID = item.ID
 		}
 		item.GroupID = groupID
-		item.SubgroupID = firstNonBlank(item.SubgroupID, item.ID)
+		// Composite parents join child ids with "+", so x4-x5 subgroups
+		// exceed RenderingGen's 128-rune contract and fail the render.
+		// Bound every subgroup deterministically (truncation keeps the
+		// readable head, the hash keeps distinct groups distinct).
+		item.SubgroupID = boundAnimationSubgroupID(firstNonBlank(item.SubgroupID, item.ID))
 		if item.Kind == "text_phrase" {
 			words := len(strings.Fields(item.Text))
 			if motionID, motionParams, explicit := resolve("important_phrase", groupID, item.SubgroupID, words); motionID != "" {
@@ -188,7 +208,7 @@ func ApplyAnimationPolicies(items []capabilityoverlay.OverlayItem, policies []sc
 		for childIndex := range item.ImageLayers {
 			child := &item.ImageLayers[childIndex]
 			childGroupID := firstNonBlank(child.GroupID, groupID)
-			childSubgroupID := firstNonBlank(child.SubgroupID, child.ID)
+			childSubgroupID := boundAnimationSubgroupID(firstNonBlank(child.SubgroupID, child.ID))
 			child.GroupID = childGroupID
 			child.SubgroupID = childSubgroupID
 			if motionID, motionParams, _ := resolve("image", childGroupID, childSubgroupID, 0); motionID != "" {
@@ -316,45 +336,25 @@ func validatePolicyMotionParams(params map[string]any) error {
 }
 
 func certifiedPolicyMotion(target, motionID string, entityImagePool []string) bool {
-	// A retired animation is refused for every target, even when a payload
-	// names one explicitly: no selector may emit it again.
-	if capabilityoverlay.IsRemovedGeneratedPhraseMotion(motionID) {
-		return false
-	}
-	var pool []string
+	// Selection and renderer admission are resolved from the same registry as
+	// automatic pools. Short exact-cardinality recipes remain subject to the
+	// existing per-item word-count check below.
 	switch target {
 	case "important_phrase":
-		// Visible pool (seeded draws) plus general certified pool, plus
-		// explicit exact-cardinality short_phrase_* vocabulary (word-count
-		// enforced later in checkPolicyPhraseMotionCompatible).
-		for _, id := range capabilityoverlay.ShortPhraseVisibleMotionCandidates() {
-			if id == motionID {
-				return true
-			}
-		}
-		if _, ok := capabilityoverlay.ShortPhraseMotionWordCount(motionID); ok {
-			return capabilityoverlay.IsShortPhraseRecipe(motionID)
-		}
-		pool = capabilityoverlay.CertifiedPhraseMotions()
+		return capabilityoverlay.AnimationSelectable(motionID, "phrase.all") ||
+			capabilityoverlay.AnimationSelectable(motionID, "phrase.short")
 	case "image":
-		pool = append(capabilityoverlay.CertifiedSingleImageMotions(), entityImagePool...)
-		pool = append(pool, capabilityoverlay.CertifiedImageWithTextMotions()...)
-		// Visual-accents recipes (including light leaks) are valid for the
-		// standalone image target. RenderingGen owns their recipe lowering.
-		pool = append(pool, capabilityoverlay.CertifiedLightLeakMotions()...)
+		return capabilityoverlay.AnimationSelectable(motionID, "image.all") ||
+			capabilityoverlay.AnimationSelectable(motionID, "image.lightleak")
 	case "caption":
-		pool = capabilityoverlay.CertifiedEntityCaptionMotions()
+		return capabilityoverlay.AnimationSelectable(motionID, "entity.caption")
 	case "date":
-		pool = capabilityoverlay.DatePresentationMotionCandidates()
+		return capabilityoverlay.AnimationSelectable(motionID, "entity.date")
 	case "metric":
-		pool = capabilityoverlay.MetricPresentationMotionCandidates()
+		return capabilityoverlay.AnimationSelectable(motionID, "entity.metric")
+	default:
+		return false
 	}
-	for _, id := range pool {
-		if id == motionID {
-			return true
-		}
-	}
-	return false
 }
 
 func clonePolicyParams(params map[string]any) map[string]any {

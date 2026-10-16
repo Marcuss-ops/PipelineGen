@@ -70,10 +70,13 @@ type PlanInput struct {
 	// MotionSeed changes phrase-motion selection between newly compiled plans.
 	// Empty preserves the historical deterministic PlanID/VideoID behavior.
 	MotionSeed string
-	Width      int
-	Height     int
-	FPSNum     int
-	FPSDen     int
+	// CoherenceSeed selects the run's dominant horizontal direction. Empty
+	// derives the direction from MotionSeed (or PlanID when that is empty).
+	CoherenceSeed string
+	Width         int
+	Height        int
+	FPSNum        int
+	FPSDen        int
 	// RendererVersion is intentionally optional. PipelineGen emits semantic
 	// overlay instructions; RenderingGen owns the concrete renderer selection.
 	// Callers should leave this empty unless the queue contract explicitly

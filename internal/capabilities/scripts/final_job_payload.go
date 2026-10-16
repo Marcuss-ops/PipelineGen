@@ -38,13 +38,17 @@ type FinalJobAssetResolver interface {
 }
 
 func BuildFinalJobPayloads(ctx context.Context, runID string, req GenerateRequest, result *GenerateResult, resolver FinalJobAssetResolver) (map[string]any, map[string]any, error) {
-	if result == nil || result.CanonicalTimeline == nil || result.FinalAudio == nil || result.FinalAudio.DurationMS <= 0 {
-		return nil, nil, fmt.Errorf("final_job requires a canonical timeline and published final audio")
+	if result == nil || result.CanonicalTimeline == nil || result.CanonicalTimeline.DurationUS <= 0 {
+		return nil, nil, fmt.Errorf("final_job requires a canonical timeline with positive duration")
 	}
+	// Audio is optional for render-only runs (for example phrase animation
+	// previews). When present, retain the certified mux checks below. The
+	// canonical video timeline remains the duration authority when audio is off.
+	hasFinalAudio := result.FinalAudio != nil && result.FinalAudio.DurationMS > 0
 	// The finalizer muxes this single canonical mix at video time zero. A
 	// non-zero encoded PTS would shift the voiceover against every scene even
 	// when the reported duration matches, so reject it before handing off to 51.
-	if result.FinalAudio.StartPTS != 0 {
+	if hasFinalAudio && result.FinalAudio.StartPTS != 0 {
 		return nil, nil, fmt.Errorf("final_job final audio start_pts is %d, want 0 for voiceover alignment", result.FinalAudio.StartPTS)
 	}
 	if len(result.Scenes) == 0 {
@@ -310,17 +314,21 @@ func BuildFinalJobPayloads(ctx context.Context, runID string, req GenerateReques
 		return nil, nil, err
 	}
 	plannedDurationMS = finalJobSceneDurationMS(remoteScenes)
-	if delta := plannedDurationMS - result.FinalAudio.DurationMS; delta < -40 || delta > 40 {
-		return nil, nil, fmt.Errorf("final_job scene duration %dms does not match certified final audio %dms (tolerance 40ms)", plannedDurationMS, result.FinalAudio.DurationMS)
+	if hasFinalAudio {
+		if delta := plannedDurationMS - result.FinalAudio.DurationMS; delta < -40 || delta > 40 {
+			return nil, nil, fmt.Errorf("final_job scene duration %dms does not match certified final audio %dms (tolerance 40ms)", plannedDurationMS, result.FinalAudio.DurationMS)
+		}
+		if err := enforceFinalJobPreflight(remoteScenes, result.FinalAudio.DurationMS); err != nil {
+			return nil, nil, err
+		}
+		audioRef, err := finalJobAudioAsset(*result.FinalAudio)
+		if err != nil {
+			return nil, nil, err
+		}
+		appendFinalJobRuntimeAsset(&runtimeAssets, seenRuntimeAssets, "final_audio", audioRef)
+	} else if delta := plannedDurationMS*1000 - result.CanonicalTimeline.DurationUS; delta < -40_000 || delta > 40_000 {
+		return nil, nil, fmt.Errorf("final_job scene duration %dms does not match canonical timeline %dus", plannedDurationMS, result.CanonicalTimeline.DurationUS)
 	}
-	if err := enforceFinalJobPreflight(remoteScenes, result.FinalAudio.DurationMS); err != nil {
-		return nil, nil, err
-	}
-	audioRef, err := finalJobAudioAsset(*result.FinalAudio)
-	if err != nil {
-		return nil, nil, err
-	}
-	appendFinalJobRuntimeAsset(&runtimeAssets, seenRuntimeAssets, "final_audio", audioRef)
 	for _, bgm := range req.BackgroundMusic {
 		asset, err := resolver.ResolveFinalJobAsset(ctx, bgm.AssetID)
 		if err != nil {
@@ -362,18 +370,20 @@ func BuildFinalJobPayloads(ctx context.Context, runID string, req GenerateReques
 		"output":          map[string]any{"width": 1920, "height": 1080, "fps": 24, "format": "mp4"},
 		"delivery_plan":   []any{map[string]any{"destination_id": "drive-production", "priority": 1, "retry_budget": 3}},
 	}
-	runtimeAudio := map[string]any{
-		"voiceover_asset_id":         strings.TrimSpace(result.FinalAudio.AssetID),
-		"voiceover_volume":           1.0,
-		"voiceover_duration_seconds": float64(result.FinalAudio.DurationMS) / 1000,
-	}
 	finalize := map[string]any{
 		"idempotency_key": key + "-finalize",
 		"overlays":        remoteOverlays,
 		"runtime_assets":  runtimeAssets,
-		// The Master finalize endpoint accepts runtime data under this field;
-		// its typed request rejects unknown top-level runtime_audio fields.
-		"runtime_payload": map[string]any{"runtime_audio": runtimeAudio},
+	}
+	if hasFinalAudio {
+		runtimeAudio := map[string]any{
+			"voiceover_asset_id":         strings.TrimSpace(result.FinalAudio.AssetID),
+			"voiceover_volume":           1.0,
+			"voiceover_duration_seconds": float64(result.FinalAudio.DurationMS) / 1000,
+		}
+		// Master accepts runtime data under this field; its typed request
+		// rejects unknown top-level runtime_audio fields.
+		finalize["runtime_payload"] = map[string]any{"runtime_audio": runtimeAudio}
 	}
 	return pre, finalize, nil
 }

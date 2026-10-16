@@ -1,0 +1,178 @@
+{
+  "version": 2,
+  "preset": "custom",
+  "correlation_id": "garlasco-x4-stessa-scena-20261016",
+  "force_refresh": true,
+  "items": [
+    {
+      "id": "garlasco-x4-stessa-scena-20261016",
+      "project": "garlasco-x4-stessa-scena-20261016",
+      "title": "Garlasco — una foto verificata per persona, senza duplicati",
+      "language": "it",
+      "tone": "documentario giornalistico sobrio, neutrale e garantista",
+      "style": "Aggiornamento giornalistico breve in italiano sul caso di Garlasco, focalizzato sul procedimento di Alberto Stasi e sul ruolo della sua legale Giada Bocellari. Tono sobrio e garantista; distingui fatti giudiziari, tesi delle parti e questioni tecniche. Attieniti ai segmenti, non aggiungere persone o dettagli non verificati, evita descrizioni grafiche.",
+      "model": "gemma4:e4b",
+      "source": {
+        "type": "text",
+        "topic": "Garlasco: procedimento giudiziario e ruolo della difesa",
+        "source_text": "Alberto Stasi, Giada Bocellari, Chiara Poggi e Andrea Sempio sono i quattro nomi di questa prova visiva. Alberto Stasi è stato condannato in via definitiva per l'omicidio di Chiara Poggi. Giada Bocellari è la sua legale. Andrea Sempio è indagato nella nuova inchiesta e respinge le accuse. Il servizio distingue condanne definitive, tesi investigative e posizioni delle difese, nel rispetto della presunzione di innocenza."
+      },
+      "script_params": {
+        "target_words": 80,
+        "min_words": 60,
+        "segment_words": 80,
+        "single_scene": true,
+        "skip_quality_gate": false,
+        "force_refresh": true,
+        "source_text_verbatim": true,
+        "segments": [
+          {
+            "id": "quattro-volti",
+            "kind": "narration",
+            "topic": "Quattro volti in una scena",
+            "source_text": "Alberto Stasi, Giada Bocellari, Chiara Poggi e Andrea Sempio sono i quattro nomi di questa prova visiva. Alberto Stasi è stato condannato in via definitiva per l'omicidio di Chiara Poggi. Giada Bocellari è la sua legale. Andrea Sempio è indagato nella nuova inchiesta e respinge le accuse. Il servizio distingue condanne definitive, tesi investigative e posizioni delle difese, nel rispetto della presunzione di innocenza.",
+            "target_words": 80,
+            "min_words": 60
+          }
+        ],
+        "images_per_scene": 1
+      },
+      "max_phrase_overlays": 0,
+      "max_image_overlays": 5,
+      "max_map_overlays": 0,
+      "max_overlays_per_scene": 4,
+      "animation_counts": {
+        "maps": 0,
+        "images": 5,
+        "images_with_text": 0,
+        "important_phrase": 0,
+        "short_important_phrase": 0,
+        "entities": 0,
+        "entity_caption": 0,
+        "dates": 0,
+        "metric_stat": 0,
+        "timeline_date": 0,
+        "charts": 0,
+        "bullets": 0,
+        "quotes": 0,
+        "brand_text": 0,
+        "recaps": 0,
+        "titles": 0
+      },
+      "overlay_group_limits": {
+        "maps": 0,
+        "short_phrases": 0,
+        "long_phrases": 0,
+        "entities_with_text": 0,
+        "images": 5
+      },
+      "output": {
+        "save_to_db": true,
+        "extract_entities": "enabled",
+        "generate_metadata": true,
+        "generate_timeline": true,
+        "voiceover_enabled": true,
+        "languages": [
+          "it"
+        ],
+        "drive_folder_id": "1J_xUGo_bchzXDIGqSX04CU44c_Dm3SxS",
+        "drive_subfolder_name": "garlasco-x4-stessa-scena-20261016",
+        "render": {
+          "enabled": true,
+          "require_gpu": true,
+          "drive_folder_id": "1J_xUGo_bchzXDIGqSX04CU44c_Dm3SxS",
+          "drive_subfolder_name": "garlasco-x4-stessa-scena-20261016",
+          "subtitles": {
+            "enabled": false
+          },
+          "background": {
+            "mode": "none"
+          }
+        },
+        "docs": {
+          "enabled": false
+        }
+      },
+      "media_plan": {
+        "mode": "hybrid",
+        "provider_policy": {
+          "internet_images": "enabled",
+          "image_generation": "disabled",
+          "artlist": "disabled",
+          "youtube": "disabled",
+          "geocoding": "disabled"
+        },
+        "cache": {
+          "read": true,
+          "write": true
+        },
+        "force_refresh_assets": false,
+        "extraction": {
+          "enabled": true,
+          "include": [
+            "entities"
+          ],
+          "max_entities_per_segment": 2,
+          "max_important_phrases_per_segment": 0,
+          "max_image_queries_per_segment": 2,
+          "important_phrases": [],
+          "entity_images": {
+            "enabled": true,
+            "entity_types": [
+              "PERSON"
+            ],
+            "max_per_entity": 1,
+            "scope": "per_scene",
+            "upload_to_drive": true
+          }
+        },
+        "materialization": {
+          "mode": "selected",
+          "upload_to_drive": true,
+          "wait_for_ready": true
+        },
+        "include_trace": true,
+        "force_refresh_bindings": false,
+        "planner": {
+          "candidate_limit": 4
+        }
+      },
+      "audio": {
+        "mode": "COMBINED_TIMELINE",
+        "timing": {
+          "mode": "required",
+          "boundary": "word",
+          "formats": [
+            "json",
+            "srt",
+            "vtt"
+          ]
+        },
+        "random_sfx_on_clip_start": false,
+        "random_sfx_on_image_overlay": false
+      },
+      "overlay_categories": {
+        "maps": "disabled",
+        "phrases": "disabled",
+        "images": "enabled",
+        "numbers": "disabled",
+        "quotes": "disabled",
+        "brand_text": "disabled",
+        "charts": "disabled",
+        "recaps": "disabled",
+        "titles": "disabled",
+        "bullets": "disabled"
+      },
+      "overlay_background": {
+        "kind": "color",
+        "color": [
+          1,
+          1,
+          1,
+          1
+        ],
+        "opacity": 1
+      }
+    }
+  ]
+}

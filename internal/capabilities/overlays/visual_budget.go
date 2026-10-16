@@ -21,9 +21,9 @@ import (
 	"strings"
 )
 
-// MaxImageOverlaysPerRun is the hard run-level ceiling for image overlays.
-// It bounds render fan-out while allowing the requested 20-image acceptance
-// corpus. Motion selection remains deterministic and may reuse catalog motions.
+// MaxImageOverlaysPerRun is the certified default run-level ceiling for image
+// overlays. An explicit payload image limit may raise it; motion selection
+// remains deterministic and may reuse catalog motions.
 const MaxImageOverlaysPerRun = 20
 
 // MaxEntityImageOverlaysPerRun is retained as the entity-image-specific name
@@ -95,7 +95,11 @@ func ApplyEditorialOverlayBudgetWithLimits(items []OverlayItem, phraseLimit, map
 func ApplyEditorialOverlayBudgetWithImageLimit(items []OverlayItem, phraseLimit, imageLimit, mapLimit int, allowRepeatedEntityImagesPerScene ...bool) ([]OverlayItem, PhraseOverlayBudget) {
 	limit := EffectivePhraseOverlayLimit(phraseLimit)
 	perSceneEntityImages := len(allowRepeatedEntityImagesPerScene) > 0 && allowRepeatedEntityImagesPerScene[0]
-	imageIndices := rankedUniqueOverlayIndices(items, true, limit, perSceneEntityImages)
+	effectiveImageLimit := imageLimit
+	if effectiveImageLimit <= 0 {
+		effectiveImageLimit = MaxImageOverlaysPerRun
+	}
+	imageIndices := rankedUniqueOverlayIndices(items, true, effectiveImageLimit, perSceneEntityImages)
 	// 2026-09-30 Milton incident: the same downloaded portrait surfaced BOTH
 	// as an entity_image card and as a context "image" hit of a second scene
 	// query, and each image arm deduplicates on a DIFFERENT key (entity
@@ -104,11 +108,8 @@ func ApplyEditorialOverlayBudgetWithImageLimit(items []OverlayItem, phraseLimit,
 	// which arm produced it: the highest-ranked occurrence wins, and freed
 	// slots go to genuinely different images.
 	imageIndices = dedupeImageIndicesByContent(items, imageIndices, perSceneEntityImages)
-	if imageLimit <= 0 {
-		imageLimit = MaxImageOverlaysPerRun
-	}
-	if len(imageIndices) > imageLimit {
-		imageIndices = imageIndices[:imageLimit]
+	if len(imageIndices) > effectiveImageLimit {
+		imageIndices = imageIndices[:effectiveImageLimit]
 	}
 	phraseIndices := rankedUniqueOverlayIndices(items, false, limit)
 	mapCeiling := mapLimit
@@ -290,7 +291,7 @@ func rankedUniqueMapIndices(items []OverlayItem, cap int) []int {
 // image ceiling stays fixed; phraseLimit <= 0 keeps the default ceiling.
 func ApplyEditorialOverlayBudgetWithLimit(items []OverlayItem, phraseLimit int) ([]OverlayItem, PhraseOverlayBudget) {
 	limit := EffectivePhraseOverlayLimit(phraseLimit)
-	imageIndices := rankedUniqueOverlayIndices(items, true, limit)
+	imageIndices := rankedUniqueOverlayIndices(items, true, MaxImageOverlaysPerRun)
 	phraseIndices := rankedUniqueOverlayIndices(items, false, limit)
 	numberIndices := rankedUniqueKindIndices(items, "number", MaxNumberOverlaysPerRun)
 	brandIndices := rankedUniqueKindIndices(items, "brand_text", MaxBrandTextOverlaysPerRun)

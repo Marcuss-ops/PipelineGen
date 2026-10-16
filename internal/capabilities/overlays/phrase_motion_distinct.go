@@ -4,158 +4,31 @@ import (
 	"strings"
 )
 
-// removedGeneratedPhraseMotions is the set of motion IDs that must never be
-// assigned to a generated overlay. The retired short-phrase IDs are absent from
-// the catalogs entirely; this guard additionally blocks legacy explicit
-// payloads from selecting them while old jobs are still in circulation.
-var removedGeneratedPhraseMotions = func() map[string]struct{} {
-	removed := map[string]struct{}{"chromatic_aberration_pop": {}}
-	for _, id := range retiredShortPhraseRecipes {
-		removed[id] = struct{}{}
-	}
-	for _, id := range removedGeneratedPhraseMotionIDs {
-		removed[id] = struct{}{}
-	}
-	return removed
-}()
-
-// retiredShortPhraseRecipes is a compatibility denylist for retired wire IDs.
-// These entries must not appear in current catalogues, suggestion pools, or
-// generated plans; keep the literal IDs here solely to reject stale payloads.
-var retiredShortPhraseRecipes = []string{
-	"short_phrase_editorial_claude_diff_patch",
-	"short_phrase_editorial_claude_prompt_response",
-	"short_phrase_editorial_lift_and_rule",
-	"short_phrase_editorial_rule_handoff",
-	"short_phrase_editorial_underline_draw",
-	"short_phrase_phrase_build_focus",
-	"short_phrase_product_decrypted_text",
-	"short_phrase_product_fold_text",
-	"short_phrase_product_glare_hover",
-	"short_phrase_product_line_by_line_slide",
-	"short_phrase_product_scramble_reveal",
-	"short_phrase_product_shape_blur",
-	"short_phrase_product_warp_text",
-	"short_phrase_product_weight_wave",
-	"short_phrase_scale_settle_word",
-	"short_phrase_semantic_chain_curve",
-	"short_phrase_semantic_two_line",
-	"short_phrase_simple_progressive_phrase",
-	"short_phrase_single_word_swap",
-	"short_phrase_word_cascade_sentence",
-	"short_phrase_word_mask_sequence",
-	"short_phrase_character_write_on",
-	"short_phrase_editorial_paper_title_card",
-	"short_phrase_typewriter",
-}
-
-// removedGeneratedPhraseMotionIDs are phrase animations retired from generated
-// overlays by request. They are rejected like the retired short-phrase IDs.
-var removedGeneratedPhraseMotionIDs = []string{
-	"phrase_apple_clean_14_scale_bounce_clean",
-	// Retired 2026-10-15 after visual review: conspicuous Brush line/shape
-	// accents are out of the generated long-phrase pool; keep the soft gold
-	// marker and light sweep as the only Brush phrase options.
-	"brush_phrase_arrow_point",
-	"brush_phrase_circle_focus",
-	"brush_phrase_lower_rule",
-	"brush_phrase_red_brush_underline",
-	"brush_phrase_red_endpoint_rule",
-	"brush_phrase_red_underline",
-	"brush_phrase_signature_flourish",
-	"brush_phrase_white_double_underline",
-	"brush_phrase_white_underline",
-	// Retired 2026-10-15: look-alike prune. Each removed motion shares its
-	// animation recipe with a surviving sibling that stays callable (kept in
-	// parentheses): the rotation keeps variety instead of near-identical
-	// entrances. The documentary_clean_v1 family key was retired the same day;
-	// its four motions stay callable through modern_apple and the long lane.
-	"apple_focus_rise",                  // keep apple_soft_scale
-	"apple_scale_push",                  // keep apple_soft_scale
-	"apple_line_sweep",                  // keep apple_line_cascade
-	"apple_word_pulse",                  // keep apple_word_cascade
-	"precision_tracking_lock",           // keep apple_tracking_reveal
-	"precision_word_stagger",            // keep kinetic_keyword_lock
-	"apple_hero_statement",              // keep hero_scale_focus
-	"glass_morphism_fade",               // keep hero_scale_focus
-	"editorial_push_in",                 // keep cinematic_credits_drift
-	"soft_clay_press",                   // keep duotone_block_rise
-	"high_specular_light_sweep",         // keep fluid_gradient_text_flow
-	"micro_tracker_kerning_compression", // keep fluid_gradient_text_flow
-	"staggered_char_float",              // keep isometric_3d_fold
-	"pixel_grid_alpha_matrix",           // keep depth_of_field_rack_focus
-	"focus_pull_macro",                  // keep premium_soft_reveal
-	"ink_bleed_spread",                  // keep premium_soft_reveal
-	"liquid_glass_ripple",               // keep premium_soft_reveal
-	"magnetic_letters_converge",         // keep premium_soft_reveal
-	"shutter_blade_reveal",              // keep hero_scale_focus
-	"soft_edge_spotlight_dissolve",      // keep premium_soft_reveal
-	"spectrum_shimmer_wave",             // keep premium_soft_reveal
-	"spotlight_iris_open",               // keep hero_scale_focus
-	// Retired 2026-10-14 with the ChrononTemplate typewriter/highlight
-	// removal (catalog no longer resolves them; kept literal to reject
-	// stale payloads fail-closed).
-	"phrase_burst_reveal",
-	"phrase_center_dash",
-	"phrase_center_out_underline",
-	"phrase_delayed_accent",
-	"phrase_double_rule",
-	"phrase_gold_draw_on",
-	"phrase_ivory_underline",
-	"phrase_offset_double_rule",
-	"phrase_red_marker_pulse",
-	"phrase_red_underline_sweep",
-	"phrase_short_keyword_rule",
-	"phrase_slow_reveal",
-	"phrase_soft_pulse",
-	"phrase_split_marker",
-	"phrase_staggered_lines",
-	"phrase_triple_editorial_rule",
-	"phrase_warm_marker_sweep",
-	"phrase_yellow_highlighter_sweep",
-	"typewriter_blur_focus",
-	"typewriter_clean",
-	"typewriter_cursor",
-	"typewriter_cursor_blink",
-	"typewriter_cursor_hold",
-	"typewriter_cursor_leads",
-	"typewriter_double_blink",
-	"typewriter_fade",
-	"typewriter_fast",
-	"typewriter_glitch",
-	"typewriter_lift",
-	"typewriter_modern_01_monospace_block_cursor",
-	"typewriter_modern_02_kinetic_scramble",
-	"typewriter_modern_03_soft_opacity_ramp",
-	"typewriter_modern_04_character_bounce",
-	"typewriter_modern_05_backspace_correction",
-	"typewriter_modern_06_glow_beam_sweep",
-	"typewriter_modern_07_word_snap",
-	"typewriter_modern_08_mechanical_y_shift",
-	"typewriter_modern_09_highlighter_expansion",
-	"typewriter_modern_10_weight_ramp",
-	"typewriter_modern_11_dynamic_auto_wrap",
-	"typewriter_modern_12_glitch_pop",
-	"typewriter_modern_13_elastic_leading_cursor",
-	"typewriter_modern_14_focal_blur_dissolve",
-	"typewriter_modern_15_paper_punch_stencil",
-	"typewriter_neon",
-	"typewriter_pop",
-	"typewriter_scale_up",
-	"typewriter_slide_in",
-	"typewriter_slow",
-	"typewriter_soft",
-	"typewriter_soft_lift",
-	"typewriter_tracking",
-	"typewriter_tracking_assemble",
-}
+// Retired generated IDs remain resolvable only so stale explicit payloads can
+// fail closed. Status and membership live in the shared animation registry.
+var (
+	retiredShortPhraseRecipes       = RetiredAnimationCandidates("phrase.short")
+	removedGeneratedPhraseMotionIDs = RetiredAnimationCandidates("phrase.all")
+	removedGeneratedPhraseMotions   = func() map[string]struct{} {
+		removed := make(map[string]struct{}, len(removedGeneratedPhraseMotionIDs)+1)
+		for _, id := range removedGeneratedPhraseMotionIDs {
+			removed[id] = struct{}{}
+		}
+		for _, id := range retiredShortPhraseRecipes {
+			removed[id] = struct{}{}
+		}
+		removed["chromatic_aberration_pop"] = struct{}{}
+		return removed
+	}()
+)
 
 // IsRemovedGeneratedPhraseMotion reports whether an animation was retired from
 // generated overlays. Payload validation uses it to fail closed instead of
 // silently accepting a motion no selector may emit.
 func IsRemovedGeneratedPhraseMotion(motionID string) bool {
-	_, removed := removedGeneratedPhraseMotions[strings.TrimSpace(motionID)]
-	return removed
+	motionID = strings.TrimSpace(motionID)
+	_, removed := removedGeneratedPhraseMotions[motionID]
+	return removed || AnimationIsRetired(motionID)
 }
 
 // ensureDistinctPhraseMotions is a final run-wide guard over the category
@@ -366,16 +239,11 @@ func phraseMotionCandidatesForItem(item OverlayItem, input PlanInput, seed strin
 				candidates = append([]string(nil), input.PhraseMotions...)
 			}
 		}
-		// The same lane seed as the assignment keeps one capped window per run:
-		// a different window here would let the guard rotate duplicates into
-		// recipes the lane never drew, exceeding the requested style count.
-		lane := "long_phrase_default"
-		if len(input.PhraseMotions) > 0 {
-			lane = "long_phrase_pool"
-		}
-		if phraseLimit > 0 {
-			candidates = limitedShuffledMotionPool(candidates, phraseLimit, seed+"\x00"+lane)
-		}
+		// The same family-interleaved window as the assignment keeps one capped
+		// window per run: a different window here would let the guard rotate
+		// duplicates into recipes the lane never drew, exceeding the requested
+		// style count.
+		candidates = longPhraseFamilyWindow(candidates, phraseLimit, seed)
 		return excludeRemovedGeneratedPhraseMotions(candidates)
 	default:
 		if len(input.PhraseMotions) > 0 {

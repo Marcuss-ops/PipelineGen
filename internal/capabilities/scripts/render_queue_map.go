@@ -92,11 +92,11 @@ func renderDynamicMapVideo(ctx context.Context, plan capoverlay.OverlayPlan) (st
 	}
 	cameraChoice, _ := plan.Items[0].Params["map_camera_animation"].(string)
 	labelChoice, _ := plan.Items[0].Params["map_label_animation"].(string)
-	cameraAnimation, err := resolveMapAnimation(cameraChoice, seed, mapStyleSlot, "map_camera", mapCameraAnimationsCertified(), mapCameraAnimations)
+	cameraAnimation, err := resolveMapAnimation(cameraChoice, seed, mapStyleSlot, "map_camera", mapCameraAnimationsCertified(), capoverlay.AnimationRandomCandidates("map.camera"))
 	if err != nil {
 		return "", err
 	}
-	labelAnimation, err := resolveMapAnimation(labelChoice, seed, mapStyleSlot, "map_label", mapLabelAnimationsCertified(), mapLabelAnimations)
+	labelAnimation, err := resolveMapAnimation(labelChoice, seed, mapStyleSlot, "map_label", mapLabelAnimationsCertified(), capoverlay.AnimationRandomCandidates("map.label"))
 	if err != nil {
 		return "", err
 	}
@@ -261,24 +261,20 @@ func renderDynamicMapVideo(ctx context.Context, plan capoverlay.OverlayPlan) (st
 	return outputPath, nil
 }
 
-// resolveMapBasemap maps the runtime map_type to the Chronon tile-pyramid
-// basemap id. Empty means a clean street map, never a random pick or a
-// decorative color canvas. Only map_type=random samples the classic palette.
+// resolveMapBasemap maps the runtime map_type through the shared map registry;
+// random choices use the active basemap palette from the same registry.
 func resolveMapBasemap(mapType, seed, slot string) (string, error) {
-	switch strings.ToLower(strings.TrimSpace(mapType)) {
-	case "":
-		return "esri_street", nil
-	case "satellite":
-		return "esri_sat", nil
-	case "roadmap":
-		return "esri_street", nil
-	case "terrain":
-		return "esri_topo", nil
-	case "random":
-		return deterministicMapStyle(seed, "map_basemap", slot, mapBasemapStyles()), nil
-	default:
-		return "", fmt.Errorf("unsupported runtime map_type %q", mapType)
+	if strings.EqualFold(strings.TrimSpace(mapType), "random") {
+		selected := deterministicMapStyle(seed, "map_basemap", slot, mapBasemapStyles())
+		if selected == "" {
+			return "", fmt.Errorf("no certified map basemap available")
+		}
+		return selected, nil
 	}
+	if id, ok := capoverlay.AnimationMapTypeBasemap(mapType); ok {
+		return id, nil
+	}
+	return "", fmt.Errorf("unsupported runtime map_type %q", mapType)
 }
 
 // resolveMapAnimation resolves ONE runtime map animation. An explicit
@@ -366,38 +362,26 @@ func (b *boundedMapRenderOutput) String() string {
 	return string(b.data)
 }
 
-// mapBasemapStyles is the classic palette available when a caller explicitly
-// asks for map_type=random: satellite, street and topo only. Decorative
-// canvases (ocean, light/dark gray, natgeo) are never sampled. The default
-// map_type (empty/satellite) is the classic Python satellite map (esri_sat).
+// mapBasemapStyles returns the active cartographic palette for map_type=random.
 // TestMapBasemapStylesMatchChrononPalette guards cross-repository drift.
 func mapBasemapStyles() []string {
-	return []string{"esri_sat", "esri_street", "esri_topo"}
+	return capoverlay.AnimationCandidates("map.basemap")
 }
 
-// mapCameraAnimations and mapLabelAnimations are the certified presentation
-// vocabularies the Chronon map renderer accepts for a generated map
-// (render_dynamic_map_overlay.py validates camera_animation against its own set
-// and label_animation against MAP_LABEL_ANIMATIONS). They are only candidate
-// lists: the choice among them belongs to the deterministic sampler below.
 var (
-	// mapCameraAnimations is the restrained RANDOM pool: four calm moves.
-	// Signature Dive starts at a much wider zoom and reads as a sudden drop
-	// on city maps, so it stays out of the random rotation (it remains an
-	// explicit runtime choice). New moves (steady_hold, fast_push) are
-	// explicit-only for the same reason: the random default must stay calm.
-	mapCameraAnimations = []string{"slow_approach", "wide_context", "tilt_reveal", "orbit_arrival"}
-	// mapLabelAnimations is the restrained RANDOM pool: the ten calm fades.
-	// New label treatments (rise_up, pop_in, soft_tracking) plus the beacon
-	// variant stay explicit-only so the random default never surprises.
-	mapLabelAnimations = []string{"gentle_fade", "soft_glow", "clean_fade", "word_soft_fade", "slow_fade", "quiet_bloom", "quick_fade", "silky_fade", "subtle_halo", "cinematic_fade"}
+	mapCameraAnimations = capoverlay.AnimationRandomCandidates("map.camera")
+	mapLabelAnimations  = capoverlay.AnimationRandomCandidates("map.label")
 )
+
+func mapMapAnimationsRandomPool() []string {
+	return capoverlay.AnimationRandomCandidates("map.composition")
+}
 
 // mapCameraAnimationsCertified lists every camera id the Python renderer
 // accepts, including explicit-only choices. resolveMapAnimation validates
 // against this list; the random sampler draws from mapCameraAnimations.
 func mapCameraAnimationsCertified() []string {
-	return []string{"slow_approach", "wide_context", "tilt_reveal", "orbit_arrival", "signature_dive", "steady_hold", "fast_push"}
+	return capoverlay.AnimationCandidates("map.camera")
 }
 
 // resolveMapComposition resolves ONE cartographic motion-graphic system.
@@ -406,14 +390,9 @@ func mapCameraAnimationsCertified() []string {
 func resolveMapComposition(requested, seed, slot string, pinCounts ...int) (string, error) {
 	requested = strings.TrimSpace(requested)
 	if requested == "" || strings.EqualFold(requested, "random") {
-		pool := mapMapAnimationsCertified()
+		pool := mapMapAnimationsRandomPool()
 		if len(pinCounts) > 0 {
 			pool = eligibleMapCompositions(pinCounts[0], pool)
-			// Single-place maps use the authored OpenCL location treatment.
-			// Generic legacy compositions are not implemented by the GPU scene renderer.
-			if pinCounts[0] == 1 {
-				pool = []string{"location_focus", "location_pulse"}
-			}
 		}
 		selected := deterministicMapStyle(seed, "map_composition", slot, pool)
 		if selected == "" {
@@ -433,21 +412,20 @@ func resolveMapComposition(requested, seed, slot string, pinCounts ...int) (stri
 // that cannot run for this map's grounded pin count. Explicit selections still
 // validate against the full certified catalog and fail closed in the renderer.
 func eligibleMapCompositions(pinCount int, certified []string) []string {
-	out := make([]string, 0, len(certified))
+	// The registry supplies the canonical set and its pin-count constraints.
+	// Intersect with certified to keep callers that narrow the set working.
+	allowed := make(map[string]bool, len(certified))
 	for _, id := range certified {
-		switch id {
-		case "multi_locations", "route_line":
-			if pinCount < 2 {
-				continue
-			}
-		case "ed_yemen_markers":
-			if pinCount != 3 {
-				continue
-			}
-		}
-		out = append(out, id)
+		allowed[id] = true
 	}
-	return out
+	out := capoverlay.AnimationMapCompositionCandidates(pinCount)
+	filtered := out[:0]
+	for _, id := range out {
+		if allowed[id] {
+			filtered = append(filtered, id)
+		}
+	}
+	return filtered
 }
 
 // mapMapAnimationsCertified lists every renderer-approved map_animation id:
@@ -455,13 +433,13 @@ func eligibleMapCompositions(pinCount int, certified []string) []string {
 // scenes in map_editorial.MAP_EDITORIAL_SCENES.
 // TestMapCompositionsMatchPython guards cross-repository drift.
 func mapMapAnimationsCertified() []string {
-	return []string{"location_focus", "location_pulse", "simple_label", "region_zoom", "bracket_label", "photo_callout", "pulse_marker", "multi_locations", "focus_title", "route_line", "spotlight", "region_fill", "info_card", "vertical_callout", "icon_label", "label_reveal", "global_context", "ed_saudi_base", "ed_iran_glow", "ed_yemen_fill", "ed_yemen_markers", "ed_hormuz_routes", "ed_mocha_tactical"}
+	return capoverlay.AnimationCandidates("map.composition")
 }
 
 // mapLabelAnimationsCertified lists every label id the Python renderer
 // accepts, including explicit-only choices.
 func mapLabelAnimationsCertified() []string {
-	return []string{"gentle_fade", "soft_glow", "clean_fade", "word_soft_fade", "slow_fade", "quiet_bloom", "quick_fade", "silky_fade", "subtle_halo", "cinematic_fade", "diffuse_city_beacon", "rise_up", "pop_in", "soft_tracking", "title_top", "badge_side", "huge_center", "small_above", "caption_card", "editorial_serif", "gpin_bubble", "card_glass", "bare_big", "ribbon", "dot_ring", "outline_box"}
+	return capoverlay.AnimationCandidates("map.label")
 }
 
 // mapRunSeed is the stable per-run seed for a map's presentation choices. The

@@ -84,6 +84,7 @@ type ResolvedGenerationPlan struct {
 	SourceTextVerbatim bool   `json:"source_text_verbatim,omitempty"`
 	SentencesPerImage  int    `json:"sentences_per_image,omitempty"`
 	ImagesPerScene     int    `json:"images_per_scene,omitempty"`
+	MinImagesPerSource int    `json:"min_images_per_source,omitempty"`
 	MediaDensity       string `json:"media_density,omitempty"`
 
 	// ── Style ─────────────────────────────────────────────────────────

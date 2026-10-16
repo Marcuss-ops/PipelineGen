@@ -5,7 +5,10 @@ import (
 	"strings"
 )
 
-func rankedUniqueOverlayIndices(items []OverlayItem, images bool, phraseLimit int, perSceneEntityImages ...bool) []int {
+func rankedUniqueOverlayIndices(items []OverlayItem, images bool, limit int, perSceneEntityImages ...bool) []int {
+	if limit <= 0 {
+		return nil
+	}
 	indices := make([]int, 0)
 	seen := make(map[string]int)
 	for i, item := range items {
@@ -58,10 +61,7 @@ func rankedUniqueOverlayIndices(items []OverlayItem, images bool, phraseLimit in
 		}
 		return left < right
 	})
-	limit := phraseLimit
-	if images {
-		limit = MaxImageOverlaysPerRun
-	} else {
+	if !images {
 		// Reserve roughly half of the phrase budget for complete headline
 		// candidates (8+ words) when they exist. Remaining slots are filled
 		// from the same deterministic priority ranking, so short phrases still
@@ -100,8 +100,8 @@ func rankedUniqueOverlayIndices(items []OverlayItem, images bool, phraseLimit in
 		// phrase from any one scene. Keep the existing long-phrase/priority
 		// ranking within each pass, and leave the full reserve pool available
 		// for overlap screening to backfill rejected candidates.
-		if phraseLimit > 0 && len(indices) > phraseLimit {
-			seenScenes := make(map[string]struct{}, phraseLimit)
+		if limit > 0 && len(indices) > limit {
+			seenScenes := make(map[string]struct{}, limit)
 			diverse := make([]int, 0, len(indices))
 			remaining := make([]int, 0, len(indices))
 			for _, index := range indices {

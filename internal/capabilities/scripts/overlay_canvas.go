@@ -44,6 +44,13 @@ type OverlayCanvasSpec struct {
 	// function already receives; the planner validates the ids fail-closed.
 	PhraseMotions      []string
 	PhraseMotionFamily string
+	// MotionSeed is the per-render entropy for automatic motion rotation,
+	// carried from the request. Empty preserves historical plan-identity
+	// sampling; a fresh value per render rotates every lane.
+	MotionSeed string
+	// CoherenceSeed carries the explicit dominant-direction seed from the
+	// request; empty derives the direction from MotionSeed.
+	CoherenceSeed      string
 	ImageMotions       []string
 	EntityImageMotions []string
 	// EntityCaptionMotions is the run-level caption pool carried from the
@@ -133,7 +140,10 @@ func overlayImageFrame(style *scriptpkg.OverlayImageStyleSpec) *capabilityoverla
 
 func effectiveImageStyle(style *scriptpkg.OverlayImageStyleSpec) *scriptpkg.OverlayImageStyleSpec {
 	effective := &scriptpkg.OverlayImageStyleSpec{
-		Border: &scriptpkg.OverlayImageBorder{Width: 12, Color: "#111827", Radius: float64Pointer(24)},
+		// Plain photo overlays render full-bleed: a default border covers
+		// edge pixels and a default radius crops corners, so both default
+		// to zero. Explicit payload styles still win via the merge below.
+		Border: &scriptpkg.OverlayImageBorder{Width: 0, Color: "#111827", Radius: float64Pointer(0)},
 		Shadow: &scriptpkg.OverlayShadowSpec{Enabled: true, Color: "#000000", Opacity: float64Pointer(0.7),
 			Blur: float64Pointer(10), Offset: []float64{0, 4}},
 	}
@@ -299,6 +309,7 @@ const (
 	overlayGroupShortPhrases     = "short_phrases"
 	overlayGroupLongPhrases      = "long_phrases"
 	overlayGroupEntitiesWithText = "entities_with_text"
+	overlayGroupLocations        = "locations"
 	overlayGroupImages           = "images"
 )
 
@@ -307,6 +318,7 @@ var overlayGroupKeys = map[string]bool{
 	overlayGroupShortPhrases:     true,
 	overlayGroupLongPhrases:      true,
 	overlayGroupEntitiesWithText: true,
+	overlayGroupLocations:        true,
 	overlayGroupImages:           true,
 }
 
@@ -334,6 +346,18 @@ func validateOverlayGroupLimits(limits map[string]int) error {
 	return nil
 }
 
+// overlayImageLayersHaveCaptions reports whether a composite carries any
+// per-layer caption text. Composite parents clear EntityCaption to avoid
+// duplicating the first name, so the group classifier must look at layers.
+func overlayImageLayersHaveCaptions(item capabilityoverlay.OverlayItem) bool {
+	for _, layer := range item.ImageLayers {
+		if strings.TrimSpace(layer.Caption) != "" {
+			return true
+		}
+	}
+	return false
+}
+
 // overlayGroupOf assigns one overlay to exactly one group. Maps, images,
 // entity cards and phrases are disjoint; short phrases use the exact-cardinality
 // short recipes, every other grounded phrase counts as long.
@@ -341,6 +365,10 @@ func overlayGroupOf(item capabilityoverlay.OverlayItem) string {
 	switch {
 	case item.Kind == "map" && item.Map != nil:
 		return overlayGroupMaps
+	case item.Kind == string(capabilityoverlay.KindLocation):
+		return overlayGroupLocations
+	case item.Kind == string(capabilityoverlay.KindEntityImage) && (strings.TrimSpace(item.EntityCaption) != "" || overlayImageLayersHaveCaptions(item)):
+		return overlayGroupEntitiesWithText
 	case entityCardKind(capabilityoverlay.OverlayKind(item.Kind)):
 		return overlayGroupEntitiesWithText
 	case isImageOverlayItem(item):
@@ -445,4 +473,31 @@ func stripOverlayImageCaptions(items []capabilityoverlay.OverlayItem) {
 func overlayGroupLimit(limits map[string]int, group string) (int, bool) {
 	value, ok := limits[group]
 	return value, ok
+}
+
+// effectivePhraseOverlayCeiling combines the explicit run-level phrase limit
+// with any phrase-group caps. A single configured group is enough to raise the
+// planner ceiling; the other group is left uncapped (not treated as zero).
+func effectivePhraseOverlayCeiling(requested int, limits map[string]int) int {
+	ceiling := capabilityoverlay.EffectivePhraseOverlayLimit(requested)
+	shortCap, hasShortCap := overlayGroupLimit(limits, overlayGroupShortPhrases)
+	longCap, hasLongCap := overlayGroupLimit(limits, overlayGroupLongPhrases)
+	if !hasShortCap && !hasLongCap {
+		return ceiling
+	}
+	groupCeiling := 0
+	for _, cap := range []int{shortCap, longCap} {
+		if cap <= 0 {
+			continue
+		}
+		if groupCeiling >= capabilityoverlay.MaxPhraseOverlaysHardLimit-cap {
+			groupCeiling = capabilityoverlay.MaxPhraseOverlaysHardLimit
+			break
+		}
+		groupCeiling += cap
+	}
+	if groupCeiling > ceiling {
+		ceiling = groupCeiling
+	}
+	return ceiling
 }

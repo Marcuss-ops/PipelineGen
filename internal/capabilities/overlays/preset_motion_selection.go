@@ -52,6 +52,46 @@ func selectPhraseMotionLimited(jobID, sceneID string, ordinal int, pool []string
 // selectLongPhraseMotion keeps long copy inside the long-phrase motion family.
 // A supplied channel pool is used only where it overlaps that family; a short
 // phrase pool must never leak across the word-count boundary.
+// longPhrase visual family buckets, in pinned rotation order.
+const (
+	longFamilyDocumentary = iota
+	longFamily3D
+	longFamilyBrush
+	longFamilyAppleClean
+	longFamilyClassic
+	longFamilyCount
+)
+
+// longPhraseFamilyBucketOf classifies one long-lane motion id into its
+// certified visual family bucket so the rotation can interleave families.
+func longPhraseFamilyBucketOf(id string) int {
+	switch {
+	case strings.HasPrefix(id, "doc_") || strings.HasPrefix(id, "phrase_highlight_"):
+		return longFamilyDocumentary
+	case strings.HasPrefix(id, "text_3d_"):
+		return longFamily3D
+	case strings.HasPrefix(id, "brush_"):
+		return longFamilyBrush
+	case strings.HasPrefix(id, "phrase_apple_clean_"):
+		return longFamilyAppleClean
+	default:
+		return longFamilyClassic
+	}
+}
+
+var longPhraseFamilyLabels = [longFamilyCount]string{
+	"documentary", "text_3d", "brush", "apple_clean", "classic",
+}
+
+// selectLongPhraseMotion keeps long copy inside the long-phrase motion family
+// and rotates across its visual families round-robin: each ordinal steps to
+// the next family (documentary highlighting → spatial 3D → brush accents →
+// modern Apple-clean → classic Apple) and only same-family draws advance a
+// family's own walk. A flat seeded shuffle could fill an entire run with one
+// family even when the pool carried documentary and 3D entries; the rotation
+// cannot. A supplied channel pool is used only where it overlaps the
+// long-copy whitelist; a short phrase pool must never leak across the
+// word-count boundary.
 func selectLongPhraseMotion(jobID, sceneID string, ordinal int, pool []string) string {
 	compatible := make([]string, 0, len(longPhraseMotionCandidates))
 	allowed := make(map[string]struct{}, len(pool))
@@ -68,18 +108,91 @@ func selectLongPhraseMotion(jobID, sceneID string, ordinal int, pool []string) s
 		}
 	}
 	switch {
-	case len(pool) == 0:
-		// Keep the default long-card lane a simple no-repeat walk too; routing
-		// it through selectPhraseMotion would apply a smaller explicit-pool
-		// entrance subset and reintroduce repeats before the pool is exhausted.
-		return selectMotionFromPool(jobID, sceneID, "long_phrase_default", ordinal, compatible)
 	case len(compatible) > 0:
-		return selectPhraseMotion(jobID, sceneID, ordinal, compatible)
+		return selectLongPhraseMotionFromFamilies(jobID, sceneID, ordinal, compatible)
 	default:
 		// A family pool with no long-lane matches cannot bypass the long-copy
 		// compatibility whitelist.
-		return selectMotionFromPool(jobID, sceneID, "long_phrase", ordinal, longPhraseMotionCandidates)
+		return selectLongPhraseMotionFromFamilies(jobID, sceneID, ordinal, longPhraseMotionCandidates)
 	}
+}
+
+// selectLongPhraseMotionFromFamilies assigns one long-copy entrance by
+// walking a family-interleaved order of the pool. The walk order is built
+// deterministically from the pool itself (consecutive entries come from
+// successive families, buckets wrap when one exhausts, and no entry repeats
+// before the full pool unwound), and the run seed only selects WHERE the walk
+// starts. So a run keeps no-repeat and family coverage whatever the seed, and
+// two different run seeds start on different entrances.
+func selectLongPhraseMotionFromFamilies(jobID, sceneID string, ordinal int, pool []string) string {
+	order := longPhraseInterleavedOrder(pool)
+	if len(order) == 0 {
+		return ""
+	}
+	seeded := selectPreset(jobID, sceneID, "run", "important_phrase_motion:long_lane", order)
+	start := 0
+	for i, candidate := range order {
+		if candidate == seeded {
+			start = i
+			break
+		}
+	}
+	return order[(start+ordinal)%len(order)]
+}
+
+// longPhraseInterleavedOrder stretches the pool's family buckets into one
+// no-repeat walk order: every consecutive entry is drawn from the next
+// non-empty family in pinned rotation order, and a family's own list advances
+// each time it is visited. The order wraps the full pool once.
+func longPhraseInterleavedOrder(pool []string) []string {
+	unique := uniqueMotionPool(pool)
+	if len(unique) == 0 {
+		return nil
+	}
+	buckets := make([][]string, longFamilyCount)
+	for _, id := range unique {
+		bucket := longPhraseFamilyBucketOf(id)
+		buckets[bucket] = append(buckets[bucket], id)
+	}
+	ononEmpty := make([][]string, 0, longFamilyCount)
+	for bucket := 0; bucket < longFamilyCount; bucket++ {
+		if len(buckets[bucket]) > 0 {
+			ononEmpty = append(ononEmpty, buckets[bucket])
+		}
+	}
+	if len(ononEmpty) == 0 {
+		return unique
+	}
+	order := make([]string, 0, len(unique))
+	for round := 0; len(order) < len(unique); round++ {
+		progressed := false
+		for _, family := range ononEmpty {
+			if round < len(family) {
+				order = append(order, family[round])
+				progressed = true
+			}
+		}
+		if !progressed {
+			break
+		}
+	}
+	return order
+}
+
+// longPhraseFamilyWindow caps the rotation window to limit entries while
+// keeping the family-interleaved order, so an animation-count cap can never
+// hand the walk a single-family window: the first limit entries spread across
+// every certified long-copy family the pool carries.
+func longPhraseFamilyWindow(pool []string, limit int, jobID string) []string {
+	_ = jobID
+	if limit <= 0 {
+		return pool
+	}
+	order := longPhraseInterleavedOrder(pool)
+	if len(order) <= limit {
+		return order
+	}
+	return order[:limit]
 }
 
 func selectLongPhraseMotionLimited(jobID, sceneID string, ordinal int, pool []string, limit int) string {
@@ -97,16 +210,10 @@ func selectLongPhraseMotionLimited(jobID, sceneID string, ordinal int, pool []st
 			candidates = append([]string(nil), pool...)
 		}
 	}
-	// Draw the capped window through the run seed so the same catalog prefix
-	// does not recur across unrelated jobs.
 	if limit > 0 {
-		lane := "long_phrase_default"
-		if len(pool) > 0 {
-			lane = "long_phrase_pool"
-		}
-		candidates = limitedShuffledMotionPool(candidates, limit, jobID+"\x00"+lane)
+		candidates = longPhraseFamilyWindow(candidates, limit, jobID)
 	}
-	return selectMotionFromPool(jobID, sceneID, "long_phrase_limited", ordinal, candidates)
+	return selectLongPhraseMotionFromFamilies(jobID, sceneID, ordinal, candidates)
 }
 
 // selectShortPhraseMotion routes 1-5 word phrases through renderer-visible
@@ -118,11 +225,14 @@ func selectShortPhraseMotion(jobID, sceneID string, ordinal, wordCount int, pool
 }
 
 func selectShortPhraseMotionLimited(jobID, sceneID string, ordinal, wordCount int, pool []string, limit int) string {
-	candidates := ShortPhraseVisibleMotionCandidates()
+	var recipes []string
 	if wordCount >= 1 && wordCount <= 5 {
-		candidates = append(candidates, ShortPhraseMotionsForWordCount(wordCount)...)
+		recipes = ShortPhraseMotionsForWordCount(wordCount)
 	}
-	candidates = uniqueMotionPool(candidates)
+	// The interleaved no-repeat order carries both the renderer-visible
+	// Apple-clean entrances and this phrase's exact-cardinality recipe
+	// group, so even a seeded fallback window keeps recipe variety.
+	candidates := shortPhraseInterleavedOrder(ShortPhraseVisibleMotionCandidates(), recipes)
 	if len(pool) > 0 {
 		if compatible := intersectMotionPool(candidates, pool); len(compatible) > 0 {
 			candidates = compatible
@@ -136,10 +246,55 @@ func selectShortPhraseMotionLimited(jobID, sceneID string, ordinal, wordCount in
 }
 
 // ShortPhraseVisibleMotionCandidates returns the renderer-certified general
-// phrase entrance pool. Exact C++ short-phrase recipes are added separately
-// for the phrase's authored word count by selectShortPhraseMotionLimited.
+// phrase entrance pool. It stays the Apple-clean set minus motions the
+// renderer cannot carry on short copy (declared as blocked lanes in the shared
+// animation registry) —
+// explicit animation policies on short copy fail closed outside it, and the
+// exact C++ short-phrase recipes are added separately for the phrase's
+// authored word count by selectShortPhraseMotionLimited.
+// The documentary/brush/3D families stay LONG-lane only: the 2026-10-16 r44
+// run proved a modern-family id picked by the automatic short lane crashes
+// the render daemon, so short copy rotates the certified Visible set and
+// the exact-cardinality recipe groups instead.
 func ShortPhraseVisibleMotionCandidates() []string {
-	return append([]string(nil), phraseAppleCleanMotionCandidates...)
+	return shortPhraseRendererCompatible(phraseAppleCleanMotionCandidates)
+}
+
+func shortPhraseRendererCompatible(pool []string) []string {
+	out := make([]string, 0, len(pool))
+	for _, id := range pool {
+		if !AnimationLaneCompatible(id, "short") {
+			continue
+		}
+		out = append(out, id)
+	}
+	return out
+}
+
+// shortPhraseInterleavedOrder stretches the short lane into one no-repeat
+// walk that alternates Apple-clean entrances with the exact-cardinality
+// recipe groups: consecutive entries come from successive sources, so even
+// a seeded fallback window keeps recipe variety instead of an all-Apple
+// prefix (the r41 defect: every short phrase drew a phrase_apple_clean id).
+func shortPhraseInterleavedOrder(appleClean, recipes []string) []string {
+	apples := shortPhraseRendererCompatible(uniqueMotionPool(appleClean))
+	recipes = uniqueMotionPool(recipes)
+	order := make([]string, 0, len(apples)+len(recipes))
+	for round := 0; len(order) < len(apples)+len(recipes); round++ {
+		progressed := false
+		if round < len(apples) {
+			order = append(order, apples[round])
+			progressed = true
+		}
+		if round < len(recipes) {
+			order = append(order, recipes[round])
+			progressed = true
+		}
+		if !progressed {
+			break
+		}
+	}
+	return order
 }
 
 // limitedMotionPool caps a deduplicated rotation window to at most limit
@@ -326,7 +481,7 @@ func defaultPhraseMotionSequence(jobID, sceneID string) []string {
 }
 
 func selectMotionFromPool(jobID, sceneID, family string, ordinal int, candidates []string) string {
-	candidates = uniqueMotionPool(candidates)
+	candidates = coherentMotionPool(uniqueMotionPool(candidates), jobID)
 	if len(candidates) == 0 {
 		return ""
 	}
@@ -404,6 +559,18 @@ func selectHeavyPhraseMotion(jobID, sceneID string, ordinal int, pool []string) 
 
 func selectHeavyPhraseMotionLimited(jobID, sceneID string, ordinal int, pool []string, limit int) string {
 	if len(pool) > 0 {
+		// A family-sized caller pool (e.g. the full catalog expanded from a
+		// phrase_motion_family) must keep the long-copy whitelist plus the
+		// family-interleaved window: windowing the raw catalog order fills
+		// the whole window with the first classic entries, so no other
+		// family ever renders a heavy phrase. Small explicit pools keep
+		// their verbatim order below.
+		if len(pool) > len(longPhraseMotionCandidates) {
+			if compatible := intersectMotionPool(longPhraseMotionCandidates, pool); len(compatible) > 0 {
+				pool = longPhraseFamilyWindow(compatible, limit, jobID)
+				return selectHeavyPhraseMotion(jobID, sceneID, ordinal, pool)
+			}
+		}
 		pool = limitedMotionPool(pool, limit)
 	} else if limit > 0 {
 		pool = limitedMotionPool(phraseMotionCandidates, limit)

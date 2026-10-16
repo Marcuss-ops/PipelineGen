@@ -1,0 +1,2934 @@
+{
+  "version": 2,
+  "preset": "custom",
+  "correlation_id": "garlasco-important-phrases-15-playfair-white-20261015-r13-batch",
+  "force_refresh": true,
+  "final_job": true,
+  "items": [
+    {
+      "id": "garlasco-important-phrases-15-playfair-white-20261015-r13-phrase-01",
+      "project": "garlasco-important-phrases-15-playfair-white-20261015-r13-phrase-01",
+      "title": "Garlasco — frase importante 01 (r13)",
+      "language": "it",
+      "tone": "documentario sobrio, prudente e verificabile",
+      "style": "Genera esattamente il segmento verbatim indicati. Mantieni ogni frase senza aggiungere contenuti. Solo overlay di frasi importanti, una motion distinta per ciascuna. Sfondo bianco pieno, testo nero Playfair Display Italic. Nessuna immagine, mappa, entità, bullet, numero animato o altro overlay.",
+      "model": "gemma4:e4b",
+      "source": {
+        "type": "text",
+        "topic": "La chiusura delle indagini non equivale a una condanna.",
+        "source_text": "La chiusura delle indagini non equivale a una condanna.",
+        "cache": {},
+        "research": {}
+      },
+      "script_params": {
+        "target_words": 9,
+        "min_words": 9,
+        "segment_words": 9,
+        "source_text_verbatim": true,
+        "force_refresh": true,
+        "single_scene": true,
+        "skip_quality_gate": true,
+        "segments": [
+          {
+            "id": "important-phrase-01",
+            "kind": "narration",
+            "topic": "La chiusura delle indagini non equivale a una condanna.",
+            "source_text": "La chiusura delle indagini non equivale a una condanna.",
+            "target_words": 9,
+            "min_words": 9,
+            "duration_ms": 6000
+          }
+        ]
+      },
+      "overlay_categories": {
+        "phrases": "enabled",
+        "images": "disabled",
+        "maps": "disabled",
+        "numbers": "disabled",
+        "quotes": "disabled",
+        "brand_text": "disabled",
+        "charts": "disabled",
+        "recaps": "disabled",
+        "titles": "disabled",
+        "bullets": "disabled"
+      },
+      "overlay_style": {
+        "font_family": "playfair_display_italic",
+        "color": [
+          0,
+          0,
+          0,
+          1
+        ],
+        "size": {
+          "font_size": 96
+        },
+        "glow_size": 0,
+        "glow_color": "#000000",
+        "stroke_size": 0,
+        "shadow": {
+          "enabled": false,
+          "color": "#000000",
+          "opacity": 0,
+          "blur": 0,
+          "offset": [
+            0,
+            0
+          ]
+        }
+      },
+      "overlay_background": {
+        "kind": "color",
+        "color": [
+          1,
+          1,
+          1,
+          1
+        ],
+        "opacity": 1
+      },
+      "max_phrase_overlays": 1,
+      "max_overlays_per_scene": 1,
+      "animation_counts": {
+        "maps": 0,
+        "images": 0,
+        "important_phrase": 1,
+        "short_important_phrase": 0,
+        "entities": 0,
+        "entity_caption": 0,
+        "dates": 0,
+        "bullets": 0,
+        "charts": 0,
+        "chain_disabled": 1
+      },
+      "output": {
+        "save_to_db": true,
+        "extract_entities": false,
+        "generate_metadata": true,
+        "generate_timeline": true,
+        "voiceover_enabled": true,
+        "languages": [
+          "it"
+        ],
+        "drive_folder_id": "1J_xUGo_bchzXDIGqSX04CU44c_Dm3SxS",
+        "drive_subfolder_name": "garlasco-important-phrases-15-playfair-white-20261015-r13",
+        "render": {
+          "enabled": true,
+          "drive_folder_id": "1J_xUGo_bchzXDIGqSX04CU44c_Dm3SxS",
+          "drive_subfolder_name": "garlasco-important-phrases-15-playfair-white-20261015-r13",
+          "require_gpu": true,
+          "subtitles": {
+            "enabled": false
+          },
+          "background": {
+            "mode": "none"
+          }
+        },
+        "docs": {
+          "enabled": false
+        },
+        "voiceover_folder_id": "1J_xUGo_bchzXDIGqSX04CU44c_Dm3SxS"
+      },
+      "audio": {
+        "mode": "COMBINED_TIMELINE",
+        "timing": {
+          "mode": "required",
+          "boundary": "word",
+          "formats": [
+            "json",
+            "srt",
+            "vtt"
+          ]
+        },
+        "random_sfx_on_clip_start": false,
+        "random_sfx_on_image_overlay": false
+      },
+      "disable_editorial_overlays": true,
+      "docs": {
+        "enabled": false,
+        "languages": [
+          "it"
+        ],
+        "folder_id": "1J_xUGo_bchzXDIGqSX04CU44c_Dm3SxS"
+      },
+      "media_plan": {
+        "mode": "hybrid",
+        "provider_policy": {
+          "artlist": "disabled",
+          "youtube": "disabled",
+          "internet_images": "disabled",
+          "image_generation": "disabled",
+          "geocoding": "disabled"
+        },
+        "cache": {
+          "write": true
+        },
+        "extraction": {
+          "enabled": true,
+          "include": [
+            "important_phrases"
+          ],
+          "important_phrases": [
+            "La chiusura delle indagini non equivale a una condanna.",
+            "Le parti possono contestare gli accertamenti con consulenze tecniche.",
+            "Ogni reperto va valutato nel contesto e con verifiche incrociate.",
+            "Le relazioni di stampa vanno distinte dagli atti ufficiali depositati.",
+            "La traccia controversa resta oggetto di valutazioni tecniche contrapposte.",
+            "Nessun singolo reperto dimostra da solo una responsabilità.",
+            "Le nuove ipotesi investigative restano da verificare nel contraddittorio.",
+            "Le sentenze definitive vanno separate dalle indagini ancora aperte.",
+            "La procura può valutare processo, archiviazione o ulteriori integrazioni.",
+            "Ogni consulenza va letta insieme ai metodi e ai suoi limiti.",
+            "Le memorie difensive aprono una fase, non anticipano una decisione.",
+            "La presunzione di innocenza accompagna ogni indagato fino alla sentenza definitiva.",
+            "La memoria di Chiara Poggi merita un racconto rispettoso e sobrio.",
+            "Fonti processuali e cronologia aiutano a distinguere fatti e interpretazioni.",
+            "Ogni affermazione del copione deve poggiare su fonti verificabili."
+          ],
+          "max_important_phrases_per_segment": 1
+        },
+        "materialization": {
+          "mode": "selected",
+          "upload_to_drive": true,
+          "wait_for_ready": true
+        },
+        "include_trace": true,
+        "force_refresh_bindings": true
+      },
+      "phrase_motion_family": "documentary_highlighting_v1",
+      "phrase_motions": [
+        "doc_01_yellow_marker_sweep"
+      ]
+    },
+    {
+      "id": "garlasco-important-phrases-15-playfair-white-20261015-r13-phrase-02",
+      "project": "garlasco-important-phrases-15-playfair-white-20261015-r13-phrase-02",
+      "title": "Garlasco — frase importante 02 (r13)",
+      "language": "it",
+      "tone": "documentario sobrio, prudente e verificabile",
+      "style": "Genera esattamente il segmento verbatim indicati. Mantieni ogni frase senza aggiungere contenuti. Solo overlay di frasi importanti, una motion distinta per ciascuna. Sfondo bianco pieno, testo nero Playfair Display Italic. Nessuna immagine, mappa, entità, bullet, numero animato o altro overlay.",
+      "model": "gemma4:e4b",
+      "source": {
+        "type": "text",
+        "topic": "Le parti possono contestare gli accertamenti con consulenze tecniche.",
+        "source_text": "Le parti possono contestare gli accertamenti con consulenze tecniche.",
+        "cache": {},
+        "research": {}
+      },
+      "script_params": {
+        "target_words": 9,
+        "min_words": 9,
+        "segment_words": 9,
+        "source_text_verbatim": true,
+        "force_refresh": true,
+        "single_scene": true,
+        "skip_quality_gate": true,
+        "segments": [
+          {
+            "id": "important-phrase-02",
+            "kind": "narration",
+            "topic": "Le parti possono contestare gli accertamenti con consulenze tecniche.",
+            "source_text": "Le parti possono contestare gli accertamenti con consulenze tecniche.",
+            "target_words": 9,
+            "min_words": 9,
+            "duration_ms": 6000
+          }
+        ]
+      },
+      "overlay_categories": {
+        "phrases": "enabled",
+        "images": "disabled",
+        "maps": "disabled",
+        "numbers": "disabled",
+        "quotes": "disabled",
+        "brand_text": "disabled",
+        "charts": "disabled",
+        "recaps": "disabled",
+        "titles": "disabled",
+        "bullets": "disabled"
+      },
+      "overlay_style": {
+        "font_family": "playfair_display_italic",
+        "color": [
+          0,
+          0,
+          0,
+          1
+        ],
+        "size": {
+          "font_size": 96
+        },
+        "glow_size": 0,
+        "glow_color": "#000000",
+        "stroke_size": 0,
+        "shadow": {
+          "enabled": false,
+          "color": "#000000",
+          "opacity": 0,
+          "blur": 0,
+          "offset": [
+            0,
+            0
+          ]
+        }
+      },
+      "overlay_background": {
+        "kind": "color",
+        "color": [
+          1,
+          1,
+          1,
+          1
+        ],
+        "opacity": 1
+      },
+      "max_phrase_overlays": 1,
+      "max_overlays_per_scene": 1,
+      "animation_counts": {
+        "maps": 0,
+        "images": 0,
+        "important_phrase": 1,
+        "short_important_phrase": 0,
+        "entities": 0,
+        "entity_caption": 0,
+        "dates": 0,
+        "bullets": 0,
+        "charts": 0,
+        "chain_disabled": 1
+      },
+      "output": {
+        "save_to_db": true,
+        "extract_entities": false,
+        "generate_metadata": true,
+        "generate_timeline": true,
+        "voiceover_enabled": true,
+        "languages": [
+          "it"
+        ],
+        "drive_folder_id": "1J_xUGo_bchzXDIGqSX04CU44c_Dm3SxS",
+        "drive_subfolder_name": "garlasco-important-phrases-15-playfair-white-20261015-r13",
+        "render": {
+          "enabled": true,
+          "drive_folder_id": "1J_xUGo_bchzXDIGqSX04CU44c_Dm3SxS",
+          "drive_subfolder_name": "garlasco-important-phrases-15-playfair-white-20261015-r13",
+          "require_gpu": true,
+          "subtitles": {
+            "enabled": false
+          },
+          "background": {
+            "mode": "none"
+          }
+        },
+        "docs": {
+          "enabled": false
+        },
+        "voiceover_folder_id": "1J_xUGo_bchzXDIGqSX04CU44c_Dm3SxS"
+      },
+      "audio": {
+        "mode": "COMBINED_TIMELINE",
+        "timing": {
+          "mode": "required",
+          "boundary": "word",
+          "formats": [
+            "json",
+            "srt",
+            "vtt"
+          ]
+        },
+        "random_sfx_on_clip_start": false,
+        "random_sfx_on_image_overlay": false
+      },
+      "disable_editorial_overlays": true,
+      "docs": {
+        "enabled": false,
+        "languages": [
+          "it"
+        ],
+        "folder_id": "1J_xUGo_bchzXDIGqSX04CU44c_Dm3SxS"
+      },
+      "media_plan": {
+        "mode": "hybrid",
+        "provider_policy": {
+          "artlist": "disabled",
+          "youtube": "disabled",
+          "internet_images": "disabled",
+          "image_generation": "disabled",
+          "geocoding": "disabled"
+        },
+        "cache": {
+          "write": true
+        },
+        "extraction": {
+          "enabled": true,
+          "include": [
+            "important_phrases"
+          ],
+          "important_phrases": [
+            "La chiusura delle indagini non equivale a una condanna.",
+            "Le parti possono contestare gli accertamenti con consulenze tecniche.",
+            "Ogni reperto va valutato nel contesto e con verifiche incrociate.",
+            "Le relazioni di stampa vanno distinte dagli atti ufficiali depositati.",
+            "La traccia controversa resta oggetto di valutazioni tecniche contrapposte.",
+            "Nessun singolo reperto dimostra da solo una responsabilità.",
+            "Le nuove ipotesi investigative restano da verificare nel contraddittorio.",
+            "Le sentenze definitive vanno separate dalle indagini ancora aperte.",
+            "La procura può valutare processo, archiviazione o ulteriori integrazioni.",
+            "Ogni consulenza va letta insieme ai metodi e ai suoi limiti.",
+            "Le memorie difensive aprono una fase, non anticipano una decisione.",
+            "La presunzione di innocenza accompagna ogni indagato fino alla sentenza definitiva.",
+            "La memoria di Chiara Poggi merita un racconto rispettoso e sobrio.",
+            "Fonti processuali e cronologia aiutano a distinguere fatti e interpretazioni.",
+            "Ogni affermazione del copione deve poggiare su fonti verificabili."
+          ],
+          "max_important_phrases_per_segment": 1
+        },
+        "materialization": {
+          "mode": "selected",
+          "upload_to_drive": true,
+          "wait_for_ready": true
+        },
+        "include_trace": true,
+        "force_refresh_bindings": true
+      },
+      "phrase_motion_family": "documentary_highlighting_v1",
+      "phrase_motions": [
+        "doc_02_multiline_stagger_highlight"
+      ]
+    },
+    {
+      "id": "garlasco-important-phrases-15-playfair-white-20261015-r13-phrase-03",
+      "project": "garlasco-important-phrases-15-playfair-white-20261015-r13-phrase-03",
+      "title": "Garlasco — frase importante 03 (r13)",
+      "language": "it",
+      "tone": "documentario sobrio, prudente e verificabile",
+      "style": "Genera esattamente il segmento verbatim indicati. Mantieni ogni frase senza aggiungere contenuti. Solo overlay di frasi importanti, una motion distinta per ciascuna. Sfondo bianco pieno, testo nero Playfair Display Italic. Nessuna immagine, mappa, entità, bullet, numero animato o altro overlay.",
+      "model": "gemma4:e4b",
+      "source": {
+        "type": "text",
+        "topic": "Ogni reperto va valutato nel contesto e con verifiche incrociate.",
+        "source_text": "Ogni reperto va valutato nel contesto e con verifiche incrociate.",
+        "cache": {},
+        "research": {}
+      },
+      "script_params": {
+        "target_words": 10,
+        "min_words": 10,
+        "segment_words": 10,
+        "source_text_verbatim": true,
+        "force_refresh": true,
+        "single_scene": true,
+        "skip_quality_gate": true,
+        "segments": [
+          {
+            "id": "important-phrase-03",
+            "kind": "narration",
+            "topic": "Ogni reperto va valutato nel contesto e con verifiche incrociate.",
+            "source_text": "Ogni reperto va valutato nel contesto e con verifiche incrociate.",
+            "target_words": 10,
+            "min_words": 10,
+            "duration_ms": 6000
+          }
+        ]
+      },
+      "overlay_categories": {
+        "phrases": "enabled",
+        "images": "disabled",
+        "maps": "disabled",
+        "numbers": "disabled",
+        "quotes": "disabled",
+        "brand_text": "disabled",
+        "charts": "disabled",
+        "recaps": "disabled",
+        "titles": "disabled",
+        "bullets": "disabled"
+      },
+      "overlay_style": {
+        "font_family": "playfair_display_italic",
+        "color": [
+          0,
+          0,
+          0,
+          1
+        ],
+        "size": {
+          "font_size": 96
+        },
+        "glow_size": 0,
+        "glow_color": "#000000",
+        "stroke_size": 0,
+        "shadow": {
+          "enabled": false,
+          "color": "#000000",
+          "opacity": 0,
+          "blur": 0,
+          "offset": [
+            0,
+            0
+          ]
+        }
+      },
+      "overlay_background": {
+        "kind": "color",
+        "color": [
+          1,
+          1,
+          1,
+          1
+        ],
+        "opacity": 1
+      },
+      "max_phrase_overlays": 1,
+      "max_overlays_per_scene": 1,
+      "animation_counts": {
+        "maps": 0,
+        "images": 0,
+        "important_phrase": 1,
+        "short_important_phrase": 0,
+        "entities": 0,
+        "entity_caption": 0,
+        "dates": 0,
+        "bullets": 0,
+        "charts": 0,
+        "chain_disabled": 1
+      },
+      "output": {
+        "save_to_db": true,
+        "extract_entities": false,
+        "generate_metadata": true,
+        "generate_timeline": true,
+        "voiceover_enabled": true,
+        "languages": [
+          "it"
+        ],
+        "drive_folder_id": "1J_xUGo_bchzXDIGqSX04CU44c_Dm3SxS",
+        "drive_subfolder_name": "garlasco-important-phrases-15-playfair-white-20261015-r13",
+        "render": {
+          "enabled": true,
+          "drive_folder_id": "1J_xUGo_bchzXDIGqSX04CU44c_Dm3SxS",
+          "drive_subfolder_name": "garlasco-important-phrases-15-playfair-white-20261015-r13",
+          "require_gpu": true,
+          "subtitles": {
+            "enabled": false
+          },
+          "background": {
+            "mode": "none"
+          }
+        },
+        "docs": {
+          "enabled": false
+        },
+        "voiceover_folder_id": "1J_xUGo_bchzXDIGqSX04CU44c_Dm3SxS"
+      },
+      "audio": {
+        "mode": "COMBINED_TIMELINE",
+        "timing": {
+          "mode": "required",
+          "boundary": "word",
+          "formats": [
+            "json",
+            "srt",
+            "vtt"
+          ]
+        },
+        "random_sfx_on_clip_start": false,
+        "random_sfx_on_image_overlay": false
+      },
+      "disable_editorial_overlays": true,
+      "docs": {
+        "enabled": false,
+        "languages": [
+          "it"
+        ],
+        "folder_id": "1J_xUGo_bchzXDIGqSX04CU44c_Dm3SxS"
+      },
+      "media_plan": {
+        "mode": "hybrid",
+        "provider_policy": {
+          "artlist": "disabled",
+          "youtube": "disabled",
+          "internet_images": "disabled",
+          "image_generation": "disabled",
+          "geocoding": "disabled"
+        },
+        "cache": {
+          "write": true
+        },
+        "extraction": {
+          "enabled": true,
+          "include": [
+            "important_phrases"
+          ],
+          "important_phrases": [
+            "La chiusura delle indagini non equivale a una condanna.",
+            "Le parti possono contestare gli accertamenti con consulenze tecniche.",
+            "Ogni reperto va valutato nel contesto e con verifiche incrociate.",
+            "Le relazioni di stampa vanno distinte dagli atti ufficiali depositati.",
+            "La traccia controversa resta oggetto di valutazioni tecniche contrapposte.",
+            "Nessun singolo reperto dimostra da solo una responsabilità.",
+            "Le nuove ipotesi investigative restano da verificare nel contraddittorio.",
+            "Le sentenze definitive vanno separate dalle indagini ancora aperte.",
+            "La procura può valutare processo, archiviazione o ulteriori integrazioni.",
+            "Ogni consulenza va letta insieme ai metodi e ai suoi limiti.",
+            "Le memorie difensive aprono una fase, non anticipano una decisione.",
+            "La presunzione di innocenza accompagna ogni indagato fino alla sentenza definitiva.",
+            "La memoria di Chiara Poggi merita un racconto rispettoso e sobrio.",
+            "Fonti processuali e cronologia aiutano a distinguere fatti e interpretazioni.",
+            "Ogni affermazione del copione deve poggiare su fonti verificabili."
+          ],
+          "max_important_phrases_per_segment": 1
+        },
+        "materialization": {
+          "mode": "selected",
+          "upload_to_drive": true,
+          "wait_for_ready": true
+        },
+        "include_trace": true,
+        "force_refresh_bindings": true
+      },
+      "phrase_motion_family": "documentary_highlighting_v1",
+      "phrase_motions": [
+        "doc_03_documentary_quote_marker"
+      ]
+    },
+    {
+      "id": "garlasco-important-phrases-15-playfair-white-20261015-r13-phrase-04",
+      "project": "garlasco-important-phrases-15-playfair-white-20261015-r13-phrase-04",
+      "title": "Garlasco — frase importante 04 (r13)",
+      "language": "it",
+      "tone": "documentario sobrio, prudente e verificabile",
+      "style": "Genera esattamente il segmento verbatim indicati. Mantieni ogni frase senza aggiungere contenuti. Solo overlay di frasi importanti, una motion distinta per ciascuna. Sfondo bianco pieno, testo nero Playfair Display Italic. Nessuna immagine, mappa, entità, bullet, numero animato o altro overlay.",
+      "model": "gemma4:e4b",
+      "source": {
+        "type": "text",
+        "topic": "Le relazioni di stampa vanno distinte dagli atti ufficiali depositati.",
+        "source_text": "Le relazioni di stampa vanno distinte dagli atti ufficiali depositati.",
+        "cache": {},
+        "research": {}
+      },
+      "script_params": {
+        "target_words": 10,
+        "min_words": 10,
+        "segment_words": 10,
+        "source_text_verbatim": true,
+        "force_refresh": true,
+        "single_scene": true,
+        "skip_quality_gate": true,
+        "segments": [
+          {
+            "id": "important-phrase-04",
+            "kind": "narration",
+            "topic": "Le relazioni di stampa vanno distinte dagli atti ufficiali depositati.",
+            "source_text": "Le relazioni di stampa vanno distinte dagli atti ufficiali depositati.",
+            "target_words": 10,
+            "min_words": 10,
+            "duration_ms": 6000
+          }
+        ]
+      },
+      "overlay_categories": {
+        "phrases": "enabled",
+        "images": "disabled",
+        "maps": "disabled",
+        "numbers": "disabled",
+        "quotes": "disabled",
+        "brand_text": "disabled",
+        "charts": "disabled",
+        "recaps": "disabled",
+        "titles": "disabled",
+        "bullets": "disabled"
+      },
+      "overlay_style": {
+        "font_family": "playfair_display_italic",
+        "color": [
+          0,
+          0,
+          0,
+          1
+        ],
+        "size": {
+          "font_size": 96
+        },
+        "glow_size": 0,
+        "glow_color": "#000000",
+        "stroke_size": 0,
+        "shadow": {
+          "enabled": false,
+          "color": "#000000",
+          "opacity": 0,
+          "blur": 0,
+          "offset": [
+            0,
+            0
+          ]
+        }
+      },
+      "overlay_background": {
+        "kind": "color",
+        "color": [
+          1,
+          1,
+          1,
+          1
+        ],
+        "opacity": 1
+      },
+      "max_phrase_overlays": 1,
+      "max_overlays_per_scene": 1,
+      "animation_counts": {
+        "maps": 0,
+        "images": 0,
+        "important_phrase": 1,
+        "short_important_phrase": 0,
+        "entities": 0,
+        "entity_caption": 0,
+        "dates": 0,
+        "bullets": 0,
+        "charts": 0,
+        "chain_disabled": 1
+      },
+      "output": {
+        "save_to_db": true,
+        "extract_entities": false,
+        "generate_metadata": true,
+        "generate_timeline": true,
+        "voiceover_enabled": true,
+        "languages": [
+          "it"
+        ],
+        "drive_folder_id": "1J_xUGo_bchzXDIGqSX04CU44c_Dm3SxS",
+        "drive_subfolder_name": "garlasco-important-phrases-15-playfair-white-20261015-r13",
+        "render": {
+          "enabled": true,
+          "drive_folder_id": "1J_xUGo_bchzXDIGqSX04CU44c_Dm3SxS",
+          "drive_subfolder_name": "garlasco-important-phrases-15-playfair-white-20261015-r13",
+          "require_gpu": true,
+          "subtitles": {
+            "enabled": false
+          },
+          "background": {
+            "mode": "none"
+          }
+        },
+        "docs": {
+          "enabled": false
+        },
+        "voiceover_folder_id": "1J_xUGo_bchzXDIGqSX04CU44c_Dm3SxS"
+      },
+      "audio": {
+        "mode": "COMBINED_TIMELINE",
+        "timing": {
+          "mode": "required",
+          "boundary": "word",
+          "formats": [
+            "json",
+            "srt",
+            "vtt"
+          ]
+        },
+        "random_sfx_on_clip_start": false,
+        "random_sfx_on_image_overlay": false
+      },
+      "disable_editorial_overlays": true,
+      "docs": {
+        "enabled": false,
+        "languages": [
+          "it"
+        ],
+        "folder_id": "1J_xUGo_bchzXDIGqSX04CU44c_Dm3SxS"
+      },
+      "media_plan": {
+        "mode": "hybrid",
+        "provider_policy": {
+          "artlist": "disabled",
+          "youtube": "disabled",
+          "internet_images": "disabled",
+          "image_generation": "disabled",
+          "geocoding": "disabled"
+        },
+        "cache": {
+          "write": true
+        },
+        "extraction": {
+          "enabled": true,
+          "include": [
+            "important_phrases"
+          ],
+          "important_phrases": [
+            "La chiusura delle indagini non equivale a una condanna.",
+            "Le parti possono contestare gli accertamenti con consulenze tecniche.",
+            "Ogni reperto va valutato nel contesto e con verifiche incrociate.",
+            "Le relazioni di stampa vanno distinte dagli atti ufficiali depositati.",
+            "La traccia controversa resta oggetto di valutazioni tecniche contrapposte.",
+            "Nessun singolo reperto dimostra da solo una responsabilità.",
+            "Le nuove ipotesi investigative restano da verificare nel contraddittorio.",
+            "Le sentenze definitive vanno separate dalle indagini ancora aperte.",
+            "La procura può valutare processo, archiviazione o ulteriori integrazioni.",
+            "Ogni consulenza va letta insieme ai metodi e ai suoi limiti.",
+            "Le memorie difensive aprono una fase, non anticipano una decisione.",
+            "La presunzione di innocenza accompagna ogni indagato fino alla sentenza definitiva.",
+            "La memoria di Chiara Poggi merita un racconto rispettoso e sobrio.",
+            "Fonti processuali e cronologia aiutano a distinguere fatti e interpretazioni.",
+            "Ogni affermazione del copione deve poggiare su fonti verificabili."
+          ],
+          "max_important_phrases_per_segment": 1
+        },
+        "materialization": {
+          "mode": "selected",
+          "upload_to_drive": true,
+          "wait_for_ready": true
+        },
+        "include_trace": true,
+        "force_refresh_bindings": true
+      },
+      "phrase_motion_family": "documentary_highlighting_v1",
+      "phrase_motions": [
+        "doc_04_archival_source_highlight"
+      ]
+    },
+    {
+      "id": "garlasco-important-phrases-15-playfair-white-20261015-r13-phrase-05",
+      "project": "garlasco-important-phrases-15-playfair-white-20261015-r13-phrase-05",
+      "title": "Garlasco — frase importante 05 (r13)",
+      "language": "it",
+      "tone": "documentario sobrio, prudente e verificabile",
+      "style": "Genera esattamente il segmento verbatim indicati. Mantieni ogni frase senza aggiungere contenuti. Solo overlay di frasi importanti, una motion distinta per ciascuna. Sfondo bianco pieno, testo nero Playfair Display Italic. Nessuna immagine, mappa, entità, bullet, numero animato o altro overlay.",
+      "model": "gemma4:e4b",
+      "source": {
+        "type": "text",
+        "topic": "La traccia controversa resta oggetto di valutazioni tecniche contrapposte.",
+        "source_text": "La traccia controversa resta oggetto di valutazioni tecniche contrapposte.",
+        "cache": {},
+        "research": {}
+      },
+      "script_params": {
+        "target_words": 9,
+        "min_words": 9,
+        "segment_words": 9,
+        "source_text_verbatim": true,
+        "force_refresh": true,
+        "single_scene": true,
+        "skip_quality_gate": true,
+        "segments": [
+          {
+            "id": "important-phrase-05",
+            "kind": "narration",
+            "topic": "La traccia controversa resta oggetto di valutazioni tecniche contrapposte.",
+            "source_text": "La traccia controversa resta oggetto di valutazioni tecniche contrapposte.",
+            "target_words": 9,
+            "min_words": 9,
+            "duration_ms": 6000
+          }
+        ]
+      },
+      "overlay_categories": {
+        "phrases": "enabled",
+        "images": "disabled",
+        "maps": "disabled",
+        "numbers": "disabled",
+        "quotes": "disabled",
+        "brand_text": "disabled",
+        "charts": "disabled",
+        "recaps": "disabled",
+        "titles": "disabled",
+        "bullets": "disabled"
+      },
+      "overlay_style": {
+        "font_family": "playfair_display_italic",
+        "color": [
+          0,
+          0,
+          0,
+          1
+        ],
+        "size": {
+          "font_size": 96
+        },
+        "glow_size": 0,
+        "glow_color": "#000000",
+        "stroke_size": 0,
+        "shadow": {
+          "enabled": false,
+          "color": "#000000",
+          "opacity": 0,
+          "blur": 0,
+          "offset": [
+            0,
+            0
+          ]
+        }
+      },
+      "overlay_background": {
+        "kind": "color",
+        "color": [
+          1,
+          1,
+          1,
+          1
+        ],
+        "opacity": 1
+      },
+      "max_phrase_overlays": 1,
+      "max_overlays_per_scene": 1,
+      "animation_counts": {
+        "maps": 0,
+        "images": 0,
+        "important_phrase": 1,
+        "short_important_phrase": 0,
+        "entities": 0,
+        "entity_caption": 0,
+        "dates": 0,
+        "bullets": 0,
+        "charts": 0,
+        "chain_disabled": 1
+      },
+      "output": {
+        "save_to_db": true,
+        "extract_entities": false,
+        "generate_metadata": true,
+        "generate_timeline": true,
+        "voiceover_enabled": true,
+        "languages": [
+          "it"
+        ],
+        "drive_folder_id": "1J_xUGo_bchzXDIGqSX04CU44c_Dm3SxS",
+        "drive_subfolder_name": "garlasco-important-phrases-15-playfair-white-20261015-r13",
+        "render": {
+          "enabled": true,
+          "drive_folder_id": "1J_xUGo_bchzXDIGqSX04CU44c_Dm3SxS",
+          "drive_subfolder_name": "garlasco-important-phrases-15-playfair-white-20261015-r13",
+          "require_gpu": true,
+          "subtitles": {
+            "enabled": false
+          },
+          "background": {
+            "mode": "none"
+          }
+        },
+        "docs": {
+          "enabled": false
+        },
+        "voiceover_folder_id": "1J_xUGo_bchzXDIGqSX04CU44c_Dm3SxS"
+      },
+      "audio": {
+        "mode": "COMBINED_TIMELINE",
+        "timing": {
+          "mode": "required",
+          "boundary": "word",
+          "formats": [
+            "json",
+            "srt",
+            "vtt"
+          ]
+        },
+        "random_sfx_on_clip_start": false,
+        "random_sfx_on_image_overlay": false
+      },
+      "disable_editorial_overlays": true,
+      "docs": {
+        "enabled": false,
+        "languages": [
+          "it"
+        ],
+        "folder_id": "1J_xUGo_bchzXDIGqSX04CU44c_Dm3SxS"
+      },
+      "media_plan": {
+        "mode": "hybrid",
+        "provider_policy": {
+          "artlist": "disabled",
+          "youtube": "disabled",
+          "internet_images": "disabled",
+          "image_generation": "disabled",
+          "geocoding": "disabled"
+        },
+        "cache": {
+          "write": true
+        },
+        "extraction": {
+          "enabled": true,
+          "include": [
+            "important_phrases"
+          ],
+          "important_phrases": [
+            "La chiusura delle indagini non equivale a una condanna.",
+            "Le parti possono contestare gli accertamenti con consulenze tecniche.",
+            "Ogni reperto va valutato nel contesto e con verifiche incrociate.",
+            "Le relazioni di stampa vanno distinte dagli atti ufficiali depositati.",
+            "La traccia controversa resta oggetto di valutazioni tecniche contrapposte.",
+            "Nessun singolo reperto dimostra da solo una responsabilità.",
+            "Le nuove ipotesi investigative restano da verificare nel contraddittorio.",
+            "Le sentenze definitive vanno separate dalle indagini ancora aperte.",
+            "La procura può valutare processo, archiviazione o ulteriori integrazioni.",
+            "Ogni consulenza va letta insieme ai metodi e ai suoi limiti.",
+            "Le memorie difensive aprono una fase, non anticipano una decisione.",
+            "La presunzione di innocenza accompagna ogni indagato fino alla sentenza definitiva.",
+            "La memoria di Chiara Poggi merita un racconto rispettoso e sobrio.",
+            "Fonti processuali e cronologia aiutano a distinguere fatti e interpretazioni.",
+            "Ogni affermazione del copione deve poggiare su fonti verificabili."
+          ],
+          "max_important_phrases_per_segment": 1
+        },
+        "materialization": {
+          "mode": "selected",
+          "upload_to_drive": true,
+          "wait_for_ready": true
+        },
+        "include_trace": true,
+        "force_refresh_bindings": true
+      },
+      "phrase_motion_family": "documentary_highlighting_v1",
+      "phrase_motions": [
+        "doc_05_selective_phrase_tracking"
+      ]
+    },
+    {
+      "id": "garlasco-important-phrases-15-playfair-white-20261015-r13-phrase-06",
+      "project": "garlasco-important-phrases-15-playfair-white-20261015-r13-phrase-06",
+      "title": "Garlasco — frase importante 06 (r13)",
+      "language": "it",
+      "tone": "documentario sobrio, prudente e verificabile",
+      "style": "Genera esattamente il segmento verbatim indicati. Mantieni ogni frase senza aggiungere contenuti. Solo overlay di frasi importanti, una motion distinta per ciascuna. Sfondo bianco pieno, testo nero Playfair Display Italic. Nessuna immagine, mappa, entità, bullet, numero animato o altro overlay.",
+      "model": "gemma4:e4b",
+      "source": {
+        "type": "text",
+        "topic": "Nessun singolo reperto dimostra da solo una responsabilità.",
+        "source_text": "Nessun singolo reperto dimostra da solo una responsabilità.",
+        "cache": {},
+        "research": {}
+      },
+      "script_params": {
+        "target_words": 8,
+        "min_words": 8,
+        "segment_words": 8,
+        "source_text_verbatim": true,
+        "force_refresh": true,
+        "single_scene": true,
+        "skip_quality_gate": true,
+        "segments": [
+          {
+            "id": "important-phrase-06",
+            "kind": "narration",
+            "topic": "Nessun singolo reperto dimostra da solo una responsabilità.",
+            "source_text": "Nessun singolo reperto dimostra da solo una responsabilità.",
+            "target_words": 8,
+            "min_words": 8,
+            "duration_ms": 6000
+          }
+        ]
+      },
+      "overlay_categories": {
+        "phrases": "enabled",
+        "images": "disabled",
+        "maps": "disabled",
+        "numbers": "disabled",
+        "quotes": "disabled",
+        "brand_text": "disabled",
+        "charts": "disabled",
+        "recaps": "disabled",
+        "titles": "disabled",
+        "bullets": "disabled"
+      },
+      "overlay_style": {
+        "font_family": "playfair_display_italic",
+        "color": [
+          0,
+          0,
+          0,
+          1
+        ],
+        "size": {
+          "font_size": 96
+        },
+        "glow_size": 0,
+        "glow_color": "#000000",
+        "stroke_size": 0,
+        "shadow": {
+          "enabled": false,
+          "color": "#000000",
+          "opacity": 0,
+          "blur": 0,
+          "offset": [
+            0,
+            0
+          ]
+        }
+      },
+      "overlay_background": {
+        "kind": "color",
+        "color": [
+          1,
+          1,
+          1,
+          1
+        ],
+        "opacity": 1
+      },
+      "max_phrase_overlays": 1,
+      "max_overlays_per_scene": 1,
+      "animation_counts": {
+        "maps": 0,
+        "images": 0,
+        "important_phrase": 1,
+        "short_important_phrase": 0,
+        "entities": 0,
+        "entity_caption": 0,
+        "dates": 0,
+        "bullets": 0,
+        "charts": 0,
+        "chain_disabled": 1
+      },
+      "output": {
+        "save_to_db": true,
+        "extract_entities": false,
+        "generate_metadata": true,
+        "generate_timeline": true,
+        "voiceover_enabled": true,
+        "languages": [
+          "it"
+        ],
+        "drive_folder_id": "1J_xUGo_bchzXDIGqSX04CU44c_Dm3SxS",
+        "drive_subfolder_name": "garlasco-important-phrases-15-playfair-white-20261015-r13",
+        "render": {
+          "enabled": true,
+          "drive_folder_id": "1J_xUGo_bchzXDIGqSX04CU44c_Dm3SxS",
+          "drive_subfolder_name": "garlasco-important-phrases-15-playfair-white-20261015-r13",
+          "require_gpu": true,
+          "subtitles": {
+            "enabled": false
+          },
+          "background": {
+            "mode": "none"
+          }
+        },
+        "docs": {
+          "enabled": false
+        },
+        "voiceover_folder_id": "1J_xUGo_bchzXDIGqSX04CU44c_Dm3SxS"
+      },
+      "audio": {
+        "mode": "COMBINED_TIMELINE",
+        "timing": {
+          "mode": "required",
+          "boundary": "word",
+          "formats": [
+            "json",
+            "srt",
+            "vtt"
+          ]
+        },
+        "random_sfx_on_clip_start": false,
+        "random_sfx_on_image_overlay": false
+      },
+      "disable_editorial_overlays": true,
+      "docs": {
+        "enabled": false,
+        "languages": [
+          "it"
+        ],
+        "folder_id": "1J_xUGo_bchzXDIGqSX04CU44c_Dm3SxS"
+      },
+      "media_plan": {
+        "mode": "hybrid",
+        "provider_policy": {
+          "artlist": "disabled",
+          "youtube": "disabled",
+          "internet_images": "disabled",
+          "image_generation": "disabled",
+          "geocoding": "disabled"
+        },
+        "cache": {
+          "write": true
+        },
+        "extraction": {
+          "enabled": true,
+          "include": [
+            "important_phrases"
+          ],
+          "important_phrases": [
+            "La chiusura delle indagini non equivale a una condanna.",
+            "Le parti possono contestare gli accertamenti con consulenze tecniche.",
+            "Ogni reperto va valutato nel contesto e con verifiche incrociate.",
+            "Le relazioni di stampa vanno distinte dagli atti ufficiali depositati.",
+            "La traccia controversa resta oggetto di valutazioni tecniche contrapposte.",
+            "Nessun singolo reperto dimostra da solo una responsabilità.",
+            "Le nuove ipotesi investigative restano da verificare nel contraddittorio.",
+            "Le sentenze definitive vanno separate dalle indagini ancora aperte.",
+            "La procura può valutare processo, archiviazione o ulteriori integrazioni.",
+            "Ogni consulenza va letta insieme ai metodi e ai suoi limiti.",
+            "Le memorie difensive aprono una fase, non anticipano una decisione.",
+            "La presunzione di innocenza accompagna ogni indagato fino alla sentenza definitiva.",
+            "La memoria di Chiara Poggi merita un racconto rispettoso e sobrio.",
+            "Fonti processuali e cronologia aiutano a distinguere fatti e interpretazioni.",
+            "Ogni affermazione del copione deve poggiare su fonti verificabili."
+          ],
+          "max_important_phrases_per_segment": 1
+        },
+        "materialization": {
+          "mode": "selected",
+          "upload_to_drive": true,
+          "wait_for_ready": true
+        },
+        "include_trace": true,
+        "force_refresh_bindings": true
+      },
+      "phrase_motion_family": "documentary_highlighting_v1",
+      "phrase_motions": [
+        "doc_06_red_keyword_punch"
+      ]
+    },
+    {
+      "id": "garlasco-important-phrases-15-playfair-white-20261015-r13-phrase-07",
+      "project": "garlasco-important-phrases-15-playfair-white-20261015-r13-phrase-07",
+      "title": "Garlasco — frase importante 07 (r13)",
+      "language": "it",
+      "tone": "documentario sobrio, prudente e verificabile",
+      "style": "Genera esattamente il segmento verbatim indicati. Mantieni ogni frase senza aggiungere contenuti. Solo overlay di frasi importanti, una motion distinta per ciascuna. Sfondo bianco pieno, testo nero Playfair Display Italic. Nessuna immagine, mappa, entità, bullet, numero animato o altro overlay.",
+      "model": "gemma4:e4b",
+      "source": {
+        "type": "text",
+        "topic": "Le nuove ipotesi investigative restano da verificare nel contraddittorio.",
+        "source_text": "Le nuove ipotesi investigative restano da verificare nel contraddittorio.",
+        "cache": {},
+        "research": {}
+      },
+      "script_params": {
+        "target_words": 9,
+        "min_words": 9,
+        "segment_words": 9,
+        "source_text_verbatim": true,
+        "force_refresh": true,
+        "single_scene": true,
+        "skip_quality_gate": true,
+        "segments": [
+          {
+            "id": "important-phrase-07",
+            "kind": "narration",
+            "topic": "Le nuove ipotesi investigative restano da verificare nel contraddittorio.",
+            "source_text": "Le nuove ipotesi investigative restano da verificare nel contraddittorio.",
+            "target_words": 9,
+            "min_words": 9,
+            "duration_ms": 6000
+          }
+        ]
+      },
+      "overlay_categories": {
+        "phrases": "enabled",
+        "images": "disabled",
+        "maps": "disabled",
+        "numbers": "disabled",
+        "quotes": "disabled",
+        "brand_text": "disabled",
+        "charts": "disabled",
+        "recaps": "disabled",
+        "titles": "disabled",
+        "bullets": "disabled"
+      },
+      "overlay_style": {
+        "font_family": "playfair_display_italic",
+        "color": [
+          0,
+          0,
+          0,
+          1
+        ],
+        "size": {
+          "font_size": 96
+        },
+        "glow_size": 0,
+        "glow_color": "#000000",
+        "stroke_size": 0,
+        "shadow": {
+          "enabled": false,
+          "color": "#000000",
+          "opacity": 0,
+          "blur": 0,
+          "offset": [
+            0,
+            0
+          ]
+        }
+      },
+      "overlay_background": {
+        "kind": "color",
+        "color": [
+          1,
+          1,
+          1,
+          1
+        ],
+        "opacity": 1
+      },
+      "max_phrase_overlays": 1,
+      "max_overlays_per_scene": 1,
+      "animation_counts": {
+        "maps": 0,
+        "images": 0,
+        "important_phrase": 1,
+        "short_important_phrase": 0,
+        "entities": 0,
+        "entity_caption": 0,
+        "dates": 0,
+        "bullets": 0,
+        "charts": 0,
+        "chain_disabled": 1
+      },
+      "output": {
+        "save_to_db": true,
+        "extract_entities": false,
+        "generate_metadata": true,
+        "generate_timeline": true,
+        "voiceover_enabled": true,
+        "languages": [
+          "it"
+        ],
+        "drive_folder_id": "1J_xUGo_bchzXDIGqSX04CU44c_Dm3SxS",
+        "drive_subfolder_name": "garlasco-important-phrases-15-playfair-white-20261015-r13",
+        "render": {
+          "enabled": true,
+          "drive_folder_id": "1J_xUGo_bchzXDIGqSX04CU44c_Dm3SxS",
+          "drive_subfolder_name": "garlasco-important-phrases-15-playfair-white-20261015-r13",
+          "require_gpu": true,
+          "subtitles": {
+            "enabled": false
+          },
+          "background": {
+            "mode": "none"
+          }
+        },
+        "docs": {
+          "enabled": false
+        },
+        "voiceover_folder_id": "1J_xUGo_bchzXDIGqSX04CU44c_Dm3SxS"
+      },
+      "audio": {
+        "mode": "COMBINED_TIMELINE",
+        "timing": {
+          "mode": "required",
+          "boundary": "word",
+          "formats": [
+            "json",
+            "srt",
+            "vtt"
+          ]
+        },
+        "random_sfx_on_clip_start": false,
+        "random_sfx_on_image_overlay": false
+      },
+      "disable_editorial_overlays": true,
+      "docs": {
+        "enabled": false,
+        "languages": [
+          "it"
+        ],
+        "folder_id": "1J_xUGo_bchzXDIGqSX04CU44c_Dm3SxS"
+      },
+      "media_plan": {
+        "mode": "hybrid",
+        "provider_policy": {
+          "artlist": "disabled",
+          "youtube": "disabled",
+          "internet_images": "disabled",
+          "image_generation": "disabled",
+          "geocoding": "disabled"
+        },
+        "cache": {
+          "write": true
+        },
+        "extraction": {
+          "enabled": true,
+          "include": [
+            "important_phrases"
+          ],
+          "important_phrases": [
+            "La chiusura delle indagini non equivale a una condanna.",
+            "Le parti possono contestare gli accertamenti con consulenze tecniche.",
+            "Ogni reperto va valutato nel contesto e con verifiche incrociate.",
+            "Le relazioni di stampa vanno distinte dagli atti ufficiali depositati.",
+            "La traccia controversa resta oggetto di valutazioni tecniche contrapposte.",
+            "Nessun singolo reperto dimostra da solo una responsabilità.",
+            "Le nuove ipotesi investigative restano da verificare nel contraddittorio.",
+            "Le sentenze definitive vanno separate dalle indagini ancora aperte.",
+            "La procura può valutare processo, archiviazione o ulteriori integrazioni.",
+            "Ogni consulenza va letta insieme ai metodi e ai suoi limiti.",
+            "Le memorie difensive aprono una fase, non anticipano una decisione.",
+            "La presunzione di innocenza accompagna ogni indagato fino alla sentenza definitiva.",
+            "La memoria di Chiara Poggi merita un racconto rispettoso e sobrio.",
+            "Fonti processuali e cronologia aiutano a distinguere fatti e interpretazioni.",
+            "Ogni affermazione del copione deve poggiare su fonti verificabili."
+          ],
+          "max_important_phrases_per_segment": 1
+        },
+        "materialization": {
+          "mode": "selected",
+          "upload_to_drive": true,
+          "wait_for_ready": true
+        },
+        "include_trace": true,
+        "force_refresh_bindings": true
+      },
+      "phrase_motion_family": "documentary_highlighting_v1",
+      "phrase_motions": [
+        "doc_07_word_impact_reveal"
+      ]
+    },
+    {
+      "id": "garlasco-important-phrases-15-playfair-white-20261015-r13-phrase-08",
+      "project": "garlasco-important-phrases-15-playfair-white-20261015-r13-phrase-08",
+      "title": "Garlasco — frase importante 08 (r13)",
+      "language": "it",
+      "tone": "documentario sobrio, prudente e verificabile",
+      "style": "Genera esattamente il segmento verbatim indicati. Mantieni ogni frase senza aggiungere contenuti. Solo overlay di frasi importanti, una motion distinta per ciascuna. Sfondo bianco pieno, testo nero Playfair Display Italic. Nessuna immagine, mappa, entità, bullet, numero animato o altro overlay.",
+      "model": "gemma4:e4b",
+      "source": {
+        "type": "text",
+        "topic": "Le sentenze definitive vanno separate dalle indagini ancora aperte.",
+        "source_text": "Le sentenze definitive vanno separate dalle indagini ancora aperte.",
+        "cache": {},
+        "research": {}
+      },
+      "script_params": {
+        "target_words": 9,
+        "min_words": 9,
+        "segment_words": 9,
+        "source_text_verbatim": true,
+        "force_refresh": true,
+        "single_scene": true,
+        "skip_quality_gate": true,
+        "segments": [
+          {
+            "id": "important-phrase-08",
+            "kind": "narration",
+            "topic": "Le sentenze definitive vanno separate dalle indagini ancora aperte.",
+            "source_text": "Le sentenze definitive vanno separate dalle indagini ancora aperte.",
+            "target_words": 9,
+            "min_words": 9,
+            "duration_ms": 6000
+          }
+        ]
+      },
+      "overlay_categories": {
+        "phrases": "enabled",
+        "images": "disabled",
+        "maps": "disabled",
+        "numbers": "disabled",
+        "quotes": "disabled",
+        "brand_text": "disabled",
+        "charts": "disabled",
+        "recaps": "disabled",
+        "titles": "disabled",
+        "bullets": "disabled"
+      },
+      "overlay_style": {
+        "font_family": "playfair_display_italic",
+        "color": [
+          0,
+          0,
+          0,
+          1
+        ],
+        "size": {
+          "font_size": 96
+        },
+        "glow_size": 0,
+        "glow_color": "#000000",
+        "stroke_size": 0,
+        "shadow": {
+          "enabled": false,
+          "color": "#000000",
+          "opacity": 0,
+          "blur": 0,
+          "offset": [
+            0,
+            0
+          ]
+        }
+      },
+      "overlay_background": {
+        "kind": "color",
+        "color": [
+          1,
+          1,
+          1,
+          1
+        ],
+        "opacity": 1
+      },
+      "max_phrase_overlays": 1,
+      "max_overlays_per_scene": 1,
+      "animation_counts": {
+        "maps": 0,
+        "images": 0,
+        "important_phrase": 1,
+        "short_important_phrase": 0,
+        "entities": 0,
+        "entity_caption": 0,
+        "dates": 0,
+        "bullets": 0,
+        "charts": 0,
+        "chain_disabled": 1
+      },
+      "output": {
+        "save_to_db": true,
+        "extract_entities": false,
+        "generate_metadata": true,
+        "generate_timeline": true,
+        "voiceover_enabled": true,
+        "languages": [
+          "it"
+        ],
+        "drive_folder_id": "1J_xUGo_bchzXDIGqSX04CU44c_Dm3SxS",
+        "drive_subfolder_name": "garlasco-important-phrases-15-playfair-white-20261015-r13",
+        "render": {
+          "enabled": true,
+          "drive_folder_id": "1J_xUGo_bchzXDIGqSX04CU44c_Dm3SxS",
+          "drive_subfolder_name": "garlasco-important-phrases-15-playfair-white-20261015-r13",
+          "require_gpu": true,
+          "subtitles": {
+            "enabled": false
+          },
+          "background": {
+            "mode": "none"
+          }
+        },
+        "docs": {
+          "enabled": false
+        },
+        "voiceover_folder_id": "1J_xUGo_bchzXDIGqSX04CU44c_Dm3SxS"
+      },
+      "audio": {
+        "mode": "COMBINED_TIMELINE",
+        "timing": {
+          "mode": "required",
+          "boundary": "word",
+          "formats": [
+            "json",
+            "srt",
+            "vtt"
+          ]
+        },
+        "random_sfx_on_clip_start": false,
+        "random_sfx_on_image_overlay": false
+      },
+      "disable_editorial_overlays": true,
+      "docs": {
+        "enabled": false,
+        "languages": [
+          "it"
+        ],
+        "folder_id": "1J_xUGo_bchzXDIGqSX04CU44c_Dm3SxS"
+      },
+      "media_plan": {
+        "mode": "hybrid",
+        "provider_policy": {
+          "artlist": "disabled",
+          "youtube": "disabled",
+          "internet_images": "disabled",
+          "image_generation": "disabled",
+          "geocoding": "disabled"
+        },
+        "cache": {
+          "write": true
+        },
+        "extraction": {
+          "enabled": true,
+          "include": [
+            "important_phrases"
+          ],
+          "important_phrases": [
+            "La chiusura delle indagini non equivale a una condanna.",
+            "Le parti possono contestare gli accertamenti con consulenze tecniche.",
+            "Ogni reperto va valutato nel contesto e con verifiche incrociate.",
+            "Le relazioni di stampa vanno distinte dagli atti ufficiali depositati.",
+            "La traccia controversa resta oggetto di valutazioni tecniche contrapposte.",
+            "Nessun singolo reperto dimostra da solo una responsabilità.",
+            "Le nuove ipotesi investigative restano da verificare nel contraddittorio.",
+            "Le sentenze definitive vanno separate dalle indagini ancora aperte.",
+            "La procura può valutare processo, archiviazione o ulteriori integrazioni.",
+            "Ogni consulenza va letta insieme ai metodi e ai suoi limiti.",
+            "Le memorie difensive aprono una fase, non anticipano una decisione.",
+            "La presunzione di innocenza accompagna ogni indagato fino alla sentenza definitiva.",
+            "La memoria di Chiara Poggi merita un racconto rispettoso e sobrio.",
+            "Fonti processuali e cronologia aiutano a distinguere fatti e interpretazioni.",
+            "Ogni affermazione del copione deve poggiare su fonti verificabili."
+          ],
+          "max_important_phrases_per_segment": 1
+        },
+        "materialization": {
+          "mode": "selected",
+          "upload_to_drive": true,
+          "wait_for_ready": true
+        },
+        "include_trace": true,
+        "force_refresh_bindings": true
+      },
+      "phrase_motion_family": "documentary_highlighting_v1",
+      "phrase_motions": [
+        "doc_08_mixed_font_emphasis"
+      ]
+    },
+    {
+      "id": "garlasco-important-phrases-15-playfair-white-20261015-r13-phrase-09",
+      "project": "garlasco-important-phrases-15-playfair-white-20261015-r13-phrase-09",
+      "title": "Garlasco — frase importante 09 (r13)",
+      "language": "it",
+      "tone": "documentario sobrio, prudente e verificabile",
+      "style": "Genera esattamente il segmento verbatim indicati. Mantieni ogni frase senza aggiungere contenuti. Solo overlay di frasi importanti, una motion distinta per ciascuna. Sfondo bianco pieno, testo nero Playfair Display Italic. Nessuna immagine, mappa, entità, bullet, numero animato o altro overlay.",
+      "model": "gemma4:e4b",
+      "source": {
+        "type": "text",
+        "topic": "La procura può valutare processo, archiviazione o ulteriori integrazioni.",
+        "source_text": "La procura può valutare processo, archiviazione o ulteriori integrazioni.",
+        "cache": {},
+        "research": {}
+      },
+      "script_params": {
+        "target_words": 9,
+        "min_words": 9,
+        "segment_words": 9,
+        "source_text_verbatim": true,
+        "force_refresh": true,
+        "single_scene": true,
+        "skip_quality_gate": true,
+        "segments": [
+          {
+            "id": "important-phrase-09",
+            "kind": "narration",
+            "topic": "La procura può valutare processo, archiviazione o ulteriori integrazioni.",
+            "source_text": "La procura può valutare processo, archiviazione o ulteriori integrazioni.",
+            "target_words": 9,
+            "min_words": 9,
+            "duration_ms": 6000
+          }
+        ]
+      },
+      "overlay_categories": {
+        "phrases": "enabled",
+        "images": "disabled",
+        "maps": "disabled",
+        "numbers": "disabled",
+        "quotes": "disabled",
+        "brand_text": "disabled",
+        "charts": "disabled",
+        "recaps": "disabled",
+        "titles": "disabled",
+        "bullets": "disabled"
+      },
+      "overlay_style": {
+        "font_family": "playfair_display_italic",
+        "color": [
+          0,
+          0,
+          0,
+          1
+        ],
+        "size": {
+          "font_size": 96
+        },
+        "glow_size": 0,
+        "glow_color": "#000000",
+        "stroke_size": 0,
+        "shadow": {
+          "enabled": false,
+          "color": "#000000",
+          "opacity": 0,
+          "blur": 0,
+          "offset": [
+            0,
+            0
+          ]
+        }
+      },
+      "overlay_background": {
+        "kind": "color",
+        "color": [
+          1,
+          1,
+          1,
+          1
+        ],
+        "opacity": 1
+      },
+      "max_phrase_overlays": 1,
+      "max_overlays_per_scene": 1,
+      "animation_counts": {
+        "maps": 0,
+        "images": 0,
+        "important_phrase": 1,
+        "short_important_phrase": 0,
+        "entities": 0,
+        "entity_caption": 0,
+        "dates": 0,
+        "bullets": 0,
+        "charts": 0,
+        "chain_disabled": 1
+      },
+      "output": {
+        "save_to_db": true,
+        "extract_entities": false,
+        "generate_metadata": true,
+        "generate_timeline": true,
+        "voiceover_enabled": true,
+        "languages": [
+          "it"
+        ],
+        "drive_folder_id": "1J_xUGo_bchzXDIGqSX04CU44c_Dm3SxS",
+        "drive_subfolder_name": "garlasco-important-phrases-15-playfair-white-20261015-r13",
+        "render": {
+          "enabled": true,
+          "drive_folder_id": "1J_xUGo_bchzXDIGqSX04CU44c_Dm3SxS",
+          "drive_subfolder_name": "garlasco-important-phrases-15-playfair-white-20261015-r13",
+          "require_gpu": true,
+          "subtitles": {
+            "enabled": false
+          },
+          "background": {
+            "mode": "none"
+          }
+        },
+        "docs": {
+          "enabled": false
+        },
+        "voiceover_folder_id": "1J_xUGo_bchzXDIGqSX04CU44c_Dm3SxS"
+      },
+      "audio": {
+        "mode": "COMBINED_TIMELINE",
+        "timing": {
+          "mode": "required",
+          "boundary": "word",
+          "formats": [
+            "json",
+            "srt",
+            "vtt"
+          ]
+        },
+        "random_sfx_on_clip_start": false,
+        "random_sfx_on_image_overlay": false
+      },
+      "disable_editorial_overlays": true,
+      "docs": {
+        "enabled": false,
+        "languages": [
+          "it"
+        ],
+        "folder_id": "1J_xUGo_bchzXDIGqSX04CU44c_Dm3SxS"
+      },
+      "media_plan": {
+        "mode": "hybrid",
+        "provider_policy": {
+          "artlist": "disabled",
+          "youtube": "disabled",
+          "internet_images": "disabled",
+          "image_generation": "disabled",
+          "geocoding": "disabled"
+        },
+        "cache": {
+          "write": true
+        },
+        "extraction": {
+          "enabled": true,
+          "include": [
+            "important_phrases"
+          ],
+          "important_phrases": [
+            "La chiusura delle indagini non equivale a una condanna.",
+            "Le parti possono contestare gli accertamenti con consulenze tecniche.",
+            "Ogni reperto va valutato nel contesto e con verifiche incrociate.",
+            "Le relazioni di stampa vanno distinte dagli atti ufficiali depositati.",
+            "La traccia controversa resta oggetto di valutazioni tecniche contrapposte.",
+            "Nessun singolo reperto dimostra da solo una responsabilità.",
+            "Le nuove ipotesi investigative restano da verificare nel contraddittorio.",
+            "Le sentenze definitive vanno separate dalle indagini ancora aperte.",
+            "La procura può valutare processo, archiviazione o ulteriori integrazioni.",
+            "Ogni consulenza va letta insieme ai metodi e ai suoi limiti.",
+            "Le memorie difensive aprono una fase, non anticipano una decisione.",
+            "La presunzione di innocenza accompagna ogni indagato fino alla sentenza definitiva.",
+            "La memoria di Chiara Poggi merita un racconto rispettoso e sobrio.",
+            "Fonti processuali e cronologia aiutano a distinguere fatti e interpretazioni.",
+            "Ogni affermazione del copione deve poggiare su fonti verificabili."
+          ],
+          "max_important_phrases_per_segment": 1
+        },
+        "materialization": {
+          "mode": "selected",
+          "upload_to_drive": true,
+          "wait_for_ready": true
+        },
+        "include_trace": true,
+        "force_refresh_bindings": true
+      },
+      "phrase_motion_family": "documentary_highlighting_v1",
+      "phrase_motions": [
+        "doc_09_cinematic_underline_draw"
+      ]
+    },
+    {
+      "id": "garlasco-important-phrases-15-playfair-white-20261015-r13-phrase-10",
+      "project": "garlasco-important-phrases-15-playfair-white-20261015-r13-phrase-10",
+      "title": "Garlasco — frase importante 10 (r13)",
+      "language": "it",
+      "tone": "documentario sobrio, prudente e verificabile",
+      "style": "Genera esattamente il segmento verbatim indicati. Mantieni ogni frase senza aggiungere contenuti. Solo overlay di frasi importanti, una motion distinta per ciascuna. Sfondo bianco pieno, testo nero Playfair Display Italic. Nessuna immagine, mappa, entità, bullet, numero animato o altro overlay.",
+      "model": "gemma4:e4b",
+      "source": {
+        "type": "text",
+        "topic": "Ogni consulenza va letta insieme ai metodi e ai suoi limiti.",
+        "source_text": "Ogni consulenza va letta insieme ai metodi e ai suoi limiti.",
+        "cache": {},
+        "research": {}
+      },
+      "script_params": {
+        "target_words": 11,
+        "min_words": 11,
+        "segment_words": 11,
+        "source_text_verbatim": true,
+        "force_refresh": true,
+        "single_scene": true,
+        "skip_quality_gate": true,
+        "segments": [
+          {
+            "id": "important-phrase-10",
+            "kind": "narration",
+            "topic": "Ogni consulenza va letta insieme ai metodi e ai suoi limiti.",
+            "source_text": "Ogni consulenza va letta insieme ai metodi e ai suoi limiti.",
+            "target_words": 11,
+            "min_words": 11,
+            "duration_ms": 6000
+          }
+        ]
+      },
+      "overlay_categories": {
+        "phrases": "enabled",
+        "images": "disabled",
+        "maps": "disabled",
+        "numbers": "disabled",
+        "quotes": "disabled",
+        "brand_text": "disabled",
+        "charts": "disabled",
+        "recaps": "disabled",
+        "titles": "disabled",
+        "bullets": "disabled"
+      },
+      "overlay_style": {
+        "font_family": "playfair_display_italic",
+        "color": [
+          0,
+          0,
+          0,
+          1
+        ],
+        "size": {
+          "font_size": 96
+        },
+        "glow_size": 0,
+        "glow_color": "#000000",
+        "stroke_size": 0,
+        "shadow": {
+          "enabled": false,
+          "color": "#000000",
+          "opacity": 0,
+          "blur": 0,
+          "offset": [
+            0,
+            0
+          ]
+        }
+      },
+      "overlay_background": {
+        "kind": "color",
+        "color": [
+          1,
+          1,
+          1,
+          1
+        ],
+        "opacity": 1
+      },
+      "max_phrase_overlays": 1,
+      "max_overlays_per_scene": 1,
+      "animation_counts": {
+        "maps": 0,
+        "images": 0,
+        "important_phrase": 1,
+        "short_important_phrase": 0,
+        "entities": 0,
+        "entity_caption": 0,
+        "dates": 0,
+        "bullets": 0,
+        "charts": 0,
+        "chain_disabled": 1
+      },
+      "output": {
+        "save_to_db": true,
+        "extract_entities": false,
+        "generate_metadata": true,
+        "generate_timeline": true,
+        "voiceover_enabled": true,
+        "languages": [
+          "it"
+        ],
+        "drive_folder_id": "1J_xUGo_bchzXDIGqSX04CU44c_Dm3SxS",
+        "drive_subfolder_name": "garlasco-important-phrases-15-playfair-white-20261015-r13",
+        "render": {
+          "enabled": true,
+          "drive_folder_id": "1J_xUGo_bchzXDIGqSX04CU44c_Dm3SxS",
+          "drive_subfolder_name": "garlasco-important-phrases-15-playfair-white-20261015-r13",
+          "require_gpu": true,
+          "subtitles": {
+            "enabled": false
+          },
+          "background": {
+            "mode": "none"
+          }
+        },
+        "docs": {
+          "enabled": false
+        },
+        "voiceover_folder_id": "1J_xUGo_bchzXDIGqSX04CU44c_Dm3SxS"
+      },
+      "audio": {
+        "mode": "COMBINED_TIMELINE",
+        "timing": {
+          "mode": "required",
+          "boundary": "word",
+          "formats": [
+            "json",
+            "srt",
+            "vtt"
+          ]
+        },
+        "random_sfx_on_clip_start": false,
+        "random_sfx_on_image_overlay": false
+      },
+      "disable_editorial_overlays": true,
+      "docs": {
+        "enabled": false,
+        "languages": [
+          "it"
+        ],
+        "folder_id": "1J_xUGo_bchzXDIGqSX04CU44c_Dm3SxS"
+      },
+      "media_plan": {
+        "mode": "hybrid",
+        "provider_policy": {
+          "artlist": "disabled",
+          "youtube": "disabled",
+          "internet_images": "disabled",
+          "image_generation": "disabled",
+          "geocoding": "disabled"
+        },
+        "cache": {
+          "write": true
+        },
+        "extraction": {
+          "enabled": true,
+          "include": [
+            "important_phrases"
+          ],
+          "important_phrases": [
+            "La chiusura delle indagini non equivale a una condanna.",
+            "Le parti possono contestare gli accertamenti con consulenze tecniche.",
+            "Ogni reperto va valutato nel contesto e con verifiche incrociate.",
+            "Le relazioni di stampa vanno distinte dagli atti ufficiali depositati.",
+            "La traccia controversa resta oggetto di valutazioni tecniche contrapposte.",
+            "Nessun singolo reperto dimostra da solo una responsabilità.",
+            "Le nuove ipotesi investigative restano da verificare nel contraddittorio.",
+            "Le sentenze definitive vanno separate dalle indagini ancora aperte.",
+            "La procura può valutare processo, archiviazione o ulteriori integrazioni.",
+            "Ogni consulenza va letta insieme ai metodi e ai suoi limiti.",
+            "Le memorie difensive aprono una fase, non anticipano una decisione.",
+            "La presunzione di innocenza accompagna ogni indagato fino alla sentenza definitiva.",
+            "La memoria di Chiara Poggi merita un racconto rispettoso e sobrio.",
+            "Fonti processuali e cronologia aiutano a distinguere fatti e interpretazioni.",
+            "Ogni affermazione del copione deve poggiare su fonti verificabili."
+          ],
+          "max_important_phrases_per_segment": 1
+        },
+        "materialization": {
+          "mode": "selected",
+          "upload_to_drive": true,
+          "wait_for_ready": true
+        },
+        "include_trace": true,
+        "force_refresh_bindings": true
+      },
+      "phrase_motion_family": "documentary_highlighting_v1",
+      "phrase_motions": [
+        "doc_10_selective_contrast_focus"
+      ]
+    },
+    {
+      "id": "garlasco-important-phrases-15-playfair-white-20261015-r13-phrase-11",
+      "project": "garlasco-important-phrases-15-playfair-white-20261015-r13-phrase-11",
+      "title": "Garlasco — frase importante 11 (r13)",
+      "language": "it",
+      "tone": "documentario sobrio, prudente e verificabile",
+      "style": "Genera esattamente il segmento verbatim indicati. Mantieni ogni frase senza aggiungere contenuti. Solo overlay di frasi importanti, una motion distinta per ciascuna. Sfondo bianco pieno, testo nero Playfair Display Italic. Nessuna immagine, mappa, entità, bullet, numero animato o altro overlay.",
+      "model": "gemma4:e4b",
+      "source": {
+        "type": "text",
+        "topic": "Le memorie difensive aprono una fase, non anticipano una decisione.",
+        "source_text": "Le memorie difensive aprono una fase, non anticipano una decisione.",
+        "cache": {},
+        "research": {}
+      },
+      "script_params": {
+        "target_words": 10,
+        "min_words": 10,
+        "segment_words": 10,
+        "source_text_verbatim": true,
+        "force_refresh": true,
+        "single_scene": true,
+        "skip_quality_gate": true,
+        "segments": [
+          {
+            "id": "important-phrase-11",
+            "kind": "narration",
+            "topic": "Le memorie difensive aprono una fase, non anticipano una decisione.",
+            "source_text": "Le memorie difensive aprono una fase, non anticipano una decisione.",
+            "target_words": 10,
+            "min_words": 10,
+            "duration_ms": 6000
+          }
+        ]
+      },
+      "overlay_categories": {
+        "phrases": "enabled",
+        "images": "disabled",
+        "maps": "disabled",
+        "numbers": "disabled",
+        "quotes": "disabled",
+        "brand_text": "disabled",
+        "charts": "disabled",
+        "recaps": "disabled",
+        "titles": "disabled",
+        "bullets": "disabled"
+      },
+      "overlay_style": {
+        "font_family": "playfair_display_italic",
+        "color": [
+          0,
+          0,
+          0,
+          1
+        ],
+        "size": {
+          "font_size": 96
+        },
+        "glow_size": 0,
+        "glow_color": "#000000",
+        "stroke_size": 0,
+        "shadow": {
+          "enabled": false,
+          "color": "#000000",
+          "opacity": 0,
+          "blur": 0,
+          "offset": [
+            0,
+            0
+          ]
+        }
+      },
+      "overlay_background": {
+        "kind": "color",
+        "color": [
+          1,
+          1,
+          1,
+          1
+        ],
+        "opacity": 1
+      },
+      "max_phrase_overlays": 1,
+      "max_overlays_per_scene": 1,
+      "animation_counts": {
+        "maps": 0,
+        "images": 0,
+        "important_phrase": 1,
+        "short_important_phrase": 0,
+        "entities": 0,
+        "entity_caption": 0,
+        "dates": 0,
+        "bullets": 0,
+        "charts": 0,
+        "chain_disabled": 1
+      },
+      "output": {
+        "save_to_db": true,
+        "extract_entities": false,
+        "generate_metadata": true,
+        "generate_timeline": true,
+        "voiceover_enabled": true,
+        "languages": [
+          "it"
+        ],
+        "drive_folder_id": "1J_xUGo_bchzXDIGqSX04CU44c_Dm3SxS",
+        "drive_subfolder_name": "garlasco-important-phrases-15-playfair-white-20261015-r13",
+        "render": {
+          "enabled": true,
+          "drive_folder_id": "1J_xUGo_bchzXDIGqSX04CU44c_Dm3SxS",
+          "drive_subfolder_name": "garlasco-important-phrases-15-playfair-white-20261015-r13",
+          "require_gpu": true,
+          "subtitles": {
+            "enabled": false
+          },
+          "background": {
+            "mode": "none"
+          }
+        },
+        "docs": {
+          "enabled": false
+        },
+        "voiceover_folder_id": "1J_xUGo_bchzXDIGqSX04CU44c_Dm3SxS"
+      },
+      "audio": {
+        "mode": "COMBINED_TIMELINE",
+        "timing": {
+          "mode": "required",
+          "boundary": "word",
+          "formats": [
+            "json",
+            "srt",
+            "vtt"
+          ]
+        },
+        "random_sfx_on_clip_start": false,
+        "random_sfx_on_image_overlay": false
+      },
+      "disable_editorial_overlays": true,
+      "docs": {
+        "enabled": false,
+        "languages": [
+          "it"
+        ],
+        "folder_id": "1J_xUGo_bchzXDIGqSX04CU44c_Dm3SxS"
+      },
+      "media_plan": {
+        "mode": "hybrid",
+        "provider_policy": {
+          "artlist": "disabled",
+          "youtube": "disabled",
+          "internet_images": "disabled",
+          "image_generation": "disabled",
+          "geocoding": "disabled"
+        },
+        "cache": {
+          "write": true
+        },
+        "extraction": {
+          "enabled": true,
+          "include": [
+            "important_phrases"
+          ],
+          "important_phrases": [
+            "La chiusura delle indagini non equivale a una condanna.",
+            "Le parti possono contestare gli accertamenti con consulenze tecniche.",
+            "Ogni reperto va valutato nel contesto e con verifiche incrociate.",
+            "Le relazioni di stampa vanno distinte dagli atti ufficiali depositati.",
+            "La traccia controversa resta oggetto di valutazioni tecniche contrapposte.",
+            "Nessun singolo reperto dimostra da solo una responsabilità.",
+            "Le nuove ipotesi investigative restano da verificare nel contraddittorio.",
+            "Le sentenze definitive vanno separate dalle indagini ancora aperte.",
+            "La procura può valutare processo, archiviazione o ulteriori integrazioni.",
+            "Ogni consulenza va letta insieme ai metodi e ai suoi limiti.",
+            "Le memorie difensive aprono una fase, non anticipano una decisione.",
+            "La presunzione di innocenza accompagna ogni indagato fino alla sentenza definitiva.",
+            "La memoria di Chiara Poggi merita un racconto rispettoso e sobrio.",
+            "Fonti processuali e cronologia aiutano a distinguere fatti e interpretazioni.",
+            "Ogni affermazione del copione deve poggiare su fonti verificabili."
+          ],
+          "max_important_phrases_per_segment": 1
+        },
+        "materialization": {
+          "mode": "selected",
+          "upload_to_drive": true,
+          "wait_for_ready": true
+        },
+        "include_trace": true,
+        "force_refresh_bindings": true
+      },
+      "phrase_motion_family": "documentary_highlighting_v1",
+      "phrase_motions": [
+        "doc_11_headline_cinematic_zoom"
+      ]
+    },
+    {
+      "id": "garlasco-important-phrases-15-playfair-white-20261015-r13-phrase-12",
+      "project": "garlasco-important-phrases-15-playfair-white-20261015-r13-phrase-12",
+      "title": "Garlasco — frase importante 12 (r13)",
+      "language": "it",
+      "tone": "documentario sobrio, prudente e verificabile",
+      "style": "Genera esattamente il segmento verbatim indicati. Mantieni ogni frase senza aggiungere contenuti. Solo overlay di frasi importanti, una motion distinta per ciascuna. Sfondo bianco pieno, testo nero Playfair Display Italic. Nessuna immagine, mappa, entità, bullet, numero animato o altro overlay.",
+      "model": "gemma4:e4b",
+      "source": {
+        "type": "text",
+        "topic": "La presunzione di innocenza accompagna ogni indagato fino alla sentenza definitiva.",
+        "source_text": "La presunzione di innocenza accompagna ogni indagato fino alla sentenza definitiva.",
+        "cache": {},
+        "research": {}
+      },
+      "script_params": {
+        "target_words": 11,
+        "min_words": 11,
+        "segment_words": 11,
+        "source_text_verbatim": true,
+        "force_refresh": true,
+        "single_scene": true,
+        "skip_quality_gate": true,
+        "segments": [
+          {
+            "id": "important-phrase-12",
+            "kind": "narration",
+            "topic": "La presunzione di innocenza accompagna ogni indagato fino alla sentenza definitiva.",
+            "source_text": "La presunzione di innocenza accompagna ogni indagato fino alla sentenza definitiva.",
+            "target_words": 11,
+            "min_words": 11,
+            "duration_ms": 6000
+          }
+        ]
+      },
+      "overlay_categories": {
+        "phrases": "enabled",
+        "images": "disabled",
+        "maps": "disabled",
+        "numbers": "disabled",
+        "quotes": "disabled",
+        "brand_text": "disabled",
+        "charts": "disabled",
+        "recaps": "disabled",
+        "titles": "disabled",
+        "bullets": "disabled"
+      },
+      "overlay_style": {
+        "font_family": "playfair_display_italic",
+        "color": [
+          0,
+          0,
+          0,
+          1
+        ],
+        "size": {
+          "font_size": 96
+        },
+        "glow_size": 0,
+        "glow_color": "#000000",
+        "stroke_size": 0,
+        "shadow": {
+          "enabled": false,
+          "color": "#000000",
+          "opacity": 0,
+          "blur": 0,
+          "offset": [
+            0,
+            0
+          ]
+        }
+      },
+      "overlay_background": {
+        "kind": "color",
+        "color": [
+          1,
+          1,
+          1,
+          1
+        ],
+        "opacity": 1
+      },
+      "max_phrase_overlays": 1,
+      "max_overlays_per_scene": 1,
+      "animation_counts": {
+        "maps": 0,
+        "images": 0,
+        "important_phrase": 1,
+        "short_important_phrase": 0,
+        "entities": 0,
+        "entity_caption": 0,
+        "dates": 0,
+        "bullets": 0,
+        "charts": 0,
+        "chain_disabled": 1
+      },
+      "output": {
+        "save_to_db": true,
+        "extract_entities": false,
+        "generate_metadata": true,
+        "generate_timeline": true,
+        "voiceover_enabled": true,
+        "languages": [
+          "it"
+        ],
+        "drive_folder_id": "1J_xUGo_bchzXDIGqSX04CU44c_Dm3SxS",
+        "drive_subfolder_name": "garlasco-important-phrases-15-playfair-white-20261015-r13",
+        "render": {
+          "enabled": true,
+          "drive_folder_id": "1J_xUGo_bchzXDIGqSX04CU44c_Dm3SxS",
+          "drive_subfolder_name": "garlasco-important-phrases-15-playfair-white-20261015-r13",
+          "require_gpu": true,
+          "subtitles": {
+            "enabled": false
+          },
+          "background": {
+            "mode": "none"
+          }
+        },
+        "docs": {
+          "enabled": false
+        },
+        "voiceover_folder_id": "1J_xUGo_bchzXDIGqSX04CU44c_Dm3SxS"
+      },
+      "audio": {
+        "mode": "COMBINED_TIMELINE",
+        "timing": {
+          "mode": "required",
+          "boundary": "word",
+          "formats": [
+            "json",
+            "srt",
+            "vtt"
+          ]
+        },
+        "random_sfx_on_clip_start": false,
+        "random_sfx_on_image_overlay": false
+      },
+      "disable_editorial_overlays": true,
+      "docs": {
+        "enabled": false,
+        "languages": [
+          "it"
+        ],
+        "folder_id": "1J_xUGo_bchzXDIGqSX04CU44c_Dm3SxS"
+      },
+      "media_plan": {
+        "mode": "hybrid",
+        "provider_policy": {
+          "artlist": "disabled",
+          "youtube": "disabled",
+          "internet_images": "disabled",
+          "image_generation": "disabled",
+          "geocoding": "disabled"
+        },
+        "cache": {
+          "write": true
+        },
+        "extraction": {
+          "enabled": true,
+          "include": [
+            "important_phrases"
+          ],
+          "important_phrases": [
+            "La chiusura delle indagini non equivale a una condanna.",
+            "Le parti possono contestare gli accertamenti con consulenze tecniche.",
+            "Ogni reperto va valutato nel contesto e con verifiche incrociate.",
+            "Le relazioni di stampa vanno distinte dagli atti ufficiali depositati.",
+            "La traccia controversa resta oggetto di valutazioni tecniche contrapposte.",
+            "Nessun singolo reperto dimostra da solo una responsabilità.",
+            "Le nuove ipotesi investigative restano da verificare nel contraddittorio.",
+            "Le sentenze definitive vanno separate dalle indagini ancora aperte.",
+            "La procura può valutare processo, archiviazione o ulteriori integrazioni.",
+            "Ogni consulenza va letta insieme ai metodi e ai suoi limiti.",
+            "Le memorie difensive aprono una fase, non anticipano una decisione.",
+            "La presunzione di innocenza accompagna ogni indagato fino alla sentenza definitiva.",
+            "La memoria di Chiara Poggi merita un racconto rispettoso e sobrio.",
+            "Fonti processuali e cronologia aiutano a distinguere fatti e interpretazioni.",
+            "Ogni affermazione del copione deve poggiare su fonti verificabili."
+          ],
+          "max_important_phrases_per_segment": 1
+        },
+        "materialization": {
+          "mode": "selected",
+          "upload_to_drive": true,
+          "wait_for_ready": true
+        },
+        "include_trace": true,
+        "force_refresh_bindings": true
+      },
+      "phrase_motion_family": "documentary_highlighting_v1",
+      "phrase_motions": [
+        "doc_12_quote_line_by_line_reveal"
+      ]
+    },
+    {
+      "id": "garlasco-important-phrases-15-playfair-white-20261015-r13-phrase-13",
+      "project": "garlasco-important-phrases-15-playfair-white-20261015-r13-phrase-13",
+      "title": "Garlasco — frase importante 13 (r13)",
+      "language": "it",
+      "tone": "documentario sobrio, prudente e verificabile",
+      "style": "Genera esattamente il segmento verbatim indicati. Mantieni ogni frase senza aggiungere contenuti. Solo overlay di frasi importanti, una motion distinta per ciascuna. Sfondo bianco pieno, testo nero Playfair Display Italic. Nessuna immagine, mappa, entità, bullet, numero animato o altro overlay.",
+      "model": "gemma4:e4b",
+      "source": {
+        "type": "text",
+        "topic": "La memoria di Chiara Poggi merita un racconto rispettoso e sobrio.",
+        "source_text": "La memoria di Chiara Poggi merita un racconto rispettoso e sobrio.",
+        "cache": {},
+        "research": {}
+      },
+      "script_params": {
+        "target_words": 11,
+        "min_words": 11,
+        "segment_words": 11,
+        "source_text_verbatim": true,
+        "force_refresh": true,
+        "single_scene": true,
+        "skip_quality_gate": true,
+        "segments": [
+          {
+            "id": "important-phrase-13",
+            "kind": "narration",
+            "topic": "La memoria di Chiara Poggi merita un racconto rispettoso e sobrio.",
+            "source_text": "La memoria di Chiara Poggi merita un racconto rispettoso e sobrio.",
+            "target_words": 11,
+            "min_words": 11,
+            "duration_ms": 6000
+          }
+        ]
+      },
+      "overlay_categories": {
+        "phrases": "enabled",
+        "images": "disabled",
+        "maps": "disabled",
+        "numbers": "disabled",
+        "quotes": "disabled",
+        "brand_text": "disabled",
+        "charts": "disabled",
+        "recaps": "disabled",
+        "titles": "disabled",
+        "bullets": "disabled"
+      },
+      "overlay_style": {
+        "font_family": "playfair_display_italic",
+        "color": [
+          0,
+          0,
+          0,
+          1
+        ],
+        "size": {
+          "font_size": 96
+        },
+        "glow_size": 0,
+        "glow_color": "#000000",
+        "stroke_size": 0,
+        "shadow": {
+          "enabled": false,
+          "color": "#000000",
+          "opacity": 0,
+          "blur": 0,
+          "offset": [
+            0,
+            0
+          ]
+        }
+      },
+      "overlay_background": {
+        "kind": "color",
+        "color": [
+          1,
+          1,
+          1,
+          1
+        ],
+        "opacity": 1
+      },
+      "max_phrase_overlays": 1,
+      "max_overlays_per_scene": 1,
+      "animation_counts": {
+        "maps": 0,
+        "images": 0,
+        "important_phrase": 1,
+        "short_important_phrase": 0,
+        "entities": 0,
+        "entity_caption": 0,
+        "dates": 0,
+        "bullets": 0,
+        "charts": 0,
+        "chain_disabled": 1
+      },
+      "output": {
+        "save_to_db": true,
+        "extract_entities": false,
+        "generate_metadata": true,
+        "generate_timeline": true,
+        "voiceover_enabled": true,
+        "languages": [
+          "it"
+        ],
+        "drive_folder_id": "1J_xUGo_bchzXDIGqSX04CU44c_Dm3SxS",
+        "drive_subfolder_name": "garlasco-important-phrases-15-playfair-white-20261015-r13",
+        "render": {
+          "enabled": true,
+          "drive_folder_id": "1J_xUGo_bchzXDIGqSX04CU44c_Dm3SxS",
+          "drive_subfolder_name": "garlasco-important-phrases-15-playfair-white-20261015-r13",
+          "require_gpu": true,
+          "subtitles": {
+            "enabled": false
+          },
+          "background": {
+            "mode": "none"
+          }
+        },
+        "docs": {
+          "enabled": false
+        },
+        "voiceover_folder_id": "1J_xUGo_bchzXDIGqSX04CU44c_Dm3SxS"
+      },
+      "audio": {
+        "mode": "COMBINED_TIMELINE",
+        "timing": {
+          "mode": "required",
+          "boundary": "word",
+          "formats": [
+            "json",
+            "srt",
+            "vtt"
+          ]
+        },
+        "random_sfx_on_clip_start": false,
+        "random_sfx_on_image_overlay": false
+      },
+      "disable_editorial_overlays": true,
+      "docs": {
+        "enabled": false,
+        "languages": [
+          "it"
+        ],
+        "folder_id": "1J_xUGo_bchzXDIGqSX04CU44c_Dm3SxS"
+      },
+      "media_plan": {
+        "mode": "hybrid",
+        "provider_policy": {
+          "artlist": "disabled",
+          "youtube": "disabled",
+          "internet_images": "disabled",
+          "image_generation": "disabled",
+          "geocoding": "disabled"
+        },
+        "cache": {
+          "write": true
+        },
+        "extraction": {
+          "enabled": true,
+          "include": [
+            "important_phrases"
+          ],
+          "important_phrases": [
+            "La chiusura delle indagini non equivale a una condanna.",
+            "Le parti possono contestare gli accertamenti con consulenze tecniche.",
+            "Ogni reperto va valutato nel contesto e con verifiche incrociate.",
+            "Le relazioni di stampa vanno distinte dagli atti ufficiali depositati.",
+            "La traccia controversa resta oggetto di valutazioni tecniche contrapposte.",
+            "Nessun singolo reperto dimostra da solo una responsabilità.",
+            "Le nuove ipotesi investigative restano da verificare nel contraddittorio.",
+            "Le sentenze definitive vanno separate dalle indagini ancora aperte.",
+            "La procura può valutare processo, archiviazione o ulteriori integrazioni.",
+            "Ogni consulenza va letta insieme ai metodi e ai suoi limiti.",
+            "Le memorie difensive aprono una fase, non anticipano una decisione.",
+            "La presunzione di innocenza accompagna ogni indagato fino alla sentenza definitiva.",
+            "La memoria di Chiara Poggi merita un racconto rispettoso e sobrio.",
+            "Fonti processuali e cronologia aiutano a distinguere fatti e interpretazioni.",
+            "Ogni affermazione del copione deve poggiare su fonti verificabili."
+          ],
+          "max_important_phrases_per_segment": 1
+        },
+        "materialization": {
+          "mode": "selected",
+          "upload_to_drive": true,
+          "wait_for_ready": true
+        },
+        "include_trace": true,
+        "force_refresh_bindings": true
+      },
+      "phrase_motion_family": "documentary_highlighting_v1",
+      "phrase_motions": [
+        "doc_13_analog_scanner_highlight"
+      ]
+    },
+    {
+      "id": "garlasco-important-phrases-15-playfair-white-20261015-r13-phrase-14",
+      "project": "garlasco-important-phrases-15-playfair-white-20261015-r13-phrase-14",
+      "title": "Garlasco — frase importante 14 (r13)",
+      "language": "it",
+      "tone": "documentario sobrio, prudente e verificabile",
+      "style": "Genera esattamente il segmento verbatim indicati. Mantieni ogni frase senza aggiungere contenuti. Solo overlay di frasi importanti, una motion distinta per ciascuna. Sfondo bianco pieno, testo nero Playfair Display Italic. Nessuna immagine, mappa, entità, bullet, numero animato o altro overlay.",
+      "model": "gemma4:e4b",
+      "source": {
+        "type": "text",
+        "topic": "Fonti processuali e cronologia aiutano a distinguere fatti e interpretazioni.",
+        "source_text": "Fonti processuali e cronologia aiutano a distinguere fatti e interpretazioni.",
+        "cache": {},
+        "research": {}
+      },
+      "script_params": {
+        "target_words": 10,
+        "min_words": 10,
+        "segment_words": 10,
+        "source_text_verbatim": true,
+        "force_refresh": true,
+        "single_scene": true,
+        "skip_quality_gate": true,
+        "segments": [
+          {
+            "id": "important-phrase-14",
+            "kind": "narration",
+            "topic": "Fonti processuali e cronologia aiutano a distinguere fatti e interpretazioni.",
+            "source_text": "Fonti processuali e cronologia aiutano a distinguere fatti e interpretazioni.",
+            "target_words": 10,
+            "min_words": 10,
+            "duration_ms": 6000
+          }
+        ]
+      },
+      "overlay_categories": {
+        "phrases": "enabled",
+        "images": "disabled",
+        "maps": "disabled",
+        "numbers": "disabled",
+        "quotes": "disabled",
+        "brand_text": "disabled",
+        "charts": "disabled",
+        "recaps": "disabled",
+        "titles": "disabled",
+        "bullets": "disabled"
+      },
+      "overlay_style": {
+        "font_family": "playfair_display_italic",
+        "color": [
+          0,
+          0,
+          0,
+          1
+        ],
+        "size": {
+          "font_size": 96
+        },
+        "glow_size": 0,
+        "glow_color": "#000000",
+        "stroke_size": 0,
+        "shadow": {
+          "enabled": false,
+          "color": "#000000",
+          "opacity": 0,
+          "blur": 0,
+          "offset": [
+            0,
+            0
+          ]
+        }
+      },
+      "overlay_background": {
+        "kind": "color",
+        "color": [
+          1,
+          1,
+          1,
+          1
+        ],
+        "opacity": 1
+      },
+      "max_phrase_overlays": 1,
+      "max_overlays_per_scene": 1,
+      "animation_counts": {
+        "maps": 0,
+        "images": 0,
+        "important_phrase": 1,
+        "short_important_phrase": 0,
+        "entities": 0,
+        "entity_caption": 0,
+        "dates": 0,
+        "bullets": 0,
+        "charts": 0,
+        "chain_disabled": 1
+      },
+      "output": {
+        "save_to_db": true,
+        "extract_entities": false,
+        "generate_metadata": true,
+        "generate_timeline": true,
+        "voiceover_enabled": true,
+        "languages": [
+          "it"
+        ],
+        "drive_folder_id": "1J_xUGo_bchzXDIGqSX04CU44c_Dm3SxS",
+        "drive_subfolder_name": "garlasco-important-phrases-15-playfair-white-20261015-r13",
+        "render": {
+          "enabled": true,
+          "drive_folder_id": "1J_xUGo_bchzXDIGqSX04CU44c_Dm3SxS",
+          "drive_subfolder_name": "garlasco-important-phrases-15-playfair-white-20261015-r13",
+          "require_gpu": true,
+          "subtitles": {
+            "enabled": false
+          },
+          "background": {
+            "mode": "none"
+          }
+        },
+        "docs": {
+          "enabled": false
+        },
+        "voiceover_folder_id": "1J_xUGo_bchzXDIGqSX04CU44c_Dm3SxS"
+      },
+      "audio": {
+        "mode": "COMBINED_TIMELINE",
+        "timing": {
+          "mode": "required",
+          "boundary": "word",
+          "formats": [
+            "json",
+            "srt",
+            "vtt"
+          ]
+        },
+        "random_sfx_on_clip_start": false,
+        "random_sfx_on_image_overlay": false
+      },
+      "disable_editorial_overlays": true,
+      "docs": {
+        "enabled": false,
+        "languages": [
+          "it"
+        ],
+        "folder_id": "1J_xUGo_bchzXDIGqSX04CU44c_Dm3SxS"
+      },
+      "media_plan": {
+        "mode": "hybrid",
+        "provider_policy": {
+          "artlist": "disabled",
+          "youtube": "disabled",
+          "internet_images": "disabled",
+          "image_generation": "disabled",
+          "geocoding": "disabled"
+        },
+        "cache": {
+          "write": true
+        },
+        "extraction": {
+          "enabled": true,
+          "include": [
+            "important_phrases"
+          ],
+          "important_phrases": [
+            "La chiusura delle indagini non equivale a una condanna.",
+            "Le parti possono contestare gli accertamenti con consulenze tecniche.",
+            "Ogni reperto va valutato nel contesto e con verifiche incrociate.",
+            "Le relazioni di stampa vanno distinte dagli atti ufficiali depositati.",
+            "La traccia controversa resta oggetto di valutazioni tecniche contrapposte.",
+            "Nessun singolo reperto dimostra da solo una responsabilità.",
+            "Le nuove ipotesi investigative restano da verificare nel contraddittorio.",
+            "Le sentenze definitive vanno separate dalle indagini ancora aperte.",
+            "La procura può valutare processo, archiviazione o ulteriori integrazioni.",
+            "Ogni consulenza va letta insieme ai metodi e ai suoi limiti.",
+            "Le memorie difensive aprono una fase, non anticipano una decisione.",
+            "La presunzione di innocenza accompagna ogni indagato fino alla sentenza definitiva.",
+            "La memoria di Chiara Poggi merita un racconto rispettoso e sobrio.",
+            "Fonti processuali e cronologia aiutano a distinguere fatti e interpretazioni.",
+            "Ogni affermazione del copione deve poggiare su fonti verificabili."
+          ],
+          "max_important_phrases_per_segment": 1
+        },
+        "materialization": {
+          "mode": "selected",
+          "upload_to_drive": true,
+          "wait_for_ready": true
+        },
+        "include_trace": true,
+        "force_refresh_bindings": true
+      },
+      "phrase_motion_family": "documentary_highlighting_v1",
+      "phrase_motions": [
+        "doc_14_dual_highlight_sequence"
+      ]
+    },
+    {
+      "id": "garlasco-important-phrases-15-playfair-white-20261015-r13-phrase-15",
+      "project": "garlasco-important-phrases-15-playfair-white-20261015-r13-phrase-15",
+      "title": "Garlasco — frase importante 15 (r13)",
+      "language": "it",
+      "tone": "documentario sobrio, prudente e verificabile",
+      "style": "Genera esattamente il segmento verbatim indicati. Mantieni ogni frase senza aggiungere contenuti. Solo overlay di frasi importanti, una motion distinta per ciascuna. Sfondo bianco pieno, testo nero Playfair Display Italic. Nessuna immagine, mappa, entità, bullet, numero animato o altro overlay.",
+      "model": "gemma4:e4b",
+      "source": {
+        "type": "text",
+        "topic": "Ogni affermazione del copione deve poggiare su fonti verificabili.",
+        "source_text": "Ogni affermazione del copione deve poggiare su fonti verificabili.",
+        "cache": {},
+        "research": {}
+      },
+      "script_params": {
+        "target_words": 9,
+        "min_words": 9,
+        "segment_words": 9,
+        "source_text_verbatim": true,
+        "force_refresh": true,
+        "single_scene": true,
+        "skip_quality_gate": true,
+        "segments": [
+          {
+            "id": "important-phrase-15",
+            "kind": "narration",
+            "topic": "Ogni affermazione del copione deve poggiare su fonti verificabili.",
+            "source_text": "Ogni affermazione del copione deve poggiare su fonti verificabili.",
+            "target_words": 9,
+            "min_words": 9,
+            "duration_ms": 6000
+          }
+        ]
+      },
+      "overlay_categories": {
+        "phrases": "enabled",
+        "images": "disabled",
+        "maps": "disabled",
+        "numbers": "disabled",
+        "quotes": "disabled",
+        "brand_text": "disabled",
+        "charts": "disabled",
+        "recaps": "disabled",
+        "titles": "disabled",
+        "bullets": "disabled"
+      },
+      "overlay_style": {
+        "font_family": "playfair_display_italic",
+        "color": [
+          0,
+          0,
+          0,
+          1
+        ],
+        "size": {
+          "font_size": 96
+        },
+        "glow_size": 0,
+        "glow_color": "#000000",
+        "stroke_size": 0,
+        "shadow": {
+          "enabled": false,
+          "color": "#000000",
+          "opacity": 0,
+          "blur": 0,
+          "offset": [
+            0,
+            0
+          ]
+        }
+      },
+      "overlay_background": {
+        "kind": "color",
+        "color": [
+          1,
+          1,
+          1,
+          1
+        ],
+        "opacity": 1
+      },
+      "max_phrase_overlays": 1,
+      "max_overlays_per_scene": 1,
+      "animation_counts": {
+        "maps": 0,
+        "images": 0,
+        "important_phrase": 1,
+        "short_important_phrase": 0,
+        "entities": 0,
+        "entity_caption": 0,
+        "dates": 0,
+        "bullets": 0,
+        "charts": 0,
+        "chain_disabled": 1
+      },
+      "output": {
+        "save_to_db": true,
+        "extract_entities": false,
+        "generate_metadata": true,
+        "generate_timeline": true,
+        "voiceover_enabled": true,
+        "languages": [
+          "it"
+        ],
+        "drive_folder_id": "1J_xUGo_bchzXDIGqSX04CU44c_Dm3SxS",
+        "drive_subfolder_name": "garlasco-important-phrases-15-playfair-white-20261015-r13",
+        "render": {
+          "enabled": true,
+          "drive_folder_id": "1J_xUGo_bchzXDIGqSX04CU44c_Dm3SxS",
+          "drive_subfolder_name": "garlasco-important-phrases-15-playfair-white-20261015-r13",
+          "require_gpu": true,
+          "subtitles": {
+            "enabled": false
+          },
+          "background": {
+            "mode": "none"
+          }
+        },
+        "docs": {
+          "enabled": false
+        },
+        "voiceover_folder_id": "1J_xUGo_bchzXDIGqSX04CU44c_Dm3SxS"
+      },
+      "audio": {
+        "mode": "COMBINED_TIMELINE",
+        "timing": {
+          "mode": "required",
+          "boundary": "word",
+          "formats": [
+            "json",
+            "srt",
+            "vtt"
+          ]
+        },
+        "random_sfx_on_clip_start": false,
+        "random_sfx_on_image_overlay": false
+      },
+      "disable_editorial_overlays": true,
+      "docs": {
+        "enabled": false,
+        "languages": [
+          "it"
+        ],
+        "folder_id": "1J_xUGo_bchzXDIGqSX04CU44c_Dm3SxS"
+      },
+      "media_plan": {
+        "mode": "hybrid",
+        "provider_policy": {
+          "artlist": "disabled",
+          "youtube": "disabled",
+          "internet_images": "disabled",
+          "image_generation": "disabled",
+          "geocoding": "disabled"
+        },
+        "cache": {
+          "write": true
+        },
+        "extraction": {
+          "enabled": true,
+          "include": [
+            "important_phrases"
+          ],
+          "important_phrases": [
+            "La chiusura delle indagini non equivale a una condanna.",
+            "Le parti possono contestare gli accertamenti con consulenze tecniche.",
+            "Ogni reperto va valutato nel contesto e con verifiche incrociate.",
+            "Le relazioni di stampa vanno distinte dagli atti ufficiali depositati.",
+            "La traccia controversa resta oggetto di valutazioni tecniche contrapposte.",
+            "Nessun singolo reperto dimostra da solo una responsabilità.",
+            "Le nuove ipotesi investigative restano da verificare nel contraddittorio.",
+            "Le sentenze definitive vanno separate dalle indagini ancora aperte.",
+            "La procura può valutare processo, archiviazione o ulteriori integrazioni.",
+            "Ogni consulenza va letta insieme ai metodi e ai suoi limiti.",
+            "Le memorie difensive aprono una fase, non anticipano una decisione.",
+            "La presunzione di innocenza accompagna ogni indagato fino alla sentenza definitiva.",
+            "La memoria di Chiara Poggi merita un racconto rispettoso e sobrio.",
+            "Fonti processuali e cronologia aiutano a distinguere fatti e interpretazioni.",
+            "Ogni affermazione del copione deve poggiare su fonti verificabili."
+          ],
+          "max_important_phrases_per_segment": 1
+        },
+        "materialization": {
+          "mode": "selected",
+          "upload_to_drive": true,
+          "wait_for_ready": true
+        },
+        "include_trace": true,
+        "force_refresh_bindings": true
+      },
+      "phrase_motion_family": "documentary_highlighting_v1",
+      "phrase_motions": [
+        "doc_15_documentary_source_focus"
+      ]
+    }
+  ]
+}

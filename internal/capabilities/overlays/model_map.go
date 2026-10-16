@@ -388,15 +388,7 @@ func (m *MapOverlay) Validate(canvasWidth, canvasHeight int, assets []OverlayAss
 }
 
 func isAllowedMapMotion(id string) bool {
-	if id == "image_fade_reveal" || id == "image_focus_reveal" || id == "image_scale_reveal" {
-		return true
-	}
-	for _, candidate := range mapImageMotionCandidates {
-		if id == candidate {
-			return true
-		}
-	}
-	return false
+	return AnimationSelectable(id, "image.map_centered")
 }
 
 // isSingleLineVisibleText reports whether value is non-blank valid UTF-8 with

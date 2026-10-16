@@ -16,7 +16,7 @@ import (
 // must stay on center (a panning or sliding basemap would move the geography
 // away from the pins projected over it).
 func mapMotionIDs() []string {
-	return mapImageMotionCandidates
+	return centeredImageMotionCandidates
 }
 
 // One certified marker treatment for every grounded place, so a map's pins are

@@ -21,7 +21,7 @@ INTERVAL_SECONDS="${VELOX_POLL_INTERVAL_SECONDS:-3}"
   project="$2"
   idem="$3"
   base="$4"
-  response=$(curl -fsS --max-time 30 -X POST "$base/api/script/generate" \
+  response=$(curl -fsS --retry 3 --retry-delay 2 --max-time 30 -X POST "$base/api/script/generate" \
     -H "X-Velox-Admin-Token: $VELOX_ADMIN_TOKEN" \
     -H "Content-Type: application/json" \
     -H "Idempotency-Key: $idem" \
@@ -31,10 +31,22 @@ INTERVAL_SECONDS="${VELOX_POLL_INTERVAL_SECONDS:-3}"
   printf "%s\n" "$response" | jq --arg project "$project" --arg key "$idem" \
     ". + {project: \$project, idempotency_key: \$key}"
   deadline=$(( $(date +%s) + $5 ))
+  misses=0
   while (( $(date +%s) < deadline )); do
-    body=$(curl -fsS --max-time 30 \
+    # A single transient poll failure must not abort a long certification run:
+    # retry the status read, and fail only after several consecutive misses.
+    if ! body=$(curl -fsS --max-time 30 \
       -H "X-Velox-Admin-Token: $VELOX_ADMIN_TOKEN" \
-      "$base/api/jobs/$job_id/full")
+      "$base/api/jobs/$job_id/full"); then
+      misses=$((misses + 1))
+      if (( misses >= 5 )); then
+        echo "poll fallito 5 volte di fila per il job $job_id" >&2
+        exit 2
+      fi
+      sleep "$6"
+      continue
+    fi
+    misses=0
     status=$(printf "%s" "$body" | jq -r ".status // .job.status // \"UNKNOWN\"")
     case "$status" in
       SUCCEEDED|COMPLETED|SUCCESS|DONE)

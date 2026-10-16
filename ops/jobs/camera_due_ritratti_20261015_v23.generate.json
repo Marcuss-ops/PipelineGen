@@ -1,0 +1,192 @@
+{
+  "version": 2,
+  "preset": "custom",
+  "correlation_id": "camera-due-ritratti-20261015-v23",
+  "force_refresh": false,
+  "items": [
+    {
+      "id": "camera-due-ritratti-20261015-v23",
+      "overlay_categories": {
+        "brand_text": "disabled",
+        "bullets": "disabled",
+        "charts": "disabled",
+        "images": "enabled",
+        "maps": "disabled",
+        "numbers": "disabled",
+        "phrases": "disabled",
+        "quotes": "disabled",
+        "recaps": "disabled",
+        "titles": "disabled"
+      },
+      "title": "Due ritratti",
+      "project": "camera-due-ritratti-20261015-v23",
+      "language": "it",
+      "tone": "documentario giornalistico sobrio, verificabile e garantista",
+      "style": "Copione breve, sobrio e garantista; conserva i ruoli e le distinzioni processuali riportati nel testo.",
+      "model": "gemma4:e4b",
+      "source": {
+        "type": "text",
+        "topic": "Due ritratti, una alla volta",
+        "source_text": "Chiara Poggi e Alberto Stasi sono i due nomi di questa prova. Chiara Poggi fu uccisa nel 2007. Alberto Stasi è stato condannato in via definitiva per il suo omicidio. Il servizio distingue la condanna definitiva dalle indagini successive e rispetta la presunzione di innocenza. Le immagini di Chiara Poggi e Alberto Stasi appaiono separatamente. La prima resta inquadrata, poi la camera si sposta con calma verso la seconda e si ferma anche lì. I nomi sono riportati sotto i rispettivi ritratti. Il racconto presenta i fatti senza aggiungere dettagli o attribuire responsabilità ulteriori.",
+        "cache": {},
+        "research": {}
+      },
+      "script_params": {
+        "target_words": 70,
+        "single_scene": true,
+        "min_words": 60,
+        "segment_words": 70,
+        "segments": [
+          {
+            "id": "due-ritratti-uno-alla-volta",
+            "kind": "narration",
+            "extract_entities": "enabled",
+            "topic": "Due ritratti, una alla volta",
+            "source_text": "Chiara Poggi e Alberto Stasi sono i due nomi di questa prova. Chiara Poggi fu uccisa nel 2007. Alberto Stasi è stato condannato in via definitiva per il suo omicidio. Il servizio distingue la condanna definitiva dalle indagini successive e rispetta la presunzione di innocenza. Le immagini di Chiara Poggi e Alberto Stasi appaiono separatamente. La prima resta inquadrata, poi la camera si sposta con calma verso la seconda e si ferma anche lì. I nomi sono riportati sotto i rispettivi ritratti. Il racconto presenta i fatti senza aggiungere dettagli o attribuire responsabilità ulteriori.",
+            "target_words": 70,
+            "min_words": 60
+          }
+        ],
+        "source_text_verbatim": true,
+        "skip_quality_gate": true,
+        "force_refresh": false
+      },
+      "output": {
+        "render": {
+          "enabled": true,
+          "background": {
+            "mode": "none"
+          },
+          "subtitles": {},
+          "drive_folder_id": "1J_xUGo_bchzXDIGqSX04CU44c_Dm3SxS",
+          "drive_subfolder_name": "camera-due-ritratti-20261015-v23",
+          "require_gpu": true
+        },
+        "audio": {},
+        "extract_entities": "enabled",
+        "generate_metadata": "enabled",
+        "save_to_db": true,
+        "generate_timeline": true,
+        "voiceover_enabled": "enabled",
+        "drive_folder_id": "1J_xUGo_bchzXDIGqSX04CU44c_Dm3SxS",
+        "languages": [
+          "it"
+        ],
+        "drive_subfolder_name": "garlasco-camera-pan-playfair-bianco-20261015-v9"
+      },
+      "overlay_background": {
+        "kind": "color",
+        "color": [
+          1,
+          1,
+          1,
+          1
+        ]
+      },
+      "overlay_style": {
+        "shadow": {
+          "color": "#02040A",
+          "opacity": 0.7,
+          "blur": 14,
+          "offset": [
+            0,
+            4
+          ]
+        },
+        "color": [
+          0.04,
+          0.04,
+          0.05,
+          1
+        ],
+        "size": {
+          "font_size": 82
+        },
+        "font_family": "playfair_display_italic",
+        "glow_size": 10,
+        "stroke_size": 2
+      },
+      "map_type": "roadmap",
+      "map_camera_animation": "random",
+      "map_label_animation": "random",
+      "max_map_overlays": 1,
+      "max_image_overlays": 2,
+      "overlay_group_limits": {
+        "entities_with_text": 2,
+        "images": 2,
+        "long_phrases": 0,
+        "maps": 0,
+        "short_phrases": 0
+      },
+      "animation_counts": {
+        "dates": 5,
+        "entities": 2,
+        "entity_caption": 2,
+        "images": 2,
+        "images_with_text": 0,
+        "maps": 1,
+        "short_important_phrase": 0,
+        "short_phrases": 0,
+        "long_phrases": 0
+      },
+      "entity_style_id": "random",
+      "disable_editorial_overlays": true,
+      "audio": {
+        "mode": "COMBINED_TIMELINE",
+        "timing": {
+          "mode": "required",
+          "boundary": "word",
+          "formats": [
+            "json",
+            "srt",
+            "vtt"
+          ]
+        }
+      },
+      "docs": {
+        "enabled": false
+      },
+      "media_plan": {
+        "mode": "hybrid",
+        "provider_policy": {
+          "artlist": "disabled",
+          "youtube": "disabled",
+          "internet_images": "enabled",
+          "image_generation": "disabled",
+          "geocoding": "enabled"
+        },
+        "cache": {
+          "read": true,
+          "write": true
+        },
+        "extraction": {
+          "enabled": true,
+          "include": [
+            "persons"
+          ],
+          "max_entities_per_segment": 5,
+          "max_important_phrases_per_segment": 3,
+          "max_image_queries_per_segment": 5,
+          "entity_images": {
+            "enabled": true,
+            "entity_types": [
+              "PERSON"
+            ],
+            "max_per_entity": 1,
+            "scope": "per_scene",
+            "upload_to_drive": true
+          }
+        },
+        "planner": {
+          "candidate_limit": 30
+        },
+        "materialization": {
+          "mode": "selected",
+          "upload_to_drive": true,
+          "wait_for_ready": true
+        },
+        "include_trace": true
+      }
+    }
+  ]
+}
