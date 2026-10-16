@@ -48,8 +48,18 @@ verify-foundation: go-version-check verify-no-secrets verify-repository-integrit
 	@bash -n scripts/hooks/pre-push scripts/hooks/pre-commit
 	@echo "✅ Foundation verification passed"
 
+# verify-overlay-model-alias — regeneration drift gate for the one generated
+# file in the overlay stack: internal/capabilities/overlays/model_alias.go is a
+# projection of the exported symbols of overlays/model (plus the two pinned
+# planner-facing aliases), and cmd/overlay-model-alias-gen owns the file. Its
+# default mode rebuilds the facade in memory and exits 1 on drift, exactly like
+# cmd/model-registry-gen does for the Python model mirror.
+verify-overlay-model-alias: go-version-check
+	$(GO) run ./cmd/overlay-model-alias-gen
+	@echo "✅ Overlay model-alias facade verified"
+
 # verify-static — Go static analysis + full build (Web Admin removed 2026-08-25).
-verify-static: go-version-check
+verify-static: go-version-check verify-overlay-model-alias
 
 	$(GO) vet ./...
 	$(GO) build ./...
