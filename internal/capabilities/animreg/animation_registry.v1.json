@@ -8,6 +8,183 @@
     "terrain": "esri_dark"
   },
   "map_type_default": "esri_dark",
+  "item_motion_groups": {
+    "by_kind": {
+      "bullet": [
+        "phrase.all",
+        "phrase.short",
+        "bullet"
+      ],
+      "important_phrase": [
+        "phrase.all",
+        "phrase.short",
+        "bullet"
+      ],
+      "text_phrase": [
+        "phrase.all",
+        "phrase.short",
+        "bullet"
+      ],
+      "chart": [
+        "data"
+      ],
+      "data": [
+        "data"
+      ],
+      "shape": [
+        "phrase.all",
+        "image.all",
+        "data"
+      ],
+      "logo": [
+        "image.all",
+        "image.lightleak",
+        "phrase.all"
+      ],
+      "image": [
+        "image.all",
+        "image.lightleak",
+        "phrase.all"
+      ],
+      "entity_image": [
+        "image.all",
+        "image.lightleak",
+        "phrase.all"
+      ],
+      "image_popup": [
+        "image.all",
+        "image.lightleak",
+        "phrase.all"
+      ],
+      "product": [
+        "image.all",
+        "image.lightleak",
+        "phrase.all"
+      ],
+      "map": [
+        "image.map_centered"
+      ]
+    },
+    "number_template_contains": [
+      {
+        "any_of": [
+          "DATE"
+        ],
+        "groups": [
+          "entity.date"
+        ]
+      },
+      {
+        "any_of": [
+          "METRIC",
+          "STAT"
+        ],
+        "groups": [
+          "entity.metric"
+        ]
+      }
+    ],
+    "number_fallback": [
+      "entity.date",
+      "entity.metric",
+      "phrase.all"
+    ],
+    "chart_params": [
+      "chart_bar",
+      "chart_card"
+    ],
+    "chart_groups": [
+      "data"
+    ],
+    "default": [
+      "phrase.all",
+      "phrase.short",
+      "image.all",
+      "image.lightleak",
+      "entity.caption",
+      "entity.date",
+      "entity.metric",
+      "data",
+      "bullet"
+    ]
+  },
+  "visual_intents": {
+    "PERSON": {
+      "kind": "ENTITY_IMAGE",
+      "family": "person_image",
+      "priority": 80
+    },
+    "ORGANIZATION": {
+      "kind": "ORGANIZATION_CARD",
+      "family": "organization",
+      "priority": 50
+    },
+    "LOCATION": {
+      "kind": "LOCATION_CARD",
+      "family": "location",
+      "priority": 55
+    },
+    "DATE": {
+      "kind": "DATE_BADGE",
+      "family": "date",
+      "priority": 60
+    },
+    "MONEY": {
+      "kind": "IMPORTANT_NUMBER",
+      "family": "money",
+      "priority": 90
+    },
+    "NUMBER": {
+      "kind": "IMPORTANT_NUMBER",
+      "family": "number",
+      "priority": 70
+    },
+    "PERCENTAGE": {
+      "kind": "IMPORTANT_NUMBER",
+      "family": "percentage",
+      "priority": 88
+    },
+    "IMPORTANT_PHRASE": {
+      "kind": "IMPORTANT_TEXT",
+      "family": "important_phrase",
+      "priority": 100
+    },
+    "QUOTE": {
+      "kind": "QUOTE_CARD",
+      "family": "quote",
+      "priority": 75
+    },
+    "CLAIM": {
+      "kind": "IMPORTANT_TEXT",
+      "family": "claim",
+      "priority": 72
+    },
+    "STATISTIC": {
+      "kind": "IMPORTANT_NUMBER",
+      "family": "statistic",
+      "priority": 85
+    },
+    "RANKING": {
+      "kind": "RANKING_BADGE",
+      "family": "ranking",
+      "priority": 75
+    },
+    "TITLE": {
+      "kind": "TITLE_CARD",
+      "family": "title",
+      "priority": 70
+    },
+    "EVENT": {
+      "kind": "EVENT_BADGE",
+      "family": "event",
+      "priority": 50
+    },
+    "IMAGE_ENTITY": {
+      "kind": "ENTITY_IMAGE",
+      "family": "image_entity",
+      "priority": 60
+    }
+  },
   "entries": [
     {
       "id": "air_rise_type_on",

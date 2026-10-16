@@ -34,32 +34,27 @@ func validateAnimationReferences(item OverlayItem) error {
 	return nil
 }
 
+// motionGroupsForItem resolves which registry groups an item of the given kind
+// may sample a motion from. The kind→group mapping, the number-template rules
+// and the chart upgrade are authored in the animation registry
+// (`item_motion_groups`); this function only applies them, so adding a kind or
+// remapping a group is a registry edit, not a code change.
 func motionGroupsForItem(kind, template string, params map[string]any) []string {
 	switch kind {
-	case "text_phrase", "important_phrase", "bullet":
-		return []string{"phrase.all", "phrase.short", "bullet"}
 	case "number":
-		template = strings.ToUpper(strings.TrimSpace(template))
-		if strings.Contains(template, "DATE") {
-			return []string{"entity.date"}
-		}
-		if strings.Contains(template, "METRIC") || strings.Contains(template, "STAT") {
-			return []string{"entity.metric"}
-		}
-		return []string{"entity.date", "entity.metric", "phrase.all"}
+		return capanimreg.ItemNumberMotionGroups(template)
 	case "shape", "chart", "data":
-		if params["chart_bar"] == true || params["chart_card"] == true || kind == "data" || kind == "chart" {
-			return []string{"data"}
+		for _, param := range capanimreg.ItemChartParams() {
+			if params[param] == true {
+				return capanimreg.ItemChartGroups()
+			}
 		}
-		return []string{"phrase.all", "image.all", "data"}
-	case "logo":
-		return []string{"image.all", "image.lightleak", "phrase.all"}
-	case "image", "entity_image", "image_popup", "product":
-		return []string{"image.all", "image.lightleak", "phrase.all"}
-	case "map":
-		return []string{"image.map_centered"}
+		return capanimreg.ItemMotionGroups(kind)
 	default:
-		return []string{"phrase.all", "phrase.short", "image.all", "image.lightleak", "entity.caption", "entity.date", "entity.metric", "data", "bullet"}
+		if groups := capanimreg.ItemMotionGroups(kind); groups != nil {
+			return groups
+		}
+		return capanimreg.ItemDefaultMotionGroups()
 	}
 }
 
