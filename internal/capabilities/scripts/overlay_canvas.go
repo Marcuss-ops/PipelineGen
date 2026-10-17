@@ -509,3 +509,18 @@ func effectivePhraseOverlayCeiling(requested int, limits map[string]int) int {
 	}
 	return ceiling
 }
+
+// effectiveMapOverlayCeiling combines the request and group caps under the
+// hard run limit. Maps are scene-synced camera compositions, so up to three
+// may be admitted in one run without allowing payloads to create unbounded
+// basemap renders.
+func effectiveMapOverlayCeiling(requested int, limits map[string]int) int {
+	ceiling := capabilityoverlay.MaxMapOverlaysPerRun
+	if requested > 0 && requested < ceiling {
+		ceiling = requested
+	}
+	if group, ok := overlayGroupLimit(limits, overlayGroupMaps); ok && group > 0 && group < ceiling {
+		ceiling = group
+	}
+	return ceiling
+}

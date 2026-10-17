@@ -71,7 +71,7 @@ const MaxMapOverlaysPerScene = 2
 
 // MaxMapOverlaysPerRun bounds the number of grounded map overlays admitted to
 // one run. Each map must still have a grounded location and a ready plate.
-const MaxMapOverlaysPerRun = 5
+const MaxMapOverlaysPerRun = 3
 
 // MaxNumberOverlaysPerRun bounds value callouts independently so metrics,
 // money and dates can survive the editorial budget without displacing the

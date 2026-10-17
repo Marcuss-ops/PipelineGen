@@ -271,24 +271,11 @@ func compileOverlayPlanWithMotionOffset(result *GenerateResult, language Languag
 	// canvas because that is the run-level render context this function
 	// already receives.
 	plannerConfig.RunLevelPhraseOverlayLimit = phraseCeiling
-	// Run policy 2026-10-16: ONE map per job, chosen by the deterministic
-	// seeded sampler, no matter how many the payload asks for. Multiple map
-	// overlays confused the viewer (back-to-back basemaps with competing
-	// camera moves), so the run-level compile clamps every request to a
-	// single random map; a payload that leaves the cap empty keeps the same
-	// behaviour instead of inheriting the historical multi-map ceiling.
-	mapLimit := 1
-	if canvas.MaxMapOverlays > 0 && canvas.MaxMapOverlays < mapLimit {
-		mapLimit = canvas.MaxMapOverlays
-	}
-	// Single-map-per-job policy (2026-10-16): overlay_group_limits["maps"]
-	// can no longer raise the ceiling above one map. Historical payloads
-	// ask for 5 maps and that multi-basemap sequence with competing camera
-	// moves is what confused viewers. An explicit positive group limit
-	// below the ceiling is still honored.
-	if n, ok := overlayGroupLimit(canvas.OverlayGroupLimits, overlayGroupMaps); ok && n > 0 && n < mapLimit {
-		mapLimit = n
-	}
+	// Keep the requested map group within the certified run ceiling while
+	// allowing the caller to select up to three scene-synced map animations.
+	// The former unconditional one-map clamp silently ignored payloads that
+	// explicitly requested a small set of maps.
+	mapLimit := effectiveMapOverlayCeiling(canvas.MaxMapOverlays, canvas.OverlayGroupLimits)
 	plannerConfig.RunLevelMapOverlayLimit = mapLimit
 	plannerPlan, err := capabilityoverlay.BuildPlan(capabilityoverlay.PlanInput{
 		PlanID: planID, VideoID: videoID, ProjectID: projectID,

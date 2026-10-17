@@ -654,3 +654,35 @@ func TestBuildPlanExplicitMultiMapRequestScopesMapsToScenes(t *testing.T) {
 		t.Fatalf("multi-map plan does not seal: %v", err)
 	}
 }
+
+func TestBuildPlanMultiMapRequestUsesBudgetForDistinctPlaces(t *testing.T) {
+	plate := testMapPlate(t, "plate-rome", romeLat, romeLon, mapTestWidth, mapTestHeight)
+	scenes := []SceneInput{
+		{ID: "scene-rome-first", Maps: []MapCandidate{groundedCandidate(t, "city:rome", "Rome", romeLat, romeLon, 1_000_000, 1_000_000)}},
+		{ID: "scene-rome-repeat", Maps: []MapCandidate{groundedCandidate(t, "city:rome", "Rome", romeLat, romeLon, 10_000_000, 1_000_000)}},
+		{ID: "scene-distinct-place", Maps: []MapCandidate{groundedCandidate(t, "city:ciampino", "Ciampino", romeLat+0.01, romeLon+0.01, 20_000_000, 1_000_000)}},
+	}
+	config := AllCandidatesPlannerConfig(scenes)
+	config.RunLevelMapOverlayLimit = 3
+	plan, err := BuildPlan(PlanInput{
+		PlanID: "map-plan-distinct", VideoID: "map-video-distinct",
+		Width: mapTestWidth, Height: mapTestHeight, FPSNum: 30, FPSDen: 1,
+		PlateResolver:   stubPlateResolver{plates: []MapPlate{plate}},
+		AnimationCounts: map[string]int{"maps": 3}, Scenes: scenes,
+	}, config)
+	if err != nil {
+		t.Fatalf("build plan: %v", err)
+	}
+	var maps []OverlayItem
+	for _, item := range plan.Items {
+		if item.Kind == "map" {
+			maps = append(maps, item)
+		}
+	}
+	if len(maps) != 2 {
+		t.Fatalf("explicit multi-map request emitted %d maps, want two unique places", len(maps))
+	}
+	if maps[0].SceneID != "scene-rome-first" || maps[1].SceneID != "scene-distinct-place" {
+		t.Fatalf("map placements = [%s, %s], want first Rome and distinct Ciampino; duplicate Rome should be skipped", maps[0].SceneID, maps[1].SceneID)
+	}
+}

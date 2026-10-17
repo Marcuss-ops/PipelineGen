@@ -45,7 +45,7 @@ lives **inside an item**; there are no top-level shortcut keys.
       },
       "map_type": "satellite",
       "map_camera_animation": "slow_approach",
-      "map_label_animation": "gentle_fade",
+      "map_label_animation": "none",
       "map_animation": "focus_title",
       "animation_policies": [
         {"target":"important_phrase","group_id":"scene-1","motion_id":"phrase_apple_clean_07_slide_up_soft"},
@@ -151,43 +151,16 @@ uses Esri World Imagery, roadmap the clean street-map canvas, terrain
 topographic tiles. `random` samples only this 3-style classic palette
 (never ocean/light/dark/natgeo decorative canvases); omission means
 `satellite`, never a random pick.
-`map_camera_animation` selects ONE camera move for the whole run
-(`slow_approach`, `wide_context`, `tilt_reveal`, `orbit_arrival`,
-`signature_dive`, `steady_hold`, `fast_push`) or `random`; omission and
-`random` select a stable seeded choice from the calm random pool
-(`slow_approach`, `wide_context`, `tilt_reveal`, `orbit_arrival`) so retries
-stay byte-identical. `map_label_animation` works the same way: an explicit
-certified id (`gentle_fade`, `soft_glow`, `clean_fade`, `word_soft_fade`,
-`slow_fade`, `quiet_bloom`, `quick_fade`, `silky_fade`, `subtle_halo`,
-`cinematic_fade`, `diffuse_city_beacon`, `rise_up`, `pop_in`,
-`soft_tracking`, `title_top`, `badge_side`, `huge_center`, `small_above`,
-`caption_card`, `editorial_serif`, `gpin_bubble`, `card_glass`, `bare_big`,
-`ribbon`, `dot_ring`, `outline_box`) pins every map label in the video,
-while omission/`random` samples the ten calm fades. The six geometries use
-their own size/position/typeface; the six compositions (google pin + bubble,
-glass card, naked type, full-width ribbon, minimal dot, wireframe box) also
-hide the bottom rail and draw their own marker. Unknown ids fail closed
-at plan compilation.
-`map_animation` selects ONE of the 15 cartographic motion-graphic systems
-(`simple_label`, `region_zoom`, `bracket_label`, `photo_callout`,
-`pulse_marker`, `multi_locations`, `focus_title`, `route_line`,
-`spotlight`, `region_fill`, `info_card`, `vertical_callout`, `icon_label`,
-`label_reveal`, `global_context`) plus the six certified editorial scenes
-(`ed_saudi_base`, `ed_iran_glow`, `ed_yemen_fill`, `ed_yemen_markers`,
-`ed_hormuz_routes`, `ed_mocha_tactical`); each owns marker + text and
-suppresses the standard rail. Omission and `random` sample one composition
-deterministically per map item. Random selection excludes systems whose
-minimum pin requirements do not match this map; explicitly selecting an
-incompatible composition is still rejected by the renderer. The default
-basemap remains `satellite` (Esri `esri_sat`, “Astri Map Classic”); omitted
-`map_animation` now means one random certified composition, while
-`map_camera_animation` and `map_label_animation` retain their calm defaults.
-Optional per-pin extras ride on the map item's `map_pin_extras` param keyed
-by pin id (`subtitle`, `category` wind/solar/focus, `color` #RRGGBB,
-`value` + `unit` for the info-card counter, `photo` absolute asset path,
-`location`); absent extras degrade gracefully and are never fabricated.
-Region systems use a circular highlight (no polygon dataset exists);
-the global-context inset is a stylized schematic, not a second real map.
+`map_camera_animation` currently allows only `slow_approach`; omission and
+`random` resolve to that deterministic camera move. `map_label_animation` is
+fixed to `none` because retained maps draw their own text. The catalog has
+exactly ten animations: six Saudi/Middle East scenes (`ed_saudi_base`,
+`ed_iran_glow`, `ed_yemen_fill`, `ed_yemen_markers`, `ed_hormuz_routes`,
+`ed_mocha_tactical`), three ordinary glow maps (`region_zoom`, `pulse_marker`,
+`spotlight`), and `slow_approach`. Random map selection uses only the three
+ordinary compositions; regional scenes require explicit selection.
+`map_animation` accepts those nine compositions and fails closed on other IDs.
+
 `phrase_motions`, `image_motions`, and `entity_image_motions` accept arrays of
 certified animation IDs and rotate through the requested pool. `phrase_motions`
 also accepts the 15 `doc_01`…`doc_15` Documentary Highlighting showcase IDs;

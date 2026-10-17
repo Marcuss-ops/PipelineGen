@@ -3,7 +3,7 @@
   "version": 1,
   "map_type_aliases": {
     "": "esri_dark",
-    "satellite": "esri_dark",
+    "satellite": "esri_sat",
     "roadmap": "esri_light",
     "terrain": "esri_dark"
   },
@@ -595,34 +595,6 @@
       }
     },
     {
-      "id": "badge_side",
-      "families": [
-        "map.label"
-      ],
-      "lanes": [],
-      "status": "active",
-      "renderer_supported": true,
-      "targets": [],
-      "kind": "map_animation",
-      "order": {
-        "map.label": 15
-      }
-    },
-    {
-      "id": "bare_big",
-      "families": [
-        "map.label"
-      ],
-      "lanes": [],
-      "status": "active",
-      "renderer_supported": true,
-      "targets": [],
-      "kind": "map_animation",
-      "order": {
-        "map.label": 22
-      }
-    },
-    {
       "id": "blur_focus_in",
       "families": [
         "authored.generic_motion_v1"
@@ -648,20 +620,6 @@
         "text"
       ],
       "chronontemplate_family": "generic_motion_v1"
-    },
-    {
-      "id": "bracket_label",
-      "families": [
-        "map.composition"
-      ],
-      "lanes": [],
-      "status": "active",
-      "renderer_supported": true,
-      "targets": [],
-      "kind": "map_animation",
-      "order": {
-        "map.composition": 4
-      }
     },
     {
       "id": "brush_arrow_point",
@@ -1049,34 +1007,6 @@
       "chronontemplate_family": "brush_v1"
     },
     {
-      "id": "caption_card",
-      "families": [
-        "map.label"
-      ],
-      "lanes": [],
-      "status": "active",
-      "renderer_supported": true,
-      "targets": [],
-      "kind": "map_animation",
-      "order": {
-        "map.label": 18
-      }
-    },
-    {
-      "id": "card_glass",
-      "families": [
-        "map.label"
-      ],
-      "lanes": [],
-      "status": "active",
-      "renderer_supported": true,
-      "targets": [],
-      "kind": "map_animation",
-      "order": {
-        "map.label": 21
-      }
-    },
-    {
       "id": "center_expansion",
       "families": [
         "authored.generic_motion_v1"
@@ -1173,42 +1103,6 @@
       "order": {
         "phrase.classic_apple": 3,
         "phrase.all": 3
-      }
-    },
-    {
-      "id": "cinematic_fade",
-      "families": [
-        "map.label"
-      ],
-      "lanes": [],
-      "status": "active",
-      "renderer_supported": true,
-      "targets": [],
-      "kind": "map_animation",
-      "random": [
-        "map.camera",
-        "map.label"
-      ],
-      "order": {
-        "map.label": 9
-      }
-    },
-    {
-      "id": "clean_fade",
-      "families": [
-        "map.label"
-      ],
-      "lanes": [],
-      "status": "active",
-      "renderer_supported": true,
-      "targets": [],
-      "kind": "map_animation",
-      "random": [
-        "map.camera",
-        "map.label"
-      ],
-      "order": {
-        "map.label": 2
       }
     },
     {
@@ -2036,20 +1930,6 @@
       }
     },
     {
-      "id": "diffuse_city_beacon",
-      "families": [
-        "map.label"
-      ],
-      "lanes": [],
-      "status": "active",
-      "renderer_supported": true,
-      "targets": [],
-      "kind": "map_animation",
-      "order": {
-        "map.label": 10
-      }
-    },
-    {
       "id": "doc_01_yellow_marker_sweep",
       "families": [
         "phrase.documentary",
@@ -2410,20 +2290,6 @@
       }
     },
     {
-      "id": "dot_ring",
-      "families": [
-        "map.label"
-      ],
-      "lanes": [],
-      "status": "active",
-      "renderer_supported": true,
-      "targets": [],
-      "kind": "map_animation",
-      "order": {
-        "map.label": 24
-      }
-    },
-    {
       "id": "duotone_block_rise",
       "families": [
         "phrase.classic_apple",
@@ -2593,20 +2459,6 @@
         "text"
       ],
       "chronontemplate_family": "apple_v2"
-    },
-    {
-      "id": "editorial_serif",
-      "families": [
-        "map.label"
-      ],
-      "lanes": [],
-      "status": "active",
-      "renderer_supported": true,
-      "targets": [],
-      "kind": "map_animation",
-      "order": {
-        "map.label": 19
-      }
     },
     {
       "id": "elastic_pop",
@@ -2897,20 +2749,6 @@
       "chronontemplate_family": "generic_motion_v1"
     },
     {
-      "id": "fast_push",
-      "families": [
-        "map.camera"
-      ],
-      "lanes": [],
-      "status": "active",
-      "renderer_supported": true,
-      "targets": [],
-      "kind": "map_animation",
-      "order": {
-        "map.camera": 6
-      }
-    },
-    {
       "id": "fluid_gradient_text_flow",
       "families": [
         "phrase.classic_apple",
@@ -2962,43 +2800,6 @@
         "text"
       ],
       "chronontemplate_family": "apple_v2"
-    },
-    {
-      "id": "focus_title",
-      "families": [
-        "map.composition"
-      ],
-      "lanes": [],
-      "status": "active",
-      "renderer_supported": true,
-      "targets": [],
-      "kind": "map_animation",
-      "random": [
-        "map.camera",
-        "map.label",
-        "map.composition"
-      ],
-      "order": {
-        "map.composition": 8
-      }
-    },
-    {
-      "id": "gentle_fade",
-      "families": [
-        "map.label"
-      ],
-      "lanes": [],
-      "status": "active",
-      "renderer_supported": true,
-      "targets": [],
-      "kind": "map_animation",
-      "random": [
-        "map.camera",
-        "map.label"
-      ],
-      "order": {
-        "map.label": 0
-      }
     },
     {
       "id": "glass_morphism_fade",
@@ -3063,34 +2864,6 @@
       }
     },
     {
-      "id": "global_context",
-      "families": [
-        "map.composition"
-      ],
-      "lanes": [],
-      "status": "active",
-      "renderer_supported": true,
-      "targets": [],
-      "kind": "map_animation",
-      "order": {
-        "map.composition": 16
-      }
-    },
-    {
-      "id": "gpin_bubble",
-      "families": [
-        "map.label"
-      ],
-      "lanes": [],
-      "status": "active",
-      "renderer_supported": true,
-      "targets": [],
-      "kind": "map_animation",
-      "order": {
-        "map.label": 20
-      }
-    },
-    {
       "id": "hero_scale_focus",
       "families": [
         "phrase.modern_apple",
@@ -3152,34 +2925,6 @@
       "order": {
         "phrase.classic_apple": 12,
         "phrase.all": 12
-      }
-    },
-    {
-      "id": "huge_center",
-      "families": [
-        "map.label"
-      ],
-      "lanes": [],
-      "status": "active",
-      "renderer_supported": true,
-      "targets": [],
-      "kind": "map_animation",
-      "order": {
-        "map.label": 16
-      }
-    },
-    {
-      "id": "icon_label",
-      "families": [
-        "map.composition"
-      ],
-      "lanes": [],
-      "status": "active",
-      "renderer_supported": true,
-      "targets": [],
-      "kind": "map_animation",
-      "order": {
-        "map.composition": 14
       }
     },
     {
@@ -4063,20 +3808,6 @@
       }
     },
     {
-      "id": "info_card",
-      "families": [
-        "map.composition"
-      ],
-      "lanes": [],
-      "status": "active",
-      "renderer_supported": true,
-      "targets": [],
-      "kind": "map_animation",
-      "order": {
-        "map.composition": 12
-      }
-    },
-    {
       "id": "ink_bleed_spread",
       "families": [
         "phrase.all"
@@ -4205,20 +3936,6 @@
       "order": {
         "phrase.classic_apple": 15,
         "phrase.all": 15
-      }
-    },
-    {
-      "id": "label_reveal",
-      "families": [
-        "map.composition"
-      ],
-      "lanes": [],
-      "status": "active",
-      "renderer_supported": true,
-      "targets": [],
-      "kind": "map_animation",
-      "order": {
-        "map.composition": 15
       }
     },
     {
@@ -4450,34 +4167,6 @@
         "text"
       ],
       "chronontemplate_family": "apple_v2"
-    },
-    {
-      "id": "location_focus",
-      "families": [
-        "map.composition"
-      ],
-      "lanes": [],
-      "status": "active",
-      "renderer_supported": true,
-      "targets": [],
-      "kind": "map_animation",
-      "order": {
-        "map.composition": 0
-      }
-    },
-    {
-      "id": "location_pulse",
-      "families": [
-        "map.composition"
-      ],
-      "lanes": [],
-      "status": "active",
-      "renderer_supported": true,
-      "targets": [],
-      "kind": "map_animation",
-      "order": {
-        "map.composition": 1
-      }
     },
     {
       "id": "magnetic_letters_converge",
@@ -5446,21 +5135,6 @@
       "chronontemplate_family": "apple_v2"
     },
     {
-      "id": "multi_locations",
-      "families": [
-        "map.composition"
-      ],
-      "lanes": [],
-      "status": "active",
-      "renderer_supported": true,
-      "targets": [],
-      "kind": "map_animation",
-      "order": {
-        "map.composition": 7
-      },
-      "min_pin_count": 2
-    },
-    {
       "id": "neon_flicker_ignite",
       "families": [
         "phrase.classic_apple",
@@ -5495,34 +5169,6 @@
         "caption"
       ],
       "chronontemplate_family": "generic_motion_v1"
-    },
-    {
-      "id": "orbit_arrival",
-      "families": [
-        "map.camera"
-      ],
-      "lanes": [],
-      "status": "active",
-      "renderer_supported": true,
-      "targets": [],
-      "kind": "map_animation",
-      "order": {
-        "map.camera": 3
-      }
-    },
-    {
-      "id": "outline_box",
-      "families": [
-        "map.label"
-      ],
-      "lanes": [],
-      "status": "active",
-      "renderer_supported": true,
-      "targets": [],
-      "kind": "map_animation",
-      "order": {
-        "map.label": 25
-      }
     },
     {
       "id": "paint_blob_reveal",
@@ -5701,20 +5347,6 @@
       "order": {
         "phrase.classic_apple": 19,
         "phrase.all": 19
-      }
-    },
-    {
-      "id": "photo_callout",
-      "families": [
-        "map.composition"
-      ],
-      "lanes": [],
-      "status": "active",
-      "renderer_supported": true,
-      "targets": [],
-      "kind": "map_animation",
-      "order": {
-        "map.composition": 5
       }
     },
     {
@@ -6834,20 +6466,6 @@
       "chronontemplate_family": "apple_v2"
     },
     {
-      "id": "pop_in",
-      "families": [
-        "map.label"
-      ],
-      "lanes": [],
-      "status": "active",
-      "renderer_supported": true,
-      "targets": [],
-      "kind": "map_animation",
-      "order": {
-        "map.label": 12
-      }
-    },
-    {
       "id": "precision_spring_up",
       "families": [
         "authored.generic_motion_v1"
@@ -6964,48 +6582,10 @@
       "targets": [],
       "kind": "map_animation",
       "random": [
-        "map.camera",
-        "map.label",
         "map.composition"
       ],
       "order": {
         "map.composition": 6
-      }
-    },
-    {
-      "id": "quick_fade",
-      "families": [
-        "map.label"
-      ],
-      "lanes": [],
-      "status": "active",
-      "renderer_supported": true,
-      "targets": [],
-      "kind": "map_animation",
-      "random": [
-        "map.camera",
-        "map.label"
-      ],
-      "order": {
-        "map.label": 6
-      }
-    },
-    {
-      "id": "quiet_bloom",
-      "families": [
-        "map.label"
-      ],
-      "lanes": [],
-      "status": "active",
-      "renderer_supported": true,
-      "targets": [],
-      "kind": "map_animation",
-      "random": [
-        "map.camera",
-        "map.label"
-      ],
-      "order": {
-        "map.label": 5
       }
     },
     {
@@ -7032,25 +6612,6 @@
       }
     },
     {
-      "id": "region_fill",
-      "families": [
-        "map.composition"
-      ],
-      "lanes": [],
-      "status": "active",
-      "renderer_supported": true,
-      "targets": [],
-      "kind": "map_animation",
-      "random": [
-        "map.camera",
-        "map.label",
-        "map.composition"
-      ],
-      "order": {
-        "map.composition": 11
-      }
-    },
-    {
       "id": "region_zoom",
       "families": [
         "map.composition"
@@ -7061,8 +6622,6 @@
       "targets": [],
       "kind": "map_animation",
       "random": [
-        "map.camera",
-        "map.label",
         "map.composition"
       ],
       "order": {
@@ -7082,34 +6641,6 @@
         "text"
       ],
       "chronontemplate_family": "generic_motion_v1"
-    },
-    {
-      "id": "ribbon",
-      "families": [
-        "map.label"
-      ],
-      "lanes": [],
-      "status": "active",
-      "renderer_supported": true,
-      "targets": [],
-      "kind": "map_animation",
-      "order": {
-        "map.label": 23
-      }
-    },
-    {
-      "id": "rise_up",
-      "families": [
-        "map.label"
-      ],
-      "lanes": [],
-      "status": "active",
-      "renderer_supported": true,
-      "targets": [],
-      "kind": "map_animation",
-      "order": {
-        "map.label": 11
-      }
     },
     {
       "id": "risograph_offset_print",
@@ -7133,21 +6664,6 @@
         "phrase.classic_apple": 21,
         "phrase.all": 21
       }
-    },
-    {
-      "id": "route_line",
-      "families": [
-        "map.composition"
-      ],
-      "lanes": [],
-      "status": "active",
-      "renderer_supported": true,
-      "targets": [],
-      "kind": "map_animation",
-      "order": {
-        "map.composition": 9
-      },
-      "min_pin_count": 2
     },
     {
       "id": "scale_drop",
@@ -8138,52 +7654,6 @@
       "chronontemplate_family": "apple_v2"
     },
     {
-      "id": "signature_dive",
-      "families": [
-        "map.camera"
-      ],
-      "lanes": [],
-      "status": "active",
-      "renderer_supported": true,
-      "targets": [],
-      "kind": "map_animation",
-      "order": {
-        "map.camera": 4
-      }
-    },
-    {
-      "id": "silky_fade",
-      "families": [
-        "map.label"
-      ],
-      "lanes": [],
-      "status": "active",
-      "renderer_supported": true,
-      "targets": [],
-      "kind": "map_animation",
-      "random": [
-        "map.camera",
-        "map.label"
-      ],
-      "order": {
-        "map.label": 7
-      }
-    },
-    {
-      "id": "simple_label",
-      "families": [
-        "map.composition"
-      ],
-      "lanes": [],
-      "status": "active",
-      "renderer_supported": true,
-      "targets": [],
-      "kind": "map_animation",
-      "order": {
-        "map.composition": 2
-      }
-    },
-    {
       "id": "slide_down",
       "families": [
         "authored.generic_motion_v1"
@@ -8285,38 +7755,6 @@
       }
     },
     {
-      "id": "slow_fade",
-      "families": [
-        "map.label"
-      ],
-      "lanes": [],
-      "status": "active",
-      "renderer_supported": true,
-      "targets": [],
-      "kind": "map_animation",
-      "random": [
-        "map.camera",
-        "map.label"
-      ],
-      "order": {
-        "map.label": 4
-      }
-    },
-    {
-      "id": "small_above",
-      "families": [
-        "map.label"
-      ],
-      "lanes": [],
-      "status": "active",
-      "renderer_supported": true,
-      "targets": [],
-      "kind": "map_animation",
-      "order": {
-        "map.label": 17
-      }
-    },
-    {
       "id": "soft_clay_press",
       "families": [
         "phrase.all"
@@ -8347,24 +7785,6 @@
         "text"
       ],
       "chronontemplate_family": "apple_v2"
-    },
-    {
-      "id": "soft_glow",
-      "families": [
-        "map.label"
-      ],
-      "lanes": [],
-      "status": "active",
-      "renderer_supported": true,
-      "targets": [],
-      "kind": "map_animation",
-      "random": [
-        "map.camera",
-        "map.label"
-      ],
-      "order": {
-        "map.label": 1
-      }
     },
     {
       "id": "soft_kinetic_rise",
@@ -8416,20 +7836,6 @@
         "text"
       ],
       "chronontemplate_family": "generic_motion_v1"
-    },
-    {
-      "id": "soft_tracking",
-      "families": [
-        "map.label"
-      ],
-      "lanes": [],
-      "status": "active",
-      "renderer_supported": true,
-      "targets": [],
-      "kind": "map_animation",
-      "order": {
-        "map.label": 13
-      }
     },
     {
       "id": "spectrum_shimmer_wave",
@@ -8492,38 +7898,6 @@
         "text"
       ],
       "chronontemplate_family": "apple_v2"
-    },
-    {
-      "id": "steady_hold",
-      "families": [
-        "map.camera"
-      ],
-      "lanes": [],
-      "status": "active",
-      "renderer_supported": true,
-      "targets": [],
-      "kind": "map_animation",
-      "order": {
-        "map.camera": 5
-      }
-    },
-    {
-      "id": "subtle_halo",
-      "families": [
-        "map.label"
-      ],
-      "lanes": [],
-      "status": "active",
-      "renderer_supported": true,
-      "targets": [],
-      "kind": "map_animation",
-      "random": [
-        "map.camera",
-        "map.label"
-      ],
-      "order": {
-        "map.label": 8
-      }
     },
     {
       "id": "text_3d_camera_push",
@@ -8851,34 +8225,6 @@
       "blocked_lanes": [
         "entity.caption.automatic"
       ]
-    },
-    {
-      "id": "tilt_reveal",
-      "families": [
-        "map.camera"
-      ],
-      "lanes": [],
-      "status": "active",
-      "renderer_supported": true,
-      "targets": [],
-      "kind": "map_animation",
-      "order": {
-        "map.camera": 2
-      }
-    },
-    {
-      "id": "title_top",
-      "families": [
-        "map.label"
-      ],
-      "lanes": [],
-      "status": "active",
-      "renderer_supported": true,
-      "targets": [],
-      "kind": "map_animation",
-      "order": {
-        "map.label": 14
-      }
     },
     {
       "id": "tracking_collapse",
@@ -9604,20 +8950,6 @@
       }
     },
     {
-      "id": "vertical_callout",
-      "families": [
-        "map.composition"
-      ],
-      "lanes": [],
-      "status": "active",
-      "renderer_supported": true,
-      "targets": [],
-      "kind": "map_animation",
-      "order": {
-        "map.composition": 13
-      }
-    },
-    {
       "id": "vertical_reel_snap",
       "families": [
         "phrase.classic_apple",
@@ -10039,23 +9371,6 @@
       }
     },
     {
-      "id": "wide_context",
-      "families": [
-        "map.camera"
-      ],
-      "lanes": [],
-      "status": "active",
-      "renderer_supported": true,
-      "targets": [],
-      "kind": "map_animation",
-      "random": [
-        "map.camera"
-      ],
-      "order": {
-        "map.camera": 1
-      }
-    },
-    {
       "id": "word_reveal",
       "families": [
         "authored.generic_motion_v1"
@@ -10067,24 +9382,6 @@
         "caption"
       ],
       "chronontemplate_family": "generic_motion_v1"
-    },
-    {
-      "id": "word_soft_fade",
-      "families": [
-        "map.label"
-      ],
-      "lanes": [],
-      "status": "active",
-      "renderer_supported": true,
-      "targets": [],
-      "kind": "map_animation",
-      "random": [
-        "map.camera",
-        "map.label"
-      ],
-      "order": {
-        "map.label": 3
-      }
     },
     {
       "id": "camera_motion_photo_reveal_right",
@@ -10102,8 +9399,8 @@
         "map.basemap"
       ],
       "lanes": [],
-      "status": "retired",
-      "renderer_supported": false,
+      "status": "active",
+      "renderer_supported": true,
       "targets": [],
       "kind": "basemap"
     }

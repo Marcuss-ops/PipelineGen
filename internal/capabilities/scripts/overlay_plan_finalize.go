@@ -70,6 +70,9 @@ func applyMapPresentationToItems(items []capabilityoverlay.OverlayItem, mapType,
 // value must be in the certified list the Python renderer accepts.
 func validateRuntimeMapAnimation(field, value string, certified []string) error {
 	trimmed := strings.TrimSpace(value)
+	if field == "map_label_animation" && trimmed == "none" {
+		return nil
+	}
 	if trimmed == "" || strings.EqualFold(trimmed, "random") {
 		return nil
 	}
