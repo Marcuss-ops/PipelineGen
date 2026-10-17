@@ -7,7 +7,8 @@ toolchain go1.25.13
 // BUILD-01: the queue module is vendored in-repo (third_party/queue) so an
 // isolated PipelineGen checkout builds without a sibling RenderingGen working
 // tree. The upstream module path github.com/Marcuss-ops/RenderingGen/queue is
-// not resolvable on GitHub (the repository is published as "RenderginGen"), so
+// not resolvable on GitHub (the repository is published under a different,
+// historically misspelled name), so
 // no versioned module reference can fetch it; the previous ../RenderingGen/queue
 // replace made every clean checkout, Docker build and CI run fail. See
 // third_party/queue/README.md for provenance and the sync procedure.
