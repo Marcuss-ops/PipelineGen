@@ -2,6 +2,7 @@ package scriptgeneration
 
 import (
 	"context"
+	"time"
 
 	scriptports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
@@ -24,8 +25,17 @@ func (r *Runner) runExecutionPhases(ctx context.Context, runID string, req Gener
 	if !e.start() {
 		return
 	}
-	stockPrefetchDone := r.startStockPrefetch(ctx, req.StockBindings)
-	defer func() { r.waitStockPrefetch(stockPrefetchDone) }()
+	// P0-A (anti-muda): stock prefetch warms best-effort cache in background.
+	// Translation consumes only scene text, so it must NOT join here. The
+	// join lives at the first stock consumer (sceneTextReady) with an
+	// explicit budget; this defer only drains the tail without blocking the
+	// critical path indefinitely.
+	e.stockPrefetchDone = r.startStockPrefetch(ctx, req.StockBindings)
+	defer func() {
+		done := e.stockPrefetchDone
+		e.stockPrefetchDone = nil
+		r.drainStockPrefetch(done)
+	}()
 	if !e.normalize() {
 		return
 	}
@@ -43,8 +53,6 @@ func (r *Runner) runExecutionPhases(ctx context.Context, runID string, req Gener
 	if !e.generate() {
 		return
 	}
-	r.waitStockPrefetch(stockPrefetchDone)
-	stockPrefetchDone = nil
 	e.ensureResult()
 	if !e.translate() {
 		return
@@ -175,4 +183,81 @@ func (r *Runner) waitStockPrefetch(done chan scriptports.StockPrefetchReport) {
 		zap.Int("cached", report.Cached),
 		zap.Int("failed", report.Failed),
 		zap.Int("skipped", report.Skipped))
+}
+
+// stockPrefetchJoinBudget bounds how long a stock consumer waits for the
+// best-effort warm. Whatever is cached when the budget expires is kept; the
+// remainder falls through to synchronous resolution (same contract as the
+// audio prefetch budget).
+const stockPrefetchJoinBudget = 10 * time.Second
+
+// stockPrefetchDrainBudget bounds the tail drain after the pipeline returns.
+// The run must never pay unbounded stock I/O after its work is done.
+const stockPrefetchDrainBudget = 5 * time.Second
+
+// joinStockPrefetchForConsumer waits for the stock warm at the first phase
+// that can use warmed assets. It records its own stage so
+// `stock_prefetch_join_wait_ms` measures pure prefetch wait on the critical
+// path (often zero once the barrier before translate is gone).
+func (e *executionRun) joinStockPrefetchForConsumer() {
+	done := e.stockPrefetchDone
+	if done == nil {
+		return
+	}
+	e.stockPrefetchDone = nil
+	started := time.Now()
+	var report *scriptports.StockPrefetchReport
+	kernobs.MeasureStage(e.ctx, "stock_prefetch_join", func(stageCtx context.Context) error {
+		select {
+		case rep := <-done:
+			report = &rep
+			return nil
+		case <-stageCtx.Done():
+			return stageCtx.Err()
+		case <-time.After(stockPrefetchJoinBudget):
+			return context.DeadlineExceeded
+		}
+	})
+	waitMS := time.Since(started).Milliseconds()
+	if e.r != nil && e.r.log != nil {
+		fields := []zap.Field{zap.Int64("stock_prefetch_join_wait_ms", waitMS)}
+		if report != nil {
+			fields = append(fields,
+				zap.Int("requested", report.Requested),
+				zap.Int("warmed", report.Warmed),
+				zap.Int("cached", report.Cached),
+				zap.Int("failed", report.Failed),
+				zap.Int("skipped", report.Skipped))
+			e.r.log.Info("script.generate: stock prefetch joined at consumer", fields...)
+		} else {
+			e.r.log.Warn("script.generate: stock prefetch budget exceeded at consumer; continuing with synchronous fallback", fields...)
+			// Budget exceeded: detach the still-running warm so the consumer
+			// never blocks; re-arm the drain so the tail still collects it
+			// without stalling the run.
+			e.stockPrefetchDone = done
+		}
+	}
+}
+
+// drainStockPrefetch collects a still-outstanding warm after the run without
+// adding unbounded tail latency.
+func (r *Runner) drainStockPrefetch(done chan scriptports.StockPrefetchReport) {
+	if done == nil {
+		return
+	}
+	select {
+	case report := <-done:
+		if r != nil && r.log != nil {
+			r.log.Info("script.generate: stock prefetch drained",
+				zap.Int("requested", report.Requested),
+				zap.Int("warmed", report.Warmed),
+				zap.Int("cached", report.Cached),
+				zap.Int("failed", report.Failed),
+				zap.Int("skipped", report.Skipped))
+		}
+	case <-time.After(stockPrefetchDrainBudget):
+		if r != nil && r.log != nil {
+			r.log.Warn("script.generate: stock prefetch drain budget exceeded; detaching")
+		}
+	}
 }

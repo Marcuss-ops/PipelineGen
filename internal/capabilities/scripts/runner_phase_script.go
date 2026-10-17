@@ -148,94 +148,99 @@ func (r *Runner) runSceneTextPhase(ctx context.Context, runID string, req Genera
 			result.ExpectedRenderCount = expectedUnits
 			result.RenderMetrics = &RenderMetrics{Expected: expectedUnits, Concurrency: req.Render.RenderConcurrency}
 		}
-		if r.sceneIntelligenceAnalyzer != nil && strings.TrimSpace(output.Text) != "" {
-			if manifest, siInputs, err := r.analyzeSceneIntelligence(ctx, runID, output.Text, scenes, req); err != nil {
+		// P1-C (anti-muda): Scene Intelligence and Phrase Impact are
+		// independent optional enrichments over the same stable text. Run
+		// them in parallel and apply serially so GENERATE pays max(si,pi)
+		// instead of si+pi. Both compute VALUES only; the single writer
+		// below owns every result mutation.
+		siEnabled := r.sceneIntelligenceAnalyzer != nil && strings.TrimSpace(output.Text) != ""
+		piEnabled := r.phraseImpactAnalyzer != nil && strings.TrimSpace(output.Text) != ""
+		type siOutcome struct {
+			manifest *scriptpkg.SceneIntelligenceManifest
+			inputs   []scriptpkg.SISceneAnalysisInput
+			proj     []SISceneProjection
+			err      error
+		}
+		type piOutcome struct {
+			summary         string
+			bullets         []string
+			heavy           []scriptpkg.ImportantSentence
+			chapterManifest *scriptpkg.ChapterManifest
+			highlights      []scriptpkg.SceneHighlight
+			editorial       *scriptpkg.EditorialManifest
+			timings         []PhraseImpactTimings
+			err             error
+		}
+		var siOut siOutcome
+		var piOut piOutcome
+		var nlpWg sync.WaitGroup
+		if siEnabled {
+			nlpWg.Add(1)
+			go func() {
+				defer nlpWg.Done()
+				manifest, siInputs, err := r.analyzeSceneIntelligence(ctx, runID, output.Text, scenes, req)
+				if err != nil {
+					siOut.err = err
+					return
+				}
+				if manifest == nil {
+					return
+				}
+				siOut.manifest = manifest
+				siOut.inputs = append([]scriptpkg.SISceneAnalysisInput(nil), siInputs...)
+				siOut.proj = ProjectGroundedSceneIntelligence(manifest, SIProjectionConfig{Enabled: true}, siInputs, nil)
+			}()
+		}
+		if piEnabled {
+			nlpWg.Add(1)
+			go func() {
+				defer nlpWg.Done()
+				out, err := r.computePhraseImpactEnrichment(ctx, output.Text, scenes, req)
+				if err != nil {
+					piOut.err = err
+					return
+				}
+				if out == nil {
+					return
+				}
+				piOut.summary = out.summary
+				piOut.bullets = out.bullets
+				piOut.heavy = out.heavy
+				piOut.chapterManifest = out.chapterManifest
+				piOut.highlights = out.highlights
+				piOut.editorial = out.editorial
+				piOut.timings = out.timings
+			}()
+		}
+		nlpWg.Wait()
+		if siEnabled {
+			if siOut.err != nil {
 				r.log.Warn("scene-intelligence analysis unavailable; continuing without scene signals",
-					zap.String("run_id", runID), zap.Error(err))
-			} else if manifest != nil {
-				result.SceneIntelligence = manifest
-				result.sceneIntelligenceInputs = append([]scriptpkg.SISceneAnalysisInput(nil), siInputs...)
-				result.SceneIntelligenceProjection = ProjectGroundedSceneIntelligence(manifest, SIProjectionConfig{Enabled: true}, siInputs, nil)
+					zap.String("run_id", runID), zap.Error(siOut.err))
+			} else if siOut.manifest != nil {
+				result.SceneIntelligence = siOut.manifest
+				result.sceneIntelligenceInputs = siOut.inputs
+				result.SceneIntelligenceProjection = siOut.proj
 			}
 		}
-		if r.phraseImpactAnalyzer != nil && strings.TrimSpace(output.Text) != "" {
-			chapterScenes, chapterTopics := make([]string, 0, len(scenes)), make([]string, 0, len(scenes))
-			for _, scene := range scenes {
-				if !scene.ExecutionMode.CountsTowardBodyWordBudget() {
-					continue
-				}
-				text := strings.TrimSpace(scene.Text[req.SourceLanguage])
-				if text == "" {
-					continue
-				}
-				chapterSceneIndex := len(chapterScenes)
-				chapterScenes = append(chapterScenes, text)
-				topic := scene.ID
-				for _, spec := range req.ScriptParams.Segments {
-					if spec.ID != "" && spec.ID == scene.ID && strings.TrimSpace(spec.Topic) != "" {
-						topic = spec.Topic
-						break
-					}
-				}
-				if topic == scene.ID && chapterSceneIndex < len(req.ScriptParams.Segments) && strings.TrimSpace(req.ScriptParams.Segments[chapterSceneIndex].Topic) != "" {
-					topic = req.ScriptParams.Segments[chapterSceneIndex].Topic
-				}
-				chapterTopics = append(chapterTopics, topic)
+		if piEnabled {
+			for _, tm := range piOut.timings {
+				observePhraseImpactTimings(tm)
 			}
-			if strings.Join(chapterScenes, "\n\n") != output.Text {
-				chapterScenes, chapterTopics = nil, nil
-			}
-			// Per-scene inputs carry verified byte identity when each scene
-			// text is found verbatim in the transcript; otherwise offsets
-			// stay nil and that scene degrades to local-only analysis
-			// (no fabricated global offsets).
-			sceneInputs := buildSceneAnalysisInputs(output.Text, scenes, req)
-			var impactErr error
-			var rawImpact interface{} = r.phraseImpactAnalyzer
-			if sceneAnalyzer, ok := rawImpact.(SceneHighlightAnalyzer); ok && len(sceneInputs) > 0 {
-				impactRes, err := sceneAnalyzer.AnalyzeScenes(ctx, output.Text, string(req.SourceLanguage), sceneInputs)
-				impactErr = err
-				if err == nil {
-					result.Summary = impactRes.Summary
-					result.BulletPoints = impactRes.BulletPoints
-					result.HeavySentences = impactRes.HeavySentences
-					if impactRes.ChapterManifest.SchemaVersion != "" {
-						manifest := impactRes.ChapterManifest
-						result.ChapterManifest = &manifest
-					}
-					impactRes.SceneHighlights = r.attachVisualBullets(ctx, string(req.SourceLanguage), sceneInputs, impactRes.SceneHighlights)
-					if req.EnableCharts && !req.DisableChartOverlays {
-						impactRes.SceneHighlights = r.attachVisualChartValues(ctx, string(req.SourceLanguage), sceneInputs, impactRes.SceneHighlights)
-					} else {
-						for i := range impactRes.SceneHighlights {
-							impactRes.SceneHighlights[i].ChartValues = nil
-						}
-					}
-					result.SceneHighlights = impactRes.SceneHighlights
-					result.Editorial = buildEditorialManifest(req, sceneInputs, impactRes)
-					observePhraseImpactTimings(impactRes.Timings)
-				}
-			} else {
-				legacy, err := r.phraseImpactAnalyzer.AnalyzeWithContext(ctx, output.Text, string(req.SourceLanguage), chapterScenes, chapterTopics)
-				impactErr = err
-				if err == nil {
-					result.Summary = legacy.Summary
-					result.BulletPoints = legacy.BulletPoints
-					result.HeavySentences = legacy.HeavySentences
-					if legacy.ChapterManifest.SchemaVersion != "" {
-						manifest := legacy.ChapterManifest
-						result.ChapterManifest = &manifest
-					}
-					observePhraseImpactTimings(legacy.Timings)
-				}
-			}
-			if impactErr != nil {
+			if piOut.err != nil {
 				// The extractive summary is an optional data product. A broken
 				// or unavailable Rust NLP worker must never cost the caller the
 				// video, so the failure is recorded and the run continues with
 				// the editorial fields empty rather than failing closed.
 				r.log.Warn("phrase-impact analysis unavailable; continuing without extractive summary",
-					zap.String("run_id", runID), zap.Error(impactErr))
+					zap.String("run_id", runID), zap.Error(piOut.err))
+			} else {
+				result.Summary = piOut.summary
+				result.BulletPoints = piOut.bullets
+				result.HeavySentences = piOut.heavy
+				result.ChapterManifest = piOut.chapterManifest
+				result.SceneHighlights = piOut.highlights
+				result.Editorial = piOut.editorial
 			}
 		}
 		// Explicit clip workflows may request real video reconstruction without
@@ -558,6 +563,89 @@ func (r *Runner) generateSceneText(ctx context.Context, runID string, req Genera
 type sceneTextBatchResult struct {
 	scenes []Scene
 	trace  scriptpkg.SourceTrace
+}
+
+// phraseImpactEnrichment is the value-only Phrase Impact product computed
+// off the critical path (P1-C). It never mutates the result; the caller
+// applies the returned fields serially after the parallel join.
+type phraseImpactEnrichment struct {
+	summary         string
+	bullets         []string
+	heavy           []scriptpkg.ImportantSentence
+	chapterManifest *scriptpkg.ChapterManifest
+	highlights      []scriptpkg.SceneHighlight
+	editorial       *scriptpkg.EditorialManifest
+	timings         []PhraseImpactTimings
+}
+
+func (r *Runner) computePhraseImpactEnrichment(ctx context.Context, transcript string, scenes []Scene, req GenerateRequest) (*phraseImpactEnrichment, error) {
+	chapterScenes, chapterTopics := make([]string, 0, len(scenes)), make([]string, 0, len(scenes))
+	for _, scene := range scenes {
+		if !scene.ExecutionMode.CountsTowardBodyWordBudget() {
+			continue
+		}
+		text := strings.TrimSpace(scene.Text[req.SourceLanguage])
+		if text == "" {
+			continue
+		}
+		chapterSceneIndex := len(chapterScenes)
+		chapterScenes = append(chapterScenes, text)
+		topic := scene.ID
+		for _, spec := range req.ScriptParams.Segments {
+			if spec.ID != "" && spec.ID == scene.ID && strings.TrimSpace(spec.Topic) != "" {
+				topic = spec.Topic
+				break
+			}
+		}
+		if topic == scene.ID && chapterSceneIndex < len(req.ScriptParams.Segments) && strings.TrimSpace(req.ScriptParams.Segments[chapterSceneIndex].Topic) != "" {
+			topic = req.ScriptParams.Segments[chapterSceneIndex].Topic
+		}
+		chapterTopics = append(chapterTopics, topic)
+	}
+	if strings.Join(chapterScenes, "\n\n") != transcript {
+		chapterScenes, chapterTopics = nil, nil
+	}
+	sceneInputs := buildSceneAnalysisInputs(transcript, scenes, req)
+	out := &phraseImpactEnrichment{}
+	var rawImpact interface{} = r.phraseImpactAnalyzer
+	if sceneAnalyzer, ok := rawImpact.(SceneHighlightAnalyzer); ok && len(sceneInputs) > 0 {
+		impactRes, err := sceneAnalyzer.AnalyzeScenes(ctx, transcript, string(req.SourceLanguage), sceneInputs)
+		if err != nil {
+			return nil, err
+		}
+		out.summary = impactRes.Summary
+		out.bullets = impactRes.BulletPoints
+		out.heavy = impactRes.HeavySentences
+		if impactRes.ChapterManifest.SchemaVersion != "" {
+			manifest := impactRes.ChapterManifest
+			out.chapterManifest = &manifest
+		}
+		impactRes.SceneHighlights = r.attachVisualBullets(ctx, string(req.SourceLanguage), sceneInputs, impactRes.SceneHighlights)
+		if req.EnableCharts && !req.DisableChartOverlays {
+			impactRes.SceneHighlights = r.attachVisualChartValues(ctx, string(req.SourceLanguage), sceneInputs, impactRes.SceneHighlights)
+		} else {
+			for i := range impactRes.SceneHighlights {
+				impactRes.SceneHighlights[i].ChartValues = nil
+			}
+		}
+		out.highlights = impactRes.SceneHighlights
+		out.editorial = buildEditorialManifest(req, sceneInputs, impactRes)
+		out.timings = append(out.timings, impactRes.Timings)
+		return out, nil
+	}
+	legacy, err := r.phraseImpactAnalyzer.AnalyzeWithContext(ctx, transcript, string(req.SourceLanguage), chapterScenes, chapterTopics)
+	if err != nil {
+		return nil, err
+	}
+	out.summary = legacy.Summary
+	out.bullets = legacy.BulletPoints
+	out.heavy = legacy.HeavySentences
+	if legacy.ChapterManifest.SchemaVersion != "" {
+		manifest := legacy.ChapterManifest
+		out.chapterManifest = &manifest
+	}
+	out.timings = append(out.timings, legacy.Timings)
+	return out, nil
 }
 
 // sceneTextRetryOptions allows exactly one extra attempt, only for

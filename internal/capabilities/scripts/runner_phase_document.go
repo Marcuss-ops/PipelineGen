@@ -274,49 +274,65 @@ func (r *Runner) runDocumentPhase(ctx context.Context, runID string, req Generat
 		}
 		rendered := make(map[Language]renderedDocument, len(docsLangs))
 		if _, prepareErr := kernobs.MeasureStageReport(ctx, StageDocumentPrepare, func(stageCtx context.Context) error {
+			// P2b: per-language HTML render is independent CPU work;
+			// fan out with the same bounded pool as publish (4) so N
+			// languages pay MAX instead of SUM. Reads of result are
+			// read-only here (audio join done, publish not started).
+			const docsPrepareConcurrency = 4
+			group, groupCtx := concurrent.WithContext(stageCtx)
+			sem := make(chan struct{}, docsPrepareConcurrency)
+			var renderedMu sync.Mutex
 			for _, lang := range docsLangs {
-				model := modelScriptOutputForDocument(result, lang)
-				opts := DocumentRenderOptions{
-					Title:           req.Title,
-					Language:        lang,
-					DefaultLanguage: req.SourceLanguage,
-					FullAudio:       documentAudioRef(result, lang),
-					FinalAudio:      result.FinalAudio,
-					AudioTimeline:   result.CanonicalTimeline,
-					JobPayload:      jobPayload,
-					// Operator Docs are the audit surface: keep the human semantic
-					// summary and the machine JSON for the exact plan/artifacts.
-					PayloadOnly:        false,
-					SceneSpeechTimings: result.SceneSpeechTimings,
-					ClipMetadata:       clipAssetMetadataForDocument(result),
-					AudioSummary:       documentAudioSummaryFor(result),
-					Overlay:            documentOverlayRef(result, lang),
-					OverlayPlan:        documentOverlayPlan(result, lang),
-				}
-				var content string
-				var renderErr error
-				if skeleton, ok := skeletons[lang]; ok {
-					// Late-bound injection into the SceneTextReady skeleton
-					// rendered by the parallel fan-out (early DocsPrepare).
-					content, renderErr = r.injectDocumentLateBound(skeleton, model, opts)
-				} else {
-					content, renderErr = r.documentRenderer.RenderDocument(model, opts)
-				}
-				if renderErr != nil {
-					return fmt.Errorf("render document for language %s: %w", lang, renderErr)
-				}
-				rendererID := "unknown"
-				if identified, ok := r.documentRenderer.(IdentifiedDocumentRenderer); ok {
-					rendererID = identified.DocumentRendererID()
-				}
-				rendered[lang] = renderedDocument{
-					content:    content,
-					rendererID: rendererID,
-					hash:       documentSpecSceneSHA256(model),
-					sceneCount: len(model.SpecScene.Scenes),
-				}
+				group.Go(fmt.Sprintf("docs-prepare-%s", lang), func() error {
+					sem <- struct{}{}
+					defer func() { <-sem }()
+					select {
+					case <-groupCtx.Done():
+						return groupCtx.Err()
+					default:
+					}
+					model := modelScriptOutputForDocument(result, lang)
+					opts := DocumentRenderOptions{
+						Title:              req.Title,
+						Language:           lang,
+						DefaultLanguage:    req.SourceLanguage,
+						FullAudio:          documentAudioRef(result, lang),
+						FinalAudio:         result.FinalAudio,
+						AudioTimeline:      result.CanonicalTimeline,
+						JobPayload:         jobPayload,
+						PayloadOnly:        false,
+						SceneSpeechTimings: result.SceneSpeechTimings,
+						ClipMetadata:       clipAssetMetadataForDocument(result),
+						AudioSummary:       documentAudioSummaryFor(result),
+						Overlay:            documentOverlayRef(result, lang),
+						OverlayPlan:        documentOverlayPlan(result, lang),
+					}
+					var content string
+					var renderErr error
+					if skeleton, ok := skeletons[lang]; ok {
+						content, renderErr = r.injectDocumentLateBound(skeleton, model, opts)
+					} else {
+						content, renderErr = r.documentRenderer.RenderDocument(model, opts)
+					}
+					if renderErr != nil {
+						return fmt.Errorf("render document for language %s: %w", lang, renderErr)
+					}
+					rendererID := "unknown"
+					if identified, ok := r.documentRenderer.(IdentifiedDocumentRenderer); ok {
+						rendererID = identified.DocumentRendererID()
+					}
+					renderedMu.Lock()
+					rendered[lang] = renderedDocument{
+						content:    content,
+						rendererID: rendererID,
+						hash:       documentSpecSceneSHA256(model),
+						sceneCount: len(model.SpecScene.Scenes),
+					}
+					renderedMu.Unlock()
+					return nil
+				})
 			}
-			return nil
+			return group.Wait()
 		}); prepareErr != nil {
 			cause := fmt.Errorf("document prepare: %w", prepareErr)
 			r.failExecutionStep(ctx, exec, documentStep, cause)

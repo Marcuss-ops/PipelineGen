@@ -1,6 +1,7 @@
 package scriptgeneration
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -101,21 +102,37 @@ func recordCheckpointFlush() {
 	observability.ScriptCheckpointFlushTotal.Inc()
 }
 
+// snapshotBufferPool reuses marshal buffers across per-unit checkpoints so
+// the full-result copy does not allocate a fresh byte slice per debounced
+// unit (P1-D: less allocation amplification; the copy itself is retained
+// for race safety, see below).
+var snapshotBufferPool = sync.Pool{New: func() any { return new(bytes.Buffer) }}
+
 // snapshotGenerateResult creates an immutable checkpoint value. JSON is the
 // durable result contract, so round-tripping it also deep-copies every map and
 // slice that concurrent scene workers may otherwise mutate after the apply
 // lock is released. Callers must create this snapshot while holding the
 // phase's result-apply mutex; the actual repository write happens later.
+//
+// P1-D note: per-unit callers are already debounced (500ms + inFlight) and
+// final flushes are the durable DAG boundaries, so this keeps crash-resume
+// while the pool avoids a fresh allocation per debounced unit. The remaining
+// full-copy cost is the race-safety price; payload bytes stay measurable via
+// ScriptCheckpointBytesTotal at the repository write.
 func snapshotGenerateResult(result *GenerateResult) (*GenerateResult, error) {
 	if result == nil {
 		return nil, nil
 	}
-	raw, err := json.Marshal(result)
-	if err != nil {
+	buf := snapshotBufferPool.Get().(*bytes.Buffer)
+	buf.Reset()
+	defer snapshotBufferPool.Put(buf)
+	enc := json.NewEncoder(buf)
+	enc.SetEscapeHTML(false)
+	if err := enc.Encode(result); err != nil {
 		return nil, fmt.Errorf("marshal checkpoint snapshot: %w", err)
 	}
 	var snapshot GenerateResult
-	if err := json.Unmarshal(raw, &snapshot); err != nil {
+	if err := json.Unmarshal(buf.Bytes(), &snapshot); err != nil {
 		return nil, fmt.Errorf("unmarshal checkpoint snapshot: %w", err)
 	}
 	// LocalPath is deliberately producer-only (`json:"-"`): it must never

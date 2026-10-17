@@ -14,6 +14,7 @@ import (
 	"time"
 
 	capabilityaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
+	scriptports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 	"go.uber.org/zap"
@@ -65,6 +66,12 @@ type executionRun struct {
 	// once the child publishes. False on every path where the enqueuer is nil
 	// (pre-cutover inline behaviour, unchanged) or the core is not durable.
 	docsDeferred bool
+
+	// stockPrefetchDone carries the best-effort stock warm channel started at
+	// run start. It is joined ONLY at the first consumer that can use warmed
+	// stock assets (sceneTextReady), never before translate: translation needs
+	// only scene text and must not wait for stock I/O.
+	stockPrefetchDone chan scriptports.StockPrefetchReport
 }
 
 // measure runs one named business phase on the canonical Run clock, keeping
@@ -280,6 +287,9 @@ func (e *executionRun) translate() bool {
 // parallel path runs it on the semantic branch while TTS is still in flight
 // (see parallelFanOut).
 func (e *executionRun) sceneTextReady() bool {
+	// P0-A: first stock consumer joins the best-effort warm here (bounded),
+	// so translate/generate never wait for stock I/O.
+	e.joinStockPrefetchForConsumer()
 	e.snapshot = snapshotSceneText(e.result.Scenes, e.req.SourceLanguage, e.req)
 
 	ok := e.parallelFanOut()
@@ -330,7 +340,22 @@ func (e *executionRun) parallelFanOut() bool {
 	go func() {
 		// Early DocsPrepare: render the scene-text-only document skeleton
 		// first so CPU render overlaps both TTS and NLP.
-		skel := e.r.renderDocumentSkeletons(e.req, e.result)
+		// P0-B (anti-muda): when the deferred Docs leg is wired, the
+		// `script.docs_publish` child reloads the durable snapshot and
+		// runs a full RenderDocument without receiving these skeletons,
+		// so computing them here is pure waste. Skip the CPU work; the
+		// inline fallback (no enqueuer / docs disabled / core not
+		// completable) still renders full documents on demand.
+		var skel map[Language]string
+		if e.r == nil || e.r.docsPublishEnqueuer == nil {
+			skel = e.r.renderDocumentSkeletons(e.req, e.result)
+		} else {
+			docsEnabled, _, _ := e.req.ResolveDocsConfig()
+			if !docsEnabled {
+				skel = e.r.renderDocumentSkeletons(e.req, e.result)
+			}
+			// else: deferred child owns Docs — leave skel nil.
+		}
 
 		// ── P1.1 Audio prefetch ──────────────────────────────
 		// Resolve BGM/SFX assets and materialize original clip audio in
