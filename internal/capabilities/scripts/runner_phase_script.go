@@ -620,10 +620,19 @@ func (r *Runner) computePhraseImpactEnrichment(ctx context.Context, transcript s
 			manifest := impactRes.ChapterManifest
 			out.chapterManifest = &manifest
 		}
-		impactRes.SceneHighlights = r.attachVisualBullets(ctx, string(req.SourceLanguage), sceneInputs, impactRes.SceneHighlights)
-		if req.EnableCharts && !req.DisableChartOverlays {
-			impactRes.SceneHighlights = r.attachVisualChartValues(ctx, string(req.SourceLanguage), sceneInputs, impactRes.SceneHighlights)
+		chartsEnabled := req.EnableCharts && !req.DisableChartOverlays
+		if r.sceneSemanticAnalyzer != nil {
+			// RUST-02: one analyze call per scene carries bullets and charts;
+			// when the chart gate is closed the bundle's chart rows are not
+			// merged here and existing values are cleared below.
+			impactRes.SceneHighlights = r.attachVisualSemantics(ctx, string(req.SourceLanguage), sceneInputs, impactRes.SceneHighlights, chartsEnabled)
 		} else {
+			impactRes.SceneHighlights = r.attachVisualBullets(ctx, string(req.SourceLanguage), sceneInputs, impactRes.SceneHighlights)
+			if chartsEnabled {
+				impactRes.SceneHighlights = r.attachVisualChartValues(ctx, string(req.SourceLanguage), sceneInputs, impactRes.SceneHighlights)
+			}
+		}
+		if !chartsEnabled {
 			for i := range impactRes.SceneHighlights {
 				impactRes.SceneHighlights[i].ChartValues = nil
 			}

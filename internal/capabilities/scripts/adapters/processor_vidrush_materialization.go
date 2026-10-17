@@ -22,13 +22,14 @@ import (
 // processor is the only postprocessor allowed to acquire, verify and send a
 // candidate through the common finalizer.
 type VidRushMaterializationProcessor struct {
-	providers *VidRushAssetProviderRegistry
-	finalizer scriptports.VidRushArtifactFinalizer
-	cache     scriptports.VidRushCachePort
-	catalog   entitycatalog.Repository
-	metrics   VidRushTimingMetrics
-	sampler   scriptports.MediaSamplerPort
-	log       *zap.Logger
+	providers    *VidRushAssetProviderRegistry
+	finalizer    scriptports.VidRushArtifactFinalizer
+	cache        scriptports.VidRushCachePort
+	catalog      entitycatalog.Repository
+	metrics      VidRushTimingMetrics
+	sampler      scriptports.MediaSamplerPort
+	groupSampler scriptports.MediaSamplerGroupPort
+	log          *zap.Logger
 }
 
 // WithLogger makes materialization failures observable in live runs without
@@ -85,6 +86,18 @@ func NewVidRushMaterializationProcessorWithCatalog(providers *VidRushAssetProvid
 func (p *VidRushMaterializationProcessor) WithMediaSampler(sampler scriptports.MediaSamplerPort) *VidRushMaterializationProcessor {
 	if p != nil {
 		p.sampler = sampler
+	}
+	return p
+}
+
+// WithMediaSamplerGroup installs the optional MultiImage 2.0 selection port.
+// When installed, the final secondary-image set of a scene is re-selected
+// through the sampler's group operation (2–5 distinct ranked winners)
+// instead of the deterministic exact selection alone. Fail-open: any group
+// error keeps the exact selection, never an incomplete scene.
+func (p *VidRushMaterializationProcessor) WithMediaSamplerGroup(group scriptports.MediaSamplerGroupPort) *VidRushMaterializationProcessor {
+	if p != nil {
+		p.groupSampler = group
 	}
 	return p
 }

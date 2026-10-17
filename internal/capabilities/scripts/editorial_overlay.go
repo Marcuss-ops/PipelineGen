@@ -439,6 +439,47 @@ func editorialTimedAnnotation(span capabilityaudio.LocatedPhrase, timelineStartU
 // enough and keeps the persistent worker's output bounded.
 const visualBulletCandidateLimit = 12
 
+// attachVisualSemantics is the single-analyze path: each scene drives ONE
+// VisualNER analyze call and the grounded projections are applied in place
+// (bullets always, chart values when the editorial gate is open). Scenes
+// whose analysis fails keep the existing values, exactly like the two-pass
+// legacy path.
+func (r *Runner) attachVisualSemantics(
+	ctx context.Context,
+	language string,
+	inputs []scriptpkg.SceneAnalysisInput,
+	highlights []scriptpkg.SceneHighlight,
+	chartsEnabled bool,
+) []scriptpkg.SceneHighlight {
+	if r == nil || r.sceneSemanticAnalyzer == nil || len(highlights) == 0 {
+		return highlights
+	}
+	texts := make(map[string]string, len(inputs))
+	for _, in := range inputs {
+		texts[in.SceneID] = in.Text
+	}
+	for i := range highlights {
+		text := texts[highlights[i].SceneID]
+		if strings.TrimSpace(text) == "" {
+			continue
+		}
+		bundle, err := r.sceneSemanticAnalyzer.SemanticCandidates(ctx, language, text, visualBulletCandidateLimit)
+		if err != nil {
+			r.log.Warn("visualner semantic analysis unavailable; keeping existing values",
+				zap.String("scene_id", highlights[i].SceneID), zap.Error(err))
+			continue
+		}
+		if replacement, ok := selectVisualBullet(bundle.Bullets, text); ok {
+			highlights[i].Bullets = replacement
+			highlights[i].GloballyIndexed = false
+		}
+		if chartsEnabled {
+			highlights[i].ChartValues = mergeChartValues(highlights[i].ChartValues, bundle.Charts, text)
+		}
+	}
+	return highlights
+}
+
 // attachVisualBullets replaces each scene's phrase-impact bullets with the
 // first VisualNER sentence bullet that re-maps onto the Go sentence
 // splitter. Exactly one bullet per scene is kept (the visual contract); a

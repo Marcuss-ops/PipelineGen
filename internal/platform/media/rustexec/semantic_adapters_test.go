@@ -112,3 +112,53 @@ func TestMediaSamplerAdapterSendsV1AndReturnsWinner(t *testing.T) {
 		t.Fatalf("bad request: %+v", req)
 	}
 }
+
+func TestMediaSamplerSampleGroupSendsGroupOperationAndLedger(t *testing.T) {
+	r := &semanticRunner{output: []byte(`{"results":[],"winner_id":"asset-1","group_ids":["asset-1","asset-2"]}`)}
+	a, _ := NewMediaSamplerAdapter(executorForSemantic(r))
+	_, group, err := a.SelectGroup(context.Background(), "seg", "greek salad", nil,
+		[]mediaSamplerCandidate{{ID: "asset-1", Label: "salad"}, {ID: "asset-2", Label: "restaurant"}},
+		false, 3,
+		[]mediaSamplerBoundAsset{{AssetID: "asset-9", SceneID: "other-scene"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(group) != 2 || group[0] != "asset-1" || group[1] != "asset-2" {
+		t.Fatalf("group=%v", group)
+	}
+	var req mediaSamplerGroupRequest
+	if err := json.Unmarshal(r.input, &req); err != nil {
+		t.Fatal(err)
+	}
+	if req.Operation != "select_group" || req.GroupSize != 3 {
+		t.Fatalf("bad request: %+v", req)
+	}
+	if len(req.BoundAssets) != 1 || req.BoundAssets[0].AssetID != "asset-9" {
+		t.Fatalf("ledger: %+v", req.BoundAssets)
+	}
+}
+
+func TestMediaSamplerSampleGroupFailsClosedOutsideTwoToFive(t *testing.T) {
+	a, _ := NewMediaSamplerAdapter(executorForSemantic(&semanticRunner{}))
+	for _, bad := range []int{0, 1, 6, 99} {
+		if _, _, err := a.SelectGroup(context.Background(), "seg", "s", nil, nil, false, bad, nil); err == nil {
+			t.Fatalf("group size %d must fail closed", bad)
+		}
+	}
+}
+
+func TestMediaSamplerWorkerErrorSurfacesSelectGroupFailure(t *testing.T) {
+	r := &semanticRunner{output: []byte(`{"results":[],"winner_id":null,"group_ids":[],"error":"select_group requires 2..=5"}`)}
+	a, _ := NewMediaSamplerAdapter(executorForSemantic(r))
+	if _, _, err := a.SelectGroup(context.Background(), "seg", "s", nil, nil, false, 5, nil); err == nil {
+		t.Fatal("worker error must surface")
+	}
+}
+
+func TestMediaSamplerGroupRejectsDuplicateMembers(t *testing.T) {
+	r := &semanticRunner{output: []byte(`{"results":[],"winner_id":"asset-1","group_ids":["asset-1","asset-1"]}`)}
+	a, _ := NewMediaSamplerAdapter(executorForSemantic(r))
+	if _, _, err := a.SelectGroup(context.Background(), "seg", "s", nil, nil, false, 5, nil); err == nil {
+		t.Fatal("duplicate group member must fail closed")
+	}
+}

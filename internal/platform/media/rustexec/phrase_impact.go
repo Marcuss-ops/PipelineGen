@@ -130,27 +130,34 @@ func (a *PhraseImpactAnalyzer) AnalyzeScenes(ctx context.Context, transcript, la
 			legacyTopics[i] = *s.Topic
 		}
 	}
-	base, err := a.AnalyzeWithContext(ctx, transcript, language, legacyScenes, legacyTopics)
-	if err != nil {
-		return base, err
-	}
-	// Second pass with structured identity for highlights only; legacy
-	// products above stay the certified baseline.
-	highlights, certified, err := a.analyzeSceneHighlights(ctx, transcript, language, scenes)
-	if err != nil {
-		// Contract-level failure: keep legacy products, mark uncertified.
-		base.SceneHighlightsCertified = false
-		return base, nil
-	}
-	base.SceneHighlights = highlights
-	base.SceneHighlightsCertified = certified
-	return base, nil
+	// RUST-01: one worker call carries legacy products (summary, chapters,
+	// bullets, heavy sentences) AND the certified scene highlights. The
+	// structured scene identity travels in `scene_inputs` alongside the
+	// legacy context, so the highlight pass no longer re-runs the worker on
+	// the same transcript. A coherent-identity failure degrades to the
+	// uncertified manifest instead of an error, exactly like before.
+	return a.runEditorialAnalysis(ctx, transcript, language, legacyScenes, legacyTopics, scenes)
 }
 
-// AnalyzeWithContext uses the canonical E5 passage vectors when available;
-// without E5 it explicitly uses the bounded lexical scoring mode within Rust.
-// Scene and topic metadata is optional editorial context for chapter analysis.
+// AnalyzeWithContext preserves the historical string-based API; it never
+// carries structured scene identity, so the certified highlights path is the
+// structured one in runEditorialAnalysis.
 func (a *PhraseImpactAnalyzer) AnalyzeWithContext(ctx context.Context, transcript, language string, scenes, topics []string) (scriptpkg.PhraseImpactResult, error) {
+	return a.runEditorialAnalysis(ctx, transcript, language, scenes, topics, nil)
+}
+
+// runEditorialAnalysis builds and runs the single editorial request: with
+// embeddings when an embedder is configured (lexical fallback otherwise),
+// with legacy scene/topic context when provided, and with the structured
+// `scene_inputs` identity when present. The worker computes every product
+// (summary, chapters, bullets, heavy sentences, scene highlights) in one
+// algorithm run (RUST-01).
+func (a *PhraseImpactAnalyzer) runEditorialAnalysis(
+	ctx context.Context,
+	transcript, language string,
+	scenes, topics []string,
+	structured []SceneInput,
+) (scriptpkg.PhraseImpactResult, error) {
 	transcript = strings.TrimSpace(transcript)
 	if transcript == "" {
 		return scriptpkg.PhraseImpactResult{}, nil
@@ -218,6 +225,9 @@ func (a *PhraseImpactAnalyzer) AnalyzeWithContext(ctx context.Context, transcrip
 		}
 		request["embeddings"], request["lexical_only"] = rows, false
 		request["embedding_ms"] = float64(time.Since(started).Microseconds()) / 1000
+	}
+	if len(structured) > 0 {
+		request["scene_inputs"] = structuredSceneInputs(structured)
 	}
 	payload, err := json.Marshal(request)
 	if err != nil {
@@ -297,38 +307,23 @@ func validateSceneHighlights(transcript string, in []scriptpkg.SceneHighlight) (
 	return out, true
 }
 
-func (a *PhraseImpactAnalyzer) analyzeSceneHighlights(ctx context.Context, transcript, language string, scenes []SceneInput) ([]scriptpkg.SceneHighlight, bool, error) {
-	chapterOptions := map[string]any{
-		"profile_version": "segmentation.v1", "min_sentences": 5, "max_sentences": 36,
-		"min_words": 90, "context_sentences": 3, "semantic_weight": 1.0,
-		"lexical_weight": 1.0, "scene_weight": 0.2, "evidence_weight": 1.0,
-		"complexity_penalty": 1.0, "bullet_count": 3,
+// structuredSceneInputs serializes the kernel scene identity into the wire
+// shape the Rust worker's `run_with_scene_inputs` expects.
+func structuredSceneInputs(scenes []SceneInput) []map[string]any {
+	out := make([]map[string]any, 0, len(scenes))
+	for _, s := range scenes {
+		entry := map[string]any{
+			"scene_id": s.SceneID,
+			"text":     s.Text,
+		}
+		if s.Topic != nil {
+			entry["topic"] = *s.Topic
+		}
+		if s.StartByte != nil && s.EndByte != nil {
+			entry["start_byte"] = *s.StartByte
+			entry["end_byte"] = *s.EndByte
+		}
+		out = append(out, entry)
 	}
-	request := map[string]any{
-		"transcript": transcript, "language": strings.TrimSpace(language),
-		"embeddings": [][]float32{}, "lexical_only": true,
-		"scene_inputs": scenes, "chapter_options": chapterOptions,
-		"stopwords": phraseStopWords(language),
-		"options":   map[string]any{"summary_length": "medium", "bullet_count": 5, "min_heavy": 3, "max_heavy": 15},
-	}
-	payload, err := json.Marshal(request)
-	if err != nil {
-		return nil, false, err
-	}
-	stdout, stderr, err := a.runner.Run(ctx, a.binary, append(payload, '\n'), phraseImpactOutputLimit)
-	if err != nil {
-		return nil, false, fmt.Errorf("run phrase-impact scene highlights: %w: %s", err, strings.TrimSpace(string(stderr)))
-	}
-	var response phraseImpactResponse
-	if err := json.Unmarshal(bytes.TrimSpace(stdout), &response); err != nil {
-		return nil, false, fmt.Errorf("decode phrase-impact highlights: %w", err)
-	}
-	if !response.OK {
-		return nil, false, fmt.Errorf("phrase-impact highlights: %s", response.Error)
-	}
-	hl, certified := validateSceneHighlights(transcript, response.Result.SceneHighlights)
-	if !certified {
-		return nil, false, fmt.Errorf("incoherent scene identity")
-	}
-	return hl, true, nil
+	return out
 }
