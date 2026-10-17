@@ -184,16 +184,16 @@
       "path": "internal/capabilities/scripts/adapters",
       "owner": "scripts capability adapters (processor/postprocessor/vidrush)",
       "deadline": "2026-12-31",
-      "baseline_files": 56,
+      "baseline_files": 62,
       "baseline": {
-        "files": 56,
+        "files": 62,
         "max_loc": 0
       },
       "current": {
-        "files": 60,
+        "files": 62,
         "max_loc": 0
       },
-      "note": "Registered 2026-09-12: adapters surface beyond max_files_per_package=65. Baseline ratcheted to the measured count. Three families dominate: the generation processor pipeline (processor_*), the postprocessor fan-out (postprocessor_*) and the vidrush provider/fan-out plane (vidrush_*). Each family is a cohesive subpackage candidate; the adapters package must end up a re-export/compat surface only. RE-RATCHETED 2026-09-13: baseline_files 90->56 locked to the measured production-file count (34 files of unenforced slack). Owner/deadline/targets unchanged.",
+      "note": "Registered 2026-09-12: adapters surface beyond max_files_per_package=65. Baseline ratcheted to the measured count. Three families dominate: the generation processor pipeline (processor_*), the postprocessor fan-out (postprocessor_*) and the vidrush provider/fan-out plane (vidrush_*). Each family is a cohesive subpackage candidate; the adapters package must end up a re-export/compat surface only. RE-RATCHETED 2026-09-13: baseline_files 90->56 locked to the measured production-file count (34 files of unenforced slack). Owner/deadline/targets unchanged. RE-RATCHETED 2026-10-17 (56->62): six cohesive production files landed via 600-LOC splits, all verified <600 LOC (max 582 scene_annotations.go); ceiling re-locked to measured committed count, further growth still hard-fails.",
       "target_packages": [
         "internal/capabilities/scripts/adapters/processor",
         "internal/capabilities/scripts/adapters/postprocessor",

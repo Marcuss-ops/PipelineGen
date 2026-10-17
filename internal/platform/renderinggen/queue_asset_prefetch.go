@@ -187,6 +187,19 @@ func canonicalFontAssetID(path string) (string, bool) {
 	return "", false
 }
 
+// objectStoreToken returns the shared bearer token for the object store when
+// configured (REL-01 coordinated auth). Empty means the store runs open
+// (local/dev posture); callers must not fabricate a credential.
+func objectStoreToken() string {
+	return strings.TrimSpace(os.Getenv("OBJECTSTORE_TOKEN"))
+}
+
+func setObjectStoreAuth(req *http.Request) {
+	if tok := objectStoreToken(); tok != "" {
+		req.Header.Set("Authorization", "Bearer "+tok)
+	}
+}
+
 // objectStored reports whether the object store already holds key,
 // using HEAD so no bytes cross the wire. 404/405 means absent;
 // transport errors or other statuses fail closed.
@@ -195,6 +208,7 @@ func objectStored(ctx context.Context, store, key string) (bool, error) {
 	if err != nil {
 		return false, err
 	}
+	setObjectStoreAuth(req)
 	resp, err := objectStoreHTTPClient.Do(req)
 	if err != nil {
 		return false, fmt.Errorf("head %s: %w", key, err)
@@ -233,6 +247,7 @@ func streamPutReader(ctx context.Context, store, key string, r io.Reader, size i
 	if err != nil {
 		return err
 	}
+	setObjectStoreAuth(req)
 	if size >= 0 {
 		req.ContentLength = size
 	}
