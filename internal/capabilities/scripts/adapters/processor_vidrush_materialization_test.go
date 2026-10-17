@@ -189,6 +189,74 @@ type mediaSamplerStub struct {
 	calls  int
 }
 
+type mediaSamplerGroupStub struct {
+	bound []scriptports.AssetBinding
+}
+
+func (s *mediaSamplerGroupStub) SampleGroup(_ context.Context, _ string, _ string, _ []string, candidates []scriptpkg.SegmentAssetCandidate, _ bool, groupSize int, bound []scriptports.AssetBinding) ([]scriptpkg.SegmentAssetCandidate, error) {
+	s.bound = append([]scriptports.AssetBinding(nil), bound...)
+	used := make(map[string]struct{}, len(bound))
+	for _, entry := range bound {
+		used[entry.AssetID] = struct{}{}
+	}
+	selected := make([]scriptpkg.SegmentAssetCandidate, 0, groupSize)
+	for _, candidate := range candidates {
+		if _, alreadyUsed := used[candidate.AssetID]; alreadyUsed {
+			continue
+		}
+		selected = append(selected, candidate)
+		if len(selected) == groupSize {
+			break
+		}
+	}
+	return selected, nil
+}
+
+func TestGroupImageSelectionPassesRunLedgerAndSkipsBoundAssets(t *testing.T) {
+	segment := scriptpkg.VidRushSegmentResult{
+		SegmentID: "scene-a",
+		Assets:    scriptpkg.SegmentAssetSelection{SecondaryImages: []scriptpkg.SegmentAssetCandidate{{AssetID: "already-used"}}},
+	}
+	bound := vidRushBoundAssets([]scriptpkg.VidRushSegmentResult{segment})
+	group := &mediaSamplerGroupStub{}
+	processor := (&VidRushMaterializationProcessor{}).WithMediaSamplerGroup(group)
+	candidates := []scriptpkg.SegmentAssetCandidate{
+		{AssetID: "already-used", Provider: scriptpkg.VidRushProviderInternetImages, SourceURL: "https://example.test/a.jpg", DriveLink: "/a.jpg"},
+		{AssetID: "fresh-1", Provider: scriptpkg.VidRushProviderInternetImages, SourceURL: "https://example.test/b.jpg", DriveLink: "/b.jpg"},
+		{AssetID: "fresh-2", Provider: scriptpkg.VidRushProviderInternetImages, SourceURL: "https://example.test/c.jpg", DriveLink: "/c.jpg"},
+	}
+	selected, warning := processor.selectGroupSecondaryImages(context.Background(), scriptpkg.SegmentSemanticProfile{}, "scene-b", candidates, 2, bound)
+	if warning != "" {
+		t.Fatalf("unexpected selection warning: %s", warning)
+	}
+	if len(group.bound) != 1 || group.bound[0] != (scriptports.AssetBinding{AssetID: "already-used", SceneID: "scene-a"}) {
+		t.Fatalf("sampler ledger = %#v", group.bound)
+	}
+	if len(selected) != 2 || selected[0].AssetID != "fresh-1" || selected[1].AssetID != "fresh-2" {
+		t.Fatalf("selected group = %#v, want fresh-1 and fresh-2", selected)
+	}
+}
+
+func TestVidRushBoundLedgerRegistersChosenGroupsInOrder(t *testing.T) {
+	initial := []scriptpkg.VidRushSegmentResult{{
+		SegmentID: "scene-a",
+		Assets:    scriptpkg.SegmentAssetSelection{PrimaryVideo: &scriptpkg.SegmentAssetCandidate{AssetID: "clip-a"}},
+	}}
+	ledger := vidRushBoundAssets(initial)
+	ledger = appendVidRushBoundAssets(ledger, scriptpkg.VidRushSegmentResult{
+		SegmentID: "scene-a",
+		Assets:    scriptpkg.SegmentAssetSelection{SecondaryImages: []scriptpkg.SegmentAssetCandidate{{AssetID: "image-a"}, {AssetID: "image-b"}}},
+	})
+	ledger = appendVidRushBoundAssets(ledger, scriptpkg.VidRushSegmentResult{
+		SegmentID: "scene-a",
+		Assets:    scriptpkg.SegmentAssetSelection{SecondaryImages: []scriptpkg.SegmentAssetCandidate{{AssetID: "image-a"}}},
+	})
+	want := []scriptports.AssetBinding{{AssetID: "clip-a", SceneID: "scene-a"}, {AssetID: "image-a", SceneID: "scene-a"}, {AssetID: "image-b", SceneID: "scene-a"}}
+	if !reflect.DeepEqual(ledger, want) {
+		t.Fatalf("ledger = %#v, want %#v", ledger, want)
+	}
+}
+
 func (s *mediaSamplerStub) Sample(_ context.Context, _ string, _ string, _ []string, _ []scriptpkg.SegmentAssetCandidate, _ bool) (string, error) {
 	s.calls++
 	if s.winner == "" {

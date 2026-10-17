@@ -41,6 +41,76 @@ import (
 // belongs.
 const generationClipChildFolder = "clips"
 
+func vidRushBoundAssets(segments []scriptpkg.VidRushSegmentResult) []scriptports.AssetBinding {
+	var bound []scriptports.AssetBinding
+	for _, segment := range segments {
+		if segment.Assets.PrimaryVideo != nil {
+			bound = appendVidRushAssetBinding(bound, segment.Assets.PrimaryVideo.AssetID, segment.SegmentID)
+		}
+		for i := range segment.Assets.SecondaryImages {
+			bound = appendVidRushAssetBinding(bound, segment.Assets.SecondaryImages[i].AssetID, segment.SegmentID)
+		}
+	}
+	return bound
+}
+
+func appendVidRushBoundAssets(bound []scriptports.AssetBinding, segment scriptpkg.VidRushSegmentResult) []scriptports.AssetBinding {
+	if segment.Assets.PrimaryVideo != nil {
+		bound = appendVidRushAssetBinding(bound, segment.Assets.PrimaryVideo.AssetID, segment.SegmentID)
+	}
+	for i := range segment.Assets.SecondaryImages {
+		bound = appendVidRushAssetBinding(bound, segment.Assets.SecondaryImages[i].AssetID, segment.SegmentID)
+	}
+	return bound
+}
+
+func appendVidRushAssetBinding(bound []scriptports.AssetBinding, assetID, segmentID string) []scriptports.AssetBinding {
+	assetID = strings.TrimSpace(assetID)
+	segmentID = strings.TrimSpace(segmentID)
+	if assetID == "" || segmentID == "" {
+		return bound
+	}
+	for _, existing := range bound {
+		if existing.AssetID == assetID && existing.SceneID == segmentID {
+			return bound
+		}
+	}
+	return append(bound, scriptports.AssetBinding{AssetID: assetID, SceneID: segmentID})
+}
+
+func (p *VidRushMaterializationProcessor) selectMaterializedImageGroups(ctx context.Context, plan *scriptpkg.ResolvedGenerationPlan, initial []scriptpkg.VidRushSegmentResult, items []vidRushMaterializedSegment) {
+	if p == nil || p.groupSampler == nil {
+		return
+	}
+	bound := vidRushBoundAssets(initial)
+	// Primary videos are selected during parallel materialization too. Make
+	// their assignments visible before any image group is selected.
+	for i := range items {
+		if items[i].result.Assets.PrimaryVideo != nil {
+			bound = appendVidRushAssetBinding(bound, items[i].result.Assets.PrimaryVideo.AssetID, items[i].result.SegmentID)
+		}
+	}
+	// Group sampling is a cheap deterministic stage after acquisition. Run it
+	// in scene order so each accepted group's assets are registered before the
+	// next scene, while provider acquisition remains parallel above.
+	for i := range items {
+		segment := &items[i].result
+		target := vidRushImageTargetForSegment(plan, *segment)
+		if target > 1 {
+			selected, warning := p.selectGroupSecondaryImages(ctx, segment.CanonicalSemanticProfile(), segment.SegmentID, segment.Assets.Candidates, target, bound)
+			if len(selected) > 0 {
+				segment.Assets.SecondaryImages = selected
+				segment.Assets.GeneratedImages = filterVidRushGeneratedImages(selected)
+				logVidRushSelectedImages(p.log, segment.SegmentID, selected)
+			}
+			if warning != "" {
+				items[i].warnings = append(items[i].warnings, warning)
+			}
+		}
+		bound = appendVidRushBoundAssets(bound, *segment)
+	}
+}
+
 // routeGenerationOutputToPlanBundle is the SINGLE dispatch point for every
 // verified artifact, so a new artifact family adds a predicate here instead of
 // a second call site. The families are disjoint by construction — an entity
@@ -158,7 +228,7 @@ func isGenerationClipCandidate(candidate scriptpkg.SegmentAssetCandidate) bool {
 // constraints, or the group call fails, the caller keeps the deterministic
 // exact selection — the returned warning (empty on fallback) reports the
 // degraded mode instead of hiding it.
-func (p *VidRushMaterializationProcessor) selectGroupSecondaryImages(ctx context.Context, profile scriptpkg.SegmentSemanticProfile, segmentID string, candidates []scriptpkg.SegmentAssetCandidate, imageTarget int) ([]scriptpkg.SegmentAssetCandidate, string) {
+func (p *VidRushMaterializationProcessor) selectGroupSecondaryImages(ctx context.Context, profile scriptpkg.SegmentSemanticProfile, segmentID string, candidates []scriptpkg.SegmentAssetCandidate, imageTarget int, bound []scriptports.AssetBinding) ([]scriptpkg.SegmentAssetCandidate, string) {
 	if p == nil || p.groupSampler == nil || imageTarget < 2 || imageTarget > 5 {
 		return nil, ""
 	}
@@ -187,7 +257,7 @@ func (p *VidRushMaterializationProcessor) selectGroupSecondaryImages(ctx context
 		return nil, ""
 	}
 	visual := scriptpkg.BuildSegmentVisualProfile(profile)
-	selected, err := p.groupSampler.SampleGroup(ctx, segmentID, visual.Subject, visual.Terms, eligible, false, groupSize, nil)
+	selected, err := p.groupSampler.SampleGroup(ctx, segmentID, visual.Subject, visual.Terms, eligible, false, groupSize, bound)
 	if err != nil {
 		return nil, fmt.Sprintf("vidrush_materialization: group selection failed for %s, exact selection kept: %v", segmentID, err)
 	}

@@ -387,21 +387,6 @@ func (p *VidRushMaterializationProcessor) materializeOne(ctx context.Context, pl
 		))
 	}
 	profile := updated.CanonicalSemanticProfile()
-	if p.groupSampler != nil && imageTarget > 1 {
-		// MultiImage 2.0: when the optional group port is installed the final
-		// secondary-image set is re-selected by the sampler's group operation
-		// (2–5 distinct ranked winners) instead of the deterministic exact
-		// selection alone. The default nil port preserves the exact behavior.
-		groupSelected, groupWarning := p.selectGroupSecondaryImages(ctx, profile, segment.SegmentID, materialized, imageTarget)
-		if len(groupSelected) > 0 {
-			updated.Assets.SecondaryImages = groupSelected
-			updated.Assets.GeneratedImages = filterVidRushGeneratedImages(updated.Assets.SecondaryImages)
-			logVidRushSelectedImages(p.log, segment.SegmentID, updated.Assets.SecondaryImages)
-		}
-		if groupWarning != "" {
-			warnings = append(warnings, groupWarning)
-		}
-	}
 	if p.sampler != nil {
 		updated.Assets.PrimaryVideo = p.selectPrimaryWithMediaSampler(ctx, materialized, profile)
 	} else {
