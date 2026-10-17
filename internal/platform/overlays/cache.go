@@ -52,18 +52,72 @@ func NewCache(root string) (*Cache, error) {
 	return &Cache{Root: root}, nil
 }
 
+func validCacheComponent(s string, hexOnly bool) bool {
+	if s == "" || s == "." || s == ".." {
+		return false
+	}
+	if strings.ContainsRune(s, '/') || strings.ContainsRune(s, '\\') || strings.ContainsRune(s, '\x00') {
+		return false
+	}
+	if strings.Contains(s, "..") {
+		return false
+	}
+	if hexOnly {
+		for i := 0; i < len(s); i++ {
+			cc := s[i]
+			if (cc < '0' || cc > '9') && (cc < 'a' || cc > 'f') && (cc < 'A' || cc > 'F') {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+func validCacheNamespace(s string) bool {
+	if !validCacheComponent(s, false) {
+		return false
+	}
+	if len(s) > 64 {
+		return false
+	}
+	for i := 0; i < len(s); i++ {
+		cc := s[i]
+		if (cc < 'a' || cc > 'z') && (cc < 'A' || cc > 'Z') && (cc < '0' || cc > '9') && cc != '_' && cc != '-' {
+			return false
+		}
+	}
+	return true
+}
+
 func (c *Cache) Path(namespace, key, filename string) string {
-	if c == nil || len(key) < 2 {
+	if c == nil || c.Root == "" {
 		return ""
 	}
-	return filepath.Join(c.Root, namespace, key[:2], key, filename)
+	if !validCacheNamespace(namespace) || !validCacheComponent(key, false) || !validCacheComponent(filename, false) {
+		return ""
+	}
+	if len(key) < 2 {
+		return ""
+	}
+	p := filepath.Join(c.Root, namespace, key[:2], key, filename)
+	rel, err := filepath.Rel(c.Root, p)
+	if err != nil || rel == "." || strings.HasPrefix(rel, "..") {
+		return ""
+	}
+	return p
 }
 
 func (c *Cache) Put(namespace, key, filename string, r io.Reader) (string, error) {
-	if c == nil || len(key) < 2 {
-		return "", fmt.Errorf("overlay cache: invalid key")
+	if c == nil {
+		return "", fmt.Errorf("overlay cache: cache is required")
+	}
+	if !validCacheNamespace(namespace) || !validCacheComponent(key, false) || !validCacheComponent(filename, false) {
+		return "", fmt.Errorf("overlay cache: invalid path components")
 	}
 	p := c.Path(namespace, key, filename)
+	if p == "" {
+		return "", fmt.Errorf("overlay cache: invalid path components")
+	}
 	if err := os.MkdirAll(filepath.Dir(p), 0755); err != nil {
 		return "", err
 	}

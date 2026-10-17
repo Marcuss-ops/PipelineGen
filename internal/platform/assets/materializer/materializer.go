@@ -51,6 +51,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -58,6 +59,14 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 )
+
+func parseMaterializerURL(raw string) (*url.URL, error) {
+	u, err := url.Parse(strings.TrimSpace(raw))
+	if err != nil || u == nil || u.Host == "" {
+		return nil, fmt.Errorf("%w: invalid URL %q", ErrSourceUnavailable, raw)
+	}
+	return u, nil
+}
 
 // ── Typed failures (godlike/07 fail-closed) ──────────────────────────────
 
@@ -142,7 +151,57 @@ type Options struct {
 // DefaultClient bounds every materialization fetch. The legacy overlay cache
 // used http.DefaultClient, which has NO timeout: a hanging origin pinned the
 // caller — and whatever lease it held — forever.
-var DefaultClient = &http.Client{Timeout: 10 * time.Minute}
+// Redirects are capped and re-validated against the metadata block, so a
+// trusted origin cannot bounce the fetcher onto a cloud metadata endpoint.
+var DefaultClient = &http.Client{
+	Timeout: 10 * time.Minute,
+	CheckRedirect: func(req *http.Request, via []*http.Request) error {
+		if len(via) >= 3 {
+			return fmt.Errorf("%w: too many redirects", ErrSourceUnavailable)
+		}
+		if isBlockedMaterializerHost(req.URL.Hostname()) {
+			return fmt.Errorf("%w: blocked redirect host %q", ErrSourceUnavailable, req.URL.Hostname())
+		}
+		return nil
+	},
+}
+
+// isBlockedMaterializerHost rejects cloud metadata and link-local endpoints
+// that must never be reachable via asset URL materialization (SEC-03). Loopback
+// and private LAN addresses remain allowed because local/dev origins and
+// httptest servers use them; SHA-256 verification still applies to every byte.
+func isBlockedMaterializerHost(host string) bool {
+	h := strings.ToLower(strings.TrimSpace(host))
+	if h == "" {
+		return true
+	}
+	// Trailing-dot FQDN spelling must not bypass the block.
+	h = strings.TrimSuffix(h, ".")
+	if h == "169.254.169.254" || h == "169.254.169.253" || h == "[fd00:ec2::254]" || h == "fd00:ec2::254" {
+		return true
+	}
+	if h == "metadata.google.internal" || h == "metadata.google" || h == "instance-data" || h == "instance-data-compute" {
+		return true
+	}
+	if strings.HasSuffix(h, ".internal") && strings.Contains(h, "metadata") {
+		return true
+	}
+	return false
+}
+
+func validateMaterializerOrigin(raw string) error {
+	u, err := parseMaterializerURL(raw)
+	if err != nil {
+		return err
+	}
+	if u.Scheme != "http" && u.Scheme != "https" {
+		return fmt.Errorf("%w: unsupported scheme %q", ErrSourceUnavailable, u.Scheme)
+	}
+	if isBlockedMaterializerHost(u.Hostname()) {
+		return fmt.Errorf("%w: blocked host %q", ErrSourceUnavailable, u.Hostname())
+	}
+	return nil
+}
 
 // Materializer owns content verification and source selection.
 type Materializer struct {
@@ -284,6 +343,9 @@ func (m *Materializer) installFromFile(dest, source, address string) (int64, err
 
 // installFromURL streams a fetchable origin into place, hashing as it writes.
 func (m *Materializer) installFromURL(ctx context.Context, dest, origin, address string) (int64, error) {
+	if err := validateMaterializerOrigin(origin); err != nil {
+		return 0, err
+	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, origin, nil)
 	if err != nil {
 		return 0, fmt.Errorf("%w: %v", ErrSourceUnavailable, err)
