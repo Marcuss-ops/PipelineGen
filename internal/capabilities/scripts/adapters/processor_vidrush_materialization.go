@@ -163,6 +163,7 @@ func (p *VidRushMaterializationProcessor) Process(ctx context.Context, plan *scr
 	if err != nil {
 		return nil, fmt.Errorf("vidrush materialization: bounded segment workers: %w", err)
 	}
+	p.selectMaterializedImageGroups(ctx, plan, input.VidRushSegments, processed)
 	segments := make([]scriptpkg.VidRushSegmentResult, 0, len(processed))
 	var warnings []string
 	for _, item := range processed {
@@ -283,6 +284,7 @@ func (p *VidRushMaterializationProcessor) Materialize(ctx context.Context, plan 
 	if err != nil {
 		return scriptpkg.VidRushSegmentResult{}, err
 	}
+	p.selectMaterializedImageGroups(ctx, plan, []scriptpkg.VidRushSegmentResult{segment}, []vidRushMaterializedSegment{out})
 	out.result.Warnings = append(out.result.Warnings, out.warnings...)
 	if p.log != nil {
 		p.log.Info("VidRush materialization completed", zap.String("segment_id", segment.SegmentID), zap.Int("selected_images", len(out.result.Assets.SecondaryImages)), zap.Int("materialized_candidates", len(out.result.Assets.Candidates)), zap.Strings("warnings", out.warnings))
