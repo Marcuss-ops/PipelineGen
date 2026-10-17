@@ -141,16 +141,17 @@ func (e *QueueRenderEnqueuer) enqueueChrononPlan(ctx context.Context, plan capov
 	}
 	semanticPlan := plan
 	var generatedMapVideo string
-	// P3-1: le mappe viaggiano come specifica semantica dietro la queue.
-	// Il backend (native vs python) è annotato sul piano; il worker esegue.
-	// Il render MP4 locale resta solo come fallback esplicito
-	// (PIPELINEGEN_MAP_LOCAL_RENDER=1) finché il backend Python non è paritario.
+	// Dynamic map overlays use ChrononTemplate's live tile-pyramid renderer by
+	// default. The native MAP compiler treats the basemap as one raster plane;
+	// its camera transform looks like a zoomed screenshot and is not an
+	// acceptable substitute for a cartographic fly-in. The native path remains
+	// an explicit diagnostic opt-in until it can produce equivalent motion.
 	if len(semanticPlan.Items) == 1 && semanticPlan.Items[0].Map != nil {
 		backend := scriptoverlay.ResolveMapBackend(true, true)
 		scriptoverlay.AnnotateMapBackend(&semanticPlan, backend)
-		// Default: specifica semantica alla queue (P3-1). Solo con
-		// PIPELINEGEN_MAP_LOCAL_RENDER=1 si usa il fallback MP4 locale.
-		if os.Getenv("PIPELINEGEN_MAP_LOCAL_RENDER") == "1" {
+		// PIPELINEGEN_MAP_NATIVE_RENDER=1 is reserved for compiler diagnostics;
+		// production jobs use the dynamic renderer unless explicitly opted out.
+		if os.Getenv("PIPELINEGEN_MAP_NATIVE_RENDER") != "1" {
 			videoPath, err := renderDynamicMapVideo(ctx, semanticPlan)
 			if err != nil {
 				return RenderReference{}, fmt.Errorf("render Chronon dynamic map: %w", err)

@@ -322,12 +322,28 @@ func BuildPlan(input PlanInput, config PlannerConfig) (OverlayPlan, error) {
 	// camera moves confused viewers; the editorial budget below then keeps
 	// the highest-priority journey map.
 	if laneAnimationCount(input.AnimationCounts, laneMaps) > 1 && config.RunLevelMapOverlayLimit != 1 {
+		// A repeated mention of the same grounded place in a later scene is a
+		// placement opportunity, not a new map composition. Keep the first
+		// narration occurrence so the run budget can admit other distinct
+		// places instead of spending multiple renders on byte-identical maps.
+		seenMapEntities := make(map[string]struct{})
 		for i := range input.Scenes {
 			scene := input.Scenes[i]
 			if len(scene.Maps) == 0 {
 				continue
 			}
-			plans := mapPlansForScene(input.PlateResolver, scene.Maps, input.Width, input.Height)
+			uniqueMaps := make([]MapCandidate, 0, len(scene.Maps))
+			for _, candidate := range scene.Maps {
+				entityID := strings.TrimSpace(candidate.EntityID)
+				if entityID != "" {
+					if _, seen := seenMapEntities[entityID]; seen {
+						continue
+					}
+					seenMapEntities[entityID] = struct{}{}
+				}
+				uniqueMaps = append(uniqueMaps, candidate)
+			}
+			plans := mapPlansForScene(input.PlateResolver, uniqueMaps, input.Width, input.Height)
 			for _, mapItem := range mapItemsForScene(scene.ID, plans, input.Width, input.Height, mapOrdinal, laneAnimationCount(input.AnimationCounts, laneMaps)) {
 				plan.Items = append(plan.Items, mapItem)
 				mapOrdinal++

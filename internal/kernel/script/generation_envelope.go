@@ -123,23 +123,11 @@ type GenerationItemV2 struct {
 	// MapType chooses the single basemap treatment used by runtime maps:
 	// satellite (default, the classic Python map), roadmap, terrain, or
 	// random (classic 3-style palette only). Empty means satellite.
-	// MapCameraAnimation pins ONE camera move for the run
-	// (slow_approach, wide_context, tilt_reveal, orbit_arrival,
-	// signature_dive, steady_hold, fast_push); empty/random samples the
-	// calm pool deterministically. MapLabelAnimation pins ONE label
-	// treatment (ten calm fades plus diffuse_city_beacon, rise_up, pop_in,
-	// soft_tracking, the distinct-geometry title_top, badge_side,
-	// huge_center, small_above, caption_card, editorial_serif and the full
-	// marker compositions gpin_bubble, card_glass, bare_big, ribbon,
-	// dot_ring, outline_box, which hide the bottom rail and draw their own
-	// marker); empty/random samples the calm fades. MapAnimation selects ONE
-	// of the 15 cartographic motion-graphic systems (simple_label,
-	// region_zoom, bracket_label, photo_callout, pulse_marker,
-	// multi_locations, focus_title, route_line, spotlight, region_fill,
-	// info_card, vertical_callout, icon_label, label_reveal,
-	// global_context); each owns marker + text and suppresses the standard
-	// rail. Empty keeps the classic camera+label look; random samples the 15
-	// deterministically.
+	// MapCameraAnimation currently allows only slow_approach for map arrival;
+	// empty/random resolves to that same registered runtime choice.
+	// MapLabelAnimation is fixed to none: the retained map compositions
+	// own their text; standalone map-label animation styles are retired.
+	// MapAnimation selects one of the nine retained map compositions.
 	MapType            string `json:"map_type,omitempty"`
 	MapCameraAnimation string `json:"map_camera_animation,omitempty"`
 	MapLabelAnimation  string `json:"map_label_animation,omitempty"`

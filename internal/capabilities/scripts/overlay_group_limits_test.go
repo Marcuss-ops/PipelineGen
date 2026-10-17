@@ -82,3 +82,24 @@ func TestEffectivePhraseOverlayCeilingAllowsOnePhraseGroupToRaiseDefault(t *test
 		}
 	}
 }
+
+func TestEffectiveMapOverlayCeilingHonorsRequestAndHardCap(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		requested int
+		limits    map[string]int
+		want      int
+	}{
+		{name: "default bounded to three", want: 3},
+		{name: "request lowers ceiling", requested: 2, want: 2},
+		{name: "group lowers ceiling", limits: map[string]int{"maps": 1}, want: 1},
+		{name: "request and group choose lower", requested: 2, limits: map[string]int{"maps": 1}, want: 1},
+		{name: "oversized request remains bounded", requested: 20, limits: map[string]int{"maps": 20}, want: 3},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := effectiveMapOverlayCeiling(tc.requested, tc.limits); got != tc.want {
+				t.Fatalf("effective map ceiling = %d, want %d", got, tc.want)
+			}
+		})
+	}
+}

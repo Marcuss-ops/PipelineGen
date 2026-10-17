@@ -184,7 +184,7 @@ func TestApplyEditorialOverlayBudgetHonoursImageLimitAboveDefault(t *testing.T) 
 	}
 }
 
-func TestApplyEditorialOverlayBudgetAdmitsFiveGroundedMaps(t *testing.T) {
+func TestApplyEditorialOverlayBudgetAdmitsAtMostThreeGroundedMaps(t *testing.T) {
 	items := make([]OverlayItem, 0, MaxMapOverlaysPerRun+2)
 	for i := 0; i < MaxMapOverlaysPerRun+2; i++ {
 		items = append(items, OverlayItem{
@@ -200,8 +200,8 @@ func TestApplyEditorialOverlayBudgetAdmitsFiveGroundedMaps(t *testing.T) {
 			count++
 		}
 	}
-	if count != 5 {
-		t.Fatalf("map overlays = %d, want the five-map acceptance limit", count)
+	if count != MaxMapOverlaysPerRun {
+		t.Fatalf("map overlays = %d, want the three-map hard cap", count)
 	}
 }
 
@@ -220,7 +220,7 @@ func TestLimitOverlayItemsPerSceneCountsChartAsOneUnit(t *testing.T) {
 	}
 }
 
-func TestApplyEditorialOverlayBudgetKeepsFiveHighestPriorityMaps(t *testing.T) {
+func TestApplyEditorialOverlayBudgetKeepsThreeHighestPriorityMaps(t *testing.T) {
 	items := make([]OverlayItem, 0, MaxMapOverlaysPerRun+2)
 	for i := 0; i < MaxMapOverlaysPerRun+2; i++ {
 		items = append(items, OverlayItem{
@@ -235,7 +235,7 @@ func TestApplyEditorialOverlayBudgetKeepsFiveHighestPriorityMaps(t *testing.T) {
 	}
 	for _, item := range got {
 		if item.ID == "map-0" || item.ID == "map-1" {
-			t.Fatalf("below-cap map %q survived the five-map ceiling", item.ID)
+			t.Fatalf("below-cap map %q survived the three-map ceiling", item.ID)
 		}
 	}
 }

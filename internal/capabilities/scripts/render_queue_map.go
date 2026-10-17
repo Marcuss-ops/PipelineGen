@@ -74,7 +74,7 @@ func renderDynamicMapVideo(ctx context.Context, plan capoverlay.OverlayPlan) (st
 		}
 		pins = append(pins, entry)
 	}
-	// The camera move, the label accent and the basemap are the map's LOOK. They
+	// The camera move and basemap are the map's LOOK. They
 	// are resolved by the pipeline's single deterministic sampler, seeded by the
 	// plan identity: replaying a run reproduces the exact same map presentation,
 	// while a new run (a new fingerprint) re-rolls it. A random draw here would
@@ -82,8 +82,8 @@ func renderDynamicMapVideo(ctx context.Context, plan capoverlay.OverlayPlan) (st
 	// artifact that was approved.
 	seed := mapRunSeed(plan)
 	// Select the map treatment once per map ITEM, not once per parent run.
-	// A video holding several maps must show different camera moves, label
-	// accents and basemaps instead of the same treatment on every map clip.
+	// A video holding several maps can vary compositions and basemaps instead
+	// of repeating the same treatment on every map clip.
 	// The seed is still the run identity, so replaying a run reproduces the
 	// exact same per-item presentation; only the slot varies per item.
 	mapStyleSlot := strings.TrimSpace(plan.Items[0].ID)
@@ -92,7 +92,7 @@ func renderDynamicMapVideo(ctx context.Context, plan capoverlay.OverlayPlan) (st
 	}
 	cameraChoice, _ := plan.Items[0].Params["map_camera_animation"].(string)
 	labelChoice, _ := plan.Items[0].Params["map_label_animation"].(string)
-	cameraAnimation, err := resolveMapAnimation(cameraChoice, seed, mapStyleSlot, "map_camera", mapCameraAnimationsCertified(), capoverlay.AnimationRandomCandidates("map.camera"))
+	cameraAnimation, err := resolveMapAnimation(cameraChoice, seed, mapStyleSlot, "map_camera", mapCameraAnimationsCertified(), mapCameraAnimations)
 	if err != nil {
 		return "", err
 	}
@@ -105,7 +105,7 @@ func renderDynamicMapVideo(ctx context.Context, plan capoverlay.OverlayPlan) (st
 	if err != nil {
 		return "", err
 	}
-	if mapAnimation == "location_focus" || mapAnimation == "location_pulse" {
+	if strings.HasPrefix(mapAnimation, "ed_") {
 		// This scene owns its name rail and marker inside the GPU compositor.
 		labelAnimation = "none"
 	}
@@ -285,6 +285,12 @@ func resolveMapBasemap(mapType, seed, slot string) (string, error) {
 // sampler may pick when the caller chose nothing.
 func resolveMapAnimation(requested, seed, slot, channel string, certified, randomPool []string) (string, error) {
 	requested = strings.TrimSpace(requested)
+	if channel == "map_label" && len(certified) == 0 {
+		if requested == "" || strings.EqualFold(requested, "random") || requested == "none" {
+			return "none", nil
+		}
+		return "", fmt.Errorf("unsupported runtime %s %q", channel, requested)
+	}
 	if requested == "" || strings.EqualFold(requested, "random") {
 		if len(randomPool) == 0 {
 			randomPool = certified
@@ -374,7 +380,7 @@ var (
 )
 
 func mapMapAnimationsRandomPool() []string {
-	return capoverlay.AnimationRandomCandidates("map.composition")
+	return []string{"region_zoom", "pulse_marker", "spotlight"}
 }
 
 // mapCameraAnimationsCertified lists every camera id the Python renderer
@@ -463,9 +469,8 @@ func mapRunSeed(plan capoverlay.OverlayPlan) string {
 // function of the run seed and the style channel. It samples through the
 // overlays package's single deterministic sampler, so map presentation obeys
 // exactly the same seed→choice contract as every other semantic selection in
-// the pipeline. The channel keeps the three choices independent: the same seed
-// picks the camera move, the label accent and the basemap from separate
-// digests, so they never collapse onto one correlated draw.
+// the pipeline. The channel keeps the camera move and basemap independent:
+// the same seed picks them from separate digests.
 func deterministicMapStyle(seed, channel, itemID string, options []string) string {
 	return capoverlay.DefaultDeterministicPresetSampler.Sample(capoverlay.PresetSampleInput{
 		JobFingerprint: seed,
