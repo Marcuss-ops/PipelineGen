@@ -335,6 +335,15 @@ func (r *Runner) SetSceneChartAnalyzer(analyzer SceneChartAnalyzer) {
 	}
 }
 
+// SetSceneSemanticAnalyzer wires the unified VisualNER semantic source: one
+// analyze call per scene replaces the separate bullet and chart calls. When
+// unset the runner falls back to the legacy separate analyzers.
+func (r *Runner) SetSceneSemanticAnalyzer(analyzer SceneSemanticAnalyzer) {
+	if r != nil {
+		r.sceneSemanticAnalyzer = analyzer
+	}
+}
+
 // SetSceneIntelligenceAnalyzer wires the optional shadow analyzer. Nil leaves
 // SI disabled and does not affect narration or visual planning.
 func (r *Runner) SetSceneIntelligenceAnalyzer(analyzer SceneIntelligenceAnalyzer) {

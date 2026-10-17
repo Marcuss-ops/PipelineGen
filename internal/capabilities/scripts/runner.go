@@ -60,6 +60,7 @@ type Runner struct {
 	sceneIntelligenceAnalyzer SceneIntelligenceAnalyzer
 	sceneChartAnalyzer        SceneChartAnalyzer
 	sceneBulletAnalyzer       SceneBulletAnalyzer
+	sceneSemanticAnalyzer     SceneSemanticAnalyzer
 
 	// ttsConcurrency bounds the TTS voiceover worker pool: the voiceover
 	// phase fans out scene×language synthesis to at most this many concurrent

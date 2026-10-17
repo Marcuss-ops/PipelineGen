@@ -147,6 +147,56 @@ func isGenerationClipCandidate(candidate scriptpkg.SegmentAssetCandidate) bool {
 	}
 }
 
+// selectGroupSecondaryImages re-selects the scene's secondary images through
+// the optional MediaSamplerGroupPort (MultiImage 2.0): 2–5 distinct ranked
+// winners among this scene's own ready image candidates. Eligibility
+// mirrors the exact selection: same segment ownership, a ready image
+// provider and per-asset uniqueness. The group selects exactly the scene's
+// image target, so this hook only engages for targets 2–5: an x>5 scene
+// keeps its wider deterministic selection instead of shrinking to 5.
+// Fail-open: when fewer candidates than groupSize pass the hard
+// constraints, or the group call fails, the caller keeps the deterministic
+// exact selection — the returned warning (empty on fallback) reports the
+// degraded mode instead of hiding it.
+func (p *VidRushMaterializationProcessor) selectGroupSecondaryImages(ctx context.Context, profile scriptpkg.SegmentSemanticProfile, segmentID string, candidates []scriptpkg.SegmentAssetCandidate, imageTarget int) ([]scriptpkg.SegmentAssetCandidate, string) {
+	if p == nil || p.groupSampler == nil || imageTarget < 2 || imageTarget > 5 {
+		return nil, ""
+	}
+	groupSize := imageTarget
+	eligible := make([]scriptpkg.SegmentAssetCandidate, 0, len(candidates))
+	seen := make(map[string]struct{}, len(candidates))
+	for _, candidate := range candidates {
+		if owner := strings.TrimSpace(candidate.SegmentID); owner != "" && owner != strings.TrimSpace(segmentID) {
+			continue
+		}
+		provider := strings.ToLower(strings.TrimSpace(candidate.Provider))
+		isImage := provider == scriptpkg.VidRushProviderInternetImages || provider == scriptpkg.VidRushProviderImageGeneration
+		if !isImage || !readyVidRushCandidate(candidate) {
+			continue
+		}
+		if strings.TrimSpace(candidate.AssetID) == "" {
+			continue
+		}
+		if _, duplicate := seen[candidate.AssetID]; duplicate {
+			continue
+		}
+		seen[candidate.AssetID] = struct{}{}
+		eligible = append(eligible, candidate)
+	}
+	if len(eligible) < groupSize {
+		return nil, ""
+	}
+	visual := scriptpkg.BuildSegmentVisualProfile(profile)
+	selected, err := p.groupSampler.SampleGroup(ctx, segmentID, visual.Subject, visual.Terms, eligible, false, groupSize, nil)
+	if err != nil {
+		return nil, fmt.Sprintf("vidrush_materialization: group selection failed for %s, exact selection kept: %v", segmentID, err)
+	}
+	if len(selected) < groupSize {
+		return nil, fmt.Sprintf("vidrush_materialization: group selection returned %d members for target %d in %s, exact selection kept", len(selected), groupSize, segmentID)
+	}
+	return selected, ""
+}
+
 func (p *VidRushMaterializationProcessor) selectPrimaryWithMediaSampler(ctx context.Context, candidates []scriptpkg.SegmentAssetCandidate, profile scriptpkg.SegmentSemanticProfile) *scriptpkg.SegmentAssetCandidate {
 	eligible := make([]scriptpkg.SegmentAssetCandidate, 0, len(candidates))
 	for _, candidate := range candidates {

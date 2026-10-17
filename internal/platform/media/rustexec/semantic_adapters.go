@@ -4,6 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"math"
+	"regexp"
+	"strconv"
 	"strings"
 
 	entityports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/entities/ports"
@@ -58,6 +61,12 @@ type VisualAnalysis struct {
 	LowerThirds []visualLowerThird       `json:"lower_thirds"`
 	Bullets     []visualBullet           `json:"bullets"`
 	ChartPoints []visualChartPoint       `json:"chart_points"`
+	// TemporalFacts carries every source-grounded date occurrence,
+	// independent of the visual top-N budget (absent from older binaries).
+	TemporalFacts []visualTemporalFact `json:"temporal_facts"`
+	// NumericFacts carries every NUMBER/PERCENT/MONEY occurrence
+	// with its parse (absent from older binaries).
+	NumericFacts []visualNumericFact `json:"numeric_facts"`
 }
 
 type visualRelation struct {
@@ -91,6 +100,38 @@ type visualChartPoint struct {
 	Value         float64 `json:"value"`
 	Label         string  `json:"label"`
 	SentenceIndex int     `json:"sentence_index"`
+}
+
+// visualTemporalFact mirrors the Rust TemporalFact wire contract:
+// surface/type/normalized_date/precision/start_byte/end_byte/evidence.
+type visualTemporalFact struct {
+	Surface        string  `json:"surface"`
+	Kind           string  `json:"type"`
+	NormalizedDate *string `json:"normalized_date"`
+	Precision      string  `json:"precision"`
+	StartByte      int     `json:"start_byte"`
+	EndByte        int     `json:"end_byte"`
+	Evidence       string  `json:"evidence"`
+	Era            *string `json:"era,omitempty"`
+	Ambiguous      bool    `json:"ambiguous,omitempty"`
+}
+
+var visualTemporalPrecisions = map[string]bool{
+	"day": true, "month": true, "year": true, "unresolved": true,
+}
+
+// visualNumericFact mirrors the Rust NumericFact wire contract.
+type visualNumericFact struct {
+	Surface   string   `json:"surface"`
+	Kind      string   `json:"type"`
+	Value     *float64 `json:"value"`
+	StartByte int      `json:"start_byte"`
+	EndByte   int      `json:"end_byte"`
+	Evidence  string   `json:"evidence"`
+}
+
+var visualNumericKinds = map[string]bool{
+	"NUMBER": true, "PERCENT": true, "MONEY": true,
 }
 
 type visualAnalyzeResponse struct {
@@ -155,6 +196,12 @@ func (a *VisualNERAdapter) Analyze(ctx context.Context, language, sourceText str
 			return nil, fmt.Errorf("visualner: chart point references entity out of range")
 		}
 	}
+	if err := validateTemporalFacts(sourceText, analysis.TemporalFacts); err != nil {
+		return nil, err
+	}
+	if err := validateNumericFacts(sourceText, analysis.NumericFacts); err != nil {
+		return nil, err
+	}
 	return &analysis, nil
 }
 
@@ -199,6 +246,190 @@ func (a *VisualNERAdapter) BulletCandidates(ctx context.Context, language, sourc
 		out = append(out, scriptgen.BulletCandidate{Text: b.Text, SentenceIndex: b.SentenceIndex, Start: b.Start, End: b.End})
 	}
 	return out, nil
+}
+
+// validateTemporalFacts enforces the temporal contract at the boundary:
+// every fact is a DATE, its surface reproduces the exact byte span of the
+// source, the precision is canonical, and the normalized ISO form matches
+// the precision's shape (YYYY-MM-DD for day, YYYY-MM for month, YYYY for
+// year, empty for unresolved facts).
+func validateTemporalFacts(sourceText string, facts []visualTemporalFact) error {
+	for i := range facts {
+		fact := &facts[i]
+		if fact.Kind != "DATE" {
+			return fmt.Errorf("visualner: temporal fact %q has kind %q", fact.Surface, fact.Kind)
+		}
+		if !visualTemporalPrecisions[fact.Precision] {
+			return fmt.Errorf("visualner: temporal fact %q has unknown precision %q", fact.Surface, fact.Precision)
+		}
+		if fact.StartByte < 0 || fact.EndByte <= fact.StartByte || fact.EndByte > len(sourceText) || sourceText[fact.StartByte:fact.EndByte] != fact.Surface || fact.Evidence != fact.Surface {
+			return fmt.Errorf("visualner: temporal fact %q is not grounded in source_text", fact.Surface)
+		}
+		switch fact.Precision {
+		case "unresolved":
+			if fact.NormalizedDate != nil {
+				return fmt.Errorf("visualner: unresolved temporal fact %q must not carry a normalized date", fact.Surface)
+			}
+		case "day":
+			if fact.NormalizedDate == nil || !isoRegexDay.MatchString(*fact.NormalizedDate) || !isoCalendarValid(*fact.NormalizedDate) {
+				return fmt.Errorf("visualner: day temporal fact %q lacks a valid ISO date %v", fact.Surface, fact.NormalizedDate)
+			}
+		case "month":
+			if fact.NormalizedDate == nil || !isoRegexMonth.MatchString(*fact.NormalizedDate) || !isoCalendarValid(*fact.NormalizedDate) {
+				return fmt.Errorf("visualner: month temporal fact %q lacks a valid ISO month %v", fact.Surface, fact.NormalizedDate)
+			}
+		case "year":
+			if fact.NormalizedDate == nil || !isoRegexYear.MatchString(*fact.NormalizedDate) {
+				return fmt.Errorf("visualner: year temporal fact %q lacks a valid ISO year %v", fact.Surface, fact.NormalizedDate)
+			}
+		}
+	}
+	return nil
+}
+
+// validateNumericFacts enforces the numeric contract at the boundary: the
+// kind is canonical and the surface reproduces the exact byte span of the
+// source. A parsed value is attached only when the worker produced one.
+func validateNumericFacts(sourceText string, facts []visualNumericFact) error {
+	for i := range facts {
+		fact := &facts[i]
+		if !visualNumericKinds[fact.Kind] {
+			return fmt.Errorf("visualner: numeric fact %q has unknown kind %q", fact.Surface, fact.Kind)
+		}
+		if fact.StartByte < 0 || fact.EndByte <= fact.StartByte || fact.EndByte > len(sourceText) || sourceText[fact.StartByte:fact.EndByte] != fact.Surface || fact.Evidence != fact.Surface {
+			return fmt.Errorf("visualner: numeric fact %q is not grounded in source_text", fact.Surface)
+		}
+		if fact.Value != nil && !isFinite(*fact.Value) {
+			return fmt.Errorf("visualner: numeric fact %q has a non-finite value", fact.Surface)
+		}
+	}
+	return nil
+}
+
+func isFinite(value float64) bool {
+	return !math.IsInf(value, 0) && !math.IsNaN(value)
+}
+
+var isoRegexDay = regexp.MustCompile(`^\d{4}-\d{2}-\d{2}$`)
+var isoRegexMonth = regexp.MustCompile(`^\d{4}-\d{2}$`)
+var isoRegexYear = regexp.MustCompile(`^\d{4}$`)
+
+// isoCalendarValid checks the calendar position of an ISO prefix (with or
+// without month/day segments); boundaries are intra-month and the rest is
+// irrelevant to the projection.
+func isoCalendarValid(iso string) bool {
+	parts := strings.Split(iso, "-")
+	if len(parts) == 0 {
+		return false
+	}
+	year, err := strconv.Atoi(parts[0])
+	if err != nil || year <= 0 {
+		return false
+	}
+	if len(parts) < 2 {
+		return true
+	}
+	month, err := strconv.Atoi(parts[1])
+	if err != nil || month < 1 || month > 12 {
+		return false
+	}
+	if len(parts) < 3 {
+		return true
+	}
+	day, err := strconv.Atoi(parts[2])
+	max := daysInGoMonth(month, year)
+	return err == nil && day >= 1 && day <= max
+}
+
+func daysInGoMonth(month, year int) int {
+	switch month {
+	case 1, 3, 5, 7, 8, 10, 12:
+		return 31
+	case 4, 6, 9, 11:
+		return 30
+	case 2:
+		if year%4 == 0 && (year%100 != 0 || year%400 == 0) {
+			return 29
+		}
+		return 28
+	default:
+		return 0
+	}
+}
+
+// projectBullets reuses the bullet projection of BulletCandidates for the
+// single-analyze bundle; nothing is inferred.
+func projectBullets(sourceText string, analysis *VisualAnalysis) []scriptgen.BulletCandidate {
+	out := make([]scriptgen.BulletCandidate, 0, len(analysis.Bullets))
+	for _, b := range analysis.Bullets {
+		if b.Start < 0 || b.End <= b.Start || b.End > len(sourceText) {
+			continue
+		}
+		if sourceText[b.Start:b.End] != b.Text {
+			continue
+		}
+		if strings.TrimSpace(b.Text) == "" || b.SentenceIndex < 0 {
+			continue
+		}
+		out = append(out, scriptgen.BulletCandidate{Text: b.Text, SentenceIndex: b.SentenceIndex, Start: b.Start, End: b.End})
+	}
+	return out
+}
+
+// projectCharts reuses the chart projection of ChartCandidates for the
+// single-analyze bundle; nothing is inferred.
+func projectCharts(sourceText string, analysis *VisualAnalysis) []scriptgen.ChartValueCandidate {
+	out := make([]scriptgen.ChartValueCandidate, 0, len(analysis.ChartPoints))
+	for _, cp := range analysis.ChartPoints {
+		if cp.Entity < 0 || cp.Entity >= len(analysis.Entities) {
+			continue
+		}
+		out = append(out, scriptgen.ChartValueCandidate{Text: analysis.Entities[cp.Entity].Text, Value: cp.Value})
+	}
+	return out
+}
+
+// SemanticCandidates is the single-analyze projection the scripts layer
+// consumes for one scene: one worker call yields the grounded Bullet,
+// ChartValue and TemporalFact candidates. Nothing is inferred and each
+// surface is byte-verified against sourceText by Analyze.
+func (a *VisualNERAdapter) SemanticCandidates(ctx context.Context, language, sourceText string, limit int) (*scriptgen.SemanticCandidateBundle, error) {
+	analysis, err := a.Analyze(ctx, language, sourceText, limit)
+	if err != nil {
+		return nil, err
+	}
+	temporal := make([]scriptgen.TemporalFactCandidate, 0, len(analysis.TemporalFacts))
+	for _, fact := range analysis.TemporalFacts {
+		candidate := scriptgen.TemporalFactCandidate{
+			Text: fact.Surface, Precision: fact.Precision,
+			Start: fact.StartByte, End: fact.EndByte, Ambiguous: fact.Ambiguous,
+		}
+		if fact.NormalizedDate != nil {
+			candidate.NormalizedDate = *fact.NormalizedDate
+		}
+		if fact.Era != nil {
+			candidate.Era = *fact.Era
+		}
+		temporal = append(temporal, candidate)
+	}
+	numeric := make([]scriptgen.NumericFactCandidate, 0, len(analysis.NumericFacts))
+	for _, fact := range analysis.NumericFacts {
+		candidate := scriptgen.NumericFactCandidate{
+			Text: fact.Surface, Kind: fact.Kind,
+			Start: fact.StartByte, End: fact.EndByte,
+		}
+		if fact.Value != nil {
+			candidate.Value = *fact.Value
+			candidate.HasValue = true
+		}
+		numeric = append(numeric, candidate)
+	}
+	return &scriptgen.SemanticCandidateBundle{
+		Bullets:  projectBullets(sourceText, analysis),
+		Charts:   projectCharts(sourceText, analysis),
+		Temporal: temporal,
+		Numeric:  numeric,
+	}, nil
 }
 
 // Extract uses the compact entity-only operation. The richer analyze response
@@ -305,6 +536,7 @@ func NewMediaSamplerAdapter(executor *Executor) (*MediaSamplerAdapter, error) {
 	}
 	return &MediaSamplerAdapter{executor: executor}, nil
 }
+
 func (a *MediaSamplerAdapter) SampleScene(ctx context.Context, sceneID, subject string, terms []string, candidates []mediaSamplerCandidate, allowReuse bool) ([]mediaSamplerResult, string, error) {
 	if a == nil || a.executor == nil {
 		return nil, "", fmt.Errorf("mediasampler: executor is not configured")
