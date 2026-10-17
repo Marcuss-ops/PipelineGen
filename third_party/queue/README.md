@@ -1,14 +1,15 @@
 # Vendored `github.com/Marcuss-ops/RenderingGen/queue`
 
-Provenance: byte-for-byte copy of `RenderingGen/queue` (the RenderginGen
-repository, `queue/` Go module) at commit `aebda34` ("Sync overlay contract,
+Provenance: byte-for-byte copy of `RenderingGen/queue` (the upstream repository
+under its historically misspelled GitHub name, `queue/` Go module) at commit
+`aebda34` ("Sync overlay contract,
 entity sequence camera and queue changes"), including `Client.Retry`.
 
 ## Why this copy exists (BUILD-01)
 
 The upstream module path `github.com/Marcuss-ops/RenderingGen/queue` is **not
-resolvable**: GitHub serves the repository as `Marcuss-ops/RenderginGen`
-(different spelling), so `go mod download` for the declared module path can
+resolvable**: GitHub serves the repository under a differently spelled name,
+so `go mod download` for the declared module path can
 never succeed (`https://github.com/Marcuss-ops/RenderingGen` returns 404 and
 the Go module proxy has no cached copy). The former
 `replace … => ../RenderingGen/queue` therefore forced every clean PipelineGen
