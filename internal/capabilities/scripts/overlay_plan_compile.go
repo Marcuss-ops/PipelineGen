@@ -74,6 +74,17 @@ func compileOverlayPlanWithMotionOffset(result *GenerateResult, language Languag
 	var scenes []capabilityoverlay.SceneInput
 	var timedScenes []Scene
 	perSceneImageHashes := sceneEntityImageHashes(result)
+	genericImageCeiling := canvas.MaxImageOverlays
+	if genericImageCeiling <= 0 {
+		genericImageCeiling = capabilityoverlay.MaxImageOverlaysPerRun
+	}
+	if len(perSceneImages) > 0 && perSceneImages[0] && canvas.AnimationCounts["entities"] > 0 {
+		genericImageCeiling -= canvas.AnimationCounts["entities"]
+	}
+	if genericImageCeiling < 0 {
+		genericImageCeiling = 0
+	}
+	genericImageCount := 0
 	for i := range result.Scenes {
 		scene := result.Scenes[i]
 		ref, ok := scene.Voiceover[language]
@@ -189,13 +200,18 @@ func compileOverlayPlanWithMotionOffset(result *GenerateResult, language Languag
 		// controls generic scene stills; explicit images_per_scene=0 must keep
 		// those disabled even when entity cards use per-scene scope.
 		sceneImagesEnabled := len(perSceneImages) < 2 || perSceneImages[1]
-		if sceneImagesEnabled {
+		if sceneImagesEnabled && genericImageCount < genericImageCeiling {
 			if sceneInput == nil {
 				sceneInput = &capabilityoverlay.SceneInput{ID: scene.ID}
 			}
-			if image, ok := sceneImageCandidate(result, scene.ID, startUS, perSceneImageHashes, timelineEndUS[scene.ID]); ok {
+			remaining := genericImageCeiling - genericImageCount
+			if remaining > 2 {
+				remaining = 2
+			}
+			for _, image := range sceneImageCandidates(result, scene.ID, startUS, perSceneImageHashes, timelineEndUS[scene.ID], remaining) {
 				sceneInput.Images = append(sceneInput.Images, image)
 				perSceneImageHashes[strings.ToLower(image.SHA256)] = struct{}{}
+				genericImageCount++
 			}
 		}
 		brief := scriptoverlay.RecapSceneBrief{ID: scene.ID}
@@ -427,7 +443,14 @@ func compileOverlayPlanWithMotionOffset(result *GenerateResult, language Languag
 	// grounded phrases and one composed location map.
 	// It runs on individual assets before composition so dedupe and counts do
 	// not treat a 2–5-image group as one indivisible image.
-	items, _ = capabilityoverlay.ApplyEditorialOverlayBudgetWithImageLimit(items, phraseCeiling, imageCeiling, mapLimit, len(perSceneImages) > 0 && perSceneImages[0])
+	perSceneEntityImages := len(perSceneImages) > 0 && perSceneImages[0]
+	shortPhraseCap, hasShortPhraseCap := canvas.OverlayGroupLimits[overlayGroupShortPhrases]
+	longPhraseCap, hasLongPhraseCap := canvas.OverlayGroupLimits[overlayGroupLongPhrases]
+	if hasShortPhraseCap && hasLongPhraseCap {
+		items, _ = capabilityoverlay.ApplyEditorialOverlayBudgetWithPhraseLanes(items, phraseCeiling, imageCeiling, mapLimit, perSceneEntityImages, shortPhraseCap, longPhraseCap)
+	} else {
+		items, _ = capabilityoverlay.ApplyEditorialOverlayBudgetWithImageLimit(items, phraseCeiling, imageCeiling, mapLimit, perSceneEntityImages)
+	}
 	if len(items) == 0 {
 		return nil, nil
 	}

@@ -104,10 +104,9 @@ func (r *Runner) compileAudioOverlayPlan(ctx context.Context, runID string, req 
 		plates = nil
 	}
 	imageProviderEnabled := req.MediaPlan.ProviderPolicy.InternetImages.AsBool() || req.MediaPlan.ProviderPolicy.ImageGeneration.AsBool()
-	// Per-scene entity-image jobs render the bound PERSON cards directly. Do
-	// not also add generic scene stills from the same candidates: those become
-	// static image-chain cards and obscure the one-motion-per-image contract.
-	genericSceneImagesEnabled := req.MaxImageOverlays > 0 && imageProviderEnabled && !req.MediaPlan.Extraction.EntityImages.PerScene()
+	// Context stills and identity portraits are separate overlay lanes. The
+	// shared run image budget and content-hash dedupe prevent duplicate bytes.
+	genericSceneImagesEnabled := req.MaxImageOverlays > 0 && imageProviderEnabled
 	r.log.Info("runner: overlay canvas motion inputs",
 		zap.String("run_id", runID),
 		zap.String("phrase_motion_family", canvas.PhraseMotionFamily),

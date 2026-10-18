@@ -6,7 +6,7 @@ import (
 	"strings"
 )
 
-func numberOverlayItem(planID, sceneID string, number TimedAnnotation, animationCounts map[string]int) OverlayItem {
+func numberOverlayItem(planID, sceneID string, number TimedAnnotation, animationCounts map[string]int, dateWindowCapUS ...int64) OverlayItem {
 	id := itemID(sceneID, "number", number.Text)
 	templateID, motionID := "NUMBER", SelectTextMotion(planID, sceneID, id)
 	if numberType := strings.TrimSpace(number.Type); numberType != "" {
@@ -20,7 +20,11 @@ func numberOverlayItem(planID, sceneID string, number TimedAnnotation, animation
 	}
 	params := map[string]any{"position": "center", "style": "stat", "priority": number.Score}
 	if templateID == "TIMELINE_DATE_CARD" {
-		number = minimumDatePresentationDuration(number)
+		capUS := int64(0)
+		if len(dateWindowCapUS) > 0 {
+			capUS = dateWindowCapUS[0]
+		}
+		number = minimumDatePresentationDuration(number, capUS)
 		params["font_size_px"] = float64(SharedTextFontSizePX + PresentationTextFontIncreasePX)
 	} else if templateID == "METRIC_STAT_CARD" {
 		params["font_size_px"] = float64(SharedTextFontSizePX + PresentationTextFontIncreasePX)
@@ -146,16 +150,56 @@ func italianCardinalValue(word string) (int, bool) {
 
 // minimumDatePresentationDuration preserves the word-aligned start while
 // keeping a Date card on screen for at least five seconds.
-func minimumDatePresentationDuration(date TimedAnnotation) TimedAnnotation {
+func minimumDatePresentationDuration(date TimedAnnotation, maxDurationUS int64) TimedAnnotation {
 	const minimumDurationUS int64 = 5_000_000
 	if date.DurationUS <= 0 {
 		date.StartUS = date.StartMs * 1000
 		date.DurationUS = (date.EndMs - date.StartMs) * 1000
 	}
-	if date.DurationUS < minimumDurationUS {
-		date.DurationUS = minimumDurationUS
+	target := minimumDurationUS
+	const minimumReadableDateUS int64 = 2_000_000
+	if maxDurationUS >= minimumReadableDateUS && maxDurationUS < target {
+		target = maxDurationUS
+	}
+	if date.DurationUS < target {
+		date.DurationUS = target
 	}
 	date.StartMs = date.StartUS / 1000
 	date.EndMs = (date.StartUS + date.DurationUS + 999) / 1000
 	return date
+}
+
+// dateCardWindowCap keeps a run of date cards readable while ending each card
+// shortly before the next spoken date in the same scene. A single date keeps
+// the established five-second presentation window.
+func dateCardWindowCap(date TimedAnnotation, all []TimedAnnotation) int64 {
+	if !strings.EqualFold(strings.TrimSpace(date.Type), "DATE") {
+		return 0
+	}
+	start := date.StartUS
+	if start <= 0 {
+		start = date.StartMs * 1000
+	}
+	const guardUS int64 = 100_000
+	nearestGap := int64(0)
+	for _, next := range all {
+		if !strings.EqualFold(strings.TrimSpace(next.Type), "DATE") {
+			continue
+		}
+		nextStart := next.StartUS
+		if nextStart <= 0 {
+			nextStart = next.StartMs * 1000
+		}
+		gap := nextStart - start
+		if gap > 0 && gap < 5_000_000 && (nearestGap == 0 || gap < nearestGap) {
+			nearestGap = gap
+		}
+	}
+	if nearestGap > 0 {
+		capUS := nearestGap - guardUS
+		if capUS >= 2_000_000 {
+			return capUS
+		}
+	}
+	return 0
 }

@@ -93,8 +93,18 @@ func ApplyEditorialOverlayBudgetWithLimits(items []OverlayItem, phraseLimit, map
 // ceilings for phrases, combined image kinds, and maps. A nonpositive image
 // limit keeps the certified default.
 func ApplyEditorialOverlayBudgetWithImageLimit(items []OverlayItem, phraseLimit, imageLimit, mapLimit int, allowRepeatedEntityImagesPerScene ...bool) ([]OverlayItem, PhraseOverlayBudget) {
-	limit := EffectivePhraseOverlayLimit(phraseLimit)
 	perSceneEntityImages := len(allowRepeatedEntityImagesPerScene) > 0 && allowRepeatedEntityImagesPerScene[0]
+	return applyEditorialOverlayBudget(items, phraseLimit, imageLimit, mapLimit, perSceneEntityImages, 0, 0)
+}
+
+// ApplyEditorialOverlayBudgetWithPhraseLanes applies the same run-level
+// budget while honoring explicit short/long phrase group limits.
+func ApplyEditorialOverlayBudgetWithPhraseLanes(items []OverlayItem, phraseLimit, imageLimit, mapLimit int, perSceneEntityImages bool, shortPhraseLimit, longPhraseLimit int) ([]OverlayItem, PhraseOverlayBudget) {
+	return applyEditorialOverlayBudget(items, phraseLimit, imageLimit, mapLimit, perSceneEntityImages, shortPhraseLimit, longPhraseLimit)
+}
+
+func applyEditorialOverlayBudget(items []OverlayItem, phraseLimit, imageLimit, mapLimit int, perSceneEntityImages bool, shortPhraseLimit, longPhraseLimit int) ([]OverlayItem, PhraseOverlayBudget) {
+	limit := EffectivePhraseOverlayLimit(phraseLimit)
 	effectiveImageLimit := imageLimit
 	if effectiveImageLimit <= 0 {
 		effectiveImageLimit = MaxImageOverlaysPerRun
@@ -112,6 +122,12 @@ func ApplyEditorialOverlayBudgetWithImageLimit(items []OverlayItem, phraseLimit,
 		imageIndices = imageIndices[:effectiveImageLimit]
 	}
 	phraseIndices := rankedUniqueOverlayIndices(items, false, limit)
+	if shortPhraseLimit > 0 || longPhraseLimit > 0 {
+		phraseIndices = rankedUniqueOverlayPhraseLanes(items, shortPhraseLimit, longPhraseLimit)
+		if len(phraseIndices) > limit {
+			phraseIndices = phraseIndices[:limit]
+		}
+	}
 	mapCeiling := mapLimit
 	if mapCeiling <= 0 {
 		mapCeiling = MaxMapOverlaysPerRun

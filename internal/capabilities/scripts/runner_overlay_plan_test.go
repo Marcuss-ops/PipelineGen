@@ -779,7 +779,7 @@ func TestOverlaySceneInputUsesPhraseEndpointTimingFallback(t *testing.T) {
 	require.Equal(t, int64(300_000), got.Phrases[0].DurationUS)
 }
 
-func TestOverlaySceneInputDropsPhrasesShorterThanThreeWords(t *testing.T) {
+func TestOverlaySceneInputDropsSingleWordPhrases(t *testing.T) {
 	timing := speechTimingForWords([]string{"Short", "phrase", "then", "three", "words"})
 	scene := Scene{
 		ID: "phrase-minimum-scene", Index: 0,
@@ -787,7 +787,7 @@ func TestOverlaySceneInputDropsPhrasesShorterThanThreeWords(t *testing.T) {
 		Annotations: &scriptpkg.SceneAnnotations{
 			Version: 1, Language: "en", Status: "completed",
 			ImportantPhrases: []scriptpkg.AnnotationSpan{
-				{Text: "Short phrase", Score: 0.95},
+				{Text: "Short", Score: 0.95},
 				{Text: "then three words", Score: 0.9},
 			},
 		},
@@ -797,6 +797,37 @@ func TestOverlaySceneInputDropsPhrasesShorterThanThreeWords(t *testing.T) {
 	require.NotNil(t, got)
 	require.Len(t, got.Phrases, 1)
 	require.Equal(t, "then three words", got.Phrases[0].Text)
+}
+
+func TestOverlaySceneInputProjectsEveryExplicitDateWithAudioTiming(t *testing.T) {
+	text := "Le date riportano 13 agosto 2007, 2015, 28 settembre 2026 e 8 ottobre 2026 per il comunicato."
+	dateNames := []string{"13 agosto", "28 settembre 2026", "8 ottobre 2026 per"}
+	entities := make([]scriptpkg.AnnotatedEntity, 0, len(dateNames))
+	occurrences := make([]capabilityentities.EntityOccurrence, 0, len(dateNames))
+	for i, name := range dateNames {
+		entities = append(entities, scriptpkg.AnnotatedEntity{CanonicalName: name, Type: "DATE", Confidence: 0.9})
+		occurrences = append(occurrences, capabilityentities.EntityOccurrence{
+			EntityID: capabilityentities.StableEntityID("DATE", name), Name: name, Type: "DATE", SceneID: "dates",
+			AudioStartUS: int64(i+1) * 1_000_000, AudioEndUS: int64(i+1)*1_000_000 + 500_000,
+		})
+	}
+	scene := Scene{
+		ID: "dates", Index: 0, Text: map[Language]string{"it": text},
+		OverlayCategories: map[scriptpkg.OverlayCategory]scriptpkg.Toggle{scriptpkg.OverlayCategoryNumbers: scriptpkg.ToggleEnabled},
+		Annotations:       &scriptpkg.SceneAnnotations{Version: 1, Language: "it", Status: "completed", SecondaryEntities: entities},
+	}
+	got, err := overlaySceneInput(scene, "it", "it", speechTimingForWords(strings.Fields(text)), 0, occurrences, nil)
+	require.NoError(t, err)
+	require.NotNil(t, got)
+	require.Len(t, got.Numbers, 4)
+	byText := make(map[string]string)
+	for _, number := range got.Numbers {
+		byText[number.Text] = number.Type
+		require.Greater(t, number.DurationUS, int64(0))
+	}
+	for _, want := range []string{"13 agosto 2007", "2015", "28 settembre 2026", "8 ottobre 2026"} {
+		require.Equal(t, "DATE", byText[want], "date %q should be source grounded and typed as DATE", want)
+	}
 }
 
 func TestLocatePhraseTimingEndpointFallbackRemainsFailClosed(t *testing.T) {

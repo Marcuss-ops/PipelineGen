@@ -154,6 +154,95 @@ func overlayWindowsOverlap(a, b OverlayItem) bool {
 	return aStart < bEnd && bStart < aEnd
 }
 
+// rankedUniqueOverlayPhraseLanes is the explicit split-lane selector used
+// when a caller configures both short_phrases and long_phrases caps. The
+// default phrase admission policy remains unchanged for jobs without those
+// explicit editorial quotas.
+func rankedUniqueOverlayPhraseLanes(items []OverlayItem, shortLimit, longLimit int) []int {
+	seen := make(map[string]int)
+	for i, item := range items {
+		if item.Kind != "text_phrase" || item.Params != nil && (item.Params["chart_card"] == true || item.Params["editorial_role"] == "scene_title" || item.Params["editorial_role"] == "scene_bullet") {
+			continue
+		}
+		key := strings.ToLower(strings.Join(strings.Fields(item.Text), " "))
+		if key == "" {
+			continue
+		}
+		if prior, ok := seen[key]; !ok || overlayItemPriority(item) > overlayItemPriority(items[prior]) {
+			seen[key] = i
+		}
+	}
+	candidates := make([]int, 0, len(seen))
+	for _, index := range seen {
+		candidates = append(candidates, index)
+	}
+	short := selectNonOverlappingPhraseLane(candidates, items, true, shortLimit, nil)
+	long := selectNonOverlappingPhraseLane(candidates, items, false, longLimit, short)
+	selected := append(short, long...)
+	sort.Ints(selected)
+	return selected
+}
+
+func selectNonOverlappingPhraseLane(indices []int, items []OverlayItem, short bool, limit int, blocked []int) []int {
+	if limit <= 0 {
+		return nil
+	}
+	byScene := make(map[string][]int)
+	for _, index := range indices {
+		words := len(strings.Fields(items[index].Text))
+		if short && (words < 2 || words > 5) || !short && words < 6 {
+			continue
+		}
+		byScene[items[index].SceneID] = append(byScene[items[index].SceneID], index)
+	}
+	scenes := make([]string, 0, len(byScene))
+	for scene := range byScene {
+		scenes = append(scenes, scene)
+	}
+	sort.Strings(scenes)
+	selected := make([]int, 0, limit)
+	for _, scene := range scenes {
+		candidates := byScene[scene]
+		sort.SliceStable(candidates, func(i, j int) bool {
+			_, leftEnd := overlayItemWindowUS(items[candidates[i]])
+			_, rightEnd := overlayItemWindowUS(items[candidates[j]])
+			if leftEnd != rightEnd {
+				return leftEnd < rightEnd
+			}
+			if lp, rp := overlayItemPriority(items[candidates[i]]), overlayItemPriority(items[candidates[j]]); lp != rp {
+				return lp > rp
+			}
+			return candidates[i] < candidates[j]
+		})
+		for _, candidate := range candidates {
+			overlaps := false
+			for _, prior := range blocked {
+				if items[candidate].SceneID == items[prior].SceneID && overlayWindowsOverlap(items[candidate], items[prior]) {
+					overlaps = true
+					break
+				}
+			}
+			if overlaps {
+				continue
+			}
+			for _, prior := range selected {
+				if items[candidate].SceneID == items[prior].SceneID && overlayWindowsOverlap(items[candidate], items[prior]) {
+					overlaps = true
+					break
+				}
+			}
+			if overlaps {
+				continue
+			}
+			selected = append(selected, candidate)
+			if len(selected) >= limit {
+				return selected
+			}
+		}
+	}
+	return selected
+}
+
 func overlayItemWindowUS(item OverlayItem) (int64, int64) {
 	if item.DurationUS > 0 {
 		return item.StartUS, item.StartUS + item.DurationUS

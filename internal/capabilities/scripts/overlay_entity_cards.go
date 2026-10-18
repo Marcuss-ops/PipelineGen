@@ -8,6 +8,7 @@ package scriptgeneration
 
 import (
 	"os"
+	"regexp"
 	"strings"
 
 	"go.uber.org/zap"
@@ -373,9 +374,9 @@ func overlaySceneInput(scene Scene, language, sourceLanguage Language, timing ca
 	}
 	for _, span := range ann.ImportantPhrases {
 		phrase := strings.TrimSpace(span.Text)
-		// Shorter spans read as fragments in the rendered callouts. Keep the
-		// runtime phrase surface to complete snippets of at least three words.
-		if len(strings.Fields(phrase)) < 3 {
+		// A two-word phrase can be a complete, grounded callout; single words
+		// remain too fragmentary for this overlay lane.
+		if len(strings.Fields(phrase)) < 2 {
 			continue
 		}
 		if p, err := locate(phrase); err == nil {
@@ -404,10 +405,30 @@ func overlaySceneInput(scene Scene, language, sourceLanguage Language, timing ca
 		}
 		switch kind {
 		case capabilityoverlay.KindNumber:
-			if !isNumericOverlayValue(entity.CanonicalName) || !numericEntityGroundedForLanguage(scene, language, sourceLanguage, entity.CanonicalName) {
+			value := strings.TrimSpace(entity.CanonicalName)
+			// Entity extraction occasionally includes the following connector
+			// (e.g. "8 ottobre 2026 per"). Trim only trailing tokens until the
+			// source-grounded numeric/date surface is valid, then re-anchor that
+			// exact surface against the spoken word timing.
+			for !isNumericOverlayValue(value) {
+				fields := strings.Fields(value)
+				if len(fields) < 2 {
+					break
+				}
+				value = strings.Join(fields[:len(fields)-1], " ")
+			}
+			if !isNumericOverlayValue(value) || !numericEntityGroundedForLanguage(scene, language, sourceLanguage, value) {
 				continue
 			}
-			out.Numbers = append(out.Numbers, capabilityoverlay.TimedAnnotation{Text: entity.CanonicalName, Type: entity.Type, StartMs: occ.AudioStartUS / 1000, EndMs: (occ.AudioEndUS + 999) / 1000, StartUS: occ.AudioStartUS, DurationUS: occ.AudioEndUS - occ.AudioStartUS, Score: score})
+			startUS, endUS := occ.AudioStartUS, occ.AudioEndUS
+			if value != entity.CanonicalName {
+				p, err := locate(value)
+				if err != nil {
+					continue
+				}
+				startUS, endUS = p.GlobalStartUS, p.GlobalEndUS
+			}
+			out.Numbers = append(out.Numbers, capabilityoverlay.TimedAnnotation{Text: value, Type: entity.Type, StartMs: startUS / 1000, EndMs: (endUS + 999) / 1000, StartUS: startUS, DurationUS: endUS - startUS, Score: score})
 		case capabilityoverlay.KindQuote:
 			out.Quotes = append(out.Quotes, capabilityoverlay.TimedAnnotation{Text: entity.CanonicalName, Type: entity.Type, StartMs: occ.AudioStartUS / 1000, EndMs: (occ.AudioEndUS + 999) / 1000, StartUS: occ.AudioStartUS, DurationUS: occ.AudioEndUS - occ.AudioStartUS, Score: score})
 		case capabilityoverlay.KindProduct:
@@ -436,10 +457,93 @@ func overlaySceneInput(scene Scene, language, sourceLanguage Language, timing ca
 			continue
 		}
 	}
+	// Recover complete, explicitly spoken dates that the entity annotator
+	// missed (notably year-only references). These are still source-grounded
+	// and receive timing only when the exact surface is found in word timing.
+	if scene.OverlayCategories[scriptpkg.OverlayCategoryNumbers].AsBool() {
+		for _, date := range explicitDateSurfaces(scene.Text[language]) {
+			duplicate := false
+			for i, existing := range out.Numbers {
+				if strings.EqualFold(existing.Text, date) {
+					duplicate = true
+					break
+				}
+				// Entity extraction can return only "13 agosto" while the
+				// source explicitly says "13 agosto 2007". Keep one card and
+				// prefer the complete, exactly timed source surface.
+				if sameGroundedDate(existing.Text, date) {
+					if dateHasYear(date) && !dateHasYear(existing.Text) {
+						p, err := locate(date)
+						if err == nil {
+							full := timed(p, scoreForDate(existing.Score))
+							full.Type = "DATE"
+							out.Numbers[i] = full
+						}
+					}
+					duplicate = true
+					break
+				}
+			}
+			if duplicate {
+				continue
+			}
+			p, err := locate(date)
+			if err != nil {
+				continue
+			}
+			number := timed(p, 0.8)
+			number.Type = "DATE"
+			out.Numbers = append(out.Numbers, number)
+		}
+	}
 	if len(out.Phrases)+len(out.Keywords)+len(out.Images)+len(out.Numbers)+len(out.BrandTexts)+len(out.Quotes)+len(out.Products)+len(out.Logos)+len(out.Maps) == 0 {
 		return nil, nil
 	}
 	return &out, nil
+}
+
+func sameGroundedDate(left, right string) bool {
+	leftParts, rightParts := groundedDateIdentityPattern.FindStringSubmatch(strings.TrimSpace(left)), groundedDateIdentityPattern.FindStringSubmatch(strings.TrimSpace(right))
+	if len(leftParts) == 0 || len(rightParts) == 0 {
+		return false
+	}
+	if leftParts[1] != rightParts[1] || !strings.EqualFold(leftParts[2], rightParts[2]) {
+		return false
+	}
+	return leftParts[3] == "" || rightParts[3] == "" || leftParts[3] == rightParts[3]
+}
+
+func dateHasYear(text string) bool {
+	fields := strings.Fields(strings.TrimSpace(text))
+	return len(fields) == 3 && len(fields[2]) == 4
+}
+
+func scoreForDate(score float64) float64 {
+	if score <= 0 {
+		return 0.8
+	}
+	return score
+}
+
+var explicitDatePattern = regexp.MustCompile(`(?i)\b(?:[0-9]{1,2}\s+(?:gennaio|febbraio|marzo|aprile|maggio|giugno|luglio|agosto|settembre|ottobre|novembre|dicembre)\s+[0-9]{4}|[0-9]{4})\b`)
+var groundedDateIdentityPattern = regexp.MustCompile(`(?i)^([0-9]{1,2})\s+(gennaio|febbraio|marzo|aprile|maggio|giugno|luglio|agosto|settembre|ottobre|novembre|dicembre)(?:\s+([0-9]{4}))?$`)
+
+func explicitDateSurfaces(text string) []string {
+	matches := explicitDatePattern.FindAllString(text, -1)
+	seen := make(map[string]struct{}, len(matches))
+	out := make([]string, 0, len(matches))
+	for _, match := range matches {
+		key := strings.ToLower(strings.TrimSpace(match))
+		if key == "" {
+			continue
+		}
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		out = append(out, strings.TrimSpace(match))
+	}
+	return out
 }
 
 func phrasesAtLeastThreeWords(phrases []capabilityoverlay.TimedAnnotation) []capabilityoverlay.TimedAnnotation {

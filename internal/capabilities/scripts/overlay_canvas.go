@@ -385,7 +385,10 @@ func overlayGroupOf(item capabilityoverlay.OverlayItem) string {
 	case isImageOverlayItem(item):
 		return overlayGroupImages
 	case item.Kind == "text_phrase" || item.Kind == string(capabilityoverlay.KindImportantPhrase):
-		if capabilityoverlay.IsShortPhraseRecipe(item.MotionID) {
+		// Phrase lane is a content property. Visible motion IDs are often
+		// shared by both lanes, so using recipe membership here misclassifies
+		// every short phrase that received a standard entrance.
+		if words := len(strings.Fields(item.Text)); words >= 2 && words <= 5 {
 			return overlayGroupShortPhrases
 		}
 		return overlayGroupLongPhrases

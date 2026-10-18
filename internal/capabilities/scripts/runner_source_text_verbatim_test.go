@@ -7,6 +7,7 @@ import (
 	"time"
 
 	capabilityaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
+	mediadomain "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
@@ -32,6 +33,9 @@ func TestRunner_SourceTextVerbatim_PreservesSceneIdentityAndSkipsGenerator(t *te
 				{ID: "scene-two", Topic: "second", SourceText: "Exact second scene."},
 			},
 		},
+		MediaPlan: mediadomain.MediaPlanSpec{Extraction: mediadomain.MediaExtractionPolicy{
+			ImportantPhrases: []string{"A phrase absent from the fixed source text."},
+		}},
 	}
 	runID := "run-verbatim-source-text"
 	require.NoError(t, repo.Create(context.Background(), &GenerationRun{

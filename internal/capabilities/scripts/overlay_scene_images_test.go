@@ -101,6 +101,33 @@ func TestSceneImageCandidateChoosesNextDistinctMaterializedAsset(t *testing.T) {
 	}
 }
 
+func TestSceneImageCandidatesRunSequentiallyWithinScene(t *testing.T) {
+	firstSHA := strings.Repeat("a", 64)
+	secondSHA := strings.Repeat("b", 64)
+	ready := func(id, sha string) scriptpkg.SegmentAssetCandidate {
+		return scriptpkg.SegmentAssetCandidate{
+			AssetID: id, Provider: scriptpkg.VidRushProviderInternetImages,
+			SourceURL: "https://images.example/" + id + ".jpg", LocalPath: "/tmp/" + id + ".jpg", LegacyFileMD5: sha,
+			MIMEType: "image/jpeg", AcquisitionStatus: scriptpkg.VidRushStatusAcquired,
+			VerificationStatus: scriptpkg.VidRushStatusVerified, PersistenceStatus: scriptpkg.VidRushStatusPersisted,
+			IndexStatus: scriptpkg.VidRushStatusIndexed,
+		}
+	}
+	result := &GenerateResult{Segments: []scriptpkg.VidRushSegmentResult{{
+		SceneID: "scene-2",
+		Assets: scriptpkg.SegmentAssetSelection{Candidates: []scriptpkg.SegmentAssetCandidate{
+			ready("first", firstSHA), ready("second", secondSHA),
+		}},
+	}}}
+	got := sceneImageCandidates(result, "scene-2", 0, nil, 16_000_000, 2)
+	if len(got) != 2 {
+		t.Fatalf("scene image count = %d, want 2", len(got))
+	}
+	if got[0].StartUS != 5_000_000 || got[1].StartUS != 10_000_000 || got[0].StartUS+got[0].DurationUS != got[1].StartUS {
+		t.Fatalf("scene images are not sequential: %+v", got)
+	}
+}
+
 func TestSceneImageCandidateRejectsNonContentAddressedSelection(t *testing.T) {
 	result := &GenerateResult{Segments: []scriptpkg.VidRushSegmentResult{{
 		SceneID: "scene-1", Assets: scriptpkg.SegmentAssetSelection{SecondaryImages: []scriptpkg.SegmentAssetCandidate{{
