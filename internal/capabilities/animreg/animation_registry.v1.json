@@ -9477,6 +9477,106 @@
       "catalog_version": 1
     },
     {
+      "id": "duo_soft_bloom_rise",
+      "families": [
+        "image.group.count_2"
+      ],
+      "random": [
+        "image.group.count_2"
+      ],
+      "lanes": [
+        "image_group"
+      ],
+      "status": "active",
+      "renderer_supported": true,
+      "targets": [
+        "image_group"
+      ],
+            "group_size": 2,
+      "requires_3d": false,
+      "catalog_version": 1
+    },
+    {
+      "id": "duo_soft_drift_settle",
+      "families": [
+        "image.group.count_2"
+      ],
+      "random": [
+        "image.group.count_2"
+      ],
+      "lanes": [
+        "image_group"
+      ],
+      "status": "active",
+      "renderer_supported": true,
+      "targets": [
+        "image_group"
+      ],
+            "group_size": 2,
+      "requires_3d": false,
+      "catalog_version": 1
+    },
+    {
+      "id": "duo_soft_cross_bloom",
+      "families": [
+        "image.group.count_2"
+      ],
+      "random": [
+        "image.group.count_2"
+      ],
+      "lanes": [
+        "image_group"
+      ],
+      "status": "active",
+      "renderer_supported": true,
+      "targets": [
+        "image_group"
+      ],
+            "group_size": 2,
+      "requires_3d": false,
+      "catalog_version": 1
+    },
+    {
+      "id": "duo_soft_breathe_hold",
+      "families": [
+        "image.group.count_2"
+      ],
+      "random": [
+        "image.group.count_2"
+      ],
+      "lanes": [
+        "image_group"
+      ],
+      "status": "active",
+      "renderer_supported": true,
+      "targets": [
+        "image_group"
+      ],
+            "group_size": 2,
+      "requires_3d": false,
+      "catalog_version": 1
+    },
+    {
+      "id": "duo_soft_stagger_glow",
+      "families": [
+        "image.group.count_2"
+      ],
+      "random": [
+        "image.group.count_2"
+      ],
+      "lanes": [
+        "image_group"
+      ],
+      "status": "active",
+      "renderer_supported": true,
+      "targets": [
+        "image_group"
+      ],
+            "group_size": 2,
+      "requires_3d": false,
+      "catalog_version": 1
+    },
+    {
       "id": "duo_parallax_balance",
       "families": [],
       "lanes": [
