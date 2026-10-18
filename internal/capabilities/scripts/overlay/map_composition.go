@@ -71,20 +71,18 @@ func MapCompositionFamilyOf(id string) MapCompositionFamily {
 	return MapFamilyLocationFocus
 }
 
-// MapEditorialSceneBounds mirrors the Python renderer's authored camera bounds
-// (render_dynamic_map_overlay.py scene_camera_bounds). An editorial scene is
-// only eligible for a map whose pins lie inside its authored geography —
-// otherwise the compositor's own fail-closed off-screen gate would abort the
-// render, so the selector excludes it instead.
-var MapEditorialSceneBounds = map[string][4]float64{
-	// {south, west, north, east}
-	"ed_saudi_base":     {16.0, 34.0, 33.0, 56.0},
-	"ed_iran_glow":      {23.5, 46.0, 32.5, 57.0},
-	"ed_yemen_fill":     {11.0, 42.0, 20.0, 53.0},
-	"ed_yemen_markers":  {12.2, 40.5, 19.8, 47.0},
-	"ed_hormuz_routes":  {5.0, 37.0, 29.0, 75.0},
-	"ed_mocha_tactical": {12.4, 42.0, 15.8, 45.2},
-}
+// MapEditorialSceneBounds is the Go projection of the single geographic
+// manifest (map_geo_manifest.go): accepted_pin_bounds filters admissibility.
+// The Python camera projection (scene_camera_bounds) is generated from the
+// same manifest — see ChrononTemplate/tools/map/map_geo_manifest.json.
+// Never edit bounds in two places; edit the manifest and regenerate.
+var MapEditorialSceneBounds = func() map[string][4]float64 {
+	out := make(map[string][4]float64, len(MapGeoManifest))
+	for k, v := range MapGeoManifest {
+		out[k] = v.AcceptedPinBounds
+	}
+	return out
+}()
 
 // MapCompositionPresentationCompatible is the camera/label pairing gate: a
 // composition whose certified presentation cannot run beside the selected
@@ -207,28 +205,63 @@ func DeterministicMapCompositionChoice(seed, slot string, pool []string) string 
 	return capabilityoverlay.DeterministicPresetChoice(seed, mapSlot, slot, "map_composition", familyIndex[MapCompositionFamily(family)])
 }
 
+// AdmitMapComposition is the SINGLE admission gate for cartographic
+// compositions, identical for random and exact requests. It checks pin-count
+// eligibility, camera/label presentation compatibility and authored editorial
+// geography. Random callers skip incompatible variants; exact callers surface
+// the precise reason as an error. This prevents a request that looks valid at
+// planning time from failing much later inside the renderer.
+// mapMaxPinsPerGroup mirrors overlays.maxMapPinsPerGroup (one static map shows
+// at most 5 grounded places; larger plates are split into consecutive items).
+// The resolver enforces it so an explicit request for an overfull map fails in
+// the planner instead of reaching the renderer.
+const mapMaxPinsPerGroup = 5
+
+func AdmitMapComposition(id string, input MapCompositionInput, certified []string) error {
+	if input.PinCount < 1 || input.PinCount > mapMaxPinsPerGroup {
+		return fmt.Errorf("map_animation %q cannot carry %d pins: one map holds 1..%d pins", id, input.PinCount, mapMaxPinsPerGroup)
+	}
+	allowed := make(map[string]bool, len(certified))
+	for _, c := range certified {
+		allowed[c] = true
+	}
+	if !allowed[id] {
+		return fmt.Errorf("unsupported runtime map_animation %q", id)
+	}
+	eligibleCounts := make(map[string]bool)
+	for _, c := range EligibleMapCompositions(input.PinCount, certified) {
+		eligibleCounts[c] = true
+	}
+	if !eligibleCounts[id] {
+		return fmt.Errorf("map_animation %q cannot carry %d pins", id, input.PinCount)
+	}
+	if err := MapCompositionPresentationCompatible(id, input); err != nil {
+		return fmt.Errorf("map_animation %q is incompatible with the selected presentation: %w", id, err)
+	}
+	// Geography is enforced only when pins are present: the classic pin-count-only
+	// selection API (no pins yet) defers it to the render boundary where real
+	// coordinates ride the payload. Empty pins never pass an authored scene —
+	// MapCompositionGeographyCompatible returns false for them — so skip here
+	// and let the full-input path fail closed instead of rejecting every
+	// pin-less explicit check.
+	if len(input.Pins) > 0 && !MapCompositionGeographyCompatible(id, input.Pins) {
+		return fmt.Errorf("map_animation %q is incompatible with pin geography: at least one pin lies outside its authored bounds", id)
+	}
+	return nil
+}
+
 // ResolveMapCompositionFor resolves ONE cartographic composition against the
 // planner's decision and the composition's data. Empty and "random" draw
 // deterministically across the compatible families; an explicit certified id
-// wins verbatim unless its certified presentation cannot run beside the
-// selected camera/label (then it fails closed — never a silent swap). The
-// second result is the DECLARED fallback reason recorded in the map decision
-// report when the planner's strategy redirected the presentation.
+// wins verbatim only when it passes the single admission gate (then it fails
+// closed with a precise reason — never a silent swap). The second result is
+// the DECLARED fallback reason recorded in the map decision report when the
+// planner's strategy redirected the presentation.
 func ResolveMapCompositionFor(requested, seed, slot string, input MapCompositionInput) (string, string, error) {
 	requested = strings.TrimSpace(requested)
 	if requested != "" && !strings.EqualFold(requested, "random") {
-		found := false
-		for _, candidate := range MapCompositionCertified() {
-			if requested == candidate {
-				found = true
-				break
-			}
-		}
-		if !found {
-			return "", "", fmt.Errorf("unsupported runtime map_animation %q", requested)
-		}
-		if err := MapCompositionPresentationCompatible(requested, input); err != nil {
-			return "", "", fmt.Errorf("map_animation %q is incompatible with the selected presentation: %w", requested, err)
+		if err := AdmitMapComposition(requested, input, MapCompositionCertified()); err != nil {
+			return "", "", err
 		}
 		return requested, "", nil
 	}

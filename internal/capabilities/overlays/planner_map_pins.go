@@ -73,9 +73,14 @@ func mapPinsFor(plate MapPlate, places []MapCandidate) (pins []MapOverlayPin, pi
 	if durationUS <= 0 {
 		return nil, nil, 0, 0, 0, false
 	}
-	if durationUS > MaxImageOverlayDurationMS*1000 {
-		durationUS = MaxImageOverlayDurationMS * 1000
-	}
+	// No MaxImageOverlayDurationMS truncation here: truncating the map window
+	// while keeping the original per-pin spoken offsets breaks the invariant
+	// pin.start_us + pin.duration_us <= map.duration_us whenever mentions are
+	// seconds apart (or a merged repeat occurrence spans the scene). Maps own
+	// their duration policy in mapItemsForScene (camera minimum + per-pin read
+	// slots, rendered as an 8s shot downstream); truncating here would schedule
+	// a pin beyond the end of its own map. Never clamp timestamps: a pin must
+	// activate exactly when it is spoken or the item fails closed below.
 	// Per-pin timing is the voiceover's own schedule, clip-relative to the
 	// item's start: each place activates exactly when it is spoken. It is the
 	// input the renderer's camera follows, never a guess.
@@ -91,10 +96,57 @@ func mapPinsFor(plate MapPlate, places []MapCandidate) (pins []MapOverlayPin, pi
 		if !plate.Window.Contains(place.Latitude, place.Longitude) || place.DurationUS <= 0 || place.StartUS < 0 {
 			continue
 		}
+		relStart := place.StartUS - firstStart
+		// Overflow-safe invariant check before publishing: every pin must end
+		// inside its own map window.
+		if relStart < 0 || place.DurationUS > durationUS || relStart > durationUS-place.DurationUS {
+			return nil, nil, 0, 0, 0, false
+		}
 		pinTiming[id] = map[string]any{
-			"start_us":    place.StartUS - firstStart,
+			"start_us":    relStart,
 			"duration_us": place.DurationUS,
 		}
 	}
+	if !ValidateMapPinTiming(pinTiming, durationUS) {
+		return nil, nil, 0, 0, 0, false
+	}
 	return pins, pinTiming, firstStart, durationUS, score, true
+}
+
+// ValidateMapPinTiming enforces the single timing invariant shared by
+// PipelineGen (planner, pre-render admission) and RenderingGen (compile
+// admission): every pin satisfies start_us >= 0, duration_us > 0 and
+// start_us + duration_us <= mapDurationUS, with overflow-safe arithmetic and
+// no silent clamping. A pin shown at a different moment than spoken is a
+// correctness failure, so violations fail closed.
+func ValidateMapPinTiming(pinTiming map[string]map[string]any, mapDurationUS int64) bool {
+	if mapDurationUS <= 0 {
+		return false
+	}
+	for _, entry := range pinTiming {
+		start, okStart := mapPinTimingNumber(entry, "start_us")
+		dur, okDur := mapPinTimingNumber(entry, "duration_us")
+		if !okStart || !okDur || start < 0 || dur <= 0 {
+			return false
+		}
+		if start > mapDurationUS || dur > mapDurationUS || start > mapDurationUS-dur {
+			return false
+		}
+	}
+	return true
+}
+
+func mapPinTimingNumber(entry map[string]any, key string) (int64, bool) {
+	switch v := entry[key].(type) {
+	case int64:
+		return v, true
+	case int:
+		return int64(v), true
+	case float64:
+		if v != float64(int64(v)) {
+			return 0, false
+		}
+		return int64(v), true
+	}
+	return 0, false
 }

@@ -17,7 +17,12 @@ import (
 // MapDecisionReportSchema identifies the report document version.
 const MapDecisionReportSchema = "pipelinegen.map-decision.v1"
 
-// MapDecisionPlace is one grounded place as the report sees it.
+// MapDecisionPlace is one grounded place as the report sees it. State is the
+// lifecycle: eligible (passed admission) -> scheduled (has spoken timing
+// inside the map window) -> rendered (renderer confirmed frames). Presented is
+// retained for compatibility and is true only when State==rendered; never set
+// it before the renderer confirms, so diagnostics cannot claim a pin was
+// shown that still had to pass the renderer.
 type MapDecisionPlace struct {
 	EntityID   string  `json:"entity_id"`
 	Label      string  `json:"label"`
@@ -27,6 +32,7 @@ type MapDecisionPlace struct {
 	Geocoded   bool    `json:"geocoded"`
 	StartUS    int64   `json:"start_us,omitempty"`
 	DurationUS int64   `json:"duration_us,omitempty"`
+	State      string  `json:"state,omitempty"`
 	Presented  bool    `json:"presented"`
 }
 

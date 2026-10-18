@@ -540,14 +540,17 @@ func TestResolveMapComposition(t *testing.T) {
 			t.Errorf("map composition %q is absent from the shared animation registry", id)
 		}
 	}
+	// Unified admission (map audit P0): exact requests validate pin-count just
+	// like random — ed_yemen_markers needs exactly 3 pins, so 2 pins fail
+	// closed at selection instead of reaching the renderer.
 	for _, invalid := range []struct {
 		id       string
 		pinCount int
 	}{
 		{"ed_yemen_markers", 2},
 	} {
-		if _, err := resolveMapComposition(invalid.id, "seed", "map-1", invalid.pinCount); err != nil {
-			t.Fatalf("explicit certified %q should be accepted at selection stage: %v", invalid.id, err)
+		if _, err := resolveMapComposition(invalid.id, "seed", "map-1", invalid.pinCount); err == nil {
+			t.Fatalf("explicit %q with %d pins must fail closed at selection (needs 3)", invalid.id, invalid.pinCount)
 		}
 		pool := eligibleMapCompositions(invalid.pinCount, mapMapAnimationsCertified())
 		for _, candidate := range pool {
@@ -555,6 +558,9 @@ func TestResolveMapComposition(t *testing.T) {
 				t.Fatalf("incompatible composition %q remains random-eligible with %d pins", invalid.id, invalid.pinCount)
 			}
 		}
+	}
+	if _, err := resolveMapComposition("ed_yemen_markers", "seed", "map-1", 3); err != nil {
+		t.Fatalf("explicit certified ed_yemen_markers with 3 pins should be accepted: %v", err)
 	}
 	for _, retired := range []string{"simple_label", "bracket_label", "multi_locations", "route_line", "info_card", "vertical_callout", "global_context", "focus_title", "region_fill", "photo_callout", "icon_label", "label_reveal", "location_focus", "location_pulse", "ed_oil_flows", "ed_routes_clean", "ed_hormuz_focus", "ed_wide_minimal"} {
 		if _, err := resolveMapComposition(retired, "seed", "map-1"); err == nil {
