@@ -227,6 +227,7 @@ func renderDynamicMapVideo(ctx context.Context, plan capoverlay.OverlayPlan) (st
 	}
 	var summary struct {
 		Schema     string `json:"schema"`
+		Basemap    string `json:"basemap"`
 		Frames     int    `json:"frames"`
 		Dimensions struct {
 			Width  int `json:"width"`
@@ -256,6 +257,7 @@ func renderDynamicMapVideo(ctx context.Context, plan capoverlay.OverlayPlan) (st
 			PrefetchTilesRequested  int     `json:"prefetch_tiles_requested"`
 			PrefetchTilesMemoryHits int     `json:"prefetch_tiles_memory_hits"`
 			LateFetches             int     `json:"late_tile_fetches"`
+			RenderedLocally         int     `json:"tile_rendered_locally"`
 		} `json:"tile"`
 		Plates struct {
 			PrepareMS       float64 `json:"prepare_ms"`
@@ -308,9 +310,17 @@ func renderDynamicMapVideo(ctx context.Context, plan capoverlay.OverlayPlan) (st
 			return "", fmt.Errorf("install scaled dynamic map: %w", err)
 		}
 	}
-	if summary.Tile.DiskCacheMisses != summary.Tile.NetworkFetches+summary.Tile.Fallbacks {
-		return "", fmt.Errorf("Chronon map telemetry cache/fetch counters do not balance: hits=%d misses=%d downloads=%d fallbacks=%d",
-			summary.Tile.DiskCacheHits, summary.Tile.DiskCacheMisses, summary.Tile.NetworkFetches, summary.Tile.Fallbacks)
+	// Every cache miss is accounted for: an Esri raster miss is either
+	// downloaded or a fallback; an offline vector-plate miss is drawn
+	// locally. Locally-rendered tiles are admitted only for the editorial
+	// basemap, so a raster provider can never hide missing downloads.
+	if summary.Tile.RenderedLocally < 0 || summary.Tile.NetworkFetches < 0 ||
+		summary.Tile.Fallbacks < 0 ||
+		(summary.Tile.RenderedLocally > 0 && summary.Basemap != "chronon_editorial") ||
+		summary.Tile.DiskCacheMisses != summary.Tile.NetworkFetches+summary.Tile.Fallbacks+summary.Tile.RenderedLocally {
+		return "", fmt.Errorf("Chronon map telemetry cache/fetch counters do not balance: hits=%d misses=%d downloads=%d fallbacks=%d rendered_locally=%d basemap=%q",
+			summary.Tile.DiskCacheHits, summary.Tile.DiskCacheMisses, summary.Tile.NetworkFetches, summary.Tile.Fallbacks,
+			summary.Tile.RenderedLocally, summary.Basemap)
 	}
 	if summary.Plates.RequiredTiles != summary.Plates.PrefetchFetched+summary.Plates.MemoryHits ||
 		summary.Tile.PrefetchTilesRequested != summary.Plates.RequiredTiles ||

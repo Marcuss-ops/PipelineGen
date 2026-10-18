@@ -9,10 +9,11 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
-// autoImageGroupMaxGapMS is the mention-to-mention gap under which two
-// certified images of the same scene join one editorial group. It is a single
-// planner constant, to be tuned on real voiceover timing.
-const autoImageGroupMaxGapMS int64 = 1500
+// autoImageGroupMaxGapMS is the largest empty timeline gap under which
+// certified images of the same scene join one editorial group. Keep this
+// aligned with the overlay composer so an early pair cannot strand a third
+// nearby image in a separate overlay.
+const autoImageGroupMaxGapMS int64 = 5_000
 
 // AutoImageGroups clusters one scene's certified, timed images into 2-5 image
 // groups via GroupNearbyEntities. Singletons are not returned, so they keep

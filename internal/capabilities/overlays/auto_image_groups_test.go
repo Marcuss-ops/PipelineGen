@@ -39,6 +39,31 @@ func TestAutoImageGroupsClustersNearbyCertifiedImages(t *testing.T) {
 	}
 }
 
+func TestAutoImageGroupsUsesFiveSecondEmptyGapBoundary(t *testing.T) {
+	within := []ImageCandidate{
+		autoTestImage("first", 0, 1_000),
+		autoTestImage("second", 1_000, 2_000),
+		autoTestImage("third", 4_000, 5_000), // 2s after the previous window; total span is 5s
+	}
+	groups, consumed := AutoImageGroups("scene-1", within, nil)
+	if len(groups) != 1 || groups[0].Count != 3 || len(consumed) != 3 {
+		t.Fatalf("nearby images, including a third image after an earlier pair, must share one group: groups=%+v consumed=%v", groups, consumed)
+	}
+
+	outside := []ImageCandidate{
+		autoTestImage("first", 0, 1_000),
+		autoTestImage("second", 1_000, 2_000),
+		autoTestImage("third", 4_001, 5_001), // total group span exceeds the 5s image window
+	}
+	groups, consumed = AutoImageGroups("scene-1", outside, nil)
+	if len(groups) != 1 || groups[0].Count != 2 || len(consumed) != 2 {
+		t.Fatalf("a group beyond the 5s composite window must split while preserving its eligible pair: groups=%+v consumed=%v", groups, consumed)
+	}
+	if _, ok := consumed["third"]; ok {
+		t.Fatal("the image that exceeds the 5s composite window must remain independent")
+	}
+}
+
 func TestAutoImageGroupsExcludesUncertifiedDuplicateAndOwnedAssets(t *testing.T) {
 	noHash := autoTestImage("nohash", 0, 900)
 	noHash.SHA256 = ""

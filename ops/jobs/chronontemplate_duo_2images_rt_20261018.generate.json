@@ -1,0 +1,186 @@
+{
+  "correlation_id": "chronontemplate-duo-2images-rt-20261018-t4",
+  "force_refresh": true,
+  "items": [
+    {
+      "animation_counts": {
+        "chain_disabled": 1,
+        "entities": 6,
+        "entity_caption": 6,
+        "images": 6,
+        "images_with_text": 6
+      },
+      "audio": {
+        "mode": "COMBINED_TIMELINE",
+        "timing": {
+          "boundary": "word",
+          "formats": [
+            "json",
+            "srt",
+            "vtt"
+          ],
+          "mode": "required"
+        }
+      },
+      "entity_style_id": "random",
+      "id": "chronontemplate-duo-2images-rt-20261018-t4",
+      "language": "it",
+      "max_image_overlays": 6,
+      "max_overlays_per_scene": 6,
+      "media_plan": {
+        "cache": {
+          "read": true,
+          "write": true
+        },
+        "extraction": {
+          "enabled": true,
+          "entity_images": {
+            "enabled": true,
+            "entity_types": [
+              "PERSON"
+            ],
+            "max_per_entity": 1,
+            "scope": "shared",
+            "upload_to_drive": true
+          },
+          "include": [
+            "persons"
+          ],
+          "max_entities_per_segment": 2,
+          "max_image_queries_per_segment": 2,
+          "max_important_phrases_per_segment": 0
+        },
+        "force_refresh_assets": true,
+        "include_trace": true,
+        "materialization": {
+          "mode": "selected",
+          "upload_to_drive": true,
+          "wait_for_ready": true
+        },
+        "mode": "hybrid",
+        "planner": {
+          "candidate_limit": 30
+        },
+        "provider_policy": {
+          "artlist": "disabled",
+          "geocoding": "disabled",
+          "image_generation": "disabled",
+          "internet_images": "enabled",
+          "youtube": "disabled"
+        }
+      },
+      "model": "gemma4:e4b",
+      "output": {
+        "docs": {
+          "enabled": false
+        },
+        "drive_folder_id": "1J_xUGo_bchzXDIGqSX04CU44c_Dm3SxS",
+        "drive_subfolder_name": "chronontemplate-duo-2images-rt-20261018",
+        "extract_entities": true,
+        "generate_metadata": true,
+        "generate_timeline": true,
+        "languages": [
+          "it"
+        ],
+        "render": {
+          "background": {
+            "mode": "none"
+          },
+          "drive_folder_id": "1J_xUGo_bchzXDIGqSX04CU44c_Dm3SxS",
+          "drive_subfolder_name": "chronontemplate-duo-2images-rt-20261018",
+          "enabled": true,
+          "require_gpu": true,
+          "subtitles": {
+            "enabled": false
+          }
+        },
+        "save_to_db": true,
+        "voiceover_enabled": true
+      },
+      "overlay_background": {
+        "color": [
+          1,
+          1,
+          1,
+          1
+        ],
+        "kind": "color",
+        "opacity": 1
+      },
+      "overlay_categories": {
+        "brand_text": "disabled",
+        "bullets": "disabled",
+        "charts": "disabled",
+        "images": "enabled",
+        "maps": "disabled",
+        "numbers": "disabled",
+        "phrases": "disabled",
+        "quotes": "disabled",
+        "recaps": "disabled",
+        "titles": "disabled"
+      },
+      "overlay_group_limits": {
+        "entities_with_text": 6,
+        "images": 6,
+        "long_phrases": 0,
+        "maps": 0,
+        "short_phrases": 0
+      },
+      "overlay_style": {
+        "color": [
+          0,
+          0,
+          0,
+          1
+        ],
+        "font_family": "playfair_display_italic",
+        "glow_size": 0,
+        "shadow": {
+          "blur": 0,
+          "enabled": false,
+          "offset": [
+            0,
+            0
+          ],
+          "opacity": 0
+        },
+        "size": {
+          "font_size": 72
+        },
+        "stroke_size": 0
+      },
+      "project": "chronontemplate-duo-2images-rt-20261018-t4",
+      "script_params": {
+        "force_refresh": true,
+        "min_words": 30,
+        "segments": [
+          {
+            "extract_entities": "enabled",
+            "id": "two-named-people",
+            "kind": "narration",
+            "min_words": 30,
+            "source_text": "Marie Curie e Albert Einstein sono due figure della scienza moderna. Marie Curie studi\u00f2 la radioattivit\u00e0 e ricevette due premi Nobel in discipline differenti. Albert Einstein contribu\u00ec allo sviluppo della fisica moderna attraverso la relativit\u00e0.",
+            "target_words": 40,
+            "topic": "Due figure della scienza moderna"
+          }
+        ],
+        "single_scene": true,
+        "skip_quality_gate": true,
+        "source_text_verbatim": true,
+        "target_words": 40
+      },
+      "source": {
+        "cache": {},
+        "research": {},
+        "source_text": "Marie Curie e Albert Einstein sono due figure della scienza moderna. Marie Curie studi\u00f2 la radioattivit\u00e0 e ricevette due premi Nobel in discipline differenti. Albert Einstein contribu\u00ec allo sviluppo della fisica moderna attraverso la relativit\u00e0.",
+        "topic": "Due figure della scienza moderna",
+        "type": "text"
+      },
+      "style": "Usa verbatim il testo fornito. Mantieni le due figure nominate come soggetti distinti e non aggiungere fatti o citazioni.",
+      "title": "Due figure della scienza, un gruppo di immagini",
+      "tone": "documentario culturale sobrio e informativo"
+    }
+  ],
+  "preset": "custom",
+  "version": 2
+}

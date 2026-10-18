@@ -31,6 +31,16 @@ Implemented by `composeNearbyEntityImages` in
 - **Cluster size 2..5** (`maxEntityImageGroup`): up to five portraits or contextual images share
   one item (the RenderingGen ceiling; `entity_group` and composite `image_layers` reject six). Remainders repartition deterministically so a group always has
   at least two children (7 → 5+2, 11 → 5+4+2).
+- The automatic overlay planner applies the same 5,000 ms empty-gap ceiling to
+  certified images from one scene (`AutoImageGroups`). Its existing hard image
+  window also caps a composite's full timeline span at five seconds; images
+  outside that window stay eligible as their own overlay. A lone image uses the
+  single-image motion path.
+- **One group choreography**: composites carry a size-specific `group_motion_id`
+  selected from the certified `image.group.count_2` through
+  `image.group.count_5` catalog pools. The seeded draw is stable on retry and
+  avoids repeating the previous group when another candidate exists. Each
+  child still has its own layer entrance and caption animation.
 - **Wire shape**: one `entity_image` item carrying N `asset_refs` and N
   `image_layers`. Each layer keeps:
   - its own relative `start_ms`/`end_ms` inside the parent window
