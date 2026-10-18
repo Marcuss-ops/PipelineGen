@@ -19,15 +19,13 @@ func TestValidateOverlayGroupLimitsRejectsUnknownAndNegative(t *testing.T) {
 }
 
 func TestApplyOverlayGroupLimitsCapsAndDisables(t *testing.T) {
-	// The short-phrase group is classified by the motion's presence in the
-	// PUBLISHED exact-cardinality recipe table, not by its wire prefix: a
-	// retired id ("short_phrase_fade") keeps the prefix and is deliberately
-	// routed to the long-phrase group. Use a recipe id the catalog publishes.
+	// Phrase groups follow spoken word count, independently of the animation
+	// selected for the overlay.
 	items := []capabilityoverlay.OverlayItem{
 		{ID: "m1", Kind: "map", Map: &capabilityoverlay.MapOverlay{}},
 		{ID: "m2", Kind: "map", Map: &capabilityoverlay.MapOverlay{}},
 		{ID: "m3", Kind: "map", Map: &capabilityoverlay.MapOverlay{}},
-		{ID: "s1", Kind: "text_phrase", MotionID: "short_phrase_editorial_quiet_zoom"},
+		{ID: "s1", Kind: "text_phrase", Text: "two word phrase", MotionID: "phrase_apple_clean_07_slide_up_soft"},
 		{ID: "l1", Kind: "text_phrase", MotionID: "slide_in"},
 		{ID: "l2", Kind: "text_phrase", MotionID: "slide_in"},
 	}

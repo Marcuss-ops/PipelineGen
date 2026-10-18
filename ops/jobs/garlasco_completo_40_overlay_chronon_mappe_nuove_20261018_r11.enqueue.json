@@ -1,0 +1,447 @@
+{
+  "type": "script.generate",
+  "project": "garlasco-completo-40-overlay-chronon-mappe-nuove-20261018-r11",
+  "idempotency_key": "garlasco-completo-40-overlay-chronon-mappe-nuove-20261018-r11",
+  "payload": {
+    "version": 2,
+    "preset": "custom",
+    "correlation_id": "garlasco-completo-40-overlay-chronon-mappe-nuove-20261018-r11",
+    "force_refresh": true,
+    "items": [
+      {
+        "id": "garlasco-completo-40-overlay-chronon-mappe-nuove-20261018-r11",
+        "project": "garlasco-completo-40-overlay-chronon-mappe-nuove-20261018-r11",
+        "title": "Garlasco completo — 40 overlay verificati, con mappe Chronon Editorial",
+        "language": "it",
+        "tone": "documentario giornalistico sobrio, verificabile e garantista",
+        "style": "Il copione è fissato: copia esattamente i 15 segmenti source_text, senza parafrasare, riscrivere, espandere o cambiare date, età e nomi. Genera esattamente 40 overlay effettivi, verificati nel piano finale: 10 frasi short di 2–5 parole (mai una sola parola o frammenti), 10 frasi long di almeno 6 parole, 8 immagini di scena con didascalia, 5 schede entità con immagini verificate e didascalia, e 4 date documentate e 3 mappe editoriali delle località nominate, per 40 overlay complessivi. La frase overlay budget finale deve avere shortfall zero; non aggiungere alcun testo al copione fissato. Inserisci mappe stradali pulite e leggibili solo per località nominate e pertinenti; non inferire percorsi o spostamenti. Evita mappe satellitari. Usa solo Playfair Display Italic per ogni testo, didascalia e scheda; testo nero su fondo bianco. Non usare font alternativi o enfasi che cambino famiglia tipografica. Usa un’unica animazione tipografica sobria. Mantieni immagini e frasi pertinenti al segmento. Andrea Sempio è indagato, respinge le accuse e non è condannato in questo procedimento. Tono giornalistico sobrio, garantista e rispettoso; niente dettagli grafici.",
+        "model": "gemma4:e4b",
+        "source": {
+          "type": "text",
+          "topic": "Ricostruzione prudente e verificabile del caso giudiziario di Garlasco",
+          "source_text": "Testo narrativo italiano fissato nei 15 segmenti espliciti; mantenerlo verbatim senza aggiungere o riscrivere fatti."
+        },
+        "max_phrase_overlays": 20,
+        "max_image_overlays": 13,
+        "max_map_overlays": 3,
+        "overlay_style": {
+          "font_family": "playfair_display_italic",
+          "color": [
+            0,
+            0,
+            0,
+            1
+          ],
+          "size": {
+            "font_size": 96
+          },
+          "glow_size": 0,
+          "glow_color": "#000000",
+          "stroke_size": 0,
+          "shadow": {
+            "enabled": false,
+            "color": "#000000",
+            "opacity": 0,
+            "blur": 0,
+            "offset": [
+              0,
+              0
+            ]
+          }
+        },
+        "animation_counts": {
+          "maps": 3,
+          "images": 13,
+          "images_with_text": 13,
+          "important_phrase": 20,
+          "short_important_phrase": 10,
+          "entities": 5,
+          "entity_caption": 5,
+          "dates": 4,
+          "chain_disabled": 1
+        },
+        "entity_style_id": "below",
+        "output": {
+          "save_to_db": true,
+          "extract_entities": true,
+          "generate_metadata": true,
+          "generate_timeline": true,
+          "voiceover_enabled": true,
+          "languages": [
+            "it"
+          ],
+          "drive_folder_id": "1J_xUGo_bchzXDIGqSX04CU44c_Dm3SxS",
+          "render": {
+            "enabled": true,
+            "drive_folder_id": "1J_xUGo_bchzXDIGqSX04CU44c_Dm3SxS",
+            "require_gpu": true,
+            "subtitles": {
+              "enabled": false
+            },
+            "drive_subfolder_name": "garlasco-completo-40-overlay-chronon-mappe-nuove-20261018-r3",
+            "background": {
+              "mode": "none"
+            }
+          },
+          "docs": {
+            "enabled": false
+          },
+          "drive_subfolder_name": "garlasco-completo-40-overlay-chronon-mappe-nuove-20261018-r3"
+        },
+        "media_plan": {
+          "mode": "hybrid",
+          "provider_policy": {
+            "internet_images": "enabled",
+            "image_generation": "disabled",
+            "artlist": "disabled",
+            "youtube": "disabled",
+            "geocoding": "enabled"
+          },
+          "cache": {
+            "read": false,
+            "write": true
+          },
+          "force_refresh_assets": true,
+          "extraction": {
+            "enabled": true,
+            "include": [
+              "persons",
+              "important_phrases",
+              "metrics",
+              "locations",
+              "organizations",
+              "dates"
+            ],
+            "important_phrases": [
+              "morte di Chiara Poggi",
+              "abitazione a Garlasco",
+              "giovane donna di ventisei anni",
+              "sedici anni di reclusione",
+              "sentenza della Cassazione",
+              "Procura di Pavia",
+              "seconda chiusura delle indagini",
+              "L’impronta indicata come numero 33",
+              "pedali di una bicicletta",
+              "presunzione di innocenza",
+              "Il caso riguarda la morte di Chiara Poggi, avvenuta",
+              "Alberto Stasi, allora fidanzato di Chiara Poggi, è stato condannato",
+              "Un singolo elemento non va isolato dal contesto né descritto",
+              "Andrea Sempio è indagato nell’inchiesta della Procura di Pavia.",
+              "Il 28 settembre 2026 la Procura di Pavia ha notificato",
+              "Il contraddittorio consente alla difesa di esaminare gli atti",
+              "L’impronta indicata come numero 33 è stata oggetto di valutazioni",
+              "Le tracce sui pedali di una bicicletta sono state oggetto",
+              "L’8 ottobre 2026 ANSA ha riferito dell’acquisizione di documenti",
+              "I fatti accertati, le ipotesi investigative, le dichiarazioni e i punti contestati devono restare distinti.",
+              "Chiara Poggi",
+              "ventisei anni",
+              "13 agosto 2007",
+              "via definitiva",
+              "respinge le accuse",
+              "non equivale a essere condannato",
+              "non è una richiesta",
+              "né una sentenza",
+              "prove dei fatti"
+            ],
+            "max_entities_per_segment": 5,
+            "max_important_phrases_per_segment": 8,
+            "max_image_queries_per_segment": 2,
+            "entity_images": {
+              "enabled": true,
+              "entity_types": [
+                "PERSON",
+                "ORG",
+                "GPE"
+              ],
+              "max_per_entity": 1,
+              "scope": "per_scene",
+              "upload_to_drive": true
+            }
+          },
+          "materialization": {
+            "mode": "selected",
+            "upload_to_drive": true,
+            "wait_for_ready": true
+          },
+          "planner": {
+            "candidate_limit": 12
+          },
+          "include_trace": true
+        },
+        "audio": {
+          "mode": "COMBINED_TIMELINE",
+          "timing": {
+            "mode": "required",
+            "boundary": "word",
+            "formats": [
+              "json",
+              "srt",
+              "vtt"
+            ]
+          }
+        },
+        "docs": {
+          "enabled": false
+        },
+        "overlay_background": {
+          "kind": "color",
+          "color": [
+            1,
+            1,
+            1,
+            1
+          ],
+          "opacity": 1
+        },
+        "overlay_group_limits": {
+          "maps": 3,
+          "short_phrases": 10,
+          "long_phrases": 10,
+          "entities_with_text": 5,
+          "images": 13,
+          "locations": 0
+        },
+        "overlay_categories": {
+          "maps": "enabled",
+          "phrases": "enabled",
+          "images": "enabled",
+          "numbers": "enabled",
+          "quotes": "disabled",
+          "brand_text": "disabled",
+          "charts": "disabled",
+          "recaps": "disabled",
+          "titles": "disabled",
+          "bullets": "disabled"
+        },
+        "image_motions": [
+          "image_fade_reveal",
+          "image_focus_reveal",
+          "image_scale_reveal",
+          "image_slide_left_reveal",
+          "image_slide_right_reveal"
+        ],
+        "entity_image_motions": [
+          "image_fade_reveal",
+          "image_focus_reveal",
+          "image_scale_reveal",
+          "image_slide_left_reveal",
+          "image_slide_right_reveal"
+        ],
+        "phrase_motion_family": "modern_product_v1",
+        "entity_caption_motions": [
+          "entity_caption_rise",
+          "entity_border_then_caption",
+          "entity_glow_focus",
+          "entity_name_underline",
+          "entity_name_pill",
+          "entity_focus_frame"
+        ],
+        "phrase_motions": [
+          "phrase_apple_clean_07_slide_up_soft"
+        ],
+        "map_type": "chronon_editorial",
+        "map_camera_animation": "slow_approach",
+        "map_label_animation": "none",
+        "map_animation": "region_zoom",
+        "max_overlays_per_scene": 10,
+        "script_params": {
+          "target_words": 733,
+          "min_words": 700,
+          "segment_words": 50,
+          "single_scene": false,
+          "skip_quality_gate": true,
+          "segments": [
+            {
+              "id": "delitto-e-luogo",
+              "kind": "narration",
+              "topic": "delitto e luogo",
+              "source_text": "Il caso riguarda la morte di Chiara Poggi, avvenuta il 13 agosto 2007 nella sua abitazione a Garlasco. La data è confermata dalle cronache giudiziarie e dagli atti del procedimento. Questa ricostruzione mantiene il focus sui passaggi documentati e non aggiunge dettagli sulla vita privata di Chiara che non siano verificati.",
+              "target_words": 51,
+              "min_words": 51,
+              "overlay_categories": {
+                "numbers": "disabled",
+                "maps": "enabled",
+                "phrases": "disabled",
+                "images": "disabled"
+              }
+            },
+            {
+              "id": "chiara-poggi",
+              "kind": "narration",
+              "topic": "chiara poggi",
+              "source_text": "Chiara Poggi era una giovane donna di ventisei anni. Il racconto del caso deve ricordare la persona senza trasformare supposizioni sulla sua vita in fatti. Le informazioni personali non documentate restano fuori da questa narrazione; i passaggi successivi sono descritti distinguendo ciò che è stato accertato da ciò che è stato discusso.",
+              "target_words": 52,
+              "min_words": 52,
+              "overlay_categories": {
+                "numbers": "disabled",
+                "maps": "disabled"
+              }
+            },
+            {
+              "id": "alberto-stasi",
+              "kind": "narration",
+              "topic": "alberto stasi",
+              "source_text": "Alberto Stasi, allora fidanzato di Chiara Poggi, è stato condannato in via definitiva a sedici anni di reclusione per l’omicidio. La sentenza della Cassazione è del 2015. Questa condanna riguarda il procedimento a carico di Stasi e va tenuta distinta dalla nuova indagine su Andrea Sempio.",
+              "target_words": 46,
+              "min_words": 46,
+              "overlay_categories": {
+                "numbers": "disabled",
+                "maps": "disabled"
+              }
+            },
+            {
+              "id": "indagine-originaria",
+              "kind": "narration",
+              "topic": "indagine originaria",
+              "source_text": "Le indagini e i processi hanno esaminato reperti, consulenze tecniche e testimonianze. Un singolo elemento non va isolato dal contesto né descritto come prova autonoma di una responsabilità diversa da quella stabilita con sentenza. Quando le interpretazioni delle parti divergono, la narrazione deve attribuirle e chiarire che sono contestate.",
+              "target_words": 49,
+              "min_words": 49,
+              "overlay_categories": {
+                "numbers": "disabled",
+                "maps": "disabled"
+              }
+            },
+            {
+              "id": "nuova-indagine",
+              "kind": "narration",
+              "topic": "nuova indagine",
+              "source_text": "Andrea Sempio è indagato nell’inchiesta della Procura di Pavia. Essere indagato non equivale a essere condannato. Sempio respinge le accuse. Le ipotesi investigative e le posizioni della difesa devono essere presentate come tali, nel rispetto della presunzione di innocenza e senza anticipare l’esito di eventuali decisioni future.",
+              "target_words": 47,
+              "min_words": 47,
+              "overlay_categories": {
+                "numbers": "disabled",
+                "maps": "enabled",
+                "phrases": "disabled",
+                "images": "disabled"
+              }
+            },
+            {
+              "id": "chiusura-settembre",
+              "kind": "narration",
+              "topic": "chiusura settembre",
+              "source_text": "Il 28 settembre 2026 la Procura di Pavia ha notificato una seconda chiusura delle indagini su Andrea Sempio, con nuovi atti e consulenze, secondo quanto riportato da ANSA. L’avviso di conclusione delle indagini è un passaggio procedurale: non è una richiesta di rinvio a giudizio, né una sentenza.",
+              "target_words": 48,
+              "min_words": 48,
+              "overlay_categories": {
+                "numbers": "disabled",
+                "maps": "disabled"
+              }
+            },
+            {
+              "id": "difesa-sempio",
+              "kind": "narration",
+              "topic": "difesa sempio",
+              "source_text": "Andrea Sempio respinge le accuse. La sua posizione va riportata come dichiarazione della persona indagata, non come prova dei fatti. Il contraddittorio consente alla difesa di esaminare gli atti e contestare le ricostruzioni investigative. La responsabilità penale può essere stabilita soltanto attraverso le procedure e le decisioni previste dalla legge.",
+              "target_words": 50,
+              "min_words": 50,
+              "overlay_categories": {
+                "numbers": "disabled",
+                "maps": "disabled"
+              }
+            },
+            {
+              "id": "impronta-33",
+              "kind": "narration",
+              "topic": "impronta 33",
+              "source_text": "L’impronta indicata come numero 33 è stata oggetto di valutazioni tecniche e di discussione tra le parti. Le conclusioni sulla sua attribuzione e interpretazione vanno presentate con la relativa fonte e con le contestazioni. Questa narrazione non trasforma un reperto controverso in una certezza ulteriore rispetto alle decisioni giudiziarie.",
+              "target_words": 49,
+              "min_words": 49,
+              "overlay_categories": {
+                "numbers": "disabled",
+                "maps": "disabled"
+              }
+            },
+            {
+              "id": "bicicletta-e-dna",
+              "kind": "narration",
+              "topic": "bicicletta e dna",
+              "source_text": "Le tracce sui pedali di una bicicletta sono state oggetto di analisi e di valutazioni non coincidenti. La loro interpretazione dipende dai dati tecnici, dal contesto del prelievo e dalle relazioni delle parti. Non si può ricavare da una menzione dei pedali, da sola, una conclusione certa sulla responsabilità di una persona.",
+              "target_words": 52,
+              "min_words": 52,
+              "overlay_categories": {
+                "numbers": "disabled",
+                "maps": "disabled"
+              }
+            },
+            {
+              "id": "ris-parma",
+              "kind": "narration",
+              "topic": "ris parma",
+              "source_text": "L’8 ottobre 2026 ANSA ha riferito dell’acquisizione di documenti relativi ad accertamenti sui pedali di una bicicletta, conservati presso il RIS di Parma. L’esistenza o l’acquisizione di documenti non dimostra da sola un occultamento intenzionale o una responsabilità penale. Le conclusioni richiedono esame degli atti e contraddittorio.",
+              "target_words": 47,
+              "min_words": 47,
+              "overlay_categories": {
+                "numbers": "disabled",
+                "maps": "enabled",
+                "phrases": "disabled",
+                "images": "disabled"
+              }
+            },
+            {
+              "id": "date-e-reperti",
+              "kind": "narration",
+              "topic": "date e reperti",
+              "source_text": "Le date sono riportate soltanto quando collegate a un passaggio documentato: 13 agosto 2007 per il delitto, 2015 per la condanna definitiva di Alberto Stasi, 28 settembre 2026 per la seconda chiusura delle indagini su Sempio e 8 ottobre 2026 per la notizia sui documenti del RIS. Prelievi, analisi e pubblicazioni sono momenti distinti.",
+              "target_words": 54,
+              "min_words": 54,
+              "overlay_categories": {
+                "numbers": "enabled",
+                "maps": "disabled"
+              }
+            },
+            {
+              "id": "vigevano-e-pavia",
+              "kind": "narration",
+              "topic": "Riferimenti geografici nel fascicolo",
+              "source_text": "I riferimenti geografici sono inclusi soltanto quando le fonti li collegano a uno specifico passaggio del caso. Non vengono inferiti spostamenti delle persone né relazioni processuali dalla sola vicinanza tra luoghi. Le mappe del video devono quindi rappresentare esclusivamente località nominate in modo esplicito e pertinenti al segmento.",
+              "target_words": 48,
+              "min_words": 48,
+              "overlay_categories": {
+                "numbers": "disabled",
+                "maps": "disabled"
+              }
+            },
+            {
+              "id": "milano-e-brescia",
+              "kind": "narration",
+              "topic": "Filoni giudiziari distinti",
+              "source_text": "Le indagini e i procedimenti che emergono dalle cronache possono riguardare oggetti diversi. La loro contemporanea menzione non dimostra un collegamento probatorio. Ogni filone va mantenuto separato e ogni affermazione deve indicare a quale procedimento, fonte o decisione si riferisce.",
+              "target_words": 40,
+              "min_words": 40,
+              "overlay_categories": {
+                "numbers": "disabled",
+                "maps": "disabled"
+              }
+            },
+            {
+              "id": "avvocati-e-contraddittorio",
+              "kind": "narration",
+              "topic": "avvocati e contraddittorio",
+              "source_text": "Le cronache indicano Angela Taccia e Liborio Cataliotti tra i difensori di Andrea Sempio, e Giada Bocellari e Antonio De Rensis tra i legali di Alberto Stasi. Il ruolo delle difese comprende l’esame degli atti e delle consulenze. Le loro posizioni vanno attribuite, senza confonderle con decisioni del giudice.",
+              "target_words": 49,
+              "min_words": 49,
+              "overlay_categories": {
+                "numbers": "disabled",
+                "maps": "disabled"
+              }
+            },
+            {
+              "id": "chiusura-giornalistica",
+              "kind": "narration",
+              "topic": "chiusura giornalistica",
+              "source_text": "Un’indagine, un avviso di conclusione delle indagini, una richiesta di processo e una condanna sono fasi diverse. I fatti accertati, le ipotesi investigative, le dichiarazioni e i punti contestati devono restare distinti. La vicenda di Chiara Poggi va raccontata con rispetto, accuratezza e attenzione alla dignità di tutte le persone coinvolte.",
+              "target_words": 51,
+              "min_words": 51,
+              "overlay_categories": {
+                "numbers": "disabled",
+                "maps": "disabled"
+              }
+            }
+          ],
+          "force_refresh": true,
+          "source_text_verbatim": true
+        }
+      }
+    ]
+  }
+}

@@ -219,6 +219,12 @@ func sceneForSegment(scenes []Scene, eligible []int, segment scriptpkg.ScriptSeg
 }
 
 func ensureRequestedImportantPhrases(req GenerateRequest, scenes []Scene) []Scene {
+	// Verbatim source segments are the authoritative narration. Overlay hints
+	// may be grounded against them later, but must never be appended to the
+	// spoken text when a requested phrase is absent.
+	if req.ScriptParams.SourceTextVerbatim {
+		return scenes
+	}
 	hints := req.MediaPlan.Extraction.ImportantPhrases
 	if len(hints) == 0 || len(scenes) == 0 {
 		return scenes

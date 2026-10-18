@@ -39,8 +39,22 @@ func sceneEntityImageHashes(result *GenerateResult) map[string]struct{} {
 // visual. Timing is anchored at the certified scene start, never estimated
 // from the narration text.
 func sceneImageCandidate(result *GenerateResult, sceneID string, startUS int64, excludedHashes map[string]struct{}, sceneEndUS int64) (capabilityoverlay.ImageCandidate, bool) {
-	if result == nil || strings.TrimSpace(sceneID) == "" || startUS < 0 {
+	candidates := sceneImageCandidates(result, sceneID, startUS, excludedHashes, sceneEndUS, 1)
+	if len(candidates) == 0 {
 		return capabilityoverlay.ImageCandidate{}, false
+	}
+	return candidates[0], true
+}
+
+// sceneImageCandidates projects distinct contextual stills onto one scene.
+// When a scene has enough certified duration, later stills run sequentially
+// after the first one, preserving the replace-only image timeline contract.
+func sceneImageCandidates(result *GenerateResult, sceneID string, startUS int64, excludedHashes map[string]struct{}, sceneEndUS int64, limit int) []capabilityoverlay.ImageCandidate {
+	if result == nil || strings.TrimSpace(sceneID) == "" || startUS < 0 {
+		return nil
+	}
+	if limit <= 0 {
+		return nil
 	}
 	for _, segment := range result.Segments {
 		if segment.SceneID != sceneID && segment.SegmentID != sceneID {
@@ -48,6 +62,12 @@ func sceneImageCandidate(result *GenerateResult, sceneID string, startUS int64, 
 		}
 		candidates := append(append([]scriptpkg.SegmentAssetCandidate(nil), segment.Assets.SecondaryImages...), segment.Assets.Candidates...)
 		seen := make(map[string]struct{}, len(candidates))
+		localHashes := make(map[string]struct{}, len(excludedHashes)+limit)
+		for hash := range excludedHashes {
+			localHashes[hash] = struct{}{}
+		}
+		var out []capabilityoverlay.ImageCandidate
+		nextStartUS := ((startUS / 1000) * 1000) + capabilityoverlay.MaxImageOverlayDurationMS*1000
 		for _, candidate := range candidates {
 			assetID := strings.TrimSpace(candidate.AssetID)
 			digest := strings.TrimSpace(candidate.LegacyFileMD5)
@@ -58,39 +78,46 @@ func sceneImageCandidate(result *GenerateResult, sceneID string, startUS int64, 
 			if !sceneImageCandidateReady(candidate, digest) {
 				continue
 			}
-			if _, duplicate := excludedHashes[strings.ToLower(digest)]; duplicate {
+			digest = strings.ToLower(digest)
+			if _, duplicate := localHashes[digest]; duplicate {
 				continue
 			}
 			url := strings.TrimSpace(candidate.SourceURL)
 			if url == "" {
 				url = strings.TrimSpace(candidate.PreviewURL)
 			}
-			// Entity cards keep the opening beat for canonical subject context.
-			// Scene-context images enter immediately after that five-second card
-			// window so the remote replace-only timeline can carry both without an
-			// invalid overlapping range.
-			startUS = ((startUS / 1000) * 1000) + capabilityoverlay.MaxImageOverlayDurationMS*1000
+			// Entity cards keep the opening beat. Context images start after the
+			// five-second card window, then run sequentially without overlap.
 			durationUS := int64(capabilityoverlay.MaxImageOverlayDurationMS * 1000)
 			// A scene image starts after the opening entity-card window. Short
 			// scenes may not have a full image interval left, so end it exactly
 			// at the owning scene boundary instead of failing timeline preflight.
 			if sceneEndUS > 0 {
-				if remainingUS := sceneEndUS - startUS; remainingUS <= 0 {
-					return capabilityoverlay.ImageCandidate{}, false
+				if remainingUS := sceneEndUS - nextStartUS; remainingUS <= 0 {
+					break
 				} else if remainingUS < durationUS {
 					durationUS = remainingUS
 				}
 			}
-			return capabilityoverlay.ImageCandidate{
+			out = append(out, capabilityoverlay.ImageCandidate{
 				AssetID: digest, URL: url, LocalPath: strings.TrimSpace(candidate.LocalPath),
 				SHA256: digest, MediaType: strings.TrimSpace(candidate.MIMEType),
-				StartMs: startUS / 1000, EndMs: (startUS + durationUS + 999) / 1000,
-				StartUS: startUS, DurationUS: durationUS,
+				StartMs: nextStartUS / 1000, EndMs: (nextStartUS + durationUS + 999) / 1000,
+				StartUS: nextStartUS, DurationUS: durationUS,
 				Score: 1,
-			}, true
+			})
+			localHashes[digest] = struct{}{}
+			if durationUS < int64(capabilityoverlay.MaxImageOverlayDurationMS*1000) {
+				break
+			}
+			if len(out) >= limit {
+				return out
+			}
+			nextStartUS += durationUS
 		}
+		return out
 	}
-	return capabilityoverlay.ImageCandidate{}, false
+	return nil
 }
 
 func sceneImageCandidateReady(candidate scriptpkg.SegmentAssetCandidate, digest string) bool {

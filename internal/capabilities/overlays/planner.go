@@ -176,7 +176,8 @@ func BuildPlan(input PlanInput, config PlannerConfig) (OverlayPlan, error) {
 			numbers = numbers[:config.MaxNumbers]
 		}
 		for _, number := range numbers {
-			plan.Items = append(plan.Items, numberOverlayItem(input.PlanID, scene.ID, number, input.AnimationCounts))
+			dateWindowCap := dateCardWindowCap(number, numbers)
+			plan.Items = append(plan.Items, numberOverlayItem(input.PlanID, scene.ID, number, input.AnimationCounts, dateWindowCap))
 		}
 
 		brandTexts := rankedValid(scene.BrandTexts, 0)
