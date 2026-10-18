@@ -96,10 +96,97 @@ func (e *QueueRenderEnqueuer) EnqueueChrononPlan(ctx context.Context, plan capov
 	// Nearby semantic items have already been coalesced into chain items by the
 	// planner. Render each resulting item/chain as its own short MP4. Rendering
 	// the entire plan here creates one sparse video spanning the full narration.
-	if e != nil && e.separateItemRenders && len(plan.Items) > 0 {
+	// Maps force the per-item route as well: each map item then folds its own
+	// dynamic render exactly like a single-map plan, so the backend and the
+	// presentation never depend on the plan's item count.
+	if e != nil && len(plan.Items) > 0 && (e.separateItemRenders || planNeedsPerItemMapRenders(plan)) {
 		return e.enqueueSeparateOverlayItems(ctx, plan)
 	}
 	return e.enqueueChrononPlan(ctx, plan, nil)
+}
+
+// planMapBackend is one map item's render-boundary backend decision: the
+// capability-resolved backend plus the reason recorded for the map decision
+// report. resolvePlanMapBackends is the SINGLE owner of this decision — the
+// per-item routing predicate and the queue annotation below both consume its
+// output, so the route a map takes and the backend stamped on it can never
+// disagree (the P0 rule: one decision, made per map from its own
+// requirements, never from the plan's item count).
+type planMapBackend struct {
+	itemID  string
+	backend scriptoverlay.MapBackend
+	reason  string
+}
+
+// resolvePlanMapBackends resolves every map item's backend from its own real
+// render requirements. It fails closed on the first unresolvable item.
+func resolvePlanMapBackends(plan capoverlay.OverlayPlan) ([]planMapBackend, error) {
+	nativeDiagnostic := os.Getenv("PIPELINEGEN_MAP_NATIVE_RENDER") == "1"
+	var decisions []planMapBackend
+	for i := range plan.Items {
+		if plan.Items[i].Map == nil {
+			continue
+		}
+		backend, reason, err := scriptoverlay.ResolveMapItemBackend(plan.Items[i], nativeDiagnostic)
+		if err != nil {
+			return nil, fmt.Errorf("resolve map backend for item %q: %w", plan.Items[i].ID, err)
+		}
+		decisions = append(decisions, planMapBackend{itemID: plan.Items[i].ID, backend: backend, reason: reason})
+	}
+	return decisions, nil
+}
+
+// annotatePlanMapBackends stamps the single backend decision onto every map
+// item, so the worker executes exactly the backend the capability resolution
+// chose. It is the second half of the single decision (resolve, then
+// annotate) — callers never re-resolve per item.
+func annotatePlanMapBackends(plan *capoverlay.OverlayPlan, decisions []planMapBackend) {
+	if plan == nil {
+		return
+	}
+	byItem := make(map[string]planMapBackend, len(decisions))
+	for _, decision := range decisions {
+		byItem[decision.itemID] = decision
+	}
+	for itemIndex := range plan.Items {
+		if plan.Items[itemIndex].Map == nil {
+			continue
+		}
+		decision, ok := byItem[plan.Items[itemIndex].ID]
+		if !ok {
+			continue
+		}
+		if plan.Items[itemIndex].Params == nil {
+			plan.Items[itemIndex].Params = map[string]any{}
+		}
+		plan.Items[itemIndex].Params["map_backend"] = string(decision.backend)
+		plan.Items[itemIndex].Params["map_backend_reason"] = decision.reason
+	}
+}
+
+// planNeedsPerItemMapRenders reports whether the plan holds map content that
+// must render through the dynamic per-item route: a python-backend map in a
+// plan that is not the single foldable map item. It consumes the single
+// backend decision above, so routing and annotation always agree.
+func planNeedsPerItemMapRenders(plan capoverlay.OverlayPlan) bool {
+	nativeDiagnostic := os.Getenv("PIPELINEGEN_MAP_NATIVE_RENDER") == "1"
+	if nativeDiagnostic {
+		return false
+	}
+	decisions, err := resolvePlanMapBackends(plan)
+	if err != nil {
+		return true
+	}
+	pythonMaps := 0
+	for _, decision := range decisions {
+		if decision.backend == scriptoverlay.MapBackendPython {
+			pythonMaps++
+		}
+	}
+	if pythonMaps > 0 && len(plan.Items) > 1 {
+		return true
+	}
+	return len(decisions) > 1
 }
 
 // EnqueueFinalJobCompositePlan renders a complete opaque scene composition in
@@ -141,37 +228,53 @@ func (e *QueueRenderEnqueuer) enqueueChrononPlan(ctx context.Context, plan capov
 	}
 	semanticPlan := plan
 	var generatedMapVideo string
-	// Dynamic map overlays use ChrononTemplate's live tile-pyramid renderer by
-	// default. The native MAP compiler treats the basemap as one raster plane;
-	// its camera transform looks like a zoomed screenshot and is not an
-	// acceptable substitute for a cartographic fly-in. The native path remains
-	// an explicit diagnostic opt-in until it can produce equivalent motion.
-	if len(semanticPlan.Items) == 1 && semanticPlan.Items[0].Map != nil {
-		backend := scriptoverlay.ResolveMapBackend(true, true)
-		scriptoverlay.AnnotateMapBackend(&semanticPlan, backend)
-		// PIPELINEGEN_MAP_NATIVE_RENDER=1 is reserved for compiler diagnostics;
-		// production jobs use the dynamic renderer unless explicitly opted out.
-		if os.Getenv("PIPELINEGEN_MAP_NATIVE_RENDER") != "1" {
-			videoPath, err := renderDynamicMapVideo(ctx, semanticPlan)
-			if err != nil {
-				return RenderReference{}, fmt.Errorf("render Chronon dynamic map: %w", err)
-			}
-			generatedMapVideo = videoPath
-			defer os.RemoveAll(filepath.Dir(generatedMapVideo))
-			sha, size, err := digest.SHA256File(videoPath)
-			if err != nil {
-				return RenderReference{}, fmt.Errorf("identify Chronon dynamic map video: %w", err)
-			}
-			if size == 0 {
-				return RenderReference{}, fmt.Errorf("Chronon dynamic map video is empty")
-			}
-			assetRef := capoverlay.NewOverlayAssetRef(
-				kernelasset.Ref{AssetID: "chronon:dynamic-map:" + sha, SHA256: sha, MediaType: "video/mp4"},
-				"", videoPath,
-			)
-			semanticPlan.Background = &capoverlay.OverlayBackground{Kind: "video", AssetRefs: []capoverlay.OverlayAssetRef{assetRef}, Fit: "cover"}
-			semanticPlan.Items = nil
+	// Map backend selection is a PER-MAP capability decision made at the render
+	// boundary (the P0 rule): every map item resolves its backend from its own
+	// render requirements, identically whether the plan holds one map or
+	// several. Dynamic map overlays use ChrononTemplate's live tile-pyramid
+	// renderer by default. The native MAP compiler treats the basemap as one
+	// raster plane; its camera transform looks like a zoomed screenshot and is
+	// not an acceptable substitute for a cartographic fly-in. The native path
+	// remains an explicit diagnostic opt-in (PIPELINEGEN_MAP_NATIVE_RENDER=1)
+	// until it can produce equivalent motion.
+	decisions, err := resolvePlanMapBackends(semanticPlan)
+	if err != nil {
+		return RenderReference{}, err
+	}
+	mapItemCount := len(decisions)
+	pythonMapCount := 0
+	for _, decision := range decisions {
+		if decision.backend == scriptoverlay.MapBackendPython {
+			pythonMapCount++
 		}
+	}
+	annotatePlanMapBackends(&semanticPlan, decisions)
+	nativeDiagnostic := os.Getenv("PIPELINEGEN_MAP_NATIVE_RENDER") == "1"
+	if mapItemCount == 1 && pythonMapCount == 1 && len(semanticPlan.Items) == 1 && !nativeDiagnostic {
+		// The plan is ONE dynamic map: fold its rendered video into the
+		// first-class background block (the certified single-map production
+		// path). Multi-map plans take the per-item route in
+		// EnqueueChrononPlan, so a map is rendered the same way regardless of
+		// how many maps the plan holds.
+		videoPath, err := renderDynamicMapVideo(ctx, semanticPlan)
+		if err != nil {
+			return RenderReference{}, fmt.Errorf("render Chronon dynamic map: %w", err)
+		}
+		generatedMapVideo = videoPath
+		defer os.RemoveAll(filepath.Dir(generatedMapVideo))
+		sha, size, err := digest.SHA256File(videoPath)
+		if err != nil {
+			return RenderReference{}, fmt.Errorf("identify Chronon dynamic map video: %w", err)
+		}
+		if size == 0 {
+			return RenderReference{}, fmt.Errorf("Chronon dynamic map video is empty")
+		}
+		assetRef := capoverlay.NewOverlayAssetRef(
+			kernelasset.Ref{AssetID: "chronon:dynamic-map:" + sha, SHA256: sha, MediaType: "video/mp4"},
+			"", videoPath,
+		)
+		semanticPlan.Background = &capoverlay.OverlayBackground{Kind: "video", AssetRefs: []capoverlay.OverlayAssetRef{assetRef}, Fit: "cover"}
+		semanticPlan.Items = nil
 	}
 	// Drive routing belongs to PipelineGen's publication boundary, not to
 	// RenderingGen's strict semantic overlay-plan wire contract. Keep it on

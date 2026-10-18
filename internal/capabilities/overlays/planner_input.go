@@ -63,6 +63,40 @@ type SceneInput struct {
 
 // PlanInput is the minimal upstream projection required by the overlay
 // planner. It deliberately does not import the script domain package.
+// MapGroupConfig is the planner's map-grouping policy, resolved from the
+// unified map_presentation contract. The zero value IS the certified default
+// behaviour (narrative grouping on, journey routes on, 5 pins per group); the
+// inverted flags let an explicit zero value stay meaningful.
+type MapGroupConfig struct {
+	// MaxPinsPerGroup caps one map group at this many grounded places.
+	// Zero (or negative) selects DefaultMaxPinsPerGroup.
+	MaxPinsPerGroup int
+	// NoNarrativeGrouping disables grouping places by narrative proximity:
+	// groups are then plain spoken-order chunks of MaxPinsPerGroup.
+	NoNarrativeGrouping bool
+	// NoRoutes forbids journey/camera-route presentations; every map becomes
+	// a static group even when a certified flyover plate exists.
+	NoRoutes bool
+}
+
+// DefaultMaxPinsPerGroup mirrors the dynamic renderer's authored five-stop
+// route budget; a group may never exceed it.
+const DefaultMaxPinsPerGroup = 5
+
+// Pins returns the effective per-group pin cap.
+func (c MapGroupConfig) Pins() int {
+	if c.MaxPinsPerGroup <= 0 {
+		return DefaultMaxPinsPerGroup
+	}
+	if c.MaxPinsPerGroup > DefaultMaxPinsPerGroup {
+		return DefaultMaxPinsPerGroup
+	}
+	return c.MaxPinsPerGroup
+}
+
+// DefaultMapGroupConfig returns the certified default grouping policy.
+func DefaultMapGroupConfig() MapGroupConfig { return MapGroupConfig{} }
+
 type PlanInput struct {
 	PlanID    string
 	VideoID   string
@@ -85,6 +119,9 @@ type PlanInput struct {
 	// Background is copied verbatim into the sealed overlay plan when the
 	// script/render payload explicitly requests one.
 	Background *OverlayBackground
+	// MapGroups is the map-grouping policy resolved from the unified
+	// map_presentation contract. The zero value keeps the certified defaults.
+	MapGroups MapGroupConfig
 	// PhraseMotions optionally REPLACES the certified phrase-motion rotation
 	// pool for this run (the animated IMPORTANT_PHRASE overlays). It carries a
 	// channel profile's motion choice — PipelineGen resolves it at request

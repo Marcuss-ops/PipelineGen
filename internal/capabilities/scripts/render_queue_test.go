@@ -197,6 +197,38 @@ func TestBuildGenerateRequestPropagatesMapPresentation(t *testing.T) {
 	}
 }
 
+// TestBuildGenerateRequestMapPresentationContract proves the unified
+// map_presentation object is the ONE map configuration entry point: it
+// resolves to the legacy runtime fields plus the grouping policy, and mixing
+// it with the legacy map_* fields fails closed.
+func TestBuildGenerateRequestMapPresentationContract(t *testing.T) {
+	var env scriptpkg.GenerationEnvelopeV2
+	payload := `{"version":2,"items":[{"title":"maps","language":"en","source":{"type":"text","topic":"topic"},"map_presentation":{"enabled":true,"mode":"auto","group_nearby_places":true,"max_pins_per_group":3,"style":"satellite","animation":"region_zoom","camera":"auto","allow_route":false,"selection_mode":"auto"}}]}`
+	if err := json.Unmarshal([]byte(payload), &env); err != nil {
+		t.Fatal(err)
+	}
+	request, err := BuildGenerateRequest(&env, "map-presentation-contract")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if request.MapType != "satellite" || request.MapAnimation != "region_zoom" || request.MapLabelAnimation != "none" || request.MapCameraAnimation != "" {
+		t.Fatalf("contract did not resolve the runtime fields: type=%q camera=%q label=%q composition=%q",
+			request.MapType, request.MapCameraAnimation, request.MapLabelAnimation, request.MapAnimation)
+	}
+	if request.MapPresentation == nil || request.MapPresentation.MaxPinsPerGroup != 3 || request.MapPresentation.AllowRoute || !request.MapPresentation.GroupNearbyPlaces {
+		t.Fatalf("grouping policy did not reach the request: %+v", request.MapPresentation)
+	}
+	// Mixing the unified contract with legacy map_* fields fails closed.
+	var mixed scriptpkg.GenerationEnvelopeV2
+	mixedPayload := `{"version":2,"items":[{"title":"maps","language":"en","source":{"type":"text","topic":"topic"},"map_type":"satellite","map_presentation":{"animation":"region_zoom"}}]}`
+	if err := json.Unmarshal([]byte(mixedPayload), &mixed); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := BuildGenerateRequest(&mixed, "map-presentation-mixed"); err == nil {
+		t.Fatal("map_presentation beside legacy map_* fields must fail closed")
+	}
+}
+
 func TestMapBasemapStylesAreUniqueAndNonEmpty(t *testing.T) {
 	styles := mapBasemapStyles()
 	if len(styles) == 0 {
@@ -313,12 +345,12 @@ func TestRenderDynamicMapVideoMapPresentationIsDeterministicPerItem(t *testing.T
 	}
 
 	seed := mapRunSeed(plan)
-	// A plan that requests no map_type resolves the clean dark canvas
-	// (esri_dark); only map_type=random samples the palette.
+	// A plan that requests no map_type resolves the light canvas
+	// (esri_light); only map_type=random samples the palette.
 	// Camera and label always sample the item slot so several maps in one
 	// video differ.
 	want := map[string]string{
-		"basemap":          "esri_dark",
+		"basemap":          "esri_light",
 		"camera_animation": deterministicMapStyle(seed, "map_camera", "map-1", mapCameraAnimations),
 		"label_animation":  "none",
 	}
@@ -345,16 +377,17 @@ func TestRenderDynamicMapVideoMapPresentationIsDeterministicPerItem(t *testing.T
 	t.Fatalf("captured basemap %q is outside the certified palette %v", basemap, mapBasemapStyles())
 }
 
-// TestResolveMapBasemapDefaultsToDark pins the runtime map-type
-// contract: omission and terrain mean the clean dark canvas, satellite means
+// TestResolveMapBasemapDefaultsToLight pins the runtime map-type
+// contract: omission and terrain mean the light canvas, satellite means
 // the live Esri imagery tile pyramid, roadmap means the light street canvas,
 // random samples only the certified cartographic palette, and unknown ids
 // fail closed.
-func TestResolveMapBasemapDefaultsToDark(t *testing.T) {
+func TestResolveMapBasemapDefaultsToLight(t *testing.T) {
 	for _, tc := range []struct{ in, want string }{
-		{"", "esri_dark"}, {"satellite", "esri_sat"},
-		{"roadmap", "esri_light"}, {"terrain", "esri_dark"},
+		{"", "esri_light"}, {"satellite", "esri_sat"},
+		{"roadmap", "esri_light"}, {"terrain", "esri_light"},
 		{"ROADMAP", "esri_light"},
+		{"chronon_editorial", "chronon_editorial"}, {"chronon", "chronon_editorial"}, {"editorial", "chronon_editorial"},
 	} {
 		if got, err := resolveMapBasemap(tc.in, "seed", "map-1"); err != nil || got != tc.want {
 			t.Fatalf("resolveMapBasemap(%q) = %q, %v; want %q", tc.in, got, err, tc.want)
@@ -364,9 +397,9 @@ func TestResolveMapBasemapDefaultsToDark(t *testing.T) {
 	if err != nil {
 		t.Fatalf("resolveMapBasemap(random): %v", err)
 	}
-	allowed := map[string]bool{"esri_ocean": true, "esri_light": true, "esri_dark": true, "esri_sat": true}
+	allowed := map[string]bool{"esri_light": true, "esri_sat": true, "chronon_editorial": true}
 	if !allowed[got] {
-		t.Fatalf("random basemap = %q, want one of the 4 certified cartographic styles", got)
+		t.Fatalf("random basemap = %q, want one of the 3 active cartographic styles", got)
 	}
 	if _, err := resolveMapBasemap("neon_cyber", "seed", "map-1"); err == nil {
 		t.Fatal("unknown map_type must fail closed")
@@ -469,12 +502,32 @@ func TestResolveMapComposition(t *testing.T) {
 	if err != nil {
 		t.Fatalf("random composition: %v", err)
 	}
-	want := deterministicMapStyle("seed-x", "map_composition", "map-1", mapMapAnimationsRandomPool())
-	if got != want {
-		t.Fatalf("random composition = %q, want pool pick %q", got, want)
+	// Family-based contract: the draw is deterministic per seed and lands in
+	// the compatible pool; it selects across composition FAMILIES first, so it
+	// is no longer a plain single-id pool draw.
+	inPool := false
+	for _, candidate := range mapMapAnimationsRandomPool() {
+		if got == candidate {
+			inPool = true
+		}
 	}
-	if again, err := resolveMapComposition("", "seed-x", "map-1"); err != nil || again != want {
-		t.Fatalf("omitted map_animation = %q, %v; want deterministic random pick %q", again, err, want)
+	if !inPool {
+		t.Fatalf("random composition = %q, outside the certified random pool %v", got, mapMapAnimationsRandomPool())
+	}
+	if again, err := resolveMapComposition("random", "seed-x", "map-1"); err != nil || again != got {
+		t.Fatalf("random composition is not seed-deterministic: %q then %q (%v)", got, again, err)
+	}
+	different := false
+	for _, seed := range []string{"seed-a", "seed-b", "seed-c", "seed-d", "seed-e", "seed-f"} {
+		if pick, err := resolveMapComposition("random", seed, "map-1"); err == nil && pick != got {
+			different = true
+		}
+	}
+	if !different {
+		t.Fatal("family-based selection never varies across seeds")
+	}
+	if omitted, err := resolveMapComposition("", "seed-x", "map-1"); err != nil || omitted != got {
+		t.Fatalf("omitted map_animation = %q, %v; want the same deterministic pick %q", omitted, err, got)
 	}
 	if _, err := resolveMapComposition("hyper_map", "seed", "map-1"); err == nil {
 		t.Fatal("unknown map composition must fail closed")
@@ -507,6 +560,178 @@ func TestResolveMapComposition(t *testing.T) {
 		if _, err := resolveMapComposition(retired, "seed", "map-1"); err == nil {
 			t.Errorf("uncertified editorial scene %q must fail closed", retired)
 		}
+	}
+}
+
+// TestMapCompositionFamilySelectionCoversFamilies pins the family-based
+// random contract: editorial scenes are random-eligible only when the pins
+// fall inside their authored geography, incompatible pairings fail closed on
+// exact selection, and the family draw stays deterministic per seed.
+func TestMapCompositionFamilySelectionCoversFamilies(t *testing.T) {
+	if mapCompositionFamily("region_zoom") != MapFamilyRegion ||
+		mapCompositionFamily("pulse_marker") != MapFamilyLocationFocus ||
+		mapCompositionFamily("spotlight") != MapFamilyLocationFocus ||
+		mapCompositionFamily("ed_saudi_base") != MapFamilyEditorial {
+		t.Fatalf("composition family classification drifted: %v/%v/%v/%v",
+			mapCompositionFamily("region_zoom"), mapCompositionFamily("pulse_marker"),
+			mapCompositionFamily("spotlight"), mapCompositionFamily("ed_saudi_base"))
+	}
+	// An editorial scene whose authored geography does not contain the pins is
+	// excluded from random selection (its GPU gate would abort the render).
+	italianPin := []map[string]any{{"id": "city:rome", "latitude": 41.9, "longitude": 12.5}}
+	pool := eligibleMapCompositionsFor(mapCompositionInput{PinCount: 3, Pins: italianPin}, mapMapAnimationsCertified())
+	for _, id := range pool {
+		if strings.HasPrefix(id, "ed_") {
+			t.Fatalf("editorial scene %q became random-eligible for pins outside its authored geography", id)
+		}
+	}
+	// Yemeni pins inside ed_yemen_markers' authored bounds admit that scene.
+	yemenPins := []map[string]any{
+		{"id": "a", "latitude": 15.3, "longitude": 44.2},
+		{"id": "b", "latitude": 14.5, "longitude": 43.0},
+		{"id": "c", "latitude": 16.2, "longitude": 45.0},
+	}
+	eligible := false
+	for _, id := range eligibleMapCompositionsFor(mapCompositionInput{PinCount: 3, Pins: yemenPins}, mapMapAnimationsCertified()) {
+		if id == "ed_yemen_markers" {
+			eligible = true
+		}
+	}
+	if !eligible {
+		t.Fatal("ed_yemen_markers must stay random-eligible for pins inside its authored geography")
+	}
+	// Exact selection of a camera/label-incompatible pairing fails closed
+	// instead of silently swapping the composition.
+	_, _, err := resolveMapCompositionFor("ed_saudi_base", "seed", "map-1", mapCompositionInput{PinCount: 1, Label: "fade_in"})
+	if err == nil {
+		t.Fatal("explicit editorial composition beside a label animation must fail closed")
+	}
+	// The family draw is deterministic per (seed, slot).
+	input := mapCompositionInput{PinCount: 1, Pins: italianPin}
+	pick, _, err := resolveMapCompositionFor("random", "seed-family", "map-1", input)
+	if err != nil {
+		t.Fatalf("random family draw: %v", err)
+	}
+	again, _, err := resolveMapCompositionFor("random", "seed-family", "map-1", input)
+	if err != nil || again != pick {
+		t.Fatalf("family draw is not deterministic: %q then %q (%v)", pick, again, err)
+	}
+}
+
+// TestResolveMapCompositionDeclaresFallbackForShortBeats is the "insufficient
+// duration for the tour" acceptance case at selection stage: the declared
+// multi-pin alternative is recorded as the fallback reason, never a dropped
+// place.
+func TestResolveMapCompositionDeclaresFallbackForShortBeats(t *testing.T) {
+	input := mapCompositionInput{PinCount: 3, Strategy: "multi_pin", DurationUS: 5_000_000}
+	selected, reason, err := resolveMapCompositionFor("random", "seed", "map-1", input)
+	if err != nil {
+		t.Fatalf("short-beat selection: %v", err)
+	}
+	if selected == "" {
+		t.Fatal("short beat must still select a certified composition")
+	}
+	if !strings.Contains(reason, "duration_too_short_for_tour") {
+		t.Fatalf("fallback reason = %q, want the declared tour-redirect reason", reason)
+	}
+	if _, tourReason, err := resolveMapCompositionFor("random", "seed", "map-1", mapCompositionInput{PinCount: 3, Strategy: "tour"}); err != nil || tourReason != "" {
+		t.Fatalf("tour strategy must declare no fallback, got %q (%v)", tourReason, err)
+	}
+}
+
+// TestMapPinTimingRidesDynamicMapPayload proves the voiceover's per-pin
+// schedule and the planner's MapGroup decision reach the renderer payload:
+// the camera activates each place exactly when it is spoken.
+func TestMapPinTimingRidesDynamicMapPayload(t *testing.T) {
+	plan := newTestMapPlan("pin-timing-plan")
+	plan.Items[0].Params = map[string]any{
+		"map_pin_timing": map[string]map[string]any{
+			"place:rome": {"start_us": int64(500_000), "duration_us": int64(1_200_000)},
+		},
+		"map_group":          map[string]any{"index": 1, "count": 2, "size": 1},
+		"map_group_strategy": "multi_pin",
+	}
+	payload := captureMapRenderPayload(t, plan)
+	timing, ok := payload["pin_timing"].([]any)
+	if !ok || len(timing) != 1 {
+		t.Fatalf("payload pin_timing = %#v, want one timed pin", payload["pin_timing"])
+	}
+	entry := timing[0].(map[string]any)
+	if entry["id"] != "place:rome" || entry["start_s"] != 0.5 || entry["duration_s"] != 1.2 {
+		t.Fatalf("pin timing entry = %#v", entry)
+	}
+	if got := payload["map_group_strategy"]; got != "multi_pin" {
+		t.Fatalf("payload map_group_strategy = %v", got)
+	}
+	group, ok := payload["map_group"].(map[string]any)
+	if !ok || group["index"] != float64(1) || group["count"] != float64(2) {
+		t.Fatalf("payload map_group = %#v", payload["map_group"])
+	}
+	if payload["composition_fallback"] == nil || payload["composition_family"] == nil {
+		t.Fatalf("payload must record composition family and fallback: %#v", payload)
+	}
+}
+
+// TestMapDecisionReportIsEmittedPerMap proves every rendered map carries its
+// decision report: places, composition, seed, backend, fallback and phase
+// timings are recorded in one auditable document.
+func TestMapDecisionReportIsEmittedPerMap(t *testing.T) {
+	plan := newTestMapPlan("decision-plan")
+	reportDir := t.TempDir()
+	t.Setenv("PIPELINEGEN_MAP_REPORT_DIR", reportDir)
+	_ = captureMapRenderPayload(t, plan)
+	raw, err := os.ReadFile(filepath.Join(reportDir, "map-1.map-decision.json"))
+	if err != nil {
+		t.Fatalf("map decision report not written: %v", err)
+	}
+	var report struct {
+		Schema            string             `json:"schema"`
+		Seed              string             `json:"seed"`
+		Composition       string             `json:"composition"`
+		CompositionFamily string             `json:"composition_family"`
+		Backend           string             `json:"backend"`
+		Fallback          string             `json:"fallback"`
+		Places            []map[string]any   `json:"places"`
+		PhaseSeconds      map[string]float64 `json:"phase_seconds"`
+	}
+	if err := json.Unmarshal(raw, &report); err != nil {
+		t.Fatalf("decode map decision report: %v", err)
+	}
+	if report.Schema != "pipelinegen.map-decision.v1" || report.Seed != mapRunSeed(plan) {
+		t.Fatalf("report identity = %q / %q", report.Schema, report.Seed)
+	}
+	if report.Composition == "" || report.CompositionFamily == "" || report.Backend != "python" {
+		t.Fatalf("report decisions missing: composition=%q family=%q backend=%q", report.Composition, report.CompositionFamily, report.Backend)
+	}
+	if len(report.Places) != 1 || report.Places[0]["presented"] != true {
+		t.Fatalf("report places = %#v, want the one presented pin", report.Places)
+	}
+	if report.PhaseSeconds["render_wall_s"] <= 0 {
+		t.Fatalf("report phase timings = %#v", report.PhaseSeconds)
+	}
+}
+
+// TestPlanNeedsPerItemMapRendersRoutesByCapability is the P0 acceptance case:
+// whether a map renders through the dynamic per-item route is decided by the
+// map's capabilities, never by the plan's item count.
+func TestPlanNeedsPerItemMapRendersRoutesByCapability(t *testing.T) {
+	mapItem := capoverlay.OverlayItem{ID: "map-1", Kind: "map", Map: &capoverlay.MapOverlay{}}
+	textItem := capoverlay.OverlayItem{ID: "t-1", Kind: "text_phrase", Text: "hello"}
+	if planNeedsPerItemMapRenders(capoverlay.OverlayPlan{Items: []capoverlay.OverlayItem{mapItem}}) {
+		t.Fatal("the single foldable map plan must keep the certified background fold")
+	}
+	if !planNeedsPerItemMapRenders(capoverlay.OverlayPlan{Items: []capoverlay.OverlayItem{mapItem, mapItem}}) {
+		t.Fatal("a two-map plan must render each map per item exactly like a single-map plan")
+	}
+	if !planNeedsPerItemMapRenders(capoverlay.OverlayPlan{Items: []capoverlay.OverlayItem{mapItem, textItem}}) {
+		t.Fatal("a mixed plan must render its map per item")
+	}
+	if planNeedsPerItemMapRenders(capoverlay.OverlayPlan{Items: []capoverlay.OverlayItem{textItem}}) {
+		t.Fatal("text-only plans take the ordinary combined route")
+	}
+	t.Setenv("PIPELINEGEN_MAP_NATIVE_RENDER", "1")
+	if planNeedsPerItemMapRenders(capoverlay.OverlayPlan{Items: []capoverlay.OverlayItem{mapItem, mapItem}}) {
+		t.Fatal("the native diagnostic opt-in keeps the native combined route")
 	}
 }
 

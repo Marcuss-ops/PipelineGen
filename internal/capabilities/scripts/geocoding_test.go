@@ -70,6 +70,96 @@ func TestGeocodePlaceAnnotationsOnlyLooksUpPlacesAndDeduplicates(t *testing.T) {
 	}
 }
 
+// contextRecordingGeocoder answers each lookup from its (query, context) and
+// records every request, so tests can prove which grounded context reached the
+// provider.
+type contextRecordingGeocoder struct {
+	requests []capabilitygeocoding.Request
+	answer   func(capabilitygeocoding.Request) (capabilitygeocoding.Result, error)
+}
+
+func (g *contextRecordingGeocoder) Geocode(_ context.Context, request capabilitygeocoding.Request) (capabilitygeocoding.Result, error) {
+	g.requests = append(g.requests, request)
+	return g.answer(request)
+}
+
+// TestGeocodePlaceAnnotationsUsesGroundedSceneContext proves the scene's own
+// already-grounded places become the lookup context (never invented): the
+// homonymous city is asked under the country the scene already certified.
+func TestGeocodePlaceAnnotationsUsesGroundedSceneContext(t *testing.T) {
+	geocoder := &contextRecordingGeocoder{answer: func(req capabilitygeocoding.Request) (capabilitygeocoding.Result, error) {
+		if req.Query == "Paris" {
+			return capabilitygeocoding.Result{Latitude: 48.8566, Longitude: 2.3522, Scope: "city", DisplayName: "Paris, France"}, nil
+		}
+		return capabilitygeocoding.Result{}, capabilitygeocoding.ErrNoResult
+	}}
+	runner := NewRunner(newInMemRunRepository(), nil, nil, nil, nil)
+	runner.SetGeocoder(geocoder)
+	annotations := map[int]*scriptpkg.SceneAnnotations{
+		0: {
+			Version: 1, Language: "fr", Status: "completed",
+			PrimaryEntities: []scriptpkg.AnnotatedEntity{
+				{CanonicalName: "Paris", Type: "GPE"},
+				{CanonicalName: "France", Type: "GPE", Geo: &scriptpkg.GeoCoordinate{Latitude: 46.2276, Longitude: 2.2137, Scope: "country"}},
+			},
+		},
+	}
+	if err := runner.geocodePlaceAnnotations(context.Background(), annotations, "fr"); err != nil {
+		t.Fatal(err)
+	}
+	if len(geocoder.requests) != 1 {
+		t.Fatalf("geocoder calls = %d, want 1 (Paris only): %+v", len(geocoder.requests), geocoder.requests)
+	}
+	if got := geocoder.requests[0].Context.Country; got != "France" {
+		t.Fatalf("lookup context country = %q, want the scene's grounded France", got)
+	}
+}
+
+// TestGeocodePlaceAnnotationsSeparatesContextsAcrossScenes proves one name
+// under two different grounded contexts is two lookups, not one shared cached
+// answer: each scene resolves its own locality.
+func TestGeocodePlaceAnnotationsSeparatesContextsAcrossScenes(t *testing.T) {
+	geocoder := &contextRecordingGeocoder{answer: func(req capabilitygeocoding.Request) (capabilitygeocoding.Result, error) {
+		switch req.Context.Country {
+		case "France":
+			return capabilitygeocoding.Result{Latitude: 48.8566, Longitude: 2.3522, Scope: "city", DisplayName: "Paris, France"}, nil
+		case "United States":
+			return capabilitygeocoding.Result{Latitude: 33.6617, Longitude: -95.5555, Scope: "city", DisplayName: "Paris, Texas"}, nil
+		default:
+			return capabilitygeocoding.Result{}, capabilitygeocoding.ErrNoResult
+		}
+	}}
+	runner := NewRunner(newInMemRunRepository(), nil, nil, nil, nil)
+	runner.SetGeocoder(geocoder)
+	annotations := map[int]*scriptpkg.SceneAnnotations{
+		0: {
+			Version: 1, Language: "en", Status: "completed",
+			PrimaryEntities: []scriptpkg.AnnotatedEntity{
+				{CanonicalName: "Paris", Type: "GPE"},
+				{CanonicalName: "France", Type: "GPE", Geo: &scriptpkg.GeoCoordinate{Latitude: 46.2276, Longitude: 2.2137, Scope: "country"}},
+			},
+		},
+		1: {
+			Version: 1, Language: "en", Status: "completed",
+			PrimaryEntities: []scriptpkg.AnnotatedEntity{
+				{CanonicalName: "Paris", Type: "GPE"},
+				{CanonicalName: "United States", Type: "GPE", Geo: &scriptpkg.GeoCoordinate{Latitude: 37.0902, Longitude: -95.7129, Scope: "country"}},
+			},
+		},
+	}
+	if err := runner.geocodePlaceAnnotations(context.Background(), annotations, "en"); err != nil {
+		t.Fatal(err)
+	}
+	if len(geocoder.requests) != 2 {
+		t.Fatalf("geocoder calls = %d, want one per context: %+v", len(geocoder.requests), geocoder.requests)
+	}
+	fr := annotations[0].PrimaryEntities[0].Geo
+	us := annotations[1].PrimaryEntities[0].Geo
+	if fr == nil || us == nil || fr.Latitude == us.Latitude {
+		t.Fatalf("one shared answer served two contexts: fr=%+v us=%+v", fr, us)
+	}
+}
+
 func TestRunVidRushJoinAndPrepareSkipsGeocoderWhenPolicyDisabled(t *testing.T) {
 	geocoder := &recordingGeocoder{result: capabilitygeocoding.Result{Latitude: 0, Longitude: 0}}
 	runner := NewRunner(newInMemRunRepository(), nil, nil, nil, nil)
@@ -170,8 +260,9 @@ func TestGroundedMapFallbackIgnoresSentenceAdverbsAndUppercaseOrganizations(t *t
 		Latitude: 45.184, Longitude: 8.997, DisplayName: "homonymous locality", Scope: "city",
 	}}
 	annotation := &scriptpkg.SceneAnnotations{Version: 1, Language: "it", Status: "completed"}
+	var noContext capabilitygeocoding.Context
 	if err := geocodeGroundedPlaceNames(context.Background(), geocoder, map[string]capabilitygeocoding.Result{},
-		annotation, "Infine, ANSA pubblica un aggiornamento.", "it", 0); err != nil {
+		annotation, "Infine, ANSA pubblica un aggiornamento.", "it", 0, &noContext); err != nil {
 		t.Fatal(err)
 	}
 	if len(geocoder.requests) != 0 || len(annotation.PrimaryEntities) != 0 {

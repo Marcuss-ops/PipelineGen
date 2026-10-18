@@ -277,6 +277,17 @@ func compileOverlayPlanWithMotionOffset(result *GenerateResult, language Languag
 	// explicitly requested a small set of maps.
 	mapLimit := effectiveMapOverlayCeiling(canvas.MaxMapOverlays, canvas.OverlayGroupLimits)
 	plannerConfig.RunLevelMapOverlayLimit = mapLimit
+	// The unified map_presentation contract owns the map-grouping policy; the
+	// zero value keeps the certified defaults (narrative grouping on, journeys
+	// on, five pins per group).
+	mapGroups := capabilityoverlay.MapGroupConfig{}
+	if canvas.MapPresentation != nil {
+		mapGroups = capabilityoverlay.MapGroupConfig{
+			MaxPinsPerGroup:     canvas.MapPresentation.MaxPinsPerGroup,
+			NoNarrativeGrouping: !canvas.MapPresentation.GroupNearbyPlaces,
+			NoRoutes:            !canvas.MapPresentation.AllowRoute,
+		}
+	}
 	plannerPlan, err := capabilityoverlay.BuildPlan(capabilityoverlay.PlanInput{
 		PlanID: planID, VideoID: videoID, ProjectID: projectID,
 		MotionSeed: motionSeed,
@@ -284,6 +295,7 @@ func compileOverlayPlanWithMotionOffset(result *GenerateResult, language Languag
 		Recap:         recapPlacements,
 		Charts:        chartPlacements,
 		Background:    canvas.Background,
+		MapGroups:     mapGroups,
 		PhraseMotions: canvas.PhraseMotions, PhraseMotionFamily: canvas.PhraseMotionFamily, ImageMotions: canvas.ImageMotions,
 		HeavyPhrasePriority: canvas.HeavyPhrasePriority, AnimationCounts: canvas.AnimationCounts, EntityStyleID: canvas.EntityStyleID,
 		PlateResolver: plates,

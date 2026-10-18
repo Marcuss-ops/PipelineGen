@@ -5,7 +5,57 @@ import (
 	"math"
 	"sort"
 	"strings"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
+
+// autoImageGroupMaxGapMS is the mention-to-mention gap under which two
+// certified images of the same scene join one editorial group. It is a single
+// planner constant, to be tuned on real voiceover timing.
+const autoImageGroupMaxGapMS int64 = 1500
+
+// AutoImageGroups clusters one scene's certified, timed images into 2-5 image
+// groups via GroupNearbyEntities. Singletons are not returned, so they keep
+// their individual overlay. The returned set holds the asset IDs consumed by a
+// group, which the caller must not also emit as standalone overlays. Assets in
+// exclude (already owned by explicit groups) are skipped.
+func AutoImageGroups(sceneID string, images []ImageCandidate, exclude map[string]struct{}) ([]MultiEntityGroup, map[string]struct{}) {
+	candidates := make([]MultiEntityCandidate, 0, len(images))
+	seen := make(map[string]struct{}, len(images))
+	for _, image := range images {
+		image = clampImageWindow(image)
+		assetID := strings.TrimSpace(image.AssetID)
+		if assetID == "" || strings.TrimSpace(image.SHA256) == "" {
+			continue
+		}
+		if _, dup := seen[assetID]; dup {
+			continue
+		}
+		if _, owned := exclude[assetID]; owned {
+			continue
+		}
+		seen[assetID] = struct{}{}
+		ref := NewOverlayAssetRef(asset.New(image.AssetID, image.SHA256, image.MediaType, 0), image.URL, image.LocalPath)
+		candidates = append(candidates, MultiEntityCandidate{
+			ID: assetID, SceneID: sceneID, Kind: MultiEntityKindImage, Name: assetID,
+			AssetRef: &ref, StartMS: image.StartMs, EndMS: image.EndMs,
+		})
+	}
+	consumed := make(map[string]struct{})
+	var groups []MultiEntityGroup
+	for _, group := range GroupNearbyEntities(candidates, autoImageGroupMaxGapMS) {
+		if group.GroupType != MultiEntityKindImage || group.Count < 2 {
+			continue
+		}
+		group.SceneID = sceneID
+		group.GroupID = sceneID + "-" + group.GroupID
+		for _, item := range group.Items {
+			consumed[item.ID] = struct{}{}
+		}
+		groups = append(groups, group)
+	}
+	return groups, consumed
+}
 
 // MultiEntityKind classifies the elements within a temporally grouped scene.
 type MultiEntityKind string

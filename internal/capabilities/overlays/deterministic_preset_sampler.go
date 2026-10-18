@@ -59,6 +59,21 @@ type PresetSample struct {
 	Animation string
 }
 
+// DeterministicPresetChoice is the ONE shared projection of the sampler used
+// by every channel-style selection (map basemap, camera, composition family,
+// …): the deterministic preset draw for (job seed, scene, item, family).
+// Selection owners call this instead of re-deriving the seed input, so the
+// seed→choice contract cannot drift between channels.
+func DeterministicPresetChoice(jobFingerprint, sceneID, semanticID, family string, presets []string) string {
+	return DefaultDeterministicPresetSampler.Sample(PresetSampleInput{
+		JobFingerprint: jobFingerprint,
+		SceneID:        sceneID,
+		SemanticID:     semanticID,
+		PresetFamily:   family,
+		Presets:        presets,
+	}).Preset
+}
+
 // DeterministicPresetSampler selects a stable (preset, animation) pair. It is
 // stateless and safe for concurrent use.
 type DeterministicPresetSampler struct{}

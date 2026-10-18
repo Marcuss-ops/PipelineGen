@@ -56,13 +56,14 @@ func TestBuildPlanProducesVariedPhraseAndImageMotions(t *testing.T) {
 				t.Errorf("phrase %q has empty or repeated motion %q", item.Text, item.MotionID)
 			}
 			phraseIDs[item.MotionID] = true
-		case "image":
-			imageCount++
-			if item.MotionID == "" || imageIDs[item.MotionID] {
-				t.Errorf("image %q has empty or repeated motion %q", item.ID, item.MotionID)
-			}
-			imageIDs[item.MotionID] = true
 		}
+	}
+	for _, motion := range imageOverlayMotions(plan.Items) {
+		imageCount++
+		if motion == "" || imageIDs[motion] {
+			t.Errorf("image overlay has empty or repeated motion %q", motion)
+		}
+		imageIDs[motion] = true
 	}
 	if phraseCount != len(phrases) || imageCount != len(images) {
 		t.Fatalf("plan has %d phrase and %d image overlays, want %d and %d", phraseCount, imageCount, len(phrases), len(images))
@@ -81,11 +82,12 @@ func TestBuildPlanProducesVariedPhraseAndImageMotions(t *testing.T) {
 	if err := json.Unmarshal(wire, &contract); err != nil {
 		t.Fatalf("decode semantic plan contract: %v", err)
 	}
-	if len(contract.Items) != phraseCount+imageCount {
-		t.Fatalf("serialized plan has %d items, want %d", len(contract.Items), phraseCount+imageCount)
+	if len(contract.Items) != len(plan.Items) {
+		t.Fatalf("serialized plan has %d items, want %d", len(contract.Items), len(plan.Items))
 	}
 	for _, item := range contract.Items {
-		if item.Motion == "" {
+		// Composite entity_image parents carry no motion; their layers own it.
+		if item.Motion == "" && item.Kind != "entity_image" {
 			t.Errorf("serialized %s item lost its motion_id", item.Kind)
 		}
 	}
@@ -100,7 +102,9 @@ func TestBuildPlanHonorsRuntimeStyleCountsPerSubfamily(t *testing.T) {
 		images[i] = ImageCandidate{AssetID: fmt.Sprintf("asset-%d", i), URL: fmt.Sprintf("https://example.test/%d.jpg", i), SHA256: fmt.Sprintf("%064x", i+1), MediaType: "image/jpeg", StartMs: start, EndMs: start + 1_500, Score: 1 - float64(i)*.01}
 	}
 	input := PlanInput{PlanID: "style-counts", VideoID: "style-counts", Width: 1280, Height: 720, FPSNum: 24, FPSDen: 1,
-		AnimationCounts: map[string]int{"images": 2, "important_phrase": 3},
+		// Images grouped with their mention phrase become captioned layers, which
+		// draw from the images_with_text lane (as captioned standalone images did).
+		AnimationCounts: map[string]int{"images": 2, "images_with_text": 2, "important_phrase": 3},
 		Scenes:          []SceneInput{{ID: "scene", Phrases: phrases, Images: images}}}
 	plan, err := BuildPlan(input, AllCandidatesPlannerConfig(input.Scenes))
 	if err != nil {
@@ -108,12 +112,12 @@ func TestBuildPlanHonorsRuntimeStyleCountsPerSubfamily(t *testing.T) {
 	}
 	phraseStyles, imageStyles := map[string]bool{}, map[string]bool{}
 	for _, item := range plan.Items {
-		switch item.Kind {
-		case "text_phrase":
+		if item.Kind == "text_phrase" {
 			phraseStyles[item.MotionID] = true
-		case "image":
-			imageStyles[item.MotionID] = true
 		}
+	}
+	for _, motion := range imageOverlayMotions(plan.Items) {
+		imageStyles[motion] = true
 	}
 	if len(phraseStyles) > 3 || len(imageStyles) > 2 {
 		t.Fatalf("runtime style count exceeded its per-family cap: phrases=%d images=%d", len(phraseStyles), len(imageStyles))
@@ -121,4 +125,22 @@ func TestBuildPlanHonorsRuntimeStyleCountsPerSubfamily(t *testing.T) {
 	if len(phraseStyles) < 2 || len(imageStyles) != 2 {
 		t.Fatalf("runtime style pools were not exercised: phrases=%d images=%d; want phrase variety and exactly two image styles", len(phraseStyles), len(imageStyles))
 	}
+}
+
+// imageOverlayMotions returns the motion of every image overlay in a plan:
+// standalone image items plus each layer of a composite entity_image group.
+// Composite parents carry no motion of their own; their layers do.
+func imageOverlayMotions(items []OverlayItem) []string {
+	var out []string
+	for _, item := range items {
+		switch item.Kind {
+		case "image":
+			out = append(out, item.MotionID)
+		case "entity_image":
+			for _, layer := range item.ImageLayers {
+				out = append(out, layer.MotionID)
+			}
+		}
+	}
+	return out
 }

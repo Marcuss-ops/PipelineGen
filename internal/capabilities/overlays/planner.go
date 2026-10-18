@@ -113,7 +113,21 @@ func BuildPlan(input PlanInput, config PlannerConfig) (OverlayPlan, error) {
 		if len(images) > config.MaxImages {
 			images = images[:config.MaxImages]
 		}
+		// Automatic image groups: temporally adjacent certified images of this
+		// scene become one group. Consumed images must not also emit overlays.
+		explicitAssets := make(map[string]struct{})
+		for _, group := range scene.MultiEntityGroups {
+			for _, member := range group.Items {
+				if member.AssetRef != nil {
+					explicitAssets[member.AssetRef.AssetID] = struct{}{}
+				}
+			}
+		}
+		autoGroups, groupedAssets := AutoImageGroups(scene.ID, images, explicitAssets)
 		for _, image := range images {
+			if _, grouped := groupedAssets[strings.TrimSpace(image.AssetID)]; grouped {
+				continue
+			}
 			image = clampImageWindow(image)
 			id := itemID(scene.ID, "image", image.AssetID)
 			plan.Items = append(plan.Items, OverlayItem{
@@ -245,7 +259,16 @@ func BuildPlan(input PlanInput, config PlannerConfig) (OverlayPlan, error) {
 				MotionParams: phraseMotionParams(candidate, input.FPSNum, input.FPSDen), Params: params,
 			})
 		}
-		for _, group := range scene.MultiEntityGroups {
+		allGroups := append(append([]MultiEntityGroup(nil), scene.MultiEntityGroups...), autoGroups...)
+		previousGroupMotion := ""
+		for groupIndex, group := range allGroups {
+			// Auto-detected groups replace standalone image overlays, so their
+			// layers draw from the same images lane cap; explicit groups keep
+			// the entities lane they always used.
+			groupLane := laneEntities
+			if groupIndex >= len(scene.MultiEntityGroups) {
+				groupLane = laneImages
+			}
 			if group.SceneID != "" && group.SceneID != scene.ID {
 				return OverlayPlan{}, fmt.Errorf("overlay planner: multi-entity group %q belongs to scene %q, not %q", group.GroupID, group.SceneID, scene.ID)
 			}
@@ -261,7 +284,7 @@ func BuildPlan(input PlanInput, config PlannerConfig) (OverlayPlan, error) {
 					if len(item.ImageLayers) > 0 {
 						for layerIndex := range item.ImageLayers {
 							layer := &item.ImageLayers[layerIndex]
-							imageLimit := laneAnimationCount(input.AnimationCounts, laneEntities)
+							imageLimit := laneAnimationCount(input.AnimationCounts, groupLane)
 							if layer.Caption != "" {
 								pool := ImageWithTextMotionPool(laneAnimationCount(input.AnimationCounts, laneImagesWithText))
 								layer.MotionID = selectImageMotion(imageSeed, input.VideoID, imageOrdinal, pool)
@@ -273,6 +296,9 @@ func BuildPlan(input PlanInput, config PlannerConfig) (OverlayPlan, error) {
 							layer.PresetID = selectImagePreset(input.PlanID, item.SceneID, item.ID+":"+layer.ID)
 							imageOrdinal++
 						}
+						// One seeded choreography for the whole group; no later step rewrites it.
+						item.GroupMotionID = SelectImageGroupMotion(input.MotionSeed, input.VideoID, item.ID, len(item.ImageLayers), previousGroupMotion)
+						previousGroupMotion = item.GroupMotionID
 					} else {
 						if item.EntityCaption != "" {
 							pool := ImageWithTextMotionPool(laneAnimationCount(input.AnimationCounts, laneImagesWithText))
@@ -343,8 +369,8 @@ func BuildPlan(input PlanInput, config PlannerConfig) (OverlayPlan, error) {
 				}
 				uniqueMaps = append(uniqueMaps, candidate)
 			}
-			plans := mapPlansForScene(input.PlateResolver, uniqueMaps, input.Width, input.Height)
-			for _, mapItem := range mapItemsForScene(scene.ID, plans, input.Width, input.Height, mapOrdinal, laneAnimationCount(input.AnimationCounts, laneMaps)) {
+			plans := mapPlansForScene(input.PlateResolver, uniqueMaps, input.Width, input.Height, input.MapGroups)
+			for _, mapItem := range mapItemsForScene(scene.ID, plans, input.Width, input.Height, mapOrdinal, laneAnimationCount(input.AnimationCounts, laneMaps), input.MotionSeed, input.MapGroups) {
 				plan.Items = append(plan.Items, mapItem)
 				mapOrdinal++
 			}
@@ -362,7 +388,7 @@ func BuildPlan(input PlanInput, config PlannerConfig) (OverlayPlan, error) {
 			mapCandidates = append(mapCandidates, input.Scenes[i].Maps...)
 		}
 		if mapAnchorScene != "" {
-			for _, mapItem := range mapItemsForScene(mapAnchorScene, mapPlansForScene(input.PlateResolver, mapCandidates, input.Width, input.Height), input.Width, input.Height, mapOrdinal, laneAnimationCount(input.AnimationCounts, laneMaps)) {
+			for _, mapItem := range mapItemsForScene(mapAnchorScene, mapPlansForScene(input.PlateResolver, mapCandidates, input.Width, input.Height, input.MapGroups), input.Width, input.Height, mapOrdinal, laneAnimationCount(input.AnimationCounts, laneMaps), input.MotionSeed, input.MapGroups) {
 				plan.Items = append(plan.Items, mapItem)
 				mapOrdinal++
 			}

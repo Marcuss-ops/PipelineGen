@@ -2,12 +2,15 @@
   "schema": "pipelinegen.animation-registry.v1",
   "version": 1,
   "map_type_aliases": {
-    "": "esri_dark",
+    "": "esri_light",
+    "chronon": "chronon_editorial",
+    "chronon_editorial": "chronon_editorial",
+    "editorial": "chronon_editorial",
     "satellite": "esri_sat",
     "roadmap": "esri_light",
-    "terrain": "esri_dark"
+    "terrain": "esri_light"
   },
-  "map_type_default": "esri_dark",
+  "map_type_default": "esri_light",
   "item_motion_groups": {
     "by_kind": {
       "bullet": [
@@ -2665,12 +2668,26 @@
       }
     },
     {
-      "id": "esri_dark",
+      "id": "chronon_editorial",
       "families": [
         "map.basemap"
       ],
       "lanes": [],
       "status": "active",
+      "renderer_supported": true,
+      "targets": [],
+      "kind": "basemap",
+      "order": {
+        "map.basemap": 3
+      }
+    },
+    {
+      "id": "esri_dark",
+      "families": [
+        "map.basemap"
+      ],
+      "lanes": [],
+      "status": "retired",
       "renderer_supported": true,
       "targets": [],
       "kind": "basemap",
@@ -2698,7 +2715,7 @@
         "map.basemap"
       ],
       "lanes": [],
-      "status": "active",
+      "status": "retired",
       "renderer_supported": true,
       "targets": [],
       "kind": "basemap",
@@ -9403,6 +9420,346 @@
       "renderer_supported": true,
       "targets": [],
       "kind": "basemap"
+    },
+    {
+      "id": "duo_split_reveal",
+      "families": [
+        "image.group.count_2"
+      ],
+      "random": [
+        "image.group.count_2"
+      ],
+      "lanes": [
+        "image_group"
+      ],
+      "status": "active",
+      "renderer_supported": true,
+      "targets": [
+        "image_group"
+      ],
+            "group_size": 2,
+      "requires_3d": false,
+      "catalog_version": 1
+    },
+    {
+      "id": "duo_depth_stagger",
+      "families": [],
+      "lanes": [
+        "image_group"
+      ],
+      "status": "retired",
+      "renderer_supported": false,
+      "targets": [
+        "image_group"
+      ],
+            "group_size": 2,
+      "requires_3d": false,
+      "catalog_version": 1
+    },
+    {
+      "id": "duo_cross_focus",
+      "families": [
+        "image.group.count_2"
+      ],
+      "random": [
+        "image.group.count_2"
+      ],
+      "lanes": [
+        "image_group"
+      ],
+      "status": "active",
+      "renderer_supported": true,
+      "targets": [
+        "image_group"
+      ],
+            "group_size": 2,
+      "requires_3d": false,
+      "catalog_version": 1
+    },
+    {
+      "id": "duo_parallax_balance",
+      "families": [],
+      "lanes": [
+        "image_group"
+      ],
+      "status": "retired",
+      "renderer_supported": false,
+      "targets": [
+        "image_group"
+      ],
+            "group_size": 2,
+      "requires_3d": false,
+      "catalog_version": 1
+    },
+    {
+      "id": "duo_compare_hold",
+      "families": [],
+      "lanes": [
+        "image_group"
+      ],
+      "status": "retired",
+      "renderer_supported": false,
+      "targets": [
+        "image_group"
+      ],
+            "group_size": 2,
+      "requires_3d": false,
+      "catalog_version": 1
+    },
+    {
+      "id": "trio_fan_reveal",
+      "families": [
+        "image.group.count_3"
+      ],
+      "random": [
+        "image.group.count_3"
+      ],
+      "lanes": [
+        "image_group"
+      ],
+      "status": "active",
+      "renderer_supported": true,
+      "targets": [
+        "image_group"
+      ],
+            "group_size": 3,
+      "requires_3d": false,
+      "catalog_version": 1
+    },
+    {
+      "id": "trio_center_priority",
+      "families": [
+        "image.group.count_3"
+      ],
+      "random": [
+        "image.group.count_3"
+      ],
+      "lanes": [
+        "image_group"
+      ],
+      "status": "active",
+      "renderer_supported": true,
+      "targets": [
+        "image_group"
+      ],
+            "group_size": 3,
+      "requires_3d": false,
+      "catalog_version": 1
+    },
+    {
+      "id": "trio_ladder_stagger",
+      "families": [],
+      "lanes": [
+        "image_group"
+      ],
+      "status": "retired",
+      "renderer_supported": false,
+      "targets": [
+        "image_group"
+      ],
+            "group_size": 3,
+      "requires_3d": false,
+      "catalog_version": 1
+    },
+    {
+      "id": "trio_arc_focus",
+      "families": [],
+      "lanes": [
+        "image_group"
+      ],
+      "status": "retired",
+      "renderer_supported": false,
+      "targets": [
+        "image_group"
+      ],
+            "group_size": 3,
+      "requires_3d": false,
+      "catalog_version": 1
+    },
+    {
+      "id": "trio_depth_peel",
+      "families": [],
+      "lanes": [
+        "image_group"
+      ],
+      "status": "retired",
+      "renderer_supported": false,
+      "targets": [
+        "image_group"
+      ],
+            "group_size": 3,
+      "requires_3d": false,
+      "catalog_version": 1
+    },
+    {
+      "id": "quad_grid_assemble",
+      "families": [
+        "image.group.count_4"
+      ],
+      "random": [
+        "image.group.count_4"
+      ],
+      "lanes": [
+        "image_group"
+      ],
+      "status": "active",
+      "renderer_supported": true,
+      "targets": [
+        "image_group"
+      ],
+            "group_size": 4,
+      "requires_3d": false,
+      "catalog_version": 1
+    },
+    {
+      "id": "quad_corner_converge",
+      "families": [
+        "image.group.count_4"
+      ],
+      "random": [
+        "image.group.count_4"
+      ],
+      "lanes": [
+        "image_group"
+      ],
+      "status": "active",
+      "renderer_supported": true,
+      "targets": [
+        "image_group"
+      ],
+            "group_size": 4,
+      "requires_3d": false,
+      "catalog_version": 1
+    },
+    {
+      "id": "quad_pair_focus",
+      "families": [],
+      "lanes": [
+        "image_group"
+      ],
+      "status": "retired",
+      "renderer_supported": false,
+      "targets": [
+        "image_group"
+      ],
+            "group_size": 4,
+      "requires_3d": false,
+      "catalog_version": 1
+    },
+    {
+      "id": "quad_mosaic_spotlight",
+      "families": [],
+      "lanes": [
+        "image_group"
+      ],
+      "status": "retired",
+      "renderer_supported": false,
+      "targets": [
+        "image_group"
+      ],
+            "group_size": 4,
+      "requires_3d": false,
+      "catalog_version": 1
+    },
+    {
+      "id": "quad_crossflow",
+      "families": [],
+      "lanes": [
+        "image_group"
+      ],
+      "status": "retired",
+      "renderer_supported": false,
+      "targets": [
+        "image_group"
+      ],
+            "group_size": 4,
+      "requires_3d": false,
+      "catalog_version": 1
+    },
+    {
+      "id": "penta_hero_plus_four",
+      "families": [
+        "image.group.count_5"
+      ],
+      "random": [
+        "image.group.count_5"
+      ],
+      "lanes": [
+        "image_group"
+      ],
+      "status": "active",
+      "renderer_supported": true,
+      "targets": [
+        "image_group"
+      ],
+            "group_size": 5,
+      "requires_3d": false,
+      "catalog_version": 1
+    },
+    {
+      "id": "penta_carousel_focus",
+      "families": [],
+      "lanes": [
+        "image_group"
+      ],
+      "status": "retired",
+      "renderer_supported": false,
+      "targets": [
+        "image_group"
+      ],
+            "group_size": 5,
+      "requires_3d": false,
+      "catalog_version": 1
+    },
+    {
+      "id": "penta_cluster_expand",
+      "families": [],
+      "lanes": [
+        "image_group"
+      ],
+      "status": "retired",
+      "renderer_supported": false,
+      "targets": [
+        "image_group"
+      ],
+            "group_size": 5,
+      "requires_3d": false,
+      "catalog_version": 1
+    },
+    {
+      "id": "penta_strip_wave",
+      "families": [],
+      "lanes": [
+        "image_group"
+      ],
+      "status": "retired",
+      "renderer_supported": false,
+      "targets": [
+        "image_group"
+      ],
+            "group_size": 5,
+      "requires_3d": false,
+      "catalog_version": 1
+    },
+    {
+      "id": "penta_priority_cycle",
+      "families": [
+        "image.group.count_5"
+      ],
+      "random": [
+        "image.group.count_5"
+      ],
+      "lanes": [
+        "image_group"
+      ],
+      "status": "active",
+      "renderer_supported": true,
+      "targets": [
+        "image_group"
+      ],
+            "group_size": 5,
+      "requires_3d": false,
+      "catalog_version": 1
     }
   ]
 }
