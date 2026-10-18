@@ -74,6 +74,9 @@ type OverlayCanvasSpec struct {
 	MapCameraAnimation string
 	MapLabelAnimation  string
 	MapAnimation       string
+	// MapPresentation is the RESOLVED unified map configuration; when set it
+	// also owns the map-grouping policy fed to the planner.
+	MapPresentation *scriptpkg.MapPresentation
 	// HeavyPhrasePriority splits the phrase lane by editorial weight (goal E2):
 	// phrases at or above this priority get a prominent certified entrance, the
 	// rest keep the calm rotation. Zero disables the split. The runner fills in

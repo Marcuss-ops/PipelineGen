@@ -78,6 +78,10 @@ type GenerateRequest struct {
 	MapCameraAnimation            string                                         `json:"map_camera_animation,omitempty"`
 	MapLabelAnimation             string                                         `json:"map_label_animation,omitempty"`
 	MapAnimation                  string                                         `json:"map_animation,omitempty"`
+	// MapPresentation is the RESOLVED unified map configuration. When set it
+	// is the single source of the four legacy map_* fields above plus the
+	// grouping policy (group_nearby_places / max_pins_per_group / allow_route).
+	MapPresentation *scriptpkg.MapPresentation `json:"map_presentation,omitempty"`
 	// MaxPhraseOverlays is the caller-selected run-level ceiling for grounded
 	// phrase overlays, carried verbatim from the envelope item. Zero keeps the
 	// certified default; a positive value is honoured as-is.

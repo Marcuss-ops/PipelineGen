@@ -130,13 +130,13 @@ func TestExplicitCoherenceSeedGovernsCompiledPlanMotions(t *testing.T) {
 	opposite := oppositeDirection(dominant)
 	plan := build()
 	emitted := 0
-	for _, item := range plan.Items {
-		if item.Kind != "image" || item.MotionID == "" {
+	for _, motion := range imageOverlayMotions(plan.Items) {
+		if motion == "" {
 			continue
 		}
 		emitted++
-		if motionHorizontalDirection(item.MotionID) == opposite {
-			t.Fatalf("image %q used opposite-direction motion %q (dominant %s)", item.ID, item.MotionID, dominant)
+		if motionHorizontalDirection(motion) == opposite {
+			t.Fatalf("image overlay used opposite-direction motion %q (dominant %s)", motion, dominant)
 		}
 	}
 	if emitted == 0 {

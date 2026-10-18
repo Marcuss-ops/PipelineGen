@@ -59,6 +59,11 @@ func (r *Runner) geocodePlaceAnnotations(ctx context.Context, annotations map[in
 		if annotation == nil {
 			continue
 		}
+		// The scene's own already-grounded places are the lookup context: a
+		// homonymous name is disambiguated by the country/region the scene has
+		// already certified, never by invented geography. The context grows as
+		// coarse places resolve, so a later city lookup sees them.
+		geoContext := sceneGeoContext(annotation)
 		for entityIndex := range annotation.PrimaryEntities {
 			if len(options) > 0 && options[0].mapsOnly && (personNameFragment(annotation, annotation.PrimaryEntities[entityIndex].CanonicalName) || capitalizedNameFragment(options[0].sceneTexts[index], annotation.PrimaryEntities[entityIndex].CanonicalName)) {
 				// A one-token LOCATION/GPE annotation can be the first or last
@@ -70,7 +75,7 @@ func (r *Runner) geocodePlaceAnnotations(ctx context.Context, annotations map[in
 			if len(options) > 0 && options[0].mapsOnly && !containsGroundedPlaceName(options[0].sceneTexts[index], annotation.PrimaryEntities[entityIndex].CanonicalName) {
 				continue
 			}
-			if err := geocodeAnnotatedEntity(ctx, r.geocoder, resolved, &annotation.PrimaryEntities[entityIndex], index, language); err != nil {
+			if err := geocodeAnnotatedEntity(ctx, r.geocoder, resolved, &annotation.PrimaryEntities[entityIndex], index, language, &geoContext); err != nil {
 				return err
 			}
 		}
@@ -82,17 +87,80 @@ func (r *Runner) geocodePlaceAnnotations(ctx context.Context, annotations map[in
 			if len(options) > 0 && options[0].mapsOnly && !containsGroundedPlaceName(options[0].sceneTexts[index], annotation.SecondaryEntities[entityIndex].CanonicalName) {
 				continue
 			}
-			if err := geocodeAnnotatedEntity(ctx, r.geocoder, resolved, &annotation.SecondaryEntities[entityIndex], index, language); err != nil {
+			if err := geocodeAnnotatedEntity(ctx, r.geocoder, resolved, &annotation.SecondaryEntities[entityIndex], index, language, &geoContext); err != nil {
 				return err
 			}
 		}
 		if len(options) > 0 && options[0].mapsOnly {
-			if err := geocodeGroundedPlaceNames(ctx, r.geocoder, resolved, annotation, options[0].sceneTexts[index], language, index); err != nil {
+			if err := geocodeGroundedPlaceNames(ctx, r.geocoder, resolved, annotation, options[0].sceneTexts[index], language, index, &geoContext); err != nil {
 				return err
 			}
 		}
 	}
 	return nil
+}
+
+// sceneGeoContext derives the lookup context from the scene's own grounded
+// places: the country and region names already carrying certified coordinates
+// in this annotation. Nothing is inferred or invented — an entity without Geo
+// contributes no hint.
+func sceneGeoContext(annotation *scriptpkg.SceneAnnotations) capabilitygeocoding.Context {
+	var ctx capabilitygeocoding.Context
+	if annotation == nil {
+		return ctx
+	}
+	for _, entity := range append(append([]scriptpkg.AnnotatedEntity(nil), annotation.PrimaryEntities...), annotation.SecondaryEntities...) {
+		if entity.Geo == nil {
+			continue
+		}
+		name := strings.TrimSpace(entity.CanonicalName)
+		if name == "" {
+			continue
+		}
+		switch strings.ToLower(strings.TrimSpace(entity.Geo.Scope)) {
+		case "country":
+			if strings.TrimSpace(ctx.Country) == "" {
+				ctx.Country = name
+			}
+		case "region":
+			if strings.TrimSpace(ctx.Region) == "" {
+				ctx.Region = name
+			}
+		}
+	}
+	return ctx
+}
+
+// adoptGeoContext lets a freshly resolved coarse place (country/region)
+// disambiguate the finer lookups that follow it in the same scene.
+func adoptGeoContext(ctx *capabilitygeocoding.Context, entity *scriptpkg.AnnotatedEntity) {
+	if ctx == nil || entity == nil || entity.Geo == nil {
+		return
+	}
+	name := strings.TrimSpace(entity.CanonicalName)
+	if name == "" {
+		return
+	}
+	switch strings.ToLower(strings.TrimSpace(entity.Geo.Scope)) {
+	case "country":
+		if strings.TrimSpace(ctx.Country) == "" {
+			ctx.Country = name
+		}
+	case "region":
+		if strings.TrimSpace(ctx.Region) == "" {
+			ctx.Region = name
+		}
+	}
+}
+
+// geocodeCacheKey identifies one lookup INCLUDING its grounded context: the
+// same name under two different contexts must never share one cached answer.
+func geocodeCacheKey(language, name string, geoContext capabilitygeocoding.Context) string {
+	key := strings.ToLower(strings.TrimSpace(language)) + "\x00" + strings.ToLower(name)
+	if !geoContext.IsZero() {
+		key += "\x00" + geoContext.Key()
+	}
+	return key
 }
 
 // capitalizedNameFragment rejects a one-token location annotation that is
@@ -210,7 +278,7 @@ var capitalizedNameRE = regexp.MustCompile(`(?:[A-ZÀ-ÖØ-Þ][\p{L}\p{M}'’’
 // extractor can mislabel as people or omit (for example, a town named in a
 // journey narration). It runs only for an explicit maps-only request and only
 // accepts names that the configured geocoder classifies at a geographic level.
-func geocodeGroundedPlaceNames(ctx context.Context, geocoder capabilitygeocoding.Geocoder, resolved map[string]capabilitygeocoding.Result, annotation *scriptpkg.SceneAnnotations, text, language string, sceneIndex int) error {
+func geocodeGroundedPlaceNames(ctx context.Context, geocoder capabilitygeocoding.Geocoder, resolved map[string]capabilitygeocoding.Result, annotation *scriptpkg.SceneAnnotations, text, language string, sceneIndex int, geoContext *capabilitygeocoding.Context) error {
 	if annotation == nil || strings.TrimSpace(text) == "" {
 		return nil
 	}
@@ -262,12 +330,16 @@ func geocodeGroundedPlaceNames(ctx context.Context, geocoder capabilitygeocoding
 			break
 		}
 	}
+	lookupContext := capabilitygeocoding.Context{}
+	if geoContext != nil {
+		lookupContext = *geoContext
+	}
 	for _, name := range queries {
-		cacheKey := strings.ToLower(strings.TrimSpace(language)) + "\x00" + strings.ToLower(name)
+		cacheKey := geocodeCacheKey(language, name, lookupContext)
 		result, ok := resolved[cacheKey]
 		if !ok {
 			var err error
-			result, err = geocoder.Geocode(ctx, capabilitygeocoding.Request{Query: name, Language: language})
+			result, err = geocoder.Geocode(ctx, capabilitygeocoding.Request{Query: name, Language: language, Context: lookupContext})
 			if errors.Is(err, capabilitygeocoding.ErrNoResult) {
 				continue
 			}
@@ -368,7 +440,7 @@ func mapPlaceCandidateIgnoredWords(registry *linguistics.LexiconRegistry, langua
 	return ignored, nil
 }
 
-func geocodeAnnotatedEntity(ctx context.Context, geocoder capabilitygeocoding.Geocoder, resolved map[string]capabilitygeocoding.Result, entity *scriptpkg.AnnotatedEntity, sceneIndex int, language string) error {
+func geocodeAnnotatedEntity(ctx context.Context, geocoder capabilitygeocoding.Geocoder, resolved map[string]capabilitygeocoding.Result, entity *scriptpkg.AnnotatedEntity, sceneIndex int, language string, geoContext *capabilitygeocoding.Context) error {
 	if entity == nil || !isPlaceEntityType(entity.Type) || entity.Geo != nil {
 		return nil
 	}
@@ -379,16 +451,21 @@ func geocodeAnnotatedEntity(ctx context.Context, geocoder capabilitygeocoding.Ge
 	if isGenericPlaceLabel(name) {
 		return nil
 	}
-	cacheKey := strings.ToLower(strings.TrimSpace(language)) + "\x00" + strings.ToLower(name)
+	lookupContext := capabilitygeocoding.Context{}
+	if geoContext != nil {
+		lookupContext = *geoContext
+	}
+	cacheKey := geocodeCacheKey(language, name, lookupContext)
 	result, ok := resolved[cacheKey]
 	if !ok {
 		var err error
-		result, err = geocoder.Geocode(ctx, capabilitygeocoding.Request{Query: name, Language: language})
+		result, err = geocoder.Geocode(ctx, capabilitygeocoding.Request{Query: name, Language: language, Context: lookupContext})
 		if err != nil {
 			if errors.Is(err, capabilitygeocoding.ErrNoResult) {
-				// Unresolvable or malformed generated labels stay visible as
-				// ordinary entities, but cannot produce a map pin. Provider,
-				// transport, cancellation, and validation errors still fail closed.
+				// Unresolvable, ambiguous-without-context, or malformed generated
+				// labels stay visible as ordinary entities, but cannot produce a
+				// map pin. Provider, transport, cancellation, and validation
+				// errors still fail closed.
 				return nil
 			}
 			return fmt.Errorf("geocode grounded place %q in scene annotation %d: %w", name, sceneIndex, err)
@@ -407,6 +484,9 @@ func geocodeAnnotatedEntity(ctx context.Context, geocoder capabilitygeocoding.Ge
 		entity.CanonicalName = name
 		entity.Text = name
 	}
+	// A resolved country/region becomes context for the finer places the
+	// scene names after it (never the reverse: context is only ever grounded).
+	adoptGeoContext(geoContext, entity)
 	return nil
 }
 

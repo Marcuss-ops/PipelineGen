@@ -3,6 +3,7 @@ package overlays
 import (
 	"encoding/binary"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
@@ -28,6 +29,11 @@ const (
 	mapPinReadDurationUS int64 = 1_000_000
 	mapCameraLeadUS      int64 = 2_000_000
 )
+
+// maxMapPinsPerGroup caps how many grounded places one static map shows. A
+// plate with more places is split into consecutive map items in spoken order,
+// so no place is dropped and each map stays readable.
+const maxMapPinsPerGroup = 5
 
 // MapPlate is the certified plate a map item is drawn from: the operator
 // manifest's georeference and provenance plus the content-addressed basemap
@@ -69,35 +75,6 @@ type PlateResolver interface {
 	ResolvePlate(latitude, longitude float64) (MapPlate, bool)
 }
 
-// mapFadeHalfBandZoom is the planner's half-width (in zoom stops) of every LOD
-// cross-fade — the exact mirror of the worker's mapLODFadeHalfBandZoom. The
-// viewport coverage below certifies each LOD over precisely the interval where
-// the worker will render it visible.
-const mapFadeHalfBandZoom = 0.5
-
-// flyoverActiveZoomRange mirrors the worker's mapLODActiveZoomRange: the zoom
-// interval where LOD[index] is visible over the move.
-func flyoverActiveZoomRange(index int, zooms []int, startZoom, endZoom float64) (float64, float64) {
-	low, high := float64(zooms[index]), float64(zooms[index])
-	if index == 0 {
-		low = startZoom
-	} else {
-		low = (float64(zooms[index-1])+float64(zooms[index]))/2 - mapFadeHalfBandZoom
-		if low < startZoom {
-			low = startZoom
-		}
-	}
-	if index == len(zooms)-1 {
-		high = endZoom
-	} else {
-		high = (float64(zooms[index])+float64(zooms[index+1]))/2 + mapFadeHalfBandZoom
-		if high > endZoom {
-			high = endZoom
-		}
-	}
-	return low, high
-}
-
 // mapPlansForScene resolves a scene's grounded place candidates against the
 // run's certified plates. It fails closed at each step: a nil resolver, a
 // candidate that no longer validates as grounded WGS84 with a real audio span,
@@ -108,7 +85,7 @@ type FlyoverPlateResolver interface {
 	ResolveFlyover(from, to MapCenter, canvasWidth, canvasHeight int) (MapPlate, bool)
 }
 
-func mapPlansForScene(resolver PlateResolver, candidates []MapCandidate, canvasWidth, canvasHeight int) []MapPlan {
+func mapPlansForScene(resolver PlateResolver, candidates []MapCandidate, canvasWidth, canvasHeight int, grouping MapGroupConfig) []MapPlan {
 	if resolver == nil || len(candidates) == 0 {
 		return nil
 	}
@@ -123,7 +100,7 @@ func mapPlansForScene(resolver PlateResolver, candidates []MapCandidate, canvasW
 		}
 	}
 	valid := make([]MapCandidate, 0, len(candidates))
-	seen := make(map[string]struct{}, len(candidates))
+	seen := make(map[string]int, len(candidates))
 	for _, candidate := range candidates {
 		if count := mentionCount[strings.TrimSpace(candidate.EntityID)]; count > 1 {
 			candidate.Score += float64(count-1) * 0.01
@@ -142,16 +119,20 @@ func mapPlansForScene(resolver PlateResolver, candidates []MapCandidate, canvasW
 		if !ok {
 			continue
 		}
-		if _, duplicate := seen[place.EntityID]; duplicate {
+		// Repeated mentions of one place are OCCURRENCES, not duplicates to
+		// discard: the pin must stay active for every spoken mention, so the
+		// merged candidate spans from the first start to the last end.
+		if index, duplicate := seen[place.EntityID]; duplicate {
+			mergeMapCandidateOccurrence(&valid[index], place)
 			continue
 		}
-		seen[place.EntityID] = struct{}{}
+		seen[place.EntityID] = len(valid)
 		valid = append(valid, place)
 	}
 	if len(valid) == 0 {
 		return nil
 	}
-	if flyovers, ok := resolver.(FlyoverPlateResolver); ok && len(valid) > 0 && canvasWidth > 0 && canvasHeight > 0 {
+	if flyovers, ok := resolver.(FlyoverPlateResolver); ok && !grouping.NoRoutes && len(valid) > 0 && canvasWidth > 0 && canvasHeight > 0 {
 		from, to := routeEndpoints(valid, MapCenter{Latitude: valid[0].Latitude, Longitude: valid[0].Longitude})
 		if plate, ok := flyovers.ResolveFlyover(from, to, canvasWidth, canvasHeight); ok && strings.TrimSpace(plate.ID) != "" && len(plate.LODs) > 0 {
 			plans := make([]MapPlan, 0, len(valid))
@@ -214,6 +195,28 @@ func mapPlansForScene(resolver PlateResolver, candidates []MapCandidate, canvasW
 	return plans
 }
 
+// mergeMapCandidateOccurrence folds one spoken occurrence of an already-known
+// place into its candidate: the pin spans from the earliest start to the last
+// end, so a place named at the beginning and again at the end of a scene stays
+// on screen for both mentions.
+func mergeMapCandidateOccurrence(merged *MapCandidate, occurrence MapCandidate) {
+	start := merged.StartUS
+	end := merged.StartUS + merged.DurationUS
+	if occurrence.StartUS < start {
+		start = occurrence.StartUS
+	}
+	if occurrenceEnd := occurrence.StartUS + occurrence.DurationUS; occurrenceEnd > end {
+		end = occurrenceEnd
+	}
+	merged.StartUS = start
+	merged.DurationUS = end - start
+	merged.StartMs = start / 1000
+	merged.EndMs = (end + 999) / 1000
+	if occurrence.Score > merged.Score {
+		merged.Score = occurrence.Score
+	}
+}
+
 // deterministicMapMotionStart gives each plan a stable starting point while
 // mapMotionForCenter rotates distinct maps through the certified pool.
 func deterministicMapMotionStart(planID string, limit int) int {
@@ -265,7 +268,7 @@ func mapMotionForCenterWithLimit(ordinal int, _ MapCenter, limit int) string {
 // plate or a place, a plate whose raster is not the canvas size, a place
 // outside the plate's window, or an empty audio span produces no item — never
 // a map pinned at a guessed location.
-func mapItemsForScene(sceneID string, plans []MapPlan, canvasWidth, canvasHeight, ordinal, motionLimit int) []OverlayItem {
+func mapItemsForScene(sceneID string, plans []MapPlan, canvasWidth, canvasHeight, ordinal, motionLimit int, seed string, grouping MapGroupConfig) []OverlayItem {
 	if len(plans) == 0 || canvasWidth <= 0 || canvasHeight <= 0 {
 		return nil
 	}
@@ -299,10 +302,42 @@ func mapItemsForScene(sceneID string, plans []MapPlan, canvasWidth, canvasHeight
 	}
 	sort.Strings(order)
 
-	items := make([]OverlayItem, 0, len(order))
+	type unit struct {
+		key    string
+		plate  MapPlate
+		places []MapCandidate
+	}
+	units := make([]unit, 0, len(order))
 	for _, key := range order {
 		entry := groups[key]
-		pins, startUS, durationUS, score, ok := mapPinsFor(entry.plate, entry.places)
+		if len(entry.plate.LODs) >= 2 {
+			// A camera flyover is one certified route; it is kept whole.
+			units = append(units, unit{key: key, plate: entry.plate, places: entry.places})
+			continue
+		}
+		// Narrative proximity groups STATIC map groups: places spoken in quick
+		// succession become one MapGroup, split only above the pin cap. A
+		// plate with LODs is already one camera journey (explicit movement
+		// between places), so its stops stay in plain spoken-order chunks.
+		// The unified map_presentation contract can narrow the pin cap or turn
+		// narrative grouping/journeys off entirely.
+		pinCap := grouping.Pins()
+		chunks := groupMapPlacesByNarrativeProximity(entry.places, pinCap)
+		if grouping.NoNarrativeGrouping || len(entry.plate.LODs) > 0 {
+			chunks = chunkMapPlaces(entry.places, pinCap)
+		}
+		for index, chunk := range chunks {
+			unitKey := key
+			if index > 0 {
+				unitKey = key + "-" + strconv.Itoa(index+1)
+			}
+			units = append(units, unit{key: unitKey, plate: entry.plate, places: chunk})
+		}
+	}
+	items := make([]OverlayItem, 0, len(units))
+	for unitIndex, u := range units {
+		entry := &group{plate: u.plate, places: u.places}
+		pins, pinTiming, startUS, durationUS, score, ok := mapPinsFor(entry.plate, entry.places)
 		if !ok {
 			continue
 		}
@@ -368,129 +403,38 @@ func mapItemsForScene(sceneID string, plans []MapPlan, canvasWidth, canvasHeight
 		if durationUS < minimumPinSequenceUS {
 			durationUS = minimumPinSequenceUS
 		}
+		// MapGroup identity + per-pin timing travel as free-form item params
+		// (the same carrier as map_pin_extras), so no new field enters the
+		// versioned overlay-plan.v1 map block without a schema migration.
+		// The strategy is the planner's pre-render duration decision: a tour
+		// only when the spoken span can carry it, otherwise a declared
+		// multi-pin composition — never a silently dropped place.
+		strategy := mapGroupTourStrategy(len(pins), durationUS)
 		items = append(items, OverlayItem{
-			ID: itemID(sceneID, "map", entry.plate.ID), SceneID: sceneID,
+			ID: itemID(sceneID, "map", u.key), SceneID: sceneID,
 			Kind: "map", TemplateID: "MAP",
 			StartMs: startUS / 1000, EndMs: (startUS + durationUS + 999) / 1000,
 			StartUS: startUS, DurationUS: durationUS,
 			AssetRefs: mapAssets,
 			Map:       mapOverlay,
-			Params:    map[string]any{"priority": score},
+			Params: map[string]any{
+				"priority": score,
+				"map_group": map[string]any{
+					"index": unitIndex + 1, "count": len(units), "size": len(pins),
+				},
+				"map_pin_timing":     pinTiming,
+				"map_group_strategy": strategy,
+			},
 		})
+		// Static plates get a seeded composition from the family that fits their
+		// pin count. Camera flyovers keep their own CameraMove treatment.
+		if len(lods) < 2 {
+			id := items[len(items)-1].ID
+			if composition := SelectMapComposition(seed, sceneID, id, len(pins)); composition != "" {
+				items[len(items)-1].Params["map_animation"] = composition
+			}
+		}
 		ordinal++
 	}
 	return items
-}
-
-// routeEndpoints chooses the chronological first and last grounded locations;
-// one grounded place intentionally becomes a stationary zoom-to, while a
-// multi-place route follows spoken order. It never invents geography from
-// spatial sorting or arithmetic averages.
-func routeEndpoints(places []MapCandidate, fallback MapCenter) (MapCenter, MapCenter) {
-	if len(places) == 0 {
-		return fallback, fallback
-	}
-	ordered := append([]MapCandidate(nil), places...)
-	sort.SliceStable(ordered, func(i, j int) bool {
-		if ordered[i].StartUS != ordered[j].StartUS {
-			return ordered[i].StartUS < ordered[j].StartUS
-		}
-		return ordered[i].EntityID < ordered[j].EntityID
-	})
-	return MapCenter{Latitude: ordered[0].Latitude, Longitude: ordered[0].Longitude},
-		MapCenter{Latitude: ordered[len(ordered)-1].Latitude, Longitude: ordered[len(ordered)-1].Longitude}
-}
-
-// plateFitsCanvas reports whether the plate's certified raster is exactly the
-// canvas the plan renders. A mismatch means the plate's georeference cannot be
-// honoured, so the plate is unusable — never scaled.
-func plateFitsCanvas(plate MapPlate, canvasWidth, canvasHeight int) bool {
-	if len(plate.LODs) == 0 {
-		return plate.Width == canvasWidth && plate.Height == canvasHeight
-	}
-	return plate.Width >= canvasWidth && plate.Height >= canvasHeight &&
-		plate.Width <= maxMapRasterWidth && plate.Height <= maxMapRasterHeight
-}
-
-// mapPinsFor projects the grounded places that fall inside the plate's window
-// into deterministic pins plus the item's audio window. ok is false when no
-// place lands inside the plate or no place carries a usable span.
-func mapAreaGlowRadiusKM(pins []MapOverlayPin) float64 {
-	if len(pins) == 0 {
-		return 0
-	}
-	switch strings.ToLower(strings.TrimSpace(pins[0].Scope)) {
-	case "city":
-		return 3.5
-	case "region":
-		return 30
-	case "country", "nation":
-		return 150
-	case "continent":
-		return 500
-	default:
-		return 3.5
-	}
-}
-
-func mapPinsFor(plate MapPlate, places []MapCandidate) (pins []MapOverlayPin, startUS, durationUS int64, score float64, ok bool) {
-	// A multi-stop map is a journey, so its camera order follows the first
-	// spoken occurrence rather than provider/entity extraction order.
-	places = append([]MapCandidate(nil), places...)
-	sort.SliceStable(places, func(i, j int) bool {
-		if places[i].StartUS != places[j].StartUS {
-			return places[i].StartUS < places[j].StartUS
-		}
-		return places[i].EntityID < places[j].EntityID
-	})
-	seen := make(map[string]struct{}, len(places))
-	var firstStart, lastEnd int64
-	haveSpan := false
-	for _, place := range places {
-		id := strings.TrimSpace(place.EntityID)
-		if id == "" {
-			continue
-		}
-		if _, duplicate := seen[id]; duplicate {
-			continue
-		}
-		if !plate.Window.Contains(place.Latitude, place.Longitude) {
-			continue
-		}
-		if place.DurationUS <= 0 || place.StartUS < 0 {
-			continue
-		}
-		seen[id] = struct{}{}
-		pins = append(pins, MapOverlayPin{
-			ID: id, Label: place.Label,
-			Latitude: place.Latitude, Longitude: place.Longitude,
-			Scope: place.Scope,
-			Color: mapPinColor, RadiusPX: mapPinRadiusPX,
-		})
-		placeEnd := place.StartUS + place.DurationUS
-		if !haveSpan || place.StartUS < firstStart {
-			firstStart = place.StartUS
-		}
-		if !haveSpan || placeEnd > lastEnd {
-			lastEnd = placeEnd
-		}
-		haveSpan = true
-		if place.Score > score {
-			score = place.Score
-		}
-	}
-	if len(pins) == 0 {
-		return nil, 0, 0, 0, false
-	}
-	// Preserve the chronological spoken order established above. The worker
-	// reveals these points one at a time, so sorting by entity id would make
-	// the animation contradict the narration.
-	durationUS = lastEnd - firstStart
-	if durationUS <= 0 {
-		return nil, 0, 0, 0, false
-	}
-	if durationUS > MaxImageOverlayDurationMS*1000 {
-		durationUS = MaxImageOverlayDurationMS * 1000
-	}
-	return pins, firstStart, durationUS, score, true
 }

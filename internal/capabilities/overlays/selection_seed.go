@@ -8,6 +8,8 @@
 package overlays
 
 import (
+	"fmt"
+
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 )
 
@@ -24,6 +26,28 @@ func SeededGroupIndex(seed, target, groupID string, n int) int {
 		index = index*16 + uint64(hexNibbleValue(digit))
 	}
 	return int(index % uint64(n))
+}
+
+// SelectImageGroupMotion picks the single choreography of a composite image
+// group from the certified image.group.count_N candidates. The draw is seeded by
+// (motionSeed, videoID, groupID), so retries and replays get the same motion.
+// When more than one candidate exists, the previous group's motion is excluded
+// so consecutive groups do not repeat. It returns "" when no candidate exists.
+func SelectImageGroupMotion(motionSeed, videoID, groupID string, count int, previous string) string {
+	candidates := AnimationCandidates(fmt.Sprintf("image.group.count_%d", count))
+	pool := make([]string, 0, len(candidates))
+	for _, id := range candidates {
+		if id != previous {
+			pool = append(pool, id)
+		}
+	}
+	if len(pool) == 0 {
+		pool = candidates
+	}
+	if len(pool) == 0 {
+		return ""
+	}
+	return pool[SeededGroupIndex(motionSeed, videoID, groupID, len(pool))]
 }
 
 func hexNibbleValue(digit byte) byte {

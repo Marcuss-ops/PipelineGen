@@ -33,7 +33,7 @@ func applyMapPresentationToItems(items []capabilityoverlay.OverlayItem, mapType,
 		mapType = "satellite"
 	}
 	if !capabilityoverlay.AnimationSupportsMapType(mapType) {
-		return fmt.Errorf("map_type %q is unsupported; choose roadmap, terrain, satellite, or random", mapType)
+		return fmt.Errorf("map_type %q is unsupported; choose roadmap, terrain, satellite, chronon_editorial (aliases chronon, editorial), or random", mapType)
 	}
 	if err := validateRuntimeMapAnimation("map_camera_animation", cameraAnimation, mapCameraAnimationsCertified()); err != nil {
 		return err

@@ -3,10 +3,12 @@ package geocoding
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -27,8 +29,8 @@ func TestNominatimGeocodeCachesValidatedPositiveResult(t *testing.T) {
 		if got := r.URL.Query().Get("format"); got != "jsonv2" {
 			t.Errorf("format = %q", got)
 		}
-		if got := r.URL.Query().Get("limit"); got != "1" {
-			t.Errorf("limit = %q", got)
+		if got := r.URL.Query().Get("limit"); got != "5" {
+			t.Errorf("limit = %q (disambiguation needs to see several candidates)", got)
 		}
 		if got := r.URL.Query().Get("accept-language"); got != "pt" {
 			t.Errorf("language = %q", got)
@@ -63,10 +65,118 @@ func TestNominatimGeocodeCachesValidatedPositiveResult(t *testing.T) {
 	if err != nil || len(entries) != 1 || filepath.Ext(entries[0].Name()) != ".json" {
 		t.Fatalf("cache entries = %v, err=%v", entries, err)
 	}
-	var cached capgeocoding.Result
+	var cached cacheEntry
 	data, err := os.ReadFile(filepath.Join(cacheDir, entries[0].Name()))
-	if err != nil || json.Unmarshal(data, &cached) != nil || cached != (capgeocoding.Result{Latitude: -23.550520, Longitude: -46.633308, DisplayName: "São Paulo, Brasil"}) {
-		t.Fatalf("invalid cached result %+v, err=%v", cached, err)
+	if err != nil || json.Unmarshal(data, &cached) != nil {
+		t.Fatalf("invalid cached record: %v", err)
+	}
+	if cached.Latitude != -23.550520 || cached.Longitude != -46.633308 || cached.DisplayName != "São Paulo, Brasil" {
+		t.Fatalf("invalid cached coordinates/display %+v", cached.Result)
+	}
+	// The cache must record WHY the hit was accepted: provider identity,
+	// coordinates and the selection rationale are all auditable from disk.
+	if cached.Provider == "" || cached.Rationale == "" || cached.Score <= 0 {
+		t.Fatalf("cached selection identity missing: provider=%q score=%v rationale=%q",
+			cached.Provider, cached.Score, cached.Rationale)
+	}
+}
+
+// TestNominatimRefusesAmbiguousNameWithoutContext proves the adapter no
+// longer pins the first provider hit for a name several places share: without
+// grounded context the lookup is certified-refused (ErrNoResult), so no map
+// pin is invented.
+func TestNominatimRefusesAmbiguousNameWithoutContext(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`[
+			{"lat":"48.8566","lon":"2.3522","name":"Paris","display_name":"Paris, France","importance":0.9,"address":{"country":"France","country_code":"fr"}},
+			{"lat":"33.6617","lon":"-95.5555","name":"Paris","display_name":"Paris, Texas, United States","importance":0.6,"address":{"country":"United States","country_code":"us"}}
+		]`))
+	}))
+	defer server.Close()
+	adapter, err := NewNominatim(NominatimConfig{
+		BaseURL: server.URL, UserAgent: "PipelineGen-test", CacheDir: t.TempDir(),
+		HTTPClient: server.Client(), MinimumInterval: time.Millisecond,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = adapter.Geocode(context.Background(), capgeocoding.Request{Query: "Paris", Language: "en"})
+	if !errors.Is(err, capgeocoding.ErrNoResult) {
+		t.Fatalf("ambiguous lookup must refuse with ErrNoResult, got %v", err)
+	}
+}
+
+// TestNominatimResolvesAmbiguityWithGroundedContext proves the same ambiguous
+// name resolves to the context-consistent locality once the scene's grounded
+// country is supplied, and that the rationale records the decision.
+func TestNominatimResolvesAmbiguityWithGroundedContext(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`[
+			{"place_id":1,"lat":"33.6617","lon":"-95.5555","name":"Paris","display_name":"Paris, Texas, United States","importance":0.6,"address":{"country":"United States","country_code":"us"}},
+			{"place_id":2,"lat":"48.8566","lon":"2.3522","name":"Paris","display_name":"Paris, France","importance":0.9,"address":{"country":"France","country_code":"fr"}}
+		]`))
+	}))
+	defer server.Close()
+	adapter, err := NewNominatim(NominatimConfig{
+		BaseURL: server.URL, UserAgent: "PipelineGen-test", CacheDir: t.TempDir(),
+		HTTPClient: server.Client(), MinimumInterval: time.Millisecond,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := adapter.Geocode(context.Background(), capgeocoding.Request{
+		Query: "Paris", Language: "fr", Context: capgeocoding.Context{Country: "France"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Latitude != 48.8566 || result.PlaceID != "2" || !strings.Contains(result.Rationale, "context_decided=true") {
+		t.Fatalf("context did not decide the homonym: %+v", result)
+	}
+}
+
+// TestNominatimCacheSeparatesGeographicContext proves one name under two
+// grounded contexts is two lookups: the cache never reuses a locality across
+// contexts.
+func TestNominatimCacheSeparatesGeographicContext(t *testing.T) {
+	var calls atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls.Add(1)
+		switch r.URL.Query().Get("accept-language") {
+		case "fr":
+			_, _ = w.Write([]byte(`[{"lat":"48.8566","lon":"2.3522","name":"Paris","display_name":"Paris, France","address":{"country":"France","country_code":"fr"}}]`))
+		default:
+			_, _ = w.Write([]byte(`[{"lat":"33.6617","lon":"-95.5555","name":"Paris","display_name":"Paris, Texas, United States","address":{"country":"United States","country_code":"us"}}]`))
+		}
+	}))
+	defer server.Close()
+	adapter, err := NewNominatim(NominatimConfig{
+		BaseURL: server.URL, UserAgent: "PipelineGen-test", CacheDir: t.TempDir(),
+		HTTPClient: server.Client(), MinimumInterval: time.Millisecond,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	france, err := adapter.Geocode(context.Background(), capgeocoding.Request{Query: "Paris", Language: "fr", Context: capgeocoding.Context{Country: "France"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	usa, err := adapter.Geocode(context.Background(), capgeocoding.Request{Query: "Paris", Language: "en", Context: capgeocoding.Context{Country: "United States"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if france.Latitude == usa.Latitude {
+		t.Fatalf("one cached answer served two contexts: %v == %v", france.Latitude, usa.Latitude)
+	}
+	if got := calls.Load(); got != 2 {
+		t.Fatalf("network calls = %d, want one per context", got)
+	}
+	// Replays stay cached per context.
+	if _, err := adapter.Geocode(context.Background(), capgeocoding.Request{Query: "Paris", Language: "fr", Context: capgeocoding.Context{Country: "France"}}); err != nil {
+		t.Fatal(err)
+	}
+	if got := calls.Load(); got != 2 {
+		t.Fatalf("context replay hit the network: %d calls", got)
 	}
 }
 

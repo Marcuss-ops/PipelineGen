@@ -229,6 +229,31 @@ func BuildGenerateRequest(env *scriptpkg.GenerationEnvelopeV2, idempotencyKey st
 		}
 	}
 
+	// map_presentation is the ONE map configuration contract: when present it
+	// replaces the legacy map_* fields. Mixing both spellings fails closed
+	// instead of guessing which one wins.
+	mapType, mapCamera, mapLabel, mapAnimation := item.MapType, item.MapCameraAnimation, item.MapLabelAnimation, item.MapAnimation
+	var mapPresentation *scriptpkg.MapPresentation
+	if item.MapPresentation != nil {
+		if strings.TrimSpace(mapType) != "" || strings.TrimSpace(mapCamera) != "" ||
+			strings.TrimSpace(mapLabel) != "" || strings.TrimSpace(mapAnimation) != "" {
+			return GenerateRequest{}, fmt.Errorf("scriptgeneration: map_presentation is the single map configuration contract; remove the legacy map_type/map_camera_animation/map_label_animation/map_animation fields")
+		}
+		resolved, err := item.MapPresentation.Normalize()
+		if err != nil {
+			return GenerateRequest{}, fmt.Errorf("scriptgeneration: %w", err)
+		}
+		mapPresentation = &resolved
+		// The legacy fields remain the compatibility projection consumed by
+		// the existing runtime pipeline; the spec resolves them once, here.
+		mapType = resolved.Style
+		mapLabel = "none"
+		mapAnimation = resolved.Animation
+		if resolved.Camera != "auto" {
+			mapCamera = resolved.Camera
+		}
+	}
+
 	req := GenerateRequest{
 		Model:              item.Model,
 		Tone:               item.Tone,
@@ -236,10 +261,11 @@ func BuildGenerateRequest(env *scriptpkg.GenerationEnvelopeV2, idempotencyKey st
 		Render:             item.Output.Render,
 		OverlayBackground:  item.OverlayBackground,
 		OverlayStyle:       item.OverlayStyle,
-		MapType:            item.MapType,
-		MapCameraAnimation: item.MapCameraAnimation,
-		MapLabelAnimation:  item.MapLabelAnimation,
-		MapAnimation:       item.MapAnimation,
+		MapType:            mapType,
+		MapCameraAnimation: mapCamera,
+		MapLabelAnimation:  mapLabel,
+		MapAnimation:       mapAnimation,
+		MapPresentation:    mapPresentation,
 		PhraseMotions:      append([]string(nil), item.PhraseMotions...),
 		PhraseMotionFamily: item.PhraseMotionFamily,
 		MotionSeed:         strings.TrimSpace(item.MotionSeed),

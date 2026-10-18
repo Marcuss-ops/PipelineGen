@@ -204,6 +204,10 @@ type OverlayItem struct {
 	AssetRefs           []OverlayAssetRef   `json:"asset_refs,omitempty"`
 	SoundEffect         *OverlaySoundEffect `json:"sound_effect,omitempty"`
 	ImageLayers         []OverlayImageLayer `json:"image_layers,omitempty"`
+	// GroupMotionID is the single choreography of a composite image group
+	// (image_layers). It is chosen once by PipelineGen from the certified
+	// image.group.count_N candidates and must not be rewritten downstream.
+	GroupMotionID string `json:"group_motion_id,omitempty"`
 	// Frame carries image-card border, shadow, stroke and clipping radius to
 	// RenderingGen. It is empty for text and structural items.
 	Frame *OverlayItemFrame `json:"frame,omitempty"`

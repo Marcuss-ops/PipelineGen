@@ -14,6 +14,7 @@ import (
 	"strings"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
+	scriptdetail "github.com/Marcuss-ops/PipelineGen/internal/kernel/script/detail"
 )
 
 // GenerationEnvelopeV2 is the canonical top-level request for all
@@ -132,6 +133,11 @@ type GenerationItemV2 struct {
 	MapCameraAnimation string `json:"map_camera_animation,omitempty"`
 	MapLabelAnimation  string `json:"map_label_animation,omitempty"`
 	MapAnimation       string `json:"map_animation,omitempty"`
+	// MapPresentation is the ONE map configuration contract: minimal intent in,
+	// fully resolved presentation out (the registry and the animation selector
+	// resolve the rest). When present it replaces the four legacy map_* fields
+	// above — mixing both spellings fails closed instead of guessing a winner.
+	MapPresentation *MapPresentationSpec `json:"map_presentation,omitempty"`
 	// Motion pools are optional caller choices. Empty pools use the runtime's
 	// seeded random rotation across the complete certified catalogs.
 	PhraseMotions      []string `json:"phrase_motions,omitempty"`
@@ -328,6 +334,19 @@ type AnimationDirective struct {
 // 1 = legacy (vecchi campi + animation_policies con doppio sampling);
 // 2 = canonico (direttive risolte prima del seal + provenance, no resample).
 const AnimationContractVersion = 2
+
+// MapPresentationSpec is the unified map configuration contract: minimal
+// intent in, resolved certified composition out. The field contract and its
+// fail-closed resolution rules live in the script/detail leaf package; this
+// alias keeps the parent package the single import surface.
+type MapPresentationSpec = scriptdetail.MapPresentationSpec
+
+// MapPresentation is the RESOLVED canonical map configuration. It is the only
+// shape downstream owners consume.
+type MapPresentation = scriptdetail.MapPresentation
+
+// DefaultMaxPinsPerGroup is the certified renderer budget for one map group.
+const DefaultMaxPinsPerGroup = scriptdetail.DefaultMaxPinsPerGroup
 
 // OverlayBackgroundSpec is the script.generate payload shape for an
 // optional visual overlay background. Image/video backgrounds identify one

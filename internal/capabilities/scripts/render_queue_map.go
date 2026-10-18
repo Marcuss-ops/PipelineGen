@@ -13,6 +13,7 @@ import (
 	"time"
 
 	capoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
+	scriptoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/overlay"
 )
 
 const mapRunStyleSlot = "run"
@@ -23,6 +24,14 @@ const mapRunStyleSlot = "run"
 func renderDynamicMapVideo(ctx context.Context, plan capoverlay.OverlayPlan) (string, error) {
 	if len(plan.Items) != 1 || plan.Items[0].Map == nil {
 		return "", fmt.Errorf("expected exactly one map item")
+	}
+	// The execution profile (codec + GPU expectation) is DECLARED up front:
+	// production NVENC by default, certified CPU only under an explicit
+	// operator opt-in. Telemetry and the upscale step below must both match
+	// this profile — never a silent substitution.
+	encodeProfile, err := scriptoverlay.ResolveMapEncodeProfile(os.Getenv(scriptoverlay.MapEncodeProfileEnv))
+	if err != nil {
+		return "", err
 	}
 	plateGenerator := strings.TrimSpace(os.Getenv("VELOX_GEO_MAP_PLATE_GENERATOR_PATH"))
 	if plateGenerator == "" {
@@ -80,6 +89,13 @@ func renderDynamicMapVideo(ctx context.Context, plan capoverlay.OverlayPlan) (st
 	// while a new run (a new fingerprint) re-rolls it. A random draw here would
 	// make a re-render of an already approved job silently different from the
 	// artifact that was approved.
+	// Per-pin spoken timing and the planner's group decision ride the item
+	// params (map_pin_timing / map_group / map_group_strategy) and enter the
+	// renderer payload so the camera activates each place exactly when the
+	// voiceover names it. The renderer never re-derives editorial timing.
+	pinTiming := scriptoverlay.MapPinTimingPayload(plan.Items[0].Params, pins)
+	mapGroup := scriptoverlay.MapGroupPayload(plan.Items[0].Params)
+	mapGroupStrategy := scriptoverlay.MapGroupStrategyParam(plan.Items[0].Params)
 	seed := mapRunSeed(plan)
 	// Select the map treatment once per map ITEM, not once per parent run.
 	// A video holding several maps can vary compositions and basemaps instead
@@ -101,7 +117,14 @@ func renderDynamicMapVideo(ctx context.Context, plan capoverlay.OverlayPlan) (st
 		return "", err
 	}
 	compositionChoice, _ := plan.Items[0].Params["map_animation"].(string)
-	mapAnimation, err := resolveMapComposition(compositionChoice, seed, mapStyleSlot, len(plan.Items[0].Map.Pins))
+	mapAnimation, mapFallbackReason, err := resolveMapCompositionFor(compositionChoice, seed, mapStyleSlot, mapCompositionInput{
+		PinCount:   len(plan.Items[0].Map.Pins),
+		Pins:       pins,
+		DurationUS: scriptoverlay.MapItemDurationMS(plan.Items[0], plan.DurationMS) * 1000,
+		Strategy:   mapGroupStrategy,
+		Camera:     cameraAnimation,
+		Label:      labelAnimation,
+	})
 	if err != nil {
 		return "", err
 	}
@@ -118,17 +141,67 @@ func renderDynamicMapVideo(ctx context.Context, plan capoverlay.OverlayPlan) (st
 		_ = os.RemoveAll(tmpDir)
 		return "", fmt.Errorf("dynamic map presentation catalog is empty")
 	}
+	// Map Decision Report: the ONE per-map record of every decision behind this
+	// render — places, exclusions, composition, seed, backend, fallback and
+	// phase timings — so an unexpected map is explainable without chasing logs
+	// across three repositories.
+	report := scriptoverlay.NewMapDecisionReport(plan.PlanID, plan.Items[0].ID, seed)
+	report.Requested = compositionChoice
+	report.Composition = mapAnimation
+	report.CompositionFamily = string(mapCompositionFamily(mapAnimation))
+	report.Fallback = mapFallbackReason
+	report.CameraAnimation = cameraAnimation
+	report.LabelAnimation = labelAnimation
+	report.Basemap = basemapStyle
+	report.MapGroup = mapGroup
+	report.Strategy = mapGroupStrategy
+	if backend, backendReason, backendErr := scriptoverlay.ResolveMapItemBackend(plan.Items[0], os.Getenv("PIPELINEGEN_MAP_NATIVE_RENDER") == "1"); backendErr == nil {
+		report.Backend = string(backend)
+		report.BackendReason = backendReason
+	} else {
+		return "", backendErr
+	}
+	for _, pin := range pins {
+		id, _ := pin["id"].(string)
+		latitude, _ := scriptoverlay.MapPinFloat(pin, "latitude")
+		longitude, _ := scriptoverlay.MapPinFloat(pin, "longitude")
+		label, _ := pin["label"].(string)
+		scope, _ := pin["scope"].(string)
+		place := scriptoverlay.MapDecisionPlace{
+			EntityID: id, Label: label, Scope: scope,
+			Latitude: latitude, Longitude: longitude,
+			Geocoded: true, Presented: true,
+		}
+		for _, entry := range pinTiming {
+			if entryID, _ := entry["id"].(string); entryID == id {
+				place.StartUS = int64(scriptoverlay.MustFloat(entry["start_s"]) * 1_000_000)
+				place.DurationUS = int64(scriptoverlay.MustFloat(entry["duration_s"]) * 1_000_000)
+			}
+		}
+		if place.DurationUS == 0 {
+			report.AddExclusion("no_spoken_timing", "pin "+id+" has no grounded occurrence timing; the camera cannot follow it")
+		}
+		report.Places = append(report.Places, place)
+	}
+	if mapFallbackReason != "" {
+		report.AddExclusion("declared_fallback", mapFallbackReason)
+	}
 	log.Printf("Chronon dynamic map styles selected: seed=%s camera=%s label=%s composition=%s basemap=%s", seed, cameraAnimation, labelAnimation, mapAnimation, basemapStyle)
 	payload := map[string]any{
 		"width": renderWidth, "height": renderHeight,
 		"fps_num": plan.FPSNum, "fps_den": plan.FPSDen,
-		"duration_us": mapItemDurationMS(plan.Items[0], plan.DurationMS) * 1000, "pins": pins,
-		"area_glow_radius_km": plan.Items[0].Map.AreaGlowRadiusKM,
-		"camera_animation":    cameraAnimation,
-		"label_animation":     labelAnimation,
-		"map_animation":       mapAnimation,
-		"basemap":             basemapStyle,
-		"typography":          dynamicMapTypography(plan.Items[0].Params),
+		"duration_us": scriptoverlay.MapItemDurationMS(plan.Items[0], plan.DurationMS) * 1000, "pins": pins,
+		"pin_timing":           pinTiming,
+		"map_group":            mapGroup,
+		"map_group_strategy":   mapGroupStrategy,
+		"composition_family":   string(mapCompositionFamily(mapAnimation)),
+		"composition_fallback": mapFallbackReason,
+		"area_glow_radius_km":  plan.Items[0].Map.AreaGlowRadiusKM,
+		"camera_animation":     cameraAnimation,
+		"label_animation":      labelAnimation,
+		"map_animation":        mapAnimation,
+		"basemap":              basemapStyle,
+		"typography":           dynamicMapTypography(plan.Items[0].Params),
 	}
 	encoded, err := json.Marshal(payload)
 	if err != nil {
@@ -218,16 +291,16 @@ func renderDynamicMapVideo(ctx context.Context, plan capoverlay.OverlayPlan) (st
 			summary.Dimensions.Width, summary.Dimensions.Height, summary.FPS.Num, summary.FPS.Den,
 			renderWidth, renderHeight, plan.FPSNum, plan.FPSDen)
 	}
-	if !summary.GPUEncoder || summary.VideoEncoder != "h264_nvenc" {
-		return "", fmt.Errorf("Chronon map renderer did not use the required GPU encoder: encoder=%q gpu=%t",
-			summary.VideoEncoder, summary.GPUEncoder)
+	if err := scriptoverlay.ValidateMapEncoderTelemetry(summary.VideoEncoder, summary.GPUEncoder, encodeProfile); err != nil {
+		return "", err
 	}
 	if renderWidth != plan.Width || renderHeight != plan.Height {
 		scale := fmt.Sprintf("scale=%d:%d:flags=lanczos", plan.Width, plan.Height)
-		upscale := exec.CommandContext(ctx, "/usr/bin/ffmpeg", "-hide_banner", "-loglevel", "error", "-y",
-			"-i", outputPath, "-vf", scale, "-r", fmt.Sprintf("%d/%d", plan.FPSNum, plan.FPSDen),
-			"-c:v", "h264_nvenc", "-gpu", "0", "-preset", "p4", "-tune", "hq", "-rc", "vbr", "-cq", "18", "-b:v", "0",
-			"-pix_fmt", "yuv420p", "-movflags", "+faststart", encodedOutputPath)
+		upscaleArgs := []string{"/usr/bin/ffmpeg", "-hide_banner", "-loglevel", "error", "-y",
+			"-i", outputPath, "-vf", scale, "-r", fmt.Sprintf("%d/%d", plan.FPSNum, plan.FPSDen)}
+		upscaleArgs = append(upscaleArgs, scriptoverlay.MapEncodeVideoArgs(encodeProfile)...)
+		upscaleArgs = append(upscaleArgs, "-pix_fmt", "yuv420p", "-movflags", "+faststart", encodedOutputPath)
+		upscale := exec.CommandContext(ctx, upscaleArgs[0], upscaleArgs[1:]...)
 		if output, err := upscale.CombinedOutput(); err != nil {
 			return "", fmt.Errorf("scale dynamic map to overlay contract: %w: %s", err, strings.TrimSpace(string(output)))
 		}
@@ -258,6 +331,28 @@ func renderDynamicMapVideo(ctx context.Context, plan capoverlay.OverlayPlan) (st
 		summary.Plates.RequiredTiles, summary.Plates.PrefetchFetched,
 		summary.FramePipelineS, summary.RenderEncodeWallS, summary.PostFrameTailS,
 		summary.OutputBytes, time.Since(renderStarted).Seconds())
+	// Phase timings close the decision report; emission is one structured log
+	// line always, plus a durable file when the operator configured a report
+	// directory (a requested report artifact that cannot be written fails
+	// closed, never silently missing).
+	report.RecordPhase("render_wall_s", time.Since(renderStarted).Seconds())
+	report.RecordPhase("frame_pipeline_s", summary.FramePipelineS)
+	report.RecordPhase("render_encode_wall_s", summary.RenderEncodeWallS)
+	report.RecordPhase("post_frame_tail_s", summary.PostFrameTailS)
+	report.RecordPhase("gate_ms", summary.GateMS)
+	report.RecordPhase("tile_prefetch_ms", summary.Tile.PrefetchMS)
+	report.RecordPhase("plate_prepare_ms", summary.Plates.PrepareMS)
+	report.RecordPhase("plate_compose_ms", summary.Plates.ComposeMS)
+	encodedReport, err := report.JSON()
+	if err != nil {
+		return "", fmt.Errorf("encode map decision report: %w", err)
+	}
+	log.Printf("map decision report: %s", encodedReport)
+	if reportDir := strings.TrimSpace(os.Getenv("PIPELINEGEN_MAP_REPORT_DIR")); reportDir != "" {
+		if _, err := scriptoverlay.WriteMapDecisionReport(reportDir, report); err != nil {
+			return "", fmt.Errorf("write map decision report: %w", err)
+		}
+	}
 	return outputPath, nil
 }
 
@@ -337,13 +432,6 @@ func dynamicMapTypography(params map[string]any) map[string]any {
 	return style
 }
 
-func mapItemDurationMS(item capoverlay.OverlayItem, fallback int64) int64 {
-	if item.StartMs >= 0 && item.EndMs > item.StartMs {
-		return item.EndMs - item.StartMs
-	}
-	return fallback
-}
-
 // boundedMapRenderOutput caps retained child-process logs while keeping the
 // most recent diagnostics. The machine-readable summary is written separately.
 type boundedMapRenderOutput struct {
@@ -380,7 +468,7 @@ var (
 )
 
 func mapMapAnimationsRandomPool() []string {
-	return []string{"region_zoom", "pulse_marker", "spotlight"}
+	return scriptoverlay.MapCompositionRandomPool()
 }
 
 // mapCameraAnimationsCertified lists every camera id the Python renderer
@@ -390,48 +478,53 @@ func mapCameraAnimationsCertified() []string {
 	return capoverlay.AnimationCandidates("map.camera")
 }
 
-// resolveMapComposition resolves ONE cartographic motion-graphic system.
-// Empty and "random" sample eligible certified compositions deterministically;
-// an explicit certified id wins verbatim. Unknown ids fail closed.
+// The composition selection lives in the overlay subpackage (the sanctioned
+// migration target). These thin wrappers keep the root package as the
+// compatibility facade for existing callers and tests.
+
+type mapCompositionInput = scriptoverlay.MapCompositionInput
+
+const (
+	MapFamilyLocationFocus = scriptoverlay.MapFamilyLocationFocus
+	MapFamilyMultiPin      = scriptoverlay.MapFamilyMultiPin
+	MapFamilyJourney       = scriptoverlay.MapFamilyJourney
+	MapFamilyRegion        = scriptoverlay.MapFamilyRegion
+	MapFamilyComparison    = scriptoverlay.MapFamilyComparison
+	MapFamilyEditorial     = scriptoverlay.MapFamilyEditorial
+)
+
+func mapCompositionFamily(id string) scriptoverlay.MapCompositionFamily {
+	return scriptoverlay.MapCompositionFamilyOf(id)
+}
+
+func eligibleMapCompositionsFor(input mapCompositionInput, certified []string) []string {
+	return scriptoverlay.EligibleMapCompositionsFor(input, certified)
+}
+
+func deterministicMapCompositionChoice(seed, slot string, pool []string) string {
+	return scriptoverlay.DeterministicMapCompositionChoice(seed, slot, pool)
+}
+
+func resolveMapCompositionFor(requested, seed, slot string, input mapCompositionInput) (string, string, error) {
+	return scriptoverlay.ResolveMapCompositionFor(requested, seed, slot, input)
+}
+
+// resolveMapComposition is the classic selection API retained for callers and
+// tests that hold only the pin count.
 func resolveMapComposition(requested, seed, slot string, pinCounts ...int) (string, error) {
-	requested = strings.TrimSpace(requested)
-	if requested == "" || strings.EqualFold(requested, "random") {
-		pool := mapMapAnimationsRandomPool()
-		if len(pinCounts) > 0 {
-			pool = eligibleMapCompositions(pinCounts[0], pool)
-		}
-		selected := deterministicMapStyle(seed, "map_composition", slot, pool)
-		if selected == "" {
-			return "", fmt.Errorf("no certified map composition available")
-		}
-		return selected, nil
+	input := mapCompositionInput{}
+	if len(pinCounts) > 0 {
+		input.PinCount = pinCounts[0]
 	}
-	for _, candidate := range mapMapAnimationsCertified() {
-		if requested == candidate {
-			return requested, nil
-		}
-	}
-	return "", fmt.Errorf("unsupported runtime map_animation %q", requested)
+	selected, _, err := resolveMapCompositionFor(requested, seed, slot, input)
+	return selected, err
 }
 
 // eligibleMapCompositions removes only renderer-documented multi-pin systems
 // that cannot run for this map's grounded pin count. Explicit selections still
 // validate against the full certified catalog and fail closed in the renderer.
 func eligibleMapCompositions(pinCount int, certified []string) []string {
-	// The registry supplies the canonical set and its pin-count constraints.
-	// Intersect with certified to keep callers that narrow the set working.
-	allowed := make(map[string]bool, len(certified))
-	for _, id := range certified {
-		allowed[id] = true
-	}
-	out := capoverlay.AnimationMapCompositionCandidates(pinCount)
-	filtered := out[:0]
-	for _, id := range out {
-		if allowed[id] {
-			filtered = append(filtered, id)
-		}
-	}
-	return filtered
+	return scriptoverlay.EligibleMapCompositions(pinCount, certified)
 }
 
 // mapMapAnimationsCertified lists every renderer-approved map_animation id:

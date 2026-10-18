@@ -72,6 +72,7 @@ func (r *Runner) compileAudioOverlayPlan(ctx context.Context, runID string, req 
 	canvas.MapCameraAnimation = req.MapCameraAnimation
 	canvas.MapLabelAnimation = req.MapLabelAnimation
 	canvas.MapAnimation = req.MapAnimation
+	canvas.MapPresentation = req.MapPresentation
 	canvas.MaxPhraseOverlays = req.MaxPhraseOverlays
 	canvas.MaxOverlaysPerScene = req.MaxOverlaysPerScene
 	canvas.MaxMapOverlays = req.MaxMapOverlays
