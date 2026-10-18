@@ -162,6 +162,60 @@ func MapRenderRequirementsFor(item capabilityoverlay.OverlayItem) MapRenderRequi
 	return req
 }
 
+// MapExecutionPolicy makes the production preference explicit instead of
+// disguising it as a capability draw. production_dynamic is the certified
+// cartographic presentation; diagnostic_native routes only static content the
+// native compiler genuinely covers; native_after_visual_certification is
+// reserved for the future parity gate and currently behaves as production.
+type MapExecutionPolicy string
+
+const (
+	MapExecutionProductionDynamic        MapExecutionPolicy = "production_dynamic"
+	MapExecutionDiagnosticNative         MapExecutionPolicy = "diagnostic_native"
+	MapExecutionNativeAfterCertification MapExecutionPolicy = "native_after_visual_certification"
+)
+
+// MapExecutionPolicyFromEnv resolves the operator intent. PIPELINEGEN_MAP_NATIVE_RENDER=1
+// selects the diagnostic native path; PIPELINEGEN_MAP_EXECUTION_POLICY overrides
+// it explicitly when set. Default is production_dynamic.
+func MapExecutionPolicyFromEnv(nativeDiagnostic bool, override string) MapExecutionPolicy {
+	switch MapExecutionPolicy(override) {
+	case MapExecutionDiagnosticNative, MapExecutionProductionDynamic, MapExecutionNativeAfterCertification:
+		if override == string(MapExecutionDiagnosticNative) {
+			return MapExecutionDiagnosticNative
+		}
+		if override == string(MapExecutionNativeAfterCertification) {
+			return MapExecutionNativeAfterCertification
+		}
+		return MapExecutionProductionDynamic
+	}
+	if nativeDiagnostic {
+		return MapExecutionDiagnosticNative
+	}
+	return MapExecutionProductionDynamic
+}
+
+// ResolveMapItemBackendWithPolicy is the per-map backend decision used at the
+// render boundary: the item's REAL requirements, resolved against backend
+// capabilities under an explicit execution policy. It is a pure function of
+// the item — the same map item decides identically whether the plan holds one
+// map or several (the P0 rule: the backend is never chosen from the plan's
+// item count).
+func ResolveMapItemBackendWithPolicy(item capabilityoverlay.OverlayItem, policy MapExecutionPolicy) (MapBackend, string, error) {
+	req := MapRenderRequirementsFor(item)
+	if policy != MapExecutionDiagnosticNative && item.Map != nil {
+		req.DynamicCameraTour = true
+	}
+	if policy == MapExecutionDiagnosticNative && NativeMapCapabilities().Satisfies(req) {
+		return MapBackendNative, "policy=diagnostic_native: native compiler covers all map render requirements", nil
+	}
+	backend, _, err := ResolveMapBackendFor(req)
+	if err != nil {
+		return "", "", err
+	}
+	return backend, "policy=" + string(policy) + ": capabilities cover all map render requirements", nil
+}
+
 // ResolveMapItemBackend is the per-map backend decision used at the render
 // boundary: the item's REAL requirements, resolved against backend
 // capabilities. It is a pure function of the item — the same map item decides
@@ -177,14 +231,7 @@ func MapRenderRequirementsFor(item capabilityoverlay.OverlayItem) MapRenderRequi
 // static content the native compiler genuinely covers — never force dynamic
 // content onto it.
 func ResolveMapItemBackend(item capabilityoverlay.OverlayItem, nativeDiagnostic bool) (MapBackend, string, error) {
-	req := MapRenderRequirementsFor(item)
-	if !nativeDiagnostic && item.Map != nil {
-		req.DynamicCameraTour = true
-	}
-	if nativeDiagnostic && NativeMapCapabilities().Satisfies(req) {
-		return MapBackendNative, "native compiler covers all map render requirements (diagnostic opt-in)", nil
-	}
-	return ResolveMapBackendFor(req)
+	return ResolveMapItemBackendWithPolicy(item, MapExecutionPolicyFromEnv(nativeDiagnostic, ""))
 }
 
 // AnnotateMapBackend registra sul piano quale backend deve eseguire la mappa.

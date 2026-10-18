@@ -62,15 +62,17 @@ func TestMapCompositionChosenEndToEndIsDeterministicPerSeed(t *testing.T) {
 }
 
 // TestMapCompositionChosenEndToEndVariesAcrossSeeds proves that different job
-// seeds reach the planner's seeded draw and produce more than one composition,
-// and that the single pin never receives the multi-pin-only composition.
+// seeds reach the planner's seeded draw and produce more than one composition.
+// Unified catalog: all three restrained compositions carry a single pin
+// (Python MULTI_PIN_SYSTEMS is empty), so no single-pin exclusion applies.
 func TestMapCompositionChosenEndToEndVariesAcrossSeeds(t *testing.T) {
+	certified := map[string]bool{"region_zoom": true, "pulse_marker": true, "spotlight": true}
 	seen := map[string]bool{}
 	for i := 0; i < 24; i++ {
 		seed := "job-e2e-" + string(rune('a'+i))
 		composition := mapCompositionOf(t, buildSingleMapPlan(t, seed))
-		if composition == "pulse_marker" {
-			t.Fatalf("single pin must not get multi-pin composition pulse_marker (seed %q)", seed)
+		if !certified[composition] {
+			t.Fatalf("single-pin composition %q not in unified pool (seed %q)", composition, seed)
 		}
 		seen[composition] = true
 	}

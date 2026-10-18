@@ -170,7 +170,7 @@ func renderDynamicMapVideo(ctx context.Context, plan capoverlay.OverlayPlan) (st
 		place := scriptoverlay.MapDecisionPlace{
 			EntityID: id, Label: label, Scope: scope,
 			Latitude: latitude, Longitude: longitude,
-			Geocoded: true, Presented: true,
+			Geocoded: true, State: "eligible",
 		}
 		for _, entry := range pinTiming {
 			if entryID, _ := entry["id"].(string); entryID == id {
@@ -180,6 +180,8 @@ func renderDynamicMapVideo(ctx context.Context, plan capoverlay.OverlayPlan) (st
 		}
 		if place.DurationUS == 0 {
 			report.AddExclusion("no_spoken_timing", "pin "+id+" has no grounded occurrence timing; the camera cannot follow it")
+		} else {
+			place.State = "scheduled"
 		}
 		report.Places = append(report.Places, place)
 	}
@@ -357,7 +359,28 @@ func renderDynamicMapVideo(ctx context.Context, plan capoverlay.OverlayPlan) (st
 	if err != nil {
 		return "", fmt.Errorf("encode map decision report: %w", err)
 	}
+	// Pre-render admission already passed if we reached the renderer; mark
+	// scheduled pins and persist the durable report next to the artifact.
+	// The report is written beside the rendered MP4 (same tmp workspace that
+	// becomes the content-addressed artifact dir) AND to the operator dir when
+	// configured — never log-only, so a wrong map is traceable to its job.
+	for i := range report.Places {
+		// Renderer confirmed frames: every eligible/scheduled pin was drawn.
+		// Pins without spoken timing still render as markers (no camera
+		// follow) — they are rendered, with the no_spoken_timing exclusion
+		// explaining the degraded camera, not a missing pin.
+		report.Places[i].State = "rendered"
+		report.Places[i].Presented = true
+	}
+	report.RecordPhase("render_wall_s", time.Since(renderStarted).Seconds())
+	// Re-encode after state promotion so the log line reflects rendered.
+	if encodedReport, err = report.JSON(); err != nil {
+		return "", fmt.Errorf("encode map decision report: %w", err)
+	}
 	log.Printf("map decision report: %s", encodedReport)
+	if _, err := scriptoverlay.WriteMapDecisionReport(tmpDir, report); err != nil {
+		return "", fmt.Errorf("write map decision report: %w", err)
+	}
 	if reportDir := strings.TrimSpace(os.Getenv("PIPELINEGEN_MAP_REPORT_DIR")); reportDir != "" {
 		if _, err := scriptoverlay.WriteMapDecisionReport(reportDir, report); err != nil {
 			return "", fmt.Errorf("write map decision report: %w", err)
@@ -415,9 +438,32 @@ func resolveMapAnimation(requested, seed, slot, channel string, certified, rando
 }
 
 func dynamicMapTypography(params map[string]any) map[string]any {
+	// Canonical job visual config wins over map-local defaults: family, fill
+	// and editorial style come from the job so maps match phrases/captions.
+	// Map-local geometry (size, placement, glow) may still differ; only the
+	// typeface identity and palette are unified. Overrides via item params or
+	// job_style are explicit; hardcoded values are the last-resort fallback.
+	baseFamily, baseFill := "bricolage_grotesque", "#F8F5EA"
+	if job, ok := params["job_style"].(map[string]any); ok {
+		if v, ok := job["font_family"].(string); ok && v != "" {
+			baseFamily = v
+		}
+		if v, ok := job["fill"].(string); ok && v != "" {
+			baseFill = v
+		}
+		if v, ok := job["font_color"].(string); ok && v != "" {
+			baseFill = v
+		}
+	}
+	if v, ok := params["job_font_family"].(string); ok && v != "" {
+		baseFamily = v
+	}
+	if v, ok := params["job_fill"].(string); ok && v != "" {
+		baseFill = v
+	}
 	style := map[string]any{
-		"font_family": "bricolage_grotesque", "font_size_px": 92.0,
-		"fill": "#F8F5EA", "stroke_size": 2.0,
+		"font_family": baseFamily, "font_size_px": 92.0,
+		"fill": baseFill, "stroke_size": 2.0,
 		"shadow_color": "#000000", "shadow_opacity": 0.7,
 		"shadow_blur_px": 14.0, "shadow_offset_x_px": 0.0,
 		"shadow_offset_y_px": 4.0, "glow_size": 10.0,
@@ -486,100 +532,4 @@ func mapMapAnimationsRandomPool() []string {
 // against this list; the random sampler draws from mapCameraAnimations.
 func mapCameraAnimationsCertified() []string {
 	return capoverlay.AnimationCandidates("map.camera")
-}
-
-// The composition selection lives in the overlay subpackage (the sanctioned
-// migration target). These thin wrappers keep the root package as the
-// compatibility facade for existing callers and tests.
-
-type mapCompositionInput = scriptoverlay.MapCompositionInput
-
-const (
-	MapFamilyLocationFocus = scriptoverlay.MapFamilyLocationFocus
-	MapFamilyMultiPin      = scriptoverlay.MapFamilyMultiPin
-	MapFamilyJourney       = scriptoverlay.MapFamilyJourney
-	MapFamilyRegion        = scriptoverlay.MapFamilyRegion
-	MapFamilyComparison    = scriptoverlay.MapFamilyComparison
-	MapFamilyEditorial     = scriptoverlay.MapFamilyEditorial
-)
-
-func mapCompositionFamily(id string) scriptoverlay.MapCompositionFamily {
-	return scriptoverlay.MapCompositionFamilyOf(id)
-}
-
-func eligibleMapCompositionsFor(input mapCompositionInput, certified []string) []string {
-	return scriptoverlay.EligibleMapCompositionsFor(input, certified)
-}
-
-func deterministicMapCompositionChoice(seed, slot string, pool []string) string {
-	return scriptoverlay.DeterministicMapCompositionChoice(seed, slot, pool)
-}
-
-func resolveMapCompositionFor(requested, seed, slot string, input mapCompositionInput) (string, string, error) {
-	return scriptoverlay.ResolveMapCompositionFor(requested, seed, slot, input)
-}
-
-// resolveMapComposition is the classic selection API retained for callers and
-// tests that hold only the pin count.
-func resolveMapComposition(requested, seed, slot string, pinCounts ...int) (string, error) {
-	input := mapCompositionInput{}
-	if len(pinCounts) > 0 {
-		input.PinCount = pinCounts[0]
-	}
-	selected, _, err := resolveMapCompositionFor(requested, seed, slot, input)
-	return selected, err
-}
-
-// eligibleMapCompositions removes only renderer-documented multi-pin systems
-// that cannot run for this map's grounded pin count. Explicit selections still
-// validate against the full certified catalog and fail closed in the renderer.
-func eligibleMapCompositions(pinCount int, certified []string) []string {
-	return scriptoverlay.EligibleMapCompositions(pinCount, certified)
-}
-
-// mapMapAnimationsCertified lists every renderer-approved map_animation id:
-// map systems from map_compositions plus the GPU-certified editorial
-// scenes in map_editorial.MAP_EDITORIAL_SCENES.
-// TestMapCompositionsMatchPython guards cross-repository drift.
-func mapMapAnimationsCertified() []string {
-	return capoverlay.AnimationCandidates("map.composition")
-}
-
-// mapLabelAnimationsCertified lists every label id the Python renderer
-// accepts, including explicit-only choices.
-func mapLabelAnimationsCertified() []string {
-	return capoverlay.AnimationCandidates("map.label")
-}
-
-// mapRunSeed is the stable per-run seed for a map's presentation choices. The
-// plan fingerprint is the canonical variant knob — a new fingerprint IS a new
-// variant — with PlanID/VideoID as fallbacks for a plan stamped before the
-// fingerprint was computed. It never reads wall-clock or process state, so the
-// same run always resolves the same map presentation.
-func mapRunSeed(plan capoverlay.OverlayPlan) string {
-	// Child render plans get their own fingerprint and ID. Prefer the parent
-	// job identity so a run-level style choice remains the same across all map
-	// clips belonging to that video.
-	for _, candidate := range []string{plan.ResultJobID, plan.DriveJobID, plan.Fingerprint, plan.PlanID, plan.VideoID} {
-		if seed := strings.TrimSpace(candidate); seed != "" {
-			return seed
-		}
-	}
-	return "map"
-}
-
-// deterministicMapStyle resolves ONE presentation value from options as a pure
-// function of the run seed and the style channel. It samples through the
-// overlays package's single deterministic sampler, so map presentation obeys
-// exactly the same seed→choice contract as every other semantic selection in
-// the pipeline. The channel keeps the camera move and basemap independent:
-// the same seed picks them from separate digests.
-func deterministicMapStyle(seed, channel, itemID string, options []string) string {
-	return capoverlay.DefaultDeterministicPresetSampler.Sample(capoverlay.PresetSampleInput{
-		JobFingerprint: seed,
-		SceneID:        "map",
-		SemanticID:     itemID,
-		PresetFamily:   channel,
-		Presets:        options,
-	}).Preset
 }

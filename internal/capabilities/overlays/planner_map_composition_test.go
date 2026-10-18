@@ -22,14 +22,17 @@ func TestSelectMapCompositionVariesAcrossSeeds(t *testing.T) {
 }
 
 func TestSelectMapCompositionExcludesIncompatibleFamilies(t *testing.T) {
+	// Unified catalog (single source: animation registry random pool): the
+	// restrained pool is region_zoom/pulse_marker/spotlight and all three
+	// carry a single pin (Python MULTI_PIN_SYSTEMS is empty). The old
+	// planner-local exclusion of pulse_marker for 1 pin was the diverged
+	// parallel selector removed by the map audit.
+	allowed := map[string]bool{"region_zoom": true, "pulse_marker": true, "spotlight": true}
 	for i := 0; i < 64; i++ {
 		seed := string(rune('a' + i%26))
 		single := SelectMapComposition(seed, "scene-1", "item-1", 1)
-		if single == "pulse_marker" {
-			t.Fatalf("pulse_marker is multi-pin and must not be chosen for one pin (seed %q)", seed)
-		}
-		if single != "region_zoom" && single != "spotlight" {
-			t.Fatalf("one pin must use the location_focus family, got %q", single)
+		if !allowed[single] {
+			t.Fatalf("one pin must use the unified random pool, got %q", single)
 		}
 	}
 	if got := SelectMapComposition("job", "scene-1", "item-1", 0); got != "" {

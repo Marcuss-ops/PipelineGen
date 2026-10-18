@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"sync"
 
 	capoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
@@ -145,23 +146,57 @@ func (e *QueueRenderEnqueuer) enqueueSeparateOverlayItems(ctx context.Context, p
 			},
 		}, nil
 	}
+	// OverlayTimelineAdmission before any expensive render: final frame windows
+	// after all duration extensions must not share even one frame (master uses
+	// mode=replace). Fail early instead of rendering artifacts the final job
+	// will reject. The final publication gate remains as defense-in-depth.
+	if err := capoverlay.AdmitOverlayTimeline(plan.Items, plan.FPSNum, plan.FPSDen); err != nil {
+		return RenderReference{}, err
+	}
 	observability.OverlayItemRenderPoolSize.Set(float64(workers))
+	// Two concurrent pools joined at the end: non-map items at the configured
+	// width, map items serialised to 1 among themselves (LOD pyramid RAM/VRAM).
+	// The old barrier (all others, then maps) is removed; GPU admission
+	// (worker gpu_lanes) remains the final authority when both classes contend
+	// for a saturated GPU.
 	var results []overlayItemRenderResult
+	var mu sync.Mutex
+	var wg sync.WaitGroup
+	errCh := make(chan error, 2)
 	if len(otherCandidates) > 0 {
-		otherResults, err := concurrent.Map(ctx, otherCandidates, workers, renderOne)
-		if err != nil {
-			return RenderReference{}, err
-		}
-		results = append(results, otherResults...)
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			otherResults, err := concurrent.Map(ctx, otherCandidates, workers, renderOne)
+			if err != nil {
+				errCh <- err
+				return
+			}
+			mu.Lock()
+			results = append(results, otherResults...)
+			mu.Unlock()
+		}()
 	}
 	if len(mapCandidates) > 0 {
-		// Classe mappe: limite separato a 1, compatibile con RAM/VRAM.
-		observability.OverlayItemRenderPoolSize.Set(1)
-		mapResults, err := concurrent.Map(ctx, mapCandidates, 1, renderOne)
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			mapResults, err := concurrent.Map(ctx, mapCandidates, 1, renderOne)
+			if err != nil {
+				errCh <- err
+				return
+			}
+			mu.Lock()
+			results = append(results, mapResults...)
+			mu.Unlock()
+		}()
+	}
+	wg.Wait()
+	close(errCh)
+	for err := range errCh {
 		if err != nil {
 			return RenderReference{}, err
 		}
-		results = append(results, mapResults...)
 	}
 	// Ripristina l'ordine di piano (posizione originale), non alfabetico:
 	// l'identità child (<plan>:item:%03d:<id>) dipende dalla posizione.
