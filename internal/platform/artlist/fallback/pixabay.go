@@ -64,26 +64,6 @@ type Config struct {
 	SourceName string
 }
 
-// New constructs a Pixabay instance.
-func NewPixabay(cfg Config) *Pixabay {
-	if cfg.BaseURL == "" {
-		cfg.BaseURL = "https://pixabay.com/api"
-	} else {
-		cfg.BaseURL = strings.TrimRight(cfg.BaseURL, "/")
-	}
-	if cfg.Timeout <= 0 {
-		cfg.Timeout = 45 * time.Second
-	}
-	if cfg.SourceName == "" {
-		cfg.SourceName = "pixabay"
-	}
-	return &Pixabay{
-		client:     &http.Client{Timeout: cfg.Timeout},
-		cfg:        cfg,
-		SourceName: cfg.SourceName,
-	}
-}
-
 // Compile-time port assertion.
 var _ artapp.Searcher = (*Pixabay)(nil)
 

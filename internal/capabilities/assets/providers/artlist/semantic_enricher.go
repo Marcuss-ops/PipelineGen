@@ -133,51 +133,6 @@ type SemanticEnricherDeps struct {
 	Log              *zap.Logger
 }
 
-// NewSemanticEnricher crea un enricher pronto per il package artlist.
-// Usa semantic.MetadataWriterPort (chiamato GeneratePayload) invece di
-// chiamare Tagger() direttamente, per garantire che tutto il metadata
-// passi dal percorso centralizzato.
-//
-// F2.11 (June 2026): the `driveManager` parameter was replaced by
-// `publisher delivery.Publisher + reader drivepkg.Reader` (the canonical
-// write + read ports per DRIVE-005 closure). The Publisher is mandatory
-// at composition (ErrPublisherUnavailable guard lives in Service.NewService);
-// the Reader is mandatory only when the metadata.json sync path is
-// wired (production) — test fixtures that opt out of cumulative
-// metadata.json writes can pass nil reader (the call site already
-// nil-tolerates because some deployments use local-only mode).
-//
-// PR2.5: dispatcher param added. Pass nil only in tests / for the
-// legacy fallback path; production wiring always passes the canonical
-// outbox.Dispatcher so Enrich() routes UpsertClip + IndexClip through
-// the dispatcher rather than the legacy clipIndexer.IndexClip.
-// Indexer is the canonical port (PR2.5 wiring: bundle.ClipIndexerService
-// satisfies it directly because *clipindexer.Service has IndexClip +
-// IsEnabled matching the port).
-// PR2.7 → F2.11: driveUploader/driverManager replaced by
-// publisher + reader (canonical ports). Pass nil for reader in tests.
-//
-// P0-#2 (July 2026): the `metaWriter` parameter type is now
-// `semantic.MetadataWriterPort` (the canonical narrow typed surface),
-// NOT `semantic.MetadataWriterPort` (the retired fake concrete). The
-// production composition root passes `nil` when the real semantic
-// tagger is absent; tests pass `semantic.NewNopMetadataWriter(log)`
-// for the explicit-nop path. The Enrich method already nil-checks
-// `e.metaWriter == nil` so both paths are fail-closed.
-func NewSemanticEnricher(deps SemanticEnricherDeps) *SemanticEnricher {
-	return &SemanticEnricher{
-		repo:             deps.Repo,
-		indexer:          deps.Indexer,
-		metaWriter:       deps.MetaWriter,
-		searchDocBuilder: deps.SearchDocBuilder,
-		publisher:        deps.Publisher,
-		reader:           deps.Reader,
-		dispatcher:       deps.Dispatcher,
-		lifecycle:        deps.Lifecycle,
-		log:              deps.Log,
-	}
-}
-
 // dispatchOrIndexAndUpsert performs UpsertClip + IndexClip atomically via
 // the canonical media_index_outbox dispatcher.
 //

@@ -418,19 +418,6 @@ func (r *AnimationRegistry) IsRetired(id string) bool {
 	return ok && e.Status == "retired"
 }
 
-func (r *AnimationRegistry) RetiredIDs() []string {
-	if r == nil {
-		return nil
-	}
-	var out []string
-	for _, e := range r.entries {
-		if e.Status == "retired" {
-			out = append(out, e.ID)
-		}
-	}
-	return out
-}
-
 func (r *AnimationRegistry) RetiredCandidates(group string) []string {
 	if r == nil {
 		return nil

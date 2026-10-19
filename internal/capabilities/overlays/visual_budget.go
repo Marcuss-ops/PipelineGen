@@ -169,16 +169,6 @@ func chartBarIndices(items []OverlayItem) []int {
 	return indices
 }
 
-func editorialVisualIndices(items []OverlayItem) []int {
-	indices := make([]int, 0)
-	for i, item := range items {
-		if item.Params != nil && (item.Params["editorial_role"] == "scene_title" || item.Params["editorial_role"] == "scene_bullet") {
-			indices = append(indices, i)
-		}
-	}
-	return indices
-}
-
 func chartLabelIndices(items []OverlayItem) []int {
 	indices := make([]int, 0)
 	seenScenes := make(map[string]struct{})

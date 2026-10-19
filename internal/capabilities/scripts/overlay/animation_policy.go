@@ -306,13 +306,6 @@ func seededGroupMotion(target, groupID, seed string, words int, entityImagePool,
 	return pool[capabilityoverlay.SeededGroupIndex(seed, target, groupID, len(pool))]
 }
 
-func hexNibble(digit byte) byte {
-	if digit >= '0' && digit <= '9' {
-		return digit - '0'
-	}
-	return digit - 'a' + 10
-}
-
 func validatePolicyMotionParams(params map[string]any) error {
 	for _, name := range []string{"enter_frames", "exit_frames"} {
 		value, exists := params[name]

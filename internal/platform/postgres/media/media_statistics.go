@@ -81,15 +81,6 @@ func NewMediaStatisticsReader(db *sql.DB) *MediaStatisticsReader {
 	return &MediaStatisticsReader{db: db}
 }
 
-// DB exposes the underlying handle so callers can assert the reader lives on
-// the media SSOT.
-func (r *MediaStatisticsReader) DB() *sql.DB {
-	if r == nil {
-		return nil
-	}
-	return r.db
-}
-
 // CountBySource returns the number of media_assets rows whose `source` column
 // matches source exactly.
 //

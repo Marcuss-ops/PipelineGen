@@ -72,13 +72,6 @@ func ApplyPhraseOverlayBudgetWithLimit(items []OverlayItem, phraseLimit int) ([]
 	return out, MeasurePhraseOverlayBudgetWithLimit(out, limit)
 }
 
-// MeasurePhraseOverlayBudget reports how many unique grounded phrase items
-// are present in an already compiled plan against the default ceiling. It
-// does not change the plan.
-func MeasurePhraseOverlayBudget(items []OverlayItem) PhraseOverlayBudget {
-	return MeasurePhraseOverlayBudgetWithLimit(items, MaxPhraseOverlaysPerRun)
-}
-
 // MeasurePhraseOverlayBudgetWithLimit is MeasurePhraseOverlayBudget with a
 // caller-selected ceiling. requested <= 0 keeps the default ceiling.
 func MeasurePhraseOverlayBudgetWithLimit(items []OverlayItem, requested int) PhraseOverlayBudget {

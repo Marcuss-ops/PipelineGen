@@ -193,13 +193,6 @@ func (e *QueueRenderEnqueuer) Wait(ctx context.Context) error {
 	return err
 }
 
-// finalJobOverlayAssets projects the already-rendered semantic overlay items
-// to the Master finalizer. Their bytes live on Drive; only the remote worker
-// fetches them and applies them over the stock timeline.
-func finalJobOverlayAssets(result *GenerateResult) ([]any, error) {
-	return finalJobOverlayAssetsExcluding(result, nil)
-}
-
 func finalJobOverlayAssetsExcluding(result *GenerateResult, consumed map[string]struct{}) ([]any, error) {
 	if result == nil || result.OverlayPlan == nil || len(result.OverlayPlan.Items) == 0 {
 		return []any{}, nil

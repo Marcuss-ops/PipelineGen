@@ -231,17 +231,6 @@ func deterministicMapMotionStart(planID string, limit int) int {
 	return int(binary.BigEndian.Uint64(sum[:8]) % uint64(poolSize))
 }
 
-func mapMotionAt(ordinal int) string {
-	pool := mapMotionIDs()
-	if len(pool) == 0 {
-		return ""
-	}
-	if ordinal < 0 {
-		ordinal = 0
-	}
-	return pool[ordinal%len(pool)]
-}
-
 // mapMotionForCenter selects from only map-safe centered treatments. The
 // plan-level ordinal rotates maps so adjacent plates vary; regional bounds no
 // longer select deprecated country recipes for arbitrary local rasters.

@@ -69,13 +69,6 @@ func stockBindingForSegment(plan *scriptpkg.ResolvedGenerationPlan, inputBinding
 	return scriptpkg.StockBindingForSegment(plan, inputBindings, segment)
 }
 
-func planBindings(plan *scriptpkg.ResolvedGenerationPlan) []scriptpkg.StockBindingInput {
-	if plan == nil {
-		return nil
-	}
-	return plan.StockBindings
-}
-
 func sceneAllowsMediaResolution(scene scriptpkg.SpecScene) bool {
 	return scene.AllowsVisualIntent() && scene.AllowsMediaResolution() && scene.AllowsMediaReplacement()
 }

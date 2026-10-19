@@ -122,11 +122,6 @@ func (r *IdentityRegistry) AnchorTiming(id CanonicalID, language string, startMS
 	return nil
 }
 
-// OrderedIDs returns canonical source ids in registration order.
-func (r *IdentityRegistry) OrderedIDs() []CanonicalID {
-	return append([]CanonicalID(nil), r.order...)
-}
-
 // SceneIDs returns the distinct scene ids in first-appearance order.
 func (r *IdentityRegistry) SceneIDs() []string {
 	seen := map[string]struct{}{}

@@ -169,22 +169,6 @@ func (r *Runner) startStockPrefetch(ctx context.Context, bindings []scriptpkg.St
 	return done
 }
 
-func (r *Runner) waitStockPrefetch(done chan scriptports.StockPrefetchReport) {
-	if done == nil {
-		return
-	}
-	report := <-done
-	if r == nil || r.log == nil {
-		return
-	}
-	r.log.Info("script.generate: stock prefetch completed",
-		zap.Int("requested", report.Requested),
-		zap.Int("warmed", report.Warmed),
-		zap.Int("cached", report.Cached),
-		zap.Int("failed", report.Failed),
-		zap.Int("skipped", report.Skipped))
-}
-
 // stockPrefetchJoinBudget bounds how long a stock consumer waits for the
 // best-effort warm. Whatever is cached when the budget expires is kept; the
 // remainder falls through to synchronous resolution (same contract as the

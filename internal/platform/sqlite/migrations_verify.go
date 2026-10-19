@@ -232,17 +232,6 @@ func indexEventsIn(content string, version int) []objectEvent {
 	return events
 }
 
-// droppedIndexesIn returns the lowercased index names a migration file drops, so
-// a deliberate rename (drop + create under a new name) is not reported as drift.
-func droppedIndexesIn(content string) []string {
-	matches := droppedIndexPattern.FindAllStringSubmatch(sqlSchemaText(content), -1)
-	names := make([]string, 0, len(matches))
-	for _, match := range matches {
-		names = append(names, strings.ToLower(match[1]))
-	}
-	return names
-}
-
 // schemaOwnership records the reasons a declared object may legitimately be
 // absent, so the check reports drift and only drift.
 type schemaOwnership struct {

@@ -261,30 +261,6 @@ func (s *WorkflowState) ChildLedger() (scripts string, youtube, stock []string, 
 	return scripts, youtube, stock, voiceover, render, assembly
 }
 
-// Validate fails closed on a state document that cannot drive resume.
-func (s WorkflowState) Validate() error {
-	if s.WorkflowVersion != WorkflowVersion {
-		return fmt.Errorf("%w: workflow_version=%d, want %d", ErrStateCorrupt, s.WorkflowVersion, WorkflowVersion)
-	}
-	for key := range s.Stages {
-		if _, ok := StepByKey(key); !ok {
-			return fmt.Errorf("%w: unknown stage key %q", ErrStateCorrupt, key)
-		}
-	}
-	return nil
-}
-
-// Encode serialises the state document (diagnostics / remote
-// projection). The document is derived, so this is read-only surface.
-func (s WorkflowState) Encode() (json.RawMessage, error) {
-	s.Refresh()
-	raw, err := json.Marshal(s)
-	if err != nil {
-		return nil, fmt.Errorf("videocreate: encode workflow state: %w", err)
-	}
-	return raw, nil
-}
-
 // StageRecordFor is the small accessor the coordinator uses after each
 // transition (nil-safe).
 func (s *WorkflowState) StageRecordFor(stepKey string) *StageRecord {
