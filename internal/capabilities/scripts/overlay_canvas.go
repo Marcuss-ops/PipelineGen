@@ -224,6 +224,50 @@ func hasSegmentOverlayCategories(segments []scriptpkg.ScriptSegment) bool {
 	return false
 }
 
+// dropCategoryDisabledCandidates removes a scene's candidates for every
+// disabled overlay lane BEFORE the planner runs. The run-level budgets dedupe
+// globally, so a disabled scene's identical date, phrase or image surface
+// would otherwise evict the enabled scene's copy before the end category
+// filter can remove the disabled one. Quotes and keywords pass through: the
+// internal editorial budget never retains them, so they cannot evict anything.
+// Numbers survive when charts are enabled because chart placements derive from
+// grounded numbers, while the number cards themselves still die at the end
+// filter.
+func dropCategoryDisabledCandidates(in *capabilityoverlay.SceneInput, sceneID string, sceneIndex int, canvas OverlayCanvasSpec) *capabilityoverlay.SceneInput {
+	if in == nil {
+		return nil
+	}
+	out := *in
+	if !overlayCategoryEnabled(scriptpkg.OverlayCategoryPhrases, sceneID, sceneIndex, canvas) {
+		out.Phrases = nil
+	}
+	chartsEnabled := canvas.EnableCharts && overlayCategoryEnabled(scriptpkg.OverlayCategoryCharts, sceneID, sceneIndex, canvas)
+	if !overlayCategoryEnabled(scriptpkg.OverlayCategoryNumbers, sceneID, sceneIndex, canvas) && !chartsEnabled {
+		out.Numbers = nil
+	}
+	if !overlayCategoryEnabled(scriptpkg.OverlayCategoryImages, sceneID, sceneIndex, canvas) {
+		out.Images = nil
+		out.Products = nil
+		out.Logos = nil
+	}
+	if !overlayCategoryEnabled(scriptpkg.OverlayCategoryMaps, sceneID, sceneIndex, canvas) {
+		out.Maps = nil
+	}
+	if !overlayCategoryEnabled(scriptpkg.OverlayCategoryBrandText, sceneID, sceneIndex, canvas) {
+		out.BrandTexts = nil
+	}
+	if !chartsEnabled {
+		out.ChartNumbers = nil
+	}
+	if len(out.Phrases) == 0 && len(out.Numbers) == 0 && len(out.ChartNumbers) == 0 &&
+		len(out.Images) == 0 && len(out.Products) == 0 && len(out.Logos) == 0 &&
+		len(out.Maps) == 0 && len(out.BrandTexts) == 0 && len(out.Quotes) == 0 &&
+		len(out.Keywords) == 0 && len(out.MultiEntityGroups) == 0 {
+		return nil
+	}
+	return &out
+}
+
 func filterOverlayItemsByCategory(items []capabilityoverlay.OverlayItem, scenes []Scene, canvas OverlayCanvasSpec) []capabilityoverlay.OverlayItem {
 	if len(canvas.OverlayCategories) == 0 && !hasSegmentOverlayCategories(canvas.OverlayCategorySegments) {
 		return items
@@ -279,6 +323,10 @@ func overlayItemCategory(item capabilityoverlay.OverlayItem) (scriptpkg.OverlayC
 	// request can independently enable bullets while disabling generic
 	// phrases/titles, and the template name alone must not recategorize a
 	// scene_bullet before its explicit role is examined.
+	case role == "chapter_bullet":
+		// A chapter opening rides the bullets category so the payload can
+		// switch it off with the same toggle as ordinary bullets.
+		return scriptpkg.OverlayCategoryBullets, true
 	case role == "bullet" || role == "bullet_point" || role == "scene_bullet":
 		return scriptpkg.OverlayCategoryBullets, true
 	case role == "title" || role == "headline" || role == "scene_title":

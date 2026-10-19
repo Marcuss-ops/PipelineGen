@@ -377,9 +377,11 @@ func uniqueMotionPool(pool []string) []string {
 // that pool carries no visible entrance the certified default pool is used
 // instead of collapsing the heavy lane onto a single motion.
 func selectHeavyPhraseMotion(jobID, sceneID string, ordinal int, pool []string) string {
-	candidates := visiblePhraseEntrancePool(pool)
+	// Heavy copy is long copy in practice, so a motion proven to crash the
+	// render daemon on long text must never be dealt here either.
+	candidates := excludeLongCopyCrashingMotions(visiblePhraseEntrancePool(pool))
 	if len(candidates) == 0 {
-		candidates = visiblePhraseEntrancePool(nil)
+		candidates = excludeLongCopyCrashingMotions(visiblePhraseEntrancePool(nil))
 	}
 	allowed := make(map[string]bool, len(candidates))
 	for _, id := range candidates {
@@ -418,13 +420,16 @@ func selectHeavyPhraseMotionLimited(jobID, sceneID string, ordinal int, pool []s
 		// their verbatim order below.
 		if len(pool) > len(longPhraseMotionCandidates) {
 			if compatible := intersectMotionPool(longPhraseMotionCandidates, pool); len(compatible) > 0 {
-				pool = longPhraseFamilyWindow(compatible, limit, jobID)
-				return selectHeavyPhraseMotion(jobID, sceneID, ordinal, pool)
+				compatible = excludeLongCopyCrashingMotions(compatible)
+				if len(compatible) > 0 {
+					pool = longPhraseFamilyWindow(compatible, limit, jobID)
+					return selectHeavyPhraseMotion(jobID, sceneID, ordinal, pool)
+				}
 			}
 		}
-		pool = limitedMotionPool(pool, limit)
+		pool = excludeLongCopyCrashingMotions(limitedMotionPool(pool, limit))
 	} else if limit > 0 {
-		pool = limitedMotionPool(phraseMotionCandidates, limit)
+		pool = excludeLongCopyCrashingMotions(limitedMotionPool(phraseMotionCandidates, limit))
 	}
 	return selectHeavyPhraseMotion(jobID, sceneID, ordinal, pool)
 }

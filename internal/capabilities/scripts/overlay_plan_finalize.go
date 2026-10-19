@@ -208,6 +208,11 @@ func applyOverlayStyleToItems(items []capabilityoverlay.OverlayItem, canvas Over
 			if configured, ok := styleParams["font_size_px"].(float64); ok && configured > phraseFontSize {
 				phraseFontSize = configured
 			}
+			// A chapter opening is a title-level card: give it its own font bump
+			// over the run phrase size, exactly like presentation cards.
+			if items[i].Params["editorial_role"] == capabilityoverlay.ChapterBulletRole {
+				phraseFontSize += float64(capabilityoverlay.ChapterTextFontIncreasePX)
+			}
 			items[i].Params["font_size_px"] = phraseFontSize
 			if phraseStyle, ok := items[i].Params["style"].(map[string]any); ok {
 				phraseStyle["font_size"] = phraseFontSize

@@ -92,8 +92,12 @@ func EnsureDistinctPhraseMotionsPinned(items []OverlayItem, input PlanInput, pin
 			continue
 		}
 		if explicitSingleton && !removed && item.MotionID == explicitPool[0] {
-			used[item.MotionID] = struct{}{}
-			continue
+			// Preserve the singleton verbatim except on long copy, where a
+			// motion proven to crash the render daemon must rotate away.
+			if len(strings.Fields(item.Text)) < 6 || !isLongCopyCrashingMotion(item.MotionID) {
+				used[item.MotionID] = struct{}{}
+				continue
+			}
 		}
 		if !removed && !duplicate {
 			used[item.MotionID] = struct{}{}
@@ -211,6 +215,8 @@ func phraseMotionCandidatesForItem(item OverlayItem, input PlanInput, seed strin
 	words := len(strings.Fields(item.Text))
 	var candidates []string
 	switch {
+	case item.Params != nil && item.Params["editorial_role"] == ChapterBulletRole:
+		return excludeRemovedGeneratedPhraseMotions(append([]string(nil), text3DMotionCandidates...))
 	case EditorialSectionForItem(item) == EditorialSectionShortPhrase:
 		candidates = ShortPhraseVisibleMotionCandidates()
 		recipes := ShortPhraseMotionsForWordCount(words)
@@ -238,6 +244,13 @@ func phraseMotionCandidatesForItem(item OverlayItem, input PlanInput, seed strin
 				// with the long-copy compatibility set.
 				candidates = append([]string(nil), input.PhraseMotions...)
 			}
+		}
+		// Long copy must never rotate in a motion proven to crash the render
+		// daemon. An explicit pool left empty by the guard falls back to the
+		// long-copy whitelist instead of leaving a duplicate in place.
+		candidates = excludeLongCopyCrashingMotions(candidates)
+		if len(candidates) == 0 {
+			candidates = append([]string(nil), longPhraseMotionCandidates...)
 		}
 		// The same family-interleaved window as the assignment keeps one capped
 		// window per run: a different window here would let the guard rotate

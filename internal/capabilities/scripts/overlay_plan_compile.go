@@ -245,8 +245,10 @@ func compileOverlayPlanWithMotionOffset(result *GenerateResult, language Languag
 	}
 	// Catalog runs disable the editorial projection so the operator-supplied
 	// grounded phrases keep the run budget (see DisableEditorialOverlays).
+	chapterCovered := map[string]bool{}
 	if !canvas.DisableEditorialOverlays {
-		scenes = projectEditorialOverlays(result, language, timedScenes, resolved, scenes)
+		scenes, chapterCovered = projectChapterBullets(result, language, timedScenes, resolved, scenes)
+		scenes = projectEditorialOverlays(result, language, timedScenes, resolved, scenes, chapterCovered)
 	}
 	shortPhraseScenes := make(map[string]bool, len(timedScenes))
 	for _, scene := range timedScenes {

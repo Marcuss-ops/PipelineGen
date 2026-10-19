@@ -82,13 +82,14 @@ func selectLongPhraseMotion(jobID, sceneID string, ordinal int, pool []string) s
 			compatible = append(compatible, id)
 		}
 	}
+	compatible = excludeLongCopyCrashingMotions(compatible)
 	switch {
 	case len(compatible) > 0:
 		return selectLongPhraseMotionFromFamilies(jobID, sceneID, ordinal, compatible)
 	default:
 		// A family pool with no long-lane matches cannot bypass the long-copy
 		// compatibility whitelist.
-		return selectLongPhraseMotionFromFamilies(jobID, sceneID, ordinal, longPhraseMotionCandidates)
+		return selectLongPhraseMotionFromFamilies(jobID, sceneID, ordinal, excludeLongCopyCrashingMotions(longPhraseMotionCandidates))
 	}
 }
 
@@ -184,6 +185,10 @@ func selectLongPhraseMotionLimited(jobID, sceneID string, ordinal int, pool []st
 		} else {
 			candidates = append([]string(nil), pool...)
 		}
+	}
+	candidates = excludeLongCopyCrashingMotions(candidates)
+	if len(candidates) == 0 {
+		candidates = append([]string(nil), longPhraseMotionCandidates...)
 	}
 	if limit > 0 {
 		candidates = longPhraseFamilyWindow(candidates, limit, jobID)

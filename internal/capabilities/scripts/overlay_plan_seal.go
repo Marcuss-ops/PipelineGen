@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"strings"
 
+	capabilityentities "github.com/Marcuss-ops/PipelineGen/internal/capabilities/entities"
 	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
 	scriptoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/overlay"
 	"github.com/Marcuss-ops/PipelineGen/pkg/textutil"
@@ -104,4 +105,65 @@ func sealOverlayPlan(result *GenerateResult, language Language, plannerPlan capa
 		return nil, fmt.Errorf("overlay plan: seal: %w", err)
 	}
 	return &plan, nil
+}
+
+// attachEntityCardAsset resolves the card's canonical_entity_id through the
+// EntityMediaResolver and promotes the item to the image-only entity
+// capability when a verified asset exists. The name remains available in the
+// identity/provenance fields, but it is no longer rendered as a second lower
+// third below the portrait. An entity without an indexed asset is returned
+// unchanged (text-only card).
+func attachEntityCardAsset(item capabilityoverlay.OverlayItem, media *capabilityentities.EntityMediaResolver, canonicalByStable map[string]string, planID string) capabilityoverlay.OverlayItem {
+	lookupID := canonicalByStable[item.ID]
+	if lookupID == "" {
+		lookupID = canonicalByStable[item.EntityID]
+	}
+	if lookupID == "" {
+		return item
+	}
+	ref, err := media.ResolveBest(lookupID)
+	if err != nil {
+		return item
+	}
+	// A catalog row without a fetchable URL is not renderable by Chronon.
+	// Keep the entity card text-only until the asset binding is complete;
+	// emitting a hash-only ref would make RenderingGen fail later while
+	// materializing an impossible logical path.
+	if strings.TrimSpace(ref.URL) == "" || strings.TrimSpace(ref.SHA256) == "" || strings.HasPrefix(strings.TrimSpace(ref.URL), "assets/semantic/") || strings.HasPrefix(strings.TrimSpace(ref.URL), "semantic/") {
+		return item
+	}
+	item.AssetRefs = []capabilityoverlay.OverlayAssetRef{{
+		AssetID: ref.SHA256, URL: ref.URL, LocalPath: ref.LocalPath, SHA256: ref.SHA256, MediaType: ref.MediaType,
+	}}
+	// A resolved portrait is a distinct visual capability: use the official
+	// image preset/motion path and do not compile the text-card layer as well.
+	item.Kind = string(capabilityoverlay.KindEntityImage)
+	item.TemplateID = "image_popup"
+	item.PresetID = capabilityoverlay.SelectEntityImagePreset(planID, item.SceneID, item.ID)
+	// Preserve the entity name as a real caption layer. Text is cleared below
+	// because image items do not render the generic text field.
+	item.EntityCaption = entityImageCaption(item)
+	// Keep composition selection opt-in. The planner assigns a GPU-safe image
+	// reveal and caption motion; runtime renders must not choose a random
+	// spatial composition.
+	item.EntityStyleID = ""
+	// The run-level pass assigns a non-repeating catalog motion after image
+	// overlays have been capped.
+	item.MotionID = ""
+	item.MotionParams = nil
+	// RenderingGen requires the image treatment explicitly when an entity
+	// image also carries an entity-card composition selector. Keep the
+	// animation preset above independent from this image-fit preset.
+	item.ImagePresetID = "image_scale_in"
+	item.Text = ""
+	item.Params = nil
+	if item.EntityRef == nil {
+		item.EntityRef = &capabilityoverlay.OverlayEntityRef{}
+	}
+	canonicalID := lookupID
+	if separator := strings.Index(canonicalID, "::"); separator >= 0 {
+		canonicalID = canonicalID[separator+2:]
+	}
+	item.EntityRef.CanonicalEntityID = canonicalID
+	return item
 }
