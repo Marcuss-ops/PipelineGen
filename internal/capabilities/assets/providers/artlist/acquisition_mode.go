@@ -43,18 +43,3 @@ func (m ArtlistAcquisitionMode) Normalize() ArtlistAcquisitionMode {
 		return AcquisitionModeManualImport
 	}
 }
-
-// IsValid reports whether the mode is one of the canonical enum values.
-func (m ArtlistAcquisitionMode) IsValid() bool {
-	switch m.Normalize() {
-	case AcquisitionModeManualImport, AcquisitionModeAuthorizedAPI:
-		return true
-	}
-	return false
-}
-
-// AllowsAutomaticDownload reports whether this mode permits automatic
-// downloads. Even when true, the daily limit must also be > 0.
-func (m ArtlistAcquisitionMode) AllowsAutomaticDownload() bool {
-	return m.Normalize() == AcquisitionModeAuthorizedAPI
-}

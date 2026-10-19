@@ -71,13 +71,6 @@ func ImagePresetCandidates() []string {
 	return append([]string(nil), imagePresetCandidates...)
 }
 
-// MapImageMotionCandidates returns map-safe, centered image motions for
-// operator-supplied georeferenced rasters. Renderer/country-specific map
-// catalog entries remain discoverable through the runtime animation catalog.
-func MapImageMotionCandidates() []string {
-	return append([]string(nil), centeredImageMotionCandidates...)
-}
-
 func selectPreset(jobID, sceneID, itemID, family string, candidates []string) string {
 	return DefaultDeterministicPresetSampler.Sample(PresetSampleInput{
 		JobFingerprint: jobID,

@@ -19,9 +19,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	"strings"
 	"time"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/render"
 )
@@ -171,7 +172,3 @@ type MaterializedAsset struct {
 type AssetSource interface {
 	Materialize(ctx context.Context, asset ReplayAsset) (MaterializedAsset, error)
 }
-
-// isSHA256 preserves the replay package's internal validation seam while
-// delegating the canonical digest contract to kernel/digest.
-func isSHA256(value string) bool { return digest.IsCanonicalSHA256(value) }

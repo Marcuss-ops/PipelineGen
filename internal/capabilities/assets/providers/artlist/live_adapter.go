@@ -22,11 +22,6 @@ type forceRefreshLiveSearcher interface {
 	SearchLiveForceRefresh(context.Context, string, int, bool) ([]Candidate, error)
 }
 
-// NewLiveAdapter creates a provider-registry adapter backed by Service's
-// live search path. Composition remains the only place that selects the
-// live-vs-catalog behavior.
-func NewLiveAdapter(src *Service) *LiveAdapter { return &LiveAdapter{src: src} }
-
 var _ providers.SearchProvider = (*LiveAdapter)(nil)
 
 func (a *LiveAdapter) Name() string { return "artlist" }

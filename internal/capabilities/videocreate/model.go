@@ -100,16 +100,6 @@ var WorkflowSteps = []StepSpec{
 	{StepKey: "11_publish", Stage: StageFinalizing, Title: "Drive + media registry", BandStart: 99, BandEnd: 100},
 }
 
-// StepByStage returns the canonical step spec for a stage name.
-func StepByStage(stage Stage) (StepSpec, bool) {
-	for _, spec := range WorkflowSteps {
-		if spec.Stage == stage {
-			return spec, true
-		}
-	}
-	return StepSpec{}, false
-}
-
 // StepByKey returns the canonical step spec for a durable step key.
 func StepByKey(stepKey string) (StepSpec, bool) {
 	for _, spec := range WorkflowSteps {

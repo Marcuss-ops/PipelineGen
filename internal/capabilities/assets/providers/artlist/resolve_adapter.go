@@ -27,10 +27,6 @@ type GatewayAdapter struct {
 	resolve *ResolveAdapter
 }
 
-func NewGatewayAdapter(src *Service) *GatewayAdapter {
-	return &GatewayAdapter{search: NewAdapter(src), resolve: NewResolveAdapter(src)}
-}
-
 var _ providers.SearchProvider = (*GatewayAdapter)(nil)
 var _ providers.FetchProvider = (*GatewayAdapter)(nil)
 
@@ -46,8 +42,6 @@ func (a *GatewayAdapter) Fetch(ctx context.Context, req providers.FetchRequest) 
 }
 
 var ErrResolveNotWired = errors.New("artlist resolve adapter: source not wired")
-
-func NewResolveAdapter(src *Service) *ResolveAdapter { return &ResolveAdapter{src: src} }
 
 var _ providers.FetchProvider = (*ResolveAdapter)(nil)
 

@@ -73,12 +73,6 @@ func IsShortPhraseRecipe(motionID string) bool {
 	return false
 }
 
-// SingleWordMotionCandidates exposes the read-only cinematic pool used for
-// one-word phrase beats.
-func SingleWordMotionCandidates() []string {
-	return append([]string(nil), shortPhraseMotionCandidates[1]...)
-}
-
 func flattenShortPhraseMotionCandidates() []string {
 	var candidates []string
 	for wordCount := 1; wordCount <= 5; wordCount++ {
@@ -122,18 +116,6 @@ func phraseMotionFamilyCandidates(family string) []string {
 		return nil
 	}
 	return excludeRemovedGeneratedPhraseMotions(pool)
-}
-
-func combineMotionPools(pools ...[]string) []string {
-	total := 0
-	for _, pool := range pools {
-		total += len(pool)
-	}
-	out := make([]string, 0, total)
-	for _, pool := range pools {
-		out = append(out, pool...)
-	}
-	return out
 }
 
 // RenderSafeTextMotions returns the render-safe text-motion vocabulary. It is

@@ -27,11 +27,6 @@ func WithActivityTrace(ctx context.Context, trace ActivityTrace) context.Context
 	return context.WithValue(ctx, activitySequenceContextKey{}, &activitySequence{trace: trace})
 }
 
-// WithActivitySequence starts a monotonic sequence without an initial identity.
-func WithActivitySequence(ctx context.Context) context.Context {
-	return WithActivityTrace(ctx, ActivityTrace{})
-}
-
 // WithActivityTraceIfAbsent preserves the sequence already attached upstream.
 func WithActivityTraceIfAbsent(ctx context.Context, trace ActivityTrace) context.Context {
 	if ctx == nil {
@@ -175,11 +170,6 @@ type ActivityTrace struct {
 	ParentRunID   string `json:"parent_run_id,omitempty"`
 	CorrelationID string `json:"correlation_id,omitempty"`
 	Sequence      uint64 `json:"sequence,omitempty"`
-}
-
-// ActivityData returns the canonical job-timeline activity envelope.
-func ActivityData(kind, subKind, status, detail string, payload map[string]any) map[string]any {
-	return ActivityDataWithTrace(kind, subKind, status, detail, payload, ActivityTrace{})
 }
 
 // ActivityDataWithTrace normalizes legacy payloads and already-enveloped data.

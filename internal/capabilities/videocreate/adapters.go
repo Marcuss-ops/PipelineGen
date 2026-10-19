@@ -286,11 +286,6 @@ func (p mediaPlane) Probe(ctx context.Context, path string) (ProbeFacts, error) 
 // disagree about what is assemblable.
 type assemblerViaMediaPlane struct{ exec MediaPlaneExecutor }
 
-// NewAssemblerViaMediaPlane binds the VeloxEditing copy-assembly boundary.
-func NewAssemblerViaMediaPlane(exec MediaPlaneExecutor) Assembler {
-	return assemblerViaMediaPlane{exec: exec}
-}
-
 func (a assemblerViaMediaPlane) Assemble(ctx context.Context, req AssembleRequest) (AssembleResult, error) {
 	if a.exec == nil {
 		return AssembleResult{}, fmt.Errorf("videocreate: media plane is not wired")

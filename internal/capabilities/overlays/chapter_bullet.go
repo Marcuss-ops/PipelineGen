@@ -12,8 +12,3 @@ const ChapterBulletRole = "chapter_bullet"
 // cards. RenderingGen fits text shrink-only, so long chapter sentences
 // shrink to fit while short ones render bigger — never overflow.
 const ChapterTextFontIncreasePX = 24
-
-// isChapterBulletItem reports a chapter card by its planner-stamped role.
-func isChapterBulletItem(item OverlayItem) bool {
-	return item.Params != nil && item.Params["editorial_role"] == ChapterBulletRole
-}

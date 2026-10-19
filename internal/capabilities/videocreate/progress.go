@@ -86,16 +86,6 @@ func (r *Run) stageAlreadyCompleted(ctx context.Context, spec StepSpec) {
 	r.stageStatus.report(ctx, spec, job.StageCompleted, spec.BandEnd, spec.Title+": completed")
 }
 
-// ProgressBand returns the (start, end) band of a step key (used by
-// tests and by the remote progress projection).
-func ProgressBand(stepKey string) (int, int, bool) {
-	spec, ok := StepByKey(stepKey)
-	if !ok {
-		return 0, 0, false
-	}
-	return spec.BandStart, spec.BandEnd, true
-}
-
 // CurrentStageProgress maps a current stage to the band mid-point so a
 // resumed job can re-publish a truthful bar immediately after restart.
 func CurrentStageProgress(state WorkflowState) int {

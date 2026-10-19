@@ -75,18 +75,6 @@ func canonicalCommitterForRoot(root *ComposeRoot, log *zap.Logger) (persistence.
 	return mediasub.NewPostgresMediaCommitterFromDB(root.MediaPostgres, log)
 }
 
-// canonicalCommitterOrSkipped resolves the canonical writer for wiring
-// sites that pass it into a bundle struct: the nil result is forwarded as
-// a nil Committer and the consuming module decides whether that degrades
-// the whole module or errors.
-func canonicalCommitterOrSkipped(root *ComposeRoot, log *zap.Logger) persistence.CanonicalAssetWriter {
-	w, err := canonicalCommitterForRoot(root, log)
-	if err != nil {
-		panic(fmt.Sprintf("canonical media committer: %v", err))
-	}
-	return w
-}
-
 // canonicalMediaWriterRequired is the fail-closed variant for wiring sites
 // that CANNOT degrade (the writer is the site's core dependency). Use it
 // only where a nil writer would produce a silently broken service.

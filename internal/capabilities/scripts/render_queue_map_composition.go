@@ -34,10 +34,6 @@ func eligibleMapCompositionsFor(input mapCompositionInput, certified []string) [
 	return scriptoverlay.EligibleMapCompositionsFor(input, certified)
 }
 
-func deterministicMapCompositionChoice(seed, slot string, pool []string) string {
-	return scriptoverlay.DeterministicMapCompositionChoice(seed, slot, pool)
-}
-
 func resolveMapCompositionFor(requested, seed, slot string, input mapCompositionInput) (string, string, error) {
 	return scriptoverlay.ResolveMapCompositionFor(requested, seed, slot, input)
 }

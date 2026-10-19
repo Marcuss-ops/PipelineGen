@@ -144,16 +144,3 @@ func buildVoiceoverLanguageWork(text map[Language]string, source Language, targe
 	work := scriptRunner.BuildVoiceoverLanguageWork(languageTextStrings(text), string(source), languageStrings(targets), languageStrings(voiceoverLanguages))
 	return sceneLanguageWorks(work)
 }
-
-func requestedVoiceoverLanguages(text map[Language]string, source Language, targets, voiceoverLanguages []Language) []Language {
-	work := buildVoiceoverLanguageWork(text, source, targets, voiceoverLanguages)
-	langs := make([]Language, 0, len(work))
-	for _, item := range work {
-		langs = append(langs, item.lang)
-	}
-	return langs
-}
-
-func voiceoverLanguageRequested(req GenerateRequest, language Language) bool {
-	return scriptRunner.VoiceoverLanguageAllowed(languageStrings(req.VoiceoverLanguages), string(language))
-}

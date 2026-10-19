@@ -28,13 +28,6 @@ type entityImageCatalogPool struct {
 	Sufficient  bool
 }
 
-func entityImageCatalogRequestedLimit(_ *scriptpkg.ResolvedGenerationPlan) int {
-	// The durable entity catalog is a reusable variant pool, not the current
-	// scene's selection cap. Keep the full bounded pool available so later
-	// scenes can select a different candidate without another provider call.
-	return entityImageCatalogPoolSize
-}
-
 func entityImageCatalogPoolTarget(limit int) int {
 	if limit <= 1 {
 		return 1

@@ -166,12 +166,6 @@ func personImageSourceNameMismatch(canonicalName, sourceURL string) string {
 	return fmt.Sprintf("image source filename names %s %s, not requested person %s", name[0], second, canonicalName)
 }
 
-// PersonImageSourceNameMismatch exposes the provenance check to the VLM
-// adapter so provider and catalog candidates use the same identity rule.
-func PersonImageSourceNameMismatch(canonicalName, sourceURL string) string {
-	return personImageSourceNameMismatch(canonicalName, sourceURL)
-}
-
 // PersonImageSourceIdentityFailure exposes the fail-closed source-provenance
 // gate to adapters that verify cached or freshly discovered image pixels.
 func PersonImageSourceIdentityFailure(canonicalName, sourceURL, sourcePageURL string) string {

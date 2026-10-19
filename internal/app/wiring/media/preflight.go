@@ -18,22 +18,6 @@ type AssetDetailsLookup interface {
 	Get(ctx context.Context, id string) (*asset.Details, error)
 }
 
-// NewPreflight binds the canonical asset registry and audio sources to the
-// script-generation MediaPreflight port. The policy remains owned by
-// capabilities/scripts; this package owns composition only.
-func NewPreflight(assets AssetDetailsLookup, audioAssetSource scriptgen.AudioAssetSource, clipAudioAssetSource scriptgen.ClipAudioAssetSource) scriptgen.MediaPreflight {
-	return NewPreflightWithImageProviderHealth(assets, audioAssetSource, clipAudioAssetSource, nil)
-}
-
-// NewPreflightWithImageProviderHealth is NewPreflight with the image-provider
-// health probe wired. The probe runs only for requests that actually depend on
-// internet image retrieval (internet_images enabled or the entity-image
-// surface requested), so a clip-only run is never failed by a degraded image
-// provider it would never have used.
-func NewPreflightWithImageProviderHealth(assets AssetDetailsLookup, audioAssetSource scriptgen.AudioAssetSource, clipAudioAssetSource scriptgen.ClipAudioAssetSource, imageProviderHealth scriptgen.ImageProviderHealthProbe) scriptgen.MediaPreflight {
-	return NewPreflightWithProviderAvailability(assets, audioAssetSource, clipAudioAssetSource, imageProviderHealth, nil)
-}
-
 // NewPreflightWithProviderAvailability also validates explicitly enabled
 // VidRush providers against the frozen composition registry.
 func NewPreflightWithProviderAvailability(assets AssetDetailsLookup, audioAssetSource scriptgen.AudioAssetSource, clipAudioAssetSource scriptgen.ClipAudioAssetSource, imageProviderHealth scriptgen.ImageProviderHealthProbe, providerAvailability scriptgen.VidRushProviderAvailabilityProbe) scriptgen.MediaPreflight {

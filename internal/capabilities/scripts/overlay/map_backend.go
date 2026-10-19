@@ -233,23 +233,3 @@ func ResolveMapItemBackendWithPolicy(item capabilityoverlay.OverlayItem, policy 
 func ResolveMapItemBackend(item capabilityoverlay.OverlayItem, nativeDiagnostic bool) (MapBackend, string, error) {
 	return ResolveMapItemBackendWithPolicy(item, MapExecutionPolicyFromEnv(nativeDiagnostic, ""))
 }
-
-// AnnotateMapBackend registra sul piano quale backend deve eseguire la mappa.
-// Il worker legge params.map_backend; assente = comportamento storico.
-// Every map item receives its own annotation: the backend is a PER-MAP
-// capability decision, so one video holding several maps keeps the same
-// decision rules as a single-map plan.
-func AnnotateMapBackend(plan *capabilityoverlay.OverlayPlan, backend MapBackend) {
-	if plan == nil || len(plan.Items) == 0 {
-		return
-	}
-	for i := range plan.Items {
-		if plan.Items[i].Map == nil && i != 0 {
-			continue
-		}
-		if plan.Items[i].Params == nil {
-			plan.Items[i].Params = map[string]any{}
-		}
-		plan.Items[i].Params["map_backend"] = string(backend)
-	}
-}

@@ -122,15 +122,6 @@ func SelectEntityCaptionMotionAt(jobID, sceneID string, ordinal int) string {
 	return pool[(start+ordinal)%len(pool)]
 }
 
-// SelectImageMotion chooses a stable catalog image motion for one image
-// overlay. Retries of the same job, scene and item resolve identically. It
-// stays on the CENTERED subset for map-compatible callers (MapOverlay.Validate
-// accepts exactly those ids). Generated overlay images use
-// EntityImageMotionAtOffset instead.
-func SelectImageMotion(jobID, sceneID, itemID string) string {
-	return selectPreset(jobID, sceneID, itemID, "image_motion", centeredImageMotionCandidates)
-}
-
 // SelectImageMotionAt rotates through the certified CENTERED image pool
 // from a deterministic per-job starting point. It is reserved for
 // map-compatible callers; generated overlays rotate the wider image catalog.

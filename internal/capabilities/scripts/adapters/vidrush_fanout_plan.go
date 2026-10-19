@@ -171,22 +171,6 @@ func buildVidRushFanoutPlan(plan *scriptpkg.ResolvedGenerationPlan, segment scri
 	}
 }
 
-func sceneScopedImageQuery(segment scriptpkg.VidRushSegmentResult) string {
-	for _, candidate := range segment.Insights.Entities {
-		if normalizeAnnotationType(candidate.Type) == "PERSON" && strings.TrimSpace(candidate.Value) != "" {
-			return strings.TrimSpace(candidate.Value)
-		}
-	}
-	// Some extraction runs omit the person surface but retain the canonical
-	// identity mapping. Use its key as the query rather than guessing from prose.
-	for surface, canonicalID := range segment.Insights.ImageEntityCanonicalIDs {
-		if strings.HasPrefix(strings.ToLower(strings.TrimSpace(canonicalID)), "person:") && strings.TrimSpace(surface) != "" {
-			return strings.TrimSpace(surface)
-		}
-	}
-	return ""
-}
-
 // sceneScopedImageQueries retains every imageable person in the scene. The
 // singular helper remains for callers that need a lead identity, while the
 // media fanout must search each distinct person so a two-person scene cannot
@@ -219,20 +203,6 @@ func sceneScopedImageQueries(segment scriptpkg.VidRushSegmentResult) []string {
 		}
 	}
 	return queries
-}
-
-func sourceLeadEntity(source string) string {
-	const marker = "about "
-	lower := strings.ToLower(source)
-	start := strings.Index(lower, marker)
-	if start < 0 {
-		return ""
-	}
-	value := strings.TrimSpace(source[start+len(marker):])
-	if end := strings.IndexAny(value, ",.!?\n"); end >= 0 {
-		value = value[:end]
-	}
-	return strings.TrimSpace(value)
 }
 
 func trimEnglishPossessive(value string) string {

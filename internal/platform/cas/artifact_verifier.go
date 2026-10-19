@@ -14,12 +14,6 @@ type ArtifactVerifier struct {
 	store *Store
 }
 
-// NewArtifactVerifier constructs the adapter. Fail-closed: a nil store
-// yields a verifier that fails every verification.
-func NewArtifactVerifier(store *Store) *ArtifactVerifier {
-	return &ArtifactVerifier{store: store}
-}
-
 // VerifyArtifact verifies the artifact at the recorded digest. The uri is
 // advisory for CAS-backed artifacts (the address IS the digest); when the
 // store is not wired, verification fails closed (never a silent pass).
