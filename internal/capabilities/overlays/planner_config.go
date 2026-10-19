@@ -38,6 +38,12 @@ type PlannerConfig struct {
 	// (MaxPhraseOverlaysPerRun); positive values are capped by
 	// MaxPhraseOverlaysHardLimit.
 	RunLevelPhraseOverlayLimit int
+	// RunLevelShortPhraseLimit and RunLevelLongPhraseLimit opt into the split
+	// phrase lanes used by the editorial budget. Both must be positive to
+	// activate: the short lane is admitted first, then the long lane fills
+	// around it. A zero value keeps the certified single-budget behavior.
+	RunLevelShortPhraseLimit int
+	RunLevelLongPhraseLimit  int
 	// RunLevelMapOverlayLimit is the per-scene map ceiling used by the
 	// map-aware editorial budget. Zero keeps the certified default
 	// (MaxMapOverlaysPerScene); a positive value raises it per run.

@@ -232,6 +232,11 @@ func BuildPlan(input PlanInput, config PlannerConfig) (OverlayPlan, error) {
 		// highlight can be silently crowded out by the scene title or a longer
 		// phrase before the run-level editorial budget ever sees it.
 		sort.SliceStable(phrases, func(i, j int) bool {
+			chapterI := phrases[i].PresentationRole == ChapterBulletRole
+			chapterJ := phrases[j].PresentationRole == ChapterBulletRole
+			if chapterI != chapterJ {
+				return chapterI
+			}
 			if (phrases[i].PresentationRole == "scene_bullet") != (phrases[j].PresentationRole == "scene_bullet") {
 				return phrases[i].PresentationRole == "scene_bullet"
 			}
@@ -252,6 +257,10 @@ func BuildPlan(input PlanInput, config PlannerConfig) (OverlayPlan, error) {
 				params["position"] = "center"
 				params["style"] = "headline"
 				params["editorial_role"] = "scene_bullet"
+			case ChapterBulletRole:
+				params["position"] = "center"
+				params["style"] = "headline"
+				params["editorial_role"] = ChapterBulletRole
 			}
 			plan.Items = append(plan.Items, OverlayItem{
 				ID: id, SceneID: scene.ID, PresetID: selectPhrasePreset(input.PlanID, scene.ID, id),
@@ -401,7 +410,11 @@ func BuildPlan(input PlanInput, config PlannerConfig) (OverlayPlan, error) {
 	plan.Items = DegradeOverlaps(plan.Items, config.MaxOverlap)
 	plan.Items = PruneOrphanChartBars(plan.Items)
 	if config.RunLevelEditorialBudget {
-		plan.Items, _ = ApplyEditorialOverlayBudgetWithLimits(plan.Items, config.RunLevelPhraseOverlayLimit, config.RunLevelMapOverlayLimit)
+		if config.RunLevelShortPhraseLimit > 0 && config.RunLevelLongPhraseLimit > 0 {
+			plan.Items, _ = ApplyEditorialOverlayBudgetWithPhraseLanes(plan.Items, config.RunLevelPhraseOverlayLimit, 0, config.RunLevelMapOverlayLimit, false, config.RunLevelShortPhraseLimit, config.RunLevelLongPhraseLimit)
+		} else {
+			plan.Items, _ = ApplyEditorialOverlayBudgetWithLimits(plan.Items, config.RunLevelPhraseOverlayLimit, config.RunLevelMapOverlayLimit)
+		}
 	} else {
 		plan.Items, _ = ApplyPhraseOverlayBudgetWithLimit(plan.Items, config.RunLevelPhraseOverlayLimit)
 	}
@@ -430,10 +443,18 @@ func BuildPlan(input PlanInput, config PlannerConfig) (OverlayPlan, error) {
 	phraseOrdinal := 0
 	shortPhraseOrdinal := 0
 	heavyOrdinal := 0
+	chapterOrdinal := 0
 	imageOrdinal = 0
 	for i := range plan.Items {
 		switch plan.Items[i].Kind {
 		case "text_phrase":
+			if plan.Items[i].Params != nil && plan.Items[i].Params["editorial_role"] == ChapterBulletRole {
+				// Chapter openings keep the text_3d family and rotate one distinct
+				// entrance per chapter, regardless of copy length.
+				plan.Items[i].MotionID = selectMotionFromPool(motionSeed, "chapter_bullet", "chapter_bullet", chapterOrdinal, text3DMotionCandidates)
+				chapterOrdinal++
+				continue
+			}
 			if EditorialSectionForItem(plan.Items[i]) == EditorialSectionShortPhrase {
 				// Short phrases use the renderer-supported phrase entrance pool.
 				// Keep selection seeded per run, but advance the ordinal so each
@@ -483,8 +504,15 @@ func BuildPlan(input PlanInput, config PlannerConfig) (OverlayPlan, error) {
 				heavyOrdinal++
 			case len(input.PhraseMotions) == 1:
 				// A caller-supplied singleton pool is an explicit motion choice;
-				// keep it stable across all long bullets in the run.
-				plan.Items[i].MotionID = input.PhraseMotions[0]
+				// keep it stable across all long bullets in the run. The one
+				// exception is a long-copy motion proven to crash the render
+				// daemon: fall back to the long-copy whitelist instead of
+				// failing the whole run at render time.
+				if len(strings.Fields(plan.Items[i].Text)) >= 6 && isLongCopyCrashingMotion(input.PhraseMotions[0]) {
+					plan.Items[i].MotionID = selectLongPhraseMotionLimited(motionSeed, "run", phraseOrdinal, nil, laneAnimationCount(input.AnimationCounts, laneImportantPhrase))
+				} else {
+					plan.Items[i].MotionID = input.PhraseMotions[0]
+				}
 			case len(strings.Fields(plan.Items[i].Text)) >= 6:
 				plan.Items[i].MotionID = selectLongPhraseMotionLimited(motionSeed, "run", phraseOrdinal, input.PhraseMotions, laneAnimationCount(input.AnimationCounts, laneImportantPhrase))
 			default:

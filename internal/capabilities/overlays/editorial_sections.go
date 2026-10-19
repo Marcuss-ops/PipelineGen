@@ -63,6 +63,11 @@ func EditorialSectionForItem(item OverlayItem) EditorialSectionID {
 		if item.Params["editorial_role"] == "scene_title" {
 			return EditorialSectionImportantPhrase
 		}
+		// A chapter card keeps the long-copy ImportantPhrase lane even when
+		// its copy is short, so it never rotates with the short catalog.
+		if item.Params["editorial_role"] == ChapterBulletRole {
+			return EditorialSectionImportantPhrase
+		}
 	}
 	kind := strings.ToLower(strings.TrimSpace(item.Kind))
 	template := strings.ToUpper(strings.TrimSpace(item.TemplateID))

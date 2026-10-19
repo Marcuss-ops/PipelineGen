@@ -14,7 +14,11 @@ import (
 // projectEditorialOverlays adds only extractive editorial text whose manifest,
 // language, scene identity, verbatim grounding and word-level audio timing all
 // agree. Every failure is a no-op: narration/annotations remain the fallback.
-func projectEditorialOverlays(result *GenerateResult, language Language, scenes []Scene, resolved []ResolvedScene, inputs []capabilityoverlay.SceneInput) []capabilityoverlay.SceneInput {
+func projectEditorialOverlays(result *GenerateResult, language Language, scenes []Scene, resolved []ResolvedScene, inputs []capabilityoverlay.SceneInput, covered ...map[string]bool) []capabilityoverlay.SceneInput {
+	coveredScenes := map[string]bool{}
+	if len(covered) > 0 && covered[0] != nil {
+		coveredScenes = covered[0]
+	}
 	if result == nil || result.Editorial == nil || !result.Editorial.Certified ||
 		result.Editorial.SchemaVersion != scriptpkg.EditorialManifestVersion ||
 		len(strings.TrimSpace(result.Editorial.Fingerprint)) != 64 ||
@@ -82,6 +86,12 @@ func projectEditorialOverlays(result *GenerateResult, language Language, scenes 
 				inputs[inputIndex].Phrases = append(inputs[inputIndex].Phrases,
 					editorialTimedAnnotation(located, window[0], "scene_title", 1.0))
 			}
+		}
+		// When a chapter bullet already owns this scene's opening card, keep
+		// only the title: adding the editorial bullet too would duplicate the
+		// same visual slot (and often the same text).
+		if coveredScenes[editorial.SceneID] {
+			continue
 		}
 		for _, bullet := range editorial.Bullets {
 			if bullet.SentenceStart < 0 || bullet.SentenceEnd <= bullet.SentenceStart {
