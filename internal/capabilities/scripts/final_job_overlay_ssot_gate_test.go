@@ -70,14 +70,15 @@ func TestFinalJobOverlayAssetsRejectsDuplicateDriveArtifact(t *testing.T) {
 }
 
 // TestFinalJobOverlayAssetsRejectsIntersectingFrameWindows pins gate 2 on the
-// Master's exact rejection boundary: a second overlay starting at 11.95s
-// projects to start frame 287, which is still inside the first overlay's
-// frame window [240,288) — the Master replaces whole frames and rejects
-// intersecting replace windows. There is no free interval left in this
-// five-second scene, so the local resolver must reject at build time.
+// Master's exact rejection boundary: two overlapping 2-second overlays leave
+// no free interval in a 3.9-second scene, so the local resolver rejects before
+// dispatch.
 func TestFinalJobOverlayAssetsRejectsIntersectingFrameWindows(t *testing.T) {
-	items, artifacts := ssotGateItems(10_000, 11_950, strings.Repeat("d", 64), strings.Repeat("e", 64))
+	items, artifacts := ssotGateItems(0, 1_950, strings.Repeat("d", 64), strings.Repeat("e", 64))
 	result := ssotGateResult(items, artifacts)
+	result.CanonicalTimeline.DurationUS = 3_900_000
+	result.CanonicalTimeline.Segments[0].DurationUS = 3_900_000
+	result.FinalAudio = certifiedFinalAudio(3_900)
 	_, _, err := BuildFinalJobPayloads(context.Background(), "run-1", GenerateRequest{Title: "A story", SourceLanguage: "pt"}, result, finalJobPayloadResolver{})
 	if err == nil || !strings.Contains(err.Error(), "cannot fit a non-overlapping") {
 		t.Fatalf("BuildFinalJobPayloads error = %v, want local no-space rejection", err)
@@ -85,13 +86,14 @@ func TestFinalJobOverlayAssetsRejectsIntersectingFrameWindows(t *testing.T) {
 }
 
 // TestFinalJobOverlayAssetsAdmitsDistinctArtifactsOnTheFrameGrid pins the
-// happy path the gates must never break: distinct artifacts whose frame
-// windows only touch at the boundary ([3,33) then [33,63)) pass — a shared
-// frame INDEX endpoint is exclusive on the end side, exactly the contract the
-// Master compares with.
+// happy path the gates must never break: distinct artifacts with disjoint
+// frame windows inside the certified output duration pass.
 func TestFinalJobOverlayAssetsAdmitsDistinctArtifactsOnTheFrameGrid(t *testing.T) {
 	items, artifacts := ssotGateItems(10_000, 12_500, strings.Repeat("d", 64), strings.Repeat("e", 64))
 	result := ssotGateResult(items, artifacts)
+	result.CanonicalTimeline.DurationUS = 15_000_000
+	result.CanonicalTimeline.Segments[0].DurationUS = 15_000_000
+	result.FinalAudio = certifiedFinalAudio(15_000)
 	_, finalize, err := BuildFinalJobPayloads(context.Background(), "run-1", GenerateRequest{Title: "A story", SourceLanguage: "pt"}, result, finalJobPayloadResolver{})
 	if err != nil {
 		t.Fatalf("BuildFinalJobPayloads: %v", err)

@@ -188,6 +188,28 @@ func TestFinalJobSchedulesOverlappingDateCardsWithinScene(t *testing.T) {
 	}
 }
 
+func TestFinalJobClampsOverlayAtCertifiedBaseEnd(t *testing.T) {
+	result := &GenerateResult{
+		FinalAudio: &FinalAudioReference{DurationMS: 1_249_708}, // floor to complete frames at 24 fps
+		OverlayPlan: &capabilityoverlay.OverlayPlan{
+			FPSNum: 24, FPSDen: 1,
+			Items: []capabilityoverlay.OverlayItem{{ID: "last-date", SceneID: "scene-1", Kind: "number", StartUS: 29_939_000_000 / 24, DurationUS: 5_000_000}},
+		},
+		OverlayRender: &RenderReference{Items: []OverlayItemRenderReference{{
+			ItemID: "last-date", Status: "SUCCEEDED",
+			Artifact: &RenderArtifact{ID: "last-date-artifact", DriveFileID: "last-date-drive", SHA256: strings.Repeat("a", 64), SizeBytes: 100, FrameCount: 120},
+		}}},
+	}
+	overlays, err := finalJobOverlayAssetsExcluding(result, nil)
+	if err != nil {
+		t.Fatalf("finalJobOverlayAssetsExcluding: %v", err)
+	}
+	window := overlays[0].(map[string]any)
+	if got := window["end_frame"]; got != int64(29_992) {
+		t.Fatalf("overlay end_frame = %v, want clamp to certified base frame 29992", got)
+	}
+}
+
 func TestFinalJobRejectsOverlaysThatCannotFitInScene(t *testing.T) {
 	items := []capabilityoverlay.OverlayItem{
 		{ID: "date-a", SceneID: "scene-1", Kind: "number", StartUS: 0, DurationUS: 5_000_000},
