@@ -2,7 +2,7 @@
   "version": 2,
   "preset": "custom",
   "correlation_id": "garlasco-batch-10-03-stasi-sentenza-20261019-pipeline-v9-visual-intro",
-  "force_refresh": true,
+  "force_refresh": false,
   "items": [
     {
       "id": "garlasco-batch-10-03-stasi-sentenza-20261019-pipeline-v9-visual-intro",
@@ -466,7 +466,7 @@
         "segment_words": 95,
         "single_scene": false,
         "skip_quality_gate": false,
-        "force_refresh": true,
+        "force_refresh": false,
         "source_text_verbatim": false,
         "segments": [
           {
@@ -633,5 +633,6 @@
       },
       "media_mode": "stock_only"
     }
-  ]
+  ],
+  "final_job": true
 }

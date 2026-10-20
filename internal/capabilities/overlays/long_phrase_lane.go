@@ -14,8 +14,8 @@ const (
 	longFamilyDocumentary = iota
 	longFamily3D
 	longFamilyBrush
-	longFamilyAppleClean
-	longFamilyClassic
+	longFamilyModernApple
+	longFamilyClassicApple
 	longFamilyCount
 )
 
@@ -25,10 +25,8 @@ const (
 // The classification is registry data, not naming convention: the bucket of an
 // id is derived from its `families` metadata in animation_registry.v1.json
 // (phrase.documentary → documentary, phrase.3d → spatial, phrase.brush →
-// brush, phrase.apple_clean → apple-clean). Long-lane phrase families that
-// carry no more specific bucket membership than the general phrase walk
-// (phrase.modern_apple, phrase.classic_apple) land in the classic bucket, so
-// adding a new classic-Apple motion to the registry needs no change here.
+// brush, phrase.modern_apple/phrase.apple_clean → modern Apple, and
+// phrase.classic_apple → classic Apple).
 func longPhraseFamilyBucketOf(id string) int {
 	families, _ := capanimreg.AnimationEntryFamilies(id)
 	for _, family := range families {
@@ -47,15 +45,20 @@ func longPhraseFamilyBucketOf(id string) int {
 		}
 	}
 	for _, family := range families {
-		if family == "phrase.apple_clean" {
-			return longFamilyAppleClean
+		if family == "phrase.apple_clean" || family == "phrase.modern_apple" {
+			return longFamilyModernApple
 		}
 	}
-	return longFamilyClassic
+	for _, family := range families {
+		if family == "phrase.classic_apple" {
+			return longFamilyClassicApple
+		}
+	}
+	return longFamilyClassicApple
 }
 
 var longPhraseFamilyLabels = [longFamilyCount]string{
-	"documentary", "text_3d", "brush", "apple_clean", "classic",
+	"documentary", "text_3d", "brush", "modern_apple", "classic_apple",
 }
 
 // selectLongPhraseMotion keeps long copy inside the long-phrase motion family

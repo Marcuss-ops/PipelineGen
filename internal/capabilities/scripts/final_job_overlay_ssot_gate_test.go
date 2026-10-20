@@ -100,3 +100,45 @@ func TestFinalJobOverlayAssetsAdmitsDistinctArtifactsOnTheFrameGrid(t *testing.T
 		t.Fatalf("finalize overlays = %#v, want both distinct overlays admitted", finalize["overlays"])
 	}
 }
+
+func TestFinalJobOverlayAssetsMovesEntityCardAfterDateCard(t *testing.T) {
+	items := []capabilityoverlay.OverlayItem{
+		{ID: "date-13-august", SceneID: "scene-1", Kind: "number", StartMs: 275, EndMs: 5275, Text: "13 August 2007"},
+		{ID: "entity-chiara", SceneID: "scene-1", Kind: "entity_card", StartMs: 1725, EndMs: 3050, TemplateID: "person_default"},
+	}
+	artifacts := map[string]RenderArtifact{
+		"date-13-august": {ID: "artifact-date", DriveFileID: "overlay-drive-date", SHA256: strings.Repeat("d", 64), SizeBytes: 50, CopyEligible: true},
+		"entity-chiara":  {ID: "artifact-entity", DriveFileID: "overlay-drive-entity", SHA256: strings.Repeat("e", 64), SizeBytes: 60, CopyEligible: true},
+	}
+	result := ssotGateResult(items, artifacts)
+	result.CanonicalTimeline.DurationUS = 10_000_000
+	result.CanonicalTimeline.Segments[0].DurationUS = 10_000_000
+	result.FinalAudio = certifiedFinalAudio(10_000)
+
+	_, finalize, err := BuildFinalJobPayloads(context.Background(), "run-1", GenerateRequest{Title: "A story", SourceLanguage: "en"}, result, finalJobPayloadResolver{})
+	if err != nil {
+		t.Fatalf("BuildFinalJobPayloads: %v", err)
+	}
+	overlays, ok := finalize["overlays"].([]any)
+	if !ok || len(overlays) != 2 {
+		t.Fatalf("finalize overlays = %#v, want date and entity card", finalize["overlays"])
+	}
+	frames := make(map[string][2]int64, len(overlays))
+	for _, raw := range overlays {
+		item, ok := raw.(map[string]any)
+		if !ok {
+			t.Fatalf("overlay = %#v, want object", raw)
+		}
+		id, _ := item["id"].(string)
+		start, _ := item["start_frame"].(int64)
+		end, _ := item["end_frame"].(int64)
+		frames[id] = [2]int64{start, end}
+	}
+	date, entity := frames["date-13-august"], frames["entity-chiara"]
+	if date[1] == 0 || entity[1] == 0 {
+		t.Fatalf("missing overlay frame windows: date=%v entity=%v", date, entity)
+	}
+	if entity[0] < date[1] {
+		t.Fatalf("entity card frames %v still overlap date card frames %v", entity, date)
+	}
+}

@@ -73,6 +73,31 @@ func TestProjectChapterBulletsWithoutVoiceover(t *testing.T) {
 	}
 }
 
+func TestProjectChapterBulletsSkipsExplicitShortPhraseScene(t *testing.T) {
+	result, scenes, resolved, inputs := chapterBulletFixture()
+	scenes[0].ShortPhraseOverlay = true
+	got, covered := projectChapterBullets(result, "it", scenes, resolved, inputs)
+	require.False(t, covered["s1"])
+	require.Empty(t, sceneBulletRole(got[0].Phrases))
+	require.True(t, covered["s2"], "ordinary scenes keep their dedicated chapter bullet")
+	require.NotNil(t, sceneBulletRole(got[1].Phrases))
+}
+
+func TestProjectChapterBulletsRespectsDisabledBulletCategory(t *testing.T) {
+	result, scenes, resolved, inputs := chapterBulletFixture()
+	globalCategories := map[scriptpkg.OverlayCategory]scriptpkg.Toggle{
+		scriptpkg.OverlayCategoryBullets: scriptpkg.ToggleDisabled,
+	}
+	scenes[1].OverlayCategories = map[scriptpkg.OverlayCategory]scriptpkg.Toggle{
+		scriptpkg.OverlayCategoryBullets: scriptpkg.ToggleEnabled,
+	}
+	got, covered := projectChapterBullets(result, "it", scenes, resolved, inputs, globalCategories)
+	require.False(t, covered["s1"])
+	require.Empty(t, sceneBulletRole(got[0].Phrases))
+	require.True(t, covered["s2"], "scenes without an explicit opt-out still get their chapter bullet")
+	require.NotNil(t, sceneBulletRole(got[1].Phrases))
+}
+
 func TestProjectChapterBulletsAnchorsToFirstPhrase(t *testing.T) {
 	result, scenes, resolved, inputs := chapterBulletFixture()
 	inputs[0].Phrases = []capabilityoverlay.TimedAnnotation{{
@@ -206,7 +231,7 @@ func TestChapterBulletCoveredSkipsEditorialBulletKeepsTitle(t *testing.T) {
 	result.SourceLanguage = "en"
 	afterChapter, covered := projectChapterBullets(result, "en", scenes, resolved, inputs)
 	require.True(t, covered["s1"])
-	got := projectEditorialOverlays(result, "en", scenes, resolved, afterChapter, covered)
+	got := projectEditorialOverlays(result, "en", scenes, resolved, afterChapter, nil, covered)
 	require.Len(t, got, 1)
 	require.Len(t, got[0].Phrases, 2, "chapter bullet + editorial title, no duplicated bullet")
 	roles := map[string]string{}

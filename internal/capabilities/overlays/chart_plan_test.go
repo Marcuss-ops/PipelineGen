@@ -4,6 +4,7 @@ import (
 	"math"
 	"testing"
 
+	capanimreg "github.com/Marcuss-ops/PipelineGen/internal/capabilities/animreg"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -92,6 +93,7 @@ func TestBuildChartItemsLowersToNativeBarShapes(t *testing.T) {
 	// RenderingGen worker rejects the whole plan, so the producer must supply one.
 	assert.NotEmpty(t, label.PresetID, "the chart label must carry a preset_id for the worker")
 	assert.Equal(t, true, label.Params["chart_card"])
+	assert.Empty(t, label.MotionID, "the shared label keeps its preset motion, not the bar entrance")
 	assert.Equal(t, int64(0), label.StartMs)
 	assert.Equal(t, int64(18000), label.EndMs)
 	assert.Equal(t, label.StartMs, label.StartUS/1000, "ms projection floors start_us")
@@ -101,7 +103,7 @@ func TestBuildChartItemsLowersToNativeBarShapes(t *testing.T) {
 		assert.Equal(t, "SHAPE", bar.TemplateID)
 		assert.Empty(t, bar.PresetID, "native SHAPE bars are preset-less")
 		assert.Equal(t, "rect", bar.Params["shape"])
-		assert.Equal(t, true, bar.Params["chart_bar"])
+		assert.Equal(t, chartBarMotionID, bar.MotionID, "every bar must carry the entrance motion")
 		assert.NotContains(t, bar.Params, "chart")
 		assert.Equal(t, label.StartUS, bar.StartUS, "all components share the grounded audio span")
 		assert.Equal(t, label.DurationUS, bar.DurationUS)
@@ -126,6 +128,45 @@ func TestBuildChartItemsLowersToNativeBarShapes(t *testing.T) {
 		Values: []float64{42, 18}, Labels: []string{"42%", "18%"},
 	}}, 1920, 1080)
 	assert.Equal(t, got, again, "deterministic")
+}
+
+// A bar without animation is a still image: the certification contract asks
+// for a visible chart animation, and a planner regression that drops the motion
+// used to pass every geometry assertion. Pin both halves of the contract: the
+// planner emits the ID, and the runtime catalog still admits it for chart bars.
+func TestChartBarsCarryAdmittedEntranceMotion(t *testing.T) {
+	items := BuildChartItems("plan-motion", []ChartPlacement{{
+		SceneID: "s1", WindowStartUS: 0, WindowEndUS: 18_000_000,
+		Values: []float64{42, 18}, Labels: []string{"42%", "18%"},
+	}}, 1920, 1080)
+	require.Len(t, items, 3)
+	admitted := false
+	for _, group := range capanimreg.ItemChartGroups() {
+		admitted = admitted || capanimreg.AnimationSelectable(chartBarMotionID, group)
+	}
+	require.True(t, admitted,
+		"%q must stay selectable in the chart groups, otherwise the emitted plan fails validation", chartBarMotionID)
+	for _, bar := range items[1:] {
+		assert.Equal(t, chartBarMotionID, bar.MotionID)
+	}
+
+	// The planner output must survive the fail-closed plan validation, which is
+	// where the motion is checked against the registry.
+	plan, err := BuildPlan(PlanInput{
+		PlanID: "plan-motion", VideoID: "v", Width: 1920, Height: 1080, FPSNum: 24, FPSDen: 1,
+		Scenes: []SceneInput{{ID: "s1", Numbers: chartNumbers("42%", "18%")}},
+		Charts: ChartPlacementsForScenes([]SceneInput{{ID: "s1", Numbers: chartNumbers("42%", "18%")}}),
+	}, PlannerConfig{})
+	require.NoError(t, err, "chart bars with the entrance motion must validate")
+	bars := 0
+	for _, item := range plan.Items {
+		if item.Params["chart_bar"] != true {
+			continue
+		}
+		bars++
+		assert.Equal(t, chartBarMotionID, item.MotionID)
+	}
+	require.Equal(t, 2, bars, "both bars reach the admitted plan")
 }
 
 func TestBuildChartItemsSkipsInvalid(t *testing.T) {

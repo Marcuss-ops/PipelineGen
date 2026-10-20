@@ -70,6 +70,10 @@ func ResolveMapOverlaps(items []OverlayItem, sceneWindows map[string][2]int64, f
 		mapKept = append(mapKept, len(kept))
 		kept = append(kept, items[idx])
 	}
+	trimMapWindows(kept, mapKept, sceneWindows, toFrames, fpsNum, fpsDen)
+	for i, idx := range mapIdx {
+		items[idx] = kept[mapKept[i]]
+	}
 	for _, it := range items {
 		if it.Map != nil && !isBackgroundItem(it) {
 			continue
@@ -107,6 +111,99 @@ func ResolveMapOverlaps(items []OverlayItem, sceneWindows map[string][2]int64, f
 	return kept
 }
 
+// TrimMapWindowsBeforeBudget shortens maps that overlap a later map. The
+// planner calls it before editorial overlap budgets so scene-synced maps are
+// not discarded merely because their default camera duration spans a scene
+// boundary. Final sealing applies the same trim plus exact scene bounds.
+func TrimMapWindowsBeforeBudget(items []OverlayItem, fpsNum, fpsDen int) []OverlayItem {
+	if fpsNum <= 0 || fpsDen <= 0 {
+		fpsNum, fpsDen = 24, 1
+	}
+	unit := int64(1_000_000 * fpsDen)
+	toFrames := func(startUS, durUS int64) (int64, int64) {
+		startFrame := startUS * int64(fpsNum) / unit
+		endFrame := ((startUS+durUS)*int64(fpsNum) + unit - 1) / unit
+		if endFrame <= startFrame {
+			endFrame = startFrame + 1
+		}
+		return startFrame, endFrame
+	}
+	mapKept := make([]int, 0, len(items))
+	kept := make([]OverlayItem, 0, len(items))
+	for _, item := range items {
+		if item.Map == nil || isBackgroundItem(item) {
+			continue
+		}
+		mapKept = append(mapKept, len(kept))
+		kept = append(kept, item)
+	}
+	trimMapWindows(kept, mapKept, nil, toFrames, fpsNum, fpsDen)
+	if len(mapKept) == 0 {
+		return items
+	}
+	byID := make(map[string]OverlayItem, len(mapKept))
+	for _, index := range mapKept {
+		byID[kept[index].ID] = kept[index]
+	}
+	out := append([]OverlayItem(nil), items...)
+	for i := range out {
+		if replacement, ok := byID[out[i].ID]; ok {
+			out[i] = replacement
+		}
+	}
+	return out
+}
+
+func trimMapWindows(kept []OverlayItem, mapKept []int, sceneWindows map[string][2]int64, toFrames func(int64, int64) (int64, int64), fpsNum, fpsDen int) {
+	// Maps are scene-bound visual treatments. Keep each inside its scene, and
+	// before the next map when the next scene starts earlier than its minimum
+	// presentation window. Preserve spoken pin timing: shorten only when every
+	// pin still fits the resulting window.
+	for i := range mapKept {
+		current := &kept[mapKept[i]]
+		startUS, durationUS := itemWindowUS(*current)
+		limitUS := startUS + durationUS
+		if i+1 < len(mapKept) {
+			nextStartUS, _ := itemWindowUS(kept[mapKept[i+1]])
+			if nextStartUS > startUS && nextStartUS < limitUS {
+				limitUS = nextStartUS
+			}
+		}
+		if window, ok := sceneWindows[strings.TrimSpace(current.SceneID)]; ok && window[1] > startUS && window[1] < limitUS {
+			limitUS = window[1]
+		}
+		if startUS < 0 || durationUS <= 0 || limitUS >= startUS+durationUS || limitUS <= startUS {
+			continue
+		}
+		startFrame, _ := toFrames(startUS, durationUS)
+		limitFrame, _ := toFrames(limitUS, 1)
+		if limitFrame <= startFrame {
+			continue
+		}
+		unitUS := int64(1_000_000 * fpsDen)
+		endUS := ((limitFrame-1)*unitUS + int64(fpsNum) - 1) / int64(fpsNum)
+		shortened := endUS - startUS
+		if shortened <= 0 || !mapPinsFitDuration(*current, shortened) {
+			continue
+		}
+		current.DurationUS = shortened
+		current.StartUS = startUS
+		current.StartMs = startUS / 1000
+		current.EndMs = (startUS + shortened + 999) / 1000
+	}
+}
+
+func mapPinsFitDuration(item OverlayItem, durationUS int64) bool {
+	if item.Params == nil {
+		return true
+	}
+	timing, ok := item.Params["map_pin_timing"].(map[string]map[string]any)
+	if !ok {
+		return true
+	}
+	return ValidateMapPinTiming(timing, durationUS)
+}
+
 // shiftPastMaps moves it after every overlapping map (bounded passes: each
 // pass clears at least the earliest overlap, and passes never exceed the map
 // count plus one). Anchored and chain items are dropped instead of shifted.
@@ -141,7 +238,10 @@ func shiftPastMaps(it OverlayItem, kept []OverlayItem, mapKept []int, sceneWindo
 				return OverlayItem{}, false
 			}
 			if startUS+durUS > window[1] {
-				durUS = window[1] - startUS
+				// Preserve the animation's authored duration. Shrinking a phrase
+				// to the scene's remaining sliver can produce invalid renderer
+				// geometry (including NaN); drop it when it no longer fits.
+				return OverlayItem{}, false
 			}
 		} else if strings.TrimSpace(current.SceneID) != "" {
 			// A scene-bound card without a known scene window cannot prove

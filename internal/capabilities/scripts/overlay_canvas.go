@@ -69,6 +69,7 @@ type OverlayCanvasSpec struct {
 	AnimationCatalogDigest        string
 	RandomLightLeakOnClipStart    bool
 	RandomLightLeakOnOverlayStart bool
+	RandomImageEffects            bool
 
 	MapType            string
 	MapCameraAnimation string

@@ -275,6 +275,7 @@ func BuildGenerateRequest(env *scriptpkg.GenerationEnvelopeV2, idempotencyKey st
 		AnimationPolicies:             append([]scriptpkg.AnimationPolicy(nil), item.AnimationPolicies...),
 		RandomLightLeakOnClipStart:    item.RandomLightLeakOnClipStart,
 		RandomLightLeakOnOverlayStart: item.RandomLightLeakOnOverlayStart,
+		RandomImageEffects:            item.RandomImageEffects,
 		MaxPhraseOverlays:             item.MaxPhraseOverlays,
 		MaxOverlaysPerScene:           item.MaxOverlaysPerScene,
 		MapsOnly:                      item.MapsOnly,

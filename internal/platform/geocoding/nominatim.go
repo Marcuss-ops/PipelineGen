@@ -229,6 +229,7 @@ const (
 	nameMatchScore    = 0.25
 	countryMatchScore = 0.15
 	regionMatchScore  = 0.10
+	cityLevelScore    = 0.12
 	importanceScore   = 0.10
 	acceptanceScore   = 0.50
 	ambiguityMargin   = 0.08
@@ -244,6 +245,7 @@ func selectCandidate(query string, ctx capgeocoding.Context, hits []searchHit) (
 		score      float64
 		matched    string
 		ctxDecided bool
+		cityLevel  bool
 	}
 	scoredHits := make([]scored, 0, len(hits))
 	for _, hit := range hits {
@@ -251,6 +253,16 @@ func selectCandidate(query string, ctx capgeocoding.Context, hits []searchHit) (
 		if nameMatches(query, hit) {
 			s.score += nameMatchScore
 			s.matched = "name"
+		}
+		// Nominatim often returns both a city's administrative boundary and a
+		// same-name county. Prefer the city-level result when the requested
+		// name exactly matches it; this is a structural specificity signal,
+		// not a guess based on provider ordering or importance alone.
+		if strings.EqualFold(hit.Addresstype, "city") ||
+			strings.EqualFold(hit.Addresstype, "town") ||
+			strings.EqualFold(hit.Addresstype, "municipality") {
+			s.score += cityLevelScore
+			s.cityLevel = true
 		}
 		if contextMatchesCountry(ctx, hit) {
 			s.score += countryMatchScore
@@ -282,10 +294,12 @@ func selectCandidate(query string, ctx capgeocoding.Context, hits []searchHit) (
 	margin := 0.0
 	if len(scoredHits) > 1 {
 		margin = top.score - scoredHits[1].score
-		// A clear lead decides; otherwise only grounded context that the
-		// runner-up lacks may decide. Two equally plausible namesakes with no
+		// A clear lead decides; otherwise grounded context or a more specific
+		// city-level result may decide. Two equally specific namesakes with no
 		// context are refused.
-		if margin < ambiguityMargin && !(top.ctxDecided && !scoredHits[1].ctxDecided) {
+		if margin < ambiguityMargin &&
+			!(top.ctxDecided && !scoredHits[1].ctxDecided) &&
+			!(top.cityLevel && !scoredHits[1].cityLevel) {
 			return searchHit{}, 0, "", false
 		}
 	}

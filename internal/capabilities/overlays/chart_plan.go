@@ -44,6 +44,13 @@ const (
 	ChartMinWindowUS int64 = 2_000_000
 )
 
+// chartBarMotionID is the entrance motion every chart bar carries. It is
+// owned by the RenderingGen runtime catalog (histograms_data_v1): opacity plus
+// scale_y, no 3D and no camera, so it lowers to plain rect animation on every
+// backend. Keeping it in one constant means a calibration change is one edit
+// and the emitted plans stay deterministic.
+const chartBarMotionID = "data_histogram_stagger_up"
+
 // ChartPlacement is one bar chart bound to a scene's numeric span.
 type ChartPlacement struct {
 	SceneID       string
@@ -242,7 +249,14 @@ func BuildChartItems(planID string, placements []ChartPlacement, canvasW, canvas
 			barY := top + rowH*(float64(i)+0.5)
 			out = append(out, OverlayItem{
 				ID: barID, SceneID: sceneID, Kind: "shape", TemplateID: "SHAPE",
-				StartMs: startMS, EndMs: endMS, StartUS: p.WindowStartUS, DurationUS: p.WindowEndUS - p.WindowStartUS,
+				// Bars must enter, not pop: a static rect reads as a still image
+				// and the certification contract asks for a visible chart
+				// animation. data_histogram_stagger_up is the certified
+				// histograms_data_v1 entrance (opacity + scale_y, no 3D, no
+				// camera) and is registered in the RenderingGen runtime catalog;
+				// it is the same motion the worker contract test renders.
+				MotionID: chartBarMotionID,
+				StartMs:  startMS, EndMs: endMS, StartUS: p.WindowStartUS, DurationUS: p.WindowEndUS - p.WindowStartUS,
 				Params: map[string]any{
 					"shape": "rect", "width": barWidth, "height": barHeight,
 					"position": []float64{barX, barY}, "fill": []float64{0.20, 0.78, 0.94, 1}, "chart_bar": true, "chart_group_id": chartKey,

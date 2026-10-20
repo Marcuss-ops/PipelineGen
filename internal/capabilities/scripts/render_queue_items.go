@@ -365,9 +365,9 @@ func separateOverlayItemPlan(parent capoverlay.OverlayPlan, source capoverlay.Ov
 		if fpsNum <= 0 || fpsDen <= 0 {
 			fpsNum, fpsDen = 24, 1
 		}
-		// Never shrink an entrance the planner already granted: the planner's
-		// minimum (4 s) is the source of truth for short phrases, and a clip-derived
-		// value below it would silently cut the animation back down.
+		// Preserve the planner's entrance when the final clip is shorter, while
+		// allowing the clip's one-third window to slow an entrance if the phrase
+		// can safely hold a longer settled tail.
 		entrance := phraseEntranceFrames(targetUS, fpsNum, fpsDen)
 		if planned := plannedEnterFrames(source.MotionParams); planned > entrance {
 			entrance = planned

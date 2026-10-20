@@ -231,12 +231,12 @@ func finalJobOverlayAssetsExcluding(result *GenerateResult, consumed map[string]
 		}
 		if clipWindow, isIntermediateClip := clipWindows[item.SceneID]; isIntermediateClip {
 			// The Master only supports mode=replace. Full-frame phrase/image
-			// renders therefore cover the source clip instead of compositing on
+			// renders, including entity cards, therefore cover the source clip instead of compositing on
 			// top of it. Keep the phrase callout, move it just before the clip,
-			// and omit the contextual still for these short clip scenes so the
+			// and omit image-style cards for these short clip scenes so the
 			// entire source video remains visible and its original audio stays
 			// aligned with the mixed narration.
-			if item.Kind == "image" {
+			if finalJobOverlayIsImageStyle(item) {
 				continue
 			}
 			if item.Kind == "text_phrase" {
@@ -265,7 +265,7 @@ func finalJobOverlayAssetsExcluding(result *GenerateResult, consumed map[string]
 			return nil, fmt.Errorf("final_job overlay %q is not a certified published Drive artifact", item.ID)
 		}
 		startUS, endUS := item.StartUSValue(), item.EndUSValue()
-		if item.Kind == "image" {
+		if finalJobOverlayIsImageStyle(item) {
 			scheduledStartUS, scheduledEndUS, scheduleErr := scheduleFinalJobSceneImage(result, item, frameGuardUS)
 			if scheduleErr != nil {
 				return nil, scheduleErr
@@ -313,6 +313,14 @@ func finalJobOverlayAssetsExcluding(result *GenerateResult, consumed map[string]
 		})
 	}
 	return out, nil
+}
+
+// finalJobOverlayIsImageStyle identifies replace-mode visual cards that may
+// move within their scene to avoid the Master rejecting intersecting overlay
+// frame windows. Entity cards render a full-frame image just like generic image
+// overlays, even though their semantic kind is "entity_card".
+func finalJobOverlayIsImageStyle(item capabilityoverlay.OverlayItem) bool {
+	return item.Kind == "image" || item.Kind == "entity_card"
 }
 
 type finalJobClipWindow struct {

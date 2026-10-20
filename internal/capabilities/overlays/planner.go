@@ -404,6 +404,10 @@ func BuildPlan(input PlanInput, config PlannerConfig) (OverlayPlan, error) {
 			}
 		}
 	}
+	// Bound scene-synced maps before the editorial overlap budget. Without this
+	// pass their default camera duration can span later scenes and cause the
+	// budget to discard an otherwise valid requested map.
+	plan.Items = TrimMapWindowsBeforeBudget(plan.Items, input.FPSNum, input.FPSDen)
 	// Degrade overlaps deterministically: no more than MaxOverlap content
 	// items may pile up at any moment (lowest editorial priority drops first;
 	// structural layers are never counted nor dropped).
@@ -468,16 +472,6 @@ func BuildPlan(input PlanInput, config PlannerConfig) (OverlayPlan, error) {
 					input.PhraseMotions,
 					laneAnimationCount(input.AnimationCounts, laneShortPhrase),
 				)
-				if input.FPSNum > 0 && input.FPSDen > 0 {
-					minimumEntranceFrames := int(shortPhraseEntranceFrames(input.FPSNum, input.FPSDen))
-					if plan.Items[i].MotionParams == nil {
-						plan.Items[i].MotionParams = make(map[string]any)
-					}
-					if current, ok := plan.Items[i].MotionParams["enter_frames"].(int); !ok || current < minimumEntranceFrames {
-						plan.Items[i].MotionParams["enter_frames"] = minimumEntranceFrames
-					}
-					plan.Items[i].MotionParams["exit_frames"] = 0
-				}
 				phraseOrdinal++
 				shortPhraseOrdinal++
 				continue
@@ -555,6 +549,30 @@ func BuildPlan(input PlanInput, config PlannerConfig) (OverlayPlan, error) {
 					plan.Items[i].Params[key] = value
 				}
 			}
+		}
+	}
+	// Renderer catalog defaults may use a 4-second entrance, longer than the
+	// certified spoken window of a short phrase. Clamp every phrase family to
+	// one third of its own window so the selected treatment settles in time and
+	// remains readable through the rest of its MP4.
+	if input.FPSNum > 0 && input.FPSDen > 0 {
+		for i := range plan.Items {
+			item := &plan.Items[i]
+			if item.Kind != "text_phrase" {
+				continue
+			}
+			durationUS := item.DurationUS
+			if durationUS <= 0 && item.EndMs > item.StartMs {
+				durationUS = (item.EndMs - item.StartMs) * 1_000
+			}
+			if durationUS <= 0 {
+				continue
+			}
+			if item.MotionParams == nil {
+				item.MotionParams = make(map[string]any)
+			}
+			item.MotionParams["enter_frames"] = int(phraseEntranceFrames(durationUS, input.FPSNum, input.FPSDen))
+			item.MotionParams["exit_frames"] = 0
 		}
 	}
 	input.MotionSeed = motionSeed

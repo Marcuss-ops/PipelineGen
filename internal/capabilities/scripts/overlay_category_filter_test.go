@@ -31,6 +31,36 @@ func TestOverlayCategoryFilterUsesPositionForIDLessSegments(t *testing.T) {
 	}
 }
 
+func TestPhraseCategoryFilteringRunsBeforePhraseBudget(t *testing.T) {
+	inputs := []overlays.SceneInput{
+		{ID: "lisbona", Phrases: []overlays.TimedAnnotation{{Text: "Il viaggio comincia", StartMs: 0, EndMs: 900}}},
+		{ID: "short_1", Phrases: []overlays.TimedAnnotation{{Text: "Il mercato cambia rapidamente", StartMs: 1000, EndMs: 2000}}},
+		{ID: "short_2", Phrases: []overlays.TimedAnnotation{{Text: "La crescita continua ancora", StartMs: 2000, EndMs: 3000}}},
+		{ID: "short_3", Phrases: []overlays.TimedAnnotation{{Text: "Nuove opportunità stanno emergendo", StartMs: 3000, EndMs: 4000}}},
+		{ID: "short_4", Phrases: []overlays.TimedAnnotation{{Text: "Il futuro appare diverso", StartMs: 4000, EndMs: 5000}}},
+	}
+	scenes := []Scene{
+		{ID: "lisbona", Index: 0, OverlayCategories: map[scriptpkg.OverlayCategory]scriptpkg.Toggle{scriptpkg.OverlayCategoryPhrases: scriptpkg.ToggleDisabled}},
+		{ID: "short_1", Index: 1}, {ID: "short_2", Index: 2}, {ID: "short_3", Index: 3}, {ID: "short_4", Index: 4},
+	}
+	canvas := OverlayCanvasSpec{OverlayCategories: map[scriptpkg.OverlayCategory]scriptpkg.Toggle{
+		scriptpkg.OverlayCategoryPhrases: scriptpkg.ToggleEnabled,
+	}, OverlayCategorySegments: []scriptpkg.ScriptSegment{{
+		ID: "lisbona", OverlayCategories: map[scriptpkg.OverlayCategory]scriptpkg.Toggle{
+			scriptpkg.OverlayCategoryPhrases: scriptpkg.ToggleDisabled,
+		},
+	}}}
+	got := filterScenePhrasesByCategory(inputs, scenes, canvas)
+	if len(got[0].Phrases) != 0 {
+		t.Fatalf("disabled map phrase still consumes budget: %+v", got[0].Phrases)
+	}
+	for i := 1; i < len(got); i++ {
+		if len(got[i].Phrases) != 1 {
+			t.Fatalf("scene %s has %d phrase candidates, want one", got[i].ID, len(got[i].Phrases))
+		}
+	}
+}
+
 // A text-only named entity card is the entities_with_text lane, not imagery:
 // an `images: disabled` toggle removes photo overlays (including image-backed
 // entity cards) and must NOT delete the name cards the entity timeline

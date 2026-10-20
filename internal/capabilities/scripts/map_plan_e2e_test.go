@@ -220,8 +220,13 @@ func TestCompileOverlayPlanWithShortPhraseSceneKeepsGroundedMap(t *testing.T) {
 func TestCompileOverlayPlanMapsOnlyRemovesLateEntityCards(t *testing.T) {
 	canvas := GoldenOverlayCanvas
 	canvas.MapsOnly = true
+	canvas.AnimationCounts = map[string]int{"chain_gap_ms": 5000}
+	result := groundedPlaceResult()
+	// Reproduce the production failure mode: a map and a phrase in the same
+	// scene are close enough for default chain coalescing to fuse them.
+	result.Scenes[0].ShortPhraseOverlay = true
 	plan, err := CompileOverlayPlanWithPlates(
-		groundedPlaceResult(), "en", canvas, "maps-only-plan", "maps-only-video", "map-project",
+		result, "en", canvas, "maps-only-plan", "maps-only-video", "map-project",
 		plateStub{plates: []capabilityoverlay.MapPlate{newOrleansPlate(t)}},
 	)
 	require.NoError(t, err)
@@ -231,6 +236,35 @@ func TestCompileOverlayPlanMapsOnlyRemovesLateEntityCards(t *testing.T) {
 		require.Equal(t, "map", item.Kind, "maps_only must filter entity cards added after the base planner")
 		require.NotNil(t, item.Map)
 	}
+}
+
+func TestCompileOverlayPlanEmitsExplicitShortPhraseScene(t *testing.T) {
+	result := groundedPlaceResult()
+	result.EntityTimeline = nil
+	result.Scenes[0].Annotations = nil
+	result.Scenes[0].ShortPhraseOverlay = true
+	canvas := GoldenOverlayCanvas
+	canvas.MapsOnly = false
+	canvas.MaxPhraseOverlays = 1
+	canvas.AnimationCounts = map[string]int{"short_important_phrase": 1}
+	canvas.OverlayCategories = map[scriptpkg.OverlayCategory]scriptpkg.Toggle{
+		scriptpkg.OverlayCategoryPhrases: scriptpkg.ToggleEnabled,
+		scriptpkg.OverlayCategoryMaps:    scriptpkg.ToggleDisabled,
+	}
+	plan, err := CompileOverlayPlanWithPlates(
+		result, "en", canvas, "short-phrase-plan", "short-phrase-video", "phrase-project", nil,
+	)
+	require.NoError(t, err)
+	require.NotNil(t, plan)
+	var phrases []capabilityoverlay.OverlayItem
+	for _, item := range plan.Items {
+		if item.Kind == "text_phrase" {
+			phrases = append(phrases, item)
+		}
+	}
+	require.Len(t, phrases, 1)
+	require.Equal(t, "We drove into New Orleans today.", phrases[0].Text)
+	require.NotEmpty(t, phrases[0].MotionID)
 }
 
 func TestCompileOverlayPlanWithFlyoverPlatesEmitsNativeCamera(t *testing.T) {

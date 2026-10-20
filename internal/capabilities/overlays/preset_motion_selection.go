@@ -264,6 +264,7 @@ func visiblePhraseEntrancePool(pool []string) []string {
 		fams, _ := capanimreg.AnimationEntryFamilies(id)
 		isBrushFamily := false
 		isDocumentaryFamily := false
+		is3DFamily := false
 		for _, f := range fams {
 			if f == "phrase.brush" {
 				isBrushFamily = true
@@ -271,8 +272,11 @@ func visiblePhraseEntrancePool(pool []string) []string {
 			if f == "phrase.documentary" {
 				isDocumentaryFamily = true
 			}
+			if f == "phrase.3d" {
+				is3DFamily = true
+			}
 		}
-		if isBrushFamily || isDocumentaryFamily ||
+		if isBrushFamily || isDocumentaryFamily || is3DFamily ||
 			strings.Contains(id, "slide") || strings.Contains(id, "reveal") ||
 			strings.Contains(id, "stagger") || strings.Contains(id, "cascade") ||
 			strings.Contains(id, "expand") || strings.Contains(id, "lift") || strings.Contains(id, "fold") ||
@@ -429,7 +433,12 @@ func selectHeavyPhraseMotionLimited(jobID, sceneID string, ordinal int, pool []s
 		}
 		pool = excludeLongCopyCrashingMotions(limitedMotionPool(pool, limit))
 	} else if limit > 0 {
-		pool = excludeLongCopyCrashingMotions(limitedMotionPool(phraseMotionCandidates, limit))
+		// Heavy phrases default to the long-copy-safe entrance pool. Applying
+		// the count limit to the flat phrase catalog can leave only Apple IDs
+		// in the pool, so the family rotator never gets a chance to select
+		// Documentary, Text 3D, or Brush treatments.
+		pool = longPhraseFamilyWindow(
+			excludeLongCopyCrashingMotions(longPhraseMotionCandidates), limit, jobID)
 	}
 	return selectHeavyPhraseMotion(jobID, sceneID, ordinal, pool)
 }

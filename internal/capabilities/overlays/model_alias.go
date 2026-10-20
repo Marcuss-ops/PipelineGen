@@ -60,6 +60,7 @@ const (
 	JobTypePrepare          = capmodel.JobTypePrepare
 	JobTypeRender           = capmodel.JobTypeRender
 	KindBrandText           = capmodel.KindBrandText
+	KindChapterCard         = capmodel.KindChapterCard
 	KindConcept             = capmodel.KindConcept
 	KindEntityCard          = capmodel.KindEntityCard
 	KindEntityImage         = capmodel.KindEntityImage

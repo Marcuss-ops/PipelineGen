@@ -34,7 +34,7 @@ func shortPhraseTestInput(phraseCount int, pool []string) (PlanInput, PlannerCon
 
 // TestShortPhrasePreflightPlanIsRenderable fails in milliseconds, before any
 // render, when a planned short phrase names a motion the registry cannot
-// render or enters faster than the 4 s minimum.
+// render or lacks a settled reading window after its entrance.
 func TestShortPhrasePreflightPlanIsRenderable(t *testing.T) {
 	input, cfg := shortPhraseTestInput(20, nil)
 	plan, err := BuildPlan(input, cfg)
@@ -50,7 +50,7 @@ func TestShortPhrasePreflightPlanIsRenderable(t *testing.T) {
 			certified[id] = true
 		}
 	}
-	const minimumEntranceFrames = 96 // 4 s at 24 fps
+	const wantEntranceFrames = 16 // one third of a 2 s clip at 24 fps
 	planned := 0
 	for _, item := range plan.Items {
 		if item.Kind != "text_phrase" || EditorialSectionForItem(item) != EditorialSectionShortPhrase {
@@ -61,8 +61,8 @@ func TestShortPhrasePreflightPlanIsRenderable(t *testing.T) {
 			t.Errorf("short phrase %q planned non-renderable motion %q", item.ID, item.MotionID)
 		}
 		got, _ := item.MotionParams["enter_frames"].(int)
-		if got < minimumEntranceFrames {
-			t.Errorf("short phrase %q enter_frames = %d, want >= %d", item.ID, got, minimumEntranceFrames)
+		if got != wantEntranceFrames {
+			t.Errorf("short phrase %q enter_frames = %d, want %d so two thirds remain settled", item.ID, got, wantEntranceFrames)
 		}
 	}
 	if planned == 0 {

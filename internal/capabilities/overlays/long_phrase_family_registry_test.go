@@ -19,12 +19,12 @@ var longPhraseFamilyRegistryParity = []struct {
 	id     string
 	bucket int
 }{
-	{"apple_expand_from_center", longFamilyClassic},
-	{"apple_scale_settle", longFamilyClassic},
-	{"apple_soft_scale", longFamilyClassic},
+	{"apple_expand_from_center", longFamilyModernApple},
+	{"apple_scale_settle", longFamilyModernApple},
+	{"apple_soft_scale", longFamilyModernApple},
 	{"brush_phrase_gold_marker", longFamilyBrush},
 	{"brush_phrase_white_light_sweep", longFamilyBrush},
-	{"cinematic_camera_push", longFamilyClassic},
+	{"cinematic_camera_push", longFamilyModernApple},
 	{"doc_01_yellow_marker_sweep", longFamilyDocumentary},
 	{"doc_02_multiline_stagger_highlight", longFamilyDocumentary},
 	{"doc_03_documentary_quote_marker", longFamilyDocumentary},
@@ -40,22 +40,25 @@ var longPhraseFamilyRegistryParity = []struct {
 	{"doc_13_analog_scanner_highlight", longFamilyDocumentary},
 	{"doc_14_dual_highlight_sequence", longFamilyDocumentary},
 	{"doc_15_documentary_source_focus", longFamilyDocumentary},
-	{"hero_scale_focus", longFamilyClassic},
-	{"phrase_apple_clean_01_blur_soft_reveal", longFamilyAppleClean},
-	{"phrase_apple_clean_02_blur_focus_snap", longFamilyAppleClean},
-	{"phrase_apple_clean_03_blur_scale_clean", longFamilyAppleClean},
-	{"phrase_apple_clean_05_blur_apple_fade", longFamilyAppleClean},
-	{"phrase_apple_clean_07_slide_up_soft", longFamilyAppleClean},
-	{"phrase_apple_clean_08_slide_up_spring", longFamilyAppleClean},
-	{"phrase_apple_clean_10_slide_from_right_apple", longFamilyAppleClean},
-	{"phrase_apple_clean_13_scale_soft_pop", longFamilyAppleClean},
-	{"phrase_apple_clean_16_scale_line_build", longFamilyAppleClean},
-	{"phrase_apple_clean_25_opacity_soft_reveal", longFamilyAppleClean},
-	{"phrase_apple_clean_26_opacity_depth_push", longFamilyAppleClean},
-	{"phrase_apple_clean_27_opacity_parallax", longFamilyAppleClean},
-	{"phrase_apple_clean_28_opacity_cinematic", longFamilyAppleClean},
-	{"phrase_apple_clean_29_opacity_hero_settle", longFamilyAppleClean},
-	{"phrase_apple_clean_30_opacity_clean_apple", longFamilyAppleClean},
+	{"counter_scroll_reveal", longFamilyClassicApple},
+	{"hero_scale_focus", longFamilyModernApple},
+	{"isometric_3d_fold", longFamilyClassicApple},
+	{"masked_upward_reveal", longFamilyClassicApple},
+	{"phrase_apple_clean_01_blur_soft_reveal", longFamilyModernApple},
+	{"phrase_apple_clean_02_blur_focus_snap", longFamilyModernApple},
+	{"phrase_apple_clean_03_blur_scale_clean", longFamilyModernApple},
+	{"phrase_apple_clean_05_blur_apple_fade", longFamilyModernApple},
+	{"phrase_apple_clean_07_slide_up_soft", longFamilyModernApple},
+	{"phrase_apple_clean_08_slide_up_spring", longFamilyModernApple},
+	{"phrase_apple_clean_10_slide_from_right_apple", longFamilyModernApple},
+	{"phrase_apple_clean_13_scale_soft_pop", longFamilyModernApple},
+	{"phrase_apple_clean_16_scale_line_build", longFamilyModernApple},
+	{"phrase_apple_clean_25_opacity_soft_reveal", longFamilyModernApple},
+	{"phrase_apple_clean_26_opacity_depth_push", longFamilyModernApple},
+	{"phrase_apple_clean_27_opacity_parallax", longFamilyModernApple},
+	{"phrase_apple_clean_28_opacity_cinematic", longFamilyModernApple},
+	{"phrase_apple_clean_29_opacity_hero_settle", longFamilyModernApple},
+	{"phrase_apple_clean_30_opacity_clean_apple", longFamilyModernApple},
 	{"text_3d_camera_push", longFamily3D},
 	{"text_3d_double_axis_reveal", longFamily3D},
 	{"text_3d_orbit_lock", longFamily3D},
@@ -94,7 +97,7 @@ func TestLongPhraseFamilyBucketCoversEveryActiveLongEntry(t *testing.T) {
 func TestLongPhraseFamilyBucketFailsClosedOnUnknownID(t *testing.T) {
 	// An id unknown to the registry has no family metadata, so it must land
 	// in the classic bucket (the classifier's only load-bearing default).
-	if got := longPhraseFamilyBucketOf("not_an_registry_motion_at_all"); got != longFamilyClassic {
-		t.Errorf("longPhraseFamilyBucketOf(unknown) = %d, want longFamilyClassic", got)
+	if got := longPhraseFamilyBucketOf("not_an_registry_motion_at_all"); got != longFamilyClassicApple {
+		t.Errorf("longPhraseFamilyBucketOf(unknown) = %d, want longFamilyClassicApple", got)
 	}
 }

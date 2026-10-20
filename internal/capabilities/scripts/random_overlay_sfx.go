@@ -219,16 +219,9 @@ func attachRandomOverlaySFXFromAssets(plans []*capoverlay.OverlayPlan, assets []
 }
 
 func isImageOverlaySemanticItem(item capoverlay.OverlayItem) bool {
-	kind := strings.ToLower(strings.TrimSpace(item.Kind))
-	return (kind == "image" || kind == "entity_image" || kind == "image_popup" || kind == "product" || kind == "logo" ||
-		kind == "" && isImageOverlayTemplate(item.TemplateID)) && (len(item.AssetRefs) > 0 || len(item.ImageLayers) > 0)
+	return capoverlay.IsImageOverlayItem(item)
 }
 
 func isImageOverlayTemplate(templateID string) bool {
-	switch strings.ToUpper(strings.TrimSpace(templateID)) {
-	case "IMAGE_OVERLAY", "IMAGE_POPUP", "ENTITY_IMAGE", "PRODUCT", "LOGO":
-		return true
-	default:
-		return false
-	}
+	return capoverlay.IsImageOverlayTemplate(templateID)
 }

@@ -102,4 +102,7 @@ func TestSemanticTypeVocabulary(t *testing.T) {
 	require.Equal(t, SemanticType("TITLE"), SemanticTitle)
 	require.Equal(t, SemanticType("EVENT"), SemanticEvent)
 	require.Equal(t, SemanticType("IMAGE_ENTITY"), SemanticImageEntity)
+	require.Equal(t, SemanticType("PRODUCT"), SemanticProduct)
+	require.Equal(t, SemanticType("TIME"), SemanticTime)
+	require.Equal(t, SemanticType("CHAPTER"), SemanticChapter)
 }

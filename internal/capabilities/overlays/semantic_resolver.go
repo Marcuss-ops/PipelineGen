@@ -66,6 +66,11 @@ var semanticPresetTable = map[string]SemanticPreset{
 	"EVENT":        PresetModernName,
 	"IMAGE_ENTITY": PresetModernImage,
 
+	// Spoken durations render as numeric cards like the other value
+	// artifacts; a CHAPTER is a full-frame editorial title card in the
+	// modern-phrase family. PRODUCT stays absent on purpose: like LOGO it
+	// terminates in a preset-less, asset-driven image primitive.
+
 	// ── Concrete templates referenced by the kind registry ──────────────
 	"person_default":  PresetModernName,
 	"org_default":     PresetModernName,

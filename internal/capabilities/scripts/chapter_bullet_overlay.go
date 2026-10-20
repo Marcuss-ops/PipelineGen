@@ -41,7 +41,7 @@ const ChapterBulletRole = capabilityoverlay.ChapterBulletRole
 // It returns the augmented inputs and the set of covered scene IDs. Covered
 // scenes keep their editorial title but must skip the editorial bullet so
 // the one-bullet-per-scene visual contract holds.
-func projectChapterBullets(result *GenerateResult, language Language, scenes []Scene, resolved []ResolvedScene, inputs []capabilityoverlay.SceneInput) ([]capabilityoverlay.SceneInput, map[string]bool) {
+func projectChapterBullets(result *GenerateResult, language Language, scenes []Scene, resolved []ResolvedScene, inputs []capabilityoverlay.SceneInput, globalCategories ...map[scriptpkg.OverlayCategory]scriptpkg.Toggle) ([]capabilityoverlay.SceneInput, map[string]bool) {
 	covered := map[string]bool{}
 	if result == nil || result.ChapterManifest == nil ||
 		result.ChapterManifest.SchemaVersion != "chapter_manifest.v1" {
@@ -88,8 +88,25 @@ func projectChapterBullets(result *GenerateResult, language Language, scenes []S
 	// Dedup by normalized text: two manifest entries quoting the same span
 	// must not produce two identical on-screen cards in different scenes.
 	used := make(map[string]struct{}, len(ordered))
+	global := map[scriptpkg.OverlayCategory]scriptpkg.Toggle{}
+	if len(globalCategories) > 0 && globalCategories[0] != nil {
+		global = globalCategories[0]
+	}
 	for _, scene := range scenes {
 		if covered[scene.ID] {
+			continue
+		}
+		// Respect an explicit category opt-out before adding a chapter card.
+		// The planner has one phrase slot per scene; inserting a bullet and
+		// filtering it later can otherwise evict the ordinary grounded phrase
+		// that should occupy that slot when bullets are disabled.
+		if editorialCategoryDisabled(scene, scriptpkg.OverlayCategoryBullets, global) {
+			continue
+		}
+		// An explicitly designated short phrase owns this scene's text lane.
+		// Projecting the same sentence as a chapter bullet would cause
+		// `bullets: disabled` to remove the requested phrase overlay.
+		if scene.ShortPhraseOverlay {
 			continue
 		}
 		if scene.ExecutionMode.IsFixedMedia() || !scene.ExecutionMode.CountsTowardBodyWordBudget() {

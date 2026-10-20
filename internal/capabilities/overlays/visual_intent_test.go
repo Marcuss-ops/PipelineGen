@@ -3,6 +3,8 @@ package overlays
 import (
 	"testing"
 
+	capanimreg "github.com/Marcuss-ops/PipelineGen/internal/capabilities/animreg"
+	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	"github.com/stretchr/testify/require"
 )
 
@@ -31,6 +33,9 @@ func TestVisualIntentResolver_MapsSemanticTypeVocabulary(t *testing.T) {
 		{"TITLE", IntentKindTitleCard, FamilyTitle, 70},
 		{"EVENT", IntentKindEventBadge, FamilyEvent, 50},
 		{"IMAGE_ENTITY", IntentKindEntityImage, FamilyImageEntity, 60},
+		{"PRODUCT", IntentKindEntityImage, FamilyProduct, 65},
+		{"TIME", IntentKindImportantNumber, FamilyTime, 58},
+		{"CHAPTER", IntentKindChapterCard, FamilyChapterCard, 68},
 	}
 	for _, tc := range cases {
 		t.Run(tc.semanticType, func(t *testing.T) {
@@ -91,6 +96,55 @@ func TestVisualIntentResolver_TypeNormalization(t *testing.T) {
 	require.True(t, ok)
 	require.Equal(t, IntentKindEntityImage, got.Kind)
 	require.Equal(t, FamilyPersonImage, got.PresetFamily)
+}
+
+func TestVisualIntentResolver_NewVocabularyEndToEnd(t *testing.T) {
+	// PRODUCT resolves to an image intent carrying an optional asset binding;
+	// TIME resolves like the other numeric value artifacts; CHAPTER resolves
+	// to the full-frame chapter-card kind whose overlay kind owns a
+	// chapter_card motion group in the registry (never an empty overlay).
+	product, ok := DefaultVisualIntentResolver.Resolve(VisualIntentInput{
+		SemanticID: "sem_scene02_product_01",
+		SceneID:    "scene_02",
+		Type:       "PRODUCT", // entities.SemanticProduct — literal to avoid the entities→overlays import cycle
+		StartUS:    4_000_000,
+		EndUS:      6_500_000,
+		AssetID:    "img_iphone17_01",
+	})
+	require.True(t, ok)
+	require.Equal(t, IntentKindEntityImage, product.Kind)
+	require.Equal(t, FamilyProduct, product.PresetFamily)
+	require.Equal(t, "img_iphone17_01", product.AssetID)
+
+	time, ok := DefaultVisualIntentResolver.Resolve(VisualIntentInput{
+		SemanticID: "sem_scene04_time_01",
+		SceneID:    "scene_04",
+		Type:       "TIME", // entities.SemanticTime
+		StartUS:    7_000_000,
+		EndUS:      8_000_000,
+	})
+	require.True(t, ok)
+	require.Equal(t, IntentKindImportantNumber, time.Kind)
+	require.Equal(t, FamilyTime, time.PresetFamily)
+
+	chapter, ok := DefaultVisualIntentResolver.Resolve(VisualIntentInput{
+		SemanticID: "sem_scene06_chapter_01",
+		SceneID:    "scene_06",
+		Type:       "CHAPTER", // entities.SemanticChapter
+		StartUS:    0,
+		EndUS:      3_000_000,
+	})
+	require.True(t, ok)
+	require.Equal(t, IntentKindChapterCard, chapter.Kind)
+	require.Equal(t, FamilyChapterCard, chapter.PresetFamily)
+	// The registry must author at least one selectable motion for the
+	// chapter_card overlay kind, so a chapter intent never plans empty.
+	groups := capanimreg.ItemMotionGroups(string(capmodel.KindChapterCard))
+	require.NotEmpty(t, groups)
+	for _, group := range groups {
+		require.NotEmpty(t, capanimreg.AnimationCandidates(group),
+			"chapter_card motion group %q must resolve to animations", group)
+	}
 }
 
 func TestVisualIntentResolver_Deterministic(t *testing.T) {
