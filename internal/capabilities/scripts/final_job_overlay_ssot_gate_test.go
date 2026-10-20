@@ -73,13 +73,14 @@ func TestFinalJobOverlayAssetsRejectsDuplicateDriveArtifact(t *testing.T) {
 // Master's exact rejection boundary: a second overlay starting at 11.95s
 // projects to start frame 287, which is still inside the first overlay's
 // frame window [240,288) — the Master replaces whole frames and rejects
-// intersecting replace windows. The gate must fail the payload at build time.
+// intersecting replace windows. There is no free interval left in this
+// five-second scene, so the local resolver must reject at build time.
 func TestFinalJobOverlayAssetsRejectsIntersectingFrameWindows(t *testing.T) {
 	items, artifacts := ssotGateItems(10_000, 11_950, strings.Repeat("d", 64), strings.Repeat("e", 64))
 	result := ssotGateResult(items, artifacts)
 	_, _, err := BuildFinalJobPayloads(context.Background(), "run-1", GenerateRequest{Title: "A story", SourceLanguage: "pt"}, result, finalJobPayloadResolver{})
-	if err == nil || !strings.Contains(err.Error(), "intersects overlay") {
-		t.Fatalf("BuildFinalJobPayloads error = %v, want intersecting-frame-window fail-closed gate", err)
+	if err == nil || !strings.Contains(err.Error(), "cannot fit a non-overlapping") {
+		t.Fatalf("BuildFinalJobPayloads error = %v, want local no-space rejection", err)
 	}
 }
 

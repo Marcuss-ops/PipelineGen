@@ -13,6 +13,11 @@ import (
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 )
 
+type finalJobFrameWindow struct {
+	start, end int64
+	sceneID    string
+}
+
 // OverlayPublicationSpec carries the stable logical identity used by Drive
 // routing. It deliberately contains no provider-specific fields: the
 // platform adapter owns the concrete publication contract.
@@ -223,8 +228,7 @@ func finalJobOverlayAssetsExcluding(result *GenerateResult, consumed map[string]
 	// reaches the remote and can never burn a worker attempt on a guaranteed
 	// rejection.
 	admittedContent := make(map[string]string, len(result.OverlayPlan.Items))
-	type frameWindow struct{ start, end int64 }
-	admittedFrames := make(map[string]frameWindow, len(result.OverlayPlan.Items))
+	admittedFrames := make(map[string]finalJobFrameWindow, len(result.OverlayPlan.Items))
 	for index, item := range result.OverlayPlan.Items {
 		if _, usedAsSceneClip := consumed[strings.TrimSpace(item.ID)]; usedAsSceneClip {
 			continue
@@ -298,12 +302,25 @@ func finalJobOverlayAssetsExcluding(result *GenerateResult, consumed map[string]
 		// guaranteed remote rejection (or a corrupted composite). Project both
 		// endpoints onto the exact frame grid the payload carries, matching
 		// what the Master will compare.
+		var overlapID string
 		for priorID, prior := range admittedFrames {
 			if startFrame < prior.end && prior.start < endFrame {
-				return nil, fmt.Errorf("final_job overlay %q frame window [%d,%d) intersects overlay %q [%d,%d); the Master rejects intersecting replace overlays", item.ID, startFrame, endFrame, priorID, prior.start, prior.end)
+				overlapID = priorID
+				break
 			}
 		}
-		admittedFrames[item.ID] = frameWindow{start: startFrame, end: endFrame}
+		if overlapID != "" {
+			prior := admittedFrames[overlapID]
+			if prior.sceneID != item.SceneID {
+				return nil, fmt.Errorf("final_job overlays %q and %q overlap across scenes (%q, %q); cannot preserve both in mode=replace", item.ID, overlapID, item.SceneID, prior.sceneID)
+			}
+			scheduledStart, scheduledEnd, scheduleErr := scheduleFinalJobOverlayFrames(result, item, startFrame, endFrame, fpsNum, fpsDen, admittedFrames)
+			if scheduleErr != nil {
+				return nil, scheduleErr
+			}
+			startFrame, endFrame = scheduledStart, scheduledEnd
+		}
+		admittedFrames[item.ID] = finalJobFrameWindow{start: startFrame, end: endFrame, sceneID: item.SceneID}
 		out = append(out, map[string]any{
 			"id": item.ID, "asset_id": firstFinalJobValue(artifact.ID, driveID),
 			"drive_file_id": driveID, "url": driveFileWebLink(driveID),
@@ -313,6 +330,58 @@ func finalJobOverlayAssetsExcluding(result *GenerateResult, consumed map[string]
 		})
 	}
 	return out, nil
+}
+
+// scheduleFinalJobOverlayFrames moves an otherwise-valid replace overlay to
+// the first free frame interval after its planned start, constrained to the
+// source scene. This preserves every overlay while making the final payload
+// conform to Master 51's non-overlapping mode=replace contract.
+func scheduleFinalJobOverlayFrames(result *GenerateResult, item capabilityoverlay.OverlayItem, startFrame, endFrame int64, fpsNum, fpsDen int, occupied map[string]finalJobFrameWindow) (int64, int64, error) {
+	if fpsNum <= 0 || fpsDen <= 0 || endFrame <= startFrame {
+		return 0, 0, fmt.Errorf("final_job overlay %q has an invalid frame window [%d,%d)", item.ID, startFrame, endFrame)
+	}
+	sceneStartUS, sceneEndUS := int64(-1), int64(-1)
+	if result != nil {
+		if result.CanonicalTimeline != nil {
+			for _, scene := range result.CanonicalTimeline.Segments {
+				if scene.ID == item.SceneID {
+					sceneStartUS, sceneEndUS = scene.TimelineStartUS, scene.TimelineStartUS+scene.DurationUS
+					break
+				}
+			}
+		}
+		for _, scene := range result.ResolvedScenes {
+			if scene.ID == item.SceneID {
+				sceneStartUS, sceneEndUS = scene.TimelineStartUS, scene.TimelineStartUS+scene.DurationUS
+				break
+			}
+		}
+	}
+	if sceneStartUS < 0 || sceneEndUS <= sceneStartUS {
+		return 0, 0, fmt.Errorf("final_job overlay %q overlaps another overlay but scene %q has no valid timeline window", item.ID, item.SceneID)
+	}
+	fpsNumerator := int64(fpsNum)
+	frameDenominator := int64(1_000_000 * fpsDen)
+	sceneStartFrame := (sceneStartUS*fpsNumerator + frameDenominator - 1) / frameDenominator
+	sceneEndFrame := sceneEndUS * fpsNumerator / frameDenominator
+	duration := endFrame - startFrame
+	candidate := startFrame
+	if candidate < sceneStartFrame {
+		candidate = sceneStartFrame
+	}
+	for candidate+duration <= sceneEndFrame {
+		conflictEnd := candidate
+		for _, prior := range occupied {
+			if prior.sceneID == item.SceneID && candidate < prior.end && prior.start < candidate+duration && prior.end > conflictEnd {
+				conflictEnd = prior.end
+			}
+		}
+		if conflictEnd == candidate {
+			return candidate, candidate + duration, nil
+		}
+		candidate = conflictEnd
+	}
+	return 0, 0, fmt.Errorf("final_job overlay %q cannot fit a non-overlapping %d-frame window in scene %q", item.ID, duration, item.SceneID)
 }
 
 // finalJobOverlayIsImageStyle identifies replace-mode visual cards that may
