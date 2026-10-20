@@ -4,9 +4,11 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -16,6 +18,54 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/observability"
 	"go.uber.org/zap"
 )
+
+// settleFinalJob is the SINGLE interpretation of a remote final-job outcome.
+// Both submit and attach paths share receipt persistence and retry semantics.
+func (r *Runner) settleFinalJob(ctx context.Context, runID string, result *GenerateResult, remote RemoteFinalJobResult, yields int, err error) bool {
+	if err != nil {
+		if errors.Is(err, ErrFinalJobPending) && result != nil {
+			receipt := remote
+			if strings.TrimSpace(receipt.JobID) == "" && result.RemoteFinalJob != nil {
+				receipt.JobID = strings.TrimSpace(result.RemoteFinalJob.JobID)
+			}
+			receipt.Yields = yields + 1
+			result.RemoteFinalJob = &receipt
+			r.checkpoint(ctx, runID, result)
+			if r.log != nil {
+				r.log.Info("remote final job still rendering; handing the wait back to a later attempt",
+					zap.String("run_id", runID), zap.String("remote_job_id", receipt.JobID),
+					zap.String("remote_status", receipt.Status), zap.Int("yields", receipt.Yields))
+			}
+			r.failRunWithRetry(ctx, runID, StagePublishingDocuments, fmt.Errorf(
+				"remote final job %s is still %s: %w", receipt.JobID, receipt.Status, ErrFinalJobPending))
+			return false
+		}
+		// Preserve a terminal Master response; the old RUNNING receipt must not
+		// remain authoritative after the worker has ended the remote job.
+		if result != nil && strings.TrimSpace(remote.JobID) != "" && strings.TrimSpace(remote.Status) != "" {
+			result.RemoteFinalJob = &remote
+			if saveErr := r.repo.SavePartialResult(ctx, runID, result); saveErr != nil {
+				err = fmt.Errorf("%w: persist terminal remote receipt %s/%s: %v; original failure: %w", ErrFinalJobReceiptCheckpoint, remote.JobID, remote.Status, saveErr, err)
+			}
+		}
+		r.failRunWithRetry(ctx, runID, StagePublishingDocuments, fmt.Errorf("remote final job: %w", err))
+		return false
+	}
+	if strings.TrimSpace(remote.JobID) == "" || !finalJobReceiptSucceeded(&remote) {
+		r.failRunWithRetry(ctx, runID, StagePublishingDocuments, fmt.Errorf("remote final job returned incomplete/non-success result (job_id=%q status=%q)", remote.JobID, remote.Status))
+		return false
+	}
+	if result == nil {
+		r.failRunWithRetry(ctx, runID, StagePublishingDocuments, fmt.Errorf("remote final job %s succeeded but the run has no result to record it in", remote.JobID))
+		return false
+	}
+	result.RemoteFinalJob = &remote
+	r.checkpoint(ctx, runID, result)
+	if r.log != nil {
+		r.log.Info("remote final job completed", zap.String("run_id", runID), zap.String("remote_job_id", remote.JobID), zap.String("worker_id", remote.WorkerID))
+	}
+	return true
+}
 
 // ── Internal helpers ────────────────────────────────────────────────
 
