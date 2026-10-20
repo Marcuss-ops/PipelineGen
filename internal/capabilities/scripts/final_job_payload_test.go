@@ -158,6 +158,55 @@ func TestScheduleFinalJobSceneImageMovesAfterReplaceOverlays(t *testing.T) {
 	}
 }
 
+func TestFinalJobSchedulesOverlappingDateCardsWithinScene(t *testing.T) {
+	items := []capabilityoverlay.OverlayItem{
+		{ID: "date-tick", SceneID: "scene-1", Kind: "number", TemplateID: "TIMELINE_DATE_CARD", Text: "28 settembre", StartUS: 5_000_000, DurationUS: 5_000_000},
+		{ID: "date-month", SceneID: "scene-1", Kind: "number", TemplateID: "TIMELINE_DATE_CARD", Text: "28 settembre 2026", StartUS: 5_000_000, DurationUS: 5_000_000},
+	}
+	result := &GenerateResult{
+		CanonicalTimeline: &capabilityaudio.CanonicalTimeline{Segments: []capabilityaudio.TimelineSegment{{ID: "scene-1", TimelineStartUS: 0, DurationUS: 20_000_000}}},
+		OverlayPlan:       &capabilityoverlay.OverlayPlan{FPSNum: 24, FPSDen: 1, Items: items},
+		OverlayRender: &RenderReference{Items: []OverlayItemRenderReference{
+			{ItemID: "date-tick", Status: "SUCCEEDED", Artifact: &RenderArtifact{ID: "date-tick-artifact", DriveFileID: "date-tick-drive", SHA256: strings.Repeat("d", 64), SizeBytes: 100, FrameCount: 120}},
+			{ItemID: "date-month", Status: "SUCCEEDED", Artifact: &RenderArtifact{ID: "date-month-artifact", DriveFileID: "date-month-drive", SHA256: strings.Repeat("e", 64), SizeBytes: 100, FrameCount: 120}},
+		}},
+	}
+	overlays, err := finalJobOverlayAssetsExcluding(result, nil)
+	if err != nil {
+		t.Fatalf("finalJobOverlayAssetsExcluding: %v", err)
+	}
+	if len(overlays) != 2 {
+		t.Fatalf("final overlays = %d, want both date cards", len(overlays))
+	}
+	first := overlays[0].(map[string]any)
+	second := overlays[1].(map[string]any)
+	if first["start_frame"] != int64(120) || first["end_frame"] != int64(240) {
+		t.Fatalf("first overlay window = %v-%v, want 120-240", first["start_frame"], first["end_frame"])
+	}
+	if second["start_frame"] != int64(240) || second["end_frame"] != int64(360) {
+		t.Fatalf("second overlay window = %v-%v, want 240-360", second["start_frame"], second["end_frame"])
+	}
+}
+
+func TestFinalJobRejectsOverlaysThatCannotFitInScene(t *testing.T) {
+	items := []capabilityoverlay.OverlayItem{
+		{ID: "date-a", SceneID: "scene-1", Kind: "number", StartUS: 0, DurationUS: 5_000_000},
+		{ID: "date-b", SceneID: "scene-1", Kind: "number", StartUS: 0, DurationUS: 5_000_000},
+	}
+	result := &GenerateResult{
+		CanonicalTimeline: &capabilityaudio.CanonicalTimeline{Segments: []capabilityaudio.TimelineSegment{{ID: "scene-1", TimelineStartUS: 0, DurationUS: 5_000_000}}},
+		OverlayPlan:       &capabilityoverlay.OverlayPlan{FPSNum: 24, FPSDen: 1, Items: items},
+		OverlayRender: &RenderReference{Items: []OverlayItemRenderReference{
+			{ItemID: "date-a", Status: "SUCCEEDED", Artifact: &RenderArtifact{ID: "date-a-artifact", DriveFileID: "date-a-drive", SHA256: strings.Repeat("f", 64), SizeBytes: 100, FrameCount: 120}},
+			{ItemID: "date-b", Status: "SUCCEEDED", Artifact: &RenderArtifact{ID: "date-b-artifact", DriveFileID: "date-b-drive", SHA256: strings.Repeat("g", 64), SizeBytes: 100, FrameCount: 120}},
+		}},
+	}
+	_, err := finalJobOverlayAssetsExcluding(result, nil)
+	if err == nil || !strings.Contains(err.Error(), `cannot fit a non-overlapping 120-frame window in scene "scene-1"`) {
+		t.Fatalf("finalJobOverlayAssetsExcluding error = %v, want local no-space rejection", err)
+	}
+}
+
 func TestEnforceFinalJobMinimumSceneDurationFailsWhenNoTimeCanBeBorrowed(t *testing.T) {
 	scenes := []map[string]any{{"duration_seconds": 0.016}}
 	if err := enforceFinalJobMinimumSceneDuration(scenes, 100); err == nil {
