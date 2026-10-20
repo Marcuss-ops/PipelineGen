@@ -434,62 +434,6 @@ func (r *Runner) submitFinalJob(ctx context.Context, runID string, req GenerateR
 	return r.settleFinalJob(ctx, runID, result, remote, 0, err)
 }
 
-// settleFinalJob is the SINGLE interpretation of a remote final-job outcome.
-// Both entries (submit and attach) end here so they cannot disagree about what
-// a pending wait, a terminal failure or a completed render means.
-//
-// yields is how many attempts already handed the wait back before this one.
-func (r *Runner) settleFinalJob(ctx context.Context, runID string, result *GenerateResult, remote RemoteFinalJobResult, yields int, err error) bool {
-	if err != nil {
-		if errors.Is(err, ErrFinalJobPending) && result != nil {
-			receipt := remote
-			if strings.TrimSpace(receipt.JobID) == "" && result.RemoteFinalJob != nil {
-				receipt.JobID = strings.TrimSpace(result.RemoteFinalJob.JobID)
-			}
-			receipt.Yields = yields + 1
-			result.RemoteFinalJob = &receipt
-			// Persist the handle BEFORE ending the attempt: the Master keeps
-			// rendering, and this receipt is the only address of that work. The
-			// checkpoint is the same durable partial-result write the success path
-			// uses (not the debounced one), so the next attempt cannot miss it.
-			r.checkpoint(ctx, runID, result)
-			if r.log != nil {
-				r.log.Info("remote final job still rendering; handing the wait back to a later attempt",
-					zap.String("run_id", runID), zap.String("remote_job_id", receipt.JobID),
-					zap.String("remote_status", receipt.Status), zap.Int("yields", receipt.Yields))
-			}
-			r.failRunWithRetry(ctx, runID, StagePublishingDocuments, fmt.Errorf(
-				"remote final job %s is still %s: %w", receipt.JobID, receipt.Status, ErrFinalJobPending))
-			return false
-		}
-		// Keep a terminal Master outcome in the durable result. Without this
-		// write the prior RUNNING receipt remains authoritative after failure and
-		// the next attempt incorrectly attaches to a job that has ended.
-		if result != nil && strings.TrimSpace(remote.JobID) != "" && strings.TrimSpace(remote.Status) != "" {
-			result.RemoteFinalJob = &remote
-			if saveErr := r.repo.SavePartialResult(ctx, runID, result); saveErr != nil {
-				err = fmt.Errorf("%w: persist terminal remote receipt %s/%s: %v; original failure: %w", ErrFinalJobReceiptCheckpoint, remote.JobID, remote.Status, saveErr, err)
-			}
-		}
-		r.failRunWithRetry(ctx, runID, StagePublishingDocuments, fmt.Errorf("remote final job: %w", err))
-		return false
-	}
-	if strings.TrimSpace(remote.JobID) == "" || !finalJobReceiptSucceeded(&remote) {
-		r.failRunWithRetry(ctx, runID, StagePublishingDocuments, fmt.Errorf("remote final job returned incomplete/non-success result (job_id=%q status=%q)", remote.JobID, remote.Status))
-		return false
-	}
-	if result == nil {
-		r.failRunWithRetry(ctx, runID, StagePublishingDocuments, fmt.Errorf("remote final job %s succeeded but the run has no result to record it in", remote.JobID))
-		return false
-	}
-	result.RemoteFinalJob = &remote
-	r.checkpoint(ctx, runID, result)
-	if r.log != nil {
-		r.log.Info("remote final job completed", zap.String("run_id", runID), zap.String("remote_job_id", remote.JobID), zap.String("worker_id", remote.WorkerID))
-	}
-	return true
-}
-
 // A clip-only run has no stock folder to chunk: its video IS the certified
 // localized render of each scene. These helpers select that render and project
 // it into the runtime asset reference. The source clip in the media library is
