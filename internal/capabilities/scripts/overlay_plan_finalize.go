@@ -24,6 +24,7 @@ import (
 	"strings"
 
 	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
+	scriptoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/overlay"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
@@ -260,4 +261,89 @@ func applyOverlayStyleToItems(items []capabilityoverlay.OverlayItem, canvas Over
 			normalizeEntityImageLayer(&items[i])
 		}
 	}
+}
+
+// applyCompositeRuntimeStyle projects text and image settings into chain children.
+func applyCompositeRuntimeStyle(items []capabilityoverlay.OverlayItem, canvas OverlayCanvasSpec) {
+	styleParams := overlayStyleParams(canvas.Style)
+	captionColor := scriptoverlay.StyleFontColor(canvas.Style)
+	if captionColor != "" || len(styleParams) > 0 {
+		for i := range items {
+			if capabilityoverlay.IsChainItemKind(items[i].Kind) {
+				segments, ok := capabilityoverlay.DecodeChainSegments(items[i].Params)
+				if !ok {
+					continue // Validate below rejects malformed chain payloads.
+				}
+				for segmentIndex := range segments {
+					segment := &segments[segmentIndex]
+					segmentStyle := make(map[string]any, len(styleParams))
+					for key, value := range styleParams {
+						segmentStyle[key] = value
+					}
+					if segment.Style == nil {
+						segment.Style = map[string]any{}
+					}
+					for key, value := range segmentStyle {
+						if key == "style" {
+							segment.Style[key] = scriptoverlay.MergeStyleParam(segment.Style[key], value.(map[string]any))
+						} else {
+							segment.Style[key] = value
+						}
+					}
+					if isEntityOverlayKind(segment.Kind) {
+						if captionColor != "" {
+							segment.CaptionColor = captionColor
+						}
+						scriptoverlay.MergeCaptionStyleIntoLayers(segment.ImageLayers, styleParams)
+					}
+					if isImageOverlayKind(segment.Kind) {
+						scriptoverlay.MergeCaptionStyleIntoLayers(segment.ImageLayers, styleParams)
+					}
+				}
+				items[i].Params["chain_segments"] = segments
+				items[i].RenderKey = ""
+				continue
+			}
+			if isEntityOverlayKind(items[i].Kind) {
+				items[i].Params = scriptoverlay.MergeRuntimeTextStyleParams(items[i].Params, styleParams)
+				if captionColor != "" {
+					items[i].CaptionColor = captionColor
+				}
+			}
+			if isImageOverlayItem(items[i]) {
+				scriptoverlay.MergeCaptionStyleIntoLayers(items[i].ImageLayers, styleParams)
+			}
+			items[i].RenderKey = ""
+		}
+	}
+	if canvas.Style != nil && canvas.Style.Image != nil {
+		for i := range items {
+			if capabilityoverlay.IsChainItemKind(items[i].Kind) {
+				segments, ok := capabilityoverlay.DecodeChainSegments(items[i].Params)
+				if !ok {
+					continue // Validate below rejects malformed chain payloads.
+				}
+				for segmentIndex := range segments {
+					segment := &segments[segmentIndex]
+					if !isImageOverlayKind(segment.Kind) {
+						continue
+					}
+					segment.Frame = overlayImageFrame(canvas.Style.Image)
+					for childIndex := range segment.ImageLayers {
+						child := &segment.ImageLayers[childIndex]
+						child.Params = mergeStyleParam(child.Params, imageStyleParams(canvas.Style.Image))
+						child.Frame = overlayImageFrame(canvas.Style.Image)
+					}
+					segment.Params = mergeStyleParam(segment.Params, imageStyleParams(canvas.Style.Image))
+				}
+				items[i].Params["chain_segments"] = segments
+				items[i].RenderKey = ""
+				continue
+			}
+			if isImageOverlayItem(items[i]) {
+				applyOverlayImageStyle(&items[i], canvas.Style.Image)
+			}
+		}
+	}
+
 }
