@@ -217,6 +217,15 @@ func finalJobOverlayAssetsExcluding(result *GenerateResult, consumed map[string]
 	}
 	out := make([]any, 0, len(result.OverlayPlan.Items))
 	frameGuardUS := (1_000_000*int64(fpsDen) + int64(fpsNum) - 1) / int64(fpsNum)
+	baseFrameCount := int64(0)
+	if result.FinalAudio != nil && result.FinalAudio.DurationMS > 0 {
+		// The remote composite's base is bounded by the certified final audio.
+		// Semantic overlay timing can extend a little past that boundary (for
+		// example, a final date card planned against a longer source scene).
+		// Clip that last visible window to the actual output so Master 51 does
+		// not reject an otherwise valid render for replacing nonexistent frames.
+		baseFrameCount = int64(result.FinalAudio.DurationMS) * int64(fpsNum) / (1000 * int64(fpsDen))
+	}
 	clipWindows := finalJobIntermediateClipWindows(result)
 	// One SSOT admission gate for the finalize handoff. Every duplicate
 	// surface upstream (entity/context image arms, planner+resolver copies,
@@ -286,6 +295,14 @@ func finalJobOverlayAssetsExcluding(result *GenerateResult, consumed map[string]
 		endFrame := (endUS*int64(fpsNum) + 1_000_000*int64(fpsDen) - 1) / (1_000_000 * int64(fpsDen))
 		if artifact.FrameCount > 0 && endFrame-startFrame > int64(artifact.FrameCount) {
 			endFrame = startFrame + int64(artifact.FrameCount)
+		}
+		if baseFrameCount > 0 {
+			if startFrame >= baseFrameCount {
+				return nil, fmt.Errorf("final_job overlay %q starts at frame %d after the certified base ends at frame %d", item.ID, startFrame, baseFrameCount)
+			}
+			if endFrame > baseFrameCount {
+				endFrame = baseFrameCount
+			}
 		}
 		if endFrame <= startFrame {
 			return nil, fmt.Errorf("final_job overlay %q has an empty frame interval", item.ID)
