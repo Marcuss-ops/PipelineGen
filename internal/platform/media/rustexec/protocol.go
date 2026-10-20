@@ -78,11 +78,15 @@ type request struct {
 	AudioBitrate     string    `json:"audio_bitrate,omitempty"`
 	SampleRate       uint32    `json:"sample_rate,omitempty"`
 	Channels         uint32    `json:"channels,omitempty"`
-	DurationSec      float64   `json:"duration_sec,omitempty"`
-	KeepAudio        bool      `json:"keep_audio,omitempty"`
-	NoAudio          bool      `json:"no_audio,omitempty"`
-	OverlayPath      string    `json:"overlay_path,omitempty"`
-	Opacity          float64   `json:"opacity,omitempty"`
+	// MaxParallelCuts is the Go-owned cut fanout capacity policy. Zero
+	// (omitempty) keeps the Rust executor's historical default (3); the
+	// executor fails closed on values above its validated ceiling.
+	MaxParallelCuts uint32  `json:"max_parallel_cuts,omitempty"`
+	DurationSec     float64 `json:"duration_sec,omitempty"`
+	KeepAudio       bool    `json:"keep_audio,omitempty"`
+	NoAudio         bool    `json:"no_audio,omitempty"`
+	OverlayPath     string  `json:"overlay_path,omitempty"`
+	Opacity         float64 `json:"opacity,omitempty"`
 	// Watermark scaling + green-screen chroma key (YouTube watermark flow).
 	// ScalePercent is the overlay size as a percentage of the MAIN frame
 	// width (0 = leave the overlay at its native size). GreenScreen* drive

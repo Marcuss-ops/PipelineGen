@@ -187,6 +187,16 @@ func chainFamily(kind string) string {
 // must carry at least one asset and map items their georeference; anything
 // without certified timing stays standalone instead of poisoning the chain.
 func chainable(item OverlayItem) bool {
+	// A chart comparison is atomic: the label card and its bars share one
+	// chart_group_id and PruneOrphanChartBars deletes either side stranded
+	// without the other. Fusing the label (kind text_phrase) into a phrase
+	// chain entombs it as a plain segment while the bars stay top-level and
+	// die as orphans (live C1 2026-10-19: label survived inside a chain,
+	// both bars pruned, chart dead). Both stay standalone through
+	// coalescing so the group survives or is dropped only as a unit.
+	if item.Params != nil && (item.Params["chart_card"] == true || item.Params["chart_bar"] == true) {
+		return false
+	}
 	family := chainFamily(item.Kind)
 	if family == "" {
 		return false

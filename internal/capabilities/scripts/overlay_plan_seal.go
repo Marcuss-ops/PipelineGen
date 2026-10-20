@@ -20,6 +20,18 @@ import (
 // render keys after post-processing and assembles + validates the final
 // OverlayPlan. Split from compileOverlayPlanWithMotionOffset (same behavior).
 func sealOverlayPlan(result *GenerateResult, language Language, plannerPlan capabilityoverlay.OverlayPlan, resolved []ResolvedScene, items []capabilityoverlay.OverlayItem, canvas OverlayCanvasSpec, planID, videoID, projectID string) (*capabilityoverlay.OverlayPlan, error) {
+	// Maps are composited in replace mode, so any shared frame makes the final
+	// plan invalid. Resolve those collisions while scene timing is still in
+	// scope: shift ordinary cards after the map within their scene, and drop
+	// only cards that cannot fit. Anchored editorial timing remains untouched.
+	sceneWindows := make(map[string][2]int64, len(resolved))
+	for _, scene := range resolved {
+		if scene.ID == "" || scene.DurationUS <= 0 {
+			continue
+		}
+		sceneWindows[scene.ID] = [2]int64{scene.TimelineStartUS, scene.TimelineStartUS + scene.DurationUS}
+	}
+	items = capabilityoverlay.ResolveMapOverlaps(items, sceneWindows, canvas.FPSNum, canvas.FPSDen)
 	// Preserve the scene extent as a defensive lower bound when a malformed or
 	// legacy result has no final-audio reference.
 	var durationUS int64
@@ -105,6 +117,14 @@ func sealOverlayPlan(result *GenerateResult, language Language, plannerPlan capa
 		return nil, fmt.Errorf("overlay plan: seal: %w", err)
 	}
 	return &plan, nil
+}
+
+// entityVariationSeedForCanvas forwards an explicit per-render motion seed to
+// the worker's entity-style sampler. Empty preserves the historical
+// plan-identity sampling so existing sealed plans stay byte-identical. It
+// lives beside the seal because the seed is frozen into the sealed plan.
+func entityVariationSeedForCanvas(canvas OverlayCanvasSpec) string {
+	return strings.TrimSpace(canvas.MotionSeed)
 }
 
 // attachEntityCardAsset resolves the card's canonical_entity_id through the

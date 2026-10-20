@@ -33,12 +33,19 @@ type mediaSamplerGroupRequest struct {
 	// ledger: entries with an owner other than this scene fail the
 	// worker's reuse check as already_bound.
 	BoundAssets []mediaSamplerBoundAsset `json:"bound_assets,omitempty"`
+	// The Go-owned data-driven selection policy (empty tables stay absent
+	// on the wire so the worker keeps its curated defaults).
+	mediaSamplerSelectionPolicy
 }
 
 // mediaSamplerBoundAsset mirrors the Rust BoundEntry wire shape.
 type mediaSamplerBoundAsset struct {
 	AssetID string `json:"asset_id"`
 	SceneID string `json:"scene_id"`
+	// Label is the optional label the asset won under: it powers the
+	// worker's V2 diversity stage for pre-bound entries. Unset binds with
+	// no diversity evidence rather than failing.
+	Label string `json:"label,omitempty"`
 }
 
 // mediaSamplerGroupResponse adds the ordered group members to the single
@@ -87,6 +94,7 @@ func (a *MediaSamplerAdapter) SelectGroup(
 		GroupSize:   groupSize,
 		BoundAssets: boundAssets,
 	}
+	a.samplerPolicy.applyTo(&req.mediaSamplerSelectionPolicy)
 	payload, err := json.Marshal(req)
 	if err != nil {
 		return nil, nil, err
@@ -145,11 +153,13 @@ func (a *MediaSamplerAdapter) SampleGroup(
 		input = append(input, mediaSamplerCandidate{
 			ID: candidate.AssetID, Label: textutil.FirstNonEmpty(candidate.Entity, candidate.Query),
 			GenericSimilarity: float32(candidate.RelevanceScore), OwnerSegmentID: candidate.SegmentID,
+			EmbeddingSimilarity: optionalSimilarity(candidate.EmbeddingSimilarity),
 		})
 	}
+
 	boundAssets := make([]mediaSamplerBoundAsset, 0, len(bound))
 	for _, entry := range bound {
-		boundAssets = append(boundAssets, mediaSamplerBoundAsset{AssetID: entry.AssetID, SceneID: entry.SceneID})
+		boundAssets = append(boundAssets, mediaSamplerBoundAsset{AssetID: entry.AssetID, SceneID: entry.SceneID, Label: entry.Label})
 	}
 	byID := make(map[string]scriptpkg.SegmentAssetCandidate, len(candidates))
 	for _, candidate := range candidates {

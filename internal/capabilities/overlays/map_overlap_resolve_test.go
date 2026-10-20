@@ -25,6 +25,21 @@ func TestResolveMapOverlapsShiftsPhraseAfterMap(t *testing.T) {
 	}
 }
 
+func TestResolveMapOverlapsSeesMapsListedAfterPhrase(t *testing.T) {
+	items := []OverlayItem{
+		{ID: "phrase1", Kind: "text_phrase", SceneID: "s1", StartUS: 81_000_000, DurationUS: 1_000_000, Text: "Pavia"},
+		{ID: "map1", Kind: "map", SceneID: "s1", StartUS: 81_000_000, DurationUS: 8_000_000, Map: &MapOverlay{}},
+	}
+	scenes := map[string][2]int64{"s1": {81_000_000, 95_000_000}}
+	got := ResolveMapOverlaps(items, scenes, 24, 1)
+	if len(got) != 2 || got[0].ID != "phrase1" || got[0].StartUS != 89_000_000 {
+		t.Fatalf("phrase must shift past a later-listed map while preserving order: %+v", got)
+	}
+	if err := AdmitOverlayTimeline(got, 24, 1); err != nil {
+		t.Fatalf("resolved plan must pass admission, got %v", err)
+	}
+}
+
 func TestResolveMapOverlapsDropsWhenNoRoom(t *testing.T) {
 	items := []OverlayItem{
 		{ID: "map1", Kind: "map", SceneID: "s1", StartUS: 81_000_000, DurationUS: 8_000_000, Map: &MapOverlay{}},

@@ -350,28 +350,25 @@ func overlaySceneInput(scene Scene, language, sourceLanguage Language, timing ca
 		}
 		switch kind {
 		case capabilityoverlay.KindNumber:
-			value := strings.TrimSpace(entity.CanonicalName)
-			// Entity extraction occasionally includes the following connector
-			// (e.g. "8 ottobre 2026 per"). Trim only trailing tokens until the
-			// source-grounded numeric/date surface is valid, then re-anchor that
-			// exact surface against the spoken word timing.
-			for !isNumericOverlayValue(value) {
-				fields := strings.Fields(value)
-				if len(fields) < 2 {
-					break
-				}
-				value = strings.Join(fields[:len(fields)-1], " ")
-			}
-			if !isNumericOverlayValue(value) || !numericEntityGroundedForLanguage(scene, language, sourceLanguage, value) {
+			// Entity extraction occasionally wraps the number in prose on
+			// either side ("8 ottobre 2026 per", live C1 "si attesta
+			// sull'18"). Clean to the biggest valid numeric/date surface,
+			// then re-attach a %/currency suffix the NLP value dropped
+			// ("sull'18" from "sull'18%").
+			value := recoverNumericSuffix(strings.TrimSpace(scene.Text[language]),
+				cleanNumericOverlayValue(entity.CanonicalName), entity.Mentions)
+			if value == "" || !numericEntityGroundedForLanguage(scene, language, sourceLanguage, value) {
 				continue
 			}
 			startUS, endUS := occ.AudioStartUS, occ.AudioEndUS
 			if value != entity.CanonicalName {
-				p, err := locate(value)
-				if err != nil {
-					continue
+				if p, err := locate(value); err == nil {
+					startUS, endUS = p.GlobalStartUS, p.GlobalEndUS
 				}
-				startUS, endUS = p.GlobalStartUS, p.GlobalEndUS
+				// locate fails when TTS speaks digits as words ("42%" →
+				// "quarantadue"): keep the certified occurrence window — it
+				// provably contains the cleaned number (same word span) —
+				// instead of dropping a real, grounded value.
 			}
 			out.Numbers = append(out.Numbers, capabilityoverlay.TimedAnnotation{Text: value, Type: entity.Type, StartMs: startUS / 1000, EndMs: (endUS + 999) / 1000, StartUS: startUS, DurationUS: endUS - startUS, Score: score})
 		case capabilityoverlay.KindQuote:

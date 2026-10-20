@@ -19,6 +19,10 @@ type MediaSamplerPort interface {
 type AssetBinding struct {
 	AssetID string `json:"asset_id"`
 	SceneID string `json:"scene_id"`
+	// Label is the optional label the asset won under. The Rust worker
+	// uses it for the V2 diversity stage (semantic overlap with already
+	// bound winners). Unset binds with no diversity evidence.
+	Label string `json:"label,omitempty"`
 }
 
 // MediaSamplerGroupPort is the optional MultiImage 2.0 selection boundary:

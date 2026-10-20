@@ -77,6 +77,51 @@ func TestCoalesceFusesNearbyPhrases(t *testing.T) {
 	}
 }
 
+// A chart comparison is atomic through coalescing: the label and its bars
+// stay standalone even when nearby phrases fuse, so the group survives (or
+// is pruned) as a unit instead of entombing the label and orphaning bars.
+func TestCoalesceKeepsChartGroupAtomic(t *testing.T) {
+	label := chainFixture("text_phrase", "s1", "42%\n18%", 5_412_000, 7_563_000, "motion_chart")
+	label.TemplateID = "IMPORTANT_PHRASE"
+	label.Params = map[string]any{"chart_card": true, "chart_group_id": "g1"}
+	bar := chainFixture("shape", "s1", "", 5_412_000, 7_563_000, "")
+	bar.TemplateID = "SHAPE"
+	bar.Params = map[string]any{"shape": "rect", "chart_bar": true, "chart_group_id": "g1"}
+	items := []OverlayItem{
+		chainFixture("text_phrase", "s1", "alpha", 1_987_000, 11_301_000, "motion_a"),
+		label,
+		chainFixture("text_phrase", "s1", "beta", 6_000_000, 5_000_000, "motion_b"),
+		bar,
+	}
+	got := CoalesceChainedOverlays(items, map[string]int{"chain_gap_ms": 5000})
+	var labelOut, barOut *OverlayItem
+	for i := range got {
+		if got[i].Params["chart_card"] == true {
+			labelOut = &got[i]
+		}
+		if got[i].Params["chart_bar"] == true {
+			barOut = &got[i]
+		}
+		if got[i].Kind == KindPhraseChain {
+			segs, ok := got[i].Params["chain_segments"].([]ChainSegment)
+			if !ok {
+				t.Fatalf("chain segments undecodable: %+v", got[i].Params["chain_segments"])
+			}
+			for _, seg := range segs {
+				if seg.Params["chart_card"] == true || seg.Params["chart_bar"] == true {
+					t.Fatalf("chart item entombed in chain: %+v", seg)
+				}
+			}
+		}
+	}
+	if labelOut == nil || labelOut.Kind != "text_phrase" {
+		t.Fatalf("chart label must stay standalone: %+v", got)
+	}
+	if barOut == nil || barOut.Kind != "shape" {
+		t.Fatalf("chart bar must stay standalone: %+v", got)
+	}
+}
+
 // Chains never cross scenes; text+image in the same scene fuse as mixed_chain.
 func TestCoalesceRespectsSceneAndFamily(t *testing.T) {
 	img := chainFixture("text_phrase", "s1", "alpha", 100_000, 500_000, "motion_a")

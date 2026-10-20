@@ -14,7 +14,6 @@ import (
 	scriptports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
-	"github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
 
 type visualNERRequest struct {
@@ -491,7 +490,13 @@ func (a *VisualNERAdapter) ExtractEntities(ctx context.Context, req scriptpkg.En
 	return result, nil
 }
 
-type MediaSamplerAdapter struct{ executor *Executor }
+type MediaSamplerAdapter struct {
+	executor *Executor
+	// samplerPolicy is the Go-owned data-driven selection policy (keyword
+	// tables + optional diversity weight) bound at the composition root.
+	// The zero value keeps the Rust worker's curated V1 defaults.
+	samplerPolicy SamplerPolicy
+}
 
 // These wire types belong to the Rust adapter only. They are deliberately
 // not part of the capability contract; callers use kernel SegmentAssetCandidate
@@ -501,6 +506,12 @@ type mediaSamplerCandidate struct {
 	Label             string  `json:"label"`
 	GenericSimilarity float32 `json:"generic_similarity"`
 	OwnerSegmentID    string  `json:"owner_segment_id,omitempty"`
+	// EmbeddingSimilarity is the optional real vector similarity for the
+	// candidate. It is a SOFT signal only (a source-derived keyword anchor
+	// still dominates, and a hard-reject is never resurrected). Unset
+	// keeps the legacy behavior; out-of-range values fail closed in the
+	// worker.
+	EmbeddingSimilarity *float32 `json:"embedding_similarity,omitempty"`
 }
 type mediaSamplerResult struct {
 	CandidateID string  `json:"candidate_id"`
@@ -515,6 +526,9 @@ type mediaSamplerRequest struct {
 	Scene      mediaSamplerScene       `json:"scene"`
 	Candidates []mediaSamplerCandidate `json:"candidates"`
 	AllowReuse bool                    `json:"allow_reuse"`
+	// The Go-owned data-driven selection policy (empty tables stay absent
+	// on the wire so the worker keeps its curated defaults).
+	mediaSamplerSelectionPolicy
 }
 type mediaSamplerScene struct {
 	ID      string   `json:"id"`
@@ -528,55 +542,6 @@ type mediaSamplerResponse struct {
 	// killing the persistent process (decode/contract failure). Empty on
 	// success; absent on responses from older binaries.
 	Error string `json:"error,omitempty"`
-}
-
-func NewMediaSamplerAdapter(executor *Executor) (*MediaSamplerAdapter, error) {
-	if executor == nil {
-		return nil, fmt.Errorf("mediasampler: executor is required")
-	}
-	return &MediaSamplerAdapter{executor: executor}, nil
-}
-
-func (a *MediaSamplerAdapter) SampleScene(ctx context.Context, sceneID, subject string, terms []string, candidates []mediaSamplerCandidate, allowReuse bool) ([]mediaSamplerResult, string, error) {
-	if a == nil || a.executor == nil {
-		return nil, "", fmt.Errorf("mediasampler: executor is not configured")
-	}
-	req := mediaSamplerRequest{Version: "mediasampler.v1", Operation: "select", Scene: mediaSamplerScene{ID: sceneID, Subject: subject, Terms: terms}, Candidates: candidates, AllowReuse: allowReuse}
-	payload, err := json.Marshal(req)
-	if err != nil {
-		return nil, "", err
-	}
-	stdout, _, err := a.executor.Run(ctx, payload)
-	if err != nil {
-		return nil, "", fmt.Errorf("mediasampler: execute: %w", err)
-	}
-	var response mediaSamplerResponse
-	if err := json.Unmarshal(stdout, &response); err != nil {
-		return nil, "", fmt.Errorf("mediasampler: decode: %w", err)
-	}
-	if strings.TrimSpace(response.Error) != "" {
-		return nil, "", fmt.Errorf("mediasampler: worker: %s", response.Error)
-	}
-	winner := ""
-	if response.WinnerID != nil {
-		winner = strings.TrimSpace(*response.WinnerID)
-	}
-	return response.Results, winner, nil
-}
-
-// Sample adapts the canonical kernel candidate model to the Rust sampler.
-// This is the capability-facing port used by materialization; detailed Rust
-// result rows remain an adapter concern.
-func (a *MediaSamplerAdapter) Sample(ctx context.Context, sceneID, subject string, terms []string, candidates []scriptpkg.SegmentAssetCandidate, allowReuse bool) (string, error) {
-	input := make([]mediaSamplerCandidate, 0, len(candidates))
-	for _, candidate := range candidates {
-		input = append(input, mediaSamplerCandidate{
-			ID: candidate.AssetID, Label: textutil.FirstNonEmpty(candidate.Entity, candidate.Query),
-			GenericSimilarity: float32(candidate.RelevanceScore), OwnerSegmentID: candidate.SegmentID,
-		})
-	}
-	_, winner, err := a.SampleScene(ctx, sceneID, subject, terms, input, allowReuse)
-	return winner, err
 }
 
 var _ scriptgen.VisualNERPort = (*VisualNERAdapter)(nil)

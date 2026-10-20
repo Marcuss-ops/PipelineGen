@@ -401,6 +401,39 @@ func (r *Runner) attachVisualChartValues(ctx context.Context, language string, i
 	return highlights
 }
 
+// verifyChartCandidate turns one VisualNER chart row into the verbatim
+// source surface it authorizes. The worker frequently mirrors the dirty NLP
+// entity surface ("dove si registra solamente l'18") instead of the number
+// alone, so the strict parser is applied to the cleaned numeric core and a
+// %/currency suffix is recovered from the scene text ("l'18%" → "18%").
+// The returned surface must still occur verbatim in the scene text and carry
+// the worker's own value; anything else is rejected, never coerced.
+func verifyChartCandidate(candidate ChartValueCandidate, sceneText string) (string, float64, bool) {
+	if candidate.Text == "" {
+		return "", 0, false
+	}
+	if parsed, ok := capabilityoverlay.ParseChartValue(candidate.Text); ok &&
+		strings.Contains(sceneText, candidate.Text) && sameChartValue(parsed, candidate.Value) {
+		return candidate.Text, parsed, true
+	}
+	cleaned := cleanNumericOverlayValue(candidate.Text)
+	if cleaned == "" {
+		return "", 0, false
+	}
+	surface := cleaned
+	if span, ok := findEntitySpan(sceneText, cleaned); ok {
+		surface = recoverNumericSuffix(sceneText, cleaned, []scriptpkg.AnnotationSpan{span})
+	}
+	if !strings.Contains(sceneText, surface) {
+		return "", 0, false
+	}
+	parsed, ok := capabilityoverlay.ParseChartValue(surface)
+	if !ok || !sameChartValue(parsed, candidate.Value) {
+		return "", 0, false
+	}
+	return surface, parsed, true
+}
+
 // mergeChartValues appends verified candidates to existing values, keeping
 // the manifest's no-duplicate and maximum-count rules.
 func mergeChartValues(existing []string, candidates []ChartValueCandidate, sceneText string) []string {
@@ -415,11 +448,8 @@ func mergeChartValues(existing []string, candidates []ChartValueCandidate, scene
 		if len(out) >= maxEditorialChartValues {
 			break
 		}
-		if candidate.Text == "" || !strings.Contains(sceneText, candidate.Text) {
-			continue
-		}
-		parsed, ok := capabilityoverlay.ParseChartValue(candidate.Text)
-		if !ok || !sameChartValue(parsed, candidate.Value) {
+		surface, parsed, ok := verifyChartCandidate(candidate, sceneText)
+		if !ok {
 			continue
 		}
 		id := chartValueIdentity(parsed)
@@ -427,7 +457,7 @@ func mergeChartValues(existing []string, candidates []ChartValueCandidate, scene
 			continue
 		}
 		seen[id] = struct{}{}
-		out = append(out, candidate.Text)
+		out = append(out, surface)
 	}
 	if len(out) == 0 {
 		return nil
@@ -471,14 +501,29 @@ func applyRustChartValues(input *capabilityoverlay.SceneInput, highlights []scri
 			return
 		}
 		input.ChartNumbers = make([]capabilityoverlay.TimedAnnotation, 0, len(input.Numbers))
+		// NLP often emits the same spoken number twice ("42" NUMBER and
+		// "42%" PERCENT on one word span). Keep one bar per (value, start):
+		// duplicates would render twin bars for a single spoken fact.
+		seen := make(map[string]int, len(input.Numbers))
 		for _, number := range input.Numbers {
 			parsed, ok := capabilityoverlay.ParseChartValue(strings.TrimSpace(number.Text))
 			if !ok {
 				continue
 			}
-			if _, ok := allowed[chartValueIdentity(parsed)]; ok {
-				input.ChartNumbers = append(input.ChartNumbers, number)
+			if _, ok := allowed[chartValueIdentity(parsed)]; !ok {
+				continue
 			}
+			key := chartValueIdentity(parsed) + "\x00" + strconv.FormatInt(number.StartUS, 10)
+			if idx, duplicate := seen[key]; duplicate {
+				// Keep the unit-carrying surface ("42%" over "42") so
+				// the rendered label never loses the spoken unit.
+				if len(number.Text) > len(input.ChartNumbers[idx].Text) {
+					input.ChartNumbers[idx] = number
+				}
+				continue
+			}
+			seen[key] = len(input.ChartNumbers)
+			input.ChartNumbers = append(input.ChartNumbers, number)
 		}
 		return
 	}

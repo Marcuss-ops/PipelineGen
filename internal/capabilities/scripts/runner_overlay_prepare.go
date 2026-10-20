@@ -17,11 +17,9 @@ package scriptgeneration
 
 import (
 	"context"
-	"sort"
 	"strings"
 
 	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
-	phrasepkg "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/phrases"
 	mediadomain "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
@@ -371,11 +369,14 @@ func computeSegmentEntityAnnotations(snapshot []sceneTextSnapshot, language Lang
 				ann = &scriptpkg.SceneAnnotations{Version: 1, Language: string(language), Status: "completed"}
 				annotations[scene.Index] = ann
 			}
+			requestedSpans := make([]scriptpkg.AnnotationSpan, 0, len(requestedPhraseSets[0]))
 			for _, requested := range requestedPhraseSets[0] {
 				span, ok := findEntitySpan(text, requested)
 				if !ok {
 					continue
 				}
+				span.Text = strings.TrimSpace(requested)
+				requestedSpans = append(requestedSpans, span)
 				found := false
 				for i := range ann.ImportantPhrases {
 					if ann.ImportantPhrases[i].StartRune == span.StartRune && ann.ImportantPhrases[i].EndRune == span.EndRune {
@@ -393,100 +394,29 @@ func computeSegmentEntityAnnotations(snapshot []sceneTextSnapshot, language Lang
 					})
 				}
 			}
+			if len(requestedSpans) > 0 {
+				kept := ann.ImportantPhrases[:0]
+				for _, phrase := range ann.ImportantPhrases {
+					displaced := false
+					for _, requested := range requestedSpans {
+						if phrase.StartRune == requested.StartRune && phrase.EndRune == requested.EndRune {
+							phrase.Text, phrase.Score, phrase.Kind = requested.Text, 1, "key_statement"
+							break
+						}
+						if phrase.StartRune < requested.EndRune && requested.StartRune < phrase.EndRune {
+							displaced = true
+							break
+						}
+					}
+					if !displaced {
+						kept = append(kept, phrase)
+					}
+				}
+				ann.ImportantPhrases = kept
+			}
 		}
 	}
 	return annotations
-}
-
-func supplementSourceImportantPhrases(ann *scriptpkg.SceneAnnotations, text, language string, limit int, corpus []string) {
-	if ann == nil || limit <= 0 {
-		return
-	}
-	blocked := make([][2]int, 0, len(ann.PrimaryEntities)+len(ann.SecondaryEntities))
-	for _, entity := range append(append([]scriptpkg.AnnotatedEntity(nil), ann.PrimaryEntities...), ann.SecondaryEntities...) {
-		mentions := entity.Mentions
-		if len(mentions) == 0 {
-			value := strings.TrimSpace(entity.Text)
-			if value == "" {
-				value = strings.TrimSpace(entity.CanonicalName)
-			}
-			if span, ok := findEntitySpan(text, value); ok {
-				mentions = []scriptpkg.AnnotationSpan{span}
-			}
-		}
-		for _, mention := range mentions {
-			if mention.EndRune > mention.StartRune {
-				blocked = append(blocked, [2]int{mention.StartRune, mention.EndRune})
-			}
-		}
-	}
-	type candidate struct {
-		span  scriptpkg.AnnotationSpan
-		words int
-	}
-	byText := make(map[string]candidate, len(ann.ImportantPhrases)+limit)
-	for _, phrase := range ann.ImportantPhrases {
-		span, ok := findEntitySpan(text, phrase.Text)
-		if !ok {
-			continue
-		}
-		phrase.Text, phrase.StartRune, phrase.EndRune = span.Text, span.StartRune, span.EndRune
-		byText[phraseKey(phrase.Text)] = candidate{span: phrase, words: len(strings.Fields(phrase.Text))}
-	}
-	// Ask for a full selector window even when the NLP source already filled
-	// its per-scene quota. The long-first selector output can replace overlapping
-	// fragments, while exact grounding and entity blocking remain mandatory.
-	selectorLimit := max(limit*3, limit)
-	for rank, phrase := range phrasepkg.ImportantPhrasesWithCorpus(text, blocked, selectorLimit, language, corpus) {
-		span, ok := findEntitySpan(text, phrase)
-		if !ok {
-			continue
-		}
-		phrase = span.Text
-		words := len(strings.Fields(phrase))
-		if words < 8 || words > 16 {
-			continue
-		}
-		key := phraseKey(phrase)
-		byText[key] = candidate{span: scriptpkg.AnnotationSpan{
-			Text: phrase, StartRune: span.StartRune, EndRune: span.EndRune,
-			Score: max(0.90-float64(rank)*0.01, 0.05), Kind: "key_statement",
-		}, words: words}
-	}
-	all := make([]candidate, 0, len(byText))
-	for _, item := range byText {
-		if item.words >= 2 && item.words <= 16 {
-			all = append(all, item)
-		}
-	}
-	sort.SliceStable(all, func(i, j int) bool {
-		if all[i].words != all[j].words {
-			return all[i].words > all[j].words
-		}
-		return all[i].span.Score > all[j].span.Score
-	})
-	selected := make([]scriptpkg.AnnotationSpan, 0, limit)
-	for _, item := range all {
-		overlaps := false
-		for _, prior := range selected {
-			if item.span.StartRune < prior.EndRune && prior.StartRune < item.span.EndRune {
-				overlaps = true
-				break
-			}
-		}
-		if overlaps {
-			continue
-		}
-		selected = append(selected, item.span)
-		if len(selected) == limit {
-			break
-		}
-	}
-	ann.ImportantPhrases = selected
-}
-
-func phraseKey(value string) string {
-	return strings.ToLower(strings.Join(strings.Fields(strings.TrimSpace(value)), " "))
 }
 
 // enqueueOverlayPrepare builds the overlay.prepare job for the run's

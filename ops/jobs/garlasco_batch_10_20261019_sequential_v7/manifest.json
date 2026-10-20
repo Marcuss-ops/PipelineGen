@@ -1,0 +1,119 @@
+{
+  "batch": "Garlasco 10 video — sequential delivery — 20 minutes each",
+  "status": "completed",
+  "drive_parent_folder_id": "1pcXIimINrkOcYd-dsiFyefxhcVH1SmrJ",
+  "drive_parent_folder_url": "https://drive.google.com/drive/folders/1pcXIimINrkOcYd-dsiFyefxhcVH1SmrJ",
+  "drive_job_01_folder_id": "1ZRpCSoind-Q8s6Ih9CNa5H1yAOJdqQmc",
+  "drive_job_01_folder_url": "https://drive.google.com/drive/folders/1ZRpCSoind-Q8s6Ih9CNa5H1yAOJdqQmc",
+  "current_job": "",
+  "job_ids": [
+    "job_1792422744138217083_c8f1b036",
+    "job_1792435584749534650_75f50f69",
+    "job_1792427488642782452_4344d151",
+    "job_1792429502476945054_88410407",
+    "job_1792434233067818083_c34a2643",
+    "job_1792434553872840768_c70fe4f2",
+    "job_1792431577530467191_ff917aff",
+    "job_1792431956860243393_0bba2e07",
+    "job_1792432658289882234_0ee30f97",
+    "job_1792435035632098489_def74495"
+  ],
+  "target_words": "2500–3000",
+  "target_overlays": 40,
+  "style": "Playfair Display Italic nero su bianco pieno",
+  "intro_clip_count": 3,
+  "intro_clip_ids": [
+    "planner:3132656533383965:0",
+    "planner:3738303031306330:1",
+    "planner:3937666130363962:6"
+  ],
+  "shared_stock_pool_folder_id": "1c-pjyGbD56VzwycK8N0yqvycjKpnPrPM",
+  "render_enabled": false,
+  "next_job_rule": "Use the ten retained SUCCEEDED payloads as references; keep three distinct strong intro clips per video and verify actual overlay count against the target before accepting each result.",
+  "examples": [
+    {
+      "script": "01_cronologia",
+      "version": 8,
+      "status": "SUCCEEDED",
+      "job_id": "job_1792422744138217083_c8f1b036",
+      "payload": "01_cronologia.generate.v8.json",
+      "result": "results/01_cronologia.generate.v8.job.full.json"
+    },
+    {
+      "script": "02_procedimento",
+      "version": 15,
+      "status": "SUCCEEDED",
+      "job_id": "job_1792435584749534650_75f50f69",
+      "payload": "02_procedimento.generate.v15.json",
+      "result": "results/02_procedimento.generate.v15.job.full.json"
+    },
+    {
+      "script": "03_stasi_sentenza",
+      "version": 9,
+      "status": "SUCCEEDED",
+      "job_id": "job_1792427488642782452_4344d151",
+      "payload": "03_stasi_sentenza.generate.v9.json",
+      "result": "results/03_stasi_sentenza.generate.v9.job.full.json"
+    },
+    {
+      "script": "04_nuova_indagine",
+      "version": 11,
+      "status": "SUCCEEDED",
+      "job_id": "job_1792429502476945054_88410407",
+      "payload": "04_nuova_indagine.generate.v11.json",
+      "result": "results/04_nuova_indagine.generate.v11.job.full.json"
+    },
+    {
+      "script": "05_le_prove",
+      "version": 13,
+      "status": "SUCCEEDED",
+      "job_id": "job_1792434233067818083_c34a2643",
+      "payload": "05_le_prove.generate.v13.json",
+      "result": "results/05_le_prove.generate.v13.job.full.json"
+    },
+    {
+      "script": "06_pedali_ris",
+      "version": 13,
+      "status": "SUCCEEDED",
+      "job_id": "job_1792434553872840768_c70fe4f2",
+      "payload": "06_pedali_ris.generate.v13.json",
+      "result": "results/06_pedali_ris.generate.v13.job.full.json"
+    },
+    {
+      "script": "07_presunzione",
+      "version": 12,
+      "status": "SUCCEEDED",
+      "job_id": "job_1792431577530467191_ff917aff",
+      "payload": "07_presunzione.generate.v12.json",
+      "result": "results/07_presunzione.generate.v12.job.full.json"
+    },
+    {
+      "script": "08_fonti_media",
+      "version": 11,
+      "status": "SUCCEEDED",
+      "job_id": "job_1792431956860243393_0bba2e07",
+      "payload": "08_fonti_media.generate.v11.json",
+      "result": "results/08_fonti_media.generate.v11.job.full.json"
+    },
+    {
+      "script": "09_chiara_poggi",
+      "version": 11,
+      "status": "SUCCEEDED",
+      "job_id": "job_1792432658289882234_0ee30f97",
+      "payload": "09_chiara_poggi.generate.v11.json",
+      "result": "results/09_chiara_poggi.generate.v11.job.full.json"
+    },
+    {
+      "script": "10_cosa_sappiamo",
+      "version": 13,
+      "status": "SUCCEEDED",
+      "job_id": "job_1792435035632098489_def74495",
+      "payload": "10_cosa_sappiamo.generate.v13.json",
+      "result": "results/10_cosa_sappiamo.generate.v13.job.full.json"
+    }
+  ],
+  "observed_overlay_count_range": [
+    13,
+    36
+  ]
+}

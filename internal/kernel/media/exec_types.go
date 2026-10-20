@@ -94,6 +94,13 @@ type EncoderPolicy struct {
 type ExecutionConfig struct {
 	Profile VideoProfile
 	Policy  EncoderPolicy
+	// MaxParallelCuts is the Go-owned capacity policy for the cut_batch
+	// wave fanout (concurrent FFmpeg processes per source). Zero means
+	// "unspecified": the adapter omits max_parallel_cuts from the wire and
+	// the Rust executor keeps its historical default (3). Positive values
+	// must respect the Rust ceiling; Oversized values fail closed in the
+	// executor instead of hammering a shared worker.
+	MaxParallelCuts int
 }
 
 type NormalizeOptions struct {

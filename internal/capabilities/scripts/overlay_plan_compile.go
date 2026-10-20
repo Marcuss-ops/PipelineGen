@@ -18,13 +18,6 @@ import (
 // compile byte-identical plans and retries stay bit-identical; a new plan ID
 // rotates the certified motion pools. chooseOffset stays in the internal API
 // for source compatibility, but the plan identity is the entropy source.
-// entityVariationSeedForCanvas forwards an explicit per-render motion seed
-// to the worker's entity-style sampler. Empty preserves the historical
-// plan-identity sampling so existing sealed plans stay byte-identical.
-func entityVariationSeedForCanvas(canvas OverlayCanvasSpec) string {
-	return strings.TrimSpace(canvas.MotionSeed)
-}
-
 func compileOverlayPlanWithMotionOffset(result *GenerateResult, language Language, canvas OverlayCanvasSpec, planID, videoID, projectID string, chooseOffset func() (int, error), plates capabilityoverlay.PlateResolver, perSceneImages ...bool) (*capabilityoverlay.OverlayPlan, error) {
 	if result == nil {
 		return nil, nil
@@ -289,6 +282,7 @@ func compileOverlayPlanWithMotionOffset(result *GenerateResult, language Languag
 	// canvas because that is the run-level render context this function
 	// already receives.
 	plannerConfig.RunLevelPhraseOverlayLimit = phraseCeiling
+	shortPhraseCap, hasShortPhraseCap, longPhraseCap, hasLongPhraseCap := applyPhraseLaneCaps(&plannerConfig, canvas.OverlayGroupLimits)
 	// Keep the requested map group within the certified run ceiling while
 	// allowing the caller to select up to three scene-synced map animations.
 	// The former unconditional one-map clamp silently ignored payloads that
@@ -446,8 +440,6 @@ func compileOverlayPlanWithMotionOffset(result *GenerateResult, language Languag
 	// It runs on individual assets before composition so dedupe and counts do
 	// not treat a 2–5-image group as one indivisible image.
 	perSceneEntityImages := len(perSceneImages) > 0 && perSceneImages[0]
-	shortPhraseCap, hasShortPhraseCap := canvas.OverlayGroupLimits[overlayGroupShortPhrases]
-	longPhraseCap, hasLongPhraseCap := canvas.OverlayGroupLimits[overlayGroupLongPhrases]
 	if hasShortPhraseCap && hasLongPhraseCap {
 		items, _ = capabilityoverlay.ApplyEditorialOverlayBudgetWithPhraseLanes(items, phraseCeiling, imageCeiling, mapLimit, perSceneEntityImages, shortPhraseCap, longPhraseCap)
 	} else {

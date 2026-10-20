@@ -248,7 +248,6 @@ const (
 	// window keeps a sane tail ceiling.
 	maxPhraseOverlayDurationUS int64 = 8_000_000
 	maxOverlayItemDurationUS   int64 = 5_000_000
-	mapCameraShotDurationUS    int64 = 8_000_000
 	// maxCompositeOverlayDurationUS must cover the largest camera journey the
 	// composer can emit: 5 children, consecutive mention anchors up to
 	// entityImageMergeGapMS (5s) apart, each slot spaced at least
@@ -376,11 +375,11 @@ func separateOverlayItemPlan(parent capoverlay.OverlayPlan, source capoverlay.Ov
 		source.MotionParams["enter_frames"] = entrance
 	}
 	if source.Map != nil {
-		// Map shots spend 6.5 seconds on the camera approach, then hold the
-		// destination for 1.5 seconds. The spoken interval can be shorter, but
-		// must not truncate the camera animation or its label read.
-		targetUS = mapCameraShotDurationUS
-		maxDurationUS = mapCameraShotDurationUS
+		// The planner certifies a map window long enough for its camera and all
+		// per-pin spoken timing. Preserve that window in the child render; a
+		// fixed 8-second clip can truncate later pins and fail map admission.
+		targetUS = durationUS
+		maxDurationUS = durationUS
 	}
 	if len(source.ImageLayers) > 0 {
 		// A composite's children carry staggered windows relative to the

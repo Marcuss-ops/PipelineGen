@@ -171,7 +171,11 @@ func BuildScriptGenerationRuntime(cfg *config.Config, root *ComposeRoot, runRepo
 		return nil, err
 	}
 	mediaSamplerExecutor := rustexec.NewExecutor(cfg.External.RustMediaSamplerPath, cfg.External.FfmpegPath, log)
-	mediaSampler, err := rustexec.NewMediaSamplerAdapter(mediaSamplerExecutor)
+	// The Go-owned sampler selection policy (data-driven keyword tables,
+	// optional diversity weight) is bound ONCE here so both `select` and
+	// `select_group` operate on the same operator configuration. An empty
+	// config keeps the Rust worker's curated V1 defaults untouched.
+	mediaSampler, err := rustexec.NewMediaSamplerWithPolicy(mediaSamplerExecutor, rustexec.NewSamplerPolicy(cfg.Media.Sampler))
 	if err != nil {
 		return nil, fmt.Errorf("build MediaSampler adapter: %w", err)
 	}
