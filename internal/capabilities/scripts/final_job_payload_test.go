@@ -824,6 +824,18 @@ func TestFinalJobIdempotencyKeyStableAcrossLocalRunRetries(t *testing.T) {
 	}
 }
 
+func TestFinalJobAttemptIdempotencyKeyChangesOnlyForANewAttempt(t *testing.T) {
+	first := finalJobAttemptIdempotencyKey("request-1", "logical-run", 1)
+	replay := finalJobAttemptIdempotencyKey("request-1", "logical-run", 1)
+	retry := finalJobAttemptIdempotencyKey("request-1", "logical-run", 2)
+	if first != replay {
+		t.Fatalf("same-attempt key changed on replay: %q != %q", first, replay)
+	}
+	if first == retry {
+		t.Fatalf("new remote attempt reused key %q", first)
+	}
+}
+
 func TestFinalJobRemoteAssetReferencesOmitWorkerLocalPaths(t *testing.T) {
 	ref := map[string]any{
 		"asset_id": "stock-1", "drive_file_id": "drive-1",

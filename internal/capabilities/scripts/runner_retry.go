@@ -72,6 +72,9 @@ func deriveErrorCode(err error, stage Stage) string {
 // failure that cannot be repaired by retrying within the same frozen runtime
 // composition. Other preflight failures retain the normal retry policy.
 func isPermanentMediaPreflightFailure(err error) bool {
+	if errors.Is(err, ErrFinalJobReceiptCheckpoint) {
+		return true
+	}
 	var preflightErr *MediaPreflightError
 	if !errors.As(err, &preflightErr) || preflightErr == nil {
 		return false

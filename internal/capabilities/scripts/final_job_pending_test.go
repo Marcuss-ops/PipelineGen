@@ -43,6 +43,17 @@ type stubFinalJobAttacher struct {
 	attachCalls  []attachCall
 	attachResult RemoteFinalJobResult
 	attachErr    error
+	startCalls   int
+	startResult  RemoteFinalJobResult
+	startErr     error
+}
+
+func (s *stubFinalJobAttacher) StartFinalJob(_ context.Context, _ string, _ GenerateRequest, result *GenerateResult) (RemoteFinalJobResult, error) {
+	s.startCalls++
+	if result == nil || result.RemoteFinalJob == nil {
+		return RemoteFinalJobResult{}, errors.New("missing durable attempt intent")
+	}
+	return s.startResult, s.startErr
 }
 
 func (s *stubFinalJobAttacher) AttachFinalJob(_ context.Context, jobID string, waitToCompletion bool) (RemoteFinalJobResult, error) {
@@ -141,6 +152,66 @@ func TestDeferredAttemptResumesTheJobInsteadOfSubmittingASecondRender(t *testing
 	}
 	if run.Result.RemoteFinalJob.Status != "SUCCEEDED" {
 		t.Fatalf("durable receipt = %+v, want the terminal SUCCEEDED status", run.Result.RemoteFinalJob)
+	}
+}
+
+func TestTerminalReceiptStartsAnotherAttemptWithoutAttaching(t *testing.T) {
+	const runID = "run-terminal"
+	submitter := &stubFinalJobSubmitter{result: RemoteFinalJobResult{JobID: "new-attempt", Status: "RUNNING"}}
+	result := &GenerateResult{RemoteFinalJob: &RemoteFinalJobResult{JobID: "master-cancelled", Status: "CANCELLED"}}
+	runner, _ := newFinalJobRunner(submitter, runID, result)
+
+	if ok := runner.submitFinalJob(context.Background(), runID, defaultTestRequest(), result); ok {
+		t.Fatal("a terminal remote receipt must not be treated as a successful render")
+	}
+	if submitter.submits != 1 {
+		t.Fatalf("terminal receipt should submit a new attempt, submits=%d", submitter.submits)
+	}
+	if got := finalJobPendingID(result.RemoteFinalJob); got != "" {
+		t.Fatalf("terminal receipt pending id = %q, want empty", got)
+	}
+}
+
+func TestTerminalReceiptIncrementsAndArchivesRemoteAttempt(t *testing.T) {
+	const runID = "run-terminal-new-attempt"
+	submitter := &stubFinalJobAttacher{
+		startResult:  RemoteFinalJobResult{JobID: "master-new", Status: "RUNNING"},
+		attachResult: RemoteFinalJobResult{JobID: "master-new", Status: "SUCCEEDED"},
+	}
+	result := &GenerateResult{RemoteFinalJob: &RemoteFinalJobResult{JobID: "master-old", Status: "CANCELLED", Attempt: 4}}
+	runner, _ := newFinalJobRunner(submitter, runID, result)
+	if ok := runner.submitFinalJob(context.Background(), runID, defaultTestRequest(), result); !ok {
+		t.Fatal("the new remote attempt should complete successfully")
+	}
+	if submitter.startCalls != 1 {
+		t.Fatalf("StartFinalJob calls = %d, want 1", submitter.startCalls)
+	}
+	if result.RemoteFinalJob.Attempt != 5 {
+		t.Fatalf("new attempt = %d, want 5", result.RemoteFinalJob.Attempt)
+	}
+	if len(result.RemoteFinalJobHistory) != 1 || result.RemoteFinalJobHistory[0].JobID != "master-old" {
+		t.Fatalf("attempt history = %+v, want the cancelled prior receipt", result.RemoteFinalJobHistory)
+	}
+}
+
+func TestTerminalRemoteOutcomeReplacesDurableRunningReceipt(t *testing.T) {
+	const runID = "run-terminal-outcome"
+	submitter := &stubFinalJobSubmitter{
+		result: RemoteFinalJobResult{JobID: "master-failed", Status: "FAILED"},
+		err:    errors.New("remote render failed"),
+	}
+	result := &GenerateResult{RemoteFinalJob: &RemoteFinalJobResult{JobID: "master-failed", Status: "RUNNING"}}
+	runner, repo := newFinalJobRunner(submitter, runID, result)
+
+	if ok := runner.settleFinalJob(context.Background(), runID, result, submitter.result, 0, submitter.err); ok {
+		t.Fatal("terminal remote failure must not report success")
+	}
+	run, err := repo.Get(context.Background(), runID)
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	if got := run.Result.RemoteFinalJob.Status; got != "FAILED" {
+		t.Fatalf("durable receipt status = %q, want FAILED", got)
 	}
 }
 
