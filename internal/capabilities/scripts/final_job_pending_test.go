@@ -43,12 +43,24 @@ type stubFinalJobAttacher struct {
 	attachCalls  []attachCall
 	attachResult RemoteFinalJobResult
 	attachErr    error
+}
+
+func (s *stubFinalJobAttacher) AttachFinalJob(_ context.Context, jobID string, waitToCompletion bool) (RemoteFinalJobResult, error) {
+	s.attachCalls = append(s.attachCalls, attachCall{jobID: jobID, waitToCompletion: waitToCompletion})
+	return s.attachResult, s.attachErr
+}
+
+type stubFinalJobFreshAttempt struct {
+	stubFinalJobSubmitter
 	startCalls   int
 	startResult  RemoteFinalJobResult
 	startErr     error
+	attachCalls  []attachCall
+	attachResult RemoteFinalJobResult
+	attachErr    error
 }
 
-func (s *stubFinalJobAttacher) StartFinalJob(_ context.Context, _ string, _ GenerateRequest, result *GenerateResult) (RemoteFinalJobResult, error) {
+func (s *stubFinalJobFreshAttempt) StartFinalJob(_ context.Context, _ string, _ GenerateRequest, result *GenerateResult) (RemoteFinalJobResult, error) {
 	s.startCalls++
 	if result == nil || result.RemoteFinalJob == nil {
 		return RemoteFinalJobResult{}, errors.New("missing durable attempt intent")
@@ -56,7 +68,7 @@ func (s *stubFinalJobAttacher) StartFinalJob(_ context.Context, _ string, _ Gene
 	return s.startResult, s.startErr
 }
 
-func (s *stubFinalJobAttacher) AttachFinalJob(_ context.Context, jobID string, waitToCompletion bool) (RemoteFinalJobResult, error) {
+func (s *stubFinalJobFreshAttempt) AttachFinalJob(_ context.Context, jobID string, waitToCompletion bool) (RemoteFinalJobResult, error) {
 	s.attachCalls = append(s.attachCalls, attachCall{jobID: jobID, waitToCompletion: waitToCompletion})
 	return s.attachResult, s.attachErr
 }
@@ -174,7 +186,7 @@ func TestTerminalReceiptStartsAnotherAttemptWithoutAttaching(t *testing.T) {
 
 func TestTerminalReceiptIncrementsAndArchivesRemoteAttempt(t *testing.T) {
 	const runID = "run-terminal-new-attempt"
-	submitter := &stubFinalJobAttacher{
+	submitter := &stubFinalJobFreshAttempt{
 		startResult:  RemoteFinalJobResult{JobID: "master-new", Status: "RUNNING"},
 		attachResult: RemoteFinalJobResult{JobID: "master-new", Status: "SUCCEEDED"},
 	}
